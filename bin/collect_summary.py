@@ -2186,6 +2186,9 @@ def cftr_reading(by, d, s, traits_state="ok"):
                 "with 5T in cis.")
         if r117 is None:
             line += f" R117H was not read ({why})."
+        elif r117.split("/").count("A") == 2:
+            copies = f"both {b[0]}T copies" if b[0] == b[1] else f"both copies ({b[0]}T and {b[1]}T)"
+            line += f" R117H ({r117}) is read: it sits on {copies}.{note}"
         elif r117.split("/").count("A"):
             copies = f"{b[0]}T" if b[0] == b[1] else f"{b[0]}T or {b[1]}T"
             line += f" R117H ({r117}) is read: with no 5T copy it sits on a {copies} copy.{note}"

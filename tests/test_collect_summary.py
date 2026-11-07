@@ -1427,6 +1427,15 @@ def str_extra_readings(work, schema):
     check("extra repeats: no 5T copy with one R117H copy says R117H sits on the 7T or 9T copy",
           c.get("five_t") is False and "R117H (G/A) is read" in c["reading"] and "7T or 9T copy" in c["reading"]
           and "does not change how a CFTR finding is read" not in c["reading"] and c.get("r117h") == "G/A", c)
+    # Homozygous R117H with no 5T copy sits on both copies, not on one or the other.
+    _, _, rd, _, _ = made_up("EXK", "11/11", "7/9", "7/7", r117h="A/A")
+    c = rd["CFTR"]
+    check("extra repeats: no 5T copy with two R117H copies says R117H sits on both copies (7T and 9T)",
+          c.get("five_t") is False and "R117H (A/A) is read: it sits on both copies (7T and 9T)" in c["reading"]
+          and "it sits on a 7T or 9T copy" not in c["reading"], c)
+    _, _, rd, _, _ = made_up("EXL", "11/11", "7/7", "7/7", r117h="A/A")
+    check("extra repeats: two R117H copies on two 7T copies says both 7T copies",
+          "R117H (A/A) is read: it sits on both 7T copies" in rd["CFTR"]["reading"], rd["CFTR"])
     _, _, rd, _, _ = made_up("EXI", "11/11", "7/7", "7/7")
     check("extra repeats: no 5T copy and no traits table says R117H was not read",
           "R117H was not read" in rd["CFTR"]["reading"], rd["CFTR"])
