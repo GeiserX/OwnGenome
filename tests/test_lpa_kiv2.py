@@ -35,15 +35,14 @@ depth from reads of MAPQ 0 unless a case says otherwise:
      reference) is 'not seen'; 3 reads with T is 'uncertain'; under 100 reads
      is 'too little depth'; an unreadable pileup is 'not assessed', exit 0;
      reads at other positions and read starts, ends and indels in the bases
-     column are not counted; the rows go after the table and the sentence
-     after the message, once, and the text report prints it beside the count;
-     a table that is not metric<TAB>value exits 2.
+     column are not counted; the reading goes to its own table and step 46's
+     table is left byte for byte; without a count the copies are '.'; an
+     output that cannot be written exits 2.
 
 Run: python3 tests/test_lpa_kiv2.py
 """
 import math
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -264,80 +263,74 @@ def main():
             f.write(extra)
 
     def table_after(t, name, per_site, n_copies=38, extra=""):
+        """Step 46's table, a pileup, then null-allele; returns (rc, the 4925G>A table, LPA table, pileup, out)."""
         d = os.path.join(t, name)
         os.makedirs(d)
-        a, b, o, p = (os.path.join(d, x) for x in ("a.tsv", "b.tsv", "S_lpa_kiv2.tsv", "p.tsv"))
+        a, b, o, p, n = (os.path.join(d, x) for x in ("a.tsv", "b.tsv", "S_lpa_kiv2.tsv", "p.tsv", "S_lpa_kiv2_4925.tsv"))
         bedcov(a, depths(n_copies))
         bedcov(b, q1(depths(n_copies)))
         lpa.main(["estimate", "--bedcov", a, "--bedcov-mapq1", b, "--out", o])
         pileup(p, per_site, extra)
-        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o],
+        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o, "--out", n],
                             capture_output=True, text=True)
-        return rc, dict(x.split("\t", 1) for x in open(o).read().splitlines()[1:]), o, p
+        tab = dict(x.split("\t", 1) for x in open(n).read().splitlines()[1:]) if os.path.exists(n) else {}
+        return rc, tab, o, p, n
 
     with tempfile.TemporaryDirectory() as t:
-        rc, tab, o, p = table_after(t, "present", (95, 5))
+        rc, tab, o, p, n = table_after(t, "present", (95, 5))
         check("4925G>A: 5% of the reads with T at the seven copies is present, exit 0",
-              rc.returncode == 0 and tab.get("kiv2_4925_status") == "present"
-              and tab.get("kiv2_4925_alt_reads") == "35" and tab.get("kiv2_4925_depth") == "700", (rc, tab))
+              rc.returncode == 0 and tab.get("status") == "present"
+              and tab.get("alt_reads") == "35" and tab.get("depth") == "700", (rc, tab))
         check("4925G>A: copies = fraction x (N + 2) = 0.05 x 40",
-              tab.get("kiv2_4925_fraction") == "0.0500" and tab.get("kiv2_4925_copies") == "2.0", tab)
-        check("4925G>A: the sentence follows the count's message, once",
-              tab["message"].startswith("about 38 KIV-2 repeats") and tab["message"].count("4925G>A") == 1
-              and tab["message"].endswith(tab["kiv2_4925_message"]), tab["message"])
+              tab.get("fraction") == "0.0500" and tab.get("copies") == "2.0" and tab.get("kiv2_copies") == "38.0", tab)
         check("4925G>A: the message says what a short-read fraction cannot say",
-              "cannot say which chromosome or which repeat" in tab["kiv2_4925_message"], tab)
-        before = open(o).read()
-        subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o], capture_output=True)
-        check("4925G>A: a second run leaves the table as it was (the rows and the sentence once)",
-              open(o).read() == before, open(o).read())
-        rc, _, o2, p2 = table_after(t, "viatr", (100, 0))
-        os.makedirs(os.path.join(t, "viatr2"))
-        o3 = os.path.join(t, "viatr2", "S_lpa_kiv2.tsv")
-        a, b = os.path.join(t, "viatr2", "a.tsv"), os.path.join(t, "viatr2", "b.tsv")
-        bedcov(a, depths(38))
-        bedcov(b, q1(depths(38)))
-        lpa.main(["estimate", "--bedcov", a, "--bedcov-mapq1", b, "--out", o3])
+              "cannot say which chromosome or which repeat" in tab.get("message", ""), tab)
+        check("4925G>A: the first rows name the marker and its dbSNP record",
+              open(n).read().splitlines()[:3] == ["metric\tvalue", "marker\tLPA KIV-2 4925G>A",
+                                                   "rsid\trs1484919544 (first KIV-2 copy)"], open(n).read())
+        d0 = os.path.join(t, "plain")
+        os.makedirs(d0)
+        a0, b0, o0 = (os.path.join(d0, x) for x in ("a.tsv", "b.tsv", "S_lpa_kiv2.tsv"))
+        bedcov(a0, depths(38))
+        bedcov(b0, q1(depths(38)))
+        lpa.main(["estimate", "--bedcov", a0, "--bedcov-mapq1", b0, "--out", o0])
+        check("4925G>A: step 46's table is left byte for byte", open(o).read() == open(o0).read(), open(o).read())
+        n3 = os.path.join(t, "viatr.tsv")
         res = subprocess.run([sys.executable, os.path.join(REPO, "bin", "traits_report.py"), "--marker", "LPA_KIV2_4925",
-                              "--pileup", p2, "--marker-out", o3], capture_output=True, text=True)
+                              "--pileup", p, "--copy-table", o, "--marker-out", n3], capture_output=True, text=True)
         check("4925G>A: traits_report.py --marker LPA_KIV2_4925 (what step 46 and the LPA process run) writes "
-              "the same table as null-allele", res.returncode == 0 and open(o3).read() == open(o2).read(), res)
+              "the same table as null-allele", res.returncode == 0 and open(n3).read() == open(n).read(), res)
+        res = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table",
+                              os.path.join(t, "none.tsv"), "--out", n3], capture_output=True, text=True)
+        tab = dict(x.split("\t", 1) for x in open(n3).read().splitlines()[1:])
+        check("4925G>A: without step 46's table the reading stands and the copies are '.'",
+              res.returncode == 0 and tab.get("status") == "present" and tab.get("copies") == "."
+              and tab.get("kiv2_copies") == ".", (res, tab))
         rc, tab, *_ = table_after(t, "ref", (100, 0))
         check("4925G>A: reads with the reference base only is not seen",
-              tab.get("kiv2_4925_status") == "not seen" and tab.get("kiv2_4925_copies") == "."
-              and "not proof of absence" in tab["kiv2_4925_message"], tab)
+              tab.get("status") == "not seen" and tab.get("copies") == "."
+              and "not proof of absence" in tab.get("message", ""), tab)
         rc, tab, *_ = table_after(t, "unc", (100, 0), extra="chr6\t160640667\tN\t3\tTTT\tIII\n")
-        check("4925G>A: 3 reads with T is uncertain", tab.get("kiv2_4925_status") == "uncertain"
-              and tab.get("kiv2_4925_alt_reads") == "3", tab)
+        check("4925G>A: 3 reads with T is uncertain", tab.get("status") == "uncertain"
+              and tab.get("alt_reads") == "3", tab)
         rc, tab, *_ = table_after(t, "thin", (10, 1))
-        check("4925G>A: under 100 reads is too little depth", tab.get("kiv2_4925_status") == "too little depth", tab)
+        check("4925G>A: under 100 reads is too little depth", tab.get("status") == "too little depth", tab)
         rc, tab, *_ = table_after(t, "other", (100, 0),
                                   extra="chr6\t160640668\tN\t50\t" + "T" * 50 + "\t.\nchr7\t160640667\tN\t50\t"
                                   + "T" * 50 + "\t.\nchr6\t160635123\tN\t2\tC+2TTC-1T\tII\n")
         check("4925G>A: reads at other positions and indel bases are not counted",
-              tab.get("kiv2_4925_status") == "not seen" and tab.get("kiv2_4925_alt_reads") == "0"
-              and tab.get("kiv2_4925_depth") == "702", tab)
-        rc, tab, o, p = table_after(t, "bad", (95, 5))
+              tab.get("status") == "not seen" and tab.get("alt_reads") == "0" and tab.get("depth") == "702", tab)
+        rc, tab, o, p, n = table_after(t, "bad", (95, 5))
         with open(p, "w") as f:
             f.write("not a pileup\n")
-        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o],
+        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o, "--out", n],
                             capture_output=True, text=True)
-        tab = dict(x.split("\t", 1) for x in open(o).read().splitlines()[1:])
+        tab = dict(x.split("\t", 1) for x in open(n).read().splitlines()[1:])
         check("4925G>A: an unreadable pileup is not assessed, exit 0",
-              rc.returncode == 0 and tab.get("kiv2_4925_status") == "not assessed", (rc, tab))
-        with open(o, "w") as f:
-            f.write("a\tb\tc\n")
-        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o],
-                            capture_output=True, text=True)
-        check("4925G>A: a table that is not metric<TAB>value exits 2", rc.returncode == 2, rc)
-        d = os.path.join(t, "rep", "S")
-        os.makedirs(os.path.join(d, "lpa"))
-        _, _, o, _ = table_after(t, "rep2", (95, 5))
-        shutil.copy(o, os.path.join(d, "lpa", "S_lpa_kiv2.tsv"))
-        txt = render_report.text_report(collect_summary.collect("S", d))
-        check("4925G>A: the text report prints it beside the count",
-              "KIV-2 repeats (both chromosomes): 38.0" in txt and "4925G>A" in txt
-              and txt.index("4925G>A") > txt.index("KIV-2 repeats (both chromosomes)"), txt[-2000:])
+              rc.returncode == 0 and tab.get("status") == "not assessed", (rc, tab))
+        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o,
+                             "--out", os.path.join(t, "no", "such", "dir.tsv")], capture_output=True, text=True)
+        check("4925G>A: an output that cannot be written exits 2", rc.returncode == 2, rc)
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
     return 1 if FAILS else 0

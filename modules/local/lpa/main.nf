@@ -13,7 +13,7 @@
       LPA          bin/copy_number.py call --locus LPA_KIV2: the count, its
                    95% interval and the message (laid out by bin/lpa_kiv2.py),
                    then bin/traits_report.py --marker LPA_KIV2_4925: the 4925G>A
-                   reading beside it
+                   reading beside it, <id>_lpa_kiv2_4925.tsv
 
     Equivalent to: scripts/46-lpa.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -110,8 +110,9 @@ process LPA {
     tuple val(meta), path(depth), path(depth_q1), path(pileup)
 
     output:
-    tuple val(meta), path("${meta.id}_lpa_kiv2.tsv"), emit: table
-    path "versions.yml",                              emit: versions
+    tuple val(meta), path("${meta.id}_lpa_kiv2.tsv"),      emit: table
+    tuple val(meta), path("${meta.id}_lpa_kiv2_4925.tsv"), emit: null_allele  // KIV-2 4925G>A beside the count
+    path "versions.yml",                                   emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -119,7 +120,8 @@ process LPA {
     script:
     """
     copy_number.py call --locus LPA_KIV2 --bedcov ${depth} --bedcov-mapq1 ${depth_q1} --table ${meta.id}_lpa_kiv2.tsv
-    traits_report.py --marker LPA_KIV2_4925 --pileup ${pileup} --marker-out ${meta.id}_lpa_kiv2.tsv
+    traits_report.py --marker LPA_KIV2_4925 --pileup ${pileup} --copy-table ${meta.id}_lpa_kiv2.tsv \\
+        --marker-out ${meta.id}_lpa_kiv2_4925.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -130,6 +132,7 @@ process LPA {
     stub:
     """
     printf 'metric\\tvalue\\nstatus\\tnot assessed\\nmessage\\tstub\\n' > ${meta.id}_lpa_kiv2.tsv
+    printf 'metric\\tvalue\\nstatus\\tnot assessed\\nmessage\\tstub\\n' > ${meta.id}_lpa_kiv2_4925.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

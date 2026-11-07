@@ -26,14 +26,14 @@ file lays out the step's table and keeps its own command line.
       over the same regions, and write LPA.tsv (metric<TAB>value). Exit 0
       whatever the status; 2 on unreadable input. Two empty tables mean the
       BAM has no chr6: status 'not assessed'.
-  lpa_kiv2.py null-allele --pileup PILEUP.tsv --table LPA.tsv
+  lpa_kiv2.py null-allele --pileup PILEUP.tsv --table LPA.tsv --out NULL.tsv
       read `samtools mpileup` (no reference, every MAPQ) at the seven copies
       of the KIV-2 4925G>A site (`traits_report.py --marker-regions
-      LPA_KIV2_4925`) and add its reading to LPA.tsv, written by `estimate`
-      or `copy_number.py call --locus LPA_KIV2`: the kiv2_4925_* rows, and
-      one sentence after the message, so both reports print it beside the
-      count. Exit 0 whatever the reading (an unreadable pileup reads 'not
-      assessed'); 2 when LPA.tsv cannot be read or written.
+      LPA_KIV2_4925`) and write its reading to NULL.tsv (metric<TAB>value),
+      with the count N of LPA.tsv (written by `estimate` or `copy_number.py
+      call --locus LPA_KIV2`, left as it is). Exit 0 whatever the reading (an
+      unreadable pileup reads 'not assessed'); 2 when NULL.tsv cannot be
+      written.
 
 The regions are exons of the MANE Select transcript ENST00000316300.10,
 numbered from its first exon:
@@ -67,9 +67,9 @@ Lp(a) than non-carriers with the same isoform size, most of all with small
 isoforms, and it is usually in one or two of a person's KIV-2 repeats. GRCh38
 holds the site in each of its six units and in KIV-1, so null-allele adds up
 the reads at all seven (bin/traits_report.py MARKERS) and reads the share
-with the variant as a fraction of copies: kiv2_4925_status is 'present',
-'not seen', 'uncertain', 'too little depth' or 'not assessed', and with a
-count, kiv2_4925_copies is the fraction x (N + 2), the copies that carry it.
+with the variant as a fraction of copies: status is 'present', 'not seen',
+'uncertain', 'too little depth' or 'not assessed', and with a count, copies
+is the fraction x (N + 2), the copies that carry it.
 A short-read fraction cannot say which chromosome or which repeat carries
 it, so it cannot say whether it sits on the small or the large isoform. Research estimate, not a diagnostic test: the actionable test is a blood
 Lp(a) measurement. Standard library only: it runs in the Python image and
@@ -162,16 +162,14 @@ ORDER = ("status", "kiv2_copies", "ci95_low", "ci95_high", "class", "kiv2_depth"
          "mapq0_share", "message", "advice")
 
 
-NULL_ORDER = ("kiv2_4925_status", "kiv2_4925_alt_reads", "kiv2_4925_depth", "kiv2_4925_fraction",
-              "kiv2_4925_copies", "kiv2_4925_message")
 NULL_LIMIT = ("A short-read fraction cannot say which chromosome or which repeat carries it, so it cannot say "
               "whether it sits on the small or the large isoform.")
 
 
 def null_allele(counts, kiv2_copies="."):
-    """[(metric, value)] of the KIV-2 4925G>A reading from
+    """[(metric, value)] of the KIV-2 4925G>A table from
     traits_report.read_marker_pileup's counts (None: unreadable), with the
-    count N of the table ('.' when there is none)."""
+    count N of step 46's table ('.' when there is none)."""
     import traits_report as tr  # bin/: the copy-aware marker catalog
     m = tr.MARKERS["LPA_KIV2_4925"]
     a = tr.assess_marker("LPA_KIV2_4925", counts)
@@ -192,45 +190,36 @@ def null_allele(counts, kiv2_copies="."):
                + (f", under the {m['min_depth']} reads a reading needs" if st == "too little depth" else "")
                + ".")
         if st == "present":
-            msg += (" Carriers had a much lower Lp(a) than non-carriers with the same number of repeats, most "
-                    "of all with few repeats. " + NULL_LIMIT)
+            msg += (" Carriers had a lower Lp(a) than non-carriers with the same number of repeats, most of "
+                    "all with few repeats. " + NULL_LIMIT)
         elif st == "not seen":
             msg += (" Not seen in the reads is not proof of absence: one carrying repeat among many gives few "
                     "reads, and a short-read fraction never says which chromosome or repeat holds a variant.")
         else:
             msg += " " + NULL_LIMIT
-    return [("kiv2_4925_status", st), ("kiv2_4925_alt_reads", a["alt_reads"]), ("kiv2_4925_depth", a["depth"]),
-            ("kiv2_4925_fraction", a["fraction"]), ("kiv2_4925_copies", copies), ("kiv2_4925_message", msg)]
+    return [("marker", m["name"]), ("rsid", m["dbsnp"][0] + " (first KIV-2 copy)"), ("status", st),
+            ("alt_reads", a["alt_reads"]), ("depth", a["depth"]), ("fraction", a["fraction"]), ("copies", copies),
+            ("kiv2_copies", kiv2_copies), ("message", msg)]
 
 
-def add_null_allele(table_path, pileup_path):
-    """Add the 4925G>A rows to step 46's table, and the sentence after its message."""
+def write_null_allele(table_path, pileup_path, out_path):
+    """Write the KIV-2 4925G>A table beside step 46's table (read for the
+    count N; a table that is missing or unreadable gives no N). Returns the message."""
     import traits_report as tr
-    with open(table_path, errors="replace") as f:
-        lines = [ln.rstrip("\n").split("\t", 1) for ln in f if ln.strip()]
-    if not lines or lines[0] != ["metric", "value"] or any(len(c) != 2 for c in lines):
-        raise ValueError(f"{table_path}: not a metric<TAB>value table")
-    rows = [(k, v) for k, v in lines[1:] if not k.startswith("kiv2_4925_")]
-    kv = dict(rows)
+    n = "."
+    try:
+        with open(table_path, errors="replace") as f:
+            n = dict(ln.rstrip("\n").split("\t", 1) for ln in f if "\t" in ln).get("kiv2_copies", ".")
+    except OSError:
+        pass
     try:
         counts = tr.read_marker_pileup(pileup_path, "LPA_KIV2_4925")
     except (OSError, ValueError) as e:
         print(f"WARNING: {e}; KIV-2 4925G>A is not assessed", file=sys.stderr)
         counts = None
-    new = null_allele(counts, kv.get("kiv2_copies", "."))
-    msg = dict(new)["kiv2_4925_message"]
-    def joined(v):
-        # a sentence of an earlier run goes first, so a second run adds it once
-        v = v.split(tr.MARKERS["LPA_KIV2_4925"]["name"] + " (", 1)[0].strip()
-        return f"{v}{'' if not v or v.endswith('.') else '.'} {msg}".strip()
-    out = [(k, joined(v) if k == "message" else v) for k, v in rows] + new
-    tmp = table_path + ".tmp"
-    with open(tmp, "w") as f:
-        f.write("metric\tvalue\n")
-        for k, v in out:
-            f.write(f"{k}\t{v}\n")
-    os.replace(tmp, table_path)
-    return msg
+    rows = null_allele(counts, n)
+    tr.write_metric_table(out_path, rows)
+    return dict(rows)["message"]
 
 
 def main(argv=None):
@@ -241,14 +230,15 @@ def main(argv=None):
     c.add_argument("--bedcov", required=True)
     c.add_argument("--bedcov-mapq1", required=True, help="samtools bedcov -j -Q 1 over the same regions")
     c.add_argument("--out", required=True)
-    n = sub.add_parser("null-allele", help="add the KIV-2 4925G>A reading to the table")
+    n = sub.add_parser("null-allele", help="the KIV-2 4925G>A table beside the count")
     n.add_argument("--pileup", required=True, help="samtools mpileup at traits_report.py --marker-regions LPA_KIV2_4925")
-    n.add_argument("--table", required=True, help="the table estimate wrote")
+    n.add_argument("--table", required=True, help="the table estimate wrote (for the count)")
+    n.add_argument("--out", required=True, help="the 4925G>A table")
     args = ap.parse_args(argv)
     if args.cmd == "null-allele":
         try:
-            print("LPA " + add_null_allele(args.table, args.pileup))
-        except (OSError, ValueError) as e:
+            print("LPA " + write_null_allele(args.table, args.pileup, args.out))
+        except OSError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 2
         return 0

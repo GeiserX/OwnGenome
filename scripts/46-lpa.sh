@@ -12,8 +12,8 @@
 # (Coassin et al. 2017), which lowers the Lp(a) made from the chromosome that
 # carries it: samtools mpileup at the site's seven GRCh38 copies (the six
 # KIV-2 units and KIV-1), read as a fraction of copies by
-# bin/traits_report.py --marker LPA_KIV2_4925 (the kiv2_4925_* rows, laid out
-# by bin/lpa_kiv2.py, and one sentence after the message).
+# bin/traits_report.py --marker LPA_KIV2_4925 into its own table, laid out by
+# bin/lpa_kiv2.py.
 # The two common risk variants, rs10455872 and rs3798220, are rows
 # of step 42's traits panel; the report's Lp(a) section reads both. A research
 # estimate, not a diagnostic test: the actionable test is a blood Lp(a)
@@ -27,6 +27,8 @@
 #                                            its 95% interval, the depths, message
 #         lpa/<sample>_lpa_kiv2_depth.tsv    samtools bedcov -j over the regions (all MAPQ)
 #         lpa/<sample>_lpa_kiv2_depth_q1.tsv the same, reads of MAPQ 1 or more
+#         lpa/<sample>_lpa_kiv2_4925.tsv     metric<TAB>value: the 4925G>A reading
+#                                            (status, reads, fraction, copies, message)
 #         lpa/<sample>_lpa_kiv2_4925_pileup.tsv samtools mpileup at the seven
 #                                            copies of the 4925G>A site (every MAPQ)
 set -euo pipefail
@@ -45,6 +47,7 @@ TABLE="${OUTDIR}/${SAMPLE}_lpa_kiv2.tsv"
 DEPTH="${OUTDIR}/${SAMPLE}_lpa_kiv2_depth.tsv"
 DEPTH_Q1="${OUTDIR}/${SAMPLE}_lpa_kiv2_depth_q1.tsv"
 PILEUP="${OUTDIR}/${SAMPLE}_lpa_kiv2_4925_pileup.tsv"
+NULL="${OUTDIR}/${SAMPLE}_lpa_kiv2_4925.tsv"
 BED="${OUTDIR}/regions.bed"
 SITES="${OUTDIR}/sites.txt"
 
@@ -53,7 +56,7 @@ echo "=== Lp(a): LPA KIV-2 repeat count from read depth: ${SAMPLE} ==="
 [ -f "${BAM}.bai" ] || { echo "ERROR: File not found: ${BAM}.bai" >&2; exit 1; }
 echo "BAM: ${BAM}"
 mkdir -p "$OUTDIR"
-rm -f "$TABLE" "$DEPTH" "$DEPTH_Q1" "$PILEUP" "$BED" "$SITES"
+rm -f "$TABLE" "$DEPTH" "$DEPTH_Q1" "$PILEUP" "$NULL" "$BED" "$SITES"
 
 echo "[1/4] The regions (bin/copy_number.py bed --locus LPA_KIV2) and the 4925G>A sites..."
 # shellcheck disable=SC2016  # $1 and $2 belong to the inner shell
@@ -86,8 +89,10 @@ run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
 
 echo "[4/4] KIV-2 4925G>A beside the count (bin/traits_report.py --marker LPA_KIV2_4925)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/traits_report.py --marker LPA_KIV2_4925 --pileup "$(cpath "$PILEUP")" --marker-out "$(cpath "$TABLE")"
+  python3 /pgp-bin/traits_report.py --marker LPA_KIV2_4925 --pileup "$(cpath "$PILEUP")" \
+    --copy-table "$(cpath "$TABLE")" --marker-out "$(cpath "$NULL")"
 
 [ -s "$TABLE" ] || { echo "ERROR: no table written (${TABLE})" >&2; exit 1; }
 echo ""
 echo "Table: ${TABLE}"
+echo "KIV-2 4925G>A: ${NULL}"

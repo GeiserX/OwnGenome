@@ -136,6 +136,7 @@ file	{sample}/kir/database_release.txt	08	KIR_TYPING	nextflow	text	experimental	
 file	{sample}/kir/{sample}_kir_genotype.tsv	08	KIR_TYPING	nextflow	tsv	experimental	-	-
 file	{sample}/logs/run_status.tsv	-	-	nextflow	tsv	stable	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2.tsv	46	LPA	nextflow	tsv	experimental	-	-
+file	{sample}/lpa/{sample}_lpa_kiv2_4925.tsv	46	LPA	both	tsv	experimental	-	metric,value
 file	{sample}/lpa/{sample}_lpa_kiv2_4925_pileup.tsv	46	LPA_DEPTH	both	tsv	experimental	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2_depth.tsv	46	LPA_DEPTH	nextflow	tsv	experimental	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2_depth_q1.tsv	46	LPA_DEPTH	nextflow	tsv	experimental	-	-

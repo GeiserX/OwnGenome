@@ -83,9 +83,9 @@ The count is not made when:
 
 ## How the 4925G>A variant is read
 
-The variant is the last base of the second KIV-2 exon, G>A on LPA's minus strand, so C>T on the plus strand. GRCh38 holds that base at the end of each of its six KIV-2 units (exons 5, 7, ..., 15; `NM_005577.4:c.733G>A` at the first, the one dbSNP names as rs1484919544) and at the near-identical last exon of KIV-1 (exon 3). The 21 bases around it are the same at all seven, so a read from any copy can land on any of them. `samtools mpileup` without a reference reads every read at the seven positions, every mapping quality, duplicates left out, bases of quality 13 or more, and `bin/traits_report.py --marker LPA_KIV2_4925` adds them up (`bin/lpa_kiv2.py` lays out the rows). The share of reads with T is a fraction of the copies, not a genotype. With a count, the copies that carry it are that fraction times N + 2 (the KIV-2 repeats plus one KIV-1 per chromosome).
+The variant is the last base of the second KIV-2 exon, G>A on LPA's minus strand, so C>T on the plus strand. GRCh38 holds that base at the end of each of its six KIV-2 units (exons 5, 7, ..., 15; `NM_005577.4:c.733G>A` at the first, the one dbSNP names as rs1484919544) and at the near-identical last exon of KIV-1 (exon 3). The 21 bases around it are the same at all seven, so a read from any copy can land on any of them. `samtools mpileup` without a reference reads every read at the seven positions, every mapping quality, duplicates left out, bases of quality 13 or more, and `bin/traits_report.py --marker LPA_KIV2_4925` adds them up into its own table (`bin/lpa_kiv2.py` lays it out). The share of reads with T is a fraction of the copies, not a genotype. With a count, the copies that carry it are that fraction times N + 2 (the KIV-2 repeats plus one KIV-1 per chromosome).
 
-| `kiv2_4925_status` | When |
+| `status` | When |
 |---|---|
 | `present` | 5 reads or more with T, and at least 0.8% of the reads (half a copy among 60) |
 | `not seen` | 2 reads with T or fewer (one or two can be sequencing errors) |
@@ -99,12 +99,13 @@ What a short-read fraction cannot say: which chromosome or which repeat carries 
 
 | File | Contents |
 |---|---|
-| `lpa/${SAMPLE}_lpa_kiv2.tsv` | `metric`, `value`: `status`, `kiv2_copies`, `ci95_low`, `ci95_high`, `class`, `kiv2_depth`, `flank_depth`, `mapq0_share`, `message`, `advice`, then the 4925G>A rows `kiv2_4925_status`, `kiv2_4925_alt_reads`, `kiv2_4925_depth`, `kiv2_4925_fraction`, `kiv2_4925_copies`, `kiv2_4925_message`. The `message` ends with the 4925G>A sentence |
+| `lpa/${SAMPLE}_lpa_kiv2.tsv` | `metric`, `value`: `status`, `kiv2_copies`, `ci95_low`, `ci95_high`, `class`, `kiv2_depth`, `flank_depth`, `mapq0_share`, `message`, `advice` |
+| `lpa/${SAMPLE}_lpa_kiv2_4925.tsv` | `metric`, `value`: `marker`, `rsid`, `status`, `alt_reads`, `depth`, `fraction`, `copies` (the copies that carry it, `.` without a count or a reading), `kiv2_copies`, `message` |
 | `lpa/${SAMPLE}_lpa_kiv2_depth.tsv` | `samtools bedcov -j` over the regions, every mapping quality |
 | `lpa/${SAMPLE}_lpa_kiv2_depth_q1.tsv` | the same, reads of MAPQ 1 or more |
 | `lpa/${SAMPLE}_lpa_kiv2_4925_pileup.tsv` | `samtools mpileup` at the seven 4925G>A positions |
 
-Both reports have an Lp(a) section: the count with its interval and class, the 4925G>A sentence under it (it is the end of the table's `message`), the two risk variants from step 42 with their risk allele counts (rs10455872 G, rs3798220 C), a flag when there is at least one risk allele or the count is low, and the advice to measure Lp(a) in blood. Without step 42's table the two variants are shown as not read.
+Both reports have an Lp(a) section: the count with its interval and class, the two risk variants from step 42 with their risk allele counts (rs10455872 G, rs3798220 C), a flag when there is at least one risk allele or the count is low, and the advice to measure Lp(a) in blood. Without step 42's table the two variants are shown as not read. The reports do not read the 4925G>A table yet; step 46 prints its message beside the count.
 
 ## Runtime
 

@@ -17,9 +17,10 @@
 #       reference   every read with T at a copy gets C, and reads that start
 #                   up to 500 bases before a copy with any other CIGAR are
 #                   dropped: 'not seen'
-#     and the 4925G>A sentence follows the count's message in each table.
-# The Nextflow side runs the same commands; case lpa-1 compares the two
-# tables, 4925G>A rows included, byte for byte.
+#     The reading goes to lpa/<sample>_lpa_kiv2_4925.tsv; step 46's own table
+#     keeps its rows.
+#   - the LPA module's pileup and 4925G>A lines, cut from its main.nf, write the
+#     same pileup and table in their images, byte for byte, on the planted BAM.
 . "$(dirname "$0")/lib.sh"
 
 G="$GENOME_DIR" T="$CASE_TMP"
@@ -28,6 +29,7 @@ BASE="${G}/${SAMPLE}/aligned/${SAMPLE}_sorted.bam"
 dk() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -w "$T" "$1" "${@:2}"; }
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo "  try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
 metric() { awk -F'\t' -v k="$2" '$1 == k {print $2}' "${G}/$1/lpa/$1_lpa_kiv2.tsv" 2>/dev/null; }
+null() { awk -F'\t' -v k="$2" '$1 == k {print $2}' "${G}/$1/lpa/$1_lpa_kiv2_4925.tsv" 2>/dev/null; }
 sample() {
   rm -rf "${G:?}/$1"; mkdir -p "${G}/$1/aligned"
   cp "$2" "${G}/$1/aligned/$1_sorted.bam"; cp "$2.bai" "${G}/$1/aligned/$1_sorted.bam.bai"
@@ -99,36 +101,58 @@ for v in unmodified planted reference; do
   dk "$SAMTOOLS_IMAGE" samtools index "${T}/${v}.bam"
   sample "${H}${v:0:1}" "${T}/${v}.bam"
   run_step 46-lpa.sh "${H}${v:0:1}"; check_step_exit 46-lpa.sh
-  cat "${G}/${H}${v:0:1}/lpa/${H}${v:0:1}_lpa_kiv2.tsv" 2>/dev/null
+  cat "${G}/${H}${v:0:1}/lpa/${H}${v:0:1}_lpa_kiv2.tsv" "${G}/${H}${v:0:1}/lpa/${H}${v:0:1}_lpa_kiv2_4925.tsv" 2>/dev/null
 done
 U="${H}u" P="${H}p" R="${H}r"
 check_ge "HG002 reads over LPA" "$(dk "$SAMTOOLS_IMAGE" samtools view -c "${T}/unmodified.bam" 2>/dev/null || echo 0)" 20000
 
 check_eq "unmodified: a count" "$(metric "$U" status)" estimated
-check "unmodified: a 4925G>A reading of the seven copies" has '^(present|not seen|uncertain)$' "$(metric "$U" kiv2_4925_status)"
-check_ge "unmodified: 100 reads or more at the seven copies" "$(metric "$U" kiv2_4925_depth)" 100
+check "unmodified: a 4925G>A reading of the seven copies" has '^(present|not seen|uncertain)$' "$(null "$U" status)"
+check_ge "unmodified: 100 reads or more at the seven copies" "$(null "$U" depth)" 100
 check "unmodified: the pileup is published, one line per copy with reads" \
   test "$(wc -l < "${G}/${U}/lpa/${U}_lpa_kiv2_4925_pileup.tsv" | tr -d ' ')" -eq 7
-check "unmodified: the message ends with the 4925G>A sentence" \
-  has "^about [0-9]+ KIV-2 repeats.*LPA KIV-2 4925G>A \(.*\): (present|not seen|uncertain)" "$(metric "$U" message)"
+check "unmodified: the count's message is the count's alone" bash -c '! grep -q 4925G "$1"' _ "${G}/${U}/lpa/${U}_lpa_kiv2.tsv"
+check_eq "unmodified: the 4925G>A table carries the count" "$(null "$U" kiv2_copies)" "$(metric "$U" kiv2_copies)"
 
-check_eq "planted: present" "$(metric "$P" kiv2_4925_status)" present
-check "planted: the fraction ($(metric "$P" kiv2_4925_fraction)) is about an 8th of the C reads (0.08 to 0.25)" \
-  awk -v f="$(metric "$P" kiv2_4925_fraction)" 'BEGIN {exit !(f >= 0.08 && f <= 0.25)}'
+check_eq "planted: present" "$(null "$P" status)" present
+check "planted: the fraction ($(null "$P" fraction)) is about an 8th of the C reads (0.08 to 0.25)" \
+  awk -v f="$(null "$P" fraction)" 'BEGIN {exit !(f >= 0.08 && f <= 0.25)}'
 check "planted: copies that carry it = fraction x (N + 2)" \
-  awk -v f="$(metric "$P" kiv2_4925_fraction)" -v n="$(metric "$P" kiv2_copies)" -v c="$(metric "$P" kiv2_4925_copies)" \
+  awk -v f="$(null "$P" fraction)" -v n="$(null "$P" kiv2_copies)" -v c="$(null "$P" copies)" \
     'BEGIN {d = f * (n + 2) - c; exit !(c > 0 && d < 0.06 && d > -0.06)}'
 check "planted: the sentence names what a short-read fraction cannot say" \
-  has "cannot say which chromosome or which repeat" "$(metric "$P" message)"
+  has "cannot say which chromosome or which repeat" "$(null "$P" message)"
 check_eq "planted: the count is the unmodified one (only bases changed)" "$(metric "$P" kiv2_copies)" "$(metric "$U" kiv2_copies)"
 
-check_eq "reference: not seen" "$(metric "$R" kiv2_4925_status)" "not seen"
-check_eq "reference: no read with T" "$(metric "$R" kiv2_4925_alt_reads)" 0
+check_eq "reference: not seen" "$(null "$R" status)" "not seen"
+check_eq "reference: no read with T" "$(null "$R" alt_reads)" 0
 check "control: the planted and the reference tables differ" bash -c '! cmp -s "$1" "$2"' _ \
-  "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "${G}/${R}/lpa/${R}_lpa_kiv2.tsv"
-echo "genotype-rules-2-lpa-null: HG002 KIV-2 4925G>A $(metric "$U" kiv2_4925_status)," \
-  "$(metric "$U" kiv2_4925_alt_reads) of $(metric "$U" kiv2_4925_depth) reads (fraction $(metric "$U" kiv2_4925_fraction))," \
-  "KIV-2 count $(metric "$U" kiv2_copies); planted $(metric "$P" kiv2_4925_fraction), copies $(metric "$P" kiv2_4925_copies)" >> "$E2E_NOTES"
+  "${G}/${P}/lpa/${P}_lpa_kiv2_4925.tsv" "${G}/${R}/lpa/${R}_lpa_kiv2_4925.tsv"
+echo "genotype-rules-2-lpa-null: HG002 KIV-2 4925G>A $(null "$U" status)," \
+  "$(null "$U" alt_reads) of $(null "$U" depth) reads (fraction $(null "$U" fraction))," \
+  "KIV-2 count $(metric "$U" kiv2_copies); planted $(null "$P" fraction), copies $(null "$P" copies)" >> "$E2E_NOTES"
 
-rm -rf "${G:?}/${U}" "${G:?}/${P}" "${G:?}/${R}" "${T:?}"/*.sam "${T:?}"/*.bam "${T:?}"/*.bai
+# --- the LPA module's pileup and 4925G>A lines, in their images ----------------------
+MOD="${REPO}/modules/local/lpa/main.nf"
+M="${T}/module"
+rm -rf "$M"; mkdir -p "$M"
+unesc() { sed -e 's/\\\\/\\/g' -e 's/\\\$/$/g' -e "s|\${bam}|${G}/${P}/aligned/${P}_sorted.bam|g" -e "s|\${meta.id}|${P}|g" \
+  -e "s|\${pileup}|${P}_lpa_kiv2_4925_pileup.tsv|g"; }
+grep -E '^ *traits_report\.py --marker-regions LPA_KIV2_4925 > lpa_sites\.txt$' "$MOD" | unesc > "${M}/sites.sh"
+grep -E '^ *while read -r r; do samtools mpileup ' "$MOD" | unesc > "${M}/pileup.sh"
+sed -n '/^ *traits_report\.py --marker LPA_KIV2_4925 --pileup/,/--marker-out/p' "$MOD" | unesc > "${M}/null.sh"
+check_eq "the module's sites, pileup and 4925G>A lines were cut from main.nf" \
+  "$(cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh" | wc -l | tr -d ' ')" 4
+cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh"
+cp "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "$M/"
+mod() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "${REPO}/bin:/pgp-bin:ro" \
+  -w "$M" "$1" sh -c 'PATH="/pgp-bin:$PATH"; set -e; . "./$1"' _ "$2"; }
+mod "$PYTHON_IMAGE" sites.sh && mod "$SAMTOOLS_IMAGE" pileup.sh && mod "$PYTHON_IMAGE" null.sh 2>&1 | tail -n 3
+check "the module writes step 46's pileup, byte for byte" \
+  cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2_4925_pileup.tsv" "${M}/${P}_lpa_kiv2_4925_pileup.tsv"
+check "the module writes step 46's 4925G>A table, byte for byte" \
+  cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2_4925.tsv" "${M}/${P}_lpa_kiv2_4925.tsv"
+check "the module leaves step 46's table byte for byte" cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "${M}/${P}_lpa_kiv2.tsv"
+
+rm -rf "${G:?}/${U}" "${G:?}/${P}" "${G:?}/${R}" "${M:?}" "${T:?}"/*.sam "${T:?}"/*.bam "${T:?}"/*.bai
 finish

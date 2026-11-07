@@ -51,10 +51,10 @@ base is a fraction of copies, not a diploid genotype.
 
   traits_report.py --marker-regions NAME
       print the marker's copy sites as samtools regions (chrom:pos-pos)
-  traits_report.py --marker LPA_KIV2_4925 --pileup P --marker-out LPA.tsv
-      add the 4925G>A reading to step 46's table (bin/lpa_kiv2.py
-      add_null_allele: the kiv2_4925_* rows and a sentence after the
-      message); exit 2 when LPA.tsv cannot be read or written
+  traits_report.py --marker LPA_KIV2_4925 --pileup P --copy-table LPA.tsv --marker-out OUT.tsv
+      the 4925G>A table beside step 46's table LPA.tsv, whose count gives
+      the copies that carry it (laid out by bin/lpa_kiv2.py); exit 2 when
+      OUT.tsv cannot be written
   traits_report.py --marker SMN1_27134 --pileup P [--copy-table SMN.tsv] --marker-out OUT.tsv
       read `samtools mpileup` at those sites (no reference, every MAPQ) and
       write OUT.tsv (metric<TAB>value). SMN.tsv is step 35's SMN table: the
@@ -775,9 +775,9 @@ def main(argv=None):
                     help="print a copy-aware marker's sites as samtools regions and exit")
     ap.add_argument("--marker", choices=sorted(MARKERS), help="read a copy-aware marker from --pileup")
     ap.add_argument("--pileup", help="samtools mpileup at the --marker-regions sites")
-    ap.add_argument("--copy-table", help="step 35's SMN table (the SMN1 psCN and the agCN)")
-    ap.add_argument("--marker-out", help="SMN1_27134: the marker's table (metric<TAB>value); LPA_KIV2_4925: "
-                    "step 46's table, which gets the kiv2_4925_* rows")
+    ap.add_argument("--copy-table", help="SMN1_27134: step 35's SMN table (the SMN1 psCN and the agCN); "
+                    "LPA_KIV2_4925: step 46's table (the KIV-2 count)")
+    ap.add_argument("--marker-out", help="the marker's table (metric<TAB>value)")
     a = ap.parse_args(argv)
     if a.marker_regions:
         print("\n".join(marker_regions(a.marker_regions)))
@@ -788,8 +788,8 @@ def main(argv=None):
         if a.marker == "LPA_KIV2_4925":
             import lpa_kiv2  # bin/: step 46's table layout
             try:
-                print("LPA " + lpa_kiv2.add_null_allele(a.marker_out, a.pileup))
-            except (OSError, ValueError) as e:
+                print("LPA " + lpa_kiv2.write_null_allele(a.copy_table or "", a.pileup, a.marker_out))
+            except OSError as e:
                 print(f"ERROR: {e}", file=sys.stderr)
                 return 2
             return 0
