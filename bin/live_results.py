@@ -137,6 +137,16 @@ def a_variants(S, s):
                       ["Indels", d.get("indels")]], "links": [r"(^|/)vep/.*summary\.html$"]}
 
 
+def clinvar_call(h):
+    """A hit's Call cell: the low-confidence mark, the cDNA read check and the combined-allele note,
+    each as the report prints it."""
+    parts = [rr.call_text(h) or ("low confidence" if h.get("low_confidence") else "")]
+    if "cdna" in h:
+        parts.append("reads: " + rr.cdna_text(h))
+    parts.append(rr.combined_cell(h))
+    return "; ".join(x for x in parts if x) or "."
+
+
 def a_clinvar(S, s):
     d = S["clinvar"]["data"]
     by = d.get("by_stars") or {}
@@ -151,9 +161,12 @@ def a_clinvar(S, s):
     for h in (d.get("hits") or [])[:50]:
         rows.append([h.get("gene"), f"{h.get('chrom')}:{h.get('pos')} {h.get('ref')}>{h.get('alt')}", h.get("genotype"),
                      h.get("significance"), "★" * int(h.get("stars") or 0) or "0",
-                     rr.af_text(h) or "frequency unknown", (rr.call_text(h) or ".")
-                     + (" · low confidence" if h.get("low_confidence") else "")])
+                     rr.af_text(h) or "frequency unknown", clinvar_call(h)])
     lines = [x for x in (rr.cdna_scan_lines(d) or [])]
+    for x in d.get("deep_intronic") or []:
+        # Always reported by the report, hit or not: each site's call stays visible on the card.
+        lines.append(f"Known deep intronic site (always reported): {x.get('gene')} {x.get('hgvs')} "
+                     f"{x.get('chrom')}:{x.get('pos')} {x.get('ref')}>{x.get('alt')}: {rr.deep_intronic_call(x)}")
     freq = rr.clinvar_freq_line(d)
     if freq:
         lines.insert(0, freq)
@@ -167,13 +180,17 @@ def a_clinical_filter(S, s):
     d = S["clinical"]["data"]
     sf = d.get("acmg_sf") or {}
     bi = d.get("by_impact") or {}
-    rows = [[r[0], r[1], r[2], r[3]] for r in (rr.sf_rows(sf) if sf else [])] if sf else []
-    return {"facts": [["Variants after the clinical filter", d.get("variants")],
-                      ["By impact (high / moderate / low)", f"{bi.get('HIGH', 0)} / {bi.get('MODERATE', 0)} / {bi.get('LOW', 0)}"],
-                      ["Genes", d.get("genes")],
-                      [f"{sf.get('version') or 'ACMG SF'}: ClinVar P/LP in its genes", len(sf.get("clinvar_hits") or [])],
-                      ["High-impact rare variants in its genes", len(sf.get("high_impact") or [])
-                       if sf.get("high_impact_checked") else "not checked"]],
+    facts = [["Variants after the clinical filter", d.get("variants")],
+             ["By impact (high / moderate / low)", f"{bi.get('HIGH', 0)} / {bi.get('MODERATE', 0)} / {bi.get('LOW', 0)}"],
+             ["Genes", d.get("genes")]]
+    if sf.get("unavailable"):
+        # Not assessed is never zero findings: the report's sentence instead of the counts.
+        return {"facts": facts, "lines": rr.sf_apart_lines(sf), "attention": True}
+    rows = [[r[0], r[1], r[2], r[3]] for r in rr.sf_rows(sf)] if sf else []
+    high = f"{rr.high_rare(sf)}{rr.high_apart(sf)}" if sf.get("high_impact_checked") else "not checked"
+    facts += [[f"{sf.get('version') or 'ACMG SF'}: ClinVar P/LP in its genes", len(sf.get("clinvar_hits") or [])],
+              ["High-impact rare variants in its genes", high]]
+    return {"facts": facts,
             "table": table(["Gene", "Variant", "Kind", "Rule"], rows),
             "attention": bool(sf.get("clinvar_hits") or sf.get("high_impact") or sf.get("structural"))}
 
@@ -193,16 +210,16 @@ def a_slivar(S, s):
     return {"facts": [["Prioritized variants", d.get("prioritized")],
                       ["Compound-het candidate variants", d.get("compound_het_variants")],
                       ["Compound-het candidate genes", d.get("compound_het_genes")]],
-            "lines": [rr.comphet_phase_text(d)] if d.get("phase") else []}
+            "lines": rr.comphet_phase_text(d) if "compound_het_phase" in d else []}
 
 
 def a_exomiser(S, s):
     d = S["exomiser"]["data"]
     rows = []
     for g in d.get("genes") or []:
-        v = (g.get("variants") or [{}])[0]
-        rows.append([g.get("rank"), g.get("gene"), g.get("moi"), g.get("exomiser_score"), v.get("hgvs") or v.get("variant"),
-                     v.get("genotype"), v.get("acmg"), v.get("disease")])
+        for v in g.get("variants") or [{}]:
+            rows.append([g.get("rank"), g.get("gene"), g.get("moi"), g.get("exomiser_score"),
+                         v.get("hgvs") or v.get("variant"), v.get("genotype"), v.get("acmg"), v.get("disease")])
     return {"facts": [["Symptoms searched", ", ".join(f"{t.get('label')} ({t.get('id')})" for t in d.get("terms") or [])
                        or "none"]],
             "table": table(["Rank", "Gene", "Inheritance", "Score", "Variant", "Genotype", "ACMG", "Disease"], rows)}
@@ -217,9 +234,11 @@ def a_structural(S, s):
              ["Consensus SVs (2+ callers)", sv.get("consensus", ".")],
              ["AnnotSV class 4 and 5", av.get("count", ".")]]
     rows = [[x.get("type"), x.get("sv"), x.get("gt"), x.get("length"), x.get("acmg_class"),
-             rr.annotsv_genes_text(x) if x.get("genes") is not None else ".", rr.annotsv_support_text(x)]
+             rr.annotsv_genes_text(x) if x.get("genes") is not None else ".", rr.annotsv_support_text(x),
+             "; ".join(rr.annotsv_flags(x)) if "exon_edge" in x else "."]
             for x in av.get("rows") or []]
-    return {"facts": facts, "table": table(["Type", "Where", "Genotype", "Length", "Class", "Genes", "Support"], rows),
+    return {"facts": facts, "table": table(["Type", "Where", "Genotype", "Length", "Class", "Genes", "Support",
+                                            "Checks"], rows),
             "attention": bool(av.get("count"))}
 
 
@@ -235,17 +254,20 @@ def a_mei(S, s):
 
 def a_expansions(S, s):
     d = S["expansions"]["data"]
-    rows, flagged = [], False
+    rows, flagged, outside = [], False, 0
     for l in d.get("loci") or []:
         status = l.get("status") or ""
         out = any(x and x != "normal" for x in status.split(","))
+        outside += out
         flagged = flagged or out or bool(l.get("zone"))
-        rows.append([l.get("locus"), l.get("repeat_count"), f'"{status}"' if status else "not graded",
+        shown = rr.str_status(l)
+        count = rr.str_count(l) if isinstance(l.get("repeat_count"), str) else l.get("repeat_count")
+        rows.append([l.get("locus"), count,
+                     f'"{shown}"' if shown not in ("", "not graded", "not sized") else (shown or "not graded"),
                      l.get("normal_max"), l.get("pathologic_min"), l.get("ci"), l.get("sizing"),
                      f'{l.get("zone_label")} ({l.get("zone")})' if l.get("zone") else "."])
     facts = [["Loci tested", d.get("records")],
-             ["Outside Stranger's \"normal\"", len([r for r in rows if r[2] not in ('"normal"', "not graded")])
-              if d.get("stranger") else "Stranger not run"],
+             ["Outside Stranger's \"normal\"", outside if d.get("stranger") else "Stranger not run"],
              ["In an intermediate zone", ", ".join(d.get("intermediate") or []) or "none"],
              ["Not sized from short reads", ", ".join(d.get("unsized") or []) or "none"]]
     return {"facts": facts, "attention": flagged,
@@ -311,6 +333,8 @@ def a_mosaic_mca(S, s):
 
 def a_carrier(S, s):
     d = S["carrier"]["data"]
+    if d.get("unavailable"):
+        return {"lines": rr.carrier_lines(d), "attention": True}
     rows = [[c.get("gene"), c.get("variant"), c.get("genotype"), c.get("significance"), c.get("stars"),
              c.get("inheritance"), c.get("condition")] for c in d.get("carriers") or []]
     two = (d.get("two_hits") or {}).get("genes") or []
@@ -353,6 +377,9 @@ def a_pharmcat(S, s):
 
 def a_cpic(S, s):
     d = S["cpic"]["data"]
+    if d.get("parse_failed"):
+        return {"lines": ["The PharmCAT report could not be parsed: see the CPIC report."]
+                + [f"WARNING: {w}" for w in d.get("warnings") or []], "attention": True}
     rows = [[g.get("gene"), g.get("diplotype"), f'"{g.get("phenotype")}"' if g.get("phenotype") else ".", g.get("status")]
             for g in d.get("genes") or []]
     return {"facts": [["Genes with a changed-function phenotype", d.get("non_normal", 0)],
@@ -435,10 +462,13 @@ def a_ancient(S, s):
             for r in (d.get("nearest") or [])[:10]]
     out = {"table": table(["Rank", "Group", "Dates", "Country", "Distance"], rows),
            "facts": [["Sites used", f"{d.get('sites_used')} of {d.get('panel_sites')}"]]}
-    if isinstance(d.get("plot_svg"), str) and d["plot_svg"].lstrip().startswith("<"):
+    svg = d.get("plot_svg")
+    if isinstance(svg, str) and svg.strip():
+        # collect_summary stores it base64-encoded (the report puts it in a data URL as is); raw SVG is encoded here.
         import base64
-        out["image"] = {"alt": "PCA of ancient genomes with this genome projected",
-                        "src": "data:image/svg+xml;base64," + base64.b64encode(d["plot_svg"].encode()).decode()}
+        if svg.lstrip().startswith("<"):
+            svg = base64.b64encode(svg.encode()).decode()
+        out["image"] = {"alt": "PCA of ancient genomes with this genome projected", "src": "data:image/svg+xml;base64," + svg}
     return out
 
 
@@ -452,10 +482,18 @@ def a_roh(S, s):
 
 def a_traits(S, s):
     d = S["traits"]["data"]
-    rows = [[r.get("gene"), r.get("trait"), r.get("genotype"), r.get("reading")]
+    rows = [[r.get("gene"), r.get("trait"), (r.get("genotype") or ".") + (" (ancestry)" if r.get("ancestry") == "yes" else ""),
+             (r.get("reading") or ".") + (f". {r['note']}" if r.get("note") else "")]
             for r in d.get("rows") or [] if r.get("status") == "called" and (r.get("gene") or "").upper() != "APOE"]
+    lines = []
+    for r in d.get("rules") or []:
+        # The report's genotype rules: several sites read together, with phase and APOL1's G2.
+        lines.append(f"{r.get('trait')} ({r.get('gene')} {str(r.get('rsids') or '').replace(',', ', ')}): "
+                     f"{rr.rule_result(r)}. {r.get('reading')}")
+        if r.get("g2"):
+            lines.append(f"With G2 (rs71785313): {rr.g2_result(r)}. {r['g2'].get('text')} {r['g2'].get('reading')}")
     out = {"facts": [["Rows read", d.get("called")], ["No genotype at the position", d.get("not_covered")]],
-           "table": table(["Gene", "Trait", "Genotype", "Reading"], rows)}
+           "table": table(["Gene", "Trait", "Genotype", "Reading"], rows), "lines": lines}
     apoe = d.get("apoe")
     if apoe:
         # Behind its warning, as the report shows it: the page puts it in a closed <details>.

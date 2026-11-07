@@ -57,7 +57,8 @@
 
   // --- the route --------------------------------------------------------------------------------
   function parse() {
-    var h = decodeURIComponent((window.location.hash || '').slice(1));
+    var h;
+    try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return null; }  // a broken fragment
     if (h === 'progress') { return { tab: 'progress' }; }
     if (h.indexOf('q/') === 0) { return { tab: h.slice(2) }; }
     if (h.indexOf('s/') === 0) { return { tab: 'section', id: h.slice(2) }; }
@@ -320,12 +321,13 @@
 
   // --- data ---------------------------------------------------------------------------------------
   function load() {
-    var key = replay ? 'replay' : doneSet();
+    var key = replay ? 'replay' : doneSet() + '|' + ((state && state.results_stamp) || '');
     if (key === fetchedFor) { return; }
     fetchedFor = key;
     U.getJSON('results.json').then(function (r) {
       if (key !== fetchedFor) { return; }
-      results = r && (r.chapters || r.note) ? r : results;
+      if (!(r && (r.chapters || r.note))) { fetchedFor = null; return; }  // tried again on the next state
+      results = r;
       redraw(true);
     }).catch(function () { if (key === fetchedFor) { fetchedFor = null; } });
   }

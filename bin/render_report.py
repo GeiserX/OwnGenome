@@ -1280,19 +1280,25 @@ def text_report(s):
         w(f"  {ANCESTRY_FINE_NOTE}")
         w("")
 
+    sv_note = [f"  {SV_CALLERS_NOTE}"]  # printed once, under the first structural caller with results
     if head("manta", "Structural Variants (Manta)"):
         d = S["manta"]["data"]
         w(f"  Total SVs: {d['total']}  PASS: {d['pass']}")
-        w(f"  {SV_CALLERS_NOTE}")
+        while sv_note:
+            w(sv_note.pop())
         w("")
     if head("delly", "Structural Variants (Delly)"):
         d = S["delly"]["data"]
         w(f"  Total SVs: {d['total']}  PASS: {d['pass']}")
+        while sv_note:
+            w(sv_note.pop())
         w("")
     if head("cnvpytor", "Copy Number Variants (CNVpytor)"):
         d = S["cnvpytor"]["data"]
         w(f"  Total CNVs: {d['total']} ({d['deletions']} deletions, {d['duplications']} duplications)")
         w(f"  Significant (e-val < 0.01): {d['significant']}")
+        while sv_note:
+            w(sv_note.pop())
         filt = cnvpytor_filtered_text(d)
         if filt:
             w(f"  Significant after filters: {filt}")

@@ -95,15 +95,16 @@
     });
     add(tb, body);
     add(wrap, tb);
-    var more = t.rows.length - limit + (t.more || 0);
     if (t.rows.length > limit) {
-      var b = el('button', { type: 'button', 'class': 'more' }, 'Show all ' + (t.rows.length + (t.more || 0)) + ' rows');
+      var b = el('button', { type: 'button', 'class': 'more' }, 'Show all ' + t.rows.length + ' rows');
       b.addEventListener('click', function () {
         Array.prototype.forEach.call(body.querySelectorAll('tr.extra'), function (x) { x.hidden = false; });
         b.remove();
       });
       add(wrap, b);
-    } else if (more > 0) {
+    }
+    // Rows past results.json's cap are only in the report: said apart from the button, never promised by it.
+    if (t.more > 0) {
       add(wrap, el('p', { 'class': 'dim' }, t.more + ' more rows in the report'));
     }
     return wrap;

@@ -211,9 +211,28 @@
     root.setAttribute('data-pgp-status', 'ready');
   }
 
+  // The page asks again every 30 s and redraws only when family.json changed (a member's run moved on,
+  // step 39 finished). A failed first request says so, with a retry; a later one keeps what is shown.
+  var shown = null;
+  function failed() {
+    if (shown !== null) { return; }
+    var main = document.getElementById('family');
+    main.textContent = '';
+    var b = el('button', { type: 'button', 'class': 'more' }, 'Try again');
+    b.addEventListener('click', function () { main.textContent = ''; add(main, el('p', { 'class': 'dim' }, 'Loading the family.')); fetchFamily(); });
+    add(main, el('p', {}, 'The family could not be loaded.'), b);
+    root.setAttribute('data-pgp-status', 'offline');
+  }
+  function fetchFamily() {
+    return U.getJSON('family.json').then(function (f) {
+      if (!f) { failed(); return; }
+      var k = JSON.stringify(f);
+      if (k !== shown) { shown = k; draw(f); }
+    }).catch(failed);
+  }
   function start() {
-    U.getJSON('family.json').then(function (f) { if (f) { draw(f); } })
-      .catch(function () { root.setAttribute('data-pgp-status', 'offline'); });
+    fetchFamily();
+    window.setInterval(function () { if (!document.hidden) { fetchFamily(); } }, 30000);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
 }());

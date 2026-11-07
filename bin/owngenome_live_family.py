@@ -67,8 +67,9 @@ def family_dirs(root):
 
 
 def read_tsv(path):
-    """Rows of a tab-separated file with a header line, as dicts; [] when it is not there."""
-    if not os.path.isfile(path):
+    """Rows of a tab-separated file with a header line, as dicts; [] when it is not there or is a
+    link out of its own folder (family.json serves only what the family folder itself holds)."""
+    if not os.path.isfile(path) or not inside(path, os.path.dirname(os.path.abspath(path))):
         return []
     rows = []
     with open(path, errors="replace") as f:

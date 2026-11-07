@@ -21,16 +21,23 @@ Checks:
      log row per request; summary.json stays 404; /runs.json lists the run with
      its progress and attention count, behind the login too;
   6. APOE: the Traits card's hidden text, behind its warning, is each APOE row
-     as the report prints it (trait, rsID, genotype, reading), never a dict.
+     as the report prints it (trait, rsID, genotype, reading), never a dict;
+  7. the adapters carry what the report says of a section, on small made-up
+     sections: the ancient PCA plot (base64 in the summary) as an image, the
+     Slivar phase lines, every Exomiser variant of a gene, a not-assessed
+     secondary-findings list, a carrier list not made and an unparsed PharmCAT
+     report as sentences (never zero counts), an unsized "normal" locus as not
+     sized, AnnotSV's exon-edge check, a genotype rule and a deep intronic call.
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
-registered without the login, 6 with a row printed as its Python dict. A check
+registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
 """
 import contextlib
+import base64
 import copy
 import io
 import json
@@ -156,6 +163,71 @@ def apoe_problems(hidden):
     for want in wants:
         if want not in text:
             out.append(f"{want!r} missing from {text!r}")
+    return out
+
+
+# --- 7. the adapters on made-up sections -----------------------------------------------------
+
+def adapter_sections():
+    sv = {"type": "DEL", "sv": "chr1:100-5000", "gt": "0/1", "length": 4900, "acmg_class": 5, "genes": ["GENE1"],
+          "exon_edge": "yes", "exon_edge_detail": "GENE1 exon 2", "population_af": None, "population_source": "",
+          "common": False, "support": None}
+    return {
+        "ancient": {"state": "ok", "data": {"nearest": [], "sites_used": 1, "panel_sites": 2,
+                                            "plot_svg": base64.b64encode(b"<svg></svg>").decode()}},
+        "slivar": {"state": "ok", "data": {"prioritized": 2, "compound_het_variants": 2, "compound_het_genes": 1,
+                                           "compound_het_pairs": 1, "compound_het_phase": {"trans": 1},
+                                           "compound_het_trans": [{"gene": "GENE2", "variants": "v1 v2", "reads": 3}]}},
+        "exomiser": {"state": "ok", "data": {"genes": [{"rank": 1, "gene": "GENE3", "variants": [
+            {"hgvs": "c.1A>G"}, {"hgvs": "c.2C>T"}]}]}},
+        "clinical": {"state": "ok", "data": {"acmg_sf": {"unavailable": "no VEP output"}}},
+        "carrier": {"state": "ok", "data": {"unavailable": "no ClinVar screen"}},
+        "cpic": {"state": "ok", "data": {"parse_failed": True, "genes": [], "warnings": []}},
+        "expansions": {"state": "ok", "data": {"stranger": True, "loci": [
+            {"locus": "LOCUS1", "repeat_count": "20/30", "status": "normal", "sizing": "flanking_only"}]}},
+        "annotsv": {"state": "ok", "data": {"count": 1, "rows": [sv]}},
+        "traits": {"state": "ok", "data": {"rows": [], "rules": [
+            {"trait": "Rule trait", "gene": "GENE4", "rsids": "rs1,rs2", "status": "called", "result": "AB",
+             "phase": "read_backed", "reading": "rule reading"}]}},
+        "clinvar": {"state": "ok", "data": {"hits": [], "deep_intronic": [
+            {"gene": "GENE5", "hgvs": "c.100+500A>G", "chrom": "chr1", "pos": 1, "ref": "A", "alt": "G",
+             "call": "het", "detail": "GQ 40"}]}},
+    }
+
+
+def adapter_problems(adapters):
+    S, out = adapter_sections(), []
+    def run(name, sec=None):
+        try:
+            return adapters[name](S, {"sections": S}) or {}
+        except Exception as e:  # a crash is a problem, not a test error
+            out.append(f"{name}: {type(e).__name__} {e}")
+            return {}
+    text = lambda got: json.dumps(got)  # noqa: E731
+    if not (run("ancient").get("image") or {}).get("src", "").endswith(S["ancient"]["data"]["plot_svg"]):
+        out.append("ancient: no plot image")
+    if "in trans on 3 reads" not in text(run("slivar")):
+        out.append("slivar: no phase lines")
+    if len((run("exomiser").get("table") or {}).get("rows") or []) != 2:
+        out.append("exomiser: not every variant")
+    got = run("clinical_filter")
+    if "not assessed" not in text(got) or "ClinVar P/LP in its genes" in text(got):
+        out.append(f"clinical: not-assessed not said {got}")
+    got = run("carrier")
+    if "not made" not in text(got) or got.get("facts"):
+        out.append(f"carrier: not-made not said {got}")
+    got = run("cpic")
+    if "could not be parsed" not in text(got) or got.get("facts"):
+        out.append(f"cpic: parse failure not said {got}")
+    rows = (run("expansions").get("table") or {}).get("rows") or [[]]
+    if "not sized" not in rows[0]:
+        out.append(f"expansions: unsized locus shown as {rows[0]}")
+    if "on exon edges" not in text(run("structural")):
+        out.append("structural: no exon-edge check")
+    if "Rule trait" not in text(run("traits")):
+        out.append("traits: no genotype rule")
+    if "GENE5" not in text(run("clinvar")):
+        out.append("clinvar: no deep intronic call")
     return out
 
 
@@ -291,6 +363,16 @@ def main():
         bad = apoe_problems(hidden)
         check("6. APOE: the hidden text reads each row as the report does, never a dict", not bad, bad)
         control("the APOE row printed as its Python dict", not apoe_problems({"text": str(APOE_ROW)}))
+
+        # 7.
+        names = {"ancient": "a_ancient", "slivar": "a_slivar", "exomiser": "a_exomiser",
+                 "clinical_filter": "a_clinical_filter", "carrier": "a_carrier", "cpic": "a_cpic",
+                 "expansions": "a_expansions", "structural": "a_structural", "traits": "a_traits",
+                 "clinvar": "a_clinvar"}
+        adapters = {k: getattr(live_results, v) for k, v in names.items()}
+        bad = adapter_problems(adapters)
+        check("7. the adapters carry the report's plot, phase, variants, rules and not-assessed sentences", not bad, bad)
+        control("the Slivar adapter returning nothing", not adapter_problems(dict(adapters, slivar=lambda S, s: {})))
 
         # 5.
         pwfile = os.path.join(work, "password")

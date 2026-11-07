@@ -76,7 +76,7 @@ The reads cross the network to the browser that logged in: only the byte ranges 
 
 `GET /` lists the runs: each folder under `GENOME_DIR` holding `logs/run_status.tsv`, `nextflow/` or `run_manifest.tsv`, and each run the site has messages for. The home page reads `/runs.json`: each run's progress and attention count, and each family with its members.
 
-The person page reads `/runs/<run>/results.json` from `bin/owngenome_live_results.py`: `bin/live_results.py` turns the run's summary (its `summary.json` when step 24 wrote it after every finished step, else the step files read again when a step ends) into the report's chapters, one card per section. It computes nothing about genetics and holds only what the report prints. The family page reads `/runs/<family>/family.json` from the family plugin.
+The person page reads `/runs/<run>/results.json` from `bin/owngenome_live_results.py`: `bin/live_results.py` turns the run's summary (its `summary.json` when step 24 wrote it after every finished step, else the step files read again when a step ends; a rewritten `summary.json` is read again too, and the page fetches the cards again) into the report's chapters, one card per section. It computes nothing about genetics and holds only what the report prints. The family page reads `/runs/<family>/family.json` from the family plugin, and asks again every 30 seconds, so a member's progress and a new couple screen show without a reload.
 
 ## Privacy and what is stored
 

@@ -257,7 +257,7 @@ def home_page(index):
     log-out button (a static host has no session)."""
     with open(os.path.join(ASSETS, "home.html")) as f:
         page = f.read()
-    items = "\n".join(f'<li><a href="{html.escape(r["url"])}">{html.escape(r["name"])}</a></li>' for r in index["runs"])
+    items = "\n".join(f'<li><a href="{html.escape(unroot(r["url"]))}">{html.escape(r["name"])}</a></li>' for r in index["runs"])
     page = (page.replace("{{assets}}", "assets").replace("{{data}}", "runs.json").replace("{{runs}}", items)
             .replace('<form method="post" action="/logout" class="logout"><button type="submit">Log out</button></form>',
                      '<p class="demo-note">A demo: the people, the run and the results are invented.</p>'))

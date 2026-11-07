@@ -643,6 +643,10 @@ class Live:
         sec_of = getattr(_rr(), "SECTION_OF", {})
         st["anchors"] = {k: sec_of[k] for s in st["steps"] for k in s["sections"] if k in sec_of}
         st["headlines"] = self.headlines(run["name"], d, st)
+        # Changes when step 24 re-writes summary.json with no new step done: the person page fetches
+        # results.json again on it.
+        stamp = self.file_stamp(os.path.join(d, "summary.json"))
+        st["results_stamp"] = "%d-%d" % stamp if stamp else None
         st["plugins"] = {}
         for name, fn in self.app.state_hooks:
             st["plugins"][name] = fn(d, st, events)
@@ -653,7 +657,9 @@ class Live:
         the end of every done step (step 24 wrote it after them), else collected now. Read again only
         when the set of done steps or the message count changes; None while nothing is done."""
         done = tuple(s["step"] for s in st["steps"] if s["state"] == "done")
-        key = (sample, done, st.get("events"))  # a section's file can land after its step's last message
+        # A section's file can land after its step's last message, and a re-made report rewrites
+        # summary.json with no new message: its mtime and size are part of the key.
+        key = (sample, done, st.get("events"), self.file_stamp(os.path.join(d, "summary.json")) if d else None)
         hit = self.headline_cache.get(sample)
         if hit and hit[0] == key:
             return hit[2]
@@ -670,9 +676,20 @@ class Live:
         return summary
 
     @staticmethod
+    def file_stamp(p):
+        try:
+            st = os.stat(p)
+            return st.st_mtime_ns, st.st_size
+        except OSError:
+            return None
+
+    @staticmethod
     def summary_file(d, st):
-        """<run>/summary.json when it is newer than every done step's end, else None."""
+        """<run>/summary.json when it is newer than every done step's end, else None. A summary.json
+        that links out of the run folder is never read."""
         p = os.path.join(d, "summary.json")
+        if not Live.inside(p, os.path.realpath(d)):
+            return None
         try:
             mtime = os.path.getmtime(p)
         except OSError:
@@ -693,10 +710,13 @@ class Live:
 
     def headlines(self, sample, d, st):
         """{section: {text, tone, step}} for the sections of the steps that are done."""
-        summary = self.summary(sample, d, st)
+        self.summary(sample, d, st)
+        # The headlines come from the cached entry's own summary and go back only into that same
+        # entry, so a request that saw another state never pairs its headlines with this key.
         hit = self.headline_cache.get(sample)
         if hit and hit[1] is not None:
             return hit[1]
+        summary = hit[2] if hit else None
         out = {}
         if summary:
             for s in st["steps"]:
@@ -706,7 +726,7 @@ class Live:
                     h = headline(k, summary["sections"].get(k), summary)
                     if h:
                         out[k] = {"text": h[0], "tone": h[1], "step": s["step"]}
-        if hit:
+        if hit and self.headline_cache.get(sample) is hit:
             self.headline_cache[sample] = (hit[0], out, hit[2])
         return out
 
@@ -763,12 +783,15 @@ class Live:
         """(count of cards worth a look, mtime) from <run>/summary.json alone, cached by its mtime;
         (None, None) without one. The home page reads no result file beyond that."""
         p = os.path.join(d, "summary.json") if d else None
+        if not p or not self.inside(p, os.path.realpath(d)) or not self.inside(p, self.root):
+            return None, None  # a summary.json linking out of its run is never read
         try:
             mtime = os.path.getmtime(p)
         except (OSError, TypeError):
             return None, None
+        stamp = self.file_stamp(p)
         hit = self.attention_cache.get(p)
-        if hit and hit[0] == mtime:
+        if hit and hit[0] == stamp:
             return hit[1], mtime
         n = None
         try:
@@ -778,13 +801,20 @@ class Live:
         except Exception as e:  # one bad file must not take the home page down
             print(f"owngenome_live: {os.path.basename(os.path.dirname(p))}/summary.json not read: {type(e).__name__}",
                   file=sys.stderr)
-        self.attention_cache[p] = (mtime, n)
+        if n is not None:  # a failed read is tried again on the next request
+            self.attention_cache[p] = (stamp, n)
         return n, mtime
 
     def runs_index(self):
         """/runs.json: each run's progress, and the families with their members, for the home page.
         No result beyond the attention count; no path."""
         runs = self.runs()
+        # Forget the cached results of runs that are gone, so the caches hold only the runs there are.
+        for k in [k for k in list(self.headline_cache) if k not in runs]:
+            self.headline_cache.pop(k, None)
+        keep = {os.path.join(r["dir"] or os.path.join(self.root, n), "summary.json") for n, r in runs.items()}
+        for k in [k for k in list(self.attention_cache) if k not in keep]:
+            self.attention_cache.pop(k, None)
         out = []
         for name, r in sorted(runs.items()):
             item = {"name": name, "kind": r["kind"], "url": f"/runs/{name}/"}

@@ -313,6 +313,15 @@ def phone_checks(b, base):
                        "s.dispatchEvent(new Event('input')); true")
                 b.wait("document.documentElement.dataset.pgpFrame === document.getElementById('replay-slider').max")
                 time.sleep(1)
+                # Every tab of the person page, not only the one the link opens.
+                tabs = b.eval("Array.prototype.map.call(document.querySelectorAll('[role=tab][data-tab]'), "
+                              "function (t) { return t.getAttribute('data-tab'); }).join(' ')") or ""
+                for tab in tabs.split():
+                    b.eval(f"document.querySelector('[role=tab][data-tab=\"{tab}\"]').click(); true")
+                    time.sleep(0.3)
+                    if too_wide(b):
+                        wide[f"person {tab}"] = too_wide(b)
+                wide["person tabs"] = "" if len(tabs.split()) >= 3 else f"only {tabs!r}"
             wide[name] = too_wide(b)
         check("browser: at 390 px no page scrolls sideways", not any(wide.values()), wide)
         b.eval("var d = document.createElement('div'); d.style.width = '900px'; d.style.height = '4px'; "

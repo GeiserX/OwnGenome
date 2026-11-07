@@ -195,6 +195,14 @@ figure.chart svg { width: 100%; height: auto; max-width: 100%; }
 .s-notfinished rect, .s-notfinished .swatch { fill: #4a3c22; background: #4a3c22; }
 .s-notplanned rect, .s-notplanned .swatch { fill: var(--bg); background: var(--bg); }
 .s-skipped text, .s-notplanned text { fill: var(--dim); }
+/* Light theme: pale state fills under the dark label text, so every step name stays readable. */
+@media (prefers-color-scheme: light) {
+  .s-running rect, .s-running .swatch { fill: #b9d0ef; background: #b9d0ef; }
+  .s-done rect, .s-done .swatch { fill: #d3dbe6; background: #d3dbe6; }
+  .s-skipped rect, .s-skipped .swatch { fill: #e6e3ef; background: #e6e3ef; }
+  .s-notfinished rect, .s-notfinished .swatch { fill: #f1e0bd; background: #f1e0bd; }
+  .s-failed text { fill: #fff; }
+}
 .s-running rect { animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .7; } }
 .recheck-mark { fill: var(--low); }
