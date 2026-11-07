@@ -172,8 +172,8 @@ file	{sample}/locityper/{sample}_locityper.tsv	53	LOCITYPER	both	tsv	experimenta
 file	{sample}/locityper/work	53	LOCITYPER	both	dir	experimental	-	-
 file	{sample}/mosdepth/{sample}.mosdepth.summary.txt	16b	-	bash	tsv	stable	bash	chrom,length,bases,mean,min,max
 file	{sample}/paralogs/{sample}_*_copy_number.tsv	35	PARASCOPY	nextflow	tsv	experimental	-	-
-file	{sample}/paralogs/{sample}_cn_dosage.tsv	35	PARASCOPY	nextflow	tsv	experimental	-	-
-file	{sample}/paralogs/{sample}_cn_intervals.tsv	35	PARASCOPY	nextflow	tsv	experimental	-	-
+file	{sample}/paralogs/{sample}_cn_dosage.tsv	35	PARASCOPY	both	tsv	experimental	-	-
+file	{sample}/paralogs/{sample}_cn_intervals.tsv	35	PARASCOPY	both	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_cyp21a2_psv.tsv	35	PARASCOPY	both	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_hba_copy_number.tsv	35	PARASCOPY	nextflow	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_paraphase	35b	PARAPHASE	nextflow	dir	experimental	-	-
