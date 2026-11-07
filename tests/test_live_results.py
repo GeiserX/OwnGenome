@@ -152,7 +152,8 @@ def apoe_problems(hidden):
     text = (hidden or {}).get("text") or ""
     if "{" in text or "'rsid'" in text:
         out.append(f"a dict in the text {text!r}")
-    for want in ("APOE e4 marker", "rs429358", "T/C", "one copy of the e4 allele"):
+    wants = [APOE_ROW["trait"], APOE_ROW["rsid"], APOE_ROW["genotype"], APOE_ROW["reading"]]
+    for want in wants:
         if want not in text:
             out.append(f"{want!r} missing from {text!r}")
     return out
