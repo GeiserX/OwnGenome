@@ -256,7 +256,7 @@ def register(app):
                 continue
             st = live.base_state(r)
             planned = [s for s in st["steps"] if s["state"] != "not planned"]
-            n, mtime = live.attention(r["dir"])
+            n, mtime = live.attention(r["dir"] or os.path.join(live.root, r["name"]))
             runs[p["sample"]] = {"url": "/runs/%s/" % p["sample"], "state": st["run"]["state"],
                                  "planned": len(planned), "done": sum(1 for s in planned if s["state"] == "done"),
                                  "attention": n, "results": mtime is not None}

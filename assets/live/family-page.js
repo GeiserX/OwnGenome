@@ -28,6 +28,7 @@
     var lines = U.svg('g', { 'class': 'ped-lines' });
     L.lines.forEach(function (l) { lines.appendChild(U.svg('line', { x1: l[0], y1: l[1], x2: l[2], y2: l[3] })); });
     s.appendChild(lines);
+    s.style.maxWidth = Math.round(L.width * 1.1) + 'px';  // a two-person pedigree stays its own size
     var h = L.size / 2;
     L.people.forEach(function (p) {
       var url = memberUrl(f, p.sample);
@@ -204,7 +205,8 @@
     add(page, top);
     var grid = el('div', { 'class': 'family-grid' });
     add(grid, couples(f), related(f));
-    add(page, grid, children(f), more(f));
+    add(page, grid, children(f));
+    if ((f.state.plan || []).length || f.state.reports.length) { add(page, more(f)); }
     add(main, page);
     root.setAttribute('data-pgp-status', 'ready');
   }

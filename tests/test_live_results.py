@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""A person's results and a family's page on the live site: bin/live_results.py, the results plugin
+(bin/owngenome_live_results.py), /runs.json and the family plugin's family.json.
+
+Checks:
+  1. render_report.SECTION_NOTES names a caveat for every section id of CHAPTERS,
+     and each name is a text constant of bin/render_report.py;
+  2. results.json of DEMO-001 (tests/demo/make_demo_sample.py, collect_summary):
+     the seven chapters with every section id once, and each card's caveat is
+     its SECTION_NOTES constants, word for word, never empty;
+  3. the wording gate: no string of results.json, of family.json
+     (tests/fixtures/families_live family_a) or of the page assets
+     (assets/live: the text of the pages, the string literals of the scripts)
+     says a result is fine (live_results.FORBIDDEN), a quoted tool term and a
+     caveat aside;
+  4. ClinVar: with hits the card lists them in a table; with none it has no
+     table and its empty text says ClinVar lists only part of what causes
+     disease (never an all-clear);
+  5. through the real server: /runs/<run>/results.json is behind the login
+     (401 without a session), answers the cards with one, and writes one access
+     log row per request; summary.json stays 404; /runs.json lists the run with
+     its progress and attention count, behind the login too.
+Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
+entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
+and "All clear" in a script, 4 with the hits emptied, 5 with the results route
+registered without the login. A check that cannot fail is no check.
+
+Run: python3 tests/test_live_results.py
+"""
+import contextlib
+import copy
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import urllib.parse
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "bin"))
+sys.path.insert(0, os.path.join(REPO, "tests"))
+import collect_summary  # noqa: E402
+import live_results  # noqa: E402
+import owngenome_live  # noqa: E402
+import owngenome_live_family  # noqa: E402
+import render_report as rr  # noqa: E402
+
+SAMPLE = "DEMO-001"
+ASSETS = os.path.join(REPO, "assets", "live")
+FAMILIES = os.path.join(REPO, "tests", "fixtures", "families_live")
+PASSWORD = "synthetic test password 7"
+FAILS = []
+
+
+def check(desc, ok, detail=""):
+    print(("[PASS] " if ok else "[FAIL] ") + desc + ("" if ok else f" -- {str(detail)[:800]}"))
+    if not ok:
+        FAILS.append(desc)
+
+
+def control(desc, still_passes):
+    check(f"control: {desc}", not still_passes, "the check passed on the planted mistake")
+
+
+# --- 1. the caveat of every section ---------------------------------------------------------
+
+def notes_problems(chapters, notes, module):
+    ids = [sid for _, _, _, secs in chapters for sid, _, _ in secs]
+    out = [f"{sid}: no caveat" for sid in ids if not notes.get(sid)]
+    out += [f"{sid}: {n} is not a text constant" for sid, names in notes.items() for n in names
+            if not isinstance(getattr(module, n, None), str) or not getattr(module, n).strip()]
+    out += [f"{sid}: no such section" for sid in notes if sid not in ids]
+    return out
+
+
+# --- 2. one card per section, its caveat word for word --------------------------------------
+
+def card_problems(res):
+    out = []
+    want = [sid for _, _, _, secs in rr.CHAPTERS for sid, _, _ in secs]
+    got = [c["id"] for ch in res["chapters"] for c in ch["sections"]]
+    if got != want:
+        out.append(f"sections {got} != {want}")
+    if [ch["key"] for ch in res["chapters"]] != [k for k, *_ in rr.CHAPTERS]:
+        out.append("chapters out of the report's order")
+    for ch in res["chapters"]:
+        for c in ch["sections"]:
+            exp = [getattr(rr, n) for n in rr.SECTION_NOTES.get(c["id"], ())]
+            if not c["caveat"] or c["caveat"] != exp:
+                out.append(f"{c['id']}: caveat {c['caveat']!r:.120}")
+    return out
+
+
+# --- 3. the wording gate --------------------------------------------------------------------
+
+def asset_text(path):
+    """What a page or script of assets/live puts on screen: the text of an HTML page, the string
+    literals of a script (its comments and code left out)."""
+    with open(path) as f:
+        t = f.read()
+    if path.endswith(".html"):
+        t = re.sub(r"<(script|style)\b.*?</\1>", " ", t, flags=re.S | re.I)
+        return [x.strip() for x in re.split(r"<[^>]*>", t) if x.strip()]
+    t = re.sub(r"/\*.*?\*/", " ", t, flags=re.S)
+    t = re.sub(r"(?m)^\s*//[^\n]*", " ", t)
+    return [m.group(2) for m in re.finditer(r"(['\"])((?:\\.|(?!\1).)*)\1", t)]
+
+
+def asset_problems(texts):
+    out = []
+    for name, items in texts.items():
+        for s in items:
+            if live_results.FORBIDDEN.search(re.sub(r'"[^"]*"', "", s)):
+                out.append(f"{name}: {s[:120]}")
+    return out
+
+
+# --- 4. ClinVar with and without hits -------------------------------------------------------
+
+def clinvar_card(summary):
+    res = live_results.build(SAMPLE, summary)
+    return next(c for ch in res["chapters"] for c in ch["sections"] if c["id"] == "clinvar")
+
+
+def clinvar_problems(with_hits, without):
+    out = []
+    n = len(with_hits["table"]["rows"]) if with_hits.get("table") else 0
+    if not n:
+        out.append("hits but no table")
+    if without.get("table"):
+        out.append("no hit but a table")
+    if "lists only part" not in (without.get("empty_text") or ""):
+        out.append(f"empty text {without.get('empty_text')!r}")
+    return out
+
+
+# --- 5. the server --------------------------------------------------------------------------
+
+def request(port, method, path, body=None, headers=None):
+    import http.client
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+    h = {"Host": f"127.0.0.1:{port}"}
+    h.update(headers or {})
+    c.request(method, path, body=body, headers=h)
+    r = c.getresponse()
+    data = r.read()
+    hdr = {k.lower(): v for k, v in r.getheaders()}
+    c.close()
+    return r.status, hdr, data
+
+
+def serve(root, state, pwfile, open_results=False):
+    app = owngenome_live.App()
+    if open_results:  # the planted mistake: the results route without the login
+        route = app.route
+        app.route = lambda m, p, fn, auth=True: route(m, p, fn, auth and "results" not in p)
+    with contextlib.redirect_stderr(io.StringIO()):
+        live, web, ingest = owngenome_live.start(["--root", root, "--state-dir", state, "--port", "0", "--ingest-port", "0",
+                                                  "--password-file", pwfile, "--quiet"], app)
+    threading.Thread(target=web.serve_forever, daemon=True).start()
+    return live, web, ingest
+
+
+def stop(srv):
+    live, web, ingest = srv
+    live.stopping = True
+    web.shutdown()
+    web.server_close()
+    ingest.server_close()
+
+
+def server_problems(port, state):
+    out = []
+    path = f"/runs/{SAMPLE}/results.json"
+    code, _, _ = request(port, "GET", path)
+    if code != 401:
+        out.append(f"results.json without a session: {code}")
+    code, _, _ = request(port, "GET", "/runs.json")
+    if code != 401:
+        out.append(f"runs.json without a session: {code}")
+    code, h, _ = request(port, "POST", "/login", urllib.parse.urlencode({"password": PASSWORD, "next": "/"}),
+                         {"Content-Type": "application/x-www-form-urlencoded"})
+    m = re.match(r"owngenome_live=([^;]+)", h.get("set-cookie", ""))
+    if not m:
+        return out + [f"login {code}"]
+    ck = {"Cookie": f"owngenome_live={m.group(1)}"}
+    log = os.path.join(state, "access.log")
+    before = open(log).read().count("\tresults\t") if os.path.isfile(log) else 0
+    code, h, body = request(port, "GET", path, headers=ck)
+    res = json.loads(body) if code == 200 else {}
+    if code != 200 or len(res.get("chapters") or []) != 7 or res.get("sample") != SAMPLE:
+        out.append(f"results.json with a session: {code} {str(res)[:200]}")
+    after = open(log).read().count("\tresults\t") if os.path.isfile(log) else 0
+    if after - before != 1:
+        out.append(f"{after - before} access log rows for one results.json")
+    code, _, _ = request(port, "GET", f"/runs/{SAMPLE}/summary.json", headers=ck)
+    if code != 404:
+        out.append(f"summary.json served: {code}")
+    code, _, body = request(port, "GET", "/runs.json", headers=ck)
+    idx = json.loads(body) if code == 200 else {}
+    run = next((r for r in idx.get("runs") or [] if r["name"] == SAMPLE), None)
+    if not run or run["url"] != f"/runs/{SAMPLE}/" or not run.get("results") or run.get("attention") != res.get("attention"):
+        out.append(f"runs.json: {code} {run}")
+    return out
+
+
+def main():
+    work = tempfile.mkdtemp(prefix="test_live_results.")
+    srvs = []
+    try:
+        # 1.
+        bad = notes_problems(rr.CHAPTERS, rr.SECTION_NOTES, rr)
+        check(f"1. every section id has its caveat ({len(rr.SECTION_NOTES)} ids)", not bad, bad)
+        planted = {k: v for k, v in rr.SECTION_NOTES.items() if k != "vntyper"}
+        control("VNTYPER's caveat entry dropped", not notes_problems(rr.CHAPTERS, planted, rr))
+
+        # 2.
+        root = os.path.join(work, "root")
+        os.makedirs(root)
+        subprocess.run([sys.executable, os.path.join(REPO, "tests", "demo", "make_demo_sample.py"), "--genome-dir", root,
+                        "--records", "2000"], check=True, stdout=subprocess.DEVNULL)
+        d = os.path.join(root, SAMPLE)
+        summary = collect_summary.collect(SAMPLE, d)
+        with open(os.path.join(d, "summary.json"), "w") as f:
+            json.dump(summary, f)
+        res = live_results.build(SAMPLE, summary)
+        bad = card_problems(res)
+        check("2. results.json: the report's chapters, one card per section, each with its caveats word for word",
+              not bad, bad)
+        blank = copy.deepcopy(res)
+        blank["chapters"][3]["sections"][0]["caveat"] = []
+        control("one card's caveat blanked", not card_problems(blank))
+
+        # 3.
+        bad = live_results.wording_problems(res)
+        check("3. no string of results.json reads as an all-clear", not bad, bad)
+        fam = owngenome_live_family.family_page("family_a", os.path.join(FAMILIES, "family_a"))
+        bad = live_results.wording_problems(fam)
+        check("3. no string of family.json reads as an all-clear", not bad and fam.get("layout"), bad)
+        planted = copy.deepcopy(res)
+        planted["chapters"][0]["sections"][0]["headline"] = "Coverage: ok"
+        control("'ok' planted in a card headline", not live_results.wording_problems(planted))
+        texts = {}
+        for p, _, fs in os.walk(ASSETS):
+            for f in fs:
+                if f.endswith((".html", ".js")):
+                    texts[os.path.relpath(os.path.join(p, f), ASSETS)] = asset_text(os.path.join(p, f))
+        bad = asset_problems(texts)
+        check(f"3. no page or script text of assets/live reads as an all-clear ({len(texts)} files)",
+              not bad and len(texts) >= 10, bad)
+        planted = dict(texts, **{"person.js": texts["person.js"] + ["All clear: nothing to see"]})
+        control("'All clear' planted in person.js", not asset_problems(planted))
+
+        # 4.
+        none = copy.deepcopy(summary)
+        cv = none["sections"]["clinvar"]["data"]
+        cv["hits"], cv["count"], cv["by_stars"] = [], 0, {}
+        with_hits, without = clinvar_card(summary), clinvar_card(none)
+        bad = clinvar_problems(with_hits, without)
+        check("4. ClinVar: a table with hits; without, the sentence that ClinVar lists only part", not bad, bad)
+        control("the demo's hits emptied on both sides", not clinvar_problems(without, without))
+
+        # 5.
+        pwfile = os.path.join(work, "password")
+        with open(pwfile, "w") as f:
+            f.write(owngenome_live.hash_password(PASSWORD) + "\n")
+        state = os.path.join(work, "state")
+        srv = serve(root, state, pwfile)
+        srvs.append(srv)
+        bad = server_problems(srv[1].server_address[1], state)
+        check("5. results.json and runs.json behind the login, one log row, summary.json 404", not bad, bad)
+        state2 = os.path.join(work, "state-open")
+        srv = serve(root, state2, pwfile, open_results=True)
+        srvs.append(srv)
+        control("the results route registered without the login",
+                not server_problems(srv[1].server_address[1], state2))
+    finally:
+        for s in srvs:
+            stop(s)
+        shutil.rmtree(work, ignore_errors=True)
+    if FAILS:
+        print(f"\n{len(FAILS)} check(s) failed")
+        return 1
+    print("\nAll checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

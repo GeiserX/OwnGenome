@@ -40,6 +40,7 @@ button:hover { border-color: var(--dim); }
 .links { margin-left: auto; display: flex; gap: var(--s4); white-space: nowrap; }
 .search-slot + .links { margin-left: 0; }
 .logout { margin: 0 0 0 auto; }
+.demo-note { margin: 0 0 0 auto; color: var(--dim); font-size: 13px; text-align: right; }
 
 /* the search box (plugins/search.js) in the header */
 .search-slot { margin-left: auto; position: relative; width: min(320px, 40vw); }
@@ -102,10 +103,11 @@ button:hover { border-color: var(--dim); }
 .view-head { margin: var(--s3) 0 var(--s4); }
 .question { font-family: var(--serif); font-size: 24px; font-weight: 500; line-height: 1.25; }
 .view-head p { margin: 4px 0 0; max-width: 75ch; }
-.cards { display: grid; gap: var(--s4); }
+.cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+#results, #progress, .view { min-width: 0; }
 
 /* --- a card --- */
-.card { background: var(--card); border: 1px solid var(--rule); border-radius: var(--r-card); padding: var(--s4) var(--s5); }
+.card { min-width: 0; overflow-wrap: anywhere; background: var(--card); border: 1px solid var(--rule); border-radius: var(--r-card); padding: var(--s4) var(--s5); }
 .card > h2 { font-size: 15px; margin-bottom: var(--s2); }
 .result { position: relative; scroll-margin-top: 80px; }
 .result.attn { border-left: 4px solid var(--attn); padding-left: calc(var(--s5) - 3px); }
@@ -134,9 +136,10 @@ button:hover { border-color: var(--dim); }
 .lines { margin: 0 0 var(--s3); padding-left: 1.1em; max-width: 75ch; color: var(--text); }
 .lines li { margin: 2px 0; }
 .table-wrap { overflow-x: auto; margin: 0 0 var(--s3); }
-table.rows { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.rows { border-collapse: collapse; width: 100%; font-size: 14px; overflow-wrap: normal; }
 table.rows th { text-align: left; color: var(--dim); font-weight: 600; font-size: 13px; padding: 6px 10px; border-bottom: 1px solid var(--rule); }
-table.rows td { padding: 6px 10px; vertical-align: top; overflow-wrap: anywhere; }
+table.rows th { white-space: nowrap; }
+table.rows td { padding: 6px 10px; vertical-align: top; overflow-wrap: break-word; min-width: 4ch; }
 table.rows tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--rule) 30%, transparent); }
 .more { margin-top: 6px; font-size: 13px; }
 .caveat { border-top: 1px solid var(--rule); margin-top: var(--s3); padding-top: var(--s3); font-size: 13px; line-height: 1.55; color: var(--dim); }
@@ -242,9 +245,9 @@ ul.runs li { padding: 6px 0; border-bottom: 1px solid var(--rule); }
 /* --- a family --- */
 .family-page { display: grid; gap: var(--s4); }
 .family-top { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--s4); align-items: start; }
-.family-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--s4); align-items: start; }
+.family-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
 .pedigree-figure { margin: 0; }
-.pedigree-svg { width: 100%; height: auto; max-height: 460px; display: block; }
+.pedigree-svg { width: 100%; height: auto; max-height: 340px; display: block; margin: 0 auto; }
 .ped-lines line { stroke: var(--dim); stroke-width: 2; }
 .ped-shape { fill: var(--card); stroke: var(--text); stroke-width: 2; }
 .ped-shape.filled { fill: var(--text); }

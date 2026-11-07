@@ -89,6 +89,8 @@
         card.scrollIntoView({ block: 'start' });
         card.focus({ preventScroll: true });
       }
+    } else if (window.location.hash === '#progress') {
+      window.scrollTo(0, 0);  // #progress is also the section's id: keep the head and the rail in view
     }
   }
   function go(hash) {
@@ -227,7 +229,7 @@
       add(box, ol);
     }
     var waiting = cards().filter(function (x) { return gate(x.c) === 'waiting'; }).length;
-    if (waiting) { add(box, el('p', { 'class': 'dim' }, waiting + ' cards are still waiting for their step.')); }
+    if (waiting) { add(box, el('p', { 'class': 'dim' }, (waiting === 1 ? '1 card is' : waiting + ' cards are') + ' still waiting for its step.')); }
     return box;
   }
   function chapter(ch) {

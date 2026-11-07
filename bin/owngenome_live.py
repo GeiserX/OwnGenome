@@ -796,7 +796,8 @@ class Live:
                             planned=len(planned), done=sum(1 for s in planned if s["state"] == "done"),
                             running=sum(1 for s in planned if s["state"] == "running"),
                             failed=sum(1 for s in planned if s["state"] == "failed"))
-                item["attention"], mtime = self.attention(r["dir"])
+                # A run known from its messages alone still has its folder under the root once step 24 wrote there.
+                item["attention"], mtime = self.attention(r["dir"] or os.path.join(self.root, name))
                 item["results"] = mtime is not None
             else:
                 item["members"] = r.get("members") or []

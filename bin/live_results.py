@@ -151,7 +151,7 @@ def a_clinvar(S, s):
     for h in (d.get("hits") or [])[:50]:
         rows.append([h.get("gene"), f"{h.get('chrom')}:{h.get('pos')} {h.get('ref')}>{h.get('alt')}", h.get("genotype"),
                      h.get("significance"), "★" * int(h.get("stars") or 0) or "0",
-                     rr.af_text(h) or "frequency unknown", rr.call_text(h) or "."
+                     rr.af_text(h) or "frequency unknown", (rr.call_text(h) or ".")
                      + (" · low confidence" if h.get("low_confidence") else "")])
     lines = [x for x in (rr.cdna_scan_lines(d) or [])]
     freq = rr.clinvar_freq_line(d)
@@ -570,6 +570,12 @@ def card(sid, title, keys, summary, files):
             tones.append(tone)
     if "attention" in tones:
         out["attention"] = True
+    if out["headline"]:
+        # The step headline carries its caveat (the Progress tab shows no other); the card prints it below.
+        for c in sorted({plain(c) for c in cav}, key=len, reverse=True):
+            if out["headline"].endswith(" " + c):
+                out["headline"] = out["headline"][:-len(c) - 1].rstrip()
+                break
     fn = ADAPTERS.get(sid)
     if fn and state not in ("failed",):
         try:

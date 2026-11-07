@@ -153,5 +153,6 @@
       .catch(function () { if (key === shownKey) { shownKey = null; } });
   }
 
-  root.PGP.register({ name: 'search', slot: 'search-slot', panel: panel, onState: onState });
+  // family.html loads the plugins without live.js: nothing to register there.
+  if (root && root.PGP) { root.PGP.register({ name: 'search', slot: 'search-slot', panel: panel, onState: onState }); }
 }(typeof window !== 'undefined' ? window : null));
