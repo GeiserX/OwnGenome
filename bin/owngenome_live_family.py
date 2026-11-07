@@ -179,7 +179,9 @@ def layout_of(order, members):
 def family_page(name, d):
     """family.json without the member runs: the state, the layout, the full pair rows and couple rows."""
     st = family_state(name, d)
-    out = {"state": st, "layout": None, "relationships": [], "ibd_pairs": [], "couples": {}}
+    import render_report  # the couple screen's caveat, word for word
+    out = {"state": st, "layout": None, "relationships": [], "ibd_pairs": [], "couples": {},
+           "couple_note": render_report.COUPLE_NOTE}
     if st.get("error"):
         return out
     order, members = members_of(d)
