@@ -80,6 +80,7 @@ import annotsv_postfilter  # noqa: E402  step 05's class 4-5 checks and the step
 import chip_report  # noqa: E402  step 49's detection limit at the median depth
 import run_delta  # noqa: E402  the comparison with the previous run, for the "New since" badges
 import traits_report  # noqa: E402  step 42's genotype-rules columns and the rules the traits table holds
+import genotype_rules_indels  # noqa: E402  the APOL1 G2 deletion beside step 42's APOL1 rule
 
 # 2: cyp2d6.consensus, Cyrius's Filter applied, HLA quality per allele,
 # Stranger's status on the repeat loci, the CPIC unclassified count, and the
@@ -783,6 +784,13 @@ NOT_CATALOG_TABLES = ("hba", "paraphase")
 PARASCOPY_COLUMNS = {"chrom", "start", "end", "agCN", "agCN_filter", "agCN_qual", "psCN", "psCN_qual", "psCN_filter"}
 
 
+def tsv_columns(path):
+    """The header of a tab-separated table as a set ({} for an empty file), so
+    a table with a header and no row is checked for its columns too."""
+    with open_text(path) as f:
+        return set(next(csv.reader(f, delimiter="\t"), []))
+
+
 def parascopy_tables(d, s):
     """{table: path} of step 35's catalog tables (<s>_<table>_copy_number.tsv)."""
     out = {}
@@ -800,7 +808,7 @@ def parascopy_locus(name, path, row):
     out = {"table": name, "genes": (row or {}).get("genes") or name, "tag": (row or {}).get("tag") or ".",
            "reading": (row or {}).get("reading") or "."}
     rows = read_tsv(path)
-    if rows and not PARASCOPY_COLUMNS <= set(rows[0]):
+    if not PARASCOPY_COLUMNS <= tsv_columns(path):
         return dict(out, status="unreadable", cn=None,
                     text=f"unreadable: {os.path.basename(path)} lacks the copy-number columns")
     na = next((r["agCN_filter"] for r in rows if (r.get("agCN_filter") or "").startswith("not assessed")), None)
@@ -846,13 +854,14 @@ def sec_parascopy(d, s):
     hp = os.path.join(d, "paralogs", f"{s}_hba_copy_number.tsv")
     ip = os.path.join(d, "paralogs", f"{s}_cn_intervals.tsv")
     cp = os.path.join(d, "paralogs", f"{s}_cyp21a2_psv.tsv")
-    p = (tables.get("smn") or next(iter(tables.values()), None) or (hp if os.path.isfile(hp) else None)
-         or (ip if os.path.isfile(ip) else None) or (cp if os.path.isfile(cp) else None))
+    dp = os.path.join(d, "paralogs", f"{s}_cn_dosage.tsv")
+    p = (tables.get("smn") or next(iter(tables.values()), None)
+         or next((x for x in (hp, ip, cp, dp) if os.path.isfile(x)), None))
     if not p:
         return None, {}
     if "smn" in tables:
         rows = read_tsv(tables["smn"])
-        if rows and not PARASCOPY_COLUMNS <= set(rows[0]):
+        if not PARASCOPY_COLUMNS <= tsv_columns(tables["smn"]):
             raise Unreadable(f"{os.path.basename(tables['smn'])} lacks the chrom, start, end, agCN, agCN_filter, "
                              "agCN_qual, psCN, psCN_qual or psCN_filter column")
         smn1 = parascopy_cn_at(rows, *paraphase_report.SMN1_EXON7)
@@ -882,6 +891,9 @@ def sec_parascopy(d, s):
                # CYP21A2 from depth and PSV sites (bin/copy_number.py, the
                # CYP21A2 row): copies, module total, finding; None without it
                "cyp21a2": read_hba(cp) if os.path.isfile(cp) else None,
+               # the gene-dosage rows (HP, LCE3BC, CCL3L1): total copies from
+               # depth, one entry per locus; None without step 35's table
+               "dosage": read_cn_dosage(dp) if os.path.isfile(dp) else None,
                "reading": reading,
                # every other catalog table, in the catalog's order (a table the
                # catalog does not name, from a PARALOG_LOCI of the user's, last)
@@ -894,14 +906,37 @@ def read_cn_intervals(path):
     """Step 35's interval table (bin/copy_number.py intervals): the rows with
     a deletion or a duplication, and a count of the rows by status."""
     rows = read_tsv(path)
-    if rows and not {"locus", "name", "status", "copies", "expected", "change"} <= set(rows[0]):
+    cols = ("locus", "name", "chrom", "start", "end", "status", "copies", "expected", "change")
+    if not set(cols) <= tsv_columns(path):
         raise Unreadable(f"{os.path.basename(path)} lacks the locus, name, status, copies, expected or change column")
+    short_row(path, rows, cols)
     counts = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     return {"rows": len(rows), "by_status": counts,
             "changes": [{k: r[k] for k in ("locus", "name", "chrom", "start", "end", "copies", "expected", "change")}
                         for r in rows if r["change"] in ("deletion", "duplication")]}
+
+
+DOSAGE_COLUMNS = ("locus", "status", "copies", "estimate", "reason", "reading")
+
+
+def read_cn_dosage(path):
+    """Step 35's gene-dosage table (HP, LCE3BC, CCL3L1): one entry per locus,
+    in the table's order."""
+    if not set(DOSAGE_COLUMNS) <= tsv_columns(path):
+        raise Unreadable(f"{os.path.basename(path)} lacks the {', '.join(DOSAGE_COLUMNS[:-1])} or reading column")
+    rows = read_tsv(path)
+    short_row(path, rows, DOSAGE_COLUMNS)
+    return [{k: r.get(k) or "." for k in DOSAGE_COLUMNS} for r in rows]
+
+
+def short_row(path, rows, cols):
+    """A row cut short of a column (csv gives None there) makes the table
+    unreadable, so it never reads as a row of '.' values."""
+    bad = next((i for i, r in enumerate(rows, 2) if any(r.get(k) is None for k in cols)), None)
+    if bad:
+        raise Unreadable(f"{os.path.basename(path)} line {bad} lacks a field")
 
 
 def read_hba(path):
@@ -2951,7 +2986,76 @@ def genotype_rules(d, s):
     bad = next((i for i, r in enumerate(rows, 2) if None in r or any(r.get(k) is None for k in need)), None)
     if bad:
         raise Unreadable(f"{os.path.basename(p)} line {bad} does not have one field per column")
-    return [{k: r[k] for k in need} for r in rows if r["rule"] not in traits_report.TRAITS_TABLE_RULES]
+    out = [{k: r[k] for k in need} for r in rows if r["rule"] not in traits_report.TRAITS_TABLE_RULES]
+    for r in out:
+        if r["rule"] == genotype_rules_indels.G2["rule"]:
+            g2 = apol1_g2(d, s)
+            r["g2"] = dict(g2, **genotype_rules_indels.combine(r, g2))
+    return out
+
+
+def vcf_window(path, chrom, start, end):
+    """The split data lines of a VCF on chrom that can cover start..end: read
+    from the tabix linear index's offset for start when the .tbi is there,
+    else the whole file (stopping past the window)."""
+    out = []
+    if os.path.exists(path + ".tbi"):
+        ioff = tabix_linear_index(path).get(chrom)
+        if not ioff:
+            return out
+        voff = ioff[min((start - 1) >> 14, len(ioff) - 1)]
+        voff = 0 if voff == 0xFFFFFFFFFFFFFFFF else voff
+        with open(path, "rb") as raw:
+            raw.seek(voff >> 16)
+            g = gzip.GzipFile(fileobj=raw)
+            g.read(voff & 0xFFFF)
+            lines = (x.decode(errors="replace").rstrip("\n").split("\t") for x in g if not x.startswith(b"#"))
+            seen = False
+            for r in lines:
+                if len(r) < 2 or not r[1].isdigit():
+                    continue
+                if r[0] != chrom:
+                    if seen:
+                        break
+                    continue
+                seen = True
+                if int(r[1]) > end:
+                    break
+                out.append(r)
+        return out
+    seen = False
+    for r in vcf_records(path):
+        if len(r) < 2 or not r[1].isdigit():
+            continue
+        if r[0] != chrom:
+            if seen:
+                break
+            continue
+        seen = True
+        if int(r[1]) > end:
+            break
+        out.append(r)
+    return out
+
+
+def apol1_g2(d, s):
+    """APOL1 G2 (rs71785313, a 6-base deletion step 42's rule table cannot
+    read) from the sample's gVCF when it is there (vcf/<id>.g.vcf.gz, whose
+    reference blocks tell a reference base from no reads), else its VCF
+    (vcf/<id>.vcf.gz): bin/genotype_rules_indels.py's read_g2, plus source."""
+    m = genotype_rules_indels
+    for name, kind in ((f"vcf/{s}.g.vcf.gz", "gvcf"), (f"vcf/{s}.vcf.gz", "vcf")):
+        p = os.path.join(d, name)
+        if not os.path.isfile(p):
+            continue
+        try:
+            recs = vcf_window(p, m.G2["chrom"], m.CONTEXT_START, m.SPAN[1])
+        except (OSError, EOFError, ValueError, struct.error, gzip.BadGzipFile, zlib.error, Unreadable) as e:
+            return {"status": "not_read", "copies": None, "gq": ".", "source": name,
+                    "text": f"G2 (rs71785313) not read: {name} could not be read ({e})."}
+        return dict(m.read_g2(recs, kind), source=name)
+    return {"status": "not_read", "copies": None, "gq": ".", "source": None,
+            "text": "G2 (rs71785313) not read: no VCF of the sample in this folder."}
 
 
 def sec_carrier(d, s):
