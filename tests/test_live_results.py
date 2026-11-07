@@ -19,11 +19,14 @@ Checks:
   5. through the real server: /runs/<run>/results.json is behind the login
      (401 without a session), answers the cards with one, and writes one access
      log row per request; summary.json stays 404; /runs.json lists the run with
-     its progress and attention count, behind the login too.
+     its progress and attention count, behind the login too;
+  6. APOE: the Traits card's hidden text, behind its warning, is each APOE row
+     as the report prints it (trait, rsID, genotype, reading), never a dict.
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
-registered without the login. A check that cannot fail is no check.
+registered without the login, 6 with a row printed as its Python dict. A check
+that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
 """
@@ -135,6 +138,23 @@ def clinvar_problems(with_hits, without):
         out.append("no hit but a table")
     if "lists only part" not in (without.get("empty_text") or ""):
         out.append(f"empty text {without.get('empty_text')!r}")
+    return out
+
+
+# --- 6. APOE behind its warning -------------------------------------------------------------
+
+APOE_ROW = {"rsid": "rs429358", "gene": "APOE", "trait": "APOE e4 marker", "genotype": "T/C",
+            "status": "called", "reading": "one copy of the e4 allele", "ancestry": "", "note": "", "pmids": "1"}
+
+
+def apoe_problems(hidden):
+    out = []
+    text = (hidden or {}).get("text") or ""
+    if "{" in text or "'rsid'" in text:
+        out.append(f"a dict in the text {text!r}")
+    for want in ("APOE e4 marker", "rs429358", "T/C", "one copy of the e4 allele"):
+        if want not in text:
+            out.append(f"{want!r} missing from {text!r}")
     return out
 
 
@@ -263,6 +283,13 @@ def main():
         bad = clinvar_problems(with_hits, without)
         check("4. ClinVar: a table with hits; without, the sentence that ClinVar lists only part", not bad, bad)
         control("the demo's hits emptied on both sides", not clinvar_problems(without, without))
+
+        # 6.
+        S = {"traits": {"data": {"rows": [], "called": 0, "not_covered": 0, "apoe": [APOE_ROW]}}}
+        hidden = live_results.a_traits(S, SAMPLE).get("hidden")
+        bad = apoe_problems(hidden)
+        check("6. APOE: the hidden text reads each row as the report does, never a dict", not bad, bad)
+        control("the APOE row printed as its Python dict", not apoe_problems({"text": str(APOE_ROW)}))
 
         # 5.
         pwfile = os.path.join(work, "password")

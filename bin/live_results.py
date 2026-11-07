@@ -33,7 +33,7 @@ SCHEMA = 1
 # results.json and family.json, and the page assets, for them. "Fine-grained" is a method's name.
 FORBIDDEN = re.compile(r"\b(ok|(?<![-/])fine(?!-grained)|healthy|all.clear|nothing found|normal range)\b", re.I)
 EMPTY = {
-    # The no-hit sentence of the report (render_report html_report, ClinVar card): never an all-clear.
+    # The live page's no-hit sentence (render_report's ClinVar card shows a gray 0, never green).
     "clinvar": "No P/LP match in this ClinVar file at the call floor. ClinVar lists only part of what can cause "
                "disease, so this is information, and the caveats below still apply.",
 }
@@ -459,8 +459,10 @@ def a_traits(S, s):
     apoe = d.get("apoe")
     if apoe:
         # Behind its warning, as the report shows it: the page puts it in a closed <details>.
-        text = apoe if isinstance(apoe, str) else "; ".join(f"{k}: {v}" for k, v in apoe.items()) \
-            if isinstance(apoe, dict) else cell(apoe)
+        # collect_summary keeps one dict per APOE row; each reads as the report's text line does.
+        rows = apoe if isinstance(apoe, list) else [apoe]
+        text = "; ".join(f"{r.get('trait')} ({r.get('rsid')}): {r.get('genotype')}. {r.get('reading')}"
+                         if isinstance(r, dict) else cell(r) for r in rows)
         out["hidden"] = {"summary": rr.APOE_WARNING, "text": plain(text)}
     return out
 
