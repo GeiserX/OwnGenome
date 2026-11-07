@@ -8,8 +8,8 @@
 #      linked as vcf/<id>.g.vcf.gz(.tbi), summary.json carries the CYP21A2
 #      deletion and the HP count, and its manifest has the run
 #      pipeline_version row with the manifest version of the pipeline's
-#      config. Red controls: a copy of the module without the two place
-#      alternatives stops on the CYP21A2 table; a copy without the gVCF and
+#      config. Red controls: a copy of the module without the place line of
+#      the two tables stops on the CYP21A2 table; a copy without the gVCF and
 #      release lines links no gVCF and writes no release.
 #   2. main.nf passes them on: a stub run of the stub pedigree (two partners,
 #      both called by DEEPVARIANT) with clinvar, parascopy, cpsr and
@@ -105,11 +105,11 @@ check "the run manifest is not published (run-all.sh writes the full one there)"
 
 mkdir -p "${NP}/noplace" "${NP}/nogvcf"
 # shellcheck disable=SC2016  # the dollar signs are sed text
-sed 's/|\${id}_cn_dosage\.tsv|\${id}_cyp21a2_psv\.tsv)/)/' "${REPO}/modules/local/html_report/main.nf" > "${NP}/noplace/main.nf"
+sed '/_cn_dosage\.tsv|\${id}_cyp21a2_psv\.tsv)  *place paralogs/d' "${REPO}/modules/local/html_report/main.nf" > "${NP}/noplace/main.nf"
 check_eq "control copy: the module has no place for the two tables" \
-  "$(grep -cE '_cn_dosage\.tsv\||_cyp21a2_psv\.tsv\)' "${NP}/noplace/main.nf")" 0
+  "$(grep -cE '_cn_dosage\.tsv\|.*place|_cyp21a2_psv\.tsv\)' "${NP}/noplace/main.nf")" 0
 report_run report-noplace "${NP}/noplace/main"
-check "red: the module without the place alternatives stops (exit ${NF_RC})" test "$NF_RC" -ne 0
+check "red: the module without their place line stops (exit ${NF_RC})" test "$NF_RC" -ne 0
 check "and names the table it has no place for" grep -qE "no place for: ${S}_(cyp21a2_psv|cn_dosage)\.tsv" -r "${CASE_TMP}/work-report-noplace" --include=.command.err
 sed -e 's/^\( *\)ln -s .*\.g\.vcf\.gz.*$/\1true/' -e '/run_manifest\.tsv"$/d' "${REPO}/modules/local/html_report/main.nf" > "${NP}/nogvcf/main.nf"
 check_eq "control copy: the gVCF links and the release line are gone" \

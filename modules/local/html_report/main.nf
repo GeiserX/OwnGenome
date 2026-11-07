@@ -100,7 +100,8 @@ process HTML_REPORT {
             ${id}_paraphase_copy_number.tsv|${id}_paraphase_variants.tsv|${id}_*_copy_number.tsv) place paralogs "\$f" ;;
             ${id}.mosdepth.summary.txt|${id}_callability.bed.gz) place coverage "\$f" ;;
             ${id}_sample_qc.tsv|${id}_read_count.tsv)     place qc "\$f" ;;
-            ${id}_cn_intervals.tsv|${id}_cn_dosage.tsv|${id}_cyp21a2_psv.tsv) place paralogs "\$f" ;;
+            ${id}_cn_intervals.tsv)                       place paralogs "\$f" ;;
+            ${id}_cn_dosage.tsv|${id}_cyp21a2_psv.tsv)    place paralogs "\$f" ;;
             ${id}_prs_summary.tsv)                        place prs "\$f" ;;
             ${id}_ancestry.tsv)                           place ancestry "\$f" ;;
             ${id}_ancestry_fine.tsv|${id}_painting.png)   place ancestry_fine "\$f" ;;

@@ -63,6 +63,9 @@ release=$(awk '
     s = $0; sub(/^[^=]*=[[:space:]]*/, "", s); sub(/[[:space:]]*(\/\/.*)?$/, "", s)
     gsub(/^["\047]|["\047]$/, "", s); print s; exit
   }' "${PGP_ROOT}/nextflow.config" 2>/dev/null || true)
+if [ ! -r "${PGP_ROOT}/nextflow.config" ]; then
+  echo "WARNING: cannot read ${PGP_ROOT}/nextflow.config: run_manifest.tsv gets no pipeline_version row" >&2
+fi
 [ -z "$release" ] || row run pipeline_version "$release"
 [ -z "$DECLARED_SEX" ] || row run declared_sex "$DECLARED_SEX"
 

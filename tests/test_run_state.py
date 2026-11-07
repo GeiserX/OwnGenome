@@ -210,7 +210,8 @@ def module_processes():
     # A process a workflow includes under another name (include { A as B }) runs, and is counted, as B
     for fn in ["main.nf"] + [os.path.join("workflows", f) for f in os.listdir(os.path.join(REPO, "workflows"))]:
         if fn.endswith(".nf"):
-            names |= set(re.findall(r"^include\s*\{\s*\w+\s+as\s+([A-Z0-9_]+)\s*\}", open(os.path.join(REPO, fn)).read(), re.M))
+            for inc in re.findall(r"^\s*include\s*\{([^}]*)\}", open(os.path.join(REPO, fn)).read(), re.M):
+                names |= set(re.findall(r"\w+\s+as\s+([A-Z0-9_]+)", inc))
     return names
 
 

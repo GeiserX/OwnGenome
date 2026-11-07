@@ -244,8 +244,8 @@ check() {
   # Every process, and every alias a workflow includes one under (include { A as B }):
   # a withName selector matches the alias, not the module's name.
   procs=$( { cat "${ROOT}"/modules/local/*/main.nf | sed -nE 's/^process[[:space:]]+([A-Za-z0-9_]+).*/\1/p'
-             cat "${ROOT}"/main.nf "${ROOT}"/workflows/*.nf 2>/dev/null \
-               | sed -nE 's/^include[[:space:]]*\{[[:space:]]*[A-Za-z0-9_]+[[:space:]]+as[[:space:]]+([A-Za-z0-9_]+)[[:space:]]*\}.*/\1/p'; } | sort -u)
+             cat "${ROOT}"/main.nf "${ROOT}"/workflows/*.nf 2>/dev/null | grep -E '^[[:space:]]*include[[:space:]]*\{' \
+               | grep -oE '[A-Za-z0-9_]+[[:space:]]+as[[:space:]]+[A-Za-z0-9_]+' | awk '{print $3}' || true; } | sort -u)
   [ -n "$procs" ] || { echo "FAIL: found no process in modules/local/*/main.nf"; return 1; }
   sels=$(sed -nE -e "s/^[[:space:]]*withName:[[:space:]]*'([A-Za-z0-9_]+)'[[:space:]]*\{[[:space:]]*container[[:space:]]*=[[:space:]]*'[^']+'[[:space:]]*\}.*/\1/p" \
     -e "s/^[[:space:]]*withName:[[:space:]]*'([A-Za-z0-9_]+)'[[:space:]]*\{[[:space:]]*ext\.pipeline_version[[:space:]]*=[[:space:]]*'[^']+'.*/\1/p" \
@@ -360,8 +360,9 @@ self_test() {
 
   # A process included under a new alias, which a withName selector must name.
   copy new-alias
-  printf '%s\n' "include { ROH as ROH_AGAIN } from '../modules/local/roh/main'" >> "${tmp}/new-alias/workflows/clinical.nf"
+  printf '%s\n' "include { ROH as ROH_AGAIN; VEP as VEP_AGAIN } from '../modules/local/roh/main'" >> "${tmp}/new-alias/workflows/clinical.nf"
   expect new-alias '^FAIL: process ROH_AGAIN has no container'
+  expect new-alias '^FAIL: process VEP_AGAIN has no container'
 
   # A selector left behind for a process that no longer exists.
   copy stray
