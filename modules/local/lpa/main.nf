@@ -12,7 +12,8 @@
                    with a BAM; empty tables when the BAM has no chr6
       LPA          bin/copy_number.py call --locus LPA_KIV2: the count, its
                    95% interval and the message (laid out by bin/lpa_kiv2.py),
-                   then bin/lpa_kiv2.py null-allele: the 4925G>A reading beside it
+                   then bin/traits_report.py --marker LPA_KIV2_4925: the 4925G>A
+                   reading beside it
 
     Equivalent to: scripts/46-lpa.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -118,7 +119,7 @@ process LPA {
     script:
     """
     copy_number.py call --locus LPA_KIV2 --bedcov ${depth} --bedcov-mapq1 ${depth_q1} --table ${meta.id}_lpa_kiv2.tsv
-    lpa_kiv2.py null-allele --pileup ${pileup} --table ${meta.id}_lpa_kiv2.tsv
+    traits_report.py --marker LPA_KIV2_4925 --pileup ${pileup} --marker-out ${meta.id}_lpa_kiv2.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

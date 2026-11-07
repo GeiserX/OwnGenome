@@ -291,6 +291,17 @@ def main():
         subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o], capture_output=True)
         check("4925G>A: a second run leaves the table as it was (the rows and the sentence once)",
               open(o).read() == before, open(o).read())
+        rc, _, o2, p2 = table_after(t, "viatr", (100, 0))
+        os.makedirs(os.path.join(t, "viatr2"))
+        o3 = os.path.join(t, "viatr2", "S_lpa_kiv2.tsv")
+        a, b = os.path.join(t, "viatr2", "a.tsv"), os.path.join(t, "viatr2", "b.tsv")
+        bedcov(a, depths(38))
+        bedcov(b, q1(depths(38)))
+        lpa.main(["estimate", "--bedcov", a, "--bedcov-mapq1", b, "--out", o3])
+        res = subprocess.run([sys.executable, os.path.join(REPO, "bin", "traits_report.py"), "--marker", "LPA_KIV2_4925",
+                              "--pileup", p2, "--marker-out", o3], capture_output=True, text=True)
+        check("4925G>A: traits_report.py --marker LPA_KIV2_4925 (what step 46 and the LPA process run) writes "
+              "the same table as null-allele", res.returncode == 0 and open(o3).read() == open(o2).read(), res)
         rc, tab, *_ = table_after(t, "ref", (100, 0))
         check("4925G>A: reads with the reference base only is not seen",
               tab.get("kiv2_4925_status") == "not seen" and tab.get("kiv2_4925_copies") == "."

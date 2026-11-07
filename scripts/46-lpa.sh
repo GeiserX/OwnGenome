@@ -11,8 +11,9 @@
 # interval. Beside the count it reads the KIV-2 4925G>A splice variant
 # (Coassin et al. 2017), which lowers the Lp(a) made from the chromosome that
 # carries it: samtools mpileup at the site's seven GRCh38 copies (the six
-# KIV-2 units and KIV-1), read as a fraction of copies by bin/lpa_kiv2.py
-# null-allele (the kiv2_4925_* rows, and one sentence after the message).
+# KIV-2 units and KIV-1), read as a fraction of copies by
+# bin/traits_report.py --marker LPA_KIV2_4925 (the kiv2_4925_* rows, laid out
+# by bin/lpa_kiv2.py, and one sentence after the message).
 # The two common risk variants, rs10455872 and rs3798220, are rows
 # of step 42's traits panel; the report's Lp(a) section reads both. A research
 # estimate, not a diagnostic test: the actionable test is a blood Lp(a)
@@ -83,9 +84,9 @@ run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
   python3 /pgp-bin/copy_number.py call --locus LPA_KIV2 --bedcov "$(cpath "$DEPTH")" \
     --bedcov-mapq1 "$(cpath "$DEPTH_Q1")" --table "$(cpath "$TABLE")"
 
-echo "[4/4] KIV-2 4925G>A beside the count (bin/lpa_kiv2.py null-allele)..."
+echo "[4/4] KIV-2 4925G>A beside the count (bin/traits_report.py --marker LPA_KIV2_4925)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/lpa_kiv2.py null-allele --pileup "$(cpath "$PILEUP")" --table "$(cpath "$TABLE")"
+  python3 /pgp-bin/traits_report.py --marker LPA_KIV2_4925 --pileup "$(cpath "$PILEUP")" --marker-out "$(cpath "$TABLE")"
 
 [ -s "$TABLE" ] || { echo "ERROR: no table written (${TABLE})" >&2; exit 1; }
 echo ""
