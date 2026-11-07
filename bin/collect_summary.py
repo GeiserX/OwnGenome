@@ -3901,10 +3901,15 @@ def gene_deletions(d, s, spans):
 
 def phase_haps(gt):
     """The copies (haplotype indexes) a phased GT puts the alt allele on, or
-    None when the GT is not phased: '0|1' -> {1}, '1|0' -> {0}, '0/1' -> None."""
+    None when the GT is not phased or a copy is not called: '0|1' -> {1},
+    '1|0' -> {0}, '0/1' -> None, '.|1' -> None (the missing copy could carry
+    the other allele, so no cis or trans can be read from it)."""
     if not gt or "|" not in gt:
         return None
-    return frozenset(i for i, a in enumerate(gt.split("|")) if a not in ("0", "."))
+    alleles = gt.split("|")
+    if "." in alleles:
+        return None
+    return frozenset(i for i, a in enumerate(alleles) if a != "0")
 
 
 def pair_phase(dl, v):

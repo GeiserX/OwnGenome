@@ -1215,6 +1215,16 @@ def annotsv_phase_pairing(work):
     _, t = run("homref", "0/0")
     check("sv phase: a deletion genotyped 0/0 pairs with nothing", t == [], t)
 
+    # A phased GT with one copy not called says nothing about cis or trans.
+    check("sv phase: '.|1' gives no copy, '0|1' gives copy 1",
+          (collect_summary.phase_haps(".|1"), collect_summary.phase_haps("0|1")) == (None, frozenset({1})),
+          (collect_summary.phase_haps(".|1"), collect_summary.phase_haps("0|1")))
+    dl = {"inside": False, "chrom": "chr1", "start": 100, "end": 200, "gt": ".|1", "ps": "90"}
+    v = {"chrom": "chr1", "pos": 300, "gt": "0|1", "ps": "90", "copies": 1, "ploidy": 2}
+    verdict, why = collect_summary.pair_phase(dl, v)
+    check("sv phase: a deletion '.|1' and a hit '0|1' in one phase set are not called in cis",
+          verdict == "possibly biallelic" and "in cis" not in why, (verdict, why))
+
 
 def report_followups_sections(work, schema):
     """26. step 42's genotype rules, step 9b's motif table of the other
