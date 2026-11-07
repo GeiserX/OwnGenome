@@ -136,6 +136,7 @@ file	{sample}/kir/database_release.txt	08	KIR_TYPING	nextflow	text	experimental	
 file	{sample}/kir/{sample}_kir_genotype.tsv	08	KIR_TYPING	nextflow	tsv	experimental	-	-
 file	{sample}/logs/run_status.tsv	-	-	nextflow	tsv	stable	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2.tsv	46	LPA	nextflow	tsv	experimental	-	-
+file	{sample}/lpa/{sample}_lpa_kiv2_4925_pileup.tsv	46	LPA_DEPTH	both	tsv	experimental	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2_depth.tsv	46	LPA_DEPTH	nextflow	tsv	experimental	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2_depth_q1.tsv	46	LPA_DEPTH	nextflow	tsv	experimental	-	-
 file	{sample}/manta/results/variants/candidateSV.vcf.gz	04	MANTA	nextflow	vcf	stable	-	-
@@ -181,6 +182,7 @@ file	{sample}/paralogs/{sample}_paraphase_copy_number.tsv	35b	PARAPHASE_REPORT	n
 file	{sample}/paralogs/{sample}_paraphase_variants.tsv	35b	PARAPHASE_REPORT	nextflow	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_parascopy	35	PARASCOPY	nextflow	dir	experimental	-	-
 file	{sample}/paralogs/{sample}_smn_copy_number.tsv	35	PARASCOPY	nextflow	tsv	experimental	-	-
+file	{sample}/paralogs/{sample}_smn1_marker.tsv	35	PARASCOPY	both	tsv	experimental	-	metric,value
 file	{sample}/pgx_consensus/{sample}_outside_calls.tsv	36	PGX_CONSENSUS	nextflow	tsv	stable	-	-
 file	{sample}/pgx_consensus/{sample}_pgx_consensus.tsv	36	PGX_CONSENSUS	nextflow	tsv	stable	-	-
 file	{sample}/pharmcat/{sample}.match.json	07	PHARMCAT	nextflow	json	stable	-	-

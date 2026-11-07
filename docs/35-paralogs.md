@@ -66,6 +66,7 @@ With Nextflow: `--tools ...,parascopy --parascopy_data ${GENOME_DIR}/reference/p
 5. The gene-dosage rows (HP, LCE3BC, CCL3L1) the same way, into `${SAMPLE}_cn_dosage.tsv` ([the gene-dosage rows](cn-loci.md#the-gene-dosage-rows)).
 6. `samtools bedcov` over the CYP21A2 row's segments (one pass, every read), `samtools mpileup` without a reference at its PSV sites, then `bin/copy_number.py call --locus CYP21A2 --pileup ...` writes `${SAMPLE}_cyp21a2_psv.tsv`. A failure prints a warning and writes a table that says not assessed (`check_failed`).
 7. The interval rows into `${SAMPLE}_cn_intervals.tsv` ([the interval rows](cn-loci.md#the-interval-rows)).
+8. SMN1 g.27134T>G beside the SMN1 psCN (before the HBA count): `samtools mpileup` without a reference at its SMN1 and SMN2 positions, then `bin/traits_report.py --marker SMN1_27134` with the SMN table writes `${SAMPLE}_smn1_marker.tsv` ([the SMN1 silent-carrier marker](#the-smn1-silent-carrier-marker)). A failure prints a warning and writes a table that says not assessed.
 
 ## Output
 
@@ -75,10 +76,27 @@ All output is written to `${GENOME_DIR}/${SAMPLE}/paralogs/`.
 |---|---|
 | `${SAMPLE}_smn_copy_number.tsv` | One row per region: `chrom`, `start`, `end`, `locus`, `agCN_filter`, `agCN`, `agCN_qual`, `psCN_filter`, `psCN`, `psCN_qual`, `homologous_regions`. A locus that was not assessed has one row over the catalog region (`chrom`, `start`, `end`), with `locus` (the model name), `agCN_filter` and `psCN_filter` (both `not assessed: <reason>`) and `.` in every other column |
 | `${SAMPLE}_<table>_copy_number.tsv` | The same, for every other catalog row (`gba1`, `pms2_pms2cl`, `c4` and the rest of the table above) |
+| `${SAMPLE}_smn1_marker.tsv` | `metric`, `value`: `marker`, `rsid`, `status` (`present`, `not seen`, `uncertain`, `too little depth`, `not assessed`), `alt_reads`, `depth`, `fraction`, `copies` (the fraction times agCN), `smn1_pscn` (the SMN1 psCN at exon 7 with its quality and filter), `agcn`, `message`. The step's log prints the message after the SMN table |
 | `${SAMPLE}_hba_copy_number.tsv` | `metric`, `value`: `status` (`called` or `not assessed`), `alpha_globin_genes`, `estimate`, `hba2_depth`, `hba1_depth`, `flank_left_depth`, `flank_right_depth`, `mapq0_share` (the part of the depth over the two genes from reads of mapping quality 0), `message` |
 | `${SAMPLE}_cn_intervals.tsv` | One line per interval row of `bin/cn_loci.tsv` (ClinGen's recurrent CNV regions, the carrier deletion alleles, the Y chromosome AZF regions): `locus`, `name`, `chrom`, `start`, `end`, `status`, `copies`, `expected`, `change` (`deletion`, `duplication`, `no change`, or `.` when not called), `estimate`, `reason` ([the interval rows](cn-loci.md#the-interval-rows)). Both reports show it, and the couple screen (step 39) reads it for the carrier deletion alleles and AZF |
 | `${SAMPLE}_cyp21a2_psv.tsv` | `metric`, `value`: `status`, `cyp21a2_copies` (the least CYP21A2 copies over the low sites, else the median site's), `module_total` (CYP21A2 plus CYP21A1P copies), `expected_total` (4), `estimate`, `finding` (`none`, `deletion`, `conversion`, `pseudogene_deletion`), `conversion_sites`, one `psv_<site>` row per site (gene, pseudogene and other reads, copies, ratio to the other sites), `target_depth`, `control_depth`, `reason`, `reading` |
 | `${SAMPLE}_parascopy/<table>/` | Parascopy's own output for each catalog row (`smn/` for SMN1): `res.samples.bed.gz`, `res.paralog.bed.gz`, `psvs.vcf.gz` and the rest ([described upstream](https://github.com/tprodanov/parascopy/blob/main/docs/cn_output.md)) |
+
+## The SMN1 silent-carrier marker
+
+Two SMN1 copies is the usual result, but some people with two copies have both on one chromosome and none on the other (2+0): a silent carrier, whom copy number alone cannot find. SMN1 g.27134T>G (rs143838139, `NM_000344.4:c.*3+80T>G`, chr5:70,952,074 in GRCh38) is a marker of SMN1 duplication alleles. In Luo et al. 2014 (Genet Med, PMID 23788250) a two-copy result with the marker raised the residual carrier risk (in African Americans from about 1 in 121 to 1 in 34) and one without it lowered it (to about 1 in 396); the figures depend on ancestry, and in Ashkenazi Jewish people a negative result lowered it from about 1 in 345 to 1 in 580.
+
+SMN2 holds the same 21 bases 875,420 bases upstream, so the reads cannot tell an SMN1 copy of the site from an SMN2 copy. The step adds up the reads at both (every mapping quality, duplicates left out, bases of quality 13 or more) and reads the share with G as a fraction of copies; with a resolved agCN, the copies that carry it are that fraction times agCN.
+
+| `status` | When |
+|---|---|
+| `present` | 3 reads or more with G, and at least 5% of the reads |
+| `not seen` | 1 read with G or none |
+| `uncertain` | between the two |
+| `too little depth` | under 10 reads over the two positions |
+| `not assessed` | the pileup could not be read, or the check failed |
+
+The message reads the marker beside the SMN1 psCN at exon 7 (filter `PASS` and quality 20 or more, the rule of the report's SMN1 line): with two SMN1 copies it says whether the marker raises or lowers the chance of 2+0; with another count, or a psCN that is not resolved, it says the marker refines a two-copy result only. Every message ends with "This marker does not prove 2+0, and its absence does not rule 2+0 out." The reports do not read this table yet; it sits beside the SMN table in the same folder.
 
 ## Runtime
 
