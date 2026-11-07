@@ -159,8 +159,8 @@ process PARASCOPY {
     # SMN1 g.27134T>G beside the SMN1 psCN (as scripts/35-paralogs.sh): mpileup at its SMN1 and SMN2
     # copies, then the reading with the SMN table; not assessed when it fails
     if traits_report.py --marker-regions SMN1_27134 > smn1_marker_sites.txt \
-        && while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "\$r" ${bam}; done \
-            < smn1_marker_sites.txt > smn1_marker_pileup.tsv \
+        && ( while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "\$r" ${bam} || exit 1; done \
+            < smn1_marker_sites.txt ) > smn1_marker_pileup.tsv \
         && traits_report.py --marker SMN1_27134 --pileup smn1_marker_pileup.tsv \
             --copy-table ${meta.id}_smn_copy_number.tsv --marker-out ${meta.id}_smn1_marker.tsv.tmp; then
         mv ${meta.id}_smn1_marker.tsv.tmp ${meta.id}_smn1_marker.tsv

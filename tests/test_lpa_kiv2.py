@@ -35,7 +35,8 @@ depth from reads of MAPQ 0 unless a case says otherwise:
      reference) is 'not seen'; 3 reads with T is 'uncertain'; under 100 reads
      is 'too little depth'; an unreadable pileup is 'not assessed', exit 0;
      reads at other positions and read starts, ends and indels in the bases
-     column are not counted; the reading goes to its own table and step 46's
+     column are not counted; when step 46's table shows the aligner left out
+     the reads of MAPQ 0, 'not assessed'; the reading goes to its own table and step 46's
      table is left byte for byte; without a count the copies are '.'; an
      output that cannot be written exits 2.
 
@@ -306,6 +307,17 @@ def main():
         check("4925G>A: without step 46's table the reading stands and the copies are '.'",
               res.returncode == 0 and tab.get("status") == "present" and tab.get("copies") == "."
               and tab.get("kiv2_copies") == ".", (res, tab))
+        for share, want in (("0.050", "not assessed"), ("0.900", "present")):
+            lt = os.path.join(t, f"share{share}.tsv")
+            with open(lt, "w") as f:
+                f.write(f"metric\tvalue\nstatus\tnot assessed\nkiv2_copies\t.\nmapq0_share\t{share}\n")
+            res = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", lt, "--out", n3],
+                                 capture_output=True, text=True)
+            tab = dict(x.split("\t", 1) for x in open(n3).read().splitlines()[1:])
+            check(f"4925G>A: a MAPQ 0 share of {share} in step 46's table gives {want} on the same reads",
+                  res.returncode == 0 and tab.get("status") == want
+                  and (want == "present" or "left out the reads that fit several copies" in tab.get("message", "")),
+                  (res, tab))
         rc, tab, *_ = table_after(t, "ref", (100, 0))
         check("4925G>A: reads with the reference base only is not seen",
               tab.get("status") == "not seen" and tab.get("copies") == "."

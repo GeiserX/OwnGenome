@@ -355,6 +355,10 @@ def marker_checks():
               t.get("smn1_pscn") == "2 (quality 40, filter PASS)" and t.get("agcn") == "4", t)
         res, t = table(pileup(15, 5), os.path.join(work, "missing.tsv"))
         check("SMN1 marker: no SMN table says so", "no SMN table" in t.get("smn1_pscn", ""), t)
+        res, t = table(pileup(15, 5), work)
+        check("SMN1 marker: an SMN table that cannot be read keeps the marker's reading, exit 0",
+              res.returncode == 0 and t.get("status") == "present" and t.get("agcn") == "."
+              and "could not be read" in t.get("smn1_pscn", ""), (res, t))
 
         # Every status with every psCN: the message says the marker does not prove 2+0.
         msgs = []

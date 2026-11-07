@@ -166,13 +166,15 @@ NULL_LIMIT = ("A short-read fraction cannot say which chromosome or which repeat
               "whether it sits on the small or the large isoform.")
 
 
-def null_allele(counts, kiv2_copies="."):
+def null_allele(counts, kiv2_copies=".", why_not=None):
     """[(metric, value)] of the KIV-2 4925G>A table from
     traits_report.read_marker_pileup's counts (None: unreadable), with the
-    count N of step 46's table ('.' when there is none)."""
+    count N of step 46's table ('.' when there is none). why_not: the reason
+    the reads cannot be trusted (the aligner left out the reads of MAPQ 0),
+    which makes it 'not assessed' whatever the counts."""
     import traits_report as tr  # bin/: the copy-aware marker catalog
     m = tr.MARKERS["LPA_KIV2_4925"]
-    a = tr.assess_marker("LPA_KIV2_4925", counts)
+    a = tr.assess_marker("LPA_KIV2_4925", None if why_not else counts)
     st = a["status"]
     try:
         total = float(kiv2_copies) + 2
@@ -183,7 +185,7 @@ def null_allele(counts, kiv2_copies="."):
         copies = f"{float(a['fraction']) * total:.1f}"
     name = f"{m['name']} (a splice variant that lowers the Lp(a) made from its chromosome, Coassin 2017)"
     if st == "not assessed":
-        msg = f"{name}: not assessed, the reads at its seven GRCh38 copies could not be read."
+        msg = f"{name}: not assessed, " + (why_not or "the reads at its seven GRCh38 copies could not be read.")
     else:
         msg = (f"{name}: {st}, {a['alt_reads']} of {a['depth']} reads at its seven GRCh38 copies carry it"
                + (f" (about {copies} of the {total:.0f} copies counted)" if copies != "." else "")
@@ -206,18 +208,29 @@ def write_null_allele(table_path, pileup_path, out_path):
     """Write the KIV-2 4925G>A table beside step 46's table (read for the
     count N; a table that is missing or unreadable gives no N). Returns the message."""
     import traits_report as tr
-    n = "."
+    t = {}
     try:
         with open(table_path, errors="replace") as f:
-            n = dict(ln.rstrip("\n").split("\t", 1) for ln in f if "\t" in ln).get("kiv2_copies", ".")
+            t = dict(ln.rstrip("\n").split("\t", 1) for ln in f if "\t" in ln)
     except OSError:
         pass
+    n = t.get("kiv2_copies", ".")
+    why_not = None
+    try:
+        share = float(t.get("mapq0_share", "."))
+    except ValueError:
+        share = None
+    if share is not None and share < row()["_mapq0_min"]:
+        # The reads that fit several copies are the ones a carrying repeat
+        # gives; without them the share at the seven copies is biased.
+        why_not = (f"reads of mapping quality 0 make up {100 * share:.1f}% of the KIV-2 depth, so the aligner "
+                   "left out the reads that fit several copies, the ones a carrying repeat gives.")
     try:
         counts = tr.read_marker_pileup(pileup_path, "LPA_KIV2_4925")
     except (OSError, ValueError) as e:
         print(f"WARNING: {e}; KIV-2 4925G>A is not assessed", file=sys.stderr)
         counts = None
-    rows = null_allele(counts, n)
+    rows = null_allele(counts, n, why_not)
     tr.write_metric_table(out_path, rows)
     return dict(rows)["message"]
 

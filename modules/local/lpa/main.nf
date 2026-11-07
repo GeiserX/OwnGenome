@@ -71,12 +71,15 @@ process LPA_DEPTH {
 
     script:
     // bedcov stops on a contig the BAM has no @SQ line for: without chr6 the
-    // tables stay empty. The same commands as scripts/46-lpa.sh.
+    // tables stay empty. A failed mpileup leaves the count to run: the pileup
+    // then holds one line that is not mpileup output, so 4925G>A reads 'not
+    // assessed'. The same commands as scripts/46-lpa.sh.
     """
     if samtools view -H ${bam} | awk -F '\\t' '\$1 == "@SQ" {for (i = 2; i <= NF; i++) if (\$i == "SN:chr6") f = 1} END {exit !f}'; then
         samtools bedcov -j lpa_regions.bed ${bam} > ${meta.id}_lpa_kiv2_depth.tsv
         samtools bedcov -j -Q 1 lpa_regions.bed ${bam} > ${meta.id}_lpa_kiv2_depth_q1.tsv
-        while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "\$r" ${bam}; done < lpa_sites.txt > ${meta.id}_lpa_kiv2_4925_pileup.tsv
+        ( while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "\$r" ${bam} || exit 1; done < lpa_sites.txt ) > ${meta.id}_lpa_kiv2_4925_pileup.tsv \\
+            || echo '# samtools mpileup failed: 4925G>A not assessed' > ${meta.id}_lpa_kiv2_4925_pileup.tsv
     else
         : > ${meta.id}_lpa_kiv2_depth.tsv
         : > ${meta.id}_lpa_kiv2_depth_q1.tsv

@@ -139,10 +139,10 @@ rm -rf "$M"; mkdir -p "$M"
 unesc() { sed -e 's/\\\\/\\/g' -e 's/\\\$/$/g' -e "s|\${bam}|${G}/${P}/aligned/${P}_sorted.bam|g" -e "s|\${meta.id}|${P}|g" \
   -e "s|\${pileup}|${P}_lpa_kiv2_4925_pileup.tsv|g"; }
 grep -E '^ *traits_report\.py --marker-regions LPA_KIV2_4925 > lpa_sites\.txt$' "$MOD" | unesc > "${M}/sites.sh"
-grep -E '^ *while read -r r; do samtools mpileup ' "$MOD" | unesc > "${M}/pileup.sh"
+sed -n '/^ *( while read -r r; do samtools mpileup /,/|| echo /p' "$MOD" | unesc > "${M}/pileup.sh"
 sed -n '/^ *traits_report\.py --marker LPA_KIV2_4925 --pileup/,/--marker-out/p' "$MOD" | unesc > "${M}/null.sh"
 check_eq "the module's sites, pileup and 4925G>A lines were cut from main.nf" \
-  "$(cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh" | wc -l | tr -d ' ')" 4
+  "$(cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh" | wc -l | tr -d ' ')" 5
 cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh"
 cp "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "$M/"
 mod() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "${REPO}/bin:/pgp-bin:ro" \

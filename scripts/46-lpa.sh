@@ -68,14 +68,17 @@ echo "[2/4] Read depth over the KIV-2 and single-copy LPA exons (samtools bedcov
 echo "      and the reads at the 4925G>A sites (samtools mpileup, every MAPQ)..."
 # bedcov stops on a contig the BAM has no @SQ line for: without chr6 the
 # tables stay empty and the count is not assessed. mpileup runs once per site
-# (-r), every MAPQ, duplicates left out, bases of quality 13 or more. The
-# LPA_DEPTH process runs the same commands.
+# (-r), every MAPQ, duplicates left out, bases of quality 13 or more. A
+# failed mpileup leaves the count to run: the pileup then holds one line that
+# is not mpileup output, so 4925G>A reads 'not assessed'. The LPA_DEPTH
+# process runs the same commands.
 # shellcheck disable=SC2016  # $1 to $7 belong to the inner bash, the program to awk
 run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
     if samtools view -H "$2" | awk -F "\t" "$5"; then
       samtools bedcov -j "$1" "$2" > "$3"
       samtools bedcov -j -Q 1 "$1" "$2" > "$4"
-      while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "$r" "$2"; done < "$7" > "$6"
+      ( while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "$r" "$2" || exit 1; done < "$7" ) > "$6" \
+        || echo "# samtools mpileup failed: 4925G>A not assessed" > "$6"
     else : > "$3"; : > "$4"; : > "$6"; fi' \
   _ "$(cpath "$BED")" "$(cpath "$BAM")" "$(cpath "$DEPTH")" "$(cpath "$DEPTH_Q1")" \
   '$1 == "@SQ" {for (i = 2; i <= NF; i++) if ($i == "SN:chr6") f = 1} END {exit !f}' \

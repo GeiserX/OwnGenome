@@ -709,7 +709,11 @@ def smn1_marker(counts, smn_table=None):
     2+0 (SMN1_NOT_PROOF)."""
     m = MARKERS["SMN1_27134"]
     a = assess_marker("SMN1_27134", counts)
-    ps, ps_text, ag = smn_copy_numbers(smn_table)
+    try:
+        ps, ps_text, ag = smn_copy_numbers(smn_table)
+    except OSError as e:
+        print(f"WARNING: {e}; the SMN copy numbers are not read", file=sys.stderr)
+        ps, ps_text, ag = None, "not read (the SMN table could not be read)", None
     copies = "."
     if a["status"] in ("present", "uncertain") and ag is not None and a["fraction"] != ".":
         copies = f"{float(a['fraction']) * ag:.1f}"

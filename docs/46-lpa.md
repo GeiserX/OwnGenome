@@ -91,7 +91,7 @@ The variant is the last base of the second KIV-2 exon, G>A on LPA's minus strand
 | `not seen` | 2 reads with T or fewer (one or two can be sequencing errors) |
 | `uncertain` | between the two |
 | `too little depth` | under 100 reads over the seven positions together |
-| `not assessed` | the pileup could not be read |
+| `not assessed` | the pileup could not be read (also when `samtools mpileup` failed; the count still runs), or the count found that the aligner left out the reads of MAPQ 0, which are the reads a carrying repeat gives |
 
 What a short-read fraction cannot say: which chromosome or which repeat carries the variant, so whether it sits on the small or the large isoform. A variant in one repeat among many gives few reads, so `not seen` is not proof of absence at low depth.
 
