@@ -168,15 +168,15 @@ This is every step script that no e2e case runs, plus the full-size index build 
 | 02b (long-read alignment) | long reads; the e2e fixture has none | the minimap2 image's smoke test, which maps synthetic HiFi reads with `-x map-hifi`; nothing runs the script |
 | 03e (Clair3) | long reads; the e2e fixture has none | the image's smoke test, with a recall check on synthetic HiFi reads and a check that the two model directories the script names exist; the fake-docker suite runs the script |
 | 04c (Sniffles2) | long reads; the e2e fixture has none | the image's smoke test on the synthetic HiFi alignment; `tests/fake-docker/bash-step-partial-outputs.sh` runs the script |
-| 15 (duphold) | no case yet | the image's smoke test on a planted deletion; `tests/fake-docker/bash-step-sv.sh` runs the script; the Nextflow module is stub-run |
-| 18 (CNVpytor) | no case yet; it needs its own resource files | the image's smoke test; the SV merge case reads a planted CNVpytor VCF, not one CNVpytor wrote |
+| 15 (duphold) | the bash step: no case yet | case `nf-wiring-2-sv-str-tools` runs the Nextflow `DUPHOLD` and `DUPHOLD_FILTER` with the real image on the fixture's Manta calls; the image's smoke test on a planted deletion; `tests/fake-docker/bash-step-sv.sh` runs the script |
+| 18 (CNVpytor) | the bash step: no case yet | case `nf-wiring-2-sv-str-tools` runs the Nextflow `CNVPYTOR` and `CNVPYTOR_VCF` with the real image and the pinned GC and mask files; the image's smoke test; the SV merge case reads a planted CNVpytor VCF, not one CNVpytor wrote |
 | 29 (somatic Mutect2) | no case yet | `tests/fake-docker/bash-step-somatic-mito.sh` checks the Mutect2 command line |
 | 03c (Strelka2) | no case yet | the image's smoke test, with a recall check against the truth slice |
 | 03d (Octopus) | no case yet | the image's smoke test, with a recall check against the truth slice; case `bash-step-bash42` runs the script under bash 4.2 against the fake docker |
 | 04a (TIDDIT) | no case yet | the image's smoke test; settle-doubts question 4 runs the script with only a BWA-MEM2 index; case `bash-step-bash42` and `tests/fake-docker/bash-step-sv.sh` run it against the fake docker |
 | chip-to-vcf (array data to VCF) on a vendor download | case `consumer-export-1` runs it only on the 23andMe and AncestryDNA files step 40 wrote | `tests/test_chip_to_vcf.sh` in the unit-tests job runs the script with the real bcftools and Picard images on two ten-row vendor files |
 
-The Nextflow ExpansionHunter module is only stub-run (`-profile test_all -stub` in `nextflow.yml`); the bash step 09 runs in case `bash-step-09-str`.
+Case `nf-wiring-2-sv-str-tools` runs the Nextflow `EXPANSION_HUNTER` module with the real image on the fixture's BAM (the bundled catalog cut to the fixture's contigs); the bash step 09 runs in case `bash-step-09-str`.
 
 ## The settle-doubts job
 
