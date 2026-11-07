@@ -63,9 +63,8 @@ process HTML_REPORT {
     script:
     def id = meta.id
     // single-quoted on the command line below, so a ' in a name is closed, escaped and reopened
-    def sq = { String v -> v.replace("'", "'\\''") }
-    def gvcf = meta.gvcf ? sq(meta.gvcf[0].toString()) : ''
-    def gvcf_index = meta.gvcf ? sq(meta.gvcf[1].toString()) : ''
+    def gvcf = meta.gvcf ? meta.gvcf[0].toString().replace("'", "'\\''") : ''
+    def gvcf_index = meta.gvcf ? meta.gvcf[1].toString().replace("'", "'\\''") : ''
     def gvcf_suffix = gvcf_index.endsWith('.csi') ? 'csi' : 'tbi'
     def release = workflow.manifest.version ?: ''
     """
