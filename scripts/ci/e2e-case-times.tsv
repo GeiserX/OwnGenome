@@ -74,6 +74,7 @@ clinvar-cpsr-quality-1	shard	5	clinvar-clip-check-1
 cn-engine-1-parity	shard	33	-
 cn-intervals-1-catalog	shard	0	-
 cn-intervals-2-hg002	shard	19	-
+cn-report-1-tables	shard	60	-
 comphet-phasing-1-reads	shard	16	clinical-filter-mane-and-quality-1-tiers
 construct-scan-1-both	shard	42	-
 consumer-export-1	shard	59	-
@@ -92,6 +93,7 @@ followups-cn-1-couple-report	shard	69	-
 genome-lookup-1	shard	7	-
 genotype-rule-rows-1-str-extra	shard	8	-
 genotype-rules-1-phase	shard	37	-
+genotype-rules-2-g2	shard	20	-
 haplogroup-explore-1-files	shard	59	-
 hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-
@@ -109,6 +111,8 @@ nextflow-from-fastq-3-sexcheck	shard	97	-
 nextflow-hardening-1-manta	shard	21	-
 nextflow-hardening-2-nf	shard	643	bash-step-19-delly,nextflow-hardening-1-manta
 nextflow-report-parity-1-sections	shard	206	clinvar-clip-check-1,comphet-phasing-1-reads
+nf-wiring-1-report-tables	shard	300	clinvar-clip-check-1
+nf-wiring-2-sv-str-tools	shard	900	-
 output-contract-1-hg002	shard	30	-
 paralog-catalog-1-gba	shard	114	-
 paralog-checks-and-doc-fixes-1-hba	shard	57	-
