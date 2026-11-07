@@ -550,7 +550,7 @@ MARKERS = {
     # the block bin/lpa_kiv2.py counts as N + 2 copies (N KIV-2 repeats and
     # one KIV-1 per chromosome). dbSNP names the first KIV-2 copy only.
     "LPA_KIV2_4925": {
-        "name": "LPA KIV-2 4925G>A", "chrom": "chr6", "ref": "C", "alt": "T",
+        "name": "LPA KIV-2 4925G>A", "chrom": "chr6", "ref": "T", "alt": "C",
         "dbsnp": ("rs1484919544", "chr6", 160640667, "C", "T"),
         "copies": (160646214, 160640667, 160635123, 160629574, 160624030, 160618484, 160612932),
         "context": "GACTCCTTACCTTGTTCGGAA",
@@ -735,7 +735,7 @@ def smn1_marker(counts, smn_table=None):
     return [("marker", m["name"]), ("rsid", m["dbsnp"][0]), ("status", st), ("alt_reads", a["alt_reads"]),
             ("depth", a["depth"]), ("fraction", a["fraction"]), ("copies", copies),
             ("smn1_pscn", ps_text), ("agcn", "." if ag is None else str(ag)),
-            ("message", head + body + " " + SMN1_NOT_PROOF)]
+            ("message", head + body)]
 
 
 def write_metric_table(path, rows):
