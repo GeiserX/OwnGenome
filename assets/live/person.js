@@ -90,7 +90,8 @@
         card.focus({ preventScroll: true });
       }
     } else if (window.location.hash === '#progress') {
-      window.scrollTo(0, 0);  // #progress is also the section's id: keep the head and the rail in view
+      // #progress is also the section's id, so the browser jumps to it: keep the head and the rail in view.
+      setTimeout(function () { window.scrollTo(0, 0); }, 0);
     }
   }
   function go(hash) {
