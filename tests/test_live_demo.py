@@ -162,6 +162,8 @@ def json_link_problems(out):
         if not found:
             bad.append(f"{rel}: no link at all")
         for u in found:
+            if u.startswith("https://"):  # an explore link of the report (a haplogroup tree), opened by the reader
+                continue
             p = os.path.normpath(os.path.join(base, u))
             if u.startswith("/") or not (os.path.isfile(p) or os.path.isfile(os.path.join(p, "index.html"))):
                 bad.append(f"{rel}: {u}")
@@ -296,7 +298,8 @@ def too_wide(b):
 
 
 def phone_checks(b, base):
-    b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": True},
+    # mobile False: a mobile viewport zooms out to fit a page that overflows, which would hide the overflow.
+    b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False},
            b.session)
     try:
         wide = {}
