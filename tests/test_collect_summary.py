@@ -1328,7 +1328,8 @@ def str_extra_readings(work, schema):
     import html as htmlmod
     fmt = "GT:REPCN"
 
-    def made_up(name, tg, t, ugt, r117h=None, ugt_pc=None, stranger=False):
+    def made_up(name, tg, t, ugt, r117h=None, ugt_pc=None, stranger=False, traits_text=None, side_age=0,
+                run_status=None):
         x = os.path.join(work, "str-extra", name)
         eh = (f"chr7\t117548606\t.\tT\t<STR>\t.\tPASS\tEND=117548628;REPID=CFTR;VARID=CFTR_TG\t{fmt}\t0/1:{tg}\n"
               f"chr7\t117548628\t.\tT\t<STR>\t.\tPASS\tEND=117548635;REPID=CFTR;VARID=CFTR_T\t{fmt}\t0/1:{t}\n"
@@ -1342,12 +1343,15 @@ def str_extra_readings(work, schema):
             put(f"{x}/expansion_hunter/{name}_eh_catalog.json", json.dumps([
                 {"LocusId": "CFTR", "NoThresholds": "the CFTR tract"},
                 {"LocusId": "UGT1A1", "NoThresholds": "the UGT1A1 repeat"}]))
-        if r117h:
-            put(f"{x}/traits/{name}_traits.tsv", "\t".join(collect_summary.traits_report.OUT_COLUMNS) + "\n"
-                + f"rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\t{r117h}\tcalled\tr\tno\tn\t32404922\n")
+        if r117h or traits_text:
+            put(f"{x}/traits/{name}_traits.tsv", traits_text or "\t".join(collect_summary.traits_report.OUT_COLUMNS)
+                + "\n" + f"rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\t{r117h}\tcalled\tr\tno\tn\t32404922\n",
+                age_days=side_age)
         if ugt_pc:
             put(f"{x}/cpic/{name}_phenotypes.tsv", "Gene\tDiplotype\tPhenotype\tStatus\n"
-                f"UGT1A1\t{ugt_pc}\tsome function\tnon-normal\n")
+                f"UGT1A1\t{ugt_pc}\tsome function\tnon-normal\n", age_days=side_age)
+        if run_status:
+            put(f"{x}/logs/run_status.tsv", run_status)
         summ, txt, html_ = render(x, name)
         ed = summ["sections"]["expansions"]["data"]
         return summ, ed, {r["locus"]: r for r in ed.get("readings") or []}, txt, htmlmod.unescape(html_)
@@ -1413,6 +1417,39 @@ def str_extra_readings(work, schema):
           [rd[k]["status"] for k in ("CFTR", "UGT1A1", "SLC6A4")] == ["not_sized", "not_sized", "not_tested"]
           and "STR_EXTRA_LOCI=yes" in rd["CFTR"]["reading"] and "CFTR intron 9 (legacy IVS8) TG and poly-T tract: "
           "not sized" in txt, rd)
+    check("extra repeats: the setup hint is a command that runs, with the script path and the genome folder",
+          all("STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir>" in rd[k]["reading"]
+              for k in ("CFTR", "UGT1A1")), rd)
+
+    # No 5T copy: the poly-T still matters beside R117H, so the line must not say it changes nothing.
+    _, _, rd, _, _ = made_up("EXH", "11/11", "7/9", "7/7", r117h="G/A")
+    c = rd["CFTR"]
+    check("extra repeats: no 5T copy with one R117H copy says R117H sits on the 7T or 9T copy",
+          c.get("five_t") is False and "R117H (G/A) is read" in c["reading"] and "7T or 9T copy" in c["reading"]
+          and "does not change how a CFTR finding is read" not in c["reading"] and c.get("r117h") == "G/A", c)
+    _, _, rd, _, _ = made_up("EXI", "11/11", "7/7", "7/7")
+    check("extra repeats: no 5T copy and no traits table says R117H was not read",
+          "R117H was not read" in rd["CFTR"]["reading"], rd["CFTR"])
+
+    # A TA length with no named allele: no function claim and no PharmCAT comparison.
+    _, _, rd, _, _ = made_up("EXJ", None, None, "7/11", ugt_pc="*1/*1")
+    u = rd["UGT1A1"]
+    check("extra repeats: UGT1A1 TA6/TA10 makes no function claim and is not compared with PharmCAT",
+          u.get("genotype") == "*1/TA10" and u.get("agreement") == "not_compared"
+          and "decreased-function" not in u["reading"] and "not compared with PharmCAT" in u["reading"], u)
+
+    # The traits and CPIC tables are read with their sections' states.
+    bad_traits = "rsid\tgenotype\tstatus\nrs78655421\tG/A\tcalled\n"
+    _, _, rd, _, _ = made_up("EXK", "12/12", "5/7", "7/8", traits_text=bad_traits)
+    check("extra repeats: an unreadable traits table gives no R117H, and says why",
+          rd["CFTR"].get("phase") == "not_read" and "traits table is unreadable" in rd["CFTR"]["reading"], rd["CFTR"])
+    status = f"meta\tstarted_epoch\t{time.time() - DAY}\nstep\t09\tok\nstep\t27\tskipped\nstep\t42\tskipped\n"
+    _, _, rd, _, _ = made_up("EXL", "12/12", "5/7", "7/8", r117h="G/A", ugt_pc="*1/*28", side_age=3,
+                             run_status=status)
+    check("extra repeats: R117H and PharmCAT from tables of an earlier run are said to be so",
+          "R117H from step 42's traits table of an earlier run" in rd["CFTR"]["reading"]
+          and rd["UGT1A1"]["agreement"] == "agrees" and "step 27's table is from an earlier run" in rd["UGT1A1"]["reading"],
+          rd)
 
 
 SMN_COLS = ("chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\t"
