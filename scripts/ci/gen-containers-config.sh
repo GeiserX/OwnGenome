@@ -242,9 +242,11 @@ check() {
   fi
   rm -f "$want"
   # Every process, and every alias a workflow includes one under (include { A as B }):
-  # a withName selector matches the alias, not the module's name.
+  # a withName selector matches the alias, not the module's name. Only the
+  # list between the braces is read, so a trailing "// x as y" comment is not.
   procs=$( { cat "${ROOT}"/modules/local/*/main.nf | sed -nE 's/^process[[:space:]]+([A-Za-z0-9_]+).*/\1/p'
              cat "${ROOT}"/main.nf "${ROOT}"/workflows/*.nf 2>/dev/null | grep -E '^[[:space:]]*include[[:space:]]*\{' \
+               | sed -nE 's/^[[:space:]]*include[[:space:]]*\{([^}]*)\}.*/\1/p' \
                | grep -oE '[A-Za-z0-9_]+[[:space:]]+as[[:space:]]+[A-Za-z0-9_]+' | awk '{print $3}' || true; } | sort -u)
   [ -n "$procs" ] || { echo "FAIL: found no process in modules/local/*/main.nf"; return 1; }
   sels=$(sed -nE -e "s/^[[:space:]]*withName:[[:space:]]*'([A-Za-z0-9_]+)'[[:space:]]*\{[[:space:]]*container[[:space:]]*=[[:space:]]*'[^']+'[[:space:]]*\}.*/\1/p" \
@@ -363,6 +365,16 @@ self_test() {
   printf '%s\n' "include { ROH as ROH_AGAIN; VEP as VEP_AGAIN } from '../modules/local/roh/main'" >> "${tmp}/new-alias/workflows/clinical.nf"
   expect new-alias '^FAIL: process ROH_AGAIN has no container'
   expect new-alias '^FAIL: process VEP_AGAIN has no container'
+
+  # A trailing comment that reads like an alias is not one: the copy stays clean.
+  copy comment-alias
+  printf '%s\n' "include { ROH } from '../modules/local/roh/main' // ROH as ROH_COMMENT" >> "${tmp}/comment-alias/workflows/clinical.nf"
+  rc=0; out=$("$0" --check --root "${tmp}/comment-alias" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "self-test: a trailing // comment was read as an alias:"; printf '%s\n' "$out"; fail=1
+  else
+    echo "self-test: a trailing // comment is not read as an alias"
+  fi
 
   # A selector left behind for a process that no longer exists.
   copy stray

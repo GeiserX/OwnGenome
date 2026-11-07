@@ -72,7 +72,7 @@ Step 35 (and the PARASCOPY module) runs these three rows one after the other and
 - **CCL3L1**: the no-ALT reference holds one copy of CCL3L1/CCL3L3 (CCL3L3), so every read of either lands there and the row counts both together. The count goes back to Gonzalez 2005 (PMID 15637236), but the disease links reported for it are disputed, so no reading is given. The test fails when a CCL3L1 reading names a disease.
 - **DEFB4** has no row. The beta-defensin repeat that carries it (DEFB4B to DEFB103B) lies in the paralog copies of SPAG11A's Parascopy model, so Parascopy owns it under the rule below. The test plants a DEFB4 row there and checks that the owner check catches it.
 
-Both reports show `<sample>_cn_dosage.tsv` in step 35's section, one line per locus ([step 35](35-paralogs.md#in-the-reports)). `main.nf` does not pass it to the Nextflow `HTML_REPORT` yet, so there the report says the table is not in the output; step 24 reads it from the sample folder.
+Both reports show `<sample>_cn_dosage.tsv` in step 35's section, one line per locus ([step 35](35-paralogs.md#in-the-reports)). The Nextflow `HTML_REPORT` gets it from `PARASCOPY`; step 24 reads it from the sample folder.
 
 ### The CYP21A2 row
 
