@@ -2416,11 +2416,19 @@ def main():
             "Path_no_call\tAncestral_in_terminal\tSNPs_called\tMin_depth\tTree\tPositions\t"
             "Outvoted_ancestral\nS\tNA\t0\t0\t0\t0\t.\t12\t10\tYFull YTree 14.06.0\t"
             "Yleaf 4.1.6 tables\t.\n")
+        # bin/y_tree_place.py writes the path table's header alone when no branch is derived.
+        put(f"{h}/y_haplogroup/S_y_tree_path.tsv", "Level\tBranch\tSNPs\tOn_tables\tDerived\tAncestral\t"
+            "No_call\tAncestral_SNPs\n")
         summ_na, txt_na, _ = render(h)
         check("Y tree: Hg NA reads as no derived call, and nothing ancestral is printed",
-              summ_na["sections"]["y_tree"]["data"].get("haplogroup") == "no branch has a derived call"
+              summ_na["sections"]["y_tree"]["state"] == "ok"
+              and summ_na["sections"]["y_tree"]["data"].get("haplogroup") == "no branch has a derived call"
+              and summ_na["sections"]["y_tree"]["data"].get("path") == []
               and "Ancestral inside the terminal branch" not in txt_na,
-              summ_na["sections"]["y_tree"]["data"])
+              summ_na["sections"]["y_tree"])
+        put(f"{h}/y_haplogroup/S_y_tree_path.tsv", "Level\tSNPs\n")
+        check("Y tree: a path table with no Branch column is unreadable",
+              render(h)[0]["sections"]["y_tree"]["state"] == "unreadable")
         os.remove(f"{h}/y_haplogroup/S_y_tree.txt")
         os.remove(f"{h}/y_haplogroup/S_y_tree_path.tsv")
 

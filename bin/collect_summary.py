@@ -2638,9 +2638,14 @@ def sec_y_tree(d, s):
            "explore": haplogroup_explore("y", hg)}
     lvl = first_existing(d, [f"y_haplogroup/{s}_y_tree_path.tsv"])
     if lvl:
-        prows = read_tsv(lvl)
-        if not prows or "Branch" not in prows[0]:
-            raise Unreadable(f"{os.path.basename(lvl)} has no Branch column or no rows")
+        # bin/y_tree_place.py writes the header alone when no branch is derived:
+        # an empty path, not an unreadable file.
+        with open_text(lvl) as f:
+            rd = csv.DictReader(f, delimiter="\t")
+            prows = list(rd)
+            header = rd.fieldnames or []
+        if "Branch" not in header:
+            raise Unreadable(f"{os.path.basename(lvl)} has no Branch column")
         out["path"] = [{k: (row.get(k) or "") for k in
                         ("Level", "Branch", "SNPs", "On_tables", "Derived", "Ancestral", "No_call",
                          "Ancestral_SNPs")} for row in prows]
