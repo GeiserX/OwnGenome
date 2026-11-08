@@ -1,0 +1,4 @@
+sample_a	sample_b	declared	expected_relatedness	segments	shared_cm	ibd2_cm	longest_cm	analysed_cm	shared_fraction	relatedness	degree
+DEMO-001	DEMO-002	partners	0	3	9.8	0.0	4.1	3480.0	0.003	0.001	distant or unrelated (short segments only)
+DEMO-001	DEMO-003	parent-child	0.5	22	3471.5	0.0	283.4	3480.0	0.998	0.499	first degree (parent-child)
+DEMO-002	DEMO-003	parent-child	0.5	22	3474.2	0.0	283.9	3480.0	0.998	0.499	first degree (parent-child)
