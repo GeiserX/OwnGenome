@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-mode="{{mode}}" data-run="{{run}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family {{run}}: OwnGenome</title>
+<link rel="stylesheet" href="{{assets}}/live.css">
+<script src="{{assets}}/core.js" defer></script>
+<script src="{{assets}}/family-page.js" defer></script>
+{{plugins}}
+</head>
+<body class="page-family">
+<header class="top">
+  <a class="brand" href="/">OwnGenome</a>
+  <nav class="crumbs" aria-label="Where you are"><span id="run-name">Family {{run}}</span></nav>
+  <nav class="links"><a href="/" id="home-link">All runs</a></nav>
+</header>
+<main id="family" class="family">
+  <p class="dim">Loading the family.</p>
+</main>
+</body>
+</html>

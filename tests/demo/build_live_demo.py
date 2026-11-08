@@ -5,14 +5,19 @@
 
 writes DIR, which the docs workflow publishes at /demo/ of the docs site:
 
-  index.html                    the list of runs, as the live site's / shows it
-  assets/                       assets/live/ as it is: live.js, live.css, plugins/*.js
-  runs/DEMO-001/index.html      the live page (assets/live/index.html) in replay mode
+  index.html                    the home page (assets/live/home.html), as the live site's / shows it
+  runs.json                     what the home page draws, as /runs.json gives it
+  assets/                       assets/live/ as it is: core.js, live.js, person.js, live.css, plugins/*.js
+  runs/DEMO-001/index.html      the person page (assets/live/index.html) in replay mode
   runs/DEMO-001/frames.json     the page's state.json at each moment of the run
+  runs/DEMO-001/results.json    the person's results (bin/live_results.py), as the results
+                                plugin serves them at the end of the run; each card shows
+                                once the replay reaches the end of its steps
   runs/DEMO-001/...             the files the plugins point at (the charts, the
                                 search index, the re-check), the report as
                                 report.html and the files it links to
-  runs/DEMO-FAMILY/             the family page of DEMO-001 and its invented partner
+  runs/DEMO-FAMILY/             the family page (assets/live/family.html) of DEMO-001 and its
+                                invented partner, with family.json as the family plugin serves it
   family/DEMO-FAMILY/           the pedigree and the files the family page opens
 
 No state is written by hand. The frames are bin/owngenome_live.py's own
@@ -63,7 +68,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 BIN = os.path.join(REPO, "bin")
 sys.path.insert(0, BIN)
+import live_results  # noqa: E402
 import owngenome_live  # noqa: E402
+import owngenome_live_family  # noqa: E402
 import owngenome_recheck  # noqa: E402
 import pedigree_svg  # noqa: E402
 import run_headroom  # noqa: E402
@@ -217,9 +224,16 @@ def replay(root, held, drop_hook=None):
         fam = live.state(live.run(FAMILY))
         fam["generated_utc"] = checked
         fam["plugins"] = relink(fam["plugins"])
+        index = live.runs_index()
+        run, d = live.run(SAMPLE), os.path.join(root, SAMPLE)
+        # The demo's run folder has no run_status.tsv (OTHER_RUN), so the server knows it from its
+        # messages alone; the files it may serve are those of the folder all the same.
+        results = live_results.build(SAMPLE, live.summary(SAMPLE, d, live.base_state(run)),
+                                     owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE}))
+        results["generated_utc"] = checked
     finally:
         time.time, run_headroom._statvfs, run_headroom.physical_memory = real
-    return frames, {"t": checked, "state": fam}, app
+    return frames, {"t": checked, "state": fam, "index": index, "results": results}, app
 
 
 # --- the static folder ----------------------------------------------------------------------
@@ -229,14 +243,45 @@ def with_csp(page):
     return page.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + meta, 1)
 
 
-def run_page(name, plugin_js):
-    with open(os.path.join(ASSETS, "index.html")) as f:
+def run_page(name, plugin_js, template="index.html"):
+    with open(os.path.join(ASSETS, template)) as f:
         page = f.read()
     tags = "\n".join(f'<script src="../../assets/plugins/{html.escape(f)}" defer></script>' for f in plugin_js)
     page = (page.replace("{{assets}}", "../../assets").replace("{{run}}", html.escape(name))
-            .replace("{{mode}}", "replay").replace("{{plugins}}", tags)
-            .replace('<a href="/">All runs</a>', '<a href="../../">All runs</a>'))
+            .replace("{{mode}}", "replay").replace("{{plugins}}", tags).replace('href="/"', 'href="../../"'))
     return with_csp(page)
+
+
+def home_page(index):
+    """assets/live/home.html as the server fills it, with a line saying the people are invented and no
+    log-out button (a static host has no session)."""
+    with open(os.path.join(ASSETS, "home.html")) as f:
+        page = f.read()
+    items = "\n".join(f'<li><a href="{html.escape(unroot(r["url"]))}">{html.escape(r["name"])}</a></li>' for r in index["runs"])
+    page = (page.replace("{{assets}}", "assets").replace("{{data}}", "runs.json").replace("{{runs}}", items)
+            .replace('<form method="post" action="/logout" class="logout"><button type="submit">Log out</button></form>',
+                     '<p class="demo-note">A demo: the people, the run and the results are invented.</p>'))
+    return with_csp(page)
+
+
+def unroot(v):
+    """/runs.json's absolute links as links relative to the site's root."""
+    if isinstance(v, dict):
+        return {k: unroot(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [unroot(x) for x in v]
+    if isinstance(v, str) and re.match(r"^/(?:runs|family)/", v):
+        return v[1:]
+    return v
+
+
+def family_json(root, index):
+    """family.json as bin/owngenome_live_family.py serves it, its links relative to runs/DEMO-FAMILY/."""
+    out = owngenome_live_family.family_page(FAMILY, os.path.join(root, FAMILY))
+    by = {r["name"]: r for r in index["runs"]}
+    out["runs"] = {p["sample"]: {k: by[p["sample"]][k] for k in ("url", "state", "planned", "done", "attention", "results")}
+                   for p in out["state"].get("members") or [] if p["sample"] in by}
+    return relink(out)
 
 
 def plain_page(title, body, css):
@@ -255,23 +300,22 @@ def write_json(path, obj):
 def write_site(out, root, frames, fam):
     if os.path.exists(out):
         shutil.rmtree(out)
-    shutil.copytree(ASSETS, os.path.join(out, "assets"), ignore=shutil.ignore_patterns("index.html", "login.html"))
+    shutil.copytree(ASSETS, os.path.join(out, "assets"),
+                    ignore=shutil.ignore_patterns("index.html", "login.html", "home.html", "family.html"))
     plugin_dir = os.path.join(ASSETS, "plugins")
     plugin_js = sorted(f for f in os.listdir(plugin_dir) if owngenome_live.ASSET_RE.match(f) and f.endswith(".js")) \
         if os.path.isdir(plugin_dir) else []
 
-    runs = [(SAMPLE, "sample"), (FAMILY, "family")]
-    items = "\n".join(f'<li><a href="runs/{n}/">{n}</a> <span class="kind">{k}</span></li>' for n, k in runs)
     with open(os.path.join(out, "index.html"), "w") as f:
-        f.write(plain_page("Runs", '<p class="muted">A demo of the live site on DEMO-001, an invented sample: '
-                           'the run, the results and the family are made up. Nothing here is a real person.</p>'
-                           f'<ul class="runs">{items}</ul>', "assets/live.css"))
+        f.write(home_page(fam["index"]))
+    write_json(os.path.join(out, "runs.json"), unroot(fam["index"]))
 
     sd, d = os.path.join(out, "runs", SAMPLE), os.path.join(root, SAMPLE)
     os.makedirs(sd)
     with open(os.path.join(sd, "index.html"), "w") as f:
         f.write(run_page(SAMPLE, plugin_js))
     write_json(os.path.join(sd, "frames.json"), {"interval_ms": INTERVAL_MS, "autoplay": True, "frames": frames})
+    write_json(os.path.join(sd, "results.json"), fam["results"])
     files = {f"{SAMPLE}_report.html": "report.html"}
     # The files the report links to, as the live server lists them (Live.run_files reads no state).
     files.update({rel: rel for rel in owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE})})
@@ -293,8 +337,9 @@ def write_site(out, root, frames, fam):
     fd = os.path.join(out, "runs", FAMILY)
     os.makedirs(fd)
     with open(os.path.join(fd, "index.html"), "w") as f:
-        f.write(run_page(FAMILY, plugin_js))
-    write_json(os.path.join(fd, "frames.json"), {"interval_ms": INTERVAL_MS, "frames": [fam]})
+        f.write(run_page(FAMILY, plugin_js, "family.html"))
+    write_json(os.path.join(fd, "frames.json"), {"interval_ms": INTERVAL_MS, "frames": [{"t": fam["t"], "state": fam["state"]}]})
+    write_json(os.path.join(fd, "family.json"), family_json(root, fam["index"]))
     famdir, ffiles = os.path.join(out, "family", FAMILY), os.path.join(root, FAMILY)
     os.makedirs(famdir)
     order, members, _ = pedigree_svg.load(ffiles)
