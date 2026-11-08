@@ -37,7 +37,7 @@ This pipeline takes raw sequencing data (FASTQ/BAM/VCF) from any vendor and runs
 - One Nextflow DSL2 pipeline from FASTQ, BAM or VCF to the report, and every step also as a bash script you can run on its own.
 - Optional family analysis of two or more processed relatives (step 38, a pedigree file): a GLnexus joint call, a somalier check that the samples are the people the pedigree says, which allele a child got from each parent, de novo candidates with both parents, and compound heterozygotes in trans or in cis ([multi-sample](https://geiserx.github.io/OwnGenome/multi-sample/#family-analysis-step-38-opt-in)).
 - Optional couple carrier screen for two partners of the pedigree (step 39): the recessive genes where both carry a change (ClinVar hits, deletions, SMN1 copy loss, FMR1 and FXN repeats) with the chance for a child, the X-linked findings, and what the screen does not see ([step 39](https://geiserx.github.io/OwnGenome/39-couple/)).
-- On the live site, a page per family: the pedigree drawn from the family file, each child's chromosome map, the relationship check, the shared segments and the couple screen ([family page](https://geiserx.github.io/OwnGenome/multi-sample/#on-the-live-site)).
+- On the live site, a page per family: a pedigree where each sequenced person opens their own page, the couple screen, who is related how as a grid, each child's stretches painted by parent, the de novo and compound-het candidates, and the members' medicines genes and haplogroups side by side ([family page](https://geiserx.github.io/OwnGenome/multi-sample/#on-the-live-site)).
 - Ends in an HTML report and a MultiQC summary. Alternative callers (GATK, FreeBayes, Strelka2, Octopus, BWA-MEM2, TIDDIT, GRIDSS) are there for benchmarking.
 
 ## Quick start
@@ -66,7 +66,7 @@ The full documentation is at **https://geiserx.github.io/OwnGenome/**, one page 
 - [Vendor compatibility guide](https://geiserx.github.io/OwnGenome/vendor-guide/): what each provider delivers and how to get it
 - [Pipeline overview](https://geiserx.github.io/OwnGenome/pipeline-overview/): every step with its tool and image, which ones a default run includes, and the page for each step
 - [Nextflow](https://geiserx.github.io/OwnGenome/nextflow/): the workflow runner, parallel steps and resume
-- [Watch a run live](https://geiserx.github.io/OwnGenome/live-site/): a step map in the browser while the run goes, behind a password. The [demo](https://geiserx.github.io/OwnGenome/demo/) replays an invented run
+- [Watch a run live](https://geiserx.github.io/OwnGenome/live-site/): a results page per person, laid out by the report's chapters, a page per family, and the step map in a Progress tab while the run goes, behind a password. The [demo](https://geiserx.github.io/OwnGenome/demo/) replays an invented run
 - [Interpreting your results](https://geiserx.github.io/OwnGenome/interpreting-results/): what each report means and what to do with it
 - [Multi-sample comparison](https://geiserx.github.io/OwnGenome/multi-sample/): partners, siblings, parents
 - [Long-read guide](https://geiserx.github.io/OwnGenome/long-read-guide/): Nanopore and PacBio HiFi
