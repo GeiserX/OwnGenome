@@ -580,6 +580,22 @@ def psv_assess(row, b, counts):
     return b
 
 
+def psv_message(row, b):
+    """'.' for a called psv row, else 'not assessed: ' and why. A low MAPQ 0
+    share is spelled out: the reports print this message, and the reason
+    code alone would not say that the BAM, not the genome, stopped the call."""
+    if b["status"] == "called":
+        return "."
+    if b["reason"] == "low_mapq0_share":
+        targets = " and ".join(n.removesuffix("_BODY") for n, *_ in row["_targets"])
+        return (f"not assessed: the BAM has no multi-mapping reads here (reads of mapping quality 0 make up "
+                f"{100 * b['mapq0_share']:.1f}% of the depth over {targets}, "
+                f"under {100 * row['_mapq0_min']:g}%), so the aligner left out the reads that fit both copies (as "
+                "novoalign does by default) and the module total would come out low and read as a deletion; "
+                "realign with minimap2 (step 02) or BWA-MEM")
+    return f"not assessed: {b['reason'] or '.'}"
+
+
 def psv_table(row, b):
     """([(metric, value)], one line) of a psv row's step table."""
     f = (lambda x: "." if x is None else f"{x:.2f}")
@@ -591,7 +607,9 @@ def psv_table(row, b):
         rows.append((f"psv_{name}", f"{s['gene_reads']} gene, {s['pseudo_reads']} pseudogene, {s['other_reads']} other"
                                     f" reads; copies {d(s['copies'])} ({f(s['estimate'])}); ratio {f(s['ratio'])}"))
     rows += [("target_depth", f(b["target_depth"])), ("control_depth", f(b["control_depth"])),
-             ("reason", b["reason"] or "."), ("reading", b["reading"] or ".")]
+             ("reason", b["reason"] or "."), ("reading", b["reading"] or "."),
+             ("mapq0_share", "." if b.get("mapq0_share") is None else f"{b['mapq0_share']:.3f}"),
+             ("message", psv_message(row, b))]
     line = (f"{row['locus']}: {b['status']} ({b['reason'] or b.get('finding')}; {d(b['copies'])} gene copies, "
             f"module total {d(b.get('module_total'))} of {d(b['expected'])})")
     return rows, line
