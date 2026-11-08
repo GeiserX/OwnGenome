@@ -627,6 +627,26 @@ input[type=password] { font: inherit; background: var(--paper); color: var(--ink
 
 /* --- the phone tab bar (a person's report) --- */
 .tabbar { display: none; }
+/* The phone's folds (person.js draws them only under 700 px): one line per card or section, + to open. */
+.pfold { border-top: 1px solid var(--hair); }
+.pfold > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 0; cursor: pointer; list-style: none; }
+.pfold > summary::-webkit-details-marker { display: none; }
+.pfold > summary::after { content: "+"; grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--brass); font-size: 20px; }
+.pfold[open] > summary::after { content: "\2212"; }
+.pfold .fname { font-weight: 500; color: var(--ink); font-size: 15px; }
+.pfold .what { grid-column: 1; color: var(--ink-3); font-size: 13px; overflow-wrap: anywhere; }
+.pfold[open] > summary { margin-bottom: 8px; }
+.secfold > summary .what { grid-row: 1 / span 2; align-self: center; color: var(--ink-2); }
+@media (max-width: 700px) {
+  /* The counts as one line per level, the reading note left to the contents: the report starts sooner. */
+  .ledger { grid-template-columns: minmax(0, 1fr) !important; margin-top: 22px; }
+  .ledger a { display: flex; align-items: center; justify-content: space-between; padding: 9px 0 !important; border-right: 0; border-bottom: 1px solid var(--hair); }
+  .ledger a:last-child { border-bottom: 0; }
+  .ledger .n { font-size: 22px; margin: 0; order: 2; }
+  .ledger .w { display: none; }
+  .note.howto { display: none; }
+  section.sec { padding-top: 26px !important; margin-top: 26px !important; }
+}
 
 /* --- narrow screens: one column; on a phone a tab bar at the bottom --- */
 @media (max-width: 1100px) {

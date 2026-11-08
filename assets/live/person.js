@@ -573,11 +573,7 @@
         var li = el('li', {});
         var d = el('details', { 'data-card': c.id });
         var sum = el('summary', {});
-        var g = gate(c);
-        var what = g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
-          : g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
-          : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
-        var w2 = el('span', { 'class': 'what' }, what);
+        var w2 = el('span', { 'class': 'what' }, cardLine(c));
         if (c.caveat && c.caveat.length) { add(w2, el('span', { 'class': 'cav' }, 'Does not see: ' + U.firstSentence(c.caveat[0]))); }
         add(sum, el('span', { 'class': 'nfname' }, c.title), w2);
         add(d, sum, card(c));
@@ -613,8 +609,59 @@
       add(fb, el('a', { 'class': 'btn ghost', href: 'viewer/' }, 'Genome viewer'));
       add(body, fb);
     }
-    cs.forEach(function (c) { add(body, card(c)); });
+    cs.forEach(function (c) { add(body, phoneFold(c, sec) ? cardFold(c) : card(c)); });
     return body;
+  }
+
+  // --- the phone: what matters open, the rest one tap away -------------------------------------------
+  // Under 700 px the findings of sections 1 to 4 stay open; the cards behind them, every information
+  // card, and the bodies of sections 5 to 10 start closed, each behind one line that says what it holds.
+  // A link to a card, a section or a finding opens the folds around it (route). Wider screens draw
+  // every card open, as before.
+  var phoneQuery = window.matchMedia ? window.matchMedia('(max-width: 700px)') : null;
+  function phone() { return !!(phoneQuery && phoneQuery.matches); }
+  var LOUD = { act: true, medicine: true, carrier: true, review: true, trust: true };
+  // One line for a card: what it found, or why it has nothing to show yet.
+  function cardLine(c) {
+    var g = gate(c);
+    return g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
+      : g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
+      : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
+  }
+  // A card folds on a phone when it only informs, or when its findings already stand open in sections 1
+  // to 4 (the card is their evidence). A card the report flags with no finding of its own stays open.
+  function phoneFold(c, sec) {
+    if (!phone() || sec.n === 8) { return false; }
+    if (sec.n >= 5 || !(LOUD[c.level] || attentionNow(c))) { return true; }
+    var open = {};
+    sectionsList().forEach(function (s) { if (s.n <= 4) { s.findings.forEach(function (f) { open[f] = true; }); } });
+    var fs = (c.findings || []).filter(function (f) { return findingById(f); });
+    return fs.length > 0 && fs.every(function (f) { return open[f]; });
+  }
+  function foldSummary(name, line) {
+    var sum = el('summary', {});
+    if (name) { add(sum, el('span', { 'class': 'fname' }, name)); }
+    add(sum, el('span', { 'class': 'what' }, line));
+    return sum;
+  }
+  function cardFold(c) {
+    var d = el('details', { 'class': 'pfold', 'data-card': 'fold-' + c.id });
+    add(d, foldSummary(c.title, cardLine(c)), card(c));
+    return d;
+  }
+  // Sections 5 to 10 fold whole on a phone, unless section 5 holds a finding (a data-quality problem).
+  function sectionFolds(sec) {
+    if (!phone() || sec.n < 5) { return false; }
+    return !(sec.n === 5 && sec.findings.some(function (id) { var f = findingById(id), c = f && cardById(f.card); return c && gate(c) === 'show'; }));
+  }
+  function sectionLine(sec) {
+    if (sec.n === 9) {
+      var na = ((results && results.not_assessed) || []).length, nr = ((results && results.not_run) || []).length;
+      return na + (na === 1 ? ' thing' : ' things') + ' no step looks at, ' + nr + (nr === 1 ? ' step' : ' steps') + ' that did not run';
+    }
+    var names = sec.cards.map(cardById).filter(Boolean).map(function (c) { return c.title; });
+    if (sec.n === 10) { names = ['Database versions', 'the full report'].concat(names); }
+    return names.length ? names.join(', ') : NOT_ALL_CLEAR;
   }
   function drawSections() {
     panel.textContent = '';
@@ -627,7 +674,11 @@
       var head = sectionHead(sec);
       head.querySelector('h2').id = 'sh' + sec.n;
       add(s, head, el('div', { 'class': 'secq' }, sec.question));
-      add(s, sectionBody(sec));
+      if (sectionFolds(sec)) {
+        var d = el('details', { 'class': 'pfold secfold', 'data-card': 'sec-' + sec.n });
+        add(d, foldSummary('', sectionLine(sec)), sectionBody(sec));
+        add(s, d);
+      } else { add(s, sectionBody(sec)); }
       add(panel, s);
     });
     root.setAttribute('data-pgp-results', String(panel.querySelectorAll('article.result').length));
@@ -690,7 +741,7 @@
     add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#s5' }, 'Can I trust this?'));
     add(main, trust);
     var side = el('aside', {});
-    add(side, note('How to read this', el('span', {}, 'Sections run from what matters most to what is only interesting. A section with nothing to report still says what it looked at and what it cannot see.')));
+    add(side, note('How to read this', el('span', {}, 'Sections run from what matters most to what is only interesting. A section with nothing to report still says what it looked at and what it cannot see.'), 'howto'));
     add(side, note('A research pipeline', el('span', {}, 'Not a clinical test: anything to act on is confirmed by a certified laboratory first.')));
     add(row, main, side);
     add(slot, row);
@@ -897,8 +948,11 @@
     else { target = document.getElementById(h); }
     if (!target) { return; }
     if (target.id === 'progress') { var fold = document.getElementById('progress-fold'); if (fold) { fold.open = true; } }
-    var d = target.closest && target.closest('details');
-    if (d) { d.open = true; }
+    // Open every fold around the target (a card inside a folded section on a phone sits in two), and a
+    // folded section's own body when the link names the section.
+    for (var d = target.closest ? target.closest('details') : null; d; d = d.parentElement && d.parentElement.closest('details')) { d.open = true; }
+    var own = target.matches && target.matches('section.sec') && target.querySelector(':scope > details.secfold');
+    if (own) { own.open = true; }
     if (isCard) {
       Array.prototype.forEach.call(panel.querySelectorAll('.result.target'), function (x) { x.classList.remove('target'); });
       target.classList.add('target');
@@ -911,6 +965,16 @@
     });
   }
   window.addEventListener('hashchange', route);
+  // A link to the place the address already names fires no hashchange: open its folds all the same.
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+    if (a && a.getAttribute('href') === window.location.hash) { route(); }
+  });
+  // Turning a phone or resizing a window across 700 px draws the page again, folded or open.
+  if (phoneQuery) {
+    var redrawWide = function () { if (results) { redraw(true); } };
+    if (phoneQuery.addEventListener) { phoneQuery.addEventListener('change', redrawWide); } else if (phoneQuery.addListener) { phoneQuery.addListener(redrawWide); }
+  }
 
   // --- data ---------------------------------------------------------------------------------------
   function load() {
