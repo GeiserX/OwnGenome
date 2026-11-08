@@ -158,7 +158,7 @@
   }
   function whead(name, value, extra) {
     var h = el('p', { 'class': 'w-head' });
-    add(h, el('span', { 'class': 'w-name' }, name), ' ', el('span', { 'class': 'w-val' }, value));
+    add(h, el('span', { 'class': /^[A-Z0-9-]+( \(|$)/.test(name) ? 'w-name' : 'w-label' }, name), ' ', el('span', { 'class': 'w-val' }, value));
     if (extra) { add(h, ' ', el('span', { 'class': 'w-extra' }, extra)); }
     return h;
   }

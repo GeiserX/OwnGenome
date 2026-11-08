@@ -158,6 +158,7 @@ img.plot { max-width: 100%; height: auto; background: #fff; border-radius: 4px; 
 .w-row.w-attn { border-left-color: var(--attn); }
 .w-head { margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
 .w-name { font-weight: 600; font-family: var(--mono); font-size: 14px; }
+.w-label { font-weight: 600; }
 .w-val { font-variant-numeric: tabular-nums; }
 .w-extra { color: var(--dim); font-size: 13px; }
 .w-track { position: relative; height: 22px; border-radius: 4px; background: color-mix(in srgb, var(--rule) 55%, transparent); }
@@ -324,6 +325,41 @@ img.pedigree, img.segments { max-width: 100%; height: auto; display: block; marg
 details[data-child] { border-top: 1px solid var(--rule); padding: var(--s2) 0; }
 details[data-child] summary { cursor: pointer; }
 
+/* the relatedness grid (a list of pairs on a phone), a child's painting */
+.rel-grid-wrap { overflow-x: auto; }
+table.rel-grid { border-collapse: separate; border-spacing: 4px; font-size: 13px; }
+table.rel-grid th { color: var(--dim); font-weight: 600; text-align: left; padding: 2px 6px; white-space: nowrap; }
+table.rel-grid td { background: var(--card2); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; vertical-align: top;
+  min-width: 11ch; }
+table.rel-grid td span { display: block; }
+table.rel-grid td .main { color: var(--text); font-weight: 600; }
+table.rel-grid td .sub { color: var(--dim); font-size: 12px; }
+table.rel-grid td.self, table.rel-grid td.none { background: transparent; border-style: dashed; color: var(--dim); text-align: center; }
+table.rel-grid td.flag { border-color: var(--attn); border-left-width: 4px; }
+table.rel-grid td .chip { margin-top: 4px; white-space: normal; display: inline-flex; }
+ul.rel-pairs { display: none; list-style: none; margin: 0; padding: 0; }
+ul.rel-pairs li { padding: 6px 0; border-bottom: 1px solid var(--rule); }
+ul.rel-pairs li.flag { border-left: 4px solid var(--attn); padding-left: 8px; }
+ul.rel-pairs .pair { font-weight: 600; }
+ul.rel-pairs .chip { white-space: normal; }
+.legend-line { font-size: 13px; margin: var(--s2) 0; }
+details[data-child] h3 { font-size: 15px; margin: var(--s3) 0 var(--s2); }
+.painting { margin: 0 0 var(--s3); }
+.paint-grid { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 3px 6px; align-items: center; }
+.paint-chr { color: var(--dim); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.paint-tracks { display: grid; gap: 2px; }
+.paint-track { position: relative; display: block; height: 7px; width: var(--len); border-radius: 4px;
+  background: color-mix(in srgb, var(--rule) 70%, transparent); overflow: hidden; }
+.paint-seg { position: absolute; top: 0; bottom: 0; left: var(--a); width: var(--w); }
+.anc1 { background: var(--anc1); } .anc2 { background: var(--anc2); } .anc3 { background: var(--anc3); }
+.anc4 { background: var(--anc4); } .anc5 { background: var(--anc5); }
+.paint-seg.other, .paint-swatch.other { background-image: repeating-linear-gradient(45deg, transparent 0 2px, rgba(0, 0, 0, .35) 2px 4px); }
+.paint-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 13px; margin-top: var(--s2); }
+.paint-key { display: inline-flex; gap: 6px; align-items: center; }
+.paint-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 3px; }
+.side-by-side table.rows td:first-child { color: var(--dim); font-size: 13px; }
+.side-by-side table.rows td:nth-child(2) { font-family: var(--mono); font-size: 13px; }
+
 /* --- login --- */
 body.login main { display: flex; justify-content: center; padding-top: 12vh; }
 body.login form { width: 320px; display: flex; flex-direction: column; gap: 8px; }
@@ -360,5 +396,7 @@ input[type=password] { font: inherit; background: var(--card); color: var(--text
   table.rows td::before { content: attr(data-label) ": "; color: var(--dim); font-size: 13px; }
   .look-list a { flex-direction: column; gap: 0; }
   .people { grid-template-columns: minmax(0, 1fr); }
+  .rel-grid-wrap { display: none; }
+  ul.rel-pairs { display: block; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

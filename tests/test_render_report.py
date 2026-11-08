@@ -172,11 +172,12 @@ def pgsc_results(d, adjusted):
 
 
 # The card titles of DEMO-001's HTML report before the chapters (check 14):
-# the chapters move cards, they never add, drop or rename one.
+# the chapters move cards, they never add, drop or rename one. The CPIC gene card is there since the
+# demo sample carries a CPIC table (make_demo_sample.py, for the live demo's medicines widget).
 GOLDEN_TITLES = sorted([
     "Quality Control", "Mosaic Loss of Chromosome Y or X", "Variant Calling", "ClinVar Screening",
     "Carrier List (this sample)", "Couple Carrier Screen", "Pharmacogenomics", "pypgx Pharmacogenomics",
-    "PGx Copy Number", "CPIC Drug Recommendations", "CYP2D6 Across Callers", "HLA Typing", "Structural Variants",
+    "PGx Copy Number", "CPIC Drug Recommendations", "Genes With a Non-Normal or Unresolved Phenotype (CPIC)", "CYP2D6 Across Callers", "HLA Typing", "Structural Variants",
     "Structural Variants, Class 4 and 5 (AnnotSV)", "Cancer Predisposition", "Repeat Expansions",
     "Runs of Homozygosity", "Mitochondrial Haplogroup", "Paralog Genes (Paraphase)",
     "SMN1/SMN2 Copy Number (Parascopy)", "Y-Chromosome Haplogroup", "Y Placement on the Current Public Tree", "Y-STR Markers (HipSTR)",

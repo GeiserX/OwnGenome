@@ -16,8 +16,13 @@ writes DIR, which the docs workflow publishes at /demo/ of the docs site:
   runs/DEMO-001/...             the files the plugins point at (the charts, the
                                 search index, the re-check), the report as
                                 report.html and the files it links to
-  runs/DEMO-FAMILY/             the family page (assets/live/family.html) of DEMO-001 and its
-                                invented partner, with family.json as the family plugin serves it
+  runs/DEMO-002/, runs/DEMO-003/  the person pages of DEMO-001's invented partner and their son,
+                                each a finished run of one frame (tests/demo/make_demo_sample.py
+                                --sample, with the findings that show the rest of the widgets)
+  runs/DEMO-FAMILY/             the family page (assets/live/family.html) of the trio, with
+                                family.json as the family plugin serves it: the invented
+                                relationship, shared-stretch, de novo and compound-het files of
+                                tests/fixtures/live/demo/DEMO-FAMILY and the members side by side
   family/DEMO-FAMILY/           the pedigree and the files the family page opens
 
 No state is written by hand. The frames are bin/owngenome_live.py's own
@@ -28,8 +33,9 @@ stores them. The run folder is DEMO-001, the invented sample of the docs
 pictures: GDIR/DEMO-001 when given (after tests/demo/retake-screenshots.sh ran
 its steps), else written now by tests/demo/make_demo_sample.py with N records
 (default 20000) and its report written by bin/render_report.py with step 24's
-arguments. Steps 27, 28 and 36 run in containers and are not run here, so
-without GDIR their sections stay missing in the report and on the page.
+arguments. Steps 28 and 36 run in containers and are not run here, so
+without GDIR their sections stay missing in the report and on the page;
+step 27's CPIC table is written by make_demo_sample.py with step 27's parser.
 
 What the replay changes, and why:
   - step 24's files (the report, the charts, the search index, summary.json)
@@ -79,6 +85,9 @@ import run_state  # noqa: E402
 SAMPLE = "DEMO-001"
 FAMILY = "DEMO-FAMILY"
 PARTNER = "DEMO-002"
+# The family's other people: name, sex, seed. Each is a finished run with no messages (its own
+# logs/run_status.tsv, closed with a finished_utc line as run-all.sh closes it).
+OTHERS = (("DEMO-002", "female", 2), ("DEMO-003", "male", 3))
 FIX = os.path.join(REPO, "tests", "fixtures", "live")
 WEBLOG = os.path.join(FIX, "demo-001.weblog.jsonl")
 EXTRA = os.path.join(FIX, "demo")
@@ -105,14 +114,26 @@ def epoch(text):
 
 # --- the run folder -------------------------------------------------------------------------
 
-def report(d):
+def report(d, sample=SAMPLE):
     """bin/render_report.py with the arguments scripts/24-html-report.sh gives it."""
     subprocess.run([sys.executable, os.path.join(BIN, "render_report.py"), "--assets", os.path.join(REPO, "assets"),
-                    "--sample", SAMPLE, "--sample-dir", d, "--json", os.path.join(d, "summary.json"),
-                    "-o", os.path.join(d, f"{SAMPLE}_report.html"),
-                    "--search-index", os.path.join(d, f"{SAMPLE}_search_index.json"),
-                    "--charts-json", os.path.join(d, f"{SAMPLE}_charts.json")],
+                    "--sample", sample, "--sample-dir", d, "--json", os.path.join(d, "summary.json"),
+                    "-o", os.path.join(d, f"{sample}_report.html"),
+                    "--search-index", os.path.join(d, f"{sample}_search_index.json"),
+                    "--charts-json", os.path.join(d, f"{sample}_charts.json")],
                    check=True, stdout=subprocess.DEVNULL)
+
+
+def other_person(root, name, sex, seed, records):
+    """root/<name>: an invented member written by make_demo_sample.py --sample, with its report, as a
+    finished run (run-all.sh's finished_utc line, 30 hours after the invented start)."""
+    subprocess.run([sys.executable, os.path.join(HERE, "make_demo_sample.py"), "--genome-dir", root, "--records",
+                    str(records), "--sample", name, "--sex", sex, "--seed", str(seed)], check=True, stdout=subprocess.DEVNULL)
+    d = os.path.join(root, name)
+    import make_demo_sample
+    with open(os.path.join(d, "logs", "run_status.tsv"), "a") as f:
+        f.write(f"meta\tfinished_utc\t{time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(make_demo_sample.RUN_STARTED + 30 * 3600))}\n")
+    report(d, name)
 
 
 def prepare(root, genome_dir=None, records=20000):
@@ -137,6 +158,11 @@ def prepare(root, genome_dir=None, records=20000):
     for f in HELD:
         if os.path.isfile(os.path.join(d, f)):
             shutil.move(os.path.join(d, f), os.path.join(held, f))
+    for name, sex, seed in OTHERS:
+        if genome_dir and os.path.isdir(os.path.join(genome_dir, name)):
+            shutil.copytree(os.path.join(genome_dir, name), os.path.join(root, name), symlinks=False)
+        else:
+            other_person(root, name, sex, seed, max(2000, records // 4))
     fam = os.path.join(root, FAMILY)
     shutil.copytree(os.path.join(EXTRA, FAMILY), fam)
     couple = os.path.join(d, "couple", f"{SAMPLE}_couple_carrier.tsv")
@@ -231,9 +257,20 @@ def replay(root, held, drop_hook=None):
         results = live_results.build(SAMPLE, live.summary(SAMPLE, d, live.base_state(run)),
                                      owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE}))
         results["generated_utc"] = checked
+        # The other people: one frame each, their state at the end, and their results.
+        others = {}
+        for name, _, _ in OTHERS:
+            r, od = live.run(name), os.path.join(root, name)
+            st = live.state(r)
+            st["generated_utc"] = checked
+            st["plugins"] = relink(st["plugins"])
+            res = live_results.build(name, live.summary(name, od, live.base_state(r)),
+                                     owngenome_live.Live.run_files(None, {"dir": od, "name": name}))
+            res["generated_utc"] = checked
+            others[name] = {"frames": [{"t": checked, "state": st}], "results": res}
     finally:
         time.time, run_headroom._statvfs, run_headroom.physical_memory = real
-    return frames, {"t": checked, "state": fam, "index": index, "results": results}, app
+    return frames, {"t": checked, "state": fam, "index": index, "results": results, "others": others}, app
 
 
 # --- the static folder ----------------------------------------------------------------------
@@ -281,6 +318,15 @@ def family_json(root, index):
     by = {r["name"]: r for r in index["runs"]}
     out["runs"] = {p["sample"]: {k: by[p["sample"]][k] for k in ("url", "state", "planned", "done", "attention", "results")}
                    for p in out["state"].get("members") or [] if p["sample"] in by}
+    seq = [p["sample"] for p in out["state"].get("members") or [] if p.get("sequenced")]
+    sums = {}
+    for name in seq:
+        try:
+            with open(os.path.join(root, name, "summary.json")) as f:
+                sums[name] = json.load(f)
+        except OSError:
+            sums[name] = None
+    out["side_by_side"] = owngenome_live_family.side_by_side(seq, sums)
     return relink(out)
 
 
@@ -297,28 +343,18 @@ def write_json(path, obj):
         json.dump(obj, f, separators=(",", ":"))
 
 
-def write_site(out, root, frames, fam):
-    if os.path.exists(out):
-        shutil.rmtree(out)
-    shutil.copytree(ASSETS, os.path.join(out, "assets"),
-                    ignore=shutil.ignore_patterns("index.html", "login.html", "home.html", "family.html"))
-    plugin_dir = os.path.join(ASSETS, "plugins")
-    plugin_js = sorted(f for f in os.listdir(plugin_dir) if owngenome_live.ASSET_RE.match(f) and f.endswith(".js")) \
-        if os.path.isdir(plugin_dir) else []
-
-    with open(os.path.join(out, "index.html"), "w") as f:
-        f.write(home_page(fam["index"]))
-    write_json(os.path.join(out, "runs.json"), unroot(fam["index"]))
-
-    sd, d = os.path.join(out, "runs", SAMPLE), os.path.join(root, SAMPLE)
+def person_site(out, root, name, plugin_js, frames, results, autoplay=False):
+    """runs/<name>/: the person page, its frames, results.json, the report and the files it links to."""
+    sd, d = os.path.join(out, "runs", name), os.path.join(root, name)
     os.makedirs(sd)
     with open(os.path.join(sd, "index.html"), "w") as f:
-        f.write(run_page(SAMPLE, plugin_js))
-    write_json(os.path.join(sd, "frames.json"), {"interval_ms": INTERVAL_MS, "autoplay": True, "frames": frames})
-    write_json(os.path.join(sd, "results.json"), fam["results"])
-    files = {f"{SAMPLE}_report.html": "report.html"}
+        f.write(run_page(name, plugin_js))
+    write_json(os.path.join(sd, "frames.json"), dict({"interval_ms": INTERVAL_MS, "frames": frames},
+                                                     **({"autoplay": True} if autoplay else {})))
+    write_json(os.path.join(sd, "results.json"), results)
+    files = {f"{name}_report.html": "report.html"}
     # The files the report links to, as the live server lists them (Live.run_files reads no state).
-    files.update({rel: rel for rel in owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE})})
+    files.update({rel: rel for rel in owngenome_live.Live.run_files(None, {"dir": d, "name": name})})
     for v in frames[-1]["state"]["plugins"].values():
         if isinstance(v, dict) and isinstance(v.get("file"), str):
             files[v["file"]] = v["file"]
@@ -333,6 +369,25 @@ def write_site(out, root, frames, fam):
                            "<p>On your own live site this link opens the genome viewer on your own reads, on your "
                            "own computer. The demo has no reads to show.</p><p><a href=\"../\">Back to the run</a></p>",
                            "../../../assets/live.css"))
+
+
+def write_site(out, root, frames, fam):
+    if os.path.exists(out):
+        shutil.rmtree(out)
+    shutil.copytree(ASSETS, os.path.join(out, "assets"),
+                    ignore=shutil.ignore_patterns("index.html", "login.html", "home.html", "family.html"))
+    plugin_dir = os.path.join(ASSETS, "plugins")
+    plugin_js = sorted(f for f in os.listdir(plugin_dir) if owngenome_live.ASSET_RE.match(f) and f.endswith(".js")) \
+        if os.path.isdir(plugin_dir) else []
+
+    with open(os.path.join(out, "index.html"), "w") as f:
+        f.write(home_page(fam["index"]))
+    write_json(os.path.join(out, "runs.json"), unroot(fam["index"]))
+
+    person_site(out, root, SAMPLE, plugin_js, frames, fam["results"], autoplay=True)
+    for name, _, _ in OTHERS:
+        o = fam["others"][name]
+        person_site(out, root, name, plugin_js, o["frames"], o["results"])
 
     fd = os.path.join(out, "runs", FAMILY)
     os.makedirs(fd)
