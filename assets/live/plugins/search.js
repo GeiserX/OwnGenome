@@ -6,6 +6,7 @@
 // the report and, for a mention with a locus, to the reads in the genome viewer. The query rule
 // is bin/results_index.py's query(): an rsID, a gene symbol (a prefix also lists the terms that
 // start with it), or a position, which the index cannot answer (scripts/owngenome-lookup.sh can).
+// The box sits in the page header; on a person's page a hit opens its card (#s/<section>).
 // tests/test_results_index.py runs match() under node against the Python rule.
 (function (root) {
   'use strict';
@@ -48,13 +49,13 @@
     box.appendChild(el('h2', {}, 'Search the results'));
     var form = el('form', { role: 'search' });
     form.addEventListener('submit', function (e) { e.preventDefault(); show(); });
-    input = el('input', { type: 'search', 'aria-label': 'Gene symbol or rsID', placeholder: 'BRCA2 or rs429358',
+    input = el('input', { type: 'search', 'aria-label': 'Gene symbol or rsID', placeholder: 'Search arrives with the report',
                           autocomplete: 'off', spellcheck: 'false' });
     input.disabled = true;
     input.addEventListener('input', show);
     form.appendChild(input);
     box.appendChild(form);
-    status = el('p', { 'class': 'muted' }, 'The search opens when the report step has written its index.');
+    status = el('p', { 'class': 'muted search-status' }, 'The search opens when the report step has written its index.');
     box.appendChild(status);
     out = el('div', { 'class': 'search-results', 'aria-live': 'polite' });
     box.appendChild(out);
@@ -63,7 +64,8 @@
   function item(it) {
     var li = el('li', { 'data-section': it.section });
     var head = el('p', {});
-    head.appendChild(el('a', { href: 'report.html#' + (it.anchor || ''), 'class': 'report' }, it.title));
+    var card = document.getElementById('results') ? '#s/' + (it.anchor || it.section) : 'report.html#' + (it.anchor || '');
+    head.appendChild(el('a', { href: card, 'class': 'report' }, it.title));
     head.appendChild(document.createTextNode(' (step ' + it.step + ')' + (it.state === 'stale' ? ', stale: from an earlier run' : '')
       + ': ' + it.count + (it.count === 1 ? ' mention' : ' mentions')));
     li.appendChild(head);
@@ -124,7 +126,9 @@
     if (!out || !c) { return; }
     if (!c.file) {
       // The file went away (step 24 deletes it before it writes the report again).
-      if (shownKey !== null) { shownKey = null; index = null; input.disabled = true; show(); }
+      if (shownKey !== null) {
+        shownKey = null; index = null; input.disabled = true; input.placeholder = 'Search arrives with the report'; show();
+      }
       return;
     }
     var key = c.file + '@' + c.mtime;
@@ -141,6 +145,7 @@
         if (key !== shownKey || !data || !data.terms) { return; }
         index = data;
         input.disabled = false;
+        input.placeholder = 'Gene or rsID, like BRCA2';
         status.textContent = Object.keys(data.terms).length + ' genes and rsIDs in these results. Typing searches them here, '
           + 'in this browser.';
         show();
@@ -148,5 +153,6 @@
       .catch(function () { if (key === shownKey) { shownKey = null; } });
   }
 
-  root.PGP.register({ name: 'search', panel: panel, onState: onState });
+  // family.html loads the plugins without live.js: nothing to register there.
+  if (root && root.PGP) { root.PGP.register({ name: 'search', slot: 'search-slot', panel: panel, onState: onState }); }
 }(typeof window !== 'undefined' ? window : null));

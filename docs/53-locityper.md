@@ -32,7 +32,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. 
 
 The panel is the HPRC release 2 Minigraph-Cactus pangenome against GRCh38, as a VCF (`LOCITYPER_PANEL_URL`, `LOCITYPER_PANEL_VERSION` in `versions.env`). It holds the two haplotypes of each of its 232 samples. The full VCF is 6.7 GB; `setup.sh` reads only the loci and 250 kb either side, over https, through the VCF's `.tbi`, whose sha256 `LOCITYPER_PANEL_TBI_SHA256` pins. Nothing of it is committed. The pin covers the index, not the records: they are trusted as the HPRC's S3 bucket serves them over https, as for the other data `setup.sh` reads in place. A changed file with the same index would build without an error.
 
-Then it follows Locityper's documentation (https://locityper.vercel.app, "Preparing targets"): jellyfish counts the 25-mers of `REF_FASTA`, `locityper target` cuts the panel's haplotypes at each locus, and `locityper augment` aligns them to each other, which the weighted distance needs. A new reference, image, panel or locus list builds again. `LOCITYPER_DATA` puts the database elsewhere and `LOCITYPER_LOCI` replaces the locus list.
+Then it follows Locityper's documentation (https://locityper.vercel.app, "Preparing targets"): jellyfish counts the 25-mers of `REF_FASTA` (its hash table sized to the reference's length from the `.fai`, at least 10 million entries, so a small reference does not reserve the memory all of GRCh38 needs), `locityper target` cuts the panel's haplotypes at each locus, and `locityper augment` aligns them to each other, which the weighted distance needs. A new reference, image, panel or locus list builds again. `LOCITYPER_DATA` puts the database elsewhere and `LOCITYPER_LOCI` replaces the locus list.
 
 ## The loci
 
@@ -88,7 +88,7 @@ Both reports carry a section "Locityper Second Opinion at Hard Loci" in the medi
 
 ## How it was checked
 
-The image test (`tests/smoke/locityper.sh`, the `LOCITYPER_IMAGE` row of `tests/smoke/commands.tsv`) runs the database build and the step on the fixture's GIAB HG002 reads at HLA-DRB1, HLA-DQB1 and CYP2D6. The panel holds HG002's own two assembled haplotypes, which are the truth. Both called haplotypes at each locus must match them at QV 20 or more (one difference per 100 bases or fewer), aligned with `locityper align`. That QV measures how close each called haplotype is to HG002's true one; it is not the `quality` column, Locityper's own genotype quality.
+The image test (`tests/smoke/locityper.sh`, the `LOCITYPER_IMAGE` row of `tests/smoke/commands.tsv`) repeats, inside the image, the Locityper commands that `setup.sh --locityper-data` and step 53 run (the database build, `preproc` and `genotype`) on the fixture's GIAB HG002 reads at HLA-DRB1, HLA-DQB1 and CYP2D6. It does not run `setup.sh` or `scripts/53-locityper.sh` themselves. The panel holds HG002's own two assembled haplotypes, which are the truth. Both called haplotypes at each locus must match them at QV 20 or more (one difference per 100 bases or fewer), aligned with `locityper align`. That QV measures how close each called haplotype is to HG002's true one; it is not the `quality` column, Locityper's own genotype quality.
 
 The red control takes out of the panel HG002's haplotypes and every other haplotype within QV 20 of them, rebuilds the database and genotypes again; the same check must then fail at every locus. Leaving HG002 out with `--leave-out` is not enough: other people in the panel carry near copies of HG002's haplotypes, and the call stays close.
 

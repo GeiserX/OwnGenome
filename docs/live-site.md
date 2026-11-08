@@ -1,22 +1,22 @@
 # Watch a Run Live
 
-A full run takes a day or more. The live site shows it while it goes, in a browser on any device that can reach the machine: which step is running, which finished, which failed or was skipped, and one line on what each finished step found. The page repaints as messages arrive; nobody has to reload it.
+A full run takes a day or more. The live site shows each person's results as their steps finish, in a browser on any device that can reach the machine: the report's chapters as tabs, one card per section with its numbers, its rows and its caveat, and what is worth a look first. A Progress tab keeps the step map. A home page lists everyone by family, and each family has a page of its own. The pages repaint as messages arrive; nobody has to reload them.
 
 `bin/owngenome_live.py` is the server. It uses Python's standard library only, so the `python3` on the host is enough, and it has its own password, access log and limits, so it needs no web server in front of it.
 
 ## Try the demo
 
-https://geiserx.github.io/OwnGenome/demo/ is the live site on DEMO-001, the invented sample of the docs pictures. It replays a made-up run from the first task to the database re-check after it: press Play, or drag the slider. Every number, result and family member in it is made up.
+https://geiserx.github.io/OwnGenome/demo/ is the live site on DEMO-001, the invented sample of the docs pictures. It replays a made-up run from the first task to the database re-check after it: press Play, or drag the slider, and watch the cards fill in as their steps end. Every number, result and family member in it is made up.
 
-![The live page of DEMO-001 at the end of the demo run: the run marked finished above a Play button and a time slider, the step map with every step done and a dot on the steps a newer ClinVar would change, and the Found so far list with one line per finished section, starting with the read and variant calling steps and the ClinVar screen's hits with its caveat](images/demo-live-site.png){ loading=lazy }
+![The person page of DEMO-001 at the end of the demo run: the name with a progress strip of 54 finished steps, a tab column (Look first, Trust, Doctor, Child, Medicines, Ancestors, Traits, Other, Leaves out, Progress) with Doctor open, and the ClinVar card marked worth a look and newer ClinVar available, with its counts and the chromosome chart of its hits](images/demo-live-site.png){ loading=lazy }
 
-The page and its plugins are the files of `assets/live/`, unchanged. Each moment of the replay is the server's own `state.json` at that moment: `tests/demo/build_live_demo.py` loads every plugin, stores the made-up messages of `tests/fixtures/live/demo-001.weblog.jsonl` one by one as the ingest port would, and reads the state after each. The charts, the search box, the run-health card, the database re-check and the family page work as they do on your own site. The genome viewer does not: it opens your own reads on your own computer, so its links lead to a page that says it is not in the demo.
+The pages and their plugins are the files of `assets/live/`, unchanged. Each moment of the replay is the server's own `state.json` at that moment: `tests/demo/build_live_demo.py` loads every plugin, stores the made-up messages of `tests/fixtures/live/demo-001.weblog.jsonl` one by one as the ingest port would, and reads the state after each. The cards come from the `results.json` the server would give at the end of the run; each shows once the replay reaches the end of its step. The home page, the charts, the search box, the run-health card, the database re-check and the family page work as they do on your own site. The genome viewer does not: it opens your own reads on your own computer, so its links lead to a page that says it is not in the demo.
 
 What differs from your own site:
 
 - It is a static folder published with these docs, so it has no password and no access log. Nothing in it is private.
 - The run-health card measures an invented machine (64 GiB of RAM, a 2 TiB disk 55% used), not the one that built the page.
-- The CPIC recommendations and the gene callability table have no file in the demo sample, so the demo shows those two sections as missing.
+- The CPIC recommendations have no file in the demo sample, so the demo shows that card as not run.
 
 ## Start it
 
@@ -29,7 +29,7 @@ OWNGENOME_LIVE_URL=http://127.0.0.1:8788 ./scripts/run-all.sh your_name male   #
 
 `./scripts/owngenome-live.sh your_name` does the same and prints the address of that run's page. `hash-password` writes `GENOME_DIR/.owngenome-live/password` with mode 600. The file holds a PBKDF2-SHA256 hash, never the password. Open http://127.0.0.1:8787, log in, and pick the run.
 
-With `OWNGENOME_LIVE_URL` set, `run-all.sh` writes `<sample>/nextflow/live.config` and passes it to Nextflow with `-c`. That config loads the nf-weblog plugin (pinned in `run-all.sh`; Nextflow downloads it on the first live run) and points it at `OWNGENOME_LIVE_URL/ingest/<sample>`, so every task's progress is posted. The numbered script steps that run after the pipeline (GRIDSS, imputation prep, the somatic caller, the extra callers) post when they start and how they end (the benchmark, `benchmark-variants.sh`, has no step number and posts nothing), and `run-all.sh` posts once more as it ends, with its exit code. A site that is down or slow costs one warning; the run never waits for it and never fails for it. `OWNGENOME_LIVE_URL` must be a plain `http://host:port` URL.
+With `OWNGENOME_LIVE_URL` set, `run-all.sh` writes `<sample>/nextflow/live.config` and passes it to Nextflow with `-c`. That config loads the nf-weblog plugin (pinned as `NF_WEBLOG_PLUGIN` in `versions.env`; Nextflow downloads it on the first live run) and points it at `OWNGENOME_LIVE_URL/ingest/<sample>`, so every task's progress is posted. The numbered script steps that run after the pipeline (GRIDSS, imputation prep, the somatic caller, the extra callers) post when they start and how they end (the benchmark, `benchmark-variants.sh`, has no step number and posts nothing), and `run-all.sh` posts once more as it ends, with its exit code. A site that is down or slow costs one warning; the run never waits for it and never fails for it. `OWNGENOME_LIVE_URL` must be a plain `http://host:port` URL.
 
 A bare `nextflow run main.nf` can report too. Write a config like this one, with the sample id at the end of the URL (the page counts only the tasks tagged with it), and pass it with `-c`:
 
@@ -43,13 +43,28 @@ weblog {
 }
 ```
 
-## What the page shows
+## What the pages show
+
+**Home** (`/`). Everyone, grouped by family, then the runs in no family. A card shows the pedigree symbol with a ring for the run's progress, the person's place in the family, the steps done and how many cards the report flags. Runs still going come first in each family. A family member with no run on this server is listed, dashed. Without scripts the page is a plain list of runs.
+
+**A person** (`/runs/<run>/`). The name, the declared and measured sex, the families they are in, and a strip with one cell per planned step. Below, one tab per chapter of the report, each named by its question:
+
+- **Look first** opens by default once a step has finished: the cards the report itself flags, in chapter order, each with its headline. A card not listed is for information; its caveats still apply.
+- **Trust, Doctor, Child, Medicines, Ancestors, Traits, Other** follow the report's seven chapters. One card per section, with the section's numbers, its rows (the first ones, then a button for all), its own sentences and its charts. Under each card sits its caveat: the first sentence, then the rest behind "Full caveat". A card is marked "worth a look" (▲) only where the report or the step headline raises a flag, and "for information" (○) otherwise; no card says a section is fine. A card whose step has not ended says so; one whose step failed or is older than its input says that. A newer database release shows on the cards it would change. APOE stays behind its warning in the traits card; the polygenic scores show only once they are placed against the ancestry panel.
+- **Leaves out** lists what the run does not assess.
+- **Progress** is the step map, a step's detail, Found so far, the run-health card and the database re-check, as before.
+
+Each card links to its section of the report and to the files it names. The header search finds a gene or rsID across the results and opens the card that names it. `#q/<chapter>` opens a tab, `#s/<section>` opens a card (the report's own anchors), `#progress` the step map.
 
 - **The step map.** One box per step the run planned, drawn from `assets/steps.tsv`: a step sits right of the steps whose output it reads. The colour is the step's state from `bin/run_state.py` ([Where a Run Stands](run-state.md)): waiting, running, done, failed, skipped, not finished. Skipped steps stay on the map, greyed.
 - **A step's detail.** Click a box: its state and reason, start and end, the usual hours, each process with its tasks waiting, running, done, from the cache or failed, and the headline of its sections with a link into the report.
-- **Found so far.** One line per finished section, worded by the same code that writes the report, caveat included. A line marked for attention means the report has something to read there; no line ever says a section is fine. The ClinVar line, with no hit, is information, never an all-clear.
+- **Found so far.** One line per finished section, worded by the same code that writes the report, caveat included. No line ever says a section is fine. The ClinVar line, with no hit, is information, never an all-clear.
 - **The report.** Once written, `report.html` opens the run's `<sample>_report.html`, and the files it links to beside it.
 - **The genome viewer.** `/runs/<run>/viewer/` shows the run's reads and variants in igv.js, as [`scripts/owngenome-view.sh`](viewer.md) does on one computer. The report's Viewer links and the charts' "See the reads" links open it at their position.
+
+**A family** (`/runs/<family>/`). The pedigree, drawn from `members.tsv` or `pedigree.tsv`, where each sequenced person with a run here opens their page and shows how many cards their report flags. Then the members, the analyses step 38 planned, each couple's carrier screen in full (genes where both carry a finding, X-linked genes, genes where one partner does), with the screen's caveat and a link to the couple report, who is related how (step 38's relationship check beside the shared segments), and each child's chromosome map.
+
+On a phone the tab column becomes a row that scrolls sideways and each table row becomes a short list of label and value. The pages follow the browser's dark or light setting.
 
 ## The genome viewer
 
@@ -59,11 +74,13 @@ Per run it serves the folder's BAM or CRAM, its VCF and its SV VCF, each with it
 
 The reads cross the network to the browser that logged in: only the byte ranges igv.js asks for, but they are the sample's reads. Off loopback, use TLS (`--tls-cert` and `--tls-key`, or a proxy that ends TLS); without it the password and the reads cross the network in clear. Opening the viewer writes one access-log row; the byte ranges igv.js reads write none.
 
-`GET /` lists the runs: each folder under `GENOME_DIR` holding `logs/run_status.tsv`, `nextflow/` or `run_manifest.tsv`, and each run the site has messages for.
+`GET /` lists the runs: each folder under `GENOME_DIR` holding `logs/run_status.tsv`, `nextflow/` or `run_manifest.tsv`, and each run the site has messages for. The home page reads `/runs.json`: each run's progress and attention count, and each family with its members.
+
+The person page reads `/runs/<run>/results.json` from `bin/owngenome_live_results.py`: `bin/live_results.py` turns the run's summary (its `summary.json` when step 24 wrote it after every finished step, else the step files read again when a step ends; a rewritten `summary.json` is read again too, and the page fetches the cards again) into the report's chapters, one card per section. It computes nothing about genetics and holds only what the report prints. The family page reads `/runs/<family>/family.json` from the family plugin, and asks again every 30 seconds, so a member's progress and a new couple screen show without a reload.
 
 ## Privacy and what is stored
 
-- The site serves only its own pages, the run's state, the report, the files the report links to by a relative link, and the genome viewer's files of the run (see above). Any other file is 404, and so is a link that leaves the run folder or a symlink out of `GENOME_DIR`. It never lists a folder: a link to a folder that holds one HTML file (the report's `cpsr/`, with CPSR's own report) opens that file, and any other folder link is 404.
+- The site serves only its own pages, the run's state, the results the report prints (`results.json`, never `summary.json` itself), the report, the files the report links to by a relative link, and the genome viewer's files of the run (see above). Any other file is 404, and so is a link that leaves the run folder or a symlink out of `GENOME_DIR`. It never lists a folder: a link to a folder that holds one HTML file (the report's `cpsr/`, with CPSR's own report) opens that file, and any other folder link is 404.
 - Each message is cut to what a progress view needs before it is stored: the task, its process and status, times, CPU and memory figures. Nextflow's parameters, command line and task scripts are dropped. Three paths stay on the server for later views (the output folder, the CPU and memory caps, the work directory); none of them reaches a page.
 - Messages go to `<state dir>/runs/<run>/events.jsonl` (state dir: `GENOME_DIR/.owngenome-live`, or `OWNGENOME_LIVE_STATE_DIR`). The site writes nowhere else, so `GENOME_DIR` can be mounted read-only.
 - The access log, `<state dir>/access.log`, has one tab-separated row per page or file read and per login (the genome viewer's files excepted: one row per page open, see above): time, client, the first 8 characters of a hash of the session, action, run, file, status. It never holds a query string, a request body, a result or the password. It moves to `access.log.1` past `--access-log-max-mb` (10).
@@ -148,11 +165,11 @@ WantedBy=multi-user.target
 
 ## Plugins
 
-The core files (`bin/owngenome_live.py`, `assets/live/index.html`, `live.js`, `live.css`, `login.html`) are meant to stay small. A new view adds two files instead of editing them:
+The core files (`bin/owngenome_live.py`, `assets/live/index.html`, `home.html`, `family.html`, `core.js`, `live.js`, `person.js`, `home.js`, `family-page.js`, `live.css`, `login.html`) are meant to stay small. A new view adds two files instead of editing them:
 
 - `bin/owngenome_live_<name>.py` with `register(app)`. At start the server imports every such file, sorted, and calls it. `app.route(method, pattern, fn, auth=True)` adds a page or an endpoint (behind the login unless `auth=False`), `app.run_file(glob)` lets the browser fetch more files of a run folder, `app.report_filter(fn)` rewrites the served report, `app.state_hook(name, fn)` adds `plugins[name]` to `state.json`, `app.run_kind(fn)` lists more runs, `app.add_argument(...)` adds a flag, `app.log(...)` writes an access-log row, and `app.config` holds the parsed flags.
-- `assets/live/plugins/<name>.js`. The run page loads every script in that folder after `live.js`; it calls `window.PGP.register({name, onState, onEvent, panel})`. `onState(state)` gets each new `state.json`, `onEvent(message)` each message from the stream, and `panel(element)` gets a card of its own in the side column.
+- `assets/live/plugins/<name>.js`. The run page loads every script in that folder after `live.js`; it calls `window.PGP.register({name, onState, onEvent, panel})`. `onState(state)` gets each new `state.json`, `onEvent(message)` each message from the stream, and `panel(element)` gets a card of its own in the Progress tab, or in the element whose id `slot` names (the search box sits in the header this way). A family's page loads the same scripts without `live.js`, so a plugin returns early when `window.PGP` is missing.
 
 The page has a replay mode for a demo with no server: `<html data-mode="replay">` reads `frames.json` (`{"interval_ms": 1000, "frames": [{"t": ..., "state": <state.json>}]}`) and plays it with a play button and a slider, through the same drawing code.
 
-`tests/test_owngenome_live.py` checks the server, the login, the stored messages, the plugin interface and the page in a headless Chrome; `tests/test_live_post.sh` and `tests/fake-docker/run-all-live.sh` check what `run-all.sh` posts.
+`tests/test_owngenome_live.py` checks the server, the login, the stored messages, the plugin interface and the page in a headless Chrome; `tests/test_live_results.py` checks `results.json` (every card's caveat word for word, no wording that reads as an all-clear, `results.json` behind the login); `tests/test_live_demo.py` builds the demo and checks every page, phone width included; `tests/test_live_post.sh` and `tests/fake-docker/run-all-live.sh` check what `run-all.sh` posts.

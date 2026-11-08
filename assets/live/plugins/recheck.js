@@ -1,7 +1,8 @@
 // recheck.js: the database re-check on the live page (a plugin, bin/owngenome_live_recheck.py).
 // state.json's plugins.recheck holds a banner line and, per step, its badges ("newer ClinVar
 // available", "redone 2026-10-05"). The panel shows the banner and one line per marked step; on
-// the step map a marked step gets a small dot with the badges as its tooltip. No inline script,
+// the step map a marked step gets a small dot (coloured by live.css) with the badges as its
+// tooltip. person.js puts the same badges in the header of each card of a marked step. No inline script,
 // no style attribute, no eval; nothing is fetched beyond state.json.
 (function () {
   'use strict';
@@ -38,7 +39,6 @@
     c.setAttribute('cx', String(x));
     c.setAttribute('cy', String(y));
     c.setAttribute('r', '4');
-    c.setAttribute('fill', '#e0b000');
     var t = document.createElementNS(NS, 'title');
     t.textContent = badges.join('; ');
     c.appendChild(t);

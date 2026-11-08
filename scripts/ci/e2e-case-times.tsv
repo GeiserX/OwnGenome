@@ -64,6 +64,7 @@ bumps-drop-in-baseline	shard	4	bash-step-11-roh,bash-step-14-imputation,bash-ste
 callability-1-catalog	shard	74	-
 callability-2-genes	shard	32	-
 chip-clonal-1	shard	277	-
+ci-e2e-2-locityper	shard	2289	-
 clinical-filter-mane-and-quality-1-tiers	shard	14	-
 clinical-filter-mane-and-quality-2-vep-norm	shard	2	-
 clinical-filter-mane-and-quality-3-modules	shard	8	clinical-filter-mane-and-quality-1-tiers
@@ -94,6 +95,8 @@ genome-lookup-1	shard	7	-
 genotype-rule-rows-1-str-extra	shard	8	-
 genotype-rules-1-phase	shard	37	-
 genotype-rules-2-g2	shard	20	-
+genotype-rules-2-lpa-null	shard	45	-
+genotype-rules-2-smn1-marker	shard	30	-
 haplogroup-explore-1-files	shard	59	-
 hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-

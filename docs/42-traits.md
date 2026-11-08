@@ -113,7 +113,10 @@ The six rules after TAS2R38 need no phase. Their sites lie close together on one
 - HFE: the C282Y homozygote is also a secondary finding (`assets/acmg_sf.tsv`, [step 23](23-clinical-filter.md)); the rule gives the reading of every genotype.
 - GC: the protein levels are those of Powe et al. (2013), whose monoclonal assay was questioned in later letters. A protein type, not a vitamin D deficiency.
 
-Two more markers of the planned list are not rules here: the LPA KIV-2 4925G>A null allele (Coassin et al. 2017) lies inside the KIV-2 repeat, whose copies a gVCF genotype at one position cannot tell apart, and the SMN1 g.27134T>G marker (Luo et al. 2014) lies in SMN1, whose reads cannot be told from SMN2's at that site. Both need a copy-aware reader beside [step 46](46-lpa.md) and [step 35](35-paralogs.md)'s SMN1 copy number, and are not read today.
+Two more markers of the planned list are not rules here, because each sits in sequence the genome holds more than once and a gVCF genotype at one position cannot read it. They are read from the BAM by the step that counts the copies, as a fraction of copies rather than a genotype (`MARKERS` in `bin/traits_report.py`, which pins each one's dbSNP b157 record and the GRCh38 sequence around every copy):
+
+- **LPA KIV-2 4925G>A** (Coassin et al. 2017, PMID 28444229), a splice variant that lowers the Lp(a) made from the chromosome that carries it. GRCh38 holds the site in each of its six KIV-2 units and in KIV-1. [Step 46](46-lpa.md) reads it beside the KIV-2 count.
+- **SMN1 g.27134T>G** (rs143838139; Luo et al. 2014, PMID 23788250), a marker of SMN1 duplication alleles that SMN2 holds too. [Step 35](35-paralogs.md) reads it beside the SMN1 copy number. It refines the chance of a silent 2+0 carrier for a two-copy result, and its line always says that it does not prove 2+0.
 
 Kim et al. (2003) found five TAS2R38 haplotypes worldwide. The rule reads the two common ones. A copy with AAV, AAI, PVI or a rarer one is `other_haplotype`, so the GRCh38 reference itself, which carries AAI (Ala49, Ala262, Ile296), is not read when every site matches it. The readings follow Bufe et al. (2005): PAV/PAV rated PTC and PROP the most bitter, PAV/AVI recognised them as bitter at nearly the same concentrations with a lower and more variable intensity, and AVI/AVI recognised PTC only at far higher concentrations.
 

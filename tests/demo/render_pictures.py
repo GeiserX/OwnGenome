@@ -22,7 +22,8 @@ reads DIR/DEMO-001 after steps 24, 27 and 28 ran on it and writes
                            as the docs workflow publishes it: built by
                            tests/demo/build_live_demo.py on a DEMO-001 it
                            writes itself (--genome-dir is not read), at the
-                           last moment of its replay, in a 1280 x 1000 window
+                           last moment of its replay, on the person page's
+                           doctor tab (#q/clinical), in a 1280 x 1000 window
 
 Every PNG is written again from its pixels alone, so it holds no text, time
 or EXIF chunk. Needs playwright (with its Chromium) and pillow;
@@ -122,12 +123,13 @@ def live_picture(out):
                 # all 'self', so the picture is the same.
                 page = browser.new_page(viewport={"width": 1280, "height": 1000}, device_scale_factor=1,
                                         color_scheme="dark", bypass_csp=True)
-                page.goto(f"http://127.0.0.1:{srv.server_address[1]}/runs/{SAMPLE}/")
+                page.goto(f"http://127.0.0.1:{srv.server_address[1]}/runs/{SAMPLE}/#q/clinical")
                 page.wait_for_function("document.documentElement.dataset.pgpStatus === 'ready'")
                 # The last moment: the run ended, the charts are drawn, the re-check is in.
                 page.evaluate("() => { const s = document.getElementById('replay-slider'); s.value = s.max; "
                               "s.dispatchEvent(new Event('input')); }")
-                page.wait_for_function("Number(document.documentElement.dataset.pgpCharts) > 0")
+                page.wait_for_function("Number(document.documentElement.dataset.pgpCharts) > 0 "
+                                       "&& Number(document.documentElement.dataset.pgpResults) > 0")
                 page.wait_for_timeout(1000)
                 path = os.path.join(out, "demo-live-site.png")
                 page.screenshot(path=path)

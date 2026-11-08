@@ -61,13 +61,12 @@ workflow {
     // ─── Validate inputs ────────────────────────────────────────────────
     // Every parameter must be one nextflow_schema.json declares: Nextflow
     // takes any --name as a new parameter, so a misspelt option (--outdirr,
-    // --max-cpus) would be ignored with no word. --pedigree is read with
-    // containsKey and has no default; config_profile_* are the test
-    // profiles' labels.
+    // --max-cpus) would be ignored with no word. config_profile_* are the
+    // test profiles' labels.
     def schema_params = new groovy.json.JsonSlurper()
         .parseText(file("${projectDir}/nextflow_schema.json").text)['definitions']
         .values().collectMany { group -> (group['properties'] ?: [:]).keySet() as List }
-    def known_params = schema_params + ['pedigree', 'config_profile_name', 'config_profile_description']
+    def known_params = schema_params + ['config_profile_name', 'config_profile_description']
     def unknown_params = params.keySet().findAll { k -> !known_params.contains(k) }.sort()
     if (unknown_params) {
         error "unknown parameter${unknown_params.size() > 1 ? 's' : ''} " +
@@ -332,9 +331,8 @@ workflow {
     // leading family column: one family runs, the one --family_name names
     // (needed when the file holds more than one). Here only the family and
     // sample columns are read; FAMILY_PREPARE (bin/family_report.py prepare)
-    // checks the rest before the joint call starts. Read with containsKey,
-    // so a run without the option is not told about an undefined parameter.
-    def pedigree   = params.containsKey('pedigree') ? params.pedigree : null
+    // checks the rest before the joint call starts.
+    def pedigree   = params.pedigree
     // The family's folder under --outdir: --family_name, else 'family'
     def family_dir = params.family_name ?: 'family'
     def family_ids = []
