@@ -331,7 +331,8 @@ def widget_counts(b, base):
         b.go("about:blank")  # a new document each time, so the wait never reads the page before
         b.wait("location.href === 'about:blank'")
         b.go(f"{base}/runs/{person}/#s/{cid}")
-        b.wait("document.documentElement.dataset.pgpResults && document.getElementById(%s)" % json.dumps("card-" + cid))
+        b.wait("document.documentElement.dataset.pgpResults && !!document.getElementById(%s) && 'drawn'"
+               % json.dumps("card-" + cid))
         if kind in ("MoChA bar", "AnnotSV span"):
             b.wait("document.documentElement.dataset.pgpCharts")
             time.sleep(0.5)
