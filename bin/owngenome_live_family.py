@@ -240,7 +240,9 @@ def child_depth(d, order, members):
     return {"segments": segs,
             "de_novo": [{k: r.get(k) for k in DE_NOVO_KEYS} for r in read_tsv(os.path.join(d, "de_novo.tsv"))],
             "compound_het": comp,
-            "trio_files": {f: os.path.isfile(os.path.join(d, f)) for f in ("de_novo.tsv", "compound_het.tsv")}}
+            # read_tsv's own test: a link out of the family folder counts as not there
+            "trio_files": {f: os.path.isfile(os.path.join(d, f)) and inside(os.path.join(d, f), os.path.abspath(d))
+                           for f in ("de_novo.tsv", "compound_het.tsv")}}
 
 
 def _sec(summary, key):
@@ -255,7 +257,7 @@ def side_values(summary):
     calls = ", ".join("%s %s" % (k, v) for k, v in (c.get("calls") or {}).items() if v)
     if calls:
         agree = c.get("agree")
-        out.append(("Medicines", "CYP2D6", calls + (" (callers agree)" if agree else " (callers differ)" if agree is False
+        out.append(("Medicines", "CYP2D6 (callers)", calls + (" (callers agree)" if agree else " (callers differ)" if agree is False
                                                      else "")))
     cpic = _sec(summary, "cpic")
     for g in (cpic or {}).get("genes") or []:

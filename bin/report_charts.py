@@ -228,7 +228,9 @@ def genome_chart(S, notes):
                               + (", low-confidence call" if low else "")))
     if _ok(S, "annotsv"):
         for i, r in enumerate(S["annotsv"]["data"].get("rows") or []):
-            m = REGION_RE.match(str(r.get("sv", "")))
+            sv = str(r.get("sv", ""))
+            # AnnotSV writes SV_chrom without the chr prefix: put it back, as collect_summary does.
+            m = REGION_RE.match(sv if sv.startswith("chr") else "chr" + sv)
             if not m or m.group(1) not in CHROM_LEN:
                 not_drawn["AnnotSV class 4 and 5 SVs on other contigs"] = \
                     not_drawn.get("AnnotSV class 4 and 5 SVs on other contigs", 0) + 1

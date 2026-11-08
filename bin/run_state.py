@@ -47,6 +47,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 from datetime import datetime, timezone
 
 SCHEMA_VERSION = 1
@@ -171,6 +172,7 @@ def parse_duration(v):
 # finished run's trace files do not change, so each is read once until it does. Bounded, oldest out first.
 TRACE_CACHE = {}
 TRACE_CACHE_MAX = 64
+TRACE_LOCK = threading.Lock()  # the live server answers requests on several threads
 
 
 def _trace_rows(p):
@@ -180,7 +182,8 @@ def _trace_rows(p):
     except OSError:
         return None
     key = (st.st_mtime_ns, st.st_size)
-    hit = TRACE_CACHE.get(p)
+    with TRACE_LOCK:
+        hit = TRACE_CACHE.get(p)
     if hit and hit[0] == key:
         return hit[1]
     try:
@@ -201,10 +204,11 @@ def _trace_rows(p):
                                      "process": proc, "status": (r.get("status") or "").upper(),
                                      "exit": r.get("exit"), "start": start,
                                      "end": start + dur if start is not None and dur is not None else None}))
-    TRACE_CACHE.pop(p, None)
-    TRACE_CACHE[p] = (key, rows)
-    while len(TRACE_CACHE) > TRACE_CACHE_MAX:
-        TRACE_CACHE.pop(next(iter(TRACE_CACHE)))
+    with TRACE_LOCK:
+        TRACE_CACHE.pop(p, None)
+        TRACE_CACHE[p] = (key, rows)
+        while len(TRACE_CACHE) > TRACE_CACHE_MAX:
+            TRACE_CACHE.pop(next(iter(TRACE_CACHE)))
     return rows
 
 

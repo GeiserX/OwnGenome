@@ -122,23 +122,34 @@ def whisker_problems(svg):
     return out
 
 
+def sv_chrom(r):
+    """The chromosome of an AnnotSV row, chr prefix put back (AnnotSV writes SV_chrom without it)."""
+    c = r["sv"].split(":")[0]
+    return c if c.startswith("chr") else "chr" + c
+
+
 def sv_mca_problems(sp, sv_rows, mca_calls):
     """What the genome chart misses of the AnnotSV rows and MoChA calls on the primary chromosomes."""
     out = []
     marks = {m["id"]: m for m in sp["marks"]}
     for i, r in enumerate(sv_rows):
-        if r["sv"].split(":")[0] not in report_charts.CHROM_LEN:
+        if sv_chrom(r) not in report_charts.CHROM_LEN:
             continue
         m = marks.get(f"sv-{i}")
         if not m or m["anchor"] != "structural-variants" or f'data-mark="sv-{i}"' not in sp["svg"]:
             out.append(f"AnnotSV row {r['sv']} not drawn")
     for i, c in enumerate(mca_calls):
+        if c["chrom"] not in report_charts.CHROM_LEN or not str(c["start"]).isdigit():
+            if f"mca-{i}" in marks:
+                out.append(f"MoChA call {c['chrom']}:{c['start']} drawn, but it has no place on the chart")
+            continue
         m = marks.get(f"mca-{i}")
         if not m or m["anchor"] != "mosaic-mca" or f'data-mark="mca-{i}"' not in sp["svg"]:
             out.append(f"MoChA call {c['chrom']}:{c['start']} not drawn")
-    if sp["svg"].count('class="sv"') != sum(1 for r in sv_rows if r["sv"].split(":")[0] in report_charts.CHROM_LEN):
+    if sp["svg"].count('class="sv"') != sum(1 for r in sv_rows if sv_chrom(r) in report_charts.CHROM_LEN):
         out.append("the outlined spans do not match the rows")
-    if sp["svg"].count('class="mca"') != len(mca_calls):
+    if sp["svg"].count('class="mca"') != sum(1 for c in mca_calls if c["chrom"] in report_charts.CHROM_LEN
+                                             and str(c["start"]).isdigit()):
         out.append("the bars do not match the calls")
     return out
 
@@ -272,17 +283,23 @@ def unit_checks():
     sv_rows = [{"sv": "chr7:117480000-117530000", "type": "DEL", "gt": "0/1", "length": "50000", "acmg_class": "4",
                 "genes": ["CFTR"]},
                {"sv": "chr22_KI270879v1_alt:100-900", "type": "DUP", "gt": "0/1", "length": "800", "acmg_class": "5",
-                "genes": []}]
+                "genes": []},
+               # as AnnotSV writes SV_chrom: no chr prefix
+               {"sv": "17:7660000-7690000", "type": "DEL", "gt": "0/1", "length": "30000", "acmg_class": "5",
+                "genes": ["TP53"]}]
     mca = [{"chrom": "chr20", "start": "30000000", "end": "42000000", "length_mb": "12.0", "type": "Del",
-            "cell_fraction": "0.12"}]
+            "cell_fraction": "0.12"},
+           {"chrom": "chrM", "start": "100", "end": "900", "length_mb": ".", "type": "Del", "cell_fraction": "."},
+           {"chrom": "chr3", "start": ".", "end": ".", "length_mb": ".", "type": "Dup", "cell_fraction": "."}]
     sm = copy.deepcopy(s)
-    sm["sections"]["annotsv"] = {"state": "ok", "data": {"count": 2, "rows": sv_rows}}
+    sm["sections"]["annotsv"] = {"state": "ok", "data": {"count": 3, "rows": sv_rows}}
     sm["sections"]["mosaic"] = {"state": "ok", "data": {"status": "assessed", "calls": mca}}
     gm = charts(sm)["genome"]
     ndm = {x["what"]: x["count"] for x in gm["not_drawn"]}
-    check("4. genome: each AnnotSV class 4/5 row is an outlined span, each MoChA call a bar, the alt-contig SV "
-          "in not_drawn, both in the legend",
+    check("4. genome: each AnnotSV class 4/5 row is an outlined span (an unprefixed chromosome too), each MoChA "
+          "call a bar, the alt-contig SV and the chrM and unplaced MoChA calls in not_drawn, both in the legend",
           sv_mca_problems(gm, sv_rows, mca) == [] and ndm.get("AnnotSV class 4 and 5 SVs on other contigs") == 1
+          and ndm.get("MoChA calls on other contigs or with no position") == 2
           and "AnnotSV class 4 or 5 SV" in gm["svg"] and "mosaic alteration (MoChA)" in gm["svg"],
           (sv_mca_problems(gm, sv_rows, mca), ndm))
     lost = copy.deepcopy(gm)

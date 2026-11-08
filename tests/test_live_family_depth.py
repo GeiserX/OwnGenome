@@ -7,7 +7,8 @@ Checks:
      the painting scales by are GRCh38's chr1 to chr22 and chrX;
   2. the compound-het pairs come in trans first, and every de novo row is there;
   3. a family without the trio files says they are not there (trio_files) and lists nothing;
-  4. the members side by side: one row per gene or system any member's summary.json has, one
+  4. the members side by side: one row per gene or system any member's summary.json has (the CYP2D6
+     callers and CPIC's CYP2D6 phenotype each a row of their own), one
      column per member, '.' where a member's summary lacks the row, "no summary yet" for a member
      without one; CPIC's phenotype quoted, never bare;
   5. a member's summary.json that links out of its run folder is never read;
@@ -78,9 +79,10 @@ def summary(cyp, cpic, hap, y=None):
 
 def side_problems(sb):
     by = {(r["group"], r["label"]): r["values"] for r in sb["rows"]}
-    want = {("Medicines", "CYP2D6"): ["pypgx *1/*4, Cyrius *1/*4 (callers agree)", "pypgx *1/*1, Cyrius *1/*1 (callers agree)",
+    want = {("Medicines", "CYP2D6 (callers)"): ["pypgx *1/*4, Cyrius *1/*4 (callers agree)", "pypgx *1/*1, Cyrius *1/*1 (callers agree)",
                                       "no summary yet"],
             ("Medicines", "CYP2C19"): ['*1/*2 "Intermediate Metabolizer"', ".", "no summary yet"],
+            ("Medicines", "CYP2D6"): ['*1/*4 "Intermediate Metabolizer"', ".", "no summary yet"],
             ("Medicines", "DPYD"): ['Reference/Reference "Normal Metabolizer"'] * 2 + ["no summary yet"],
             ("Haplogroups", "Y chromosome"): ["I-M253", ".", "no summary yet"],
             ("Blood groups", "ABO"): ["A1", "A1", "no summary yet"]}
@@ -119,7 +121,8 @@ def main():
         shutil.copy(os.path.join(DEMO, "de_novo.tsv"), bare)
         control("a planted de_novo.tsv", ok(fam.family_page("bare", bare)))
 
-        sums = {"A": summary("*1/*4", [("CYP2C19", "*1/*2", "Intermediate Metabolizer"),
+        sums = {"A": summary("*1/*4", [("CYP2D6", "*1/*4", "Intermediate Metabolizer"),
+                                       ("CYP2C19", "*1/*2", "Intermediate Metabolizer"),
                                        ("DPYD", "Reference/Reference", "Normal Metabolizer")], "H1", "I-M253"),
                 "B": summary("*1/*1", [("DPYD", "Reference/Reference", "Normal Metabolizer")], "U5"),
                 "C": None}

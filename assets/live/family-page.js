@@ -137,7 +137,8 @@
   }
 
   function pairKey(a, b) { return [a, b].sort().join(' '); }
-  function mismatch(v) { return !!v && v !== 'matches the declared relation'; }
+  // Step 38's verdicts: ok (shown as matching), warn, mismatch, not_checked (too few sites to tell).
+  function mismatch(v) { return v === 'mismatch' || v === 'warn'; }
   function related(f) {
     var s = section('Who is related how', 'related');
     var rel = f.relationships || [], ibd = f.ibd_pairs || [];
@@ -153,7 +154,10 @@
       var lines = [];
       lines.push(i.degree || (r.relatedness ? 'relatedness ' + r.relatedness : 'not measured'));
       if (i.shared_cm) { lines.push(i.shared_cm + ' cM shared'); }
-      if (r.declared) { lines.push('declared ' + r.declared); }
+      var declared = r.declared || i.declared;
+      if (declared) { lines.push('declared ' + declared); }
+      if (r.verdict === 'not_checked') { lines.push('not checked: too few sites'); }
+      else if (!r.verdict) { lines.push('relationship check not run'); }
       return { lines: lines, flag: mismatch(r.verdict), verdict: r.verdict, reason: r.reason };
     }
     // The grid: one cell per pair, the degree first, the declared relation and a flag when they differ.
@@ -221,7 +225,7 @@
   function painting(f, child, rows) {
     var lengths = f.chrom_lengths || [];
     var longest = Math.max.apply(null, lengths.map(function (x) { return x[1]; }).concat([1]));
-    var colours = {}, next = 1;
+    var colours = Object.create(null), next = 1;
     function colourOf(r) {
       var who = r.ancestor && r.ancestor !== '.' ? r.ancestor : (r.parent && r.parent !== '.' ? r.parent : r.side + ' side');
       if (!colours[who]) { colours[who] = { n: next > 5 ? 5 : next++, side: r.side, basis: r.basis }; }
@@ -325,7 +329,7 @@
   function sideBySide(f) {
     var sb = f.side_by_side;
     var s = section('Side by side', 'side-by-side');
-    if (!sb || !sb.rows.length) { add(s, el('p', { 'class': 'dim' }, 'No member has a summary yet.')); return s; }
+    if (!sb || !sb.rows.length) { add(s, el('p', { 'class': 'dim' }, 'No member has a summary yet, or no summary lists these results.')); return s; }
     add(s, el('p', { 'class': 'dim' }, 'Each member’s own report, one column per person: CYP2D6, the CPIC genes ' +
       '(phenotypes in CPIC’s words), HLA, the haplogroups and the blood groups.'));
     var group = null, rows = [];
