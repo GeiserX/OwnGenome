@@ -7,7 +7,7 @@
 #   - every MAPQ 0 read removed (samtools view -q 1), as an aligner that leaves
 #     out the reads fitting both copies writes it: not assessed,
 #     low_mapq0_share, no copies, no module total, no finding, and a message
-#     that says the BAM has no multi-mapping reads.
+#     that says the BAM has few or no multi-mapping reads.
 # Red control: the BAM without MAPQ 0 reads gives a lower estimate (the
 # table keeps it when not assessed), so the guard stops a real drift.
 # The block of step 35 runs on each (cut from scripts/35-paralogs.sh, with
@@ -67,8 +67,8 @@ check "unmodified: never not assessed for the MAPQ 0 share" lacks 'low_mapq0_sha
 check_eq "without MAPQ 0 reads: not assessed (low_mapq0_share), share 0.000, no copies, module total or finding" \
   "$(col "$N" status)/$(col "$N" reason)/$(col "$N" mapq0_share)/$(col "$N" cyp21a2_copies)/$(col "$N" module_total)/$(col "$N" finding)" \
   "not assessed/low_mapq0_share/0.000/././."
-check "without MAPQ 0 reads: the message says the BAM has no multi-mapping reads" \
-  has '^not assessed: the BAM has no multi-mapping reads here' "$(col "$N" message)"
+check "without MAPQ 0 reads: the message says the BAM has few or no multi-mapping reads" \
+  has '^not assessed: the BAM has few or no multi-mapping reads here' "$(col "$N" message)"
 
 # Red control: the estimate the guard withheld. Removing the MAPQ 0 reads lowers
 # the module total estimate (4.22 to 3.81 on these reads, measured 2026-11-08),

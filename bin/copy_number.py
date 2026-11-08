@@ -588,11 +588,11 @@ def psv_message(row, b):
         return "."
     if b["reason"] == "low_mapq0_share":
         targets = " and ".join(n.removesuffix("_BODY") for n, *_ in row["_targets"])
-        return (f"not assessed: the BAM has no multi-mapping reads here (reads of mapping quality 0 make up "
-                f"{100 * b['mapq0_share']:.1f}% of the depth over {targets}, "
-                f"under {100 * row['_mapq0_min']:g}%), so the aligner left out the reads that fit both copies (as "
-                "novoalign does by default) and the module total would come out low and read as a deletion; "
-                "realign with minimap2 (step 02) or BWA-MEM")
+        return (f"not assessed: the BAM has few or no multi-mapping reads here (reads of mapping quality 0 make "
+                f"up {100 * b['mapq0_share']:.1f}% of the depth over {targets}, under "
+                f"{100 * row['_mapq0_min']:g}%), the sign of an aligner that leaves out the reads that fit both "
+                "copies (as novoalign does by default); the module total may then come out low and read as a "
+                "deletion; realign with minimap2 (step 02) or BWA-MEM")
     return f"not assessed: {b['reason'] or '.'}"
 
 

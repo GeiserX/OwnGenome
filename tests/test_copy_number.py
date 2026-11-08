@@ -1023,7 +1023,7 @@ def psv(cat, read):
     rows, line = cn.psv_table(r, b)
     tab = dict(rows)
     check("CYP21A2 without MAPQ 0 reads: the table says so (message, share 0.000), no copies, module total or finding",
-          tab["message"].startswith("not assessed: the BAM has no multi-mapping reads here")
+          tab["message"].startswith("not assessed: the BAM has few or no multi-mapping reads here")
           and "CYP21A2 and CYP21A1P" in tab["message"] and tab["mapq0_share"] == "0.000"
           and (tab["cyp21a2_copies"], tab["module_total"], tab["finding"]) == (".", ".", ".")
           and "low_mapq0_share" in line, (tab, line))
@@ -1066,7 +1066,7 @@ def psv(cat, read):
         nm, nl = rd("no_mapq0"), rd("normal")
         check("step 35 CYP21A2 block on the deletion's reads without MAPQ 0 reads: low_mapq0_share, the message says why",
               (nm.get("reason"), nm.get("mapq0_share")) == ("low_mapq0_share", "0.000")
-              and nm.get("message", "").startswith("not assessed: the BAM has no multi-mapping reads here"), nm)
+              and nm.get("message", "").startswith("not assessed: the BAM has few or no multi-mapping reads here"), nm)
         check("step 35 CYP21A2 block, unmodified: the MAPQ >= 1 pass ran (share 0.100), message '.'",
               (nl.get("mapq0_share"), nl.get("message")) == ("0.100", "."), nl)
         check("step 35 CYP21A2 block with a failed mpileup: the rows of a called table but the sites'",
@@ -1145,8 +1145,8 @@ def psv(cat, read):
             os.replace(tabs["no_mapq0"], os.path.join(sd, "paralogs", "S_cyp21a2_psv.tsv"))
         _, data = cs.sec_parascopy(sd, "S")
         got = render_report.cyp21a2_line(data.get("cyp21a2"))
-        check("report: the CYP21A2 line without MAPQ 0 reads is not assessed and says the BAM has no multi-mapping reads",
-              ": not assessed (the BAM has no multi-mapping reads here" in got and "deletion," not in got, got)
+        check("report: the CYP21A2 line without MAPQ 0 reads is not assessed and says the BAM has few or no multi-mapping reads",
+              ": not assessed (the BAM has few or no multi-mapping reads here" in got and "deletion," not in got, got)
 
 
 if __name__ == "__main__":
