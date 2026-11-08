@@ -152,6 +152,51 @@ table.rows tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--ru
 .explore { font-size: 14px; color: var(--dim); }
 img.plot { max-width: 100%; height: auto; background: #fff; border-radius: 4px; margin-bottom: var(--s3); }
 
+/* widgets (person.js): a track with bands, intervals and ticks placed by --a (start) and --w (width) */
+.widget { margin: 0 0 var(--s4); }
+.w-row { margin: 0 0 var(--s3); padding-left: 8px; border-left: 3px solid transparent; }
+.w-row.w-attn { border-left-color: var(--attn); }
+.w-head { margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.w-name { font-weight: 600; font-family: var(--mono); font-size: 14px; }
+.w-label { font-weight: 600; }
+.w-val { font-variant-numeric: tabular-nums; }
+.w-extra { color: var(--dim); font-size: 13px; }
+.w-track { position: relative; height: 22px; border-radius: 4px; background: color-mix(in srgb, var(--rule) 55%, transparent); }
+.w-band, .w-ci, .w-tick { position: absolute; left: var(--a); }
+.w-band { top: 0; bottom: 0; width: var(--w); }
+.w-band:first-child { border-radius: 4px 0 0 4px; }
+.w-normal { background: color-mix(in srgb, var(--dim) 30%, transparent); }
+.w-patho { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--attn) 55%, transparent) 0 2px, transparent 2px 7px);
+  border-left: 1px solid var(--attn); }
+.w-blind { background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--dim) 45%, transparent) 0 2px, transparent 2px 7px);
+  border-right: 1px dashed var(--dim); }
+.w-ci { top: 50%; height: 2px; width: var(--w); margin-top: -1px; background: var(--text); }
+.w-ci::before, .w-ci::after { content: ""; position: absolute; top: -5px; width: 2px; height: 12px; background: var(--text); }
+.w-ci::before { left: 0; } .w-ci::after { right: 0; }
+.w-tick { top: -3px; width: 4px; height: 28px; margin-left: -2px; border-radius: 2px; background: var(--text); }
+.w-tick.w-low { background: var(--card); border: 2px solid var(--low); }
+.w-tick.w-call { width: 12px; height: 12px; top: 5px; margin-left: -6px; border-radius: 50%; background: var(--attn); }
+.w-tick:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.w-legend { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
+.w-key { font-size: 13px; margin: 0; max-width: 75ch; }
+.w-calls { margin: 6px 0 0; padding-left: 1.1em; }
+.w-fallback summary { cursor: pointer; color: var(--info); font-size: 13px; margin-top: var(--s2); }
+.w-copy-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.w-copy-list li { display: grid; grid-template-columns: minmax(7ch, 12ch) auto 1fr; gap: 4px 12px; align-items: center; }
+.w-copy-list .w-extra { grid-column: 2 / -1; }
+.w-dots { display: inline-flex; gap: 5px; align-items: center; min-height: 14px; }
+.w-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--info); }
+.w-low .w-dot { background: transparent; border: 2px solid var(--low); }
+ol.w-path { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 0; align-items: stretch; }
+ol.w-path li { display: flex; flex-direction: column; padding: 6px 10px; border: 1px solid var(--rule); border-radius: 6px;
+  background: var(--card2); position: relative; margin-right: 18px; }
+ol.w-path li:not(:last-child)::after { content: "\203a"; position: absolute; right: -14px; top: 50%; transform: translateY(-50%);
+  color: var(--dim); font-size: 18px; }
+ol.w-path li.w-tip { border-color: var(--info); }
+ol.w-path li.w-low { border-style: dashed; border-color: var(--low); }
+.w-branch { font-family: var(--mono); font-weight: 600; }
+.w-count { color: var(--dim); font-size: 12px; }
+
 /* charts (plugins/charts.js) inside a card */
 .chart-slot:empty { display: none; }
 figure.chart { margin: 0 0 var(--s3); }
@@ -280,6 +325,41 @@ img.pedigree, img.segments { max-width: 100%; height: auto; display: block; marg
 details[data-child] { border-top: 1px solid var(--rule); padding: var(--s2) 0; }
 details[data-child] summary { cursor: pointer; }
 
+/* the relatedness grid (a list of pairs on a phone), a child's painting */
+.rel-grid-wrap { overflow-x: auto; }
+table.rel-grid { border-collapse: separate; border-spacing: 4px; font-size: 13px; }
+table.rel-grid th { color: var(--dim); font-weight: 600; text-align: left; padding: 2px 6px; white-space: nowrap; }
+table.rel-grid td { background: var(--card2); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; vertical-align: top;
+  min-width: 11ch; }
+table.rel-grid td span { display: block; }
+table.rel-grid td .main { color: var(--text); font-weight: 600; }
+table.rel-grid td .sub { color: var(--dim); font-size: 12px; }
+table.rel-grid td.self, table.rel-grid td.none { background: transparent; border-style: dashed; color: var(--dim); text-align: center; }
+table.rel-grid td.flag { border-color: var(--attn); border-left-width: 4px; }
+table.rel-grid td .chip { margin-top: 4px; white-space: normal; display: inline-flex; }
+ul.rel-pairs { display: none; list-style: none; margin: 0; padding: 0; }
+ul.rel-pairs li { padding: 6px 0; border-bottom: 1px solid var(--rule); }
+ul.rel-pairs li.flag { border-left: 4px solid var(--attn); padding-left: 8px; }
+ul.rel-pairs .pair { font-weight: 600; }
+ul.rel-pairs .chip { white-space: normal; }
+.legend-line { font-size: 13px; margin: var(--s2) 0; }
+details[data-child] h3 { font-size: 15px; margin: var(--s3) 0 var(--s2); }
+.painting { margin: 0 0 var(--s3); }
+.paint-grid { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 3px 6px; align-items: center; }
+.paint-chr { color: var(--dim); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.paint-tracks { display: grid; gap: 2px; }
+.paint-track { position: relative; display: block; height: 7px; width: var(--len); border-radius: 4px;
+  background: color-mix(in srgb, var(--rule) 70%, transparent); overflow: hidden; }
+.paint-seg { position: absolute; top: 0; bottom: 0; left: var(--a); width: var(--w); }
+.anc1 { background: var(--anc1); } .anc2 { background: var(--anc2); } .anc3 { background: var(--anc3); }
+.anc4 { background: var(--anc4); } .anc5 { background: var(--anc5); }
+.paint-seg.other, .paint-swatch.other { background-image: repeating-linear-gradient(45deg, transparent 0 2px, rgba(0, 0, 0, .35) 2px 4px); }
+.paint-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 13px; margin-top: var(--s2); }
+.paint-key { display: inline-flex; gap: 6px; align-items: center; }
+.paint-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 3px; }
+.side-by-side table.rows td:first-child { color: var(--dim); font-size: 13px; }
+.side-by-side table.rows td:nth-child(2) { font-family: var(--mono); font-size: 13px; }
+
 /* --- login --- */
 body.login main { display: flex; justify-content: center; padding-top: 12vh; }
 body.login form { width: 320px; display: flex; flex-direction: column; gap: 8px; }
@@ -316,5 +396,7 @@ input[type=password] { font: inherit; background: var(--card); color: var(--text
   table.rows td::before { content: attr(data-label) ": "; color: var(--dim); font-size: 13px; }
   .look-list a { flex-direction: column; gap: 0; }
   .people { grid-template-columns: minmax(0, 1fr); }
+  .rel-grid-wrap { display: none; }
+  ul.rel-pairs { display: block; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

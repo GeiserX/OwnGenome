@@ -15,8 +15,13 @@ family it is in.
                                 the state below, the pedigree's layout (so each
                                 person is a link), the relationship and shared-
                                 segment rows with their measured numbers, each
-                                couple's gene rows, and each member's run progress
-                                and attention count (from its summary.json only)
+                                couple's gene rows, each child's inherited
+                                stretches (<child>_segments.tsv), the de novo and
+                                compound-het candidates (de_novo.tsv,
+                                compound_het.tsv), each member's run progress and
+                                attention count, and the members side by side:
+                                CYP2D6, the CPIC genes, HLA, the haplogroups and
+                                the blood groups (from each summary.json only)
 
 state.json gets plugins.family: {"kind": "family", ...} on a family's page,
 {"kind": "member", "families": [...]} on the page of a sample in a family,
@@ -182,7 +187,8 @@ def family_page(name, d):
     st = family_state(name, d)
     import render_report  # the couple screen's caveat, word for word
     out = {"state": st, "layout": None, "relationships": [], "ibd_pairs": [], "couples": {},
-           "couple_note": render_report.COUPLE_NOTE}
+           "couple_note": render_report.COUPLE_NOTE, "segments": {}, "de_novo": [], "compound_het": [],
+           "trio_files": {}, "side_by_side": None}
     if st.get("error"):
         return out
     order, members = members_of(d)
@@ -200,6 +206,9 @@ def family_page(name, d):
                 "partner_b", "findings_b", "explanation")
         rows = sorted(({k: r.get(k) for k in keep} for r in rows), key=lambda r: order_of.get(r.get("result"), 3))
         out["couples"]["%s %s" % (a, b)] = rows
+    out.update(child_depth(d, order, members))
+    import report_charts  # GRCh38's lengths, for the painting of each child's stretches
+    out["chrom_lengths"] = [[c, n] for c, n in report_charts.GRCH38 if c != "chrY"]
     # Step 38 writes the verdict "ok" for a pair that matches its declared relation. The page says that
     # in words: no word on the page reads as an all-clear (state.json keeps the file's own value).
     out["state"] = dict(st, relationships=[dict(r, verdict=verdict_words(r.get("verdict")))
@@ -209,8 +218,105 @@ def family_page(name, d):
     return out
 
 
+SEGMENT_KEYS = ("side", "parent", "chrom", "start", "end", "length_bp", "sites", "discordant", "ancestor", "basis")
+DE_NOVO_KEYS = ("child", "chrom", "pos", "ref", "alt", "child_gt", "father_gt", "mother_gt", "child_dp", "child_gq",
+                "child_ab", "quality")
+COMP_KEYS = ("child", "gene", "variant_a", "variant_b", "a_from", "b_from", "phase")
+PHASE_ORDER = {"in trans": 0, "unknown": 1, "in cis": 2}
+
+
+def child_depth(d, order, members):
+    """Each child's stretches (step 38's <child>_segments.tsv) and the trio tables, as the steps wrote them:
+    {segments: {child: [rows]}, de_novo: [rows], compound_het: [rows, in trans first]}."""
+    segs = {}
+    for s in order:
+        if not (members[s]["father"] or members[s]["mother"]):
+            continue
+        rows = read_tsv(os.path.join(d, "%s_segments.tsv" % s))
+        if rows:
+            segs[s] = [{k: r.get(k) for k in SEGMENT_KEYS} for r in rows]
+    comp = [{k: r.get(k) for k in COMP_KEYS} for r in read_tsv(os.path.join(d, "compound_het.tsv"))]
+    comp.sort(key=lambda r: PHASE_ORDER.get(r.get("phase"), 1))
+    return {"segments": segs,
+            "de_novo": [{k: r.get(k) for k in DE_NOVO_KEYS} for r in read_tsv(os.path.join(d, "de_novo.tsv"))],
+            "compound_het": comp,
+            # read_tsv's own test: a link out of the family folder counts as not there
+            "trio_files": {f: os.path.isfile(os.path.join(d, f)) and inside(os.path.join(d, f), os.path.abspath(d))
+                           for f in ("de_novo.tsv", "compound_het.tsv")}}
+
+
+def _sec(summary, key):
+    sec = ((summary or {}).get("sections") or {}).get(key) or {}
+    return sec.get("data") or {} if sec.get("state") in ("ok", "stale") else None
+
+
+def side_values(summary):
+    """[(group, label, value)] of one member's summary.json, as its report prints them; nothing computed."""
+    out = []
+    c = (summary or {}).get("cyp2d6") or {}
+    calls = ", ".join("%s %s" % (k, v) for k, v in (c.get("calls") or {}).items() if v)
+    if calls:
+        agree = c.get("agree")
+        out.append(("Medicines", "CYP2D6 (callers)", calls + (" (callers agree)" if agree else " (callers differ)" if agree is False
+                                                     else "")))
+    cpic = _sec(summary, "cpic")
+    for g in (cpic or {}).get("genes") or []:
+        ph = g.get("phenotype")
+        out.append(("Medicines", g.get("gene"), "%s%s" % (g.get("diplotype") or ".", ' "%s"' % ph if ph else "")))
+    for l in (_sec(summary, "hla") or {}).get("loci") or []:
+        out.append(("HLA", l.get("gene"), " ".join(l.get("alleles") or []) or "not typed"))
+    mt = _sec(summary, "haplogroup")
+    if mt is not None:
+        out.append(("Haplogroups", "Mitochondrial", mt.get("haplogroup") or "."))
+    y = _sec(summary, "y_tree") or _sec(summary, "y_haplogroup")
+    if y is not None:
+        out.append(("Haplogroups", "Y chromosome", y.get("haplogroup") or "."))
+    bt = _sec(summary, "bloodtype")
+    if bt is not None:
+        out.append(("Blood groups", "ABO", bt.get("abo") or next((x.get("phenotype") for x in bt.get("systems") or []
+                                                                  if x.get("system") == "ABO"), ".")))
+        out.append(("Blood groups", "RhD", bt.get("rhd") or next((x.get("phenotype") for x in bt.get("systems") or []
+                                                                  if x.get("system") == "RhD"), ".")))
+    return out
+
+
+def side_by_side(names, summaries):
+    """The members' results in one table: {members, rows: [{group, label, values}]}. A member with no
+    summary.json yet says so in its column; a row a member's summary does not have is '.'."""
+    per = {n: side_values(summaries.get(n)) for n in names}
+    rows, seen = [], {}
+    for n in names:
+        for g, label, _ in per[n]:
+            if (g, label) not in seen:
+                seen[(g, label)] = len(rows)
+                rows.append({"group": g, "label": label, "values": []})
+    groups = ["Medicines", "HLA", "Haplogroups", "Blood groups"]
+    rows.sort(key=lambda r: (groups.index(r["group"]) if r["group"] in groups else 9, seen[(r["group"], r["label"])]))
+    for r in rows:
+        for n in names:
+            if summaries.get(n) is None:
+                r["values"].append("no summary yet")
+            else:
+                r["values"].append(next((v for g, lab, v in per[n] if (g, lab) == (r["group"], r["label"])), "."))
+    return {"members": list(names), "rows": rows}
+
+
 def verdict_words(v):
     return "matches the declared relation" if (v or "").strip().lower() == "ok" else v
+
+
+def member_summary(live, d):
+    """A member run's summary.json as a dict, or None (none yet, unreadable, or a link out of the run)."""
+    import json
+    p = os.path.join(d, "summary.json") if d else None
+    if not p or not os.path.isfile(p) or not live.inside(p, os.path.realpath(d)) or not live.inside(p, live.root):
+        return None
+    try:
+        with open(p) as f:
+            got = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return got if isinstance(got, dict) else None
 
 
 def member_state(root, sample):
@@ -262,6 +368,14 @@ def register(app):
                                  "planned": len(planned), "done": sum(1 for s in planned if s["state"] == "done"),
                                  "attention": n, "results": mtime is not None}
         out["runs"] = runs
+        # The members side by side, from each sequenced member's summary.json alone (read as the home
+        # page's attention count reads it: never a file linking out of its run).
+        seq = [p["sample"] for p in out["state"].get("members") or [] if p.get("sequenced")]
+        sums = {}
+        for s_ in seq:
+            r = live.run(s_) if live else None
+            sums[s_] = member_summary(live, r["dir"] or os.path.join(live.root, r["name"])) if r else None
+        out["side_by_side"] = side_by_side(seq, sums) if seq else None
         app.log("family", name, "family.json", 200)
         return req.send_json(out)
 
