@@ -935,10 +935,11 @@
 
   // --- the route: #s/<card>, #s<n>, #f/<finding>, #q/<chapter>, #progress -----------------------------
   var CHAPTER_SECTION = { quality: 5, clinical: 8, carrier: 3, medicines: 2, ancestry: 6, traits: 7, other: 10, look: 1, leaves: 9 };
-  function route() {
+  // The element the address names, and whether it is a card; null when it names nothing on the page.
+  function routeTarget() {
     var h;
-    try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return; }
-    if (!h) { return; }
+    try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return null; }
+    if (!h) { return null; }
     var target = null, isCard = false;
     if (h.indexOf('s/') === 0 || (h && !/^(s\d+|f\/.*|q\/.*|progress)$/.test(h) && cardById(h))) {
       target = document.getElementById('card-' + (h.indexOf('s/') === 0 ? h.slice(2) : h));
@@ -946,17 +947,27 @@
     } else if (h.indexOf('f/') === 0) { target = document.getElementById('f-' + h.slice(2)); }
     else if (h.indexOf('q/') === 0) { target = document.getElementById('s' + (CHAPTER_SECTION[h.slice(2)] || 1)); }
     else { target = document.getElementById(h); }
-    if (!target) { return; }
+    return target ? { target: target, isCard: isCard } : null;
+  }
+  // Open the folds around the place the address names, and mark it when it is a card. No scroll.
+  function openAround(t) {
+    var target = t.target;
     if (target.id === 'progress') { var fold = document.getElementById('progress-fold'); if (fold) { fold.open = true; } }
     // Open every fold around the target (a card inside a folded section on a phone sits in two), and a
     // folded section's own body when the link names the section.
     for (var d = target.closest ? target.closest('details') : null; d; d = d.parentElement && d.parentElement.closest('details')) { d.open = true; }
     var own = target.matches && target.matches('section.sec') && target.querySelector(':scope > details.secfold');
     if (own) { own.open = true; }
-    if (isCard) {
+    if (t.isCard) {
       Array.prototype.forEach.call(panel.querySelectorAll('.result.target'), function (x) { x.classList.remove('target'); });
       target.classList.add('target');
     }
+  }
+  function route() {
+    var t = routeTarget();
+    if (!t) { return; }
+    var target = t.target;
+    openAround(t);
     target.scrollIntoView({ block: 'start' });
     if (target.focus) { target.focus({ preventScroll: true }); }
     Array.prototype.forEach.call(rail.querySelectorAll('[data-toc]'), function (a) {
@@ -972,8 +983,9 @@
   });
   // Turning a phone or resizing a window across 700 px draws the page again, folded or open.
   if (phoneQuery) {
-    // The redraw closes every fold: open again the ones around the place the address names.
-    var redrawWide = function () { if (results) { redraw(true); route(); } };
+    // The redraw keeps the open cards but not the section and timeline folds: open again the ones
+    // around the place the address names, without scrolling back to it (the reader may be elsewhere now).
+    var redrawWide = function () { if (results) { redraw(true); var t = routeTarget(); if (t) { openAround(t); } } };
     if (phoneQuery.addEventListener) { phoneQuery.addEventListener('change', redrawWide); } else if (phoneQuery.addListener) { phoneQuery.addListener(redrawWide); }
   }
 
