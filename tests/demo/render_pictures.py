@@ -123,7 +123,7 @@ def live_picture(out):
                 # all 'self', so the picture is the same.
                 page = browser.new_page(viewport={"width": 1280, "height": 1000}, device_scale_factor=1,
                                         color_scheme="dark", bypass_csp=True)
-                page.goto(f"http://127.0.0.1:{srv.server_address[1]}/runs/{SAMPLE}/#q/clinical")
+                page.goto(f"http://127.0.0.1:{srv.server_address[1]}/runs/{SAMPLE}/")
                 page.wait_for_function("document.documentElement.dataset.pgpStatus === 'ready'")
                 # The last moment: the run ended, the charts are drawn, the re-check is in.
                 page.evaluate("() => { const s = document.getElementById('replay-slider'); s.value = s.max; "

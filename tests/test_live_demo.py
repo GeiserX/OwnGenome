@@ -21,16 +21,18 @@ Checks:
      static host serves it (no policy header): the home page's people and
      family, the replay to its last frame, the charts, a search, the re-check
      banner, the run-health card, the family link and its pedigree, the viewer
-     page, and no policy violation; the person page's cards (the doctor tab
-     with the ClinVar card, its caveat and its chart), the tab row moved with
-     the arrow keys, #s/clinvar focusing its card; the family page with a
+     page, and no policy violation; the person page's ten sections, its
+     contents, lead and ledger, #s/clinvar focusing the ClinVar card with its
+     caveat, chart and flag, a finding's own page with its plan and evidence;
+     the family page with a
      clickable pedigree and no step map or report link; the widgets of the
      partner's and the son's pages (the repeat gauge, the Lp(a) interval, the
      CHIP VAF, the copy-number dots, the Y path) and the AnnotSV and MoChA marks
      on their genome charts; the family page's relatedness grid, the son's
      painted stretches (one mark per row of his segments file), his de novo
      and compound-het tables and the members side by side; and at a phone's
-     width (390 px) no page scrolls sideways.
+     width (390 px) no page scrolls sideways (every section open, the finding
+     page too) and the person page has its bottom tab bar.
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied) and the phone width also run against a planted mistake and must
 fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
@@ -280,21 +282,31 @@ def browser_checks(out):
 
 
 def person_checks(b, base):
-    """The person page at the end of the run: cards, keyboard, a section link; the family page's own view."""
-    b.eval("location.hash = '#q/clinical'; true")
-    n = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.documentElement.dataset.pgpResults")
-    card = b.eval("var c = document.getElementById('card-clinvar'); c && [!!c.querySelector('.caveat .caveat-lead'), "
-                  "!!c.querySelector('figure[data-chart]'), c.classList.contains('attn')].join(' ')")
-    check("browser: the doctor tab shows its cards; ClinVar's has its caveat, its chart and its flag",
-          n and int(n) > 3 and card == "true true true", (n, card))
-    b.eval("var t = document.querySelector('#rail [aria-selected=true]'); t.focus(); "
-           "t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); true")
-    tab = b.wait("document.documentElement.dataset.pgpTab !== 'clinical' && document.documentElement.dataset.pgpTab")
-    check("browser: the arrow key moves to the next chapter", tab == "carrier", tab)
+    """The person page at the end of the run: the ten sections, the lead, the contents, a section link, a finding
+    page; the family page's own view."""
+    got = b.wait("document.documentElement.dataset.pgpResults && JSON.stringify(["
+                 "document.querySelectorAll('main section.sec[data-journal]').length, "
+                 "document.querySelectorAll('#rail [data-toc]').length, "
+                 "(document.querySelector('#lead-slot .lede') || {textContent: ''}).textContent.length > 40, "
+                 "document.querySelectorAll('#lead-slot .ledger a[data-level]').length])")
+    check("browser: the person page has its ten sections, the contents linking each, a lead paragraph and the ledger",
+          got == "[10,10,true,5]", got)
     b.eval("location.hash = '#s/clinvar'; true")
-    focus = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.activeElement && "
-                   "document.activeElement.id")
-    check("browser: #s/clinvar opens the doctor tab and focuses the ClinVar card", focus == "card-clinvar", focus)
+    focus = b.wait("document.activeElement && document.activeElement.id === 'card-clinvar' && 'card-clinvar'")
+    card = b.eval("var c = document.getElementById('card-clinvar'); c && [!!c.querySelector('.caveat .caveat-lead'), "
+                  "!!c.querySelector('figure[data-chart]'), c.classList.contains('attn'), "
+                  "c.getBoundingClientRect().height > 0].join(' ')")
+    check("browser: #s/clinvar focuses the ClinVar card, shown, with its caveat, its chart and its flag",
+          focus == "card-clinvar" and card == "true true true true", (focus, card))
+    link = b.eval("var a = document.querySelector('[data-finding] h3 a[href^=\"finding/\"]'); a && a.getAttribute('href')")
+    check("browser: a finding links its own page", bool(link), link)
+    if link:
+        b.go(f"{base}/runs/{S}/{link}")
+        page = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && JSON.stringify(["
+                      "!!document.querySelector('h1.h-display'), document.querySelectorAll('#plan li').length > 0, "
+                      "!!document.getElementById('evidence'), document.documentElement.dataset.pgpBlocked || ''])")
+        check("browser: the finding page shows its title, its plan and its evidence, and the policy blocks nothing",
+              page == '[true,true,true,""]', (link, page))
     b.go(f"{base}/runs/{FAM}/")
     fam = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && [!document.getElementById('map'), "
                  "!document.getElementById('report-link'), (document.querySelector('svg.pedigree-svg a') || {"
@@ -303,24 +315,23 @@ def person_checks(b, base):
           fam == f"true true ../../runs/{S}/", fam)
 
 
-# The widgets: (person, tab, kind, the marks it must draw) on the demo's other people.
-WIDGETS = [("DEMO-002", "clinical", "str", "[data-widget=str] .w-row", 8),
-           ("DEMO-002", "clinical", "ci", "[data-widget=ci] .w-tick", 1),
-           ("DEMO-002", "clinical", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
-           ("DEMO-003", "carrier", "copies", "[data-widget=copies] li", 5),
-           ("DEMO-003", "ancestry", "ypath", "[data-widget=ypath] li", 5),
-           ("DEMO-002", "clinical", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
-           ("DEMO-003", "clinical", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
+# The widgets: (person, card, kind, the marks it must draw) on the demo's other people.
+WIDGETS = [("DEMO-002", "expansions", "str", "[data-widget=str] .w-row", 8),
+           ("DEMO-002", "lpa", "ci", "[data-widget=ci] .w-tick", 1),
+           ("DEMO-002", "chip", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
+           ("DEMO-003", "paralogs", "copies", "[data-widget=copies] li", 5),
+           ("DEMO-003", "y-chromosome", "ypath", "[data-widget=ypath] li", 5),
+           ("DEMO-002", "clinvar", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
+           ("DEMO-003", "clinvar", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
 
 
 def widget_counts(b, base):
     got = {}
-    for person, tab, kind, sel, _ in WIDGETS:
+    for person, cid, kind, sel, _ in WIDGETS:
         b.go("about:blank")  # a new document each time, so the wait never reads the page before
         b.wait("location.href === 'about:blank'")
-        b.go(f"{base}/runs/{person}/#q/{tab}")
-        b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpTab === %s"
-               % json.dumps(tab))
+        b.go(f"{base}/runs/{person}/#s/{cid}")
+        b.wait("document.documentElement.dataset.pgpResults && document.getElementById(%s)" % json.dumps("card-" + cid))
         if kind in ("MoChA bar", "AnnotSV span"):
             b.wait("document.documentElement.dataset.pgpCharts")
             time.sleep(0.5)
@@ -401,9 +412,11 @@ def phone_checks(b, base):
     try:
         wide = {}
         for name, path, ready in (("home", "/", "document.documentElement.dataset.pgpStatus === 'ready'"),
-                                  ("person", f"/runs/{S}/#q/clinical", "document.documentElement.dataset.pgpResults"),
+                                  ("person", f"/runs/{S}/", "document.documentElement.dataset.pgpResults"),
                                   ("family", f"/runs/{FAM}/", "document.documentElement.dataset.pgpStatus === 'ready'"),
-                                  ("partner", f"/runs/{OTHERS[0]}/#q/clinical", "document.documentElement.dataset.pgpResults")):
+                                  ("partner", f"/runs/{OTHERS[0]}/", "document.documentElement.dataset.pgpResults"),
+                                  ("finding", f"/runs/{OTHERS[0]}/finding/str-fmr1/",
+                                   "document.documentElement.dataset.pgpStatus === 'ready'")):
             b.go(base + path)
             b.wait(ready)
             if name == "person":
@@ -411,15 +424,12 @@ def phone_checks(b, base):
                        "s.dispatchEvent(new Event('input')); true")
                 b.wait("document.documentElement.dataset.pgpFrame === document.getElementById('replay-slider').max")
                 time.sleep(1)
-                # Every tab of the person page, not only the one the link opens.
-                tabs = b.eval("Array.prototype.map.call(document.querySelectorAll('[role=tab][data-tab]'), "
-                              "function (t) { return t.getAttribute('data-tab'); }).join(' ')") or ""
-                for tab in tabs.split():
-                    b.eval(f"document.querySelector('[role=tab][data-tab=\"{tab}\"]').click(); true")
-                    time.sleep(0.3)
-                    if too_wide(b):
-                        wide[f"person {tab}"] = too_wide(b)
-                wide["person tabs"] = "" if len(tabs.split()) >= 3 else f"only {tabs!r}"
+                # Every section open: the cards folded into section 8 too.
+                b.eval("Array.prototype.forEach.call(document.querySelectorAll('main details'), "
+                       "function (d) { d.open = true; }); true")
+                time.sleep(0.3)
+                tabs = b.eval("getComputedStyle(document.getElementById('tabbar')).display")
+                wide["person tab bar"] = "" if tabs == "grid" else f"tab bar display {tabs!r}"
             wide[name] = too_wide(b)
         check("browser: at 390 px no page scrolls sideways", not any(wide.values()), wide)
         b.eval("var d = document.createElement('div'); d.style.width = '900px'; d.style.height = '4px'; "

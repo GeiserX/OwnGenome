@@ -13,6 +13,8 @@ writes DIR, which the docs workflow publishes at /demo/ of the docs site:
   runs/DEMO-001/results.json    the person's results (bin/live_results.py), as the results
                                 plugin serves them at the end of the run; each card shows
                                 once the replay reaches the end of its steps
+  runs/DEMO-001/finding/<id>/   one page per finding (assets/live/finding.html), as the
+                                results plugin's finding route serves it
   runs/DEMO-001/...             the files the plugins point at (the charts, the
                                 search index, the re-check), the report as
                                 report.html and the files it links to
@@ -363,6 +365,16 @@ def person_site(out, root, name, plugin_js, frames, results, autoplay=False):
         if os.path.isfile(p):
             os.makedirs(os.path.dirname(os.path.join(sd, dst)), exist_ok=True)
             shutil.copy(p, os.path.join(sd, dst))
+    # One page per finding, as the server's /runs/<name>/finding/<id>/ route serves it.
+    with open(os.path.join(ASSETS, "finding.html")) as f:
+        tpl = f.read()
+    for fd in results.get("findings") or []:
+        fdir = os.path.join(sd, "finding", fd["id"])
+        os.makedirs(fdir)
+        with open(os.path.join(fdir, "index.html"), "w") as f:
+            f.write(with_csp(tpl.replace("{{assets}}", "../../../../assets").replace("{{run}}", html.escape(name))
+                             .replace("{{finding}}", html.escape(fd["id"])).replace("{{mode}}", "replay")
+                             .replace('href="/"', 'href="../../../../"')))
     os.makedirs(os.path.join(sd, "viewer"))
     with open(os.path.join(sd, "viewer", "index.html"), "w") as f:
         f.write(plain_page("Genome viewer: not in the demo",
@@ -375,7 +387,7 @@ def write_site(out, root, frames, fam):
     if os.path.exists(out):
         shutil.rmtree(out)
     shutil.copytree(ASSETS, os.path.join(out, "assets"),
-                    ignore=shutil.ignore_patterns("index.html", "login.html", "home.html", "family.html"))
+                    ignore=shutil.ignore_patterns(*owngenome_live.PAGES))
     plugin_dir = os.path.join(ASSETS, "plugins")
     plugin_js = sorted(f for f in os.listdir(plugin_dir) if owngenome_live.ASSET_RE.match(f) and f.endswith(".js")) \
         if os.path.isdir(plugin_dir) else []
