@@ -302,8 +302,13 @@
     add(b, text);
     return b;
   }
+  // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
+  // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
+  function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
+  function openVeiled(fs) { fs.forEach(function (f) { shown[f.id] = true; }); redraw(true); }
   function card(c) {
     var g = gate(c);
+    var closedFs = g === 'show' ? veiledOf(c) : [];
     var art = el('article', { 'class': 'card result g-' + g + (attentionNow(c) ? ' attn' : ''), id: 'card-' + c.id,
       'data-section': c.id, 'data-step': (c.steps || []).join(' '), 'data-state': c.state, 'data-level': c.level || '',
       tabindex: '-1', 'aria-labelledby': 'h-' + c.id });
@@ -330,6 +335,14 @@
         'Step ' + (c.steps || []).join(', ') + ' failed: the timeline below says why, and a rerun of the step fills this section.'));
     } else if (g === 'empty') {
       add(art, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
+    } else if (closedFs.length) {
+      var v = el('div', { 'class': 'veil' });
+      add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
+        'This section holds a result to act on in adult life. It stays closed until you open it.'));
+      var vb = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
+      vb.addEventListener('click', function () { openVeiled(closedFs); var x = document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
+      add(v, vb);
+      add(art, v);
     } else {
       (c.notes || []).forEach(function (n) { add(art, el('p', { 'class': 'note-stale' }, n)); });
       if (c.headline) { add(art, el('p', { 'class': 'headline' }, c.headline)); }
@@ -525,7 +538,8 @@
         var d = el('details', { 'data-card': c.id });
         var sum = el('summary', {});
         var g = gate(c);
-        var what = g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
+        var what = g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
+          : g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
           : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
         var w2 = el('span', { 'class': 'what' }, what);
         if (c.caveat && c.caveat.length) { add(w2, el('span', { 'class': 'cav' }, 'Does not see: ' + U.firstSentence(c.caveat[0]))); }

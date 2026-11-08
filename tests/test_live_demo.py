@@ -32,9 +32,12 @@ Checks:
      painted stretches (one mark per row of his segments file), his de novo
      and compound-het tables and the members side by side; and at a phone's
      width (390 px) no page scrolls sideways (every section open, the finding
-     page too) and the person page has its bottom tab bar.
+     page too) and the person page has its bottom tab bar; on the son's page a
+     planted CPSR result to act on names its gene and variant nowhere (its card
+     included) until "Show the result" is clicked, and then does.
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
-with the son's stretches emptied) and the phone width also run against a planted mistake and must
+with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
+the veil) also run against a planted mistake and must
 fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
 Run: python3 tests/test_live_demo.py
@@ -54,6 +57,7 @@ sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 import build_live_demo  # noqa: E402
+import live_results  # noqa: E402
 import make_demo_events  # noqa: E402
 import owngenome_live  # noqa: E402
 import run_state  # noqa: E402
@@ -275,6 +279,7 @@ def browser_checks(out):
         widget_checks(b, base, out)
         family_depth_checks(b, base, out)
         phone_checks(b, base)
+        veil_checks(b, base, out)
     finally:
         b.close()
         srv.shutdown()
@@ -399,6 +404,61 @@ def family_depth_checks(b, base, out):
     finally:
         with open(fj, "w") as f:
             f.write(keep)
+
+
+# A result to act on planted on the son's page: an invented gene and variant in a CPSR row.
+VEIL_GENE, VEIL_VARIANT = "GENEQ", "c.77del"
+
+
+def veil_text(b, base):
+    """The son's person page: [the whole page's text before any click, the text after the first 'Show the
+    result' button is clicked]. textContent reads closed details too."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/")
+    b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpStatus === 'ready' "
+           "&& document.querySelector('.veil') && 'drawn'")
+    before = b.eval("document.body.textContent")
+    b.eval("document.querySelector('.veil button').click(); true")
+    time.sleep(0.5)
+    after = b.wait("!document.querySelector('.veil') && document.body.textContent")
+    return before, after
+
+
+def veil_problems(before, after):
+    out = [f"{w} shown before the click" for w in (VEIL_GENE, VEIL_VARIANT) if w in (before or "")]
+    out += [f"{w} still hidden after the click" for w in (VEIL_GENE, VEIL_VARIANT) if w not in (after or "")]
+    return out
+
+
+def veil_checks(b, base, out):
+    """On a child's page a result to act on stays closed everywhere, its own section's card too, until it is
+    opened; then it shows."""
+    rj = os.path.join(out, "runs", OTHERS[1], "results.json")
+    js = os.path.join(out, "assets", "person.js")
+    with open(rj) as f:
+        keep = f.read()
+    with open(js) as f:
+        keep_js = f.read()
+    try:
+        with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as f:
+            summary = json.load(f)
+        summary.setdefault("sections", {})["cpsr"] = {"state": "ok", "data": {"plp": [
+            {"gene": VEIL_GENE, "variant": VEIL_VARIANT, "final": "Pathogenic", "clinvar": "Pathogenic"}]}}
+        res = live_results.build(OTHERS[1], summary)
+        with open(rj, "w") as f:
+            json.dump(res, f)
+        bad = veil_problems(*veil_text(b, base))
+        check("browser: on the son's page a planted result to act on names its gene and variant nowhere until "
+              "'Show the result' is clicked, and then shows them", not bad, bad)
+        with open(js, "w") as f:
+            f.write(keep_js.replace("} else if (closedFs.length) {", "} else if (false) {"))
+        control("person.js whose cards ignore the veil", not veil_problems(*veil_text(b, base)))
+    finally:
+        with open(rj, "w") as f:
+            f.write(keep)
+        with open(js, "w") as f:
+            f.write(keep_js)
 
 
 def too_wide(b):
