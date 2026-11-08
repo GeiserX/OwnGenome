@@ -167,27 +167,54 @@ def parse_duration(v):
     return total if found else None
 
 
+# Parsed trace files, keyed on the path and its mtime and size: /runs.json builds every run's state, and a
+# finished run's trace files do not change, so each is read once until it does. Bounded, oldest out first.
+TRACE_CACHE = {}
+TRACE_CACHE_MAX = 64
+
+
+def _trace_rows(p):
+    """[(process, tag, task)] of one trace file, every sample's; None when it cannot be read."""
+    try:
+        st = os.stat(p)
+    except OSError:
+        return None
+    key = (st.st_mtime_ns, st.st_size)
+    hit = TRACE_CACHE.get(p)
+    if hit and hit[0] == key:
+        return hit[1]
+    try:
+        f = open(p, errors="replace")
+    except OSError:
+        return None
+    rows = []
+    with f:
+        header = f.readline().rstrip("\n").split("\t")
+        for line in f:
+            r = dict(zip(header, line.rstrip("\n").split("\t")))
+            proc, tag = task_name(r.get("name"))
+            if not proc or proc in SHARED_PROCESSES:
+                continue
+            start = parse_trace_time(r.get("submit"))
+            dur = parse_duration(r.get("duration"))
+            rows.append((proc, tag, {"id": r.get("task_id") or r.get("hash") or r.get("name"), "name": r.get("name"),
+                                     "process": proc, "status": (r.get("status") or "").upper(),
+                                     "exit": r.get("exit"), "start": start,
+                                     "end": start + dur if start is not None and dur is not None else None}))
+    TRACE_CACHE.pop(p, None)
+    TRACE_CACHE[p] = (key, rows)
+    while len(TRACE_CACHE) > TRACE_CACHE_MAX:
+        TRACE_CACHE.pop(next(iter(TRACE_CACHE)))
+    return rows
+
+
 def read_trace(paths, sample):
-    """Rows of the trace files tagged with the sample, as task dicts."""
+    """Rows of the trace files tagged with the sample, as task dicts (each a copy: callers may change it)."""
     tasks = []
     for p in paths:
-        try:
-            f = open(p, errors="replace")
-        except OSError:
-            continue
-        with f:
-            header = f.readline().rstrip("\n").split("\t")
-            for line in f:
-                r = dict(zip(header, line.rstrip("\n").split("\t")))
-                proc, tag = task_name(r.get("name"))
-                if not proc or proc in SHARED_PROCESSES or not is_sample(tag, sample):
-                    continue
-                start = parse_trace_time(r.get("submit"))
-                dur = parse_duration(r.get("duration"))
-                tasks.append({"id": r.get("task_id") or r.get("hash") or r.get("name"), "name": r.get("name"),
-                              "process": proc, "status": (r.get("status") or "").upper(),
-                              "exit": r.get("exit"), "start": start,
-                              "end": start + dur if start is not None and dur is not None else None})
+        for proc, tag, task in _trace_rows(p) or ():
+            if is_sample(tag, sample):
+                tasks.append(dict(task))
     return tasks
 
 
