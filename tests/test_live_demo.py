@@ -24,10 +24,16 @@ Checks:
      page, and no policy violation; the person page's cards (the doctor tab
      with the ClinVar card, its caveat and its chart), the tab row moved with
      the arrow keys, #s/clinvar focusing its card; the family page with a
-     clickable pedigree and no step map or report link; and at a phone's width
-     (390 px) no page scrolls sideways.
-Checks 1, 2, 3, 5 and the phone width also run against a planted mistake and must fail there (2:
-a build with one plugin's state hook dropped): a check that cannot fail is no check.
+     clickable pedigree and no step map or report link; the widgets of the
+     partner's and the son's pages (the repeat gauge, the Lp(a) interval, the
+     CHIP VAF, the copy-number dots, the Y path) and the AnnotSV and MoChA marks
+     on their genome charts; the family page's relatedness grid, the son's
+     painted stretches (one mark per row of his segments file), his de novo
+     and compound-het tables and the members side by side; and at a phone's
+     width (390 px) no page scrolls sideways.
+Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
+with the son's stretches emptied) and the phone width also run against a planted mistake and must
+fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
 Run: python3 tests/test_live_demo.py
 """
@@ -53,6 +59,7 @@ from test_owngenome_live import Chrome, asset_problems, find_chrome  # noqa: E40
 
 FAILS = []
 S, FAM = build_live_demo.SAMPLE, build_live_demo.FAMILY
+OTHERS = [n for n, _, _ in build_live_demo.OTHERS]
 
 
 def check(desc, ok, detail=""):
@@ -121,7 +128,8 @@ def follow_problems(frames, steps):
 def links(v):
     if isinstance(v, dict):
         for k, x in v.items():
-            if k in ("url", "pedigree", "segments", "report", "table") and isinstance(x, str):
+            # a relatedness row's "segments" is a count, not a file
+            if k in ("url", "pedigree", "segments", "report", "table") and isinstance(x, str) and not x.isdigit():
                 yield x
             else:
                 yield from links(x)
@@ -152,8 +160,8 @@ def link_problems(out, built):
 def json_link_problems(out):
     """Links of runs.json, results.json and family.json that are absolute or reach no file of the demo."""
     bad = []
-    for rel, base in (("runs.json", out), (os.path.join("runs", S, "results.json"), os.path.join(out, "runs", S)),
-                      (os.path.join("runs", FAM, "family.json"), os.path.join(out, "runs", FAM))):
+    for rel, base in [("runs.json", out), (os.path.join("runs", FAM, "family.json"), os.path.join(out, "runs", FAM))] + \
+            [(os.path.join("runs", n, "results.json"), os.path.join(out, "runs", n)) for n in [S] + OTHERS]:
         with open(os.path.join(out, rel)) as f:
             data = json.load(f)
         found = list(links(data))
@@ -205,8 +213,9 @@ def browser_checks(out):
         runs = b.eval("Array.from(document.querySelectorAll('.person-card a.person-link')).map(function (a) { "
                       "return a.getAttribute('href'); }).join(' ') + ' | ' + Array.from(document.querySelectorAll("
                       "'.family-head a')).map(function (a) { return a.getAttribute('href'); }).join(' ')")
-        check("browser: the home page shows both people of the family, the sequenced one with a run linked, and the family",
-              people == "2" and runs == f"runs/{S}/ | runs/{FAM}/ runs/{FAM}/", (people, runs))
+        want = " ".join(f"runs/{n}/" for n in [S] + OTHERS) + f" | runs/{FAM}/ runs/{FAM}/"
+        check("browser: the home page shows the three people of the family, each with a run linked, and the family",
+              people == "3" and runs == want, (people, runs))
         b.go(f"{base}/runs/{S}/")
         first = b.wait("document.documentElement.dataset.pgpFrame && document.documentElement.dataset.pgpStatus === 'ready' "
                        "&& document.querySelectorAll('#map g.box').length")
@@ -261,6 +270,8 @@ def browser_checks(out):
         csp = b.eval("var m = document.querySelector('meta[http-equiv=Content-Security-Policy]'); m && m.content")
         check("browser: the page runs under the meta policy", csp == build_live_demo.CSP, csp)
         person_checks(b, base)
+        widget_checks(b, base, out)
+        family_depth_checks(b, base, out)
         phone_checks(b, base)
     finally:
         b.close()
@@ -292,6 +303,92 @@ def person_checks(b, base):
           fam == f"true true ../../runs/{S}/", fam)
 
 
+# The widgets: (person, tab, kind, the marks it must draw) on the demo's other people.
+WIDGETS = [("DEMO-002", "clinical", "str", "[data-widget=str] .w-row", 8),
+           ("DEMO-002", "clinical", "ci", "[data-widget=ci] .w-tick", 1),
+           ("DEMO-002", "clinical", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
+           ("DEMO-003", "carrier", "copies", "[data-widget=copies] li", 5),
+           ("DEMO-003", "ancestry", "ypath", "[data-widget=ypath] li", 5),
+           ("DEMO-002", "clinical", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
+           ("DEMO-003", "clinical", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
+
+
+def widget_counts(b, base):
+    got = {}
+    for person, tab, kind, sel, _ in WIDGETS:
+        b.go("about:blank")  # a new document each time, so the wait never reads the page before
+        b.wait("location.href === 'about:blank'")
+        b.go(f"{base}/runs/{person}/#q/{tab}")
+        b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpTab === %s"
+               % json.dumps(tab))
+        if kind in ("MoChA bar", "AnnotSV span"):
+            b.wait("document.documentElement.dataset.pgpCharts")
+            time.sleep(0.5)
+        got[kind] = b.eval("document.querySelectorAll(%s).length" % json.dumps(sel))
+    return got
+
+
+def widget_problems(got):
+    return [f"{kind}: {got.get(kind)} marks, want {n}" for _, _, kind, _, n in WIDGETS if got.get(kind) != n]
+
+
+def widget_checks(b, base, out):
+    """Every widget kind drawn with its marks on the partner's and the son's pages."""
+    b.call("Network.enable", session=b.session)  # the control below changes person.js: never serve it from cache
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+    got = widget_counts(b, base)
+    bad = widget_problems(got)
+    check("browser: every widget and genome-chart mark is drawn with its marks (" + ", ".join(k for _, _, k, _, _ in WIDGETS)
+          + ")", not bad, bad)
+    js = os.path.join(out, "assets", "person.js")
+    with open(js) as f:
+        keep = f.read()
+    try:
+        with open(js, "w") as f:
+            f.write(keep.replace("add(art, widget(c.widget));", ""))
+        control("person.js without its widget line", not widget_problems(widget_counts(b, base)))
+    finally:
+        with open(js, "w") as f:
+            f.write(keep)
+
+
+def family_depth(b, base):
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{FAM}/")
+    return b.wait("document.documentElement.dataset.pgpStatus === 'ready' && JSON.stringify(["
+                  "document.querySelectorAll('table.rel-grid td:not(.self):not(.none)').length, "
+                  "document.querySelectorAll('[data-painting=\"DEMO-003\"] .paint-seg').length, "
+                  "document.querySelectorAll('details[data-child=\"DEMO-003\"] table.rows').length, "
+                  "document.querySelectorAll('section.side-by-side table.rows thead th').length])")
+
+
+def family_depth_problems(text, rows):
+    got = json.loads(text) if text else [0, 0, 0, 0]
+    want = [6, rows, 3, 2 + 3]  # 3 pairs both ways; the stretches; painting, de novo, pairs; label columns + 3 people
+    return [] if got == want else [f"{got} != {want}"]
+
+
+def family_depth_checks(b, base, out):
+    with open(os.path.join(build_live_demo.EXTRA, FAM, "DEMO-003_segments.tsv")) as f:
+        rows = sum(1 for line in f if line.strip()) - 1
+    bad = family_depth_problems(family_depth(b, base), rows)
+    check("browser: the family page draws the relatedness grid, the son's stretches row for row, his de novo and "
+          "compound-het tables and the members side by side", not bad, bad)
+    fj = os.path.join(out, "runs", FAM, "family.json")
+    with open(fj) as f:
+        keep = f.read()
+    try:
+        planted = json.loads(keep)
+        planted["segments"] = {}
+        with open(fj, "w") as f:
+            json.dump(planted, f)
+        control("family.json with the son's stretches emptied", not family_depth_problems(family_depth(b, base), rows))
+    finally:
+        with open(fj, "w") as f:
+            f.write(keep)
+
+
 def too_wide(b):
     return b.eval("document.documentElement.scrollWidth > window.innerWidth ? "
                   "document.documentElement.scrollWidth + ' > ' + window.innerWidth : ''")
@@ -305,7 +402,8 @@ def phone_checks(b, base):
         wide = {}
         for name, path, ready in (("home", "/", "document.documentElement.dataset.pgpStatus === 'ready'"),
                                   ("person", f"/runs/{S}/#q/clinical", "document.documentElement.dataset.pgpResults"),
-                                  ("family", f"/runs/{FAM}/", "document.documentElement.dataset.pgpStatus === 'ready'")):
+                                  ("family", f"/runs/{FAM}/", "document.documentElement.dataset.pgpStatus === 'ready'"),
+                                  ("partner", f"/runs/{OTHERS[0]}/#q/clinical", "document.documentElement.dataset.pgpResults")):
             b.go(base + path)
             b.wait(ready)
             if name == "person":
@@ -398,7 +496,7 @@ def main():
         for p, _, fs in os.walk(out):
             for f in fs:
                 rel = os.path.relpath(os.path.join(p, f), out)
-                if f.endswith((".html", ".js", ".css")) and rel != os.path.join("runs", S, "report.html"):
+                if f.endswith((".html", ".js", ".css")) and rel not in [os.path.join("runs", n, "report.html") for n in [S] + OTHERS]:
                     with open(os.path.join(p, f)) as fh:
                         texts[rel] = fh.read()
                     if f.endswith(".html"):

@@ -57,6 +57,15 @@ def cell(v):
     return str(v)
 
 
+def num(v):
+    """A summary value as a float, or None ('.', '', 'NA', a range)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return x if x == x and x not in (float("inf"), float("-inf")) else None
+
+
 def table(columns, rows, limit=200):
     rows = [[cell(c) for c in r] for r in rows]
     if not rows:
@@ -273,9 +282,12 @@ def a_expansions(S, s):
     return {"facts": facts, "attention": flagged,
             "table": table(["Locus", "Repeats", "Stranger status", "Normal up to", "Pathologic from", "95% interval",
                             "Sizing", "Intermediate zone"], rows),
-            "widget": {"kind": "str", "loci": [{k: l.get(k) for k in ("locus", "repeat_count", "status", "normal_max",
-                                                                          "pathologic_min", "ci")}
-                                                 for l in d.get("loci") or []]}}
+            # The gauge: each allele's count against Stranger's thresholds, its 95% interval as a whisker.
+            # status is render_report's str_status: never Stranger's "normal" for an allele not sized.
+            "widget": {"kind": "str", "loci": [dict({k: l.get(k) for k in ("locus", "repeat_count", "normal_max",
+                                                                               "pathologic_min", "ci", "allele_sizing")},
+                                                    status=rr.str_status(l))
+                                               for l in d.get("loci") or []]}}
 
 
 def a_vntyper(S, s):
@@ -301,17 +313,32 @@ def a_lpa(S, s):
     d = S["lpa"]["data"]
     facts = [["KIV-2 repeats", f"{d.get('kiv2_copies')} (95% interval {d.get('ci95_low')} to {d.get('ci95_high')})"
               if d.get("status") == "estimated" else d.get("status")], ["Class", d.get("class")]]
-    return {"facts": facts, "lines": rr.lpa_lines(d), "attention": d.get("flag") == "high"}
+    out = {"facts": facts, "lines": rr.lpa_lines(d), "attention": d.get("flag") == "high"}
+    v, lo, hi = num(d.get("kiv2_copies")), num(d.get("ci95_low")), num(d.get("ci95_high"))
+    if d.get("status") == "estimated" and v is not None and lo is not None and hi is not None:
+        # The count and its 95% interval on a scale from 0: the page draws the bar, the facts say it in words.
+        out["widget"] = {"kind": "ci", "label": "KIV-2 repeats, both chromosomes", "value": v, "low": lo, "high": hi,
+                         "unit": "repeats", "max": max(60, 10 * int(hi * 1.25 / 10 + 1)), "class": d.get("class")}
+    return out
 
 
 def a_chip(S, s):
     d = S["chip"]["data"]
     rows = [[c.get("gene"), c.get("protein_change"), c.get("vaf"), c.get("alt_reads"), c.get("depth"), c.get("status")]
             for c in d.get("calls") or []]
-    return {"facts": [["CHIP calls", len(d.get("calls") or [])],
-                      ["Typical detection limit at this depth (VAF)", d.get("median_limit")]],
-            "table": table(["Gene", "Change", "VAF", "Alt reads", "Depth", "Status"], rows),
-            "lines": rr.chip_lines(d, s.get("sample")), "attention": bool(d.get("calls"))}
+    genes = [{"gene": g.get("gene"), "limit": num(g.get("detection_limit_vaf")), "depth": num(g.get("mean_depth")),
+              "status": g.get("status")} for g in d.get("genes") or []]
+    calls = [{"gene": c.get("gene"), "change": c.get("protein_change"), "vaf": num(c.get("vaf"))}
+             for c in d.get("calls") or []]
+    out = {"facts": [["CHIP calls", len(d.get("calls") or [])],
+                     ["Typical detection limit at this depth (VAF)", d.get("median_limit")]],
+           "table": table(["Gene", "Change", "VAF", "Alt reads", "Depth", "Status"], rows),
+           "lines": rr.chip_lines(d, s.get("sample")), "attention": bool(d.get("calls"))}
+    if genes or calls:
+        # Each call's VAF against the smallest VAF this depth can see in each gene (chip_report's own limit):
+        # under the limit nothing can be seen, so an empty track is not an all-clear.
+        out["widget"] = {"kind": "vaf", "max": 0.5, "genes": genes, "calls": [c for c in calls if c["vaf"] is not None]}
+    return out
 
 
 def a_mosaic(S, s):
@@ -356,16 +383,28 @@ def a_couple(S, s):
             "table": table(["Result", "Gene", "Condition", "Chance for a child", "This person", "Partner"], rows)}
 
 
+# The genes the copy-number dots draw (the carrier screen's copy-number genes): SMN1 and SMN2, the two
+# alpha-globin genes and the RCCX module of CYP21A2.
+COPY_GENES = ("SMN1", "SMN2", "HBA1", "HBA2", "CYP21A2")
+
+
 def a_paralogs(S, s):
     lines = []
     if (S.get("parascopy") or {}).get("state") in ("ok", "stale"):
         d = S["parascopy"]["data"]
         lines += rr.parascopy_lines(d) + rr.parascopy_locus_lines(d) + rr.cn_interval_lines(d.get("cn_intervals"))
-    rows = []
+    rows, dots = [], []
     if (S.get("paralogs") or {}).get("state") in ("ok", "stale"):
-        rows = [[g.get("gene"), g.get("copy_number"), g.get("status"), g.get("detail")]
-                for g in S["paralogs"]["data"].get("genes") or []]
-    return {"lines": lines, "table": table(["Gene", "Copies", "Status", "Detail"], rows)}
+        for g in S["paralogs"]["data"].get("genes") or []:
+            rows.append([g.get("gene"), g.get("copy_number"), g.get("status"), g.get("detail")])
+            if str(g.get("gene") or "").split(" ")[0] in COPY_GENES:
+                n = num(g.get("copy_number"))
+                dots.append({"gene": g.get("gene"), "copies": int(n) if n is not None and n == int(n) and 0 <= n <= 20
+                             else None, "status": g.get("status") or "."})
+    out = {"lines": lines, "table": table(["Gene", "Copies", "Status", "Detail"], rows)}
+    if dots:
+        out["widget"] = {"kind": "copies", "genes": dots}
+    return out
 
 
 def a_pharmcat(S, s):
@@ -446,8 +485,15 @@ def a_y(S, s):
     st = (S.get("y_str") or {}).get("data") or {}
     if st.get("markers"):
         facts.append(["Y-STR markers read", sum(1 for m in st["markers"] if m.get("count"))])
-    return {"facts": facts, "explore": explore,
-            "table": table(["Level", "Branch", "Derived", "Ancestral", "No call"], rows)}
+    out = {"facts": facts, "explore": explore,
+           "table": table(["Level", "Branch", "Derived", "Ancestral", "No call"], rows)}
+    if t and t.get("path"):
+        # The path from the root of the tree to the placement, one branch per level, with its marker counts.
+        out["widget"] = {"kind": "ypath", "tree": t.get("tree"), "tip": t.get("haplogroup"),
+                         "path": [{"level": p.get("Level"), "branch": p.get("Branch"), "derived": num(p.get("Derived")),
+                                   "ancestral": num(p.get("Ancestral")), "no_call": num(p.get("No_call"))}
+                                  for p in t["path"]]}
+    return out
 
 
 def a_archaic(S, s):

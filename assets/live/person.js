@@ -124,6 +124,174 @@
   }
   U.tablist(rail, function (t) { go(t.getAttribute('href')); });
 
+  // --- widgets: a card's numbers drawn ---------------------------------------------------------------
+  // HTML placed in percent of a track (custom properties, never a style attribute), so the text stays
+  // at its size on a phone. Every mark is focusable and says itself in words; colour is never alone.
+  function num(v) { var n = parseFloat(v); return isFinite(n) ? n : null; }
+  function pct(v, max) { return Math.max(0, Math.min(100, 100 * v / max)); }
+  function nice(v) { var step = v > 200 ? 50 : 10; return Math.max(step, Math.ceil(v / step) * step); }
+  function place(e, from, to, max) {
+    e.style.setProperty('--a', pct(from, max).toFixed(2) + '%');
+    if (to !== undefined) { e.style.setProperty('--w', Math.max(0.6, pct(to, max) - pct(from, max)).toFixed(2) + '%'); }
+    return e;
+  }
+  function mark(cls, v, max, label) {
+    var m = el('span', { 'class': 'w-tick ' + (cls || ''), tabindex: '0', role: 'img', 'aria-label': label, title: label });
+    return place(m, v, undefined, max);
+  }
+  function trackOf(max, parts) {
+    var t = el('div', { 'class': 'w-track' });
+    parts.forEach(function (p) { if (p) { add(t, p); } });
+    return t;
+  }
+  function band(cls, from, to, max, label) {
+    return place(el('span', { 'class': 'w-band ' + cls, title: label || '' }), from, to, max);
+  }
+  function whisker(lo, hi, max, label) {
+    return place(el('span', { 'class': 'w-ci', title: label || '' }), lo, hi, max);
+  }
+  function wrow(head, track, legend, cls) {
+    var r = el('div', { 'class': 'w-row ' + (cls || '') });
+    add(r, head, track);
+    if (legend) { add(r, el('p', { 'class': 'w-legend' }, legend)); }
+    return r;
+  }
+  function whead(name, value, extra) {
+    var h = el('p', { 'class': 'w-head' });
+    add(h, el('span', { 'class': /^[A-Z0-9-]+( \(|$)/.test(name) ? 'w-name' : 'w-label' }, name), ' ', el('span', { 'class': 'w-val' }, value));
+    if (extra) { add(h, ' ', el('span', { 'class': 'w-extra' }, extra)); }
+    return h;
+  }
+
+  // Repeat expansions: each allele against Stranger's thresholds, its 95% interval as a whisker.
+  function strGauge(w) {
+    var box = el('div', { 'class': 'widget w-str', 'data-widget': 'str' });
+    (w.loci || []).forEach(function (l) {
+      var counts = String(l.repeat_count || '').split('/');
+      var sizing = String(l.allele_sizing || '').split('/');
+      var cis = String(l.ci || '').split('/');
+      var nmax = num(l.normal_max), pmin = num(l.pathologic_min);
+      var top = 0;
+      counts.forEach(function (c, i) {
+        var ci = (cis[i] || '').split('-');
+        top = Math.max(top, num(c) || 0, num(ci[1]) || 0);
+      });
+      var max = nice(Math.max(top * 1.15, (pmin || 0) * 1.3, (nmax || 0) * 1.6, 10));
+      var parts = [];
+      if (nmax !== null) { parts.push(band('w-normal', 0, nmax, max, 'Stranger’s "normal": up to ' + nmax)); }
+      if (pmin !== null) { parts.push(band('w-patho', pmin, max, max, 'pathologic from ' + pmin)); }
+      counts.forEach(function (c, i) {
+        var v = num(c);
+        if (v === null) { return; }
+        var ci = (cis[i] || '').split('-');
+        var lo = num(ci[0]), hi = num(ci[1]);
+        if (lo !== null && hi !== null && hi > lo) { parts.push(whisker(lo, hi, max, '95% interval ' + lo + ' to ' + hi)); }
+        var unsized = sizing[i] && ['sized', 'unknown'].indexOf(sizing[i]) < 0;
+        parts.push(mark(unsized ? 'w-low' : '', v, max, l.locus + ' allele ' + (i + 1) + ': ' + c + ' repeats' +
+          (lo !== null && hi !== null ? ', 95% interval ' + lo + ' to ' + hi : '') + (unsized ? ', not sized from short reads' : '')));
+      });
+      var st = l.status ? 'Stranger: "' + l.status + '"' : 'no Stranger status';
+      var legend = (nmax !== null || pmin !== null)
+        ? [nmax !== null ? '"normal" up to ' + nmax : '', pmin !== null ? 'pathologic from ' + pmin : '', 'scale 0 to ' + max]
+          .filter(Boolean).join(' · ')
+        : 'No Stranger thresholds for this locus. Scale 0 to ' + max + '.';
+      var flagged = l.status && l.status.split(',').some(function (x) { return x && x !== 'normal'; });
+      add(box, wrow(whead(l.locus, (l.repeat_count || '.') + ' repeats', st), trackOf(max, parts), legend, flagged ? 'w-attn' : ''));
+    });
+    add(box, el('p', { 'class': 'w-key dim' }, 'Tick: an allele’s repeat count; line: its 95% interval; hollow: not sized ' +
+      'from short reads. Shaded: Stranger’s "normal" band; hatched: its pathologic range.'));
+    return box;
+  }
+
+  // A count with its 95% interval on a scale from 0 (Lp(a)'s KIV-2 repeats).
+  function ciBar(w) {
+    var box = el('div', { 'class': 'widget w-cibar', 'data-widget': 'ci' });
+    var max = w.max || nice(w.high * 1.25);
+    var label = w.label + ': ' + w.value + ', 95% interval ' + w.low + ' to ' + w.high;
+    add(box, wrow(whead(w.label, w.value + ' ' + (w.unit || ''), '95% interval ' + w.low + ' to ' + w.high +
+      (w['class'] ? ' · class "' + w['class'] + '"' : '')),
+      trackOf(max, [whisker(w.low, w.high, max, '95% interval'), mark('', w.value, max, label)]),
+      'Scale 0 to ' + max + ' ' + (w.unit || '') + '. The line is the 95% interval of the estimate.'));
+    return box;
+  }
+
+  // CHIP: each call's VAF against the smallest VAF this depth can see.
+  function vafChart(w) {
+    var box = el('div', { 'class': 'widget w-vaf', 'data-widget': 'vaf' });
+    var max = w.max || 0.5;
+    var limits = (w.genes || []).map(function (g) { return g.limit; }).filter(function (x) { return typeof x === 'number'; });
+    var lo = limits.length ? Math.min.apply(null, limits) : null, hi = limits.length ? Math.max.apply(null, limits) : null;
+    var parts = [];
+    if (hi !== null) { parts.push(band('w-blind', 0, hi, max, 'below the detection limit at this depth')); }
+    (w.calls || []).forEach(function (c) {
+      parts.push(mark('w-call', c.vaf, max, c.gene + ' ' + (c.change || '') + ': VAF ' + c.vaf));
+    });
+    var head = whead('Variant allele fraction', (w.calls || []).length ? (w.calls.length + ' call' + (w.calls.length > 1 ? 's' : ''))
+      : 'no call above the limit');
+    var legend = (hi !== null ? 'Hatched: below the smallest VAF this depth can see (' + lo + (hi !== lo ? ' to ' + hi : '') +
+      ' across ' + limits.length + ' genes); a clone that small is not seen. ' : '') + 'Scale VAF 0 to ' + max + '.';
+    add(box, wrow(head, trackOf(max, parts), legend));
+    if ((w.calls || []).length) {
+      var ul = el('ul', { 'class': 'w-calls' });
+      w.calls.forEach(function (c) { add(ul, el('li', {}, c.gene + ' ' + (c.change || '') + ' at VAF ' + c.vaf)); });
+      add(box, ul);
+    }
+    if ((w.genes || []).length) {
+      var d = el('details', { 'class': 'w-fallback' });
+      add(d, el('summary', {}, 'Detection limit per gene'));
+      add(d, U.table({ columns: ['Gene', 'Mean depth', 'Smallest VAF seen', 'Status'],
+        rows: w.genes.map(function (g) { return [g.gene, g.depth === null ? '.' : String(g.depth), g.limit === null ? '.' : String(g.limit), g.status || '.']; }) }, 40));
+      add(box, d);
+    }
+    return box;
+  }
+
+  // Copy numbers as dots, one per copy; a call that is not "called" is hollow and says so.
+  function copyDots(w) {
+    var box = el('div', { 'class': 'widget w-copies', 'data-widget': 'copies' });
+    var ul = el('ul', { 'class': 'w-copy-list' });
+    (w.genes || []).forEach(function (g) {
+      var low = g.status !== 'called';
+      var li = el('li', { 'class': low ? 'w-low' : '' });
+      add(li, el('span', { 'class': 'w-name' }, g.gene));
+      var dots = el('span', { 'class': 'w-dots', role: 'img', tabindex: '0',
+        'aria-label': g.gene + ': ' + (g.copies === null ? 'no copy number' : g.copies + ' copies') + (low ? ', ' + g.status : '') });
+      for (var i = 0; i < Math.min(g.copies || 0, 8); i++) { add(dots, el('span', { 'class': 'w-dot' })); }
+      if ((g.copies || 0) > 8) { add(dots, '+' + (g.copies - 8)); }
+      add(li, dots);
+      add(li, el('span', { 'class': 'w-val' }, g.copies === null ? 'not called' : g.copies + (g.copies === 1 ? ' copy' : ' copies')));
+      if (low) { add(li, el('span', { 'class': 'w-extra' }, 'low confidence: ' + g.status)); }
+      add(ul, li);
+    });
+    add(box, ul);
+    return box;
+  }
+
+  // The Y haplogroup's path from the root of the tree to its placement.
+  function yPath(w) {
+    var box = el('div', { 'class': 'widget w-ypath', 'data-widget': 'ypath' });
+    add(box, el('p', { 'class': 'w-head' }, 'From the root to ' + (w.tip || 'the placement') + (w.tree ? ' on ' + w.tree : '')));
+    var ol = el('ol', { 'class': 'w-path' });
+    (w.path || []).forEach(function (p, i, all) {
+      var seen = (p.derived || 0) + (p.ancestral || 0) + (p.no_call || 0);
+      var li = el('li', { 'class': (i === all.length - 1 ? 'w-tip' : '') + (p.ancestral ? ' w-low' : ''), tabindex: '0',
+        'aria-label': 'Level ' + p.level + ', ' + p.branch + ': ' + p.derived + ' of ' + seen + ' markers derived' +
+          (p.ancestral ? ', ' + p.ancestral + ' ancestral' : '') });
+      add(li, el('span', { 'class': 'w-branch' }, p.branch));
+      add(li, el('span', { 'class': 'w-count' }, (p.derived === null ? '.' : p.derived) + ' of ' + seen + ' derived' +
+        (p.ancestral ? ' · ' + p.ancestral + ' ancestral' : '')));
+      add(ol, li);
+    });
+    add(box, ol);
+    return box;
+  }
+  var WIDGETS = { str: strGauge, ci: ciBar, vaf: vafChart, copies: copyDots, ypath: yPath };
+  function widget(w) {
+    var fn = w && WIDGETS[w.kind];
+    if (!fn) { return null; }
+    try { return fn(w); } catch (e) { return el('p', { 'class': 'dim' }, 'This drawing could not be made; the table below has the numbers.'); }
+  }
+
   // --- a card -----------------------------------------------------------------------------------
   function badge(text, cls, symbol) {
     var b = el('span', { 'class': 'chip ' + cls });
@@ -167,6 +335,7 @@
       (c.notes || []).forEach(function (n) { add(art, el('p', { 'class': 'note-stale' }, n)); });
       if (c.headline) { add(art, el('p', { 'class': 'headline' }, c.headline)); }
       add(art, U.facts(c.facts));
+      add(art, widget(c.widget));
       Object.keys((results && results.charts) || {}).forEach(function (chart) {
         if (results.charts[chart] === c.id) { add(art, el('div', { 'class': 'chart-slot', 'data-chart-slot': chart })); }
       });

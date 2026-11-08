@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marc Ruiz · OwnGenome</title>
+<!--@BASE-->
+<style>
+body { font-size: 15px; }
+.m-mast { position: sticky; top: 0; z-index: 30; background: rgba(14,15,16,.94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--hair); height: 50px; display: flex; align-items: center; padding: 0 18px; gap: 12px; }
+.m-mast .wordmark { font-size: 19px; }
+.m-mast .back { font-size: 13px; color: var(--ink-2); text-decoration: none; margin-left: auto; }
+.m-mast .ic { width: 32px; height: 32px; border: 1px solid var(--hair-2); border-radius: 8px; display: grid; place-items: center; color: var(--ink-2); font-size: 14px; }
+.pad { padding: 0 20px; }
+.cover { padding: 26px 20px 0; }
+.cover .nm { font: 400 44px/1 var(--serif); margin: 12px 0 8px; letter-spacing: -.01em; }
+.cover .meta { font-size: 12.5px; color: var(--ink-3); }
+.cover .lede { font-size: 18.5px; line-height: 1.5; margin-top: 18px; }
+.sum { position: sticky; top: 50px; z-index: 25; background: rgba(14,15,16,.96); backdrop-filter: blur(8px); border-bottom: 1px solid var(--hair); margin-top: 22px; display: grid; grid-template-columns: repeat(5, 1fr); }
+.sum a { text-decoration: none; padding: 10px 0 9px; text-align: center; border-right: 1px solid var(--hair); }
+.sum a:last-child { border-right: 0; }
+.sum .n { display: block; font: 300 21px/1 var(--sans); font-variant-numeric: tabular-nums; margin-top: 6px; color: var(--ink); }
+.sum .n.z { color: var(--ink-3); }
+.sum .lv { font-size: 9.5px; letter-spacing: .04em; justify-content: center; }
+.sum .lv .g { transform: scale(.9); }
+.sum .lv.act .g { transform: rotate(45deg) scale(.75); }
+.trust { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--ink-2); padding: 12px 20px 0; }
+.sec { padding: 34px 20px 6px; }
+.sec + .sec { border-top: 1px solid var(--hair); margin-top: 26px; }
+.sh { display: flex; align-items: baseline; gap: 10px; }
+.sh h2 { font: 400 27px/1.15 var(--serif); margin: 0; }
+.sh .secnum { font-size: 16px; margin: 0; }
+.sq { font-size: 12.5px; color: var(--ink-3); margin: 4px 0 16px; }
+.empty { border: 1px dashed var(--hair-2); border-radius: 10px; padding: 14px 16px; font-size: 14px; color: var(--ink-2); }
+.empty b { color: var(--ink); font-weight: 500; }
+.empty small { display: block; color: var(--ink-3); font-size: 12.5px; margin-top: 8px; line-height: 1.5; }
+.rx { background: var(--paper); border: 1px solid var(--hair-2); border-radius: 14px; overflow: hidden; }
+.rx-h { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--hair); }
+.rx-h b { font: 400 18px var(--serif); }
+.drug { padding: 14px 16px; border-bottom: 1px solid var(--hair); }
+.drug:last-child { border-bottom: 0; }
+.drug .dt { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.drug .dn { font: 400 20px/1.2 var(--serif); color: var(--ink); }
+.drug .do { font-size: 14.5px; color: var(--ink); margin-top: 4px; font-weight: 500; }
+.drug .why { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+.verdict { font: 600 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+.verdict.avoid { color: #111; background: var(--med); }
+.verdict.dose { color: var(--med); border: 1px solid rgba(236,131,90,.5); }
+.verdict.consider { color: var(--ink-2); border: 1px solid var(--hair-2); }
+.cluster { border-left: 2px solid var(--brass); padding-left: 16px; }
+.metric { padding: 14px 0; border-top: 1px solid var(--hair); }
+.metric:first-child { border-top: 0; padding-top: 4px; }
+.metric h4 { font: 400 18px/1.3 var(--serif); margin: 8px 0 4px; }
+.metric p { font-size: 13.5px; color: var(--ink-2); margin: 0 0 8px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.chips .chip { font-family: var(--mono); font-size: 11px; }
+.card { border-top: 1px solid var(--hair-2); padding: 14px 0 6px; }
+.card h4 { font: 400 19px/1.3 var(--serif); margin: 8px 0 6px; }
+.card p { font-size: 14px; color: var(--ink-2); margin: 0 0 8px; }
+.cav { font-size: 12.5px; color: var(--ink-3); }
+.cav b { color: var(--brass); font-weight: 600; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; margin-right: 4px; }
+.qc { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid var(--hair-2); }
+.qc div { padding: 12px 10px 12px 0; border-bottom: 1px solid var(--hair); }
+.qc div:nth-child(2n) { padding-left: 12px; border-left: 1px solid var(--hair); }
+.qc .k { font: 600 10px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); display: block; }
+.qc .v { font: 300 22px/1.1 var(--sans); font-variant-numeric: tabular-nums; display: block; margin-top: 6px; }
+.fail { margin-top: 14px; border: 1px solid rgba(250,178,25,.35); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; color: var(--ink-2); }
+.fail b { color: var(--ink); font-weight: 500; }
+details { border-top: 1px solid var(--hair); }
+details summary { list-style: none; display: grid; grid-template-columns: 1fr auto; padding: 15px 0; cursor: pointer; }
+details summary::-webkit-details-marker { display: none; }
+details summary b { font: 400 18px var(--serif); color: var(--ink); }
+details summary span { font-size: 12.5px; color: var(--ink-3); grid-column: 1; margin-top: 3px; }
+details summary i { grid-row: 1 / 3; grid-column: 2; align-self: center; color: var(--ink-3); font-style: normal; font-size: 18px; }
+.tabbar { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 40; background: rgba(27,28,33,.96); backdrop-filter: blur(10px); border: 1px solid var(--hair-2); border-radius: 14px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 5px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.tabbar a { text-align: center; font-size: 12px; color: var(--ink-3); text-decoration: none; padding: 9px 0; border-radius: 10px; }
+.tabbar a.on { background: var(--ink); color: #111; font-weight: 600; }
+.foot { padding: 30px 20px 110px; font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--hair); margin-top: 34px; }
+</style>
+</head><body>
+<header class="m-mast"><a class="wordmark" href="01-home.html">Own<i>Genome</i></a><a class="back" href="05-family.html">‹ Ruiz family</a><span class="ic">⌕</span></header>
+
+<div class="cover">
+  <span class="ident" style="display:block;width:28px;height:3px;border-radius:2px;background:var(--marc)"></span>
+  <div class="kicker" style="margin-top:14px">Personal genome report</div>
+  <div class="nm">Marc Ruiz</div>
+  <div class="meta">41 · male (XY, as declared) · father of Lía · finished 4 Nov</div>
+  <p class="lede dropcap">Nothing in what was assessed reaches <i>take to a doctor</i>. <b>Two results are for whoever prescribes</b>: clopidogrel would not work well, and simvastatin should stay at 20 mg or less. Three point at the heart together, and a blood Lp(a) test is the one thing worth doing.</p>
+</div>
+
+<nav class="sum">
+  <a href="#s1"><span class="lv act" style="color:var(--ink-3)"><span class="g" style="opacity:.5"></span>Doctor</span><span class="n z">0</span></a>
+  <a href="#s2"><span class="lv med"><span class="g"></span>Rx</span><span class="n">2</span></a>
+  <a href="#s3"><span class="lv rev"><span class="g"></span>Look</span><span class="n">2</span></a>
+  <a href="#s5"><span class="lv car"><span class="g"></span>Family</span><span class="n">2</span></a>
+  <a href="#s7"><span class="lv info"><span class="g"></span>Info</span><span class="n">15</span></a>
+</nav>
+<div class="trust"><span style="color:var(--good)">✓</span><span>Data: 29.1× · identity confirmed · <a href="#s6">1 step not assessed</a></span></div>
+
+<section class="sec" id="s1">
+  <div class="sh"><span class="secnum">1</span><h2>To act on</h2></div>
+  <div class="sq">Is there anything to take to a doctor?</div>
+  <div class="empty"><b>No finding in what these steps assessed.</b><small>They look at known disease changes, cancer genes, the 84 secondary-finding genes, repeats and large deletions. They do not see changes ClinVar does not list, 14 hard-to-read genes, or the MUC1 kidney gene, which was not assessed (section 6).</small></div>
+</section>
+
+<section class="sec" id="s2">
+  <div class="sh"><span class="secnum">2</span><h2>Medicines</h2></div>
+  <div class="sq">Show this list to a doctor or pharmacist.</div>
+  <div class="rx">
+    <div class="rx-h"><b>Marc's medicines list</b><span class="lv med"><span class="g"></span>6 drugs</span></div>
+    <div class="drug"><div class="dt"><span class="dn">Clopidogrel</span><span class="verdict avoid">Avoid</span></div><div class="do">Use prasugrel or ticagrelor if suitable.</div><div class="why">CYP2C19 poor metaboliser (*2/*2) · strong evidence</div></div>
+    <div class="drug"><div class="dt"><span class="dn">Simvastatin</span><span class="verdict dose">20 mg max</span></div><div class="do">Or another statin: rosuvastatin, pravastatin.</div><div class="why">SLCO1B1 decreased function · strong</div></div>
+    <div class="drug"><div class="dt"><span class="dn">Atorvastatin</span><span class="verdict dose">40 mg max</span></div><div class="do">Higher only with monitoring.</div><div class="why">SLCO1B1 · moderate</div></div>
+    <div class="drug"><div class="dt"><span class="dn">Citalopram, escitalopram</span><span class="verdict dose">Half dose</span></div><div class="do">Start at 50%, raise slowly, or choose another.</div><div class="why">CYP2C19 · moderate</div></div>
+    <div class="drug"><div class="dt"><span class="dn">Voriconazole</span><span class="verdict avoid">Avoid</span></div><div class="do">Choose an antifungal not using CYP2C19.</div><div class="why">CYP2C19 · moderate</div></div>
+    <div class="drug"><div class="dt"><span class="dn">Omeprazole, pantoprazole</span><span class="verdict consider">Consider</span></div><div class="do">Standard dose; lower it for long-term use.</div><div class="why">CYP2C19 · optional</div></div>
+  </div>
+  <p class="cav" style="margin-top:12px"><b>Caveat</b>A research tool; confirm with a certified test before a prescription changes. <button class="toggle">More</button></p>
+  <a class="btn" href="#" style="width:100%;justify-content:center;margin-top:6px">Open full screen for the pharmacist</a>
+</section>
+
+<section class="sec" id="s3">
+  <div class="sh"><span class="secnum">3</span><h2>The heart, together</h2></div>
+  <div class="sq">Three results that point the same way.</div>
+  <div class="cluster">
+    <div class="metric">
+      <span class="lv rev"><span class="g"></span>Worth a look</span>
+      <h4>Genetically high Lp(a) likely</h4>
+      <p>Few copies of a repeat in the <i>LPA</i> gene go with a high Lp(a), a blood fat that raises the risk of heart attack.</p>
+      <div id="lpa"></div>
+      <div class="chips"><span class="chip">rs10455872 · risk allele</span><span class="chip">rs3798220 · none</span></div>
+      <p style="margin-top:12px;color:var(--ink)"><b style="font-weight:600">Do:</b> ask for one blood Lp(a) test. It is what counts.</p>
+    </div>
+    <div class="metric">
+      <span class="lv info"><span class="g"></span>Information</span>
+      <h4>Coronary artery disease score: 88th percentile</h4>
+      <p>Higher than 88 of 100 people of similar (European) ancestry. Not a probability: measured LDL, blood pressure and Lp(a) say far more.</p>
+      <div id="cad"></div>
+    </div>
+    <div class="metric">
+      <span class="lv med"><span class="g"></span>Prescriber</span>
+      <h4>If a statin starts, choose it with SLCO1B1 in mind</h4>
+      <p>Simvastatin 20 mg or less, or rosuvastatin or pravastatin. <a href="#s2">See the list</a></p>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="s4">
+  <div class="sh"><span class="secnum">4</span><h2>Worth a look</h2></div>
+  <p class="sq">What deserves a conversation, but is not a diagnosis?</p>
+  <div class="card">
+    <span class="lv rev"><span class="g"></span>Worth a look</span>
+    <h4>HLA-B*27 present</h4>
+    <p>About 8% of Europeans carry it; most never develop spondylitis. None of the four listed drug-reaction alleles is present.</p>
+    <p class="cav"><b>Caveat</b>Typing from short reads is approximate. <button class="toggle">More</button></p>
+  </div>
+</section>
+
+<section class="sec" id="s5">
+  <div class="sh"><span class="secnum">5</span><h2>For your family</h2></div>
+  <p class="sq">What could Marc pass on to a child?</p>
+  <div class="card">
+    <span class="lv car"><span class="g"></span>Family planning</span>
+    <h4>Cystic fibrosis carrier, shared with Elena</h4>
+    <p><span class="mono">CFTR p.Gly542Ter</span>. Both partners carry one: <b style="color:var(--ink)">1 in 4 per pregnancy</b>. Lía did not inherit Marc's copy.</p>
+    <a href="05-family.html#couple" style="font-size:13px;color:var(--brass)">The couple screen →</a>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <span class="lv car"><span class="g"></span>Family planning</span>
+    <h4>Phenylketonuria carrier</h4>
+    <p><span class="mono">PAH p.Arg408Trp</span>. Elena carries no PAH change the screen sees. Lía did not inherit it.</p>
+  </div>
+</section>
+
+<section class="sec" id="s6">
+  <div class="sh"><span class="secnum">6</span><h2>Can I trust this?</h2></div>
+  <div class="sq">About the data, not about Marc.</div>
+  <div class="qc">
+    <div><span class="k">Depth</span><span class="v">29.1×</span></div>
+    <div><span class="k">At 10×</span><span class="v">97.2%</span></div>
+    <div><span class="k">Other DNA</span><span class="v">0.6%</span></div>
+    <div><span class="k">Sex check</span><span class="v">XY ✓</span></div>
+  </div>
+  <div class="fail"><span class="lv warn" style="font-size:10.5px">▲ Not assessed</span><br><b>MUC1 kidney gene.</b> The repeat had 41× depth; this step needs 100×. Read it as not checked, not as clear. <a href="#">Rerun with deeper data</a></div>
+</section>
+
+<section class="sec" id="s7">
+  <div class="sh"><span class="secnum">7</span><h2>Explore</h2></div>
+  <div class="sq">Everything else we uncovered.</div>
+  <details><summary><b>Origins</b><span>Paternal line R-DF27 · maternal J1c2 · Neanderthal 2.1%</span><i>+</i></summary></details>
+  <details><summary><b>Scores and traits</b><span>6 scores · blood group O, RhD+ · telomeres</span><i>+</i></summary></details>
+  <details><summary><b>Repeats</b><span>6 loci sized, all below their expansion line</span><i>+</i></summary></details>
+  <details><summary><b>Assessed, no finding</b><span>Blood clones, mosaic changes, viral DNA, structural</span><i>+</i></summary></details>
+  <details><summary><b>What it cannot see</b><span>6 limits for everyone, 14 hard genes</span><i>+</i></summary></details>
+  <details style="border-bottom:1px solid var(--hair)"><summary><b>Sources and files</b><span>ClinVar 2026-11-06 is out; this used 2026-10-02</span><i>+</i></summary></details>
+</section>
+
+<div class="foot">OwnGenome 1.0.0 · a research pipeline, not a clinical test · <span class="mono">RUIZ-MARC</span> · synthetic data</div>
+
+<nav class="tabbar"><a class="on" href="#">Summary</a><a href="#s2">Medicines</a><a href="#s5">Family</a><a href="#s7">Explore</a></nav>
+
+<script>
+(function(){
+  // Lp(a): KIV-2 copies with 95% CI; typical 30-45 band; fewer copies = higher Lp(a)
+  const W = 330, H = 64, X = v => 6 + v / 60 * (W - 12);
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('lpa'));
+  OG.el('rect', { x: X(30), y: 12, width: X(45) - X(30), height: 20, fill: 'rgba(255,255,255,.06)' }, s);
+  const bt = OG.el('text', { x: (X(30) + X(45)) / 2, y: 9, 'font-size': 10, fill: '#8f8d86', 'text-anchor': 'middle' }, s); bt.textContent = 'most people 30–45';
+  OG.el('line', { x1: 6, x2: W - 6, y1: 32, y2: 32, stroke: 'rgba(255,255,255,.2)' }, s);
+  [0, 15, 30, 45, 60].forEach(v => { const t = OG.el('text', { x: X(v), y: 46, 'font-size': 10, fill: '#8f8d86', 'text-anchor': v === 0 ? 'start' : v === 60 ? 'end' : 'middle' }, s); t.textContent = v; });
+  OG.el('line', { x1: X(13.8), x2: X(16.4), y1: 22, y2: 22, stroke: '#f0efec', 'stroke-width': 1.5 }, s);
+  OG.el('circle', { cx: X(15.2), cy: 22, r: 6, fill: '#fab219', stroke: '#0e0f10', 'stroke-width': 2, 'data-tip': '15.2 KIV-2 copies (13.8–16.4)' }, s);
+  const v = OG.el('text', { x: X(15.2) + 12, y: 26, 'font-size': 11.5, fill: '#f0efec', 'font-weight': 600 }, s); v.textContent = '15.2';
+  const a1 = OG.el('text', { x: 6, y: 61, 'font-size': 10, fill: '#8f8d86' }, s); a1.textContent = '← higher Lp(a)';
+  const a2 = OG.el('text', { x: W - 6, y: 61, 'font-size': 10, fill: '#8f8d86', 'text-anchor': 'end' }, s); a2.textContent = 'KIV-2 copies';
+  const c = document.getElementById('cad'); OG.pstrip(c, 88, { width: 300, tip: 'CAD score: 88th percentile, EUR-matched' });
+  const ax = document.createElement('div'); ax.style.cssText = 'display:flex;justify-content:space-between;width:300px;font-size:10px;color:#8f8d86'; ax.innerHTML = '<span>0</span><span>50</span><span>100</span>'; c.appendChild(ax);
+})();
+</script>
+</body></html>
