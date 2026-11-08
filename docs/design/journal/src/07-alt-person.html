@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elena Ruiz · OwnGenome (cover variant)</title>
+<!--@BASE-->
+<style>
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 40px; }
+/* ---- cover spread ---- */
+.cov { display: grid; grid-template-columns: 1fr 380px; gap: 64px; padding: 64px 0 46px; border-bottom: 1px solid var(--hair-2); }
+.issue { display: flex; gap: 18px; align-items: baseline; font: 12.5px var(--sans); color: var(--ink-3); }
+.issue .kicker { margin-right: 4px; }
+.name { font: 400 132px/0.92 var(--serif); letter-spacing: -.025em; margin: 26px 0 0; }
+.deck { font: italic 400 40px/1.18 var(--serif); color: var(--ink-2); margin: 26px 0 0; max-width: 780px; }
+.deck b { font-weight: 400; color: var(--ink); }
+.deck .hot { color: #ef6a6a; font-style: normal; }
+.who { margin-top: 30px; display: flex; gap: 22px; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-3); }
+.who b { color: var(--ink-2); font-weight: 500; }
+.contents { border-left: 1px solid var(--hair-2); padding-left: 32px; }
+.contents h3 { font: 600 11px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--brass); margin: 6px 0 18px; }
+.contents a { display: grid; grid-template-columns: 28px 1fr; gap: 2px 8px; text-decoration: none; padding: 10px 0; border-top: 1px solid var(--hair); }
+.contents a:first-of-type { border-top: 0; }
+.contents .n { font: italic 17px var(--serif); color: var(--brass); }
+.contents .t { font: 400 18px/1.2 var(--serif); color: var(--ink); }
+.contents .v { grid-column: 2; font-size: 12.5px; color: var(--ink-3); display: flex; gap: 8px; align-items: center; }
+.contents .v .lv { font-size: 10.5px; }
+/* ---- genome band ---- */
+.band { padding: 34px 0 30px; border-bottom: 1px solid var(--hair-2); }
+.band-h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+/* ---- at a glance: the index as prose ---- */
+.glance { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--hair-2); }
+.gcol { padding: 26px 22px 30px; border-left: 1px solid var(--hair); }
+.gcol:first-child { border-left: 0; padding-left: 0; }
+.gcol .big { font: 300 54px/1 var(--sans); font-variant-numeric: tabular-nums; margin: 14px 0 12px; }
+.gcol ul { list-style: none; margin: 0; padding: 0; }
+.gcol li { font: 400 17px/1.3 var(--serif); color: var(--ink); padding: 7px 0; border-top: 1px solid var(--hair); }
+.gcol li small { display: block; font: 12px/1.4 var(--sans); color: var(--ink-3); margin-top: 2px; }
+.gcol.act { background: linear-gradient(180deg, rgba(208,59,59,.10), transparent 70%); padding-left: 22px; }
+.gcol.act:first-child { padding-left: 22px; }
+/* ---- feature ---- */
+.feature { display: grid; grid-template-columns: 1fr 300px; gap: 64px; padding: 64px 0 56px; border-bottom: 1px solid var(--hair-2); }
+.pull { font: 400 46px/1.12 var(--serif); letter-spacing: -.01em; margin: 14px 0 22px; }
+.pull i { color: #ef6a6a; font-style: normal; }
+.cols2 { columns: 2; column-gap: 40px; font: 17.5px/1.6 var(--serif); color: var(--ink-2); }
+.cols2 b { color: var(--ink); font-weight: 600; }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 30px; border-top: 1px solid var(--hair-2); }
+.steps div { padding: 16px 18px 6px 0; }
+.steps .sn { font: italic 30px var(--serif); color: var(--brass); }
+.steps p { font-size: 14px; color: var(--ink); margin: 6px 0 0; }
+.steps small { display: block; color: var(--ink-3); font-size: 12.5px; margin-top: 4px; }
+/* ---- plate ---- */
+.plate-h { padding: 56px 0 18px; display: flex; justify-content: space-between; align-items: baseline; }
+.plate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--hair); border: 1px solid var(--hair); border-radius: 10px; overflow: hidden; }
+.panel { background: var(--page); padding: 22px 24px 20px; min-height: 290px; display: flex; flex-direction: column; }
+.panel .pl { display: flex; gap: 10px; align-items: baseline; }
+.panel .pl .L { font: italic 22px var(--serif); color: var(--brass); }
+.panel h4 { font: 400 21px/1.2 var(--serif); margin: 0; }
+.panel .ans { font-size: 13.5px; color: var(--ink-2); margin: 8px 0 14px; }
+.panel .ans b { color: var(--ink); font-weight: 600; }
+.panel .fig { margin-top: auto; }
+.panel .go { margin-top: 12px; font-size: 12.5px; color: var(--brass); text-decoration: none; }
+.drugs { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.drugs td { padding: 8px 0; border-top: 1px solid var(--hair); vertical-align: top; }
+.drugs td:first-child { font: 400 17px var(--serif); color: var(--ink); width: 42%; }
+.drugs td:last-child { color: var(--ink-2); }
+.k4 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.k4 div { border: 1px solid var(--hair-2); border-radius: 6px; padding: 8px 10px; font-size: 12px; color: var(--ink-3); }
+.k4 div b { display: block; font: 400 15px var(--serif); color: var(--ink); }
+.k4 .hit { border-color: var(--car); background: rgba(144,133,233,.08); }
+.qc4 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.qc4 span { display: block; font: 600 10px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.qc4 b { font: 300 26px/1.1 var(--sans); font-variant-numeric: tabular-nums; }
+/* ---- ledger of silence ---- */
+.ledger { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 40px; margin-top: 18px; }
+.ledger div { padding: 12px 0; border-top: 1px solid var(--hair); font-size: 13.5px; color: var(--ink-2); }
+.ledger div b { display: block; font: 400 17px var(--serif); color: var(--ink); margin-bottom: 2px; }
+.ledger div small { color: var(--ink-3); font-size: 12px; }
+.ledger .na b::after { content: " · not run"; font: 12px var(--sans); color: var(--rev); }
+</style>
+</head><body>
+<header class="mast"><div class="mast-in">
+  <a class="wordmark" href="01-home.html">Own<i>Genome</i></a>
+  <nav class="crumbs"><a href="01-home.html">People</a><span class="sep">/</span><a href="05-family.html">Ruiz family</a><span class="sep">/</span><span class="here">Elena Ruiz</span></nav>
+  <div class="mast-right"><a class="btn ghost" href="03-person.html">Long-form view</a><div class="search">Search genes, drugs, conditions <kbd>/</kbd></div></div>
+</div></header>
+
+<div class="wrap">
+  <!-- COVER -->
+  <section class="cov">
+    <div>
+      <div class="issue"><span class="kicker">Personal genome report</span><span>Ruiz family · chapter II</span><span>finished 4 Nov 2026</span></div>
+      <h1 class="name">Elena Ruiz</h1>
+      <p class="deck"><span class="hot">One finding for a doctor:</span> <b>a BRCA2 change</b> that raises the risk of breast and ovarian cancer. One medicine result bears on it. <b>Everything else is for planning, or for interest.</b></p>
+      <div class="who"><span><b>38</b>, female, XX as declared</span><span>mother of <a href="03-person.html">Lía</a>, partner of <a href="06-person-mobile.html">Marc</a></span><span class="lv trust"><span class="g"></span>Data good to read</span><span class="mono">RUIZ-ELENA · GRCh38</span></div>
+    </div>
+    <nav class="contents">
+      <h3>In this issue</h3>
+      <a href="#f"><span class="n">1</span><span class="t">To act on</span><span class="v"><span class="lv act"><span class="g"></span></span>Hereditary breast and ovarian cancer</span></a>
+      <a href="#plate"><span class="n">2</span><span class="t">Medicines</span><span class="v"><span class="lv med"><span class="g"></span></span>Tamoxifen, codeine</span></a>
+      <a href="#plate"><span class="n">3</span><span class="t">For your family</span><span class="v"><span class="lv car"><span class="g"></span></span>Cystic fibrosis 1 in 4 with Marc</span></a>
+      <a href="#plate"><span class="n">4</span><span class="t">Worth a look</span><span class="v"><span class="lv rev"><span class="g"></span></span>FMR1 repeat, 48</span></a>
+      <a href="#plate"><span class="n">5–7</span><span class="t">Trust, origins, scores</span><span class="v">32.4× · Iberian 71% · 5 scores</span></a>
+      <a href="#silence"><span class="n">8–9</span><span class="t">Checked, no finding</span><span class="v">9 analyses · and what none can see</span></a>
+    </nav>
+  </section>
+
+  <!-- GENOME BAND -->
+  <section class="band">
+    <div class="band-h"><span class="fig-label">Figure 1 · Elena's genome end to end, every finding pinned where it sits</span><span class="muted" style="font-size:12.5px">APOE is not drawn until opened</span></div>
+    <div id="band"></div>
+  </section>
+
+  <!-- AT A GLANCE -->
+  <section class="glance">
+    <div class="gcol act"><span class="lv act"><span class="g"></span>Take to a doctor</span><div class="big">1</div><ul><li>Hereditary breast and ovarian cancer<small>BRCA2 · pathogenic, 3 stars</small></li></ul></div>
+    <div class="gcol"><span class="lv med"><span class="g"></span>Tell your prescriber</span><div class="big">1</div><ul><li>Tamoxifen, codeine<small>CYP2D6 intermediate metaboliser</small></li></ul></div>
+    <div class="gcol"><span class="lv rev"><span class="g"></span>Worth a look</span><div class="big">1</div><ul><li>Fragile X repeat, intermediate<small>FMR1 48 · may grow when passed on</small></li></ul></div>
+    <div class="gcol"><span class="lv car"><span class="g"></span>Family planning</span><div class="big">2</div><ul><li>Cystic fibrosis carrier<small>Marc carries it too: 1 in 4</small></li><li>Haemochromatosis carrier<small>one copy; Marc none</small></li></ul></div>
+    <div class="gcol"><span class="lv info"><span class="g"></span>For information</span><div class="big">14</div><ul><li>Origins, traits, scores<small>Iberian 71% · H1c3 · 1.9% Neanderthal</small></li><li>Alzheimer's (APOE)<small>closed; opens on purpose</small></li></ul></div>
+  </section>
+
+  <!-- FEATURE: the one finding -->
+  <section class="feature" id="f">
+    <div>
+      <span class="lv act"><span class="g"></span>Section 1 · Take to a doctor</span>
+      <h2 class="pull">One copy of <i>BRCA2</i> stops short, and that raises the lifetime risk of breast and ovarian cancer.</h2>
+      <div class="cols2">
+        <p>One letter is missing from Elena's <b>BRCA2</b>, a gene that repairs broken DNA. From there the gene is read out of step, and the protein ends about <b>1,400 building blocks early</b>, before the part that binds DNA.</p>
+        <p>It is not a diagnosis of cancer. It means screening and prevention start earlier than the general programme, and that her relatives each had a <b>1 in 2 chance</b> of carrying it. Whether Lía did is closed on this page: it is an adult-onset result about a child.</p>
+      </div>
+      <div id="prot" style="margin-top:22px"></div>
+      <div class="steps">
+        <div><span class="sn">1</span><p>See a genetic counsellor</p><small>Bring the doctor's page.</small></div>
+        <div><span class="sn">2</span><p>Confirm in a certified lab</p><small>A clinic will not act on research data alone.</small></div>
+        <div><span class="sn">3</span><p>Ask about screening</p><small>MRI and ovarian options start earlier.</small></div>
+        <div><span class="sn">4</span><p>Tell close relatives</p><small>Each can be tested.</small></div>
+      </div>
+      <div style="margin-top:22px;display:flex;gap:10px"><a class="btn primary" href="04-finding.html">The full evidence →</a><a class="btn">Prepare a page for a doctor</a></div>
+    </div>
+    <aside>
+      <div class="note"><span class="nh">Evidence</span><dl><dt>Class</dt><dd>Pathogenic</dd><dt>ClinVar</dt><dd>★★★ expert panel</dd><dt>In gnomAD</dt><dd>0.009%</dd><dt>Reads</dt><dd>17 of 34</dd><dt>Call quality</dt><dd>63</dd></dl></div>
+      <div class="note caveat"><span class="nh">Caveat</span>A research pipeline, not a clinical test. <button class="toggle">More</button></div>
+      <div class="note"><span class="nh">Linked</span>Tamoxifen is guided by CYP2D6 (panel A). The breast cancer score (panel F) does not guide care when BRCA2 is present.</div>
+    </aside>
+  </section>
+
+  <!-- PLATE -->
+  <div class="plate-h" id="plate"><h2 class="h2">Everything else, in six figures</h2><span class="muted" style="font-size:13px">Each panel answers one question; open it for the section.</span></div>
+  <section class="plate">
+    <div class="panel">
+      <div class="pl"><span class="L">A</span><h4>Medicines</h4></div>
+      <p class="ans">She breaks down tamoxifen and codeine <b>more slowly than most</b> (CYP2D6 *1/*4).</p>
+      <table class="drugs fig"><tr><td>Tamoxifen</td><td>Consider an aromatase inhibitor, or 40 mg a day</td></tr><tr><td>Codeine</td><td>Label dose; if it fails, not tramadol</td></tr><tr><td>Ondansetron</td><td>No change</td></tr></table>
+      <a class="go" href="03-person.html">All 19 genes →</a>
+    </div>
+    <div class="panel">
+      <div class="pl"><span class="L">B</span><h4>Children with Marc</h4></div>
+      <p class="ans">Both carry cystic fibrosis: <b>1 in 4</b> per pregnancy. Lía is a carrier, not affected.</p>
+      <div class="k4 fig"><div class="hit"><b>Affected</b>1 in 4</div><div><b>Carrier, like Elena</b>1 in 4 · Lía</div><div><b>Carrier, like Marc</b>1 in 4</div><div><b>Neither</b>1 in 4</div></div>
+      <a class="go" href="05-family.html">The couple screen →</a>
+    </div>
+    <div class="panel">
+      <div class="pl"><span class="L">C</span><h4>Repeats</h4></div>
+      <p class="ans">Seven loci checked. <b>FMR1 at 48</b> is intermediate; RFC1 could not be sized.</p>
+      <div class="fig" id="str"></div>
+    </div>
+    <div class="panel">
+      <div class="pl"><span class="L">D</span><h4>Can I trust this?</h4></div>
+      <p class="ans">Yes, with <b>11 genes read poorly</b>; a silence there says nothing.</p>
+      <div class="qc4 fig"><div><span>Depth</span><b>32.4×</b></div><div><span>At 10× or more</span><b>98.1%</b></div><div><span>Other DNA</span><b>0.4%</b></div><div><span>Sex check</span><b>XX</b></div></div>
+    </div>
+    <div class="panel">
+      <div class="pl"><span class="L">E</span><h4>Origins</h4></div>
+      <p class="ans">Most similar to <b>Iberian</b> reference groups. Maternal line H1c3.</p>
+      <div class="fig" id="anc"></div>
+    </div>
+    <div class="panel">
+      <div class="pl"><span class="L">F</span><h4>Scores</h4></div>
+      <p class="ans">Percentiles among people of similar ancestry. <b>Not probabilities</b>, not comparable.</p>
+      <div class="fig" id="prs"></div>
+    </div>
+  </section>
+
+  <!-- LEDGER OF SILENCE -->
+  <section id="silence" style="padding-top:60px">
+    <div class="sechead"><span class="secnum">8</span><h2 class="h2">Checked, no finding</h2></div>
+    <p class="secq">Nothing here is an all-clear: each line names what the analysis does not see.</p>
+    <div class="ledger">
+      <div><b>Structural changes</b>No class 4–5 change in a disease gene, of 6,204.<br><small>Short reads miss insertions and inversions.</small></div>
+      <div><b>Mitochondria</b>No disease-listed change.<br><small>Blood under-represents other tissues.</small></div>
+      <div><b>Large mosaic changes</b>None above 8% of cells.<br><small>Below about 5% is invisible.</small></div>
+      <div><b>Viral DNA</b>No integrated HHV-6.<br><small>Not a test for infection.</small></div>
+      <div><b>Secondary findings</b>BRCA2 only, of 84 genes.<br><small>One hit in a two-hit gene is not reported.</small></div>
+      <div><b>Blood clones</b>None at 30×.<br><small>Only clones above about 12% are visible.</small></div>
+      <div class="na"><b>Symptom ranking</b>No symptoms were given.</div>
+      <div class="na"><b>Long-read paralogs</b>Needs PacBio HiFi data.</div>
+      <div><b>What no step sees</b>Changes ClinVar does not list, methylation, under 10% of cells. <a href="03-person.html">All limits</a></div>
+    </div>
+  </section>
+</div>
+<footer class="colophon"><div class="colophon-in"><span class="wordmark">OwnGenome</span><span>1.0.0 · GRCh38 no-ALT · a research pipeline, not a clinical test</span><span style="margin-left:auto">Synthetic demonstration data</span></div></footer>
+
+<script>
+// Figure 1: the genome as one horizontal band, chromosomes end to end, findings pinned with condition names
+(function(){
+  const chrs = OG.CHR.filter(c => c[0] !== 'Y'), gap = 4, W = 1240, H = 168, y = 110;
+  const total = chrs.reduce((a, c) => a + c[1], 0), sc = (W - gap * (chrs.length - 1)) / total;
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': 'Genome band with findings' }, document.getElementById('band'));
+  let x = 0; const start = {};
+  chrs.forEach((c, i) => {
+    start[c[0]] = x; const w = c[1] * sc;
+    OG.el('rect', { x, y, width: w, height: 14, rx: 4, fill: i % 2 ? '#26272d' : '#2f3037', 'data-tip': `chr${c[0]}, ${c[1].toFixed(0)} Mb` }, s);
+    OG.el('rect', { x: x + c[2] * sc - 1, y: y - 1, width: 2, height: 16, fill: '#0e0f10' }, s);
+    const t = OG.el('text', { x: x + w / 2, y: y + 32, 'font-size': 11, fill: '#8f8d86', 'text-anchor': 'middle' }, s); t.textContent = c[0];
+    x += w + gap;
+  });
+  const marks = [
+    ['6', 26.1, 'car', 'Haemochromatosis carrier', 1],
+    ['7', 117.6, 'car', 'Cystic fibrosis carrier', 2],
+    ['13', 32.3, 'act', 'Breast and ovarian cancer · BRCA2', 1],
+    ['22', 42.1, 'med', 'Tamoxifen, codeine · CYP2D6', 2],
+    ['X', 147.9, 'rev', 'Fragile X repeat · FMR1', 3]
+  ];
+  marks.forEach(m => {
+    const mx = start[m[0]] + m[1] * sc, ly = [0, 22, 50, 78][m[4]];
+    OG.el('line', { x1: mx, x2: mx, y1: ly + 8, y2: y - 2, stroke: OG.LV[m[2]], 'stroke-width': 1.5 }, s);
+    const g = OG.el('g', { 'data-tip': m[3] }, s); OG.glyph(g, m[2], mx, ly);
+    const anchor = mx > W - 220 ? 'end' : 'start';
+    const t = OG.el('text', { x: anchor === 'end' ? mx - 10 : mx + 10, y: ly + 4, 'font-size': 13, fill: '#f0efec', 'text-anchor': anchor, stroke: '#0e0f10', 'stroke-width': 4, 'paint-order': 'stroke' }, s); t.textContent = m[3];
+  });
+})();
+// BRCA2 protein, compact
+(function(){
+  const W = 860, H = 64, L = 3418, X = v => 4 + v / L * (W - 8), cut = 1982;
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('prot'));
+  OG.el('rect', { x: X(0), y: 22, width: X(cut) - X(0), height: 14, rx: 4, fill: '#3a3b42' }, s);
+  OG.el('rect', { x: X(cut) + 2, y: 22, width: X(L) - X(cut) - 2, height: 14, rx: 4, fill: 'none', stroke: '#3a3b42', 'stroke-dasharray': '3 3' }, s);
+  [1000, 1200, 1430, 1520, 1660, 1830, 1900].forEach(v => OG.el('rect', { x: X(v), y: 24, width: 4, height: 10, rx: 1.5, fill: '#c3c2b7' }, s));
+  OG.el('rect', { x: X(2480), y: 25, width: X(3190) - X(2480), height: 8, rx: 2, fill: '#2a2b31' }, s);
+  OG.el('line', { x1: X(cut), x2: X(cut), y1: 12, y2: 44, stroke: '#d03b3b', 'stroke-width': 2 }, s);
+  const t = (x, y, txt, o = {}) => { const e = OG.el('text', Object.assign({ x, y, 'font-size': 11.5, fill: '#8f8d86' }, o), s); e.textContent = txt; };
+  t(X(cut) - 6, 10, 'cut at 1,982', { fill: '#f0efec', 'text-anchor': 'end' });
+  t(X(2480), 56, 'not made: DNA-binding part', {});
+  t(X(1000), 56, 'BRC repeats', {});
+  t(X(0), 56, '0', {}); t(X(L), 56, '3,418', { 'text-anchor': 'end' });
+})();
+// C: repeats, normalised to each locus's expansion threshold
+(function(){
+  const rows = [['HTT', 17, 19, 27], ['FMR1', 31, 48, 45], ['C9orf72', 2, 8, 24], ['DMPK', 5, 13, 35], ['ATXN1', 29, 31, 33], ['FXN', 9, 18, 34]];
+  const W = 340, rh = 22, L = 62, H = rows.length * rh + 40, X = f => L + f / 1.4 * (W - L - 10);
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('str'));
+  OG.el('line', { x1: X(1), x2: X(1), y1: 0, y2: rows.length * rh, stroke: 'rgba(255,255,255,.35)', 'stroke-dasharray': '2 3' }, s);
+  rows.forEach((r, i) => {
+    const y = i * rh + 12;
+    const t = OG.el('text', { x: 0, y: y + 4, 'font-size': 11.5, fill: r[0] === 'FMR1' ? '#fab219' : '#c3c2b7', 'font-family': 'ui-monospace, Menlo, monospace' }, s); t.textContent = r[0];
+    OG.el('line', { x1: L, x2: W - 10, y1: y, y2: y, stroke: 'rgba(255,255,255,.07)' }, s);
+    [r[1], r[2]].forEach(v => OG.el('circle', { cx: X(v / r[3]), cy: y, r: 4.5, fill: r[0] === 'FMR1' && v === 48 ? '#fab219' : '#f0efec', stroke: '#0e0f10', 'stroke-width': 2, 'data-tip': `${r[0]}: ${v} repeats; expansion line ${r[3]}` }, s));
+  });
+  const y = rows.length * rh + 12;
+  const t1 = OG.el('text', { x: L, y: y + 4, 'font-size': 11, fill: '#8f8d86', 'font-family': 'ui-monospace, Menlo, monospace' }, s); t1.textContent = 'RFC1  not sized: read as not assessed';
+  const t2 = OG.el('text', { x: X(1), y: H - 2, 'font-size': 10.5, fill: '#8f8d86', 'text-anchor': 'middle' }, s); t2.textContent = "each gene's expansion line";
+})();
+// E: ancestry, one segmented horizontal bar with direct labels
+(function(){
+  const g = [['Iberian', 71, '#3987e5'], ['Tuscan', 14, '#d95926'], ['NW Europe', 7, '#199e70'], ['N Africa', 6, '#c98500'], ['Other', 2, '#55565c']];
+  const W = 340, H = 92, s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('anc'));
+  let x = 0;
+  g.forEach((p, i) => { const w = p[1] / 100 * W - (i < g.length - 1 ? 2 : 0);
+    OG.el('rect', { x, y: 4, width: Math.max(w, 2), height: 26, rx: 3, fill: p[2], 'data-tip': `${p[0]} ${p[1]}%` }, s); x += p[1] / 100 * W; });
+  g.forEach((p, i) => { const r = i, col = r % 3, row = Math.floor(r / 3), tx = col * 116, ty = 52 + row * 22;
+    OG.el('rect', { x: tx, y: ty - 8, width: 9, height: 9, rx: 2, fill: p[2] }, s);
+    const t = OG.el('text', { x: tx + 15, y: ty, 'font-size': 12, fill: '#c3c2b7' }, s); t.textContent = `${p[0]} ${p[1]}%`; });
+})();
+// F: PRS dots
+(function(){
+  const p = [['Breast cancer', 71], ['Type 2 diabetes', 58], ['Coronary disease', 34], ['LDL cholesterol', 22], ['Atrial fibrillation', 12]];
+  const W = 340, rh = 24, L = 128, H = p.length * rh + 24, X = v => L + v / 100 * (W - L - 30);
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('prs'));
+  p.forEach((r, i) => { const y = i * rh + 12;
+    const t = OG.el('text', { x: 0, y: y + 4, 'font-size': 12, fill: '#c3c2b7' }, s); t.textContent = r[0];
+    OG.el('line', { x1: X(0), x2: X(100), y1: y, y2: y, stroke: 'rgba(255,255,255,.14)' }, s);
+    OG.el('circle', { cx: X(r[1]), cy: y, r: 5, fill: '#f0efec', stroke: '#0e0f10', 'stroke-width': 2, 'data-tip': `${r[0]}: ${r[1]}th percentile` }, s);
+    const v = OG.el('text', { x: X(r[1]) + 10, y: y + 4, 'font-size': 11, fill: '#c3c2b7', stroke: '#0e0f10', 'stroke-width': 4, 'paint-order': 'stroke' }, s); v.textContent = r[1]; });
+  [0, 50, 100].forEach(v => { const t = OG.el('text', { x: X(v), y: H - 2, 'font-size': 10.5, fill: '#8f8d86', 'text-anchor': 'middle' }, s); t.textContent = v; });
+})();
+</script>
+</body></html>
