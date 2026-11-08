@@ -33,6 +33,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. 
 ## Input
 
 - `${SAMPLE}/aligned/${SAMPLE}_sorted.bam` with its `.bai` (`ALIGN_DIR` as for the other BAM steps), aligned to GRCh38 with `chr` contig names.
+- A failure of the 4925G>A reader never costs the count: step 46 and the `LPA` process then write a 4925G>A table that says `not assessed, the check failed`, print a warning, and go on.
 - The aligner must report a read that fits several places equally well, with mapping quality 0. minimap2 (step 2) and BWA-MEM do. novoalign by default leaves such reads unaligned: then the step finds almost no MAPQ 0 reads over KIV-2 and reports the count as not assessed rather than a count that comes out low.
 
 ## Command
@@ -105,7 +106,7 @@ What a short-read fraction cannot say: which chromosome or which repeat carries 
 | `lpa/${SAMPLE}_lpa_kiv2_depth_q1.tsv` | the same, reads of MAPQ 1 or more |
 | `lpa/${SAMPLE}_lpa_kiv2_4925_pileup.tsv` | `samtools mpileup` at the seven 4925G>A positions |
 
-Both reports have an Lp(a) section: the count with its interval and class, the two risk variants from step 42 with their risk allele counts (rs10455872 G, rs3798220 C), a flag when there is at least one risk allele or the count is low, and the advice to measure Lp(a) in blood. Without step 42's table the two variants are shown as not read. The reports do not read the 4925G>A table yet; step 46 prints its message beside the count.
+Both reports have an Lp(a) section: the count with its interval and class, the two risk variants from step 42 with their risk allele counts (rs10455872 G, rs3798220 C), a flag when there is at least one risk allele or the count is low, and the advice to measure Lp(a) in blood. Without step 42's table the two variants are shown as not read. Right under the count, both reports and the live person page print the 4925G>A line: `present` or `uncertain` with the reads that carry it and the copies, `not seen` with the reads, `too little depth`, or `not assessed`; then the reader's message and the caveat that a null allele lowers the Lp(a) made from the copies it sits on and that the Lp(a) blood test is the measure. Without the 4925G>A table (a run from before this reader) or with a table that has no known status, the line says `not assessed` with the reason. The live card also lists the state as a fact. The Nextflow `HTML_REPORT` gets the table from the `LPA` process the same way.
 
 ## Runtime
 

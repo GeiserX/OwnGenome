@@ -301,6 +301,8 @@ def a_lpa(S, s):
     d = S["lpa"]["data"]
     facts = [["KIV-2 repeats", f"{d.get('kiv2_copies')} (95% interval {d.get('ci95_low')} to {d.get('ci95_high')})"
               if d.get("status") == "estimated" else d.get("status")], ["Class", d.get("class")]]
+    if d.get("null_allele"):
+        facts.append(["KIV-2 4925G>A null allele", rr.marker_state(d["null_allele"])])
     return {"facts": facts, "lines": rr.lpa_lines(d), "attention": d.get("flag") == "high"}
 
 
@@ -357,15 +359,19 @@ def a_couple(S, s):
 
 
 def a_paralogs(S, s):
-    lines = []
+    lines, facts = [], []
     if (S.get("parascopy") or {}).get("state") in ("ok", "stale"):
         d = S["parascopy"]["data"]
         lines += rr.parascopy_lines(d) + rr.parascopy_locus_lines(d) + rr.cn_interval_lines(d.get("cn_intervals"))
+        if d.get("smn1_marker"):
+            # the silent-carrier marker beside the SMN1 psCN
+            facts = [["SMN1 copies", (d.get("smn1") or {}).get("text", ".")],
+                     ["SMN1 g.27134T>G silent-carrier marker", rr.marker_state(d["smn1_marker"])]]
     rows = []
     if (S.get("paralogs") or {}).get("state") in ("ok", "stale"):
         rows = [[g.get("gene"), g.get("copy_number"), g.get("status"), g.get("detail")]
                 for g in S["paralogs"]["data"].get("genes") or []]
-    return {"lines": lines, "table": table(["Gene", "Copies", "Status", "Detail"], rows)}
+    return {"facts": facts, "lines": lines, "table": table(["Gene", "Copies", "Status", "Detail"], rows)}
 
 
 def a_pharmcat(S, s):

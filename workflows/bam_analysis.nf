@@ -81,6 +81,7 @@ workflow BAM_ANALYSIS {
     ch_hla_concordance  = Channel.empty()   // [meta, <id>_hla_concordance.tsv] when OptiType typed reads
     ch_smn_copy_number  = Channel.empty()
     ch_hba_copy_number  = Channel.empty()
+    ch_smn1_marker      = Channel.empty()
     ch_parascopy_tables = Channel.empty()
     ch_paraphase_cn     = Channel.empty()
     ch_paraphase_vars   = Channel.empty()
@@ -241,6 +242,7 @@ workflow BAM_ANALYSIS {
         ch_cn_intervals    = PARASCOPY.out.intervals
         ch_smn_copy_number = PARASCOPY.out.copy_number
         ch_hba_copy_number = PARASCOPY.out.hba
+        ch_smn1_marker     = PARASCOPY.out.smn1_marker
         // every other catalog row's table: SMN1's and HBA's come apart, above
         ch_parascopy_tables = PARASCOPY.out.tables.map { meta, fs ->
             def apart = ["${meta.id}_smn_copy_number.tsv", "${meta.id}_hba_copy_number.tsv"].collect { n -> n.toString() }
@@ -406,6 +408,7 @@ workflow BAM_ANALYSIS {
     hla_concordance  = ch_hla_concordance // [meta, <id>_hla_concordance.tsv] (--hla_qc, reads typed)
     smn_copy_number  = ch_smn_copy_number // [meta, <id>_smn_copy_number.tsv]
     hba_copy_number  = ch_hba_copy_number // [meta, <id>_hba_copy_number.tsv]
+    smn1_marker      = ch_smn1_marker     // [meta, <id>_smn1_marker.tsv], SMN1 g.27134T>G beside the psCN
     parascopy_tables = ch_parascopy_tables // [meta, [<id>_<table>_copy_number.tsv, ...]]: the other catalog rows' tables
     paraphase_cn     = ch_paraphase_cn    // [meta, <id>_paraphase_copy_number.tsv]
     paraphase_vars   = ch_paraphase_vars  // [meta, <id>_paraphase_variants.tsv]
