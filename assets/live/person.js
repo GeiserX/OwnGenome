@@ -5,7 +5,8 @@
 // numbered sections: 1 To act on, 2 Medicines, 3 For your family, 4 Worth a look, 5 Can I trust this?,
 // 6 Origins, 7 Traits and scores, 8 Assessed, no finding, 9 What it cannot see, 10 Sources and files.
 // A run still going is the same report being written: each section carries its stamp (written, being
-// written, waiting) and the step timeline sits on top. Every card of results.json is on the page under
+// written, waiting), a short band under the header counts the steps, and the step timeline closes the
+// page, folded. Every card of results.json is on the page under
 // its section; a card shows its results once one of its steps is done in the current state, so live
 // and replay draw the same way. Links inside the page live in the fragment (#s/<card>, #s3, #f/<id>,
 // #progress), which the browser never sends. Silence is never an all-clear: a section with no finding
@@ -16,7 +17,7 @@
   var U = window.PGPUI, el = U.el, add = U.add;
   var root = document.documentElement;
   var replay = root.getAttribute('data-mode') === 'replay';
-  var results = null, state = null, family = null, familyFor = null, fetchedFor = null, drawnKey = null;
+  var results = null, state = null, family = null, familyFor = null, fetchedFor = null, drawnKey = null, folded = false;
   // 'none': in no family; 'pending' or 'failed': in one whose roles are not known (yet); 'known'.
   var familyStatus = 'none';
   var shown = {};  // veiled findings the reader opened, by id
@@ -326,16 +327,23 @@
     recheckWords(c).forEach(function (t) { add(chips, chip(t, 'chip-recheck', '↻')); });
     add(head, chips);
     add(art, head);
+    // The text at reading width; the caveat, the numbers and the links in the margin beside it (one
+    // column below 1100 px).
+    var body = el('div', { 'class': 'card-body' });
+    var text = el('div', { 'class': 'card-text' });
+    var margin = el('aside', { 'class': 'card-margin' });
+    add(body, text, margin);
+    add(art, body);
     if (pending(g)) {
-      add(art, el('p', { 'class': 'state-text' }, (g === 'running' ? 'Being written: ' : 'Waiting for ') + stepWords(c) +
+      add(text, el('p', { 'class': 'state-text' }, (g === 'running' ? 'Being written: ' : 'Waiting for ') + stepWords(c) +
         (g === 'running' ? ' is running now.' : '.')));
     } else if (g === 'notrun') {
-      add(art, el('p', { 'class': 'notassessed' }, 'Not assessed: no step of this run made this section (step ' + (c.steps || []).join(', ') + ').'));
+      add(text, el('p', { 'class': 'notassessed' }, 'Not assessed: no step of this run made this section (step ' + (c.steps || []).join(', ') + ').'));
     } else if (g === 'failed') {
-      add(art, add(el('p', { 'class': 'notassessed' }), el('b', {}, 'Not assessed. '),
-        'Step ' + (c.steps || []).join(', ') + ' failed: the timeline below says why, and a rerun of the step fills this section.'));
+      add(text, add(el('p', { 'class': 'notassessed' }), el('b', {}, 'Not assessed. '),
+        'Step ' + (c.steps || []).join(', ') + ' failed: the step timeline says why, and a rerun of the step fills this section.'));
     } else if (g === 'empty') {
-      add(art, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
+      add(text, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
     } else if (closedFs.length) {
       var v = el('div', { 'class': 'veil' });
       // One button opens one result: a card with two results to act on asks twice.
@@ -345,28 +353,24 @@
       var vb = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
       vb.addEventListener('click', function () { shown[closedFs[0].id] = true; redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
       add(v, vb);
-      add(art, v);
+      add(text, v);
     } else {
-      (c.notes || []).forEach(function (n) { add(art, el('p', { 'class': 'note-stale' }, n)); });
-      if (c.headline) { add(art, el('p', { 'class': 'headline' }, c.headline)); }
-      add(art, U.facts(c.facts));
-      add(art, widget(c.widget));
+      (c.notes || []).forEach(function (n) { add(text, el('p', { 'class': 'note-stale' }, n)); });
+      if (c.headline) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
+      add(margin, U.facts(c.facts));
+      add(text, widget(c.widget));
       Object.keys((results && results.charts) || {}).forEach(function (chart) {
-        if (results.charts[chart] === c.id) { add(art, el('div', { 'class': 'chart-slot', 'data-chart-slot': chart })); }
+        if (results.charts[chart] === c.id) { add(text, el('div', { 'class': 'chart-slot', 'data-chart-slot': chart })); }
       });
-      if (c.image) { add(art, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
+      if (c.image) { add(text, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
       var tb = U.table(c.table);
-      if (tb) { add(art, tb); } else if (c.empty_text) { add(art, el('p', { 'class': 'empty' }, c.empty_text)); }
-      if (c.lines && c.lines.length) {
-        var ul = el('ul', { 'class': 'lines' });
-        c.lines.forEach(function (l) { add(ul, el('li', {}, l)); });
-        add(art, ul);
-      }
+      if (tb) { add(text, tb); } else if (c.empty_text) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
+      add(text, lineList(c.lines));
       if (c.hidden) {
         // APOE and the like: behind their warning, opened on purpose.
         var d = el('details', { 'class': 'behind' });
         add(d, el('summary', {}, c.hidden.summary), el('p', {}, c.hidden.text));
-        add(art, d);
+        add(text, d);
       }
       if (c.explore && c.explore.length) {
         var p = el('p', { 'class': 'explore' }, 'Explore the branch (opens a website; the address carries the haplogroup): ');
@@ -374,10 +378,10 @@
           if (i) { add(p, ', '); }
           add(p, el('a', { href: x.url, rel: 'noreferrer noopener', target: '_blank' }, x.name));
         });
-        add(art, p);
+        add(text, p);
       }
     }
-    add(art, U.caveat(c.caveat));
+    add(margin, U.caveat(c.caveat));
     var foot = el('p', { 'class': 'card-links' });
     add(foot, el('a', { href: 'report.html#' + encodeURIComponent(c.anchor), 'class': 'report' }, 'Open in the report'));
     if (g === 'show' && c.viewer && c.viewer.length) {
@@ -386,8 +390,37 @@
     (g === 'show' ? c.links || [] : []).forEach(function (f) {
       add(foot, el('a', { href: f.split('/').map(encodeURIComponent).join('/') }, 'Open ' + f));
     });
-    add(art, foot);
+    add(margin, foot);
     return art;
+  }
+  // A card's lines. Up to LINES_SHOWN show as they are. A longer list keeps the lines that say something
+  // in view and folds the rest (an allele absent, a call not determined) behind one line that counts them;
+  // every line stays in the page, so a search or a reader still finds it.
+  var LINES_SHOWN = 6;
+  var QUIET_LINE = /\b(absent|not determined|not typed|not called|not found)\b/i;
+  function lineList(lines) {
+    if (!lines || !lines.length) { return null; }
+    var keep = lines, rest = [];
+    if (lines.length > LINES_SHOWN) {
+      keep = lines.filter(function (l) { return !QUIET_LINE.test(l); });
+      rest = lines.filter(function (l) { return QUIET_LINE.test(l); });
+      if (keep.length > LINES_SHOWN) { rest = keep.slice(LINES_SHOWN).concat(rest); keep = keep.slice(0, LINES_SHOWN); }
+    }
+    var box = el('div', { 'class': 'lines-box' });
+    var ul = el('ul', { 'class': 'lines' });
+    keep.forEach(function (l) { add(ul, el('li', {}, l)); });
+    if (keep.length) { add(box, ul); }
+    if (rest.length) {
+      var quiet = rest.filter(function (l) { return QUIET_LINE.test(l); }).length;
+      var d = el('details', { 'class': 'lines-more' });
+      add(d, el('summary', {}, (keep.length ? 'The other ' + rest.length + ' of ' + lines.length + ' lines' : 'All ' + lines.length + ' lines') +
+        (quiet === rest.length ? ': absent or not determined' : quiet ? ' (' + quiet + ' absent or not determined)' : '')));
+      var ul2 = el('ul', { 'class': 'lines' });
+      rest.forEach(function (l) { add(ul2, el('li', {}, l)); });
+      add(d, ul2);
+      add(box, d);
+    }
+    return box;
   }
 
   // --- a finding in its section ------------------------------------------------------------------------
@@ -863,6 +896,7 @@
     else if (h.indexOf('q/') === 0) { target = document.getElementById('s' + (CHAPTER_SECTION[h.slice(2)] || 1)); }
     else { target = document.getElementById(h); }
     if (!target) { return; }
+    if (target.id === 'progress') { var fold = document.getElementById('progress-fold'); if (fold) { fold.open = true; } }
     var d = target.closest && target.closest('details');
     if (d) { d.open = true; }
     if (isCard) {
@@ -913,11 +947,11 @@
     window.scrollTo(0, y);
     document.getElementById('progress-q').textContent = running()
       ? 'Is it moving, when will it end, is anything wrong? One line per step.' : 'One line per step: when it ran, and what it found.';
-    // While the run goes the timeline leads the page; once it ends it closes the report.
-    var content = document.getElementById('content');
-    var prog = document.getElementById('progress');
-    if (running() && content.firstElementChild !== prog) { content.insertBefore(prog, content.firstElementChild); }
-    else if (!running() && content.lastElementChild !== prog) { content.appendChild(prog); }
+    // The step timeline closes the report, folded once the page has a report to show, while the run goes
+    // and after it ends: the page answers "is there anything serious?" first. The band under the header
+    // (runHero) and the contents link to it. A page with no report yet keeps it open: it is all there is.
+    var fold = document.getElementById('progress-fold');
+    if (fold && !folded && sectionsList().length) { folded = true; fold.open = window.location.hash === '#progress'; }
   }
 
   window.PGP.register({

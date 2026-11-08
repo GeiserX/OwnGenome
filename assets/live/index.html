@@ -38,16 +38,15 @@
       </div>
     </div>
   </section>
-  <section class="runhero" id="runhero" aria-label="The run" hidden>
-    <div>
-      <p class="lede" id="run-lede"></p>
-    </div>
-    <div>
+  <section class="runhero runband" id="runhero" aria-label="The run" hidden>
+    <p class="lede" id="run-lede"></p>
+    <div class="runband-num">
       <div class="bignum" id="bignum"></div>
       <div class="stepbar" id="stepbar"></div>
       <div class="stepkey" id="stepkey"></div>
-      <div class="timing" id="timing"></div>
     </div>
+    <div class="timing" id="timing"></div>
+    <a class="runband-link" href="#progress">The step timeline, what runs now and the wire &rarr;</a>
   </section>
   <div class="jlayout">
     <aside class="toc" id="rail" aria-label="In this report"></aside>
@@ -57,6 +56,8 @@
       <section id="progress" class="sec runsec" aria-label="The run, step by step">
         <div class="sechead"><span class="secnum">&#8211;</span><h2 class="h2">How the run went</h2></div>
         <p class="secq" id="progress-q">One line per step: when it ran, and what it found.</p>
+        <details class="runfold" id="progress-fold" open>
+        <summary>Show the step timeline, what runs now and the wire</summary>
         <div class="progress-grid">
           <section class="map-wrap" aria-label="Steps">
             <div class="map-head"><span class="fig-label">Figure &middot; The run, one line per step</span><div id="legend" class="legend"></div></div>
@@ -71,6 +72,7 @@
             <div id="plugin-panels"></div>
           </aside>
         </div>
+        </details>
       </section>
     </main>
   </div>

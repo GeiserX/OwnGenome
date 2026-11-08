@@ -198,23 +198,65 @@
     shown(last.steps).forEach(function (s) { paint(s.step, s.state, s.label); });
   }
 
+  // The wire: what the steps said, newest first. Only an event that says something gets its own line (a
+  // finding written, a warning, a failure); the plain "finished, see the report" ones fold into one line
+  // that names the newest. Each line is cut to its first sentence; the step's detail has the whole text.
+  // The newest WIRE_SHOWN lines show, the rest sit under "Every event".
+  var WIRE_SHOWN = 8, WIRE_CHARS = 140;
+  var PLAIN = /^(.*?):? finished, see the report\.?$/;
+  function sentence(t) {
+    var m = /^(.+?[.!?])(\s+[A-Z(]|$)/.exec(t || '');
+    var s = m ? m[1] : (t || '');
+    return s.length > WIRE_CHARS ? s.slice(0, WIRE_CHARS - 1).replace(/\s+\S*$/, '') + '…' : s;
+  }
+  function wireLine(ev) {
+    var li = el('li', { 'class': 'tone-' + ev.tone, 'data-section': ev.key || '', tabindex: '0', role: 'button', title: ev.full });
+    li.appendChild(el('span', { 'class': 'step' }, ev.t ? clock(ev.t) : ev.step));
+    li.appendChild(document.createTextNode(' ' + ev.text));
+    function open() { selected = ev.step; detail(); }
+    li.addEventListener('click', open);
+    li.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    return li;
+  }
   function found(state) {
     var ul = document.getElementById('found');
     var hl = state.headlines || {};
-    var keys = [];
-    state.steps.forEach(function (s) { (s.sections || []).forEach(function (k) { if (hl[k]) { keys.push(k); } }); });
-    ul.textContent = '';
-    if (!keys.length) { ul.appendChild(el('li', { 'class': 'muted' }, 'Nothing finished yet.')); return; }
-    keys.forEach(function (k) {
-      var li = el('li', { 'class': 'tone-' + hl[k].tone, 'data-section': k, tabindex: '0', role: 'button' });
-      li.appendChild(el('span', { 'class': 'step' }, hl[k].step));
-      li.appendChild(document.createTextNode(' ' + hl[k].text));
-      li.addEventListener('click', function () { selected = hl[k].step; detail(); });
-      li.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selected = hl[k].step; detail(); }
+    var said = [], plain = [];
+    state.steps.forEach(function (s, i) {
+      var t = ms(s.ended_utc);
+      (s.sections || []).forEach(function (k) {
+        if (!hl[k]) { return; }
+        var m = PLAIN.exec(hl[k].text || '');
+        var ev = { key: k, step: hl[k].step || s.step, tone: hl[k].tone, t: t, i: i, full: hl[k].text };
+        if (m && hl[k].tone !== 'attention') { ev.name = m[1] || s.label; plain.push(ev); }
+        else { ev.text = sentence(hl[k].text); said.push(ev); }
       });
-      ul.appendChild(li);
+      if (s.state === 'failed') { said.push({ step: s.step, tone: 'attention', t: t, i: i, text: (s.label || s.step) + ' failed', full: s.reason || '' }); }
     });
+    function newest(a, b) { return (b.t || 0) - (a.t || 0) || b.i - a.i; }
+    plain.sort(newest);
+    if (plain.length) {
+      var first = plain[0], since = plain.map(function (e) { return e.t; }).filter(Boolean).sort()[0];
+      said.push({ key: first.key, step: first.step, tone: 'info', t: first.t, i: first.i, full: first.full,
+        text: first.name + (plain.length > 1 ? ' and ' + (plain.length - 1) + ' more step' + (plain.length > 2 ? 's' : '') +
+          ' finished' + (since ? ' since ' + clock(since) : '') : ' finished') + ', see the report' });
+    }
+    said.sort(newest);
+    ul.textContent = '';
+    if (!said.length) { ul.appendChild(el('li', { 'class': 'muted' }, 'Nothing finished yet.')); return; }
+    said.slice(0, WIRE_SHOWN).forEach(function (ev) { ul.appendChild(wireLine(ev)); });
+    var rest = said.slice(WIRE_SHOWN);
+    if (rest.length || plain.length > 1) {
+      var li = el('li', { 'class': 'wire-more' });
+      var d = el('details', {});
+      d.appendChild(el('summary', {}, 'Every event'));
+      var all = el('ul', { 'class': 'found' });
+      rest.forEach(function (ev) { all.appendChild(wireLine(ev)); });
+      plain.forEach(function (ev) { all.appendChild(wireLine({ key: ev.key, step: ev.step, tone: 'info', t: ev.t, text: ev.name + ' finished', full: ev.full })); });
+      d.appendChild(all);
+      li.appendChild(d);
+      ul.appendChild(li);
+    }
   }
 
   function show(state) {
@@ -314,6 +356,10 @@
       if (last && p.onState) { p.onState(last); }
     }
   };
+
+  // The timeline is drawn to the width the page gives it: a fold opened after the first draw draws it again.
+  var fold = document.getElementById('progress-fold');
+  if (fold) { fold.addEventListener('toggle', function () { if (fold.open && last) { drawMap(shown(last.steps)); detail(); } }); }
 
   function startPage() {
     if (root.getAttribute('data-mode') === 'replay') { replay(); } else { live(); }

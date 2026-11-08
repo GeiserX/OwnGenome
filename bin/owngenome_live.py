@@ -267,7 +267,11 @@ def _with_note(lines, note):
     """The first line, and the section's caveat when the helper ends with it (never re-worded)."""
     if not lines:
         return None
-    return lines[0] + (f" {note}" if note and lines[-1] == note else "")
+    first = lines[0]
+    if not (note and lines[-1] == note):
+        return first
+    # Two sentences, so the page can cut the line after the first one ("HHV-6: not found. From the reads...").
+    return first + ("" if first.rstrip().endswith((".", "!", "?")) else ".") + f" {note}"
 
 
 def _h_clinvar(d, summary):
@@ -290,7 +294,7 @@ def _h_roh(d, summary):
     rr = _rr()
     lines = rr.roh_lines(d)
     first = next((x for x in lines if x.startswith("**")), lines[0])
-    return f"{first} {rr.ROH_NOTE}" if first != rr.ROH_NOTE else first, bool(d.get("upd_flag"))
+    return _with_note([first, rr.ROH_NOTE], rr.ROH_NOTE) if first != rr.ROH_NOTE else first, bool(d.get("upd_flag"))
 
 
 def _h_pypgx(d, summary):
