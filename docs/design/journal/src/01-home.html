@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>People and runs · OwnGenome</title>
+<!--@BASE-->
+<style>
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 40px; }
+.dateline { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--hair-2); padding: 34px 0 12px; font-size: 12.5px; color: var(--ink-3); }
+.dateline .vol { font: italic 15px var(--serif); color: var(--ink-2); }
+.hero { display: grid; grid-template-columns: 1fr 420px; gap: 60px; padding: 40px 0 0; }
+.hero h1 { font: 400 54px/1.08 var(--serif); margin: 0; letter-spacing: -.012em; }
+.hero h1 em { color: var(--brass); }
+.attn h2 { margin: 0 0 4px; }
+.attn-list { list-style: none; padding: 0; margin: 0; }
+.attn-list li a { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; padding: 13px 0; border-top: 1px solid var(--hair); text-decoration: none; align-items: baseline; }
+.attn-list li a:hover .t { text-decoration: underline; text-decoration-color: var(--brass-dim); }
+.attn-list .who { font-size: 12px; color: var(--ink-3); display: block; margin-bottom: 3px; }
+.attn-list .t { font: 400 17px/1.35 var(--serif); color: var(--ink); }
+.attn-list .ar { color: var(--ink-3); }
+.attn-list .gl { padding-top: 22px; }
+.band-h { display: flex; align-items: baseline; gap: 16px; margin: 68px 0 18px; }
+.band-h h2 { font: 400 30px var(--serif); margin: 0; }
+.band-h .k { font-size: 13px; color: var(--ink-3); }
+.band-h .rt { margin-left: auto; font-size: 13px; }
+.press { background: var(--paper); border: 1px solid var(--hair-2); border-radius: 14px; display: grid; grid-template-columns: 330px 1fr 300px; gap: 0; overflow: hidden; }
+.press > div { padding: 24px 26px; }
+.press > div + div { border-left: 1px solid var(--hair); }
+.press .big { font: 300 64px/1 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.press .big small { font-size: 22px; color: var(--ink-3); font-weight: 300; }
+.ticks { display: grid; grid-template-columns: repeat(27, 1fr); gap: 3px; margin: 18px 0 10px; }
+.ticks i { height: 9px; border-radius: 2px; background: var(--ink-2); display: block; }
+.ticks i.run { background: var(--brass); }
+.ticks i.wait { background: transparent; box-shadow: inset 0 0 0 1px var(--hair-2); }
+.legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--ink-2); }
+.legend .r::before { background: var(--brass); } .legend .w::before { background: none; box-shadow: inset 0 0 0 1px var(--hair-2); }
+.found li { padding: 9px 0; border-top: 1px solid var(--hair); font-size: 14px; color: var(--ink-2); list-style: none; }
+.found { padding: 0; margin: 12px 0 0; }
+.found li b { color: var(--ink); font-weight: 500; }
+.family { display: grid; grid-template-columns: 330px 1fr; gap: 0; border-top: 1px solid var(--hair-2); }
+.fam-left { padding: 24px 30px 24px 0; border-right: 1px solid var(--hair); }
+.fam-left h3 { font: 400 22px/1.3 var(--serif); margin: 12px 0 10px; }
+.fam-left p { font-size: 13.5px; color: var(--ink-2); }
+.people { display: grid; grid-template-columns: repeat(3, 1fr); }
+.person { padding: 24px 26px 22px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; text-decoration: none; }
+.person:last-child { border-right: 0; }
+.person:hover { background: rgba(255,255,255,.015); }
+.person .nm { font: 400 30px/1.1 var(--serif); color: var(--ink); margin: 12px 0 4px; }
+.person .meta { font-size: 12.5px; color: var(--ink-3); }
+.person .hl { font: 400 16.5px/1.45 var(--serif); color: var(--ink-2); margin: 16px 0 18px; flex: 1; }
+.person .hl b { color: var(--ink); font-weight: 600; }
+.counts { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--hair); }
+.counts .cnt { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.counts .none { color: var(--ink-3); }
+.counts .cnt em { font-style: normal; color: var(--ink-3); font-size: 12px; margin-left: -2px; }
+.counts { gap: 6px 12px; }
+.person .go { margin-top: 14px; font-size: 13px; color: var(--brass); }
+.carmen-row { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--hair); font-size: 13.5px; color: var(--ink-3); }
+.ident { width: 28px; height: 3px; border-radius: 2px; display: block; }
+</style>
+</head><body>
+<header class="mast"><div class="mast-in">
+  <a class="wordmark" href="01-home.html">Own<i>Genome</i></a>
+  <nav class="crumbs"><span class="here">People and runs</span></nav>
+  <div class="mast-right"><div class="search">Search people, genes, drugs <kbd>/</kbd></div><a class="btn" href="#">+ New run</a></div>
+</div></header>
+
+<div class="wrap">
+  <div class="dateline"><span class="vol">Sunday 8 November 2026</span><span>4 genomes · 1 family · 1 report being written · server healthy</span></div>
+
+  <div class="hero">
+    <div>
+      <div class="kicker">On this server</div>
+      <h1 style="margin-top:14px">One report is <em>being written</em>.<br>Three are finished, and one finding should go to a doctor.</h1>
+      <p class="body-serif" style="margin-top:20px;max-width:640px">The Ruiz family's three genomes are read, alone and together. The benchmark run of the public sample HG002 is past halfway.</p>
+    </div>
+    <div class="attn">
+      <div class="fig-label" style="margin-bottom:10px">Needs attention, across everyone</div>
+      <ul class="attn-list">
+        <li><a href="04-finding.html"><span class="gl lv act"><span class="g"></span></span><span><span class="who"><span class="pc elena">Elena</span> · take to a doctor</span><span class="t">Hereditary breast and ovarian cancer (BRCA2)</span></span><span class="ar">→</span></a></li>
+        <li><a href="06-person-mobile.html"><span class="gl lv med"><span class="g"></span></span><span><span class="who"><span class="pc marc">Marc</span> · tell your prescriber</span><span class="t">Clopidogrel: avoid. Simvastatin: 20 mg or less</span></span><span class="ar">→</span></a></li>
+        <li><a href="05-family.html#couple"><span class="gl lv car"><span class="g"></span></span><span><span class="who"><span class="pc elena">Elena</span> + <span class="pc marc">Marc</span> · family planning</span><span class="t">Both carry cystic fibrosis: 1 in 4 per pregnancy</span></span><span class="ar">→</span></a></li>
+        <li><a href="#"><span class="gl lv med"><span class="g"></span></span><span><span class="who"><span class="pc lia">Lía</span>, <span class="pc elena">Elena</span> · tell your prescriber</span><span class="t">Two more medicine results</span></span><span class="ar">→</span></a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="band-h"><h2>Being written</h2><span class="k">a run in progress comes first</span><a class="rt" href="02-live-run.html">Watch it →</a></div>
+  <a class="press" href="02-live-run.html" style="text-decoration:none">
+    <div>
+      <div class="kicker" style="color:var(--ink-3)">Benchmark · public reference sample</div>
+      <div style="font:400 30px var(--serif);margin:10px 0 2px">HG002</div>
+      <div class="meta muted" style="font-size:12.5px">GIAB, male · started today 06:40 · <span class="mono">HG002-BENCH</span></div>
+      <div style="margin-top:22px" class="big">31<small> of 54 steps</small></div>
+      <div class="ticks" id="ticks"></div>
+      <div class="legend"><span>31 done</span><span class="r">4 running</span><span class="w">19 waiting</span></div>
+    </div>
+    <div>
+      <div class="fig-label">Found so far</div>
+      <ul class="found">
+        <li><span class="lv trust" style="margin-right:8px"><span class="g"></span></span><b>Identity and quality:</b> XY as declared; 34.1× depth; contamination 0.2%.</li>
+        <li><span class="lv car" style="margin-right:8px"><span class="g"></span></span><b>2 pathogenic ClinVar changes</b>, both one copy in recessive genes: carrier results.</li>
+        <li><span class="lv info" style="margin-right:8px"><span class="g"></span></span><b>Medicines:</b> 4 genes with a changed function; the drug list follows.</li>
+        <li style="color:var(--ink-3)"><span style="color:var(--brass);margin-right:8px">✎</span>Being written now: cancer predisposition, structural changes, scores, mitochondria.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="fig-label">Timing</div>
+      <div style="display:flex;gap:28px;margin-top:12px">
+        <div><div style="font:300 28px var(--sans);white-space:nowrap" class="num">6.4 h</div><div class="muted" style="font-size:12.5px">elapsed</div></div>
+        <div><div style="font:300 28px var(--sans);white-space:nowrap" class="num">~19 h</div><div class="muted" style="font-size:12.5px">to go, from usual step times</div></div>
+      </div>
+      <div class="fig-label" style="margin-top:22px">Latest</div>
+      <p style="font-size:13.5px;color:var(--ink-2);margin-top:8px"><span class="num muted">12:58</span> &nbsp;ClinVar screen finished.<br><span class="num muted">12:07</span> &nbsp;<span style="color:var(--rev)">▲</span> One task retried with more memory; it recovered.</p>
+    </div>
+  </a>
+
+  <div class="band-h"><h2>The Ruiz family</h2><span class="k">3 genomes, 1 relative without one</span><a class="rt" href="05-family.html">Family report →</a></div>
+  <div class="family">
+    <div class="fam-left">
+      <div id="ped"></div>
+      <span class="lv car" style="margin-top:14px"><span class="g"></span>The family's headline</span>
+      <h3>Both parents carry cystic fibrosis. Lía inherited Elena's copy only: a carrier, not affected.</h3>
+      <p>Relationships match the family tree. One new change in Lía, outside any gene.</p>
+      <a href="05-family.html" style="font-size:13px;color:var(--brass)">Read the family report, in five chapters →</a>
+    </div>
+    <div>
+      <div class="people">
+        <a class="person" href="03-person.html">
+          <span class="ident" style="background:var(--elena)"></span>
+          <div class="nm">Elena Ruiz</div>
+          <div class="meta">38 · mother · finished 4 Nov</div>
+          <div class="hl"><b>One finding for a doctor</b>: a BRCA2 change linked to hereditary breast and ovarian cancer. Tamoxifen needs care.</div>
+          <div class="counts"><span class="cnt" data-tip="Take to a doctor: 1"><span class="lv act"><span class="g"></span></span>1<em>doctor</em></span><span class="cnt" data-tip="Tell your prescriber: 1"><span class="lv med"><span class="g"></span></span>1<em>prescriber</em></span><span class="cnt" data-tip="Worth a look: 1"><span class="lv rev"><span class="g"></span></span>1<em>look</em></span><span class="cnt" data-tip="For family planning: 2"><span class="lv car"><span class="g"></span></span>2<em>family</em></span><span class="cnt" data-tip="For information: 14"><span class="lv info"><span class="g"></span></span>14<em>info</em></span></div>
+          <span class="go">Read Elena's report →</span>
+        </a>
+        <a class="person" href="06-person-mobile.html">
+          <span class="ident" style="background:var(--marc)"></span>
+          <div class="nm">Marc Ruiz</div>
+          <div class="meta">41 · father · finished 4 Nov · <span style="color:var(--rev)">1 step not assessed</span></div>
+          <div class="hl"><b>Two medicine results</b> and a heart cluster: clopidogrel would not work well; a high Lp(a) is likely, worth one blood test.</div>
+          <div class="counts"><span class="cnt" data-tip="Tell your prescriber: 2"><span class="lv med"><span class="g"></span></span>2<em>prescriber</em></span><span class="cnt" data-tip="Worth a look: 2"><span class="lv rev"><span class="g"></span></span>2<em>look</em></span><span class="cnt" data-tip="For family planning: 2"><span class="lv car"><span class="g"></span></span>2<em>family</em></span><span class="cnt" data-tip="For information: 15"><span class="lv info"><span class="g"></span></span>15<em>info</em></span></div>
+          <span class="go">Read Marc's report →</span>
+        </a>
+        <a class="person" href="#">
+          <span class="ident" style="background:var(--lia)"></span>
+          <div class="nm">Lía Ruiz</div>
+          <div class="meta">6 · daughter · finished 6 Nov · a child's report</div>
+          <div class="hl"><b>A cystic fibrosis carrier</b>, from Elena, not affected. CYP2C19 from Marc matters for clopidogrel. Adult-onset results stay closed.</div>
+          <div class="counts"><span class="cnt" data-tip="Tell your prescriber: 1"><span class="lv med"><span class="g"></span></span>1<em>prescriber</em></span><span class="cnt" data-tip="Worth a look: 1"><span class="lv rev"><span class="g"></span></span>1<em>look</em></span><span class="cnt" data-tip="For family planning: 1"><span class="lv car"><span class="g"></span></span>1<em>family</em></span><span class="cnt" data-tip="For information: 12"><span class="lv info"><span class="g"></span></span>12<em>info</em></span></div>
+          <span class="go">Read Lía's report →</span>
+        </a>
+      </div>
+      <div class="carmen-row" style="margin-left:26px"><span class="pc carmen">Carmen Vidal</span><span>Elena's mother · in the family tree, no genome on this server</span><a href="#" style="margin-left:auto;color:var(--ink-2)">Add a genome</a></div>
+    </div>
+  </div>
+
+  <div class="band-h"><h2>Every run</h2><span class="k">the log, for whoever runs the server</span></div>
+  <table class="t">
+    <tr><th>Run</th><th>Person</th><th>State</th><th class="r">Steps</th><th class="r">Hours</th><th>Finished</th><th>Notes</th></tr>
+    <tr><td class="mono">HG002-BENCH</td><td>HG002 <span class="muted">(public)</span></td><td><span class="dot-live" style="background:var(--brass);box-shadow:0 0 0 3px rgba(200,171,120,.18)"></span>&nbsp; running</td><td class="r">31 / 54</td><td class="r">6.4</td><td class="muted">about 19 h more</td><td>1 task retried with more memory</td></tr>
+    <tr><td class="mono">RUIZ-FAMILY</td><td>Elena, Marc, Lía</td><td><span class="lv trust"><span class="g"></span>finished</span></td><td class="r">7 / 8</td><td class="r">—</td><td class="num">6 Nov, 14:22</td><td class="muted">grandparent step skipped: no genome for Carmen</td></tr>
+    <tr><td class="mono">RUIZ-LIA</td><td><span class="pc lia">Lía Ruiz</span></td><td><span class="lv trust"><span class="g"></span>finished</span></td><td class="r">54 / 54</td><td class="r">28.6</td><td class="num">6 Nov, 12:05</td><td class="muted">3 skipped, by design</td></tr>
+    <tr><td class="mono">RUIZ-MARC</td><td><span class="pc marc">Marc Ruiz</span></td><td><span class="lv trust"><span class="g"></span>finished</span></td><td class="r">53 / 54</td><td class="r">33.6</td><td class="num">4 Nov, 17:40</td><td><span style="color:var(--rev)">▲</span> MUC1 kidney step not assessed: depth 41×, needs 100×</td></tr>
+    <tr><td class="mono">RUIZ-ELENA</td><td><span class="pc elena">Elena Ruiz</span></td><td><span class="lv trust"><span class="g"></span>finished</span></td><td class="r">54 / 54</td><td class="r">30.6</td><td class="num">4 Nov, 03:51</td><td class="muted">3 skipped, by design</td></tr>
+  </table>
+  <p style="font-size:12.5px;color:var(--ink-3);margin-top:14px"><span style="color:var(--brass)">●</span> ClinVar 2026-11-06 is out. The three Ruiz reports used 2026-10-02; re-checking would update their carrier lists and the couple screen. <a href="#">Re-check all three</a></p>
+</div>
+<footer class="colophon"><div class="colophon-in"><span class="wordmark">OwnGenome</span><span>1.0.0 · GRCh38 no-ALT · a research pipeline, not a clinical test</span><span style="margin-left:auto">Synthetic demonstration data</span></div></footer>
+<script>
+(function(){
+  const t = document.getElementById('ticks');
+  for (let i = 0; i < 54; i++) { const e = document.createElement('i'); if (i >= 31 && i < 35) e.className = 'run'; else if (i >= 35) e.className = 'wait'; t.appendChild(e); }
+  const s = OG.el('svg', { viewBox: '0 0 300 130', width: 300 }, document.getElementById('ped'));
+  const ln = (a,b,c,d) => OG.el('line', { x1:a, y1:b, x2:c, y2:d, stroke: 'rgba(255,255,255,.28)', 'stroke-width': 1.2 }, s);
+  const tx = (x,y,t,c) => { const e = OG.el('text', { x, y, 'font-size': 11, fill: c || '#c3c2b7', 'text-anchor': 'middle' }, s); e.textContent = t; };
+  OG.el('circle', { cx: 60, cy: 16, r: 11, fill: 'none', stroke: '#8f8d86', 'stroke-dasharray': '3 3' }, s); tx(100, 20, 'Carmen', '#8f8d86');
+  ln(60, 27, 60, 49);
+  OG.el('circle', { cx: 60, cy: 62, r: 13, fill: 'rgba(217,89,38,.2)', stroke: '#d95926', 'stroke-width': 2 }, s); tx(60, 92, 'Elena');
+  OG.el('rect', { x: 177, y: 49, width: 26, height: 26, rx: 2, fill: 'rgba(57,135,229,.2)', stroke: '#3987e5', 'stroke-width': 2 }, s); tx(190, 92, 'Marc');
+  ln(73, 62, 177, 62); ln(125, 62, 125, 100);
+  OG.el('circle', { cx: 125, cy: 112, r: 11, fill: 'rgba(25,158,112,.2)', stroke: '#199e70', 'stroke-width': 2 }, s); tx(157, 116, 'Lía');
+  OG.glyph(s, 'act', 82, 50);
+})();
+</script>
+</body></html>
