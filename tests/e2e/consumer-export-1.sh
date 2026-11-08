@@ -15,8 +15,10 @@
 #      table's GRCh38 position and has the alleles of case 21's calls there
 #      (hom-ref where case 21 called nothing), but for at most 0.1% of the
 #      sites, where the list's GRCh37 position and dbSNP's GRCh38 position
-#      fall on two copies of a duplicated region. chrM is left out: the hg19
-#      chain maps hg19's chrM, not the rCRS positions the file uses;
+#      fall on two copies of a duplicated region. chrM is left out of both
+#      files: chip-to-vcf.sh moves a 23andMe-layout file's MT positions from
+#      hg19's chrM numbering to the rCRS, and step 40 already writes rCRS
+#      positions, so those sites would land one or two bases off;
 #   5. red controls: the table shifted by one GRCh38 position stops the
 #      export (reference bases differ); shifted by one GRCh37 position, the
 #      export runs and the round trip fails;

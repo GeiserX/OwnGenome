@@ -12,16 +12,21 @@ Checks:
      once the report step has ended, the re-check only after the run;
   4. the run-health card measures the invented machine, never the machine that
      builds the demo, and no frame holds a path of that machine;
-  5. every link a frame gives is relative and reaches a file of the demo;
+  5. every link a frame gives is relative and reaches a file of the demo, and
+     so is every link of runs.json, results.json and family.json;
   6. every page the build writes carries the server's Content-Security-Policy
      as a meta tag, and no page or script of the demo loads anything from
      outside;
   7. in a headless Chrome (skipped without Chrome, except in CI), served as a
-     static host serves it (no policy header): the runs list, the replay to its
-     last frame, the charts, a search, the re-check banner, the run-health
-     card, the family link and its pedigree, the viewer page, and no policy
-     violation.
-Checks 1, 2, 3 and 5 also run against a planted mistake and must fail there (2:
+     static host serves it (no policy header): the home page's people and
+     family, the replay to its last frame, the charts, a search, the re-check
+     banner, the run-health card, the family link and its pedigree, the viewer
+     page, and no policy violation; the person page's cards (the doctor tab
+     with the ClinVar card, its caveat and its chart), the tab row moved with
+     the arrow keys, #s/clinvar focusing its card; the family page with a
+     clickable pedigree and no step map or report link; and at a phone's width
+     (390 px) no page scrolls sideways.
+Checks 1, 2, 3, 5 and the phone width also run against a planted mistake and must fail there (2:
 a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
 Run: python3 tests/test_live_demo.py
@@ -144,6 +149,27 @@ def link_problems(out, built):
     return bad
 
 
+def json_link_problems(out):
+    """Links of runs.json, results.json and family.json that are absolute or reach no file of the demo."""
+    bad = []
+    for rel, base in (("runs.json", out), (os.path.join("runs", S, "results.json"), os.path.join(out, "runs", S)),
+                      (os.path.join("runs", FAM, "family.json"), os.path.join(out, "runs", FAM))):
+        with open(os.path.join(out, rel)) as f:
+            data = json.load(f)
+        found = list(links(data))
+        if rel.endswith("results.json"):
+            found += [x for ch in data["chapters"] for c in ch["sections"] for x in c.get("links") or []]
+        if not found:
+            bad.append(f"{rel}: no link at all")
+        for u in found:
+            if u.startswith("https://"):  # an explore link of the report (a haplogroup tree), opened by the reader
+                continue
+            p = os.path.normpath(os.path.join(base, u))
+            if u.startswith("/") or not (os.path.isfile(p) or os.path.isfile(os.path.join(p, "index.html"))):
+                bad.append(f"{rel}: {u}")
+    return bad
+
+
 def located_term(out):
     """A term of the demo's search index with a mention at a locus (its hit links the viewer)."""
     with open(os.path.join(out, "runs", S, f"{S}_search_index.json")) as f:
@@ -175,9 +201,12 @@ def browser_checks(out):
     b = Chrome(chrome, os.path.join(os.path.dirname(out), "chrome"))
     try:
         b.go(f"{base}/")
-        runs = b.wait("document.querySelectorAll('ul.runs a').length === 2 && "
-                      "Array.from(document.querySelectorAll('ul.runs a')).map(function (a) { return a.getAttribute('href'); }).join(' ')")
-        check("browser: the runs list links the sample and the family", runs == f"runs/{S}/ runs/{FAM}/", runs)
+        people = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.documentElement.dataset.pgpPeople")
+        runs = b.eval("Array.from(document.querySelectorAll('.person-card a.person-link')).map(function (a) { "
+                      "return a.getAttribute('href'); }).join(' ') + ' | ' + Array.from(document.querySelectorAll("
+                      "'.family-head a')).map(function (a) { return a.getAttribute('href'); }).join(' ')")
+        check("browser: the home page shows both people of the family, the sequenced one with a run linked, and the family",
+              people == "2" and runs == f"runs/{S}/ | runs/{FAM}/ runs/{FAM}/", (people, runs))
         b.go(f"{base}/runs/{S}/")
         first = b.wait("document.documentElement.dataset.pgpFrame && document.documentElement.dataset.pgpStatus === 'ready' "
                        "&& document.querySelectorAll('#map g.box').length")
@@ -231,10 +260,75 @@ def browser_checks(out):
         check("browser: the policy blocked nothing on the sample page", not blocked, blocked)
         csp = b.eval("var m = document.querySelector('meta[http-equiv=Content-Security-Policy]'); m && m.content")
         check("browser: the page runs under the meta policy", csp == build_live_demo.CSP, csp)
+        person_checks(b, base)
+        phone_checks(b, base)
     finally:
         b.close()
         srv.shutdown()
         srv.server_close()
+
+
+def person_checks(b, base):
+    """The person page at the end of the run: cards, keyboard, a section link; the family page's own view."""
+    b.eval("location.hash = '#q/clinical'; true")
+    n = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.documentElement.dataset.pgpResults")
+    card = b.eval("var c = document.getElementById('card-clinvar'); c && [!!c.querySelector('.caveat .caveat-lead'), "
+                  "!!c.querySelector('figure[data-chart]'), c.classList.contains('attn')].join(' ')")
+    check("browser: the doctor tab shows its cards; ClinVar's has its caveat, its chart and its flag",
+          n and int(n) > 3 and card == "true true true", (n, card))
+    b.eval("var t = document.querySelector('#rail [aria-selected=true]'); t.focus(); "
+           "t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); true")
+    tab = b.wait("document.documentElement.dataset.pgpTab !== 'clinical' && document.documentElement.dataset.pgpTab")
+    check("browser: the arrow key moves to the next chapter", tab == "carrier", tab)
+    b.eval("location.hash = '#s/clinvar'; true")
+    focus = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.activeElement && "
+                   "document.activeElement.id")
+    check("browser: #s/clinvar opens the doctor tab and focuses the ClinVar card", focus == "card-clinvar", focus)
+    b.go(f"{base}/runs/{FAM}/")
+    fam = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && [!document.getElementById('map'), "
+                 "!document.getElementById('report-link'), (document.querySelector('svg.pedigree-svg a') || {"
+                 "getAttribute: function () { return null; } }).getAttribute('href')].join(' ')")
+    check("browser: the family page has a clickable pedigree, no step map and no report link",
+          fam == f"true true ../../runs/{S}/", fam)
+
+
+def too_wide(b):
+    return b.eval("document.documentElement.scrollWidth > window.innerWidth ? "
+                  "document.documentElement.scrollWidth + ' > ' + window.innerWidth : ''")
+
+
+def phone_checks(b, base):
+    # mobile False: a mobile viewport zooms out to fit a page that overflows, which would hide the overflow.
+    b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False},
+           b.session)
+    try:
+        wide = {}
+        for name, path, ready in (("home", "/", "document.documentElement.dataset.pgpStatus === 'ready'"),
+                                  ("person", f"/runs/{S}/#q/clinical", "document.documentElement.dataset.pgpResults"),
+                                  ("family", f"/runs/{FAM}/", "document.documentElement.dataset.pgpStatus === 'ready'")):
+            b.go(base + path)
+            b.wait(ready)
+            if name == "person":
+                b.eval("var s = document.getElementById('replay-slider'); s.value = s.max; "
+                       "s.dispatchEvent(new Event('input')); true")
+                b.wait("document.documentElement.dataset.pgpFrame === document.getElementById('replay-slider').max")
+                time.sleep(1)
+                # Every tab of the person page, not only the one the link opens.
+                tabs = b.eval("Array.prototype.map.call(document.querySelectorAll('[role=tab][data-tab]'), "
+                              "function (t) { return t.getAttribute('data-tab'); }).join(' ')") or ""
+                for tab in tabs.split():
+                    b.eval(f"document.querySelector('[role=tab][data-tab=\"{tab}\"]').click(); true")
+                    time.sleep(0.3)
+                    if too_wide(b):
+                        wide[f"person {tab}"] = too_wide(b)
+                wide["person tabs"] = "" if len(tabs.split()) >= 3 else f"only {tabs!r}"
+            wide[name] = too_wide(b)
+        check("browser: at 390 px no page scrolls sideways", not any(wide.values()), wide)
+        b.eval("var d = document.createElement('div'); d.style.width = '900px'; d.style.height = '4px'; "
+               "document.querySelector('main').appendChild(d); true")
+        control("a 900 px wide block on the family page", not too_wide(b))
+    finally:
+        b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
 
 
 def main():
@@ -289,6 +383,15 @@ def main():
         planted = copy.deepcopy(built)
         planted["family"]["state"]["plugins"]["family"]["pedigree"] = f"/family/{FAM}/pedigree.svg"
         control("an absolute pedigree link", not link_problems(out, planted))
+        bad = json_link_problems(out)
+        check("5. every link of runs.json, results.json and family.json is relative and reaches a file", not bad, bad)
+        with open(os.path.join(out, "runs.json")) as f:
+            idx = json.load(f)
+        with open(os.path.join(out, "runs.json"), "w") as f:
+            json.dump(dict(idx, runs=[dict(r, url="/" + r["url"]) for r in idx["runs"]]), f)
+        control("an absolute link in runs.json", not json_link_problems(out))
+        with open(os.path.join(out, "runs.json"), "w") as f:
+            json.dump(idx, f)
 
         # 6. the policy on every page, nothing from outside
         pages, texts = [], {}

@@ -19,9 +19,11 @@ Two listeners, Python standard library only:
   browser  (--bind 127.0.0.1, --port 8787) serves the pages, after a login
            when a password hash is set:
              GET/POST /login, POST /logout
-             GET /                          the runs under --root
+             GET /                          the people under --root, by family (assets/live/home.html)
+             GET /runs.json                 each run's progress and each family's members
              GET /assets/<file>, /assets/plugins/<file>
-             GET /runs/<run>/               the live page (assets/live/index.html)
+             GET /runs/<run>/               a person's page (assets/live/index.html), or a family's
+                                            (assets/live/family.html)
              GET /runs/<run>/state.json     bin/run_state.py's state, plus the
                                             headline of each finished section
                                             and what the plugins add
@@ -86,6 +88,8 @@ RUN_HTML_CSP = ("sandbox allow-same-origin allow-popups allow-popups-to-escape-s
                 "frame-ancestors 'none'")
 RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")  # validate_sample in scripts/lib/common.sh
 ASSET_RE = re.compile(r"^(?:plugins/)?[A-Za-z0-9][A-Za-z0-9._-]*$")
+# The page templates of assets/live: served filled in, never as an asset.
+PAGES = ("index.html", "login.html", "home.html", "family.html")
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
          ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".tsv": "text/plain; charset=utf-8",
          ".md": "text/plain; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".pdf": "application/pdf"}
@@ -352,7 +356,8 @@ def headline(key, sec, summary=None):
             text, attention = fn(sec.get("data") or {}, summary or {})
         except (KeyError, TypeError, ValueError, AttributeError, IndexError):
             text, attention = None, False
-    return (text or f"{title}: finished, see the report"), ("attention" if attention else "info")
+    # Markdown bold (the ROH helper's first line) reads as literal asterisks on a page.
+    return (text or f"{title}: finished, see the report").replace("**", ""), ("attention" if attention else "info")
 
 
 # --- the plugin interface ---------------------------------------------------------------------
@@ -518,6 +523,7 @@ class Live:
         self.sessions, self.failures, self.lock = {}, {}, threading.Lock()
         self.streams = threading.BoundedSemaphore(cfg.max_streams)
         self.headline_cache = {}
+        self.attention_cache = {}
         self.allowed = set(LOOPBACK_HOSTS) | {h.lower() for h in cfg.allowed_host or []}
         if cfg.bind not in ("0.0.0.0", "::"):
             self.allowed.add(cfg.bind.strip("[]").lower())
@@ -593,7 +599,8 @@ class Live:
         for fn in self.app.run_kinds:
             for r in fn(self.app) or []:
                 if valid_run(r.get("name", "")) and r["name"] not in out:
-                    out[r["name"]] = {"name": r["name"], "dir": r.get("dir"), "kind": r.get("kind", "other")}
+                    # Keys beyond name, dir and kind (a family's members) pass through to /runs.json.
+                    out[r["name"]] = dict(r, name=r["name"], dir=r.get("dir"), kind=r.get("kind", "other"))
         return out
 
     @staticmethod
@@ -604,9 +611,10 @@ class Live:
     def run(self, name):
         return self.runs().get(name) if valid_run(name) else None
 
-    def state(self, run):
+    def base_state(self, run, events=None):
+        """run_state's state of the run's newest run, without headlines or plugins (the home page's view)."""
         d = run["dir"] or os.path.join(self.root, run["name"])
-        events = self.store.events(run["name"])
+        events = self.store.events(run["name"]) if events is None else events
         cur = current_run(events)
         # run_state.collect, on the current run's messages only (an earlier run's 'completed' would
         # mark this one finished, and its tasks would mark this run's steps done).
@@ -625,39 +633,101 @@ class Live:
         if run_finished(events) and st["run"]["state"] == "running":
             st["run"]["state"] = "finished"
         st["events"] = len(events)  # the page paints a message ahead of state.json only past this id
+        return st
+
+    def state(self, run):
+        d = run["dir"] or os.path.join(self.root, run["name"])
+        events = self.store.events(run["name"])
+        st = self.base_state(run, events)
         # The report's anchor of each section (bin/render_report.py's chapters), for the step detail's link.
         sec_of = getattr(_rr(), "SECTION_OF", {})
         st["anchors"] = {k: sec_of[k] for s in st["steps"] for k in s["sections"] if k in sec_of}
         st["headlines"] = self.headlines(run["name"], d, st)
+        # Changes when step 24 re-writes summary.json with no new step done: the person page fetches
+        # results.json again on it.
+        stamp = self.file_stamp(os.path.join(d, "summary.json"))
+        st["results_stamp"] = "%d-%d" % stamp if stamp else None
         st["plugins"] = {}
         for name, fn in self.app.state_hooks:
             st["plugins"][name] = fn(d, st, events)
         return st
 
-    def headlines(self, sample, d, st):
-        """{section: {text, tone, step}} for the sections of the steps that are done. The summary
-        is read again only when the set of done steps or the message count changes."""
+    def summary(self, sample, d, st):
+        """The run's summary for the steps that are done: its summary.json when that is newer than
+        the end of every done step (step 24 wrote it after them), else collected now. Read again only
+        when the set of done steps or the message count changes; None while nothing is done."""
         done = tuple(s["step"] for s in st["steps"] if s["state"] == "done")
-        key = (sample, done, st.get("events"))  # a section's file can land after its step's last message
+        # A section's file can land after its step's last message, and a re-made report rewrites
+        # summary.json with no new message: its mtime and size are part of the key.
+        key = (sample, done, st.get("events"), self.file_stamp(os.path.join(d, "summary.json")) if d else None)
         hit = self.headline_cache.get(sample)
         if hit and hit[0] == key:
-            return hit[1]
-        out = {}
-        if done and os.path.isdir(d):
-            import collect_summary
+            return hit[2]
+        summary = None
+        if done and d and os.path.isdir(d):
+            summary = self.summary_file(d, st)
+            if summary is None:
+                import collect_summary
+                try:
+                    summary = collect_summary.collect(sample, d)
+                except Exception as e:  # a reader bug must not take the page down
+                    print(f"owngenome_live: summary of {sample} not read: {type(e).__name__}", file=sys.stderr)
+        self.headline_cache[sample] = (key, None, summary)
+        return summary
+
+    @staticmethod
+    def file_stamp(p):
+        try:
+            st = os.stat(p)
+            return st.st_mtime_ns, st.st_size
+        except OSError:
+            return None
+
+    @staticmethod
+    def summary_file(d, st):
+        """<run>/summary.json when it is newer than every done step's end, else None. A summary.json
+        that links out of the run folder is never read."""
+        p = os.path.join(d, "summary.json")
+        if not Live.inside(p, os.path.realpath(d)):
+            return None
+        try:
+            mtime = os.path.getmtime(p)
+        except OSError:
+            return None
+        ends = [s.get("ended_utc") for s in st["steps"] if s["state"] == "done"]
+        for e in ends:
             try:
-                summary = collect_summary.collect(sample, d)
-            except Exception as e:  # a reader bug must not take the page down
-                print(f"owngenome_live: summary of {sample} not read: {type(e).__name__}", file=sys.stderr)
-                summary = None
+                if not e or datetime.strptime(e[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp() > mtime:
+                    return None
+            except ValueError:
+                return None
+        try:
+            with open(p) as f:
+                s = json.load(f)
+            return s if isinstance(s, dict) and isinstance(s.get("sections"), dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def headlines(self, sample, d, st):
+        """{section: {text, tone, step}} for the sections of the steps that are done."""
+        self.summary(sample, d, st)
+        # The headlines come from the cached entry's own summary and go back only into that same
+        # entry, so a request that saw another state never pairs its headlines with this key.
+        hit = self.headline_cache.get(sample)
+        if hit and hit[1] is not None:
+            return hit[1]
+        summary = hit[2] if hit else None
+        out = {}
+        if summary:
             for s in st["steps"]:
-                if s["state"] != "done" or not summary:
+                if s["state"] != "done":
                     continue
                 for k in s["sections"]:
                     h = headline(k, summary["sections"].get(k), summary)
                     if h:
                         out[k] = {"text": h[0], "tone": h[1], "step": s["step"]}
-        self.headline_cache[sample] = (key, out)
+        if hit and self.headline_cache.get(sample) is hit:
+            self.headline_cache[sample] = (hit[0], out, hit[2])
         return out
 
     def run_files(self, run):
@@ -702,10 +772,68 @@ class Live:
                  and Live.inside(os.path.join(p, f), top) and Live.inside(os.path.join(p, f), self.root)]
         return pages[0] if len(pages) == 1 else None
 
-    def index_page(self):
-        assets = self.cfg.assets
-        with open(os.path.join(assets, "index.html")) as f:
+    def index_page(self, kind=None):
+        """The page template of a run: family.html for a family, index.html (a person) otherwise."""
+        name = "family.html" if kind == "family" and os.path.isfile(os.path.join(self.cfg.assets, "family.html")) \
+            else "index.html"
+        with open(os.path.join(self.cfg.assets, name)) as f:
             return f.read()
+
+    def attention(self, d):
+        """(count of cards worth a look, mtime) from <run>/summary.json alone, cached by its mtime;
+        (None, None) without one. The home page reads no result file beyond that."""
+        p = os.path.join(d, "summary.json") if d else None
+        if not p or not self.inside(p, os.path.realpath(d)) or not self.inside(p, self.root):
+            return None, None  # a summary.json linking out of its run is never read
+        try:
+            mtime = os.path.getmtime(p)
+        except (OSError, TypeError):
+            return None, None
+        stamp = self.file_stamp(p)
+        hit = self.attention_cache.get(p)
+        if hit and hit[0] == stamp:
+            return hit[1], mtime
+        n = None
+        try:
+            import live_results
+            with open(p) as f:
+                n = live_results.attention_count(json.load(f))
+        except Exception as e:  # one bad file must not take the home page down
+            print(f"owngenome_live: {os.path.basename(os.path.dirname(p))}/summary.json not read: {type(e).__name__}",
+                  file=sys.stderr)
+        if n is not None:  # a failed read is tried again on the next request
+            self.attention_cache[p] = (stamp, n)
+        return n, mtime
+
+    def runs_index(self):
+        """/runs.json: each run's progress, and the families with their members, for the home page.
+        No result beyond the attention count; no path."""
+        runs = self.runs()
+        # Forget the cached results of runs that are gone, so the caches hold only the runs there are.
+        for k in [k for k in list(self.headline_cache) if k not in runs]:
+            self.headline_cache.pop(k, None)
+        keep = {os.path.join(r["dir"] or os.path.join(self.root, n), "summary.json") for n, r in runs.items()}
+        for k in [k for k in list(self.attention_cache) if k not in keep]:
+            self.attention_cache.pop(k, None)
+        out = []
+        for name, r in sorted(runs.items()):
+            item = {"name": name, "kind": r["kind"], "url": f"/runs/{name}/"}
+            if r["kind"] != "family":
+                st = self.base_state(r)
+                planned = [s for s in st["steps"] if s["state"] != "not planned"]
+                item.update(state=st["run"]["state"], started_utc=st["run"].get("started_utc"),
+                            finished_utc=st["run"].get("finished_utc"), declared_sex=st["run"].get("declared_sex"),
+                            planned=len(planned), done=sum(1 for s in planned if s["state"] == "done"),
+                            running=sum(1 for s in planned if s["state"] == "running"),
+                            failed=sum(1 for s in planned if s["state"] == "failed"))
+                # A run known from its messages alone still has its folder under the root once step 24 wrote there.
+                item["attention"], mtime = self.attention(r["dir"] or os.path.join(self.root, name))
+                item["results"] = mtime is not None
+            else:
+                item["members"] = r.get("members") or []
+            out.append(item)
+        fams = [{"name": x["name"], "url": x["url"], "members": x["members"]} for x in out if x["kind"] == "family"]
+        return {"runs": [x for x in out if x["kind"] != "family"], "families": fams}
 
 
 class BrowserHandler(BaseHTTPRequestHandler):
@@ -856,6 +984,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return self.deny(401)
         if path == "/":
             return self.index()
+        if path == "/runs.json":
+            return self.runs_json()
         m = re.fullmatch(r"/runs/([^/]+)(/.*)?", path)
         if not m:
             return self.deny(404)
@@ -921,30 +1051,35 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return self.deny(404)
         p = os.path.join(self.live.cfg.assets, name)
         top = os.path.realpath(self.live.cfg.assets)
-        if not os.path.isfile(p) or not Live.inside(p, top) or name in ("index.html", "login.html"):
+        if not os.path.isfile(p) or not Live.inside(p, top) or name in PAGES:
             return self.deny(404)
         with open(p, "rb") as f:
             self.send_body(200, TYPES.get(os.path.splitext(p)[1], "application/octet-stream"), f.read())
 
     def index(self):
+        """assets/live/home.html: people grouped by family, drawn by home.js from /runs.json. The plain
+        list of runs in it is what a browser without scripts shows."""
         runs = self.live.runs()
         items = "\n".join(f'<li><a href="/runs/{html.escape(n)}/">{html.escape(n)}</a> '
                           f'<span class="kind">{html.escape(r["kind"])}</span></li>' for n, r in sorted(runs.items()))
         self.log("index", status=200)
-        page = ('<!doctype html>\n<html lang="en" data-theme="dark"><head><meta charset="utf-8">'
-                '<meta name="viewport" content="width=device-width, initial-scale=1"><title>Runs</title>'
-                '<link rel="stylesheet" href="/assets/live.css"></head><body><header><h1>Runs</h1>'
-                '<form method="post" action="/logout"><button type="submit">Log out</button></form></header>'
-                f'<main><ul class="runs">{items or "<li>No run under this folder yet.</li>"}</ul></main></body></html>\n')
+        with open(os.path.join(self.live.cfg.assets, "home.html")) as f:
+            page = f.read()
+        page = (page.replace("{{assets}}", "/assets").replace("{{data}}", "/runs.json")
+                .replace("{{runs}}", items or "<li>No run under this folder yet.</li>"))
         self.send_body(200, TYPES[".html"], page)
+
+    def runs_json(self):
+        self.log("runs", status=200)
+        self.send_json(self.live.runs_index())
 
     def run_page(self, run):
         plugins_dir = os.path.join(self.live.cfg.assets, "plugins")
         js = sorted(f for f in os.listdir(plugins_dir) if ASSET_RE.match(f) and f.endswith(".js")) \
             if os.path.isdir(plugins_dir) else []
         tags = "\n".join(f'<script src="/assets/plugins/{html.escape(f)}" defer></script>' for f in js)
-        page = (self.live.index_page().replace("{{assets}}", "/assets").replace("{{run}}", html.escape(run["name"]))
-                .replace("{{mode}}", "live").replace("{{plugins}}", tags))
+        page = (self.live.index_page(run.get("kind")).replace("{{assets}}", "/assets")
+                .replace("{{run}}", html.escape(run["name"])).replace("{{mode}}", "live").replace("{{plugins}}", tags))
         self.log("run", run["name"], status=200)
         self.send_body(200, TYPES[".html"], page)
 
