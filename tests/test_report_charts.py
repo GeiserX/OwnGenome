@@ -128,6 +128,12 @@ def sv_chrom(r):
     return c if c.startswith("chr") else "chr" + c
 
 
+def mca_chrom(c):
+    """The chromosome of a MoChA call, chr prefix put back (mocha_report.py passes bare names through)."""
+    ch = str(c["chrom"])
+    return ch if ch.startswith("chr") else "chr" + ch
+
+
 def sv_mca_problems(sp, sv_rows, mca_calls):
     """What the genome chart misses of the AnnotSV rows and MoChA calls on the primary chromosomes."""
     out = []
@@ -139,7 +145,7 @@ def sv_mca_problems(sp, sv_rows, mca_calls):
         if not m or m["anchor"] != "structural-variants" or f'data-mark="sv-{i}"' not in sp["svg"]:
             out.append(f"AnnotSV row {r['sv']} not drawn")
     for i, c in enumerate(mca_calls):
-        if c["chrom"] not in report_charts.CHROM_LEN or not str(c["start"]).isdigit():
+        if mca_chrom(c) not in report_charts.CHROM_LEN or not str(c["start"]).isdigit():
             if f"mca-{i}" in marks:
                 out.append(f"MoChA call {c['chrom']}:{c['start']} drawn, but it has no place on the chart")
             continue
@@ -148,7 +154,7 @@ def sv_mca_problems(sp, sv_rows, mca_calls):
             out.append(f"MoChA call {c['chrom']}:{c['start']} not drawn")
     if sp["svg"].count('class="sv"') != sum(1 for r in sv_rows if sv_chrom(r) in report_charts.CHROM_LEN):
         out.append("the outlined spans do not match the rows")
-    if sp["svg"].count('class="mca"') != sum(1 for c in mca_calls if c["chrom"] in report_charts.CHROM_LEN
+    if sp["svg"].count('class="mca"') != sum(1 for c in mca_calls if mca_chrom(c) in report_charts.CHROM_LEN
                                              and str(c["start"]).isdigit()):
         out.append("the bars do not match the calls")
     return out
@@ -290,14 +296,17 @@ def unit_checks():
     mca = [{"chrom": "chr20", "start": "30000000", "end": "42000000", "length_mb": "12.0", "type": "Del",
             "cell_fraction": "0.12"},
            {"chrom": "chrM", "start": "100", "end": "900", "length_mb": ".", "type": "Del", "cell_fraction": "."},
-           {"chrom": "chr3", "start": ".", "end": ".", "length_mb": ".", "type": "Dup", "cell_fraction": "."}]
+           {"chrom": "chr3", "start": ".", "end": ".", "length_mb": ".", "type": "Dup", "cell_fraction": "."},
+           # mocha_report.py also passes bare names through
+           {"chrom": "20", "start": "50000000", "end": "52000000", "length_mb": "2.0", "type": "Dup",
+            "cell_fraction": "0.05"}]
     sm = copy.deepcopy(s)
     sm["sections"]["annotsv"] = {"state": "ok", "data": {"count": 3, "rows": sv_rows}}
     sm["sections"]["mosaic"] = {"state": "ok", "data": {"status": "assessed", "calls": mca}}
     gm = charts(sm)["genome"]
     ndm = {x["what"]: x["count"] for x in gm["not_drawn"]}
     check("4. genome: each AnnotSV class 4/5 row is an outlined span (an unprefixed chromosome too), each MoChA "
-          "call a bar, the alt-contig SV and the chrM and unplaced MoChA calls in not_drawn, both in the legend",
+          "call a bar (an unprefixed chromosome too), the alt-contig SV and the chrM and unplaced MoChA calls in not_drawn, both in the legend",
           sv_mca_problems(gm, sv_rows, mca) == [] and ndm.get("AnnotSV class 4 and 5 SVs on other contigs") == 1
           and ndm.get("MoChA calls on other contigs or with no position") == 2
           and "AnnotSV class 4 or 5 SV" in gm["svg"] and "mosaic alteration (MoChA)" in gm["svg"],

@@ -245,7 +245,9 @@ def genome_chart(S, notes):
                               f"{r.get('length') or '.'} bp, genotype {r.get('gt') or '.'}, genes: {genes}"))
     if _ok(S, "mosaic"):
         for i, c in enumerate(S["mosaic"]["data"].get("calls") or []):
-            chrom = c.get("chrom")
+            chrom = str(c.get("chrom") or "")
+            if chrom and not chrom.startswith("chr"):
+                chrom = "chr" + chrom
             try:
                 start, end = int(c.get("start")), int(c.get("end"))
             except (TypeError, ValueError):
