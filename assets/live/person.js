@@ -972,7 +972,8 @@
   });
   // Turning a phone or resizing a window across 700 px draws the page again, folded or open.
   if (phoneQuery) {
-    var redrawWide = function () { if (results) { redraw(true); } };
+    // The redraw closes every fold: open again the ones around the place the address names.
+    var redrawWide = function () { if (results) { redraw(true); route(); } };
     if (phoneQuery.addEventListener) { phoneQuery.addEventListener('change', redrawWide); } else if (phoneQuery.addListener) { phoneQuery.addListener(redrawWide); }
   }
 

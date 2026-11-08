@@ -647,6 +647,14 @@ input[type=password] { font: inherit; background: var(--paper); color: var(--ink
   .ledger .n { font-size: 22px; margin: 0; order: 2; }
   .ledger .w { display: none; }
   .note.howto, .note.linked-note { display: none; }
+  /* The tab bar from the same width the sections fold, so a folded section is always one tap away. */
+  body.page-person { padding-bottom: 68px; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: 64px;
+    background: rgba(14, 15, 16, .96); border-top: 1px solid var(--hair-2); backdrop-filter: blur(8px); }
+  .tabbar a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; text-decoration: none; color: var(--ink-3); font-size: 10.5px; }
+  .tabbar a[aria-current=true] { color: var(--ink); }
+  .tabbar .lv { font-size: 0; gap: 0; }
+  .tabbar .ti { font: italic 15px var(--serif); color: var(--brass); }
   section.sec { padding-top: 26px !important; margin-top: 26px !important; }
 }
 
@@ -675,7 +683,6 @@ input[type=password] { font: inherit; background: var(--paper); color: var(--ink
   .ledger a { padding-left: 0 !important; border-right: 0; border-bottom: 1px solid var(--hair); }
 }
 @media (max-width: 600px) {
-  body.page-person { padding-bottom: 68px; }
   .h-display { font-size: 44px; }
   .homehero .h-display { font-size: 38px; }
   .lede { font-size: 19px; }
@@ -701,11 +708,5 @@ input[type=password] { font: inherit; background: var(--paper); color: var(--ink
   .people, .fam-people { grid-template-columns: minmax(0, 1fr); }
   .rel-grid-wrap { display: none; }
   ul.rel-pairs { display: block; }
-  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: 64px;
-    background: rgba(14, 15, 16, .96); border-top: 1px solid var(--hair-2); backdrop-filter: blur(8px); }
-  .tabbar a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; text-decoration: none; color: var(--ink-3); font-size: 10.5px; }
-  .tabbar a[aria-current=true] { color: var(--ink); }
-  .tabbar .lv { font-size: 0; gap: 0; }
-  .tabbar .ti { font: italic 15px var(--serif); color: var(--brass); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
