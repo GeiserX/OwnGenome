@@ -36,6 +36,14 @@
 # chimeric deletion and a possible conversion show; ${SAMPLE}_cyp21a2_psv.tsv
 # (docs/cn-loci.md).
 #
+# Beside the SMN1 psCN the step reads SMN1 g.27134T>G (rs143838139; Luo et
+# al. 2014), a marker of SMN1 duplication alleles: samtools mpileup at its
+# SMN1 and SMN2 copies (the reads cannot tell them apart there), read as a
+# fraction of copies by bin/traits_report.py --marker SMN1_27134. With two
+# SMN1 copies it raises or lowers the chance of a silent 2+0 carrier; it
+# never proves 2+0, and the table's message says so;
+# ${SAMPLE}_smn1_marker.tsv.
+#
 # The interval rows of that catalog (ClinGen's recurrent CNV regions such as
 # 22q11.2 and 1q21.1, the carrier deletion alleles and the Y chromosome AZF
 # regions) come from one more bedcov pass over all their segments, one line
@@ -58,6 +66,7 @@
 #
 # Output: ${GENOME_DIR}/${SAMPLE}/paralogs/${SAMPLE}_<table>_copy_number.tsv
 #           (one per catalog row; the SMN1 row's is ${SAMPLE}_smn_copy_number.tsv)
+#         ${GENOME_DIR}/${SAMPLE}/paralogs/${SAMPLE}_smn1_marker.tsv
 #         ${GENOME_DIR}/${SAMPLE}/paralogs/${SAMPLE}_hba_copy_number.tsv
 #         ${GENOME_DIR}/${SAMPLE}/paralogs/${SAMPLE}_cn_dosage.tsv
 #         ${GENOME_DIR}/${SAMPLE}/paralogs/${SAMPLE}_cyp21a2_psv.tsv
@@ -158,9 +167,9 @@ mkdir -p "$OUTDIR"
 WORK="${OUTDIR}/${SAMPLE}_parascopy.part"
 rm -rf "$WORK" "${OUTDIR}/depth.part"
 # The depth tables of an earlier run go first: a step that stops after the
-# new SMN tables are in place must not leave an old HBA, dosage, CYP21A2 or
-# interval table that reads as this run's result.
-rm -f "${OUTDIR}/${SAMPLE}_hba_copy_number.tsv" "${OUTDIR}/${SAMPLE}_cn_dosage.tsv" \
+# new SMN tables are in place must not leave an old SMN1 marker, HBA, dosage,
+# CYP21A2 or interval table that reads as this run's result.
+rm -f "${OUTDIR}/${SAMPLE}_smn1_marker.tsv" "${OUTDIR}/${SAMPLE}_hba_copy_number.tsv" "${OUTDIR}/${SAMPLE}_cn_dosage.tsv" \
   "${OUTDIR}/${SAMPLE}_cyp21a2_psv.tsv" "${OUTDIR}/${SAMPLE}_cn_intervals.tsv"
 mkdir -p "$WORK"
 # Background depth once, then the copy number of each catalog row
@@ -233,6 +242,34 @@ done
 for t in "${TABLES[@]}"; do mv "${WORK}/${t}" "${OUTDIR}/${t}"; done
 rm -rf "${OUTDIR}/depth.part" "${OUTDIR}/${SAMPLE}_parascopy"
 mv "$WORK" "${OUTDIR}/${SAMPLE}_parascopy"
+
+# SMN1 g.27134T>G beside the SMN1 psCN (as the PARASCOPY module): samtools
+# mpileup at its SMN1 and SMN2 copies, one -r per site, every MAPQ,
+# duplicates left out, bases of quality 13 or more; then
+# bin/traits_report.py --marker SMN1_27134 with the SMN table (the SMN1 psCN
+# at exon 7 and the agCN). A failure writes a table that says not assessed,
+# and the step goes on.
+SMN1M_OUT="${OUTDIR}/${SAMPLE}_smn1_marker.tsv"
+SMN1M_WORK="${OUTDIR}/smn1_marker.part"
+rm -rf "$SMN1M_OUT" "$SMN1M_WORK"
+mkdir -p "$SMN1M_WORK"
+# shellcheck disable=SC2016  # $1 to $3 belong to the inner bash
+if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
+     python3 /pgp-bin/traits_report.py --marker-regions SMN1_27134 > "${SMN1M_WORK}/sites.txt" \
+   && run_in --cpus 1 --memory 2g "${PARASCOPY_IMAGE}" bash -euo pipefail -c '
+       while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "$r" "$1"; done < "$2" > "$3"' \
+     _ "$(cpath "$BAM")" "$(cpath "${SMN1M_WORK}/sites.txt")" "$(cpath "${SMN1M_WORK}/pileup.tsv")" \
+   && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
+     python3 /pgp-bin/traits_report.py --marker SMN1_27134 --pileup "$(cpath "${SMN1M_WORK}/pileup.tsv")" \
+       --copy-table "$(cpath "${OUTDIR}/${SAMPLE}_smn_copy_number.tsv")" --marker-out "$(cpath "${SMN1M_OUT}.tmp")"; then
+  mv "${SMN1M_OUT}.tmp" "$SMN1M_OUT"
+else
+  rm -f "${SMN1M_OUT}.tmp"
+  echo "WARNING: the SMN1 g.27134T>G check failed; ${SMN1M_OUT##*/} says not assessed." >&2
+  printf 'metric\tvalue\nmarker\tSMN1 g.27134T>G\nrsid\trs143838139\nstatus\tnot assessed\nalt_reads\t.\ndepth\t.\nfraction\t.\ncopies\t.\nsmn1_pscn\t.\nagcn\t.\nmessage\t%s\n' \
+    'SMN1 g.27134T>G (rs143838139): not assessed, the check failed; see the log of step 35. This marker does not prove 2+0, and its absence does not rule 2+0 out.' > "$SMN1M_OUT"
+fi
+rm -rf "$SMN1M_WORK"
 
 # HBA1/HBA2 from depth (as the PARASCOPY module): samtools bedcov over the
 # regions of the HBA row of bin/cn_loci.tsv, all MAPQ and MAPQ 1 or more (a
@@ -365,6 +402,8 @@ for t in "${TABLES[@]}"; do
   echo "Copy number: ${OUTDIR}/${t}"
   column -t -s $'\t' "${OUTDIR}/${t}" 2>/dev/null || cat "${OUTDIR}/${t}"
 done
+echo "SMN1 marker: ${SMN1M_OUT}"
+awk -F'\t' '$1 == "message" {print "  " $2}' "$SMN1M_OUT"
 echo ""
 echo "A row that says not assessed names the reason. SMN1 sits at chr5:70.92-70.95 Mb and SMN2 at chr5:70.05-70.08 Mb (GRCh38). psCN lists the copy"
 echo "number of the row's region first, then of each region in homologous_regions. A quality under 20"

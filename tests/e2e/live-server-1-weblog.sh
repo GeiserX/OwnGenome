@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # The live site (bin/owngenome_live.py) on a real Nextflow run: the pinned Nextflow
 # loads the nf-weblog plugin from the config run-all.sh writes when
-# OWNGENOME_LIVE_URL is set (the same text, the pin read from run-all.sh), posts each
+# OWNGENOME_LIVE_URL is set (the same text, the pin read from versions.env), posts each
 # task to the site's ingest port, and the site stores the messages and shows
 # step 11 (ROH) done in state.json. A control reads state.json before the run:
 # step 11 is 'not planned' then, so the state check can fail.
 . "$(dirname "$0")/lib.sh"
 
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
-PLUGIN=$(sed -n 's/^NF_WEBLOG_PLUGIN=\([^ ]*\)$/\1/p' "${REPO}/scripts/run-all.sh")
-check "run-all.sh pins nf-weblog with a version" has '^nf-weblog@[0-9]+\.[0-9]+\.[0-9]+$' "$PLUGIN"
+PLUGIN=$(sed -n 's/^NF_WEBLOG_PLUGIN="\([^"]*\)"$/\1/p' "${REPO}/versions.env")
+check "versions.env pins nf-weblog with a version" has '^nf-weblog@[0-9]+\.[0-9]+\.[0-9]+$' "$PLUGIN"
 
 G="$GENOME_DIR"
 ROOT="${CASE_TMP}/root" STATE="${CASE_TMP}/state"
