@@ -637,7 +637,7 @@ jobs:
           grep -qx archaic-ancestry-1 "$list" && echo "data_archaic=true" >> "$GITHUB_OUTPUT"
           grep -qx bash-step-08-hla "$list" && echo "data_hla=true" >> "$GITHUB_OUTPUT"
           grep -qx prs-scores-and-run-options-1-strand-sex "$list" && echo "data_pgs=true" >> "$GITHUB_OUTPUT"
-          grep -qxE 'callability-1-catalog|cn-intervals-1-catalog' "$list" && echo "data_catalogs=true" >> "$GITHUB_OUTPUT"
+          grep -qxE 'callability-1-catalog|cn-intervals-1-catalog|followups-ci-3-sv-rule-regions' "$list" && echo "data_catalogs=true" >> "$GITHUB_OUTPUT"
           echo "list=${list}" >> "$GITHUB_OUTPUT"
 
       # Before the base outputs: the base leg pulled the same images.
@@ -695,8 +695,8 @@ jobs:
       # four real PGS Catalog score files of prs-scores-and-run-options-1.
       # A third keyed the same way: the pinned downloads of the two table
       # builders (GENCODE's GTF from EBI among them) that
-      # callability-1-catalog and cn-intervals-1-catalog rebuild their
-      # tables from.
+      # callability-1-catalog, cn-intervals-1-catalog and
+      # followups-ci-3-sv-rule-regions rebuild their tables from.
       - name: Data cache keys
         id: data-keys
         run: |

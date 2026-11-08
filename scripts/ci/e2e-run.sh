@@ -192,11 +192,12 @@ PGS000066 b34f31b8b3a7dbbbb58882a70e14649d"}
 # compare, as "FOLDER COMMAND...": each lists its pinned downloads with
 # --list ("NAME URL SHA256"), and entry catalogs holds them in FOLDER under
 # NAME, where the builder's cache reads them (callability-1-catalog,
-# cn-intervals-1-catalog). GENCODE's GTFs come from
+# cn-intervals-1-catalog, followups-ci-3-sv-rule-regions). GENCODE's GTFs come from
 # EBI's FTP server, which refused every connection on 2026-11-06 (run
 # 42259432681).
 CATALOGS="callability bash ${REPO}/scripts/ci/build-callability.sh
-cn-intervals python3 ${REPO}/scripts/ci/build-cn-intervals.py"
+cn-intervals python3 ${REPO}/scripts/ci/build-cn-intervals.py
+sv-rule-regions bash ${REPO}/scripts/ci/build-sv-rule-regions.sh"
 # catalog_files: "FOLDER NAME URL SHA256" of every download of CATALOGS.
 catalog_files() {
   local dir interp builder out
@@ -718,7 +719,7 @@ trap 'kill "$LOW_PID" 2> /dev/null || true' EXIT
 #     finds them and downloads nothing.
 #   prs-scores-and-run-options-1: the four real PGS Catalog score files
 #     (ftp.ebi.ac.uk); the case copies them from E2E_DATA_CACHE/pgs.
-#   callability-1-catalog, cn-intervals-1-catalog: the pinned downloads of their builders (CATALOGS above); each case
+#   callability-1-catalog, cn-intervals-1-catalog, followups-ci-3-sv-rule-regions: the pinned downloads of their builders (CATALOGS above); each case
 #     points its builder's cache at E2E_DATA_CACHE/catalogs/<its folder>.
 data_name() {
   # shellcheck source=../../versions.env
@@ -727,7 +728,7 @@ data_name() {
     archaic-ancestry-1.sh) echo "archaic ${GENOME_DIR}/reference/archaic/$(. "${REPO}/versions.env" && echo "$ARCHAIC_DATA_VERSION")/download" ;;
     bash-step-08-hla.sh) echo "hla ${GENOME_DIR} offline" ;;
     prs-scores-and-run-options-1-strand-sex.sh) echo "pgs -" ;;
-    callability-1-catalog.sh|cn-intervals-1-catalog.sh) echo "catalogs -" ;;
+    callability-1-catalog.sh|cn-intervals-1-catalog.sh|followups-ci-3-sv-rule-regions.sh) echo "catalogs -" ;;
   esac
 }
 # Every HTTP(S) request of a process run under it goes to a closed port.
