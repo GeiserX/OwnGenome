@@ -62,6 +62,7 @@ CONSUMER_EXPORT      PYTHON_IMAGE
 COUPLE_CARRIER       PYTHON_IMAGE
 CPIC_LOOKUP          PYTHON_IMAGE
 CPSR                 PCGR_IMAGE
+CPSR_CDNA_CHECK      PYPGX_IMAGE
 CRAM_ARCHIVE         SAMTOOLS_IMAGE
 CRAM_TO_BAM          SAMTOOLS_IMAGE
 CYP2D6_DEPTH         MOSDEPTH_IMAGE
@@ -240,7 +241,13 @@ check() {
     fail=1
   fi
   rm -f "$want"
-  procs=$(cat "${ROOT}"/modules/local/*/main.nf | sed -nE 's/^process[[:space:]]+([A-Za-z0-9_]+).*/\1/p' | sort -u)
+  # Every process, and every alias a workflow includes one under (include { A as B }):
+  # a withName selector matches the alias, not the module's name. Only the
+  # list between the braces is read, so a trailing "// x as y" comment is not.
+  procs=$( { cat "${ROOT}"/modules/local/*/main.nf | sed -nE 's/^process[[:space:]]+([A-Za-z0-9_]+).*/\1/p'
+             cat "${ROOT}"/main.nf "${ROOT}"/workflows/*.nf 2>/dev/null | grep -E '^[[:space:]]*include[[:space:]]*\{' \
+               | sed -nE 's/^[[:space:]]*include[[:space:]]*\{([^}]*)\}.*/\1/p' \
+               | grep -oE '[A-Za-z0-9_]+[[:space:]]+as[[:space:]]+[A-Za-z0-9_]+' | awk '{print $3}' || true; } | sort -u)
   [ -n "$procs" ] || { echo "FAIL: found no process in modules/local/*/main.nf"; return 1; }
   sels=$(sed -nE -e "s/^[[:space:]]*withName:[[:space:]]*'([A-Za-z0-9_]+)'[[:space:]]*\{[[:space:]]*container[[:space:]]*=[[:space:]]*'[^']+'[[:space:]]*\}.*/\1/p" \
     -e "s/^[[:space:]]*withName:[[:space:]]*'([A-Za-z0-9_]+)'[[:space:]]*\{[[:space:]]*ext\.pipeline_version[[:space:]]*=[[:space:]]*'[^']+'.*/\1/p" \
@@ -314,7 +321,7 @@ self_test() {
   copy() {
     mkdir -p "${tmp}/$1/conf"
     cp "${ROOT}/versions.env" "${tmp}/$1/"
-    cp -R "${ROOT}/modules" "${tmp}/$1/"
+    cp -R "${ROOT}/modules" "${ROOT}/workflows" "${ROOT}/main.nf" "${tmp}/$1/"
     # Start from a fresh file, so the self-test checks the checker, not this tree.
     "$0" --root "${tmp}/$1" >/dev/null
   }
@@ -352,6 +359,22 @@ self_test() {
   printf '%s\n' 'process NEW_TOOL {' '    script:' '    """' '    true' '    """' '}' \
     >> "${tmp}/new-process/modules/local/roh/main.nf"
   expect new-process '^FAIL: process NEW_TOOL has no container'
+
+  # A process included under a new alias, which a withName selector must name.
+  copy new-alias
+  printf '%s\n' "include { ROH as ROH_AGAIN; VEP as VEP_AGAIN } from '../modules/local/roh/main'" >> "${tmp}/new-alias/workflows/clinical.nf"
+  expect new-alias '^FAIL: process ROH_AGAIN has no container'
+  expect new-alias '^FAIL: process VEP_AGAIN has no container'
+
+  # A trailing comment that reads like an alias is not one: the copy stays clean.
+  copy comment-alias
+  printf '%s\n' "include { ROH } from '../modules/local/roh/main' // ROH as ROH_COMMENT" >> "${tmp}/comment-alias/workflows/clinical.nf"
+  rc=0; out=$("$0" --check --root "${tmp}/comment-alias" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "self-test: a trailing // comment was read as an alias:"; printf '%s\n' "$out"; fail=1
+  else
+    echo "self-test: a trailing // comment is not read as an alias"
+  fi
 
   # A selector left behind for a process that no longer exists.
   copy stray
