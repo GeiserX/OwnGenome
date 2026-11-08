@@ -8,12 +8,14 @@
 # The fixture holds reads over the MHC but none over FCGR or KIR, so the
 # database is built for the HLA-DQB1 row of assets/locityper_loci.bed
 # (LOCITYPER_LOCI). HLA-DRB1, the other MHC row, is left out for time: with
-# both, jellyfish took 35 minutes and the pairwise alignments of
-# `locityper augment` 23 more (fork run 42301973505). With HLA-DQB1 alone
-# augment takes about a minute, but jellyfish, whose time does not depend on
-# the loci, still takes 36 (38 minutes in all, fork run 42325306077), so the
-# case keeps a limit of 90 minutes instead of the runner's 60 (the
-# case-timeout line below). It runs in a GENOME_DIR of its own with a
+# both, the pairwise alignments of `locityper augment` took 23 minutes (fork
+# run 42301973505); with HLA-DQB1 alone augment takes about a minute.
+# Jellyfish's time does not depend on the loci. With a hash fixed at 3G
+# entries it took 36 minutes and the case 38 (2289 s, fork run 42325306077);
+# with the hash sized to the reference it takes 36 s and the case 142 s
+# (fork run 42421585308). The case keeps a limit of 90 minutes instead of
+# the runner's 60 (the case-timeout line below), room for a slow runner.
+# It runs in a GENOME_DIR of its own with a
 # reference of chr6 and chr20 cut from the fixture's, so jellyfish
 # counts 235 Mb instead of the fixture's 1.8 Gb; the fixture's reads over the
 # MHC and chr20:10.0-10.5 Mb are aligned to it, since Locityper needs the

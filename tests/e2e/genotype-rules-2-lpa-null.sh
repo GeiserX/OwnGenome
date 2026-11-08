@@ -20,7 +20,12 @@
 #     The reading goes to lpa/<sample>_lpa_kiv2_4925.tsv; step 46's own table
 #     keeps its rows.
 #   - the LPA module's pileup and 4925G>A lines, cut from its main.nf, write the
-#     same pileup and table in their images, byte for byte, on the planted BAM.
+#     same pileup and table in their images, byte for byte, on the planted BAM;
+#     with a 4925G>A reader that crashes, its block writes a table that says
+#     not assessed and leaves the count;
+#   - steps 24 and generate-report.sh on the planted and the reference samples:
+#     both reports print the reading under the count with its caveat
+#     ('present' with the reads and copies, 'not seen').
 . "$(dirname "$0")/lib.sh"
 
 G="$GENOME_DIR" T="$CASE_TMP"
@@ -128,6 +133,23 @@ check_eq "reference: not seen" "$(null "$R" status)" "not seen"
 check_eq "reference: no read with T" "$(null "$R" alt_reads)" 0
 check "control: the planted and the reference tables differ" bash -c '! cmp -s "$1" "$2"' _ \
   "${G}/${P}/lpa/${P}_lpa_kiv2_4925.tsv" "${G}/${R}/lpa/${R}_lpa_kiv2_4925.tsv"
+# --- both reports print the reading under the count (steps 24 and generate-report.sh) -----
+for s in "$P" "$R"; do
+  run_step 24-html-report.sh "$s"; check_step_exit 24-html-report.sh
+  run_step generate-report.sh "$s"; check_step_exit generate-report.sh
+done
+rep_has() { grep -qF -- "$2" "${G}/$1/$1_report.$3"; }
+check "planted: the HTML report prints the null allele as present, with reads and copies" \
+  rep_has "$P" "KIV-2 4925G&gt;A null allele (rs1484919544): present, $(null "$P" alt_reads) of $(null "$P" depth) reads carry it, about $(null "$P" copies) copies" html
+check "planted: the text report prints it under the count" \
+  bash -c 'sed -n "/KIV-2 repeats (both chromosomes)/,/rs10455872/p" "$1" | grep -qF "KIV-2 4925G>A null allele (rs1484919544): present"' _ "${G}/${P}/${P}_report.txt"
+check "planted: both reports carry the caveat" \
+  bash -c 'grep -qF "A null allele lowers the Lp(a) made from the copies it sits on" "$1" && grep -qF "A null allele lowers the Lp(a) made from the copies it sits on" "$2"' _ \
+  "${G}/${P}/${P}_report.html" "${G}/${P}/${P}_report.txt"
+check "reference: both reports print not seen (control: the line follows the table)" \
+  bash -c 'grep -qF "KIV-2 4925G&gt;A null allele (rs1484919544): not seen, 0 of" "$1" && grep -qF "KIV-2 4925G>A null allele (rs1484919544): not seen, 0 of" "$2"' _ \
+  "${G}/${R}/${R}_report.html" "${G}/${R}/${R}_report.txt"
+
 echo "genotype-rules-2-lpa-null: HG002 KIV-2 4925G>A $(null "$U" status)," \
   "$(null "$U" alt_reads) of $(null "$U" depth) reads (fraction $(null "$U" fraction))," \
   "KIV-2 count $(metric "$U" kiv2_copies); planted $(null "$P" fraction), copies $(null "$P" copies)" >> "$E2E_NOTES"
@@ -140,9 +162,9 @@ unesc() { sed -e 's/\\\\/\\/g' -e 's/\\\$/$/g' -e "s|\${bam}|${G}/${P}/aligned/$
   -e "s|\${pileup}|${P}_lpa_kiv2_4925_pileup.tsv|g"; }
 grep -E '^ *traits_report\.py --marker-regions LPA_KIV2_4925 > lpa_sites\.txt$' "$MOD" | unesc > "${M}/sites.sh"
 sed -n '/^ *( while read -r r; do samtools mpileup /,/|| echo /p' "$MOD" | unesc > "${M}/pileup.sh"
-sed -n '/^ *traits_report\.py --marker LPA_KIV2_4925 --pileup/,/--marker-out/p' "$MOD" | unesc > "${M}/null.sh"
+sed -n '/^ *if ! traits_report\.py --marker LPA_KIV2_4925 --pileup/,/^ *fi$/p' "$MOD" | unesc > "${M}/null.sh"
 check_eq "the module's sites, pileup and 4925G>A lines were cut from main.nf" \
-  "$(cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh" | wc -l | tr -d ' ')" 5
+  "$(cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh" | wc -l | tr -d ' ')" 9
 cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh"
 cp "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "$M/"
 mod() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "${REPO}/bin:/pgp-bin:ro" \
@@ -153,6 +175,23 @@ check "the module writes step 46's pileup, byte for byte" \
 check "the module writes step 46's 4925G>A table, byte for byte" \
   cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2_4925.tsv" "${M}/${P}_lpa_kiv2_4925.tsv"
 check "the module leaves step 46's table byte for byte" cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "${M}/${P}_lpa_kiv2.tsv"
+
+# The module's fallback, in its image: a 4925G>A reader that crashes leaves the
+# count and a table that says not assessed (scripts/46-lpa.sh writes the same
+# table; tests/test_lpa_fallback.sh checks that). Control: the planted table
+# above was 'present'.
+mkdir -p "${M}/broken"
+printf '#!/bin/sh\necho "planted crash" >&2\nexit 1\n' > "${M}/broken/traits_report.py"
+chmod +x "${M}/broken/traits_report.py"
+cp "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "${M}/count_before.tsv"
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "${REPO}/bin:/pgp-bin:ro" \
+  -w "$M" "$PYTHON_IMAGE" sh -c "PATH=\"${M}/broken:/pgp-bin:\$PATH\"; set -e; . ./null.sh" 2>&1 | tail -n 2
+check_eq "the module with a crashing 4925G>A reader: not assessed" \
+  "$(awk -F'\t' '$1 == "status" {print $2}' "${M}/${P}_lpa_kiv2_4925.tsv")" "not assessed"
+check "the module with a crashing 4925G>A reader: the message says the check failed" \
+  grep -q "not assessed, the check failed" "${M}/${P}_lpa_kiv2_4925.tsv"
+check "the module with a crashing 4925G>A reader: the count table stays" \
+  cmp -s "${M}/count_before.tsv" "${M}/${P}_lpa_kiv2.tsv"
 
 rm -rf "${G:?}/${U}" "${G:?}/${P}" "${G:?}/${R}" "${M:?}" "${T:?}"/*.sam "${T:?}"/*.bam "${T:?}"/*.bai
 finish

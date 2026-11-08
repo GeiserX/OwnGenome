@@ -132,7 +132,10 @@ Checks:
      folder with neither step 35 nor step 35b prints "Paralog copy number:
      not checked (neither step 35 nor step 35b ran)" in both reports, a failed
      step 35 is named in that line, and Paraphase alone leaves the line out;
-     a table without the psCN columns is unreadable.
+     a table without the psCN columns is unreadable. The SMN1 g.27134T>G
+     silent-carrier marker (step 35's <id>_smn1_marker.tsv) prints beside the
+     SMN1 copies in both reports with its caveat: present with its reads,
+     not assessed without the table or with no known status in it.
  26. step 08's opt-in passes in the HLA section: with HLA_QC=true, one line
      per class I gene from the concordance table pgx_outside_calls.py writes
      (agree, disagree with both calls, not compared with the reason), and
@@ -1624,6 +1627,38 @@ def parascopy_section(work, schema):
           and "not a carrier by copy number" in card_s and "CYP21A2 and the gene-dosage loci have no Parascopy model" in card_s
           and "step 35 counts them from read depth against flanking sequence" in card_s
           and "Not checked" not in html, card_s)
+    # SMN1 g.27134T>G beside the psCN (step 35's <id>_smn1_marker.tsv, bin/traits_report.py smn1_marker)
+    caveat = render_report.SMN1_MARKER_CAVEAT
+    after_cn = "  SMN1 copies: 2 (quality 33, filter PASS)\n  SMN1 g.27134T>G silent-carrier marker (rs143838139): "
+    check("parascopy: without step 35's marker table the marker line says not assessed, beside the psCN, with why",
+          (pd.get("smn1_marker") or {}).get("status") == "not assessed"
+          and after_cn + "not assessed\n" in txt and "step 35 wrote no S_smn1_marker.tsv" in txt
+          and f"  SMN1 marker caveat: {caveat}\n" in txt, txt)
+    import traits_report
+    mk = f"{d}/paralogs/S_smn1_marker.tsv"
+    traits_report.write_metric_table(mk, traits_report.smn1_marker((35, 5, 0), f"{d}/paralogs/S_smn_copy_number.tsv"))
+    summ_m, txt_m, html_m = render(d)
+    card_m = html_m.split("<h2>SMN1/SMN2 Copy Number (Parascopy)</h2>", 1)[-1].split("<h2>", 1)[0]
+    check("parascopy: a marker table with 5 of 40 reads reads as present beside the psCN in the text report, "
+          "with the reader's message and the caveat",
+          after_cn + "present, 5 of 40 reads carry it, about 0.5 copies\n" in txt_m
+          and "  SMN1 marker reading: SMN1 g.27134T>G (rs143838139): present" in txt_m
+          and f"  SMN1 marker caveat: {caveat}\n" in txt_m, txt_m)
+    check("parascopy: the HTML card shows the marker, its message and the caveat",
+          ">SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)<" in card_m
+          and "present, 5 of 40 reads carry it" in card_m and render_report.E(caveat) in card_m
+          and "does not prove 2+0" in card_m, card_m)
+    import live_results
+    lv = live_results.a_paralogs(summ_m["sections"], {})
+    check("live: the paralog card has the SMN1 copies and the marker as facts, and its lines with the caveat",
+          ["SMN1 g.27134T>G silent-carrier marker", "present, 5 of 40 reads carry it, about 0.5 copies"] in lv["facts"]
+          and ["SMN1 copies", "2 (quality 33, filter PASS)"] in lv["facts"]
+          and f"SMN1 marker caveat: {caveat}" in lv["lines"], lv)
+    put(mk, "metric\tvalue\nstatus\tmaybe\n")
+    _, txt_b, _ = render(d)
+    check("parascopy: a marker table with no known status reads as not assessed, never as a result",
+          after_cn + "not assessed\n" in txt_b and "S_smn1_marker.tsv has no status row" in txt_b, txt_b)
+    os.remove(mk)
     check("parascopy: HBA1/HBA2 listed as not assessed without step 35's HBA table or step 35b",
           any(x.startswith("HBA1/HBA2 copy number") for x in summ["not_assessed"])
           and "HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count" in txt

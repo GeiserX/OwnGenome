@@ -25,8 +25,9 @@
     (the confirmed mtDNA variants step 20's section names) and the paralog
     catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv. Every
     <id>_<table>_copy_number.tsv of step 35 goes to paralogs/, and so
-    do step 35's <id>_cn_intervals.tsv, <id>_cn_dosage.tsv and
-    <id>_cyp21a2_psv.tsv. The sample's gVCF and its index, named in
+    do step 35's <id>_cn_intervals.tsv, <id>_cn_dosage.tsv,
+    <id>_cyp21a2_psv.tsv and <id>_smn1_marker.tsv; step 46's <id>_lpa_kiv2.tsv
+    and <id>_lpa_kiv2_4925.tsv go to lpa/. The sample's gVCF and its index, named in
     meta.gvcf because a samplesheet gVCF keeps the user's name, become
     vcf/<id>.g.vcf.gz and its .tbi (or .csi), where the bash report finds
     step 03's gVCF. A run_manifest.tsv in the sample folder records the
@@ -102,6 +103,7 @@ process HTML_REPORT {
             ${id}_sample_qc.tsv|${id}_read_count.tsv)     place qc "\$f" ;;
             ${id}_cn_intervals.tsv)                       place paralogs "\$f" ;;
             ${id}_cn_dosage.tsv|${id}_cyp21a2_psv.tsv)    place paralogs "\$f" ;;
+            ${id}_smn1_marker.tsv)                        place paralogs "\$f" ;;
             ${id}_prs_summary.tsv)                        place prs "\$f" ;;
             ${id}_ancestry.tsv)                           place ancestry "\$f" ;;
             ${id}_ancestry_fine.tsv|${id}_painting.png)   place ancestry_fine "\$f" ;;
@@ -126,6 +128,7 @@ process HTML_REPORT {
             ${id}_archaic.tsv)                            place archaic "\$f" ;;
             ${id}_ancient.tsv|${id}_ancient_info.tsv|${id}_ancient_pca.svg) place ancient "\$f" ;;
             ${id}_lpa_kiv2.tsv)                           place lpa "\$f" ;;
+            ${id}_lpa_kiv2_4925.tsv)                      place lpa "\$f" ;;
             ${id}_vntyper.tsv)                            place vntyper "\$f" ;;
             ${id}_locityper.tsv)                          place locityper "\$f" ;;
             ${id}_viral.tsv)                              place viral "\$f" ;;

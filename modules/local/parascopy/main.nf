@@ -212,19 +212,22 @@ process PARASCOPY {
     if copy_number.py bed --locus CYP21A2 > cyp21a2_regions.bed \\
         && copy_number.py bed --psv --locus CYP21A2 > cyp21a2_psv.bed \\
         && samtools bedcov cyp21a2_regions.bed ${bam} > cyp21a2_bedcov.tsv \\
+        && samtools bedcov -Q 1 cyp21a2_regions.bed ${bam} > cyp21a2_bedcov_q1.tsv \\
         && samtools mpileup -A -B -q 0 -Q 13 -d 100000 \\
             -r "\$(awk 'NR == 1 {c = \$1; s = \$2 + 1} {e = \$3} END {print c ":" s "-" e}' cyp21a2_psv.bed)" \\
             -l cyp21a2_psv.bed ${bam} > cyp21a2_pileup.tsv \\
-        && copy_number.py call --locus CYP21A2 --bedcov cyp21a2_bedcov.tsv --pileup cyp21a2_pileup.tsv \\
+        && copy_number.py call --locus CYP21A2 --bedcov cyp21a2_bedcov.tsv --bedcov-mapq1 cyp21a2_bedcov_q1.tsv \\
+            --pileup cyp21a2_pileup.tsv \\
             --table ${meta.id}_cyp21a2_psv.tsv.tmp; then
         mv ${meta.id}_cyp21a2_psv.tsv.tmp ${meta.id}_cyp21a2_psv.tsv
     else
         rm -f ${meta.id}_cyp21a2_psv.tsv.tmp
         echo "WARNING: the CYP21A2 depth and PSV check failed; ${meta.id}_cyp21a2_psv.tsv says not assessed." >&2
-        printf 'metric\\tvalue\\nstatus\\tnot assessed\\ncyp21a2_copies\\t.\\nmodule_total\\t.\\nexpected_total\\t.\\nestimate\\t.\\nfinding\\t.\\nconversion_sites\\t.\\ntarget_depth\\t.\\ncontrol_depth\\t.\\nreason\\tcheck_failed\\nreading\\t%s\\n' \\
+        printf 'metric\\tvalue\\nstatus\\tnot assessed\\ncyp21a2_copies\\t.\\nmodule_total\\t.\\nexpected_total\\t.\\nestimate\\t.\\nfinding\\t.\\nconversion_sites\\t.\\ntarget_depth\\t.\\ncontrol_depth\\t.\\nreason\\tcheck_failed\\nreading\\t%s\\nmapq0_share\\t.\\nmessage\\tnot assessed: %s\\n' \\
+            'the CYP21A2 depth and PSV check failed; see the log of step 35' \\
             'the CYP21A2 depth and PSV check failed; see the log of step 35' > ${meta.id}_cyp21a2_psv.tsv
     fi
-    rm -f cyp21a2_regions.bed cyp21a2_psv.bed cyp21a2_bedcov.tsv cyp21a2_pileup.tsv
+    rm -f cyp21a2_regions.bed cyp21a2_psv.bed cyp21a2_bedcov.tsv cyp21a2_bedcov_q1.tsv cyp21a2_pileup.tsv
 
     # Interval rows of bin/cn_loci.tsv (as scripts/35-paralogs.sh): one bedcov over every row's segments,
     # then the verdict; a failed pass writes every row as not assessed (check_failed)

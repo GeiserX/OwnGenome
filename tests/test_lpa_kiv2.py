@@ -29,6 +29,10 @@ depth from reads of MAPQ 0 unless a case says otherwise:
      flagged; without step 42's table the variants are 'not read'; 'too
      little depth' is shown as such; no card and no text section without
      step 46's table (only the line in the list of steps that did not run);
+     KIV-2 4925G>A prints between the count and the risk variants in both
+     reports and on the live card, with its caveat: present with its reads
+     and copies, not assessed without step 46's 4925G>A table or with no
+     status row in it;
   8. KIV-2 4925G>A (null-allele) on mpileup lines made up for each case, at
      the seven GRCh38 copies of the site: 5% of the reads with T is
      'present' with copies = fraction x (N + 2); reads with C only (the
@@ -246,6 +250,41 @@ def main():
         check("report: no count and no variant read is not determined, never a negative result",
               summ["sections"]["lpa"]["data"]["flag"] == "." and "Not determined" in txt
               and "No genetic sign" not in txt, txt)
+        # KIV-2 4925G>A beside the count, in both reports and on the live page
+        import live_results
+        cav = render_report.LPA_NULL_CAVEAT
+        count = "KIV-2 repeats (both chromosomes): 38.0"
+        summ, txt, html = sample(t, "nul0", 38)
+        na = summ["sections"]["lpa"]["data"].get("null_allele") or {}
+        check("report: without step 46's 4925G>A table the null allele says not assessed, beside the count, with why",
+              na.get("status") == "not assessed" and count in txt
+              and "KIV-2 4925G>A null allele (rs1484919544): not assessed\n" in txt.split(count, 1)[-1].split(R1, 1)[0]
+              and "step 46 wrote no S_lpa_kiv2_4925.tsv" in txt and cav in txt, txt)
+        d = os.path.join(t, "nul0", "S", "lpa")
+        traits_report.write_metric_table(os.path.join(d, "S_lpa_kiv2_4925.tsv"),
+                                         lpa.null_allele((665, 35, 0), "38.0"))
+        summ = collect_summary.collect("S", os.path.join(t, "nul0", "S"))
+        txt, html = render_report.text_report(summ), render_report.html_report(summ)
+        beside = txt.split(count, 1)[-1].split(R1, 1)[0]
+        check("report: a 4925G>A table with 35 of 700 reads prints present, the reads and the copies, the "
+              "reader's message and the caveat, between the count and the risk variants",
+              "KIV-2 4925G>A null allele (rs1484919544): present, 35 of 700 reads carry it, about 2.0 copies\n"
+              in beside and "cannot say which chromosome or which repeat" in beside and cav in beside, beside)
+        card = html.split("<h2>Lp(a): LPA KIV-2 Repeat Count</h2>", 1)[-1].split("<h2>", 1)[0]
+        check("report: the HTML card shows the null allele and the caveat",
+              render_report.E("KIV-2 4925G>A null allele (rs1484919544): present, 35 of 700 reads carry it")
+              in card and render_report.E(cav) in card, card[:3000])
+        live = live_results.a_lpa(summ["sections"], {})
+        check("live: the Lp(a) card has the null allele as a fact and its lines with the caveat",
+              ["KIV-2 4925G>A null allele", "present, 35 of 700 reads carry it, about 2.0 copies"] in live["facts"]
+              and any(cav in x for x in live["lines"]) and any(x.startswith("KIV-2 4925G>A null allele") for x in live["lines"]),
+              live)
+        with open(os.path.join(d, "S_lpa_kiv2_4925.tsv"), "w") as f:
+            f.write("metric\tvalue\nmessage\tno status\n")
+        txt = render_report.text_report(collect_summary.collect("S", os.path.join(t, "nul0", "S")))
+        check("report: a 4925G>A table with no status row reads as not assessed, never as a result",
+              "KIV-2 4925G>A null allele (rs1484919544): not assessed\n" in txt
+              and "S_lpa_kiv2_4925.tsv has no status row" in txt, txt)
         os.makedirs(os.path.join(t, "none", "S"))
         nothing = collect_summary.collect("S", os.path.join(t, "none", "S"))
         check("report: no card and no text section without step 46",

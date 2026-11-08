@@ -119,6 +119,23 @@ VARIANTS_NOTE = ("Counts of the calls DeepVariant made against the reference. A 
                  "health on its own.")
 LPA_NOTE = ("The KIV-2 repeat count from read depth is a research estimate, not an Lp(a) level: the level is a "
             "blood test, and the count explains only part of the difference between people.")
+LPA_NULL_CAVEAT = ("A null allele lowers the Lp(a) made from the copies it sits on; the Lp(a) blood test is the "
+                   "measure.")
+SMN1_MARKER_CAVEAT = ("The marker raises the chance that two SMN1 copies sit on one chromosome (2+0, a silent carrier); "
+                      "it does not prove 2+0, and a carrier test in a clinical laboratory confirms it.")
+
+
+def marker_state(m):
+    """A copy-aware marker's state in a few words (collect_summary.read_marker_table):
+    present or uncertain with the reads and the copies that carry it, not seen
+    with the reads, too little depth, or not assessed."""
+    st = m.get("status") or "not assessed"
+    if st == "not assessed":
+        return st
+    out = f"{st}, {m.get('alt_reads', '.')} of {m.get('depth', '.')} reads carry it"
+    if m.get("copies") not in (None, "", "."):
+        out += f", about {m['copies']} copies"
+    return out
 
 
 def combined_cell(h):
@@ -1799,7 +1816,11 @@ PARASCOPY_NOTE = ("Parascopy reads short reads at SMN1 and SMN2 and at the other
 def parascopy_lines(d):
     """Step 35's lines, the same in both reports."""
     smn1, smn2 = d.get("smn1") or {}, d.get("smn2") or {}
-    return [f"SMN1 copies: {smn1.get('text', '.')}",
+    mk = d.get("smn1_marker")
+    marker = ([f"SMN1 g.27134T>G silent-carrier marker ({mk.get('rsid') or '.'}): {marker_state(mk)}",
+               f"SMN1 marker reading: {mk.get('message', '.')}",
+               f"SMN1 marker caveat: {SMN1_MARKER_CAVEAT}"] if mk else [])
+    return [f"SMN1 copies: {smn1.get('text', '.')}"] + marker + [
             f"SMN2 copies: {smn2.get('text', '.')}",
             f"SMN1 and SMN2 together (agCN) at exon 7: {d.get('agcn', '.')} (quality {d.get('agcn_qual', '.')}, "
             f"filter {d.get('agcn_filter', '.')})",
@@ -2146,6 +2167,10 @@ def lpa_lines(d):
     else:
         out = [f"KIV-2 repeats: {d.get('status', '.')}"]
     out.append(f"  {d.get('message', '.')}")
+    na = d.get("null_allele")
+    if na:
+        out += [f"KIV-2 4925G>A null allele ({(na.get('rsid') or '.').split(' ')[0]}): {marker_state(na)}",
+                f"  {na.get('message', '.')}", f"  {LPA_NULL_CAVEAT}"]
     for v in d.get("variants", []):
         n = v["risk_alleles"]
         out.append(f"{v['rsid']}: {v['genotype']} ({'not read' if n is None else str(n) + ' risk allele' + ('s' if n != 1 else '')})")
@@ -2897,7 +2922,8 @@ def html_report(s, index=None):
     if S.get("parascopy", MISSING)["state"] != "missing":
         a("parascopy", card(S["parascopy"], "SMN1/SMN2 Copy Number (Parascopy)",
                [stat("Status", done_badge(S["parascopy"]))]
-               + [stat(*(E(x) for x in line.split(": ", 1))) for line in parascopy_lines(S["parascopy"]["data"])]
+               # stat escapes the label itself; the value is escaped here
+               + [stat(lab, E(val)) for lab, val in (line.split(": ", 1) for line in parascopy_lines(S["parascopy"]["data"]))]
                + parascopy_loci_html(S["parascopy"]["data"])
                + cn_intervals_html(S["parascopy"]["data"].get("cn_intervals"))
                + [small_note(PARASCOPY_NOTE)]))
