@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Ruiz family · OwnGenome</title>
+<!--@BASE-->
+<style>
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 40px; }
+.cover { display: grid; grid-template-columns: 200px 680px 260px; gap: 0 50px; padding-top: 56px; }
+.cover .lede { margin-top: 22px; }
+.contents { grid-column: 2 / 4; display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--hair-2); margin-top: 40px; }
+.contents a { text-decoration: none; padding: 14px 16px 16px 0; display: block; }
+.contents a + a { padding-left: 16px; border-left: 1px solid var(--hair); }
+.contents .cn { font: italic 22px var(--serif); color: var(--brass); display: block; }
+.contents .ct { font: 400 16px/1.3 var(--serif); color: var(--ink); display: block; margin-top: 4px; }
+.contents .cs { font-size: 12px; color: var(--ink-3); display: block; margin-top: 5px; }
+.ped-wrap { grid-column: 2 / 4; margin-top: 44px; background: var(--paper); border: 1px solid var(--hair); border-radius: 12px; padding: 24px 28px 18px; }
+.chapter { display: grid; grid-template-columns: 200px 680px 260px; gap: 0 50px; border-top: 1px solid var(--hair); margin-top: 72px; padding-top: 52px; }
+.cnum { font: 400 88px/0.9 var(--serif); color: var(--brass); font-style: italic; }
+.cnum small { display: block; font: 600 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); font-style: normal; margin-top: 16px; }
+.chapter h2 { font: 400 38px/1.1 var(--serif); margin: 0; }
+.chapter .q { font-size: 13.5px; color: var(--ink-3); margin: 8px 0 20px; }
+.outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+.oc { border: 1px solid var(--hair-2); border-radius: 10px; padding: 16px 18px; display: grid; grid-template-columns: 54px 1fr; gap: 14px; align-items: center; background: var(--paper); }
+.oc.aff { border-color: var(--car); background: rgba(144,133,233,.07); }
+.oc .alle { display: flex; gap: 6px; }
+.oc .alle i { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--hair-2); display: block; }
+.oc .alle i.e { background: var(--elena); border-color: var(--elena); }
+.oc .alle i.m { background: var(--marc); border-color: var(--marc); }
+.oc b { font: 400 19px/1.2 var(--serif); color: var(--ink); display: block; }
+.oc span { font-size: 13px; color: var(--ink-2); }
+.oc .lia-here { display: inline-flex; margin-top: 6px; font-size: 12px; color: var(--ink); border: 1px solid var(--lia); border-radius: 999px; padding: 2px 9px 2px 7px; gap: 6px; align-items: center; }
+.oc .lia-here::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--lia); }
+.inh td .yes { color: var(--ink); font-weight: 600; }
+.inh td .no { color: var(--ink-3); }
+.tick { display: inline-block; width: 16px; text-align: center; }
+.sidebyside { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 8px; }
+.sbs h3 { font: 400 22px/1.25 var(--serif); margin: 10px 0 6px; }
+.sbs p { font-size: 14px; color: var(--ink-2); }
+.punnett { display: grid; grid-template-columns: 52px 1fr 1fr; grid-template-rows: 30px 1fr 1fr; gap: 4px; margin-top: 12px; font-size: 12.5px; }
+.punnett div { display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--ink-2); }
+.punnett .cell { background: var(--paper-2); height: 54px; flex-direction: column; }
+.punnett .cell b { color: var(--ink); font-weight: 600; }
+.punnett .cell.lia { outline: 1.5px solid var(--lia); background: rgba(25,158,112,.1); }
+.plan { list-style: none; padding: 0; margin: 0; }
+.plan li { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; padding: 11px 0; border-top: 1px solid var(--hair); font-size: 14px; color: var(--ink-2); }
+.plan li b { color: var(--ink); font-weight: 500; }
+.plan .ok { color: var(--good); }
+.plan .sk { color: var(--ink-3); }
+.compact { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border-top: 1px solid var(--hair-2); margin-top: 22px; }
+.compact div { padding: 12px 14px 0 0; font-size: 13px; color: var(--ink-2); }
+.compact div + div { padding-left: 14px; border-left: 1px solid var(--hair); }
+.compact .k { font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 8px; }
+table.t td.nw { white-space: nowrap; }
+</style>
+</head><body>
+<header class="mast"><div class="mast-in">
+  <a class="wordmark" href="01-home.html">Own<i>Genome</i></a>
+  <nav class="crumbs"><a href="01-home.html">People</a><span class="sep">/</span><span class="here">Ruiz family</span></nav>
+  <div class="mast-right"><a href="03-person.html" class="pc elena" style="text-decoration:none;color:var(--ink-2)">Elena</a><a href="#" class="pc marc" style="text-decoration:none;color:var(--ink-2)">Marc</a><a href="#" class="pc lia" style="text-decoration:none;color:var(--ink-2)">Lía</a><div class="search" style="width:220px">Search the family <kbd>/</kbd></div></div>
+</div></header>
+
+<div class="wrap">
+  <div class="cover">
+    <div></div>
+    <div>
+      <div class="kicker">Family report &nbsp;·&nbsp; three genomes read together</div>
+      <h1 class="h-display" style="margin-top:14px">The Ruiz family</h1>
+      <p class="lede dropcap">The relationships match what was declared. <b>Elena and Marc both carry cystic fibrosis</b>, so each pregnancy has a 1 in 4 chance of an affected child. Lía inherited Elena's copy only: she is a carrier, not affected. Her <i>FMR1</i> repeat grew from 48 to 49, still intermediate, and her RhD-negative blood came from both parents. One new change in Lía passed the filters, outside any gene.</p>
+    </div>
+    <aside style="padding-top:44px">
+      <div class="note"><span class="nh">Finished</span>6 Nov 2026, 14:22 · after all three personal reports</div>
+      <div class="note"><span class="nh">Colour follows the person</span><span class="pc marc">Marc</span> &nbsp; <span class="pc elena">Elena</span> &nbsp; <span class="pc lia">Lía</span><br><span class="pc carmen" style="margin-top:6px">Carmen, no genome here</span></div>
+    </aside>
+
+    <div class="ped-wrap">
+      <div class="fig-label">Figure 1 &nbsp;·&nbsp; The pedigree, with each person's findings</div>
+      <div id="ped" style="margin-top:6px"></div>
+    </div>
+
+    <nav class="contents">
+      <a href="#c1"><span class="cn">I</span><span class="ct">Who is related how</span><span class="cs">All three pairs agree</span></a>
+      <a href="#c2"><span class="cn">II</span><span class="ct">For future children</span><span class="cs">Cystic fibrosis, 1 in 4</span></a>
+      <a href="#c3"><span class="cn">III</span><span class="ct">What Lía inherited</span><span class="cs">7 findings, from whom</span></a>
+      <a href="#c4"><span class="cn">IV</span><span class="ct">Two small stories</span><span class="cs">FMR1 48 → 49, blood group</span></a>
+      <a href="#c5"><span class="cn">V</span><span class="ct">New and paired changes</span><span class="cs">1 de novo, 2 gene pairs</span></a>
+    </nav>
+  </div>
+
+  <!-- I -->
+  <section class="chapter" id="c1">
+    <div class="cnum">I<small>Chapter one</small></div>
+    <div>
+      <h2>Who is related how</h2>
+      <div class="q">Do the genomes agree with the family tree? If not, nothing else here can be trusted.</div>
+      <p class="body-serif">Every declared parent and child shares about half their DNA, and Elena and Marc are unrelated. <b>No sample was swapped.</b></p>
+      <figure style="margin-top:18px">
+        <div class="fig-label">Figure 2 &nbsp;·&nbsp; Relatedness, expected against measured</div>
+        <div id="dumb" style="margin-top:10px"></div>
+        <figcaption>Ring: what the family tree predicts. Dot: what the DNA measures. 0.5 is parent and child; 0 is unrelated.</figcaption>
+      </figure>
+      <table class="t" style="margin-top:22px">
+        <tr><th>Pair</th><th class="r">Shared</th><th class="r">Stretches</th><th class="r">Longest</th><th>Reads as</th><th>Check</th></tr>
+        <tr><td><span class="pc elena">Elena</span> · <span class="pc lia">Lía</span></td><td class="r">3,389 cM</td><td class="r">23</td><td class="r">281.4 cM</td><td>parent and child</td><td><span class="lv trust"><span class="g"></span>agrees</span></td></tr>
+        <tr><td><span class="pc marc">Marc</span> · <span class="pc lia">Lía</span></td><td class="r">3,381 cM</td><td class="r">25</td><td class="r">267.9 cM</td><td>parent and child</td><td><span class="lv trust"><span class="g"></span>agrees</span></td></tr>
+        <tr><td><span class="pc elena">Elena</span> · <span class="pc marc">Marc</span></td><td class="r">5.1 cM</td><td class="r">2</td><td class="r">2.9 cM</td><td>unrelated, or beyond 4th degree</td><td><span class="lv trust"><span class="g"></span>agrees</span></td></tr>
+      </table>
+    </div>
+    <aside style="padding-top:120px">
+      <div class="note"><span class="nh">cM</span>Centimorgan: a unit of shared DNA. A parent and child share about 3,400.</div>
+      <div class="note"><span class="nh">Measured on</span>about 17,400 common sites per pair.</div>
+    </aside>
+  </section>
+
+  <!-- II -->
+  <section class="chapter" id="c2">
+    <div class="cnum">II<small>Chapter two</small></div>
+    <div id="couple">
+      <span class="lv car"><span class="g"></span>For family planning</span> <span class="newer" style="margin-left:10px;font-size:12px;color:var(--brass)" data-tip="ClinVar 2026-11-06 is out; the screen used 2026-10-02">● newer ClinVar may change this screen</span>
+      <h2 style="margin-top:12px">For future children</h2>
+      <div class="q">Do Elena and Marc carry anything a child could inherit from both?</div>
+      <p class="body-serif">They share one gene: <b>CFTR, cystic fibrosis</b>. Elena carries <span class="mono">p.Phe508del</span> and Marc <span class="mono">p.Gly542Ter</span>, both pathogenic with three review stars. Neither is affected. Each pregnancy is a fresh draw of four equally likely children:</p>
+      <div class="outcomes">
+        <div class="oc aff"><div class="alle"><i class="e"></i><i class="m"></i></div><div><b>Affected</b><span>1 in 4 · both changes</span></div></div>
+        <div class="oc"><div class="alle"><i class="e"></i><i></i></div><div><b>Carrier, like Elena</b><span>1 in 4 · not affected</span><br><span class="lia-here">Lía</span></div></div>
+        <div class="oc"><div class="alle"><i></i><i class="m"></i></div><div><b>Carrier, like Marc</b><span>1 in 4 · not affected</span></div></div>
+        <div class="oc"><div class="alle"><i></i><i></i></div><div><b>Neither change</b><span>1 in 4</span></div></div>
+      </div>
+      <p style="font-size:14px;color:var(--ink-2);margin-top:16px"><b style="color:var(--ink)">What to do:</b> before another pregnancy, a genetic counsellor can explain the options: clinical carrier confirmation, and prenatal or preimplantation testing.</p>
+
+      <h3 class="h3" style="margin-top:34px">Everything else the screen found</h3>
+      <table class="t" style="margin-top:12px">
+        <tr><th>Condition</th><th><span class="pc marc">Marc</span></th><th><span class="pc elena">Elena</span></th><th>For a child</th></tr>
+        <tr><td><b>Cystic fibrosis</b> <span class="mono muted">CFTR</span></td><td>carrier</td><td>carrier</td><td><b>1 in 4 affected</b></td></tr>
+        <tr><td><b>Phenylketonuria</b> <span class="mono muted">PAH</span></td><td>carrier</td><td class="muted nw">none found</td><td>may be a carrier; not affected unless Elena carries a change the screen misses</td></tr>
+        <tr><td><b>Haemochromatosis</b> <span class="mono muted">HFE</span></td><td class="muted nw">none found</td><td>carrier</td><td>may be a carrier</td></tr>
+        <tr><td><b>Fragile X</b> <span class="mono muted">FMR1</span></td><td class="nw">30 repeats</td><td>31 / 48</td><td>not counted: below the 55 the screen counts; see chapter IV</td></tr>
+      </table>
+      <div class="compact">
+        <div><span class="k">SMN1 (spinal muscular atrophy)</span>Both 2 copies. Two copies do not rule out a silent carrier.</div>
+        <div><span class="k">Deletions read from depth</span>GJB6, CFTR exons 2–3, AZF: absent. HBB 619 bp: too short to assess.</div>
+        <div><span class="k">X-linked</span>No shared or X-linked finding besides the FMR1 context row.</div>
+      </div>
+    </div>
+    <aside style="padding-top:90px">
+      <div class="note caveat"><span class="nh">Caveat</span>A screen, not a diagnosis. No shared gene lowers the chance of a child with one of these conditions; it does not remove it.</div>
+      <div class="note"><span class="nh">What the screen does not see</span>
+        <ul style="padding-left:16px;margin:0">
+          <li>changes ClinVar does not list as pathogenic</li>
+          <li>genes outside the 3,292 on the list</li>
+          <li>SMN1 silent carriers</li>
+          <li>HBA1/HBA2, CYP21A2, GBA1</li>
+          <li>repeats other than FMR1 and FXN</li>
+          <li>low-level mosaicism</li>
+        </ul>
+      </div>
+    </aside>
+  </section>
+
+  <!-- III -->
+  <section class="chapter" id="c3">
+    <div class="cnum">III<small>Chapter three</small></div>
+    <div>
+      <h2>What Lía inherited</h2>
+      <div class="q">For each finding in a parent: did it reach Lía?</div>
+      <table class="t inh">
+        <tr><th>Finding in a parent</th><th>From</th><th>Lía</th><th>How we know</th></tr>
+        <tr><td><b>Cystic fibrosis carrier</b> <span class="mono muted">CFTR p.Phe508del</span></td><td><span class="pc elena">Elena</span></td><td><span class="yes">● inherited</span></td><td>genotype</td></tr>
+        <tr><td><b>Cystic fibrosis carrier</b> <span class="mono muted">CFTR p.Gly542Ter</span></td><td><span class="pc marc">Marc</span></td><td><span class="no">○ not inherited</span></td><td>genotype</td></tr>
+        <tr><td><b>Fragile X intermediate repeat</b> <span class="mono muted">FMR1</span></td><td><span class="pc elena">Elena</span></td><td><span class="yes">● inherited, 48 → 49</span></td><td>repeat length</td></tr>
+        <tr><td><b>Clopidogrel response</b> <span class="mono muted">CYP2C19 *2</span></td><td><span class="pc marc">Marc</span></td><td><span class="yes">● inherited, one copy</span></td><td>genotype</td></tr>
+        <tr><td><b>Phenylketonuria carrier</b> <span class="mono muted">PAH</span></td><td><span class="pc marc">Marc</span></td><td><span class="no">○ not inherited</span></td><td>genotype</td></tr>
+        <tr><td><b>Haemochromatosis carrier</b> <span class="mono muted">HFE</span></td><td><span class="pc elena">Elena</span></td><td><span class="no">○ not inherited</span></td><td>genotype</td></tr>
+        <tr><td><b>Hereditary breast and ovarian cancer</b> <span class="mono muted">BRCA2</span></td><td><span class="pc elena">Elena</span></td><td colspan="2"><button class="toggle" style="text-align:left" data-reveal="brca-l">Closed: an adult-onset finding about a child. Open on purpose</button><span id="brca-l" hidden> · <span class="no">○ not inherited</span></span></td></tr>
+      </table>
+      <figure style="margin-top:34px">
+        <div class="fig-label">Figure 3 &nbsp;·&nbsp; Lía's chromosomes: which copy came from whom</div>
+        <div id="cmap" style="margin-top:12px"></div>
+        <figcaption>Top line of each pair: the copy from <span class="pc marc">Marc</span>; bottom line: from <span class="pc elena">Elena</span>. Gaps could not be assigned. Pins mark the inherited findings above. With no grandparent sequenced, the map cannot show where each parent's own two copies crossed over.</figcaption>
+      </figure>
+    </div>
+    <aside style="padding-top:90px">
+      <div class="note"><span class="nh">Phasing</span>2,913,455 sites placed on a parent's copy.</div>
+      <div class="note"><span class="nh">Per parent</span><dl><dt>From Marc</dt><dd>41 stretches, 2,871 Mb</dd><dt>From Elena</dt><dd>44 stretches, 3,012 Mb</dd><dt>Disagreeing sites</dt><dd>312 / 287</dd></dl></div>
+      <div class="note"><span class="nh">Not possible yet</span>Sequencing Carmen would place Elena's crossovers and say which grandparent each stretch came from.</div>
+    </aside>
+  </section>
+
+  <!-- IV -->
+  <section class="chapter" id="c4">
+    <div class="cnum">IV<small>Chapter four</small></div>
+    <div>
+      <h2>Two small stories</h2>
+      <div class="q">Inheritance you can see in a single number.</div>
+      <div class="sidebyside">
+        <div class="sbs">
+          <span class="lv rev"><span class="g"></span>Worth a look</span>
+          <h3>A repeat that grew by one</h3>
+          <p>Elena's longer <i>FMR1</i> copy has 48 CGG repeats; the copy Lía received has 49. Both are intermediate: no disease, but it can grow a little each generation.</p>
+          <div id="fmr"></div>
+          <p class="muted" style="font-size:12.5px;margin-top:8px">A one-repeat change is within the sizing error.</p>
+        </div>
+        <div class="sbs">
+          <span class="lv info"><span class="g"></span>Information</span>
+          <h3>RhD negative from two RhD-positive parents</h3>
+          <p>Both parents are RhD positive with one deleted <i>RHD</i> copy each. Lía received both deleted copies, a 1 in 4 outcome.</p>
+          <div class="punnett">
+            <div></div><div><span class="pc elena">Elena D</span></div><div><span class="pc elena">Elena d</span></div>
+            <div><span class="pc marc">D</span></div><div class="cell"><b>D/D</b>positive</div><div class="cell"><b>D/d</b>positive</div>
+            <div><span class="pc marc">d</span></div><div class="cell"><b>D/d</b>positive</div><div class="cell lia"><b>d/d</b>negative · Lía</div>
+          </div>
+          <p class="muted" style="font-size:12.5px;margin-top:8px">ABO: Elena A1, Marc O, Lía O. A prediction from DNA, not a lab typing.</p>
+        </div>
+      </div>
+    </div>
+    <aside></aside>
+  </section>
+
+  <!-- V -->
+  <section class="chapter" id="c5">
+    <div class="cnum">V<small>Chapter five</small></div>
+    <div>
+      <h2>New and paired changes</h2>
+      <div class="q">Changes in Lía that neither parent has, and genes where she carries two.</div>
+      <h3 class="h3" style="margin-top:6px">New in Lía (de novo)</h3>
+      <p style="font-size:14px;color:var(--ink-2)">Every child carries a few dozen new changes; most candidates found this way are reading errors. One passes the filters, and it sits outside any gene.</p>
+      <table class="t" style="margin-top:8px">
+        <tr><th>Position</th><th>Change</th><th class="r">Lía's reads</th><th class="r">Depth L · M · E</th><th>Gene</th><th>Filter</th></tr>
+        <tr><td class="mono">chr7:98,114,350</td><td class="mono">C&gt;T</td><td class="r">46% alt</td><td class="r">33 · 30 · 35</td><td class="muted">none nearby</td><td><span class="lv trust"><span class="g"></span>passes</span></td></tr>
+        <tr><td class="mono">chr12:33,908,211</td><td class="mono">A&gt;G</td><td class="r">19% alt</td><td class="r">8 · 31 · 29</td><td class="muted">none nearby</td><td><span class="lv warn">low: likely an error</span></td></tr>
+      </table>
+      <h3 class="h3" style="margin-top:30px">Two changes in one gene</h3>
+      <p style="font-size:14px;color:var(--ink-2)">Two changes matter only when they sit on different copies (in trans) of a gene that fits. Neither pair here needs action.</p>
+      <table class="t" style="margin-top:8px">
+        <tr><th>Gene</th><th>Changes</th><th>Copies</th><th>Reading</th></tr>
+        <tr><td class="mono" style="color:var(--ink)">USH2A</td><td class="mono">p.Thr1257Ile · c.8559-14A&gt;G</td><td>same copy, both from <span class="pc marc">Marc</span></td><td>the other copy is intact</td></tr>
+        <tr><td class="mono" style="color:var(--ink)">TTN</td><td class="mono">p.Arg3412His · p.Val16211Met</td><td>one from each parent</td><td>both benign or uncertain; TTN carries rare changes in everyone</td></tr>
+      </table>
+    </div>
+    <aside style="padding-top:110px">
+      <div class="note caveat"><span class="nh">Caveat</span>Confirm any new change that matters by another method.</div>
+      <div class="note"><span class="nh">L · M · E</span>Lía, Marc, Elena.</div>
+    </aside>
+  </section>
+
+  <section class="chapter">
+    <div class="cnum" style="font-size:40px">Appendix</div>
+    <div>
+      <h2 style="font-size:28px">What we ran for this family</h2>
+      <ul class="plan" style="margin-top:16px">
+        <li><span class="ok">✓</span><span><b>Called all three genomes together</b>, so a change is judged the same way in everyone</span><span class="muted">Elena, Marc, Lía</span></li>
+        <li><span class="ok">✓</span><span><b>Checked every relationship</b> against the family tree</span><span class="muted">all pairs</span></li>
+        <li><span class="ok">✓</span><span><b>Placed Lía's DNA on each parent's copy</b>, and searched it for new and paired changes</span><span class="muted">Lía</span></li>
+        <li><span class="ok">✓</span><span><b>Measured shared stretches</b> between every pair</span><span class="muted">all pairs</span></li>
+        <li><span class="ok">✓</span><span><b>Screened the couple</b> for genes both carry</span><span class="muted">Elena + Marc</span></li>
+        <li><span class="sk">—</span><span><b>Grandparent phasing</b> did not run: Carmen has no genome on this server</span><span class="muted">skipped</span></li>
+      </ul>
+    </div>
+    <aside><div class="note"><span class="nh">Add a relative</span>A genome for Carmen would add grandparent phasing and say which side BRCA2 came from. <a href="#">How to add one</a></div></aside>
+  </section>
+</div>
+<footer class="colophon"><div class="colophon-in"><span class="wordmark">OwnGenome</span><span>1.0.0 · GRCh38 no-ALT · a research pipeline, not a clinical test</span><span style="margin-left:auto">Synthetic demonstration data</span></div></footer>
+
+<script>
+const C = { elena: '#d95926', marc: '#3987e5', lia: '#199e70' };
+// pedigree
+(function(){
+  const W = 1136, H = 412, s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('ped'));
+  const ln = (a,b,c,d,dash) => OG.el('line', { x1:a, y1:b, x2:c, y2:d, stroke: 'rgba(255,255,255,.28)', 'stroke-width': 1.3, 'stroke-dasharray': dash || '' }, s);
+  const tx = (x,y,t,o={}) => { const e = OG.el('text', Object.assign({ x, y, 'font-size': 13, fill: '#c3c2b7', 'text-anchor': 'middle' }, o), s); e.textContent = t; return e; };
+  const person = (x, y, shape, col, name, sub, marks, link) => {
+    const g = OG.el('g', { 'data-tip': name + ': open the report' }, s);
+    if (shape === 'c') OG.el('circle', { cx: x, cy: y, r: 24, fill: col ? col : 'none', 'fill-opacity': col ? .18 : 0, stroke: col || '#8f8d86', 'stroke-width': 2, 'stroke-dasharray': col ? '' : '4 4' }, g);
+    else OG.el('rect', { x: x - 24, y: y - 24, width: 48, height: 48, rx: 3, fill: col, 'fill-opacity': .18, stroke: col, 'stroke-width': 2 }, g);
+    tx(x, y + 48, name, { 'font-size': 15, fill: '#f0efec', 'font-weight': 600 });
+    tx(x, y + 66, sub, { 'font-size': 12, fill: '#8f8d86' });
+    let mx = x - (marks.length - 1) * 19;
+    marks.forEach(m => { OG.glyph(g, m[0], mx - 6, y + 88); tx(mx + 6, y + 92, m[1], { 'font-size': 12, fill: '#c3c2b7', 'text-anchor': 'start' }); mx += 38; });
+    if (marks.length) { const a = OG.el('a', { href: name.startsWith('Marc') ? '06-person-mobile.html' : '03-person.html' }, g); const t = OG.el('text', { x, y: y + 116, 'font-size': 12.5, fill: '#c8ab78', 'text-anchor': 'middle' }, a); t.textContent = 'Read the report →'; }
+  };
+  person(260, 40, 'c', null, '', '', []);
+  tx(300, 36, 'Carmen Vidal', { 'font-size': 15, fill: '#c3c2b7', 'font-weight': 600, 'text-anchor': 'start' });
+  tx(300, 54, "Elena's mother · no genome here", { 'font-size': 12, fill: '#8f8d86', 'text-anchor': 'start' });
+  ln(260, 64, 260, 126);
+  person(260, 150, 'c', C.elena, 'Elena Ruiz', '38 · mother', [['act','1'],['med','1'],['rev','1'],['car','2']]);
+  person(700, 150, 'r', C.marc, 'Marc Ruiz', '41 · father', [['med','2'],['rev','2'],['car','2']]);
+  ln(284, 150, 676, 150);
+  ln(480, 162, 480, 256);
+  person(480, 280, 'c', C.lia, 'Lía Ruiz', '6 · daughter', [['med','1'],['rev','1'],['car','1']]);
+  const leg = OG.el('g', {}, s); let ly = 70;
+  [['act','Take to a doctor'],['med','Tell your prescriber'],['rev','Worth a look'],['car','For family planning']].forEach(l => { OG.glyph(leg, l[0], 900, ly); tx(914, ly + 4, l[1], { 'font-size': 12.5, 'text-anchor': 'start' }); ly += 26; });
+  tx(890, 44, 'MARKS UNDER EACH NAME', { 'font-size': 11, fill: '#c3c2b7', 'text-anchor': 'start', 'letter-spacing': '1.2' });
+  const b = OG.el('g', {}, s);
+  OG.el('rect', { x: 400, y: 138, width: 160, height: 24, rx: 12, fill: '#15161a', stroke: '#9085e9' }, b);
+  tx(480, 154, 'both carry CFTR · 1 in 4', { 'font-size': 11.5, fill: '#aaa1f2' });
+})();
+// dumbbell
+(function(){
+  const rows = [['Elena · Lía', .5, .497, C.elena, C.lia], ['Marc · Lía', .5, .503, C.marc, C.lia], ['Elena · Marc', 0, .008, C.elena, C.marc]];
+  const W = 680, left = 120, x1 = W - 70, X = v => left + v / .6 * (x1 - left), rh = 34, H = rows.length * rh + 30;
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('dumb'));
+  [0, .1, .2, .3, .4, .5, .6].forEach(v => { OG.el('line', { x1: X(v), x2: X(v), y1: 4, y2: H - 22, stroke: 'rgba(255,255,255,.06)' }, s); const t = OG.el('text', { x: X(v), y: H - 6, 'font-size': 10.5, fill: '#8f8d86', 'text-anchor': 'middle' }, s); t.textContent = v.toFixed(1); });
+  rows.forEach((r, i) => {
+    const y = 18 + i * rh;
+    const t = OG.el('text', { x: 0, y: y + 4, 'font-size': 13, fill: '#c3c2b7' }, s); t.textContent = r[0];
+    OG.el('circle', { cx: X(r[1]), cy: y, r: 8, fill: 'none', stroke: '#8f8d86', 'stroke-width': 1.5, 'data-tip': `expected ${r[1]}` }, s);
+    OG.el('circle', { cx: X(r[2]), cy: y, r: 5, fill: '#f0efec', 'data-tip': `measured ${r[2]}` }, s);
+    const v = OG.el('text', { x: x1 + 14, y: y + 4, 'font-size': 12.5, fill: '#f0efec' }, s); v.textContent = r[2].toFixed(3);
+  });
+})();
+// chromosome map
+(function(){
+  const auto = OG.CHR.slice(0, 22).concat([OG.CHR[22]]);
+  const W = 680, cols = 2, colW = 330, left = 26, rowH = 5, pairH = 26, per = Math.ceil(auto.length / cols), sc = (colW - left - 6) / 249;
+  const H = per * pairH + 6, s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('cmap'));
+  const r = OG.rng(11);
+  const pins = { '7': [['m', 117.6, 'CFTR p.Phe508del, from Elena']], '10': [['p', 94.8, 'CYP2C19 *2, from Marc']], 'X': [['m', 147.9, 'FMR1 49, from Elena']] };
+  auto.forEach((c, i) => {
+    const cx = (i < per ? 0 : colW + 20), y0 = (i % per) * pairH + 4;
+    const t = OG.el('text', { x: cx, y: y0 + 9, 'font-size': 10, fill: '#8f8d86' }, s); t.textContent = c[0];
+    [['p', C.marc], ['m', C.elena]].forEach((side, k) => {
+      if (c[0] === 'X' && side[0] === 'p') { // Lía's X from Marc is his only X
+        OG.el('rect', { x: cx + left, y: y0 + k * (rowH + 2), width: c[1] * sc, height: rowH, rx: 1.5, fill: side[1] }, s); return; }
+      let pos = 0; const gaps = [];
+      if (c[0] === '7' && side[0] === 'p') gaps.push([59.3, 62.1]); else if (c[0] === '7') gaps.push([58.9, 61.8]);
+      else { const g0 = c[2] - 1.5 - r() * 1.5; gaps.push([g0, c[2] + 1 + r() * 1.5]); }
+      const segs = []; gaps.forEach(g => { segs.push([pos, g[0]]); pos = g[1]; }); segs.push([pos, c[1]]);
+      segs.forEach(sg => OG.el('rect', { x: cx + left + sg[0] * sc, y: y0 + k * (rowH + 2), width: Math.max((sg[1] - sg[0]) * sc, 1), height: rowH, rx: 1.5, fill: side[1], 'data-tip': `chr${c[0]} ${side[0] === 'p' ? 'from Marc' : 'from Elena'}: ${sg[0].toFixed(1)}–${sg[1].toFixed(1)} Mb` }, s));
+    });
+    (pins[c[0]] || []).forEach(p => { const px = cx + left + p[1] * sc, py = y0 + (p[0] === 'p' ? 0 : rowH + 2) + rowH / 2;
+      OG.el('circle', { cx: px, cy: py, r: 4.5, fill: '#f0efec', stroke: '#15161a', 'stroke-width': 2, 'data-tip': p[2] }, s);
+      const lt = OG.el('text', { x: px + 8, y: y0 + 23, 'font-size': 10, fill: '#f0efec' }, s); lt.textContent = p[2].split(',')[0]; });
+  });
+})();
+// FMR1 48 -> 49: one row per person on a shared repeat axis
+(function(){
+  const W = 320, H = 116, L = 52, X = v => L + (v - 40) / 20 * (W - L - 12);
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: W }, document.getElementById('fmr'));
+  const t = (x, y, txt, o = {}) => { const e = OG.el('text', Object.assign({ x, y, 'font-size': 11, fill: '#8f8d86' }, o), s); e.textContent = txt; return e; };
+  OG.el('rect', { x: X(45), y: 16, width: X(55) - X(45), height: 62, fill: 'rgba(250,178,25,.10)' }, s);
+  t(X(45) + 5, 12, 'intermediate 45–54', { 'font-size': 10.5 });
+  t(X(55) + 4, 12, 'premutation →', { 'font-size': 10.5 });
+  [[ 'Elena', 48, 34, C.elena ], [ 'Lía', 49, 62, C.lia ]].forEach(r => {
+    t(L - 8, r[2] + 4, r[0], { fill: '#f0efec', 'text-anchor': 'end', 'font-size': 12 });
+    OG.el('line', { x1: L, x2: W - 12, y1: r[2], y2: r[2], stroke: 'rgba(255,255,255,.08)' }, s);
+    OG.el('circle', { cx: X(r[1]), cy: r[2], r: 6, fill: r[3], 'data-tip': `${r[0]}: ${r[1]} CGG repeats` }, s);
+    t(X(r[1]) + 11, r[2] + 4, String(r[1]), { fill: '#f0efec', 'font-size': 12, 'font-weight': 600 });
+  });
+  OG.el('path', { d: `M${X(48)} 41 L${X(48)} 50 L${X(49) - 1} 55`, fill: 'none', stroke: '#8f8d86', 'stroke-width': 1 }, s);
+  OG.el('line', { x1: L, x2: W - 12, y1: 82, y2: 82, stroke: 'rgba(255,255,255,.2)' }, s);
+  [40, 45, 50, 55, 60].forEach(v => t(X(v), 97, v, { 'text-anchor': 'middle', 'font-size': 10.5 }));
+  t(W - 12, 112, 'CGG repeats, longer copy', { 'text-anchor': 'end', 'font-size': 10.5 });
+})();
+</script>
+</body></html>
