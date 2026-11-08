@@ -25,7 +25,14 @@
     (the confirmed mtDNA variants step 20's section names) and the paralog
     catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv. Every
     <id>_<table>_copy_number.tsv of step 35 goes to paralogs/, and so
-    does step 35's <id>_cn_intervals.tsv. Every gene and rsID the
+    do step 35's <id>_cn_intervals.tsv, <id>_cn_dosage.tsv and
+    <id>_cyp21a2_psv.tsv. The sample's gVCF and its index, named in
+    meta.gvcf because a samplesheet gVCF keeps the user's name, become
+    vcf/<id>.g.vcf.gz and its .tbi (or .csi), where the bash report finds
+    step 03's gVCF. A run_manifest.tsv in the sample folder records the
+    OwnGenome release (nextflow.config's manifest.version), so the report
+    names it as the bash report does; it is not published, because
+    run-all.sh writes the full manifest there. Every gene and rsID the
     results mention also goes to ${id}_search_index.json beside it
     (bin/results_index.py), for the live site's search, and the report's
     charts to ${id}_charts.json, for the live page (docs/24-html-report.md).
@@ -55,14 +62,29 @@ process HTML_REPORT {
 
     script:
     def id = meta.id
+    // single-quoted on the command line below, so a ' in a name is closed, escaped and reopened
+    def gvcf = meta.gvcf ? meta.gvcf[0].toString().replace("'", "'\\''") : ''
+    def gvcf_index = meta.gvcf ? meta.gvcf[1].toString().replace("'", "'\\''") : ''
+    def gvcf_suffix = gvcf_index.endsWith('.csi') ? 'csi' : 'tbi'
+    def release = workflow.manifest.version ?: ''
     """
     # Where collect_summary.py looks for each output (bin/collect_summary.py)
     S=layout/${id}
     mkdir -p "\$S"
     place() { mkdir -p "\$S/\$1" && ln -s "\$(readlink -f "\$2")" "\$S/\$1/\$(basename "\$2")"; }
     place vcf input/sample.vcf.gz && mv "\$S/vcf/sample.vcf.gz" "\$S/vcf/${id}.vcf.gz"
+    gvcf='${gvcf}'; gvcf_index='${gvcf_index}'
+    if [ -n "\$gvcf" ]; then
+        ln -s "\$(readlink -f "input/\$gvcf")" "\$S/vcf/${id}.g.vcf.gz"
+        ln -s "\$(readlink -f "input/\$gvcf_index")" "\$S/vcf/${id}.g.vcf.gz.${gvcf_suffix}"
+    fi
+    # The release this run is (bash: bin/write_manifest.sh's run pipeline_version row)
+    release='${release}'
+    [ -z "\$release" ] || printf 'run\\tpipeline_version\\t%s\\n' "\$release" > "\$S/run_manifest.tsv"
     for f in input/*; do
-        case "\$(basename "\$f")" in
+        n=\$(basename "\$f")
+        if [ -n "\$gvcf" ] && { [ "\$n" = "\$gvcf" ] || [ "\$n" = "\$gvcf_index" ]; }; then continue; fi
+        case "\$n" in
             sample.vcf.gz) ;;
             ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv) place clinvar "\$f" ;;
             ${id}.report.json|${id}.report.html)          place pharmcat "\$f" ;;
@@ -79,6 +101,7 @@ process HTML_REPORT {
             ${id}.mosdepth.summary.txt|${id}_callability.bed.gz) place coverage "\$f" ;;
             ${id}_sample_qc.tsv|${id}_read_count.tsv)     place qc "\$f" ;;
             ${id}_cn_intervals.tsv)                       place paralogs "\$f" ;;
+            ${id}_cn_dosage.tsv|${id}_cyp21a2_psv.tsv)    place paralogs "\$f" ;;
             ${id}_prs_summary.tsv)                        place prs "\$f" ;;
             ${id}_ancestry.tsv)                           place ancestry "\$f" ;;
             ${id}_ancestry_fine.tsv|${id}_painting.png)   place ancestry_fine "\$f" ;;
