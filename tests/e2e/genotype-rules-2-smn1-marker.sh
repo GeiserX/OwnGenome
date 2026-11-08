@@ -18,7 +18,10 @@
 #     from scripts/35-paralogs.sh, with scripts/lib/common.sh's run_in), and
 #     the PARASCOPY module's block, cut from its main.nf, writes the same table
 #     in its image, byte for byte, on the planted BAM.
-#   - every message says the marker does not prove 2+0.
+#   - every message says the marker does not prove 2+0;
+#   - steps 24 and generate-report.sh with the planted and the reference
+#     tables: both reports print the marker under the SMN1 copies with its
+#     caveat ('present' with its reads, 'not seen').
 . "$(dirname "$0")/lib.sh"
 
 SRC="https://storage.googleapis.com/deepvariant/case-study-testdata/HG002.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam"
@@ -142,6 +145,25 @@ sed -e "s|\${bam}|/genome/${P}/planted.bam|g" -e "s|\${meta.id}|${P}|g" "${CASE_
 docker run --rm --user "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -v "${REPO}/bin:/pgp-bin:ro" -w "/genome/${P}/module" \
   "$PARASCOPY_IMAGE" sh -c 'PATH="/pgp-bin:$PATH"; sh -e block.sh' 2>&1 | tail -n 3
 check "the module's block writes step 35's table, byte for byte" cmp -s "$L" "${M}/${P}_smn1_marker.tsv"
+
+# --- both reports print the marker under the SMN1 copies (steps 24 and generate-report.sh)
+rm -rf "$M" "${W}"/*.bam "${W}"/*.bai
+for v in planted reference; do
+  cp "${CASE_TMP}/${v}.tsv" "${W}/paralogs/${P}_smn1_marker.tsv"
+  run_step 24-html-report.sh "$P"; check_step_exit 24-html-report.sh
+  run_step generate-report.sh "$P"; check_step_exit generate-report.sh
+  cp "${W}/${P}_report.html" "${CASE_TMP}/${v}.html"; cp "${W}/${P}_report.txt" "${CASE_TMP}/${v}.txt"
+done
+check "planted: the HTML report prints the marker as present, with its reads, under the SMN1 copies" \
+  grep -qF "SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)</span><span class=\"value\">present, $(col "$L" alt_reads) of $(col "$L" depth) reads carry it" "${CASE_TMP}/planted.html"
+check "planted: the text report prints it right under the SMN1 copies" \
+  bash -c 'grep -A1 "SMN1 copies: " "$1" | grep -qF "SMN1 g.27134T>G silent-carrier marker (rs143838139): present"' _ "${CASE_TMP}/planted.txt"
+check "planted: both reports carry the caveat" \
+  bash -c 'grep -qF "it does not prove 2+0, and a carrier test in a clinical laboratory confirms it" "$1" && grep -qF "it does not prove 2+0, and a carrier test in a clinical laboratory confirms it" "$2"' _ \
+  "${CASE_TMP}/planted.html" "${CASE_TMP}/planted.txt"
+check "reference: both reports print not seen (control: the line follows the table)" \
+  bash -c 'grep -qF "SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)</span><span class=\"value\">not seen, 0 of" "$1" && grep -qF "SMN1 g.27134T>G silent-carrier marker (rs143838139): not seen, 0 of" "$2"' _ \
+  "${CASE_TMP}/reference.html" "${CASE_TMP}/reference.txt"
 
 rm -rf "$W"
 finish
