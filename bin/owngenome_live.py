@@ -89,7 +89,7 @@ RUN_HTML_CSP = ("sandbox allow-same-origin allow-popups allow-popups-to-escape-s
 RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")  # validate_sample in scripts/lib/common.sh
 ASSET_RE = re.compile(r"^(?:plugins/)?[A-Za-z0-9][A-Za-z0-9._-]*$")
 # The page templates of assets/live: served filled in, never as an asset.
-PAGES = ("index.html", "login.html", "home.html", "family.html")
+PAGES = ("index.html", "login.html", "home.html", "family.html", "finding.html")
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
          ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".tsv": "text/plain; charset=utf-8",
          ".md": "text/plain; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".pdf": "application/pdf"}
@@ -782,6 +782,12 @@ class Live:
     def attention(self, d):
         """(count of cards worth a look, mtime) from <run>/summary.json alone, cached by its mtime;
         (None, None) without one. The home page reads no result file beyond that."""
+        o, mtime = self.overview(d)
+        return (o["attention"] if o else None), mtime
+
+    def overview(self, d):
+        """(live_results.overview of <run>/summary.json, mtime), cached by its mtime; (None, None) without one:
+        the attention count, the counts by level, the first findings and the lead the home page shows."""
         p = os.path.join(d, "summary.json") if d else None
         if not p or not self.inside(p, os.path.realpath(d)) or not self.inside(p, self.root):
             return None, None  # a summary.json linking out of its run is never read
@@ -797,7 +803,7 @@ class Live:
         try:
             import live_results
             with open(p) as f:
-                n = live_results.attention_count(json.load(f))
+                n = live_results.overview(json.load(f))
         except Exception as e:  # one bad file must not take the home page down
             print(f"owngenome_live: {os.path.basename(os.path.dirname(p))}/summary.json not read: {type(e).__name__}",
                   file=sys.stderr)
@@ -807,7 +813,8 @@ class Live:
 
     def runs_index(self):
         """/runs.json: each run's progress, and the families with their members, for the home page.
-        No result beyond the attention count; no path."""
+        No result beyond the attention count, the counts by level, the titles of the first four
+        findings and the lead; no path."""
         runs = self.runs()
         # Forget the cached results of runs that are gone, so the caches hold only the runs there are.
         for k in [k for k in list(self.headline_cache) if k not in runs]:
@@ -827,8 +834,11 @@ class Live:
                             running=sum(1 for s in planned if s["state"] == "running"),
                             failed=sum(1 for s in planned if s["state"] == "failed"))
                 # A run known from its messages alone still has its folder under the root once step 24 wrote there.
-                item["attention"], mtime = self.attention(r["dir"] or os.path.join(self.root, name))
+                o, mtime = self.overview(r["dir"] or os.path.join(self.root, name))
+                item["attention"] = o["attention"] if o else None
                 item["results"] = mtime is not None
+                if o:  # the Journal home: counts by level, the first findings, the lead
+                    item.update(levels=o["levels"], top=o["top"], lead=o["lead"])
             else:
                 item["members"] = r.get("members") or []
             out.append(item)

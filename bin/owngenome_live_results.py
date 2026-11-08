@@ -2,7 +2,10 @@
 
   GET /runs/<run>/results.json   bin/live_results.py's build() of the run's summary: the
                                  report's seven chapters, one card per section with its
-                                 facts, its rows, its caveats and its attention flag
+                                 facts, its rows, its caveats and its attention flag, and
+                                 the Journal's findings, levels, lead and ten sections
+  GET /runs/<run>/finding/<id>/  one finding's page (assets/live/finding.html): 404 unless
+                                 <id> is a finding of that run's results.json now
 
 The summary is the one the server already reads for the step headlines
 (Live.summary): the run's summary.json when step 24 wrote it after every done
@@ -11,6 +14,7 @@ ends. A reader error gives no cards and a note, never a 500. The raw
 summary.json is never served: no run_file glob is added, and results.json holds
 what the report prints. Every request writes one access-log row.
 """
+import html
 import os
 import sys
 
@@ -48,4 +52,35 @@ def register(app):
         return req.send_json(out)
 
     app.route("GET", r"/runs/(%s)/results\.json" % NAME, results)
+
+    def finding(req, m):
+        """One finding's page. The page itself reads ../../results.json; this only checks that the id is
+        a finding of the run now, so a typed or stale address is a plain 404, never an empty page."""
+        live = req.live
+        run = live.run(m.group(1))
+        fid = m.group(2)
+        ok = False
+        if run and run.get("kind") != "family" and live_results_mod().FINDING_ID.match(fid):
+            try:
+                d = run["dir"] or os.path.join(live.root, run["name"])
+                summary = live.summary(run["name"], d, live.base_state(run))
+                ok = bool(summary) and any(f["id"] == fid for f in live_results_mod().build(run["name"], summary)["findings"])
+            except Exception as e:  # a reader bug is a 404 here, never a 500
+                print(f"owngenome_live: finding of {run['name']} not checked: {type(e).__name__}", file=sys.stderr)
+        if not ok:
+            app.log("finding", m.group(1), "-", 404)
+            return req.send_body(404, "text/plain; charset=utf-8", "not found\n")
+        with open(os.path.join(live.cfg.assets, "finding.html")) as f:
+            page = f.read()
+        page = (page.replace("{{assets}}", "/assets").replace("{{run}}", html.escape(run["name"]))
+                .replace("{{finding}}", html.escape(fid)).replace("{{mode}}", "live"))
+        app.log("finding", run["name"], fid, 200)
+        return req.send_body(200, "text/html; charset=utf-8", page)
+
+    app.route("GET", r"/runs/(%s)/finding/([^/]{1,200})/" % NAME, finding)
+
+
+def live_results_mod():
+    import live_results
+    return live_results
 
