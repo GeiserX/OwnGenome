@@ -35,10 +35,16 @@ Checks:
      page too) and the person page has its bottom tab bar; on the son's page a
      two planted CPSR results to act on name their genes and variants nowhere
      (their card included) until "Show the result" is clicked, and each click
-     opens one result, there and on the finding's own page.
+     opens one result, there and on the finding's own page; DEMO-001's page
+     mid-replay and at the end leads with the report (a short run band above
+     the lead while it runs, none once finished), ends with the step timeline
+     folded, keeps the wire to at most eight one-sentence lines with the plain
+     finishes folded into one, and puts the HLA card's caveat in its margin
+     with its absent and undetermined lines folded.
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
-the veil) also run against a planted mistake and must
+the veil) and the person page's layout (a wire showing every line or every plain finish, a card showing
+every line, a step timeline left open) also run against a planted mistake and must
 fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
 Run: python3 tests/test_live_demo.py
@@ -277,6 +283,7 @@ def browser_checks(out):
         csp = b.eval("var m = document.querySelector('meta[http-equiv=Content-Security-Policy]'); m && m.content")
         check("browser: the page runs under the meta policy", csp == build_live_demo.CSP, csp)
         person_checks(b, base)
+        layout_checks(b, base, out)
         widget_checks(b, base, out)
         family_depth_checks(b, base, out)
         phone_checks(b, base)
@@ -363,7 +370,7 @@ def widget_checks(b, base, out):
         keep = f.read()
     try:
         with open(js, "w") as f:
-            f.write(keep.replace("add(art, widget(c.widget));", ""))
+            f.write(keep.replace("add(text, widget(c.widget));", ""))
         control("person.js without its widget line", not widget_problems(widget_counts(b, base)))
     finally:
         with open(js, "w") as f:
@@ -498,6 +505,94 @@ def veil_checks(b, base, out):
             f.write(keep_js)
         for d in made:
             shutil.rmtree(d, ignore_errors=True)
+
+
+# The person page reads as a report: what (frame) -> the page's layout facts, read in the browser.
+LAYOUT_JS = """JSON.stringify((function () {
+  var main = document.getElementById('content'), fold = document.getElementById('progress-fold');
+  var band = document.getElementById('runhero'), lead = document.getElementById('lead-slot');
+  var wire = Array.prototype.map.call(document.querySelectorAll('#found > li[role=button]'), function (li) {
+    return (li.childNodes[1] || {}).textContent || ''; });
+  var hla = document.getElementById('card-hla');
+  var shownLines = hla ? hla.querySelectorAll('.card-text .lines-box > ul.lines > li').length : -1;
+  return {
+    last: main.lastElementChild && main.lastElementChild.id, folded: !!fold && !fold.open,
+    band: !band.hidden, bandFirst: !!(band.compareDocumentPosition(lead) & Node.DOCUMENT_POSITION_FOLLOWING),
+    wire: wire, hla: shownLines, hlaFold: !!(hla && hla.querySelector('details.lines-more')),
+    margin: !!(hla && hla.querySelector('.card-margin .caveat .caveat-lead'))
+  };
+}()))"""
+
+
+def person_layout(b, base, frame):
+    """The layout facts of DEMO-001's page at a replay frame ('mid' or 'end')."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{S}/")
+    b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.documentElement.dataset.pgpFrame")
+    b.eval("var s = document.getElementById('replay-slider'); s.value = %s; s.dispatchEvent(new Event('input')); true"
+           % ("Math.floor(s.max / 2)" if frame == "mid" else "s.max"))
+    b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpFrame === %s"
+           % ("String(Math.floor(document.getElementById('replay-slider').max / 2))" if frame == "mid"
+              else "document.getElementById('replay-slider').max"))
+    time.sleep(0.5)
+    return json.loads(b.eval(LAYOUT_JS) or "{}")
+
+
+def layout_problems(mid, end):
+    out = []
+    for name, got in (("mid", mid), ("end", end)):
+        if got.get("last") != "progress" or not got.get("folded"):
+            out.append(f"{name}: the step timeline is not the last block, folded: {got.get('last')}, folded {got.get('folded')}")
+        wire = got.get("wire") or []
+        if not wire or len(wire) > 8:
+            out.append(f"{name}: the wire shows {len(wire)} lines, want 1 to 8")
+        plain = [w for w in wire if "finished, see the report" in w]
+        if len(plain) > 1:
+            out.append(f"{name}: {len(plain)} plain 'finished' lines on the wire, want them folded into one")
+        long = [w for w in wire if len(w) > 141]
+        if long:
+            out.append(f"{name}: wire lines longer than one sentence: {long[:2]}")
+    if not mid.get("band") or not mid.get("bandFirst"):
+        out.append(f"mid: the run band is not shown above the lead: {mid.get('band')}, {mid.get('bandFirst')}")
+    if end.get("band"):
+        out.append("end: the run band still shows on a finished run")
+    if not (0 <= end.get("hla", -1) <= 6) or not end.get("hlaFold"):
+        out.append(f"end: the HLA card shows {end.get('hla')} lines, the absent ones not folded ({end.get('hlaFold')})")
+    if not end.get("margin"):
+        out.append("end: the HLA card's caveat is not in its margin")
+    return out
+
+
+def layout_checks(b, base, out):
+    """The person page answers 'is there anything serious?' first: a short band while the run goes, the step
+    timeline last and folded, a wire of at most eight one-sentence lines with the plain finishes folded into one,
+    a card's caveat in its margin and its absent or undetermined lines folded."""
+    bad = layout_problems(person_layout(b, base, "mid"), person_layout(b, base, "end"))
+    check("browser: the person page leads with the report, a short run band while it runs, the step timeline last "
+          "and folded, a short wire, and each card's caveat in its margin with its quiet lines folded", not bad, bad)
+    b.call("Network.enable", session=b.session)  # the controls below change live.js and person.js: never cached
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+    files = {n: os.path.join(out, "assets", n) for n in ("live.js", "person.js")}
+    keep = {n: open(f).read() for n, f in files.items()}
+    planted = (("live.js", "said.slice(0, WIRE_SHOWN)", "said", "a wire that shows every line"),
+               ("live.js", "if (m && hl[k].tone !== 'attention')", "if (false)", "a wire that lists every plain finish"),
+               ("person.js", "var LINES_SHOWN = 6;", "var LINES_SHOWN = 99;", "a card that shows every line"),
+               ("person.js", "folded = true; fold.open = ", "folded = true; fold.open = true || ", "a step timeline left open"))
+    try:
+        for name, a, z, desc in planted:
+            if a not in keep[name]:
+                check(f"control: {desc} (the planted line is in {name})", False, a)
+                continue
+            with open(files[name], "w") as f:
+                f.write(keep[name].replace(a, z))
+            control(desc, not layout_problems(person_layout(b, base, "mid"), person_layout(b, base, "end")))
+            with open(files[name], "w") as f:
+                f.write(keep[name])
+    finally:
+        for n, f in files.items():
+            with open(f, "w") as fh:
+                fh.write(keep[n])
 
 
 def too_wide(b):
