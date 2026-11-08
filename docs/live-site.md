@@ -6,7 +6,7 @@ A full run takes a day or more. The live site shows each person's results as the
 
 ## Try the demo
 
-https://geiserx.github.io/OwnGenome/demo/ is the live site on DEMO-001, the invented sample of the docs pictures. It replays a made-up run from the first task to the database re-check after it: press Play, or drag the slider, and watch the cards fill in as their steps end. Every number, result and family member in it is made up.
+https://geiserx.github.io/OwnGenome/demo/ is the live site on DEMO-001, the invented sample of the docs pictures. It replays a made-up run from the first task to the database re-check after it: press Play, or drag the slider, and watch the cards fill in as their steps end. Every number, result and family member in it is made up. The family is an invented trio: DEMO-001, the partner DEMO-002 and their son DEMO-003. Each of the three has a finished run with its own findings, so every card widget and the whole family page have something to draw: DEMO-002 carries an FMR1 premutation-range count, a CHIP call and a MoChA loss; DEMO-003 a class 4 AnnotSV deletion and a Y path.
 
 ![The person page of DEMO-001 at the end of the demo run: the name with a progress strip of 54 finished steps, a tab column (Look first, Trust, Doctor, Child, Medicines, Ancestors, Traits, Other, Leaves out, Progress) with Doctor open, and the ClinVar card marked worth a look and newer ClinVar available, with its counts and the chromosome chart of its hits](images/demo-live-site.png){ loading=lazy }
 
@@ -16,7 +16,6 @@ What differs from your own site:
 
 - It is a static folder published with these docs, so it has no password and no access log. Nothing in it is private.
 - The run-health card measures an invented machine (64 GiB of RAM, a 2 TiB disk 55% used), not the one that built the page.
-- The CPIC recommendations have no file in the demo sample, so the demo shows that card as not run.
 
 ## Start it
 
@@ -50,7 +49,7 @@ weblog {
 **A person** (`/runs/<run>/`). The name, the declared and measured sex, the families they are in, and a strip with one cell per planned step. Below, one tab per chapter of the report, each named by its question:
 
 - **Look first** opens by default once a step has finished: the cards the report itself flags, in chapter order, each with its headline. A card not listed is for information; its caveats still apply.
-- **Trust, Doctor, Child, Medicines, Ancestors, Traits, Other** follow the report's seven chapters. One card per section, with the section's numbers, its rows (the first ones, then a button for all), its own sentences and its charts. Under each card sits its caveat: the first sentence, then the rest behind "Full caveat". A card is marked "worth a look" (▲) only where the report or the step headline raises a flag, and "for information" (○) otherwise; no card says a section is fine. A card whose step has not ended says so; one whose step failed or is older than its input says that. A newer database release shows on the cards it would change. APOE stays behind its warning in the traits card; the polygenic scores show only once they are placed against the ancestry panel.
+- **Trust, Doctor, Child, Medicines, Ancestors, Traits, Other** follow the report's seven chapters. One card per section, with the section's numbers, its rows (the first ones, then a button for all), its own sentences and its charts. Under each card sits its caveat: the first sentence, then the rest behind "Full caveat". A card is marked "worth a look" (▲) only where the report or the step headline raises a flag, and "for information" (○) otherwise; no card says a section is fine. A card whose step has not ended says so; one whose step failed or is older than its input says that. A newer database release shows on the cards it would change. Some cards draw their numbers as well: the repeat expansions as one gauge per locus (the count against Stranger's normal and pathologic thresholds, with its 95% interval; an allele not sized from short reads is drawn hollow and never called normal), Lp(a) as the KIV-2 count with its 95% interval, CHIP as each call's VAF against its gene's detection limit, the copy numbers of SMN1, SMN2, HBA1, HBA2 and the RCCX module as dots, and the Y haplogroup as its path from the root, with the marker counts of each level. Each drawing has the same numbers as text beside it. APOE stays behind its warning in the traits card; the polygenic scores show only once they are placed against the ancestry panel.
 - **Leaves out** lists what the run does not assess.
 - **Progress** is the step map, a step's detail, Found so far, the run-health card and the database re-check, as before.
 
@@ -62,7 +61,7 @@ Each card links to its section of the report and to the files it names. The head
 - **The report.** Once written, `report.html` opens the run's `<sample>_report.html`, and the files it links to beside it.
 - **The genome viewer.** `/runs/<run>/viewer/` shows the run's reads and variants in igv.js, as [`scripts/owngenome-view.sh`](viewer.md) does on one computer. The report's Viewer links and the charts' "See the reads" links open it at their position.
 
-**A family** (`/runs/<family>/`). The pedigree, drawn from `members.tsv` or `pedigree.tsv`, where each sequenced person with a run here opens their page and shows how many cards their report flags. Then the members, the analyses step 38 planned, each couple's carrier screen in full (genes where both carry a finding, X-linked genes, genes where one partner does), with the screen's caveat and a link to the couple report, who is related how (step 38's relationship check beside the shared segments), and each child's chromosome map.
+**A family** (`/runs/<family>/`). The pedigree, drawn from `members.tsv` or `pedigree.tsv`, where each sequenced person with a run here opens their page and shows how many cards their report flags. Then the members, the analyses step 38 planned, each couple's carrier screen in full (genes where both carry a finding, X-linked genes, genes where one partner does), with the screen's caveat and a link to the couple report, who is related how (step 38's relationship check beside the shared segments, as a grid of every pair, with ⚑ where the measured relationship differs from the declared one), and each child: the stretches inherited from each parent painted per chromosome (coloured by grandparent where step 38 could tell), the de novo candidates and the compound-het pairs, in trans first. Last, the members side by side: their CYP2D6 calls, CPIC phenotypes, HLA types, haplogroups and blood groups, one column each. On a phone the grid becomes a list of pairs.
 
 On a phone the tab column becomes a row that scrolls sideways and each table row becomes a short list of label and value. The pages follow the browser's dark or light setting.
 
