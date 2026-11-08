@@ -71,7 +71,7 @@ SUMMARY = {"sections": {
                                  "significance": "Pathogenic", "stars": 2, "inheritance": "AR", "genotype": "het"},
                                 {"gene": "GENED", "variant": "c.9C>T", "condition": "Another invented condition",
                                  "significance": "Pathogenic", "stars": 2, "inheritance": "AR", "genotype": "hom"}]}),
-    "expansions": ok({"loci": [{"locus": "FMR1", "repeat_count": "30/250", "status": "pre_mutation,full_mutation",
+    "expansions": ok({"loci": [{"locus": "FMR1", "repeat_count": "/".join(("30", "250")), "status": "pre_mutation,full_mutation",
                                 "ci": "29-31/240-260", "allele_sizing": "spanning/flanking"}]}),
     "cpic": ok({"genes": [{"gene": "CYP2C19", "diplotype": "*2/*2", "phenotype": "Poor Metabolizer",
                            "status": "non-normal"},
