@@ -64,7 +64,7 @@ bumps-drop-in-baseline	shard	4	bash-step-11-roh,bash-step-14-imputation,bash-ste
 callability-1-catalog	shard	74	-
 callability-2-genes	shard	32	-
 chip-clonal-1	shard	277	-
-ci-e2e-2-locityper	shard	2289	-
+ci-e2e-2-locityper	shard	158	-
 clinical-filter-mane-and-quality-1-tiers	shard	14	-
 clinical-filter-mane-and-quality-2-vep-norm	shard	2	-
 clinical-filter-mane-and-quality-3-modules	shard	8	clinical-filter-mane-and-quality-1-tiers
@@ -88,6 +88,7 @@ expansions-and-rfc1-1-motif	shard	9	-
 families-file-1	shard	76	-
 family-joint-1	shard	515	-
 fixitfelix-chr21-1	shard	98	-
+followups-ci-3-sv-rule-regions	shard	44	-
 followups-clinvar-traits-1-rules-html	shard	2	-
 followups-cn-1-couple-report	shard	69	-
 followups-nf-1-nf-wiring	shard	240	-
