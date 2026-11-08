@@ -13,7 +13,8 @@
       LPA          bin/copy_number.py call --locus LPA_KIV2: the count, its
                    95% interval and the message (laid out by bin/lpa_kiv2.py),
                    then bin/traits_report.py --marker LPA_KIV2_4925: the 4925G>A
-                   reading beside it, <id>_lpa_kiv2_4925.tsv
+                   reading beside it, <id>_lpa_kiv2_4925.tsv ('not assessed'
+                   when that check fails; the count stays)
 
     Equivalent to: scripts/46-lpa.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -123,8 +124,14 @@ process LPA {
     script:
     """
     copy_number.py call --locus LPA_KIV2 --bedcov ${depth} --bedcov-mapq1 ${depth_q1} --table ${meta.id}_lpa_kiv2.tsv
-    traits_report.py --marker LPA_KIV2_4925 --pileup ${pileup} --copy-table ${meta.id}_lpa_kiv2.tsv \\
-        --marker-out ${meta.id}_lpa_kiv2_4925.tsv
+    # KIV-2 4925G>A beside the count (as scripts/46-lpa.sh [4/4]): a failure
+    # never costs the count; the table then says not assessed.
+    if ! traits_report.py --marker LPA_KIV2_4925 --pileup ${pileup} --copy-table ${meta.id}_lpa_kiv2.tsv \\
+        --marker-out ${meta.id}_lpa_kiv2_4925.tsv; then
+        echo "WARNING: the KIV-2 4925G>A check failed; ${meta.id}_lpa_kiv2_4925.tsv says not assessed." >&2
+        printf 'metric\\tvalue\\nmarker\\tLPA KIV-2 4925G>A\\nrsid\\trs1484919544 (first KIV-2 copy)\\nstatus\\tnot assessed\\nalt_reads\\t.\\ndepth\\t.\\nfraction\\t.\\ncopies\\t.\\nkiv2_copies\\t.\\nmessage\\t%s\\n' \\
+            'LPA KIV-2 4925G>A: not assessed, the check failed; see the log of step 46.' > ${meta.id}_lpa_kiv2_4925.tsv
+    fi
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

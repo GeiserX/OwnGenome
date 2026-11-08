@@ -28,7 +28,8 @@
 #         lpa/<sample>_lpa_kiv2_depth.tsv    samtools bedcov -j over the regions (all MAPQ)
 #         lpa/<sample>_lpa_kiv2_depth_q1.tsv the same, reads of MAPQ 1 or more
 #         lpa/<sample>_lpa_kiv2_4925.tsv     metric<TAB>value: the 4925G>A reading
-#                                            (status, reads, fraction, copies, message)
+#                                            (status, reads, fraction, copies, message);
+#                                            'not assessed' when the check fails
 #         lpa/<sample>_lpa_kiv2_4925_pileup.tsv samtools mpileup at the seven
 #                                            copies of the 4925G>A site (every MAPQ)
 set -euo pipefail
@@ -91,9 +92,16 @@ run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
     --bedcov-mapq1 "$(cpath "$DEPTH_Q1")" --table "$(cpath "$TABLE")"
 
 echo "[4/4] KIV-2 4925G>A beside the count (bin/traits_report.py --marker LPA_KIV2_4925)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
+# A failure here never costs the count (as step 35's SMN1 marker): the
+# 4925G>A table then says not assessed, and the step goes on. The LPA
+# process writes the same table.
+if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
   python3 /pgp-bin/traits_report.py --marker LPA_KIV2_4925 --pileup "$(cpath "$PILEUP")" \
-    --copy-table "$(cpath "$TABLE")" --marker-out "$(cpath "$NULL")"
+    --copy-table "$(cpath "$TABLE")" --marker-out "$(cpath "$NULL")"; then
+  echo "WARNING: the KIV-2 4925G>A check failed; ${NULL##*/} says not assessed." >&2
+  printf 'metric\tvalue\nmarker\tLPA KIV-2 4925G>A\nrsid\trs1484919544 (first KIV-2 copy)\nstatus\tnot assessed\nalt_reads\t.\ndepth\t.\nfraction\t.\ncopies\t.\nkiv2_copies\t.\nmessage\t%s\n' \
+    'LPA KIV-2 4925G>A: not assessed, the check failed; see the log of step 46.' > "$NULL"
+fi
 
 [ -s "$TABLE" ] || { echo "ERROR: no table written (${TABLE})" >&2; exit 1; }
 echo ""
