@@ -1,0 +1,4 @@
+family	analysis	members	decision	reason
+DEMO-FAMILY	joint_call	DEMO-001,DEMO-002,DEMO-003	runs	three members have a gVCF
+DEMO-FAMILY	trio_phasing	DEMO-003	runs	both parents of DEMO-003 are sequenced
+DEMO-FAMILY	couple_carrier	DEMO-001,DEMO-002	runs	the pedigree marks them as partners

@@ -70,6 +70,7 @@
     });
   }
 
+  if (!window.PGP) { return; }  // family.html loads the plugins without live.js
   window.PGP.register({
     name: 'ops',
     panel: function (el_) { box = el_; draw(); },

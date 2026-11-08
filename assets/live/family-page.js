@@ -1,0 +1,406 @@
+// family-page.js: a family's page (assets/live/family.html), from family.json
+// (bin/owngenome_live_family.py): the pedigree with each sequenced person a link to their page, the
+// members with their run progress, what steps 38 and 39 planned, each couple's carrier screen in full
+// (both carry, then X-linked, then one partner), who is related how as a grid (a list of pairs on a
+// phone), each child's stretches painted by parent, the de novo and compound-het candidates, and the
+// members side by side. It draws what the steps wrote and computes nothing about genetics. Text through textContent,
+// the drawing through createElementNS; images from this server only.
+(function () {
+  'use strict';
+  var U = window.PGPUI;
+  if (!U) { return; }
+  var el = U.el, add = U.add, root = document.documentElement;
+  var RESULT = { shared: 'Both carry', x_linked: 'X-linked', one_partner: 'One partner' };
+
+  function section(title, cls) {
+    var s = el('section', { 'class': 'card ' + (cls || '') });
+    add(s, el('h2', {}, title));
+    return s;
+  }
+  function memberUrl(f, s) { return f.runs && f.runs[s] ? f.runs[s].url : null; }
+
+  // The pedigree drawn from the layout the server gives: a sequenced person with a run here is a link.
+  function pedigree(f) {
+    var L = f.layout, st = f.state;
+    var box = el('figure', { 'class': 'pedigree-figure' });
+    if (!L) { add(box, el('p', { 'class': 'dim' }, st.error || 'No pedigree.')); return box; }
+    var s = U.svg('svg', { viewBox: '0 0 ' + L.width + ' ' + L.height, role: 'group', 'aria-label': 'Pedigree of ' + st.name,
+      'class': 'pedigree-svg', preserveAspectRatio: 'xMidYMin meet' });
+    var lines = U.svg('g', { 'class': 'ped-lines' });
+    L.lines.forEach(function (l) { lines.appendChild(U.svg('line', { x1: l[0], y1: l[1], x2: l[2], y2: l[3] })); });
+    s.appendChild(lines);
+    s.style.maxWidth = Math.round(L.width * 1.1) + 'px';  // a two-person pedigree stays its own size
+    var h = L.size / 2;
+    L.people.forEach(function (p) {
+      var url = memberUrl(f, p.sample);
+      var g = U.svg(url ? 'a' : 'g', url ? { href: url, 'class': 'ped-person link', 'aria-label': p.sample + ': open their page' }
+        : { 'class': 'ped-person', 'aria-label': p.sample + (p.sequenced ? ': no run on this server' : ': not sequenced') });
+      var cls = 'ped-shape' + (p.sequenced ? ' filled' : '');
+      var shape = p.sex === 'male' ? U.svg('rect', { x: p.x - h, y: p.y - h, width: L.size, height: L.size, 'class': cls })
+        : p.sex === 'female' ? U.svg('circle', { cx: p.x, cy: p.y, r: h, 'class': cls })
+          : U.svg('polygon', { points: [p.x, p.y - h, p.x + h, p.y, p.x, p.y + h, p.x - h, p.y].join(' '), 'class': cls });
+      g.appendChild(shape);
+      var t = U.svg('text', { x: p.x, y: p.y + h + 17, 'text-anchor': 'middle', 'class': 'ped-name' });
+      t.textContent = p.sample;
+      g.appendChild(t);
+      var r = f.runs && f.runs[p.sample];
+      if (r && r.attention) {
+        var b = U.svg('text', { x: p.x + h + 4, y: p.y - h + 4, 'class': 'ped-flag' });
+        b.textContent = '▲ ' + r.attention;
+        g.appendChild(b);
+      }
+      var title = U.svg('title', {});
+      title.textContent = p.sample + ', ' + (p.sex || 'sex not known') + (p.sequenced ? ', sequenced' : ', not sequenced');
+      g.appendChild(title);
+      s.appendChild(g);
+    });
+    add(box, s);
+    add(box, el('figcaption', { 'class': 'dim' }, 'Square: male. Circle: female. Diamond: sex not known. Filled: sequenced. ' +
+      'A person with a run on this server opens their page; ▲ counts the cards their report flags.'));
+    var d = el('details', { 'class': 'pedigree-image' });
+    add(d, el('summary', {}, 'The drawing as an image'));
+    var img = el('img', { src: st.pedigree, alt: 'Pedigree of ' + st.name, 'class': 'pedigree' });
+    add(d, img);
+    add(box, d);
+    return box;
+  }
+
+  function members(f) {
+    var s = section('Members', 'members');
+    var ul = el('ul', { 'class': 'people' });
+    f.state.members.forEach(function (m) {
+      var r = f.runs && f.runs[m.sample];
+      var li = el('li', { 'class': 'person-card' + (r ? ' has-run' : '') });
+      var inner = r ? el('a', { href: r.url, 'class': 'person-link' }) : el('div', { 'class': 'person-link' });
+      add(inner, U.avatar(m.sex, m.sequenced, r && r.planned ? r.done / r.planned : null));
+      var txt = el('div', { 'class': 'person-text' });
+      add(txt, el('span', { 'class': 'person-name' }, m.sample));
+      var rel = [];
+      if (m.father || m.mother) { rel.push('child of ' + [m.father, m.mother].filter(Boolean).join(' and ')); }
+      if (m.partner) { rel.push('partner of ' + m.partner); }
+      if (rel.length) { add(txt, el('span', { 'class': 'person-place' }, rel.join('; '))); }
+      var state = !m.sequenced ? 'Not sequenced' : !r ? 'No run on this server'
+        : r.state === 'finished' ? 'Finished' : r.done + ' of ' + r.planned + ' steps';
+      add(txt, el('span', { 'class': 'person-state' }, state));
+      if (r && r.results) {
+        add(txt, el('span', { 'class': 'person-look' + (r.attention ? ' attn' : '') },
+          r.attention ? r.attention + ' worth a look' : 'Nothing flagged; see the caveats'));
+      }
+      add(inner, txt);
+      add(li, inner);
+      add(ul, li);
+    });
+    add(s, ul);
+    return s;
+  }
+
+  function analyses(f) {
+    var plan = f.state.plan || [];
+    var p = el('p', { 'class': 'analyses' });
+    if (!plan.length) { add(p, 'Analyses: none planned yet (step 38 writes family_plan.tsv).'); return p; }
+    add(p, el('span', { 'class': 'label' }, 'Analyses: '));
+    plan.forEach(function (r, i) {
+      if (i) { add(p, ', '); }
+      var word = r.decision === 'runs' ? r.analysis.replace(/_/g, ' ') : r.analysis.replace(/_/g, ' ') + ' (' + r.decision + ')';
+      add(p, el('span', { 'class': 'plan-item d-' + r.decision, title: r.reason || '' }, word));
+    });
+    return p;
+  }
+
+  function couples(f) {
+    var s = section('Couple carrier screen', 'couples');
+    add(s, el('p', { 'class': 'caveat-lead' }, f.couple_note));
+    if (!f.state.couples.length) { add(s, el('p', { 'class': 'dim' }, 'The pedigree names no partners.')); }
+    f.state.couples.forEach(function (c) {
+      var p = el('p', { 'data-couple': c.a + ' ' + c.b, 'class': 'couple-line' });
+      if (!c.screened) {
+        p.textContent = c.a + ' and ' + c.b + ': not screened yet (step 39).';
+        add(s, p);
+        return;
+      }
+      var rows = (f.couples || {})[c.a + ' ' + c.b] || [];
+      var one = rows.filter(function (r) { return r.result === 'one_partner'; }).length;
+      // A count of zero is not a clean result: the screen sees only what it lists as assessed.
+      p.textContent = c.a + ' and ' + c.b + ': ' + c.shared + ' gene(s) where both carry a finding, ' + c.x_linked +
+        ' X-linked, ' + one + ' where one partner carries a finding, unless the other partner carries something the ' +
+        'screen does not see. ';
+      if (c.report) { add(p, el('a', { href: c.report }, 'What the screen does not see')); }
+      add(s, p);
+      add(s, U.table({ columns: ['Result', 'Gene', 'Condition', 'Chance for a child', c.a, c.b, 'Why'],
+        rows: rows.map(function (r) {
+          var aFirst = r.partner_a === c.a;
+          return [RESULT[r.result] || r.result, r.gene, r.condition, r.offspring_risk,
+            aFirst ? r.findings_a : r.findings_b, aFirst ? r.findings_b : r.findings_a, r.explanation];
+        }) }, 12));
+    });
+    return s;
+  }
+
+  function pairKey(a, b) { return [a, b].sort().join(' '); }
+  // Step 38's verdicts: ok (shown as matching), warn, mismatch, not_checked (too few sites to tell).
+  function mismatch(v) { return v === 'mismatch' || v === 'warn'; }
+  function related(f) {
+    var s = section('Who is related how', 'related');
+    var rel = f.relationships || [], ibd = f.ibd_pairs || [];
+    if (!rel.length && !ibd.length) { add(s, el('p', { 'class': 'dim' }, 'Not run yet (step 38).')); return s; }
+    var byRel = {}, byIbd = {}, names = [];
+    function seen(n) { if (names.indexOf(n) < 0) { names.push(n); } }
+    rel.forEach(function (r) { byRel[pairKey(r.sample_a, r.sample_b)] = r; seen(r.sample_a); seen(r.sample_b); });
+    ibd.forEach(function (r) { byIbd[pairKey(r.sample_a, r.sample_b)] = r; seen(r.sample_a); seen(r.sample_b); });
+    var order = (f.state.members || []).map(function (m) { return m.sample; });
+    names.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+    function cellText(a, b) {
+      var r = byRel[pairKey(a, b)] || {}, i = byIbd[pairKey(a, b)] || {};
+      var lines = [];
+      lines.push(i.degree || (r.relatedness ? 'relatedness ' + r.relatedness : 'not measured'));
+      if (i.shared_cm) { lines.push(i.shared_cm + ' cM shared'); }
+      var declared = r.declared || i.declared;
+      if (declared) { lines.push('declared ' + declared); }
+      if (r.verdict === 'not_checked') { lines.push('not checked: too few sites'); }
+      else if (!r.verdict) { lines.push('relationship check not run'); }
+      return { lines: lines, flag: mismatch(r.verdict), verdict: r.verdict, reason: r.reason };
+    }
+    // The grid: one cell per pair, the degree first, the declared relation and a flag when they differ.
+    var grid = el('div', { 'class': 'rel-grid-wrap' });
+    var t = el('table', { 'class': 'rel-grid' });
+    var head = el('tr', {});
+    add(head, el('th', { scope: 'col' }, ''));
+    names.forEach(function (n) { add(head, el('th', { scope: 'col' }, n)); });
+    add(t, add(el('thead', {}), head));
+    var body = el('tbody', {});
+    names.forEach(function (a) {
+      var tr = el('tr', {});
+      add(tr, el('th', { scope: 'row' }, a));
+      names.forEach(function (b) {
+        if (a === b) { add(tr, el('td', { 'class': 'self', 'aria-label': 'the same person' }, '·')); return; }
+        if (!byRel[pairKey(a, b)] && !byIbd[pairKey(a, b)]) { add(tr, el('td', { 'class': 'none' }, 'not measured')); return; }
+        var c = cellText(a, b);
+        var td = el('td', { 'class': c.flag ? 'flag' : '', title: c.reason || '' });
+        c.lines.forEach(function (l, i) { add(td, el('span', { 'class': i ? 'sub' : 'main' }, l)); });
+        if (c.flag) { add(td, el('span', { 'class': 'chip chip-attn' }, '⚑ ' + c.verdict)); }
+        add(tr, td);
+      });
+      add(body, tr);
+    });
+    add(t, body);
+    add(grid, t);
+    add(s, grid);
+    // On a phone: a list of pairs.
+    var ul = el('ul', { 'class': 'rel-pairs' });
+    names.forEach(function (a, i) {
+      names.slice(i + 1).forEach(function (b) {
+        if (!byRel[pairKey(a, b)] && !byIbd[pairKey(a, b)]) { return; }
+        var c = cellText(a, b);
+        var li = el('li', { 'class': c.flag ? 'flag' : '' });
+        add(li, el('span', { 'class': 'pair' }, a + ' and ' + b + ': '), c.lines.join(', '));
+        if (c.flag) { add(li, ' ', el('span', { 'class': 'chip chip-attn' }, '⚑ ' + c.verdict + (c.reason ? ': ' + c.reason : ''))); }
+        add(ul, li);
+      });
+    });
+    add(s, ul);
+    add(s, el('p', { 'class': 'dim legend-line' }, 'Each cell: the degree the shared stretches point to (or somalier’s ' +
+      'relatedness), the centimorgans shared and the declared relation. ⚑ marks a pair the measurement does not match.'));
+    var rows = rel.map(function (r) {
+      var i = byIbd[pairKey(r.sample_a, r.sample_b)] || {};
+      return [r.sample_a + ' and ' + r.sample_b, r.declared, r.relatedness, r.ibs0, r.ibs2, i.shared_cm || '.',
+        i.degree || '.', r.verdict, r.reason];
+    });
+    ibd.forEach(function (i) {
+      if (!byRel[pairKey(i.sample_a, i.sample_b)]) {
+        rows.push([i.sample_a + ' and ' + i.sample_b, i.declared, i.relatedness, '.', '.', i.shared_cm, i.degree, '.', '.']);
+      }
+    });
+    var d = el('details', { 'class': 'w-fallback' });
+    add(d, el('summary', {}, 'Every measured number'));
+    add(d, U.table({ columns: ['Pair', 'Declared', 'Relatedness', 'IBS0', 'IBS2', 'Shared cM', 'Degree', 'Verdict', 'Reason'],
+      rows: rows }, 20));
+    add(s, d);
+    if (!ibd.length) { add(s, el('p', { 'class': 'dim' }, 'Shared segments need step 26b’s panel: only the somalier half is here.')); }
+    return s;
+  }
+
+  // A child's stretches, painted: per chromosome the father's copy above the mother's, each stretch
+  // coloured by the grandparent it came from (or by the parent when no grandparent was sequenced).
+  var SIDE = { paternal: 'father', maternal: 'mother' };
+  function painting(f, child, rows) {
+    var lengths = f.chrom_lengths || [];
+    var longest = Math.max.apply(null, lengths.map(function (x) { return x[1]; }).concat([1]));
+    var colours = Object.create(null), next = 1;
+    function colourOf(r) {
+      var who = r.ancestor && r.ancestor !== '.' ? r.ancestor : (r.parent && r.parent !== '.' ? r.parent : r.side + ' side');
+      if (!colours[who]) { colours[who] = { n: next > 5 ? 5 : next++, side: r.side, basis: r.basis }; }
+      return { who: who, n: colours[who].n };
+    }
+    var fig = el('figure', { 'class': 'painting', 'data-painting': child });
+    var grid = el('div', { 'class': 'paint-grid', role: 'img', 'aria-label': 'Stretches ' + child + ' got from each parent, ' +
+      'per chromosome; the table below lists them' });
+    lengths.forEach(function (cl) {
+      var chrom = cl[0];
+      add(grid, el('span', { 'class': 'paint-chr' }, chrom.replace(/^chr/, '')));
+      var both = el('span', { 'class': 'paint-tracks' });
+      ['paternal', 'maternal'].forEach(function (side) {
+        var track = el('span', { 'class': 'paint-track ' + side });
+        track.style.setProperty('--len', (100 * cl[1] / longest).toFixed(2) + '%');
+        rows.filter(function (r) { return r.chrom === chrom && r.side === side; }).forEach(function (r) {
+          var a = parseInt(r.start, 10), b = parseInt(r.end, 10);
+          if (!isFinite(a) || !isFinite(b) || b < a) { return; }
+          var c = colourOf(r);
+          var seg = el('span', { 'class': 'paint-seg anc' + c.n + (r.basis === 'other copy' ? ' other' : ''),
+            title: SIDE[side] + '’s copy, ' + chrom + ':' + a + '-' + b + ', from ' + c.who + ' (' + r.sites + ' sites, ' +
+              r.discordant + ' discordant)' });
+          seg.style.setProperty('--a', (100 * a / cl[1]).toFixed(3) + '%');
+          seg.style.setProperty('--w', Math.max(0.4, 100 * (b - a) / cl[1]).toFixed(3) + '%');
+          add(track, seg);
+        });
+        add(both, track);
+      });
+      add(grid, both);
+    });
+    add(fig, grid);
+    var leg = el('figcaption', { 'class': 'paint-legend' });
+    add(leg, el('span', { 'class': 'dim' }, 'Upper line: the father’s copy; lower: the mother’s. Colour: who the stretch came from. '));
+    Object.keys(colours).forEach(function (who) {
+      var it = el('span', { 'class': 'paint-key' });
+      add(it, el('span', { 'class': 'paint-swatch anc' + colours[who].n + (colours[who].basis === 'other copy' ? ' other' : '') }),
+        who + (colours[who].basis === 'other copy' ? ' (the copy not from the sequenced parent)' : ''));
+      add(leg, it);
+    });
+    add(leg, el('span', { 'class': 'dim' }, ' Grey: no stretch called (no informative site, a gap of the reference).'));
+    add(fig, leg);
+    var d = el('details', { 'class': 'w-fallback' });
+    add(d, el('summary', {}, 'Every stretch (' + rows.length + ')'));
+    add(d, U.table({ columns: ['Copy', 'Chromosome', 'Start', 'End', 'From', 'Sites', 'Discordant', 'Basis'],
+      rows: rows.map(function (r) { return [SIDE[r.side] || r.side, r.chrom, r.start, r.end,
+        r.ancestor !== '.' ? r.ancestor : r.parent, r.sites, r.discordant, r.basis]; }) }, 12));
+    add(fig, d);
+    return fig;
+  }
+
+  function children(f) {
+    var s = section('Each child', 'children');
+    if (!f.state.children.length) { add(s, el('p', { 'class': 'dim' }, 'The pedigree names no child.')); }
+    var plan = {};
+    (f.state.plan || []).forEach(function (r) { plan[r.analysis] = r; });
+    function absent(file, analysis) {
+      var r = plan[analysis];
+      return file + ' is not here' + (r ? ': ' + r.analysis.replace(/_/g, ' ') + ' ' + r.decision + (r.reason ? ' (' + r.reason + ')' : '') : '') + '.';
+    }
+    f.state.children.forEach(function (c, i) {
+      var d = el('details', { 'data-child': c.child });
+      if (i === 0) { d.open = true; }
+      add(d, el('summary', {}, c.child + ': father ' + (c.father || 'not named') + ', mother ' + (c.mother || 'not named')));
+      add(d, el('h3', {}, 'Inherited stretches'));
+      var rows = (f.segments || {})[c.child];
+      if (rows && rows.length) {
+        add(d, painting(f, c.child, rows));
+      } else if (c.segments) {
+        add(d, el('img', { src: c.segments, alt: 'Chromosome map of ' + c.child, 'class': 'segments' }));
+      } else {
+        add(d, el('p', { 'class': 'dim' }, 'No chromosome map yet: step 38 draws one for a child with a sequenced parent.'));
+      }
+      var dn = (f.de_novo || []).filter(function (r) { return r.child === c.child; });
+      add(d, el('h3', {}, 'De novo candidates'));
+      if (dn.length) {
+        add(d, el('p', { 'class': 'dim' }, 'In the child and in neither parent. Most candidates in a genome are genotype errors: ' +
+          'check the reads before reading anything into one.'));
+        add(d, U.table({ columns: ['Variant', 'Child', 'Father', 'Mother', 'Child DP / GQ', 'Allele balance', 'Quality'],
+          rows: dn.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
+            r.mother_gt, r.child_dp + ' / ' + r.child_gq, r.child_ab, r.quality]; }) }, 8));
+      } else {
+        add(d, el('p', { 'class': 'dim' }, (f.trio_files || {})['de_novo.tsv'] ? 'None listed in de_novo.tsv for this child.'
+          : absent('de_novo.tsv', 'trio_phasing')));
+      }
+      var ch = (f.compound_het || []).filter(function (r) { return r.child === c.child; });
+      add(d, el('h3', {}, 'Compound-het pairs'));
+      if (ch.length) {
+        add(d, el('p', { 'class': 'dim' }, 'Two candidate variants in one gene, in trans first: one from each parent.'));
+        add(d, U.table({ columns: ['Gene', 'Phase', 'Variant A', 'From', 'Variant B', 'From'],
+          rows: ch.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
+      } else {
+        add(d, el('p', { 'class': 'dim' }, (f.trio_files || {})['compound_het.tsv'] ? 'None listed in compound_het.tsv for this child.'
+          : absent('compound_het.tsv', 'trio_phasing')));
+      }
+      add(s, d);
+    });
+    return s;
+  }
+
+  // The members side by side: what each one's report says of the genes that differ most between people.
+  function sideBySide(f) {
+    var sb = f.side_by_side;
+    var s = section('Side by side', 'side-by-side');
+    if (!sb || !sb.rows.length) { add(s, el('p', { 'class': 'dim' }, 'No member has a summary yet, or no summary lists these results.')); return s; }
+    add(s, el('p', { 'class': 'dim' }, 'Each member’s own report, one column per person: CYP2D6, the CPIC genes ' +
+      '(phenotypes in CPIC’s words), HLA, the haplogroups and the blood groups.'));
+    var group = null, rows = [];
+    sb.rows.forEach(function (r) {
+      rows.push([r.group === group ? '' : r.group, r.label].concat(r.values));
+      group = r.group;
+    });
+    add(s, U.table({ columns: ['', 'Gene or system'].concat(sb.members), rows: rows }, 14));
+    return s;
+  }
+
+  function more(f) {
+    var s = section('Plan and reports', 'plan');
+    var plan = f.state.plan || [];
+    if (plan.length) {
+      add(s, U.table({ columns: ['Analysis', 'Members', 'Decision', 'Reason'],
+        rows: plan.map(function (r) { return [r.analysis, r.members, r.decision, r.reason]; }) }, 20));
+    }
+    if (f.state.reports.length) {
+      var ul = el('ul', { 'class': 'lines' });
+      f.state.reports.forEach(function (r) { add(ul, add(el('li', {}), el('a', { href: r.url }, r.name))); });
+      add(s, ul);
+    }
+    return s;
+  }
+
+  function draw(f) {
+    var main = document.getElementById('family');
+    main.textContent = '';
+    var page = el('section', { 'class': 'family-page', 'data-plugin': 'family', 'aria-label': 'Family ' + f.state.name });
+    if (f.state.error) {
+      add(page, el('p', {}, f.state.error));
+      add(main, page);
+      root.setAttribute('data-pgp-status', 'ready');
+      return;
+    }
+    var top = el('div', { 'class': 'family-top' });
+    var ped = section('Pedigree', 'ped');
+    add(ped, pedigree(f), analyses(f));
+    add(top, ped, members(f));
+    add(page, top);
+    var grid = el('div', { 'class': 'family-grid' });
+    add(grid, couples(f), related(f));
+    add(page, grid, children(f), sideBySide(f));
+    if ((f.state.plan || []).length || f.state.reports.length) { add(page, more(f)); }
+    add(main, page);
+    root.setAttribute('data-pgp-status', 'ready');
+  }
+
+  // The page asks again every 30 s and redraws only when family.json changed (a member's run moved on,
+  // step 39 finished). A failed first request says so, with a retry; a later one keeps what is shown.
+  var shown = null;
+  function failed() {
+    if (shown !== null) { return; }
+    var main = document.getElementById('family');
+    main.textContent = '';
+    var b = el('button', { type: 'button', 'class': 'more' }, 'Try again');
+    b.addEventListener('click', function () { main.textContent = ''; add(main, el('p', { 'class': 'dim' }, 'Loading the family.')); fetchFamily(); });
+    add(main, el('p', {}, 'The family could not be loaded.'), b);
+    root.setAttribute('data-pgp-status', 'offline');
+  }
+  function fetchFamily() {
+    return U.getJSON('family.json').then(function (f) {
+      if (!f) { failed(); return; }
+      var k = JSON.stringify(f);
+      if (k !== shown) { shown = k; draw(f); }
+    }).catch(failed);
+  }
+  function start() {
+    fetchFamily();
+    window.setInterval(function () { if (!document.hidden) { fetchFamily(); } }, 30000);
+  }
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
+}());

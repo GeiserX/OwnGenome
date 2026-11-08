@@ -16,7 +16,9 @@
 */
 
 include { CPSR               } from '../modules/local/cpsr/main'
-include { CLINVAR_CDNA_CHECK } from '../modules/local/clinvar_screen/main'
+// Step 17's call of step 06's read check, under its own name, so the run's
+// process table and run_state.py count it under step 17 (assets/steps.tsv)
+include { CLINVAR_CDNA_CHECK as CPSR_CDNA_CHECK } from '../modules/local/clinvar_screen/main'
 include { ROH                } from '../modules/local/roh/main'
 include { PRS_PREPARE        } from '../modules/local/prs/main'
 include { PRS_SCORE_SITES    } from '../modules/local/prs/main'
@@ -78,7 +80,7 @@ workflow CLINICAL {
         // Step 17's cDNA read check of CPSR's P/LP rows, with the BAM and
         // exons of step 06's check, or [] for a sample without a BAM, so its
         // table says "not checked" and why. No construct catalog, as step 17.
-        CLINVAR_CDNA_CHECK(
+        CPSR_CDNA_CHECK(
             CPSR.out.tsv_report
                 .map { meta, tsv -> [meta.id, meta, tsv] }
                 .join(ch_bam.map { meta, bam, bai -> [meta.id, [bam, bai]] }, remainder: true)
@@ -88,8 +90,8 @@ workflow CLINICAL {
             [],
             'cpsr'
         )
-        ch_cpsr_cdna = CLINVAR_CDNA_CHECK.out.cpsr_cdna_check
-        ch_versions  = ch_versions.mix(CLINVAR_CDNA_CHECK.out.versions)
+        ch_cpsr_cdna = CPSR_CDNA_CHECK.out.cpsr_cdna_check
+        ch_versions  = ch_versions.mix(CPSR_CDNA_CHECK.out.versions)
     }
 
     //

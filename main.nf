@@ -61,13 +61,12 @@ workflow {
     // ─── Validate inputs ────────────────────────────────────────────────
     // Every parameter must be one nextflow_schema.json declares: Nextflow
     // takes any --name as a new parameter, so a misspelt option (--outdirr,
-    // --max-cpus) would be ignored with no word. --pedigree is read with
-    // containsKey and has no default; config_profile_* are the test
-    // profiles' labels.
+    // --max-cpus) would be ignored with no word. config_profile_* are the
+    // test profiles' labels.
     def schema_params = new groovy.json.JsonSlurper()
         .parseText(file("${projectDir}/nextflow_schema.json").text)['definitions']
         .values().collectMany { group -> (group['properties'] ?: [:]).keySet() as List }
-    def known_params = schema_params + ['pedigree', 'config_profile_name', 'config_profile_description']
+    def known_params = schema_params + ['config_profile_name', 'config_profile_description']
     def unknown_params = params.keySet().findAll { k -> !known_params.contains(k) }.sort()
     if (unknown_params) {
         error "unknown parameter${unknown_params.size() > 1 ? 's' : ''} " +
@@ -332,9 +331,8 @@ workflow {
     // leading family column: one family runs, the one --family_name names
     // (needed when the file holds more than one). Here only the family and
     // sample columns are read; FAMILY_PREPARE (bin/family_report.py prepare)
-    // checks the rest before the joint call starts. Read with containsKey,
-    // so a run without the option is not told about an undefined parameter.
-    def pedigree   = params.containsKey('pedigree') ? params.pedigree : null
+    // checks the rest before the joint call starts.
+    def pedigree   = params.pedigree
     // The family's folder under --outdir: --family_name, else 'family'
     def family_dir = params.family_name ?: 'family'
     def family_ids = []
@@ -616,6 +614,15 @@ workflow {
         error "ERROR: --ancient_panel ${params.ancient_panel} is not a finished panel (no DONE); run scripts/setup.sh --ancient-panel <genome_dir> again."
     }
 
+    // Step 53's database (setup.sh --locityper-data): its DONE is written last,
+    // with the digests of the reference it was built from, so a folder
+    // without it is an install that stopped. Checked here, before any task
+    // runs, as scripts/53-locityper.sh checks it before its first call.
+    if (tools_list.contains('locityper') && params.locityper_data && !workflow.stubRun
+        && !file("${params.locityper_data}/DONE").exists()) {
+        error "ERROR: --locityper_data ${params.locityper_data} has no DONE: run scripts/setup.sh --locityper-data <genome_dir> again."
+    }
+
     // ExpansionHunter variant catalog
     ch_expansion_catalog = Channel.value(params.expansion_catalog ? file(params.expansion_catalog, checkIfExists: true) : [])
 
@@ -875,7 +882,7 @@ workflow {
         }
         def ch_couple_outputs = couple_ids && tools_list.contains('clinvar') ? Channel.empty().mix(
             PGX.out.clinvar_dir, SV.out.delly_vcf, BAM_ANALYSIS.out.expansion_vcf, BAM_ANALYSIS.out.smn_copy_number,
-            BAM_ANALYSIS.out.cn_intervals, SV.out.cnvpytor_vcf
+            BAM_ANALYSIS.out.cn_intervals, SV.out.cnvpytor_vcf, BAM_ANALYSIS.out.cyp21a2
         ).filter { meta, f -> couple_ids.contains(meta.id) }.map { meta, f -> f } : Channel.empty()
         FAMILY(
             ch_gvcf.filter { meta, g, idx -> family_ids.contains(meta.id) },
@@ -1167,6 +1174,8 @@ workflow {
         .join(BAM_ANALYSIS.out.coverage.map       { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.callability.map    { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.cn_intervals.map   { meta, f -> [meta.id, f] }, remainder: true)
+        .join(BAM_ANALYSIS.out.cn_dosage.map      { meta, f -> [meta.id, f] }, remainder: true)
+        .join(BAM_ANALYSIS.out.cyp21a2.map        { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.sample_qc.map      { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.telomere_results.map { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.mito_vcf.map       { meta, f -> [meta.id, f] }, remainder: true)
@@ -1216,6 +1225,16 @@ workflow {
         .join(ch_couple_tables.map                { meta, f -> [meta.id, f] }, remainder: true)
         .filter { items -> items[1] != null }
         .map { items -> [items[1], items[2], items[3..-1].collectMany { f -> (f instanceof List ? f : [f]) }.findAll { f -> f != null } + report_assets] }
+        // The sample's gVCF and its index (DEEPVARIANT's, or the samplesheet's
+        // gvcf columns) go in the list too, with their names in meta.gvcf:
+        // HTML_REPORT links them as vcf/<id>.g.vcf.gz, where the bash report
+        // finds step 03's gVCF. A sample without a gVCF gets no meta.gvcf.
+        .map { meta, vcf, files -> [meta.id, meta, vcf, files] }
+        .join(ch_gvcf.map { meta, gvcf, idx -> [meta.id, [gvcf, idx]] }, remainder: true)
+        .filter { items -> items[1] != null }
+        .map { id, meta, vcf, files, gvcf ->
+            gvcf ? [meta + [gvcf: gvcf.collect { f -> f.name }], vcf, files + gvcf] : [meta, vcf, files]
+        }
 
     // QC files for MultiQC (mosdepth summaries)
     ch_multiqc_files = BAM_ANALYSIS.out.coverage.map { meta, f -> f }

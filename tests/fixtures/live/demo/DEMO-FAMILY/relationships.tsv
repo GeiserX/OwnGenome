@@ -1,0 +1,4 @@
+sample_a	sample_b	declared	expected_relatedness	relatedness	ibs0	ibs0_rate	ibs2	sites	verdict	reason
+DEMO-001	DEMO-002	partners	0	0.012	1410	0.0957	6120	14732	ok	unrelated, as declared
+DEMO-001	DEMO-003	parent-child	0.5	0.497	2	0.0001	7380	14710	ok	first degree, as declared
+DEMO-002	DEMO-003	parent-child	0.5	0.503	1	0.0001	7451	14725	ok	first degree, as declared

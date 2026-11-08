@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-data="{{data}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OwnGenome: people</title>
+<link rel="stylesheet" href="{{assets}}/live.css">
+<script src="{{assets}}/core.js" defer></script>
+<script src="{{assets}}/home.js" defer></script>
+</head>
+<body class="page-home">
+<header class="top">
+  <a class="brand" href="./">OwnGenome</a>
+  <nav class="crumbs" aria-label="Where you are"><span>People</span></nav>
+  <form method="post" action="/logout" class="logout"><button type="submit">Log out</button></form>
+</header>
+<main id="home" class="home">
+  <ul class="runs">{{runs}}</ul>
+</main>
+</body>
+</html>

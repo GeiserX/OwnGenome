@@ -90,6 +90,35 @@ COUPLE_NOTE = ("A screen, not a diagnosis: the couple report (couple_<a>_<b>.md 
                "only. See a genetic counsellor before acting on a result, or on its absence (docs/39-couple.md).")
 PRS_ANCESTRY_NOTE = ("Most PRS scores were developed in European-ancestry populations and predict less well for "
                      "other ancestries, even with an ancestry-adjusted percentile.")
+# The caveats of the sections that had none, printed by both reports and the live site.
+PHARMCAT_NOTE = ("PharmCAT calls star alleles and phenotypes from the variants this genome holds in the genes it "
+                 "covers. A variant it cannot see (a deletion, a duplication, a hybrid gene outside CYP2D6) is not in "
+                 "its answer. Its drug guidance is for a prescriber to read with you: never change a medicine on "
+                 "this report alone.")
+CPIC_NOTE = ("CPIC recommendations follow the phenotype PharmCAT called. They are guidance for prescribers, not a "
+             "prescription. A gene that was not called has no recommendation here, and that is not the same as a "
+             "typical response.")
+PGX_CALLERS_NOTE = ("CYP2D6 sits beside its look-alike CYP2D7, and short reads often cannot tell them apart, so "
+                    "pypgx, Cyrius and step 36 can disagree or give no call. A disagreement or a missing call means "
+                    "the gene was not read reliably here; a clinical CYP2D6 test settles it.")
+CPSR_NOTE = ("CPSR grades variants in cancer predisposition genes with ACMG rules. A pathogenic or likely pathogenic "
+             "row is something to take to a clinical geneticist, not a diagnosis. No row does not rule out an "
+             "inherited cancer risk: large deletions, genes outside its panel and family history are not part of "
+             "this screen.")
+VNTYPER_NOTE = ("The MUC1 repeat is long and GC-rich, and short reads cover it unevenly. VNtyper looks only for "
+                "known frameshifts in it: a negative result lowers the chance of those and does not rule out "
+                "ADTKD-MUC1, and a positive one needs a clinical test (SNaPshot for dupC) to confirm it.")
+SV_CALLERS_NOTE = ("Short reads find large deletions and duplications better than insertions and inversions, and "
+                   "the callers disagree on many events. The totals count every call, most of them common in the "
+                   "population; only the AnnotSV class 4 and 5 rows are graded for disease.")
+COVERAGE_NOTE = ("Mean depth is an average over the genome: some genes get far fewer reads, and the gene "
+                 "callability card lists those. The sex, identity and contamination checks catch a swapped or "
+                 "mixed sample, not every lab error.")
+VARIANTS_NOTE = ("Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 "
+                 "million, most of them common. PASS calls passed the caller's filter; a count says nothing about "
+                 "health on its own.")
+LPA_NOTE = ("The KIV-2 repeat count from read depth is a research estimate, not an Lp(a) level: the level is a "
+            "blood test, and the count explains only part of the difference between people.")
 
 
 def combined_cell(h):
@@ -391,6 +420,9 @@ def pgx_copy_number(S):
 
 # A section the summary lacks (one written before the section existed).
 MISSING = {"title": "", "state": "missing", "note": None, "data": {}}
+
+
+SEX_CHECK_AGREE = "declared and measured sex agree"
 
 
 def freemix_text(q):
@@ -886,6 +918,48 @@ CHAPTERS = (
 )
 # The section id of each summary key.
 SECTION_OF = {k: sid for _, _, _, secs in CHAPTERS for sid, _, keys in secs for k in keys}
+# The caveats of each section, by constant name, in the order the card shows them: the first is the
+# one the live site shows under a card's title. caveat_notes() is unkeyed, so the live site
+# (bin/live_results.py) reads this map; tests/test_live_results.py checks every section id has one.
+SECTION_NOTES = {
+    "qc": ("COVERAGE_NOTE", "KARYOTYPE_NOTE"),
+    "callability": ("CALLABILITY_NOTE",),
+    "variants": ("VARIANTS_NOTE",),
+    "clinvar": ("CLINVAR_FREQ_NOTE", "CDNA_SCAN_NOTE", "DEEP_INTRONIC_NOTE"),
+    "clinical-filter": ("ACMG_NOTE",),
+    "cpsr": ("CPSR_NOTE",),
+    "slivar": ("COMPHET_NOTE",),
+    "exomiser": ("EXOMISER_NOTE",),
+    "structural-variants": ("SV_CALLERS_NOTE", "ANNOTSV_NOTE", "CNVPYTOR_NOTE"),
+    "mei": ("MEI_NOTE",),
+    "expansions": ("EH_NOTE", "NOT_GRADED_NOTE", "RFC1_NOTE"),
+    "vntyper": ("VNTYPER_NOTE",),
+    "mito": ("MITO_NOTE", "MITO_POLYC_NOTE", "MITO_DELETION_NOTE", "MITO_COPIES_NOTE"),
+    "lpa": ("LPA_NOTE",),
+    "chip": ("CHIP_NOTE",),
+    "mosaic": ("MOSAIC_NOTE",),
+    "mosaic-mca": ("MCA_NOTE",),
+    "carrier-list": ("CARRIER_NOTE",),
+    "couple": ("COUPLE_NOTE",),
+    "paralogs": ("PARASCOPY_NOTE", "PARALOG_NOTE", "PARASCOPY_LOCI_NOTE"),
+    "pharmcat": ("PHARMCAT_NOTE",),
+    "cpic": ("CPIC_NOTE",),
+    "cyp2d6": ("PGX_CALLERS_NOTE",),
+    "hla": ("HLA_NOTE", "HLA_DERIVED_NOTE", "KIR_NOTE"),
+    "locityper": ("LOCITYPER_NOTE",),
+    "ancestry-fine": ("ANCESTRY_FINE_NOTE",),
+    "mt-haplogroup": ("EXPLORE_NOTE",),
+    "y-chromosome": ("Y_TREE_NOTE", "YSTR_NOTE", "EXPLORE_NOTE"),
+    "archaic": ("ARCHAIC_NOTE",),
+    "ancient": ("ANCIENT_NOTE",),
+    "roh": ("ROH_NOTE", "ROH_UPD_NOTE", "ROH_F_NOTE", "ROH_BAND_NOTE"),
+    "traits-panel": ("TRAITS_NOTE",),
+    "prs": ("PRS_ANCESTRY_NOTE",),
+    "bloodtype": ("BLOODTYPE_NOTE",),
+    "telomere": ("TELOMERE_NOTE",),
+    "viral": ("VIRAL_NOTE",),
+    "consumer-export": ("CONSUMER_NOTE",),
+}
 
 
 def section_keys(sid):
@@ -974,7 +1048,8 @@ def text_report(s):
         if sqc["state"] in ("ok", "stale"):
             q = sqc["data"]
             w(f"  Sex from the reads (somalier): {q.get('inferred_sex')}"
-              + ("  ** DOES NOT MATCH the declared sex **" if q.get("sex_check") == "mismatch" else ""))
+              + ("  ** DOES NOT MATCH the declared sex **" if q.get("sex_check") == "mismatch" else "")
+              + (f" ({SEX_CHECK_AGREE})" if q.get("sex_check") == "ok" else ""))
             if q.get("sex_check") == "not_checked":
                 w(f"    not checked: {q.get('sex_check_reason')}")
             w(f"  Contamination (VerifyBamID2 FREEMIX): {freemix_text(q)}")
@@ -982,6 +1057,7 @@ def text_report(s):
                 w(f"  ** The same person as: {q['same_person_as']} (a duplicate or a sample swap) **")
         for line in karyotype_lines(S):
             w(f"  {line}")
+        w(f"  {COVERAGE_NOTE}")
         w("")
 
     if head("callability", "Genes This Genome Could Not Read Reliably"):
@@ -1004,6 +1080,7 @@ def text_report(s):
         w(f"  Total variants: {d['total']}")
         w(f"  PASS variants:  {d['pass']}")
         w(f"  SNPs: {d['snps']}  Indels: {d['indels']}")
+        w(f"  {VARIANTS_NOTE}")
         w("")
 
     if head("clinvar", "ClinVar Pathogenic Screen"):
@@ -1066,6 +1143,7 @@ def text_report(s):
         w(f"  Report: {S['pharmcat']['source']} (PharmCAT {d.get('version') or 'version unknown'})")
         if d.get("html_report"):
             w("  HTML report beside it (open in a browser for full details)")
+        w(f"  {PHARMCAT_NOTE}")
         w("")
 
     if head("cpic", "CPIC Drug-Gene Recommendations"):
@@ -1081,6 +1159,7 @@ def text_report(s):
         for warn in d["warnings"]:
             w(f"  WARNING: {warn}")
         w(f"  Drugs per gene: {os.path.join(os.path.dirname(S['cpic']['source']), s['sample'] + '_cpic_recommendations.txt')}")
+        w(f"  {CPIC_NOTE}")
         w("")
 
     if head("pypgx", "pypgx Pharmacogenomics"):
@@ -1121,6 +1200,7 @@ def text_report(s):
             w(f"  Step 36: {verdict}")
         if s["cyp2d6"].get("probable"):
             w(f"  {s['cyp2d6']['probable']['label'].capitalize()}: {probable_text(s['cyp2d6']['probable'])}")
+        w(f"  {PGX_CALLERS_NOTE}")
         w("")
 
     if head("paralogs", "Paralog Genes (Paraphase, PacBio HiFi)"):
@@ -1200,18 +1280,25 @@ def text_report(s):
         w(f"  {ANCESTRY_FINE_NOTE}")
         w("")
 
+    sv_note = [f"  {SV_CALLERS_NOTE}"]  # printed once, under the first structural caller with results
     if head("manta", "Structural Variants (Manta)"):
         d = S["manta"]["data"]
         w(f"  Total SVs: {d['total']}  PASS: {d['pass']}")
+        while sv_note:
+            w(sv_note.pop())
         w("")
     if head("delly", "Structural Variants (Delly)"):
         d = S["delly"]["data"]
         w(f"  Total SVs: {d['total']}  PASS: {d['pass']}")
+        while sv_note:
+            w(sv_note.pop())
         w("")
     if head("cnvpytor", "Copy Number Variants (CNVpytor)"):
         d = S["cnvpytor"]["data"]
         w(f"  Total CNVs: {d['total']} ({d['deletions']} deletions, {d['duplications']} duplications)")
         w(f"  Significant (e-val < 0.01): {d['significant']}")
+        while sv_note:
+            w(sv_note.pop())
         filt = cnvpytor_filtered_text(d)
         if filt:
             w(f"  Significant after filters: {filt}")
@@ -1347,11 +1434,13 @@ def text_report(s):
     if head("lpa", "Lp(a): LPA KIV-2 Repeat Count and Risk Variants"):
         for line in lpa_lines(S["lpa"]["data"]):
             w(f"  {line}")
+        w(f"  {LPA_NOTE}")
         w("")
 
     if head("vntyper", "MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)"):
         for line in vntyper_lines(S["vntyper"]["data"]):
             w(f"  {line}")
+        w(f"  {VNTYPER_NOTE}")
         w("")
 
     if head("chip", "Clonal Haematopoiesis (CHIP, step 49)"):
@@ -1414,6 +1503,7 @@ def text_report(s):
             w("  Classification table has no CLASSIFICATION column.")
         for line in cpsr_lines(d, s["databases"]):
             w(f"  {line}")
+        w(f"  {CPSR_NOTE}")
         w("")
 
     if head("clinical", "Clinical Variant Filter"):
@@ -2553,6 +2643,7 @@ def html_report(s, index=None):
         qc.append(stat("Identity and contamination (step 33)", badge("Not run", "gray")))
     kl = karyotype_lines(S)
     qc += [stat("Sex chromosomes", badge(x.split(": ", 1)[1], "red")) for x in kl[:-1]] + [small_note(x) for x in kl[-1:]]
+    qc.append(small_note(COVERAGE_NOTE))
     qc_note = [f'    <div class="stale">{E(sec["title"] + ": " + stale_note(sec))}</div>'
                for sec in (cov, sexc, sqc, rdc) if stale_note(sec)]
     a("coverage", ['  <div class="card">', "    <h2>Quality Control</h2>"] + qc_note + qc + ["  </div>"])
@@ -2576,7 +2667,8 @@ def html_report(s, index=None):
 
     v = S["variants"]["data"]
     a("variants", card(S["variants"], "Variant Calling", [stat("Total variants", v.get("total")), stat("PASS variants", v.get("pass")),
-                                              stat("SNPs", v.get("snps")), stat("Indels", v.get("indels"))]))
+                                              stat("SNPs", v.get("snps")), stat("Indels", v.get("indels")),
+                                              small_note(VARIANTS_NOTE)]))
 
     c = S["clinvar"]["data"]
     n = c.get("count", 0)
@@ -2614,12 +2706,14 @@ def html_report(s, index=None):
 
     pg = S["pharmcat"]["data"]
     cp = S["cpic"]["data"]
-    pgx_body = [stat("PharmCAT report", badge("Complete", "green") if S["pharmcat"]["state"] in ("ok", "stale")
+    # Never green: a report that was written is not a finding (the frame's own Complete badge is neutral too).
+    pgx_body = [stat("PharmCAT report", badge("Complete", "state") if S["pharmcat"]["state"] in ("ok", "stale")
                      else badge("Not run", "gray"))]
     if pg.get("version"):
         pgx_body.append(stat("PharmCAT version", E(pg["version"])))
     if S["pypgx"]["state"] in ("ok", "stale") and "comparison" in S["pypgx"]["data"]:
         pgx_body.append(stat("PharmCAT vs pypgx conflicts", S["pypgx"]["data"]["comparison"]["conflicts"]))
+    pgx_body.append(small_note(PHARMCAT_NOTE))
     a("pharmcat", card(S["pharmcat"], "Pharmacogenomics", pgx_body))
     if S["pypgx"]["state"] != "missing":
         pd = S["pypgx"]["data"]
@@ -2641,6 +2735,7 @@ def html_report(s, index=None):
         cpic_body.append(stat("PharmCAT report", badge("could not be parsed", "red")))
     cpic_body.append(stat("Tip", '<span style="font-weight:normal;font-size:13px">Recommendations per gene: '
                                  f'cpic/{E(s["sample"])}_cpic_recommendations.txt</span>'))
+    cpic_body.append(small_note(CPIC_NOTE))
     a("cpic", card(S["cpic"], "CPIC Drug Recommendations", cpic_body))
 
     calls = s["cyp2d6"]["calls"]
@@ -2650,13 +2745,14 @@ def html_report(s, index=None):
                         if agree is False else badge("fewer than two usable calls", "gray")))
     cons = s["cyp2d6"].get("consensus")
     if cons:
-        cy_body.append(stat("Step 36", badge(cons.get("result") or "?", "green" if cons.get("passed_to_pharmcat")
+        cy_body.append(stat("Step 36", badge(cons.get("result") or "?", "state" if cons.get("passed_to_pharmcat")
                                              else "yellow")))
         cy_body.append(small_note(("Passed to PharmCAT: " if cons.get("passed_to_pharmcat") else "Not passed to PharmCAT: ")
                                   + (cons.get("reason") or "no reason given")))
     prob = s["cyp2d6"].get("probable")
     if prob:
         cy_body.append(stat(prob["label"].capitalize(), E(probable_text(prob))))
+    cy_body.append(small_note(PGX_CALLERS_NOTE))
     a("cyrius", ["  <div class=\"card\">", "    <h2>CYP2D6 Across Callers</h2>"]
       + [f'    <div class="stale">{E(S[k]["title"] + ": " + stale_note(S[k]))}</div>'
          for k in ("cpic", "pypgx", "cyrius") if S[k]["state"] in ("stale", "failed")]
@@ -2696,6 +2792,7 @@ def html_report(s, index=None):
     if cnvpytor_filtered_text(cn):
         sv_body += [stat("CNVpytor significant after filters", E(cnvpytor_filtered_text(cn))), small_note(CNVPYTOR_NOTE)]
     sv_body.append(stat("Consensus SVs (2+ callers)", sv.get("consensus", "N/A")))
+    sv_body.append(small_note(SV_CALLERS_NOTE))
     notes = [f'    <div class="stale">{E(S[k]["title"] + ": " + stale_note(S[k]))}</div>'
              for k in ("manta", "delly", "cnvpytor", "sv_consensus") if stale_note(S[k])]
     a("manta", ['  <div class="card">', "    <h2>Structural Variants</h2>"] + notes + sv_body + ["  </div>"])
@@ -2724,10 +2821,11 @@ def html_report(s, index=None):
         a("annotsv", card(S["annotsv"], "Structural Variants, Class 4 and 5 (AnnotSV)", body, full=True))
 
     cs = S["cpsr"]["data"]
-    cpsr_body = [stat("CPSR report", badge("Complete", "green") if cs.get("html_report") else badge("No HTML", "gray"))]
+    cpsr_body = [stat("CPSR report", badge("Complete", "state") if cs.get("html_report") else badge("No HTML", "gray"))]
     for k, val in (cs.get("classification") or {}).items():
         cpsr_body.append(stat(k, val))
     cpsr_body += [small_note(line.strip()) for line in cpsr_lines(cs, s["databases"])]
+    cpsr_body.append(small_note(CPSR_NOTE))
     a("cpsr", card(S["cpsr"], "Cancer Predisposition", cpsr_body))
 
     eh = S["expansions"]["data"]
@@ -2834,13 +2932,13 @@ def html_report(s, index=None):
         lp = S["lpa"]["data"]
         a("lpa", card(S["lpa"], "Lp(a): LPA KIV-2 Repeat Count",
                ([stat("Genetic sign of high Lp(a)", badge("Yes", "yellow"))] if lp.get("flag") == "high" else [])
-               + [f"    <p>{E(line)}</p>" for line in lpa_lines(lp)]))
+               + [f"    <p>{E(line)}</p>" for line in lpa_lines(lp)] + [small_note(LPA_NOTE)]))
     if S.get("vntyper", MISSING)["state"] != "missing":
         vn = S["vntyper"]["data"]
         a("vntyper", card(S["vntyper"], "MUC1 VNTR Frameshifts (VNtyper)",
                ([stat("Result", badge(vn.get("status", "."), {"positive": "red", "possible": "yellow",
                                                               "negative": "green"}.get(vn.get("status"), "gray")))])
-               + [f"    <p>{E(line)}</p>" for line in vntyper_lines(vn)]))
+               + [f"    <p>{E(line)}</p>" for line in vntyper_lines(vn)] + [small_note(VNTYPER_NOTE)]))
     if S.get("viral", MISSING)["state"] != "missing":
         a("viral", card(S["viral"], "Viral DNA in the Unmapped Reads", viral_body(S["viral"]["data"]), full=True))
     if S.get("chip", MISSING)["state"] != "missing":

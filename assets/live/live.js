@@ -1,7 +1,10 @@
-// live.js: the live page of one run (assets/live/index.html, served by bin/owngenome_live.py).
-// One data source feeds the page: in live mode state.json plus the run's event stream; with
-// <html data-mode="replay"> a frames.json of recorded states played on a timer. No outside
-// request, no inline script, no eval. Plugins call window.PGP.register({name, onState, onEvent, panel}).
+// live.js: the run's progress on a person's page (assets/live/index.html, served by bin/owngenome_live.py):
+// the step map, the step detail, "Found so far", the event stream and the replay, shown in the
+// Progress tab. One data source feeds the page: in live mode state.json plus the run's event stream;
+// with <html data-mode="replay"> a frames.json of recorded states played on a timer. person.js draws
+// the results from the same states. No outside request, no inline script, no eval. Plugins call
+// window.PGP.register({name, onState, onEvent, panel, slot}); a panel goes into the element whose id
+// is slot when the page has one (the search box in the header), else into the Progress tab.
 (function () {
   'use strict';
   var root = document.documentElement;
@@ -278,7 +281,8 @@
       plugins.push(p);
       if (p.panel) {
         var box = el('section', { 'class': 'card plugin', 'data-plugin': p.name || '' });
-        document.getElementById('plugin-panels').appendChild(box);
+        var slot = (p.slot && document.getElementById(p.slot)) || document.getElementById('plugin-panels');
+        slot.appendChild(box);
         try { p.panel(box); } catch (e) { console.error(p.name, e); }
       }
       if (last && p.onState) { p.onState(last); }

@@ -5,7 +5,8 @@
 #
 # Writes ${GENOME_DIR}/<sample>/run_manifest.tsv, three tab-separated columns
 # (section, key, value):
-#   run      written_utc, written_by, git_commit, declared_sex
+#   run      written_utc, written_by, git_commit, pipeline_version (the OwnGenome
+#            release: the version in nextflow.config's manifest block), declared_sex
 #   version  every NAME=VALUE line of versions.env
 #   image    each *_IMAGE reference and the digest Docker resolved it to
 #            ("not pulled" when the image is not on this machine)
@@ -53,6 +54,19 @@ if git -C "$PGP_ROOT" rev-parse --verify -q HEAD >/dev/null 2>&1; then
   fi
 fi
 row run git_commit "$commit"
+# The OwnGenome release: the version = '...' line inside the manifest { } block
+# of nextflow.config (the release tag is v<version>). No row when there is none.
+release=$(awk '
+  /^[[:space:]]*manifest[[:space:]]*\{/ {inside = 1; next}
+  inside && /^[[:space:]]*\}/ {inside = 0}
+  inside && /^[[:space:]]*version[[:space:]]*=/ {
+    s = $0; sub(/^[^=]*=[[:space:]]*/, "", s); sub(/[[:space:]]*(\/\/.*)?$/, "", s)
+    gsub(/^["\047]|["\047]$/, "", s); print s; exit
+  }' "${PGP_ROOT}/nextflow.config" 2>/dev/null || true)
+if [ ! -r "${PGP_ROOT}/nextflow.config" ]; then
+  echo "WARNING: cannot read ${PGP_ROOT}/nextflow.config: run_manifest.tsv gets no pipeline_version row" >&2
+fi
+[ -z "$release" ] || row run pipeline_version "$release"
 [ -z "$DECLARED_SEX" ] || row run declared_sex "$DECLARED_SEX"
 
 # versions.env as written (comments and blank lines dropped)

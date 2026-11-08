@@ -91,10 +91,13 @@ fixitfelix-chr21-1	shard	98	-
 followups-ci-3-sv-rule-regions	shard	44	-
 followups-clinvar-traits-1-rules-html	shard	2	-
 followups-cn-1-couple-report	shard	69	-
+followups-nf-1-nf-wiring	shard	240	-
 genome-lookup-1	shard	7	-
 genotype-rule-rows-1-str-extra	shard	8	-
 genotype-rules-1-phase	shard	37	-
 genotype-rules-2-g2	shard	20	-
+genotype-rules-2-lpa-null	shard	45	-
+genotype-rules-2-smn1-marker	shard	30	-
 haplogroup-explore-1-files	shard	59	-
 hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-

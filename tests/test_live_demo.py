@@ -12,17 +12,28 @@ Checks:
      once the report step has ended, the re-check only after the run;
   4. the run-health card measures the invented machine, never the machine that
      builds the demo, and no frame holds a path of that machine;
-  5. every link a frame gives is relative and reaches a file of the demo;
+  5. every link a frame gives is relative and reaches a file of the demo, and
+     so is every link of runs.json, results.json and family.json;
   6. every page the build writes carries the server's Content-Security-Policy
      as a meta tag, and no page or script of the demo loads anything from
      outside;
   7. in a headless Chrome (skipped without Chrome, except in CI), served as a
-     static host serves it (no policy header): the runs list, the replay to its
-     last frame, the charts, a search, the re-check banner, the run-health
-     card, the family link and its pedigree, the viewer page, and no policy
-     violation.
-Checks 1, 2, 3 and 5 also run against a planted mistake and must fail there (2:
-a build with one plugin's state hook dropped): a check that cannot fail is no check.
+     static host serves it (no policy header): the home page's people and
+     family, the replay to its last frame, the charts, a search, the re-check
+     banner, the run-health card, the family link and its pedigree, the viewer
+     page, and no policy violation; the person page's cards (the doctor tab
+     with the ClinVar card, its caveat and its chart), the tab row moved with
+     the arrow keys, #s/clinvar focusing its card; the family page with a
+     clickable pedigree and no step map or report link; the widgets of the
+     partner's and the son's pages (the repeat gauge, the Lp(a) interval, the
+     CHIP VAF, the copy-number dots, the Y path) and the AnnotSV and MoChA marks
+     on their genome charts; the family page's relatedness grid, the son's
+     painted stretches (one mark per row of his segments file), his de novo
+     and compound-het tables and the members side by side; and at a phone's
+     width (390 px) no page scrolls sideways.
+Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
+with the son's stretches emptied) and the phone width also run against a planted mistake and must
+fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
 Run: python3 tests/test_live_demo.py
 """
@@ -48,6 +59,7 @@ from test_owngenome_live import Chrome, asset_problems, find_chrome  # noqa: E40
 
 FAILS = []
 S, FAM = build_live_demo.SAMPLE, build_live_demo.FAMILY
+OTHERS = [n for n, _, _ in build_live_demo.OTHERS]
 
 
 def check(desc, ok, detail=""):
@@ -116,7 +128,8 @@ def follow_problems(frames, steps):
 def links(v):
     if isinstance(v, dict):
         for k, x in v.items():
-            if k in ("url", "pedigree", "segments", "report", "table") and isinstance(x, str):
+            # a relatedness row's "segments" is a count, not a file
+            if k in ("url", "pedigree", "segments", "report", "table") and isinstance(x, str) and not x.isdigit():
                 yield x
             else:
                 yield from links(x)
@@ -141,6 +154,27 @@ def link_problems(out, built):
         for k, v in st["plugins"].items():
             if isinstance(v, dict) and isinstance(v.get("file"), str) and not os.path.isfile(os.path.join(base, v["file"])):
                 bad.append(f"{run}: {k} file {v['file']} not in the demo")
+    return bad
+
+
+def json_link_problems(out):
+    """Links of runs.json, results.json and family.json that are absolute or reach no file of the demo."""
+    bad = []
+    for rel, base in [("runs.json", out), (os.path.join("runs", FAM, "family.json"), os.path.join(out, "runs", FAM))] + \
+            [(os.path.join("runs", n, "results.json"), os.path.join(out, "runs", n)) for n in [S] + OTHERS]:
+        with open(os.path.join(out, rel)) as f:
+            data = json.load(f)
+        found = list(links(data))
+        if rel.endswith("results.json"):
+            found += [x for ch in data["chapters"] for c in ch["sections"] for x in c.get("links") or []]
+        if not found:
+            bad.append(f"{rel}: no link at all")
+        for u in found:
+            if u.startswith("https://"):  # an explore link of the report (a haplogroup tree), opened by the reader
+                continue
+            p = os.path.normpath(os.path.join(base, u))
+            if u.startswith("/") or not (os.path.isfile(p) or os.path.isfile(os.path.join(p, "index.html"))):
+                bad.append(f"{rel}: {u}")
     return bad
 
 
@@ -175,9 +209,13 @@ def browser_checks(out):
     b = Chrome(chrome, os.path.join(os.path.dirname(out), "chrome"))
     try:
         b.go(f"{base}/")
-        runs = b.wait("document.querySelectorAll('ul.runs a').length === 2 && "
-                      "Array.from(document.querySelectorAll('ul.runs a')).map(function (a) { return a.getAttribute('href'); }).join(' ')")
-        check("browser: the runs list links the sample and the family", runs == f"runs/{S}/ runs/{FAM}/", runs)
+        people = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.documentElement.dataset.pgpPeople")
+        runs = b.eval("Array.from(document.querySelectorAll('.person-card a.person-link')).map(function (a) { "
+                      "return a.getAttribute('href'); }).join(' ') + ' | ' + Array.from(document.querySelectorAll("
+                      "'.family-head a')).map(function (a) { return a.getAttribute('href'); }).join(' ')")
+        want = " ".join(f"runs/{n}/" for n in [S] + OTHERS) + f" | runs/{FAM}/ runs/{FAM}/"
+        check("browser: the home page shows the three people of the family, each with a run linked, and the family",
+              people == "3" and runs == want, (people, runs))
         b.go(f"{base}/runs/{S}/")
         first = b.wait("document.documentElement.dataset.pgpFrame && document.documentElement.dataset.pgpStatus === 'ready' "
                        "&& document.querySelectorAll('#map g.box').length")
@@ -231,10 +269,164 @@ def browser_checks(out):
         check("browser: the policy blocked nothing on the sample page", not blocked, blocked)
         csp = b.eval("var m = document.querySelector('meta[http-equiv=Content-Security-Policy]'); m && m.content")
         check("browser: the page runs under the meta policy", csp == build_live_demo.CSP, csp)
+        person_checks(b, base)
+        widget_checks(b, base, out)
+        family_depth_checks(b, base, out)
+        phone_checks(b, base)
     finally:
         b.close()
         srv.shutdown()
         srv.server_close()
+
+
+def person_checks(b, base):
+    """The person page at the end of the run: cards, keyboard, a section link; the family page's own view."""
+    b.eval("location.hash = '#q/clinical'; true")
+    n = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.documentElement.dataset.pgpResults")
+    card = b.eval("var c = document.getElementById('card-clinvar'); c && [!!c.querySelector('.caveat .caveat-lead'), "
+                  "!!c.querySelector('figure[data-chart]'), c.classList.contains('attn')].join(' ')")
+    check("browser: the doctor tab shows its cards; ClinVar's has its caveat, its chart and its flag",
+          n and int(n) > 3 and card == "true true true", (n, card))
+    b.eval("var t = document.querySelector('#rail [aria-selected=true]'); t.focus(); "
+           "t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); true")
+    tab = b.wait("document.documentElement.dataset.pgpTab !== 'clinical' && document.documentElement.dataset.pgpTab")
+    check("browser: the arrow key moves to the next chapter", tab == "carrier", tab)
+    b.eval("location.hash = '#s/clinvar'; true")
+    focus = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.activeElement && "
+                   "document.activeElement.id")
+    check("browser: #s/clinvar opens the doctor tab and focuses the ClinVar card", focus == "card-clinvar", focus)
+    b.go(f"{base}/runs/{FAM}/")
+    fam = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && [!document.getElementById('map'), "
+                 "!document.getElementById('report-link'), (document.querySelector('svg.pedigree-svg a') || {"
+                 "getAttribute: function () { return null; } }).getAttribute('href')].join(' ')")
+    check("browser: the family page has a clickable pedigree, no step map and no report link",
+          fam == f"true true ../../runs/{S}/", fam)
+
+
+# The widgets: (person, tab, kind, the marks it must draw) on the demo's other people.
+WIDGETS = [("DEMO-002", "clinical", "str", "[data-widget=str] .w-row", 8),
+           ("DEMO-002", "clinical", "ci", "[data-widget=ci] .w-tick", 1),
+           ("DEMO-002", "clinical", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
+           ("DEMO-003", "carrier", "copies", "[data-widget=copies] li", 5),
+           ("DEMO-003", "ancestry", "ypath", "[data-widget=ypath] li", 5),
+           ("DEMO-002", "clinical", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
+           ("DEMO-003", "clinical", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
+
+
+def widget_counts(b, base):
+    got = {}
+    for person, tab, kind, sel, _ in WIDGETS:
+        b.go("about:blank")  # a new document each time, so the wait never reads the page before
+        b.wait("location.href === 'about:blank'")
+        b.go(f"{base}/runs/{person}/#q/{tab}")
+        b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpTab === %s"
+               % json.dumps(tab))
+        if kind in ("MoChA bar", "AnnotSV span"):
+            b.wait("document.documentElement.dataset.pgpCharts")
+            time.sleep(0.5)
+        got[kind] = b.eval("document.querySelectorAll(%s).length" % json.dumps(sel))
+    return got
+
+
+def widget_problems(got):
+    return [f"{kind}: {got.get(kind)} marks, want {n}" for _, _, kind, _, n in WIDGETS if got.get(kind) != n]
+
+
+def widget_checks(b, base, out):
+    """Every widget kind drawn with its marks on the partner's and the son's pages."""
+    b.call("Network.enable", session=b.session)  # the control below changes person.js: never serve it from cache
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+    got = widget_counts(b, base)
+    bad = widget_problems(got)
+    check("browser: every widget and genome-chart mark is drawn with its marks (" + ", ".join(k for _, _, k, _, _ in WIDGETS)
+          + ")", not bad, bad)
+    js = os.path.join(out, "assets", "person.js")
+    with open(js) as f:
+        keep = f.read()
+    try:
+        with open(js, "w") as f:
+            f.write(keep.replace("add(art, widget(c.widget));", ""))
+        control("person.js without its widget line", not widget_problems(widget_counts(b, base)))
+    finally:
+        with open(js, "w") as f:
+            f.write(keep)
+
+
+def family_depth(b, base):
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{FAM}/")
+    return b.wait("document.documentElement.dataset.pgpStatus === 'ready' && JSON.stringify(["
+                  "document.querySelectorAll('table.rel-grid td:not(.self):not(.none)').length, "
+                  "document.querySelectorAll('[data-painting=\"DEMO-003\"] .paint-seg').length, "
+                  "document.querySelectorAll('details[data-child=\"DEMO-003\"] table.rows').length, "
+                  "document.querySelectorAll('section.side-by-side table.rows thead th').length])")
+
+
+def family_depth_problems(text, rows):
+    got = json.loads(text) if text else [0, 0, 0, 0]
+    want = [6, rows, 3, 2 + 3]  # 3 pairs both ways; the stretches; painting, de novo, pairs; label columns + 3 people
+    return [] if got == want else [f"{got} != {want}"]
+
+
+def family_depth_checks(b, base, out):
+    with open(os.path.join(build_live_demo.EXTRA, FAM, "DEMO-003_segments.tsv")) as f:
+        rows = sum(1 for line in f if line.strip()) - 1
+    bad = family_depth_problems(family_depth(b, base), rows)
+    check("browser: the family page draws the relatedness grid, the son's stretches row for row, his de novo and "
+          "compound-het tables and the members side by side", not bad, bad)
+    fj = os.path.join(out, "runs", FAM, "family.json")
+    with open(fj) as f:
+        keep = f.read()
+    try:
+        planted = json.loads(keep)
+        planted["segments"] = {}
+        with open(fj, "w") as f:
+            json.dump(planted, f)
+        control("family.json with the son's stretches emptied", not family_depth_problems(family_depth(b, base), rows))
+    finally:
+        with open(fj, "w") as f:
+            f.write(keep)
+
+
+def too_wide(b):
+    return b.eval("document.documentElement.scrollWidth > window.innerWidth ? "
+                  "document.documentElement.scrollWidth + ' > ' + window.innerWidth : ''")
+
+
+def phone_checks(b, base):
+    # mobile False: a mobile viewport zooms out to fit a page that overflows, which would hide the overflow.
+    b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False},
+           b.session)
+    try:
+        wide = {}
+        for name, path, ready in (("home", "/", "document.documentElement.dataset.pgpStatus === 'ready'"),
+                                  ("person", f"/runs/{S}/#q/clinical", "document.documentElement.dataset.pgpResults"),
+                                  ("family", f"/runs/{FAM}/", "document.documentElement.dataset.pgpStatus === 'ready'"),
+                                  ("partner", f"/runs/{OTHERS[0]}/#q/clinical", "document.documentElement.dataset.pgpResults")):
+            b.go(base + path)
+            b.wait(ready)
+            if name == "person":
+                b.eval("var s = document.getElementById('replay-slider'); s.value = s.max; "
+                       "s.dispatchEvent(new Event('input')); true")
+                b.wait("document.documentElement.dataset.pgpFrame === document.getElementById('replay-slider').max")
+                time.sleep(1)
+                # Every tab of the person page, not only the one the link opens.
+                tabs = b.eval("Array.prototype.map.call(document.querySelectorAll('[role=tab][data-tab]'), "
+                              "function (t) { return t.getAttribute('data-tab'); }).join(' ')") or ""
+                for tab in tabs.split():
+                    b.eval(f"document.querySelector('[role=tab][data-tab=\"{tab}\"]').click(); true")
+                    time.sleep(0.3)
+                    if too_wide(b):
+                        wide[f"person {tab}"] = too_wide(b)
+                wide["person tabs"] = "" if len(tabs.split()) >= 3 else f"only {tabs!r}"
+            wide[name] = too_wide(b)
+        check("browser: at 390 px no page scrolls sideways", not any(wide.values()), wide)
+        b.eval("var d = document.createElement('div'); d.style.width = '900px'; d.style.height = '4px'; "
+               "document.querySelector('main').appendChild(d); true")
+        control("a 900 px wide block on the family page", not too_wide(b))
+    finally:
+        b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
 
 
 def main():
@@ -289,13 +481,22 @@ def main():
         planted = copy.deepcopy(built)
         planted["family"]["state"]["plugins"]["family"]["pedigree"] = f"/family/{FAM}/pedigree.svg"
         control("an absolute pedigree link", not link_problems(out, planted))
+        bad = json_link_problems(out)
+        check("5. every link of runs.json, results.json and family.json is relative and reaches a file", not bad, bad)
+        with open(os.path.join(out, "runs.json")) as f:
+            idx = json.load(f)
+        with open(os.path.join(out, "runs.json"), "w") as f:
+            json.dump(dict(idx, runs=[dict(r, url="/" + r["url"]) for r in idx["runs"]]), f)
+        control("an absolute link in runs.json", not json_link_problems(out))
+        with open(os.path.join(out, "runs.json"), "w") as f:
+            json.dump(idx, f)
 
         # 6. the policy on every page, nothing from outside
         pages, texts = [], {}
         for p, _, fs in os.walk(out):
             for f in fs:
                 rel = os.path.relpath(os.path.join(p, f), out)
-                if f.endswith((".html", ".js", ".css")) and rel != os.path.join("runs", S, "report.html"):
+                if f.endswith((".html", ".js", ".css")) and rel not in [os.path.join("runs", n, "report.html") for n in [S] + OTHERS]:
                     with open(os.path.join(p, f)) as fh:
                         texts[rel] = fh.read()
                     if f.endswith(".html"):
