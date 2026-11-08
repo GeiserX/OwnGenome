@@ -28,7 +28,17 @@ depth from reads of MAPQ 0 unless a case says otherwise:
      reasons and the advice; a typical count with no risk allele is not
      flagged; without step 42's table the variants are 'not read'; 'too
      little depth' is shown as such; no card and no text section without
-     step 46's table (only the line in the list of steps that did not run).
+     step 46's table (only the line in the list of steps that did not run);
+  8. KIV-2 4925G>A (null-allele) on mpileup lines made up for each case, at
+     the seven GRCh38 copies of the site: 5% of the reads with T is
+     'present' with copies = fraction x (N + 2); reads with C only (the
+     reference) is 'not seen'; 3 reads with T is 'uncertain'; under 100 reads
+     is 'too little depth'; an unreadable pileup is 'not assessed', exit 0;
+     reads at other positions and read starts, ends and indels in the bases
+     column are not counted; when step 46's table shows the aligner left out
+     the reads of MAPQ 0, 'not assessed'; the reading goes to its own table and step 46's
+     table is left byte for byte; without a count the copies are '.'; an
+     output that cannot be written exits 2.
 
 Run: python3 tests/test_lpa_kiv2.py
 """
@@ -240,6 +250,99 @@ def main():
         nothing = collect_summary.collect("S", os.path.join(t, "none", "S"))
         check("report: no card and no text section without step 46",
               "<h2>Lp(a)" not in render_report.html_report(nothing) and "## Lp(a)" not in render_report.text_report(nothing))
+
+    # 8. KIV-2 4925G>A beside the count
+    sites = traits_report.MARKERS["LPA_KIV2_4925"]["copies"]
+
+    def pileup(path, per_site, extra=""):
+        """mpileup lines at the seven copies; per_site is (C reads, T reads) at each."""
+        with open(path, "w") as f:
+            for p in sites:
+                c, t_ = per_site
+                bases = "^]" + "C" * c + "t" * t_ + "$"
+                f.write(f"chr6\t{p}\tN\t{c + t_}\t{bases}\t{'I' * (c + t_)}\n")
+            f.write(extra)
+
+    def table_after(t, name, per_site, n_copies=38, extra=""):
+        """Step 46's table, a pileup, then null-allele; returns (rc, the 4925G>A table, LPA table, pileup, out)."""
+        d = os.path.join(t, name)
+        os.makedirs(d)
+        a, b, o, p, n = (os.path.join(d, x) for x in ("a.tsv", "b.tsv", "S_lpa_kiv2.tsv", "p.tsv", "S_lpa_kiv2_4925.tsv"))
+        bedcov(a, depths(n_copies))
+        bedcov(b, q1(depths(n_copies)))
+        lpa.main(["estimate", "--bedcov", a, "--bedcov-mapq1", b, "--out", o])
+        pileup(p, per_site, extra)
+        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o, "--out", n],
+                            capture_output=True, text=True)
+        tab = dict(x.split("\t", 1) for x in open(n).read().splitlines()[1:]) if os.path.exists(n) else {}
+        return rc, tab, o, p, n
+
+    with tempfile.TemporaryDirectory() as t:
+        rc, tab, o, p, n = table_after(t, "present", (95, 5))
+        check("4925G>A: 5% of the reads with T at the seven copies is present, exit 0",
+              rc.returncode == 0 and tab.get("status") == "present"
+              and tab.get("alt_reads") == "35" and tab.get("depth") == "700", (rc, tab))
+        check("4925G>A: copies = fraction x (N + 2) = 0.05 x 40",
+              tab.get("fraction") == "0.0500" and tab.get("copies") == "2.0" and tab.get("kiv2_copies") == "38.0", tab)
+        check("4925G>A: the message says what a short-read fraction cannot say",
+              "cannot say which chromosome or which repeat" in tab.get("message", ""), tab)
+        check("4925G>A: the first rows name the marker and its dbSNP record",
+              open(n).read().splitlines()[:3] == ["metric\tvalue", "marker\tLPA KIV-2 4925G>A",
+                                                   "rsid\trs1484919544 (first KIV-2 copy)"], open(n).read())
+        d0 = os.path.join(t, "plain")
+        os.makedirs(d0)
+        a0, b0, o0 = (os.path.join(d0, x) for x in ("a.tsv", "b.tsv", "S_lpa_kiv2.tsv"))
+        bedcov(a0, depths(38))
+        bedcov(b0, q1(depths(38)))
+        lpa.main(["estimate", "--bedcov", a0, "--bedcov-mapq1", b0, "--out", o0])
+        check("4925G>A: step 46's table is left byte for byte", open(o).read() == open(o0).read(), open(o).read())
+        n3 = os.path.join(t, "viatr.tsv")
+        res = subprocess.run([sys.executable, os.path.join(REPO, "bin", "traits_report.py"), "--marker", "LPA_KIV2_4925",
+                              "--pileup", p, "--copy-table", o, "--marker-out", n3], capture_output=True, text=True)
+        check("4925G>A: traits_report.py --marker LPA_KIV2_4925 (what step 46 and the LPA process run) writes "
+              "the same table as null-allele", res.returncode == 0 and open(n3).read() == open(n).read(), res)
+        res = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table",
+                              os.path.join(t, "none.tsv"), "--out", n3], capture_output=True, text=True)
+        tab = dict(x.split("\t", 1) for x in open(n3).read().splitlines()[1:])
+        check("4925G>A: without step 46's table the reading stands and the copies are '.'",
+              res.returncode == 0 and tab.get("status") == "present" and tab.get("copies") == "."
+              and tab.get("kiv2_copies") == ".", (res, tab))
+        for share, want in (("0.050", "not assessed"), ("0.900", "present")):
+            lt = os.path.join(t, f"share{share}.tsv")
+            with open(lt, "w") as f:
+                f.write(f"metric\tvalue\nstatus\tnot assessed\nkiv2_copies\t.\nmapq0_share\t{share}\n")
+            res = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", lt, "--out", n3],
+                                 capture_output=True, text=True)
+            tab = dict(x.split("\t", 1) for x in open(n3).read().splitlines()[1:])
+            check(f"4925G>A: a MAPQ 0 share of {share} in step 46's table gives {want} on the same reads",
+                  res.returncode == 0 and tab.get("status") == want
+                  and (want == "present" or "left out the reads that fit several copies" in tab.get("message", "")),
+                  (res, tab))
+        rc, tab, *_ = table_after(t, "ref", (100, 0))
+        check("4925G>A: reads with the reference base only is not seen",
+              tab.get("status") == "not seen" and tab.get("copies") == "."
+              and "not proof of absence" in tab.get("message", ""), tab)
+        rc, tab, *_ = table_after(t, "unc", (100, 0), extra="chr6\t160640667\tN\t3\tTTT\tIII\n")
+        check("4925G>A: 3 reads with T is uncertain", tab.get("status") == "uncertain"
+              and tab.get("alt_reads") == "3", tab)
+        rc, tab, *_ = table_after(t, "thin", (10, 1))
+        check("4925G>A: under 100 reads is too little depth", tab.get("status") == "too little depth", tab)
+        rc, tab, *_ = table_after(t, "other", (100, 0),
+                                  extra="chr6\t160640668\tN\t50\t" + "T" * 50 + "\t.\nchr7\t160640667\tN\t50\t"
+                                  + "T" * 50 + "\t.\nchr6\t160635123\tN\t2\tC+2TTC-1T\tII\n")
+        check("4925G>A: reads at other positions and indel bases are not counted",
+              tab.get("status") == "not seen" and tab.get("alt_reads") == "0" and tab.get("depth") == "702", tab)
+        rc, tab, o, p, n = table_after(t, "bad", (95, 5))
+        with open(p, "w") as f:
+            f.write("not a pileup\n")
+        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o, "--out", n],
+                            capture_output=True, text=True)
+        tab = dict(x.split("\t", 1) for x in open(n).read().splitlines()[1:])
+        check("4925G>A: an unreadable pileup is not assessed, exit 0",
+              rc.returncode == 0 and tab.get("status") == "not assessed", (rc, tab))
+        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o,
+                             "--out", os.path.join(t, "no", "such", "dir.tsv")], capture_output=True, text=True)
+        check("4925G>A: an output that cannot be written exits 2", rc.returncode == 2, rc)
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
     return 1 if FAILS else 0

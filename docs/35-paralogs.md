@@ -66,6 +66,7 @@ With Nextflow: `--tools ...,parascopy --parascopy_data ${GENOME_DIR}/reference/p
 5. The gene-dosage rows (HP, LCE3BC, CCL3L1) the same way, into `${SAMPLE}_cn_dosage.tsv` ([the gene-dosage rows](cn-loci.md#the-gene-dosage-rows)).
 6. `samtools bedcov` over the CYP21A2 row's segments (one pass, every read), `samtools mpileup` without a reference at its PSV sites, then `bin/copy_number.py call --locus CYP21A2 --pileup ...` writes `${SAMPLE}_cyp21a2_psv.tsv`. A failure prints a warning and writes a table that says not assessed (`check_failed`).
 7. The interval rows into `${SAMPLE}_cn_intervals.tsv` ([the interval rows](cn-loci.md#the-interval-rows)).
+8. SMN1 g.27134T>G beside the SMN1 psCN (before the HBA count): `samtools mpileup` without a reference at its SMN1 and SMN2 positions, then `bin/traits_report.py --marker SMN1_27134` with the SMN table writes `${SAMPLE}_smn1_marker.tsv` ([the SMN1 silent-carrier marker](#the-smn1-silent-carrier-marker)). A failure prints a warning and writes a table that says not assessed.
 
 ## Output
 
@@ -75,10 +76,27 @@ All output is written to `${GENOME_DIR}/${SAMPLE}/paralogs/`.
 |---|---|
 | `${SAMPLE}_smn_copy_number.tsv` | One row per region: `chrom`, `start`, `end`, `locus`, `agCN_filter`, `agCN`, `agCN_qual`, `psCN_filter`, `psCN`, `psCN_qual`, `homologous_regions`. A locus that was not assessed has one row over the catalog region (`chrom`, `start`, `end`), with `locus` (the model name), `agCN_filter` and `psCN_filter` (both `not assessed: <reason>`) and `.` in every other column |
 | `${SAMPLE}_<table>_copy_number.tsv` | The same, for every other catalog row (`gba1`, `pms2_pms2cl`, `c4` and the rest of the table above) |
+| `${SAMPLE}_smn1_marker.tsv` | `metric`, `value`: `marker`, `rsid`, `status` (`present`, `not seen`, `uncertain`, `too little depth`, `not assessed`), `alt_reads`, `depth`, `fraction`, `copies` (the fraction times agCN), `smn1_pscn` (the SMN1 psCN at exon 7 with its quality and filter), `agcn`, `message`. The step's log prints the message after the SMN table |
 | `${SAMPLE}_hba_copy_number.tsv` | `metric`, `value`: `status` (`called` or `not assessed`), `alpha_globin_genes`, `estimate`, `hba2_depth`, `hba1_depth`, `flank_left_depth`, `flank_right_depth`, `mapq0_share` (the part of the depth over the two genes from reads of mapping quality 0), `message` |
 | `${SAMPLE}_cn_intervals.tsv` | One line per interval row of `bin/cn_loci.tsv` (ClinGen's recurrent CNV regions, the carrier deletion alleles, the Y chromosome AZF regions): `locus`, `name`, `chrom`, `start`, `end`, `status`, `copies`, `expected`, `change` (`deletion`, `duplication`, `no change`, or `.` when not called), `estimate`, `reason` ([the interval rows](cn-loci.md#the-interval-rows)). Both reports show it, and the couple screen (step 39) reads it for the carrier deletion alleles and AZF |
 | `${SAMPLE}_cyp21a2_psv.tsv` | `metric`, `value`: `status`, `cyp21a2_copies` (the least CYP21A2 copies over the low sites, else the median site's), `module_total` (CYP21A2 plus CYP21A1P copies), `expected_total` (4), `estimate`, `finding` (`none`, `deletion`, `conversion`, `pseudogene_deletion`), `conversion_sites`, one `psv_<site>` row per site (gene, pseudogene and other reads, copies, ratio to the other sites), `target_depth`, `control_depth`, `reason`, `reading` |
 | `${SAMPLE}_parascopy/<table>/` | Parascopy's own output for each catalog row (`smn/` for SMN1): `res.samples.bed.gz`, `res.paralog.bed.gz`, `psvs.vcf.gz` and the rest ([described upstream](https://github.com/tprodanov/parascopy/blob/main/docs/cn_output.md)) |
+
+## The SMN1 silent-carrier marker
+
+Two SMN1 copies is the usual result, but some people with two copies have both on one chromosome and none on the other (2+0): a silent carrier, whom copy number alone cannot find. SMN1 g.27134T>G (rs143838139, `NM_000344.4:c.*3+80T>G`, chr5:70,952,074 in GRCh38) is a marker of SMN1 duplication alleles. In Luo et al. 2014 (Genet Med, PMID 23788250) a two-copy result with the marker raised the residual carrier risk (in African Americans from about 1 in 121 to 1 in 34) and one without it lowered it (to about 1 in 396); the figures depend on ancestry, and in Ashkenazi Jewish people a negative result lowered it from about 1 in 345 to 1 in 580.
+
+SMN2 holds the same 21 bases 875,420 bases upstream, so the reads cannot tell an SMN1 copy of the site from an SMN2 copy. The step adds up the reads at both (every mapping quality, duplicates left out, bases of quality 13 or more) and reads the share with G as a fraction of copies; with a resolved agCN, the copies that carry it are that fraction times agCN.
+
+| `status` | When |
+|---|---|
+| `present` | 3 reads or more with G, and at least 5% of the reads |
+| `not seen` | 1 read with G or none |
+| `uncertain` | between the two |
+| `too little depth` | under 10 reads over the two positions |
+| `not assessed` | the pileup could not be read, or the check failed |
+
+The message reads the marker beside the SMN1 psCN at exon 7 (filter `PASS` and quality 20 or more, the rule of the report's SMN1 line): with two SMN1 copies it says whether the marker raises or lowers the chance of 2+0; with another count, or a psCN that is not resolved, it says the marker refines a two-copy result only. Every message ends with "This marker does not prove 2+0, and its absence does not rule 2+0 out." The reports do not read this table yet; it sits beside the SMN table in the same folder.
 
 ## Runtime
 
@@ -226,6 +244,7 @@ The ratio of a site is its estimate over the median of the sites, so one copy co
 - The e2e case `cyp21a2-short-reads-1-hg002` runs the CYP21A2 block of step 35 on HG002's Illumina reads over the row, unmodified and with a planted In2G conversion and a planted chimeric deletion made from the same reads, and the block of the PARASCOPY module on the unmodified BAM, which must write the same table.
 - The e2e case `hba-short-read-accuracy-1-nf-report` runs the Nextflow `HTML_REPORT` with and without an HBA table and checks the HBA line and the not-assessed list, then stub-runs every tool and checks that `main.nf` passes the table to each `HTML_REPORT` task that got the SMN table, against a copy of the pipeline with that join removed.
 - `tests/test_collect_summary.py` (`cn_report_section`) reads made-up CYP21A2, dosage and interval tables into the summary and both reports: a CYP21A2 deletion, HP 3, LCE3BC 1, CCL3L1 not assessed, a 22q11.2 deletion with its counts; without the tables each line says the table is not in the output; a header without the copy-number columns is unreadable for the dosage, interval, catalog and SMN tables, also with no row.
+- The e2e case `followups-nf-1-nf-wiring` stub-runs the pipeline on the stub pedigree and checks that `main.nf` passes the CYP21A2 and dosage tables to each `HTML_REPORT` task that got the interval table, and each partner's CYP21A2 table to `COUPLE_CARRIER`, against a copy of the pipeline without those lines.
 - The e2e case `cn-report-1-tables` runs steps 24, `generate-report.sh` and 39 in their images on made-up tables: both reports show the CYP21A2 deletion, the dosage loci and the 22q11.2 deletion; step 39 passes each partner's CYP21A2 table, and CFTRdele2,3 present in both partners is named under the shared-risk heading. Red controls: the CYP21A2 table removed, for the report and for one partner.
 
 ## In the Reports
@@ -240,7 +259,7 @@ The same section shows the tables no Parascopy model makes, each read on its own
 
 A table that is not in the run's output reads `not assessed (step 35's <id>_... is not in this run's output)`, so a missing table never reads as a normal result. An SMN, interval or dosage table with a header but without its columns makes the section unreadable, and a CYP21A2 table without a status row reads as not assessed; a catalog table without the copy-number columns makes that locus unreadable, also with no row under the header.
 
-The couple screen reads the CYP21A2 table with `couple_report.py screen --cyp21a2 ID=<id>_cyp21a2_psv.tsv`, where a deletion or a possible conversion is a CYP21A2 carrier finding. Step 39 passes it when a partner's folder holds it. The Nextflow `PARASCOPY` task writes the CYP21A2 and dosage tables, but `main.nf` does not pass them to `HTML_REPORT` or the couple screen yet, so a Nextflow run's reports say they are not in the output.
+The couple screen reads the CYP21A2 table with `couple_report.py screen --cyp21a2 ID=<id>_cyp21a2_psv.tsv`, where a deletion or a possible conversion is a CYP21A2 carrier finding. Step 39 passes it when a partner's folder holds it. In Nextflow, `main.nf` passes the `PARASCOPY` task's CYP21A2 and dosage tables to each sample's `HTML_REPORT`, and the CYP21A2 table of each partner to `COUPLE_CARRIER`, so both reports and the couple screen read them as the bash steps do.
 
 When neither step 35 nor step 35b left a result, both reports print `Paralog copy number: not checked (neither step 35 nor step 35b ran)`, naming a step that failed instead, so a missing check never reads as a normal result. Unless step 35's depth count made a call, or step 35b called both HBA1 and HBA2 (a run limited to other regions with `--paraphase_regions` has neither, and a `no call` row does not count), the "Not Assessed" list also names HBA1/HBA2 copy number.
 
