@@ -1004,6 +1004,13 @@ def _count(n, one, many):
     return f"{words.get(n, n)} {one if n == 1 else many}"
 
 
+def screened(summary):
+    """True when a clinical screen (ClinVar, the clinical filter or CPSR) has a result: only then can the
+    lead or the home page say that no finding needs a doctor."""
+    S = summary.get("sections") or {}
+    return any((S.get(k) or {}).get("state") in ("ok", "stale") for k in ("clinvar", "clinical", "cpsr"))
+
+
 def lead(found, levels, summary):
     """The report's lead paragraph: [[text, bold]] segments (a third item "act" marks the names of the
     findings to act on), plain sentences that name the findings by level. It never says a section is fine: with no finding of a level it says what was assessed."""
@@ -1017,7 +1024,7 @@ def lead(found, levels, summary):
         out += [["Of everything this genome was screened for, ", False],
                 [_count(n, "finding should", "findings should") + " go to a doctor", True],
                 [": " + _names(by["act"]) + ". ", False, "act"]]  # "act": the names a child's page keeps closed
-    elif any((S.get(k) or {}).get("state") in ("ok", "stale") for k in ("clinvar", "clinical", "cpsr")):
+    elif screened(summary):
         out += [["No finding in what these steps assessed needs a doctor; ", True],
                 ["sections 8 and 9 say what they do not see. ", False]]
     else:  # no clinical screen has a result: saying nothing needs a doctor would read as an all-clear
@@ -1082,7 +1089,7 @@ def overview(summary):
     order = {lv: i for i, lv in enumerate(LEVELS)}
     order["trust"] = -1  # a problem with the data comes before any finding read from it
     top = sorted((f for f in r["findings"] if f["level"] != "info"), key=lambda f: order[f["level"]])[:4]
-    return {"attention": r["attention"], "levels": r["levels"],
+    return {"attention": r["attention"], "levels": r["levels"], "screened": screened(summary),
             "top": [{"id": f["id"], "level": f["level"], "title": f["title"]} for f in top],
             "lead": "".join(x[0] for x in r["lead"]),
             # The same lead with the names of the findings to act on left out: a child's tile shows this one.

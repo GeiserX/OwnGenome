@@ -75,7 +75,8 @@
     var unknown = family === UNKNOWN;
     if (unknown) { family = null; }
     var me = family && (family.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
-    var child = unknown || !!(me && (me.father || me.mother));
+    // A family that does not list this person cannot say they are not a child: closed as well.
+    var child = unknown || (!!family && !me) || !!(me && (me.father || me.mother));
     // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
     var closed = child && f.level === 'act' && !draw.open;
     var title = closed ? 'A result to act on' : f.title;
@@ -85,7 +86,8 @@
     var same = (r.findings || []).filter(function (x) { return x.level === f.level; });
     var order = (r.findings || []).filter(function (x) { return x.level !== 'info'; });
     var next = order[order.indexOf(f) + 1];
-    if (next && child && next.level === 'act' && !draw.open) { next = null; }
+    // Opening this finding opens only this one: another result to act on keeps its own veil.
+    if (next && child && next.level === 'act') { next = null; }
     // The rail: back to the report, this page's parts, the next finding of the report.
     var rail = el('aside', { 'class': 'toc frail', 'aria-label': 'This finding' });
     var back = el('a', { 'class': 'back', href: BASE + '#f/' + f.id });
@@ -186,7 +188,7 @@
     }
     // Related findings and the family.
     var rel = (f.related || []).map(function (id) { return (r.findings || []).filter(function (x) { return x.id === id; })[0]; })
-      .filter(function (x) { return x && !(child && x.level === 'act' && !draw.open); });
+      .filter(function (x) { return x && !(child && x.level === 'act'); });
     if (family) {
       var sf = el('section', { 'class': 'sec', id: 'family' });
       add(sf, add(el('div', { 'class': 'sechead' }), el('span', { 'class': 'secnum' }, ROMAN[parts.length - 3]), el('h2', { 'class': 'h2' }, 'In the family')));

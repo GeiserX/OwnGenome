@@ -33,8 +33,9 @@ Checks:
      and compound-het tables and the members side by side; and at a phone's
      width (390 px) no page scrolls sideways (every section open, the finding
      page too) and the person page has its bottom tab bar; on the son's page a
-     planted CPSR result to act on names its gene and variant nowhere (its card
-     included) until "Show the result" is clicked, and then does.
+     two planted CPSR results to act on name their genes and variants nowhere
+     (their card included) until "Show the result" is clicked, and each click
+     opens one result, there and on the finding's own page.
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
 the veil) also run against a planted mistake and must
@@ -406,55 +407,87 @@ def family_depth_checks(b, base, out):
             f.write(keep)
 
 
-# A result to act on planted on the son's page: an invented gene and variant in a CPSR row.
-VEIL_GENE, VEIL_VARIANT = "GENEQ", "c.77del"
+# Two results to act on planted on the son's page: invented genes and variants in two CPSR rows.
+VEIL = (("GENEQ", "c.77del"), ("GENER", "c.88dup"))
 
 
 def veil_text(b, base):
-    """The son's person page: [the whole page's text before any click, the text after the first 'Show the
-    result' button is clicked]. textContent reads closed details too."""
+    """The son's pages: [the person page's text before any click, after one click on the CPSR card's 'Show the result',
+    the first finding's own page after its 'Show the result' click]. textContent reads closed details too."""
     b.go("about:blank")
     b.wait("location.href === 'about:blank'")
     b.go(f"{base}/runs/{OTHERS[1]}/")
     b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpStatus === 'ready' "
            "&& document.querySelector('.veil') && 'drawn'")
     before = b.eval("document.body.textContent")
-    b.eval("document.querySelector('.veil button').click(); true")
+    # The card's own button: a card holding two results opens one per click, as each finding's button does.
+    b.eval("document.querySelector('#card-cpsr .veil button').click(); true")
     time.sleep(0.5)
-    after = b.wait("!document.querySelector('.veil') && document.body.textContent")
-    return before, after
+    after = b.wait("document.body.textContent")
+    fid = b.eval("var a = document.querySelector('[data-finding] h3 a[href*=\"finding/cpsr-\"]'); a && a.getAttribute('href')")
+    page = ""
+    if fid:
+        b.go(f"{base}/runs/{OTHERS[1]}/{fid}")
+        b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.querySelector('.veil') && 'closed'")
+        b.eval("document.querySelector('.veil button').click(); true")
+        page = b.wait("!document.querySelector('.veil') && document.body.textContent")
+    return before, after, page
 
 
-def veil_problems(before, after):
-    out = [f"{w} shown before the click" for w in (VEIL_GENE, VEIL_VARIANT) if w in (before or "")]
-    out += [f"{w} still hidden after the click" for w in (VEIL_GENE, VEIL_VARIANT) if w not in (after or "")]
+def veil_problems(before, after, page):
+    (g1, v1), (g2, v2) = VEIL
+    out = [f"{w} shown before any click" for w in (g1, v1, g2, v2) if w in (before or "")]
+    shown = [w for w in (g1, v1) if w in (after or "")] or [w for w in (g2, v2) if w in (after or "")]
+    if len(shown) != 2:
+        out.append(f"the first click did not open one result: {shown}")
+    # The other result stays closed after one click, on the person page and on the opened finding's page.
+    other = (g2, v2) if shown and shown[0] == g1 else (g1, v1)
+    out += [f"{w} opened by the click on another result" for w in other if w in (after or "")]
+    if not page:
+        out.append("no finding page of a planted result")
+    else:
+        mine = [w for pair in VEIL for w in pair if w in page]
+        if len(mine) != 2:
+            out.append(f"the finding page opened shows {mine}, want only its own gene and variant")
     return out
 
 
 def veil_checks(b, base, out):
-    """On a child's page a result to act on stays closed everywhere, its own section's card too, until it is
-    opened; then it shows."""
+    """On a child's page each result to act on stays closed everywhere, its own section's card too, until it
+    is opened; opening one opens only that one, on the person page and on its own page."""
     rj = os.path.join(out, "runs", OTHERS[1], "results.json")
     js = os.path.join(out, "assets", "person.js")
     with open(rj) as f:
         keep = f.read()
     with open(js) as f:
         keep_js = f.read()
+    made = []
     try:
         with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as f:
             summary = json.load(f)
-        summary.setdefault("sections", {})["cpsr"] = {"state": "ok", "data": {"call_floor_dp": 10, "low_confidence": 0,
-                                                                            "plp": [
-            {"gene": VEIL_GENE, "variant": VEIL_VARIANT, "final": "Pathogenic", "clinvar": "Pathogenic"}]}}
+        summary.setdefault("sections", {})["cpsr"] = {"state": "ok", "data": {"call_floor_dp": 10, "low_confidence": 0, "plp": [
+            {"gene": g, "variant": v, "final": "Pathogenic", "clinvar": "Pathogenic"} for g, v in VEIL]}}
         res = live_results.build(OTHERS[1], summary)
         cpsr = [c for ch in res["chapters"] for c in ch["sections"] if c["id"] == "cpsr"]
         check("browser: the planted CPSR card has its table, so the closed check below has rows to hide",
               bool(cpsr and cpsr[0]["table"] and cpsr[0]["section"] == 1), cpsr)
         with open(rj, "w") as f:
             json.dump(res, f)
+        # Their finding pages, as build_live_demo.person_site writes one per finding: an existing page, its id swapped.
+        fdirs = os.path.join(out, "runs", OTHERS[1], "finding")
+        model = sorted(os.listdir(fdirs))[0]
+        with open(os.path.join(fdirs, model, "index.html")) as f:
+            tpl = f.read()
+        for fd in res["findings"]:
+            if fd["card"] == "cpsr":
+                os.makedirs(os.path.join(fdirs, fd["id"]))
+                made.append(os.path.join(fdirs, fd["id"]))
+                with open(os.path.join(fdirs, fd["id"], "index.html"), "w") as f:
+                    f.write(tpl.replace(f'data-finding="{model}"', f'data-finding="{fd["id"]}"'))
         bad = veil_problems(*veil_text(b, base))
-        check("browser: on the son's page a planted result to act on names its gene and variant nowhere until "
-              "'Show the result' is clicked, and then shows them", not bad, bad)
+        check("browser: on the son's page two planted results to act on name their genes and variants nowhere "
+              "until 'Show the result' is clicked, and each click opens one, on the person page and the finding page",
+              not bad, bad)
         with open(js, "w") as f:
             f.write(keep_js.replace("} else if (closedFs.length) {", "} else if (false) {"))
         control("person.js whose cards ignore the veil", not veil_problems(*veil_text(b, base)))
@@ -463,6 +496,8 @@ def veil_checks(b, base, out):
             f.write(keep)
         with open(js, "w") as f:
             f.write(keep_js)
+        for d in made:
+            shutil.rmtree(d, ignore_errors=True)
 
 
 def too_wide(b):

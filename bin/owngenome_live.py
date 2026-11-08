@@ -841,6 +841,12 @@ class Live:
                 # While a run goes, the summary its page last read (results.json's own) is newer than
                 # summary.json: count from it, so the home never says less than the person page.
                 hit = self.headline_cache.get(name) if item["state"] == "running" else None
+                # Only while that summary is still current: the same steps done and the same summary.json.
+                # Once either moved, the page's next read replaces it; until then summary.json is the newer.
+                done = tuple(s["step"] for s in st["steps"] if s["state"] == "done")
+                sp = os.path.join(r["dir"] or os.path.join(self.root, name), "summary.json")
+                if hit and (hit[0][1] != done or hit[0][3] != self.file_stamp(sp)):
+                    hit = None
                 if hit and hit[2]:
                     lo = self.live_overview.get(name)
                     if not lo or lo[0] != hit[0]:
@@ -855,7 +861,8 @@ class Live:
                 item["attention"] = o["attention"] if o else None
                 item["results"] = mtime is not None
                 if o:  # the Journal home: counts by level, the first findings, the lead
-                    item.update(levels=o["levels"], top=o["top"], lead=o["lead"], lead_closed=o["lead_closed"])
+                    item.update(levels=o["levels"], top=o["top"], lead=o["lead"], lead_closed=o["lead_closed"],
+                                screened=o.get("screened", False))
             else:
                 item["members"] = r.get("members") or []
             out.append(item)

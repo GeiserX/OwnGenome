@@ -11,14 +11,17 @@ Checks:
      every finding id is a safe path part (live_results.FINDING_ID) and sits in its level's section;
   2. the lead paragraph: with a finding to act on it says how many go to a doctor and names each one
      (marked, so a child's page can leave the names out), a data-quality problem comes first, and with no finding it says none needs a doctor and points at
-     sections 8 and 9, never an all-clear (live_results.FORBIDDEN);
+     sections 8 and 9, never an all-clear (live_results.FORBIDDEN); with no clinical screen run it says the
+     clinical screens have no result yet;
   3. through the real server: /runs/<run>/finding/<id>/ sends a browser with no session to the login and
      back, answers the finding page
      with the run and the id filled in and the server's Content-Security-Policy for an id of the run's
-     findings, and a 404 for an id that is not one, for a path-like id and for a run with no such page.
+     findings, and a 404 for an id that is not one, for a path-like id and for a run with no such page;
+  4. /runs.json of a running run counts from the summary its page last read only while that read is
+     current (same steps done, same summary.json), and says whether a clinical screen has a result.
 Each check runs again on a planted mistake and must fail there: 1 with the CPIC rule's level swapped
-to review, 2 with the act findings left out of the lead and with their names unmarked, 3 with the route
-answering any id. A check
+to review, 2 with the act findings left out of the lead and with their names unmarked and with the
+old lead on a run with no clinical screen, 3 with the route answering any id, 4 with a current read. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_journal.py
@@ -275,6 +278,44 @@ def main():
         finally:
             live_results.FINDING_ID = real
             live_results.build = build
+        # 4. the home page's overview of a running run: the summary its page last read, only while current.
+        live = srv[0]
+        run = live.runs()[SAMPLE]
+        real_state = live.base_state
+
+        def running(r, *a, **k):
+            st = real_state(r, *a, **k)
+            return dict(st, run=dict(st["run"], state="running"))
+        live.base_state = running
+        try:
+            st = running(run)
+            done = tuple(x["step"] for x in st["steps"] if x["state"] == "done")
+            stamp = live.file_stamp(os.path.join(d, "summary.json"))
+            extra = copy.deepcopy(summary)
+            extra.setdefault("sections", {})["cpsr"] = SUMMARY["sections"]["cpsr"]
+            want = live_results.overview(summary)["levels"].get("act")
+
+            def act_count(key):
+                live.headline_cache[SAMPLE] = (key, None, extra)
+                live.live_overview.pop(SAMPLE, None)
+                item = [x for x in live.runs_index()["runs"] if x["name"] == SAMPLE][0]
+                return (item.get("levels") or {}).get("act")
+            got = act_count((SAMPLE, done, None, (1, 1)))
+            check("4. the home page drops the page's summary once summary.json has changed since that read",
+                  got == want, (got, want))
+            control("a page summary read before summary.json changed is still used",
+                    act_count((SAMPLE, done, None, stamp)) == want)
+            got = act_count((SAMPLE, done + ("99",), None, stamp))
+            check("4. ...and once the steps done have changed", got == want, (got, want))
+            o = live_results.overview(summary)
+            bare = {"sections": {k: SUMMARY["sections"][k] for k in ("cpic", "coverage")}}
+            check("4. runs.json says whether a clinical screen has a result, so the home page claims nothing without one",
+                  live_results.overview(bare)["screened"] is False and o["screened"] is True
+                  and "screened" in [x for x in live.runs_index()["runs"] if x["name"] == SAMPLE][0],
+                  (live_results.overview(bare)["screened"], o["screened"]))
+        finally:
+            live.base_state = real_state
+            live.headline_cache.pop(SAMPLE, None)
     finally:
         for s in srvs:
             stop(s)

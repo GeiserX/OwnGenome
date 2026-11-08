@@ -182,8 +182,11 @@
       rows.filter(function (r) { return r.result === 'shared'; }).forEach(function (r) {
         var box = el('div', { 'class': 'mini', 'data-shared': r.gene });
         add(box, el('h3', { 'class': 'h3' }, (r.condition || r.gene) + ' (' + r.gene + ')'));
-        add(box, el('p', { 'class': 'soft' }, 'Both carry a change in ' + r.gene + '. Carriers are not affected; a child who inherits both changes is.'));
-        add(box, fourChildren(r.offspring_risk) || el('p', {}, 'Chance per pregnancy, as the screen gives it: ' + (r.offspring_risk || 'not given') + '.'));
+        var four = fourChildren(r.offspring_risk);
+        // A chance other than 1 in 4 means a partner with two changed copies: not the carrier pattern.
+        add(box, el('p', { 'class': 'soft' }, four ? 'Both carry a change in ' + r.gene + '. Carriers are not affected; a child who inherits both changes is.'
+          : 'Both carry a change in ' + r.gene + ', and at least one of them has two changed copies, which is not the carrier pattern. A child who inherits a changed copy from each parent is affected.'));
+        add(box, four || el('p', {}, 'Chance per pregnancy, as the screen gives it: ' + (r.offspring_risk || 'not given') + '.'));
         add(s, box);
       });
       add(s, U.table({ columns: ['Result', 'Gene', 'Condition', 'Chance for a child', c.a, c.b, 'Why'],

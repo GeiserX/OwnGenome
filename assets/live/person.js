@@ -100,7 +100,8 @@
   function isChild() { var m = me(); return !!(m && (m.father || m.mother)); }
   // Results to act on stay closed for a child, and for anyone in a family whose roles are not known yet:
   // the page cannot tell a child apart until family.json has answered.
-  function closedPage() { return isChild() || familyStatus === 'pending' || familyStatus === 'failed'; }
+  // A family that answers without this person cannot say they are not a child either.
+  function closedPage() { return isChild() || familyStatus === 'pending' || familyStatus === 'failed' || (familyStatus === 'known' && !me()); }
   function memberUrl(s) {
     var r = family && family.data.runs && family.data.runs[s];
     return r && r.url ? r.url : null;
@@ -305,7 +306,7 @@
   // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
   // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
   function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
-  function openVeiled(fs) { fs.forEach(function (f) { shown[f.id] = true; }); redraw(true); }
+
   function card(c) {
     var g = gate(c);
     var closedFs = g === 'show' ? veiledOf(c) : [];
@@ -337,10 +338,12 @@
       add(art, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
     } else if (closedFs.length) {
       var v = el('div', { 'class': 'veil' });
+      // One button opens one result: a card with two results to act on asks twice.
       add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
-        'This section holds a result to act on in adult life. It stays closed until you open it.'));
+        (closedFs.length === 1 ? 'This section holds a result' : 'This section holds ' + closedFs.length + ' results') +
+        ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.'));
       var vb = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      vb.addEventListener('click', function () { openVeiled(closedFs); var x = document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
+      vb.addEventListener('click', function () { shown[closedFs[0].id] = true; redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
       add(v, vb);
       add(art, v);
     } else {

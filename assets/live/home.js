@@ -42,6 +42,9 @@
     if (!row.childNodes.length) { add(row, el('span', { 'class': 'dim' }, 'No finding in what was assessed; read the caveats')); }
     return row;
   }
+  // The runs whose results to act on stay closed on this page: a child in any family, and, while a family's
+  // members cannot be read, every run that no readable family lists (it may be that family's child).
+  var closedRuns = {};
   function tile(m, fam, r, colour) {
     var div = el('div', { 'class': 'ptile person-card' + (r ? ' has-run' : ' norun') + (r && r.state === 'running' ? ' running' : ''),
       'data-sample': m.sample });
@@ -54,8 +57,7 @@
     add(meta, (fam ? role(m, fam) + ' · ' : '') + progressText(r));
     if (r && r.failed) { add(meta, ' · ', el('span', { 'class': 'warn' }, r.failed + ' step' + (r.failed > 1 ? 's' : '') + ' not assessed')); }
     add(div, meta);
-    var child = !!fam && fam.members.some(function (x) { return x.sample === m.father || x.sample === m.mother; });
-    var lead = r && (child ? r.lead_closed || '' : r.lead);
+    var lead = r && (closedRuns[m.sample] ? r.lead_closed || '' : r.lead);
     if (lead) {
       // Two sentences: the first often says only that nothing needs a doctor, the second names what differs.
       var one = U.firstSentence(lead), rest = lead.slice(one.length).trim();
@@ -130,12 +132,21 @@
     var done = runs.filter(function (r) { return r.state === 'finished'; });
     var acts = runs.reduce(function (a, r) { return a + ((r.levels && r.levels.act) || 0); }, 0);
     var assessed = runs.filter(function (r) { return r.levels; }).length;
+    // Runs with a clinical screen's result (ClinVar, the clinical filter or CPSR): only those can say that
+    // nothing needs a doctor.
+    var screened = runs.filter(function (r) { return r.levels && r.screened; }).length;
     // A child of a family: results to act on stay closed on this page too (the report opens them).
-    var children = {};
+    closedRuns = {};
+    var listed = {};
+    var rolesUnknown = fams.some(function (f) { return !f.members.length; });
     fams.forEach(function (f) {
-      f.members.forEach(function (m) { if (f.members.some(function (x) { return x.sample === m.father || x.sample === m.mother; })) { children[m.sample] = true; } });
+      f.members.forEach(function (m) {
+        listed[m.sample] = true;
+        if (f.members.some(function (x) { return x.sample === m.father || x.sample === m.mother; })) { closedRuns[m.sample] = true; }
+      });
     });
-    function closedTitle(r, f) { return children[r.name] && f.level === 'act' ? 'A result to act on, closed until opened on the report' : f.title; }
+    if (rolesUnknown) { runs.forEach(function (r) { if (!listed[r.name]) { closedRuns[r.name] = true; } }); }
+    function closedTitle(r, f) { return closedRuns[r.name] && f.level === 'act' ? 'A result to act on, closed until opened on the report' : f.title; }
     // The dateline and the headline sentence.
     var dl = el('div', { 'class': 'dateline' });
     var today = new Date();
@@ -153,8 +164,9 @@
       add(h1, (going.length ? cap(word(done.length)) + (done.length === 1 ? ' is' : ' are') : cap(word(done.length)) + ' report' + (done.length === 1 ? ' is' : 's are')) + ' finished, and ' +
         (acts ? word(acts) + ' finding' + (acts === 1 ? ' should' : 's should') + ' go to a doctor.'
           : !assessed ? 'none has results to read yet.'
-            : assessed < runs.length ? 'no finding in the ' + word(assessed) + ' with results so far needs a doctor.'
-              : 'no finding in what was assessed needs a doctor.'));
+            : !screened ? 'no clinical screen has a result yet.'
+              : screened < runs.length ? 'no finding in the ' + word(screened) + ' with a clinical screen so far needs a doctor.'
+                : 'no finding in what was assessed needs a doctor.'));
     }
     add(left, h1);
     var sub = fams.map(function (f) { return 'Family ' + f.name + ': ' + f.members.filter(function (m) { return m.sequenced; }).length + ' genomes, read alone and together.'; });
@@ -217,7 +229,7 @@
       add(c2, el('div', { 'class': 'fig-label' }, 'Found so far'));
       var fs = el('ul', { 'class': 'fs' });
       (r.top || []).forEach(function (f) { add(fs, add(el('li', {}), U.findingLevel(f.level, ''), ' ', closedTitle(r, f))); });
-      if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
+      if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(closedRuns[r.name] ? r.lead_closed || '' : r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
       add(c2, fs);
       var c3 = el('div', {});
       add(c3, el('div', { 'class': 'fig-label' }, 'Timing'));
