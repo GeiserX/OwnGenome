@@ -492,7 +492,7 @@
     if (rel.length) {
       var box = el('div', {});
       rel.slice(0, 4).forEach(function (r, i) { if (i) { add(box, el('br', {})); } add(box, el('a', { href: '#f/' + r.id }, r.title)); });
-      add(side, note('Linked', box));
+      add(side, note('Linked', box, 'linked-note'));
     }
     add(row, art, side);
     return row;
