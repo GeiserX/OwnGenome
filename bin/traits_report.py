@@ -36,6 +36,31 @@ table, right after its last site row, where the reports read it.
 and exits 1 on the first list of problems; tests/test_traits_table.py and
 tests/test_traits_report.py run the same checks. Standard library only (it
 runs in the plain python image and in the WhatsHap image).
+
+Copy-aware markers (MARKERS): two well-sourced markers of the rule catalog's
+list sit in sequence the genome holds more than once, so a gVCF genotype at
+one position cannot read them and they are not rule lines. Each is read from
+the BAM instead, by the step that counts its copies: the reads at every
+GRCh38 copy of the site are added up, and the share that carries the marker's
+base is a fraction of copies, not a diploid genotype.
+  LPA_KIV2_4925  the LPA KIV-2 4925G>A splice variant (Coassin et al. 2017,
+                 PMID 28444229), read by step 46 beside the KIV-2 count
+                 (laid out by bin/lpa_kiv2.py)
+  SMN1_27134     SMN1 g.27134T>G (rs143838139; Luo et al. 2014, PMID
+                 23788250), read by step 35 beside the SMN1 psCN
+
+  traits_report.py --marker-regions NAME
+      print the marker's copy sites as samtools regions (chrom:pos-pos)
+  traits_report.py --marker LPA_KIV2_4925 --pileup P --copy-table LPA.tsv --marker-out OUT.tsv
+      the 4925G>A table beside step 46's table LPA.tsv, whose count gives
+      the copies that carry it (laid out by bin/lpa_kiv2.py); exit 2 when
+      OUT.tsv cannot be written
+  traits_report.py --marker SMN1_27134 --pileup P [--copy-table SMN.tsv] --marker-out OUT.tsv
+      read `samtools mpileup` at those sites (no reference, every MAPQ) and
+      write OUT.tsv (metric<TAB>value). SMN.tsv is step 35's SMN table: the
+      SMN1 psCN at exon 7 and the agCN at the marker site come from it. Exit
+      0 whatever the status (an unreadable pileup is 'not assessed'); 2 when
+      OUT.tsv cannot be written.
 """
 import argparse
 import itertools
@@ -504,6 +529,232 @@ def report(rows, recs, rules=None, phased=None, lines=None):
     return out
 
 
+# --- Copy-aware markers --------------------------------------------------------------
+
+# Each marker: the dbSNP record of one copy (rsID, chrom, POS, REF, ALT of
+# dbSNP b157's GRCh38 VCF, read from NCBI's Variation API on 2026-11-07), every
+# GRCh38 copy of the site (1-based), the plus-strand base pair read there, and
+# the GRCh38 sequence of 10 bases on each side of every copy (UCSC hg38 and
+# Ensembl GRCh38 agree, 2026-11-07): the same 21 bases at each copy, which is
+# why the reads cannot be placed on one copy. tests/test_traits_report.py
+# checks every copy against the context and the record against the marker, and
+# tests/e2e/genotype-rules-2-smn1-marker.sh compares the records with dbSNP.
+#   min_depth     fewer reads over all copies together: too little depth
+#   min_alt       reads with the marker's base for 'present' ...
+#   min_fraction  ... and a share of the reads at least this
+#   max_absent    this many reads with the marker's base or fewer: 'not seen'
+#                 (one or two reads can be sequencing errors); between the two
+#                 the marker is 'uncertain'
+MARKERS = {
+    # KIV-2 4925G>A: the last base of the second KIV-2 exon (its donor splice
+    # site), G>A on LPA's minus strand, so C>T on the plus strand. GRCh38 holds
+    # it at the end of each of the six KIV-2 units (exons 5, 7, ..., 15 of
+    # ENST00000316300.10; NM_005577.4:c.733G>A at the first, p.Ala245Thr) and
+    # at the near-identical last exon of KIV-1 (exon 3, c.391): seven copies,
+    # the block bin/lpa_kiv2.py counts as N + 2 copies (N KIV-2 repeats and
+    # one KIV-1 per chromosome). dbSNP names the first KIV-2 copy only.
+    "LPA_KIV2_4925": {
+        "name": "LPA KIV-2 4925G>A", "chrom": "chr6", "ref": "C", "alt": "T",
+        "dbsnp": ("rs1484919544", "chr6", 160640667, "C", "T"),
+        "copies": (160646214, 160640667, 160635123, 160629574, 160624030, 160618484, 160612932),
+        "context": "GACTCCTTACCTTGTTCGGAA",
+        "min_depth": 100, "min_alt": 5, "min_fraction": 0.008, "max_absent": 2,
+    },
+    # SMN1 g.27134T>G is NM_000344.4:c.*3+80T>G in intron 7 (plus strand).
+    # SMN2 holds the same 21 bases 875,420 bases upstream, as at exon 7.
+    "SMN1_27134": {
+        "name": "SMN1 g.27134T>G", "chrom": "chr5", "ref": "T", "alt": "G",
+        "dbsnp": ("rs143838139", "chr5", 70952074, "T", "G"),
+        "copies": (70952074, 70076654),
+        "context": "TTTTTGAACATTTAAAAAGTT",
+        "min_depth": 10, "min_alt": 3, "min_fraction": 0.05, "max_absent": 1,
+    },
+}
+MARKER_STATUSES = ("present", "not seen", "uncertain", "too little depth", "not assessed")
+# SMN1 exon 7 (c.840, chr5:70,951,946): where step 35's report reads the SMN1 psCN.
+SMN1_EXON7 = ("chr5", 70951946)
+SMN1_NOT_PROOF = "This marker does not prove 2+0, and its absence does not rule 2+0 out."
+
+
+def marker_errors(name, m=None, dbsnp=None):
+    """Problems of one marker (empty when it is consistent): the dbSNP record
+    is one of its copies with its ref and alt, on the plus strand and not
+    swapped; every copy sits in the middle of the same context, whose middle
+    base is the ref."""
+    m = MARKERS[name] if m is None else m
+    rs, chrom, pos, ref, alt = m["dbsnp"] if dbsnp is None else dbsnp
+    comp = {"A": "T", "C": "G", "G": "C", "T": "A"}
+    errs = []
+    if chrom != m["chrom"] or pos not in m["copies"]:
+        errs.append(f"{name}: dbSNP places {rs} at {chrom}:{pos}, not at one of the marker's copies")
+    if (m["ref"], m["alt"]) == (alt, ref):
+        errs.append(f"{name}: ref and alt are swapped (marker {m['ref']}>{m['alt']}, dbSNP {ref}>{alt})")
+    elif (m["ref"], m["alt"]) == (comp.get(ref), comp.get(alt)):
+        errs.append(f"{name}: the alleles are the minus-strand bases (marker {m['ref']}>{m['alt']}, "
+                    f"dbSNP {ref}>{alt}): write the plus-strand bases")
+    elif (m["ref"], m["alt"]) != (ref, alt):
+        errs.append(f"{name}: marker {m['ref']}>{m['alt']}, dbSNP {ref}>{alt}")
+    ctx = m["context"]
+    if len(ctx) % 2 != 1 or ctx[len(ctx) // 2] != m["ref"]:
+        errs.append(f"{name}: the middle base of the context is not the ref {m['ref']}")
+    if len(set(m["copies"])) != len(m["copies"]):
+        errs.append(f"{name}: a copy is listed twice")
+    return errs
+
+
+def marker_regions(name):
+    """The copy sites as samtools regions, chrom:pos-pos, in the marker's order."""
+    m = MARKERS[name]
+    return [f"{m['chrom']}:{p}-{p}" for p in m["copies"]]
+
+
+def read_marker_pileup(path, name):
+    """(ref reads, marker reads, other reads) over every copy of the marker,
+    from `samtools mpileup` lines (chrom, pos, ref, depth, bases, ...) at its
+    sites, without a reference: a read that carries the marker's base counts
+    wherever the aligner put it. Lines at other positions are left out; a
+    copy with no line has no read. Raises ValueError on a line that is not
+    an mpileup line."""
+    import copy_number  # bin/: its mpileup base counter, shared with the CYP21A2 sites
+    m = MARKERS[name]
+    want = set(m["copies"])
+    n = dict.fromkeys("ACGT", 0)
+    with open(path, errors="replace") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            c = line.rstrip("\n").split("\t")
+            if len(c) < 5 or not c[1].isdigit():
+                raise ValueError(f"{path}: expected samtools mpileup lines (chrom, pos, ref, depth, bases, ...); "
+                                 f"got {line.strip()[:80]!r}")
+            if c[0] != m["chrom"] or int(c[1]) not in want:
+                continue
+            for k, v in copy_number.count_bases(c[4], c[2]).items():
+                n[k] += v
+    ref, alt = n[m["ref"]], n[m["alt"]]
+    return ref, alt, sum(n.values()) - ref - alt
+
+
+def assess_marker(name, counts):
+    """{status, alt_reads, depth, fraction} of a marker from read_marker_pileup's
+    counts (None: the pileup could not be read). depth counts the reads with
+    the ref or the marker's base."""
+    m = MARKERS[name]
+    if counts is None:
+        return {"status": "not assessed", "alt_reads": ".", "depth": ".", "fraction": "."}
+    ref, alt, _ = counts
+    depth = ref + alt
+    out = {"alt_reads": str(alt), "depth": str(depth), "fraction": f"{alt / depth:.4f}" if depth else "."}
+    if depth < m["min_depth"]:
+        out["status"] = "too little depth"
+    elif alt >= m["min_alt"] and alt / depth >= m["min_fraction"]:
+        out["status"] = "present"
+    elif alt <= m["max_absent"]:
+        out["status"] = "not seen"
+    else:
+        out["status"] = "uncertain"
+    return out
+
+
+def smn_copy_numbers(path):
+    """(SMN1 psCN at exon 7 or None, its text, agCN at the marker site or None)
+    from step 35's SMN table. A copy number counts only with filter PASS and
+    quality 20 or more, the threshold of step 35's reading."""
+    def regions(r):
+        out = [(r["chrom"], int(r["start"]) + 1, int(r["end"]))]
+        for h in (r.get("homologous_regions") or "").split(","):
+            mm = re.match(r"^([^:]+):(\d+)-(\d+)", h.strip())
+            if mm:
+                out.append((mm.group(1), int(mm.group(2)), int(mm.group(3))))
+        return out
+
+    def value(r, kind, idx):
+        vals = (r.get(kind) or "").split(",")
+        quals = (r.get(kind + "_qual") or "").split(",")
+        v = vals[idx] if idx < len(vals) else "."
+        q = quals[idx] if idx < len(quals) else "."
+        try:
+            ok = (r.get(kind + "_filter") == "PASS" and float(q) >= 20 and v.isdigit())
+        except ValueError:
+            ok = False
+        return ((int(v) if ok else None),
+                f"{v} (quality {q}, filter {r.get(kind + '_filter') or '.'})" + ("" if ok else ", not resolved"))
+
+    sm = MARKERS["SMN1_27134"]
+    ps, ps_text, ag = None, "not read (no SMN table from step 35)", None
+    if not path or not os.path.exists(path):
+        return ps, ps_text, ag
+    ps_text = "not read (no row of the SMN table covers SMN1 exon 7)"
+    with open(path, errors="replace") as f:
+        header = f.readline().rstrip("\n").split("\t")
+        for line in f:
+            r = dict(zip(header, line.rstrip("\n").split("\t")))
+            try:
+                regs = regions(r)
+            except (KeyError, ValueError):
+                continue
+            for i, (c, s, e) in enumerate(regs):
+                if c == SMN1_EXON7[0] and s <= SMN1_EXON7[1] <= e:
+                    ps, ps_text = value(r, "psCN", i)
+                # agCN is one value per row: the row whose region, or a
+                # homologous region, holds a copy of the marker site
+                if c == sm["chrom"] and any(s <= p <= e for p in sm["copies"]):
+                    ag = value(r, "agCN", 0)[0]
+    return ps, ps_text, ag
+
+
+def smn1_marker(counts, smn_table=None):
+    """[(metric, value)] of step 35's SMN1 marker table: the marker's reading
+    beside the SMN1 psCN. The message always says the marker does not prove
+    2+0 (SMN1_NOT_PROOF)."""
+    m = MARKERS["SMN1_27134"]
+    a = assess_marker("SMN1_27134", counts)
+    try:
+        ps, ps_text, ag = smn_copy_numbers(smn_table)
+    except OSError as e:
+        print(f"WARNING: {e}; the SMN copy numbers are not read", file=sys.stderr)
+        ps, ps_text, ag = None, "not read (the SMN table could not be read)", None
+    copies = "."
+    if a["status"] in ("present", "uncertain") and ag is not None and a["fraction"] != ".":
+        copies = f"{float(a['fraction']) * ag:.1f}"
+    st = a["status"]
+    if st == "not assessed":
+        head = f"{m['name']} ({m['dbsnp'][0]}): not assessed, the reads at the marker could not be read."
+    else:
+        head = (f"{m['name']} ({m['dbsnp'][0]}): {st}, {a['alt_reads']} of {a['depth']} reads carry G at the "
+                "SMN1 and SMN2 copies of the site together"
+                + (f" (about {copies} of the {ag} SMN1 and SMN2 copies)" if copies != "." else "")
+                + (f", under the {m['min_depth']} reads a reading needs" if st == "too little depth" else "")
+                + ". The reads cannot tell whether a G sits on SMN1 or SMN2.")
+    if ps == 2:
+        body = {"present": " With two SMN1 copies, this marker goes with a higher chance that both sit on one "
+                           "chromosome (2+0, a silent carrier): in Luo 2014 it raised the residual carrier risk of a "
+                           "two-copy result (in African Americans from about 1 in 121 to 1 in 34); the figures "
+                           "depend on ancestry.",
+                "not seen": " With two SMN1 copies and no marker, the chance of 2+0 is lower than for a two-copy "
+                            "result alone (in Luo 2014, in African Americans, about 1 in 396 against 1 in 121), "
+                            "not zero; the figures depend on ancestry."}.get(
+            st, " With two SMN1 copies the marker would refine the chance of 2+0; here it gives no reading.")
+    elif ps is not None:
+        body = (f" SMN1 has {ps} cop{'y' if ps == 1 else 'ies'} here; the marker refines the carrier risk of a "
+                "two-copy result only.")
+    else:
+        body = f" SMN1 copy number: {ps_text}; the marker refines the carrier risk of a two-copy result only."
+    return [("marker", m["name"]), ("rsid", m["dbsnp"][0]), ("status", st), ("alt_reads", a["alt_reads"]),
+            ("depth", a["depth"]), ("fraction", a["fraction"]), ("copies", copies),
+            ("smn1_pscn", ps_text), ("agcn", "." if ag is None else str(ag)),
+            ("message", head + body + " " + SMN1_NOT_PROOF)]
+
+
+def write_metric_table(path, rows):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("metric\tvalue\n")
+        for k, v in rows:
+            f.write(f"{k}\t{v}\n")
+    os.replace(tmp, path)
+
+
 def write_tsv(path, out, columns=OUT_COLUMNS):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -524,7 +775,41 @@ def main(argv=None):
     ap.add_argument("--rules-out", help="the sample's genotype rules (TSV)")
     ap.add_argument("--phase-sites", metavar="VCF", help="write the sites WhatsHap must phase and exit")
     ap.add_argument("--check-table", metavar="TABLE", help="check the table's schema (and --rules') and exit")
+    ap.add_argument("--marker-regions", metavar="NAME", choices=sorted(MARKERS),
+                    help="print a copy-aware marker's sites as samtools regions and exit")
+    ap.add_argument("--marker", choices=sorted(MARKERS), help="read a copy-aware marker from --pileup")
+    ap.add_argument("--pileup", help="samtools mpileup at the --marker-regions sites")
+    ap.add_argument("--copy-table", help="SMN1_27134: step 35's SMN table (the SMN1 psCN and the agCN); "
+                    "LPA_KIV2_4925: step 46's table (the KIV-2 count)")
+    ap.add_argument("--marker-out", help="the marker's table (metric<TAB>value)")
     a = ap.parse_args(argv)
+    if a.marker_regions:
+        print("\n".join(marker_regions(a.marker_regions)))
+        return 0
+    if a.marker:
+        if not (a.pileup and a.marker_out):
+            ap.error("--marker needs --pileup and --marker-out")
+        if a.marker == "LPA_KIV2_4925":
+            import lpa_kiv2  # bin/: step 46's table layout
+            try:
+                print("LPA " + lpa_kiv2.write_null_allele(a.copy_table or "", a.pileup, a.marker_out))
+            except OSError as e:
+                print(f"ERROR: {e}", file=sys.stderr)
+                return 2
+            return 0
+        try:
+            counts = read_marker_pileup(a.pileup, a.marker)
+        except (OSError, ValueError) as e:
+            print(f"WARNING: {e}; the marker is not assessed", file=sys.stderr)
+            counts = None
+        rows = smn1_marker(counts, a.copy_table)
+        try:
+            write_metric_table(a.marker_out, rows)
+        except OSError as e:
+            print(f"ERROR: cannot write: {e}", file=sys.stderr)
+            return 2
+        print(dict(rows)["message"])
+        return 0
     try:
         if a.check_table:
             rows = read_table(a.check_table)

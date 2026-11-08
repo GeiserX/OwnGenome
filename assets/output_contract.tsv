@@ -135,6 +135,8 @@ file	{sample}/kir/database_release.txt	08	KIR_TYPING	nextflow	text	experimental	
 file	{sample}/kir/{sample}_kir_genotype.tsv	08	KIR_TYPING	both	tsv	experimental	-	-
 file	{sample}/logs/run_status.tsv	-	-	nextflow	tsv	stable	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2.tsv	46	LPA	both	tsv	experimental	-	-
+file	{sample}/lpa/{sample}_lpa_kiv2_4925.tsv	46	LPA	both	tsv	experimental	-	metric,value
+file	{sample}/lpa/{sample}_lpa_kiv2_4925_pileup.tsv	46	LPA_DEPTH	both	tsv	experimental	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2_depth.tsv	46	LPA_DEPTH	both	tsv	experimental	-	-
 file	{sample}/lpa/{sample}_lpa_kiv2_depth_q1.tsv	46	LPA_DEPTH	both	tsv	experimental	-	-
 file	{sample}/manta/results/variants/candidateSV.vcf.gz	04	MANTA	both	vcf	stable	-	-
@@ -179,6 +181,7 @@ file	{sample}/paralogs/{sample}_paraphase	35b	PARAPHASE	both	dir	experimental	-	
 file	{sample}/paralogs/{sample}_paraphase_copy_number.tsv	35b	PARAPHASE_REPORT	both	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_paraphase_variants.tsv	35b	PARAPHASE_REPORT	both	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_parascopy	35	PARASCOPY	both	dir	experimental	-	-
+file	{sample}/paralogs/{sample}_smn1_marker.tsv	35	PARASCOPY	both	tsv	experimental	-	metric,value
 file	{sample}/paralogs/{sample}_smn_copy_number.tsv	35	PARASCOPY	both	tsv	experimental	-	-
 file	{sample}/pgx_consensus/{sample}_outside_calls.tsv	36	PGX_CONSENSUS	both	tsv	stable	-	-
 file	{sample}/pgx_consensus/{sample}_pgx_consensus.tsv	36	PGX_CONSENSUS	both	tsv	stable	-	-
