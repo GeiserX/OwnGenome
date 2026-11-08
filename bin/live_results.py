@@ -1017,9 +1017,12 @@ def lead(found, levels, summary):
         out += [["Of everything this genome was screened for, ", False],
                 [_count(n, "finding should", "findings should") + " go to a doctor", True],
                 [": " + _names(by["act"]) + ". ", False, "act"]]  # "act": the names a child's page keeps closed
-    elif found or any((S.get(k) or {}).get("state") in ("ok", "stale") for k in ("clinvar", "clinical", "cpsr")):
+    elif any((S.get(k) or {}).get("state") in ("ok", "stale") for k in ("clinvar", "clinical", "cpsr")):
         out += [["No finding in what these steps assessed needs a doctor; ", True],
                 ["sections 8 and 9 say what they do not see. ", False]]
+    else:  # no clinical screen has a result: saying nothing needs a doctor would read as an all-clear
+        out += [["The clinical screens have no result yet; ", True],
+                ["section 9 lists the steps that did not run. ", False]]
     if by["medicine"]:
         genes = sorted({f["gene"] for f in by["medicine"] if f["gene"]})
         out += [[_count(len(by["medicine"]), "medicine result", "medicine results").capitalize(), True],

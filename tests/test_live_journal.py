@@ -114,7 +114,7 @@ def lead_text(segs):
     return "".join(x[0] for x in segs)
 
 
-def lead_problems(res):
+def lead_problems(res, screened=True):
     out = []
     text = lead_text(res["lead"])
     acts = [f for f in res["findings"] if f["level"] == "act"]
@@ -126,8 +126,10 @@ def lead_problems(res):
         if not said or words.get(said.group(1).lower(), int(said.group(1)) if said.group(1).isdigit() else None) != n:
             out.append(f"no count of findings for a doctor: {text[:300]}")
         out += [f"lead does not name {f['title']!r}" for f in acts if f["title"] not in text]
-    elif "needs a doctor" not in text or "sections 8 and 9" not in text:
+    elif screened and ("needs a doctor" not in text or "sections 8 and 9" not in text):
         out.append(f"no-finding lead: {text[:300]}")
+    elif not screened and ("needs a doctor" in text or "clinical screens have no result yet" not in text):
+        out.append(f"no clinical screen ran, yet the lead reads: {text[:300]}")
     if trust and not text.startswith("Read the data-quality section first"):
         out.append("a data-quality problem is not first")
     if live_results.FORBIDDEN.search(text):
@@ -225,6 +227,18 @@ def main():
         bad = lead_problems(res2)
         check("2. with nothing to act on the lead says none needs a doctor and points at sections 8 and 9", not bad,
               (bad, lead_text(res2["lead"])))
+        # Only the medicine and quality steps finished: a medicine finding, no clinical screen. The lead must
+        # not say nothing needs a doctor.
+        bare = {"sections": {k: copy.deepcopy(SUMMARY["sections"][k]) for k in ("cpic", "sample_qc", "coverage")
+                             if k in SUMMARY["sections"]}}
+        res3 = live_results.build("MADE-UP", bare)
+        bad = lead_problems(res3, screened=False)
+        check("2. with no clinical screen run the lead says so, never that nothing needs a doctor", not bad,
+              (bad, lead_text(res3["lead"])))
+        old_lead = [["No finding in what these steps assessed needs a doctor; ", True],
+                    ["sections 8 and 9 say what they do not see.", False]]
+        control("a lead that calls a run with no clinical screen clear of doctor findings",
+                not lead_problems(dict(res3, lead=old_lead), screened=False))
         planted = dict(res, lead=live_results.lead([f for f in res["findings"] if f["level"] != "act"], res["levels"],
                                                    SUMMARY))
         control("the act findings left out of the lead", not lead_problems(planted))
