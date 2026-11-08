@@ -1,9 +1,10 @@
-// family.js: the family card of the live page (bin/owngenome_live_family.py fills plugins.family).
-// On a family's page: the pedigree, each child's chromosome map, the relationship check, the
-// shared segments and the couple carrier screen, as steps 38 and 39 wrote them. On a sample's
-// page: a link to its family. Text only through textContent; images from this server only.
+// family.js: the family card of a person's page (bin/owngenome_live_family.py fills plugins.family):
+// a link to each family the person is in. A family's own page is family.html (family-page.js); this
+// card still draws a family's state when a page with live.js gets one. Text only through
+// textContent; images from this server only.
 (function () {
   'use strict';
+  if (!window.PGP) { return; }  // family.html draws a family's own page (family-page.js) without live.js
   var box = null, shownKey = null;
 
   function el(tag, attrs, text) {
