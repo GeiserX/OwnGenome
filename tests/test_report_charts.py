@@ -15,6 +15,9 @@ Checks, each with a red control that feeds it a broken input:
   4. genome: a run of homozygosity whose region cannot be read stops the
      chart; a run under 5 MB is not drawn; ClinVar hits on chrM and on alt
      contigs are counted in not_drawn; ROH_MIN_MB is collect_summary's;
+     each AnnotSV class 4 or 5 row is an outlined span and each reported MoChA
+     call a bar under its chromosome, linked to their sections, and one on
+     another contig is counted in not_drawn;
   5. mito: one dot per heteroplasmic site, the poly-C call marked apart;
   6. no caveat sentence is written in report_charts.py: they come from
      render_report's *_NOTE constants;
@@ -116,6 +119,27 @@ def whisker_problems(svg):
         dot = re.search(r'<circle cx="([-0-9.]+)"', g)
         if ln and dot and not float(ln.group(1)) <= float(dot.group(1)) <= float(ln.group(2)):
             out.append(f"dot {dot.group(1)} outside {ln.group(1)}..{ln.group(2)}")
+    return out
+
+
+def sv_mca_problems(sp, sv_rows, mca_calls):
+    """What the genome chart misses of the AnnotSV rows and MoChA calls on the primary chromosomes."""
+    out = []
+    marks = {m["id"]: m for m in sp["marks"]}
+    for i, r in enumerate(sv_rows):
+        if r["sv"].split(":")[0] not in report_charts.CHROM_LEN:
+            continue
+        m = marks.get(f"sv-{i}")
+        if not m or m["anchor"] != "structural-variants" or f'data-mark="sv-{i}"' not in sp["svg"]:
+            out.append(f"AnnotSV row {r['sv']} not drawn")
+    for i, c in enumerate(mca_calls):
+        m = marks.get(f"mca-{i}")
+        if not m or m["anchor"] != "mosaic-mca" or f'data-mark="mca-{i}"' not in sp["svg"]:
+            out.append(f"MoChA call {c['chrom']}:{c['start']} not drawn")
+    if sp["svg"].count('class="sv"') != sum(1 for r in sv_rows if r["sv"].split(":")[0] in report_charts.CHROM_LEN):
+        out.append("the outlined spans do not match the rows")
+    if sp["svg"].count('class="mca"') != len(mca_calls):
+        out.append("the bars do not match the calls")
     return out
 
 
@@ -245,6 +269,29 @@ def unit_checks():
           "positions are missing", 'class="site"' not in om["svg"] and om["not_drawn"][0]["count"] == 2
           and "positions of the heteroplasmic sites are not in this summary" in om["svg"]
           and "No heteroplasmic site" not in om["svg"], om["not_drawn"])
+    sv_rows = [{"sv": "chr7:117480000-117530000", "type": "DEL", "gt": "0/1", "length": "50000", "acmg_class": "4",
+                "genes": ["CFTR"]},
+               {"sv": "chr22_KI270879v1_alt:100-900", "type": "DUP", "gt": "0/1", "length": "800", "acmg_class": "5",
+                "genes": []}]
+    mca = [{"chrom": "chr20", "start": "30000000", "end": "42000000", "length_mb": "12.0", "type": "Del",
+            "cell_fraction": "0.12"}]
+    sm = copy.deepcopy(s)
+    sm["sections"]["annotsv"] = {"state": "ok", "data": {"count": 2, "rows": sv_rows}}
+    sm["sections"]["mosaic"] = {"state": "ok", "data": {"status": "assessed", "calls": mca}}
+    gm = charts(sm)["genome"]
+    ndm = {x["what"]: x["count"] for x in gm["not_drawn"]}
+    check("4. genome: each AnnotSV class 4/5 row is an outlined span, each MoChA call a bar, the alt-contig SV "
+          "in not_drawn, both in the legend",
+          sv_mca_problems(gm, sv_rows, mca) == [] and ndm.get("AnnotSV class 4 and 5 SVs on other contigs") == 1
+          and "AnnotSV class 4 or 5 SV" in gm["svg"] and "mosaic alteration (MoChA)" in gm["svg"],
+          (sv_mca_problems(gm, sv_rows, mca), ndm))
+    lost = copy.deepcopy(gm)
+    lost["marks"] = [m for m in lost["marks"] if m.get("kind") != "mca"]
+    lost["svg"] = report_charts.svg(lost)
+    check("4. red control: a genome chart that leaves out the MoChA call is caught",
+          sv_mca_problems(lost, sv_rows, mca) != [])
+    check("4. genome: a chart with no SV or MoChA mark draws no second legend row",
+          "AnnotSV class 4 or 5 SV" not in g["svg"] and "MoChA" not in g["svg"])
     nr = copy.deepcopy(s)
     nr["sections"]["roh"]["state"] = "missing"
     check("4. genome: no chart when ROH did not run, even with ClinVar hits", "genome" not in charts(nr))
