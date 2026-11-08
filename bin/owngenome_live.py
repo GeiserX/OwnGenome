@@ -524,6 +524,7 @@ class Live:
         self.streams = threading.BoundedSemaphore(cfg.max_streams)
         self.headline_cache = {}
         self.attention_cache = {}
+        self.live_overview = {}  # run -> (the headline cache key, live_results.overview of that summary)
         self.allowed = set(LOOPBACK_HOSTS) | {h.lower() for h in cfg.allowed_host or []}
         if cfg.bind not in ("0.0.0.0", "::"):
             self.allowed.add(cfg.bind.strip("[]").lower())
@@ -819,6 +820,8 @@ class Live:
         # Forget the cached results of runs that are gone, so the caches hold only the runs there are.
         for k in [k for k in list(self.headline_cache) if k not in runs]:
             self.headline_cache.pop(k, None)
+        for k in [k for k in list(self.live_overview) if k not in runs]:
+            self.live_overview.pop(k, None)
         keep = {os.path.join(r["dir"] or os.path.join(self.root, n), "summary.json") for n, r in runs.items()}
         for k in [k for k in list(self.attention_cache) if k not in keep]:
             self.attention_cache.pop(k, None)
@@ -835,10 +838,24 @@ class Live:
                             failed=sum(1 for s in planned if s["state"] == "failed"))
                 # A run known from its messages alone still has its folder under the root once step 24 wrote there.
                 o, mtime = self.overview(r["dir"] or os.path.join(self.root, name))
+                # While a run goes, the summary its page last read (results.json's own) is newer than
+                # summary.json: count from it, so the home never says less than the person page.
+                hit = self.headline_cache.get(name) if item["state"] == "running" else None
+                if hit and hit[2]:
+                    lo = self.live_overview.get(name)
+                    if not lo or lo[0] != hit[0]:
+                        try:
+                            import live_results
+                            lo = (hit[0], live_results.overview(hit[2]))
+                        except Exception as e:  # one bad summary must not take the home page down
+                            print(f"owngenome_live: overview of {name} not built: {type(e).__name__}", file=sys.stderr)
+                            lo = (hit[0], None)
+                        self.live_overview[name] = lo
+                    o = lo[1] or o
                 item["attention"] = o["attention"] if o else None
                 item["results"] = mtime is not None
                 if o:  # the Journal home: counts by level, the first findings, the lead
-                    item.update(levels=o["levels"], top=o["top"], lead=o["lead"])
+                    item.update(levels=o["levels"], top=o["top"], lead=o["lead"], lead_closed=o["lead_closed"])
             else:
                 item["members"] = r.get("members") or []
             out.append(item)

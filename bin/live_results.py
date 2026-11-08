@@ -24,6 +24,7 @@ Nothing here reads a file or computes anything about genetics; the adapters pick
 fields the summary already holds. A section id with no adapter falls back to its
 report headline and a link to the report.
 """
+import hashlib
 import re
 
 import render_report as rr
@@ -732,8 +733,11 @@ CARRIER_NOTE = "A carrier has one changed copy of a gene where it takes two to c
 
 def slug(*parts):
     """A finding's id: lower case, digits and dashes, at most 80 characters (the route's own pattern)."""
-    t = re.sub(r"[^a-z0-9]+", "-", "-".join(str(p) for p in parts if p not in (None, "")).lower()).strip("-")
-    return (t[:80].rstrip("-") or "finding")
+    raw = "-".join(str(p) for p in parts if p not in (None, ""))
+    t = re.sub(r"[^a-z0-9]+", "-", raw.lower()).strip("-")
+    if len(t) > 80:  # a long allele: cut, and keep two ids apart by a hash of the whole key
+        t = t[:71].rstrip("-") + "-" + hashlib.sha1(raw.encode()).hexdigest()[:8]
+    return t or "finding"
 
 
 FINDING_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
@@ -790,7 +794,7 @@ def finding_rows(summary):
         if g in sf_genes or g in carrier_genes or g in two_hit:
             continue
         var = f"{h.get('chrom')}:{h.get('pos')} {h.get('ref')}>{h.get('alt')}"
-        out.append(_f("review", "clinvar", ("clinvar", g, h.get("chrom"), h.get("pos")),
+        out.append(_f("review", "clinvar", ("clinvar", g, h.get("chrom"), h.get("pos"), h.get("ref"), h.get("alt")),
                       f"{h.get('significance') or 'Pathogenic'} change in {g}",
                       f"ClinVar lists this change in {g} as {str(h.get('significance') or '').lower()}; this genome "
                       f"has {_copies(h.get('genotype'))}. Whether it matters depends on how the gene is inherited: "
@@ -816,15 +820,18 @@ def finding_rows(summary):
         if not st and not l.get("zone"):
             continue
         full = any("full" in x for x in st)
-        what = (STR_WORDS.get(st[0], st[0].replace("_", " ")) if st
+        lead_st = next((x for x in st if "full" in x), st[0]) if st else None
+        what = (STR_WORDS.get(lead_st, lead_st.replace("_", " ")) if lead_st
                 else f"{l.get('zone_label') or 'intermediate'} range")
+        count = rr.str_count(l) if l.get("repeat_count") else "not given"
         out.append(_f("act" if full else "review", "expansions", ("str", l.get("locus")),
                       f"{l.get('locus')} repeat in the {what}",
-                      f"{l.get('locus')} has {l.get('repeat_count')} repeats: Stranger reads it as \"{what}\". "
+                      f"{l.get('locus')} has {count} repeats: Stranger reads it as \"{what}\". "
                       f"{'See a clinical geneticist.' if full else 'It may grow when passed on; worth a word with a genetic counsellor.'}",
-                      gene=l.get("locus"), detail=f"{l.get('locus')} {l.get('repeat_count')} repeats",
-                      evidence=[["Repeats", l.get("repeat_count")], ["95% interval", l.get("ci")],
-                                ["Pathologic from", l.get("pathologic_min")], ["Sizing", l.get("sizing")]]))
+                      gene=l.get("locus"), detail=f"{l.get('locus')} {count} repeats",
+                      evidence=[["Repeats", count], ["95% interval", l.get("ci")],
+                                ["Pathologic from", l.get("pathologic_min")],
+                                ["Sizing", l.get("allele_sizing") or l.get("sizing")]]))
     v = _data(S, "vntyper")
     if v.get("status") in ("positive", "possible"):
         out.append(_f("act" if v["status"] == "positive" else "review", "vntyper", ("muc1", v["status"]),
@@ -856,6 +863,19 @@ def finding_rows(summary):
     for c in car.get("carriers") or []:
         if c.get("gene") in two_hit:
             continue
+        gt = str(c.get("genotype") or "")
+        if gt in ("hom", "hemizygous"):
+            # Both copies changed, or the only copy (X in a male, or inside a deletion): not a carrier.
+            out.append(_f("act", "carrier-list", ("carrier", c.get("gene"), c.get("variant")),
+                          f"{c.get('condition') or c.get('gene')}: {'two changed copies' if gt == 'hom' else 'the only copy changed'}",
+                          f"This genome has {'two changed copies' if gt == 'hom' else 'no unchanged copy'} of "
+                          f"{c.get('gene')}, a gene of {c.get('condition') or 'a condition on the carrier list'} "
+                          f"({c.get('inheritance') or 'inheritance not given'}). That is not the pattern of a carrier: "
+                          f"a doctor or genetic counsellor reads it.",
+                          gene=c.get("gene"), detail=f"{c.get('gene')} {c.get('variant') or ''} {gt}".strip(),
+                          evidence=[["Genotype", gt], ["Significance", c.get("significance")], ["Stars", c.get("stars")],
+                                    ["Inheritance", c.get("inheritance")]]))
+            continue
         out.append(_f("carrier", "carrier-list", ("carrier", c.get("gene"), c.get("variant")),
                       f"{c.get('condition') or c.get('gene')} carrier" if c.get("condition") else f"Carrier in {c.get('gene')}",
                       f"{CARRIER_NOTE} This genome has one changed copy of {c.get('gene')}: a carrier, not affected.",
@@ -870,11 +890,16 @@ def finding_rows(summary):
                           f"{x.get('condition') or x.get('gene')}: {x.get('risk') or 'see the couple screen'} for each "
                           f"pregnancy, with {cp.get('partner')}.", gene=x.get("gene"),
                           evidence=[["Chance for a child", x.get("risk")], ["Partner", cp.get("partner")]]))
-    for g in _data(S, "paralogs").get("genes") or []:
-        if g.get("gene") == "SMN1" and str(g.get("copy_number")) == "1" and g.get("status") == "called":
-            out.append(_f("carrier", "paralogs", ("smn1",), "Spinal muscular atrophy carrier (SMN1)",
-                          "One copy of SMN1 where most people have two: a carrier of spinal muscular atrophy, not "
-                          "affected.", gene="SMN1", evidence=[["SMN1 copies", "1"]]))
+    smn1 = [g for g in _data(S, "paralogs").get("genes") or [] if g.get("gene") == "SMN1" and g.get("status") == "called"]
+    one = smn1 and str(smn1[0].get("copy_number")) == "1"
+    by = "Paraphase"
+    if not smn1:  # no Paraphase call: Parascopy's resolved count from short reads
+        cn = ((_data(S, "parascopy").get("smn1") or {}).get("cn"))
+        one, by = cn == 1, "Parascopy"
+    if one:
+        out.append(_f("carrier", "paralogs", ("smn1",), "Spinal muscular atrophy carrier (SMN1)",
+                      "One copy of SMN1 where most people have two: a carrier of spinal muscular atrophy, not "
+                      "affected.", gene="SMN1", evidence=[["SMN1 copies", "1"], ["Called by", by]]))
     # 8. Medicines: each gene whose called phenotype changes function.
     for g in _data(S, "cpic").get("genes") or []:
         if g.get("status") not in ("non-normal", "ambiguous"):
@@ -980,8 +1005,8 @@ def _count(n, one, many):
 
 
 def lead(found, levels, summary):
-    """The report's lead paragraph: [[text, bold]] segments, plain sentences that name the findings by
-    level. It never says a section is fine: with no finding of a level it says what was assessed."""
+    """The report's lead paragraph: [[text, bold]] segments (a third item "act" marks the names of the
+    findings to act on), plain sentences that name the findings by level. It never says a section is fine: with no finding of a level it says what was assessed."""
     S = summary.get("sections") or {}
     by = {lv: [f for f in found if f["level"] == lv] for lv in LEVELS}
     out = []
@@ -991,14 +1016,14 @@ def lead(found, levels, summary):
         n = len(by["act"])
         out += [["Of everything this genome was screened for, ", False],
                 [_count(n, "finding should", "findings should") + " go to a doctor", True],
-                [": " + _names(by["act"]) + ". ", False]]
+                [": " + _names(by["act"]) + ". ", False, "act"]]  # "act": the names a child's page keeps closed
     elif found or any((S.get(k) or {}).get("state") in ("ok", "stale") for k in ("clinvar", "clinical", "cpsr")):
         out += [["No finding in what these steps assessed needs a doctor; ", True],
                 ["sections 8 and 9 say what they do not see. ", False]]
     if by["medicine"]:
         genes = sorted({f["gene"] for f in by["medicine"] if f["gene"]})
         out += [[_count(len(by["medicine"]), "medicine result", "medicine results").capitalize(), True],
-                [f" bear on how drugs work ({', '.join(genes)}): tell whoever prescribes. ", False]]
+                [f" bear{'s' if len(by['medicine']) == 1 else ''} on how drugs work ({', '.join(genes)}): tell whoever prescribes. ", False]]
     if by["carrier"]:
         out += [[f"A carrier of {_names(by['carrier'], 2)}", True],
                 [": carriers are not affected; it matters when a partner carries the same gene. ", False]]
@@ -1006,8 +1031,11 @@ def lead(found, levels, summary):
         out += [[_count(len(by["review"]), "result is", "results are").capitalize() + " worth a look", True],
                 [": " + _names(by["review"]) + ". ", False]]
     cov = _data(S, "coverage").get("mean_depth")
+    q = _data(S, "sample_qc")
+    checked = q.get("contamination") == "ok" and q.get("sex_check") == "ok"  # both ran and raised nothing
     if not by["trust"] and isinstance(cov, (int, float)):
-        out.append([f"Mean depth {cov:.1f}×; the identity and contamination checks raised no flag.", False])
+        out.append([f"Mean depth {cov:.1f}×" + ("; the identity and contamination checks raised no flag." if checked
+                    else "; the identity and contamination checks have no result here: section 5 says why."), False])
     if out:
         out[-1][0] = out[-1][0].rstrip()
     return out
@@ -1049,10 +1077,13 @@ def overview(summary):
     act on first (at most four, by level) and the lead as plain text. No file read."""
     r = build("", summary)
     order = {lv: i for i, lv in enumerate(LEVELS)}
+    order["trust"] = -1  # a problem with the data comes before any finding read from it
     top = sorted((f for f in r["findings"] if f["level"] != "info"), key=lambda f: order[f["level"]])[:4]
     return {"attention": r["attention"], "levels": r["levels"],
             "top": [{"id": f["id"], "level": f["level"], "title": f["title"]} for f in top],
-            "lead": "".join(t for t, _ in r["lead"])}
+            "lead": "".join(x[0] for x in r["lead"]),
+            # The same lead with the names of the findings to act on left out: a child's tile shows this one.
+            "lead_closed": "".join(x[0] if x[2:] != ["act"] else ": closed until opened on purpose. " for x in r["lead"])}
 
 
 def strings(obj):

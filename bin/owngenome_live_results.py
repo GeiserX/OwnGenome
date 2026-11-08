@@ -17,6 +17,7 @@ what the report prints. Every request writes one access-log row.
 import html
 import os
 import sys
+import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -57,6 +58,11 @@ def register(app):
         """One finding's page. The page itself reads ../../results.json; this only checks that the id is
         a finding of the run now, so a typed or stale address is a plain 404, never an empty page."""
         live = req.live
+        # A page: without a session it sends the browser to the login and back, as the viewer does.
+        if live.password_hash and req.sid is None:
+            app.log("finding", m.group(1), "-", 303)
+            return req.send_body(303, "text/plain", "", [("Location", "/login?next=" + urllib.parse.quote(
+                urllib.parse.urlsplit(req.path).path))])
         run = live.run(m.group(1))
         fid = m.group(2)
         ok = False
@@ -77,7 +83,8 @@ def register(app):
         app.log("finding", run["name"], fid, 200)
         return req.send_body(200, "text/html; charset=utf-8", page)
 
-    app.route("GET", r"/runs/(%s)/finding/([^/]{1,200})/" % NAME, finding)
+    # auth=False: finding() asks for the login itself, so a bookmarked finding leads to the login form.
+    app.route("GET", r"/runs/(%s)/finding/([^/]{1,200})/" % NAME, finding, auth=False)
 
 
 def live_results_mod():

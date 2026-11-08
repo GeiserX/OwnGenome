@@ -425,6 +425,7 @@ table.tasks th:first-child, table.tasks td:first-child { text-align: left; }
 .fkick { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 13px; margin-bottom: 18px; }
 .fcover .h-display { font-size: 56px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+.fcover .chip { max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
 .fpage .lede { margin-top: 10px; }
 .planbox { border: 1px solid var(--hair-2); border-left: 3px solid var(--brass); border-radius: 8px; background: var(--paper); padding: 22px 26px 12px; margin-top: 30px; }
 .planbox.lvl-act { border-left-color: var(--act); }

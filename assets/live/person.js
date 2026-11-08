@@ -17,6 +17,8 @@
   var root = document.documentElement;
   var replay = root.getAttribute('data-mode') === 'replay';
   var results = null, state = null, family = null, familyFor = null, fetchedFor = null, drawnKey = null;
+  // 'none': in no family; 'pending' or 'failed': in one whose roles are not known (yet); 'known'.
+  var familyStatus = 'none';
   var shown = {};  // veiled findings the reader opened, by id
   var panel = document.getElementById('results');
   var rail = document.getElementById('rail');
@@ -75,12 +77,19 @@
     var key = f ? f.url : null;
     if (key === familyFor) { return; }
     familyFor = key;
-    if (!f) { family = null; return; }
+    if (!f) { family = null; familyStatus = 'none'; return; }
+    familyStatus = 'pending';
     U.getJSON(f.url + 'family.json').then(function (d) {
       if (familyFor !== key) { return; }
       family = d && d.state ? { name: f.name, url: f.url, data: d } : null;
+      familyStatus = family ? 'known' : 'failed';
       redraw(true);
-    }).catch(function () { family = null; });
+    }).catch(function () {
+      if (familyFor !== key) { return; }  // a late answer for a family this page no longer shows
+      family = null;
+      familyStatus = 'failed';
+      redraw(true);
+    });
   }
   function me() {
     var ms = (family && family.data.state && family.data.state.members) || [];
@@ -89,6 +98,9 @@
   // A child of the family: a member whose father or mother is listed. Results to act on about a child
   // stay closed until someone opens them on purpose.
   function isChild() { var m = me(); return !!(m && (m.father || m.mother)); }
+  // Results to act on stay closed for a child, and for anyone in a family whose roles are not known yet:
+  // the page cannot tell a child apart until family.json has answered.
+  function closedPage() { return isChild() || familyStatus === 'pending' || familyStatus === 'failed'; }
   function memberUrl(s) {
     var r = family && family.data.runs && family.data.runs[s];
     return r && r.url ? r.url : null;
@@ -393,13 +405,13 @@
     add(box, d);
     return note('Caveat', box, 'caveat-note');
   }
-  function veiled(f) { return isChild() && f.level === 'act' && !shown[f.id]; }
+  function veiled(f) { return closedPage() && f.level === 'act' && !shown[f.id]; }
   function findingArticle(f, big) {
     var row = el('div', { 'class': 'row' });
     var art = el('div', { 'class': 'finding', id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
     var at = newAt(f);
     if (at) { art.classList.add('new'); add(art, el('span', { 'class': 'newband' }, 'New at ' + U.hm(at))); add(art, el('br', {})); }
-    add(art, U.level(f.level, f.level_words));
+    add(art, U.findingLevel(f.level, f.level_words));
     if (veiled(f)) {
       var v = el('div', { 'class': 'veil' });
       add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
@@ -427,7 +439,7 @@
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
     add(side, caveatNote(f.caveat));
-    var rel = (f.related || []).map(findingById).filter(Boolean);
+    var rel = (f.related || []).map(findingById).filter(function (r) { return r && !veiled(r); });
     if (rel.length) {
       var box = el('div', {});
       rel.slice(0, 4).forEach(function (r, i) { if (i) { add(box, el('br', {})); } add(box, el('a', { href: '#f/' + r.id }, r.title)); });
@@ -438,7 +450,7 @@
   }
   function findingLine(f) {
     var li = el('li', { id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
-    add(li, el('a', { 'class': 't', href: findingHref(f) }, f.title), U.level(f.level, f.level_words));
+    add(li, el('a', { 'class': 't', href: findingHref(f) }, f.title), U.findingLevel(f.level, f.level_words));
     if (f.detail) { add(li, el('span', { 'class': 'gene' }, f.detail)); }
     add(li, el('span', { 'class': 'x' }, f.text));
     return li;
@@ -446,8 +458,13 @@
 
   // --- the sections ---------------------------------------------------------------------------------
   // A section's stamp: written (with the time its last step ended), being written (a step runs), waiting.
+  // The chapters whose steps can still add a finding to sections 1 to 4 while they run.
+  var FEEDS = { clinical: true, carrier: true, medicines: true };
+  function feeding(sec) {
+    return sec.n <= 4 ? cards().filter(function (c) { return FEEDS[c.chapter] && sec.cards.indexOf(c.id) < 0; }) : [];
+  }
   function stamp(sec) {
-    var cs = sec.cards.map(cardById).filter(Boolean);
+    var cs = sec.cards.map(cardById).filter(Boolean).concat(feeding(sec));
     if (!cs.length) { return { k: 'written', t: 'Written' }; }
     var gs = cs.map(gate);
     if (gs.some(function (g) { return g === 'running'; })) { return { k: 'writing', t: 'Being written' }; }
@@ -490,9 +507,9 @@
         else { var ul = el('ul', { 'class': 'list-findings' }); fs.forEach(function (f) { add(ul, findingLine(f)); }); add(body, ul); }
       } else if (sec.n !== 5) {
         var w = waitBlock(sec);
-        var pend = sec.n === 1 && cards().some(function (c) { return c.section === 8 && pending(gate(c)); });
+        var pend = feeding(sec).some(function (c) { return pending(gate(c)); });
         if (w) { add(body, w); } else if (pend) {
-          add(body, el('p', { 'class': 'waitnote' }, 'This section stays open until the clinical steps finish. Until then this page says nothing either way.'));
+          add(body, el('p', { 'class': 'waitnote' }, 'This section stays open until the steps that can add a finding here finish. Until then this page says nothing either way.'));
         } else {
           var e = el('p', { 'class': 'empty-sec' }, NOT_ALL_CLEAR);
           add(body, e);
@@ -582,8 +599,15 @@
     var row = el('div', { 'class': 'row' });
     var main = el('div', {});
     var p = el('p', { 'class': 'lede dropcap', id: 'lead' });
-    var parts = (results.lead || []).slice();
-    if (running()) {
+    var closed = (results.findings || []).some(veiled);
+    var parts = (results.lead || []).map(function (x) {
+      return x[2] === 'act' && closed ? [': closed on this page until opened on purpose, in section 1. ', false] : x;
+    });
+    if (replay && running()) {
+      // A replay holds the results of the finished run: before its end the lead would name findings the
+      // sections do not show yet.
+      parts = [['This report is being written. ', true], ['The lead paragraph is written when the run ends; the sections below fill in as their steps finish.', false]];
+    } else if (running()) {
       parts = [['This report is being written. ', true], ['What follows is what has been found so far; a section with steps still to run says so. ', false]]
         .concat(parts.filter(function (x) { return !/^Mean depth/.test(x[0]); }));
     }
@@ -596,7 +620,7 @@
       var a = el('a', { href: '#s' + x[1], 'data-level': x[0] });
       add(a, U.level(x[0], { act: 'Take to a doctor', medicine: 'Prescriber', review: 'Worth a look', carrier: 'Family planning', info: 'Information' }[x[0]]));
       add(a, el('span', { 'class': 'n' }, String(n[x[0]])));
-      var words = x[0] === 'info' ? 'Origins, traits, scores' :
+      var words = x[0] === 'info' ? 'Origins, traits, scores' : x[0] === 'act' && closed && n.act ? 'Closed until opened' :
         fs.filter(function (f) { return f.level === x[0]; }).slice(0, 2).map(function (f) { return f.gene || f.title; }).join(', ') || 'None in what was assessed';
       add(a, el('span', { 'class': 'w' }, words));
       add(led, a);
@@ -853,7 +877,8 @@
   function redraw(force) {
     var k = JSON.stringify([doneSet(), state && state.run && state.run.state, !!results, !!family, Object.keys(shown),
       state && state.plugins && state.plugins.recheck && state.plugins.recheck.mtime,
-      ((state && state.steps) || []).filter(function (s) { return s.state === 'running'; }).map(function (s) { return s.step; })]);
+      // Every step's state: one can move from waiting to not finished with the done set unchanged.
+      ((state && state.steps) || []).map(function (s) { return s.step + ':' + s.state; })]);
     if (!force && k === drawnKey) { header(); return; }
     drawnKey = k;
     var y = window.scrollY;

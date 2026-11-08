@@ -54,9 +54,11 @@
     add(meta, (fam ? role(m, fam) + ' · ' : '') + progressText(r));
     if (r && r.failed) { add(meta, ' · ', el('span', { 'class': 'warn' }, r.failed + ' step' + (r.failed > 1 ? 's' : '') + ' not assessed')); }
     add(div, meta);
-    if (r && r.lead) {
+    var child = !!fam && fam.members.some(function (x) { return x.sample === m.father || x.sample === m.mother; });
+    var lead = r && (child ? r.lead_closed || '' : r.lead);
+    if (lead) {
       // Two sentences: the first often says only that nothing needs a doctor, the second names what differs.
-      var one = U.firstSentence(r.lead), rest = r.lead.slice(one.length).trim();
+      var one = U.firstSentence(lead), rest = lead.slice(one.length).trim();
       add(div, el('p', { 'class': 'lead' }, rest ? one + ' ' + U.firstSentence(rest) : one));
     }
     else if (!r) { add(div, el('p', { 'class': 'lead' }, 'In the family tree, with no genome on this server.')); }
@@ -64,31 +66,48 @@
     if (r) { add(div, el('a', { 'class': 'read', href: r.url }, 'Read the report →')); }
     return div;
   }
-  // A small pedigree: parents on top, children under them; filled when sequenced, dashed when not.
+  // A small pedigree, one row per generation; filled when sequenced, dashed when not. Square male,
+  // circle female, diamond when the sex is not known.
   function miniPedigree(fam, colourOf) {
-    var ms = fam.members, W = 260, H = 130;
-    var kids = ms.filter(function (m) { return ms.some(function (x) { return x.sample === m.father || x.sample === m.mother; }); });
-    var top = ms.filter(function (m) { return kids.indexOf(m) < 0; });
+    var ms = fam.members, W = 260, GAP = 66;
+    var by = {};
+    ms.forEach(function (m) { by[m.sample] = m; });
+    var depth = {};
+    function gen(m, seen) {
+      if (depth[m.sample] !== undefined) { return depth[m.sample]; }
+      if (seen[m.sample]) { return 0; }  // a loop in a malformed file: stop rather than recurse
+      seen[m.sample] = true;
+      var ps = [m.father, m.mother].filter(function (p) { return by[p]; });
+      depth[m.sample] = ps.length ? 1 + Math.max.apply(null, ps.map(function (p) { return gen(by[p], seen); })) : 0;
+      return depth[m.sample];
+    }
+    ms.forEach(function (m) { gen(m, {}); });
+    var rows = [];
+    ms.forEach(function (m) { (rows[depth[m.sample]] = rows[depth[m.sample]] || []).push(m); });
+    var H = 34 + (rows.length - 1) * GAP + 32;
     var s = U.svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': 'Pedigree of ' + fam.name });
     var pos = {};
-    function row(list, y) { list.forEach(function (m, i) { pos[m.sample] = { x: (i + 1) * W / (list.length + 1), y: y }; }); }
-    row(top, 34);
-    row(kids, 100);
-    kids.forEach(function (k) {
+    rows.forEach(function (list, g) {
+      (list || []).forEach(function (m, i) { pos[m.sample] = { x: (i + 1) * W / (list.length + 1), y: 34 + g * GAP }; });
+    });
+    ms.forEach(function (k) {
       var ps = [k.father, k.mother].filter(function (p) { return pos[p]; });
       if (!ps.length) { return; }
+      var py = Math.max.apply(null, ps.map(function (p) { return pos[p].y; }));
       var mx = ps.reduce(function (a, p) { return a + pos[p].x; }, 0) / ps.length;
-      if (ps.length === 2) { s.appendChild(U.svg('line', { x1: pos[ps[0]].x, x2: pos[ps[1]].x, y1: 34, y2: 34, stroke: '#8f8d86' })); }
-      s.appendChild(U.svg('line', { x1: mx, x2: mx, y1: 34, y2: 66, stroke: '#8f8d86' }));
-      s.appendChild(U.svg('line', { x1: mx, x2: pos[k.sample].x, y1: 66, y2: 66, stroke: '#8f8d86' }));
-      s.appendChild(U.svg('line', { x1: pos[k.sample].x, x2: pos[k.sample].x, y1: 66, y2: 88, stroke: '#8f8d86' }));
+      var mid = (py + pos[k.sample].y) / 2;
+      if (ps.length === 2) { s.appendChild(U.svg('line', { x1: pos[ps[0]].x, x2: pos[ps[1]].x, y1: py, y2: py, stroke: '#8f8d86' })); }
+      s.appendChild(U.svg('line', { x1: mx, x2: mx, y1: py, y2: mid, stroke: '#8f8d86' }));
+      s.appendChild(U.svg('line', { x1: mx, x2: pos[k.sample].x, y1: mid, y2: mid, stroke: '#8f8d86' }));
+      s.appendChild(U.svg('line', { x1: pos[k.sample].x, x2: pos[k.sample].x, y1: mid, y2: pos[k.sample].y - 11, stroke: '#8f8d86' }));
     });
     ms.forEach(function (m) {
       var p = pos[m.sample], c = colourOf[m.sample] || '#8f8d86';
       var attrs = { fill: '#15161a', stroke: m.sequenced ? c : '#8f8d86', 'stroke-width': 2 };
       if (!m.sequenced) { attrs['stroke-dasharray'] = '3 3'; }
       var shape = m.sex === 'male' ? U.svg('rect', Object.assign({ x: p.x - 11, y: p.y - 11, width: 22, height: 22 }, attrs))
-        : U.svg('circle', Object.assign({ cx: p.x, cy: p.y, r: 11 }, attrs));
+        : m.sex === 'female' ? U.svg('circle', Object.assign({ cx: p.x, cy: p.y, r: 11 }, attrs))
+          : U.svg('polygon', Object.assign({ points: [p.x, p.y - 13, p.x + 13, p.y, p.x, p.y + 13, p.x - 13, p.y].join(' ') }, attrs));
       s.appendChild(shape);
       var t = U.svg('text', { x: p.x, y: p.y + 26, 'text-anchor': 'middle', fill: '#c3c2b7', 'font-size': 11 });
       t.textContent = m.sample;
@@ -110,6 +129,13 @@
     var going = runs.filter(function (r) { return r.state === 'running'; });
     var done = runs.filter(function (r) { return r.state === 'finished'; });
     var acts = runs.reduce(function (a, r) { return a + ((r.levels && r.levels.act) || 0); }, 0);
+    var assessed = runs.filter(function (r) { return r.levels; }).length;
+    // A child of a family: results to act on stay closed on this page too (the report opens them).
+    var children = {};
+    fams.forEach(function (f) {
+      f.members.forEach(function (m) { if (f.members.some(function (x) { return x.sample === m.father || x.sample === m.mother; })) { children[m.sample] = true; } });
+    });
+    function closedTitle(r, f) { return children[r.name] && f.level === 'act' ? 'A result to act on, closed until opened on the report' : f.title; }
     // The dateline and the headline sentence.
     var dl = el('div', { 'class': 'dateline' });
     var today = new Date();
@@ -125,7 +151,10 @@
     else {
       if (going.length) { add(h1, cap(word(going.length)) + ' report' + (going.length > 1 ? 's are ' : ' is '), el('em', {}, 'being written'), '. '); }
       add(h1, (going.length ? cap(word(done.length)) + (done.length === 1 ? ' is' : ' are') : cap(word(done.length)) + ' report' + (done.length === 1 ? ' is' : 's are')) + ' finished, and ' +
-        (acts ? word(acts) + ' finding' + (acts === 1 ? ' should' : 's should') + ' go to a doctor.' : 'no finding in what was assessed needs a doctor.'));
+        (acts ? word(acts) + ' finding' + (acts === 1 ? ' should' : 's should') + ' go to a doctor.'
+          : !assessed ? 'none has results to read yet.'
+            : assessed < runs.length ? 'no finding in the ' + word(assessed) + ' with results so far needs a doctor.'
+              : 'no finding in what was assessed needs a doctor.'));
     }
     add(left, h1);
     var sub = fams.map(function (f) { return 'Family ' + f.name + ': ' + f.members.filter(function (m) { return m.sequenced; }).length + ' genomes, read alone and together.'; });
@@ -142,8 +171,9 @@
       var seen = {};
       (r.top || []).forEach(function (f) {
         if (order[f.level] === undefined) { return; }
-        if (seen[f.level]) { seen[f.level].more += 1; return; }
-        seen[f.level] = { r: r, f: f, more: 0 };
+        if (seen[f.level]) { return; }
+        // The rest of the level from its count, not from the first four findings the index names.
+        seen[f.level] = { r: r, f: f, more: Math.max(0, ((r.levels && r.levels[f.level]) || 1) - 1) };
         items.push(seen[f.level]);
       });
     });
@@ -154,7 +184,7 @@
       var pc = el('span', { 'class': 'pc' }, x.r.name);
       if (colourOf[x.r.name]) { pc.style.setProperty('--pcol', colourOf[x.r.name]); }
       add(who, pc, ' · ' + U.LEVEL_WORDS[x.f.level].toLowerCase());
-      add(a, U.level(x.f.level, ''), who, el('span', { 'class': 'what' }, x.f.title + (x.more ? ' and ' + x.more + ' more' : '')), el('span', { 'class': 'arr', 'aria-hidden': 'true' }, '→'));
+      add(a, U.findingLevel(x.f.level, ''), who, el('span', { 'class': 'what' }, closedTitle(x.r, x.f) + (x.more ? ' and ' + x.more + ' more' : '')), el('span', { 'class': 'arr', 'aria-hidden': 'true' }, '→'));
       add(ul, add(el('li', {}), a));
     });
     if (!items.length) { add(ul, add(el('li', {}), el('p', { 'class': 'soft' }, runs.length ? 'No finding to act on, for a prescriber or for family planning in what the finished steps assessed. Each report says what its steps do not see.' : 'Nothing yet.'))); }
@@ -186,7 +216,7 @@
       var c2 = el('div', {});
       add(c2, el('div', { 'class': 'fig-label' }, 'Found so far'));
       var fs = el('ul', { 'class': 'fs' });
-      (r.top || []).forEach(function (f) { add(fs, add(el('li', {}), U.level(f.level, ''), ' ', f.title)); });
+      (r.top || []).forEach(function (f) { add(fs, add(el('li', {}), U.findingLevel(f.level, ''), ' ', closedTitle(r, f))); });
       if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
       add(c2, fs);
       var c3 = el('div', {});
@@ -256,9 +286,13 @@
     root.setAttribute('data-pgp-status', 'ready');
   }
 
+  // While a run goes, the page asks again every 30 seconds, as the family page does.
   function start() {
-    U.getJSON(root.getAttribute('data-data') || '/runs.json').then(function (d) { if (d) { draw(d); } })
-      .catch(function () { root.setAttribute('data-pgp-status', 'offline'); });
+    U.getJSON(root.getAttribute('data-data') || '/runs.json').then(function (d) {
+      if (!d) { return; }
+      draw(d);
+      if ((d.runs || []).some(function (r) { return r.state === 'running'; })) { setTimeout(start, 30000); }
+    }).catch(function () { root.setAttribute('data-pgp-status', 'offline'); setTimeout(start, 30000); });
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
 }());

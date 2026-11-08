@@ -72,14 +72,20 @@
       root.setAttribute('data-pgp-status', 'ready');
       return;
     }
-    document.title = f.title + ': ' + r.sample + ': OwnGenome';
-    document.getElementById('finding-crumb').textContent = f.title;
+    var unknown = family === UNKNOWN;
+    if (unknown) { family = null; }
     var me = family && (family.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
-    var child = !!(me && (me.father || me.mother));
+    var child = unknown || !!(me && (me.father || me.mother));
+    // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
+    var closed = child && f.level === 'act' && !draw.open;
+    var title = closed ? 'A result to act on' : f.title;
+    document.title = title + ': ' + r.sample + ': OwnGenome';
+    document.getElementById('finding-crumb').textContent = title;
     var sec = (r.journal || []).filter(function (s) { return s.n === f.section; })[0];
     var same = (r.findings || []).filter(function (x) { return x.level === f.level; });
     var order = (r.findings || []).filter(function (x) { return x.level !== 'info'; });
     var next = order[order.indexOf(f) + 1];
+    if (next && child && next.level === 'act' && !draw.open) { next = null; }
     // The rail: back to the report, this page's parts, the next finding of the report.
     var rail = el('aside', { 'class': 'toc frail', 'aria-label': 'This finding' });
     var back = el('a', { 'class': 'back', href: BASE + '#f/' + f.id });
@@ -104,18 +110,18 @@
     }
     var cover = el('div', { 'class': 'fcover', id: 'what' });
     var lv = el('div', { 'class': 'fkick' });
-    add(lv, U.level(f.level, f.level_words));
+    add(lv, U.findingLevel(f.level, f.level_words));
     add(lv, el('span', { 'class': 'dim' }, same.length === 1 ? 'The only finding at this level in ' + r.sample + '’s genome'
       : same.length + ' findings at this level in ' + r.sample + '’s genome'));
     add(cover, lv);
-    add(cover, el('h1', { 'class': 'h-display' }, f.title));
+    add(cover, el('h1', { 'class': 'h-display' }, title));
     var chips = el('div', { 'class': 'chips' });
     var cs = [];
     if (f.gene) { cs.push(f.gene); }
     if (f.detail) { cs.push(f.detail); }
     if (f.viewer && cs.join(' ').indexOf(f.viewer) < 0) { cs.push(f.viewer); }
     cs.forEach(function (c) { add(chips, el('span', { 'class': 'chip mono' }, c)); });
-    if (cs.length) { add(cover, chips); }
+    if (cs.length && !closed) { add(cover, chips); }
     var main0 = el('div', {});
     add(main0, cover);
     var acts = el('aside', { 'class': 'actions' });
@@ -126,7 +132,7 @@
     var top = el('div', { 'class': 'row' });
     add(top, main0, acts);
     add(col, top);
-    if (child && f.level === 'act' && !draw.open) {
+    if (closed) {
       var v = el('div', { 'class': 'veil' });
       add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
         'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
@@ -179,7 +185,8 @@
       add(col, sr);
     }
     // Related findings and the family.
-    var rel = (f.related || []).map(function (id) { return (r.findings || []).filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
+    var rel = (f.related || []).map(function (id) { return (r.findings || []).filter(function (x) { return x.id === id; })[0]; })
+      .filter(function (x) { return x && !(child && x.level === 'act' && !draw.open); });
     if (family) {
       var sf = el('section', { 'class': 'sec', id: 'family' });
       add(sf, add(el('div', { 'class': 'sechead' }), el('span', { 'class': 'secnum' }, ROMAN[parts.length - 3]), el('h2', { 'class': 'h2' }, 'In the family')));
@@ -200,7 +207,7 @@
     var ul = el('ul', { 'class': 'list-findings' });
     rel.forEach(function (x) {
       var li = el('li', {});
-      add(li, el('a', { 'class': 't', href: '../' + encodeURIComponent(x.id) + '/' }, x.title), U.level(x.level, x.level_words));
+      add(li, el('a', { 'class': 't', href: '../' + encodeURIComponent(x.id) + '/' }, x.title), U.findingLevel(x.level, x.level_words));
       add(li, el('span', { 'class': 'x' }, x.text));
       add(ul, li);
     });
@@ -219,19 +226,29 @@
     root.setAttribute('data-pgp-status', 'ready');
   }
   var familyUrl = null;
+  var UNKNOWN = { unknown: true };
   function familyOf(st) {
     var fam = st && st.plugins && st.plugins.family;
     var f = fam && fam.kind === 'member' && (fam.families || [])[0];
     if (!f) { return Promise.resolve(null); }
     familyUrl = f.url;
-    return U.getJSON(abs(f.url) + 'family.json').then(function (d) { return d && d.state ? d : null; }).catch(function () { return null; });
+    // A family that does not answer: roles unknown, so a result to act on stays closed (draw()).
+    return U.getJSON(abs(f.url) + 'family.json').then(function (d) { return d && d.state ? d : UNKNOWN; }).catch(function () { return UNKNOWN; });
+  }
+  function failed() {
+    main.textContent = '';
+    add(main, el('p', { 'class': 'empty' }, 'The results of this run could not be read just now.'));
+    var b = el('button', { type: 'button', 'class': 'btn' }, 'Try again');
+    b.addEventListener('click', function () { main.textContent = ''; add(main, el('p', { 'class': 'dim' }, 'Loading the finding.')); start(); });
+    add(main, b);
+    root.setAttribute('data-pgp-status', 'offline');
   }
   function start() {
     var st = replay ? U.getJSON(BASE + 'frames.json').then(function (d) { var fr = (d && d.frames) || []; return fr.length ? fr[fr.length - 1].state : null; })
       : U.getJSON(BASE + 'state.json');
-    Promise.all([U.getJSON(BASE + 'results.json'), st.then(familyOf).catch(function () { return null; })]).then(function (x) {
-      if (x[0]) { draw(x[0], x[1]); }
-    }).catch(function () { root.setAttribute('data-pgp-status', 'offline'); });
+    Promise.all([U.getJSON(BASE + 'results.json'), st.then(familyOf).catch(function () { return UNKNOWN; })]).then(function (x) {
+      if (x[0]) { draw(x[0], x[1]); } else { failed(); }
+    }).catch(failed);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
 }());

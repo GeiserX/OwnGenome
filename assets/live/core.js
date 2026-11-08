@@ -135,6 +135,8 @@
     add(s, el('span', { 'class': 'g', 'aria-hidden': 'true' }), words === undefined ? LEVEL_WORDS[lv] || lv : words);
     return s;
   }
+  // A finding's level: a data-quality finding is always a problem with the data, so its mark is red.
+  function findingLevel(lv, words) { return level(lv, words, lv === 'trust' ? 'problem' : undefined); }
   // GRCh38: [name, length Mb, centromere Mb].
   var CHR = [['1', 248.96, 123.4], ['2', 242.19, 93.9], ['3', 198.3, 90.9], ['4', 190.21, 50], ['5', 181.54, 48.8],
     ['6', 170.81, 59.8], ['7', 159.35, 60.1], ['8', 145.14, 45.2], ['9', 138.39, 43], ['10', 133.8, 39.8],
@@ -207,7 +209,7 @@
   }
 
   window.PGPUI = { el: el, svg: svg, add: add, getJSON: getJSON, avatar: avatar, day: day, caveat: caveat,
-    facts: facts, table: table, tablist: tablist, firstSentence: firstSentence, level: level, glyph: glyph,
+    facts: facts, table: table, tablist: tablist, firstSentence: firstSentence, level: level, findingLevel: findingLevel, glyph: glyph,
     karyogram: karyogram, locus: locus, LEVEL_WORDS: LEVEL_WORDS, LEVEL_SHORT: LEVEL_SHORT, LEVEL_ORDER: LEVEL_ORDER,
     hm: hm, dm: dm, hours: hours };
 }());

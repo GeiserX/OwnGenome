@@ -31,12 +31,15 @@
     return i >= 0 ? PCOL[i % PCOL.length] : null;
   }
   // The four equally likely children of two carriers of one recessive gene: 1 affected, 2 carriers, 1 neither.
+  // Drawn only when the screen's own chance is 1 in 4: another chance (a partner with two copies) has
+  // another split, and the row's words say it.
   function fourChildren(risk) {
+    if (!/^\s*1 in 4\b/.test(risk || '')) { return null; }
     var box = el('div', { 'class': 'kids4' });
     var g = el('div', { 'class': 'grid4', role: 'img', 'aria-label': 'Each pregnancy: 1 in 4 affected, 2 in 4 carriers, 1 in 4 neither' });
     add(g, el('span', { 'class': 'aff', title: 'affected' }), el('span', { title: 'carrier' }), el('span', { title: 'carrier' }),
       el('span', { 'class': 'non', title: 'neither' }));
-    add(box, g, add(el('div', { 'class': 'kt' }), el('b', {}, risk || '1 in 4'), ' per pregnancy affected', el('br', {}),
+    add(box, g, add(el('div', { 'class': 'kt' }), el('b', {}, '1 in 4'), ' per pregnancy affected', el('br', {}),
       '2 in 4 carriers, not affected; 1 in 4 neither'));
     return box;
   }
@@ -47,7 +50,7 @@
     out.push([seq + ' genome' + (seq === 1 ? '' : 's') + ' of this family are read together here. ', false]);
     (st.couples || []).forEach(function (c) {
       if (!c.screened) { out.push([c.a + ' and ' + c.b + ' are not screened as a couple yet. ', false]); return; }
-      if (c.shared) { out.push([c.a + ' and ' + c.b + ' both carry a change in ' + c.shared + ' gene' + (c.shared > 1 ? 's' : '') + ': 1 in 4 per pregnancy for each. ', true]); }
+      if (c.shared) { out.push([c.a + ' and ' + c.b + ' both carry a change in ' + c.shared + ' gene' + (c.shared > 1 ? 's' : '') + ': chapter III gives the chance per pregnancy for each. ', true]); }
       else { out.push([c.a + ' and ' + c.b + ' share no carrier gene in what the screen sees; ', false], ['it does not see everything. ', false]); }
       if (c.x_linked) { out.push([c.x_linked + ' X-linked finding' + (c.x_linked > 1 ? 's' : '') + ' bear on sons. ', true]); }
     });
@@ -180,7 +183,7 @@
         var box = el('div', { 'class': 'mini', 'data-shared': r.gene });
         add(box, el('h3', { 'class': 'h3' }, (r.condition || r.gene) + ' (' + r.gene + ')'));
         add(box, el('p', { 'class': 'soft' }, 'Both carry a change in ' + r.gene + '. Carriers are not affected; a child who inherits both changes is.'));
-        add(box, fourChildren(r.offspring_risk));
+        add(box, fourChildren(r.offspring_risk) || el('p', {}, 'Chance per pregnancy, as the screen gives it: ' + (r.offspring_risk || 'not given') + '.'));
         add(s, box);
       });
       add(s, U.table({ columns: ['Result', 'Gene', 'Condition', 'Chance for a child', c.a, c.b, 'Why'],

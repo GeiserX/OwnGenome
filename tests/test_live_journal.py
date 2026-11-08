@@ -4,18 +4,21 @@
 
 Checks:
   1. the level mapping, on a small made-up summary: CPSR's pathogenic row is to act on, a ClinVar hit
-     outside the carrier list is worth a look, a carrier-list row is for family planning, a CPIC gene
+     outside the carrier list is worth a look, a carrier-list row is for family planning (two changed
+     copies of a carrier gene, and a full-mutation repeat, are to act on), a CPIC gene
      with changed function is for the prescriber, a contamination warning is data quality; each card
      takes its highest finding's level, the quality chapter is data quality, a failed card has none;
      every finding id is a safe path part (live_results.FINDING_ID) and sits in its level's section;
-  2. the lead paragraph: with a finding to act on it says how many go to a doctor and names each one,
-     a data-quality problem comes first, and with no finding it says none needs a doctor and points at
+  2. the lead paragraph: with a finding to act on it says how many go to a doctor and names each one
+     (marked, so a child's page can leave the names out), a data-quality problem comes first, and with no finding it says none needs a doctor and points at
      sections 8 and 9, never an all-clear (live_results.FORBIDDEN);
-  3. through the real server: /runs/<run>/finding/<id>/ is behind the login, answers the finding page
+  3. through the real server: /runs/<run>/finding/<id>/ sends a browser with no session to the login and
+     back, answers the finding page
      with the run and the id filled in and the server's Content-Security-Policy for an id of the run's
      findings, and a 404 for an id that is not one, for a path-like id and for a run with no such page.
 Each check runs again on a planted mistake and must fail there: 1 with the CPIC rule's level swapped
-to review, 2 with the act findings left out of the lead, 3 with the route answering any id. A check
+to review, 2 with the act findings left out of the lead and with their names unmarked, 3 with the route
+answering any id. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_journal.py
@@ -65,7 +68,11 @@ SUMMARY = {"sections": {
     "clinvar": ok({"hits": [{"gene": "GENEB", "chrom": "chr2", "pos": 1000, "ref": "C", "alt": "T",
                              "significance": "Pathogenic", "stars": 2, "genotype": "het", "af": 0.0001}]}),
     "carrier": ok({"carriers": [{"gene": "GENEC", "variant": "c.5A>G", "condition": "Invented condition",
-                                 "significance": "Pathogenic", "stars": 2, "inheritance": "AR"}]}),
+                                 "significance": "Pathogenic", "stars": 2, "inheritance": "AR", "genotype": "het"},
+                                {"gene": "GENED", "variant": "c.9C>T", "condition": "Another invented condition",
+                                 "significance": "Pathogenic", "stars": 2, "inheritance": "AR", "genotype": "hom"}]}),
+    "expansions": ok({"loci": [{"locus": "FMR1", "repeat_count": "30/250", "status": "pre_mutation,full_mutation",
+                                "ci": "29-31/240-260", "allele_sizing": "spanning/flanking"}]}),
     "cpic": ok({"genes": [{"gene": "CYP2C19", "diplotype": "*2/*2", "phenotype": "Poor Metabolizer",
                            "status": "non-normal"},
                           {"gene": "CYP2C9", "diplotype": "*1/*1", "phenotype": "Normal Metabolizer", "status": "normal"}]}),
@@ -74,7 +81,8 @@ SUMMARY = {"sections": {
     "lpa": {"state": "failed", "note": "invented failure", "data": {}},
 }}
 
-WANT = {"cpsr": "act", "clinvar": "review", "carrier": "carrier", "pgx": "medicine", "contamination": "trust"}
+WANT = {"cpsr": "act", "clinvar": "review", "carrier-genec": "carrier", "carrier-gened": "act", "str-fmr1": "act",
+        "pgx": "medicine", "contamination": "trust"}
 
 
 def level_problems(res):
@@ -84,6 +92,9 @@ def level_problems(res):
         got = [f["level"] for f in found if f["id"].startswith(prefix)]
         if got != [lv]:
             out.append(f"{prefix}: {got}, want [{lv}]")
+    fmr1 = [f for f in found if f["id"] == "str-fmr1"]
+    if fmr1 and "full-mutation" not in fmr1[0]["title"]:
+        out.append(f"a full-mutation repeat titled {fmr1[0]['title']!r}")
     if any(f["id"].startswith("pgx-cyp2c9") for f in found):
         out.append("a gene with a normal phenotype became a finding")
     for f in found:
@@ -92,7 +103,7 @@ def level_problems(res):
         if f["section"] != live_results.LEVEL_SECTION[f["level"]]:
             out.append(f"{f['id']} in section {f['section']}")
     cards = {c["id"]: c for ch in res["chapters"] for c in ch["sections"]}
-    for cid, lv in (("cpsr", "act"), ("cpic", "medicine"), ("carrier-list", "carrier"), ("clinvar", "review"),
+    for cid, lv in (("cpsr", "act"), ("cpic", "medicine"), ("carrier-list", "act"), ("clinvar", "review"),
                     ("qc", "trust"), ("lpa", None)):
         if cards[cid].get("level") != lv:
             out.append(f"card {cid}: {cards[cid].get('level')}, want {lv}")
@@ -100,7 +111,7 @@ def level_problems(res):
 
 
 def lead_text(segs):
-    return "".join(t for t, _ in segs)
+    return "".join(x[0] for x in segs)
 
 
 def lead_problems(res):
@@ -110,7 +121,9 @@ def lead_problems(res):
     trust = [f for f in res["findings"] if f["level"] == "trust"]
     if acts:
         n = len(acts)
-        if f"{'one finding' if n == 1 else f'{n} findings'} should go to a doctor".lower() not in text.lower():
+        said = re.search(r"\b(\w+) findings? should go to a doctor", text)
+        words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9}
+        if not said or words.get(said.group(1).lower(), int(said.group(1)) if said.group(1).isdigit() else None) != n:
             out.append(f"no count of findings for a doctor: {text[:300]}")
         out += [f"lead does not name {f['title']!r}" for f in acts if f["title"] not in text]
     elif "needs a doctor" not in text or "sections 8 and 9" not in text:
@@ -119,6 +132,9 @@ def lead_problems(res):
         out.append("a data-quality problem is not first")
     if live_results.FORBIDDEN.search(text):
         out.append(f"all-clear wording: {text[:300]}")
+    # A child's tile: the lead without the names of the findings to act on.
+    closed = "".join(x[0] if x[2:] != ["act"] else "" for x in res["lead"])
+    out += [f"the closed lead still names {f['title']!r}" for f in acts if f["title"] in closed]
     return out
 
 
@@ -155,9 +171,9 @@ def stop(srv):
 def route_problems(port, fid):
     out = []
     path = f"/runs/{SAMPLE}/finding/{urllib.parse.quote(fid)}/"
-    code, _, _ = request(port, "GET", path)
-    if code not in (401, 302, 303):
-        out.append(f"finding page without a session: {code}")
+    code, h, _ = request(port, "GET", path)
+    if code != 303 or h.get("location") != "/login?next=" + urllib.parse.quote(path):
+        out.append(f"finding page without a session: {code} {h.get('location')}")
     code, h, _ = request(port, "POST", "/login", urllib.parse.urlencode({"password": PASSWORD, "next": "/"}),
                          {"Content-Type": "application/x-www-form-urlencoded"})
     m = re.match(r"owngenome_live=([^;]+)", h.get("set-cookie", ""))
@@ -202,7 +218,7 @@ def main():
         bad = lead_problems(res)
         check("2. the lead counts and names the findings for a doctor, data quality first", not bad, bad)
         calm = copy.deepcopy(SUMMARY)
-        for k in ("cpsr", "sample_qc", "carrier", "cpic"):
+        for k in ("cpsr", "sample_qc", "carrier", "cpic", "expansions"):
             calm["sections"].pop(k)
         calm["sections"]["clinvar"] = ok({"hits": []})
         res2 = live_results.build("MADE-UP", calm)
@@ -212,6 +228,8 @@ def main():
         planted = dict(res, lead=live_results.lead([f for f in res["findings"] if f["level"] != "act"], res["levels"],
                                                    SUMMARY))
         control("the act findings left out of the lead", not lead_problems(planted))
+        untagged = dict(res, lead=[x[:2] for x in res["lead"]])
+        control("the names of the findings to act on not marked for a child's page", not lead_problems(untagged))
 
         # 3.
         root = os.path.join(work, "root")

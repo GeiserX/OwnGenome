@@ -52,8 +52,9 @@
   // order assets/steps.tsv plans them. Each line is a button (g.box) that opens the step's detail.
   function ms(t) { var v = t ? Date.parse(t) : NaN; return isFinite(v) ? v : null; }
   function clock(v) { var d = new Date(v); return ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2); }
-  function timeline(steps, nowText) {
-    var now = ms(nowText);
+  function timeline(steps, nowText, running) {
+    // A finished run ends at its last step, not at the moment the page was asked for.
+    var now = running ? ms(nowText) : null;
     var known = steps.map(function (s) { return ms(s.started_utc); }).filter(function (v) { return v !== null; });
     var t0 = known.length ? Math.min.apply(null, known) : null;
     var ends = steps.map(function (s) { return ms(s.ended_utc) || (s.state === 'running' ? now : null); })
@@ -76,7 +77,7 @@
 
   function drawMap(steps) {
     var map = document.getElementById('map');
-    var T = timeline(steps, last && (last.generated_utc || null));
+    var T = timeline(steps, last && (last.generated_utc || null), !!(last && last.run && last.run.state === 'running'));
     var h = TOP + T.order.length * ROW_H + AXIS_H;
     // The chart takes the width the page gives it (at least 300 px of time), so no step sits off screen.
     var CHART_W = Math.max(300, (map.clientWidth || 962) - LABEL_W - 12);
@@ -193,7 +194,8 @@
         box.appendChild(el('a', { href: 'report.html#' + encodeURIComponent(anchor) }, 'Open in the report: ' + k));
       }
     });
-    drawMap(shown(last.steps));
+    // Repaint, never redraw: the focused step keeps its focus and the plugins' marks stay on.
+    shown(last.steps).forEach(function (s) { paint(s.step, s.state, s.label); });
   }
 
   function found(state) {
