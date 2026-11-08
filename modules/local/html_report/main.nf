@@ -79,7 +79,8 @@ process HTML_REPORT {
             ${id}_paraphase_copy_number.tsv|${id}_paraphase_variants.tsv|${id}_*_copy_number.tsv) place paralogs "\$f" ;;
             ${id}.mosdepth.summary.txt|${id}_callability.bed.gz) place coverage "\$f" ;;
             ${id}_sample_qc.tsv|${id}_read_count.tsv)     place qc "\$f" ;;
-            ${id}_cn_intervals.tsv|${id}_smn1_marker.tsv) place paralogs "\$f" ;;
+            ${id}_cn_intervals.tsv)                       place paralogs "\$f" ;;
+            ${id}_smn1_marker.tsv)                        place paralogs "\$f" ;;
             ${id}_prs_summary.tsv)                        place prs "\$f" ;;
             ${id}_ancestry.tsv)                           place ancestry "\$f" ;;
             ${id}_ancestry_fine.tsv|${id}_painting.png)   place ancestry_fine "\$f" ;;
@@ -103,7 +104,8 @@ process HTML_REPORT {
             ${id}_bloodtype.tsv)                          place bloodtype "\$f" ;;
             ${id}_archaic.tsv)                            place archaic "\$f" ;;
             ${id}_ancient.tsv|${id}_ancient_info.tsv|${id}_ancient_pca.svg) place ancient "\$f" ;;
-            ${id}_lpa_kiv2.tsv|${id}_lpa_kiv2_4925.tsv)   place lpa "\$f" ;;
+            ${id}_lpa_kiv2.tsv)                           place lpa "\$f" ;;
+            ${id}_lpa_kiv2_4925.tsv)                      place lpa "\$f" ;;
             ${id}_vntyper.tsv)                            place vntyper "\$f" ;;
             ${id}_locityper.tsv)                          place locityper "\$f" ;;
             ${id}_viral.tsv)                              place viral "\$f" ;;
