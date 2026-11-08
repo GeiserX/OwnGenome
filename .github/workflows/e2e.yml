@@ -693,7 +693,7 @@ jobs:
       # of two IPD-IMGT/HLA releases and GENCODE's genes and exons
       # (bash-step-08-hla, which then runs with the network blocked), and the
       # four real PGS Catalog score files of prs-scores-and-run-options-1.
-      # A third keyed the same way: the pinned downloads of the two table
+      # A third keyed the same way: the pinned downloads of the three table
       # builders (GENCODE's GTF from EBI among them) that
       # callability-1-catalog, cn-intervals-1-catalog and
       # followups-ci-3-sv-rule-regions rebuild their tables from.

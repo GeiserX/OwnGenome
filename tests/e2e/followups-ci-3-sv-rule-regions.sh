@@ -38,7 +38,12 @@ cat "${CASE_TMP}/edited.log"
 check_eq "control: --check on the edited copy exits 1" "$rc" 1
 check "control: and says to rebuild it" grep -q "is not what the pinned downloads give; rebuild it" "${CASE_TMP}/edited.log"
 check "control: and shows the MHC row that differs" grep -qP '^< chr6\t\d+\t\d+\tmhc\t' "${CASE_TMP}/edited.log"
-check_eq "control: every download came from the cache the first run filled" \
-  "$(grep -c '^Downloading ' "${CASE_TMP}/edited.log")" 0
+# Cache reuse: only without the e2e data cache, where the first run filled
+# CACHE itself. With it the runner filled CACHE before the case, so the first
+# run already downloads nothing and this could not go red.
+if [ -z "${E2E_DATA_CACHE:-}" ]; then
+  check_eq "control: the second run downloaded nothing, it read the first run's cache" \
+    "$(grep -c '^Downloading ' "${CASE_TMP}/edited.log")" 0
+fi
 
 finish

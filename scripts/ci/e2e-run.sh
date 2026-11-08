@@ -188,7 +188,7 @@ PGS_MD5=${E2E_PGS_MD5-"PGS002257 bb1b2b11a499c5930e8c835647e48296
 PGS000065 90ac7aabbbde9bdaa681dbdb66c0ebd8
 PGS000064 43b39c4450f423f0772bbd8779dd640f
 PGS000066 b34f31b8b3a7dbbbb58882a70e14649d"}
-# CATALOGS: the builders of the committed tables two cases rebuild and
+# CATALOGS: the builders of the committed tables three cases rebuild and
 # compare, as "FOLDER COMMAND...": each lists its pinned downloads with
 # --list ("NAME URL SHA256"), and entry catalogs holds them in FOLDER under
 # NAME, where the builder's cache reads them (callability-1-catalog,

@@ -70,12 +70,12 @@ else echo "FAIL: the hla key does not match its inputs (${other:-?} ${pin:-?} ${
 if "$RUN" --data-key pgs | grep -qE '^e2e-data-pgs-[0-9a-f]{16}$'; then echo "PASS: the pgs key is a hash"
 else echo "FAIL: the pgs key"; failed=1; fi
 
-# catalogs: the downloads of the two table builders, each in its folder.
+# catalogs: the downloads of the three table builders, each in its folder.
 if "$RUN" --data-key catalogs | grep -qE '^e2e-data-catalogs-[0-9a-f]{16}$'; then echo "PASS: the catalogs key is a hash"
 else echo "FAIL: the catalogs key"; failed=1; fi
-n=$( { bash "${REPO}/scripts/ci/build-callability.sh" --list; python3 "${REPO}/scripts/ci/build-cn-intervals.py" --list; } | awk 'NF == 3 && $2 ~ /^https:/ && $3 ~ /^[0-9a-f]{64}$/' | wc -l | tr -d ' ')
-if [ "$n" = 11 ]; then echo "PASS: the two builders list 11 pinned downloads (7 and 4)"
-else echo "FAIL: the builders list ${n} pinned downloads, want 11"; failed=1; fi
+n=$( { bash "${REPO}/scripts/ci/build-callability.sh" --list; python3 "${REPO}/scripts/ci/build-cn-intervals.py" --list; bash "${REPO}/scripts/ci/build-sv-rule-regions.sh" --list; } | awk 'NF == 3 && $2 ~ /^https:/ && $3 ~ /^[0-9a-f]{64}$/' | wc -l | tr -d ' ')
+if [ "$n" = 15 ]; then echo "PASS: the three builders list 15 pinned downloads (7, 4 and 4)"
+else echo "FAIL: the builders list ${n} pinned downloads, want 15"; failed=1; fi
 mkdir -p "${T}/catalogs/callability"
 expect "catalogs: an entry with no file fails" 1 catalogs
 bash "${REPO}/scripts/ci/build-callability.sh" --list | head -n 1 | { read -r name _ _; echo planted > "${T}/catalogs/callability/${name}"; }
