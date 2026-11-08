@@ -443,9 +443,13 @@ def veil_checks(b, base, out):
     try:
         with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as f:
             summary = json.load(f)
-        summary.setdefault("sections", {})["cpsr"] = {"state": "ok", "data": {"plp": [
+        summary.setdefault("sections", {})["cpsr"] = {"state": "ok", "data": {"call_floor_dp": 10, "low_confidence": 0,
+                                                                            "plp": [
             {"gene": VEIL_GENE, "variant": VEIL_VARIANT, "final": "Pathogenic", "clinvar": "Pathogenic"}]}}
         res = live_results.build(OTHERS[1], summary)
+        cpsr = [c for ch in res["chapters"] for c in ch["sections"] if c["id"] == "cpsr"]
+        check("browser: the planted CPSR card has its table, so the closed check below has rows to hide",
+              bool(cpsr and cpsr[0]["table"] and cpsr[0]["section"] == 1), cpsr)
         with open(rj, "w") as f:
             json.dump(res, f)
         bad = veil_problems(*veil_text(b, base))
