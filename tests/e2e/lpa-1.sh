@@ -139,6 +139,15 @@ check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _
 HTML=$(find "$NF_OUT" -name "${H}_report.html" | head -n 1)
 check "the HTML report has the Lp(a) card with the count" has "<h2>Lp\(a\): LPA KIV-2 Repeat Count</h2>" "$(cat "$HTML" 2>/dev/null)"
 check "and the card shows the count" has "KIV-2 repeats \(both chromosomes\): ${N} " "$(cat "$HTML" 2>/dev/null)"
+# The 4925G>A line beside the count: HTML_REPORT got the LPA task's
+# <id>_lpa_kiv2_4925.tsv and its reader ran (no "wrote no", no failed check).
+NULL_LINE=$(grep -o 'KIV-2 4925G&gt;A null allele (rs1484919544): [^<]*' "$HTML" 2>/dev/null | head -n 1)
+check "the card prints the KIV-2 4925G>A null-allele line" has '^KIV-2 4925G&gt;A null allele \(rs1484919544\): ' "$NULL_LINE"
+check "and the line is a reading of the LPA task's table" lacks 'wrote no|the check failed' \
+  "$(grep -A1 -F "$NULL_LINE" "$HTML" 2>/dev/null)"
+check "control: a card without the line fails the check" lacks 'KIV-2 4925G&gt;A null allele \(rs1484919544\): ' \
+  "$(sed 's/KIV-2 4925G&gt;A null allele//' "$HTML" 2>/dev/null)"
+echo "lpa: the Nextflow card's 4925G>A line: ${NULL_LINE}" >> "$E2E_NOTES"
 
 rm -rf "${G:?}/${V}" "${G:?}/${L}" "${T:?}"/*.bam "${T:?}"/*.bai "${T:?}/lpa.sam"
 finish
