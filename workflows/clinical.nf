@@ -52,6 +52,7 @@ workflow CLINICAL {
     ch_ancestry_fine_panel // channel: path — the folder setup.sh --ancestry-fine-panel writes, or []
     ch_bam              // channel: [meta, bam, bai] — every sample with a BAM (CPSR's cDNA read check)
     ch_gencode_exons    // channel: path — GENCODE's exons (--gencode_exons), or []
+    ch_prs_score_sets   // channel: val — the PRS score sets the samplesheet needs (with_x, autosomes), known at launch
 
     main:
     ch_versions = Channel.empty()
@@ -133,11 +134,14 @@ workflow CLINICAL {
             // A sample whose samplesheet gives the sex is scored on chrX too
             // (pgsc_calc's plink2 needs the sex to read chrX); one without
             // keeps the scores' autosomal rows only. PRS_PREPARE formats the
-            // scores once per set the run needs.
+            // scores once per set the run needs. The sets come from the
+            // samplesheet (main.nf), so it starts at launch instead of after
+            // the first VCF; a set whose samples all stop upstream is still
+            // formatted, and nothing reads it.
             ch_prs_rows = ch_prs_input.gvcf.map { row -> [row[1], row[4], row[5], 'gvcf'] }
                 .mix(ch_prs_input.vcf.map { row -> [row[1], row[2], row[3], 'vcf'] })
                 .map { meta, f, idx, kind -> [meta.sex ? 'with_x' : 'autosomes', meta, f, idx, kind] }
-            PRS_PREPARE(ch_prs_rows.map { row -> row[0] }.unique(), ch_pgs_scoring, ch_pgs_labels, ch_reference, ch_reference_fai)
+            PRS_PREPARE(ch_prs_score_sets, ch_pgs_scoring, ch_pgs_labels, ch_reference, ch_reference_fai)
             ch_prs_sets = ch_prs_rows.combine(PRS_PREPARE.out.scores, by: 0)
             ch_sample_pgs = ch_prs_sets.map { _set, meta, _f, _idx, _kind, pgs, _alleles -> [meta.id, pgs] }
             // Both are cut to the score (and panel) positions: a small file
