@@ -413,17 +413,34 @@ def smn_finding(path, genes):
     return [finding("SMN1", text, 1 if p["cn"] == 1 else 2)], "SMN1 %d cop%s" % (p["cn"], "y" if p["cn"] == 1 else "ies")
 
 
-def cyp21a2_finding(path, genes):
-    """CYP21A2 from depth and PSV sites (step 35's <id>_cyp21a2_psv.tsv):
-    ([findings], text of what was read). A deletion or a possible
-    conversion is a finding on one copy, on two when a site has no CYP21A2
-    copy left."""
+def cyp21a2_table(path):
+    """Step 35's CYP21A2 table (metric, value) as a dict."""
     t = {}
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             c = line.rstrip("\n").split("\t", 1)
             if len(c) == 2 and c[0] != "metric":
                 t[c[0]] = c[1]
+    return t
+
+
+def cyp21a2_gap(path, txt):
+    """Why step 35 did not assess CYP21A2, for the not-assessed list: the
+    table's message (it says, for a BAM without multi-mapping reads, that the
+    aligner and not the genome stopped the call), or the short text with the
+    reason code for a table from before the message row."""
+    msg = cyp21a2_table(path).get("message", ".")
+    if msg.startswith("not assessed: "):
+        return "CYP21A2 " + msg
+    return txt
+
+
+def cyp21a2_finding(path, genes):
+    """CYP21A2 from depth and PSV sites (step 35's <id>_cyp21a2_psv.tsv):
+    ([findings], text of what was read). A deletion or a possible
+    conversion is a finding on one copy, on two when a site has no CYP21A2
+    copy left."""
+    t = cyp21a2_table(path)
     if t.get("status") not in ("called", "not assessed"):
         die(["%s: not step 35's CYP21A2 table (bin/copy_number.py call --locus CYP21A2)" % path])
     if t["status"] != "called":
@@ -835,7 +852,7 @@ def cmd_screen(a):
                 m, txt = cyp21a2_finding(cyp[s], genes)
                 f += m
                 if txt.startswith("CYP21A2 not assessed"):
-                    gaps.append("CYP21A2 deletion and conversions of %s: %s." % (s, txt))
+                    gaps.append("CYP21A2 deletion and conversions of %s: %s." % (s, cyp21a2_gap(cyp[s], txt)))
             else:
                 gaps.append("CYP21A2 deletion and conversions of %s: step 35's CYP21A2 table was not passed "
                             "to the couple screen (--cyp21a2)." % s)
