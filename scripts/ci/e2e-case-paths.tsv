@@ -65,6 +65,7 @@ bumps-drop-in-baseline	scripts/ci/fake-docker/lib.sh
 callability-1-catalog	assets/callability_genes.tsv assets/paralog_loci.tsv assets/pgx_genes.tsv bin/cn_loci.tsv scripts/ci/build-callability.sh scripts/ci/fake-docker/lib.sh
 callability-2-genes	assets/acmg_sf.tsv assets/callability_genes.tsv assets/carrier_genes.tsv assets/mito_confirmed.tsv assets/stub/sample.vcf.gz bin/collect_summary.py bin/render_report.py bin/results_index.py modules/local/html_report/* modules/local/mosdepth/* modules/local/vcf_precheck/* scripts/16b-mosdepth.sh scripts/24-html-report.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 chip-clonal-1	assets/chip_genes.tsv bin/chip_report.py bin/render_report.py modules/local/chip/* modules/local/vcf_precheck/* scripts/49-chip.sh scripts/ci/fake-docker/lib.sh scripts/setup.sh scripts/validate-setup.sh
+chip-mt-1-roundtrip	assets/par_grch38.bed bin/export_consumer.py scripts/40-export-consumer.sh scripts/chip-to-vcf.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh tests/fixtures/consumer_export/sites.tsv.gz
 ci-e2e-2-locityper	assets/locityper_loci.bed bin/locityper_report.py scripts/53-locityper.sh scripts/setup.sh
 clinical-filter-mane-and-quality-1-tiers	assets/construct_variants.tsv bin/clip_check.py bin/comphet_phase.py bin/constraint_join.awk bin/csq_rank.awk scripts/23-clinical-filter.sh scripts/31-slivar.sh scripts/ci/fake-docker/lib.sh
 clinical-filter-mane-and-quality-2-vep-norm	scripts/13-vep-annotation.sh scripts/ci/fake-docker/lib.sh
