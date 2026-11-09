@@ -21,11 +21,13 @@ Checks:
      current (same steps done, same summary.json), and says whether a clinical screen has a result;
   5. one row the rules cannot read (a ClinVar hit whose stars is no number, a CPSR row that is a string,
      a carrier row of the wrong type) costs that row only: results.json keeps every card and every other
-     finding, the row becomes a finding worth a look on its own card that names no gene, and the card
-     whose table could not be drawn says so.
+     finding, the row becomes a finding on its own card that names no gene, at the highest level its rule
+     can give (to act on for CPSR, the carrier list and AnnotSV, so a child's page veils the card; worth a
+     look for ClinVar), and the card whose table could not be drawn says so.
 Each check runs again on a planted mistake and must fail there: 1 with the CPIC rule's level swapped
 to review, 2 with the act findings left out of the lead and with their names unmarked and with the
-old lead on a run with no clinical screen, 3 with the route answering any id, 4 with a current read, 5 with the rules run without the row guard.
+old lead on a run with no clinical screen, 3 with the route answering any id, 4 with a current read, 5 with the rules run without the row guard
+and with the guard's level hard-coded to review.
 A check
 that cannot fail is no check.
 
@@ -230,9 +232,26 @@ def bad_row_problems():
     ids = {f["id"] for f in res["findings"]}
     out += [f"lost {f['id']}" for f in good["findings"] if f["id"] not in ids]
     new = [f for f in res["findings"] if f["id"] not in {g["id"] for g in good["findings"]}]
-    if sorted(f["card"] for f in new) != ["carrier-list", "clinvar", "cpsr"] or any(
-            f["level"] != "review" or f["gene"] or re.search(r"GENE[XYZ]", f["title"] + f["text"]) for f in new):
+    # A rule that can give a finding to act on gives its unreadable row that level, so a child's page veils
+    # the card (its table may still draw the row); the ClinVar rule never gives one.
+    want = {"carrier-list": "act", "clinvar": "review", "cpsr": "act"}
+    if sorted(f["card"] for f in new) != sorted(want) or any(
+            f["level"] != want[f["card"]] or f["gene"] or re.search(r"GENE[XYZ]", f["title"] + f["text"]) for f in new):
         out.append(f"the unreadable rows: {[(f['card'], f['level'], f['gene'], f['title']) for f in new]}")
+    # An AnnotSV class-5 row whose gene list the rule cannot join: the card's table draws its first genes,
+    # so the card must hold a finding to act on, or a child's page shows the row unveiled.
+    s = copy.deepcopy(SUMMARY)
+    s["sections"]["annotsv"] = ok({"rows": [{"sv": "chr1:1000-9000", "type": "deletion", "length": -8000,
+                                             "acmg_class": "5", "genes": ["GENEX", "GENEY", "GENEZ", None], "gt": "0/1"}]})
+    try:
+        sv_res = live_results.build("MADE-UP", s)
+    except Exception as e:  # noqa: BLE001 -- the very thing under test
+        return out + [f"build with an unreadable AnnotSV row raised {type(e).__name__}: {e}"]
+    byid = {f["id"]: f for f in sv_res["findings"]}
+    sv = [c for ch in sv_res["chapters"] for c in ch["sections"] if c["id"] == "structural-variants"]
+    lv = [byid[i]["level"] for i in sv[0]["findings"]] if sv else None
+    if not lv or "act" not in lv:
+        out.append(f"the AnnotSV card with an unreadable class-5 row holds no finding to act on: {lv}")
     cv = [c for ch in res["chapters"] for c in ch["sections"] if c["id"] == "clinvar"][0]
     if not any("could not be drawn" in x for x in cv["lines"]):
         out.append(f"the ClinVar card does not say it could not be drawn: {cv['lines'][:2]}")
@@ -366,6 +385,15 @@ def main():
         live_results._Row = Unguarded
         try:
             control("the rules without the row guard", not bad_row_problems())
+        finally:
+            live_results._Row = real_row
+
+        class AlwaysReview(real_row):  # the planted mistake: every unreadable row worth a look only
+            def __init__(self, out, card_id, level="review"):
+                super().__init__(out, card_id, "review")
+        live_results._Row = AlwaysReview
+        try:
+            control("the row guard with its level hard-coded to review", not bad_row_problems())
         finally:
             live_results._Row = real_row
     finally:

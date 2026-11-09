@@ -771,13 +771,15 @@ def _items(v):
 
 
 class _Row:
-    """with _Row(out, card): one rule turning one row of the summary into a finding. A row the rule cannot
-    read (a field of the wrong type, a stars value that is not a number) costs that row only: it becomes a
-    finding worth a look on its card that says the row could not be read, and every other row and card
-    still renders. Its words name no gene or variant: the row is unreadable."""
+    """with _Row(out, card[, level]): one rule turning one row of the summary into a finding. A row the rule
+    cannot read (a field of the wrong type, a stars value that is not a number) costs that row only: it
+    becomes a finding on its card that says the row could not be read, and every other row and card still
+    renders. Its words name no gene or variant: the row is unreadable. Its level is the highest the rule
+    can give (level "act" for a rule that can give one): a child's page veils a card that holds a finding
+    to act on, and the card's table may still draw the row the rule could not read."""
 
-    def __init__(self, out, card_id):
-        self.out, self.card_id = out, card_id
+    def __init__(self, out, card_id, level="review"):
+        self.out, self.card_id, self.level = out, card_id, level
 
     def __enter__(self):
         return self
@@ -786,7 +788,7 @@ class _Row:
         if kind is None or not issubclass(kind, (KeyError, TypeError, ValueError, AttributeError, IndexError,
                                                  ZeroDivisionError)):
             return False
-        self.out.append(_f("review", self.card_id, ("unreadable", self.card_id, len(self.out)),
+        self.out.append(_f(self.level, self.card_id, ("unreadable", self.card_id, len(self.out)),
                            "A row of this section could not be read",
                            f"One row of this section holds a value of a kind the page cannot read ({kind.__name__}). "
                            f"The other rows show as usual; the report and its files have the row as the step wrote it."))
@@ -816,17 +818,17 @@ def finding_rows(summary):
     # 1. ACMG secondary findings: the gene's own reporting rule already said "report". The report's own
     # rows (rr.sf_rows): one it cannot read costs this rule, never the rest.
     sf_list = []
-    with _Row(out, "clinical-filter"):
+    with _Row(out, "clinical-filter", "act"):
         sf_list = rr.sf_rows(sf) if sf and not sf.get("unavailable") else []
     for r in sf_list:
-        with _Row(out, "clinical-filter"):
+        with _Row(out, "clinical-filter", "act"):
             out.append(_f("act", "clinical-filter", ("sf", r[0], r[1]), f"Secondary finding in {r[0]}",
                           f"A change in {r[0]} that the ACMG secondary-findings list reports: {r[3]}.",
                           gene=r[0], detail=f"{r[0]} {r[1]} {r[2] if r[2] != '.' else ''}".strip(),
                           evidence=[["Variant", r[1]], ["Genotype", r[2]], ["Why it is reported", r[3]]]))
     # 2. Cancer predisposition, CPSR's pathogenic and likely pathogenic rows.
     for x in _items(_data(S, "cpsr").get("plp")):
-        with _Row(out, "cpsr"):
+        with _Row(out, "cpsr", "act"):
             out.append(_f("act", "cpsr", ("cpsr", x.get("gene"), x.get("variant")),
                           f"Cancer predisposition ({x.get('gene')})",
                           f"CPSR grades this change in {x.get('gene')} as {x.get('final')}: it can raise the risk of some "
@@ -836,7 +838,7 @@ def finding_rows(summary):
                                     ["Call", "low confidence" if x.get("low_confidence") else None]]))
     # 3. Two hits in one carrier-list gene: possibly both copies changed.
     for g in sorted(x for x in two_hit if x):
-        with _Row(out, "carrier-list"):
+        with _Row(out, "carrier-list", "act"):
             out.append(_f("act", "carrier-list", ("two-hits", g), f"Two changes in {g}",
                           f"Two changes were found in {g}, a gene where it takes two to cause the condition. Whether they "
                           f"sit on different copies decides whether it matters.", gene=g))
@@ -859,7 +861,7 @@ def finding_rows(summary):
                           viewer=f"{h.get('chrom')}:{h.get('pos')}", af=h.get("af")))
     # 5. Large deletions and duplications AnnotSV ranks class 4 or 5.
     for x in _items(_data(S, "annotsv").get("rows")):
-        with _Row(out, "structural-variants"):
+        with _Row(out, "structural-variants", "act"):
             genes = ", ".join(x.get("genes") or []) or "no gene"
             out.append(_f("act" if str(x.get("acmg_class")) == "5" else "review", "structural-variants",
                           ("sv", x.get("sv")), f"Large {x.get('type') or 'structural change'} over {genes}",
@@ -870,7 +872,7 @@ def finding_rows(summary):
                                     ["Genotype", x.get("gt")]], viewer=str(x.get("sv") or "").replace(" ", "") or None))
     # 6. Repeat expansions outside Stranger's "normal", or in an intermediate zone.
     for l in _items(_data(S, "expansions").get("loci")):
-        with _Row(out, "expansions"):
+        with _Row(out, "expansions", "act"):
             st = [x for x in (l.get("status") or "").split(",") if x and x != "normal"]
             if not st and not l.get("zone"):
                 continue
@@ -887,7 +889,7 @@ def finding_rows(summary):
                           evidence=[["Repeats", count], ["95% interval", l.get("ci")],
                                     ["Pathologic from", l.get("pathologic_min")],
                                     ["Sizing", l.get("allele_sizing") or l.get("sizing")]]))
-    with _Row(out, "vntyper"):
+    with _Row(out, "vntyper", "act"):
         v = _data(S, "vntyper")
         if v.get("status") in ("positive", "possible"):
             out.append(_f("act" if v["status"] == "positive" else "review", "vntyper", ("muc1", v["status"]),
@@ -921,7 +923,7 @@ def finding_rows(summary):
                           evidence=[["Score", x.get("exomiser_score")], ["Inheritance", x.get("moi")]]))
     # 7. Carriers: one changed copy in a gene of the carrier list, and the couple screen.
     for c in _items(car.get("carriers")):
-        with _Row(out, "carrier-list"):
+        with _Row(out, "carrier-list", "act"):
             if c.get("gene") in two_hit:
                 continue
             gt = str(c.get("genotype") or "")
