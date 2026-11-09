@@ -20,6 +20,9 @@ name: Public evidence
 #                      one an SNV.
 #                      The job "empty" is the red control: an empty region
 #                      list must make it fail.
+#   archaic-same-person  the method check: one 1000 Genomes person with
+#                      Chen et al.'s released calls, step 43 on her high- and
+#                      low-coverage genotypes, beside the released figure.
 #   ancient-footprint  setup.sh --ancient-panel on the full AADR 1240K files,
 #                      then step 44 on HG002, each with the peak memory of
 #                      its containers (the cgroup's memory.peak), the peak
@@ -38,6 +41,18 @@ on:
         description: "Run the ancient-footprint job too"
         type: boolean
         default: true
+      hg002:
+        description: "Run the archaic-hg002 and archaic-share jobs (the whole-genome HG002 run)"
+        type: boolean
+        default: true
+      same_person:
+        description: "1000 Genomes person for the archaic-same-person job (Chen et al. released calls exist for them)"
+        type: string
+        default: NA12878
+      same_person_chromosomes:
+        description: "Autosomes for the archaic-same-person job, separated by spaces or commas, or none"
+        type: string
+        default: none
 
 permissions:
   contents: read
@@ -97,6 +112,7 @@ jobs:
           retention-days: 3
 
   archaic-hg002:
+    if: inputs.hg002
     name: archaic-hg002 (${{ matrix.part }})
     needs: archaic-sites
     runs-on: ubuntu-latest
@@ -274,6 +290,156 @@ jobs:
         with:
           name: archaic-part-${{ matrix.part }}
           path: ${{ env.EV }}/out/${{ matrix.part }}
+          if-no-files-found: error
+
+  archaic-same-person:
+    # The method check behind the whole-genome gate: one 1000 Genomes person
+    # whose IBDmix calls Chen et al. 2020 released, run through step 43 on two
+    # inputs for the same person (the NYGC 30x high-coverage genotypes, and the
+    # original low-coverage phase 3 data called again on GRCh38), beside the
+    # released figure for that person and for the 1000 Genomes group.
+    needs: archaic-sites
+    if: inputs.same_person_chromosomes != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      SAMPLE: ${{ inputs.same_person }}
+      CHROMS: ${{ inputs.same_person_chromosomes }}
+      CHEN_ID: 125XCvTpQbK6TPX84y4442ZaDLDbxWMCf
+      CHEN_SHA256: 454bfa32f6b3cf4b48f0466b601054f5ed141fe61fea3aff4d3284a7a1f4dc5b
+      HC_URL: https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV
+      LC_URL: https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free disk space and pick the work area
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h / /mnt
+          work="${RUNNER_TEMP}/ev"
+          if [ "$(df --output=avail -k /mnt | tail -1)" -gt "$(df --output=avail -k / | tail -1)" ]; then
+            work=/mnt/ev
+            sudo mkdir -p "$work" && sudo chown "$(id -u):$(id -g)" "$work"
+          fi
+          echo "EV=${work}" >> "$GITHUB_ENV"
+          read -ra want <<< "$(printf '%s' "$CHROMS" | tr ',\r\n' '   ')"
+          for c in "${want[@]}"; do
+            [[ "$c" =~ ^([1-9]|1[0-9]|2[0-2])$ ]] || { echo "same_person_chromosomes: '${c}' is not an autosome 1 to 22"; exit 1; }
+          done
+          [[ "$SAMPLE" =~ ^(HG|NA)[0-9]+$ ]] || { echo "same_person: '${SAMPLE}' is not a 1000 Genomes sample"; exit 1; }
+          echo "LIST=${want[*]}" >> "$GITHUB_ENV"
+
+      - name: The GRCh38 reference, its index and dictionary
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          R="${EV}/genome/reference"
+          mkdir -p "$R"
+          f=GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+          curl -fsSL --retry 5 -o "${R}/md5.txt" "${NCBI_REF}/md5checksums.txt"
+          curl -fsSL --retry 5 -o "${R}/${f}.gz" "${NCBI_REF}/${f}.gz"
+          curl -fsSL --retry 5 -o "${R}/GRCh38_no_alt_analysis_set.fasta.fai" "${NCBI_REF}/${f}.fai"
+          want=$(awk -v n="./${f}.gz" '$2 == n {print $1}' "${R}/md5.txt")
+          [ -n "$want" ] && [ "$(md5sum "${R}/${f}.gz" | cut -d' ' -f1)" = "$want" ] || { echo "md5 of ${f}.gz is not NCBI's"; exit 1; }
+          gzip -dc "${R}/${f}.gz" > "${R}/GRCh38_no_alt_analysis_set.fasta"
+          rm -f "${R}/${f}.gz"
+          docker run --rm -u "$(id -u):$(id -g)" -v "${R}:/r" "$SAMTOOLS_IMAGE" \
+            samtools dict -o /r/GRCh38_no_alt_analysis_set.dict /r/GRCh38_no_alt_analysis_set.fasta
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: archaic-1kg-sites
+          path: sites
+
+      - name: Chen et al.'s released calls (sha256 pinned)
+        run: |
+          set -euo pipefail
+          mkdir -p "${EV}/chen"
+          curl -fsSL --retry 5 -o "${EV}/chen/chen.txt" "https://drive.usercontent.google.com/download?id=${CHEN_ID}&export=download&confirm=t"
+          [ "$(sha256sum "${EV}/chen/chen.txt" | cut -d' ' -f1)" = "$CHEN_SHA256" ] || { echo "sha256 of Chen's file is not the pinned one"; head -c 300 "${EV}/chen/chen.txt"; exit 1; }
+          awk -v s="$SAMPLE" '$9 == s {n++} END {print s, n+0, "released segments"; exit n == 0}' "${EV}/chen/chen.txt"
+
+      - name: setup.sh --archaic for the chromosomes
+        env:
+          THREADS: '4'
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          G="${EV}/genome"
+          DATA="${G}/reference/archaic/${ARCHAIC_DATA_VERSION}"
+          mkdir -p "${DATA}/download"
+          mv sites/1kg_sites.vcf.gz sites/1kg_sites.vcf.gz.tbi "${DATA}/download/"
+          : > "${EV}/regions37.bed"
+          for c in $LIST; do printf '%s\t0\t300000000\n' "$c" >> "${EV}/regions37.bed"; done
+          for c in $LIST; do
+            for g in Altai Vindija33.19 Denisova; do
+              curl -fsSL --retry 5 -C - -o "${DATA}/download/${g}.chr${c}.vcf.gz.part" \
+                "https://cdna.eva.mpg.de/neandertal/Vindija/VCF/${g}/chr${c}_mq25_mapab100.vcf.gz" &
+            done
+            wait
+          done
+          ARCHAIC_REGIONS="${EV}/regions37.bed" scripts/setup.sh --archaic "$G" 2>&1 | tee "${EV}/setup.log"
+          [ "${PIPESTATUS[0]}" -eq 0 ]
+          test -s "${DATA}/DONE"
+
+      - name: The person on both inputs, step 43 on each, and the comparison
+        env:
+          THREADS: '4'
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          G="${EV}/genome" OUT="${EV}/out"
+          mkdir -p "$OUT"
+          reg=$(for c in $LIST; do printf 'chr%s ' "$c"; done | sed 's/ $//; s/ /,/g')
+          # sub LABEL URL-PREFIX NAME-OF-FILE-PATTERN: the person's non-reference
+          # SNVs on the chromosomes, one VCF.
+          pull() {
+            local label=$1 url=$2 pat=$3 c parts=""
+            mkdir -p "${G}/${SAMPLE}${label}/vcf"
+            for c in $LIST; do
+              f="${pat//@/${c}}"
+              docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" "$BCFTOOLS_IMAGE" \
+                bcftools view -s "$SAMPLE" -v snps --min-ac 1 -Oz -o "/e/${label}.chr${c}.vcf.gz" "${url}/${f}" -r "chr${c}"
+              parts="${parts} /e/${label}.chr${c}.vcf.gz"
+            done
+            # shellcheck disable=SC2086
+            docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
+              bcftools concat -Oz -o "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" $parts
+            docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
+              bcftools index -t -f "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz"
+            rm -f "${EV}/${label}".chr*.vcf.gz
+            echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records"
+          }
+          pull hc "$HC_URL" '1kGP_high_coverage_Illumina.chr@.filtered.SNV_INDEL_SV_phased_panel.vcf.gz'
+          pull lc "$LC_URL" 'ALL.chr@.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz'
+          args=()
+          for label in hc lc; do
+            for pop in ALL EUR; do
+              ARCHAIC_POP=$pop GENOME_DIR="$G" scripts/43-archaic.sh "${SAMPLE}${label}" 2>&1 | tee "${OUT}/step43-${label}-${pop}.log"
+              cp "${G}/${SAMPLE}${label}/archaic/${SAMPLE}${label}_archaic_segments.tsv" "${OUT}/${label}-${pop}.segments.tsv"
+              cp "${G}/${SAMPLE}${label}/archaic/${SAMPLE}${label}_archaic.tsv" "${OUT}/${label}-${pop}.summary.tsv"
+              args+=(--mine "${label}-${pop}=${OUT}/${label}-${pop}.segments.tsv")
+            done
+          done
+          grp=$(awk -v s="$SAMPLE" '$9 == s {print $8; exit}' "${EV}/chen/chen.txt")
+          python3 -I bin/archaic_compare.py compare --chen-file "${EV}/chen/chen.txt" --sample "$SAMPLE" --group "$grp" \
+            --chroms "$LIST" "${args[@]}" | tee "${OUT}/comparison.md"
+          {
+            echo "### Same person: ${SAMPLE} (${grp}), chromosomes ${LIST}"
+            echo ""
+            echo "hc = NYGC 30x high-coverage genotypes (GRCh38); lc = the original low-coverage phase 3 data called again on GRCh38. ALL and EUR are the 1000 Genomes frequencies step 43 used."
+            echo ""
+            cat "${OUT}/comparison.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the segments and the comparison
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: archaic-same-person
+          path: ${{ env.EV }}/out
           if-no-files-found: error
 
   archaic-share:
