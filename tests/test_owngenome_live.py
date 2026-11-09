@@ -298,7 +298,22 @@ def find_chrome():
 class Chrome:
     """Headless Chrome driven through --remote-debugging-pipe (fd 3 in, fd 4 out): no package needed."""
 
-    def __init__(self, chrome, profile):
+    def __init__(self, chrome, profile, tries=3):
+        # A headless Chrome on a busy CI runner sometimes never answers its first
+        # call (Target.createTarget, 30 s). Start a fresh one, up to three times.
+        for attempt in range(1, tries + 1):
+            try:
+                return self._start(chrome, f"{profile}-{attempt}" if attempt > 1 else profile)
+            except RuntimeError as e:
+                self.p.kill()
+                self.p.wait()
+                os.close(self.to_w)
+                os.close(self.from_r)
+                if attempt == tries:
+                    raise
+                print(f"Chrome did not start ({e}); trying again ({attempt + 1} of {tries})", file=sys.stderr)
+
+    def _start(self, chrome, profile):
         to_r, self.to_w = os.pipe()
         self.from_r, from_w = os.pipe()
 
