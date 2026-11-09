@@ -133,7 +133,7 @@
       if (m.partner) { rel.push('partner of ' + m.partner); }
       if (rel.length) { add(txt, el('span', { 'class': 'person-place' }, rel.join('; '))); }
       var state = !m.sequenced ? 'Not sequenced' : !r ? 'No run on this server'
-        : r.state === 'finished' ? 'Finished' : r.done + ' of ' + r.planned + ' steps';
+        : r.state === 'finished' ? 'Finished' : (r.state === 'stopped' ? 'Stopped, ' : '') + r.done + ' of ' + r.planned + ' steps';
       add(txt, el('span', { 'class': 'person-state' }, state));
       if (r && r.results) {
         add(txt, el('span', { 'class': 'person-look' + (r.attention ? ' attn' : '') },

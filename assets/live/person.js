@@ -334,7 +334,9 @@
     var margin = el('aside', { 'class': 'card-margin' });
     add(body, text, margin);
     add(art, body);
-    if (pending(g)) {
+    if (pending(g) && state && state.run && state.run.state === 'stopped') {
+      add(text, el('p', { 'class': 'notassessed' }, 'Not written: the run stopped before ' + stepWords(c) + ' ended.'));
+    } else if (pending(g)) {
       add(text, el('p', { 'class': 'state-text' }, (g === 'running' ? 'Being written: ' : 'Waiting for ') + stepWords(c) +
         (g === 'running' ? ' is running now.' : '.')));
     } else if (g === 'notrun') {
@@ -836,6 +838,8 @@
       bits.push(el('span', {}, 'finished' + (run.finished_utc ? ' ' + U.dm(run.finished_utc) : '') + (hh ? ' after ' + hh.toFixed(1) + ' h' : '')));
     } else if (running()) {
       bits.push(el('span', {}, done + ' of ' + planned.length + ' steps done'));
+    } else if (run.state === 'stopped') {
+      bits.push(el('span', {}, 'stopped' + (run.last_heard_utc ? ', no news since ' + U.dm(run.last_heard_utc) : '') + ', ' + done + ' of ' + planned.length + ' steps done'));
     }
     bits.forEach(function (b) { add(line, b); });
     // Breadcrumb: people / family / person.
@@ -857,7 +861,10 @@
     var failed = planned.filter(function (s) { return s.state === 'failed'; }).length;
     var t = done + ' of ' + planned.length + ' steps done';
     if (run.state === 'finished') { t = 'Finished' + (run.finished_utc ? ' ' + U.day(run.finished_utc) : '') + ': ' + t; }
-    else if (nrun) { t = 'Running: ' + t + ', ' + nrun + ' running now'; }
+    else if (run.state === 'stopped') {
+      t = 'Stopped' + (run.last_heard_utc ? ': no news since ' + U.day(run.last_heard_utc) : '') + ', ' + t +
+        ', with no end record, so this report may be incomplete';
+    } else if (nrun) { t = 'Running: ' + t + ', ' + nrun + ' running now'; }
     if (failed) { t += ', ' + failed + ' failed'; }
     var rc = state && state.plugins && state.plugins.recheck;
     if (rc && rc.checked_utc) { t += '. Databases re-checked ' + U.day(rc.checked_utc); }
@@ -875,7 +882,8 @@
     var box = document.getElementById('running-now');
     list.textContent = '';
     var now = Date.parse((state && state.generated_utc) || '');
-    planned.filter(function (s) { return s.state === 'running'; }).forEach(function (s) {
+    // A stopped run's steps still read running, but nothing runs now.
+    planned.filter(function (s) { return running() && s.state === 'running'; }).forEach(function (s) {
       var li = el('li', {});
       var el2 = isFinite(now) && s.started_utc ? (now - Date.parse(s.started_utc)) / 60e3 : null;
       var usual = s.hours ? s.hours * 60 : null;

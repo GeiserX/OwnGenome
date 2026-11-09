@@ -27,6 +27,7 @@
     if (!r) { return 'no genome on this server'; }
     if (r.state === 'finished') { return 'finished' + (r.finished_utc ? ' ' + U.dm(r.finished_utc) : ''); }
     if (r.state === 'running') { return 'being written: ' + r.done + ' of ' + r.planned + ' steps'; }
+    if (r.state === 'stopped') { return 'stopped' + (r.last_heard_utc ? ': no news since ' + U.dm(r.last_heard_utc) : '') + ', ' + r.done + ' of ' + r.planned + ' steps'; }
     if (!r.planned) { return 'not started'; }
     return r.done + ' of ' + r.planned + ' steps';
   }
@@ -118,7 +119,7 @@
     return s;
   }
   function rank(r) { return !r ? 3 : r.state === 'running' ? 0 : r.state === 'finished' ? 1 : 2; }
-  function hoursOf(r) { var h = U.hours(r.started_utc, r.finished_utc); return h === null ? '—' : h.toFixed(1); }
+  function hoursOf(r) { var h = U.hours(r.started_utc, r.finished_utc || (r.state === 'stopped' ? r.last_heard_utc : null)); return h === null ? '—' : h.toFixed(1); }
 
   function draw(data) {
     var main = document.getElementById('home');
@@ -285,7 +286,9 @@
         var pc = el('span', { 'class': 'pc' }, r.name);
         if (colourOf[r.name]) { pc.style.setProperty('--pcol', colourOf[r.name]); }
         var stc = el('span', { 'class': 'st-' + r.state }, r.state === 'finished' ? '✓ finished' : r.state);
-        var notes = r.failed ? r.failed + ' step' + (r.failed > 1 ? 's' : '') + ' failed: not assessed' : r.running ? r.running + ' running now' : '';
+        var notes = r.failed ? r.failed + ' step' + (r.failed > 1 ? 's' : '') + ' failed: not assessed'
+          : r.state === 'stopped' ? 'no news since ' + (r.last_heard_utc ? U.dm(r.last_heard_utc) : 'long ago') + ': the report may be incomplete'
+          : r.running ? r.running + ' running now' : '';
         add(tb, add(el('tr', {}), add(el('td', {}), add(el('a', { href: r.url }), pc)), add(el('td', {}), stc),
           el('td', { 'class': 'r' }, r.done + ' / ' + r.planned), el('td', { 'class': 'r' }, hoursOf(r)),
           el('td', {}, r.finished_utc ? U.dm(r.finished_utc) + ', ' + U.hm(r.finished_utc) : r.state === 'running' ? 'running' : '—'),
@@ -303,7 +306,8 @@
     U.getJSON(root.getAttribute('data-data') || '/runs.json').then(function (d) {
       if (!d) { return; }
       draw(d);
-      if ((d.runs || []).some(function (r) { return r.state === 'running'; })) { setTimeout(start, 30000); }
+      // A stopped run reads running again once it writes, so keep looking at it too.
+      if ((d.runs || []).some(function (r) { return r.state === 'running' || r.state === 'stopped'; })) { setTimeout(start, 30000); }
     }).catch(function () { root.setAttribute('data-pgp-status', 'offline'); setTimeout(start, 30000); });
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
