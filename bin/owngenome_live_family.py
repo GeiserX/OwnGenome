@@ -325,6 +325,32 @@ def trio_status(d, order, members, files):
     return out
 
 
+def candidates_given(live, d, sample):
+    """Whether the clinical filter (step 23) wrote <sample>'s candidates, the only variants step 38 pairs:
+    True or False for a run on this site, None when the run is not here (the page cannot tell). A file
+    linking out of the run counts as not there."""
+    if not d:
+        return None
+    p = os.path.join(d, "clinical", "%s_clinical.vcf.gz" % sample)
+    return os.path.isfile(p) and live.inside(p, os.path.realpath(d)) and live.inside(p, live.root)
+
+
+def with_candidates(status, given):
+    """trio_status with the compound-het line told by the child's step 23 candidates ({child: True, False or
+    None}): a child whose run is here without them was not assessed, whatever its parents."""
+    for child, st in status.items():
+        c = st.get("compound_het") or {}
+        if not c.get("assessed") or given.get(child) is None:
+            continue
+        if given[child]:
+            c["why"] = ("a parent is sequenced and the child's clinical-filter candidates (step 23) are here; "
+                        "pairs come only from them")
+        else:
+            st["compound_het"] = {"assessed": False, "why": "the clinical filter (step 23) wrote no candidates for "
+                                  "%s (clinical/%s_clinical.vcf.gz), so step 38 had no variant to pair" % (child, child)}
+    return status
+
+
 def _sec(summary, key):
     sec = ((summary or {}).get("sections") or {}).get(key) or {}
     return sec.get("data") or {} if sec.get("state") in ("ok", "stale") else None
@@ -380,14 +406,18 @@ def side_by_side(names, summaries):
     no summary.json yet says so in its column; a row a member's summary does not have is '.'. stale holds,
     per member, whether that value comes from a section older than its input."""
     per = {n: side_values(summaries.get(n)) for n in names}
-    rows, seen = [], {}
+    # Each member's rows keep their own order (step 41's for the blood groups): a row first seen in a later
+    # member goes right after the row before it in that member's list, not at the end.
+    keys = []
     for n in names:
+        prev = None
         for g, label, _, _ in per[n]:
-            if (g, label) not in seen:
-                seen[(g, label)] = len(rows)
-                rows.append({"group": g, "label": label, "values": [], "stale": []})
+            if (g, label) not in keys:
+                keys.insert(keys.index(prev) + 1 if prev else len(keys), (g, label))
+            prev = (g, label)
     groups = ["Medicines", "HLA", "Haplogroups", "Blood groups"]
-    rows.sort(key=lambda r: (groups.index(r["group"]) if r["group"] in groups else 9, seen[(r["group"], r["label"])]))
+    keys.sort(key=lambda k: groups.index(k[0]) if k[0] in groups else 9)
+    rows = [{"group": g, "label": label, "values": [], "stale": []} for g, label in keys]
     for r in rows:
         for n in names:
             if summaries.get(n) is None:
@@ -467,6 +497,12 @@ def register(app):
                                  "planned": len(planned), "done": sum(1 for s in planned if s["state"] == "done"),
                                  "attention": n, "results": mtime is not None}
         out["runs"] = runs
+        given = {}
+        for c in out.get("trio_status") or {}:
+            r = live.run(c) if live else None
+            given[c] = (candidates_given(live, r["dir"] or os.path.join(live.root, r["name"]), c)
+                        if r and r.get("kind") != "family" else None)
+        with_candidates(out.get("trio_status") or {}, given)
         # The members side by side, from each sequenced member's summary.json alone (read as the home
         # page's attention count reads it: never a file linking out of its run).
         seq = [p["sample"] for p in out["state"].get("members") or [] if p.get("sequenced")]

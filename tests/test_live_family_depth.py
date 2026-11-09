@@ -110,6 +110,17 @@ def stale_summary(state):
     return S
 
 
+def source_summary(key, state):
+    """Every side-by-side source present and complete, with PharmCAT's CYP2D6 call, the Y haplogroup from
+    y_haplogroup alone (the fallback), and one section, key, in the given state."""
+    S = summary("*1/*1", [("DPYD", "Reference/Reference", "Normal Metabolizer")], "H1")
+    S["cyp2d6"]["calls"]["PharmCAT"] = "*1/*1"
+    S["sections"]["hla"] = {"state": "ok", "data": {"loci": [{"gene": "HLA-A", "alleles": ["A*01:01", "A*02:01"]}]}}
+    S["sections"]["y_haplogroup"] = {"state": "ok", "data": {"haplogroup": "R-M269"}}
+    S["sections"][key]["state"] = state
+    return S
+
+
 def stale_problems(sb):
     """Member A's blood groups come from a stale section; B's from a complete one; C has no summary."""
     out = []
@@ -212,6 +223,31 @@ def main():
         emptied["sections"]["bloodtype"]["data"]["systems"] = []
         control("the systems list emptied", not blood_problems(fam.side_by_side(["A", "B", "C"], dict(sums7, A=emptied))))
 
+        flags = {"cpic": {"CYP2D6 (callers)", "DPYD"}, "hla": {"HLA-A"}, "haplogroup": {"Mitochondrial"},
+                 "y_haplogroup": {"Y chromosome"}}
+        bad = []
+        for key in flags:
+            sb = fam.side_by_side(["A"], {"A": source_summary(key, "stale")})
+            got = {r["label"] for r in sb["rows"] if r["stale"][0]}
+            if got != flags[key]:
+                bad.append(f"{key} stale flags {sorted(got)} != {sorted(flags[key])}")
+        check("7. each stale source flags its own cells only: CPIC (and PharmCAT's CYP2D6 call), HLA, the "
+              "haplogroups (the Y fallback too)", not bad, bad)
+        sb = fam.side_by_side(["A"], {"A": source_summary("cpic", "ok")})
+        control("the CPIC section made complete", {r["label"] for r in sb["rows"] if r["stale"][0]} == flags["cpic"])
+
+        short = stale_summary("ok")
+        short["sections"]["bloodtype"]["data"]["systems"] = [x for x in short["sections"]["bloodtype"]["data"]["systems"]
+                                                             if x["system"] != "Kell"]
+        merged = lambda a, b_: [r["label"] for r in fam.side_by_side(["A", "B"], {"A": a, "B": b_})["rows"]  # noqa: E731
+                                if r["group"] == "Blood groups"]
+        got = merged(short, stale_summary("ok"))
+        check("8. a system only a later member has keeps step 41's order", got == ["ABO", "RhD", "Kell", "Duffy"], got)
+        swapped = stale_summary("ok")
+        sy = swapped["sections"]["bloodtype"]["data"]["systems"]
+        sy[2], sy[3] = sy[3], sy[2]
+        control("a member listing Duffy before Kell", merged(swapped, swapped) == ["ABO", "RhD", "Kell", "Duffy"])
+
         tri = os.path.join(work, "trio")
         shutil.copytree(DEMO, tri)
         with open(os.path.join(tri, "members.tsv"), "a") as f:
@@ -248,6 +284,37 @@ def main():
         os.remove(os.path.join(tri, "compound_het.tsv"))
         shutil.copy(secret, os.path.join(tri, "compound_het.tsv"))
         control("the link replaced by a plain file", not trio_problems(fam.family_page("trio", tri)["trio_status"], want[2:]))
+        shutil.copy(os.path.join(DEMO, "de_novo.tsv"), tri)
+        with open(plan_p, "w") as f:
+            f.write(plan_text.replace("DEMO-001,DEMO-002,DEMO-003\t", "DEMO-002,DEMO-003,DEMO-004\t"))
+        st9 = fam.family_page("trio", tri)["trio_status"]
+        bad = trio_problems(st9, [("DEMO-003", "de_novo", False, "DEMO-001 (the father) is not"),
+                                  ("DEMO-003", "compound_het", True, "a parent is sequenced"),
+                                  ("DEMO-004", "de_novo", False, "DEMO-001 (the father) is not"),
+                                  ("DEMO-004", "compound_het", False, "need a parent sequenced and in the joint call")])
+        check("9. a sequenced parent left out of the joint call: no de novo, and no pairs when it was the only one",
+              not bad, bad)
+        with open(plan_p, "w") as f:
+            f.write(plan_text)
+        control("the parent back in the joint call", not trio_problems(
+            fam.family_page("trio", tri)["trio_status"], [("DEMO-003", "de_novo", False, "DEMO-001 (the father) is not")]))
+
+        st10 = fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": False, "DEMO-004": True})
+        bad = trio_problems(st10, [("DEMO-003", "compound_het", False, "wrote no candidates for DEMO-003"),
+                                   ("DEMO-004", "compound_het", False, "need a parent")])
+        st10 = fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": True})
+        bad += trio_problems(st10, [("DEMO-003", "compound_het", True, "candidates (step 23) are here")])
+        check("10. a child's run without step 23 candidates is not assessed for pairs; with them it is", not bad, bad)
+        control("the candidates not known", not trio_problems(fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": None}),
+                                                              [("DEMO-003", "compound_het", False, "wrote no candidates")]))
+        run3 = os.path.join(work, "root", "DEMO-003")
+        os.makedirs(os.path.join(run3, "clinical"))
+        given = fam.candidates_given(Live, run3, "DEMO-003")
+        os.symlink(outside, os.path.join(run3, "clinical", "DEMO-003_clinical.vcf.gz"))
+        check("10. candidates: none in the run, a link out of the run, no run on the site",
+              given is False and fam.candidates_given(Live, run3, "DEMO-003") is False
+              and fam.candidates_given(Live, None, "DEMO-003") is None)
+        control("the inside check bypassed for the candidates", fam.candidates_given(Open, run3, "DEMO-003") is False)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:

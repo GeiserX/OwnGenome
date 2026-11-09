@@ -380,6 +380,7 @@ def depth_checks(b, base, root):
     os.symlink(secret, os.path.join(fam_dir, "compound_het.tsv"))
     with open(os.path.join(root, "child_a", "summary.json"), "w") as f:
         json.dump(STALE_SUMMARY, f)
+    clin = os.path.join(root, "child_a", "clinical")
     try:
         b.go(base + "/runs/family_a/")
         ready = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
@@ -407,16 +408,25 @@ def depth_checks(b, base, root):
               and legend == "4", (kell, hap, legend))
         os.remove(os.path.join(fam_dir, "compound_het.tsv"))
         shutil.copy(secret, os.path.join(fam_dir, "compound_het.tsv"))
-        b.go(base + "/runs/family_a/")
-        b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
-               "!!document.querySelector('details[data-child=child_a] p[data-trio=compound_het]')")
-        ch = b.eval("var p = document.querySelector('details[data-child=child_a] p[data-trio=compound_het]'); "
-                    "p && p.textContent") or ""
+
+        def comp_line():
+            b.go(base + "/runs/family_a/")
+            b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+                   "!!document.querySelector('details[data-child=child_a] p[data-trio=compound_het]')")
+            return b.eval("var p = document.querySelector('details[data-child=child_a] p[data-trio=compound_het]'); "
+                          "p && p.textContent") or ""
+        ch = comp_line()
+        check("browser: a child whose run has no step 23 candidates is not assessed for compound-het pairs",
+              ch.startswith("Not assessed") and "wrote no candidates for child_a" in ch, ch)
+        os.makedirs(clin)
+        open(os.path.join(clin, "child_a_clinical.vcf.gz"), "w").close()
+        ch = comp_line()
         check("browser: an assessed child's empty compound-het line says pairs come only from step 23's candidates",
               ch.startswith("Assessed (") and "step 23" in ch, ch)
     finally:
         os.remove(os.path.join(fam_dir, "compound_het.tsv"))
         os.remove(os.path.join(root, "child_a", "summary.json"))
+        shutil.rmtree(clin, ignore_errors=True)
 
 
 if __name__ == "__main__":
