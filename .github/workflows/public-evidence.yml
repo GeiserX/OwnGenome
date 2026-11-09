@@ -393,7 +393,6 @@ jobs:
           . ./versions.env
           G="${EV}/genome" OUT="${EV}/out"
           mkdir -p "$OUT"
-          reg=$(for c in $LIST; do printf 'chr%s ' "$c"; done | sed 's/ $//; s/ /,/g')
           # sub LABEL URL-PREFIX NAME-OF-FILE-PATTERN: the person's non-reference
           # SNVs on the chromosomes, one VCF.
           pull() {
