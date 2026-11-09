@@ -313,6 +313,14 @@
   }
 
   // --- replay: frames.json on a timer ---
+  // A frame's moment, short enough for a phone's line: "3 Jan 06:46", in UTC as every time on the page; the
+  // full time stays in the title.
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function frameTime(t) {
+    var d = new Date(t || '');
+    if (!t || !isFinite(d)) { return t || ''; }
+    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2);
+  }
   function replay() {
     var bar = document.getElementById('replay');
     bar.hidden = false;
@@ -326,7 +334,9 @@
       function go(i) {
         at = Math.min(Math.max(i, 0), frames.length - 1);
         slider.value = String(at);
-        document.getElementById('replay-time').textContent = frames[at].t || '';
+        var time = document.getElementById('replay-time');
+        time.textContent = frameTime(frames[at].t);
+        time.title = frames[at].t || '';
         show(frames[at].state);
         root.setAttribute('data-pgp-frame', String(at));
       }
@@ -338,7 +348,10 @@
         tick = setInterval(function () { if (at >= frames.length - 1) { stop(); } else { go(at + 1); } }, Number(data.interval_ms) || 1000);
       });
       slider.addEventListener('input', function () { stop(); go(Number(slider.value)); });
-      if (frames.length) { go(0); }
+      // A finished run opens at its end, the finished report, until the reader plays it (Play starts again
+      // from the first frame); a replay that autoplays, or one that ends mid-run, opens at the start.
+      var end = frames.length && frames[frames.length - 1].state && frames[frames.length - 1].state.run;
+      if (frames.length) { go(!data.autoplay && end && end.state === 'finished' ? frames.length - 1 : 0); }
       if (data.autoplay) { play.click(); }
     });
   }

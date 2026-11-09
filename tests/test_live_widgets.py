@@ -6,10 +6,11 @@ Each widget is checked on small made-up sections, against the numbers of the sec
      95% interval; an allele not sized from short reads never carries Stranger's "normal";
   2. Lp(a) (ci): the KIV-2 count and its 95% interval, on a scale from 0 that holds the whole
      interval; no bar for a count that was not estimated;
-  3. CHIP (vaf): each gene's detection limit and each call's VAF as numbers; a call with no VAF
-     is left off the track, not put at 0;
+  3. CHIP (vaf): each gene's detection limit and each call's VAF as numbers, each call with its own
+     gene's limit; a call with no VAF is left off the track, not put at 0;
   4. copy numbers (copies): SMN1, SMN2, HBA1, HBA2 and the RCCX module of CYP21A2, never another
-     gene of the paralog table; a copy number that is not a whole number is no dots;
+     gene of the paralog table; a copy number that is not a whole number is no dots; Parascopy's
+     SMN1 and SMN2 at exon 7 (short reads) after them, one not resolved with no dots and its reason;
   5. the Y haplogroup path (ypath): one entry per level of step 37's path, root first, with its
      marker counts as numbers;
   6. every widget's strings pass the wording gate (live_results.FORBIDDEN);
@@ -64,6 +65,9 @@ def sections():
             {"gene": "HBA1", "copy_number": "2.4", "status": "no_call", "detail": "."},
             {"gene": "CYP21A2 (RCCX)", "copy_number": "4", "status": "called", "detail": "."},
             {"gene": "GBA1", "copy_number": "2", "status": "called", "detail": "."}]}},
+        "parascopy": {"state": "ok", "data": {"rows": 1, "reading": "invented",
+                                              "smn1": {"cn": 1, "text": "1 (quality 40, filter PASS)"},
+                                              "smn2": {"cn": None, "text": "3 (quality 8, filter LowQual), not resolved"}}},
         "y_tree": {"state": "ok", "data": {"haplogroup": "I-M253", "tree": "YFull YTree v14.06.0", "path": [
             {"Level": "1", "Branch": "CT", "Derived": "11", "Ancestral": "0", "No_call": "1"},
             {"Level": "2", "Branch": "F", "Derived": "9", "Ancestral": "1", "No_call": "0"},
@@ -109,7 +113,7 @@ def vaf_problems(w):
     out = []
     if [(g["gene"], g["limit"]) for g in w["genes"]] != [("DNMT3A", 0.133), ("TET2", 0.142)]:
         out.append(f"limits {w['genes']}")
-    if [(c["gene"], c["vaf"]) for c in w["calls"]] != [("DNMT3A", 0.081)]:
+    if [(c["gene"], c["vaf"], c.get("limit")) for c in w["calls"]] != [("DNMT3A", 0.081, 0.133)]:
         out.append(f"calls {w['calls']}")
     return out
 
@@ -118,7 +122,8 @@ def copies_problems(w):
     if not w or w.get("kind") != "copies":
         return [f"no copies widget: {w}"]
     got = [(g["gene"], g["copies"], g["status"]) for g in w["genes"]]
-    want = [("SMN1", 2, "called"), ("SMN2", 1, "called"), ("HBA1", None, "no_call"), ("CYP21A2 (RCCX)", 4, "called")]
+    want = [("SMN1", 2, "called"), ("SMN2", 1, "called"), ("HBA1", None, "no_call"), ("CYP21A2 (RCCX)", 4, "called"),
+            ("SMN1 (Parascopy)", 1, "called"), ("SMN2 (Parascopy)", None, "3 (quality 8, filter LowQual), not resolved")]
     return [] if got == want else [f"{got} != {want}"]
 
 
@@ -133,7 +138,8 @@ def ypath_problems(w):
 CASES = [("1. repeat expansions: the gauge's loci, thresholds and intervals", "expansions", str_problems),
          ("2. Lp(a): the count and its 95% interval on a scale that holds it", "lpa", ci_problems),
          ("3. CHIP: the detection limits and the calls with a VAF", "chip", vaf_problems),
-         ("4. copy numbers: the five copy-number genes only, whole numbers as dots", "paralogs", copies_problems),
+         ("4. copy numbers: the five copy-number genes only, whole numbers as dots, Parascopy's SMN1 and SMN2 after them",
+          "paralogs", copies_problems),
          ("5. the Y path: every level, root first, with its counts", "y-chromosome", ypath_problems)]
 
 

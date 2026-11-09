@@ -294,6 +294,7 @@ img.plot { max-width: 100%; height: auto; background: #fff; border-radius: 4px; 
 .w-normal { background: rgba(195, 194, 183, .16); }
 .w-patho { background: repeating-linear-gradient(45deg, rgba(250, 178, 25, .45) 0 2px, transparent 2px 7px); border-left: 1px solid var(--rev); }
 .w-blind { background: repeating-linear-gradient(-45deg, rgba(143, 141, 134, .4) 0 2px, transparent 2px 7px); border-right: 1px dashed var(--ink-3); }
+.w-part { background: rgba(143, 141, 134, .16); border-right: 1px dashed var(--ink-3); }
 .w-ci { top: 50%; height: 1.5px; width: var(--w); margin-top: -1px; background: var(--ink-2); }
 .w-ci::before, .w-ci::after { content: ""; position: absolute; top: -4px; width: 1.5px; height: 9px; background: var(--ink-2); }
 .w-ci::before { left: 0; } .w-ci::after { right: 0; }
@@ -432,7 +433,7 @@ table.tasks th:first-child, table.tasks td:first-child { text-align: left; }
 .plugin ul.plain { padding-left: 1.1em; }
 .replay { display: flex; gap: 12px; align-items: center; padding: 10px 40px; border-bottom: 1px solid var(--hair); max-width: 1320px; margin: 0 auto; font-size: 13px; }
 .replay input[type=range] { flex: 1; accent-color: var(--brass); }
-#replay-time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+#replay-time { color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .family-table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .family-table td, .family-table th { border-bottom: 1px solid var(--hair); padding: 4px 6px; text-align: left; }
 
