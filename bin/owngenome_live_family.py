@@ -325,29 +325,40 @@ def trio_status(d, order, members, files):
     return out
 
 
-def candidates_given(live, d, sample):
+def candidates_given(live, d, sample, since=None):
     """Whether the clinical filter (step 23) wrote <sample>'s candidates, the only variants step 38 pairs:
-    True or False for a run on this site, None when the run is not here (the page cannot tell). A file
-    linking out of the run counts as not there."""
+    "here", "absent" (the run is here without them; a file linking out of the run counts as absent),
+    "newer" (written after since, compound_het.tsv's mtime, so step 38 may not have had them) or None
+    (the run is not on this site: the page cannot tell)."""
     if not d:
         return None
     p = os.path.join(d, "clinical", "%s_clinical.vcf.gz" % sample)
-    return os.path.isfile(p) and live.inside(p, os.path.realpath(d)) and live.inside(p, live.root)
+    if not (os.path.isfile(p) and live.inside(p, os.path.realpath(d)) and live.inside(p, live.root)):
+        return "absent"
+    return "newer" if since is not None and os.path.getmtime(p) > since else "here"
 
 
 def with_candidates(status, given):
-    """trio_status with the compound-het line told by the child's step 23 candidates ({child: True, False or
-    None}): a child whose run is here without them was not assessed, whatever its parents."""
+    """trio_status with the compound-het line told by the child's step 23 candidates ({child: one of
+    candidates_given's answers}). assessed is None where the page cannot tell."""
     for child, st in status.items():
         c = st.get("compound_het") or {}
-        if not c.get("assessed") or given.get(child) is None:
+        if not c.get("assessed"):
             continue
-        if given[child]:
+        g = given.get(child)
+        if g == "here":
             c["why"] = ("a parent is sequenced and the child's clinical-filter candidates (step 23) are here; "
                         "pairs come only from them")
-        else:
+        elif g == "absent":
             st["compound_het"] = {"assessed": False, "why": "the clinical filter (step 23) wrote no candidates for "
                                   "%s (clinical/%s_clinical.vcf.gz), so step 38 had no variant to pair" % (child, child)}
+        elif g == "newer":
+            st["compound_het"] = {"assessed": None, "why": "%s's clinical-filter candidates (step 23) are newer than "
+                                  "compound_het.tsv, so step 38 may not have paired them" % child}
+        else:
+            st["compound_het"] = {"assessed": None, "why": "pairs come only from the child's clinical-filter "
+                                  "candidates (step 23), and %s's run is not on this site to tell whether step 23 "
+                                  "wrote them" % child}
     return status
 
 
@@ -416,7 +427,11 @@ def side_by_side(names, summaries):
                 keys.insert(keys.index(prev) + 1 if prev else len(keys), (g, label))
             prev = (g, label)
     groups = ["Medicines", "HLA", "Haplogroups", "Blood groups"]
-    keys.sort(key=lambda k: groups.index(k[0]) if k[0] in groups else 9)
+    import bloodtype_report  # step 41's own order of the systems, for systems two members each lack one of
+    step41 = {s: i for i, (s, _) in enumerate(bloodtype_report.SYSTEMS)}
+    pos = {k: i for i, k in enumerate(keys)}
+    keys.sort(key=lambda k: (groups.index(k[0]) if k[0] in groups else 9,
+                             step41.get(k[1], len(step41)) if k[0] == "Blood groups" else 0, pos[k]))
     rows = [{"group": g, "label": label, "values": [], "stale": []} for g, label in keys]
     for r in rows:
         for n in names:
@@ -498,9 +513,11 @@ def register(app):
                                  "attention": n, "results": mtime is not None}
         out["runs"] = runs
         given = {}
+        comp_p = os.path.join(d, "compound_het.tsv")
+        since = os.path.getmtime(comp_p) if os.path.isfile(comp_p) else None
         for c in out.get("trio_status") or {}:
             r = live.run(c) if live else None
-            given[c] = (candidates_given(live, r["dir"] or os.path.join(live.root, r["name"]), c)
+            given[c] = (candidates_given(live, r["dir"] or os.path.join(live.root, r["name"]), c, since)
                         if r and r.get("kind") != "family" else None)
         with_candidates(out.get("trio_status") or {}, given)
         # The members side by side, from each sequenced member's summary.json alone (read as the home

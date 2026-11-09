@@ -242,11 +242,20 @@ def main():
         merged = lambda a, b_: [r["label"] for r in fam.side_by_side(["A", "B"], {"A": a, "B": b_})["rows"]  # noqa: E731
                                 if r["group"] == "Blood groups"]
         got = merged(short, stale_summary("ok"))
-        check("8. a system only a later member has keeps step 41's order", got == ["ABO", "RhD", "Kell", "Duffy"], got)
-        swapped = stale_summary("ok")
-        sy = swapped["sections"]["bloodtype"]["data"]["systems"]
-        sy[2], sy[3] = sy[3], sy[2]
-        control("a member listing Duffy before Kell", merged(swapped, swapped) == ["ABO", "RhD", "Kell", "Duffy"])
+        kidd = lambda s, drop: [x for x in s + [{"system": "Kidd", "phenotype": "Jk(a+b+)"}]  # noqa: E731
+                                if x["system"] != drop]
+        a_, b2 = stale_summary("ok"), stale_summary("ok")
+        a_["sections"]["bloodtype"]["data"]["systems"] = kidd(a_["sections"]["bloodtype"]["data"]["systems"], "Duffy")
+        b2["sections"]["bloodtype"]["data"]["systems"] = kidd(b2["sections"]["bloodtype"]["data"]["systems"], "Kell")
+        got2 = merged(a_, b2)
+        check("8. a system only a later member has keeps step 41's order, also when each lacks one",
+              got == ["ABO", "RhD", "Kell", "Duffy"] and got2 == ["ABO", "RhD", "Kell", "Duffy", "Kidd"], (got, got2))
+        import bloodtype_report
+        saved, bloodtype_report.SYSTEMS = bloodtype_report.SYSTEMS, []
+        try:
+            control("step 41's order taken away", merged(a_, b2) == ["ABO", "RhD", "Kell", "Duffy", "Kidd"])
+        finally:
+            bloodtype_report.SYSTEMS = saved
 
         tri = os.path.join(work, "trio")
         shutil.copytree(DEMO, tri)
@@ -299,22 +308,32 @@ def main():
         control("the parent back in the joint call", not trio_problems(
             fam.family_page("trio", tri)["trio_status"], [("DEMO-003", "de_novo", False, "DEMO-001 (the father) is not")]))
 
-        st10 = fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": False, "DEMO-004": True})
+        st10 = fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": "absent", "DEMO-004": "here"})
         bad = trio_problems(st10, [("DEMO-003", "compound_het", False, "wrote no candidates for DEMO-003"),
                                    ("DEMO-004", "compound_het", False, "need a parent")])
-        st10 = fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": True})
+        st10 = fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": "here"})
         bad += trio_problems(st10, [("DEMO-003", "compound_het", True, "candidates (step 23) are here")])
-        check("10. a child's run without step 23 candidates is not assessed for pairs; with them it is", not bad, bad)
-        control("the candidates not known", not trio_problems(fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": None}),
-                                                              [("DEMO-003", "compound_het", False, "wrote no candidates")]))
+        for g, words in (("newer", "newer than compound_het.tsv"), (None, "run is not on this site")):
+            st10 = fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": g})
+            bad += trio_problems(st10, [("DEMO-003", "compound_het", None, words)])
+        check("10. compound-het pairs by the child's step 23 candidates: here assessed, absent not, newer or no run "
+              "not known", not bad, bad)
+        control("the candidates not known read as absent",
+                not trio_problems(fam.with_candidates(copy.deepcopy(st9), {"DEMO-003": None}),
+                                  [("DEMO-003", "compound_het", False, "wrote no candidates")]))
         run3 = os.path.join(work, "root", "DEMO-003")
         os.makedirs(os.path.join(run3, "clinical"))
-        given = fam.candidates_given(Live, run3, "DEMO-003")
-        os.symlink(outside, os.path.join(run3, "clinical", "DEMO-003_clinical.vcf.gz"))
-        check("10. candidates: none in the run, a link out of the run, no run on the site",
-              given is False and fam.candidates_given(Live, run3, "DEMO-003") is False
-              and fam.candidates_given(Live, None, "DEMO-003") is None)
-        control("the inside check bypassed for the candidates", fam.candidates_given(Open, run3, "DEMO-003") is False)
+        vcf = os.path.join(run3, "clinical", "DEMO-003_clinical.vcf.gz")
+        none_yet = fam.candidates_given(Live, run3, "DEMO-003")
+        open(vcf, "w").close()
+        os.utime(vcf, (1000, 1000))
+        here, newer = fam.candidates_given(Live, run3, "DEMO-003", 2000), fam.candidates_given(Live, run3, "DEMO-003", 500)
+        os.remove(vcf)
+        os.symlink(outside, vcf)
+        got = (none_yet, here, newer, fam.candidates_given(Live, run3, "DEMO-003"), fam.candidates_given(Live, None, "DEMO-003"))
+        check("10. candidates: none in the run, here, newer than compound_het.tsv, a link out of the run, no run",
+              got == ("absent", "here", "newer", "absent", None), got)
+        control("the inside check bypassed for the candidates", fam.candidates_given(Open, run3, "DEMO-003") == "absent")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:

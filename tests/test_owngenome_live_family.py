@@ -419,7 +419,13 @@ def depth_checks(b, base, root):
         check("browser: a child whose run has no step 23 candidates is not assessed for compound-het pairs",
               ch.startswith("Not assessed") and "wrote no candidates for child_a" in ch, ch)
         os.makedirs(clin)
-        open(os.path.join(clin, "child_a_clinical.vcf.gz"), "w").close()
+        vcf = os.path.join(clin, "child_a_clinical.vcf.gz")
+        open(vcf, "w").close()
+        ch = comp_line()
+        check("browser: candidates newer than compound_het.tsv leave the compound-het line not known",
+              ch.startswith("Not known whether assessed") and "newer than compound_het.tsv" in ch, ch)
+        old = os.path.getmtime(os.path.join(fam_dir, "compound_het.tsv")) - 60
+        os.utime(vcf, (old, old))
         ch = comp_line()
         check("browser: an assessed child's empty compound-het line says pairs come only from step 23's candidates",
               ch.startswith("Assessed (") and "step 23" in ch, ch)

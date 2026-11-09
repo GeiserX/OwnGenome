@@ -348,6 +348,7 @@
     function empty(child, key, file) {
       var st = ((f.trio_status || {})[child] || {})[key];
       if (st && st.assessed) { return 'Assessed (' + st.why + '): none listed in ' + file + ' for this child.'; }
+      if (st && st.assessed === null) { return 'Not known whether assessed for this child: ' + st.why + '.'; }
       var why = st ? st.why : file + ' is not here';
       return 'Not assessed for this child: ' + why + '.';
     }
