@@ -262,6 +262,19 @@ def genome_chart(S, notes):
                               caveat=notes.get("MCA_NOTE"),
                               detail=f"mosaic {c.get('type') or 'alteration'} over {c.get('length_mb') or '.'} Mb, "
                               f"cell fraction {c.get('cell_fraction') or '.'}"))
+    # A position past the end of its chromosome (a file of another assembly) is not drawn; an end past it
+    # is cut at the end, so every mark stays inside its chromosome.
+    kept = []
+    for m in marks:
+        n = CHROM_LEN[m["chrom"]]
+        if m["pos"] > n:
+            not_drawn["marks past the end of their GRCh38 chromosome"] = \
+                not_drawn.get("marks past the end of their GRCh38 chromosome", 0) + 1
+            continue
+        if m.get("end") is not None and m["end"] > n:
+            m["end"] = n
+        kept.append(m)
+    marks = kept
     return spec("genome", "roh", "ideogram", "Runs of homozygosity, ClinVar hits, structural variants and mosaic "
                 "alterations on the chromosomes", notes,
                 "ROH_NOTE", marks, axis={"assembly": "GRCh38"},
@@ -456,24 +469,29 @@ def svg_ideogram(sp):
                     f'stroke="{LINE}"/>')
     for m in sp["marks"]:
         y = rows[m["chrom"]]
+        lo, hi = x0, sx(CHROM_LEN[m["chrom"]])
+
+        def inside(a, w):
+            # The x of a mark w px wide, moved inside its chromosome's outline.
+            return max(lo, min(a, hi - w))
         if m.get("kind") == "roh":
             a, b = sx(m["pos"]), sx(m["end"])
-            inner = (f'<rect class="roh" x="{_f(a)}" y="{y + 2}" width="{_f(max(b - a, 1.5))}" height="8" '
+            inner = (f'<rect class="roh" x="{_f(inside(a, max(b - a, 1.5)))}" y="{y + 2}" width="{_f(max(b - a, 1.5))}" height="8" '
                      f'fill="{TONE["info"]}"/>')
         elif m.get("kind") == "sv":
             # An outlined span over the chromosome, at least 5 px so a small deletion is seen.
             a, b = sx(m["pos"]), sx(m["end"])
             w = max(b - a, 5)
-            inner = (f'<rect class="sv" x="{_f(a - (w - (b - a)) / 2)}" y="{y - 1}" width="{_f(w)}" height="14" '
+            inner = (f'<rect class="sv" x="{_f(inside(a - (w - (b - a)) / 2, w))}" y="{y - 1}" width="{_f(w)}" height="14" '
                      f'fill="none" stroke="{TONE["attention"]}" stroke-width="2"/>')
         elif m.get("kind") == "mca":
             # A bar under the chromosome: a share of the cells, not the whole genome.
             a, b = sx(m["pos"]), sx(m["end"])
-            inner = (f'<rect class="mca" x="{_f(a)}" y="{y + 12}" width="{_f(max(b - a, 3))}" height="3" '
+            inner = (f'<rect class="mca" x="{_f(inside(a, max(b - a, 3)))}" y="{y + 12}" width="{_f(max(b - a, 3))}" height="3" '
                      f'fill="{TONE["attention"]}"/>')
         else:
             x = sx(m["pos"])
-            inner = (f'<rect class="tick" x="{_f(x - 1.5)}" y="{y - 1}" width="3" height="14" '
+            inner = (f'<rect class="tick" x="{_f(inside(x - 1.5, 3))}" y="{y - 1}" width="3" height="14" '
                      f'fill="{TONE[m["tone"]]}"/>')
         body.append(_a(m, inner))
     y = 10 + len(GRCH38) * row + 6

@@ -17,7 +17,9 @@ Checks, each with a red control that feeds it a broken input:
      contigs are counted in not_drawn; ROH_MIN_MB is collect_summary's;
      each AnnotSV class 4 or 5 row is an outlined span and each reported MoChA
      call a bar under its chromosome, linked to their sections, and one on
-     another contig is counted in not_drawn;
+     another contig is counted in not_drawn; every mark is drawn inside its
+     chromosome's outline (a span past its end is cut there, a mark that
+     starts past it is counted in not_drawn);
   5. mito: one dot per heteroplasmic site, the poly-C call marked apart;
   6. no caveat sentence is written in report_charts.py: they come from
      render_report's *_NOTE constants;
@@ -157,6 +159,24 @@ def sv_mca_problems(sp, sv_rows, mca_calls):
     if sp["svg"].count('class="mca"') != sum(1 for c in mca_calls if mca_chrom(c) in report_charts.CHROM_LEN
                                              and str(c["start"]).isdigit()):
         out.append("the bars do not match the calls")
+    return out
+
+
+# The offset of each kind of mark's y from its chromosome row's (svg_ideogram).
+MARK_ROW = {"roh": 2, "sv": -1, "mca": 12, "tick": -1}
+
+
+def outside_marks(svg):
+    """The marks of an ideogram drawn past either end of their chromosome's outline."""
+    rows = {round(float(y) - 2, 2): (float(x), float(x) + float(w)) for x, y, w in
+            re.findall(r'<rect x="([0-9.]+)" y="([0-9.]+)" width="([0-9.]+)" height="8" rx="4" fill="none"', svg)}
+    out = []
+    for kind, x, y, w in re.findall(r'<rect class="(\w+)" x="(-?[0-9.]+)" y="(-?[0-9.]+)" width="([0-9.]+)"', svg):
+        if kind not in MARK_ROW:
+            continue
+        lo, hi = rows.get(round(float(y) - MARK_ROW[kind], 2), (None, None))
+        if lo is None or float(x) < lo - 0.01 or float(x) + float(w) > hi + 0.01:
+            out.append((kind, x, y, w, lo, hi))
     return out
 
 
@@ -318,6 +338,24 @@ def unit_checks():
           sv_mca_problems(lost, sv_rows, mca) != [])
     check("4. genome: a chart with no SV or MoChA mark draws no second legend row",
           "AnnotSV class 4 or 5 SV" not in g["svg"] and "MoChA" not in g["svg"])
+    edge = copy.deepcopy(s)
+    edge["sections"]["annotsv"] = {"state": "ok", "data": {"count": 2, "rows": [
+        # past the end of chr21 (46,709,983 bp), and a 10 bp one at the very start of chr1
+        {"sv": "chr21:46700000-46800000", "type": "DUP", "gt": "0/1", "length": "100000", "acmg_class": "4", "genes": []},
+        {"sv": "chr1:1-10", "type": "DEL", "gt": "0/1", "length": "10", "acmg_class": "4", "genes": []}]}}
+    edge["sections"]["mosaic"] = {"state": "ok", "data": {"status": "assessed", "calls": [
+        {"chrom": "chr22", "start": "50000000", "end": "51000000", "length_mb": "1.0", "type": "Dup", "cell_fraction": "0.1"},
+        {"chrom": "chr22", "start": "52000000", "end": "53000000", "length_mb": "1.0", "type": "Del", "cell_fraction": "0.1"}]}}
+    ge = charts(edge)["genome"]
+    nde = {x["what"]: x["count"] for x in ge["not_drawn"]}
+    check("4. genome: every mark inside its chromosome's outline, a span past the end cut there, a call that starts "
+          "past the end of chr22 counted in not_drawn",
+          outside_marks(ge["svg"]) == [] and nde.get("marks past the end of their GRCh38 chromosome") == 1
+          and all(m["end"] is None or m["end"] <= report_charts.CHROM_LEN[m["chrom"]] for m in ge["marks"])
+          and ge["svg"].count('class="sv"') == 2 and ge["svg"].count('class="mca"') == 1,
+          (outside_marks(ge["svg"]), nde))
+    shifted = re.sub(r'(<rect class="sv" x=")[0-9.]+', r'\g<1>2000', ge["svg"], count=1)
+    check("4. red control: a span drawn past its chromosome's end is caught", outside_marks(shifted) != [])
     nr = copy.deepcopy(s)
     nr["sections"]["roh"]["state"] = "missing"
     check("4. genome: no chart when ROH did not run, even with ClinVar hits", "genome" not in charts(nr))
