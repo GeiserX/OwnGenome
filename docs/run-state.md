@@ -100,4 +100,4 @@ It prints plain lines and exits 0. Standard library only.
 
 ## The page built on it
 
-`bin/run_state.py` serves no page itself. The live site's server, `bin/owngenome_live.py`, reads the run's messages with it and serves its state as `state.json` to the run page ([Watch a Run Live](live-site.md)).
+`bin/run_state.py` serves no page itself. The live site's server, `bin/owngenome_live.py`, reads the run's messages with it and serves its state as `state.json` to each person's page, whose step timeline and run band draw it ([Watch a Run Live](live-site.md)).
