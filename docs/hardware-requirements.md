@@ -284,7 +284,7 @@ The text report is the same line with `-o /out/report.txt` and no `--search-inde
 bcftools view -f PASS <vep.vcf.gz> | awk -v keep=noncommon <call floors> -f bin/csq_rank.awk | bcftools view -Oz -o rare_pass.vcf.gz
 ```
 
-A second pipe does the same for the ClinVar tier (`bcftools +split-vep -i` on `ClinVar_CLNSIG` before the awk). We put `pv` on each edge of both pipes and timed each stage alone, on the same three genomes, in `staphb/bcftools:1.24` (mawk 1.3.4) under `nice -n 19` with no CPU cap. Each VEP VCF was 1.2-1.3 GB bgzipped and gave a 19.6-20.3 GiB stream of PASS records.
+A second pipe does the same for the ClinVar tier (`bcftools +split-vep -i` on `ClinVar_CLNSIG` before the awk). We put `pv` on each edge of both pipes and timed each stage alone, on the same three genomes, in the `BCFTOOLS_IMAGE` container of `versions.env` (bcftools 1.24, mawk 1.3.4) under `nice -n 19` with no CPU cap. Each VEP VCF was 1.2-1.3 GB bgzipped and gave a 19.6-20.3 GiB stream of PASS records.
 
 | Stage | Wall time | Rate |
 |---|---|---|
@@ -300,7 +300,7 @@ A second pipe does the same for the ClinVar tier (`bcftools +split-vep -i` on `C
 
 The rows without a range were measured on one genome. The awk is the saturated stage: alone it takes about 135 of the pipe's 157-171 s, while `bcftools` decodes the same stream in 28 s and compresses the result in 2.5 s. `--threads 2` only speeds up the stages that already wait for the awk, so the pipe stays within the noise of the run without it (its records were identical, checked by checksum without the `##bcftools_viewCommand` header line). The floor a faster ranker can reach on this pipe is the decode, about 25-30 s. The two pipes together, about 4 minutes, are most of the step's 2.5-6.5 minutes in the end test; the tier filters that follow read only the small `rare_pass.vcf.gz`.
 
-The commands, inside `staphb/bcftools:1.24` with `bin/` mounted at `/pgp-bin` and the host's `pv` on the `PATH`:
+The commands, inside the `BCFTOOLS_IMAGE` container with `bin/` mounted at `/pgp-bin` and the host's `pv` on the `PATH`:
 
 ```sh
 export LC_ALL=C TIMEFORMAT='%R s wall, %U s user, %S s sys'
