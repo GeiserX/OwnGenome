@@ -1,0 +1,462 @@
+{
+  "meta": {
+    "synthetic": true,
+    "notice": "Every person, run, value and finding here is invented for mockups. Genes and drug rules are real so the copy reads plausibly; positions, read counts, scores and dates are made up. Do not look any of it up as if it described someone.",
+    "pipeline": "OwnGenome 1.0.0",
+    "reference": "GRCh38 (no-ALT analysis set)",
+    "today": "2026-11-08",
+    "databases": {
+      "clinvar": { "used": "2026-10-02", "newest": "2026-11-06", "newer_available": true, "affects_steps": ["06", "17", "23", "39"] },
+      "vep_cache": { "used": "Ensembl 115", "newer_available": false },
+      "cpsr_bundle": { "used": "PCGR 2.2 bundle 20260601", "newer_available": false },
+      "pharmcat": { "used": "3.4.0", "newer_available": false },
+      "pgs_catalog": { "used": "2026-09", "newer_available": false }
+    },
+    "levels": {
+      "act": "Take to a doctor. A health finding with a clinical action (dominant P/LP in an ACMG SF or cancer gene, two hits in a recessive gene, a full repeat expansion, a positive MUC1 call).",
+      "medicine": "Tell whoever prescribes. A gene result that changes a drug or dose under CPIC guidance, or an HLA drug allele.",
+      "review": "Worth a look. A result that deserves a conversation or a measurement but is not a diagnosis (intermediate repeat, genetically high Lp(a), CHIP clone, mosaic alteration, risk-associated HLA allele).",
+      "carrier": "For family planning. One copy of a change in a recessive or X-linked gene; the person is not affected.",
+      "info": "For information. Ancestry, haplogroups, traits, blood groups, scores, telomeres. Never phrased as fine or normal.",
+      "trust": "About the data, not the person: QC, identity, contamination, callability, relationships."
+    },
+    "never": "No result is ever shown as 'all clear', 'normal' or 'fine'. An empty section reads 'No finding in what this step assessed' plus its caveat and what it does not see."
+  },
+
+  "people": [
+    { "id": "elena", "name": "Elena Ruiz", "short": "Elena", "sex_declared": "female", "sex_measured": "XX", "age": 38, "role": "mother", "run": "RUIZ-ELENA", "identity_color_slot": 2, "identity_color_dark": "#d95926" },
+    { "id": "marc", "name": "Marc Ruiz", "short": "Marc", "sex_declared": "male", "sex_measured": "XY", "age": 41, "role": "father", "run": "RUIZ-MARC", "identity_color_slot": 1, "identity_color_dark": "#3987e5" },
+    { "id": "lia", "name": "Lía Ruiz", "short": "Lía", "sex_declared": "female", "sex_measured": "XX", "age": 6, "role": "daughter", "run": "RUIZ-LIA", "identity_color_slot": 3, "identity_color_dark": "#199e70", "minor": true },
+    { "id": "carmen", "name": "Carmen Vidal", "short": "Carmen", "sex_declared": "female", "age": 67, "role": "Elena's mother", "run": null, "sequenced": false, "note": "In the pedigree, no genome on this server (drawn dashed)." },
+    { "id": "hg002", "name": "HG002", "short": "HG002", "sex_declared": "male", "sex_measured": "XY", "role": "public GIAB reference sample (benchmark run)", "run": "HG002-BENCH", "public_reference": true }
+  ],
+
+  "runs": [
+    {
+      "id": "RUIZ-ELENA", "person": "elena", "state": "finished", "planned": 54, "done": 54, "failed": 0, "skipped": 3,
+      "started_utc": "2026-11-02T21:14:00Z", "finished_utc": "2026-11-04T03:51:00Z", "wall_hours": 30.6,
+      "counts": { "act": 1, "medicine": 1, "review": 1, "carrier": 2, "info": 14 },
+      "skipped_steps": [ { "step": "35b", "why": "PacBio HiFi only" }, { "step": "48", "why": "no symptoms (HPO terms) given" }, { "step": "45", "why": "female: no Y chromosome" } ]
+    },
+    {
+      "id": "RUIZ-MARC", "person": "marc", "state": "finished", "planned": 54, "done": 53, "failed": 1, "skipped": 2,
+      "started_utc": "2026-11-03T08:02:00Z", "finished_utc": "2026-11-04T17:40:00Z", "wall_hours": 33.6,
+      "counts": { "act": 0, "medicine": 2, "review": 2, "carrier": 2, "info": 15 },
+      "failed_steps": [ { "step": "52", "label": "MUC1 VNTR (VNtyper)", "why": "depth over the repeat 41x, below the 100x the step needs; marked not assessed", "retry": "Rerun with a deeper BAM, or ignore" } ],
+      "skipped_steps": [ { "step": "35b", "why": "PacBio HiFi only" }, { "step": "48", "why": "no symptoms (HPO terms) given" } ]
+    },
+    {
+      "id": "RUIZ-LIA", "person": "lia", "state": "finished", "planned": 54, "done": 54, "failed": 0, "skipped": 3,
+      "started_utc": "2026-11-05T07:30:00Z", "finished_utc": "2026-11-06T12:05:00Z", "wall_hours": 28.6,
+      "counts": { "act": 0, "medicine": 1, "review": 1, "carrier": 1, "info": 12 },
+      "skipped_steps": [ { "step": "35b", "why": "PacBio HiFi only" }, { "step": "48", "why": "no symptoms (HPO terms) given" }, { "step": "45", "why": "female: no Y chromosome" } ]
+    },
+    {
+      "id": "RUIZ-FAMILY", "kind": "family", "family": "ruiz", "state": "finished", "finished_utc": "2026-11-06T14:22:00Z",
+      "analyses": [
+        { "analysis": "joint call (GLnexus)", "members": "Elena, Marc, Lía", "decision": "runs" },
+        { "analysis": "relationship check (somalier)", "members": "all pairs", "decision": "runs" },
+        { "analysis": "phasing by inheritance (WhatsHap)", "members": "Lía with both parents", "decision": "runs" },
+        { "analysis": "de novo and compound het", "members": "Lía", "decision": "runs" },
+        { "analysis": "chromosome map", "members": "Lía", "decision": "runs" },
+        { "analysis": "shared segments (hap-ibd)", "members": "all pairs", "decision": "runs" },
+        { "analysis": "couple carrier screen", "members": "Elena + Marc", "decision": "runs" },
+        { "analysis": "grandparent phasing", "members": "Carmen", "decision": "skipped", "reason": "Carmen has no genome on this server" }
+      ]
+    },
+    {
+      "id": "HG002-BENCH", "person": "hg002", "state": "running", "planned": 54, "done": 31, "running": 4, "waiting": 18, "failed": 0, "retried": 1,
+      "started_utc": "2026-11-08T06:40:00Z", "elapsed_hours": 6.4, "eta_hours": "about 19 more (from the usual step hours)",
+      "running_now": [
+        { "step": "17", "label": "CPSR", "since_min": 22, "usual_min": 45, "cpu_pct": 380, "mem_gb": 11.2 },
+        { "step": "19", "label": "Delly", "since_min": 71, "usual_min": 160, "cpu_pct": 100, "mem_gb": 3.1 },
+        { "step": "25", "label": "PRS", "since_min": 9, "usual_min": 55, "cpu_pct": 640, "mem_gb": 14.8 },
+        { "step": "20", "label": "Mito variants (Mutect2)", "since_min": 4, "usual_min": 12, "cpu_pct": 190, "mem_gb": 2.4 }
+      ],
+      "events": [
+        { "t": "12:58", "text": "Step 06 ClinVar screen finished: 2 pathogenic or likely pathogenic hits" },
+        { "t": "12:41", "text": "Step 07 PharmCAT finished: 4 genes with a changed function" },
+        { "t": "12:40", "text": "Step 08 HLA typing finished" },
+        { "t": "12:07", "text": "Task VEP (chr1) retried with 24 GB after a memory kill" },
+        { "t": "11:52", "text": "Step 03 Variant calling finished: 4,672,118 PASS variants, Ti/Tv 2.06" }
+      ],
+      "found_so_far": [
+        { "step": "33", "text": "Sex from the reads XY, declared male. Contamination 0.2% (below 3%)." },
+        { "step": "16b", "text": "Mean depth 34.1x; 97.8% of the genome at 10x or more." },
+        { "step": "06", "text": "2 pathogenic or likely pathogenic ClinVar hits, both heterozygous in recessive genes." },
+        { "step": "08", "text": "HLA typed: no drug-reaction allele of the list present." }
+      ],
+      "health": { "ram_gb": 64, "mem_peak_gb": 41.3, "disk_tb": 2.0, "disk_used_pct": 71, "cpu_cores": 16, "load_1m": 13.7 }
+    }
+  ],
+
+  "families": [
+    {
+      "id": "ruiz", "name": "Ruiz family",
+      "members": [
+        { "person": "marc", "father": null, "mother": null, "partner": "elena", "sequenced": true },
+        { "person": "elena", "father": null, "mother": "carmen", "partner": "marc", "sequenced": true },
+        { "person": "lia", "father": "marc", "mother": "elena", "partner": null, "sequenced": true },
+        { "person": "carmen", "father": null, "mother": null, "partner": null, "sequenced": false }
+      ],
+      "relationships": [
+        { "pair": ["elena", "lia"], "declared": "parent-child", "expected": 0.5, "measured": 0.497, "opposite_homozygotes_pct": 0.04, "sites": 17402, "verdict": "agrees" },
+        { "pair": ["marc", "lia"], "declared": "parent-child", "expected": 0.5, "measured": 0.503, "opposite_homozygotes_pct": 0.05, "sites": 17398, "verdict": "agrees" },
+        { "pair": ["elena", "marc"], "declared": "unrelated (partners)", "expected": 0.0, "measured": 0.008, "opposite_homozygotes_pct": 6.8, "sites": 17411, "verdict": "agrees" }
+      ],
+      "shared_segments": [
+        { "pair": ["elena", "lia"], "stretches": 23, "shared_cm": 3389, "ibd2_cm": 0, "longest_cm": 281.4, "shared_fraction": 0.995, "degree": "first (parent-child)" },
+        { "pair": ["marc", "lia"], "stretches": 25, "shared_cm": 3381, "ibd2_cm": 0, "longest_cm": 267.9, "shared_fraction": 0.993, "degree": "first (parent-child)" },
+        { "pair": ["elena", "marc"], "stretches": 2, "shared_cm": 5.1, "ibd2_cm": 0, "longest_cm": 2.9, "shared_fraction": 0.0015, "degree": "unrelated or beyond 4th degree" }
+      ],
+      "couple_screen": {
+        "partners": ["elena", "marc"],
+        "summary": { "shared": 1, "x_linked": 0, "one_partner": 3 },
+        "rows": [
+          { "gene": "CFTR", "inheritance": "AR", "lists": "ACMG, ACOG", "condition": "Cystic fibrosis", "result": "shared", "offspring_risk": "1 in 4 per pregnancy", "elena": "p.Phe508del het, Pathogenic, 3 stars", "marc": "p.Gly542Ter het, Pathogenic, 3 stars", "explanation": "Both carry a change in CFTR. A child who inherits both changes can have cystic fibrosis: 1 in 4 per pregnancy, 1 in 2 a carrier, 1 in 4 neither." },
+          { "gene": "PAH", "inheritance": "AR", "lists": "ACMG, ACOG", "condition": "Phenylketonuria", "result": "one_partner", "offspring_risk": "none shared", "elena": null, "marc": "p.Arg408Trp het, Pathogenic, 3 stars", "explanation": "Only Marc carries a change in PAH. A child can be a carrier like Marc, not affected, unless Elena carries a change this screen does not see." },
+          { "gene": "HFE", "inheritance": "AR", "lists": "Orphanet", "condition": "Hereditary haemochromatosis type 1", "result": "one_partner", "offspring_risk": "none shared", "elena": "p.Cys282Tyr het, Pathogenic, 2 stars", "marc": null, "explanation": "Only Elena carries a change in HFE. A child can be a carrier like Elena." },
+          { "gene": "FMR1", "inheritance": "XL", "lists": "ACMG, ACOG", "condition": "Fragile X syndrome", "result": "not counted", "offspring_risk": "below the premutation line", "elena": "CGG 31 / 48 (intermediate, 45-54)", "marc": "CGG 30", "explanation": "Elena's longer allele is in the intermediate range: below the 55 repeats the screen counts. It does not cause disease but may grow by a few repeats when passed on. Shown for context." }
+        ],
+        "read_depth_alleles": [
+          { "allele": "del(GJB6-D13S1830)", "elena": "absent", "marc": "absent" },
+          { "allele": "CFTRdele2,3", "elena": "absent", "marc": "absent" },
+          { "allele": "HBB 619 bp deletion", "elena": "not assessable (too short for depth)", "marc": "not assessable (too short for depth)" },
+          { "allele": "AZFa / AZFb / AZFc", "elena": "not applicable", "marc": "absent / absent / absent" }
+        ],
+        "smn1": { "elena": "2 copies (quality 41, PASS)", "marc": "2 copies (quality 38, PASS)", "note": "Two copies do not rule out a silent carrier (2+0)." },
+        "caveat": "A screen, not a diagnosis. It sees ClinVar pathogenic changes, Delly deletions, SMN1 copies and FMR1/FXN repeats in 3,292 recessive and X-linked genes. A screen with no shared gene lowers the chance of a child with one of these conditions; it does not remove it.",
+        "does_not_see": [
+          "changes ClinVar does not list as pathogenic (new loss-of-function changes, VUS)",
+          "genes outside the carrier list",
+          "SMN1 silent carriers (2 copies on one chromosome, 0 on the other)",
+          "genes with a near-identical copy: HBA1/HBA2, CYP21A2, GBA1",
+          "repeat expansions other than FMR1 and FXN",
+          "low-level mosaicism, and whether two changes of one person sit on the same copy"
+        ]
+      },
+      "trio": {
+        "child": "lia",
+        "phased_sites": 2913455,
+        "inheritance_of_findings": [
+          { "finding": "F02", "gene": "CFTR", "change": "p.Phe508del", "from": "elena", "child_has": true, "how": "genotype" },
+          { "finding": "F15", "gene": "CFTR", "change": "p.Gly542Ter", "from": "marc", "child_has": false, "how": "genotype" },
+          { "finding": "F01", "gene": "BRCA2", "change": "c.5946del", "from": "elena", "child_has": false, "how": "genotype", "sensitive": "adult-onset finding about a minor: keep behind an explicit reveal" },
+          { "finding": "F16", "gene": "PAH", "change": "p.Arg408Trp", "from": "marc", "child_has": false, "how": "genotype" },
+          { "finding": "F05", "gene": "HFE", "change": "p.Cys282Tyr", "from": "elena", "child_has": false, "how": "genotype" },
+          { "finding": "F03", "gene": "FMR1", "change": "CGG 48 allele", "from": "elena", "child_has": true, "how": "repeat length (48 in Elena, 49 in Lía)" },
+          { "finding": "F11", "gene": "CYP2C19", "change": "*2 allele", "from": "marc", "child_has": true, "how": "genotype" }
+        ],
+        "de_novo": [
+          { "chrom": "chr7", "pos": 98114350, "ref": "C", "alt": "T", "child_gt": "0/1", "child_ab": 0.46, "gq": [52, 61, 58], "dp": [33, 30, 35], "status": "pass", "gene": null, "consequence": "intergenic", "note": "Most de novo candidates of a whole genome are genotype errors; this one has good depth in all three. No gene nearby." },
+          { "chrom": "chr12", "pos": 33908211, "ref": "A", "alt": "G", "child_gt": "0/1", "child_ab": 0.19, "gq": [14, 49, 50], "dp": [8, 31, 29], "status": "low", "gene": null, "consequence": "intergenic", "note": "Low: child depth 8, allele balance 19%." }
+        ],
+        "compound_het": [
+          { "gene": "USH2A", "variants": ["p.Thr1257Ile", "c.8559-14A>G"], "phase": "in cis", "from": "marc", "note": "Both came from Marc on one copy; the other copy is intact." },
+          { "gene": "TTN", "variants": ["p.Arg3412His", "p.Val16211Met"], "phase": "in trans", "from": "one each", "note": "Both rare missense, both called benign or VUS. TTN is huge and carries many rare missense in everyone; no action." }
+        ],
+        "chromosome_map": {
+          "basis": "parent (no grandparent sequenced: stretches say only 'from Marc' or 'from Elena', no crossovers placed)",
+          "per_parent": [
+            { "parent": "marc", "segments": 41, "mb": 2871, "discordant_sites": 312 },
+            { "parent": "elena", "segments": 44, "mb": 3012, "discordant_sites": 287 }
+          ],
+          "example_chr7": [
+            { "side": "paternal", "start": 52000, "end": 59300000 },
+            { "side": "paternal", "start": 62100000, "end": 159100000 },
+            { "side": "maternal", "start": 41000, "end": 58900000 },
+            { "side": "maternal", "start": 61800000, "end": 159200000 }
+          ]
+        }
+      }
+    }
+  ],
+
+  "findings": [
+    {
+      "id": "F01", "person": "elena", "family": "cancer_predisposition", "chapter": "clinical", "section": "cpsr", "level": "act",
+      "title": "A change in BRCA2 linked to hereditary breast and ovarian cancer",
+      "gene": "BRCA2", "hgvs_c": "c.5946del", "hgvs_p": "p.Ser1982ArgfsTer22", "variant_id": "chr13:32340301 GT>G", "zygosity": "het",
+      "classification": "Pathogenic", "source": "ClinVar + CPSR tier 1", "stars": 3, "review": "reviewed by expert panel (ENIGMA)",
+      "gnomad_af": 0.00009, "consequence": "frameshift", "inheritance": "AD", "acmg_sf": true, "acmg_sf_rule": "dominant gene: one P/LP variant is reported",
+      "reads": { "depth": 34, "alt_reads": 17, "allele_balance": 0.5, "gq": 63 },
+      "what_it_means": "One copy of BRCA2 carries a change that stops the protein early. People with such a change have a higher lifetime risk of breast and ovarian cancer, and to a smaller degree prostate and pancreatic cancer in male relatives. It is not a diagnosis of cancer.",
+      "what_to_do": "Bring this to a doctor or genetic counsellor. Confirm it with a clinical test. Screening and prevention options exist and start earlier than the general programme. Close relatives (parents, siblings, children) each have a 1 in 2 chance of carrying it.",
+      "relatives": "Lía did not inherit this change (family analysis). Elena's mother Carmen is not sequenced.",
+      "caveat": "A research pipeline, not a clinical test. Confirm every pathogenic finding in a certified laboratory before acting.",
+      "newer_db_may_change": false
+    },
+    {
+      "id": "F02", "person": "elena", "family": "carrier", "chapter": "carrier", "section": "carrier-list", "level": "carrier",
+      "title": "Carrier of cystic fibrosis",
+      "gene": "CFTR", "hgvs_c": "c.1521_1523del", "hgvs_p": "p.Phe508del", "variant_id": "chr7:117559590 ATCT>A", "zygosity": "het",
+      "classification": "Pathogenic", "stars": 3, "gnomad_af": 0.0069, "inheritance": "AR",
+      "what_it_means": "One copy of CFTR carries the most common cystic fibrosis change. Carriers are not affected.",
+      "what_to_do": "Matters for children: Marc also carries a CFTR change (couple screen: shared, 1 in 4).",
+      "caveat": "Carrier status is not disease."
+    },
+    {
+      "id": "F03", "person": "elena", "family": "str", "chapter": "clinical", "section": "expansions", "level": "review",
+      "title": "FMR1 repeat in the intermediate range",
+      "gene": "FMR1", "locus": "FMR1 CGG", "alleles": [31, 48], "ci95": [[30, 32], [45, 51]], "stranger_status": "normal", "range_label": "intermediate (45-54)",
+      "thresholds": { "normal_max": 44, "intermediate": [45, 54], "premutation": [55, 200], "full_mutation_min": 201 },
+      "spanning_reads": 9, "sized": true,
+      "what_it_means": "One copy of FMR1 has 48 CGG repeats: more than usual, below a premutation. It does not cause disease but can grow by a few repeats when passed to a child.",
+      "what_to_do": "Worth a word with a genetic counsellor before a future pregnancy. Lía inherited this allele (49 repeats).",
+      "caveat": "Repeat sizing from short reads is approximate; a long expansion cannot be sized."
+    },
+    {
+      "id": "F04", "person": "elena", "family": "pgx", "chapter": "medicines", "section": "cpic", "level": "medicine",
+      "title": "CYP2D6: intermediate metaboliser",
+      "gene": "CYP2D6", "diplotype": "*1/*4", "phenotype": "Intermediate Metabolizer", "activity_score": 1.0, "consensus": "pypgx and Cyrius agree, depth check ok", "status": "non-normal",
+      "drugs": [
+        { "drug": "tamoxifen", "cpic": "Consider an aromatase inhibitor for postmenopausal women, or a higher tamoxifen dose (40 mg/day); avoid strong CYP2D6 inhibitors.", "strength": "optional", "guideline": "CPIC CYP2D6-tamoxifen 2018" },
+        { "drug": "codeine", "cpic": "Use label-recommended dosing; if no response, consider a non-tramadol opioid.", "strength": "moderate", "guideline": "CPIC CYP2D6-opioids 2021" },
+        { "drug": "ondansetron", "cpic": "No action needed for intermediate metabolisers.", "strength": "n/a", "guideline": "CPIC CYP2D6-antiemetics 2017" }
+      ],
+      "what_to_do": "Show the medicines list to whoever prescribes. Tamoxifen is relevant to the BRCA2 finding.",
+      "caveat": "CYP2D6 is hard for short reads; the pipeline passes it to PharmCAT only when two callers agree. Confirm with a certified PGx test before a prescription changes."
+    },
+    {
+      "id": "F05", "person": "elena", "family": "carrier", "chapter": "carrier", "section": "carrier-list", "level": "carrier",
+      "title": "Carrier of hereditary haemochromatosis (HFE C282Y, one copy)",
+      "gene": "HFE", "hgvs_p": "p.Cys282Tyr", "variant_id": "chr6:26092913 G>A", "zygosity": "het", "classification": "Pathogenic", "stars": 2, "gnomad_af": 0.034, "inheritance": "AR",
+      "acmg_sf_rule": "HFE is reported only when homozygous C282Y: this is not a secondary finding.",
+      "what_it_means": "One copy. Iron overload is rare with one copy.", "caveat": "Carrier status is not disease."
+    },
+    {
+      "id": "F06", "person": "elena", "family": "prs", "chapter": "traits", "section": "prs", "level": "info",
+      "title": "Breast cancer polygenic score: 71st percentile",
+      "pgs_id": "PGS000004", "condition": "Breast cancer", "percentile": 71, "ancestry_group": "EUR", "matched_pct": 98.7, "variants_matched": 309, "variants_total": 313, "applies_to": "female",
+      "what_it_means": "Higher than 71 of 100 reference people of similar ancestry. A percentile is not a probability.",
+      "caveat": "Scores of different conditions are not comparable. With a BRCA2 change, the BRCA2 result guides care, not this score."
+    },
+    {
+      "id": "F07", "person": "elena", "family": "traits", "chapter": "traits", "section": "traits-panel", "level": "info", "sensitive": true,
+      "title": "APOE genotype (hidden until you choose to see it)",
+      "gene": "APOE", "genotype": "ε3/ε4", "rsids": ["rs429358", "rs7412"],
+      "gate_text": "APOE relates to the risk of late-onset Alzheimer's disease. Many people choose not to know. Show it?",
+      "what_it_means": "One ε4 allele raises the risk of late-onset Alzheimer's disease; it does not say who will get it.",
+      "caveat": "No prevention changes on APOE alone."
+    },
+    {
+      "id": "F08", "person": "elena", "family": "mito", "chapter": "ancestry", "section": "mt-haplogroup", "level": "info",
+      "title": "Maternal line: haplogroup H1c3",
+      "haplogroup": "H1c3", "quality": 0.94, "heteroplasmic": [ { "site": "m.16093T>C", "af": 0.18, "clinvar": "benign", "note": "common, D-loop" } ], "pass_variants": 41,
+      "what_it_means": "The branch of the maternal line's tree; H is the most common in Western Europe. Lía carries the same haplogroup, as expected.",
+      "caveat": "Haplogroup associations with disease are population statistics, not individual predictions."
+    },
+    {
+      "id": "F09", "person": "elena", "family": "ancestry", "chapter": "ancestry", "section": "ancestry-fine", "level": "info",
+      "title": "Genetic ancestry most similar to Southern European reference groups",
+      "continental": [ { "group": "Europe", "fraction": 0.92, "low": 0.90, "high": 0.94 }, { "group": "Middle East / North Africa", "fraction": 0.06, "low": 0.04, "high": 0.08 }, { "group": "Africa (sub-Saharan)", "fraction": 0.01, "low": 0.0, "high": 0.02 }, { "group": "Other", "fraction": 0.01, "low": 0.0, "high": 0.02 } ],
+      "regional": [ { "group": "Iberian", "fraction": 0.71 }, { "group": "Tuscan / Italian", "fraction": 0.14 }, { "group": "North African", "fraction": 0.06 }, { "group": "Northwest European", "fraction": 0.07 }, { "group": "Other", "fraction": 0.02 } ],
+      "pgsc_projection": "closest panel population: IBS (1000 Genomes)",
+      "caveat": "Similarity to reference groups, not a population label or a nationality."
+    },
+    {
+      "id": "F10", "person": "elena", "family": "qc", "chapter": "quality", "section": "qc", "level": "trust",
+      "title": "Data quality: good enough to read",
+      "mean_depth": 32.4, "pct_10x": 98.1, "pass_variants": 4688210, "titv": 2.07, "freemix": 0.004, "sex_check": "ok (XX, declared female)",
+      "callability": { "genes_below_90pct": 11, "examples": ["SMN1 41%", "CYP21A2 58%", "PMS2 77%", "HBA1 64%", "NCF1 52%"], "not_on_reference": ["GSTT1", "HLA-DRB3", "HLA-DRB4", "KIR2DL2"] },
+      "what_it_means": "Depth and quality are in the usual range; no sign of another person's DNA; the sex from the reads matches. A 'no finding' in the genes listed as hard to read says nothing."
+    },
+    {
+      "id": "F11", "person": "marc", "family": "pgx", "chapter": "medicines", "section": "cpic", "level": "medicine",
+      "title": "CYP2C19: poor metaboliser",
+      "gene": "CYP2C19", "diplotype": "*2/*2", "phenotype": "Poor Metabolizer", "status": "non-normal",
+      "drugs": [
+        { "drug": "clopidogrel", "cpic": "Avoid. Use prasugrel or ticagrelor if there is no contraindication.", "strength": "strong", "guideline": "CPIC CYP2C19-clopidogrel 2022" },
+        { "drug": "citalopram / escitalopram", "cpic": "Consider a 50% lower starting dose and slower titration, or another antidepressant.", "strength": "moderate", "guideline": "CPIC CYP2C19-SSRI 2023" },
+        { "drug": "omeprazole, pantoprazole", "cpic": "Start at the standard dose; for long-term use consider a 50% lower daily dose.", "strength": "optional", "guideline": "CPIC CYP2C19-PPI 2020" },
+        { "drug": "voriconazole", "cpic": "Choose an alternative antifungal not dependent on CYP2C19.", "strength": "moderate", "guideline": "CPIC CYP2C19-voriconazole 2016" }
+      ],
+      "what_to_do": "Tell any prescriber and pharmacist. Clopidogrel is the important one: it would not work well.",
+      "caveat": "PharmCAT is a research tool; confirm before a prescription changes."
+    },
+    {
+      "id": "F12", "person": "marc", "family": "pgx", "chapter": "medicines", "section": "cpic", "level": "medicine",
+      "title": "SLCO1B1: decreased function (statin muscle side effects)",
+      "gene": "SLCO1B1", "diplotype": "*1/*5", "phenotype": "Decreased Function", "rsid": "rs4149056", "status": "non-normal",
+      "drugs": [
+        { "drug": "simvastatin", "cpic": "Prescribe 20 mg/day or less, or choose another statin (rosuvastatin, pravastatin).", "strength": "strong", "guideline": "CPIC SLCO1B1-ABCG2-CYP2C9-statins 2022" },
+        { "drug": "atorvastatin", "cpic": "Prescribe 40 mg/day or less; consider a higher dose only with monitoring.", "strength": "moderate", "guideline": "CPIC 2022" }
+      ],
+      "what_to_do": "Relevant together with the Lp(a) and heart-score results: if a statin is started, the choice and dose matter.",
+      "caveat": "Confirm before a prescription changes."
+    },
+    {
+      "id": "F13", "person": "marc", "family": "lpa", "chapter": "clinical", "section": "lpa", "level": "review",
+      "title": "Genetically high Lp(a) likely",
+      "kiv2_copies": 15.2, "ci95": [13.8, 16.4], "population_range_note": "most people carry 30 to 45 KIV-2 copies in total; fewer copies go with higher Lp(a)",
+      "rs10455872": "risk allele present", "rs3798220": "no risk allele", "flag": "genetically high Lp(a)",
+      "what_it_means": "Few KIV-2 repeats and one risk variant both point to a high Lp(a), a lipoprotein that raises the risk of heart attack and aortic stenosis.",
+      "what_to_do": "Ask for one blood Lp(a) measurement. European guidance recommends measuring it once in every adult anyway.",
+      "caveat": "A research estimate from read depth; the blood test is what counts."
+    },
+    {
+      "id": "F14", "person": "marc", "family": "prs", "chapter": "traits", "section": "prs", "level": "info",
+      "title": "Coronary artery disease score: 88th percentile",
+      "pgs_id": "PGS000018", "condition": "Coronary artery disease", "percentile": 88, "ancestry_group": "EUR", "matched_pct": 96.2,
+      "others": [
+        { "condition": "Type 2 diabetes", "pgs_id": "PGS000713", "percentile": 42 },
+        { "condition": "Atrial fibrillation", "pgs_id": "PGS000016", "percentile": 63 },
+        { "condition": "Prostate cancer", "pgs_id": "PGS000662", "percentile": 35 },
+        { "condition": "LDL cholesterol", "pgs_id": "PGS000115", "percentile": 77 },
+        { "condition": "Systolic blood pressure", "pgs_id": "PGS000302", "percentile": 51 }
+      ],
+      "what_it_means": "Higher than 88 of 100 reference people of similar ancestry. Most people in the top fifth never have a heart attack; measured LDL, blood pressure and Lp(a) say far more.",
+      "caveat": "A percentile is not a probability; percentiles of different conditions are not comparable."
+    },
+    {
+      "id": "F15", "person": "marc", "family": "carrier", "chapter": "carrier", "section": "carrier-list", "level": "carrier",
+      "title": "Carrier of cystic fibrosis",
+      "gene": "CFTR", "hgvs_p": "p.Gly542Ter", "variant_id": "chr7:117587778 G>T", "zygosity": "het", "classification": "Pathogenic", "stars": 3, "gnomad_af": 0.0004, "inheritance": "AR",
+      "what_to_do": "Shared with Elena: 1 in 4 per pregnancy for cystic fibrosis. Lía did not inherit this one."
+    },
+    {
+      "id": "F16", "person": "marc", "family": "carrier", "chapter": "carrier", "section": "carrier-list", "level": "carrier",
+      "title": "Carrier of phenylketonuria",
+      "gene": "PAH", "hgvs_p": "p.Arg408Trp", "variant_id": "chr12:102840507 G>A", "zygosity": "het", "classification": "Pathogenic", "stars": 3, "gnomad_af": 0.0011, "inheritance": "AR"
+    },
+    {
+      "id": "F17", "person": "marc", "family": "hla", "chapter": "medicines", "section": "hla", "level": "review",
+      "title": "HLA-B*27 present",
+      "alleles": { "HLA-A": ["02:01", "24:02"], "HLA-B": ["27:05", "44:02"], "HLA-C": ["02:02", "05:01"], "HLA-DQA1": ["01:02", "05:01"], "HLA-DQB1": ["02:01", "06:02"], "HLA-DRB1": ["03:01", "15:01"] },
+      "drug_alleles": [ { "allele": "HLA-B*57:01", "drug": "abacavir", "present": false }, { "allele": "HLA-B*58:01", "drug": "allopurinol", "present": false }, { "allele": "HLA-B*15:02", "drug": "carbamazepine", "present": false }, { "allele": "HLA-A*31:01", "drug": "carbamazepine", "present": false } ],
+      "disease_alleles": [ { "allele": "HLA-B*27", "association": "ankylosing spondylitis", "present": true }, { "allele": "HLA-C*06:02", "association": "psoriasis", "present": false } ],
+      "coeliac": { "dq2_5": "likely cis (DQA1*05:01 + DQB1*02:01)", "dq8": "absent", "dqb1_02_copies": 1 },
+      "what_it_means": "About 8% of Europeans carry HLA-B*27; most never develop spondylitis. Coeliac DQ2.5 is common too (about 1 in 4) and alone means little.",
+      "caveat": "Typing from short reads is approximate; ask for a clinical HLA test before a drug that depends on it. Not for transplant matching."
+    },
+    {
+      "id": "F18", "person": "marc", "family": "sv", "chapter": "clinical", "section": "structural-variants", "level": "info",
+      "title": "One uncertain deletion; no class 4-5 structural variant",
+      "sv": { "type": "DEL", "chrom": "chr3", "start": 2291044, "end": 2329380, "length_kb": 38.3, "genotype": "0/1", "callers": ["Manta", "Delly", "CNVpytor"], "duphold_dhffc": 0.52, "annotsv_class": 3, "genes": ["CNTN4 (intron 2 only)"], "gnomad_sv_af": 0.0003 },
+      "counts": { "manta_pass": 6611, "delly_pass": 5402, "cnvpytor_significant": 1149, "consensus_2plus": 2934, "class_4_5": 0 },
+      "what_it_means": "A 38 kb deletion inside an intron, found by three callers. Uncertain significance: no action.",
+      "caveat": "Short reads find large deletions and duplications better than insertions and inversions."
+    },
+    {
+      "id": "F19", "person": "marc", "family": "chip", "chapter": "clinical", "section": "chip", "level": "info",
+      "title": "No CHIP call above what this depth can see",
+      "calls": 0, "detection_limit_vaf": 0.14, "genes_assessed": 13, "genes_too_shallow": ["U2AF1"],
+      "what_it_means": "No clone was found in the 13 CHIP genes, but at 29x only clones with about 14% of reads or more can be seen. Most CHIP is smaller.",
+      "caveat": "A clean result does not rule CHIP out."
+    },
+    {
+      "id": "F20", "person": "marc", "family": "y_haplogroup", "chapter": "ancestry", "section": "y-chromosome", "level": "info",
+      "title": "Paternal line: R-DF27",
+      "haplogroup": "R1b-DF27", "terminal_branch_yfull": "R-Z195", "valid_markers": 1873, "qc_score": 0.98, "level_below_root": 23, "private_snps": 7,
+      "mt_haplogroup": "J1c2",
+      "what_it_means": "DF27 is the commonest Y branch in Iberia.", "caveat": "One line out of thousands of ancestors."
+    },
+    {
+      "id": "F21", "person": "marc", "family": "qc", "chapter": "quality", "section": "qc", "level": "trust",
+      "title": "Data quality: good, one step not assessed",
+      "mean_depth": 29.1, "pct_10x": 97.2, "pass_variants": 4701933, "titv": 2.06, "freemix": 0.006, "sex_check": "ok (XY, declared male)", "mosaic_loss_y": "not detected above 10% of cells",
+      "callability": { "genes_below_90pct": 14, "examples": ["SMN1 38%", "CYP21A2 55%", "PMS2 74%", "STRC 49%", "NCF1 50%"] },
+      "failed": "Step 52 MUC1 VNTR: depth over the repeat 41x, below the 100x it needs: not assessed."
+    },
+    {
+      "id": "F22", "person": "lia", "family": "carrier", "chapter": "carrier", "section": "carrier-list", "level": "carrier",
+      "title": "Carrier of cystic fibrosis (from Elena)",
+      "gene": "CFTR", "hgvs_p": "p.Phe508del", "zygosity": "het", "classification": "Pathogenic", "stars": 3, "inherited_from": "elena",
+      "what_it_means": "Lía carries one copy, from her mother, and is not affected. She did not inherit Marc's CFTR change, so the 1 in 4 did not happen for her.",
+      "what_to_do": "Matters for her own children one day."
+    },
+    {
+      "id": "F23", "person": "lia", "family": "str", "chapter": "clinical", "section": "expansions", "level": "review",
+      "title": "FMR1 repeat in the intermediate range (from Elena)",
+      "gene": "FMR1", "alleles": [29, 49], "ci95": [[28, 30], [46, 52]], "range_label": "intermediate (45-54)", "inherited_from": "elena", "parent_allele": 48,
+      "what_it_means": "Lía's maternal allele grew from 48 to 49 repeats. Still intermediate; it does not cause disease.",
+      "caveat": "Short-read sizing is approximate: a one-repeat change is within the error."
+    },
+    {
+      "id": "F24", "person": "lia", "family": "pgx", "chapter": "medicines", "section": "cpic", "level": "medicine",
+      "title": "CYP2C19: intermediate metaboliser",
+      "gene": "CYP2C19", "diplotype": "*1/*2", "phenotype": "Intermediate Metabolizer", "inherited_from": "marc (*2)",
+      "drugs": [
+        { "drug": "clopidogrel", "cpic": "Avoid standard dose; use an alternative antiplatelet if possible.", "strength": "strong", "guideline": "CPIC 2022" },
+        { "drug": "omeprazole, lansoprazole", "cpic": "Start at the standard dose; consider a lower dose for long-term use.", "strength": "optional", "guideline": "CPIC 2020" }
+      ],
+      "other_genes": [ { "gene": "CYP2D6", "diplotype": "*1/*1", "phenotype": "Normal Metabolizer" }, { "gene": "SLCO1B1", "diplotype": "*1/*1", "phenotype": "Normal Function" }, { "gene": "DPYD", "diplotype": "Reference/Reference", "phenotype": "Normal Metabolizer" }, { "gene": "TPMT", "diplotype": "*1/*1", "phenotype": "Normal Metabolizer" }, { "gene": "NUDT15", "diplotype": "*1/*1", "phenotype": "Normal Metabolizer" }, { "gene": "CYP2C9", "diplotype": "*1/*2", "phenotype": "Intermediate Metabolizer (activity 1.5)" } ],
+      "caveat": "Genes PharmCAT could not call are listed apart; absence from the drug list does not mean normal function."
+    },
+    {
+      "id": "F25", "person": "lia", "family": "bloodtype", "chapter": "traits", "section": "bloodtype", "level": "info",
+      "title": "Predicted blood group O, RhD negative",
+      "systems": [
+        { "system": "ABO", "phenotype": "O", "genotype": "O.01/O.01", "confidence": "high" },
+        { "system": "RhD", "phenotype": "D-", "genotype": "RHD deleted / RHD deleted (copies by depth 0.04)", "confidence": "high" },
+        { "system": "RhCE", "phenotype": "C-c+E-e+ (ce/ce)", "confidence": "high" },
+        { "system": "Kell", "phenotype": "K-k+", "confidence": "high" },
+        { "system": "Duffy", "phenotype": "Fy(a+b+)", "confidence": "high" },
+        { "system": "Secretor", "phenotype": "secretor", "confidence": "high" }
+      ],
+      "parents": { "elena": "A1, RhD+ (D/d)", "marc": "O, RhD+ (D/d)" },
+      "what_it_means": "Both parents are RhD positive with one RHD-deleted copy each; Lía inherited both deleted copies.",
+      "caveat": "A prediction from DNA, not a serological typing. For a transfusion the lab types the blood."
+    },
+    {
+      "id": "F26", "person": "lia", "family": "trio", "chapter": "clinical", "section": "family", "level": "info",
+      "title": "1 de novo candidate that passes filters, outside any gene",
+      "ref": "families[0].trio.de_novo",
+      "what_it_means": "Every child carries a few dozen new changes; most candidates here are genotype errors. This one sits outside genes.",
+      "caveat": "Confirm a de novo change that matters by another method."
+    },
+    {
+      "id": "F27", "person": null, "family_id": "ruiz", "family": "couple", "chapter": "carrier", "section": "couple", "level": "carrier",
+      "title": "Elena and Marc both carry a cystic fibrosis change",
+      "ref": "families[0].couple_screen",
+      "what_it_means": "Each pregnancy: 1 in 4 affected, 1 in 2 carrier, 1 in 4 neither. Lía is a carrier, not affected.",
+      "what_to_do": "Before another pregnancy, a genetic counsellor can explain options (clinical carrier confirmation, prenatal or preimplantation testing)."
+    },
+    {
+      "id": "F28", "person": null, "family_id": "ruiz", "family": "relatedness", "chapter": "quality", "section": "family", "level": "trust",
+      "title": "Family relationships match the pedigree",
+      "ref": "families[0].relationships",
+      "what_it_means": "Each declared parent-child pair measures about 0.5; the partners measure unrelated. No sample swap."
+    }
+  ],
+
+  "person_panels": {
+    "elena": {
+      "str_loci": [ { "locus": "HTT", "alleles": [17, 19], "normal_max": 26 }, { "locus": "FMR1", "alleles": [31, 48], "normal_max": 44, "label": "intermediate" }, { "locus": "C9orf72", "alleles": [2, 8], "normal_max": 23 }, { "locus": "DMPK", "alleles": [5, 13], "normal_max": 34 }, { "locus": "ATXN1", "alleles": [29, 31], "normal_max": 32 }, { "locus": "FXN", "alleles": [9, 18], "normal_max": 33 }, { "locus": "RFC1", "alleles": null, "note": "size not determined (flanking reads only)" } ],
+      "roh": { "segments_5mb_plus": 0, "total_mb_5mb_plus": 0, "segments_1_5mb": 38, "reading": "no sign that the parents are related" },
+      "telomere": { "tel_content": 512, "note": "relative content; compare only with samples on the same platform" },
+      "archaic": { "neanderthal_pct": 1.9, "segments": 498, "denisovan_pct": 0.1, "longest": "chr1:72.1-73.4 Mb, 1.3 Mb, NEGR1" },
+      "traits": [ { "trait": "Lactase persistence", "reading": "likely digests milk as an adult", "gene": "MCM6/LCT", "genotype": "C/T" }, { "trait": "Caffeine metabolism", "reading": "fast", "gene": "CYP1A2", "genotype": "A/A" }, { "trait": "Earwax", "reading": "wet", "gene": "ABCC11", "genotype": "C/C" }, { "trait": "Eye colour", "reading": "likely brown", "gene": "HERC2", "genotype": "A/A" }, { "trait": "Bitter taste (PTC)", "reading": "taster (PAV/AVI)", "gene": "TAS2R38" }, { "trait": "Alcohol flush", "reading": "unlikely", "gene": "ALDH2", "genotype": "G/G" } ],
+      "blood": { "abo": "A1", "rhd": "D+ (D/d)" },
+      "prs": [ { "condition": "Breast cancer", "percentile": 71 }, { "condition": "Coronary artery disease", "percentile": 34 }, { "condition": "Type 2 diabetes", "percentile": 58 }, { "condition": "LDL cholesterol", "percentile": 22 }, { "condition": "Atrial fibrillation", "percentile": 12 } ],
+      "mosaic": { "mca_calls": 0, "smallest_detectable_cell_fraction": 0.05, "loss_of_x": "not detected above 8% of cells" },
+      "viral": { "hhv6_integrated": false, "found": [ { "virus": "EBV (HHV-4)", "reads": 214, "note": "most adults carry it for life; not a test for infection" } ] }
+    },
+    "marc": {
+      "str_loci": [ { "locus": "HTT", "alleles": [18, 22], "normal_max": 26 }, { "locus": "FMR1", "alleles": [30], "normal_max": 44 }, { "locus": "C9orf72", "alleles": [2, 5], "normal_max": 23 }, { "locus": "DMPK", "alleles": [5, 11], "normal_max": 34 }, { "locus": "AR", "alleles": [22], "normal_max": 34 }, { "locus": "FXN", "alleles": [8, 9], "normal_max": 33 } ],
+      "roh": { "segments_5mb_plus": 1, "total_mb_5mb_plus": 6.2, "segments_1_5mb": 44, "reading": "one long run, within what unrelated parents give" },
+      "telomere": { "tel_content": 438 },
+      "archaic": { "neanderthal_pct": 2.1, "segments": 531, "denisovan_pct": 0.1 },
+      "blood": { "abo": "O", "rhd": "D+ (D/d)" },
+      "mosaic": { "mca_calls": 0, "loss_of_y": "not detected above 10% of cells" },
+      "viral": { "hhv6_integrated": false, "found": [] }
+    },
+    "lia": {
+      "str_loci": [ { "locus": "HTT", "alleles": [17, 22], "normal_max": 26 }, { "locus": "FMR1", "alleles": [29, 49], "normal_max": 44, "label": "intermediate" }, { "locus": "DMPK", "alleles": [5, 13], "normal_max": 34 } ],
+      "roh": { "segments_5mb_plus": 0, "total_mb_5mb_plus": 0, "reading": "no sign that the parents are related" },
+      "mt_haplogroup": "H1c3",
+      "blood": { "abo": "O", "rhd": "D-" },
+      "qc": { "mean_depth": 31.0, "titv": 2.07, "freemix": 0.003, "sex_check": "ok (XX)" },
+      "ancestry_note": "Painting: about half Elena-like and half Marc-like reference similarity; continental Europe 94%."
+    }
+  },
+
+  "not_assessed_everyone": [
+    "Changes ClinVar does not list, unless another step ranks them",
+    "Genes short reads cannot place (see the callability list of each person)",
+    "Long repeat expansions beyond read length (only a lower bound)",
+    "Methylation and imprinting",
+    "Somatic changes below about 10% of reads",
+    "Balanced rearrangements with breakpoints in repeats"
+  ]
+}

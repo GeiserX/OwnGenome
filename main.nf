@@ -956,12 +956,14 @@ workflow {
     // Read depth over the KIV-2 exons against single-copy LPA exons, for each
     // sample with a BAM. Equivalent to scripts/46-lpa.sh.
     ch_lpa          = Channel.empty()
+    ch_lpa_null     = Channel.empty()
     ch_lpa_versions = Channel.empty()
     if (tools_list.contains('lpa')) {
         LPA_REGIONS()
         LPA_DEPTH(ch_bam, LPA_REGIONS.out.bed)
         LPA(LPA_DEPTH.out.depth)
         ch_lpa          = LPA.out.table
+        ch_lpa_null     = LPA.out.null_allele
         ch_lpa_versions = LPA_REGIONS.out.versions.mix(LPA_DEPTH.out.versions, LPA.out.versions)
     }
 
@@ -1165,6 +1167,7 @@ workflow {
         .join(BAM_ANALYSIS.out.paraphase_vars.map { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.smn_copy_number.map { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.hba_copy_number.map { meta, f -> [meta.id, f] }, remainder: true)
+        .join(BAM_ANALYSIS.out.smn1_marker.map    { meta, f -> [meta.id, f] }, remainder: true)
         // step 35's other catalog tables, a list per sample (flattened below)
         .join(BAM_ANALYSIS.out.parascopy_tables.map { meta, fs -> [meta.id, fs] }, remainder: true)
         .join(CLINICAL.out.prs_scores.map         { meta, f -> [meta.id, f] }, remainder: true)
@@ -1211,6 +1214,7 @@ workflow {
         .join(ch_ancient_info.map                 { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_ancient_svg.map                  { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_lpa.map                          { meta, f -> [meta.id, f] }, remainder: true)
+        .join(ch_lpa_null.map                     { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_vntyper.map                      { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_viral.map                        { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_exomiser.map                     { meta, f -> [meta.id, f] }, remainder: true)

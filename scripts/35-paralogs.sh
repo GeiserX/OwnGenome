@@ -336,7 +336,9 @@ rm -rf "$DOSAGE_WORK"
 # single-copy flanks: the RCCX module total), samtools mpileup without a
 # reference at its paralogous sequence variant sites (each on CYP21A2 and on
 # CYP21A1P, every read whatever its MAPQ), then copy_number.py call: the
-# CYP21A2 copies at each site, and a deletion or a possible conversion. A
+# CYP21A2 copies at each site, and a deletion or a possible conversion. The
+# bedcov runs twice, all MAPQ and MAPQ 1 or more (as HBA): a BAM without the
+# MAPQ 0 reads that fit both copies reads not assessed, never a deletion. A
 # failure writes a table that says not assessed, and the step goes on.
 CYP21_OUT="${OUTDIR}/${SAMPLE}_cyp21a2_psv.tsv"
 CYP21_WORK="${OUTDIR}/CYP21A2.part"
@@ -349,17 +351,21 @@ if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
    && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
      samtools bedcov "$(cpath "${CYP21_WORK}/regions.bed")" "$(cpath "$BAM")" > "${CYP21_WORK}/bedcov.tsv" \
    && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
+     samtools bedcov -Q 1 "$(cpath "${CYP21_WORK}/regions.bed")" "$(cpath "$BAM")" > "${CYP21_WORK}/bedcov_q1.tsv" \
+   && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
      samtools mpileup -A -B -q 0 -Q 13 -d 100000 \
        -r "$(awk 'NR == 1 {c = $1; s = $2 + 1} {e = $3} END {print c ":" s "-" e}' "${CYP21_WORK}/psv.bed")" \
        -l "$(cpath "${CYP21_WORK}/psv.bed")" "$(cpath "$BAM")" > "${CYP21_WORK}/pileup.tsv" \
    && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
      python3 /pgp-bin/copy_number.py call --locus CYP21A2 --bedcov "$(cpath "${CYP21_WORK}/bedcov.tsv")" \
-       --pileup "$(cpath "${CYP21_WORK}/pileup.tsv")" --table "$(cpath "${CYP21_OUT}.tmp")"; then
+       --bedcov-mapq1 "$(cpath "${CYP21_WORK}/bedcov_q1.tsv")" --pileup "$(cpath "${CYP21_WORK}/pileup.tsv")" \
+       --table "$(cpath "${CYP21_OUT}.tmp")"; then
   mv "${CYP21_OUT}.tmp" "$CYP21_OUT"
 else
   rm -f "${CYP21_OUT}.tmp"
   echo "WARNING: the CYP21A2 depth and PSV check failed; ${CYP21_OUT##*/} says not assessed." >&2
-  printf 'metric\tvalue\nstatus\tnot assessed\ncyp21a2_copies\t.\nmodule_total\t.\nexpected_total\t.\nestimate\t.\nfinding\t.\nconversion_sites\t.\ntarget_depth\t.\ncontrol_depth\t.\nreason\tcheck_failed\nreading\t%s\n' \
+  printf 'metric\tvalue\nstatus\tnot assessed\ncyp21a2_copies\t.\nmodule_total\t.\nexpected_total\t.\nestimate\t.\nfinding\t.\nconversion_sites\t.\ntarget_depth\t.\ncontrol_depth\t.\nreason\tcheck_failed\nreading\t%s\nmapq0_share\t.\nmessage\tnot assessed: %s\n' \
+    'the CYP21A2 depth and PSV check failed; see the log of step 35' \
     'the CYP21A2 depth and PSV check failed; see the log of step 35' > "$CYP21_OUT"
 fi
 rm -rf "$CYP21_WORK"

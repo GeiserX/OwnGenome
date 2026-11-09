@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hereditary breast and ovarian cancer · Elena Ruiz · OwnGenome</title>
+<style>
+/* OwnGenome "Journal" direction: shared styles (inlined into each screen by build.js) */
+:root {
+  color-scheme: dark;
+  --page: #0e0f10;
+  --paper: #15161a;
+  --paper-2: #1b1c21;
+  --hair: rgba(255,255,255,.085);
+  --hair-2: rgba(255,255,255,.14);
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --ink-3: #8f8d86;
+  --brass: #c8ab78;
+  --brass-dim: rgba(200,171,120,.35);
+  /* severity scale (status palette, fixed) */
+  --act: #d03b3b;
+  --med: #ec835a;
+  --rev: #fab219;
+  --car: #9085e9;
+  --good: #0ca30c;
+  /* person identity */
+  --marc: #3987e5;
+  --elena: #d95926;
+  --lia: #199e70;
+  /* categorical slots (ancestry etc.) */
+  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500;
+  --serif: ui-serif, "New York", "Iowan Old Style", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--page); color: var(--ink); }
+body { font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: underline; text-decoration-color: var(--brass-dim); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-color: var(--brass); }
+.mono { font-family: var(--mono); font-size: .88em; letter-spacing: -.01em; }
+.num { font-variant-numeric: tabular-nums; }
+.serif { font-family: var(--serif); }
+.muted { color: var(--ink-3); }
+.soft { color: var(--ink-2); }
+.smallcaps { font-variant: all-small-caps; letter-spacing: .08em; }
+
+/* ---------- masthead ---------- */
+.mast { border-bottom: 1px solid var(--hair); background: var(--page); position: sticky; top: 0; z-index: 20; }
+.mast-in { max-width: 1320px; margin: 0 auto; padding: 0 40px; height: 58px; display: flex; align-items: center; gap: 28px; }
+.wordmark { font-family: var(--serif); font-size: 23px; letter-spacing: .005em; color: var(--ink); text-decoration: none; }
+.wordmark i { font-style: italic; color: var(--brass); }
+.crumbs { display: flex; gap: 10px; align-items: center; color: var(--ink-3); font-size: 13.5px; }
+.crumbs a { color: var(--ink-2); text-decoration: none; }
+.crumbs a:hover { color: var(--ink); }
+.crumbs .sep { color: var(--ink-3); opacity: .6; }
+.crumbs .here { color: var(--ink); }
+.mast-right { margin-left: auto; display: flex; gap: 18px; align-items: center; font-size: 13px; color: var(--ink-3); }
+.search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--hair-2); border-radius: 999px; padding: 6px 14px; width: 270px; color: var(--ink-3); font-size: 13px; background: var(--paper); }
+.search kbd { margin-left: auto; font: 11px var(--sans); border: 1px solid var(--hair-2); border-radius: 4px; padding: 0 5px; color: var(--ink-3); }
+.dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--good); display: inline-block; box-shadow: 0 0 0 3px rgba(12,163,12,.18); }
+
+/* ---------- severity marks ---------- */
+.lv { display: inline-flex; align-items: center; gap: 7px; font: 600 11.5px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.lv .g { width: 10px; height: 10px; flex: none; display: inline-block; }
+.lv.act { color: #ef6a6a; } .lv.act .g { background: var(--act); transform: rotate(45deg) scale(.82); }
+.lv.med { color: var(--med); } .lv.med .g { background: var(--med); border-radius: 5px; width: 13px; height: 7px; }
+.lv.rev { color: var(--rev); } .lv.rev .g { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid var(--rev); }
+.lv.car { color: #aaa1f2; } .lv.car .g { width: 15px; height: 9px; background: radial-gradient(circle at 4.5px 4.5px, transparent 2.6px, var(--car) 3px, var(--car) 4.4px, transparent 4.6px), radial-gradient(circle at 10.5px 4.5px, transparent 2.6px, var(--car) 3px, var(--car) 4.4px, transparent 4.6px); }
+.lv.info { color: var(--ink-2); } .lv.info .g { border: 1.5px solid var(--ink-2); border-radius: 50%; width: 9px; height: 9px; }
+.lv.trust { color: #3fc43f; } .lv.trust .g { background: none; width: 11px; height: 11px; position: relative; }
+.lv.trust .g::after { content: "✓"; position: absolute; top: -3px; left: 0; font-size: 12px; color: var(--good); }
+.lv.warn { color: var(--rev); }
+.lv.fail { color: #ef6a6a; }
+
+/* person chips */
+.pc { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.pc::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--pcol, var(--ink-3)); flex: none; }
+.pc.elena { --pcol: var(--elena); } .pc.marc { --pcol: var(--marc); } .pc.lia { --pcol: var(--lia); }
+.pc.carmen::before { background: none; border: 1.5px dashed var(--ink-3); width: 8px; height: 8px; }
+
+/* ---------- editorial type ---------- */
+.kicker { font: 600 11.5px/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--brass); }
+.h-display { font-family: var(--serif); font-weight: 400; font-size: 64px; line-height: 1.02; letter-spacing: -.012em; margin: 0; }
+.h1 { font-family: var(--serif); font-weight: 400; font-size: 44px; line-height: 1.08; letter-spacing: -.01em; margin: 0; }
+.h2 { font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.15; margin: 0; letter-spacing: -.005em; }
+.h3 { font-family: var(--serif); font-weight: 400; font-size: 22px; line-height: 1.25; margin: 0; }
+.lede { font-family: var(--serif); font-size: 21px; line-height: 1.5; color: var(--ink); }
+.lede b { font-weight: 600; }
+.dropcap::first-letter { font-family: var(--serif); float: left; font-size: 74px; line-height: .86; padding: 6px 10px 0 0; color: var(--brass); }
+.body-serif { font-family: var(--serif); font-size: 18px; line-height: 1.6; color: var(--ink-2); }
+.body-serif b, .body-serif strong { color: var(--ink); font-weight: 600; }
+p { margin: 0 0 14px; }
+.rule { height: 1px; background: var(--hair); border: 0; margin: 0; }
+.rule-brass { height: 1px; background: linear-gradient(90deg, var(--brass) 0 64px, var(--hair) 64px); border: 0; margin: 0; }
+
+.secnum { font-family: var(--serif); font-style: italic; color: var(--brass); font-size: 18px; margin-right: 12px; }
+.sechead { display: flex; align-items: baseline; gap: 0; margin: 0 0 6px; }
+.secq { font: 13px var(--sans); color: var(--ink-3); margin: 0 0 22px; }
+
+/* ---------- buttons ---------- */
+.btn { display: inline-flex; align-items: center; gap: 8px; font: 500 13px/1 var(--sans); color: var(--ink); background: var(--paper-2); border: 1px solid var(--hair-2); border-radius: 7px; padding: 9px 13px; text-decoration: none; cursor: pointer; }
+.btn:hover { border-color: var(--brass-dim); }
+.btn.ghost { background: transparent; }
+.btn.primary { background: var(--ink); color: #111; border-color: var(--ink); }
+.toggle { font: 500 12.5px var(--sans); color: var(--ink-2); cursor: pointer; background: none; border: 0; padding: 0; text-decoration: underline; text-decoration-color: var(--brass-dim); text-underline-offset: 3px; }
+
+/* ---------- margin notes ---------- */
+.note { font: 13px/1.5 var(--sans); color: var(--ink-2); border-top: 1px solid var(--hair-2); padding-top: 9px; }
+.note .nh { font: 600 10.5px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 7px; }
+.note.caveat .nh { color: var(--brass); }
+.note + .note { margin-top: 22px; }
+.note dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
+.note dt { color: var(--ink-3); }
+.note dd { margin: 0; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- figures ---------- */
+figure { margin: 0; }
+figcaption { font: 12.5px/1.5 var(--sans); color: var(--ink-3); margin-top: 10px; }
+figcaption b { color: var(--ink-2); font-weight: 600; }
+.fig-label { font: 600 10.5px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+svg text { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+
+/* tooltip */
+#tip { position: fixed; pointer-events: none; z-index: 99; background: #26272d; color: var(--ink); border: 1px solid var(--hair-2); border-radius: 6px; padding: 7px 10px; font: 12.5px/1.4 var(--sans); max-width: 260px; opacity: 0; transition: opacity .1s; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+[data-tip] { cursor: default; }
+
+/* tables */
+table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.t th { text-align: left; font: 600 10.5px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding: 0 12px 10px 0; border-bottom: 1px solid var(--hair-2); }
+table.t td { padding: 11px 12px 11px 0; border-bottom: 1px solid var(--hair); vertical-align: top; color: var(--ink-2); }
+table.t td.r, table.t th.r { text-align: right; font-variant-numeric: tabular-nums; }
+table.t tr:last-child td { border-bottom: 0; }
+table.t td b { color: var(--ink); font-weight: 600; }
+
+/* chip */
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 12px/1 var(--sans); color: var(--ink-2); border: 1px solid var(--hair-2); border-radius: 999px; padding: 5px 10px; white-space: nowrap; }
+.chip.brass { color: var(--brass); border-color: var(--brass-dim); }
+
+/* reveal (sensitive) */
+.veil { border: 1px dashed var(--hair-2); border-radius: 8px; padding: 14px 16px; display: flex; gap: 14px; align-items: center; background: repeating-linear-gradient(135deg, rgba(255,255,255,.015) 0 6px, transparent 6px 12px); }
+.veil .vt { font-size: 13.5px; color: var(--ink-2); flex: 1; }
+.veil .vt b { color: var(--ink); font-weight: 600; }
+
+/* footer */
+.colophon { border-top: 1px solid var(--hair); margin-top: 80px; }
+.colophon-in { max-width: 1320px; margin: 0 auto; padding: 26px 40px 40px; display: flex; gap: 40px; font-size: 12.5px; color: var(--ink-3); }
+.colophon-in .wordmark { font-size: 17px; color: var(--ink-2); }
+
+</style>
+<script>
+/* OwnGenome "Journal": tiny shared helpers (tooltip, reveals, inline figures). Synthetic data only. */
+(function () {
+  const NS = 'http://www.w3.org/2000/svg';
+  const CHR = [['1',248.96,123.4],['2',242.19,93.9],['3',198.3,90.9],['4',190.21,50],['5',181.54,48.8],['6',170.81,59.8],['7',159.35,60.1],['8',145.14,45.2],['9',138.39,43],['10',133.8,39.8],['11',135.09,53.4],['12',133.28,35.5],['13',114.36,17.7],['14',107.04,17.2],['15',101.99,19],['16',90.34,36.8],['17',83.26,25.1],['18',80.37,18.5],['19',58.62,26.2],['20',64.44,28.1],['21',46.71,12],['22',50.82,15],['X',156.04,60.6],['Y',57.23,10.4]];
+  const LV = { act: '#d03b3b', med: '#ec835a', rev: '#fab219', car: '#9085e9', info: '#c3c2b7' };
+  window.OG = { CHR, LV };
+
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  OG.el = el;
+
+  // deterministic PRNG for synthetic paintings
+  OG.rng = function (seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
+
+  /* Karyogram: vertical chromosomes in one row, findings as level glyphs beside them.
+     marks: [{chr:'13', mb:32.3, lv:'act', label:'BRCA2', tip:'...'}] */
+  OG.karyogram = function (host, marks, o = {}) {
+    const chrs = CHR.filter(c => !(o.noY && c[0] === 'Y'));
+    const W = o.width || 640, H = o.height || 170, top = 22, bottom = 22;
+    const slot = (W - (o.padRight ?? 56)) / chrs.length, maxL = 249, scale = (H - top - bottom) / maxL;
+    const s = el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': o.aria || 'Chromosome map of findings' }, host);
+    chrs.forEach((c, i) => {
+      const x = i * slot + slot / 2 - 3.5, h = c[1] * scale, cy = top + c[2] * scale;
+      el('rect', { x, y: top, width: 7, height: c[2] * scale - 1.2, rx: 3.5, fill: '#2c2d33' }, s);
+      el('rect', { x, y: cy + 1.2, width: 7, height: h - c[2] * scale - 1.2, rx: 3.5, fill: '#2c2d33' }, s);
+      const t = el('text', { x: x + 3.5, y: H - 6, 'text-anchor': 'middle', 'font-size': 10, fill: '#8f8d86' }, s); t.textContent = c[0];
+    });
+    marks.forEach(m => {
+      const i = chrs.findIndex(c => c[0] === m.chr); if (i < 0) return;
+      const x = i * slot + slot / 2 + 7, y = top + m.mb * scale;
+      const g = el('g', { 'data-tip': m.tip || m.label }, s);
+      el('line', { x1: x - 10.5, x2: x - 1, y1: y, y2: y, stroke: LV[m.lv], 'stroke-width': 2 }, g);
+      glyph(g, m.lv, x + 4, y);
+      if (m.label && !o.noLabels) { const t = el('text', { x: x + 11, y: y + 3.5, 'font-size': 11, 'font-weight': 600, fill: '#f0efec', stroke: o.bg || '#0e0f10', 'stroke-width': 4, 'paint-order': 'stroke', 'stroke-linejoin': 'round' }, g); t.textContent = m.label; }
+      el('rect', { x: x - 12, y: y - 9, width: 60, height: 18, fill: 'transparent' }, g);
+    });
+    return s;
+  };
+  function glyph(g, lv, x, y) {
+    const c = LV[lv];
+    if (lv === 'act') el('rect', { x: x - 4, y: y - 4, width: 8, height: 8, fill: c, transform: `rotate(45 ${x} ${y})` }, g);
+    else if (lv === 'med') el('rect', { x: x - 5.5, y: y - 3, width: 11, height: 6, rx: 3, fill: c }, g);
+    else if (lv === 'rev') el('path', { d: `M${x} ${y - 5}L${x + 5} ${y + 4}L${x - 5} ${y + 4}Z`, fill: c }, g);
+    else if (lv === 'car') { el('circle', { cx: x - 2.6, cy: y, r: 3.4, fill: 'none', stroke: c, 'stroke-width': 1.6 }, g); el('circle', { cx: x + 2.6, cy: y, r: 3.4, fill: 'none', stroke: c, 'stroke-width': 1.6 }, g); }
+    else el('circle', { cx: x, cy: y, r: 4, fill: 'none', stroke: c, 'stroke-width': 1.5 }, g);
+  }
+  OG.glyph = glyph;
+
+  /* Percentile strip: 0-100, dot at value. No zones (a percentile is not a risk class). */
+  OG.pstrip = function (host, value, o = {}) {
+    const W = o.width || 260, H = 22;
+    const s = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H }, host);
+    el('line', { x1: 0, x2: W, y1: 11, y2: 11, stroke: 'rgba(255,255,255,.16)', 'stroke-width': 1 }, s);
+    [0, 25, 50, 75, 100].forEach(t => el('line', { x1: t / 100 * (W - 2) + 1, x2: t / 100 * (W - 2) + 1, y1: 7, y2: 15, stroke: 'rgba(255,255,255,.16)' }, s));
+    const x = value / 100 * (W - 12) + 6;
+    el('circle', { cx: x, cy: 11, r: 5.5, fill: o.color || '#f0efec', stroke: '#15161a', 'stroke-width': 2, 'data-tip': o.tip || `${value}th percentile` }, s);
+    return s;
+  };
+
+  /* Sparkline */
+  OG.spark = function (host, data, o = {}) {
+    const W = o.width || 120, H = o.height || 28, max = o.max || Math.max(...data), min = o.min ?? 0;
+    const s = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H }, host);
+    const pts = data.map((v, i) => [i / (data.length - 1) * (W - 4) + 2, H - 3 - (v - min) / (max - min) * (H - 6)]);
+    el('path', { d: 'M' + pts.map(p => p.join(' ')).join('L') + `L${W - 2} ${H}L2 ${H}Z`, fill: o.fill || 'rgba(240,239,236,.06)' }, s);
+    el('path', { d: 'M' + pts.map(p => p.join(' ')).join('L'), fill: 'none', stroke: o.color || '#c3c2b7', 'stroke-width': 1.5, 'stroke-linejoin': 'round' }, s);
+    const l = pts[pts.length - 1]; el('circle', { cx: l[0], cy: l[1], r: 2.6, fill: o.color || '#c3c2b7' }, s);
+    return s;
+  };
+
+  /* Chromosome painting: 22 autosomes x 2 haplotypes, segments coloured by reference group. */
+  OG.painting = function (host, groups, seed, o = {}) {
+    const r = OG.rng(seed), W = o.width || 640, cols = o.cols || 1, rowH = 5, gap = 2, chrGap = 9, left = 22, colGap = 28;
+    const auto = CHR.slice(0, 22), perCol = Math.ceil(auto.length / cols), colW = (W - colGap * (cols - 1)) / cols;
+    const maxL = 249, sc = (colW - left - 4) / maxL;
+    const H = perCol * (rowH * 2 + gap + chrGap);
+    const s = el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': 'Chromosome painting' }, host);
+    const cum = []; let acc = 0; groups.forEach(g => { acc += g.f; cum.push(acc); });
+    const pick = () => { const v = r() * acc; return groups[cum.findIndex(c => v <= c)]; };
+    auto.forEach((c, i) => {
+      const col = Math.floor(i / perCol), ox = col * (colW + colGap);
+      const y0 = (i % perCol) * (rowH * 2 + gap + chrGap) + 2;
+      const t = el('text', { x: ox, y: y0 + rowH + 4, 'font-size': 10, fill: '#8f8d86' }, s); t.textContent = c[0];
+      for (let hap = 0; hap < 2; hap++) {
+        let pos = 0; const y = y0 + hap * (rowH + gap); const segs = [];
+        while (pos < c[1]) {
+          const g = pick(); const len = Math.min(c[1] - pos, 3 + r() * 22);
+          const last = segs[segs.length - 1];
+          if (last && last.g === g) last.len += len; else segs.push({ g, start: pos, len });
+          pos += len;
+        }
+        segs.forEach((sg, k) => el('rect', { x: ox + left + sg.start * sc, y, width: Math.max(sg.len * sc - (k < segs.length - 1 ? 1.5 : 0), .8), height: rowH, rx: 1, fill: sg.g.c, 'data-tip': `chr${c[0]} copy ${hap + 1}: ${sg.g.n}` }, s));
+      }
+    });
+    return s;
+  };
+
+  // tooltip + reveals
+  document.addEventListener('DOMContentLoaded', () => {
+    const tip = document.createElement('div'); tip.id = 'tip'; document.body.appendChild(tip);
+    document.addEventListener('mousemove', e => {
+      const t = e.target.closest && e.target.closest('[data-tip]');
+      if (!t) { tip.style.opacity = 0; return; }
+      tip.textContent = t.getAttribute('data-tip'); tip.style.opacity = 1;
+      tip.style.left = Math.min(e.clientX + 14, innerWidth - 280) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+    });
+    document.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('click', () => {
+      const tgt = document.getElementById(b.getAttribute('data-reveal'));
+      if (tgt) { tgt.hidden = !tgt.hidden; if (b.dataset.once) b.closest('.veil')?.remove(); }
+    }));
+  });
+})();
+
+</script>
+<style>
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 40px; }
+.layout { display: grid; grid-template-columns: 200px 1fr; gap: 56px; padding-top: 46px; }
+.toc { position: sticky; top: 86px; align-self: start; font-size: 13px; }
+.toc a.back { display: block; color: var(--ink-2); text-decoration: none; margin-bottom: 26px; line-height: 1.4; }
+.toc a.back span { color: var(--brass); }
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc li a { display: grid; grid-template-columns: 22px 1fr; padding: 6px 0; border-top: 1px solid var(--hair); text-decoration: none; color: var(--ink-2); }
+.toc li a.on { color: var(--ink); }
+.toc .tn { font-family: var(--serif); font-style: italic; color: var(--ink-3); }
+.toc li a.on .tn { color: var(--brass); }
+.toc .group { font: 600 10.5px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 8px; }
+.toc .pager { margin-top: 26px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-3); font-size: 12.5px; }
+.row { display: grid; grid-template-columns: 680px 260px; gap: 48px; }
+section.sec { border-top: 1px solid var(--hair); margin-top: 52px; padding-top: 48px; }
+.act-head { display: flex; gap: 16px; align-items: center; }
+.act-head .of { font-size: 12.5px; color: var(--ink-3); }
+.ids { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+.ids .chip { font-family: var(--mono); font-size: 12px; }
+.plan { margin-top: 30px; background: var(--paper); border: 1px solid var(--hair-2); border-left: 3px solid var(--act); border-radius: 4px 10px 10px 4px; padding: 22px 26px; }
+.plan h3 { font: 400 22px var(--serif); margin: 0 0 4px; }
+.plan ol { counter-reset: t; list-style: none; padding: 0; margin: 14px 0 0; }
+.plan li { counter-increment: t; display: grid; grid-template-columns: 34px 1fr; padding: 9px 0; border-top: 1px solid var(--hair); font-size: 15px; }
+.plan li::before { content: counter(t); font: italic 20px var(--serif); color: var(--brass); }
+.plan li span small { display: block; color: var(--ink-3); font-size: 13px; margin-top: 2px; }
+.plan .acts { display: flex; gap: 10px; margin-top: 18px; }
+.ev { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hair-2); margin-top: 22px; }
+.ev > div { padding: 16px 16px 16px 0; }
+.ev > div + div { padding-left: 16px; border-left: 1px solid var(--hair); }
+.ev .k { font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.ev .v { font: 400 23px/1.15 var(--serif); color: var(--ink); display: block; margin: 9px 0 6px; }
+.ev .r { font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
+.stars { color: var(--ink); letter-spacing: 2px; }
+.stars i { color: #4a4a4f; font-style: normal; }
+.codes { display: flex; flex-direction: column; gap: 0; margin-top: 18px; }
+.codes div { display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 10px 0; border-top: 1px solid var(--hair); font-size: 14px; color: var(--ink-2); }
+.codes b { font: 600 13px var(--mono); color: var(--ink); }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--hair-2); margin-top: 16px; }
+.metrics div { padding: 14px 14px 0 0; }
+.metrics div + div { padding-left: 14px; border-left: 1px solid var(--hair); }
+.metrics .k { font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.metrics .v { font: 300 26px/1 var(--sans); font-variant-numeric: tabular-nums; display: block; margin: 8px 0 6px; }
+.metrics .r { font-size: 12.5px; color: var(--ink-3); }
+.fam { display: grid; grid-template-columns: 300px 1fr; gap: 30px; align-items: start; margin-top: 18px; }
+.rel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; }
+.rel a { display: block; text-decoration: none; border-top: 1px solid var(--hair-2); padding-top: 12px; }
+.rel a h4 { font: 400 18px/1.3 var(--serif); margin: 9px 0 6px; color: var(--ink); }
+.rel a p { font-size: 13px; color: var(--ink-2); margin: 0; }
+.rel a .go { display: block; margin-top: 10px; font-size: 12.5px; color: var(--brass); }
+</style>
+</head><body>
+<header class="mast"><div class="mast-in">
+  <a class="wordmark" href="01-home.html">Own<i>Genome</i></a>
+  <nav class="crumbs"><a href="01-home.html">People</a><span class="sep">/</span><a href="05-family.html">Ruiz family</a><span class="sep">/</span><a href="03-person.html">Elena Ruiz</a><span class="sep">/</span><span class="here">Hereditary breast and ovarian cancer</span></nav>
+  <div class="mast-right"><div class="search">Search genes, drugs, conditions <kbd>/</kbd></div></div>
+</div></header>
+
+<div class="wrap"><div class="layout">
+  <aside class="toc">
+    <a class="back" href="03-person.html"><span>←</span> Elena's report<br><span class="muted" style="color:var(--ink-3)">section 1, To act on</span></a>
+    <div class="group">This finding</div>
+    <ol>
+      <li><a class="on" href="#top"><span class="tn">i</span>What it is</a></li>
+      <li><a href="#do"><span class="tn">ii</span>What to do</a></li>
+      <li><a href="#ev"><span class="tn">iii</span>Evidence</a></li>
+      <li><a href="#reads"><span class="tn">iv</span>The reads</a></li>
+      <li><a href="#fam"><span class="tn">v</span>In the family</a></li>
+      <li><a href="#rel"><span class="tn">vi</span>Related results</a></li>
+      <li><a href="#src"><span class="tn">vii</span>Caveat and sources</a></li>
+    </ol>
+    <div class="pager"><span>Next in Elena's report</span><a href="#">Medicines: CYP2D6 →</a></div>
+  </aside>
+
+  <main id="top">
+    <div class="row">
+      <div>
+        <div class="act-head"><span class="lv act"><span class="g"></span>Take to a doctor</span><span class="of">The only finding at this level in Elena's genome</span></div>
+        <h1 class="h-display" style="font-size:56px;margin-top:16px">Hereditary breast and ovarian cancer</h1>
+        <div class="ids"><span class="chip">BRCA2</span><span class="chip">c.5946del</span><span class="chip">p.Ser1982ArgfsTer22</span><span class="chip">chr13:32340301 GT&gt;G</span><span class="chip">one copy (heterozygous)</span></div>
+        <p class="lede" style="margin-top:28px">One copy of <i>BRCA2</i>, a gene that repairs broken DNA, has lost a single letter. From that point the gene is read out of step, and the protein stops <b>about 1,400 building blocks short</b>. People with such a change have a higher lifetime risk of breast and ovarian cancer. It is not a diagnosis of cancer.</p>
+      </div>
+      <aside style="padding-top:64px">
+        <div class="note"><span class="nh">Words used</span><b style="color:var(--ink);font-weight:500">Frameshift</b>: a deletion that shifts how the gene is read, so the protein is cut short.<br><br><b style="color:var(--ink);font-weight:500">Heterozygous</b>: on one of the two copies.</div>
+      </aside>
+    </div>
+
+    <div class="row" style="margin-top:30px">
+      <figure>
+        <div class="fig-label">Figure 1 &nbsp;·&nbsp; The BRCA2 protein, and where this change cuts it</div>
+        <div id="prot" style="margin-top:12px"></div>
+        <figcaption><b>Everything to the right of the cut is not made</b>, including the part that binds DNA. Changes like this are why the gene is classed as a cause of hereditary cancer.</figcaption>
+      </figure>
+      <aside></aside>
+    </div>
+
+    <div class="row" id="do" style="margin-top:20px">
+      <div class="plan">
+        <h3>What to do</h3>
+        <div style="font-size:13.5px;color:var(--ink-3)">In this order. None of it is urgent this week; all of it is worth doing.</div>
+        <ol>
+          <li><span>Bring this page to a doctor or a genetic counsellor.<small>A counsellor explains what it means for Elena and her relatives.</small></span></li>
+          <li><span>Confirm it with a clinical test in a certified laboratory.<small>This pipeline is research; a clinic will not act on it alone.</small></span></li>
+          <li><span>Ask about screening and prevention.<small>Breast screening with MRI, and options for the ovaries, start earlier than the general programme.</small></span></li>
+          <li><span>Tell close relatives they can be tested.<small>Parents, brothers, sisters and children each have a 1 in 2 chance of carrying it.</small></span></li>
+        </ol>
+        <div class="acts"><a class="btn primary" href="#">Prepare a page for a doctor</a><a class="btn" href="#">Print this finding</a></div>
+      </div>
+      <aside style="padding-top:20px">
+        <div class="note caveat"><span class="nh">Caveat</span>A research pipeline, not a clinical test. Confirm every pathogenic finding in a certified laboratory before acting.</div>
+      </aside>
+    </div>
+
+    <section class="sec" id="ev">
+      <div class="row">
+        <div>
+          <div class="sechead"><span class="secnum">iii</span><h2 class="h2">The evidence</h2></div>
+          <div class="secq">Why the pipeline calls this pathogenic, and how sure each source is.</div>
+          <div class="ev">
+            <div><span class="k">Classification</span><span class="v">Pathogenic</span><span class="r">ClinVar and the cancer report agree</span></div>
+            <div><span class="k">ClinVar review</span><span class="v stars">★★★<i>★</i></span><span class="r">reviewed by an expert panel (ENIGMA); 4 stars is a practice guideline</span></div>
+            <div><span class="k">Cancer report</span><span class="v">Tier 1</span><span class="r">the highest of five; also on the 84-gene secondary-findings list</span></div>
+          </div>
+          <div class="codes">
+            <div><b>PVS1</b><span>Loss of function in a gene where loss of function causes the disease. Very strong.</span></div>
+            <div><b>PM2_Supporting</b><span>Rare in the population (below).</span></div>
+            <div><b>Reporting rule</b><span>BRCA2 is a dominant gene: one pathogenic copy is reported.</span></div>
+          </div>
+          <figure style="margin-top:30px">
+            <div class="fig-label">Figure 2 &nbsp;·&nbsp; How common the change is (gnomAD, log scale)</div>
+            <div id="af" style="margin-top:12px"></div>
+            <figcaption>About <b>1 person in 5,600</b> carries it. Above 1% a change is unlikely to cause a strong effect; this one is far below.</figcaption>
+          </figure>
+          <p style="font-size:13.5px;color:var(--ink-3);margin-top:20px">Missense predictors (REVEL, AlphaMissense) do not score frameshifts: not applicable. CADD 35. Splicing (SpliceAI): no effect predicted.</p>
+        </div>
+        <aside style="padding-top:110px">
+          <div class="note"><span class="nh">Review stars</span>How many independent reviewers agree, from 0 to 4. Two or more is reliable.</div>
+          <div class="note"><span class="nh">ClinVar release</span>2026-10-02 used. 2026-11-06 is out; this variant is not among the records it changes.</div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="sec" id="reads">
+      <div class="row">
+        <div>
+          <div class="sechead"><span class="secnum">iv</span><h2 class="h2">The reads</h2></div>
+          <div class="secq">Is the change really there, in the raw data?</div>
+          <figure>
+            <div class="fig-label">Figure 3 &nbsp;·&nbsp; Reads over chr13:32,340,301 (sketch of the 34 reads)</div>
+            <div id="pile" style="margin-top:12px"></div>
+            <figcaption>Each line is one read. <b>17 reads lack the T</b> (red); 17 carry it. Half and half is what one changed copy looks like.</figcaption>
+          </figure>
+          <div class="metrics">
+            <div><span class="k">Depth</span><span class="v">34</span><span class="r">reads at this spot</span></div>
+            <div><span class="k">With the change</span><span class="v">17</span><span class="r">reads</span></div>
+            <div><span class="k">Allele balance</span><span class="v">0.50</span><span class="r">one copy ≈ 0.5</span></div>
+            <div><span class="k">Call quality</span><span class="v">63</span><span class="r">above 30 is confident</span></div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:22px"><a class="btn" href="#">See the reads in the genome viewer</a><a class="btn ghost" href="#">Download this region</a></div>
+        </div>
+        <aside style="padding-top:110px">
+          <div class="note"><span class="nh">Callers</span><dl><dt>Single sample</dt><dd>0/1</dd><dt>Family joint call</dt><dd>0/1</dd><dt>Cancer report</dt><dd>found</dd></dl></div>
+          <div class="note"><span class="nh">This gene's readability</span>BRCA2: 99.6% readable at 10×. A clean read, not one of the hard genes.</div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="sec" id="fam">
+      <div class="row">
+        <div>
+          <div class="sechead"><span class="secnum">v</span><h2 class="h2">In the family</h2></div>
+          <div class="secq">Who else this concerns.</div>
+          <div class="fam">
+            <div id="ped"></div>
+            <div>
+              <p class="body-serif" style="font-size:17px">Each of Elena's parents, siblings and children had a <b>1 in 2 chance</b> of carrying it. Marc does not carry it. Carmen, Elena's mother, has no genome here: sequencing her would show which side it came from.</p>
+              <div class="veil" style="margin-top:14px">
+                <div class="vt"><b>Lía's result.</b> An adult-onset finding about a child. Many families wait until the child can choose.</div>
+                <button class="btn" data-reveal="lia-ans" data-once="1">Show</button>
+              </div>
+              <p id="lia-ans" hidden><span class="pc lia">Lía did not inherit this change.</span></p>
+            </div>
+          </div>
+        </div>
+        <aside></aside>
+      </div>
+    </section>
+
+    <section class="sec" id="rel">
+      <div class="row">
+        <div>
+          <div class="sechead"><span class="secnum">vi</span><h2 class="h2">Related results</h2></div>
+          <div class="rel">
+            <a href="03-person.html#s2"><span class="lv med"><span class="g"></span>Prescriber</span><h4>Tamoxifen and CYP2D6</h4><p>Elena is an intermediate metaboliser. If tamoxifen is ever offered, the dose or the drug may change.</p><span class="go">Medicines →</span></a>
+            <a href="03-person.html#s7"><span class="lv info"><span class="g"></span>Information</span><h4>Breast cancer score, 71st percentile</h4><p>With a BRCA2 change, BRCA2 guides care, not this score.</p><span class="go">Scores →</span></a>
+            <a href="05-family.html"><span class="lv car"><span class="g"></span>Family planning</span><h4>For future children</h4><p>A dominant change: each child has a 1 in 2 chance, separate from the CFTR 1 in 4.</p><span class="go">Family report →</span></a>
+          </div>
+        </div>
+        <aside></aside>
+      </div>
+    </section>
+
+    <section class="sec" id="src">
+      <div class="row">
+        <div>
+          <div class="sechead"><span class="secnum">vii</span><h2 class="h2">Caveat and sources</h2></div>
+          <p class="body-serif" style="font-size:17px">A research pipeline, not a clinical test. Confirm every pathogenic finding in a certified laboratory before acting. The classification is ClinVar's and the cancer report's, not the pipeline's own judgement. A short deletion inside a run of the same letter can be placed one position off; the change and its effect are the same.</p>
+          <table class="t" style="margin-top:16px">
+            <tr><th>Source</th><th>Release</th><th>What it gave</th></tr>
+            <tr><td><b>ClinVar</b></td><td class="num">2026-10-02 <span style="color:var(--brass)">(2026-11-06 out)</span></td><td>Pathogenic, 3 stars, expert panel</td></tr>
+            <tr><td><b>Cancer report (CPSR)</b></td><td>PCGR 2.2, 2026-06-01</td><td>Tier 1, ACMG codes</td></tr>
+            <tr><td><b>Secondary findings</b></td><td>ACMG SF v3.3</td><td>Reported: dominant gene</td></tr>
+            <tr><td><b>gnomAD</b></td><td>v4.1</td><td>0.009% (allele frequency)</td></tr>
+          </table>
+        </div>
+        <aside></aside>
+      </div>
+    </section>
+  </main>
+</div></div>
+<footer class="colophon"><div class="colophon-in"><span class="wordmark">OwnGenome</span><span>1.0.0 · GRCh38 no-ALT · a research pipeline, not a clinical test</span><span style="margin-left:auto">Synthetic demonstration data</span></div></footer>
+
+<script>
+// Figure 1: protein
+(function(){
+  const W = 680, H = 132, L = 3418, x0 = 4, x1 = W - 4, X = a => x0 + a / L * (x1 - x0), y = 52, h = 22;
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('prot'));
+  const defs = OG.el('defs', {}, s), pat = OG.el('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, defs);
+  OG.el('rect', { width: 6, height: 6, fill: '#15161a' }, pat); OG.el('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'rgba(255,255,255,.13)', 'stroke-width': 2 }, pat);
+  OG.el('rect', { x: X(0), y, width: X(2003) - X(0), height: h, rx: 3, fill: '#3a3b42' }, s);
+  OG.el('rect', { x: X(2003) + 2, y, width: X(L) - X(2003) - 2, height: h, rx: 3, fill: 'url(#hatch)', stroke: 'rgba(255,255,255,.14)' }, s);
+  const doms = [[10,40,'PALB2'],[1002,1036],[1212,1246],[1421,1455],[1517,1551],[1664,1698],[1837,1871],[1971,2005],[2051,2085],[2481,3186,'DNA-binding'],[3263,3418,'NLS']];
+  doms.forEach(d => { const lost = d[0] > 2003; OG.el('rect', { x: X(d[0]), y: y + 3, width: Math.max(X(d[1]) - X(d[0]), 3), height: h - 6, rx: 2, fill: lost ? 'rgba(195,194,183,.22)' : '#c3c2b7', 'data-tip': d[2] ? d[2] + ' domain' : 'BRC repeat' }, s); });
+  const lab = (x, yy, t, a, c) => { const e = OG.el('text', { x, y: yy, 'font-size': 11, fill: c || '#8f8d86', 'text-anchor': a || 'start' }, s); e.textContent = t; };
+  lab(X(1002), y - 10, 'BRC repeats 1–8'); lab(X(2481), y - 10, 'DNA-binding domain'); lab(X(10), y + h + 16, 'PALB2 binding');
+  OG.el('line', { x1: X(1982), x2: X(1982), y1: y - 26, y2: y + h + 6, stroke: '#d03b3b', 'stroke-width': 2 }, s);
+  OG.glyph(s, 'act', X(1982), y - 30);
+  lab(X(1982) + 10, y - 26, 'c.5946del · frameshift at 1,982, stops at 2,003', 'start', '#f0efec');
+  lab(X(2003) + 8, y + h + 16, 'not made: 1,415 of 3,418 building blocks', 'start', '#c3c2b7');
+  OG.el('line', { x1: x0, x2: x1, y1: H - 18, y2: H - 18, stroke: 'rgba(255,255,255,.14)' }, s);
+  [0,500,1000,1500,2000,2500,3000,3418].forEach(v => { OG.el('line', { x1: X(v), x2: X(v), y1: H - 18, y2: H - 14, stroke: 'rgba(255,255,255,.25)' }, s); const t = OG.el('text', { x: X(v), y: H - 3, 'font-size': 10, fill: '#8f8d86', 'text-anchor': v === 0 ? 'start' : v === 3418 ? 'end' : 'middle' }, s); t.textContent = v.toLocaleString('en'); });
+})();
+// Figure 2: allele frequency log strip
+(function(){
+  const W = 680, H = 70, x0 = 8, x1 = W - 8, lo = -6, hi = -1, X = v => x0 + (Math.log10(v) - lo) / (hi - lo) * (x1 - x0);
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('af'));
+  OG.el('rect', { x: X(0.01), y: 14, width: x1 - X(0.01), height: 22, fill: 'rgba(255,255,255,.05)' }, s);
+  const t1 = OG.el('text', { x: X(0.01) + 6, y: 10, 'font-size': 10.5, fill: '#8f8d86' }, s); t1.textContent = 'common: above 1%';
+  OG.el('line', { x1: x0, x2: x1, y1: 36, y2: 36, stroke: 'rgba(255,255,255,.2)' }, s);
+  [[1e-6,'0.0001%'],[1e-5,'0.001%'],[1e-4,'0.01%'],[1e-3,'0.1%'],[1e-2,'1%'],[1e-1,'10%']].forEach(t => { OG.el('line', { x1: X(t[0]), x2: X(t[0]), y1: 36, y2: 40, stroke: 'rgba(255,255,255,.25)' }, s); const e = OG.el('text', { x: X(t[0]), y: 54, 'font-size': 10.5, fill: '#8f8d86', 'text-anchor': t[0] === 1e-6 ? 'start' : t[0] === 1e-1 ? 'end' : 'middle' }, s); e.textContent = t[1]; });
+  OG.el('circle', { cx: X(9e-5), cy: 25, r: 6.5, fill: '#f0efec', stroke: '#0e0f10', 'stroke-width': 2, 'data-tip': 'gnomAD allele frequency 0.009% (9 in 100,000 copies)' }, s);
+  const e = OG.el('text', { x: X(9e-5) + 12, y: 29, 'font-size': 12, fill: '#f0efec', 'font-weight': 600 }, s); e.textContent = '0.009%';
+})();
+// Figure 3: pileup sketch, reads sorted by the base at the site (as a genome viewer does)
+(function(){
+  const ref = 'AAGCACAGTTAAAGTTAAGCCTCAGGTAC', site = 14;
+  const W = 680, left = 96, colW = (W - left) / ref.length, top = 26, rowH = 5, gap = 2, n = 17, grpGap = 18;
+  const H = top + 2 * n * (rowH + gap) + grpGap + 6;
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('pile'));
+  [...ref].forEach((b, i) => { const t = OG.el('text', { x: left + i * colW + colW / 2, y: 14, 'font-size': 12, fill: i === site ? '#f0efec' : '#8f8d86', 'text-anchor': 'middle', 'font-family': 'ui-monospace, Menlo, monospace', 'font-weight': i === site ? 700 : 400 }, s); t.textContent = b; });
+  const sx = left + site * colW;
+  OG.el('rect', { x: sx, y: 20, width: colW, height: H - 22, fill: 'rgba(255,255,255,.04)' }, s);
+  const r = OG.rng(42);
+  [['without the T', true], ['with the T', false]].forEach((g, gi) => {
+    const y0 = top + gi * (n * (rowH + gap) + grpGap);
+    const lab = OG.el('text', { x: 0, y: y0 + 7, 'font-size': 11.5, fill: gi ? '#8f8d86' : '#f0efec' }, s); lab.textContent = '17 ' + g[0];
+    for (let k = 0; k < n; k++) {
+      const y = y0 + k * (rowH + gap), x0 = left + r() * (sx - left - 40), x1 = Math.min(W, sx + 60 + r() * (W - sx - 60));
+      if (g[1]) {
+        OG.el('rect', { x: x0, y, width: sx - x0, height: rowH, rx: 2, fill: '#5a5b62' }, s);
+        OG.el('rect', { x: sx + 1, y: y + 1, width: colW - 2, height: rowH - 2, fill: '#d03b3b' }, s);
+        OG.el('rect', { x: sx + colW, y, width: x1 - sx - colW, height: rowH, rx: 2, fill: '#5a5b62', 'data-tip': 'read without the T (deletion)' }, s);
+      } else OG.el('rect', { x: x0, y, width: x1 - x0, height: rowH, rx: 2, fill: '#3a3b40', 'data-tip': 'read with the T' }, s);
+    }
+  });
+})();
+// pedigree
+(function(){
+  const s = OG.el('svg', { viewBox: '0 0 300 200', width: 300 }, document.getElementById('ped'));
+  const ln = (a,b,c,d) => OG.el('line', { x1:a, y1:b, x2:c, y2:d, stroke: 'rgba(255,255,255,.3)', 'stroke-width': 1.2 }, s);
+  const tx = (x,y,t,c,w) => { const e = OG.el('text', { x, y, 'font-size': 12, fill: c || '#c3c2b7', 'text-anchor': 'middle', 'font-weight': w || 400 }, s); e.textContent = t; };
+  // Carmen
+  OG.el('circle', { cx: 80, cy: 30, r: 15, fill: 'none', stroke: '#8f8d86', 'stroke-dasharray': '3 3' }, s); tx(80, 62, 'Carmen'); tx(80, 75, 'not sequenced', '#8f8d86');
+  ln(80, 80, 80, 98);
+  // Elena (carrier of BRCA2 -> half-filled act)
+  OG.el('circle', { cx: 80, cy: 115, r: 15, fill: 'none', stroke: '#f0efec', 'stroke-width': 1.5 }, s);
+  OG.el('path', { d: 'M80 100 A15 15 0 0 0 80 130 Z', fill: '#d03b3b' }, s);
+  tx(80, 148, 'Elena', '#f0efec', 600); tx(80, 161, 'carries it', '#ef6a6a');
+  // Marc
+  OG.el('rect', { x: 205, y: 100, width: 30, height: 30, fill: 'none', stroke: '#f0efec', 'stroke-width': 1.5 }, s); tx(220, 148, 'Marc', '#f0efec', 600); tx(220, 161, 'does not', '#8f8d86');
+  ln(95, 115, 205, 115); ln(150, 115, 150, 172);
+  // Lía hidden
+  OG.el('circle', { cx: 150, cy: 186, r: 12, fill: 'none', stroke: '#8f8d86', 'stroke-width': 1.2 }, s); tx(150, 190, '?', '#8f8d86');
+  tx(186, 190, 'Lía', '#c3c2b7');
+})();
+</script>
+</body></html>

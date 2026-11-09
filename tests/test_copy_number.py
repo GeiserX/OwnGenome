@@ -495,7 +495,8 @@ def main():
                 check(f"{path}: copy_number.py call --locus {loc}", f"copy_number.py call --locus {loc}" in text)
             passes = ["" if p == "." else p for p in cat[loc]["_passes"]]
             if loc == "HBA":   # and the dosage loop's two passes (section 8), the interval pass (section 9)
-                passes += ["", "-Q 1", "", ""]  # and the CYP21A2 pass (section 10)
+                passes += ["", "-Q 1", "", ""]  # and the CYP21A2 passes (section 10)
+                passes += ["-Q 1"]
             # the commands only: options, then a path, a quoted argument or a variable
             calls = [o for o, arg in re.findall(r"samtools bedcov((?: -[A-Za-z](?: \d+)?)*) (\S+)", text)
                      if re.match(r'["$/]|\S+\.bed\b', arg)]
@@ -864,13 +865,17 @@ def cyp_fixture(r, total, a2):
     return bed, "".join(x for _, x in sorted(lines))
 
 
-def cyp_call(r, bedcov_text, pileup_text):
+def cyp_call(r, bedcov_text, pileup_text, mapq0=0.1):
+    """The block of a CYP21A2 genome; mapq0 is the share of every segment's
+    depth from MAPQ 0 reads (0.1 as HG002's BWA-MEM and minimap2 reads give
+    over the two targets; 0 for an aligner that leaves those reads out)."""
     with tempfile.TemporaryDirectory() as t:
         b, p = os.path.join(t, "b.tsv"), os.path.join(t, "p.tsv")
         open(b, "w").write(bedcov_text)
         open(p, "w").write(pileup_text)
         m = cn.read_bedcov(b, r)
-        return cn.psv_assess(r, cn.assess(r, m), cn.read_pileup(p, r))
+        q1 = {n: v * (1 - mapq0) for n, v in m.items()}
+        return cn.psv_assess(r, cn.assess(r, m, q1), cn.read_pileup(p, r))
 
 
 # run_in and cpath for the CYP21A2 block of step 35: copy_number.py runs for real,
@@ -881,7 +886,14 @@ run_in() {
   shift
   case "$1 $2" in
     "python3 /pgp-bin/copy_number.py") shift 2; python3 "${REPO}/bin/copy_number.py" "$@" ;;
-    "samtools bedcov") cat "${FIX}/CYP21A2_${CYP_CASE}.bedcov.tsv" ;;
+    "samtools bedcov")
+      # the MAPQ >= 1 pass: 90% of each depth (HG002's share), or all of it for
+      # an aligner that left the MAPQ 0 reads out (CYP_NO_MAPQ0)
+      if [ "${3:-}" = "-Q" ] && [ -z "${CYP_NO_MAPQ0:-}" ]; then
+        awk -F'\t' -v OFS='\t' '{$5 = int($5 * 0.9); print}' "${FIX}/CYP21A2_${CYP_CASE}.bedcov.tsv"
+      else
+        cat "${FIX}/CYP21A2_${CYP_CASE}.bedcov.tsv"
+      fi ;;
     "samtools mpileup") [ -z "${MPILEUP_FAILS:-}" ] && cat "${FIX}/CYP21A2_${CYP_CASE}.pileup.tsv" ;;
     *) return 1 ;;
   esac
@@ -993,17 +1005,46 @@ def psv(cat, read):
         f"\t{round(30.0 * 2689)}\n", f"\t{round(37.5 * 2689)}\n"), pile)
     check("CYP21A2: a module total between counts (4.5) is not assessed, no finding",
           (b["status"], b["reason"], b["finding"]) == ("not assessed", "between_counts", None), b)
+    # The MAPQ 0 guard: an aligner that left out the reads fitting both copies lowers
+    # the module total, so the deletion's tables from such a BAM (no MAPQ 0 read) read
+    # not assessed, not a deletion; with HG002's 10% share they still give the deletion.
+    check("CYP21A2 row: a MAPQ 0 guard (two bedcov passes, all reads and MAPQ >= 1; minimum share 0.02)",
+          r["_passes"] == [".", "-Q 1"] and r["_mapq0_min"] == 0.02 and r["_mapq0_max"] is None,
+          (r["_passes"], r["_mapq0_min"], r["_mapq0_max"]))
+    total, a2 = CYP_CASES["deletion"]
+    bed, pile = cyp_fixture(r, total, a2)
+    for share, want in ((0.0, ("not assessed", "low_mapq0_share", None, None)),
+                        (0.019, ("not assessed", "low_mapq0_share", None, None)),
+                        (0.021, ("called", None, "deletion", 1)), (0.1, ("called", None, "deletion", 1))):
+        b = cyp_call(r, bed, pile, share)
+        check(f"CYP21A2: the deletion's tables with a MAPQ 0 share of {share}: {want[0]} ({want[1] or want[2]})",
+              (b["status"], b["reason"], b["finding"], b["copies"]) == want, b)
+    b = cyp_call(r, bed, pile, 0.0)
+    rows, line = cn.psv_table(r, b)
+    tab = dict(rows)
+    check("CYP21A2 without MAPQ 0 reads: the table says so (message, share 0.000), no copies, module total or finding",
+          tab["message"].startswith("not assessed: the BAM has few or no multi-mapping reads here")
+          and "CYP21A2 and CYP21A1P" in tab["message"] and tab["mapq0_share"] == "0.000"
+          and (tab["cyp21a2_copies"], tab["module_total"], tab["finding"]) == (".", ".", ".")
+          and "low_mapq0_share" in line, (tab, line))
+    bed, pile = cyp_fixture(r, 4, {})
+    tab = dict(cn.psv_table(r, cyp_call(r, bed, pile))[0])
+    check("CYP21A2 unmodified with HG002's MAPQ 0 share: called, share 0.100, message '.'",
+          (tab["status"], tab["finding"], tab["mapq0_share"], tab["message"]) == ("called", "none", "0.100", "."), tab)
 
     step, module = read("scripts/35-paralogs.sh"), read("modules/local/parascopy/main.nf")
     blk = re.search(r'\n(CYP21_OUT=.*?\nrm -rf "\$CYP21_WORK"\n)', step, re.S)
     check("step 35 holds the CYP21A2 block", blk is not None)
     tabs = {}
     with tempfile.TemporaryDirectory() as t:
-        for case in list(CYP_CASES) + ["fail"]:
+        for case in list(CYP_CASES) + ["fail", "no_mapq0"]:
             env = dict(os.environ, REPO=REPO, FIX=CYP_FIX, OUTDIR=t, SAMPLE="S", PGP_ROOT=REPO, PARASCOPY_IMAGE="img",
-                       BAM=os.path.join(t, "S.bam"), CYP_CASE="normal" if case == "fail" else case)
+                       BAM=os.path.join(t, "S.bam"),
+                       CYP_CASE={"fail": "normal", "no_mapq0": "deletion"}.get(case, case))
             if case == "fail":
                 env["MPILEUP_FAILS"] = "1"
+            if case == "no_mapq0":   # the deletion's reads from a BAM with no MAPQ 0 read
+                env["CYP_NO_MAPQ0"] = "1"
             out = subprocess.run(["bash", "-euo", "pipefail", "-c", STUB_CYP + (blk.group(1) if blk else "false\n")],
                                  capture_output=True, text=True, env=env)
             tab = os.path.join(t, "S_cyp21a2_psv.tsv")
@@ -1014,13 +1055,25 @@ def psv(cat, read):
             if os.path.exists(tab):
                 os.replace(tab, tabs[case])
             want = {"normal": ("called", "2", "4", "none"), "deletion": ("called", "1", "3", "deletion"),
-                    "conversion": ("called", "1", "4", "conversion"), "fail": ("not assessed", ".", ".", ".")}[case]
+                    "conversion": ("called", "1", "4", "conversion"), "fail": ("not assessed", ".", ".", "."),
+                    "no_mapq0": ("not assessed", ".", ".", ".")}[case]
             check(f"step 35 CYP21A2 block ({case}): status, copies, module total, finding {want}",
                   tuple(rows.get(k) for k in ("status", "cyp21a2_copies", "module_total", "finding")) == want, rows)
         check("step 35 CYP21A2 block with a failed mpileup: reason check_failed",
               open(tabs["fail"]).read().count("reason\tcheck_failed") == 1 if os.path.exists(tabs["fail"]) else False)
+        rd = (lambda c: dict(x.split("\t", 1) for x in open(tabs[c]).read().splitlines()[1:])
+              if os.path.exists(tabs[c]) else {})
+        nm, nl = rd("no_mapq0"), rd("normal")
+        check("step 35 CYP21A2 block on the deletion's reads without MAPQ 0 reads: low_mapq0_share, the message says why",
+              (nm.get("reason"), nm.get("mapq0_share")) == ("low_mapq0_share", "0.000")
+              and nm.get("message", "").startswith("not assessed: the BAM has few or no multi-mapping reads here"), nm)
+        check("step 35 CYP21A2 block, unmodified: the MAPQ >= 1 pass ran (share 0.100), message '.'",
+              (nl.get("mapq0_share"), nl.get("message")) == ("0.100", "."), nl)
+        check("step 35 CYP21A2 block with a failed mpileup: the rows of a called table but the sites'",
+              list(rd("fail")) == [k for k in nl if not k.startswith("psv_")], (list(rd("fail")), list(nl)))
         for path, text, q in (("scripts/35-paralogs.sh", step, True), ("modules/local/parascopy/main.nf", module, False)):
             for cmd in ("copy_number.py bed --locus CYP21A2", "copy_number.py bed --psv --locus CYP21A2",
+                        "--bedcov-mapq1", "cyp21a2_bedcov_q1.tsv" if not q else 'bedcov_q1.tsv")"',
                         "samtools mpileup -A -B -q 0 -Q 13 -d 100000", "copy_number.py call --locus CYP21A2 --bedcov",
                         "--pileup", "_cyp21a2_psv.tsv"):
                 check(f"{path}: {cmd}", cmd in text)
@@ -1039,6 +1092,9 @@ def psv(cat, read):
         check("couple screen: the unmodified table is no finding, 2 copies read",
               got.get("normal", (["x"], ""))[0] == [] and "CYP21A2 2 copies" in got.get("normal", ([], ""))[1],
               got.get("normal"))
+        check("couple screen: the table without MAPQ 0 reads is no finding and says not assessed (low_mapq0_share)",
+              got.get("no_mapq0", (["x"], ""))[0] == [] and got.get("no_mapq0", ([], ""))[1]
+              == "CYP21A2 not assessed (low_mapq0_share)", got.get("no_mapq0"))
         check("couple screen: the failed table is no finding and says not assessed",
               got.get("fail", (["x"], ""))[0] == [] and got.get("fail", ([], ""))[1].startswith("CYP21A2 not assessed"),
               got.get("fail"))
@@ -1083,6 +1139,14 @@ def psv(cat, read):
         c = data.get("cyp21a2") or {}
         check("collect_summary: step 35's section carries the CYP21A2 table (deletion, 1 copy)",
               (c.get("finding"), c.get("cyp21a2_copies")) == ("deletion", "1"), c)
+        # and the reports print why a table without MAPQ 0 reads is not assessed
+        import render_report
+        if os.path.exists(tabs["no_mapq0"]):
+            os.replace(tabs["no_mapq0"], os.path.join(sd, "paralogs", "S_cyp21a2_psv.tsv"))
+        _, data = cs.sec_parascopy(sd, "S")
+        got = render_report.cyp21a2_line(data.get("cyp21a2"))
+        check("report: the CYP21A2 line without MAPQ 0 reads is not assessed and says the BAM has few or no multi-mapping reads",
+              ": not assessed (the BAM has few or no multi-mapping reads here" in got and "deletion," not in got, got)
 
 
 if __name__ == "__main__":

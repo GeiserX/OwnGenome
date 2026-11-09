@@ -763,6 +763,35 @@ def parascopy_cn_at(rows, chrom, pos):
     return {"cn": None, "text": "no row covers exon 7", "agcn": ".", "agcn_qual": ".", "agcn_filter": "."}
 
 
+MARKER_FIELDS = ("marker", "rsid", "status", "alt_reads", "depth", "fraction", "copies", "message")
+
+
+def read_marker_table(p, step, key):
+    """A copy-aware marker table (metric, value; bin/traits_report.py MARKERS):
+    step 46's KIV-2 4925G>A beside the count or step 35's SMN1 g.27134T>G
+    beside the psCN. A table that is not there or has no known status reads
+    as not assessed, with the reason in its message, so the report line
+    never goes missing beside the count."""
+    m = traits_report.MARKERS[key]
+    what = m["name"]
+    out = dict.fromkeys(MARKER_FIELDS, ".")
+    out.update(marker=what, rsid=m["dbsnp"][0], status="not assessed")
+    if not os.path.isfile(p):
+        out["message"] = (f"{what}: not assessed, step {step} wrote no {os.path.basename(p)} (a run from before "
+                          "this reader, or the check did not run).")
+        return out
+    try:
+        kv = dict(read_tsv_pairs(p))
+    except OSError as e:
+        kv = {"message": f"{os.path.basename(p)} could not be read: {e}"}
+    if kv.get("status") not in traits_report.MARKER_STATUSES:
+        out["message"] = (f"{what}: not assessed, {os.path.basename(p)} has no status row "
+                          f"({', '.join(traits_report.MARKER_STATUSES)}).")
+        return out
+    out.update({k: kv[k] for k in MARKER_FIELDS if kv.get(k)})
+    return out
+
+
 def smn_reading(smn1):
     """What an SMN1 copy number means for SMA, in one line."""
     if smn1 is None:
@@ -881,6 +910,9 @@ def sec_parascopy(d, s):
     catalog = {r["table"]: r for r in asset_rows("paralog_loci.tsv")} if others else {}
     return p, {"smn1": smn1, "smn2": {"cn": smn2["cn"], "text": smn2["text"]},
                "agcn": smn1["agcn"], "agcn_qual": smn1["agcn_qual"], "agcn_filter": smn1["agcn_filter"],
+               # SMN1 g.27134T>G beside the psCN (step 35, <id>_smn1_marker.tsv)
+               "smn1_marker": read_marker_table(os.path.join(d, "paralogs", f"{s}_smn1_marker.tsv"), "35",
+                                                "SMN1_27134"),
                "rows": len(rows),
                # HBA1/HBA2 from depth (bin/hba_copy_number.py); None when
                # step 35 wrote no HBA table (a run from before the check)
@@ -2786,6 +2818,9 @@ def sec_lpa(d, s):
         raise Unreadable(f"{os.path.basename(p)} has no status row (estimated, too little depth or not assessed)")
     data = {k: kv.get(k) or "." for k in ("status", "kiv2_copies", "ci95_low", "ci95_high", "class",
                                           "kiv2_depth", "flank_depth", "mapq0_share", "message", "advice")}
+    # KIV-2 4925G>A beside the count (step 46, lpa/<id>_lpa_kiv2_4925.tsv)
+    data["null_allele"] = read_marker_table(os.path.join(os.path.dirname(p), f"{s}_lpa_kiv2_4925.tsv"), "46",
+                                            "LPA_KIV2_4925")
     variants = []
     t = first_existing(d, [f"traits/{s}_traits.tsv"])
     for r in (read_tsv(t) if t else []):
