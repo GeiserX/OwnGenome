@@ -18,10 +18,15 @@ Checks:
      with the run and the id filled in and the server's Content-Security-Policy for an id of the run's
      findings, and a 404 for an id that is not one, for a path-like id and for a run with no such page;
   4. /runs.json of a running run counts from the summary its page last read only while that read is
-     current (same steps done, same summary.json), and says whether a clinical screen has a result.
+     current (same steps done, same summary.json), and says whether a clinical screen has a result;
+  5. one row the rules cannot read (a ClinVar hit whose stars is no number, a CPSR row that is a string,
+     a carrier row of the wrong type) costs that row only: results.json keeps every card and every other
+     finding, the row becomes a finding worth a look on its own card that names no gene, and the card
+     whose table could not be drawn says so.
 Each check runs again on a planted mistake and must fail there: 1 with the CPIC rule's level swapped
 to review, 2 with the act findings left out of the lead and with their names unmarked and with the
-old lead on a run with no clinical screen, 3 with the route answering any id, 4 with a current read. A check
+old lead on a run with no clinical screen, 3 with the route answering any id, 4 with a current read, 5 with the rules run without the row guard.
+A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_journal.py
@@ -179,11 +184,15 @@ def route_problems(port, fid):
     code, h, _ = request(port, "GET", path)
     if code != 303 or h.get("location") != "/login?next=" + urllib.parse.quote(path):
         out.append(f"finding page without a session: {code} {h.get('location')}")
-    code, h, _ = request(port, "POST", "/login", urllib.parse.urlencode({"password": PASSWORD, "next": "/"}),
+    # The login form posts the next the redirect gave it: the browser lands back on the finding.
+    nxt = urllib.parse.parse_qs(urllib.parse.urlsplit(h.get("location") or "").query).get("next", ["/"])[0]
+    code, h, _ = request(port, "POST", "/login", urllib.parse.urlencode({"password": PASSWORD, "next": nxt}),
                          {"Content-Type": "application/x-www-form-urlencoded"})
     m = re.match(r"owngenome_live=([^;]+)", h.get("set-cookie", ""))
     if not m:
         return out + [f"login {code}"]
+    if code != 303 or h.get("location") != path:
+        out.append(f"the login with the finding as next goes to {code} {h.get('location')}, not back to {path}")
     ck = {"Cookie": f"owngenome_live={m.group(1)}"}
     code, h, body = request(port, "GET", path, headers=ck)
     page = body.decode("utf-8", "replace")
@@ -197,6 +206,36 @@ def route_problems(port, fid):
     code, _, _ = request(port, "GET", f"/runs/NO-SUCH-RUN/finding/{urllib.parse.quote(fid)}/", headers=ck)
     if code != 404:
         out.append(f"a run that does not exist: {code}")
+    return out
+
+
+def bad_row_problems():
+    """What one unreadable row of each kind takes from results.json beyond the row itself."""
+    good = live_results.build("MADE-UP", copy.deepcopy(SUMMARY))
+    s = copy.deepcopy(SUMMARY)
+    hit = s["sections"]["clinvar"]["data"]["hits"][0]
+    s["sections"]["clinvar"]["data"]["hits"].append(dict(hit, gene="GENEZ", pos=2000, stars="two"))
+    s["sections"]["cpsr"]["data"]["plp"].append("GENEY c.1del")
+    s["sections"]["carrier"]["data"]["carriers"].append(["GENEX"])
+    try:
+        res = live_results.build("MADE-UP", s)
+    except Exception as e:  # noqa: BLE001 -- the very thing under test
+        return [f"build raised {type(e).__name__}: {e}"]
+    out = []
+
+    def cards(r):
+        return [c["id"] for ch in r["chapters"] for c in ch["sections"]]
+    if cards(res) != cards(good):
+        out.append(f"cards {cards(res)} != {cards(good)}")
+    ids = {f["id"] for f in res["findings"]}
+    out += [f"lost {f['id']}" for f in good["findings"] if f["id"] not in ids]
+    new = [f for f in res["findings"] if f["id"] not in {g["id"] for g in good["findings"]}]
+    if sorted(f["card"] for f in new) != ["carrier-list", "clinvar", "cpsr"] or any(
+            f["level"] != "review" or f["gene"] or re.search(r"GENE[XYZ]", f["title"] + f["text"]) for f in new):
+        out.append(f"the unreadable rows: {[(f['card'], f['level'], f['gene'], f['title']) for f in new]}")
+    cv = [c for ch in res["chapters"] for c in ch["sections"] if c["id"] == "clinvar"][0]
+    if not any("could not be drawn" in x for x in cv["lines"]):
+        out.append(f"the ClinVar card does not say it could not be drawn: {cv['lines'][:2]}")
     return out
 
 
@@ -316,6 +355,19 @@ def main():
         finally:
             live.base_state = real_state
             live.headline_cache.pop(SAMPLE, None)
+        # 5. one bad row costs one row
+        bad = bad_row_problems()
+        check("5. one unreadable row costs that row only: every card and every other finding stays", not bad, bad)
+        real_row = live_results._Row
+
+        class Unguarded(real_row):  # the planted mistake: the rules run without the row guard
+            def __exit__(self, *a):
+                return False
+        live_results._Row = Unguarded
+        try:
+            control("the rules without the row guard", not bad_row_problems())
+        finally:
+            live_results._Row = real_row
     finally:
         for s in srvs:
             stop(s)
