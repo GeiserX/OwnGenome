@@ -404,7 +404,13 @@ jobs:
               curl -fsSL --retry 5 -o "${EV}/in.vcf.gz" "${url}/${f}"
               curl -fsSL --retry 5 -o "${EV}/in.vcf.gz.tbi" "${url}/${f}.tbi"
               docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" "$BCFTOOLS_IMAGE" \
-                bcftools view -s "$SAMPLE" -v snps --min-ac 1 -Oz -o "/e/${label}.chr${c}.vcf.gz" /e/in.vcf.gz
+                bcftools view -s "$SAMPLE" -v snps --min-ac 1 -Oz -o "/e/${label}.raw.vcf.gz" /e/in.vcf.gz
+              # The 2019 recall names the contigs 22, not chr22: rename them
+              # (a name already chrN stays as it is).
+              printf '%s\tchr%s\n' "$c" "$c" > "${EV}/rename.txt"
+              docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" "$BCFTOOLS_IMAGE" \
+                bcftools annotate --rename-chrs /e/rename.txt -Oz -o "/e/${label}.chr${c}.vcf.gz" "/e/${label}.raw.vcf.gz"
+              rm -f "${EV}/${label}.raw.vcf.gz"
               rm -f "${EV}/in.vcf.gz" "${EV}/in.vcf.gz.tbi"
               parts="${parts} /e/${label}.chr${c}.vcf.gz"
             done
