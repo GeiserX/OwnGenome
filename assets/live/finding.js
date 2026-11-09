@@ -72,11 +72,12 @@
       root.setAttribute('data-pgp-status', 'ready');
       return;
     }
+    // known, not family: the click that opens this finding draws again with family as it came, UNKNOWN kept.
     var unknown = family === UNKNOWN;
-    if (unknown) { family = null; }
-    var me = family && (family.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
+    var known = unknown ? null : family;
+    var me = known && (known.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
     // A family that does not list this person cannot say they are not a child: closed as well.
-    var child = unknown || (!!family && !me) || !!(me && (me.father || me.mother));
+    var child = unknown || (!!known && !me) || !!(me && (me.father || me.mother));
     // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
     var closed = child && f.level === 'act' && !draw.open;
     var title = closed ? 'A result to act on' : f.title;
@@ -97,7 +98,7 @@
     add(rail, el('div', { 'class': 'group' }, 'This finding'));
     var parts = [['what', 'What it is'], ['plan-sec', 'What to do'], ['evidence', 'Evidence']];
     if (f.viewer) { parts.push(['reads', 'The reads']); }
-    if (family) { parts.push(['family', 'In the family']); }
+    if (known) { parts.push(['family', 'In the family']); }
     parts.push(['related', 'Related results'], ['sources', 'Caveat and sources']);
     var tol = el('ol', {});
     parts.forEach(function (p, i) {
@@ -158,7 +159,7 @@
     add(box, ol);
     add(m1, box);
     var a1 = el('aside', {});
-    if (f.level === 'carrier' && family) { add(a1, note('Family', add(el('span', {}), 'A carrier is not affected. ', el('a', { href: abs(familyUrl) }, 'The couple screen on the family page →')))); }
+    if (f.level === 'carrier' && known) { add(a1, note('Family', add(el('span', {}), 'A carrier is not affected. ', el('a', { href: abs(familyUrl) }, 'The couple screen on the family page →')))); }
     add(row1, m1, a1);
     add(col, row1);
     // The evidence.
@@ -189,14 +190,14 @@
     // Related findings and the family.
     var rel = (f.related || []).map(function (id) { return (r.findings || []).filter(function (x) { return x.id === id; })[0]; })
       .filter(function (x) { return x && !(child && x.level === 'act'); });
-    if (family) {
+    if (known) {
       var sf = el('section', { 'class': 'sec', id: 'family' });
       add(sf, add(el('div', { 'class': 'sechead' }), el('span', { 'class': 'secnum' }, ROMAN[parts.length - 3]), el('h2', { 'class': 'h2' }, 'In the family')));
       var fam = el('p', { 'class': 'soft' });
       add(fam, 'Who else in the family has a genome here: ');
-      (family.state.members || []).filter(function (m) { return m.sample !== r.sample; }).forEach(function (m, i) {
+      (known.state.members || []).filter(function (m) { return m.sample !== r.sample; }).forEach(function (m, i) {
         if (i) { add(fam, ', '); }
-        var u = family.runs && family.runs[m.sample] && family.runs[m.sample].url;
+        var u = known.runs && known.runs[m.sample] && known.runs[m.sample].url;
         add(fam, u ? el('a', { href: abs(u) }, m.sample) : el('span', {}, m.sample + ' (no genome)'));
       });
       add(fam, '. ', el('a', { href: abs(familyUrl) }, 'The family report →'));
@@ -230,7 +231,11 @@
   var familyUrl = null;
   var UNKNOWN = { unknown: true };
   function familyOf(st) {
-    var fam = st && st.plugins && st.plugins.family;
+    // No state (state.json or frames.json refused, missing or not JSON), a state with no plugins, or a family
+    // plugin that found a family report it could not read: the roles are unknown, never a standalone adult.
+    if (!st || !st.plugins) { return Promise.resolve(UNKNOWN); }
+    var fam = st.plugins.family;
+    if (fam && fam.unknown) { return Promise.resolve(UNKNOWN); }
     var f = fam && fam.kind === 'member' && (fam.families || [])[0];
     if (!f) { return Promise.resolve(null); }
     familyUrl = f.url;

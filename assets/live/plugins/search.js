@@ -85,12 +85,24 @@
     return li;
   }
 
+  // A hit from a section the page keeps closed (a result to act on about a child, person.js's
+  // PGP.searchHidden) is left out, and so is a suggested term that only such sections name: the search
+  // must not name what the page veils. The page says so whether or not anything was left out.
+  function hidden(it) { return !!(root.PGP.searchHidden && root.PGP.searchHidden(it.section, it.anchor)); }
+  function closedNote() {
+    return root.PGP.searchHidden && root.PGP.searchHidden(null, null)
+      ? el('p', { 'class': 'muted search-closed' }, 'Results this page keeps closed are left out of the search until they are opened.')
+      : null;
+  }
+
   function show() {
     if (!out) { return; }
     out.textContent = '';
     var q = input.value;
     if (!index || !q.trim()) { document.documentElement.removeAttribute('data-pgp-search'); return; }
     var r = match(index, q);
+    r.items = r.items.filter(function (it) { return !hidden(it); });
+    r.suggestions = r.suggestions.filter(function (t) { return (index.terms[t] || []).some(function (it) { return !hidden(it); }); });
     document.documentElement.setAttribute('data-pgp-search', String(r.items.length));
     if (r.kind === 'site') {
       out.appendChild(el('p', {}, 'The search finds gene symbols and rsIDs. A position is a question about the genotype: '
@@ -119,6 +131,8 @@
       });
       out.appendChild(p);
     }
+    var note = closedNote();
+    if (note) { out.appendChild(note); }
   }
 
   function onState(state) {

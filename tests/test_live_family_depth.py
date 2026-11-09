@@ -12,10 +12,14 @@ Checks:
      column per member, '.' where a member's summary lacks the row, "no summary yet" for a member
      without one; CPIC's phenotype quoted, never bare;
   5. a member's summary.json that links out of its run folder is never read;
-  6. family.json passes the wording gate (live_results.FORBIDDEN).
+  6. family.json passes the wording gate (live_results.FORBIDDEN);
+  7. a member's summary.json of a shape the report never writes (sections a list, CYP2D6 calls a
+     string, a CPIC gene named by a list) costs that member's column only: it says "summary not
+     readable" there, and every other member's column is as before.
 Each check runs again on a planted mistake and must fail there: the segments read from the wrong
 child (1), the pairs left in file order (2), a trio file planted (3), a member's summary dropped (4),
-the inside check bypassed (5), "ok" planted in a row (6). A check that cannot fail is no check.
+the inside check bypassed (5), "ok" planted in a row (6), a bad summary read silently as empty (7). A check that
+cannot fail is no check.
 
 Run: python3 tests/test_live_family_depth.py
 """
@@ -154,6 +158,36 @@ def main():
         planted = copy.deepcopy(page)
         planted["side_by_side"]["rows"][0]["values"][0] = "ok"
         control("an ok in a side-by-side row", not live_results.wording_problems(planted))
+
+        def malformed_problems():
+            out = []
+            for bad in ({"sections": ["not", "a", "mapping"]}, {"cyp2d6": "CYP2D6 *1/*4"},
+                        {"sections": {"cpic": {"state": "ok", "data": {"genes": [{"gene": ["CYP2D6"]}]}}}}):
+                try:
+                    got = fam.side_by_side(["A", "B", "C"], dict(sums, B=bad))
+                except Exception as e:  # noqa: BLE001 -- the very thing under test
+                    out.append(f"{bad}: raised {type(e).__name__}")
+                    continue
+                cols = {r["label"]: r["values"] for r in got["rows"]}
+                want = {r["label"]: r["values"] for r in fam.side_by_side(["A", "B", "C"], dict(sums, B=None))["rows"]}
+                for label, v in want.items():
+                    if cols.get(label, [None] * 3)[0] != v[0] or cols.get(label, [None] * 3)[1] != "summary not readable":
+                        out.append(f"{bad}: {label} {cols.get(label)}")
+            return out
+        bad = malformed_problems()
+        check("7. a member's summary of a shape the report never writes costs that member's column only", not bad, bad)
+        real = fam.side_values
+
+        def quiet(summary):  # the planted mistake: a bad summary read as one with no rows, never said
+            try:
+                return real(summary)
+            except (AttributeError, TypeError):
+                return []
+        fam.side_values = quiet
+        try:
+            control("a bad summary shown as '.' in every row, as if it had none of them", not malformed_problems())
+        finally:
+            fam.side_values = real
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:

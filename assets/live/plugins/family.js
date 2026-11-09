@@ -94,6 +94,10 @@
 
   function member(f) {
     box.appendChild(el('h2', {}, 'Family'));
+    if (f.unknown) {
+      box.appendChild(para('A family report could not be read, so this page cannot tell whether this person is a child '
+        + 'of it: results to act on stay closed until opened.', 'muted'));
+    }
     f.families.forEach(function (x) {
       var p = el('p', {}, 'In the family ');
       p.appendChild(link(x.url, x.name));

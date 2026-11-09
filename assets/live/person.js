@@ -73,12 +73,18 @@
     var f = fam && fam.kind === 'member' && (fam.families || [])[0];
     return f ? f : null;
   }
+  // The family plugin cannot say: a state with no plugins (unavailable or cut short), or a family plugin
+  // that found a family report it could not read (plugins.family.unknown). Not a standalone adult then.
+  function familyUnknown() {
+    var fam = state && state.plugins ? state.plugins.family : undefined;
+    return !state || !state.plugins || !!(fam && fam.unknown);
+  }
   function loadFamily() {
     var f = familyUrl();
-    var key = f ? f.url : null;
+    var key = f ? f.url : (familyUnknown() ? '?' : null);
     if (key === familyFor) { return; }
     familyFor = key;
-    if (!f) { family = null; familyStatus = 'none'; return; }
+    if (!f) { family = null; familyStatus = key ? 'failed' : 'none'; return; }
     familyStatus = 'pending';
     U.getJSON(f.url + 'family.json').then(function (d) {
       if (familyFor !== key) { return; }
@@ -307,6 +313,17 @@
   // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
   // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
   function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
+  // The search box (plugins/search.js) asks the same question for each hit, by the summary key and the anchor
+  // of the section it comes from: a hit from a card this page keeps closed is left out. A closed page with
+  // no results.json yet cannot tell which cards those are, so it leaves every hit out until it can.
+  // Asked with no key, it answers whether this page keeps anything closed at all.
+  window.PGP.searchHidden = function (key, anchor) {
+    if (!closedPage()) { return false; }
+    if (!results || key === null) { return true; }
+    return cards().some(function (c) {
+      return (c.id === anchor || (c.keys || []).indexOf(key) >= 0) && veiledOf(c).length > 0;
+    });
+  };
 
   function card(c) {
     var g = gate(c);
@@ -1003,7 +1020,7 @@
     }).catch(function () { if (key === fetchedFor) { fetchedFor = null; } });
   }
   function redraw(force) {
-    var k = JSON.stringify([doneSet(), state && state.run && state.run.state, !!results, !!family, Object.keys(shown),
+    var k = JSON.stringify([doneSet(), state && state.run && state.run.state, !!results, !!family, familyStatus, Object.keys(shown),
       state && state.plugins && state.plugins.recheck && state.plugins.recheck.mtime,
       // Every step's state: one can move from waiting to not finished with the done set unchanged.
       ((state && state.steps) || []).map(function (s) { return s.step + ':' + s.state; })]);

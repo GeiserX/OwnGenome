@@ -9,7 +9,9 @@ Checks:
      chromosome map (child_a has one, child_b none), the relationship check,
      the shared segments, the couple screen counted from step 39's table, the
      plan, and exactly the result files that exist;
-  3. child_a's state links to family_a; a sample in no family gets null;
+  3. child_a's state links to family_a; a sample in no family gets null; while a
+     family's pedigree cannot be read, a sample no readable family lists gets
+     "unknown" (it may be that family's child), and child_a still its family;
   4. GET /family/<family>/pedigree.svg is the drawing of the declared parents;
      a listed file is served as written; notes.txt (in the folder, written by
      no step), a name with '..', a symlink out of the folder, a sample's
@@ -234,7 +236,12 @@ def main():
         code = app.get("/family/family_empty/pedigree.svg")[0]
         check("a members file with a header and no rows: an error on the page, 404 for the pedigree",
               "error" in (es or {}) and code == 404, (es, code))
+        got = (hook(os.path.join(root, "loner"), {}, []), hook(os.path.join(root, "child_a"), {}, []))
+        check("while a family cannot be read, a sample no readable family lists is unknown, never in no family",
+              got == ({"kind": "member", "families": [], "unknown": True},
+                      {"kind": "member", "families": [{"name": "family_a", "url": "/runs/family_a/"}]}), got)
         shutil.rmtree(empty)
+        check("...and once it reads again, in no family", hook(os.path.join(root, "loner"), {}, []) is None)
 
         # Planted mistake: child_a's father swapped for its grandfather in the copy.
         bad = os.path.join(work, "swapped")
