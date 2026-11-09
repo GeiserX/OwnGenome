@@ -402,6 +402,15 @@ workflow {
         .fromList(samplesheet_rows)
         .map { row -> [[id: row.sample, sex: row.sex ? row.sex.toLowerCase() : null], row] }
 
+    // The PRS score sets the run needs, from the samplesheet alone: with_x for
+    // a row that gives the sex, autosomes for one that does not (the rule
+    // CLINICAL applies to each sample's meta.sex). Known at launch, so
+    // PRS_PREPARE formats the scores while the samples are still aligned and
+    // called, instead of waiting for the first VCF.
+    ch_prs_score_sets = ch_rows
+        .map { meta, _row -> meta.sex ? 'with_x' : 'autosomes' }
+        .unique()
+
     ch_fastq = ch_rows
         .filter { meta, row -> row.fastq_1 }
         .map { meta, row -> [meta, file(row.fastq_1, checkIfExists: true), file(row.fastq_2, checkIfExists: true)] }
@@ -772,7 +781,8 @@ workflow {
         BAM_ANALYSIS.out.mito_vcf,
         ch_ancestry_fine_panel,
         ch_bam,
-        ch_gencode_exons
+        ch_gencode_exons,
+        ch_prs_score_sets
     )
 
     // ─── Traits panel (traits, step 42) ─────────────────────────────────
