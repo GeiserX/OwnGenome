@@ -331,8 +331,10 @@ def a_chip(S, s):
             for c in d.get("calls") or []]
     genes = [{"gene": g.get("gene"), "limit": num(g.get("detection_limit_vaf")), "depth": num(g.get("mean_depth")),
               "status": g.get("status")} for g in d.get("genes") or []]
-    calls = [{"gene": c.get("gene"), "change": c.get("protein_change"), "vaf": num(c.get("vaf"))}
-             for c in d.get("calls") or []]
+    # Each call carries its own gene's limit: the genes' limits differ, and a call is read against its own.
+    limit = {g["gene"]: g["limit"] for g in genes}
+    calls = [{"gene": c.get("gene"), "change": c.get("protein_change"), "vaf": num(c.get("vaf")),
+              "limit": limit.get(c.get("gene"))} for c in d.get("calls") or []]
     out = {"facts": [["CHIP calls", len(d.get("calls") or [])],
                      ["Typical detection limit at this depth (VAF)", d.get("median_limit")]],
            "table": table(["Gene", "Change", "VAF", "Alt reads", "Depth", "Status"], rows),
@@ -408,6 +410,18 @@ def a_paralogs(S, s):
                 n = num(g.get("copy_number"))
                 dots.append({"gene": g.get("gene"), "copies": int(n) if n is not None and n == int(n) and 0 <= n <= 20
                              else None, "status": g.get("status") or "."})
+    if (S.get("parascopy") or {}).get("state") in ("ok", "stale"):
+        # Parascopy's SMN1 and SMN2 copies at exon 7 (short reads) as dots too; its count is None unless
+        # psCN passed its filter, and then the dots say why there is none.
+        d = S["parascopy"]["data"]
+        for g in ("smn1", "smn2") if d.get("rows") else ():  # rows: step 35's SMN table had rows
+            x = d.get(g) or {}
+            if not x:
+                continue
+            n = num(x.get("cn"))
+            whole = n is not None and n == int(n) and 0 <= n <= 20
+            dots.append({"gene": f"{g.upper()} (Parascopy)", "copies": int(n) if whole else None,
+                         "status": "called" if whole else (x.get("text") or "not called")})
     out = {"facts": facts, "lines": lines, "table": table(["Gene", "Copies", "Status", "Detail"], rows)}
     if dots:
         out["widget"] = {"kind": "copies", "genes": dots}

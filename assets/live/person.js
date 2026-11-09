@@ -218,25 +218,34 @@
     return box;
   }
 
-  // CHIP: each call's VAF against the smallest VAF this depth can see.
+  // CHIP: each call's VAF against the smallest VAF this depth can see in its own gene. The genes differ:
+  // below the smallest limit no gene sees a clone, between the smallest and the largest some genes do.
   function vafChart(w) {
     var box = el('div', { 'class': 'widget w-vaf', 'data-widget': 'vaf' });
     var max = w.max || 0.5;
     var limits = (w.genes || []).map(function (g) { return g.limit; }).filter(function (x) { return typeof x === 'number'; });
     var lo = limits.length ? Math.min.apply(null, limits) : null, hi = limits.length ? Math.max.apply(null, limits) : null;
     var parts = [];
-    if (hi !== null) { parts.push(band('w-blind', 0, hi, max, 'below the detection limit at this depth')); }
+    if (lo !== null) { parts.push(band('w-blind', 0, lo, max, 'below the detection limit of every gene at this depth')); }
+    if (hi !== null && hi > lo) { parts.push(band('w-part', lo, hi, max, 'below the detection limit of some genes at this depth')); }
+    // A call's own gene limit, in words: a call below it is a clone that depth sees only now and then.
+    var own = function (c) {
+      return typeof c.limit === 'number' ? (c.vaf < c.limit ? 'below' : 'above') + ' the limit of ' + c.gene + ' at this depth (' + c.limit + ')'
+        : 'no detection limit for ' + c.gene;
+    };
     (w.calls || []).forEach(function (c) {
-      parts.push(mark('w-call', c.vaf, max, c.gene + ' ' + (c.change || '') + ': VAF ' + c.vaf));
+      parts.push(mark('w-call' + (typeof c.limit === 'number' && c.vaf < c.limit ? ' w-low' : ''), c.vaf, max,
+        c.gene + ' ' + (c.change || '') + ': VAF ' + c.vaf + ', ' + own(c)));
     });
     var head = whead('Variant allele fraction', (w.calls || []).length ? (w.calls.length + ' call' + (w.calls.length > 1 ? 's' : ''))
       : 'no call above the limit');
-    var legend = (hi !== null ? 'Hatched: below the smallest VAF this depth can see (' + lo + (hi !== lo ? ' to ' + hi : '') +
-      ' across ' + limits.length + ' genes); a clone that small is not seen. ' : '') + 'Scale VAF 0 to ' + max + '.';
+    var legend = (lo !== null ? 'Hatched: below the smallest VAF this depth can see in any of the ' + limits.length + ' genes (' + lo +
+      '); a clone that small is not seen. ' + (hi > lo ? 'Shaded: up to ' + hi + ', seen in some genes and not in others (the table below has each gene\'s limit). ' : '') : '') +
+      'Scale VAF 0 to ' + max + '.';
     add(box, wrow(head, trackOf(max, parts), legend));
     if ((w.calls || []).length) {
       var ul = el('ul', { 'class': 'w-calls' });
-      w.calls.forEach(function (c) { add(ul, el('li', {}, c.gene + ' ' + (c.change || '') + ' at VAF ' + c.vaf)); });
+      w.calls.forEach(function (c) { add(ul, el('li', {}, c.gene + ' ' + (c.change || '') + ' at VAF ' + c.vaf + ', ' + own(c))); });
       add(box, ul);
     }
     if ((w.genes || []).length) {
@@ -460,12 +469,13 @@
     rows.forEach(function (r) { add(dl, el('dt', {}, r[0]), el('dd', {}, r[1])); });
     return dl;
   }
-  function caveatNote(list) {
+  // key: the finding's id, so a redraw keeps this fold open on its own finding (foldKeys).
+  function caveatNote(list, key) {
     if (!list || !list.length) { return null; }
     var box = el('div', {});
     var lead = U.firstSentence(list[0]);
     add(box, el('span', {}, lead + ' '));
-    var d = el('details', {});
+    var d = el('details', key ? { 'data-card': 'cav-' + key } : {});
     add(d, el('summary', { 'class': 'toggle' }, 'More'));
     list.forEach(function (t) { add(d, el('p', {}, t)); });
     add(box, d);
@@ -504,7 +514,7 @@
     var side = el('aside', {});
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
-    add(side, caveatNote(f.caveat));
+    add(side, caveatNote(f.caveat, f.id));
     var rel = (f.related || []).map(findingById).filter(function (r) { return r && !veiled(r); });
     if (rel.length) {
       var box = el('div', {});
@@ -645,11 +655,15 @@
       : g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
       : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
   }
+  // A card the report flags that has no finding of its own: on a phone it is the only place that flag
+  // shows, so it stays open, in section 5 too.
+  function flaggedAlone(c) { return attentionNow(c) && !(c.findings || []).some(function (f) { return findingById(f); }); }
   // A card folds on a phone when it only informs, or when its findings already stand open in sections 1
   // to 4 (the card is their evidence). A card the report flags with no finding of its own stays open.
   function phoneFold(c, sec) {
     if (!phone() || sec.n === 8) { return false; }
-    if (sec.n >= 5 || !(LOUD[c.level] || attentionNow(c))) { return true; }
+    if (sec.n >= 5) { return !(sec.n === 5 && flaggedAlone(c)); }
+    if (!(LOUD[c.level] || attentionNow(c))) { return true; }
     var open = {};
     sectionsList().forEach(function (s) { if (s.n <= 4) { s.findings.forEach(function (f) { open[f] = true; }); } });
     var fs = (c.findings || []).filter(function (f) { return findingById(f); });
@@ -666,10 +680,12 @@
     add(d, foldSummary(c.title, cardLine(c)), card(c));
     return d;
   }
-  // Sections 5 to 10 fold whole on a phone, unless section 5 holds a finding (a data-quality problem).
+  // Sections 5 to 10 fold whole on a phone, unless section 5 holds a finding (a data-quality problem) or
+  // a card the report flags with no finding of its own.
   function sectionFolds(sec) {
     if (!phone() || sec.n < 5) { return false; }
-    return !(sec.n === 5 && sec.findings.some(function (id) { var f = findingById(id), c = f && cardById(f.card); return c && gate(c) === 'show'; }));
+    return !(sec.n === 5 && (sec.findings.some(function (id) { var f = findingById(id), c = f && cardById(f.card); return c && gate(c) === 'show'; }) ||
+      sec.cards.map(cardById).some(function (c) { return c && flaggedAlone(c); })));
   }
   function sectionLine(sec) {
     if (sec.n === 9) {
@@ -993,15 +1009,19 @@
     });
   }
   window.addEventListener('hashchange', route);
-  // A link to the place the address already names fires no hashchange: open its folds all the same.
+  // A link to the place the address already names fires no hashchange: open its folds all the same. A
+  // click that opens a new tab or window (Ctrl, Cmd, Shift, Alt, a button other than the main one) leaves
+  // this page as it is.
   document.addEventListener('click', function (e) {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) { return; }
     var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
     if (a && a.getAttribute('href') === window.location.hash) { route(); }
   });
   // Turning a phone or resizing a window across 700 px draws the page again, folded or open.
   if (phoneQuery) {
-    // The redraw keeps the open cards but not the section and timeline folds: open again the ones
-    // around the place the address names, without scrolling back to it (the reader may be elsewhere now).
+    // The redraw keeps every fold as the reader left it, the phone's folds too when the page went wide
+    // and back (foldState); open the ones around the place the address names as well, without scrolling
+    // back to it (the reader may be elsewhere now).
     var redrawWide = function () { if (results) { redraw(true); var t = routeTarget(); if (t) { openAround(t); } } };
     if (phoneQuery.addEventListener) { phoneQuery.addEventListener('change', redrawWide); } else if (phoneQuery.addListener) { phoneQuery.addListener(redrawWide); }
   }
@@ -1019,6 +1039,26 @@
       route();
     }).catch(function () { if (key === fetchedFor) { fetchedFor = null; } });
   }
+  // Every fold of the report as the reader left it, open or closed, by a key that names the same fold in
+  // the next drawing: its data-card (a finding's caveat "More" carries its finding's id), else the element
+  // with an id around it, its class and its place among the folds of that class there (a card's "other
+  // lines", its APOE warning, its table of detection limits). A fold the
+  // current drawing does not have (a phone's fold while the page is wide) keeps its last state.
+  var foldState = {};
+  function foldKeys() {
+    var seen = {};
+    return Array.prototype.map.call(panel.querySelectorAll('details'), function (d) {
+      var key = d.getAttribute('data-card');
+      if (!key) {
+        key = ((d.parentElement && d.parentElement.closest('[id]')) || {}).id + ' ' + d.className;
+        seen[key] = (seen[key] || 0) + 1;
+        key += ' ' + seen[key];
+      }
+      return [key, d];
+    });
+  }
+  function keepFolds() { foldKeys().forEach(function (x) { foldState[x[0]] = x[1].open; }); }
+  function restoreFolds() { foldKeys().forEach(function (x) { if (foldState[x[0]]) { x[1].open = true; } }); }
   function redraw(force) {
     var k = JSON.stringify([doneSet(), state && state.run && state.run.state, !!results, !!family, familyStatus, Object.keys(shown),
       state && state.plugins && state.plugins.recheck && state.plugins.recheck.mtime,
@@ -1027,17 +1067,13 @@
     if (!force && k === drawnKey) { header(); return; }
     drawnKey = k;
     var y = window.scrollY;
-    var open = Array.prototype.map.call(panel.querySelectorAll('details[open]'), function (d) {
-      return d.getAttribute('data-card') || (d.closest('[id]') || {}).id; });
+    keepFolds();
     header();
     drawToc();
     drawTabbar();
     drawLead();
     drawSections();
-    open.forEach(function (id) {
-      var d = panel.querySelector('details[data-card="' + id + '"]');
-      if (d) { d.open = true; }
-    });
+    restoreFolds();
     window.scrollTo(0, y);
     document.getElementById('progress-q').textContent = running()
       ? 'Is it moving, when will it end, is anything wrong? One line per step.' : 'One line per step: when it ran, and what it found.';

@@ -36,7 +36,10 @@ Checks:
      partner's page is under 8,000 CSS px with every finding to act on, for a
      prescriber, for the family or worth a look open, the rest folded, and a
      link to a card two folds deep (#s/roh) or to a folded section (#s7) opens
-     it, while a wider page folds nothing; on the son's page a
+     it, while a wider page folds nothing; a section 5 card flagged with no
+     finding of its own stays open on a phone, the folds a reader opened (a
+     card's other lines too) stay open after the page turns wide and back, and
+     a Ctrl+click on a link to the current place opens nothing; on the son's page a
      two planted CPSR results to act on name their genes and variants nowhere
      (their card included) until "Show the result" is clicked, and each click
      opens one result, there and on the finding's own page; they stay closed on
@@ -52,7 +55,8 @@ Checks:
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
 the veil, person.js and finding.js that read a missing state as a standalone adult, and search.js
-without its filter), the phone page (person.js that never folds, and a route that opens only the nearest fold) and
+without its filter), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
 fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
@@ -298,6 +302,7 @@ def browser_checks(out):
         family_depth_checks(b, base, out)
         phone_checks(b, base)
         phone_report_checks(b, base, out)
+        fold_checks(b, base, out)
         veil_checks(b, base, out)
     finally:
         b.close()
@@ -343,7 +348,8 @@ def person_checks(b, base):
 WIDGETS = [("DEMO-002", "expansions", "str", "[data-widget=str] .w-row", 8),
            ("DEMO-002", "lpa", "ci", "[data-widget=ci] .w-tick", 1),
            ("DEMO-002", "chip", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
-           ("DEMO-003", "paralogs", "copies", "[data-widget=copies] li", 5),
+           # five copy-number genes from Paraphase, then Parascopy's SMN1 and SMN2
+           ("DEMO-003", "paralogs", "copies", "[data-widget=copies] li", 7),
            ("DEMO-003", "y-chromosome", "ypath", "[data-widget=ypath] li", 5),
            ("DEMO-002", "clinvar", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
            ("DEMO-003", "clinvar", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
@@ -863,6 +869,122 @@ def phone_report_checks(b, base, out):
     finally:
         with open(f, "w") as fh:
             fh.write(keep)
+
+
+FLAGGED = "callability"  # a card of section 5 with no finding of its own, flagged for these checks
+
+
+def phone_at(b, width):
+    b.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": 844, "deviceScaleFactor": 2, "mobile": False},
+           b.session)
+
+
+def fold_facts(b, base):
+    """DEMO-002's page at 390 px with its section 5 card FLAGGED flagged: whether that card shows; whether a
+    modified click (Ctrl) and a plain one on a link to the place the address names open its fold; and which
+    folds the reader opened are still open after the page turns wide and back."""
+    got = {}
+    phone_at(b, 390)
+    try:
+        b.go("about:blank")
+        b.wait("location.href === 'about:blank'")
+        b.go(f"{base}/runs/{OTHERS[0]}/")
+        b.wait("document.documentElement.dataset.pgpResults && document.querySelector('#results details.pfold')")
+        time.sleep(0.5)
+        got["flagged"] = b.eval("var e = document.getElementById('card-%s'); !!e && e.checkVisibility() && "
+                                "e.getBoundingClientRect().height > 0" % FLAGGED)
+        # The reader opens section 6's fold, the ROH card's fold in it and a card's other lines.
+        got["opened"] = b.eval("""(function () {
+          var s6 = document.querySelector('#s6 details.secfold'), roh = document.querySelector('details[data-card="fold-roh"]');
+          var more = document.querySelector('#results article.result details.lines-more');
+          if (!s6 || !roh || !more) { return ''; }
+          s6.open = true; roh.open = true;
+          for (var d = more; d; d = d.parentElement && d.parentElement.closest('details')) { d.open = true; }
+          return more.closest('article').id; }())""")
+        phone_at(b, 1280)
+        b.wait("!document.querySelector('#results details.pfold') && 'wide'", 10)
+        time.sleep(0.5)
+        got["wide"] = b.eval("var a = document.getElementById(%s); !!a && !!a.querySelector('details.lines-more[open]')"
+                             % json.dumps(got["opened"] or ""))
+        phone_at(b, 390)
+        b.wait("document.querySelector('#results details.pfold') && 'phone'", 10)
+        time.sleep(0.5)
+        got["back"] = b.eval("""JSON.stringify([!!document.querySelector('#s6 details.secfold[open]'),
+          !!document.querySelector('details[data-card="fold-roh"][open]'),
+          !!document.querySelector('#' + %s + ' details.lines-more[open]')])""" % json.dumps(got["opened"] or "x"))
+        # A link to the place the address already names: Ctrl+click leaves its fold closed, a plain click opens it.
+        b.eval("location.hash = '#s8'; true")
+        b.wait("document.querySelector('#s8 details.secfold[open]') && 'open'", 5)
+        b.eval("""window.addEventListener('click', function (e) { e.preventDefault(); });
+          document.querySelector('#s8 details.secfold').open = false;
+          document.querySelector('#tabbar a[href="#s8"]').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, ctrlKey: true}));
+          true""")
+        time.sleep(0.3)
+        got["ctrl"] = b.eval("document.querySelector('#s8 details.secfold').open")
+        b.eval("""document.querySelector('#tabbar a[href="#s8"]').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true})); true""")
+        time.sleep(0.3)
+        got["plain"] = b.eval("document.querySelector('#s8 details.secfold').open")
+        return got
+    finally:
+        b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
+
+
+def fold_problems(got):
+    out = []
+    if not got.get("flagged"):
+        out.append(f"the flagged section 5 card {FLAGGED} with no finding of its own is folded on a phone")
+    if not got.get("opened"):
+        out.append("no section 6 fold, ROH fold or card with other lines to open")
+    if not got.get("wide"):
+        out.append(f"the other lines opened in {got.get('opened')} closed when the page turned wide")
+    if json.loads(got.get("back") or "null") != [True, True, True]:
+        out.append(f"section 6, the ROH card and the other lines opened on the phone, open after wide and back: {got.get('back')}")
+    if got.get("ctrl") is not False:
+        out.append(f"a Ctrl+click on a link to the current place opened its fold: {got.get('ctrl')}")
+    if got.get("plain") is not True:
+        out.append(f"a plain click on a link to the current place left its fold closed: {got.get('plain')}")
+    return out
+
+
+def fold_checks(b, base, out):
+    """On a phone a section 5 card the report flags with no finding of its own stays open with its section; a
+    fold the reader opened stays open when the phone turns wide and back, inner folds too; a Ctrl+click on a
+    link to the place the address names leaves the page as it is."""
+    rj = os.path.join(out, "runs", OTHERS[0], "results.json")
+    js = os.path.join(out, "assets", "person.js")
+    keep, keep_js = open(rj).read(), open(js).read()
+    b.call("Network.enable", session=b.session)
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+    try:
+        res = json.loads(keep)
+        card = [c for ch in res["chapters"] for c in ch["sections"] if c["id"] == FLAGGED]
+        sec5 = [x for x in res["journal"] if x["n"] == 5]
+        check(f"browser: {FLAGGED} is a section 5 card with no finding of its own, so it can be flagged alone",
+              bool(card and not card[0].get("findings") and sec5 and FLAGGED in sec5[0]["cards"]), (card, sec5))
+        for c in card:
+            c["attention"] = True
+        with open(rj, "w") as f:
+            json.dump(res, f)
+        bad = fold_problems(fold_facts(b, base))
+        check("browser: at 390 px a flagged section 5 card stays open, folds opened on a phone stay open after the "
+              "page turns wide and back (other lines too), and a Ctrl+click leaves a fold as it is", not bad, bad)
+        planted = (("function flaggedAlone(c) { return ", "function flaggedAlone(c) { return false && ",
+                    "a flagged section 5 card folded with its section"),
+                   ("function restoreFolds() { foldKeys()", "function restoreFolds() { return; foldKeys()",
+                    "a redraw that forgets the folds"),
+                   ("if (e.button !== 0 || e.ctrlKey", "if (false && e.ctrlKey", "a Ctrl+click that opens the fold"))
+        for a, z, desc in planted:
+            if a not in keep_js:
+                check(f"control: {desc} (the planted line is in person.js)", False, a)
+                continue
+            with open(js, "w") as f:
+                f.write(keep_js.replace(a, z))
+            control(desc, not fold_problems(fold_facts(b, base)))
+    finally:
+        with open(rj, "w") as f:
+            f.write(keep)
+        with open(js, "w") as f:
+            f.write(keep_js)
 
 
 def main():
