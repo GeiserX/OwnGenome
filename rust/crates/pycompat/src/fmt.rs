@@ -319,7 +319,7 @@ pub fn round_int(x: f64) -> Result<f64, RoundError> {
     } else if x.is_infinite() {
         Err(RoundError::Infinite)
     } else {
-        Ok(x.round())
+        Ok(x.round_ties_even())
     }
 }
 

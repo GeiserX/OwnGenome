@@ -72,7 +72,7 @@ check() {
   done
   if [ -n "$stale" ]; then
     echo "ERROR: og is stale:${stale}, but rust/ here is tree ${expected}: run scripts/setup.sh --og"
-    return 0
+    return 1
   fi
   if [ -n "$missing" ] && $required; then
     echo "ERROR: og is not built for${missing}: run scripts/setup.sh --og"
