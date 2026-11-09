@@ -1,0 +1,21 @@
+#!/bin/sh
+# og: OwnGenome's Rust binary, called by bare name in a task (bin/ is on its
+# PATH) or as /pgp-bin/og in a step script. It runs the static Linux build
+# for this machine from bin/.og/, which scripts/setup.sh --og puts there
+# (rust/og.sh). Inside an amd64 image on an Apple Silicon host, uname -m
+# says x86_64, so that build runs under emulation.
+case $(uname -m) in
+  x86_64 | amd64) arch=x86_64 ;;
+  aarch64 | arm64) arch=aarch64 ;;
+  *) arch=$(uname -m) ;;
+esac
+bin="$(dirname "$0")/.og/og-linux-${arch}"
+if [ "$(uname -s)" != Linux ]; then
+  echo "ERROR: og runs inside the pipeline's Linux containers, not on $(uname -s)" >&2
+  exit 127
+fi
+if [ ! -x "$bin" ]; then
+  echo "ERROR: og is not built for ${arch}; run scripts/setup.sh --og" >&2
+  exit 127
+fi
+exec "$bin" "$@"

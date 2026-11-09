@@ -6,14 +6,15 @@ use std::process::ExitCode;
 
 mod probe;
 
-/// The tree hash after a fixed marker, so a host check can read it from the
-/// file without running it (`grep -ao 'og-tree-hash:[0-9a-f]*'`): an
-/// Apple Silicon host cannot run the x86_64 Linux binary.
-const TREE_MARK: &str = concat!("og-tree-hash:", env!("OG_TREE_HASH"));
+/// The tree hash between a fixed marker and a `;`, so a host check can read
+/// it from the file without running it (`grep -ao 'og-tree-hash:[0-9a-f]*;'`):
+/// an Apple Silicon host cannot run the x86_64 Linux binary. The `;` ends
+/// it where the next string in the binary would otherwise run on.
+const TREE_MARK: &str = concat!("og-tree-hash:", env!("OG_TREE_HASH"), ";");
 const TARGET: &str = env!("OG_TARGET");
 
 fn tree_hash() -> &'static str {
-    &TREE_MARK["og-tree-hash:".len()..]
+    &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
 const USAGE: &str = "usage: og <tool> [args]\n       og version\n       og --tree-hash\n";
