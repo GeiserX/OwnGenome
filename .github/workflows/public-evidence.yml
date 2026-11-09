@@ -523,13 +523,15 @@ jobs:
             nea=$(kv neanderthal_percent)
             mb=$(awk -v b="$(kv neanderthal_bp)" 'BEGIN {printf "%.1f", b / 1e6}')
             # Chen et al. 2020 (Cell 180:677), released per-person calls for
-            # Europeans: the union of the Altai and Vindija segments, LOD 4,
-            # 50 kb or longer, the cutoffs of step 43 (docs/43-archaic.md).
+            # the 503 Europeans: 42.0 to 62.0 Mb, median 51.6 Mb, made with the
+            # Altai genome alone and a refined call set. Step 43 takes the
+            # union of Altai and Vindija without the refinements, so its total
+            # is larger by design (docs/43-archaic.md, same-person comparison).
             if [ "$WANT" -eq 22 ]; then
-              where=$(awk -v b="$(kv neanderthal_bp)" 'BEGIN {print (b < 49.9e6 ? "below" : (b > 82.9e6 ? "above" : "inside"))}')
-              cmp="HG002's ${mb} Mb of Neanderthal sequence is ${where} the published range: Chen et al. 2020 released per-person calls with the same method and cutoffs (Altai and Vindija union, LOD 4, 50 kb or longer), and Europeans carry 49.9 to 82.9 Mb in them (see docs/43-archaic.md)."
+              ratio=$(awk -v b="$(kv neanderthal_bp)" 'BEGIN {printf "%.1f", b / 51.6e6}')
+              cmp="HG002's ${mb} Mb of Neanderthal sequence is ${ratio} times the median (51.6 Mb) of the per-person totals Chen et al. 2020 released for 503 Europeans (42.0 to 62.0 Mb). Their method uses the Altai genome alone and a refined call set; step 43 takes the union of Altai and Vindija, so it finds more by design (see docs/43-archaic.md)."
             else
-              cmp="HG002 has ${mb} Mb of Neanderthal sequence on these ${WANT} autosomes. The published range of 49.9 to 82.9 Mb (Chen et al. 2020, Europeans, Altai and Vindija union, LOD 4, 50 kb or longer) is for the 22 autosomes, so it is not compared here."
+              cmp="HG002 has ${mb} Mb of Neanderthal sequence on these ${WANT} autosomes. The per-person totals of Chen et al. 2020 (503 Europeans: 42.0 to 62.0 Mb) are for the 22 autosomes, so they are not compared here."
             fi
             {
               echo "**1000 Genomes ${pop} frequencies:** Neanderthal ${nea}% ($(kv neanderthal_segments) segments, longest $(kv neanderthal_longest_bp) bp), Denisovan $(kv denisovan_percent)% ($(kv denisovan_segments) segments), over $(kv analysed_chromosomes) autosomes, $(kv analysed_bp) bp, $(kv analysed_sites) sites. ${cmp}"
