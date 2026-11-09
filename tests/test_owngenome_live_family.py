@@ -405,6 +405,15 @@ def depth_checks(b, base, root):
         check("browser: side by side has a row per blood group system, a stale value marked in its cell and no other",
               "|Duffy|" in rows and kell.split("|")[2] == "K-k+ (older than its input)" and hap.split("|")[2] == "H1"
               and legend == "4", (kell, hap, legend))
+        os.remove(os.path.join(fam_dir, "compound_het.tsv"))
+        shutil.copy(secret, os.path.join(fam_dir, "compound_het.tsv"))
+        b.go(base + "/runs/family_a/")
+        b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+               "!!document.querySelector('details[data-child=child_a] p[data-trio=compound_het]')")
+        ch = b.eval("var p = document.querySelector('details[data-child=child_a] p[data-trio=compound_het]'); "
+                    "p && p.textContent") or ""
+        check("browser: an assessed child's empty compound-het line says pairs come only from step 23's candidates",
+              ch.startswith("Assessed (") and "step 23" in ch, ch)
     finally:
         os.remove(os.path.join(fam_dir, "compound_het.tsv"))
         os.remove(os.path.join(root, "child_a", "summary.json"))
