@@ -659,6 +659,14 @@ CYP2D6 is the hard gene: a nearby pseudogene and frequent copy-number changes co
 
 One SMN1 copy suggests SMA carrier status; two do not rule it out (two copies on one chromosome, none on the other). Trust a value only with quality 20 or more and filter `PASS`, and confirm anything that matters with a clinical SMN1 test. [Step 35](35-paralogs.md#interpreting-results) explains the columns.
 
+**The silent-carrier marker:** `${SAMPLE}/paralogs/${SAMPLE}_smn1_marker.tsv` reads SMN1 g.27134T>G (rs143838139), and both reports and the live person page print it right under the SMN1 copies: `present`, `uncertain`, `not seen`, `too little depth` or `not assessed`. With two SMN1 copies, `present` raises the chance that both sit on one chromosome (2+0, a silent carrier) and `not seen` lowers it; it proves neither, and the figures depend on ancestry. A carrier test in a clinical laboratory confirms it. [The SMN1 silent-carrier marker](35-paralogs.md#the-smn1-silent-carrier-marker) gives the thresholds.
+
+## Lp(a) and the LPA KIV-2 Count (Step 46, opt-in)
+
+**Where to look:** `${SAMPLE}/lpa/${SAMPLE}_lpa_kiv2.tsv`, the KIV-2 repeat count over both chromosomes with its 95% interval and class, and `${SAMPLE}/lpa/${SAMPLE}_lpa_kiv2_4925.tsv`, the KIV-2 4925G>A splice variant. Both reports put the count beside the two LPA risk variants of step 42 (rs10455872, rs3798220), and print the 4925G>A line right under the count: `present` or `uncertain` with the reads that carry it and the copies, `not seen`, `too little depth` or `not assessed`.
+
+Fewer repeats or a risk allele point to a higher Lp(a); a 4925G>A copy lowers the Lp(a) made from the chromosome that carries it. Neither tells which chromosome carries what, and `not seen` is not proof of absence at low depth. The count is a research estimate: the Lp(a) blood test is the measure, once in every adult. [Step 46](46-lpa.md) explains the columns.
+
 ## Mobile Element Insertions (Step 50, opt-in)
 
 **Where to look:** `${SAMPLE}/mei/${SAMPLE}_mei_sites.tsv` for the three known disease insertions (SVA insertions in FKTN, TAF1 and BBS1), and `${SAMPLE}/mei/${SAMPLE}_mei.tsv` for every Alu, L1 and SVA insertion MEGAnE called, with one or two copies.
