@@ -43,6 +43,16 @@ trace {
     file      = '${WORK}/trace.txt'
     fields    = 'task_id,name,status,submit,complete'
 }
+// A stub task ends in about a second, and on a small runner the memory the
+// first tasks ask for can hold PRS_PREPARE back for about as long. Each
+// DEEPVARIANT task waits 20 s first, so the check measures the order the
+// channels allow, not which stub happens to be quicker. Before the change
+// PRS_PREPARE waits for a VCF, so it still comes after.
+process {
+    withName: 'DEEPVARIANT' {
+        beforeScript = 'sleep 20'
+    }
+}
 EOF
 
 # The test profile with the stub scoring files; only prs is selected, so only
@@ -58,7 +68,16 @@ fi
 
 python3 - "${WORK}/trace.txt" <<'PY'
 import csv, sys
-rows = list(csv.DictReader(open(sys.argv[1]), delimiter="\t"))
+# The trace can list a finished task twice (docs/lessons-learned.md, "The
+# trace file can list a finished task twice"): one entry per task_id, with the
+# earliest submit and the latest complete time its rows give.
+rows = {}
+for r in csv.DictReader(open(sys.argv[1]), delimiter="\t"):
+    seen = rows.setdefault(r["task_id"], dict(r))
+    for field, pick in (("submit", min), ("complete", max)):
+        times = [int(v) for v in (seen[field], r[field]) if v and v != "-"]
+        seen[field] = str(pick(times)) if times else "-"
+rows = list(rows.values())
 
 def tasks(proc):
     return [r for r in rows if r["name"].split(" (")[0].split(":")[-1] == proc]
