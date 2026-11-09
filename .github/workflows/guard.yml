@@ -207,6 +207,42 @@ jobs:
           git checkout -- og/src/main.rs
           ./og.sh check --required
 
+      # main.nf runs the same check before any task: a stale og stops
+      # `nextflow run` with the setup command. Without the check, this stub
+      # run completes and the step fails.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: The Nextflow version versions.env pins
+        id: nf
+        working-directory: .
+        run: |
+          # shellcheck source=/dev/null
+          . ./versions.env
+          echo "version=${NEXTFLOW_VERSION:?NEXTFLOW_VERSION is not set in versions.env}" >> "$GITHUB_OUTPUT"
+
+      # Not a Nextflow pin: the version comes from versions.env. Quoted so the
+      # Renovate dry run does not count it as one.
+      - uses: "nf-core/setup-nextflow@893c28b667aedeba26e37f296d260ccc5bc4d914" # v3.0.1
+        with:
+          version: ${{ steps.nf.outputs.version }}
+
+      - name: nextflow run stops on a stale og before any task
+        working-directory: .
+        run: |
+          echo "// edited" >> rust/og/src/main.rs
+          rc=0
+          out=$(timeout 600 nextflow run main.nf -profile test -stub -ansi-log false --outdir "${RUNNER_TEMP}/og-stale" 2>&1) || rc=$?
+          git checkout -- rust/og/src/main.rs
+          if [ "$rc" -eq 0 ] || [[ "$out" != *"og is stale:"*"run scripts/setup.sh --og"* ]] || [[ "$out" == *"Submitted process"* ]]; then
+            echo "$out"
+            echo "ERROR: nextflow run did not stop on a stale og before any task (exit ${rc})"
+            exit 1
+          fi
+          echo "Refused, as it must (exit ${rc}): $(grep 'og is stale' <<< "$out")"
+
   # The one check the ruleset requires for this workflow: it runs even when a
   # job above failed or was skipped, and fails unless every one succeeded.
   ci-ok:

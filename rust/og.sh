@@ -144,8 +144,12 @@ get() {  # get URL DEST: 0 when downloaded, 1 when not
 # fetch TAG: 0 when the release's binaries are installed, 2 when the release
 # has none (build instead), 1 when a download does not check out.
 fetch() {
-  local tag=$1 tmp want hash a f rc=0
+  local tag=$1 tmp want hash a f rc=0 attest=0
   hash=$(tree_hash)
+  # gh attestation verify needs a login: without one (gh missing, or never
+  # logged in) only SHA256SUMS is checked. gh auth token, not gh auth status,
+  # which can hang on enterprise hosts.
+  if command -v gh > /dev/null 2>&1 && gh auth token > /dev/null 2>&1; then attest=1; fi
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/og-fetch.XXXXXX")
   # OG_RELEASE_BASE: another server with the same layout (tests/test_og_check.sh).
   local base="${OG_RELEASE_BASE:-https://github.com/${REPO}/releases/download}/${tag}"
@@ -158,14 +162,14 @@ fetch() {
     want=$(awk -v f="$f" '$2 == f || $2 == "*" f {print $1}' "${tmp}/SHA256SUMS")
     if [ -z "$want" ] || ! get "${base}/${f}" "${tmp}/${f}"; then echo "ERROR: release ${tag} lists no ${f}" >&2; rc=1; break; fi
     if [ "$(sha256 "${tmp}/${f}")" != "$want" ]; then echo "ERROR: ${f} of release ${tag} does not match its SHA256SUMS" >&2; rc=1; break; fi
-    if command -v gh > /dev/null 2>&1; then
+    if [ "$attest" = 1 ]; then
       gh attestation verify "${tmp}/${f}" --repo "$REPO" > /dev/null || { echo "ERROR: ${f} of release ${tag} has no valid build attestation" >&2; rc=1; break; }
     fi
     if [ "$(embedded "${tmp}/${f}")" != "$hash" ]; then echo "ERROR: ${f} of release ${tag} was not built from this rust/ (tree ${hash})" >&2; rc=1; break; fi
   done
   if [ "$rc" -eq 0 ]; then
     for a in $ARCHES; do put "${tmp}/og-linux-${a}" "$a"; done
-    command -v gh > /dev/null 2>&1 || echo "NOTE: gh is not installed, so the build attestation was not checked (SHA256SUMS was)"
+    [ "$attest" = 1 ] || echo "NOTE: gh is not installed or not logged in, so the build attestation was not checked (SHA256SUMS was)"
     echo "Installed og ${hash} from release ${tag}"
   fi
   rm -rf "$tmp"

@@ -106,7 +106,7 @@ row=$(awk -F'\t' '$1 == "run" && $2 == "og_tree_hash" {print $3}' "${T}/genome/s
 
 # A release tag: the binaries come from the release, checked against
 # SHA256SUMS and the attestation (a fake gh here), and are refused when
-# either does not match. OG_RELEASE_BASE points at a local server.
+# either does not match; a gh that is not logged in skips the attestation. OG_RELEASE_BASE points at a local server.
 if command -v python3 > /dev/null 2>&1 && command -v curl > /dev/null 2>&1; then
   rm -rf "${C}/bin/.og"
   g tag v9.9.9
@@ -126,11 +126,21 @@ exit 0
   [ "$(bash "$OG" built)" = "$h1" ] && ok "the installed binaries carry the tree" || bad "built after install: $(bash "$OG" built)"
   rm -rf "${C}/bin/.og"
   printf '#!/bin/sh
+[ "$1" = auth ] && exit 0
 echo "no attestation" >&2
 exit 1
 ' > "${T}/fake/gh"
   out=$(PATH="${T}/fake:${PATH}" OG_RELEASE_BASE="http://127.0.0.1:${port}" bash "$OG" install 2>&1); rc=$?
   expect "a binary without a valid attestation is refused" "$rc" 1 "$out" "*has no valid build attestation*"
+  # gh installed but not logged in: attestation verify cannot run, so only
+  # SHA256SUMS is checked, with a note, never a refusal that reads as tampering.
+  printf '#!/bin/sh
+echo "To get started with GitHub CLI, please run: gh auth login" >&2
+exit 4
+' > "${T}/fake/gh"
+  out=$(PATH="${T}/fake:${PATH}" OG_RELEASE_BASE="http://127.0.0.1:${port}" bash "$OG" install 2>&1); rc=$?
+  expect "gh not logged in: installed, attestation not checked" "$rc" 0 "$out" "*attestation was not checked*Installed og ${h1} from release v9.9.9*"
+  rm -rf "${C}/bin/.og"
   printf '#!/bin/sh
 exit 0
 ' > "${T}/fake/gh"

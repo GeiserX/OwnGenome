@@ -31,7 +31,7 @@ The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `
 This puts two static musl binaries in `bin/.og/` (ignored by git): `og-linux-x86_64` and `og-linux-aarch64`. Both are kept because an Apple Silicon host runs amd64 images under emulation, where `uname -m` says `x86_64`.
 
 - **From a checkout of `main` or a branch,** it builds them from `rust/` inside `OG_BUILDER`, a pinned [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) image (`versions.env`). Docker is the only thing it needs; no Rust on the host. The cargo cache lives in `rust/target/og-build/`.
-- **From a checkout of a release tag** (`vX.Y.Z`), it downloads the release's two binaries, checks them against the release's `SHA256SUMS` and, when `gh` is installed, against the build attestation (`gh attestation verify`). A release without binaries falls back to a build.
+- **From a checkout of a release tag** (`vX.Y.Z`), it downloads the release's two binaries, checks them against the release's `SHA256SUMS` and, when `gh` is installed and logged in, against the build attestation (`gh attestation verify`). A release without binaries falls back to a build.
 
 For day-to-day work on the Rust code a host toolchain is quicker: `cd rust && cargo test`. A plain `cargo build` stamps the binary `unknown`, which the check below refuses, so use `scripts/setup.sh --og` for a binary the pipeline will run.
 
@@ -75,9 +75,9 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 ## CI
 
-- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; both musl builds through `scripts/setup.sh --og`; and the stale check on the real binaries, which must refuse them after an edit to `rust/`.
-- **Guard, job `unit-tests`**: `tests/test_og_check.sh` runs the check on planted trees (no binary, a stale one, an edit that is uncommitted, untracked or committed, a file git ignores, a binary stamped `unknown`, a release download with a bad checksum or attestation), and checks that `run-all.sh`, `validate-setup.sh` and `write_manifest.sh` act on it.
-- **Rust** (`rust.yml`, on a pull request that touches the Rust code, the shim or `versions.env`): times a cold and a cached build, runs `og` by bare name in the four images on amd64 and arm64 (QEMU), and keeps the binaries as the artifact `og-binaries`. Every night it runs the differential test at 10,000,000 cases per operation with a new seed.
+- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; both musl builds through `scripts/setup.sh --og`; and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task.
+- **Guard, job `unit-tests`**: `tests/test_og_check.sh` runs the check on planted trees (no binary, a stale one, an edit that is uncommitted, untracked or committed, a file git ignores, a binary stamped `unknown`, a release download with a bad checksum or attestation, or with `gh` not logged in), and checks that `run-all.sh`, `validate-setup.sh` and `write_manifest.sh` act on it.
+- **Rust** (`rust.yml`, on a pull request that touches the Rust code, the shim or `versions.env`): times a cold and a cached build, runs `og` by bare name in the four images on amd64 and arm64 (QEMU), runs that check once more with a wrong-arch binary planted, which must fail, and keeps the binaries as the artifact `og-binaries`. Every night it runs the differential test at 10,000,000 cases per operation with a new seed.
 - **Release** (`release.yml`): a tag builds both binaries, writes `SHA256SUMS`, attests them and attaches all three to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.

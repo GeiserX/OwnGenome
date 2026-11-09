@@ -21,7 +21,8 @@ for a in x86_64 aarch64; do
 done
 fail=0 runs=0
 run_og() {  # run_og IMAGE PLATFORM BINDIR: og version, as a task would call it
-  docker run --rm --pull missing --platform "$2" -v "${3}:${3}:ro" -e "PATH=${3}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  # -q: a first pull prints its progress on the output compared below.
+  docker run -q --rm --pull missing --platform "$2" -v "${3}:${3}:ro" -e "PATH=${3}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     --entrypoint sh "$1" -c 'echo "$(uname -m) $(og version)"' 2>&1
 }
 printf '%-18s %-12s %-8s %s\n' image platform result "uname -m and og version"

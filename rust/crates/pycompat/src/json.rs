@@ -54,7 +54,13 @@ pub enum JsonError {
     OutOfRangeFloat,
     /// JSONDecodeError: what was wrong and the byte offset.
     Decode(&'static str, usize),
+    /// RecursionError: arrays and objects nested deeper than [`MAX_DEPTH`].
+    TooDeep,
 }
+
+/// How deep `loads` nests arrays and objects before it gives up, about
+/// where CPython's default recursion limit (1000) stops `json.loads`.
+pub const MAX_DEPTH: usize = 1000;
 
 impl JsonError {
     /// The Python exception class.
@@ -62,6 +68,7 @@ impl JsonError {
         match self {
             JsonError::OutOfRangeFloat => "ValueError",
             JsonError::Decode(..) => "JSONDecodeError",
+            JsonError::TooDeep => "RecursionError",
         }
     }
 }
@@ -73,6 +80,7 @@ impl fmt::Display for JsonError {
                 f.write_str("Out of range float values are not JSON compliant")
             }
             JsonError::Decode(what, at) => write!(f, "{what}: byte {at}"),
+            JsonError::TooDeep => write!(f, "nested deeper than {MAX_DEPTH} levels"),
         }
     }
 }
@@ -204,6 +212,7 @@ pub fn loads(text: &str) -> Result<Value, JsonError> {
         s: text.as_bytes(),
         text,
         i: 0,
+        depth: 0,
     };
     p.ws();
     let v = p.value()?;
@@ -218,6 +227,8 @@ struct Parser<'a> {
     s: &'a [u8],
     text: &'a str,
     i: usize,
+    /// Arrays and objects open around `i`: a bound on the recursion.
+    depth: usize,
 }
 
 impl Parser<'_> {
@@ -242,8 +253,19 @@ impl Parser<'_> {
 
     fn value(&mut self) -> Result<Value, JsonError> {
         match self.s.get(self.i) {
-            Some(b'{') => self.object(),
-            Some(b'[') => self.array(),
+            Some(b'{' | b'[') => {
+                if self.depth == MAX_DEPTH {
+                    return Err(JsonError::TooDeep);
+                }
+                self.depth += 1;
+                let v = if self.s[self.i] == b'{' {
+                    self.object()
+                } else {
+                    self.array()
+                };
+                self.depth -= 1;
+                v
+            }
             Some(b'"') => Ok(Value::Str(self.string()?)),
             Some(b'n') if self.eat("null") => Ok(Value::Null),
             Some(b't') if self.eat("true") => Ok(Value::Bool(true)),
@@ -521,5 +543,21 @@ mod tests {
         ] {
             assert!(loads(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn loads_stops_deep_nesting_with_an_error() {
+        // 8 MiB, the main-thread stack og runs on: a test thread has 2 MiB,
+        // too little for MAX_DEPTH levels in an unoptimised build.
+        let t = std::thread::Builder::new().stack_size(8 << 20).spawn(|| {
+            let nested = |n: usize| format!("{}{}", "[".repeat(n), "]".repeat(n));
+            assert!(loads(&nested(MAX_DEPTH)).is_ok());
+            assert_eq!(loads(&nested(MAX_DEPTH + 1)), Err(JsonError::TooDeep));
+            // Far past the limit: an error, never a stack overflow.
+            assert_eq!(loads(&"[".repeat(1_000_000)), Err(JsonError::TooDeep));
+            assert_eq!(loads(&"{\"a\":".repeat(100_000)), Err(JsonError::TooDeep));
+        });
+        t.unwrap().join().unwrap();
+        assert_eq!(JsonError::TooDeep.exception(), "RecursionError");
     }
 }
