@@ -257,6 +257,20 @@ def main():
               [r["findings_a"] for r in rows(f"{t}/smnn/couple_A_B.tsv") if r["gene"] == "SMN1"] == ["."]
               and "SMN1 copy number of A: SMN1 not assessed: no read over chr5:70951946-70951946; copy number not resolved." in md6n, md6n)
 
+        # 6b. CYP21A2 not assessed: the table's message, the reason code for an older table
+        why = ("not assessed: the BAM has few or no multi-mapping reads here (reads of mapping quality 0 make up "
+               "0.0% of the depth over CYP21A2 and CYP21A1P, under 2%), the sign of an aligner that leaves out the "
+               "reads that fit both copies")
+        na = "metric\tvalue\nstatus\tnot assessed\ncyp21a2_copies\t.\nfinding\t.\nreason\tlow_mapq0_share\n"
+        ca, cb = put(f"{t}/A_cyp.tsv", na + f"message\t{why}\n"), put(f"{t}/B_cyp.tsv", na)
+        run("screen", "--pedigree", ped, "--genes", GENES, "--clinvar", f"A={a_none}", "--clinvar", f"B={a_none}",
+            "--cyp21a2", f"A={ca}", "--cyp21a2", f"B={cb}", "--out-dir", f"{t}/cyp")
+        md6c = open(f"{t}/cyp/couple_A_B.md").read() if os.path.exists(f"{t}/cyp/couple_A_B.md") else ""
+        check("CYP21A2 not assessed: the not-assessed list prints the table's message (the aligner stopped the call)",
+              f"CYP21A2 deletion and conversions of A: CYP21A2 {why}." in md6c, md6c)
+        check("CYP21A2 not assessed in a table without the message row: the reason code",
+              "CYP21A2 deletion and conversions of B: CYP21A2 not assessed (low_mapq0_share)." in md6c, md6c)
+
         # 3b. read depth: a long Delly deletion counts only when RDCN shows the loss
         genes_mid = {g: mid(g) for g in ("GBA1", "PAH", "CFTR", "HBB", "DMD", "OTC")}
         dexons = put(f"{t}/depth_exons.bed", "".join(
