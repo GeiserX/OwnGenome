@@ -29,8 +29,9 @@ Checks:
      symlink out of the root are 404;
  10. in a headless Chrome (skipped without Chrome, except in CI): the login
      form, the step map, a box that repaints after a posted message, the
-     replay mode playing tests/fixtures/live/frames.json, and no policy
-     violation;
+     replay mode playing tests/fixtures/live/frames.json (opened at its last,
+     finished frame, its time short with the full time in the title), and no
+     policy violation;
  11. with --tls-cert, a client that connects and sends nothing does not hold
      up another client's HTTPS request.
 Checks 2, 4, 5, 6, 7, 8 and 11 are also run against a planted mistake and must fail
@@ -461,6 +462,13 @@ def browser_checks(port, work, live):
         replay_srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=replay_srv.serve_forever, daemon=True).start()
         b.go(f"http://127.0.0.1:{replay_srv.server_address[1]}/index.html")
+        # A finished run opens at its last frame, its moment short with the full time in the title.
+        opened = b.wait("document.documentElement.dataset.pgpFrame && JSON.stringify([document.documentElement.dataset.pgpFrame, "
+                        "document.querySelector('g.box[data-step=\"11\"]').dataset.state, "
+                        "document.getElementById('replay-time').textContent, document.getElementById('replay-time').title])")
+        check("browser: replay of a finished run opens at its end, its time short ('2 Jan 10:05') with the full time "
+              "in the title", json.loads(opened or "null") == ["2", "done", "2 Jan 10:05", "2026-01-02T10:05:40Z"], opened)
+        b.eval("var s = document.getElementById('replay-slider'); s.value = '0'; s.dispatchEvent(new Event('input')); true")
         first = b.wait("document.documentElement.dataset.pgpFrame === '0' && "
                        "document.querySelector('g.box[data-step=\"11\"]').dataset.state")
         b.eval("document.getElementById('replay-play').click(); true")

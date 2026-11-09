@@ -345,14 +345,14 @@ def write_json(path, obj):
         json.dump(obj, f, separators=(",", ":"))
 
 
-def person_site(out, root, name, plugin_js, frames, results, autoplay=False):
-    """runs/<name>/: the person page, its frames, results.json, the report and the files it links to."""
+def person_site(out, root, name, plugin_js, frames, results):
+    """runs/<name>/: the person page, its frames, results.json, the report and the files it links to. The
+    frames do not autoplay: the page opens on the finished report and Play replays the run."""
     sd, d = os.path.join(out, "runs", name), os.path.join(root, name)
     os.makedirs(sd)
     with open(os.path.join(sd, "index.html"), "w") as f:
         f.write(run_page(name, plugin_js))
-    write_json(os.path.join(sd, "frames.json"), dict({"interval_ms": INTERVAL_MS, "frames": frames},
-                                                     **({"autoplay": True} if autoplay else {})))
+    write_json(os.path.join(sd, "frames.json"), {"interval_ms": INTERVAL_MS, "frames": frames})
     write_json(os.path.join(sd, "results.json"), results)
     files = {f"{name}_report.html": "report.html"}
     # The files the report links to, as the live server lists them (Live.run_files reads no state).
@@ -396,7 +396,7 @@ def write_site(out, root, frames, fam):
         f.write(home_page(fam["index"]))
     write_json(os.path.join(out, "runs.json"), unroot(fam["index"]))
 
-    person_site(out, root, SAMPLE, plugin_js, frames, fam["results"], autoplay=True)
+    person_site(out, root, SAMPLE, plugin_js, frames, fam["results"])
     for name, _, _ in OTHERS:
         o = fam["others"][name]
         person_site(out, root, name, plugin_js, o["frames"], o["results"])
