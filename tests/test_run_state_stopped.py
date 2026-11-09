@@ -14,9 +14,12 @@ Checks (synthetic run folders, no genome data):
      trace under the same pipeline_info (another sample's run going on does
      not keep a dead one alive);
   7. run-all.sh's live block prints '<OWNGENOME_LIVE_PAGE_URL>/runs/<sample>/'
-     when the setting is given, and no page line without it.
-Checks 1, 4 and 7 are then run against a planted mistake (no stale limit; the
-page line removed) and must fail there: a check that cannot fail is no check.
+     when the setting is given, and no page line without it;
+  8. collect() without stale=True (what the rerun and ClinVar refresh guards
+     read) still calls the three-day-quiet run 'running'.
+Checks 1, 4, 7 and 8 are then run against a planted mistake (no stale limit;
+the page line removed; stale on by default) and must fail there: a check that
+cannot fail is no check.
 
 Run: python3 tests/test_run_state_stopped.py
 """
@@ -76,18 +79,21 @@ def make_run(top, sample, age_s, finished=False):
 def state_checks(rs, work):
     out = {}
     old = make_run(os.path.join(work, "a"), "old1", 3 * DAY)
-    st = rs.collect("old1", old)
+    guard = rs.collect("old1", old)
+    out["collect() without stale=True (the rerun and refresh guards) still reads running"] = (
+        guard["run"]["state"] == "running" and "last_heard_utc" not in guard["run"], guard["run"])
+    st = rs.collect("old1", old, stale=True)
     heard = st["run"].get("last_heard_utc")
     want = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 3 * DAY))
     out["a run silent for three days with no end record reads stopped"] = (
         st["run"]["state"] == "stopped" and bool(heard) and heard.startswith(want), st["run"])
 
     fresh = make_run(os.path.join(work, "b"), "new1", 60)
-    st = rs.collect("new1", fresh)
+    st = rs.collect("new1", fresh, stale=True)
     out["a run written a minute ago reads running"] = (st["run"]["state"] == "running", st["run"])
 
     mid = make_run(os.path.join(work, "c"), "mid1", 8 * 3600)
-    st = rs.collect("mid1", mid)
+    st = rs.collect("mid1", mid, stale=True)
     out["a run quiet for 8 h (under twice the longest step) still reads running"] = (
         st["run"]["state"] == "running", st["run"])
 
@@ -97,11 +103,11 @@ def state_checks(rs, work):
                             "utcTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                             "trace": {"task_id": 2, "name": "BWA_MEM2 (old1)", "status": "RUNNING",
                                       "start": int(time.time() * 1000)}}) + "\n")
-    st = rs.collect("old1", old, events_path=ev)
+    st = rs.collect("old1", old, events_path=ev, stale=True)
     out["a stopped run that gets a new message reads running again"] = (st["run"]["state"] == "running", st["run"])
 
     done = make_run(os.path.join(work, "d"), "end1", 30 * DAY, finished=True)
-    st = rs.collect("end1", done)
+    st = rs.collect("end1", done, stale=True)
     out["a run with an end record reads finished, however old"] = (st["run"]["state"] == "finished", st["run"])
     return out
 
@@ -191,6 +197,13 @@ def main():
         got = state_checks(bad, os.path.join(work, "mutant0"))
         check("fails on a planted mistake: a run that gets a message stays stopped",
               not got["a stopped run that gets a new message reads running again"][0], "passed on the mutant")
+        eager = load(name="run_state_mutant_eager")
+        plain = eager.collect
+        eager.collect = lambda *a, **k: plain(*a, **{**k, "stale": True})  # stale on for every caller
+        got = state_checks(eager, os.path.join(work, "mutant-eager"))
+        check("fails on a planted mistake: collect() calls a quiet run stopped for every caller",
+              not got["collect() without stale=True (the rerun and refresh guards) still reads running"][0],
+              "passed on the mutant")
         cut = "\n".join(line for line in block.splitlines() if "OWNGENOME_LIVE_PAGE_URL" not in line)
         got = page_checks(cut, os.path.join(work, "mutant-sh"))
         check("fails on a planted mistake: run-all.sh without the page line",

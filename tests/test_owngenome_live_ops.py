@@ -4,7 +4,8 @@
 Checks:
   1. half a minute into step 11 (usual time 60 to 100 s on this box), the run is not late and not
      stalled, and the hours left is a range with both ends;
-  2. two hours later, with no message since, step 11 is late and the run is stalled;
+  2. two hours later, with no message since, step 11 is late and the run is stalled, and stays
+     stalled when run_state calls it 'stopped' (no end record, quiet past its stale limit);
   3. a run quiet past --stall-minutes whose running step is still inside its usual time is not stalled;
   4. --stall-minutes 300 keeps the quiet run of check 2 from being stalled;
   5. a failed task makes the run failed; a pgp_run_finished with exit 1 does too, exit 0 does not;
@@ -117,7 +118,7 @@ def cfg_for(root, **kw):
     return c
 
 
-def ops_at(mod, now, run_all=True, extra=(), physical=64 * G, disk=0.50, **kw):
+def ops_at(mod, now, run_all=True, extra=(), physical=64 * G, disk=0.50, stopped=False, **kw):
     tmp = tempfile.mkdtemp(prefix="pgp-ops-")
     try:
         root, run_dir, events, work, out = make_tree(tmp, run_all, extra)
@@ -125,6 +126,8 @@ def ops_at(mod, now, run_all=True, extra=(), physical=64 * G, disk=0.50, **kw):
         status = run_state.read_run_status(os.path.join(run_dir, "logs", "run_status.tsv")) if run_dir else None
         cur = mod.current_run(events)
         state = run_state.build(SAMPLE, steps, status, None, [], run_state.event_tasks(cur, SAMPLE), cur, None, now)
+        if stopped:
+            state["run"]["state"] = "stopped"
         with disk_at(disk):
             o = mod.run_ops(run_dir or os.path.join(root, SAMPLE), state, events, cfg_for(root, **kw),
                             now=now, steps=steps, physical=physical)
@@ -162,6 +165,9 @@ def behaviour_checks(mod, quiet=False):
         check("2. two hours later and quiet: step 11 is late and the run is stalled",
               late["hours_left"]["late_steps"] == ["11"] and late["hours_left"]["high_s"] is None
               and kinds(late).get("late") == "warning" and kinds(late).get("stalled") == "warning", late["alerts"])
+        dead, _ = ops_at(mod, T0 + 302 + 7200, stopped=True)
+        check("2b. the same quiet run read 'stopped' (no end record) is still stalled",
+              dead["run"]["stalled"] and kinds(dead).get("stalled") == "warning", (dead["run"], dead["alerts"]))
         inside, _ = ops_at(mod, T0 + 302 + 90, stall_minutes=1)
         check("3. quiet past --stall-minutes but step 11 still inside its usual time: not stalled",
               inside["run"]["seconds_since_activity"] >= 60 and "stalled" not in kinds(inside)
@@ -352,8 +358,9 @@ def server_check():
 
 # Planted mistakes: each must make behaviour_checks fail.
 MUTANTS = [
-    ("stall ignores the quiet time", "stalled = running and quiet is not None and quiet >= stall_s and not covered",
-     "stalled = running and quiet is not None and not covered"),
+    ("stall ignores the quiet time", "quiet is not None and quiet >= stall_s and not covered",
+     "quiet is not None and not covered"),
+    ("a stopped run is not stalled", 'stalled = run_st in ("running", "stopped") and', "stalled = running and"),
     ("stall ignores the running steps", "quiet >= stall_s and not covered", "quiet >= stall_s"),
     ("late steps dropped", 'late = list(rem["late_steps"]) if rem else []', "late = []"),
     ("exit code ignored", "(exit_code not in (None, 0)) or error", "error"),

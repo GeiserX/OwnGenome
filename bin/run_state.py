@@ -507,7 +507,10 @@ def trace_files(sample_dir, started):
     return [p for p in found if os.path.getmtime(p) >= started]
 
 
-def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_TSV):
+def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_TSV, stale=False):
+    """The run state of sample_dir. stale: also call a quiet run with no end record 'stopped' (the live
+    site's view). Off by default: the guards that refuse to rerun or refresh under a run going on read
+    'running' and must keep reading it for a run that is alive but quiet."""
     status = read_run_status(os.path.join(sample_dir, "logs", "run_status.tsv"))
     try:
         started = float(status["meta"]["started_epoch"]) if status else None
@@ -521,7 +524,7 @@ def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_T
     return build(sample, read_steps(steps_path), status, pt,
                  read_trace(trace if trace else trace_files(sample_dir, started), sample),
                  event_tasks(events, sample), events, summary_sources(sample_dir),
-                 heard=last_heard(sample_dir, [events_path]))
+                 heard=last_heard(sample_dir, [events_path]) if stale else None)
 
 
 def main(argv=None):
