@@ -859,7 +859,9 @@ fi
 # other code than the checkout says, so it fails; none at all is a note until
 # a step calls og (rust/og.sh, REQUIRED).
 header "OwnGenome binary"
-OG_MSG=$("${PGP_ROOT}/rust/og.sh" check 2>&1) || true
+# A partial copy of the scripts (some tests make one) has no rust/og.sh.
+OG_MSG="NOTE: rust/og.sh is not here, so og was not checked"
+[ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || true
 case "$OG_MSG" in
   OK:*) pass "${OG_MSG#OK: }" ;;
   NOTE:*) info "${OG_MSG#NOTE: }" ;;

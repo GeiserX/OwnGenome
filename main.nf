@@ -100,11 +100,13 @@ workflow {
     // og (bin/.og, the Rust binary tasks call through bin/og) built from
     // another rust/ than this checkout's would run other code than the
     // checkout says: rust/og.sh check stops the run (scripts/setup.sh --og).
-    def og_check = ['bash', "${projectDir}/rust/og.sh", 'check'].execute()
-    def og_msg = og_check.text.trim()
-    og_check.waitFor()
-    if (og_check.exitValue() != 0) {
-        error og_msg.replaceFirst(/^ERROR: /, '')
+    if (file("${projectDir}/rust/og.sh").exists()) {
+        def og_check = ['bash', "${projectDir}/rust/og.sh", 'check'].execute()
+        def og_msg = og_check.text.trim()
+        og_check.waitFor()
+        if (og_check.exitValue() != 0) {
+            error og_msg.replaceFirst(/^ERROR: /, '')
+        }
     }
 
     def tools_list = params.tools ? params.tools.split(',').collect { it.trim() }.findAll { it } : []
