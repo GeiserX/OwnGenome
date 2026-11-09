@@ -177,7 +177,9 @@ def run_ops(run_dir, state, events, cfg, now=None, steps=None, physical=None):
         st = run_eta.epoch_of(s.get("started_utc"))
         if s["state"] == "running" and r.get("high_s") is not None and st is not None and now - st < r["high_s"]:
             covered.append(s["step"])
-    stalled = running and quiet is not None and quiet >= stall_s and not covered
+    # A run with no end record that run_state calls 'stopped' has been quiet even longer: still stalled, so
+    # the alert holds for the run that died without an end instead of resolving.
+    stalled = run_st in ("running", "stopped") and quiet is not None and quiet >= stall_s and not covered
     late = list(rem["late_steps"]) if rem else []
     mem_hints = [t for t in snap["tasks"] if t["warn"]]
     retries = sum(t["oom_retry"] for t in snap["tasks"])
