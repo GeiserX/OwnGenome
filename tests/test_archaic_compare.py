@@ -78,6 +78,13 @@ class Compare(unittest.TestCase):
             ac.main(["compare", "--chen-file", self.chen, "--sample", "Z", "--chroms", "22",
                      "--mine", f"x={self.mine}"])
 
+    def test_empty_group_stops(self):
+        with self.assertRaises(SystemExit) as r:
+            ac.main(
+                ["compare", "--chen-file", self.chen, "--sample", "A", "--group", "NOPE", "--chroms", "22",
+                 "--mine", f"x={self.mine}"])
+        self.assertIn("NOPE", str(r.exception))
+
     def test_wrong_segments_file_stops(self):
         open(self.mine, "w").write("a\tb\n")
         with self.assertRaises(SystemExit):

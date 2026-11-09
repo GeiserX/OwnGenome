@@ -29,6 +29,7 @@ import archaic_report  # noqa: E402  (the same reader and cutoffs as step 43)
 
 
 def norm(c):
+    """The chromosome name without a leading chr."""
     return c[3:] if c.startswith("chr") else c
 
 
@@ -48,6 +49,7 @@ def merged_bp(ivs):
 def intersect_bp(a, b):
     """Base pairs under both interval lists (each merged first)."""
     def merged(ivs):
+        """The intervals with overlaps joined."""
         out = []
         for s, e in sorted(ivs):
             if out and s <= out[-1][1]:
@@ -96,14 +98,18 @@ def read_mine(path):
 
 
 def chrom_order(c):
+    """Sort key: numbered chromosomes first, in order."""
     return (0, int(c)) if c.isdigit() else (1, c)
 
 
 def cmd_compare(a):
+    """Print the per-chromosome table and the totals of the compare command."""
     calls, group = read_chen(a.chen_file)
     if a.sample not in calls:
         sys.exit(f"{a.sample} is not in {a.chen_file}")
     peers = [p for p, g in group.items() if g == a.group]
+    if not peers:
+        sys.exit(f"no person of group {a.group} in {a.chen_file}")
     ivs = collections.defaultdict(lambda: collections.defaultdict(list))
     labels = []
     for item in a.mine:
@@ -118,6 +124,7 @@ def cmd_compare(a):
         sys.exit("--chroms names no chromosome")
 
     def chen_bp(p, c):
+        """One person's merged base pairs on one chromosome."""
         return merged_bp(calls[p].get(c, []))
 
     print(f"| chromosome | Chen {a.sample} (bp) | Chen {a.group} median | Chen {a.group} max | "
@@ -150,6 +157,7 @@ def cmd_compare(a):
 
 
 def cmd_genomes(a):
+    """Print the per-archaic-genome table of the genomes command."""
     calls, _ = read_chen(a.chen_file)
     if a.sample not in calls:
         sys.exit(f"{a.sample} is not in {a.chen_file}")
@@ -174,6 +182,7 @@ def cmd_genomes(a):
 
 
 def main(argv=None):
+    """Parse the command line and run the chosen command."""
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("compare")
