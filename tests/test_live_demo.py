@@ -21,18 +21,30 @@ Checks:
      static host serves it (no policy header): the home page's people and
      family, the replay to its last frame, the charts, a search, the re-check
      banner, the run-health card, the family link and its pedigree, the viewer
-     page, and no policy violation; the person page's cards (the doctor tab
-     with the ClinVar card, its caveat and its chart), the tab row moved with
-     the arrow keys, #s/clinvar focusing its card; the family page with a
+     page, and no policy violation; the person page's ten sections, its
+     contents, lead and ledger, #s/clinvar focusing the ClinVar card with its
+     caveat, chart and flag, a finding's own page with its plan and evidence;
+     the family page with a
      clickable pedigree and no step map or report link; the widgets of the
      partner's and the son's pages (the repeat gauge, the Lp(a) interval, the
      CHIP VAF, the copy-number dots, the Y path) and the AnnotSV and MoChA marks
      on their genome charts; the family page's relatedness grid, the son's
      painted stretches (one mark per row of his segments file), his de novo
      and compound-het tables and the members side by side; and at a phone's
-     width (390 px) no page scrolls sideways.
+     width (390 px) no page scrolls sideways (every section open, the finding
+     page too) and the person page has its bottom tab bar; on the son's page a
+     two planted CPSR results to act on name their genes and variants nowhere
+     (their card included) until "Show the result" is clicked, and each click
+     opens one result, there and on the finding's own page; DEMO-001's page
+     mid-replay and at the end leads with the report (a short run band above
+     the lead while it runs, none once finished), ends with the step timeline
+     folded, keeps the wire to at most eight one-sentence lines with the plain
+     finishes folded into one, and puts the HLA card's caveat in its margin
+     with its absent and undetermined lines folded.
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
-with the son's stretches emptied) and the phone width also run against a planted mistake and must
+with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
+the veil) and the person page's layout (a wire showing every line or every plain finish, a card showing
+every line, a step timeline left open) also run against a planted mistake and must
 fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
 Run: python3 tests/test_live_demo.py
@@ -52,6 +64,7 @@ sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 import build_live_demo  # noqa: E402
+import live_results  # noqa: E402
 import make_demo_events  # noqa: E402
 import owngenome_live  # noqa: E402
 import run_state  # noqa: E402
@@ -270,9 +283,11 @@ def browser_checks(out):
         csp = b.eval("var m = document.querySelector('meta[http-equiv=Content-Security-Policy]'); m && m.content")
         check("browser: the page runs under the meta policy", csp == build_live_demo.CSP, csp)
         person_checks(b, base)
+        layout_checks(b, base, out)
         widget_checks(b, base, out)
         family_depth_checks(b, base, out)
         phone_checks(b, base)
+        veil_checks(b, base, out)
     finally:
         b.close()
         srv.shutdown()
@@ -280,21 +295,31 @@ def browser_checks(out):
 
 
 def person_checks(b, base):
-    """The person page at the end of the run: cards, keyboard, a section link; the family page's own view."""
-    b.eval("location.hash = '#q/clinical'; true")
-    n = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.documentElement.dataset.pgpResults")
-    card = b.eval("var c = document.getElementById('card-clinvar'); c && [!!c.querySelector('.caveat .caveat-lead'), "
-                  "!!c.querySelector('figure[data-chart]'), c.classList.contains('attn')].join(' ')")
-    check("browser: the doctor tab shows its cards; ClinVar's has its caveat, its chart and its flag",
-          n and int(n) > 3 and card == "true true true", (n, card))
-    b.eval("var t = document.querySelector('#rail [aria-selected=true]'); t.focus(); "
-           "t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); true")
-    tab = b.wait("document.documentElement.dataset.pgpTab !== 'clinical' && document.documentElement.dataset.pgpTab")
-    check("browser: the arrow key moves to the next chapter", tab == "carrier", tab)
+    """The person page at the end of the run: the ten sections, the lead, the contents, a section link, a finding
+    page; the family page's own view."""
+    got = b.wait("document.documentElement.dataset.pgpResults && JSON.stringify(["
+                 "document.querySelectorAll('main section.sec[data-journal]').length, "
+                 "document.querySelectorAll('#rail [data-toc]').length, "
+                 "(document.querySelector('#lead-slot .lede') || {textContent: ''}).textContent.length > 40, "
+                 "document.querySelectorAll('#lead-slot .ledger a[data-level]').length])")
+    check("browser: the person page has its ten sections, the contents linking each, a lead paragraph and the ledger",
+          got == "[10,10,true,5]", got)
     b.eval("location.hash = '#s/clinvar'; true")
-    focus = b.wait("document.documentElement.dataset.pgpTab === 'clinical' && document.activeElement && "
-                   "document.activeElement.id")
-    check("browser: #s/clinvar opens the doctor tab and focuses the ClinVar card", focus == "card-clinvar", focus)
+    focus = b.wait("document.activeElement && document.activeElement.id === 'card-clinvar' && 'card-clinvar'")
+    card = b.eval("var c = document.getElementById('card-clinvar'); c && [!!c.querySelector('.caveat .caveat-lead'), "
+                  "!!c.querySelector('figure[data-chart]'), c.classList.contains('attn'), "
+                  "c.getBoundingClientRect().height > 0].join(' ')")
+    check("browser: #s/clinvar focuses the ClinVar card, shown, with its caveat, its chart and its flag",
+          focus == "card-clinvar" and card == "true true true true", (focus, card))
+    link = b.eval("var a = document.querySelector('[data-finding] h3 a[href^=\"finding/\"]'); a && a.getAttribute('href')")
+    check("browser: a finding links its own page", bool(link), link)
+    if link:
+        b.go(f"{base}/runs/{S}/{link}")
+        page = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && JSON.stringify(["
+                      "!!document.querySelector('h1.h-display'), document.querySelectorAll('#plan li').length > 0, "
+                      "!!document.getElementById('evidence'), document.documentElement.dataset.pgpBlocked || ''])")
+        check("browser: the finding page shows its title, its plan and its evidence, and the policy blocks nothing",
+              page == '[true,true,true,""]', (link, page))
     b.go(f"{base}/runs/{FAM}/")
     fam = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && [!document.getElementById('map'), "
                  "!document.getElementById('report-link'), (document.querySelector('svg.pedigree-svg a') || {"
@@ -303,24 +328,24 @@ def person_checks(b, base):
           fam == f"true true ../../runs/{S}/", fam)
 
 
-# The widgets: (person, tab, kind, the marks it must draw) on the demo's other people.
-WIDGETS = [("DEMO-002", "clinical", "str", "[data-widget=str] .w-row", 8),
-           ("DEMO-002", "clinical", "ci", "[data-widget=ci] .w-tick", 1),
-           ("DEMO-002", "clinical", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
-           ("DEMO-003", "carrier", "copies", "[data-widget=copies] li", 5),
-           ("DEMO-003", "ancestry", "ypath", "[data-widget=ypath] li", 5),
-           ("DEMO-002", "clinical", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
-           ("DEMO-003", "clinical", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
+# The widgets: (person, card, kind, the marks it must draw) on the demo's other people.
+WIDGETS = [("DEMO-002", "expansions", "str", "[data-widget=str] .w-row", 8),
+           ("DEMO-002", "lpa", "ci", "[data-widget=ci] .w-tick", 1),
+           ("DEMO-002", "chip", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
+           ("DEMO-003", "paralogs", "copies", "[data-widget=copies] li", 5),
+           ("DEMO-003", "y-chromosome", "ypath", "[data-widget=ypath] li", 5),
+           ("DEMO-002", "clinvar", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
+           ("DEMO-003", "clinvar", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
 
 
 def widget_counts(b, base):
     got = {}
-    for person, tab, kind, sel, _ in WIDGETS:
+    for person, cid, kind, sel, _ in WIDGETS:
         b.go("about:blank")  # a new document each time, so the wait never reads the page before
         b.wait("location.href === 'about:blank'")
-        b.go(f"{base}/runs/{person}/#q/{tab}")
-        b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpTab === %s"
-               % json.dumps(tab))
+        b.go(f"{base}/runs/{person}/#s/{cid}")
+        b.wait("document.documentElement.dataset.pgpResults && !!document.getElementById(%s) && 'drawn'"
+               % json.dumps("card-" + cid))
         if kind in ("MoChA bar", "AnnotSV span"):
             b.wait("document.documentElement.dataset.pgpCharts")
             time.sleep(0.5)
@@ -345,7 +370,7 @@ def widget_checks(b, base, out):
         keep = f.read()
     try:
         with open(js, "w") as f:
-            f.write(keep.replace("add(art, widget(c.widget));", ""))
+            f.write(keep.replace("add(text, widget(c.widget));", ""))
         control("person.js without its widget line", not widget_problems(widget_counts(b, base)))
     finally:
         with open(js, "w") as f:
@@ -389,6 +414,187 @@ def family_depth_checks(b, base, out):
             f.write(keep)
 
 
+# Two results to act on planted on the son's page: invented genes and variants in two CPSR rows.
+VEIL = (("GENEQ", "c.77del"), ("GENER", "c.88dup"))
+
+
+def veil_text(b, base):
+    """The son's pages: [the person page's text before any click, after one click on the CPSR card's 'Show the result',
+    the first finding's own page after its 'Show the result' click]. textContent reads closed details too."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/")
+    b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpStatus === 'ready' "
+           "&& document.querySelector('.veil') && 'drawn'")
+    before = b.eval("document.body.textContent")
+    # The card's own button: a card holding two results opens one per click, as each finding's button does.
+    b.eval("document.querySelector('#card-cpsr .veil button').click(); true")
+    time.sleep(0.5)
+    after = b.wait("document.body.textContent")
+    fid = b.eval("var a = document.querySelector('[data-finding] h3 a[href*=\"finding/cpsr-\"]'); a && a.getAttribute('href')")
+    page = ""
+    if fid:
+        b.go(f"{base}/runs/{OTHERS[1]}/{fid}")
+        b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.querySelector('.veil') && 'closed'")
+        b.eval("document.querySelector('.veil button').click(); true")
+        page = b.wait("!document.querySelector('.veil') && document.body.textContent")
+    return before, after, page
+
+
+def veil_problems(before, after, page):
+    (g1, v1), (g2, v2) = VEIL
+    out = [f"{w} shown before any click" for w in (g1, v1, g2, v2) if w in (before or "")]
+    shown = [w for w in (g1, v1) if w in (after or "")] or [w for w in (g2, v2) if w in (after or "")]
+    if len(shown) != 2:
+        out.append(f"the first click did not open one result: {shown}")
+    # The other result stays closed after one click, on the person page and on the opened finding's page.
+    other = (g2, v2) if shown and shown[0] == g1 else (g1, v1)
+    out += [f"{w} opened by the click on another result" for w in other if w in (after or "")]
+    if not page:
+        out.append("no finding page of a planted result")
+    else:
+        mine = [w for pair in VEIL for w in pair if w in page]
+        if len(mine) != 2:
+            out.append(f"the finding page opened shows {mine}, want only its own gene and variant")
+    return out
+
+
+def veil_checks(b, base, out):
+    """On a child's page each result to act on stays closed everywhere, its own section's card too, until it
+    is opened; opening one opens only that one, on the person page and on its own page."""
+    rj = os.path.join(out, "runs", OTHERS[1], "results.json")
+    js = os.path.join(out, "assets", "person.js")
+    with open(rj) as f:
+        keep = f.read()
+    with open(js) as f:
+        keep_js = f.read()
+    made = []
+    try:
+        with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as f:
+            summary = json.load(f)
+        summary.setdefault("sections", {})["cpsr"] = {"state": "ok", "data": {"call_floor_dp": 10, "low_confidence": 0, "plp": [
+            {"gene": g, "variant": v, "final": "Pathogenic", "clinvar": "Pathogenic"} for g, v in VEIL]}}
+        res = live_results.build(OTHERS[1], summary)
+        cpsr = [c for ch in res["chapters"] for c in ch["sections"] if c["id"] == "cpsr"]
+        check("browser: the planted CPSR card has its table, so the closed check below has rows to hide",
+              bool(cpsr and cpsr[0]["table"] and cpsr[0]["section"] == 1), cpsr)
+        with open(rj, "w") as f:
+            json.dump(res, f)
+        # Their finding pages, as build_live_demo.person_site writes one per finding: an existing page, its id swapped.
+        fdirs = os.path.join(out, "runs", OTHERS[1], "finding")
+        model = sorted(os.listdir(fdirs))[0]
+        with open(os.path.join(fdirs, model, "index.html")) as f:
+            tpl = f.read()
+        for fd in res["findings"]:
+            if fd["card"] == "cpsr":
+                os.makedirs(os.path.join(fdirs, fd["id"]))
+                made.append(os.path.join(fdirs, fd["id"]))
+                with open(os.path.join(fdirs, fd["id"], "index.html"), "w") as f:
+                    f.write(tpl.replace(f'data-finding="{model}"', f'data-finding="{fd["id"]}"'))
+        bad = veil_problems(*veil_text(b, base))
+        check("browser: on the son's page two planted results to act on name their genes and variants nowhere "
+              "until 'Show the result' is clicked, and each click opens one, on the person page and the finding page",
+              not bad, bad)
+        with open(js, "w") as f:
+            f.write(keep_js.replace("} else if (closedFs.length) {", "} else if (false) {"))
+        control("person.js whose cards ignore the veil", not veil_problems(*veil_text(b, base)))
+    finally:
+        with open(rj, "w") as f:
+            f.write(keep)
+        with open(js, "w") as f:
+            f.write(keep_js)
+        for d in made:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+# The person page reads as a report: what (frame) -> the page's layout facts, read in the browser.
+LAYOUT_JS = """JSON.stringify((function () {
+  var main = document.getElementById('content'), fold = document.getElementById('progress-fold');
+  var band = document.getElementById('runhero'), lead = document.getElementById('lead-slot');
+  var wire = Array.prototype.map.call(document.querySelectorAll('#found > li[role=button]'), function (li) {
+    return (li.childNodes[1] || {}).textContent || ''; });
+  var hla = document.getElementById('card-hla');
+  var shownLines = hla ? hla.querySelectorAll('.card-text .lines-box > ul.lines > li').length : -1;
+  return {
+    last: main.lastElementChild && main.lastElementChild.id, folded: !!fold && !fold.open,
+    band: !band.hidden, bandFirst: !!(band.compareDocumentPosition(lead) & Node.DOCUMENT_POSITION_FOLLOWING),
+    wire: wire, hla: shownLines, hlaFold: !!(hla && hla.querySelector('details.lines-more')),
+    margin: !!(hla && hla.querySelector('.card-margin .caveat .caveat-lead'))
+  };
+}()))"""
+
+
+def person_layout(b, base, frame):
+    """The layout facts of DEMO-001's page at a replay frame ('mid' or 'end')."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{S}/")
+    b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.documentElement.dataset.pgpFrame")
+    b.eval("var s = document.getElementById('replay-slider'); s.value = %s; s.dispatchEvent(new Event('input')); true"
+           % ("Math.floor(s.max / 2)" if frame == "mid" else "s.max"))
+    b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpFrame === %s"
+           % ("String(Math.floor(document.getElementById('replay-slider').max / 2))" if frame == "mid"
+              else "document.getElementById('replay-slider').max"))
+    time.sleep(0.5)
+    return json.loads(b.eval(LAYOUT_JS) or "{}")
+
+
+def layout_problems(mid, end):
+    out = []
+    for name, got in (("mid", mid), ("end", end)):
+        if got.get("last") != "progress" or not got.get("folded"):
+            out.append(f"{name}: the step timeline is not the last block, folded: {got.get('last')}, folded {got.get('folded')}")
+        wire = got.get("wire") or []
+        if not wire or len(wire) > 8:
+            out.append(f"{name}: the wire shows {len(wire)} lines, want 1 to 8")
+        plain = [w for w in wire if "finished, see the report" in w]
+        if len(plain) > 1:
+            out.append(f"{name}: {len(plain)} plain 'finished' lines on the wire, want them folded into one")
+        long = [w for w in wire if len(w) > 141]
+        if long:
+            out.append(f"{name}: wire lines longer than one sentence: {long[:2]}")
+    if not mid.get("band") or not mid.get("bandFirst"):
+        out.append(f"mid: the run band is not shown above the lead: {mid.get('band')}, {mid.get('bandFirst')}")
+    if end.get("band"):
+        out.append("end: the run band still shows on a finished run")
+    if not (0 <= end.get("hla", -1) <= 6) or not end.get("hlaFold"):
+        out.append(f"end: the HLA card shows {end.get('hla')} lines, the absent ones not folded ({end.get('hlaFold')})")
+    if not end.get("margin"):
+        out.append("end: the HLA card's caveat is not in its margin")
+    return out
+
+
+def layout_checks(b, base, out):
+    """The person page answers 'is there anything serious?' first: a short band while the run goes, the step
+    timeline last and folded, a wire of at most eight one-sentence lines with the plain finishes folded into one,
+    a card's caveat in its margin and its absent or undetermined lines folded."""
+    bad = layout_problems(person_layout(b, base, "mid"), person_layout(b, base, "end"))
+    check("browser: the person page leads with the report, a short run band while it runs, the step timeline last "
+          "and folded, a short wire, and each card's caveat in its margin with its quiet lines folded", not bad, bad)
+    b.call("Network.enable", session=b.session)  # the controls below change live.js and person.js: never cached
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+    files = {n: os.path.join(out, "assets", n) for n in ("live.js", "person.js")}
+    keep = {n: open(f).read() for n, f in files.items()}
+    planted = (("live.js", "said.slice(0, WIRE_SHOWN)", "said", "a wire that shows every line"),
+               ("live.js", "if (m && hl[k].tone !== 'attention')", "if (false)", "a wire that lists every plain finish"),
+               ("person.js", "var LINES_SHOWN = 6;", "var LINES_SHOWN = 99;", "a card that shows every line"),
+               ("person.js", "folded = true; fold.open = ", "folded = true; fold.open = true || ", "a step timeline left open"))
+    try:
+        for name, a, z, desc in planted:
+            if a not in keep[name]:
+                check(f"control: {desc} (the planted line is in {name})", False, a)
+                continue
+            with open(files[name], "w") as f:
+                f.write(keep[name].replace(a, z))
+            control(desc, not layout_problems(person_layout(b, base, "mid"), person_layout(b, base, "end")))
+            with open(files[name], "w") as f:
+                f.write(keep[name])
+    finally:
+        for n, f in files.items():
+            with open(f, "w") as fh:
+                fh.write(keep[n])
+
+
 def too_wide(b):
     return b.eval("document.documentElement.scrollWidth > window.innerWidth ? "
                   "document.documentElement.scrollWidth + ' > ' + window.innerWidth : ''")
@@ -401,9 +607,11 @@ def phone_checks(b, base):
     try:
         wide = {}
         for name, path, ready in (("home", "/", "document.documentElement.dataset.pgpStatus === 'ready'"),
-                                  ("person", f"/runs/{S}/#q/clinical", "document.documentElement.dataset.pgpResults"),
+                                  ("person", f"/runs/{S}/", "document.documentElement.dataset.pgpResults"),
                                   ("family", f"/runs/{FAM}/", "document.documentElement.dataset.pgpStatus === 'ready'"),
-                                  ("partner", f"/runs/{OTHERS[0]}/#q/clinical", "document.documentElement.dataset.pgpResults")):
+                                  ("partner", f"/runs/{OTHERS[0]}/", "document.documentElement.dataset.pgpResults"),
+                                  ("finding", f"/runs/{OTHERS[0]}/finding/str-fmr1/",
+                                   "document.documentElement.dataset.pgpStatus === 'ready'")):
             b.go(base + path)
             b.wait(ready)
             if name == "person":
@@ -411,15 +619,12 @@ def phone_checks(b, base):
                        "s.dispatchEvent(new Event('input')); true")
                 b.wait("document.documentElement.dataset.pgpFrame === document.getElementById('replay-slider').max")
                 time.sleep(1)
-                # Every tab of the person page, not only the one the link opens.
-                tabs = b.eval("Array.prototype.map.call(document.querySelectorAll('[role=tab][data-tab]'), "
-                              "function (t) { return t.getAttribute('data-tab'); }).join(' ')") or ""
-                for tab in tabs.split():
-                    b.eval(f"document.querySelector('[role=tab][data-tab=\"{tab}\"]').click(); true")
-                    time.sleep(0.3)
-                    if too_wide(b):
-                        wide[f"person {tab}"] = too_wide(b)
-                wide["person tabs"] = "" if len(tabs.split()) >= 3 else f"only {tabs!r}"
+                # Every section open: the cards folded into section 8 too.
+                b.eval("Array.prototype.forEach.call(document.querySelectorAll('main details'), "
+                       "function (d) { d.open = true; }); true")
+                time.sleep(0.3)
+                tabs = b.eval("getComputedStyle(document.getElementById('tabbar')).display")
+                wide["person tab bar"] = "" if tabs == "grid" else f"tab bar display {tabs!r}"
             wide[name] = too_wide(b)
         check("browser: at 390 px no page scrolls sideways", not any(wide.values()), wide)
         b.eval("var d = document.createElement('div'); d.style.width = '900px'; d.style.height = '4px'; "

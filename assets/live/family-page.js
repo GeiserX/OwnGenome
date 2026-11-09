@@ -1,5 +1,6 @@
 // family-page.js: a family's page (assets/live/family.html), from family.json
-// (bin/owngenome_live_family.py): the pedigree with each sequenced person a link to their page, the
+// (bin/owngenome_live_family.py), the Journal design: a report in chapters, with a lead that answers
+// "what does it mean for our children?". The pedigree with each sequenced person a link to their page, the
 // members with their run progress, what steps 38 and 39 planned, each couple's carrier screen in full
 // (both carry, then X-linked, then one partner), who is related how as a grid (a list of pairs on a
 // phone), each child's stretches painted by parent, the de novo and compound-het candidates, and the
@@ -12,10 +13,59 @@
   var el = U.el, add = U.add, root = document.documentElement;
   var RESULT = { shared: 'Both carry', x_linked: 'X-linked', one_partner: 'One partner' };
 
+  // A chapter: its roman number in brass, its title in the serif.
+  var CHAPTER = { 'Pedigree': 'I', 'Who is related how': 'II', 'Couple carrier screen': 'III', 'Each child': 'IV',
+    'Side by side': 'V', 'Plan and reports': 'App.' };
   function section(title, cls) {
-    var s = el('section', { 'class': 'card ' + (cls || '') });
-    add(s, el('h2', {}, title));
+    var s = el('section', { 'class': 'card ' + (cls || ''), id: 'ch-' + (cls || 'x') });
+    var h = el('h2', {});
+    if (CHAPTER[title]) { add(h, el('span', { 'class': 'secnum' }, CHAPTER[title])); }
+    add(h, title);
+    add(s, h);
     return s;
+  }
+  // Colour follows the person: the members in their order, one colour each, on every family figure.
+  var PCOL = ['#d95926', '#3987e5', '#199e70', '#c98500', '#9085e9'];
+  function colourOf(f, sample) {
+    var i = (f.state.members || []).map(function (m) { return m.sample; }).indexOf(sample);
+    return i >= 0 ? PCOL[i % PCOL.length] : null;
+  }
+  // The four equally likely children of two carriers of one recessive gene: 1 affected, 2 carriers, 1 neither.
+  // Drawn only when the screen's own chance is 1 in 4: another chance (a partner with two copies) has
+  // another split, and the row's words say it.
+  function fourChildren(risk) {
+    if (!/^\s*1 in 4\b/.test(risk || '')) { return null; }
+    var box = el('div', { 'class': 'kids4' });
+    var g = el('div', { 'class': 'grid4', role: 'img', 'aria-label': 'Each pregnancy: 1 in 4 affected, 2 in 4 carriers, 1 in 4 neither' });
+    add(g, el('span', { 'class': 'aff', title: 'affected' }), el('span', { title: 'carrier' }), el('span', { title: 'carrier' }),
+      el('span', { 'class': 'non', title: 'neither' }));
+    add(box, g, add(el('div', { 'class': 'kt' }), el('b', {}, '1 in 4'), ' per pregnancy affected', el('br', {}),
+      '2 in 4 carriers, not affected; 1 in 4 neither'));
+    return box;
+  }
+  // The family's lead: what the screen, the relationship check and the children say, in plain words.
+  function lead(f) {
+    var st = f.state, out = [];
+    var seq = (st.members || []).filter(function (m) { return m.sequenced; }).length;
+    out.push([seq + ' genome' + (seq === 1 ? '' : 's') + ' of this family are read together here. ', false]);
+    (st.couples || []).forEach(function (c) {
+      if (!c.screened) { out.push([c.a + ' and ' + c.b + ' are not screened as a couple yet. ', false]); return; }
+      if (c.shared) { out.push([c.a + ' and ' + c.b + ' both carry a change in ' + c.shared + ' gene' + (c.shared > 1 ? 's' : '') + ': chapter III gives the chance per pregnancy for each. ', true]); }
+      else { out.push([c.a + ' and ' + c.b + ' share no carrier gene in what the screen sees; ', false], ['it does not see everything. ', false]); }
+      if (c.x_linked) { out.push([c.x_linked + ' X-linked finding' + (c.x_linked > 1 ? 's' : '') + ' bear on sons. ', true]); }
+    });
+    var flags = (f.relationships || []).filter(function (r) { return r.verdict === 'mismatch' || r.verdict === 'warn'; }).length;
+    var rels = f.relationships || [];
+    var checked = rels.filter(function (r) { return r.verdict && r.verdict !== 'not_checked'; }).length;
+    if (rels.length) {
+      out.push([flags ? 'A measured relationship differs from the family tree: read chapter II before anything else. '
+        : checked === rels.length ? 'The measured relationships match the family tree. '
+          : 'Some relationships could not be checked: chapter II says which. ', !!flags]);
+    }
+    if ((st.children || []).length) {
+      out.push([(st.children.length === 1 ? 'One child' : st.children.length + ' children') + ': chapter IV shows what each inherited from whom.', false]);
+    }
+    return out;
   }
   function memberUrl(f, s) { return f.runs && f.runs[s] ? f.runs[s].url : null; }
 
@@ -39,6 +89,9 @@
       var shape = p.sex === 'male' ? U.svg('rect', { x: p.x - h, y: p.y - h, width: L.size, height: L.size, 'class': cls })
         : p.sex === 'female' ? U.svg('circle', { cx: p.x, cy: p.y, r: h, 'class': cls })
           : U.svg('polygon', { points: [p.x, p.y - h, p.x + h, p.y, p.x, p.y + h, p.x - h, p.y].join(' '), 'class': cls });
+      var pc = p.sequenced ? colourOf(f, p.sample) : null;
+      if (pc) { shape.style.setProperty('stroke', pc); }
+      if (!p.sequenced) { shape.style.setProperty('stroke-dasharray', '4 3'); }
       g.appendChild(shape);
       var t = U.svg('text', { x: p.x, y: p.y + h + 17, 'text-anchor': 'middle', 'class': 'ped-name' });
       t.textContent = p.sample;
@@ -126,6 +179,16 @@
         'screen does not see. ';
       if (c.report) { add(p, el('a', { href: c.report }, 'What the screen does not see')); }
       add(s, p);
+      rows.filter(function (r) { return r.result === 'shared'; }).forEach(function (r) {
+        var box = el('div', { 'class': 'mini', 'data-shared': r.gene });
+        add(box, el('h3', { 'class': 'h3' }, (r.condition || r.gene) + ' (' + r.gene + ')'));
+        var four = fourChildren(r.offspring_risk);
+        // A chance other than 1 in 4 means a partner with two changed copies: not the carrier pattern.
+        add(box, el('p', { 'class': 'soft' }, four ? 'Both carry a change in ' + r.gene + '. Carriers are not affected; a child who inherits both changes is.'
+          : 'Both carry a change in ' + r.gene + ', and at least one of them has two changed copies, which is not the carrier pattern. A child who inherits a changed copy from each parent is affected.'));
+        add(box, four || el('p', {}, 'Chance per pregnancy, as the screen gives it: ' + (r.offspring_risk || 'not given') + '.'));
+        add(s, box);
+      });
       add(s, U.table({ columns: ['Result', 'Gene', 'Condition', 'Chance for a child', c.a, c.b, 'Why'],
         rows: rows.map(function (r) {
           var aFirst = r.partner_a === c.a;
@@ -366,14 +429,26 @@
       root.setAttribute('data-pgp-status', 'ready');
       return;
     }
+    var cover = el('div', { 'class': 'famcover' });
+    var cl = el('div', {});
+    add(cl, el('div', { 'class': 'kicker' }, 'Family report \u00b7 in five chapters'));
+    add(cl, el('h1', { 'class': 'h-display' }, 'Family ' + f.state.name));
+    var lp = el('p', { 'class': 'lede dropcap', id: 'family-lead' });
+    lead(f).forEach(function (x) { add(lp, x[1] ? el('b', {}, x[0]) : x[0]); });
+    add(cl, lp);
+    var toc = el('ol', { 'class': 'famtoc' });
+    [['ch-ped', 'I', 'Pedigree and members'], ['ch-related', 'II', 'Who is related how'], ['ch-couples', 'III', 'Couple carrier screen'],
+      ['ch-children', 'IV', 'Each child: what they inherited'], ['ch-side-by-side', 'V', 'Side by side']].forEach(function (x) {
+      add(toc, add(el('li', {}), add(el('a', { href: '#' + x[0] }), el('span', { 'class': 'secnum' }, x[1]), el('span', {}, x[2]))));
+    });
+    add(cover, cl, add(el('aside', {}), el('div', { 'class': 'fig-label' }, 'The chapters'), toc));
+    add(page, cover);
     var top = el('div', { 'class': 'family-top' });
     var ped = section('Pedigree', 'ped');
     add(ped, pedigree(f), analyses(f));
     add(top, ped, members(f));
     add(page, top);
-    var grid = el('div', { 'class': 'family-grid' });
-    add(grid, couples(f), related(f));
-    add(page, grid, children(f), sideBySide(f));
+    add(page, related(f), couples(f), children(f), sideBySide(f));
     if ((f.state.plan || []).length || f.state.reports.length) { add(page, more(f)); }
     add(main, page);
     root.setAttribute('data-pgp-status', 'ready');

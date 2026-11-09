@@ -1,24 +1,29 @@
-// person.js: a person's results on their page (assets/live/index.html), from results.json
-// (bin/live_results.py, served by bin/owngenome_live_results.py) and the run's states (live.js).
-// The rail holds the report's seven chapter questions, "Look first" (every card worth a look) and
-// "What this leaves out"; Progress is live.js's step map. The tab lives in the URL fragment only
-// (#q/<chapter>, #s/<section>, #progress), which the browser never sends, so no tab or search reaches
-// a server log. A card shows its results once one of its steps is done in the current state, so live
-// and replay draw the same way and a replay reveals the results as the run goes.
+// person.js: a person's genome as a report, the Journal design (docs/design/journal/), on their page
+// (assets/live/index.html), from results.json (bin/live_results.py, served by
+// bin/owngenome_live_results.py) and the run's states (live.js). The page reads top to bottom: the lead
+// paragraph built from the findings, the counts by level, the chromosome map of the findings, then ten
+// numbered sections: 1 To act on, 2 Medicines, 3 For your family, 4 Worth a look, 5 Can I trust this?,
+// 6 Origins, 7 Traits and scores, 8 Assessed, no finding, 9 What it cannot see, 10 Sources and files.
+// A run still going is the same report being written: each section carries its stamp (written, being
+// written, waiting), a short band under the header counts the steps, and the step timeline closes the
+// page, folded. Every card of results.json is on the page under
+// its section; a card shows its results once one of its steps is done in the current state, so live
+// and replay draw the same way. Links inside the page live in the fragment (#s/<card>, #s3, #f/<id>,
+// #progress), which the browser never sends. Silence is never an all-clear: a section with no finding
+// says what its steps looked at and what they do not see.
 (function () {
   'use strict';
   if (!window.PGP || !window.PGPUI) { return; }
   var U = window.PGPUI, el = U.el, add = U.add;
   var root = document.documentElement;
   var replay = root.getAttribute('data-mode') === 'replay';
-  var results = null, state = null, fetchedFor = null, current = null, chosen = false, drawnKey = null;
-  var rail = document.getElementById('rail');
+  var results = null, state = null, family = null, familyFor = null, fetchedFor = null, drawnKey = null, folded = false;
+  // 'none': in no family; 'pending' or 'failed': in one whose roles are not known (yet); 'known'.
+  var familyStatus = 'none';
+  var shown = {};  // veiled findings the reader opened, by id
   var panel = document.getElementById('results');
-  var progress = document.getElementById('progress');
-  var SHORT = { quality: 'Trust', clinical: 'Doctor', carrier: 'Child', medicines: 'Medicines', ancestry: 'Ancestors',
-    traits: 'Traits', other: 'Other' };
-  var LOOK_EMPTY = 'Nothing on this list. That is information, not a clean bill: each chapter’s caveats and ' +
-    '“What this leaves out” still apply.';
+  var rail = document.getElementById('rail');
+  var NOT_ALL_CLEAR = 'No finding in what these steps assessed.';
 
   function stepsBy() {
     var by = {};
@@ -29,100 +34,92 @@
     return ((state && state.steps) || []).filter(function (s) { return s.state === 'done'; })
       .map(function (s) { return s.step; }).join(',');
   }
-  function anyDone() { return doneSet() !== ''; }
-  // What a card can show at this moment: 'show', 'waiting' (a step still to come), 'notrun' (none planned)
-  // or 'empty' (its steps ended and wrote nothing for it).
+  function running() { return !!(state && state.run && state.run.state === 'running'); }
+  // What a card can show at this moment: 'show', 'waiting' (a step still to come), 'running' (one of its
+  // steps runs now), 'failed', 'notrun' (none planned) or 'empty' (its steps ended and wrote nothing).
   function gate(c) {
     var by = stepsBy(), steps = c.steps || [];
     var known = steps.filter(function (s) { return by[s]; });
     if (known.some(function (s) { return by[s].state === 'done'; })) { return c.state === 'missing' ? 'empty' : 'show'; }
-    if (known.some(function (s) { return ['waiting', 'running'].indexOf(by[s].state) >= 0; })) { return 'waiting'; }
+    if (known.some(function (s) { return by[s].state === 'running'; })) { return 'running'; }
+    if (known.some(function (s) { return by[s].state === 'waiting'; })) { return 'waiting'; }
     if (known.some(function (s) { return by[s].state === 'failed'; })) { return 'failed'; }
     if (!known.length && c.state !== 'missing' && !replay) { return 'show'; }
     return 'notrun';
   }
-  function waitingText(c) {
+  function pending(g) { return g === 'waiting' || g === 'running'; }
+  function stepWords(c) {
     var by = stepsBy();
     var s = (c.steps || []).filter(function (x) { return by[x] && by[x].state !== 'done'; })[0] || (c.steps || [])[0];
-    return 'Waiting for step ' + s + (by[s] ? ' (' + by[s].label + ')' : '') + '.';
+    return s ? (by[s] ? by[s].label : 'step ' + s) : 'its step';
   }
   function cards() {
     var out = [];
-    ((results && results.chapters) || []).forEach(function (ch) {
-      ch.sections.forEach(function (c) { out.push({ ch: ch, c: c }); });
-    });
+    ((results && results.chapters) || []).forEach(function (ch) { ch.sections.forEach(function (c) { out.push(c); }); });
     return out;
   }
+  function cardById(id) { return cards().filter(function (c) { return c.id === id; })[0]; }
+  function findingById(id) { return ((results && results.findings) || []).filter(function (f) { return f.id === id; })[0]; }
+  function findingsNow() {
+    return ((results && results.findings) || []).filter(function (f) { var c = cardById(f.card); return c && gate(c) === 'show'; });
+  }
+  function sectionsList() { return (results && results.journal) || []; }
   function attentionNow(c) { return c.attention && gate(c) === 'show'; }
+  function personName() { return (results && results.person && results.person.sample) || root.getAttribute('data-run') || ''; }
 
-  // --- the route --------------------------------------------------------------------------------
-  function parse() {
-    var h;
-    try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return null; }  // a broken fragment
-    if (h === 'progress') { return { tab: 'progress' }; }
-    if (h.indexOf('q/') === 0) { return { tab: h.slice(2) }; }
-    if (h.indexOf('s/') === 0) { return { tab: 'section', id: h.slice(2) }; }
-    if (h && cards().some(function (x) { return x.c.id === h; })) { return { tab: 'section', id: h }; }  // an old #clinvar link
-    return null;
+  // --- the family this person is in: family.json of the first family the family plugin names -------
+  function familyUrl() {
+    var fam = state && state.plugins && state.plugins.family;
+    var f = fam && fam.kind === 'member' && (fam.families || [])[0];
+    return f ? f : null;
   }
-  function chapterOf(id) {
-    var hit = cards().filter(function (x) { return x.c.id === id; })[0];
-    return hit ? hit.ch.key : null;
-  }
-  function defaultTab() { return results && results.chapters && results.chapters.length && anyDone() ? 'look' : 'progress'; }
-
-  function route(focus) {
-    var r = parse() || { tab: defaultTab() };
-    var tab = r.tab === 'section' ? (chapterOf(r.id) || 'look') : r.tab;
-    var valid = ['progress', 'look', 'leaves'].concat(((results && results.chapters) || []).map(function (c) { return c.key; }));
-    if (valid.indexOf(tab) < 0) { tab = defaultTab(); }
-    show(tab);
-    Array.prototype.forEach.call(rail.querySelectorAll('[role=tab]'), function (t) {
-      var on = t.getAttribute('data-tab') === tab;
-      t.setAttribute('aria-selected', on ? 'true' : 'false');
-      t.tabIndex = on ? 0 : -1;
+  function loadFamily() {
+    var f = familyUrl();
+    var key = f ? f.url : null;
+    if (key === familyFor) { return; }
+    familyFor = key;
+    if (!f) { family = null; familyStatus = 'none'; return; }
+    familyStatus = 'pending';
+    U.getJSON(f.url + 'family.json').then(function (d) {
+      if (familyFor !== key) { return; }
+      family = d && d.state ? { name: f.name, url: f.url, data: d } : null;
+      familyStatus = family ? 'known' : 'failed';
+      redraw(true);
+    }).catch(function () {
+      if (familyFor !== key) { return; }  // a late answer for a family this page no longer shows
+      family = null;
+      familyStatus = 'failed';
+      redraw(true);
     });
-    if (r.tab === 'section') {
-      var card = document.getElementById('card-' + r.id);
-      if (card) {
-        var d = card.querySelector('details.caveat-full');
-        if (d && focus !== false) { card.classList.add('target'); }
-        card.scrollIntoView({ block: 'start' });
-        card.focus({ preventScroll: true });
-      }
-    } else if (window.location.hash === '#progress') {
-      // #progress is also the section's id, so the browser jumps to it: keep the head and the rail in view.
-      setTimeout(function () { window.scrollTo(0, 0); }, 0);
-    }
   }
-  function go(hash) {
-    if (window.location.hash === hash) { route(); } else { window.location.hash = hash; }
+  function me() {
+    var ms = (family && family.data.state && family.data.state.members) || [];
+    return ms.filter(function (m) { return m.sample === personName(); })[0] || null;
   }
-  window.addEventListener('hashchange', function () { chosen = true; route(); });
-
-  // --- the rail ---------------------------------------------------------------------------------
-  function drawRail() {
-    rail.textContent = '';
-    function tab(key, label, n, hash) {
-      var a = el('a', { role: 'tab', href: hash, id: 'tab-' + key, 'data-tab': key, 'aria-controls': key === 'progress' ? 'progress' : 'results' });
-      add(a, el('span', { 'class': 'tab-label' }, label));
-      if (n) { add(a, el('span', { 'class': 'count', 'aria-label': n + ' worth a look' }, String(n))); }
-      add(rail, a);
-      return a;
-    }
-    if (results && results.chapters && results.chapters.length) {
-      var all = cards().filter(function (x) { return attentionNow(x.c); }).length;
-      tab('look', 'Look first', all, '#q/look');
-      results.chapters.forEach(function (ch) {
-        var n = ch.sections.filter(attentionNow).length;
-        var t = tab(ch.key, SHORT[ch.key] || ch.title, n, '#q/' + ch.key);
-        t.setAttribute('title', ch.question);
-      });
-      tab('leaves', 'Leaves out', 0, '#q/leaves');
-    }
-    tab('progress', 'Progress', 0, '#progress');
+  // A child of the family: a member whose father or mother is listed. Results to act on about a child
+  // stay closed until someone opens them on purpose.
+  function isChild() { var m = me(); return !!(m && (m.father || m.mother)); }
+  // Results to act on stay closed for a child, and for anyone in a family whose roles are not known yet:
+  // the page cannot tell a child apart until family.json has answered.
+  // A family that answers without this person cannot say they are not a child either.
+  function closedPage() { return isChild() || familyStatus === 'pending' || familyStatus === 'failed' || (familyStatus === 'known' && !me()); }
+  function memberUrl(s) {
+    var r = family && family.data.runs && family.data.runs[s];
+    return r && r.url ? r.url : null;
   }
-  U.tablist(rail, function (t) { go(t.getAttribute('href')); });
+  function role() {
+    var m = me();
+    if (!m) { return null; }
+    var ms = family.data.state.members;
+    var kids = ms.filter(function (x) { return x.father === m.sample || x.mother === m.sample; });
+    var bits = [];
+    if (m.father || m.mother) {
+      bits.push(({ male: 'son', female: 'daughter' }[m.sex] || 'child') + ' of ' + [m.father, m.mother].filter(Boolean).join(' and '));
+    }
+    if (kids.length) { bits.push(({ male: 'father', female: 'mother' }[m.sex] || 'parent') + ' of ' + kids.map(function (k) { return k.sample; }).join(', ')); }
+    if (m.partner) { bits.push('partner of ' + m.partner); }
+    return bits.join(', ');
+  }
 
   // --- widgets: a card's numbers drawn ---------------------------------------------------------------
   // HTML placed in percent of a track (custom properties, never a style attribute), so the text stays
@@ -292,65 +289,88 @@
     try { return fn(w); } catch (e) { return el('p', { 'class': 'dim' }, 'This drawing could not be made; the table below has the numbers.'); }
   }
 
-  // --- a card -----------------------------------------------------------------------------------
-  function badge(text, cls, symbol) {
+  // --- a card: one section of the report, with its numbers, its rows, its figure and its caveat -------
+  function recheckWords(c) {
+    var r = state && state.plugins && state.plugins.recheck;
+    var out = [];
+    (c.steps || []).forEach(function (s) {
+      ((r && r.steps && r.steps[s]) || []).forEach(function (t) { if (out.indexOf(t) < 0) { out.push(t); } });
+    });
+    return out;
+  }
+  function chip(text, cls, symbol) {
     var b = el('span', { 'class': 'chip ' + cls });
     if (symbol) { add(b, el('span', { 'class': 'sym', 'aria-hidden': 'true' }, symbol)); }
     add(b, text);
     return b;
   }
-  function recheckBadges(c) {
-    var r = state && state.plugins && state.plugins.recheck;
-    var out = [];
-    (c.steps || []).forEach(function (s) {
-      ((r && r.steps && r.steps[s]) || []).forEach(function (t) { out.push(badge(t, 'chip-recheck', '↻')); });
-    });
-    return out;
-  }
-  function card(c, ch) {
+  // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
+  // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
+  function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
+
+  function card(c) {
     var g = gate(c);
-    var cls = 'card result g-' + g + (attentionNow(c) ? ' attn' : '');
-    var art = el('article', { 'class': cls, id: 'card-' + c.id, 'data-section': c.id, 'data-step': (c.steps || []).join(' '),
-      'data-state': c.state, tabindex: '-1', 'aria-labelledby': 'h-' + c.id });
+    var closedFs = g === 'show' ? veiledOf(c) : [];
+    var art = el('article', { 'class': 'card result g-' + g + (attentionNow(c) ? ' attn' : ''), id: 'card-' + c.id,
+      'data-section': c.id, 'data-step': (c.steps || []).join(' '), 'data-state': c.state, 'data-level': c.level || '',
+      tabindex: '-1', 'aria-labelledby': 'h-' + c.id });
     var head = el('header', { 'class': 'card-head' });
     var h = el('h3', { id: 'h-' + c.id });
     add(h, el('a', { href: '#s/' + c.id, 'class': 'self' }, c.title));
     add(head, h);
     var chips = el('div', { 'class': 'chips' });
     if (g === 'show') {
-      add(chips, attentionNow(c) ? badge('worth a look', 'chip-attn', '▲') : badge('for information', 'chip-info', '○'));
+      // The card's level, on the one scale: a card the report flags is "worth a look" at least.
+      var lv = c.level || (attentionNow(c) ? 'review' : 'info');
+      add(chips, U.level(lv, attentionNow(c) && lv === 'info' ? 'Worth a look' : undefined));
     }
-    recheckBadges(c).forEach(function (b) { add(chips, b); });
+    recheckWords(c).forEach(function (t) { add(chips, chip(t, 'chip-recheck', '↻')); });
     add(head, chips);
     add(art, head);
-    if (g === 'waiting') {
-      add(art, el('p', { 'class': 'state-text' }, waitingText(c)));
+    // The text at reading width; the caveat, the numbers and the links in the margin beside it (one
+    // column below 1100 px).
+    var body = el('div', { 'class': 'card-body' });
+    var text = el('div', { 'class': 'card-text' });
+    var margin = el('aside', { 'class': 'card-margin' });
+    add(body, text, margin);
+    add(art, body);
+    if (pending(g)) {
+      add(text, el('p', { 'class': 'state-text' }, (g === 'running' ? 'Being written: ' : 'Waiting for ') + stepWords(c) +
+        (g === 'running' ? ' is running now.' : '.')));
     } else if (g === 'notrun') {
-      add(art, el('p', { 'class': 'state-text' }, 'Not run in this run (step ' + (c.steps || []).join(', ') + ').'));
+      add(text, el('p', { 'class': 'notassessed' }, 'Not assessed: no step of this run made this section (step ' + (c.steps || []).join(', ') + ').'));
     } else if (g === 'failed') {
-      add(art, el('p', { 'class': 'state-text' }, 'Step ' + (c.steps || []).join(', ') + ' failed: the Progress tab says why.'));
+      add(text, add(el('p', { 'class': 'notassessed' }), el('b', {}, 'Not assessed. '),
+        'Step ' + (c.steps || []).join(', ') + ' failed: the step timeline says why, and a rerun of the step fills this section.'));
     } else if (g === 'empty') {
-      add(art, el('p', { 'class': 'state-text' }, 'Its step ended without a result for this section.'));
+      add(text, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
+    } else if (closedFs.length) {
+      var v = el('div', { 'class': 'veil' });
+      // One button opens one result: a card with two results to act on asks twice.
+      add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
+        (closedFs.length === 1 ? 'This section holds a result' : 'This section holds ' + closedFs.length + ' results') +
+        ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.'));
+      var vb = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
+      vb.addEventListener('click', function () { shown[closedFs[0].id] = true; redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
+      add(v, vb);
+      add(text, v);
     } else {
-      (c.notes || []).forEach(function (n) { add(art, el('p', { 'class': 'note-stale' }, n)); });
-      if (c.headline) { add(art, el('p', { 'class': 'headline' }, c.headline)); }
-      add(art, U.facts(c.facts));
-      add(art, widget(c.widget));
+      (c.notes || []).forEach(function (n) { add(text, el('p', { 'class': 'note-stale' }, n)); });
+      if (c.headline) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
+      add(margin, U.facts(c.facts));
+      add(text, widget(c.widget));
       Object.keys((results && results.charts) || {}).forEach(function (chart) {
-        if (results.charts[chart] === c.id) { add(art, el('div', { 'class': 'chart-slot', 'data-chart-slot': chart })); }
+        if (results.charts[chart] === c.id) { add(text, el('div', { 'class': 'chart-slot', 'data-chart-slot': chart })); }
       });
-      if (c.image) { add(art, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
+      if (c.image) { add(text, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
       var tb = U.table(c.table);
-      if (tb) { add(art, tb); } else if (c.empty_text) { add(art, el('p', { 'class': 'empty' }, c.empty_text)); }
-      if (c.lines && c.lines.length) {
-        var ul = el('ul', { 'class': 'lines' });
-        c.lines.forEach(function (l) { add(ul, el('li', {}, l)); });
-        add(art, ul);
-      }
+      if (tb) { add(text, tb); } else if (c.empty_text) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
+      add(text, lineList(c.lines));
       if (c.hidden) {
+        // APOE and the like: behind their warning, opened on purpose.
         var d = el('details', { 'class': 'behind' });
         add(d, el('summary', {}, c.hidden.summary), el('p', {}, c.hidden.text));
-        add(art, d);
+        add(text, d);
       }
       if (c.explore && c.explore.length) {
         var p = el('p', { 'class': 'explore' }, 'Explore the branch (opens a website; the address carries the haplogroup): ');
@@ -358,10 +378,10 @@
           if (i) { add(p, ', '); }
           add(p, el('a', { href: x.url, rel: 'noreferrer noopener', target: '_blank' }, x.name));
         });
-        add(art, p);
+        add(text, p);
       }
     }
-    add(art, U.caveat(c.caveat));
+    add(margin, U.caveat(c.caveat));
     var foot = el('p', { 'class': 'card-links' });
     add(foot, el('a', { href: 'report.html#' + encodeURIComponent(c.anchor), 'class': 'report' }, 'Open in the report'));
     if (g === 'show' && c.viewer && c.viewer.length) {
@@ -370,123 +390,527 @@
     (g === 'show' ? c.links || [] : []).forEach(function (f) {
       add(foot, el('a', { href: f.split('/').map(encodeURIComponent).join('/') }, 'Open ' + f));
     });
-    add(art, foot);
+    add(margin, foot);
     return art;
   }
+  // A card's lines. Up to LINES_SHOWN show as they are. A longer list keeps the lines that say something
+  // in view and folds the rest (an allele absent, a call not determined) behind one line that counts them;
+  // every line stays in the page, so a search or a reader still finds it.
+  var LINES_SHOWN = 6;
+  var QUIET_LINE = /\b(absent|not determined|not typed|not called|not found)\b/i;
+  function lineList(lines) {
+    if (!lines || !lines.length) { return null; }
+    var keep = lines, rest = [];
+    if (lines.length > LINES_SHOWN) {
+      keep = lines.filter(function (l) { return !QUIET_LINE.test(l); });
+      rest = lines.filter(function (l) { return QUIET_LINE.test(l); });
+      if (keep.length > LINES_SHOWN) { rest = keep.slice(LINES_SHOWN).concat(rest); keep = keep.slice(0, LINES_SHOWN); }
+    }
+    var box = el('div', { 'class': 'lines-box' });
+    var ul = el('ul', { 'class': 'lines' });
+    keep.forEach(function (l) { add(ul, el('li', {}, l)); });
+    if (keep.length) { add(box, ul); }
+    if (rest.length) {
+      var quiet = rest.filter(function (l) { return QUIET_LINE.test(l); }).length;
+      var d = el('details', { 'class': 'lines-more' });
+      add(d, el('summary', {}, (keep.length ? 'The other ' + rest.length + ' of ' + lines.length + ' lines' : 'All ' + lines.length + ' lines') +
+        (quiet === rest.length ? ': absent or not determined' : quiet ? ' (' + quiet + ' absent or not determined)' : '')));
+      var ul2 = el('ul', { 'class': 'lines' });
+      rest.forEach(function (l) { add(ul2, el('li', {}, l)); });
+      add(d, ul2);
+      add(box, d);
+    }
+    return box;
+  }
 
-  // --- the views --------------------------------------------------------------------------------
-  function heading(text, sub) {
-    var h = el('header', { 'class': 'view-head' });
-    add(h, el('h2', { 'class': 'question' }, text));
-    if (sub) { add(h, el('p', { 'class': 'dim' }, sub)); }
-    return h;
+  // --- a finding in its section ------------------------------------------------------------------------
+  function findingHref(f) { return 'finding/' + encodeURIComponent(f.id) + '/'; }
+  function newAt(f) {
+    if (!running()) { return null; }
+    var by = stepsBy(), t = null;
+    (f.steps || []).forEach(function (s) { if (by[s] && by[s].ended_utc) { t = by[s].ended_utc; } });
+    return t;
   }
-  function lookFirst() {
-    var box = el('div', { id: 'look-first', 'class': 'view' });
-    add(box, heading('Look at these first', 'The cards the report itself flags, in chapter order. A card not listed is for information; its caveats still apply.'));
-    var items = cards().filter(function (x) { return attentionNow(x.c); });
-    if (!items.length) {
-      add(box, el('p', { 'class': 'empty look-empty' }, LOOK_EMPTY));
-    } else {
-      var ol = el('ol', { 'class': 'look-list' });
-      items.forEach(function (x) {
+  function note(head, body, cls) {
+    var n = el('div', { 'class': 'note' + (cls ? ' ' + cls : '') });
+    add(n, el('span', { 'class': 'nh' }, head));
+    add(n, body);
+    return n;
+  }
+  function evidence(rows) {
+    if (!rows || !rows.length) { return null; }
+    var dl = el('dl', {});
+    rows.forEach(function (r) { add(dl, el('dt', {}, r[0]), el('dd', {}, r[1])); });
+    return dl;
+  }
+  function caveatNote(list) {
+    if (!list || !list.length) { return null; }
+    var box = el('div', {});
+    var lead = U.firstSentence(list[0]);
+    add(box, el('span', {}, lead + ' '));
+    var d = el('details', {});
+    add(d, el('summary', { 'class': 'toggle' }, 'More'));
+    list.forEach(function (t) { add(d, el('p', {}, t)); });
+    add(box, d);
+    return note('Caveat', box, 'caveat-note');
+  }
+  function veiled(f) { return closedPage() && f.level === 'act' && !shown[f.id]; }
+  function findingArticle(f, big) {
+    var row = el('div', { 'class': 'row' });
+    var art = el('div', { 'class': 'finding', id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
+    var at = newAt(f);
+    if (at) { art.classList.add('new'); add(art, el('span', { 'class': 'newband' }, 'New at ' + U.hm(at))); add(art, el('br', {})); }
+    add(art, U.findingLevel(f.level, f.level_words));
+    if (veiled(f)) {
+      var v = el('div', { 'class': 'veil' });
+      add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
+        'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
+      var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
+      b.addEventListener('click', function () { shown[f.id] = true; redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
+      add(v, b);
+      add(art, v);
+      add(row, art, el('aside', {}));
+      return row;
+    }
+    var h = el('h3', { 'class': big ? 'h1' : 'h3' });
+    add(h, el('a', { href: findingHref(f) }, f.title));
+    add(art, h);
+    if (f.detail) { add(art, el('div', { 'class': 'gene' }, f.detail)); }
+    add(art, el('p', { 'class': 'body-serif' }, f.text));
+    if (big && f.plan && f.plan.length) {
+      add(art, el('div', { 'class': 'todo-h' }, 'What to do'));
+      var ol = el('ol', { 'class': 'todo' });
+      f.plan.forEach(function (t) { add(ol, el('li', {}, t)); });
+      add(art, ol);
+    }
+    add(art, el('a', { 'class': 'readmore', href: findingHref(f) }, 'The full evidence and what to do →'));
+    var side = el('aside', {});
+    var ev = evidence(f.evidence);
+    if (ev) { add(side, note('Evidence', ev)); }
+    add(side, caveatNote(f.caveat));
+    var rel = (f.related || []).map(findingById).filter(function (r) { return r && !veiled(r); });
+    if (rel.length) {
+      var box = el('div', {});
+      rel.slice(0, 4).forEach(function (r, i) { if (i) { add(box, el('br', {})); } add(box, el('a', { href: '#f/' + r.id }, r.title)); });
+      add(side, note('Linked', box));
+    }
+    add(row, art, side);
+    return row;
+  }
+  function findingLine(f) {
+    var li = el('li', { id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
+    add(li, el('a', { 'class': 't', href: findingHref(f) }, f.title), U.findingLevel(f.level, f.level_words));
+    if (f.detail) { add(li, el('span', { 'class': 'gene' }, f.detail)); }
+    add(li, el('span', { 'class': 'x' }, f.text));
+    return li;
+  }
+
+  // --- the sections ---------------------------------------------------------------------------------
+  // A section's stamp: written (with the time its last step ended), being written (a step runs), waiting.
+  // The chapters whose steps can still add a finding to sections 1 to 4 while they run.
+  var FEEDS = { clinical: true, carrier: true, medicines: true };
+  function feeding(sec) {
+    return sec.n <= 4 ? cards().filter(function (c) { return FEEDS[c.chapter] && sec.cards.indexOf(c.id) < 0; }) : [];
+  }
+  function stamp(sec) {
+    var cs = sec.cards.map(cardById).filter(Boolean).concat(feeding(sec));
+    if (!cs.length) { return { k: 'written', t: 'Written' }; }
+    var gs = cs.map(gate);
+    if (gs.some(function (g) { return g === 'running'; })) { return { k: 'writing', t: 'Being written' }; }
+    if (gs.some(function (g) { return g === 'waiting'; })) {
+      return gs.some(function (g) { return g === 'show'; }) ? { k: 'writing', t: 'Half written' } : { k: 'waiting', t: 'Waiting' };
+    }
+    var by = stepsBy(), t = null;
+    cs.forEach(function (c) { (c.steps || []).forEach(function (s) { if (by[s] && by[s].ended_utc && (!t || by[s].ended_utc > t)) { t = by[s].ended_utc; } }); });
+    return { k: 'written', t: 'Written' + (t && running() ? ' ' + U.hm(t) : '') };
+  }
+  function sectionHead(sec) {
+    var head = el('div', { 'class': 'sechead' });
+    add(head, el('span', { 'class': 'secnum' }, String(sec.n)), el('h2', { 'class': 'h2' }, sec.title));
+    if (running()) { var st = stamp(sec); add(head, el('span', { 'class': 'stamp ' + st.k }, st.t)); }
+    return head;
+  }
+  function waitBlock(sec) {
+    var cs = sec.cards.map(cardById).filter(function (c) { return c && pending(gate(c)); });
+    if (!cs.length) { return null; }
+    var box = el('div', {});
+    add(box, add(el('div', { 'class': 'proof', 'aria-hidden': 'true' }), el('i', {}), el('i', {}), el('i', {})));
+    var names = cs.map(function (c) { return c.title + (gate(c) === 'running' ? ' (running)' : ''); });
+    add(box, el('p', { 'class': 'waitnote' }, 'This section stays open until its steps finish: ' + names.join(', ') +
+      '. Until then this page says nothing either way.'));
+    return box;
+  }
+  // What the clinical steps of section 8 looked at, named in an empty section 1 to 4.
+  function assessedNames() {
+    var s8 = sectionsList().filter(function (s) { return s.n === 8; })[0];
+    return s8 ? s8.cards.map(cardById).filter(function (c) { return c && gate(c) === 'show'; }).map(function (c) { return c.title; }) : [];
+  }
+  function sectionBody(sec) {
+    var body = el('div', {});
+    var fs = sec.findings.map(findingById).filter(function (f) { var c = f && cardById(f.card); return c && gate(c) === 'show'; });
+    var cs = sec.cards.map(cardById).filter(Boolean);
+    var big = sec.n === 1 || (sec.n === 4 && fs.length <= 2);
+    if (sec.n <= 4 || sec.n === 5) {
+      if (fs.length) {
+        if (big || sec.n === 1 || fs.length <= 3) { fs.forEach(function (f) { add(body, findingArticle(f, big)); }); }
+        else { var ul = el('ul', { 'class': 'list-findings' }); fs.forEach(function (f) { add(ul, findingLine(f)); }); add(body, ul); }
+      } else if (sec.n !== 5) {
+        var w = waitBlock(sec);
+        var pend = feeding(sec).some(function (c) { return pending(gate(c)); });
+        if (w) { add(body, w); } else if (pend) {
+          add(body, el('p', { 'class': 'waitnote' }, 'This section stays open until the steps that can add a finding here finish. Until then this page says nothing either way.'));
+        } else {
+          var e = el('p', { 'class': 'empty-sec' }, NOT_ALL_CLEAR);
+          add(body, e);
+          var names = sec.n === 1 || sec.n === 4 ? assessedNames() : cs.filter(function (c) { return gate(c) === 'show'; }).map(function (c) { return c.title; });
+          if (names.length) { add(body, el('p', { 'class': 'soft' }, 'Assessed: ' + names.join(', ') + '. Section 8 lists what each looked at, section 9 what no step sees.')); }
+        }
+      }
+    }
+    if (sec.n === 8) {
+      var nf = el('ul', { 'class': 'nf' });
+      cs.forEach(function (c) {
         var li = el('li', {});
-        var a = el('a', { href: '#s/' + x.c.id });
-        add(a, el('span', { 'class': 'look-ch' }, SHORT[x.ch.key] || x.ch.title), el('span', { 'class': 'look-title' }, x.c.title));
-        add(li, a);
-        if (x.c.headline) { add(li, el('p', { 'class': 'look-head' }, x.c.headline)); }
-        add(ol, li);
+        var d = el('details', { 'data-card': c.id });
+        var sum = el('summary', {});
+        var g = gate(c);
+        var what = g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
+          : g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
+          : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
+        var w2 = el('span', { 'class': 'what' }, what);
+        if (c.caveat && c.caveat.length) { add(w2, el('span', { 'class': 'cav' }, 'Does not see: ' + U.firstSentence(c.caveat[0]))); }
+        add(sum, el('span', { 'class': 'nfname' }, c.title), w2);
+        add(d, sum, card(c));
+        add(li, d);
+        add(nf, li);
       });
-      add(box, ol);
+      add(body, nf);
+      return body;
     }
-    var waiting = cards().filter(function (x) { return gate(x.c) === 'waiting'; }).length;
-    if (waiting) { add(box, el('p', { 'class': 'dim' }, (waiting === 1 ? '1 card is' : waiting + ' cards are') + ' still waiting for its step.')); }
-    return box;
-  }
-  function chapter(ch) {
-    var box = el('div', { 'class': 'view chapter', 'data-chapter': ch.key });
-    add(box, heading(ch.question, ch.title));
-    var grid = el('div', { 'class': 'cards' });
-    ch.sections.forEach(function (c) { add(grid, card(c, ch)); });
-    add(box, grid);
-    return box;
-  }
-  function leaves() {
-    var box = el('div', { 'class': 'view' });
-    add(box, heading('What this leaves out', 'What no step looks at, and the steps that did not run.'));
-    function list(title, items) {
-      var s = el('section', { 'class': 'card' });
-      add(s, el('h3', {}, title));
-      var ul = el('ul', { 'class': 'lines' });
-      (items.length ? items : ['None.']).forEach(function (t) { add(ul, el('li', {}, t)); });
-      add(s, ul);
-      add(box, s);
+    if (sec.n === 9) {
+      var lists = [['No step looks at these', (results && results.not_assessed) || []], ['Steps that did not run', (results && results.not_run) || []]];
+      lists.forEach(function (x) {
+        add(body, el('h3', { 'class': 'h3' }, x[0]));
+        var ul2 = el('ul', { 'class': 'cols2' });
+        (x[1].length ? x[1] : ['None listed.']).forEach(function (t) { add(ul2, el('li', {}, t)); });
+        add(body, ul2);
+      });
+      return body;
     }
-    list('No step looks at these', (results && results.not_assessed) || []);
-    list('Steps that did not run', (results && results.not_run) || []);
-    return box;
+    if (sec.n === 10) {
+      var dbs = (results && results.databases) || {};
+      var keys = Object.keys(dbs);
+      if (keys.length) {
+        var t = el('table', { 'class': 'sources' });
+        add(t, add(el('tr', {}), el('th', {}, 'Source'), el('th', {}, 'Version or date')));
+        keys.forEach(function (k) { add(t, add(el('tr', {}), el('td', {}, k.replace(/_/g, ' ')), el('td', {}, dbs[k]))); });
+        add(body, t);
+      }
+      var rc = state && state.plugins && state.plugins.recheck;
+      if (rc && rc.banner) { add(body, el('p', { 'class': 'note-stale' }, rc.banner)); }
+      var fb = el('div', { 'class': 'filebtns' });
+      add(fb, el('a', { 'class': 'btn', href: 'report.html' }, 'The full report (HTML)'));
+      add(fb, el('a', { 'class': 'btn ghost', href: 'viewer/' }, 'Genome viewer'));
+      add(body, fb);
+    }
+    cs.forEach(function (c) { add(body, card(c)); });
+    return body;
   }
-  function show(tab) {
-    current = tab;
-    var isProgress = tab === 'progress';
-    progress.hidden = !isProgress;
-    panel.hidden = isProgress;
-    root.setAttribute('data-pgp-tab', tab);
-    if (isProgress) { return; }
+  function drawSections() {
     panel.textContent = '';
     if (results && results.note && !(results.chapters || []).length) {
       add(panel, el('p', { 'class': 'empty' }, results.note));
       return;
     }
-    if (tab === 'look') { add(panel, lookFirst()); } else if (tab === 'leaves') { add(panel, leaves()); } else {
-      var ch = ((results && results.chapters) || []).filter(function (c) { return c.key === tab; })[0];
-      if (ch) { add(panel, chapter(ch)); }
-    }
+    sectionsList().forEach(function (sec) {
+      var s = el('section', { 'class': 'sec', id: 's' + sec.n, 'data-journal': sec.key, 'aria-labelledby': 'sh' + sec.n });
+      var head = sectionHead(sec);
+      head.querySelector('h2').id = 'sh' + sec.n;
+      add(s, head, el('div', { 'class': 'secq' }, sec.question));
+      add(s, sectionBody(sec));
+      add(panel, s);
+    });
     root.setAttribute('data-pgp-results', String(panel.querySelectorAll('article.result').length));
+    root.setAttribute('data-pgp-findings', String(panel.querySelectorAll('[data-finding]').length));
     document.dispatchEvent(new CustomEvent('pgp:cards'));
   }
 
-  // --- the header -------------------------------------------------------------------------------
+  // --- the lead, the counts by level, the chromosome map ---------------------------------------------
+  function counts() {
+    var n = { act: 0, medicine: 0, review: 0, carrier: 0, trust: 0, info: 0 };
+    findingsNow().forEach(function (f) { n[f.level] += 1; });
+    n.info = cards().filter(function (c) { return gate(c) === 'show' && c.level === 'info'; }).length;
+    return n;
+  }
+  function drawLead() {
+    var slot = document.getElementById('lead-slot');
+    slot.textContent = '';
+    if (!results || !(results.chapters || []).length) { return; }
+    var row = el('div', { 'class': 'row' });
+    var main = el('div', {});
+    var p = el('p', { 'class': 'lede dropcap', id: 'lead' });
+    var closed = (results.findings || []).some(veiled);
+    var parts = (results.lead || []).map(function (x) {
+      return x[2] === 'act' && closed ? [': closed on this page until opened on purpose, in section 1. ', false] : x;
+    });
+    if (replay && running()) {
+      // A replay holds the results of the finished run: before its end the lead would name findings the
+      // sections do not show yet.
+      parts = [['This report is being written. ', true], ['The lead paragraph is written when the run ends; the sections below fill in as their steps finish.', false]];
+    } else if (running()) {
+      parts = [['This report is being written. ', true], ['What follows is what has been found so far; a section with steps still to run says so. ', false]]
+        .concat(parts.filter(function (x) { return !/^Mean depth/.test(x[0]); }));
+    }
+    parts.forEach(function (x) { add(p, x[1] ? el('b', {}, x[0]) : x[0]); });
+    add(main, p);
+    var n = counts();
+    var fs = findingsNow();
+    var led = el('div', { 'class': 'ledger', id: 'ledger' });
+    [['act', 1], ['medicine', 2], ['review', 4], ['carrier', 3], ['info', 6]].forEach(function (x) {
+      var a = el('a', { href: '#s' + x[1], 'data-level': x[0] });
+      add(a, U.level(x[0], { act: 'Take to a doctor', medicine: 'Prescriber', review: 'Worth a look', carrier: 'Family planning', info: 'Information' }[x[0]]));
+      add(a, el('span', { 'class': 'n' }, String(n[x[0]])));
+      var words = x[0] === 'info' ? 'Origins, traits, scores' : x[0] === 'act' && closed && n.act ? 'Closed until opened' :
+        fs.filter(function (f) { return f.level === x[0]; }).slice(0, 2).map(function (f) { return f.gene || f.title; }).join(', ') || 'None in what was assessed';
+      add(a, el('span', { 'class': 'w' }, words));
+      add(led, a);
+    });
+    add(main, led);
+    var trust = el('div', { 'class': 'trustline' });
+    var problems = fs.filter(function (f) { return f.level === 'trust'; });
+    add(trust, U.level('trust', 'Data quality', problems.length ? 'problem' : ''));
+    var qc = cardById('qc');
+    if (qc && gate(qc) === 'show') {
+      (qc.facts || []).filter(function (f) { return /depth|contamination|sex from/i.test(f[0]); }).slice(0, 3).forEach(function (f, i) {
+        if (i) { add(trust, el('span', { 'class': 'sep' }, '·')); }
+        add(trust, el('span', { title: f[0] + ': ' + f[1] }, String(f[0]).replace(/\s*\([^)]*\)/g, '') + ': ' + String(f[1]).split(/[.;(]\s/)[0].replace(/[.;]$/, '').trim()));
+      });
+    } else { add(trust, el('span', {}, 'Waiting for the quality steps.')); }
+    problems.forEach(function (f) { add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#f/' + f.id }, f.title)); });
+    add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#s5' }, 'Can I trust this?'));
+    add(main, trust);
+    var side = el('aside', {});
+    add(side, note('How to read this', el('span', {}, 'Sections run from what matters most to what is only interesting. A section with nothing to report still says what it looked at and what it cannot see.')));
+    add(side, note('A research pipeline', el('span', {}, 'Not a clinical test: anything to act on is confirmed by a certified laboratory first.')));
+    add(row, main, side);
+    add(slot, row);
+    // Figure 1: where the findings sit.
+    var marks = [];
+    fs.forEach(function (f) {
+      var l = U.locus(f.viewer);
+      if (l && !veiled(f)) { marks.push({ chr: l.chr, mb: l.mb, lv: f.level, label: f.gene || '', tip: f.title, href: findingHref(f) }); }
+    });
+    var fig = el('figure', { 'class': 'row fig1' });
+    var inner = el('div', {});
+    add(inner, el('div', { 'class': 'fig-label' }, 'Figure 1 · Where the findings sit'));
+    var k = el('div', { 'class': 'kary', id: 'kary' });
+    add(k, U.karyogram(marks));
+    add(inner, k);
+    add(inner, el('figcaption', {}, marks.length ? 'Each mark is one finding with a position, on its chromosome. Shape and colour give the level, as in the row above; every finding is also listed in its section.'
+      : 'No finding with a position yet. The findings without one (medicine genes, repeat counts, copy numbers) are listed in their sections.'));
+    add(fig, inner, el('aside', {}));
+    add(slot, fig);
+  }
+
+  // --- the table of contents, the phone tab bar, the cover ------------------------------------------
+  function drawToc() {
+    rail.textContent = '';
+    if (!sectionsList().length) { return; }
+    add(rail, el('div', { 'class': 'group' }, running() ? 'The report, section by section' : 'In this report'));
+    var ol = el('ol', {});
+    var n = counts();
+    var lvOf = { 1: 'act', 2: 'medicine', 3: 'carrier', 4: 'review' };
+    sectionsList().forEach(function (sec) {
+      var a = el('a', { href: '#s' + sec.n, 'data-toc': sec.n });
+      add(a, el('span', { 'class': 'tn' }, String(sec.n)), el('span', {}, sec.title));
+      var lv = lvOf[sec.n];
+      if (lv && n[lv]) { add(a, U.level(lv, String(n[lv]), 'tc')); }
+      else if (sec.n === 5) { add(a, U.level('trust', '', 'tc' + (n.trust ? ' problem' : ''))); }
+      else if (sec.n === 8) { add(a, el('span', { 'class': 'tc muted' }, String(sec.cards.length))); }
+      if (running()) { var st = stamp(sec); add(a, el('span', { 'class': 'tsub ' + st.k }, st.t.toLowerCase())); }
+      add(ol, add(el('li', {}), a));
+    });
+    add(rail, ol);
+    add(rail, el('div', { 'class': 'group' }, 'How the run went'));
+    add(rail, add(el('div', { 'class': 'people' }), add(el('a', { href: '#progress' }), el('span', {}, 'Step timeline'), el('span', { 'class': 'muted' }, '→'))));
+    if (family) {
+      add(rail, el('div', { 'class': 'group' }, 'The family'));
+      var ppl = el('div', { 'class': 'people' });
+      add(ppl, add(el('a', { href: family.url }), el('span', {}, 'Family report'), el('span', { 'class': 'muted' }, '→')));
+      (family.data.state.members || []).forEach(function (m) {
+        if (m.sample === personName()) { return; }
+        var u = memberUrl(m.sample);
+        var a = el(u ? 'a' : 'span', u ? { href: u } : { 'class': 'muted' });
+        add(a, el('span', { 'class': 'pc' + (m.sequenced ? '' : ' nogenome') }, m.sample));
+        var r = family.data.runs && family.data.runs[m.sample];
+        if (r && r.attention) { add(a, U.level('review', String(r.attention), 'tc')); }
+        add(ppl, a);
+      });
+      add(rail, ppl);
+    }
+  }
+  function drawTabbar() {
+    var bar = document.getElementById('tabbar');
+    if (!bar) { return; }
+    bar.textContent = '';
+    var n = counts();
+    [[1, 'To act', 'act'], [2, 'Medicines', 'medicine'], [3, 'Family', 'carrier'], [5, 'Trust', 'trust'], [8, 'More', null]].forEach(function (x) {
+      var a = el('a', { href: '#s' + x[0] });
+      add(a, el('span', { 'class': 'ti' }, String(x[0])));
+      add(a, el('span', {}, x[1] + (x[2] && n[x[2]] ? ' · ' + n[x[2]] : '')));
+      add(bar, a);
+    });
+  }
   function header() {
     var p = (results && results.person) || {};
-    var slot = document.getElementById('avatar-slot');
     var planned = ((state && state.steps) || []).filter(function (s) { return s.state !== 'not planned'; });
     var done = planned.filter(function (s) { return s.state === 'done'; }).length;
+    var slot = document.getElementById('avatar-slot');
     slot.textContent = '';
     add(slot, U.avatar(p.inferred_sex || (state && state.run && state.run.declared_sex), true, planned.length ? done / planned.length : 0));
+    var run = (state && state.run) || {};
+    var kicker = document.getElementById('kicker');
+    kicker.textContent = (running() ? 'Being written · ' : 'Personal genome report') + (family ? (running() ? '' : ' · ') + 'Family ' + family.name : '');
     var line = document.getElementById('person-line');
     line.textContent = '';
     var bits = [];
-    if (p.inferred_sex) { bits.push('Sex from the reads: ' + p.inferred_sex + (p.declared_sex ? ', declared ' + p.declared_sex : '')); }
-    if (bits.length) { add(line, bits.join('. ') + '. '); }
-    var fam = state && state.plugins && state.plugins.family;
+    if (p.inferred_sex || p.declared_sex) {
+      bits.push(el('span', {}, (p.inferred_sex ? p.inferred_sex + ' from the reads' : 'sex not measured') +
+        (p.declared_sex ? (p.declared_sex === p.inferred_sex ? ', as declared' : ', declared ' + p.declared_sex) : '')));
+    }
+    var r = role();
+    if (r) { bits.push(el('span', {}, r)); }
+    if (run.state === 'finished') {
+      var hh = U.hours(run.started_utc, run.finished_utc);
+      bits.push(el('span', {}, 'finished' + (run.finished_utc ? ' ' + U.dm(run.finished_utc) : '') + (hh ? ' after ' + hh.toFixed(1) + ' h' : '')));
+    } else if (running()) {
+      bits.push(el('span', {}, done + ' of ' + planned.length + ' steps done'));
+    }
+    bits.forEach(function (b) { add(line, b); });
+    // Breadcrumb: people / family / person.
     var crumbs = document.getElementById('crumbs');
     var name = document.getElementById('run-name');
+    var home = document.getElementById('home-crumb');
     crumbs.textContent = '';
-    ((fam && fam.kind === 'member' && fam.families) || []).forEach(function (f, i) {
-      if (i === 0) { add(line, 'In family '); } else { add(line, ', '); }
-      add(line, el('a', { href: f.url }, f.name));
-      add(crumbs, el('a', { href: f.url }, f.name), el('span', { 'class': 'sep', 'aria-hidden': 'true' }, '/'));
+    add(crumbs, home, el('span', { 'class': 'sep', 'aria-hidden': 'true' }, '/'));
+    var fam = state && state.plugins && state.plugins.family;
+    ((fam && fam.kind === 'member' && fam.families) || []).forEach(function (f) {
+      add(crumbs, el('a', { href: f.url }, 'Family ' + f.name), el('span', { 'class': 'sep', 'aria-hidden': 'true' }, '/'));
     });
     add(crumbs, name);
-    // The strip: one cell per planned step, filled when done, striped while it runs.
+    // The strip under the timeline: one cell per planned step.
     var strip = document.getElementById('strip');
     strip.textContent = '';
-    planned.forEach(function (s) {
-      add(strip, el('span', { 'class': 'cell st-' + s.state.replace(/\s+/g, '-'), title: s.step + ' ' + s.label + ': ' + s.state }));
-    });
-    var txt = document.getElementById('strip-text');
-    var running = planned.filter(function (s) { return s.state === 'running'; }).length;
+    planned.forEach(function (s) { add(strip, el('span', { 'class': 'cell st-' + s.state.replace(/\s+/g, '-'), title: s.step + ' ' + s.label + ': ' + s.state })); });
+    var nrun = planned.filter(function (s) { return s.state === 'running'; }).length;
     var failed = planned.filter(function (s) { return s.state === 'failed'; }).length;
-    var run = (state && state.run) || {};
     var t = done + ' of ' + planned.length + ' steps done';
     if (run.state === 'finished') { t = 'Finished' + (run.finished_utc ? ' ' + U.day(run.finished_utc) : '') + ': ' + t; }
-    else if (running) { t = 'Running: ' + t + ', ' + running + ' running now'; }
+    else if (nrun) { t = 'Running: ' + t + ', ' + nrun + ' running now'; }
     if (failed) { t += ', ' + failed + ' failed'; }
     var rc = state && state.plugins && state.plugins.recheck;
     if (rc && rc.checked_utc) { t += '. Databases re-checked ' + U.day(rc.checked_utc); }
-    txt.textContent = t + '.';
+    document.getElementById('strip-text').textContent = t + '.';
+    runHero(planned, done, nrun, failed);
+    root.setAttribute('data-pgp-run', run.state || '');
   }
+  // While the run goes: the hero (31 of 54), the timing and what runs now.
+  function runHero(planned, done, nrun, failed) {
+    var hero = document.getElementById('runhero');
+    var badge = document.getElementById('live-badge');
+    hero.hidden = !running();
+    if (badge) { badge.hidden = !running(); }
+    var list = document.getElementById('running-list');
+    var box = document.getElementById('running-now');
+    list.textContent = '';
+    var now = Date.parse((state && state.generated_utc) || '');
+    planned.filter(function (s) { return s.state === 'running'; }).forEach(function (s) {
+      var li = el('li', {});
+      var el2 = isFinite(now) && s.started_utc ? (now - Date.parse(s.started_utc)) / 60e3 : null;
+      var usual = s.hours ? s.hours * 60 : null;
+      add(li, add(el('div', { 'class': 'rn' }), el('span', {}, s.label),
+        el('span', {}, (el2 !== null ? Math.round(el2) + ' min' : '') + (usual ? ' of ~' + Math.round(usual) + ' min' : ''))));
+      if (el2 !== null && usual) {
+        var pb = el('div', { 'class': 'pb' });
+        var i = el('i', {});
+        i.style.setProperty('--p', Math.min(100, 100 * el2 / usual).toFixed(1) + '%');
+        add(li, add(pb, i));
+      }
+      add(list, li);
+    });
+    box.hidden = !list.childNodes.length;
+    if (!running()) { return; }
+    var ops = state.plugins && state.plugins.ops;
+    // hours_left is the ops plugin's {low_s, high_s} range from the usual step times, or null.
+    var hl = ops && ops.hours_left;
+    var left = hl && typeof hl.high_s === 'number' ? hl.high_s / 3600 : null;
+    var low = hl && typeof hl.low_s === 'number' ? hl.low_s / 3600 : null;
+    var span = left === null ? null : (low !== null && Math.round(low) !== Math.round(left) ? Math.max(0, Math.round(low)) + '–' + Math.max(1, Math.round(left)) + ' h' : '~' + Math.max(1, Math.round(left)) + ' h');
+    var retries = ops && ops.memory ? ops.memory.retries || 0 : 0;
+    var alerts = (ops && ops.alerts) || [];
+    var lede = document.getElementById('run-lede');
+    lede.textContent = '';
+    add(lede, 'This report is being written as the steps finish, each section in its place. ',
+      el('b', {}, done + ' of ' + planned.length + ' are done'),
+      span !== null ? ', about ' + span.replace(' h', ' hours') + ' remain. ' : '. ',
+      failed ? el('b', {}, failed + ' failed: the timeline says which. ') : '',
+      alerts.length ? alerts.map(function (a) { return a.text; }).join('; ') + '. ' : (failed ? '' : 'Nothing needs you. '),
+      findingsNow().length ? 'The first findings are already in.' : 'No section is written yet.');
+    var big = document.getElementById('bignum');
+    big.textContent = String(done);
+    add(big, el('small', {}, 'of ' + planned.length + ' steps'));
+    var bar = document.getElementById('stepbar');
+    bar.textContent = '';
+    [['d', done], ['r', nrun], ['f', failed]].forEach(function (x) {
+      if (!x[1]) { return; }
+      var i = el('i', { 'class': x[0] });
+      i.style.setProperty('width', (100 * x[1] / Math.max(1, planned.length)).toFixed(2) + '%');
+      add(bar, i);
+    });
+    var key = document.getElementById('stepkey');
+    key.textContent = '';
+    add(key, el('span', {}, done + ' done'), el('span', {}, nrun + ' running'),
+      el('span', {}, (planned.length - done - nrun - failed) + ' waiting'), el('span', {}, failed + ' failed'));
+    var timing = document.getElementById('timing');
+    timing.textContent = '';
+    var started = state.run.started_utc || (planned.map(function (s) { return s.started_utc; }).filter(Boolean).sort()[0]);
+    var el3 = U.hours(started, state.generated_utc);
+    [['Elapsed', el3 !== null ? el3.toFixed(1) + ' h' : 'not known', started ? 'since ' + U.hm(started) : ''],
+      ['To go', span !== null ? span : 'not known', span !== null ? 'from usual step times' : 'no usual times yet'],
+      ['Retries', String(retries), retries ? 'recovered unless a step failed' : 'none']].forEach(function (x) {
+      add(timing, add(el('div', {}), el('span', { 'class': 'k' }, x[0]), el('span', { 'class': 'v' }, x[1]), el('span', { 'class': 'r' }, x[2])));
+    });
+  }
+
+  // --- the route: #s/<card>, #s<n>, #f/<finding>, #q/<chapter>, #progress -----------------------------
+  var CHAPTER_SECTION = { quality: 5, clinical: 8, carrier: 3, medicines: 2, ancestry: 6, traits: 7, other: 10, look: 1, leaves: 9 };
+  function route() {
+    var h;
+    try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return; }
+    if (!h) { return; }
+    var target = null, isCard = false;
+    if (h.indexOf('s/') === 0 || (h && !/^(s\d+|f\/.*|q\/.*|progress)$/.test(h) && cardById(h))) {
+      target = document.getElementById('card-' + (h.indexOf('s/') === 0 ? h.slice(2) : h));
+      isCard = true;
+    } else if (h.indexOf('f/') === 0) { target = document.getElementById('f-' + h.slice(2)); }
+    else if (h.indexOf('q/') === 0) { target = document.getElementById('s' + (CHAPTER_SECTION[h.slice(2)] || 1)); }
+    else { target = document.getElementById(h); }
+    if (!target) { return; }
+    if (target.id === 'progress') { var fold = document.getElementById('progress-fold'); if (fold) { fold.open = true; } }
+    var d = target.closest && target.closest('details');
+    if (d) { d.open = true; }
+    if (isCard) {
+      Array.prototype.forEach.call(panel.querySelectorAll('.result.target'), function (x) { x.classList.remove('target'); });
+      target.classList.add('target');
+    }
+    target.scrollIntoView({ block: 'start' });
+    if (target.focus) { target.focus({ preventScroll: true }); }
+    Array.prototype.forEach.call(rail.querySelectorAll('[data-toc]'), function (a) {
+      var sec = target.closest ? target.closest('section.sec') : null;
+      a.setAttribute('aria-current', sec && sec.id === 's' + a.getAttribute('data-toc') ? 'true' : 'false');
+    });
+  }
+  window.addEventListener('hashchange', route);
 
   // --- data ---------------------------------------------------------------------------------------
   function load() {
@@ -495,27 +919,46 @@
     fetchedFor = key;
     U.getJSON('results.json').then(function (r) {
       if (key !== fetchedFor) { return; }
-      if (!(r && (r.chapters || r.note))) { fetchedFor = null; return; }  // tried again on the next state
+      if (!(r && (r.chapters || r.note))) { fetchedFor = null; return; }
       results = r;
       redraw(true);
+      route();
     }).catch(function () { if (key === fetchedFor) { fetchedFor = null; } });
   }
   function redraw(force) {
-    var k = JSON.stringify([doneSet(), state && state.run && state.run.state, !!results,
-      state && state.plugins && state.plugins.recheck && state.plugins.recheck.mtime]);
-    if (!force && k === drawnKey) { return; }
+    var k = JSON.stringify([doneSet(), state && state.run && state.run.state, !!results, !!family, Object.keys(shown),
+      state && state.plugins && state.plugins.recheck && state.plugins.recheck.mtime,
+      // Every step's state: one can move from waiting to not finished with the done set unchanged.
+      ((state && state.steps) || []).map(function (s) { return s.step + ':' + s.state; })]);
+    if (!force && k === drawnKey) { header(); return; }
     drawnKey = k;
+    var y = window.scrollY;
+    var open = Array.prototype.map.call(panel.querySelectorAll('details[open]'), function (d) {
+      return d.getAttribute('data-card') || (d.closest('[id]') || {}).id; });
     header();
-    var keep = document.activeElement && rail.contains(document.activeElement) ? document.activeElement.getAttribute('data-tab') : null;
-    drawRail();
-    if (!chosen && !parse()) { show(defaultTab()); route(false); } else { route(false); }
-    if (keep) { var t = rail.querySelector('[data-tab="' + keep + '"]'); if (t) { t.focus(); } }
+    drawToc();
+    drawTabbar();
+    drawLead();
+    drawSections();
+    open.forEach(function (id) {
+      var d = panel.querySelector('details[data-card="' + id + '"]');
+      if (d) { d.open = true; }
+    });
+    window.scrollTo(0, y);
+    document.getElementById('progress-q').textContent = running()
+      ? 'Is it moving, when will it end, is anything wrong? One line per step.' : 'One line per step: when it ran, and what it found.';
+    // The step timeline closes the report, folded once the page has a report to show, while the run goes
+    // and after it ends: the page answers "is there anything serious?" first. The band under the header
+    // (runHero) and the contents link to it. A page with no report yet keeps it open: it is all there is.
+    var fold = document.getElementById('progress-fold');
+    if (fold && !folded && sectionsList().length) { folded = true; fold.open = window.location.hash === '#progress'; }
   }
 
   window.PGP.register({
     name: 'person',
     onState: function (s) {
       state = s;
+      loadFamily();
       if (!replay || !results) { load(); }
       redraw(false);
     }

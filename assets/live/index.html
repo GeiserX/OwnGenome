@@ -11,41 +11,73 @@
 {{plugins}}
 </head>
 <body class="page-person">
-<header class="top">
-  <a class="brand" href="/">OwnGenome</a>
-  <nav class="crumbs" id="crumbs" aria-label="Where you are"><span id="run-name">{{run}}</span></nav>
+<header class="top mast"><div class="mast-in">
+  <a class="brand wordmark" href="/">Own<i>Genome</i></a>
+  <nav class="crumbs" id="crumbs" aria-label="Where you are"><a href="/" id="home-crumb">People</a><span class="sep" aria-hidden="true">/</span><span id="run-name">{{run}}</span></nav>
   <div id="search-slot" class="search-slot"></div>
-  <nav class="links"><a href="report.html" id="report-link">Report</a> <a href="/" id="home-link">All runs</a></nav>
-</header>
+  <nav class="links"><span class="livebadge" id="live-badge" hidden><span class="dot-live"></span><span id="live-text">Live</span></span> <a href="report.html" id="report-link">Report</a> <a href="/" id="home-link">All runs</a></nav>
+</div></header>
 <div id="replay" class="replay" hidden>
   <button type="button" id="replay-play">Play</button>
   <input type="range" id="replay-slider" min="0" max="0" value="0" aria-label="Moment of the run">
   <span id="replay-time"></span>
 </div>
-<section class="person-head" aria-label="This person">
-  <h1><span id="avatar-slot"></span><span id="person-name">{{run}}</span> <span id="run-state" class="badge">loading</span></h1>
-  <p id="person-line" class="person-line"></p>
-  <a href="#progress" id="strip" class="strip" aria-label="Steps of the run: open the Progress tab"></a>
-  <p id="strip-text" class="strip-text"></p>
-</section>
-<div class="layout">
-  <nav id="rail" class="rail" role="tablist" aria-label="Chapters" aria-orientation="vertical"></nav>
-  <main id="content">
-    <section id="results" class="results" role="tabpanel" hidden></section>
-    <section id="progress" class="progress" role="tabpanel" aria-label="Progress">
-      <div class="progress-grid">
-        <section class="map-wrap" aria-label="Steps">
-          <div id="legend" class="legend"></div>
-          <div id="map"></div>
-        </section>
-        <aside class="side">
-          <section id="detail" class="card" aria-live="polite"><h2>Step</h2><p class="dim">Click a step to see its tasks.</p></section>
-          <section class="card"><h2>Found so far</h2><ul id="found" class="found"><li class="dim">Nothing finished yet.</li></ul></section>
-          <div id="plugin-panels"></div>
-        </aside>
+<div class="wrap">
+  <section class="cover" id="cover" aria-label="This person">
+    <div></div>
+    <div class="cover-main">
+      <div>
+        <div class="kicker" id="kicker">Personal genome report</div>
+        <h1 class="h-display"><span id="avatar-slot" hidden></span><span id="person-name">{{run}}</span></h1>
+        <p id="person-line" class="byline"></p>
+        <p class="byline"><span id="run-state" class="badge">loading</span> <span class="mono">{{run}} · GRCh38</span></p>
       </div>
-    </section>
-  </main>
+      <div class="actions" id="actions">
+        <a class="btn" href="report.html" id="report-btn">The full report (HTML)</a>
+        <a class="btn ghost" href="#s10">Raw data and files</a>
+      </div>
+    </div>
+  </section>
+  <section class="runhero runband" id="runhero" aria-label="The run" hidden>
+    <p class="lede" id="run-lede"></p>
+    <div class="runband-num">
+      <div class="bignum" id="bignum"></div>
+      <div class="stepbar" id="stepbar"></div>
+      <div class="stepkey" id="stepkey"></div>
+    </div>
+    <div class="timing" id="timing"></div>
+    <a class="runband-link" href="#progress">The step timeline, what runs now and the wire &rarr;</a>
+  </section>
+  <div class="jlayout">
+    <aside class="toc" id="rail" aria-label="In this report"></aside>
+    <main id="content">
+      <div id="lead-slot"></div>
+      <section id="results" class="results" aria-label="The report"></section>
+      <section id="progress" class="sec runsec" aria-label="The run, step by step">
+        <div class="sechead"><span class="secnum">&#8211;</span><h2 class="h2">How the run went</h2></div>
+        <p class="secq" id="progress-q">One line per step: when it ran, and what it found.</p>
+        <details class="runfold" id="progress-fold" open>
+        <summary>Show the step timeline, what runs now and the wire</summary>
+        <div class="progress-grid">
+          <section class="map-wrap" aria-label="Steps">
+            <div class="map-head"><span class="fig-label">Figure &middot; The run, one line per step</span><div id="legend" class="legend"></div></div>
+            <div id="map"></div>
+            <a href="#progress" id="strip" class="strip" aria-label="Steps of the run"></a>
+            <p id="strip-text" class="strip-text"></p>
+          </section>
+          <aside class="side">
+            <section id="running-now" class="panel" hidden><h2>Running now</h2><ul class="running-now" id="running-list"></ul></section>
+            <section id="detail" class="panel" aria-live="polite"><h2>Step</h2><p class="dim">Click a step to see its tasks.</p></section>
+            <section class="panel"><h2>The wire</h2><ul id="found" class="found"><li class="dim">Nothing finished yet.</li></ul></section>
+            <div id="plugin-panels"></div>
+          </aside>
+        </div>
+        </details>
+      </section>
+    </main>
+  </div>
 </div>
+<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
+<footer class="colophon"><div class="colophon-in"><span class="wordmark">OwnGenome</span><span>GRCh38 no-ALT · a research pipeline, not a clinical test</span><span class="right" id="colophon-note"></span></div></footer>
 </body>
 </html>

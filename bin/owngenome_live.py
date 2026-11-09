@@ -89,7 +89,7 @@ RUN_HTML_CSP = ("sandbox allow-same-origin allow-popups allow-popups-to-escape-s
 RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")  # validate_sample in scripts/lib/common.sh
 ASSET_RE = re.compile(r"^(?:plugins/)?[A-Za-z0-9][A-Za-z0-9._-]*$")
 # The page templates of assets/live: served filled in, never as an asset.
-PAGES = ("index.html", "login.html", "home.html", "family.html")
+PAGES = ("index.html", "login.html", "home.html", "family.html", "finding.html")
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
          ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".tsv": "text/plain; charset=utf-8",
          ".md": "text/plain; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".pdf": "application/pdf"}
@@ -267,7 +267,11 @@ def _with_note(lines, note):
     """The first line, and the section's caveat when the helper ends with it (never re-worded)."""
     if not lines:
         return None
-    return lines[0] + (f" {note}" if note and lines[-1] == note else "")
+    first = lines[0]
+    if not (note and lines[-1] == note):
+        return first
+    # Two sentences, so the page can cut the line after the first one ("HHV-6: not found. From the reads...").
+    return first + ("" if first.rstrip().endswith((".", "!", "?")) else ".") + f" {note}"
 
 
 def _h_clinvar(d, summary):
@@ -290,7 +294,7 @@ def _h_roh(d, summary):
     rr = _rr()
     lines = rr.roh_lines(d)
     first = next((x for x in lines if x.startswith("**")), lines[0])
-    return f"{first} {rr.ROH_NOTE}" if first != rr.ROH_NOTE else first, bool(d.get("upd_flag"))
+    return _with_note([first, rr.ROH_NOTE], rr.ROH_NOTE) if first != rr.ROH_NOTE else first, bool(d.get("upd_flag"))
 
 
 def _h_pypgx(d, summary):
@@ -524,6 +528,7 @@ class Live:
         self.streams = threading.BoundedSemaphore(cfg.max_streams)
         self.headline_cache = {}
         self.attention_cache = {}
+        self.live_overview = {}  # run -> (the headline cache key, live_results.overview of that summary)
         self.allowed = set(LOOPBACK_HOSTS) | {h.lower() for h in cfg.allowed_host or []}
         if cfg.bind not in ("0.0.0.0", "::"):
             self.allowed.add(cfg.bind.strip("[]").lower())
@@ -782,6 +787,12 @@ class Live:
     def attention(self, d):
         """(count of cards worth a look, mtime) from <run>/summary.json alone, cached by its mtime;
         (None, None) without one. The home page reads no result file beyond that."""
+        o, mtime = self.overview(d)
+        return (o["attention"] if o else None), mtime
+
+    def overview(self, d):
+        """(live_results.overview of <run>/summary.json, mtime), cached by its mtime; (None, None) without one:
+        the attention count, the counts by level, the first findings and the lead the home page shows."""
         p = os.path.join(d, "summary.json") if d else None
         if not p or not self.inside(p, os.path.realpath(d)) or not self.inside(p, self.root):
             return None, None  # a summary.json linking out of its run is never read
@@ -797,7 +808,7 @@ class Live:
         try:
             import live_results
             with open(p) as f:
-                n = live_results.attention_count(json.load(f))
+                n = live_results.overview(json.load(f))
         except Exception as e:  # one bad file must not take the home page down
             print(f"owngenome_live: {os.path.basename(os.path.dirname(p))}/summary.json not read: {type(e).__name__}",
                   file=sys.stderr)
@@ -807,11 +818,14 @@ class Live:
 
     def runs_index(self):
         """/runs.json: each run's progress, and the families with their members, for the home page.
-        No result beyond the attention count; no path."""
+        No result beyond the attention count, the counts by level, the titles of the first four
+        findings and the lead; no path."""
         runs = self.runs()
         # Forget the cached results of runs that are gone, so the caches hold only the runs there are.
         for k in [k for k in list(self.headline_cache) if k not in runs]:
             self.headline_cache.pop(k, None)
+        for k in [k for k in list(self.live_overview) if k not in runs]:
+            self.live_overview.pop(k, None)
         keep = {os.path.join(r["dir"] or os.path.join(self.root, n), "summary.json") for n, r in runs.items()}
         for k in [k for k in list(self.attention_cache) if k not in keep]:
             self.attention_cache.pop(k, None)
@@ -827,8 +841,32 @@ class Live:
                             running=sum(1 for s in planned if s["state"] == "running"),
                             failed=sum(1 for s in planned if s["state"] == "failed"))
                 # A run known from its messages alone still has its folder under the root once step 24 wrote there.
-                item["attention"], mtime = self.attention(r["dir"] or os.path.join(self.root, name))
+                o, mtime = self.overview(r["dir"] or os.path.join(self.root, name))
+                # While a run goes, the summary its page last read (results.json's own) is newer than
+                # summary.json: count from it, so the home never says less than the person page.
+                hit = self.headline_cache.get(name) if item["state"] == "running" else None
+                # Only while that summary is still current: the same steps done and the same summary.json.
+                # Once either moved, the page's next read replaces it; until then summary.json is the newer.
+                done = tuple(s["step"] for s in st["steps"] if s["state"] == "done")
+                sp = os.path.join(r["dir"] or os.path.join(self.root, name), "summary.json")
+                if hit and (hit[0][1] != done or hit[0][3] != self.file_stamp(sp)):
+                    hit = None
+                if hit and hit[2]:
+                    lo = self.live_overview.get(name)
+                    if not lo or lo[0] != hit[0]:
+                        try:
+                            import live_results
+                            lo = (hit[0], live_results.overview(hit[2]))
+                        except Exception as e:  # one bad summary must not take the home page down
+                            print(f"owngenome_live: overview of {name} not built: {type(e).__name__}", file=sys.stderr)
+                            lo = (hit[0], None)
+                        self.live_overview[name] = lo
+                    o = lo[1] or o
+                item["attention"] = o["attention"] if o else None
                 item["results"] = mtime is not None
+                if o:  # the Journal home: counts by level, the first findings, the lead
+                    item.update(levels=o["levels"], top=o["top"], lead=o["lead"], lead_closed=o["lead_closed"],
+                                screened=o.get("screened", False))
             else:
                 item["members"] = r.get("members") or []
             out.append(item)

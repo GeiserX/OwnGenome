@@ -3,19 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OwnGenome: people</title>
+<title>OwnGenome: people and runs</title>
 <link rel="stylesheet" href="{{assets}}/live.css">
 <script src="{{assets}}/core.js" defer></script>
 <script src="{{assets}}/home.js" defer></script>
 </head>
 <body class="page-home">
-<header class="top">
-  <a class="brand" href="./">OwnGenome</a>
-  <nav class="crumbs" aria-label="Where you are"><span>People</span></nav>
+<header class="top mast"><div class="mast-in">
+  <a class="brand wordmark" href="./">Own<i>Genome</i></a>
+  <nav class="crumbs" aria-label="Where you are"><span class="here">People and runs</span></nav>
   <form method="post" action="/logout" class="logout"><button type="submit">Log out</button></form>
-</header>
+</div></header>
 <main id="home" class="home">
   <ul class="runs">{{runs}}</ul>
 </main>
+<footer class="colophon"><div class="colophon-in"><span class="wordmark">OwnGenome</span><span>GRCh38 no-ALT · a research pipeline, not a clinical test</span></div></footer>
 </body>
 </html>

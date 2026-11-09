@@ -1,6 +1,6 @@
-// core.js: what the live site's pages share (home.html, index.html, family.html). Element builders,
+// core.js: what the live site's pages share (home.html, index.html, finding.html, family.html). Element builders,
 // a fetch that sends the session and goes to the login on a 401, the pedigree symbol, dates, the
-// caveat block, the facts list and the table. Text only through textContent and createElementNS:
+// caveat block, the facts list, the table, and the Journal's level marks and chromosome map. Text only through textContent and createElementNS:
 // no innerHTML, no inline script, no eval. Everything hangs on window.PGPUI.
 (function () {
   'use strict';
@@ -124,6 +124,92 @@
     });
   }
 
+  // --- the Journal's shared marks: the level glyph and word, and the chromosome map of findings ---
+  var LEVEL_WORDS = { act: 'Take to a doctor', medicine: 'Tell your prescriber', review: 'Worth a look',
+    carrier: 'For family planning', trust: 'Data quality', info: 'For information' };
+  var LEVEL_SHORT = { act: 'doctor', medicine: 'prescriber', review: 'look', carrier: 'family', trust: 'quality', info: 'info' };
+  var LEVEL_ORDER = ['act', 'medicine', 'review', 'carrier', 'trust', 'info'];
+  // A level is always its glyph and a word, never a colour alone.
+  function level(lv, words, extra) {
+    var s = el('span', { 'class': 'lv ' + lv + (extra ? ' ' + extra : ''), 'data-level': lv });
+    add(s, el('span', { 'class': 'g', 'aria-hidden': 'true' }), words === undefined ? LEVEL_WORDS[lv] || lv : words);
+    return s;
+  }
+  // A finding's level: a data-quality finding is always a problem with the data, so its mark is red.
+  function findingLevel(lv, words) { return level(lv, words, lv === 'trust' ? 'problem' : undefined); }
+  // GRCh38: [name, length Mb, centromere Mb].
+  var CHR = [['1', 248.96, 123.4], ['2', 242.19, 93.9], ['3', 198.3, 90.9], ['4', 190.21, 50], ['5', 181.54, 48.8],
+    ['6', 170.81, 59.8], ['7', 159.35, 60.1], ['8', 145.14, 45.2], ['9', 138.39, 43], ['10', 133.8, 39.8],
+    ['11', 135.09, 53.4], ['12', 133.28, 35.5], ['13', 114.36, 17.7], ['14', 107.04, 17.2], ['15', 101.99, 19],
+    ['16', 90.34, 36.8], ['17', 83.26, 25.1], ['18', 80.37, 18.5], ['19', 58.62, 26.2], ['20', 64.44, 28.1],
+    ['21', 46.71, 12], ['22', 50.82, 15], ['X', 156.04, 60.6], ['Y', 57.23, 10.4]];
+  var LV_COLOUR = { act: '#d03b3b', medicine: '#ec835a', review: '#fab219', carrier: '#9085e9', trust: '#c3c2b7', info: '#c3c2b7' };
+  function glyph(g, lv, x, y) {
+    var c = LV_COLOUR[lv] || LV_COLOUR.info;
+    if (lv === 'act') { g.appendChild(svg('rect', { x: x - 4, y: y - 4, width: 8, height: 8, fill: c, transform: 'rotate(45 ' + x + ' ' + y + ')' })); }
+    else if (lv === 'medicine') { g.appendChild(svg('rect', { x: x - 5.5, y: y - 3, width: 11, height: 6, rx: 3, fill: c })); }
+    else if (lv === 'review') { g.appendChild(svg('path', { d: 'M' + x + ' ' + (y - 5) + 'L' + (x + 5) + ' ' + (y + 4) + 'L' + (x - 5) + ' ' + (y + 4) + 'Z', fill: c })); }
+    else if (lv === 'carrier') {
+      g.appendChild(svg('circle', { cx: x - 2.6, cy: y, r: 3.4, fill: 'none', stroke: c, 'stroke-width': 1.6 }));
+      g.appendChild(svg('circle', { cx: x + 2.6, cy: y, r: 3.4, fill: 'none', stroke: c, 'stroke-width': 1.6 }));
+    } else { g.appendChild(svg('circle', { cx: x, cy: y, r: 4, fill: 'none', stroke: c, 'stroke-width': 1.5 })); }
+  }
+  // "chr16:2087914" or "chr16:2084000-2096000" -> {chr: '16', mb: 2.08}; null for anything else.
+  function locus(v) {
+    var m = /^(?:chr)?([0-9]{1,2}|X|Y):([0-9]+)/.exec(String(v || ''));
+    return m ? { chr: m[1], mb: Number(m[2]) / 1e6 } : null;
+  }
+  // The chromosome map: the 24 chromosomes in a row, each finding a glyph on its chromosome, with its
+  // name beside it and the same words in a title (and in the list under the figure).
+  function karyogram(marks, opts) {
+    opts = opts || {};
+    var W = opts.width || 680, H = opts.height || 190, top = 22, bottom = 22;
+    var slot = (W - 56) / CHR.length, scale = (H - top - bottom) / 249;
+    var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': opts.aria || 'Where the findings sit, by chromosome' });
+    CHR.forEach(function (c, i) {
+      var x = i * slot + slot / 2 - 3.5;
+      s.appendChild(svg('rect', { 'class': 'chr', x: x, y: top, width: 7, height: Math.max(1, c[2] * scale - 1.2), rx: 3.5 }));
+      s.appendChild(svg('rect', { 'class': 'chr', x: x, y: top + c[2] * scale + 1.2, width: 7, height: Math.max(1, (c[1] - c[2]) * scale - 1.2), rx: 3.5 }));
+      var t = svg('text', { 'class': 'lab', x: x + 3.5, y: H - 6, 'text-anchor': 'middle' });
+      t.textContent = c[0];
+      s.appendChild(t);
+    });
+    (marks || []).forEach(function (m) {
+      var i = -1;
+      CHR.forEach(function (c, j) { if (c[0] === m.chr) { i = j; } });
+      if (i < 0) { return; }
+      var x = i * slot + slot / 2 + 7, y = top + Math.min(m.mb, CHR[i][1]) * scale;
+      var g = svg('g', { 'class': 'mk', tabindex: '0' });
+      var tt = svg('title', {});
+      tt.textContent = (LEVEL_WORDS[m.lv] || '') + ': ' + (m.tip || m.label);
+      g.appendChild(tt);
+      g.appendChild(svg('line', { x1: x - 10.5, x2: x - 1, y1: y, y2: y, stroke: LV_COLOUR[m.lv] || LV_COLOUR.info, 'stroke-width': 2 }));
+      glyph(g, m.lv, x + 4, y);
+      if (m.label) {
+        var t = svg('text', { x: x + 11, y: y + 3.5, stroke: '#0e0f10', 'stroke-width': 4, 'paint-order': 'stroke', 'stroke-linejoin': 'round' });
+        t.textContent = m.label;
+        g.appendChild(t);
+      }
+      if (m.href) {
+        g.setAttribute('role', 'link');
+        g.addEventListener('click', function () { window.location.href = m.href; });
+        g.addEventListener('keydown', function (e) { if (e.key === 'Enter') { window.location.href = m.href; } });
+      }
+      s.appendChild(g);
+    });
+    return s;
+  }
+  // A plain time: "14:22" in UTC, "4 Nov" for a day.
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function hm(utc) { var d = new Date(utc); return isFinite(d) ? ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2) : ''; }
+  function dm(utc) { var d = new Date(utc); return isFinite(d) ? d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] : ''; }
+  function hours(a, b) {
+    var x = Date.parse(a), y = Date.parse(b);
+    return isFinite(x) && isFinite(y) && y > x ? (y - x) / 3600e3 : null;
+  }
+
   window.PGPUI = { el: el, svg: svg, add: add, getJSON: getJSON, avatar: avatar, day: day, caveat: caveat,
-    facts: facts, table: table, tablist: tablist, firstSentence: firstSentence };
+    facts: facts, table: table, tablist: tablist, firstSentence: firstSentence, level: level, findingLevel: findingLevel, glyph: glyph,
+    karyogram: karyogram, locus: locus, LEVEL_WORDS: LEVEL_WORDS, LEVEL_SHORT: LEVEL_SHORT, LEVEL_ORDER: LEVEL_ORDER,
+    hm: hm, dm: dm, hours: hours };
 }());
