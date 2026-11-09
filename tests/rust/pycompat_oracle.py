@@ -1,6 +1,7 @@
 """The CPython side of the pycompat differential test.
 
     python3 -I pycompat_oracle.py N SEED [OP ...]
+    python3 -I pycompat_oracle.py ops        the operations, one line
 
 Writes N random cases per operation (the hand-picked edge cases are among
 the values drawn) to stdout, each line followed by the line this Python
@@ -256,6 +257,9 @@ def case(op, r):
 
 
 def main():
+    if sys.argv[1:] == ["ops"]:
+        print(" ".join(OPS))
+        return
     n, seed = int(sys.argv[1]), int(sys.argv[2])
     ops = sys.argv[3:] or OPS
     r = random.Random(seed)
