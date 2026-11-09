@@ -98,21 +98,35 @@ jobs:
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
         run: scripts/ci/check-container-helpers.sh --orad
 
+  # Three shards: one job ran every test file in about 9.5 of its 10 minutes,
+  # so each new browser test pushed it over. File i runs in shard i % 3, so
+  # every file runs in exactly one shard.
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Every tests/test_*.py runs with python3 and every tests/test_*.sh with
       # bash, found by glob, so a new test file needs no workflow edit. The
       # two planted failures prove the loop reports a failing test.
-      - name: Run every tests/test_*.py and tests/test_*.sh
+      - name: Run this shard's tests/test_*.py and tests/test_*.sh
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: 3
         run: |
+          # run_tests DIR [SHARD SHARDS]: run the test files of DIR, or only
+          # those whose position in the sorted list is SHARD modulo SHARDS.
           run_tests() {
-            local dir=$1 t rc n=0 fail=0
+            local dir=$1 shard=${2:-0} shards=${3:-1} t rc i=0 n=0 fail=0
             shopt -s nullglob
             for t in "$dir"/test_*.py "$dir"/test_*.sh; do
+              i=$((i + 1))
+              [ $(( (i - 1) % shards )) -eq "$shard" ] || continue
               n=$((n + 1))
               rc=0
               echo "::group::${t}"
@@ -124,6 +138,7 @@ jobs:
               if [ "$rc" -eq 0 ]; then echo "PASS ${t}"; else echo "FAIL ${t} (exit ${rc})"; fail=1; fi
             done
             if [ "$n" -eq 0 ]; then echo "ERROR: no test files in ${dir}"; return 1; fi
+            echo "Ran ${n} of ${i} test files in ${dir}."
             return "$fail"
           }
 
@@ -139,7 +154,7 @@ jobs:
           done
           echo "Control: both planted failures were reported."
 
-          run_tests tests
+          run_tests tests "$SHARD" "$SHARDS"
 
   # The one check the ruleset requires for this workflow: it runs even when a
   # job above failed or was skipped, and fails unless every one succeeded.
