@@ -91,6 +91,11 @@ CHROMS = [
 AUTOSOMES = [c for c in CHROMS if c[0] not in ("chrX", "chrY")]
 # Variants per base of each chromosome, relative to an autosome (one X, one Y).
 DENSITY = {"chrX": 0.45, "chrY": 0.04}
+
+
+def own_chroms():
+    """The chromosomes the invented person has reads and variants on: a female has no chrY."""
+    return [c for c in CHROMS if SEX == "male" or c[0] != "chrY"]
 MEAN_DEPTH = 31.3
 # When the invented run started: 2026-10-01 09:00 UTC, the time of the demo's
 # PharmCAT report too (logs/run_status.tsv, the report's "Latest run" line).
@@ -147,7 +152,8 @@ def image_tag(var):
 
 def variants(d, rng, n):
     """vcf/S.vcf.gz: N records at random positions, about 94% PASS, 85% SNVs."""
-    weights = [length * DENSITY.get(c, 1.0) for c, length in CHROMS]
+    chroms = own_chroms()
+    weights = [length * DENSITY.get(c, 1.0) for c, length in chroms]
     total_w = sum(weights)
     path = os.path.join(d, "vcf", f"{SAMPLE}.vcf.gz")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -158,7 +164,7 @@ def variants(d, rng, n):
     bases = "ACGT"
     with gzip.open(path, "wt", compresslevel=1) as f:
         f.write(head)
-        for (chrom, length), w in zip(CHROMS, weights):
+        for (chrom, length), w in zip(chroms, weights):
             k = round(n * w / total_w)
             hap = chrom in ("chrX", "chrY") and SEX == "male"
             out = []
@@ -390,7 +396,7 @@ def coverage(d, rng):
         return out
 
     curves = {}
-    for chrom, length in CHROMS:
+    for chrom, length in own_chroms():
         half = chrom in ("chrX", "chrY") and SEX == "male"
         mean = MEAN_DEPTH / (2 if half else 1) * rng.uniform(0.97, 1.03)
         gap = rng.uniform(0.01, 0.03) if chrom != "chrY" else 0.55
@@ -400,7 +406,7 @@ def coverage(d, rng):
         tot_bases += bases
         curves[chrom] = cumulative(mean, mean * 0.24, gap)
     summary.append(f"total\t{tot_len}\t{tot_bases}\t{tot_bases / tot_len:.2f}\t0\t{int(MEAN_DEPTH * 9)}")
-    for chrom, _ in CHROMS:
+    for chrom, _ in own_chroms():
         dist += [f"{chrom}\t{dep}\t{p:.2f}" for dep, p in curves[chrom]]
     dist += [f"total\t{dep}\t{p:.2f}" for dep, p in (cumulative(MEAN_DEPTH, MEAN_DEPTH * 0.25, 0.02))]
     put(os.path.join(m, f"{SAMPLE}.mosdepth.summary.txt"), "\n".join(summary) + "\n")
@@ -414,7 +420,7 @@ def coverage(d, rng):
         f"{'0.98' if SEX == 'male' else '0.01'}\t312\t205\t107\t174820\t0.993\t0.0018\t"
         "0\t0\t0\t0\t0\n")
     roc = ["#chrom\tcov\t" + SAMPLE]
-    for chrom, _ in CHROMS:
+    for chrom, _ in own_chroms():
         half = chrom in ("chrX", "chrY") and SEX == "male"
         centre = 0.5 if half else 1.0
         for k in range(0, 41):
