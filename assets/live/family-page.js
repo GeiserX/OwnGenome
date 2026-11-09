@@ -344,7 +344,7 @@
     var s = section('Each child', 'children');
     if (!f.state.children.length) { add(s, el('p', { 'class': 'dim' }, 'The pedigree names no child.')); }
     // Whether step 38 assessed this child (family.json trio_status): "None listed" only for a child it assessed;
-    // otherwise why not, and a file that links out of the family folder is named as refused, never followed.
+    // otherwise why not, and a file that links out of the family folder is named as one, never followed.
     function empty(child, key, file) {
       var st = ((f.trio_status || {})[child] || {})[key];
       if (st && st.assessed) { return 'Assessed (' + st.why + '): none listed in ' + file + ' for this child.'; }
