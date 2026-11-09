@@ -18,10 +18,14 @@ family it is in.
                                 couple's gene rows, each child's inherited
                                 stretches (<child>_segments.tsv), the de novo and
                                 compound-het candidates (de_novo.tsv,
-                                compound_het.tsv), each member's run progress and
-                                attention count, and the members side by side:
-                                CYP2D6, the CPIC genes, HLA, the haplogroups and
-                                the blood groups (from each summary.json only)
+                                compound_het.tsv) with whether each child was
+                                assessed and why not (trio_status; a file linking
+                                out of the folder is "rejected" in trio_file_state),
+                                each member's run progress and attention count,
+                                and the members side by side: CYP2D6, the CPIC
+                                genes, HLA, the haplogroups and every blood group
+                                system, each value with its stale flag (from each
+                                summary.json only)
 
 state.json gets plugins.family: {"kind": "family", ...} on a family's page,
 {"kind": "member", "families": [...]} on the page of a sample in a family,
@@ -235,14 +239,90 @@ def child_depth(d, order, members):
         rows = read_tsv(os.path.join(d, "%s_segments.tsv" % s))
         if rows:
             segs[s] = [{k: r.get(k) for k in SEGMENT_KEYS} for r in rows]
+    files = {f: file_state(d, f) for f in TRIO_FILES}
     comp = [{k: r.get(k) for k in COMP_KEYS} for r in read_tsv(os.path.join(d, "compound_het.tsv"))]
     comp.sort(key=lambda r: PHASE_ORDER.get(r.get("phase"), 1))
     return {"segments": segs,
             "de_novo": [{k: r.get(k) for k in DE_NOVO_KEYS} for r in read_tsv(os.path.join(d, "de_novo.tsv"))],
             "compound_het": comp,
             # read_tsv's own test: a link out of the family folder counts as not there
-            "trio_files": {f: os.path.isfile(os.path.join(d, f)) and inside(os.path.join(d, f), os.path.abspath(d))
-                           for f in ("de_novo.tsv", "compound_het.tsv")}}
+            "trio_files": {f: files[f] == "here" for f in TRIO_FILES},
+            "trio_file_state": files,
+            "trio_status": trio_status(d, order, members, files)}
+
+
+TRIO_FILES = ("de_novo.tsv", "compound_het.tsv")
+
+
+def file_state(d, f):
+    """'here', 'rejected' (a link out of the family folder: read_tsv does not read it, and the page never
+    shows where it points) or 'missing'."""
+    p = os.path.join(d, f)
+    if not os.path.lexists(p):
+        return "missing"
+    if not inside(p, os.path.abspath(d)):
+        return "rejected"
+    return "here" if os.path.isfile(p) else "missing"
+
+
+def trio_status(d, order, members, files):
+    """Per child, whether step 38 assessed it for de novo candidates and compound-het pairs, and why not:
+    {child: {"de_novo": {"assessed": bool, "why": text}, "compound_het": {...}}}. The rule is step 38's
+    (bin/family_report.py): de novo candidates need both parents sequenced, compound-het pairs a sequenced
+    parent; a file that is not here, or is a link out of the folder, means no child was assessed."""
+    plan = {r.get("analysis"): r for r in read_tsv(os.path.join(d, "family_plan.tsv"))}
+    trio = plan.get("trio_phasing") or {}
+
+    def absent(f):
+        if files[f] == "rejected":
+            return "%s is a link out of the family folder, so this page does not read it" % f
+        why = "%s is not here" % f
+        if trio.get("decision"):
+            why += ": trio phasing %s%s" % (trio["decision"], " (%s)" % trio["reason"] if trio.get("reason") else "")
+        return why
+
+    joint = plan.get("joint_call") or {}
+    called = set((joint.get("members") or "").split(",")) if joint.get("decision") == "runs" else None
+
+    def seq(p):
+        return bool(p) and p in members and bool(members[p]["sequenced"]) and (called is None or p in called)
+
+    need = "sequenced" if called is None else "sequenced and in the joint call"
+
+    def not_called(p):
+        if not members[p]["sequenced"]:
+            return "%s is not sequenced" % p
+        return "%s is not in the joint call (family_plan.tsv)" % p
+
+    def gaps(m):
+        return "; ".join(("no %s is named" % w) if not m[w] else "%s (the %s) is not" % (m[w], w)
+                         for w in ("father", "mother") if not seq(m[w]))
+
+    out = {}
+    for s in order:
+        m = members[s]
+        if not (m["father"] or m["mother"]):
+            continue
+        st = {}
+        if files["de_novo.tsv"] != "here":
+            st["de_novo"] = {"assessed": False, "why": absent("de_novo.tsv")}
+        elif not seq(s):
+            st["de_novo"] = {"assessed": False, "why": not_called(s)}
+        elif seq(m["father"]) and seq(m["mother"]):
+            st["de_novo"] = {"assessed": True, "why": "both parents are sequenced"}
+        else:
+            st["de_novo"] = {"assessed": False, "why": "de novo candidates need both parents %s: %s" % (need, gaps(m))}
+        if files["compound_het.tsv"] != "here":
+            st["compound_het"] = {"assessed": False, "why": absent("compound_het.tsv")}
+        elif not seq(s):
+            st["compound_het"] = {"assessed": False, "why": not_called(s)}
+        elif seq(m["father"]) or seq(m["mother"]):
+            st["compound_het"] = {"assessed": True, "why": "a parent is sequenced; pairs come only from the child's "
+                                  "clinical-filter candidates (step 23), so with none given no pair is listed"}
+        else:
+            st["compound_het"] = {"assessed": False, "why": "compound-het pairs need a parent %s" % need}
+        out[s] = st
+    return out
 
 
 def _sec(summary, key):
@@ -250,54 +330,73 @@ def _sec(summary, key):
     return sec.get("data") or {} if sec.get("state") in ("ok", "stale") else None
 
 
+def _stale(summary, *keys):
+    secs = (summary or {}).get("sections") or {}
+    return any(((secs.get(k) or {}).get("state")) == "stale" for k in keys)
+
+
 def side_values(summary):
-    """[(group, label, value)] of one member's summary.json, as its report prints them; nothing computed."""
+    """[(group, label, value, stale)] of one member's summary.json, as its report prints them; nothing
+    computed. stale is true when the value comes from a section older than its input (state "stale")."""
     out = []
     c = (summary or {}).get("cyp2d6") or {}
     calls = ", ".join("%s %s" % (k, v) for k, v in (c.get("calls") or {}).items() if v)
     if calls:
         agree = c.get("agree")
-        out.append(("Medicines", "CYP2D6 (callers)", calls + (" (callers agree)" if agree else " (callers differ)" if agree is False
-                                                     else "")))
+        # summary.json's cyp2d6 block reads pypgx and Cyrius only when complete; its PharmCAT call is cpic's
+        out.append(("Medicines", "CYP2D6 (callers)", calls + (" (callers agree)" if agree else " (callers differ)"
+                                                             if agree is False else ""),
+                    bool((c.get("calls") or {}).get("PharmCAT")) and _stale(summary, "cpic")))
     cpic = _sec(summary, "cpic")
     for g in (cpic or {}).get("genes") or []:
         ph = g.get("phenotype")
-        out.append(("Medicines", g.get("gene"), "%s%s" % (g.get("diplotype") or ".", ' "%s"' % ph if ph else "")))
+        out.append(("Medicines", g.get("gene"), "%s%s" % (g.get("diplotype") or ".", ' "%s"' % ph if ph else ""),
+                    _stale(summary, "cpic")))
     for l in (_sec(summary, "hla") or {}).get("loci") or []:
-        out.append(("HLA", l.get("gene"), " ".join(l.get("alleles") or []) or "not typed"))
+        out.append(("HLA", l.get("gene"), " ".join(l.get("alleles") or []) or "not typed", _stale(summary, "hla")))
     mt = _sec(summary, "haplogroup")
     if mt is not None:
-        out.append(("Haplogroups", "Mitochondrial", mt.get("haplogroup") or "."))
+        out.append(("Haplogroups", "Mitochondrial", mt.get("haplogroup") or ".", _stale(summary, "haplogroup")))
+    ykey = "y_tree" if _sec(summary, "y_tree") else "y_haplogroup"
     y = _sec(summary, "y_tree") or _sec(summary, "y_haplogroup")
     if y is not None:
-        out.append(("Haplogroups", "Y chromosome", y.get("haplogroup") or "."))
+        out.append(("Haplogroups", "Y chromosome", y.get("haplogroup") or ".", _stale(summary, ykey)))
     bt = _sec(summary, "bloodtype")
     if bt is not None:
-        out.append(("Blood groups", "ABO", bt.get("abo") or next((x.get("phenotype") for x in bt.get("systems") or []
-                                                                  if x.get("system") == "ABO"), ".")))
-        out.append(("Blood groups", "RhD", bt.get("rhd") or next((x.get("phenotype") for x in bt.get("systems") or []
-                                                                  if x.get("system") == "RhD"), ".")))
+        old = _stale(summary, "bloodtype")
+        systems = [x for x in bt.get("systems") or [] if x.get("system")]
+        by = {x["system"]: x.get("phenotype") or "." for x in systems}
+        out.append(("Blood groups", "ABO", bt.get("abo") or by.get("ABO", "."), old))
+        out.append(("Blood groups", "RhD", bt.get("rhd") or by.get("RhD", "."), old))
+        # every other system step 41 typed, in its order (Kell, Duffy, Kidd, MNS...)
+        for x in systems:
+            if x["system"] not in ("ABO", "RhD"):
+                out.append(("Blood groups", x["system"], by[x["system"]], old))
     return out
 
 
 def side_by_side(names, summaries):
-    """The members' results in one table: {members, rows: [{group, label, values}]}. A member with no
-    summary.json yet says so in its column; a row a member's summary does not have is '.'."""
+    """The members' results in one table: {members, rows: [{group, label, values, stale}]}. A member with
+    no summary.json yet says so in its column; a row a member's summary does not have is '.'. stale holds,
+    per member, whether that value comes from a section older than its input."""
     per = {n: side_values(summaries.get(n)) for n in names}
     rows, seen = [], {}
     for n in names:
-        for g, label, _ in per[n]:
+        for g, label, _, _ in per[n]:
             if (g, label) not in seen:
                 seen[(g, label)] = len(rows)
-                rows.append({"group": g, "label": label, "values": []})
+                rows.append({"group": g, "label": label, "values": [], "stale": []})
     groups = ["Medicines", "HLA", "Haplogroups", "Blood groups"]
     rows.sort(key=lambda r: (groups.index(r["group"]) if r["group"] in groups else 9, seen[(r["group"], r["label"])]))
     for r in rows:
         for n in names:
             if summaries.get(n) is None:
                 r["values"].append("no summary yet")
+                r["stale"].append(False)
             else:
-                r["values"].append(next((v for g, lab, v in per[n] if (g, lab) == (r["group"], r["label"])), "."))
+                hit = next((x for x in per[n] if (x[0], x[1]) == (r["group"], r["label"])), None)
+                r["values"].append(hit[2] if hit else ".")
+                r["stale"].append(bool(hit and hit[3]))
     return {"members": list(names), "rows": rows}
 
 

@@ -12,6 +12,7 @@
   if (!U) { return; }
   var el = U.el, add = U.add, root = document.documentElement;
   var RESULT = { shared: 'Both carry', x_linked: 'X-linked', one_partner: 'One partner' };
+  var STALE = ' (older than its input)';
 
   // A chapter: its roman number in brass, its title in the serif.
   var CHAPTER = { 'Pedigree': 'I', 'Who is related how': 'II', 'Couple carrier screen': 'III', 'Each child': 'IV',
@@ -342,11 +343,13 @@
   function children(f) {
     var s = section('Each child', 'children');
     if (!f.state.children.length) { add(s, el('p', { 'class': 'dim' }, 'The pedigree names no child.')); }
-    var plan = {};
-    (f.state.plan || []).forEach(function (r) { plan[r.analysis] = r; });
-    function absent(file, analysis) {
-      var r = plan[analysis];
-      return file + ' is not here' + (r ? ': ' + r.analysis.replace(/_/g, ' ') + ' ' + r.decision + (r.reason ? ' (' + r.reason + ')' : '') : '') + '.';
+    // Whether step 38 assessed this child (family.json trio_status): "None listed" only for a child it assessed;
+    // otherwise why not, and a file that links out of the family folder is named as refused, never followed.
+    function empty(child, key, file) {
+      var st = ((f.trio_status || {})[child] || {})[key];
+      if (st && st.assessed) { return 'Assessed: none listed in ' + file + ' for this child.'; }
+      var why = st ? st.why : file + ' is not here';
+      return 'Not assessed for this child: ' + why + '.';
     }
     f.state.children.forEach(function (c, i) {
       var d = el('details', { 'data-child': c.child });
@@ -370,8 +373,7 @@
           rows: dn.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
             r.mother_gt, r.child_dp + ' / ' + r.child_gq, r.child_ab, r.quality]; }) }, 8));
       } else {
-        add(d, el('p', { 'class': 'dim' }, (f.trio_files || {})['de_novo.tsv'] ? 'None listed in de_novo.tsv for this child.'
-          : absent('de_novo.tsv', 'trio_phasing')));
+        add(d, el('p', { 'class': 'dim', 'data-trio': 'de_novo' }, empty(c.child, 'de_novo', 'de_novo.tsv')));
       }
       var ch = (f.compound_het || []).filter(function (r) { return r.child === c.child; });
       add(d, el('h3', {}, 'Compound-het pairs'));
@@ -380,8 +382,7 @@
         add(d, U.table({ columns: ['Gene', 'Phase', 'Variant A', 'From', 'Variant B', 'From'],
           rows: ch.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
       } else {
-        add(d, el('p', { 'class': 'dim' }, (f.trio_files || {})['compound_het.tsv'] ? 'None listed in compound_het.tsv for this child.'
-          : absent('compound_het.tsv', 'trio_phasing')));
+        add(d, el('p', { 'class': 'dim', 'data-trio': 'compound_het' }, empty(c.child, 'compound_het', 'compound_het.tsv')));
       }
       add(s, d);
     });
@@ -395,12 +396,21 @@
     if (!sb || !sb.rows.length) { add(s, el('p', { 'class': 'dim' }, 'No member has a summary yet, or no summary lists these results.')); return s; }
     add(s, el('p', { 'class': 'dim' }, 'Each member’s own report, one column per person: CYP2D6, the CPIC genes ' +
       '(phenotypes in CPIC’s words), HLA, the haplogroups and the blood groups.'));
-    var group = null, rows = [];
+    // A value from a section older than its input (state "stale") says so in its own cell.
+    var group = null, rows = [], old = 0;
     sb.rows.forEach(function (r) {
-      rows.push([r.group === group ? '' : r.group, r.label].concat(r.values));
+      rows.push([r.group === group ? '' : r.group, r.label].concat(r.values.map(function (v, i) {
+        if (!(r.stale || [])[i]) { return v; }
+        old++;
+        return v + STALE;
+      })));
       group = r.group;
     });
     add(s, U.table({ columns: ['', 'Gene or system'].concat(sb.members), rows: rows }, 14));
+    if (old) {
+      add(s, el('p', { 'class': 'dim', 'data-stale': String(old) }, 'Marked' + STALE + ': the member’s result file is from an ' +
+        'earlier run, and the latest run did not write it again; that member’s page says why.'));
+    }
     return s;
   }
 
