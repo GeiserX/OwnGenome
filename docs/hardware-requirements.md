@@ -245,7 +245,7 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 
 ### The report step
 
-`run-all.sh` writes both reports after the pipeline, outside Nextflow's trace, so the end test above has no time for them. We measured them apart on the same three genomes: November 2026, on `main` at e7d5919, on the same server while it ran other work (load average 10-14). Each command ran three times per genome in the pinned Python image, in its own container capped at one CPU and under `nice -n 19`. The genome folder was mounted read-only and every output went to a scratch folder. Wall time and peak memory come from `getrusage` of the child process.
+`run-all.sh` writes both reports ([step 24](24-html-report.md)) after the pipeline, outside Nextflow's trace, so the end test above has no time for them. We measured them apart on the same three genomes in November 2026, on `main` at e7d5919 and on the same server, while it ran other work (load average 10-14). Each command ran three times per genome in the pinned Python image, in its own container capped at one CPU and under `nice -n 19`. The genome folder was mounted read-only and every output went to a scratch folder. Wall time and peak memory come from `getrusage` of the child process.
 
 | Command | Wall time | Peak memory | What it does |
 |---|---|---|---|
@@ -278,7 +278,7 @@ The text report is the same line with `-o /out/report.txt` and no `--search-inde
 
 ### The clinical filter, stage by stage
 
-Step 23's main pipe streams every PASS record of the VEP VCF through `bin/csq_rank.awk`:
+[Step 23](23-clinical-filter.md)'s main pipe streams every PASS record of the VEP VCF through `bin/csq_rank.awk`:
 
 ```sh
 bcftools view -f PASS <vep.vcf.gz> | awk -v keep=noncommon <call floors> -f bin/csq_rank.awk | bcftools view -Oz -o rare_pass.vcf.gz
