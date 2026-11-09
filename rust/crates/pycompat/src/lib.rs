@@ -1,7 +1,8 @@
 //! Python-exact primitives for the Rust ports of OwnGenome's Python tools.
 //!
 //! Every function here returns the bytes CPython 3.15 returns for the same
-//! input. The differential test (`tests/rust/pycompat-diff.sh`) checks that
+//! input, except for the known limits in `docs/rust.md`, where it returns an
+//! error instead. The differential test (`tests/rust/pycompat-diff.sh`) checks that
 //! against `python3 -I` in the pinned `PYTHON_IMAGE`.
 //!
 //! - [`fmt`]: `repr(float)`, the `f`, `e`, `g` and `%` format types, `{:,}`,

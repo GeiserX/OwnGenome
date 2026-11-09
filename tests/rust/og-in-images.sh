@@ -23,20 +23,22 @@ fail=0 runs=0
 run_og() {  # run_og IMAGE PLATFORM BINDIR: og version, as a task would call it
   # -q: a first pull prints its progress on the output compared below.
   docker run -q --rm --pull missing --platform "$2" -v "${3}:${3}:ro" -e "PATH=${3}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-    --entrypoint sh "$1" -c 'echo "$(uname -m) $(og version)"' 2>&1
+    --entrypoint sh "$1" -c 'v=$(og version) && echo "$(uname -m) $v"' 2>&1
 }
 printf '%-18s %-12s %-8s %s\n' image platform result "uname -m and og version"
 for var in "$@"; do
   img=${!var:?$var is not set in versions.env}
   for plat in linux/amd64 linux/arm64; do
-    out=$(run_og "$img" "$plat" "$BIN") || true
+    rc=0
+    out=$(run_og "$img" "$plat" "$BIN") || rc=$?
     if [[ "$out" == *"does not provide the specified platform"* || "$out" == *"no matching manifest"* ]]; then
       printf '%-18s %-12s %-8s %s\n' "$var" "$plat" skipped "the image has no ${plat} build"
       continue
     fi
     runs=$((runs + 1))
     want=$([ "$plat" = linux/amd64 ] && echo x86_64 || echo aarch64)
-    if [[ "$out" == "${want} og rust tree "*" (${want}-unknown-linux-musl)" ]]; then r=ok; else r=FAIL; fail=1; fi
+    # og version must also exit 0: a task that calls it fails otherwise.
+    if [ "$rc" -eq 0 ] && [[ "$out" == "${want} og rust tree "*" (${want}-unknown-linux-musl)" ]]; then r=ok; else r=FAIL; fail=1; out="${out} (exit ${rc})"; fi
     printf '%-18s %-12s %-8s %s\n' "$var" "$plat" "$r" "$out"
   done
 done

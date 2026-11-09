@@ -143,6 +143,16 @@ fn eval(f: &[&str]) -> io::Result<String> {
                 .collect::<Vec<_>>()
                 .join("|"));
         }
+        // readline() keeps each line's ending, so a missing or extra "\n" shows.
+        "readline" => {
+            let mut l = Lines::new(io::Cursor::new(bytes(arg(1)?)?), Utf8::Replace);
+            let mut line = String::new();
+            let mut all = Vec::new();
+            while l.read_line(&mut line)? {
+                all.push(escape(&line));
+            }
+            return Ok(all.join("|"));
+        }
         op => return Err(bad(format!("unknown operation {op:?}"))),
     })
 }
@@ -154,7 +164,7 @@ pub fn run(input: impl BufRead, output: impl Write) -> io::Result<()> {
         let fields: Vec<&str> = line.split('\t').collect();
         let result = eval(&fields)?;
         // A lines result is escaped line by line already.
-        if fields[0] == "lines" {
+        if matches!(fields[0], "lines" | "readline") {
             writeln!(out, "{result}")?;
         } else {
             writeln!(out, "{}", escape(&result))?;

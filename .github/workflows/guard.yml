@@ -236,7 +236,7 @@ jobs:
           rc=0
           out=$(timeout 600 nextflow run main.nf -profile test -stub -ansi-log false --outdir "${RUNNER_TEMP}/og-stale" 2>&1) || rc=$?
           git checkout -- rust/og/src/main.rs
-          if [ "$rc" -eq 0 ] || [[ "$out" != *"og is stale:"*"run scripts/setup.sh --og"* ]] || [[ "$out" == *"Submitted process"* ]]; then
+          if [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ] || [[ "$out" != *"og is stale:"*"run scripts/setup.sh --og"* ]] || [[ "$out" == *"Submitted process"* ]]; then
             echo "$out"
             echo "ERROR: nextflow run did not stop on a stale og before any task (exit ${rc})"
             exit 1

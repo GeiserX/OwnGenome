@@ -144,7 +144,8 @@ pub fn parse_float(s: &str) -> Result<f64, ParseError> {
 }
 
 /// `int(s)` for a str in base 10: surrounding whitespace, a sign, leading
-/// zeros and underscores between digits.
+/// zeros and underscores between digits. Non-ASCII digits, which Python also
+/// reads, are refused, and so is a value beyond `i128`.
 pub fn parse_int(s: &str) -> Result<i128, ParseError> {
     let t = s.trim_matches(number_space);
     let (neg, body) = match t.as_bytes().first() {

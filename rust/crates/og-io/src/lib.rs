@@ -1,13 +1,14 @@
 //! Reading and writing files the way OwnGenome's Python tools do.
 //!
 //! - [`open`]: a path or `-` (stdin), plain or gzip, sniffed by its magic
-//!   bytes. Multi-member gzip, BGZF included, is read to the end.
+//!   bytes. Multi-member gzip, BGZF included, is read to the end, and NUL
+//!   padding after a member is skipped, as Python's `gzip` does.
 //! - [`Lines`]: Python's text mode with `newline=None`: `\n`, `\r\n` and a
 //!   lone `\r` each end a line and read as `\n`; UTF-8 strict or `replace`.
 //! - [`AtomicFile`]: written beside the target and renamed over it on
 //!   [`AtomicFile::commit`], so a reader never sees half a file.
 
-use flate2::bufread::MultiGzDecoder;
+use flate2::bufread::GzDecoder;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -41,10 +42,52 @@ pub fn reader(mut inner: impl Read + 'static) -> io::Result<Box<dyn BufRead>> {
     let gz = head == GZIP_MAGIC;
     let buf = BufReader::with_capacity(1 << 16, io::Cursor::new(head).chain(inner));
     Ok(if gz {
-        Box::new(BufReader::with_capacity(1 << 16, MultiGzDecoder::new(buf)))
+        Box::new(BufReader::with_capacity(
+            1 << 16,
+            Members {
+                dec: Some(GzDecoder::new(buf)),
+            },
+        ))
     } else {
         Box::new(buf)
     })
+}
+
+/// Gzip members one after another, as Python's `gzip` reads them: NUL bytes
+/// between or after members are padding, and the stream may end in them.
+struct Members<R: BufRead> {
+    /// The member being read; `None` once the input has ended.
+    dec: Option<GzDecoder<R>>,
+}
+
+impl<R: BufRead> Read for Members<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        while let Some(dec) = self.dec.as_mut() {
+            let n = dec.read(buf)?;
+            if n > 0 {
+                return Ok(n);
+            }
+            // This member has ended: skip padding, then the next one starts.
+            let mut inner = self.dec.take().expect("a member").into_inner();
+            loop {
+                let rest = inner.fill_buf()?;
+                if rest.is_empty() {
+                    return Ok(0);
+                }
+                let zeros = rest.iter().take_while(|&&c| c == 0).count();
+                let more = zeros < rest.len();
+                inner.consume(zeros);
+                if more {
+                    break;
+                }
+            }
+            self.dec = Some(GzDecoder::new(inner));
+        }
+        Ok(0)
+    }
 }
 
 /// How invalid UTF-8 is read.
@@ -93,6 +136,10 @@ impl<R: BufRead> Lines<R> {
             Some(k) => (&rest[..k], k + 1),
         };
         let ended = used > body.len();
+        // Past the line before decoding it, so a strict error is not raised
+        // again for the same line by a caller that goes on reading. (Python
+        // raises once too; a caller is expected to stop at the error.)
+        self.pos += used;
         match self.utf8 {
             Utf8::Strict => out.push_str(
                 std::str::from_utf8(body)
@@ -103,7 +150,6 @@ impl<R: BufRead> Lines<R> {
         if ended {
             out.push('\n');
         }
-        self.pos += used;
         Ok(true)
     }
 }
@@ -155,11 +201,21 @@ impl AtomicFile {
         })
     }
 
-    /// Flushes and renames over the target.
+    /// Flushes and renames over the target. On an error the temporary file
+    /// is removed and the target is untouched.
     pub fn commit(mut self) -> io::Result<()> {
         let out = self.out.take().expect("committed once");
-        out.into_inner().map_err(io::IntoInnerError::into_error)?;
-        fs::rename(&self.tmp, &self.target)
+        let done = out
+            .into_inner()
+            .map_err(io::IntoInnerError::into_error)
+            .and_then(|f| {
+                drop(f);
+                fs::rename(&self.tmp, &self.target)
+            });
+        if done.is_err() {
+            let _ = fs::remove_file(&self.tmp);
+        }
+        done
     }
 }
 
@@ -208,8 +264,13 @@ mod tests {
             lines(b"\xff\xe2\x82\n", Utf8::Replace),
             ["\u{fffd}\u{fffd}\n"]
         );
-        let mut l = Lines::new(io::Cursor::new(b"\xff\n".to_vec()), Utf8::Strict);
-        assert!(l.read_line(&mut String::new()).is_err());
+        // A strict error on one line is raised once; reading goes on after it.
+        let mut l = Lines::new(io::Cursor::new(b"\xff\nok\n".to_vec()), Utf8::Strict);
+        let mut s = String::new();
+        assert!(l.read_line(&mut s).is_err());
+        assert!(l.read_line(&mut s).unwrap());
+        assert_eq!(s, "ok\n");
+        assert!(!l.read_line(&mut s).unwrap());
         let it: Vec<String> = Lines::new(io::Cursor::new(b"a\r\nb".to_vec()), Utf8::Strict)
             .map(Result::unwrap)
             .collect();
@@ -226,10 +287,17 @@ mod tests {
     fn reads_plain_gzip_and_multi_member() {
         let mut two = gz(b"one\n");
         two.extend(gz(b"two\n"));
+        // NUL padding between and after members, as Python's gzip skips it.
+        let mut padded = gz(b"one\n");
+        padded.extend([0u8; 16]);
+        padded.extend(gz(b""));
+        padded.extend(gz(b"two\n"));
+        padded.extend([0u8; 12]);
         for (input, want) in [
             (b"plain\n".to_vec(), "plain\n"),
             (gz(b"zipped\n"), "zipped\n"),
             (two, "one\ntwo\n"),
+            (padded, "one\ntwo\n"),
             (vec![0x1f], "\u{1f}"),
         ] {
             let mut s = String::new();
@@ -239,6 +307,12 @@ mod tests {
                 .unwrap();
             assert_eq!(s, want);
         }
+        // Anything else after a member is an error, as in Python.
+        let mut junk = gz(b"one\n");
+        junk.extend(b"\0\0junk");
+        let mut s = String::new();
+        let mut r = reader(io::Cursor::new(junk)).unwrap();
+        assert!(r.read_to_string(&mut s).is_err());
     }
 
     #[test]
@@ -257,6 +331,14 @@ mod tests {
         f.commit().unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "new");
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        // A rename that fails (the target is a directory that is not empty)
+        // leaves no temporary file behind.
+        let busy = dir.join("busy");
+        fs::create_dir_all(busy.join("x")).unwrap();
+        let mut f = AtomicFile::create(&busy).unwrap();
+        f.write_all(b"data").unwrap();
+        assert!(f.commit().is_err());
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
         fs::remove_dir_all(&dir).unwrap();
     }
 }

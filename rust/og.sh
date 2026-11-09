@@ -7,7 +7,7 @@
 #   rust/og.sh install     scripts/setup.sh --og: on a release tag (vX.Y.Z,
 #                          clean rust/) download the release's binaries and
 #                          check them against SHA256SUMS (and the build
-#                          attestation when gh is installed); otherwise, or
+#                          attestation when gh is logged in); otherwise, or
 #                          when the release has none, build them
 #   rust/og.sh build       build both from rust/ in OG_BUILDER (versions.env)
 #   rust/og.sh check [--required]
@@ -37,6 +37,7 @@ ENGINE=${CONTAINER_ENGINE:-docker}
 
 triple() { echo "${1}-unknown-linux-musl"; }
 
+# tree_hash: exit 3 when this is not a git checkout, 1 when git fails.
 tree_hash() {
   local idx rc=0
   git -C "$ROOT" rev-parse --verify -q HEAD:rust > /dev/null 2>&1 || return 3
@@ -44,12 +45,12 @@ tree_hash() {
     git -C "$ROOT" rev-parse HEAD:rust
     return
   fi
-  idx=$(mktemp -d "${TMPDIR:-/tmp}/og-tree.XXXXXX")
+  idx=$(mktemp -d "${TMPDIR:-/tmp}/og-tree.XXXXXX") || return 1
   { GIT_INDEX_FILE="${idx}/index" git -C "$ROOT" read-tree HEAD \
     && GIT_INDEX_FILE="${idx}/index" git -C "$ROOT" add -A -- rust \
     && GIT_INDEX_FILE="${idx}/index" git -C "$ROOT" write-tree --prefix=rust/; } || rc=$?
   rm -rf "$idx"
-  return "$rc"
+  [ "$rc" -eq 0 ] || return 1
 }
 
 # embedded FILE: the hash stamped into a binary, or "unknown".
@@ -61,9 +62,15 @@ embedded() {
 }
 
 check() {
-  local required=$REQUIRED expected f h missing="" stale=""
+  local required=$REQUIRED expected f h missing="" stale="" trc=0
   [ "${1:-}" != --required ] || required=true
-  expected=$(tree_hash 2> /dev/null) || expected=""
+  expected=$(tree_hash 2> /dev/null) || trc=$?
+  if [ "$trc" -eq 3 ]; then
+    expected=""
+  elif [ "$trc" -ne 0 ]; then
+    echo "ERROR: the git tree hash of ${ROOT}/rust could not be computed, so og cannot be checked (is TMPDIR writable?)"
+    return 1
+  fi
   for a in $ARCHES; do
     f="${BIN}/og-linux-${a}"
     if [ ! -x "$f" ]; then missing+=" ${a}"; continue; fi
@@ -100,16 +107,27 @@ built() {
   if [ "${#h[@]}" -eq 2 ] && [ "${h[0]#*=}" = "${h[1]#*=}" ]; then echo "${h[0]#*=}"; else echo "$hs"; fi
 }
 
-# put SRC ARCH: move a binary into bin/.og in one rename.
+# put SRC...: one binary per arch of ARCHES, in that order, into bin/.og.
+# All are copied beside their targets first; only when every copy worked are
+# they renamed into place, so a failed copy (a full disk) leaves the old pair.
 put() {
-  mkdir -p "$BIN"
-  cp "$1" "${BIN}/.og-linux-${2}.tmp"
-  chmod 755 "${BIN}/.og-linux-${2}.tmp"
-  mv -f "${BIN}/.og-linux-${2}.tmp" "${BIN}/og-linux-${2}"
+  local a i=0 srcs=("$@")
+  mkdir -p "$BIN" || return 1
+  for a in $ARCHES; do
+    if ! { cp "${srcs[i]}" "${BIN}/.og-linux-${a}.tmp" && chmod 755 "${BIN}/.og-linux-${a}.tmp"; }; then
+      echo "ERROR: could not copy og-linux-${a} into ${BIN}" >&2
+      for a in $ARCHES; do rm -f "${BIN}/.og-linux-${a}.tmp"; done
+      return 1
+    fi
+    i=$((i + 1))
+  done
+  for a in $ARCHES; do
+    mv -f "${BIN}/.og-linux-${a}.tmp" "${BIN}/og-linux-${a}" || { echo "ERROR: could not install ${BIN}/og-linux-${a}" >&2; return 1; }
+  done
 }
 
 build() {
-  local hash cache t0 a out targets=()
+  local hash cache t0 a out targets=() outs=()
   hash=$(tree_hash) || { echo "ERROR: ${ROOT} is not a git checkout: og is stamped with the git tree of rust/, so it builds only in one" >&2; return 1; }
   # shellcheck source=../versions.env
   . "${ROOT}/versions.env"
@@ -128,8 +146,9 @@ build() {
   for a in $ARCHES; do
     out="${cache}/target/$(triple "$a")/release/og"
     [ "$(embedded "$out")" = "$hash" ] || { echo "ERROR: ${out} does not carry tree ${hash}" >&2; return 1; }
-    put "$out" "$a"
+    outs+=("$out")
   done
+  put "${outs[@]}" || return 1
   echo "Built bin/.og/og-linux-{${ARCHES// /,}} in $(($(date +%s) - t0)) s"
 }
 
@@ -137,14 +156,22 @@ sha256() {
   if command -v sha256sum > /dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-get() {  # get URL DEST: 0 when downloaded, 1 when not
-  if command -v curl > /dev/null 2>&1; then curl -fsL --retry 3 -o "$2" "$1"; else wget -q -O "$2" "$1"; fi
+get() {  # get URL DEST: 0 when downloaded, 2 when the server says 404, 1 on any other error
+  local code
+  if command -v curl > /dev/null 2>&1; then
+    code=$(curl -sL --retry 3 -o "$2" -w '%{http_code}' "$1") || return 1
+    case "$code" in 2??) return 0 ;; 404) return 2 ;; *) return 1 ;; esac
+  fi
+  wget -q -O "$2" "$1" && return 0
+  # wget exits 8 on an error response from the server; that is all it tells.
+  [ "$?" -eq 8 ] && return 2 || return 1
 }
 
 # fetch TAG: 0 when the release's binaries are installed, 2 when the release
-# has none (build instead), 1 when a download does not check out.
+# has none (SHA256SUMS is not there: build instead), 1 when a download fails
+# or does not check out.
 fetch() {
-  local tag=$1 tmp want hash a f rc=0 attest=0
+  local tag=$1 tmp want hash a f rc=0 grc=0 attest=0
   hash=$(tree_hash)
   # gh attestation verify needs a login: without one (gh missing, or never
   # logged in) only SHA256SUMS is checked. gh auth token, not gh auth status,
@@ -153,22 +180,28 @@ fetch() {
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/og-fetch.XXXXXX")
   # OG_RELEASE_BASE: another server with the same layout (tests/test_og_check.sh).
   local base="${OG_RELEASE_BASE:-https://github.com/${REPO}/releases/download}/${tag}"
-  if ! get "${base}/SHA256SUMS" "${tmp}/SHA256SUMS"; then
+  get "${base}/SHA256SUMS" "${tmp}/SHA256SUMS" || grc=$?
+  if [ "$grc" -ne 0 ]; then
     rm -rf "$tmp"
-    return 2
+    [ "$grc" -eq 2 ] && return 2
+    echo "ERROR: could not download ${base}/SHA256SUMS; check the network and run scripts/setup.sh --og again" >&2
+    return 1
   fi
   for a in $ARCHES; do
     f="og-linux-${a}"
     want=$(awk -v f="$f" '$2 == f || $2 == "*" f {print $1}' "${tmp}/SHA256SUMS")
-    if [ -z "$want" ] || ! get "${base}/${f}" "${tmp}/${f}"; then echo "ERROR: release ${tag} lists no ${f}" >&2; rc=1; break; fi
+    if [ -z "$want" ]; then echo "ERROR: release ${tag} lists no ${f}" >&2; rc=1; break; fi
+    if ! get "${base}/${f}" "${tmp}/${f}"; then echo "ERROR: could not download ${f} of release ${tag}" >&2; rc=1; break; fi
     if [ "$(sha256 "${tmp}/${f}")" != "$want" ]; then echo "ERROR: ${f} of release ${tag} does not match its SHA256SUMS" >&2; rc=1; break; fi
     if [ "$attest" = 1 ]; then
       gh attestation verify "${tmp}/${f}" --repo "$REPO" > /dev/null || { echo "ERROR: ${f} of release ${tag} has no valid build attestation" >&2; rc=1; break; }
     fi
     if [ "$(embedded "${tmp}/${f}")" != "$hash" ]; then echo "ERROR: ${f} of release ${tag} was not built from this rust/ (tree ${hash})" >&2; rc=1; break; fi
   done
+  local srcs=()
+  for a in $ARCHES; do srcs+=("${tmp}/og-linux-${a}"); done
+  if [ "$rc" -eq 0 ] && ! put "${srcs[@]}"; then rc=1; fi
   if [ "$rc" -eq 0 ]; then
-    for a in $ARCHES; do put "${tmp}/og-linux-${a}" "$a"; done
     [ "$attest" = 1 ] || echo "NOTE: gh is not installed or not logged in, so the build attestation was not checked (SHA256SUMS was)"
     echo "Installed og ${hash} from release ${tag}"
   fi

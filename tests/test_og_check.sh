@@ -5,8 +5,10 @@
 # (og-tree-hash:<hash>;). Checked: no binary is a note (an error with
 # --required); binaries of this rust/ pass; an edit to rust/, uncommitted,
 # untracked or committed, makes them stale; a file git ignores does not; a
-# binary stamped "unknown" is stale; built prints the hash for
-# run_manifest.tsv; outside git the hash cannot be checked. Then the callers:
+# binary stamped "unknown" is stale; a tree hash that cannot be computed is
+# an error; built prints the hash for run_manifest.tsv; outside git the hash
+# cannot be checked. Release downloads: checksum, attestation, a network
+# error, a release without binaries, and a copy into bin/.og that fails. Then the callers:
 # run-all.sh (with SKIP_VALIDATION=true) and validate-setup.sh refuse a stale
 # binary with the setup command, and write_manifest.sh records the hash.
 set -uo pipefail
@@ -85,6 +87,13 @@ out=$(bash "$OG" check); rc=$?
 expect "a binary stamped unknown (plain cargo build): stale" "$rc" 1 "$out" "ERROR: og is stale:*og-linux-x86_64 (rust/ tree unknown)*"
 out=$(bash "$OG" built); [[ "$out" == "x86_64=unknown aarch64=${h1}" ]] && ok "built lists both hashes when they differ" || bad "built printed '${out}'"
 
+# The tree hash of an edited rust/ cannot be computed (TMPDIR not writable):
+# an error, never the note of a checkout without git.
+echo "// edited" >> "${C}/rust/og/src/main.rs"
+out=$(TMPDIR="${T}/no-such-dir" bash "$OG" check 2> /dev/null); rc=$?
+expect "a tree hash that fails is an error" "$rc" 1 "$out" "ERROR: the git tree hash of*could not be computed*"
+g checkout -q -- rust/og/src/main.rs
+
 # The callers, on a stale binary.
 plant "$h0"
 mkdir -p "${T}/fake" "${T}/genome"
@@ -148,6 +157,25 @@ exit 0
   out=$(PATH="${T}/fake:${PATH}" OG_RELEASE_BASE="http://127.0.0.1:${port}" bash "$OG" install 2>&1); rc=$?
   expect "a binary that does not match SHA256SUMS is refused" "$rc" 1 "$out" "*og-linux-aarch64 of release v9.9.9 does not match its SHA256SUMS*"
   [ ! -e "${C}/bin/.og/og-linux-x86_64" ] && ok "a refused release installs nothing" || bad "a refused release left a binary"
+  # A copy that fails (bin/.og not writable) keeps the old pair and fails.
+  (cd "$S" && for a in x86_64 aarch64; do printf 'og-tree-hash:%s;' "$h1" > "og-linux-${a}"; done \
+    && { sha256sum og-linux-* 2> /dev/null || shasum -a 256 og-linux-*; } > SHA256SUMS)
+  plant "$h0"
+  chmod 555 "${C}/bin/.og"
+  out=$(PATH="${T}/fake:${PATH}" OG_RELEASE_BASE="http://127.0.0.1:${port}" bash "$OG" install 2>&1); rc=$?
+  chmod 755 "${C}/bin/.og"
+  expect "a copy into bin/.og that fails is an error" "$rc" 1 "$out" "*could not copy og-linux-x86_64*"
+  [[ "$out" != *"Installed og"* ]] && [ "$(bash "$OG" built)" = "$h0" ] && [ -z "$(ls -A "${C}/bin/.og" | grep tmp)" ] \
+    && ok "a failed copy keeps the old pair and leaves no temporary file" || bad "after a failed copy: $(ls -A "${C}/bin/.og"), built $(bash "$OG" built)"
+  rm -rf "${C}/bin/.og"
+  # A network error on SHA256SUMS is an error, never a fallback to a build.
+  printf '#!/bin/sh\necho "fake engine: must not be reached" >&2\nexit 99\n' > "${T}/fake/engine"; chmod 755 "${T}/fake/engine"
+  out=$(PATH="${T}/fake:${PATH}" CONTAINER_ENGINE=engine OG_RELEASE_BASE="http://127.0.0.1:1" bash "$OG" install 2>&1); rc=$?
+  expect "a release download that fails is an error, not a build" "$rc" 1 "$out" "*could not download http://127.0.0.1:1/v9.9.9/SHA256SUMS*"
+  [[ "$out" != *"must not be reached"* ]] && ok "no build after a failed download" || bad "a failed download started a build"
+  # A release without SHA256SUMS (404) has no binaries: build instead.
+  out=$(PATH="${T}/fake:${PATH}" CONTAINER_ENGINE=engine OG_RELEASE_BASE="http://127.0.0.1:${port}/none" bash "$OG" install 2>&1); rc=$?
+  expect "a release without binaries falls back to a build" "$rc" 99 "$out" "*has no og binaries: building them*must not be reached*"
   kill "$srv" 2> /dev/null; wait "$srv" 2> /dev/null
   g tag -d v9.9.9 > /dev/null
 else

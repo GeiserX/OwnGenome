@@ -58,8 +58,10 @@ pub enum JsonError {
     TooDeep,
 }
 
-/// How deep `loads` nests arrays and objects before it gives up, about
-/// where CPython's default recursion limit (1000) stops `json.loads`.
+/// How deep `loads` nests arrays and objects before it gives up. CPython
+/// 3.14 goes deeper (its limit follows the C stack); the parser here is
+/// recursive, so it stops well inside an 8 MiB stack. A known limit
+/// (`docs/rust.md`).
 pub const MAX_DEPTH: usize = 1000;
 
 impl JsonError {

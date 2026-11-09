@@ -26,7 +26,7 @@ SPECIAL = [
     0.25, 1.005, 1.115, 4.35, 8.345, 99.995, 1234.5, 2.0 ** 52 + 0.5, 2.0 ** 53, 2.0 ** 60, 1e300, -1e-300,
 ]
 OPS = ["repr", "f", "e", "g", "pct", "grpf", "round0", "round", "grp", "zpad", "ljust", "rjust",
-       "float", "int", "fsum", "sum", "json", "lines"]
+       "float", "int", "fsum", "sum", "json", "lines", "readline"]
 WHITESPACE = " \t\n\x0b\x0c\r\x1c\x1d\x1e\x1f\x85\xa0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000"
 
 
@@ -253,6 +253,13 @@ def case(op, r):
             t = io.TextIOWrapper(io.BytesIO(b), encoding="utf-8", errors="replace", newline=None)
             return "|".join(escape(line[:-1] if line.endswith("\n") else line) for line in t)
         return [b.hex()], run
+    if op == "readline":
+        b = a_lines_input(r)
+
+        def run():
+            t = io.TextIOWrapper(io.BytesIO(b), encoding="utf-8", errors="replace", newline=None)
+            return "|".join(escape(line) for line in iter(t.readline, ""))
+        return [b.hex()], run
     raise ValueError(op)
 
 
@@ -272,7 +279,7 @@ def main():
             except Exception as e:  # the exception class is the result
                 res = type(e).__name__
             out.write("\t".join([op] + args) + "\n")
-            out.write((res if op == "lines" else escape(res)) + "\n")
+            out.write((res if op in ("lines", "readline") else escape(res)) + "\n")
     out.flush()
 
 
