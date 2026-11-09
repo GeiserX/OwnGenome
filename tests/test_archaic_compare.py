@@ -57,7 +57,16 @@ class Compare(unittest.TestCase):
 
     def test_only_neanderthal_rows_of_mine_count(self):
         out = self.run_cmp()
-        self.assertIn("x: 300 bp, 0.86 times the released A figure.", out)
+        self.assertIn("x: 300 bp, 0.86 times the released A figure;", out)
+
+    def test_overlap_with_the_released_calls(self):
+        out = self.run_cmp()
+        # mine chr22 100-400; released chr22 100-300 and 1000-1100: 200 bp shared
+        self.assertIn("200 bp under the released calls, 100 bp only here, 150 bp only released", out)
+
+    def test_intersect_bp(self):
+        self.assertEqual(ac.intersect_bp([(0, 10), (20, 30)], [(5, 25)]), 10)
+        self.assertEqual(ac.intersect_bp([(0, 10)], []), 0)
 
     def test_group_spread_uses_the_group_only(self):
         out = self.run_cmp()

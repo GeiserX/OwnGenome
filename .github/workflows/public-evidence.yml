@@ -430,18 +430,31 @@ jobs:
               ARCHAIC_POP=$pop GENOME_DIR="$G" scripts/43-archaic.sh "${SAMPLE}${label}" 2>&1 | tee "${OUT}/step43-${label}-${pop}.log"
               cp "${G}/${SAMPLE}${label}/archaic/${SAMPLE}${label}_archaic_segments.tsv" "${OUT}/${label}-${pop}.segments.tsv"
               cp "${G}/${SAMPLE}${label}/archaic/${SAMPLE}${label}_archaic.tsv" "${OUT}/${label}-${pop}.summary.tsv"
+              mkdir -p "${OUT}/ibdmix-${label}-${pop}"
+              cp "${G}/${SAMPLE}${label}/archaic/work/ibdmix/"chr*.txt "${G}/${SAMPLE}${label}/archaic/work/ibdmix/spans.tsv" "${OUT}/ibdmix-${label}-${pop}/"
               args+=(--mine "${label}-${pop}=${OUT}/${label}-${pop}.segments.tsv")
             done
           done
           grp=$(awk -v s="$SAMPLE" '$9 == s {print $8; exit}' "${EV}/chen/chen.txt")
           python3 -I bin/archaic_compare.py compare --chen-file "${EV}/chen/chen.txt" --sample "$SAMPLE" --group "$grp" \
             --chroms "$LIST" "${args[@]}" | tee "${OUT}/comparison.md"
+          for label in hc lc; do
+            {
+              echo "IBDmix output of ${label} (ALL frequencies), per archaic genome:"
+              echo ""
+              python3 -I bin/archaic_compare.py genomes --chen-file "${EV}/chen/chen.txt" --sample "$SAMPLE" \
+                --ibdmix-dir "${OUT}/ibdmix-${label}-ALL" --spans "${OUT}/ibdmix-${label}-ALL/spans.tsv"
+              echo ""
+            } | tee -a "${OUT}/genomes.md"
+          done
           {
             echo "### Same person: ${SAMPLE} (${grp}), chromosomes ${LIST}"
             echo ""
             echo "hc = NYGC 30x high-coverage genotypes (GRCh38); lc = the original low-coverage phase 3 data called again on GRCh38. ALL and EUR are the 1000 Genomes frequencies step 43 used."
             echo ""
             cat "${OUT}/comparison.md"
+            echo ""
+            cat "${OUT}/genomes.md"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the segments and the comparison

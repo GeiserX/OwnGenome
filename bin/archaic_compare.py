@@ -4,20 +4,28 @@
 Used by the archaic jobs of public-evidence.yml only (not part of the
 pipeline). Standard library only.
 
-  chen     the released per-person calls of Chen et al. (the file "Neanderthal
-           sequence in 1000 genome.50kb.txt": chr, start, end, LOD, maxLOD,
-           size, pop, anc, ID, tab separated), merged per person and
-           chromosome: one person's base pairs and the spread of a group.
+The released calls are Chen et al.'s file "Neanderthal sequence in 1000
+genome.50kb.txt" (chr, start, end, LOD, maxLOD, size, pop, anc, ID, tab
+separated), merged per person and chromosome.
+
   compare  the same person run through step 43 on one or more inputs (a
-           segments TSV per chromosome), beside the released figure.
+           segments TSV), beside the released figure, and how much of each
+           lies under the released calls.
+  genomes  the raw IBDmix output of one step 43 run, per archaic genome
+           (Altai, Vindija, Denisova) at LOD 4 and 50 kb, and the union, each
+           beside the released calls.
 
 Run: python3 bin/archaic_compare.py compare --chen-file F --sample NA12878 \
          --group EUR --chroms "21 22" --mine label=SEGMENTS.tsv [--mine label=...]
 """
 import argparse
 import collections
+import os
 import statistics
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import archaic_report  # noqa: E402  (the same reader and cutoffs as step 43)
 
 
 def norm(c):
@@ -35,6 +43,28 @@ def merged_bp(ivs):
                 total += cur[1] - cur[0]
             cur = [s, e]
     return total + (cur[1] - cur[0] if cur else 0)
+
+
+def intersect_bp(a, b):
+    """Base pairs under both interval lists (each merged first)."""
+    def merged(ivs):
+        out = []
+        for s, e in sorted(ivs):
+            if out and s <= out[-1][1]:
+                out[-1][1] = max(out[-1][1], e)
+            else:
+                out.append([s, e])
+        return out
+    a, b, i, j, total = merged(a), merged(b), 0, 0, 0
+    while i < len(a) and j < len(b):
+        lo, hi = max(a[i][0], b[j][0]), min(a[i][1], b[j][1])
+        if hi > lo:
+            total += hi - lo
+        if a[i][1] < b[j][1]:
+            i += 1
+        else:
+            j += 1
+    return total
 
 
 def read_chen(path):
@@ -114,7 +144,33 @@ def cmd_compare(a):
           f"{a.sample} {tot_me} bp.")
     for l in labels:
         ratio = tot_mine[l] / tot_me if tot_me else float("nan")
-        print(f"{l}: {tot_mine[l]} bp, {ratio:.2f} times the released {a.sample} figure.")
+        both = sum(intersect_bp(ivs[l].get(c, []), calls[a.sample].get(c, [])) for c in chroms)
+        print(f"{l}: {tot_mine[l]} bp, {ratio:.2f} times the released {a.sample} figure; "
+              f"{both} bp under the released calls, {tot_mine[l] - both} bp only here, {tot_me - both} bp only released.")
+
+
+def cmd_genomes(a):
+    calls, _ = read_chen(a.chen_file)
+    if a.sample not in calls:
+        sys.exit(f"{a.sample} is not in {a.chen_file}")
+    chroms = []
+    with open(a.spans) as f:
+        next(f)
+        chroms = [norm(line.split("\t")[0]) for line in f]
+    per = collections.defaultdict(lambda: collections.defaultdict(list))
+    for c in chroms:
+        for n in archaic_report.ARCHAICS:
+            segs = archaic_report.keep(archaic_report.read_segments(os.path.join(a.ibdmix_dir, f"chr{c}.{n}.txt")))
+            per[n][c] += [(s, e) for _, s, e, _ in segs]
+    per["Altai+Vindija"] = {c: per["Altai"][c] + per["Vindija"][c] for c in chroms}
+    released = sum(merged_bp(calls[a.sample].get(c, [])) for c in chroms)
+    print(f"| IBDmix output | bp | under the released {a.sample} calls | only here | only released |")
+    print("|---|---|---|---|---|")
+    for n in ("Altai", "Vindija", "Denisova", "Altai+Vindija"):
+        mine = sum(merged_bp(per[n][c]) for c in chroms)
+        both = sum(intersect_bp(per[n][c], calls[a.sample].get(c, [])) for c in chroms)
+        print(f"| {n} | {mine} | {both} | {mine - both} | {released - both} |")
+    print(f"\nReleased {a.sample}: {released} bp on these {len(chroms)} chromosomes.")
 
 
 def main(argv=None):
@@ -127,6 +183,12 @@ def main(argv=None):
     c.add_argument("--chroms", required=True, help="the chromosomes analysed, separated by spaces or commas")
     c.add_argument("--mine", action="append", required=True, metavar="LABEL=SEGMENTS.tsv")
     c.set_defaults(fn=cmd_compare)
+    g = sub.add_parser("genomes")
+    g.add_argument("--chen-file", required=True)
+    g.add_argument("--sample", required=True)
+    g.add_argument("--ibdmix-dir", required=True)
+    g.add_argument("--spans", required=True)
+    g.set_defaults(fn=cmd_genomes)
     a = p.parse_args(argv)
     a.fn(a)
 
