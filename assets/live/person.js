@@ -452,12 +452,13 @@
     rows.forEach(function (r) { add(dl, el('dt', {}, r[0]), el('dd', {}, r[1])); });
     return dl;
   }
-  function caveatNote(list) {
+  // key: the finding's id, so a redraw keeps this fold open on its own finding (foldKeys).
+  function caveatNote(list, key) {
     if (!list || !list.length) { return null; }
     var box = el('div', {});
     var lead = U.firstSentence(list[0]);
     add(box, el('span', {}, lead + ' '));
-    var d = el('details', {});
+    var d = el('details', key ? { 'data-card': 'cav-' + key } : {});
     add(d, el('summary', { 'class': 'toggle' }, 'More'));
     list.forEach(function (t) { add(d, el('p', {}, t)); });
     add(box, d);
@@ -496,7 +497,7 @@
     var side = el('aside', {});
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
-    add(side, caveatNote(f.caveat));
+    add(side, caveatNote(f.caveat, f.id));
     var rel = (f.related || []).map(findingById).filter(function (r) { return r && !veiled(r); });
     if (rel.length) {
       var box = el('div', {});
@@ -1022,8 +1023,9 @@
     }).catch(function () { if (key === fetchedFor) { fetchedFor = null; } });
   }
   // Every fold of the report as the reader left it, open or closed, by a key that names the same fold in
-  // the next drawing: its data-card, else the element with an id around it, its class and its place among
-  // the folds of that class there (a card's "other lines", its APOE warning, a caveat's "More"). A fold the
+  // the next drawing: its data-card (a finding's caveat "More" carries its finding's id), else the element
+  // with an id around it, its class and its place among the folds of that class there (a card's "other
+  // lines", its APOE warning, its table of detection limits). A fold the
   // current drawing does not have (a phone's fold while the page is wide) keeps its last state.
   var foldState = {};
   function foldKeys() {

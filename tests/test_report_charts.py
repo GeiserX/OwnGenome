@@ -352,7 +352,9 @@ def unit_checks():
           "past the end of chr22 counted in not_drawn",
           outside_marks(ge["svg"]) == [] and nde.get("marks past the end of their GRCh38 chromosome") == 1
           and all(m["end"] is None or m["end"] <= report_charts.CHROM_LEN[m["chrom"]] for m in ge["marks"])
-          and ge["svg"].count('class="sv"') == 2 and ge["svg"].count('class="mca"') == 1,
+          and ge["svg"].count('class="sv"') == 2 and ge["svg"].count('class="mca"') == 1
+          and [(m["chrom"], m["end"]) for m in ge["marks"] if m.get("kind") in ("sv", "mca") and m["pos"] > 40_000_000]
+          == [("chr21", report_charts.CHROM_LEN["chr21"]), ("chr22", report_charts.CHROM_LEN["chr22"])],
           (outside_marks(ge["svg"]), nde))
     shifted = re.sub(r'(<rect class="sv" x=")[0-9.]+', r'\g<1>2000', ge["svg"], count=1)
     check("4. red control: a span drawn past its chromosome's end is caught", outside_marks(shifted) != [])

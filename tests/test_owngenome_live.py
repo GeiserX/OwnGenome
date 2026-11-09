@@ -468,15 +468,17 @@ def browser_checks(port, work, live):
                         "document.getElementById('replay-time').textContent, document.getElementById('replay-time').title])")
         check("browser: replay of a finished run opens at its end, its time short ('2 Jan 10:05') with the full time "
               "in the title", json.loads(opened or "null") == ["2", "done", "2 Jan 10:05", "2026-01-02T10:05:40Z"], opened)
-        b.eval("var s = document.getElementById('replay-slider'); s.value = '0'; s.dispatchEvent(new Event('input')); true")
-        first = b.wait("document.documentElement.dataset.pgpFrame === '0' && "
-                       "document.querySelector('g.box[data-step=\"11\"]').dataset.state")
-        b.eval("document.getElementById('replay-play').click(); true")
-        last = b.wait("document.documentElement.dataset.pgpFrame === '2' && "
-                      "document.querySelector('g.box[data-step=\"11\"]').dataset.state", 10)
+        # Play from the end starts again at the first frame: every frame shown is recorded with step 11's state.
+        b.eval("window.seen = []; new MutationObserver(function () { var r = document.documentElement; "
+               "window.seen.push(r.dataset.pgpFrame + ':' + document.querySelector('g.box[data-step=\"11\"]').dataset.state); })"
+               ".observe(document.documentElement, {attributes: true, attributeFilter: ['data-pgp-frame']}); "
+               "document.getElementById('replay-play').click(); true")
+        seen = b.wait("window.seen.length > 1 && window.seen[window.seen.length - 1].indexOf('2:') === 0 && "
+                      "JSON.stringify(window.seen)", 10)
         found = b.eval("document.getElementById('found').textContent")
-        check("browser: replay plays frames.json (11 waiting at frame 0, done at the last, its headline listed)",
-              first == "waiting" and last == "done" and "Runs of homozygosity" in (found or ""), (first, last, found))
+        check("browser: Play at the end replays frames.json from the first frame (11 waiting at frame 0, done at the "
+              "last, its headline listed)", json.loads(seen or "[]")[:1] == ["0:waiting"]
+              and json.loads(seen or "[]")[-1:] == ["2:done"] and "Runs of homozygosity" in (found or ""), (seen, found))
         aria = b.eval("var m = document.querySelector('#map svg'), g = document.querySelector('g.box[data-step=\"11\"]'); "
                       "[m.getAttribute('role'), g.getAttribute('aria-label') || ''].join('|')")
         check("browser: the map is a group (not an image that hides its buttons) and a box names its step and state",
@@ -489,6 +491,19 @@ def browser_checks(port, work, live):
               b.eval("document.activeElement && document.activeElement.outerHTML.slice(0, 200)"))
         blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
         check("browser: the policy blocked nothing in replay", not blocked, blocked)
+        # A replay whose last frame is still running opens at its first frame (its own folder: no cached frames.json).
+        rr = os.path.join(rd, "running")
+        os.makedirs(rr)
+        for f in ("index.html", "live.js", "live.css"):
+            shutil.copy(os.path.join(rd, f), rr)
+        with open(os.path.join(FIX, "frames.json")) as f:
+            fr = json.load(f)
+        with open(os.path.join(rr, "frames.json"), "w") as f:
+            json.dump(dict(fr, frames=fr["frames"][:-1]), f)
+        b.go(f"http://127.0.0.1:{replay_srv.server_address[1]}/running/index.html")
+        at = b.wait("document.documentElement.dataset.pgpFrame && document.getElementById('replay-slider').max === '1' "
+                    "&& document.documentElement.dataset.pgpFrame")
+        check("browser: a replay whose last frame is still running opens at its first frame", at == "0", at)
     finally:
         b.close()
         if replay_srv:

@@ -103,6 +103,9 @@ jobs:
           "$py" tests/demo/check_pictures.py --self-test
           "$py" tests/demo/check_pictures.py "$RUNNER_TEMP/pictures/demo-live-site.png" \
             "$RUNNER_TEMP/pictures/demo-live-phone.png"
+          # The phone picture is a phone's width: its PNG header (IHDR) says 390 px.
+          "$py" -c 'import struct, sys; f = open(sys.argv[1], "rb"); f.seek(16); w = struct.unpack(">I", f.read(4))[0]; sys.exit(0 if w == 390 else f"{sys.argv[1]} is {w} px wide, want 390")' \
+            "$RUNNER_TEMP/pictures/demo-live-phone.png"
 
       - name: Upload the pictures
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
