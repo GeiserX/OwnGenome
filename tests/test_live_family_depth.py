@@ -17,11 +17,16 @@ Checks:
   8. every blood group system step 41 typed gets a row (ABO and RhD first, then the rest in order);
   9. each child's trio status: assessed with both parents sequenced and the file here; not assessed
      with the reason when a parent is not sequenced or not in the joint call; a missing file and a
-     file linking out of the folder told apart, the link's target never written.
+     file linking out of the folder told apart, the link's target never written;
+ 10. compound-het pairs come only from the child's step 23 candidates: assessed, not, or not known;
+ 11. a member's summary.json of a shape the report never writes (sections a list, CYP2D6 calls a
+     string, a CPIC gene named by a list) costs that member's column only: it says "summary not
+     readable" there, and every other member's column is as before.
 Each check runs again on a planted mistake and must fail there: the segments read from the wrong
 child (1), the pairs left in file order (2), a trio file planted (3), a member's summary dropped (4),
 the inside check bypassed (5), "ok" planted in a row (6), the stale section made complete (7), the
-systems list emptied (8), the link replaced by a plain file (9). A check that cannot fail is no check.
+systems list emptied (8), the link replaced by a plain file (9), a bad summary read
+silently as empty (11). A check that cannot fail is no check.
 
 Run: python3 tests/test_live_family_depth.py
 """
@@ -334,6 +339,36 @@ def main():
         check("10. candidates: none in the run, here, newer than compound_het.tsv, a link out of the run, no run",
               got == ("absent", "here", "newer", "absent", None), got)
         control("the inside check bypassed for the candidates", fam.candidates_given(Open, run3, "DEMO-003") == "absent")
+
+        def malformed_problems():
+            out = []
+            for bad in ({"sections": ["not", "a", "mapping"]}, {"cyp2d6": "CYP2D6 *1/*4"},
+                        {"sections": {"cpic": {"state": "ok", "data": {"genes": [{"gene": ["CYP2D6"]}]}}}}):
+                try:
+                    got = fam.side_by_side(["A", "B", "C"], dict(sums, B=bad))
+                except Exception as e:  # noqa: BLE001 -- the very thing under test
+                    out.append(f"{bad}: raised {type(e).__name__}")
+                    continue
+                cols = {r["label"]: r["values"] for r in got["rows"]}
+                want = {r["label"]: r["values"] for r in fam.side_by_side(["A", "B", "C"], dict(sums, B=None))["rows"]}
+                for label, v in want.items():
+                    if cols.get(label, [None] * 3)[0] != v[0] or cols.get(label, [None] * 3)[1] != "summary not readable":
+                        out.append(f"{bad}: {label} {cols.get(label)}")
+            return out
+        bad = malformed_problems()
+        check("11. a member's summary of a shape the report never writes costs that member's column only", not bad, bad)
+        real = fam.side_values
+
+        def quiet(summary):  # the planted mistake: a bad summary read as one with no rows, never said
+            try:
+                return real(summary)
+            except (AttributeError, TypeError):
+                return []
+        fam.side_values = quiet
+        try:
+            control("a bad summary shown as '.' in every row, as if it had none of them", not malformed_problems())
+        finally:
+            fam.side_values = real
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:

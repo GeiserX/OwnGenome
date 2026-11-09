@@ -42,7 +42,11 @@ Checks:
      a Ctrl+click on a link to the current place opens nothing; on the son's page a
      two planted CPSR results to act on name their genes and variants nowhere
      (their card included) until "Show the result" is clicked, and each click
-     opens one result, there and on the finding's own page; DEMO-001's page
+     opens one result, there and on the finding's own page; they stay closed on
+     both pages with family.json unavailable, with a state cut short (no
+     plugins) and with no state at all (frames.json unavailable), and the son's
+     search lists no hit and suggests no term from their closed card while a
+     term of an open card is still found; DEMO-001's page
      mid-replay and at the end leads with the report (a short run band above
      the lead while it runs, none once finished), ends with the step timeline
      folded, keeps the wire to at most eight one-sentence lines with the plain
@@ -50,7 +54,8 @@ Checks:
      with its absent and undetermined lines folded.
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
-the veil), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+the veil, person.js and finding.js that read a missing state as a standalone adult, and search.js
+without its filter), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -510,6 +515,10 @@ def veil_checks(b, base, out):
         with open(js, "w") as f:
             f.write(keep_js.replace("} else if (closedFs.length) {", "} else if (false) {"))
         control("person.js whose cards ignore the veil", not veil_problems(*veil_text(b, base)))
+        with open(js, "w") as f:
+            f.write(keep_js)
+        fid = [fd["id"] for fd in res["findings"] if fd["card"] == "cpsr"][0]
+        unknown_checks(b, base, out, fid)
     finally:
         with open(rj, "w") as f:
             f.write(keep)
@@ -517,6 +526,136 @@ def veil_checks(b, base, out):
             f.write(keep_js)
         for d in made:
             shutil.rmtree(d, ignore_errors=True)
+
+
+# finding.js as it was: a missing state or one with no plugins read as a standalone adult.
+OLD_FINDING = ("if (!st || !st.plugins) { return Promise.resolve(UNKNOWN); }\n    var fam = st.plugins.family;",
+               "var fam = st && st.plugins && st.plugins.family;")
+
+
+def closed_pages(b, base, fid):
+    """The son's person page and one planted finding's page, before any click: their text once each has drawn
+    (or after 10 s, for a page whose state never comes)."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/")
+    b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpStatus === 'ready' "
+           "&& 'drawn'", 10)
+    time.sleep(0.5)
+    person = b.eval("document.body.textContent") or ""
+    b.go(f"{base}/runs/{OTHERS[1]}/finding/{fid}/")
+    b.wait("document.documentElement.dataset.pgpStatus === 'ready' && 'drawn'", 10)
+    page = b.eval("document.body.textContent") or ""
+    return person, page
+
+
+def closed_problems(person, page):
+    out = [f"{w} on the person page" for pair in VEIL for w in pair if w in person]
+    out += [f"{w} on the finding page" for pair in VEIL for w in pair if w in page]
+    if "A result to act on" not in page:
+        out.append("the finding page does not show its closed title: " + page[:200])
+    return out
+
+
+def search_text(b, base, q):
+    """[hits, the search panel's text] for q typed on the son's page."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/")
+    b.wait("document.documentElement.dataset.pgpResults && document.querySelector('.veil') && "
+           "!document.querySelector('input[type=search]').disabled && 'ready'", 15)
+    b.eval("var i = document.querySelector('input[type=search]'); i.value = %s; i.dispatchEvent(new Event('input')); true"
+           % json.dumps(q))
+    hits = b.wait("document.documentElement.dataset.pgpSearch", 5)
+    return hits, b.eval("(document.querySelector('.search-results') || {}).textContent || ''") or ""
+
+
+def search_problems(b, base):
+    out = []
+    hits, text = search_text(b, base, "GENEQ")
+    if hits != "0" or "c.77del" in text:
+        out.append(f"GENEQ, a gene of a closed card: {hits} hits, {text[:200]}")
+    hits, text = search_text(b, base, "GENE")
+    if "GENEQ" in text or "GENER" in text or "GENEOPEN" not in text:
+        out.append(f"the suggestions for GENE: {text[:300]}")
+    hits, text = search_text(b, base, "GENEOPEN")
+    if hits != "1":
+        out.append(f"GENEOPEN, a gene of an open card, not found: {hits} {text[:200]}")
+    return out
+
+
+def unknown_checks(b, base, out, fid):
+    """The son's results to act on stay closed when the page cannot learn his family role, on the person page
+    and on the finding's own page, and his search names nothing his closed card holds."""
+    sd = os.path.join(out, "runs", OTHERS[1])
+    fj = os.path.join(out, "runs", FAM, "family.json")
+    frames_path = os.path.join(sd, "frames.json")
+    idx = os.path.join(sd, f"{OTHERS[1]}_search_index.json")
+    pj, fjs, sj = (os.path.join(out, "assets", x) for x in ("person.js", "finding.js", os.path.join("plugins", "search.js")))
+    keep = {}
+    for p in (frames_path, pj, fjs, sj) + ((idx,) if os.path.isfile(idx) else ()):
+        with open(p) as f:
+            keep[p] = f.read()
+    frames = json.loads(keep[frames_path])
+
+    def write(p, text):
+        with open(p, "w") as f:
+            f.write(text)
+
+    def item(sec, text):
+        return {"section": sec, "anchor": sec, "title": sec, "step": "24", "state": "ok", "source": "summary.json",
+                "count": 1, "mentions": [{"text": text, "locus": None}]}
+    try:
+        # The search: an index naming the two planted genes in the closed CPSR card, and one gene of an open card.
+        write(idx, json.dumps({"schema_version": 1, "sample": OTHERS[1], "terms": {
+            "GENEQ": [item("cpsr", "GENEQ c.77del")], "GENER": [item("cpsr", "GENER c.88dup")],
+            "GENEOPEN": [item("roh", "GENEOPEN in a run of homozygosity")]}}))
+        with_search = copy.deepcopy(frames)
+        for fr in with_search["frames"]:
+            fr["state"].setdefault("plugins", {})["search"] = {"file": os.path.basename(idx), "mtime": 1}
+        write(frames_path, json.dumps(with_search))
+        bad = search_problems(b, base)
+        check("browser: the son's search lists no hit and suggests no term of his closed card, and still finds an open one",
+              not bad, bad)
+        write(sj, keep[sj].replace("function hidden(it) { return !!(", "function hidden(it) { return false && !!("))
+        control("search.js without its filter", not search_problems(b, base))
+        write(sj, keep[sj])
+        write(frames_path, keep[frames_path])
+
+        # family.json unavailable
+        os.replace(fj, fj + ".away")
+        try:
+            bad = closed_problems(*closed_pages(b, base, fid))
+        finally:
+            os.replace(fj + ".away", fj)
+        check("browser: with family.json unavailable the son's results to act on stay closed on both pages", not bad, bad)
+
+        # a state cut short: no plugins at all
+        cut = copy.deepcopy(frames)
+        for fr in cut["frames"]:
+            fr["state"].pop("plugins", None)
+        write(frames_path, json.dumps(cut))
+        bad = closed_problems(*closed_pages(b, base, fid))
+        check("browser: with a state that has no plugins the son's results to act on stay closed on both pages", not bad, bad)
+        write(pj, keep[pj].replace("return !state || !state.plugins || !!(fam && fam.unknown);", "return false;"))
+        write(fjs, keep[fjs].replace(OLD_FINDING[0], OLD_FINDING[1]))
+        control("person.js and finding.js that read a state with no plugins as a standalone adult",
+                not closed_problems(*closed_pages(b, base, fid)))
+        write(pj, keep[pj])
+        write(fjs, keep[fjs])
+
+        # no state at all
+        os.remove(frames_path)
+        bad = closed_problems(*closed_pages(b, base, fid))
+        check("browser: with no state at all (frames.json unavailable) the son's results to act on stay closed on both pages",
+              not bad, bad)
+        write(fjs, keep[fjs].replace(OLD_FINDING[0], OLD_FINDING[1]))
+        control("finding.js that reads a missing state as a standalone adult", not closed_problems(*closed_pages(b, base, fid)))
+    finally:
+        for p, text in keep.items():
+            write(p, text)
+        if idx not in keep and os.path.isfile(idx):
+            os.remove(idx)
 
 
 # The person page reads as a report: what (frame) -> the page's layout facts, read in the browser.

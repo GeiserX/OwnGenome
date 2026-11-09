@@ -173,17 +173,21 @@ def parse_trace_time(v):
 
 def parse_duration(v):
     """A trace duration ('1h 2m 3s', '450ms', '2.5s', '-') in seconds, or None."""
-    if not v or v == "-":
+    if not v or not isinstance(v, str) or v == "-":
         return None
     total, found = 0.0, False
-    for num, unit in re.findall(r"([\d.]+)\s*(ms|d|h|m|s)", v):
+    # A number is digits with at most one decimal point: '1.2.3s' or '.s' (a cut or garbled cell) is no
+    # duration, never a crash that loses the whole trace file.
+    for num, unit in re.findall(r"(?<![\d.])(\d+(?:\.\d+)?)(?![\d.])\s*(ms|d|h|m|s)", v):
         total += float(num) * {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
         found = True
     return total if found else None
 
 
-# Parsed trace files, keyed on the path and its mtime and size: /runs.json builds every run's state, and a
-# finished run's trace files do not change, so each is read once until it does. Bounded, oldest out first.
+# Parsed trace files, keyed on the path and the file's identity (device, inode, mtime, ctime, size): /runs.json
+# builds every run's state, and a finished run's trace files do not change, so each is read once until it
+# does. A trace replaced by another file with the same size and mtime (a copy with its times kept, a new
+# run's file moved in) has another inode or ctime, so it is read again. Bounded, oldest out first.
 TRACE_CACHE = {}
 TRACE_CACHE_MAX = 64
 TRACE_LOCK = threading.Lock()  # the live server answers requests on several threads
@@ -195,7 +199,7 @@ def _trace_rows(p):
         st = os.stat(p)
     except OSError:
         return None
-    key = (st.st_mtime_ns, st.st_size)
+    key = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, st.st_size)
     with TRACE_LOCK:
         hit = TRACE_CACHE.get(p)
     if hit and hit[0] == key:
@@ -500,11 +504,17 @@ def summary_sources(sample_dir):
 def trace_files(sample_dir, started):
     """The trace files of the run: those under ../pipeline_info written since it started
     (the newest one when the start is not known)."""
-    found = sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(sample_dir)), "pipeline_info",
-                                          "trace_*.txt")), key=os.path.getmtime)
+    def mtime(p):  # a trace removed between the listing and this read is no trace (never a crash)
+        try:
+            return os.path.getmtime(p)
+        except OSError:
+            return None
+    found = [(mtime(p), p) for p in glob.glob(os.path.join(os.path.dirname(os.path.abspath(sample_dir)),
+                                                         "pipeline_info", "trace_*.txt"))]
+    found = [p for t, p in sorted(x for x in found if x[0] is not None)]
     if started is None:
         return found[-1:]
-    return [p for p in found if os.path.getmtime(p) >= started]
+    return [p for p in found if (mtime(p) or 0) >= started]
 
 
 def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_TSV, stale=False):

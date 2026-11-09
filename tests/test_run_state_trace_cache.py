@@ -3,14 +3,19 @@
 
 /runs.json builds the state of every run on the server, and each build read every
 trace file of every run again. read_trace now keeps the parsed rows of each file,
-keyed on its path, mtime and size. Checks:
+keyed on its path and the file's identity (device, inode, mtime, ctime, size). Checks:
   1. the second read of an unchanged trace file opens nothing and gives the same rows;
   2. a file that grew (a task row appended) is read again and gives the new row;
   3. the rows handed out are copies: a caller that changes one does not change the cache;
   4. two samples of one trace file each get only their own rows from the one parse;
-  5. the cache keeps at most TRACE_CACHE_MAX files.
+  5. the cache keeps at most TRACE_CACHE_MAX files;
+  6. a trace replaced by another file of the same size and mtime (another run's
+     file moved in, its times kept) is read again and gives the new rows;
+  7. a duration cell that is no number ('1.2.3s', '.s') costs that row its end
+     time only: the file still reads, every other row as before.
 Check 1 is also run against a planted mistake (a cache that keeps nothing) and must
-fail there: a check that cannot fail is no check.
+fail there, and check 6 against the old key (mtime and size alone): a check that
+cannot fail is no check.
 
 Run: python3 tests/test_run_state_trace_cache.py
 """
@@ -112,6 +117,66 @@ def main():
             run_state.read_trace([p], "demo1")
         check("5. the cache keeps at most TRACE_CACHE_MAX files", len(run_state.TRACE_CACHE) == run_state.TRACE_CACHE_MAX,
               len(run_state.TRACE_CACHE))
+
+        # 6. a file replaced by one of the same size and mtime
+        def replaced(path):
+            with open(FIX) as f:
+                text = f.read()
+            with open(path, "w") as f:
+                f.write(text)
+            run_state.TRACE_CACHE.clear()
+            old = run_state.read_trace([path], "demo1")
+            st = os.stat(path)
+            new = path + ".new"
+            with open(new, "w") as f:  # the same length: one task's status COMPLETED becomes FAILED...
+                f.write(text.replace("\tCOMPLETED\t0\t", "\tFAILED...\t1\t", 1))
+            os.utime(new, ns=(st.st_atime_ns, st.st_mtime_ns))
+            os.replace(new, path)
+            st2 = os.stat(path)
+            got = run_state.read_trace([path], "demo1")
+            return old, got, (st.st_size, st.st_mtime_ns) == (st2.st_size, st2.st_mtime_ns)
+        p6 = os.path.join(work, "replaced.txt")
+        old, got, same = replaced(p6)
+        check("6. a trace replaced by a file of the same size and mtime is read again",
+              same and [r["status"] for r in got] != [r["status"] for r in old] and "FAILED..." in [r["status"] for r in got],
+              (same, [r["status"] for r in old], [r["status"] for r in got]))
+        real_stat = os.stat
+
+        class OldKey:  # the key before: mtime and size alone (os.stat is run_state's os.stat too)
+            def __init__(self, st):
+                self.st = st
+                self.st_dev = self.st_ino = self.st_ctime_ns = 0
+
+            def __getattr__(self, k):
+                return getattr(self.st, k)
+        run_state.os.stat = lambda p, *a, **k: OldKey(real_stat(p, *a, **k))
+        try:
+            old, got, same = replaced(p6)
+        finally:
+            run_state.os.stat = real_stat
+        check("control: a key of mtime and size alone fails check 6",
+              same and [r["status"] for r in got] == [r["status"] for r in old], (same, [r["status"] for r in got]))
+
+        # 7. a malformed duration
+        with open(FIX) as f:
+            text = f.read()
+        lines = text.splitlines(True)
+        bad = lines[2].split("\t")
+        bad[7] = "1.2.3s"
+        lines[2] = "\t".join(bad)
+        lines[1] = lines[1].replace("\t2s\t", "\t.s\t", 1)
+        p7 = os.path.join(work, "durations.txt")
+        with open(p7, "w") as f:
+            f.write("".join(lines))
+        run_state.TRACE_CACHE.clear()
+        want = run_state.read_trace([FIX], "demo1")
+        try:
+            got = run_state.read_trace([p7], "demo1")
+        except ValueError as e:
+            got = e
+        ok = isinstance(got, list) and len(got) == len(want) and got[0]["end"] is None and got[1]["end"] is None \
+            and got[2:] == want[2:] and got[1]["start"] == want[1]["start"]
+        check("7. a duration that is no number costs its row the end time only", ok, got)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:

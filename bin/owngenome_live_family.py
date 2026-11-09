@@ -29,7 +29,8 @@ family it is in.
 
 state.json gets plugins.family: {"kind": "family", ...} on a family's page,
 {"kind": "member", "families": [...]} on the page of a sample in a family,
-null otherwise.
+{"kind": "member", "families": [], "unknown": true} when no readable family
+lists the sample but a family's pedigree could not be read, null otherwise.
 
 The plugin computes nothing about genetics: it reads the files the steps
 wrote, counts their rows and draws the pedigree the file declares.
@@ -415,8 +416,18 @@ def side_values(summary):
 def side_by_side(names, summaries):
     """The members' results in one table: {members, rows: [{group, label, values, stale}]}. A member with
     no summary.json yet says so in its column; a row a member's summary does not have is '.'. stale holds,
-    per member, whether that value comes from a section older than its input."""
-    per = {n: side_values(summaries.get(n)) for n in names}
+    per member, whether that value comes from a section older than its input. A summary whose fields are
+    not of the shape the report writes costs its own column only: it says so there, and the family page
+    still draws."""
+    per, bad = {}, set()
+    for n in names:
+        try:
+            got = side_values(summaries.get(n))
+            for g, label, _, _ in got:
+                hash((g, label))  # a label that is a list or a dict cannot key the table's rows
+            per[n] = got
+        except (AttributeError, KeyError, TypeError, ValueError, IndexError):
+            per[n], bad = [], bad | {n}
     # Each member's rows keep their own order (step 41's for the blood groups): a row first seen in a later
     # member goes right after the row before it in that member's list, not at the end.
     keys = []
@@ -435,7 +446,10 @@ def side_by_side(names, summaries):
     rows = [{"group": g, "label": label, "values": [], "stale": []} for g, label in keys]
     for r in rows:
         for n in names:
-            if summaries.get(n) is None:
+            if n in bad:
+                r["values"].append("summary not readable")
+                r["stale"].append(False)
+            elif summaries.get(n) is None:
                 r["values"].append("no summary yet")
                 r["stale"].append(False)
             else:
@@ -464,15 +478,22 @@ def member_summary(live, d):
 
 
 def member_state(root, sample):
-    fams = []
+    """The families that list the sample. A family whose pedigree cannot be read may be the one that
+    lists it as a child: with no readable family listing it, the answer is unknown, never "in no
+    family" ({"kind": "member", "families": [], "unknown": true}), and its pages keep results to act
+    on closed, as the home page does for a run no readable family lists."""
+    fams, unread = [], False
     for name, d in family_dirs(root):
         try:
             order, _ = members_of(d)
         except (OSError, ValueError):
+            unread = True
             continue
         if sample in order:
             fams.append({"name": name, "url": "/runs/%s/" % name})
-    return {"kind": "member", "families": fams} if fams else None
+    if fams:
+        return {"kind": "member", "families": fams}
+    return {"kind": "member", "families": [], "unknown": True} if unread else None
 
 
 def register(app):
