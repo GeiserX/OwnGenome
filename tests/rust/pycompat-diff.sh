@@ -39,9 +39,13 @@ if cmp -s "${TMP}/expected.txt" "${TMP}/actual.txt"; then
   echo "PASS: og pycompat-probe matches CPython on all ${cases} cases"
   exit 0
 fi
-paste "${TMP}/cases.tsv" "${TMP}/expected.txt" "${TMP}/actual.txt" | awk -F'\t' '
-  { want = $(NF - 1); got = $NF; if (want == got) next; bad[$1]++; n++
-    if (n <= 20) { c = $1; for (i = 2; i < NF - 1; i++) c = c "\t" $i; printf "case:     %s\npython:   %s\nog:       %s\n\n", c, want, got } }
-  END { for (op in bad) printf "FAIL: %s differs on %d cases\n", op, bad[op] }'
+# Results can hold tabs (ljust of a string with a tab), so the report pairs
+# lines by number, never by splitting on tabs.
+awk -v want_file="${TMP}/expected.txt" -v got_file="${TMP}/actual.txt" '
+  { want = ""; got = ""; getline want < want_file; getline got < got_file
+    if (want == got) next
+    op = $0; sub(/\t.*/, "", op); bad[op]++; n++
+    if (n <= 20) printf "case:     %s\npython:   %s\nog:       %s\n\n", $0, want, got }
+  END { for (op in bad) printf "FAIL: %s differs on %d cases\n", op, bad[op] }' "${TMP}/cases.tsv"
 echo "FAIL: og pycompat-probe differs from CPython (seed ${SEED}; rerun with that seed to replay)"
 exit 1
