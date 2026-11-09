@@ -174,18 +174,20 @@ jobs:
 
       - name: Control (the planted failing test must fail, and be the test that failed)
         run: |
-          if cargo test --locked -p pycompat --features planted-failure planted_failure > planted.log 2>&1; then
-            cat planted.log
+          log="${RUNNER_TEMP}/planted.log"
+          if cargo test --locked -p pycompat --features planted-failure planted_failure > "$log" 2>&1; then
+            cat "$log"
             echo "ERROR: the planted failing test passed: the test run would report a broken test as green"
             exit 1
           fi
-          grep -E 'planted_failure.*FAILED' planted.log || { cat planted.log; echo "ERROR: the run failed, but not on the planted test"; exit 1; }
+          grep -E 'planted_failure.*FAILED' "$log" || { cat "$log"; echo "ERROR: the run failed, but not on the planted test"; exit 1; }
           echo "Control: the planted test failed, as it must."
 
       - name: cargo test
         run: cargo test --workspace --locked
 
       - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
+        if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
         run: |
           OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
           ../tests/rust/pycompat-diff.sh "${PWD}/target/release/og" 100000
