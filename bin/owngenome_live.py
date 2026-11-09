@@ -634,8 +634,9 @@ class Live:
             pt = None  # an earlier run's table
         st = run_state.build(run["name"], run_state.read_steps(self.cfg.steps), status, pt,
                              run_state.read_trace(run_state.trace_files(d, started), run["name"]),
-                             run_state.event_tasks(cur, run["name"]), cur, run_state.summary_sources(d))
-        if run_finished(events) and st["run"]["state"] == "running":
+                             run_state.event_tasks(cur, run["name"]), cur, run_state.summary_sources(d),
+                             heard=run_state.last_heard(d, [self.store.path(run["name"])]))
+        if run_finished(events) and st["run"]["state"] in ("running", "stopped"):
             st["run"]["state"] = "finished"
         st["events"] = len(events)  # the page paints a message ahead of state.json only past this id
         return st
@@ -836,6 +837,7 @@ class Live:
                 st = self.base_state(r)
                 planned = [s for s in st["steps"] if s["state"] != "not planned"]
                 item.update(state=st["run"]["state"], started_utc=st["run"].get("started_utc"),
+                            last_heard_utc=st["run"].get("last_heard_utc"),
                             finished_utc=st["run"].get("finished_utc"), declared_sex=st["run"].get("declared_sex"),
                             planned=len(planned), done=sum(1 for s in planned if s["state"] == "done"),
                             running=sum(1 for s in planned if s["state"] == "running"),
