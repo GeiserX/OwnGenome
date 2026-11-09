@@ -854,6 +854,18 @@ else
   fi
 fi
 
+# --- OwnGenome's og binary (bin/.og, scripts/setup.sh --og) ---
+# One built from another rust/ than this checkout's would give results from
+# other code than the checkout says, so it fails; none at all is a note until
+# a step calls og (rust/og.sh, REQUIRED).
+header "OwnGenome binary"
+OG_MSG=$("${PGP_ROOT}/rust/og.sh" check 2>&1) || true
+case "$OG_MSG" in
+  OK:*) pass "${OG_MSG#OK: }" ;;
+  NOTE:*) info "${OG_MSG#NOTE: }" ;;
+  *) fail "${OG_MSG#ERROR: }" ;;
+esac
+
 ###############################################################################
 # 5. Sample Data (optional — only if $1 is provided)
 ###############################################################################
