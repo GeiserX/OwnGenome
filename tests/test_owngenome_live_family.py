@@ -20,7 +20,11 @@ Checks:
      the real server: the run list, state.json's plugins.family, the route
      behind the login, and a family page that loads the script; in a headless
      Chrome (skipped without Chrome, except in CI) the card, the pedigree and a
-     child's map load and the page's policy blocks nothing.
+     child's map load and the page's policy blocks nothing; then a 1-in-4 shared
+     row draws the four children and a 1-in-2 row gives its chance in words with no
+     drawing, a missing trio file and one linking out of the folder are worded
+     apart (the link's target never shown), and the side by side lists every
+     blood group system with a stale value marked in its cell.
 Checks 2 and 4 are run again on a copy of the fixture with two parents swapped
 and must fail there: a check that cannot fail is no check.
 
@@ -343,11 +347,67 @@ def browser_checks(port, work):
         check("browser: child_a's chromosome map loads", seg == "/family/family_a/child_a_segments.svg", seg)
         blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
         check("browser: the policy blocked nothing on the family page", not blocked, blocked)
+        depth_checks(b, base, os.path.join(work, "genome"))
         b.go(base + "/runs/child_a/")
         href = b.wait("var a = document.querySelector('section[data-plugin=family] a'); a && a.getAttribute('href')")
         check("browser: child_a's page links to its family", href == "/runs/family_a/", href)
     finally:
         b.close()
+
+
+# A stale blood-group section with two systems past ABO and RhD, for child_a's summary.json.
+STALE_SUMMARY = {"sections": {"bloodtype": {"state": "stale", "data": {
+    "abo": "A1", "rhd": "D+", "systems": [{"system": "ABO", "phenotype": "A1"}, {"system": "RhD", "phenotype": "D+"},
+                                          {"system": "Kell", "phenotype": "K-k+"}, {"system": "Duffy", "phenotype": "Fy(a+b-)"}]}},
+    "haplogroup": {"state": "ok", "data": {"haplogroup": "H1"}}}}
+
+
+def depth_checks(b, base, root):
+    """The couple screen's risk drawing, a child's trio files (one missing, one linking out of the folder) and the
+    side by side (a stale value, every blood group system), on the family page in the browser."""
+    fam_dir = os.path.join(root, "family_a")
+    tsv = os.path.join(fam_dir, "couple_father_a_mother_a.tsv")
+    with open(tsv) as f:
+        text = f.read()
+    text = text.replace("\tshared\t25%\t", "\tshared\t1 in 4 per pregnancy\t")
+    text += ("GENE4\tAR\tACMG\tinvented condition four\tshared\t1 in 2 per pregnancy\tfather_a\tinvented finding"
+             "\tmother_a\tinvented finding\tinvented\n")
+    with open(tsv, "w") as f:
+        f.write(text)
+    secret = os.path.join(os.path.dirname(root), "outside-folder-name.tsv")
+    with open(secret, "w") as f:
+        f.write("child\tgene\tvariant_a\tvariant_b\ta_from\tb_from\tphase\n")
+    os.symlink(secret, os.path.join(fam_dir, "compound_het.tsv"))
+    with open(os.path.join(root, "child_a", "summary.json"), "w") as f:
+        json.dump(STALE_SUMMARY, f)
+    try:
+        b.go(base + "/runs/family_a/")
+        ready = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+                       "!!document.querySelector('div[data-shared=GENE4]')")
+        four = b.eval("var k = document.querySelector('div[data-shared=GENE1] .kids4 .grid4'); k ? k.children.length : -1")
+        check("browser: a 1-in-4 shared row draws the four children", ready and four == 4, (ready, four))
+        two = b.eval("var d = document.querySelector('div[data-shared=GENE4]'); d ? "
+                     "[!!d.querySelector('.kids4'), d.textContent].join('|') : ''")
+        check("browser: a 1-in-2 shared row gives the chance in words, without the drawing",
+              two.startswith("false|") and "1 in 2 per pregnancy" in two, two)
+        dn = b.eval("var p = document.querySelector('details[data-child=child_a] p[data-trio=de_novo]'); p && p.textContent")
+        ch = b.eval("var p = document.querySelector('details[data-child=child_a] p[data-trio=compound_het]'); "
+                    "p && p.textContent")
+        page = b.eval("document.body.textContent") or ""
+        check("browser: a missing trio file and one linking out of the folder are told apart, the link's target unshown",
+              dn and "Not assessed" in dn and "de_novo.tsv is not here" in dn and ch and "link out of the family folder"
+              in ch and "outside-folder-name" not in page, (dn, ch))
+        rows = b.eval("Array.from(document.querySelectorAll('#ch-side-by-side tbody tr')).map(function (r) { "
+                      "return Array.from(r.cells).map(function (c) { return c.textContent; }).join('|'); }).join('\\n')") or ""
+        kell = next((r for r in rows.split("\n") if "|Kell|" in r), "")
+        hap = next((r for r in rows.split("\n") if "|Mitochondrial|" in r), "")
+        legend = b.eval("var p = document.querySelector('#ch-side-by-side p[data-stale]'); p && p.dataset.stale")
+        check("browser: side by side has a row per blood group system, a stale value marked in its cell and no other",
+              "|Duffy|" in rows and kell.split("|")[2] == "K-k+ (older than its input)" and hap.split("|")[2] == "H1"
+              and legend == "4", (kell, hap, legend))
+    finally:
+        os.remove(os.path.join(fam_dir, "compound_het.tsv"))
+        os.remove(os.path.join(root, "child_a", "summary.json"))
 
 
 if __name__ == "__main__":

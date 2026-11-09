@@ -12,10 +12,16 @@ Checks:
      column per member, '.' where a member's summary lacks the row, "no summary yet" for a member
      without one; CPIC's phenotype quoted, never bare;
   5. a member's summary.json that links out of its run folder is never read;
-  6. family.json passes the wording gate (live_results.FORBIDDEN).
+  6. family.json passes the wording gate (live_results.FORBIDDEN);
+  7. a value from a stale section is flagged stale in its own cell, and only that one;
+  8. every blood group system step 41 typed gets a row (ABO and RhD first, then the rest in order);
+  9. each child's trio status: assessed with both parents sequenced and the file here; not assessed
+     with the reason when a parent is not sequenced or not in the joint call; a missing file and a
+     file linking out of the folder told apart, the link's target never written.
 Each check runs again on a planted mistake and must fail there: the segments read from the wrong
 child (1), the pairs left in file order (2), a trio file planted (3), a member's summary dropped (4),
-the inside check bypassed (5), "ok" planted in a row (6). A check that cannot fail is no check.
+the inside check bypassed (5), "ok" planted in a row (6), the stale section made complete (7), the
+systems list emptied (8), the link replaced by a plain file (9). A check that cannot fail is no check.
 
 Run: python3 tests/test_live_family_depth.py
 """
@@ -95,6 +101,44 @@ def side_problems(sb):
     return out
 
 
+def stale_summary(state):
+    S = summary("*1/*1", [("DPYD", "Reference/Reference", "Normal Metabolizer")], "H1")
+    S["sections"]["bloodtype"] = {"state": state, "data": {
+        "abo": "A1", "rhd": "D+", "systems": [{"system": "ABO", "phenotype": "A1"}, {"system": "RhD", "phenotype": "D+"},
+                                              {"system": "Kell", "phenotype": "K-k+"},
+                                              {"system": "Duffy", "phenotype": "Fy(a+b-)"}]}}
+    return S
+
+
+def stale_problems(sb):
+    """Member A's blood groups come from a stale section; B's from a complete one; C has no summary."""
+    out = []
+    for r in sb["rows"]:
+        want = [r["group"] == "Blood groups", False, False]
+        if r.get("stale") != want:
+            out.append(f"{r['label']}: stale {r.get('stale')} != {want}")
+    return out or ([] if sb["rows"] else ["no rows"])
+
+
+def blood_problems(sb):
+    labels = [r["label"] for r in sb["rows"] if r["group"] == "Blood groups"]
+    want = ["ABO", "RhD", "Kell", "Duffy"]
+    vals = {r["label"]: r["values"][0] for r in sb["rows"] if r["group"] == "Blood groups"}
+    out = [] if labels == want else [f"blood rows {labels} != {want}"]
+    if vals.get("Kell") != "K-k+" or vals.get("Duffy") != "Fy(a+b-)":
+        out.append(f"values {vals}")
+    return out
+
+
+def trio_problems(st, want):
+    out = []
+    for child, key, assessed, words in want:
+        got = (st.get(child) or {}).get(key) or {}
+        if got.get("assessed") is not assessed or words not in (got.get("why") or ""):
+            out.append(f"{child} {key}: {got} (want assessed={assessed}, '{words}')")
+    return out
+
+
 def main():
     work = tempfile.mkdtemp(prefix="test_live_family_depth.")
     try:
@@ -154,6 +198,56 @@ def main():
         planted = copy.deepcopy(page)
         planted["side_by_side"]["rows"][0]["values"][0] = "ok"
         control("an ok in a side-by-side row", not live_results.wording_problems(planted))
+
+        sums7 = {"A": stale_summary("stale"), "B": summary("*1/*1", [], "U5"), "C": None}
+        sb7 = fam.side_by_side(["A", "B", "C"], sums7)
+        bad = stale_problems(sb7)
+        check("7. a stale section's values are flagged stale in their own cells, and no other value is", not bad, bad)
+        control("the stale section made complete",
+                not stale_problems(fam.side_by_side(["A", "B", "C"], dict(sums7, A=stale_summary("ok")))))
+
+        bad = blood_problems(sb7)
+        check("8. every blood group system typed gets a row: ABO, RhD, then Kell and Duffy in order", not bad, bad)
+        emptied = stale_summary("stale")
+        emptied["sections"]["bloodtype"]["data"]["systems"] = []
+        control("the systems list emptied", not blood_problems(fam.side_by_side(["A", "B", "C"], dict(sums7, A=emptied))))
+
+        tri = os.path.join(work, "trio")
+        shutil.copytree(DEMO, tri)
+        with open(os.path.join(tri, "members.tsv"), "a") as f:
+            f.write("DEMO-004\tfemale\tDEMO-001\tDEMO-005\t\tyes\tyes\nDEMO-005\tfemale\t\t\t\tyes\tno\n")
+        plan_p = os.path.join(tri, "family_plan.tsv")
+        with open(plan_p) as f:
+            plan_text = f.read()
+        with open(plan_p, "w") as f:
+            f.write(plan_text.replace("DEMO-001,DEMO-002,DEMO-003\t", "DEMO-001,DEMO-002,DEMO-003,DEMO-004\t"))
+        secret = os.path.join(work, "elsewhere-private-name.tsv")
+        shutil.copy(os.path.join(DEMO, "compound_het.tsv"), secret)
+        os.remove(os.path.join(tri, "compound_het.tsv"))
+        os.symlink(secret, os.path.join(tri, "compound_het.tsv"))
+        want = [("DEMO-003", "de_novo", True, "both parents"),
+                ("DEMO-004", "de_novo", False, "DEMO-005 (the mother) is not"),
+                ("DEMO-003", "compound_het", False, "link out of the family folder"),
+                ("DEMO-004", "compound_het", False, "link out of the family folder")]
+        tp = fam.family_page("trio", tri)
+        bad = trio_problems(tp["trio_status"], want)
+        if tp["trio_file_state"] != {"de_novo.tsv": "here", "compound_het.tsv": "rejected"}:
+            bad.append(f"file state {tp['trio_file_state']}")
+        if "elsewhere-private-name" in json.dumps(tp):
+            bad.append("the link's target is in family.json")
+        check("9. trio status per child: assessed, a parent not sequenced, a file linking out refused", not bad, bad)
+        with open(plan_p, "w") as f:
+            f.write(plan_text)
+        out_of_call = trio_problems(fam.family_page("trio", tri)["trio_status"],
+                                    [("DEMO-004", "de_novo", False, "DEMO-004 is not in the joint call")])
+        check("9. a child left out of the joint call is not assessed, and the page says so", not out_of_call, out_of_call)
+        os.remove(os.path.join(tri, "de_novo.tsv"))
+        miss = trio_problems(fam.family_page("trio", tri)["trio_status"],
+                             [("DEMO-003", "de_novo", False, "de_novo.tsv is not here")])
+        check("9. a missing de_novo.tsv is not assessed, said apart from a refused one", not miss, miss)
+        os.remove(os.path.join(tri, "compound_het.tsv"))
+        shutil.copy(secret, os.path.join(tri, "compound_het.tsv"))
+        control("the link replaced by a plain file", not trio_problems(fam.family_page("trio", tri)["trio_status"], want[2:]))
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:
