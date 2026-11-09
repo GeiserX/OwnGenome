@@ -218,8 +218,8 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 | 20 Mito variants (Mutect2) | 1-2 min | 1.3-2.5 GB | 2.7-3.2 | |
 | 21 Cyrius (opt-in) | not measured (estimate ~5-15 min) | | | `setup.sh --cyrius` installs it once |
 | 22 SV consensus | 2-10 s | | | SURVIVOR's preparation, merge and sort together |
-| 23 Clinical filter | 2.5-6.5 min | under 50 MB | 0.9-1.2 | |
-| 24 HTML report | not measured (estimate ~1-3 min) | | | `run-all.sh` runs it after the pipeline, outside the trace |
+| 23 Clinical filter | 2.5-6.5 min | under 50 MB | 0.9-1.2 | most of it `bin/csq_rank.awk` ranking the PASS records ([stage by stage](#the-clinical-filter-stage-by-stage)) |
+| 24 HTML report | not measured in the end test (estimate ~1-3 min) | | | `run-all.sh` runs it after the pipeline, outside the trace; measured apart on the same genomes: 11-15 s, 0.4 GB, and as long again for the text report ([the report step](#the-report-step)) |
 | 25 PRS | 54 min - 1 h 17 min per sample, plus 6-11 min once per run | see notes | | genotyping the score positions 21-31 min (1.1 GB), then pgsc_calc 33-51 min with 24 GB granted ([its tasks' memory](25-prs.md#memory)); preparing the scoring files 6-11 min, 11.3-12 GB, once per run |
 | 26 Ancestry (opt-in) | not measured on a genome | | | [step 25's panel numbers](25-prs.md#the-reference-panel-on-a-github-hosted-runner) were measured on a test target |
 | 26b Fine-grained ancestry (opt-in) | not measured on a genome | | | measured in CI on a reduced panel: 1 min 19 s for the fractions and one painted chromosome ([step 26b](26b-ancestry-fine.md#runtime)) |
@@ -242,6 +242,80 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 | DeepVariant alone, 96 vCPUs | 1 h 9 min (upstream r1.10 metrics) |
 | DeepVariant alone, 4 CPUs | likely more than a day (extrapolated, not measured) |
 | Default `run-all.sh`, 8 CPUs | not measured; plan for more than a day, because each 8-CPU task then runs alone |
+
+### The report step
+
+`run-all.sh` writes both reports after the pipeline, outside Nextflow's trace, so the end test above has no time for them. We measured them apart on the same three genomes: November 2026, on `main` at e7d5919, on the same server while it ran other work (load average 10-14). Each command ran three times per genome in the pinned Python image, in its own container capped at one CPU and under `nice -n 19`. The genome folder was mounted read-only and every output went to a scratch folder. Wall time and peak memory come from `getrusage` of the child process.
+
+| Command | Wall time | Peak memory | What it does |
+|---|---|---|---|
+| `scripts/24-html-report.sh` (`render_report.py`, HTML, search index, charts) | 11.2-14.5 s | 403-424 MB | collects `summary.json` from every step's output, then renders |
+| `scripts/generate-report.sh`, the text report | 11.6-12.7 s | 403-424 MB | collects `summary.json` again, then renders the text |
+| `render_report.py --summary` (render only, from a written `summary.json`) | 0.40-0.42 s | 62-73 MB | |
+| `run_delta.py` (what changed since the previous run) | 0.11-0.16 s | 19-21 MB | |
+
+So the reports cost about 25 s per sample, not 1-3 minutes, and almost all of it is collecting the summary, which each of the two scripts does once. Under `cProfile` (one HTML run), 82% of the collection was `sec_variants` reading every record of the sample's small-variant VCF in Python, and 9% the ROH section. Rendering is under half a second. The HTML report was 2.0-2.7 MiB and the search index 8.3-12.2 MiB.
+
+The command, per genome (`<genome_dir>` holds the sample folder, `<scratch>` is empty and writable, run from the repo root):
+
+```sh
+IMG=$(. ./versions.env; echo "$PYTHON_IMAGE")
+cat > <scratch>/tm.py <<'PY'
+import resource, subprocess, sys, time
+s = time.perf_counter()
+rc = subprocess.run(["bash", "-o", "pipefail", "-c", sys.argv[1]]).returncode
+r = resource.getrusage(resource.RUSAGE_CHILDREN)
+print(f"rc={rc} wall={time.perf_counter() - s:.2f}s maxrss_MB={r.ru_maxrss / 1024:.0f}")
+PY
+docker run --rm --cpus 1 --network none -v <genome_dir>:/genome:ro -v "$PWD/bin":/pgp-bin:ro \
+  -v "$PWD/assets":/pgp-assets:ro -v <scratch>:/out "$IMG" nice -n 19 python3 /out/tm.py \
+  "python3 /pgp-bin/render_report.py --assets /pgp-assets --sample <sample> --sample-dir /genome/<sample> \
+   --json /out/summary.json -o /out/report.html --search-index /out/search_index.json \
+   --charts-json /out/charts.json >/dev/null"
+```
+
+The text report is the same line with `-o /out/report.txt` and no `--search-index` or `--charts-json`; render only adds `--summary /out/summary.json`.
+
+### The clinical filter, stage by stage
+
+Step 23's main pipe streams every PASS record of the VEP VCF through `bin/csq_rank.awk`:
+
+```sh
+bcftools view -f PASS <vep.vcf.gz> | awk -v keep=noncommon <call floors> -f bin/csq_rank.awk | bcftools view -Oz -o rare_pass.vcf.gz
+```
+
+A second pipe does the same for the ClinVar tier (`bcftools +split-vep -i` on `ClinVar_CLNSIG` before the awk). We put `pv` on each edge of both pipes and timed each stage alone, on the same three genomes, in `staphb/bcftools:1.24` (mawk 1.3.4) under `nice -n 19` with no CPU cap. Each VEP VCF was 1.2-1.3 GB bgzipped and gave a 19.6-20.3 GiB stream of PASS records.
+
+| Stage | Wall time | Rate |
+|---|---|---|
+| The main pipe, as shipped | 157-171 s | 117-131 MiB/s on the PASS edge, 2.1-2.3 MiB/s out of the awk |
+| The same pipe with `--threads 2` on both `bcftools view` | 154-173 s | 120-134 MiB/s; the same records |
+| `bcftools view -f PASS` alone, to `/dev/null` | 28 s | 740 MiB/s |
+| the same with `--threads 2` | 24 s | 855 MiB/s |
+| `bgzip -dc` alone | 16 s | 1.27 GiB/s |
+| `csq_rank.awk` alone, from a file of the PASS stream | 135 s | 154 MiB/s |
+| `bcftools view -Oz` alone, on the 357-373 MiB the awk keeps | 2.5 s (1.1 s with `--threads 2`) | 152 MiB/s |
+| The ClinVar pipe | 70-77 s | 261-294 MiB/s on the PASS edge, limited by `+split-vep -i` |
+| the same with `--threads 2` on the first view | 79 s | 265 MiB/s |
+
+The rows without a range were measured on one genome. The awk is the saturated stage: alone it takes about 135 of the pipe's 157-171 s, while `bcftools` decodes the same stream in 28 s and compresses the result in 2.5 s. `--threads 2` only speeds up the stages that already wait for the awk, so the pipe stays within the noise of the run without it (its records were identical, checked by checksum without the `##bcftools_viewCommand` header line). The floor a faster ranker can reach on this pipe is the decode, about 25-30 s. The two pipes together, about 4 minutes, are most of the step's 2.5-6.5 minutes in the end test; the tier filters that follow read only the small `rare_pass.vcf.gz`.
+
+The commands, inside `staphb/bcftools:1.24` with `bin/` mounted at `/pgp-bin` and the host's `pv` on the `PATH`:
+
+```sh
+export LC_ALL=C TIMEFORMAT='%R s wall, %U s user, %S s sys'
+rank() { awk -v keep="$1" -v min_gq=30 -v min_dp=10 -v het_lo=0.2 -v het_hi=0.8 -v hom_lo=0.8 -f /pgp-bin/csq_rank.awk; }
+P() { pv -f -c -N "$1" -b -t -a -i 30; }
+time { bcftools view -f PASS "$VCF" | P pass | rank noncommon | P ranked | bcftools view -Oz -o rare.vcf.gz; }
+time { bcftools view --threads 2 -f PASS "$VCF" | P pass | rank noncommon | P ranked | bcftools view --threads 2 -Oz -o rare_t2.vcf.gz; }
+time { bcftools view -f PASS "$VCF" | P pass > /dev/null; }
+time { bgzip -dc "$VCF" | P raw > /dev/null; }
+bcftools view -f PASS "$VCF" > pass.vcf
+time { P in < pass.vcf | rank noncommon > ranked.vcf; }
+time { P in < ranked.vcf | bcftools view -Oz -o enc.vcf.gz; }
+time { bcftools view -f PASS "$VCF" | P pass | bcftools +split-vep - -c ClinVar_CLNSIG \
+  -i 'ClinVar_CLNSIG~"athogenic" && ClinVar_CLNSIG!~"onflicting"' | P clinvar | rank all | bcftools view -Oz -o clinvar.vcf.gz; }
+```
 
 ### What runs at once
 
