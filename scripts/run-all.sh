@@ -317,6 +317,8 @@ if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
     "${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE}" > "${S}/nextflow/live.config"
   NF+=(-c "${S}/nextflow/live.config")
   echo "Live site: messages go to ${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
+  # The address the browser opens (the site's own, not the ingest port), when the launcher knows it.
+  [ -z "${OWNGENOME_LIVE_PAGE_URL:-}" ] || echo "Live site: this run's page is ${OWNGENOME_LIVE_PAGE_URL%/}/runs/${SAMPLE}/"
 else
   rm -f "${S}/nextflow/live.config"
 fi

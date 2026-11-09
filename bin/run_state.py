@@ -39,6 +39,11 @@ States of a step:
                 show this step
 A waiting or running step whose section file is older than the run start has
 'earlier_result': that file is from an earlier run and is being redone.
+
+States of the run: not started, running, finished, and stopped: no end record,
+and nothing heard from it (a file it writes as it goes, a message, a task's
+start or end) for longer than stale_after() of the steps; 'last_heard_utc' says
+when it was last heard from. It reads running again once something new arrives.
 """
 import argparse
 import glob
@@ -60,6 +65,15 @@ DONE_BAD = {"FAILED", "ABORTED"}
 # Processes that run once per run with a tag that is not a sample id (the reference
 # basename, the score set): never a sample's task, even when the tag equals the id.
 SHARED_PROCESSES = {"MINIMAP2_INDEX", "PRS_PREPARE"}
+# A run with no end record goes quiet while one long task runs: the trace gets a row only when a task ends,
+# and the weblog posts nothing between a task's start and its end. So a run is called stopped only after
+# twice the longest step's usual hours (DeepVariant's 13.5 h makes it 27 h), and never under 6 h.
+STALE_FLOOR_S = 6 * 3600
+
+
+def stale_after(steps):
+    """Seconds of silence after which a run with no end record reads 'stopped'."""
+    return max([STALE_FLOOR_S] + [2 * s["hours"] * 3600 for s in steps if s.get("hours")])
 
 
 def iso(epoch):
@@ -270,6 +284,31 @@ def run_finished_by_events(events):
     return any(ev.get("event") in ("completed", "error") for ev in events)
 
 
+def utc_epoch(v):
+    """A message's utcTime ('2026-11-06T10:00:00Z', with or without milliseconds) as epoch, or None."""
+    if not isinstance(v, str):
+        return None
+    try:
+        return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def last_heard(sample_dir, paths=()):
+    """Epoch of the newest file of this run alone: logs/run_status.tsv, nextflow/process_status.tsv and the
+    given paths (its events file); None when there is none. Not the trace files: every sample's run writes
+    them under one pipeline_info, so another sample's run would keep this one alive. build() adds the
+    times of this sample's own tasks instead."""
+    files = [os.path.join(sample_dir, "logs", "run_status.tsv"), os.path.join(sample_dir, "nextflow", "process_status.tsv")]
+    times = []
+    for p in files + [p for p in paths if p]:
+        try:
+            times.append(os.path.getmtime(p))
+        except OSError:
+            pass
+    return max(times) if times else None
+
+
 # --- the state ------------------------------------------------------------------------------
 
 def latest_tasks(trace_tasks, ev_tasks):
@@ -362,11 +401,12 @@ def from_row(row):
 
 
 def build(sample, steps, status=None, process_status=None, trace_tasks=(), ev_tasks=(), events=(),
-          sources=None, now=None):
+          sources=None, now=None, heard=None):
     """The run state. steps: read_steps(); status: read_run_status(); process_status:
     read_process_status(); trace_tasks / ev_tasks: read_trace() / event_tasks() rows; events:
     read_events() (for the run's own start and end messages); sources: {section key: (path,
-    mtime)} of the files the last summary read."""
+    mtime)} of the files the last summary read; heard: last_heard() of the run's files. Without
+    heard a run is never called stopped."""
     now = now if now is not None else datetime.now(tz=timezone.utc).timestamp()
     meta = (status or {}).get("meta", {})
     rows = (status or {}).get("steps", {})
@@ -416,12 +456,20 @@ def build(sample, steps, status=None, process_status=None, trace_tasks=(), ev_ta
         run_state = "running"
     else:
         run_state = "not started"
+    if heard is not None:
+        heard = max([heard, started or 0] + [utc_epoch(ev.get("utcTime")) or 0 for ev in events]
+                    + [t[k] for t in tasks for k in ("start", "end") if t.get(k) is not None])
+        if run_state == "running" and now - heard > stale_after(steps):
+            run_state = "stopped"
+    run = {"state": run_state, "started_utc": iso(started), "finished_utc": utc_row(meta.get("finished_utc")),
+           "declared_sex": meta.get("declared_sex"), "status_file": status is not None}
+    if heard is not None:
+        run["last_heard_utc"] = iso(heard)
     return {
         "schema_version": SCHEMA_VERSION,
         "sample": sample,
         "generated_utc": iso(now),
-        "run": {"state": run_state, "started_utc": iso(started), "finished_utc": utc_row(meta.get("finished_utc")),
-                "declared_sex": meta.get("declared_sex"), "status_file": status is not None},
+        "run": run,
         "steps": out_steps,
     }
 
@@ -459,7 +507,10 @@ def trace_files(sample_dir, started):
     return [p for p in found if os.path.getmtime(p) >= started]
 
 
-def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_TSV):
+def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_TSV, stale=False):
+    """The run state of sample_dir. stale: also call a quiet run with no end record 'stopped' (the live
+    site's view). Off by default: the guards that refuse to rerun or refresh under a run going on read
+    'running' and must keep reading it for a run that is alive but quiet."""
     status = read_run_status(os.path.join(sample_dir, "logs", "run_status.tsv"))
     try:
         started = float(status["meta"]["started_epoch"]) if status else None
@@ -472,7 +523,8 @@ def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_T
     events = read_events(events_path)
     return build(sample, read_steps(steps_path), status, pt,
                  read_trace(trace if trace else trace_files(sample_dir, started), sample),
-                 event_tasks(events, sample), events, summary_sources(sample_dir))
+                 event_tasks(events, sample), events, summary_sources(sample_dir),
+                 heard=last_heard(sample_dir, [events_path]) if stale else None)
 
 
 def main(argv=None):
