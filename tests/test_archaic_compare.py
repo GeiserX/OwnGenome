@@ -90,6 +90,32 @@ class Compare(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.run_cmp()
 
+    def test_genomes_union_row(self):
+        hdr = "ID\tchrom\tstart\tend\tslod\n"
+        rows = {
+            "Altai": "SAMPLE\t22\t100000\t300000\t5\n",
+            "Vindija": "SAMPLE\t22\t1000000\t1100000\t5\n",
+            "Denisova": "SAMPLE\t22\t5000000\t5100000\t5\n",
+        }
+        for n, body in rows.items():
+            open(os.path.join(self.d, f"chr22.{n}.txt"), "w").write(hdr + body)
+        spans = os.path.join(self.d, "spans.tsv")
+        open(spans, "w").write("chrom\tstart\tend\n22\t1\t9999\n")
+        chen = os.path.join(self.d, "chen_big.txt")
+        open(chen, "w").write(
+            "chr start end LOD maxLOD size pop anc ID\n"
+            "22\t100000\t300000\t9\t9\t200000\tCEU\tEUR\tA\n"
+            "22\t1000000\t1100000\t9\t9\t100000\tCEU\tEUR\tA\n")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ac.main(["genomes", "--chen-file", chen, "--sample", "A",
+                     "--ibdmix-dir", self.d, "--spans", spans])
+        out = buf.getvalue()
+        # released A on chr22: 300,000 bp; Altai and Vindija together are exactly that
+        self.assertIn("| Altai+Vindija | 300000 | 300000 | 0 | 0 |", out)
+        self.assertIn("| Denisova | 100000 | 0 | 100000 | 300000 |", out)
+        self.assertIn("Released A: 300000 bp on these 1 chromosomes.", out)
+
     def test_cli(self):
         r = subprocess.run([sys.executable, "-I", SCRIPT, "compare", "--chen-file", self.chen, "--sample", "A",
                             "--chroms", "22", "--mine", f"x={self.mine}"], capture_output=True, text=True)
