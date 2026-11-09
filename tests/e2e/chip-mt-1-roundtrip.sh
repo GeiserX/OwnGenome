@@ -10,6 +10,8 @@
 #      every called chrM site lands on the table's rCRS position with the
 #      reference base there and the allele of case 21's call (hom-ref where
 #      case 21 called nothing);
+#   2b. the same file with a UTF-8 byte order mark in front, as an editor
+#      that adds one saves it, is still known as step 40's file;
 #   3. control: the same file without its first line, as a vendor file has
 #      no such line, is moved through the chain's chrM block, so most called
 #      chrM sites no longer land on their rCRS position with that call.
@@ -92,8 +94,10 @@ mt_roundtrip() {
   rm -rf "${G:?}/${n}"
   mkdir -p "${G}/${n}/raw"
   cp "$2" "${G}/${n}/raw/${n}_raw.txt"
-  "${REPO}/scripts/chip-to-vcf.sh" "$n" 23andme > "${CASE_TMP}/${n}.log" 2>&1
-  echo "chip-to-vcf.sh ${n}: exit $?" >&2
+  local status=0
+  "${REPO}/scripts/chip-to-vcf.sh" "$n" 23andme > "${CASE_TMP}/${n}.log" 2>&1 || status=$?
+  echo "$status" > "${CASE_TMP}/${n}.status"
+  echo "chip-to-vcf.sh ${n}: exit ${status}" >&2
   tail -n 25 "${CASE_TMP}/${n}.log" >&2
   bcf query -f '%ID\t%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' "${n}/vcf/${n}.vcf.gz" 2>/dev/null | awk -F'\t' '$2 == "chrM"' > "${CASE_TMP}/${n}_chrM.tsv"
   python3 - "${CASE_TMP}/${n}_chrM.tsv" "${CASE_TMP}/calls.tsv" "$SITES" "$2" <<'PY'
@@ -140,6 +144,7 @@ PY
 # --- 2. step 40's file keeps its chrM positions --------------------------------------
 read -r called got on_place bad <<< "$(mt_roundtrip HG002CMR "${CASE_TMP}/export.txt")"
 echo "step 40's file: ${called:-?} called chrM sites, ${got:-?} read back, ${on_place:-?} on their rCRS position, ${bad:-?} with another allele than case 21's call"
+check_eq "chip-to-vcf.sh exits 0 on step 40's file" "$(cat "${CASE_TMP}/HG002CMR.status")" 0
 check "chip-to-vcf.sh says it kept the MT positions of step 40's file" \
   has "written by OwnGenome step 40, ${N_MT} site\(s\) already on rCRS positions, kept" "$(cat "${CASE_TMP}/HG002CMR.log")"
 check "chip-to-vcf.sh moved no MT site of step 40's file" lacks 'moved from hg19 chrM' "$(cat "${CASE_TMP}/HG002CMR.log")"
@@ -148,10 +153,21 @@ check_eq "called chrM sites read back" "${got:-x}" "${called:-y}"
 check_eq "called chrM sites read back on their rCRS position with its reference base" "${on_place:-x}" "${called:-y}"
 check_eq "chrM sites read back with another allele than case 21's call" "${bad:-x}" 0
 
+# --- 2b. the same file with a UTF-8 byte order mark ---------------------------------
+{ printf '\357\273\277'; cat "${CASE_TMP}/export.txt"; } > "${CASE_TMP}/bom.txt"
+read -r b_called b_got b_on b_bad <<< "$(mt_roundtrip HG002CMB "${CASE_TMP}/bom.txt")"
+echo "byte order mark: ${b_called:-?} called chrM sites, ${b_got:-?} read back, ${b_on:-?} on their rCRS position, ${b_bad:-?} with another allele"
+check "chip-to-vcf.sh keeps the MT positions of step 40's file with a byte order mark" \
+  has "written by OwnGenome step 40, ${N_MT} site\(s\) already on rCRS positions, kept" "$(cat "${CASE_TMP}/HG002CMB.log")"
+check_eq "byte order mark: called chrM sites read back on their rCRS position" "${b_on:-x}" "${called:-y}"
+check_eq "byte order mark: chrM sites with another allele than case 21's call" "${b_bad:-x}" 0
+
 # --- 3. control: the same file without step 40's first line ----------------------------
 tail -n +2 "${CASE_TMP}/export.txt" > "${CASE_TMP}/vendor.txt"
 read -r v_called v_got v_on v_bad <<< "$(mt_roundtrip HG002CMV "${CASE_TMP}/vendor.txt")"
 echo "control, no first line: ${v_called:-?} called chrM sites, ${v_got:-?} read back, ${v_on:-?} on their rCRS position, ${v_bad:-?} with another allele"
+check_eq "control: chip-to-vcf.sh exits 0" "$(cat "${CASE_TMP}/HG002CMV.status")" 0
+check_ge "control: called chrM records read back" "${v_got:-0}" 1
 check "control: chip-to-vcf.sh moves the MT sites of a file without step 40's first line" \
   has 'site\(s\) moved from hg19 chrM to rCRS positions' "$(cat "${CASE_TMP}/HG002CMV.log")"
 check "control: fewer than half of the called chrM sites stay on their rCRS position with case 21's call (${v_on:-?} of ${v_called:-?})" \
@@ -159,6 +175,6 @@ check "control: fewer than half of the called chrM sites stay on their rCRS posi
 printf '#### chrM round trip of step 40\n\n%s called chrM sites, %s read back on their rCRS position, %s mismatches; without the first line %s stay\n\n' \
   "${called:-?}" "${on_place:-?}" "${bad:-?}" "${v_on:-?}" >> "$E2E_NOTES"
 
-rm -rf "${G:?}/${E}" "${G:?}/HG002CMR" "${G:?}/HG002CMV" "${G:?}/reference_hg19" "${G:?}/liftover"
+rm -rf "${G:?}/${E}" "${G:?}/HG002CMR" "${G:?}/HG002CMB" "${G:?}/HG002CMV" "${G:?}/reference_hg19" "${G:?}/liftover"
 [ "$OWN_SITES" = 0 ] || rm -f "$SITES"
 finish
