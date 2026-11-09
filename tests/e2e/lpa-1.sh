@@ -145,6 +145,9 @@ NULL_LINE=$(grep -o 'KIV-2 4925G&gt;A null allele (rs1484919544): [^<]*' "$HTML"
 check "the card prints the KIV-2 4925G>A null-allele line" has '^KIV-2 4925G&gt;A null allele \(rs1484919544\): ' "$NULL_LINE"
 check "and the line is a reading of the LPA task's table" lacks 'wrote no|the check failed' \
   "$(grep -A1 -F "$NULL_LINE" "$HTML" 2>/dev/null)"
+check "control: a card whose reading says the table is missing fails the check" has 'wrote no|the check failed' \
+  "$(awk -v l="$NULL_LINE" 'f { print "<p>step 46 wrote no x.tsv</p>"; f = 0; next } index($0, l) { f = 1 } 1' "$HTML" 2>/dev/null \
+    | grep -A1 -F "$NULL_LINE")"
 check "control: a card without the line fails the check" lacks 'KIV-2 4925G&gt;A null allele \(rs1484919544\): ' \
   "$(sed 's/KIV-2 4925G&gt;A null allele//' "$HTML" 2>/dev/null)"
 echo "lpa: the Nextflow card's 4925G>A line: ${NULL_LINE}" >> "$E2E_NOTES"
