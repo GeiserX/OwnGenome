@@ -32,7 +32,11 @@ Checks:
      painted stretches (one mark per row of his segments file), his de novo
      and compound-het tables and the members side by side; and at a phone's
      width (390 px) no page scrolls sideways (every section open, the finding
-     page too) and the person page has its bottom tab bar; on the son's page a
+     page too) and the person page has its bottom tab bar; at 390 px the
+     partner's page is under 8,000 CSS px with every finding to act on, for a
+     prescriber, for the family or worth a look open, the rest folded, and a
+     link to a card two folds deep (#s/roh) or to a folded section (#s7) opens
+     it, while a wider page folds nothing; on the son's page a
      two planted CPSR results to act on name their genes and variants nowhere
      (their card included) until "Show the result" is clicked, and each click
      opens one result, there and on the finding's own page; DEMO-001's page
@@ -43,7 +47,8 @@ Checks:
      with its absent and undetermined lines folded.
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
-the veil) and the person page's layout (a wire showing every line or every plain finish, a card showing
+the veil), the phone page (person.js that never folds, and a route that opens only the nearest fold) and
+the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
 fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
@@ -287,6 +292,7 @@ def browser_checks(out):
         widget_checks(b, base, out)
         family_depth_checks(b, base, out)
         phone_checks(b, base)
+        phone_report_checks(b, base, out)
         veil_checks(b, base, out)
     finally:
         b.close()
@@ -632,6 +638,92 @@ def phone_checks(b, base):
         control("a 900 px wide block on the family page", not too_wide(b))
     finally:
         b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
+
+
+PHONE_JS = r"""JSON.stringify((function () {
+  // The content of a closed details keeps a layout box (content-visibility: hidden): ask whether it shows.
+  var shown = function (e) { return !!e && e.checkVisibility() && e.getBoundingClientRect().height > 0; };
+  var loud = Array.prototype.filter.call(document.querySelectorAll('#results [data-finding]'), function (e) {
+    return /^(act|medicine|carrier|review)$/.test(e.dataset.level); });
+  return { height: document.documentElement.scrollHeight, loud: loud.length,
+    hidden: loud.filter(function (e) { return !shown(e); }).map(function (e) { return e.dataset.finding; }),
+    deep: shown(document.getElementById('card-' + %s)), // section 7 open: its cards' own one-line folds show
+    sec: shown(document.querySelector('#s7 details.secfold details.pfold > summary')),
+    folds: document.querySelectorAll('#results details.pfold').length };
+}()))"""
+PHONE_MAX = 8000  # CSS px: the Journal design's phone page is about 4,600; every card open was about 37,000
+PHONE_DEEP = "roh"  # a card of section 6: on a phone it sits in its own fold inside the section's fold
+
+
+def phone_report(b, base):
+    """DEMO-002's page at 390 px: its height, its findings to act on, a deep link to a card two folds deep and
+    one to a folded section, each before and after the link."""
+    b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False},
+           b.session)
+    try:
+        b.go("about:blank")
+        b.wait("location.href === 'about:blank'")
+        b.go(f"{base}/runs/{OTHERS[0]}/")
+        b.wait("document.documentElement.dataset.pgpResults")
+        time.sleep(1)
+        js = PHONE_JS % json.dumps(PHONE_DEEP)
+        got = {"before": json.loads(b.eval(js) or "{}")}
+        b.eval("location.hash = '#s/%s'; true" % PHONE_DEEP)
+        time.sleep(0.5)
+        got["card"] = json.loads(b.eval(js) or "{}")
+        b.eval("location.hash = '#s7'; true")
+        time.sleep(0.5)
+        got["section"] = json.loads(b.eval(js) or "{}")
+        return got
+    finally:
+        b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
+
+
+def phone_report_problems(got):
+    out = []
+    pre = got.get("before") or {}
+    if not pre.get("height") or pre["height"] >= PHONE_MAX:
+        out.append(f"the page is {pre.get('height')} CSS px tall at 390 px, want under {PHONE_MAX}")
+    if not pre.get("loud") or pre.get("hidden"):
+        out.append(f"findings to act on, for a prescriber, for the family or worth a look closed behind a tap: "
+                   f"{pre.get('hidden')} of {pre.get('loud')}")
+    if pre.get("deep") or pre.get("sec"):
+        out.append(f"card {PHONE_DEEP} or section 7 starts open on a phone: {pre.get('deep')}, {pre.get('sec')}")
+    if not (got.get("card") or {}).get("deep"):
+        out.append(f"#s/{PHONE_DEEP} leaves its card closed")
+    if not (got.get("section") or {}).get("sec"):
+        out.append("#s7 leaves section 7 closed")
+    return out
+
+
+def phone_report_checks(b, base, out):
+    """On a phone the report is short: the findings that matter open, the rest one tap away, and a link opens
+    the folds around its target. Wider, the page has no fold at all."""
+    bad = phone_report_problems(phone_report(b, base))
+    check(f"browser: at 390 px {OTHERS[0]}'s page is under {PHONE_MAX} CSS px with every finding to act on, for a "
+          "prescriber, for the family or worth a look open, and a link to a folded card or section opens it", not bad, bad)
+    b.go(f"{base}/runs/{OTHERS[0]}/")
+    b.wait("document.documentElement.dataset.pgpResults")
+    time.sleep(0.5)
+    folds = b.eval("document.querySelectorAll('#results details.pfold').length")
+    check("browser: wider than a phone the person page folds no card and no section", folds == 0, folds)
+    b.call("Network.enable", session=b.session)
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+    f = os.path.join(out, "assets", "person.js")
+    keep = open(f).read()
+    planted = (("var phoneQuery = window.matchMedia ?", "var phoneQuery = false ?", "a phone page with every card open"),
+               ("d = d.parentElement && d.parentElement.closest('details')", "d = null", "a link that opens only the nearest fold"))
+    try:
+        for a, z, desc in planted:
+            if a not in keep:
+                check(f"control: {desc} (the planted line is in person.js)", False, a)
+                continue
+            with open(f, "w") as fh:
+                fh.write(keep.replace(a, z))
+            control(desc, not phone_report_problems(phone_report(b, base)))
+    finally:
+        with open(f, "w") as fh:
+            fh.write(keep)
 
 
 def main():

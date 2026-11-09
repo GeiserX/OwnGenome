@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """render_pictures.py: the docs pictures from DEMO-001's reports and its live-site demo.
 
-  render_pictures.py --genome-dir DIR --out OUTDIR [--font FILE] [--only html|cpic|live]
+  render_pictures.py --genome-dir DIR --out OUTDIR [--font FILE] [--only html|cpic|live|live-phone]
                      [--html-stop-before TITLES] [--cpic-head N | --cpic-full]
 
 reads DIR/DEMO-001 after steps 24, 27 and 28 ran on it and writes
@@ -24,6 +24,9 @@ reads DIR/DEMO-001 after steps 24, 27 and 28 ran on it and writes
                            writes itself (--genome-dir is not read), at the
                            last moment of its replay, on the person page's
                            doctor tab (#q/clinical), in a 1280 x 1000 window
+  demo-live-phone.png      (--only live-phone, never by default) the same demo
+                           at the same moment, DEMO-002's person page as a
+                           390-pixel-wide phone draws it, the whole page
 
 Every PNG is written again from its pixels alone, so it holds no text, time
 or EXIF chunk. Needs playwright (with its Chromium) and pillow;
@@ -96,8 +99,9 @@ def html_pictures(sample_dir, out, stop_titles):
         browser.close()
 
 
-def live_picture(out):
-    """demo-live-site.png: the live-site demo as the docs publish it, served as a static host serves it."""
+def live_picture(out, phone=False):
+    """demo-live-site.png (or, with PHONE, demo-live-phone.png): the live-site demo as the docs publish it,
+    served as a static host serves it."""
     import functools
     import shutil
     import tempfile
@@ -121,9 +125,10 @@ def live_picture(out):
                 # bypass_csp: the page's CSP (script-src 'self') blocks the eval that
                 # wait_for_function needs once it has to poll; the page's own scripts are
                 # all 'self', so the picture is the same.
-                page = browser.new_page(viewport={"width": 1280, "height": 1000}, device_scale_factor=1,
+                viewport = {"width": 390, "height": 844} if phone else {"width": 1280, "height": 1000}
+                page = browser.new_page(viewport=viewport, device_scale_factor=1,
                                         color_scheme="dark", bypass_csp=True)
-                page.goto(f"http://127.0.0.1:{srv.server_address[1]}/runs/{SAMPLE}/")
+                page.goto(f"http://127.0.0.1:{srv.server_address[1]}/runs/{build_live_demo.PARTNER if phone else SAMPLE}/")
                 page.wait_for_function("document.documentElement.dataset.pgpStatus === 'ready'")
                 # The last moment: the run ended, the charts are drawn, the re-check is in.
                 page.evaluate("() => { const s = document.getElementById('replay-slider'); s.value = s.max; "
@@ -131,7 +136,13 @@ def live_picture(out):
                 page.wait_for_function("Number(document.documentElement.dataset.pgpCharts) > 0 "
                                        "&& Number(document.documentElement.dataset.pgpResults) > 0")
                 page.wait_for_timeout(1000)
-                path = os.path.join(out, "demo-live-site.png")
+                if phone:
+                    # A window as tall as the page, so the tab bar sits at its foot, as a reader
+                    # scrolled to the end sees it.
+                    viewport["height"] = page.evaluate("document.documentElement.scrollHeight")
+                    page.set_viewport_size(viewport)
+                    page.wait_for_timeout(500)
+                path = os.path.join(out, "demo-live-phone.png" if phone else "demo-live-site.png")
                 page.screenshot(path=path)
                 clean_png(path)
                 print(f"  {path}")
@@ -192,7 +203,7 @@ def cpic_picture(sample_dir, out, font_path, head, full):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--genome-dir", help="the folder holding DEMO-001 (required, except with --only live)")
+    ap.add_argument("--genome-dir", help="the folder holding DEMO-001 (required, except with --only live or live-phone)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--font", help="monospace TrueType font for the CPIC picture (default: Menlo, else DejaVu Sans Mono)")
     ap.add_argument("--html-stop-before", default=",".join(STOP_BEFORE),
@@ -200,13 +211,13 @@ def main(argv=None):
     ap.add_argument("--cpic-head", type=int, default=0,
                     help="draw the first N lines (default: up to the last row of the Gene Results table)")
     ap.add_argument("--cpic-full", action="store_true", help="draw the whole report, as cat prints it")
-    ap.add_argument("--only", choices=["html", "cpic", "live"],
+    ap.add_argument("--only", choices=["html", "cpic", "live", "live-phone"],
                     help="draw only these pictures (html: the step 24 and MultiQC ones; live: the live-site demo, "
-                         "drawn only when asked)")
+                         "live-phone: its partner page on a phone, both drawn only when asked)")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
-    if a.only == "live":
-        live_picture(a.out)
+    if a.only in ("live", "live-phone"):
+        live_picture(a.out, phone=a.only == "live-phone")
         return 0
     if not a.genome_dir:
         ap.error("--genome-dir is required")
