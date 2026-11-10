@@ -57,7 +57,8 @@ impl ReviewStatus {
             ReviewStatus::PracticeGuideline => 4,
             ReviewStatus::ExpertPanel => 3,
             ReviewStatus::MultipleNoConflict => 2,
-            ReviewStatus::SingleSubmitter | ReviewStatus::Conflicting => 1,
+            ReviewStatus::SingleSubmitter => 1,
+            ReviewStatus::Conflicting => 0,
             ReviewStatus::Other => 0,
         }
     }
@@ -188,8 +189,8 @@ mod tests {
             (b"reviewed_by_expert_panel", 3),
             (b"criteria_provided,_multiple_submitters,_no_conflicts", 2),
             (b"criteria_provided,_single_submitter", 1),
-            (b"criteria_provided,_conflicting_classifications", 1),
-            (b"criteria_provided,_conflicting_interpretations", 1),
+            (b"criteria_provided,_conflicting_classifications", 0),
+            (b"criteria_provided,_conflicting_interpretations", 0),
             (b"no_assertion_criteria_provided", 0),
             (b"no_classification_provided", 0),
             (b"", 0),
