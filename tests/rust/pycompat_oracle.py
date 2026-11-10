@@ -7,16 +7,20 @@ Writes N random cases per operation (the hand-picked edge cases are among
 the values drawn) to stdout, each line followed by the line this Python
 returns for it. tests/rust/pycompat-diff.sh splits the two, feeds the cases
 to `og pycompat-probe` and requires its output to equal the expected lines
-byte for byte. Nothing is mounted, so the oracle runs in any image. The case format
+byte for byte. The tree operations (glob, mtimes) work on a folder the
+oracle fills under $PYCOMPAT_TREE and og reads after it; nothing else is
+mounted, so the oracle runs in any image. The case format
 is the one rust/og/src/probe.rs reads: tab-separated, floats as the hex of
 their bits, text as the hex of its UTF-8.
 """
 
 import csv
+import glob
 import html
 import io
 import json
 import math
+import os
 import random
 import struct
 import sys
@@ -29,6 +33,13 @@ SPECIAL = [
 ]
 OPS = ["repr", "f", "e", "g", "pct", "grpf", "round0", "round", "grp", "zpad", "ljust", "rjust",
        "float", "int", "fsum", "sum", "json", "lines", "readline"]
+# pycompat::value and pycompat::mtime. The tree operations work on a folder
+# the oracle fills under $PYCOMPAT_TREE, which og then reads in place.
+VALUE_OPS = ["truthy", "vstr", "vrepr", "getor", "fnmatch", "escape", "sortnames"]
+TREE_OPS = ["glob", "first", "newest", "mtime", "mtimens"]
+OPS += VALUE_OPS + TREE_OPS
+# A tree case walks folders, so it gets one case in TREE_SHARE.
+TREE_SHARE = 20
 WHITESPACE = " \t\n\x0b\x0c\r\x1c\x1d\x1e\x1f\x85\xa0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000"
 
 
@@ -205,8 +216,183 @@ def a_lines_input(r):
     return b"".join(r.choice(parts) for _ in range(r.randrange(12)))
 
 
+FALSY = [None, False, 0, 0.0, -0.0, "", [], {}, math.nan, "0", [0], {"": None}, 1e-300]
+# Characters a name or a pattern is drawn from: the ones fnmatch treats
+# specially, a non-ASCII and an astral one, and a stray byte as its surrogate.
+NAME_CHARS = "abc-]![^\\*?.&~|" + "\u00e9\U0001d400\udcf5"
+NAMES = ["a", "b", "ab", "a.txt", "b.txt", "a.vcf.gz", ".h", ".h.txt", "_x", "[a]", "a*", "a?", "-", "!x",
+         "\u00e9", "\u4e2d", "\U0001d400", "x y", "A", "z\udcff", "s_eh.vcf", "**", "[!a]"]
+RAW_BYTES = [b"a", b"b", b"A", b"\x80", b"\xc3\xa9", b"\xf0\x9d\x90\x80", b"\xf5", b"\xed\xa0\x80", b"\xe4\xb8",
+             b"\xff", b"\xee\x80\x80", b"/"]
+NS_BASE = 1_700_000_000 * 10 ** 9
+
+
+def fs_hex(s):
+    return os.fsencode(s).hex()
+
+
+def a_latin1_str(r, n=8):
+    picks = ["a", "'", '"', "\\", "\t", "\n", "\r", "\x00", "\x1f", " ", "\x7f"]
+    return "".join(r.choice(picks + [chr(r.randrange(0x80, 0x100))]) for _ in range(r.randrange(n)))
+
+
+def a_py_value(r, depth=0):
+    """A JSON value whose strings inside lists and dicts are mostly Latin-1,
+    so most cases get past the known limit of value::py_repr."""
+    k = r.randrange(10 if depth < 3 else 6)
+    if k == 0:
+        return r.choice(FALSY)
+    if k == 1:
+        return a_value(r, 4)
+    if k in (2, 3):
+        return a_str(r) if depth == 0 else a_latin1_str(r)
+    if k in (4, 5):
+        return a_float(r)
+    if k in (6, 7):
+        return [a_py_value(r, depth + 1) for _ in range(r.randrange(4))]
+    return {a_latin1_str(r, 5): a_py_value(r, depth + 1) for _ in range(r.randrange(4))}
+
+
+def needs_unicode_repr(v, top):
+    """Whether str() (TOP true) or repr() of V reprs a string with a
+    character above U+00FF: the known limit, where value::py_repr refuses."""
+    if isinstance(v, str):
+        return not top and any(ord(c) > 0xFF for c in v)
+    if isinstance(v, list):
+        return any(needs_unicode_repr(x, False) for x in v)
+    if isinstance(v, dict):
+        return any(needs_unicode_repr(k, False) or needs_unicode_repr(x, False) for k, x in v.items())
+    return False
+
+
+def a_name(r, chars, n=6):
+    return "".join(r.choice(chars) for _ in range(r.randrange(n)))
+
+
+def value_case(op, r):
+    if op == "truthy":
+        text = json.dumps(r.choice([r.choice(FALSY), a_value(r)]))
+        return [hexs(text)], lambda: str(bool(json.loads(text)))
+    if op in ("vstr", "vrepr"):
+        text = json.dumps(a_py_value(r))
+        f = str if op == "vstr" else repr
+
+        def run():
+            v = json.loads(text)
+            return "Unsupported" if needs_unicode_repr(v, op == "vstr") else f(v)
+        return [hexs(text)], run
+    if op == "getor":
+        d = r.choice([{a_str(r, 4): a_value(r, 2) for _ in range(r.randrange(5))}] * 4 + [a_value(r, 3)])
+        keys = list(d) if isinstance(d, dict) else []
+        key = r.choice(keys) if keys and r.random() < 0.8 else a_str(r, 4)
+        dtext, default = json.dumps(d), json.dumps(r.choice([{}, [], None, "", 0, a_value(r, 3)]))
+        return ([hexs(dtext), hexs(key), hexs(default)],
+                lambda: json.dumps(json.loads(dtext).get(key) or json.loads(default)))
+    if op == "fnmatch":
+        name, pat = a_name(r, NAME_CHARS.replace("[", "").replace("*", "") + "ab"), a_name(r, NAME_CHARS, 9)
+        return [fs_hex(name), fs_hex(pat)], lambda: str(fnmatch_case(name, pat))
+    if op == "escape":
+        s = a_name(r, "a*?[]!/.\u00e9", 8) + a_str(r, 4)
+        return [hexs(s)], lambda: glob.escape(s)
+    if op == "sortnames":
+        names = [b"".join(r.choice(RAW_BYTES) for _ in range(r.randrange(1, 4))) for _ in range(r.randrange(6))]
+        return ([",".join(b.hex() for b in names)],
+                lambda: ",".join(os.fsencode(s).hex() for s in sorted(os.fsdecode(b) for b in names)))
+    raise ValueError(op)
+
+
+def fnmatch_case(name, pat):
+    import fnmatch
+    return fnmatch.fnmatchcase(name, pat)
+
+
+def build_tree(root, r):
+    """Fills ROOT with folders, files and symlinks (to a file, to a folder,
+    dangling), each with an mtime drawn so that some differ by less than a
+    float can tell apart. Returns every path made."""
+    made = []
+
+    def fill(d, depth):
+        for name in r.sample(NAMES, r.randrange(2, 9)):
+            p = os.path.join(d, name)
+            try:
+                if depth < 3 and r.random() < 0.35:
+                    os.mkdir(p)
+                    made.append(p)
+                    fill(p, depth + 1)
+                else:
+                    open(p, "w").close()
+                    made.append(p)
+            except OSError:  # a name this file system refuses (a stray byte on macOS)
+                pass
+    fill(root, 0)
+    dirs = [p for p in made if os.path.isdir(p)]
+    files = [p for p in made if os.path.isfile(p)]
+    links = [("ln_file", r.choice(files) if files else "/nonexistent"), ("ln_gone", os.path.join(root, "gone")),
+             ("ln_dir", r.choice(dirs) if dirs else root + "/missing")]
+    for name, target in links:
+        os.symlink(target, os.path.join(root, name))
+        made.append(os.path.join(root, name))
+    # Deepest first, so setting a folder's time comes after its last change.
+    for p in sorted(made + [root], key=lambda p: -p.count("/")):
+        ns = NS_BASE + r.choice([0, 0, 1, 2, 100, 239, 240, 241, 499, 10 ** 9, -10 ** 9, r.randrange(10 ** 12)])
+        if r.random() < 0.05:
+            ns = -r.randrange(10 ** 18)
+        os.utime(p, ns=(ns, ns), follow_symlinks=False)
+    return made
+
+
+def a_rel_pattern(r):
+    parts = []
+    for _ in range(r.randrange(1, 4)):
+        k = r.randrange(9)
+        if k == 0:
+            parts.append("**")
+        elif k == 1:
+            parts.append(r.choice(NAMES))
+        elif k == 2:
+            parts.append(glob.escape(r.choice(NAMES)))
+        elif k == 3:
+            parts.append("")
+        elif k == 4:
+            parts.append(a_name(r, "ab*?.[]!-\u00e9", 5))
+        else:
+            parts.append(r.choice(["*", "?", "*.txt", "*.vcf.gz", "[ab]*", "[!a]*", ".*", "*_eh.vcf", "a*", "[a-c]",
+                                   "[]]*", "[!]*", "ln_*", "*\udcff"]))
+    # ".." would leave the tree for the folder the test writes its own files in.
+    return "/".join(p if p != ".." else "." for p in parts) + ("/" if r.random() < 0.1 else "")
+
+
+def tree_case(op, r, root, made):
+    if op == "glob":
+        pat, rec = root + "/" + a_rel_pattern(r), r.random() < 0.7
+        return [fs_hex(pat), str(int(rec))], lambda: "|".join(fs_hex(p) for p in glob.glob(pat, recursive=rec))
+    if op in ("first", "newest"):
+        pats = [root + "/" + a_rel_pattern(r) for _ in range(r.randrange(1, 4))]
+
+        def run():  # collect_summary's first_existing and newest
+            if op == "first":
+                for p in pats:
+                    for f in sorted(glob.glob(p, recursive=True)):
+                        if os.path.isfile(f):
+                            return fs_hex(f)
+                return "None"
+            found = [f for p in pats for f in glob.glob(p, recursive=True) if os.path.isfile(f)]
+            return fs_hex(max(found, key=os.path.getmtime)) if found else "None"
+        return [",".join(fs_hex(p) for p in pats)], run
+    if op in ("mtime", "mtimens"):
+        p = r.choice(made + [root])
+        p = r.choice([p, p, p, p + "/x", root + "/missing"])
+        if op == "mtime":
+            return [fs_hex(p)], lambda: repr(os.path.getmtime(p))
+        return [fs_hex(p)], lambda: str(os.stat(p).st_mtime_ns)
+    raise ValueError(op)
+
+
 def case(op, r):
     """One case line and its Python result."""
+    if op in VALUE_OPS:
+        return value_case(op, r)
     if op in TEXT_CASES:
         return TEXT_CASES[op](r)
     if op == "repr":
@@ -447,9 +633,13 @@ def main():
     ops = sys.argv[3:] or OPS
     r = random.Random(seed)
     out = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", newline="\n")
+    root = made = None
+    if set(ops) & set(TREE_OPS):
+        root = os.environ.get("PYCOMPAT_TREE") or sys.exit("PYCOMPAT_TREE: an empty folder for the tree operations")
+        made = build_tree(root, random.Random(seed))
     for op in ops:
-        for _ in range(n):
-            args, run = case(op, r)
+        for _ in range(max(1, n // TREE_SHARE) if op in TREE_OPS else n):
+            args, run = tree_case(op, r, root, made) if op in TREE_OPS else case(op, r)
             try:
                 res = run()
             except Exception as e:  # the exception class is the result

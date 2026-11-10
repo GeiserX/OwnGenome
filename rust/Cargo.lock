@@ -498,6 +498,7 @@ dependencies = [
  "og-dev",
  "og-intervals",
  "og-io",
+ "og-map",
  "pycompat",
 ]
 
@@ -534,6 +535,16 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-map"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]

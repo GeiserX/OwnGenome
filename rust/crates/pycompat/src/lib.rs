@@ -11,14 +11,21 @@
 //! - [`json`]: `json.dumps` and a `json.loads` with Python's leniency.
 //! - [`csv`]: `csv.writer`, `csv.reader` and `csv.DictReader` for the
 //!   default dialect.
+//! - [`mtime`]: float mtimes, `glob.glob` in its order, `max()` by mtime and
+//!   `sorted()` of paths.
 //! - [`text`]: `str.split`, `strip`, the Unicode classes, `upper`/`lower`,
 //!   code-point slices and `html.escape`.
+//! - [`value`]: `bool()`, `str()`, `repr()` and `d.get(k) or default` over
+//!   JSON values.
 
 pub mod csv;
 pub mod fmt;
 pub mod json;
+#[cfg(unix)]
+pub mod mtime;
 pub mod num;
 pub mod text;
+pub mod value;
 
 #[cfg(all(test, feature = "planted-failure"))]
 mod planted {
