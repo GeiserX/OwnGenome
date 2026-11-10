@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-intervals", "crates/og-dev", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +14,7 @@ og-io = { path = "crates/og-io" }
 og-vcf = { path = "crates/og-vcf" }
 og-bam = { path = "crates/og-bam" }
 og-map = { path = "crates/og-map" }
+og-tsv = { path = "crates/og-tsv" }
 og-intervals = { path = "crates/og-intervals" }
 og-dev = { path = "crates/og-dev" }
 indexmap = "2"
