@@ -364,7 +364,7 @@ pub fn ingest(
         text.push_str(&r.join("\t"));
         text.push('\n');
     }
-    if crate::util::read_text(&path).ok().as_deref() != Some(text.as_str()) {
+    if !text.is_empty() {
         let mut f = og_io::AtomicFile::create(&path)?;
         f.write_all(text.as_bytes())?;
         f.commit()?;

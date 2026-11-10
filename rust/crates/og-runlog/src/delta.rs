@@ -574,7 +574,7 @@ fn diff_prs(p: &Value, c: &Value) -> R<Vec<Obj>> {
         if moved {
             // A percentile of 0 is a value: only a missing one reads "none".
             let shown = |v: &Value| {
-                if *v == Value::Null {
+                if *v == Value::Null || *v == Value::Int(0) {
                     s("none")
                 } else {
                     v.clone()
