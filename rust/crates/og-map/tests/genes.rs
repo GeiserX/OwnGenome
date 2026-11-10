@@ -254,7 +254,18 @@ fn the_cache_is_reused_until_an_input_changes() {
     let dir = scratch("cache");
     let root = copy_slice(&dir);
     let cache = dir.join("cache");
+    // A set in progress left by a killed build an hour ago is removed; one a
+    // live build is still writing is kept.
+    let stale = cache.join("genes/.0000000000000000.tmp-1");
+    let live = cache.join("genes/.1111111111111111.tmp-2");
+    fs::create_dir_all(&stale).unwrap();
+    fs::create_dir_all(&live).unwrap();
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+    fs::File::open(&stale).unwrap().set_modified(old).unwrap();
     let first = fetch(&root, &cache, Want::Chrom(6)).unwrap();
+    assert!(!stale.exists(), "a stale set in progress is removed");
+    assert!(live.is_dir(), "a live set in progress is kept");
+    fs::remove_dir(&live).unwrap();
     let sets: Vec<PathBuf> = fs::read_dir(cache.join("genes"))
         .unwrap()
         .map(|e| e.unwrap().path())

@@ -43,6 +43,7 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 /// What a reader is told when the GENCODE files are not installed.
 pub const MISSING: &str = "Gene names need step 08's GENCODE file";
@@ -450,12 +451,32 @@ fn store(dir: &Path, files: &[(String, Vec<u8>)]) -> io::Result<()> {
     for entry in fs::read_dir(parent)? {
         let entry = entry?;
         let name = entry.file_name();
-        // Another writer's set in progress starts with a dot: never touch it.
-        if name != stamp && !name.to_string_lossy().starts_with('.') && entry.path().is_dir() {
+        if name == stamp || !entry.path().is_dir() {
+            continue;
+        }
+        // Another writer's set in progress starts with a dot: touch it only
+        // when nothing has written to it for an hour, so a killed build does
+        // not leak its folder.
+        if !name.to_string_lossy().starts_with('.') || abandoned(&entry) {
             fs::remove_dir_all(entry.path())?;
         }
     }
     Ok(())
+}
+
+/// How long a set in progress may sit unchanged before it counts as left
+/// behind by a build that was killed. A live build writes it within seconds.
+const ABANDONED_AFTER: Duration = Duration::from_secs(3600);
+
+/// True for a set in progress that nothing has written to for
+/// [`ABANDONED_AFTER`].
+fn abandoned(entry: &fs::DirEntry) -> bool {
+    entry
+        .metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age > ABANDONED_AFTER)
 }
 
 /// The bytes of the file `want` asks for: from the cache when the inputs
