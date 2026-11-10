@@ -477,6 +477,7 @@ version = "0.1.0"
 dependencies = [
  "og-bam",
  "og-io",
+ "og-map",
  "pycompat",
 ]
 
@@ -493,6 +494,16 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-map"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
