@@ -35,7 +35,9 @@ Checks:
      index's items that name the gene carry one of them, and nothing else is
      tagged; DEMO-001, with no result to act on, has no tag; and a known deep
      intronic site's line in the gene of a closed secondary finding carries
-     that finding's id (the card prints each site whether hit or not).
+     that finding's id (the card prints each site whether hit or not), a gene
+     named before a full stop is that gene, and a ClinVar row closed by its gene
+     alone closes its "See the reads at" link with it.
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
@@ -359,7 +361,22 @@ def veil_lines_problems():
     v = live_results.veil({"sections": S}, found, [{"sections": [{"id": "clinvar", "lines": lines}]}])
     want = ["sf-gla-test" if "GLA " in ln else None for ln in lines]
     got = (v.get("lines") or {}).get("clinvar")
-    return [] if "sf-gla-test" in want and None in want and got == want else [f"lines {lines} tagged {got}, want {want}"]
+    out = [] if "sf-gla-test" in want and None in want and got == want else [f"lines {lines} tagged {got}, want {want}"]
+    # A gene named at the end of a sentence ("in GLA.") is that gene.
+    if live_results.veil_id(live_results.closable(found), "A change in GLA.") != "sf-gla-test":
+        out.append("'A change in GLA.' carries no tag")
+    # A finding known by its gene alone (no position): its ClinVar row is closed by the gene, and the row's
+    # "See the reads at" link, which shows only the position, with it.
+    S["clinvar"]["data"]["hits"] = [{"gene": "GLA", "chrom": "chrX", "pos": 101398000, "ref": "G", "alt": "A"},
+                                    {"gene": "GENE5", "chrom": "chr1", "pos": 5, "ref": "A", "alt": "G"}]
+    card = dict(live_results.a_clinvar(S, {"sections": S}), id="clinvar")
+    gene_only = [{"id": "carrier-gla-test", "level": "act", "gene": "GLA"}]
+    v = live_results.veil({"sections": S}, gene_only, [{"sections": [card]}])
+    rows, view = (v.get("rows") or {}).get("clinvar"), (v.get("viewer") or {}).get("clinvar")
+    if rows != ["carrier-gla-test", None] or view != rows:
+        out.append(f"a gene-only finding: ClinVar rows tagged {rows}, viewer links {view}, want both "
+                   "['carrier-gla-test', None]")
+    return out
 
 
 def main():
@@ -450,7 +467,8 @@ def main():
             r3["_summary"] = s3
             return r3, results_index.build(s3, sample_dir, rr.SECTION_OF)
         bad = veil_lines_problems()
-        check("8. a known deep intronic site's line in a closed secondary finding's gene carries its id", not bad, bad)
+        check("8. a known deep intronic site's line in a closed secondary finding's gene carries its id, a gene "
+              "before a full stop is that gene, and a ClinVar row closed by its gene closes its reads link", not bad, bad)
         bad = veil_problems(*tagged(d3))
         check("8. the planted ClinVar hit's row, viewer link, tick and star bar carry its secondary finding's id, the "
               "deletion's span its own, and every search item of the gene one of them", not bad, bad)

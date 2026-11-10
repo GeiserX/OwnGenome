@@ -1190,7 +1190,8 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
         except (TypeError, ValueError):
             pass
     locs += _loci(text)
-    words = set(WORD_RE.findall(str(text or "").upper()))
+    found = WORD_RE.findall(str(text or "").upper())
+    words = set(found) | {w.rstrip("._-") for w in found}  # "in KCNH2." names KCNH2; HLA-A stays whole
     for fid, _gene, c, a, b in spans:
         if c and (c, a, b) in locs:
             return fid
@@ -1220,6 +1221,9 @@ def veil(summary, found, chapters):
     for ch in chapters:
         for c in ch["sections"]:
             tags = [veil_id(spans, v) for v in c.get("viewer") or []]
+            if c["id"] == "clinvar":  # one link per row: a row closed by its gene alone closes its link too
+                rt = out["rows"].get("clinvar") or []
+                tags = [(rt[i] if i < len(rt) else None) or t for i, t in enumerate(tags)]
             if any(tags):
                 out["viewer"][c["id"]] = tags
             tags = [veil_id(spans, ln) for ln in c.get("lines") or []]
