@@ -56,11 +56,11 @@ fn ops(r: &Record) -> impl Iterator<Item = (u8, i64)> + '_ {
     })
 }
 
-/// One past the last reference base the alignment covers, as htslib's
-/// `bam_endpos` gives it: position + 1 for an unmapped read.
+/// pysam's `reference_end`: one past the last reference base the alignment
+/// covers; `None` for an unmapped read or one without a CIGAR.
 pub fn reference_end(r: &Record) -> Option<i64> {
     if r.is_unmapped() || r.raw_cigar().is_empty() {
-        return Some(r.pos() + 1);
+        return None;
     }
     let len: i64 = ops(r)
         .filter(|(op, _)| matches!(op, b'M' | b'D' | b'N' | b'=' | b'X'))
