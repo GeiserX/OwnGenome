@@ -14,7 +14,9 @@
 //!   after `POS`.
 //! - Other files: the begin and end columns the index names; begin is
 //!   1-based unless the index says 0-based (`tabix -p bed`, `-0`), and with
-//!   no end column the line covers one base.
+//!   no end column the line covers one base. A BED row with end equal to
+//!   start keeps that empty interval, so, as in `tabix`, a region returns
+//!   it only when the region has bases on both sides of it.
 //!
 //! SAM text (`tabix -p sam`) is refused: no OwnGenome file is indexed that way.
 
@@ -359,11 +361,7 @@ pub fn interval<'a>(conf: &Conf, line: &'a [u8]) -> Option<(&'a [u8], u64, u64)>
             }
         }
     }
-    let (beg, mut end) = (beg?, end?);
-    if end <= beg {
-        end = beg + 1;
-    }
-    Some((seq?, beg, end))
+    Some((seq?, beg?, end?))
 }
 
 /// `INFO/END` as htslib finds it: the key at the start or after a `;`, its
@@ -437,7 +435,7 @@ impl Reader {
     }
 
     /// The lines whose interval overlaps `[beg, end)` of `seq`, in file
-    /// order, without their line ending. A sequence the index does not name
+    /// order, without their line ending (`\n` or `\r\n`). A sequence the index does not name
     /// has none.
     pub fn query(&mut self, seq: &str, beg: u64, end: u64) -> Query<'_> {
         let chunks = match self.index.ids.get(seq) {
@@ -536,7 +534,8 @@ impl Reader {
         Ok(())
     }
 
-    /// The next line into `out` (without `\n`); `false` at the end of the file.
+    /// The next line into `out` (without `\n` or `\r\n`); `false` at the end
+    /// of the file.
     fn read_line(&mut self, out: &mut Vec<u8>) -> io::Result<bool> {
         out.clear();
         loop {
@@ -547,6 +546,10 @@ impl Reader {
             if let Some(k) = rest.iter().position(|&c| c == b'\n') {
                 out.extend_from_slice(&rest[..k]);
                 self.pos += k + 1;
+                // A \r before the \n goes too, as htslib's bgzf_getline drops it.
+                if out.last() == Some(&b'\r') {
+                    out.pop();
+                }
                 return Ok(true);
             }
             out.extend_from_slice(rest);
@@ -739,6 +742,8 @@ mod tests {
             }
             let (bins, linear) = seqs.last_mut().unwrap();
             let (a, b) = (voff(starts, from, false), voff(starts, to, true));
+            // An empty row is binned on one base, as hts_idx_push bins it.
+            let end = end.max(beg + 1);
             let chunks = bins.entry(reg2bin(beg, end, min_shift, depth)).or_default();
             match chunks.last_mut() {
                 Some(last) if last.1 == a => last.1 = b,
@@ -840,6 +845,7 @@ mod tests {
 
     fn parse_all(text: &[u8], conf: &Conf) -> Parsed {
         text.split(|&c| c == b'\n')
+            .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
             .filter(|l| !l.is_empty() && l.first() != Some(&conf.meta))
             .map(|l| {
                 let (s, b, e) = interval(conf, l).unwrap();
@@ -851,7 +857,7 @@ mod tests {
     /// What a query must return: every data line whose interval overlaps.
     fn scan(all: &Parsed, seq: &str, beg: u64, end: u64) -> Vec<Vec<u8>> {
         all.iter()
-            .filter(|(_, (s, b, e))| s == seq.as_bytes() && *b < end && *e > beg)
+            .filter(|(_, (s, b, e))| beg < end && s == seq.as_bytes() && *b < end && *e > beg)
             .map(|(l, _)| l.clone())
             .collect()
     }
@@ -903,7 +909,7 @@ mod tests {
             for (x, y) in [
                 (b, b + 1),
                 (b.saturating_sub(1), b),
-                (e - 1, e),
+                (e.saturating_sub(1), e),
                 (e, e + 1),
                 (b, e),
                 (b.saturating_sub(300), e + 300),
@@ -965,7 +971,9 @@ mod tests {
                 } else {
                     rng.below(200)
                 };
-                text.extend(format!("{seq}\t{beg}\t{}\tx\n", beg + len).as_bytes());
+                // Some lines end in \r\n, which tabix does not return.
+                let eol = if rng.below(10) == 0 { "\r\n" } else { "\n" };
+                text.extend(format!("{seq}\t{beg}\t{}\tx{eol}", beg + len).as_bytes());
                 beg += rng.below(120);
             }
         }
@@ -1024,8 +1032,9 @@ mod tests {
         assert_eq!(iv(&v, "c\tx\t.\tA\tT"), None);
         let b = bed_conf();
         assert_eq!(iv(&b, "c\t0\t10"), Some((s.clone(), 0, 10)));
-        // A row that covers no base is placed on one, as tabix places it.
-        assert_eq!(iv(&b, "c\t7\t7"), Some((s.clone(), 7, 8)));
+        // A row that covers no base keeps its empty interval: tabix
+        // returns it only for a region with bases on both sides of 7.
+        assert_eq!(iv(&b, "c\t7\t7"), Some((s.clone(), 7, 7)));
         let one = Conf {
             zero_based: false,
             col_end: 0,
