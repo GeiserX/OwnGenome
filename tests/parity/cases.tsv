@@ -13,3 +13,40 @@ setup-mask-fasta	lone-cr	setup-mask-fasta/lone-cr.fa,setup-mask-fasta/lone-cr.be
 setup-mask-fasta	empty-header	setup-mask-fasta/empty-header.fa,setup-mask-fasta/empty-header.bed	empty-header.fa empty-header.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	bad-bed	setup-mask-fasta/bad-bed.fa,setup-mask-fasta/bad-bed.bed	bad-bed.fa bad-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	synthetic-254mb	gen:synthetic-fasta.sh	synthetic.fa synthetic.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+consumer	build-sites-unit	consumer/build-tpl.txt.gz,consumer/build-dbsnp.vcf	build-sites --template build-tpl.txt.gz --dbsnp build-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv --source unit	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-bgzf	consumer/build-tpl.txt.gz,consumer/build-dbsnp.vcf.gz	build-sites --template build-tpl.txt.gz --dbsnp build-dbsnp.vcf.gz --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-edge	consumer/build-edge-tpl.txt,consumer/build-edge-dbsnp.vcf	build-sites --source=edge --template build-edge-tpl.txt --dbsnp build-edge-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-same-position	consumer/same-tpl.txt,consumer/same-dbsnp.vcf	build-sites --template same-tpl.txt --dbsnp same-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-none-kept	consumer/none-tpl.txt,consumer/same-dbsnp.vcf	build-sites --template none-tpl.txt --dbsnp same-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	export-male	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-female	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex female --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-no-sex	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-male-no-par	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-bgzf	consumer/unit-bgzf.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit-bgzf.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-hole	consumer/hole.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf hole.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-het-run	consumer/run.g.vcf.gz,consumer/run-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf run.g.vcf.gz --sites run-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-shifted	consumer/run.g.vcf.gz,consumer/shifted-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf run.g.vcf.gz --sites shifted-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-unsorted	consumer/unsorted.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unsorted.g.vcf.gz --sites unit-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-contig-twice	consumer/twice.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf twice.g.vcf.gz --sites unit-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-edge-male	consumer/edge.g.vcf.gz,consumer/edge-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf edge.g.vcf.gz --sites edge-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-edge-female	consumer/edge.g.vcf.gz,consumer/edge-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf edge.g.vcf.gz --sites edge-sites.tsv.gz --sample S --sex=female --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-many-alleles	consumer/many.g.vcf.gz,consumer/many-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf many.g.vcf.gz --sites many-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-strict-reader-fails	consumer/unit.g.vcf.gz,consumer/badid-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites badid-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.txt,out/S_ancestrydna_layout.txt	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-synthetic	gen:consumer-synthetic.sh,consumer/par_grch38.bed	export --gvcf synthetic.g.vcf.gz --sites synthetic-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	check-good	consumer/good.txt	check --layout 23andme good.txt	-	bytes	PYTHON_IMAGE
+consumer	check-good-zip	consumer/good.zip	check --layout 23andme good.zip	-	bytes	PYTHON_IMAGE
+consumer	check-two-members	consumer/two.zip	check --layout 23andme two.zip	-	bytes	PYTHON_IMAGE
+consumer	check-crlf	consumer/bad-crlf.txt	check --layout 23andme bad-crlf.txt	-	bytes	PYTHON_IMAGE
+consumer	check-no-header	consumer/bad-no-header.txt	check --layout 23andme bad-no-header.txt	-	bytes	PYTHON_IMAGE
+consumer	check-bad-genotype	consumer/bad-bad-genotype.txt	check --layout 23andme bad-bad-genotype.txt	-	bytes	PYTHON_IMAGE
+consumer	check-one-letter	consumer/bad-one-letter.txt	check --layout 23andme bad-one-letter.txt	-	bytes	PYTHON_IMAGE
+consumer	check-out-of-order	consumer/bad-out-of-order.txt	check --layout 23andme bad-out-of-order.txt	-	bytes	PYTHON_IMAGE
+consumer	check-repeated	consumer/bad-repeated.txt	check --layout 23andme bad-repeated.txt	-	bytes	PYTHON_IMAGE
+consumer	check-cut	consumer/bad-cut.txt	check --layout 23andme bad-cut.txt	-	bytes	PYTHON_IMAGE
+consumer	check-mt-two	consumer/bad-mt-two.txt	check --layout 23andme bad-mt-two.txt	-	bytes	PYTHON_IMAGE
+consumer	check-columns	consumer/bad-columns.txt	check --layout 23andme bad-columns.txt	-	bytes	PYTHON_IMAGE
+consumer	check-not-ascii	consumer/bad-not-ascii.txt	check --layout 23andme bad-not-ascii.txt	-	bytes	PYTHON_IMAGE
+consumer	check-rsid	consumer/bad-rsid.txt	check --layout 23andme bad-rsid.txt	-	bytes	PYTHON_IMAGE
+consumer	check-ancestry-good	consumer/anc-good.txt	check --layout ancestrydna anc-good.txt	-	bytes	PYTHON_IMAGE
+consumer	check-ancestry-bad	consumer/anc-bad.txt	check --layout ancestrydna anc-bad.txt	-	bytes	PYTHON_IMAGE
+consumer	check-wrong-layout	consumer/good.txt	check --layout ancestrydna good.txt	-	bytes	PYTHON_IMAGE
