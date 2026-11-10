@@ -10,10 +10,12 @@ Checks:
      the same arguments and stdin), as application/gzip with the site's headers (CSP, nosniff,
      no-referrer, no-store, DENY);
   3. og gets `map build --root ROOT --run RUN --assets <repo>/assets --cache-dir STATE/map`, and its
-     stdin is {"results": the body GET /runs/<run>/results.json sends};
+     stdin is {"results": the body GET /runs/<run>/results.json sends}; live_results.build is a stub
+     whose answer carries its arguments, so a plugin that calls it unlike the results plugin differs;
   4. /map/genes/<chrom>.json and /map/genes/names.json answer og's bytes of `og map genes`;
-  5. og exit 3 is 404 with og's reason; exit 127 or no og is 503 with the setup line; any other
-     exit is 500 with og's first stderr line on the server's stderr and none of og's bytes sent;
+  5. og exit 3 is 404 with og's reason; exit 127 or no og is 503 with the setup line, and og's
+     first stderr line on the server's stderr; any other exit is 500 with og's first stderr line
+     on the server's stderr and none of og's bytes sent;
   6. a family's run or an unknown run is 404 and og is not run;
   7. each request writes one access-log row 'map' whose run and section are only the run or '-'
      and 'genes': no finding id, no gene and no chromosome; the server has no POST route for it.
@@ -123,6 +125,8 @@ def scenario(plugin_src, quiet=False):
     try:
         root = os.path.join(work, "genome")
         shutil.copytree(os.path.join(FIX, RUN), os.path.join(root, RUN))
+        with open(os.path.join(root, RUN, f"{RUN}_report.html"), "w") as f:  # gives the run files to build()
+            f.write('<a href="tables/linked.tsv">a linked table</a>')
         os.makedirs(os.path.join(root, "FAM-A"))  # a family's run, from the run_kind below
         state = os.path.join(work, "state")
         plugins = os.path.join(work, "bin")
@@ -138,7 +142,10 @@ def scenario(plugin_src, quiet=False):
         with open(pw, "w") as f:
             f.write(owngenome_live.hash_password(PASSWORD, iterations=1000) + "\n")
         os.environ.update(FAKE_OG_LOG=os.path.join(work, "og.log"), FAKE_OG_MODE="ok")
-        live_results.build = lambda name, summary, files=None: json.loads(json.dumps(RESULTS))
+        # The stub's answer depends on every argument, so a plugin that calls build() unlike the
+        # results plugin sends og a different body.
+        live_results.build = lambda name, summary, files=None: json.loads(json.dumps(
+            dict(RESULTS, sample=name, summary=summary, files=sorted(files or []))))
 
         app = owngenome_live.App()
         app.run_kind(lambda a: [{"name": "FAM-A", "dir": os.path.join(root, "FAM-A"), "kind": "family"}])
@@ -188,7 +195,8 @@ def scenario(plugin_src, quiet=False):
               calls, quiet)
         check("3. og's stdin is {\"results\": the body of results.json}",
               len(calls) == 1 and json.loads(calls[0]["stdin"]) == {"results": json.loads(results)}
-              and json.loads(results) == RESULTS, (calls, results[:200]), quiet)
+              and json.loads(results)["findings"] == RESULTS["findings"] and json.loads(results)["files"],
+              (calls, results[:200]), quiet)
 
         # 4. the gene files
         ok = True
@@ -209,13 +217,16 @@ def scenario(plugin_src, quiet=False):
         code, _, body = request(port, routes[0], auth)
         check("5. og exit 3 is 404 with og's reason", code == 404 and b"the planted reason" in body, (code, body), quiet)
         os.environ["FAKE_OG_MODE"] = "notbuilt"
-        code, _, body = request(port, routes[1], auth)
+        with contextlib.redirect_stderr(err):
+            code, _, body = request(port, routes[1], auth)
         os.rename(og, og + ".away")
         code2, _, body2 = request(port, routes[2], auth)
         os.rename(og + ".away", og)
         setup = b"The map needs og on this host: run scripts/setup.sh --og"
         check("5. og exit 127, or no og at all, is 503 with the setup line",
               code == 503 and setup in body and code2 == 503 and setup in body2, (code, body, code2, body2), quiet)
+        check("5. og exit 127 puts og's first stderr line on the server's stderr",
+              "og is not built for x86_64" in err.getvalue(), err.getvalue()[-300:], quiet)
         os.environ["FAKE_OG_MODE"] = "crash"
         with contextlib.redirect_stderr(err):
             code, _, body = request(port, routes[0], auth)
@@ -272,6 +283,10 @@ MUTANTS = [
     ("og's stdout sent on a failure", 'return req.send_body(500, TEXT, "The map could not be built: the server\'s log '
      'says why.\\n")\n\n\ndef register', "return req.send_body(500, TEXT, p.stdout)\n\n\ndef register"),
     ("stdin without the results", 'json.dumps({"results": body})', 'json.dumps({"results": {}})'),
+    ("og's 127 reason dropped", 'if err:  # e.g.', 'if False:  # e.g.'),
+    ("build() given other files", 'live.run_files(run) if run["dir"] else set())', 'set())'),
+    ("build() given another name", 'return live_results.build(name, summary,',
+     'return live_results.build(name + "x", summary,'),
     ("a family's run built", 'if not run or run.get("kind") == "family":', "if not run:"),
     ("the assets of the wrong folder", 'ASSETS = os.path.join(os.path.dirname(HERE), "assets")',
      'ASSETS = os.path.join(HERE, "assets")'),

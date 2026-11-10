@@ -9,11 +9,11 @@ Every route needs the login. The plugin decides nothing about the map: og builds
 caches it under <state-dir>/map, and the plugin sends og's bytes unchanged, with the site's
 headers. og writes a file only once it is complete and its exit code sets the status, so the
 plugin waits for og to end before it answers: 0 is 200; 3 (no map for this run, no gene files)
-is 404 with og's reason; 127 (og not built on this host) is 503; anything else is 500, with og's
-first stderr line on the server's stderr. There is no POST route: opening a closed result is the
-browser's (the document tags each row a closed result can hide). Each request writes one access-log
-row 'map', with the run (or 'genes' as the section for a gene file) and never a finding, a gene or a
-chromosome.
+is 404 with og's reason; 127 (og not built on this host) is 503; anything else is 500. On 127
+and 500, og's first stderr line goes to the server's stderr. There is no POST route: opening a
+closed result is the browser's (the document tags each row a closed result can hide). Each
+request writes one access-log row 'map', with the run (or 'genes' as the section for a gene
+file) and never a finding, a gene or a chromosome.
 
 This is Python only while the site is: the Rust port of the live server replaces this file.
 """
@@ -64,6 +64,8 @@ def relay(app, req, args, stdin, run, section):
         app.log("map", run, section, 404)
         return req.send_body(404, TEXT, err + "\n")
     if code == 127:
+        if err:  # e.g. og refuses a host that is not Linux: the setup line alone would not say so
+            print(f"owngenome_live: og map {args[0]} unavailable: {err}", file=sys.stderr)
         app.log("map", run, section, 503)
         return req.send_body(503, TEXT, NO_OG)
     print(f"owngenome_live: og map {args[0]} failed ({code}): {err}", file=sys.stderr)
