@@ -94,7 +94,7 @@ impl Sets {
         ))
     }
 
-    /// The set of `seq`, empty when the BED has no row on it.
+    /// The set of `seq`; `None` when the BED has no row on it.
     pub fn get(&self, seq: &str) -> Option<&Set> {
         self.0.get(seq)
     }

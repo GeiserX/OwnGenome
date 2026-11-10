@@ -796,11 +796,13 @@ mod tests {
                 out.extend((names.len() as u32).to_le_bytes());
             }
         }
-        for (bins, mut linear) in seqs {
-            // Empty windows take the offset before them, as hts_idx_finish does.
-            for w in 1..linear.len() {
-                if linear[w] == 0 {
-                    linear[w] = linear[w - 1];
+        for (bins, linear) in seqs {
+            // Empty windows take the offset before them, as hts_idx_finish
+            // does, but only for the CSI loff below: the TBI keeps them 0.
+            let mut filled = linear.clone();
+            for w in 1..filled.len() {
+                if filled[w] == 0 {
+                    filled[w] = filled[w - 1];
                 }
             }
             out.extend((bins.len() as u32).to_le_bytes());
@@ -815,9 +817,9 @@ mod tests {
                     let first = ((bin - bin_first(level)) as u64)
                         << (min_shift + 3 * (depth - level))
                         >> min_shift;
-                    let loff = linear
+                    let loff = filled
                         .get(first as usize)
-                        .or(linear.last())
+                        .or(filled.last())
                         .copied()
                         .unwrap_or(0);
                     out.extend(loff.to_le_bytes());
@@ -829,8 +831,8 @@ mod tests {
                 }
             }
             if csi.is_none() {
-                // Windows reached only through the backfill: keep them 0, as
-                // a tabix before 0.1.4 left them, so the backward walk runs.
+                // Empty windows stay 0, as a tabix before 0.1.4 left them,
+                // so a query that lands on one runs the backward walk.
                 out.extend((linear.len() as u32).to_le_bytes());
                 for o in linear {
                     out.extend(o.to_le_bytes());
@@ -979,6 +981,35 @@ mod tests {
         }
         check(&text, &bed_conf(), None, "bed-tbi");
         check(&text, &bed_conf(), Some((14, 5)), "bed-csi");
+    }
+
+    #[test]
+    fn a_zero_window_takes_the_offset_before_it() {
+        // L1 crosses the 16 kb edge, so it sits in a level-4 bin that a
+        // query in window 4 visits; windows 3 and 4 hold no line.
+        let mut text = b"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n".to_vec();
+        for (pos, reflen) in [(16_001, 500), (20_001, 1), (33_001, 1), (90_001, 1)] {
+            let r = "A".repeat(reflen);
+            text.extend(format!("chr1\t{pos}\t.\t{r}\tC\t50\tPASS\t.\n").as_bytes());
+        }
+        let (_, starts) = bgzip(&text);
+        let raw = build_index(&text, &starts, &vcf_conf(), None);
+        let old = Index::parse(&raw).unwrap();
+        assert_eq!(old.seqs[0].linear[3..5], [0, 0], "no zero windows to walk");
+        let mut new = Index::parse(&raw).unwrap();
+        let linear = &mut new.seqs[0].linear;
+        for w in 1..linear.len() {
+            if linear[w] == 0 {
+                linear[w] = linear[w - 1];
+            }
+        }
+        // The walk drops L1's chunk, as the backfilled index of a newer
+        // tabix does; a plain `linear[w]` of 0 would keep it.
+        let (beg, end) = (70_000, 70_001);
+        let want = new.chunks(0, beg, end);
+        assert_eq!(old.chunks(0, beg, end), want);
+        assert_eq!(want, [], "L1's chunk ends before window 2's first line");
+        assert_eq!(old.chunks(0, 16_500, 16_501).len(), 1, "L1 is indexed");
     }
 
     #[test]
