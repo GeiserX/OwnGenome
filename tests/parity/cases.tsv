@@ -44,6 +44,8 @@ pgx-refblock-fill	two-samples	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/
 pgx-refblock-fill	no-header	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/nohead.gvcf,pgx-refblock-fill/stdin	positions.vcf nohead.gvcf	-	bytes	PHARMCAT_IMAGE
 pgx-refblock-fill	missing-gvcf	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/stdin	positions.vcf missing.vcf	-	bytes	PHARMCAT_IMAGE
 pgx-refblock-fill	inconsistent	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/inconsistent/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	kept-then-block	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/kept-then-block/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	block-then-kept	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/block-then-kept/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
 pgx-refblock-fill	same-start	pgx-refblock-fill/same-start.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/stdin	same-start.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
 pgx-refblock-fill	no-final-newline	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/no-final-newline/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
 pgx-refblock-fill	bad-pos	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/bad-pos/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE

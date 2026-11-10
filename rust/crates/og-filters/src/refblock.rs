@@ -482,8 +482,10 @@ pub fn run(
             && crate::chars(c[3]) == 1
             && BLOCK_ALTS.contains(&c[4])
         {
-            emit(&fills[i], None, &mut open_line, &mut out, &mut outcome).map_err(w)?;
-            i += 1;
+            // The block record is dropped, and its fill waits for the first
+            // record past this position (or the end): a gVCF record at this
+            // position that is not a block, before or after this one, is
+            // kept instead of it, so one position never gets two records.
             continue;
         }
         out.write_all(line.as_bytes()).map_err(w)?;
