@@ -1,0 +1,1 @@
+og setup mask-fasta: lone-cr.fa: line 1: a carriage return that does not end the line (old Mac line endings?); convert the file to \n or \r\n line endings
