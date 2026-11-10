@@ -43,6 +43,7 @@ pub struct Writer<W> {
 }
 
 impl<W: Write> Writer<W> {
+    /// A writer of `delimiter`-separated rows to `inner`.
     pub fn new(inner: W, delimiter: char) -> Self {
         Writer {
             inner,
@@ -89,10 +90,12 @@ impl<W: Write> Writer<W> {
         self.inner.write_all(self.buf.as_bytes())
     }
 
+    /// The destination, for a flush or a write between rows.
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.inner
     }
 
+    /// The destination, once writing is done.
     pub fn into_inner(self) -> W {
         self.inner
     }
@@ -104,9 +107,15 @@ impl<W: Write> Writer<W> {
 pub enum Error {
     /// `csv.Error`: a `\r` or `\n` with more text after it on the same line
     /// outside quotes. Python's text mode (`newline=None`) never yields one.
-    NewlineInUnquotedField { line: u64 },
+    NewlineInUnquotedField {
+        /// The reader's `line_num` when the error was raised.
+        line: u64,
+    },
     /// `csv.Error`: a field longer than [`FIELD_SIZE_LIMIT`] characters.
-    FieldTooLarge { line: u64 },
+    FieldTooLarge {
+        /// The reader's `line_num` when the error was raised.
+        line: u64,
+    },
     /// Reading a line failed.
     Io(io::Error),
 }
@@ -190,6 +199,8 @@ where
     I: Iterator<Item = io::Result<L>>,
     L: AsRef<str>,
 {
+    /// `csv.reader(lines, delimiter=D, quoting=Q)` over lines that keep
+    /// their line endings, as a file opened in text mode yields them.
     pub fn new(lines: I, delimiter: char, quoting: Quoting) -> Self {
         Reader {
             lines,
@@ -365,6 +376,7 @@ pub struct Header {
 }
 
 impl Header {
+    /// The header of a header row: where each key reads its value.
     pub fn new(names: Vec<String>) -> Self {
         let mut keys: Vec<(String, usize)> = Vec::new();
         let mut index: HashMap<String, usize> = HashMap::new();
@@ -437,6 +449,8 @@ where
     I: Iterator<Item = io::Result<L>>,
     L: AsRef<str>,
 {
+    /// `csv.DictReader(lines, delimiter=D, quoting=Q)`; nothing is read
+    /// until the first [`header`](Self::header) or row.
     pub fn new(lines: I, delimiter: char, quoting: Quoting) -> Self {
         DictReader {
             reader: Reader::new(lines, delimiter, quoting),
