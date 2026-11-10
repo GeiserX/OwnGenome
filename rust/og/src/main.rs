@@ -18,7 +18,7 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -63,6 +63,18 @@ fn main() -> ExitCode {
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
+        },
+        "sv" => match rest.first().map(String::as_str) {
+            Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
+            Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown sv tool '{other}'")),
+            None => usage_error("the following arguments are required: sv tool"),
+        },
+        "pgx" => match rest.first().map(String::as_str) {
+            Some("refblock-fill") => ExitCode::from(og_filters::refblock::cli(&rest[1..])),
+            Some("mito-merge") => ExitCode::from(og_filters::mito::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown pgx tool '{other}'")),
+            None => usage_error("the following arguments are required: pgx tool"),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).

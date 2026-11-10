@@ -1,0 +1,15 @@
+[package]
+name = "og-filters"
+description = "The VCF filters between a third-party tool and the next: og sv svlen-fix, og sv inv-filter, og pgx refblock-fill, og pgx mito-merge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+flate2.workspace = true
+
+[lints]
+workspace = true

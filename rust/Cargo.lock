@@ -496,6 +496,7 @@ version = "0.1.0"
 dependencies = [
  "og-bam",
  "og-dev",
+ "og-filters",
  "og-intervals",
  "og-io",
  "og-map",
@@ -519,6 +520,15 @@ dependencies = [
  "png",
  "pycompat",
  "regex",
+]
+
+[[package]]
+name = "og-filters"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -548,20 +558,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-tsv"
+version = "0.1.0"
+dependencies = [
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
 name = "og-vcf"
 version = "0.1.0"
 dependencies = [
  "memchr",
  "og-io",
  "smallvec",
-]
-
-[[package]]
-name = "og-tsv"
-version = "0.1.0"
-dependencies = [
- "og-io",
- "pycompat",
 ]
 
 [[package]]
