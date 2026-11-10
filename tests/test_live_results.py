@@ -27,11 +27,18 @@ Checks:
      Slivar phase lines, every Exomiser variant of a gene, a not-assessed
      secondary-findings list, a carrier list not made and an unparsed PharmCAT
      report as sentences (never zero counts), an unsized "normal" locus as not
-     sized, AnnotSV's exon-edge check, a genotype rule and a deep intronic call.
+     sized, AnnotSV's exon-edge check, a genotype rule and a deep intronic call;
+  8. the veil's tags on DEMO-003 (make_demo_sample.py --sample DEMO-003, with its
+     planted secondary finding and class 5 deletion): the ClinVar row and viewer
+     link of the planted hit, its genome-chart tick and its review-star bar carry
+     the secondary finding's id, the deletion's span carries its own, the search
+     index's items that name the gene carry one of them, and nothing else is
+     tagged; DEMO-001, with no result to act on, has no tag.
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
-registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing. A check
+registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
+8 with a veil rule that tags nothing and one that tags every row. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -301,6 +308,42 @@ def server_problems(port, state):
     return out
 
 
+def veil_problems(res, idx):
+    """What is wrong with the veil's tags of DEMO-003's results.json and search index."""
+    import make_demo_sample
+    gene = make_demo_sample.PLANTED["gene"]
+    c, p, _, _ = make_demo_sample.PLANTED["hit"]
+    sv_c, a, b = make_demo_sample.PLANTED["sv"]
+    act = [f["id"] for f in res["findings"] if f["level"] == "act"]
+    sf = next((i for i in act if i.startswith("sf-")), None)
+    sv = next((i for i in act if i.startswith("sv-")), None)
+    if not sf or not sv:
+        return [f"no planted secondary finding and deletion among the results to act on: {act}"]
+    v = res.get("veil") or {}
+    out = []
+    card = next(x for ch in res["chapters"] for x in ch["sections"] if x["id"] == "clinvar")
+    rows = (v.get("rows") or {}).get("clinvar") or []
+    want = [sf if r[0] == gene and r[1].startswith(f"{c}:{p} ") else None for r in card["table"]["rows"]]
+    if rows != want:
+        out.append(f"ClinVar rows tagged {rows}, want {want}")
+    view = (v.get("viewer") or {}).get("clinvar") or []
+    if view != [sf if x == f"{c}:{p}" else None for x in card.get("viewer") or []]:
+        out.append(f"ClinVar viewer links tagged {view}")
+    marks = v.get("marks") or {}
+    specs = {sp["id"]: sp for sp in rr.chart_specs(res["_summary"])}
+    hit = [m["id"] for m in specs["genome"]["marks"] if m.get("kind") == "hit" and m["pos"] == p and m["chrom"] == c]
+    span = [m["id"] for m in specs["genome"]["marks"] if m.get("kind") == "sv" and (m["chrom"], m["pos"], m["end"]) == (sv_c, a, b)]
+    bar = [m["id"] for m in specs["clinvar-stars"]["marks"] if gene in (m.get("detail") or "")]
+    want = {"genome": {**{h: sf for h in hit}, **{s_: sv for s_ in span}}, "clinvar-stars": {x: sf for x in bar}}
+    if not hit or not span or not bar or marks != want:
+        out.append(f"chart marks tagged {marks}, want {want}")
+    tagged = {(t, it["section"]): it.get("veil") for t, items in idx["terms"].items() for it in items if it.get("veil")}
+    named = {(gene, it["section"]) for it in idx["terms"].get(gene) or []}
+    if set(tagged) != named or not named or any(x not in (sf, sv) for x in tagged.values()):
+        out.append(f"search items tagged {tagged}, want every item of {gene}: {sorted(named)}")
+    return out
+
+
 def main():
     work = tempfile.mkdtemp(prefix="test_live_results.")
     srvs = []
@@ -373,6 +416,33 @@ def main():
         bad = adapter_problems(adapters)
         check("7. the adapters carry the report's plot, phase, variants, rules and not-assessed sentences", not bad, bad)
         control("the Slivar adapter returning nothing", not adapter_problems(dict(adapters, slivar=lambda S, s: {})))
+
+        # 8.
+        import results_index
+        sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
+        check("8. DEMO-001, with no result to act on, has no veil tag", res.get("veil") == {}, res.get("veil"))
+        subprocess.run([sys.executable, os.path.join(REPO, "tests", "demo", "make_demo_sample.py"), "--genome-dir", root,
+                        "--records", "2000", "--sample", "DEMO-003", "--sex", "male", "--seed", "3"], check=True,
+                       stdout=subprocess.DEVNULL)
+        d3 = os.path.join(root, "DEMO-003")
+
+        def tagged(sample_dir):
+            s3 = collect_summary.collect("DEMO-003", sample_dir)
+            r3 = live_results.build("DEMO-003", s3)
+            r3["_summary"] = s3
+            return r3, results_index.build(s3, sample_dir, rr.SECTION_OF)
+        bad = veil_problems(*tagged(d3))
+        check("8. the planted ClinVar hit's row, viewer link, tick and star bar carry its secondary finding's id, the "
+              "deletion's span its own, and every search item of the gene one of them", not bad, bad)
+        # The planted mistakes: a rule that tags nothing, and one that tags every row with the first result.
+        keep = live_results.veil_id
+        try:
+            live_results.veil_id = lambda spans, *a, **k: None
+            control("a veil rule that tags nothing", not veil_problems(*tagged(d3)))
+            live_results.veil_id = lambda spans, *a, **k: spans[0][0] if spans else None
+            control("a veil rule that tags every row", not veil_problems(*tagged(d3)))
+        finally:
+            live_results.veil_id = keep
 
         # 5.
         pwfile = os.path.join(work, "password")

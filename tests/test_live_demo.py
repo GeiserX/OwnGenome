@@ -46,7 +46,11 @@ Checks:
      both pages with family.json unavailable, with a state cut short (no
      plugins) and with no state at all (frames.json unavailable), and the son's
      search lists no hit and suggests no term from their closed card while a
-     term of an open card is still found; DEMO-001's page
+     term of an open card is still found; the son's planted secondary finding
+     and class 5 deletion (make_demo_sample.py PLANTED) name their gene and
+     positions in no card, chart, chart title, link or search suggestion until
+     each is opened, opening one brings back its own rows and marks only, and a
+     reload closes them again; DEMO-001's page
      mid-replay and at the end leads with the report (a short run band above
      the lead while it runs, none once finished), ends with the step timeline
      folded, keeps the wire to at most eight one-sentence lines with the plain
@@ -55,7 +59,8 @@ Checks:
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
 the veil, person.js and finding.js that read a missing state as a standalone adult, and search.js
-without its filter), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+without its filter; for the planted results, results.json without its veil tags, person.js whose ClinVar
+rows ignore them, charts.js that keeps every mark and search.js that ignores a hit's tag), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -304,6 +309,7 @@ def browser_checks(out):
         phone_report_checks(b, base, out)
         fold_checks(b, base, out)
         veil_checks(b, base, out)
+        planted_checks(b, base, out)
     finally:
         b.close()
         srv.shutdown()
@@ -526,6 +532,129 @@ def veil_checks(b, base, out):
             f.write(keep_js)
         for d in made:
             shutil.rmtree(d, ignore_errors=True)
+
+
+# What the son's page shows, to scan for the planted results: its text (SVG titles and closed folds included),
+# every link and every title attribute.
+SHOWN_JS = ("[document.body.textContent].concat(Array.prototype.map.call(document.querySelectorAll('[href],[title]'), "
+            "function (e) { return (e.getAttribute('href') || '') + ' ' + (e.getAttribute('title') || ''); })).join(' ')")
+
+
+def planted_words():
+    """(the gene, the hit's words, the deletion's words) of make_demo_sample.PLANTED, as the page could write them."""
+    import make_demo_sample
+    pl = make_demo_sample.PLANTED
+    c, p, _, _ = pl["hit"]
+    sc, a, z = pl["sv"]
+    return pl["gene"], [f"{c}:{p}", f"{p:,}"], [f"{sc}:{a}", f"{a:,}", f"{z:,}"]
+
+
+def son_page(b, base):
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/")
+    b.wait("var d = document.documentElement.dataset, i = document.querySelector('input[type=search]'); "
+           "d.pgpResults && d.pgpCharts && d.pgpStatus === 'ready' && document.querySelector('.veil') && i && !i.disabled "
+           "&& 'ready'", 15)
+    time.sleep(0.5)
+
+
+def son_search(b, q):
+    b.eval("var i = document.querySelector('input[type=search]'); i.value = %s; i.dispatchEvent(new Event('input')); true"
+           % json.dumps(q))
+    hits = b.wait("document.documentElement.dataset.pgpSearch", 5)
+    return hits, b.eval("(document.querySelector('.search-results') || {}).textContent || ''") or ""
+
+
+def planted_closed(b, base):
+    """[problems] of the son's page before any click: the planted gene and positions shown anywhere, or found by
+    the search."""
+    gene, hit, sv = planted_words()
+    son_page(b, base)
+    shown = b.eval(SHOWN_JS) or ""
+    out = [f"{w} shown while closed" for w in [gene] + hit + sv if w in shown]
+    hits, text = son_search(b, gene)
+    if hits != "0" or any(w in text for w in hit + sv):
+        out.append(f"the search for {gene} while closed: {hits} hits, {text[:200]}")
+    hits, text = son_search(b, gene[:3])
+    if gene in text:
+        out.append(f"the search for {gene[:3]} suggests {gene} while closed: {text[:200]}")
+    return out
+
+
+def planted_problems(b, base):
+    """[problems] of the planted results on the son's page: closed, then opened one at a time, then reloaded."""
+    gene, hit, sv = planted_words()
+    out = planted_closed(b, base)
+    ids = b.eval("Array.prototype.map.call(document.querySelectorAll('[data-finding][data-level=act]'), "
+                 "function (e) { return e.getAttribute('data-finding'); }).join(' ')") or ""
+    sf = next((i for i in ids.split() if i.startswith("sf-")), None)
+    import make_demo_sample
+    start = str(make_demo_sample.PLANTED["sv"][1])
+    del_ = next((i for i in ids.split() if i.startswith("sv-") and start in i), None)
+    if not sf or not del_:
+        return out + [f"the planted results are not among the son's results to act on: {ids}"]
+    b.eval("document.querySelector('#f-%s .veil button').click(); true" % sf)
+    time.sleep(0.8)
+    shown = b.eval(SHOWN_JS) or ""
+    rows = b.eval("Array.prototype.filter.call(document.querySelectorAll('#card-clinvar tbody tr'), function (r) { "
+                  "return r.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
+    tick = b.eval("document.querySelectorAll('figure[data-chart=genome] a[data-mark^=hit-] title').length")
+    if rows != 1 or not all(w in shown for w in [gene, hit[0]]):
+        out.append(f"opening the secondary finding did not bring back its ClinVar row and tick: {rows} rows, {tick} ticks")
+    out += [f"{w} shown after opening only the secondary finding" for w in sv if w in shown]
+    hits, _ = son_search(b, gene)
+    if hits in (None, "0"):
+        out.append(f"the search for {gene} finds nothing once its result is opened")
+    b.eval("document.querySelector('#f-%s .veil button').click(); true" % del_)
+    time.sleep(0.8)
+    shown = b.eval(SHOWN_JS) or ""
+    spans = b.eval("document.querySelectorAll('figure[data-chart=genome] a[data-mark^=sv-]').length")
+    if sv[0] not in shown or spans != 2:
+        out.append(f"opening the deletion did not bring back its span on the genome chart: {spans} spans")
+    out += [f"after a reload: {x}" for x in planted_closed(b, base)]
+    return out
+
+
+def planted_checks(b, base, out):
+    """The son's planted secondary finding and class 5 deletion stay closed everywhere on his page: the ClinVar
+    card's table and viewer link, the genome chart and the review-star chart (wherever it sits), their titles,
+    the search; each opens on purpose with its own rows only, and a reload closes them again."""
+    sd = os.path.join(out, "runs", OTHERS[1])
+    rj = os.path.join(sd, "results.json")
+    pj, cj, sj = (os.path.join(out, "assets", x) for x in ("person.js", os.path.join("plugins", "charts.js"),
+                                                            os.path.join("plugins", "search.js")))
+    keep = {}
+    for p in (rj, pj, cj, sj):
+        with open(p) as f:
+            keep[p] = f.read()
+
+    def write(p, text):
+        with open(p, "w") as f:
+            f.write(text)
+    try:
+        bad = planted_problems(b, base)
+        check("browser: the son's planted secondary finding and class 5 deletion name their gene and positions nowhere "
+              "(cards, charts, titles, links, search) until each is opened, each opens only its own rows and marks, "
+              "and a reload closes them", not bad, bad)
+        res = json.loads(keep[rj])
+        res["veil"] = {}
+        write(rj, json.dumps(res))
+        control("results.json without its veil tags", not planted_closed(b, base))
+        write(rj, keep[rj])
+        for p, a, z, desc in (
+                (pj, "return !(tags[i] && tagClosed(tags[i]));", "return true;", "person.js whose ClinVar rows ignore their tags"),
+                (cj, "return ask ? (sp.marks", "return false ? (sp.marks", "charts.js that keeps every mark"),
+                (sj, "it.veil || null", "null", "search.js that ignores a hit's tag")):
+            if a not in keep[p]:
+                check(f"control: {desc} (the planted line is in {os.path.basename(p)})", False, a)
+                continue
+            write(p, keep[p].replace(a, z))
+            control(desc, not planted_closed(b, base))
+            write(p, keep[p])
+    finally:
+        for p, text in keep.items():
+            write(p, text)
 
 
 # finding.js as it was: a missing state or one with no plugins read as a standalone adult.
