@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""bin/manta_inv_filter.py, bin/sv_svlen_fix.py and bin/cnvpytor_to_vcf.py on
-made-up VCFs.
+"""og sv inv-filter, og sv svlen-fix and bin/cnvpytor_to_vcf.py on made-up
+VCFs.
+
+Checks 1 and 2 run og, the binary OG names (the parity job of guard.yml sets
+it). Without OG they are skipped with a note, and with OG_REQUIRED set the
+skip is a failure.
 
 Checks:
-  1. manta_inv_filter.py, on Manta's file and a convertInversion.py-style
+  1. og sv inv-filter, on Manta's file and a convertInversion.py-style
      converted file:
        - a reciprocal pair (INV3 and INV5 junctions 100 bp apart) and a pair
          that shares one Manta EVENT keep their INV records, INV_JUNCTIONS=2;
@@ -13,7 +17,7 @@ Checks:
        - a single 100 kb junction stays an INV with INV_JUNCTIONS=1, a single
          400 bp one also gets INVDUP_CANDIDATE;
        - the deletion passes unchanged, and the summary line counts each kind;
-  2. sv_svlen_fix.py: REF 137 bp / ALT 2 bp gets SVLEN -135 and END
+  2. og sv svlen-fix: REF 137 bp / ALT 2 bp gets SVLEN -135 and END
      POS+134, with the old values kept (the control: the input says -136);
      a pure deletion keeps SVLEN and gets END POS+135 (POS-1+len(REF)-len(ALT)); a net
      insertion gets its net SVLEN and keeps END; symbolic, breakend and
@@ -36,7 +40,7 @@ Checks:
      aside; the control: every planted call is PASS DEL or DUP, so without
      the depth check each would be added.
 
-Run: python3 tests/test_annotsv_sv_inputs.py
+Run: OG=rust/target/release/og python3 tests/test_annotsv_sv_inputs.py
 """
 import gzip
 import os
@@ -47,6 +51,7 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(REPO, "bin")
+OG = os.environ.get("OG", "")
 FAILS = 0
 
 
@@ -62,6 +67,11 @@ def check(desc, ok, detail=""):
 def run(tool, *args, stdin=""):
     p = subprocess.run([sys.executable, os.path.join(BIN, tool)] + list(args), input=stdin,
                        capture_output=True, text=True)
+    return p.returncode, p.stdout, p.stderr
+
+
+def og(*args):
+    p = subprocess.run([OG] + list(args), capture_output=True, text=True)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -144,8 +154,8 @@ def test_inv_filter(w):
                 and r[2] == "MantaINV:20:0:1:0:0:0"]
     check("control: the converted file holds the 50 Mb single-junction INV", len(long_inv) == 1)
 
-    rc, out, err = run("manta_inv_filter.py", raw, conv)
-    check("manta_inv_filter.py exits 0", rc == 0, err)
+    rc, out, err = og("sv", "inv-filter", raw, conv)
+    check("og sv inv-filter exits 0", rc == 0, err)
     recs = records(out)
     by_id = {r[2]: r for r in recs}
     for rid in ("MantaINV:10:0:1:0:0:0", "MantaINV:10:0:2:0:0:0", "MantaINV:50:0:1:0:0:0", "MantaINV:50:0:2:0:0:0"):
@@ -175,7 +185,7 @@ def test_inv_filter(w):
           "4 INV records with both junctions, 2 single-junction INV records kept (1 shorter than 1000 bp "
           "marked INVDUP_CANDIDATE), 1 single-junction inversions of 1000000 bp or more" in err, err)
 
-    rc, out, err = run("manta_inv_filter.py", raw, conv, "--max-single-bp", "100000000")
+    rc, out, err = og("sv", "inv-filter", raw, conv, "--max-single-bp", "100000000")
     check("with a 100 Mb limit the 50 Mb junction stays an INV (INV_JUNCTIONS=1)",
           any(r[2] == "MantaINV:20:0:1:0:0:0" and info(r).get("INV_JUNCTIONS") == "1" for r in records(out)), err)
 
@@ -204,8 +214,8 @@ def test_svlen(w):
     by_id = {r[2]: r for r in records(vcf)}
     check("control: the input gives the REF 137 / ALT 2 record SVLEN -136", info(by_id["complex"])["SVLEN"] == "-136")
 
-    rc, out, err = run("sv_svlen_fix.py", src)
-    check("sv_svlen_fix.py exits 0", rc == 0, err)
+    rc, out, err = og("sv", "svlen-fix", src)
+    check("og sv svlen-fix exits 0", rc == 0, err)
     by_id = {r[2]: r for r in records(out)}
     c = info(by_id["complex"])
     check("REF 137 / ALT 2: SVLEN -135, END POS+134 (an interval of 135 bp for AnnotSV)",
@@ -223,7 +233,7 @@ def test_svlen(w):
     again = os.path.join(w, "sv2.vcf")
     with open(again, "w") as f:
         f.write(out)
-    rc, out2, err2 = run("sv_svlen_fix.py", again)
+    rc, out2, err2 = og("sv", "svlen-fix", again)
     check("a second run changes nothing", rc == 0 and out2 == out, err2)
 
     # One sample only: the reports read the GT and PS of the first sample
@@ -233,7 +243,7 @@ def test_svlen(w):
     with open(two, "w") as f:
         f.write(SV.replace("\ts1\n", "\ts1\ts2\n")
                 + "chr20\t1300000\tsym\tN\t<DEL>\t50\tPASS\tEND=1310000;SVTYPE=DEL\tGT\t0/0\t0/1\n")
-    rc, out3, err3 = run("sv_svlen_fix.py", two)
+    rc, out3, err3 = og("sv", "svlen-fix", two)
     check("a VCF with two sample columns stops (exit 2) and names them",
           rc == 2 and "holds 2 samples (s1, s2)" in err3 and not records(out3), (rc, err3))
 
@@ -418,8 +428,13 @@ def test_delly_depth(w):
 def main():
     w = tempfile.mkdtemp()
     try:
-        test_inv_filter(w)
-        test_svlen(w)
+        if OG:
+            test_inv_filter(w)
+            test_svlen(w)
+        else:
+            check("OG names an og binary for checks 1 and 2", not os.environ.get("OG_REQUIRED"),
+                  "OG_REQUIRED is set")
+            print("skip: checks 1 and 2 (og sv inv-filter, og sv svlen-fix): OG is not set")
         test_extra_callers(w)
         test_delly_depth(w)
     finally:

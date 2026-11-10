@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/pgx_mito_merge.py: the MT-RNR1 outside call PharmCAT gets from the chrM
+"""og pgx mito-merge: the MT-RNR1 outside call PharmCAT gets from the chrM
 calls of step 20 / MITO_VARIANTS (step 07 and PHARMCAT run it).
 
 The test builds a stand-in for pharmcat.jar, a zip holding
@@ -24,7 +24,7 @@ VCFs (GT 0/1 at every AF, as Mutect2 writes them), and checks:
      record, a bgzip/gzip input and the contig name MT are read;
   7. a jar without the MT-RNR1 definitions, or an unreadable VCF, exits 2.
 
-Run: python3 tests/test_pgx_mito_merge.py
+Run: OG=rust/target/release/og python3 tests/test_pgx_mito_merge.py
 """
 import gzip
 import json
@@ -35,7 +35,7 @@ import tempfile
 import zipfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "pgx_mito_merge.py")
+OG = os.environ.get("OG", "")
 FAILS = []
 
 INC = "Increased risk of aminoglycoside-induced hearing loss"
@@ -87,7 +87,7 @@ class Case:
             with open(vcf, "w") as f:
                 f.write(text)
         out = os.path.join(self.tmp, f"o{self.n}.tsv")
-        cmd = [sys.executable, SCRIPT, "--jar", jar or self.jar, "--mito", vcf, "--out", out, *extra]
+        cmd = [OG, "pgx", "mito-merge", "--jar", jar or self.jar, "--mito", vcf, "--out", out, *extra]
         if outside is not None:
             path = os.path.join(self.tmp, f"c{self.n}.tsv")
             with open(path, "w") as f:
@@ -101,7 +101,19 @@ class Case:
         return [x.split("\t", 1)[1] for x in (lines or []) if x.startswith("MT-RNR1\t")]
 
 
+def og_or_skip():
+    """OG names the og binary (the parity job of guard.yml sets it). Without
+    it the test is skipped with a note; with OG_REQUIRED set too, it fails."""
+    if os.environ.get("OG"):
+        return None
+    print("skip: OG is not set (OG=rust/target/release/og)")
+    return 1 if os.environ.get("OG_REQUIRED") else 0
+
+
 def main():
+    skip = og_or_skip()
+    if skip is not None:
+        return skip
     with tempfile.TemporaryDirectory() as tmp:
         c = Case(tmp)
 
