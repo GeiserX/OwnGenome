@@ -10,9 +10,11 @@
 //! - [`num`]: `float(str)`, `int(str)`, `math.fsum` and the builtin `sum`.
 //! - [`json`]: `json.dumps` and a `json.loads` with Python's leniency.
 
+pub mod csv;
 pub mod fmt;
 pub mod json;
 pub mod num;
+pub mod text;
 
 #[cfg(all(test, feature = "planted-failure"))]
 mod planted {
