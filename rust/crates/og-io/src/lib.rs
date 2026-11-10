@@ -9,8 +9,11 @@
 //!   [`AtomicFile::commit`], so a reader never sees half a file.
 //! - [`bgzf`]: the same reading with BGZF inflated on many cores, and a
 //!   BGZF writer that compresses on many cores.
+//! - [`tabix`]: the lines of a region of a bgzipped file, through its
+//!   `.tbi` or `.csi` index, as `tabix FILE seq:beg-end` prints them.
 
 pub mod bgzf;
+pub mod tabix;
 
 use flate2::bufread::GzDecoder;
 use std::fs::{self, File};

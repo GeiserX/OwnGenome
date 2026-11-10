@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+RFC1	.	.	.	0	.	.	.	.	not_checked	no RFC1 record in the VCF
