@@ -319,6 +319,18 @@ jobs:
           [ "$indexcov" -eq 1 ] || bad=1
           [ "$bad" -eq 0 ]
 
+      # PRS_PREPARE reads only the scoring files and the samplesheet's sex, so
+      # it starts at launch: from the trace of a stub run with two rows
+      # DeepVariant calls and two VCF-only rows (with and without the sex),
+      # each PRS_PREPARE task must be submitted before the first DEEPVARIANT
+      # task completes. The Guard unit-test job has no nextflow and skips it.
+      - name: PRS_PREPARE starts at launch, not after DeepVariant
+        if: steps.scope.outputs.run == 'true'
+        timeout-minutes: 10
+        env:
+          PRS_LAUNCH_REQUIRE: '1'
+        run: bash tests/test_prs_prepare_launch.sh
+
       # gen-containers-config.sh --check (Guard) proves every process in
       # modules/ has a selector; this proves every one of them ran and got
       # the image versions.env gives it.

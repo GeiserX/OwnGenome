@@ -1,0 +1,14 @@
+# contig	start	stop (0-based, half-open, as pysam's fetch takes them)
+# the whole slice
+chr22	42125999	42128000
+# one read spans [42126496, 42126644): the base before it and the base after it fetch without it
+chr22	42126495	42126496
+chr22	42126643	42126644
+chr22	42126644	42126645
+# a base inside a 3 bp deletion (135M3D13M from 42125997)
+chr22	42126133	42126134
+# a placed unmapped read at 42126870: htslib gives it one base
+chr22	42126870	42126871
+chr22	42126871	42126872
+# a contig in the header with no reads
+chr1	0	1000

@@ -29,8 +29,9 @@ Checks:
      symlink out of the root are 404;
  10. in a headless Chrome (skipped without Chrome, except in CI): the login
      form, the step map, a box that repaints after a posted message, the
-     replay mode playing tests/fixtures/live/frames.json, and no policy
-     violation;
+     replay mode playing tests/fixtures/live/frames.json (opened at its last,
+     finished frame, its time short with the full time in the title), and no
+     policy violation;
  11. with --tls-cert, a client that connects and sends nothing does not hold
      up another client's HTTPS request.
 Checks 2, 4, 5, 6, 7, 8 and 11 are also run against a planted mistake and must fail
@@ -109,9 +110,20 @@ def make_root(work):
     with open(outside, "w") as f:
         f.write("outside the root\n")
     os.symlink(outside, os.path.join(d, "clinvar", "escape.tsv"))
+    # The report links CPSR's folder, which holds its HTML report and its table
+    os.makedirs(os.path.join(d, "cpsr"))
+    with open(os.path.join(d, "cpsr", f"{RUN}.cpsr.grch38.html"), "w") as f:
+        f.write("<!doctype html><title>CPSR</title>\n")
+    with open(os.path.join(d, "cpsr", f"{RUN}.cpsr.grch38.classification.tsv.gz"), "w") as f:
+        f.write("not linked\n")
+    os.makedirs(os.path.join(d, "twopages"))
+    for n in ("a.html", "b.html"):
+        with open(os.path.join(d, "twopages", n), "w") as f:
+            f.write("<!doctype html>\n")
     with open(os.path.join(d, f"{RUN}_report.html"), "w") as f:
         f.write('<!doctype html><html><head><style>body{color:#eee}</style></head><body>'
                 '<a href="clinvar/hits.tsv">hits</a> <a href="clinvar/escape.tsv">escape</a> '
+                '<a href="cpsr/">the cpsr folder</a> <a href="twopages/">two pages</a> '
                 '<a href="https://example.org/x">outside</a></body></html>\n')
     return root
 
@@ -286,7 +298,22 @@ def find_chrome():
 class Chrome:
     """Headless Chrome driven through --remote-debugging-pipe (fd 3 in, fd 4 out): no package needed."""
 
-    def __init__(self, chrome, profile):
+    def __init__(self, chrome, profile, tries=3):
+        # A headless Chrome on a busy CI runner sometimes never answers its first
+        # call (Target.createTarget, 30 s). Start a fresh one, up to three times.
+        for attempt in range(1, tries + 1):
+            try:
+                return self._start(chrome, f"{profile}-{attempt}" if attempt > 1 else profile)
+            except RuntimeError as e:
+                self.p.kill()
+                self.p.wait()
+                os.close(self.to_w)
+                os.close(self.from_r)
+                if attempt == tries:
+                    raise
+                print(f"Chrome did not start ({e}); trying again ({attempt + 1} of {tries})", file=sys.stderr)
+
+    def _start(self, chrome, profile):
         to_r, self.to_w = os.pipe()
         self.from_r, from_w = os.pipe()
 
@@ -450,14 +477,23 @@ def browser_checks(port, work, live):
         replay_srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=replay_srv.serve_forever, daemon=True).start()
         b.go(f"http://127.0.0.1:{replay_srv.server_address[1]}/index.html")
-        first = b.wait("document.documentElement.dataset.pgpFrame === '0' && "
-                       "document.querySelector('g.box[data-step=\"11\"]').dataset.state")
-        b.eval("document.getElementById('replay-play').click(); true")
-        last = b.wait("document.documentElement.dataset.pgpFrame === '2' && "
-                      "document.querySelector('g.box[data-step=\"11\"]').dataset.state", 10)
+        # A finished run opens at its last frame, its moment short with the full time in the title.
+        opened = b.wait("document.documentElement.dataset.pgpFrame && JSON.stringify([document.documentElement.dataset.pgpFrame, "
+                        "document.querySelector('g.box[data-step=\"11\"]').dataset.state, "
+                        "document.getElementById('replay-time').textContent, document.getElementById('replay-time').title])")
+        check("browser: replay of a finished run opens at its end, its time short ('2 Jan 10:05') with the full time "
+              "in the title", json.loads(opened or "null") == ["2", "done", "2 Jan 10:05", "2026-01-02T10:05:40Z"], opened)
+        # Play from the end starts again at the first frame: every frame shown is recorded with step 11's state.
+        b.eval("window.seen = []; new MutationObserver(function () { var r = document.documentElement; "
+               "window.seen.push(r.dataset.pgpFrame + ':' + document.querySelector('g.box[data-step=\"11\"]').dataset.state); })"
+               ".observe(document.documentElement, {attributes: true, attributeFilter: ['data-pgp-frame']}); "
+               "document.getElementById('replay-play').click(); true")
+        seen = b.wait("window.seen.length > 1 && window.seen[window.seen.length - 1].indexOf('2:') === 0 && "
+                      "JSON.stringify(window.seen)", 10)
         found = b.eval("document.getElementById('found').textContent")
-        check("browser: replay plays frames.json (11 waiting at frame 0, done at the last, its headline listed)",
-              first == "waiting" and last == "done" and "Runs of homozygosity" in (found or ""), (first, last, found))
+        check("browser: Play at the end replays frames.json from the first frame (11 waiting at frame 0, done at the "
+              "last, its headline listed)", json.loads(seen or "[]")[:1] == ["0:waiting"]
+              and json.loads(seen or "[]")[-1:] == ["2:done"] and "Runs of homozygosity" in (found or ""), (seen, found))
         aria = b.eval("var m = document.querySelector('#map svg'), g = document.querySelector('g.box[data-step=\"11\"]'); "
                       "[m.getAttribute('role'), g.getAttribute('aria-label') || ''].join('|')")
         check("browser: the map is a group (not an image that hides its buttons) and a box names its step and state",
@@ -470,6 +506,19 @@ def browser_checks(port, work, live):
               b.eval("document.activeElement && document.activeElement.outerHTML.slice(0, 200)"))
         blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
         check("browser: the policy blocked nothing in replay", not blocked, blocked)
+        # A replay whose last frame is still running opens at its first frame (its own folder: no cached frames.json).
+        rr = os.path.join(rd, "running")
+        os.makedirs(rr)
+        for f in ("index.html", "live.js", "live.css"):
+            shutil.copy(os.path.join(rd, f), rr)
+        with open(os.path.join(FIX, "frames.json")) as f:
+            fr = json.load(f)
+        with open(os.path.join(rr, "frames.json"), "w") as f:
+            json.dump(dict(fr, frames=fr["frames"][:-1]), f)
+        b.go(f"http://127.0.0.1:{replay_srv.server_address[1]}/running/index.html")
+        at = b.wait("document.documentElement.dataset.pgpFrame && document.getElementById('replay-slider').max === '1' "
+                    "&& document.documentElement.dataset.pgpFrame")
+        check("browser: a replay whose last frame is still running opens at its first frame", at == "0", at)
     finally:
         b.close()
         if replay_srv:
@@ -843,6 +892,20 @@ def main():
         c4, _, _ = request(port, "GET", f"/runs/{RUN}/..%2F..%2Foutside.txt", headers=auth)
         check("an unlinked file, a symlink out of the root and a path out of the run are 404",
               (c1, c2, c3, c4) == (404, 404, 404, 404), (c1, c2, c3, c4))
+        code, hd, _ = request(port, "GET", f"/runs/{RUN}/cpsr/", headers=auth)
+        page = f"/runs/{RUN}/cpsr/{RUN}.cpsr.grch38.html"
+        check("the report's cpsr/ folder link opens the CPSR HTML report in it",
+              code == 302 and hd.get("location") == page, (code, hd.get("location")))
+        code, hd, body = request(port, "GET", page, headers=auth)
+        check("the CPSR HTML report in the linked folder is served sandboxed",
+              code == 200 and b"<title>CPSR" in body
+              and hd.get("content-security-policy") == owngenome_live.RUN_HTML_CSP, (code, hd))
+        c1, _, _ = request(port, "GET", f"/runs/{RUN}/cpsr/{RUN}.cpsr.grch38.classification.tsv.gz", headers=auth)
+        c2, _, _ = request(port, "GET", f"/runs/{RUN}/twopages/", headers=auth)
+        c3, _, _ = request(port, "GET", f"/runs/{RUN}/clinvar/", headers=auth)
+        c4, _, _ = request(port, "GET", f"/runs/{RUN}/twopages/a.html", headers=auth)
+        check("a linked folder serves only its one HTML; a folder with two HTML files (itself or either file) "
+              "and an unlinked folder are 404", (c1, c2, c3, c4) == (404, 404, 404, 404), (c1, c2, c3, c4))
         code, _, body = request(port, "GET", "/", headers=auth)
         check("the index lists the run", code == 200 and f'/runs/{RUN}/'.encode() in body, code)
         log = open(os.path.join(state_dir, "access.log")).read()

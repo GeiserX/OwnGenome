@@ -257,6 +257,20 @@ def main():
               [r["findings_a"] for r in rows(f"{t}/smnn/couple_A_B.tsv") if r["gene"] == "SMN1"] == ["."]
               and "SMN1 copy number of A: SMN1 not assessed: no read over chr5:70951946-70951946; copy number not resolved." in md6n, md6n)
 
+        # 6b. CYP21A2 not assessed: the table's message, the reason code for an older table
+        why = ("not assessed: the BAM has few or no multi-mapping reads here (reads of mapping quality 0 make up "
+               "0.0% of the depth over CYP21A2 and CYP21A1P, under 2%), the sign of an aligner that leaves out the "
+               "reads that fit both copies")
+        na = "metric\tvalue\nstatus\tnot assessed\ncyp21a2_copies\t.\nfinding\t.\nreason\tlow_mapq0_share\n"
+        ca, cb = put(f"{t}/A_cyp.tsv", na + f"message\t{why}\n"), put(f"{t}/B_cyp.tsv", na)
+        run("screen", "--pedigree", ped, "--genes", GENES, "--clinvar", f"A={a_none}", "--clinvar", f"B={a_none}",
+            "--cyp21a2", f"A={ca}", "--cyp21a2", f"B={cb}", "--out-dir", f"{t}/cyp")
+        md6c = open(f"{t}/cyp/couple_A_B.md").read() if os.path.exists(f"{t}/cyp/couple_A_B.md") else ""
+        check("CYP21A2 not assessed: the not-assessed list prints the table's message (the aligner stopped the call)",
+              f"CYP21A2 deletion and conversions of A: CYP21A2 {why}." in md6c, md6c)
+        check("CYP21A2 not assessed in a table without the message row: the reason code",
+              "CYP21A2 deletion and conversions of B: CYP21A2 not assessed (low_mapq0_share)." in md6c, md6c)
+
         # 3b. read depth: a long Delly deletion counts only when RDCN shows the loss
         genes_mid = {g: mid(g) for g in ("GBA1", "PAH", "CFTR", "HBB", "DMD", "OTC")}
         dexons = put(f"{t}/depth_exons.bed", "".join(
@@ -445,6 +459,63 @@ def main():
                       f"B={b_hits}", "--out-dir", f"{t}/nocn")
         check("cn alleles: without --cn-intervals no allele section is written",
               rc == 0 and "Carrier deletion alleles" not in open(f"{t}/nocn/couple_A_B.md").read())
+
+        # 11b. a read-depth allele in both partners, or one beside the other's
+        # finding in the same gene, is a possible shared risk the headline names
+        c_hits = put(f"{t}/C.vcf", HEAD + hit("UGT1A1"))
+        d_hits = put(f"{t}/D.vcf", HEAD + hit("HBB"))
+        c_iv = put(f"{t}/C_cn_intervals.tsv", ivh + ivrow("CFTR_dele2_3", "chr7", 117498312, 117519392, copies="1",
+                                                          change="deletion")
+                   + ivrow("HBB_exon3_del", "chr11", 5225254, 5225875, copies="1", change="deletion"))
+        d_iv = put(f"{t}/D_cn_intervals.tsv", ivh + ivrow("CFTR_dele2_3", "chr7", 117498312, 117519392, copies="1",
+                                                          change="deletion"))
+        ped2 = put(f"{t}/ped2.tsv", "sample\tsex\tfather\tmother\tpartner\nC\tfemale\t.\t.\tD\nD\tmale\t.\t.\tC\n")
+
+        def screen2(civ, div, out):
+            rc, log = run("screen", "--pedigree", ped2, "--genes", GENES, "--clinvar", f"C={c_hits}", "--clinvar",
+                          f"D={d_hits}", "--cn-intervals", f"C={civ}", "--cn-intervals", f"D={div}", "--out-dir", out)
+            p = f"{out}/couple_C_D.md"
+            return rc, log, open(p).read() if os.path.exists(p) else "", rows(f"{out}/couple_C_D.tsv") if os.path.exists(
+                f"{out}/couple_C_D.tsv") else []
+        rc, log, md, tab = screen2(c_iv, d_iv, f"{t}/cn2")
+        head = md.split("## Shared risk", 1)[-1].split("## X-linked", 1)[0]
+        check("cn shared: no gene-table row is shared, and the headline says read depth adds a possible shared risk",
+              rc == 0 and not any(r["result"] == "shared" for r in tab)
+              and "No gene of the list where both partners carry a change in the gene table; read depth (step 35) "
+                  "adds a possible shared risk, below." in head, (rc, log, head))
+        check("cn shared: CFTRdele2,3 present in both partners is named under the headline",
+              "- **CFTR**: C: CFTRdele2,3 present (read depth, step 35: 1 of 2 copies); D: CFTRdele2,3 present "
+              "(read depth, step 35: 1 of 2 copies). Both partners may carry a change in CFTR" in head, head)
+        check("cn shared: an HBB deletion of one partner beside the other's ClinVar HBB hit is named too",
+              "- **HBB**: C: HBB exon 3 deletion present (read depth, step 35: 1 of 2 copies); D: " in head
+              and "possibly shared, from read depth: CFTR" in log and "possibly shared, from read depth: HBB" in log,
+              (head, log))
+        none_iv = put(f"{t}/N_cn_intervals.tsv", ivh + ivrow("CFTR_dele2_3", "chr7", 117498312, 117519392))
+        rc, log, md, _ = screen2(none_iv, d_iv, f"{t}/cn3")
+        head = md.split("## Shared risk", 1)[-1].split("## X-linked", 1)[0]
+        check("cn shared, red: with C's CFTRdele2,3 absent and no HBB deletion the plain negative line stays",
+              rc == 0 and "No gene of the list where both partners carry a change.\n" in head
+              and "Possible shared risk" not in head and "possibly shared" not in log, head)
+        # DFNB1: one partner's del(GJB6-D13S1830) beside the other's GJB2 hit
+        g_hits = put(f"{t}/G.vcf", HEAD + hit("GJB2"))
+        g_iv = put(f"{t}/G_cn_intervals.tsv", ivh + ivrow("GJB6_D13S1830", "chr13", 20223037, 20531806, copies="1",
+                                                          change="deletion"))
+        rc, log = run("screen", "--pedigree", ped2, "--genes", GENES, "--clinvar", f"C={c_hits}", "--clinvar",
+                      f"D={g_hits}", "--cn-intervals", f"C={g_iv}", "--out-dir", f"{t}/cn4")
+        md = open(f"{t}/cn4/couple_C_D.md").read() if os.path.exists(f"{t}/cn4/couple_C_D.md") else ""
+        head = md.split("## Shared risk", 1)[-1].split("## X-linked", 1)[0]
+        check("cn shared: C's del(GJB6-D13S1830) beside D's GJB2 hit is a possible DFNB1 shared risk naming both",
+              rc == 0 and "- **GJB2/GJB6 (DFNB1)**: C: del(GJB6-D13S1830) present (read depth, step 35: 1 of 2 "
+              "copies); D: " in head and "GJB2" in head.split("; D: ", 1)[-1], (rc, log, head))
+        # A carrier list without CFTR: CFTRdele2,3 in both is no shared risk; HBB still is
+        no_cftr = put(f"{t}/no_cftr.tsv", "".join(ln for ln in open(GENES) if not ln.startswith("CFTR\t")))
+        rc, log = run("screen", "--pedigree", ped2, "--genes", no_cftr, "--clinvar", f"C={c_hits}", "--clinvar",
+                      f"D={d_hits}", "--cn-intervals", f"C={c_iv}", "--cn-intervals", f"D={d_iv}", "--out-dir", f"{t}/cn5")
+        md = open(f"{t}/cn5/couple_C_D.md").read() if os.path.exists(f"{t}/cn5/couple_C_D.md") else ""
+        head = md.split("## Shared risk", 1)[-1].split("## X-linked", 1)[0]
+        check("cn shared: a carrier list without CFTR gives no CFTR shared risk, HBB stays",
+              rc == 0 and "**CFTR**" not in head and "- **HBB**: C: HBB exon 3 deletion present" in head
+              and "possibly shared, from read depth: CFTR" not in log, (rc, log, head))
 
         # 10. genes
         gtf = put(f"{t}/g.gtf", "##description: evidence-based annotation of the human genome (GRCh38), version 99\n" + "".join(

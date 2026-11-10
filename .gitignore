@@ -108,3 +108,8 @@ site/
 
 # Scratch space of a checkout: logs, downloads, CI output
 /tmp/
+
+# Rust: the build output, and the og binaries scripts/setup.sh --og puts
+# beside the bin/og shim (rust/og.sh)
+/rust/target/
+/bin/.og/

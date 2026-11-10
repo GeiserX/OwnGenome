@@ -9,16 +9,65 @@ on:
         description: 'Tag to release (e.g. v0.3.0)'
         required: true
         type: string
+  # A dry run: a pull request that changes this file or rust/ builds the og
+  # binaries and their SHA256SUMS as an artifact; nothing is released.
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/release.yml', 'rust/**']
 
 permissions:
   contents: read
 
 jobs:
+  # The og binaries every release carries (docs/rust.md): both musl builds,
+  # made by scripts/setup.sh --og as a checkout makes them, with SHA256SUMS.
+  # A checkout of the tag downloads them instead of building (rust/og.sh).
+  og-binaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Same rule as create-release below: the tag is untrusted text.
+      - name: Check the tag
+        if: github.event_name != 'pull_request'
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag=${INPUT_TAG:-${GITHUB_REF#refs/tags/}}
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: the tag is not of the form vMAJOR.MINOR.PATCH (not echoed: it is untrusted text)" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Build og for x86_64 and aarch64 (scripts/setup.sh --og builds in OG_BUILDER)
+        run: |
+          # On a tag, setup.sh --og would download the release's own binaries,
+          # which this job is about to make: build them.
+          rust/og.sh build
+          rust/og.sh check --required
+          mkdir -p dist
+          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64 dist/
+          (cd dist && sha256sum og-linux-* > SHA256SUMS && cat SHA256SUMS)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: og-binaries
+          path: dist/
+          retention-days: 7
+
   create-release:
+    needs: og-binaries
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      checks: read
+      checks: read          # the tagged commit's check runs
+      id-token: write       # the build attestation
+      attestations: write
     steps:
       # The tag comes from the dispatch form or the pushed ref, so it is
       # untrusted text: it reaches the shell through env only, and it must
@@ -51,7 +100,14 @@ jobs:
       - name: The tag matches manifest.version, and the notes exist
         env:
           TAG: ${{ steps.tag.outputs.tag }}
-        run: scripts/ci/check-release.sh tag "$TAG" --notes-out "${RUNNER_TEMP}/notes.md"
+        run: |
+          scripts/ci/check-release.sh tag "$TAG" --notes-out "${RUNNER_TEMP}/notes.md"
+          {
+            echo ""
+            echo "## og binaries"
+            echo ""
+            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks them."
+          } >> "${RUNNER_TEMP}/notes.md"
 
       # Only a commit that main's CI passed is released: it must be on main,
       # and every check run on it (this job left out) must have finished green.
@@ -70,6 +126,18 @@ jobs:
             --jq '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv' > "${RUNNER_TEMP}/runs.tsv"
           scripts/ci/check-release.sh checks "${RUNNER_TEMP}/runs.tsv" --ignore "$GITHUB_JOB"
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-binaries
+          path: dist
+
+      # rust/og.sh install checks a downloaded binary with
+      # `gh attestation verify` when gh is installed.
+      - name: Attest the og binaries
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: 'dist/og-linux-*'
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
@@ -77,3 +145,7 @@ jobs:
           name: ${{ steps.tag.outputs.tag }}
           body_path: ${{ runner.temp }}/notes.md
           draft: false
+          files: |
+            dist/og-linux-x86_64
+            dist/og-linux-aarch64
+            dist/SHA256SUMS

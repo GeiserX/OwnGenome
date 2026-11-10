@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HG002 · being written · OwnGenome</title>
+<!--@BASE-->
+<style>
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 40px; }
+.top { display: grid; grid-template-columns: 1fr 400px; gap: 60px; padding-top: 48px; }
+.live { display: inline-flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 4px rgba(200,171,120,.16); }
+.hero-n { display: flex; align-items: baseline; gap: 12px; }
+.hero-n .n { font: 200 96px/0.9 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.hero-n .of { font: 300 26px var(--sans); color: var(--ink-3); }
+.bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.07); display: flex; gap: 2px; overflow: hidden; margin: 16px 0 10px; }
+.bar i { display: block; height: 100%; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hair-2); margin-top: 18px; }
+.stats div { padding: 12px 12px 0 0; }
+.stats div + div { padding-left: 12px; border-left: 1px solid var(--hair); }
+.stats .k { font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.stats .v { font: 300 24px/1.1 var(--sans); font-variant-numeric: tabular-nums; display: block; margin-top: 6px; white-space: nowrap; }
+.stats .r { font-size: 12px; color: var(--ink-3); }
+.fig-wide { margin-top: 44px; background: var(--paper); border: 1px solid var(--hair); border-radius: 12px; padding: 22px 26px 16px; }
+.main { display: grid; grid-template-columns: 200px 620px 1fr; gap: 50px; margin-top: 60px; }
+.galley { position: sticky; top: 86px; align-self: start; font-size: 13px; }
+.galley .group { font: 600 10.5px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+.galley ol { list-style: none; padding: 0; margin: 0; }
+.galley li { display: grid; grid-template-columns: 22px 1fr; padding: 7px 0; border-top: 1px solid var(--hair); color: var(--ink-2); }
+.galley .tn { font: italic 14px var(--serif); color: var(--ink-3); }
+.galley .st { display: block; font-size: 11.5px; margin-top: 2px; }
+.st.done { color: var(--ink-3); } .st.now { color: var(--brass); } .st.wait { color: var(--ink-3); opacity: .75; }
+.draft section { padding: 30px 0 34px; border-top: 1px solid var(--hair); }
+.draft section:first-child { border-top: 0; padding-top: 0; }
+.draft h2 { font: 400 28px/1.15 var(--serif); margin: 0 0 4px; display: flex; align-items: baseline; gap: 12px; }
+.draft .stamp { margin-left: auto; font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+.stamp.done { color: var(--ink-2); border: 1px solid var(--hair-2); }
+.stamp.now { color: var(--brass); border: 1px solid var(--brass-dim); }
+.stamp.wait { color: var(--ink-3); border: 1px dashed var(--hair-2); }
+.draft .q { font-size: 13px; color: var(--ink-3); margin-bottom: 16px; }
+.proof { position: relative; padding: 4px 0 0; }
+.proof .ln { height: 11px; border-radius: 3px; background: linear-gradient(90deg, rgba(255,255,255,.055), rgba(255,255,255,.025)); margin: 11px 0; }
+.waitfor { margin-top: 16px; font-size: 13px; color: var(--ink-2); border-left: 2px solid var(--brass-dim); padding: 2px 0 2px 14px; }
+.waitfor b { color: var(--ink); font-weight: 500; }
+.newly { background: linear-gradient(90deg, rgba(200,171,120,.09), transparent 70%); border-radius: 6px; padding: 12px 14px; margin: 0 -14px; }
+.newly .when { font-size: 11.5px; color: var(--brass); display: block; margin-bottom: 4px; }
+.press h3 { font: 600 10.5px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px; }
+.task { padding: 12px 0; border-top: 1px solid var(--hair); }
+.task .tt { display: flex; justify-content: space-between; font-size: 14px; color: var(--ink); }
+.task .tt span:last-child { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.task .pb { height: 4px; border-radius: 2px; background: rgba(255,255,255,.07); margin: 8px 0; position: relative; }
+.task .pb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--brass); }
+.task .sp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 11.5px; color: var(--ink-3); }
+.task .sp div { display: flex; flex-direction: column; gap: 2px; }
+.wire { list-style: none; padding: 0; margin: 0; }
+.wire li { display: grid; grid-template-columns: 46px 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--hair); font-size: 13px; color: var(--ink-2); }
+.wire li .t { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.meter { margin: 8px 0 14px; }
+.meter .mh { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); }
+.meter .mb { height: 6px; border-radius: 3px; background: rgba(255,255,255,.07); margin-top: 6px; position: relative; }
+.meter .mb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--ink-3); }
+</style>
+</head><body>
+<header class="mast"><div class="mast-in">
+  <a class="wordmark" href="01-home.html">Own<i>Genome</i></a>
+  <nav class="crumbs"><a href="01-home.html">People</a><span class="sep">/</span><span class="here">HG002, benchmark</span></nav>
+  <div class="mast-right"><span class="live"><i></i>Live · updated 13:04</span><div class="search" style="width:220px">Search this run <kbd>/</kbd></div></div>
+</div></header>
+
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="kicker">Being written &nbsp;·&nbsp; benchmark run of a public reference sample</div>
+      <h1 class="h-display" style="margin-top:14px">HG002</h1>
+      <p class="lede" style="margin-top:20px">This report is being written as the steps finish, each section in its place. <b>31 of 54 are done</b>, about 19 hours remain. Nothing needs you: one task ran out of memory, was retried with more, and recovered. The first findings are already in.</p>
+      <div style="display:flex;gap:10px;margin-top:18px"><a class="btn" href="#">Notify me when it is done</a><a class="btn ghost" href="#">Pause the run</a></div>
+    </div>
+    <div style="padding-top:24px">
+      <div class="hero-n"><span class="n">31</span><span class="of">of 54 steps</span></div>
+      <div class="bar"><i style="flex:31;background:var(--ink-2)"></i><i style="flex:4;background:var(--brass)"></i><i style="flex:19;background:transparent"></i></div>
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--ink-3)"><span><span style="color:var(--ink-2)">■</span> 31 done</span><span><span style="color:var(--brass)">■</span> 4 running</span><span>□ 19 waiting</span><span>0 failed</span></div>
+      <div class="stats">
+        <div><span class="k">Elapsed</span><span class="v">6.4 h</span><span class="r">since 06:40</span></div>
+        <div><span class="k">To go</span><span class="v">~19 h</span><span class="r">from usual times</span></div>
+        <div><span class="k">Retries</span><span class="v">1</span><span class="r">recovered</span></div>
+      </div>
+    </div>
+  </div>
+
+  <figure class="fig-wide">
+    <div style="display:flex;align-items:baseline;gap:16px"><div class="fig-label">Figure 1 &nbsp;·&nbsp; The run so far, one line per step</div><div style="margin-left:auto;display:flex;gap:16px;font-size:12px;color:var(--ink-3)"><span><span style="color:var(--ink-2)">▬</span> done</span><span><span style="color:var(--brass)">▬</span> running, with its usual remaining time</span><span><span style="color:var(--rev)">▲</span> retried</span></div></div>
+    <div id="gantt" style="margin-top:12px"></div>
+  </figure>
+
+  <div class="main">
+    <aside class="galley">
+      <div class="group">The report, section by section</div>
+      <ol>
+        <li><span class="tn">1</span><span>To act on<span class="st now">being written</span></span></li>
+        <li><span class="tn">2</span><span>Medicines<span class="st now">half written</span></span></li>
+        <li><span class="tn">3</span><span>For your family<span class="st done">written</span></span></li>
+        <li><span class="tn">4</span><span>Worth a look<span class="st wait">waits on 4 steps</span></span></li>
+        <li><span class="tn">5</span><span>Can I trust this?<span class="st done">written</span></span></li>
+        <li><span class="tn">6</span><span>Origins<span class="st done">written</span></span></li>
+        <li><span class="tn">7</span><span>Traits and scores<span class="st now">being written</span></span></li>
+        <li><span class="tn">8</span><span>Assessed, no finding<span class="st wait">fills at the end</span></span></li>
+      </ol>
+    </aside>
+
+    <div class="draft">
+      <section>
+        <h2><span class="secnum" style="font-size:16px">1</span>To act on<span class="stamp now">Being written</span></h2>
+        <div class="q">Is there anything to take to a doctor?</div>
+        <div class="proof"><div class="ln" style="width:92%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:64%"></div></div>
+        <div class="waitfor">This section stays open until three steps finish. <b>Cancer predisposition</b> is running (22 of about 45 min); the <b>secondary findings</b> and the <b>clinical filter</b> wait on it. Until then this page says nothing either way.</div>
+      </section>
+      <section>
+        <h2><span class="secnum" style="font-size:16px">2</span>Medicines<span class="stamp now">Half written</span></h2>
+        <div class="q">Which medicines should a prescriber know about?</div>
+        <div class="newly"><span class="when">New at 12:41</span><span style="font-size:15px;color:var(--ink-2)"><span class="lv med" style="margin-right:8px"><span class="g"></span></span><b style="color:var(--ink)">4 genes with a changed function.</b> HLA typed: none of the listed drug-reaction alleles is present.</span></div>
+        <div class="waitfor">The <b>drug list</b> (one row per medicine) is typeset when the guideline lookup runs; it is next in the queue.</div>
+      </section>
+      <section>
+        <h2><span class="secnum" style="font-size:16px">3</span>For your family<span class="stamp done">Written 12:58</span></h2>
+        <div class="q">What could be passed on to a child?</div>
+        <div class="newly"><span class="when">New at 12:58</span><span style="font-size:15px;color:var(--ink-2)"><span class="lv car" style="margin-right:8px"><span class="g"></span></span><b style="color:var(--ink)">2 pathogenic changes, one copy each, in recessive genes.</b> A carrier is not affected; it matters if a partner carries the same gene.</span></div>
+      </section>
+      <section>
+        <h2><span class="secnum" style="font-size:16px">4</span>Worth a look<span class="stamp wait">Waiting</span></h2>
+        <div class="q">Repeats, Lp(a), blood clones, mosaic changes.</div>
+        <div class="proof"><div class="ln" style="width:86%"></div><div class="ln" style="width:58%"></div></div>
+        <div class="waitfor">Waits on <b>Lp(a)</b>, <b>blood clones (CHIP)</b>, <b>mosaic changes</b> and <b>mitochondria</b> (running, 4 of about 12 min). Repeats are sized already and join this section when it opens.</div>
+      </section>
+      <section>
+        <h2><span class="secnum" style="font-size:16px">5</span>Can I trust this?<span class="stamp done">Written 10:14</span></h2>
+        <div class="q">About the data, not the person.</div>
+        <p style="font-size:15px;color:var(--ink-2)"><span class="lv trust" style="margin-right:8px"><span class="g"></span>Data quality</span>Sex from the reads is <b style="color:var(--ink)">XY, as declared</b>. Mean depth <b style="color:var(--ink)">34.1×</b>, 97.8% of the genome at 10× or more. Another person's DNA: <b style="color:var(--ink)">0.2%</b>, below the 3% line. 4,672,118 variants pass, Ti/Tv 2.06.</p>
+      </section>
+      <section>
+        <h2><span class="secnum" style="font-size:16px">6</span>Origins<span class="stamp done">Written 11:20</span></h2>
+        <p style="font-size:15px;color:var(--ink-2)"><span class="lv info" style="margin-right:8px"><span class="g"></span></span>Paternal line, maternal line, Neanderthal share and the ancestry projection are in. The finer regional split waits on its own step.</p>
+      </section>
+      <section>
+        <h2><span class="secnum" style="font-size:16px">7</span>Traits and scores<span class="stamp now">Being written</span></h2>
+        <div class="q">Traits, blood groups, and risk scores with an ancestry-matched percentile.</div>
+        <p style="font-size:15px;color:var(--ink-2)"><span class="lv info" style="margin-right:8px"><span class="g"></span></span>Traits and blood groups are in. Scores are computing now (9 of about 55 min); a score appears only with its matched percentile.</p>
+      </section>
+      <section>
+        <h2><span class="secnum" style="font-size:16px">8</span>Assessed, no finding<span class="stamp wait">At the end</span></h2>
+        <div class="q">Each step with nothing to report still says what it looked at.</div>
+        <div class="proof"><div class="ln" style="width:70%"></div><div class="ln" style="width:76%"></div><div class="ln" style="width:52%"></div></div>
+      </section>
+    </div>
+
+    <aside class="press">
+      <h3>Running now</h3>
+      <div id="tasks"></div>
+      <h3 style="margin-top:30px">The wire</h3>
+      <ul class="wire">
+        <li><span class="t">12:58</span><span>ClinVar screen finished: 2 pathogenic changes</span></li>
+        <li><span class="t">12:41</span><span>Medicines (PharmCAT) finished: 4 genes changed</span></li>
+        <li><span class="t">12:40</span><span>HLA typing finished</span></li>
+        <li><span class="t">12:07</span><span><span style="color:var(--rev)">▲</span> Annotation of chr1 ran out of memory; retried with 24 GB, recovered</span></li>
+        <li><span class="t">11:52</span><span>Variant calling finished: 4,672,118 pass, Ti/Tv 2.06</span></li>
+      </ul>
+      <h3 style="margin-top:30px">The machine</h3>
+      <div class="meter"><div class="mh"><span>Memory, peak</span><span class="num">41.3 of 64 GB</span></div><div class="mb"><i style="width:64.5%"></i></div></div>
+      <div class="meter"><div class="mh"><span>Disk</span><span class="num">71% of 2.0 TB</span></div><div class="mb"><i style="width:71%"></i></div></div>
+      <div class="meter"><div class="mh"><span>Load</span><span class="num">13.7 on 16 cores</span></div><div class="mb"><i style="width:85.6%"></i></div></div>
+      <p style="font-size:12px;color:var(--ink-3)">This describes the computer, not the person.</p>
+    </aside>
+  </div>
+</div>
+<footer class="colophon"><div class="colophon-in"><span class="wordmark">OwnGenome</span><span>1.0.0 · GRCh38 no-ALT · a research pipeline, not a clinical test</span><span style="margin-left:auto">Synthetic demonstration data · HG002 is a public GIAB sample</span></div></footer>
+
+<script>
+// Gantt of steps (hours since 06:40); synthetic timings
+(function(){
+  const done = [['Read conversion',0,.6],['Read trimming and QC',.6,.9],['Alignment',.9,3.0],['Coverage (indexcov)',3.0,3.2],['Depth (mosdepth)',3.0,3.4],['Variant calling',3.0,5.2],['Sample identity',3.4,3.7],['Structural (Manta)',3.0,3.9],['SV depth check',3.9,4.2],['Copy number (CNVpytor)',3.0,3.6],['CYP2D6 (Cyrius)',3.0,3.3],['Repeats (ExpansionHunter)',3.0,4.0],['Repeat status',4.0,4.1],['Telomeres',3.2,3.5],['Mito haplogroup',3.0,3.1],['PGx (pypgx)',3.3,3.8],['PGx consensus',3.8,3.9],['Y haplogroup',3.1,3.3],['Y-STR',3.3,3.5],['Paralogs (SMN1…)',3.5,4.4],['Annotation (VEP)',5.2,5.9,5.45],['Runs of sameness',5.2,5.4],['Imputation prep',5.2,5.5],['Blood groups',5.2,5.6],['Traits',5.2,5.5],['Ancestry projection',5.2,5.7],['Archaic share',5.4,5.9],['Extra annotation',5.9,6.0],['HLA typing',3.0,6.0],['Medicines (PharmCAT)',5.2,6.02],['ClinVar screen',5.9,6.3]];
+  const run = [['Cancer predisposition',6.03,6.78],['Structural (Delly)',5.22,7.9],['Scores (PRS)',6.25,7.17],['Mitochondria',6.33,6.53]];
+  done.sort((a,b) => a[1]-b[1] || a[2]-b[2]);
+  const rows = done.map(d => ({ n: d[0], s: d[1], e: d[2], st: 'done', retry: d[3] })).concat(run.map(r => ({ n: r[0], s: r[1], e: r[2], st: 'run' })));
+  const W = 1186, left = 200, right = 20, rh = 17, top = 8, maxH = 8.2, X = h => left + h / maxH * (W - left - right);
+  const now = 6.4, H = top + rows.length * rh + 34;
+  const s = OG.el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }, document.getElementById('gantt'));
+  for (let h = 0; h <= 8; h++) { OG.el('line', { x1: X(h), x2: X(h), y1: top - 4, y2: H - 26, stroke: 'rgba(255,255,255,.05)' }, s);
+    if (Math.abs(h - now) < .45) continue; const t = OG.el('text', { x: X(h), y: H - 10, 'font-size': 11, fill: '#8f8d86', 'text-anchor': 'middle' }, s);
+    const hh = 6 + Math.floor((40 + h * 60) / 60), mm = (40 + h * 60) % 60; t.textContent = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
+  rows.forEach((r, i) => {
+    const y = top + i * rh;
+    const lab = OG.el('text', { x: left - 12, y: y + 11.5, 'font-size': 11.5, fill: r.st === 'run' ? '#f0efec' : '#8f8d86', 'text-anchor': 'end' }, s); lab.textContent = r.n;
+    if (r.st === 'done') OG.el('rect', { x: X(r.s), y: y + 4, width: Math.max(X(r.e) - X(r.s), 3), height: rh - 8, rx: 2, fill: '#c3c2b7', 'fill-opacity': .75, 'data-tip': `${r.n}: done, ${((r.e - r.s) * 60).toFixed(0)} min` }, s);
+    else { OG.el('rect', { x: X(r.s), y: y + 4, width: X(now) - X(r.s), height: rh - 8, rx: 2, fill: '#c8ab78', 'data-tip': `${r.n}: running` }, s);
+      OG.el('rect', { x: X(now), y: y + 4.5, width: Math.max(X(r.e) - X(now), 2), height: rh - 9, rx: 2, fill: 'none', stroke: '#c8ab78', 'stroke-opacity': .55, 'data-tip': `${r.n}: usual finish about ${((r.e - now) * 60).toFixed(0)} min from now` }, s); }
+    if (r.retry) OG.glyph(s, 'rev', X(r.retry), y + 8.5);
+  });
+  OG.el('line', { x1: X(now), x2: X(now), y1: 0, y2: H - 26, stroke: '#f0efec', 'stroke-width': 1 }, s);
+  const nt = OG.el('text', { x: X(now), y: H - 10, 'font-size': 11.5, 'font-weight': 600, fill: '#f0efec', 'text-anchor': 'middle' }, s); nt.textContent = 'now 13:04';
+  const q = OG.el('text', { x: X(8.15), y: top + 12, 'font-size': 11.5, fill: '#c3c2b7', 'text-anchor': 'end' }, s); q.textContent = '19 steps waiting →';
+  const q2 = OG.el('text', { x: X(8.15), y: top + 28, 'font-size': 11, fill: '#8f8d86', 'text-anchor': 'end' }, s); q2.textContent = 'next: drug list, SV merge, clinical filter';
+})();
+// running tasks with sparklines
+(function(){
+  const tasks = [['Cancer predisposition',22,45,380,11.2],['Structural (Delly)',71,160,100,3.1],['Scores (PRS)',9,55,640,14.8],['Mitochondria',4,12,190,2.4]];
+  const host = document.getElementById('tasks');
+  tasks.forEach((t, k) => {
+    const r = OG.rng(k + 3), cpu = [], mem = [];
+    for (let i = 0; i < 24; i++) { cpu.push(t[3] * (.7 + r() * .35)); mem.push(t[4] * Math.min(1, .35 + i / 24 * .7 + r() * .05)); }
+    cpu[23] = t[3]; mem[23] = t[4];
+    const d = document.createElement('div'); d.className = 'task';
+    d.innerHTML = `<div class="tt"><span>${t[0]}</span><span>${t[1]} of ~${t[2]} min</span></div><div class="pb"><i style="width:${Math.min(100, t[1] / t[2] * 100)}%"></i></div><div class="sp"><div><span>CPU ${t[3]}%</span><span class="c"></span></div><div><span>Memory ${t[4]} GB</span><span class="m"></span></div></div>`;
+    host.appendChild(d);
+    OG.spark(d.querySelector('.c'), cpu, { width: 110, height: 22, max: 700 });
+    OG.spark(d.querySelector('.m'), mem, { width: 110, height: 22, max: 16 });
+  });
+})();
+</script>
+</body></html>

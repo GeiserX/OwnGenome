@@ -76,11 +76,14 @@ workflow BAM_ANALYSIS {
     ch_mito_deletions   = Channel.empty()   // [meta, <id>_chrM_deletions.tsv]
     ch_mito_copies      = Channel.empty()   // [meta, <id>_mtdna_copies.tsv]
     ch_cn_intervals     = Channel.empty()   // [meta, <id>_cn_intervals.tsv] when Parascopy runs
+    ch_cn_dosage        = Channel.empty()   // [meta, <id>_cn_dosage.tsv] when Parascopy runs
+    ch_cyp21a2          = Channel.empty()   // [meta, <id>_cyp21a2_psv.tsv] when Parascopy runs
     ch_kir_genotype     = Channel.empty()
     ch_hla_optitype     = Channel.empty()   // [meta, <id>_optitype_result.tsv] with --hla_qc
     ch_hla_concordance  = Channel.empty()   // [meta, <id>_hla_concordance.tsv] when OptiType typed reads
     ch_smn_copy_number  = Channel.empty()
     ch_hba_copy_number  = Channel.empty()
+    ch_smn1_marker      = Channel.empty()
     ch_parascopy_tables = Channel.empty()
     ch_paraphase_cn     = Channel.empty()
     ch_paraphase_vars   = Channel.empty()
@@ -239,8 +242,11 @@ workflow BAM_ANALYSIS {
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('parascopy')) {
         PARASCOPY(ch_bam, ch_reference, ch_reference_fai, ch_parascopy_data, ch_parascopy_bed)
         ch_cn_intervals    = PARASCOPY.out.intervals
+        ch_cn_dosage       = PARASCOPY.out.dosage
+        ch_cyp21a2         = PARASCOPY.out.cyp21a2
         ch_smn_copy_number = PARASCOPY.out.copy_number
         ch_hba_copy_number = PARASCOPY.out.hba
+        ch_smn1_marker     = PARASCOPY.out.smn1_marker
         // every other catalog row's table: SMN1's and HBA's come apart, above
         ch_parascopy_tables = PARASCOPY.out.tables.map { meta, fs ->
             def apart = ["${meta.id}_smn_copy_number.tsv", "${meta.id}_hba_copy_number.tsv"].collect { n -> n.toString() }
@@ -397,6 +403,8 @@ workflow BAM_ANALYSIS {
     coverage         = ch_coverage
     callability      = ch_callability     // [meta, <id>_callability.bed.gz]
     cn_intervals     = ch_cn_intervals    // [meta, <id>_cn_intervals.tsv]: bin/cn_loci.tsv's interval rows
+    cn_dosage        = ch_cn_dosage       // [meta, <id>_cn_dosage.tsv]: bin/cn_loci.tsv's gene-dosage rows
+    cyp21a2          = ch_cyp21a2         // [meta, <id>_cyp21a2_psv.tsv]: CYP21A2 from depth and PSV sites
     mito_vcf         = ch_mito_vcf
     mito_annotated   = ch_mito_annotated  // [meta, <id>_chrM_annotated.tsv]
     mito_deletions   = ch_mito_deletions  // [meta, <id>_chrM_deletions.tsv]
@@ -406,6 +414,7 @@ workflow BAM_ANALYSIS {
     hla_concordance  = ch_hla_concordance // [meta, <id>_hla_concordance.tsv] (--hla_qc, reads typed)
     smn_copy_number  = ch_smn_copy_number // [meta, <id>_smn_copy_number.tsv]
     hba_copy_number  = ch_hba_copy_number // [meta, <id>_hba_copy_number.tsv]
+    smn1_marker      = ch_smn1_marker     // [meta, <id>_smn1_marker.tsv], SMN1 g.27134T>G beside the psCN
     parascopy_tables = ch_parascopy_tables // [meta, [<id>_<table>_copy_number.tsv, ...]]: the other catalog rows' tables
     paraphase_cn     = ch_paraphase_cn    // [meta, <id>_paraphase_copy_number.tsv]
     paraphase_vars   = ch_paraphase_vars  // [meta, <id>_paraphase_variants.tsv]

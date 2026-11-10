@@ -2,12 +2,13 @@
 // When state.json says the run's <sample>_charts.json exists, it is fetched from the run
 // folder (same origin, nothing else) and each chart's SVG is shown with its caveat. A click on
 // a mark opens a panel with the mark's detail, the chart's caveat, a link to the reads in the
-// genome viewer (viewer/#<locus>) and a link to the section of the report. No inline script,
-// no style attribute, no eval: the SVG is parsed as XML and holds no script.
+// genome viewer (viewer/#<locus>) and a link to the section of the report. On a person's page each
+// chart goes into its card (a [data-chart-slot=<chart id>] person.js draws), else into this plugin's
+// panel. No inline script, no style attribute, no eval: the SVG is parsed as XML and holds no script.
 (function () {
   'use strict';
   if (!window.PGP) { return; }
-  var list = null, side = null, shownKey = null;
+  var list = null, side = null, shownKey = null, figs = [];
 
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
@@ -26,7 +27,8 @@
     box.appendChild(list);
   }
 
-  function openMark(sp, m) {
+  function openMark(sp, m, fig) {
+    if (fig && fig.parentNode) { fig.parentNode.insertBefore(side, fig.nextSibling); }
     side.textContent = '';
     side.hidden = false;
     side.setAttribute('data-mark', m.id);
@@ -56,14 +58,26 @@
       a.addEventListener('click', function (e) {
         e.preventDefault();
         var m = byId[a.getAttribute('data-mark')];
-        if (m) { openMark(sp, m); }
+        if (m) { openMark(sp, m, fig); }
       });
     });
     return fig;
   }
 
+  // Each figure into its card's slot when the page has one, else into the panel.
+  function place() {
+    figs.forEach(function (fig) {
+      var slot = document.querySelector('[data-chart-slot="' + fig.getAttribute('data-chart') + '"]');
+      var to = slot || list;
+      if (fig.parentNode !== to) { to.appendChild(fig); }
+    });
+  }
+  document.addEventListener('pgp:cards', function () { if (list) { place(); } });
+
   function clear() {
     shownKey = null;
+    figs.forEach(function (f) { if (f.parentNode) { f.parentNode.removeChild(f); } });
+    figs = [];
     list.textContent = '';
     list.appendChild(el('p', { 'class': 'muted' }, 'The charts appear when the report step has written them.'));
     side.hidden = true;
@@ -73,8 +87,10 @@
 
   function draw(data) {
     if (!data || !data.charts) { return; }
+    figs.forEach(function (f) { if (f.parentNode) { f.parentNode.removeChild(f); } });
     list.textContent = '';
-    data.charts.forEach(function (sp) { list.appendChild(chart(sp)); });
+    figs = data.charts.map(chart);
+    place();
     document.documentElement.setAttribute('data-pgp-charts', String(data.charts.length));
   }
 

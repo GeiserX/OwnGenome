@@ -2,6 +2,10 @@
 # setup.sh — One-stop setup: download references, pull Docker images, validate
 # Usage: ./scripts/setup.sh <genome_dir>
 #        ./scripts/setup.sh --pull-only      pull the Docker images and exit
+#        ./scripts/setup.sh --og             put OwnGenome's og binary in bin/.og:
+#                                            built from rust/ in OG_BUILDER, or on
+#                                            a release tag downloaded and checked
+#                                            (rust/og.sh install; docs/rust.md)
 #        ./scripts/setup.sh --refresh clinvar <genome_dir>
 #                                            replace ClinVar with NCBI's current
 #                                            release and rebuild the files made from it
@@ -103,6 +107,8 @@ REFRESH=""
 SAMPLE_QC_ONLY=false
 OPT_IN=""
 case "${1:-}" in
+  --og)
+    exec "$(dirname "$0")/../rust/og.sh" install ;;
   --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--archaic)
     OPT_IN=${1#--}
     shift ;;
@@ -126,6 +132,7 @@ GENOME_DIR=${1:-${GENOME_DIR:-""}}
 if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "Usage: $0 <genome_dir>"
   echo "       $0 --pull-only"
+  echo "       $0 --og"
   echo "       $0 --refresh clinvar <genome_dir>"
   echo "       $0 --sample-qc-data <genome_dir>"
   echo "       $0 --cyrius | --parascopy-data | --kir-data | --ancestry-panel | --ancestry-fine-panel | --yleaf-data | --consumer-sites | --ancient-panel | --viral-data | --masked-reference | --exomiser-data | --chip-data | --strchive-data | --megane-kmers | --mocha-data | --locityper-data | --archaic | --vep-cache | --annotsv-data <genome_dir>"
@@ -133,6 +140,7 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
+  echo "  --og          Put OwnGenome's og binary in bin/.og (built from rust/, or a release's) and exit."
   echo "  --refresh clinvar"
   echo "                Download NCBI's current ClinVar, rebuild the files made from it"
   echo "                and record its release date in <genome_dir>/clinvar/RELEASE."
@@ -1423,7 +1431,7 @@ with zipfile.ZipFile(z) as f:
 # DONE names the inputs, so a changed one builds again.
 install_locityper_data() {
   local dir=${LOCITYPER_DATA:-${GENOME_DIR}/reference/locityper-${LOCITYPER_PANEL_VERSION}}
-  local loci=${LOCITYPER_LOCI:-${PGP_ROOT}/assets/locityper_loci.bed} stamp jstamp n regions bad name
+  local loci=${LOCITYPER_LOCI:-${PGP_ROOT}/assets/locityper_loci.bed} stamp jstamp n regions bad name hsize
   case "$dir" in /*) ;; *) dir="${GENOME_DIR}/${dir}" ;; esac
   cpath "$dir" >/dev/null || return 1
   if [ ! -s "$REF_FASTA" ] || [ ! -s "${REF_FASTA}.fai" ]; then
@@ -1455,8 +1463,12 @@ install_locityper_data() {
   if [ ! -s "${dir}/counts.jf" ] || [ "$(cat "${dir}/counts.stamp" 2>/dev/null)" != "$jstamp" ]; then
     echo "  k-mer counts of $(basename "$REF_FASTA") (jellyfish, several GB of RAM for GRCh38)..."
     rm -f "${dir}/counts.jf" "${dir}/counts.stamp"
+    # The hash holds one entry per distinct k-mer, at most one per base, so it
+    # is sized to the reference's length (about 3.1G for GRCh38), never below
+    # 10M. A fixed 3G made a 235 Mb reference take 36 minutes on 16 GB.
+    hsize=$(awk '{n += $2} END {n = n < 10000000 ? 10000000 : n; printf "%.0f", n}' "${REF_FASTA}.fai")
     if ! run_in --rw "$dir" "$LOCITYPER_IMAGE" jellyfish count --canonical --lower-count 2 --out-counter-len 2 \
-        --mer-len 25 --threads "$THREADS" --size 3G --output "$(cpath "${dir}/counts.jf.part")" "$REF_FASTA_C"; then
+        --mer-len 25 --threads "$THREADS" --size "$hsize" --output "$(cpath "${dir}/counts.jf.part")" "$REF_FASTA_C"; then
       rm -f "${dir}/counts.jf.part"
       echo "[WARN] jellyfish could not count the reference's k-mers"
       return 1
@@ -1985,19 +1997,28 @@ install_archaic() {
       tail -n 20 "${wk}/liftover.log"
       echo "[WARN] Picard could not lift chr${c}"; return 1
     fi
-    # The rows that land on the same chromosome and inside the 1000 Genomes
-    # GRCh38 strict mask, once per position. The mask is sliced to this
-    # chromosome first: bcftools -T reads the whole targets file into memory,
-    # and the mask has 4.1 million lines for the genome.
+    # The rows that land on the same chromosome, once per position. A row
+    # outside the 1000 Genomes GRCh38 strict mask is kept with its archaic
+    # calls marked masked (as the FilterBed ones are), not dropped: the
+    # published workflow hands IBDmix that mask, and IBDmix still scores a
+    # mismatch at a masked site.
+    # shellcheck disable=SC2016  # $1 and $2 belong to the inner bash
+    if ! run_in --rw "$dir" "$BCFTOOLS_IMAGE" bash -euo pipefail -c \
+           'bcftools query -i "CHROM==\"chr$2\"" -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO/Altai\t%INFO/Vindija\t%INFO/Denisova\t%INFO/AF_ALL\t%INFO/AF_AFR\t%INFO/AF_AMR\t%INFO/AF_EAS\t%INFO/AF_EUR\t%INFO/AF_SAS\n" "$1" > "$3/lifted.tsv"' \
+           _ "$(cpath "${wk}/hg38.vcf")" "$c" "$(cpath "$wk")"; then
+      echo "[WARN] Could not read the lifted chr${c}"; return 1
+    fi
     awk -v c="chr${c}" '$1 == c' "${dir}/strict_GRCh38.bed" > "${wk}/strict.bed"
     if [ ! -s "${wk}/strict.bed" ]; then
       echo "[WARN] the GRCh38 strict mask has no interval on chr${c}: ${dir}/strict_GRCh38.bed"; return 1
     fi
-    # shellcheck disable=SC2016  # $1 to $3 belong to the inner bash
+    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+          python3 /pgp-bin/archaic_report.py strict --chrom "$c" --strict "$(cpath "${wk}/strict.bed")" \
+            --rows "$(cpath "${wk}/lifted.tsv")" --out "$(cpath "${wk}/marked.tsv")"; then
+      echo "[WARN] Could not mark the strict mask on chr${c}"; return 1
+    fi
     if ! { printf 'chrom\tpos\tref\talt\tAltai\tVindija\tDenisova\tAF_ALL\tAF_AFR\tAF_AMR\tAF_EAS\tAF_EUR\tAF_SAS\n'
-           run_in --rw "$dir" "$BCFTOOLS_IMAGE" bash -euo pipefail -c \
-             'bcftools query -T "$3" -i "CHROM==\"chr$2\"" -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO/Altai\t%INFO/Vindija\t%INFO/Denisova\t%INFO/AF_ALL\t%INFO/AF_AFR\t%INFO/AF_AMR\t%INFO/AF_EAS\t%INFO/AF_EUR\t%INFO/AF_SAS\n" "$1"' \
-             _ "$(cpath "${wk}/hg38.vcf")" "$c" "$(cpath "${wk}/strict.bed")" | awk -F'\t' '!seen[$2]++'
+           cat "${wk}/marked.tsv"
          } | gzip -c > "${dir}/chr${c}.tsv.gz.part"; then
       echo "[WARN] Could not write chr${c} of the table"; return 1
     fi

@@ -132,7 +132,10 @@ Checks:
      folder with neither step 35 nor step 35b prints "Paralog copy number:
      not checked (neither step 35 nor step 35b ran)" in both reports, a failed
      step 35 is named in that line, and Paraphase alone leaves the line out;
-     a table without the psCN columns is unreadable.
+     a table without the psCN columns is unreadable. The SMN1 g.27134T>G
+     silent-carrier marker (step 35's <id>_smn1_marker.tsv) prints beside the
+     SMN1 copies in both reports with its caveat: present with its reads,
+     not assessed without the table or with no known status in it.
  26. step 08's opt-in passes in the HLA section: with HLA_QC=true, one line
      per class I gene from the concordance table pgx_outside_calls.py writes
      (agree, disagree with both calls, not compared with the reason), and
@@ -1215,6 +1218,16 @@ def annotsv_phase_pairing(work):
     _, t = run("homref", "0/0")
     check("sv phase: a deletion genotyped 0/0 pairs with nothing", t == [], t)
 
+    # A phased GT with one copy not called says nothing about cis or trans.
+    check("sv phase: '.|1' gives no copy, '0|1' gives copy 1",
+          (collect_summary.phase_haps(".|1"), collect_summary.phase_haps("0|1")) == (None, frozenset({1})),
+          (collect_summary.phase_haps(".|1"), collect_summary.phase_haps("0|1")))
+    dl = {"inside": False, "chrom": "chr1", "start": 100, "end": 200, "gt": ".|1", "ps": "90"}
+    v = {"chrom": "chr1", "pos": 300, "gt": "0|1", "ps": "90", "copies": 1, "ploidy": 2}
+    verdict, why = collect_summary.pair_phase(dl, v)
+    check("sv phase: a deletion '.|1' and a hit '0|1' in one phase set are not called in cis",
+          verdict == "possibly biallelic" and "in cis" not in why, (verdict, why))
+
 
 def report_followups_sections(work, schema):
     """26. step 42's genotype rules, step 9b's motif table of the other
@@ -1318,7 +1331,8 @@ def str_extra_readings(work, schema):
     import html as htmlmod
     fmt = "GT:REPCN"
 
-    def made_up(name, tg, t, ugt, r117h=None, ugt_pc=None, stranger=False):
+    def made_up(name, tg, t, ugt, r117h=None, ugt_pc=None, stranger=False, traits_text=None, side_age=0,
+                run_status=None):
         x = os.path.join(work, "str-extra", name)
         eh = (f"chr7\t117548606\t.\tT\t<STR>\t.\tPASS\tEND=117548628;REPID=CFTR;VARID=CFTR_TG\t{fmt}\t0/1:{tg}\n"
               f"chr7\t117548628\t.\tT\t<STR>\t.\tPASS\tEND=117548635;REPID=CFTR;VARID=CFTR_T\t{fmt}\t0/1:{t}\n"
@@ -1332,12 +1346,15 @@ def str_extra_readings(work, schema):
             put(f"{x}/expansion_hunter/{name}_eh_catalog.json", json.dumps([
                 {"LocusId": "CFTR", "NoThresholds": "the CFTR tract"},
                 {"LocusId": "UGT1A1", "NoThresholds": "the UGT1A1 repeat"}]))
-        if r117h:
-            put(f"{x}/traits/{name}_traits.tsv", "\t".join(collect_summary.traits_report.OUT_COLUMNS) + "\n"
-                + f"rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\t{r117h}\tcalled\tr\tno\tn\t32404922\n")
+        if r117h or traits_text:
+            put(f"{x}/traits/{name}_traits.tsv", traits_text or "\t".join(collect_summary.traits_report.OUT_COLUMNS)
+                + "\n" + f"rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\t{r117h}\tcalled\tr\tno\tn\t32404922\n",
+                age_days=side_age)
         if ugt_pc:
             put(f"{x}/cpic/{name}_phenotypes.tsv", "Gene\tDiplotype\tPhenotype\tStatus\n"
-                f"UGT1A1\t{ugt_pc}\tsome function\tnon-normal\n")
+                f"UGT1A1\t{ugt_pc}\tsome function\tnon-normal\n", age_days=side_age)
+        if run_status:
+            put(f"{x}/logs/run_status.tsv", run_status)
         summ, txt, html_ = render(x, name)
         ed = summ["sections"]["expansions"]["data"]
         return summ, ed, {r["locus"]: r for r in ed.get("readings") or []}, txt, htmlmod.unescape(html_)
@@ -1403,10 +1420,181 @@ def str_extra_readings(work, schema):
           [rd[k]["status"] for k in ("CFTR", "UGT1A1", "SLC6A4")] == ["not_sized", "not_sized", "not_tested"]
           and "STR_EXTRA_LOCI=yes" in rd["CFTR"]["reading"] and "CFTR intron 9 (legacy IVS8) TG and poly-T tract: "
           "not sized" in txt, rd)
+    check("extra repeats: the setup hint is a command that runs, with the script path and the genome folder",
+          all("STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir>" in rd[k]["reading"]
+              for k in ("CFTR", "UGT1A1")), rd)
+
+    # No 5T copy: the poly-T still matters beside R117H, so the line must not say it changes nothing.
+    _, _, rd, _, _ = made_up("EXH", "11/11", "7/9", "7/7", r117h="G/A")
+    c = rd["CFTR"]
+    check("extra repeats: no 5T copy with one R117H copy says R117H sits on the 7T or 9T copy",
+          c.get("five_t") is False and "R117H (G/A) is read" in c["reading"] and "7T or 9T copy" in c["reading"]
+          and "does not change how a CFTR finding is read" not in c["reading"] and c.get("r117h") == "G/A", c)
+    # Homozygous R117H with no 5T copy sits on both copies, not on one or the other.
+    _, _, rd, _, _ = made_up("EXK", "11/11", "7/9", "7/7", r117h="A/A")
+    c = rd["CFTR"]
+    check("extra repeats: no 5T copy with two R117H copies says R117H sits on both copies (7T and 9T)",
+          c.get("five_t") is False and "R117H (A/A) is read: it sits on both copies (7T and 9T)" in c["reading"]
+          and "it sits on a 7T or 9T copy" not in c["reading"], c)
+    _, _, rd, _, _ = made_up("EXL", "11/11", "7/7", "7/7", r117h="A/A")
+    check("extra repeats: two R117H copies on two 7T copies says both 7T copies",
+          "R117H (A/A) is read: it sits on both 7T copies" in rd["CFTR"]["reading"], rd["CFTR"])
+    _, _, rd, _, _ = made_up("EXI", "11/11", "7/7", "7/7")
+    check("extra repeats: no 5T copy and no traits table says R117H was not read",
+          "R117H was not read" in rd["CFTR"]["reading"], rd["CFTR"])
+
+    # A TA length with no named allele: no function claim and no PharmCAT comparison.
+    _, _, rd, _, _ = made_up("EXJ", None, None, "7/11", ugt_pc="*1/*1")
+    u = rd["UGT1A1"]
+    check("extra repeats: UGT1A1 TA6/TA10 makes no function claim and is not compared with PharmCAT",
+          u.get("genotype") == "*1/TA10" and u.get("agreement") == "not_compared"
+          and "decreased-function" not in u["reading"] and "not compared with PharmCAT" in u["reading"], u)
+
+    # The traits and CPIC tables are read with their sections' states.
+    bad_traits = "rsid\tgenotype\tstatus\nrs78655421\tG/A\tcalled\n"
+    _, _, rd, _, _ = made_up("EXK", "12/12", "5/7", "7/8", traits_text=bad_traits)
+    check("extra repeats: an unreadable traits table gives no R117H, and says why",
+          rd["CFTR"].get("phase") == "not_read" and "traits table is unreadable" in rd["CFTR"]["reading"], rd["CFTR"])
+    status = f"meta\tstarted_epoch\t{time.time() - DAY}\nstep\t09\tok\nstep\t27\tskipped\nstep\t42\tskipped\n"
+    _, _, rd, _, _ = made_up("EXL", "12/12", "5/7", "7/8", r117h="G/A", ugt_pc="*1/*28", side_age=3,
+                             run_status=status)
+    check("extra repeats: R117H and PharmCAT from tables of an earlier run are said to be so",
+          "R117H from step 42's traits table of an earlier run" in rd["CFTR"]["reading"]
+          and rd["UGT1A1"]["agreement"] == "agrees" and "step 27's table is from an earlier run" in rd["UGT1A1"]["reading"],
+          rd)
 
 
 SMN_COLS = ("chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\t"
             "homologous_regions\n")
+
+
+IV_COLS = "locus\tname\tchrom\tstart\tend\tstatus\tcopies\texpected\tchange\testimate\treason\n"
+CYP_DELETION = ("metric\tvalue\nstatus\tcalled\ncyp21a2_copies\t1\nmodule_total\t3\nexpected_total\t4\n"
+                "estimate\t3.02\nfinding\tdeletion\nconversion_sites\t.\ntarget_depth\t45.30\n"
+                "control_depth\t30.10\nreason\t.\nreading\tone RCCX module fewer and one CYP21A2 copy fewer at the "
+                "differing sites: the pattern of the 30 kb CYP21A1P/CYP21A2 chimeric deletion\n")
+
+
+def cn_report_section(work, schema):
+    """Step 35's tables that no Parascopy model makes reach both reports: the
+    CYP21A2 call, the gene-dosage rows and the interval rows; and a table with
+    a header but without the copy-number columns reads as unreadable."""
+    only = os.path.join(work, "cn_dosage_only", "S")
+    put(f"{only}/paralogs/S_cn_dosage.tsv", "locus\tstatus\tcopies\testimate\treason\treading\n"
+        "HP\tcalled\t3\t3.04\t.\tthree copies\n")
+    summ, txt, html = render(only)
+    dosage = ((summ["sections"].get("parascopy") or {}).get("data") or {}).get("dosage") or []
+    check("cn report: a folder with only the dosage table still shows it in the summary and both reports",
+          [x["copies"] for x in dosage] == ["3"] and "HP (haptoglobin) copies (from depth): 3 (estimate 3.04)" in txt
+          and ">HP (haptoglobin) copies (from depth)<" in html, (dosage, txt))
+    d = os.path.join(work, "cn_report", "S")
+    put(f"{d}/paralogs/S_smn_copy_number.tsv", SMN_COLS
+        + "chr5\t70950920\t70953320\tSMN1\tPASS\t4\t60\tPASS\t2,2\t33,30\tchr5:70075496-70077900:+\n")
+
+    def card(html):
+        return html.split("<h2>SMN1/SMN2 Copy Number (Parascopy)</h2>", 1)[-1].split("<h2>", 1)[0]
+
+    # No CYP21A2, dosage or interval table: each says it is not in the output, never "has no model".
+    summ, txt, html = render(d)
+    check("cn report: without the tables each line says the table is not in this run's output",
+          "  CYP21A2 (RCCX module, from depth and six PSV sites): not assessed (step 35's <id>_cyp21a2_psv.tsv "
+          "is not in this run's output)\n" in txt
+          and "  Gene-dosage loci (HP, LCE3B/LCE3C, CCL3L1): not assessed (step 35's <id>_cn_dosage.tsv" in txt
+          and "  Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth): not assessed "
+              "(step 35's <id>_cn_intervals.tsv" in txt
+          and "is not assessed" not in txt and "CYP21A2 has no Parascopy model" not in txt, txt)
+
+    put(f"{d}/paralogs/S_cyp21a2_psv.tsv", CYP_DELETION)
+    put(f"{d}/paralogs/S_cn_dosage.tsv", "locus\tstatus\tcopies\testimate\treason\treading\n"
+        "HP\tcalled\t3\t3.04\t.\tthree copies of the duplicated HP exons: Hp2-1\n"
+        "LCE3BC\tcalled\t1\t0.98\t.\tLCE3B and LCE3C deleted on one chromosome (LCE3C_LCE3B-del on one)\n"
+        "CCL3L1\tnot assessed\t.\t.\tcheck_failed\tthe depth check failed; see the log of step 35\n")
+    put(f"{d}/paralogs/S_cn_intervals.tsv", IV_COLS
+        + "22q11.2_LCR_A-LCR_D\t22q11.2 recurrent (DGS/VCFS) region (proximal, A-D) (includes TBX1)\tchr22\t"
+          "18924717\t21111383\tcalled\t1\t2\tdeletion\t1.02\t.\n"
+        + "CFTR_dele2_3\tCFTRdele2,3\tchr7\t117479000\t117481000\tcalled\t2\t2\tno change\t1.97\t.\n"
+        + "AZFa\tAZFa\tchrY\t12904108\t13696000\tnot assessed\t.\t.\t.\t.\tno_y\n")
+    summ, txt, html = render(d)
+    pd = (summ["sections"].get("parascopy") or {}).get("data") or {}
+    cs = card(html)
+    cyp = ("CYP21A2 (RCCX module, from depth and six PSV sites): 1 CYP21A2 copies, module total 3 of 4, "
+           "finding deletion. Reading: one RCCX module fewer")
+    check("cn report: a CYP21A2 deletion is in the summary and in both reports",
+          (pd.get("cyp21a2") or {}).get("finding") == "deletion" and f"  {cyp}" in txt
+          and ">CYP21A2 (RCCX module, from depth and six PSV sites)<" in cs
+          and "1 CYP21A2 copies, module total 3 of 4, finding deletion" in cs, (pd.get("cyp21a2"), txt))
+    check("cn report: the dosage rows are in the summary, one entry per locus in the table's order",
+          [(x["locus"], x["status"], x["copies"]) for x in pd.get("dosage") or []]
+          == [("HP", "called", "3"), ("LCE3BC", "called", "1"), ("CCL3L1", "not assessed", ".")], pd.get("dosage"))
+    check("cn report: both reports give one line per dosage locus, a failed one with its reason",
+          "  HP (haptoglobin) copies (from depth): 3 (estimate 3.04). Reading: three copies of the duplicated HP "
+          "exons: Hp2-1\n" in txt
+          and "  LCE3B/LCE3C copies (from depth): 1 (estimate 0.98). Reading: LCE3B and LCE3C deleted" in txt
+          and "  CCL3L1/CCL3L3 copies (from depth): not assessed (check_failed)\n" in txt
+          and ">HP (haptoglobin) copies (from depth)<" in cs and ">CCL3L1/CCL3L3 copies (from depth)<" in cs, txt)
+    check("cn report: the interval table's counts and its one deletion are in the text report",
+          "  Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth): 3 rows "
+          "(2 called, 1 not assessed); 1 with a deletion or a duplication\n" in txt
+          and "    Deletion: 22q11.2 recurrent (DGS/VCFS) region (proximal, A-D) (includes TBX1) "
+              "(22q11.2_LCR_A-LCR_D, chr22:18924718-21111383), 1 of 2 copies\n" in txt
+          and "CFTRdele2,3" not in txt, txt)
+    check("cn report: the HTML card has the counts and a row for the deletion",
+          "3 rows (2 called, 1 not assessed); 1 with a deletion or a duplication" in cs
+          and "<td>22q11.2_LCR_A-LCR_D</td><td>chr22:18924718-21111383</td><td>1 of 2</td><td>deletion</td>" in cs,
+          cs)
+    check("cn report: the summary validates", not validate.validate(schema, json.loads(json.dumps(summ))),
+          validate.validate(schema, json.loads(json.dumps(summ))))
+    put(f"{d}/paralogs/S_cyp21a2_psv.tsv", "metric\tvalue\nstatus\tnot assessed\ncyp21a2_copies\t.\n"
+        "reason\tpsv_low_depth\n")
+    _, txt, _ = render(d)
+    check("cn report: a CYP21A2 table that says not assessed gives its reason",
+          "  CYP21A2 (RCCX module, from depth and six PSV sites): not assessed (psv_low_depth)\n" in txt, txt)
+    put(f"{d}/paralogs/S_cn_intervals.tsv", IV_COLS
+        + "CFTR_dele2_3\tCFTRdele2,3\tchr7\t117479000\t117481000\tcalled\t2\t2\tno change\t1.97\t.\n")
+    _, txt, _ = render(d)
+    check("cn report: an interval table without a change says so",
+          "from depth): 1 rows (1 called); no deletion or duplication among the 1 called rows\n" in txt, txt)
+    put(f"{d}/paralogs/S_cn_intervals.tsv", IV_COLS
+        + "CFTR_dele2_3\tCFTRdele2,3\tchr7\t117479000\t117481000\tnot assessed\t.\t2\t.\t.\tcheck_failed\n"
+        + "AZFc\tAZFc\tchrY\t24000000\t26000000\tnot assessed\t.\t1\t.\t.\tcheck_failed\n")
+    _, txt, html = render(d)
+    check("cn report: an interval table with no row called says none called, never no deletion",
+          "from depth): 2 rows (2 not assessed); none called\n" in txt
+          and "2 rows (2 not assessed); none called" in card(html)
+          and "no deletion or duplication" not in txt, txt)
+
+    # A row cut short of a column is unreadable, never a row of '.' values.
+    put(f"{d}/paralogs/S_cn_dosage.tsv", "locus\tstatus\tcopies\testimate\treason\treading\nHP\tcalled\n")
+    ps = collect_summary.collect("S", d)["sections"].get("parascopy") or {}
+    check("cn report: a dosage row cut short of its columns is unreadable", ps.get("state") == "unreadable", ps)
+    os.remove(f"{d}/paralogs/S_cn_dosage.tsv")
+    put(f"{d}/paralogs/S_cn_intervals.tsv", IV_COLS
+        + "CFTR_dele2_3\tCFTRdele2,3\tchr7\t117479000\t117481000\tcalled\t2\t2\tno change\t1.97\t.\n"
+        + "AZFc\tAZFc\n")
+    ps = collect_summary.collect("S", d)["sections"].get("parascopy") or {}
+    check("cn report: an interval row cut short before its status is unreadable", ps.get("state") == "unreadable", ps)
+    # A header without the copy-number columns is unreadable, also with no row under it.
+    put(f"{d}/paralogs/S_cn_dosage.tsv", "locus\tstatus\n")
+    ps = collect_summary.collect("S", d)["sections"].get("parascopy") or {}
+    check("cn report: a dosage table without the copies column is unreadable", ps.get("state") == "unreadable", ps)
+    os.remove(f"{d}/paralogs/S_cn_dosage.tsv")
+    put(f"{d}/paralogs/S_cn_intervals.tsv", "locus\tname\tstatus\n")
+    ps = collect_summary.collect("S", d)["sections"].get("parascopy") or {}
+    check("cn report: a header-only interval table without the copy columns is unreadable",
+          ps.get("state") == "unreadable", ps)
+    os.remove(f"{d}/paralogs/S_cn_intervals.tsv")
+    put(f"{d}/paralogs/S_gba1_copy_number.tsv", "chrom\tstart\tend\tlocus\n")
+    pd = (collect_summary.collect("S", d)["sections"].get("parascopy") or {}).get("data") or {}
+    check("cn report: a header-only catalog table without the copy-number columns is unreadable, not not assessed",
+          {x["table"]: x["status"] for x in pd.get("loci", [])}.get("gba1") == "unreadable", pd.get("loci"))
+    put(f"{d}/paralogs/S_gba1_copy_number.tsv", SMN_COLS)
+    pd = (collect_summary.collect("S", d)["sections"].get("parascopy") or {}).get("data") or {}
+    check("cn report: a header-only catalog table with every column stays not assessed (no region row)",
+          {x["table"]: x["status"] for x in pd.get("loci", [])}.get("gba1") == "not assessed", pd.get("loci"))
+    put(f"{d}/paralogs/S_smn_copy_number.tsv", "chrom\tstart\tend\tagCN\n")
+    ps = collect_summary.collect("S", d)["sections"].get("parascopy") or {}
+    check("cn report: a header-only SMN table without the psCN columns is unreadable",
+          ps.get("state") == "unreadable", ps)
 
 
 def parascopy_section(work, schema):
@@ -1436,9 +1624,41 @@ def parascopy_section(work, schema):
     card_s = html.split("<h2>SMN1/SMN2 Copy Number (Parascopy)</h2>", 1)[-1].split("<h2>", 1)[0]
     check("parascopy: the HTML card has both genes, the reading and the short-read note",
           ">SMN1 copies<" in card_s and "2 (quality 33, filter PASS)" in card_s and ">SMN2 copies<" in card_s
-          and "not a carrier by copy number" in card_s and "CYP21A2 has no Parascopy model" in card_s
-          and "counts the alpha-globin genes together from read depth" in card_s
+          and "not a carrier by copy number" in card_s and "CYP21A2 and the gene-dosage loci have no Parascopy model" in card_s
+          and "step 35 counts them from read depth against flanking sequence" in card_s
           and "Not checked" not in html, card_s)
+    # SMN1 g.27134T>G beside the psCN (step 35's <id>_smn1_marker.tsv, bin/traits_report.py smn1_marker)
+    caveat = render_report.SMN1_MARKER_CAVEAT
+    after_cn = "  SMN1 copies: 2 (quality 33, filter PASS)\n  SMN1 g.27134T>G silent-carrier marker (rs143838139): "
+    check("parascopy: without step 35's marker table the marker line says not assessed, beside the psCN, with why",
+          (pd.get("smn1_marker") or {}).get("status") == "not assessed"
+          and after_cn + "not assessed\n" in txt and "step 35 wrote no S_smn1_marker.tsv" in txt
+          and f"  SMN1 marker caveat: {caveat}\n" in txt, txt)
+    import traits_report
+    mk = f"{d}/paralogs/S_smn1_marker.tsv"
+    traits_report.write_metric_table(mk, traits_report.smn1_marker((35, 5, 0), f"{d}/paralogs/S_smn_copy_number.tsv"))
+    summ_m, txt_m, html_m = render(d)
+    card_m = html_m.split("<h2>SMN1/SMN2 Copy Number (Parascopy)</h2>", 1)[-1].split("<h2>", 1)[0]
+    check("parascopy: a marker table with 5 of 40 reads reads as present beside the psCN in the text report, "
+          "with the reader's message and the caveat",
+          after_cn + "present, 5 of 40 reads carry it, about 0.5 copies\n" in txt_m
+          and "  SMN1 marker reading: SMN1 g.27134T>G (rs143838139): present" in txt_m
+          and f"  SMN1 marker caveat: {caveat}\n" in txt_m, txt_m)
+    check("parascopy: the HTML card shows the marker, its message and the caveat",
+          ">SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)<" in card_m
+          and "present, 5 of 40 reads carry it" in card_m and render_report.E(caveat) in card_m
+          and "does not prove 2+0" in card_m, card_m)
+    import live_results
+    lv = live_results.a_paralogs(summ_m["sections"], {})
+    check("live: the paralog card has the SMN1 copies and the marker as facts, and its lines with the caveat",
+          ["SMN1 g.27134T>G silent-carrier marker", "present, 5 of 40 reads carry it, about 0.5 copies"] in lv["facts"]
+          and ["SMN1 copies", "2 (quality 33, filter PASS)"] in lv["facts"]
+          and f"SMN1 marker caveat: {caveat}" in lv["lines"], lv)
+    put(mk, "metric\tvalue\nstatus\tmaybe\n")
+    _, txt_b, _ = render(d)
+    check("parascopy: a marker table with no known status reads as not assessed, never as a result",
+          after_cn + "not assessed\n" in txt_b and "S_smn1_marker.tsv has no status row" in txt_b, txt_b)
+    os.remove(mk)
     check("parascopy: HBA1/HBA2 listed as not assessed without step 35's HBA table or step 35b",
           any(x.startswith("HBA1/HBA2 copy number") for x in summ["not_assessed"])
           and "HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count" in txt
@@ -2287,11 +2507,19 @@ def main():
             "Path_no_call\tAncestral_in_terminal\tSNPs_called\tMin_depth\tTree\tPositions\t"
             "Outvoted_ancestral\nS\tNA\t0\t0\t0\t0\t.\t12\t10\tYFull YTree 14.06.0\t"
             "Yleaf 4.1.6 tables\t.\n")
+        # bin/y_tree_place.py writes the path table's header alone when no branch is derived.
+        put(f"{h}/y_haplogroup/S_y_tree_path.tsv", "Level\tBranch\tSNPs\tOn_tables\tDerived\tAncestral\t"
+            "No_call\tAncestral_SNPs\n")
         summ_na, txt_na, _ = render(h)
         check("Y tree: Hg NA reads as no derived call, and nothing ancestral is printed",
-              summ_na["sections"]["y_tree"]["data"].get("haplogroup") == "no branch has a derived call"
+              summ_na["sections"]["y_tree"]["state"] == "ok"
+              and summ_na["sections"]["y_tree"]["data"].get("haplogroup") == "no branch has a derived call"
+              and summ_na["sections"]["y_tree"]["data"].get("path") == []
               and "Ancestral inside the terminal branch" not in txt_na,
-              summ_na["sections"]["y_tree"]["data"])
+              summ_na["sections"]["y_tree"])
+        put(f"{h}/y_haplogroup/S_y_tree_path.tsv", "Level\tSNPs\n")
+        check("Y tree: a path table with no Branch column is unreadable",
+              render(h)[0]["sections"]["y_tree"]["state"] == "unreadable")
         os.remove(f"{h}/y_haplogroup/S_y_tree.txt")
         os.remove(f"{h}/y_haplogroup/S_y_tree_path.tsv")
 
@@ -2762,6 +2990,7 @@ def main():
         report_followups_sections(work, schema)
         str_extra_readings(work, schema)
         parascopy_section(work, schema)
+        cn_report_section(work, schema)
         report_sections_mito_roh_telomere_cnv(work, schema)
         roh_upd_karyotype(work, schema)
         hla_optitype_kir_section(work, schema)

@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "og"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[workspace.dependencies]
+pycompat = { path = "crates/pycompat" }
+og-io = { path = "crates/og-io" }
+og-vcf = { path = "crates/og-vcf" }
+og-bam = { path = "crates/og-bam" }
+og-map = { path = "crates/og-map" }
+og-tsv = { path = "crates/og-tsv" }
+indexmap = "2"
+flate2 = "1"
+memchr = "2"
+smallvec = "1"
+# Pure Rust deflate for BGZF (no C to cross-compile); the backend noodles-bgzf uses.
+zlib-rs = { version = "0.6", default-features = false, features = ["std"] }
+# htslib built from source and linked statically. curl, S3 and GCS are
+# off (og reads local files only), and so are bzip2 and lzma, which only
+# CRAM uses.
+rust-htslib = { version = "=1.0.2", default-features = false, features = ["static"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

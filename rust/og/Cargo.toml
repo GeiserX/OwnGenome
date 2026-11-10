@@ -1,0 +1,16 @@
+[package]
+name = "og"
+description = "OwnGenome's one binary: og <tool> [args]"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+og-bam.workspace = true
+og-map.workspace = true
+
+[lints]
+workspace = true

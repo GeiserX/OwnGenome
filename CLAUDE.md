@@ -6,6 +6,7 @@ Whole genome sequencing (WGS) analysis pipeline for consumer hardware. Takes raw
 ## Tech Stack
 - Bash (pipeline scripts, `set -euo pipefail`)
 - Docker (all bioinformatics tools containerized)
+- Python (`bin/*.py`, OwnGenome's own tools), moving tool by tool to Rust: one static binary, `og` (`rust/`, run through the `bin/og` shim; `scripts/setup.sh --og` builds it; `docs/rust.md`)
 - Key tools: DeepVariant, minimap2, BWA-MEM2, VEP, PharmCAT, GATK, FreeBayes, Strelka2, TIDDIT, Manta, SURVIVOR, PCGR/CPSR, pgsc_calc, haplogrep3, Yleaf
 
 ## Development
@@ -71,7 +72,8 @@ owngenome/
   .github/workflows/
     lint.yml                   # ShellCheck, actionlint, gitleaks, doc links
     personal-data.yml          # Personal-data scan of every tracked text file
-    guard.yml                  # image variables, image tags (check-images.sh), coupled versions, fake-docker suite, helper binaries, unit tests; ci-ok sums them up
+    guard.yml                  # image variables, image tags (check-images.sh), coupled versions, fake-docker suite, helper binaries, unit tests, Rust; ci-ok sums them up
+    rust.yml                   # og in the task images on amd64 and arm64; nightly pycompat against CPython at 10^7 cases
     container-test.yml         # Runs each changed image on the fixture (tests/smoke/commands.tsv); container-ok sums it up
     e2e.yml                    # Real tools on a small fixture
     nextflow.yml               # Nextflow config, lint, schema and stub runs on the pinned release and the newest 26.10.x

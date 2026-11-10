@@ -22,8 +22,9 @@
 #   REF_FASTA, EH_CATALOG (a file, or bundled), MANTA_CALL_REGIONS, PARASCOPY_POPULATION, PARAPHASE_REGIONS, ANCESTRY_PANEL (--ancestry_ref; none: raw
 #   scores), ANCESTRY_FINE_DIR (--ancestry_fine_panel, step 26b,
 #   always 100 bootstrap replicates; none: skip), ARCHAIC_DIR and ARCHAIC_POP (--archaic_data and --archaic_pop,
-#   step 43; ARCHAIC_DIR=none: skip) and PGSC_CALC_DIR (--pgsc_calc) as for
-#   the single steps; the panels and pgsc_calc are passed when installed.
+#   step 43; ARCHAIC_DIR=none: skip), PGSC_CALC_DIR (--pgsc_calc), LOCITYPER_DATA (--locityper_data, step 53's
+#   database) and LOCITYPER_BG_REGION (--locityper_bg_region) as for the single steps; the panels, the databases and
+#   pgsc_calc are passed when installed.
 # Run as scripts after the pipeline: GRIDSS=true (04b), IMPUTATION=true (14),
 #   SOMATIC=true (29), EXTRA_CALLERS=gatk,freebayes,strelka2,octopus (03a-03d), BENCHMARK=true (needs
 #   EXTRA_CALLERS or a second caller VCF); then the HTML report (24) and the text report, also after a failed pipeline.
@@ -51,7 +52,7 @@ shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
 SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
-  FAMILIES OWNGENOME_LIVE_URL NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
+  FAMILIES OWNGENOME_LIVE_URL LOCITYPER_DATA LOCITYPER_BG_REGION NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
 RERUN_CMD="cd $(printf '%q' "$PWD") && "; for v in "${SWITCHES[@]}"; do [ -z "${!v+x}" ] || RERUN_CMD+="${v}=$(printf '%q' "${!v}") "; done
 RERUN_CMD+=$(printf '%q ' "${SCRIPT_DIR}/run-all.sh" "$SAMPLE" "$SEX" "$@"); RERUN_CMD=${RERUN_CMD% }
 # With -bg nextflow returns at once, and the steps would be recorded and the reports written before the run ends.
@@ -62,6 +63,17 @@ export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 validate_sample "$SAMPLE"
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
+# The ClinVar files are shared by every sample of GENOME_DIR. bin/owngenome_recheck.py --refresh-clinvar holds this
+# lock while it replaces them; the run holds it shared on fd 7 until it ends, so a run waits for a refresh going on
+# and a refresh refuses while a run goes on. Without flock (macOS: brew install flock) nothing waits here.
+CVLOCK="${G}/clinvar/.refresh.lock"
+if [ -d "${G}/clinvar" ] && command -v flock >/dev/null 2>&1; then
+  [ -e "$CVLOCK" ] || : 2>/dev/null >> "$CVLOCK" || true
+  if [ -r "$CVLOCK" ]; then
+    exec 7<"$CVLOCK"
+    flock -s -n 7 || { echo "Waiting for the ClinVar refresh that holds ${CVLOCK} to end ..."; flock -s 7; }
+  fi
+fi
 java_major=$(java -version 2>&1 | awk -F'"' '/version "/ {split($2, v, "."); print (v[1] == 1 ? v[2] : v[1]); exit}') || true
 if ! command -v nextflow >/dev/null 2>&1 || [[ ! "${java_major:-}" =~ ^[0-9]+$ ]] || [ "$java_major" -lt 17 ]; then
   printf '%s\n' "ERROR: run-all.sh starts the Nextflow pipeline and needs Java 17 or later (found: ${java_major:-none}) and Nextflow ($(command -v nextflow || echo 'not on PATH'))." \
@@ -84,6 +96,8 @@ if [ -n "${FAMILIES:-}" ]; then
   if [ -n "$FAM" ]; then echo "[Family] ${SAMPLE} is in family ${FAM} (${FAMILIES}): steps 38 and 39 are planned after the pipeline"
   else echo "[Family] ${SAMPLE} is in no family of ${FAMILIES}"; fi
 fi
+# og (bin/.og) built from another rust/ than this checkout's stops the run, SKIP_VALIDATION or not (rust/og.sh).
+[ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || { echo "$OG_MSG" >&2; exit 2; }
 mkdir -p "${S}/nextflow" "$LOG_DIR"
 GENOME_DIR="$G" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || echo "WARNING: could not write ${S}/run_manifest.tsv"
 STATUS="${LOG_DIR}/run_status.tsv"  # bin/collect_summary.py marks results older than this run stale
@@ -295,8 +309,7 @@ else echo "  benchmark-variants skipped (only one caller VCF: set EXTRA_CALLERS,
 export NXF_VER=${NXF_VER:-$NEXTFLOW_VERSION}
 # The live site (docs/live-site.md). Nextflow's weblog is the nf-weblog plugin, which Nextflow 26.10 loads only when
 # a config names it, so the block lives in a config of this run's own, passed only when OWNGENOME_LIVE_URL is set: a run
-# without it neither downloads the plugin nor warns about an unknown weblog scope. Bump the pin with its release.
-NF_WEBLOG_PLUGIN=nf-weblog@1.2.0
+# without it neither downloads the plugin nor warns about an unknown weblog scope. The pin is NF_WEBLOG_PLUGIN in versions.env.
 if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
   # The ingest listener speaks plain HTTP and serves /ingest/<run> at its root, so https or a path would lose every post.
   [[ "$OWNGENOME_LIVE_URL" =~ ^http://[A-Za-z0-9.:_-]+/?$ ]] \
@@ -306,6 +319,8 @@ if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
     "${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE}" > "${S}/nextflow/live.config"
   NF+=(-c "${S}/nextflow/live.config")
   echo "Live site: messages go to ${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
+  # The address the browser opens (the site's own, not the ingest port), when the launcher knows it.
+  [ -z "${OWNGENOME_LIVE_PAGE_URL:-}" ] || echo "Live site: this run's page is ${OWNGENOME_LIVE_PAGE_URL%/}/runs/${SAMPLE}/"
 else
   rm -f "${S}/nextflow/live.config"
 fi

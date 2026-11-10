@@ -1,7 +1,10 @@
-// live.js: the live page of one run (assets/live/index.html, served by bin/owngenome_live.py).
-// One data source feeds the page: in live mode state.json plus the run's event stream; with
-// <html data-mode="replay"> a frames.json of recorded states played on a timer. No outside
-// request, no inline script, no eval. Plugins call window.PGP.register({name, onState, onEvent, panel}).
+// live.js: the run's progress on a person's page (assets/live/index.html, served by bin/owngenome_live.py):
+// the step timeline (one line per step), the step detail, the wire of what each step found, the event
+// stream and the replay, in the report's "How the run went" section. One data source feeds the page: in live mode state.json plus the run's event stream;
+// with <html data-mode="replay"> a frames.json of recorded states played on a timer. person.js draws
+// the results from the same states. No outside request, no inline script, no eval. Plugins call
+// window.PGP.register({name, onState, onEvent, panel, slot}); a panel goes into the element whose id
+// is slot when the page has one (the search box in the header), else beside the step timeline.
 (function () {
   'use strict';
   var root = document.documentElement;
@@ -22,9 +25,8 @@
     'not planned': ['s-notplanned', 'not planned']
   };
   var SVGNS = 'http://www.w3.org/2000/svg';
-  var BOX_W = 170, BOX_H = 34, GAP_X = 36, GAP_Y = 10, PAD = 8;
   var plugins = [];
-  var last = null, selected = null, layoutKey = null, boxes = {};
+  var last = null, selected = null, boxes = {};
 
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
@@ -44,66 +46,92 @@
     return v.length ? v : steps;
   }
 
-  // Columns by depth: a step sits one column right of the deepest step it reads from.
-  function layout(steps) {
-    var by = {}, depth = {};
-    steps.forEach(function (s) { by[s.step] = s; });
-    function d(s, seen) {
-      if (depth[s.step] !== undefined) { return depth[s.step]; }
-      if (seen[s.step]) { return 0; }
-      seen[s.step] = true;
-      var m = -1;
-      (s.upstream || []).forEach(function (u) { if (by[u]) { m = Math.max(m, d(by[u], seen)); } });
-      depth[s.step] = m + 1;
-      return depth[s.step];
-    }
-    steps.forEach(function (s) { d(s, {}); });
-    var rows = {}, pos = {};
-    steps.forEach(function (s) {
-      var c = depth[s.step];
-      rows[c] = (rows[c] || 0) + 1;
-      pos[s.step] = { x: PAD + c * (BOX_W + GAP_X), y: PAD + (rows[c] - 1) * (BOX_H + GAP_Y) };
+  // The run as a timeline, one line per step (the Journal's step timeline): a step's bar runs from its
+  // start to its end; a running step's bar ends at now, with its usual hours drawn as an outline after
+  // it; a step still waiting has no bar yet. Steps are ordered by start, the waiting ones last, in the
+  // order assets/steps.tsv plans them. Each line is a button (g.box) that opens the step's detail.
+  function ms(t) { var v = t ? Date.parse(t) : NaN; return isFinite(v) ? v : null; }
+  function clock(v) { var d = new Date(v); return ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2); }
+  function timeline(steps, nowText, running) {
+    // A finished run ends at its last step, not at the moment the page was asked for.
+    var now = running ? ms(nowText) : null;
+    var known = steps.map(function (s) { return ms(s.started_utc); }).filter(function (v) { return v !== null; });
+    var t0 = known.length ? Math.min.apply(null, known) : null;
+    var ends = steps.map(function (s) { return ms(s.ended_utc) || (s.state === 'running' ? now : null); })
+      .filter(function (v) { return v !== null; });
+    var t1 = Math.max.apply(null, ends.concat(known).concat(now !== null ? [now] : []).concat(t0 !== null ? [t0 + 3600e3] : [0]));
+    var order = steps.map(function (s, i) { return { s: s, i: i, t: ms(s.started_utc) }; });
+    order.sort(function (a, b) {
+      if (a.t === null && b.t === null) { return a.i - b.i; }
+      if (a.t === null) { return 1; } if (b.t === null) { return -1; }
+      return a.t - b.t || a.i - b.i;
     });
-    var cols = Math.max.apply(null, Object.keys(rows).map(Number)) + 1;
-    var maxRows = Math.max.apply(null, Object.keys(rows).map(function (k) { return rows[k]; }));
-    return { pos: pos, w: 2 * PAD + cols * BOX_W + (cols - 1) * GAP_X, h: 2 * PAD + maxRows * BOX_H + (maxRows - 1) * GAP_Y };
+    // Leave room after now for the usual hours of what still runs.
+    var tail = 0;
+    steps.forEach(function (s) {
+      if (s.state === 'running' && s.hours && ms(s.started_utc) !== null) { tail = Math.max(tail, ms(s.started_utc) + s.hours * 3600e3 - t1); }
+    });
+    return { order: order.map(function (o) { return o.s; }), t0: t0, t1: t1 + Math.max(0, Math.min(tail, (t1 - (t0 || t1)) * 0.6)), now: now };
   }
+  var LABEL_W = 190, ROW_H = 16, TOP = 8, AXIS_H = 26;
 
   function drawMap(steps) {
-    var key = steps.map(function (s) { return s.step; }).join(',');
     var map = document.getElementById('map');
-    if (key !== layoutKey) {
-      layoutKey = key;
-      boxes = {};
-      var L = layout(steps);
-      var s = svg('svg', { viewBox: '0 0 ' + L.w + ' ' + L.h, width: L.w, height: L.h, role: 'group', 'aria-label': 'Steps of the run' });
-      var edges = svg('g', { 'class': 'edges' });
-      s.appendChild(edges);
-      steps.forEach(function (st) {
-        (st.upstream || []).forEach(function (u) {
-          var a = L.pos[u], b = L.pos[st.step];
-          if (!a) { return; }
-          edges.appendChild(svg('line', { x1: a.x + BOX_W, y1: a.y + BOX_H / 2, x2: b.x, y2: b.y + BOX_H / 2 }));
-        });
-      });
-      steps.forEach(function (st) {
-        var p = L.pos[st.step];
-        var g = svg('g', { 'class': 'box', 'data-step': st.step, tabindex: '0', role: 'button' });
-        g.appendChild(svg('rect', { x: p.x, y: p.y, width: BOX_W, height: BOX_H, rx: 5 }));
-        var t = svg('text', { x: p.x + 8, y: p.y + BOX_H / 2 + 4 });
-        var label = st.step + ' ' + st.label;
-        t.textContent = label.length > 24 ? label.slice(0, 23) + '…' : label;
-        g.appendChild(t);
-        var title = svg('title', {});
-        g.appendChild(title);
-        g.addEventListener('click', function () { selected = st.step; detail(); });
-        g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { selected = st.step; detail(); } });
-        s.appendChild(g);
-        boxes[st.step] = g;
-      });
-      map.textContent = '';
-      map.appendChild(s);
+    var T = timeline(steps, last && (last.generated_utc || null), !!(last && last.run && last.run.state === 'running'));
+    var h = TOP + T.order.length * ROW_H + AXIS_H;
+    // The chart takes the width the page gives it (at least 300 px of time), so no step sits off screen.
+    var CHART_W = Math.max(300, (map.clientWidth || 962) - LABEL_W - 12);
+    var W = LABEL_W + CHART_W + 12;
+    var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + h, width: W, height: h, role: 'group', 'aria-label': 'Steps of the run' });
+    var span = T.t0 === null ? 1 : Math.max(T.t1 - T.t0, 60e3);
+    function x(v) { return LABEL_W + 8 + (T.t0 === null ? 0 : (v - T.t0) / span * (CHART_W - 8)); }
+    var axis = svg('g', { 'class': 'axis' });
+    if (T.t0 !== null) {
+      var stepH = span > 36 * 3600e3 ? 6 : span > 12 * 3600e3 ? 3 : span > 4 * 3600e3 ? 1 : 0.5;
+      for (var t = Math.ceil(T.t0 / (stepH * 3600e3)) * stepH * 3600e3; t <= T.t1; t += stepH * 3600e3) {
+        axis.appendChild(svg('line', { x1: x(t), x2: x(t), y1: TOP - 4, y2: h - AXIS_H + 2 }));
+        // No hour label under the "now" label of a running run.
+        if (T.now !== null && last && last.run && last.run.state === 'running' && Math.abs(x(t) - x(T.now)) < 56) { continue; }
+        var lab = svg('text', { x: x(t), y: h - 8, 'text-anchor': 'middle' });
+        lab.textContent = clock(t);
+        axis.appendChild(lab);
+      }
     }
+    s.appendChild(axis);
+    boxes = {};
+    T.order.forEach(function (st, i) {
+      var y = TOP + i * ROW_H;
+      var g = svg('g', { 'class': 'box', 'data-step': st.step, tabindex: '0', role: 'button' });
+      g.appendChild(svg('rect', { 'class': 'hit', x: 0, y: y, width: W, height: ROW_H }));
+      var t = svg('text', { 'class': 'lbl', x: LABEL_W, y: y + ROW_H - 4, 'text-anchor': 'end' });
+      var label = st.label || st.step;
+      t.textContent = label.length > 30 ? label.slice(0, 29) + '…' : label;
+      g.appendChild(t);
+      var a = ms(st.started_utc), b = ms(st.ended_utc) || (st.state === 'running' ? T.now : null);
+      if (a !== null && T.t0 !== null) {
+        var x1 = x(a), x2 = Math.max(x(b !== null ? b : a), x1 + 3);
+        g.appendChild(svg('rect', { 'class': 'bar', x: x1, y: y + 4, width: x2 - x1, height: ROW_H - 8, rx: 1.5 }));
+        if (st.state === 'running' && st.hours) {
+          var u = x(a + st.hours * 3600e3);
+          if (u > x2) { g.appendChild(svg('rect', { 'class': 'usual', x: x2, y: y + 4.5, width: Math.min(u, W - 4) - x2, height: ROW_H - 9, rx: 1.5 })); }
+        }
+      } else {
+        g.appendChild(svg('rect', { 'class': 'bar', x: LABEL_W + 8, y: y + 5, width: 0, height: 0 }));
+      }
+      g.appendChild(svg('title', {}));
+      g.addEventListener('click', function () { selected = st.step; detail(); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { selected = st.step; detail(); } });
+      s.appendChild(g);
+      boxes[st.step] = g;
+    });
+    if (T.now !== null && T.t0 !== null && last && last.run && last.run.state === 'running') {
+      s.appendChild(svg('line', { 'class': 'nowline', x1: x(T.now), x2: x(T.now), y1: TOP - 4, y2: h - AXIS_H + 2 }));
+      var nl = svg('text', { 'class': 'nowlab', x: x(T.now), y: h - 8, 'text-anchor': 'middle' });
+      nl.textContent = 'now ' + clock(T.now);
+      s.appendChild(nl);
+    }
+    map.textContent = '';
+    map.appendChild(s);
     steps.forEach(function (st) { paint(st.step, st.state, st.label); });
   }
 
@@ -166,26 +194,69 @@
         box.appendChild(el('a', { href: 'report.html#' + encodeURIComponent(anchor) }, 'Open in the report: ' + k));
       }
     });
-    drawMap(shown(last.steps));
+    // Repaint, never redraw: the focused step keeps its focus and the plugins' marks stay on.
+    shown(last.steps).forEach(function (s) { paint(s.step, s.state, s.label); });
   }
 
+  // The wire: what the steps said, newest first. Only an event that says something gets its own line (a
+  // finding written, a warning, a failure); the plain "finished, see the report" ones fold into one line
+  // that names the newest. Each line is cut to its first sentence; the step's detail has the whole text.
+  // The newest WIRE_SHOWN lines show, the rest sit under "Every event".
+  var WIRE_SHOWN = 8, WIRE_CHARS = 140;
+  var PLAIN = /^(.*?):? finished, see the report\.?$/;
+  function sentence(t) {
+    var m = /^(.+?[.!?])(\s+[A-Z(]|$)/.exec(t || '');
+    var s = m ? m[1] : (t || '');
+    return s.length > WIRE_CHARS ? s.slice(0, WIRE_CHARS - 1).replace(/\s+\S*$/, '') + '…' : s;
+  }
+  function wireLine(ev) {
+    var li = el('li', { 'class': 'tone-' + ev.tone, 'data-section': ev.key || '', tabindex: '0', role: 'button', title: ev.full });
+    li.appendChild(el('span', { 'class': 'step' }, ev.t ? clock(ev.t) : ev.step));
+    li.appendChild(document.createTextNode(' ' + ev.text));
+    function open() { selected = ev.step; detail(); }
+    li.addEventListener('click', open);
+    li.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    return li;
+  }
   function found(state) {
     var ul = document.getElementById('found');
     var hl = state.headlines || {};
-    var keys = [];
-    state.steps.forEach(function (s) { (s.sections || []).forEach(function (k) { if (hl[k]) { keys.push(k); } }); });
-    ul.textContent = '';
-    if (!keys.length) { ul.appendChild(el('li', { 'class': 'muted' }, 'Nothing finished yet.')); return; }
-    keys.forEach(function (k) {
-      var li = el('li', { 'class': 'tone-' + hl[k].tone, 'data-section': k, tabindex: '0', role: 'button' });
-      li.appendChild(el('span', { 'class': 'step' }, hl[k].step));
-      li.appendChild(document.createTextNode(' ' + hl[k].text));
-      li.addEventListener('click', function () { selected = hl[k].step; detail(); });
-      li.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selected = hl[k].step; detail(); }
+    var said = [], plain = [];
+    state.steps.forEach(function (s, i) {
+      var t = ms(s.ended_utc);
+      (s.sections || []).forEach(function (k) {
+        if (!hl[k]) { return; }
+        var m = PLAIN.exec(hl[k].text || '');
+        var ev = { key: k, step: hl[k].step || s.step, tone: hl[k].tone, t: t, i: i, full: hl[k].text };
+        if (m && hl[k].tone !== 'attention') { ev.name = m[1] || s.label; plain.push(ev); }
+        else { ev.text = sentence(hl[k].text); said.push(ev); }
       });
-      ul.appendChild(li);
+      if (s.state === 'failed') { said.push({ step: s.step, tone: 'attention', t: t, i: i, text: (s.label || s.step) + ' failed', full: s.reason || '' }); }
     });
+    function newest(a, b) { return (b.t || 0) - (a.t || 0) || b.i - a.i; }
+    plain.sort(newest);
+    if (plain.length) {
+      var first = plain[0], since = plain.map(function (e) { return e.t; }).filter(Boolean).sort()[0];
+      said.push({ key: first.key, step: first.step, tone: 'info', t: first.t, i: first.i, full: first.full,
+        text: first.name + (plain.length > 1 ? ' and ' + (plain.length - 1) + ' more step' + (plain.length > 2 ? 's' : '') +
+          ' finished' + (since ? ' since ' + clock(since) : '') : ' finished') + ', see the report' });
+    }
+    said.sort(newest);
+    ul.textContent = '';
+    if (!said.length) { ul.appendChild(el('li', { 'class': 'muted' }, 'Nothing finished yet.')); return; }
+    said.slice(0, WIRE_SHOWN).forEach(function (ev) { ul.appendChild(wireLine(ev)); });
+    var rest = said.slice(WIRE_SHOWN);
+    if (rest.length || plain.length > 1) {
+      var li = el('li', { 'class': 'wire-more' });
+      var d = el('details', {});
+      d.appendChild(el('summary', {}, 'Every event'));
+      var all = el('ul', { 'class': 'found' });
+      rest.forEach(function (ev) { all.appendChild(wireLine(ev)); });
+      plain.forEach(function (ev) { all.appendChild(wireLine({ key: ev.key, step: ev.step, tone: 'info', t: ev.t, text: ev.name + ' finished', full: ev.full })); });
+      d.appendChild(all);
+      li.appendChild(d);
+      ul.appendChild(li);
+    }
   }
 
   function show(state) {
@@ -242,6 +313,14 @@
   }
 
   // --- replay: frames.json on a timer ---
+  // A frame's moment, short enough for a phone's line: "3 Jan 06:46", in UTC as every time on the page; the
+  // full time stays in the title.
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function frameTime(t) {
+    var d = new Date(t || '');
+    if (!t || !isFinite(d)) { return t || ''; }
+    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2);
+  }
   function replay() {
     var bar = document.getElementById('replay');
     bar.hidden = false;
@@ -255,7 +334,9 @@
       function go(i) {
         at = Math.min(Math.max(i, 0), frames.length - 1);
         slider.value = String(at);
-        document.getElementById('replay-time').textContent = frames[at].t || '';
+        var time = document.getElementById('replay-time');
+        time.textContent = frameTime(frames[at].t);
+        time.title = frames[at].t || '';
         show(frames[at].state);
         root.setAttribute('data-pgp-frame', String(at));
       }
@@ -267,7 +348,10 @@
         tick = setInterval(function () { if (at >= frames.length - 1) { stop(); } else { go(at + 1); } }, Number(data.interval_ms) || 1000);
       });
       slider.addEventListener('input', function () { stop(); go(Number(slider.value)); });
-      if (frames.length) { go(0); }
+      // A finished run opens at its end, the finished report, until the reader plays it (Play starts again
+      // from the first frame); a replay that autoplays, or one that ends mid-run, opens at the start.
+      var end = frames.length && frames[frames.length - 1].state && frames[frames.length - 1].state.run;
+      if (frames.length) { go(!data.autoplay && end && end.state === 'finished' ? frames.length - 1 : 0); }
       if (data.autoplay) { play.click(); }
     });
   }
@@ -278,12 +362,17 @@
       plugins.push(p);
       if (p.panel) {
         var box = el('section', { 'class': 'card plugin', 'data-plugin': p.name || '' });
-        document.getElementById('plugin-panels').appendChild(box);
+        var slot = (p.slot && document.getElementById(p.slot)) || document.getElementById('plugin-panels');
+        slot.appendChild(box);
         try { p.panel(box); } catch (e) { console.error(p.name, e); }
       }
       if (last && p.onState) { p.onState(last); }
     }
   };
+
+  // The timeline is drawn to the width the page gives it: a fold opened after the first draw draws it again.
+  var fold = document.getElementById('progress-fold');
+  if (fold) { fold.addEventListener('toggle', function () { if (fold.open && last) { drawMap(shown(last.steps)); detail(); } }); }
 
   function startPage() {
     if (root.getAttribute('data-mode') === 'replay') { replay(); } else { live(); }

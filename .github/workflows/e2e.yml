@@ -65,6 +65,7 @@ on:
       - 'nextflow_schema.json'
       - 'versions.env'
       - '.github/workflows/e2e.yml'
+      - '.github/actions/**'
       - 'tests/fixtures/annotsv/class45.sh'
       - 'tests/fixtures/comphet/make_fixture.py'
       - 'tests/fixtures/consumer_export/sites.tsv.gz'
@@ -437,11 +438,39 @@ jobs:
           echo "$cpu"
           echo "Runner: ${cpu}" >> "$GITHUB_STEP_SUMMARY"
 
+      # Some runners come with a 72 GB root disk and a second, blank NVMe
+      # disk: 220.7 GB with no partition and no file system on an
+      # ubuntu-26.04 runner (probe run 42037810203 on the geiresx fork); the
+      # 145 GB runners have none. On a 72 GB runner a heavy leg ran out of
+      # disk with 16 GB free before its cases (run 42018365546, shard 1),
+      # where the same cases need about 26 GB (run 41995719742, shard 1).
+      # A blank disk is formatted and mounted at /mnt, where the steps below
+      # put the work area and Docker's images.
+      - name: Mount a spare disk
+        run: |
+          if mountpoint -q /mnt; then echo "/mnt is already a mount"; df -h /mnt; exit 0; fi
+          disk=""
+          while read -r name type; do
+            [ "$type" = disk ] || continue
+            # Blank: no partition, no file system, nothing mounted.
+            [ "$(lsblk -nro NAME "$name" | wc -l)" -eq 1 ] || continue
+            [ -z "$(lsblk -ndro FSTYPE,MOUNTPOINT "$name" | tr -d ' ')" ] || continue
+            disk=$name
+          done < <(lsblk -dnpo NAME,TYPE)
+          if [ -z "$disk" ]; then echo "No blank disk on this runner"; exit 0; fi
+          echo "Formatting ${disk} ($(lsblk -ndo SIZE "$disk")) and mounting it at /mnt"
+          sudo mkfs.ext4 -q -F -E nodiscard "$disk"
+          sudo mkdir -p /mnt
+          sudo mount -o noatime "$disk" /mnt
+          df -h / /mnt
+          echo "Spare disk: ${disk}, $(df -h --output=avail /mnt | tail -1 | tr -d ' ') free at /mnt" >> "$GITHUB_STEP_SUMMARY"
+
       # Before anything is pulled or restored: the legs ran out of disk on
       # 2026-11-04 with only part of the preinstalled software removed.
       - uses: ./.github/actions/free-disk
 
-      # Images go to /var/lib/docker on /; the work area goes to whichever of
+      # Images go to /var/lib/docker on / (on /mnt when /mnt is a spare
+      # disk, see "Docker image store"); the work area goes to whichever of
       # / and /mnt has more room, so the two do not compete for one disk. The
       # base outputs unpack only under the work area they were packed in, so
       # a shard leg takes the base leg's choice when its artifact arrives.
@@ -479,21 +508,31 @@ jobs:
       # 72 GB runner (48 GB free) ran out in the pre-pull (run 41938436657,
       # shards 2 and 5). Runs before any image is restored or pulled; the
       # images already in the containerd store are pruned first, as overlay2
-      # would not see them.
+      # would not see them. When /mnt is a spare disk with more room than /,
+      # Docker's data root moves there too.
       - name: Docker image store
         run: |
+          change=.
           if docker info -f '{{json .DriverStatus}}' | grep -q io.containerd.snapshotter; then
+            change+=' | .features["containerd-snapshotter"] = false'
+          fi
+          if mountpoint -q /mnt && [ "$(df --output=avail -k /mnt | tail -1)" -gt "$(df --output=avail -k / | tail -1)" ]; then
+            change+=' | .["data-root"] = "/mnt/docker"'
+          fi
+          if [ "$change" != . ]; then
             docker image prune -a -f > /dev/null
             f=/etc/docker/daemon.json
-            { [ -s "$f" ] && sudo cat "$f" || echo '{}'; } \
-              | jq '.features["containerd-snapshotter"] = false' | sudo tee "${f}.new" > /dev/null
+            { [ -s "$f" ] && sudo cat "$f" || echo '{}'; } | jq "$change" | sudo tee "${f}.new" > /dev/null
             sudo mv "${f}.new" "$f"
             sudo systemctl restart docker
           fi
-          driver=$(docker info -f '{{.Driver}}')
-          echo "Docker $(docker version -f '{{.Server.Version}}'), storage driver ${driver}" | tee -a "$GITHUB_STEP_SUMMARY"
+          driver=$(docker info -f '{{.Driver}}') root=$(docker info -f '{{.DockerRootDir}}')
+          echo "Docker $(docker version -f '{{.Server.Version}}'), storage driver ${driver}, data root ${root}" | tee -a "$GITHUB_STEP_SUMMARY"
           [ "$driver" = overlay2 ] || { echo "::error::Docker's storage driver is ${driver}, not overlay2."; exit 1; }
-          df -h /
+          if mountpoint -q /mnt && [[ "$change" == *data-root* ]] && [ "$root" != /mnt/docker ]; then
+            echo "::error::Docker's data root is ${root}, not /mnt/docker on the spare disk."; exit 1
+          fi
+          df -h / /mnt
 
       # Images are cached in four entries, one per group of
       # `scripts/ci/e2e-run.sh --image-groups`, each keyed on its own image
@@ -598,6 +637,7 @@ jobs:
           grep -qx archaic-ancestry-1 "$list" && echo "data_archaic=true" >> "$GITHUB_OUTPUT"
           grep -qx bash-step-08-hla "$list" && echo "data_hla=true" >> "$GITHUB_OUTPUT"
           grep -qx prs-scores-and-run-options-1-strand-sex "$list" && echo "data_pgs=true" >> "$GITHUB_OUTPUT"
+          grep -qxE 'callability-1-catalog|cn-intervals-1-catalog|followups-ci-3-sv-rule-regions' "$list" && echo "data_catalogs=true" >> "$GITHUB_OUTPUT"
           echo "list=${list}" >> "$GITHUB_OUTPUT"
 
       # Before the base outputs: the base leg pulled the same images.
@@ -653,6 +693,10 @@ jobs:
       # of two IPD-IMGT/HLA releases and GENCODE's genes and exons
       # (bash-step-08-hla, which then runs with the network blocked), and the
       # four real PGS Catalog score files of prs-scores-and-run-options-1.
+      # A third keyed the same way: the pinned downloads of the three table
+      # builders (GENCODE's GTF from EBI among them) that
+      # callability-1-catalog, cn-intervals-1-catalog and
+      # followups-ci-3-sv-rule-regions rebuild their tables from.
       - name: Data cache keys
         id: data-keys
         run: |
@@ -661,6 +705,7 @@ jobs:
           echo "archaic=e2e-data-1kg-sites-${ARCHAIC_1KG_SITES_MD5}" | tee -a "$GITHUB_OUTPUT"
           echo "hla=$(scripts/ci/e2e-run.sh --data-key hla)" | tee -a "$GITHUB_OUTPUT"
           echo "pgs=$(scripts/ci/e2e-run.sh --data-key pgs)" | tee -a "$GITHUB_OUTPUT"
+          echo "catalogs=$(scripts/ci/e2e-run.sh --data-key catalogs)" | tee -a "$GITHUB_OUTPUT"
 
       - name: Restore cached data, MoChA panel
         id: data-mocha
@@ -693,6 +738,14 @@ jobs:
         with:
           path: ${{ env.E2E_DATA_CACHE }}/pgs
           key: ${{ steps.data-keys.outputs.pgs }}
+
+      - name: Restore cached data, table builders' downloads
+        id: data-catalogs
+        if: steps.cases-list.outputs.data_catalogs == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.E2E_DATA_CACHE }}/catalogs
+          key: ${{ steps.data-keys.outputs.catalogs }}
 
       # The PGS Catalog's synthetic HAPNEST panel (prs-2-ancestry and
       # prs-scores-and-run-options-2, 268 MB), from EBI's FTP server, keyed
@@ -740,15 +793,16 @@ jobs:
           E2E_BASE_OUT: ${{ matrix.job == 'base' && format('{0}/base.tar.zst', runner.temp) || '' }}
           E2E_BASE_IN: ${{ matrix.job != 'base' && format('{0}/e2e-base/base.tar.zst', runner.temp) || '' }}
           # Keep the downloads to the end of the job only when a save step uses them.
-          E2E_DATA_KEEP: ${{ (github.ref == 'refs/heads/main' || inputs.save_images) && ((steps.cases-list.outputs.data_mocha == 'true' && steps.data-mocha.outputs.cache-hit != 'true') || (steps.cases-list.outputs.data_archaic == 'true' && steps.data-archaic.outputs.cache-hit != 'true') || (steps.cases-list.outputs.data_hla == 'true' && steps.data-hla.outputs.cache-hit != 'true') || (steps.cases-list.outputs.data_pgs == 'true' && steps.data-pgs.outputs.cache-hit != 'true')) && 'true' || 'false' }}
+          E2E_DATA_KEEP: ${{ (github.ref == 'refs/heads/main' || inputs.save_images) && ((steps.cases-list.outputs.data_mocha == 'true' && steps.data-mocha.outputs.cache-hit != 'true') || (steps.cases-list.outputs.data_archaic == 'true' && steps.data-archaic.outputs.cache-hit != 'true') || (steps.cases-list.outputs.data_hla == 'true' && steps.data-hla.outputs.cache-hit != 'true') || (steps.cases-list.outputs.data_pgs == 'true' && steps.data-pgs.outputs.cache-hit != 'true') || (steps.cases-list.outputs.data_catalogs == 'true' && steps.data-catalogs.outputs.cache-hit != 'true')) && 'true' || 'false' }}
           HIT_MOCHA: ${{ steps.data-mocha.outputs.cache-hit || 'false' }}
           HIT_ARCHAIC: ${{ steps.data-archaic.outputs.cache-hit || 'false' }}
           HIT_HLA: ${{ steps.data-hla.outputs.cache-hit || 'false' }}
           HIT_PGS: ${{ steps.data-pgs.outputs.cache-hit || 'false' }}
-          DATA_ANY: ${{ steps.cases-list.outputs.data_mocha || steps.cases-list.outputs.data_archaic || steps.cases-list.outputs.data_hla || steps.cases-list.outputs.data_pgs || 'false' }}
+          HIT_CATALOGS: ${{ steps.data-catalogs.outputs.cache-hit || 'false' }}
+          DATA_ANY: ${{ steps.cases-list.outputs.data_mocha || steps.cases-list.outputs.data_archaic || steps.cases-list.outputs.data_hla || steps.cases-list.outputs.data_pgs || steps.cases-list.outputs.data_catalogs || 'false' }}
         run: |
           if [ "$DATA_ANY" = true ]; then
-            echo "Data cache (${JOB}): exact key hit, MoChA panel ${HIT_MOCHA}, 1000 Genomes sites ${HIT_ARCHAIC}, IPD-IMGT/HLA and GENCODE ${HIT_HLA}, PGS scores ${HIT_PGS}" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "Data cache (${JOB}): exact key hit, MoChA panel ${HIT_MOCHA}, 1000 Genomes sites ${HIT_ARCHAIC}, IPD-IMGT/HLA and GENCODE ${HIT_HLA}, PGS scores ${HIT_PGS}, table builders ${HIT_CATALOGS}" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           scripts/ci/e2e-run.sh
 
@@ -764,6 +818,7 @@ jobs:
           HIT_ARCHAIC: ${{ steps.data-archaic.outputs.cache-hit }}
           HIT_HLA: ${{ steps.data-hla.outputs.cache-hit }}
           HIT_PGS: ${{ steps.data-pgs.outputs.cache-hit }}
+          HIT_CATALOGS: ${{ steps.data-catalogs.outputs.cache-hit }}
         run: |
           d=$E2E_DATA_CACHE
           if [ "$HIT_MOCHA" != true ] && [ -s "${d}/mocha/manifest.txt" ] \
@@ -774,7 +829,7 @@ jobs:
             echo "archaic=true" >> "$GITHUB_OUTPUT"
           fi
           # Whole and checked (data_ok in e2e-run.sh), or not saved.
-          for n in hla pgs; do
+          for n in hla pgs catalogs; do
             hit=HIT_${n^^}
             if [ "${!hit}" != true ] && [ -d "${d}/${n}" ] && scripts/ci/e2e-run.sh --data-check "$n"; then
               echo "${n}=true" >> "$GITHUB_OUTPUT"
@@ -805,6 +860,12 @@ jobs:
         with:
           path: ${{ env.E2E_DATA_CACHE }}/pgs
           key: ${{ steps.data-keys.outputs.pgs }}
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: always() && steps.data-save.outputs.catalogs == 'true'
+        with:
+          path: ${{ env.E2E_DATA_CACHE }}/catalogs
+          key: ${{ steps.data-keys.outputs.catalogs }}
 
       # The case leaves the panel there only once its sha256 matched.
       - name: Data cache, HAPNEST panel, what to save
@@ -898,9 +959,10 @@ jobs:
       # Each group keeps its smallest images up to GROUP_BUDGET_MB of zstd
       # output; the rest are pulled on every run. Four groups of 1500 MB are
       # 5.9 GB, and while main replaces one group the old and the new entry
-      # both count: 7.3 GB. With the five data entries above (about 2.3 GB:
-      # MoChA 0.64, 1000 Genomes sites 1.36, HAPNEST 0.27, hla and GENCODE
-      # 0.03, PGS a few KB) that is 9.6 GB, under the 10 GB limit. An image pinned by digest
+      # both count: 7.3 GB. With the six data entries above (about 2.4 GB:
+      # MoChA 0.64, 1000 Genomes sites 1.36, HAPNEST 0.27, the table
+      # builders' downloads 0.08, hla and GENCODE 0.03, PGS a few KB) that is
+      # 9.7 GB, under the 10 GB limit. An image pinned by digest
       # is never saved: docker load gives it back without its digest, so
       # e2e-run.sh would pull it again anyway.
       - name: Image sizes, and save images for the next run

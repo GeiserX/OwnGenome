@@ -44,6 +44,12 @@
     30 kb chimeric deletion and a possible conversion show
     (<id>_cyp21a2_psv.tsv, docs/cn-loci.md).
 
+    Beside the SMN1 psCN, SMN1 g.27134T>G (rs143838139, Luo et al. 2014), a
+    marker of SMN1 duplication alleles: samtools mpileup at its SMN1 and SMN2
+    copies, read as a fraction of copies by bin/traits_report.py --marker
+    SMN1_27134 with the SMN table (<id>_smn1_marker.tsv). It never proves a
+    silent 2+0 carrier, and its message says so.
+
     The interval rows of that catalog (ClinGen's recurrent CNV regions, the
     carrier deletion alleles and the Y chromosome AZF regions) take one more
     bedcov pass over all their segments, one line per row in
@@ -83,6 +89,7 @@ process PARASCOPY {
     tuple val(meta), path("${meta.id}_smn_copy_number.tsv"), emit: copy_number, optional: true  // the SMN1 row's
     tuple val(meta), path("${meta.id}_parascopy"),           emit: results
     tuple val(meta), path("${meta.id}_hba_copy_number.tsv"), emit: hba
+    tuple val(meta), path("${meta.id}_smn1_marker.tsv"),     emit: smn1_marker  // SMN1 g.27134T>G beside the psCN
     tuple val(meta), path("${meta.id}_*_copy_number.tsv"),   emit: tables  // every catalog row's table, and HBA's
     tuple val(meta), path("${meta.id}_cn_dosage.tsv"),       emit: dosage  // HP, LCE3BC, CCL3L1 from depth
     tuple val(meta), path("${meta.id}_cyp21a2_psv.tsv"),     emit: cyp21a2  // CYP21A2 from depth and PSVs
@@ -149,6 +156,22 @@ process PARASCOPY {
     rm -rf depth
     # end of the paralog loci
 
+    # SMN1 g.27134T>G beside the SMN1 psCN (as scripts/35-paralogs.sh): mpileup at its SMN1 and SMN2
+    # copies, then the reading with the SMN table; not assessed when it fails
+    if traits_report.py --marker-regions SMN1_27134 > smn1_marker_sites.txt \
+        && ( while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "\$r" ${bam} || exit 1; done \
+            < smn1_marker_sites.txt ) > smn1_marker_pileup.tsv \
+        && traits_report.py --marker SMN1_27134 --pileup smn1_marker_pileup.tsv \
+            --copy-table ${meta.id}_smn_copy_number.tsv --marker-out ${meta.id}_smn1_marker.tsv.tmp; then
+        mv ${meta.id}_smn1_marker.tsv.tmp ${meta.id}_smn1_marker.tsv
+    else
+        rm -f ${meta.id}_smn1_marker.tsv.tmp
+        echo "WARNING: the SMN1 g.27134T>G check failed; ${meta.id}_smn1_marker.tsv says not assessed." >&2
+        printf 'metric\\tvalue\\nmarker\\tSMN1 g.27134T>G\\nrsid\\trs143838139\\nstatus\\tnot assessed\\nalt_reads\\t.\\ndepth\\t.\\nfraction\\t.\\ncopies\\t.\\nsmn1_pscn\\t.\\nagcn\\t.\\nmessage\\t%s\\n' \
+            'SMN1 g.27134T>G (rs143838139): not assessed, the check failed; see the log of step 35. This marker does not prove 2+0, and its absence does not rule 2+0 out.' > ${meta.id}_smn1_marker.tsv
+    fi
+    rm -f smn1_marker_sites.txt smn1_marker_pileup.tsv
+
     # HBA1/HBA2 from depth (as scripts/35-paralogs.sh): all MAPQ and MAPQ 1 or more, then the verdict
     if copy_number.py bed --locus HBA > hba_regions.bed \\
         && samtools bedcov hba_regions.bed ${bam} > hba_bedcov.tsv \\
@@ -189,19 +212,22 @@ process PARASCOPY {
     if copy_number.py bed --locus CYP21A2 > cyp21a2_regions.bed \\
         && copy_number.py bed --psv --locus CYP21A2 > cyp21a2_psv.bed \\
         && samtools bedcov cyp21a2_regions.bed ${bam} > cyp21a2_bedcov.tsv \\
+        && samtools bedcov -Q 1 cyp21a2_regions.bed ${bam} > cyp21a2_bedcov_q1.tsv \\
         && samtools mpileup -A -B -q 0 -Q 13 -d 100000 \\
             -r "\$(awk 'NR == 1 {c = \$1; s = \$2 + 1} {e = \$3} END {print c ":" s "-" e}' cyp21a2_psv.bed)" \\
             -l cyp21a2_psv.bed ${bam} > cyp21a2_pileup.tsv \\
-        && copy_number.py call --locus CYP21A2 --bedcov cyp21a2_bedcov.tsv --pileup cyp21a2_pileup.tsv \\
+        && copy_number.py call --locus CYP21A2 --bedcov cyp21a2_bedcov.tsv --bedcov-mapq1 cyp21a2_bedcov_q1.tsv \\
+            --pileup cyp21a2_pileup.tsv \\
             --table ${meta.id}_cyp21a2_psv.tsv.tmp; then
         mv ${meta.id}_cyp21a2_psv.tsv.tmp ${meta.id}_cyp21a2_psv.tsv
     else
         rm -f ${meta.id}_cyp21a2_psv.tsv.tmp
         echo "WARNING: the CYP21A2 depth and PSV check failed; ${meta.id}_cyp21a2_psv.tsv says not assessed." >&2
-        printf 'metric\\tvalue\\nstatus\\tnot assessed\\ncyp21a2_copies\\t.\\nmodule_total\\t.\\nexpected_total\\t.\\nestimate\\t.\\nfinding\\t.\\nconversion_sites\\t.\\ntarget_depth\\t.\\ncontrol_depth\\t.\\nreason\\tcheck_failed\\nreading\\t%s\\n' \\
+        printf 'metric\\tvalue\\nstatus\\tnot assessed\\ncyp21a2_copies\\t.\\nmodule_total\\t.\\nexpected_total\\t.\\nestimate\\t.\\nfinding\\t.\\nconversion_sites\\t.\\ntarget_depth\\t.\\ncontrol_depth\\t.\\nreason\\tcheck_failed\\nreading\\t%s\\nmapq0_share\\t.\\nmessage\\tnot assessed: %s\\n' \\
+            'the CYP21A2 depth and PSV check failed; see the log of step 35' \\
             'the CYP21A2 depth and PSV check failed; see the log of step 35' > ${meta.id}_cyp21a2_psv.tsv
     fi
-    rm -f cyp21a2_regions.bed cyp21a2_psv.bed cyp21a2_bedcov.tsv cyp21a2_pileup.tsv
+    rm -f cyp21a2_regions.bed cyp21a2_psv.bed cyp21a2_bedcov.tsv cyp21a2_bedcov_q1.tsv cyp21a2_pileup.tsv
 
     # Interval rows of bin/cn_loci.tsv (as scripts/35-paralogs.sh): one bedcov over every row's segments,
     # then the verdict; a failed pass writes every row as not assessed (check_failed)
@@ -231,6 +257,7 @@ process PARASCOPY {
     printf 'metric\\tvalue\\nstatus\\tnot assessed\\nalpha_globin_genes\\t.\\nestimate\\t.\\nhba2_depth\\t0\\nhba1_depth\\t0\\nflank_left_depth\\t0\\nflank_right_depth\\t0\\nmapq0_share\\t0\\nmessage\\tstub\\n' \\
         > ${meta.id}_hba_copy_number.tsv
     printf 'locus\\tstatus\\tcopies\\testimate\\treason\\treading\\n' > ${meta.id}_cn_dosage.tsv
+    printf 'metric\\tvalue\\nstatus\\tnot assessed\\nmessage\\tstub\\n' > ${meta.id}_smn1_marker.tsv
     printf 'metric\\tvalue\\nstatus\\tnot assessed\\nreason\\tstub\\n' > ${meta.id}_cyp21a2_psv.tsv
     printf 'locus\\tname\\tchrom\\tstart\\tend\\tstatus\\tcopies\\texpected\\tchange\\testimate\\treason\\n' > ${meta.id}_cn_intervals.tsv
 

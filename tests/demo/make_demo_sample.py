@@ -2,6 +2,7 @@
 """make_demo_sample.py: write DEMO-001, the invented sample of the docs pictures.
 
   make_demo_sample.py --genome-dir DIR [--seed 1] [--records 4700000]
+                      [--sample DEMO-001] [--sex male]
   make_demo_sample.py check --genome-dir DIR
 
 The first form writes DIR/DEMO-001 with every file steps 24, 27 and 28 read,
@@ -36,6 +37,16 @@ DEMO-001 carries every section, so every card is in the pictures: also the
 Paraphase card (a PacBio HiFi step, though the invented reads are short) and
 the couple card, with an invented partner DEMO-002.
 
+--sample and --sex write another invented person the same way: the live-site
+demo (tests/demo/build_live_demo.py) writes DEMO-002, DEMO-001's partner
+(female), and DEMO-003, their son, so the family page has a trio. A female
+gets no Y files and her sex checks read two X. A few invented findings make
+every live-site widget show once in the demo (FINDINGS below): DEMO-002 an
+FMR1 allele in Stranger's premutation range, a CHIP call and a mosaic loss
+MoChA reports, DEMO-003 an AnnotSV class 4 deletion. Every sample gets
+Stranger's thresholds beside ExpansionHunter's counts and step 27's CPIC
+table, written by bin/pgx_parse.py from the PharmCAT report.
+
 The second form reads DIR/DEMO-001/summary.json (step 24 writes it) and fails
 when a section is not "ok", so a new report card that this script does not
 feed yet is caught before a picture shows "Not run".
@@ -44,8 +55,10 @@ Standard library only. tests/demo/retake-screenshots.sh runs both forms.
 """
 import argparse
 import calendar
+import contextlib
 import copy
 import gzip
+import io
 import json
 import math
 import os
@@ -78,10 +91,24 @@ CHROMS = [
 AUTOSOMES = [c for c in CHROMS if c[0] not in ("chrX", "chrY")]
 # Variants per base of each chromosome, relative to an autosome (one X, one Y).
 DENSITY = {"chrX": 0.45, "chrY": 0.04}
+
+
+def own_chroms():
+    """The chromosomes the invented person has reads and variants on: a female has no chrY."""
+    return [c for c in CHROMS if SEX == "male" or c[0] != "chrY"]
 MEAN_DEPTH = 31.3
 # When the invented run started: 2026-10-01 09:00 UTC, the time of the demo's
 # PharmCAT report too (logs/run_status.tsv, the report's "Latest run" line).
 RUN_STARTED = calendar.timegm((2026, 10, 1, 9, 0, 0, 0, 0, 0))
+# The invented findings of the demo's other people (--sample), one of each live-site widget's marks.
+FINDINGS = {"DEMO-002": {"fmr1", "chip", "mocha"}, "DEMO-003": {"annotsv"}}
+# Stranger's thresholds per locus (normal up to, pathologic from), invented for the demo's catalog.
+STR_THRESHOLDS = {"HTT": (26, 40), "FMR1": (54, 200), "C9ORF72": (20, 30), "ATXN1": (35, 39), "DMPK": (34, 50),
+                  "ATXN3": (44, 60), "AR": (34, 38), "FXN": (33, 66)}
+
+
+def has(finding):
+    return finding in FINDINGS.get(SAMPLE, ())
 
 
 def put(path, text, gz=False):
@@ -125,7 +152,8 @@ def image_tag(var):
 
 def variants(d, rng, n):
     """vcf/S.vcf.gz: N records at random positions, about 94% PASS, 85% SNVs."""
-    weights = [length * DENSITY.get(c, 1.0) for c, length in CHROMS]
+    chroms = own_chroms()
+    weights = [length * DENSITY.get(c, 1.0) for c, length in chroms]
     total_w = sum(weights)
     path = os.path.join(d, "vcf", f"{SAMPLE}.vcf.gz")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -136,7 +164,7 @@ def variants(d, rng, n):
     bases = "ACGT"
     with gzip.open(path, "wt", compresslevel=1) as f:
         f.write(head)
-        for (chrom, length), w in zip(CHROMS, weights):
+        for (chrom, length), w in zip(chroms, weights):
             k = round(n * w / total_w)
             hap = chrom in ("chrX", "chrY") and SEX == "male"
             out = []
@@ -258,6 +286,12 @@ def pgx(d, genome_dir, rng):
     changed["MT-RNR1"] = "Reference"
     prune_annotations(report, changed)
     put(os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), json.dumps(report, indent=1) + "\n")
+    # Step 27's tables from that report, by the parser step 27 runs (bin/pgx_parse.py).
+    import pgx_parse
+    with contextlib.redirect_stdout(io.StringIO()):
+        if pgx_parse.main(["cpic-report", "--sample", SAMPLE, "--report",
+                           os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), "--outdir", os.path.join(d, "cpic")]):
+            raise SystemExit("pgx_parse cpic-report failed")
     return outside
 
 
@@ -362,7 +396,7 @@ def coverage(d, rng):
         return out
 
     curves = {}
-    for chrom, length in CHROMS:
+    for chrom, length in own_chroms():
         half = chrom in ("chrX", "chrY") and SEX == "male"
         mean = MEAN_DEPTH / (2 if half else 1) * rng.uniform(0.97, 1.03)
         gap = rng.uniform(0.01, 0.03) if chrom != "chrY" else 0.55
@@ -372,7 +406,7 @@ def coverage(d, rng):
         tot_bases += bases
         curves[chrom] = cumulative(mean, mean * 0.24, gap)
     summary.append(f"total\t{tot_len}\t{tot_bases}\t{tot_bases / tot_len:.2f}\t0\t{int(MEAN_DEPTH * 9)}")
-    for chrom, _ in CHROMS:
+    for chrom, _ in own_chroms():
         dist += [f"{chrom}\t{dep}\t{p:.2f}" for dep, p in curves[chrom]]
     dist += [f"total\t{dep}\t{p:.2f}" for dep, p in (cumulative(MEAN_DEPTH, MEAN_DEPTH * 0.25, 0.02))]
     put(os.path.join(m, f"{SAMPLE}.mosdepth.summary.txt"), "\n".join(summary) + "\n")
@@ -382,10 +416,11 @@ def coverage(d, rng):
     put(os.path.join(i, "indexcov-indexcov.ped"),
         "#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\tCNchrX\tCNchrY\tbins.out\tbins.lo\tbins.hi\t"
         "bins.in\tslope\tp.out\tPC1\tPC2\tPC3\tPC4\tPC5\n"
-        f"unknown\t{SAMPLE}\t-9\t-9\t{1 if SEX == 'male' else 2}\t-9\t1.01\t0.98\t312\t205\t107\t174820\t0.993\t0.0018\t"
+        f"unknown\t{SAMPLE}\t-9\t-9\t{1 if SEX == 'male' else 2}\t-9\t{'1.01' if SEX == 'male' else '1.99'}\t"
+        f"{'0.98' if SEX == 'male' else '0.01'}\t312\t205\t107\t174820\t0.993\t0.0018\t"
         "0\t0\t0\t0\t0\n")
     roc = ["#chrom\tcov\t" + SAMPLE]
-    for chrom, _ in CHROMS:
+    for chrom, _ in own_chroms():
         half = chrom in ("chrX", "chrY") and SEX == "male"
         centre = 0.5 if half else 1.0
         for k in range(0, 41):
@@ -408,7 +443,7 @@ def sample_qc(d):
         "gt_depth_sd\tdepth_mean\tdepth_sd\tab_mean\tab_std\tn_hom_ref\tn_het\tn_hom_alt\tn_unknown\tp_middling_ab\t"
         "X_depth_mean\tX_n\tX_hom_ref\tX_het\tX_hom_alt\tY_depth_mean\tY_n\n"
         f"{SAMPLE}\t{SAMPLE}\t-9\t-9\t{sex}\t-9\t-9\t31.4\t7.2\t31.4\t7.2\t0.41\t0.08\t9817\t6904\t4383\t196\t0.01\t"
-        "15.6\t612\t352\t4\t256\t14.9\t41\n")
+        + ("15.6\t612\t352\t4\t256\t14.9\t41\n" if SEX == "male" else "31.2\t612\t300\t210\t102\t0.1\t0\n"))
     put(os.path.join(q, "somalier", f"{SAMPLE}.pairs.tsv"),
         "#sample_a\tsample_b\trelatedness\tibs0\tibs2\thom_concordance\thets_a\thets_b\thets_ab\tshared_hets\t"
         "hom_alts_a\thom_alts_b\tshared_hom_alts\tn\tx_ibs0\tx_ibs2\texpected_relatedness\n")
@@ -546,8 +581,17 @@ def structural(d, rng):
     # Step 05's class 4 and 5 SVs, checked (bin/annotsv_postfilter.py's
     # columns): none, as in most genomes.
     import annotsv_postfilter
+    cols = annotsv_postfilter.KEEP + annotsv_postfilter.ADDED
+    rows = []
+    if has("annotsv"):
+        # One class 4 deletion over an invented gene, from Manta, kept by step 05's rules.
+        rows.append({"AnnotSV_ID": "chr16_2084000_2096000_DEL_1", "ID": "MantaDEL:1", "SV_chrom": "chr16",
+                     "SV_start": "2084000", "SV_end": "2096000", "SV_length": "-12000", "SV_type": "DEL",
+                     "Gene_name": "G0533", "ACMG_class": "4", "AnnotSV_ranking_score": "0.92", "Caller": "Manta",
+                     "Exon_edge": "no", "Exon_edge_detail": ".", "Population_AF": "", "Population_source": "",
+                     "Common": "no", "AnnotSV_class": "4", "Depth_support": ".", "Rule": "", "Rule_detail": ""})
     put(os.path.join(d, "annotsv", f"{SAMPLE}_sv_class4_5_checked.tsv"),
-        "\t".join(annotsv_postfilter.KEEP + annotsv_postfilter.ADDED) + "\n")
+        "\t".join(cols) + "\n" + "".join("\t".join(r[k] for k in cols) + "\n" for r in rows))
 
 
 # --- repeats, telomeres, ROH, mitochondria, Y: steps 09, 10, 11, 12, 20, 37 --------------
@@ -560,18 +604,30 @@ EH_RANGES = [("HTT", "chr4", 3074877, "CAG", 10, 26), ("FMR1", "chrX", 147912051
 
 
 def repeats_and_more(d, rng):
-    eh = []
+    eh, stranger = [], []
     for rep, c, pos, unit, lo, hi in EH_RANGES:
         hap = c == "chrX" and SEX == "male"
         a = sorted(rng.randint(lo, hi) for _ in range(1 if hap else 2))
+        if rep == "FMR1" and has("fmr1") and not hap:
+            a = [a[0], 62]  # an allele in Stranger's premutation range (above 54, under 200)
         ref = (lo + hi) // 2
         gt = "1" if hap else ("1/2" if a[0] != a[1] else "1/1")
         cn = "/".join(map(str, a))
         alts = ",".join(f"<STR{x}>" for x in dict.fromkeys(a))
-        eh.append(f"{c}\t{pos}\t.\t{unit[0]}\t{alts}\t.\tPASS\tEND={pos + ref * len(unit)};REF={ref};RL={ref * len(unit)};"
-                  f"RU={unit};VARID={rep};REPID={rep}\tGT:SO:REPCN:LC\t{gt}:SPANNING:{cn}:{rng.uniform(28, 34):.6f}\n")
-    put(os.path.join(d, "expansion_hunter", f"{SAMPLE}_eh.vcf"),
-        vcf_header(['##ALT=<ID=STR,Description="Short tandem repeat">']) + "".join(eh))
+        info = f"END={pos + ref * len(unit)};REF={ref};RL={ref * len(unit)};RU={unit};VARID={rep};REPID={rep}"
+        lc = f"{rng.uniform(28, 34):.6f}"
+        eh.append(f"{c}\t{pos}\t.\t{unit[0]}\t{alts}\t.\tPASS\t{info}\tGT:SO:REPCN:LC\t{gt}:SPANNING:{cn}:{lc}\n")
+        # Step 9b's Stranger copy: the same record with the catalog's thresholds, the worst status of
+        # the alleles, and ExpansionHunter's 95% interval of each (REPCI), a few repeats wide past 50.
+        nmax, pmin = STR_THRESHOLDS[rep]
+        worst = ("full_mutation" if any(x >= pmin for x in a) else "pre_mutation" if any(x > nmax for x in a)
+                 else "normal")
+        ci = "/".join(f"{x}-{x}" if x < 50 else f"{x - 4}-{x + 5}" for x in a)
+        stranger.append(f"{c}\t{pos}\t.\t{unit[0]}\t{alts}\t.\tPASS\t{info};STR_STATUS={worst};STR_NORMAL_MAX={nmax};"
+                        f"STR_PATHOLOGIC_MIN={pmin}\tGT:SO:REPCN:REPCI:LC\t{gt}:SPANNING:{cn}:{ci}:{lc}\n")
+    head = vcf_header(['##ALT=<ID=STR,Description="Short tandem repeat">'])
+    put(os.path.join(d, "expansion_hunter", f"{SAMPLE}_eh.vcf"), head + "".join(eh))
+    put(os.path.join(d, "expansion_hunter", f"{SAMPLE}_eh_stranger.vcf"), head + "".join(stranger))
 
     put(os.path.join(d, "telomere", SAMPLE, f"{SAMPLE}_summary.tsv"),
         "PID\tsample\ttotal_reads\tread_lengths\trepeat_threshold_set\trepeat_threshold_used\tintratelomeric_reads\t"
@@ -611,22 +667,25 @@ def repeats_and_more(d, rng):
     put(os.path.join(d, "mito", f"{SAMPLE}_haplocheck.txt"),
         '"Sample"\t"Contamination Status"\t"Contamination Level"\t"Distance"\t"Sample Coverage"\n'
         f'"{SAMPLE}"\t"NO"\t"ND"\t"0"\t"2861"\n')
+    if SEX != "male":
+        return  # no Y chromosome: step 37 has nothing to place
     put(os.path.join(d, "y_haplogroup", f"{SAMPLE}_y_haplogroup.txt"),
         "Sample_name\tHg\tHg_marker\tTotal_reads\tValid_markers\tQC-score\tQC-1\tQC-2\tQC-3\n"
         f"{SAMPLE}_sorted\tI-M253\tM253\t4021876\t1187\t0.982\t1.0\t0.991\t0.982\n")
     # Step 37's placement on the current tree (bin/y_tree_place.py's columns), read
     # by the report's y_tree section; the same I-M253 as above, five levels down.
+    # As the real writer does: '.' for an empty SNP list, and its default depth of 10.
     put(os.path.join(d, "y_haplogroup", f"{SAMPLE}_y_tree.txt"),
         "Sample_name\tHg\tLevel\tPath_derived\tPath_ancestral\tPath_no_call\tAncestral_in_terminal\t"
         "SNPs_called\tMin_depth\tTree\tPositions\tOutvoted_ancestral\n"
-        f"{SAMPLE}\tI-M253\t5\t41\t0\t3\t0\t1187\t3\tYFull YTree v14.06.0\tYleaf hg38 position tables\t0\n")
+        f"{SAMPLE}\tI-M253\t5\t41\t0\t3\t.\t1187\t10\tYFull YTree v14.06.0\tYleaf hg38 position tables\t.\n")
     put(os.path.join(d, "y_haplogroup", f"{SAMPLE}_y_tree_path.tsv"),
         "Level\tBranch\tSNPs\tOn_tables\tDerived\tAncestral\tNo_call\tAncestral_SNPs\n"
-        "1\tCT\t12\t12\t11\t0\t1\t\n"
-        "2\tF\t9\t9\t9\t0\t0\t\n"
-        "3\tIJ\t8\t8\t7\t0\t1\t\n"
-        "4\tI\t7\t7\t7\t0\t0\t\n"
-        "5\tI-M253\t8\t8\t7\t0\t1\t\n")
+        "1\tCT\t12\t12\t11\t0\t1\t.\n"
+        "2\tF\t9\t9\t9\t0\t0\t.\n"
+        "3\tIJ\t8\t8\t7\t0\t1\t.\n"
+        "4\tI\t7\t7\t7\t0\t0\t.\n"
+        "5\tI-M253\t8\t8\t7\t0\t1\t.\n")
 
 
 # --- steps 17, 23, 31 ----------------------------------------------------------------
@@ -712,11 +771,13 @@ def mosaic(d, rng):
             start = (length // 4) * (k + 1) // 500 * 500
             lines += [f"{chrom}\t{s}\t{s + 500}\t{max(0.0, rng.gauss(mean, mean * 0.12)):.2f}"
                       for s in range(start, start + 200_000, 500)]
-    ymean = MEAN_DEPTH / 2 * rng.uniform(0.98, 1.0)
-    for start, end in mosaic_sex_loss.SINGLE_COPY["Y"]:
+    # A male's single-copy chrY at half the depth; a female's chrX (two copies) at the full depth.
+    sx = "Y" if SEX == "male" else "X"
+    ymean = MEAN_DEPTH / (2 if SEX == "male" else 1) * rng.uniform(0.98, 1.0)
+    for start, end in mosaic_sex_loss.SINGLE_COPY[sx][:10]:
         s0 = (start // 500 + 1) * 500
-        lines += [f"chrY\t{s}\t{s + 500}\t{max(0.0, rng.gauss(ymean, ymean * 0.14)):.2f}"
-                  for s in range(s0, end - 500, 500)]
+        lines += [f"chr{sx}\t{s}\t{s + 500}\t{max(0.0, rng.gauss(ymean, ymean * 0.14)):.2f}"
+                  for s in range(s0, min(end, s0 + 1_000_000) - 500, 500)]
     put(path, "\n".join(lines) + "\n", gz=True)
     if mosaic_sex_loss.main(["--table", os.path.join(d, "qc", f"{SAMPLE}_sample_qc.tsv"), "--regions", path]):
         raise SystemExit("mosaic_sex_loss failed")
@@ -812,7 +873,10 @@ def paralogs(d):
 def couple(d, rng):
     """Step 39 with an invented partner, DEMO-002: each carries one change in a
     different recessive gene of the carrier list, so no gene is shared and the
-    card names none. Rows by bin/couple_report.py's own screen_couple."""
+    card names none. Rows by bin/couple_report.py's own screen_couple. Only
+    DEMO-001 carries the table: the family page reads one copy of it."""
+    if SAMPLE != "DEMO-001":
+        return
     import couple_report
     genes = couple_report.read_genes(os.path.join(REPO, "assets", "carrier_genes.tsv"))
     ar = sorted(g for g, v in genes.items() if v["inheritance"] == "AR" and "ACMG" in v["lists"])
@@ -987,7 +1051,15 @@ def chip(d, rng):
         rows.append({"gene": r["gene"], "transcript": "", "chrom": "", "coding_bases": str(rng.randint(1500, 7000)),
                      "mean_depth": f"{mean:.1f}", "detection_limit_vaf": f"{chip_report.detection_limit(mean):.3f}",
                      "status": "covered"})
-    put(os.path.join(d, "chip", f"{SAMPLE}_chip.tsv"), "\t".join(chip_report.OUT_COLUMNS) + "\n")
+    calls = []
+    if has("chip"):
+        # One small DNMT3A clone, above the detection limit at this depth (bin/chip_report.py's columns).
+        calls.append({"gene": "DNMT3A", "chrom": "chr2", "pos": "25234373", "ref": "C", "alt": "T",
+                      "consequence": "missense_variant", "protein_change": "p.R882H", "exon": "23", "vaf": "0.161",
+                      "alt_reads": "8", "depth": "50", "filter": "PASS", "status": "chip", "class": "hotspot",
+                      "note": "a published CHIP hotspot"})
+    put(os.path.join(d, "chip", f"{SAMPLE}_chip.tsv"), "\t".join(chip_report.OUT_COLUMNS) + "\n"
+        + "".join("\t".join(c[k] for k in chip_report.OUT_COLUMNS) + "\n" for c in calls))
     put(os.path.join(d, "chip", f"{SAMPLE}_chip_depth.tsv"),
         "\t".join(chip_report.DEPTH_COLUMNS) + "\n"
         + "".join("\t".join(x[c] for c in chip_report.DEPTH_COLUMNS) + "\n" for x in rows))
@@ -1116,7 +1188,14 @@ def mocha(d):
     stats = [{"sample_id": SAMPLE, "call_rate": "0.9981", "cov_median": "31", "baf_auto": "0.0124",
               "n_hets": "2100000"}]
     sites = [(f"chr{i}", 10001, 10001 + 100_000_000, 120_000, 95_000, 94_000) for i in range(1, 23)]
-    rows, summary = mr.report(SAMPLE, [], stats, sites, "beagle")
+    calls = []
+    if has("mocha"):
+        # A loss of 20q in about 12% of the blood cells, which MoChA's filters keep and the floor lets through.
+        calls.append({"sample_id": SAMPLE, "chrom": "chr20", "beg_GRCh38": "30100000", "end_GRCh38": "42300000",
+                      "length": "12200000", "p_arm": "N", "q_arm": "Y", "type": "Loss", "cf": "0.120",
+                      "bdev": "0.031", "bdev_se": "0.004", "n50_hets": "350000", "lod_baf_conc": "nan",
+                      "rel_cov": "1.86", "lod_baf_phase": "48.2", "lod_lrr_baf": "35.1", "n_hets": "4210"})
+    rows, summary = mr.report(SAMPLE, calls, stats, sites, "beagle")
     os.makedirs(os.path.join(d, "mosaic"), exist_ok=True)
     with open(os.path.join(d, "mosaic", f"{SAMPLE}_mocha.tsv"), "w", encoding="utf-8") as f:
         f.write("\t".join(mr.CALL_COLUMNS) + "\n")
@@ -1207,6 +1286,10 @@ def run_status(d, started):
 # --- the two commands ----------------------------------------------------------------
 
 def make(a):
+    global SAMPLE, SEX
+    SAMPLE, SEX = a.sample, a.sex
+    if not re.match(r"^DEMO-[0-9]{3}$", SAMPLE):
+        raise SystemExit(f"--sample {SAMPLE}: an invented name of the form DEMO-001")
     # A fixed start, so the report's "Latest run" line is the same on every
     # retake; the files written now are newer, so none is marked stale.
     started = RUN_STARTED
@@ -1226,7 +1309,7 @@ def make(a):
              ("ancestry_fine", lambda r: ancestry_fine(d, r)), ("paralogs", lambda r: paralogs(d)),
              ("couple", lambda r: couple(d, r)), ("consumer_export", lambda r: consumer_export(d)),
              ("bloodtype", lambda r: bloodtype(d)), ("traits", lambda r: traits(d)),
-             ("y_str", lambda r: y_str(d, r)), ("viral", lambda r: viral(d)),
+             ("y_str", lambda r: y_str(d, r) if SEX == "male" else None), ("viral", lambda r: viral(d)),
              ("lpa", lambda r: lpa(d, r)), ("chip", lambda r: chip(d, r)),
              ("archaic", lambda r: archaic(d, r)), ("ancient", lambda r: ancient(d, r)),
              ("exomiser", lambda r: exomiser(d)), ("mocha", lambda r: mocha(d)),
@@ -1269,6 +1352,8 @@ def main(argv=None):
     ap.add_argument("--genome-dir", required=True, help="an empty folder; DEMO-001 is written inside it")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--records", type=int, default=4_700_000, help="variant records in the VCF (default 4700000)")
+    ap.add_argument("--sample", default="DEMO-001", help="the invented sample to write (default DEMO-001)")
+    ap.add_argument("--sex", default="male", choices=("male", "female"))
     return make(ap.parse_args(argv))
 
 

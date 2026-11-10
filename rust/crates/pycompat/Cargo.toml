@@ -1,0 +1,17 @@
+[package]
+name = "pycompat"
+description = "Python-exact float, int and JSON formatting and parsing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# A test that always fails: CI runs it and requires the run to go red.
+planted-failure = []
+
+[dependencies]
+indexmap.workspace = true
+
+[lints]
+workspace = true

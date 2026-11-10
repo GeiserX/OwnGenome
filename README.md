@@ -30,14 +30,14 @@ This pipeline takes raw sequencing data (FASTQ/BAM/VCF) from any vendor and runs
 - Calls SNPs and indels with DeepVariant, and structural and copy number variants with Manta, Delly and CNVpytor merged into a consensus.
 - Screens ClinVar and runs CPSR cancer predisposition panels, VEP annotation with CADD, SpliceAI, REVEL and AlphaMissense, and slivar prioritization.
 - Pharmacogenomics with PharmCAT, pypgx (29 genes, 13 of them with copy number from the BAM, so gene deletions, duplications and hybrid genes) and CPIC drug recommendations. PharmCAT gets T1K's HLA types, and a CYP2D6 call only when pypgx and Cyrius (opt-in, non-commercial licence) agree.
-- Repeat expansions, HLA typing (KIR opt-in), SMN1/SMN2 copy number (opt-in), and from PacBio HiFi reads HBA1/HBA2, CYP21A2, GBA1, PMS2, STRC, NCF1 and OTOA with Paraphase (opt-in), telomere length, mitochondrial haplogroup, heteroplasmy and an mtDNA contamination check, Y-chromosome haplogroup (opt-in), mosaic loss of chrY or chrX with its uncertainty, ROH, ancestry, admixture fractions with a chromosome painting (opt-in) and polygenic risk scores, and the blood group antigens (ABO, Rh, Kell, Duffy, Kidd and the other systems, opt-in).
+- Repeat expansions, HLA typing (KIR opt-in), SMN1/SMN2 copy number and, from short reads, CYP21A2 with its 30 kb deletion and pseudogene conversions (opt-in, step 35), and from PacBio HiFi reads HBA1/HBA2, CYP21A2, GBA1, PMS2, STRC, NCF1 and OTOA with Paraphase (opt-in), telomere length, mitochondrial haplogroup, heteroplasmy and an mtDNA contamination check, Y-chromosome haplogroup (opt-in), mosaic loss of chrY or chrX with its uncertainty, ROH, ancestry, admixture fractions with a chromosome painting (opt-in) and polygenic risk scores, and the blood group antigens (ABO, Rh, Kell, Duffy, Kidd and the other systems, opt-in).
 - A raw-data file in the 23andMe layout from your genome (opt-in step 40), for genealogy and health services that read chip files. The pipeline writes it; uploading it is up to you.
 - A traits panel: lactase persistence, caffeine, alcohol flush, bitter taste, earwax, APOE and other replicated variants, read from the gVCF, each with the primary paper it comes from.
 - Every tool runs in a Docker container with a hard memory limit and no network; CPU is a hard cap in the single-step scripts and a Docker share in the pipeline ([a shared host](https://geiserx.github.io/OwnGenome/hardware-requirements/#a-shared-host)). Each image is pinned by tag or digest in `versions.env`. The opt-in Cyrius is installed once by `setup.sh --cyrius` from PyPI, every file checked against its hash, and then runs offline too. No script uploads your data; [a few steps download public files](https://geiserx.github.io/OwnGenome/why-local/#network-calls-during-a-run) during a run.
 - One Nextflow DSL2 pipeline from FASTQ, BAM or VCF to the report, and every step also as a bash script you can run on its own.
 - Optional family analysis of two or more processed relatives (step 38, a pedigree file): a GLnexus joint call, a somalier check that the samples are the people the pedigree says, which allele a child got from each parent, de novo candidates with both parents, and compound heterozygotes in trans or in cis ([multi-sample](https://geiserx.github.io/OwnGenome/multi-sample/#family-analysis-step-38-opt-in)).
 - Optional couple carrier screen for two partners of the pedigree (step 39): the recessive genes where both carry a change (ClinVar hits, deletions, SMN1 copy loss, FMR1 and FXN repeats) with the chance for a child, the X-linked findings, and what the screen does not see ([step 39](https://geiserx.github.io/OwnGenome/39-couple/)).
-- On the live site, a page per family: the pedigree drawn from the family file, each child's chromosome map, the relationship check, the shared segments and the couple screen ([family page](https://geiserx.github.io/OwnGenome/multi-sample/#on-the-live-site)).
+- On the live site, a page per family: a pedigree where each sequenced person opens their own page, the couple screen, who is related how as a grid, each child's stretches painted by parent, the de novo and compound-het candidates, and the members' medicines genes and haplogroups side by side ([family page](https://geiserx.github.io/OwnGenome/multi-sample/#on-the-live-site)).
 - Ends in an HTML report and a MultiQC summary. Alternative callers (GATK, FreeBayes, Strelka2, Octopus, BWA-MEM2, TIDDIT, GRIDSS) are there for benchmarking.
 
 ## Quick start
@@ -45,6 +45,7 @@ This pipeline takes raw sequencing data (FASTQ/BAM/VCF) from any vendor and runs
 Put the reads at `$GENOME_DIR/<sample>/fastq/<sample>_R1.fastq.gz` and `_R2.fastq.gz` (a BAM or a VCF works too), then:
 
 ```bash
+git clone https://github.com/GeiserX/OwnGenome.git && cd OwnGenome   # main; `git checkout <tag>` for a release
 export GENOME_DIR=/path/to/your/data SAMPLE=your_name
 ./scripts/setup.sh $GENOME_DIR          # the GRCh38 reference, ClinVar and the images, once
 ./scripts/validate-setup.sh $SAMPLE
@@ -65,7 +66,7 @@ The full documentation is at **https://geiserx.github.io/OwnGenome/**, one page 
 - [Vendor compatibility guide](https://geiserx.github.io/OwnGenome/vendor-guide/): what each provider delivers and how to get it
 - [Pipeline overview](https://geiserx.github.io/OwnGenome/pipeline-overview/): every step with its tool and image, which ones a default run includes, and the page for each step
 - [Nextflow](https://geiserx.github.io/OwnGenome/nextflow/): the workflow runner, parallel steps and resume
-- [Watch a run live](https://geiserx.github.io/OwnGenome/live-site/): a step map in the browser while the run goes, behind a password. The [demo](https://geiserx.github.io/OwnGenome/demo/) replays an invented run
+- [Watch a run live](https://geiserx.github.io/OwnGenome/live-site/): each genome as a report that leads with what to take to a doctor, a page per finding, a report per family, and a folded timeline of the steps at the end of each report, behind a password. The [demo](https://geiserx.github.io/OwnGenome/demo/) replays an invented run
 - [Interpreting your results](https://geiserx.github.io/OwnGenome/interpreting-results/): what each report means and what to do with it
 - [Multi-sample comparison](https://geiserx.github.io/OwnGenome/multi-sample/): partners, siblings, parents
 - [Long-read guide](https://geiserx.github.io/OwnGenome/long-read-guide/): Nanopore and PacBio HiFi

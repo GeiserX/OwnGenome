@@ -85,10 +85,57 @@ def ancient_lines(d):
 
 
 COUPLE_NOTE = ("A screen, not a diagnosis: the couple report (couple_<a>_<b>.md in the family folder) lists the "
-               "genes, variant types and repeats it does not see. See a genetic counsellor before acting on a "
-               "result, or on its absence (docs/39-couple.md).")
+               "genes, variant types and repeats it does not see. These counts are of its gene table: a carrier "
+               "deletion allele from read depth (step 35), and a possible shared risk it adds, is in that report "
+               "only. See a genetic counsellor before acting on a result, or on its absence (docs/39-couple.md).")
 PRS_ANCESTRY_NOTE = ("Most PRS scores were developed in European-ancestry populations and predict less well for "
                      "other ancestries, even with an ancestry-adjusted percentile.")
+# The caveats of the sections that had none, printed by both reports and the live site.
+PHARMCAT_NOTE = ("PharmCAT calls star alleles and phenotypes from the variants this genome holds in the genes it "
+                 "covers. A variant it cannot see (a deletion, a duplication, a hybrid gene outside CYP2D6) is not in "
+                 "its answer. Its drug guidance is for a prescriber to read with you: never change a medicine on "
+                 "this report alone.")
+CPIC_NOTE = ("CPIC recommendations follow the phenotype PharmCAT called. They are guidance for prescribers, not a "
+             "prescription. A gene that was not called has no recommendation here, and that is not the same as a "
+             "typical response.")
+PGX_CALLERS_NOTE = ("CYP2D6 sits beside its look-alike CYP2D7, and short reads often cannot tell them apart, so "
+                    "pypgx, Cyrius and step 36 can disagree or give no call. A disagreement or a missing call means "
+                    "the gene was not read reliably here; a clinical CYP2D6 test settles it.")
+CPSR_NOTE = ("CPSR grades variants in cancer predisposition genes with ACMG rules. A pathogenic or likely pathogenic "
+             "row is something to take to a clinical geneticist, not a diagnosis. No row does not rule out an "
+             "inherited cancer risk: large deletions, genes outside its panel and family history are not part of "
+             "this screen.")
+VNTYPER_NOTE = ("The MUC1 repeat is long and GC-rich, and short reads cover it unevenly. VNtyper looks only for "
+                "known frameshifts in it: a negative result lowers the chance of those and does not rule out "
+                "ADTKD-MUC1, and a positive one needs a clinical test (SNaPshot for dupC) to confirm it.")
+SV_CALLERS_NOTE = ("Short reads find large deletions and duplications better than insertions and inversions, and "
+                   "the callers disagree on many events. The totals count every call, most of them common in the "
+                   "population; only the AnnotSV class 4 and 5 rows are graded for disease.")
+COVERAGE_NOTE = ("Mean depth is an average over the genome: some genes get far fewer reads, and the gene "
+                 "callability card lists those. The sex, identity and contamination checks catch a swapped or "
+                 "mixed sample, not every lab error.")
+VARIANTS_NOTE = ("Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 "
+                 "million, most of them common. PASS calls passed the caller's filter; a count says nothing about "
+                 "health on its own.")
+LPA_NOTE = ("The KIV-2 repeat count from read depth is a research estimate, not an Lp(a) level: the level is a "
+            "blood test, and the count explains only part of the difference between people.")
+LPA_NULL_CAVEAT = ("A null allele lowers the Lp(a) made from the copies it sits on; the Lp(a) blood test is the "
+                   "measure.")
+SMN1_MARKER_CAVEAT = ("The marker raises the chance that two SMN1 copies sit on one chromosome (2+0, a silent carrier); "
+                      "it does not prove 2+0, and a carrier test in a clinical laboratory confirms it.")
+
+
+def marker_state(m):
+    """A copy-aware marker's state in a few words (collect_summary.read_marker_table):
+    present or uncertain with the reads and the copies that carry it, not seen
+    with the reads, too little depth, or not assessed."""
+    st = m.get("status") or "not assessed"
+    if st == "not assessed":
+        return st
+    out = f"{st}, {m.get('alt_reads', '.')} of {m.get('depth', '.')} reads carry it"
+    if m.get("copies") not in (None, "", "."):
+        out += f", about {m['copies']} copies"
+    return out
 
 
 def combined_cell(h):
@@ -392,6 +439,9 @@ def pgx_copy_number(S):
 MISSING = {"title": "", "state": "missing", "note": None, "data": {}}
 
 
+SEX_CHECK_AGREE = "declared and measured sex agree"
+
+
 def freemix_text(q):
     """FREEMIX with its verdict, as both reports print it."""
     if q.get("contamination") == "not_run" or not q.get("freemix"):
@@ -656,6 +706,8 @@ def traits_text(d, sample):
         for r in d["rules"]:
             out.append(f"    {r['trait']} ({r['gene']} {r['rsids'].replace(',', ', ')}): {rule_result(r)}. "
                        f"{r['reading']} (PMID {r['pmids']})")
+            if r.get("g2"):
+                out.append(f"      With G2 (rs71785313): {g2_result(r)}. {r['g2']['text']} {r['g2']['reading']}")
     if d.get("apoe"):
         out.append(f"  {APOE_WARNING}")
         for r in d["apoe"]:
@@ -674,6 +726,26 @@ def rule_result(r):
     return res + (f" ({ph})" if ph else "")
 
 
+def g2_result(r):
+    """The APOL1 rule's result with G2 (collect_summary's g2), or None for any other rule."""
+    g2 = r.get("g2")
+    if not g2:
+        return None
+    return g2["result"] if g2["result"] != "." else "not read"
+
+
+def g2_result_html(r):
+    res = g2_result(r)
+    return f"<br>With G2: {E(res)}" if res else ""
+
+
+def g2_reading_html(r):
+    g2 = r.get("g2")
+    if not g2:
+        return ""
+    return f"<br>With G2: {E(g2['reading'])}<br><span style=\"font-size:12px;color:#666\">{E(g2['text'])}</span>"
+
+
 def rules_html(d, sample):
     """The genotype rules table of the traits card."""
     rows = []
@@ -681,7 +753,8 @@ def rules_html(d, sample):
         anc = " " + badge("ancestry", "yellow") if r["ancestry"] == "yes" else ""
         rows.append(f"      <tr><td>{E(r['trait'])}</td><td>{E(r['gene'])}<br><span style=\"font-size:12px;color:#666\">"
                     f"{E(r['rsids'].replace(',', ', '))}</span></td><td>{E(r['genotypes'].replace(',', ', '))}</td>"
-                    f"<td>{E(rule_result(r))}{anc}</td><td>{E(r['reading'])}<br><span style=\"font-size:12px;color:#666\">"
+                    f"<td>{E(rule_result(r))}{anc}{g2_result_html(r)}</td><td>{E(r['reading'])}{g2_reading_html(r)}"
+                    f"<br><span style=\"font-size:12px;color:#666\">"
                     f"{E(r['note'])}</span></td><td>PMID {E(r['pmids'])}</td></tr>")
     if not rows:
         return []
@@ -862,6 +935,48 @@ CHAPTERS = (
 )
 # The section id of each summary key.
 SECTION_OF = {k: sid for _, _, _, secs in CHAPTERS for sid, _, keys in secs for k in keys}
+# The caveats of each section, by constant name, in the order the card shows them: the first is the
+# one the live site shows under a card's title. caveat_notes() is unkeyed, so the live site
+# (bin/live_results.py) reads this map; tests/test_live_results.py checks every section id has one.
+SECTION_NOTES = {
+    "qc": ("COVERAGE_NOTE", "KARYOTYPE_NOTE"),
+    "callability": ("CALLABILITY_NOTE",),
+    "variants": ("VARIANTS_NOTE",),
+    "clinvar": ("CLINVAR_FREQ_NOTE", "CDNA_SCAN_NOTE", "DEEP_INTRONIC_NOTE"),
+    "clinical-filter": ("ACMG_NOTE",),
+    "cpsr": ("CPSR_NOTE",),
+    "slivar": ("COMPHET_NOTE",),
+    "exomiser": ("EXOMISER_NOTE",),
+    "structural-variants": ("SV_CALLERS_NOTE", "ANNOTSV_NOTE", "CNVPYTOR_NOTE"),
+    "mei": ("MEI_NOTE",),
+    "expansions": ("EH_NOTE", "NOT_GRADED_NOTE", "RFC1_NOTE"),
+    "vntyper": ("VNTYPER_NOTE",),
+    "mito": ("MITO_NOTE", "MITO_POLYC_NOTE", "MITO_DELETION_NOTE", "MITO_COPIES_NOTE"),
+    "lpa": ("LPA_NOTE",),
+    "chip": ("CHIP_NOTE",),
+    "mosaic": ("MOSAIC_NOTE",),
+    "mosaic-mca": ("MCA_NOTE",),
+    "carrier-list": ("CARRIER_NOTE",),
+    "couple": ("COUPLE_NOTE",),
+    "paralogs": ("PARASCOPY_NOTE", "PARALOG_NOTE", "PARASCOPY_LOCI_NOTE"),
+    "pharmcat": ("PHARMCAT_NOTE",),
+    "cpic": ("CPIC_NOTE",),
+    "cyp2d6": ("PGX_CALLERS_NOTE",),
+    "hla": ("HLA_NOTE", "HLA_DERIVED_NOTE", "KIR_NOTE"),
+    "locityper": ("LOCITYPER_NOTE",),
+    "ancestry-fine": ("ANCESTRY_FINE_NOTE",),
+    "mt-haplogroup": ("EXPLORE_NOTE",),
+    "y-chromosome": ("Y_TREE_NOTE", "YSTR_NOTE", "EXPLORE_NOTE"),
+    "archaic": ("ARCHAIC_NOTE",),
+    "ancient": ("ANCIENT_NOTE",),
+    "roh": ("ROH_NOTE", "ROH_UPD_NOTE", "ROH_F_NOTE", "ROH_BAND_NOTE"),
+    "traits-panel": ("TRAITS_NOTE",),
+    "prs": ("PRS_ANCESTRY_NOTE",),
+    "bloodtype": ("BLOODTYPE_NOTE",),
+    "telomere": ("TELOMERE_NOTE",),
+    "viral": ("VIRAL_NOTE",),
+    "consumer-export": ("CONSUMER_NOTE",),
+}
 
 
 def section_keys(sid):
@@ -950,7 +1065,8 @@ def text_report(s):
         if sqc["state"] in ("ok", "stale"):
             q = sqc["data"]
             w(f"  Sex from the reads (somalier): {q.get('inferred_sex')}"
-              + ("  ** DOES NOT MATCH the declared sex **" if q.get("sex_check") == "mismatch" else ""))
+              + ("  ** DOES NOT MATCH the declared sex **" if q.get("sex_check") == "mismatch" else "")
+              + (f" ({SEX_CHECK_AGREE})" if q.get("sex_check") == "ok" else ""))
             if q.get("sex_check") == "not_checked":
                 w(f"    not checked: {q.get('sex_check_reason')}")
             w(f"  Contamination (VerifyBamID2 FREEMIX): {freemix_text(q)}")
@@ -958,6 +1074,7 @@ def text_report(s):
                 w(f"  ** The same person as: {q['same_person_as']} (a duplicate or a sample swap) **")
         for line in karyotype_lines(S):
             w(f"  {line}")
+        w(f"  {COVERAGE_NOTE}")
         w("")
 
     if head("callability", "Genes This Genome Could Not Read Reliably"):
@@ -980,6 +1097,7 @@ def text_report(s):
         w(f"  Total variants: {d['total']}")
         w(f"  PASS variants:  {d['pass']}")
         w(f"  SNPs: {d['snps']}  Indels: {d['indels']}")
+        w(f"  {VARIANTS_NOTE}")
         w("")
 
     if head("clinvar", "ClinVar Pathogenic Screen"):
@@ -1042,6 +1160,7 @@ def text_report(s):
         w(f"  Report: {S['pharmcat']['source']} (PharmCAT {d.get('version') or 'version unknown'})")
         if d.get("html_report"):
             w("  HTML report beside it (open in a browser for full details)")
+        w(f"  {PHARMCAT_NOTE}")
         w("")
 
     if head("cpic", "CPIC Drug-Gene Recommendations"):
@@ -1057,6 +1176,7 @@ def text_report(s):
         for warn in d["warnings"]:
             w(f"  WARNING: {warn}")
         w(f"  Drugs per gene: {os.path.join(os.path.dirname(S['cpic']['source']), s['sample'] + '_cpic_recommendations.txt')}")
+        w(f"  {CPIC_NOTE}")
         w("")
 
     if head("pypgx", "pypgx Pharmacogenomics"):
@@ -1097,6 +1217,7 @@ def text_report(s):
             w(f"  Step 36: {verdict}")
         if s["cyp2d6"].get("probable"):
             w(f"  {s['cyp2d6']['probable']['label'].capitalize()}: {probable_text(s['cyp2d6']['probable'])}")
+        w(f"  {PGX_CALLERS_NOTE}")
         w("")
 
     if head("paralogs", "Paralog Genes (Paraphase, PacBio HiFi)"):
@@ -1109,6 +1230,8 @@ def text_report(s):
         for line in parascopy_lines(S["parascopy"]["data"]):
             w(f"  {line}")
         for line in parascopy_locus_lines(S["parascopy"]["data"]):
+            w(f"  {line}")
+        for line in cn_interval_lines(S["parascopy"]["data"].get("cn_intervals")):
             w(f"  {line}")
         w(f"  {PARASCOPY_NOTE}")
         w("")
@@ -1174,18 +1297,25 @@ def text_report(s):
         w(f"  {ANCESTRY_FINE_NOTE}")
         w("")
 
+    sv_note = [f"  {SV_CALLERS_NOTE}"]  # printed once, under the first structural caller with results
     if head("manta", "Structural Variants (Manta)"):
         d = S["manta"]["data"]
         w(f"  Total SVs: {d['total']}  PASS: {d['pass']}")
+        while sv_note:
+            w(sv_note.pop())
         w("")
     if head("delly", "Structural Variants (Delly)"):
         d = S["delly"]["data"]
         w(f"  Total SVs: {d['total']}  PASS: {d['pass']}")
+        while sv_note:
+            w(sv_note.pop())
         w("")
     if head("cnvpytor", "Copy Number Variants (CNVpytor)"):
         d = S["cnvpytor"]["data"]
         w(f"  Total CNVs: {d['total']} ({d['deletions']} deletions, {d['duplications']} duplications)")
         w(f"  Significant (e-val < 0.01): {d['significant']}")
+        while sv_note:
+            w(sv_note.pop())
         filt = cnvpytor_filtered_text(d)
         if filt:
             w(f"  Significant after filters: {filt}")
@@ -1321,11 +1451,13 @@ def text_report(s):
     if head("lpa", "Lp(a): LPA KIV-2 Repeat Count and Risk Variants"):
         for line in lpa_lines(S["lpa"]["data"]):
             w(f"  {line}")
+        w(f"  {LPA_NOTE}")
         w("")
 
     if head("vntyper", "MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)"):
         for line in vntyper_lines(S["vntyper"]["data"]):
             w(f"  {line}")
+        w(f"  {VNTYPER_NOTE}")
         w("")
 
     if head("chip", "Clonal Haematopoiesis (CHIP, step 49)"):
@@ -1388,6 +1520,7 @@ def text_report(s):
             w("  Classification table has no CLASSIFICATION column.")
         for line in cpsr_lines(d, s["databases"]):
             w(f"  {line}")
+        w(f"  {CPSR_NOTE}")
         w("")
 
     if head("clinical", "Clinical Variant Filter"):
@@ -1671,10 +1804,12 @@ def paralog_lines(d):
     return out
 
 
-PARASCOPY_NOTE = ("Parascopy reads short reads at SMN1 and SMN2 and at the other loci of its catalog; CYP21A2 has "
-                  "no Parascopy model and is not assessed. A quality under 20 or a filter other than PASS leaves a copy unresolved. HBA1 and "
-                  "HBA2 have no Parascopy model either: step 35 counts the alpha-globin genes together from read "
-                  "depth against flanking sequence, which cannot say which gene or which chromosome lost a copy. "
+PARASCOPY_NOTE = ("Parascopy reads short reads at SMN1 and SMN2 and at the other loci of its catalog. A quality "
+                  "under 20 or a filter other than PASS leaves a copy unresolved. HBA1 and HBA2, CYP21A2 and the "
+                  "gene-dosage loci have no Parascopy model: step 35 counts them from read depth against flanking "
+                  "sequence (CYP21A2 also from six sites where it differs from its pseudogene CYP21A1P), which "
+                  "cannot say which chromosome lost or gained a copy. The copy-number intervals (ClinGen's "
+                  "recurrent CNV regions, carrier deletion alleles, the AZF regions) are read from depth too. "
                   "A research estimate, not a diagnostic test: confirm a result with a clinical laboratory (MLPA "
                   "or qPCR; gap-PCR for alpha-thalassaemia).")
 
@@ -1682,11 +1817,103 @@ PARASCOPY_NOTE = ("Parascopy reads short reads at SMN1 and SMN2 and at the other
 def parascopy_lines(d):
     """Step 35's lines, the same in both reports."""
     smn1, smn2 = d.get("smn1") or {}, d.get("smn2") or {}
-    return [f"SMN1 copies: {smn1.get('text', '.')}",
+    mk = d.get("smn1_marker")
+    marker = ([f"SMN1 g.27134T>G silent-carrier marker ({mk.get('rsid') or '.'}): {marker_state(mk)}",
+               f"SMN1 marker reading: {mk.get('message', '.')}",
+               f"SMN1 marker caveat: {SMN1_MARKER_CAVEAT}"] if mk else [])
+    return [f"SMN1 copies: {smn1.get('text', '.')}"] + marker + [
             f"SMN2 copies: {smn2.get('text', '.')}",
             f"SMN1 and SMN2 together (agCN) at exon 7: {d.get('agcn', '.')} (quality {d.get('agcn_qual', '.')}, "
             f"filter {d.get('agcn_filter', '.')})",
-            f"Reading: {d.get('reading', '.')}"] + ([hba_line(d["hba"])] if d.get("hba") else [])
+            f"Reading: {d.get('reading', '.')}"] + ([hba_line(d["hba"])] if d.get("hba") else []) \
+        + [cyp21a2_line(d.get("cyp21a2"))] + dosage_lines(d.get("dosage"))
+
+
+def cyp21a2_line(c):
+    """Step 35's CYP21A2 call from depth and PSV sites, one line; not
+    assessed only when the table says so or is not there."""
+    label = "CYP21A2 (RCCX module, from depth and six PSV sites)"
+    if not c:
+        return f"{label}: not assessed (step 35's <id>_cyp21a2_psv.tsv is not in this run's output)"
+    if c.get("status") != "called":
+        why = c.get("message") or c.get("reason") or "."
+        return f"{label}: not assessed ({why.removeprefix('not assessed: ')})"
+    value = (f"{c.get('cyp21a2_copies', '.')} CYP21A2 copies, module total {c.get('module_total', '.')} of "
+             f"{c.get('expected_total', '.')}, finding {c.get('finding', '.')}")
+    if c.get("conversion_sites", ".") != ".":
+        value += f" at {c['conversion_sites']}"
+    if c.get("reading", ".") != ".":
+        value += f". Reading: {c['reading']}"
+    return f"{label}: {value}"
+
+
+DOSAGE_NAMES = {"HP": "HP (haptoglobin)", "LCE3BC": "LCE3B/LCE3C", "CCL3L1": "CCL3L1/CCL3L3"}
+
+
+def dosage_lines(rows):
+    """Step 35's gene-dosage loci (HP, LCE3BC, CCL3L1), one line each."""
+    if rows is None:
+        return ["Gene-dosage loci (HP, LCE3B/LCE3C, CCL3L1): not assessed (step 35's <id>_cn_dosage.tsv is not "
+                "in this run's output)"]
+    if not rows:
+        return ["Gene-dosage loci (HP, LCE3B/LCE3C, CCL3L1): not assessed (step 35's dosage table has no row)"]
+    out = []
+    for r in rows:
+        label = f"{DOSAGE_NAMES.get(r['locus'], r['locus'])} copies (from depth)"
+        if r["status"] == "called":
+            value = f"{r['copies']} (estimate {r['estimate']})"
+            if r["reading"] != ".":
+                value += f". Reading: {r['reading']}"
+        else:
+            value = f"{r['status']} ({r['reason']})"
+        out.append(f"{label}: {value}")
+    return out
+
+
+CN_INTERVALS_LABEL = "Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth)"
+
+
+def cn_interval_summary(iv):
+    """The interval table in one line: rows by status and how many changed."""
+    if iv is None:
+        return f"{CN_INTERVALS_LABEL}: not assessed (step 35's <id>_cn_intervals.tsv is not in this run's output)"
+    counts = ", ".join(f"{n} {k}" for k, n in sorted((iv.get("by_status") or {}).items())) or "no row"
+    n = len(iv.get("changes") or [])
+    k = (iv.get("by_status") or {}).get("called", 0)
+    # Rows that were not called are no negative result: with none called the
+    # line says so instead of "no deletion or duplication".
+    end = (f"{n} with a deletion or a duplication" if n else
+           f"no deletion or duplication among the {k} called rows" if k else "none called")
+    return f"{CN_INTERVALS_LABEL}: {iv.get('rows', 0)} rows ({counts}); {end}"
+
+
+def cn_interval_place(r):
+    """chrom:start-end (1-based) of an interval row of the table (BED)."""
+    b = r.get("start", ".")
+    return f"{r.get('chrom', '.')}:{int(b) + 1 if str(b).isdigit() else b}-{r.get('end', '.')}"
+
+
+def cn_interval_lines(iv):
+    """The interval table for the text report: the summary, then one line per
+    row with a deletion or a duplication."""
+    return [cn_interval_summary(iv)] + [
+        f"  {r['change'].capitalize()}: {r['name']} ({r['locus']}, {cn_interval_place(r)}), "
+        f"{r['copies']} of {r['expected']} copies" for r in (iv or {}).get("changes") or []]
+
+
+def cn_intervals_html(iv):
+    """The interval table for the HTML card: the summary, then a table of the
+    rows with a deletion or a duplication."""
+    label, value = cn_interval_summary(iv).split(": ", 1)
+    out = [stat(label, E(value))]
+    changes = (iv or {}).get("changes") or []
+    if changes:
+        rows = "".join(f"<tr><td>{E(r['name'])}</td><td>{E(r['locus'])}</td><td>{E(cn_interval_place(r))}</td>"
+                       f"<td>{E(r['copies'])} of {E(r['expected'])}</td><td>{E(r['change'])}</td></tr>"
+                       for r in changes)
+        out.append("    <table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th><th>Change</th></tr>"
+                   + rows + "</table>")
+    return out
 
 
 PARASCOPY_LOCI_NOTE = ("The other loci of step 35's catalog (assets/paralog_loci.tsv): agCN is the copies of the "
@@ -1941,6 +2168,10 @@ def lpa_lines(d):
     else:
         out = [f"KIV-2 repeats: {d.get('status', '.')}"]
     out.append(f"  {d.get('message', '.')}")
+    na = d.get("null_allele")
+    if na:
+        out += [f"KIV-2 4925G>A null allele ({(na.get('rsid') or '.').split(' ')[0]}): {marker_state(na)}",
+                f"  {na.get('message', '.')}", f"  {LPA_NULL_CAVEAT}"]
     for v in d.get("variants", []):
         n = v["risk_alleles"]
         out.append(f"{v['rsid']}: {v['genotype']} ({'not read' if n is None else str(n) + ' risk allele' + ('s' if n != 1 else '')})")
@@ -2438,6 +2669,7 @@ def html_report(s, index=None):
         qc.append(stat("Identity and contamination (step 33)", badge("Not run", "gray")))
     kl = karyotype_lines(S)
     qc += [stat("Sex chromosomes", badge(x.split(": ", 1)[1], "red")) for x in kl[:-1]] + [small_note(x) for x in kl[-1:]]
+    qc.append(small_note(COVERAGE_NOTE))
     qc_note = [f'    <div class="stale">{E(sec["title"] + ": " + stale_note(sec))}</div>'
                for sec in (cov, sexc, sqc, rdc) if stale_note(sec)]
     a("coverage", ['  <div class="card">', "    <h2>Quality Control</h2>"] + qc_note + qc + ["  </div>"])
@@ -2461,7 +2693,8 @@ def html_report(s, index=None):
 
     v = S["variants"]["data"]
     a("variants", card(S["variants"], "Variant Calling", [stat("Total variants", v.get("total")), stat("PASS variants", v.get("pass")),
-                                              stat("SNPs", v.get("snps")), stat("Indels", v.get("indels"))]))
+                                              stat("SNPs", v.get("snps")), stat("Indels", v.get("indels")),
+                                              small_note(VARIANTS_NOTE)]))
 
     c = S["clinvar"]["data"]
     n = c.get("count", 0)
@@ -2499,12 +2732,14 @@ def html_report(s, index=None):
 
     pg = S["pharmcat"]["data"]
     cp = S["cpic"]["data"]
-    pgx_body = [stat("PharmCAT report", badge("Complete", "green") if S["pharmcat"]["state"] in ("ok", "stale")
+    # Never green: a report that was written is not a finding (the frame's own Complete badge is neutral too).
+    pgx_body = [stat("PharmCAT report", badge("Complete", "state") if S["pharmcat"]["state"] in ("ok", "stale")
                      else badge("Not run", "gray"))]
     if pg.get("version"):
         pgx_body.append(stat("PharmCAT version", E(pg["version"])))
     if S["pypgx"]["state"] in ("ok", "stale") and "comparison" in S["pypgx"]["data"]:
         pgx_body.append(stat("PharmCAT vs pypgx conflicts", S["pypgx"]["data"]["comparison"]["conflicts"]))
+    pgx_body.append(small_note(PHARMCAT_NOTE))
     a("pharmcat", card(S["pharmcat"], "Pharmacogenomics", pgx_body))
     if S["pypgx"]["state"] != "missing":
         pd = S["pypgx"]["data"]
@@ -2526,6 +2761,7 @@ def html_report(s, index=None):
         cpic_body.append(stat("PharmCAT report", badge("could not be parsed", "red")))
     cpic_body.append(stat("Tip", '<span style="font-weight:normal;font-size:13px">Recommendations per gene: '
                                  f'cpic/{E(s["sample"])}_cpic_recommendations.txt</span>'))
+    cpic_body.append(small_note(CPIC_NOTE))
     a("cpic", card(S["cpic"], "CPIC Drug Recommendations", cpic_body))
 
     calls = s["cyp2d6"]["calls"]
@@ -2535,13 +2771,14 @@ def html_report(s, index=None):
                         if agree is False else badge("fewer than two usable calls", "gray")))
     cons = s["cyp2d6"].get("consensus")
     if cons:
-        cy_body.append(stat("Step 36", badge(cons.get("result") or "?", "green" if cons.get("passed_to_pharmcat")
+        cy_body.append(stat("Step 36", badge(cons.get("result") or "?", "state" if cons.get("passed_to_pharmcat")
                                              else "yellow")))
         cy_body.append(small_note(("Passed to PharmCAT: " if cons.get("passed_to_pharmcat") else "Not passed to PharmCAT: ")
                                   + (cons.get("reason") or "no reason given")))
     prob = s["cyp2d6"].get("probable")
     if prob:
         cy_body.append(stat(prob["label"].capitalize(), E(probable_text(prob))))
+    cy_body.append(small_note(PGX_CALLERS_NOTE))
     a("cyrius", ["  <div class=\"card\">", "    <h2>CYP2D6 Across Callers</h2>"]
       + [f'    <div class="stale">{E(S[k]["title"] + ": " + stale_note(S[k]))}</div>'
          for k in ("cpic", "pypgx", "cyrius") if S[k]["state"] in ("stale", "failed")]
@@ -2581,6 +2818,7 @@ def html_report(s, index=None):
     if cnvpytor_filtered_text(cn):
         sv_body += [stat("CNVpytor significant after filters", E(cnvpytor_filtered_text(cn))), small_note(CNVPYTOR_NOTE)]
     sv_body.append(stat("Consensus SVs (2+ callers)", sv.get("consensus", "N/A")))
+    sv_body.append(small_note(SV_CALLERS_NOTE))
     notes = [f'    <div class="stale">{E(S[k]["title"] + ": " + stale_note(S[k]))}</div>'
              for k in ("manta", "delly", "cnvpytor", "sv_consensus") if stale_note(S[k])]
     a("manta", ['  <div class="card">', "    <h2>Structural Variants</h2>"] + notes + sv_body + ["  </div>"])
@@ -2609,10 +2847,11 @@ def html_report(s, index=None):
         a("annotsv", card(S["annotsv"], "Structural Variants, Class 4 and 5 (AnnotSV)", body, full=True))
 
     cs = S["cpsr"]["data"]
-    cpsr_body = [stat("CPSR report", badge("Complete", "green") if cs.get("html_report") else badge("No HTML", "gray"))]
+    cpsr_body = [stat("CPSR report", badge("Complete", "state") if cs.get("html_report") else badge("No HTML", "gray"))]
     for k, val in (cs.get("classification") or {}).items():
         cpsr_body.append(stat(k, val))
     cpsr_body += [small_note(line.strip()) for line in cpsr_lines(cs, s["databases"])]
+    cpsr_body.append(small_note(CPSR_NOTE))
     a("cpsr", card(S["cpsr"], "Cancer Predisposition", cpsr_body))
 
     eh = S["expansions"]["data"]
@@ -2684,8 +2923,10 @@ def html_report(s, index=None):
     if S.get("parascopy", MISSING)["state"] != "missing":
         a("parascopy", card(S["parascopy"], "SMN1/SMN2 Copy Number (Parascopy)",
                [stat("Status", done_badge(S["parascopy"]))]
-               + [stat(*(E(x) for x in line.split(": ", 1))) for line in parascopy_lines(S["parascopy"]["data"])]
+               # stat escapes the label itself; the value is escaped here
+               + [stat(lab, E(val)) for lab, val in (line.split(": ", 1) for line in parascopy_lines(S["parascopy"]["data"]))]
                + parascopy_loci_html(S["parascopy"]["data"])
+               + cn_intervals_html(S["parascopy"]["data"].get("cn_intervals"))
                + [small_note(PARASCOPY_NOTE)]))
     unchecked = paralogs_unchecked(S)
     if unchecked:
@@ -2718,13 +2959,13 @@ def html_report(s, index=None):
         lp = S["lpa"]["data"]
         a("lpa", card(S["lpa"], "Lp(a): LPA KIV-2 Repeat Count",
                ([stat("Genetic sign of high Lp(a)", badge("Yes", "yellow"))] if lp.get("flag") == "high" else [])
-               + [f"    <p>{E(line)}</p>" for line in lpa_lines(lp)]))
+               + [f"    <p>{E(line)}</p>" for line in lpa_lines(lp)] + [small_note(LPA_NOTE)]))
     if S.get("vntyper", MISSING)["state"] != "missing":
         vn = S["vntyper"]["data"]
         a("vntyper", card(S["vntyper"], "MUC1 VNTR Frameshifts (VNtyper)",
                ([stat("Result", badge(vn.get("status", "."), {"positive": "red", "possible": "yellow",
                                                               "negative": "green"}.get(vn.get("status"), "gray")))])
-               + [f"    <p>{E(line)}</p>" for line in vntyper_lines(vn)]))
+               + [f"    <p>{E(line)}</p>" for line in vntyper_lines(vn)] + [small_note(VNTYPER_NOTE)]))
     if S.get("viral", MISSING)["state"] != "missing":
         a("viral", card(S["viral"], "Viral DNA in the Unmapped Reads", viral_body(S["viral"]["data"]), full=True))
     if S.get("chip", MISSING)["state"] != "missing":

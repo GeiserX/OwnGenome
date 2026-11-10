@@ -32,7 +32,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. 
 
 The panel is the HPRC release 2 Minigraph-Cactus pangenome against GRCh38, as a VCF (`LOCITYPER_PANEL_URL`, `LOCITYPER_PANEL_VERSION` in `versions.env`). It holds the two haplotypes of each of its 232 samples. The full VCF is 6.7 GB; `setup.sh` reads only the loci and 250 kb either side, over https, through the VCF's `.tbi`, whose sha256 `LOCITYPER_PANEL_TBI_SHA256` pins. Nothing of it is committed. The pin covers the index, not the records: they are trusted as the HPRC's S3 bucket serves them over https, as for the other data `setup.sh` reads in place. A changed file with the same index would build without an error.
 
-Then it follows Locityper's documentation (https://locityper.vercel.app, "Preparing targets"): jellyfish counts the 25-mers of `REF_FASTA`, `locityper target` cuts the panel's haplotypes at each locus, and `locityper augment` aligns them to each other, which the weighted distance needs. A new reference, image, panel or locus list builds again. `LOCITYPER_DATA` puts the database elsewhere and `LOCITYPER_LOCI` replaces the locus list.
+Then it follows Locityper's documentation (https://locityper.vercel.app, "Preparing targets"): jellyfish counts the 25-mers of `REF_FASTA` (its hash table sized to the reference's length from the `.fai`, at least 10 million entries, so a small reference does not reserve the memory all of GRCh38 needs: on the 235 Mb reference of the e2e case `ci-e2e-2-locityper` the count took 36 minutes with a table fixed at 3G entries and takes 36 seconds now, and the case went from 2,289 to 142 seconds), `locityper target` cuts the panel's haplotypes at each locus, and `locityper augment` aligns them to each other, which the weighted distance needs. A new reference, image, panel or locus list builds again. `LOCITYPER_DATA` puts the database elsewhere and `LOCITYPER_LOCI` replaces the locus list.
 
 ## The loci
 
@@ -51,6 +51,7 @@ We left C4, AMY1 and LPA out. They are not in the authors' database, and on the 
 ## Input
 
 - `${SAMPLE}/aligned/${SAMPLE}_sorted.bam` with its `.bai`, aligned to `REF_FASTA`, the reference the database was built from. Locityper reads the BAM's contigs by their order in the reference.
+- The database `setup.sh --locityper-data` built, with its `DONE` (written last). `DONE` names the sha256 of the `.fai` and of the FASTA it was built from. Step 53 and the Nextflow `LOCITYPER` stop before Locityper runs when `DONE` is missing or names another `.fai` or FASTA: a FASTA with the same contigs and other bases is another reference. Hashing a GRCh38 FASTA takes about 10 to 20 seconds.
 
 ## Command
 
@@ -66,7 +67,7 @@ With `run-all.sh`: `TOOLS=...,locityper`. It is opt-in, so a run lists step 53 o
 
 `bin/locityper_report.py` reads `gt/loci/<locus>/res.json.gz` and writes one row per locus. A locus Locityper did not finish reads "not called", with Locityper's exit code when it stopped.
 
-The filter is the one the authors used for their HLA and KIR benchmark (Zenodo 15879519, README): a call passes with no Locityper warning, a weighted distance of 30 or less, and fewer than 1000 or fewer than 20% unexplained reads. The weighted distance is the edit distance from the call to the other likely genotypes, weighted by their probability: a high value means the reads fit very different genotypes about as well.
+The filter is the one the authors used for their HLA and KIR benchmark (Zenodo 15879519, README): a call passes with no Locityper warning, a weighted distance of 30 or less, and fewer than 1000 or fewer than 20% unexplained reads. A call whose result gives no read counts fails it, and its `total_reads` and `unexplained_reads` read `.`. The weighted distance is the edit distance from the call to the other likely genotypes, weighted by their probability: a high value means the reads fit very different genotypes about as well.
 
 Locityper names haplotypes of panel people, such as `HG00733.1`, not alleles. The two callers are shown side by side and not compared: an allele name from T1K and a panel haplotype are not the same kind of answer.
 
@@ -87,7 +88,7 @@ Both reports carry a section "Locityper Second Opinion at Hard Loci" in the medi
 
 ## How it was checked
 
-The image test (`tests/smoke/locityper.sh`, the `LOCITYPER_IMAGE` row of `tests/smoke/commands.tsv`) runs the database build and the step on the fixture's GIAB HG002 reads at HLA-DRB1, HLA-DQB1 and CYP2D6. The panel holds HG002's own two assembled haplotypes, which are the truth. Both called haplotypes at each locus must match them at QV 20 or more (one difference per 100 bases or fewer), aligned with `locityper align`. That QV measures how close each called haplotype is to HG002's true one; it is not the `quality` column, Locityper's own genotype quality.
+The image test (`tests/smoke/locityper.sh`, the `LOCITYPER_IMAGE` row of `tests/smoke/commands.tsv`) repeats, inside the image, the Locityper commands that `setup.sh --locityper-data` and step 53 run (the database build, `preproc` and `genotype`) on the fixture's GIAB HG002 reads at HLA-DRB1, HLA-DQB1 and CYP2D6. It does not run `setup.sh` or `scripts/53-locityper.sh` themselves. The panel holds HG002's own two assembled haplotypes, which are the truth. Both called haplotypes at each locus must match them at QV 20 or more (one difference per 100 bases or fewer), aligned with `locityper align`. That QV measures how close each called haplotype is to HG002's true one; it is not the `quality` column, Locityper's own genotype quality.
 
 The red control takes out of the panel HG002's haplotypes and every other haplotype within QV 20 of them, rebuilds the database and genotypes again; the same check must then fail at every locus. Leaving HG002 out with `--leave-out` is not enough: other people in the panel carry near copies of HG002's haplotypes, and the call stays close.
 

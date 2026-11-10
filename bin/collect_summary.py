@@ -80,6 +80,7 @@ import annotsv_postfilter  # noqa: E402  step 05's class 4-5 checks and the step
 import chip_report  # noqa: E402  step 49's detection limit at the median depth
 import run_delta  # noqa: E402  the comparison with the previous run, for the "New since" badges
 import traits_report  # noqa: E402  step 42's genotype-rules columns and the rules the traits table holds
+import genotype_rules_indels  # noqa: E402  the APOL1 G2 deletion beside step 42's APOL1 rule
 
 # 2: cyp2d6.consensus, Cyrius's Filter applied, HLA quality per allele,
 # Stranger's status on the repeat loci, the CPIC unclassified count, and the
@@ -762,6 +763,35 @@ def parascopy_cn_at(rows, chrom, pos):
     return {"cn": None, "text": "no row covers exon 7", "agcn": ".", "agcn_qual": ".", "agcn_filter": "."}
 
 
+MARKER_FIELDS = ("marker", "rsid", "status", "alt_reads", "depth", "fraction", "copies", "message")
+
+
+def read_marker_table(p, step, key):
+    """A copy-aware marker table (metric, value; bin/traits_report.py MARKERS):
+    step 46's KIV-2 4925G>A beside the count or step 35's SMN1 g.27134T>G
+    beside the psCN. A table that is not there or has no known status reads
+    as not assessed, with the reason in its message, so the report line
+    never goes missing beside the count."""
+    m = traits_report.MARKERS[key]
+    what = m["name"]
+    out = dict.fromkeys(MARKER_FIELDS, ".")
+    out.update(marker=what, rsid=m["dbsnp"][0], status="not assessed")
+    if not os.path.isfile(p):
+        out["message"] = (f"{what}: not assessed, step {step} wrote no {os.path.basename(p)} (a run from before "
+                          "this reader, or the check did not run).")
+        return out
+    try:
+        kv = dict(read_tsv_pairs(p))
+    except OSError as e:
+        kv = {"message": f"{os.path.basename(p)} could not be read: {e}"}
+    if kv.get("status") not in traits_report.MARKER_STATUSES:
+        out["message"] = (f"{what}: not assessed, {os.path.basename(p)} has no status row "
+                          f"({', '.join(traits_report.MARKER_STATUSES)}).")
+        return out
+    out.update({k: kv[k] for k in MARKER_FIELDS if kv.get(k)})
+    return out
+
+
 def smn_reading(smn1):
     """What an SMN1 copy number means for SMA, in one line."""
     if smn1 is None:
@@ -783,6 +813,13 @@ NOT_CATALOG_TABLES = ("hba", "paraphase")
 PARASCOPY_COLUMNS = {"chrom", "start", "end", "agCN", "agCN_filter", "agCN_qual", "psCN", "psCN_qual", "psCN_filter"}
 
 
+def tsv_columns(path):
+    """The header of a tab-separated table as a set ({} for an empty file), so
+    a table with a header and no row is checked for its columns too."""
+    with open_text(path) as f:
+        return set(next(csv.reader(f, delimiter="\t"), []))
+
+
 def parascopy_tables(d, s):
     """{table: path} of step 35's catalog tables (<s>_<table>_copy_number.tsv)."""
     out = {}
@@ -800,7 +837,7 @@ def parascopy_locus(name, path, row):
     out = {"table": name, "genes": (row or {}).get("genes") or name, "tag": (row or {}).get("tag") or ".",
            "reading": (row or {}).get("reading") or "."}
     rows = read_tsv(path)
-    if rows and not PARASCOPY_COLUMNS <= set(rows[0]):
+    if not PARASCOPY_COLUMNS <= tsv_columns(path):
         return dict(out, status="unreadable", cn=None,
                     text=f"unreadable: {os.path.basename(path)} lacks the copy-number columns")
     na = next((r["agCN_filter"] for r in rows if (r.get("agCN_filter") or "").startswith("not assessed")), None)
@@ -846,13 +883,14 @@ def sec_parascopy(d, s):
     hp = os.path.join(d, "paralogs", f"{s}_hba_copy_number.tsv")
     ip = os.path.join(d, "paralogs", f"{s}_cn_intervals.tsv")
     cp = os.path.join(d, "paralogs", f"{s}_cyp21a2_psv.tsv")
-    p = (tables.get("smn") or next(iter(tables.values()), None) or (hp if os.path.isfile(hp) else None)
-         or (ip if os.path.isfile(ip) else None) or (cp if os.path.isfile(cp) else None))
+    dp = os.path.join(d, "paralogs", f"{s}_cn_dosage.tsv")
+    p = (tables.get("smn") or next(iter(tables.values()), None)
+         or next((x for x in (hp, ip, cp, dp) if os.path.isfile(x)), None))
     if not p:
         return None, {}
     if "smn" in tables:
         rows = read_tsv(tables["smn"])
-        if rows and not PARASCOPY_COLUMNS <= set(rows[0]):
+        if not PARASCOPY_COLUMNS <= tsv_columns(tables["smn"]):
             raise Unreadable(f"{os.path.basename(tables['smn'])} lacks the chrom, start, end, agCN, agCN_filter, "
                              "agCN_qual, psCN, psCN_qual or psCN_filter column")
         smn1 = parascopy_cn_at(rows, *paraphase_report.SMN1_EXON7)
@@ -872,6 +910,9 @@ def sec_parascopy(d, s):
     catalog = {r["table"]: r for r in asset_rows("paralog_loci.tsv")} if others else {}
     return p, {"smn1": smn1, "smn2": {"cn": smn2["cn"], "text": smn2["text"]},
                "agcn": smn1["agcn"], "agcn_qual": smn1["agcn_qual"], "agcn_filter": smn1["agcn_filter"],
+               # SMN1 g.27134T>G beside the psCN (step 35, <id>_smn1_marker.tsv)
+               "smn1_marker": read_marker_table(os.path.join(d, "paralogs", f"{s}_smn1_marker.tsv"), "35",
+                                                "SMN1_27134"),
                "rows": len(rows),
                # HBA1/HBA2 from depth (bin/hba_copy_number.py); None when
                # step 35 wrote no HBA table (a run from before the check)
@@ -882,6 +923,9 @@ def sec_parascopy(d, s):
                # CYP21A2 from depth and PSV sites (bin/copy_number.py, the
                # CYP21A2 row): copies, module total, finding; None without it
                "cyp21a2": read_hba(cp) if os.path.isfile(cp) else None,
+               # the gene-dosage rows (HP, LCE3BC, CCL3L1): total copies from
+               # depth, one entry per locus; None without step 35's table
+               "dosage": read_cn_dosage(dp) if os.path.isfile(dp) else None,
                "reading": reading,
                # every other catalog table, in the catalog's order (a table the
                # catalog does not name, from a PARALOG_LOCI of the user's, last)
@@ -894,14 +938,37 @@ def read_cn_intervals(path):
     """Step 35's interval table (bin/copy_number.py intervals): the rows with
     a deletion or a duplication, and a count of the rows by status."""
     rows = read_tsv(path)
-    if rows and not {"locus", "name", "status", "copies", "expected", "change"} <= set(rows[0]):
+    cols = ("locus", "name", "chrom", "start", "end", "status", "copies", "expected", "change")
+    if not set(cols) <= tsv_columns(path):
         raise Unreadable(f"{os.path.basename(path)} lacks the locus, name, status, copies, expected or change column")
+    short_row(path, rows, cols)
     counts = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     return {"rows": len(rows), "by_status": counts,
             "changes": [{k: r[k] for k in ("locus", "name", "chrom", "start", "end", "copies", "expected", "change")}
                         for r in rows if r["change"] in ("deletion", "duplication")]}
+
+
+DOSAGE_COLUMNS = ("locus", "status", "copies", "estimate", "reason", "reading")
+
+
+def read_cn_dosage(path):
+    """Step 35's gene-dosage table (HP, LCE3BC, CCL3L1): one entry per locus,
+    in the table's order."""
+    if not set(DOSAGE_COLUMNS) <= tsv_columns(path):
+        raise Unreadable(f"{os.path.basename(path)} lacks the {', '.join(DOSAGE_COLUMNS[:-1])} or reading column")
+    rows = read_tsv(path)
+    short_row(path, rows, DOSAGE_COLUMNS)
+    return [{k: r.get(k) or "." for k in DOSAGE_COLUMNS} for r in rows]
+
+
+def short_row(path, rows, cols):
+    """A row cut short of a column (csv gives None there) makes the table
+    unreadable, so it never reads as a row of '.' values."""
+    bad = next((i for i, r in enumerate(rows, 2) if any(r.get(k) is None for k in cols)), None)
+    if bad:
+        raise Unreadable(f"{os.path.basename(path)} line {bad} lacks a field")
 
 
 def read_hba(path):
@@ -2065,6 +2132,10 @@ def str_not_graded(d, s):
 
 # The repeats STRchive leaves out (assets/str_extra_loci.json), read from
 # their counts when step 09 sized them (STR_EXTRA_LOCI=yes; docs/09-str-expansions.md).
+STR_EXTRA_SETUP = "STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir>"
+# What a section state other than ok says about a table another step wrote.
+OTHER_STEP_STATE = {"stale": "from an earlier run", "failed": "its step failed in the last run",
+                    "unreadable": "unreadable"}
 # CFTR intron 9 (legacy IVS8): ExpansionHunter writes the TG and the poly-T
 # tract as two records, so which TG count sits on the copy of which T count
 # is known only when one of the two is the same on both copies. R117H
@@ -2105,13 +2176,25 @@ def trait_genotype(d, s, rsid):
     return (row.get("status") or "", row.get("genotype") or "") if row else None
 
 
-def cftr_reading(by, d, s):
+def r117h_genotype(d, s, state):
+    """(genotype or None, why not read, note) of R117H in step 42's traits
+    table, given the traits section's state: a table of a failed or
+    unreadable step is not read, one from an earlier run is read and said so."""
+    if state in ("failed", "unreadable"):
+        return None, f"step 42's traits table is {OTHER_STEP_STATE[state]}", ""
+    r = trait_genotype(d, s, CFTR_R117H)
+    if not r or r[0] != "called":
+        return None, "no step 42 traits row for rs78655421 was called", ""
+    return r[1], "", (" (R117H from step 42's traits table of an earlier run)" if state == "stale" else "")
+
+
+def cftr_reading(by, d, s, traits_state="ok"):
     tg, t = by.get("CFTR_TG"), by.get("CFTR_T")
     out = {"locus": "CFTR", "repeat": "intron 9 (legacy IVS8) TG and poly-T tract", "source": CFTR_SOURCE}
     if not tg or not t:
         return dict(out, status="not_sized", genotype=".", phase=".",
-                    reading="not in step 09's output: STR_EXTRA_LOCI=yes setup.sh --strchive-data adds the tract "
-                            "to the catalog (docs/09-str-expansions.md).")
+                    reading=f"not in step 09's output: {STR_EXTRA_SETUP} adds the tract to the catalog "
+                            "(docs/09-str-expansions.md).")
     a, b = str_counts(tg), str_counts(t)
     if not a or not b:
         return dict(out, status="not_sized", genotype=".", phase=".",
@@ -2127,10 +2210,24 @@ def cftr_reading(by, d, s):
     other = sorted({n for n in b if n not in (5, 7, 9)})
     odd = (f" A poly-T length of {', '.join(f'{n}T' for n in other)} is none of the usual 5T, 7T and 9T."
            if other else "")
+    r117, why, note = r117h_genotype(d, s, traits_state)
     if not five:
-        return dict(out, five_t=False, phase="not_needed",
-                    reading=f"No 5T copy ({b[0]}T/{b[1]}T), so the tract does not change how a CFTR finding is "
-                            f"read.{odd}")
+        # No 5T risk of its own, but the poly-T still sets how R117H reads:
+        # with no 5T copy, an R117H copy sits on a 7T or 9T (or other) copy.
+        line = (f"No 5T copy ({b[0]}T/{b[1]}T): the tract adds no 5T allele of its own. The poly-T length still "
+                "matters beside R117H, which is milder and of variable penetrance on a 7T or 9T copy and CF-causing "
+                "with 5T in cis.")
+        if r117 is None:
+            line += f" R117H was not read ({why})."
+        elif r117.split("/").count("A") == 2:
+            copies = f"both {b[0]}T copies" if b[0] == b[1] else f"both copies ({b[0]}T and {b[1]}T)"
+            line += f" R117H ({r117}) is read: it sits on {copies}.{note}"
+        elif r117.split("/").count("A"):
+            copies = f"{b[0]}T" if b[0] == b[1] else f"{b[0]}T or {b[1]}T"
+            line += f" R117H ({r117}) is read: with no 5T copy it sits on a {copies} copy.{note}"
+        else:
+            line += f" No R117H copy.{note}"
+        return dict(out, five_t=False, phase="not_needed", r117h=r117 or ".", reading=line + odd)
     if len(pairs) == 1:
         # One TG count on both copies, or 5T on both copies with their two TG counts.
         tgs = [a[0]] if a[0] == a[1] else a
@@ -2140,36 +2237,34 @@ def cftr_reading(by, d, s):
     line = (f"5T: {five} copy{'s' if five > 1 else ''} with the 5T poly-T tract, {tg_text}. 5T lowers the splicing "
             "of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often "
             "causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant.")
-    r = trait_genotype(d, s, CFTR_R117H)
-    if not r or r[0] != "called":
+    if r117 is None:
         phase = "not_read"
-        r117 = (" R117H was not read (no step 42 traits row for rs78655421 was called), so whether it sits on the "
-                "5T copy is not known.")
+        text = f" R117H was not read ({why}), so whether it sits on the 5T copy is not known."
     else:
-        n = r[1].split("/").count("A")
+        n = r117.split("/").count("A")
         if n == 0:
             phase = "not_needed"
-            r117 = " No R117H copy: the 5T is read on its own."
+            text = " No R117H copy: the 5T is read on its own."
         elif n == 2 or five == 2:
             phase = "in_cis"
-            r117 = (f" R117H ({r[1]}) and 5T share a copy: R117H with 5T in cis is a CF-causing allele of "
+            text = (f" R117H ({r117}) and 5T share a copy: R117H with 5T in cis is a CF-causing allele of "
                     "variable penetrance.")
         else:
             phase = "unknown"
-            r117 = (" One R117H copy and one 5T copy: phase unknown. R117H lies 17.6 kb from the tract, farther "
+            text = (" One R117H copy and one 5T copy: phase unknown. R117H lies 17.6 kb from the tract, farther "
                     "than a read pair spans, so whether they share a copy (in cis, a CF-causing allele of variable "
                     "penetrance) or not (in trans) is not read; testing a parent tells them apart.")
-    return dict(out, five_t=True, phase=phase, r117h=r[1] if r and r[0] == "called" else ".",
-                reading=line + r117 + odd)
+        text += note
+    return dict(out, five_t=True, phase=phase, r117h=r117 or ".", reading=line + text + odd)
 
 
-def ugt1a1_reading(by, d, s):
+def ugt1a1_reading(by, d, s, cpic_state="ok"):
     item = by.get("UGT1A1")
     out = {"locus": "UGT1A1", "repeat": "promoter TA repeat", "source": UGT1A1_SOURCE}
     if not item:
         return dict(out, status="not_sized", genotype=".", pharmcat=".", agreement="not_compared",
-                    reading="not in step 09's output: STR_EXTRA_LOCI=yes setup.sh --strchive-data adds the repeat "
-                            "to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28.")
+                    reading=f"not in step 09's output: {STR_EXTRA_SETUP} adds the repeat to the catalog "
+                            "(docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28.")
     c = str_counts(item)
     if not c:
         return dict(out, status="not_sized", genotype=".", pharmcat=".", agreement="not_compared",
@@ -2179,15 +2274,20 @@ def ugt1a1_reading(by, d, s):
     genotype = "/".join(names)
     dec = sum(n in UGT1A1_DECREASED for n in names)
     ta = "/".join(f"TA{n - 1}" for n in c)
-    reading = (f"{genotype} ({ta}, {c[0]}/{c[1]} TA units as ExpansionHunter counts them): "
-               + ("no decreased-function TA allele." if not dec else
-                  f"{dec} decreased-function allele{'s' if dec > 1 else ''} (*28 and *37 are decreased function).")
-               + ("" if all(n in UGT1A1_ALLELES for n in c) else " A TA length outside TA5 to TA8 is not a named allele here."))
     out.update(status="read", genotype=genotype, ta_units=c)
+    reading = f"{genotype} ({ta}, {c[0]}/{c[1]} TA units as ExpansionHunter counts them): "
+    if not all(n in UGT1A1_ALLELES for n in c):
+        # A length with no named allele has no function to read, and so no
+        # count of decreased-function copies to set beside PharmCAT's.
+        return dict(out, pharmcat=".", agreement="not_compared",
+                    reading=reading + "a TA length outside TA5 to TA8 is not a named allele here, so its function "
+                                      "is not read and it is not compared with PharmCAT (step 7).")
+    reading += ("no decreased-function TA allele." if not dec else
+                f"{dec} decreased-function allele{'s' if dec > 1 else ''} (*28 and *37 are decreased function).")
     # PharmCAT's UGT1A1 call (step 27's table, with the reference-block fill
     # of bin/pgx_refblock_fill.py): its count of *28 and *37 copies.
     pc, agreement = ".", "not_compared"
-    p = first_existing(d, [f"cpic/{s}_phenotypes.tsv"])
+    p = first_existing(d, [f"cpic/{s}_phenotypes.tsv"]) if cpic_state not in ("failed", "unreadable") else None
     row = None
     if p:
         try:
@@ -2201,20 +2301,26 @@ def ugt1a1_reading(by, d, s):
             # A combination allele reads "*80+*28" or "[*80 + *28]".
             n = sum(any(x in re.split(r"[+ \[\]]", a) for x in UGT1A1_DECREASED) for a in alleles)
             agreement = "agrees" if n == dec else "differs"
+    old = " (step 27's table is from an earlier run)" if cpic_state == "stale" and agreement != "not_compared" else ""
     if agreement == "agrees":
-        reading += f" PharmCAT (step 7) called {pc}: the same number of *28 and *37 copies."
+        reading += f" PharmCAT (step 7) called {pc}: the same number of *28 and *37 copies{old}."
     elif agreement == "differs":
-        reading += (f" PharmCAT (step 7) called {pc}, a different number of *28 and *37 copies: read the reads at "
-                    "chr2:233760234 before using either.")
+        reading += (f" PharmCAT (step 7) called {pc}, a different number of *28 and *37 copies{old}: read the reads "
+                    "at chr2:233760234 before using either.")
+    elif cpic_state in ("failed", "unreadable"):
+        reading += f" Not compared with PharmCAT (step 27's table is {OTHER_STEP_STATE[cpic_state]})."
     else:
         reading += " Not compared with PharmCAT (no unambiguous UGT1A1 call from step 27)."
     return dict(out, pharmcat=pc, agreement=agreement, reading=reading)
 
 
-def str_readings(by, d, s):
+def str_readings(by, d, s, states=None):
     """What the counts of the extra repeats mean, one entry per locus, and the
-    5-HTTLPR line that no step can test."""
-    return [cftr_reading(by, d, s), ugt1a1_reading(by, d, s),
+    5-HTTLPR line that no step can test. states: the traits and cpic section
+    states, once collect() knows them (a stale, failed or unreadable table is
+    said so, not read as current)."""
+    states = states or {}
+    return [cftr_reading(by, d, s, states.get("traits", "ok")), ugt1a1_reading(by, d, s, states.get("cpic", "ok")),
             {"locus": "SLC6A4", "repeat": "5-HTTLPR promoter length polymorphism", "status": "not_tested",
              "genotype": ".", "reading": HTTLPR_READING, "source": "Bousman et al. 2023, PMID 37032427"}]
 
@@ -2604,9 +2710,14 @@ def sec_y_tree(d, s):
            "explore": haplogroup_explore("y", hg)}
     lvl = first_existing(d, [f"y_haplogroup/{s}_y_tree_path.tsv"])
     if lvl:
-        prows = read_tsv(lvl)
-        if not prows or "Branch" not in prows[0]:
-            raise Unreadable(f"{os.path.basename(lvl)} has no Branch column or no rows")
+        # bin/y_tree_place.py writes the header alone when no branch is derived:
+        # an empty path, not an unreadable file.
+        with open_text(lvl) as f:
+            rd = csv.DictReader(f, delimiter="\t")
+            prows = list(rd)
+            header = rd.fieldnames or []
+        if "Branch" not in header:
+            raise Unreadable(f"{os.path.basename(lvl)} has no Branch column")
         out["path"] = [{k: (row.get(k) or "") for k in
                         ("Level", "Branch", "SNPs", "On_tables", "Derived", "Ancestral", "No_call",
                          "Ancestral_SNPs")} for row in prows]
@@ -2707,6 +2818,9 @@ def sec_lpa(d, s):
         raise Unreadable(f"{os.path.basename(p)} has no status row (estimated, too little depth or not assessed)")
     data = {k: kv.get(k) or "." for k in ("status", "kiv2_copies", "ci95_low", "ci95_high", "class",
                                           "kiv2_depth", "flank_depth", "mapq0_share", "message", "advice")}
+    # KIV-2 4925G>A beside the count (step 46, lpa/<id>_lpa_kiv2_4925.tsv)
+    data["null_allele"] = read_marker_table(os.path.join(os.path.dirname(p), f"{s}_lpa_kiv2_4925.tsv"), "46",
+                                            "LPA_KIV2_4925")
     variants = []
     t = first_existing(d, [f"traits/{s}_traits.tsv"])
     for r in (read_tsv(t) if t else []):
@@ -2951,7 +3065,76 @@ def genotype_rules(d, s):
     bad = next((i for i, r in enumerate(rows, 2) if None in r or any(r.get(k) is None for k in need)), None)
     if bad:
         raise Unreadable(f"{os.path.basename(p)} line {bad} does not have one field per column")
-    return [{k: r[k] for k in need} for r in rows if r["rule"] not in traits_report.TRAITS_TABLE_RULES]
+    out = [{k: r[k] for k in need} for r in rows if r["rule"] not in traits_report.TRAITS_TABLE_RULES]
+    for r in out:
+        if r["rule"] == genotype_rules_indels.G2["rule"]:
+            g2 = apol1_g2(d, s)
+            r["g2"] = dict(g2, **genotype_rules_indels.combine(r, g2))
+    return out
+
+
+def vcf_window(path, chrom, start, end):
+    """The split data lines of a VCF on chrom that can cover start..end: read
+    from the tabix linear index's offset for start when the .tbi is there,
+    else the whole file (stopping past the window)."""
+    out = []
+    if os.path.exists(path + ".tbi"):
+        ioff = tabix_linear_index(path).get(chrom)
+        if not ioff:
+            return out
+        voff = ioff[min((start - 1) >> 14, len(ioff) - 1)]
+        voff = 0 if voff == 0xFFFFFFFFFFFFFFFF else voff
+        with open(path, "rb") as raw:
+            raw.seek(voff >> 16)
+            g = gzip.GzipFile(fileobj=raw)
+            g.read(voff & 0xFFFF)
+            lines = (x.decode(errors="replace").rstrip("\n").split("\t") for x in g if not x.startswith(b"#"))
+            seen = False
+            for r in lines:
+                if len(r) < 2 or not r[1].isdigit():
+                    continue
+                if r[0] != chrom:
+                    if seen:
+                        break
+                    continue
+                seen = True
+                if int(r[1]) > end:
+                    break
+                out.append(r)
+        return out
+    seen = False
+    for r in vcf_records(path):
+        if len(r) < 2 or not r[1].isdigit():
+            continue
+        if r[0] != chrom:
+            if seen:
+                break
+            continue
+        seen = True
+        if int(r[1]) > end:
+            break
+        out.append(r)
+    return out
+
+
+def apol1_g2(d, s):
+    """APOL1 G2 (rs71785313, a 6-base deletion step 42's rule table cannot
+    read) from the sample's gVCF when it is there (vcf/<id>.g.vcf.gz, whose
+    reference blocks tell a reference base from no reads), else its VCF
+    (vcf/<id>.vcf.gz): bin/genotype_rules_indels.py's read_g2, plus source."""
+    m = genotype_rules_indels
+    for name, kind in ((f"vcf/{s}.g.vcf.gz", "gvcf"), (f"vcf/{s}.vcf.gz", "vcf")):
+        p = os.path.join(d, name)
+        if not os.path.isfile(p):
+            continue
+        try:
+            recs = vcf_window(p, m.G2["chrom"], m.CONTEXT_START, m.SPAN[1])
+        except (OSError, EOFError, ValueError, struct.error, gzip.BadGzipFile, zlib.error, Unreadable) as e:
+            return {"status": "not_read", "copies": None, "gq": ".", "source": name,
+                    "text": f"G2 (rs71785313) not read: {name} could not be read ({e})."}
+        return dict(m.read_g2(recs, kind), source=name)
+    return {"status": "not_read", "copies": None, "gq": ".", "source": None,
+            "text": "G2 (rs71785313) not read: no VCF of the sample in this folder."}
 
 
 def sec_carrier(d, s):
@@ -3862,10 +4045,15 @@ def gene_deletions(d, s, spans):
 
 def phase_haps(gt):
     """The copies (haplotype indexes) a phased GT puts the alt allele on, or
-    None when the GT is not phased: '0|1' -> {1}, '1|0' -> {0}, '0/1' -> None."""
+    None when the GT is not phased or a copy is not called: '0|1' -> {1},
+    '1|0' -> {0}, '0/1' -> None, '.|1' -> None (the missing copy could carry
+    the other allele, so no cis or trans can be read from it)."""
     if not gt or "|" not in gt:
         return None
-    return frozenset(i for i, a in enumerate(gt.split("|")) if a not in ("0", "."))
+    alleles = gt.split("|")
+    if "." in alleles:
+        return None
+    return frozenset(i for i, a in enumerate(alleles) if a != "0")
 
 
 def pair_phase(dl, v):
@@ -4751,6 +4939,13 @@ def collect(sample, sample_dir, declared_sex=None):
         sections[key] = sec
 
     cyp2d6 = cyp2d6_block(sample, sample_dir, sections)
+    # The repeat readings lean on the traits (R117H) and CPIC (UGT1A1)
+    # tables, whose sections come after the expansions one: read them again
+    # with those sections' states.
+    ex = sections["expansions"]
+    if ex["state"] in ("ok", "stale"):
+        ex["data"]["readings"] = str_readings({l["locus"]: l for l in ex["data"]["loci"]}, sample_dir, sample,
+                                              {k: sections[k]["state"] for k in ("traits", "cpic")})
     if sections["locityper"]["state"] in ("ok", "stale"):
         primary = locityper_primary(sections)
         for x in sections["locityper"]["data"]["loci"]:

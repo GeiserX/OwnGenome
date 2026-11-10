@@ -21,9 +21,12 @@ The five charts, each drawn only when its section ran:
             is the report's own note; a score of the other sex, or one with no
             percentile, says "no percentile" and is never placed.
   genome    the chromosomes 1 to 22, X and Y of GRCh38 with the runs of
-            homozygosity of 5 MB or more and a tick for each ClinVar hit;
+            homozygosity of 5 MB or more, a tick for each ClinVar hit, an
+            outlined span for each AnnotSV class 4 or 5 SV and a bar under the
+            chromosome for each mosaic chromosomal alteration MoChA reports;
             drawn in the ROH section, so only when ROH ran.
-            Hits on chrM and on other contigs are counted in not_drawn.
+            Hits, SVs and calls on chrM and on other contigs are counted in
+            not_drawn.
   mito      the heteroplasmic chrM sites by position and allele fraction, the
             D-loop poly-C length variants marked apart.
 
@@ -31,7 +34,8 @@ A spec is {id, section, kind, title, caveat_key, caveat, axis, marks,
 not_drawn}: section is the collect_summary.SECTIONS key whose data it shows;
 each mark is {id, label, value, low, high, chrom, pos, end, tone, anchor,
 locus, detail}, with None for what does not apply; a ClinVar tick on the
-genome chart also carries the ClinVar caveat, the chart's own being ROH's. anchor is the id of the
+genome chart also carries the ClinVar caveat, an SV span AnnotSV's and a MoChA
+bar MoChA's, the chart's own being ROH's. anchor is the id of the
 report element the mark links to (the ClinVar hits table, or the section); locus
 is "chrom:pos" or "chrom:start-end" for the genome viewer. The caveat text
 is passed in by the caller (notes), never written here, so the chart and the
@@ -222,7 +226,57 @@ def genome_chart(S, notes):
                               detail=f"{h.get('significance') or '.'}, {h.get('stars')} star"
                               f"{'' if h.get('stars') == 1 else 's'}, {h.get('genotype') or '.'}"
                               + (", low-confidence call" if low else "")))
-    return spec("genome", "roh", "ideogram", "Runs of homozygosity and ClinVar hits on the chromosomes", notes,
+    if _ok(S, "annotsv"):
+        for i, r in enumerate(S["annotsv"]["data"].get("rows") or []):
+            sv = str(r.get("sv", ""))
+            # AnnotSV writes SV_chrom without the chr prefix: put it back, as collect_summary does.
+            m = REGION_RE.match(sv if sv.startswith("chr") else "chr" + sv)
+            if not m or m.group(1) not in CHROM_LEN:
+                not_drawn["AnnotSV class 4 and 5 SVs on other contigs"] = \
+                    not_drawn.get("AnnotSV class 4 and 5 SVs on other contigs", 0) + 1
+                continue
+            chrom, start, end = m.group(1), int(m.group(2)), int(m.group(3))
+            genes = ", ".join((r.get("genes") or [])[:5]) or "no gene"
+            marks.append(mark(f"sv-{i}", f"{r.get('type') or 'SV'} {r['sv']} (AnnotSV class {r.get('acmg_class')})",
+                              r.get("acmg_class"), chrom=chrom, pos=start, end=max(end, start), tone="attention",
+                              anchor="structural-variants", locus=f"{chrom}:{start}-{end}", kind="sv",
+                              caveat=notes.get("ANNOTSV_NOTE"),
+                              detail=f"AnnotSV class {r.get('acmg_class')} {r.get('type') or 'SV'}, "
+                              f"{r.get('length') or '.'} bp, genotype {r.get('gt') or '.'}, genes: {genes}"))
+    if _ok(S, "mosaic"):
+        for i, c in enumerate(S["mosaic"]["data"].get("calls") or []):
+            chrom = str(c.get("chrom") or "")
+            if chrom and not chrom.startswith("chr"):
+                chrom = "chr" + chrom
+            try:
+                start, end = int(c.get("start")), int(c.get("end"))
+            except (TypeError, ValueError):
+                start = end = None
+            if chrom not in CHROM_LEN or start is None or end < start:
+                not_drawn["MoChA calls on other contigs or with no position"] = \
+                    not_drawn.get("MoChA calls on other contigs or with no position", 0) + 1
+                continue
+            marks.append(mark(f"mca-{i}", f"MoChA {c.get('type') or 'call'} {chrom}:{start}-{end}",
+                              c.get("cell_fraction"), chrom=chrom, pos=start, end=end, tone="attention",
+                              anchor="mosaic-mca", locus=f"{chrom}:{start}-{end}", kind="mca",
+                              caveat=notes.get("MCA_NOTE"),
+                              detail=f"mosaic {c.get('type') or 'alteration'} over {c.get('length_mb') or '.'} Mb, "
+                              f"cell fraction {c.get('cell_fraction') or '.'}"))
+    # A position past the end of its chromosome (a file of another assembly) is not drawn; an end past it
+    # is cut at the end, so every mark stays inside its chromosome.
+    kept = []
+    for m in marks:
+        n = CHROM_LEN[m["chrom"]]
+        if m["pos"] > n:
+            not_drawn["marks past the end of their GRCh38 chromosome"] = \
+                not_drawn.get("marks past the end of their GRCh38 chromosome", 0) + 1
+            continue
+        if m.get("end") is not None and m["end"] > n:
+            m["end"] = n
+        kept.append(m)
+    marks = kept
+    return spec("genome", "roh", "ideogram", "Runs of homozygosity, ClinVar hits, structural variants and mosaic "
+                "alterations on the chromosomes", notes,
                 "ROH_NOTE", marks, axis={"assembly": "GRCh38"},
                 not_drawn=[{"what": k, "count": v} for k, v in not_drawn.items()])
 
@@ -415,13 +469,29 @@ def svg_ideogram(sp):
                     f'stroke="{LINE}"/>')
     for m in sp["marks"]:
         y = rows[m["chrom"]]
+        lo, hi = x0, sx(CHROM_LEN[m["chrom"]])
+
+        def inside(a, w):
+            # The x of a mark w px wide, moved inside its chromosome's outline.
+            return max(lo, min(a, hi - w))
         if m.get("kind") == "roh":
             a, b = sx(m["pos"]), sx(m["end"])
-            inner = (f'<rect class="roh" x="{_f(a)}" y="{y + 2}" width="{_f(max(b - a, 1.5))}" height="8" '
+            inner = (f'<rect class="roh" x="{_f(inside(a, max(b - a, 1.5)))}" y="{y + 2}" width="{_f(max(b - a, 1.5))}" height="8" '
                      f'fill="{TONE["info"]}"/>')
+        elif m.get("kind") == "sv":
+            # An outlined span over the chromosome, at least 5 px so a small deletion is seen.
+            a, b = sx(m["pos"]), sx(m["end"])
+            w = max(b - a, 5)
+            inner = (f'<rect class="sv" x="{_f(inside(a - (w - (b - a)) / 2, w))}" y="{y - 1}" width="{_f(w)}" height="14" '
+                     f'fill="none" stroke="{TONE["attention"]}" stroke-width="2"/>')
+        elif m.get("kind") == "mca":
+            # A bar under the chromosome: a share of the cells, not the whole genome.
+            a, b = sx(m["pos"]), sx(m["end"])
+            inner = (f'<rect class="mca" x="{_f(inside(a, max(b - a, 3)))}" y="{y + 12}" width="{_f(max(b - a, 3))}" height="3" '
+                     f'fill="{TONE["attention"]}"/>')
         else:
             x = sx(m["pos"])
-            inner = (f'<rect class="tick" x="{_f(x - 1.5)}" y="{y - 1}" width="3" height="14" '
+            inner = (f'<rect class="tick" x="{_f(inside(x - 1.5, 3))}" y="{y - 1}" width="3" height="14" '
                      f'fill="{TONE[m["tone"]]}"/>')
         body.append(_a(m, inner))
     y = 10 + len(GRCH38) * row + 6
@@ -431,6 +501,16 @@ def svg_ideogram(sp):
               + _text(x0 + 258, y + 8, "ClinVar hit", 11)
               + f'<rect x="{x0 + 340}" y="{y - 2}" width="3" height="12" fill="{TONE["muted"]}"/>'
               + _text(x0 + 348, y + 8, "low-confidence ClinVar call", 11))
+    kinds = {m.get("kind") for m in sp["marks"]}
+    if kinds & {"sv", "mca"}:
+        # A second legend row, drawn only when the chart has these marks.
+        y += 18
+        if "sv" in kinds:
+            legend += (f'<rect x="{x0}" y="{y - 2}" width="14" height="12" fill="none" stroke="{TONE["attention"]}" '
+                       f'stroke-width="2"/>' + _text(x0 + 20, y + 8, "AnnotSV class 4 or 5 SV", 11))
+        if "mca" in kinds:
+            legend += (f'<rect x="{x0 + 250}" y="{y + 4}" width="14" height="3" fill="{TONE["attention"]}"/>'
+                       + _text(x0 + 270, y + 8, "mosaic alteration (MoChA), a share of cells", 11))
     foot, h = _footer(sp, y + 26)
     return _open(sp, h + 4) + "".join(body) + legend + foot + "</svg>"
 

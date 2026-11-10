@@ -59,6 +59,21 @@ include { MOCHA_PREP; MOCHA_PHASE; MOCHA_CALL; MOCHA_REPORT } from './modules/lo
 workflow {
 
     // ─── Validate inputs ────────────────────────────────────────────────
+    // Every parameter must be one nextflow_schema.json declares: Nextflow
+    // takes any --name as a new parameter, so a misspelt option (--outdirr,
+    // --max-cpus) would be ignored with no word. config_profile_* are the
+    // test profiles' labels.
+    def schema_params = new groovy.json.JsonSlurper()
+        .parseText(file("${projectDir}/nextflow_schema.json").text)['definitions']
+        .values().collectMany { group -> (group['properties'] ?: [:]).keySet() as List }
+    def known_params = schema_params + ['config_profile_name', 'config_profile_description']
+    def unknown_params = params.keySet().findAll { k -> !known_params.contains(k) }.sort()
+    if (unknown_params) {
+        error "unknown parameter${unknown_params.size() > 1 ? 's' : ''} " +
+              "${unknown_params.collect { k -> '--' + k }.join(', ')}: not an option of this pipeline " +
+              "(nextflow_schema.json lists them; options take underscores, as --max_cpus). Check the spelling."
+    }
+
     if (!params.input) {
         error "Please provide a samplesheet with --input <samplesheet.csv>"
     }
@@ -80,6 +95,19 @@ workflow {
     if (params.reference.endsWith('.gz')) {
         error "--reference ${params.reference} is compressed. The tools here need a plain FASTA with a .fai index: " +
               "decompress it (gunzip, or bgzip -d) and run 'samtools faidx' on the result."
+    }
+
+    // og (bin/.og, the Rust binary tasks call through bin/og) built from
+    // another rust/ than this checkout's would run other code than the
+    // checkout says: rust/og.sh check stops the run (scripts/setup.sh --og).
+    if (file("${projectDir}/rust/og.sh").exists()) {
+        // stderr joins stdout, so a check that cannot even start says why.
+        def og_check = ['bash', '-c', 'bash "$0" check 2>&1', "${projectDir}/rust/og.sh"].execute()
+        def og_msg = og_check.text.trim()
+        og_check.waitFor()
+        if (og_check.exitValue() != 0) {
+            error(og_msg ? og_msg.replaceFirst(/^ERROR: /, '') : "rust/og.sh check failed with exit ${og_check.exitValue()} and no message")
+        }
     }
 
     def tools_list = params.tools ? params.tools.split(',').collect { it.trim() }.findAll { it } : []
@@ -316,9 +344,8 @@ workflow {
     // leading family column: one family runs, the one --family_name names
     // (needed when the file holds more than one). Here only the family and
     // sample columns are read; FAMILY_PREPARE (bin/family_report.py prepare)
-    // checks the rest before the joint call starts. Read with containsKey,
-    // so a run without the option is not told about an undefined parameter.
-    def pedigree   = params.containsKey('pedigree') ? params.pedigree : null
+    // checks the rest before the joint call starts.
+    def pedigree   = params.pedigree
     // The family's folder under --outdir: --family_name, else 'family'
     def family_dir = params.family_name ?: 'family'
     def family_ids = []
@@ -387,6 +414,15 @@ workflow {
     ch_rows = Channel
         .fromList(samplesheet_rows)
         .map { row -> [[id: row.sample, sex: row.sex ? row.sex.toLowerCase() : null], row] }
+
+    // The PRS score sets the run needs, from the samplesheet alone: with_x for
+    // a row that gives the sex, autosomes for one that does not (the rule
+    // CLINICAL applies to each sample's meta.sex). Known at launch, so
+    // PRS_PREPARE formats the scores while the samples are still aligned and
+    // called, instead of waiting for the first VCF.
+    ch_prs_score_sets = ch_rows
+        .map { meta, _row -> meta.sex ? 'with_x' : 'autosomes' }
+        .unique()
 
     ch_fastq = ch_rows
         .filter { meta, row -> row.fastq_1 }
@@ -600,6 +636,15 @@ workflow {
         error "ERROR: --ancient_panel ${params.ancient_panel} is not a finished panel (no DONE); run scripts/setup.sh --ancient-panel <genome_dir> again."
     }
 
+    // Step 53's database (setup.sh --locityper-data): its DONE is written last,
+    // with the digests of the reference it was built from, so a folder
+    // without it is an install that stopped. Checked here, before any task
+    // runs, as scripts/53-locityper.sh checks it before its first call.
+    if (tools_list.contains('locityper') && params.locityper_data && !workflow.stubRun
+        && !file("${params.locityper_data}/DONE").exists()) {
+        error "ERROR: --locityper_data ${params.locityper_data} has no DONE: run scripts/setup.sh --locityper-data <genome_dir> again."
+    }
+
     // ExpansionHunter variant catalog
     ch_expansion_catalog = Channel.value(params.expansion_catalog ? file(params.expansion_catalog, checkIfExists: true) : [])
 
@@ -635,8 +680,8 @@ workflow {
     ch_parascopy_bed  = Channel.value(params.parascopy_depth_bed ? file(params.parascopy_depth_bed, checkIfExists: true) : [])
     ch_yleaf_data     = Channel.value(params.yleaf_data ? file(params.yleaf_data, checkIfExists: true) : [])
     // GENCODE's exons (setup.sh: reference/gencode.v<release>.basic.exons.bed):
-    // the cDNA read check of CLINVAR_SCREEN's hits, and the couple screen's
-    // deletions over an exon
+    // the cDNA read check of CLINVAR_SCREEN's hits and of CPSR's P/LP rows,
+    // and the couple screen's deletions over an exon
     ch_gencode_exons  = Channel.value(params.gencode_exons ? file(params.gencode_exons, checkIfExists: true) : [])
     // Step 20's annotation of the chrM calls (MITO_VARIANTS_ANNOTATE): the
     // whole ClinVar VCF with chr names, its .tbi beside it (setup.sh installs
@@ -747,7 +792,10 @@ workflow {
         ch_reference,
         ch_reference_fai,
         BAM_ANALYSIS.out.mito_vcf,
-        ch_ancestry_fine_panel
+        ch_ancestry_fine_panel,
+        ch_bam,
+        ch_gencode_exons,
+        ch_prs_score_sets
     )
 
     // ─── Traits panel (traits, step 42) ─────────────────────────────────
@@ -857,7 +905,7 @@ workflow {
         }
         def ch_couple_outputs = couple_ids && tools_list.contains('clinvar') ? Channel.empty().mix(
             PGX.out.clinvar_dir, SV.out.delly_vcf, BAM_ANALYSIS.out.expansion_vcf, BAM_ANALYSIS.out.smn_copy_number,
-            BAM_ANALYSIS.out.cn_intervals, SV.out.cnvpytor_vcf
+            BAM_ANALYSIS.out.cn_intervals, SV.out.cnvpytor_vcf, BAM_ANALYSIS.out.cyp21a2
         ).filter { meta, f -> couple_ids.contains(meta.id) }.map { meta, f -> f } : Channel.empty()
         FAMILY(
             ch_gvcf.filter { meta, g, idx -> family_ids.contains(meta.id) },
@@ -931,12 +979,14 @@ workflow {
     // Read depth over the KIV-2 exons against single-copy LPA exons, for each
     // sample with a BAM. Equivalent to scripts/46-lpa.sh.
     ch_lpa          = Channel.empty()
+    ch_lpa_null     = Channel.empty()
     ch_lpa_versions = Channel.empty()
     if (tools_list.contains('lpa')) {
         LPA_REGIONS()
         LPA_DEPTH(ch_bam, LPA_REGIONS.out.bed)
         LPA(LPA_DEPTH.out.depth)
         ch_lpa          = LPA.out.table
+        ch_lpa_null     = LPA.out.null_allele
         ch_lpa_versions = LPA_REGIONS.out.versions.mix(LPA_DEPTH.out.versions, LPA.out.versions)
     }
 
@@ -1118,10 +1168,17 @@ workflow {
         .join(PGX.out.pharmcat_html.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.cpic_phenotypes.map         { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.cpic_recommendations.map    { meta, f -> [meta.id, f] }, remainder: true)
+        .join(ANNOTATION.out.vep_vcf.map          { meta, f -> [meta.id, f] }, remainder: true)
+        .join(ANNOTATION.out.vep_vcf_index.map    { meta, f -> [meta.id, f] }, remainder: true)
         .join(ANNOTATION.out.clinical_vcf.map     { meta, f -> [meta.id, f] }, remainder: true)
+        .join(ANNOTATION.out.clinical_summary.map { meta, f -> [meta.id, f] }, remainder: true)
         .join(ANNOTATION.out.slivar_vcf.map       { meta, f -> [meta.id, f] }, remainder: true)
+        .join(ANNOTATION.out.slivar_summary.map   { meta, f -> [meta.id, f] }, remainder: true)
         .join(ANNOTATION.out.comphet_pairs.map    { meta, f -> [meta.id, f] }, remainder: true)
         .join(CLINICAL.out.cpsr_html.map          { meta, f -> [meta.id, f] }, remainder: true)
+        .join(CLINICAL.out.cpsr_tsv.map           { meta, f -> [meta.id, f] }, remainder: true)
+        .join(CLINICAL.out.cpsr_cdna.map          { meta, f -> [meta.id, f] }, remainder: true)
+        .join(UPSTREAM.out.read_count.map         { meta, f -> [meta.id, f] }, remainder: true)
         .join(CLINICAL.out.roh_regions.map        { meta, f -> [meta.id, f] }, remainder: true)
         .join(CLINICAL.out.haplogroup.map         { meta, f -> [meta.id, f] }, remainder: true)
         .join(CLINICAL.out.haplocheck.map         { meta, f -> [meta.id, f] }, remainder: true)
@@ -1133,6 +1190,7 @@ workflow {
         .join(BAM_ANALYSIS.out.paraphase_vars.map { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.smn_copy_number.map { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.hba_copy_number.map { meta, f -> [meta.id, f] }, remainder: true)
+        .join(BAM_ANALYSIS.out.smn1_marker.map    { meta, f -> [meta.id, f] }, remainder: true)
         // step 35's other catalog tables, a list per sample (flattened below)
         .join(BAM_ANALYSIS.out.parascopy_tables.map { meta, fs -> [meta.id, fs] }, remainder: true)
         .join(CLINICAL.out.prs_scores.map         { meta, f -> [meta.id, f] }, remainder: true)
@@ -1142,6 +1200,8 @@ workflow {
         .join(BAM_ANALYSIS.out.coverage.map       { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.callability.map    { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.cn_intervals.map   { meta, f -> [meta.id, f] }, remainder: true)
+        .join(BAM_ANALYSIS.out.cn_dosage.map      { meta, f -> [meta.id, f] }, remainder: true)
+        .join(BAM_ANALYSIS.out.cyp21a2.map        { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.sample_qc.map      { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.telomere_results.map { meta, f -> [meta.id, f] }, remainder: true)
         .join(BAM_ANALYSIS.out.mito_vcf.map       { meta, f -> [meta.id, f] }, remainder: true)
@@ -1177,6 +1237,7 @@ workflow {
         .join(ch_ancient_info.map                 { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_ancient_svg.map                  { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_lpa.map                          { meta, f -> [meta.id, f] }, remainder: true)
+        .join(ch_lpa_null.map                     { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_vntyper.map                      { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_viral.map                        { meta, f -> [meta.id, f] }, remainder: true)
         .join(ch_exomiser.map                     { meta, f -> [meta.id, f] }, remainder: true)
@@ -1191,6 +1252,16 @@ workflow {
         .join(ch_couple_tables.map                { meta, f -> [meta.id, f] }, remainder: true)
         .filter { items -> items[1] != null }
         .map { items -> [items[1], items[2], items[3..-1].collectMany { f -> (f instanceof List ? f : [f]) }.findAll { f -> f != null } + report_assets] }
+        // The sample's gVCF and its index (DEEPVARIANT's, or the samplesheet's
+        // gvcf columns) go in the list too, with their names in meta.gvcf:
+        // HTML_REPORT links them as vcf/<id>.g.vcf.gz, where the bash report
+        // finds step 03's gVCF. A sample without a gVCF gets no meta.gvcf.
+        .map { meta, vcf, files -> [meta.id, meta, vcf, files] }
+        .join(ch_gvcf.map { meta, gvcf, idx -> [meta.id, [gvcf, idx]] }, remainder: true)
+        .filter { items -> items[1] != null }
+        .map { id, meta, vcf, files, gvcf ->
+            gvcf ? [meta + [gvcf: gvcf.collect { f -> f.name }], vcf, files + gvcf] : [meta, vcf, files]
+        }
 
     // QC files for MultiQC (mosdepth summaries)
     ch_multiqc_files = BAM_ANALYSIS.out.coverage.map { meta, f -> f }

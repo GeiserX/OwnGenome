@@ -64,6 +64,8 @@ bumps-drop-in-baseline	shard	4	bash-step-11-roh,bash-step-14-imputation,bash-ste
 callability-1-catalog	shard	74	-
 callability-2-genes	shard	32	-
 chip-clonal-1	shard	277	-
+chip-mt-1-roundtrip	shard	60	-
+ci-e2e-2-locityper	shard	158	-
 clinical-filter-mane-and-quality-1-tiers	shard	14	-
 clinical-filter-mane-and-quality-2-vep-norm	shard	2	-
 clinical-filter-mane-and-quality-3-modules	shard	8	clinical-filter-mane-and-quality-1-tiers
@@ -71,8 +73,10 @@ clinvar-clip-check-1	shard	8	-
 clinvar-combined-allele-1	shard	25	-
 clinvar-cpsr-quality-1	shard	5	clinvar-clip-check-1
 cn-engine-1-parity	shard	33	-
+cn-guard-1-mapq0	shard	5	-
 cn-intervals-1-catalog	shard	0	-
 cn-intervals-2-hg002	shard	19	-
+cn-report-1-tables	shard	60	-
 comphet-phasing-1-reads	shard	16	clinical-filter-mane-and-quality-1-tiers
 construct-scan-1-both	shard	42	-
 consumer-export-1	shard	59	-
@@ -86,11 +90,16 @@ expansions-and-rfc1-1-motif	shard	9	-
 families-file-1	shard	76	-
 family-joint-1	shard	515	-
 fixitfelix-chr21-1	shard	98	-
+followups-ci-3-sv-rule-regions	shard	44	-
 followups-clinvar-traits-1-rules-html	shard	2	-
 followups-cn-1-couple-report	shard	69	-
+followups-nf-1-nf-wiring	shard	240	-
 genome-lookup-1	shard	7	-
 genotype-rule-rows-1-str-extra	shard	8	-
 genotype-rules-1-phase	shard	37	-
+genotype-rules-2-g2	shard	20	-
+genotype-rules-2-lpa-null	shard	45	-
+genotype-rules-2-smn1-marker	shard	30	-
 haplogroup-explore-1-files	shard	59	-
 hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-
@@ -108,6 +117,9 @@ nextflow-from-fastq-3-sexcheck	shard	97	-
 nextflow-hardening-1-manta	shard	21	-
 nextflow-hardening-2-nf	shard	643	bash-step-19-delly,nextflow-hardening-1-manta
 nextflow-report-parity-1-sections	shard	206	clinvar-clip-check-1,comphet-phasing-1-reads
+nf-wiring-1-report-tables	shard	300	clinvar-clip-check-1
+nf-wiring-2-sv-str-tools	shard	900	-
+output-contract-1-hg002	shard	30	-
 paralog-catalog-1-gba	shard	114	-
 paralog-checks-and-doc-fixes-1-hba	shard	57	-
 paralog-rows-1	shard	316	-

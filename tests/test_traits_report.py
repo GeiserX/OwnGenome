@@ -46,7 +46,20 @@ Checks:
      site and the mistake, on planted copies: ref and alt swapped, the
      minus-strand bases, an rsID the dbSNP table lacks, a wrong position; and
      on a rules file with no site, and on a dbSNP table of another build than
-     versions.env pins.
+     versions.env pins;
+ 11. the copy-aware markers (MARKERS: LPA KIV-2 4925G>A, SMN1 g.27134T>G):
+     each pinned dbSNP record is one of the marker's copies with its ref and
+     alt, and a planted swap, a minus-strand pair and a position off the
+     copies are each caught; the context's middle base is the ref;
+     --marker-regions prints one region per copy; on mpileup lines made up
+     for each case at the SMN1 and SMN2 copies: a quarter of the reads with G
+     is 'present' (copies = fraction x agCN), T only (the reference) 'not
+     seen', 2 reads with G 'uncertain', under 10 reads 'too little depth', an
+     unreadable pileup 'not assessed' (exit 0); the SMN1 psCN and the agCN
+     come from step 35's table (homologous region included, quality under 20
+     not resolved); every message, for every status and every psCN, says the
+     marker does not prove 2+0 (control: a message without the sentence fails
+     the same test).
 
 Run: python3 tests/test_traits_report.py
 """
@@ -251,6 +264,111 @@ def multi_snp_checks(rules):
             if rid in rules:
                 check(f"HTML report: the {rid} rule row with its result {cases[0][1]}",
                       rr.E(rules[rid]["trait"]) in page and rr.E(cases[0][1]) in page, page[:300])
+    finally:
+        shutil.rmtree(work)
+
+
+SMN_HEADER = "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n"
+
+
+def says_not_proof(message):
+    """The SMN1 marker's message must say the marker does not prove 2+0."""
+    return "does not prove 2+0" in message
+
+
+def marker_checks():
+    """11. The copy-aware markers."""
+    for name, m in tr.MARKERS.items():
+        check(f"marker {name}: the pinned dbSNP record agrees with the marker", tr.marker_errors(name) == [],
+              tr.marker_errors(name))
+        rs, chrom, pos, ref, alt = m["dbsnp"]
+        comp = {"A": "T", "C": "G", "G": "C", "T": "A"}
+        e = tr.marker_errors(name, dict(m, ref=alt, alt=ref))
+        check(f"marker {name} control: ref and alt swapped is caught", any("swapped" in x for x in e), e)
+        e = tr.marker_errors(name, dict(m, ref=comp[ref], alt=comp[alt],
+                                        context=m["context"][:10] + comp[ref] + m["context"][11:]))
+        check(f"marker {name} control: the minus-strand bases are caught", any("minus-strand" in x for x in e), e)
+        e = tr.marker_errors(name, dbsnp=(rs, chrom, pos + 1, ref, alt))
+        check(f"marker {name} control: a dbSNP position off the copies is caught",
+              any("not at one of the marker's copies" in x for x in e), e)
+        e = tr.marker_errors(name, dict(m, context=m["context"][:10] + alt + m["context"][11:]))
+        check(f"marker {name} control: a context whose middle base is not the ref is caught",
+              any("middle base" in x for x in e), e)
+        res = run("--marker-regions", name)
+        check(f"marker {name}: --marker-regions prints one region per copy",
+              res.returncode == 0 and res.stdout.split() == [f"{chrom}:{p}-{p}" for p in m["copies"]], res)
+    check("LPA_KIV2_4925: seven copies (six KIV-2 units and KIV-1)", len(tr.MARKERS["LPA_KIV2_4925"]["copies"]) == 7)
+
+    sm = tr.MARKERS["SMN1_27134"]
+    work = tempfile.mkdtemp()
+    try:
+        def pileup(t_reads, g_reads, extra=""):
+            p = os.path.join(work, "p.tsv")
+            write(p, "".join(f"chr5\t{pos}\tN\t{t_reads + g_reads}\t^I{'T' * t_reads}{'g' * g_reads}$\t.\n"
+                             for pos in sm["copies"]) + extra)
+            return p
+
+        def smn(pscn="2,2", pqual="30,30", pfilt="PASS", agcn="4", homolog="chr5:70049000-70078000"):
+            p = os.path.join(work, "smn.tsv")
+            write(p, SMN_HEADER + f"chr5\t70925000\t70953000\tSMN1\tPASS\t{agcn}\t50\t{pfilt}\t{pscn}\t{pqual}\t{homolog}\n")
+            return p
+
+        def table(p, smn_path):
+            out = os.path.join(work, "o.tsv")
+            res = run("--marker", "SMN1_27134", "--pileup", p, "--copy-table", smn_path, "--marker-out", out)
+            return res, dict(x.split("\t", 1) for x in open(out).read().splitlines()[1:]) if os.path.exists(out) else {}
+
+        res, t = table(pileup(15, 5), smn())
+        check("SMN1 marker: a quarter of the reads with G is present, exit 0",
+              res.returncode == 0 and t.get("status") == "present" and t.get("alt_reads") == "10"
+              and t.get("depth") == "40" and t.get("fraction") == "0.2500", (res, t))
+        check("SMN1 marker: copies = fraction x agCN (0.25 x 4)", t.get("copies") == "1.0" and t.get("agcn") == "4", t)
+        check("SMN1 marker: the SMN1 psCN at exon 7 is read", t.get("smn1_pscn") == "2 (quality 30, filter PASS)", t)
+        check("SMN1 marker: present with two copies says it raises the chance of 2+0 and does not prove it",
+              "higher chance" in t.get("message", "") and says_not_proof(t.get("message", "")), t)
+        res, t = table(pileup(20, 0), smn())
+        check("SMN1 marker: reads with T only (the reference) is not seen, copies '.'",
+              t.get("status") == "not seen" and t.get("copies") == "." and "lower" in t.get("message", ""), t)
+        res, t = table(pileup(20, 0, extra="chr5\t70952074\tN\t2\tGG\t.\n"), smn())
+        check("SMN1 marker: 2 reads with G is uncertain", t.get("status") == "uncertain", t)
+        res, t = table(pileup(3, 1), smn())
+        check("SMN1 marker: under 10 reads is too little depth", t.get("status") == "too little depth", t)
+        res, t = table(pileup(15, 5, extra="chr5\t70952075\tN\t30\t" + "G" * 30 + "\t.\n"), smn())
+        check("SMN1 marker: reads at another position are not counted", t.get("alt_reads") == "10", t)
+        bad = os.path.join(work, "bad.tsv")
+        write(bad, "nonsense\n")
+        res, t = table(bad, smn())
+        check("SMN1 marker: an unreadable pileup is not assessed, exit 0",
+              res.returncode == 0 and t.get("status") == "not assessed", (res, t))
+        res, t = table(pileup(15, 5), smn(pscn="1,3"))
+        check("SMN1 marker: another SMN1 copy number says the marker refines a two-copy result only",
+              "SMN1 has 1 copy here" in t.get("message", ""), t)
+        res, t = table(pileup(15, 5), smn(pqual="12,30"))
+        check("SMN1 marker: a psCN of quality under 20 is not resolved",
+              t.get("smn1_pscn") == "2 (quality 12, filter PASS), not resolved"
+              and "SMN1 copy number: 2 (quality 12, filter PASS), not resolved;" in t.get("message", ""), t)
+        # the SMN table with SMN2's region first: exon 7 of SMN1 is the homologous region
+        p = os.path.join(work, "smn2.tsv")
+        write(p, SMN_HEADER + "chr5\t70049000\t70078000\tSMN1\tPASS\t4\t50\tPASS\t2,2\t30,40\tchr5:70925000-70953000\n")
+        res, t = table(pileup(15, 5), p)
+        check("SMN1 marker: exon 7 found through the homologous region (its own psCN and quality)",
+              t.get("smn1_pscn") == "2 (quality 40, filter PASS)" and t.get("agcn") == "4", t)
+        res, t = table(pileup(15, 5), os.path.join(work, "missing.tsv"))
+        check("SMN1 marker: no SMN table says so", "no SMN table" in t.get("smn1_pscn", ""), t)
+        res, t = table(pileup(15, 5), work)
+        check("SMN1 marker: an SMN table that cannot be read keeps the marker's reading, exit 0",
+              res.returncode == 0 and t.get("status") == "present" and t.get("agcn") == "."
+              and "could not be read" in t.get("smn1_pscn", ""), (res, t))
+
+        # Every status with every psCN: the message says the marker does not prove 2+0.
+        msgs = []
+        for counts in [(30, 10, 0), (40, 0, 0), (38, 2, 0), (3, 1, 0), None]:
+            for path in (smn(), smn(pscn="1,3"), smn(pqual="5,5"), os.path.join(work, "missing.tsv")):
+                msgs.append(dict(tr.smn1_marker(counts, path))["message"])
+        check(f"SMN1 marker: every message ({len(msgs)}) says it does not prove 2+0",
+              all(says_not_proof(x) for x in msgs), [x for x in msgs if not says_not_proof(x)])
+        check("SMN1 marker control: a message without the sentence fails that test",
+              not says_not_proof(msgs[0].replace(tr.SMN1_NOT_PROOF, "")))
     finally:
         shutil.rmtree(work)
 
@@ -480,6 +598,7 @@ def main():
         shutil.rmtree(work)
 
     multi_snp_checks(rules)
+    marker_checks()
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
     return 1 if FAILS else 0

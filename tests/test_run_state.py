@@ -207,6 +207,11 @@ def module_processes():
         for fn in files:
             if fn.endswith(".nf"):
                 names |= set(re.findall(r"^process\s+([A-Z0-9_]+)", open(os.path.join(root, fn)).read(), re.M))
+    # A process a workflow includes under another name (include { A as B }) runs, and is counted, as B
+    for fn in ["main.nf"] + [os.path.join("workflows", f) for f in os.listdir(os.path.join(REPO, "workflows"))]:
+        if fn.endswith(".nf"):
+            for inc in re.findall(r"^\s*include\s*\{([^}]*)\}", open(os.path.join(REPO, fn)).read(), re.M):
+                names |= set(re.findall(r"\w+\s+as\s+([A-Z0-9_]+)", inc))
     return names
 
 
@@ -241,6 +246,15 @@ def catalogue_checks(steps, sections, run_all_set):
     twice = {p: v for p, v in procs.items() if len(v) > 1 and p != "PRS"}  # step 26 runs inside PRS
     out["every module process belongs to a step"] = (len(mods) > 100 and not lost and not twice
                                                     and set(procs) <= mods, (lost, twice, sorted(set(procs) - mods)))
+    # Step 17 runs step 06's read check on CPSR's rows: workflows/clinical.nf includes it under its own
+    # name, so that task counts under step 17, and step 06's own call under step 06.
+    clinical = open(os.path.join(REPO, "workflows", "clinical.nf")).read()
+    step_of = {p: s["step"] for s in steps for p in s["processes"]}
+    got = (step_of.get(run_state.task_name("CLINICAL:CPSR_CDNA_CHECK (S1)")[0]),
+           step_of.get(run_state.task_name("PGX:CLINVAR_CDNA_CHECK (S1)")[0]))
+    out["CPSR's read check counts under step 17, ClinVar's under step 06"] = (
+        got == ("17", "06") and re.search(r"^include \{ CLINVAR_CDNA_CHECK as CPSR_CDNA_CHECK \}", clinical, re.M)
+        is not None and "CPSR_CDNA_CHECK(" in clinical, got)
     tools = {s["tool"] for s in steps if s["tool"]}
     out["the tools are main.nf's known tools"] = (tools == main_nf_tools(), sorted(tools ^ main_nf_tools()))
     def low_ok(s):
@@ -354,6 +368,8 @@ def main():
         ("every module process belongs to a step",
          [dict(s, processes=[p for p in s["processes"] if p != "Y_STR"]) for s in steps], None),
         ("the tools are main.nf's known tools", [dict(s, tool="") if s["step"] == "34" else s for s in steps], None),
+        ("CPSR's read check counts under step 17, ClinVar's under step 06",
+         [dict(s, processes=[p for p in s["processes"] if p != "CPSR_CDNA_CHECK"]) for s in steps], None),
         ("one row per step, every upstream step has a row", steps + [copy.deepcopy(steps[0])], None),
         ("every measured row has hours_low below hours, no other row has one",
          [dict(s, hours_low="") if s["step"] == "03" else s for s in steps], None),

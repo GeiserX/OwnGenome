@@ -10,7 +10,9 @@
     The inputs are the outputs of the steps that ran for this sample, as one
     list (main.nf joins them, so the report waits for each). They are linked
     into the folder layout collect_summary.py reads (clinvar/, pharmcat/,
-    cpic/, roh/, mito/, telomere/, hla_t1k/, hla_optitype/, kir/, pypgx/, annotsv/, traits/, chip/, couple/, ...); a step that did
+    cpic/, vep/, clinical/, slivar/, cpsr/, qc/, roh/, mito/, telomere/,
+    hla_t1k/, hla_optitype/, kir/, pypgx/, annotsv/, traits/, chip/, couple/,
+    ...); a step that did
     not run, or whose task failed and was ignored, has no file, and its card
     says "Not run". The called or given VCF comes separately, because its
     name is the user's. indexcov's folder becomes indexcov/ itself (the
@@ -23,7 +25,15 @@
     (the confirmed mtDNA variants step 20's section names) and the paralog
     catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv. Every
     <id>_<table>_copy_number.tsv of step 35 goes to paralogs/, and so
-    does step 35's <id>_cn_intervals.tsv. Every gene and rsID the
+    do step 35's <id>_cn_intervals.tsv, <id>_cn_dosage.tsv,
+    <id>_cyp21a2_psv.tsv and <id>_smn1_marker.tsv; step 46's <id>_lpa_kiv2.tsv
+    and <id>_lpa_kiv2_4925.tsv go to lpa/. The sample's gVCF and its index, named in
+    meta.gvcf because a samplesheet gVCF keeps the user's name, become
+    vcf/<id>.g.vcf.gz and its .tbi (or .csi), where the bash report finds
+    step 03's gVCF. A run_manifest.tsv in the sample folder records the
+    OwnGenome release (nextflow.config's manifest.version), so the report
+    names it as the bash report does; it is not published, because
+    run-all.sh writes the full manifest there. Every gene and rsID the
     results mention also goes to ${id}_search_index.json beside it
     (bin/results_index.py), for the live site's search, and the report's
     charts to ${id}_charts.json, for the live page (docs/24-html-report.md).
@@ -53,29 +63,47 @@ process HTML_REPORT {
 
     script:
     def id = meta.id
+    // single-quoted on the command line below, so a ' in a name is closed, escaped and reopened
+    def gvcf = meta.gvcf ? meta.gvcf[0].toString().replace("'", "'\\''") : ''
+    def gvcf_index = meta.gvcf ? meta.gvcf[1].toString().replace("'", "'\\''") : ''
+    def gvcf_suffix = gvcf_index.endsWith('.csi') ? 'csi' : 'tbi'
+    def release = workflow.manifest.version ?: ''
     """
     # Where collect_summary.py looks for each output (bin/collect_summary.py)
     S=layout/${id}
     mkdir -p "\$S"
     place() { mkdir -p "\$S/\$1" && ln -s "\$(readlink -f "\$2")" "\$S/\$1/\$(basename "\$2")"; }
     place vcf input/sample.vcf.gz && mv "\$S/vcf/sample.vcf.gz" "\$S/vcf/${id}.vcf.gz"
+    gvcf='${gvcf}'; gvcf_index='${gvcf_index}'
+    if [ -n "\$gvcf" ]; then
+        ln -s "\$(readlink -f "input/\$gvcf")" "\$S/vcf/${id}.g.vcf.gz"
+        ln -s "\$(readlink -f "input/\$gvcf_index")" "\$S/vcf/${id}.g.vcf.gz.${gvcf_suffix}"
+    fi
+    # The release this run is (bash: bin/write_manifest.sh's run pipeline_version row)
+    release='${release}'
+    [ -z "\$release" ] || printf 'run\\tpipeline_version\\t%s\\n' "\$release" > "\$S/run_manifest.tsv"
     for f in input/*; do
-        case "\$(basename "\$f")" in
+        n=\$(basename "\$f")
+        if [ -n "\$gvcf" ] && { [ "\$n" = "\$gvcf" ] || [ "\$n" = "\$gvcf_index" ]; }; then continue; fi
+        case "\$n" in
             sample.vcf.gz) ;;
             ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv) place clinvar "\$f" ;;
             ${id}.report.json|${id}.report.html)          place pharmcat "\$f" ;;
             ${id}_phenotypes.tsv|${id}_cpic_recommendations.txt) place cpic "\$f" ;;
-            ${id}_clinical.vcf.gz)                        place clinical "\$f" ;;
-            ${id}.cpsr.grch38.html)                       place cpsr "\$f" ;;
-            ${id}_prioritized.vcf.gz|${id}_compound_het_pairs.tsv) place slivar "\$f" ;;
+            ${id}_vep.vcf.gz|${id}_vep.vcf.gz.tbi)        place vep "\$f" ;;
+            ${id}_clinical.vcf.gz|${id}_clinical_summary.tsv) place clinical "\$f" ;;
+            ${id}.cpsr.grch38.html|${id}.cpsr.grch38.classification.tsv.gz|${id}_cpsr_cdna_check.tsv) place cpsr "\$f" ;;
+            ${id}_prioritized.vcf.gz|${id}_compound_het_pairs.tsv|${id}_slivar_summary.tsv) place slivar "\$f" ;;
             ${id}_roh.txt)                                place roh "\$f" ;;
             ${id}_haplogroup.txt|${id}_haplocheck.txt)    place mito "\$f" ;;
             ${id}_y_haplogroup.txt|${id}_y_tree.txt|${id}_y_tree_path.tsv) place y_haplogroup "\$f" ;;
             ${id}_y_str.tsv)                              place y_str "\$f" ;;
             ${id}_paraphase_copy_number.tsv|${id}_paraphase_variants.tsv|${id}_*_copy_number.tsv) place paralogs "\$f" ;;
             ${id}.mosdepth.summary.txt|${id}_callability.bed.gz) place coverage "\$f" ;;
-            ${id}_sample_qc.tsv)                          place qc "\$f" ;;
+            ${id}_sample_qc.tsv|${id}_read_count.tsv)     place qc "\$f" ;;
             ${id}_cn_intervals.tsv)                       place paralogs "\$f" ;;
+            ${id}_cn_dosage.tsv|${id}_cyp21a2_psv.tsv)    place paralogs "\$f" ;;
+            ${id}_smn1_marker.tsv)                        place paralogs "\$f" ;;
             ${id}_prs_summary.tsv)                        place prs "\$f" ;;
             ${id}_ancestry.tsv)                           place ancestry "\$f" ;;
             ${id}_ancestry_fine.tsv|${id}_painting.png)   place ancestry_fine "\$f" ;;
@@ -100,6 +128,7 @@ process HTML_REPORT {
             ${id}_archaic.tsv)                            place archaic "\$f" ;;
             ${id}_ancient.tsv|${id}_ancient_info.tsv|${id}_ancient_pca.svg) place ancient "\$f" ;;
             ${id}_lpa_kiv2.tsv)                           place lpa "\$f" ;;
+            ${id}_lpa_kiv2_4925.tsv)                      place lpa "\$f" ;;
             ${id}_vntyper.tsv)                            place vntyper "\$f" ;;
             ${id}_locityper.tsv)                          place locityper "\$f" ;;
             ${id}_viral.tsv)                              place viral "\$f" ;;
