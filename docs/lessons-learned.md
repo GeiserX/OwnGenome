@@ -397,7 +397,7 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### Stranger over-flags RFC1 (CANVAS) from short reads — do not read it as a diagnosis
 - **Observed:** Stranger can report RFC1 `STR_STATUS=full_mutation` for a modest expansion (e.g. 51/73 of the degenerate `AARRG` motif). CANVAS requires the **AAGGG** motif specifically, **biallelic**, at **~400–2000+** repeats — short-read ExpansionHunter cannot resolve AAGGG vs the benign AAAAG, and the catalog's `STR_PATHOLOGIC_MIN=12` is not the clinical threshold.
 - **Interpretation:** Treat an RFC1 flag as **uninterpretable from short-read WGS** — confirm with motif-aware/flanking-PCR testing only if clinically indicated. (Documented in `docs/09b-stranger.md`.)
-- **Since then:** ExpansionHunter's count still cannot tell the motifs apart, but when Stranger flags RFC1, step 9b counts the motif in the reads over the repeat (`bin/rfc1_motif.py`) and gives a verdict; without the sample's BAM and its index the verdict is `not_checked` ([STR Annotation, Notes](09b-stranger.md#notes)).
+- **Since then:** ExpansionHunter's count still cannot tell the motifs apart, but when Stranger flags RFC1, step 9b counts the motif in the reads over the repeat (`og str motif`, a port of the first `bin/rfc1_motif.py`) and gives a verdict; without the sample's BAM and its index the verdict is `not_checked` ([STR Annotation, Notes](09b-stranger.md#notes)).
 
 ## Vendor VCF intake (2026-10)
 
@@ -422,7 +422,7 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### The planned CYP2D6 depth rule passed the broken BAM and flagged the clean one
 - **Failed:** the plan for step 32's CYP2D6 depth check was a ratio rule: unreliable when CYP2D6 has less than 0.6 of the depth of its flanks. On the e2e fixture's CYP2D slice, mapped to the no-ALT reference, CYP2D6 has 0.62 of the flank depth with all reads and 0.57 at MAPQ >= 1, its normal value; mapped to the Broad hg38 FASTA with ALT contigs, CYP2D6 keeps 0.28 of the flank depth with all reads. On those measured depths the ratio cut at 0.6 flagged the clean BAM and passed the broken one ([CYP2D6 depth check](32-pypgx.md#cyp2d6-depth-check)).
 - **Why:** CYP2D6 sits beside CYP2D7 and CYP2D8, so its depth is below the flanks on a correct alignment too. What an ALT contig changes is where the reads go: a third of them move to `chr22_KI270879v1_alt`, and the ones left get MAPQ 0.
-- **Fix:** the shipped rule (`bin/cyp2d6_depth_check.py`) is the share of reads with MAPQ >= 1: unreliable when more than 40% of the reads at CYP2D6 (when it has at least 15% of the flank depth) or in the flanks have MAPQ 0. The share is 0.91 without ALT contigs and 0.005 with them. The ALT depth A/B workflow runs the check on both mappings and fails unless it passes the first and flags the second.
+- **Fix:** the shipped rule (`og pgx cyp2d6-check`, a port of the first `bin/cyp2d6_depth_check.py`) is the share of reads with MAPQ >= 1: unreliable when more than 40% of the reads at CYP2D6 (when it has at least 15% of the flank depth) or in the flanks have MAPQ 0. The share is 0.91 without ALT contigs and 0.005 with them. The ALT depth A/B workflow runs the check on both mappings and fails unless it passes the first and flags the second.
 - **Rule:** measure a threshold on both the good and the broken input before writing it down; a ratio that sounds right can sit on the wrong side of the normal value.
 
 ### SURVIVOR names its columns after the input samples and exits 0 on a missing file

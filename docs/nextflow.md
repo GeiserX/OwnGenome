@@ -24,7 +24,7 @@ Every BAM then goes through a sex check (indexcov), and the pipeline runs pharma
    sudo mv nextflow /usr/local/bin/
    ```
 
-Before it starts any task, `main.nf` runs `rust/og.sh check`: when `bin/.og` holds an `og` binary built from another `rust/` than the checkout's, the run stops and names `./scripts/setup.sh --og`, which rebuilds it. No step calls `og` yet, so a checkout without the binary runs as before ([The Rust Core](rust.md)).
+Before it starts any task, `main.nf` runs `rust/og.sh check`: when `bin/.og` holds an `og` binary built from another `rust/` than the checkout's, the run stops and names `./scripts/setup.sh --og`, which rebuilds it. A missing binary passes that check, but STRANGER_RFC1, CYRIUS and PYPGX call `og` and stop without it, so build it with `./scripts/setup.sh --og` before a run ([The Rust Core](rust.md)).
 
 ### Run the Pipeline
 
