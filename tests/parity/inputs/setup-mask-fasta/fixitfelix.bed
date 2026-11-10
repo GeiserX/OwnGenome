@@ -1,0 +1,5 @@
+browser position s1:1-3
+#seq	start	end
+s1	5	9
+s1	15	16
+missing	0	10

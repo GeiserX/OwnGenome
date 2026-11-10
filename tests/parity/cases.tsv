@@ -1,0 +1,15 @@
+# One row per case: scripts/ci/oracle-diff.sh runs og and the oracle on the
+# same staged inputs and compares the results (tests/parity/README.md).
+# tool<TAB>case<TAB>inputs<TAB>args<TAB>outputs<TAB>compare<TAB>image
+setup-mask-fasta	fixitfelix	setup-mask-fasta/fixitfelix.fa,setup-mask-fasta/fixitfelix.bed	fixitfelix.fa fixitfelix.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	crlf	setup-mask-fasta/crlf.fa,setup-mask-fasta/crlf.bed	crlf.fa crlf.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	no-final-newline	setup-mask-fasta/no-final-newline.fa,setup-mask-fasta/no-final-newline.bed	no-final-newline.fa no-final-newline.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	spanning-repeated	setup-mask-fasta/spanning-repeated.fa,setup-mask-fasta/spanning-repeated.bed	spanning-repeated.fa spanning-repeated.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	missing-sorted	setup-mask-fasta/missing-sorted.fa,setup-mask-fasta/missing-sorted.bed	missing-sorted.fa missing-sorted.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	empty-bed	setup-mask-fasta/empty-bed.fa,setup-mask-fasta/empty-bed.bed	empty-bed.fa empty-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	overlap	setup-mask-fasta/overlap.fa,setup-mask-fasta/overlap.bed	overlap.fa overlap.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	past-end	setup-mask-fasta/past-end.fa,setup-mask-fasta/past-end.bed	past-end.fa past-end.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	lone-cr	setup-mask-fasta/lone-cr.fa,setup-mask-fasta/lone-cr.bed	lone-cr.fa lone-cr.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	empty-header	setup-mask-fasta/empty-header.fa,setup-mask-fasta/empty-header.bed	empty-header.fa empty-header.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	bad-bed	setup-mask-fasta/bad-bed.fa,setup-mask-fasta/bad-bed.bed	bad-bed.fa bad-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+setup-mask-fasta	synthetic-254mb	gen:synthetic-fasta.sh	synthetic.fa synthetic.bed out.fa	out.fa	bytes	PYTHON_IMAGE
