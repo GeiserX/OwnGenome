@@ -3,10 +3,12 @@
 //! format).
 //!
 //! Phase 1 core: the reference bands, the chromosome lengths, centromeres and
-//! masked spans, and the runs-of-homozygosity layer.
+//! masked spans, and the runs-of-homozygosity layer. The gene files
+//! (`genes`) are built once per GENCODE release, apart from any run.
 
 pub mod doc;
 pub mod facts;
+pub mod genes;
 pub mod layers;
 pub mod reference;
 pub mod stamp;
