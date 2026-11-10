@@ -82,7 +82,7 @@ CHECK="${OUTDIR}/${SAMPLE}_cyp2d6_depth_check.tsv"
 mkdir -p "$DEPTH_DIR"
 rm -f "$CHECK"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTDIR")" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/cyp2d6_depth_check.py bed > "${DEPTH_DIR}/regions.bed"
+  /pgp-bin/og pgx cyp2d6-bed > "${DEPTH_DIR}/regions.bed"
 for Q in 0 1; do
   run_in --cpus 2 --memory 2g "${MOSDEPTH_IMAGE}" \
     mosdepth -n -c chr22 -t 2 -Q "$Q" -b "$(cpath "${DEPTH_DIR}/regions.bed")" \
