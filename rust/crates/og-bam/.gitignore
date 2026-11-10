@@ -2,5 +2,5 @@
 # kept in git on purpose (the top-level .gitignore drops every *.bam).
 !tests/data/*.bam
 !tests/data/*.bam.bai
-!tests/data/parity/in/*.bam
-!tests/data/parity/in/*.bam.bai
+!tests/data/parity/in/*
+!tests/data/parity/want/**
