@@ -11,7 +11,8 @@ name: Rust
 #            in PYTHON_IMAGE, BCFTOOLS_IMAGE, MANTA_IMAGE and PARASCOPY_IMAGE
 #            on every platform each one publishes (arm64 under QEMU), then
 #            once more with a wrong-arch binary planted, which must fail. The
-#            two binaries are kept as the artifact og-binaries.
+#            two binaries are kept as the artifact og-binaries. Both also
+#            run og-bam's fetch smoke against pysam on the fixture slice.
 #   streams  nightly: 10^7 cases per pycompat operation against CPython in
 #            PYTHON_IMAGE, one operation at a time, with a new seed each
 #            night (printed, so a failure can be replayed). On a pull request
@@ -75,6 +76,30 @@ jobs:
       - name: og by bare name in the task images, amd64 and arm64
         shell: bash
         run: tests/rust/og-in-images.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # og-bam's fetch smoke (docs/rust.md): pysam in PYPGX_IMAGE, the pysam
+      # the pipeline runs, and both static binaries, each on its own arch,
+      # must write fetch.pysam.tsv byte for byte on the fixture slice.
+      - name: og-bam fetch equals pysam, amd64 and arm64, and the binary sizes
+        shell: bash
+        run: |
+          . versions.env
+          d=rust/crates/og-bam/tests/data
+          out="${RUNNER_TEMP}/fetch.tsv"
+          docker run --rm -v "${PWD}:/w:ro" -w /w "$PYPGX_IMAGE" \
+            python3 -I rust/crates/og-bam/tests/pysam_fetch.py "${d}/cyp2d6.bam" "${d}/regions.tsv" > "$out"
+          diff "$out" "${d}/fetch.pysam.tsv" || { echo "ERROR: pysam no longer writes fetch.pysam.tsv"; exit 1; }
+          for p in amd64:x86_64 arm64:aarch64; do
+            docker run --rm --platform "linux/${p%:*}" -v "${PWD}:/w:ro" -w /w "$PYTHON_IMAGE" \
+              "bin/.og/og-linux-${p#*:}" bam-fetch-probe "${d}/cyp2d6.bam" "${d}/regions.tsv" > "$out"
+            diff "$out" "${d}/fetch.pysam.tsv" || { echo "ERROR: og-linux-${p#*:} fetches what pysam does not"; exit 1; }
+            echo "og-linux-${p#*:} on ${p%:*}: $(wc -l < "$out") reads, the same as pysam"
+          done
+          {
+            echo "| binary | bytes |"
+            echo "|---|---|"
+            for f in bin/.og/og-linux-*; do echo "| ${f##*/} | $(stat -c %s "$f") |"; done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Control: the same check must fail when an image runs the wrong build.
       # The amd64 binary planted as og-linux-aarch64 reports x86_64 on arm64.
