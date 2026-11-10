@@ -218,7 +218,6 @@ jobs:
       # real step, or compare og clinvar with the summary, need bin/.og: they
       # run here, and unit-tests skips them (no OG there).
       - name: Step 06 with og (the tests that run og clinvar)
-        if: ${{ !cancelled() }}   # runs even when cargo test failed, so each result shows
         working-directory: .
         env:
           OG: ${{ github.workspace }}/bin/og
