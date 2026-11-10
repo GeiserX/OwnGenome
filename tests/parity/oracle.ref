@@ -8,5 +8,5 @@
 setup-mask-fasta	23a028d37fbceb465ae4de8a263f5da6c9ec8e80	heredoc:scripts/setup.sh:MASK_FASTA_PY	python3	setup mask-fasta
 pgx-cyp2d6-bed	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" bed "$@"'	pgx cyp2d6-bed
 pgx-cyp2d6-measure	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" measure "$@"'	pgx cyp2d6-measure
-pgx-cyp2d6-check	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" check "$@"'	pgx cyp2d6-check
+pgx-cyp2d6-check	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" measure "$@"'	pgx cyp2d6-check
 str-motif	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/rfc1_motif.py	python3	str motif
