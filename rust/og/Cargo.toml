@@ -13,6 +13,7 @@ og-bam.workspace = true
 og-map.workspace = true
 og-intervals.workspace = true
 og-dev.workspace = true
+og-pgx.workspace = true
 
 [lints]
 workspace = true

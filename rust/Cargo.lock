@@ -499,6 +499,7 @@ dependencies = [
  "og-intervals",
  "og-io",
  "og-map",
+ "og-pgx",
  "pycompat",
 ]
 
@@ -548,12 +549,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "og-vcf"
+name = "og-pgx"
 version = "0.1.0"
 dependencies = [
- "memchr",
  "og-io",
- "smallvec",
+ "pycompat",
 ]
 
 [[package]]
@@ -562,6 +562,15 @@ version = "0.1.0"
 dependencies = [
  "og-io",
  "pycompat",
+]
+
+[[package]]
+name = "og-vcf"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+ "smallvec",
 ]
 
 [[package]]
