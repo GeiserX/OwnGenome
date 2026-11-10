@@ -106,6 +106,7 @@ pub fn reader(
         buf: Vec::new(),
         pos: 0,
         done: false,
+        failed: None,
     }))
 }
 
@@ -318,6 +319,17 @@ struct Ordered {
     buf: Vec<u8>,
     pos: usize,
     done: bool,
+    /// The first error, returned again on every later read so a damaged
+    /// input never looks like a clean end.
+    failed: Option<(io::ErrorKind, String)>,
+}
+
+impl Ordered {
+    fn fail(&mut self, e: io::Error) -> io::Error {
+        self.done = true;
+        self.failed = Some((e.kind(), e.to_string()));
+        e
+    }
 }
 
 impl Read for Ordered {
@@ -333,6 +345,9 @@ impl Read for Ordered {
 
 impl BufRead for Ordered {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        if let Some((kind, msg)) = &self.failed {
+            return Err(io::Error::new(*kind, msg.clone()));
+        }
         while self.pos == self.buf.len() && !self.done {
             let Ok(slot) = self.order.recv() else {
                 self.done = true;
@@ -343,14 +358,8 @@ impl BufRead for Ordered {
                     self.buf = buf;
                     self.pos = 0;
                 }
-                Ok(Err(e)) => {
-                    self.done = true;
-                    return Err(e);
-                }
-                Err(_) => {
-                    self.done = true;
-                    return Err(io::Error::other("a BGZF worker stopped"));
-                }
+                Ok(Err(e)) => return Err(self.fail(e)),
+                Err(_) => return Err(self.fail(io::Error::other("a BGZF worker stopped"))),
             }
         }
         Ok(&self.buf[self.pos..])
@@ -669,6 +678,12 @@ mod tests {
                     "{name}: {w} workers read it"
                 );
             }
+            // A read after the error fails again, never a clean end.
+            let mut r = reader(io::Cursor::new(input.clone()), n(2)).unwrap();
+            let first = r.read_to_end(&mut Vec::new()).unwrap_err();
+            let again = r.read(&mut [0u8; 64]).unwrap_err();
+            assert_eq!(again.kind(), first.kind(), "{name}: second read");
+            assert!(r.fill_buf().is_err(), "{name}: fill_buf after the error");
             assert!(
                 read_seq(input.clone()).is_err(),
                 "{name}: the sequential reader read it"
