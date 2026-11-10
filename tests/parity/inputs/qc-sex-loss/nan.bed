@@ -1,0 +1,4 @@
+chrM	0	500	deep
+chr1	0	500	0
+chr1	x	500	-1
+chr1	500	1000	nan

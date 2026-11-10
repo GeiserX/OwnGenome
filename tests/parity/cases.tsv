@@ -13,3 +13,35 @@ setup-mask-fasta	lone-cr	setup-mask-fasta/lone-cr.fa,setup-mask-fasta/lone-cr.be
 setup-mask-fasta	empty-header	setup-mask-fasta/empty-header.fa,setup-mask-fasta/empty-header.bed	empty-header.fa empty-header.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	bad-bed	setup-mask-fasta/bad-bed.fa,setup-mask-fasta/bad-bed.bed	bad-bed.fa bad-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	synthetic-254mb	gen:synthetic-fasta.sh	synthetic.fa synthetic.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+qc-sex-loss	male	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions m.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	drift	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions drift.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	loss-30	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions m30.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	xyy	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions xyy.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	slice	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions slice.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-chr-prefix	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions nochr.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	female	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf f.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	female-loss-30	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f30.bed.gz --vcf f30.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	copy-neutral	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf fcn.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	noisy	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf noisy.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	female-no-vcf	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	not-a-vcf	qc-sex-loss/female.tsv,qc-sex-loss/notkv.tsv	--table female.tsv --vcf notkv.tsv	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-sex	gen:sex-loss.sh,qc-sex-loss/nosex.tsv	--table nosex.tsv --regions f.bed.gz	nosex.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-regions	qc-sex-loss/male.tsv	--table male.tsv	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	reads-win	gen:sex-loss.sh,qc-sex-loss/reads.tsv	--table reads.tsv --regions m.bed.gz	reads.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	declared	gen:sex-loss.sh,qc-sex-loss/declared.tsv	--table declared.tsv --regions m.bed.gz	declared.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	rerun	gen:sex-loss.sh,qc-sex-loss/rerun.tsv	--table=rerun.tsv --regions=m30.bed.gz --regions m.bed.gz	rerun.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	missing-regions	qc-sex-loss/male.tsv	--table male.tsv --regions nowhere.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	missing-vcf	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf nowhere.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	regions-is-a-dir	qc-sex-loss/male.tsv	--table male.tsv --regions .	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	truncated-gzip	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions trunc.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	short-line	qc-sex-loss/male.tsv,qc-sex-loss/short.bed	--table male.tsv --regions short.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	bad-start	qc-sex-loss/male.tsv,qc-sex-loss/int.bed	--table male.tsv --regions int.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	bad-depth	qc-sex-loss/male.tsv,qc-sex-loss/float.bed	--table male.tsv --regions float.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	bad-pos	gen:sex-loss.sh,qc-sex-loss/female.tsv,qc-sex-loss/badpos.vcf	--table female.tsv --regions f.bed.gz --vcf badpos.vcf	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	missing-table	-	--table nowhere.tsv	-	bytes	PYTHON_IMAGE
+qc-sex-loss	not-key-value	qc-sex-loss/notkv.tsv	--table notkv.tsv	notkv.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	nan-depth	qc-sex-loss/male.tsv,qc-sex-loss/nan.bed	--table male.tsv --regions nan.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	not-utf8	qc-sex-loss/male.tsv,qc-sex-loss/latin1.bed	--table male.tsv --regions latin1.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	huge-ad	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf huge.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-table-arg	gen:sex-loss.sh	--regions m.bed.gz	-	bytes	PYTHON_IMAGE
+qc-sex-loss	genome	gen:sex-loss-genome.sh,qc-sex-loss/male.tsv	--table male.tsv --regions genome.bed.gz	male.tsv	bytes	PYTHON_IMAGE
