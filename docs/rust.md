@@ -13,14 +13,15 @@ rust/
   og.sh                 build, download and check the binary
   crates/pycompat/      Python-exact formatting and parsing
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
+  crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and a hidden `og pycompat-probe` that the tests drive.
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
 
-The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2` so far).
+The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2` and `rust-htslib` so far).
 
 ## Building
 
@@ -65,6 +66,8 @@ A port must write exactly what the Python tool wrote. Most differences hide in n
 
 `og-io` reads a path or `-` as plain text, gzip or BGZF (sniffed by the magic bytes; NUL padding after a gzip member is skipped, as Python's `gzip` does), splits lines as Python's text mode does (`\n`, `\r\n` and a lone `\r`), decodes UTF-8 strictly or with `replace`, and writes a file under a temporary name before renaming it into place.
 
+`og-bam` reads an indexed BAM through `rust-htslib`, which builds htslib from source and links it into `og` on both musl targets, so the binary stays static. Its curl, S3, GCS, bzip2 and lzma features are off: `og` reads local BAM files only, and only CRAM needs bzip2 and lzma. `fetch` is htslib's own region query, the call pysam makes, so a region returns the same reads; `reference_end`, `cigarstring` and `get_blocks` are rebuilt from the CIGAR the way pysam computes them. htslib adds about 700 KB to each binary. The fetch smoke checks it: `crates/og-bam/tests/data` holds a 2 kb slice of the test fixture's BAM at CYP2D6, a list of regions with the edge cases (a read's first and last base, a base inside a deletion, a placed unmapped read, a contig without reads) and what pysam fetches there (`tests/pysam_fetch.py` writes it). `cargo test` and `og bam-fetch-probe` must write the same lines.
+
 Known limits, each an error in Rust where Python would go on: ints beyond 128 bits, a lone surrogate in a JSON string, non-ASCII digits in `float()` and `int()`, a string `indent`, and JSON nested deeper than 1000 levels (`RecursionError`; CPython 3.14 reads about 100,000 on a default stack). None of them appears in what the pipeline reads.
 
 ### The differential test
@@ -77,7 +80,7 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 - **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; both musl builds through `scripts/setup.sh --og`; and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task.
 - **Guard, job `unit-tests`**: `tests/test_og_check.sh` runs the check on planted trees (no binary, a stale one, an edit that is uncommitted, untracked or committed, a file git ignores, a binary stamped `unknown`, a tree hash that cannot be computed, a release download with a bad checksum or attestation, with `gh` not logged in, with a network error, without binaries, or whose copy into `bin/.og` fails), and checks that `run-all.sh`, `validate-setup.sh` and `write_manifest.sh` act on it.
-- **Rust** (`rust.yml`, on a pull request that touches the Rust code, the shim or `versions.env`): times a cold and a cached build, runs `og` by bare name in the four images on amd64 and arm64 (QEMU), runs that check once more with a wrong-arch binary planted, which must fail, and keeps the binaries as the artifact `og-binaries`. Every night it runs the differential test at 10,000,000 cases per operation with a new seed.
+- **Rust** (`rust.yml`, on a pull request that touches the Rust code, the shim or `versions.env`): times a cold and a cached build, runs `og` by bare name in the four images on amd64 and arm64 (QEMU), runs that check once more with a wrong-arch binary planted, which must fail, runs the fetch smoke with both binaries (arm64 under QEMU) and with pysam in `PYPGX_IMAGE`, which must all match `fetch.pysam.tsv`, and keeps the binaries as the artifact `og-binaries`. Every night it runs the differential test at 10,000,000 cases per operation with a new seed.
 - **Release** (`release.yml`): a tag builds both binaries, writes `SHA256SUMS`, attests them and attaches all three to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.
