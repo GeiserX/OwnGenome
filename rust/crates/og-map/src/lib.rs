@@ -2,19 +2,23 @@
 //! run folder and the repository's reference assets (`README.md` holds the
 //! format).
 //!
-//! Phase 1 core: the reference bands, the chromosome lengths, centromeres and
-//! masked spans, and the runs-of-homozygosity layer. The gene files
-//! (`genes`) are built once per GENCODE release, apart from any run.
+//! Phase 1: the reference bands, the chromosome lengths, centromeres and
+//! masked spans, the findings layer with the veil tags (`veil`), and the
+//! runs-of-homozygosity layer. The gene files (`genes`) are built once per
+//! GENCODE release, apart from any run.
 
 pub mod doc;
 pub mod facts;
+pub mod findings;
 pub mod genes;
 pub mod layers;
 pub mod reference;
 pub mod stamp;
 pub mod text;
+pub mod veil;
 
 use facts::{Facts, Sex};
+use findings::Placed;
 use layers::roh::{self, Roh};
 use reference::Reference;
 use std::fmt;
@@ -25,7 +29,7 @@ pub const VERSION: u32 = 1;
 
 /// Every path under GENOME_DIR the map reads, as written in
 /// `assets/output_contract.tsv` (`{sample}` is the run).
-pub const INPUT_PATHS: &[&str] = &roh::PATHS;
+pub const INPUT_PATHS: &[&str] = &[roh::PATHS[0], roh::PATHS[1], facts::SEX_PATH];
 
 /// A layer's state: three answers, never two. A missing input is
 /// `missing`; an input that cannot be read is `unreadable`; a read input
@@ -89,6 +93,9 @@ pub struct Model {
     pub made_by: String,
     pub sex: Sex,
     pub reference: Reference,
+    /// The GENCODE release installed under the root (`v50`), if any.
+    pub gencode: Option<String>,
+    pub findings: Placed,
     pub roh: Roh,
 }
 
@@ -152,7 +159,15 @@ impl Request<'_> {
 
     /// Every file the document depends on, present or not.
     pub fn inputs(&self) -> Vec<PathBuf> {
-        let mut v = vec![self.assets.join(reference::BAND_FILE)];
+        let mut v = vec![
+            self.assets.join(reference::BAND_FILE),
+            self.root
+                .join(facts::SEX_PATH.replace("{sample}", self.run)),
+            // The genes file that places gene-only findings; while none is
+            // installed, the folder setup installs it in, so its arrival
+            // changes the stamp.
+            genes::locate(self.root).map_or_else(|_| self.root.join("reference"), |i| i.gtf),
+        ];
         v.extend(
             roh::candidates(self.root, self.run)
                 .into_iter()
@@ -176,8 +191,11 @@ pub fn build_person(req: &Request<'_>) -> Result<Model, BuildError> {
 /// [`build_person`] with the stamp already taken, so a cached document
 /// carries the stamp it is stored under. The caller has run `req.check()`.
 fn build_with_stamp(req: &Request<'_>, stamp: String) -> Result<Model, BuildError> {
-    let Facts { sex } = facts::parse(req.stdin).map_err(BuildError::Usage)?;
+    let Facts { sex, findings } = facts::parse(req.stdin).map_err(BuildError::Usage)?;
+    let sex = facts::sex_file(req.root, req.run).unwrap_or(sex);
     let reference = Reference::load(req.assets).map_err(|e| BuildError::Internal(e.to_string()))?;
+    let findings = findings::read(&findings, req.root, req.run, &reference);
+    let gencode = genes::locate(req.root).ok().map(|i| i.release);
     let roh = roh::read(req.root, req.run, &reference, sex);
     Ok(Model {
         run: req.run.to_owned(),
@@ -185,6 +203,8 @@ fn build_with_stamp(req: &Request<'_>, stamp: String) -> Result<Model, BuildErro
         made_by: req.made_by.to_owned(),
         sex,
         reference,
+        gencode,
+        findings,
         roh,
     })
 }

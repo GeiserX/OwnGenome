@@ -1,0 +1,32 @@
+{"results": {
+  "sample": "DEMO-005",
+  "person": {"sample": "DEMO-005", "declared_sex": "male", "inferred_sex": null},
+  "findings": [
+    {"id": "sf-brca2-c-1a-g", "level": "act", "card": "clinical-filter", "title": "Secondary finding in BRCA2",
+     "gene": "BRCA2", "viewer": "chr13:32340000", "steps": ["24"],
+     "evidence": [["Variant", "c.1A>G"], ["Genotype", "het"]]},
+    {"id": "cpsr-brca2-c-2c-t", "level": "act", "card": "cpsr", "title": "Cancer predisposition (BRCA2)",
+     "gene": "BRCA2", "viewer": "13:32,390,000", "steps": ["30"], "evidence": [["Class", "Pathogenic"]]},
+    {"id": "two-hits-cftr", "level": "act", "card": "carrier-list", "title": "Two changes in CFTR",
+     "gene": "CFTR", "viewer": null, "steps": ["29"], "evidence": []},
+    {"id": "pgx-cyp2d6", "level": "medicine", "card": "cpic", "title": "CYP2D6: Poor Metabolizer",
+     "gene": "CYP2D6", "viewer": null, "steps": ["17"], "evidence": []},
+    {"id": "clinvar-tp53-chr17-7675000-c-t", "level": "review", "card": "clinvar", "title": "Pathogenic change in TP53",
+     "gene": "TP53", "viewer": "chr17:7675000", "steps": ["13"], "evidence": [["Genotype", "0/1"]]},
+    {"id": "sex", "level": "trust", "card": "qc", "title": "Declared and measured sex differ",
+     "gene": null, "viewer": null, "steps": ["33"], "evidence": []},
+    {"id": "lpa", "level": "review", "card": "lpa", "title": "Lp(a) likely high",
+     "gene": "LPA", "viewer": null, "steps": ["40"], "evidence": []},
+    {"id": "clinvar-mt-tl1-chrm-3243-a-g", "level": "review", "card": "clinvar", "title": "Pathogenic change in MT-TL1",
+     "gene": "MT-TL1", "viewer": "chrM:3243", "steps": ["13"], "evidence": []},
+    {"id": "unreadable-cpsr-8", "level": "act", "card": "cpsr", "title": "A row of this section could not be read",
+     "gene": null, "viewer": null, "steps": ["30"], "evidence": []}
+  ],
+  "chapters": [
+    {"key": "traits", "sections": [
+      {"id": "traits-panel", "steps": ["42"],
+       "hidden": {"summary": "APOE and Alzheimer's disease: a risk factor, not a diagnosis.",
+                  "text": "HIDDEN-TEXT-MARKER: never on the map"}}
+    ]}
+  ]
+}}

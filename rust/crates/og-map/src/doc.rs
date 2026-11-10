@@ -8,7 +8,9 @@
 //!   row's start (`ds`, the first one absolute) and ends as lengths (`l`).
 
 use crate::layers::roh::{self, ART_NAMES};
+use crate::reference::CHROMS;
 use crate::text::{self, Piece};
+use crate::veil;
 use crate::{Layer, Model};
 use flate2::{Compression, GzBuilder};
 use indexmap::IndexMap;
@@ -121,7 +123,7 @@ fn reference(m: &Model) -> Value {
     obj([
         ("chroms", Value::Array(chroms)),
         ("bands", Value::Object(bands)),
-        ("gencode", Value::Null),
+        ("gencode", m.gencode.as_deref().map_or(Value::Null, str)),
     ])
 }
 
@@ -176,6 +178,86 @@ fn roh_columns(m: &Model) -> (Value, Value, Vec<Piece>, IndexMap<String, Value>)
     )
 }
 
+fn opt(s: Option<&str>) -> Value {
+    s.map_or(Value::Null, str)
+}
+
+fn strs<'a>(xs: impl IntoIterator<Item = &'a str>) -> Value {
+    Value::Array(xs.into_iter().map(str).collect())
+}
+
+/// The person's findings on the map: one flat column per field, rows in
+/// map order. `veil` is the index in `dict.veil` of a closable finding,
+/// else -1.
+fn findings_columns(m: &Model) -> Value {
+    let rows = &m.findings.rows;
+    let tags = m.findings.veil.tags(rows);
+    obj([
+        ("id", strs(rows.iter().map(|r| r.finding.id.as_str()))),
+        ("level", strs(rows.iter().map(|r| r.finding.level.as_str()))),
+        (
+            "gate",
+            Value::Array(
+                rows.iter()
+                    .map(|r| opt(r.finding.gate.as_deref()))
+                    .collect(),
+            ),
+        ),
+        ("chrom", strs(rows.iter().map(|r| CHROMS[r.chrom]))),
+        (
+            "pos",
+            Value::Array(
+                rows.iter()
+                    .map(|r| r.pos.map_or(Value::Null, int))
+                    .collect(),
+            ),
+        ),
+        ("s", ints(rows.iter().map(|r| r.s))),
+        ("e", ints(rows.iter().map(|r| r.e))),
+        (
+            "gene",
+            Value::Array(
+                rows.iter()
+                    .map(|r| opt(r.finding.gene.as_deref()))
+                    .collect(),
+            ),
+        ),
+        ("title", strs(rows.iter().map(|r| r.finding.title.as_str()))),
+        (
+            "hgvs",
+            Value::Array(
+                rows.iter()
+                    .map(|r| opt(r.finding.hgvs.as_deref()))
+                    .collect(),
+            ),
+        ),
+        ("zyg", strs(rows.iter().map(|r| r.zyg))),
+        // A copy (which parent's) needs the family: phase 2.
+        ("copy", Value::Array(vec![Value::Null; rows.len()])),
+        (
+            "steps",
+            Value::Array(
+                rows.iter()
+                    .map(|r| strs(r.finding.steps.iter().map(String::as_str)))
+                    .collect(),
+            ),
+        ),
+        (
+            "href",
+            Value::Array(rows.iter().map(|r| Value::Str(r.href())).collect()),
+        ),
+        (
+            "reads",
+            Value::Array(rows.iter().map(|r| Value::Str(r.reads())).collect()),
+        ),
+        (
+            "phrase",
+            Value::Array(rows.iter().map(|r| Value::Str(r.phrase())).collect()),
+        ),
+        ("veil", ints(veil::column(&tags))),
+    ])
+}
+
 /// The document as a JSON value.
 pub fn to_value(m: &Model) -> Value {
     let (roh_cols, roh_bins, genome, chrom_text) = roh_columns(m);
@@ -193,7 +275,17 @@ pub fn to_value(m: &Model) -> Value {
     let mut per: IndexMap<String, Value> = IndexMap::new();
     per.insert(
         m.run.clone(),
-        obj([("roh", roh_cols), ("roh_bins", roh_bins)]),
+        obj([
+            ("findings", findings_columns(m)),
+            ("roh", roh_cols),
+            ("roh_bins", roh_bins),
+        ]),
+    );
+    let findings_text = Value::Object(
+        text::findings_count()
+            .into_iter()
+            .map(|(k, p)| (k.to_owned(), pieces(p)))
+            .collect(),
     );
     obj([
         ("v", int(crate::VERSION)),
@@ -204,20 +296,27 @@ pub fn to_value(m: &Model) -> Value {
         ("made_by", str(&m.made_by)),
         ("people", Value::Array(vec![person])),
         ("ref", reference(m)),
-        ("layers", obj([("roh", layer(&m.roh.layer))])),
+        (
+            "layers",
+            obj([
+                ("findings", layer(&m.findings.layer)),
+                ("roh", layer(&m.roh.layer)),
+            ]),
+        ),
         ("per", Value::Object(per)),
         (
             "dict",
-            obj([(
-                "art",
-                Value::Array(ART_NAMES.iter().map(|a| str(a)).collect()),
-            )]),
+            obj([
+                ("art", strs(ART_NAMES)),
+                ("veil", strs(m.findings.veil.ids.iter().map(String::as_str))),
+            ]),
         ),
         (
             "text",
             obj([
                 ("genome", pieces(genome)),
                 ("chrom", Value::Object(chrom_text)),
+                ("findings", findings_text),
             ]),
         ),
     ])
