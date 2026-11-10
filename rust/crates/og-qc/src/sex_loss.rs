@@ -682,7 +682,11 @@ pub fn af_estimate(path: &str) -> Result<Result<Af, String>, ReadError> {
     }
     // Never empty, never fewer than two, never overflowing here.
     let fmean = |v: &[f64]| stats::fmean(v.iter().copied()).unwrap_or(f64::NAN);
-    let var = |v: &[f64]| stats::variance(v.iter().copied()).unwrap_or(f64::NAN);
+    // RED CONTROL, reverted in the next commit: a naive two-pass variance.
+    let var = |v: &[f64]| {
+        let mu = v.iter().sum::<f64>() / v.len() as f64;
+        v.iter().map(|x| (x - mu) * (x - mu)).sum::<f64>() / (v.len() - 1) as f64
+    };
     let mean_n = stats::fmean(xn.iter().map(|&n| n as f64)).unwrap_or(f64::NAN);
     let scale = 4.0 * (mean_n - 1.0);
     let d2 = (fmean(&xs) - fmean(&a)) / scale;
