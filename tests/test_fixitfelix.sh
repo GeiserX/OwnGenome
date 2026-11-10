@@ -5,12 +5,17 @@
 #      publishes it (the 12 rows below, read from the file on 2026-11-04);
 #      the same check on a copy of versions.env with one changed digit fails.
 #      GRC_MASKED_REF_SHA256 is a sha256.
-#   2. MASK_FASTA_PY, run with python3 exactly as setup.sh holds it, on a
-#      small FASTA: every base of a row is N, every other byte is the same
-#      (line breaks, lower case, the header and a sequence with no row), and
-#      it names the row on a sequence the FASTA lacks. The same program with
-#      the BED shifted by one base gives another file, so the comparison can
-#      fail. The e2e case fixitfelix-chr21-1 runs the whole option on chr21.
+#   2. setup.sh masks with og (og setup mask-fasta, run from the reference's
+#      directory with relative paths, og built first), and the Python it
+#      replaced is gone from it. With OG set to an og binary (the parity job
+#      of guard.yml sets it), og runs on a small FASTA: every base of a row
+#      is N, every other byte is the same (line breaks, lower case, the
+#      header and a sequence with no row), and it names the row on a
+#      sequence the FASTA lacks; the same run with the BED shifted by one
+#      base gives another file, so the comparison can fail. The parity cases
+#      (tests/parity/cases.tsv) compare og with that Python on these inputs
+#      and more. The e2e case fixitfelix-chr21-1 runs the whole option on
+#      chr21.
 set -uo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -45,26 +50,44 @@ if grep -q '^GRC_EXCLUSIONS_URL="https://.*/GCA_000001405.15_GRCh38_GRC_exclusio
 else fail "GRC_EXCLUSIONS_URL is not GIAB's T2Tv2 list"; fi
 
 # --- 2. the masking program ----------------------------------------------------------
-awk '/^MASK_FASTA_PY=\$\(cat <<.PY.$/ {on = 1; next} on && /^PY$/ {exit} on' "${REPO}/scripts/setup.sh" > "${WORK}/mask.py"
-if grep -q 'def\|rows = {}' "${WORK}/mask.py"; then pass "MASK_FASTA_PY read from setup.sh ($(wc -l < "${WORK}/mask.py" | tr -d ' ') lines)"
-else fail "MASK_FASTA_PY not found in setup.sh"; fi
+SETUP="${REPO}/scripts/setup.sh"
+# the function body of install_masked_reference
+BODY=$(awk '/^install_masked_reference\(\) \{$/ {on = 1} on {print} on && /^}$/ {exit}' "$SETUP")
+if grep -q '/pgp-bin/og setup mask-fasta "$(basename "$src")" "$(basename "$bed")" "$(basename "$dest").part"' <<< "$BODY" \
+   && grep -q -- '-w "$(cpath "$dir")"' <<< "$BODY"; then
+  pass "setup.sh masks with og setup mask-fasta, from the reference's directory with relative paths"
+else fail "setup.sh does not call og setup mask-fasta from the reference's directory"; fi
+if grep -q 'rust/og.sh" check --required' <<< "$BODY" && grep -q 'rust/og.sh" install' <<< "$BODY"; then
+  pass "setup.sh builds og before it masks, when og is missing or stale"
+else fail "setup.sh masks without making sure og is built"; fi
+if grep -Eq 'MASK_FASTA_PY|python3 -c' <<< "$BODY" || grep -q '^MASK_FASTA_PY=' "$SETUP"; then
+  fail "the Python masking program is still in setup.sh"
+else pass "the Python masking program is gone from setup.sh"; fi
+# control: the same checks on the body as it was, with the Python program
+if grep -q 'python3 -c "$MASK_FASTA_PY"' <<< 'if ! log=$(run_in --rw "$dir" "$PYTHON_IMAGE" python3 -c "$MASK_FASTA_PY" \'; then
+  pass "control: the check finds the Python call where it is"
+else fail "control: the check does not find the Python call"; fi
 
-printf '>s1 first\nACGTacg\ntACGTAC\nGT\n>s2\nAAAAAAA\nCC\n' > "${WORK}/in.fa"
-printf 'browser position s1:1-3\n#seq\tstart\tend\ns1\t5\t9\ns1\t15\t16\nmissing\t0\t10\n' > "${WORK}/rows.bed"
-# s1 is ACGTacgtACGTACGT: 0-based [5, 9) and [15, 16) are N.
-printf '>s1 first\nACGTaNN\nNNCGTAC\nGN\n>s2\nAAAAAAA\nCC\n' > "${WORK}/want.fa"
-OUT=$(python3 "${WORK}/mask.py" "${WORK}/in.fa" "${WORK}/rows.bed" "${WORK}/out.fa" 2>&1)
-echo "  ${OUT}"
-if cmp -s "${WORK}/out.fa" "${WORK}/want.fa"; then pass "the rows are N and every other byte is the same"
-else fail "masked FASTA differs from the expected one"; diff "${WORK}/want.fa" "${WORK}/out.fa"; fi
-case "$OUT" in
-  "masked 2 of 3 rows (5 bases); rows on sequences the FASTA lacks: missing") pass "it reports 2 of 3 rows and names the missing sequence" ;;
-  *) fail "report: '${OUT}'" ;;
-esac
-printf 's1\t6\t10\ns1\t15\t16\n' > "${WORK}/shifted.bed"
-python3 "${WORK}/mask.py" "${WORK}/in.fa" "${WORK}/shifted.bed" "${WORK}/shifted.fa" > /dev/null 2>&1
-if [ -s "${WORK}/shifted.fa" ] && ! cmp -s "${WORK}/shifted.fa" "${WORK}/want.fa"; then pass "control: a BED one base off gives another file"
-else fail "control: a BED one base off gave the same file"; fi
+if [ -n "${OG:-}" ]; then
+  printf '>s1 first\nACGTacg\ntACGTAC\nGT\n>s2\nAAAAAAA\nCC\n' > "${WORK}/in.fa"
+  printf 'browser position s1:1-3\n#seq\tstart\tend\ns1\t5\t9\ns1\t15\t16\nmissing\t0\t10\n' > "${WORK}/rows.bed"
+  # s1 is ACGTacgtACGTACGT: 0-based [5, 9) and [15, 16) are N.
+  printf '>s1 first\nACGTaNN\nNNCGTAC\nGN\n>s2\nAAAAAAA\nCC\n' > "${WORK}/want.fa"
+  OUT=$("$OG" setup mask-fasta "${WORK}/in.fa" "${WORK}/rows.bed" "${WORK}/out.fa" 2>&1)
+  echo "  ${OUT}"
+  if cmp -s "${WORK}/out.fa" "${WORK}/want.fa"; then pass "og: the rows are N and every other byte is the same"
+  else fail "og: masked FASTA differs from the expected one"; diff "${WORK}/want.fa" "${WORK}/out.fa"; fi
+  case "$OUT" in
+    "masked 2 of 3 rows (5 bases); rows on sequences the FASTA lacks: missing") pass "og reports 2 of 3 rows and names the missing sequence" ;;
+    *) fail "og report: '${OUT}'" ;;
+  esac
+  printf 's1\t6\t10\ns1\t15\t16\n' > "${WORK}/shifted.bed"
+  "$OG" setup mask-fasta "${WORK}/in.fa" "${WORK}/shifted.bed" "${WORK}/shifted.fa" > /dev/null 2>&1
+  if [ -s "${WORK}/shifted.fa" ] && ! cmp -s "${WORK}/shifted.fa" "${WORK}/want.fa"; then pass "control: a BED one base off gives another file"
+  else fail "control: a BED one base off gave the same file"; fi
+else
+  echo "  OG is not set: og itself is checked by the parity job (OG=... bash tests/test_fixitfelix.sh)"
+fi
 
 if [ "$FAILS" -gt 0 ]; then echo "test_fixitfelix: ${FAILS} check(s) failed"; exit 1; fi
 echo "test_fixitfelix: all checks passed"
