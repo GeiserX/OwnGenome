@@ -321,14 +321,39 @@
   }
   // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
   // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
+  // A row outside its result's card (a ClinVar row, a viewer link, a chart's mark, a search hit) carries the
+  // id of the result to act on it names (results.veil, bin/live_results.py veil()): it stays closed while that
+  // result is, and "Show the result" opens it with it. A tag naming no finding of these results stays closed.
+  function tagClosed(id) { var f = findingById(id); return closedPage() && (!f || veiled(f)); }
+  function veilTags(kind, key) { return ((results && results.veil && results.veil[kind]) || {})[key] || []; }
+  // The charts (plugins/charts.js) ask for each mark. A closed page with no results.json yet cannot tell which
+  // marks those are, so it leaves every mark out until it can.
+  window.PGP.markClosed = function (chart, mark) {
+    if (!closedPage()) { return false; }
+    if (!results) { return true; }
+    var id = ((results.veil && results.veil.marks && results.veil.marks[chart]) || {})[mark];
+    return !!(id && tagClosed(id));
+  };
+  // A card's table without its closed rows: [table or null, how many rows it left out].
+  function openTable(c) {
+    var tags = veilTags('rows', c.id), t = c.table;
+    if (!t || !t.rows || !tags.length) { return [t, 0]; }
+    var rows = t.rows.filter(function (r, i) { return !(tags[i] && tagClosed(tags[i])); });
+    var out = {};
+    Object.keys(t).forEach(function (k) { out[k] = t[k]; });
+    out.rows = rows;
+    return [rows.length ? out : null, t.rows.length - rows.length];
+  }
   function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
   // The search box (plugins/search.js) asks the same question for each hit, by the summary key and the anchor
   // of the section it comes from: a hit from a card this page keeps closed is left out. A closed page with
   // no results.json yet cannot tell which cards those are, so it leaves every hit out until it can.
   // Asked with no key, it answers whether this page keeps anything closed at all.
-  window.PGP.searchHidden = function (key, anchor) {
+  // A hit tagged with a result to act on (veil, bin/results_index.py) is left out while that result is closed.
+  window.PGP.searchHidden = function (key, anchor, tag) {
     if (!closedPage()) { return false; }
     if (!results || key === null) { return true; }
+    if (tag && tagClosed(tag)) { return true; }
     return cards().some(function (c) {
       return (c.id === anchor || (c.keys || []).indexOf(key) >= 0) && veiledOf(c).length > 0;
     });
@@ -391,8 +416,12 @@
         if (results.charts[chart] === c.id) { add(text, el('div', { 'class': 'chart-slot', 'data-chart-slot': chart })); }
       });
       if (c.image) { add(text, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
-      var tb = U.table(c.table);
-      if (tb) { add(text, tb); } else if (c.empty_text) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
+      var ot = openTable(c), tb = U.table(ot[0]);
+      if (tb) { add(text, tb); } else if (c.empty_text && !ot[1]) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
+      if (ot[1]) {
+        add(text, el('p', { 'class': 'dim veil-rows' }, (ot[1] === 1 ? 'One row stays' : ot[1] + ' rows stay') +
+          ' closed with the result to act on ' + (ot[1] === 1 ? 'it belongs' : 'they belong') + ' to, until that result is opened.'));
+      }
       add(text, lineList(c.lines));
       if (c.hidden) {
         // APOE and the like: behind their warning, opened on purpose.
@@ -412,8 +441,10 @@
     add(margin, U.caveat(c.caveat));
     var foot = el('p', { 'class': 'card-links' });
     add(foot, el('a', { href: 'report.html#' + encodeURIComponent(c.anchor), 'class': 'report' }, 'Open in the report'));
-    if (g === 'show' && c.viewer && c.viewer.length) {
-      add(foot, el('a', { href: 'viewer/#' + c.viewer[0], 'class': 'viewer' }, 'See the reads at ' + c.viewer[0]));
+    var vtags = veilTags('viewer', c.id);
+    var reads = (c.viewer || []).filter(function (x, i) { return !(vtags[i] && tagClosed(vtags[i])); });
+    if (g === 'show' && reads.length) {
+      add(foot, el('a', { href: 'viewer/#' + reads[0], 'class': 'viewer' }, 'See the reads at ' + reads[0]));
     }
     (g === 'show' ? c.links || [] : []).forEach(function (f) {
       add(foot, el('a', { href: f.split('/').map(encodeURIComponent).join('/') }, 'Open ' + f));

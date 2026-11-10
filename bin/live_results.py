@@ -20,6 +20,10 @@ section id, the same anchors as report.html. Each card carries:
               or a couple's shared or X-linked gene. Nothing says a section is fine:
               a card without attention is "for information".
 
+Beside the cards, "veil" tags the rows that name a result to act on outside its own card (the
+ClinVar table, the viewer links, the charts' marks) with that result's id, so a child's page closes
+them with it (veil() below).
+
 Nothing here reads a file or computes anything about genetics; the adapters pick
 fields the summary already holds. A section id with no adapter falls back to its
 report headline and a link to the report.
@@ -1132,6 +1136,106 @@ def lead(found, levels, summary):
     return out
 
 
+# --- the veil's tags -----------------------------------------------------------------------------
+# A child's page keeps each result to act on closed (assets/live/person.js veiled()). The page closes a
+# finding's own card with it, but other places can name the same gene or variant: the ClinVar card's
+# table, the charts' marks and their titles, the search index. Each such row carries the id of the
+# result it belongs to, so the page closes it with that result and opens it with it. The rule: a row
+# belongs to a closed result when it names the result's gene, or its position falls inside the result's
+# position or span; a row that is the result's own position or span belongs to that result first, else
+# the first such result in finding order. The veil lives in the browser: the files still hold every row.
+LOCUS_RE = re.compile(r"(?<![A-Za-z0-9])(?:chr)?([0-9]{1,2}|X|Y|M|MT):([0-9][0-9,]*)(?:-([0-9][0-9,]*))?")
+WORD_RE = re.compile(r"[A-Z0-9][A-Z0-9._-]*")
+
+
+def _loci(text):
+    """[(chrom, start, end)] of every chrom:pos or chrom:start-end in TEXT."""
+    out = []
+    for m in LOCUS_RE.finditer(str(text or "")):
+        a = int(m.group(2).replace(",", ""))
+        b = int(m.group(3).replace(",", "")) if m.group(3) else a
+        out.append(("chr" + m.group(1), min(a, b), max(a, b)))
+    return out
+
+
+def closable(found):
+    """[(id, gene, chrom, start, end)] of the findings a child's page keeps closed (level act): the
+    position or span from the finding's viewer locus or its detail, else None (its gene alone)."""
+    out = []
+    for f in found:
+        if f.get("level") != "act":
+            continue
+        loc = (_loci(f.get("viewer")) or _loci(f.get("detail")) or [(None, None, None)])[0]
+        out.append((f["id"], str(f.get("gene") or "").upper() or None) + loc)
+    return out
+
+
+def closable_of(summary):
+    """closable() of the findings build() gives SUMMARY, without building the cards."""
+    return closable(finding_rows(summary or {}))
+
+
+def veil_id(spans, text="", chrom=None, pos=None, end=None):
+    """The id of the closed result (spans: closable()) a row belongs to, or None. TEXT is what the row
+    shows (its gene names, its loci are read too); chrom, pos and end its own position when it has one."""
+    if not spans:
+        return None
+    locs = []
+    if chrom and pos is not None:
+        try:
+            p = int(pos)
+            e = int(end) if end not in (None, "") else p
+            c = str(chrom)
+            locs.append((c if c.startswith("chr") else "chr" + c, min(p, e), max(p, e)))
+        except (TypeError, ValueError):
+            pass
+    locs += _loci(text)
+    words = set(WORD_RE.findall(str(text or "").upper()))
+    for fid, _gene, c, a, b in spans:
+        if c and (c, a, b) in locs:
+            return fid
+    for fid, gene, c, a, b in spans:
+        if gene and gene in words:
+            return fid
+        if c and any(lc == c and ls <= b and le >= a for lc, ls, le in locs):
+            return fid
+    return None
+
+
+def veil(summary, found, chapters):
+    """The rows a child's page closes with a result to act on, by the result's id: the ClinVar card's table
+    rows (rows: card -> one id or None per row), each card's viewer links (viewer: card -> one per link) and
+    the marks of the report's charts (marks: chart -> {mark id: id}). Empty when nothing can be closed."""
+    spans = closable(found)
+    if not spans:
+        return {}
+    out = {"rows": {}, "viewer": {}, "marks": {}}
+    S = summary.get("sections") or {}
+    hits = [h for h in _items(_data(S, "clinvar").get("hits"))[:50]]
+    tags = [veil_id(spans, str(h.get("gene") or ""), h.get("chrom"), h.get("pos")) if isinstance(h, dict) else None
+            for h in hits]
+    if any(tags):
+        out["rows"]["clinvar"] = tags
+    for ch in chapters:
+        for c in ch["sections"]:
+            tags = [veil_id(spans, v) for v in c.get("viewer") or []]
+            if any(tags):
+                out["viewer"][c["id"]] = tags
+    try:
+        specs = rr.chart_specs(summary)
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError, ZeroDivisionError):
+        specs = []
+    for sp in specs:
+        for m in sp.get("marks") or []:
+            if m.get("kind") == "roh":  # a run of homozygosity is no result's source
+                continue
+            fid = veil_id(spans, f"{m.get('label') or ''} {m.get('detail') or ''}", m.get("chrom"), m.get("pos"),
+                          m.get("end"))
+            if fid:
+                out["marks"].setdefault(sp["id"], {})[m["id"]] = fid
+    return out
+
+
 def build(sample, summary, files=()):
     """results.json of one person from a summary.json; files: the run's paths the report links (for links)."""
     summary = summary or {}
@@ -1155,7 +1259,7 @@ def build(sample, summary, files=()):
             "not_assessed": [plain(x) for x in summary.get("not_assessed") or []],
             "not_run": [plain(x) for x in summary.get("not_run") or []],
             "new_since": summary.get("new_since") or None,
-            "charts": CHART_SECTION}
+            "charts": CHART_SECTION, "veil": veil(summary, found, chapters)}
 
 
 def attention_count(summary):
