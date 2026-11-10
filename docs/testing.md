@@ -241,6 +241,22 @@ How long `scripts/setup.sh --og` takes to build both binaries:
 
 The cold build downloads the crates once; pulling `OG_BUILDER` the first time adds about 1 GB. The Rust workflow's `images` job prints both times for `ubuntu-latest` in its summary.
 
+## The parity harness
+
+Each port to `og` is checked against the Python it replaces before that Python is deleted. [`scripts/ci/oracle-diff.sh`](https://github.com/GeiserX/OwnGenome/blob/main/scripts/ci/oracle-diff.sh) runs both on the cases of [`tests/parity/cases.tsv`](https://github.com/GeiserX/OwnGenome/blob/main/tests/parity/cases.tsv). It compares their exit codes, stdout, stderr and every file they wrote, by meaning, through `og dev parity-compare`. The Python comes back from the commit `tests/parity/oracle.ref` names and runs in its production image. Where `og` fixes the Python on purpose, a golden file under `tests/parity/golden/` says what `og` must write instead. [`tests/parity/README.md`](https://github.com/GeiserX/OwnGenome/blob/main/tests/parity/README.md) says how to add a port.
+
+- **Guard, job `parity`** (every pull request, required through `ci-ok`) builds `og` and runs the self-test first. The self-test plants a changed byte, a missing file, an extra file, a wrong exit code, another stdout, a stale `known.tsv` row, a still-valid row and a stale golden, and each must come out as it should. It runs `og dev parity-compare --self-test`, which plants a difference of each compare kind (a changed byte, a 1-ulp float, a reordered key, an int against a float, a missing row and more). It runs the shadow mode of `bin/og` against a fake oracle too. Then the job runs every case and `tests/test_fixitfelix.sh` with `og`.
+- **e2e, shadow mode.** The job `og` builds the binaries once, as `scripts/setup.sh --og` does. Each leg downloads them and writes the oracles into `bin/.og/oracle/`. `OG_SHADOW` in `e2e.yml` names the ported tools. Each `og` call of one of them also runs the Python beside it, on the same files, and the call fails when the two disagree. Today that is `og setup mask-fasta` in `fixitfelix-chr21-1`, on chr21 of GRCh38.
+
+The first port is the reference mask of `setup.sh --masked-reference`. On a 254 MB synthetic FASTA with 300 rows (the case `setup-mask-fasta/synthetic-254mb`), on an Apple Silicon Mac mini:
+
+| | Wall | Peak memory |
+|---|---|---|
+| The Python it replaced (Python 3.14) | 15.3 s | 12.8 MB |
+| `og setup mask-fasta` | 0.35 s | 2.9 MB |
+
+On the whole GRCh38 analysis set (3.1 GB) `og` writes the file `GRC_MASKED_REF_SHA256` pins in 29 s on the same machine, 1.2 s of it CPU: writing the copy is what takes the time.
+
 ## Telling a flaky test from a broken one
 
 The **Repeat a test** workflow (`.github/workflows/repeat-test.yml`) runs one `tests/test_*.sh` or `tests/test_*.py` many times, each run in a fresh job on its own `ubuntu-latest` runner, six at a time. Start it from the Actions tab with the test's path and the number of runs (1 to 60, default 30); it also runs, with its defaults (`tests/test_annotsv_benign_mane.sh`, 30 runs), on a pull request that changes the workflow. A flaky test fails a few runs out of many; a broken one fails them all. Each run records its exit code, and the summary job lists every run and fails when any failed. One more run, `control`, runs a test that always fails, and the summary fails when the control passed, so "0 of 30 failed" is never a count that could not see a failure.
