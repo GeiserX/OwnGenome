@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+FAMEX	chr4	39351000	39351024	0	.	.	.	.	not_checked	no BAM

@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+FAMEX	chr4	39351000	39351024	7	TTTCA	pathogenic	0.71	TTTCA=0.71,TTTTA=0.29	pathogenic_motif	TTTCA in 5 of 7 repeat reads (71%): confirm with repeat-primed PCR
