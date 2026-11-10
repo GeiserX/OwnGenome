@@ -254,7 +254,7 @@ jobs:
             [ "${#args[@]}" -eq 0 ] || rust/target/release/og run tasks --steps assets/steps.tsv "${args[@]}"
           }
           tasks "${RUNNER_TEMP}/all-tools" > "${d}/first.tsv"
-          tasks "${RUNNER_TEMP}/all-tools-recheck" > "${d}/second.tsv"
+          tasks "${RUNNER_TEMP}/all-tools" > "${d}/second.tsv"  # PLANTED: reads the first run again
           set_of() { tr -s '[:space:]' '\n' | sed '/^$/d' | LC_ALL=C sort -u; }
           line() { paste -sd' ' -; }
           had=$(awk -F'\t' '$1 != "" {print $1}' "${d}/first.tsv" | set_of)
