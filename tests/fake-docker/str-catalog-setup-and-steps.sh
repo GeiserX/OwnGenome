@@ -17,7 +17,9 @@
 #   3. Step 09 with no EH_CATALOG runs ExpansionHunter on catalog.json, names
 #      the loci it does not grade (MUC1) and copies the catalog beside the
 #      VCF; step 9b grades with that copy and counts the motif of the
-#      flagged FAME locus with it; STRANGER_REPEATS=bundled goes back to
+#      flagged FAME locus with it (og str motif, from expansion_hunter/ with
+#      a relative output and OG_SHADOW passed on, never bin/rfc1_motif.py);
+#      STRANGER_REPEATS=bundled goes back to
 #      Stranger's GRCh38 catalog.
 #   4. EH_CATALOG=bundled: the ExpansionHunter call is the one step 09 makes
 #      without the STRchive file (the call of before this change), byte for
@@ -75,9 +77,12 @@ case " $* " in
       esac
     done
     exec "${args[@]}" ;;
-  *" /pgp-bin/rfc1_motif.py "*" --flagged "*)
+  *" /pgp-bin/og str motif "*" --flagged "*)
+    # --out is relative to the container's -w, which only this call's log
+    # line (the last one) shows: the hook gets no docker options.
+    wd=$(tail -n 1 "$FAKE_DOCKER_LOG" | sed -n 's/.* -w \([^ ]*\) .*/\1/p')
     prev=""
-    for a in "$@"; do [ "$prev" = --out ] && out=$(host_path "$a"); prev=$a; done
+    for a in "$@"; do [ "$prev" = --out ] && out=$(host_path "${wd}/${a}"); prev=$a; done
     printf 'locus\tverdict\nSAMD12\tpathogenic_motif\n' > "$out" ;;
   *" stranger "*)
     # One FAME record Stranger flags, so step 9b counts its motif.
@@ -139,8 +144,9 @@ run_expect 0 stranger-strchive "${SCRIPTS}/09b-stranger.sh" sample1
 output_has stranger-strchive "Repeat catalog: the one step 09 ran on, .*sample1_eh_catalog\.json \(STRchive-${STRCHIVE_VERSION//./\\.}\)"
 docker_log_has "stranger --repeats-file /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json " \
   "step 9b did not grade with the catalog step 09 ran on"
-docker_log_has "rfc1_motif\\.py .*--catalog /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json --flagged" \
-  "step 9b did not count the motif of the flagged FAME locus with the catalog"
+docker_log_has "-e OG_SHADOW -w /genome/sample1/expansion_hunter .*/pgp-bin/og str motif .*--catalog /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json --flagged --out sample1_str_motifs\\.tsv\\.part " \
+  "step 9b did not count the motif of the flagged FAME locus with og, from expansion_hunter/, with the catalog"
+if grep -q 'rfc1_motif\.py' "$FAKE_DOCKER_LOG"; then fail "step 9b still calls bin/rfc1_motif.py"; fi
 grep -q $'^SAMD12\tpathogenic_motif' "${EH_DIR}/sample1_str_motifs.tsv" 2>/dev/null || fail "step 9b wrote no sample1_str_motifs.tsv"
 rm -f "${EH_DIR}/sample1_eh_stranger.vcf"
 : > "$FAKE_DOCKER_LOG"

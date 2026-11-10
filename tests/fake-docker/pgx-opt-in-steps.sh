@@ -11,7 +11,11 @@
 #                       and no -po with an empty one
 #   step 35             refuses to run before its data is installed, and says
 #                       how to install it
-#   steps 21 and 32     mark a CYP2D6 call when the depth check fails, and a
+#   steps 21 and 32     run the CYP2D6 depth check with og (og pgx cyp2d6-bed,
+#                       -measure in step 32, -check) from their output
+#                       directory with relative outputs and OG_SHADOW passed
+#                       on, and never the Python it replaced;
+#                       mark a CYP2D6 call when the depth check fails, and a
 #                       caller that stops after writing its result leaves no
 #                       call where step 36 reads it
 #   step 27             passes step 36's table, even a missing one, to the
@@ -45,13 +49,16 @@ opt() {
   return 1
 }
 put() {
-  local h
-  h=$(host_path "$1")
+  local h p=$1
+  # A relative path is relative to the container's -w, which only the log
+  # line of this call (the last one) shows: the hook gets no docker options.
+  case "$p" in /*) ;; *) p="$(tail -n 1 "$FAKE_DOCKER_LOG" | sed -n 's/.* -w \([^ ]*\) .*/\1/p')/${p}" ;; esac
+  h=$(host_path "$p")
   mkdir -p "$(dirname "$h")"
   printf '%b' "$2" > "$h"
 }
 case "$args" in
-  *"cyp2d6_depth_check.py check"*)
+  *"/pgp-bin/og pgx cyp2d6-check "*)
     put "$(opt --out)" "metric\\tvalue\\nstatus\\t$(cat "${CASE_WORK}/depth-status" 2>/dev/null || echo ok)\\nmessage\\tfake\\n" ;;
   *"-m cyrius"*)
     # bash -c SCRIPT _ INSTALL BAM PREFIX OUTDIR
@@ -106,6 +113,17 @@ if grep -v -- '--network none' <<<"$RUNS"; then fail "a container of step 21 had
 grep -q 'mosdepth' <<<"$RUNS" || fail "step 21 ran no depth check before Cyrius"
 grep -q -- 'python3 -m cyrius' <<<"$RUNS" || fail "step 21 did not run Cyrius from the install"
 if grep -q 'pip install' <<<"$RUNS"; then fail "step 21 still installs with pip"; fi
+og_runs() {  # og_runs STEP OUTDIR: the depth check runs og from OUTDIR, never the Python
+  local verb
+  for verb in bed check; do
+    grep -q -- "-e OG_SHADOW -w ${2} .*/pgp-bin/og pgx cyp2d6-${verb} " <<<"$RUNS" \
+      || fail "$1 did not run og pgx cyp2d6-${verb} from ${2} with OG_SHADOW passed on: ${RUNS}"
+  done
+  grep -q -- "--all cyp2d6_depth/q0.regions.bed.gz --mapq1 cyp2d6_depth/q1.regions.bed.gz" <<<"$RUNS" \
+    || fail "$1 did not give og pgx cyp2d6-check relative inputs"
+  if grep -q 'cyp2d6_depth_check' <<<"$RUNS"; then fail "$1 still calls bin/cyp2d6_depth_check.py"; fi
+}
+og_runs "step 21" /genome/sample1/cyrius
 
 # --- step 36 and step 07 ----------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
@@ -147,7 +165,12 @@ git -C "$BUNDLE" -c user.name=case -c user.email=case@example.invalid -c init.de
 git -C "$BUNDLE" -c user.name=case -c user.email=case@example.invalid commit -q --allow-empty -m bundle
 git -C "$BUNDLE" tag "$PYPGX_BUNDLE_VERSION"
 SUMMARY="${G}/sample1/pypgx/sample1_pypgx_summary.tsv"
+: > "$FAKE_DOCKER_LOG"
 run_expect 0 pypgx-unreliable "${SCRIPTS}/32-pypgx.sh" sample1
+RUNS=$(grep '^run image=' "$FAKE_DOCKER_LOG")
+og_runs "step 32" /genome/sample1/pypgx
+grep -q -- "image=${PYPGX_IMAGE%%:*}[^ ]* .*-e OG_SHADOW -w /genome/sample1/pypgx/cyp2d6_depth .*/pgp-bin/og pgx cyp2d6-measure --bam /genome/sample1/aligned/sample1_sorted.bam --out mapq_shares.tsv" <<<"$RUNS" \
+  || fail "step 32 did not run og pgx cyp2d6-measure in the pypgx image from cyp2d6_depth: ${RUNS}"
 [ "$(awk -F'\t' '$1 == "CYP2D6" {print $2 "|" $6}' "$SUMMARY" 2>/dev/null)" = "Indeterminate|no call (CYP2D6 depth check)" ] \
   || fail "step 32 did not mark CYP2D6 Indeterminate after a failed depth check: $(cat "$SUMMARY" 2>/dev/null)"
 [ ! -e "${SUMMARY}.partial" ] || fail "step 32 left its partial summary behind"
