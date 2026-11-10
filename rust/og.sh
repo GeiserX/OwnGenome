@@ -25,8 +25,11 @@
 # reads it with grep and never runs a binary the host may not be able to.
 set -euo pipefail
 
-# True once a pipeline step calls og: until then a checkout without the
-# binary runs as before, and only a stale one is refused.
+# Steps 09b, 21 and 32 (and their modules STRANGER_RFC1, CYRIUS and PYPGX)
+# call og, and stop with "og is not built" (bin/og, exit 127) when it is
+# missing. The check below still refuses only a stale binary unless asked
+# with --required: run-all.sh, main.nf and validate-setup.sh run it without
+# --required, and CI jobs that never reach those steps run without og.
 REQUIRED=false
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -86,7 +89,7 @@ check() {
     return 1
   fi
   if [ -n "$missing" ]; then
-    echo "NOTE: og is not built for${missing}; no step needs it yet (scripts/setup.sh --og builds it)"
+    echo "NOTE: og is not built for${missing}; steps 09b, 21 and 32 need it (scripts/setup.sh --og builds it)"
   elif [ -z "$expected" ]; then
     echo "NOTE: og is built, but this is not a git checkout, so its rust/ tree cannot be checked"
   else

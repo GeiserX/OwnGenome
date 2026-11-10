@@ -14,7 +14,7 @@
     CYP2D6 call reaches PharmCAT.
 
     The depth CYP2D6_DEPTH measured is judged first
-    (bin/cyp2d6_depth_check.py): when the reads there are multi-mapped, the
+    (og pgx cyp2d6-check): when the reads there are multi-mapped, the
     call's Filter becomes CYP2D6_depth_unreliable and PGX_CONSENSUS does not
     pass it on.
 
@@ -51,7 +51,7 @@ process CYRIUS {
         echo "  (want '\$want'). Run scripts/setup.sh --cyrius <genome_dir> again." >&2
         exit 1
     fi
-    cyp2d6_depth_check.py check --all ${depth_q0} --mapq1 ${depth_q1} --out ${meta.id}_cyp2d6_depth_check.tsv
+    og pgx cyp2d6-check --all ${depth_q0} --mapq1 ${depth_q1} --out ${meta.id}_cyp2d6_depth_check.tsv
 
     echo "${bam}" > manifest.txt
     PYTHONPATH="\$PWD/${cyrius_install}" python3 -m cyrius \\
