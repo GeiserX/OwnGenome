@@ -8,8 +8,11 @@
 //! or the name of the exception Python raised, escaped by [`escape`].
 
 use og_io::{Lines, Utf8};
-use pycompat::{fmt, json, num};
+use pycompat::{fmt, json, mtime, num, value};
+use std::ffi::OsString;
 use std::io::{self, BufRead, Write};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::path::PathBuf;
 
 /// `\` `\n` `\r` `|` and NUL escaped, so every result is one line of
 /// text and a list of lines can be joined with `|`.
@@ -88,6 +91,56 @@ fn dump_opts(s: &str) -> io::Result<json::Dump<'static>> {
     })
 }
 
+/// A path or name sent as the hex of its bytes.
+fn os(s: &str) -> io::Result<OsString> {
+    Ok(OsString::from_vec(bytes(s)?))
+}
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+fn os_list(s: &str) -> io::Result<Vec<OsString>> {
+    if s.is_empty() {
+        Ok(Vec::new())
+    } else {
+        s.split(',').map(os).collect()
+    }
+}
+
+/// A path found, as hex, or Python's `None`.
+fn maybe_path(p: Option<PathBuf>) -> String {
+    p.map_or_else(|| "None".to_owned(), |p| hex(p.as_os_str().as_bytes()))
+}
+
+/// The OSError subclass Python raises for this error.
+fn os_exception(e: &io::Error) -> &'static str {
+    match e.kind() {
+        io::ErrorKind::NotFound => "FileNotFoundError",
+        io::ErrorKind::NotADirectory => "NotADirectoryError",
+        io::ErrorKind::PermissionDenied => "PermissionError",
+        _ => "OSError",
+    }
+}
+
+fn py_bool(b: bool) -> String {
+    if b { "True" } else { "False" }.to_owned()
+}
+
+/// The files the patterns find, each pattern's in glob order, as
+/// collect_summary's first_existing and newest gather them.
+fn files(patterns: &[OsString], sorted: bool) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for p in patterns {
+        let mut found = mtime::glob(p, true);
+        if sorted {
+            mtime::sort(&mut found);
+        }
+        out.extend(found.into_iter().filter(|f| f.is_file()));
+    }
+    out
+}
+
 /// One case's result.
 fn eval(f: &[&str]) -> io::Result<String> {
     let arg = |i: usize| {
@@ -134,6 +187,59 @@ fn eval(f: &[&str]) -> io::Result<String> {
                 Err(e) => e.exception().to_owned(),
             }
         }
+        "truthy" => match json::loads(&text(arg(1)?)?) {
+            Ok(v) => py_bool(value::truthy(&v)),
+            Err(e) => e.exception().to_owned(),
+        },
+        "vstr" | "vrepr" => {
+            let v = json::loads(&text(arg(1)?)?).map_err(|e| bad(e.to_string()))?;
+            let r = if f[0] == "vstr" {
+                value::py_str(&v)
+            } else {
+                value::py_repr(&v)
+            };
+            r.unwrap_or_else(|e| e.exception().to_owned())
+        }
+        "getor" => {
+            let load = |s: &str| -> io::Result<json::Value> {
+                json::loads(&text(s)?).map_err(|e| bad(e.to_string()))
+            };
+            let (d, default) = (load(arg(1)?)?, load(arg(3)?)?);
+            match value::get_or(&d, &text(arg(2)?)?, &default) {
+                Ok(v) => json::dumps(v, &json::Dump::default())
+                    .unwrap_or_else(|e| e.exception().to_owned()),
+                Err(e) => e.exception().to_owned(),
+            }
+        }
+        "fnmatch" => py_bool(mtime::fnmatch(os(arg(1)?)?, os(arg(2)?)?)),
+        "escape" => mtime::escape(&text(arg(1)?)?),
+        "sortnames" => {
+            let mut names = os_list(arg(1)?)?;
+            mtime::sort(&mut names);
+            let hexes: Vec<String> = names.iter().map(|n| hex(n.as_bytes())).collect();
+            hexes.join(",")
+        }
+        "glob" => {
+            let found = mtime::glob(os(arg(1)?)?, arg(2)? == "1");
+            let hexes: Vec<String> = found
+                .iter()
+                .map(|p| hex(p.as_os_str().as_bytes()))
+                .collect();
+            hexes.join("|")
+        }
+        "first" => maybe_path(files(&os_list(arg(1)?)?, true).into_iter().next()),
+        "newest" => match mtime::newest(files(&os_list(arg(1)?)?, false)) {
+            Ok(p) => maybe_path(p),
+            Err(e) => os_exception(&e).to_owned(),
+        },
+        "mtime" => match mtime::mtime(os(arg(1)?)?) {
+            Ok(t) => fmt::repr(t),
+            Err(e) => os_exception(&e).to_owned(),
+        },
+        "mtimens" => match mtime::mtime_ns(os(arg(1)?)?) {
+            Ok(t) => t.to_string(),
+            Err(e) => os_exception(&e).to_owned(),
+        },
         "lines" => {
             let lines: Vec<String> = Lines::new(io::Cursor::new(bytes(arg(1)?)?), Utf8::Replace)
                 .collect::<io::Result<_>>()?;

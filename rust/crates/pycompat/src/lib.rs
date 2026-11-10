@@ -9,10 +9,17 @@
 //!   zero padding, `ljust`/`rjust`, `round(x)` and `round(x, n)`.
 //! - [`num`]: `float(str)`, `int(str)`, `math.fsum` and the builtin `sum`.
 //! - [`json`]: `json.dumps` and a `json.loads` with Python's leniency.
+//! - [`value`]: `bool()`, `str()`, `repr()` and `d.get(k) or default` over
+//!   JSON values.
+//! - [`mtime`]: float mtimes, `glob.glob` in its order, `max()` by mtime and
+//!   `sorted()` of paths.
 
 pub mod fmt;
 pub mod json;
+#[cfg(unix)]
+pub mod mtime;
 pub mod num;
+pub mod value;
 
 #[cfg(all(test, feature = "planted-failure"))]
 mod planted {
