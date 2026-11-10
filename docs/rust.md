@@ -13,6 +13,7 @@ rust/
   og.sh                 build, download and check the binary
   crates/pycompat/      Python-exact formatting and parsing
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
+  crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
@@ -21,7 +22,7 @@ tests/rust/             the differential test against CPython, the image test
 
 Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
 
-The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2` and `rust-htslib` so far).
+The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 
 ## Building
 
@@ -63,12 +64,16 @@ A port must write exactly what the Python tool wrote. Most differences hide in n
 | `fmt` | `repr(float)` (also `str` and `f"{x}"`); the `f`, `e`, `g` and `%` format types at any precision; `{:,}` and `{:,.Nf}`; `{:0Nd}`; `%-Ns` and `%Ns`; `round(x)` and `round(x, n)`, both rounding the exact binary value half to even (`round(0.35, 1) == 0.3`, `round(2.675, 2) == 2.67`) |
 | `num` | `float(str)` and `int(str)` with Python's whitespace, signs and underscores; `math.fsum`; the builtin `sum`, which since Python 3.12 is a compensated sum and so differs from a plain loop |
 | `json` | `json.dumps` with `indent` (none or a number), `separators`, `ensure_ascii` (surrogate pairs for astral characters), `sort_keys` and `allow_nan`; `json.loads` with `NaN` and `Infinity`, where a duplicate key keeps its first place and takes the last value |
+| `csv` | `csv.writer`, `csv.reader` and `csv.DictReader` for the default dialect, with `QUOTE_MINIMAL` or `QUOTE_NONE` and any delimiter; a port of CPython's `_csv.c` state machine |
+| `text` | `str.split`, `strip`/`lstrip`/`rstrip`, `isspace`/`isdigit`/`isdecimal`/`isalpha`, `upper`/`lower` with full case mapping, `s[start:stop]` in code points, and `html.escape` |
+| `value` | over a value `json.loads` read: `bool(v)`, `str(v)`, `repr(v)`, `v or w` and `d.get(k) or default` |
+| `mtime` | `os.path.getmtime` as a float (`sec + nsec * 1e-9`, so times a few hundred nanoseconds apart can be equal), `os.stat().st_mtime_ns`, `glob.glob` in its own order (`**` with `recursive`), `glob.escape`, `fnmatch`, `max(paths, key=os.path.getmtime)` with its tie rule, and `sorted()` of paths; paths are bytes, and a byte that is not UTF-8 compares as its `surrogateescape` character. Unix only |
 
 `og-io` reads a path or `-` as plain text, gzip or BGZF (sniffed by the magic bytes; NUL padding after a gzip member is skipped, as Python's `gzip` does), splits lines as Python's text mode does (`\n`, `\r\n` and a lone `\r`), decodes UTF-8 strictly or with `replace`, and writes a file under a temporary name before renaming it into place.
 
 `og-bam` reads an indexed BAM through `rust-htslib`, which builds htslib from source and links it into `og` on both musl targets, so the binary stays static. Its curl, S3, GCS, bzip2 and lzma features are off: `og` reads local BAM files only, and only CRAM needs bzip2 and lzma. `fetch` is htslib's own region query, the call pysam makes, so a region returns the same reads; `reference_end`, `cigarstring` and `get_blocks` are rebuilt from the CIGAR the way pysam computes them. htslib adds about 700 KB to each binary. The fetch smoke checks it: `crates/og-bam/tests/data` holds a 2 kb slice of the test fixture's BAM at CYP2D6, a list of regions with the edge cases (a read's first and last base, a base inside a deletion, a placed unmapped read, a contig without reads) and what pysam fetches there (`tests/pysam_fetch.py` writes it). `cargo test` and `og bam-fetch-probe` must write the same lines.
 
-Known limits, each an error in Rust where Python would go on: ints beyond 128 bits, a lone surrogate in a JSON string, non-ASCII digits in `float()` and `int()`, a string `indent`, and JSON nested deeper than 1000 levels (`RecursionError`; CPython 3.14 reads about 100,000 on a default stack). None of them appears in what the pipeline reads.
+Known limits, each an error in Rust where Python would go on: ints beyond 128 bits, a lone surrogate in a JSON string, non-ASCII digits in `float()` and `int()`, a string `indent`, JSON nested deeper than 1000 levels (`RecursionError`; CPython 3.14 reads about 100,000 on a default stack), and `repr()` of a string that holds a character above U+00FF, which also covers `str()` of a list or dict holding one (`value` returns `Unsupported`; `str()` of the string itself works). The first five never appear in what the pipeline reads. The U+00FF limit can: a port that turns a list or dict into text must handle that error, and the PR that ports it says how.
 
 ### The differential test
 

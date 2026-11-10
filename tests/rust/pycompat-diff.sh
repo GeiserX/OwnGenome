@@ -19,13 +19,19 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/pycompat-diff.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 echo "pycompat-diff: ${N} cases per operation, seed ${SEED}, oracle ${PYTHON:-${PYTHON_IMAGE}}"
 t0=$(date +%s)
-# The oracle goes in as an argument and its output comes back on stdout, so
-# nothing is mounted (Docker on macOS shares only some folders).
+# The oracle goes in as an argument and its output comes back on stdout.
+# The one folder shared is the tree the glob and mtime cases walk: the
+# oracle fills it, og reads it in place afterwards, at the same path. The
+# container runs as this user, so the trap can remove what it made.
 ORACLE=$(cat "${ROOT}/tests/rust/pycompat_oracle.py")
+export PYCOMPAT_TREE="${TMP}/tree"
+mkdir "$PYCOMPAT_TREE"
 if [ -n "${PYTHON:-}" ]; then
   "$PYTHON" -I -c "$ORACLE" "$N" "$SEED" "$@" > "${TMP}/both.txt"
 else
-  docker run --rm --network none "$PYTHON_IMAGE" python3 -I -c "$ORACLE" "$N" "$SEED" "$@" > "${TMP}/both.txt"
+  docker run --rm --network none --user "$(id -u):$(id -g)" -e PYCOMPAT_TREE \
+    -v "${PYCOMPAT_TREE}:${PYCOMPAT_TREE}" \
+    "$PYTHON_IMAGE" python3 -I -c "$ORACLE" "$N" "$SEED" "$@" > "${TMP}/both.txt"
 fi
 awk 'NR % 2 == 1' "${TMP}/both.txt" > "${TMP}/cases.tsv"
 awk 'NR % 2 == 0' "${TMP}/both.txt" > "${TMP}/expected.txt"
