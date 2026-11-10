@@ -80,7 +80,7 @@ pub fn median<I: IntoIterator<Item = f64>>(data: I) -> Result<f64, Error> {
     match n {
         0 => Err(Error::NoData),
         _ if n % 2 == 1 => Ok(v[n / 2]),
-        _ => Ok((v[n / 2 - 1] + v[n / 2]) / 2.0),
+        _ => Ok(v[n / 2]),
     }
 }
 
