@@ -7,8 +7,8 @@
     compound heterozygote candidates. Optionally annotates results with gnomAD
     gene constraint metrics (LOEUF, pLI).
 
-    Rarity is the rule of scripts/23 and scripts/31: bin/csq_rank.awk (on the
-    task PATH) gives each record PGP_FREQ, and a HIGH or MODERATE record with
+    Rarity is the rule of scripts/23 and scripts/31: og vcf csq-rank (bin/og on
+    the task PATH) gives each record PGP_FREQ, and a HIGH or MODERATE record with
     no known frequency goes into its own freq_unknown tier instead of the
     rare ones; the prioritized VCF still includes it. The summary TSV ends
     with MAX_AF, gnomADe_AF, gnomADg_AF, FREQ_TIER, TRANSCRIPT and
@@ -62,10 +62,10 @@ process SLIVAR_PRIORITIZE {
     awk '\$2 == "CLIN_SIG" { f = 1 } END { exit !f }' csq_fields.txt && HAS_CLINSIG=1
     # Rarity, as scripts/31-slivar.sh: VEP's MAX_AF (highest frequency in any
     # 1000 Genomes or gnomAD exome/genome population), else gnomADe_AF and
-    # gnomADg_AF, applied by bin/csq_rank.awk (PGP_FREQ). Exome frequency
+    # gnomADg_AF, applied by og vcf csq-rank (PGP_FREQ). Exome frequency
     # alone calls a variant common in genomes but absent from exomes rare.
     has_csq() { awk -v f="\$1" '\$2 == f { x = 1 } END { exit !x }' csq_fields.txt; }
-    rank() { LC_ALL=C awk -v keep="\$1" -f "\$(command -v csq_rank.awk)"; }
+    rank() { og vcf csq-rank --keep "\$1"; }
     HAS_FREQ=0
     for f in MAX_AF gnomADe_AF gnomADg_AF; do
         if has_csq "\${f}"; then HAS_FREQ=1; fi
@@ -164,11 +164,11 @@ process SLIVAR_PRIORITIZE {
     } > ${meta.id}_variants_raw.tsv
 
     if [ "${has_constraint}" = "true" ]; then
-        # bin/constraint_join.awk (on the task PATH), the loader scripts/23 and
-        # scripts/31 run: canonical rows only, the Ensembl row over the RefSeq
-        # one, mis.z_score; it exits non-zero when rows carry gene symbols and
-        # not one matches the table.
-        awk -f "\$(command -v constraint_join.awk)" gene_col=SYMBOL constrained=1 \\
+        # og table constraint-join (bin/og on the task PATH), the loader
+        # scripts/23 and scripts/31 run: canonical rows only, the Ensembl row
+        # over the RefSeq one, mis.z_score; it exits non-zero when rows carry
+        # gene symbols and not one matches the table.
+        og table constraint-join --gene-col SYMBOL --constrained \\
             ${gnomad_constraint} ${meta.id}_variants_raw.tsv > ${meta.id}_slivar_summary.tsv
     else
         mv ${meta.id}_variants_raw.tsv ${meta.id}_slivar_summary.tsv

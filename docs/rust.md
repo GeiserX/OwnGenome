@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-No pipeline step calls `og` yet. The pieces below are the base every port builds on.
+Steps 23 and 31 and their Nextflow modules call `og` (`og vcf csq-rank` and `og table constraint-join`); `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -13,14 +13,15 @@ rust/
   og.sh                 build, download and check the binary
   crates/pycompat/      Python-exact formatting and parsing
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
-  crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
+  crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields; csq-rank
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
+  crates/og-steps/      the step helpers: constraint-join
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on), and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 
@@ -52,7 +53,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 - The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- A missing binary is a note for now. The first pull request that makes a step call `og` sets `REQUIRED=true` in `rust/og.sh`, and from then on a missing binary stops a run too.
+- A missing binary is still a note in that check (`REQUIRED=false` in `rust/og.sh`). Steps 23 and 31 and their modules call `og`, so without it they stop with `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). `REQUIRED=true` waits until every CI job that starts the pipeline builds `og` first.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte
