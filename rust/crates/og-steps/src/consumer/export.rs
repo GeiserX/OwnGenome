@@ -552,7 +552,7 @@ impl Walk {
             let at_start = Some(p) == start;
             let r = hit
                 .iter()
-                .find(|r| r.is_block() == at_start)
+                .find(|r| r.is_block() != at_start)
                 .copied()
                 .unwrap_or(first);
             s.call = call_from_record(r, p, s.ref38, tally)?;
