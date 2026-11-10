@@ -477,13 +477,13 @@ impl Ranker {
         for entry in split(csq, b',') {
             let e = Entry::new(entry, l.need);
             let r = severity(e.get(l.impact));
-            if !e.get(l.mane).is_empty() && r >= best_mane {
+            if !e.get(l.mane).is_empty() && r > best_mane {
                 (best_mane, j_mane) = (r, Some(entry));
             }
-            if e.get(l.canonical) == b"YES" && r >= best_canon {
+            if e.get(l.canonical) == b"YES" && r > best_canon {
                 (best_canon, j_canon) = (r, Some(entry));
             }
-            if r >= best_any {
+            if r > best_any {
                 (best_any, j_any) = (r, Some(entry));
             }
             for &k in &l.freq {
