@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+RFC1	chr4	39348425	39348479	10	AAAAG	benign	0.60	AAAAG=0.60,AAAGG=0.40	benign_motif	motif AAAAG (benign) in 6 of 10 repeat reads (60%): the flag is not supported

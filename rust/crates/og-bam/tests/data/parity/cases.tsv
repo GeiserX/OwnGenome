@@ -1,0 +1,68 @@
+# case<TAB>tool<TAB>arguments...: made by ../../make_parity.py; {d} tests/data, {r} the repository, {o} the output directory
+cyp2d6-bed	cyp2d6-bed
+cyp2d6-bed-stray	cyp2d6-bed	stray
+measure-cyp2d6	cyp2d6-measure	--bam	{d}/cyp2d6.bam	--out	{o}/shares.tsv
+measure-cyp2d6_nochr	cyp2d6-measure	--bam	{d}/parity/in/cyp2d6_nochr.bam	--out	{o}/shares.tsv
+measure-cyp2d6_synthetic	cyp2d6-measure	--bam	{d}/parity/in/cyp2d6_synthetic.bam	--out	{o}/shares.tsv
+measure-no-chr22	cyp2d6-measure	--bam	{d}/parity/in/cyp2d6_other.bam	--out	{o}/shares.tsv
+measure-missing-bam	cyp2d6-measure	--bam	{d}/parity/in/none.bam	--out	{o}/shares.tsv
+measure-no-out	cyp2d6-measure	--bam	{d}/cyp2d6.bam
+check-clean_no_alt	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/clean_no_alt.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-clean_no_alt-measured	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/clean_no_alt.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--measure	{d}/parity/in/shares.tsv	--out	{o}/check.tsv
+check-multimapped_with_alt	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/multimapped_with_alt.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/multimapped_with_alt.q1.bed	--out	{o}/check.tsv
+check-multimapped_with_alt-measured	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/multimapped_with_alt.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/multimapped_with_alt.q1.bed	--measure	{d}/parity/in/shares.tsv	--out	{o}/check.tsv
+check-deleted_both	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/deleted_both.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/deleted_both.q1.bed	--out	{o}/check.tsv
+check-deleted_both-measured	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/deleted_both.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/deleted_both.q1.bed	--measure	{d}/parity/in/shares.tsv	--out	{o}/check.tsv
+check-deleted_one	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/deleted_one.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/deleted_one.q1.bed	--out	{o}/check.tsv
+check-deleted_one-measured	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/deleted_one.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/deleted_one.q1.bed	--measure	{d}/parity/in/shares.tsv	--out	{o}/check.tsv
+check-no_flank_reads	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/no_flank_reads.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/no_flank_reads.q1.bed	--out	{o}/check.tsv
+check-no_flank_reads-measured	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/no_flank_reads.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/no_flank_reads.q1.bed	--measure	{d}/parity/in/shares.tsv	--out	{o}/check.tsv
+check-gz	cyp2d6-check	--all	{d}/parity/in/gz.q0.bed.gz	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-comments-and-blank-lines	cyp2d6-check	--all	{d}/parity/in/comments-and-blank-lines.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-crlf	cyp2d6-check	--all	{d}/parity/in/crlf.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-extra-named-rows	cyp2d6-check	--all	{d}/parity/in/extra-named-rows.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-duplicate-row-same	cyp2d6-check	--all	{d}/parity/in/duplicate-row-same.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-duplicate-row	cyp2d6-check	--all	{d}/parity/in/duplicate-row.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-flank-names	cyp2d6-check	--all	{d}/parity/in/flank-names.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-no-gene	cyp2d6-check	--all	{d}/parity/in/no-gene.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-no-flank	cyp2d6-check	--all	{d}/parity/in/no-flank.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-other-region	cyp2d6-check	--all	{d}/parity/in/other-region.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-zero-length	cyp2d6-check	--all	{d}/parity/in/zero-length.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-short-row	cyp2d6-check	--all	{d}/parity/in/short-row.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-bad-number	cyp2d6-check	--all	{d}/parity/in/bad-number.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-nan-mean	cyp2d6-check	--all	{d}/parity/in/nan-mean.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-empty	cyp2d6-check	--all	{d}/parity/in/empty.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-bad-measure	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/clean_no_alt.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--measure	{d}/parity/in/bad_measure.tsv	--out	{o}/check.tsv
+check-measure-zero	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/clean_no_alt.q0.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--measure	{d}/parity/in/zero_measure.tsv	--out	{o}/check.tsv
+check-missing-input	cyp2d6-check	--all	{d}/parity/in/none.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-no-mapq1	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/check.tsv
+check-out-unwritable	cyp2d6-check	--all	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--mapq1	{r}/tests/fixtures/pgx/depth/clean_no_alt.q1.bed	--out	{o}/no/such/dir/check.tsv
+motif-benign	str-motif	--bam	{d}/parity/in/rfc1_benign.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-pathogenic	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-mixed	str-motif	--bam	{d}/parity/in/rfc1_mixed.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-acagg	str-motif	--bam	{d}/parity/in/rfc1_acagg.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-unknown	str-motif	--bam	{d}/parity/in/rfc1_unknown.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-few	str-motif	--bam	{d}/parity/in/rfc1_few.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-pathogenic-no-softclip	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/rfc1.vcf	--no-softclip	--out	{o}/motif.tsv
+motif-pathogenic-no-mates	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/rfc1.vcf	--no-mates	--out	{o}/motif.tsv
+motif-pathogenic-neither	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/rfc1.vcf	--no-mates	--no-softclip	--out	{o}/motif.tsv
+motif-vcf-gz	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/rfc1.vcf.gz	--out	{o}/motif.tsv
+motif-skip	str-motif	--vcf	{d}/parity/in/rfc1.vcf	--skip	no BAM	--out	{o}/motif.tsv
+motif-skip-and-bam	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/rfc1.vcf	--skip	a reason	--out	{o}/motif.tsv
+motif-no-rfc1-record	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/no_rfc1.vcf	--out	{o}/motif.tsv
+motif-no-contig	str-motif	--bam	{d}/parity/in/no_chr4.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-missing-bam	str-motif	--bam	{d}/parity/in/none.bam	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-missing-vcf	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/none.vcf	--out	{o}/motif.tsv
+motif-no-bam-no-skip	str-motif	--vcf	{d}/parity/in/rfc1.vcf	--out	{o}/motif.tsv
+motif-empty-skip	str-motif	--vcf	{d}/parity/in/rfc1.vcf	--skip		--out	{o}/motif.tsv
+motif-flagged-no-catalog	str-motif	--bam	{d}/parity/in/rfc1_pathogenic.bam	--vcf	{d}/parity/in/rfc1.vcf	--flagged	--out	{o}/motif.tsv
+motif-catalog-rfc1	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog.json	--out	{o}/motif.tsv
+motif-catalog-flagged	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog.json	--flagged	--out	{o}/motif.tsv
+motif-catalog-flagged-skip	str-motif	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog.json	--flagged	--skip	no BAM	--out	{o}/motif.tsv
+motif-catalog-none-flagged	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/none_flagged.vcf	--catalog	{d}/parity/in/catalog.json	--flagged	--out	{o}/motif.tsv
+motif-catalog-disease-null	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog_disease_null.json	--out	{o}/motif.tsv
+motif-catalog-nodisease	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog_nodisease.json	--out	{o}/motif.tsv
+motif-catalog-unknown-contig	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog_nodisease.json	--flagged	--out	{o}/motif.tsv
+motif-catalog-bad-region	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog_bad_region.json	--out	{o}/motif.tsv
+motif-catalog-no-id	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog_no_id.json	--out	{o}/motif.tsv
+motif-catalog-broken	str-motif	--bam	{d}/parity/in/two_loci.bam	--vcf	{d}/parity/in/two_loci.vcf	--catalog	{d}/parity/in/catalog_broken.json	--out	{o}/motif.tsv

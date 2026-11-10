@@ -506,6 +506,9 @@ dependencies = [
 name = "og-bam"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
+ "og-io",
+ "pycompat",
  "rust-htslib",
 ]
 
@@ -548,20 +551,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-tsv"
+version = "0.1.0"
+dependencies = [
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
 name = "og-vcf"
 version = "0.1.0"
 dependencies = [
  "memchr",
  "og-io",
  "smallvec",
-]
-
-[[package]]
-name = "og-tsv"
-version = "0.1.0"
-dependencies = [
- "og-io",
- "pycompat",
 ]
 
 [[package]]

@@ -1,0 +1,12 @@
+metric	value
+status	unreliable
+message	CYP2D6 copy number unreliable: no reads in the flanks of CYP2D6 (chr22:42.05-42.25 Mb), so its depth cannot be compared
+gene_depth_all	0.00
+gene_depth_mapq1	0.00
+flank_depth_all	0.00
+flank_depth_mapq1	0.00
+gene_mapq1_share	no reads
+gene_mapq20_share	0.99
+body_depth_all	9.08
+body_mapq1_share	1.00
+body_mapq20_share	0.99
