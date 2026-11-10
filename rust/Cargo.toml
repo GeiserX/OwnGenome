@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-map", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,7 @@ publish = false
 [workspace.dependencies]
 pycompat = { path = "crates/pycompat" }
 og-io = { path = "crates/og-io" }
+og-map = { path = "crates/og-map" }
 indexmap = "2"
 flate2 = "1"
 

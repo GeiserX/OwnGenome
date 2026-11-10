@@ -1,0 +1,4 @@
+# This file was produced by: bcftools roh (invented rows for the og-map tests)
+# ST	[2]Sample	[3]Chromosome	[4]Position	[5]State (0:HW, 1:AZ)	[6]Quality
+# RG	[2]Sample	[3]Chromosome	[4]Start	[5]End	[6]Length (bp)	[7]Number of markers	[8]Quality
+ST	DEMO-002	chr2	5000001	0	99.0

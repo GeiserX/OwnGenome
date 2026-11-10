@@ -71,6 +71,7 @@ name = "og"
 version = "0.1.0"
 dependencies = [
  "og-io",
+ "og-map",
  "pycompat",
 ]
 
@@ -79,6 +80,16 @@ name = "og-io"
 version = "0.1.0"
 dependencies = [
  "flate2",
+]
+
+[[package]]
+name = "og-map"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
