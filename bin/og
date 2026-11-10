@@ -4,12 +4,25 @@
 # for this machine from bin/.og/, which scripts/setup.sh --og puts there
 # (rust/og.sh). Inside an amd64 image on an Apple Silicon host, uname -m
 # says x86_64, so that build runs under emulation.
+#
+# Shadow mode, for CI (tests/parity/README.md): OG_SHADOW names tools of
+# tests/parity/oracle.ref (comma or space separated), materialised into
+# bin/.og/oracle by scripts/ci/oracle-diff.sh materialise. A call that starts
+# with such a tool's og words runs og as the real output, then runs the
+# Python it replaced in a scratch directory of symlinks to what was here
+# before, with the same arguments, and compares the exit code, stdout and
+# every new top-level file each one wrote, byte for byte. Any difference
+# fails the call, and so does any write the comparison could not see: og or
+# the oracle changing a file that was there before, or writing into a
+# directory that was there before. stderr is not compared. A call that
+# agrees says so in one stderr line.
 case $(uname -m) in
   x86_64 | amd64) arch=x86_64 ;;
   aarch64 | arm64) arch=aarch64 ;;
   *) arch=$(uname -m) ;;
 esac
-bin="$(dirname "$0")/.og/og-linux-${arch}"
+here=$(cd "$(dirname "$0")" && pwd)
+bin="${here}/.og/og-linux-${arch}"
 if [ "$(uname -s)" != Linux ]; then
   echo "ERROR: og runs inside the pipeline's Linux containers, not on $(uname -s)" >&2
   exit 127
@@ -17,5 +30,104 @@ fi
 if [ ! -x "$bin" ]; then
   echo "ERROR: og is not built for ${arch}; run scripts/setup.sh --og" >&2
   exit 127
+fi
+
+# starts_with WORDS ARG...: 0 when the arguments begin with WORDS.
+starts_with() {
+  _words=$1
+  shift
+  for _w in $_words; do
+    [ $# -gt 0 ] && [ "$1" = "$_w" ] || return 1
+    shift
+  done
+  return 0
+}
+
+# shadow DIR N ARG...: run og on ARG..., then the oracle in DIR without the
+# first N words, and compare.
+shadow() {
+  _d=$1 _n=$2
+  shift 2
+  _t=$(mktemp -d "${TMPDIR:-/tmp}/og-shadow.XXXXXX") || exit 70
+  mkdir "${_t}/oracle"
+  ls -A > "${_t}/entries"
+  find . ! -type d | sort > "${_t}/before"
+  # A write after the stamp is newer than it only once the clock has moved
+  # on by a whole timestamp step, so wait one second (the coarsest step of
+  # the file systems a task runs on); shadow mode is for CI only.
+  touch "${_t}/stamp.og"
+  sleep 1
+  _rc=0
+  "$bin" "$@" > "${_t}/og.stdout" 2> "${_t}/og.stderr" || _rc=$?
+  # What og changed: a file newer than the stamp that was there before, or a
+  # new file below a top-level entry that was there before, is a write the
+  # oracle would make through its symlinks into this same tree, so the two
+  # could not be told apart.
+  find . ! -type d -newer "${_t}/stamp.og" | sort | comm -12 "${_t}/before" - > "${_t}/og.overwrote"
+  find . ! -type d | sort | comm -13 "${_t}/before" - > "${_t}/og.new"
+  while IFS= read -r _f; do
+    _top=${_f#./}
+    _top=${_top%%/*}
+    if [ "./${_top}" != "$_f" ] && grep -qxF -- "$_top" "${_t}/entries"; then
+      echo "$_f" >> "${_t}/og.overwrote"
+    fi
+  done < "${_t}/og.new"
+  while IFS= read -r _e; do ln -s -- "${PWD}/${_e}" "${_t}/oracle/${_e}"; done < "${_t}/entries"
+  shift "$_n"
+  touch "${_t}/stamp.oracle"
+  sleep 1
+  _orc=0
+  (cd "${_t}/oracle" && "${_d}/run" "$@") > "${_t}/oracle.stdout" 2> "${_t}/oracle.stderr" || _orc=$?
+  (cd "${_t}/oracle" && find . ! -type d ! -type l | sort) > "${_t}/oracle.new"
+  # What the oracle changed in this tree, through the symlinks.
+  find . ! -type d -newer "${_t}/stamp.oracle" | sort > "${_t}/oracle.through"
+  cat "${_t}/og.stdout"
+  cat "${_t}/og.stderr" >&2
+  _bad=""
+  [ ! -s "${_t}/og.overwrote" ] || _bad="${_bad}  og wrote where the shadow cannot compare (a file or directory that was there before): $(tr '\n' ' ' < "${_t}/og.overwrote")
+"
+  [ ! -s "${_t}/oracle.through" ] || _bad="${_bad}  the oracle wrote into the real tree, through a link to what was there before: $(tr '\n' ' ' < "${_t}/oracle.through")
+"
+  [ "$_rc" = "$_orc" ] || _bad="${_bad}  exit code: oracle ${_orc}, og ${_rc}
+"
+  "$bin" dev parity-compare bytes "${_t}/oracle.stdout" "${_t}/og.stdout" > "${_t}/why" 2>&1 \
+    || _bad="${_bad}  stdout: $(cat "${_t}/why")
+"
+  if ! cmp -s "${_t}/oracle.new" "${_t}/og.new"; then
+    _bad="${_bad}  files written: oracle $(tr '\n' ' ' < "${_t}/oracle.new"), og $(tr '\n' ' ' < "${_t}/og.new")
+"
+  else
+    while IFS= read -r _f; do
+      "$bin" dev parity-compare bytes "${_t}/oracle/${_f}" "$_f" > "${_t}/why" 2>&1 \
+        || _bad="${_bad}  ${_f#./}: $(cat "${_t}/why")
+"
+    done < "${_t}/og.new"
+  fi
+  if [ -n "$_bad" ]; then
+    echo "ERROR: og shadow ($(basename "$_d")): og and the Python it replaces disagree:" >&2
+    printf '%s' "$_bad" >&2
+    echo "  the oracle's stderr: $(head -c 2000 "${_t}/oracle.stderr")" >&2
+    rm -rf "$_t"
+    [ "$_rc" -ne 0 ] && exit "$_rc"
+    exit 1
+  fi
+  echo "og shadow ($(basename "$_d")): og and the Python it replaces agree" >&2
+  rm -rf "$_t"
+  exit "$_rc"
+}
+
+if [ -n "${OG_SHADOW:-}" ]; then
+  for _tool in $(echo "$OG_SHADOW" | tr ',' ' '); do
+    _d="${here}/.og/oracle/${_tool}"
+    if [ ! -x "${_d}/run" ] || [ ! -s "${_d}/prefix" ]; then
+      echo "ERROR: OG_SHADOW names ${_tool}, but ${_d} holds no oracle: run scripts/ci/oracle-diff.sh materialise" >&2
+      exit 127
+    fi
+    read -r _prefix < "${_d}/prefix"
+    if starts_with "$_prefix" "$@"; then
+      # shellcheck disable=SC2086  # the prefix is a list of words
+      shadow "$_d" "$(set -- $_prefix; echo $#)" "$@"
+    fi
+  done
 fi
 exec "$bin" "$@"

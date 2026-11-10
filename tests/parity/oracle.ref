@@ -1,0 +1,6 @@
+# The Python each og tool replaced, kept runnable after its deletion.
+# tool<TAB>commit<TAB>source<TAB>interpreter<TAB>og words
+#   commit       the parent of the pull request that deleted it
+#   source       heredoc:FILE:NAME (the body of NAME=$(cat <<'X' ... X) in FILE) or file:FILE
+#   og words     the og subcommand that replaces it; the oracle gets the arguments after them
+setup-mask-fasta	23a028d37fbceb465ae4de8a263f5da6c9ec8e80	heredoc:scripts/setup.sh:MASK_FASTA_PY	python3	setup mask-fasta

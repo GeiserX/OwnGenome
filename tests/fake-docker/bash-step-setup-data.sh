@@ -2,8 +2,9 @@
 # setup.sh creates the reference's sequence dictionary (Picard and GATK need
 # it; chip-to-vcf.sh now checks for it) and tries to install the small pinned
 # data files. The fake downloads fail their checksums, which must not stop
-# setup: each file gets a [WARN], and validate-setup.sh names what is missing
-# and what the step does without it.
+# setup: each downloaded file gets a [WARN], and validate-setup.sh names what
+# is missing and what the step does without it. The chromosome bands are
+# copied from assets/reference, so they install.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -44,16 +45,21 @@ run_expect 0 setup "${SCRIPTS}/setup.sh" "$GENOME_DIR"
 docker_log_has '^run image=[^ ]*gatk.* gatk CreateSequenceDictionary -R /genome/reference/GRCh38_no_alt_analysis_set\.fasta ' \
   "setup.sh did not create the sequence dictionary"
 [ -f "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.dict" ] || fail "setup.sh left no GRCh38_no_alt_analysis_set.dict"
-for what in 'Delly exclude map' 'GRCh38 chromosome bands' 'IPD-IMGT/HLA' 'GENCODE'; do
+for what in 'Delly exclude map' 'IPD-IMGT/HLA' 'GENCODE'; do
   output_has setup "\[WARN\] Could not install the ${what}"
 done
+# The chromosome bands are copied from the repository, with no download.
+output_has setup '\[OK\] GRCh38 chromosome bands \(step 10\): '
+cmp -s "${REPO_ROOT}/assets/reference/cytoBand.hg38.txt" "${GENOME_DIR}/reference/cytoBand.hg38.txt" \
+  || fail "setup.sh did not install the chromosome bands from assets/reference"
+if grep -qi '^curl .*cytoband' "$FAKE_DOCKER_LOG"; then fail "setup.sh downloaded the chromosome bands"; fi
 docker_log_has '^curl https://raw\.githubusercontent\.com/dellytools/delly/[0-9a-f]{40}/excludeTemplates/human\.hg38\.excl\.tsv ' \
   "setup.sh did not fetch Delly's exclude map from a pinned commit"
 
 run_rc validate "${SCRIPTS}/validate-setup.sh" sample1
 output_has validate 'Delly exclude map \(step 19 runs without it'
 output_has validate 'IPD-IMGT/HLA [0-9.]+ \(step 08 is skipped without it\) not found'
-output_has validate 'GRCh38 chromosome bands \(step 10 falls back to hg19 bands\) not found'
+output_has validate '\[OK\].*GRCh38 chromosome bands: present'
 
 # --- setup.sh --vep-cache: the VEP cache before the first run ------------------------
 # The fake download serves a real tarball of the release versions.env pins,

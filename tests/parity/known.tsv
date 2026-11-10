@@ -1,0 +1,4 @@
+# Differences that cannot be made stable (zip and deflate bytes, clocks, mtimes,
+# Python exception text), one per line. A listed difference passes; a listed
+# difference no longer seen fails. A deliberate fix is a golden instead.
+# tool<TAB>case<TAB>item<TAB>reason

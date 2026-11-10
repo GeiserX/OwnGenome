@@ -258,11 +258,51 @@ jobs:
           fi
           echo "Refused, as it must (exit ${rc}): $(grep 'og is stale' <<< "$out")"
 
+  # The parity harness (tests/parity/README.md): every og port against the
+  # Python it replaced, by meaning. First the harness's own self-test (each
+  # planted kind of difference must be reported, by oracle-diff.sh, by
+  # og dev parity-compare and by bin/og's shadow mode), then every case of
+  # tests/parity/cases.tsv with the oracle in its production image, then
+  # tests/test_fixitfelix.sh with og.
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: Build og
+        working-directory: rust
+        run: |
+          OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
+          echo "OG=${PWD}/target/release/og" >> "$GITHUB_ENV"
+
+      - name: The harness's self-test (planted differences must each be reported)
+        run: scripts/ci/oracle-diff.sh --self-test
+
+      - name: og against the Python it replaced, every case of tests/parity/cases.tsv
+        if: ${{ !cancelled() }}   # runs even when the self-test failed, so each result shows
+        run: scripts/ci/oracle-diff.sh
+
+      - name: tests/test_fixitfelix.sh with og
+        if: ${{ !cancelled() }}
+        run: bash tests/test_fixitfelix.sh
+
   # The one check the ruleset requires for this workflow: it runs even when a
   # job above failed or was skipped, and fails unless every one succeeded.
   ci-ok:
     if: always()
-    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, unit-tests, rust]
+    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, unit-tests, rust, parity]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

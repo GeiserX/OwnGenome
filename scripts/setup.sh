@@ -463,49 +463,6 @@ install_viral_data() {
   echo "[OK] Viral genomes ${VIRAL_REF_VERSION} (step 47, $(grep -c '^>' "$dest") sequences): ${dest}"
 }
 
-# MASK_FASTA_PY SRC BED OUT: SRC with every BED row on one of its sequences
-# set to N, written to OUT byte for byte otherwise (same lines, same case).
-# Prints how many rows it applied; rows on sequences SRC lacks are named.
-# tests/test_fixitfelix.sh runs this program as it is written here.
-MASK_FASTA_PY=$(cat <<'PY'
-import sys
-
-src, bed, out = sys.argv[1:4]
-rows = {}
-for line in open(bed):
-    c = line.split()
-    if len(c) >= 3 and not line.startswith(("#", "track", "browser")):
-        rows.setdefault(c[0], []).append((int(c[1]), int(c[2])))
-used = set()
-masked = 0
-with open(src, "rb") as f, open(out, "wb") as o:
-    iv, pos = [], 0
-    for line in f:
-        if line.startswith(b">"):
-            name = line[1:].split()[0].decode()
-            iv, pos = sorted(rows.get(name, [])), 0
-            if iv:
-                used.add(name)
-            o.write(line)
-            continue
-        if iv:
-            body = line.rstrip(b"\r\n")
-            end = pos + len(body)
-            hit = [(max(s, pos), min(e, end)) for s, e in iv if s < end and e > pos]
-            if hit:
-                b = bytearray(line)
-                for s, e in hit:
-                    b[s - pos:e - pos] = b"N" * (e - s)
-                    masked += e - s
-                line = bytes(b)
-            pos = end
-        o.write(line)
-n = sum(len(v) for k, v in rows.items() if k in used)
-print(f"masked {n} of {sum(len(v) for v in rows.values())} rows ({masked} bases); "
-      f"rows on sequences the FASTA lacks: {', '.join(sorted(set(rows) - used)) or 'none'}")
-PY
-)
-
 # install_masked_reference (--masked-reference): REF_FASTA (the default
 # no-ALT analysis set) with the false duplications of GRCh38 set to N, in
 # <REF_FASTA without extension>_maskedGRC.fasta beside it, with its .fai and
@@ -515,7 +472,12 @@ PY
 # copy takes no reads. Sequence names, lengths and coordinates do not change.
 # The list is GRC_EXCLUSIONS_URL (sha256 checked); the FASTA it writes must
 # have GRC_MASKED_REF_SHA256, or MASKED_REF_SHA256 when that is set (a source
-# other than NCBI's file, as the CI case's chr21), or it is deleted.
+# other than NCBI's file, as the CI case's chr21), or it is deleted. The
+# masking is og's `og setup mask-fasta` (rust/crates/og-intervals), run in
+# PYTHON_IMAGE with bin/ mounted, so og is built first when it is missing or
+# stale. It runs from the reference's directory with relative paths, so
+# bin/og's shadow mode (OG_SHADOW, tests/parity/README.md) can run the
+# Python it replaced beside it in CI.
 install_masked_reference() {
   local src=$REF_FASTA dest bed want got dir log
   case "$src" in
@@ -541,9 +503,14 @@ install_masked_reference() {
     # Only the partial output goes now: a masked reference already there stays
     # until its replacement has passed the sha256 check.
     rm -f "${dest}.part"
-    echo "Masking the false duplications of $(basename "$src") (a few minutes for GRCh38)..."
-    if ! log=$(run_in --rw "$dir" "$PYTHON_IMAGE" python3 -c "$MASK_FASTA_PY" \
-          "$(cpath "$src")" "$(cpath "$bed")" "$(cpath "${dest}.part")"); then
+    if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
+      echo "[WARN] Could not build og, which masks the reference: run ${0} --og and look at its error."
+      return 1
+    fi
+    echo "Masking the false duplications of $(basename "$src") (under a minute for GRCh38)..."
+    # -e OG_SHADOW passes the variable only when it is set (CI).
+    if ! log=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$dir")" "$PYTHON_IMAGE" \
+          /pgp-bin/og setup mask-fasta "$(basename "$src")" "$(basename "$bed")" "$(basename "$dest").part"); then
       rm -f "${dest}.part"
       echo "[WARN] Could not write the masked reference."
       return 1

@@ -115,12 +115,12 @@ It downloads the new file under `clinvar/.refresh/`, checks the md5, builds both
 
 ## Small pinned data files
 
-`setup.sh` also installs these small files, each from a fixed commit or release and checked before it is stored (`./scripts/setup.sh --sample-qc-data ${GENOME_DIR}` installs only the last two). A failed download does not stop setup; the next run tries again, and `validate-setup.sh` lists what is missing.
+`setup.sh` also installs these small files, each from a fixed commit or release and checked before it is stored (`./scripts/setup.sh --sample-qc-data ${GENOME_DIR}` installs only the last two). The chromosome bands are the exception: the repository ships them, and setup copies them without a download. A failed download does not stop setup; the next run tries again, and `validate-setup.sh` lists what is missing.
 
 | File | Source | Used by | Without it |
 |---|---|---|---|
 | `reference/delly_human.hg38.excl.tsv` | Delly's GRCh38 exclude map at a pinned commit (sha256 checked) | step 19 (`delly sr -x`) | Delly runs without it: slower, and with calls in centromeres, telomeres and the unplaced scaffolds |
-| `reference/cytoBand.hg38.txt` | UCSC's GRCh38 chromosome bands, chr1-22, X and Y (sha256 checked) | step 10 (`telomerehunter -b`) | TelomereHunter falls back to its hg19 bands |
+| `reference/cytoBand.hg38.txt` | UCSC's GRCh38 chromosome bands, chr1-22, X and Y, copied from `assets/reference/cytoBand.hg38.txt` (its README says how it was made). `validate-setup.sh` fails an installed copy that differs from it | step 10 (`telomerehunter -b`), Nextflow `--cytoband`; the genome map reads the asset itself | TelomereHunter falls back to its hg19 bands |
 | `hla/IPD-IMGT-HLA_<release>/hla.dat` | IPD-IMGT/HLA release `HLA_DB_RELEASE` (3.66.0) from the IMGTHLA repository (md5 checked) | step 8 | step 8 is skipped |
 | `reference/gencode.v50.basic.genes.gtf` | the gene lines of GENCODE 50's basic annotation (md5 checked) | step 8 (gene positions for T1K) | step 8 is skipped |
 | `reference/gencode.v50.basic.exons.bed` | the exon intervals of the same GENCODE 50 basic annotation, written from the same download as the gene lines (md5 checked) | steps 6 and 17 and Nextflow `--gencode_exons` with `clinvar` (cDNA read check); step 39 and `--gencode_exons` with `--pedigree` (deletions over an exon) | steps 6 and 17 and `CLINVAR_CDNA_CHECK` write every hit as `not_checked`; step 39 does not use deletions |
