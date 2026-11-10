@@ -19,7 +19,7 @@
 #
 # A case runs in two directories that hold the same staged inputs: og runs
 # in one, the oracle in the other, with the same arguments. Compared items:
-# the exit code, stdout, stderr and every file the run wrote (stdout and
+# the exit code, stdout, stderr, the named outputs and every new file (stdout and
 # stderr as bytes, files with the case's compare kind, through
 # og dev parity-compare). The expected side of an item is the oracle's,
 # unless tests/parity/golden/<tool>/<case>/<item> exists (a deliberate fix:
