@@ -1,0 +1,4 @@
+# The fetch smoke fixture is public test data, kept in git on purpose
+# (the top-level .gitignore drops every *.bam).
+!tests/data/*.bam
+!tests/data/*.bam.bai

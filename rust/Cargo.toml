@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,12 +12,17 @@ publish = false
 pycompat = { path = "crates/pycompat" }
 og-io = { path = "crates/og-io" }
 og-vcf = { path = "crates/og-vcf" }
+og-bam = { path = "crates/og-bam" }
 indexmap = "2"
 flate2 = "1"
 memchr = "2"
 smallvec = "1"
 # Pure Rust deflate for BGZF (no C to cross-compile); the backend noodles-bgzf uses.
 zlib-rs = { version = "0.6", default-features = false, features = ["std"] }
+# htslib built from source and linked statically. curl, S3 and GCS are
+# off (og reads local files only), and so are bzip2 and lzma, which only
+# CRAM uses.
+rust-htslib = { version = "=1.0.2", default-features = false, features = ["static"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

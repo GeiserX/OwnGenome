@@ -1,0 +1,13 @@
+[package]
+name = "og-bam"
+description = "BAM reading as OwnGenome's pysam tools do it, on a statically linked htslib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+rust-htslib.workspace = true
+
+[lints]
+workspace = true
