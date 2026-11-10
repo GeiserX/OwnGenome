@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+FAMEX	chrUn	6	30	0	.	.	.	.	not_checked	the BAM has no contig chrUn

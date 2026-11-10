@@ -12,6 +12,10 @@ use std::path::Path;
 
 use rust_htslib::bam::{self, FetchDefinition, Read as _};
 
+mod args;
+pub mod cyp2d6;
+pub mod motif;
+
 pub use rust_htslib::bam::Record;
 pub use rust_htslib::errors::Error;
 
@@ -41,6 +45,23 @@ impl Bam {
             start,
             stop,
         ))?;
+        Ok(self.reader.records())
+    }
+
+    /// The index of a contig of the header, as `bam.references` holds it.
+    pub fn tid(&self, contig: &str) -> Option<u32> {
+        self.reader.header().tid(contig.as_bytes())
+    }
+
+    /// `fetch(start, stop, tid=tid)`: the same query by contig index.
+    pub fn fetch_tid(
+        &mut self,
+        tid: i32,
+        start: i64,
+        stop: i64,
+    ) -> Result<impl Iterator<Item = Result<Record, Error>> + '_, Error> {
+        self.reader
+            .fetch(FetchDefinition::Region(tid, start, stop))?;
         Ok(self.reader.records())
     }
 }

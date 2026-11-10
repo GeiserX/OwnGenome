@@ -507,6 +507,9 @@ dependencies = [
 name = "og-bam"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
+ "og-io",
+ "pycompat",
  "rust-htslib",
 ]
 
