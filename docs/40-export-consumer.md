@@ -14,7 +14,7 @@ The step writes files on this machine and sends nothing anywhere. Uploading one 
 
 ## Tool
 
-- `bin/export_consumer.py` (this repository), standard-library Python. It walks the gVCF once.
+- `og consumer export` (this repository, `rust/crates/og-steps`), part of OwnGenome's Rust binary `og` (`scripts/setup.sh --og` builds it; [Rust tools](rust.md)). It walks the gVCF once, reading the BGZF file on up to 4 cores, and runs in `PYTHON_IMAGE`, which only supplies the Linux userland.
 
 ## Docker Image
 
@@ -31,7 +31,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
 A site is dropped from the table, with its reason in `reference/consumer/23andme_v5_dropped_dbsnp<build>.tsv`, when it has no rsID (23andMe's own `i` numbers, about 17,800 sites), dbSNP has no SNV for it, dbSNP places it at two positions or on another chromosome, or neither strand of its GRCh37 base is one of dbSNP's alleles. A site whose GRCh37 base is on the other strand in GRCh38 is written on the GRCh37 strand. A pseudoautosomal site, which dbSNP lists on chrX and chrY, keeps the chromosome of the list. The list numbers its MT sites the way hg19's chrM does, which is one or two bases off the rCRS; the table gives them dbSNP's rCRS position, the same in GRCh37 and GRCh38.
 
-With the pinned list and dbSNP b157 the table keeps 614,138 sites and drops 24,325: 17,829 with no rsID, 4,408 that are not an SNV in dbSNP, 2,069 that dbSNP merged or withdrew, and 19 that sit on another chromosome in GRCh38. The build reads dbSNP once, in about 22 minutes on a 20-core server, with under 2 GB of memory (page cache included) of the 4 GB its container gets; the download before it depends on your link to NCBI. Both inputs are checked against their pins, so the table is always the same: `CONSUMER_SITES_TABLE_SHA256` holds the sha256 of its content, and `setup.sh` and `validate-setup.sh` warn when a table differs from it.
+With the pinned list and dbSNP b157 the table keeps 614,138 sites and drops 24,325: 17,829 with no rsID, 4,408 that are not an SNV in dbSNP, 2,069 that dbSNP merged or withdrew, and 19 that sit on another chromosome in GRCh38. The build (`og consumer build-sites`) reads dbSNP once, inflating its BGZF blocks on 4 cores, and holds only the list's rsIDs and the matching records in memory. The Python build it replaced took about 22 minutes on a 20-core server; the `og` build is not yet timed on the whole dbSNP file. The download before it depends on your link to NCBI. Both inputs are checked against their pins, so the table is always the same: `CONSUMER_SITES_TABLE_SHA256` holds the sha256 of its content, and `setup.sh` and `validate-setup.sh` warn when a table differs from it.
 
 ## Input
 
@@ -56,7 +56,7 @@ With `run-all.sh`: `TOOLS=...,consumer_export` (it is opt-in, so a default run l
 | a no-call (`./.`), no record, or a record that starts before the site and is not a block | `--` |
 | inside the bases of a called deletion or a longer allele | `--` |
 
-Then the chip's ploidy rules. With `male`, a chrX or chrY site outside the pseudoautosomal regions (`assets/par_grch38.bed`) gets one letter, and a heterozygous call there is `--`. With `female`, chrY sites are `--`. Without a sex each site keeps the ploidy of its call. A chrM site always gets one letter, and a heteroplasmic call (two bases) is `--`. A site whose strand is `-` in the table gets the complementary bases.
+Then the chip's ploidy rules. With `male`, a chrX or chrY site outside the pseudoautosomal regions (`assets/par_grch38.bed`) gets one letter, and a heterozygous call there is `--`. With `female`, chrY sites are `--`. Without a sex each site keeps the ploidy of its call. A chrM site always gets one letter, and a heteroplasmic call (two bases) is `--`. A site whose strand is `-` in the table gets the complementary bases. A call of three or more alleles at a site stops the step, unless the site is on a female's chrY: a chip file holds one or two letters.
 
 Before it writes, the step checks the reference base of every gVCF record that starts at a site against the table. When more than 1% of them (and more than 10) differ, the gVCF is not on GRCh38 or the table is wrong, and the step stops without writing a file.
 
@@ -68,13 +68,15 @@ Before it writes, the step checks the reference base of every gVCF record that s
 | `consumer_export/${SAMPLE}_ancestrydna_layout.zip` | the same sites in the AncestryDNA layout: `rsid`, `chromosome` (1-22, 23 X, 24 Y, 25 the X pseudoautosomal regions, 26 MT), `position`, `allele1`, `allele2`; a no-call is `0 0`, a one-letter site has the letter twice |
 | `consumer_export/${SAMPLE}_consumer_export.tsv` | what was written: the site count, how many got a genotype, how many came from reference blocks, and each reason for a `--` with its count |
 
-The header says the file was written by this pipeline from sequencing calls, not by 23andMe or AncestryDNA. Before zipping, the step reads both files back with a strict reader (`export_consumer.py check`): the column header, the column count, an rsID, a chromosome and a position on every row, a genotype of one or two of `A`, `C`, `G`, `T` or `--`, one letter only on X, Y and MT, rows in chromosome and position order, each rsID once, plain ASCII with Unix line ends. A file that fails stops the step.
+The header says the file was written by this pipeline from sequencing calls, not by 23andMe or AncestryDNA. Before zipping, the step reads both files back with a strict reader (`og consumer check`): the column header, the column count, an rsID, a chromosome and a position on every row, a genotype of one or two of `A`, `C`, `G`, `T` or `--`, one letter only on X, Y and MT, rows in chromosome and position order, each rsID once, plain ASCII with Unix line ends. A file that fails stops the step and leaves both `.txt` files unzipped in the folder to look at.
+
+Each zip dates its file with the day of the export (`--date YYYY-MM-DD`, else `SOURCE_DATE_EPOCH`, else today in UTC) at midnight, so the same gVCF, table and day give the same bytes.
 
 Both reports (step 24 and `generate-report.sh`) show the counts and the file names.
 
 ## Runtime
 
-On the CI fixture (the gVCF of the fixture's 15 regions, 7,623 sites of the CI table) the step took under one second, container start included (e2e run 38664867748). It is not measured on a whole genome. The step reads the gVCF from start to end once in one Python process, so the time grows with the size of the gVCF; memory holds the site table, about 620,000 rows.
+On the CI fixture (the gVCF of the fixture's 15 regions, 7,623 sites of the CI table) the step took under one second, container start included (e2e run 38664867748). It is not measured on a whole genome. The step reads the gVCF from start to end once, inflating its BGZF blocks on up to 4 cores, so the time grows with the size of the gVCF; memory holds the site table, about 620,000 rows, and one of the two files at a time. On a synthetic gVCF of 19 million lines (128 MB compressed) with a table of 611,936 sites, it took about 4 seconds and at most about 200 MB of memory in a Linux container on 4 cores; the Python it replaced took 17 seconds and 667 MB on the same files.
 
 ## Notes
 
