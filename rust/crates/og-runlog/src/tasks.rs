@@ -210,7 +210,7 @@ pub fn latest_tasks(trace: Vec<Task>, events: Vec<Task>) -> Vec<Task> {
     });
     let mut by_name: IndexMap<String, Task> = IndexMap::new();
     for t in all {
-        by_name.entry(t.name.clone()).or_insert(t);
+        by_name.insert(t.name.clone(), t);
     }
     by_name.into_values().collect()
 }
