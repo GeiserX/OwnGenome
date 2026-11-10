@@ -129,6 +129,8 @@ run_oracle() {
   if [ "$RUNNER" = local ]; then
     (cd "$dir" && "${ORACLES}/${tool}/run" "$@") > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"
   else
+    # Pulled first: docker run's pull progress would land in the oracle's stderr.
+    docker image inspect "$image" > /dev/null 2>&1 || docker pull -q "$image" > /dev/null || die "cannot pull ${image}"
     docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
       -v "${ORACLES}:/oracle:ro" -v "${dir}:/w" -w /w "$image" "/oracle/${tool}/run" "$@" \
       > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"

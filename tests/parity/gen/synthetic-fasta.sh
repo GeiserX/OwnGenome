@@ -10,8 +10,8 @@ export LC_ALL=C
 LEN=${SYNTHETIC_LEN:-125000000}
 for name in chr1 chr2; do
   echo ">${name} synthetic"
-  # yes stops on SIGPIPE when head has enough: not a failure.
-  (set +o pipefail; yes ACGTTGCAacgtNNGGCCTTAAGTCAacgtacgtGGGGCCCCAAAATTTTNacgtACGTAC | tr -d '\n' | head -c "$LEN" | fold -w 60)
+  # yes and tr stop on SIGPIPE when head has enough: not a failure.
+  (set +o pipefail; yes ACGTTGCAacgtNNGGCCTTAAGTCAacgtacgtGGGGCCCCAAAATTTTNacgtACGTAC 2> /dev/null | tr -d '\n' 2> /dev/null | head -c "$LEN" | fold -w 60)
   echo
 done > synthetic.fa
 awk 'BEGIN { for (i = 0; i < 300; i++) { s = i * 400000 + 1234 + i; printf "chr1\t%d\t%d\tr%d\n", s, s + 5000 + i, i } }' > synthetic.bed
