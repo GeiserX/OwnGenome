@@ -253,7 +253,9 @@ fn usable(r: &Record) -> bool {
 
 /// pysam's `AlignmentFile.mate`: the first read at the mate's position with
 /// the same name and the other of read 1 and read 2; `None` when there is
-/// none.
+/// none. A mate contig past the header has no mate either: htslib answers
+/// a query there with no reads, as it does for pysam, whose `ValueError` the
+/// Python maps to `None`.
 fn mate(bam: &mut Bam, r: &Record) -> Result<Option<Record>, String> {
     let want = (r.flags() ^ 0xC0) & 0xC0;
     if r.mtid() < 0 || r.mpos() < 0 {
@@ -842,5 +844,46 @@ mod tests {
     fn the_floor_is_one_unit_more_than_the_reference_allele() {
         assert_eq!(min_units(39_348_424, 39_348_479, 5), 12);
         assert_eq!(min_units(0, 5, 5), 4);
+    }
+
+    #[test]
+    fn a_mate_on_a_contig_the_header_lacks_is_no_mate() {
+        use rust_htslib::bam::{self as hb, header::HeaderRecord, record::Cigar};
+        let dir = std::env::temp_dir().join(format!("og-bam-mate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = hb::Header::new();
+        h.push_record(
+            HeaderRecord::new(b"SQ")
+                .push_tag(b"SN", "chr4")
+                .push_tag(b"LN", 1000),
+        );
+        let write = |name: &str, mtid: i32| {
+            let path = dir.join(name);
+            let mut rec = Record::new();
+            let cigar = hb::record::CigarString(vec![Cigar::Match(4)]);
+            rec.set(b"r1", Some(&cigar), b"ACGT", &[30; 4]);
+            rec.set_tid(0);
+            rec.set_pos(10);
+            rec.set_mtid(mtid);
+            rec.set_mpos(10);
+            rec.set_flags(0x1 | 0x40);
+            let mut w = hb::Writer::from_path(&path, &h, hb::Format::Bam).unwrap();
+            w.set_compression_level(hb::CompressionLevel::Uncompressed)
+                .unwrap();
+            w.write(&rec).unwrap();
+            path
+        };
+        // htslib will not index a record whose mate contig is past the
+        // header, so the index comes from the same bytes with mtid 0.
+        let good = write("good.bam", 0);
+        let bad = write("bad.bam", 5);
+        hb::index::build(&good, None, hb::index::Type::Bai, 1).unwrap();
+        std::fs::copy(dir.join("good.bam.bai"), dir.join("bad.bam.bai")).unwrap();
+        let mut bam = Bam::open(&bad).unwrap();
+        let read = bam.fetch("chr4", 0, 100).unwrap().next().unwrap().unwrap();
+        assert_eq!(read.mtid(), 5);
+        assert!(matches!(mate(&mut bam, &read), Ok(None)));
+        drop(bam);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
