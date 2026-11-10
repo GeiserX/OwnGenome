@@ -600,7 +600,7 @@ impl Query<'_> {
             if seq != self.seq.as_slice() || beg >= self.end {
                 return Ok(None);
             }
-            if end > self.beg {
+            if end >= self.beg {
                 return Ok(Some(line));
             }
         }

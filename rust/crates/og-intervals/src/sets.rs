@@ -107,7 +107,7 @@ impl Sets {
     /// Whether the 1-based position `pos` (a VCF `POS`) of `seq` is
     /// covered: a BED row `start end` covers `start < pos <= end`.
     pub fn contains_pos(&self, seq: &str, pos: u64) -> bool {
-        pos > 0 && self.contains(seq, pos - 1)
+        pos > 0 && self.contains(seq, pos)
     }
 }
 

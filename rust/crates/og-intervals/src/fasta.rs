@@ -179,7 +179,7 @@ impl Indexed {
         let mut pos = beg;
         while pos < end {
             // The rest of pos's line, up to end.
-            let line_end = end.min((pos / e.line_bases + 1) * e.line_bases);
+            let line_end = end.min((pos / e.line_bases + 1) * e.line_bases + 1);
             let at = e.offset + pos / e.line_bases * e.line_width + pos % e.line_bases;
             let start = out.len();
             self.read_into(at, line_end - pos, &mut out)?;
