@@ -1,6 +1,6 @@
 # Test slices
 
-Four small slices of public HG002 files (Genome in a Bottle's Ashkenazi son), so the round-trip tests read real VCF layouts: many INFO items per record, a VEP `CSQ` annotation, long alleles and gVCF reference blocks. Each slice is the file's whole header and its first records, compressed with `bgzip` 1.24 (`staphb/bcftools:1.24`). No private genome is here.
+Four small slices of public HG002 files (Genome in a Bottle's Ashkenazi son), so the round-trip tests read real VCF layouts: many INFO items per record, a VEP `CSQ` annotation, long alleles and gVCF reference blocks. Each slice is the file's whole header and its first records, compressed with `bgzip` 1.24 (`staphb/bcftools:1.24`). No private genome is here. The repository's `.gitignore` ignores `*.vcf.gz`, so a new slice is added with `git add -f`.
 
 | File | Records | Taken from |
 |---|---|---|
