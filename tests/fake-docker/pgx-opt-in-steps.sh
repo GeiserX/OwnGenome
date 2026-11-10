@@ -121,7 +121,7 @@ og_runs() {  # og_runs STEP OUTDIR: the depth check runs og from OUTDIR, never t
   done
   grep -q -- "--all cyp2d6_depth/q0.regions.bed.gz --mapq1 cyp2d6_depth/q1.regions.bed.gz" <<<"$RUNS" \
     || fail "$1 did not give og pgx cyp2d6-check relative inputs"
-  if grep -q 'cyp2d6_depth_check' <<<"$RUNS"; then fail "$1 still calls bin/cyp2d6_depth_check.py"; fi
+  if grep -q 'cyp2d6_depth_check\.py' <<<"$RUNS"; then fail "$1 still calls bin/cyp2d6_depth_check.py"; fi
 }
 og_runs "step 21" /genome/sample1/cyrius
 
