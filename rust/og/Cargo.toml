@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
+og-intervals.workspace = true
+og-dev.workspace = true
 
 [lints]
 workspace = true
