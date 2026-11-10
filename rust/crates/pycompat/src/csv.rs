@@ -69,7 +69,7 @@ impl<W: Write> Writer<W> {
             count += 1;
             let field = field.as_ref();
             let d = self.delimiter;
-            if field.contains([d, QUOTE, '\n']) {
+            if field.contains([d, QUOTE, '\n', '\r']) {
                 self.buf.push(QUOTE);
                 for c in field.chars() {
                     if c == QUOTE {
