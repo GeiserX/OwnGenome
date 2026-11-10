@@ -130,12 +130,14 @@ def cmd_compare(a):
     print(f"| chromosome | Chen {a.sample} (bp) | Chen {a.group} median | Chen {a.group} max | "
           + " | ".join(f"{l} (bp)" for l in labels) + " |")
     print("|---|---|---|---|" + "---|" * len(labels))
-    tot_me, tot_med, tot_max = 0, 0.0, 0
+    tot_me, tot_med = 0, 0.0
+    # the "all" maximum is the highest person-level total, not a sum of per-chromosome maxima
+    tot_max = max(sum(chen_bp(p, c) for c in chroms) for p in peers)
     tot_mine = dict.fromkeys(labels, 0)
     for c in chroms:
         vals = [chen_bp(p, c) for p in peers]
         me, med, mx = chen_bp(a.sample, c), statistics.median(vals), max(vals)
-        tot_me, tot_med, tot_max = tot_me + me, tot_med + med, tot_max + mx
+        tot_me, tot_med = tot_me + me, tot_med + med
         cells = []
         for l in labels:
             v = mine[l].get(c, 0)
@@ -164,7 +166,7 @@ def cmd_genomes(a):
     chroms = []
     with open(a.spans) as f:
         next(f)
-        chroms = [norm(line.split("\t")[0]) for line in f]
+        chroms = list(dict.fromkeys(norm(line.split("\t")[0]) for line in f if line.strip()))
     per = collections.defaultdict(lambda: collections.defaultdict(list))
     for c in chroms:
         for n in archaic_report.ARCHAICS:

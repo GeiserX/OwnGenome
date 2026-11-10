@@ -68,6 +68,15 @@ class Compare(unittest.TestCase):
         self.assertEqual(ac.intersect_bp([(0, 10), (20, 30)], [(5, 25)]), 10)
         self.assertEqual(ac.intersect_bp([(0, 10)], []), 0)
 
+    def test_all_row_maximum_is_a_person_total(self):
+        # A is largest on chr21 (100), B on chr22 (100): summed maxima would be 200, no person has it
+        open(self.chen, "w").write(
+            "chr start end LOD maxLOD size pop anc ID\n"
+            "21\t0\t100\t9\t9\t100\tCEU\tEUR\tA\n22\t0\t10\t9\t9\t10\tCEU\tEUR\tA\n"
+            "21\t0\t10\t9\t9\t10\tGBR\tEUR\tB\n22\t0\t100\t9\t9\t100\tGBR\tEUR\tB\n")
+        out = self.run_cmp()
+        self.assertIn("| all | 110 | 110 | 110 |", out)
+
     def test_group_spread_uses_the_group_only(self):
         out = self.run_cmp()
         self.assertIn("2 EUR people", out)  # A and B, not the AFR person C

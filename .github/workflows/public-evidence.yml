@@ -330,6 +330,7 @@ jobs:
             [[ "$c" =~ ^([1-9]|1[0-9]|2[0-2])$ ]] || { echo "same_person_chromosomes: '${c}' is not an autosome 1 to 22"; exit 1; }
           done
           [[ "$SAMPLE" =~ ^(HG|NA)[0-9]+$ ]] || { echo "same_person: '${SAMPLE}' is not a 1000 Genomes sample"; exit 1; }
+          (( ${#want[@]} > 0 )) || { echo "same_person_chromosomes: select at least one autosome"; exit 1; }
           # each chromosome once, in order
           echo "LIST=$(printf '%s\n' "${want[@]}" | sort -nu | tr '\n' ' ' | sed 's/ $//')" >> "$GITHUB_ENV"
 
