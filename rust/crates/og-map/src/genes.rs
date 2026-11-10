@@ -227,7 +227,7 @@ pub fn parse_gtf(input: impl BufRead, name: &str) -> Result<Vec<Gene>, String> {
             .ok_or("no gene_name and no gene_id")?;
         genes.push(Gene {
             chrom,
-            s: start - 1,
+            s: start,
             e: end,
             strand,
             name: gene_name.to_owned(),
@@ -250,7 +250,7 @@ pub fn merge(spans: &mut Vec<(u64, u64)>) {
     let mut out: Vec<(u64, u64)> = Vec::with_capacity(spans.len());
     for &(s, e) in spans.iter() {
         match out.last_mut() {
-            Some(last) if s <= last.1 => last.1 = last.1.max(e),
+            Some(last) if s < last.1 => last.1 = last.1.max(e),
             _ => out.push((s, e)),
         }
     }
