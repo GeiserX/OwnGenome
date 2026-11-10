@@ -478,8 +478,9 @@ _fetch_check() {
 
 # --- Pinned data files ----------------------------------------------------------
 # Small reference files from a fixed commit or release, each checked before it
-# is stored. setup.sh installs them (install_data_file); a step only reads
-# them (data_file) and runs no download of its own. HLA_DB_RELEASE can be
+# is stored, or copied from the repository (cytoband). setup.sh installs them
+# (install_data_file); a step only reads them (data_file) and runs no download
+# of its own. HLA_DB_RELEASE can be
 # overridden from the environment; step 08 keys its T1K index on it, so a new
 # release builds a new index.
 HLA_DB_RELEASE=${HLA_DB_RELEASE:-3.66.0}
@@ -487,6 +488,10 @@ GENCODE_RELEASE=50
 DELLY_EXCL_COMMIT=72a05f3cd23bf55f1edd723b9504a0faf1fba230
 # shellcheck disable=SC2034  # read by setup.sh and validate-setup.sh
 DATA_FILES="delly_exclude cytoband hla_dat gencode_genes gencode_exons"
+# The chromosome bands ship with the repository; setup copies them, so step 10,
+# --cytoband and the genome map read the same bytes (assets/reference/README.md
+# says how the file was made).
+CYTOBAND_ASSET="${PGP_ROOT}/assets/reference/cytoBand.hg38.txt"
 
 # data_file NAME: print the host path of data file NAME and return 0 when it
 # is installed, 1 when it is not (the path is printed either way).
@@ -523,12 +528,16 @@ install_data_file() {
       fetch "https://raw.githubusercontent.com/dellytools/delly/${DELLY_EXCL_COMMIT}/excludeTemplates/human.hg38.excl.tsv" \
         "$out" sha256 caef8593f82f513694ae41b429680eab8abe39c057a119dae7760715aef006ee >&2 || return 1 ;;
     cytoband)
-      gz="${out}.download.gz"
-      fetch https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz "$gz" \
-        sha256 e514e48b0a12a516fd5231b44241a20a282f290bdd6131cadcddc6276ee26082 >&2 || return 1
-      # TelomereHunter reads chr1-22, X and Y and reports every other line
-      # (the ALT, random and chrM rows) as invalid.
-      _keep_lines "$gz" "$out" '$1 ~ /^chr([0-9]+|X|Y)$/' || return 1 ;;
+      # No download: the asset holds the chr1-22, X and Y rows of UCSC's
+      # cytoBand.txt.gz, sha256
+      # e514e48b0a12a516fd5231b44241a20a282f290bdd6131cadcddc6276ee26082.
+      # TelomereHunter reports every other row (ALT, random, chrM) as invalid.
+      mkdir -p "$(dirname "$out")" || return 1
+      if ! { cp "$CYTOBAND_ASSET" "${out}.tmp" && mv -f "${out}.tmp" "$out"; }; then
+        rm -f "${out}.tmp"
+        echo "ERROR: could not copy ${CYTOBAND_ASSET} to ${out}" >&2
+        return 1
+      fi ;;
     hla_dat)
       url="https://raw.githubusercontent.com/ANHIG/IMGTHLA/v${HLA_DB_RELEASE}-alpha"
       # md5checksum.txt lines read "MD5 (hla.dat.zip) = <md5>".

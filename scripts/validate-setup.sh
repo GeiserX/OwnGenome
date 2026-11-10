@@ -547,7 +547,14 @@ else
       gencode_exons) what="GENCODE ${GENCODE_RELEASE} exons (steps 06 and 17 skip their cDNA read check without them)" ;;
     esac
     if DATA_PATH=$(data_file "$name"); then
-      pass "${what%% (*}: present"
+      # The bands must be the copy the repository ships: the genome map reads
+      # that copy, step 10 the installed one.
+      if [ "$name" = cytoband ] && ! cmp -s "$DATA_PATH" "$CYTOBAND_ASSET"; then
+        fail "${what%% (*} (step 10): ${DATA_PATH} is not the copy in assets/reference (sha256 $(_digest sha256 "$DATA_PATH"), expected $(_digest sha256 "$CYTOBAND_ASSET"))"
+        echo "       Delete it and reinstall: ./scripts/setup.sh ${GENOME_DIR}"
+      else
+        pass "${what%% (*}: present"
+      fi
     else
       warn "${what} not found at: ${DATA_PATH}"
       echo "       Install it: ./scripts/setup.sh ${GENOME_DIR}"
