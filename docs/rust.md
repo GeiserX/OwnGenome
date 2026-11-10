@@ -21,7 +21,7 @@ bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on), and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on), `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check` and `og str motif`, and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 

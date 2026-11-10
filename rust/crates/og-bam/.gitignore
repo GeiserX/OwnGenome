@@ -1,4 +1,6 @@
-# The fetch smoke fixture is public test data, kept in git on purpose
-# (the top-level .gitignore drops every *.bam).
+# The fixture smoke and the parity data are public or made-up test data,
+# kept in git on purpose (the top-level .gitignore drops every *.bam).
 !tests/data/*.bam
 !tests/data/*.bam.bai
+!tests/data/parity/in/*
+!tests/data/parity/want/**

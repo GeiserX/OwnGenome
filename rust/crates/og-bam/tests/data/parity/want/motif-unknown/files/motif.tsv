@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+RFC1	chr4	39348425	39348479	5	AAGAG	unknown	1.00	AAGAG=1.00	uncertain_motif	most common motif AAGAG (unknown) in 5 of 5 repeat reads (100%): not a known benign expansion; confirm with repeat-primed PCR if symptoms fit
