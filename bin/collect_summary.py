@@ -87,7 +87,7 @@ import genotype_rules_indels  # noqa: E402  the APOL1 G2 deletion beside step 42
 # section state 'failed'.
 SCHEMA_VERSION = 2
 
-# ClinVar review status -> stars. bin/clinvar_hits.awk holds the same table
+# ClinVar review status -> stars. og clinvar hits (rust/crates/og-clinvar) holds the same table
 # (tests/test_collect_summary.py checks that the two agree).
 STARS = {
     "practice_guideline": 4,
@@ -254,8 +254,8 @@ def clinvar_variants(v, sep):
 
 def clinvar_combined_note(info, gt=""):
     """Step 6's note on a hit that is a combined allele of two neighbouring
-    records, or part of one, from the tags bin/clinvar_join_adjacent.awk
-    writes; bin/clinvar_hits.awk words it the same way. "." when none.
+    records, or part of one, from the tags og clinvar join-adjacent
+    writes; og clinvar hits words it the same way. "." when none.
     On an unphased het call (0/1) the genotype cannot say the two parts share
     a haplotype, so the note says they may not."""
     a = gt.split("/")
@@ -298,7 +298,7 @@ def half_call(gt):
 
 
 def clinvar_zygosity(gt):
-    """A ClinVar hit's genotype as bin/clinvar_hits.awk words it. One alt
+    """A ClinVar hit's genotype as og clinvar hits words it. One alt
     allele and one missing one (1/., ./1) is the half of a multiallelic call
     step 06 split with the other alt written as missing (a 1/2 at a poly-T
     tract), or a half call: never het, which would say the other copy is ref."""
