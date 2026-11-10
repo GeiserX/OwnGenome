@@ -64,6 +64,81 @@ pub fn roh_long_chrom(n: usize, bp: u64) -> Vec<Piece> {
     }]
 }
 
+pub const FINDINGS_CAVEAT: &str = "Each finding sits at its own position, or on its gene's span \
+when it names a gene but no position. A finding with neither stays on the page only.";
+
+pub const FINDINGS_EMPTY: &str = "No finding has a place on the map.";
+
+/// The note of a findings layer with no results body on stdin.
+pub const FINDINGS_MISSING: &str =
+    "No results for this run yet: the findings come from its summary (step 24).";
+
+/// The note of the findings with no place, counted over those no closed
+/// result hides.
+pub fn findings_unplaced(n: usize) -> String {
+    if n == 1 {
+        "1 finding with no place on the map stays on the page.".to_owned()
+    } else {
+        format!("{n} findings with no place on the map stay on the page.")
+    }
+}
+
+/// The count of findings on the map, in its three forms. The page counts
+/// the untagged findings plus the tagged ones that are open, picks the form
+/// and puts the number in place of `{n}`.
+pub fn findings_count() -> [(&'static str, Vec<Piece>); 3] {
+    let p = |t: &str, b: bool| Piece { t: t.to_owned(), b };
+    [
+        ("none", vec![p(FINDINGS_EMPTY, false)]),
+        (
+            "one",
+            vec![p("1 finding", true), p(" has a place on the map.", false)],
+        ),
+        (
+            "many",
+            vec![
+                p("{n} findings", true),
+                p(" have a place on the map.", false),
+            ],
+        ),
+    ]
+}
+
+/// The page's words for a level (`LEVEL_WORDS` in bin/live_results.py).
+pub fn level_words(level: &str) -> &'static str {
+    match level {
+        "act" => "Take to a doctor",
+        "medicine" => "Tell your prescriber",
+        "review" => "Worth a look",
+        "carrier" => "For family planning",
+        "trust" => "Data quality",
+        _ => "For information",
+    }
+}
+
+/// `chr7` as the words "chromosome 7".
+fn chromosome(name: &str) -> String {
+    format!("chromosome {}", name.strip_prefix("chr").unwrap_or(name))
+}
+
+/// The sentence of one finding on the map.
+pub fn finding_phrase(level: &str, title: &str, chrom: &str) -> String {
+    let title = title.trim().trim_end_matches('.');
+    if title.is_empty() {
+        format!("{}, on {}.", level_words(level), chromosome(chrom))
+    } else {
+        format!("{}: {title}, on {}.", level_words(level), chromosome(chrom))
+    }
+}
+
+/// The sentence of a gated finding: it names the gene, never the result.
+pub fn gated_phrase(gene: &str, chrom: &str) -> String {
+    format!(
+        "{gene}, on {}: kept behind its warning on every page until opened on purpose.",
+        chromosome(chrom)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,6 +155,26 @@ mod tests {
         assert_eq!(
             roh_long_chrom(1, 5_050_000)[0].t,
             "1 run of homozygosity of 5 Mb or more here, 5.0 Mb in all."
+        );
+        assert_eq!(
+            finding_phrase("act", "Secondary finding in BRCA2.", "chr13"),
+            "Take to a doctor: Secondary finding in BRCA2, on chromosome 13."
+        );
+        assert_eq!(
+            finding_phrase("whatever", "", "chrX"),
+            "For information, on chromosome X."
+        );
+        assert_eq!(
+            gated_phrase("APOE", "chr19"),
+            "APOE, on chromosome 19: kept behind its warning on every page until opened on purpose."
+        );
+        assert_eq!(
+            findings_unplaced(1),
+            "1 finding with no place on the map stays on the page."
+        );
+        assert_eq!(
+            findings_unplaced(3),
+            "3 findings with no place on the map stay on the page."
         );
     }
 }

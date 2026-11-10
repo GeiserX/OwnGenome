@@ -1,0 +1,15 @@
+# Synthetic rows of a layer that can be a finding's source (a structural
+# variant, a mosaic call, a ClinVar hit), over and beside the closable
+# findings of DEMO-005.json. Columns: chromosome, 0-based start, end, and
+# the id the row must carry (- for none).
+chr13	32339999	32340000	sf-brca2-c-1a-g
+chr13	32300000	32339999	-
+chr13	32339999	32339999	sf-brca2-c-1a-g
+chr13	32330000	32400000	sf-brca2-c-1a-g
+chr13	32389999	32390005	cpsr-brca2-c-2c-t
+chr7	117500000	117600000	two-hits-cftr
+chr7	117715971	117800000	-
+chr19	44905000	44905001	apoe
+chr19	1000000	2000000	-
+chr22	42120000	42130000	-
+chr17	7600000	7700000	-
