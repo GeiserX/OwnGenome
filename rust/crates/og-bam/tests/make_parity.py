@@ -54,6 +54,13 @@ def write(name, text, gz=False):
     return "{d}/parity/in/" + name
 
 
+def sites_only(vcf):
+    """The VCF without its FORMAT and sample columns: the motif count reads
+    columns 1 to 8 only, and a repeat-count genotype in a tracked file trips
+    the personal-data check."""
+    return "".join("\t".join(line.rstrip("\n").split("\t")[:8]) + "\n" for line in vcf.splitlines(keepends=True))
+
+
 def bam_from(reads, path, header):
     unsorted = path + ".unsorted.bam"
     with pysam.AlignmentFile(unsorted, "wb", header=header) as out:
@@ -171,9 +178,10 @@ S2, E2 = 39350999, 39351024  # a made-up FAME-like locus on chr4: (TTTTA)5
 def motif_inputs():
     for kind in ("benign", "pathogenic", "mixed", "acagg", "unknown", "few"):
         t.write_bam(pysam, os.path.join(OUT, "in", f"rfc1_{kind}.bam"), kind)
-    write("rfc1.vcf", t.VCF)
-    write("rfc1.vcf.gz", t.VCF, gz=True)
-    write("no_rfc1.vcf", t.VCF.replace("REPID=RFC1", "REPID=HTT").replace("VARID=RFC1", "VARID=HTT"))
+    vcf = sites_only(t.VCF)
+    write("rfc1.vcf", vcf)
+    write("rfc1.vcf.gz", vcf, gz=True)
+    write("no_rfc1.vcf", vcf.replace("REPID=RFC1", "REPID=HTT").replace("VARID=RFC1", "VARID=HTT"))
     # Reads at the second locus: TTTCA expanded on most, TTTTA on some, the
     # reference allele on others, each spanning with its flanks.
     rng = random.Random(5)
@@ -204,10 +212,10 @@ def motif_inputs():
     reads += [spanning(f"famb{i}", "TTTTA", 14) for i in range(2)]
     reads += [spanning(f"famr{i}", "TTTTA", 5) for i in range(4)]
     bam_from(reads, os.path.join(OUT, "in", "two_loci.bam"), h)
-    vcf_head = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+    vcf_head = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
     rec = lambda chrom, pos, end, rid, status: (  # noqa: E731
-        f"{chrom}\t{pos}\t.\tA\t<STR40>\t.\tPASS\tEND={end};VARID={rid};REPID={rid};STR_STATUS={status}\tGT\t0/1\n")
-    rfc1_line = t.VCF.splitlines(keepends=True)[-1]
+        f"{chrom}\t{pos}\t.\tA\t<STR40>\t.\tPASS\tEND={end};VARID={rid};REPID={rid};STR_STATUS={status}\n")
+    rfc1_line = vcf.splitlines(keepends=True)[-1]
     write("two_loci.vcf", vcf_head + rfc1_line + rec("chr4", S2 + 1, E2, "FAMEX", "normal,pre_mutation")
           + rec("chr4", 1000, 1010, "QUIET", "normal") + rec("chr4", 2000, 2010, "NOMOTIF", "full_mutation"))
     write("none_flagged.vcf", vcf_head + rfc1_line + rec("chr4", S2 + 1, E2, "FAMEX", "normal"))
