@@ -86,7 +86,7 @@ fn roh_rows_round_trip_through_the_document() {
         Sex::Male,
     )
     .unwrap();
-    assert_eq!((all, rows.len()), (9, 7));
+    assert_eq!((all, rows.len()), (10, 8));
 
     let per = get(&doc, &["per", "DEMO-001", "roh"]);
     let Value::Object(by_chrom) = per else {
@@ -136,10 +136,10 @@ fn roh_rows_round_trip_through_the_document() {
         get(layer, &["source"]),
         &Value::Str("DEMO-001/vcf/DEMO-001_roh.txt".into())
     );
-    assert_eq!(get(layer, &["count"]), &Value::Int(7));
-    assert_eq!(get(layer, &["totals", "all"]), &Value::Int(9));
+    assert_eq!(get(layer, &["count"]), &Value::Int(8));
+    assert_eq!(get(layer, &["totals", "all"]), &Value::Int(10));
     // Two long runs (chr1 and chr7); chr13's lies in its short arm and the
-    // male's chrX run is flagged.
+    // male's chrX and chrY runs are flagged.
     assert_eq!(
         get(&doc, &["text", "genome"]),
         &json::loads(r#"[{"t":"2 runs","b":true},{"t":" of homozygosity of 5 Mb or more, 12.5 Mb in all.","b":false}]"#).unwrap()
