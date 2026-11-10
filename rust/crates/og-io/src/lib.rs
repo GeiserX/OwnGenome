@@ -7,6 +7,10 @@
 //!   lone `\r` each end a line and read as `\n`; UTF-8 strict or `replace`.
 //! - [`AtomicFile`]: written beside the target and renamed over it on
 //!   [`AtomicFile::commit`], so a reader never sees half a file.
+//! - [`bgzf`]: the same reading with BGZF inflated on many cores, and a
+//!   BGZF writer that compresses on many cores.
+
+pub mod bgzf;
 
 use flate2::bufread::GzDecoder;
 use std::fs::{self, File};

@@ -1,6 +1,6 @@
 [package]
 name = "og-io"
-description = "Input and output as OwnGenome's Python tools do it: plain, gzip or BGZF in, universal newlines, atomic writes"
+description = "Input and output as OwnGenome's Python tools do it: plain, gzip or BGZF in (BGZF on many cores), universal newlines, atomic writes"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 flate2.workspace = true
+zlib-rs.workspace = true
 
 [lints]
 workspace = true
