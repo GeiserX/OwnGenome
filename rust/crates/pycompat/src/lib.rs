@@ -15,6 +15,7 @@
 //!   `sorted()` of paths.
 //! - [`text`]: `str.split`, `strip`, the Unicode classes, `upper`/`lower`,
 //!   code-point slices and `html.escape`.
+//! - [`stats`]: `statistics.median`, `fmean` and `variance`.
 //! - [`value`]: `bool()`, `str()`, `repr()` and `d.get(k) or default` over
 //!   JSON values.
 
@@ -24,6 +25,7 @@ pub mod json;
 #[cfg(unix)]
 pub mod mtime;
 pub mod num;
+pub mod stats;
 pub mod text;
 pub mod value;
 

@@ -9,7 +9,7 @@
 
 use og_io::{Lines, Utf8};
 use pycompat::csv::{self, DictReader, Quoting, Reader};
-use pycompat::{fmt, json, mtime, num, text, value};
+use pycompat::{fmt, json, mtime, num, stats, text, value};
 use std::ffi::OsString;
 use std::io::{self, BufRead, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -424,6 +424,23 @@ fn eval(f: &[&str]) -> io::Result<String> {
         "html" => text::html_escape(&text(arg(1)?)?).into_owned(),
         "chars" => chars(int(arg(1)?)?, int(arg(2)?)?),
         "slice" => text::slice(&text(arg(1)?)?, opt_int(arg(2)?)?, opt_int(arg(3)?)?).to_owned(),
+        "median" | "fmean" | "variance" => {
+            let stat: fn(Vec<f64>) -> Result<f64, stats::Error> = match f[0] {
+                "median" => stats::median,
+                "fmean" => stats::fmean,
+                _ => stats::variance,
+            };
+            stat(floats(arg(1)?)?).map_or_else(|e| e.exception().to_owned(), fmt::repr)
+        }
+        "mediani" => {
+            let xs = arg(1)?;
+            let xs: Vec<i64> = if xs.is_empty() {
+                Vec::new()
+            } else {
+                xs.split(',').map(int).collect::<io::Result<_>>()?
+            };
+            stats::median_int(xs).map_or_else(|e| e.exception().to_owned(), |m| m.to_string())
+        }
         op => return Err(bad(format!("unknown operation {op:?}"))),
     })
 }

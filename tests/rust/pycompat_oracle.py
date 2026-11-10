@@ -22,6 +22,7 @@ import json
 import math
 import os
 import random
+import statistics
 import struct
 import sys
 
@@ -395,6 +396,8 @@ def case(op, r):
         return value_case(op, r)
     if op in TEXT_CASES:
         return TEXT_CASES[op](r)
+    if op in STATS_CASES:
+        return STATS_CASES[op](r)
     if op == "repr":
         x = a_float(r)
         return [bits(x)], lambda: repr(x)
@@ -622,6 +625,71 @@ TEXT_CASES = {
     "slice": case_slice,
 }
 OPS += list(TEXT_CASES)
+
+
+# statistics (pycompat::stats). Lists of floats as fsum's are, ints in decimal.
+TIES = [0.0, -0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+SCALES = [1e16, 1e8, 12345.678, 3.0, 1e-300, 1e300, 1e153, 2.0 ** 52]
+
+
+def a_stats_list(r, nan=True):
+    """Lists that catch a wrong statistic: ties and signed zeros, values one
+    ulp apart where a float formula cancels, subnormals, huge values whose
+    squares overflow, and now and then an inf or a NaN."""
+    n = r.choice([0, 1, 2, 2, 3, 3, 4, 5, 6, 7, 8, 11, 16, 25, 64]) if r.random() > 0.001 else r.randrange(200, 1000)
+    k = r.randrange(8)
+    if k == 0:
+        xs = [a_float(r) for _ in range(n)]
+    elif k == 1:
+        xs = [r.choice(TIES) * r.choice([1, -1]) for _ in range(n)]
+    elif k == 2:  # one ulp apart
+        base = r.choice(SCALES) * r.choice([1, -1])
+        xs = [base + r.randrange(-50, 50) * math.ulp(base) * r.choice([1, 1, 1000]) for _ in range(n)]
+    elif k == 3:
+        xs = [float(r.randrange(-20, 60)) for _ in range(n)]
+    elif k == 4:  # subnormal
+        xs = [struct.unpack("<d", struct.pack("<Q", r.getrandbits(52) | (r.getrandbits(1) << 63)))[0]
+              for _ in range(n)]
+    elif k == 5:
+        xs = [r.choice(SPECIAL + [1e308, 1e154, 1e-160]) * r.choice([1, -1]) for _ in range(n)]
+    elif k == 6:  # depths and their halves
+        xs = [r.randrange(200) / r.choice([1, 2, 4, 10, 3]) for _ in range(n)]
+    else:
+        xs = [r.uniform(-1, 1) * 10.0 ** r.randrange(-300, 300) for _ in range(n)]
+    if xs and r.random() < 0.05:
+        xs[r.randrange(len(xs))] = r.choice([math.inf, -math.inf, math.nan])
+    if not nan:  # sorted() puts a NaN where its neighbours happen to be: refused in Rust
+        xs = [x for x in xs if x == x]
+    return xs
+
+
+def an_int_list(r):
+    n = r.choice([0, 1, 2, 2, 3, 4, 5, 6, 9, 16])
+    k = r.randrange(4)
+    if k == 0:
+        return [r.randrange(-5, 40) for _ in range(n)]
+    if k == 1:  # next to 2**53, where a float sum would round twice
+        return [2 ** 53 + r.randrange(-8, 8) for _ in range(n)]
+    if k == 2:
+        return [r.choice([1, -1]) * r.randrange(2 ** 63) for _ in range(n)]
+    return [r.randrange(1000) for _ in range(n)]
+
+
+def case_stat(op):
+    def make(r):
+        xs = a_stats_list(r, nan=op != "median")
+        return [",".join(bits(x) for x in xs)], lambda: repr(getattr(statistics, op)(xs))
+    return make
+
+
+def case_mediani(r):
+    xs = an_int_list(r)
+    return [",".join(map(str, xs))], lambda: repr(statistics.median(xs))
+
+
+STATS_CASES = {"median": case_stat("median"), "mediani": case_mediani, "fmean": case_stat("fmean"),
+               "variance": case_stat("variance")}
+OPS += list(STATS_CASES)
 
 
 def main():
