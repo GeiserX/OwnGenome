@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-bam", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-bam", "crates/og-tsv", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,6 +12,7 @@ publish = false
 pycompat = { path = "crates/pycompat" }
 og-io = { path = "crates/og-io" }
 og-bam = { path = "crates/og-bam" }
+og-tsv = { path = "crates/og-tsv" }
 indexmap = "2"
 flate2 = "1"
 # htslib built from source and linked statically. curl, S3 and GCS are
