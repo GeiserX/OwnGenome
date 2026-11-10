@@ -100,6 +100,7 @@ struct Genes {
     chrom: Option<String>,
 }
 
+/// Reads the options of `og map genes`.
 fn parse_genes(args: &[String]) -> Result<Genes, String> {
     // --chrom is optional, so it is parsed apart from the two required options.
     let mut chrom = None;
@@ -163,6 +164,7 @@ fn build(args: &[String], tree_hash: &str) -> ExitCode {
     finish("build", og_map::build_cached(&req, Path::new(&b.cache_dir)))
 }
 
+/// Runs `og map genes`: writes the requested gene file to stdout.
 fn genes(args: &[String], tree_hash: &str) -> ExitCode {
     let g = match parse_genes(args) {
         Ok(g) => g,

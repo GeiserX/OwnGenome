@@ -69,6 +69,7 @@ impl Want {
         })
     }
 
+    /// The name of the cached file this request reads.
     pub fn file_name(self) -> String {
         match self {
             Want::Chrom(c) => format!("genes.{}.json.gz", CHROMS[c]),
@@ -182,6 +183,7 @@ fn each_line(
     }
 }
 
+/// Parses a position field, naming `what` when it is not a number.
 fn number(field: &str, what: &str) -> Result<u64, String> {
     field
         .parse()
@@ -306,10 +308,12 @@ pub fn load(inputs: &Inputs) -> Result<Genes, BuildError> {
     })
 }
 
+/// A JSON array of integers.
 fn ints(xs: impl IntoIterator<Item = u64>) -> Value {
     Value::Array(xs.into_iter().map(|x| Value::Int(x.into())).collect())
 }
 
+/// A JSON array of strings.
 fn strs<'a>(xs: impl IntoIterator<Item = &'a str>) -> Value {
     Value::Array(xs.into_iter().map(|x| Value::Str(x.to_owned())).collect())
 }
