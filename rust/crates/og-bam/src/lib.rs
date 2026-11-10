@@ -57,7 +57,8 @@ fn ops(r: &Record) -> impl Iterator<Item = (u8, i64)> + '_ {
 }
 
 /// pysam's `reference_end`: one past the last reference base the alignment
-/// covers; `None` for an unmapped read or one without a CIGAR.
+/// covers; `None` for an unmapped read or one without a CIGAR. Like htslib's
+/// `bam_endpos`, which pysam returns, a span of no reference bases counts as 1.
 pub fn reference_end(r: &Record) -> Option<i64> {
     if r.is_unmapped() || r.raw_cigar().is_empty() {
         return None;
@@ -66,7 +67,7 @@ pub fn reference_end(r: &Record) -> Option<i64> {
         .filter(|(op, _)| matches!(op, b'M' | b'D' | b'N' | b'=' | b'X'))
         .map(|(_, l)| l)
         .sum();
-    Some(r.pos() + len)
+    Some(r.pos() + len.max(1))
 }
 
 /// pysam's `cigarstring`: `None` when the read has no CIGAR.
@@ -146,4 +147,43 @@ pub fn fetch_probe(bam: &Path, regions: impl BufRead, mut out: impl Write) -> io
         }
     }
     out.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_htslib::bam::record::{Cigar, CigarString};
+
+    fn mapped(cigar: Vec<Cigar>, len: usize) -> Record {
+        let mut r = Record::new();
+        r.set(
+            b"q",
+            Some(&CigarString(cigar)),
+            &vec![b'A'; len],
+            &vec![30; len],
+        );
+        r.set_pos(100);
+        r.unset_unmapped();
+        r
+    }
+
+    #[test]
+    fn reference_end_spans_the_reference_ops() {
+        let r = mapped(vec![Cigar::SoftClip(2), Cigar::Match(5), Cigar::Del(3)], 7);
+        assert_eq!(reference_end(&r), Some(108));
+    }
+
+    #[test]
+    fn reference_end_of_a_zero_length_span_is_pos_plus_one() {
+        // htslib's bam_endpos, which pysam returns, floors the span at 1.
+        let r = mapped(vec![Cigar::Ins(10)], 10);
+        assert_eq!(reference_end(&r), Some(101));
+    }
+
+    #[test]
+    fn reference_end_of_an_unmapped_read_is_none() {
+        let mut r = mapped(vec![Cigar::Match(5)], 5);
+        r.set_unmapped();
+        assert_eq!(reference_end(&r), None);
+    }
 }
