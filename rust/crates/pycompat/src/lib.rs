@@ -9,6 +9,10 @@
 //!   zero padding, `ljust`/`rjust`, `round(x)` and `round(x, n)`.
 //! - [`num`]: `float(str)`, `int(str)`, `math.fsum` and the builtin `sum`.
 //! - [`json`]: `json.dumps` and a `json.loads` with Python's leniency.
+//! - [`csv`]: `csv.writer`, `csv.reader` and `csv.DictReader` for the
+//!   default dialect.
+//! - [`text`]: `str.split`, `strip`, the Unicode classes, `upper`/`lower`,
+//!   code-point slices and `html.escape`.
 
 pub mod csv;
 pub mod fmt;

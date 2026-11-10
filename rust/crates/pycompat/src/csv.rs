@@ -429,6 +429,7 @@ impl DictRow {
 pub struct DictReader<I> {
     reader: Reader<I>,
     header: Option<Arc<Header>>,
+    line_num: u64,
 }
 
 impl<I, L> DictReader<I>
@@ -440,6 +441,7 @@ where
         DictReader {
             reader: Reader::new(lines, delimiter, quoting),
             header: None,
+            line_num: 0,
         }
     }
 
@@ -452,12 +454,19 @@ where
         {
             self.header = Some(Arc::new(Header::new(row?)));
         }
+        self.line_num = self.reader.line_num();
         Ok(self.header.as_deref())
     }
 
-    /// `line_num`: the lines read so far.
+    /// `DictReader.line_num`, which Python updates only after a read that
+    /// worked: after an error it can lag the inner reader's count (0 after
+    /// a bad header, where `reader.line_num` is 1).
     pub fn line_num(&self) -> u64 {
-        self.reader.line_num()
+        self.line_num
+    }
+
+    fn read(&mut self) -> Option<Result<Vec<String>, Error>> {
+        self.reader.next()
     }
 }
 
@@ -468,18 +477,28 @@ where
 {
     type Item = Result<DictRow, Error>;
 
+    // Python's `__next__`, step by step, so `line_num` moves where it does.
     fn next(&mut self) -> Option<Self::Item> {
-        if let Err(e) = self.header() {
+        if self.line_num == 0
+            && let Err(e) = self.header()
+        {
             return Some(Err(e));
         }
         let header = self.header.clone()?;
-        loop {
-            match self.reader.next()? {
-                Ok(cells) if cells.is_empty() => continue,
-                Ok(cells) => return Some(Ok(DictRow { header, cells })),
+        let mut cells = match self.read()? {
+            Ok(cells) => cells,
+            Err(e) => return Some(Err(e)),
+        };
+        self.line_num = self.reader.line_num();
+        while cells.is_empty() {
+            cells = match self.read()? {
+                Ok(cells) => cells,
                 Err(e) => return Some(Err(e)),
-            }
+            };
         }
+        // `dict(zip(self.fieldnames, row))` reads the property again.
+        self.line_num = self.reader.line_num();
+        Some(Ok(DictRow { header, cells }))
     }
 }
 
@@ -582,6 +601,7 @@ mod tests {
             Quoting::Minimal,
         );
         assert!(d.next().unwrap().is_err());
+        assert_eq!((d.line_num(), d.reader.line_num()), (0, 1));
         let r: Vec<DictRow> = d.map(Result::unwrap).collect();
         assert_eq!(
             r[0].iter().collect::<Vec<_>>(),
@@ -599,5 +619,35 @@ mod tests {
             .collect();
         assert_eq!(blank[0].iter().count(), 0);
         assert_eq!(blank[0].extra().map(<[String]>::len), Some(2));
+    }
+
+    #[test]
+    fn dict_reader_line_num_follows_cpython() {
+        let m = Quoting::Minimal;
+        let nums = |text: &[&str]| {
+            let mut d = DictReader::new(lines(text), '\t', m);
+            let mut seen = Vec::new();
+            while let Some(r) = d.next() {
+                seen.push((r.is_ok(), d.line_num(), d.reader.line_num()));
+            }
+            seen.push((true, d.line_num(), d.reader.line_num()));
+            seen
+        };
+        // Values read from CPython 3.14 for the same inputs.
+        assert_eq!(
+            nums(&["a\tb\n", "\n", "\n", "1\t2\n"]),
+            [(true, 4, 4), (true, 4, 4)]
+        );
+        assert_eq!(
+            nums(&["a\n", "1\n", "x\rb\n"]),
+            [(true, 2, 2), (false, 2, 3), (true, 2, 3)]
+        );
+        assert_eq!(
+            nums(&["a\n", "\n", "x\rb\n"]),
+            [(false, 2, 3), (true, 2, 3)]
+        );
+        let mut empty = DictReader::new(lines(&[]), '\t', m);
+        assert!(empty.header().unwrap().is_none());
+        assert_eq!(empty.line_num(), 0);
     }
 }

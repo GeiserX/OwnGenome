@@ -9,7 +9,7 @@
 //!   one-character forms. `isdecimal` and `isspace` are also what `\d` and
 //!   `\s` match in a Python `re` pattern on `str`.
 //! - [`upper`], [`lower`]: full case mapping, final sigma included.
-//! - [`slice`]: `s[start:stop]` counted in code points.
+//! - [`slice()`]: `s[start:stop]` counted in code points.
 //! - [`html_escape`]: `html.escape(s)` (`quote=True`).
 
 use std::borrow::Cow;
