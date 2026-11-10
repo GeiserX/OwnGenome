@@ -434,6 +434,8 @@ jobs:
           path: bin/.og/og-linux-*
           retention-days: 3
           if-no-files-found: error
+          # bin/.og is a dot directory, which upload-artifact skips by default.
+          include-hidden-files: true
 
   # The legs. The base leg runs the base cases and uploads what they wrote as
   # the artifact e2e-base; the shard legs start once it passed, unpack that
