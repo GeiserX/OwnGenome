@@ -159,7 +159,7 @@ pub fn parse(
         let Some(chrom) = chrom_index(f[2]) else {
             continue; // chrM, ALT and unplaced contigs are not on the map
         };
-        let (s, e) = (start - 1, end);
+        let (s, e) = (start, end); // PLANTED: 1-based start kept (red-first control)
         let c = &reference.chroms[chrom];
         let art = if c.name == "chrX" && sex == Sex::Male {
             Art::OneX
