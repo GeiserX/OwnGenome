@@ -29,6 +29,7 @@ on:
     branches: [main]
     paths:
       - 'tests/demo/**'
+      - 'tests/og_binary.py'
       - 'tests/fixtures/live/demo-001.weblog.jsonl'
       - 'tests/fixtures/live/demo/**'
       - '.github/workflows/demo-pictures.yml'
@@ -56,6 +57,13 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-dejavu-core
+
+      # The demo sample builder runs og for step 33's mosaic rows
+      # (tests/og_binary.py finds bin/.og on Linux).
+      - name: Build og as scripts/setup.sh --og does
+        run: |
+          scripts/setup.sh --og
+          rust/og.sh check --required
 
       # PLAYWRIGHT_WITH_DEPS: the script lets Playwright install Chromium's
       # system libraries, so the Playwright pin lives in the script alone.
@@ -85,6 +93,25 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-dejavu-core
+
+      # og (rust/, docs/rust.md): the demo sample builder runs step 33's
+      # og qc sex-loss for the mosaic rows (tests/og_binary.py reads OG).
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: Build og
+        working-directory: rust
+        run: |
+          OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
+          echo "OG=${PWD}/target/release/og" >> "$GITHUB_ENV"
 
       # The playwright and pillow pins are read from retake-screenshots.sh, so
       # they live in that script alone.

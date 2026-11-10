@@ -4695,7 +4695,7 @@ def sec_sample_qc(d, s):
     return p, data
 
 
-# --- mosaic loss of chrY or of one chrX (step 33, bin/mosaic_sex_loss.py) ----------
+# --- mosaic loss of chrY or of one chrX (step 33, og qc sex-loss) -------------------
 
 MOSAIC_CALLS = ("detected", "not_detected", "gain", "not_estimated")
 MOSAIC_NUMBERS = ("depth_ratio", "depth_ratio_expected", "loss_depth", "loss_depth_low", "loss_depth_high",

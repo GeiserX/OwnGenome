@@ -53,7 +53,7 @@ Checks:
  14. a section whose step failed in the latest run says Failed, not Not
      run, in the summary and both reports, also in the CYP2D6 rows;
  15. the CPIC card counts the genes called without a function phenotype;
- 16. the mosaic_* rows of the step 33 table (bin/mosaic_sex_loss.py) make
+ 16. the mosaic_* rows of the step 33 table (og qc sex-loss) make
      their own section, with the numbers as numbers; a table without them
      (written before the estimate) leaves the section missing, not broken; a
      mosaic_call that is not one of the four is unreadable.

@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-No pipeline step calls `og` yet. The pieces below are the base every port builds on.
+Step 33 calls `og` (`og qc sex-loss`, the mosaic loss of Y or X). The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -15,12 +15,13 @@ rust/
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
   crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
+  crates/og-qc/         og qc sex-loss: mosaic loss of Y or X for step 33
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og qc sex-loss` (step 33), `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`.
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 
@@ -52,7 +53,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 - The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- A missing binary is a note for now. The first pull request that makes a step call `og` sets `REQUIRED=true` in `rust/og.sh`, and from then on a missing binary stops a run too.
+- A missing binary is a note for now, which names the step that stops without it. `REQUIRED=true` in `rust/og.sh` waits until the fake-docker and Nextflow stub tests build `og`; from then on a missing binary stops a run up front too.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte
