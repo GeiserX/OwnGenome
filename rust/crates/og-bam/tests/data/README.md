@@ -18,3 +18,23 @@ pysam.index("cyp2d6.bam")
 ```
 
 then `python3 -I pysam_fetch.py cyp2d6.bam regions.tsv > fetch.pysam.tsv`. On the fixture of `tests/fixtures/VERSION` this gives the same bytes as the files here.
+
+# Parity data of `og pgx cyp2d6-*` and `og str motif`
+
+`parity/` is what `../parity.rs` checks og against: the Python tools it replaced (`bin/cyp2d6_depth_check.py`, `bin/rfc1_motif.py`) run on the same inputs.
+
+| Path | What it is |
+|---|---|
+| `parity/in/` | the inputs `../make_parity.py` makes: BAMs of made-up reads at RFC1 and at a made-up second motif locus (the reads of `tests/test_rfc1_motif.py`), the fixture slice above renamed to `22` and to another contig, made-up reads at CYP2D6 for each MAPQ floor and flag, VCFs, catalogs and mosdepth region files with each defect the check refuses |
+| `parity/cases.tsv` | one row per case: name, tool, arguments (`{d}` this folder, `{r}` the repository, `{o}` the output folder) |
+| `parity/want/<case>/` | what the Python wrote: `exit`, `stdout` and `files/` |
+| `parity/og/<case>/` | where og differs on purpose, what og must write instead |
+
+To make them again, from the repository root of a commit that still has the two Python tools, in `PYPGX_IMAGE`:
+
+```bash
+docker run --rm --network none -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo \
+  "$PYPGX_IMAGE" python3 -I rust/crates/og-bam/tests/make_parity.py
+```
+
+The `og/` folders are written by hand, and `make_parity.py` leaves them as they are.

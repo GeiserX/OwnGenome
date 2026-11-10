@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+RFC1	chr4	39348425	39348479	7	AAGGG	pathogenic	0.57	AAGGG=0.57,AAAAG=0.43	pathogenic_motif	AAGGG in 4 of 7 repeat reads (57%): confirm with repeat-primed PCR (CANVAS needs a pathogenic expansion on both copies)
