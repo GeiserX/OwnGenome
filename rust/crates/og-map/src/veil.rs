@@ -75,6 +75,10 @@ impl Veil {
     /// The index in `ids` of the first closable finding whose span `row`
     /// overlaps, if any.
     pub fn tag(&self, chrom: usize, span: (u64, u64)) -> Option<u32> {
+        // PLANTED: tagging switched off, to see the tag tests fail.
+        if chrom < usize::MAX {
+            return None;
+        }
         let (s, e) = nonempty(span);
         self.spans
             .get(chrom)?
@@ -140,6 +144,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "PLANTED: skipped so cargo test reaches the synthetic tag tests"]
     fn half_open_overlap_and_the_first_id() {
         // Finding b comes first on the page though it was placed second.
         let v = Veil::new([(1, "a", 0, (100, 101)), (0, "b", 0, (50, 200))]);
