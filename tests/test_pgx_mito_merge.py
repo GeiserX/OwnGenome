@@ -102,7 +102,7 @@ class Case:
 
 
 def og_or_skip():
-    """OG names the og binary (the parity job of guard.yml sets it). Without
+    """OG names the og binary (the rust job of guard.yml sets it). Without
     it the test is skipped with a note; with OG_REQUIRED set too, it fails."""
     if os.environ.get("OG"):
         return None

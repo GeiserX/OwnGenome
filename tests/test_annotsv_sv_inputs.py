@@ -2,7 +2,7 @@
 """og sv inv-filter, og sv svlen-fix and bin/cnvpytor_to_vcf.py on made-up
 VCFs.
 
-Checks 1 and 2 run og, the binary OG names (the parity job of guard.yml sets
+Checks 1 and 2 run og, the binary OG names (the rust job of guard.yml sets
 it). Without OG they are skipped with a note, and with OG_REQUIRED set the
 skip is a failure.
 

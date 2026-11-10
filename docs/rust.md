@@ -31,7 +31,7 @@ The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `
 ./scripts/setup.sh --og
 ```
 
-This puts two static musl binaries in `bin/.og/` (ignored by git): `og-linux-x86_64` and `og-linux-aarch64`. Both are kept because an Apple Silicon host runs amd64 images under emulation, where `uname -m` says `x86_64`.
+`scripts/setup.sh <genome_dir>` does the same when `og` is missing or stale, after it pulls the images. `--og` builds only `og`. This puts two static musl binaries in `bin/.og/` (ignored by git): `og-linux-x86_64` and `og-linux-aarch64`. Both are kept because an Apple Silicon host runs amd64 images under emulation, where `uname -m` says `x86_64`.
 
 - **From a checkout of `main` or a branch,** it builds them from `rust/` inside `OG_BUILDER`, a pinned [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) image (`versions.env`). Docker is the only thing it needs; no Rust on the host. The cargo cache lives in `rust/target/og-build/`.
 - **From a checkout of a release tag** (`vX.Y.Z`), it downloads the release's two binaries, checks them against the release's `SHA256SUMS` and, when `gh` is installed and logged in, against the build attestation (`gh attestation verify`). A release without binaries falls back to a build.

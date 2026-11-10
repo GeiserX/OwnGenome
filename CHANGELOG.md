@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-- Four VCF filters of steps 04, 05 and 07 now run in the Rust `og` binary: `og sv inv-filter` (step 04), `og sv svlen-fix` (step 05), `og pgx refblock-fill` and `og pgx mito-merge` (step 07). They replace `bin/manta_inv_filter.py`, `bin/sv_svlen_fix.py`, `bin/pgx_refblock_fill.py` and `bin/pgx_mito_merge.py`, which are gone. Their output is the same, byte for byte, except for these fixes. Steps 04, 05 and 07 now need `og`: run `scripts/setup.sh --og` once.
+- Four VCF filters of steps 04, 05 and 07 now run in the Rust `og` binary: `og sv inv-filter` (step 04), `og sv svlen-fix` (step 05), `og pgx refblock-fill` and `og pgx mito-merge` (step 07). They replace `bin/manta_inv_filter.py`, `bin/sv_svlen_fix.py`, `bin/pgx_refblock_fill.py` and `bin/pgx_mito_merge.py`, which are gone. Their output is the same, byte for byte, except for these fixes. Steps 04, 05 and 07 now need `og`: `scripts/setup.sh <genome_dir>` builds it, and `scripts/setup.sh --og` builds only it.
   - Step 05: an SV record whose INFO held `SVLEN` or `END` twice kept the old last value beside the new one. The rewrite now replaces the item it read.
-  - Step 07: where the gVCF had a record at a multi-base PharmCAT position that was not a reference block, the input got that record and a 0/0 record at the same position. The gVCF's record is kept, the 0/0 record is dropped, and the log says so.
+  - Step 07: where the gVCF had a record at a multi-base PharmCAT position that was not a reference block, the input got that record and a 0/0 record at the same position. The gVCF's record is kept, the 0/0 record is dropped, and the log says so, whether the gVCF's reference block at that position comes before or after the record.
   - Step 07: two PharmCAT positions that start at the same base shared one coverage count, so the shorter one could be filled or refused on the longer one's bases. Each position now has its own. PharmCAT 3.4.0 has no such pair, so its results do not change.
   - Step 07: a 0/0 record after a gVCF line without a final newline was glued onto that line.
   - Step 07: a multi-base change of one length at an MT-RNR1 position was logged as "an insertion or deletion". It now reads "a multi-base change". Nothing else changes: no MT-RNR1 call is passed.
