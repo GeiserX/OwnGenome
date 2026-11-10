@@ -57,8 +57,7 @@ impl ReviewStatus {
             ReviewStatus::PracticeGuideline => 4,
             ReviewStatus::ExpertPanel => 3,
             ReviewStatus::MultipleNoConflict => 2,
-            ReviewStatus::SingleSubmitter => 1,
-            ReviewStatus::Conflicting => 0,
+            ReviewStatus::SingleSubmitter | ReviewStatus::Conflicting => 1,
             ReviewStatus::Other => 0,
         }
     }
