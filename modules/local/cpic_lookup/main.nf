@@ -2,9 +2,9 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     CPIC Lookup — Drug-gene recommendations from PharmCAT results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    Reads PharmCAT's report.json with bin/pgx_parse.py (on the task PATH; the
-    same code scripts/27-cpic-lookup.sh and tests/test_cpic_parser.py run) and
-    writes the gene phenotypes and the medications PharmCAT's own report
+    Reads PharmCAT's report.json with og pgx cpic-report (bin/og, on the task
+    PATH; the same code scripts/27-cpic-lookup.sh and tests/test_cpic_parser.py
+    run) and writes the gene phenotypes and the medications PharmCAT's own report
     matches to them. With the PYPGX summary it also writes the PharmCAT/pypgx
     comparison (published to pypgx/, as the bash steps do) and warns, in the
     recommendations, about a gene PharmCAT could not call but pypgx did.
@@ -64,7 +64,7 @@ process CPIC_LOOKUP {
     def contra_args = contraindications ? "--contraindications ${contraindications}" : ''
     def hits_args = contraindications && clinvar_hits ? "--clinvar-hits ${clinvar_hits}" : ''
     """
-    pgx_parse.py cpic-report \\
+    og pgx cpic-report \\
         --sample ${meta.id} \\
         --report ${pharmcat_json} \\
         --outdir . \\

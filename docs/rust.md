@@ -15,6 +15,7 @@ rust/
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
   crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
+  crates/og-pgx/        og pgx: PharmCAT's report read into typed gene calls (step 27)
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
