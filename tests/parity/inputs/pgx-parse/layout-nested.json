@@ -1,0 +1,72 @@
+{
+ "genes": {
+  "CPIC": {
+   "CYP2C19": {
+    "sourceDiplotypes": [
+     {
+      "allele1": {
+       "name": "*1"
+      },
+      "allele2": {
+       "name": "*2"
+      },
+      "label": "*1/*2",
+      "phenotypes": [
+       "Intermediate Metabolizer"
+      ]
+     }
+    ]
+   },
+   "CYP2D6": {
+    "sourceDiplotypes": [
+     {
+      "allele1": {
+       "name": "*1"
+      },
+      "allele2": {
+       "name": "*1"
+      },
+      "label": "*1/*1",
+      "phenotypes": [
+       "Normal Metabolizer"
+      ]
+     }
+    ]
+   }
+  },
+  "DPWG": {
+   "CYP2C19": {
+    "sourceDiplotypes": [
+     {
+      "allele1": {
+       "name": "*1"
+      },
+      "allele2": {
+       "name": "*2"
+      },
+      "label": "*1/*2",
+      "phenotypes": [
+       "Intermediate Metabolizer"
+      ]
+     }
+    ]
+   },
+   "CYP2D6": {
+    "sourceDiplotypes": [
+     {
+      "allele1": {
+       "name": "*1"
+      },
+      "allele2": {
+       "name": "*1"
+      },
+      "label": "*1/*1",
+      "phenotypes": [
+       "Normal Metabolizer"
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

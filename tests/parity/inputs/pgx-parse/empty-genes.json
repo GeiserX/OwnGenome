@@ -1,0 +1,79 @@
+{
+ "title": "HG002",
+ "timestamp": "2026-10-03T22:08:33.348Z",
+ "pharmcatVersion": "3.4.0",
+ "dataVersion": "2026-07-13-11-40",
+ "genes": {
+  "ABCG2": {
+   "geneSymbol": "ABCG2"
+  },
+  "CACNA1S": {
+   "geneSymbol": "CACNA1S"
+  },
+  "CFTR": {
+   "geneSymbol": "CFTR"
+  },
+  "CYP2B6": {
+   "geneSymbol": "CYP2B6"
+  },
+  "CYP2C19": {
+   "geneSymbol": "CYP2C19"
+  },
+  "CYP2C9": {
+   "geneSymbol": "CYP2C9"
+  },
+  "CYP2D6": {
+   "geneSymbol": "CYP2D6"
+  },
+  "CYP3A4": {
+   "geneSymbol": "CYP3A4"
+  },
+  "CYP3A5": {
+   "geneSymbol": "CYP3A5"
+  },
+  "CYP4F2": {
+   "geneSymbol": "CYP4F2"
+  },
+  "DPYD": {
+   "geneSymbol": "DPYD"
+  },
+  "G6PD": {
+   "geneSymbol": "G6PD"
+  },
+  "HLA-A": {
+   "geneSymbol": "HLA-A"
+  },
+  "HLA-B": {
+   "geneSymbol": "HLA-B"
+  },
+  "IFNL3": {
+   "geneSymbol": "IFNL3"
+  },
+  "MT-RNR1": {
+   "geneSymbol": "MT-RNR1"
+  },
+  "NAT2": {
+   "geneSymbol": "NAT2"
+  },
+  "NUDT15": {
+   "geneSymbol": "NUDT15"
+  },
+  "RYR1": {
+   "geneSymbol": "RYR1"
+  },
+  "SLCO1B1": {
+   "geneSymbol": "SLCO1B1"
+  },
+  "TPMT": {
+   "geneSymbol": "TPMT"
+  },
+  "UGT1A1": {
+   "geneSymbol": "UGT1A1"
+  },
+  "VKORC1": {
+   "geneSymbol": "VKORC1"
+  }
+ },
+ "drugs": {},
+ "_fixture_note": "Trimmed by tests/fixtures/pharmcat/trim_report.py: every gene, and up to 4 matched annotations per drug guideline, with only the fields bin/pgx_parse.py reads."
+}
