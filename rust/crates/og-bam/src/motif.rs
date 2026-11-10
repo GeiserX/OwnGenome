@@ -132,7 +132,7 @@ fn revcomp(s: &[u8]) -> Vec<u8> {
 /// Every rotation of a motif on both strands, without repeats.
 pub fn forms(m: &[u8]) -> Vec<Vec<u8>> {
     let mut out: Vec<Vec<u8>> = Vec::new();
-    for x in [m.to_vec(), revcomp(m)].into_iter().take(1) {
+    for x in [m.to_vec(), revcomp(m)] {
         for i in 0..x.len().max(1) {
             let r = [&x[i.min(x.len())..], &x[..i.min(x.len())]].concat();
             if !out.contains(&r) {
