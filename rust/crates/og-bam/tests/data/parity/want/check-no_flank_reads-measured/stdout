@@ -1,0 +1,3 @@
+CYP2D6 depth check: unreliable: CYP2D6 copy number unreliable: no reads in the flanks of CYP2D6 (chr22:42.05-42.25 Mb), so its depth cannot be compared
+  mean depth, all reads: CYP2D6 0.00, flanks 0.00; MAPQ >= 1: CYP2D6 0.00, flanks 0.00
+  share of the depth at MAPQ >= 1 / >= 20: Cyrius's region (with REP6) no reads / 0.99; gene body without REP6 1.00 / 0.99
