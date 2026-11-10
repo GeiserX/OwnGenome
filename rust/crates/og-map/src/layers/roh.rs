@@ -30,10 +30,12 @@ pub enum Art {
     Centromere = 1,
     /// On a male's single X, where every site reads homozygous.
     OneX = 2,
+    /// On a male's single Y, for the same reason.
+    OneY = 3,
 }
 
 /// `dict.art`, indexed by [`Art`].
-pub const ART_NAMES: [&str; 3] = ["", "centromere", "one X"];
+pub const ART_NAMES: [&str; 4] = ["", "centromere", "one X", "one Y"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
@@ -161,8 +163,10 @@ pub fn parse(
         };
         let (s, e) = (start - 1, end);
         let c = &reference.chroms[chrom];
-        let art = if c.name == "chrX" && sex == Sex::Male {
+        let art = if sex == Sex::Male && c.name == "chrX" {
             Art::OneX
+        } else if sex == Sex::Male && c.name == "chrY" {
+            Art::OneY
         } else if 2 * c.masked_overlap(s, e) > e - s {
             Art::Centromere
         } else {
@@ -223,6 +227,7 @@ RG\tDEMO-001\tchr2\t1000001\t7000000\t6000000\t4100\t71.5
 RG\tDEMO-001\tchr1\t1\t100\t100\t2\t30
 RG\tDEMO-001\tchr1\t121000001\t123000000\t2000000\t900\t40.2\r
 RG\tDEMO-001\tchrX\t20000001\t26000000\t6000000\t5000\t80
+RG\tDEMO-001\tchrY\t3000001\t9000000\t6000000\t2100\t75
 RG\tDEMO-001\tchrM\t1\t16569\t16569\t20\t50
 RG\tDEMO-001\tchr13\t1\t20000000\t20000000\t9000\t60
 ";
@@ -234,7 +239,7 @@ RG\tDEMO-001\tchr13\t1\t20000000\t20000000\t9000\t60
     #[test]
     fn rg_rows_become_zero_based_spans() {
         let (rows, all) = parse_text(TEXT, Sex::Male).unwrap();
-        assert_eq!(all, 6);
+        assert_eq!(all, 7);
         let got: Vec<(&str, u64, u64, u64, bool, Art)> = rows
             .iter()
             .map(|r| {
@@ -258,17 +263,21 @@ RG\tDEMO-001\tchr13\t1\t20000000\t20000000\t9000\t60
                 // 18.9 of its 20 Mb lie in chr13's short arm.
                 ("chr13", 0, 20000000, 9000, false, Art::Centromere),
                 ("chrX", 20000000, 26000000, 5000, false, Art::OneX),
+                // A male's Y is hemizygous too, outside its masked spans.
+                ("chrY", 3000000, 9000000, 2100, false, Art::OneY),
             ]
         );
         assert_eq!(rows[2].q, 71.5);
     }
 
     #[test]
-    fn x_is_flagged_only_for_a_male() {
+    fn x_and_y_are_flagged_only_for_a_male() {
         for sex in [Sex::Female, Sex::Unknown] {
             let (rows, _) = parse_text(TEXT, sex).unwrap();
-            let x = rows.iter().find(|r| r.chrom == 22).unwrap();
-            assert_eq!((x.art, x.long), (Art::None, true), "{sex:?}");
+            for k in [22, 23] {
+                let r = rows.iter().find(|r| r.chrom == k).unwrap();
+                assert_eq!((r.art, r.long), (Art::None, true), "{sex:?} {k}");
+            }
         }
     }
 

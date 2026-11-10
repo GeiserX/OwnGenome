@@ -168,12 +168,18 @@ impl Request<'_> {
 /// Builds the person document's model.
 pub fn build_person(req: &Request<'_>) -> Result<Model, BuildError> {
     req.check()?;
+    build_with_stamp(req, req.stamp())
+}
+
+/// [`build_person`] with the stamp already taken, so a cached document
+/// carries the stamp it is stored under. The caller has run `req.check()`.
+fn build_with_stamp(req: &Request<'_>, stamp: String) -> Result<Model, BuildError> {
     let Facts { sex } = facts::parse(req.stdin).map_err(BuildError::Usage)?;
     let reference = Reference::load(req.assets).map_err(|e| BuildError::Internal(e.to_string()))?;
     let roh = roh::read(req.root, req.run, &reference, sex);
     Ok(Model {
         run: req.run.to_owned(),
-        stamp: req.stamp(),
+        stamp,
         made_by: req.made_by.to_owned(),
         sex,
         reference,
@@ -186,11 +192,12 @@ pub fn build_person(req: &Request<'_>) -> Result<Model, BuildError> {
 /// is reported on stderr and the document is still returned.
 pub fn build_cached(req: &Request<'_>, cache_dir: &Path) -> Result<Vec<u8>, BuildError> {
     req.check()?;
-    let path = stamp::cache_path(cache_dir, req.run, &req.stamp());
+    let stamp = req.stamp();
+    let path = stamp::cache_path(cache_dir, req.run, &stamp);
     if let Some(doc) = stamp::lookup(&path) {
         return Ok(doc);
     }
-    let model = build_person(req)?;
+    let model = build_with_stamp(req, stamp)?;
     let doc = doc::write(&model).map_err(|e| BuildError::Internal(e.to_string()))?;
     if let Err(e) = stamp::store(&path, &doc) {
         eprintln!("og map build: the cache was not written: {e}");

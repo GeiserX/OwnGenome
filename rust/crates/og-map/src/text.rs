@@ -5,7 +5,7 @@ use pycompat::fmt::fixed;
 
 pub const ROH_CAVEAT: &str = "Runs of homozygosity from bcftools roh on this person's variant calls. \
 A run counts as long at 5 Mb or more. A run lying mostly in centromere or heterochromatin bands, \
-or on a male's single X, is marked as an artefact and never counts as long.";
+or on a male's single X or Y, is marked as an artefact and never counts as long.";
 
 pub const ROH_EMPTY: &str = "No run of homozygosity in what step 11 assessed.";
 

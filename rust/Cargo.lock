@@ -497,15 +497,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "og-vcf"
-version = "0.1.0"
-dependencies = [
- "memchr",
- "og-io",
- "smallvec",
-]
-
-[[package]]
 name = "og-map"
 version = "0.1.0"
 dependencies = [
@@ -513,6 +504,15 @@ dependencies = [
  "indexmap",
  "og-io",
  "pycompat",
+]
+
+[[package]]
+name = "og-vcf"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+ "smallvec",
 ]
 
 [[package]]

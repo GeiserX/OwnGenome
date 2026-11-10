@@ -46,7 +46,7 @@ One gzip member with mtime 0 and no file name, holding JSON written as Python's 
       "roh_bins": {"size": 1000000, "chr1": []}
     }
   },
-  "dict": {"art": ["", "centromere", "one X"]},
+  "dict": {"art": ["", "centromere", "one X", "one Y"]},
   "text": {"genome": [{"t": "2 runs", "b": true}, {"t": " of homozygosity of 5 Mb or more, 12.5 Mb in all.", "b": false}],
            "chrom": {"chr1": [{"t": "…", "b": false}]}}
 }
@@ -54,7 +54,7 @@ One gzip member with mtime 0 and no file name, holding JSON written as Python's 
 
 - `ref.chroms`: chr1-22, X and Y. `len` is the chromosome's last band end, `cen` the span of its `acen` bands, `masked` its `acen`, `gvar` and `stalk` bands with touching neighbours merged.
 - `L`, a layer entry: `state` (`ok`, `missing` or `unreadable`), `step`, `step_name`, `source` (the file read or looked for, relative to GENOME_DIR), `note` (why it is missing, or `file:line: reason` when unreadable), `count` (rows on the map), `totals` (`all` rows read and `kept` rows on the map, when the file was read), `caveat`, and `empty` (the sentence for a read file with no rows). A missing input is `missing`, an input that cannot be read is `unreadable`, and a read input with no rows is `ok` with `count` 0: three answers, never a blank lane.
-- `roh`: the `RG` rows of step 11's `bcftools roh` text (`{run}/vcf/{run}_roh.txt`, else `{run}/roh/{run}_roh.txt`). bcftools writes 1-based inclusive positions, so `s = start - 1` and `e = end`. `ST` lines are skipped; rows on chrM and other contigs count in `totals.all` only. `markers` and `q` are bcftools' columns 7 and 8. `art` indexes `dict.art`: `one X` on a male's chrX, else `centromere` when more than half the run lies in masked spans. An unknown sex sets no `one X` flag. `long` is 1 for a run of 5 Mb or more with no `art`.
+- `roh`: the `RG` rows of step 11's `bcftools roh` text (`{run}/vcf/{run}_roh.txt`, else `{run}/roh/{run}_roh.txt`). bcftools writes 1-based inclusive positions, so `s = start - 1` and `e = end`. `ST` lines are skipped; rows on chrM and other contigs count in `totals.all` only. `markers` and `q` are bcftools' columns 7 and 8. `art` indexes `dict.art`: `one X` on a male's chrX, `one Y` on a male's chrY, else `centromere` when more than half the run lies in masked spans. An unknown sex sets neither flag. `long` is 1 for a run of 5 Mb or more with no `art`.
 - `roh_bins`: bases covered by any run per 1 Mb bin, for each chromosome with a run.
 - `text`: the sentences the page shows, in pieces; `b` marks bold words.
 
