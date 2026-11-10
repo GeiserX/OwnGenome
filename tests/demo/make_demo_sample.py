@@ -46,7 +46,7 @@ FMR1 allele in Stranger's premutation range, a CHIP call and a mosaic loss
 MoChA reports, DEMO-003 an AnnotSV class 4 deletion. DEMO-003 also gets two
 results to act on that his page keeps closed (PLANTED below): a ClinVar
 pathogenic hit in an ACMG secondary-findings gene, and an AnnotSV class 5
-deletion over it, at invented positions. Every sample gets
+deletion over it, at invented positions; his symptom search ranks that gene too. Every sample gets
 Stranger's thresholds beside ExpansionHunter's counts and step 27's CPIC
 table, written by bin/pgx_parse.py from the PharmCAT report.
 
@@ -1155,7 +1155,9 @@ def ancient(d, rng):
 def exomiser(d):
     """Step 48: bin/exomiser_report.py's top_rows and words on made-up Exomiser
     rows for two searched symptoms: two weak candidates of uncertain
-    significance, the shape of a search that finds nothing to act on."""
+    significance, the shape of a search that finds nothing to act on. DEMO-003's
+    search also ranks the planted gene (PLANTED) third, at the planted hit: a
+    symptom search can rank the gene of a result his page keeps closed."""
     import exomiser_report as er
     terms = [{"hpo_id": "HP:0001250", "label": "Seizure", "given_as": "HP:0001250"},
              {"hpo_id": "HP:0002315", "label": "Headache", "given_as": "HP:0002315"}]
@@ -1177,7 +1179,11 @@ def exomiser(d):
             "Dravet syndrome"),
         row(2, "CACNA1A", "AD", ("0.297", "0.701", "0.421", "0.048"), "19", 13299371, "G", "A", "0/1",
             "missense_variant", "CACNA1A:ENST00000360228.11:c.2134C>T:p.(Arg712Cys)", "OMIM:141500",
-            "Migraine, familial hemiplegic, 1")], 10)
+            "Migraine, familial hemiplegic, 1")]
+        + ([row(3, PLANTED["gene"], "AD", ("0.205", "0.512", "0.399", "0.061"), PLANTED["hit"][0].removeprefix("chr"),
+                PLANTED["hit"][1], PLANTED["hit"][2], PLANTED["hit"][3], "0/1", "missense_variant",
+                f"{PLANTED['gene']}:ENST00000262186.10:c.1C>T:p.(Met1?)", "OMIM:613688", "Long QT syndrome 2")]
+           if has("act") else []), 10)
     out = os.path.join(d, "exomiser")
     put(os.path.join(out, f"{SAMPLE}_exomiser_terms.tsv"),
         "\t".join(er.TERMS_HEADER) + "\n" + "".join("\t".join(t[k] for k in er.TERMS_HEADER) + "\n" for t in terms))

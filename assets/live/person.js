@@ -404,7 +404,7 @@
         (closedFs.length === 1 ? 'This section holds a result' : 'This section holds ' + closedFs.length + ' results') +
         ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.'));
       var vb = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      vb.addEventListener('click', function () { shown[closedFs[0].id] = true; redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
+      vb.addEventListener('click', function () { openFinding(closedFs[0]); redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
       add(v, vb);
       add(text, v);
     } else {
@@ -517,7 +517,16 @@
     add(box, d);
     return note('Caveat', box, 'caveat-note');
   }
-  function veiled(f) { return closedPage() && f.level === 'act' && !shown[f.id]; }
+  // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene: results.veil.findings)
+  // stays closed while that result is, and opening it opens that result.
+  function findingTag(f) { var t = ((results && results.veil && results.veil.findings) || {})[f.id]; return t && t !== f.id ? t : null; }
+  function veiled(f) {
+    if (!closedPage()) { return false; }
+    if (f.level === 'act') { return !shown[f.id]; }
+    var t = findingTag(f);
+    return !!(t && tagClosed(t));
+  }
+  function openFinding(f) { shown[f.id] = true; var t = findingTag(f); if (t) { shown[t] = true; } }
   function findingArticle(f, big) {
     var row = el('div', { 'class': 'row' });
     var art = el('div', { 'class': 'finding', id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
@@ -529,7 +538,7 @@
       add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
         'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
       var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      b.addEventListener('click', function () { shown[f.id] = true; redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
+      b.addEventListener('click', function () { openFinding(f); redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
       add(v, b);
       add(art, v);
       add(row, art, el('aside', {}));
@@ -562,6 +571,13 @@
   }
   function findingLine(f) {
     var li = el('li', { id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
+    if (veiled(f)) {
+      // A finding that names a closed result (a symptom ranking of its gene): closed with it, opened with it.
+      var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
+      b.addEventListener('click', function () { openFinding(f); redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
+      add(li, el('span', { 'class': 't' }, 'A result about a child, closed until opened.'), U.findingLevel(f.level, f.level_words), b);
+      return li;
+    }
     add(li, el('a', { 'class': 't', href: findingHref(f) }, f.title), U.findingLevel(f.level, f.level_words));
     if (f.detail) { add(li, el('span', { 'class': 'gene' }, f.detail)); }
     add(li, el('span', { 'class': 'x' }, f.text));
@@ -762,6 +778,15 @@
     n.info = cards().filter(function (c) { return gate(c) === 'show' && c.level === 'info'; }).length;
     return n;
   }
+  // A segment of the lead that names a closed result, without the names: the list after a colon, the genes in
+  // brackets, or what follows "of".
+  function closedLead(t) {
+    var w = 'closed on this page until opened on purpose, in section 1';
+    if (/^\s*:/.test(t)) { return ': ' + w + '. '; }
+    if (/\(.*\)/.test(t)) { return t.replace(/\(.*\)/, '(' + w + ')'); }
+    if (/ of /.test(t)) { return t.replace(/ of .*$/, ' result, ' + w); }
+    return w + '. ';
+  }
   function drawLead() {
     var slot = document.getElementById('lead-slot');
     slot.textContent = '';
@@ -770,8 +795,10 @@
     var main = el('div', {});
     var p = el('p', { 'class': 'lede dropcap', id: 'lead' });
     var closed = (results.findings || []).some(veiled);
-    var parts = (results.lead || []).map(function (x) {
-      return x[2] === 'act' && closed ? [': closed on this page until opened on purpose, in section 1. ', false] : x;
+    var leadTags = (results.veil && results.veil.lead) || [];
+    var parts = (results.lead || []).map(function (x, i) {
+      if (x[2] === 'act' && closed) { return [': closed on this page until opened on purpose, in section 1. ', false]; }
+      return leadTags[i] && tagClosed(leadTags[i]) ? [closedLead(x[0]), x[1]] : x;
     });
     if (replay && running()) {
       // A replay holds the results of the finished run: before its end the lead would name findings the
@@ -791,13 +818,15 @@
       add(a, U.level(x[0], { act: 'Take to a doctor', medicine: 'Prescriber', review: 'Worth a look', carrier: 'Family planning', info: 'Information' }[x[0]]));
       add(a, el('span', { 'class': 'n' }, String(n[x[0]])));
       var words = x[0] === 'info' ? 'Origins, traits, scores' : x[0] === 'act' && closed && n.act ? 'Closed until opened' :
-        fs.filter(function (f) { return f.level === x[0]; }).slice(0, 2).map(function (f) { return f.gene || f.title; }).join(', ') || 'None in what was assessed';
+        fs.filter(function (f) { return f.level === x[0] && !veiled(f); }).slice(0, 2).map(function (f) { return f.gene || f.title; }).join(', ') ||
+        (fs.some(function (f) { return f.level === x[0]; }) ? 'Closed until opened' : 'None in what was assessed');
       add(a, el('span', { 'class': 'w' }, words));
       add(led, a);
     });
     add(main, led);
     var trust = el('div', { 'class': 'trustline' });
     var problems = fs.filter(function (f) { return f.level === 'trust'; });
+    var openProblems = problems.filter(function (f) { return !veiled(f); });
     add(trust, U.level('trust', 'Data quality', problems.length ? 'problem' : ''));
     var qc = cardById('qc');
     if (qc && gate(qc) === 'show') {
@@ -806,7 +835,7 @@
         add(trust, el('span', { title: f[0] + ': ' + f[1] }, String(f[0]).replace(/\s*\([^)]*\)/g, '') + ': ' + String(f[1]).split(/[.;(]\s/)[0].replace(/[.;]$/, '').trim()));
       });
     } else { add(trust, el('span', {}, 'Waiting for the quality steps.')); }
-    problems.forEach(function (f) { add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#f/' + f.id }, f.title)); });
+    openProblems.forEach(function (f) { add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#f/' + f.id }, f.title)); });
     add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#s5' }, 'Can I trust this?'));
     add(main, trust);
     var side = el('aside', {});

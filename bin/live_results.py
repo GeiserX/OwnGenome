@@ -20,9 +20,9 @@ section id, the same anchors as report.html. Each card carries:
               or a couple's shared or X-linked gene. Nothing says a section is fine:
               a card without attention is "for information".
 
-Beside the cards, "veil" tags the rows that name a result to act on outside its own card (the
-ClinVar table, the viewer links, the charts' marks) with that result's id, so a child's page closes
-them with it (veil() below).
+Beside the cards, "veil" tags the rows that name a result to act on outside its own card (every card's
+table rows and lines, the viewer links, the charts' marks, the other findings and the lead's names) with
+that result's id, so a child's page closes them with it (veil() below).
 
 Nothing here reads a file or computes anything about genetics; the adapters pick
 fields the summary already holds. A section id with no adapter falls back to its
@@ -1138,8 +1138,8 @@ def lead(found, levels, summary):
 
 # --- the veil's tags -----------------------------------------------------------------------------
 # A child's page keeps each result to act on closed (assets/live/person.js veiled()). The page closes a
-# finding's own card with it, but other places can name the same gene or variant: the ClinVar card's
-# table, the charts' marks and their titles, the search index. Each such row carries the id of the
+# finding's own card with it, but other places can name the same gene or variant: any card's table and
+# lines, the charts' marks and their titles, another finding (a symptom ranking), the lead, the search index. Each such row carries the id of the
 # result it belongs to, so the page closes it with that result and opens it with it. The rule: a row
 # belongs to a closed result when it names the result's gene, or its position falls inside the result's
 # position or span; a row that is the result's own position or span belongs to that result first, else
@@ -1203,15 +1203,18 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
     return None
 
 
-def veil(summary, found, chapters):
-    """The rows a child's page closes with a result to act on, by the result's id: the ClinVar card's table
-    rows (rows: card -> one id or None per row), each card's viewer links (viewer: card -> one per link), each
-    card's lines (lines: card -> one per line; a known deep intronic site is printed whether hit or not) and
-    the marks of the report's charts (marks: chart -> {mark id: id}). Empty when nothing can be closed."""
+def veil(summary, found, chapters, lead_parts=()):
+    """The rows a child's page closes with a result to act on, by the result's id: each card's table rows
+    (rows: card -> one id or None per row; the ClinVar card's by each hit's own position), each card's viewer
+    links (viewer: card -> one per link), each card's lines (lines: card -> one per line; a known deep
+    intronic site is printed whether hit or not), the marks of the report's charts (marks: chart -> {mark id:
+    id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
+    rank the gene) and the lead's segments that name one (lead: one per segment of LEAD_PARTS, the "act"
+    names left out: the page closes those itself). Empty when nothing can be closed."""
     spans = closable(found)
     if not spans:
         return {}
-    out = {"rows": {}, "viewer": {}, "lines": {}, "marks": {}}
+    out = {"rows": {}, "viewer": {}, "lines": {}, "marks": {}, "findings": {}, "lead": []}
     S = summary.get("sections") or {}
     hits = [h for h in _items(_data(S, "clinvar").get("hits"))[:50]]
     tags = [veil_id(spans, str(h.get("gene") or ""), h.get("chrom"), h.get("pos")) if isinstance(h, dict) else None
@@ -1220,6 +1223,12 @@ def veil(summary, found, chapters):
         out["rows"]["clinvar"] = tags
     for ch in chapters:
         for c in ch["sections"]:
+            rows = (c.get("table") or {}).get("rows") or []
+            if c["id"] != "clinvar" and rows:
+                tags = [veil_id(spans, " ".join(str(x) for x in r) if isinstance(r, (list, tuple)) else str(r))
+                        for r in rows]
+                if any(tags):
+                    out["rows"][c["id"]] = tags
             tags = [veil_id(spans, v) for v in c.get("viewer") or []]
             if c["id"] == "clinvar":  # one link per row: a row closed by its gene alone closes its link too
                 rt = out["rows"].get("clinvar") or []
@@ -1241,7 +1250,15 @@ def veil(summary, found, chapters):
                           m.get("end"))
             if fid:
                 out["marks"].setdefault(sp["id"], {})[m["id"]] = fid
-    return out
+    for f in found:
+        if f.get("level") != "act":
+            fid = veil_id(spans, f"{f.get('gene') or ''} {f.get('detail') or ''} {f.get('title') or ''} "
+                                 f"{f.get('viewer') or ''}")
+            if fid:
+                out["findings"][f["id"]] = fid
+    tags = [None if len(x) > 2 else veil_id(spans, x[0]) for x in lead_parts or ()]
+    out["lead"] = tags if any(tags) else []
+    return {k: v for k, v in out.items() if v}
 
 
 def build(sample, summary, files=()):
@@ -1258,16 +1275,17 @@ def build(sample, summary, files=()):
     person = {"sample": sample, "declared_sex": (summary.get("run") or {}).get("declared_sex"),
               "inferred_sex": sexc.get("inferred_sex"), "karyotype": sexc.get("karyotype")}
     found, levels, sections = journal(chapters, summary)
+    lead_parts = lead(found, levels, summary)
     return {"schema_version": SCHEMA, "sample": sample, "generated_utc": summary.get("generated_utc"),
             "person": person, "chapters": chapters,
-            "findings": found, "levels": levels, "journal": sections, "lead": lead(found, levels, summary),
+            "findings": found, "levels": levels, "journal": sections, "lead": lead_parts,
             "level_words": LEVEL_WORDS, "databases": {k: plain(cell(v)) for k, v in (summary.get("databases") or {}).items()
                                                       if isinstance(v, (str, int, float))},
             "attention": sum(c["attention"] for c in chapters),
             "not_assessed": [plain(x) for x in summary.get("not_assessed") or []],
             "not_run": [plain(x) for x in summary.get("not_run") or []],
             "new_since": summary.get("new_since") or None,
-            "charts": CHART_SECTION, "veil": veil(summary, found, chapters)}
+            "charts": CHART_SECTION, "veil": veil(summary, found, chapters, lead_parts)}
 
 
 def attention_count(summary):
@@ -1281,12 +1299,33 @@ def overview(summary):
     r = build("", summary)
     order = {lv: i for i, lv in enumerate(LEVELS)}
     order["trust"] = -1  # a problem with the data comes before any finding read from it
-    top = sorted((f for f in r["findings"] if f["level"] != "info"), key=lambda f: order[f["level"]])[:4]
+    # A finding that names a result to act on (veil: a symptom ranking of its gene) is not listed: a child's tile
+    # closes only the results to act on themselves, and the result it names already comes first.
+    named = (r.get("veil") or {}).get("findings") or {}
+    top = sorted((f for f in r["findings"] if f["level"] != "info" and f["id"] not in named),
+                 key=lambda f: order[f["level"]])[:4]
+    tags = (r.get("veil") or {}).get("lead") or []
     return {"attention": r["attention"], "levels": r["levels"], "screened": screened(summary),
             "top": [{"id": f["id"], "level": f["level"], "title": f["title"]} for f in top],
             "lead": "".join(x[0] for x in r["lead"]),
-            # The same lead with the names of the findings to act on left out: a child's tile shows this one.
-            "lead_closed": "".join(x[0] if x[2:] != ["act"] else ": closed until opened on purpose. " for x in r["lead"])}
+            # The same lead with the names of the findings to act on left out, and every other segment that names
+            # one of them: a child's tile shows this one.
+            "lead_closed": "".join(": closed until opened on purpose. " if x[2:] == ["act"]
+                                   else closed_lead(x[0]) if i < len(tags) and tags[i] else x[0]
+                                   for i, x in enumerate(r["lead"]))}
+
+
+def closed_lead(t):
+    """A segment of the lead that names a result to act on, without the names (person.js closedLead()): the
+    list after a colon, the genes in brackets, or what follows "of"."""
+    w = "closed until opened on purpose"
+    if t.lstrip().startswith(":"):
+        return f": {w}. "
+    if re.search(r"\(.*\)", t):
+        return re.sub(r"\(.*\)", f"({w})", t)
+    if " of " in t:
+        return re.sub(r" of .*$", f" result, {w}", t)
+    return f"{w}. "
 
 
 def strings(obj):

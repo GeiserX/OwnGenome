@@ -48,9 +48,9 @@ Checks:
      search lists no hit and suggests no term from their closed card while a
      term of an open card is still found; the son's planted secondary finding
      and class 5 deletion (make_demo_sample.py PLANTED) name their gene and
-     positions in no card, chart, chart title, link or search suggestion until
-     each is opened, opening one brings back its own rows and marks only, and a
-     reload closes them again; DEMO-001's page
+     positions in no card, chart, chart title, link, symptom ranking or search
+     suggestion until each is opened, opening one brings back its own rows,
+     marks and ranking only, and a reload closes them again; DEMO-001's page
      mid-replay and at the end leads with the report (a short run band above
      the lead while it runs, none once finished), ends with the step timeline
      folded, keeps the wire to at most eight one-sentence lines with the plain
@@ -59,8 +59,8 @@ Checks:
 Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family depth (family.json
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
 the veil, person.js and finding.js that read a missing state as a standalone adult, and search.js
-without its filter; for the planted results, results.json without its veil tags, person.js whose ClinVar
-rows ignore them, charts.js that keeps every mark and search.js that ignores a hit's tag), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+without its filter; for the planted results, results.json without its veil tags, person.js whose table
+rows ignore them, person.js whose findings ignore them, charts.js that keeps every mark and search.js that ignores a hit's tag), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -603,6 +603,10 @@ def planted_problems(b, base):
                   "title'), function (t) { return t.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
     if rows != 1 or not tick or not all(w in shown for w in [gene, hit[0]]):
         out.append(f"opening the secondary finding did not bring back its ClinVar row and tick: {rows} rows, {tick} ticks")
+    ranked = b.eval("Array.prototype.filter.call(document.querySelectorAll('[data-finding^=exomiser-]'), function (e) { "
+                    "return e.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
+    if not ranked:
+        out.append(f"opening the secondary finding did not bring back the symptom ranking of {gene}")
     out += [f"{w} shown after opening only the secondary finding" for w in sv if w in shown]
     hits, _ = son_search(b, gene)
     if hits in (None, "0"):
@@ -645,6 +649,7 @@ def planted_checks(b, base, out):
         write(rj, keep[rj])
         for p, a, z, desc in (
                 (pj, "return !(tags[i] && tagClosed(tags[i]));", "return true;", "person.js whose ClinVar rows ignore their tags"),
+                (pj, "return !!(t && tagClosed(t));", "return false;", "person.js whose findings ignore their tags"),
                 (cj, "return ask ? (sp.marks", "return false ? (sp.marks", "charts.js that keeps every mark"),
                 (sj, "it.veil || null", "null", "search.js that ignores a hit's tag")):
             if a not in keep[p]:
