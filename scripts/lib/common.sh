@@ -517,8 +517,9 @@ data_file() {
   [ -s "$out" ]
 }
 
-# install_data_file NAME: download, check and store data file NAME unless it
-# is installed. Progress goes to stderr. Returns 1 when it cannot.
+# install_data_file NAME: download and check (or, for cytoband, copy from
+# assets/reference) and store data file NAME unless it is installed. Progress
+# goes to stderr. Returns 1 when it cannot.
 install_data_file() {
   local out url gz md5
   out=$(data_file "$1") && return 0
