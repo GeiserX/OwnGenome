@@ -493,6 +493,16 @@ name = "og-io"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "zlib-rs",
+]
+
+[[package]]
+name = "og-vcf"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+ "smallvec",
 ]
 
 [[package]]
