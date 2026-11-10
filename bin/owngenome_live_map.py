@@ -48,13 +48,15 @@ def results_body(live, run):
 def relay(app, req, args, stdin, run, section):
     """Runs og with ARGS and STDIN and sends its answer; one access-log row."""
     try:
-        p = subprocess.run([OG, "map"] + args, input=stdin, capture_output=True, timeout=OG_SECONDS)
+        p = subprocess.run([OG, "map"] + args, input=stdin, capture_output=True, timeout=OG_SECONDS, check=False)
         code = p.returncode
+        err = (p.stderr.decode(errors="replace").strip().splitlines() or [""])[0]
     except FileNotFoundError:
-        p, code = None, 127
-    except (OSError, subprocess.TimeoutExpired) as e:
-        p, code = None, type(e).__name__
-    err = (p.stderr.decode(errors="replace").strip().splitlines() or [""])[0] if p else ""
+        p, code, err = None, 127, ""
+    except subprocess.TimeoutExpired:
+        p, code, err = None, "timeout", f"og did not end within {OG_SECONDS} s"
+    except OSError as e:
+        p, code, err = None, type(e).__name__, str(e)
     if code == 0:
         app.log("map", run, section, 200)
         return req.send_body(200, GZIP, p.stdout)
@@ -70,10 +72,13 @@ def relay(app, req, args, stdin, run, section):
 
 
 def register(app):
+    """Adds the map's three GET routes, each behind the login."""
     def cache_dir():
+        """Where og keeps the map files it built: <state-dir>/map."""
         return os.path.join(app.config.state_dir, "map")
 
     def build(req, m):
+        """GET /runs/<run>/map.json: og map build of a person's run."""
         live = req.live
         run = live.run(m.group(1))
         if not run or run.get("kind") == "family":
@@ -91,6 +96,7 @@ def register(app):
                                 "--cache-dir", cache_dir()], stdin, run["name"], "-")
 
     def genes(req, m):
+        """GET /map/genes/<chrom>.json and /map/genes/names.json: og map genes."""
         which = ["--names"] if m.group(1) == "names" else ["--chrom", m.group(1)]
         return relay(app, req, ["genes", "--root", req.live.root, "--cache-dir", cache_dir()] + which, b"", "-",
                      "genes")

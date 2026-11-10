@@ -73,6 +73,7 @@ FAILS = []
 
 
 def check(desc, ok, detail="", quiet=False):
+    """Records one check; QUIET runs (the mutants) print nothing."""
     if not quiet:
         print(("[PASS] " if ok else "[FAIL] ") + desc + ("" if ok else f" -- {str(detail)[:600]}"))
     if not ok:
@@ -80,6 +81,7 @@ def check(desc, ok, detail="", quiet=False):
 
 
 def request(port, path, headers=None, method="GET"):
+    """(status, lower-cased headers, body) of one request to the browser port."""
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
     h = {"Host": f"127.0.0.1:{port}"}
     h.update(headers or {})
@@ -92,6 +94,7 @@ def request(port, path, headers=None, method="GET"):
 
 
 def login(port):
+    """The Cookie header of a fresh session."""
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
     c.request("POST", "/login", urllib.parse.urlencode({"password": PASSWORD, "next": "/"}),
               {"Host": f"127.0.0.1:{port}", "Content-Type": "application/x-www-form-urlencoded"})
@@ -103,6 +106,7 @@ def login(port):
 
 
 def og_calls(work):
+    """The fake og's calls since the last read (arguments and stdin), then forgets them."""
     p = os.path.join(work, "og.log")
     calls = [json.loads(x) for x in open(p)] if os.path.exists(p) else []
     if os.path.exists(p):
@@ -151,6 +155,7 @@ def scenario(plugin_src, quiet=False):
         log_path = os.path.join(state, "access.log")
 
         def log_rows():
+            """The access log's rows, without the header."""
             return [r.split("\t") for r in open(log_path).read().splitlines()[1:]]
 
         # 1. the login
@@ -164,7 +169,8 @@ def scenario(plugin_src, quiet=False):
         code, hd, body = request(port, routes[0], auth)
         calls = og_calls(work)
         _, _, results = request(port, f"/runs/{RUN}/results.json", auth)
-        direct = subprocess.run([og] + calls[0]["args"], input=calls[0]["stdin"].encode(), capture_output=True) \
+        direct = subprocess.run([og] + calls[0]["args"], input=calls[0]["stdin"].encode(), capture_output=True,
+                                check=False) \
             if calls else None
         og_calls(work)
         check("2. map.json is og's bytes unchanged (sha256 equal to a direct og call)",
@@ -189,7 +195,8 @@ def scenario(plugin_src, quiet=False):
         for path, want_args in ((routes[1], ["--chrom", "chr7"]), (routes[2], ["--names"])):
             code, hd, body = request(port, path, auth)
             calls = og_calls(work)
-            direct = subprocess.run([og] + calls[0]["args"], input=b"", capture_output=True) if calls else None
+            direct = subprocess.run([og] + calls[0]["args"], input=b"", capture_output=True, check=False) \
+                if calls else None
             og_calls(work)
             ok = ok and code == 200 and hd.get("content-type") == "application/gzip" \
                 and hd.get("cache-control") == "no-store" and direct is not None and body == direct.stdout \
@@ -272,6 +279,7 @@ MUTANTS = [
 
 
 def main():
+    """Runs the checks on the plugin, then on each planted mistake."""
     with open(os.path.join(BIN, "owngenome_live_map.py")) as f:
         src = f.read()
     scenario(src)
