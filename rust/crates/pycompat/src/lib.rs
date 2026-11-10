@@ -13,11 +13,13 @@
 //!   default dialect.
 //! - [`text`]: `str.split`, `strip`, the Unicode classes, `upper`/`lower`,
 //!   code-point slices and `html.escape`.
+//! - [`stats`]: `statistics.median`, `fmean` and `variance`.
 
 pub mod csv;
 pub mod fmt;
 pub mod json;
 pub mod num;
+pub mod stats;
 pub mod text;
 
 #[cfg(all(test, feature = "planted-failure"))]
