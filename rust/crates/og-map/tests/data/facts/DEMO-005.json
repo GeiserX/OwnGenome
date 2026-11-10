@@ -20,7 +20,9 @@
     {"id": "clinvar-mt-tl1-chrm-3243-a-g", "level": "review", "card": "clinvar", "title": "Pathogenic change in MT-TL1",
      "gene": "MT-TL1", "viewer": "chrM:3243", "steps": ["13"], "evidence": []},
     {"id": "unreadable-cpsr-8", "level": "act", "card": "cpsr", "title": "A row of this section could not be read",
-     "gene": null, "viewer": null, "steps": ["30"], "evidence": []}
+     "gene": null, "viewer": null, "steps": ["30"], "evidence": []},
+    {"id": "clinvar-brca2-chr13-32340000-a-g", "level": "review", "card": "clinvar", "title": "Pathogenic change in BRCA2",
+     "gene": "BRCA2", "viewer": "chr13:32340000", "steps": ["13"], "evidence": []}
   ],
   "chapters": [
     {"key": "traits", "sections": [

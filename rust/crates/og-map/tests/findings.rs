@@ -82,57 +82,62 @@ fn findings_land_on_their_place_and_the_rest_are_counted() {
     assert_eq!(
         get(f, &["id"]),
         &js(
-            r#"["two-hits-cftr","sf-brca2-c-1a-g","cpsr-brca2-c-2c-t","clinvar-tp53-chr17-7675000-c-t","apoe","pgx-cyp2d6"]"#
+            r#"["two-hits-cftr","sf-brca2-c-1a-g","clinvar-brca2-chr13-32340000-a-g","cpsr-brca2-c-2c-t","clinvar-tp53-chr17-7675000-c-t","apoe","pgx-cyp2d6"]"#
         )
     );
     assert_eq!(
         get(f, &["chrom"]),
-        &js(r#"["chr7","chr13","chr13","chr17","chr19","chr22"]"#)
+        &js(r#"["chr7","chr13","chr13","chr13","chr17","chr19","chr22"]"#)
     );
     // A position is [pos - 1, pos); a gene-only finding takes its gene's
     // span from the GTF (1-based inclusive there).
     assert_eq!(
         get(f, &["pos"]),
-        &js("[null,32340000,32390000,7675000,null,null]")
+        &js("[null,32340000,32340000,32390000,7675000,null,null]")
     );
     assert_eq!(
         get(f, &["s"]),
-        &js("[117287119,32339999,32389999,7674999,44903786,42120961]")
+        &js("[117287119,32339999,32339999,32389999,7674999,44903786,42120961]")
     );
     assert_eq!(
         get(f, &["e"]),
-        &js("[117715971,32340000,32390000,7675000,44909396,42131727]")
+        &js("[117715971,32340000,32340000,32390000,7675000,44909396,42131727]")
     );
     assert_eq!(
         get(f, &["reads"]),
         &js(
-            r#"["chr7:117287120-117715971","chr13:32340000","chr13:32390000","chr17:7675000","chr19:44903787-44909396","chr22:42120962-42131727"]"#
+            r#"["chr7:117287120-117715971","chr13:32340000","chr13:32340000","chr13:32390000","chr17:7675000","chr19:44903787-44909396","chr22:42120962-42131727"]"#
         )
     );
     assert_eq!(
         get(f, &["gate"]),
-        &js(r#"[null,null,null,null,"apoe",null]"#)
+        &js(r#"[null,null,null,null,null,"apoe",null]"#)
     );
     assert_eq!(
         get(f, &["zyg"]),
-        &js(r#"["unknown","het","unknown","het","unknown","unknown"]"#)
+        &js(r#"["unknown","het","unknown","unknown","het","unknown","unknown"]"#)
     );
     assert_eq!(
         get(f, &["hgvs"]),
-        &js(r#"[null,"c.1A>G",null,null,null,null]"#)
+        &js(r#"[null,"c.1A>G",null,null,null,null,null]"#)
     );
-    assert_eq!(get(f, &["veil"]), &js("[2,0,1,-1,3,-1]"));
+    // APOE is gated, so it comes first in dict.veil. The open ClinVar row
+    // at the act finding's base carries that finding's tag.
+    assert_eq!(get(f, &["veil"]), &js("[3,1,1,2,-1,0,-1]"));
     assert_eq!(
         get(f, &["href"]),
         &js(
-            r#"["finding/two-hits-cftr/","finding/sf-brca2-c-1a-g/","finding/cpsr-brca2-c-2c-t/","finding/clinvar-tp53-chr17-7675000-c-t/","finding/apoe/","finding/pgx-cyp2d6/"]"#
+            r#"["finding/two-hits-cftr/","finding/sf-brca2-c-1a-g/","finding/clinvar-brca2-chr13-32340000-a-g/","finding/cpsr-brca2-c-2c-t/","finding/clinvar-tp53-chr17-7675000-c-t/","finding/apoe/","finding/pgx-cyp2d6/"]"#
         )
     );
     assert_eq!(
         get(f, &["steps"]),
-        &js(r#"[["29"],["24"],["30"],["13"],["42"],["17"]]"#)
+        &js(r#"[["29"],["24"],["13"],["30"],["13"],["42"],["17"]]"#)
     );
-    assert_eq!(get(f, &["copy"]), &js("[null,null,null,null,null,null]"));
+    assert_eq!(
+        get(f, &["copy"]),
+        &js("[null,null,null,null,null,null,null]")
+    );
     let Value::Array(phrases) = get(f, &["phrase"]) else {
         panic!()
     };
@@ -141,17 +146,19 @@ fn findings_land_on_their_place_and_the_rest_are_counted() {
         Value::Str("Take to a doctor: Secondary finding in BRCA2, on chromosome 13.".into())
     );
     assert_eq!(
-        phrases[4],
+        phrases[5],
         Value::Str("APOE, on chromosome 19: kept behind its warning on every page until opened on purpose.".into())
     );
     assert_eq!(
         get(&doc, &["dict", "veil"]),
-        &js(r#"["sf-brca2-c-1a-g","cpsr-brca2-c-2c-t","two-hits-cftr","apoe"]"#)
+        &js(r#"["apoe","sf-brca2-c-1a-g","cpsr-brca2-c-2c-t","two-hits-cftr"]"#)
     );
 
-    // Counts cover the findings no closed result hides: five of them, two
-    // with a place; the sex mismatch, LPA (not in the slice) and the chrM
-    // hit stay on the page. The act finding with no place is in no count.
+    // Counts cover the rows no closed result hides: TP53 and CYP2D6; the
+    // sex mismatch, LPA (not in the slice) and the chrM hit add to `all`
+    // and stay on the page. The act finding with no place is in no count,
+    // and neither is the open ClinVar row tagged by the act finding it
+    // sits on.
     let layer = get(&doc, &["layers", "findings"]);
     assert_eq!(get(layer, &["state"]), &Value::Str("ok".into()));
     assert_eq!(
@@ -162,7 +169,7 @@ fn findings_land_on_their_place_and_the_rest_are_counted() {
     assert_eq!(get(layer, &["totals"]), &js(r#"{"all":5,"kept":2}"#));
     assert_eq!(
         get(layer, &["note"]),
-        &Value::Str("3 findings with no position stay on the page.".into())
+        &Value::Str("3 findings with no place on the map stay on the page.".into())
     );
     assert_eq!(
         get(&doc, &["text", "findings", "many"]),
@@ -205,10 +212,12 @@ fn without_genes_or_results() {
         ids,
         [
             "sf-brca2-c-1a-g",
+            "clinvar-brca2-chr13-32340000-a-g",
             "cpsr-brca2-c-2c-t",
             "clinvar-tp53-chr17-7675000-c-t"
         ]
     );
+    assert_eq!(m.findings.layer.totals, Some((5, 1)));
     assert_eq!(m.findings.layer.count, 1);
     assert_eq!(m.gencode, None);
     assert_eq!(

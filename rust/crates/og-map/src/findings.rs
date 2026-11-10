@@ -10,6 +10,9 @@
 //!   result. A name on several chromosomes takes the first in map order.
 //! - A finding with neither is not on the map. The layer note counts those
 //!   that no closed result hides; a closable one is left out of every count.
+//! - The layer's count and totals take the rows with no veil tag only: a
+//!   closable finding, and an open one over a closable one's span, are in
+//!   no number.
 //! - `zyg` comes from the finding's own `Genotype` evidence, else `unknown`:
 //!   no VCF is read for a label.
 
@@ -187,18 +190,14 @@ pub fn read(findings: &facts::Findings, root: &Path, run: &str, reference: &Refe
         .collect();
     let spans = gene_spans(root, &wanted);
     let mut rows = Vec::with_capacity(list.len());
-    let (mut open_all, mut open_unplaced) = (0usize, 0usize);
+    let mut open_unplaced = 0usize;
     for (order, (f, at)) in list.iter().zip(at_viewer).enumerate() {
         let place = at.or_else(|| {
             let &(c, s, e) = spans.get(f.gene.as_deref()?)?;
             within((c, s, e, None))
         });
-        let closable = veil::closable(f);
-        if !closable {
-            open_all += 1;
-        }
         let Some((chrom, s, e, pos)) = place else {
-            if !closable {
+            if !veil::closable(f) {
                 open_unplaced += 1;
             }
             continue;
@@ -214,15 +213,19 @@ pub fn read(findings: &facts::Findings, root: &Path, run: &str, reference: &Refe
         });
     }
     rows.sort_by_key(|r| (r.chrom, r.s, r.e, r.order));
-    let veil = Veil::new(
-        rows.iter()
-            .filter(|r| veil::closable(&r.finding))
-            .map(|r| (r.order, r.finding.id.as_str(), r.chrom, (r.s, r.e))),
-    );
-    let open_placed = open_all - open_unplaced;
+    // Gated findings first, then the page's order: a row over both a gated
+    // finding and an act finding carries the gated one, which every page
+    // keeps closed.
+    let veil = Veil::new(rows.iter().filter(|r| veil::closable(&r.finding)).map(|r| {
+        let key = (r.finding.gate.is_none(), r.order);
+        (key, r.finding.id.as_str(), r.chrom, (r.s, r.e))
+    }));
+    // A row of an open finding over a closable one's span is tagged too, so
+    // the counts take the untagged rows only.
+    let kept = veil::untagged(&veil.tags(&rows));
     layer.state = State::Ok;
-    layer.count = open_placed;
-    layer.totals = Some((open_all, open_placed));
+    layer.count = kept;
+    layer.totals = Some((kept + open_unplaced, kept));
     layer.empty = Some(text::FINDINGS_EMPTY.to_owned());
     if open_unplaced > 0 {
         layer.note = Some(text::findings_unplaced(open_unplaced));

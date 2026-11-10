@@ -77,9 +77,9 @@ pub const FINDINGS_MISSING: &str =
 /// result hides.
 pub fn findings_unplaced(n: usize) -> String {
     if n == 1 {
-        "1 finding with no position stays on the page.".to_owned()
+        "1 finding with no place on the map stays on the page.".to_owned()
     } else {
-        format!("{n} findings with no position stay on the page.")
+        format!("{n} findings with no place on the map stay on the page.")
     }
 }
 
@@ -170,11 +170,11 @@ mod tests {
         );
         assert_eq!(
             findings_unplaced(1),
-            "1 finding with no position stays on the page."
+            "1 finding with no place on the map stays on the page."
         );
         assert_eq!(
             findings_unplaced(3),
-            "3 findings with no position stay on the page."
+            "3 findings with no place on the map stay on the page."
         );
     }
 }

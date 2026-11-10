@@ -14,10 +14,14 @@
 //!    its span, or its gene's span when it has no position.
 //! 3. Row tags: a row of a layer that can be a finding's own source (a
 //!    structural variant, a mosaic call, a ClinVar hit) that overlaps a
-//!    veiled span gets that finding's index in `dict.veil`, the first one in
-//!    the page's order when several overlap, else -1. Runs of homozygosity
-//!    and bands are never a finding's source and carry no tag.
-//! 4. Counts and density bins cover untagged rows only, so no number on
+//!    veiled span gets that finding's index in `dict.veil`, else -1. A row
+//!    holds one tag: when several spans overlap it, the first in
+//!    `dict.veil`, where gated findings come first (closed on every page),
+//!    then the act ones in the page's order. A finding's own row is tagged
+//!    the same way, so an open finding over a closable one's span is
+//!    tagged. Runs of homozygosity and bands are never a finding's source
+//!    and carry no tag.
+//! 4. Counts, totals and density bins cover untagged rows only, so no number on
 //!    the map counts a closed row.
 
 use crate::facts::Finding;
@@ -46,7 +50,8 @@ fn nonempty((s, e): (u64, u64)) -> (u64, u64) {
 /// The veiled spans of one person's closable findings, by chromosome.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Veil {
-    /// `dict.veil`: the closable findings' ids, in the page's order.
+    /// `dict.veil`: the closable findings' ids, gated ones first, then in
+    /// the page's order.
     pub ids: Vec<String>,
     /// Per chromosome: (s, e, index into `ids`), in `ids` order.
     spans: Vec<Vec<(u64, u64, u32)>>,
@@ -54,16 +59,18 @@ pub struct Veil {
 
 impl Veil {
     /// The veil of the closable findings in `placed`, each given as (its
-    /// index in the page's order, id, chromosome, span).
-    pub fn new<'a>(placed: impl IntoIterator<Item = (usize, &'a str, usize, (u64, u64))>) -> Veil {
+    /// key, id, chromosome, span). `ids` follow the keys, smallest first.
+    pub fn new<'a, K: Ord>(
+        placed: impl IntoIterator<Item = (K, &'a str, usize, (u64, u64))>,
+    ) -> Veil {
         let mut all: Vec<_> = placed.into_iter().collect();
-        all.sort_by_key(|x| x.0);
+        all.sort_by(|a, b| a.0.cmp(&b.0));
         let mut v = Veil {
             ids: Vec::with_capacity(all.len()),
             spans: vec![Vec::new(); CHROMS.len()],
         };
-        // In the page's order, so the first span a row meets is the first
-        // finding on the page.
+        // In key order, so the first span a row meets is the first finding
+        // by key.
         for (k, (_, id, chrom, span)) in all.into_iter().enumerate() {
             v.ids.push(id.to_owned());
             let (s, e) = nonempty(span);

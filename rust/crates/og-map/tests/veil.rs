@@ -84,15 +84,16 @@ fn every_row_over_a_closable_finding_carries_its_id() {
     let reference = Reference::load(&assets()).unwrap();
     let p = placed(&root, &reference);
 
-    // The three act findings with a place, then APOE, in the page's order.
-    // The act finding with no place veils nothing and is not listed.
+    // The gated APOE first, then the three act findings with a place in
+    // the page's order. The act finding with no place veils nothing and is
+    // not listed.
     assert_eq!(
         p.veil.ids,
         [
+            "apoe",
             "sf-brca2-c-1a-g",
             "cpsr-brca2-c-2c-t",
-            "two-hits-cftr",
-            "apoe"
+            "two-hits-cftr"
         ]
     );
 
@@ -150,6 +151,6 @@ fn apoe_is_closable_on_an_adult_page() {
         ("chr19", 44_903_786, 44_909_396)
     );
     assert_eq!(apoe.zyg, "unknown");
-    assert_eq!(p.veil.tag(apoe.chrom, (44_905_000, 44_905_001)), Some(3));
+    assert_eq!(p.veil.tag(apoe.chrom, (44_905_000, 44_905_001)), Some(0));
     fs::remove_dir_all(&root).unwrap();
 }
