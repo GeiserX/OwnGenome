@@ -814,6 +814,25 @@ mod tests {
     }
 
     #[test]
+    fn ingest_leaves_an_unchanged_history_alone() {
+        use std::os::unix::fs::MetadataExt;
+        let d = std::env::temp_dir().join(format!("og-eta-ingest-{}", std::process::id()));
+        fs::create_dir_all(d.join("pipeline_info")).unwrap();
+        ingest(&d, "b", &[], 8, &TimeZone::UTC).unwrap();
+        let h = history_path(&d, "b");
+        let before = fs::metadata(&h).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        ingest(&d, "b", &[], 8, &TimeZone::UTC).unwrap();
+        let after = fs::metadata(&h).unwrap();
+        assert_eq!(
+            (before.ino(), before.mtime_nsec(), before.mtime()),
+            (after.ino(), after.mtime_nsec(), after.mtime()),
+            "ingest rewrote a history whose text had not changed"
+        );
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
     fn box_names() {
         assert_eq!(box_name(Some("my box.1")), "my_box_1");
         assert_eq!(box_name(Some("ñ")), "_");
