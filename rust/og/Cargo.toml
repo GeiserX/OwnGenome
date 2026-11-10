@@ -12,6 +12,7 @@ og-io.workspace = true
 og-bam.workspace = true
 og-map.workspace = true
 og-intervals.workspace = true
+og-clinvar.workspace = true
 og-dev.workspace = true
 
 [lints]

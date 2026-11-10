@@ -495,6 +495,7 @@ name = "og"
 version = "0.1.0"
 dependencies = [
  "og-bam",
+ "og-clinvar",
  "og-dev",
  "og-intervals",
  "og-io",
@@ -510,6 +511,15 @@ dependencies = [
  "og-io",
  "pycompat",
  "rust-htslib",
+]
+
+[[package]]
+name = "og-clinvar"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-intervals",
+ "og-io",
 ]
 
 [[package]]

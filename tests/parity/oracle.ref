@@ -4,3 +4,6 @@
 #   source       heredoc:FILE:NAME (the body of NAME=$(cat <<'X' ... X) in FILE) or file:FILE
 #   og words     the og subcommand that replaces it; the oracle gets the arguments after them
 setup-mask-fasta	23a028d37fbceb465ae4de8a263f5da6c9ec8e80	heredoc:scripts/setup.sh:MASK_FASTA_PY	python3	setup mask-fasta
+clinvar-join-adjacent	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_join_adjacent.awk	sh ./oracle.sh	clinvar join-adjacent
+clinvar-hits	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_hits.awk	awk -f	clinvar hits
+clinvar-deep-intronic	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_hits.awk	sh ./oracle.sh	clinvar deep-intronic

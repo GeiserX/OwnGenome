@@ -13,3 +13,22 @@ setup-mask-fasta	lone-cr	setup-mask-fasta/lone-cr.fa,setup-mask-fasta/lone-cr.be
 setup-mask-fasta	empty-header	setup-mask-fasta/empty-header.fa,setup-mask-fasta/empty-header.bed	empty-header.fa empty-header.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	bad-bed	setup-mask-fasta/bad-bed.fa,setup-mask-fasta/bad-bed.bed	bad-bed.fa bad-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	synthetic-254mb	gen:synthetic-fasta.sh	synthetic.fa synthetic.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+clinvar-join-adjacent	prepare	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-window-3	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare --window 3 join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-window-0	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare --window 0 join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-edge	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare join-edge.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	finish	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode finish filled.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	build	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode build --fasta ref.fa join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	build-window-3	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode build --fasta ref.fa --window 3 join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	tag	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode tag tag.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	tag-window-12	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode tag --window 12 tag.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	tag-edge	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode tag join-edge.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	build-synthetic	gen:clinvar-synthetic.sh,clinvar-join-adjacent/oracle.sh	--mode build --fasta synthetic.fa synthetic.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-synthetic	gen:clinvar-synthetic.sh,clinvar-join-adjacent/oracle.sh	--mode prepare synthetic.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	hits	gen:clinvar-cases.sh	hits.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	floor	gen:clinvar-cases.sh	hits-floor.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	gene	gen:clinvar-cases.sh	hits-gene.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	tag-output	gen:clinvar-cases.sh	tag.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-deep-intronic	gvcf	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	sites.tsv sites-vcf.txt sites-gvcf.txt	-	bytes	BCFTOOLS_IMAGE
+clinvar-deep-intronic	no-gvcf	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	--no-gvcf sites.tsv sites-vcf.txt empty.txt	-	bytes	BCFTOOLS_IMAGE
+clinvar-deep-intronic	min-gq-45	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	--min-gq 45 sites.tsv sites-vcf.txt sites-gvcf.txt	-	bytes	BCFTOOLS_IMAGE
