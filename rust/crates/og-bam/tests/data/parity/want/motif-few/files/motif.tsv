@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+RFC1	chr4	39348425	39348479	2	.	.	.	AAGGG=1.00	not_resolved	2 read(s) carry 12 or more repeat units at RFC1, fewer than 3: the motif is not resolved; confirm the flag with repeat-primed PCR if symptoms fit

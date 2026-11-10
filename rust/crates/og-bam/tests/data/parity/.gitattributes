@@ -1,0 +1,2 @@
+# Inputs with CRLF line endings on purpose, and goldens compared byte for byte: never normalise them.
+** -text

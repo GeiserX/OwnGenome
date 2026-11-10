@@ -1,0 +1,51 @@
+[
+  {
+    "LocusId": "RFC1",
+    "ReferenceRegion": [
+      "chr4:39348424-39348449",
+      "chr4:39348449-39348479"
+    ],
+    "BenignMotifs": [
+      "AAAAG",
+      "AAAGG"
+    ],
+    "PathogenicMotifs": [
+      "AAGGG",
+      "ACAGG"
+    ],
+    "Disease": "CANVAS",
+    "InheritanceMode": "AR"
+  },
+  {
+    "LocusId": "FAMEX",
+    "ReferenceRegion": "chr4:39350999-39351024",
+    "BenignMotifs": [
+      "TTTTA"
+    ],
+    "PathogenicMotifs": [
+      "TTTCA"
+    ],
+    "Disease": "FAME",
+    "InheritanceMode": "AD"
+  },
+  {
+    "LocusId": "QUIET",
+    "ReferenceRegion": "chr4:999-1010",
+    "PathogenicMotifs": [
+      "CAG"
+    ]
+  },
+  {
+    "LocusId": "NOMOTIF",
+    "ReferenceRegion": "chr4:1999-2010",
+    "PathogenicMotifs": []
+  },
+  {
+    "LocusId": "ABSENT",
+    "ReferenceRegion": "chr9:1-10",
+    "PathogenicMotifs": [
+      "GAA"
+    ],
+    "Disease": null
+  }
+]

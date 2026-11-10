@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+RFC1	chr4	39348425	39348479	16	AAGGG	pathogenic	0.81	AAGGG=0.81,AAAAG=0.19	pathogenic_motif	AAGGG in 13 of 16 repeat reads (81%): confirm with repeat-primed PCR (RFC1 needs a pathogenic expansion on both copies)
