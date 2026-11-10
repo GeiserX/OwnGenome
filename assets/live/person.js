@@ -321,9 +321,9 @@
   }
   // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
   // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
-  // A row outside its result's card (a ClinVar row, a viewer link, a chart's mark, a search hit) carries the
-  // id of the result to act on it names (results.veil, bin/live_results.py veil()): it stays closed while that
-  // result is, and "Show the result" opens it with it. A tag naming no finding of these results stays closed.
+  // A row outside its result's card (a ClinVar row, a card's line, a viewer link, a chart's mark, a search hit)
+  // carries the id of the result to act on it names (results.veil, bin/live_results.py veil()): it stays closed
+  // while that result is, and "Show the result" opens it with it. A tag naming no finding of these results stays closed.
   function tagClosed(id) { var f = findingById(id); return closedPage() && (!f || veiled(f)); }
   function veilTags(kind, key) { return ((results && results.veil && results.veil[kind]) || {})[key] || []; }
   // The charts (plugins/charts.js) ask for each mark. A closed page with no results.json yet cannot tell which
@@ -417,12 +417,15 @@
       });
       if (c.image) { add(text, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
       var ot = openTable(c), tb = U.table(ot[0]);
+      var lt = veilTags('lines', c.id);
+      var lines = (c.lines || []).filter(function (l, i) { return !(lt[i] && tagClosed(lt[i])); });
+      var shut = ot[1] + (c.lines || []).length - lines.length;
       if (tb) { add(text, tb); } else if (c.empty_text && !ot[1]) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
-      if (ot[1]) {
-        add(text, el('p', { 'class': 'dim veil-rows' }, (ot[1] === 1 ? 'One row stays' : ot[1] + ' rows stay') +
-          ' closed with the result to act on ' + (ot[1] === 1 ? 'it belongs' : 'they belong') + ' to, until that result is opened.'));
+      if (shut) {
+        add(text, el('p', { 'class': 'dim veil-rows' }, (shut === 1 ? 'One row stays' : shut + ' rows stay') +
+          ' closed with the result to act on ' + (shut === 1 ? 'it belongs' : 'they belong') + ' to, until that result is opened.'));
       }
-      add(text, lineList(c.lines));
+      add(text, lineList(lines));
       if (c.hidden) {
         // APOE and the like: behind their warning, opened on purpose.
         var d = el('details', { 'class': 'behind' });

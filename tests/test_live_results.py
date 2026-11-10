@@ -33,12 +33,14 @@ Checks:
      link of the planted hit, its genome-chart tick and its review-star bar carry
      the secondary finding's id, the deletion's span carries its own, the search
      index's items that name the gene carry one of them, and nothing else is
-     tagged; DEMO-001, with no result to act on, has no tag.
+     tagged; DEMO-001, with no result to act on, has no tag; and a known deep
+     intronic site's line in the gene of a closed secondary finding carries
+     that finding's id (the card prints each site whether hit or not).
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
 registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
-8 with a veil rule that tags nothing and one that tags every row. A check
+8 with a veil rule that tags nothing (rows and lines) and one that tags every row. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -344,6 +346,22 @@ def veil_problems(res, idx):
     return out
 
 
+def veil_lines_problems():
+    """What is wrong with the veil's tags of the ClinVar card's lines: a known deep intronic site is printed
+    whether hit or not, so its line names the gene of a closed secondary finding in that gene."""
+    S = {"clinvar": {"state": "ok", "data": {"hits": [], "deep_intronic": [
+        {"gene": "GLA", "hgvs": "NM_000169.3:c.640-801G>A", "chrom": "chrX", "pos": 101399747, "ref": "C",
+         "alt": "T", "call": "hom", "detail": "GQ 40"},
+        {"gene": "GENE5", "hgvs": "c.100+500A>G", "chrom": "chr1", "pos": 1, "ref": "A", "alt": "G",
+         "call": "het", "detail": "GQ 40"}]}}}
+    lines = live_results.a_clinvar(S, {"sections": S}).get("lines") or []
+    found = [{"id": "sf-gla-test", "level": "act", "gene": "GLA", "detail": "GLA"}]
+    v = live_results.veil({"sections": S}, found, [{"sections": [{"id": "clinvar", "lines": lines}]}])
+    want = ["sf-gla-test" if "GLA " in ln else None for ln in lines]
+    got = (v.get("lines") or {}).get("clinvar")
+    return [] if "sf-gla-test" in want and None in want and got == want else [f"lines {lines} tagged {got}, want {want}"]
+
+
 def main():
     work = tempfile.mkdtemp(prefix="test_live_results.")
     srvs = []
@@ -431,6 +449,8 @@ def main():
             r3 = live_results.build("DEMO-003", s3)
             r3["_summary"] = s3
             return r3, results_index.build(s3, sample_dir, rr.SECTION_OF)
+        bad = veil_lines_problems()
+        check("8. a known deep intronic site's line in a closed secondary finding's gene carries its id", not bad, bad)
         bad = veil_problems(*tagged(d3))
         check("8. the planted ClinVar hit's row, viewer link, tick and star bar carry its secondary finding's id, the "
               "deletion's span its own, and every search item of the gene one of them", not bad, bad)
@@ -439,6 +459,7 @@ def main():
         try:
             live_results.veil_id = lambda spans, *a, **k: None
             control("a veil rule that tags nothing", not veil_problems(*tagged(d3)))
+            control("a veil rule that tags no line", not veil_lines_problems())
             live_results.veil_id = lambda spans, *a, **k: spans[0][0] if spans else None
             control("a veil rule that tags every row", not veil_problems(*tagged(d3)))
         finally:

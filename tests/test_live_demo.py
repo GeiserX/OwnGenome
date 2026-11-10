@@ -599,8 +599,9 @@ def planted_problems(b, base):
     shown = b.eval(SHOWN_JS) or ""
     rows = b.eval("Array.prototype.filter.call(document.querySelectorAll('#card-clinvar tbody tr'), function (r) { "
                   "return r.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
-    tick = b.eval("document.querySelectorAll('figure[data-chart=genome] a[data-mark^=hit-] title').length")
-    if rows != 1 or not all(w in shown for w in [gene, hit[0]]):
+    tick = b.eval("Array.prototype.filter.call(document.querySelectorAll('figure[data-chart=genome] a[data-mark^=hit-] "
+                  "title'), function (t) { return t.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
+    if rows != 1 or not tick or not all(w in shown for w in [gene, hit[0]]):
         out.append(f"opening the secondary finding did not bring back its ClinVar row and tick: {rows} rows, {tick} ticks")
     out += [f"{w} shown after opening only the secondary finding" for w in sv if w in shown]
     hits, _ = son_search(b, gene)

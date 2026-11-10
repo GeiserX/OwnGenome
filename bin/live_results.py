@@ -1204,12 +1204,13 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
 
 def veil(summary, found, chapters):
     """The rows a child's page closes with a result to act on, by the result's id: the ClinVar card's table
-    rows (rows: card -> one id or None per row), each card's viewer links (viewer: card -> one per link) and
+    rows (rows: card -> one id or None per row), each card's viewer links (viewer: card -> one per link), each
+    card's lines (lines: card -> one per line; a known deep intronic site is printed whether hit or not) and
     the marks of the report's charts (marks: chart -> {mark id: id}). Empty when nothing can be closed."""
     spans = closable(found)
     if not spans:
         return {}
-    out = {"rows": {}, "viewer": {}, "marks": {}}
+    out = {"rows": {}, "viewer": {}, "lines": {}, "marks": {}}
     S = summary.get("sections") or {}
     hits = [h for h in _items(_data(S, "clinvar").get("hits"))[:50]]
     tags = [veil_id(spans, str(h.get("gene") or ""), h.get("chrom"), h.get("pos")) if isinstance(h, dict) else None
@@ -1221,6 +1222,9 @@ def veil(summary, found, chapters):
             tags = [veil_id(spans, v) for v in c.get("viewer") or []]
             if any(tags):
                 out["viewer"][c["id"]] = tags
+            tags = [veil_id(spans, ln) for ln in c.get("lines") or []]
+            if any(tags):
+                out["lines"][c["id"]] = tags
     try:
         specs = rr.chart_specs(summary)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError, ZeroDivisionError):
