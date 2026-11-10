@@ -1,0 +1,344 @@
+//! Reading and writing files the way OwnGenome's Python tools do.
+//!
+//! - [`open`]: a path or `-` (stdin), plain or gzip, sniffed by its magic
+//!   bytes. Multi-member gzip, BGZF included, is read to the end, and NUL
+//!   padding after a member is skipped, as Python's `gzip` does.
+//! - [`Lines`]: Python's text mode with `newline=None`: `\n`, `\r\n` and a
+//!   lone `\r` each end a line and read as `\n`; UTF-8 strict or `replace`.
+//! - [`AtomicFile`]: written beside the target and renamed over it on
+//!   [`AtomicFile::commit`], so a reader never sees half a file.
+
+use flate2::bufread::GzDecoder;
+use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::path::{Path, PathBuf};
+
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+
+/// Opens `path` for reading (`-` is stdin), decompressing gzip and BGZF.
+pub fn open(path: impl AsRef<Path>) -> io::Result<Box<dyn BufRead>> {
+    let path = path.as_ref();
+    let inner: Box<dyn Read> = if path == Path::new("-") {
+        Box::new(io::stdin().lock())
+    } else {
+        Box::new(File::open(path)?)
+    };
+    reader(inner)
+}
+
+/// Wraps any reader: gzip when it starts with the gzip magic, plain otherwise.
+pub fn reader(mut inner: impl Read + 'static) -> io::Result<Box<dyn BufRead>> {
+    // Read the magic byte by byte: a pipe may hand over one byte at a time.
+    let mut head = Vec::with_capacity(2);
+    let mut byte = [0u8; 1];
+    while head.len() < 2 {
+        match inner.read(&mut byte) {
+            Ok(0) => break,
+            Ok(_) => head.push(byte[0]),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    let gz = head == GZIP_MAGIC;
+    let buf = BufReader::with_capacity(1 << 16, io::Cursor::new(head).chain(inner));
+    Ok(if gz {
+        Box::new(BufReader::with_capacity(
+            1 << 16,
+            Members {
+                dec: Some(GzDecoder::new(buf)),
+            },
+        ))
+    } else {
+        Box::new(buf)
+    })
+}
+
+/// Gzip members one after another, as Python's `gzip` reads them: NUL bytes
+/// between or after members are padding, and the stream may end in them.
+struct Members<R: BufRead> {
+    /// The member being read; `None` once the input has ended.
+    dec: Option<GzDecoder<R>>,
+}
+
+impl<R: BufRead> Read for Members<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        while let Some(dec) = self.dec.as_mut() {
+            let n = dec.read(buf)?;
+            if n > 0 {
+                return Ok(n);
+            }
+            // This member has ended: skip padding, then the next one starts.
+            let mut inner = self.dec.take().expect("a member").into_inner();
+            loop {
+                let rest = inner.fill_buf()?;
+                if rest.is_empty() {
+                    return Ok(0);
+                }
+                let zeros = rest.iter().take_while(|&&c| c == 0).count();
+                let more = zeros < rest.len();
+                inner.consume(zeros);
+                if more {
+                    break;
+                }
+            }
+            self.dec = Some(GzDecoder::new(inner));
+        }
+        Ok(0)
+    }
+}
+
+/// How invalid UTF-8 is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Utf8 {
+    /// `errors="strict"`: an error.
+    Strict,
+    /// `errors="replace"`: U+FFFD for each invalid sequence.
+    Replace,
+}
+
+/// Python's universal-newline text reader over any [`BufRead`].
+pub struct Lines<R> {
+    inner: R,
+    raw: Vec<u8>,
+    pos: usize,
+    utf8: Utf8,
+}
+
+impl<R: BufRead> Lines<R> {
+    pub fn new(inner: R, utf8: Utf8) -> Self {
+        Lines {
+            inner,
+            raw: Vec::new(),
+            pos: 0,
+            utf8,
+        }
+    }
+
+    /// Python's `readline()`: the next line with its ending turned into
+    /// `\n` (none on a last line without one), or `false` at the end.
+    pub fn read_line(&mut self, out: &mut String) -> io::Result<bool> {
+        out.clear();
+        if self.pos == self.raw.len() {
+            self.raw.clear();
+            self.pos = 0;
+            if self.inner.read_until(b'\n', &mut self.raw)? == 0 {
+                return Ok(false);
+            }
+        }
+        let rest = &self.raw[self.pos..];
+        // read_until stops after a \n or at the end, so a \r\n is never split.
+        let (body, used) = match rest.iter().position(|&c| c == b'\n' || c == b'\r') {
+            None => (rest, rest.len()),
+            Some(k) if rest[k] == b'\r' && rest.get(k + 1) == Some(&b'\n') => (&rest[..k], k + 2),
+            Some(k) => (&rest[..k], k + 1),
+        };
+        let ended = used > body.len();
+        // Past the line before decoding it, so a strict error is not raised
+        // again for the same line by a caller that goes on reading. (Python
+        // raises once too; a caller is expected to stop at the error.)
+        self.pos += used;
+        match self.utf8 {
+            Utf8::Strict => out.push_str(
+                std::str::from_utf8(body)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+            ),
+            Utf8::Replace => out.push_str(&String::from_utf8_lossy(body)),
+        }
+        if ended {
+            out.push('\n');
+        }
+        Ok(true)
+    }
+}
+
+impl<R: BufRead> Iterator for Lines<R> {
+    type Item = io::Result<String>;
+
+    /// Each line without its ending, as `line.rstrip("\n")` after Python's
+    /// universal-newline reading.
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut s = String::new();
+        match self.read_line(&mut s) {
+            Ok(true) => {
+                if s.ends_with('\n') {
+                    s.pop();
+                }
+                Some(Ok(s))
+            }
+            Ok(false) => None,
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+/// A file written under a temporary name and renamed into place by
+/// [`commit`](AtomicFile::commit). Dropped without a commit, the temporary
+/// file is removed and the target is untouched.
+pub struct AtomicFile {
+    tmp: PathBuf,
+    target: PathBuf,
+    out: Option<BufWriter<File>>,
+}
+
+impl AtomicFile {
+    pub fn create(target: impl AsRef<Path>) -> io::Result<Self> {
+        let target = target.as_ref().to_path_buf();
+        let name = target
+            .file_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file name"))?;
+        let mut tmp_name = std::ffi::OsString::from(".");
+        tmp_name.push(name);
+        tmp_name.push(format!(".tmp-{}", std::process::id()));
+        let tmp = target.with_file_name(tmp_name);
+        let out = BufWriter::new(File::create(&tmp)?);
+        Ok(AtomicFile {
+            tmp,
+            target,
+            out: Some(out),
+        })
+    }
+
+    /// Flushes and renames over the target. On an error the temporary file
+    /// is removed and the target is untouched.
+    pub fn commit(mut self) -> io::Result<()> {
+        let out = self.out.take().expect("committed once");
+        let done = out
+            .into_inner()
+            .map_err(io::IntoInnerError::into_error)
+            .and_then(|f| {
+                drop(f);
+                fs::rename(&self.tmp, &self.target)
+            });
+        if done.is_err() {
+            let _ = fs::remove_file(&self.tmp);
+        }
+        done
+    }
+}
+
+impl Write for AtomicFile {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.out.as_mut().expect("not committed").write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.out.as_mut().expect("not committed").flush()
+    }
+}
+
+impl Drop for AtomicFile {
+    fn drop(&mut self) {
+        if self.out.take().is_some() {
+            let _ = fs::remove_file(&self.tmp);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+
+    fn lines(bytes: &[u8], utf8: Utf8) -> Vec<String> {
+        let mut l = Lines::new(io::Cursor::new(bytes.to_vec()), utf8);
+        let mut out = Vec::new();
+        let mut s = String::new();
+        while l.read_line(&mut s).unwrap() {
+            out.push(s.clone());
+        }
+        out
+    }
+
+    #[test]
+    fn universal_newlines() {
+        assert_eq!(
+            lines(b"a\r\nb\rc\n\rd", Utf8::Strict),
+            ["a\n", "b\n", "c\n", "\n", "d"]
+        );
+        assert_eq!(lines(b"x\r", Utf8::Strict), ["x\n"]);
+        assert_eq!(lines(b"", Utf8::Strict), Vec::<String>::new());
+        assert_eq!(
+            lines(b"\xff\xe2\x82\n", Utf8::Replace),
+            ["\u{fffd}\u{fffd}\n"]
+        );
+        // A strict error on one line is raised once; reading goes on after it.
+        let mut l = Lines::new(io::Cursor::new(b"\xff\nok\n".to_vec()), Utf8::Strict);
+        let mut s = String::new();
+        assert!(l.read_line(&mut s).is_err());
+        assert!(l.read_line(&mut s).unwrap());
+        assert_eq!(s, "ok\n");
+        assert!(!l.read_line(&mut s).unwrap());
+        let it: Vec<String> = Lines::new(io::Cursor::new(b"a\r\nb".to_vec()), Utf8::Strict)
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(it, ["a", "b"]);
+    }
+
+    fn gz(data: &[u8]) -> Vec<u8> {
+        let mut e = GzEncoder::new(Vec::new(), Compression::default());
+        e.write_all(data).unwrap();
+        e.finish().unwrap()
+    }
+
+    #[test]
+    fn reads_plain_gzip_and_multi_member() {
+        let mut two = gz(b"one\n");
+        two.extend(gz(b"two\n"));
+        // NUL padding between and after members, as Python's gzip skips it.
+        let mut padded = gz(b"one\n");
+        padded.extend([0u8; 16]);
+        padded.extend(gz(b""));
+        padded.extend(gz(b"two\n"));
+        padded.extend([0u8; 12]);
+        for (input, want) in [
+            (b"plain\n".to_vec(), "plain\n"),
+            (gz(b"zipped\n"), "zipped\n"),
+            (two, "one\ntwo\n"),
+            (padded, "one\ntwo\n"),
+            (vec![0x1f], "\u{1f}"),
+        ] {
+            let mut s = String::new();
+            reader(io::Cursor::new(input))
+                .unwrap()
+                .read_to_string(&mut s)
+                .unwrap();
+            assert_eq!(s, want);
+        }
+        // Anything else after a member is an error, as in Python.
+        let mut junk = gz(b"one\n");
+        junk.extend(b"\0\0junk");
+        let mut s = String::new();
+        let mut r = reader(io::Cursor::new(junk)).unwrap();
+        assert!(r.read_to_string(&mut s).is_err());
+    }
+
+    #[test]
+    fn atomic_write() {
+        let dir = std::env::temp_dir().join(format!("og-io-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("out.tsv");
+        fs::write(&target, "old").unwrap();
+        {
+            let mut f = AtomicFile::create(&target).unwrap();
+            f.write_all(b"half").unwrap();
+        }
+        assert_eq!(fs::read_to_string(&target).unwrap(), "old");
+        let mut f = AtomicFile::create(&target).unwrap();
+        f.write_all(b"new").unwrap();
+        f.commit().unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new");
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        // A rename that fails (the target is a directory that is not empty)
+        // leaves no temporary file behind.
+        let busy = dir.join("busy");
+        fs::create_dir_all(busy.join("x")).unwrap();
+        let mut f = AtomicFile::create(&busy).unwrap();
+        f.write_all(b"data").unwrap();
+        assert!(f.commit().is_err());
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+}

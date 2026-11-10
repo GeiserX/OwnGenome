@@ -97,6 +97,19 @@ workflow {
               "decompress it (gunzip, or bgzip -d) and run 'samtools faidx' on the result."
     }
 
+    // og (bin/.og, the Rust binary tasks call through bin/og) built from
+    // another rust/ than this checkout's would run other code than the
+    // checkout says: rust/og.sh check stops the run (scripts/setup.sh --og).
+    if (file("${projectDir}/rust/og.sh").exists()) {
+        // stderr joins stdout, so a check that cannot even start says why.
+        def og_check = ['bash', '-c', 'bash "$0" check 2>&1', "${projectDir}/rust/og.sh"].execute()
+        def og_msg = og_check.text.trim()
+        og_check.waitFor()
+        if (og_check.exitValue() != 0) {
+            error(og_msg ? og_msg.replaceFirst(/^ERROR: /, '') : "rust/og.sh check failed with exit ${og_check.exitValue()} and no message")
+        }
+    }
+
     def tools_list = params.tools ? params.tools.split(',').collect { it.trim() }.findAll { it } : []
 
     // Every name the workflows gate on. A name outside this list would be

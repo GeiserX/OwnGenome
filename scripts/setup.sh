@@ -2,6 +2,10 @@
 # setup.sh — One-stop setup: download references, pull Docker images, validate
 # Usage: ./scripts/setup.sh <genome_dir>
 #        ./scripts/setup.sh --pull-only      pull the Docker images and exit
+#        ./scripts/setup.sh --og             put OwnGenome's og binary in bin/.og:
+#                                            built from rust/ in OG_BUILDER, or on
+#                                            a release tag downloaded and checked
+#                                            (rust/og.sh install; docs/rust.md)
 #        ./scripts/setup.sh --refresh clinvar <genome_dir>
 #                                            replace ClinVar with NCBI's current
 #                                            release and rebuild the files made from it
@@ -103,6 +107,8 @@ REFRESH=""
 SAMPLE_QC_ONLY=false
 OPT_IN=""
 case "${1:-}" in
+  --og)
+    exec "$(dirname "$0")/../rust/og.sh" install ;;
   --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--archaic)
     OPT_IN=${1#--}
     shift ;;
@@ -126,6 +132,7 @@ GENOME_DIR=${1:-${GENOME_DIR:-""}}
 if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "Usage: $0 <genome_dir>"
   echo "       $0 --pull-only"
+  echo "       $0 --og"
   echo "       $0 --refresh clinvar <genome_dir>"
   echo "       $0 --sample-qc-data <genome_dir>"
   echo "       $0 --cyrius | --parascopy-data | --kir-data | --ancestry-panel | --ancestry-fine-panel | --yleaf-data | --consumer-sites | --ancient-panel | --viral-data | --masked-reference | --exomiser-data | --chip-data | --strchive-data | --megane-kmers | --mocha-data | --locityper-data | --archaic | --vep-cache | --annotsv-data <genome_dir>"
@@ -133,6 +140,7 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
+  echo "  --og          Put OwnGenome's og binary in bin/.og (built from rust/, or a release's) and exit."
   echo "  --refresh clinvar"
   echo "                Download NCBI's current ClinVar, rebuild the files made from it"
   echo "                and record its release date in <genome_dir>/clinvar/RELEASE."

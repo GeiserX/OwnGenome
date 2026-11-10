@@ -156,11 +156,113 @@ jobs:
 
           run_tests tests "$SHARD" "$SHARDS"
 
+  # OwnGenome's Rust code (rust/, docs/rust.md), in a job of its own:
+  # unit-tests is close to its 10 minutes. Format, lint, unit tests with a
+  # planted failure that must go red, pycompat against CPython, then the two
+  # musl builds as scripts/setup.sh --og makes them and the stale-binary
+  # guard on the real binaries.
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the toolchain rust/rust-toolchain.toml pins, with rustfmt and clippy
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: rustfmt
+        run: cargo fmt --all --check
+
+      - name: clippy, warnings are errors
+        if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Control (the planted failing test must fail, and be the test that failed)
+        run: |
+          log="${RUNNER_TEMP}/planted.log"
+          if cargo test --locked -p pycompat --features planted-failure planted_failure > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the planted failing test passed: the test run would report a broken test as green"
+            exit 1
+          fi
+          grep -E 'planted_failure.*FAILED' "$log" || { cat "$log"; echo "ERROR: the run failed, but not on the planted test"; exit 1; }
+          echo "Control: the planted test failed, as it must."
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+      - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
+        if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
+        run: |
+          OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
+          ../tests/rust/pycompat-diff.sh "${PWD}/target/release/og" 100000
+
+      - name: Both musl builds, as scripts/setup.sh --og makes them in OG_BUILDER
+        run: |
+          ../scripts/setup.sh --og
+          ./og.sh check --required
+          file ../bin/.og/og-linux-*
+          ../bin/og version
+
+      - name: The stale-binary guard refuses the real binaries once rust/ changes
+        run: |
+          echo "// edited" >> og/src/main.rs
+          if out=$(./og.sh check); then echo "ERROR: an edited rust/ passed the check: ${out}"; exit 1; fi
+          echo "Refused, as it must: ${out}"
+          git checkout -- og/src/main.rs
+          ./og.sh check --required
+
+      # main.nf runs the same check before any task: a stale og stops
+      # `nextflow run` with the setup command. Without the check, this stub
+      # run completes and the step fails.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: The Nextflow version versions.env pins
+        id: nf
+        working-directory: .
+        run: |
+          # shellcheck source=/dev/null
+          . ./versions.env
+          echo "version=${NEXTFLOW_VERSION:?NEXTFLOW_VERSION is not set in versions.env}" >> "$GITHUB_OUTPUT"
+
+      # Not a Nextflow pin: the version comes from versions.env. Quoted so the
+      # Renovate dry run does not count it as one.
+      - uses: "nf-core/setup-nextflow@893c28b667aedeba26e37f296d260ccc5bc4d914" # v3.0.1
+        with:
+          version: ${{ steps.nf.outputs.version }}
+
+      - name: nextflow run stops on a stale og before any task
+        working-directory: .
+        run: |
+          echo "// edited" >> rust/og/src/main.rs
+          rc=0
+          out=$(timeout 600 nextflow run main.nf -profile test -stub -ansi-log false --outdir "${RUNNER_TEMP}/og-stale" 2>&1) || rc=$?
+          git checkout -- rust/og/src/main.rs
+          if [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ] || [[ "$out" != *"og is stale:"*"run scripts/setup.sh --og"* ]] || [[ "$out" == *"Submitted process"* ]]; then
+            echo "$out"
+            echo "ERROR: nextflow run did not stop on a stale og before any task (exit ${rc})"
+            exit 1
+          fi
+          echo "Refused, as it must (exit ${rc}): $(grep 'og is stale' <<< "$out")"
+
   # The one check the ruleset requires for this workflow: it runs even when a
   # job above failed or was skipped, and fails unless every one succeeded.
   ci-ok:
     if: always()
-    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, unit-tests]
+    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, unit-tests, rust]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

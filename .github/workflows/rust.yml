@@ -1,0 +1,120 @@
+name: Rust
+
+# The og binary in the images the tasks run, and the long pycompat streams.
+# Guard's rust job holds the checks every pull request needs (format, lint,
+# tests, pycompat at 100000 cases per operation, the musl builds and the
+# stale-binary guard); this workflow holds the slow ones (docs/rust.md):
+#
+#   images   on a pull request that touches the Rust code, the shim or the
+#            images: builds og with scripts/setup.sh --og, cold and then
+#            cached (both times go to the summary), and runs it by bare name
+#            in PYTHON_IMAGE, BCFTOOLS_IMAGE, MANTA_IMAGE and PARASCOPY_IMAGE
+#            on every platform each one publishes (arm64 under QEMU), then
+#            once more with a wrong-arch binary planted, which must fail. The
+#            two binaries are kept as the artifact og-binaries.
+#   streams  nightly: 10^7 cases per pycompat operation against CPython in
+#            PYTHON_IMAGE, one operation at a time, with a new seed each
+#            night (printed, so a failure can be replayed). On a pull request
+#            that touches the paths below it runs 20000 cases per operation, so the
+#            job is seen working.
+#
+# Public repo: GitHub-hosted runners only.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rust/**'
+      - 'bin/og'
+      - 'tests/rust/**'
+      - 'versions.env'
+      - 'scripts/setup.sh'
+      - '.github/workflows/rust.yml'
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: 'pycompat cases per operation for the streams job'
+        default: '10000000'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  images:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build og with scripts/setup.sh --og, cold and cached
+        run: |
+          . versions.env
+          docker pull -q "$OG_BUILDER" > /dev/null
+          t0=$(date +%s); scripts/setup.sh --og; t1=$(date +%s)
+          touch rust/og/src/main.rs
+          scripts/setup.sh --og; t2=$(date +%s)
+          rust/og.sh check --required
+          {
+            echo "| build | seconds |"
+            echo "|---|---|"
+            echo "| cold (empty cargo cache, image pulled) | $((t1 - t0)) |"
+            echo "| cached (one crate changed) | $((t2 - t1)) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
+      # shell: bash sets pipefail, so a failing check is not masked by tee.
+      - name: og by bare name in the task images, amd64 and arm64
+        shell: bash
+        run: tests/rust/og-in-images.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Control: the same check must fail when an image runs the wrong build.
+      # The amd64 binary planted as og-linux-aarch64 reports x86_64 on arm64.
+      - name: Control (a planted wrong-arch binary must fail the image check)
+        run: |
+          cp bin/.og/og-linux-aarch64 "${RUNNER_TEMP}/og-linux-aarch64"
+          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64
+          rc=0
+          tests/rust/og-in-images.sh PYTHON_IMAGE || rc=$?
+          cp "${RUNNER_TEMP}/og-linux-aarch64" bin/.og/og-linux-aarch64
+          [ "$rc" -ne 0 ] || { echo "ERROR: the image check passed a wrong-arch binary"; exit 1; }
+          echo "Control: the image check failed on the planted binary, as it must."
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: og-binaries
+          path: bin/.og/og-linux-*
+          retention-days: 7
+
+  streams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build og with scripts/setup.sh --og
+        run: |
+          scripts/setup.sh --og
+          bin/og version
+
+      - name: pycompat against CPython, one operation at a time
+        env:
+          CASES: ${{ github.event_name == 'pull_request' && '20000' || inputs.cases || '10000000' }}
+        run: |
+          case "$CASES" in ''|*[!0-9]*) echo "ERROR: cases must be a whole number, got '${CASES}'"; exit 1 ;; esac
+          seed=${GITHUB_RUN_ID}
+          fail=0
+          ops=$(python3 -I tests/rust/pycompat_oracle.py ops)
+          [ -n "$ops" ] || { echo "ERROR: the oracle lists no operation"; exit 1; }
+          for op in $ops; do
+            tests/rust/pycompat-diff.sh "${PWD}/bin/og" "$CASES" "$seed" "$op" || fail=1
+          done
+          exit "$fail"

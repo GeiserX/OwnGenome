@@ -5,8 +5,10 @@
 #
 # Writes ${GENOME_DIR}/<sample>/run_manifest.tsv, three tab-separated columns
 # (section, key, value):
-#   run      written_utc, written_by, git_commit, pipeline_version (the OwnGenome
-#            release: the version in nextflow.config's manifest block), declared_sex
+#   run      written_utc, written_by, git_commit, og_tree_hash (the rust/ tree
+#            the og binary in bin/.og was built from, or "not built"),
+#            pipeline_version (the OwnGenome release: the version in
+#            nextflow.config's manifest block), declared_sex
 #   version  every NAME=VALUE line of versions.env
 #   image    each *_IMAGE reference and the digest Docker resolved it to
 #            ("not pulled" when the image is not on this machine)
@@ -54,6 +56,7 @@ if git -C "$PGP_ROOT" rev-parse --verify -q HEAD >/dev/null 2>&1; then
   fi
 fi
 row run git_commit "$commit"
+row run og_tree_hash "$(bash "${PGP_ROOT}/rust/og.sh" built 2> /dev/null || echo unknown)"
 # The OwnGenome release: the version = '...' line inside the manifest { } block
 # of nextflow.config (the release tag is v<version>). No row when there is none.
 release=$(awk '

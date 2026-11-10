@@ -229,6 +229,18 @@ The **Demo pictures** workflow ([`.github/workflows/demo-pictures.yml`](https://
 
 Look at the pictures, copy them into `docs/images/`, and update the alt text where the cards changed. A new report card that the generator does not feed yet stops the script with its name; add its input file to `make_demo_sample.py`.
 
+## The Rust jobs
+
+The `rust` job of `guard.yml` checks the Rust code on every pull request: format, clippy, the unit tests with a planted failure that must fail, `pycompat` against CPython at 100,000 cases per operation, both musl builds as `scripts/setup.sh --og` makes them, and the stale-binary check on the real binaries. The **Rust** workflow (`rust.yml`) runs `og` by bare name in the task images on amd64 and arm64, and every night runs the CPython comparison at 10,000,000 cases per operation. [The Rust Core](rust.md) says what each check covers.
+
+How long `scripts/setup.sh --og` takes to build both binaries:
+
+| Where | Cold (empty cargo cache) | Cached (one crate changed) |
+|---|---|---|
+| Apple Silicon Mac mini, 10 cores | 25 s | 3 s |
+
+The cold build downloads the crates once; pulling `OG_BUILDER` the first time adds about 1 GB. The Rust workflow's `images` job prints both times for `ubuntu-latest` in its summary.
+
 ## Telling a flaky test from a broken one
 
 The **Repeat a test** workflow (`.github/workflows/repeat-test.yml`) runs one `tests/test_*.sh` or `tests/test_*.py` many times, each run in a fresh job on its own `ubuntu-latest` runner, six at a time. Start it from the Actions tab with the test's path and the number of runs (1 to 60, default 30); it also runs, with its defaults (`tests/test_annotsv_benign_mane.sh`, 30 runs), on a pull request that changes the workflow. A flaky test fails a few runs out of many; a broken one fails them all. Each run records its exit code, and the summary job lists every run and fails when any failed. One more run, `control`, runs a test that always fails, and the summary fails when the control passed, so "0 of 30 failed" is never a count that could not see a failure.
