@@ -152,7 +152,7 @@ pub fn mask_fasta(
         let mut k = rec.next;
         while k < rec.iv.len() && rec.iv[k].0 < end {
             let (s, e) = rec.iv[k];
-            let (a, b) = (s.max(start), (e + 1).min(end));
+            let (a, b) = (s.max(start), e.min(end));
             // Both are inside the line, so they fit in usize.
             line[(a - start) as usize..(b - start) as usize].fill(b'N');
             bases += b - a;
