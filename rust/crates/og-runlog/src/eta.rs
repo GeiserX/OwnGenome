@@ -329,7 +329,7 @@ pub fn ingest(
         .append(true)
         .create(true)
         .open(PathBuf::from(lock_name))?;
-    let _ = &lock;
+    lock.lock()?;
     let mut by_file: IndexMap<String, Vec<HistoryRow>> = IndexMap::new();
     for r in read_history(&path) {
         by_file.entry(r[0].clone()).or_default().push(r);

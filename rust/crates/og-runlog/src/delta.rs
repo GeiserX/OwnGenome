@@ -828,7 +828,7 @@ pub fn render_text(d: &Obj) -> String {
         return w.join("\n") + "\n";
     }
     w.push(format!(
-        "New since {}: {} changes:",
+        "New since {}: {} change(s):",
         or_text(field(d, "previous_utc"), "the previous run"),
         changes.len()
     ));
