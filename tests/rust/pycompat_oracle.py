@@ -12,6 +12,8 @@ is the one rust/og/src/probe.rs reads: tab-separated, floats as the hex of
 their bits, text as the hex of its UTF-8.
 """
 
+import csv
+import html
 import io
 import json
 import math
@@ -205,6 +207,8 @@ def a_lines_input(r):
 
 def case(op, r):
     """One case line and its Python result."""
+    if op in TEXT_CASES:
+        return TEXT_CASES[op](r)
     if op == "repr":
         x = a_float(r)
         return [bits(x)], lambda: repr(x)
@@ -262,12 +266,184 @@ def case(op, r):
         return [b.hex()], run
     raise ValueError(op)
 
+# csv and text (pycompat::csv, pycompat::text). A list is "-" when empty,
+# else its items' hex joined by ","; inside a result, pe() writes the
+# characters that give it structure as %XX, so no two results look alike.
+CSV_PARTS = ["a", "bc", " ", "\t", ",", ";", "|", '"', '""', "\n", "\r", "\r\n", "", "\xe9", "\U0001f600", "\0",
+             "\\", "\x1c", "x" * 5]
+DELIMS = ["\t", "\t", ",", ";", "|", " ", "\xe9"]
+TEXT_PARTS = [" ", "  ", "\t", "\n", "\r", "\x0b", "\x0c", "\x1c", "\x1f", "\x85", "\xa0", "\u2028", "\u3000",
+              "\u200b", "\u180e", "a", "Bc", "\xdf", "\u0130", "\u0131", "\u03a3", "\u0391\u03a3", "\u03c3",
+              "\u03c2", "\u01c4", "\u01c5", "\ufb01", "\xb2", "\u0663", "\u2163", "\u0301", "'", "&", "<", ">",
+              '"', ",", "--", "\U0001f600", "\U0001d7d8", "\0", "x"]
+FIELD_LIMIT = 131072
+TEXT_COUNT = {}
+
+
+def pe(s):
+    return "".join("%%%02X" % ord(c) if c in "%[],{}=~\\|" or ord(c) < 32 else c for c in s)
+
+
+def hexlist(xs):
+    return ",".join(x.encode("utf-8").hex() for x in xs) if xs else "-"
+
+
+def a_text(r, parts=TEXT_PARTS):
+    return "".join(r.choice(parts) if r.random() < 0.8 else a_char(r) for _ in range(r.randrange(10)))
+
+
+def nth(op):
+    TEXT_COUNT[op] = TEXT_COUNT.get(op, 0) + 1
+    return TEXT_COUNT[op] - 1
+
+
+def a_csv_text(r):
+    return "".join(r.choice(CSV_PARTS) for _ in range(r.randrange(14)))
+
+
+def csv_lines(r, i):
+    """Lines as a file iterator yields them; some cut anywhere, and the
+    field size limit's edges first."""
+    special = [["x" * FIELD_LIMIT + "\n"], ["x" * (FIELD_LIMIT + 1) + "\n"], ['"' + "x" * FIELD_LIMIT + '"\n'],
+               ['"' + "x" * (FIELD_LIMIT + 1)], ["a\t" + "é" * FIELD_LIMIT + "\tb\n"]]
+    if i < len(special):
+        return special[i]
+    text = "".join(a_csv_text(r) + r.choice(["\n", "\n", "\r\n", "\r", ""]) for _ in range(r.randrange(5)))
+    if r.random() < 0.3:  # cut anywhere: a \r inside a line, a line without its ending
+        cuts = sorted(r.randrange(len(text) + 1) for _ in range(r.randrange(4)))
+        return [text[a:b] for a, b in zip([0] + cuts, cuts + [len(text)])]
+    return list(io.StringIO(text, newline=""))
+
+
+def render_list(xs):
+    return "[%d:%s]" % (len(xs), ",".join(pe(x) for x in xs))
+
+
+def render_rows(rows):
+    return "".join(render_list(row) for row in rows)
+
+
+def render_dicts(reader, acc):
+    """The header, then each row as it is read, so an error keeps the rows before it."""
+    acc.append("~" if reader.fieldnames is None else render_list(reader.fieldnames))
+    for d in reader:
+        acc.append("{" + ",".join(
+            ("~=" + render_list(val)) if key is None
+            else pe(key) + "=" + ("~" if val is None else pe(val)) for key, val in d.items()) + "}")
+
+
+def caught(f):
+    """f's result, or what it got to and the class of what it raised."""
+    acc = []
+    try:
+        f(acc)
+    except Exception as e:
+        acc.append("!" + type(e).__name__)
+    return "".join(acc)
+
+
+def case_csvw(r):
+    d = r.choice(DELIMS)
+    fields = [a_csv_text(r) for _ in range(r.choice([0, 1, 1, 2, 3, 5]))]
+
+    def run():
+        buf = io.StringIO()
+        csv.writer(buf, delimiter=d, lineterminator="\n").writerow(fields)
+        return buf.getvalue()
+    return [hexs(d), hexlist(fields)], run
+
+
+def case_csvr(r, op="csvr"):
+    i, d, q = nth(op), r.choice(DELIMS), r.choice("mn")
+    quoting = csv.QUOTE_MINIMAL if q == "m" else csv.QUOTE_NONE
+    if op == "dictf":  # bytes read in Python's text mode, as a tool opens a file
+        data = "".join(csv_lines(r, i)).encode("utf-8") + r.choice([b"", b"", b"\xff", b"\xe2\x82"])
+        arg = data.hex()
+
+        def lines():
+            return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="replace", newline=None)
+    else:
+        given = csv_lines(r, i)
+        arg = hexlist(given)
+
+        def lines():
+            return iter(given)
+    if op == "csvr":
+        def run(acc):
+            for row in csv.reader(lines(), delimiter=d, quoting=quoting):
+                acc.append(render_rows([row]))
+    else:
+        def run(acc):
+            render_dicts(csv.DictReader(lines(), delimiter=d, quoting=quoting), acc)
+    return [hexs(d), q, arg], lambda: caught(run)
+
+
+def case_split(r):
+    s = a_text(r)
+    sep = r.choice([None, None, ",", " ", "--", "Σ", "\U0001f600"])
+    n = r.choice([-1, -1, 0, 1, 2, 5])
+    return [hexs(s), "-" if sep is None else hexs(sep), str(n)], lambda: render_rows([s.split(sep, n)])
+
+
+def case_strip(op):
+    def make(r):
+        s = a_text(r)
+        chars = r.choice([None, None, "", "x", "a ", "\U0001f600Σ"])
+        return [hexs(s), "-" if chars is None else hexs(chars)], lambda: getattr(s, op)(chars)
+    return make
+
+
+def case_str(op):
+    def make(r):
+        s = a_text(r)
+        if op == "is":
+            return [hexs(s)], lambda: "".join("1" if f() else "0" for f in (s.isspace, s.isdigit, s.isdecimal, s.isalpha))
+        if op == "html":
+            return [hexs(s)], lambda: html.escape(s)
+        return [hexs(s)], getattr(s, op)
+    return make
+
+
+def case_chars(r):
+    """Every code point in turn, a chunk per case, so any N covers them all
+    (surrogates excluded: no UTF-8 text holds one)."""
+    i = nth("chars")
+    k = -(-0x110000 // N_CASES[0])
+    start = i * k % 0x110000
+    cps = [c for c in range(start, min(start + k, 0x110000)) if not 0xD800 <= c < 0xE000]
+
+    def run():
+        out = []
+        for c in map(chr, cps):
+            f = (c.isspace(), c.isdigit(), c.isdecimal(), c.isalpha())
+            out.append("%X[%s,%s]" % (sum(b << n for n, b in enumerate(f)), pe(c.upper()), pe(c.lower())))
+        return "".join(out)
+    return [str(start), str(k)], run
+
+
+def case_slice(r):
+    s = a_text(r)
+    a, b = (r.choice([None, r.randrange(-12, 12)]) for _ in range(2))
+    return [hexs(s), "-" if a is None else str(a), "-" if b is None else str(b)], lambda: s[a:b]
+
+
+N_CASES = [1]
+TEXT_CASES = {
+    "csvw": case_csvw, "csvr": case_csvr, "dictr": lambda r: case_csvr(r, "dictr"),
+    "dictf": lambda r: case_csvr(r, "dictf"), "split": case_split, "strip": case_strip("strip"),
+    "lstrip": case_strip("lstrip"), "rstrip": case_strip("rstrip"), "upper": case_str("upper"),
+    "lower": case_str("lower"), "is": case_str("is"), "html": case_str("html"), "chars": case_chars,
+    "slice": case_slice,
+}
+OPS += list(TEXT_CASES)
+
 
 def main():
     if sys.argv[1:] == ["ops"]:
         print(" ".join(OPS))
         return
     n, seed = int(sys.argv[1]), int(sys.argv[2])
+    N_CASES[0] = n
     ops = sys.argv[3:] or OPS
     r = random.Random(seed)
     out = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", newline="\n")
