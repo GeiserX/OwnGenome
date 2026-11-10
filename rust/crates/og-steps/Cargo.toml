@@ -1,0 +1,18 @@
+[package]
+name = "og-steps"
+description = "Pipeline steps OwnGenome owns, one module each: the consumer raw-data export first"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+flate2.workspace = true
+memchr.workspace = true
+rustc-hash.workspace = true
+zlib-rs.workspace = true
+
+[lints]
+workspace = true

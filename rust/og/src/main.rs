@@ -18,7 +18,7 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og consumer build-sites|export|check [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -64,6 +64,7 @@ fn main() -> ExitCode {
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },
+        "consumer" => ExitCode::from(og_steps::consumer::cli(rest)),
         "dev" => ExitCode::from(og_dev::main(rest)),
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
         "bam-fetch-probe" if rest.len() == 2 => {
