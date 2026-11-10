@@ -849,8 +849,19 @@ mod tests {
     #[test]
     fn a_mate_on_a_contig_the_header_lacks_is_no_mate() {
         use rust_htslib::bam::{self as hb, header::HeaderRecord, record::Cigar};
-        let dir = std::env::temp_dir().join(format!("og-bam-mate-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        // Emptied first and removed on drop, so a stale run or a panic
+        // leaves nothing behind.
+        struct Scratch(std::path::PathBuf);
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let scratch =
+            Scratch(std::env::temp_dir().join(format!("og-bam-mate-{}", std::process::id())));
+        let dir = &scratch.0;
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
         let mut h = hb::Header::new();
         h.push_record(
             HeaderRecord::new(b"SQ")
@@ -883,7 +894,5 @@ mod tests {
         let read = bam.fetch("chr4", 0, 100).unwrap().next().unwrap().unwrap();
         assert_eq!(read.mtid(), 5);
         assert!(matches!(mate(&mut bam, &read), Ok(None)));
-        drop(bam);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

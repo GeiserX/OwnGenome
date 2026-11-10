@@ -12,6 +12,25 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// A scratch directory of this process: emptied when made, removed when
+/// dropped, so a stale one or a panic leaves nothing behind.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("scratch dir");
+        Self(dir)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 fn data() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data")
 }
@@ -70,7 +89,7 @@ fn show(b: &[u8]) -> String {
 fn og_writes_what_the_python_wrote() {
     let parity = data().join("parity");
     let cases = fs::read_to_string(parity.join("cases.tsv")).expect("cases.tsv");
-    let scratch = std::env::temp_dir().join(format!("og-bam-parity-{}", std::process::id()));
+    let scratch = Scratch::new("og-bam-parity");
     let (mut n, mut fixes, mut bad) = (0, 0, Vec::new());
     for line in cases
         .lines()
@@ -78,7 +97,7 @@ fn og_writes_what_the_python_wrote() {
     {
         let mut f = line.split('\t');
         let (name, tool) = (f.next().unwrap(), f.next().unwrap());
-        let out = scratch.join(name);
+        let out = scratch.0.join(name);
         fs::create_dir_all(&out).unwrap();
         let args: Vec<String> = f
             .map(|a| {
@@ -88,7 +107,7 @@ fn og_writes_what_the_python_wrote() {
             })
             .collect();
         let (rc, stdout) = run_og(tool, &args);
-        let got_dir = scratch.join(format!("{name}.got"));
+        let got_dir = scratch.0.join(format!("{name}.got"));
         fs::create_dir_all(&got_dir).unwrap();
         fs::write(got_dir.join("exit"), format!("{rc}\n")).unwrap();
         fs::write(got_dir.join("stdout"), &stdout).unwrap();
@@ -124,7 +143,6 @@ fn og_writes_what_the_python_wrote() {
             }
         }
     }
-    let _ = fs::remove_dir_all(&scratch);
     assert!(n >= 60, "only {n} cases ran");
     assert!(fixes >= 1, "no deliberate fix was checked");
     assert!(
