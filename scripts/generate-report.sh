@@ -57,10 +57,12 @@ HISTORY="${SAMPLE_DIR}/history"
 # The previous run is the newest history/<stamp>/ that holds a summary.json,
 # the rule run_delta.py and og run delta follow (newest_history). A newer
 # folder without one, from a copy that stopped half way, is passed over.
-PREV=$(find -L "$HISTORY" -mindepth 2 -maxdepth 2 -name summary.json -type f 2>/dev/null | LC_ALL=C sort | tail -n 1 || true)
-PREV=${PREV%/summary.json}
+# Sorted by folder name: <stamp> before <stamp>-02, which whole paths
+# ("/summary.json" after the name) would not give.
+PREV=$(find -L "$HISTORY" -mindepth 2 -maxdepth 2 -name summary.json -type f 2>/dev/null \
+  | sed -e 's|/summary\.json$||' -e 's|.*/||' | LC_ALL=C sort | tail -n 1 || true)
 PREV_ARG=()
-[ -z "$PREV" ] || PREV_ARG=(--previous "/genome/${SAMPLE}/history/$(basename "$PREV")")
+[ -z "$PREV" ] || PREV_ARG=(--previous "/genome/${SAMPLE}/history/${PREV}")
 echo ""
 if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
   python3 /pgp-bin/run_delta.py \
