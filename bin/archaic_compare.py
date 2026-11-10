@@ -130,14 +130,16 @@ def cmd_compare(a):
     print(f"| chromosome | Chen {a.sample} (bp) | Chen {a.group} median | Chen {a.group} max | "
           + " | ".join(f"{l} (bp)" for l in labels) + " |")
     print("|---|---|---|---|" + "---|" * len(labels))
-    tot_me, tot_med = 0, 0.0
-    # the "all" maximum is the highest person-level total, not a sum of per-chromosome maxima
-    tot_max = max(sum(chen_bp(p, c) for c in chroms) for p in peers)
+    tot_me = 0
+    # the "all" median and maximum come from person-level totals, not from sums of
+    # per-chromosome medians or maxima, which no person need have
+    sums = sorted(sum(chen_bp(p, c) for c in chroms) for p in peers)
+    tot_med, tot_max = statistics.median(sums), sums[-1]
     tot_mine = dict.fromkeys(labels, 0)
     for c in chroms:
         vals = [chen_bp(p, c) for p in peers]
         me, med, mx = chen_bp(a.sample, c), statistics.median(vals), max(vals)
-        tot_me, tot_med = tot_me + me, tot_med + med
+        tot_me += me
         cells = []
         for l in labels:
             v = mine[l].get(c, 0)
@@ -147,7 +149,6 @@ def cmd_compare(a):
     print(f"| all | {tot_me} | {tot_med:.0f} | {tot_max} | " + " | ".join(str(tot_mine[l]) for l in labels) + " |")
     print()
     # The person-level spread over the same chromosomes.
-    sums = sorted(sum(chen_bp(p, c) for c in chroms) for p in peers)
     print(f"Chen et al., {len(peers)} {a.group} people, these {len(chroms)} chromosomes: "
           f"lowest {sums[0]}, median {statistics.median(sums):.0f}, highest {sums[-1]} bp; "
           f"{a.sample} {tot_me} bp.")

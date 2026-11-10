@@ -77,6 +77,17 @@ class Compare(unittest.TestCase):
         out = self.run_cmp()
         self.assertIn("| all | 110 | 110 | 110 |", out)
 
+    def test_all_row_median_is_a_person_total(self):
+        # each of A, B, D has 100 bp on two of three chromosomes: every person totals 200,
+        # while summed per-chromosome medians would give 300
+        open(self.chen, "w").write(
+            "chr start end LOD maxLOD size pop anc ID\n"
+            "20\t0\t100\t9\t9\t100\tCEU\tEUR\tA\n21\t0\t100\t9\t9\t100\tCEU\tEUR\tA\n"
+            "21\t0\t100\t9\t9\t100\tGBR\tEUR\tB\n22\t0\t100\t9\t9\t100\tGBR\tEUR\tB\n"
+            "20\t0\t100\t9\t9\t100\tTSI\tEUR\tD\n22\t0\t100\t9\t9\t100\tTSI\tEUR\tD\n")
+        out = self.run_cmp("--chroms", "20 21 22")
+        self.assertIn("| all | 200 | 200 | 200 |", out)
+
     def test_group_spread_uses_the_group_only(self):
         out = self.run_cmp()
         self.assertIn("2 EUR people", out)  # A and B, not the AFR person C
