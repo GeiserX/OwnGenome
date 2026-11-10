@@ -282,7 +282,7 @@ fn measure(bam: &str, out: &str) -> Result<(), String> {
     }
     let mut text = String::from("region\tmin_mapq\tmean_depth\n");
     for (n, q, d) in measure_rows(&reads) {
-        text.push_str(&format!("{n}\t{q}\t{}\n", fixed(d, 3)));
+        text.push_str(&format!("{n}\t{q}\t{}\n", fixed(d, 4)));
     }
     write_atomic(out, &text)
 }
