@@ -57,6 +57,21 @@ fn main() -> ExitCode {
                 }
             }
         }
+        // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
+        "bam-fetch-probe" if rest.len() == 2 => {
+            let run = || -> std::io::Result<()> {
+                let regions = std::io::BufReader::new(std::fs::File::open(&rest[1])?);
+                og_bam::fetch_probe(rest[0].as_ref(), regions, std::io::stdout().lock())
+            };
+            match run() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    let _ = writeln!(std::io::stderr(), "og bam-fetch-probe: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "bam-fetch-probe" => usage_error("bam-fetch-probe takes BAM REGIONS"),
         "version" | "--version" | "--tree-hash" | "pycompat-probe" => {
             usage_error(&format!("unrecognized arguments: {}", rest.join(" ")))
         }

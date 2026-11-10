@@ -8,7 +8,8 @@
 //! or the name of the exception Python raised, escaped by [`escape`].
 
 use og_io::{Lines, Utf8};
-use pycompat::{fmt, json, mtime, num, value};
+use pycompat::csv::{self, DictReader, Quoting, Reader};
+use pycompat::{fmt, json, mtime, num, text, value};
 use std::ffi::OsString;
 use std::io::{self, BufRead, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -141,6 +142,118 @@ fn files(patterns: &[OsString], sorted: bool) -> Vec<PathBuf> {
     out
 }
 
+/// The csv and text results: `%XX` for the characters that give a result
+/// its structure, so no two results look alike.
+fn pe(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if "%[],{}=~\\|".contains(c) || u32::from(c) < 32 {
+            out.push_str(&format!("%{:02X}", u32::from(c)));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// A list as `[len:item,item]`, so `[]` and `[""]` differ.
+fn render_list<S: AsRef<str>>(xs: &[S]) -> String {
+    let items: Vec<String> = xs.iter().map(|x| pe(x.as_ref())).collect();
+    format!("[{}:{}]", xs.len(), items.join(","))
+}
+
+/// `-` for an empty list, else its items' hex joined by `,`.
+fn texts(s: &str) -> io::Result<Vec<String>> {
+    if s == "-" {
+        Ok(Vec::new())
+    } else {
+        s.split(',').map(text).collect()
+    }
+}
+
+/// `-` for None, else the hex of the text.
+fn opt_text(s: &str) -> io::Result<Option<String>> {
+    if s == "-" {
+        Ok(None)
+    } else {
+        text(s).map(Some)
+    }
+}
+
+fn opt_int(s: &str) -> io::Result<Option<isize>> {
+    if s == "-" { Ok(None) } else { int(s).map(Some) }
+}
+
+fn delimiter(s: &str) -> io::Result<char> {
+    let d = text(s)?;
+    let mut cs = d.chars();
+    match (cs.next(), cs.next()) {
+        (Some(c), None) => Ok(c),
+        _ => Err(bad(format!("bad delimiter {d:?}"))),
+    }
+}
+
+/// The rows a reader gives, then `!<exception>` if it stopped on one.
+fn csv_result(op: &str, d: char, quoting: Quoting, lines: Vec<String>) -> String {
+    let lines = lines.into_iter().map(Ok::<_, io::Error>);
+    let mut out = String::new();
+    let run = |out: &mut String| -> Result<(), csv::Error> {
+        if op == "csvr" {
+            for row in Reader::new(lines, d, quoting) {
+                out.push_str(&render_list(&row?));
+            }
+            return Ok(());
+        }
+        let mut reader = DictReader::new(lines, d, quoting);
+        match reader.header()? {
+            None => out.push('~'),
+            Some(h) => out.push_str(&render_list(h.names())),
+        }
+        for row in reader {
+            let row = row?;
+            let mut items: Vec<String> = row
+                .iter()
+                .map(|(k, v)| format!("{}={}", pe(k), v.map_or("~".to_owned(), pe)))
+                .collect();
+            if let Some(extra) = row.extra() {
+                items.push(format!("~={}", render_list(extra)));
+            }
+            out.push_str(&format!("{{{}}}", items.join(",")));
+        }
+        Ok(())
+    };
+    if let Err(e) = run(&mut out) {
+        out.push_str(&format!("!{}", e.exception()));
+    }
+    out
+}
+
+/// Per code point from `start`, `count` of them (surrogates skipped): the
+/// isspace, isdigit, isdecimal and isalpha bits as a hex digit, then
+/// `[upper,lower]`.
+fn chars(start: u32, count: u32) -> String {
+    let mut out = String::new();
+    for c in (start..(start + count).min(0x110000)).filter_map(char::from_u32) {
+        let f = [
+            text::is_space,
+            text::is_digit,
+            text::is_decimal,
+            text::is_alpha,
+        ]
+        .iter()
+        .enumerate()
+        .map(|(n, f)| u8::from(f(c)) << n)
+        .sum::<u8>();
+        let s = c.to_string();
+        out.push_str(&format!(
+            "{f:X}[{},{}]",
+            pe(&text::upper(&s)),
+            pe(&text::lower(&s))
+        ));
+    }
+    out
+}
+
 /// One case's result.
 fn eval(f: &[&str]) -> io::Result<String> {
     let arg = |i: usize| {
@@ -259,6 +372,58 @@ fn eval(f: &[&str]) -> io::Result<String> {
             }
             return Ok(all.join("|"));
         }
+        "csvw" => {
+            let mut w = csv::Writer::new(Vec::new(), delimiter(arg(1)?)?);
+            w.write_row(texts(arg(2)?)?)?;
+            String::from_utf8(w.into_inner()).map_err(|_| bad("csv wrote bad UTF-8"))?
+        }
+        "csvr" | "dictr" | "dictf" => {
+            let quoting = match arg(2)? {
+                "m" => Quoting::Minimal,
+                "n" => Quoting::None,
+                q => return Err(bad(format!("bad quoting {q:?}"))),
+            };
+            let lines = if f[0] == "dictf" {
+                // A file read in Python's text mode, endings kept.
+                let mut l = Lines::new(io::Cursor::new(bytes(arg(3)?)?), Utf8::Replace);
+                let (mut line, mut all) = (String::new(), Vec::new());
+                while l.read_line(&mut line)? {
+                    all.push(line.clone());
+                }
+                all
+            } else {
+                texts(arg(3)?)?
+            };
+            csv_result(f[0], delimiter(arg(1)?)?, quoting, lines)
+        }
+        "split" => {
+            let s = text(arg(1)?)?;
+            let sep = opt_text(arg(2)?)?;
+            let n: isize = int(arg(3)?)?;
+            render_list(&text::split(&s, sep.as_deref(), usize::try_from(n).ok()))
+        }
+        "strip" | "lstrip" | "rstrip" => {
+            let s = text(arg(1)?)?;
+            let chars = opt_text(arg(2)?)?;
+            let strip = match f[0] {
+                "strip" => text::strip,
+                "lstrip" => text::lstrip,
+                _ => text::rstrip,
+            };
+            strip(&s, chars.as_deref()).to_owned()
+        }
+        "upper" => text::upper(&text(arg(1)?)?),
+        "lower" => text::lower(&text(arg(1)?)?),
+        "is" => {
+            let s = text(arg(1)?)?;
+            [text::isspace, text::isdigit, text::isdecimal, text::isalpha]
+                .iter()
+                .map(|f| if f(&s) { '1' } else { '0' })
+                .collect()
+        }
+        "html" => text::html_escape(&text(arg(1)?)?).into_owned(),
+        "chars" => chars(int(arg(1)?)?, int(arg(2)?)?),
+        "slice" => text::slice(&text(arg(1)?)?, opt_int(arg(2)?)?, opt_int(arg(3)?)?).to_owned(),
         op => return Err(bad(format!("unknown operation {op:?}"))),
     })
 }
