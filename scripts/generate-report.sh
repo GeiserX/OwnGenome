@@ -11,8 +11,9 @@
 #
 # Then it writes what changed since the previous run of the sample
 # (bin/run_delta.py, docs/delta-report.md): ${SAMPLE}_delta.txt, .html and
-# .json, against the newest copy under history/, and keeps this run's
-# summary.json and run_manifest.tsv as history/<UTC time>/ for the next run.
+# .json, against the newest copy under history/ that holds a summary.json,
+# and keeps this run's summary.json and run_manifest.tsv as history/<UTC time>/
+# for the next run.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -53,7 +54,11 @@ echo "Report saved to: ${REPORT}"
 
 # What changed since the previous run, then keep this run as the next baseline.
 HISTORY="${SAMPLE_DIR}/history"
-PREV=$(find "$HISTORY" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | LC_ALL=C sort | tail -n 1 || true)
+# The previous run is the newest history/<stamp>/ that holds a summary.json,
+# the rule run_delta.py and og run delta follow (newest_history). A newer
+# folder without one, from a copy that stopped half way, is passed over.
+PREV=$(find -L "$HISTORY" -mindepth 2 -maxdepth 2 -name summary.json -type f 2>/dev/null | LC_ALL=C sort | tail -n 1 || true)
+PREV=${PREV%/summary.json}
 PREV_ARG=()
 [ -z "$PREV" ] || PREV_ARG=(--previous "/genome/${SAMPLE}/history/$(basename "$PREV")")
 echo ""
