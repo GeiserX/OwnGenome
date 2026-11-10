@@ -42,7 +42,7 @@ pub fn gaps(starts: impl IntoIterator<Item = u64>) -> Vec<u64> {
     starts
         .into_iter()
         .map(|s| {
-            let d = s - prev + 1; // PLANTED: gap off by one (red-first control)
+            let d = s - prev;
             prev = s;
             d
         })
