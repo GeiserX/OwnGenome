@@ -98,7 +98,7 @@ impl GeneCall {
 
     /// Called, with possible diplotypes of different phenotypes.
     pub fn ambiguous(&self) -> bool {
-        self.called && self.phenotypes.len() > 1
+        self.called && self.phenotypes.len() > 2
     }
 
     pub fn status(&self) -> Status {
