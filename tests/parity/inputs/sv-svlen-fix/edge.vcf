@@ -1,0 +1,16 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Length">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr20	100	insnet	A	ACGTT	.	PASS	SVTYPE=INS
+chr20	200	notype	ACGTA	A	.	PASS	.
+chr20	300	emptyinfo	ACGTA	AG	.	PASS	
+chr20	400	done	ACGTA	A	.	PASS	SVLEN=-4;END=403
+chr20	500	flag	ACGTA	A	.	PASS	IMPRECISE;SVTYPE=DEL;END=999
+chr20	600	lower	acgta	n	.	PASS	SVTYPE=DUP
+chr20	700	same	AC	GT	.	PASS	SVLEN=0
+chr20	800	short
+
+chr20	900	x	ACG	A	.	PASS	SVLEN=-2;END=901;ORIG_SVLEN=5
+#a comment line between records
+chr20	+1_000	under	ACG	A	.	PASS	.
