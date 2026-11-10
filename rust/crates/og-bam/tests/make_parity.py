@@ -48,8 +48,9 @@ def case(name, tool, *args):
 def write(name, text, gz=False):
     path = os.path.join(OUT, "in", name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with (gzip.open(path, "wt") if gz else open(path, "w")) as fh:
-        fh.write(text)
+    with open(path, "wb") as fh:
+        # mtime=0, so a gzip input is the same bytes on every run.
+        fh.write(gzip.compress(text.encode(), mtime=0) if gz else text.encode())
     return "{d}/parity/in/" + name
 
 
