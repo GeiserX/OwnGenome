@@ -34,6 +34,7 @@ case "\${FAKE_ORACLE:-}" in
   exit) echo copied; exit 3 ;;
   stdout) echo "copied, said otherwise"; exit 0 ;;
   extra) echo x > extra.txt ;;
+  through) echo x > in.tsv ;;
 esac
 echo copied
 EOF
@@ -41,15 +42,21 @@ chmod 755 "${T}/bin/.og/og-linux-${arch}" "${T}/bin/.og/oracle/fake/run"
 echo "fake echo" > "${T}/bin/.og/oracle/fake/prefix"
 
 bad=0
-# call LABEL WANT_RC GREP [ENV...]: run "og fake echo in.tsv out.tsv" in a
+# call LABEL WANT_RC GREP [ENV...]: run "og fake echo in.tsv OUT" in a
 # fresh task dir with ENV; WANT_RC is 0 or "fail"; GREP must match the output.
+# OUT is $CALL_OUT (out.tsv by default); $CALL_PRE names a file the task dir
+# holds before the call, besides in.tsv (a path in a subdirectory makes it).
 call() {
   local label=$1 want=$2 pattern=$3 rc=0 out
   shift 3
   rm -rf "${T}/task" "${T}/oracle-ran"
   mkdir "${T}/task"
   printf 'a\tb\n' > "${T}/task/in.tsv"
-  out=$(cd "${T}/task" && env "$@" "${T}/bin/og" fake echo in.tsv out.tsv 2>&1) || rc=$?
+  if [ -n "${CALL_PRE:-}" ]; then
+    mkdir -p "$(dirname "${T}/task/${CALL_PRE}")"
+    echo old > "${T}/task/${CALL_PRE}"
+  fi
+  out=$(cd "${T}/task" && env "$@" "${T}/bin/og" fake echo in.tsv "${CALL_OUT:-out.tsv}" 2>&1) || rc=$?
   if { [ "$want" = 0 ] && [ "$rc" -eq 0 ]; } || { [ "$want" = fail ] && [ "$rc" -ne 0 ]; }; then
     if grep -qE "$pattern" <<< "$out"; then echo "ok      ${label}"; return; fi
   fi
@@ -67,6 +74,10 @@ call "another exit code fails the call" fail 'exit code: oracle 3, og 0' OG_SHAD
 call "another stdout fails the call" fail 'stdout:' OG_SHADOW=fake FAKE_ORACLE=stdout
 call "a file only the oracle writes fails the call" fail 'files written' OG_SHADOW=fake FAKE_ORACLE=extra
 call "OG_SHADOW naming a tool with no oracle fails" fail 'holds no oracle' OG_SHADOW=nosuch
+call "an agreeing call says it agrees" 0 'og shadow \(fake\): og and the Python it replaces agree' OG_SHADOW=fake
+CALL_PRE=out.tsv call "og overwriting a file that was there fails the call" fail 'og wrote where the shadow cannot compare' OG_SHADOW=fake
+CALL_PRE=sub/keep.txt CALL_OUT=sub/out.tsv call "og writing into a directory that was there fails the call" fail 'og wrote where the shadow cannot compare.*sub/out.tsv' OG_SHADOW=fake
+call "the oracle writing through a link into the real tree fails the call" fail 'the oracle wrote into the real tree.*in.tsv' OG_SHADOW=fake FAKE_ORACLE=through
 rm -f "${T}/oracle-ran"
 out=$(cd "${T}/task" && OG_SHADOW=fake FAKE_ORACLE=byte "${T}/bin/og" fake other in.tsv out2.tsv 2>&1) || true
 if [ ! -e "${T}/oracle-ran" ] && [ "$out" = copied ]; then echo "ok      a call that is not the tool's is not shadowed"
