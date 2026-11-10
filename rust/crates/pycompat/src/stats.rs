@@ -36,8 +36,11 @@ pub enum Error {
 }
 
 impl Error {
-    /// The Python exception class (`NotANumber` has none: Python would
-    /// return a value).
+    /// The Python exception class. `NotANumber` has no Python counterpart,
+    /// because Python returns a value there: `ValueError` is this port's
+    /// own choice. The [`Display`](fmt::Display) texts are this port's
+    /// too, not Python's messages; only the class is checked against
+    /// CPython.
     pub fn exception(self) -> &'static str {
         match self {
             Error::NoData | Error::TooFewPoints => "StatisticsError",

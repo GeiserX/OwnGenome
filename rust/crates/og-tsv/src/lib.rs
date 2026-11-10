@@ -230,7 +230,10 @@ impl Iterator for Fed {
                     return Some(Ok(line));
                 }
                 Err(e) => {
-                    self.at.set(self.read + 1);
+                    // The reader has moved past the bad line: count it, so
+                    // a caller that keeps going gets the right line numbers.
+                    self.read += 1;
+                    self.at.set(self.read);
                     return Some(Err(e));
                 }
             }
@@ -532,10 +535,13 @@ mod tests {
 
     #[test]
     fn bad_input_is_an_error_with_its_line() {
-        let mut t = Options::default().read("t.tsv", io::Cursor::new(b"a\nok\n\xff\n".to_vec()));
+        let mut t =
+            Options::default().read("t.tsv", io::Cursor::new(b"a\nok\n\xff\nnext\n".to_vec()));
         let _ = t.next().unwrap().unwrap();
         let e = t.next().unwrap().unwrap_err();
         assert!(matches!(e, Error::Io { line: Some(3), .. }), "{e}");
+        // A caller that keeps going past the error keeps the right lines.
+        assert_eq!(t.next().unwrap().unwrap().line(), 4);
         let mut t = Options::default()
             .utf8(Utf8::Replace)
             .read("t.tsv", io::Cursor::new(b"a\n\xff\n".to_vec()));
