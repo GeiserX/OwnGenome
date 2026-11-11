@@ -44,15 +44,13 @@ Checks:
      home page's view of the run (overview) lists no such finding among its
      first ones and its closed lead names none; a CHIP call, a copy-number dot
      and a fact that name a closed result's gene carry its id (the CHIP chart's
-     panel of genes never does), results.json carries the closed results as
-     veil.spans, and core.js veilId(), which tags the family page's rows of a
-     child, answers each row as veil_id() does, under node.
+     panel of genes never does), and results.json carries the closed results as
+     veil.spans (the family page closes a child's places while one is closed).
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
 registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
-8 with a veil rule that tags nothing (rows, lines, facts and drawings) and one that tags every row, and
-veilId() with its gene rule or its overlap rule dropped and veilIds() keeping only the first result. A check
+8 with a veil rule that tags nothing (rows, lines, facts and drawings) and one that tags every row. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -437,48 +435,6 @@ def widget_problems():
     return out
 
 
-# Rows as the family page tags them (family-page.js): [text, chrom, pos, end], against two closed results.
-VEIL_SPANS = [["sf-kcnh2", "KCNH2", "chr7", 150960000, 150960000], ["sv-del", "KCNH2", "chr7", 150955000, 150965000],
-              ["two-hits-hla", "HLA-A", None, None, None]]
-VEIL_ROWS = [["chr7:150960000 C>T", "chr7", "150960000", None], ["chr7:150961000 G>A", "chr7", "150961000", None],
-             ["chr7:150970000 G>A", "chr7", "150970000", None], ["chr3:48211904 C>T", "chr3", "48211904", None],
-             ["KCNH2 chr7:94371020:G>A chr7:94398114:T>C", None, None, None],
-             ["G0187 chr7:150,962,000:G>A chr7:1:T>C", None, None, None], ["G0412 chr2:1:A>G", None, None, None],
-             ["chr7:61600000-159285973", "chr7", "61600000", "159285973"], ["in KCNH2.", None, None, None],
-             ["HLA-A*02:01", None, None, None], ["HLA-AB", None, None, None], ["kcnh2 lower case", None, None, None],
-             ["7:150960000", "7", 150960000, None], ["chrX:1-2", "chrX", "x", None], ["", "chr7", "150955000", "150965000"]]
-CORE_JS = os.path.join(ASSETS, "core.js")
-NODE_VEIL = ("const vm=require('vm'),fs=require('fs');const w={};"
-             "const doc={documentElement:{setAttribute(){}},addEventListener(){}};"
-             "vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8'),{window:w,document:doc});"
-             "const sp=JSON.parse(process.argv[2]);"
-             "console.log(JSON.stringify(JSON.parse(process.argv[3]).map(r=>[w.PGPUI.veilId(sp,r[0],r[1],r[2],r[3]),"
-             "w.PGPUI.veilIds(sp,r[0],r[1],r[2],r[3])])))")
-
-
-def node_veil(js_path):
-    """[veilId(), veilIds()] of core.js at JS_PATH for each of VEIL_ROWS, under node, or the error."""
-    node = shutil.which("node")
-    if not node:
-        return "no node"
-    p = subprocess.run([node, "-e", NODE_VEIL, js_path, json.dumps(VEIL_SPANS), json.dumps(VEIL_ROWS)],
-                       capture_output=True, text=True)
-    return json.loads(p.stdout) if p.returncode == 0 else p.stderr
-
-
-def veil_js_problems(js_path):
-    """What veilId() of core.js answers differently from veil_id() on VEIL_ROWS, and veilIds() from veil_id() taken
-    one closed result at a time (every result the row belongs to)."""
-    spans = [tuple(x) for x in VEIL_SPANS]
-    want = [[live_results.veil_id(spans, *r), [s_[0] for s_ in spans if live_results.veil_id([s_], *r)]] for r in VEIL_ROWS]
-    got = node_veil(js_path)
-    if got != want:
-        return [f"veilId, veilIds {got} != veil_id {want}"]
-    if len({w[0] for w in want}) < 4 or not any(len(w[1]) > 1 for w in want):
-        return [f"the rows exercise too few answers: {want}"]
-    return []
-
-
 def overview_problems():
     """What is wrong with the home page's view of a child's run (overview): a finding that names a closed result
     (a symptom ranking of its gene) is listed among the first findings, or the closed lead still names it."""
@@ -599,20 +555,6 @@ def main():
         bad = widget_problems()
         check("8. a CHIP call, a copy-number dot and a fact that name a closed result's gene carry its id, the CHIP "
               "chart's gene panel none, and results.json carries the closed results as veil.spans", not bad, bad)
-        check("8. node is on the PATH (ubuntu-latest has it)", shutil.which("node") is not None)
-        bad = veil_js_problems(CORE_JS)
-        check("8. core.js veilId() tags each family-page row as veil_id() does, and veilIds() with every result "
-              "veil_id() finds one result at a time (under node)", not bad, bad)
-        with open(CORE_JS) as f:
-            core = f.read()
-        for a, z, desc in (("if (s[1] && words[s[1]]) { return s[0]; }", "", "veilId() without its gene rule"),
-                           ("l[1] <= s[4] && l[2] >= s[3]", "false", "veilId() without its overlap rule"),
-                           (".map(function (s) { return s[0]; });\n  }", ".map(function (s) { return s[0]; }).slice(0, 1);\n  }",
-                            "veilIds() keeping only the first result")):
-            planted = os.path.join(work, "core-planted.js")
-            with open(planted, "w") as f:
-                f.write(core.replace(a, z))
-            control(desc, a in core and not veil_js_problems(planted))
         bad = veil_problems(*tagged(d3))
         check("8. the planted ClinVar hit's row, viewer link, tick and star bar carry its secondary finding's id, the "
               "deletion's span its own, every other card's row of the gene and the symptom ranking's finding one of them, "

@@ -219,55 +219,8 @@
     add(v, b);
     return v;
   }
-  // The id of the closed result a row belongs to, or null: bin/live_results.py veil_id() word for word, for the
-  // rows only the family page holds (a child's de novo and compound-het candidates). spans: results.json's
-  // veil.spans, [[id, gene, chrom, start, end]]. text: what the row shows (its gene names; its loci are read
-  // too); chrom, pos and end its own position. tests/test_live_results.py runs it under node against veil_id().
-  var LOCUS_RE = /(?<![A-Za-z0-9])(?:chr)?([0-9]{1,2}|X|Y|M|MT):([0-9][0-9,]*)(?:-([0-9][0-9,]*))?/g;
-  function loci(text) {
-    var out = [], m;
-    LOCUS_RE.lastIndex = 0;
-    while ((m = LOCUS_RE.exec(String(text || ''))) !== null) {
-      var a = parseInt(m[2].replace(/,/g, ''), 10), b = m[3] ? parseInt(m[3].replace(/,/g, ''), 10) : a;
-      out.push(['chr' + m[1], Math.min(a, b), Math.max(a, b)]);
-    }
-    return out;
-  }
-  function veilId(spans, text, chrom, pos, end) {
-    if (!spans || !spans.length) { return null; }
-    var locs = [];
-    var p = parseInt(pos, 10), e = end === undefined || end === null || end === '' ? p : parseInt(end, 10);
-    if (chrom && pos !== undefined && pos !== null && /^-?\d+$/.test(String(pos).trim()) &&
-        (e === p || /^-?\d+$/.test(String(end).trim()))) {
-      var c = String(chrom);
-      locs.push([c.indexOf('chr') === 0 ? c : 'chr' + c, Math.min(p, e), Math.max(p, e)]);
-    }
-    locs = locs.concat(loci(text));
-    var words = {};
-    (String(text || '').toUpperCase().match(/[A-Z0-9][A-Z0-9._-]*/g) || []).forEach(function (w) {
-      words[w] = true;
-      words[w.replace(/[._-]+$/, '')] = true;  // "in KCNH2." names KCNH2; HLA-A stays whole
-    });
-    var i, s;
-    for (i = 0; i < spans.length; i++) {
-      s = spans[i];
-      if (s[2] && locs.some(function (l) { return l[0] === s[2] && l[1] === s[3] && l[2] === s[4]; })) { return s[0]; }
-    }
-    for (i = 0; i < spans.length; i++) {
-      s = spans[i];
-      if (s[1] && words[s[1]]) { return s[0]; }
-      if (s[2] && locs.some(function (l) { return l[0] === s[2] && l[1] <= s[4] && l[2] >= s[3]; })) { return s[0]; }
-    }
-    return null;
-  }
-  // Every closed result a row belongs to, by the same rule taken one result at a time: a compound-het pair can
-  // name two, and a painted stretch can hold two, so the family page keeps such a row closed until each is opened.
-  function veilIds(spans, text, chrom, pos, end) {
-    return (spans || []).filter(function (s) { return veilId([s], text, chrom, pos, end); }).map(function (s) { return s[0]; });
-  }
-
   window.PGPUI = { el: el, svg: svg, add: add, getJSON: getJSON, avatar: avatar, day: day, caveat: caveat,
     facts: facts, table: table, tablist: tablist, firstSentence: firstSentence, level: level, findingLevel: findingLevel, glyph: glyph,
     karyogram: karyogram, locus: locus, LEVEL_WORDS: LEVEL_WORDS, LEVEL_SHORT: LEVEL_SHORT, LEVEL_ORDER: LEVEL_ORDER,
-    hm: hm, dm: dm, hours: hours, veil: veil, veilId: veilId, veilIds: veilIds };
+    hm: hm, dm: dm, hours: hours, veil: veil };
 }());

@@ -1211,10 +1211,9 @@ def veil(summary, found, chapters, lead_parts=()):
     id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
     rank the gene) and the lead's segments that name one (lead: one per segment of LEAD_PARTS, the "act"
     names left out: the page closes those itself), each card's facts (facts: card -> one per fact) and the items
-    of its drawing (widget: card -> one per CHIP call or copy-number dot). spans is closable() itself, so the
-    family page (assets/live/family-page.js) can tag its own rows of a child, the de novo and compound-het
-    candidates, by this rule (core.js veilId(), checked against veil_id() under node). Empty when nothing can
-    be closed."""
+    of its drawing (widget: card -> one per CHIP call or copy-number dot). spans is closable() itself: the family
+    page (assets/live/family-page.js) reads which results are closed from it, and closes every place of the child
+    that could carry one while one is. Empty when nothing can be closed."""
     spans = closable(found)
     if not spans:
         return {}

@@ -7,9 +7,8 @@
 // members side by side. It draws what the steps wrote and computes nothing about genetics. Text through textContent,
 // the drawing through createElementNS; images from this server only.
 // A child's results to act on stay closed here as on the child's own page (person.js): each child's results.json
-// gives the closed results (veil.spans), and a row of the child that names one (a de novo or compound-het
-// candidate, a side-by-side row) stays closed until that result is opened on purpose here; while a stretch
-// painted from a grandparent lies over one, the child's painting shows each stretch's parent only.
+// gives the closed results (veil.spans), and while one is closed every place of this page that could carry one
+// closes for that child, the same whichever result it is (the veil below).
 (function () {
   'use strict';
   var U = window.PGPUI;
@@ -55,6 +54,7 @@
     out.push([seq + ' genome' + (seq === 1 ? '' : 's') + ' of this family are read together here. ', false]);
     (st.couples || []).forEach(function (c) {
       if (!c.screened) { out.push([c.a + ' and ' + c.b + ' are not screened as a couple yet. ', false]); return; }
+      if (coupleShut(f, c).length) { out.push([c.a + ' and ' + c.b + '’s carrier screen stays closed in chapter III. ', false]); return; }
       if (c.shared) { out.push([c.a + ' and ' + c.b + ' both carry a change in ' + c.shared + ' gene' + (c.shared > 1 ? 's' : '') + ': chapter III gives the chance per pregnancy for each. ', true]); }
       else { out.push([c.a + ' and ' + c.b + ' share no carrier gene in what the screen sees; ', false], ['it does not see everything. ', false]); }
       if (c.x_linked) { out.push([c.x_linked + ' X-linked finding' + (c.x_linked > 1 ? 's' : '') + ' bear on sons. ', true]); }
@@ -76,14 +76,21 @@
 
   // --- the veil ---------------------------------------------------------------------------------------
   // What this page knows of each child's results: { status: 'pending', 'known' or 'failed', spans, acts }. A child
-  // with no run here, or whose results.json has not answered or could not be read, cannot say which rows name a
-  // result to act on, so every row of theirs that could stays closed (UNKNOWN) until opened on purpose.
-  // Opened results are kept for the life of this page, as on the child's page: a reload closes them again. They
-  // are kept per child and per run (two children can carry the same result, under the same id).
+  // with no run here, or whose results.json has not answered or could not be read, cannot say whether a result to
+  // act on is closed (UNKNOWN).
+  // What the page shows of a child never depends on which result is closed or where it lies: while a child has any
+  // result to act on still closed here, or while the page cannot tell, every place that could carry one closes for
+  // that child in the same way, with one box each and the same words whatever the result. The places: the
+  // painting's grandparents, the map as an image, the de novo and compound-het rows, the child's medicines and HLA
+  // cells of the side by side, and the carrier screen of a couple the child is part of. A known result opens with
+  // its own click, from any of those boxes; the places open once the last one is. While the page cannot tell, each
+  // box opens only its own place. Opened results are kept for the life of this page, as on the child's page: a
+  // reload closes them again. They are kept per child and per run (two children can carry the same result id).
   var UNKNOWN = '?';
   var GENE_GROUPS = { Medicines: true, HLA: true };  // the side-by-side groups whose rows name a gene
-  var kids = {}, opened = {}, openedAll = {}, mapShown = {}, last = null;
+  var kids = {}, opened = {}, last = null;
   function openKey(child, id) { return (kids[child] && kids[child].url) + '|' + child + '|' + id; }
+  function isChild(f, s) { return (f.state.children || []).some(function (c) { return c.child === s; }); }
   function loadKids(f) {
     (f.state.children || []).forEach(function (c) {
       var url = memberUrl(f, c.child);
@@ -100,7 +107,8 @@
         // Results the server could not build come back without their findings: as unreadable as no answer.
         var usable = !!(r && Array.isArray(r.findings));
         var acts = usable ? r.findings.filter(function (x) { return x.level === 'act'; }).map(function (x) { return x.id; }) : [];
-        var next = usable ? { status: 'known', url: url, spans: v.spans || null, acts: acts } : { status: 'failed', url: url };
+        var next = usable ? { status: 'known', url: url, spans: Array.isArray(v.spans) ? v.spans : null, acts: acts }
+          : { status: 'failed', url: url };
         // An answer that cannot be read keeps what was known: the page never opens on a failed request.
         if (!usable && cur.status === 'known') { return; }
         var key = JSON.stringify([next.status, next.spans, next.acts]);
@@ -116,47 +124,38 @@
       });
     });
   }
-  // The closed results a row of CHILD belongs to: their ids, [UNKNOWN] when this page cannot tell, or [].
-  // COORDS: the row has a position and no gene name (a de novo candidate, a stretch). A closed result known by its
-  // gene alone (two changes in one gene, with no position) could sit at that position, and only the gene would
-  // tell: such a row stays closed with every result of that kind too.
-  function tagOf(child, text, chrom, pos, end, coords) {
+  // The results of CHILD still closed, as the place BOX sees them: their ids, [UNKNOWN] while this page cannot read
+  // them (until BOX's own button opens BOX), or [] once every one is opened. Results with act findings but no
+  // veil.spans cannot say which they are: UNKNOWN too.
+  function shutOf(child, box) {
     var k = kids[child];
-    if (!k || k.status !== 'known') { return [UNKNOWN]; }
-    if (!k.spans) { return k.acts.length ? [UNKNOWN] : []; }  // results without the tags: cannot tell
-    var ids = U.veilIds(k.spans, text, chrom, pos, end);
-    if (coords) { k.spans.forEach(function (s) { if (!s[2] && ids.indexOf(s[0]) < 0) { ids.push(s[0]); } }); }
-    return ids;
-  }
-  // The results of TAGS still closed for CHILD: a row stays closed while one of them is.
-  function stillClosed(child, tags) {
-    return tags.filter(function (t) { return t === UNKNOWN ? !openedAll[child] : !opened[openKey(child, t)]; });
-  }
-  // The same for a whole drawing of CHILD (its painting, its map as an image): while this page cannot read the
-  // child's results, only the drawing's own button (KEY) opens it, never "Show the rows" of a table.
-  function drawingClosed(child, tags, key) {
-    return tags.filter(function (t) { return t === UNKNOWN ? !mapShown[openKey(child, key)] : !opened[openKey(child, t)]; });
-  }
-  // The rows of CHILD split by the veil: { open: rows, closed: [the still closed results of each closed row] }.
-  function veiled(child, rows, tagFn) {
-    var out = { open: [], closed: [] };
-    rows.forEach(function (r) {
-      var t = stillClosed(child, tagFn(r));
-      if (t.length) { out.closed.push(t); } else { out.open.push(r); }
-    });
+    if (!k || k.status !== 'known' || (!k.spans && k.acts.length)) {
+      return opened[openKey(child, 'box:' + box)] ? [] : [UNKNOWN];
+    }
+    var out = [];
+    (k.spans || []).forEach(function (s) { if (!opened[openKey(child, s[0])] && out.indexOf(s[0]) < 0) { out.push(s[0]); } });
     return out;
   }
-  // The closed box under a table of CHILD: how many rows stay closed, and one button that opens one result.
-  function veilBox(child, closed, what, whats) {
-    if (!closed.length) { return null; }
-    var n = closed.length === 1 ? 'One ' + what + ' stays' : closed.length + ' ' + whats + ' stay';
-    var first = closed[0][0];
-    if (first === UNKNOWN) {
-      return U.veil(n + ' closed: this page cannot read ' + child + '’s results yet, so it cannot tell which ' + whats +
-        ' name a result to act on in adult life.', 'Show the ' + whats, function () { openedAll[child] = true; redraw(); });
-    }
-    return U.veil(n + ' closed with the result to act on in adult life ' + (closed.length === 1 ? 'it belongs' : 'they belong') +
-      ' to, until that result is opened.', null, function () { opened[openKey(child, first)] = true; redraw(); });
+  // The closed box of the place BOX of CHILD: WHAT says what stays closed; one button opens one result (BUTTON
+  // while the page cannot read the child's results, and then it opens this place only).
+  function veilBox(child, shut, box, what, button) {
+    if (!shut.length) { return null; }
+    var v = shut[0] === UNKNOWN
+      ? U.veil(what + ': closed, as this page cannot read ' + child + '’s results yet, so it cannot tell whether a ' +
+        'result to act on in adult life is among them.', button, function () { opened[openKey(child, 'box:' + box)] = true; redraw(); })
+      : U.veil(what + ': closed while ' + child + ' has a result to act on in adult life that is closed here.', null,
+        function () { opened[openKey(child, shut[0])] = true; redraw(); });
+    v.setAttribute('data-veil-child', child);
+    v.setAttribute('data-veil-box', box);
+    return v;
+  }
+
+  // A couple's carrier screen names the partners' carrier genes and their positions, so it closes while a partner
+  // who is a child of this family has a result still closed: [[that partner, their closed results]].
+  function coupleShut(f, c) {
+    return [c.a, c.b].filter(function (m) { return isChild(f, m); })
+      .map(function (m) { return [m, shutOf(m, 'couple:' + c.a + ' ' + c.b)]; })
+      .filter(function (x) { return x[1].length; });
   }
 
   // The pedigree drawn from the layout the server gives: a sequenced person with a run here is a link.
@@ -259,6 +258,16 @@
       if (!c.screened) {
         p.textContent = c.a + ' and ' + c.b + ': not screened yet (step 39).';
         add(s, p);
+        return;
+      }
+      var cs = coupleShut(f, c);
+      if (cs.length) {
+        // The whole screen closes: its counts, its boxes, its table and its report.
+        p.textContent = c.a + ' and ' + c.b + ': the carrier screen stays closed here.';
+        add(s, p);
+        cs.forEach(function (x) {
+          add(s, veilBox(x[0], x[1], 'couple:' + c.a + ' ' + c.b, 'The carrier screen of ' + c.a + ' and ' + c.b, 'Show the screen'));
+        });
         return;
       }
       var rows = (f.couples || {})[c.a + ' ' + c.b] || [];
@@ -377,15 +386,12 @@
   var SIDE = { paternal: 'father', maternal: 'mother' };
   function painting(f, child, all) {
     // A stretch drawn from a grandparent says which grandparent's copy the child got there, so one over a
-    // closed result says whether the child got it. A stretch from a parent alone says nothing. Closing only that
-    // stretch would point at the closed result (a hatch, a gap in the table), so while one is closed every stretch
-    // of this child is drawn from its parent alone, and no grandparent, basis or closed mark is shown.
-    var shut = [], pk = openKey(child, 'paint');
-    all.forEach(function (r) {
-      if (!r.ancestor || r.ancestor === '.') { return; }
-      drawingClosed(child, tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end, true), 'paint')
-        .forEach(function (x) { if (shut.indexOf(x) < 0) { shut.push(x); } });
-    });
+    // closed result says whether the child got it. A stretch from a parent alone says nothing. Closing only the
+    // stretches over a result, or the painting only when one lies over it, would point at where the result lies, so
+    // while the child has any result still closed every stretch is drawn and listed from its parent alone, with no
+    // grandparent, basis or closed mark, behind one box.
+    var anc = all.some(function (r) { return r.ancestor && r.ancestor !== '.'; });
+    var shut = anc ? shutOf(child, 'paint') : [];
     var rows = !shut.length ? all : all.map(function (r) {
       return { side: r.side, parent: r.parent, chrom: r.chrom, start: r.start, end: r.end, sites: r.sites,
         discordant: r.discordant, ancestor: '.', basis: 'parent' };
@@ -434,16 +440,8 @@
     });
     add(leg, el('span', { 'class': 'dim' }, ' Grey: no stretch called (no informative site, a gap of the reference).'));
     add(fig, leg);
-    if (shut.length) {
-      // One box for the whole painting: a count of closed stretches would say how many sit over the result.
-      add(fig, shut[0] === UNKNOWN
-        ? U.veil('The grandparents of ' + child + '’s stretches stay hidden: this page cannot read ' + child + '’s results yet, ' +
-          'so it cannot tell which stretch lies over a result to act on in adult life. Each stretch shows its parent only.',
-          'Show the grandparents', function () { mapShown[pk] = true; redraw(); })
-        : U.veil('The grandparents of ' + child + '’s stretches stay hidden while a result to act on in adult life is ' +
-          'closed: they could show which copy the child got there. Each stretch shows its parent only.', null,
-          function () { opened[openKey(child, shut[0])] = true; redraw(); }));
-    }
+    // One box for the whole painting: each stretch shows its parent only.
+    add(fig, veilBox(child, shut, 'paint', 'The grandparents of ' + child + '’s stretches', 'Show the grandparents'));
     var d = el('details', { 'class': 'w-fallback' });
     add(d, el('summary', {}, 'Every stretch (' + rows.length + ')'));
     add(d, U.table({ columns: ['Copy', 'Chromosome', 'Start', 'End', 'From', 'Sites', 'Discordant', 'Basis'],
@@ -474,15 +472,11 @@
       if (rows && rows.length) {
         add(d, painting(f, c.child, rows));
       } else if (c.segments) {
-        // The drawing as an image cannot close one stretch: while this child has a result to act on that is
-        // closed (or this page cannot tell), it stays closed whole.
-        var k = kids[c.child] || {};
-        var all = k.status !== 'known' || (!k.spans && k.acts.length) ? [UNKNOWN] : (k.spans || []).map(function (s) { return s[0]; });
-        var shut = drawingClosed(c.child, all, 'map'), mk = openKey(c.child, 'map');
-        // "Show the map" opens the map only: each result keeps its own closed rows until it is opened.
-        if (shut.length && !mapShown[mk]) {
-          add(d, U.veil('The chromosome map of ' + c.child + ' stays closed while a result to act on in adult life is: ' +
-            'it could show which copy the child got there.', 'Show the map', function () { mapShown[mk] = true; redraw(); }));
+        // The drawing as an image is coloured by grandparent too, and cannot close one stretch: it stays closed
+        // whole, as the painting does.
+        var shut = shutOf(c.child, 'map');
+        if (shut.length) {
+          add(d, veilBox(c.child, shut, 'map', 'The chromosome map of ' + c.child + ' and its colours', 'Show the map'));
         } else {
           add(d, el('img', { src: c.segments, alt: 'Chromosome map of ' + c.child, 'class': 'segments' }));
         }
@@ -492,24 +486,31 @@
       var dn = (f.de_novo || []).filter(function (r) { return r.child === c.child; });
       add(d, el('h3', {}, 'De novo candidates'));
       if (dn.length) {
-        var dv = veiled(c.child, dn, function (r) { return tagOf(c.child, r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.chrom, r.pos, null, true); });
         add(d, el('p', { 'class': 'dim' }, 'In the child and in neither parent. Most candidates in a genome are genotype errors: ' +
           'check the reads before reading anything into one.'));
-        add(d, U.table({ columns: ['Variant', 'Child', 'Father', 'Mother', 'Child DP / GQ', 'Allele balance', 'Quality'],
-          rows: dv.open.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
-            r.mother_gt, r.child_dp + ' / ' + r.child_gq, r.child_ab, r.quality]; }) }, 8));
-        add(d, veilBox(c.child, dv.closed, 'row', 'rows'));
+        // Every row closes while a result is: a row closed on its own would say where the result lies.
+        var dshut = shutOf(c.child, 'denovo');
+        if (dshut.length) {
+          add(d, veilBox(c.child, dshut, 'denovo', 'The de novo candidates of ' + c.child, 'Show the rows'));
+        } else {
+          add(d, U.table({ columns: ['Variant', 'Child', 'Father', 'Mother', 'Child DP / GQ', 'Allele balance', 'Quality'],
+            rows: dn.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
+              r.mother_gt, r.child_dp + ' / ' + r.child_gq, r.child_ab, r.quality]; }) }, 8));
+        }
       } else {
         add(d, el('p', { 'class': 'dim', 'data-trio': 'de_novo' }, empty(c.child, 'de_novo', 'de_novo.tsv')));
       }
       var ch = (f.compound_het || []).filter(function (r) { return r.child === c.child; });
       add(d, el('h3', {}, 'Compound-het pairs'));
       if (ch.length) {
-        var cv = veiled(c.child, ch, function (r) { return tagOf(c.child, [r.gene, r.variant_a, r.variant_b].join(' ')); });
         add(d, el('p', { 'class': 'dim' }, 'Two candidate variants in one gene, in trans first: one from each parent.'));
-        add(d, U.table({ columns: ['Gene', 'Phase', 'Variant A', 'From', 'Variant B', 'From'],
-          rows: cv.open.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
-        add(d, veilBox(c.child, cv.closed, 'row', 'rows'));
+        var hshut = shutOf(c.child, 'het');
+        if (hshut.length) {
+          add(d, veilBox(c.child, hshut, 'het', 'The compound-het pairs of ' + c.child, 'Show the rows'));
+        } else {
+          add(d, U.table({ columns: ['Gene', 'Phase', 'Variant A', 'From', 'Variant B', 'From'],
+            rows: ch.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
+        }
       } else {
         add(d, el('p', { 'class': 'dim', 'data-trio': 'compound_het' }, empty(c.child, 'compound_het', 'compound_het.tsv')));
       }
@@ -525,26 +526,18 @@
     if (!sb || !sb.rows.length) { add(s, el('p', { 'class': 'dim' }, 'No member has a summary yet, or no summary lists these results.')); return s; }
     add(s, el('p', { 'class': 'dim' }, 'Each member’s own report, one column per person: CYP2D6, the CPIC genes ' +
       '(phenotypes in CPIC’s words), HLA, the haplogroups and the blood groups.'));
-    // A child's value that names a closed result (a CPIC gene that is also the gene of a result to act on, RYR1 or
-    // CACNA1S) closes its whole row, as the child's own page closes that row of its medicines card: a closed cell
-    // under the gene's name would say which gene it is. While this page cannot read a child's results, every row
-    // that names a gene (the medicines and HLA rows) stays closed; the haplogroups and blood groups name none.
-    var kidsHere = (f.state.children || []).map(function (c) { return c.child; });
-    var closedBy = {}, shown = [];
-    sb.rows.forEach(function (r) {
-      var open = true;
-      sb.members.forEach(function (m, i) {
-        if (kidsHere.indexOf(m) < 0) { return; }
-        var t = stillClosed(m, tagOf(m, r.label + ' ' + (r.values[i] || '')));
-        if (t[0] === UNKNOWN && !GENE_GROUPS[r.group]) { return; }
-        if (t.length) { (closedBy[m] = closedBy[m] || []).push(t); open = false; }
-      });
-      if (open) { shown.push(r); }
-    });
+    // A child's medicines and HLA cells name genes (a CPIC gene can be the gene of a result to act on, RYR1 or
+    // CACNA1S). Closing only the row of a closed result's gene would leave a gap in a list everyone knows, so
+    // while a child has any result still closed every medicines and HLA cell of the child's column reads "closed":
+    // every row stays, with the parents' values. The haplogroups and blood groups name no gene.
+    var shutBy = {};
+    sb.members.forEach(function (m) { if (isChild(f, m)) { shutBy[m] = shutOf(m, 'side'); } });
     // A value from a section older than its input (state "stale") says so in its own cell.
-    var group = null, rows = [], old = 0;
-    shown.forEach(function (r) {
+    var group = null, rows = [], old = 0, closedCells = {};
+    sb.rows.forEach(function (r) {
       rows.push([r.group === group ? '' : r.group, r.label].concat(r.values.map(function (v, i) {
+        var m = sb.members[i];
+        if (GENE_GROUPS[r.group] && shutBy[m] && shutBy[m].length) { closedCells[m] = true; return 'closed'; }
         if (!(r.stale || [])[i]) { return v; }
         old++;
         return v + STALE;
@@ -553,8 +546,7 @@
     });
     add(s, U.table({ columns: ['', 'Gene or system'].concat(sb.members), rows: rows }, 14));
     sb.members.forEach(function (m) {
-      var box = closedBy[m] && veilBox(m, closedBy[m], 'row', 'rows');
-      if (box) { box.setAttribute('data-veil-child', m); add(s, box); }
+      if (closedCells[m]) { add(s, veilBox(m, shutBy[m], 'side', 'The medicines and HLA cells of ' + m, 'Show the cells')); }
     });
     if (old) {
       add(s, el('p', { 'class': 'dim', 'data-stale': String(old) }, 'Marked' + STALE + ': the member’s result file is from an ' +
@@ -572,7 +564,12 @@
     }
     if (f.state.reports.length) {
       var ul = el('ul', { 'class': 'lines' });
-      f.state.reports.forEach(function (r) { add(ul, add(el('li', {}), el('a', { href: r.url }, r.name))); });
+      // A couple report of a screen that stays closed is left out with it.
+      var shutReports = (f.state.couples || []).filter(function (c) { return c.report && coupleShut(f, c).length; })
+        .map(function (c) { return c.report; });
+      f.state.reports.forEach(function (r) {
+        if (shutReports.indexOf(r.url) < 0) { add(ul, add(el('li', {}), el('a', { href: r.url }, r.name))); }
+      });
       add(s, ul);
     }
     return s;
