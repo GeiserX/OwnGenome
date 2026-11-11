@@ -929,7 +929,10 @@ fn check_outputs(
 
 /// `os.walk(root)` as the observation uses it: the files of each folder in
 /// name order, then its subfolders in name order (not `work`, `nf-work`,
-/// `.nextflow`, nor a link), three levels below the root at most.
+/// `.nextflow`, nor a link), four levels below the root at most. The Python
+/// stops below a folder whose `relpath(folder, root)` holds three
+/// separators; the root (`.`) and its children both hold none, so that is
+/// the folder four levels down, and its files are still listed.
 fn walk(root: &str, depth: usize, f: &mut dyn FnMut(&str)) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
@@ -948,7 +951,7 @@ fn walk(root: &str, depth: usize, f: &mut dyn FnMut(&str)) {
     for name in &files {
         f(&join(root, name));
     }
-    if depth >= 3 {
+    if depth >= 4 {
         return;
     }
     dirs.retain(|(d, _)| !matches!(d.as_str(), "work" | "nf-work" | ".nextflow"));
@@ -1153,5 +1156,28 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
         assert_eq!(short, None);
         assert_eq!(full.as_deref(), Some("scripts/11-roh.sh"));
+    }
+
+    #[test]
+    fn the_walk_lists_files_four_folders_down_and_no_deeper() {
+        let dir = std::env::temp_dir().join(format!("og-contract-walk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("S1/a/b/c/d/e")).unwrap();
+        for p in [
+            "S1/top.tsv",
+            "S1/a/1.tsv",
+            "S1/a/b/c/3.tsv",
+            "S1/a/b/c/d/4.tsv",
+            "S1/a/b/c/d/e/5.tsv",
+        ] {
+            fs::write(dir.join(p), "x\n").unwrap();
+        }
+        let mut seen = Vec::new();
+        walk(dir.join("S1").to_str().unwrap(), 0, &mut |p: &str| {
+            seen.push(p.rsplit('/').next().unwrap_or(p).to_string());
+        });
+        fs::remove_dir_all(&dir).unwrap();
+        // What os.walk with the oracle's depth cut lists, in its order.
+        assert_eq!(seen, ["top.tsv", "1.tsv", "3.tsv", "4.tsv"]);
     }
 }
