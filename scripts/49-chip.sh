@@ -7,7 +7,7 @@
 # each on its MANE Select transcript from Ensembl's gene annotation (setup.sh
 # --chip-data). gnomAD's AF-only germline resource and the panel of normals of
 # step 29 are used when they are in GENOME_DIR/somatic/. bcftools csq names
-# each change on that transcript, and bin/chip_report.py keeps the changes in
+# each change on that transcript, and og chip (bin/og) keeps the changes in
 # the table's CHIP classes, leaves out the ones whose VAF looks inherited (35%
 # and up) and states the detection limit at the sample's depth over the same
 # exons. The same commands run in the Nextflow CHIP_* processes.
@@ -59,10 +59,10 @@ mkdir -p "$OUTDIR"
 rm -f "${P}.tsv" "${P}_depth.tsv"
 # Containers see GENOME_DIR only: the table is copied beside the outputs.
 cp "$GENES" "${OUTDIR}/chip_genes.tsv"
-PY=(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" python3 /pgp-bin/chip_report.py)
+OG=(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" /pgp-bin/og chip)
 
 echo "[1/4] The CHIP genes' MANE Select transcripts and coding exons (Ensembl ${ENSEMBL_GFF_RELEASE})..."
-"${PY[@]}" prepare --gff "$(cpath "$GFF")" --genes "$(cpath "${OUTDIR}/chip_genes.tsv")" --fai "${REF_FASTA_C}.fai" \
+"${OG[@]}" prepare --gff "$(cpath "$GFF")" --genes "$(cpath "${OUTDIR}/chip_genes.tsv")" --fai "${REF_FASTA_C}.fai" \
   --out-gff "$(cpath "${P}.gff3")" --out-bed "$(cpath "${P}.bed")"
 [ -s "${P}.bed" ] || { echo "ERROR: none of the CHIP genes is on a contig of ${REF_FASTA}." >&2; exit 1; }
 
@@ -100,7 +100,7 @@ run_in --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
   "$(cpath "${P}_calls.tsv")" "$(cpath "$BAM")" "$(cpath "${P}_pileup.tsv")"
 
 echo "[4/4] CHIP classes, germline exclusion and detection limit..."
-"${PY[@]}" report --genes "$(cpath "${OUTDIR}/chip_genes.tsv")" --gff "$(cpath "${P}.gff3")" --bed "$(cpath "${P}.bed")" \
+"${OG[@]}" report --genes "$(cpath "${OUTDIR}/chip_genes.tsv")" --gff "$(cpath "${P}.gff3")" --bed "$(cpath "${P}.bed")" \
   --calls "$(cpath "${P}_calls.tsv")" --depth "$(cpath "${P}_pileup.tsv")" --sample "$SAMPLE" \
   --out "$(cpath "${P}.tsv")" --depth-out "$(cpath "${P}_depth.tsv")"
 rm -f "${P}_pileup.tsv" "${P}_f1r2.tar.gz" "${P}_orientation.tar.gz"

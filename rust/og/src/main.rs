@@ -28,6 +28,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
        og str motif [args]
+       og chip prepare|report|check-table [args]
        og dev parity-compare KIND ORACLE NEW
        og version
        og --tree-hash
@@ -124,6 +125,15 @@ fn main() -> ExitCode {
             None => ExitCode::from(og_pgx::main(rest)),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
+        "chip" => match rest.first() {
+            Some(verb) => ExitCode::from(og_chip::cli(
+                verb,
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
+            None => usage_error("the following arguments are required: chip tool"),
+        },
         "str" => match rest.first().map(String::as_str) {
             #[cfg(feature = "bam")]
             Some("motif") => ExitCode::from(og_bam::motif::cli(

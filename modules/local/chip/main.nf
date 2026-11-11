@@ -11,8 +11,9 @@
     CHIP_ANNOTATE  bcftools csq names each change on its transcript, and
                    bcftools mpileup counts the depth over the BED
     CHIP_REPORT    <id>_chip.tsv (each protein change with its status) and
-                   <id>_chip_depth.tsv (depth and detection limit per gene),
-                   bin/chip_report.py
+                   <id>_chip_depth.tsv (depth and detection limit per gene)
+
+    CHIP_PREPARE and CHIP_REPORT run og chip (the Rust binary, bin/og).
 
     Runs for the samples with a BAM only; main.nf logs the samples it skips.
 
@@ -38,7 +39,7 @@ process CHIP_PREPARE {
 
     script:
     """
-    chip_report.py prepare --gff ${gff} --genes ${genes} --fai ${reference_fai} --out-gff chip.gff3 --out-bed chip.bed
+    og chip prepare --gff ${gff} --genes ${genes} --fai ${reference_fai} --out-gff chip.gff3 --out-bed chip.bed
     if [ ! -s chip.bed ]; then
         echo "ERROR: none of the CHIP genes is on a contig of the reference." >&2
         exit 1
@@ -158,7 +159,7 @@ process CHIP_REPORT {
 
     script:
     """
-    chip_report.py report --genes ${genes} --gff ${gff} --bed ${bed} --calls ${calls} --depth ${pileup} \\
+    og chip report --genes ${genes} --gff ${gff} --bed ${bed} --calls ${calls} --depth ${pileup} \\
         --sample ${meta.id} --out ${meta.id}_chip.tsv --depth-out ${meta.id}_chip_depth.tsv
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

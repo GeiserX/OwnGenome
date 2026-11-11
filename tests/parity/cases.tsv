@@ -157,3 +157,21 @@ pgx-mito-merge	missing-outside	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/hom.vc
 pgx-mito-merge	short	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/short.vcf	--jar pharmcat.jar --mito short.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
 pgx-mito-merge	bad-pos	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/badpos.vcf	--jar pharmcat.jar --mito badpos.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
 pgx-mito-merge	bad-depth	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/background.vcf,pgx-mito-merge/bad.depth	--jar pharmcat.jar --mito background.vcf --depth bad.depth --out out.tsv	-	bytes	PHARMCAT_IMAGE
+chip	prepare-small	chip/small.gff3,chip/genes5.tsv,chip/ref.fai	prepare --genes genes5.tsv --fai ref.fai --out-gff o.gff3 --out-bed o.bed --gff small.gff3	o.gff3,o.bed	bytes	PYTHON_IMAGE
+chip	prepare-gz	chip/small.gff3.gz,chip/genes5.tsv,chip/ref.fai	prepare --genes genes5.tsv --fai ref.fai --out-gff o.gff3 --out-bed o.bed --gff small.gff3.gz	o.gff3,o.bed	bytes	PYTHON_IMAGE
+chip	prepare-crlf	chip/crlf.gff3,chip/genes5.tsv,chip/ref.fai	prepare --genes genes5.tsv --fai ref.fai --out-gff o.gff3 --out-bed o.bed --gff crlf.gff3	o.gff3,o.bed	bytes	PYTHON_IMAGE
+chip	prepare-no-mane	chip/nomane.gff3,chip/genes5.tsv,chip/ref.fai	prepare --genes genes5.tsv --fai ref.fai --out-gff o.gff3 --out-bed o.bed --gff nomane.gff3	-	bytes	PYTHON_IMAGE
+chip	prepare-table-genes-missing	chip/small.gff3,chip/genes.tsv,chip/ref.fai	prepare --genes genes.tsv --fai ref.fai --out-gff o.gff3 --out-bed o.bed --gff small.gff3	-	bytes	PYTHON_IMAGE
+chip	prepare-missing-gff	chip/genes5.tsv,chip/ref.fai	prepare --genes genes5.tsv --fai ref.fai --out-gff o.gff3 --out-bed o.bed --gff none.gff3.gz	-	bytes	PYTHON_IMAGE
+chip	report-calls	chip/chip.gff3,chip/chip.bed,chip/genes5.tsv,chip/calls.tsv,chip/depth.tsv	report --gff chip.gff3 --bed chip.bed --sample S --out S_chip.tsv --depth-out S_chip_depth.tsv --genes genes5.tsv --calls calls.tsv --depth depth.tsv	S_chip.tsv,S_chip_depth.tsv	bytes	PYTHON_IMAGE
+chip	report-table	chip/chip.gff3,chip/chip.bed,chip/genes.tsv,chip/calls.tsv,chip/depth.tsv	report --gff chip.gff3 --bed chip.bed --sample S --out S_chip.tsv --depth-out S_chip_depth.tsv --genes genes.tsv --calls calls.tsv --depth depth.tsv	S_chip.tsv,S_chip_depth.tsv	bytes	PYTHON_IMAGE
+chip	report-overlap	chip/chip.gff3,chip/overlap.bed,chip/genes5.tsv,chip/calls.tsv,chip/depth.tsv	report --gff chip.gff3 --bed overlap.bed --sample S --out S_chip.tsv --depth-out S_chip_depth.tsv --genes genes5.tsv --calls calls.tsv --depth depth.tsv	S_chip.tsv,S_chip_depth.tsv	bytes	PYTHON_IMAGE
+chip	report-empty	chip/chip.gff3,chip/chip.bed,chip/genes5.tsv,chip/empty.tsv	report --gff chip.gff3 --bed chip.bed --sample S --out S_chip.tsv --depth-out S_chip_depth.tsv --genes genes5.tsv --calls empty.tsv --depth empty.tsv	S_chip.tsv,S_chip_depth.tsv	bytes	PYTHON_IMAGE
+chip	report-bad-pos	chip/chip.gff3,chip/chip.bed,chip/genes5.tsv,chip/bad-pos.tsv,chip/depth.tsv	report --gff chip.gff3 --bed chip.bed --sample S --out S_chip.tsv --depth-out S_chip_depth.tsv --genes genes5.tsv --calls bad-pos.tsv --depth depth.tsv	-	bytes	PYTHON_IMAGE
+chip	report-missing-depth	chip/chip.gff3,chip/chip.bed,chip/genes5.tsv,chip/calls.tsv	report --gff chip.gff3 --bed chip.bed --sample S --out S_chip.tsv --depth-out S_chip_depth.tsv --genes genes5.tsv --calls calls.tsv --depth none.tsv	-	bytes	PYTHON_IMAGE
+chip	report-bad-table	chip/chip.gff3,chip/chip.bed,chip/bad-table.tsv,chip/calls.tsv,chip/depth.tsv	report --gff chip.gff3 --bed chip.bed --sample S --out S_chip.tsv --depth-out S_chip_depth.tsv --genes bad-table.tsv --calls calls.tsv --depth depth.tsv	-	bytes	PYTHON_IMAGE
+chip	check-genes	chip/genes.tsv	check-table genes.tsv	-	bytes	PYTHON_IMAGE
+chip	check-bad-table	chip/bad-table.tsv	check-table bad-table.tsv	-	bytes	PYTHON_IMAGE
+chip	check-bad-header	chip/bad-header.tsv	check-table bad-header.tsv	-	bytes	PYTHON_IMAGE
+chip	check-short-row	chip/short-row.tsv	check-table short-row.tsv	-	bytes	PYTHON_IMAGE
+chip	check-no-genes	chip/no-genes.tsv	check-table no-genes.tsv	-	bytes	PYTHON_IMAGE
