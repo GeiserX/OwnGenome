@@ -12,6 +12,7 @@ og-io.workspace = true
 og-bam.workspace = true
 og-filters.workspace = true
 flate2.workspace = true
+zlib-rs.workspace = true
 indexmap.workspace = true
 
 [lints]

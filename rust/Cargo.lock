@@ -651,6 +651,7 @@ dependencies = [
  "og-filters",
  "og-io",
  "pycompat",
+ "zlib-rs",
 ]
 
 [[package]]

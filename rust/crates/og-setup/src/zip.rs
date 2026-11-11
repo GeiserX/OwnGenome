@@ -5,11 +5,11 @@
 //! Nothing is held in memory but the directory and one 64 KiB buffer.
 
 use flate2::Crc;
-use flate2::bufread::DeflateDecoder;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
+use zlib_rs::{Inflate, InflateFlush, Status};
 
 const EOCD: u32 = 0x0605_4b50;
 const EOCD64: u32 = 0x0606_4b50;
@@ -65,6 +65,54 @@ impl Entry {
     /// A directory entry: its name ends in `/`.
     pub fn is_dir(&self) -> bool {
         self.name.ends_with('/')
+    }
+}
+
+/// A raw deflate stream, inflated with zlib-rs (the same inflate og-io's
+/// BGZF reader uses; it takes about two thirds of the CPU time flate2's
+/// default backend takes on Exomiser's multi-gigabyte members).
+struct Inflater<R> {
+    src: R,
+    z: Inflate,
+    done: bool,
+}
+
+impl<R: BufRead> Inflater<R> {
+    fn new(src: R) -> Self {
+        Self {
+            src,
+            z: Inflate::new(false, 15),
+            done: false,
+        }
+    }
+}
+
+impl<R: BufRead> Read for Inflater<R> {
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        while !self.done && !out.is_empty() {
+            let input = self.src.fill_buf()?;
+            let eof = input.is_empty();
+            let (in0, out0) = (self.z.total_in(), self.z.total_out());
+            let status = self
+                .z
+                .decompress(input, out, InflateFlush::NoFlush)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.as_str()))?;
+            let used = usize::try_from(self.z.total_in() - in0).expect("fits the buffer");
+            let made = usize::try_from(self.z.total_out() - out0).expect("fits the buffer");
+            self.src.consume(used);
+            if status == Status::StreamEnd {
+                self.done = true;
+            }
+            if made > 0 {
+                return Ok(made);
+            }
+            if eof {
+                // A cut stream: what came out is short, and the size and
+                // CRC check after it says so.
+                return Ok(0);
+            }
+        }
+        Ok(0)
     }
 }
 
@@ -255,7 +303,7 @@ impl Archive {
         let raw = BufReader::with_capacity(1 << 16, (&self.file).take(e.csize));
         let mut src: Box<dyn Read + '_> = match e.method {
             0 => Box::new(raw),
-            8 => Box::new(DeflateDecoder::new(raw)),
+            8 => Box::new(Inflater::new(raw)),
             m => {
                 return Err(bad(format!(
                     "That compression method is not supported ({m}): {}",
