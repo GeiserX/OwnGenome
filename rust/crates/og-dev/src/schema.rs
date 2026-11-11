@@ -8,8 +8,8 @@
 //! (`#/definitions/…`); `$schema`, `title`, `description` and
 //! `definitions` are allowed. The whole schema is compiled before the
 //! document is read, so a rule the validator does not understand anywhere
-//! in it (an unknown keyword or type name, a `$ref` that leads nowhere) is
-//! exit 2, never a pass.
+//! in it (an unknown keyword or type name, a `$ref` that leads nowhere or
+//! back to itself) is exit 2, never a pass.
 //!
 //! Output: `INVALID <path>: <what>` per error, then `DOC: N schema
 //! error(s)` (exit 1) or `DOC: valid against SCHEMA` (exit 0). A broken
@@ -25,6 +25,8 @@
 //! - an unknown keyword, an unknown type name or a `$ref` to nothing is
 //!   exit 2 wherever it is in the schema, also under a key the document
 //!   does not have (the Python raised `KeyError`, exit 1, or never looked).
+//! - a `$ref` that comes back to itself through `$ref` or `allOf` alone is
+//!   exit 2 (the Python recursed until `RecursionError`).
 
 use indexmap::IndexMap;
 use pycompat::json::{self, Value};
@@ -136,7 +138,41 @@ fn compile_schema(raw: &Value) -> Result<Schema, String> {
         let node = compile(target, &r, &mut wanted)?;
         refs.insert(r, node);
     }
+    refuse_loops(&refs)?;
     Ok(Schema { root, refs })
+}
+
+/// The `$ref`s `node` checks against the same value: its own and those of
+/// its `allOf` members. `properties` and `items` go one level down the
+/// document, so a ref there cannot loop forever.
+fn same_value_refs<'a>(node: &'a Node, into: &mut Vec<&'a str>) {
+    if let Some(r) = &node.reference {
+        into.push(r);
+    }
+    for sub in &node.all_of {
+        same_value_refs(sub, into);
+    }
+}
+
+/// Refuses a `$ref` that comes back to itself before the document moves
+/// one level down: checking it would recurse until the stack overflows.
+fn refuse_loops(refs: &HashMap<String, Node>) -> Result<(), String> {
+    let mut names: Vec<&str> = refs.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    for start in names {
+        let mut seen = std::collections::HashSet::new();
+        let mut todo = Vec::new();
+        same_value_refs(&refs[start], &mut todo);
+        while let Some(r) = todo.pop() {
+            if r == start {
+                return Err(format!("$ref {start} loops"));
+            }
+            if seen.insert(r) {
+                same_value_refs(&refs[r], &mut todo);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The node a local `$ref` points at.
@@ -550,6 +586,21 @@ mod tests {
         );
         assert!(bad(r#"{"definitions":{"x":{"pattern":"a"}}}"#).contains("unsupported keyword"));
         assert!(bad(r#"{"$ref":"other.json#/x"}"#).contains("only local"));
+    }
+
+    #[test]
+    fn a_ref_that_loops_is_an_error_not_a_stack_overflow() {
+        let bad = |s: &str| run(s, "{}").unwrap_err();
+        let me = r##"{"definitions":{"x":{"$ref":"#/definitions/x"}},"$ref":"#/definitions/x"}"##;
+        assert_eq!(bad(me), "$ref #/definitions/x loops");
+        let pair = r##"{"definitions":{"a":{"allOf":[{"$ref":"#/definitions/b"}]},
+            "b":{"type":"object","$ref":"#/definitions/a"}},"$ref":"#/definitions/a"}"##;
+        assert!(bad(pair).ends_with(" loops"));
+        // A ref under properties or items goes one level down: a tree, not a loop.
+        let tree = r##"{"definitions":{"t":{"type":"object","properties":{
+            "kids":{"type":"array","items":{"$ref":"#/definitions/t"}}}}},"$ref":"#/definitions/t"}"##;
+        let e = run(tree, r#"{"kids":[{"kids":[{"kids":1}]}]}"#).unwrap();
+        assert_eq!(e, ["$.kids[0].kids[0].kids: expected array, got int 1"]);
     }
 
     #[test]
