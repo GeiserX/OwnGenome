@@ -1210,11 +1210,16 @@ def veil(summary, found, chapters, lead_parts=()):
     intronic site is printed whether hit or not), the marks of the report's charts (marks: chart -> {mark id:
     id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
     rank the gene) and the lead's segments that name one (lead: one per segment of LEAD_PARTS, the "act"
-    names left out: the page closes those itself). Empty when nothing can be closed."""
+    names left out: the page closes those itself), each card's facts (facts: card -> one per fact) and the items
+    of its drawing (widget: card -> one per CHIP call or copy-number dot). spans is closable() itself, so the
+    family page (assets/live/family-page.js) can tag its own rows of a child, the de novo and compound-het
+    candidates, by this rule (core.js veilId(), checked against veil_id() under node). Empty when nothing can
+    be closed."""
     spans = closable(found)
     if not spans:
         return {}
-    out = {"rows": {}, "viewer": {}, "lines": {}, "marks": {}, "findings": {}, "lead": []}
+    out = {"rows": {}, "viewer": {}, "lines": {}, "facts": {}, "widget": {}, "marks": {}, "findings": {}, "lead": [],
+           "spans": [list(s) for s in spans]}
     S = summary.get("sections") or {}
     hits = [h for h in _items(_data(S, "clinvar").get("hits"))[:50]]
     tags = [veil_id(spans, str(h.get("gene") or ""), h.get("chrom"), h.get("pos")) if isinstance(h, dict) else None
@@ -1238,6 +1243,16 @@ def veil(summary, found, chapters, lead_parts=()):
             tags = [veil_id(spans, ln) for ln in c.get("lines") or []]
             if any(tags):
                 out["lines"][c["id"]] = tags
+            tags = [veil_id(spans, " ".join(str(x) for x in f)) for f in c.get("facts") or []]
+            if any(tags):
+                out["facts"][c["id"]] = tags
+            # A drawing's items: the CHIP calls (gene and change) and the copy-number dots (gene). The CHIP
+            # chart's list of genes with their detection limits is the same panel for everyone: never tagged.
+            w = c.get("widget") or {}
+            items = w.get("calls") if w.get("kind") == "vaf" else w.get("genes") if w.get("kind") == "copies" else None
+            tags = [veil_id(spans, f"{x.get('gene') or ''} {x.get('change') or ''}") for x in items or []]
+            if any(tags):
+                out["widget"][c["id"]] = tags
     try:
         specs = rr.chart_specs(summary)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError, ZeroDivisionError):
