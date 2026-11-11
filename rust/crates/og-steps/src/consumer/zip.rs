@@ -99,77 +99,128 @@ fn too_big(what: &str) -> io::Error {
     )
 }
 
-/// Raw deflate of `data` at zlib's default level, 64 KiB of output at a
-/// time, so only the compressed bytes are held.
-fn deflate(data: &[u8]) -> io::Result<Vec<u8>> {
-    let mut d = Deflate::new(6, false, 15);
-    let mut out = Vec::new();
-    let mut chunk = vec![0; 1 << 16];
-    loop {
-        let (inp, done) = (d.total_in(), d.total_out());
-        let rest = &data[usize::try_from(inp).map_err(|_| too_big("member"))?..];
-        let status = d
-            .compress(rest, &mut chunk, DeflateFlush::Finish)
-            .map_err(|e| io::Error::other(format!("deflate: {}", e.as_str())))?;
-        let n = usize::try_from(d.total_out() - done).map_err(|_| too_big("member"))?;
-        out.extend_from_slice(&chunk[..n]);
-        if status == Status::StreamEnd {
-            return Ok(out);
+/// The text a [`Member`] collects before it hands it to the deflater.
+const TEXT_CHUNK: usize = 1 << 16;
+
+/// One zip member deflated as its text arrives, at zlib's default level:
+/// only the compressed bytes and 64 KiB of text are held.
+pub struct Member {
+    d: Deflate,
+    crc: Crc,
+    /// The length of the text, which `Crc::amount` keeps only modulo 2^32.
+    size: u64,
+    text: Vec<u8>,
+    packed: Vec<u8>,
+    chunk: Vec<u8>,
+}
+
+impl Default for Member {
+    fn default() -> Member {
+        Member {
+            d: Deflate::new(6, false, 15),
+            crc: Crc::new(),
+            size: 0,
+            text: Vec::with_capacity(TEXT_CHUNK),
+            packed: Vec::new(),
+            chunk: vec![0; TEXT_CHUNK],
         }
+    }
+}
+
+impl Member {
+    /// Appends `data` to the member's text.
+    pub fn write(&mut self, data: &[u8]) -> io::Result<()> {
+        self.crc.update(data);
+        self.size += data.len() as u64;
+        if !self.text.is_empty() && self.text.len() + data.len() > TEXT_CHUNK {
+            self.pump(DeflateFlush::NoFlush)?;
+        }
+        self.text.extend_from_slice(data);
+        Ok(())
+    }
+
+    /// Deflates the text held; `Finish` also ends the stream.
+    fn pump(&mut self, flush: DeflateFlush) -> io::Result<()> {
+        let mut at = 0;
+        loop {
+            let (inp, done) = (self.d.total_in(), self.d.total_out());
+            let status = self
+                .d
+                .compress(&self.text[at..], &mut self.chunk, flush)
+                .map_err(|e| io::Error::other(format!("deflate: {}", e.as_str())))?;
+            at += usize::try_from(self.d.total_in() - inp).map_err(|_| too_big("member"))?;
+            let n = usize::try_from(self.d.total_out() - done).map_err(|_| too_big("member"))?;
+            self.packed.extend_from_slice(&self.chunk[..n]);
+            let finished = match flush {
+                DeflateFlush::Finish => status == Status::StreamEnd,
+                _ => at == self.text.len() && n < self.chunk.len(),
+            };
+            if finished {
+                self.text.clear();
+                return Ok(());
+            }
+        }
+    }
+
+    /// Writes the zip of this one member, named `name` and dated `date`.
+    pub fn finish(mut self, out: &mut impl Write, name: &str, date: DosDate) -> io::Result<()> {
+        self.pump(DeflateFlush::Finish)?;
+        let packed = &self.packed;
+        let csize = u32::try_from(packed.len()).map_err(|_| too_big("member"))?;
+        let usize_ = u32::try_from(self.size).map_err(|_| too_big("member"))?;
+        let crc = self.crc.sum();
+        let name_len = u16::try_from(name.len()).map_err(|_| too_big("name"))?;
+        let (time, day) = (0u16, date.field());
+
+        let mut buf = Vec::with_capacity(2 * name.len() + 128);
+        // Local header.
+        buf.extend_from_slice(&LOCAL.to_le_bytes());
+        for v in [VERSION, 0, 8, time, day] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [crc, csize, usize_] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        buf.extend_from_slice(&name_len.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        buf.extend_from_slice(name.as_bytes());
+        // The member's data goes out as it is, never copied into the header buffer.
+        out.write_all(&buf)?;
+        out.write_all(packed)?;
+        let central_at = u32::try_from(buf.len() + packed.len()).map_err(|_| too_big("zip"))?;
+        buf.clear();
+        // Central directory.
+        buf.extend_from_slice(&CENTRAL.to_le_bytes());
+        for v in [MADE_BY, VERSION, 0, 8, time, day] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [crc, csize, usize_] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [name_len, 0, 0, 0, 0] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        buf.extend_from_slice(&EXTERNAL.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(name.as_bytes());
+        let central_len = u32::try_from(buf.len()).map_err(|_| too_big("zip"))?;
+        // End of central directory.
+        buf.extend_from_slice(&EOCD.to_le_bytes());
+        for v in [0u16, 0, 1, 1] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        buf.extend_from_slice(&central_len.to_le_bytes());
+        buf.extend_from_slice(&central_at.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        out.write_all(&buf)
     }
 }
 
 /// Writes a zip of one member `name` holding `data`, deflated, dated `date`.
 pub fn write_one(out: &mut impl Write, name: &str, data: &[u8], date: DosDate) -> io::Result<()> {
-    let mut crc = Crc::new();
-    crc.update(data);
-    let packed = deflate(data)?;
-    let csize = u32::try_from(packed.len()).map_err(|_| too_big("member"))?;
-    let usize_ = u32::try_from(data.len()).map_err(|_| too_big("member"))?;
-    let name_len = u16::try_from(name.len()).map_err(|_| too_big("name"))?;
-    let (time, day) = (0u16, date.field());
-
-    let mut buf = Vec::with_capacity(2 * name.len() + 128);
-    // Local header.
-    buf.extend_from_slice(&LOCAL.to_le_bytes());
-    for v in [VERSION, 0, 8, time, day] {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    for v in [crc.sum(), csize, usize_] {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    buf.extend_from_slice(&name_len.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    buf.extend_from_slice(name.as_bytes());
-    // The member's data goes out as it is, never copied into the header buffer.
-    out.write_all(&buf)?;
-    out.write_all(&packed)?;
-    let central_at = u32::try_from(buf.len() + packed.len()).map_err(|_| too_big("zip"))?;
-    buf.clear();
-    // Central directory.
-    buf.extend_from_slice(&CENTRAL.to_le_bytes());
-    for v in [MADE_BY, VERSION, 0, 8, time, day] {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    for v in [crc.sum(), csize, usize_] {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    for v in [name_len, 0, 0, 0, 0] {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    buf.extend_from_slice(&EXTERNAL.to_le_bytes());
-    buf.extend_from_slice(&0u32.to_le_bytes());
-    buf.extend_from_slice(name.as_bytes());
-    let central_len = u32::try_from(buf.len()).map_err(|_| too_big("zip"))?;
-    // End of central directory.
-    buf.extend_from_slice(&EOCD.to_le_bytes());
-    for v in [0u16, 0, 1, 1] {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    buf.extend_from_slice(&central_len.to_le_bytes());
-    buf.extend_from_slice(&central_at.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    out.write_all(&buf)
+    let mut m = Member::default();
+    m.write(data)?;
+    m.finish(out, name, date)
 }
 
 fn u16_at(b: &[u8], at: usize) -> Result<u16, String> {
@@ -313,6 +364,31 @@ mod tests {
         )
         .unwrap();
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn a_member_fed_line_by_line_holds_the_text() {
+        let d = DosDate::parse("2026-11-10").unwrap();
+        // Past TEXT_CHUNK several times, so the deflater runs mid-stream.
+        let text: Vec<u8> = (0..40_000)
+            .flat_map(|i| format!("rs{i}\t1\t{}\tAG\n", 1000 + 7 * i).into_bytes())
+            .collect();
+        let feed = || {
+            let mut m = Member::default();
+            for l in text.split_inclusive(|&b| b == b'\n') {
+                m.write(l).unwrap();
+            }
+            let mut z = Vec::new();
+            m.finish(&mut z, "x.txt", d).unwrap();
+            z
+        };
+        let z = feed();
+        assert_eq!(z, feed());
+        // The local header's sizes: compressed, then the text's length.
+        let csize = u32_at(&z, 18).unwrap() as usize;
+        assert_eq!(z.len(), 30 + 5 + csize + 46 + 5 + 22);
+        assert_eq!(u32_at(&z, 22).unwrap() as usize, text.len());
+        assert_eq!(read_all(&z).unwrap(), [("x.txt".to_owned(), text)]);
     }
 
     #[test]

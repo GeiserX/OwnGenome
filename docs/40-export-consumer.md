@@ -76,7 +76,7 @@ Both reports (step 24 and `generate-report.sh`) show the counts and the file nam
 
 ## Runtime
 
-On the CI fixture (the gVCF of the fixture's 15 regions, 7,623 sites of the CI table) the step took under one second, container start included (e2e run 38664867748). It is not measured on a whole genome. The step reads the gVCF from start to end once, inflating its BGZF blocks on up to 4 cores, so the time grows with the size of the gVCF; memory holds the site table, about 620,000 rows, and one of the two files at a time. On a synthetic gVCF of 19 million lines (128 MB compressed) with a table of 611,936 sites, it took about 4 seconds and at most about 200 MB of memory in a Linux container on 4 cores; the Python it replaced took 17 seconds and 667 MB on the same files.
+On the CI fixture (the gVCF of the fixture's 15 regions, 7,623 sites of the CI table) the step took under one second, container start included (e2e run 38664867748). It is not measured on a whole genome. The step reads the gVCF from start to end once, inflating its BGZF blocks on up to 4 cores, so the time grows with the size of the gVCF. Memory holds the site table (about 620,000 rows, 15 MB) and the compressed bytes of one file at a time: each file is checked and deflated line by line as it is made. On a synthetic gVCF of the size a 30x genome gives (552 MB compressed, 32 million records over every chromosome) with a table of 617,044 sites, it took about 2 seconds and at most 43 MB of memory in a Linux container on 4 cores; the Python it replaced took 30 seconds and 660 MB on the same files, and wrote the same rows.
 
 ## Notes
 

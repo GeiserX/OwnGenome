@@ -14,6 +14,11 @@ mod probe;
 const TREE_MARK: &str = concat!("og-tree-hash:", env!("OG_TREE_HASH"), ";");
 const TARGET: &str = env!("OG_TARGET");
 
+/// The release builds are static musl binaries; see `og/Cargo.toml`.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }

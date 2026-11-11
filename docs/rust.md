@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`). The pieces below are the base every port builds on.
+Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`), and so does step 40 (`og consumer`). The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -16,14 +16,15 @@ rust/
   crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
+  crates/og-steps/      pipeline steps OwnGenome owns: step 40's consumer export
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`).
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 40 runs `og consumer build-sites`, `og consumer export` and `og consumer check` (were the three commands of `export_consumer.py`).
 
-The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
+The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec`, `rustc-hash` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`). The musl builds also link `mimalloc` as their allocator: musl's own lets a long multi-threaded read hold several times its live memory.
 
 ## Building
 

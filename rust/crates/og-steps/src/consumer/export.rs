@@ -9,22 +9,25 @@
 //! fails it, or when the gVCF's reference bases disagree with the site table
 //! (the gVCF is not on GRCh38, or the table is wrong).
 //!
-//! The gVCF is read once, BGZF on many cores; only the lines near a site are
-//! parsed. A site takes 24 bytes, so the whole chip list fits in about 15 MB.
+//! The gVCF is read once, BGZF on many cores, and nothing is allocated per
+//! line or per site. A site takes 24 bytes, so the whole chip list fits in
+//! about 15 MB. Each file is made one line at a time, read by the strict
+//! reader and deflated as it goes, so only its compressed bytes are held.
 //!
 //! Deliberately unlike `bin/export_consumer.py`:
 //! - the zips are the same bytes for the same input: each member carries
 //!   the date of the header, not the time of the run, and the date is
 //!   `--date`, else `SOURCE_DATE_EPOCH`, else today (UTC);
-//! - the strict reader runs on the text before it is written, so no `.txt`
-//!   file is left beside the zips (it still is when the reader fails);
+//! - the strict reader runs on the text as it is made, so no `.txt` file is
+//!   written beside the zips (both still are when the reader fails), and a
+//!   good export removes the `.txt` files a failed one left;
 //! - a call of more than two alleles stops the export, naming the site,
 //!   where the Python wrote a file that then failed its own strict reader;
 //! - a site row whose positions are not whole numbers from 0 to 2^32 - 1,
 //!   or whose GRCh38 base is not one character, is refused as not a site
 //!   row.
 
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::io::{BufRead, Write};
 use std::num::NonZero;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -201,6 +204,14 @@ fn read_table(path: &str) -> Result<Table, Fail> {
         let line = raw.trim_end_matches(['\r', '\n']);
         if let Some(kv) = line.strip_prefix("## ") {
             let (k, v) = kv.split_once(": ").unwrap_or((kv, ""));
+            // The table is the template less the sites dropped, so room for
+            // the template's sites spares the copies of a growing list.
+            if k == "template_sites"
+                && t.sites.is_empty()
+                && let Ok(n) = v.parse::<usize>()
+            {
+                t.sites.reserve_exact(n.min(1 << 22));
+            }
             t.meta.push((k.to_owned(), v.to_owned()));
             continue;
         }
@@ -260,7 +271,11 @@ fn read_table(path: &str) -> Result<Table, Fail> {
     if t.sites.is_empty() {
         return Err(Fail::input(format!("{path} holds no site")));
     }
-    t.sites.shrink_to_fit();
+    // A table built from a far larger template, or one with no
+    // template_sites line, gives back what it does not use.
+    if t.sites.capacity() - t.sites.len() > t.sites.len() / 8 {
+        t.sites.shrink_to_fit();
+    }
     Ok(t)
 }
 
@@ -326,8 +341,13 @@ fn slice(s: &[u8], a: isize, b: isize) -> &[u8] {
     }
 }
 
-/// Python's `int()` of a byte string, as i64.
+/// Python's `int()` of a byte string, as i64. Plain digits, what every
+/// record holds, are read in place; anything else goes through
+/// `parse_int`, which allocates.
 fn int(s: &[u8]) -> Option<i64> {
+    if (1..=18).contains(&s.len()) && s.iter().all(u8::is_ascii_digit) {
+        return Some(s.iter().fold(0, |v, &d| v * 10 + i64::from(d - b'0')));
+    }
     let v = parse_int(std::str::from_utf8(s).ok()?).ok()?;
     i64::try_from(v).ok()
 }
@@ -337,7 +357,8 @@ struct Rec<'a> {
     pos: i64,
     end: i64,
     ref_: &'a [u8],
-    alts: Vec<&'a [u8]>,
+    /// The ALT column, alleles separated by commas.
+    alts: &'a [u8],
     filter: &'a [u8],
     /// FORMAT and the first sample, when the line has both.
     sample: Option<(&'a [u8], &'a [u8])>,
@@ -345,9 +366,12 @@ struct Rec<'a> {
 
 impl Rec<'_> {
     fn is_block(&self) -> bool {
-        self.alts
-            .iter()
+        self.alts()
             .all(|a| SYMBOLIC.iter().any(|s| a.eq_ignore_ascii_case(s)))
+    }
+
+    fn alts(&self) -> impl Iterator<Item = &[u8]> {
+        self.alts.split(|&c| c == b',')
     }
 
     /// The GT value: `.` when the record has none.
@@ -385,8 +409,15 @@ fn info_end(info: &[u8]) -> Option<i64> {
 /// `parse_record`: the record of a line (without its newline), or None for
 /// fewer than eight columns.
 fn parse_record(line: &[u8]) -> Result<Option<Rec<'_>>, String> {
-    let c: Vec<&[u8]> = line.split(|&c| c == b'\t').collect();
-    if c.len() < 8 {
+    // The first ten columns; a line is parsed for nearly every record, so
+    // nothing here allocates.
+    let mut c: [&[u8]; 10] = [&[]; 10];
+    let mut ncols = 0;
+    for (slot, col) in c.iter_mut().zip(line.split(|&c| c == b'\t')) {
+        *slot = col;
+        ncols += 1;
+    }
+    if ncols < 8 {
         return Ok(None);
     }
     let pos = int(c[1]).ok_or_else(|| {
@@ -403,9 +434,9 @@ fn parse_record(line: &[u8]) -> Result<Option<Rec<'_>>, String> {
         pos,
         end,
         ref_: c[3],
-        alts: c[4].split(|&c| c == b',').collect(),
+        alts: c[4],
         filter: c[6],
-        sample: (c.len() > 9).then(|| (c[8], c[9])),
+        sample: (ncols > 9).then(|| (c[8], c[9])),
     }))
 }
 
@@ -419,39 +450,41 @@ fn nonref_gt(r: &Rec) -> bool {
 }
 
 /// `call_from_record`: the bases at `pos` from one record, or why none.
+/// It runs once per site, so it reads the genotype in place, allocating
+/// nothing.
 fn call_from_record(r: &Rec, pos: i64, ref38: u8, tally: &mut Tally) -> Result<Call, String> {
     if r.sample.is_none() {
         return Ok(Call::No(Why::NoGenotype));
     }
     let gt = r.gt().unwrap_or(b".");
-    let idx: Vec<&[u8]> = gt_parts(gt).collect();
-    if idx.iter().any(|i| matches!(*i, b"." | b"")) {
+    if gt_parts(gt).any(|i| matches!(i, b"." | b"")) {
         return Ok(Call::No(Why::NoCallInGvcf));
     }
     // alleles = [ref] + alts, indexed as a Python list (negative from the end).
-    let n_alleles = 1 + r.alts.len() as i64;
-    let mut chosen = Vec::with_capacity(idx.len());
-    for i in &idx {
-        let Some(mut k) = int(i) else {
-            return Ok(Call::No(Why::Unreadable));
-        };
+    let n_alleles = 1 + r.alts().count() as i64;
+    let allele = |i: &[u8]| -> Option<&[u8]> {
+        let mut k = int(i)?;
         if k < 0 {
             k += n_alleles;
         }
         if !(0..n_alleles).contains(&k) {
-            return Ok(Call::No(Why::Unreadable));
+            return None;
         }
-        chosen.push(if k == 0 {
+        Some(if k == 0 {
             r.ref_
         } else {
-            r.alts[k as usize - 1]
-        });
+            r.alts().nth(k as usize - 1).unwrap_or_default()
+        })
+    };
+    if gt_parts(gt).any(|i| allele(i).is_none()) {
+        return Ok(Call::No(Why::Unreadable));
     }
+    let n = gt_parts(gt).count();
     if r.pos != pos {
         // The site lies inside a record that starts before it: a reference
         // block (each base is the reference) or a deletion.
-        if idx.iter().all(|i| *i == b"0") && r.is_block() {
-            return bases(&vec![ref38; idx.len()]);
+        if gt_parts(gt).all(|i| i == b"0") && r.is_block() {
+            return Ok(bases([ref38; 2], n));
         }
         return Ok(Call::No(Why::InsideDeletion));
     }
@@ -463,32 +496,40 @@ fn call_from_record(r: &Rec, pos: i64, ref38: u8, tally: &mut Tally) -> Result<C
         return Ok(Call::No(Why::RefMismatch));
     }
     tally.reference_checked += 1;
-    if !matches!(r.filter, b"PASS" | b".") && idx.iter().any(|i| *i != b"0") {
+    if !matches!(r.filter, b"PASS" | b".") && gt_parts(gt).any(|i| i != b"0") {
         return Ok(Call::No(Why::Filtered));
     }
-    let mut out = Vec::with_capacity(chosen.len());
-    for a in chosen {
-        match a.first().map(u8::to_ascii_uppercase) {
-            Some(b @ (b'A' | b'C' | b'G' | b'T')) => out.push(b),
+    let mut out = [0u8; 2];
+    for (k, i) in gt_parts(gt).enumerate() {
+        match allele(i)
+            .and_then(|a| a.first())
+            .map(u8::to_ascii_uppercase)
+        {
+            Some(b @ (b'A' | b'C' | b'G' | b'T')) => {
+                if let Some(slot) = out.get_mut(k) {
+                    *slot = b;
+                }
+            }
             _ => return Ok(Call::No(Why::Symbolic)),
         }
     }
-    bases(&out)
+    Ok(bases(out, n))
 }
 
-fn bases(b: &[u8]) -> Result<Call, String> {
-    Ok(match *b {
-        [a] => Call::Bases { n: 1, b: [a, 0] },
-        [a, c] => Call::Bases { n: 2, b: [a, c] },
-        _ => Call::Many(u8::try_from(b.len()).unwrap_or(u8::MAX)),
-    })
+/// The call of `n` alleles whose first two bases are `b`.
+fn bases(b: [u8; 2], n: usize) -> Call {
+    match n {
+        1 => Call::Bases { n: 1, b: [b[0], 0] },
+        2 => Call::Bases { n: 2, b },
+        _ => Call::Many(u8::try_from(n).unwrap_or(u8::MAX)),
+    }
 }
 
 /// The walk over one contig's sites.
 #[derive(Default)]
 struct Walk {
     /// Indices into the table's sites, sorted by GRCh38 position.
-    sites: Vec<usize>,
+    sites: Vec<u32>,
     /// The next site to resolve.
     i: usize,
     /// The lines of the records that start at the last position seen.
@@ -498,6 +539,17 @@ struct Walk {
     spans: Vec<(i64, i64)>,
     /// The length of `spans` at which the spans behind the walk are dropped.
     prune_at: usize,
+    /// The pending records [`Walk::resolve`] parsed.
+    recs: Vec<Pending>,
+}
+
+/// What [`Walk::resolve`] keeps of a pending record: where it starts and
+/// ends, whether it is a reference block, and its line in `pending`.
+struct Pending {
+    pos: i64,
+    end: i64,
+    block: bool,
+    line: (usize, usize),
 }
 
 impl Walk {
@@ -512,24 +564,30 @@ impl Walk {
     }
 
     /// `resolve(upto)`: gives each site before `upto` (None: every one) its
-    /// call from the pending records.
+    /// call from the pending records. It runs once per site, so it keeps
+    /// what it needs of each record in [`Walk::recs`] and allocates nothing.
     fn resolve(
         &mut self,
         upto: Option<i64>,
         sites: &mut [Site],
         tally: &mut Tally,
     ) -> Result<(), String> {
-        let mut recs = Vec::with_capacity(self.ends.len());
+        self.recs.clear();
         let mut from = 0;
         for &end in &self.ends {
             if let Some(r) = parse_record(&self.pending[from..end])? {
-                recs.push(r);
+                self.recs.push(Pending {
+                    pos: r.pos,
+                    end: r.end,
+                    block: r.is_block(),
+                    line: (from, end),
+                });
             }
             from = end;
         }
-        let start = recs.first().map(|r| r.pos);
+        let start = self.recs.first().map(|r| r.pos);
         while self.i < self.sites.len() {
-            let s = &mut sites[self.sites[self.i]];
+            let s = &mut sites[self.sites[self.i] as usize];
             let p = i64::from(s.pos38);
             if upto.is_some_and(|u| p >= u) {
                 break;
@@ -540,24 +598,22 @@ impl Walk {
                 s.call = Call::No(Why::InsideDeletion);
                 continue;
             }
-            let hit: Vec<&Rec> = recs
+            let mut hit = self
+                .recs
                 .iter()
-                .filter(|r| start.is_some_and(|st| st <= p) && p <= r.end)
-                .collect();
-            let Some(&first) = hit.first() else {
+                .filter(|r| start.is_some_and(|st| st <= p) && p <= r.end);
+            let Some(first) = hit.clone().next() else {
                 s.call = Call::No(Why::NoRecord);
                 continue;
             };
             // At the record's start a variant wins over a block; past it, a block.
             let at_start = Some(p) == start;
-            let r = hit
-                .iter()
-                .find(|r| r.is_block() != at_start)
-                .copied()
-                .unwrap_or(first);
-            s.call = call_from_record(r, p, s.ref38, tally)?;
+            let r = hit.find(|r| r.block != at_start).unwrap_or(first);
+            let (a, b) = r.line;
+            let rec = parse_record(&self.pending[a..b])?.expect("parsed once already");
+            s.call = call_from_record(&rec, p, s.ref38, tally)?;
             if matches!(s.call, Call::Bases { .. } | Call::Many(_)) {
-                if r.is_block() || r.pos != p {
+                if r.block || r.pos != p {
                     tally.from_blocks += 1;
                 } else {
                     tally.from_variants += 1;
@@ -594,12 +650,12 @@ fn genotype_all(
     table: &mut Table,
     tally: &mut Tally,
 ) -> Result<(), Fail> {
-    let mut by_chrom: Vec<Vec<usize>> = vec![Vec::new(); CHROMS.len()];
-    for (k, s) in table.sites.iter().enumerate() {
+    let mut by_chrom: Vec<Vec<u32>> = vec![Vec::new(); CHROMS.len()];
+    for (k, s) in (0u32..).zip(&table.sites) {
         by_chrom[usize::from(s.chrom)].push(k);
     }
     for l in &mut by_chrom {
-        l.sort_by_key(|&k| table.sites[k].pos38);
+        l.sort_by_key(|&k| table.sites[k as usize].pos38);
     }
     let sites = &mut table.sites;
     let bad = |e: String| Fail::data(format!("{gvcf}: {e}"));
@@ -674,7 +730,7 @@ fn genotype_all(
         if pos != last_pos {
             // Records start in order, so a site before this one gets its
             // call from the pending records; only then are they parsed.
-            if i64::from(sites[w.sites[w.i]].pos38) < pos {
+            if i64::from(sites[w.sites[w.i] as usize].pos38) < pos {
                 w.resolve(Some(pos), sites, tally).map_err(bad)?;
             }
             w.clear_pending();
@@ -795,86 +851,89 @@ fn ancestry_code(s: &Site) -> u8 {
     }
 }
 
-fn write_23andme(t: &Table, today: &str) -> Vec<u8> {
+/// The header lines of `layout`, each with its newline.
+fn header(t: &Table, today: &str, layout: Layout) -> Vec<String> {
     let template = t.meta("template_sites").unwrap_or("?");
-    let mut out = String::with_capacity(t.sites.len() * 32 + 1024);
-    out.push_str("# This data file was generated by OwnGenome (step 40) in the layout of a 23andMe raw data file.\n");
-    out.push_str("# It was not made by 23andMe: the genotypes come from whole-genome sequencing calls, not from a chip.\n");
-    out.push_str(&format!(
-        "# Written {today}. Sites: the 23andMe v5 chip list, {} of {template} sites.\n",
-        t.sites.len()
-    ));
-    out.push_str("# We are using reference human assembly build 37 (also known as GRCh37); genotypes are on its + strand.\n");
-    out.push_str("# A genotype of -- means the calls hold no genotype for that site.\n");
-    out.push_str(&format!("# More: {DOC_URL}\n"));
-    out.push_str("#\n");
-    out.push_str(check::HEADER_23ANDME);
-    out.push('\n');
-    let mut order: Vec<usize> = (0..t.sites.len()).collect();
-    order.sort_by(|&a, &b| {
-        let (x, y) = (&t.sites[a], &t.sites[b]);
-        (x.chrom, x.pos37)
-            .cmp(&(y.chrom, y.pos37))
-            .then_with(|| t.rsid_cmp(x.rsid, y.rsid))
-    });
-    let mut id = String::new();
-    for k in order {
-        let s = &t.sites[k];
-        t.rsid(s.rsid, &mut id);
-        out.push_str(&id);
-        out.push('\t');
-        out.push_str(CHROMS[usize::from(s.chrom)]);
-        out.push('\t');
-        out.push_str(&s.pos37.to_string());
-        out.push('\t');
-        match letters(s.call) {
-            Some((b, n)) => b[..n].iter().for_each(|&c| out.push(char::from(c))),
-            None => out.push_str("--"),
-        }
-        out.push('\n');
+    let n = t.sites.len();
+    match layout {
+        Layout::TwentyThree => vec![
+            "# This data file was generated by OwnGenome (step 40) in the layout of a 23andMe raw data file.\n".to_owned(),
+            "# It was not made by 23andMe: the genotypes come from whole-genome sequencing calls, not from a chip.\n".to_owned(),
+            format!("# Written {today}. Sites: the 23andMe v5 chip list, {n} of {template} sites.\n"),
+            "# We are using reference human assembly build 37 (also known as GRCh37); genotypes are on its + strand.\n".to_owned(),
+            "# A genotype of -- means the calls hold no genotype for that site.\n".to_owned(),
+            format!("# More: {DOC_URL}\n"),
+            "#\n".to_owned(),
+            format!("{}\n", check::HEADER_23ANDME),
+        ],
+        Layout::Ancestry => vec![
+            format!("{}\n", check::ANCESTRY_FIRST),
+            "#This file was generated by OwnGenome (step 40) in the layout of an AncestryDNA raw data file.\n".to_owned(),
+            "#It was not made by AncestryDNA: the genotypes come from whole-genome sequencing calls, not from a chip,\n".to_owned(),
+            format!("#at the sites of the 23andMe v5 chip list ({n} of {template} sites). Written {today}.\n"),
+            "#Positions are on human assembly build 37 (GRCh37), alleles on its + strand. 0 0 means no genotype.\n".to_owned(),
+            "#Chromosome codes: 1-22, 23 = X, 24 = Y, 25 = X pseudoautosomal, 26 = MT.\n".to_owned(),
+            format!("#More: {DOC_URL}\n"),
+            format!("{}\n", check::HEADER_ANCESTRY),
+        ],
     }
-    out.into_bytes()
 }
 
-fn write_ancestry(t: &Table, today: &str) -> Vec<u8> {
-    let template = t.meta("template_sites").unwrap_or("?");
-    let mut out = String::with_capacity(t.sites.len() * 34 + 1024);
-    out.push_str(check::ANCESTRY_FIRST);
-    out.push('\n');
-    out.push_str("#This file was generated by OwnGenome (step 40) in the layout of an AncestryDNA raw data file.\n");
-    out.push_str("#It was not made by AncestryDNA: the genotypes come from whole-genome sequencing calls, not from a chip,\n");
-    out.push_str(&format!(
-        "#at the sites of the 23andMe v5 chip list ({} of {template} sites). Written {today}.\n",
-        t.sites.len()
-    ));
-    out.push_str("#Positions are on human assembly build 37 (GRCh37), alleles on its + strand. 0 0 means no genotype.\n");
-    out.push_str("#Chromosome codes: 1-22, 23 = X, 24 = Y, 25 = X pseudoautosomal, 26 = MT.\n");
-    out.push_str(&format!("#More: {DOC_URL}\n"));
-    out.push_str(check::HEADER_ANCESTRY);
-    out.push('\n');
-    let mut order: Vec<(u8, usize)> = t
-        .sites
-        .iter()
-        .enumerate()
-        .map(|(k, s)| (ancestry_code(s), k))
-        .collect();
-    order.sort_by(|&(ca, a), &(cb, b)| {
-        let (x, y) = (&t.sites[a], &t.sites[b]);
-        (ca, x.pos37)
-            .cmp(&(cb, y.pos37))
+/// The text of `layout`, handed to `out` one line at a time, so it is never
+/// held whole: the header, then one row per site, sorted by chromosome (the
+/// AncestryDNA code), GRCh37 position and rsID.
+fn render(
+    t: &Table,
+    today: &str,
+    layout: Layout,
+    out: &mut dyn FnMut(&[u8]) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    for l in header(t, today, layout) {
+        out(l.as_bytes())?;
+    }
+    let code = |s: &Site| match layout {
+        Layout::TwentyThree => s.chrom,
+        Layout::Ancestry => ancestry_code(s),
+    };
+    let mut order: Vec<u32> =
+        (0..u32::try_from(t.sites.len()).expect("fewer than 2^32 sites")).collect();
+    order.sort_by(|&a, &b| {
+        let (x, y) = (&t.sites[a as usize], &t.sites[b as usize]);
+        (code(x), x.pos37)
+            .cmp(&(code(y), y.pos37))
             .then_with(|| t.rsid_cmp(x.rsid, y.rsid))
     });
-    let mut id = String::new();
-    for (code, k) in order {
-        let s = &t.sites[k];
+    let (mut id, mut line) = (String::new(), String::with_capacity(64));
+    for k in order {
+        let s = &t.sites[k as usize];
         t.rsid(s.rsid, &mut id);
-        let (a, b) = match letters(s.call) {
-            Some((b, n)) => (char::from(b[0]), char::from(b[n - 1])),
-            None => ('0', '0'),
-        };
-        out.push_str(&format!("{id}\t{code}\t{}\t{a}\t{b}\n", s.pos37));
+        line.clear();
+        let call = letters(s.call);
+        match layout {
+            Layout::TwentyThree => {
+                let _ = write!(
+                    line,
+                    "{id}\t{}\t{}\t",
+                    CHROMS[usize::from(s.chrom)],
+                    s.pos37
+                );
+                match call {
+                    Some((b, n)) => b[..n].iter().for_each(|&c| line.push(char::from(c))),
+                    None => line.push_str("--"),
+                }
+                line.push('\n');
+            }
+            Layout::Ancestry => {
+                let (a, b) = match call {
+                    Some((b, n)) => (char::from(b[0]), char::from(b[n - 1])),
+                    None => ('0', '0'),
+                };
+                let _ = writeln!(line, "{id}\t{}\t{}\t{a}\t{b}", code(s), s.pos37);
+            }
+        }
+        out(line.as_bytes())?;
     }
-    out.into_bytes()
+    Ok(())
 }
 
 /// The date the header carries and the zip members are stamped with.
@@ -935,37 +994,46 @@ pub fn export(a: &ExportArgs, workers: NonZero<usize>) -> Result<String, Fail> {
         format!("{base}_23andme_v5.txt"),
         format!("{base}_ancestrydna_layout.txt"),
     );
-    // One text at a time: built, read back, zipped in memory, dropped.
-    type Layouts<'a> = [(&'a str, fn(&Table, &str) -> Vec<u8>, Layout, String); 2];
-    let layouts: Layouts = [
-        (
-            &t23,
-            write_23andme,
-            Layout::TwentyThree,
-            format!("{base}_23andme_v5.zip"),
-        ),
+    // One layout at a time: each line is read by the strict reader and
+    // deflated as it is made, so only the compressed bytes are held.
+    let layouts = [
+        (&t23, Layout::TwentyThree, format!("{base}_23andme_v5.zip")),
         (
             &tanc,
-            write_ancestry,
             Layout::Ancestry,
             format!("{base}_ancestrydna_layout.zip"),
         ),
     ];
     let mut problems = Vec::new();
+    // Each zip goes to its temporary file as soon as it is made, so one
+    // compressed text is held at a time; both are renamed into place only
+    // when both texts passed.
     let mut zips = Vec::new();
-    for (txt, write, layout, zpath) in &layouts {
-        let text = write(&table, &today);
-        problems.extend(check::check_text(txt, &text, *layout));
+    for (txt, layout, zpath) in &layouts {
+        let mut reader = check::Checker::new(txt, *layout, table.sites.len());
+        let mut member = zip::Member::default();
+        render(&table, &today, *layout, &mut |l| {
+            reader.line(l);
+            member.write(l)
+        })
+        .map_err(|e| Fail::io(zpath, &e))?;
+        problems.extend(reader.finish());
         if problems.is_empty() {
-            let mut z = Vec::new();
-            zip::write_one(&mut z, basename(txt), &text, a.date)
+            let mut f = AtomicFile::create(zpath).map_err(|e| Fail::io(zpath, &e))?;
+            member
+                .finish(&mut f, basename(txt), a.date)
                 .map_err(|e| Fail::io(zpath, &e))?;
-            zips.push((zpath, z));
+            zips.push((zpath, f));
         }
     }
     if !problems.is_empty() {
-        for (txt, write, _, _) in &layouts {
-            std::fs::write(txt, write(&table, &today)).map_err(|e| Fail::io(txt, &e))?;
+        for (txt, layout, _) in &layouts {
+            let write = || -> std::io::Result<()> {
+                let mut f = std::io::BufWriter::new(std::fs::File::create(txt)?);
+                render(&table, &today, *layout, &mut |l| f.write_all(l))?;
+                f.flush()
+            };
+            write().map_err(|e| Fail::io(txt, &e))?;
         }
         for p in problems.iter().take(20) {
             eprintln!("  {p}");
@@ -976,11 +1044,16 @@ pub fn export(a: &ExportArgs, workers: NonZero<usize>) -> Result<String, Fail> {
             a.out_dir
         )));
     }
-    for (zpath, z) in zips {
-        let mut f = AtomicFile::create(zpath).map_err(|e| Fail::io(zpath, &e))?;
-        f.write_all(&z)
-            .and_then(|()| f.commit())
-            .map_err(|e| Fail::io(zpath, &e))?;
+    for (zpath, f) in zips {
+        f.commit().map_err(|e| Fail::io(zpath, &e))?;
+    }
+    // The `.txt` files a failed run left behind fail the strict reader:
+    // gone once the zips are good, so no one uploads one of them.
+    for txt in [&t23, &tanc] {
+        match std::fs::remove_file(txt) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(Fail::io(txt, &e)),
+            _ => {}
+        }
     }
 
     let called = table
@@ -1233,6 +1306,35 @@ mod tests {
         );
         let e = run("unsorted.g.vcf.gz", "unit-sites.tsv.gz", "").unwrap_err();
         assert!(e.code == 1 && e.msg.contains("is not sorted"), "{e:?}");
+    }
+
+    #[test]
+    fn a_good_export_removes_the_text_files_a_failed_one_left() {
+        let out = std::env::temp_dir().join(format!("og-consumer-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&out);
+        let out_dir = out.to_string_lossy().into_owned();
+        let (gvcf, par) = (input("unit.g.vcf.gz"), input("par_grch38.bed"));
+        let go = |sites: &str| {
+            let sites = input(sites);
+            let a = ExportArgs {
+                gvcf: &gvcf,
+                sites: &sites,
+                sample: "S",
+                sex: "male",
+                par: Some(&par),
+                out_dir: &out_dir,
+                date: DosDate::parse("2026-01-02").expect("a date"),
+            };
+            export(&a, NonZero::new(2).expect("2 > 0"))
+        };
+        let txt = ["S_23andme_v5.txt", "S_ancestrydna_layout.txt"];
+        assert!(go("badid-sites.tsv.gz").is_err());
+        assert!(txt.iter().all(|t| out.join(t).exists()));
+        assert!(!out.join("S_23andme_v5.zip").exists());
+        go("unit-sites.tsv.gz").expect("export");
+        assert!(txt.iter().all(|t| !out.join(t).exists()));
+        assert!(out.join("S_23andme_v5.zip").exists());
+        let _ = std::fs::remove_dir_all(&out);
     }
 
     #[test]

@@ -16,5 +16,11 @@ og-dev.workspace = true
 og-filters.workspace = true
 og-steps.workspace = true
 
+# musl's own malloc lets a long multi-threaded read grow to several times
+# its live data (step 40 on a 550 MB gVCF: 160-300 MB, against 40 MB with
+# glibc); mimalloc keeps the release builds at their live size.
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
+
 [lints]
 workspace = true

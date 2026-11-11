@@ -94,147 +94,242 @@ fn row_ancestry(c: &[&str]) -> Option<&'static str> {
     None
 }
 
-/// A whole number written without leading zeros, compared by value.
-fn num_key(s: &str) -> (usize, &str) {
-    (s.len(), s)
-}
-
-/// The sort key of a row: chromosome order, then position.
-type Key<'a> = (usize, (usize, &'a str));
-
-/// The order and rsID checks, row by row: the first row out of order, and
-/// the first rsID seen twice.
+/// The rsIDs seen so far. A row that passed its checks has an rsID of
+/// `rs` or `i` and digits, so up to 18 digits it is kept as one number
+/// (bit 62 marks `i`); a longer one is kept as text.
 #[derive(Default)]
-struct Order<'a> {
-    last: Option<(Key<'a>, &'a str)>,
-    out_of_order: Option<(&'a str, &'a str)>,
-    seen: FxHashSet<&'a str>,
-    twice: Option<&'a str>,
+struct Ids {
+    short: FxHashSet<u64>,
+    long: FxHashSet<Box<str>>,
 }
 
-impl<'a> Order<'a> {
-    fn row(&mut self, key: Key<'a>, id: &'a str) {
-        if self.out_of_order.is_none()
-            && let Some((last, last_id)) = self.last
-            && key < last
-        {
-            self.out_of_order = Some((id, last_id));
+impl Ids {
+    /// False when `id` was seen before.
+    fn insert(&mut self, id: &str) -> bool {
+        let (digits, tag) = match id.strip_prefix("rs") {
+            Some(d) => (d, 0),
+            None => (id.strip_prefix('i').unwrap_or(id), 1u64 << 62),
+        };
+        match digits.parse::<u64>() {
+            Ok(n) if digits.len() <= 18 => self.short.insert(n | tag),
+            _ => self.long.insert(id.into()),
         }
-        self.last = Some((key, id));
-        if self.twice.is_none() && !self.seen.insert(id) {
-            self.twice = Some(id);
+    }
+}
+
+/// Where the reader is in the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Part {
+    /// The comment lines before the column header.
+    Comments,
+    Rows,
+    /// The column header is missing: the rest is not read.
+    NoHeader,
+}
+
+/// The strict reader, fed one line at a time, so a file is checked as it is
+/// written and never held whole. [`check_text`] feeds it a whole text.
+pub struct Checker<'p> {
+    path: &'p str,
+    layout: Layout,
+    /// Lines fed so far.
+    n: usize,
+    part: Part,
+    ascii: bool,
+    carriage_return: bool,
+    /// Whether the last line fed ended with a newline.
+    newline: bool,
+    first_ok: bool,
+    rows: usize,
+    problems: Vec<String>,
+    /// The last good row: its chromosome, the length and digits of its
+    /// position (a whole number without leading zeros, compared by value),
+    /// and its rsID.
+    last: Option<(usize, usize)>,
+    last_pos: String,
+    last_id: String,
+    out_of_order: Option<String>,
+    seen: Ids,
+    twice: Option<String>,
+}
+
+impl<'p> Checker<'p> {
+    /// A reader of `layout` that names `path` in each problem; `rows` is
+    /// how many rows to make room for.
+    pub fn new(path: &'p str, layout: Layout, rows: usize) -> Checker<'p> {
+        let mut seen = Ids::default();
+        seen.short.reserve(rows);
+        Checker {
+            path,
+            layout,
+            n: 0,
+            part: Part::Comments,
+            ascii: true,
+            carriage_return: false,
+            newline: false,
+            first_ok: false,
+            rows: 0,
+            problems: Vec::new(),
+            last: None,
+            last_pos: String::new(),
+            last_id: String::new(),
+            out_of_order: None,
+            seen,
+            twice: None,
         }
     }
 
-    fn problems(self, path: &str, problems: &mut Vec<String>) {
-        if let Some((b, a)) = self.out_of_order {
-            problems.push(format!("{path}: rows out of order at {b} (after {a})"));
+    /// Reads one line, with its newline if it has one; only the last line
+    /// of a file may lack it.
+    pub fn line(&mut self, raw: &[u8]) {
+        if !self.ascii {
+            return;
         }
-        if let Some(id) = self.twice {
-            problems.push(format!("{path}: {id} appears twice"));
+        let Some(raw) = raw
+            .is_ascii()
+            .then(|| std::str::from_utf8(raw).ok())
+            .flatten()
+        else {
+            self.ascii = false;
+            return;
+        };
+        self.n += 1;
+        self.newline = raw.ends_with('\n');
+        let line = raw.strip_suffix('\n').unwrap_or(raw);
+        if line.contains('\r') {
+            self.carriage_return = true;
         }
+        let path = self.path;
+        let (header, ncols) = match self.layout {
+            Layout::TwentyThree => (HEADER_23ANDME, 4),
+            Layout::Ancestry => (HEADER_ANCESTRY, 5),
+        };
+        if self.n == 1 {
+            self.first_ok = match self.layout {
+                Layout::TwentyThree => line.starts_with("# This data file"),
+                Layout::Ancestry => self.newline && line == ANCESTRY_FIRST,
+            };
+        }
+        match self.part {
+            Part::NoHeader => return,
+            Part::Comments => {
+                let comment = match self.layout {
+                    Layout::TwentyThree => line.starts_with('#') && line != HEADER_23ANDME,
+                    Layout::Ancestry => line.starts_with('#'),
+                };
+                if !comment {
+                    self.part = if line == header {
+                        Part::Rows
+                    } else {
+                        self.problems.push(format!(
+                            "{path}: the column header {} is missing after the comment lines",
+                            py_repr(header)
+                        ));
+                        Part::NoHeader
+                    };
+                }
+                return;
+            }
+            Part::Rows => {}
+        }
+        let n = self.n;
+        let mut cols = [""; 5];
+        let mut k = 0;
+        for f in line.split('\t') {
+            if let Some(slot) = cols.get_mut(k) {
+                *slot = f;
+            }
+            k += 1;
+        }
+        if k != ncols {
+            self.problems.push(format!(
+                "{path} line {n}: {k} columns, want {ncols}: {}",
+                py_repr(head(line, 60))
+            ));
+            return;
+        }
+        let c = &cols[..k];
+        let err = match self.layout {
+            Layout::TwentyThree => row_23andme(c),
+            Layout::Ancestry => row_ancestry(c),
+        };
+        if let Some(e) = err {
+            self.problems
+                .push(format!("{path} line {n}: {e}: {}", py_repr(head(line, 60))));
+            return;
+        }
+        self.rows += 1;
+        let chrom = match self.layout {
+            Layout::TwentyThree => usize::from(chrom_index(c[1]).unwrap_or(0)),
+            Layout::Ancestry => c[1].parse().unwrap_or(0),
+        };
+        let key = (chrom, c[2].len());
+        if self.out_of_order.is_none()
+            && let Some(last) = self.last
+            && (key, c[2]) < (last, self.last_pos.as_str())
+        {
+            self.out_of_order = Some(format!(
+                "{path}: rows out of order at {} (after {})",
+                c[0], self.last_id
+            ));
+        }
+        self.last = Some(key);
+        self.last_pos.clear();
+        self.last_pos.push_str(c[2]);
+        self.last_id.clear();
+        self.last_id.push_str(c[0]);
+        if self.twice.is_none() && !self.seen.insert(c[0]) {
+            self.twice = Some(format!("{path}: {} appears twice", c[0]));
+        }
+    }
+
+    /// Every problem of the lines read.
+    pub fn finish(self) -> Vec<String> {
+        let path = self.path;
+        if !self.ascii {
+            return vec![format!("{path}: not plain ASCII")];
+        }
+        let mut problems = Vec::new();
+        if self.carriage_return {
+            problems.push(format!("{path}: carriage returns (CRLF line ends)"));
+        }
+        if !self.newline {
+            problems.push(format!("{path}: the last line has no newline (a cut file)"));
+        }
+        problems.extend(self.problems);
+        match self.part {
+            Part::Comments => problems.push(format!(
+                "{path}: the column header {} is missing after the comment lines",
+                py_repr(match self.layout {
+                    Layout::TwentyThree => HEADER_23ANDME,
+                    Layout::Ancestry => HEADER_ANCESTRY,
+                })
+            )),
+            Part::Rows if self.rows == 0 => problems.push(format!("{path}: no data row")),
+            _ => {}
+        }
+        if !self.first_ok {
+            problems.push(match self.layout {
+                Layout::TwentyThree => {
+                    format!("{path}: the first line does not start with '# This data file'")
+                }
+                Layout::Ancestry => {
+                    format!("{path}: the first line is not {}", py_repr(ANCESTRY_FIRST))
+                }
+            });
+        }
+        problems.extend(self.out_of_order);
+        problems.extend(self.twice);
+        problems
     }
 }
 
 /// Every problem of `data` read as `layout`; `path` names it in each one.
 pub fn check_text(path: &str, data: &[u8], layout: Layout) -> Vec<String> {
-    let Ok(text) = std::str::from_utf8(data) else {
-        return vec![format!("{path}: not plain ASCII")];
-    };
-    if !text.is_ascii() {
-        return vec![format!("{path}: not plain ASCII")];
-    }
-    let (header, ncols) = match layout {
-        Layout::TwentyThree => (HEADER_23ANDME, 4),
-        Layout::Ancestry => (HEADER_ANCESTRY, 5),
-    };
-    let mut problems = Vec::new();
-    if text.contains('\r') {
-        problems.push(format!("{path}: carriage returns (CRLF line ends)"));
-    }
-    if !text.ends_with('\n') {
-        problems.push(format!("{path}: the last line has no newline (a cut file)"));
-    }
-    let body = text.strip_suffix('\n').unwrap_or(text);
-    // `text.split("\n")[:-1]` of an empty text is no line at all.
-    let mut lines = (!text.is_empty())
-        .then(|| body.split('\n'))
-        .into_iter()
-        .flatten()
-        .peekable();
-    let comment = |l: &str| match layout {
-        Layout::TwentyThree => l.starts_with('#') && l != HEADER_23ANDME,
-        Layout::Ancestry => l.starts_with('#'),
-    };
-    let mut n = 0usize;
-    while lines.next_if(|l| comment(l)).is_some() {
-        n += 1;
-    }
-    let mut order = Order::default();
-    // One rsID per line at most: room for all of them up front, so the set
-    // never grows (and never holds two tables while it does).
-    order
-        .seen
-        .reserve(memchr::memchr_iter(b'\n', data).count() + 1);
-    if lines.next() != Some(header) {
-        problems.push(format!(
-            "{path}: the column header {} is missing after the comment lines",
-            py_repr(header)
-        ));
-    } else {
-        n += 1;
-        let mut rows = 0usize;
-        let mut c: Vec<&str> = Vec::with_capacity(ncols + 1);
-        for line in lines {
-            n += 1;
-            c.clear();
-            c.extend(line.split('\t'));
-            if c.len() != ncols {
-                problems.push(format!(
-                    "{path} line {n}: {} columns, want {ncols}: {}",
-                    c.len(),
-                    py_repr(head(line, 60))
-                ));
-                continue;
-            }
-            let err = match layout {
-                Layout::TwentyThree => row_23andme(&c),
-                Layout::Ancestry => row_ancestry(&c),
-            };
-            if let Some(e) = err {
-                problems.push(format!("{path} line {n}: {e}: {}", py_repr(head(line, 60))));
-                continue;
-            }
-            rows += 1;
-            let chrom = match layout {
-                Layout::TwentyThree => usize::from(chrom_index(c[1]).unwrap_or(0)),
-                Layout::Ancestry => c[1].parse().unwrap_or(0),
-            };
-            order.row((chrom, num_key(c[2])), c[0]);
-        }
-        if rows == 0 {
-            problems.push(format!("{path}: no data row"));
-        }
-    }
-    match layout {
-        Layout::TwentyThree => {
-            if !text.starts_with("# This data file") {
-                problems.push(format!(
-                    "{path}: the first line does not start with '# This data file'"
-                ));
-            }
-        }
-        Layout::Ancestry => {
-            if !text.starts_with(&format!("{ANCESTRY_FIRST}\n")) {
-                problems.push(format!(
-                    "{path}: the first line is not {}",
-                    py_repr(ANCESTRY_FIRST)
-                ));
-            }
-        }
-    }
-    order.problems(path, &mut problems);
-    problems
+    let mut c = Checker::new(path, layout, memchr::memchr_iter(b'\n', data).count() + 1);
+    data.split_inclusive(|&b| b == b'\n')
+        .for_each(|l| c.line(l));
+    c.finish()
 }
 
 /// The text of a `.txt` file, or of the one `.txt` member of a `.zip`;
@@ -344,6 +439,49 @@ mod tests {
     fn positions_compare_by_value() {
         assert!(bad(&GOOD.replace("rs2\t1\t200", "rs2\t1\t1000")).is_empty());
         assert!(!bad(&GOOD.replace("rs2\t1\t200", "rs2\t1\t99")).is_empty());
+    }
+
+    #[test]
+    fn rsids_are_told_apart_by_kind_and_value() {
+        let t = |a: &str, b: &str| {
+            bad(&GOOD
+                .replace("rs1\t1\t100", &format!("{a}\t1\t100"))
+                .replace("rs2\t1\t200", &format!("{b}\t1\t200")))
+        };
+        assert!(t("rs5", "i5").is_empty());
+        assert!(t("rs123456789012345678", "rs123456789012345679").is_empty());
+        assert!(t("rs1234567890123456789", "rs1234567890123456780").is_empty());
+        assert_eq!(t("i7", "i7"), ["r.txt: i7 appears twice"]);
+        let long = "rs12345678901234567890";
+        assert_eq!(t(long, long), [format!("r.txt: {long} appears twice")]);
+    }
+
+    #[test]
+    fn line_by_line_is_the_whole_text() {
+        // Every way a text can end, read whole and fed in pieces.
+        for text in [
+            GOOD,
+            &GOOD[..GOOD.len() - 1],
+            "",
+            "\n",
+            "x",
+            "# This data file\n",
+        ] {
+            let mut c = Checker::new("r.txt", Layout::TwentyThree, 0);
+            for l in text.split_inclusive('\n') {
+                c.line(l.as_bytes());
+            }
+            assert_eq!(c.finish(), bad(text), "{text:?}");
+        }
+        assert_eq!(
+            check_text("a.txt", ANCESTRY_FIRST.as_bytes(), Layout::Ancestry),
+            [
+                "a.txt: the last line has no newline (a cut file)",
+                "a.txt: the column header 'rsid\\tchromosome\\tposition\\tallele1\\tallele2' is missing after the comment lines",
+                "a.txt: the first line is not '#AncestryDNA raw data download'"
+            ]
+        );
+        assert_eq!(bad("caf\u{e9}\n"), ["r.txt: not plain ASCII"]);
     }
 
     #[test]
