@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`). The pieces below are the base every port builds on.
+Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`), and step 26b calls `og ancestry-fine`. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -16,12 +16,13 @@ rust/
   crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
+  crates/og-ancestry/   step 26b, fine-grained ancestry: og ancestry-fine
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`).
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 26b's six commands are `og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report`; `bin/ancestry_fine_report.py` keeps only the names `collect_summary.py` and the docs demo import.
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 
@@ -84,7 +85,7 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 ## CI
 
-- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; both musl builds through `scripts/setup.sh --og`; and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task. Then the tests of the `og sv` and `og pgx` filters and the step 05 tests run with `bin/og` and `OG_REQUIRED=1`; in `unit-tests`, which has no `og`, they skip with a note.
+- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; both musl builds through `scripts/setup.sh --og`; and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task. Then the tests of the `og sv` and `og pgx` filters, the step 05 tests and `tests/test_ancestry_fine_report.py` run with `bin/og` and `OG_REQUIRED=1`; in `unit-tests`, which has no `og`, they skip with a note.
 - **Guard, job `unit-tests`**: `tests/test_og_check.sh` runs the check on planted trees (no binary, a stale one, an edit that is uncommitted, untracked or committed, a file git ignores, a binary stamped `unknown`, a tree hash that cannot be computed, a release download with a bad checksum or attestation, with `gh` not logged in, with a network error, without binaries, or whose copy into `bin/.og` fails), and checks that `run-all.sh`, `validate-setup.sh` and `write_manifest.sh` act on it.
 - **Rust** (`rust.yml`, on a pull request that touches the Rust code, the shim or `versions.env`): times a cold and a cached build, runs `og` by bare name in the four images on amd64 and arm64 (QEMU), runs that check once more with a wrong-arch binary planted, which must fail, runs the fetch smoke with both binaries (arm64 under QEMU) and with pysam in `PYPGX_IMAGE`, which must all match `fetch.pysam.tsv`, and keeps the binaries as the artifact `og-binaries`. Every night it runs the differential test at 10,000,000 cases per operation with a new seed.
 - **Release** (`release.yml`): a tag builds both binaries, writes `SHA256SUMS`, attests them and attaches all three to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.

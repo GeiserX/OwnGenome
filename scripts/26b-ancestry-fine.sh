@@ -15,7 +15,7 @@
 #   3. Beagle phases your genotypes against the panel;
 #   4. RFMix paints each segment of each haplotype with the continental group
 #      it is most similar to;
-#   5. bin/ancestry_fine_report.py writes the fractions table, the painting
+#   5. og ancestry-fine report writes the fractions table, the painting
 #      (BED and PNG) and a plain-text summary.
 # A group name is ours: a set of reference populations, not a nationality.
 # docs/26b-ancestry-fine.md says where the resolution ends. ADMIXTURE is free
@@ -125,9 +125,9 @@ fi
 run_in --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c \
   'bcftools view -Oz -o "$1.gz" "$1" && bcftools index -t "$1.gz" && rm -f "$1"' _ "${W}/genotypes.vcf"
 # The chromosomes to phase and paint: 100 genotyped SNVs or more spanning
-# 5 cM or more (bin/ancestry_fine_report.py chroms says why).
+# 5 cM or more (og ancestry-fine chroms, rust/crates/og-ancestry, says why).
 CHROMS=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/ancestry_fine_report.py chroms --counts "${W}/counts.tsv" --maps "${P}/maps")
+  /pgp-bin/og ancestry-fine chroms --counts "${W}/counts.tsv" --maps "${P}/maps")
 
 # --- 2. ADMIXTURE: projection on the groups' frequencies ----------------------------
 # sample-bed writes the inputs and run_admixture.sh, which projects the sample
@@ -137,7 +137,7 @@ echo "[2/5] ADMIXTURE projection, ${BOOT} bootstrap replicates..."
 LEVELS=()
 while IFS=$'\t' read -r level k _; do LEVELS+=("--level" "${level}:${k}:${P}/model/${level}.P"); done < "${PANEL}/model/levels.tsv"
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/ancestry_fine_report.py sample-bed --bim "${P}/model/ref.bim" --vcf "${W}/genotypes.vcf.gz" \
+  /pgp-bin/og ancestry-fine sample-bed --bim "${P}/model/ref.bim" --vcf "${W}/genotypes.vcf.gz" \
     --sample "$SAMPLE" "${LEVELS[@]}" --bootstrap "$BOOT" --out-dir "${W}/admixture"
 # shellcheck disable=SC2016  # $1 and $2 belong to the inner sh
 run_in --cpus "$THREADS" --memory 4g "$ADMIXTURE_IMAGE" sh -c 'cd "$1" && sh run_admixture.sh "$2"' _ "${W}/admixture" "$THREADS" \
@@ -180,7 +180,7 @@ fi
 echo "[5/5] Writing the fractions, the painting and the summary..."
 echo ""
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/ancestry_fine_report.py report --sample "$SAMPLE" --model "${P}/model" \
+  /pgp-bin/og ancestry-fine report --sample "$SAMPLE" --model "${P}/model" \
     --admixture "${W}/admixture" --paint "${W}/paint" --panel "$ANCESTRY_FINE_PANEL" --out "$(cpath "$OUT")"
 for f in "${OUT}/${SAMPLE}_ancestry_fine.tsv" "${OUT}/${SAMPLE}_painting.png"; do
   [ -s "$f" ] || { echo "ERROR: step 26b wrote no ${f}" >&2; exit 1; }
