@@ -26,9 +26,10 @@ Borrowed, not rewritten:
     from bin/ancestry_fine_report.py, step 35b's table from
     bin/paraphase_report.py, step 39's from bin/couple_report.py and step 42's
     from bin/traits_report.py, each fed made-up inputs; step 45's rows come
-    from bin/ystr_report.py's marker_row, step 46's from bin/lpa_kiv2.py's
-    assess, step 35's HBA1/HBA2 table from bin/hba_copy_number.py's assess,
-    step 49's depth rows from bin/chip_report.py's detection_limit, step 50's
+    from bin/ystr_report.py's marker_row, step 46's table and step 35's
+    HBA1/HBA2 table are what og cn call writes for made-up depths (HBA_TABLE
+    and LPA_TABLE; tests/test_hba_copy_number.py and tests/test_lpa_kiv2.py
+    check that og still writes them), step 49's depth rows from bin/chip_report.py's detection_limit, step 50's
     tables from bin/mei_report.py on a made-up VCF and depth, and
     step 47's from bin/viral_report.py's build_rows, with made-up counts; steps 02, 40 and 41's tables are written here in their writers'
     columns.
@@ -882,13 +883,8 @@ def paralogs(d):
         "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\t"
         "homologous_regions\nchr5\t70925000\t70953000\tSMN1\tPASS\t4\t40\tPASS\t2,2\t33,30\t"
         "chr5:70049000-70077000:-\n")
-    # Step 35's HBA1/HBA2 table: bin/hba_copy_number.py's own assess() on
-    # made-up depths, four alpha-globin genes.
-    import hba_copy_number as hba
-    depth = {"flank_left": 31.2, "HBA2": 30.9, "HBA1": 30.1, "flank_right": 30.4}
-    res = hba.assess(depth, {k: v * (0.76 if k.startswith("HBA") else 0.98) for k, v in depth.items()})
-    put(os.path.join(out, f"{SAMPLE}_hba_copy_number.tsv"),
-        "metric\tvalue\n" + "".join(f"{k}\t{res[k]}\n" for k in hba.ORDER))
+    # Step 35's HBA1/HBA2 table: four alpha-globin genes.
+    put(os.path.join(out, f"{SAMPLE}_hba_copy_number.tsv"), HBA_TABLE)
 
 
 def couple(d, rng):
@@ -1047,18 +1043,38 @@ def viral(d):
         w.writerows(rows)
 
 
+# Step 35's HBA1/HBA2 depths (mean depth per region of the HBA row of
+# bin/cn_loci.tsv, every read) and the share of each left at MAPQ 1 or more,
+# and the table og cn call --locus HBA writes for them: four genes.
+HBA_DEPTH = {"flank_left": 31.2, "HBA2": 30.9, "HBA1": 30.1, "flank_right": 30.4}
+HBA_Q1 = {"flank_left": 0.98, "HBA2": 0.76, "HBA1": 0.76, "flank_right": 0.98}
+HBA_TABLE = ("metric\tvalue\nstatus\tcalled\nalpha_globin_genes\t4\nestimate\t3.96\nhba2_depth\t30.9\n"
+             "hba1_depth\t30.1\nflank_left_depth\t31.2\nflank_right_depth\t30.4\nmapq0_share\t0.240\n"
+             "message\tfour alpha-globin genes (aa/aa): no deletion seen\n")
+
+
+def lpa_depth(row):
+    """Step 46's made-up depths over the LPA_KIV2 row's segments (catalog
+    order, from bin/copy_number.py's load_catalog): every read, and MAPQ 1 or
+    more. About 37 KIV-2 repeats at a flank depth near 31, half the KIV-2
+    depth at MAPQ 0."""
+    m = {n: 86.5 * (1.02 if i % 2 == 0 else 0.98) for i, (n, *_) in enumerate(row["_targets"])}
+    m.update({n: 31.0 * (1.03 if i % 2 == 0 else 0.97) for i, (n, *_) in enumerate(row["_controls"])})
+    return m, {n: v * (0.5 if n.startswith("kiv2_") else 0.98) for n, v in m.items()}
+
+
+# The table og cn call --locus LPA_KIV2 writes for lpa_depth.
+LPA_TABLE = ("metric\tvalue\nstatus\testimated\nkiv2_copies\t37.0\nci95_low\t36.3\nci95_high\t37.8\n"
+             "class\ttypical\nkiv2_depth\t86.61\nflank_depth\t31.09\nmapq0_share\t0.500\n"
+             "message\tabout 37 KIV-2 repeats in total (95% interval 36.3 to 37.8): within or overlapping the range "
+             "most people have (30 to 45 for about 70% of the 1000 Genomes samples)\n"
+             "advice\tA research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 "
+             "European Atherosclerosis Society consensus advises measuring it at least once in every adult.\n")
+
+
 def lpa(d, rng):
-    """Step 46: bin/lpa_kiv2.py's assess on made-up depths, about 37 KIV-2
-    repeats at a flank depth near 31, half the KIV-2 depth at MAPQ 0."""
-    import lpa_kiv2
-    m, q1 = {}, {}
-    for *_, name in lpa_kiv2.REGIONS:
-        m[name] = rng.uniform(83, 90) if name.startswith("kiv2_") else rng.uniform(29.5, 32.5)
-        q1[name] = m[name] * (0.5 if name.startswith("kiv2_") else 0.98)
-    res = lpa_kiv2.assess(m, q1)
-    res["advice"] = lpa_kiv2.ADVICE
-    put(os.path.join(d, "lpa", f"{SAMPLE}_lpa_kiv2.tsv"),
-        "metric\tvalue\n" + "".join(f"{k}\t{res[k]}\n" for k in lpa_kiv2.ORDER))
+    """Step 46: the table og cn call writes for lpa_depth (LPA_TABLE)."""
+    put(os.path.join(d, "lpa", f"{SAMPLE}_lpa_kiv2.tsv"), LPA_TABLE)
 
 
 def chip(d, rng):

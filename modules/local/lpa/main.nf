@@ -3,18 +3,17 @@
     LPA — the LPA KIV-2 repeat count estimated from read depth (Lp(a))
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Opt-in ('lpa' in --tools). Three processes, as in scripts/46-lpa.sh:
-      LPA_REGIONS  bin/copy_number.py bed --locus LPA_KIV2, once: the KIV-2
-                   and single-copy LPA exons (the LPA_KIV2 row of bin/cn_loci.tsv),
+      LPA_REGIONS  og cn bed --locus LPA_KIV2, once: the KIV-2 and
+                   single-copy LPA exons (the LPA_KIV2 row of bin/cn_loci.tsv),
                    and the seven GRCh38 copies of the KIV-2 4925G>A site
-                   (bin/traits_report.py --marker-regions LPA_KIV2_4925)
+                   (og cn marker-regions LPA_KIV2_4925)
       LPA_DEPTH    samtools bedcov -j over the exons, all MAPQ and MAPQ >= 1,
                    and samtools mpileup at the 4925G>A sites, for each sample
                    with a BAM; empty tables when the BAM has no chr6
-      LPA          bin/copy_number.py call --locus LPA_KIV2: the count, its
-                   95% interval and the message (laid out by bin/lpa_kiv2.py),
-                   then bin/traits_report.py --marker LPA_KIV2_4925: the 4925G>A
-                   reading beside it, <id>_lpa_kiv2_4925.tsv ('not assessed'
-                   when that check fails; the count stays)
+      LPA          og cn call --locus LPA_KIV2 --marker LPA_KIV2_4925: the
+                   count, its 95% interval and the message, and in the same
+                   run the 4925G>A reading beside it, <id>_lpa_kiv2_4925.tsv
+                   ('not assessed' when that check fails; the count stays)
 
     Equivalent to: scripts/46-lpa.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -32,8 +31,8 @@ process LPA_REGIONS {
 
     script:
     """
-    copy_number.py bed --locus LPA_KIV2 > lpa_regions.bed
-    traits_report.py --marker-regions LPA_KIV2_4925 > lpa_sites.txt
+    og cn bed --locus LPA_KIV2 > lpa_regions.bed
+    og cn marker-regions LPA_KIV2_4925 > lpa_sites.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -123,11 +122,14 @@ process LPA {
 
     script:
     """
-    copy_number.py call --locus LPA_KIV2 --bedcov ${depth} --bedcov-mapq1 ${depth_q1} --table ${meta.id}_lpa_kiv2.tsv
-    # KIV-2 4925G>A beside the count (as scripts/46-lpa.sh [4/4]): a failure
-    # never costs the count; the table then says not assessed.
-    if ! traits_report.py --marker LPA_KIV2_4925 --pileup ${pileup} --copy-table ${meta.id}_lpa_kiv2.tsv \\
-        --marker-out ${meta.id}_lpa_kiv2_4925.tsv; then
+    # The count and KIV-2 4925G>A beside it in one run (as scripts/46-lpa.sh
+    # [3/3]): a failure of the marker never costs the count; the table then
+    # says not assessed. No count table: the task fails.
+    rc=0
+    og cn call --locus LPA_KIV2 --bedcov ${depth} --bedcov-mapq1 ${depth_q1} --table ${meta.id}_lpa_kiv2.tsv \\
+        --marker LPA_KIV2_4925 --marker-pileup ${pileup} --marker-out ${meta.id}_lpa_kiv2_4925.tsv || rc=\$?
+    if [ "\$rc" -ne 0 ]; then
+        [ -s ${meta.id}_lpa_kiv2.tsv ] || exit "\$rc"
         echo "WARNING: the KIV-2 4925G>A check failed; ${meta.id}_lpa_kiv2_4925.tsv says not assessed." >&2
         printf 'metric\\tvalue\\nmarker\\tLPA KIV-2 4925G>A\\nrsid\\trs1484919544 (first KIV-2 copy)\\nstatus\\tnot assessed\\nalt_reads\\t.\\ndepth\\t.\\nfraction\\t.\\ncopies\\t.\\nkiv2_copies\\t.\\nmessage\\t%s\\n' \\
             'LPA KIV-2 4925G>A: not assessed, the check failed; see the log of step 46.' > ${meta.id}_lpa_kiv2_4925.tsv

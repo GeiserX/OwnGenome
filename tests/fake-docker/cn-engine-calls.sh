@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
 # Steps 35 (the HBA1/HBA2 block), 41 (RhD) and 46 (LPA KIV-2) count copies
-# through one engine, bin/copy_number.py, with a hook that plays Parascopy and
-# samtools bedcov (made-up depths: 30x everywhere, the KIV-2 block at 20
-# repeats) and runs the engine for real on the host:
-#   - each step calls copy_number.py bed once and step 35 and 46 call
-#     copy_number.py call once (step 41's report imports the engine), and no
-#     step calls hba_copy_number.py or lpa_kiv2.py any more;
+# through one engine, og cn, with a hook that plays Parascopy and samtools
+# bedcov (made-up depths: 30x everywhere, the KIV-2 block at 20 repeats) and
+# runs og for real on the host (bin/og):
+#   - each step calls og cn bed once and step 35 and 46 call og cn call once
+#     (step 41's report imports bin/copy_number.py), step 46 with the 4925G>A
+#     marker in the same call, and no step calls the old Python any more;
 #   - the tables say what the depths give: four alpha-globin genes, RhD D+
 #     with two copies, 20.0 KIV-2 repeats;
 #   - a control segment with no read (FAKE_ZERO=flank_e19, the others at 30x)
 #     fails step 46 with BROKEN_CONTROL, never a count.
+# It needs og built (scripts/setup.sh --og). The fake-docker job builds no og,
+# so there the case says it is skipped; Guard's rust job runs it with og and
+# fails on that line.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 # shellcheck source=../../versions.env
 . "${REPO_ROOT}/versions.env"
+if ! "${REPO_ROOT}/bin/og" version > /dev/null 2>&1; then
+  echo "skip: bin/og is not built here (Guard's rust job runs this case with og)"
+  exit 0
+fi
 
 export GENOME_DIR="${CASE_WORK}/genome"
 seed_reference "$GENOME_DIR"
@@ -70,7 +77,7 @@ case "$*" in
   "parascopy cn-using"*)
     o=$(host_path "$(arg -o "$@")"); mkdir -p "$o"
     printf 'chr5\t70925087\t70953015\tSMN1\t.\tPASS\t4\t40\tPASS\t2,2\t30\t.\tchr5:70049669-70077595\n' | gzip -c > "${o}/res.samples.bed.gz" ;;
-  "python3 /pgp-bin/"*)
+  "python3 /pgp-bin/"* | "/pgp-bin/og "*)
     args=(); for a in "$@"; do args+=("$(map "$a")"); done
     exec "${args[@]}" ;;
   "sh -c "*)
@@ -101,9 +108,9 @@ val() { awk -F'\t' -v k="$2" '$1 == k {print $2; exit}' "$1"; }
 # --- step 35 ---------------------------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 paralogs "${SCRIPTS}/35-paralogs.sh" sample1
-[ "$(calls 'copy_number.py bed --locus HBA')" = 1 ] || fail "step 35: copy_number.py bed --locus HBA was not called once"
-[ "$(calls 'copy_number.py call --locus HBA')" = 1 ] || fail "step 35: copy_number.py call --locus HBA was not called once"
-[ "$(calls 'hba_copy_number.py')" = 0 ] || fail "step 35 still calls hba_copy_number.py"
+[ "$(calls 'og cn bed --locus HBA')" = 1 ] || fail "step 35: og cn bed --locus HBA was not called once"
+[ "$(calls 'og cn call --locus HBA')" = 1 ] || fail "step 35: og cn call --locus HBA was not called once"
+[ "$(calls '.py')" = 0 ] || fail "step 35 still calls Python: $(grep -F '.py' "$FAKE_DOCKER_LOG")"
 H="${S}/paralogs/sample1_hba_copy_number.tsv"
 [ "$(val "$H" alpha_globin_genes)" = 4 ] || fail "step 35: four alpha-globin genes expected: $(cat "$H")"
 [ "$(val "$H" status)" = called ] || fail "step 35: HBA not called: $(cat "$H")"
@@ -111,7 +118,7 @@ H="${S}/paralogs/sample1_hba_copy_number.tsv"
 # --- step 41 ---------------------------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 bloodtype "${SCRIPTS}/41-bloodtype.sh" sample1
-[ "$(calls 'copy_number.py bed --locus RHD')" = 1 ] || fail "step 41: copy_number.py bed --locus RHD was not called once"
+[ "$(calls 'og cn bed --locus RHD')" = 1 ] || fail "step 41: og cn bed --locus RHD was not called once"
 [ "$(awk -F'\t' '$4 == "RHD_GENE" {n++} END {print n + 0}' "${S}/bloodtype/sample1_bloodtype_depth.tsv")" = 1 ] \
   || fail "step 41: the depth table has no RHD_GENE row"
 R=$(awk -F'\t' '$1 == "RhD"' "${S}/bloodtype/sample1_bloodtype.tsv")
@@ -120,11 +127,14 @@ case "$R" in *"D+"*"RHD/RHD (RHD copies by read depth 2.00)"*) ;; *) fail "step 
 # --- step 46 ---------------------------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 lpa "${SCRIPTS}/46-lpa.sh" sample1
-[ "$(calls 'copy_number.py bed --locus LPA_KIV2')" = 1 ] || fail "step 46: copy_number.py bed --locus LPA_KIV2 was not called once"
-[ "$(calls 'copy_number.py call --locus LPA_KIV2')" = 1 ] || fail "step 46: copy_number.py call --locus LPA_KIV2 was not called once"
-[ "$(calls 'lpa_kiv2.py')" = 0 ] || fail "step 46 still calls lpa_kiv2.py"
+[ "$(calls 'og cn bed --locus LPA_KIV2')" = 1 ] || fail "step 46: og cn bed --locus LPA_KIV2 was not called once"
+[ "$(calls 'og cn call --locus LPA_KIV2')" = 1 ] || fail "step 46: og cn call --locus LPA_KIV2 was not called once"
+[ "$(calls '--marker LPA_KIV2_4925')" = 1 ] || fail "step 46: the 4925G>A marker was not read in the count's call"
+[ "$(calls '.py')" = 0 ] || fail "step 46 still calls Python: $(grep -F '.py' "$FAKE_DOCKER_LOG")"
 L="${S}/lpa/sample1_lpa_kiv2.tsv"
 [ "$(val "$L" kiv2_copies)" = 20.0 ] || fail "step 46: 20.0 KIV-2 repeats expected: $(cat "$L")"
+N="${S}/lpa/sample1_lpa_kiv2_4925.tsv"
+[ -n "$(val "$N" status)" ] || fail "step 46: no 4925G>A table beside the count: $(cat "$N" 2>/dev/null)"
 
 # A control exon with no read while the others have 30x: a named error, no table
 FAKE_ZERO=flank_e19 run_expect 3 lpa-broken "${SCRIPTS}/46-lpa.sh" sample1

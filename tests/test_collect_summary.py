@@ -1633,16 +1633,23 @@ def parascopy_section(work, schema):
           and "not a carrier by copy number" in card_s and "CYP21A2 and the gene-dosage loci have no Parascopy model" in card_s
           and "step 35 counts them from read depth against flanking sequence" in card_s
           and "Not checked" not in html, card_s)
-    # SMN1 g.27134T>G beside the psCN (step 35's <id>_smn1_marker.tsv, bin/traits_report.py smn1_marker)
+    # SMN1 g.27134T>G beside the psCN (step 35's <id>_smn1_marker.tsv, og cn marker-read SMN1_27134)
     caveat = render_report.SMN1_MARKER_CAVEAT
     after_cn = "  SMN1 copies: 2 (quality 33, filter PASS)\n  SMN1 g.27134T>G silent-carrier marker (rs143838139): "
     check("parascopy: without step 35's marker table the marker line says not assessed, beside the psCN, with why",
           (pd.get("smn1_marker") or {}).get("status") == "not assessed"
           and after_cn + "not assessed\n" in txt and "step 35 wrote no S_smn1_marker.tsv" in txt
           and f"  SMN1 marker caveat: {caveat}\n" in txt, txt)
-    import traits_report
     mk = f"{d}/paralogs/S_smn1_marker.tsv"
-    traits_report.write_metric_table(mk, traits_report.smn1_marker((35, 5, 0), f"{d}/paralogs/S_smn_copy_number.tsv"))
+    # What og cn marker-read SMN1_27134 writes for 5 of 40 reads with G and this SMN table.
+    put(mk, "metric\tvalue\nmarker\tSMN1 g.27134T>G\nrsid\trs143838139\nstatus\tpresent\nalt_reads\t5\n"
+        "depth\t40\nfraction\t0.1250\ncopies\t0.5\nsmn1_pscn\t2 (quality 33, filter PASS)\nagcn\t4\n"
+        "message\tSMN1 g.27134T>G (rs143838139): present, 5 of 40 reads carry G at the SMN1 and SMN2 copies of the "
+        "site together (about 0.5 of the 4 SMN1 and SMN2 copies). The reads cannot tell whether a G sits on SMN1 or "
+        "SMN2. With two SMN1 copies, this marker goes with a higher chance that both sit on one chromosome (2+0, a "
+        "silent carrier): in Luo 2014 it raised the residual carrier risk of a two-copy result (in African Americans "
+        "from about 1 in 121 to 1 in 34); the figures depend on ancestry. This marker does not prove 2+0, and its "
+        "absence does not rule 2+0 out.\n")
     summ_m, txt_m, html_m = render(d)
     card_m = html_m.split("<h2>SMN1/SMN2 Copy Number (Parascopy)</h2>", 1)[-1].split("<h2>", 1)[0]
     check("parascopy: a marker table with 5 of 40 reads reads as present beside the psCN in the text report, "
@@ -1669,7 +1676,7 @@ def parascopy_section(work, schema):
           any(x.startswith("HBA1/HBA2 copy number") for x in summ["not_assessed"])
           and "HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count" in txt
           and "HBA1 and HBA2 together" not in txt, summ["not_assessed"])
-    # Step 35's HBA table (bin/hba_copy_number.py): four genes, then a planted three.
+    # Step 35's HBA table (og cn call --locus HBA): four genes, then a planted three.
     hba_head = "metric\tvalue\nstatus\tcalled\nalpha_globin_genes\t"
     put(f"{d}/paralogs/S_hba_copy_number.tsv", hba_head + "4\nestimate\t4.02\nhba2_depth\t30.1\n"
         "hba1_depth\t30.2\nflank_left_depth\t30.0\nflank_right_depth\t30.0\n"

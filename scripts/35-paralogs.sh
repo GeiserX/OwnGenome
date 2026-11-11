@@ -21,8 +21,8 @@
 # HBA1 and HBA2 (alpha-thalassaemia deletions) have no Parascopy model, so the
 # step counts them from read depth: the depth over both gene bodies against
 # single-copy sequence on each side of the cluster gives the number of
-# alpha-globin genes (bin/copy_number.py on the HBA row of bin/cn_loci.tsv,
-# laid out by bin/hba_copy_number.py). A failure there writes an HBA
+# alpha-globin genes (og cn call on the HBA row of bin/cn_loci.tsv). A
+# failure there writes an HBA
 # table that says not assessed, and does not stop the step.
 #
 # The gene-dosage rows of the same catalog (HP, LCE3BC, CCL3L1: loci no
@@ -39,7 +39,7 @@
 # Beside the SMN1 psCN the step reads SMN1 g.27134T>G (rs143838139; Luo et
 # al. 2014), a marker of SMN1 duplication alleles: samtools mpileup at its
 # SMN1 and SMN2 copies (the reads cannot tell them apart there), read as a
-# fraction of copies by bin/traits_report.py --marker SMN1_27134. With two
+# fraction of copies by og cn marker-read SMN1_27134. With two
 # SMN1 copies it raises or lowers the chance of a silent 2+0 carrier; it
 # never proves 2+0, and the table's message says so;
 # ${SAMPLE}_smn1_marker.tsv.
@@ -106,14 +106,14 @@ for f in "$BAM" "${BAM}.bai" "$REF_FASTA" "${REF_FASTA}.fai" "$LOCI"; do
 done
 # A BAM aligned to a reference with ALT or HLA contigs is refused: Parascopy
 # and the HBA depth count read copy number from depth, and that depth splits
-# between a gene and its ALT copy (bin/copy_number.py check-bam, exit 4).
+# between a gene and its ALT copy (og cn check-bam, exit 4).
 # A header that cannot be read leaves the check undone, with a warning.
 mkdir -p "$OUTDIR"
 HDR="${OUTDIR}/bam_header.part"
 if run_in --cpus 1 --memory 1g "${PARASCOPY_IMAGE}" samtools view -H "$(cpath "$BAM")" > "$HDR"; then
   rc=0
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-    python3 /pgp-bin/copy_number.py check-bam --header "$(cpath "$HDR")" || rc=$?
+    /pgp-bin/og cn check-bam --header "$(cpath "$HDR")" || rc=$?
   rm -f "$HDR"
   if [ "$rc" -eq 4 ]; then
     exit 1
@@ -246,7 +246,7 @@ mv "$WORK" "${OUTDIR}/${SAMPLE}_parascopy"
 # SMN1 g.27134T>G beside the SMN1 psCN (as the PARASCOPY module): samtools
 # mpileup at its SMN1 and SMN2 copies, one -r per site, every MAPQ,
 # duplicates left out, bases of quality 13 or more; then
-# bin/traits_report.py --marker SMN1_27134 with the SMN table (the SMN1 psCN
+# og cn marker-read SMN1_27134 with the SMN table (the SMN1 psCN
 # at exon 7 and the agCN). A failure writes a table that says not assessed,
 # and the step goes on.
 SMN1M_OUT="${OUTDIR}/${SAMPLE}_smn1_marker.tsv"
@@ -255,13 +255,13 @@ rm -rf "$SMN1M_OUT" "$SMN1M_WORK"
 mkdir -p "$SMN1M_WORK"
 # shellcheck disable=SC2016  # $1 to $3 belong to the inner bash
 if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-     python3 /pgp-bin/traits_report.py --marker-regions SMN1_27134 > "${SMN1M_WORK}/sites.txt" \
+     /pgp-bin/og cn marker-regions SMN1_27134 > "${SMN1M_WORK}/sites.txt" \
    && run_in --cpus 1 --memory 2g "${PARASCOPY_IMAGE}" bash -euo pipefail -c '
        while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "$r" "$1"; done < "$2" > "$3"' \
      _ "$(cpath "$BAM")" "$(cpath "${SMN1M_WORK}/sites.txt")" "$(cpath "${SMN1M_WORK}/pileup.tsv")" \
    && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-     python3 /pgp-bin/traits_report.py --marker SMN1_27134 --pileup "$(cpath "${SMN1M_WORK}/pileup.tsv")" \
-       --copy-table "$(cpath "${OUTDIR}/${SAMPLE}_smn_copy_number.tsv")" --marker-out "$(cpath "${SMN1M_OUT}.tmp")"; then
+     /pgp-bin/og cn marker-read SMN1_27134 --pileup "$(cpath "${SMN1M_WORK}/pileup.tsv")" \
+       --copy-table "$(cpath "${OUTDIR}/${SAMPLE}_smn_copy_number.tsv")" --out "$(cpath "${SMN1M_OUT}.tmp")"; then
   mv "${SMN1M_OUT}.tmp" "$SMN1M_OUT"
 else
   rm -f "${SMN1M_OUT}.tmp"
@@ -274,19 +274,19 @@ rm -rf "$SMN1M_WORK"
 # HBA1/HBA2 from depth (as the PARASCOPY module): samtools bedcov over the
 # regions of the HBA row of bin/cn_loci.tsv, all MAPQ and MAPQ 1 or more (a
 # BAM with no MAPQ 0 read over the genes left out the reads that fit both),
-# then the engine's verdict (bin/copy_number.py).
+# then the engine's verdict (og cn call).
 HBA_OUT="${OUTDIR}/${SAMPLE}_hba_copy_number.tsv"
 HBA_WORK="${OUTDIR}/hba_depth.part"
 rm -rf "$HBA_OUT" "$HBA_WORK"
 mkdir -p "$HBA_WORK"
 if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-     python3 /pgp-bin/copy_number.py bed --locus HBA > "${HBA_WORK}/regions.bed" \
+     /pgp-bin/og cn bed --locus HBA > "${HBA_WORK}/regions.bed" \
    && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
      samtools bedcov "$(cpath "${HBA_WORK}/regions.bed")" "$(cpath "$BAM")" > "${HBA_WORK}/bedcov.tsv" \
    && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
      samtools bedcov -Q 1 "$(cpath "${HBA_WORK}/regions.bed")" "$(cpath "$BAM")" > "${HBA_WORK}/bedcov_q1.tsv" \
    && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-     python3 /pgp-bin/copy_number.py call --locus HBA --bedcov "$(cpath "${HBA_WORK}/bedcov.tsv")" \
+     /pgp-bin/og cn call --locus HBA --bedcov "$(cpath "${HBA_WORK}/bedcov.tsv")" \
        --bedcov-mapq1 "$(cpath "${HBA_WORK}/bedcov_q1.tsv")" --table "$(cpath "${HBA_OUT}.tmp")"; then
   mv "${HBA_OUT}.tmp" "$HBA_OUT"
 else
@@ -299,7 +299,7 @@ rm -rf "$HBA_WORK"
 
 # Gene-dosage rows of bin/cn_loci.tsv that no pinned caller models (as the
 # PARASCOPY module): per locus samtools bedcov, all MAPQ and MAPQ 1 or more,
-# then copy_number.py call; one line per locus in <sample>_cn_dosage.tsv. A
+# then og cn call; one line per locus in <sample>_cn_dosage.tsv. A
 # locus whose check fails is not assessed there, and the step goes on.
 DOSAGE_LOCI="HP LCE3BC CCL3L1"
 DOSAGE_OUT="${OUTDIR}/${SAMPLE}_cn_dosage.tsv"
@@ -311,13 +311,13 @@ for loc in $DOSAGE_LOCI; do
   d="${DOSAGE_WORK}/${loc}"
   mkdir -p "$d"
   if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-       python3 /pgp-bin/copy_number.py bed --locus "$loc" > "${d}/regions.bed" \
+       /pgp-bin/og cn bed --locus "$loc" > "${d}/regions.bed" \
      && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
        samtools bedcov "$(cpath "${d}/regions.bed")" "$(cpath "$BAM")" > "${d}/bedcov.tsv" \
      && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
        samtools bedcov -Q 1 "$(cpath "${d}/regions.bed")" "$(cpath "$BAM")" > "${d}/bedcov_q1.tsv" \
      && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-       python3 /pgp-bin/copy_number.py call --locus "$loc" --bedcov "$(cpath "${d}/bedcov.tsv")" \
+       /pgp-bin/og cn call --locus "$loc" --bedcov "$(cpath "${d}/bedcov.tsv")" \
          --bedcov-mapq1 "$(cpath "${d}/bedcov_q1.tsv")" --table "$(cpath "${d}/table.tsv")"; then
     awk -F'\t' -v OFS='\t' -v l="$loc" 'NR > 1 {v[$1] = $2}
       END {print l, v["status"], v["copies"], v["estimate"], v["reason"], v["reading"]}' "${d}/table.tsv" \
@@ -335,7 +335,7 @@ rm -rf "$DOSAGE_WORK"
 # the CYP21A2 row of bin/cn_loci.tsv (CYP21A2 and CYP21A1P added up against
 # single-copy flanks: the RCCX module total), samtools mpileup without a
 # reference at its paralogous sequence variant sites (each on CYP21A2 and on
-# CYP21A1P, every read whatever its MAPQ), then copy_number.py call: the
+# CYP21A1P, every read whatever its MAPQ), then og cn call: the
 # CYP21A2 copies at each site, and a deletion or a possible conversion. The
 # bedcov runs twice, all MAPQ and MAPQ 1 or more (as HBA): a BAM without the
 # MAPQ 0 reads that fit both copies reads not assessed, never a deletion. A
@@ -345,9 +345,9 @@ CYP21_WORK="${OUTDIR}/CYP21A2.part"
 rm -rf "$CYP21_OUT" "$CYP21_WORK"
 mkdir -p "$CYP21_WORK"
 if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-     python3 /pgp-bin/copy_number.py bed --locus CYP21A2 > "${CYP21_WORK}/regions.bed" \
+     /pgp-bin/og cn bed --locus CYP21A2 > "${CYP21_WORK}/regions.bed" \
    && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-     python3 /pgp-bin/copy_number.py bed --psv --locus CYP21A2 > "${CYP21_WORK}/psv.bed" \
+     /pgp-bin/og cn bed --psv --locus CYP21A2 > "${CYP21_WORK}/psv.bed" \
    && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
      samtools bedcov "$(cpath "${CYP21_WORK}/regions.bed")" "$(cpath "$BAM")" > "${CYP21_WORK}/bedcov.tsv" \
    && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
@@ -357,7 +357,7 @@ if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
        -r "$(awk 'NR == 1 {c = $1; s = $2 + 1} {e = $3} END {print c ":" s "-" e}' "${CYP21_WORK}/psv.bed")" \
        -l "$(cpath "${CYP21_WORK}/psv.bed")" "$(cpath "$BAM")" > "${CYP21_WORK}/pileup.tsv" \
    && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-     python3 /pgp-bin/copy_number.py call --locus CYP21A2 --bedcov "$(cpath "${CYP21_WORK}/bedcov.tsv")" \
+     /pgp-bin/og cn call --locus CYP21A2 --bedcov "$(cpath "${CYP21_WORK}/bedcov.tsv")" \
        --bedcov-mapq1 "$(cpath "${CYP21_WORK}/bedcov_q1.tsv")" --pileup "$(cpath "${CYP21_WORK}/pileup.tsv")" \
        --table "$(cpath "${CYP21_OUT}.tmp")"; then
   mv "${CYP21_OUT}.tmp" "$CYP21_OUT"
@@ -371,7 +371,7 @@ fi
 rm -rf "$CYP21_WORK"
 
 # Interval rows of bin/cn_loci.tsv (as the PARASCOPY module): one samtools
-# bedcov over the segments of every row, then copy_number.py intervals; one
+# bedcov over the segments of every row, then og cn intervals; one
 # line per row in <sample>_cn_intervals.tsv. A failed pass writes every row as
 # not assessed (check_failed), and the step goes on; when even that container
 # fails, the table is the header alone and the log says no row was assessed.
@@ -380,15 +380,15 @@ INTERVAL_WORK="${OUTDIR}/cn_intervals.part"
 rm -rf "$INTERVAL_OUT" "$INTERVAL_WORK"
 mkdir -p "$INTERVAL_WORK"
 if ! { run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-         python3 /pgp-bin/copy_number.py bed --kind interval > "${INTERVAL_WORK}/regions.bed" \
+         /pgp-bin/og cn bed --kind interval > "${INTERVAL_WORK}/regions.bed" \
        && run_in --cpus 2 --memory 2g "${PARASCOPY_IMAGE}" \
          samtools bedcov "$(cpath "${INTERVAL_WORK}/regions.bed")" "$(cpath "$BAM")" > "${INTERVAL_WORK}/bedcov.tsv" \
        && run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-         python3 /pgp-bin/copy_number.py intervals --bedcov "$(cpath "${INTERVAL_WORK}/bedcov.tsv")" \
+         /pgp-bin/og cn intervals --bedcov "$(cpath "${INTERVAL_WORK}/bedcov.tsv")" \
            --sex "$SEX" --out "$(cpath "$INTERVAL_OUT")"; }; then
   echo "WARNING: the interval depth check failed; ${INTERVAL_OUT##*/} lists every row as not assessed." >&2
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
-    python3 /pgp-bin/copy_number.py intervals --failed --out "$(cpath "$INTERVAL_OUT")" \
+    /pgp-bin/og cn intervals --failed --out "$(cpath "$INTERVAL_OUT")" \
     || printf 'locus\tname\tchrom\tstart\tend\tstatus\tcopies\texpected\tchange\testimate\treason\n' > "$INTERVAL_OUT"
 fi
 rm -rf "$INTERVAL_WORK"

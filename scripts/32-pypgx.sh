@@ -83,14 +83,14 @@ fi
 
 # A BAM aligned to a reference with ALT or HLA contigs is refused: pypgx
 # reads copy number from depth, and that depth splits between a gene and its
-# ALT copy, which reads as a deletion (bin/copy_number.py check-bam, exit 4).
+# ALT copy, which reads as a deletion (og cn check-bam, exit 4).
 # A header that cannot be read leaves the check undone, with a warning. It runs
 # after the bundle check, which starts no container.
 HDR="${OUTPUT_DIR}/bam_header.part"
 if run_in --cpus 1 --memory 1g "${SAMTOOLS_IMAGE}" samtools view -H "$(cpath "$BAM")" > "$HDR"; then
   rc=0
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-    python3 /pgp-bin/copy_number.py check-bam --header "$(cpath "$HDR")" || rc=$?
+    /pgp-bin/og cn check-bam --header "$(cpath "$HDR")" || rc=$?
   rm -f "$HDR"
   if [ "$rc" -eq 4 ]; then
     exit 1

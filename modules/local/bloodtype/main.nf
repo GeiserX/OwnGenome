@@ -3,7 +3,7 @@
     BLOODTYPE — Blood group antigens (red cell, platelet, neutrophil) predicted from the genome
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Opt-in ('bloodtype' in --tools). Three processes, as in scripts/41-bloodtype.sh:
-      BLOODTYPE_REGIONS bin/copy_number.py bed --locus RHD, once: RHD, its
+      BLOODTYPE_REGIONS og cn bed --locus RHD, once: RHD, its
                        exons and flanks (the RHD row of bin/cn_loci.tsv)
       BLOODTYPE_DEPTH  samtools bedcov -Q 20 -j over the sites of
                        assets/bloodtype_markers.tsv and those regions, for each
@@ -29,7 +29,7 @@ process BLOODTYPE_REGIONS {
 
     script:
     """
-    copy_number.py bed --locus RHD > rhd_regions.bed
+    og cn bed --locus RHD > rhd_regions.bed
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

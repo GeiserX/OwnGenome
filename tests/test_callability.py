@@ -23,11 +23,12 @@ bin/collect_summary.py turns that into the report's section.
      unreadable, not a reading; a chromosome with no row at all (a BAM
      whose reference lacks it, as the e2e fixture's) puts its genes under
      "not on this reference";
-  5. bin/copy_number.py check-bam and call --bam-header refuse a header with
-     an ALT or an HLA contig (exit 4, a REFUSED line) and pass a header
-     without one (the positive control).
+  5. og cn check-bam and call --bam-header refuse a header with an ALT or
+     an HLA contig (exit 4, a REFUSED line) and pass a header without one
+     (the positive control). They need og: OG names the binary; without it
+     part 5 is skipped, and with OG_REQUIRED set too the test fails.
 
-Run: python3 tests/test_callability.py
+Run: OG=rust/target/release/og python3 tests/test_callability.py
 """
 import csv
 import gzip
@@ -203,33 +204,40 @@ with tempfile.TemporaryDirectory() as work:
 
 
 # --- 5. the ALT contig refusal ---------------------------------------------------------
+OG = os.environ.get("OG", "")
+
+
 def copy_number(*args, stdin=None):
-    p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "copy_number.py"), *args],
-                       capture_output=True, text=True, input=stdin)
+    p = subprocess.run([OG, "cn", *args], capture_output=True, text=True, input=stdin)
     return p.returncode, p.stderr
 
 
-with tempfile.TemporaryDirectory() as work:
-    noalt = os.path.join(work, "noalt.txt")
-    with open(noalt, "w") as f:
-        f.write("@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr16\tLN:90338345\n@SQ\tSN:chrM\tLN:16569\n")
-    alt = os.path.join(work, "alt.txt")
-    with open(alt, "w") as f:
-        f.write("@SQ\tSN:chr16\tLN:90338345\n@SQ\tSN:chr22_KI270879v1_alt\tLN:304135\n@RG\tID:x\tSM:y\n")
-    rc, err = copy_number("check-bam", "--header", noalt)
-    check("5. positive control: a header without ALT contigs passes", rc == 0 and not err, (rc, err))
-    rc, err = copy_number("check-bam", "--header", alt)
-    check("5. a header with an ALT contig is refused (exit 4, a REFUSED line naming it)",
-          rc == 4 and err.startswith("REFUSED:") and "chr22_KI270879v1_alt" in err, (rc, err))
-    rc, err = copy_number("check-bam", "--header", "-", stdin="chr1\nHLA-A*01:01:01:01\n")
-    check("5. contig names on stdin with an HLA contig are refused", rc == 4 and "HLA-A" in err, (rc, err))
-    bed = os.path.join(work, "bedcov.tsv")
-    open(bed, "w").close()
-    rc, err = copy_number("call", "--locus", "HBA", "--bedcov", bed, "--bedcov-mapq1", bed, "--bam-header", alt)
-    check("5. call --bam-header refuses before it reads any depth", rc == 4 and err.startswith("REFUSED:"),
-          (rc, err))
-    rc, err = copy_number("call", "--locus", "HBA", "--bedcov", bed, "--bedcov-mapq1", bed, "--bam-header", noalt)
-    check("5. call --bam-header without ALT contigs goes on (two empty tables: not assessed)", rc == 0, (rc, err))
+if not OG:
+    print("skip: OG is not set (OG=rust/target/release/og): part 5 did not run")
+    if os.environ.get("OG_REQUIRED"):
+        FAILS += 1
+else:
+    with tempfile.TemporaryDirectory() as work:
+        noalt = os.path.join(work, "noalt.txt")
+        with open(noalt, "w") as f:
+            f.write("@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr16\tLN:90338345\n@SQ\tSN:chrM\tLN:16569\n")
+        alt = os.path.join(work, "alt.txt")
+        with open(alt, "w") as f:
+            f.write("@SQ\tSN:chr16\tLN:90338345\n@SQ\tSN:chr22_KI270879v1_alt\tLN:304135\n@RG\tID:x\tSM:y\n")
+        rc, err = copy_number("check-bam", "--header", noalt)
+        check("5. positive control: a header without ALT contigs passes", rc == 0 and not err, (rc, err))
+        rc, err = copy_number("check-bam", "--header", alt)
+        check("5. a header with an ALT contig is refused (exit 4, a REFUSED line naming it)",
+              rc == 4 and err.startswith("REFUSED:") and "chr22_KI270879v1_alt" in err, (rc, err))
+        rc, err = copy_number("check-bam", "--header", "-", stdin="chr1\nHLA-A*01:01:01:01\n")
+        check("5. contig names on stdin with an HLA contig are refused", rc == 4 and "HLA-A" in err, (rc, err))
+        bed = os.path.join(work, "bedcov.tsv")
+        open(bed, "w").close()
+        rc, err = copy_number("call", "--locus", "HBA", "--bedcov", bed, "--bedcov-mapq1", bed, "--bam-header", alt)
+        check("5. call --bam-header refuses before it reads any depth", rc == 4 and err.startswith("REFUSED:"),
+              (rc, err))
+        rc, err = copy_number("call", "--locus", "HBA", "--bedcov", bed, "--bedcov-mapq1", bed, "--bam-header", noalt)
+        check("5. call --bam-header without ALT contigs goes on (two empty tables: not assessed)", rc == 0, (rc, err))
 
 print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
 sys.exit(1 if FAILS else 0)
