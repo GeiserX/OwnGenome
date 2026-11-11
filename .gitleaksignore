@@ -4,3 +4,6 @@
 # A test string in the Parascopy freshness self-test ("GRCh37_v9.9.tar.gz"),
 # not a key; the line was rewritten in 7d6dad4.
 63e12d6c2b29078a49e14de8ef4c4e57a9ebd8b9:scripts/ci/freshness.py:generic-api-key:940
+# A Rust constant name compared with a marker's name ("m.key == LPA_KIV2_4925.key"),
+# not a key; the comparison was turned round in the same pull request.
+0bc60efda244e5361c54fe411f46db9514e5e8c3:rust/crates/og-cn/src/cli.rs:generic-api-key:590

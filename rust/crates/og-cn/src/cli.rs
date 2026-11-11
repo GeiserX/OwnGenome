@@ -598,7 +598,7 @@ fn marker_read(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<u8,
     let pileup = a.get("--pileup").expect("required");
     let path = a.get("--out").expect("required");
     let copy_table = a.get("--copy-table");
-    let (rows, line) = if m.key == LPA_KIV2_4925.key {
+    let (rows, line) = if LPA_KIV2_4925.key == m.key {
         // Step 46's table written earlier: the count, and the MAPQ 0 share
         // as it was printed (3 decimals).
         let t: HashMap<String, String> = crate::read_lines(copy_table.unwrap_or(""))
