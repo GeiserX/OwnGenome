@@ -123,7 +123,8 @@ GFF = "##gff-version 3\n" + "".join(
     + "".join(f"{c}\tensembl\texon\t{s}\t{e}\t.\t{st}\t.\tParent=transcript:{tx};rank={r}\n" for s, e, r in ex)
     + "###\n" for g, (tx, c, st, ex) in GENES.items())
 
-WORK = tempfile.mkdtemp()
+_WORK = tempfile.TemporaryDirectory()  # removed when the test exits
+WORK = _WORK.name
 GFF_PATH = write(WORK, "chip.gff3", GFF)
 BED_PATH = write(WORK, "chip.bed", "chr2\t25233990\t25234510\tDNMT3A\n")
 EMPTY = write(WORK, "empty.tsv", "")
