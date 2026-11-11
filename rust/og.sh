@@ -30,7 +30,7 @@
 # reads it with grep and never runs a binary the host may not be able to.
 set -euo pipefail
 
-# Steps 04, 05 and 07 call og, and stop with bin/og's message without it.
+# Steps 04, 05, 07 and 25 call og, and stop with bin/og's message without it.
 # A run is not refused up front yet: the fake-docker and Nextflow stub tests
 # start runs without og, so they need it first. Until then a checkout
 # without the binary starts, the check names the steps that need it, and
@@ -113,7 +113,7 @@ check() {
     return 1
   fi
   if [ -n "$missing" ]; then
-    echo "NOTE: og is not built for${missing}; steps 04, 05 and 07 stop without it: run scripts/setup.sh --og"
+    echo "NOTE: og is not built for${missing}; steps 04, 05, 07 and 25 stop without it: run scripts/setup.sh --og"
   elif [ -z "$expected" ]; then
     echo "NOTE: og is built, but this is not a git checkout, so its rust/ tree cannot be checked"
   elif [ -n "$mac" ]; then

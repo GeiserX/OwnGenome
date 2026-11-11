@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), step 27 and `CPIC_LOOKUP` call it (`og pgx cpic-report`), and `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
+Steps 04, 05, 07 and 25 call `og` (the filters of `og sv` and `og pgx`, and `og prs format`), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), step 27 and `CPIC_LOOKUP` call it (`og pgx cpic-report`), and `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -17,7 +17,7 @@ rust/
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   crates/og-pgx/        og pgx: PharmCAT's report read into typed gene calls (step 27)
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
-  crates/og-steps/      the step helpers: constraint-join
+  crates/og-steps/      the step helpers: constraint-join, prs format
   crates/og-chip/       step 49, clonal haematopoiesis: og chip prepare, report, check-table
   crates/og-cn/         copy number from depth (steps 32, 35, 41, 46): og cn bed, call, intervals, check-bam, marker-regions, marker-read
   og/                   the binary: og <tool> [args]
@@ -25,7 +25,7 @@ bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch> (og-da
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 27 uses `og pgx cpic-report` and `og pgx step36-outside` (were the two commands of `pgx_parse.py`). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (the commands of `chip_report.py`, which keeps only the detection limit and the column names the reports import). Steps 32, 35, 41 and 46 run `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions` and `og cn marker-read` ([Copy number from depth](cn-loci.md)); they replace `hba_copy_number.py`, `lpa_kiv2.py`, the commands of `copy_number.py` (which keeps the catalog reader step 41's report imports) and the marker reader of `traits_report.py` (which keeps `MARKERS` for the summary).
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 25 has `og prs format` (a port of `collect_summary.py prs-format`, named by what it works on). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 27 uses `og pgx cpic-report` and `og pgx step36-outside` (were the two commands of `pgx_parse.py`). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (the commands of `chip_report.py`, which keeps only the detection limit and the column names the reports import). Steps 32, 35, 41 and 46 run `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions` and `og cn marker-read` ([Copy number from depth](cn-loci.md)); they replace `hba_copy_number.py`, `lpa_kiv2.py`, the commands of `copy_number.py` (which keeps the catalog reader step 41's report imports) and the marker reader of `traits_report.py` (which keeps `MARKERS` for the summary).
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 
@@ -60,7 +60,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 - The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's. The macOS pair is optional, because no pipeline step runs it, but a stale one is refused like a Linux one.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- A missing binary is still a note, which names steps 04, 05 and 07. Those steps, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
+- A missing binary is still a note, which names steps 04, 05, 07 and 25. Those steps, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte

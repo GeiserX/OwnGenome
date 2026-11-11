@@ -678,8 +678,11 @@ dependencies = [
 name = "og-steps"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "memchr",
+ "og-intervals",
  "og-io",
+ "pycompat",
 ]
 
 [[package]]
