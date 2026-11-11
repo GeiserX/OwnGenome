@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-filters", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -18,10 +18,16 @@ og-tsv = { path = "crates/og-tsv" }
 og-intervals = { path = "crates/og-intervals" }
 og-dev = { path = "crates/og-dev" }
 og-filters = { path = "crates/og-filters" }
+og-nf = { path = "crates/og-nf" }
+og-runlog = { path = "crates/og-runlog" }
 indexmap = "2"
 flate2 = "1"
 memchr = "2"
 smallvec = "1"
+# Time zones as Python reads them: TZ, else /etc/localtime, else UTC.
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
+# statvfs(2) without unsafe code.
+rustix = { version = "1", default-features = false, features = ["std", "fs", "system"] }
 # Pure Rust deflate for BGZF (no C to cross-compile); the backend noodles-bgzf uses.
 zlib-rs = { version = "0.6", default-features = false, features = ["std"] }
 # htslib built from source and linked statically. curl, S3 and GCS are
