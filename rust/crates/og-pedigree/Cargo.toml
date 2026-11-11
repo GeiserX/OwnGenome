@@ -1,0 +1,15 @@
+[package]
+name = "og-pedigree"
+description = "The pedigree rules of step 38: the pedigree and families file reader, members, kinship, KING's degree bins, the PAR intervals"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+indexmap.workspace = true
+og-io.workspace = true
+pycompat.workspace = true
+
+[lints]
+workspace = true

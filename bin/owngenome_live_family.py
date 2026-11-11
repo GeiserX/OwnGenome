@@ -269,7 +269,7 @@ def file_state(d, f):
 def trio_status(d, order, members, files):
     """Per child, whether step 38 assessed it for de novo candidates and compound-het pairs, and why not:
     {child: {"de_novo": {"assessed": bool, "why": text}, "compound_het": {...}}}. The rule is step 38's
-    (bin/family_report.py): de novo candidates need both parents sequenced, compound-het pairs a sequenced
+    (og family report): de novo candidates need both parents sequenced, compound-het pairs a sequenced
     parent; a file that is not here, or is a link out of the folder, means no child was assessed."""
     plan = {r.get("analysis"): r for r in read_tsv(os.path.join(d, "family_plan.tsv"))}
     trio = plan.get("trio_phasing") or {}

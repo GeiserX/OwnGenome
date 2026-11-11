@@ -12,3 +12,4 @@ sv-inv-filter-py3	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_fi
 pgx-refblock-fill	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_refblock_fill.py	python3	pgx refblock-fill
 pgx-mito-merge	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_mito_merge.py	python3	pgx mito-merge
 chip	6f2407f9f66cc6bee43ae13c8abae5874b53e1cf	file:bin/chip_report.py	python3	chip
+family	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/family_report.py	sh ./oracle.sh	family

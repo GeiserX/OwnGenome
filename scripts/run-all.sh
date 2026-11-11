@@ -29,7 +29,7 @@
 #   SOMATIC=true (29), EXTRA_CALLERS=gatk,freebayes,strelka2,octopus (03a-03d), BENCHMARK=true (needs
 #   EXTRA_CALLERS or a second caller VCF); then the HTML report (24) and the text report, also after a failed pipeline.
 # FAMILIES=families.tsv (who is related to whom, assets/families.example.tsv): when the sample is in a family, the sex
-#   must agree with the file (exit 2 before the pipeline). After the pipeline, before the reports, bin/family_report.py
+#   must agree with the file (exit 2 before the pipeline). After the pipeline, before the reports, og family
 #   plan writes GENOME_DIR/<family>/family_plan.tsv from what the members have, and step 38 (38-family.sh) and step 39
 #   (39-couple.sh) run when it says so, or are recorded as skipped with the reason (waiting: a member has no gVCF, or for step 39 no ClinVar hits, yet).
 #   The other members are never run here: run run-all.sh for each, and the last one runs the family steps.
@@ -83,10 +83,10 @@ on SKIP_VALIDATION || "${SCRIPT_DIR}/validate-setup.sh" "$SAMPLE" \
   || { echo "ERROR: setup validation failed; fix the items above. To bypass: SKIP_VALIDATION=true $0 ${SAMPLE} ${SEX}" >&2; exit 1; }
 # The sample's family (FAMILIES): the file is checked and the sex must be the one it gives, before anything runs.
 FAM=""
-famplan() {  # famplan [run_in options] -- [plan options]: bin/family_report.py plan on the FAMILIES file
+famplan() {  # famplan [run_in options] -- [plan options]: og family plan on the FAMILIES file
   local o=(); while [ "$1" != -- ]; do o+=("$1"); shift; done; shift
   run_in ${o[@]+"${o[@]}"} --cpus 1 --memory 1g -v "${FAMILIES}:/pgp/families.tsv:ro" -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
-    "$PYTHON_IMAGE" python3 /pgp-bin/family_report.py plan --families /pgp/families.tsv "$@"
+    "$PYTHON_IMAGE" /pgp-bin/og family plan --families /pgp/families.tsv "$@"
 }
 if [ -n "${FAMILIES:-}" ]; then
   [ -f "$FAMILIES" ] || { echo "ERROR: FAMILIES=${FAMILIES}: no such file (assets/families.example.tsv shows the format)" >&2; exit 2; }
@@ -372,7 +372,7 @@ done
 # The reports are written after a failed pipeline too: they show what finished and mark older results stale.
 [ "$rc" -eq 0 ] || { echo "ERROR: the pipeline failed (exit ${rc}): see above and ${S}/nextflow/.nextflow.log. Fix the cause and run the same command; -resume reruns only what did not finish. Writing the reports of what finished." >&2; OPTIN=(); }
 # Steps 38 and 39 for the sample's family, after the pipeline and the opt-in scripts and before the reports (so they
-# show this run's couple table), as family_report.py plan decides from what is under GENOME_DIR now: each member's
+# show this run's couple table), as og family plan decides from what is under GENOME_DIR now: each member's
 # gVCF (with its index) and step 06's ClinVar hits, and step 26b's panel for the shared segments.
 family_steps() {
   [ -n "$FAM" ] && [ "$rc" -eq 0 ] || return 0
@@ -385,8 +385,8 @@ family_steps() {
   famplan --rw "${G}/${FAM}" -- --family "$FAM" --have-gvcf ${HG[@]+"${HG[@]}"} --have-clinvar ${HC[@]+"${HC[@]}"} \
     --ibd-panel "$IBD" --out "/genome/${FAM}/family_plan.tsv" || {
     # never act on an older family_plan.tsv: the family steps wait for a plan that worked
-    echo "  FAILED: family_report.py plan; steps 38 and 39 not run" >&2; failed=1
-    printf 'step\t%s\tskipped (family_report.py plan failed)\n' 38 39 >> "$STATUS"; return 0; }
+    echo "  FAILED: og family plan; steps 38 and 39 not run" >&2; failed=1
+    printf 'step\t%s\tskipped (og family plan failed)\n' 38 39 >> "$STATUS"; return 0; }
   # decision<TAB>reason of step 38 (the joint call) and step 39 (a couple that runs, else the first couple)
   d38=$(awk -F'\t' '$2 == "joint_call" {print $4 "\t" $5; exit}' "$FP" 2>/dev/null)
   d39=$(awk -F'\t' '$2 == "couple_carrier" {r = r ? r : $4 "\t" $5; if ($4 == "runs") {r = $4 "\t" $5; exit}} END {print r}' "$FP" 2>/dev/null)

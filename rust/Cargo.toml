@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-chip", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-chip", "crates/og-pedigree", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -22,6 +22,7 @@ og-nf = { path = "crates/og-nf" }
 og-runlog = { path = "crates/og-runlog" }
 og-steps = { path = "crates/og-steps" }
 og-chip = { path = "crates/og-chip" }
+og-pedigree = { path = "crates/og-pedigree" }
 indexmap = "2"
 flate2 = "1"
 memchr = "2"

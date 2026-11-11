@@ -643,6 +643,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-pedigree"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
 name = "og-runlog"
 version = "0.1.0"
 dependencies = [
@@ -658,8 +667,14 @@ dependencies = [
 name = "og-steps"
 version = "0.1.0"
 dependencies = [
+ "flate2",
+ "indexmap",
  "memchr",
  "og-io",
+ "og-pedigree",
+ "og-vcf",
+ "pycompat",
+ "smallvec",
 ]
 
 [[package]]

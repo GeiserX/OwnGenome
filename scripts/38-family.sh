@@ -12,7 +12,7 @@
 #   a sample's):
 #   pedigree.tsv           the pedigree the step read (the family's rows of a
 #                          families file, copied beside it as families.tsv)
-#   family_plan.tsv        which family analyses ran and why (family_report.py plan's table)
+#   family_plan.tsv        which family analyses ran and why (og family plan's table)
 #   family.vcf.gz          the members joint-called by GLnexus
 #   somalier/              somalier relate over the members' gVCFs
 #   relationships.tsv      each pair's declared and measured relatedness, verdict
@@ -35,8 +35,8 @@
 #
 # The step stops (exit 1) when a pair's measured relatedness disagrees with
 # the pedigree, before any phasing: a sample swap or a wrong pedigree line.
-# relationships.tsv says which pair and why. The rules are bin/family_report.py's,
-# the code the Nextflow FAMILY workflow (--pedigree) runs too.
+# relationships.tsv says which pair and why. The rules are og family's
+# (rust/crates/og-steps/src/family), the code the Nextflow FAMILY workflow (--pedigree) runs too.
 #
 # Env: SOMALIER_SITES  sites VCF (default reference/somalier/sites.hg38.vcf.gz),
 #                      inside GENOME_DIR
@@ -147,7 +147,7 @@ done
 
 # A families file (a family column: assets/families.example.tsv) holds several
 # families: this family's rows become its own ${OUT}/pedigree.tsv, written by
-# bin/family_report.py plan (which checks the whole file first), and the step
+# og family plan (which checks the whole file first), and the step
 # reads that. A pedigree without the column is read as it is.
 if awk -F'\t' '{ sub(/\r+$/, "") } /^[ \t]*$/ { next }
      { sub(/^#+/, ""); for (i = 1; i <= NF; i++) { f = tolower($i); gsub(/^[ \t]+|[ \t]+$/, "", f); if (f == "family") found = 1 }; exit }
@@ -160,7 +160,7 @@ if awk -F'\t' '{ sub(/\r+$/, "") } /^[ \t]*$/ { next }
   mkdir -p "$OUT"
   [ "$PEDIGREE" -ef "${OUT}/families.tsv" ] || cp -f "$PEDIGREE" "${OUT}/families.tsv"
   if ! run_in --rw "$OUT" --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-      python3 /pgp-bin/family_report.py plan --families "${OUT_C}/families.tsv" --family "$FAMILY" --write-pedigree /genome \
+      /pgp-bin/og family plan --families "${OUT_C}/families.tsv" --family "$FAMILY" --write-pedigree /genome \
       > /dev/null; then
     echo "  (families.tsv is the step's copy of ${PEDIGREE})" >&2
     [ -z "$NEW_OUT" ] || rm -rf "$OUT"
@@ -172,8 +172,8 @@ fi
 
 # The samples the pedigree names (its sample column; the first non-blank
 # line is the header), and which of them have a gVCF here. Read as
-# family_report.py reads it: CRLF line ends, whitespace-only lines and spaces
-# around a column name are allowed. family_report.py prepare checks
+# og family reads it: CRLF line ends, whitespace-only lines and spaces
+# around a column name are allowed. og family prepare checks
 # everything else.
 mapfile -t NAMED < <(awk -F'\t' '
   { sub(/\r+$/, "") }
@@ -230,8 +230,8 @@ echo "Members: ${MEMBERS[*]}"
 
 mkdir -p "$OUT"
 [ "$PEDIGREE" -ef "${OUT}/pedigree.tsv" ] || cp -f "$PEDIGREE" "${OUT}/pedigree.tsv"
-PY=(run_in --rw "$OUT" --cpus 2 --memory 4g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro"
-    "$PYTHON_IMAGE" python3 /pgp-bin/family_report.py)
+OG=(run_in --rw "$OUT" --cpus 2 --memory 4g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro"
+    "$PYTHON_IMAGE" /pgp-bin/og family)
 
 # --- 1. The pedigree, and each gVCF's sample name --------------------------------------
 GVCF_ARGS=()
@@ -243,7 +243,7 @@ done
 # family_plan.tsv: the same decision run-all.sh's plan makes, from the members' ClinVar hits and the panel
 CLINVAR_HAVE=()
 for s in ${NAMED[@]+"${NAMED[@]}"}; do [ ! -f "${GENOME_DIR}/${s}/clinvar/${s}_clinvar_hits.vcf" ] || CLINVAR_HAVE+=("$s"); done
-"${PY[@]}" prepare --pedigree "${OUT_C}/pedigree.tsv" --family "$FAMILY" "${GVCF_ARGS[@]}" \
+"${OG[@]}" prepare --pedigree "${OUT_C}/pedigree.tsv" --family "$FAMILY" "${GVCF_ARGS[@]}" \
   --have-clinvar ${CLINVAR_HAVE[@]+"${CLINVAR_HAVE[@]}"} --ibd-panel "$(ibd_panel_ok && echo yes || echo no)" --out-dir "$OUT_C"
 
 # --- 2. Joint call (GLnexus) --------------------------------------------------------------
@@ -278,7 +278,7 @@ done
 run_in --rw "$OUT" --cpus 1 --memory 2g "$SOMALIER_IMAGE" \
   somalier relate --ped "${OUT_C}/family.ped" -o "${OUT_C}/somalier/family" "${EXTRACTED[@]}"
 rm -rf "${OUT}/somalier/extract"
-"${PY[@]}" check --members "${OUT_C}/members.tsv" --pairs "${OUT_C}/somalier/family.pairs.tsv" \
+"${OG[@]}" check --members "${OUT_C}/members.tsv" --pairs "${OUT_C}/somalier/family.pairs.tsv" \
   --out "${OUT_C}/relationships.tsv"
 
 # --- 4. Phasing by inheritance (WhatsHap), complete trios only -------------------------------
@@ -305,7 +305,7 @@ for s in "${MEMBERS[@]}"; do
   [ -f "$c" ] && CANDS+=(--candidates "${s}=/genome/${s}/clinical/${s}_clinical.vcf.gz")
 done
 rm -f "${OUT}"/*_inheritance.tsv.gz "${OUT}"/*_segments.tsv "${OUT}"/*_dnapainter.csv "${OUT}"/*_segments.svg
-"${PY[@]}" report --members "${OUT_C}/members.tsv" --relationships "${OUT_C}/relationships.tsv" \
+"${OG[@]}" report --members "${OUT_C}/members.tsv" --relationships "${OUT_C}/relationships.tsv" \
   --vcf "${OUT_C}/family.vcf.gz" ${PHASED[@]+"${PHASED[@]}"} ${CANDS[@]+"${CANDS[@]}"} \
   --par-bed /pgp/par_grch38.bed --out-dir "$OUT_C"
 

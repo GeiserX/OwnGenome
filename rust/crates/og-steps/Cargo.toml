@@ -1,6 +1,6 @@
 [package]
 name = "og-steps"
-description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join"
+description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join; family, step 38's family analysis"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +9,12 @@ publish.workspace = true
 [dependencies]
 og-io.workspace = true
 memchr.workspace = true
+flate2.workspace = true
+indexmap.workspace = true
+og-pedigree.workspace = true
+og-vcf.workspace = true
+pycompat.workspace = true
+smallvec.workspace = true
 
 [lints]
 workspace = true

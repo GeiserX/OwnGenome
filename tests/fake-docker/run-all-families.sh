@@ -2,7 +2,7 @@
 # run-all.sh with FAMILIES=<families file>: the file says who is related to
 # whom, and run-all.sh runs the family steps when their members are ready.
 #   1. partner_x of family_b (tests/fixtures/families/two_families.tsv) runs
-#      first: bin/family_report.py plan writes GENOME_DIR/family_b/family_plan.tsv,
+#      first: og family plan writes GENOME_DIR/family_b/family_plan.tsv,
 #      and steps 38 and 39 are recorded as skipped, waiting for partner_y's
 #      gVCF; neither script runs;
 #   2. partner_y runs next: both members have a gVCF and ClinVar hits, so
@@ -17,8 +17,8 @@
 #      rows to GENOME_DIR/family_b/pedigree.tsv and hands that file, not the
 #      two-family one, to bin/couple_report.py.
 # run-all.sh runs from a copy of the repository whose 38-family.sh and
-# 39-couple.sh only log their arguments; family_report.py runs for real, with
-# the host's python3, through a hook on the fake docker.
+# 39-couple.sh only log their arguments; og family runs for real (bin/og, the
+# host build), through a hook on the fake docker.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -33,6 +33,8 @@ cp "${REPO_ROOT}/tests/fixtures/families/two_families.tsv" "$FAMS"
 R="${CASE_WORK}/repo"
 mkdir -p "$R"
 (cd "$REPO_ROOT" && git ls-files -z -co --exclude-standard | tar --null -T - -cf -) | tar -xf - -C "$R"
+# og family plans the family: the built og (bin/.og, ignored by git) comes too.
+cp -R "${REPO_ROOT}/bin/.og" "${R}/bin/" || fail "bin/.og is missing: build og first (scripts/setup.sh --og)"
 for n in 38-family 39-couple; do
   printf '#!/usr/bin/env bash\necho "%s $*" >> "${CASE_WORK}/family-steps.log"\n' "${n%%-*}" > "${R}/scripts/${n}.sh"
 done
@@ -44,8 +46,8 @@ cat > "${CASE_WORK}/tools-hook" <<'HOOK'
 set -euo pipefail
 . "${CASE_WORK:?}/host-path.sh"
 case "${*:2}" in
-  "python3 /pgp-bin/family_report.py"*)
-    # The real family_report.py, on the host paths of every /... argument.
+  "/pgp-bin/og family"*)
+    # The real og family, on the host paths of every /... argument.
     shift
     mapped=()
     for a in "$@"; do
@@ -102,15 +104,17 @@ if status partner_y | grep -q $'\tplanned$'; then fail "a planned row is left: $
 [ "$(grep -c '' "$STEPS_LOG")" -eq 2 ] || fail "the family scripts ran $(grep -c '' "$STEPS_LOG") times, want 2"
 
 # --- 2b. a plan that fails: the family steps do not run from the older plan -----------------
-chmod 444 "$PLAN"
+# og writes the plan atomically (a new file renamed over the old one), so a
+# read-only plan would be replaced: the family's folder is what cannot be written.
+chmod 555 "${PLAN%/*}"
 run_rc planfail env FAMILIES="$FAMS" "${R}/scripts/run-all.sh" partner_y female
-chmod 644 "$PLAN"
+chmod 755 "${PLAN%/*}"
 [ "$RC" -eq 1 ] || fail "a failed plan exited ${RC}, expected 1"
 [ "$(grep -c '' "$STEPS_LOG")" -eq 2 ] || fail "a family step ran from the older plan: $(cat "$STEPS_LOG")"
-output_has planfail 'FAILED: family_report.py plan; steps 38 and 39 not run'
-status partner_y | grep -q $'^step\t38\tskipped (family_report.py plan failed)$' \
+output_has planfail 'FAILED: og family plan; steps 38 and 39 not run'
+status partner_y | grep -q $'^step\t38\tskipped (og family plan failed)$' \
   || fail "step 38 is not recorded as skipped after the failed plan: $(status partner_y)"
-status partner_y | grep -q $'^step\t39\tskipped (family_report.py plan failed)$' \
+status partner_y | grep -q $'^step\t39\tskipped (og family plan failed)$' \
   || fail "step 39 is not recorded as skipped after the failed plan: $(status partner_y)"
 
 # --- 3. a sex the file contradicts stops before nextflow -------------------------------------

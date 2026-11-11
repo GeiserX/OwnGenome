@@ -8,6 +8,7 @@
 //! |---|---|
 //! | `bytes` | the bytes are equal |
 //! | `gz-content` | both are gzip and their decompressed bytes are equal |
+//! | `content` | as `gz-content` when the expected file is gzip, else as `bytes`: a case whose outputs mix both |
 //! | `zip-content` | the same member names with the same decompressed bytes (timestamps and deflate bytes may differ) |
 //! | `png-pixels` | the same size and the same RGBA pixels |
 //! | `tsv[:keys=A,B][:unordered]` | `#` lines equal and in order, the header equal, the rows equal cell by cell (csv quotes removed), in order unless `unordered`, or matched by the `keys` columns |
@@ -32,6 +33,7 @@ use std::path::{Path, PathBuf};
 pub enum Kind {
     Bytes,
     GzContent,
+    Content,
     ZipContent,
     PngPixels,
     Tsv {
@@ -70,6 +72,7 @@ impl Kind {
         match name {
             "bytes" => no_opts(Kind::Bytes),
             "gz-content" => no_opts(Kind::GzContent),
+            "content" => no_opts(Kind::Content),
             "zip-content" => no_opts(Kind::ZipContent),
             "png-pixels" => no_opts(Kind::PngPixels),
             "kv" => no_opts(Kind::Kv),
@@ -133,6 +136,18 @@ pub fn compare(kind: &Kind, oracle: &Path, new: &Path) -> Outcome {
                 }
             }
             bytes(&mut open_text(oracle)?, &mut open_text(new)?)
+        }
+        Kind::Content => {
+            let mut magic = [0u8; 2];
+            let n = open_raw(oracle)?
+                .read(&mut magic)
+                .map_err(|e| err(oracle, e))?;
+            let kind = if n == 2 && magic == [0x1f, 0x8b] {
+                Kind::GzContent
+            } else {
+                Kind::Bytes
+            };
+            compare(&kind, oracle, new)
         }
         Kind::ZipContent => zip_content(&read(oracle)?, &read(new)?),
         Kind::PngPixels => Ok(differ(&png_pixels(oracle)?, &png_pixels(new)?, "pixels")),
