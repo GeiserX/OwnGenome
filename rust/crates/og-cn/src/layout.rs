@@ -121,7 +121,7 @@ fn hba(row: &Locus, b: &Block) -> Table {
     let share = b.mapq0_share;
     let est = b.estimate;
     let (status, genes, message) = match (b.status, b.reason) {
-        (Status::Called, _) => ("call", d(b.copies), b.reading.clone()),
+        (Status::Called, _) => ("called", d(b.copies), b.reading.clone()),
         (_, Some(Reason::LowControlDepth)) => (
             "not assessed",
             ".".into(),
