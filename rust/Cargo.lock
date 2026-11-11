@@ -553,11 +553,14 @@ name = "og"
 version = "0.1.0"
 dependencies = [
  "og-bam",
+ "og-chip",
+ "og-clinvar",
  "og-dev",
  "og-filters",
  "og-intervals",
  "og-io",
  "og-map",
+ "og-pgx",
  "og-qc",
  "og-runlog",
  "og-steps",
@@ -576,12 +579,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-chip"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "memchr",
+ "og-filters",
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
+name = "og-clinvar"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-intervals",
+ "og-io",
+]
+
+[[package]]
 name = "og-dev"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "indexmap",
  "og-io",
+ "og-nf",
  "png",
  "pycompat",
  "regex",
@@ -629,6 +653,15 @@ dependencies = [
  "jiff",
  "og-io",
  "pycompat",
+ "regex",
+]
+
+[[package]]
+name = "og-pgx"
+version = "0.1.0"
+dependencies = [
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -655,8 +688,11 @@ dependencies = [
 name = "og-steps"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "memchr",
+ "og-intervals",
  "og-io",
+ "pycompat",
 ]
 
 [[package]]

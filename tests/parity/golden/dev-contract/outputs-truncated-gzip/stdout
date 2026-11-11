@@ -1,0 +1,2 @@
+outputs (bash): 1 stable files checked under ., 1 problems
+FAIL S1_trunc.vcf.gz (contract line 2) is not readable vcf: incomplete deflate stream

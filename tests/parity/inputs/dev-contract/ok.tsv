@@ -1,0 +1,10 @@
+# a contract for the run check
+kind	name	step	process	legs	format	stability	e2e	required
+file	{sample}.tsv	06	-	both	tsv	stable	both	chrom,pos,gene
+file	{sample}.csv	06	-	both	csv	stable	both	id,score
+file	{sample}.vcf.gz	13	-	both	vcf	stable	both	INFO/AF,FORMAT/GT,FILTER/LowQual
+file	{sample}.json	24	-	both	json	stable	both	sample,sections
+file	{sample}_*.txt	11	-	both	text	stable	both	-
+file	{sample}_exp.tsv	40	-	both	tsv	experimental	both	never
+file	{sample}_no_e2e.tsv	40	-	both	tsv	stable	-	never
+param	tools	-	-	-	-	stable	-	-

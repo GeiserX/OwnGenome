@@ -31,7 +31,8 @@ on:
       - 'bin/**'
       - 'tests/demo/**'
       - 'tests/fixtures/live/**'
-      # og writes the demo's mosaic rows (og qc sex-loss).
+      # og builds the demo's CPIC table (og pgx cpic-report) and writes its
+      # mosaic rows (og qc sex-loss).
       - 'rust/**'
       - 'tests/og_binary.py'
   # No paths filter on pull requests, on purpose: a check skipped by a path
@@ -90,8 +91,9 @@ jobs:
       - name: Check the built site
         run: python -I .github/scripts/site-check.py site
 
-      # og (rust/, docs/rust.md): the demo sample builder runs step 33's
-      # og qc sex-loss for the mosaic rows (tests/og_binary.py reads OG).
+      # og (rust/, docs/rust.md): the demo sample builder runs step 27's
+      # parser, og pgx cpic-report, and step 33's og qc sex-loss for the
+      # mosaic rows (tests/og_binary.py reads OG).
       - name: Install the toolchain rust/rust-toolchain.toml pins
         working-directory: rust
         run: |

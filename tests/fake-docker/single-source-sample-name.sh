@@ -2,9 +2,9 @@
 # Every script that takes a sample name refuses one that is not a plain name,
 # with exit 2, before it starts a container or creates a directory. The name
 # goes into container paths and `bash -c` bodies, so '../x' or 'x;id' must
-# never get that far. Nor may '-x': CPSR, bin/pgx_parse.py and
-# bin/collect_summary.py take the name as an argument value, and argparse reads
-# '-x' as an option. A plain name with '.', '_' and '-' is accepted, and so is
+# never get that far. Nor may '-x': CPSR and bin/collect_summary.py take the
+# name as an argument value, and their option parsers read '-x' as an option.
+# A plain name with '.', '_' and '-' is accepted, and so is
 # a two-character one (CPSR's 3-character minimum is handled at step 17).
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"

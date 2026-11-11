@@ -1,0 +1,29 @@
+{
+ "genes": [
+  {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "*1"
+     },
+     "allele2": {
+      "name": "*2"
+     },
+     "label": "*1/*2",
+     "phenotypes": [
+      "Intermediate Metabolizer"
+     ]
+    }
+   ],
+   "gene": "CYP2C19"
+  },
+  {
+   "geneSymbol": "TPMT",
+   "diplotype": "*1/*3A",
+   "phenotype": "Intermediate Metabolizer"
+  },
+  {
+   "gene": "X"
+  }
+ ]
+}

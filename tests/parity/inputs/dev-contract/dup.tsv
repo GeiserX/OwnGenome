@@ -1,0 +1,3 @@
+kind	name	step	process	legs	format	stability	e2e	required
+file	{sample}.tsv	06	-	both	tsv	stable	both	chrom
+file	{sample}.tsv	06	-	both	tsv	stable	both	pos

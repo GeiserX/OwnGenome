@@ -20,8 +20,10 @@ Borrowed, not rewritten:
   - T1K's genotype table and the CYP2D6 depth check are the invented
     fixtures of tests/fixtures/pgx;
   - step 33's table is written by `collect_summary.py sample-qc`, and step 25's
-    PRS and ancestry tables by `collect_summary.py prs-format` and `prs-table`,
-    from made-up somalier, VerifyBamID2 and pgsc_calc files;
+    PRS and ancestry tables by `collect_summary.py prs-table`, from made-up
+    somalier, VerifyBamID2 and pgsc_calc files and the score folder
+    `og prs format` writes (written here in its layout: og runs only inside
+    the pipeline's Linux containers);
   - step 33's mosaic rows come from og qc sex-loss, step 26b's painting
     from bin/ancestry_fine_report.py, step 35b's table from
     bin/paraphase_report.py, step 39's from bin/couple_report.py and step 42's
@@ -48,7 +50,7 @@ results to act on that his page keeps closed (PLANTED below): a ClinVar
 pathogenic hit in an ACMG secondary-findings gene, and an AnnotSV class 5
 deletion over it, at invented positions; his symptom search ranks that gene too. Every sample gets
 Stranger's thresholds beside ExpansionHunter's counts and step 27's CPIC
-table, written by bin/pgx_parse.py from the PharmCAT report.
+table, written by og pgx cpic-report from the PharmCAT report.
 
 The second form reads DIR/DEMO-001/summary.json (step 24 writes it) and fails
 when a section is not "ok", so a new report card that this script does not
@@ -58,10 +60,9 @@ Standard library only. tests/demo/retake-screenshots.sh runs both forms.
 """
 import argparse
 import calendar
-import contextlib
 import copy
+import csv
 import gzip
-import io
 import json
 import math
 import os
@@ -302,12 +303,12 @@ def pgx(d, genome_dir, rng):
     changed["MT-RNR1"] = "Reference"
     prune_annotations(report, changed)
     put(os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), json.dumps(report, indent=1) + "\n")
-    # Step 27's tables from that report, by the parser step 27 runs (bin/pgx_parse.py).
-    import pgx_parse
-    with contextlib.redirect_stdout(io.StringIO()):
-        if pgx_parse.main(["cpic-report", "--sample", SAMPLE, "--report",
-                           os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), "--outdir", os.path.join(d, "cpic")]):
-            raise SystemExit("pgx_parse cpic-report failed")
+    # Step 27's tables from that report, by the parser step 27 runs (og pgx).
+    r = subprocess.run([og_binary(), "pgx", "cpic-report", "--sample", SAMPLE, "--report",
+                        os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), "--outdir", os.path.join(d, "cpic")],
+                       stdout=subprocess.DEVNULL)
+    if r.returncode:
+        raise SystemExit(f"og pgx cpic-report failed (exit {r.returncode})")
     return outside
 
 
@@ -337,24 +338,45 @@ def prune_annotations(report, changed):
 # --- step 25: polygenic scores through pgsc_calc's files -------------------------------
 
 def prs(d, genome_dir, rng):
-    labels = collect_summary.read_labels(os.path.join(REPO, "assets", "pgs_scores.tsv"))
+    """The harmonised files (their headers feed the run manifest) and the score
+    folder og prs format would write from them, without the allele list, which
+    nothing here reads: every row is autosomal, so it is written, an A/T or C/G
+    pair is counted as strand-ambiguous, and no chrX row is left out."""
+    score_list = os.path.join(REPO, "assets", "pgs_scores.tsv")
+    with open(score_list, encoding="utf-8") as f:
+        listed = [r for r in csv.DictReader((line for line in f if not line.startswith("#")), delimiter="\t")
+                  if (r.get("pgs_id") or "").strip()]
+    labels = {r["pgs_id"].strip(): (r.get("trait_reported") or "").strip() for r in listed}
+    applies = {r["pgs_id"].strip(): (r.get("applies_to") or "").strip().lower() for r in listed}
+    evals = collect_summary.read_metrics(score_list)
     harmonised = os.path.join(genome_dir, "prs_scores")
+    work = os.path.join(d, "prs", "pgsc_calc")
+    scores = os.path.join(work, "scores")
+    ambiguous = {}
     for pid, trait in labels.items():
         n = rng.randint(250, 4000)
-        rows = []
+        rows, written = [], []
         for _ in range(n):
             c, length = AUTOSOMES[rng.randrange(len(AUTOSOMES))]
             ea, oa = rng.sample("ACGT", 2)
-            rows.append(f"{c[3:]}\t{rng.randint(1, length)}\t{ea}\t{oa}\t{rng.gauss(0, 0.05):.5f}\t{c[3:]}\t{rng.randint(1, length)}\n")
+            pos, w, hm_pos = rng.randint(1, length), f"{rng.gauss(0, 0.05):.5f}", rng.randint(1, length)
+            rows.append(f"{c[3:]}\t{pos}\t{ea}\t{oa}\t{w}\t{c[3:]}\t{hm_pos}\n")
+            written.append(f"{c[3:]}\t{hm_pos}\t{ea}\t{oa}\t{w}\n")
+        ambiguous[pid] = sum(1 for r in written if r.split("\t")[2] + r.split("\t")[3] in ("AT", "TA", "CG", "GC"))
         put(os.path.join(harmonised, f"{pid}.txt.gz"),
             f"#format_version=2.0\n#pgs_id={pid}\n#pgs_name={pid}\n#trait_reported={trait}\n#variants_number={n}\n"
             "#HmPOS_build=GRCh38\nchr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\thm_chr\thm_pos\n"
             + "".join(rows), gz=True)
-    work = os.path.join(d, "prs", "pgsc_calc")
-    scores = os.path.join(work, "scores")
-    if collect_summary.prs_format_main(["--scores", harmonised, "--labels", os.path.join(REPO, "assets", "pgs_scores.tsv"),
-                                        "--out", scores, "--alleles", os.path.join(work, "score_alleles.tsv")]):
-        raise SystemExit("prs-format failed")
+        put(os.path.join(scores, f"{pid}.txt.gz"),
+            f"#pgs_id={pid}\n#pgs_name={pid}\n#trait_reported={(trait or pid).replace('=', '-')}\n#genome_build=GRCh38\n"
+            "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n" + "".join(written), gz=True)
+    ids = sorted(labels)
+    put(os.path.join(scores, collect_summary.CHRX_FILE),
+        "pgs_id\tchrx_rows\tchrx\n" + "".join(f"{p}\t0\tleft out\n" for p in ids))
+    put(os.path.join(scores, collect_summary.SCORE_NOTES_FILE), "pgs_id\tapplies_to\tambiguous_rows\tambiguous\n"
+        + "".join(f"{p}\t{applies.get(p, '')}\t{ambiguous[p]}\tdropped\n" for p in ids))
+    put(os.path.join(scores, collect_summary.EVALS_FILE), "pgs_id\tppm_id\tancestry\teffect\n"
+        + "".join(f"{p}\t" + "\t".join(";".join(e[i] for e in evals[p]) for i in (2, 0, 1)) + "\n" for p in ids if evals.get(p)))
     # pgsc_calc's output for sampleset "sample" (step 25's name) with the 1000 Genomes panel.
     res = os.path.join(work, "results", "sample")
     summ, score = ["dataset,accession,ambiguous,is_multiallelic,match_flipped,duplicate_best_match,"
