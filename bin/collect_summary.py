@@ -2725,7 +2725,7 @@ def sec_y_tree(d, s):
 
 
 def sec_y_str(d, s):
-    """Step 45's table (y_str/<id>_y_str.tsv, bin/ystr_report.py): one row per
+    """Step 45's table (y_str/<id>_y_str.tsv, og y str-report): one row per
     FamilyTreeDNA marker with its count and confidence, and the counts per
     confidence."""
     p = first_existing(d, [f"y_str/{s}_y_str.tsv"])
@@ -2850,7 +2850,7 @@ VNTYPER_STATUSES = ("positive", "possible", "negative", "not assessed")
 
 
 def sec_vntyper(d, s):
-    """Step 52's table (vntyper/<id>_vntyper.tsv, bin/vntyper_report.py):
+    """Step 52's table (vntyper/<id>_vntyper.tsv, og vntyper report):
     VNtyper's MUC1 VNTR reading with its depth and sensitivity line."""
     p = first_existing(d, [f"vntyper/{s}_vntyper.tsv"])
     if not p:
@@ -2867,7 +2867,7 @@ LOCITYPER_COLUMNS = ("locus", "region", "status", "genotype", "haplotype_1", "ha
 
 
 def sec_locityper(d, s):
-    """Step 53's table (locityper/<id>_locityper.tsv, bin/locityper_report.py):
+    """Step 53's table (locityper/<id>_locityper.tsv, og locityper report):
     one row per locus of assets/locityper_loci.bed, the two pangenome
     haplotypes Locityper picked with its quality and the authors' filter.
     collect() adds each locus's primary call (locityper_primary)."""
@@ -2914,7 +2914,7 @@ def locityper_primary(sections):
 
 
 def sec_viral(d, s):
-    """Step 47's table (viral/<id>_viral.tsv, bin/viral_report.py): one row per
+    """Step 47's table (viral/<id>_viral.tsv, og viral report): one row per
     viral genome; the HHV-6 line and the genomes with reads (phiX included)."""
     p = first_existing(d, [f"viral/{s}_viral.tsv"])
     if not p:
@@ -2965,7 +2965,7 @@ def sec_chip(d, s):
 
 
 def sec_mei(d, s):
-    """Step 50's tables (mei/<id>_mei.tsv and _mei_sites.tsv, bin/mei_report.py):
+    """Step 50's tables (mei/<id>_mei.tsv and _mei_sites.tsv, og mei report):
     the insertions MEGAnE calls, counted per element, and every row of the
     known-site catalog with seen, not seen or not callable."""
     p = first_existing(d, [f"mei/{s}_mei_sites.tsv"])
@@ -2998,7 +2998,7 @@ MOCHA_CALL_KEYS = ("chrom", "start", "end", "length_mb", "arms", "type", "cell_f
 
 def sec_mocha(d, s):
     """Step 51's tables (mosaic/<id>_mocha_summary.tsv and _mocha.tsv,
-    bin/mocha_report.py): the status, the floor, and the calls reported."""
+    og mocha report): the status, the floor, and the calls reported."""
     p = first_existing(d, [f"mosaic/{s}_mocha_summary.tsv"])
     if not p:
         return None, {}
@@ -3148,7 +3148,7 @@ def sec_carrier(d, s):
 
 
 def sec_exomiser(d, s):
-    """Step 48's ranking (exomiser/<id>_exomiser_top.tsv, bin/exomiser_report.py):
+    """Step 48's ranking (exomiser/<id>_exomiser_top.tsv, og exomiser report):
     the HPO terms searched, and each rank with its gene, mode of inheritance,
     scores and contributing variants. A table without rows means no gene
     passed Exomiser's filters."""

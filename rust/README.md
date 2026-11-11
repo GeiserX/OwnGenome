@@ -9,6 +9,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-vcf` | VCF records read in place: INFO kept in order, GT and VEP's CSQ fields, the header passed through |
 | `crates/og-bam` | BAM reading as pysam does it (fetch, `reference_end`, `cigarstring`, `get_blocks`), on htslib linked statically |
 | `crates/og-chip` | step 49, clonal haematopoiesis: `og chip prepare`, `og chip report`, `og chip check-table` |
+| `crates/og-reports` | the opt-in step reports: `og y str-bed`, `og y str-report`, `og viral report`, `og exomiser prepare`, `og exomiser report`, `og mei report`, `og mei annotsv-input`, `og mocha report`, `og vntyper report`, `og locityper report` |
 | `crates/og-filters` | the VCF filters of steps 04, 05 and 07: `og sv svlen-fix`, `og sv inv-filter`, `og pgx refblock-fill`, `og pgx mito-merge` |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |
 | `og.sh` | build or download `bin/.og/og-linux-{x86_64,aarch64}`, and check they match this `rust/` |

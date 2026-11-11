@@ -11,7 +11,7 @@ Surname projects and Y-DNA matching compare men by these counts. A whole genome 
 ## Tool
 
 - **HipSTR** 0.7 (Willems et al., Nat Methods 2017, PMID 28436466; GPL-2.0), which genotypes STRs from aligned reads and models PCR stutter. It was validated on Y-STRs against capillary electrophoresis calls (Willems et al., Am J Hum Genet 2016, PMID 27126583).
-- `bin/ystr_report.py` turns HipSTR's calls into counts in FamilyTreeDNA's order. It runs with the Python of the HipSTR image.
+- `og y str-bed` and `og y str-report` (OwnGenome's Rust binary, [og](rust.md)) write HipSTR's regions and turn its calls into counts in FamilyTreeDNA's order. og is static, so it runs inside the HipSTR image.
 
 ## Docker Image
 

@@ -22,7 +22,7 @@ Manta, Delly and the other SV callers see an insertion as a break in the alignme
 
 - MEGAnE v1.0.1.beta (MIT licence), `call_genotype_38 -only_ins`: insertions only, not the reference copies a sample lacks
 - samtools to list the chromosomes the BAM has and to measure the depth over the catalog windows
-- `bin/mei_report.py` (standard library Python) for the calls table and the catalog
+- `og mei report` (OwnGenome's Rust binary, [og](rust.md)) for the calls table and the catalog
 - AnnotSV, when its data is there, for the genes each insertion falls in, where in them, and the benign set's frequency of an insertion at that place
 
 ## Docker Image
@@ -59,8 +59,8 @@ With `run-all.sh`: `TOOLS=...,mei`; a run lists step 50 only when `TOOLS` names 
 1. samtools lists the chromosomes MEGAnE reads (chr1 to chr22, chrX and chrY, as the BAM names them) and measures the depth over the catalog windows on the contigs the BAM has (`samtools bedcov -c`).
 2. MEGAnE runs on the BAM with that chromosome list. MEGAnE's own list holds every GRCh38 contig, ALT contigs included, and it stops on a BAM that lacks one; a BAM aligned to the no-ALT analysis set lacks all of them. On a BAM without chrX the step adds `-no_sex_chr`, or MEGAnE stops. MEGAnE checks that the `.fai` is newer than the FASTA, so it reads the reference through a link with a fresh copy of the `.fai`.
 3. MEGAnE writes `MEI_final_percentile_genotyped.vcf`, the file its log recommends for one sample. When it finds too few insertions to fit its filter thresholds (a BAM of one chromosome), it writes `MEI_final_failed_genotyped.vcf` with fixed thresholds instead; the step then uses that file and prints a warning.
-4. `bin/mei_report.py` keeps the Alu, L1 and SVA insertions that MEGAnE identified (`MEPRED=PASS`) with one or two copies. Other repeat classes in MEGAnE's VCF (DNA transposons, old LTRs) are left out: none is active in human genomes, so a call of one is read as an artefact.
-5. With AnnotSV's data, `bin/mei_report.py --annotsv-input` writes the kept insertions as the VCF AnnotSV reads, one `<INS:ME>` record each with `END` at its position and an ID the table is joined on, and AnnotSV annotates them as [step 05](05-annotsv.md) does the other SVs (`-annotationMode both`, the MANE Select transcripts). MEGAnE gives no inserted length, so AnnotSV takes each insertion as a point and skips its minimum-size check.
+4. `og mei report` keeps the Alu, L1 and SVA insertions that MEGAnE identified (`MEPRED=PASS`) with one or two copies. Other repeat classes in MEGAnE's VCF (DNA transposons, old LTRs) are left out: none is active in human genomes, so a call of one is read as an artefact.
+5. With AnnotSV's data, `og mei annotsv-input` writes the kept insertions as the VCF AnnotSV reads, one `<INS:ME>` record each with `END` at its position and an ID the table is joined on, and AnnotSV annotates them as [step 05](05-annotsv.md) does the other SVs (`-annotationMode both`, the MANE Select transcripts). MEGAnE gives no inserted length, so AnnotSV takes each insertion as a point and skips its minimum-size check.
 6. Each catalog row is **seen** when a kept insertion of the same element lies in its window, **not callable** when the BAM has no reads of that contig or the mean depth over the window is under 10, and **not seen** otherwise. The 10x is this pipeline's choice, not a published value.
 
 ## Output
