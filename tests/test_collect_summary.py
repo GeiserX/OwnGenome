@@ -203,7 +203,7 @@ def og_clinvar(*args):
     if not OG:
         print(f"[SKIP] og clinvar {args[0]}: OG is not set (the rust job of guard.yml runs it)")
         return None
-    return subprocess.run([OG, "clinvar", *args], capture_output=True, text=True).stdout
+    return subprocess.run([OG, "clinvar", *args], capture_output=True, text=True, check=True).stdout
 
 
 sys.path.insert(0, os.path.join(REPO, "bin"))
