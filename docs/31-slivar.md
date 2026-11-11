@@ -31,7 +31,7 @@ export GENOME_DIR=/path/to/your/data
 
 ## Filter Tiers
 
-"Rare" is the rule step 23 uses (`bin/csq_rank.awk`): VEP's `MAX_AF` (highest frequency in any 1000 Genomes or gnomAD exome/genome population) below 1%; without `MAX_AF`, the values of `gnomADe_AF` and `gnomADg_AF` below 1%. Exome frequency alone would call a variant that is common in genomes but absent from exomes rare. A variant with no frequency value at all is not rare: VEP found no gnomAD allele that matches it, which happens to common indels written differently from gnomAD. HIGH and MODERATE variants of unknown frequency go into their own tier, `freq_unknown`. With none of these fields the tiers are not filtered by frequency and the step prints a notice.
+"Rare" is the rule step 23 uses (`og vcf csq-rank`): VEP's `MAX_AF` (highest frequency in any 1000 Genomes or gnomAD exome/genome population) below 1%; without `MAX_AF`, the values of `gnomADe_AF` and `gnomADg_AF` below 1%. Exome frequency alone would call a variant that is common in genomes but absent from exomes rare. A variant with no frequency value at all is not rare: VEP found no gnomAD allele that matches it, which happens to common indels written differently from gnomAD. HIGH and MODERATE variants of unknown frequency go into their own tier, `freq_unknown`. With none of these fields the tiers are not filtered by frequency and the step prints a notice.
 
 The tiers take the impact of the most severe consequence over every transcript (`bcftools +split-vep -s worst`). Step 23 ranks on the MANE Select transcript instead; the TSVs here show that consequence beside the worst one.
 
@@ -92,7 +92,7 @@ If `gnomad_v4.1_constraint.tsv` is available, the summary TSV is enriched with p
 | mis_z | Missense Z-score (gnomAD v4.1 `mis.z_score`) | > 3.09 = constrained |
 | CONSTRAINED | YES if LOEUF < 0.35 or pLI > 0.9; NO if LOEUF or pLI is known and neither says so; `.` if the gene has no constraint values | Flag column |
 
-The values come from `bin/constraint_join.awk`, the loader step 23 and the Nextflow module run too: only canonical transcripts count, and of a gene's two canonical rows (Ensembl and RefSeq) the Ensembl one wins, so steps 23 and 31 report the same value for a gene. When rows carry gene symbols and not one matches the table, the step fails rather than write `.` in every row.
+The values come from `og table constraint-join`, the loader step 23 and the Nextflow module run too: only canonical transcripts count, and of a gene's two canonical rows (Ensembl and RefSeq) the Ensembl one wins, so steps 23 and 31 report the same value for a gene. When rows carry gene symbols and not one matches the table, the step fails rather than write `.` in every row.
 
 Variants in constrained genes are more likely to be pathogenic -- these genes are under strong purifying selection against damaging variants.
 

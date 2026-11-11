@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`), and so does `scripts/setup.sh` (the STRchive catalog, Exomiser's zips, the genetic map and the masked reference). The pieces below are the base every port builds on.
+Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), and `scripts/setup.sh` calls it for the STRchive catalog, Exomiser's zips, the genetic map and the masked reference. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -13,16 +13,17 @@ rust/
   og.sh                 build, download and check the binary
   crates/pycompat/      Python-exact formatting and parsing
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
-  crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
+  crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields; csq-rank
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
   crates/og-setup/      what setup.sh runs once: the STRchive catalog, zips, the genetic map
+  crates/og-steps/      the step helpers: constraint-join
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). `og str catalog` (was `strchive_convert.py`) builds the STRchive catalog of steps 09 and 9b; `og setup unzip` and `og setup genetic-map` replace two small Python programs inside `setup.sh`.
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif|catalog`, `og setup unzip|genetic-map` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). `og str catalog` (was `strchive_convert.py`) builds the STRchive catalog of steps 09 and 9b; `og setup unzip` and `og setup genetic-map` replace two small Python programs inside `setup.sh`. Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on).
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 
@@ -54,7 +55,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 - The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- A missing binary is still a note, which names steps 04, 05 and 07: those steps stop with `bin/og`'s message without it. `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
+- A missing binary is still a note, which names steps 04, 05 and 07. Those steps, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte
