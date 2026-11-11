@@ -9,14 +9,24 @@ publish.workspace = true
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
-og-bam.workspace = true
+og-bam = { workspace = true, optional = true }
 og-map.workspace = true
 og-intervals.workspace = true
 og-dev.workspace = true
 og-vcf.workspace = true
 og-steps.workspace = true
 og-filters.workspace = true
+og-chip.workspace = true
 og-runlog.workspace = true
+
+[features]
+# BAM reading (og-bam, on a statically linked htslib written in C) is on by
+# default, so every Linux build has it. The macOS build for a live host
+# (rust/og.sh, docs/rust.md) leaves it out with --no-default-features: the
+# live site needs `og map`, never a BAM, and htslib's C would otherwise have
+# to cross-compile for Apple.
+default = ["bam"]
+bam = ["dep:og-bam"]
 
 # musl's own malloc lets a long multi-threaded read grow to several times
 # its live data (step 40 on a 550 MB gVCF: 160-300 MB, against 40 MB with

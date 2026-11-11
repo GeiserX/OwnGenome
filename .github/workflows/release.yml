@@ -19,8 +19,9 @@ permissions:
   contents: read
 
 jobs:
-  # The og binaries every release carries (docs/rust.md): both musl builds,
-  # made by scripts/setup.sh --og as a checkout makes them, with SHA256SUMS.
+  # The og binaries every release carries (docs/rust.md): both musl builds
+  # and the macOS pair (without BAM, for a live-site host), made by
+  # scripts/setup.sh --og as a checkout makes them, with SHA256SUMS.
   # A checkout of the tag downloads them instead of building (rust/og.sh).
   og-binaries:
     runs-on: ubuntu-latest
@@ -43,15 +44,16 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
-      - name: Build og for x86_64 and aarch64 (scripts/setup.sh --og builds in OG_BUILDER)
+      - name: Build og for Linux and macOS (scripts/setup.sh --og builds in OG_BUILDER)
         run: |
           # On a tag, setup.sh --og would download the release's own binaries,
           # which this job is about to make: build them.
           rust/og.sh build
           rust/og.sh check --required
           mkdir -p dist
-          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64 dist/
-          (cd dist && sha256sum og-linux-* > SHA256SUMS && cat SHA256SUMS)
+          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64 bin/.og/og-darwin-arm64 bin/.og/og-darwin-x86_64 dist/
+          file dist/og-*
+          (cd dist && sha256sum og-* > SHA256SUMS && cat SHA256SUMS)
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -106,7 +108,7 @@ jobs:
             echo ""
             echo "## og binaries"
             echo ""
-            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks them."
+            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. og-darwin-arm64 and og-darwin-x86_64 run the live site's genome map on a Mac; they leave out the tools that read BAMs. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks all four."
           } >> "${RUNNER_TEMP}/notes.md"
 
       # Only a commit that main's CI passed is released: it must be on main,
@@ -136,7 +138,7 @@ jobs:
       - name: Attest the og binaries
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: 'dist/og-linux-*'
+          subject-path: 'dist/og-*'
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -148,4 +150,6 @@ jobs:
           files: |
             dist/og-linux-x86_64
             dist/og-linux-aarch64
+            dist/og-darwin-arm64
+            dist/og-darwin-x86_64
             dist/SHA256SUMS

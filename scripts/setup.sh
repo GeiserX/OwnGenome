@@ -2,7 +2,8 @@
 # setup.sh — One-stop setup: download references, pull Docker images, validate
 # Usage: ./scripts/setup.sh <genome_dir>
 #        ./scripts/setup.sh --pull-only      pull the Docker images and exit
-#        ./scripts/setup.sh --og             put OwnGenome's og binary in bin/.og:
+#        ./scripts/setup.sh --og             put OwnGenome's og binaries in bin/.og
+#                                            (Linux, and macOS for a live-site host):
 #                                            built from rust/ in OG_BUILDER, or on
 #                                            a release tag downloaded and checked
 #                                            (rust/og.sh install; docs/rust.md)
@@ -140,7 +141,8 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
-  echo "  --og          Put OwnGenome's og binary in bin/.og (built from rust/, or a release's) and exit."
+  echo "  --og          Put OwnGenome's og binaries in bin/.og, for Linux and for a macOS live-site host"
+  echo "                (built from rust/, or a release's) and exit."
   echo "  --refresh clinvar"
   echo "                Download NCBI's current ClinVar, rebuild the files made from it"
   echo "                and record its release date in <genome_dir>/clinvar/RELEASE."
