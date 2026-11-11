@@ -64,7 +64,9 @@ Checks:
      its parent alone, none marked; with a closed result of his in RYR1 the side by
      side's RYR1 row stays closed until opened there; with the son's results.json
      unavailable, or answered as unreadable, every row of his that could name one
-     stays closed (in the side by side every medicines and HLA row); with a closed result known by its gene alone his de novo rows
+     stays closed (in the side by side every medicines and HLA row), and "Show the
+     rows" opens neither his painting's grandparents nor his map as an image, which
+     open only by their own button; with a closed result known by its gene alone his de novo rows
      (a position, no gene) stay closed with it; his map as an image stays closed,
      and "Show the map" opens the map and no result; on his page
      a CHIP call and a copy-number dot in the gene of a closed result stay out
@@ -81,7 +83,8 @@ without its filter; for the planted results, results.json without its veil tags,
 rows ignore them, person.js whose findings ignore them, charts.js that keeps every mark, search.js that ignores a hit's tag
 and finding.js whose findings ignore their tags; for the family page, family-page.js whose rows ignore the veil
 core.js whose veilId() tags nothing, family-page.js without the gene-only fallback, a "Show the map" that opens
-the results too, a closed painting that keeps each stretch's grandparent and a side by side that ignores the veil; for the drawings, person.js that draws every item), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+the results too, a closed painting that keeps each stretch's grandparent, a side by side that ignores the veil and a
+drawing that "Show the rows" opens; for the drawings, person.js that draws every item), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -829,6 +832,33 @@ def family_unknown(b, base):
 SIDE_GENES = ("RYR1", "CACNA1S", "CYP2D6", "HLA-A")
 
 
+def click_veil(b, words):
+    """Click the son's closed box whose button says WORDS; whether there was one."""
+    return b.eval("var v = Array.prototype.filter.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] .veil "
+                  "button'), function (x) { return x.textContent === " + json.dumps(words) + "; })[0]; "
+                  "if (v) { v.click(); } !!v")
+
+
+def unknown_drawing_problems(b, base, image):
+    """[problems] of the family page with the son's results unavailable: "Show the rows" of a table opening his
+    drawing (the map as an image, or the painting's grandparents), or the drawing's own button not opening it."""
+    family_page(b, base)
+    out = []
+    if not click_veil(b, "Show the rows"):
+        out.append("no 'Show the rows' box")
+    time.sleep(0.4)
+    img = "!!document.querySelector('details[data-child=\"DEMO-003\"] img.segments')"
+    seen = (lambda: b.eval(img)) if image else (lambda: GRANDPARENT in (b.eval(FAMILY_SHOWN_JS) or ""))
+    if seen():
+        out.append("'Show the rows' opened the drawing too")
+    if not click_veil(b, "Show the map" if image else "Show the grandparents"):
+        out.append("no closed box of the drawing")
+    time.sleep(0.4)
+    if not seen():
+        out.append("the drawing's own button did not open it")
+    return out
+
+
 def side_labels(b):
     """The 'Gene or system' column of the family page's side by side."""
     got = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#ch-side-by-side table.rows tbody tr'), "
@@ -951,6 +981,7 @@ def family_veil_checks(b, base, out):
         os.replace(rj, rj + ".away")
         try:
             bad = family_unknown(b, base)
+            bad += unknown_drawing_problems(b, base, False)
         finally:
             os.replace(rj + ".away", rj)
         check("browser: with the son's results.json unavailable the family page keeps every row of his that could name "
@@ -1005,6 +1036,20 @@ def family_veil_checks(b, base, out):
         bad = map_problems(b, base)
         check("browser: the son's map as an image stays closed while a result is, and 'Show the map' opens the map "
               "and leaves each result's rows closed", not bad, bad)
+        os.replace(rj, rj + ".away")
+        try:
+            bad = unknown_drawing_problems(b, base, True)
+            check("browser: with the son's results unavailable, 'Show the rows' leaves his map as an image closed, and "
+                  "'Show the map' opens it", not bad, bad)
+            a = "return t === UNKNOWN ? !mapShown[openKey(child, key)] :"
+            if a not in keep[fp]:
+                check("control: a drawing that 'Show the rows' opens (the planted line is in family-page.js)", False, a)
+            else:
+                write(fp, keep[fp].replace(a, "return t === UNKNOWN ? !mapShown[openKey(child, key)] && !openedAll[child] :"))
+                control("a drawing that 'Show the rows' opens", not unknown_drawing_problems(b, base, True))
+                write(fp, keep[fp])
+        finally:
+            os.replace(rj + ".away", rj)
         a = "function () { mapShown[mk] = true; redraw(); }"
         if a not in keep[fp]:
             check("control: a 'Show the map' that opens the results too (the planted line is in family-page.js)", False, a)

@@ -132,6 +132,11 @@
   function stillClosed(child, tags) {
     return tags.filter(function (t) { return t === UNKNOWN ? !openedAll[child] : !opened[openKey(child, t)]; });
   }
+  // The same for a whole drawing of CHILD (its painting, its map as an image): while this page cannot read the
+  // child's results, only the drawing's own button (KEY) opens it, never "Show the rows" of a table.
+  function drawingClosed(child, tags, key) {
+    return tags.filter(function (t) { return t === UNKNOWN ? !mapShown[openKey(child, key)] : !opened[openKey(child, t)]; });
+  }
   // The rows of CHILD split by the veil: { open: rows, closed: [the still closed results of each closed row] }.
   function veiled(child, rows, tagFn) {
     var out = { open: [], closed: [] };
@@ -375,11 +380,12 @@
     // closed result says whether the child got it. A stretch from a parent alone says nothing. Closing only that
     // stretch would point at the closed result (a hatch, a gap in the table), so while one is closed every stretch
     // of this child is drawn from its parent alone, and no grandparent, basis or closed mark is shown.
-    var split = veiled(child, all, function (r) {
-      return r.ancestor && r.ancestor !== '.' ? tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end, true) : [];
+    var shut = [], pk = openKey(child, 'paint');
+    all.forEach(function (r) {
+      if (!r.ancestor || r.ancestor === '.') { return; }
+      drawingClosed(child, tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end, true), 'paint')
+        .forEach(function (x) { if (shut.indexOf(x) < 0) { shut.push(x); } });
     });
-    var shut = [];
-    split.closed.forEach(function (t) { t.forEach(function (x) { if (shut.indexOf(x) < 0) { shut.push(x); } }); });
     var rows = !shut.length ? all : all.map(function (r) {
       return { side: r.side, parent: r.parent, chrom: r.chrom, start: r.start, end: r.end, sites: r.sites,
         discordant: r.discordant, ancestor: '.', basis: 'parent' };
@@ -433,7 +439,7 @@
       add(fig, shut[0] === UNKNOWN
         ? U.veil('The grandparents of ' + child + '’s stretches stay hidden: this page cannot read ' + child + '’s results yet, ' +
           'so it cannot tell which stretch lies over a result to act on in adult life. Each stretch shows its parent only.',
-          'Show the grandparents', function () { openedAll[child] = true; redraw(); })
+          'Show the grandparents', function () { mapShown[pk] = true; redraw(); })
         : U.veil('The grandparents of ' + child + '’s stretches stay hidden while a result to act on in adult life is ' +
           'closed: they could show which copy the child got there. Each stretch shows its parent only.', null,
           function () { opened[openKey(child, shut[0])] = true; redraw(); }));
@@ -472,7 +478,7 @@
         // closed (or this page cannot tell), it stays closed whole.
         var k = kids[c.child] || {};
         var all = k.status !== 'known' || (!k.spans && k.acts.length) ? [UNKNOWN] : (k.spans || []).map(function (s) { return s[0]; });
-        var shut = stillClosed(c.child, all), mk = openKey(c.child, 'map');
+        var shut = drawingClosed(c.child, all, 'map'), mk = openKey(c.child, 'map');
         // "Show the map" opens the map only: each result keeps its own closed rows until it is opened.
         if (shut.length && !mapShown[mk]) {
           add(d, U.veil('The chromosome map of ' + c.child + ' stays closed while a result to act on in adult life is: ' +
