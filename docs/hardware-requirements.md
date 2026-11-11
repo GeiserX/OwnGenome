@@ -123,7 +123,7 @@ Every step runs in a Docker container with a hard `--memory` limit. The two entr
 | 17 (CPSR) | 4 / 8 GB | 4 / 8 GB |
 | 18 (CNVpytor) | 4 / 8 GB | 4 / 8 GB |
 | 19 (Delly) | 4 / 8 GB | 4 / 8 GB |
-| 25 (PRS): scoring files written as pgsc_calc reads them | no limit | `PRS_PREPARE` 1 / 16 GB |
+| 25 (PRS): scoring files written as pgsc_calc reads them | no limit | `PRS_PREPARE` 1 / 2 GB |
 | 25 (PRS): score positions genotyped from the gVCF | 2 / 8 GB | `PRS_SCORE_SITES` 2 / 4 GB |
 | 25 (PRS): pgsc_calc, each of its tasks | `PGSC_MAX_MEMORY` (three quarters of the RAM) | `PRS` 4 / 24 GB, given to pgsc_calc as `--max_memory` |
 | 44 (ancient populations): smartpca | `THREADS` (8) / 8 GB | `ANCIENT_PCA` 4 / 8 GB |
@@ -131,7 +131,7 @@ Every step runs in a Docker container with a hard `--memory` limit. The two entr
 | 50 (MEI): MEGAnE | `THREADS` (8) / 16 GB | `MEI` 8 / 16 GB |
 | 50 (MEI): AnnotSV on the insertions and the calls table | 4 / 8 GB for AnnotSV, 1 / 2 GB for the table | `MEI_REPORT` 4 / 8 GB with `--annotsv_annotations`, 1 / 2 GB without |
 
-These are limits, not measured peaks. The two step 44 rows were measured on a 4-CPU GitHub runner on public HG002 ([step 44, Runtime](44-ancient.md#runtime)): the setup's containers held 7.6 GiB of anonymous memory at most (the sampler does not record which container, convertf or smartpca), and the largest container's whole charge, file cache included, reached 11.6 of its 12 GiB; step 44's smartpca used 1.2 GiB. The peaks measured for each task in the end test are in the [runtime table](#runtime-per-step): on 30-40x genomes the alignment task (minimap2 and samtools together) peaked at 18.3-18.4 GB and DeepVariant at 15.9-16.5 GB. For step 25, on the nine scores measured before the four small lipid and blood-pressure scores joined the list, `PRS_PREPARE` peaked at 11.5 GB and pgsc_calc's first task, run on one thread, needed about 14 to 18 GB on a GitHub runner without a genome, and 12.7 to 13.5 GiB on the three end-test genomes ([step 25, Memory](25-prs.md#memory)). Your own run records pgsc_calc's task peaks in `prs/pgsc_calc/pipeline_info/execution_trace.txt`; the `PRS` row of the pipeline's trace is only the launcher.
+These are limits, not measured peaks. The two step 44 rows were measured on a 4-CPU GitHub runner on public HG002 ([step 44, Runtime](44-ancient.md#runtime)): the setup's containers held 7.6 GiB of anonymous memory at most (the sampler does not record which container, convertf or smartpca), and the largest container's whole charge, file cache included, reached 11.6 of its 12 GiB; step 44's smartpca used 1.2 GiB. The peaks measured for each task in the end test are in the [runtime table](#runtime-per-step): on 30-40x genomes the alignment task (minimap2 and samtools together) peaked at 18.3-18.4 GB and DeepVariant at 15.9-16.5 GB. For step 25, `PRS_PREPARE` (`og prs format`) peaked at 677 to 698 MB on the 15 default scores, and on the nine scores measured before the four small lipid and blood-pressure scores joined the list pgsc_calc's first task, run on one thread, needed about 14 to 18 GB on a GitHub runner without a genome, and 12.7 to 13.5 GiB on the three end-test genomes ([step 25, Memory](25-prs.md#memory)). Your own run records pgsc_calc's task peaks in `prs/pgsc_calc/pipeline_info/execution_trace.txt`; the `PRS` row of the pipeline's trace is only the launcher.
 
 **Minimum system RAM:** 16 GB. `run-all.sh` passes the machine's RAM as `--max_memory`, so on a 16 GB machine the 32 GB tasks run capped at about 15 GB. A task that needs more is killed (exit 137); its one retry asks for double, and the cap cuts that back to the same 15 GB. With the step scripts, lower DeepVariant's shards and memory with `THREADS` and `DV_MEM`, for example `THREADS=4 DV_MEM=12g ./scripts/03-deepvariant.sh <sample> [male|female]`. The other scripts set a fixed `--memory`; edit it in the script to change it. Step 25's pgsc_calc is the exception that does not fit: its first task needs about 14 to 18 GB on the default scores and was killed under a 14.1 GB limit when the host has no swap, so a 16 GB machine needs swap for it ([step 25, Memory](25-prs.md#memory)).
 **Recommended:** 32 GB or more, so minimap2 and DeepVariant get close to the 32 GB they ask for.
@@ -218,7 +218,7 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 | 20 Mito variants (Mutect2) | 1-2 min | 1.3-2.5 GB | 2.7-3.2 | |
 | 21 Cyrius (opt-in) | not measured (estimate ~5-15 min) | | | `setup.sh --cyrius` installs it once |
 | 22 SV consensus | 2-10 s | | | SURVIVOR's preparation, merge and sort together |
-| 23 Clinical filter | 2.5-6.5 min | under 50 MB | 0.9-1.2 | most of it `bin/csq_rank.awk` ranking the PASS records ([stage by stage](#the-clinical-filter-stage-by-stage)) |
+| 23 Clinical filter | 2.5-6.5 min | under 50 MB | 0.9-1.2 | measured when `bin/csq_rank.awk` ranked the PASS records, most of the time; `og vcf csq-rank` replaced it ([stage by stage](#the-clinical-filter-stage-by-stage)) |
 | 24 HTML report | not measured in the end test (estimate ~1-3 min) | | | `run-all.sh` runs it after the pipeline, outside the trace; measured apart on the same genomes: 11-15 s, 0.4 GB, and as long again for the text report ([the report step](#the-report-step)) |
 | 25 PRS | 54 min - 1 h 17 min per sample, plus 6-11 min once per run | see notes | | genotyping the score positions 21-31 min (1.1 GB), then pgsc_calc 33-51 min with 24 GB granted ([its tasks' memory](25-prs.md#memory)); preparing the scoring files 6-11 min, 11.3-12 GB, once per run |
 | 26 Ancestry (opt-in) | not measured on a genome | | | [step 25's panel numbers](25-prs.md#the-reference-panel-on-a-github-hosted-runner) were measured on a test target |
@@ -278,7 +278,7 @@ The text report is the same line with `-o /out/report.txt` and no `--search-inde
 
 ### The clinical filter, stage by stage
 
-[Step 23](23-clinical-filter.md)'s main pipe streams every PASS record of the VEP VCF through `bin/csq_rank.awk`:
+These numbers were measured before the ranker moved to Rust. [Step 23](23-clinical-filter.md)'s main pipe then streamed every PASS record of the VEP VCF through `bin/csq_rank.awk`, which `og vcf csq-rank` has since replaced with the same output:
 
 ```sh
 bcftools view -f PASS <vep.vcf.gz> | awk -v keep=noncommon <call floors> -f bin/csq_rank.awk | bcftools view -Oz -o rare_pass.vcf.gz
@@ -300,7 +300,7 @@ A second pipe does the same for the ClinVar tier (`bcftools +split-vep -i` on `C
 
 The rows without a range were measured on one genome. The awk is the saturated stage: alone it takes about 135 of the pipe's 157-171 s, while `bcftools` decodes the same stream in 28 s and compresses the result in 2.5 s. `--threads 2` only speeds up the stages that already wait for the awk, so the pipe stays within the noise of the run without it (its records were identical, checked by checksum without the `##bcftools_viewCommand` header line). The floor a faster ranker can reach on this pipe is the decode, about 25-30 s. The two pipes together, about 4 minutes, are most of the step's 2.5-6.5 minutes in the end test; the tier filters that follow read only the small `rare_pass.vcf.gz`.
 
-The commands, inside the `BCFTOOLS_IMAGE` container with `bin/` mounted at `/pgp-bin`. `pv` is not in that image: we mounted the host's `pv` binary into the container and put it on the `PATH` (that build links only against glibc, which the image also has; a static `pv` works the same way):
+The commands, inside the `BCFTOOLS_IMAGE` container with `bin/` mounted at `/pgp-bin` (`bin/csq_rank.awk` is gone from `main`; `git show 3150ebc2:bin/csq_rank.awk` gives it back to repeat the measurement). `pv` is not in that image: we mounted the host's `pv` binary into the container and put it on the `PATH` (that build links only against glibc, which the image also has; a static `pv` works the same way):
 
 ```sh
 export LC_ALL=C TIMEFORMAT='%R s wall, %U s user, %S s sys'

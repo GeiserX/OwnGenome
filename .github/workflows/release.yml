@@ -19,8 +19,9 @@ permissions:
   contents: read
 
 jobs:
-  # The og binaries every release carries (docs/rust.md): both musl builds,
-  # made by scripts/setup.sh --og as a checkout makes them, with SHA256SUMS.
+  # The og binaries every release carries (docs/rust.md): both musl builds
+  # and the macOS pair (without BAM, for a live-site host), made by
+  # scripts/setup.sh --og as a checkout makes them, with SHA256SUMS.
   # A checkout of the tag downloads them instead of building (rust/og.sh).
   og-binaries:
     runs-on: ubuntu-latest
@@ -43,15 +44,16 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
-      - name: Build og for x86_64 and aarch64 (scripts/setup.sh --og builds in OG_BUILDER)
+      - name: Build og for Linux and macOS (scripts/setup.sh --og builds in OG_BUILDER)
         run: |
           # On a tag, setup.sh --og would download the release's own binaries,
           # which this job is about to make: build them.
           rust/og.sh build
           rust/og.sh check --required
           mkdir -p dist
-          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64 dist/
-          (cd dist && sha256sum og-linux-* > SHA256SUMS && cat SHA256SUMS)
+          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64 bin/.og/og-darwin-arm64 bin/.og/og-darwin-x86_64 dist/
+          file dist/og-*
+          (cd dist && sha256sum og-* > SHA256SUMS && cat SHA256SUMS)
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -65,6 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      checks: read          # the tagged commit's check runs
       id-token: write       # the build attestation
       attestations: write
     steps:
@@ -92,44 +95,38 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Generate release notes
-        id: notes
+      # A release is named after the version the pipeline reports, so the tag
+      # must equal manifest.version in nextflow.config at the tagged commit,
+      # and a major or minor release needs its curated notes,
+      # docs/releases/<tag>.md, which become the release body.
+      - name: The tag matches manifest.version, and the notes exist
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          # Verify the tag exists in the repo
-          if ! git rev-parse "${TAG}" >/dev/null 2>&1; then
-            echo "ERROR: Tag ${TAG} does not exist in this repository" >&2
-            exit 1
-          fi
-
-          # Find previous tag
-          PREV_TAG=$(git tag --sort=-version:refname | grep '^v' | grep -v "^${TAG}$" | head -1)
-
-          if [ -n "$PREV_TAG" ]; then
-            RANGE="${PREV_TAG}..${TAG}"
-          else
-            RANGE="${TAG}"
-          fi
-
+          scripts/ci/check-release.sh tag "$TAG" --notes-out "${RUNNER_TEMP}/notes.md"
           {
-            echo "notes<<EOF"
-            echo "## What's Changed"
-            echo ""
-            git log "$RANGE" --pretty=format:"- %s" --no-merges 2>/dev/null || echo "- Initial release"
-            echo ""
-            echo ""
-            echo "## Docker Images"
-            echo ""
-            echo "All image versions are listed in [\`versions.env\`](versions.env)."
-            echo ""
-            echo "To set up: \`./scripts/setup.sh /path/to/data\`"
             echo ""
             echo "## og binaries"
             echo ""
-            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks them."
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. og-darwin-arm64 and og-darwin-x86_64 run the live site's genome map on a Mac; they leave out the tools that read BAMs. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks all four."
+          } >> "${RUNNER_TEMP}/notes.md"
+
+      # Only a commit that main's CI passed is released: it must be on main,
+      # and every check run on it (this job left out) must have finished green.
+      - name: The tagged commit is on main and its checks passed
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          sha=$(git rev-parse "${TAG}^{commit}")
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "ERROR: ${TAG} (${sha}) is not a commit on main" >&2
+            exit 1
+          fi
+          gh api --paginate "repos/${REPO}/commits/${sha}/check-runs?per_page=100" \
+            --jq '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv' > "${RUNNER_TEMP}/runs.tsv"
+          scripts/ci/check-release.sh checks "${RUNNER_TEMP}/runs.tsv" --ignore "$GITHUB_JOB"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -141,16 +138,18 @@ jobs:
       - name: Attest the og binaries
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: 'dist/og-linux-*'
+          subject-path: 'dist/og-*'
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
-          body: ${{ steps.notes.outputs.notes }}
+          body_path: ${{ runner.temp }}/notes.md
           draft: false
           files: |
             dist/og-linux-x86_64
             dist/og-linux-aarch64
+            dist/og-darwin-arm64
+            dist/og-darwin-x86_64
             dist/SHA256SUMS

@@ -1,0 +1,17 @@
+[package]
+name = "og-steps"
+description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join; prs, the PGS Catalog scores as pgsc_calc reads them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+og-intervals.workspace = true
+flate2.workspace = true
+memchr.workspace = true
+
+[lints]
+workspace = true

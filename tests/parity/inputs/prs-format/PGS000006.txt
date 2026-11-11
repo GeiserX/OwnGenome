@@ -1,0 +1,3 @@
+#HmPOS_build=GRCh38
+hm_chr	hm_pos	effect_allele	effect_weight
+1	5	A	1

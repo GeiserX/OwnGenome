@@ -12,7 +12,7 @@ Checks:
   5. a result older than the latest run-all.sh run whose step was skipped is
      marked stale in the summary and in both reports; one whose step was ok, or
      that is newer than the run, is not;
-  6. bin/clinvar_hits.awk and collect_summary.py give every review status the
+  6. og clinvar hits and collect_summary.py give every review status the
      same number of stars; 6b. and the same combined-allele note to a combined
      record, its parts and two hits that may be one allele, which both reports
      show; 6c. step 06's cDNA read check reaches each ClinVar hit by chrom,
@@ -74,7 +74,7 @@ Checks:
      older table whose step was skipped in the latest run is stale.
  21. ClinVar call quality and frequency (step 06's floor, step 13's VEP): a
      hit below GQ 30 or DP 10 is marked low confidence and left out of the
-     count and the stars, in the summary and in bin/clinvar_hits.awk alike,
+     count and the stars, in the summary and in og clinvar hits alike,
      and a floor of 0 marks nothing; each hit carries the gnomAD AF read from
      a bgzipped, tabix-indexed VEP file (two BGZF blocks, two contigs), a hit
      above 1% is common, one VEP lacks is unknown, and without VEP output the
@@ -106,7 +106,7 @@ Checks:
      couple, or without a column, is unreadable; a table without rows names
      no partner; a single sample without the step has no "not run" line for
      it (the screen needs two people).
- 24. the clinical filter's HIGH-impact list (bin/csq_rank.awk's rule, step 23):
+ 24. the clinical filter's HIGH-impact list (og vcf csq-rank's rule, step 23):
      a HIGH consequence on a non-MANE transcript whose MANE Select one is
      intronic is not listed; without a MANE transcript the canonical one
      ranks; a heterozygote at GQ 12 with AD 3,2 and a 1/1 at GQ 11 with AD
@@ -115,10 +115,12 @@ Checks:
      frequency unknown, a common one not at all; neither a weak call nor an
      unknown frequency counts as rare; the summary table's FREQ_TIER and
      CALL_CHECK columns and step 31's FREQ_TIER are counted; both reports
-     show the counts and the marks. bin/csq_rank.awk, the program steps 23
-     and 31 and their modules run, tags the same records the same way
-     (PGP_IMPACT, PGP_TX, PGP_FREQ, PGP_CALL), drops the common one with
-     keep=noncommon, and agrees with the summary on every record.
+     show the counts and the marks. The summary agrees on every record with
+     the tags og vcf csq-rank (what steps 23 and 31 and their modules run)
+     writes: PGP_IMPACT, PGP_TX, PGP_FREQ and PGP_CALL, pinned here and in
+     og-vcf's own test of the same seven records. With OG set to an og
+     binary og runs on them too and must write those tags and the reasons,
+     the floor line, and drop the common record with --keep noncommon.
 
  25. step 35's Parascopy table gets a section of its own: SMN1 and SMN2 at
      exon 7 from the paralog-specific copy number (from the row's own region
@@ -149,8 +151,9 @@ Checks:
      assets/pgs_scores.tsv): the shipped list is read entry by entry, and a
      list with lists of different lengths, an ancestry outside the five
      1000 Genomes groups or listed twice, a malformed PPM id or an effect
-     that is not an OR or HR is refused; prs-format copies them beside the
-     scores; prs-table writes Evaluated_In and Effect, the effect only for
+     that is not an OR or HR is refused; og prs format copies them beside
+     the scores (with OG set to an og binary; the folders prs-table reads
+     are written by hand as og writes them); prs-table writes Evaluated_In and Effect, the effect only for
      the group pgsc_calc placed the sample in (EUR: HR 1.53 of PPM000591;
      EAS, where the score was not evaluated: none), and none without the
      panel; a list without evaluations keeps the older columns; both reports print the effect for EUR and say there
@@ -158,12 +161,12 @@ Checks:
  28. step 06's construct and always-report outputs: a hit with GT 1/. (the
      half of a split 1/2 call at a poly-T tract) is worded "one copy, other
      copy not called ref (1/.)" in the summary, both reports, the carrier list
-     and bin/clinvar_hits.awk, never het, and counts one copy of two; a hit
+     and og clinvar hits, never het, and counts one copy of two; a hit
      named in the cDNA table's construct_site column prints the site and its
      read counts even when clear, and is counted; the genome-wide cDNA scan's
      loci and its "not run" note, and every row of the always-report list
      with its call ("ref, GQ 50 (gVCF block)", a genotype, "no call: why"),
-     reach both reports; bin/clinvar_hits.awk's sites mode words the calls
+     reach both reports; og clinvar deep-intronic words the calls
      the same way, and a reference call below the GQ floor reads
      "ref (low confidence)".
  29. step 05's checked table keeps AnnotSV's FORMAT and sample columns, so
@@ -189,6 +192,21 @@ import types
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# og, OwnGenome's Rust binary, for the checks that compare og clinvar with
+# the summary: the rust job of guard.yml sets OG (bin/og after
+# scripts/setup.sh --og); without it those checks are skipped and say so.
+OG = os.environ.get("OG")
+
+
+def og_clinvar(*args):
+    """og clinvar's stdout, or None without OG."""
+    if not OG:
+        print(f"[SKIP] og clinvar {args[0]}: OG is not set (the rust job of guard.yml runs it)")
+        return None
+    return subprocess.run([OG, "clinvar", *args], capture_output=True, text=True, check=True).stdout
+
+
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
 import clip_check  # noqa: E402
@@ -226,7 +244,7 @@ HITS = VCF_HEAD + (
     "chr1\t10\t1\tC\tT\t50\tPASS\tGENEINFO=GENEA:11;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT\t0/1\n"
     "chr1\t20\t2\tT\tG\t50\tPASS\tGENEINFO=GENEB:22;CLNSIG=Likely_pathogenic;CLNREVSTAT=reviewed_by_expert_panel\tGT\t1/1\n"
     "chr2\t5\t3\tA\tG\t50\tPASS\tGENEINFO=GENEC:33;CLNSIG=Pathogenic;CLNREVSTAT=no_assertion_criteria_provided\tGT\t0|1\n")
-# Step 6 hits with the combined-allele tags of bin/clinvar_join_adjacent.awk:
+# Step 6 hits with the combined-allele tags of og clinvar join-adjacent:
 # a 2-star combined record, its two 1-star parts, a single SNV, and two hits in
 # one gene that matched no combined record.
 _CV1 = "GENEINFO=SYNTH1:1;CLNSIG=Likely_pathogenic;CLNREVSTAT=criteria_provided,_single_submitter"
@@ -296,18 +314,40 @@ def prs_evaluations(work, schema):
             got = str(e)
         check(f"27: a list with {why} is refused", got != "read", got)
 
-    # prs-format with the shipped list copies the evaluations beside the scores.
+    # og prs format with the shipped list copies the evaluations beside the
+    # scores. The folders prs-table reads below are written as og writes them;
+    # with OG set to an og binary, og must write the same.
     score = ("#pgs_id=PGS000018\n#HmPOS_build=GRCh38\nhm_chr\thm_pos\teffect_allele\tother_allele\teffect_weight\n"
              "1\t1100\tA\tG\t0.5\n")
     put(f"{work}/ev_in/PGS000018.txt.gz", score, gz=True)
-    rc = collect_summary.main(["prs-format", "--scores", f"{work}/ev_in", "--labels", assets,
-                               "--out", f"{work}/ev_pgs", "--alleles", f"{work}/ev_alleles.tsv"])
-    with open(f"{work}/ev_pgs/{collect_summary.EVALS_FILE}") as f:
-        lines = f.read().splitlines()
-    check("27: prs-format writes the score's evaluations beside it",
-          rc == 0 and lines == ["pgs_id\tppm_id\tancestry\teffect",
-                                "PGS000018\tPPM000591;PPM000594;PPM000597\tEUR;AFR;AMR\tHR 1.53;HR 1.27;HR 1.53"],
-          (rc, lines))
+    og = os.environ.get("OG")
+    if os.environ.get("OG_REQUIRED") and not og:
+        sys.exit("FAIL: OG_REQUIRED is set but OG names no og binary")
+
+    def formatted(out, labels, applies="", evals=""):
+        """The folder og prs format writes for ev_in with LABELS, and with OG og's own beside it."""
+        put(f"{out}/PGS000018.txt.gz", "#pgs_id=PGS000018\n#pgs_name=PGS000018\n#trait_reported=Coronary artery disease\n"
+            "#genome_build=GRCh38\nchr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n1\t1100\tA\tG\t0.5\n", gz=True)
+        put(f"{out}/{collect_summary.CHRX_FILE}", "pgs_id\tchrx_rows\tchrx\nPGS000018\t0\tleft out\n")
+        put(f"{out}/{collect_summary.SCORE_NOTES_FILE}", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\nPGS000018\t{applies}\t0\tdropped\n")
+        put(f"{out}/{collect_summary.EVALS_FILE}", "pgs_id\tppm_id\tancestry\teffect\n" + (f"PGS000018\t{evals}\n" if evals else ""))
+        if not og:
+            return
+        rc = subprocess.run([og, "prs", "format", "--scores", f"{work}/ev_in", "--labels", labels, "--out", f"{out}_og",
+                             "--alleles", f"{out}_og.alleles"], capture_output=True).returncode
+
+        def text(d):
+            got = {}
+            for n in sorted(os.listdir(d)):
+                with (gzip.open if n.endswith(".gz") else open)(os.path.join(d, n), "rt") as f:
+                    got[n] = f.read()
+            return got
+        check(f"27: og prs format with {os.path.basename(labels)} writes the folder prs-table reads here",
+              rc == 0 and text(f"{out}_og") == text(out), rc)
+
+    formatted(f"{work}/ev_pgs", assets, evals="PPM000591;PPM000594;PPM000597\tEUR;AFR;AMR\tHR 1.53;HR 1.27;HR 1.53")
+    if not og:
+        print("[NOTE] OG is not set, so og prs format does not run here; tests/parity and its own tests pin it")
 
     def results(d, group):
         """A pgsc_calc --outdir that placed the sample in GROUP (no panel when None)."""
@@ -345,16 +385,14 @@ def prs_evaluations(work, schema):
     check("27: no panel, so no group: no effect", rc == 0 and raw.get("Effect") == "" and raw.get("Percentile") == "NA", raw)
     # Red control: the same run from a list without the evaluations keeps the older columns.
     put(f"{work}/ev_plain.tsv", "pgs_id\ttrait_reported\nPGS000018\tCoronary artery disease\n")
-    collect_summary.main(["prs-format", "--scores", f"{work}/ev_in", "--labels", f"{work}/ev_plain.tsv",
-                          "--out", f"{work}/ev_pgs_plain", "--alleles", f"{work}/ev_alleles_plain.tsv"])
+    formatted(f"{work}/ev_pgs_plain", f"{work}/ev_plain.tsv")
     rc, hdr, plain, plain_out = table("EUR", pgs=f"{work}/ev_pgs_plain")
     check("27: control: a list without evaluations gives the older columns and no effect",
           rc == 0 and hdr == collect_summary.PRS_COLUMNS and "Effect" not in plain, hdr)
     # A score for one sex, with a EUR evaluation, run for the other sex in EUR: no effect.
     put(f"{work}/ev_female.tsv", "pgs_id\ttrait_reported\tapplies_to\tppm_id\tancestry\teffect\n"
         "PGS000018\tCoronary artery disease\tfemale\tPPM000591\tEUR\tHR 1.53\n")
-    collect_summary.main(["prs-format", "--scores", f"{work}/ev_in", "--labels", f"{work}/ev_female.tsv",
-                          "--out", f"{work}/ev_pgs_female", "--alleles", f"{work}/ev_alleles_female.tsv"])
+    formatted(f"{work}/ev_pgs_female", f"{work}/ev_female.tsv", applies="female", evals="PPM000591\tEUR\tHR 1.53")
     rc, _, man, man_out = table("EUR", pgs=f"{work}/ev_pgs_female", sex="male")
     check("27: a female-only score for a male sample in EUR: no effect",
           rc == 0 and man.get("Sex_Check") == collect_summary.SEX_NOT_APPLICABLE and man.get("Evaluated_In") == "EUR"
@@ -491,10 +529,10 @@ def construct_scan_section(work, schema):
     carriers = {x["gene"]: x for x in summ["sections"]["carrier"]["data"].get("carriers", [])}
     check("split poly-T: the carrier list words it the same way", carriers.get("CFTR", {}).get("genotype") == half,
           summ["sections"]["carrier"]["data"])
-    awk = subprocess.run(["awk", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"), f"{d}/clinvar/S_clinvar_hits.vcf"],
-                         capture_output=True, text=True).stdout
-    check("split poly-T: bin/clinvar_hits.awk gives the same words",
-          [r.split("\t")[5] for r in awk.splitlines()] == [half, "het"], awk)
+    rows = og_clinvar("hits", f"{d}/clinvar/S_clinvar_hits.vcf")
+    if rows is not None:
+        check("split poly-T: og clinvar hits gives the same words",
+              [r.split("\t")[5] for r in rows.splitlines()] == [half, "het"], rows)
     site = "known lab-construct site (APP Swedish K670N/M671L): clear (0 of 12 alt reads and 0 of 10 ref reads " \
            "clipped at an exon edge)"
     check("construct site: counted, and both reports print the site with its counts though it is clear",
@@ -541,7 +579,7 @@ def construct_scan_section(work, schema):
     check("cDNA scan not run: both reports say why", "cDNA scan of every exon: not run: no BAM" in txt
           and "cDNA scan of every exon: not run: no BAM" in html
           and "Loci with spliced reads" not in html)
-    # bin/clinvar_hits.awk's sites mode: the call words the reports read.
+    # og clinvar deep-intronic: the call words the reports read.
     sites = os.path.join(work, "construct-scan", "sites.tsv")
     put(sites, "# t\nchrom\tpos\tref\talt\tgene\thgvs\tclinvar_id\n"
         "chr1\t10\tA\tG\tG1\tc.1\t1\nchr1\t20\tC\tT\tG2\tc.2\t2\nchr1\t30\tA\tC\tG3\tc.3\t3\n"
@@ -551,8 +589,10 @@ def construct_scan_section(work, schema):
         "chr1\t40\t40\tG\tC\t0/1\t40\t30\n")
     gvcf_calls = os.path.join(work, "construct-scan", "gvcf.txt")
     put(gvcf_calls, "chr1\t1\t15\tA\t<*>\t0/0\t50\t.\nchr1\t90\t120\tT\t<*>\t./.\t0\t.\n")
-    out = subprocess.run(["awk", "-v", "mode=sites", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"), sites,
-                          vcf_calls, gvcf_calls], capture_output=True, text=True).stdout.splitlines()
+    out = og_clinvar("deep-intronic", sites, vcf_calls, gvcf_calls)
+    if out is None:
+        return
+    out = out.splitlines()
     calls = {r.split("\t")[4]: tuple(r.split("\t")[7:9]) for r in out[1:]}
     check("sites mode: header and one row per site", out[:1] == ["chrom\tpos\tref\talt\tgene\thgvs\tclinvar_id\tcall\tdetail"]
           and len(out) == 6, out)
@@ -561,24 +601,20 @@ def construct_scan_section(work, schema):
         "G4": ("other allele", "G>C het"),
         "G5": ("no call", "the gVCF record over the site is not a PASS reference call (GT ./.)")}, calls)
     # The call floor: a reference call below min_gq (step 6's CLINVAR_MIN_GQ) is no confident ref.
-    out = subprocess.run(["awk", "-v", "mode=sites", "-v", "min_gq=40", "-f",
-                          os.path.join(REPO, "bin", "clinvar_hits.awk"), sites, vcf_calls, gvcf_calls],
-                         capture_output=True, text=True).stdout.splitlines()
+    out = og_clinvar("deep-intronic", "--min-gq", "40", sites, vcf_calls, gvcf_calls).splitlines()
     low = {r.split("\t")[4]: tuple(r.split("\t")[7:9]) for r in out[1:]}
     check("sites mode: a ref below the GQ floor reads 'ref (low confidence)', one above it stays 'ref'",
           low.get("G3") == ("ref (low confidence)", "GQ 35, below the call floor of GQ 40")
           and low.get("G1") == ("ref", "GQ 50 (gVCF block)") and low.get("G2") == ("hom", "GQ 60, DP 30"), low)
     put(gvcf_calls, "chr1\t1\t15\tA\t<*>\t0/0\t2\t.\n")
-    out = subprocess.run(["awk", "-v", "mode=sites", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"), sites,
-                          vcf_calls, gvcf_calls], capture_output=True, text=True).stdout.splitlines()
+    out = og_clinvar("deep-intronic", sites, vcf_calls, gvcf_calls).splitlines()
     low = {r.split("\t")[4]: tuple(r.split("\t")[7:9]) for r in out[1:]}
     check("sites mode: a GQ 2 gVCF block under the default floor of 30 is a low-confidence ref",
           low.get("G1") == ("ref (low confidence)", "GQ 2 (gVCF block), below the call floor of GQ 30")
           and low.get("G3") == ("ref", "GQ 35"), low)
     empty = os.path.join(work, "construct-scan", "empty.txt")
     put(empty, "")
-    out = subprocess.run(["awk", "-v", "mode=sites", "-v", "gvcf=no", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"),
-                          sites, empty, empty], capture_output=True, text=True).stdout.splitlines()
+    out = og_clinvar("deep-intronic", "--no-gvcf", sites, empty, empty).splitlines()
     check("sites mode: with no calls and no gVCF every site is no call, with that reason",
           len(out) == 6 and all(r.endswith("\tno call\tno record in the VCF, and no gVCF to tell a reference call "
                                            "from no call") for r in out[1:]), out)
@@ -604,20 +640,19 @@ def clinvar_quality(work, schema):
     check("call floor: the low-confidence hit is listed but left out of the count and the stars",
           cv["count"] == 3 and cv["low_confidence"] == 1 and len(cv["hits"]) == 4
           and cv["by_stars"] == {"4": 0, "3": 1, "2": 0, "1": 2, "0": 0}, cv)
-    awk = subprocess.run(["awk", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"), f"{d}/clinvar/S_clinvar_hits.vcf"],
-                         capture_output=True, text=True).stdout
-    awk_low = {r.split("\t")[6]: tuple(r.split("\t")[10:13]) for r in awk.splitlines()}
-    check("call floor: bin/clinvar_hits.awk gives the same DP, GQ and mark",
-          awk_low == {"GENEA": ("6", "12", "yes"), "GENEB": ("40", "50", "no"), "GENEC": ("35", "45", "no"),
-                      "GENED": (".", ".", "no")}, awk_low)
+    rows = og_clinvar("hits", f"{d}/clinvar/S_clinvar_hits.vcf")
+    if rows is not None:
+        og_low = {r.split("\t")[6]: tuple(r.split("\t")[10:13]) for r in rows.splitlines()}
+        check("call floor: og clinvar hits gives the same DP, GQ and mark",
+              og_low == {"GENEA": ("6", "12", "yes"), "GENEB": ("40", "50", "no"), "GENEC": ("35", "45", "no"),
+                         "GENED": (".", ".", "no")}, og_low)
     zero = FLOOR_HITS.replace("##PGP_CALL_FLOOR=GQ=30,DP=10", "##PGP_CALL_FLOOR=GQ=0,DP=0")
     z = os.path.join(work, "clinvar-floor-zero", "S")
     put(f"{z}/clinvar/S_clinvar_hits.vcf", zero)
     cz = collect_summary.collect("S", z)["sections"]["clinvar"]["data"]
-    awk_z = subprocess.run(["awk", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"), f"{z}/clinvar/S_clinvar_hits.vcf"],
-                           capture_output=True, text=True).stdout
+    og_z = og_clinvar("hits", f"{z}/clinvar/S_clinvar_hits.vcf")
     check("call floor: a floor of GQ 0 and DP 0 marks nothing, so the mark above depends on the floor",
-          cz["low_confidence"] == 0 and cz["count"] == 4 and "\tyes" not in awk_z, (cz["low_confidence"], awk_z))
+          cz["low_confidence"] == 0 and cz["count"] == 4 and "\tyes" not in (og_z or ""), (cz["low_confidence"], og_z))
     check("call floor: a hits file without the floor line uses GQ 30 and DP 10",
           collect_summary.call_floor(f"{work}/cdna/S/clinvar/S_clinvar_hits.vcf") == {"GQ": 30, "DP": 10})
     af = {g: (by[g]["af"], by[g]["common"]) for g in by}
@@ -865,38 +900,42 @@ def clinical_mane_quality(work, schema):
         "chr3\t700\t.\tC\tT\t50\tPASS\tCSQ=T|missense_variant|MODERATE|SCN5A|ENST8|||0.0001,"
         "T|stop_gained|HIGH|SCN5A|ENST9|YES||0.0001\tGT:GQ:DP:AD\t0/1:50:30:15,15\n")
     put(f"{d}/clinical/S_clinical.vcf.gz", head + body, gz=True)
-    # bin/csq_rank.awk on the same records
-    awk_file = os.path.join(REPO, "bin", "csq_rank.awk")
-
-    def ranked(keep):
-        p_ = subprocess.run(["awk", "-v", f"keep={keep}", "-f", awk_file], input=head + body,
-                            capture_output=True, text=True, env=dict(os.environ, LC_ALL="C"))
-        tags = {}
-        for line in p_.stdout.splitlines():
-            if not line.startswith("#"):
-                r = line.split("\t")
-                tags[int(r[1])] = dict(kv.split("=", 1) for kv in r[7].split(";") if kv.startswith("PGP_"))
-        return p_.returncode, tags, p_.stdout
-    rc, tags, out = ranked("all")
+    # The tags og vcf csq-rank writes for these records (rust/crates/og-vcf
+    # src/rank.rs pins the same ones): (PGP_IMPACT, PGP_TX, PGP_FREQ, PGP_CALL).
     want = {100: ("MODIFIER", "MANE", "rare", "ok"), 200: ("HIGH", "MANE", "rare", "weak"),
             300: ("HIGH", "MANE", "rare", "weak"), 400: ("HIGH", "MANE", "rare", "ok"),
             500: ("HIGH", "MANE", "unknown", "ok"), 600: ("HIGH", "MANE", "common", "ok"),
             700: ("HIGH", "CANONICAL", "rare", "ok")}
-    got = {p_: (t.get("PGP_IMPACT"), t.get("PGP_TX"), t.get("PGP_FREQ"), t.get("PGP_CALL")) for p_, t in tags.items()}
-    check("csq_rank.awk: impact on the MANE transcript, else the canonical one; frequency tier; call check",
-          rc == 0 and got == want, (rc, got, out[-600:]))
-    check("csq_rank.awk: what made a call weak (GQ12; GQ11,AB0.29)",
-          (tags.get(200, {}).get("PGP_CALL_WHY"), tags.get(300, {}).get("PGP_CALL_WHY")) == ("GQ12", "GQ11,AB0.29"), tags)
-    check("csq_rank.awk: the header names the floor it used",
-          "##PGP_CALL_FLOOR=GQ=30,DP=10,HET_AB=0.2-0.8,HOM_AB=0.8\n" in out, out[:900])
-    rc, tags_nc, _ = ranked("noncommon")
-    check("csq_rank.awk: keep=noncommon drops the common record only",
-          rc == 0 and sorted(tags_nc) == [100, 200, 300, 400, 500, 700], sorted(tags_nc))
+    want_why = {200: "GQ12", 300: "GQ11,AB0.29"}
+    og = os.environ.get("OG")
+    if og:
+        def ranked(keep):
+            p_ = subprocess.run([og, "vcf", "csq-rank", "--keep", keep], input=head + body,
+                                capture_output=True, text=True)
+            tags = {}
+            for line in p_.stdout.splitlines():
+                if not line.startswith("#"):
+                    r = line.split("\t")
+                    tags[int(r[1])] = dict(kv.split("=", 1) for kv in r[7].split(";") if kv.startswith("PGP_"))
+            return p_.returncode, tags, p_.stdout
+        rc, tags, out = ranked("all")
+        got = {p_: (t.get("PGP_IMPACT"), t.get("PGP_TX"), t.get("PGP_FREQ"), t.get("PGP_CALL")) for p_, t in tags.items()}
+        check("og vcf csq-rank: impact on the MANE transcript, else the canonical one; frequency tier; call check",
+              rc == 0 and got == want, (rc, got, out[-600:]))
+        check("og vcf csq-rank: what made a call weak (GQ12; GQ11,AB0.29)",
+              {p_: t["PGP_CALL_WHY"] for p_, t in tags.items() if "PGP_CALL_WHY" in t} == want_why, tags)
+        check("og vcf csq-rank: the header names the floor it used",
+              "##PGP_CALL_FLOOR=GQ=30,DP=10,HET_AB=0.2-0.8,HOM_AB=0.8\n" in out, out[:900])
+        rc, tags_nc, _ = ranked("noncommon")
+        check("og vcf csq-rank: --keep noncommon drops the common record only",
+              rc == 0 and sorted(tags_nc) == [100, 200, 300, 400, 500, 700], sorted(tags_nc))
+    else:
+        print("[NOTE] OG is not set, so og vcf csq-rank does not run here; its own tests pin these tags")
     agree = collect_summary.csq_high_impact_genes(f"{d}/clinical/S_clinical.vcf.gz")
-    check("csq_rank.awk and the summary agree on which records are HIGH and which calls are weak",
-          {p_ for p_, t in tags.items() if t.get("PGP_IMPACT") == "HIGH"} == {k[1] for k in agree}
-          and {p_ for p_, t in tags.items() if t.get("PGP_CALL") == "weak"} == {k[1] for k, x in agree.items() if x["weak"]},
-          (tags, agree))
+    check("the summary agrees with og vcf csq-rank on which records are HIGH and which calls are weak",
+          {p_ for p_, t in want.items() if t[0] == "HIGH"} == {k[1] for k in agree}
+          and {p_ for p_, t in want.items() if t[3] == "weak"} == {k[1] for k, x in agree.items() if x["weak"]},
+          (want, agree))
     summ, txt, html = render(d)
     sf = summ["sections"]["clinical"]["data"]["acmg_sf"]
     by = {x["gene"]: x for x in sf["high_impact"]}
@@ -923,7 +962,7 @@ def clinical_mane_quality(work, schema):
           and "weak call (GQ 12 < 30): check the reads" in txt and "frequency unknown, not counted as rare" in txt, txt)
     check("clinical: the HTML report marks the weak call and the unknown frequency",
           "weak call (GQ 12 &lt; 30): check the reads" in html and "frequency unknown, not counted as rare" in html)
-    # A floor of 0 written by bin/csq_rank.awk marks nothing.
+    # A floor of 0 written by og vcf csq-rank marks nothing.
     put(f"{d}/clinical/S_clinical.vcf.gz", head.replace(
         "#CHROM", "##PGP_CALL_FLOOR=GQ=0,DP=0,HET_AB=0-1,HOM_AB=0\n#CHROM") + body, gz=True)
     sf0 = collect_summary.collect("S", d)["sections"]["clinical"]["data"]["acmg_sf"]
@@ -2340,26 +2379,25 @@ def main():
         check("no run status: nothing is stale",
               all(x["state"] != "stale" for x in summ["sections"].values()))
 
-        # 6. stars: awk and python agree
+        # 6. stars: og and python agree
         statuses = list(collect_summary.STARS) + ["no_assertion_criteria_provided", "no_classification_provided",
                                                   "something_new", ""]
         vcf = os.path.join(work, "stars.vcf")
         put(vcf, VCF_HEAD + "".join(f"chr1\t{i}\t.\tA\tG\t50\tPASS\tCLNREVSTAT={st_}\tGT\t0/1\n"
                                     for i, st_ in enumerate(statuses, 1)))
-        out = subprocess.run(["awk", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"), vcf],
-                             capture_output=True, text=True).stdout.split("\n")
-        awk_stars = [int(l.split("\t")[0]) for l in out if l]
-        py_stars = [collect_summary.STARS.get(x, 0) for x in statuses]
-        check("bin/clinvar_hits.awk and collect_summary.py give the same stars", awk_stars == py_stars,
-              f"awk {awk_stars} python {py_stars}")
+        out = og_clinvar("hits", vcf)
+        if out is not None:
+            og_stars = [int(l.split("\t")[0]) for l in out.split("\n") if l]
+            py_stars = [collect_summary.STARS.get(x, 0) for x in statuses]
+            check("og clinvar hits and collect_summary.py give the same stars", og_stars == py_stars,
+                  f"og {og_stars} python {py_stars}")
 
-        # 6b. the combined-allele note (step 6's PGP_* tags): awk and python
+        # 6b. the combined-allele note (step 6's PGP_* tags): og and python
         # word it the same, and both reports show it
         cv = os.path.join(work, "combined", "S")
         put(f"{cv}/clinvar/S_clinvar_hits.vcf", COMBINED_HITS)
-        out = subprocess.run(["awk", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"),
-                              f"{cv}/clinvar/S_clinvar_hits.vcf"], capture_output=True, text=True).stdout
-        awk_notes = {(l.split("\t")[2]): l.split("\t")[9] for l in out.split("\n") if l}
+        out = og_clinvar("hits", f"{cv}/clinvar/S_clinvar_hits.vcf")
+        og_notes = {(l.split("\t")[2]): l.split("\t")[9] for l in (out or "").split("\n") if l}
         summ_cv, txt_cv, html_cv = render(cv)
         py_notes = {str(h["pos"]): h["combined_allele"] for h in summ_cv["sections"]["clinvar"]["data"]["hits"]}
         # All three are unphased het calls: the genotype cannot say the parts
@@ -2372,7 +2410,8 @@ def main():
                 "30000300": "possibly one allele with chr22:30000305 C>T: check ClinVar for a combined record",
                 "30000305": "possibly one allele with chr22:30000300 A>G: check ClinVar for a combined record"}
         check("combined allele: the note of each hit in the summary", py_notes == want, py_notes)
-        check("combined allele: bin/clinvar_hits.awk gives the same notes", awk_notes == want, awk_notes)
+        if out is not None:
+            check("combined allele: og clinvar hits gives the same notes", og_notes == want, og_notes)
         check("combined allele: the 2-star combined record is listed before its 1-star parts",
               [h["pos"] for h in summ_cv["sections"]["clinvar"]["data"]["hits"]][0] == 30000038,
               summ_cv["sections"]["clinvar"]["data"]["hits"])
@@ -2390,14 +2429,13 @@ def main():
         # parts are on one haplotype, so the notes carry no phase caveat.
         for gt_ in ("0|1", "1/1"):
             put(f"{cv}/clinvar/S_clinvar_hits.vcf", COMBINED_HITS.replace("\tGT\t0/1\n", f"\tGT\t{gt_}\n"))
-            out = subprocess.run(["awk", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"),
-                                  f"{cv}/clinvar/S_clinvar_hits.vcf"], capture_output=True, text=True).stdout
-            awk_g = {(l.split("\t")[2]): l.split("\t")[9] for l in out.split("\n") if l}
+            out = og_clinvar("hits", f"{cv}/clinvar/S_clinvar_hits.vcf")
+            og_g = {(l.split("\t")[2]): l.split("\t")[9] for l in (out or "").split("\n") if l}
             summ_g, _, _ = render(cv)
             py_g = {str(h["pos"]): h["combined_allele"] for h in summ_g["sections"]["clinvar"]["data"]["hits"]}
             want_g = {k: v.replace(unph, "") for k, v in want.items()}
-            check(f"combined allele: GT {gt_} gets no phase caveat, in the summary and in bin/clinvar_hits.awk",
-                  py_g == want_g and awk_g == want_g, (py_g, awk_g))
+            check(f"combined allele: GT {gt_} gets no phase caveat, in the summary and in og clinvar hits",
+                  py_g == want_g and (out is None or og_g == want_g), (py_g, og_g))
         put(f"{cv}/clinvar/S_clinvar_hits.vcf", COMBINED_HITS)
         check("combined allele: the summary validates", not validate.validate(schema, json.loads(json.dumps(summ_cv))),
               validate.validate(schema, json.loads(json.dumps(summ_cv))))

@@ -154,8 +154,8 @@ for PGS_ID in "${PGS_IDS[@]}"; do
 done
 
 # --- 2. pgsc_calc's scoring files --------------------------------------------------
-# bin/collect_summary.py prs-format (the Nextflow PRS_PREPARE process runs the
-# same) writes each file as a custom GRCh38 file: chr_name and chr_position
+# og prs format (bin/og; the Nextflow PRS_PREPARE process runs the same)
+# writes each file as a custom GRCh38 file: chr_name and chr_position
 # from the harmonised hm_chr and hm_pos, labelled with the catalog's trait,
 # so pgsc_calc never needs the network or a liftover. It refuses a file that
 # is not harmonised to GRCh38 or not additive. With the sex it keeps the
@@ -188,7 +188,7 @@ if [ -n "$SEX" ]; then KEEP_X=(--keep-x); fi
 KEEP_AMB=()
 if $KEEP_AMBIGUOUS; then KEEP_AMB=(--keep-ambiguous --reference "$REF_FASTA_C"); fi
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SCORE_LIST}:/pgs_scores.tsv:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/collect_summary.py prs-format \
+  /pgp-bin/og prs format \
     --scores "$(cpath "$SCORING_DIR")" --ids "$IDS" --labels /pgs_scores.tsv \
     --out "$(cpath "${WORK}/scores")" --alleles "$(cpath "${WORK}/score_alleles.tsv")" \
     ${KEEP_X[@]+"${KEEP_X[@]}"} ${KEEP_AMB[@]+"${KEEP_AMB[@]}"}
@@ -196,7 +196,7 @@ run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SCORE_LIST}:/pgs_scores.tsv:ro" "$
 # --- 3. The genotypes pgsc_calc scores ---------------------------------------------
 # Both inputs end as target.vcf.gz: the score positions (and with the panel the
 # panel's SNVs) only, a small file for pgsc_calc to convert. Without the sex
-# both lists are autosomal (prs-format drops a score's chrX, chrY and MT rows;
+# both lists are autosomal (og prs format drops a score's chrX, chrY and MT rows;
 # the panel list is chromosomes 1 to 22), which keeps chrX out: plink2 refuses
 # it without the sample's sex. With the sex the score's chrX positions are in.
 echo ""

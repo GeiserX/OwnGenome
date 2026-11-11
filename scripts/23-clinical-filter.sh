@@ -22,7 +22,7 @@
 # (step 13 normalises its input for that reason). With no frequency field at
 # all every tier keeps all variants, and the step says so.
 #
-# Impact: bin/csq_rank.awk ranks each record on its MANE Select transcript,
+# Impact: og vcf csq-rank ranks each record on its MANE Select transcript,
 # else the canonical one, else any transcript (the most severe IMPACT in that
 # set). A HIGH consequence on another transcript does not make a record HIGH
 # when its MANE Select consequence is intronic; the summary shows both.
@@ -35,7 +35,7 @@
 #
 # The summary TSV takes the gene, impact and consequence of the ranked
 # transcript, the worst consequence of `bcftools +split-vep` beside it, and
-# gnomAD constraint columns from bin/constraint_join.awk (the loader step 31
+# gnomAD constraint columns from og table constraint-join (the loader step 31
 # and the Nextflow slivar module use).
 # Requires: VEP-annotated VCF from step 13 (step 30 vcfanno enrichment recommended)
 set -euo pipefail
@@ -122,7 +122,7 @@ VCF_HEADER=$(run_in "${BCFTOOLS_IMAGE}" bcftools view -h "$CONTAINER_INPUT" 2>/d
 has_info() { grep -q "^##INFO=<ID=$1," <<< "$VCF_HEADER"; }
 
 # Frequency: MAX_AF, or the gnomAD exome and genome fields VEP was asked for.
-# bin/csq_rank.awk applies the rule (PGP_FREQ); this only names the fields.
+# og vcf csq-rank applies the rule (PGP_FREQ); this only names the fields.
 FREQ_NAME=""
 if has_field MAX_AF; then
   FREQ_NAME="MAX_AF"
@@ -143,7 +143,7 @@ HAS_CONSTRAINT=0; [ -f "$CONSTRAINT_TSV" ] && HAS_CONSTRAINT=1
 HAS_HITS=0; [ -f "$CLINVAR_HITS" ] && HAS_HITS=1
 has_format() { grep -q "^##FORMAT=<ID=$1," <<< "$VCF_HEADER"; }
 
-# Call floors of the genotype check (bin/csq_rank.awk writes them into the
+# Call floors of the genotype check (og vcf csq-rank writes them into the
 # clinical VCF as ##PGP_CALL_FLOOR, which the reports read).
 MIN_GQ=${CLINICAL_MIN_GQ:-30}
 MIN_DP=${CLINICAL_MIN_DP:-10}
@@ -189,16 +189,16 @@ count() {
 }
 
 # rank_vcf OUT KEEP VIEW_ARGS...: `bcftools view VIEW_ARGS` through
-# bin/csq_rank.awk on the host (ranked transcript, frequency tier, call check
+# og vcf csq-rank in the bcftools image (ranked transcript, frequency tier, call check
 # as PGP_* INFO tags), bgzipped and indexed as clinical/OUT. KEEP=noncommon
 # drops the records with a known frequency of 1% or more.
 rank_vcf() {
   local out=$1 keep=$2
   shift 2
   run_in --cpus 2 --memory 2g "${BCFTOOLS_IMAGE}" bcftools view "$@" \
-    | LC_ALL=C awk -v keep="$keep" -v min_gq="$MIN_GQ" -v min_dp="$MIN_DP" \
-        -v het_lo="$HET_AB_MIN" -v het_hi="$HET_AB_MAX" -v hom_lo="$HOM_AB_MIN" \
-        -f "${PGP_ROOT}/bin/csq_rank.awk" \
+    | run_in -i --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${BCFTOOLS_IMAGE}" \
+        /pgp-bin/og vcf csq-rank --keep "$keep" --min-gq "$MIN_GQ" --min-dp "$MIN_DP" \
+        --het-lo "$HET_AB_MIN" --het-hi "$HET_AB_MAX" --hom-lo "$HOM_AB_MIN" \
     | run_in -i --cpus 2 --memory 2g "${BCFTOOLS_IMAGE}" bcftools view -Oz -o "${C}/${out}"
   run_in --cpus 2 --memory 2g "${BCFTOOLS_IMAGE}" bcftools index -f -t "${C}/${out}"
 }
@@ -377,7 +377,7 @@ TOTAL_COUNT=$(count "${SAMPLE}_clinical.vcf.gz")
 # Summary TSV: one row per variant. IMPACT, GENE and Consequence are the
 # ranked transcript's (TRANSCRIPT: MANE, CANONICAL or ANY), WORST_IMPACT and
 # WORST_Consequence the worst over every transcript. FREQ_TIER, CALL_CHECK and
-# CALL_WHY come from bin/csq_rank.awk. A score, frequency or FORMAT field the
+# CALL_WHY come from og vcf csq-rank. A score, frequency or FORMAT field the
 # input does not carry is written as '.'.
 echo ""
 echo "Generating human-readable summary..."
@@ -398,11 +398,12 @@ run_in --cpus 2 --memory 2g "${BCFTOOLS_IMAGE}" \
 awk -F'\t' 'BEGIN {OFS = "\t"} NR > 1 && $7 == "" {$7 = "."} {print}' "${SUMMARY}.tmp" > "${SUMMARY}.tmp2"
 mv "${SUMMARY}.tmp2" "${SUMMARY}.tmp"
 
-# gnomAD gene constraint columns (bin/constraint_join.awk exits non-zero when
+# gnomAD gene constraint columns (og table constraint-join exits non-zero when
 # rows carry genes and not one matches: a wrong file, never a silent '.').
 if [ "$HAS_CONSTRAINT" -eq 1 ]; then
   echo "Adding gnomAD gene constraint metrics..."
-  awk -f "${PGP_ROOT}/bin/constraint_join.awk" gene_col=GENE "$CONSTRAINT_TSV" "${SUMMARY}.tmp" > "${SUMMARY}.tmp2"
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${BCFTOOLS_IMAGE}" /pgp-bin/og table constraint-join --gene-col GENE \
+    "$(cpath "$CONSTRAINT_TSV")" "$(cpath "${SUMMARY}.tmp")" > "${SUMMARY}.tmp2"
   mv "${SUMMARY}.tmp2" "${SUMMARY}.tmp"
 fi
 mv "${SUMMARY}.tmp" "$SUMMARY"
