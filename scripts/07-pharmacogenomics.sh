@@ -38,7 +38,7 @@ done
 # plain VCF: every covered position becomes a 0/0 call, and an uncovered one
 # (./.) stays missing. That expansion writes one-base records, which do not
 # count at a PharmCAT position whose REF or ALT is longer than one base (an
-# indel such as UGT1A1 *28); bin/pgx_refblock_fill.py writes a 0/0 record
+# indel such as UGT1A1 *28); og pgx refblock-fill writes a 0/0 record
 # with PharmCAT's own alleles there when reference blocks with GQ >= 20 cover
 # the whole REF span and no other record overlaps it. PharmCAT refuses a gVCF,
 # by content and by a name with .g.vcf in it, so the expanded file has
@@ -61,7 +61,7 @@ if [ -f "$GVCF" ] && [ -f "${GVCF}.tbi" ]; then
       bcftools view -R /pharmcat/pharmcat_regions.bed -Ov -o "$records" "$2"
       bcftools convert --gvcf2vcf -f "$1" -R /pharmcat/pharmcat_regions.bed -Ou "$2" \
         | bcftools view --trim-alt-alleles -i "GT!=\"mis\"" -Ov \
-        | python3 /pgp-bin/pgx_refblock_fill.py /pharmcat/pharmcat_positions.vcf.bgz "$records" \
+        | /pgp-bin/og pgx refblock-fill /pharmcat/pharmcat_positions.vcf.bgz "$records" \
         | bcftools view -Oz -o "$3.part" --write-index=tbi
       mv -f "$3.part" "$3"
       mv -f "$3.part.tbi" "$3.tbi"' \
@@ -104,7 +104,7 @@ run_in \
 # with -po. An empty file means nothing was agreed, and is not passed.
 # PharmCAT 3.4.0 reads MT-RNR1 only as an outside call too: its matcher has no
 # MT-RNR1 definition, so the gene is No Result from any VCF. When step 20
-# wrote its chrM calls, bin/pgx_mito_merge.py adds an MT-RNR1 line to a copy
+# wrote its chrM calls, og pgx mito-merge adds an MT-RNR1 line to a copy
 # of step 36's calls: a homoplasmic (AF >= 0.95) PASS allele PharmCAT names,
 # or Reference when there is none and the BAM has 20 reads or more (samtools
 # depth, MAPQ and base quality 20) at every position PharmCAT names an allele
@@ -139,7 +139,7 @@ if [ -s "$MITO" ]; then
         depth=(--depth /tmp/mtrnr1.depth)
       fi
       shift
-      python3 /pgp-bin/pgx_mito_merge.py "${depth[@]}" "$@"' _ "$BAM_C" \
+      /pgp-bin/og pgx mito-merge "${depth[@]}" "$@"' _ "$BAM_C" \
       --jar /pharmcat/pharmcat.jar "${MERGE_ARGS[@]}" \
       --out "/genome/${SAMPLE}/vcf/${SAMPLE}.pharmcat_outside_calls.tsv"
   OUTSIDE=$MERGED OUTSIDE_FROM="step 36, and MT-RNR1 from step 20"

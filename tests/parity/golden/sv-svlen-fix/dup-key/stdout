@@ -1,0 +1,7 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Length">
+##INFO=<ID=ORIG_SVLEN,Number=1,Type=Integer,Description="SVLEN before sv_svlen_fix.py set it to the net length change len(ALT)-len(REF)">
+##INFO=<ID=ORIG_END,Number=1,Type=Integer,Description="END before sv_svlen_fix.py set it to POS-1+len(REF)-len(ALT) for a net deletion, so AnnotSV reads the net length">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr20	100	.	ACGTA	A	.	PASS	SVLEN=-1;END=500;SVLEN=-4;END=103;ORIG_SVLEN=-2

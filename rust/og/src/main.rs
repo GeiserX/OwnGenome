@@ -18,7 +18,7 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og vcf csq-rank [options]\n       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE\n       og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og vcf csq-rank [options]\n       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -74,16 +74,27 @@ fn main() -> ExitCode {
             Some(other) => usage_error(&format!("unknown table tool '{other}'")),
             None => usage_error("the following arguments are required: table tool"),
         },
-        "dev" => ExitCode::from(og_dev::main(rest)),
-        "pgx" => match rest.first().and_then(|v| v.strip_prefix("cyp2d6-")) {
-            Some(verb) => ExitCode::from(og_bam::cyp2d6::cli(
-                verb,
-                &rest[1..],
-                &mut std::io::stdout().lock(),
-                &mut std::io::stderr().lock(),
-            )),
-            None => usage_error("og pgx takes cyp2d6-bed, cyp2d6-measure or cyp2d6-check"),
+        "sv" => match rest.first().map(String::as_str) {
+            Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
+            Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown sv tool '{other}'")),
+            None => usage_error("the following arguments are required: sv tool"),
         },
+        "pgx" => match rest.first().map(String::as_str) {
+            Some("refblock-fill") => ExitCode::from(og_filters::refblock::cli(&rest[1..])),
+            Some("mito-merge") => ExitCode::from(og_filters::mito::cli(&rest[1..])),
+            Some(other) => match other.strip_prefix("cyp2d6-") {
+                Some(verb) => ExitCode::from(og_bam::cyp2d6::cli(
+                    verb,
+                    &rest[1..],
+                    &mut std::io::stdout().lock(),
+                    &mut std::io::stderr().lock(),
+                )),
+                None => usage_error(&format!("unknown pgx tool '{other}'")),
+            },
+            None => usage_error("the following arguments are required: pgx tool"),
+        },
+        "dev" => ExitCode::from(og_dev::main(rest)),
         "str" => match rest.first().map(String::as_str) {
             Some("motif") => ExitCode::from(og_bam::motif::cli(
                 &rest[1..],

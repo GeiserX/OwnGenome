@@ -6,7 +6,7 @@ Each OwnGenome tool moves from Python to the Rust binary `og` in one pull reques
 |---|---|
 | `oracle.ref` | One row per ported tool: the commit that still had the Python, where it was (`heredoc:FILE:NAME` or `file:FILE`), its interpreter, and the `og` words that replace it. |
 | `cases.tsv` | One row per case: tool, case name, inputs, arguments, the outputs it must write, the compare kind for its output files, and the `versions.env` image the oracle runs in. |
-| `inputs/<tool>/` | The case inputs, staged into each run by their base name. `.gitattributes` keeps their line endings as they are. |
+| `inputs/<tool>/` | The case inputs, staged into each run by their base name. A staged input named `stdin` is the standard input of both sides; without one it is empty. `.gitattributes` keeps their line endings as they are. |
 | `gen/` | Generators for inputs too large to commit, named in `inputs` as `gen:<script>`. |
 | `golden/<tool>/<case>/` | What `og` must write where it fixes the oracle on purpose: one file per item (`exit`, `stdout`, `stderr` or an output name), or `<item>.absent` when `og` must write nothing. |
 | `known.tsv` | Differences that cannot be stable: zip and deflate bytes, clocks, mtimes, Python exception text. |

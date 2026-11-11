@@ -15,6 +15,7 @@ og-intervals.workspace = true
 og-dev.workspace = true
 og-vcf.workspace = true
 og-steps.workspace = true
+og-filters.workspace = true
 
 [lints]
 workspace = true
