@@ -414,12 +414,6 @@ fn basename(p: &str) -> &str {
 /// Equal as the contract means it: by JSON type (a bool never equals a
 /// number), an int equal to a float of the same value.
 fn same(a: &Value, b: &Value) -> bool {
-    // PLANTED: Python's True == 1.
-    let num = |v: &Value| match v {
-        Value::Bool(b) => Value::Int(i128::from(*b)),
-        v => v.clone(),
-    };
-    let (a, b) = (&num(a), &num(b));
     match (a, b) {
         (Value::Int(x), Value::Float(y)) | (Value::Float(y), Value::Int(x)) => *x as f64 == *y,
         _ => a == b,

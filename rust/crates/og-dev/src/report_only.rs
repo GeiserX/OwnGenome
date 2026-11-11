@@ -211,24 +211,8 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             return 2;
         }
     };
-    // PLANTED: the Python's comment cut at any // and its one-level closure regex.
-    let config: String = config
-        .lines()
-        .map(|l| l.split("//").next().unwrap_or(""))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let ignore =
-        Regex::new(r"withName:\s*'([^']*)'\s*\{\s*errorStrategy\s*=\s*\{[^}]*'ignore'[^}]*\}")
-            .unwrap();
-    let planted: Vec<String> = ignore
-        .captures_iter(&config)
-        .map(|c| c[1].to_owned())
-        .collect();
     let mut patterns = Vec::new();
     for w in og_nf::config::with_names(&config) {
-        if !planted.contains(&w.selector) {
-            continue;
-        }
         if !w.error_strategy.is_some_and(|s| s.contains("'ignore'")) {
             continue;
         }
