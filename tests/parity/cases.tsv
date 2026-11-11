@@ -32,6 +32,28 @@ clinvar-hits	tag-output	gen:clinvar-cases.sh	tag.vcf	-	bytes	BCFTOOLS_IMAGE
 clinvar-deep-intronic	gvcf	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	sites.tsv sites-vcf.txt sites-gvcf.txt	-	bytes	BCFTOOLS_IMAGE
 clinvar-deep-intronic	no-gvcf	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	--no-gvcf sites.tsv sites-vcf.txt empty.txt	-	bytes	BCFTOOLS_IMAGE
 clinvar-deep-intronic	min-gq-45	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	--min-gq 45 sites.tsv sites-vcf.txt sites-gvcf.txt	-	bytes	BCFTOOLS_IMAGE
+vcf-csq-rank	unit-records	vcf-csq-rank/unit-records.vcf,vcf-csq-rank/oracle.sh	--in unit-records.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	unit-records-noncommon	vcf-csq-rank/unit-records.vcf,vcf-csq-rank/oracle.sh	--keep noncommon --in unit-records.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	floors	vcf-csq-rank/unit-records.vcf,vcf-csq-rank/oracle.sh	--keep noncommon --rare-af 0.5 --min-gq 0 --min-dp 0 --het-lo 0 --het-hi 1 --hom-lo 0 --in unit-records.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	rerun	vcf-csq-rank/rerun.vcf,vcf-csq-rank/oracle.sh	--in rerun.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	headers	vcf-csq-rank/headers.vcf,vcf-csq-rank/oracle.sh	--keep noncommon --in headers.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	bad-floor	vcf-csq-rank/unit-records.vcf,vcf-csq-rank/oracle.sh	--min-gq abc --in unit-records.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	hg002-vep	gen:hg002-vep.sh,vcf-csq-rank/oracle.sh	--in hg002_vep.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	hg002-vep-floors	gen:hg002-vep.sh,vcf-csq-rank/oracle.sh	--keep noncommon --min-gq 60 --min-dp 40 --het-lo 0.45 --het-hi 0.55 --hom-lo 0.99 --in hg002_vep.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	edge	gen:synthetic-vep.sh,vcf-csq-rank/oracle.sh	--in vep-edge.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	edge-floors	gen:synthetic-vep.sh,vcf-csq-rank/oracle.sh	--keep noncommon --rare-af 0.2 --min-gq 25 --min-dp 9 --het-lo 0.3 --het-hi 0.7 --hom-lo 0.9 --in vep-edge.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	gnomad	gen:synthetic-vep.sh,vcf-csq-rank/oracle.sh	--keep noncommon --in vep-gnomad.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+vcf-csq-rank	synthetic-500k	gen:synthetic-vep-500k.sh,vcf-csq-rank/oracle.sh	--in vep-500k.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
+table-constraint-join	six-rows	table-constraint-join/constraint.tsv,table-constraint-join/table.tsv,table-constraint-join/oracle.sh	--gene-col GENE --constrained constraint.tsv table.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	six-rows-plain	table-constraint-join/constraint.tsv,table-constraint-join/table.tsv,table-constraint-join/oracle.sh	--gene-col GENE constraint.tsv table.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	no-match	table-constraint-join/constraint.tsv,table-constraint-join/nomatch.tsv,table-constraint-join/oracle.sh	--gene-col GENE constraint.tsv nomatch.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	old-names	table-constraint-join/old-names.tsv,table-constraint-join/table.tsv,table-constraint-join/oracle.sh	--gene-col GENE old-names.tsv table.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	no-gene-column	table-constraint-join/constraint.tsv,table-constraint-join/symbol.tsv,table-constraint-join/oracle.sh	--gene-col GENE constraint.tsv symbol.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	symbol	table-constraint-join/constraint.tsv,table-constraint-join/symbol.tsv,table-constraint-join/oracle.sh	--gene-col SYMBOL --constrained constraint.tsv symbol.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	empty-table	table-constraint-join/constraint.tsv,table-constraint-join/empty.tsv,table-constraint-join/oracle.sh	--gene-col GENE constraint.tsv empty.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	empty-constraint	table-constraint-join/empty.tsv,table-constraint-join/table.tsv,table-constraint-join/oracle.sh	--gene-col GENE empty.tsv table.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	missing-table	table-constraint-join/constraint.tsv,table-constraint-join/oracle.sh	--gene-col GENE constraint.tsv missing.tsv	-	bytes	BCFTOOLS_IMAGE
+table-constraint-join	odd-values	table-constraint-join/odd-constraint.tsv,table-constraint-join/odd-table.tsv,table-constraint-join/oracle.sh	--gene-col GENE --constrained odd-constraint.tsv odd-table.tsv	-	bytes	BCFTOOLS_IMAGE
 sv-svlen-fix	test	sv-svlen-fix/test.vcf	test.vcf	-	bytes	ANNOTSV_IMAGE
 sv-svlen-fix	gz	sv-svlen-fix/test.vcf.gz	test.vcf.gz	-	bytes	ANNOTSV_IMAGE
 sv-svlen-fix	stdin	sv-svlen-fix/stdin	-	-	bytes	ANNOTSV_IMAGE

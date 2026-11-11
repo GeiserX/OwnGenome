@@ -1,0 +1,14 @@
+[package]
+name = "og-steps"
+description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+og-io.workspace = true
+memchr.workspace = true
+
+[lints]
+workspace = true

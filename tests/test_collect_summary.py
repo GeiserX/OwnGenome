@@ -106,7 +106,7 @@ Checks:
      couple, or without a column, is unreadable; a table without rows names
      no partner; a single sample without the step has no "not run" line for
      it (the screen needs two people).
- 24. the clinical filter's HIGH-impact list (bin/csq_rank.awk's rule, step 23):
+ 24. the clinical filter's HIGH-impact list (og vcf csq-rank's rule, step 23):
      a HIGH consequence on a non-MANE transcript whose MANE Select one is
      intronic is not listed; without a MANE transcript the canonical one
      ranks; a heterozygote at GQ 12 with AD 3,2 and a 1/1 at GQ 11 with AD
@@ -115,10 +115,12 @@ Checks:
      frequency unknown, a common one not at all; neither a weak call nor an
      unknown frequency counts as rare; the summary table's FREQ_TIER and
      CALL_CHECK columns and step 31's FREQ_TIER are counted; both reports
-     show the counts and the marks. bin/csq_rank.awk, the program steps 23
-     and 31 and their modules run, tags the same records the same way
-     (PGP_IMPACT, PGP_TX, PGP_FREQ, PGP_CALL), drops the common one with
-     keep=noncommon, and agrees with the summary on every record.
+     show the counts and the marks. The summary agrees on every record with
+     the tags og vcf csq-rank (what steps 23 and 31 and their modules run)
+     writes: PGP_IMPACT, PGP_TX, PGP_FREQ and PGP_CALL, pinned here and in
+     og-vcf's own test of the same seven records. With OG set to an og
+     binary og runs on them too and must write those tags and the reasons,
+     the floor line, and drop the common record with --keep noncommon.
 
  25. step 35's Parascopy table gets a section of its own: SMN1 and SMN2 at
      exon 7 from the paralog-specific copy number (from the row's own region
@@ -877,38 +879,42 @@ def clinical_mane_quality(work, schema):
         "chr3\t700\t.\tC\tT\t50\tPASS\tCSQ=T|missense_variant|MODERATE|SCN5A|ENST8|||0.0001,"
         "T|stop_gained|HIGH|SCN5A|ENST9|YES||0.0001\tGT:GQ:DP:AD\t0/1:50:30:15,15\n")
     put(f"{d}/clinical/S_clinical.vcf.gz", head + body, gz=True)
-    # bin/csq_rank.awk on the same records
-    awk_file = os.path.join(REPO, "bin", "csq_rank.awk")
-
-    def ranked(keep):
-        p_ = subprocess.run(["awk", "-v", f"keep={keep}", "-f", awk_file], input=head + body,
-                            capture_output=True, text=True, env=dict(os.environ, LC_ALL="C"))
-        tags = {}
-        for line in p_.stdout.splitlines():
-            if not line.startswith("#"):
-                r = line.split("\t")
-                tags[int(r[1])] = dict(kv.split("=", 1) for kv in r[7].split(";") if kv.startswith("PGP_"))
-        return p_.returncode, tags, p_.stdout
-    rc, tags, out = ranked("all")
+    # The tags og vcf csq-rank writes for these records (rust/crates/og-vcf
+    # src/rank.rs pins the same ones): (PGP_IMPACT, PGP_TX, PGP_FREQ, PGP_CALL).
     want = {100: ("MODIFIER", "MANE", "rare", "ok"), 200: ("HIGH", "MANE", "rare", "weak"),
             300: ("HIGH", "MANE", "rare", "weak"), 400: ("HIGH", "MANE", "rare", "ok"),
             500: ("HIGH", "MANE", "unknown", "ok"), 600: ("HIGH", "MANE", "common", "ok"),
             700: ("HIGH", "CANONICAL", "rare", "ok")}
-    got = {p_: (t.get("PGP_IMPACT"), t.get("PGP_TX"), t.get("PGP_FREQ"), t.get("PGP_CALL")) for p_, t in tags.items()}
-    check("csq_rank.awk: impact on the MANE transcript, else the canonical one; frequency tier; call check",
-          rc == 0 and got == want, (rc, got, out[-600:]))
-    check("csq_rank.awk: what made a call weak (GQ12; GQ11,AB0.29)",
-          (tags.get(200, {}).get("PGP_CALL_WHY"), tags.get(300, {}).get("PGP_CALL_WHY")) == ("GQ12", "GQ11,AB0.29"), tags)
-    check("csq_rank.awk: the header names the floor it used",
-          "##PGP_CALL_FLOOR=GQ=30,DP=10,HET_AB=0.2-0.8,HOM_AB=0.8\n" in out, out[:900])
-    rc, tags_nc, _ = ranked("noncommon")
-    check("csq_rank.awk: keep=noncommon drops the common record only",
-          rc == 0 and sorted(tags_nc) == [100, 200, 300, 400, 500, 700], sorted(tags_nc))
+    want_why = {200: "GQ12", 300: "GQ11,AB0.29"}
+    og = os.environ.get("OG")
+    if og:
+        def ranked(keep):
+            p_ = subprocess.run([og, "vcf", "csq-rank", "--keep", keep], input=head + body,
+                                capture_output=True, text=True)
+            tags = {}
+            for line in p_.stdout.splitlines():
+                if not line.startswith("#"):
+                    r = line.split("\t")
+                    tags[int(r[1])] = dict(kv.split("=", 1) for kv in r[7].split(";") if kv.startswith("PGP_"))
+            return p_.returncode, tags, p_.stdout
+        rc, tags, out = ranked("all")
+        got = {p_: (t.get("PGP_IMPACT"), t.get("PGP_TX"), t.get("PGP_FREQ"), t.get("PGP_CALL")) for p_, t in tags.items()}
+        check("og vcf csq-rank: impact on the MANE transcript, else the canonical one; frequency tier; call check",
+              rc == 0 and got == want, (rc, got, out[-600:]))
+        check("og vcf csq-rank: what made a call weak (GQ12; GQ11,AB0.29)",
+              {p_: t["PGP_CALL_WHY"] for p_, t in tags.items() if "PGP_CALL_WHY" in t} == want_why, tags)
+        check("og vcf csq-rank: the header names the floor it used",
+              "##PGP_CALL_FLOOR=GQ=30,DP=10,HET_AB=0.2-0.8,HOM_AB=0.8\n" in out, out[:900])
+        rc, tags_nc, _ = ranked("noncommon")
+        check("og vcf csq-rank: --keep noncommon drops the common record only",
+              rc == 0 and sorted(tags_nc) == [100, 200, 300, 400, 500, 700], sorted(tags_nc))
+    else:
+        print("[NOTE] OG is not set, so og vcf csq-rank does not run here; its own tests pin these tags")
     agree = collect_summary.csq_high_impact_genes(f"{d}/clinical/S_clinical.vcf.gz")
-    check("csq_rank.awk and the summary agree on which records are HIGH and which calls are weak",
-          {p_ for p_, t in tags.items() if t.get("PGP_IMPACT") == "HIGH"} == {k[1] for k in agree}
-          and {p_ for p_, t in tags.items() if t.get("PGP_CALL") == "weak"} == {k[1] for k, x in agree.items() if x["weak"]},
-          (tags, agree))
+    check("the summary agrees with og vcf csq-rank on which records are HIGH and which calls are weak",
+          {p_ for p_, t in want.items() if t[0] == "HIGH"} == {k[1] for k in agree}
+          and {p_ for p_, t in want.items() if t[3] == "weak"} == {k[1] for k, x in agree.items() if x["weak"]},
+          (want, agree))
     summ, txt, html = render(d)
     sf = summ["sections"]["clinical"]["data"]["acmg_sf"]
     by = {x["gene"]: x for x in sf["high_impact"]}
@@ -935,7 +941,7 @@ def clinical_mane_quality(work, schema):
           and "weak call (GQ 12 < 30): check the reads" in txt and "frequency unknown, not counted as rare" in txt, txt)
     check("clinical: the HTML report marks the weak call and the unknown frequency",
           "weak call (GQ 12 &lt; 30): check the reads" in html and "frequency unknown, not counted as rare" in html)
-    # A floor of 0 written by bin/csq_rank.awk marks nothing.
+    # A floor of 0 written by og vcf csq-rank marks nothing.
     put(f"{d}/clinical/S_clinical.vcf.gz", head.replace(
         "#CHROM", "##PGP_CALL_FLOOR=GQ=0,DP=0,HET_AB=0-1,HOM_AB=0\n#CHROM") + body, gz=True)
     sf0 = collect_summary.collect("S", d)["sections"]["clinical"]["data"]["acmg_sf"]
