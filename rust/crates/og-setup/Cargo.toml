@@ -9,11 +9,15 @@ publish.workspace = true
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
-og-bam.workspace = true
 og-filters.workspace = true
 flate2.workspace = true
 zlib-rs.workspace = true
 indexmap.workspace = true
+
+[dev-dependencies]
+# Only for the test that forms() agrees with og str motif's; the library
+# stays free of htslib, so an og built without BAM support can link it.
+og-bam.workspace = true
 
 [lints]
 workspace = true

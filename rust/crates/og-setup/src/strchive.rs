@@ -250,14 +250,39 @@ fn structure_of(e: &IndexMap<String, Value>) -> R<&str> {
     text(get(e, "LocusStructure")?, "LocusStructure")
 }
 
+/// Every rotation of a motif on both strands, without repeats: the rule of
+/// `og str motif` (`og_bam::motif::forms`), kept here so the catalog does not
+/// pull htslib into an `og` built without BAM support. A test checks the two
+/// agree.
+fn forms(m: &[u8]) -> Vec<Vec<u8>> {
+    let rc: Vec<u8> = m
+        .iter()
+        .rev()
+        .map(|&c| match c {
+            b'A' => b'T',
+            b'C' => b'G',
+            b'G' => b'C',
+            b'T' => b'A',
+            other => other,
+        })
+        .collect();
+    let mut out: Vec<Vec<u8>> = Vec::new();
+    for x in [m.to_vec(), rc] {
+        for i in 0..x.len().max(1) {
+            let r = [&x[i.min(x.len())..], &x[..i.min(x.len())]].concat();
+            if !out.contains(&r) {
+                out.push(r);
+            }
+        }
+    }
+    out
+}
+
 /// `a.upper() in forms(b.upper())`: the same motif, rotated or on the other
 /// strand, by the motif counter's own rule (`og str motif`).
 fn same_motif(a: &str, b: &str) -> bool {
     let (a, b) = (pycompat::text::upper(a), pycompat::text::upper(b));
-    !b.is_empty()
-        && og_bam::motif::forms(b.as_bytes())
-            .iter()
-            .any(|f| f == a.as_bytes())
+    !b.is_empty() && forms(b.as_bytes()).iter().any(|f| f == a.as_bytes())
 }
 
 /// The strings of a JSON value iterated as Python would: a list's items, a
@@ -952,6 +977,29 @@ mod tests {
         }
         let ok = format!(r#"[{base}, "LocusId": "EXTRA"}}]"#);
         assert_eq!(extra_entries(&v(&ok), &[]).map(|x| x.len()).ok(), Some(1));
+    }
+
+    #[test]
+    fn forms_is_og_str_motif_s() {
+        // Every motif of 0 to 6 bases over ACGTN.
+        let mut motifs: Vec<Vec<u8>> = vec![Vec::new()];
+        let mut last = motifs.clone();
+        for _ in 0..6 {
+            last = last
+                .iter()
+                .flat_map(|m| {
+                    b"ACGTN".iter().map(move |&c| {
+                        let mut x = m.clone();
+                        x.push(c);
+                        x
+                    })
+                })
+                .collect();
+            motifs.extend(last.iter().cloned());
+        }
+        for m in &motifs {
+            assert_eq!(forms(m), og_bam::motif::forms(m), "{m:?}");
+        }
     }
 
     #[test]
