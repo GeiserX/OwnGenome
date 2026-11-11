@@ -110,7 +110,7 @@ stage() {
           mkdir -p "$cache"
           (cd "$cache" && bash "${PARITY}/gen/${item#gen:}") || die "generator ${item#gen:} failed"
         fi
-        cp -p "$cache"/* "$dir"/ ;;
+        cp -pR "$cache"/. "$dir"/ ;;
       *)
         [ -f "${PARITY}/inputs/${item}" ] || die "input ${item} is not in tests/parity/inputs"
         cp -p "${PARITY}/inputs/${item}" "$dir"/ ;;

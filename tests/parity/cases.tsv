@@ -118,3 +118,126 @@ chip	check-bad-table	chip/bad-table.tsv	check-table bad-table.tsv	-	bytes	PYTHON
 chip	check-bad-header	chip/bad-header.tsv	check-table bad-header.tsv	-	bytes	PYTHON_IMAGE
 chip	check-short-row	chip/short-row.tsv	check-table short-row.tsv	-	bytes	PYTHON_IMAGE
 chip	check-no-genes	chip/no-genes.tsv	check-table no-genes.tsv	-	bytes	PYTHON_IMAGE
+vntyper-report	pos	gen:vntyper-runs.sh	--run-dir pos --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	low	gen:vntyper-runs.sh	--run-dir low --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	flag	gen:vntyper-runs.sh	--run-dir flag --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	holes	gen:vntyper-runs.sh	--run-dir holes --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	nounc	gen:vntyper-runs.sh	--run-dir nounc --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	neg	gen:vntyper-runs.sh	--run-dir neg --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	red	gen:vntyper-runs.sh	--run-dir red --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	thin	gen:vntyper-runs.sh	--run-dir thin --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	na	gen:vntyper-runs.sh	--run-dir na --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	hdr	gen:vntyper-runs.sh	--run-dir hdr --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	nok	gen:vntyper-runs.sh	--run-dir nok --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	crlf	gen:vntyper-runs.sh	--run-dir crlf --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	exit-code	gen:vntyper-runs.sh	--run-dir pos --exit-code 1 --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	no-read-log	gen:vntyper-runs.sh	--run-dir empty --exit-code 1 --log empty.log --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	missing-log	gen:vntyper-runs.sh	--run-dir empty --exit-code 1 --log none.log --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	negative-mean	gen:vntyper-runs.sh	--run-dir negmean --out out.tsv	-	bytes	PYTHON_IMAGE
+vntyper-report	unreadable	gen:vntyper-runs.sh	--run-dir bad --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	clean	gen:locityper-runs.sh	--gt-dir clean --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	far	gen:locityper-runs.sh	--gt-dir far --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	unexplained	gen:locityper-runs.sh	--gt-dir unexplained --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	share	gen:locityper-runs.sh	--gt-dir share --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	warned	gen:locityper-runs.sh	--gt-dir warned --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nodist	gen:locityper-runs.sh	--gt-dir nodist --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nocounts	gen:locityper-runs.sh	--gt-dir nocounts --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nulltotal	gen:locityper-runs.sh	--gt-dir nulltotal --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nores	gen:locityper-runs.sh	--gt-dir nores --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	haploid	gen:locityper-runs.sh	--gt-dir haploid --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	notjson	gen:locityper-runs.sh	--gt-dir notjson --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	cut	gen:locityper-runs.sh	--gt-dir cut --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	plain	gen:locityper-runs.sh	--gt-dir plain --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	boolcounts	gen:locityper-runs.sh	--gt-dir boolcounts --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	strquality	gen:locityper-runs.sh	--gt-dir strquality --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nanquality	gen:locityper-runs.sh	--gt-dir nanquality --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nosuccess	gen:locityper-runs.sh	--gt-dir nosuccess --loci loci.bed --exit-code 101 --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	three-loci	gen:locityper-runs.sh	--gt-dir clean --loci three.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	list-json	gen:locityper-runs.sh	--gt-dir list --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	int-genotype	gen:locityper-runs.sh	--gt-dir intgenotype --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	bad-bed	gen:locityper-runs.sh	--gt-dir clean --loci bad.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	short-bed	gen:locityper-runs.sh	--gt-dir clean --loci short.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	unicode-bed	gen:locityper-runs.sh	--gt-dir clean --loci unicode.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	missing-bed	gen:locityper-runs.sh	--gt-dir clean --loci none.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	one	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	under-floor	mocha/stats.tsv,mocha/calls-low.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-low.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	5x	mocha/stats-5x.tsv,mocha/calls-one.tsv,mocha/sites-300.tsv	--sample S --stats stats-5x.tsv --calls calls-one.tsv --sites sites-300.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	filters	mocha/stats.tsv,mocha/calls-filter.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-filter.tsv --sites sites.tsv --phasing beagle --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	low-call-rate	mocha/stats-low-rate.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-low-rate.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	nan-call-rate	mocha/stats-nan.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-nan.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	autocorrelation	mocha/stats-autocorr.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-autocorr.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	unphased	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites-unphased.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites-unphased.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	no-calls	mocha/stats.tsv,mocha/calls-empty.tsv,mocha/sites-many.tsv	--sample S --stats stats.tsv --calls calls-empty.tsv --sites sites-many.tsv --phasing beagle --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	two-samples	mocha/stats-two.tsv,mocha/calls-two.tsv,mocha/sites.tsv	--sample S --stats stats-two.tsv --calls calls-two.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	crlf	mocha/stats.tsv,mocha/calls-crlf.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-crlf.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	no-cov-median	mocha/stats-nocov.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-nocov.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	sample-not-in-stats	mocha/stats-other.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-other.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	short-sites	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites-short.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites-short.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	short-call	mocha/stats.tsv,mocha/calls-short.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-short.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	missing-calls	mocha/stats.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls none.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	bad-phasing	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites.tsv --phasing shapeit --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	fktn-seen	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	fktn-not-seen	mei/none.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf none.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	outside-window	mei/outside.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf outside.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	thin	mei/fktn.vcf,mei/sites.tsv,mei/depth-thin.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth-thin.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	thin-no-call	mei/none.vcf,mei/sites.tsv,mei/depth-thin.tsv	--sample S --vcf none.vcf --sites sites.tsv --depth depth-thin.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	empty-depth	mei/fktn.vcf,mei/sites.tsv,mei/depth-empty.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth-empty.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	classes	mei/classes.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf classes.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	no-record	mei/empty.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf empty.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	catalog	mei/fktn.vcf,mei/catalog.tsv,mei/depth-catalog.tsv	--sample S --vcf fktn.vcf --sites catalog.tsv --depth depth-catalog.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	two-windows	mei/fktn.vcf,mei/sites-two-windows.tsv,mei/depth-two-windows.tsv	--sample S --vcf fktn.vcf --sites sites-two-windows.tsv --depth depth-two-windows.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	annotsv	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv,mei/annotsv.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv --annotsv annotsv.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	annotsv-empty	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv,mei/annotsv-empty.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv --annotsv annotsv-empty.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	annotsv-bad	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv,mei/annotsv-bad.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv --annotsv annotsv-bad.tsv	-	bytes	PYTHON_IMAGE
+mei-report	no-chrom-line	mei/nochrom.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf nochrom.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	not-megane	mei/not-megane.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf not-megane.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	bad-depth	mei/fktn.vcf,mei/sites.tsv,mei/depth-bad.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth-bad.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	bad-catalog	mei/fktn.vcf,mei/sites-bad.tsv,mei/depth.tsv	--sample S --vcf fktn.vcf --sites sites-bad.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-annotsv-input	calls	mei/classes.vcf	--sample S --vcf classes.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
+mei-annotsv-input	annotsv-ids	mei/fktn.vcf	--sample S --vcf fktn.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
+mei-annotsv-input	empty	mei/empty.vcf	--sample S --vcf empty.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
+mei-annotsv-input	no-chrom-line	mei/nochrom.vcf	--sample S --vcf nochrom.vcf --out in.vcf	-	bytes	PYTHON_IMAGE
+viral-report	ici	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth ici.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	relative-30	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage relative-30.vcov.tsv --viral-depth relative-30.vdepth.tsv --human-coverage relative-30.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	pileup	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage pileup.vcov.tsv --viral-depth pileup.vdepth.tsv --human-coverage pileup.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	low	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage low.vcov.tsv --viral-depth low.vdepth.tsv --human-coverage low.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	few	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage few.vcov.tsv --viral-depth few.vdepth.tsv --human-coverage few.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	phix-and-both-hhv6	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage phix.vcov.tsv --viral-depth phix.vdepth.tsv --human-coverage phix.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	no-human-depth	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage no-human.vcov.tsv --viral-depth no-human.vdepth.tsv --human-coverage no-human.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	human-mix	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage human-mix.vcov.tsv --viral-depth human-mix.vdepth.tsv --human-coverage human-mix.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	genome-left-out	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth gone.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	crlf-fasta	gen:viral-inputs.sh	--sample S --viral-fasta crlf.fa --viral-coverage ici.vcov.tsv --viral-depth ici.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	cut-depth	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth cut.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
+viral-report	bad-coverage	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth ici.vdepth.tsv --human-coverage bad.hcov.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
+y-str-bed	panel	y-str/panel.tsv	--panel panel.tsv --out regions.bed	regions.bed	bytes	PYTHON_IMAGE
+y-str-bed	panel-order	y-str/panel-order.tsv	--panel panel-order.tsv --out regions.bed	-	bytes	PYTHON_IMAGE
+y-str-report	calls	y-str/panel.tsv,y-str/calls.vcf.gz	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	plain-vcf	y-str/panel.tsv,y-str/calls.vcf	--panel panel.tsv --vcf calls.vcf --tsv o.tsv --csv o.csv	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	read-length-250	y-str/panel.tsv,y-str/calls.vcf.gz	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv --read-length 250	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	log	y-str/panel.tsv,y-str/calls.vcf.gz,y-str/hipstr.log	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv --log hipstr.log	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	empty-log	y-str/panel.tsv,y-str/calls.vcf.gz,y-str/empty.log	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv --log empty.log	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	two-samples	y-str/panel.tsv,y-str/two.vcf.gz	--panel panel.tsv --vcf two.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	no-header	y-str/panel.tsv,y-str/nohead.vcf	--panel panel.tsv --vcf nohead.vcf --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-order	y-str/panel-order.tsv,y-str/calls.vcf.gz	--panel panel-order.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-period	y-str/panel-period.tsv,y-str/calls.vcf.gz	--panel panel-period.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-copies	y-str/panel-copies.tsv,y-str/calls.vcf.gz	--panel panel-copies.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-kind	y-str/panel-kind.tsv,y-str/calls.vcf.gz	--panel panel-kind.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+exomiser	prepare-terms	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156,HP:0001363,HP:0009803,HP:0011304 --obo hp.obo	a.yml,terms.tsv	bytes	PYTHON_IMAGE
+exomiser	prepare-no-obo	exomiser/one.vcf.gz	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156	a.yml,terms.tsv	bytes	PYTHON_IMAGE
+exomiser	prepare-hg19	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --assembly hg19	a.yml,terms.tsv	bytes	PYTHON_IMAGE
+exomiser	prepare-family	exomiser/fam.vcf.gz,exomiser/hp.obo,exomiser/pedigree.tsv	prepare --sample S1 --vcf fam.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --pedigree pedigree.tsv --ped fam.ped --unaffected DAD --affected SIB	a.yml,terms.tsv,fam.ped	bytes	PYTHON_IMAGE
+exomiser	prepare-malformed	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:12345 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-unknown	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0009999 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-obsolete	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001250 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-two-samples	exomiser/fam.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf fam.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-affected-alone	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --affected S2	-	bytes	PYTHON_IMAGE
+exomiser	prepare-stranger	exomiser/stranger.vcf.gz,exomiser/hp.obo,exomiser/pedigree.tsv	prepare --sample S1 --vcf stranger.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --pedigree pedigree.tsv --ped fam.ped	-	bytes	PYTHON_IMAGE
+exomiser	prepare-bad-assembly	exomiser/one.vcf.gz	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --assembly grch99	-	bytes	PYTHON_IMAGE
+exomiser	report-top-3	exomiser/variants.tsv,exomiser/terms.tsv	report --sample S1 --variants variants.tsv --terms terms.tsv --out top.tsv --text words.txt --top 3	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-top-default	exomiser/variants.tsv,exomiser/terms.tsv	report --sample S1 --variants variants.tsv --terms terms.tsv --out top.tsv --text words.txt	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-top-1	exomiser/variants.tsv,exomiser/terms.tsv	report --sample S1 --variants variants.tsv --terms terms.tsv --out top.tsv --text words.txt --top 1	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-header-only	exomiser/header-only.tsv,exomiser/terms.tsv	report --sample S1 --variants header-only.tsv --terms terms.tsv --out top.tsv --text words.txt	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-family	exomiser/family.tsv,exomiser/terms.tsv,exomiser/S1_exomiser.ped	report --sample S1 --variants family.tsv --terms terms.tsv --out top.tsv --text words.txt	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-missing-column	exomiser/no-acmg.tsv,exomiser/terms.tsv	report --sample S1 --variants no-acmg.tsv --terms terms.tsv --out top.tsv --text words.txt	-	bytes	PYTHON_IMAGE
+exomiser	report-short-line	exomiser/short.tsv,exomiser/terms.tsv	report --sample S1 --variants short.tsv --terms terms.tsv --out top.tsv --text words.txt	-	bytes	PYTHON_IMAGE
+exomiser	report-empty-file	exomiser/empty.tsv,exomiser/terms.tsv	report --sample S1 --variants empty.tsv --terms terms.tsv --out top.tsv --text words.txt	-	bytes	PYTHON_IMAGE

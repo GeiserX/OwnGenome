@@ -1,0 +1,2 @@
+usage: og mocha report [-h] --sample SAMPLE --calls CALLS --stats STATS --sites SITES --phasing {beagle,input} --out-calls OUT_CALLS --out-summary OUT_SUMMARY
+og mocha report: error: argument --phasing: invalid choice: 'shapeit' (choose from 'beagle', 'input')

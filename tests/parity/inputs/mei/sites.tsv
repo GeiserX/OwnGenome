@@ -1,0 +1,4 @@
+# a test catalog
+gene	chrom	start	end	site	element	inheritance	condition	clinvar	pmid
+FKTN	chr9	105639156	105640156	105639656	SVA	autosomal recessive	Fukuyama congenital muscular dystrophy	3199	9690476
+TAF1	chrX	71439993	71440993	71440493	SVA	X-linked	X-linked dystonia-parkinsonism	9862	29474918
