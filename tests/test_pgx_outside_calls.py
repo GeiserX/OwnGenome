@@ -14,7 +14,7 @@ compares both files it writes, byte for byte:
   6. HLA           T1K's HLA-A and HLA-B, truncated to two fields
   7. HLA edges     one allele (read as homozygous); an allele of quality 0
 
-and what step 27 (bin/pgx_parse.py cpic-report --consensus) makes of it:
+and what step 27 (og pgx cpic-report --consensus) makes of it:
 
   8. CYP2D6 held back: the CPIC report says so, names the drugs it affects,
      and drops the pypgx-only warning it prints without the table
@@ -136,15 +136,18 @@ case("7 HLA one allele, and an allele of quality 0", "HLA-A\t*02:01/*02:01\n",
      hla="t1k_genotype_homozygous_lowqual.tsv")
 
 # --- step 27 with the consensus table ------------------------------------------
-PARSE = os.path.join(REPO, "bin", "pgx_parse.py")
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
+
+PARSE = [og_binary(), "pgx"]
 REPORTS = os.path.join(REPO, "tests", "fixtures", "pharmcat")
 
 
 def cpic(report, **inputs):
-    """The recommendations text of pgx_parse.py cpic-report, with a consensus
+    """The recommendations text of og pgx cpic-report, with a consensus
     table from pgx_outside_calls.py when consensus_from is given."""
     with tempfile.TemporaryDirectory() as tmp:
-        cmd = [sys.executable, PARSE, "cpic-report", "--sample", "T", "--outdir", tmp,
+        cmd = [*PARSE, "cpic-report", "--sample", "T", "--outdir", tmp,
                "--report", os.path.join(REPORTS, report)]
         if "pypgx" in inputs:
             cmd += ["--pypgx", os.path.join(FX, inputs["pypgx"])]
@@ -212,7 +215,7 @@ report_has("10 the report says the CYP2D6 outside call is stale", held,
            "WARNING: PharmCAT's report has the outside call CYP2D6 *1/*3, which the consensus does not pass on")
 report_has("10 and says how to fix it", held, "Rerun step 07, then this step. No drug guidance is given for CYP2D6 here.")
 with tempfile.TemporaryDirectory() as tmp:
-    r = subprocess.run([sys.executable, PARSE, "cpic-report", "--sample", "T", "--outdir", tmp,
+    r = subprocess.run([*PARSE, "cpic-report", "--sample", "T", "--outdir", tmp,
                         "--report", os.path.join(REPORTS, "pharmcat-docs-example.json"),
                         "--consensus", os.path.join(tmp, "missing.tsv")], capture_output=True, text=True)
     gone = open(os.path.join(tmp, "T_cpic_recommendations.txt")).read() if r.returncode == 0 else f"exit {r.returncode}"

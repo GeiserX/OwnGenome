@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 27 with bin/pgx_parse.py, on the real PharmCAT report of case 31 and on
+# Step 27 with og pgx cpic-report, on the real PharmCAT report of case 31 and on
 # two synthetic reports:
 #   - HG002: every gene with a non-normal phenotype lists its drugs (none is
 #     non-normal in this slice), and the PharmCAT/pypgx comparison (moved here

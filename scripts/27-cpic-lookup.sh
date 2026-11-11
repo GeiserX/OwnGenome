@@ -2,7 +2,7 @@
 # 27-cpic-lookup.sh — Look up CPIC drug-gene recommendations from PharmCAT results
 # Usage: ./scripts/27-cpic-lookup.sh <sample_name>
 #
-# Reads PharmCAT's report.json (step 7) with bin/pgx_parse.py and writes the
+# Reads PharmCAT's report.json (step 7) with og pgx (bin/og) and writes the
 # gene phenotypes and the medications PharmCAT's own report matches to them,
 # so a gene PharmCAT calls is never dropped for missing from a hand-kept
 # table. With pypgx output (step 32) it also writes the PharmCAT/pypgx
@@ -123,7 +123,7 @@ if [ ! -f "$CONSENSUS" ]; then
   # is not listed and never asks for step 36. A report it cannot read lists
   # nothing: the parser below then writes its PARSING FAILED report.
   STEP36_OUTSIDE=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-    python3 /pgp-bin/pgx_parse.py step36-outside --report "$(cpath "$PHARMCAT_JSON")" | paste -sd' ' -) \
+    /pgp-bin/og pgx step36-outside --report "$(cpath "$PHARMCAT_JSON")" | paste -sd' ' -) \
     || STEP36_OUTSIDE=""
 fi
 if [ -f "$CONSENSUS" ]; then
@@ -139,15 +139,16 @@ else
   echo "No outside-call consensus (step 36 not run): HLA and CYP2D6 from the BAM are not listed."
 fi
 
-# The parser, the drug lookup and the comparison live in bin/pgx_parse.py, the
-# same code the CPIC_LOOKUP Nextflow module and the unit tests run. It exits 1
-# when the report yields no gene, after writing a report that says so.
+# The parser, the drug lookup and the comparison live in og pgx cpic-report
+# (rust/crates/og-pgx), the same code the CPIC_LOOKUP Nextflow module and the
+# unit tests run. It exits 1 when the report yields no gene, after writing a
+# report that says so.
 echo "Parsing PharmCAT results..."
 rm -f "$OUTPUT" "${OUTDIR}/${SAMPLE}_phenotypes.tsv"
 RC=0
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" \
   ${MED_MOUNT[@]+"${MED_MOUNT[@]}"} "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/pgx_parse.py cpic-report \
+  /pgp-bin/og pgx cpic-report \
     --sample "$SAMPLE" \
     --report "$(cpath "$PHARMCAT_JSON")" \
     --outdir "$(cpath "$OUTDIR")" \

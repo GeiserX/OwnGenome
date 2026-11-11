@@ -1,0 +1,27 @@
+{
+ "genes": {
+  "MT-RNR1": {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "m.1555A>G"
+     },
+     "allele2": null,
+     "label": "m.1555A>G",
+     "phenotypes": [
+      "increased risk of aminoglycoside-induced hearing loss"
+     ]
+    }
+   ],
+   "callSource": "OUTSIDE",
+   "relatedDrugs": [
+    {
+     "name": "amikacin"
+    },
+    {
+     "name": "gentamicin"
+    }
+   ]
+  }
+ }
+}

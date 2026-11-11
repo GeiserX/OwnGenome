@@ -48,7 +48,7 @@ results to act on that his page keeps closed (PLANTED below): a ClinVar
 pathogenic hit in an ACMG secondary-findings gene, and an AnnotSV class 5
 deletion over it, at invented positions; his symptom search ranks that gene too. Every sample gets
 Stranger's thresholds beside ExpansionHunter's counts and step 27's CPIC
-table, written by bin/pgx_parse.py from the PharmCAT report.
+table, written by og pgx cpic-report from the PharmCAT report.
 
 The second form reads DIR/DEMO-001/summary.json (step 24 writes it) and fails
 when a section is not "ok", so a new report card that this script does not
@@ -58,24 +58,25 @@ Standard library only. tests/demo/retake-screenshots.sh runs both forms.
 """
 import argparse
 import calendar
-import contextlib
 import copy
 import gzip
-import io
 import json
 import math
 import os
 import random
 import re
 import shutil
+import subprocess
 import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(REPO, "bin"))
+sys.path.insert(0, os.path.join(REPO, "tests"))
 import collect_summary  # noqa: E402
 import pgx_outside_calls  # noqa: E402
+from og_binary import og_binary  # noqa: E402
 
 SAMPLE = "DEMO-001"
 SEX = "male"
@@ -299,12 +300,12 @@ def pgx(d, genome_dir, rng):
     changed["MT-RNR1"] = "Reference"
     prune_annotations(report, changed)
     put(os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), json.dumps(report, indent=1) + "\n")
-    # Step 27's tables from that report, by the parser step 27 runs (bin/pgx_parse.py).
-    import pgx_parse
-    with contextlib.redirect_stdout(io.StringIO()):
-        if pgx_parse.main(["cpic-report", "--sample", SAMPLE, "--report",
-                           os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), "--outdir", os.path.join(d, "cpic")]):
-            raise SystemExit("pgx_parse cpic-report failed")
+    # Step 27's tables from that report, by the parser step 27 runs (og pgx).
+    r = subprocess.run([og_binary(), "pgx", "cpic-report", "--sample", SAMPLE, "--report",
+                        os.path.join(d, "pharmcat", f"{SAMPLE}.report.json"), "--outdir", os.path.join(d, "cpic")],
+                       stdout=subprocess.DEVNULL)
+    if r.returncode:
+        raise SystemExit(f"og pgx cpic-report failed (exit {r.returncode})")
     return outside
 
 
