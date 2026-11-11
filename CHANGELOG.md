@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- VEP consequence ranking (steps 23 and 31) and the gnomAD constraint join now run in the Rust `og` binary, inside `BCFTOOLS_IMAGE`: `og vcf csq-rank` replaces `bin/csq_rank.awk` and `og table constraint-join` replaces `bin/constraint_join.awk`, which are gone. No awk runs on the host any more, and the ranker is no longer the slow stage of step 23's main pipe. Steps 23 and 31 now need `og`: `scripts/setup.sh --og` builds it. Their output is the same, byte for byte, except for these changes.
+- VEP consequence ranking (steps 23 and 31) and the gnomAD constraint join now run in the Rust `og` binary, inside `BCFTOOLS_IMAGE`: `og vcf csq-rank` replaces `bin/csq_rank.awk` and `og table constraint-join` replaces `bin/constraint_join.awk`, which are gone. Neither awk program runs on the host anymore (step 23 still uses the host's `awk` for small table edits), and the ranker is no longer the slow stage of step 23's main pipe. Steps 23 and 31 now need `og`: `scripts/setup.sh --og` builds it. Their output is the same, byte for byte, except for these changes.
   - The seven `##INFO=<ID=PGP_...>` header descriptions end in `(og vcf csq-rank)`, not `(bin/csq_rank.awk)`. No tag, value or column changes.
   - A ranking floor that is not a number, or a `--keep` other than `all` or `noncommon`, is a usage error (exit 2). awk read such a floor as 0.
   - An empty constraint file now stops with `ERROR: the constraint table <file> is empty` (exit 3). awk read the summary table as the constraint file and blamed the wrong file.
