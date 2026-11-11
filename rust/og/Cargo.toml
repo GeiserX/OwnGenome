@@ -16,6 +16,7 @@ og-dev.workspace = true
 og-vcf.workspace = true
 og-steps.workspace = true
 og-filters.workspace = true
+og-chip.workspace = true
 og-runlog.workspace = true
 
 [features]

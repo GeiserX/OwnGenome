@@ -4,6 +4,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- Step 49 (clonal haematopoiesis) now prepares the CHIP gene models and writes its two tables with the Rust `og` binary: `og chip prepare`, `og chip report` and `og chip check-table` replace the commands of `bin/chip_report.py`, which keeps only the detection limit and the column names the reports import. On Ensembl 116's full GFF3, prepare takes 1.7 s and 6 MB instead of 15 s and 20 MB. The two tables, `chip.gff3` and `chip.bed` are the same, byte for byte. What changes: a missing input file or a position that is not a whole number stops with an `ERROR:` line and exit 1, not a Python traceback, and each output is written whole or not at all. Step 49 now needs `og` (`scripts/setup.sh --og`).
+
 - VEP consequence ranking (steps 23 and 31) and the gnomAD constraint join now run in the Rust `og` binary, inside `BCFTOOLS_IMAGE`: `og vcf csq-rank` replaces `bin/csq_rank.awk` and `og table constraint-join` replaces `bin/constraint_join.awk`, which are gone. Neither awk program runs on the host anymore (step 23 still uses the host's `awk` for small table edits), and the ranker is no longer the slow stage of step 23's main pipe. Steps 23 and 31 now need `og`: `scripts/setup.sh --og` builds it. Their output is the same, byte for byte, except for these changes.
   - The seven `##INFO=<ID=PGP_...>` header descriptions end in `(og vcf csq-rank)`, not `(bin/csq_rank.awk)`. No tag, value or column changes.
   - A ranking floor that is not a number, or a `--keep` other than `all` or `noncommon`, is a usage error (exit 2). awk read such a floor as 0.
