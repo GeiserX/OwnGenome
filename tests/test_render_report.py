@@ -3,7 +3,10 @@
 bin/render_report.py, on synthetic files shaped like pgsc_calc's own.
 
 Checks:
-  1. prs-format writes a harmonised file as pgsc_calc's custom GRCh38 file:
+  1. og prs format (run when OG names an og binary; tests/parity pins it
+     against the Python it replaced) writes a harmonised file as pgsc_calc's
+     custom GRCh38 file, the folder the prs-table checks below read (written
+     by hand without OG):
      chr_name/chr_position from hm_chr/hm_pos without "chr", the other allele
      from other_allele or hm_inferOtherAllele (never "A/G"), rows without a
      GRCh38 position dropped, rows off the autosomes (chrX, chrY) dropped
@@ -30,13 +33,13 @@ Checks:
      keeps its percentile; with no sex it keeps it too and both reports name
      the score in a note. Red control: the same list without its applies_to
      column gives the female sample a percentile, which the check rejects;
-  4d. strand-ambiguous rows (A/T, C/G): counted and "dropped" by default
+  4d. (og prs format, with OG) strand-ambiguous rows (A/T, C/G): counted and "dropped" by default
      (pgsc_calc drops them), "kept" with --keep-ambiguous when every other
      row agrees with the reference, and left out of the file ("dropped,
      strand check failed") when a row agrees only after a strand flip;
      --keep-ambiguous without --reference is refused; the Ambiguous column
      of prs-table says it per score;
-  4e. with a panel, a chrX row prs-format kept that pgsc_calc's match log did
+  4e. with a panel, a chrX row og prs format kept that pgsc_calc's match log did
      not match (the panel lacks it) reads "left out (not matched in the
      panel run)"; matched, it stays "scored"; partly matched, both counts are
      named ("1 scored, 2 left out (not matched in the panel run)");
@@ -106,6 +109,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -140,6 +144,47 @@ HM = ("#pgs_id=PGS000001\n#trait_reported=Something else\n#HmPOS_build=GRCh38\n"
       "rs4\t1\t400\tT\tC\t2\t\t\t\n"
       "rs5\tX\t500\tA\tG\t1\tX\t51000000\t\n"
       "rs6\tY\t600\tC\tT\t1\tchrY\t2800000\t\n")
+
+
+# og prs format (PRS_PREPARE) writes the score folder prs-table reads. It runs
+# only when OG names an og binary; the folders the prs-table checks read are
+# written by hand as og writes them for these inputs, and with OG og must
+# write the same.
+OG = os.environ.get("OG")
+
+
+def og_format(args):
+    """og prs format ARGS: its exit code, or None without OG."""
+    if not OG:
+        return None
+    return subprocess.run([OG, "prs", "format", *args], capture_output=True).returncode
+
+
+def formatted(out, pid, trait, rows, nx=1, chrx="left out", applies="", amb="0\tdropped", evals=""):
+    """The score folder og prs format writes for one score."""
+    put(f"{out}/{pid}.txt.gz", f"#pgs_id={pid}\n#pgs_name={pid}\n#trait_reported={trait}\n#genome_build=GRCh38\n"
+        "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n" + "".join(r + "\n" for r in rows), gz=True)
+    put(f"{out}/{collect_summary.CHRX_FILE}", f"pgs_id\tchrx_rows\tchrx\n{pid}\t{nx}\t{chrx}\n")
+    put(f"{out}/{collect_summary.SCORE_NOTES_FILE}", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\n{pid}\t{applies}\t{amb}\n")
+    put(f"{out}/{collect_summary.EVALS_FILE}", "pgs_id\tppm_id\tancestry\teffect\n" + (f"{pid}\t{evals}\n" if evals else ""))
+
+
+def folder_text(d):
+    """Each file of a score folder by name, gzip files read as text."""
+    out = {}
+    for n in sorted(os.listdir(d)):
+        with (gzip.open if n.endswith(".gz") else open)(os.path.join(d, n), "rt") as f:
+            out[n] = f.read()
+    return out
+
+
+def og_writes(desc, args, want_dir):
+    """With OG: og prs format ARGS must write WANT_DIR's files, into WANT_DIR + "_og"."""
+    if not OG:
+        return
+    rc = og_format(args + ["--out", want_dir + "_og"])
+    got = folder_text(want_dir + "_og") if rc == 0 else rc
+    check(f"og prs format: {desc}", got == folder_text(want_dir), got)
 
 
 def read_rows(path):
@@ -434,54 +479,42 @@ def chapter_checks(work):
 def main():
     work = tempfile.mkdtemp()
     try:
-        # 1. prs-format
+        # 1. og prs format
         put(f"{work}/in/PGS000001_hmPOS_GRCh38.txt.gz", HM, gz=True)
         put(f"{work}/labels.tsv", "# comment\npgs_id\ttrait_reported\nPGS000001\tCoronary artery disease\n")
-        rc = collect_summary.main(["prs-format", "--scores", f"{work}/in", "--labels", f"{work}/labels.tsv",
-                                   "--out", f"{work}/pgs", "--alleles", f"{work}/alleles.tsv"])
-        check("prs-format exits 0", rc == 0, rc)
-        with gzip.open(f"{work}/pgs/PGS000001.txt.gz", "rt") as f:
-            text = f.read()
-        lines = text.splitlines()
-        check("prs-format: the header pgsc_calc reads, labelled from the score list",
-              lines[:5] == ["#pgs_id=PGS000001", "#pgs_name=PGS000001", "#trait_reported=Coronary artery disease",
-                            "#genome_build=GRCh38", "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight"], lines[:5])
-        check("prs-format: GRCh38 positions without chr, other allele from hm_inferOtherAllele, A/C dropped, unplaced and chrX/chrY rows dropped",
-              lines[5:] == ["1\t1100\tA\tG\t0.5", "2\t2200\tC\tT\t-0.25", "3\t3300\tG\t\t1"], lines[5:])
-        with open(f"{work}/alleles.tsv") as f:
-            al = f.read().splitlines()
-        check("prs-format: every effect and other allele of the autosomes, chr-prefixed and sorted",
-              al == ["chr1\t1100\tA", "chr1\t1100\tG", "chr2\t2200\tC", "chr2\t2200\tT", "chr3\t3300\tG"], al)
-        with open(f"{work}/pgs/chrx_rows.tsv") as f:
-            cx = f.read().splitlines()
-        check("prs-format: chrx_rows.tsv says the score's one chrX row was left out",
-              cx == ["pgs_id\tchrx_rows\tchrx", "PGS000001\t1\tleft out"], cx)
+        # GRCh38 positions without chr, the other allele from hm_inferOtherAllele
+        # (never A/C), unplaced and chrX/chrY rows dropped, labelled from the list.
+        rows1 = ["1\t1100\tA\tG\t0.5", "2\t2200\tC\tT\t-0.25", "3\t3300\tG\t\t1"]
+        formatted(f"{work}/pgs", "PGS000001", "Coronary artery disease", rows1)
+        if not OG:
+            print("[NOTE] OG is not set, so og prs format does not run here; tests/parity and its own tests pin it")
+        og_writes("the header pgsc_calc reads, the rows of the autosomes, chrX left out",
+                  ["--scores", f"{work}/in", "--labels", f"{work}/labels.tsv", "--alleles", f"{work}/alleles.tsv"], f"{work}/pgs")
+        if OG:
+            with open(f"{work}/alleles.tsv") as f:
+                al = f.read().splitlines()
+            check("og prs format: every effect and other allele of the autosomes, chr-prefixed and sorted",
+                  al == ["chr1\t1100\tA", "chr1\t1100\tG", "chr2\t2200\tC", "chr2\t2200\tT", "chr3\t3300\tG"], al)
         # --keep-x: the sample's sex is known
-        rc = collect_summary.main(["prs-format", "--scores", f"{work}/in", "--labels", f"{work}/labels.tsv",
-                                   "--out", f"{work}/pgsx", "--alleles", f"{work}/allelesx.tsv", "--keep-x"])
-        check("prs-format --keep-x exits 0", rc == 0, rc)
-        with gzip.open(f"{work}/pgsx/PGS000001.txt.gz", "rt") as f:
-            lx = f.read().splitlines()
-        check("prs-format --keep-x: the chrX row stays, the chrY row still goes",
-              lx[5:] == ["1\t1100\tA\tG\t0.5", "2\t2200\tC\tT\t-0.25", "3\t3300\tG\t\t1", "X\t51000000\tA\tG\t1"], lx[5:])
-        with open(f"{work}/allelesx.tsv") as f:
-            alx = f.read().splitlines()
-        check("prs-format --keep-x: the chrX alleles are in the allele list, after the autosomes",
-              alx[-2:] == ["chrX\t51000000\tA", "chrX\t51000000\tG"] and not any(a.startswith("chrY") for a in alx), alx)
-        with open(f"{work}/pgsx/chrx_rows.tsv") as f:
-            cxx = f.read().splitlines()
-        check("prs-format --keep-x: chrx_rows.tsv says the chrX row was scored",
-              cxx == ["pgs_id\tchrx_rows\tchrx", "PGS000001\t1\tscored"], cxx)
-        put(f"{work}/bad37/PGS000009.txt.gz", HM.replace("HmPOS_build=GRCh38", "HmPOS_build=GRCh37"), gz=True)
-        rc = collect_summary.main(["prs-format", "--scores", f"{work}/bad37", "--out", f"{work}/o37", "--alleles", f"{work}/a37"])
-        check("prs-format refuses a file harmonised to GRCh37", rc == 1, rc)
-        put(f"{work}/badnonadd/PGS000010.txt.gz",
-            "#HmPOS_build=GRCh38\nhm_chr\thm_pos\teffect_allele\teffect_weight\tis_recessive\n1\t5\tA\t1\tTrue\n", gz=True)
-        rc = collect_summary.main(["prs-format", "--scores", f"{work}/badnonadd", "--out", f"{work}/onon", "--alleles", f"{work}/anon"])
-        check("prs-format refuses a non-additive score", rc == 1, rc)
-        rc = collect_summary.main(["prs-format", "--scores", f"{work}/in", "--ids", "PGS000001,PGS000777",
-                                   "--out", f"{work}/omiss", "--alleles", f"{work}/amiss"])
-        check("prs-format: an id of the list with no file is an error", rc == 1, rc)
+        formatted(f"{work}/pgsx", "PGS000001", "Coronary artery disease", rows1 + ["X\t51000000\tA\tG\t1"], chrx="scored")
+        og_writes("--keep-x: the chrX row stays, the chrY row still goes, chrx_rows.tsv says scored",
+                  ["--scores", f"{work}/in", "--labels", f"{work}/labels.tsv", "--alleles", f"{work}/allelesx.tsv", "--keep-x"],
+                  f"{work}/pgsx")
+        if OG:
+            with open(f"{work}/allelesx.tsv") as f:
+                alx = f.read().splitlines()
+            check("og prs format --keep-x: the chrX alleles are in the allele list, after the autosomes",
+                  alx[-2:] == ["chrX\t51000000\tA", "chrX\t51000000\tG"] and not any(a.startswith("chrY") for a in alx), alx)
+            put(f"{work}/bad37/PGS000009.txt.gz", HM.replace("HmPOS_build=GRCh38", "HmPOS_build=GRCh37"), gz=True)
+            rc = og_format(["--scores", f"{work}/bad37", "--out", f"{work}/o37", "--alleles", f"{work}/a37"])
+            check("og prs format refuses a file harmonised to GRCh37", rc == 1, rc)
+            put(f"{work}/badnonadd/PGS000010.txt.gz",
+                "#HmPOS_build=GRCh38\nhm_chr\thm_pos\teffect_allele\teffect_weight\tis_recessive\n1\t5\tA\t1\tTrue\n", gz=True)
+            rc = og_format(["--scores", f"{work}/badnonadd", "--out", f"{work}/onon", "--alleles", f"{work}/anon"])
+            check("og prs format refuses a non-additive score", rc == 1, rc)
+            rc = og_format(["--scores", f"{work}/in", "--ids", "PGS000001,PGS000777",
+                            "--out", f"{work}/omiss", "--alleles", f"{work}/amiss"])
+            check("og prs format: an id of the list with no file is an error", rc == 1, rc)
 
         # A second formatted score, for the table
         put(f"{work}/pgs/PGS000002.txt.gz", "#pgs_id=PGS000002\n#trait_reported=Trait two\n#genome_build=GRCh38\n"
@@ -497,7 +530,7 @@ def main():
         check("prs-table: the columns, Input last", hdr == collect_summary.PRS_COLUMNS and hdr[-1] == "Input", hdr)
         check("prs-table: sum 62 (not 62.0), 2 of 3 matched, no percentile, its chrX row left out",
               rows[0] == ["Coronary artery disease", "PGS000001", "62", "2", "3", "66.7", "NA", "NA", "1 left out", "0", "", "", "gvcf"], rows[0])
-        check("prs-table: a score pgsc_calc dropped has no sum and its counts; no chrX entry for a score prs-format did not write",
+        check("prs-table: a score pgsc_calc dropped has no sum and its counts; no chrX entry for a score og prs format did not write",
               rows[1] == ["Trait two", "PGS000002", "NA", "0", "5", "0.0", "NA", "NA", "", "", "", "", "gvcf"], rows[1])
 
         # 3. prs-table with a panel
@@ -540,10 +573,11 @@ def main():
         assets = os.path.join(REPO, "assets", "pgs_scores.tsv")
         put(f"{work}/sexin/PGS000662_hmPOS_GRCh38.txt.gz", HM.replace("PGS000001", "PGS000662"), gz=True)
 
-        def sex_rows(labels, sex, tag):
+        def sex_rows(labels, sex, tag, applies, evals):
             pgs, res = f"{work}/sex_{tag}/pgs", f"{work}/sex_{tag}/res"
-            rc = collect_summary.main(["prs-format", "--scores", f"{work}/sexin", "--labels", labels,
-                                       "--out", pgs, "--alleles", f"{work}/sex_{tag}/alleles.tsv"])
+            formatted(pgs, "PGS000662", "Prostate cancer", rows1, applies=applies, evals=evals)
+            og_writes(f"4c: PGS000662 labelled from {os.path.basename(labels)}",
+                      ["--scores", f"{work}/sexin", "--labels", labels, "--alleles", f"{work}/sex_{tag}/alleles.tsv"], pgs)
             pgsc_results(res, adjusted=True)
             for f_ in glob.glob(f"{res}/sample/*/*"):
                 if f_.endswith(".gz"):
@@ -559,18 +593,19 @@ def main():
                                         "--scores", pgs, "--input-kind", "gvcf", "--panel", "pgsc_1000G_v1",
                                         "--out", o] + (["--sex", sex] if sex else []))
             h, r = read_rows(o)
-            return rc, rc2, dict(zip(h, r[0])), o
+            return rc2, dict(zip(h, r[0])), o
 
-        rc, rc2, female, f_out = sex_rows(assets, "female", "f")
-        check("4c: prs-format and prs-table exit 0 on PGS000662", rc == 0 and rc2 == 0, (rc, rc2))
+        male_only = ("male", "PPM022982;PPM015482\tEUR;AFR\tHR 1.72;OR 1.86")
+        rc2, female, f_out = sex_rows(assets, "female", "f", *male_only)
+        check("4c: prs-table exits 0 on PGS000662", rc2 == 0, rc2)
         check("4c: declared female, PGS000662 (male): raw sum kept, no percentile, not applicable",
               female.get("Score_SUM") == "1.25" and female.get("Percentile") == "NA"
               and female.get("Applies_To") == "male" and female.get("Sex_Check") == "not applicable to the declared sex",
               female)
-        _, _, male, m_out = sex_rows(assets, "male", "m")
+        _, male, m_out = sex_rows(assets, "male", "m", *male_only)
         check("4c: declared male, PGS000662: the percentile stays, Sex_Check applies",
               male.get("Percentile") == "94.4" and male.get("Sex_Check") == "applies", male)
-        _, _, nosex, n_out = sex_rows(assets, "", "n")
+        _, nosex, n_out = sex_rows(assets, "", "n", *male_only)
         check("4c: no sex declared, PGS000662: the percentile stays, Sex_Check says no sex was declared",
               nosex.get("Percentile") == "94.4" and nosex.get("Sex_Check") == "no sex declared", nosex)
         for tag, src in (("f", f_out), ("n", n_out)):
@@ -594,7 +629,7 @@ def main():
         with open(assets, encoding="utf-8") as f_:
             two = "".join("\t".join(l.rstrip("\n").split("\t")[:2]) + "\n" if not l.startswith("#") else l for l in f_)
         put(f"{work}/two_columns.tsv", two)
-        _, _, ctl, _ = sex_rows(f"{work}/two_columns.tsv", "female", "ctl")
+        _, ctl, _ = sex_rows(f"{work}/two_columns.tsv", "female", "ctl", "", "")
         check("4c: control: without applies_to the female sample would get the percentile, which the check above rejects",
               ctl.get("Percentile") == "94.4" and ctl.get("Sex_Check") == "", ctl)
 
@@ -609,8 +644,7 @@ def main():
 
         def amb_run(src, tag, extra):
             out_ = f"{work}/amb_{tag}"
-            rc = collect_summary.main(["prs-format", "--scores", f"{work}/{src}", "--out", out_,
-                                       "--alleles", f"{out_}.alleles"] + extra)
+            rc = og_format(["--scores", f"{work}/{src}", "--out", out_, "--alleles", f"{out_}.alleles"] + extra)
             if rc:
                 return rc, None, None
             with gzip.open(f"{out_}/PGS000003.txt.gz", "rt") as g:
@@ -620,18 +654,23 @@ def main():
             return rc, body, notes
 
         ref = ["--keep-ambiguous", "--reference", f"{work}/ref/ref.fa"]
-        rc, body, notes = amb_run("ambin", "off", [])
-        check("4d: default: the 2 ambiguous rows are written and counted as dropped (pgsc_calc drops them)",
-              rc == 0 and body == ["2", "3", "4", "5"] and notes[1:] == ["PGS000003\t\t2\tdropped"], (rc, body, notes))
-        rc, body, notes = amb_run("ambin", "on", ref)
-        check("4d: --keep-ambiguous, every other row agrees with the reference: kept",
-              rc == 0 and body == ["2", "3", "4", "5"] and notes[1:] == ["PGS000003\t\t2\tkept"], (rc, body, notes))
-        rc, body, notes = amb_run("flipin", "flip", ref)
-        check("4d: --keep-ambiguous, a row that agrees only on the other strand: the ambiguous rows are left out",
-              rc == 0 and body == ["2", "5", "7"] and notes[1:] == ["PGS000003\t\t2\tdropped, strand check failed"],
-              (rc, body, notes))
-        rc, _, _ = amb_run("ambin", "noref", ["--keep-ambiguous"])
-        check("4d: --keep-ambiguous without --reference is refused", rc == 1, rc)
+        if OG:
+            rc, body, notes = amb_run("ambin", "off", [])
+            check("4d: default: the 2 ambiguous rows are written and counted as dropped (pgsc_calc drops them)",
+                  rc == 0 and body == ["2", "3", "4", "5"] and notes[1:] == ["PGS000003\t\t2\tdropped"], (rc, body, notes))
+            rc, body, notes = amb_run("ambin", "on", ref)
+            check("4d: --keep-ambiguous, every other row agrees with the reference: kept",
+                  rc == 0 and body == ["2", "3", "4", "5"] and notes[1:] == ["PGS000003\t\t2\tkept"], (rc, body, notes))
+            rc, body, notes = amb_run("flipin", "flip", ref)
+            check("4d: --keep-ambiguous, a row that agrees only on the other strand: the ambiguous rows are left out",
+                  rc == 0 and body == ["2", "5", "7"] and notes[1:] == ["PGS000003\t\t2\tdropped, strand check failed"],
+                  (rc, body, notes))
+            rc, _, _ = amb_run("ambin", "noref", ["--keep-ambiguous"])
+            check("4d: --keep-ambiguous without --reference is refused", rc == 1, rc)
+        formatted(f"{work}/amb_off", "PGS000003", "PGS000003",
+                  ["1\t2\tA\tG\t1", "1\t3\tA\tT\t1", "1\t4\tC\tG\t1", "1\t5\tT\tC\t1"], nx=0, amb="2\tdropped")
+        og_writes("4d: the folder of the default run", ["--scores", f"{work}/ambin", "--alleles", f"{work}/amb_off.alleles2"],
+                  f"{work}/amb_off")
         put(f"{work}/amb_res/sample/match/sample_summary.csv",
             "dataset,accession,ambiguous,is_multiallelic,match_flipped,duplicate_best_match,duplicate_ID,match_IDs,match_status,count,score_pass,match_rate\n"
             "sample,PGS000003,false,false,false,false,false,NA,matched,2,true,0.5\n"
@@ -644,8 +683,8 @@ def main():
         check("4d: prs-table: the Ambiguous column counts them per score", rc == 0 and dict(zip(h, r[0])).get("Ambiguous") == "2 dropped", r)
 
         # 4e. a chrX row and the panel's intersection: pgsc_calc's match log
-        rc = collect_summary.main(["prs-format", "--scores", f"{work}/in", "--labels", f"{work}/labels.tsv",
-                                   "--out", f"{work}/pgsx_panel", "--alleles", f"{work}/allelesxp.tsv", "--keep-x"])
+        formatted(f"{work}/pgsx_panel", "PGS000001", "Coronary artery disease", rows1 + ["X\t51000000\tA\tG\t1"],
+                  chrx="scored")
         pgsc_results(f"{work}/xpanel", adjusted=True)
         log = "row_nr,accession,chr_name,chr_position,effect_allele,other_allele,match_status,dataset\n"
         put(f"{work}/xpanel/sample/match/sample_log.csv.gz", log
