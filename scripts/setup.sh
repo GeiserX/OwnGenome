@@ -1090,6 +1090,29 @@ ancestry_fine_pins() {
   done
 }
 
+# install_fine_maps DIR CHROMS: DIR/maps/ of step 26b, Beagle's map of each
+# chromosome of CHROMS (space separated) and the same in RFMix's column order
+# (chromosome, position, cM), cut from DIR/maps/plink.GRCh38.map.zip by og
+# (`og setup genetic-map`), which writes each file whole or not at all.
+# maps/DONE, written last, names the map and the chromosomes: without it (an
+# install from before og, whose maps a kill could have left cut short) every
+# map is written again. tests/test_setup_fine_maps.sh runs it.
+install_fine_maps() {
+  local dir=$1 chroms=$2
+  local gstamp="map=${ANCESTRY_FINE_MAP_SHA256} chroms=${chroms% }"
+  [ "$(cat "${dir}/maps/DONE" 2>/dev/null)" = "$gstamp" ] && return 0
+  rm -f "${dir}/maps/DONE"
+  need_og "unpacks the genetic map" || return 1
+  # SC2086: one argument per chromosome.
+  # shellcheck disable=SC2086
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
+      --zip "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" --out "$(cpath "${dir}/maps")" --rfmix $chroms; then
+    echo "[WARN] Could not unpack the genetic map"
+    return 1
+  fi
+  echo "$gstamp" > "${dir}/maps/DONE"
+}
+
 # install_ancestry_fine_panel: the reference of step 26b, in
 # reference/ancestry_fine/ANCESTRY_FINE_PANEL (ANCESTRY_FINE_DIR: another
 # folder inside GENOME_DIR). ADMIXTURE is free for academic use; RFMix for
@@ -1238,24 +1261,7 @@ install_ancestry_fine_panel() {
   fi
   echo "  panel: $(wc -l < "${dir}/panel/sites.tsv" | tr -d ' ') SNVs of $(wc -l < "${dir}/panel/keep.txt" | tr -d ' ') people"
 
-  # maps/: Beagle's file of each chromosome, and the same in RFMix's column
-  # order (chromosome, position, cM), by og (`og setup genetic-map`), which
-  # writes each file whole or not at all. maps/DONE, written last, names the
-  # map and the chromosomes: without it (an install from before og, whose
-  # maps a kill could have left cut short) every map is written again.
-  local gstamp="map=${ANCESTRY_FINE_MAP_SHA256} chroms=${chroms% }"
-  if [ "$(cat "${dir}/maps/DONE" 2>/dev/null)" != "$gstamp" ]; then
-    rm -f "${dir}/maps/DONE"
-    need_og "unpacks the genetic map" || return 1
-    # SC2086: one argument per chromosome.
-    # shellcheck disable=SC2086
-    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
-        --zip "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" --out "$(cpath "${dir}/maps")" --rfmix $chroms; then
-      echo "[WARN] Could not unpack the genetic map"
-      return 1
-    fi
-    echo "$gstamp" > "${dir}/maps/DONE"
-  fi
+  install_fine_maps "$dir" "$chroms" || return 1
 
   # model/: redone when samples.tsv or the panel changes.
   mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") admixture=${ADMIXTURE_IMAGE}"
