@@ -497,6 +497,7 @@ dependencies = [
  "og-bam",
  "og-clinvar",
  "og-dev",
+ "og-filters",
  "og-intervals",
  "og-io",
  "og-map",
@@ -532,6 +533,15 @@ dependencies = [
  "png",
  "pycompat",
  "regex",
+]
+
+[[package]]
+name = "og-filters"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]

@@ -7,3 +7,8 @@ setup-mask-fasta	23a028d37fbceb465ae4de8a263f5da6c9ec8e80	heredoc:scripts/setup.
 clinvar-join-adjacent	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_join_adjacent.awk	sh ./oracle.sh	clinvar join-adjacent
 clinvar-hits	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_hits.awk	awk -f	clinvar hits
 clinvar-deep-intronic	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_hits.awk	sh ./oracle.sh	clinvar deep-intronic
+sv-svlen-fix	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/sv_svlen_fix.py	python3	sv svlen-fix
+sv-inv-filter	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python	sv inv-filter
+sv-inv-filter-py3	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python3	sv inv-filter
+pgx-refblock-fill	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_refblock_fill.py	python3	pgx refblock-fill
+pgx-mito-merge	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_mito_merge.py	python3	pgx mito-merge

@@ -30,12 +30,15 @@ A section that is missing, failed or unreadable gives no entry.
 The index:
   {schema_version: 1, sample, generated_utc,
    terms: {TERM: [{section, anchor, title, step, state, source, count,
-                   mentions: [{text, locus}]}]}}
+                   mentions: [{text, locus}], veil}]}}
 TERM is a gene symbol in upper case or an rsID in lower case. One item per
 section that mentions the term; count is how many variants (a mention with
 a locus counts once per locus) or other mentions it has there, mentions the
 first MENTIONS_KEPT of them. anchor is the section's id in the HTML
-report (#anchor), or null for a key no report section shows.
+report (#anchor), or null for a key no report section shows. veil, only on
+an item that names a result to act on (its gene, or a locus inside it), is
+that result's id: a child's page leaves the item out while the result is
+closed (assets/live/person.js).
 
 A query (query(), and the same rule in search.js) is an rsID, a gene symbol
 (a prefix also lists the terms it starts: BRCA gives BRCA1 and BRCA2) or a
@@ -211,9 +214,18 @@ def build(summary, sample_dir=None, anchors=None):
                 for text, locus, genes, rsids in records:
                     for n in sorted(genes | rsids):
                         add(n, key, sec, text, locus)
-    for items in terms.values():
+    # The veil: an item that names a result to act on (its gene, or a locus inside its position or span)
+    # carries that result's id, so a child's page leaves it out of the search while the result is closed
+    # (bin/live_results.py veil_id, the rule its ClinVar rows and chart marks follow).
+    import live_results  # here, not at the top: live_results imports render_report, which imports this module
+    spans = live_results.closable_of(summary)
+    for term, items in terms.items():
         for it in items:
             del it["_seen"]
+            fid = live_results.veil_id(spans, " ".join([term] + [f"{m['text']} {m['locus'] or ''}"
+                                                                 for m in it["mentions"]]))
+            if fid:
+                it["veil"] = fid
     return {"schema_version": SCHEMA_VERSION, "sample": summary.get("sample"),
             "generated_utc": summary.get("generated_utc"),
             "terms": {k: terms[k] for k in sorted(terms)}}

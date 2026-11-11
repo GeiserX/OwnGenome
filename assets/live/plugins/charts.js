@@ -4,7 +4,10 @@
 // a mark opens a panel with the mark's detail, the chart's caveat, a link to the reads in the
 // genome viewer (viewer/#<locus>) and a link to the section of the report. On a person's page each
 // chart goes into its card (a [data-chart-slot=<chart id>] person.js draws), else into this plugin's
-// panel. No inline script, no style attribute, no eval: the SVG is parsed as XML and holds no script.
+// panel. A mark the page keeps closed (a result to act on about a child, person.js's PGP.markClosed) is
+// left out of the drawing, its title and its detail with it, wherever the figure sits; the figure is drawn
+// again with it once the result is opened. No inline script, no style attribute, no eval: the SVG is
+// parsed as XML and holds no script.
 (function () {
   'use strict';
   if (!window.PGP) { return; }
@@ -44,16 +47,27 @@
     side.appendChild(close);
   }
 
-  function chart(sp) {
+  // The ids of the marks of SP the page keeps closed now.
+  function closedMarks(sp) {
+    var ask = window.PGP.markClosed;
+    return ask ? (sp.marks || []).filter(function (m) { return ask(sp.id, m.id); }).map(function (m) { return m.id; }) : [];
+  }
+
+  function chart(sp, closed) {
     var fig = el('figure', { 'class': 'chart', 'data-chart': sp.id });
+    fig.pgpSpec = sp;
+    fig.pgpClosed = closed.join(' ');
     fig.appendChild(el('h3', {}, sp.title));
     fig.appendChild(el('p', { 'class': 'caveat muted' }, sp.caveat));
     var doc = new DOMParser().parseFromString(sp.svg, 'image/svg+xml');
     if (doc.documentElement && doc.documentElement.nodeName === 'svg') {
       fig.appendChild(document.importNode(doc.documentElement, true));
     }
+    Array.prototype.forEach.call(fig.querySelectorAll('a[data-mark]'), function (a) {
+      if (closed.indexOf(a.getAttribute('data-mark')) >= 0) { a.parentNode.removeChild(a); }
+    });
     var byId = {};
-    (sp.marks || []).forEach(function (m) { byId[m.id] = m; });
+    (sp.marks || []).forEach(function (m) { if (closed.indexOf(m.id) < 0) { byId[m.id] = m; } });
     Array.prototype.forEach.call(fig.querySelectorAll('a[data-mark]'), function (a) {
       a.addEventListener('click', function (e) {
         e.preventDefault();
@@ -64,8 +78,17 @@
     return fig;
   }
 
-  // Each figure into its card's slot when the page has one, else into the panel.
+  // Each figure into its card's slot when the page has one, else into the panel; drawn again first when the
+  // marks the page keeps closed have changed (a result opened, the family's answer arrived).
   function place() {
+    figs = figs.map(function (fig) {
+      var closed = closedMarks(fig.pgpSpec);
+      if (closed.join(' ') === fig.pgpClosed) { return fig; }
+      var again = chart(fig.pgpSpec, closed);
+      if (fig.parentNode) { fig.parentNode.replaceChild(again, fig); }
+      if (side.getAttribute('data-mark') && closed.indexOf(side.getAttribute('data-mark')) >= 0) { side.hidden = true; side.textContent = ''; }
+      return again;
+    });
     figs.forEach(function (fig) {
       var slot = document.querySelector('[data-chart-slot="' + fig.getAttribute('data-chart') + '"]');
       var to = slot || list;
@@ -89,7 +112,7 @@
     if (!data || !data.charts) { return; }
     figs.forEach(function (f) { if (f.parentNode) { f.parentNode.removeChild(f); } });
     list.textContent = '';
-    figs = data.charts.map(chart);
+    figs = data.charts.map(function (sp) { return chart(sp, closedMarks(sp)); });
     place();
     document.documentElement.setAttribute('data-pgp-charts', String(data.charts.length));
   }
