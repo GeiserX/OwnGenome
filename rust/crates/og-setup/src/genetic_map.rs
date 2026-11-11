@@ -92,7 +92,9 @@ fn run(zip: &str, out: &str, rfmix: bool, chroms: &[String]) -> Result<(), (u8, 
                 format!("{zip}: there is no item named '{name}' in the archive"),
             )
         })?;
-        let mut bytes = Vec::with_capacity(usize::try_from(e.size).unwrap_or(0));
+        // The declared size bounds what copy_to writes, but it is not
+        // checked yet: reserve at most 64 MiB from it (a map is a few MB).
+        let mut bytes = Vec::with_capacity(usize::try_from(e.size.min(64 << 20)).unwrap_or(0));
         a.copy_to(&e, &mut bytes).map_err(|err| match err {
             ZipError::Io(x) => (1, format!("{zip}: {x}")),
             ZipError::Bad(m) => (2, format!("{zip}: {m}")),

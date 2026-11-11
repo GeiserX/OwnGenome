@@ -12,8 +12,8 @@
 #      maps/DONE.
 #   2. With maps/DONE in place a second call runs og no more (a planted
 #      byte stays), so a finished install is not redone.
-#   3. A maps/DONE of another chromosome list counts as none: the maps are
-#      written again.
+#   3. A maps/DONE of another chromosome list counts as none, and so does a
+#      map file removed after the install: the maps are written again.
 #   4. The control: the rule of before (skip a non-empty .rfmix.map), run on
 #      the folder of 1, keeps the cut-short map, so check 1 can fail.
 # Run: OG=bin/og bash tests/test_setup_fine_maps.sh (skips without og; with
@@ -123,6 +123,16 @@ if [ -s "$OG_CALLS" ] && same_maps "$OLD"; then
   ok "a maps/DONE of other chromosomes makes og write the maps again"
 else
   bad "a stale maps/DONE was taken as done"
+fi
+
+# 3b. A map file removed after the install is written again, maps/DONE or not.
+: > "$OG_CALLS"
+rm -f "${OLD}/maps/chr21.rfmix.map"
+install_fine_maps "$OLD" "chr21 chr22 " > /dev/null 2>&1 || bad "the call with a map missing failed"
+if [ -s "$OG_CALLS" ] && same_maps "$OLD"; then
+  ok "a map file missing under maps/DONE is written again"
+else
+  bad "a missing chr21.rfmix.map was not written again"
 fi
 
 # 4. The control: the rule of before keeps the cut-short map.

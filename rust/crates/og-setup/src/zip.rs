@@ -142,6 +142,12 @@ fn u64_at(b: &[u8], at: usize) -> Result<u64, ZipError> {
 }
 
 fn read_at(f: &mut File, at: u64, len: u64) -> Result<Vec<u8>, ZipError> {
+    // A length the file cannot hold is refused before any memory is taken
+    // for it: a damaged end record can claim gigabytes.
+    let size = f.metadata()?.len();
+    if at.checked_add(len).is_none_or(|end| end > size) {
+        return Err(bad("Truncated file header"));
+    }
     let len = usize::try_from(len).map_err(|_| bad("Truncated central directory"))?;
     f.seek(SeekFrom::Start(at))?;
     let mut b = vec![0; len];
@@ -332,6 +338,14 @@ impl Archive {
                 }
                 Err(err) => return Err(err.into()),
             };
+            // More than the directory says: stop before writing it, as
+            // zipfile reads no further than the member's size.
+            if n + k as u64 > e.size {
+                return Err(bad(format!(
+                    "Bad CRC-32 for file {}",
+                    og_filters::py_repr(&e.name)
+                )));
+            }
             crc.update(&buf[..k]);
             n += k as u64;
             out.write_all(&buf[..k])?;
@@ -460,6 +474,42 @@ pub(crate) mod tests {
         let e = a.entries()[0].clone();
         let err = a.copy_to(&e, &mut Vec::new()).unwrap_err();
         assert_eq!(err.to_string(), "Bad CRC-32 for file 'a.txt'");
+    }
+
+    #[test]
+    fn a_member_longer_than_its_size_stops_at_the_size() {
+        let data = vec![b'a'; 1 << 20];
+        let mut z = build(&[("a.txt", &data, true)], false);
+        // The declared size, in the local header and the directory: 10.
+        let cd = z.len() - 22 - (46 + 5);
+        for at in [22, cd + 24] {
+            z[at..at + 4].copy_from_slice(&10u32.to_le_bytes());
+        }
+        let p = write_tmp(&z, "bomb");
+        let mut a = Archive::open(&p).unwrap();
+        let e = a.entries()[0].clone();
+        assert_eq!(e.size, 10);
+        let mut out = Vec::new();
+        let err = a.copy_to(&e, &mut out).unwrap_err();
+        assert_eq!(err.to_string(), "Bad CRC-32 for file 'a.txt'");
+        assert!(out.len() <= 10, "wrote {} bytes", out.len());
+    }
+
+    #[test]
+    fn a_directory_size_past_the_file_is_refused_unread() {
+        // A ZIP64 end record claiming a directory of 2^60 bytes: allocated,
+        // it would abort the process.
+        let mut z = build(&[("a.txt", b"x", false)], true);
+        let rec = z
+            .windows(4)
+            .position(|w| w == EOCD64.to_le_bytes())
+            .unwrap();
+        z[rec + 40..rec + 48].copy_from_slice(&(1u64 << 60).to_le_bytes());
+        let p = write_tmp(&z, "bigcd");
+        assert_eq!(
+            Archive::open(&p).err().unwrap().to_string(),
+            "Truncated file header"
+        );
     }
 
     #[test]

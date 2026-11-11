@@ -676,6 +676,11 @@ pub fn extra_entries(
                 ));
             }
         }
+        // The Python stopped with a traceback (unhashable list) here; a name
+        // that is not text would otherwise go into the catalog as it is.
+        if !matches!(lid, Value::Str(_)) || vids.iter().any(|v| !matches!(v, Value::Str(_))) {
+            return bad(format!("{where_}: LocusId and VariantId must be text"));
+        }
         let mut names = vec![py_str(lid)];
         for v in &vids {
             let v = py_str(v);
@@ -878,6 +883,12 @@ fn write_all(out: &str, ranges: Option<(&str, &str)>, catalog: &str) -> std::io:
 /// The command line; returns the exit code: 0, 1 when a file cannot be
 /// written, 2 on any input error (writing nothing) or a wrong command line.
 pub fn cli(args: &[String]) -> u8 {
+    if args.iter().any(|a| a == "-h" || a == "--help") {
+        println!(
+            "{USAGE}\n\nJoins STRchive's ExpansionHunter catalog (--eh) and loci file (--loci) into\nthe catalog of steps 09 and 9b (--out), with the size ranges of each locus\n(--ranges) and the loci of --extra appended."
+        );
+        return 0;
+    }
     let a = match parse(args) {
         Ok(a) => a,
         Err(m) => {
@@ -922,6 +933,32 @@ pub fn cli(args: &[String]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_extra_name_that_is_not_text_is_refused() {
+        let base = r#"{"LocusStructure": "(CA)*", "ReferenceRegion": "chr1:100-110",
+            "VariantType": "Repeat", "NoThresholds": true, "Disease": "d", "Source": "s",
+            "SourceId": "i", "SourceDisplay": "x""#;
+        for e in [
+            format!(r#"[{base}, "LocusId": ["EXTRA"]}}]"#),
+            format!(r#"[{base}, "LocusId": "EXTRA", "VariantId": [1]}}]"#),
+        ] {
+            let got = extra_entries(&v(&e), &[]).err().map(|Bad(m)| m);
+            assert!(
+                got.as_deref()
+                    .is_some_and(|m| m.ends_with("LocusId and VariantId must be text")),
+                "{e}: {got:?}"
+            );
+        }
+        let ok = format!(r#"[{base}, "LocusId": "EXTRA"}}]"#);
+        assert_eq!(extra_entries(&v(&ok), &[]).map(|x| x.len()).ok(), Some(1));
+    }
+
+    #[test]
+    fn help_exits_0() {
+        assert_eq!(cli(&["--help".into()]), 0);
+        assert_eq!(cli(&["-h".into()]), 0);
+    }
 
     fn v(s: &str) -> Value {
         json::loads(s).unwrap()

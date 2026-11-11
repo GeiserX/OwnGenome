@@ -690,7 +690,9 @@ install_strchive_data() {
     echo "[OK] STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b) already present."
     return 0
   fi
-  # A stale catalog goes first, so a failed refetch leaves none for step 09.
+  # og first: when it cannot be built, the catalog already there stays.
+  need_og "converts the STRchive catalog" || return 1
+  # A stale catalog goes next, so a failed refetch leaves none for step 09.
   rm -f "${dir}/catalog.json" "${dir}/str_ranges.tsv" "${dir}/catalog.stamp"
   for url in "${eh_url}|${STRCHIVE_EH_SHA256}" "${loci_url}|${STRCHIVE_LOCI_SHA256}"; do
     sha=${url#*|} url=${url%%|*} name=${url##*/}
@@ -701,7 +703,6 @@ install_strchive_data() {
       return 1
     fi
   done
-  need_og "converts the STRchive catalog" || return 1
   # -e OG_SHADOW passes the variable only when it is set (CI).
   if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-extra:ro" -e OG_SHADOW \
        -w "$(cpath "$dir")" "$PYTHON_IMAGE" /pgp-bin/og str catalog \
@@ -1095,12 +1096,16 @@ ancestry_fine_pins() {
 # (chromosome, position, cM), cut from DIR/maps/plink.GRCh38.map.zip by og
 # (`og setup genetic-map`), which writes each file whole or not at all.
 # maps/DONE, written last, names the map and the chromosomes: without it (an
-# install from before og, whose maps a kill could have left cut short) every
-# map is written again. tests/test_setup_fine_maps.sh runs it.
+# install from before og, whose maps a kill could have left cut short), or
+# with a map file missing, every map is written again.
+# tests/test_setup_fine_maps.sh runs it.
 install_fine_maps() {
   local dir=$1 chroms=$2
-  local gstamp="map=${ANCESTRY_FINE_MAP_SHA256} chroms=${chroms% }"
-  [ "$(cat "${dir}/maps/DONE" 2>/dev/null)" = "$gstamp" ] && return 0
+  local gstamp="map=${ANCESTRY_FINE_MAP_SHA256} chroms=${chroms% }" c whole=yes
+  for c in $chroms; do
+    [ -s "${dir}/maps/${c}.map" ] && [ -s "${dir}/maps/${c}.rfmix.map" ] || whole=no
+  done
+  [ "$whole" = yes ] && [ "$(cat "${dir}/maps/DONE" 2>/dev/null)" = "$gstamp" ] && return 0
   rm -f "${dir}/maps/DONE"
   need_og "unpacks the genetic map" || return 1
   # SC2086: one argument per chromosome.
