@@ -1,7 +1,7 @@
 // person.js: a person's genome as a report, the Journal design (docs/design/journal/), on their page
 // (assets/live/index.html), from results.json (bin/live_results.py, served by
 // bin/owngenome_live_results.py) and the run's states (live.js). The page reads top to bottom: the lead
-// paragraph built from the findings, the counts by level, the chromosome map of the findings, then ten
+// paragraph built from the findings, the counts by level, the genome map of the findings (map.js), then ten
 // numbered sections: 1 To act on, 2 Medicines, 3 For your family, 4 Worth a look, 5 Can I trust this?,
 // 6 Origins, 7 Traits and scores, 8 Assessed, no finding, 9 What it cannot see, 10 Sources and files.
 // A run still going is the same report being written: each section carries its stamp (written, being
@@ -21,6 +21,7 @@
   // 'none': in no family; 'pending' or 'failed': in one whose roles are not known (yet); 'known'.
   var familyStatus = 'none';
   var shown = {};  // veiled findings the reader opened, by id
+  var genomeMap = null, resultsKey = null;  // Figure 1 (map.js), and the results it was built for
   var panel = document.getElementById('results');
   var rail = document.getElementById('rail');
   var NOT_ALL_CLEAR = 'No finding in what these steps assessed.';
@@ -428,8 +429,10 @@
       add(text, lineList(lines));
       if (c.hidden) {
         // APOE and the like: behind their warning, opened on purpose.
-        var d = el('details', { 'class': 'behind' });
+        // Its fold is the map's APOE switch too (map.js): opening it here opens APOE on the map, and back.
+        var d = el('details', { 'class': 'behind', 'data-gate': 'apoe' });
         add(d, el('summary', {}, c.hidden.summary), el('p', {}, c.hidden.text));
+        d.addEventListener('toggle', function () { if (d.open !== !!shown.apoe) { setShown('apoe', d.open); } });
         add(text, d);
       }
       if (c.explore && c.explore.length) {
@@ -527,6 +530,37 @@
     return !!(t && tagClosed(t));
   }
   function openFinding(f) { shown[f.id] = true; var t = findingTag(f); if (t) { shown[t] = true; } }
+  // The genome map's veil (map.js): 'closed' while this page keeps the result closed, 'opened' once it was
+  // opened on purpose, 'open' when this page never closes it. A gated result (APOE, behind its warning) is
+  // closed on every page, an adult's too, until opened; a tag naming no finding of these results stays closed.
+  function mapVeil(id, gated) {
+    if (gated) { return shown[id] ? 'opened' : 'closed'; }
+    if (!closedPage()) { return 'open'; }
+    var f = findingById(id);
+    if (!f || veiled(f)) { return 'closed'; }
+    return f.level === 'act' || findingTag(f) ? 'opened' : 'open';
+  }
+  // One switch for a result, from the map's chip or the card's "Show the result" (openFinding): opening it in
+  // one place opens it in both. Closing it closes the findings that were opened with it.
+  function setShown(id, on) {
+    var f = findingById(id);
+    if (on) { if (f) { openFinding(f); } else { shown[id] = true; } } else {
+      delete shown[id];
+      ((results && results.findings) || []).forEach(function (x) { if (findingTag(x) === id) { delete shown[x.id]; } });
+    }
+    redraw(true);
+  }
+  // Whether the page shows a finding of the map at this moment: its card's steps are done (a replay draws
+  // the run's end results from its first frame). A row with no finding of these results (the map's own APOE
+  // row) follows its card's fold instead.
+  function mapNow(id) { var f = findingById(id); var c = f && cardById(f.card); return !f || !!(c && gate(c) === 'show'); }
+  // Without the map (a browser with no DecompressionStream, or a map the server could not build): the findings
+  // with a place, as a table, each through this page's veil first.
+  function mapFallback() {
+    return findingsNow().filter(function (f) { return f.viewer && !veiled(f); }).map(function (f) {
+      return [U.LEVEL_WORDS[f.level] || f.level, f.title, f.viewer];
+    });
+  }
   function findingArticle(f, big) {
     var row = el('div', { 'class': 'row' });
     var art = el('div', { 'class': 'finding', id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
@@ -843,22 +877,16 @@
     add(side, note('A research pipeline', el('span', {}, 'Not a clinical test: anything to act on is confirmed by a certified laboratory first.')));
     add(row, main, side);
     add(slot, row);
-    // Figure 1: where the findings sit.
-    var marks = [];
-    fs.forEach(function (f) {
-      var l = U.locus(f.viewer);
-      if (l && !veiled(f)) { marks.push({ chr: l.chr, mb: l.mb, lv: f.level, label: f.gene || '', tip: f.title, href: findingHref(f) }); }
-    });
-    var fig = el('figure', { 'class': 'row fig1' });
-    var inner = el('div', {});
-    add(inner, el('div', { 'class': 'fig-label' }, 'Figure 1 · Where the findings sit'));
-    var k = el('div', { 'class': 'kary', id: 'kary' });
-    add(k, U.karyogram(marks));
-    add(inner, k);
-    add(inner, el('figcaption', {}, marks.length ? 'Each mark is one finding with a position, on its chromosome. Shape and colour give the level, as in the row above; every finding is also listed in its section.'
-      : 'No finding with a position yet. The findings without one (medicine genes, repeat counts, copy numbers) are listed in their sections.'));
-    add(fig, inner, el('aside', {}));
-    add(slot, fig);
+    // Figure 1: the genome map (map.js), one figure kept across redraws so its camera stays where the
+    // reader left it. It asks this page's veil for each closed row, and opens or closes a result through it.
+    if (window.PGPMap) {
+      if (!genomeMap) {
+        genomeMap = window.PGPMap.create({ url: 'map.json', veil: mapVeil, now: mapNow, open: function (id) { setShown(id, true); },
+          close: function (id) { setShown(id, false); }, fallback: mapFallback });
+      }
+      add(slot, genomeMap.node);
+      genomeMap.refresh(resultsKey);
+    }
   }
 
   // --- the table of contents, the phone tab bar, the cover ------------------------------------------
@@ -1106,6 +1134,7 @@
       if (key !== fetchedFor) { return; }
       if (!(r && (r.chapters || r.note))) { fetchedFor = null; return; }
       results = r;
+      resultsKey = key;
       redraw(true);
       route();
     }).catch(function () { if (key === fetchedFor) { fetchedFor = null; } });
@@ -1145,6 +1174,8 @@
     drawLead();
     drawSections();
     restoreFolds();
+    // A gated result's fold follows its switch, whatever fold state the reader left (setShown).
+    Array.prototype.forEach.call(panel.querySelectorAll('details[data-gate]'), function (d) { d.open = !!shown[d.getAttribute('data-gate')]; });
     window.scrollTo(0, y);
     document.getElementById('progress-q').textContent = running()
       ? 'Is it moving, when will it end, is anything wrong? One line per step.' : 'One line per step: when it ran, and what it found.';
