@@ -30,8 +30,8 @@
   var MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
   // The chromosome level ends at 16,667 bp per CSS pixel: closer views (region, gene, reads) come later.
   var CHROM_BPP = 16667;
-  // A genome row's least height: 22 CSS px, 14 on a phone (the page there is long enough already).
-  var ROW_MIN = 22, ROW_PHONE = 14;
+  // A genome row's least height: 22 CSS px, 10 on a phone (the page there is long enough already).
+  var ROW_MIN = 22, ROW_PHONE = 10;
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -180,8 +180,11 @@
     }
 
     // --- the canvas size, the hatch pattern ---
+    // False while the stage has no width (not in the page yet, or hidden): sized then, a phone would get the
+    // desktop's rows. The ResizeObserver draws once it has one.
     function size() {
-      var w = Math.max(280, Math.floor(stage.clientWidth || 680));
+      if (!stage.clientWidth) { return false; }
+      var w = Math.max(280, Math.floor(stage.clientWidth));
       phone = w < 520;
       var n = M ? M.chroms.length : 24;
       var h = 18 + n * (phone ? ROW_PHONE : ROW_MIN);
@@ -194,6 +197,7 @@
         canvas.style.setProperty('height', h + 'px');
         cacheKey = '';
       }
+      return true;
     }
     function pattern(alpha) {
       var p = document.createElement('canvas');
@@ -295,7 +299,7 @@
       M.chroms.forEach(function (ch, i) {
         var yc = rowY(i);
         c.fillStyle = INK3;
-        c.font = '11px ' + SANS;
+        c.font = (phone ? '9px ' : '11px ') + SANS;
         c.textAlign = 'right';
         c.textBaseline = 'middle';
         c.fillText(short(ch.n), gutG() - 10, yc);
@@ -354,7 +358,7 @@
       raf = 0;
       if (!M) { return; }
       var t = performance.now();
-      size();  // the page may have changed width since the last frame (a phone turned, a fold opened)
+      if (!size()) { return; }  // the page may have changed width since the last frame (a phone turned, a fold opened)
       step();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -758,7 +762,14 @@
         add(narr, el('p', {}, fs.some(function (r) { return r.chrom === ch.n; }) ? 'No finding in this stretch.' : noFindingHere()));
       }
       if (lv === 'genome') {
-        add(narr, runs(M.text.genome));
+        var tail = runs(M.text.genome), lead = narr.children.length === 1 ? narr.firstChild : null;
+        if (phone && lead) {
+          // On a phone the count and the runs share one paragraph.
+          add(lead, ' ');
+          while (tail.firstChild) { lead.appendChild(tail.firstChild); }
+        } else {
+          add(narr, tail);
+        }
         if (!phone) { add(narr, el('p', { 'class': 'dim' }, 'Click a chromosome to open it.')); }
       } else {
         var r = M.roh[ch.n], n = 0, longest = 0;
@@ -828,16 +839,18 @@
         var s = stateOf(id);
         if (s === 'closed') { (M.gated[id] ? gates : acts).push(id); } else if (s === 'opened') { opened.push(id); }
       });
+      // Why it is closed: said beside the count, left out on a phone (the card says it too).
+      function why() { return el('span', { 'class': 'gm-why' }, ' · Not drawn until opened on purpose'); }
       if (acts.length) {
         var c = el('div', { 'class': 'gm-chip closed', 'data-closed': 'act' });
-        add(c, el('span', {}, (acts.length === 1 ? '1 result closed' : acts.length + ' results closed') + ' · Not drawn until opened on purpose'));
+        add(c, add(el('span', {}, acts.length === 1 ? '1 result closed' : acts.length + ' results closed'), why()));
         add(c, confirming === 'act' ? confirmBox(acts[0], false) : button('Open', function () { confirming = 'act'; drawChips(); }));
         add(chips, c);
       }
       gates.forEach(function (id) {
         var g = M.gated[id], name = g.gene || 'This result';
         var c = el('div', { 'class': 'gm-chip closed', 'data-closed': 'gate' });
-        add(c, el('span', {}, name + ' closed · Not drawn until opened on purpose'));
+        add(c, add(el('span', {}, name + ' closed'), why()));
         add(c, confirming === id ? confirmBox(id, true) : button('Open ' + name, function () { confirming = id; drawChips(); }));
         add(chips, c);
       });

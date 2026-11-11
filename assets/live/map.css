@@ -55,3 +55,14 @@
   .gm-margin { margin-top: 12px; }
   .gm-narration { font-size: 14px; }
 }
+@media (max-width: 520px) {
+  .gmap { margin-top: 22px; }
+  .gm-why { display: none; }
+  .gm-margin { margin-top: 4px; }
+  .gm-head { gap: 4px; margin-bottom: 6px; }
+  .gm-chip { padding: 4px 8px; }
+  .gm-chip button { padding: 3px 9px; }
+  .gm-narration { margin-top: 4px; }
+  .gm-titlerow { row-gap: 6px; }
+  .gm-title { font-size: 20px; }
+}
