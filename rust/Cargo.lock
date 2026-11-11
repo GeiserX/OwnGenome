@@ -554,6 +554,7 @@ version = "0.1.0"
 dependencies = [
  "og-bam",
  "og-chip",
+ "og-cn",
  "og-dev",
  "og-filters",
  "og-intervals",
@@ -581,6 +582,16 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "memchr",
+ "og-filters",
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
+name = "og-cn"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
  "og-filters",
  "og-io",
  "pycompat",

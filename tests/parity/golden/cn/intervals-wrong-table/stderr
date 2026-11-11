@@ -1,0 +1,1 @@
+ERROR: the bedcov table lacks some of 1q21.1_TAR_syndrome_proximal_BP2-BP3's segments: its regions differ from `og cn bed --kind interval`

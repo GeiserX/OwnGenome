@@ -1,0 +1,1 @@
+ERROR: hp3.bedcov.tsv: its regions differ from the ones `og cn bed --locus HBA` prints
