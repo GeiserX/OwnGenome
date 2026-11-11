@@ -42,8 +42,8 @@ docker run --rm \
 
 # Step 3: Turn inversion breakend pairs into SVTYPE=INV records with the
 # convertInversion.py, samtools, bgzip and tabix inside the Manta image, then
-# check each one with bin/manta_inv_filter.py from this repository (mounted
-# at /pgp-bin; it runs on the image's Python 2.7).
+# check each one with og sv inv-filter, OwnGenome's static binary (bin/og,
+# mounted at /pgp-bin; scripts/setup.sh --og builds it).
 # Manta's own file is kept as diploidSV.raw.vcf.gz.
 docker run --rm \
   -v ${GENOME_DIR}:/genome \
@@ -55,7 +55,7 @@ docker run --rm \
     mv diploidSV.vcf.gz diploidSV.raw.vcf.gz
     mv diploidSV.vcf.gz.tbi diploidSV.raw.vcf.gz.tbi
     "$L/convertInversion.py" "$L/samtools" "$1" diploidSV.raw.vcf.gz > /tmp/converted.vcf
-    python /pgp-bin/manta_inv_filter.py diploidSV.raw.vcf.gz /tmp/converted.vcf | "$L/bgzip" -c > diploidSV.vcf.gz
+    /pgp-bin/og sv inv-filter diploidSV.raw.vcf.gz /tmp/converted.vcf | "$L/bgzip" -c > diploidSV.vcf.gz
     "$L/tabix" -f -p vcf diploidSV.vcf.gz' \
   _ "/genome/${REF_FASTA}" "/genome/${SAMPLE}/manta/results/variants"
 
@@ -66,13 +66,13 @@ docker run --rm \
 
 ### Inversions with one junction
 
-Manta writes each inversion junction as two breakend records, flagged `INV3` or `INV5`. A balanced inversion has two junctions, one of each. `convertInversion.py` turns every pair into an `SVTYPE=INV` record from `POS` to `END`, a lone junction too, so a junction whose breakends lie 150 Mb apart became a 150 Mb inversion, and AnnotSV (step 5) annotated it over hundreds of genes. `bin/manta_inv_filter.py` now reads Manta's file and the converted one and:
+Manta writes each inversion junction as two breakend records, flagged `INV3` or `INV5`. A balanced inversion has two junctions, one of each. `convertInversion.py` turns every pair into an `SVTYPE=INV` record from `POS` to `END`, a lone junction too, so a junction whose breakends lie 150 Mb apart became a 150 Mb inversion, and AnnotSV (step 5) annotated it over hundreds of genes. `og sv inv-filter` now reads Manta's file and the converted one and:
 
 - marks an inversion `INV_JUNCTIONS=2` when the opposite junction is there too (an `INV5` record for an `INV3` one, with `POS` and `END` each within 1,000 bp, or both in one Manta `EVENT`);
 - marks one without it `INV_JUNCTIONS=1`. When it spans 1 Mb or more, it puts the two breakend records of Manta's file back in its place (each `INV_JUNCTIONS=1`), so no step reads it as a whole-span inversion;
 - marks a lone junction shorter than 1,000 bp `INVDUP_CANDIDATE`: two breakends that close are more likely an inverted insertion or duplication than an inversion.
 
-The step prints one line with the count of each kind (`Inversion check: ...`). The Nextflow `MANTA` process runs the same script.
+The step prints one line with the count of each kind (`Inversion check: ...`). A record it cannot read (fewer than 8 columns, or a `POS` that is not a whole number) stops it with exit 2, naming the file and line. The Nextflow `MANTA` process runs the same filter.
 
 ## Output
 - `results/variants/diploidSV.vcf.gz` — main output (all SV calls), with each inversion junction as one `SVTYPE=INV` record, except a lone junction of 1 Mb or more, which stays its two breakend records (see above); steps 15 and 22 read this file. Step 05 (AnnotSV) reads step 15's duphold-filtered calls (`duphold/<sample>_sv_filtered.vcf.gz`) first, and this file only when those are missing, have no `.tbi` or are older than it

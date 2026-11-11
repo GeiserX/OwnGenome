@@ -125,7 +125,7 @@ mkdir -p "${ANN}/Annotations_Human/SVincludedInFt/BenignSV/GRCh38"
 printf 'gnomAD-SV fixture\n' > "${ANN}/Annotations_Human/SVincludedInFt/BenignSV/GRCh38/gnomad-sv.installed"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 annotsv "${SCRIPTS}/05-annotsv.sh" sample1
-docker_log_has '^run image=[^ ]*annotsv.*/sv_svlen_fix\.py .* /genome/sample1/duphold/sample1_sv_filtered\.vcf\.gz ' \
+docker_log_has '^run image=[^ ]*annotsv.*/og sv svlen-fix .* /genome/sample1/duphold/sample1_sv_filtered\.vcf\.gz ' \
   "step 05 did not build AnnotSV's input from step 15's filtered calls"
 docker_log_has '^run image=[^ ]*annotsv.* -SVinputFile /genome/sample1/annotsv/sample1_annotsv_input\.vcf ' \
   "step 05 did not annotate the input it built"
@@ -136,14 +136,14 @@ output_lacks annotsv 'NOTE:'
 touch -t 209901010000 "${GENOME_DIR}/sample1/manta/results/variants/diploidSV.vcf.gz"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 annotsv-stale "${SCRIPTS}/05-annotsv.sh" sample1
-docker_log_has '^run image=[^ ]*annotsv.*/sv_svlen_fix\.py .* /genome/sample1/manta/results/variants/diploidSV\.vcf\.gz ' \
+docker_log_has '^run image=[^ ]*annotsv.*/og sv svlen-fix .* /genome/sample1/manta/results/variants/diploidSV\.vcf\.gz ' \
   "step 05 annotated filtered calls older than Manta's"
 output_has annotsv-stale 'NOTE: .*older than Manta'
 # No filtered calls at all: Manta's, with a note.
 rm -f "${D}/sample1_sv_filtered.vcf.gz" "${D}/sample1_sv_filtered.vcf.gz.tbi"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 annotsv-no-duphold "${SCRIPTS}/05-annotsv.sh" sample1
-docker_log_has '^run image=[^ ]*annotsv.*/sv_svlen_fix\.py .* /genome/sample1/manta/results/variants/diploidSV\.vcf\.gz ' \
+docker_log_has '^run image=[^ ]*annotsv.*/og sv svlen-fix .* /genome/sample1/manta/results/variants/diploidSV\.vcf\.gz ' \
   "step 05 did not fall back to Manta's calls without step 15"
 output_has annotsv-no-duphold 'NOTE: no duphold-filtered calls'
 # SV_VCF still wins.
@@ -151,4 +151,4 @@ mkdir -p "${GENOME_DIR}/sample1/sniffles"
 printf 'placeholder\n' > "${GENOME_DIR}/sample1/sniffles/sv.vcf.gz"
 : > "$FAKE_DOCKER_LOG"
 SV_VCF="${GENOME_DIR}/sample1/sniffles/sv.vcf.gz" run_expect 0 annotsv-sv-vcf "${SCRIPTS}/05-annotsv.sh" sample1
-docker_log_has '^run image=[^ ]*annotsv.*/sv_svlen_fix\.py .* /genome/sample1/sniffles/sv\.vcf\.gz ' "SV_VCF did not pick step 05's input"
+docker_log_has '^run image=[^ ]*annotsv.*/og sv svlen-fix .* /genome/sample1/sniffles/sv\.vcf\.gz ' "SV_VCF did not pick step 05's input"

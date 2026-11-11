@@ -105,7 +105,7 @@ fi
 # pair into one SVTYPE=INV record. It needs a samtools and the reference:
 # both come from the Manta image. It converts a lone junction too, and one
 # whose breakends lie 150 Mb apart becomes a 150 Mb inversion that AnnotSV
-# annotates over hundreds of genes, so bin/manta_inv_filter.py then marks
+# annotates over hundreds of genes, so og sv inv-filter (bin/og) then marks
 # each INV with the junctions Manta found (INV_JUNCTIONS=2 or 1), puts a
 # lone junction of 1 Mb or more back as its two breakends, and marks a lone
 # one under 1 kb INVDUP_CANDIDATE (more likely an inverted insertion or
@@ -134,14 +134,15 @@ if [ "$N_BND" -eq 0 ]; then
   cp -f "${RAW}.tbi" "${DIPLOID}.tbi"
   echo "Inversion conversion: 0 inversion breakend records in Manta's calls, nothing to convert; ${DIPLOID} is a copy of ${RAW}"
 else
-  echo "Converting inversions (libexec/convertInversion.py, then bin/manta_inv_filter.py)..."
-  # The filter runs on the image's Python 2.7; its summary line goes to stderr.
+  echo "Converting inversions (libexec/convertInversion.py, then og sv inv-filter)..."
+  # The filter is the static og binary, so it runs in the Manta image; its
+  # summary line goes to stderr.
   # shellcheck disable=SC2016  # the $ expressions expand inside the container
   atomic_out "$DIPLOID" run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${MANTA_IMAGE}" bash -c '
     set -euo pipefail
     libexec="$(dirname "$(readlink -f "$(command -v configManta.py)")")/../libexec"
     "${libexec}/convertInversion.py" "${libexec}/samtools" "$1" "$2" > /tmp/converted.vcf
-    python /pgp-bin/manta_inv_filter.py "$2" /tmp/converted.vcf | "${libexec}/bgzip" -c
+    /pgp-bin/og sv inv-filter "$2" /tmp/converted.vcf | "${libexec}/bgzip" -c
   ' _ "$REF_FASTA_C" "${VARIANTS_C}/diploidSV.raw.vcf.gz"
   # shellcheck disable=SC2016  # expands inside the container
   run_in "${MANTA_IMAGE}" bash -c \
