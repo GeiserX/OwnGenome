@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""bin/ystr_report.py: Y-STR repeat counts from HipSTR's calls (step 45).
+"""og y str-bed and og y str-report: Y-STR repeat counts from HipSTR's calls (step 45).
 
 Each case writes a synthetic HipSTR VCF (one sample, only the records it
-plants), runs the script on assets/ystr_panel.tsv, and checks the table:
+plants), runs og y str-report on assets/ystr_panel.tsv, and checks the table:
 
   1. the panel: 111 markers in FamilyTreeDNA's order (the Y-12, Y-25 and
      Y-37 heads checked by name), every multi-copy marker kind multicopy,
@@ -29,7 +29,10 @@ plants), runs the script on assets/ystr_panel.tsv, and checks the table:
      bin/render_report.py lists the called markers only, with the note, and
      the HTML report shows an unreadable table as Unreadable
 
-Run: python3 tests/test_ystr_report.py
+Without OG (the og binary) the test is skipped with a note; with
+OG_REQUIRED set too, it fails (Guard's rust job sets both).
+
+Run: OG=bin/og python3 tests/test_ystr_report.py
 """
 import atexit
 import csv
@@ -41,10 +44,12 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "ystr_report.py")
+OG = os.environ.get("OG", "")
 PANEL = os.path.join(REPO, "assets", "ystr_panel.tsv")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import ystr_report as yr  # noqa: E402
+if not OG:
+    print("skip: OG is not set (OG=bin/og)")
+    sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
 
 FAILS = []
 
@@ -57,6 +62,24 @@ def check(name, got, want):
         FAILS.append(name)
 
 
+def read_panel(path):
+    """The panel's rows as dicts, each region as (chrom, start, end, period, copies, name); a span
+    marker has one region over its whole locus, its parts' copies rounded half up and summed."""
+    with open(path, encoding="utf-8") as f:
+        lines = [line.rstrip("\n").split("\t") for line in f if line.strip() and not line.startswith("#")]
+    rows = [dict(zip(lines[0], c)) for c in lines[1:]]
+    for r in rows:
+        r["regions"] = [] if r["regions"] == "." else [
+            (where.split(":")[0], int(where.split(":")[1].split("-")[0]), int(where.split(":")[1].split("-")[1]),
+             int(period), float(copies), name)
+            for where, period, copies, name in (x.split("/", 3) for x in r["regions"].split(";"))]
+        if r["kind"] == "span":  # one region over the whole locus, named after the marker
+            regs = r["regions"]
+            r["regions"] = [(regs[0][0], regs[0][1], regs[-1][2], regs[0][3],
+                             float(sum(int(x[4] + 0.5) for x in regs)), r["marker"])]
+    return rows
+
+
 TMP = tempfile.mkdtemp(prefix="ystr-test-")
 atexit.register(shutil.rmtree, TMP, ignore_errors=True)
 FORMAT = "GT:GB:Q:PQ:DP:DSNP:PSNP:PDP:GLDIFF:DSTUTTER:DFLANKINDEL"
@@ -64,7 +87,7 @@ FORMAT = "GT:GB:Q:PQ:DP:DSNP:PSNP:PDP:GLDIFF:DSTUTTER:DFLANKINDEL"
 
 def vcf(records, samples=("S1",), gz=True):
     """records: {HipSTR name: (GT, GB, Q, DP, DSTUTTER, DFLANKINDEL)}."""
-    panel = yr.read_panel(PANEL)
+    panel = read_panel(PANEL)
     where = {n: (c, s) for r in panel for c, s, _e, _p, _k, n in r["regions"]}
     lines = ["##fileformat=VCFv4.1", "##source=HipSTR",
              "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(samples)]
@@ -83,7 +106,7 @@ def vcf(records, samples=("S1",), gz=True):
 def run(records=None, panel=PANEL, read_length=None, samples=("S1",), want_rc=0, log=None):
     v = vcf(records or {}, samples)
     tsv, out_csv = v + ".tsv", v + ".csv"
-    cmd = [sys.executable, SCRIPT, "report", "--panel", panel, "--vcf", v, "--tsv", tsv, "--csv", out_csv]
+    cmd = [OG, "y", "str-report", "--panel", panel, "--vcf", v, "--tsv", tsv, "--csv", out_csv]
     if read_length:
         cmd += ["--read-length", str(read_length)]
     if log is not None:
@@ -112,7 +135,7 @@ def good(gb="0", dp="20"):
 
 
 # --- 1. the panel --------------------------------------------------------------------
-panel = yr.read_panel(PANEL)
+panel = read_panel(PANEL)
 names = [r["marker"] for r in panel]
 check("1 111 markers", len(panel), 111)
 check("1 Y-12 in FamilyTreeDNA's order", names[:12],
@@ -132,7 +155,7 @@ check("1 the multi-copy markers", multi,
       {"DYS385a", "DYS385b", "DYS459a", "DYS459b", "DYS464a", "DYS464b", "DYS464c", "DYS464d", "YCAIIa", "YCAIIb",
        "CDYa", "CDYb", "DYF395S1a", "DYF395S1b", "DYS413a", "DYS413b"})
 bed = os.path.join(TMP, "regions.bed")
-check("1 bed exits 0", yr.main(["bed", "--panel", PANEL, "--out", bed]), 0)
+check("1 bed exits 0", subprocess.run([OG, "y", "str-bed", "--panel", PANEL, "--out", bed]).returncode, 0)
 with open(bed) as f:
     bl = [line.rstrip("\n").split("\t") for line in f]
 want_regions = {n for r in panel for *_x, n in r["regions"]}
@@ -285,8 +308,9 @@ import render_report as rr  # noqa: E402
 sd = os.path.join(TMP, "sample")
 os.makedirs(os.path.join(sd, "y_str"))
 v = vcf({"DYS393": good("4"), "DYS390": ("0", "0", "0.6", "20", "0", "0")})
-yr.main(["report", "--panel", PANEL, "--vcf", v, "--tsv", os.path.join(sd, "y_str", "S1_y_str.tsv"),
-         "--csv", os.path.join(sd, "y_str", "S1_y_str.csv")])
+subprocess.run([OG, "y", "str-report", "--panel", PANEL, "--vcf", v, "--tsv",
+                os.path.join(sd, "y_str", "S1_y_str.tsv"), "--csv", os.path.join(sd, "y_str", "S1_y_str.csv")],
+               check=True, capture_output=True)
 path, data = cs.sec_y_str(sd, "S1")
 check("7 collect_summary finds the table", os.path.basename(path or ""), "S1_y_str.tsv")
 check("7 counts per confidence", (data["high"], data["low"], data["not_callable"], data["no_call"]),

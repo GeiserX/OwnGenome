@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/locityper_report.py: step 53's table from what Locityper genotype
+"""og locityper report: step 53's table from what Locityper genotype
 wrote, and its section in both reports.
 
 On Locityper output folders made up for each case, in the layout Locityper
@@ -19,8 +19,8 @@ finished locus):
      column, skips '#' lines, and exits 1 on a BED it cannot read;
   5. both reports: the card and the text section carry each locus's call,
      filter and the primary caller's call; no card without step 53's table;
-  6. control: a copy of the script whose filter passes everything fails
-     case 2, so these checks can fail;
+  6. control: a reading whose filter passes everything fails case 2, so
+     these checks can fail;
   7. scripts/run-all.sh, under the fakes of scripts/ci/fake-docker (no
      Docker, no Nextflow): a default run neither lists step 53 nor passes
      locityper to Nextflow; TOOLS naming locityper with the database
@@ -39,10 +39,13 @@ finished locus):
      a DONE that names only the .fai, which the old guard accepted, is
      refused.
 
-Run: python3 tests/test_locityper_report.py
+Cases 1 to 6 run og: without OG (the og binary) they are skipped with a
+note, and with OG_REQUIRED set too, they fail (Guard's rust job sets
+both). Cases 7 to 9 always run.
+
+Run: OG=bin/og python3 tests/test_locityper_report.py
 """
 import gzip
-import importlib.util
 import json
 import os
 import subprocess
@@ -50,9 +53,10 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "locityper_report.py")
+OG = os.environ.get("OG", "")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import locityper_report as lr  # noqa: E402
+COLUMNS = ["locus", "region", "status", "genotype", "haplotype_1", "haplotype_2", "quality", "total_reads",
+           "unexplained_reads", "weighted_distance", "warnings", "filter", "reason"]
 
 FAILS = 0
 BED = ("# a comment line\n"
@@ -99,7 +103,33 @@ def gt_dir(root, locus, result=None, success=True, raw=None, truncate=False, dam
     return root
 
 
-def cases(mod, t):
+def og(*args):
+    return subprocess.run([OG, "locityper", "report", *args], capture_output=True, text=True)
+
+
+def og_row(name, region, root, exit_code):
+    """og locityper report on one locus: its row as a dict."""
+    chrom, span = region.split(":")
+    start, end = span.split("-")
+    bed, out = root + ".bed", root + ".tsv"
+    with open(bed, "w") as f:
+        f.write(f"{chrom}\t{int(start) - 1}\t{end}\t{name}\n")
+    p = og("--gt-dir", root, "--loci", bed, "--exit-code", str(exit_code), "--out", out)
+    if p.returncode:
+        raise SystemExit(f"og locityper report failed: {p.stderr}")
+    lines = [line.rstrip("\n").split("\t") for line in open(out)]
+    return dict(zip(lines[0], lines[1]))
+
+
+def pass_everything(*args):
+    """The control: a reading whose filter passes every called locus."""
+    r = og_row(*args)
+    if r["status"] == "called":
+        r.update(filter="pass", reason=".")
+    return r
+
+
+def cases(row_for, t):
     out = []
     n = [0]
 
@@ -107,7 +137,7 @@ def cases(mod, t):
         n[0] += 1
         root = os.path.join(t, f"c{n[0]}")
         gt_dir(root, "CYP2D6", result, success, raw, truncate, damage)
-        return mod.row_for("CYP2D6", "chr22:42122285-42152960", root, exit_code)
+        return row_for("CYP2D6", "chr22:42122285-42152960", root, exit_code)
 
     r = row(res())
     out.append(("1. a clean call is called and passes, both haplotypes in their columns",
@@ -320,93 +350,12 @@ def done_guards(w):
 
 def main():
     with tempfile.TemporaryDirectory() as t:
-        for desc, ok, detail in cases(lr, os.path.join(t, "real")):
-            check(desc, ok, detail)
-
-        # 4. the CLI
-        bed = os.path.join(t, "loci.bed")
-        with open(bed, "w") as f:
-            f.write(BED)
-        root = os.path.join(t, "cli")
-        gt_dir(root, "CYP2D6", res())
-        gt_dir(root, "HLA-DQB1", res(wd=50))
-        out_tsv = os.path.join(t, "cli.tsv")
-        p = subprocess.run([sys.executable, SCRIPT, "--gt-dir", root, "--loci", bed, "--exit-code", "0",
-                            "--out", out_tsv], capture_output=True, text=True)
-        rows = [line.rstrip("\n").split("\t") for line in open(out_tsv)] if os.path.exists(out_tsv) else []
-        check("4. the CLI exits 0, one row per BED locus in its order, every column",
-              p.returncode == 0 and rows[:1] == [lr.COLUMNS] and [r[0] for r in rows[1:]] == ["HLA-DQB1", "CYP2D6", "FCGR"]
-              and all(len(r) == len(lr.COLUMNS) for r in rows) and rows[1][1] == "chr6:32652604-32669077"
-              and [r[2] for r in rows[1:]] == ["called", "called", "not called"]
-              and "2 of 3 loci called, 1 pass" in p.stdout, (p, rows))
-        badbed = os.path.join(t, "bad.bed")
-        with open(badbed, "w") as f:
-            f.write("chr6\tx\t10\tA\n")
-        p = subprocess.run([sys.executable, SCRIPT, "--gt-dir", root, "--loci", badbed, "--out",
-                            os.path.join(t, "bad.tsv")], capture_output=True, text=True)
-        check("4. a BED it cannot read exits 1", p.returncode == 1 and "ERROR" in p.stderr, p)
-
-        # 5. the reports
-        import collect_summary
-        import render_report
-
-        sd = os.path.join(t, "s", "S")
-        os.makedirs(os.path.join(sd, "locityper"))
-        lr.main(["--gt-dir", root, "--loci", bed, "--out", os.path.join(sd, "locityper", "S_locityper.tsv")])
-        s = collect_summary.collect("S", sd)
-        txt, html = render_report.text_report(s), render_report.html_report(s)
-        sec = s["sections"].get("locityper", {})
-        check("5. the section is read, with the counts",
-              sec.get("state") == "ok" and sec["data"]["called"] == 2 and sec["data"]["passed"] == 1, sec)
-        check("5. each locus carries the primary caller's call",
-              [x.get("primary", "")[:5] for x in sec["data"]["loci"]] == ["T1K (", "pypgx", "no ot"], sec["data"])
-        check("5. the text section has the calls, the filter and the primary caller",
-              "## Locityper Second Opinion at Hard Loci (step 53)" in txt and "HG00733.1 + NA19240.2" in txt
-              and "filter fail: weighted distance 50.00" in txt and "primary:   no other step calls FCGR" in txt
-              and "not called: Locityper wrote no result" in txt, txt)
-        check("5. the HTML card has the table and the filter badges",
-              "Locityper Second Opinion at Hard Loci</h2>" in html and 'badge-green">pass<' in html
-              and 'badge-yellow">fail<' in html and "<th>Primary caller</th>" in html, html[-3000:])
-        os.makedirs(os.path.join(sd, "cyrius"))
-        with open(os.path.join(sd, "cyrius", "S_cyp2d6.tsv"), "w") as f:
-            f.write("Sample\tGenotype\tFilter\nS\tfixture_call\tLowQ_high_CN\n")
-        s = collect_summary.collect("S", sd)
-        cyp = [x for x in s["sections"]["locityper"]["data"]["loci"] if x["locus"] == "CYP2D6"][0]
-        check("5. a Cyrius call without Filter PASS is shown as not usable, as the CYP2D6 block does",
-              "Cyrius (step 21): fixture_call (not usable: Filter LowQ_high_CN)" in cyp["primary"], cyp)
-        os.makedirs(os.path.join(sd, "logs"))
-        import time
-        with open(os.path.join(sd, "logs", "run_status.tsv"), "w") as f:
-            f.write(f"meta\tstarted_epoch\t{time.time() + 60}\nstep\t53\tok\n")
-        s = collect_summary.collect("S", sd)
-        cyp = [x for x in s["sections"]["locityper"]["data"]["loci"] if x["locus"] == "CYP2D6"][0]
-        check("5. a primary call older than the last run says it is stale", "(stale: from an earlier run)" in cyp["primary"],
-              (s["sections"]["cyrius"]["state"], cyp))
-        hla = {"loci": [{"gene": "DRB1", "alleles": ["*15:01", "*03:01"], "low_confidence": True},
-                        {"gene": "DQB1", "alleles": ["*06:02", "*02:01"], "low_confidence": False}]}
-        prim = collect_summary.locityper_primary({"hla": {"state": "ok", "data": hla}, "pypgx": {"state": "missing"},
-                                                  "cyrius": {"state": "missing"}})
-        check("5. a low-confidence T1K call says so in the primary text, a confident one does not",
-              prim["HLA-DRB1"] == "T1K (step 08): *15:01/*03:01 (low confidence)"
-              and prim["HLA-DQB1"] == "T1K (step 08): *06:02/*02:01", prim)
-        os.makedirs(os.path.join(t, "none", "S"))
-        s = collect_summary.collect("S", os.path.join(t, "none", "S"))
-        check("5. without step 53 there is no card and no text section",
-              "Locityper Second Opinion" not in render_report.html_report(s)
-              and "Locityper Second Opinion" not in render_report.text_report(s))
-
-        # 6. control: a copy whose filter passes everything
-        src = open(SCRIPT).read()
-        cond = 'return ("fail" if why else "pass"), "; ".join(why)'
-        check("6. control: the line to break is in the script", cond in src)
-        broken = os.path.join(t, "locityper_report_broken.py")
-        with open(broken, "w") as f:
-            f.write(src.replace(cond, 'return "pass", ""'))
-        spec = importlib.util.spec_from_file_location("locityper_report_broken", broken)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        failed = [desc for desc, ok, _ in cases(mod, os.path.join(t, "broken")) if not ok]
-        check("6. control: the broken copy fails the filter cases", any(x.startswith("2.") for x in failed), failed)
+        if OG:
+            og_cases(t)
+        elif os.environ.get("OG_REQUIRED"):
+            check("OG names the og binary (OG_REQUIRED is set)", False)
+        else:
+            print("skip: cases 1 to 6 need OG (OG=bin/og)")
 
         # 7. run-all.sh plans step 53 only when TOOLS names it
         plan_checks(os.path.join(t, "plan"))
@@ -416,6 +365,86 @@ def main():
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
     return 1 if FAILS else 0
+
+
+def og_cases(t):
+    """Cases 1 to 6, on og."""
+    for desc, ok, detail in cases(og_row, os.path.join(t, "real")):
+        check(desc, ok, detail)
+
+    # 4. the CLI
+    bed = os.path.join(t, "loci.bed")
+    with open(bed, "w") as f:
+        f.write(BED)
+    root = os.path.join(t, "cli")
+    gt_dir(root, "CYP2D6", res())
+    gt_dir(root, "HLA-DQB1", res(wd=50))
+    out_tsv = os.path.join(t, "cli.tsv")
+    p = og("--gt-dir", root, "--loci", bed, "--exit-code", "0", "--out", out_tsv)
+    rows = [line.rstrip("\n").split("\t") for line in open(out_tsv)] if os.path.exists(out_tsv) else []
+    check("4. the CLI exits 0, one row per BED locus in its order, every column",
+          p.returncode == 0 and rows[:1] == [COLUMNS] and [r[0] for r in rows[1:]] == ["HLA-DQB1", "CYP2D6", "FCGR"]
+          and all(len(r) == len(COLUMNS) for r in rows) and rows[1][1] == "chr6:32652604-32669077"
+          and [r[2] for r in rows[1:]] == ["called", "called", "not called"]
+          and "2 of 3 loci called, 1 pass" in p.stdout, (p, rows))
+    badbed = os.path.join(t, "bad.bed")
+    with open(badbed, "w") as f:
+        f.write("chr6\tx\t10\tA\n")
+    p = og("--gt-dir", root, "--loci", badbed, "--out", os.path.join(t, "bad.tsv"))
+    check("4. a BED it cannot read exits 1", p.returncode == 1 and "ERROR" in p.stderr, p)
+
+    # 5. the reports
+    import collect_summary
+    import render_report
+
+    sd = os.path.join(t, "s", "S")
+    os.makedirs(os.path.join(sd, "locityper"))
+    og("--gt-dir", root, "--loci", bed, "--out", os.path.join(sd, "locityper", "S_locityper.tsv"))
+    s = collect_summary.collect("S", sd)
+    txt, html = render_report.text_report(s), render_report.html_report(s)
+    sec = s["sections"].get("locityper", {})
+    check("5. the section is read, with the counts",
+          sec.get("state") == "ok" and sec["data"]["called"] == 2 and sec["data"]["passed"] == 1, sec)
+    check("5. each locus carries the primary caller's call",
+          [x.get("primary", "")[:5] for x in sec["data"]["loci"]] == ["T1K (", "pypgx", "no ot"], sec["data"])
+    check("5. the text section has the calls, the filter and the primary caller",
+          "## Locityper Second Opinion at Hard Loci (step 53)" in txt and "HG00733.1 + NA19240.2" in txt
+          and "filter fail: weighted distance 50.00" in txt and "primary:   no other step calls FCGR" in txt
+          and "not called: Locityper wrote no result" in txt, txt)
+    check("5. the HTML card has the table and the filter badges",
+          "Locityper Second Opinion at Hard Loci</h2>" in html and 'badge-green">pass<' in html
+          and 'badge-yellow">fail<' in html and "<th>Primary caller</th>" in html, html[-3000:])
+    os.makedirs(os.path.join(sd, "cyrius"))
+    with open(os.path.join(sd, "cyrius", "S_cyp2d6.tsv"), "w") as f:
+        f.write("Sample\tGenotype\tFilter\nS\tfixture_call\tLowQ_high_CN\n")
+    s = collect_summary.collect("S", sd)
+    cyp = [x for x in s["sections"]["locityper"]["data"]["loci"] if x["locus"] == "CYP2D6"][0]
+    check("5. a Cyrius call without Filter PASS is shown as not usable, as the CYP2D6 block does",
+          "Cyrius (step 21): fixture_call (not usable: Filter LowQ_high_CN)" in cyp["primary"], cyp)
+    os.makedirs(os.path.join(sd, "logs"))
+    import time
+    with open(os.path.join(sd, "logs", "run_status.tsv"), "w") as f:
+        f.write(f"meta\tstarted_epoch\t{time.time() + 60}\nstep\t53\tok\n")
+    s = collect_summary.collect("S", sd)
+    cyp = [x for x in s["sections"]["locityper"]["data"]["loci"] if x["locus"] == "CYP2D6"][0]
+    check("5. a primary call older than the last run says it is stale", "(stale: from an earlier run)" in cyp["primary"],
+          (s["sections"]["cyrius"]["state"], cyp))
+    hla = {"loci": [{"gene": "DRB1", "alleles": ["*15:01", "*03:01"], "low_confidence": True},
+                    {"gene": "DQB1", "alleles": ["*06:02", "*02:01"], "low_confidence": False}]}
+    prim = collect_summary.locityper_primary({"hla": {"state": "ok", "data": hla}, "pypgx": {"state": "missing"},
+                                              "cyrius": {"state": "missing"}})
+    check("5. a low-confidence T1K call says so in the primary text, a confident one does not",
+          prim["HLA-DRB1"] == "T1K (step 08): *15:01/*03:01 (low confidence)"
+          and prim["HLA-DQB1"] == "T1K (step 08): *06:02/*02:01", prim)
+    os.makedirs(os.path.join(t, "none", "S"))
+    s = collect_summary.collect("S", os.path.join(t, "none", "S"))
+    check("5. without step 53 there is no card and no text section",
+          "Locityper Second Opinion" not in render_report.html_report(s)
+          and "Locityper Second Opinion" not in render_report.text_report(s))
+
+    # 6. control: a reading whose filter passes everything
+    failed = [desc for desc, ok, _ in cases(pass_everything, os.path.join(t, "broken")) if not ok]
+    check("6. control: the broken reading fails the filter cases", any(x.startswith("2.") for x in failed), failed)
 
 
 if __name__ == "__main__":

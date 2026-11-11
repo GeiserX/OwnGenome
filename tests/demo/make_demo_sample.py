@@ -25,13 +25,13 @@ Borrowed, not rewritten:
   - step 33's mosaic rows come from bin/mosaic_sex_loss.py, step 26b's painting
     from bin/ancestry_fine_report.py, step 35b's table from
     bin/paraphase_report.py, step 39's from bin/couple_report.py and step 42's
-    from bin/traits_report.py, each fed made-up inputs; step 45's rows come
-    from bin/ystr_report.py's marker_row, step 46's from bin/lpa_kiv2.py's
-    assess, step 35's HBA1/HBA2 table from bin/hba_copy_number.py's assess,
-    step 49's depth rows from bin/chip_report.py's detection_limit, step 50's
-    tables from bin/mei_report.py on a made-up VCF and depth, and
-    step 47's from bin/viral_report.py's build_rows, with made-up counts; steps 02, 40 and 41's tables are written here in their writers'
-    columns.
+    from bin/traits_report.py, each fed made-up inputs; step 46's rows come
+    from bin/lpa_kiv2.py's assess, step 35's HBA1/HBA2 table from
+    bin/hba_copy_number.py's assess, step 49's depth rows from
+    bin/chip_report.py's detection_limit, with made-up counts; the tables of
+    steps 02, 40, 41, 45, 47, 48, 50, 51, 52 and 53 are written here, in the
+    columns their writers use (og for 45 to 53), with the values those
+    writers give for the made-up inputs named in each function.
 
 DEMO-001 carries every section, so every card is in the pictures: also the
 Paraphase card (a PacBio HiFi step, though the invented reads are short) and
@@ -1012,39 +1012,53 @@ TRAIT_ALT_COPIES = {
 
 
 def y_str(d, rng):
-    """Step 45: one row per marker of assets/ystr_panel.tsv from bin/ystr_report.py's
-    marker_row, so the multi-copy, absent and too-long markers read not callable
-    as in a real run; every other marker gets a made-up count at confidence high."""
-    import ystr_report
-    rows = []
-    for r in ystr_report.read_panel(os.path.join(REPO, "assets", "ystr_panel.tsv")):
-        row = ystr_report.marker_row(r, {}, 150)
-        if row["confidence"] == "no call":
+    """Step 45: one row per marker of assets/ystr_panel.tsv in the columns of
+    og y str-report. The multi-copy, absent and too-long markers (a repeat
+    with its 10-base flanks longer than 150 bp reads) read not callable, with
+    og's notes, as in a real run; every other marker gets a made-up count at
+    confidence high."""
+    with open(os.path.join(REPO, "assets", "ystr_panel.tsv"), encoding="utf-8") as f:
+        lines = [x.rstrip("\n").split("\t") for x in f if x.strip() and not x.startswith("#")]
+    cols = ["order", "panel", "marker", "count", "confidence", "reads", "stutter_reads", "flank_indel_reads", "q",
+            "note"]
+    out = ["\t".join(cols) + "\n"]
+    for c in lines[1:]:
+        r = dict(zip(lines[0], c))
+        row = dict.fromkeys(cols, "")
+        row.update(order=r["order"], panel=r["panel"], marker=r["marker"], confidence="not callable")
+        spans = [[int(x) for x in part.split("/")[0].split(":")[1].split("-")]
+                 for part in ([] if r["regions"] == "." else r["regions"].split(";"))]
+        if r["kind"] == "span":  # one region over the whole locus
+            spans = [[spans[0][0], spans[-1][1]]]
+        longest = max((e - b + 1 for b, e in spans), default=0)
+        if r["kind"] == "multicopy":
+            row["note"] = "not callable from short reads: a multi-copy marker in duplicated Y sequence"
+        elif r["kind"] == "absent":
+            row["note"] = "not callable: no region for it in the HipSTR marker set"
+        elif longest + 2 * 10 > 150:
+            row["note"] = (f"not callable from short reads: a {longest} bp repeat is longer than 150 bp reads can "
+                           f"span with 10 bases on each side")
+        else:
             row.update(count=str(rng.randint(10, 30)), confidence="high", reads=str(rng.randint(18, 34)),
                        stutter_reads="0", flank_indel_reads="0", q="0.99", note=".")
-        rows.append(row)
-    put(os.path.join(d, "y_str", f"{SAMPLE}_y_str.tsv"),
-        "\t".join(ystr_report.TSV_COLUMNS) + "\n"
-        + "".join("\t".join(row[k] for k in ystr_report.TSV_COLUMNS) + "\n" for row in rows))
+        out.append("\t".join(row[k] for k in cols) + "\n")
+    put(os.path.join(d, "y_str", f"{SAMPLE}_y_str.tsv"), "".join(out))
 
 
 def viral(d):
-    """Step 47: bin/viral_report.py's build_rows on made-up coverage: the lab's
-    phiX control, a few Epstein-Barr reads, no HHV-6, at a human depth of 31."""
-    import csv
-    import viral_report as vr
-    genomes = [("NC_001664.4", "Human herpesvirus 6A, complete genome", 159378, 0, (0.0, 0.0, 0)),
-               ("NC_000898.1", "Human herpesvirus 6B, complete genome", 162114, 0, (0.0, 0.0, 0)),
-               ("NC_007605.1", "Human gammaherpesvirus 4, complete genome", 171823, 7, (0.0041, 0.006, 0)),
-               ("NC_001422.1", "Escherichia phage phiX174, complete genome", 5386, 1412, (1.0, 38.2, 37))]
-    rows = vr.build_rows([(a, t) for a, t, *_ in genomes],
-                         {a: {"reads": n, "length": ln} for a, _, ln, n, _ in genomes},
-                         {a: dep for a, *_, dep in genomes}, 31.0)
-    os.makedirs(os.path.join(d, "viral"), exist_ok=True)
-    with open(os.path.join(d, "viral", f"{SAMPLE}_viral.tsv"), "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=vr.HEADER, delimiter="\t", lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
+    """Step 47: what og viral report writes for made-up coverage: no HHV-6,
+    7 Epstein-Barr reads (under the 10 reads of a call), and the lab's phiX
+    control, at a human depth of 31."""
+    head = ("virus\taccession\tlength\treads\tbreadth\tmean_depth\tmode_depth\thuman_depth\trelative_depth"
+            "\tcopies_per_cell\tcall\tnote\n")
+    rows = [("HHV-6A", "NC_001664.4", "159378", "0", "0.0000", "0.000", "0", "0.000", "0.0000", "not found", ""),
+            ("HHV-6B", "NC_000898.1", "162114", "0", "0.0000", "0.000", "0", "0.000", "0.0000", "not found", ""),
+            ("Human gammaherpesvirus 4", "NC_007605.1", "171823", "7", "0.0041", "0.006", "0", "0.000", "0.0004",
+             "not found", ""),
+            ("Escherichia phage phiX174", "NC_001422.1", "5386", "1412", "1.0000", "38.200", "37", "1.194", "2.4645",
+             "lab control (phiX)", "Illumina adds phiX to the run as a control: these reads were added in the lab.")]
+    put(os.path.join(d, "viral", f"{SAMPLE}_viral.tsv"),
+        head + "".join("\t".join(r[:7] + ("31.00",) + r[7:]) + "\n" for r in rows))
 
 
 def lpa(d, rng):
@@ -1153,43 +1167,42 @@ def ancient(d, rng):
 
 
 def exomiser(d):
-    """Step 48: bin/exomiser_report.py's top_rows and words on made-up Exomiser
-    rows for two searched symptoms: two weak candidates of uncertain
-    significance, the shape of a search that finds nothing to act on. DEMO-003's
-    search also ranks the planted gene (PLANTED) third, at the planted hit: a
-    symptom search can rank the gene of a result his page keeps closed."""
-    import exomiser_report as er
-    terms = [{"hpo_id": "HP:0001250", "label": "Seizure", "given_as": "HP:0001250"},
-             {"hpo_id": "HP:0002315", "label": "Headache", "given_as": "HP:0002315"}]
-
-    def row(rank, gene, moi, scores, contig, start, ref, alt, gt, cls, hgvs, disease_id, disease):
-        r = dict.fromkeys(er.NEED, "")
-        r.update({"#RANK": str(rank), "GENE_SYMBOL": gene, "MOI": moi, "P-VALUE": scores[3],
-                  "EXOMISER_GENE_COMBINED_SCORE": scores[0], "EXOMISER_GENE_PHENO_SCORE": scores[1],
-                  "EXOMISER_GENE_VARIANT_SCORE": scores[2], "CONTRIBUTING_VARIANT": "1", "CONTIG": contig,
-                  "START": str(start), "REF": ref, "ALT": alt, "GENOTYPE": gt, "FUNCTIONAL_CLASS": cls,
-                  "HGVS": hgvs, "EXOMISER_ACMG_CLASSIFICATION": "UNCERTAIN_SIGNIFICANCE",
-                  "EXOMISER_ACMG_DISEASE_ID": disease_id, "EXOMISER_ACMG_DISEASE_NAME": disease,
-                  "CLINVAR_PRIMARY_INTERPRETATION": "NOT_PROVIDED", "MAX_FREQ_SOURCE": "GNOMAD_E_NFE",
-                  "MAX_FREQ": "0.0123"})
-        return r
-    rows = er.top_rows([
-        row(1, "SCN1A", "AD", ("0.412", "0.788", "0.534", "0.021"), "2", 165991230, "C", "T", "0/1",
-            "missense_variant", "SCN1A:ENST00000674923.1:c.3199G>A:p.(Ala1067Thr)", "OMIM:607208",
-            "Dravet syndrome"),
-        row(2, "CACNA1A", "AD", ("0.297", "0.701", "0.421", "0.048"), "19", 13299371, "G", "A", "0/1",
-            "missense_variant", "CACNA1A:ENST00000360228.11:c.2134C>T:p.(Arg712Cys)", "OMIM:141500",
-            "Migraine, familial hemiplegic, 1")]
-        + ([row(3, PLANTED["gene"], "AD", ("0.205", "0.512", "0.399", "0.061"), PLANTED["hit"][0].removeprefix("chr"),
-                PLANTED["hit"][1], PLANTED["hit"][2], PLANTED["hit"][3], "0/1", "missense_variant",
-                f"{PLANTED['gene']}:ENST00000262186.10:c.1C>T:p.(Met1?)", "OMIM:613688", "Long QT syndrome 2")]
-           if has("act") else []), 10)
+    """Step 48: what og exomiser report writes for made-up Exomiser rows for
+    two searched symptoms: two weak candidates of uncertain significance, the
+    shape of a search that finds nothing to act on. DEMO-003's search also
+    ranks the planted gene (PLANTED) third, at the planted hit: a symptom
+    search can rank the gene of a result his page keeps closed."""
+    terms = [("HP:0001250", "Seizure"), ("HP:0002315", "Headache")]
+    # rank, gene, (exomiser, phenotype, variant, p), variant, HGVS, disease
+    ranks = [(1, "SCN1A", ("0.412", "0.788", "0.534", "0.021"), "2:165991230 C>T",
+              "SCN1A:ENST00000674923.1:c.3199G>A:p.(Ala1067Thr)", "Dravet syndrome (OMIM:607208)"),
+             (2, "CACNA1A", ("0.297", "0.701", "0.421", "0.048"), "19:13299371 G>A",
+              "CACNA1A:ENST00000360228.11:c.2134C>T:p.(Arg712Cys)", "Migraine, familial hemiplegic, 1 (OMIM:141500)")]
+    if has("act"):
+        c, pos, ref, alt = PLANTED["hit"]
+        ranks.append((3, PLANTED["gene"], ("0.205", "0.512", "0.399", "0.061"),
+                      f"{c.removeprefix('chr')}:{pos} {ref}>{alt}",
+                      f"{PLANTED['gene']}:ENST00000262186.10:c.1C>T:p.(Met1?)", "Long QT syndrome 2 (OMIM:613688)"))
+    freq = "GNOMAD_E_NFE 0.0123%"
+    top = ["rank\tgene\tmoi\texomiser_score\tphenotype_score\tvariant_score\tp_value\tvariant\tgenotype"
+           "\tconsequence\thgvs\tacmg\tacmg_evidence\tdisease\tclinvar\tmax_frequency\n"]
+    words = ["Symptoms searched: " + ", ".join(f"{label} ({t})" for t, label in terms) + "."]
+    for rank, gene, sc, var, hgvs, disease in ranks:
+        top.append("\t".join([str(rank), gene, "AD", *sc, var, "0/1", "missense_variant", hgvs,
+                              "UNCERTAIN_SIGNIFICANCE", ".", disease, ".", freq]) + "\n")
+        words.append(f"{rank}. {gene} (autosomal dominant): Exomiser score {sc[0]} (symptom match {sc[1]}, variant "
+                     f"{sc[2]}). {var} heterozygous, missense_variant {hgvs}, ACMG uncertain significance, linked "
+                     f"disease {disease}, highest population frequency {freq}.")
+    words.append("A ranking to bring to a clinical geneticist, not a diagnosis. A high score means a rare variant, "
+                 "predicted to be damaging, in a gene linked to symptoms like the ones given; it does not show that "
+                 "the variant causes them. A low score or an empty list does not rule a genetic cause out: this "
+                 "search reads coding and splice variants against the terms given, and not structural variants, "
+                 "repeat expansions, mitochondrial heteroplasmy or variants outside genes.")
     out = os.path.join(d, "exomiser")
     put(os.path.join(out, f"{SAMPLE}_exomiser_terms.tsv"),
-        "\t".join(er.TERMS_HEADER) + "\n" + "".join("\t".join(t[k] for k in er.TERMS_HEADER) + "\n" for t in terms))
-    put(os.path.join(out, f"{SAMPLE}_exomiser_top.tsv"),
-        "\t".join(er.OUT_HEADER) + "\n" + "".join("\t".join(r[k] for k in er.OUT_HEADER) + "\n" for r in rows))
-    put(os.path.join(out, f"{SAMPLE}_exomiser.txt"), "\n".join(er.words(rows, terms)) + "\n")
+        "hpo_id\tlabel\tgiven_as\n" + "".join(f"{t}\t{label}\t{t}\n" for t, label in terms))
+    put(os.path.join(out, f"{SAMPLE}_exomiser_top.tsv"), "".join(top))
+    put(os.path.join(out, f"{SAMPLE}_exomiser.txt"), "\n".join(words) + "\n")
 
 
 def traits(d):
@@ -1209,95 +1222,83 @@ def traits(d):
 
 
 def mocha(d):
-    """Step 51: bin/mocha_report.py's report on made-up MoChA tables for a
-    30x genome with no mosaic call: chr1 to chr22 read, the sample filter met."""
-    import mocha_report as mr
-    stats = [{"sample_id": SAMPLE, "call_rate": "0.9981", "cov_median": "31", "baf_auto": "0.0124",
-              "n_hets": "2100000"}]
-    sites = [(f"chr{i}", 10001, 10001 + 100_000_000, 120_000, 95_000, 94_000) for i in range(1, 23)]
-    calls = []
+    """Step 51: what og mocha report writes for made-up MoChA tables of a 30x
+    genome (chr1 to chr22 read, 95,000 hets per chromosome of 100 Mb, the
+    sample filter met), with no mosaic call; DEMO-002's carries a loss of 20q
+    in about 12% of the blood cells, which MoChA's filters keep and the floor
+    lets through."""
+    calls = ("chrom\tstart\tend\tlength_mb\tarms\ttype\tcell_fraction\tbdev\trel_cov\tn_hets\tlod_baf_phase"
+             "\tlod_lrr_baf\treported\treason\n")
     if has("mocha"):
-        # A loss of 20q in about 12% of the blood cells, which MoChA's filters keep and the floor lets through.
-        calls.append({"sample_id": SAMPLE, "chrom": "chr20", "beg_GRCh38": "30100000", "end_GRCh38": "42300000",
-                      "length": "12200000", "p_arm": "N", "q_arm": "Y", "type": "Loss", "cf": "0.120",
-                      "bdev": "0.031", "bdev_se": "0.004", "n50_hets": "350000", "lod_baf_conc": "nan",
-                      "rel_cov": "1.86", "lod_baf_phase": "48.2", "lod_lrr_baf": "35.1", "n_hets": "4210"})
-    rows, summary = mr.report(SAMPLE, calls, stats, sites, "beagle")
-    os.makedirs(os.path.join(d, "mosaic"), exist_ok=True)
-    with open(os.path.join(d, "mosaic", f"{SAMPLE}_mocha.tsv"), "w", encoding="utf-8") as f:
-        f.write("\t".join(mr.CALL_COLUMNS) + "\n")
-        for x in rows:
-            f.write("\t".join(str(x[k]) for k in mr.CALL_COLUMNS) + "\n")
-    with open(os.path.join(d, "mosaic", f"{SAMPLE}_mocha_summary.tsv"), "w", encoding="utf-8") as f:
-        f.write("metric\tvalue\n")
-        for k, v in summary.items():
-            f.write(f"{k}\t{v}\n")
+        calls += "chr20\t30100000\t42300000\t12.20\t20q\tloss\t0.120\t0.0310\t1.8600\t4210\t48.2\t35.1\tyes\t.\n"
+    n = "1" if has("mocha") else "0"
+    summary = [("status", "assessed"), ("message", "."), ("depth", "31.0"), ("het_sites", "2090000"),
+               ("phased_het_sites", "2068000"), ("het_per_10mb", "9500"), ("analysed_mb", "2200.0"),
+               ("chromosomes", ",".join(f"chr{i}" for i in range(1, 23))), ("call_rate", "0.9981"),
+               ("baf_auto", "0.0124"), ("floor_read", "0.011"), ("floor_min", "0.05"), ("floor", "0.050"),
+               ("calls_mocha", n), ("calls_reported", n), ("phasing", "beagle")]
+    put(os.path.join(d, "mosaic", f"{SAMPLE}_mocha.tsv"), calls)
+    put(os.path.join(d, "mosaic", f"{SAMPLE}_mocha_summary.tsv"),
+        "metric\tvalue\n" + "".join(f"{k}\t{v}\n" for k, v in summary))
 
 
 def vntyper(d):
-    """Step 52: bin/vntyper_report.py's reading of a made-up VNtyper run with
-    no MUC1 frameshift at a depth its coverage check passes."""
-    import tempfile
-    import vntyper_report as vr
-    with tempfile.TemporaryDirectory() as run:
-        put(os.path.join(run, "kestrel", "kestrel_result.tsv"),
-            "Motif\tVariant\tConfidence\tFlag\nnone\tNone\tNegative\tNot flagged\n")
-        put(os.path.join(run, "coverage", "coverage_summary.tsv"),
-            "mean\tpercent_uncovered\tcoverage_qc\n212.4\t0.0\tPASS\n")
-        t = vr.read(run, 0)
-    os.makedirs(os.path.join(d, "vntyper"), exist_ok=True)
-    with open(os.path.join(d, "vntyper", f"{SAMPLE}_vntyper.tsv"), "w", encoding="utf-8") as f:
-        f.write("metric\tvalue\n")
-        for k in vr.FIELDS:
-            f.write(f"{k}\t{t[k]}\n")
+    """Step 52: what og vntyper report writes for a made-up VNtyper run with
+    no MUC1 frameshift, at a VNTR depth of 212x that its coverage check
+    passes."""
+    rows = [("status", "negative"), ("confidence", "Negative"), ("variant", "."), ("flag", "."),
+            ("alt_depth", "."), ("region_depth", "."), ("depth_score", "."), ("vntr_mean_depth", "212.40"),
+            ("vntr_uncovered_pct", "0.00"), ("coverage_qc", "PASS"),
+            ("sensitivity", "Mean depth over the MUC1 VNTR: 212x. At that depth (at 100x or more) VNtyper found the "
+             "known variant in 160 of 161 runs (99%), in VNtyper 2.0.47's downsampling of 42 confirmed positive "
+             "GRCh38 exomes (repeated runs, not independent tests)."),
+            ("message", "VNtyper calls no MUC1 VNTR frameshift."),
+            ("advice", "A negative here lowers the chance of the frameshifts VNtyper looks for; it does not rule "
+             "ADTKD-MUC1 out. A family history of kidney failure with gout or a bland urine sediment still deserves "
+             "a clinical test (SNaPshot for dupC).")]
+    put(os.path.join(d, "vntyper", f"{SAMPLE}_vntyper.tsv"), "metric\tvalue\n" + "".join(f"{k}\t{v}\n" for k, v in rows))
 
 
 def locityper(d, rng):
-    """Step 53: bin/locityper_report.py's reading of a made-up Locityper run
+    """Step 53: what og locityper report writes for a made-up Locityper run
     that called every locus of assets/locityper_loci.bed with two HPRC panel
-    haplotypes and passed the authors' filter."""
-    import gzip
-    import tempfile
-    import locityper_report as lr
-    loci_path = os.path.join(REPO, "assets", "locityper_loci.bed")
+    haplotypes, made-up qualities and read counts, and passed the authors'
+    filter (no warning, a weighted distance under 30, few unexplained reads)."""
     panel = ["HG00438.1", "HG00733.2", "HG01891.1", "HG02257.2", "NA18906.1", "NA19240.2"]
-    out = os.path.join(d, "locityper")
-    os.makedirs(out, exist_ok=True)
-    with tempfile.TemporaryDirectory() as run:
-        for name, _ in lr.read_loci(loci_path):
-            res = {"genotype": ",".join(rng.sample(panel, 2)), "quality": round(rng.uniform(25, 60), 1),
-                   "total_reads": rng.randint(800, 4000), "unexpl_reads": rng.randint(0, 30),
-                   "weight_dist": round(rng.uniform(0.1, 3), 3)}
-            put(os.path.join(run, "loci", name, "success"), "")
-            with gzip.open(os.path.join(run, "loci", name, "res.json.gz"), "wt") as f:
-                json.dump(res, f)
-        if lr.main(["--gt-dir", run, "--loci", loci_path, "--out", os.path.join(out, f"{SAMPLE}_locityper.tsv")]):
-            raise SystemExit("locityper_report failed")
+    out = ["locus\tregion\tstatus\tgenotype\thaplotype_1\thaplotype_2\tquality\ttotal_reads\tunexplained_reads"
+           "\tweighted_distance\twarnings\tfilter\treason\n"]
+    with open(os.path.join(REPO, "assets", "locityper_loci.bed")) as f:
+        for line in f:
+            if not line.strip() or line.startswith("#"):
+                continue
+            chrom, start, end, name = line.rstrip("\n").split("\t")[:4]
+            haps = rng.sample(panel, 2)
+            quality, total = round(rng.uniform(25, 60), 1), rng.randint(800, 4000)
+            unexpl, dist = rng.randint(0, 30), round(rng.uniform(0.1, 3), 3)
+            out.append("\t".join([name, f"{chrom}:{int(start) + 1}-{end}", "called", ",".join(haps), *haps,
+                                  f"{quality:.1f}", str(total), str(unexpl), f"{dist:.3f}", ".", "pass", "."]) + "\n")
+    put(os.path.join(d, "locityper", f"{SAMPLE}_locityper.tsv"), "".join(out))
 
 
 def mei(d, rng):
-    """Step 50: bin/mei_report.py run on a made-up MEGAnE VCF (a few Alu and L1
-    insertions away from the catalog) and a made-up bedcov near 31x over every
-    window of assets/mei_sites.tsv, so every catalog row reads "not seen"."""
-    import tempfile
-    import mei_report
-    sites_path = os.path.join(REPO, "assets", "mei_sites.tsv")
-    sites = mei_report.read_sites(sites_path)
-    out = os.path.join(d, "mei")
-    os.makedirs(out, exist_ok=True)
-    with tempfile.TemporaryDirectory() as t:
-        vcf, depth = os.path.join(t, "megane.vcf"), os.path.join(t, "depth.tsv")
-        recs = [("chr3", 41258120, "SINE/Alu", "AluYa5"), ("chr7", 102931455, "SINE/Alu", "AluYb8"),
-                ("chr11", 63044871, "LINE/L1", "L1HS")]
-        put(vcf, "##fileformat=VCFv4.1\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + SAMPLE + "\n"
-            + "".join(f"{c}\t{p}\t.\tN\t<INS:ME>\t.\tPASS\tSVTYPE={e};MEPRED=PASS;MEI={s};CN_conf=H\tGT:CN\t0/1:1\n"
-                      for c, p, e, s in recs))
-        put(depth, "".join(f"{r['chrom']}\t{r['start']}\t{r['end']}\t{r['gene']}\t"
-                           f"{round((int(r['end']) - int(r['start'])) * rng.uniform(28, 34))}\t500\n" for r in sites))
-        if mei_report.main(["--sample", SAMPLE, "--vcf", vcf, "--sites", sites_path, "--depth", depth,
-                            "--out-calls", os.path.join(out, f"{SAMPLE}_mei.tsv"),
-                            "--out-sites", os.path.join(out, f"{SAMPLE}_mei_sites.tsv")]):
-            raise SystemExit("mei_report failed")
+    """Step 50: what og mei report writes for a made-up MEGAnE VCF (two Alu
+    and one L1 insertion, away from the catalog) and a made-up depth near 31x
+    over every window of assets/mei_sites.tsv, so every catalog row reads
+    "not seen"."""
+    calls = ["chrom\tpos\tend\telement\tsubfamily\tcopies\tfilter\tconfidence\tgenes\tlocation\tbenign_af"
+             "\tacmg_class\n"]
+    for c, p, e, sub in (("chr3", 41258120, "Alu", "AluYa5"), ("chr7", 102931455, "Alu", "AluYb8"),
+                         ("chr11", 63044871, "L1", "L1HS")):
+        calls.append(f"{c}\t{p}\t{p}\t{e}\t{sub}\t1\tPASS\tH\t.\t.\t.\t.\n")
+    with open(os.path.join(REPO, "assets", "mei_sites.tsv")) as f:
+        lines = [x.rstrip("\n") for x in f if x.strip() and not x.startswith("#")]
+    sites = [lines[0] + "\tstatus\tmean_depth\tcall\n"]
+    for line in lines[1:]:
+        start, end = (int(x) for x in line.split("\t")[2:4])
+        mean = round((end - start) * rng.uniform(28, 34)) / (end - start)
+        sites.append(f"{line}\tnot seen\t{mean:.1f}\t.\n")
+    put(os.path.join(d, "mei", f"{SAMPLE}_mei.tsv"), "".join(calls))
+    put(os.path.join(d, "mei", f"{SAMPLE}_mei_sites.tsv"), "".join(sites))
 
 
 def run_status(d, started):
