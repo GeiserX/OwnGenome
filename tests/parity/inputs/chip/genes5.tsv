@@ -1,0 +1,7 @@
+gene	truncating	missense	note	pmids
+DNMT3A	all	R882	n	25426837
+JAK2	none	V617F	n	15858187
+TET2	all	none	n	25426837
+PPM1D	exons:6-6	none	n	23242139
+TP53	all	102-292	n	8023157
+SF3B1	none	K700	n	21995386

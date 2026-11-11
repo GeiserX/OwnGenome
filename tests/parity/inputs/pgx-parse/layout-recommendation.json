@@ -1,0 +1,14 @@
+{
+ "genes": {
+  "DPYD": {
+   "recommendationDiplotypes": [
+    {
+     "label": "c.1905+1G>A/Reference",
+     "phenotypes": [
+      "Intermediate Metabolizer"
+     ]
+    }
+   ]
+  }
+ }
+}

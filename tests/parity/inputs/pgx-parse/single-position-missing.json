@@ -1,0 +1,47 @@
+{
+ "genes": {
+  "CYP4F2": {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "Unknown"
+     },
+     "allele2": {
+      "name": "Unknown"
+     },
+     "label": "Unknown/Unknown",
+     "phenotypes": []
+    }
+   ],
+   "variants": [
+    {
+     "position": 1,
+     "dbSnpId": "rs0000001",
+     "call": "G/A"
+    },
+    {
+     "position": 2,
+     "dbSnpId": "rs2108622",
+     "call": null,
+     "referenceAllele": "C"
+    }
+   ]
+  },
+  "VKORC1": {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "Unknown"
+     },
+     "allele2": {
+      "name": "Unknown"
+     },
+     "label": "Unknown/Unknown",
+     "phenotypes": [
+      "No Result"
+     ]
+    }
+   ]
+  }
+ }
+}

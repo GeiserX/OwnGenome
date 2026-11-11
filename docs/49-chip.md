@@ -16,7 +16,7 @@ The germline caller of step 3 is built for 50% and 100% alleles and does not rep
 
 - GATK Mutect2, tumour-only, then LearnReadOrientationModel and FilterMutectCalls
 - bcftools csq, which names each change on the gene's MANE Select transcript, and bcftools mpileup for the depth
-- `bin/chip_report.py` (standard library Python), applying the gene table `assets/chip_genes.tsv`
+- `og chip prepare` and `og chip report` (the Rust binary `og`, `rust/crates/og-chip`), applying the gene table `assets/chip_genes.tsv`; `og chip check-table` checks that table
 
 ## Docker Image
 

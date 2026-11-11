@@ -1,6 +1,6 @@
 # Strong and moderate inhibitors of CYP2D6, CYP2C19 and CYP2C9, and strong
 # inhibitors of CYP3A (one row each for CYP3A4 and CYP3A5), read by
-# bin/pgx_parse.py (step 27 and CPIC_LOOKUP) when a medication list is given
+# og pgx cpic-report (step 27 and CPIC_LOOKUP) when a medication list is given
 # (MEDICATIONS for step 27, --medications for Nextflow).
 # Drug: the generic name, lower case, as a medication list names it.
 # Ritonavir has its own row. A ritonavir-boosted combination the FDA's table
