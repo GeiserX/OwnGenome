@@ -5,7 +5,8 @@
 # Two tasks of the PRS path read nothing but the scoring files of
 # assets/pgs_scores.tsv, which are public PGS Catalog downloads, so their
 # memory can be measured without a genome:
-#   PRS_PREPARE        collect_summary.py prs-format, in PYTHON_IMAGE
+#   PRS_PREPARE        og prs format (bin/og, built by scripts/setup.sh --og),
+#                      in PYTHON_IMAGE
 #   FORMAT_SCOREFILES  pgsc_calc's first task, pgscatalog-format in
 #                      PGSC_UTILS_IMAGE. pgsc_calc gives it 2 threads on its
 #                      first attempt and 4 on a retry (its process_medium
@@ -36,19 +37,22 @@
 #       limit, so a request above the runner's RAM can still finish.
 #       FORMAT_LIMIT_GB and PREPARE_LIMIT_GB replace the requests and
 #       FORMAT_THREADS the thread count (default 1, what PRS gives it). With
-#       EXPECT=killed every task must be killed instead: FORMAT_LIMIT_GB=8
+#       EXPECT=killed FORMAT_SCOREFILES must be killed instead: FORMAT_LIMIT_GB=8
 #       PREPARE_LIMIT_GB=2 FORMAT_THREADS=2 is what the process labels and
-#       pgsc_calc gave before the requests existed.
+#       pgsc_calc gave before the requests existed. PRS_PREPARE must pass
+#       in both: og prs format fits the 2 GB label that killed the Python
+#       it replaced.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
 # The highest figures any run has given, in MB, on ubuntu-latest (4 CPUs,
 # 16 GB; docs/25-prs.md, Memory). PRS_PREPARE: memory.peak
-# of its container, 11,614 to 11,734 in ten runs. FORMAT_SCOREFILES on one
+# of its container running og prs format (the Python it replaced reached
+# 11,614 to 11,734 in ten runs). FORMAT_SCOREFILES on one
 # thread: Nextflow's peak_rss in a whole pgsc_calc run (18.1 GB, the sum of
 # its processes' peaks); this script's own figure was 14,467 to 14,544 with swap.
-RECORDED_PREPARE_MB=11734
+RECORDED_PREPARE_MB=726
 RECORDED_FORMAT_MB=18534
 HEADROOM_PCT=125
 
@@ -216,12 +220,12 @@ prepare() {
   measured "$1" --network none -u "$(id -u):$(id -g)" \
     -v "${REPO}/bin:/pgp-bin:ro" -v "${REPO}/assets/pgs_scores.tsv:/pgs_scores.tsv:ro" \
     -v "${DIR}/scores:/scores:ro" -v "${DIR}/prepare:/out" "$PYTHON_IMAGE" \
-    python3 /pgp-bin/collect_summary.py prs-format --scores /scores --labels /pgs_scores.tsv \
+    /pgp-bin/og prs format --scores /scores --labels /pgs_scores.tsv \
       --out /out/pgs --alleles /out/score_alleles.tsv --keep-x
 }
 read -r LIMIT GB < <(limit_for PRS_PREPARE "${PREPARE_LIMIT_GB:-}")
 prepare "$LIMIT"
-row PRS_PREPARE "$LIMIT" "$GB" "$RECORDED_PREPARE_MB" "$EXPECT"
+row PRS_PREPARE "$LIMIT" "$GB" "$RECORDED_PREPARE_MB" pass
 if [ "$M_RC" -ne 0 ]; then
   echo "PRS_PREPARE failed under its limit; running it again with ${CAP_MB} MB for FORMAT_SCOREFILES' input."
   prepare "$CAP_MB"

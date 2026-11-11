@@ -351,8 +351,8 @@ jobs:
       # read in its source, not reproduced), FASTP gets the 8 CPUs of step 01b,
       # ALIGN_MINIMAP2 (minimap2 piped into samtools) the process_high label's
       # 8 CPUs and 32 GB, MANTA, CNVPYTOR and VEP what steps 04, 18 and 13
-      # give them, PRS_PREPARE 16 GB and PRS 24 GB (pgsc_calc's --max_memory)
-      # for the nine default scores, and PRS_SCORE_SITES its label's 4 GB.
+      # give them, PRS_PREPARE 2 GB and PRS 24 GB (pgsc_calc's --max_memory)
+      # for the default scores, and PRS_SCORE_SITES its label's 4 GB.
       #
       # The local executor is told it has more CPUs and memory than every task
       # attempt of this run asks for added together, and the check at the end
@@ -415,7 +415,7 @@ jobs:
               'MANTA':         (8, 16 * GB, 24 * H),
               'CNVPYTOR':      (4, 8 * GB, 24 * H),
               'VEP':           (8, 16 * GB, 24 * H),
-              'PRS_PREPARE':   (1, 16 * GB, 2 * H),
+              'PRS_PREPARE':   (1, 2 * GB, 2 * H),
               'PRS_SCORE_SITES': (2, 4 * GB, 4 * H),
               'PRS':           (4, 24 * GB, 8 * H),
           }
