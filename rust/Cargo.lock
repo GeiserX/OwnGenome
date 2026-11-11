@@ -560,6 +560,7 @@ dependencies = [
  "og-intervals",
  "og-io",
  "og-map",
+ "og-pgx",
  "og-runlog",
  "og-steps",
  "og-vcf",
@@ -649,6 +650,14 @@ name = "og-nf"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
+name = "og-pgx"
+version = "0.1.0"
+dependencies = [
  "og-io",
  "pycompat",
 ]

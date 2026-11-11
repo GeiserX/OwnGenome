@@ -1,0 +1,24 @@
+{
+ "genes": {
+  "VKORC1": {
+   "sourceDiplotypes": [
+    {
+     "label": "rs9923231 reference (C)/rs9923231 variant (T)",
+     "phenotypes": [
+      "-1639 GA"
+     ]
+    }
+   ]
+  },
+  "IFNL3": {
+   "sourceDiplotypes": [
+    {
+     "label": "rs12979860 variant (T)/rs12979860 variant (T)",
+     "phenotypes": [
+      "unfavorable response genotype"
+     ]
+    }
+   ]
+  }
+ }
+}

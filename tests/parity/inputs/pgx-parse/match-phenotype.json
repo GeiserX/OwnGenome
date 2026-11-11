@@ -1,0 +1,47 @@
+{
+ "genes": {
+  "CYP2C19": {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "*1"
+     },
+     "allele2": {
+      "name": "*9"
+     },
+     "label": "*1/*9",
+     "phenotypes": [
+      "Likely Intermediate Metabolizer"
+     ]
+    }
+   ]
+  }
+ },
+ "drugs": {
+  "CPIC Guideline Annotation": {
+   "clopidogrel": {
+    "name": "clopidogrel",
+    "guidelines": [
+     {
+      "annotations": [
+       {
+        "phenotypes": {
+         "CYP2C19": "Intermediate Metabolizer"
+        },
+        "classification": "Strong",
+        "drugRecommendation": "Guidance for IM."
+       },
+       {
+        "phenotypes": {
+         "CYP2C19": "Likely Intermediate Metabolizer"
+        },
+        "classification": "Strong",
+        "drugRecommendation": "Guidance for likely IM."
+       }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

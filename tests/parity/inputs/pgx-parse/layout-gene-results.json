@@ -1,0 +1,14 @@
+{
+ "pharmcatVersion": "1.0",
+ "geneResults": [
+  {
+   "gene": "TPMT",
+   "diplotype": "*1/*3A",
+   "phenotype": "Intermediate Metabolizer"
+  },
+  {
+   "gene": "DPYD",
+   "diplotype": "Unknown/Unknown"
+  }
+ ]
+}
