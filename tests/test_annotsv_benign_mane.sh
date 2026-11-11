@@ -34,7 +34,9 @@
 #      DEL2 stays class 4 with no frequency;
 #   4. validate-setup.sh passes both files and fails on each one removed, and
 #      step 05 stops when either is missing.
-# Needs docker.
+# Needs docker, and og built for this machine (scripts/setup.sh --og): step
+# 05 runs og sv svlen-fix. Without og the test is skipped with a note; with
+# OG_REQUIRED set, the skip is a failure (the rust job of guard.yml sets it).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -52,6 +54,11 @@ expect() {
 }
 
 command -v docker >/dev/null 2>&1 || { echo "FAIL: docker is needed to run this test"; exit 1; }
+if ! "${REPO}/bin/og" version > /dev/null 2>&1; then
+  if [ -n "${OG_REQUIRED:-}" ]; then echo "FAIL: og is not built (scripts/setup.sh --og)"; exit 1; fi
+  echo "skip: og is not built for this machine, and step 05 runs it (scripts/setup.sh --og)"
+  exit 0
+fi
 
 G="${WORK}/genome"
 ANN="${G}/annotsv_annotations"

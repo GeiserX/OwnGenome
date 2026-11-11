@@ -76,6 +76,8 @@ tests/smoke/commands.tsv                      ATXN3 at 22/24 repeats
 SKIP='
 tests/fixtures/*                public or invented test data; each fixture directory says where it came from
 tests/smoke/*.vcf.in            invented tool inputs for the image smoke tests
+tests/parity/inputs/pgx-refblock-fill/*  built from the public PharmCAT data of tests/fixtures/pharmcat
+tests/parity/golden/pgx-refblock-fill/*  the output og writes on those inputs
 '
 
 scan() {

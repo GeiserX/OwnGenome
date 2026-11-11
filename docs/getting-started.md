@@ -120,7 +120,7 @@ Then, once per machine and once per sample:
 
 ```bash
 export GENOME_DIR=/path/to/your/data
-./scripts/setup.sh $GENOME_DIR             # reference, ClinVar, small data files and images (once)
+./scripts/setup.sh $GENOME_DIR             # reference, ClinVar, small data files, images and og (once)
 ./scripts/validate-setup.sh your_name      # what is installed and what is missing
 ./scripts/run-all.sh your_name male        # or female: sets the chrX/chrY ploidy and the sex check
 ```
@@ -213,7 +213,8 @@ export GENOME_DIR=/path/to/your/data
 export SAMPLE=your_name
 
 # 2. Download the GRCh38 no-ALT reference genome (~0.8 GB, ~3 GB unpacked),
-#    ClinVar and the images; see docs/00-reference-setup.md for details
+#    ClinVar and the images, and build og (bin/.og, which steps 04, 05 and 07
+#    run); see docs/00-reference-setup.md for details
 ./scripts/setup.sh $GENOME_DIR
 
 # 3. Run the pipeline
