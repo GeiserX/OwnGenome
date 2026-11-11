@@ -15,6 +15,7 @@ og-intervals.workspace = true
 og-dev.workspace = true
 og-pgx.workspace = true
 og-filters.workspace = true
+og-runlog.workspace = true
 
 [lints]
 workspace = true

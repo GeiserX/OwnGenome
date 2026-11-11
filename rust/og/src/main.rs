@@ -20,6 +20,7 @@ fn tree_hash() -> &'static str {
 
 const USAGE: &str = "usage: og <tool> [args]
        og map <verb> [args]
+       og run state|tasks|eta|headroom|delta [args]
        og setup mask-fasta SRC BED DEST
        og sv svlen-fix|inv-filter [args]
        og pgx cpic-report|step36-outside [args]
@@ -74,6 +75,7 @@ fn main() -> ExitCode {
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },
+        "run" => ExitCode::from(og_runlog::cli::main(rest)),
         "sv" => match rest.first().map(String::as_str) {
             Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
             Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
