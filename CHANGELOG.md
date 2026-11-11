@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The checks CI runs on the pipeline itself now run in the Rust `og` binary: `og dev contract` (the output contract, from `scripts/ci/check-output-contract.py`), `og dev schema` (a `summary.json` against its schema, from `tests/schema/validate.py`) and `og dev report-only` (the report-only error strategy, from `scripts/ci/check-report-only.py`). The Python and its two test files are gone; their checks are cargo tests in Guard's `rust` job. Each now fails on what it let pass:
+  - `og dev contract --static`: a `nextflow_schema.json` default of another JSON type than `nextflow.config`'s value (`0` for `false`, `1` for `true`) now fails. A results file the run check cannot read (a truncated gzip) is a `FAIL` line that names it, not a traceback. Commented-out Groovy no longer counts.
+  - `og dev schema`: `additionalProperties: false` now refuses a key the schema does not list; `true` no longer matches `enum: [1]`; NaN fails `minimum`. A schema with an unknown keyword or type name, or a `$ref` to nothing, anywhere in it, is now exit 2 (a broken schema), not a pass or a traceback. A document that is not JSON prints `ERROR:` and exits 1.
+  - `og dev report-only`: a `//` inside a string is no longer read as a comment, and a nested brace in the strategy closure, or a setting before it, no longer hides a `withName` block.
+  - `--repo` defaults to the current folder for `og dev contract` and `og dev report-only`.
+
 - Four VCF filters of steps 04, 05 and 07 now run in the Rust `og` binary: `og sv inv-filter` (step 04), `og sv svlen-fix` (step 05), `og pgx refblock-fill` and `og pgx mito-merge` (step 07). They replace `bin/manta_inv_filter.py`, `bin/sv_svlen_fix.py`, `bin/pgx_refblock_fill.py` and `bin/pgx_mito_merge.py`, which are gone. Their output is the same, byte for byte, except for these fixes. Steps 04, 05 and 07 now need `og`: `scripts/setup.sh <genome_dir>` builds it, and `scripts/setup.sh --og` builds only it.
   - Step 05: an SV record whose INFO held `SVLEN` or `END` twice kept the old last value beside the new one. The rewrite now replaces the item it read.
   - Step 07: where the gVCF had a record at a multi-base PharmCAT position that was not a reference block, the input got that record and a 0/0 record at the same position. The gVCF's record is kept, the 0/0 record is dropped, and the log says so, whether the gVCF's reference block at that position comes before or after the record.

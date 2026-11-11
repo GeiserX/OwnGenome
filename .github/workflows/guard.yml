@@ -222,6 +222,16 @@ jobs:
           git checkout -- og/src/main.rs
           ./og.sh check --required
 
+      # The fake-docker job has no og, so this case skips its schema check
+      # there; here og is built and the check must run.
+      - name: The fake-docker case that validates summary.json with og dev schema
+        working-directory: .
+        run: |
+          out=$(scripts/ci/run-fake-docker-suite.sh reports-stale-step 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          grep -q 'summary.json validates (og dev schema)' <<< "$out" \
+            || { echo "ERROR: reports-stale-step did not run og dev schema"; exit 1; }
+
       # The tests of the og filters steps 04, 05 and 07 run: unit-tests has
       # no og, so there they skip; here OG_REQUIRED turns a skip into a
       # failure. The step 05 tests run the real step with bin/og.

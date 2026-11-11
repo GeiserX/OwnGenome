@@ -1,0 +1,2 @@
+kind	name	step	process	legs	format	stability	e2e	required
+file	{sample}_trunc.vcf.gz	13	-	both	vcf	stable	both	INFO/AF

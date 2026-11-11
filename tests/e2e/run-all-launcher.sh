@@ -127,7 +127,7 @@ check_eq "parity of the launcher's outputs with the bash steps (exit)" "$?" 0
 # --- 3. reports and step status -----------------------------------------------------------
 check "the HTML report (step 24) is written" test -s "${G2}/${P}/${P}_report.html"
 check "the text report is written" test -s "${G2}/${P}/${P}_report.txt"
-check "summary.json validates" python3 "${REPO}/tests/schema/validate.py" "${REPO}/tests/schema/summary.schema.json" "${G2}/${P}/summary.json"
+check "summary.json validates" "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "${G2}/${P}/summary.json"
 STATUS=$(cat "${G2}/${P}/logs/run_status.tsv" 2>/dev/null)
 check "run_status.tsv records step 07 ok" has $'^step\t07\tok$' "$STATUS"
 check "run_status.tsv records step 13 skipped" has $'^step\t13\tskipped ' "$STATUS"

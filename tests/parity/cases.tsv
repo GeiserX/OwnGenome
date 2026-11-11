@@ -78,3 +78,29 @@ pgx-mito-merge	missing-outside	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/hom.vc
 pgx-mito-merge	short	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/short.vcf	--jar pharmcat.jar --mito short.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
 pgx-mito-merge	bad-pos	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/badpos.vcf	--jar pharmcat.jar --mito badpos.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
 pgx-mito-merge	bad-depth	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/background.vcf,pgx-mito-merge/bad.depth	--jar pharmcat.jar --mito background.vcf --depth bad.depth --out out.tsv	-	bytes	PHARMCAT_IMAGE
+dev-schema	valid	dev-schema/schema.json,dev-schema/valid.json	schema.json valid.json	-	bytes	PYTHON_IMAGE
+dev-schema	invalid	dev-schema/schema.json,dev-schema/invalid.json	schema.json invalid.json	-	bytes	PYTHON_IMAGE
+dev-schema	no-final-newline	dev-schema/schema.json,dev-schema/no-newline.json	schema.json no-newline.json	-	bytes	PYTHON_IMAGE
+dev-schema	crlf	dev-schema/schema.json,dev-schema/crlf.json	schema.json crlf.json	-	bytes	PYTHON_IMAGE
+dev-schema	additional-false	dev-schema/extra-schema.json,dev-schema/extra.json	extra-schema.json extra.json	-	bytes	PYTHON_IMAGE
+dev-schema	enum-true	dev-schema/enum-schema.json,dev-schema/enum-true.json	enum-schema.json enum-true.json	-	bytes	PYTHON_IMAGE
+dev-schema	enum-float	dev-schema/enum-schema.json,dev-schema/enum-float.json	enum-schema.json enum-float.json	-	bytes	PYTHON_IMAGE
+dev-schema	minimum-nan	dev-schema/minimum-schema.json,dev-schema/nan.json	minimum-schema.json nan.json	-	bytes	PYTHON_IMAGE
+dev-schema	ref-missing	dev-schema/ref-schema.json,dev-schema/other.json	ref-schema.json other.json	-	bytes	PYTHON_IMAGE
+dev-schema	type-unknown	dev-schema/type-schema.json,dev-schema/other.json	type-schema.json other.json	-	bytes	PYTHON_IMAGE
+dev-schema	keyword-unvisited	dev-schema/unvisited-schema.json,dev-schema/other.json	unvisited-schema.json other.json	-	bytes	PYTHON_IMAGE
+dev-schema	doc-not-json	dev-schema/schema.json,dev-schema/broken.json	schema.json broken.json	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-ok	dev-contract/ok.tsv,dev-contract/S1.tsv,dev-contract/S1.csv,dev-contract/S1.vcf.gz,dev-contract/S1.json,dev-contract/S1_a.txt,dev-contract/S1_b.txt	--contract ok.tsv --outputs . --leg bash --sample S1 --observe	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-ok-nextflow	dev-contract/ok.tsv,dev-contract/S1.tsv,dev-contract/S1.csv,dev-contract/S1.vcf.gz,dev-contract/S1.json,dev-contract/S1_a.txt,dev-contract/S1_b.txt	--contract ok.tsv --outputs . --leg nextflow --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-broken	dev-contract/broken.tsv,dev-contract/S1_cols.tsv,dev-contract/S1_bad.json,dev-contract/S1_list.json,dev-contract/S1_empty.tsv,dev-contract/S1_bashonly.tsv,dev-contract/S1_novcf.vcf,dev-contract/S1_dir	--contract broken.tsv --outputs . --leg nextflow --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-nothing	dev-contract/nothing.tsv,dev-contract/S1.tsv	--contract nothing.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-truncated-gzip	dev-contract/trunc.tsv,dev-contract/S1_trunc.vcf.gz	--contract trunc.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-dup	dev-contract/dup.tsv	--contract dup.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bad-row	dev-contract/bad-row.tsv	--contract bad-row.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bad-kind	dev-contract/bad-kind.tsv	--contract bad-kind.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bash-process	dev-contract/bash-process.tsv	--contract bash-process.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-short-row	dev-contract/short-row.tsv	--contract short-row.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bad-header	dev-contract/bad-header.tsv	--contract bad-header.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-no-header	dev-contract/no-header.tsv	--contract no-header.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-crlf	dev-contract/crlf.tsv,dev-contract/S1.tsv	--contract crlf.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-missing	-	--contract nope.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
