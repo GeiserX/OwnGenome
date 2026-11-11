@@ -90,7 +90,7 @@ pub const NEED: [&str; 23] = [
 
 fn moi_words(m: &str) -> &str {
     match m {
-        "AD" => "dominant",
+        "AD" => "autosomal dominant",
         "AR" => "autosomal recessive",
         "XD" => "X-linked dominant",
         "XR" => "X-linked recessive",

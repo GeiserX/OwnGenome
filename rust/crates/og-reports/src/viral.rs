@@ -39,7 +39,7 @@ use std::io::Write;
 
 const MIN_READS: i128 = 10;
 const FOUND_BREADTH: f64 = 0.10;
-const ICI_RELATIVE_DEPTH: f64 = 0.25;
+const ICI_RELATIVE_DEPTH: f64 = 0.30;
 pub const HEADER: [&str; 12] = [
     "virus",
     "accession",

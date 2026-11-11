@@ -280,7 +280,7 @@ pub fn read(run_dir: &str, exit_code: i64, log_text: &str) -> Result<Reading, Er
             if flagged {
                 why.push(Caveat::Flagged(flag.clone()));
             }
-            if conf == Confidence::HighPrecision {
+            if conf == Confidence::LowPrecision {
                 why.push(Caveat::LowPrecision);
             }
             match uncovered {
