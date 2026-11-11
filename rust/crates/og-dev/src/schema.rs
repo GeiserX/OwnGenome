@@ -429,7 +429,7 @@ impl Schema {
 fn load(path: &str) -> Result<Value, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
     let text = String::from_utf8(bytes).map_err(|_| format!("{path}: not UTF-8"))?;
-    // json.load accepts a leading byte-order mark only as an error; so do we.
+    // A leading byte-order mark is an error, as in json.load.
     json::loads(&text).map_err(|e| match e {
         json::JsonError::Decode(what, at) => format!("{path}: not JSON: {what} at byte {at}"),
         other => format!("{path}: not JSON: {other:?}"),
