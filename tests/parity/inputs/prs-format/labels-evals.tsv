@@ -1,0 +1,4 @@
+pgs_id	trait_reported	applies_to	ppm_id	ancestry	effect
+PGS000018	Coronary artery disease		PPM000591;PPM000594;PPM000597	EUR;AFR;AMR	HR 1.53;HR 1.27;HR 1.53
+PGS000662	Prostate cancer	male	PPM022982;PPM015482	EUR;AFR	HR 1.72;OR 1.86
+PGS000003	Strand	Female			

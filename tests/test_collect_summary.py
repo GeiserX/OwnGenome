@@ -151,8 +151,9 @@ Checks:
      assets/pgs_scores.tsv): the shipped list is read entry by entry, and a
      list with lists of different lengths, an ancestry outside the five
      1000 Genomes groups or listed twice, a malformed PPM id or an effect
-     that is not an OR or HR is refused; prs-format copies them beside the
-     scores; prs-table writes Evaluated_In and Effect, the effect only for
+     that is not an OR or HR is refused; og prs format copies them beside
+     the scores (with OG set to an og binary; the folders prs-table reads
+     are written by hand as og writes them); prs-table writes Evaluated_In and Effect, the effect only for
      the group pgsc_calc placed the sample in (EUR: HR 1.53 of PPM000591;
      EAS, where the score was not evaluated: none), and none without the
      panel; a list without evaluations keeps the older columns; both reports print the effect for EUR and say there
@@ -313,18 +314,40 @@ def prs_evaluations(work, schema):
             got = str(e)
         check(f"27: a list with {why} is refused", got != "read", got)
 
-    # prs-format with the shipped list copies the evaluations beside the scores.
+    # og prs format with the shipped list copies the evaluations beside the
+    # scores. The folders prs-table reads below are written as og writes them;
+    # with OG set to an og binary, og must write the same.
     score = ("#pgs_id=PGS000018\n#HmPOS_build=GRCh38\nhm_chr\thm_pos\teffect_allele\tother_allele\teffect_weight\n"
              "1\t1100\tA\tG\t0.5\n")
     put(f"{work}/ev_in/PGS000018.txt.gz", score, gz=True)
-    rc = collect_summary.main(["prs-format", "--scores", f"{work}/ev_in", "--labels", assets,
-                               "--out", f"{work}/ev_pgs", "--alleles", f"{work}/ev_alleles.tsv"])
-    with open(f"{work}/ev_pgs/{collect_summary.EVALS_FILE}") as f:
-        lines = f.read().splitlines()
-    check("27: prs-format writes the score's evaluations beside it",
-          rc == 0 and lines == ["pgs_id\tppm_id\tancestry\teffect",
-                                "PGS000018\tPPM000591;PPM000594;PPM000597\tEUR;AFR;AMR\tHR 1.53;HR 1.27;HR 1.53"],
-          (rc, lines))
+    og = os.environ.get("OG")
+    if os.environ.get("OG_REQUIRED") and not og:
+        sys.exit("FAIL: OG_REQUIRED is set but OG names no og binary")
+
+    def formatted(out, labels, applies="", evals=""):
+        """The folder og prs format writes for ev_in with LABELS, and with OG og's own beside it."""
+        put(f"{out}/PGS000018.txt.gz", "#pgs_id=PGS000018\n#pgs_name=PGS000018\n#trait_reported=Coronary artery disease\n"
+            "#genome_build=GRCh38\nchr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n1\t1100\tA\tG\t0.5\n", gz=True)
+        put(f"{out}/{collect_summary.CHRX_FILE}", "pgs_id\tchrx_rows\tchrx\nPGS000018\t0\tleft out\n")
+        put(f"{out}/{collect_summary.SCORE_NOTES_FILE}", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\nPGS000018\t{applies}\t0\tdropped\n")
+        put(f"{out}/{collect_summary.EVALS_FILE}", "pgs_id\tppm_id\tancestry\teffect\n" + (f"PGS000018\t{evals}\n" if evals else ""))
+        if not og:
+            return
+        rc = subprocess.run([og, "prs", "format", "--scores", f"{work}/ev_in", "--labels", labels, "--out", f"{out}_og",
+                             "--alleles", f"{out}_og.alleles"], capture_output=True).returncode
+
+        def text(d):
+            got = {}
+            for n in sorted(os.listdir(d)):
+                with (gzip.open if n.endswith(".gz") else open)(os.path.join(d, n), "rt") as f:
+                    got[n] = f.read()
+            return got
+        check(f"27: og prs format with {os.path.basename(labels)} writes the folder prs-table reads here",
+              rc == 0 and text(f"{out}_og") == text(out), rc)
+
+    formatted(f"{work}/ev_pgs", assets, evals="PPM000591;PPM000594;PPM000597\tEUR;AFR;AMR\tHR 1.53;HR 1.27;HR 1.53")
+    if not og:
+        print("[NOTE] OG is not set, so og prs format does not run here; tests/parity and its own tests pin it")
 
     def results(d, group):
         """A pgsc_calc --outdir that placed the sample in GROUP (no panel when None)."""
@@ -362,16 +385,14 @@ def prs_evaluations(work, schema):
     check("27: no panel, so no group: no effect", rc == 0 and raw.get("Effect") == "" and raw.get("Percentile") == "NA", raw)
     # Red control: the same run from a list without the evaluations keeps the older columns.
     put(f"{work}/ev_plain.tsv", "pgs_id\ttrait_reported\nPGS000018\tCoronary artery disease\n")
-    collect_summary.main(["prs-format", "--scores", f"{work}/ev_in", "--labels", f"{work}/ev_plain.tsv",
-                          "--out", f"{work}/ev_pgs_plain", "--alleles", f"{work}/ev_alleles_plain.tsv"])
+    formatted(f"{work}/ev_pgs_plain", f"{work}/ev_plain.tsv")
     rc, hdr, plain, plain_out = table("EUR", pgs=f"{work}/ev_pgs_plain")
     check("27: control: a list without evaluations gives the older columns and no effect",
           rc == 0 and hdr == collect_summary.PRS_COLUMNS and "Effect" not in plain, hdr)
     # A score for one sex, with a EUR evaluation, run for the other sex in EUR: no effect.
     put(f"{work}/ev_female.tsv", "pgs_id\ttrait_reported\tapplies_to\tppm_id\tancestry\teffect\n"
         "PGS000018\tCoronary artery disease\tfemale\tPPM000591\tEUR\tHR 1.53\n")
-    collect_summary.main(["prs-format", "--scores", f"{work}/ev_in", "--labels", f"{work}/ev_female.tsv",
-                          "--out", f"{work}/ev_pgs_female", "--alleles", f"{work}/ev_alleles_female.tsv"])
+    formatted(f"{work}/ev_pgs_female", f"{work}/ev_female.tsv", applies="female", evals="PPM000591\tEUR\tHR 1.53")
     rc, _, man, man_out = table("EUR", pgs=f"{work}/ev_pgs_female", sex="male")
     check("27: a female-only score for a male sample in EUR: no effect",
           rc == 0 and man.get("Sex_Check") == collect_summary.SEX_NOT_APPLICABLE and man.get("Evaluated_In") == "EUR"

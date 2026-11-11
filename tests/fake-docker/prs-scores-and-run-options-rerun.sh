@@ -4,7 +4,7 @@
 #     (<sample>_prs_summary.<YYYYMMDD-HHMM>.tsv, with the earlier content)
 #     and its pgsc_calc folder as pgsc_calc.<the same time>, with the earlier
 #     content; the new summary is written beside them;
-#   - PRS_KEEP_AMBIGUOUS=true reaches prs-format (--keep-ambiguous with the
+#   - PRS_KEEP_AMBIGUOUS=true reaches og prs format (--keep-ambiguous with the
 #     reference in the container) and pgsc_calc (--keep_ambiguous); without
 #     it neither gets the flag;
 #   - PRS_KEEP_AMBIGUOUS=true without the gVCF stops before any container
@@ -31,7 +31,7 @@ done
 printf 'placeholder\n' > "${G}/sample1/vcf/sample1.g.vcf.gz"
 printf 'placeholder\n' > "${G}/sample1/vcf/sample1.g.vcf.gz.tbi"
 
-# The tools' outputs: prs-format's score folder and allele list, one genotyped
+# The tools' outputs: og prs format's score folder and allele list, one genotyped
 # position from bcftools (on stdout, as step 25 reads it), and prs-table's
 # summary, whose second row carries RUN_TAG so each run's table is told apart.
 use_output_hook
@@ -43,7 +43,7 @@ shift   # the image
 args=("$@")
 val() { local i; for ((i = 0; i < ${#args[@]} - 1; i++)); do [ "${args[i]}" = "$1" ] && { host_path "${args[i + 1]}"; return; }; done; return 1; }
 case " $* " in
-  *" prs-format "*)
+  *" prs format "*)
     out=$(val --out); alleles=$(val --alleles)
     mkdir -p "$out"; : > "${out}/PGS000018.txt.gz"
     printf 'chr20\t100\tA\nchr20\t100\tG\n' > "$alleles" ;;
@@ -69,7 +69,7 @@ FIRST_DATED=$(find "$D" -maxdepth 1 -name 'sample1_prs_summary.*.tsv' | head -n 
 [ -n "$FIRST_DATED" ] || fail "the first run kept no dated copy of its summary"
 [[ "$FIRST_DATED" =~ sample1_prs_summary\.[0-9]{8}-[0-9]{4}\.tsv$ ]] || fail "dated name is not <sample>_prs_summary.YYYYMMDD-HHMM.tsv: ${FIRST_DATED}"
 docker_log_has 'prs-table .*--sex female' "the declared sex did not reach prs-table"
-awk '/prs-format/ && /keep-ambiguous/ {f = 1} END {exit f}' "$FAKE_DOCKER_LOG" || fail "prs-format got --keep-ambiguous without PRS_KEEP_AMBIGUOUS"
+awk '/og prs format/ && /keep-ambiguous/ {f = 1} END {exit f}' "$FAKE_DOCKER_LOG" || fail "og prs format got --keep-ambiguous without PRS_KEEP_AMBIGUOUS"
 awk '/^nextflow / && /keep_ambiguous/ {f = 1} END {exit f}' "$FAKE_DOCKER_LOG" || fail "pgsc_calc got --keep_ambiguous without PRS_KEEP_AMBIGUOUS"
 docker_log_has '^nextflow .*run .*pgsc_calc' "step 25 did not start pgsc_calc"
 echo first > "${D}/pgsc_calc/marker"
@@ -87,8 +87,8 @@ RUN_TAG=second PRS_KEEP_AMBIGUOUS=true run_expect 0 second "${SCRIPTS}/25-prs.sh
   || fail "the rerun did not keep the first pgsc_calc folder as pgsc_calc.20260101-0101: $(ls "$D")"
 [ ! -e "${D}/pgsc_calc/marker" ] || fail "the new pgsc_calc folder holds the old run's files"
 output_has second 'previous run.s pgsc_calc folder is kept as .*/pgsc_calc\.20260101-0101'
-docker_log_has 'prs-format .*--keep-ambiguous --reference /genome/reference/GRCh38_no_alt_analysis_set\.fasta' \
-  "PRS_KEEP_AMBIGUOUS=true did not reach prs-format with the reference"
+docker_log_has 'og prs format .*--keep-ambiguous --reference /genome/reference/GRCh38_no_alt_analysis_set\.fasta' \
+  "PRS_KEEP_AMBIGUOUS=true did not reach og prs format with the reference"
 docker_log_has '^nextflow .*run .*--keep_ambiguous' "PRS_KEEP_AMBIGUOUS=true did not reach pgsc_calc"
 
 # --- a third run in the same minute as an earlier summary ------------------------------------

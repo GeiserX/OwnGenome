@@ -1,0 +1,36 @@
+##gff-version 3
+#!genome-build GRCh38.p14
+2	ensembl	gene	1000	5000	.	-	.	ID=gene:G1;Name=DNMT3A;biotype=protein_coding
+2	ensembl	mRNA	1000	5000	.	-	.	ID=transcript:T1;Parent=gene:G1;biotype=protein_coding;tag=basic;transcript_id=T1
+2	ensembl	CDS	1100	1200	.	-	0	ID=CDS:P1;Parent=transcript:T1
+2	ensembl	mRNA	1000	5000	.	-	.	ID=transcript:T2;Parent=gene:G1;biotype=protein_coding;tag=basic,MANE_Select;transcript_id=T2
+2	ensembl	exon	1000	1300	.	-	.	Parent=transcript:T2;rank=2
+2	ensembl	CDS	1050	1300	.	-	0	ID=CDS:P2;Parent=transcript:T2
+2	ensembl	five_prime_UTR	4101	5000	.	-	.	Parent=transcript:T2
+2	ensembl	exon	4000	5000	.	-	.	Parent=transcript:T2;rank=1
+2	ensembl	CDS	4000	4100	.	-	0	ID=CDS:P2;Parent=transcript:T2
+2	ensembl	biological_region	10	20	.	+	.	logic_name=x
+9	ensembl	gene	100	900	.	+	.	ID=gene:G2;Name=JAK2;biotype=protein_coding
+9	ensembl	mRNA	100	900	.	+	.	ID=transcript:T3;Parent=gene:G2;biotype=protein_coding;tag=MANE_Select;transcript_id=T3
+9	ensembl	exon	100	900	.	+	.	Parent=transcript:T3;rank=1
+9	ensembl	CDS	200	800	.	+	0	ID=CDS:P3;Parent=transcript:T3
+4	ensembl	gene	10000	20000	.	+	.	ID=gene:G3;Name=TET2;biotype=protein_coding
+4	ensembl	mRNA	10000	20000	.	+	.	ID=transcript:T4;Parent=gene:G3;tag=Ensembl_canonical,MANE_Select;transcript_id=T4
+4	ensembl	exon	15000	20000	.	+	.	Parent=transcript:T4;rank=2
+4	ensembl	CDS	15000	16000	.	+	0	ID=CDS:P4;Parent=transcript:T4
+4	ensembl	exon	10000	11000	.	+	.	Parent=transcript:T4;rank=1
+4	ensembl	CDS	10500	11000	.	+	0	ID=CDS:P4;Parent=transcript:T4
+17	ensembl	gene	60600000	60670000	.	+	.	ID=gene:G4;Name=PPM1D
+17	ensembl	mRNA	60600000	60670000	.	+	.	ID=transcript:T5;Parent=gene:G4;tag=MANE_Select;transcript_id=T5
+17	ensembl	exon	60600000	60600200	.	+	.	Parent=transcript:T5;rank=5
+17	ensembl	CDS	60600000	60600200	.	+	0	Parent=transcript:T5
+17	ensembl	exon	60663000	60666280	.	+	.	Parent=transcript:T5;rank=6
+17	ensembl	CDS	60663000	60664000	.	+	0	Parent=transcript:T5
+17	ensembl	gene	7673000	7675000	.	-	.	ID=gene:G5;Name=TP53
+17	ensembl	mRNA	7673000	7675000	.	-	.	ID=transcript:T6;Parent=gene:G5;tag=MANE_Select;transcript_id=T6
+17	ensembl	exon	7673700	7674000	.	-	.	Parent=transcript:T6;rank=7
+17	ensembl	CDS	7673700	7674000	.	-	0	Parent=transcript:T6
+17	ensembl	short_line	1	2
+KI270728.1	ensembl	gene	1	500	.	+	.	ID=gene:G6;Name=SF3B1
+KI270728.1	ensembl	mRNA	1	500	.	+	.	ID=transcript:T7;Parent=gene:G6;tag=MANE_Select;transcript_id=T7
+KI270728.1	ensembl	CDS	5	300	.	+	0	Parent=transcript:T7
