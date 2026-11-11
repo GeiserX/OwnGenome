@@ -28,6 +28,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
        og str motif [args]
+       og prs format [args]
        og chip prepare|report|check-table [args]
        og dev parity-compare KIND ORACLE NEW
        og version
@@ -144,6 +145,10 @@ fn main() -> ExitCode {
             #[cfg(not(feature = "bam"))]
             Some("motif") => no_bam("str motif"),
             _ => usage_error("og str takes motif"),
+        },
+        "prs" => match rest.first().map(String::as_str) {
+            Some("format") => ExitCode::from(og_steps::prs::cli(&rest[1..])),
+            _ => usage_error("og prs takes format"),
         },
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
         #[cfg(feature = "bam")]

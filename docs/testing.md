@@ -201,7 +201,7 @@ gh workflow run public-evidence.yml -f chromosomes=22 -f ancient=false
 
 ## The prs-memory job
 
-It measures the memory of the two PRS tasks that read only the scoring files: `PRS_PREPARE` and pgsc_calc's `FORMAT_SCOREFILES` on the default score list (`tests/test_prs_memory.sh --measure`). One leg runs them under the memory `conf/base.config` gives them and must pass; the other runs them under what the labels gave before and must be killed. It runs only by hand (`job: prs-memory`) and is not a gate. What it measured is in [PRS: Memory](25-prs.md#memory).
+It measures the memory of the two PRS tasks that read only the scoring files: `PRS_PREPARE` and pgsc_calc's `FORMAT_SCOREFILES` on the default score list (`tests/test_prs_memory.sh --measure`). One leg runs them under the memory `conf/base.config` gives them and must pass; the other runs them under what the labels gave before, where `FORMAT_SCOREFILES` must be killed and `PRS_PREPARE` (`og prs format`) must fit. It runs only by hand (`job: prs-memory`) and is not a gate. What it measured is in [PRS: Memory](25-prs.md#memory).
 
 ## Running the e2e job yourself
 
