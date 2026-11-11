@@ -1,2 +1,3 @@
 # The parity inputs are small test FASTAs, which the top .gitignore leaves out.
 !inputs/**/*.fa
+!inputs/**/*.fa.fai

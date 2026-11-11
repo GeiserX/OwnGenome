@@ -4,3 +4,4 @@
 #   source       heredoc:FILE:NAME (the body of NAME=$(cat <<'X' ... X) in FILE) or file:FILE
 #   og words     the og subcommand that replaces it; the oracle gets the arguments after them
 setup-mask-fasta	23a028d37fbceb465ae4de8a263f5da6c9ec8e80	heredoc:scripts/setup.sh:MASK_FASTA_PY	python3	setup mask-fasta
+prs-format	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" prs-format "$@"'	prs format
