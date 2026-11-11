@@ -10,7 +10,7 @@
 # (or some) pipeline steps.
 #
 # Then it writes what changed since the previous run of the sample
-# (bin/run_delta.py, docs/delta-report.md): ${SAMPLE}_delta.txt, .html and
+# (og run delta, docs/delta-report.md): ${SAMPLE}_delta.txt, .html and
 # .json, against the newest copy under history/ that holds a summary.json,
 # and keeps this run's summary.json and run_manifest.tsv as history/<UTC time>/
 # for the next run.
@@ -54,24 +54,19 @@ echo "Report saved to: ${REPORT}"
 
 # What changed since the previous run, then keep this run as the next baseline.
 HISTORY="${SAMPLE_DIR}/history"
-# The previous run is the newest history/<stamp>/ that holds a summary.json,
-# the rule run_delta.py and og run delta follow (newest_history). A newer
-# folder without one, from a copy that stopped half way, is passed over.
-# Sorted by folder name: <stamp> before <stamp>-02, which whole paths
-# ("/summary.json" after the name) would not give.
-PREV=$(find -L "$HISTORY" -mindepth 2 -maxdepth 2 -name summary.json -type f 2>/dev/null \
-  | sed -e 's|/summary\.json$||' -e 's|.*/||' | LC_ALL=C sort | tail -n 1 || true)
-PREV_ARG=()
-[ -z "$PREV" ] || PREV_ARG=(--previous "/genome/${SAMPLE}/history/${PREV}")
+# og picks the previous run (--newest-history): the newest history/<stamp>/
+# that holds a summary.json, the rule bin/collect_summary.py's "New since"
+# follows too. A newer folder without one, from a copy that stopped half
+# way, is passed over. og is the static binary, so the python image runs it.
 echo ""
 if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/run_delta.py \
+  /pgp-bin/og run delta \
     --sample "$SAMPLE" \
     --summary "/genome/${SAMPLE}/summary.json" \
     --manifest "/genome/${SAMPLE}/run_manifest.tsv" \
-    ${PREV_ARG[@]+"${PREV_ARG[@]}"} \
+    --newest-history "/genome/${SAMPLE}" \
     --out "/genome/${SAMPLE}/${SAMPLE}_delta"; then
-  echo "ERROR: the delta against the previous run was not written (bin/run_delta.py failed)" >&2
+  echo "ERROR: the delta against the previous run was not written (og run delta failed)" >&2
   exit 1
 fi
 # history/<UTC time>[-NN]/: sorts by name in run order.
