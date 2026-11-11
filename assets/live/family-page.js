@@ -107,7 +107,11 @@
         // Results the server could not build come back without their findings: as unreadable as no answer.
         var usable = !!(r && Array.isArray(r.findings));
         var acts = usable ? r.findings.filter(function (x) { return x.level === 'act'; }).map(function (x) { return x.id; }) : [];
-        var next = usable ? { status: 'known', url: url, spans: Array.isArray(v.spans) ? v.spans : null, acts: acts }
+        // Spans that are not [id, ...] entries naming every result to act on cannot say which are closed: read
+        // as none given (UNKNOWN while there are results to act on).
+        var spansOk = Array.isArray(v.spans) && v.spans.every(function (s) { return Array.isArray(s) && typeof s[0] === 'string'; }) &&
+          acts.every(function (id) { return v.spans.some(function (s) { return s[0] === id; }); });
+        var next = usable ? { status: 'known', url: url, spans: spansOk ? v.spans : null, acts: acts }
           : { status: 'failed', url: url };
         // An answer that cannot be read keeps what was known: the page never opens on a failed request.
         if (!usable && cur.status === 'known') { return; }

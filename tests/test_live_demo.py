@@ -61,15 +61,22 @@ Checks:
      text or attribute names its gene, positions or that grandparent; each click
      opens one result, every place comes back once both are opened, and a reload
      closes them again; the page is the same, byte for byte, whichever result is
-     closed (KCNH2, RYR1, HLA-B, a gene alone, a position) and wherever a
-     grandparent's stretch lies; while the page cannot read his results (no
-     results.json, an unreadable one, act findings without veil.spans) every
-     place stays closed and each box opens only its own place; with a second
-     child holding the same results, opening his leaves hers closed; a couple
-     screen whose partner is a child with a closed result closes whole (counts,
-     table, boxes, report link, the lead's words); his map as an image stays
-     closed until each result is opened from its box, and with his results
-     unreadable "Show the rows" leaves it closed and "Show the map" opens it; on
+     closed (KCNH2, RYR1, HLA-B, a gene alone, a position, a copy-number span,
+     a CHIP call) and wherever a grandparent's stretch lies, each view settled
+     on knowing his results; while the page cannot read his results (no
+     results.json, an unreadable one, one cut short, act findings without
+     veil.spans or with malformed ones) every place stays closed and each box
+     opens only its own place; with nothing of his to act on every place is
+     open with no box; with a second child holding the same results, opening
+     his leaves hers closed, and results opened close again when his run moves;
+     a couple screen whose partner is a child with a closed result closes whole
+     (counts, table, boxes, report link, the lead's words), the same page
+     whether that result is in a gene of the screen or not, and with the
+     partner's results unreadable its box and the cells' box each open only
+     their own place; his map as an image stays closed until each result is
+     opened from its box, the same page whichever result is closed, and with
+     his results unreadable "Show the rows" leaves it closed and "Show the map"
+     opens it and no table; on
      his page a CHIP call, a copy-number dot and a card's fact in the gene of a
      closed result stay out of sight (on a phone the card's line too) until it
      is opened; DEMO-001's page
@@ -87,8 +94,12 @@ and finding.js whose findings ignore their tags; for the family page, de novo ro
 a side by side's cells, a couple screen and a map image that ignore the veil, a closed painting that keeps each
 stretch's grandparent, a box that opens every result with one click, de novo rows closed only when a result lies
 under one, a painting closed only when a grandparent's stretch lies over a closed result, a side by side that closes
-only the closed gene's cells, one opening shared by every box while the results cannot be read, results without
-veil.spans read as nothing closed and an opened result kept per run only; for the son's page, person.js that draws
+only the closed gene's cells or stays open for a wide span, a page that never reads the son's results, one opening
+shared by every box or 'Show the grandparents' opening the side by side while the results cannot be read, a failed
+request read as nothing closed, malformed veil.spans read as given, results without veil.spans read as nothing
+closed or as closed with nothing to act on, an opened result kept per run only or per child only, a couple screen
+closed only for a result in its genes or opened by 'Show the cells', a map image closed only for a result with a
+position, and de novo rows that 'Show the map' opens; for the son's page, person.js that draws
 every item, shows every fact or builds a card's line from every fact), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
@@ -872,38 +883,53 @@ def family_problems(b, base):
     return out
 
 
-def family_view(b, base):
-    """The family page's HTML before any click."""
+def family_view(b, base, child=SON):
+    """The family page's HTML before any click, or None when the page did not settle on knowing CHILD's results."""
     family_page(b, base)
+    kids = b.eval("document.documentElement.dataset.pgpKids || ''") or ""
+    if not re.search(r"\b" + re.escape(child) + r":known\b", kids):
+        return None
     return b.eval("document.getElementById('family').innerHTML") or ""
 
 
-def invariance_problems(b, base, rj, res, fj, fams):
+# Closed results of different kinds and places, as veil.spans holds them.
+CLOSED_CASES = (("RYR1, a medicines gene", [["sf-ryr1", "RYR1", "chr19", 38440000, 38440000]]),
+                ("HLA-B", [["sf-hlab", "HLA-B", "chr6", 31353000, 31357000]]),
+                ("a gene alone", [["two-hits-g0999", "G0999", None, None, None]]),
+                ("a position under a de novo row", [["sf-pos", None, "chr3", 48211904, 48211904]]),
+                ("a copy-number span in SMN1", [["sv-chr5-70925000-70953000", "SMN1", "chr5", 70925000, 70953000]]),
+                ("a CHIP call in TP53", [["chip-tp53", "TP53", "chr17", 7675088, 7675088]]))
+
+
+def invariance_problems(b, base, rj, res, fj, fams, cases=None, child=SON):
     """[problems]: the family page before any click differs between closed results of different genes and places
-    (FAMS: name -> family.json text; the results' spans set in RJ from RES), so it would tell which is closed."""
+    (FAMS: name -> family.json text; CASES: name -> spans set in RJ, CHILD's results, from RES, its findings to act
+    on renamed to match, None for RES as it is), so it would tell which is closed; or it never knew CHILD's results."""
     views = {}
-    for name, spans in (("the planted pair in KCNH2", None), ("RYR1, a medicines gene", [["sf-ryr1", "RYR1", "chr19", 38440000, 38440000]]),
-                        ("HLA-B", [["sf-hlab", "HLA-B", "chr6", 31353000, 31357000]]),
-                        ("a gene alone", [["two-hits-g0999", "G0999", None, None, None]]),
-                        ("a position under a de novo row", [["sf-pos", None, "chr3", 48211904, 48211904]])):
+    for name, spans in cases or (("the planted pair in KCNH2", None),) + CLOSED_CASES:
         r = copy.deepcopy(res)
         if spans is not None:
-            r["veil"]["spans"] = spans
+            act = [x for x in r.get("findings", []) if x.get("level") == "act"]
+            r["veil"] = dict(r.get("veil") or {}, spans=spans)
+            if act:
+                r["findings"] = [x for x in r["findings"] if x.get("level") != "act"] + [dict(act[0], id=s_[0]) for s_ in spans]
         with open(rj, "w") as f:
             json.dump(r, f)
         for fname, text in fams.items():
             with open(fj, "w") as f:
                 f.write(text)
-            views[f"{name}, {fname}"] = family_view(b, base)
+            views[f"{name}, {fname}"] = family_view(b, base, child)
     with open(rj, "w") as f:
         json.dump(res, f)
+    out = [f"the page never knew {child}'s results with {k!r}" for k, v in views.items() if v is None]
     first = next(iter(views))
-    return [f"the page differs between {first!r} and {k!r}" for k, v in views.items() if v != views[first]]
+    return out + [f"the page differs between {first!r} and {k!r}" for k, v in views.items() if v != views[first]]
 
 
 def family_unknown(b, base, opens=True):
     """[problems] of the family page while it cannot read the son's results: a place of his open or a word of his
-    planted results shown; then (OPENS) the de novo box's own button opens his de novo rows and no other place."""
+    planted results shown; then (OPENS) each box's own button, from a fresh page each, opens its own place and no
+    other."""
     gene, hit, sv = planted_words()
     family_page(b, base)
     # A page still waiting for his results keeps everything closed anyway: the check is on the state it settles in.
@@ -920,17 +946,29 @@ def family_unknown(b, base, opens=True):
     out += side_problems_of(b, True)
     if not opens or out:
         return out
-    open_box(b, "denovo")
-    shown = b.eval(FAMILY_SHOWN_JS) or ""
-    if boxes_of(b) != ["paint", "het", "side"] or (son_tables(b) or [])[1:] != [3] or GRANDPARENT in shown or PAIR_B in shown:
-        out.append(f"the de novo box opened another place: closed {boxes_of(b)}, tables {son_tables(b)}")
-    out += side_problems_of(b, True)
+    # What each place shows once open: the painting its grandparent, the de novo rows the planted hit (not the
+    # pair's second variant), the compound-het rows the pair's second variant, the side by side his cells.
+    for box in SON_BOXES:
+        family_page(b, base)
+        if not open_box(b, box):
+            out.append(f"no {box} box")
+            continue
+        shown = b.eval(FAMILY_SHOWN_JS) or ""
+        rest, tables = [x for x in SON_BOXES if x != box], son_tables(b) or []
+        want = {"paint": GRANDPARENT in shown and PAIR_B not in shown and len(tables) == 1,
+                "denovo": GRANDPARENT not in shown and PAIR_B not in shown and tables[1:] == [3],
+                "het": GRANDPARENT not in shown and PAIR_B in shown and tables[1:] == [3],
+                "side": GRANDPARENT not in shown and PAIR_B not in shown and len(tables) == 1}[box]
+        if boxes_of(b) != rest or not want:
+            out.append(f"the {box} box opened another place, or not its own: closed {boxes_of(b)}, tables {tables}")
+        out += [f"after the {box} box: {x}" for x in side_problems_of(b, box != "side")]
     return out
 
 
 def unknown_map_problems(b, base):
     """[problems] of the family page whose son has his map as an image, with his results unreadable: 'Show the
-    rows' of a table opening the image, or 'Show the map' not opening it."""
+    rows' of a table opening the image, 'Show the map' not opening it, or (from a fresh page) 'Show the map' opening
+    a table."""
     family_page(b, base)
     img = "!!document.querySelector('details[data-child=\"DEMO-003\"] img.segments')"
     out = []
@@ -940,6 +978,9 @@ def unknown_map_problems(b, base):
         out.append("'Show the rows' opened the map too")
     if not open_box(b, "map") or not b.eval(img):
         out.append("'Show the map' did not open the map")
+    family_page(b, base)
+    if not open_box(b, "map") or not b.eval(img) or boxes_of(b) != ["denovo", "het", "side"] or son_tables(b):
+        out.append(f"'Show the map' opened another place, or not the map: closed {boxes_of(b)}, tables {son_tables(b)}")
     return out
 
 
@@ -998,6 +1039,85 @@ def couple_problems(b, base):
     links = b.eval("Array.prototype.map.call(document.querySelectorAll('a[href]'), function (a) { return a.getAttribute('href'); }).join(' ')") or ""
     if "PRF1" not in sect or "couple_DEMO" not in links or boxes_of(b, "DEMO-001"):
         out.append(f"the screen not back once the result is opened: closed {boxes_of(b, 'DEMO-001')}")
+    return out
+
+
+def nothing_closed_problems(b, base):
+    """[problems] of the family page whose son has nothing to act on (no veil): a box of his, or a place of his
+    closed: the painting's grandparent, his de novo and compound-het rows, his cells."""
+    family_page(b, base)
+    kids = b.eval("document.documentElement.dataset.pgpKids || ''") or ""
+    shown = b.eval(FAMILY_SHOWN_JS) or ""
+    tables = son_tables(b) or []
+    out = [] if re.search(r"\bDEMO-003:known\b", kids) else [f"the son's results never known: {kids!r}"]
+    if boxes_of(b) or GRANDPARENT not in shown or len(tables) != 3 or tables[1:] != [3, 3]:
+        out.append(f"a place closed with nothing to act on: closed {boxes_of(b)}, tables {tables}")
+    return out + side_problems_of(b, False)
+
+
+def new_run_problems(b, base, fj, before, after):
+    """[problems]: with family.json BEFORE, the son's results opened from the page; then family.json AFTER (his run
+    in another folder) is fetched by the page itself, and his places must close again. The page asks every 30 s:
+    here every 0.5 s."""
+    b.call("Page.enable", {}, b.session)  # the script below runs only with the Page domain on
+    fast = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": "(function () { var s = window.setInterval; "
+                  "window.setInterval = function (f, t) { return s(f, t === 30000 ? 500 : t); }; }());"}, b.session)
+    try:
+        with open(fj, "w") as f:
+            f.write(before)
+        family_page(b, base)
+        out = []
+        for _ in range(2):
+            open_box(b, "denovo")
+        if boxes_of(b):
+            out.append(f"the son's places not opened: {boxes_of(b)}")
+        with open(fj, "w") as f:
+            f.write(after)
+        moved = b.wait("var r = Array.prototype.some.call(document.querySelectorAll('a[href]'), function (a) { "
+                       "return a.getAttribute('href').indexOf('-again/') >= 0; }); r && "
+                       "/DEMO-003:known/.test(document.documentElement.dataset.pgpKids || '') && 'moved'", 10)
+        time.sleep(1.5)
+        if moved != "moved":
+            out.append("the page never fetched the moved run")
+        elif boxes_of(b) != SON_BOXES:
+            out.append(f"opened results stayed open for the son's new run: closed {boxes_of(b)}")
+        return out
+    finally:
+        b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": (fast or {}).get("identifier", "")}, b.session)
+        b.call("Page.disable", {}, b.session)
+
+
+def gene_cells(b, child):
+    """The values of CHILD's medicines and HLA cells in the side by side."""
+    rows = side_rows(b)
+    members = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#ch-side-by-side table.rows thead th'), "
+                     "function (x) { return x.textContent; }).slice(2))")
+    members = json.loads(members) if members else []
+    if child not in members:
+        return []
+    i = members.index(child)
+    return [r[2 + i] for r in rows if r[0] in ("Medicines", "HLA")]
+
+
+def unknown_couple_problems(b, base):
+    """[problems] of the couple fixture while the page cannot read DEMO-001's results: from a fresh page each, 'Show
+    the screen' opens the screen and leaves DEMO-001's cells closed, and 'Show the cells' opens the cells and leaves
+    the screen closed."""
+    out, box = [], "couple:DEMO-001 DEMO-002"
+    screen = "!!document.querySelector('#ch-couples table.rows')"
+    for which in (box, "side"):
+        family_page(b, base)
+        if boxes_of(b, "DEMO-001") != [box, "side"] or b.eval(screen) or set(gene_cells(b, "DEMO-001")) != {"closed"}:
+            out.append(f"DEMO-001's places not all closed: {boxes_of(b, 'DEMO-001')}")
+            continue
+        if not open_box(b, which, "DEMO-001"):
+            out.append(f"no {which} box")
+            continue
+        cells = set(gene_cells(b, "DEMO-001"))
+        rest = [x for x in (box, "side") if x != which]
+        ok = (b.eval(screen) and cells == {"closed"}) if which == box else (not b.eval(screen) and cells and "closed" not in cells)
+        if boxes_of(b, "DEMO-001") != rest or not ok:
+            out.append(f"the {which} box opened another place, or not its own: closed {boxes_of(b, 'DEMO-001')}, cells {sorted(cells)[:3]}")
     return out
 
 
@@ -1070,7 +1190,8 @@ def family_veil_checks(b, base, out):
         fams = {"a grandparent over the hit": planted, "a grandparent elsewhere": elsewhere}
         bad = invariance_problems(b, base, rj, res, fj, fams)
         check("browser: the family page is the same, byte for byte, whichever of the son's results is closed (a pair "
-              "in KCNH2, RYR1, HLA-B, a gene alone, a position) and wherever a grandparent's stretch lies", not bad, bad)
+              "in KCNH2, RYR1, HLA-B, a gene alone, a position, a copy-number span in SMN1, a CHIP call in TP53) and "
+              "wherever a grandparent's stretch lies, each view settled on knowing his results", not bad, bad)
         for desc, a, z in (
                 ("de novo rows closed only when a result lies under one", "var dshut = shutOf(c.child, 'denovo');",
                  "var dshut = shutOf(c.child, 'denovo').filter(function (id) { return dn.some(function (r) { return "
@@ -1083,7 +1204,13 @@ def family_veil_checks(b, base, out):
                 ("a side by side that closes only the closed gene's cells",
                  "if (GENE_GROUPS[r.group] && shutBy[m] && shutBy[m].length) {",
                  "if (GENE_GROUPS[r.group] && shutBy[m] && shutBy[m].length && (kids[m].spans || []).some(function (s) { "
-                 "return s[1] === r.label; })) {")):
+                 "return s[1] === r.label; })) {"),
+                ("a side by side whose cells stay open for a span wider than 10 kb (a copy-number region)",
+                 "if (GENE_GROUPS[r.group] && shutBy[m] && shutBy[m].length) {",
+                 "if (GENE_GROUPS[r.group] && shutBy[m] && shutBy[m].length && (kids[m].spans || []).every(function (s) { "
+                 "return !(s[4] - s[3] > 10000); })) {"),
+                ("a page that never reads the son's results (every view the same, all closed as unreadable)",
+                 "U.getJSON(url + 'results.json')", "U.getJSON(url + 'missing.json')")):
             planted_control(desc, a, z, lambda: invariance_problems(b, base, rj, res, fj, fams))
         write(fj, planted)
 
@@ -1091,11 +1218,16 @@ def family_veil_checks(b, base, out):
         os.replace(rj, rj + ".away")
         try:
             bad = family_unknown(b, base)
-            check("browser: with the son's results.json unavailable every place of his stays closed, and the de novo "
-                  "box's own button opens his de novo rows and no other place", not bad, bad)
+            check("browser: with the son's results.json unavailable every place of his stays closed, and each box's "
+                  "own button (the painting's, the de novo, the compound-het, the side by side's) opens its own place "
+                  "and no other", not bad, bad)
             planted_control("one opening shared by every box while the results cannot be read",
                             "return opened[openKey(child, 'box:' + box)] ? [] : [UNKNOWN];",
                             "return opened[openKey(child, 'box:denovo')] ? [] : [UNKNOWN];",
+                            lambda: family_unknown(b, base))
+            planted_control("'Show the grandparents' that opens the side by side while the results cannot be read",
+                            "return opened[openKey(child, 'box:' + box)] ? [] : [UNKNOWN];",
+                            "return opened[openKey(child, box === 'side' ? 'box:paint' : 'box:' + box)] ? [] : [UNKNOWN];",
                             lambda: family_unknown(b, base))
         finally:
             os.replace(rj + ".away", rj)
@@ -1104,6 +1236,29 @@ def family_veil_checks(b, base, out):
         bad = family_unknown(b, base, opens=False)
         check("browser: with the son's results answered as unreadable (a note, no findings) every place of his stays "
               "closed", not bad, bad)
+        write(rj, keep[rj][:5000])
+        bad = family_unknown(b, base, opens=False)
+        check("browser: with the son's results.json cut short (a request that fails) every place of his stays closed",
+              not bad, bad)
+        planted_control("a failed request read as nothing closed", "cur.status = 'failed';",
+                        "cur.status = 'known'; cur.spans = null; cur.acts = [];", lambda: family_unknown(b, base, opens=False))
+        for desc, spans in (("[null]", [None]), ("[] while he has findings to act on", [])):
+            bad_spans = json.loads(keep[rj])
+            bad_spans["veil"]["spans"] = spans
+            write(rj, json.dumps(bad_spans))
+            bad = family_unknown(b, base, opens=False)
+            check(f"browser: with the son's veil.spans malformed ({desc}) every place of his stays closed", not bad, bad)
+            planted_control(f"malformed veil.spans ({desc}) read as given", "spans: spansOk ? v.spans : null",
+                            "spans: Array.isArray(v.spans) ? v.spans : null", lambda: family_unknown(b, base, opens=False))
+        clean = json.loads(keep[rj])
+        clean["findings"] = [x for x in clean["findings"] if x.get("level") != "act"]
+        clean.pop("veil", None)
+        write(rj, json.dumps(clean))
+        bad = nothing_closed_problems(b, base)
+        check("browser: with nothing of the son's to act on (no veil) every place of his is open, with no box", not bad, bad)
+        planted_control("results without veil.spans read as closed even with nothing to act on",
+                        "if (!k || k.status !== 'known' || (!k.spans && k.acts.length)) {",
+                        "if (!k || k.status !== 'known' || !k.spans) {", lambda: nothing_closed_problems(b, base))
         nospans = json.loads(keep[rj])
         nospans.pop("veil", None)
         write(rj, json.dumps(nospans))
@@ -1137,6 +1292,23 @@ def family_veil_checks(b, base, out):
                         lambda: two_children_problems(b, base))
         write(fj, planted)
 
+        # The son's run moves to another folder (same results) while the page is open: what was opened closes again.
+        again = os.path.join(out, "runs", SON + "-again")
+        shutil.copytree(os.path.join(out, "runs", SON), again)
+        moved = json.loads(planted)
+        moved["runs"][SON]["url"] = moved["runs"][SON]["url"].replace(f"/{SON}/", f"/{SON}-again/")
+        try:
+            bad = new_run_problems(b, base, fj, planted, json.dumps(moved))
+            check("browser: results the reader opened close again when the son's run changes while the page is open",
+                  not bad, bad)
+            planted_control("an opened result kept per child only, not per run",
+                            "function openKey(child, id) { return (kids[child] && kids[child].url) + '|' + child + '|' + id; }",
+                            "function openKey(child, id) { return child + '|' + id; }",
+                            lambda: new_run_problems(b, base, fj, planted, json.dumps(moved)))
+        finally:
+            shutil.rmtree(again, ignore_errors=True)
+            write(fj, planted)
+
         # A partner of the couple screen who is also a child, with a closed result in a gene of the screen.
         famc = json.loads(keep[fj])
         famc["state"]["members"].insert(0, {"sample": GRANDPARENT, "sex": "male", "father": None, "mother": None,
@@ -1157,6 +1329,29 @@ def family_veil_checks(b, base, out):
               "table, boxes, report link, the lead's words) until that result is opened from its box", not bad, bad)
         planted_control("a couple screen that ignores the veil", "var cs = coupleShut(f, c);", "var cs = [];",
                         lambda: couple_problems(b, base))
+        couple_cases = (("PRF1, a gene of the screen", [["two-hits-prf1", "PRF1", None, None, None]]),
+                        ("RYR1, a gene the screen does not name", [["sf-ryr1", "RYR1", "chr19", 38440000, 38440000]]))
+        bad = invariance_problems(b, base, rj1, json.loads(keep[rj1]), fj, {"the couple": json.dumps(famc)},
+                                  couple_cases, S)
+        check("browser: the family page is the same, byte for byte, whether the partner's closed result is in a gene "
+              "of the screen or not", not bad, bad)
+        planted_control("a couple screen closed only when the closed result is in one of its genes",
+                        "var cs = coupleShut(f, c);",
+                        "var cs = coupleShut(f, c).filter(function (x) { return (kids[x[0]].spans || []).some(function (s) { "
+                        "return ((f.couples || {})[c.a + ' ' + c.b] || []).some(function (r) { return r.gene === s[1]; }); }); });",
+                        lambda: invariance_problems(b, base, rj1, json.loads(keep[rj1]), fj, {"the couple": json.dumps(famc)},
+                                                    couple_cases, S))
+        os.replace(rj1, rj1 + ".away")
+        try:
+            bad = unknown_couple_problems(b, base)
+            check("browser: with the partner's results unavailable, 'Show the screen' opens the screen and leaves the "
+                  "partner's cells closed, and 'Show the cells' opens the cells and leaves the screen closed", not bad, bad)
+            planted_control("a couple screen that 'Show the cells' opens while the results cannot be read",
+                            "return opened[openKey(child, 'box:' + box)] ? [] : [UNKNOWN];",
+                            "return opened[openKey(child, box.indexOf('couple:') === 0 ? 'box:side' : 'box:' + box)] ? [] : [UNKNOWN];",
+                            lambda: unknown_couple_problems(b, base))
+        finally:
+            os.replace(rj1 + ".away", rj1)
         write(rj1, keep[rj1])
 
         # The drawing as an image (no stretches in family.json).
@@ -1169,6 +1364,16 @@ def family_veil_checks(b, base, out):
               "click, the map once both are opened", not bad, bad)
         planted_control("a map image that ignores the veil", "var shut = shutOf(c.child, 'map');", "var shut = [];",
                         lambda: map_problems(b, base))
+        mapfam = {"the map as an image": json.dumps(fam)}
+        bad = invariance_problems(b, base, rj, json.loads(keep[rj]), fj, mapfam)
+        check("browser: with the son's map as an image the family page is the same, byte for byte, whichever of his "
+              "results is closed", not bad, bad)
+        planted_control("a map image closed only when the closed result has a position",
+                        "var shut = shutOf(c.child, 'map');",
+                        "var shut = shutOf(c.child, 'map').filter(function (id) { return (kids[c.child].spans || []).some("
+                        "function (s) { return s[0] === id && s[2]; }); });",
+                        lambda: invariance_problems(b, base, rj, json.loads(keep[rj]), fj, mapfam))
+        write(fj, json.dumps(fam))
         os.replace(rj, rj + ".away")
         try:
             bad = unknown_map_problems(b, base)
@@ -1177,6 +1382,10 @@ def family_veil_checks(b, base, out):
             planted_control("a map image that 'Show the rows' opens",
                             "return opened[openKey(child, 'box:' + box)] ? [] : [UNKNOWN];",
                             "return opened[openKey(child, 'box:denovo')] ? [] : [UNKNOWN];",
+                            lambda: unknown_map_problems(b, base))
+            planted_control("de novo rows that 'Show the map' opens",
+                            "return opened[openKey(child, 'box:' + box)] ? [] : [UNKNOWN];",
+                            "return opened[openKey(child, box === 'denovo' ? 'box:map' : 'box:' + box)] ? [] : [UNKNOWN];",
                             lambda: unknown_map_problems(b, base))
         finally:
             os.replace(rj + ".away", rj)
