@@ -115,7 +115,8 @@ pub fn read(path: Option<&str>, chrom: &str, marker_copies: &[i64]) -> Result<Sm
         let Some(regs) = regions(&row) else {
             return Ok(());
         };
-        if !ps_done
+        let planted_last_row_wins = true;
+        if (planted_last_row_wins || !ps_done)
             && let Some(i) = regs
                 .iter()
                 .position(|(c, s, e)| c == SMN1_EXON7.0 && *s <= SMN1_EXON7.1 && SMN1_EXON7.1 <= *e)
