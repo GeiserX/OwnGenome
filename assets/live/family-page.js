@@ -77,9 +77,11 @@
   // What this page knows of each child's results: { status: 'pending', 'known' or 'failed', spans, acts }. A child
   // with no run here, or whose results.json has not answered or could not be read, cannot say which rows name a
   // result to act on, so every row of theirs that could stays closed (UNKNOWN) until opened on purpose.
-  // Opened results are kept for the life of this page, as on the child's page: a reload closes them again.
+  // Opened results are kept for the life of this page, as on the child's page: a reload closes them again. They
+  // are kept per child and per run (two children can carry the same result, under the same id).
   var UNKNOWN = '?';
   var kids = {}, opened = {}, openedAll = {}, last = null;
+  function openKey(child, id) { return (kids[child] && kids[child].url) + '|' + child + '|' + id; }
   function loadKids(f) {
     (f.state.children || []).forEach(function (c) {
       var url = memberUrl(f, c.child);
@@ -93,10 +95,12 @@
         if (!cur || cur.url !== url) { return; }
         cur.busy = false;
         var v = (r && r.veil) || {};
-        var acts = ((r && r.findings) || []).filter(function (x) { return x.level === 'act'; }).map(function (x) { return x.id; });
-        var next = r ? { status: 'known', url: url, spans: v.spans || null, acts: acts } : { status: 'failed', url: url };
+        // Results the server could not build come back without their findings: as unreadable as no answer.
+        var usable = !!(r && Array.isArray(r.findings));
+        var acts = usable ? r.findings.filter(function (x) { return x.level === 'act'; }).map(function (x) { return x.id; }) : [];
+        var next = usable ? { status: 'known', url: url, spans: v.spans || null, acts: acts } : { status: 'failed', url: url };
         // An answer that cannot be read keeps what was known: the page never opens on a failed request.
-        if (!r && cur.status === 'known') { return; }
+        if (!usable && cur.status === 'known') { return; }
         var key = JSON.stringify([next.status, next.spans, next.acts]);
         if (key === cur.key) { return; }
         next.key = key;
@@ -110,20 +114,23 @@
       });
     });
   }
-  // The closed result a row of CHILD belongs to: its id, UNKNOWN when this page cannot tell, or null.
+  // The closed results a row of CHILD belongs to: their ids, [UNKNOWN] when this page cannot tell, or [].
   function tagOf(child, text, chrom, pos, end) {
     var k = kids[child];
-    if (!k || k.status !== 'known') { return UNKNOWN; }
-    if (!k.spans) { return k.acts.length ? UNKNOWN : null; }  // results without the tags: cannot tell
-    return U.veilId(k.spans, text, chrom, pos, end);
+    if (!k || k.status !== 'known') { return [UNKNOWN]; }
+    if (!k.spans) { return k.acts.length ? [UNKNOWN] : []; }  // results without the tags: cannot tell
+    return U.veilIds(k.spans, text, chrom, pos, end);
   }
-  function isClosed(child, tag) { return !!tag && !(tag === UNKNOWN ? openedAll[child] : opened[tag]); }
-  // The rows of CHILD split by the veil: { open: rows, closed: [tags of the closed rows] }.
+  // The results of TAGS still closed for CHILD: a row stays closed while one of them is.
+  function stillClosed(child, tags) {
+    return tags.filter(function (t) { return t === UNKNOWN ? !openedAll[child] : !opened[openKey(child, t)]; });
+  }
+  // The rows of CHILD split by the veil: { open: rows, closed: [the still closed results of each closed row] }.
   function veiled(child, rows, tagFn) {
     var out = { open: [], closed: [] };
     rows.forEach(function (r) {
-      var t = tagFn(r);
-      if (isClosed(child, t)) { out.closed.push(t); } else { out.open.push(r); }
+      var t = stillClosed(child, tagFn(r));
+      if (t.length) { out.closed.push(t); } else { out.open.push(r); }
     });
     return out;
   }
@@ -131,13 +138,13 @@
   function veilBox(child, closed, what, whats) {
     if (!closed.length) { return null; }
     var n = closed.length === 1 ? 'One ' + what + ' stays' : closed.length + ' ' + whats + ' stay';
-    var first = closed[0];
+    var first = closed[0][0];
     if (first === UNKNOWN) {
       return U.veil(n + ' closed: this page cannot read ' + child + '’s results yet, so it cannot tell which ' + whats +
         ' name a result to act on in adult life.', 'Show the ' + whats, function () { openedAll[child] = true; redraw(); });
     }
     return U.veil(n + ' closed with the result to act on in adult life ' + (closed.length === 1 ? 'it belongs' : 'they belong') +
-      ' to, until that result is opened.', null, function () { opened[first] = true; redraw(); });
+      ' to, until that result is opened.', null, function () { opened[openKey(child, first)] = true; redraw(); });
   }
 
   // The pedigree drawn from the layout the server gives: a sequenced person with a run here is a link.
@@ -360,7 +367,7 @@
     // A stretch drawn from a grandparent says which grandparent's copy the child got there, so one over a
     // closed result says whether the child got it: it stays closed. A stretch from a parent alone says nothing.
     var split = veiled(child, all, function (r) {
-      return r.ancestor && r.ancestor !== '.' ? tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end) : null;
+      return r.ancestor && r.ancestor !== '.' ? tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end) : [];
     });
     var rows = split.open;
     var lengths = f.chrom_lengths || [];
@@ -450,11 +457,11 @@
         // The drawing as an image cannot close one stretch: while this child has a result to act on that is
         // closed (or this page cannot tell), it stays closed whole.
         var k = kids[c.child] || {};
-        var shut = k.status !== 'known' ? [UNKNOWN] : (k.spans || []).map(function (s) { return s[0]; }).filter(function (id) { return !opened[id]; });
-        if (!k.spans && k.status === 'known' && k.acts.length) { shut = [UNKNOWN]; }
-        if (shut.length && !(shut[0] === UNKNOWN && openedAll[c.child])) {
+        var all = k.status !== 'known' || (!k.spans && k.acts.length) ? [UNKNOWN] : (k.spans || []).map(function (s) { return s[0]; });
+        var shut = stillClosed(c.child, all);
+        if (shut.length) {
           add(d, U.veil('The chromosome map of ' + c.child + ' stays closed while a result to act on in adult life is: ' +
-            'it could show which copy the child got there.', 'Show the map', function () { shut.forEach(function (t) { if (t === UNKNOWN) { openedAll[c.child] = true; } else { opened[t] = true; } }); redraw(); }));
+            'it could show which copy the child got there.', 'Show the map', function () { shut.forEach(function (t) { if (t === UNKNOWN) { openedAll[c.child] = true; } else { opened[openKey(c.child, t)] = true; } }); redraw(); }));
         } else {
           add(d, el('img', { src: c.segments, alt: 'Chromosome map of ' + c.child, 'class': 'segments' }));
         }

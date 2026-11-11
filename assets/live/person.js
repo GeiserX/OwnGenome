@@ -431,11 +431,15 @@
       var ot = openTable(c), tb = U.table(ot[0]);
       var lt = veilTags('lines', c.id);
       var lines = (c.lines || []).filter(function (l, i) { return !(lt[i] && tagClosed(lt[i])); });
-      var shut = ot[1] + (c.lines || []).length - lines.length + of[2];
+      var shut = ot[1] + (c.lines || []).length - lines.length, items = of[2];
       if (tb) { add(text, tb); } else if (c.empty_text && !ot[1]) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
-      if (shut) {
-        add(text, el('p', { 'class': 'dim veil-rows' }, (shut === 1 ? 'One row stays' : shut + ' rows stay') +
-          ' closed with the result to act on ' + (shut === 1 ? 'it belongs' : 'they belong') + ' to, until that result is opened.'));
+      if (shut || items) {
+        // Rows of its table and lines, and items of its facts and drawing, counted apart.
+        var what = [shut ? (shut === 1 ? 'One row' : shut + ' rows') : '', items ? (items === 1 ? (shut ? 'one item' : 'One item') : items + ' items') +
+          ' of its numbers or drawing' : ''].filter(Boolean).join(' and ');
+        var many = shut + items > 1;
+        add(text, el('p', { 'class': 'dim veil-rows' }, what + (many ? ' stay' : ' stays') +
+          ' closed with the result to act on ' + (many ? 'they belong' : 'it belongs') + ' to, until that result is opened.'));
       }
       add(text, lineList(lines));
       if (c.hidden) {
@@ -711,7 +715,7 @@
   function cardLine(c) {
     var g = gate(c);
     return g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
-      : g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
+      : g === 'show' ? (c.headline || (openFacts(c)[0][0] ? openFacts(c)[0][0][0] + ': ' + openFacts(c)[0][0][1] : NOT_ALL_CLEAR))
       : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
   }
   // A card the report flags that has no finding of its own: on a phone it is the only place that flag

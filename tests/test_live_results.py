@@ -52,7 +52,7 @@ entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
 registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
 8 with a veil rule that tags nothing (rows, lines, facts and drawings) and one that tags every row, and
-veilId() with its gene rule or its overlap rule dropped. A check
+veilId() with its gene rule or its overlap rule dropped and veilIds() keeping only the first result. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -452,11 +452,12 @@ NODE_VEIL = ("const vm=require('vm'),fs=require('fs');const w={};"
              "const doc={documentElement:{setAttribute(){}},addEventListener(){}};"
              "vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8'),{window:w,document:doc});"
              "const sp=JSON.parse(process.argv[2]);"
-             "console.log(JSON.stringify(JSON.parse(process.argv[3]).map(r=>w.PGPUI.veilId(sp,r[0],r[1],r[2],r[3]))))")
+             "console.log(JSON.stringify(JSON.parse(process.argv[3]).map(r=>[w.PGPUI.veilId(sp,r[0],r[1],r[2],r[3]),"
+             "w.PGPUI.veilIds(sp,r[0],r[1],r[2],r[3])])))")
 
 
 def node_veil(js_path):
-    """veilId() of core.js at JS_PATH on VEIL_ROWS, under node: [ids] or the error."""
+    """[veilId(), veilIds()] of core.js at JS_PATH for each of VEIL_ROWS, under node, or the error."""
     node = shutil.which("node")
     if not node:
         return "no node"
@@ -466,12 +467,14 @@ def node_veil(js_path):
 
 
 def veil_js_problems(js_path):
-    """What veilId() of core.js answers differently from veil_id() on VEIL_ROWS."""
-    want = [live_results.veil_id([tuple(x) for x in VEIL_SPANS], *r) for r in VEIL_ROWS]
+    """What veilId() of core.js answers differently from veil_id() on VEIL_ROWS, and veilIds() from veil_id() taken
+    one closed result at a time (every result the row belongs to)."""
+    spans = [tuple(x) for x in VEIL_SPANS]
+    want = [[live_results.veil_id(spans, *r), [s_[0] for s_ in spans if live_results.veil_id([s_], *r)]] for r in VEIL_ROWS]
     got = node_veil(js_path)
     if got != want:
-        return [f"veilId {got} != veil_id {want}"]
-    if len({w for w in want}) < 4:
+        return [f"veilId, veilIds {got} != veil_id {want}"]
+    if len({w[0] for w in want}) < 4 or not any(len(w[1]) > 1 for w in want):
         return [f"the rows exercise too few answers: {want}"]
     return []
 
@@ -598,11 +601,14 @@ def main():
               "chart's gene panel none, and results.json carries the closed results as veil.spans", not bad, bad)
         check("8. node is on the PATH (ubuntu-latest has it)", shutil.which("node") is not None)
         bad = veil_js_problems(CORE_JS)
-        check("8. core.js veilId() tags each family-page row as veil_id() does (under node)", not bad, bad)
+        check("8. core.js veilId() tags each family-page row as veil_id() does, and veilIds() with every result "
+              "veil_id() finds one result at a time (under node)", not bad, bad)
         with open(CORE_JS) as f:
             core = f.read()
         for a, z, desc in (("if (s[1] && words[s[1]]) { return s[0]; }", "", "veilId() without its gene rule"),
-                           ("l[1] <= s[4] && l[2] >= s[3]", "false", "veilId() without its overlap rule")):
+                           ("l[1] <= s[4] && l[2] >= s[3]", "false", "veilId() without its overlap rule"),
+                           (".map(function (s) { return s[0]; });\n  }", ".map(function (s) { return s[0]; }).slice(0, 1);\n  }",
+                            "veilIds() keeping only the first result")):
             planted = os.path.join(work, "core-planted.js")
             with open(planted, "w") as f:
                 f.write(core.replace(a, z))

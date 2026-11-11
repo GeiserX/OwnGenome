@@ -260,9 +260,14 @@
     }
     return null;
   }
+  // Every closed result a row belongs to, by the same rule taken one result at a time: a compound-het pair can
+  // name two, and a painted stretch can hold two, so the family page keeps such a row closed until each is opened.
+  function veilIds(spans, text, chrom, pos, end) {
+    return (spans || []).filter(function (s) { return veilId([s], text, chrom, pos, end); }).map(function (s) { return s[0]; });
+  }
 
   window.PGPUI = { el: el, svg: svg, add: add, getJSON: getJSON, avatar: avatar, day: day, caveat: caveat,
     facts: facts, table: table, tablist: tablist, firstSentence: firstSentence, level: level, findingLevel: findingLevel, glyph: glyph,
     karyogram: karyogram, locus: locus, LEVEL_WORDS: LEVEL_WORDS, LEVEL_SHORT: LEVEL_SHORT, LEVEL_ORDER: LEVEL_ORDER,
-    hm: hm, dm: dm, hours: hours, veil: veil, veilId: veilId };
+    hm: hm, dm: dm, hours: hours, veil: veil, veilId: veilId, veilIds: veilIds };
 }());

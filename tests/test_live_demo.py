@@ -57,8 +57,9 @@ Checks:
      result (the compound-het pair in KCNH2 of the fixture, and a de novo
      candidate and a stretch painted from a grandparent planted in family.json)
      name its gene, positions and that grandparent in no row, link, title or
-     count until "Show the result" is clicked there, the click brings each row
-     back, and a reload closes them again; with the son's results.json
+     count until "Show the result" is clicked there, a row that names both
+     planted results stays closed until both are opened (one per click), each
+     row then comes back, and a reload closes them again; with the son's results.json
      unavailable every row of his that could name one stays closed; on his page
      a CHIP call and a copy-number dot in the gene of a closed result stay out
      of their drawings until it is opened; DEMO-001's page
@@ -771,19 +772,28 @@ def family_closed(b, base):
 
 
 def family_problems(b, base):
-    """[problems] of the family page: closed, then opened with one click, then reloaded."""
+    """[problems] of the family page: closed, then opened one result per click, then reloaded. Each planted row
+    names both of the son's planted results (the secondary finding's position, and the deletion's span around it,
+    both in KCNH2), so the first click opens one result and every row stays closed for the other."""
     gene, hit, _ = planted_words()
     out = family_closed(b, base)
     if out:
         return out
-    b.eval("document.querySelector('details[data-child=\"DEMO-003\"] .veil button').click(); true")
+    click = "document.querySelector('details[data-child=\"DEMO-003\"] .veil button').click(); true"
+    b.eval(click)
+    time.sleep(0.5)
+    shown = b.eval(FAMILY_SHOWN_JS) or ""
+    left = b.eval("document.querySelectorAll('details[data-child=\"DEMO-003\"] .veil').length")
+    if any(w in shown for w in [gene, GRANDPARENT, PAIR_B] + hit) or left != 3:
+        out.append(f"one click opened a row that also names the other closed result ({left} closed boxes left)")
+    b.eval(click)
     time.sleep(0.5)
     shown = b.eval(FAMILY_SHOWN_JS) or ""
     rows = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] "
                   "table.rows'), function (t) { return t.querySelectorAll('tbody tr').length; }))")
     left = b.eval("document.querySelectorAll('details[data-child=\"DEMO-003\"] .veil').length")
     if not all(w in shown for w in [gene, GRANDPARENT, hit[0]]) or json.loads(rows or "[0,0,0]")[1:] != [3, 3] or left:
-        out.append(f"one click on 'Show the result' did not bring back each row: tables {rows}, {left} closed boxes left")
+        out.append(f"two clicks on 'Show the result' did not bring back each row: tables {rows}, {left} closed boxes left")
     out += [f"after a reload: {x}" for x in family_closed(b, base)]
     return out
 
@@ -835,9 +845,10 @@ def family_veil_checks(b, base, out):
         bad = family_problems(b, base)
         check("browser: on the family page the son's rows that name his planted result (a compound-het pair, a de novo "
               "candidate, a stretch from a grandparent) name its gene, positions and grandparent nowhere until 'Show the "
-              "result' is clicked there, one click brings each row back, and a reload closes them", not bad, bad)
+              "result' is clicked there, a row naming two closed results stays closed until both are opened, then each "
+              "row comes back, and a reload closes them", not bad, bad)
         for p, a, z, desc in (
-                (fp, "function isClosed(child, tag) { return !!tag && ", "function isClosed(child, tag) { return false && ",
+                (fp, "return tags.filter(function (t) {", "return [].filter(function (t) {",
                  "family-page.js whose rows ignore the veil"),
                 (cj, "    if (!spans || !spans.length) { return null; }", "    return null;", "core.js whose veilId() tags nothing")):
             if a not in keep[p]:
@@ -853,6 +864,14 @@ def family_veil_checks(b, base, out):
             os.replace(rj + ".away", rj)
         check("browser: with the son's results.json unavailable the family page keeps every row of his that could name "
               "a result to act on closed", not bad, bad)
+        # The results route answers a summary it cannot build with a note and no findings (owngenome_live_results.py).
+        with open(rj) as f:
+            keep[rj] = f.read()
+        write(rj, json.dumps({"schema_version": 1, "sample": OTHERS[1], "chapters": [],
+                              "note": "The results could not be read (KeyError)."}))
+        bad = family_unknown(b, base)
+        check("browser: with the son's results answered as unreadable (a note, no findings) the family page keeps every "
+              "row of his that could name a result to act on closed", not bad, bad)
     finally:
         keep.pop("planted", None)
         for p, text in keep.items():
