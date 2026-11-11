@@ -81,6 +81,8 @@ if ! command -v nextflow >/dev/null 2>&1 || [[ ! "${java_major:-}" =~ ^[0-9]+$ ]
     "  Or run the steps one by one: ./scripts/<step>.sh ${SAMPLE} (docs/getting-started.md)." >&2; exit 2; fi
 on SKIP_VALIDATION || "${SCRIPT_DIR}/validate-setup.sh" "$SAMPLE" \
   || { echo "ERROR: setup validation failed; fix the items above. To bypass: SKIP_VALIDATION=true $0 ${SAMPLE} ${SEX}" >&2; exit 1; }
+# og (bin/.og) built from another rust/ than this checkout's stops the run, SKIP_VALIDATION or not (rust/og.sh); before the family plan, which runs og.
+[ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || { echo "$OG_MSG" >&2; exit 2; }
 # The sample's family (FAMILIES): the file is checked and the sex must be the one it gives, before anything runs.
 FAM=""
 famplan() {  # famplan [run_in options] -- [plan options]: og family plan on the FAMILIES file
@@ -96,8 +98,6 @@ if [ -n "${FAMILIES:-}" ]; then
   if [ -n "$FAM" ]; then echo "[Family] ${SAMPLE} is in family ${FAM} (${FAMILIES}): steps 38 and 39 are planned after the pipeline"
   else echo "[Family] ${SAMPLE} is in no family of ${FAMILIES}"; fi
 fi
-# og (bin/.og) built from another rust/ than this checkout's stops the run, SKIP_VALIDATION or not (rust/og.sh).
-[ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || { echo "$OG_MSG" >&2; exit 2; }
 mkdir -p "${S}/nextflow" "$LOG_DIR"
 GENOME_DIR="$G" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || echo "WARNING: could not write ${S}/run_manifest.tsv"
 STATUS="${LOG_DIR}/run_status.tsv"  # bin/collect_summary.py marks results older than this run stale
