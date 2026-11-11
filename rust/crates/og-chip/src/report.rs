@@ -33,7 +33,7 @@ use pycompat::num::{parse_float, py_strip};
 use std::collections::{BTreeSet, HashMap};
 
 /// At or above this VAF a call is read as a possible inherited variant.
-pub const GERMLINE_VAF: f64 = 0.30;
+pub const GERMLINE_VAF: f64 = 0.35;
 /// CHIP is defined from a VAF of 2% (Steensma et al. 2015, PMID 25931582).
 pub const CHIP_MIN_VAF: f64 = 0.02;
 

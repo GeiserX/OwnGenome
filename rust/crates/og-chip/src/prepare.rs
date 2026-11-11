@@ -298,7 +298,7 @@ pub fn build(gff: &str, genes: &str, fai: &str) -> Result<(String, String), Erro
         .iter()
         .filter(|g| !kept.tx_line.contains_key(*g))
         .collect();
-    if missing.len() > want.len() {
+    if !missing.is_empty() {
         missing.sort();
         let names: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
         return Err(Error(format!(
