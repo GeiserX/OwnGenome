@@ -10,9 +10,12 @@ Checks:
      its SECTION_NOTES constants, word for word, never empty;
   3. the wording gate: no string of results.json, of family.json
      (tests/fixtures/families_live family_a) or of the page assets
-     (assets/live: the text of the pages, the string literals of the scripts)
-     says a result is fine (live_results.FORBIDDEN), a quoted tool term and a
-     caveat aside;
+     (assets/live: the text of the pages, the string literals of the scripts,
+     map.js among them) says a result is fine (live_results.FORBIDDEN), a quoted
+     tool term and a caveat aside; nor does any string of the genome map
+     documents `og map build` writes for DEMO-001 and DEMO-003 (Figure 1 shows
+     their sentences), a layer's state code aside (skipped without og or
+     cargo, except in CI);
   4. ClinVar: with hits the card lists them in a table; with none it has no
      table and its empty text says ClinVar lists only part of what causes
      disease (never an all-clear);
@@ -143,6 +146,32 @@ def asset_problems(texts):
             if live_results.FORBIDDEN.search(re.sub(r'"[^"]*"', "", s)):
                 out.append(f"{name}: {s[:120]}")
     return out
+
+
+def map_documents(root, people):
+    """[(run, document)] of `og map build` for each (run, results) of PEOPLE, as the map plugin builds them;
+    None without an og (tests/test_live_demo.py og_binary)."""
+    import gzip
+    from test_live_demo import og_binary
+    og = og_binary()
+    if not og:
+        return None
+    ref = os.path.join(root, "reference")
+    if not os.path.isdir(ref):
+        shutil.copytree(os.path.join(REPO, "tests", "fixtures", "map", "gencode-slice", "reference"), ref)
+    out = []
+    for run, results in people:
+        body = {k: v for k, v in results.items() if not k.startswith("_")}
+        p = subprocess.run([og, "map", "build", "--root", root, "--run", run, "--assets", os.path.join(REPO, "assets"),
+                            "--cache-dir", os.path.join(root, ".map-cache")], input=json.dumps({"results": body}).encode(),
+                           capture_output=True, check=True)
+        out.append((run, json.loads(gzip.decompress(p.stdout))))
+    return out
+
+
+def map_wording(doc):
+    """The strings of a map document that read as an all-clear; a layer's state is a code, not words."""
+    return live_results.wording_problems(doc, allow=("state",))
 
 
 # --- 4. ClinVar with and without hits -------------------------------------------------------
@@ -533,6 +562,21 @@ def main():
             control("a veil rule that tags every row", not veil_problems(*tagged(d3)))
         finally:
             live_results.veil_id = keep
+
+        # 3, the map documents: og map build of DEMO-001 and DEMO-003, with the results each page gets.
+        map_docs = map_documents(root, [(SAMPLE, res), ("DEMO-003", tagged(d3)[0])])
+        if map_docs is None:
+            ci = os.environ.get("CI") == "true"
+            print(("[FAIL] " if ci else "[SKIP] ") + "3. no og (and no cargo to build one) for the map documents")
+            if ci:
+                FAILS.append("no og in CI")
+        else:
+            bad = [(run, x) for run, doc in map_docs for x in map_wording(doc)]
+            check(f"3. no string of the genome map documents reads as an all-clear ({len(map_docs)} documents)",
+                  not bad and len(map_docs) == 2, bad)
+            planted = copy.deepcopy(map_docs[0][1])
+            planted["text"]["genome"] = [{"t": "All clear on the map.", "b": False}]
+            control("'All clear' planted in a map document's sentence", not map_wording(planted))
 
         # 5.
         pwfile = os.path.join(work, "password")
