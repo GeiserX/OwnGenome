@@ -28,16 +28,17 @@
 #      left out, with a notice, and the hits are unchanged.
 # Needs docker: step 06 runs bcftools in BCFTOOLS_IMAGE from versions.env.
 # Needs og: step 06 runs og clinvar from bin/.og in that image, so the test
-# runs when OG is set (the rust job of guard.yml sets it to bin/og after
-# scripts/setup.sh --og) and is skipped otherwise.
+# runs when bin/og is built (the rust job of guard.yml builds it with
+# scripts/setup.sh --og and sets OG_REQUIRED) and is skipped otherwise. OG
+# alone is not enough: unit-tests sets it to a host og, with no bin/.og.
 set -euo pipefail
 
-if [ -z "${OG:-}" ]; then
-  echo "[SKIP] OG is not set: step 06 runs og clinvar, so the rust job of guard.yml runs this test"
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+if ! "${REPO}/bin/og" version > /dev/null 2>&1; then
+  if [ -n "${OG_REQUIRED:-}" ]; then echo "FAIL: og is not built (scripts/setup.sh --og)"; exit 1; fi
+  echo "[SKIP] og is not built for this machine, and step 06 runs it (scripts/setup.sh --og): the rust job of guard.yml runs this test"
   exit 0
 fi
-
-REPO=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=../versions.env
 . "${REPO}/versions.env"
 WORK=$(mktemp -d)
