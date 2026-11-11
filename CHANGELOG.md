@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Step 49 (clonal haematopoiesis) now prepares the CHIP gene models and writes its two tables with the Rust `og` binary: `og chip prepare`, `og chip report` and `og chip check-table` replace the commands of `bin/chip_report.py`, which keeps only the detection limit and the column names the reports import. On Ensembl 116's full GFF3, prepare takes 1.7 s and 6 MB instead of 15 s and 20 MB. The two tables, `chip.gff3` and `chip.bed` are the same, byte for byte. What changes: a missing input file or a position that is not a whole number stops with an `ERROR:` line and exit 1, not a Python traceback, and each output is written whole or not at all. Step 49 now needs `og` (`scripts/setup.sh --og`).
+
 - Four VCF filters of steps 04, 05 and 07 now run in the Rust `og` binary: `og sv inv-filter` (step 04), `og sv svlen-fix` (step 05), `og pgx refblock-fill` and `og pgx mito-merge` (step 07). They replace `bin/manta_inv_filter.py`, `bin/sv_svlen_fix.py`, `bin/pgx_refblock_fill.py` and `bin/pgx_mito_merge.py`, which are gone. Their output is the same, byte for byte, except for these fixes. Steps 04, 05 and 07 now need `og`: `scripts/setup.sh <genome_dir>` builds it, and `scripts/setup.sh --og` builds only it.
   - Step 05: an SV record whose INFO held `SVLEN` or `END` twice kept the old last value beside the new one. The rewrite now replaces the item it read.
   - Step 07: where the gVCF had a record at a multi-base PharmCAT position that was not a reference block, the input got that record and a 0/0 record at the same position. The gVCF's record is kept, the 0/0 record is dropped, and the log says so, whether the gVCF's reference block at that position comes before or after the record.
