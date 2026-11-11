@@ -53,7 +53,15 @@ Checks:
      marks and ranking only, and a reload closes them again; the home page and
      every finding page of the son (an open finding's rail and related list
      too) name them nowhere, and the symptom ranking's own page shows the gene
-     once opened on purpose; DEMO-001's page
+     once opened on purpose; on the family page the son's rows that name a planted
+     result (the compound-het pair in KCNH2 of the fixture, and a de novo
+     candidate and a stretch painted from a grandparent planted in family.json)
+     name its gene, positions and that grandparent in no row, link, title or
+     count until "Show the result" is clicked there, the click brings each row
+     back, and a reload closes them again; with the son's results.json
+     unavailable every row of his that could name one stays closed; on his page
+     a CHIP call and a copy-number dot in the gene of a closed result stay out
+     of their drawings until it is opened; DEMO-001's page
      mid-replay and at the end leads with the report (a short run band above
      the lead while it runs, none once finished), ends with the step timeline
      folded, keeps the wire to at most eight one-sentence lines with the plain
@@ -64,7 +72,8 @@ with the son's stretches emptied), the phone width and the son's closed result (
 the veil, person.js and finding.js that read a missing state as a standalone adult, and search.js
 without its filter; for the planted results, results.json without its veil tags, person.js whose table
 rows ignore them, person.js whose findings ignore them, charts.js that keeps every mark, search.js that ignores a hit's tag
-and finding.js whose findings ignore their tags), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+and finding.js whose findings ignore their tags; for the family page, family-page.js whose rows ignore the veil
+and core.js whose veilId() tags nothing; for the drawings, person.js that draws every item), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -314,6 +323,8 @@ def browser_checks(out):
         fold_checks(b, base, out)
         veil_checks(b, base, out)
         planted_checks(b, base, out)
+        family_veil_checks(b, base, out)
+        widget_veil_checks(b, base, out)
     finally:
         b.close()
         srv.shutdown()
@@ -408,7 +419,8 @@ def family_depth(b, base):
     b.go("about:blank")
     b.wait("location.href === 'about:blank'")
     b.go(f"{base}/runs/{FAM}/")
-    return b.wait("document.documentElement.dataset.pgpStatus === 'ready' && JSON.stringify(["
+    return b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+                  "(document.documentElement.dataset.pgpKids || '').indexOf('DEMO-003:known') >= 0 && JSON.stringify(["
                   "document.querySelectorAll('table.rel-grid td:not(.self):not(.none)').length, "
                   "document.querySelectorAll('[data-painting=\"DEMO-003\"] .paint-seg').length, "
                   "document.querySelectorAll('details[data-child=\"DEMO-003\"] table.rows').length, "
@@ -714,6 +726,207 @@ def planted_checks(b, base, out):
     finally:
         for p, text in keep.items():
             write(p, text)
+
+
+# The family page: the son's rows that name his planted result to act on.
+FAMILY_SHOWN_JS = ("[document.body.textContent].concat(Array.prototype.map.call(document.querySelectorAll('[href],[title],[aria-label],"
+                   "[alt]'), function (e) { return ['href', 'title', 'aria-label', 'alt'].map(function (k) { "
+                   "return e.getAttribute(k) || ''; }).join(' '); })).join(' ')")
+GRANDPARENT = "DEMO-GF"
+PAIR_B = "150962400"  # the second variant of the fixture's compound-het pair in KCNH2
+
+
+def no_cache(b):
+    """Chrome keeps a script it fetched a moment ago without asking again: the controls below swap a script, so
+    every request goes to the server from here on."""
+    b.call("Network.enable", {}, b.session)
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+
+
+def family_page(b, base):
+    """The family page once it knows the son's results (or after 10 s, for a page that never learns them)."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{FAM}/")
+    b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+           "/DEMO-003:(known|failed)/.test(document.documentElement.dataset.pgpKids || '') && 'ready'", 10)
+    time.sleep(0.3)
+
+
+def family_closed(b, base):
+    """[problems] of the family page before any click: the son's planted gene, its positions or the grandparent of
+    the stretch over it named anywhere; the rows that name nothing closed gone too."""
+    gene, hit, sv = planted_words()
+    family_page(b, base)
+    shown = b.eval(FAMILY_SHOWN_JS) or ""
+    out = [f"{w} shown on the family page while closed" for w in [gene, GRANDPARENT, PAIR_B] + hit + sv[:1] if w in shown]
+    rows = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] "
+                  "table.rows'), function (t) { return t.querySelectorAll('tbody tr').length; }))")
+    closed = b.eval("document.querySelectorAll('details[data-child=\"DEMO-003\"] .veil').length")
+    segs = b.eval("document.querySelectorAll('[data-painting=\"DEMO-003\"] .paint-seg.closed').length")
+    # The stretches' table, the 2 de novo rows of the fixture and its 2 other pairs stay; one closed box each.
+    if not rows or json.loads(rows)[1:] != [2, 2] or closed != 3 or segs != 1:
+        out.append(f"the open rows and the closed boxes: tables {rows}, {closed} closed boxes, {segs} closed stretches")
+    return out
+
+
+def family_problems(b, base):
+    """[problems] of the family page: closed, then opened with one click, then reloaded."""
+    gene, hit, _ = planted_words()
+    out = family_closed(b, base)
+    if out:
+        return out
+    b.eval("document.querySelector('details[data-child=\"DEMO-003\"] .veil button').click(); true")
+    time.sleep(0.5)
+    shown = b.eval(FAMILY_SHOWN_JS) or ""
+    rows = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] "
+                  "table.rows'), function (t) { return t.querySelectorAll('tbody tr').length; }))")
+    left = b.eval("document.querySelectorAll('details[data-child=\"DEMO-003\"] .veil').length")
+    if not all(w in shown for w in [gene, GRANDPARENT, hit[0]]) or json.loads(rows or "[0,0,0]")[1:] != [3, 3] or left:
+        out.append(f"one click on 'Show the result' did not bring back each row: tables {rows}, {left} closed boxes left")
+    out += [f"after a reload: {x}" for x in family_closed(b, base)]
+    return out
+
+
+def family_unknown(b, base):
+    """[problems] of the family page with the son's results.json unavailable: a row of his named, or any of his de
+    novo or compound-het rows open."""
+    gene, hit, sv = planted_words()
+    family_page(b, base)
+    shown = b.eval(FAMILY_SHOWN_JS) or ""
+    out = [f"{w} shown with the son's results unavailable" for w in [gene, GRANDPARENT, PAIR_B] + hit + sv[:1] if w in shown]
+    rows = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] "
+                  "table.rows'), function (t) { return t.querySelectorAll('tbody tr').length; }))")
+    if rows is None or len(json.loads(rows)) != 1:
+        out.append(f"the son's de novo or compound-het rows open with his results unavailable: tables {rows}")
+    return out
+
+
+def family_veil_checks(b, base, out):
+    """On the family page a child's rows that name a closed result stay closed as on the child's page, until that
+    result is opened there; a page that cannot read the child's results keeps every row of his that could closed."""
+    no_cache(b)
+    import make_demo_sample
+    fj = os.path.join(out, "runs", FAM, "family.json")
+    rj = os.path.join(out, "runs", OTHERS[1], "results.json")
+    fp, cj = (os.path.join(out, "assets", x) for x in ("family-page.js", "core.js"))
+    keep = {}
+    for p in (fj, fp, cj):
+        with open(p) as f:
+            keep[p] = f.read()
+
+    def write(p, text):
+        with open(p, "w") as f:
+            f.write(text)
+    try:
+        # A de novo candidate at the planted hit, and the father's copy over it painted from a grandparent.
+        fam = json.loads(keep[fj])
+        c, pos, ref, alt = make_demo_sample.PLANTED["hit"]
+        row = dict(fam["de_novo"][0], chrom=c, pos=str(pos), ref=ref, alt=alt)
+        fam["de_novo"].append(row)
+        segs = fam["segments"]["DEMO-003"]
+        over = [s_ for s_ in segs if s_["chrom"] == c and s_["side"] == "paternal" and int(s_["start"]) <= pos <= int(s_["end"])]
+        if len(over) != 1:
+            check("browser: the son's stretches hold one paternal stretch over the planted hit", False, over)
+            return
+        over[0]["ancestor"] = GRANDPARENT
+        write(fj, json.dumps(fam))
+        keep["planted"] = json.dumps(fam)
+        bad = family_problems(b, base)
+        check("browser: on the family page the son's rows that name his planted result (a compound-het pair, a de novo "
+              "candidate, a stretch from a grandparent) name its gene, positions and grandparent nowhere until 'Show the "
+              "result' is clicked there, one click brings each row back, and a reload closes them", not bad, bad)
+        for p, a, z, desc in (
+                (fp, "function isClosed(child, tag) { return !!tag && ", "function isClosed(child, tag) { return false && ",
+                 "family-page.js whose rows ignore the veil"),
+                (cj, "    if (!spans || !spans.length) { return null; }", "    return null;", "core.js whose veilId() tags nothing")):
+            if a not in keep[p]:
+                check(f"control: {desc} (the planted line is in {os.path.basename(p)})", False, a)
+                continue
+            write(p, keep[p].replace(a, z))
+            control(desc, not family_closed(b, base))
+            write(p, keep[p])
+        os.replace(rj, rj + ".away")
+        try:
+            bad = family_unknown(b, base)
+        finally:
+            os.replace(rj + ".away", rj)
+        check("browser: with the son's results.json unavailable the family page keeps every row of his that could name "
+              "a result to act on closed", not bad, bad)
+    finally:
+        keep.pop("planted", None)
+        for p, text in keep.items():
+            write(p, text)
+
+
+def widget_veil_checks(b, base, out):
+    """On the son's page a CHIP call and a copy-number dot in the gene of a closed result stay out of sight until that
+    result is opened; the other dot stays drawn. A CHIP call is also a finding of its card that names its gene, so
+    the CHIP card closes whole with the result; SMN1 at two copies is no finding, so only its dot's tag closes it."""
+    no_cache(b)
+    rj = os.path.join(out, "runs", OTHERS[1], "results.json")
+    js = os.path.join(out, "assets", "person.js")
+    with open(rj) as f:
+        keep = f.read()
+    with open(js) as f:
+        keep_js = f.read()
+
+    def drawn():
+        b.go("about:blank")
+        b.wait("location.href === 'about:blank'")
+        b.go(f"{base}/runs/{OTHERS[1]}/")
+        b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpStatus === 'ready' "
+               "&& document.querySelector('[data-widget=copies]') && document.querySelector('.veil') && 'drawn'", 15)
+        return shown()
+
+    def shown():
+        return b.eval("JSON.stringify([" + SHOWN_JS + ", (document.querySelector('[data-widget=copies]') || {}).textContent || ''])")
+
+    def problems(text, opened):
+        page, cops = json.loads(text) if text else ["", ""]
+        out_ = []
+        if "SMN2" not in cops:
+            out_.append(f"the open dot is not drawn: {cops[:120]}")
+        if ("p.R175H" in page) != opened or ("SMN1" in cops) != opened:
+            out_.append(f"the CHIP call or the SMN1 dot of the closed results {'not ' if opened else ''}shown: "
+                        f"{'p.R175H' in page} | {cops[:200]}")
+        return out_
+    try:
+        with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as f:
+            summary = json.load(f)
+        S = summary.setdefault("sections", {})
+        S["cpsr"] = {"state": "ok", "data": {"call_floor_dp": 10, "low_confidence": 0, "plp": [
+            {"gene": "TP53", "variant": "c.524G>A", "final": "Pathogenic", "clinvar": "Pathogenic"},
+            {"gene": "SMN1", "variant": "c.1A>G", "final": "Pathogenic", "clinvar": "Pathogenic"}]}}
+        S["chip"] = {"state": "ok", "data": {"median_limit": 0.05, "median_depth": 72, "calls": [
+            {"gene": g, "protein_change": ch, "vaf": v, "alt_reads": 6, "depth": 75, "status": "pass", "note": "a clone"}
+            for g, ch, v in (("DNMT3A", "p.R882H", 0.12), ("TP53", "p.R175H", 0.08))],
+            "genes": [{"gene": g, "detection_limit_vaf": 0.05, "mean_depth": 75, "status": "ok"} for g in ("DNMT3A", "TP53")]}}
+        S["paralogs"] = {"state": "ok", "data": {"genes": [{"gene": g, "copy_number": n, "status": "called", "detail": "."}
+                                                           for g, n in (("SMN1", 2), ("SMN2", 2))]}}
+        res = live_results.build(OTHERS[1], summary)
+        with open(rj, "w") as f:
+            json.dump(res, f)
+        bad = problems(drawn(), False)
+        if not bad:
+            for _ in range(2):  # the CPSR card holds both results: one click opens one
+                b.eval("document.querySelector('#card-cpsr .veil button').click(); true")
+                time.sleep(0.5)
+            bad = problems(shown(), True)
+        check("browser: on the son's page a CHIP call and a copy-number dot in the gene of a closed result stay out of "
+              "sight until it is opened", not bad, bad)
+        a = "add(text, widget(of[1]));"
+        if a not in keep_js:
+            check("control: person.js that draws every item (the planted line is in person.js)", False, a)
+        else:
+            with open(js, "w") as f:
+                f.write(keep_js.replace(a, "add(text, widget(c.widget));"))
+            control("person.js that draws every item", not problems(drawn(), False))
+    finally:
+        with open(rj, "w") as f:
+            f.write(keep)
+        with open(js, "w") as f:
+            f.write(keep_js)
 
 
 # finding.js as it was: a missing state or one with no plugins read as a standalone adult.
