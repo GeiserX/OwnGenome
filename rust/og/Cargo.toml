@@ -13,9 +13,10 @@ og-bam.workspace = true
 og-map.workspace = true
 og-intervals.workspace = true
 og-dev.workspace = true
+og-vcf.workspace = true
+og-steps.workspace = true
 og-filters.workspace = true
 og-runlog.workspace = true
-og-steps.workspace = true
 
 # musl's own malloc lets a long multi-threaded read grow to several times
 # its live data (step 40 on a 550 MB gVCF: 160-300 MB, against 40 MB with

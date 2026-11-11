@@ -1,6 +1,6 @@
 [package]
 name = "og-vcf"
-description = "VCF records read in place: columns, ordered INFO, FORMAT and samples, GT, the VEP CSQ layout, the header passed through"
+description = "VCF records read in place: columns, ordered INFO, FORMAT and samples, GT, the VEP CSQ layout, the header passed through; csq-rank, the ranking of VEP records"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,8 +9,7 @@ publish.workspace = true
 [dependencies]
 memchr.workspace = true
 smallvec.workspace = true
-
-[dev-dependencies]
+pycompat.workspace = true
 og-io.workspace = true
 
 [lints]

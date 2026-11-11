@@ -1,6 +1,6 @@
 [package]
 name = "og-steps"
-description = "Pipeline steps OwnGenome owns, one module each: the consumer raw-data export first"
+description = "The pipeline steps and helpers OwnGenome owns, one module per tool: constraint (the gnomAD gene constraint join) and consumer (step 40's raw-data export)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

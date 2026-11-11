@@ -6,7 +6,7 @@
 # compound heterozygote candidates using slivar. Optionally annotates results
 # with gnomAD gene constraint metrics (LOEUF, pLI).
 #
-# Rarity is the rule of step 23 (bin/csq_rank.awk, PGP_FREQ): a known MAX_AF
+# Rarity is the rule of step 23 (og vcf csq-rank, PGP_FREQ): a known MAX_AF
 # (else gnomADe_AF and gnomADg_AF) below 1%. A HIGH or MODERATE variant with
 # no frequency at all is not rare: it goes into its own freq_unknown tier,
 # which the prioritized VCF and the compound-het search still include, and
@@ -126,7 +126,7 @@ printf '%s\n' "$VEP_FIELDS" | awk -F'\t' '$2 == "CLIN_SIG" {f = 1} END {exit !f}
 # Rarity: VEP's MAX_AF (highest frequency in any 1000 Genomes or gnomAD
 # exome/genome population), or gnomADe_AF and gnomADg_AF when MAX_AF is
 # absent. Exome frequency alone would call a variant common in genomes but
-# absent from exomes rare. bin/csq_rank.awk applies the rule, the same as
+# absent from exomes rare. og vcf csq-rank applies the rule, the same as
 # step 23; this only names the fields.
 has_csq() { printf '%s\n' "$VEP_FIELDS" | awk -F'\t' -v f="$1" '$2 == f {x = 1} END {exit !x}'; }
 FREQ_NAME=""
@@ -170,10 +170,13 @@ echo ""
 # Three filter tiers: rare_high, rare_moderate_deleterious, clinvar_pathogenic.
 echo "[3/5] Prioritizing variants..."
 
-# rank KEEP: bin/csq_rank.awk on stdin, on the host (PGP_FREQ, the MANE
-# Select consequence PGP_CSQ and PGP_TX); KEEP=noncommon drops the records
-# with a known frequency of 1% or more.
-rank() { LC_ALL=C awk -v keep="$1" -f "${PGP_ROOT}/bin/csq_rank.awk"; }
+# rank KEEP: og vcf csq-rank on stdin, in the bcftools image (PGP_FREQ, the
+# MANE Select consequence PGP_CSQ and PGP_TX); KEEP=noncommon drops the
+# records with a known frequency of 1% or more.
+rank() {
+  run_in -i --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${BCFTOOLS_IMAGE}" \
+    /pgp-bin/og vcf csq-rank --keep "$1"
+}
 S="/genome/${SAMPLE}/slivar"
 RANKED="${S}/${SAMPLE}_ranked.vcf.gz"
 run_in --cpus 2 --memory 2g "${BCFTOOLS_IMAGE}" bcftools view -f PASS "${CONTAINER_INPUT}" \
@@ -487,7 +490,7 @@ if ! run_in --cpus 2 --memory 4g \
   exit 1
 fi
 
-# Add header and optional gene constraint columns (bin/constraint_join.awk,
+# Add header and optional gene constraint columns (og table constraint-join,
 # the loader step 23 and the Nextflow slivar module use: canonical rows,
 # mis.z_score, the Ensembl row over the RefSeq one; it exits non-zero when rows
 # carry genes and not one matches the file).
@@ -497,8 +500,8 @@ fi
 } > "${SUMMARY_TSV}.raw"
 if [ -f "$CONSTRAINT_TSV" ]; then
   echo "  Joining with gnomAD gene constraint metrics..."
-  awk -f "${PGP_ROOT}/bin/constraint_join.awk" gene_col=SYMBOL constrained=1 \
-    "$CONSTRAINT_TSV" "${SUMMARY_TSV}.raw" > "${SUMMARY_TSV}.tmp"
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${BCFTOOLS_IMAGE}" /pgp-bin/og table constraint-join \
+    --gene-col SYMBOL --constrained "$(cpath "$CONSTRAINT_TSV")" "$(cpath "${SUMMARY_TSV}.raw")" > "${SUMMARY_TSV}.tmp"
   rm -f "${SUMMARY_TSV:?}.raw"
 else
   echo "  Gene constraint file not found (optional): ${CONSTRAINT_TSV}"

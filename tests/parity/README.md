@@ -38,7 +38,7 @@ A `known.tsv` row whose difference is gone fails. A golden that the oracle also 
 ## Adding a port
 
 1. Write the `og` subcommand.
-2. Add a row to `oracle.ref` with the parent commit of your pull request. Add the cases: the old unit tests' inputs, and the traps the old code had.
+2. Add a row to `oracle.ref` with the parent commit of your pull request. Add the cases: the old unit tests' inputs, and the traps the old code had. When the old program took its options in another form (awk's `-v name=value`), stage a small adapter with the case inputs and name it as the interpreter, as `sh ./oracle.sh` does for `vcf-csq-rank` and `table-constraint-join`: it turns `og`'s options into the old ones. Such an oracle runs only in the harness, not in shadow mode, which has no adapter in the task's directory.
 3. Run `scripts/ci/oracle-diff.sh`. Turn each difference into a fix, a golden or a `known.tsv` row.
 4. Switch the callers to `og`, delete the Python, and add the tool to `OG_SHADOW` in `.github/workflows/e2e.yml`.
 5. Link a red run in the pull request: the cases with one planted change in the port must fail.
