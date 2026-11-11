@@ -627,6 +627,15 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 - **Why:** HBA had the guard (a second `samtools bedcov -Q 1` pass and `mapq0_min`); the CYP21A2 row was added later without it. On HG002's 35x reads, 9.9% of the depth over the two targets comes from MAPQ 0 reads, with BWA-MEM and with minimap2 `-ax sr` alike, so a share near 0 means the aligner dropped them.
 - **Fix:** the row runs both bedcov passes with `mapq0_min` 0.02. Under that share it is not assessed (`low_mapq0_share`), and the table's `message` row, which both reports print, says the BAM has few or no multi-mapping reads there. `tests/test_copy_number.py` and the e2e case `cn-guard-1-mapq0` check it.
 
+### The KIV-2 count and its 4925G>A reading disagreed at a MAPQ 0 share of 0.1996
+- **Failed:** step 46's count judged the MAPQ 0 share on the raw value, and the 4925G>A reader judged it on the value the count table printed, rounded to three places. At a share of 0.1996 the count said not assessed (under 0.20) while the marker read 0.200 and said present, a reading from the very reads the count had refused.
+- **Why:** the marker ran as a second program that could only see the count's table, not the count's numbers.
+- **Fix:** `og cn call --marker LPA_KIV2_4925` reads the marker in the same call as the count and passes it the raw share, so both judge the same number. The parity case `marker-lpa-share1996-kiv-present` holds the fixed output.
+
+### Two rows of the SMN table over exon 7 gave two different SMN1 counts
+- **Failed:** the SMN1 marker took the last row of step 35's SMN table that held exon 7, and the Paraphase comparison took the first. A table with two such rows made the marker message and the comparison read different psCN values.
+- **Fix:** one rule in `og cn` (`rust/crates/og-cn/src/smn.rs`): the first row whose region or homologous regions hold exon 7 gives the psCN. The parity case `smn-smn-present-smn-two-rows` holds the fixed output.
+
 ## Downloads (2026-11)
 
 ### One bad transfer of a large file failed the whole setup
