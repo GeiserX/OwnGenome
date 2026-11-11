@@ -18,7 +18,7 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og run state|tasks|eta|headroom|delta [args]\n       og setup mask-fasta SRC BED DEST\n       og vcf csq-rank [options]\n       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og chip prepare|report|check-table [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og run state|tasks|eta|headroom|delta [args]\n       og setup mask-fasta SRC BED DEST\n       og vcf csq-rank [options]\n       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og chip prepare|report|check-table [args]\n       og vntyper report [args]\n       og locityper report [args]\n       og mocha report [args]\n       og mei report [args]\n       og mei annotsv-input [args]\n       og viral report [args]\n       og y str-bed [args]\n       og y str-report [args]\n       og exomiser prepare [args]\n       og exomiser report [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -119,6 +119,20 @@ fn main() -> ExitCode {
             )),
             None => usage_error("the following arguments are required: chip tool"),
         },
+        "vntyper" | "locityper" | "mocha" | "mei" | "viral" | "y" | "exomiser" => {
+            let verb = rest.first().map(String::as_str);
+            let args = rest.get(1..).unwrap_or_default();
+            let (out, err) = (&mut std::io::stdout().lock(), &mut std::io::stderr().lock());
+            ExitCode::from(match tool.as_str() {
+                "vntyper" => og_reports::vntyper::cli(verb, args, out, err),
+                "locityper" => og_reports::locityper::cli(verb, args, out, err),
+                "mocha" => og_reports::mocha::cli(verb, args, out, err),
+                "mei" => og_reports::mei::cli(verb, args, out, err),
+                "viral" => og_reports::viral::cli(verb, args, out, err),
+                "y" => og_reports::ystr::cli(verb, args, out, err),
+                _ => og_reports::exomiser::cli(verb, args, out, err),
+            })
+        }
         "str" => match rest.first().map(String::as_str) {
             #[cfg(feature = "bam")]
             Some("motif") => ExitCode::from(og_bam::motif::cli(

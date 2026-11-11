@@ -559,6 +559,7 @@ dependencies = [
  "og-intervals",
  "og-io",
  "og-map",
+ "og-reports",
  "og-runlog",
  "og-steps",
  "og-vcf",
@@ -639,6 +640,17 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "og-io",
+ "pycompat",
+]
+
+[[package]]
+name = "og-reports"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-filters",
+ "og-io",
+ "og-tsv",
  "pycompat",
 ]
 
