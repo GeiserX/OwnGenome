@@ -288,6 +288,7 @@ jobs:
         working-directory: .
         env:
           OG: ${{ github.workspace }}/bin/og
+          OG_REQUIRED: 1
         run: |
           python3 tests/test_clinvar_join_adjacent.py
           python3 tests/test_collect_summary.py
