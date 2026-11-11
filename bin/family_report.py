@@ -228,3 +228,7 @@ def read_par(path):
 def in_par(par, chrom, pos):
     # BED: 0-based start, end exclusive; pos is 1-based
     return any(s < pos <= e for s, e in par.get(chrom, ()))
+
+
+def read_members(path):
+    return path
