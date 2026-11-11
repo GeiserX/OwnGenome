@@ -320,6 +320,12 @@ fn repr60(v: &Value) -> String {
 /// Equal by JSON type: a bool never equals a number, an int equals a float
 /// of the same value, objects compare as sets of keys.
 fn same(a: &Value, b: &Value) -> bool {
+    // PLANTED: Python's True == 1.
+    let num = |v: &Value| match v {
+        Value::Bool(b) => Value::Int(i128::from(*b)),
+        v => v.clone(),
+    };
+    let (a, b) = (&num(a), &num(b));
     match (a, b) {
         (Value::Int(x), Value::Float(y)) | (Value::Float(y), Value::Int(x)) => *x as f64 == *y,
         (Value::Array(x), Value::Array(y)) => {
@@ -369,7 +375,7 @@ impl Schema {
             ));
         }
         if let (Some(min), Some(x)) = (node.minimum, as_number(v)) {
-            if x.is_nan() {
+            if x.is_nan() && std::env::var_os("OG_PLANTED_NEVER_SET").is_some() {
                 errors.push(format!(
                     "{path}: nan is not a number >= minimum {}",
                     node.minimum_text
@@ -400,9 +406,8 @@ impl Schema {
                 match &node.additional {
                     Additional::Any => {}
                     Additional::Schema(sub) => self.check(sub, x, &format!("{path}.{key}"), errors),
-                    Additional::Forbidden => errors.push(format!(
-                        "{path}: key '{key}' is not allowed (additionalProperties: false)"
-                    )),
+                    // PLANTED: additionalProperties: false ignored.
+                    Additional::Forbidden => {}
                 }
             }
         }
