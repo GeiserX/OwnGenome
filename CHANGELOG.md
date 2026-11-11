@@ -1,5 +1,7 @@
 # Changelog
 
+Each release's notes. From 1.0.0 on, a major or minor release has hand-written notes under `docs/releases/`, and the release workflow uses them as the release body. Older releases list their commits on GitHub.
+
 ## Unreleased
 
 - Four VCF filters of steps 04, 05 and 07 now run in the Rust `og` binary: `og sv inv-filter` (step 04), `og sv svlen-fix` (step 05), `og pgx refblock-fill` and `og pgx mito-merge` (step 07). They replace `bin/manta_inv_filter.py`, `bin/sv_svlen_fix.py`, `bin/pgx_refblock_fill.py` and `bin/pgx_mito_merge.py`, which are gone. Their output is the same, byte for byte, except for these fixes. Steps 04, 05 and 07 now need `og`: `scripts/setup.sh <genome_dir>` builds it, and `scripts/setup.sh --og` builds only it.
@@ -15,3 +17,8 @@
 - Genome map, first pieces, in the Rust `og` binary. `og map build` writes one person's map document: the chromosome bands, the runs of homozygosity, and every finding with a place on the genome (its own position, or its gene's span). A result the page keeps closed (a finding to act on, and APOE on every page) is tagged with its id on every row that could reveal it, so the page's own closed-result rule hides those rows too. `og map genes` builds the gene and exon files once per GENCODE release, offline. No pipeline output, option or page changes yet; the live page starts drawing the map in a later change. The format is in `rust/crates/og-map/README.md`.
 - Run logs in the Rust `og` binary. `og run state`, `og run eta`, `og run headroom` and `og run delta` read Nextflow traces, weblog messages, run-all.sh status and the per-box step history the way `bin/run_state.py`, `bin/run_eta.py`, `bin/run_headroom.py` and `bin/run_delta.py` do, and write the same files byte for byte; a parity test runs both on the same inputs. `og run tasks` gives the step of each trace row, and the Nextflow CI check of ClinVar reruns now reads the traces with it. The Python tools stay for now and nothing that calls them changes. Two fixes: a PRS percentile of 0 in the delta report now reads 0, not "none", in og and in `run_delta.py`; and `generate-report.sh` now compares a run with the newest `history/` folder that holds a summary.json, as the delta tool itself does: a newer folder without one, left by a copy that stopped half way, no longer stops the report with "the delta against the previous run was not written". og reads a trace memory cell such as "1.2.3 GB" as no value; `run_eta.py` and `run_headroom.py` still stop on it.
 - Rust building blocks for the ports that look things up by position. `og-io` reads the lines of a region from a bgzipped file through its `.tbi` or `.csi` index, as `tabix` prints them, reading only the blocks the index points at. `og-intervals` reads bases from an uncompressed FASTA through its `.fai`, as `samtools faidx` prints them, and refuses a compressed FASTA or a `.fai` that does not match the file. It also adds sorted interval sets (union, intersection, lookups by binary search, BED files such as the PAR regions) and reciprocal overlap. Nothing calls them yet, so no pipeline output, option or file changes.
+
+## Releases
+
+- 1.0.0 (not released yet): [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md)
+- 0.2.0 to 0.8.2: https://github.com/GeiserX/OwnGenome/releases
