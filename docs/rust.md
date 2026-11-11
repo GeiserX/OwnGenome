@@ -17,7 +17,7 @@ rust/
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
   og/                   the binary: og <tool> [args]
-bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
+bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch> (og-darwin-<arch> on a Mac)
 tests/rust/             the differential test against CPython, the image test
 ```
 
@@ -31,10 +31,13 @@ The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `
 ./scripts/setup.sh --og
 ```
 
-`scripts/setup.sh <genome_dir>` does the same when `og` is missing or stale, after it pulls the images. `--og` builds only `og`. This puts two static musl binaries in `bin/.og/` (ignored by git): `og-linux-x86_64` and `og-linux-aarch64`. Both are kept because an Apple Silicon host runs amd64 images under emulation, where `uname -m` says `x86_64`.
+`scripts/setup.sh <genome_dir>` does the same when `og` is missing or stale, after it pulls the images. `--og` builds only `og`. This puts four binaries in `bin/.og/` (ignored by git):
+
+- `og-linux-x86_64` and `og-linux-aarch64`, two static musl builds for the pipeline's containers. Both are kept because an Apple Silicon host runs amd64 images under emulation, where `uname -m` says `x86_64`.
+- `og-darwin-arm64` and `og-darwin-x86_64`, for a Mac that hosts the live site (`scripts/owngenome-live.sh`), whose genome map runs `og map` on the host. They are built with `--no-default-features`, which leaves out the cargo feature `bam`: that host never reads a BAM, and BAM reading needs htslib, which is C and would have to cross-compile for Apple. The BAM tools (`og pgx cyp2d6-*`, `og str motif`, `og bam-fetch-probe`) say so and exit 2 there. Every Linux build has the feature, since it is on by default.
 
 - **From a checkout of `main` or a branch,** it builds them from `rust/` inside `OG_BUILDER`, a pinned [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) image (`versions.env`). Docker is the only thing it needs; no Rust on the host. The cargo cache lives in `rust/target/og-build/`.
-- **From a checkout of a release tag** (`vX.Y.Z`), it downloads the release's two binaries, checks them against the release's `SHA256SUMS` and, when `gh` is installed and logged in, against the build attestation (`gh attestation verify`). A release without binaries falls back to a build.
+- **From a checkout of a release tag** (`vX.Y.Z`), it downloads the release's four binaries, checks them against the release's `SHA256SUMS` and, when `gh` is installed and logged in, against the build attestation (`gh attestation verify`). A release without binaries falls back to a build.
 
 For day-to-day work on the Rust code a host toolchain is quicker: `cd rust && cargo test`. A plain `cargo build` stamps the binary `unknown`, which the check below refuses, so use `scripts/setup.sh --og` for a binary the pipeline will run.
 
@@ -42,7 +45,7 @@ The image's Rust release (1.93.0) and `rust/rust-toolchain.toml` must agree, or 
 
 ## How a task runs it
 
-A Nextflow task has `bin/` on its PATH, so a module calls `og <tool>` by its bare name. A bash step calls `/pgp-bin/og <tool>` inside the image it already uses. Either way it starts `bin/og`, a `#!/bin/sh` shim that runs `bin/.og/og-linux-$(uname -m)`, or exits 127 with `ERROR: og is not built for <arch>; run scripts/setup.sh --og`.
+A Nextflow task has `bin/` on its PATH, so a module calls `og <tool>` by its bare name. A bash step calls `/pgp-bin/og <tool>` inside the image it already uses. Either way it starts `bin/og`, a `#!/bin/sh` shim that runs `bin/.og/og-linux-$(uname -m)`, or exits 127 with `ERROR: og is not built for <arch>; run scripts/setup.sh --og`. On macOS the same shim runs `bin/.og/og-darwin-$(uname -m)` (`ERROR: og is not built for macOS <arch>` when it is missing); any other system gets exit 127.
 
 The binary is static, so it runs in any image that has `/bin/sh`: the Python image, the bcftools image, the Manta and Parascopy images. `tests/rust/og-in-images.sh` checks those four on every platform each one publishes.
 
@@ -51,7 +54,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 `bin/.og` is not in git, so after a pull or an edit it can hold a binary built from other code. Results would then come from code the checkout does not show. To stop that:
 
 - The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
-- `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's.
+- `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's. The macOS pair is optional, because no pipeline step runs it, but a stale one is refused like a Linux one.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
 - A missing binary is still a note, which names steps 04, 05 and 07: those steps stop with `bin/og`'s message without it. `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
@@ -84,9 +87,9 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 ## CI
 
-- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; both musl builds through `scripts/setup.sh --og`; and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task. Then the tests of the `og sv` and `og pgx` filters and the step 05 tests run with `bin/og` and `OG_REQUIRED=1`; in `unit-tests`, which has no `og`, they skip with a note.
-- **Guard, job `unit-tests`**: `tests/test_og_check.sh` runs the check on planted trees (no binary, a stale one, an edit that is uncommitted, untracked or committed, a file git ignores, a binary stamped `unknown`, a tree hash that cannot be computed, a release download with a bad checksum or attestation, with `gh` not logged in, with a network error, without binaries, or whose copy into `bin/.og` fails), and checks that `run-all.sh`, `validate-setup.sh` and `write_manifest.sh` act on it.
+- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; the four builds through `scripts/setup.sh --og` (both musl ones and the macOS pair); and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task. Then the tests of the `og sv` and `og pgx` filters and the step 05 tests run with `bin/og` and `OG_REQUIRED=1`; in `unit-tests`, which has no `og`, they skip with a note.
+- **Guard, job `unit-tests`**: `tests/test_og_check.sh` runs the check on planted trees (no binary, a stale one, an edit that is uncommitted, untracked or committed, a file git ignores, a binary stamped `unknown`, a fresh and a stale macOS pair, a tree hash that cannot be computed, a release download with a bad checksum or attestation, without the macOS pair, with `gh` not logged in, with a network error, without binaries, or whose copy into `bin/.og` fails), and checks that `run-all.sh`, `validate-setup.sh` and `write_manifest.sh` act on it.
 - **Rust** (`rust.yml`, on a pull request that touches the Rust code, the shim or `versions.env`): times a cold and a cached build, runs `og` by bare name in the four images on amd64 and arm64 (QEMU), runs that check once more with a wrong-arch binary planted, which must fail, runs the fetch smoke with both binaries (arm64 under QEMU) and with pysam in `PYPGX_IMAGE`, which must all match `fetch.pysam.tsv`, and keeps the binaries as the artifact `og-binaries`. Every night it runs the differential test at 10,000,000 cases per operation with a new seed.
-- **Release** (`release.yml`): a tag builds both binaries, writes `SHA256SUMS`, attests them and attaches all three to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
+- **Release** (`release.yml`): a tag builds the four binaries, writes `SHA256SUMS`, attests them and attaches all five files to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.
