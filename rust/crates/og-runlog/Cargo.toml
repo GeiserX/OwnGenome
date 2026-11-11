@@ -1,0 +1,18 @@
+[package]
+name = "og-runlog"
+description = "Where a run stands, how long it has left, its memory and disk headroom, and what changed since the last run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+og-nf.workspace = true
+indexmap.workspace = true
+jiff.workspace = true
+rustix.workspace = true
+
+[lints]
+workspace = true

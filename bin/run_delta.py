@@ -214,6 +214,10 @@ def pct(v):
         return None
 
 
+def shown(v):
+    return "none" if v is None else v
+
+
 def diff_prs(p, c):
     a, b = section(p, "prs"), section(c, "prs")
     if not (has_data(a) and has_data(b)):
@@ -230,8 +234,8 @@ def diff_prs(p, c):
             continue
         px, py = pct(x.get("percentile")), pct(y.get("percentile"))
         if (px is None) != (py is None) or (px is not None and abs(px - py) >= PRS_BAND):
-            out.append(change("PRS", "percentile", item,
-                              x.get("percentile") or "none", y.get("percentile") or "none"))
+            # A percentile of 0 is a value: only a missing one reads "none".
+            out.append(change("PRS", "percentile", item, shown(x.get("percentile")), shown(y.get("percentile"))))
     return out
 
 
