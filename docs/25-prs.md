@@ -142,7 +142,7 @@ All output is written to `${GENOME_DIR}/${SAMPLE}/prs/`.
 
 ## Runtime
 
-Without the panel, 54 minutes to 1 h 17 min per genome in three measured 30-40x runs ([runtime](hardware-requirements.md#runtime-per-step)): the gVCF pass over every score position (the large scores reach most of the genome) took 21-31 minutes, and pgsc_calc 33-51 minutes with 24 GB. Preparing the scoring files takes well under a minute, once per run: `og prs format` wrote the 15 default scores in 19 seconds on a 10-core Mac mini, where the Python it replaced took 6 to 11 minutes on a server. The panel adds its extraction, the intersection with your genotypes, the panel's PCA and the projection; see the measured numbers below.
+Without the panel, 54 minutes to 1 h 17 min per genome in three measured 30-40x runs ([runtime](hardware-requirements.md#runtime-per-step)): the gVCF pass over every score position (the large scores reach most of the genome) took 21-31 minutes, and pgsc_calc 33-51 minutes with 24 GB. Preparing the scoring files takes well under a minute, once per run: `og prs format` wrote the 15 default scores in 26 to 32 seconds on a GitHub runner (the `prs-memory` job), container start included, where the Python it replaced took about 5 minutes in the same job. The panel adds its extraction, the intersection with your genotypes, the panel's PCA and the projection; see the measured numbers below.
 
 ## Memory
 
