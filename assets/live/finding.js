@@ -78,17 +78,24 @@
     var me = known && (known.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
     // A family that does not list this person cannot say they are not a child: closed as well.
     var child = unknown || (!!known && !me) || !!(me && (me.father || me.mother));
+    // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene:
+    // results.veil.findings, bin/live_results.py veil()) stays closed with it, as on the person page.
+    var tags = (r.veil && r.veil.findings) || {};
+    function tagOf(x) { var t = tags[x.id]; return t && t !== x.id ? t : null; }
+    // Opening this finding opens it and the result it names, nothing else: another result keeps its own veil.
+    var opened = {};
+    if (draw.open) { opened[f.id] = true; if (tagOf(f)) { opened[tagOf(f)] = true; } }
+    function shut(x) { return child && (x.level === 'act' ? !opened[x.id] : !!tagOf(x) && !opened[tagOf(x)]); }
     // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
-    var closed = child && f.level === 'act' && !draw.open;
-    var title = closed ? 'A result to act on' : f.title;
+    var closed = shut(f);
+    var title = !closed ? f.title : f.level === 'act' ? 'A result to act on' : 'A finding about a result to act on';
     document.title = title + ': ' + r.sample + ': OwnGenome';
     document.getElementById('finding-crumb').textContent = title;
     var sec = (r.journal || []).filter(function (s) { return s.n === f.section; })[0];
     var same = (r.findings || []).filter(function (x) { return x.level === f.level; });
     var order = (r.findings || []).filter(function (x) { return x.level !== 'info'; });
     var next = order[order.indexOf(f) + 1];
-    // Opening this finding opens only this one: another result to act on keeps its own veil.
-    if (next && child && next.level === 'act') { next = null; }
+    if (next && shut(next)) { next = null; }
     // The rail: back to the report, this page's parts, the next finding of the report.
     var rail = el('aside', { 'class': 'toc frail', 'aria-label': 'This finding' });
     var back = el('a', { 'class': 'back', href: BASE + '#f/' + f.id });
@@ -138,6 +145,7 @@
     if (closed) {
       var v = el('div', { 'class': 'veil' });
       add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
+        (f.level === 'act' ? '' : 'This finding names a result to act on. ') +
         'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
       var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
       b.addEventListener('click', function () { draw.open = true; draw(r, family); });
@@ -189,7 +197,7 @@
     }
     // Related findings and the family.
     var rel = (f.related || []).map(function (id) { return (r.findings || []).filter(function (x) { return x.id === id; })[0]; })
-      .filter(function (x) { return x && !(child && x.level === 'act'); });
+      .filter(function (x) { return x && !shut(x); });
     if (known) {
       var sf = el('section', { 'class': 'sec', id: 'family' });
       add(sf, add(el('div', { 'class': 'sechead' }), el('span', { 'class': 'secnum' }, ROMAN[parts.length - 3]), el('h2', { 'class': 'h2' }, 'In the family')));

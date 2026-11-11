@@ -45,7 +45,10 @@ demo (tests/demo/build_live_demo.py) writes DEMO-002, DEMO-001's partner
 gets no Y files and her sex checks read two X. A few invented findings make
 every live-site widget show once in the demo (FINDINGS below): DEMO-002 an
 FMR1 allele in Stranger's premutation range, a CHIP call and a mosaic loss
-MoChA reports, DEMO-003 an AnnotSV class 4 deletion. Every sample gets
+MoChA reports, DEMO-003 an AnnotSV class 4 deletion. DEMO-003 also gets two
+results to act on that his page keeps closed (PLANTED below): a ClinVar
+pathogenic hit in an ACMG secondary-findings gene, and an AnnotSV class 5
+deletion over it, at invented positions; his symptom search ranks that gene too. Every sample gets
 Stranger's thresholds beside ExpansionHunter's counts and step 27's CPIC
 table, written by bin/pgx_parse.py from the PharmCAT report.
 
@@ -104,7 +107,11 @@ MEAN_DEPTH = 31.3
 # PharmCAT report too (logs/run_status.tsv, the report's "Latest run" line).
 RUN_STARTED = calendar.timegm((2026, 10, 1, 9, 0, 0, 0, 0, 0))
 # The invented findings of the demo's other people (--sample), one of each live-site widget's marks.
-FINDINGS = {"DEMO-002": {"fmr1", "chip", "mocha"}, "DEMO-003": {"annotsv"}}
+FINDINGS = {"DEMO-002": {"fmr1", "chip", "mocha"}, "DEMO-003": {"annotsv", "act"}}
+# The son's results to act on ("act"): a pathogenic ClinVar hit in KCNH2, an ACMG secondary-findings gene that
+# is on no carrier list, and an AnnotSV class 5 deletion over it. Public gene name, invented positions and
+# alleles. tests/test_live_demo.py checks that his page names neither until each is opened on purpose.
+PLANTED = {"gene": "KCNH2", "hit": ("chr7", 150960000, "C", "T"), "sv": ("chr7", 150955000, 150965000)}
 # Stranger's thresholds per locus (normal up to, pathologic from), invented for the demo's catalog.
 STR_THRESHOLDS = {"HTT": (26, 40), "FMR1": (54, 200), "C9ORF72": (20, 30), "ATXN1": (35, 39), "DMPK": (34, 50),
                   "ATXN3": (44, 60), "AR": (34, 38), "FXN": (33, 66)}
@@ -195,12 +202,18 @@ def variants(d, rng, n):
 
 def clinvar(d, genome_dir):
     """Three heterozygous hits in genes with invented names (the picture stops
-    above the hits table, and no real gene is tied to an invented person)."""
+    above the hits table, and no real gene is tied to an invented person).
+    DEMO-003 gets a fourth, the planted result to act on (PLANTED): a real
+    gene, needed for the secondary-findings rule, at an invented position."""
     hits = [
         ("chr2", 47403191, "C", "T", "DEMOA:90001", "Pathogenic", "criteria_provided,_multiple_submitters,_no_conflicts"),
         ("chr11", 108259012, "G", "A", "DEMOB:90002", "Likely_pathogenic", "criteria_provided,_single_submitter"),
         ("chr16", 2087914, "CT", "C", "DEMOC:90003", "Pathogenic", "criteria_provided,_multiple_submitters,_no_conflicts"),
     ]
+    if has("act"):
+        c, p, r, a = PLANTED["hit"]
+        hits.append((c, p, r, a, f"{PLANTED['gene']}:3757", "Pathogenic", "criteria_provided,_multiple_submitters,_no_conflicts"))
+        hits.sort(key=lambda h: ([x[0] for x in CHROMS].index(h[0]), h[1]))
     body = "".join(f"{c}\t{p}\t{90000 + i}\t{r}\t{a}\t50\tPASS\tGENEINFO={g};CLNSIG={s};CLNREVSTAT={rev}\tGT\t0/1\n"
                    for i, (c, p, r, a, g, s, rev) in enumerate(hits))
     put(os.path.join(d, "clinvar", f"{SAMPLE}_clinvar_hits.vcf"), vcf_header() + body)
@@ -614,6 +627,14 @@ def structural(d, rng):
                      "Gene_name": "G0533", "ACMG_class": "4", "AnnotSV_ranking_score": "0.92", "Caller": "Manta",
                      "Exon_edge": "no", "Exon_edge_detail": ".", "Population_AF": "", "Population_source": "",
                      "Common": "no", "AnnotSV_class": "4", "Depth_support": ".", "Rule": "", "Rule_detail": ""})
+    if has("act"):
+        # The class 5 deletion over the planted ClinVar hit: a result to act on.
+        c, a, b = PLANTED["sv"]
+        rows.append({"AnnotSV_ID": f"{c}_{a}_{b}_DEL_1", "ID": "MantaDEL:2", "SV_chrom": c,
+                     "SV_start": str(a), "SV_end": str(b), "SV_length": str(a - b), "SV_type": "DEL",
+                     "Gene_name": PLANTED["gene"], "ACMG_class": "5", "AnnotSV_ranking_score": "0.99", "Caller": "Manta",
+                     "Exon_edge": "no", "Exon_edge_detail": ".", "Population_AF": "", "Population_source": "",
+                     "Common": "no", "AnnotSV_class": "5", "Depth_support": ".", "Rule": "", "Rule_detail": ""})
     put(os.path.join(d, "annotsv", f"{SAMPLE}_sv_class4_5_checked.tsv"),
         "\t".join(cols) + "\n" + "".join("\t".join(r[k] for k in cols) + "\n" for r in rows))
 
@@ -1158,7 +1179,9 @@ def ancient(d, rng):
 def exomiser(d):
     """Step 48: bin/exomiser_report.py's top_rows and words on made-up Exomiser
     rows for two searched symptoms: two weak candidates of uncertain
-    significance, the shape of a search that finds nothing to act on."""
+    significance, the shape of a search that finds nothing to act on. DEMO-003's
+    search also ranks the planted gene (PLANTED) third, at the planted hit: a
+    symptom search can rank the gene of a result his page keeps closed."""
     import exomiser_report as er
     terms = [{"hpo_id": "HP:0001250", "label": "Seizure", "given_as": "HP:0001250"},
              {"hpo_id": "HP:0002315", "label": "Headache", "given_as": "HP:0002315"}]
@@ -1180,7 +1203,11 @@ def exomiser(d):
             "Dravet syndrome"),
         row(2, "CACNA1A", "AD", ("0.297", "0.701", "0.421", "0.048"), "19", 13299371, "G", "A", "0/1",
             "missense_variant", "CACNA1A:ENST00000360228.11:c.2134C>T:p.(Arg712Cys)", "OMIM:141500",
-            "Migraine, familial hemiplegic, 1")], 10)
+            "Migraine, familial hemiplegic, 1")]
+        + ([row(3, PLANTED["gene"], "AD", ("0.205", "0.512", "0.399", "0.061"), PLANTED["hit"][0].removeprefix("chr"),
+                PLANTED["hit"][1], PLANTED["hit"][2], PLANTED["hit"][3], "0/1", "missense_variant",
+                f"{PLANTED['gene']}:ENST00000262186.10:c.1C>T:p.(Met1?)", "OMIM:613688", "Long QT syndrome 2")]
+           if has("act") else []), 10)
     out = os.path.join(d, "exomiser")
     put(os.path.join(out, f"{SAMPLE}_exomiser_terms.tsv"),
         "\t".join(er.TERMS_HEADER) + "\n" + "".join("\t".join(t[k] for k in er.TERMS_HEADER) + "\n" for t in terms))
