@@ -559,6 +559,7 @@ dependencies = [
  "og-intervals",
  "og-io",
  "og-map",
+ "og-pgx",
  "og-runlog",
  "og-steps",
  "og-vcf",
@@ -643,6 +644,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-pgx"
+version = "0.1.0"
+dependencies = [
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
 name = "og-runlog"
 version = "0.1.0"
 dependencies = [
@@ -658,8 +667,11 @@ dependencies = [
 name = "og-steps"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "memchr",
+ "og-intervals",
  "og-io",
+ "pycompat",
 ]
 
 [[package]]

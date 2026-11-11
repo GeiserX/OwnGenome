@@ -1,7 +1,7 @@
 # PharmCAT report fixtures
 
 Real PharmCAT output for `tests/test_cpic_parser.py` (one `report-<version>.json` per release in its `REAL_REPORTS`), trimmed with
-`trim_report.py` to the fields `bin/pgx_parse.py` reads (every gene with all
+`trim_report.py` to the fields `og pgx` reads (every gene with all
 its listed diplotypes and `relatedDrugs`; up to 4 matched annotations per drug
 guideline).
 

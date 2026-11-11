@@ -1,0 +1,5 @@
+Paroxetine 20 mg daily
+fluconazole
+notadrug
+# a comment
+
