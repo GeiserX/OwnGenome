@@ -721,13 +721,12 @@ install_strchive_data() {
 # 23andMe v5 site list (GRCh37 positions and reference bases) of
 # CONSUMER_SITES_COMMIT, checked against CONSUMER_SITES_SHA256, is joined by
 # rsID with dbSNP CONSUMER_DBSNP_BUILD's GRCh38 VCF (about 30 GB, checked
-# against CONSUMER_DBSNP_MD5) in bin/export_consumer.py build-sites, which
-# takes the GRCh38 position from dbSNP instead of a liftover and lists every
-# site it drops with the reason. grep first keeps the lines of the list's
-# rsIDs, so Python reads about 600,000 lines instead of more than a billion.
-# Each rsID is matched with the tabs around it, which is the whole ID column;
-# never with -w, whose word check made GNU grep read 30 MB in over 20 minutes
-# with 620,000 patterns.
+# against CONSUMER_DBSNP_MD5) in og's `og consumer build-sites`
+# (rust/crates/og-steps), which takes the GRCh38 position from dbSNP instead
+# of a liftover and lists every site it drops with the reason. It reads the
+# BGZF file on 4 cores and looks at the ID column of a line before anything
+# else, so no grep pass runs first. It runs in PYTHON_IMAGE with bin/
+# mounted, so og is built first when it is missing or stale.
 # The dbSNP file is deleted once the table is built. The table built is then
 # compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
 install_consumer_sites() {
@@ -764,16 +763,17 @@ install_consumer_sites() {
       return 1
     fi
   fi
+  if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
+    echo "[WARN] Could not build og, which builds the site table: run ${0} --og and look at its error."
+    return 1
+  fi
   echo "Building the site table (reads the whole dbSNP file once)..."
   # The table is written to reference/consumer/, outside any sample directory.
-  # shellcheck disable=SC2016  # $1 to $5 expand in the container's shell
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 4g "$PYTHON_IMAGE" bash -euo pipefail -c '
-      gzip -dc "$1" | cut -f3 | grep "^rs" | sed "s/.*/\t&\t/" > "$3.ids"
-      gzip -dc "$2" | LC_ALL=C grep -Ff "$3.ids" \
-        | python3 /pgp-bin/export_consumer.py build-sites --template "$1" --dbsnp - --out "$3" --dropped "$4" --source "$5"
-      rm -f "$3.ids"' _ "$(cpath "$tpl")" "$(cpath "$db")" "$(cpath "$out")" "$(cpath "$dropped")" \
-      "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
-    rm -f "$out" "${out}.ids" "${out}.tmp" "${dropped}.tmp"
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$PYTHON_IMAGE" \
+       /pgp-bin/og consumer build-sites --template "$(cpath "$tpl")" --dbsnp "$(cpath "$db")" \
+       --out "$(cpath "$out")" --dropped "$(cpath "$dropped")" \
+       --source "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
+    rm -f "$out"
     echo "[WARN] Could not build the site table of step 40; the dbSNP download is kept: run this command again."
     return 1
   fi
@@ -792,7 +792,7 @@ consumer_sites_pin_check() {
     echo "[OK] Site table of step 40 $2: $1, the same as the pinned build"
   else
     echo "[WARN] Site table of step 40 $2: $1 differs from the pinned build (content sha256 ${got}, pinned ${CONSUMER_SITES_TABLE_SHA256})."
-    echo "       It was built by another version of bin/export_consumer.py build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
+    echo "       It was built by another version of og consumer build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
   fi
 }
 
@@ -1124,8 +1124,8 @@ install_fine_maps() {
 # academic research use only, and any other use, a personal one included,
 # needs a licence from Stanford. Four parts, each redone only when its inputs change:
 #   samples.tsv  every person of the panel with population, continental and
-#                regional group, reference and painting flags (panel-map of
-#                bin/ancestry_fine_report.py); ANCESTRY_FINE_SAMPLE_MAP gives
+#                regional group, reference and painting flags (og ancestry-fine
+#                panel-map, rust/crates/og-ancestry); ANCESTRY_FINE_SAMPLE_MAP gives
 #                a table of your own instead;
 #   panel/       chrN.vcf.gz: their phased genotypes at the biallelic SNVs with a
 #                minor allele frequency of 5% or more, one per 2 kb (bcftools
@@ -1153,6 +1153,11 @@ install_ancestry_fine_panel() {
   echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
   for v in BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
+  # The sample table and the column order come from og (og ancestry-fine).
+  if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
+    echo "[WARN] Could not build og, which writes the panel's sample table: run ${0} --og and look at its error."
+    return 1
+  fi
   mkdir -p "${dir}/panel" "${dir}/maps" "${dir}/model"
   echo "  Checking the panel's files against ANCESTRY_FINE_PANEL_SHA256..."
   if ! ancestry_fine_pins > "${dir}/pins.tsv"; then
@@ -1205,13 +1210,13 @@ install_ancestry_fine_panel() {
       || { echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} does not start with the header of samples.tsv"; return 1; }
     cp "$smap" "${dir}/samples.tsv.part"
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-          python3 /pgp-bin/ancestry_fine_report.py check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
+          /pgp-bin/og ancestry-fine check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
       rm -f "${dir}/samples.tsv.part"
       echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} has a group too small to model"
       return 1
     fi
   elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-        python3 /pgp-bin/ancestry_fine_report.py panel-map --meta "$(cpath "${dir}/meta.tsv")" \
+        /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
           --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
     rm -f "${dir}/samples.tsv.part"
@@ -1297,7 +1302,7 @@ install_ancestry_fine_panel() {
       # shellcheck disable=SC2016  # $1 to $4 belong to the inner sh
       if ! run_in --rw "$dir" "$ADMIXTURE_IMAGE" sh -c 'cd "$1" && admixture --supervised -j"$4" "ref_$2.bed" "$3" > "admixture_$2.log" 2>&1' \
             _ "$(cpath "$tmp")" "$level" "$k" "$THREADS" \
-         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" python3 /pgp-bin/ancestry_fine_report.py order \
+         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og ancestry-fine order \
               --pop "$(cpath "${tmp}/ref_${level}.pop")" --q "$(cpath "${tmp}/ref_${level}.${k}.Q")"); then
         tail -n 20 "${tmp}/admixture_${level}.log" 2>/dev/null || true
         echo "[WARN] ADMIXTURE could not estimate the frequencies of the ${level} groups"
@@ -2349,14 +2354,14 @@ echo "=== Phase 3: Docker Images (~10-15 GB total) ==="
 # The list is every *_IMAGE line of versions.env not marked `# optional`.
 pull_images || exit 1
 
-# Steps 04, 05 and 07 run OwnGenome's og binary (bin/.og): built from rust/
+# Steps 04, 05, 07 and 25 run OwnGenome's og binary (bin/.og): built from rust/
 # in OG_BUILDER, or downloaded on a release tag, when it is missing or stale.
 if "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1; then
   echo "[OK] og (bin/.og) already built from this checkout's rust/."
 elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
-  echo "[WARN] Could not build og. Steps 04, 05 and 07 stop without it; run: $0 --og"
+  echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
 fi
 
 ###############################################################################

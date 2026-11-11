@@ -1,0 +1,14 @@
+[package]
+name = "og-qc"
+description = "Sample quality checks: mosaic loss of chrY or of one chrX from depth and allele fractions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+
+[lints]
+workspace = true

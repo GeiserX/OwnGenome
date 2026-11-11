@@ -110,7 +110,7 @@ env:
   # tools in a case also runs the Python it replaced, from the oracles the
   # legs materialise, and fails the case when the two disagree. A lane that
   # ports a tool adds it here for its pull request.
-  OG_SHADOW: setup-mask-fasta str-catalog
+  OG_SHADOW: setup-mask-fasta dev-schema dev-contract pgx-cyp2d6-bed pgx-cyp2d6-measure pgx-cyp2d6-check str-motif str-catalog
   # The shard legs besides the base leg. A full run uses all of them; a run
   # of picked cases runs fewer when they fit (scripts/ci/e2e-shards.sh count). The cases took 230
   # minutes in one job on 2026-11-02 (run 41390434697).
@@ -1295,8 +1295,8 @@ jobs:
   # the 24 GB of PRS can be honoured; it must finish, with the headroom the
   # script checks. labels: the limits of the process labels before the
   # requests (PRS_PREPARE 2 GB, FORMAT_SCOREFILES 8 GB on 2 threads, as
-  # pgsc_calc gave it), no swap; every task must be killed, which shows the
-  # first leg can fail.
+  # pgsc_calc gave it), no swap; FORMAT_SCOREFILES must be killed, which
+  # shows the first leg can fail, and PRS_PREPARE (og prs format) must fit.
   prs-memory:
     if: github.event_name == 'workflow_dispatch' && inputs.job == 'prs-memory'
     runs-on: ubuntu-latest
@@ -1332,6 +1332,11 @@ jobs:
           sudo mkswap /mnt/swap-prs
           sudo swapon /mnt/swap-prs
           free -m
+
+      - name: Build og as scripts/setup.sh --og does (PRS_PREPARE runs og prs format)
+        run: |
+          scripts/setup.sh --og
+          rust/og.sh check --required
 
       - name: Measure (${{ matrix.leg }})
         env:

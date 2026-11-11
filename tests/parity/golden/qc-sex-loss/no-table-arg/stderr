@@ -1,0 +1,2 @@
+usage: og qc sex-loss [-h] --table TABLE [--regions REGIONS] [--vcf VCF]
+og qc sex-loss: error: the following arguments are required: --table

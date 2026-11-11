@@ -1,0 +1,6 @@
+sample	population	continent	region	reference	paint
+i1	IBS	WEA	IBE	1	1
+t1	TSI	WEA	ITA	1	1
+p0	PapuanHighlands	OCE	OCE	0	0
+s0	San	AFR	SAF	0	0
+a1	ASW	-	-	0	0

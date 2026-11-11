@@ -1,0 +1,20 @@
+{
+ "genes": {
+  "CYP2D6": {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "Unknown"
+     },
+     "allele2": {
+      "name": "Unknown"
+     },
+     "label": "Unknown/Unknown",
+     "phenotypes": [
+      "No Result"
+     ]
+    }
+   ]
+  }
+ }
+}

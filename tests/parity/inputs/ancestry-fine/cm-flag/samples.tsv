@@ -1,0 +1,13 @@
+sample	population	continent	region	reference	paint
+y0	YRI	AFR	WAF	1	1
+y1	YRI	AFR	WAF	1	1
+y2	YRI	AFR	WAF	1	1
+y3	YRI	AFR	WAF	1	1
+y4	YRI	AFR	WAF	1	1
+y5	YRI	AFR	WAF	1	0
+y6	YRI	AFR	WAF	1	0
+y7	YRI	AFR	WAF	1	0
+y8	YRI	AFR	WAF	1	0
+y9	YRI	AFR	WAF	1	0
+p0	PapuanHighlands	OCE	OCE	0	0
+y10	YRI	AFR	WAF	true	0

@@ -11,7 +11,11 @@
 #                       and no -po with an empty one
 #   step 35             refuses to run before its data is installed, and says
 #                       how to install it
-#   steps 21 and 32     mark a CYP2D6 call when the depth check fails, and a
+#   steps 21 and 32     run the CYP2D6 depth check with og (og pgx cyp2d6-bed,
+#                       -measure in step 32, -check) from their output
+#                       directory with relative outputs and OG_SHADOW passed
+#                       on, and never the Python it replaced;
+#                       mark a CYP2D6 call when the depth check fails, and a
 #                       caller that stops after writing its result leaves no
 #                       call where step 36 reads it
 #   step 27             passes step 36's table, even a missing one, to the
@@ -45,13 +49,16 @@ opt() {
   return 1
 }
 put() {
-  local h
-  h=$(host_path "$1")
+  local h p=$1
+  # A relative path is relative to the container's -w, which only the log
+  # line of this call (the last one) shows: the hook gets no docker options.
+  case "$p" in /*) ;; *) p="$(tail -n 1 "$FAKE_DOCKER_LOG" | sed -n 's/.* -w \([^ ]*\) .*/\1/p')/${p}" ;; esac
+  h=$(host_path "$p")
   mkdir -p "$(dirname "$h")"
   printf '%b' "$2" > "$h"
 }
 case "$args" in
-  *"cyp2d6_depth_check.py check"*)
+  *"/pgp-bin/og pgx cyp2d6-check "*)
     put "$(opt --out)" "metric\\tvalue\\nstatus\\t$(cat "${CASE_WORK}/depth-status" 2>/dev/null || echo ok)\\nmessage\\tfake\\n" ;;
   *"-m cyrius"*)
     # bash -c SCRIPT _ INSTALL BAM PREFIX OUTDIR
@@ -61,9 +68,22 @@ case "$args" in
       exit 1
     fi
     put "${@: -1}${@: -2:1}.tsv" 'Sample\tGenotype\tFilter\nsample1\tNone\tNot_assigned_to_haplotypes\n' ;;
-  *"pgx_parse.py step36-outside"*)
-    # The real lister on the report: it reads only the JSON, so it runs here.
-    python3 "$(host_path /pgp-bin/pgx_parse.py)" step36-outside --report "$(host_path "$(opt --report)")"
+  *"og pgx step36-outside"*)
+    # The lister on the report: the real one when OG names an og binary, else
+    # its rule cut to the reports below (an outside call of CYP2D6, HLA-A or
+    # HLA-B with a diplotype). The parity cases step36-outside* hold og to
+    # the whole rule.
+    if [ -n "${OG:-}" ]; then
+      "$OG" pgx step36-outside --report "$(host_path "$(opt --report)")"
+      exit $?
+    fi
+    python3 - "$(host_path "$(opt --report)")" <<'PY'
+import json, sys
+genes = json.load(open(sys.argv[1])).get("genes", {})
+for gene, g in genes.items():
+    if gene in ("CYP2D6", "HLA-A", "HLA-B") and g.get("callSource") == "OUTSIDE" and g.get("sourceDiplotypes"):
+        print(gene)
+PY
     exit $? ;;
   *"pgx_outside_calls.py pypgx-summary"*)
     # Step 32's summary, at the path it names with --out.
@@ -106,6 +126,17 @@ if grep -v -- '--network none' <<<"$RUNS"; then fail "a container of step 21 had
 grep -q 'mosdepth' <<<"$RUNS" || fail "step 21 ran no depth check before Cyrius"
 grep -q -- 'python3 -m cyrius' <<<"$RUNS" || fail "step 21 did not run Cyrius from the install"
 if grep -q 'pip install' <<<"$RUNS"; then fail "step 21 still installs with pip"; fi
+og_runs() {  # og_runs STEP OUTDIR: the depth check runs og from OUTDIR, never the Python
+  local verb
+  for verb in bed check; do
+    grep -q -- "-e OG_SHADOW -w ${2} .*/pgp-bin/og pgx cyp2d6-${verb} " <<<"$RUNS" \
+      || fail "$1 did not run og pgx cyp2d6-${verb} from ${2} with OG_SHADOW passed on: ${RUNS}"
+  done
+  grep -q -- "--all cyp2d6_depth/q0.regions.bed.gz --mapq1 cyp2d6_depth/q1.regions.bed.gz" <<<"$RUNS" \
+    || fail "$1 did not give og pgx cyp2d6-check relative inputs"
+  if grep -q 'cyp2d6_depth_check\.py' <<<"$RUNS"; then fail "$1 still calls bin/cyp2d6_depth_check.py"; fi
+}
+og_runs "step 21" /genome/sample1/cyrius
 
 # --- step 36 and step 07 ----------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
@@ -147,7 +178,12 @@ git -C "$BUNDLE" -c user.name=case -c user.email=case@example.invalid -c init.de
 git -C "$BUNDLE" -c user.name=case -c user.email=case@example.invalid commit -q --allow-empty -m bundle
 git -C "$BUNDLE" tag "$PYPGX_BUNDLE_VERSION"
 SUMMARY="${G}/sample1/pypgx/sample1_pypgx_summary.tsv"
+: > "$FAKE_DOCKER_LOG"
 run_expect 0 pypgx-unreliable "${SCRIPTS}/32-pypgx.sh" sample1
+RUNS=$(grep '^run image=' "$FAKE_DOCKER_LOG")
+og_runs "step 32" /genome/sample1/pypgx
+grep -q -- "image=${PYPGX_IMAGE%%:*}[^ ]* .*-e OG_SHADOW -w /genome/sample1/pypgx/cyp2d6_depth .*/pgp-bin/og pgx cyp2d6-measure --bam /genome/sample1/aligned/sample1_sorted.bam --out mapq_shares.tsv" <<<"$RUNS" \
+  || fail "step 32 did not run og pgx cyp2d6-measure in the pypgx image from cyp2d6_depth: ${RUNS}"
 [ "$(awk -F'\t' '$1 == "CYP2D6" {print $2 "|" $6}' "$SUMMARY" 2>/dev/null)" = "Indeterminate|no call (CYP2D6 depth check)" ] \
   || fail "step 32 did not mark CYP2D6 Indeterminate after a failed depth check: $(cat "$SUMMARY" 2>/dev/null)"
 [ ! -e "${SUMMARY}.partial" ] || fail "step 32 left its partial summary behind"
@@ -165,7 +201,7 @@ mkdir -p "${G}/sample1/pharmcat"
 printf '{"genes": {"HLA-B": {"callSource": "MATCHER"}}}\n' > "$REPORT_JSON"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 cpic-no-outside "${SCRIPTS}/27-cpic-lookup.sh" sample1
-if grep 'pgx_parse.py cpic-report' "$FAKE_DOCKER_LOG" | grep -q -- '--consensus'; then
+if grep 'og pgx cpic-report' "$FAKE_DOCKER_LOG" | grep -q -- '--consensus'; then
   fail "step 27 passed a consensus table that does not exist for a report without outside calls"
 fi
 # outside_report GENE LABEL: a report whose only gene is an outside call of GENE.
@@ -176,15 +212,15 @@ outside_report() {
 outside_report HLA-B '*57:01'
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 cpic-stale-outside "${SCRIPTS}/27-cpic-lookup.sh" sample1
-grep 'pgx_parse.py cpic-report' "$FAKE_DOCKER_LOG" | grep -q -- '--consensus /genome/sample1/pgx_consensus/sample1_pgx_consensus.tsv' \
-  || fail "step 27 did not pass step 36's missing table for a report with outside calls: $(grep pgx_parse "$FAKE_DOCKER_LOG")"
+grep 'og pgx cpic-report' "$FAKE_DOCKER_LOG" | grep -q -- '--consensus /genome/sample1/pgx_consensus/sample1_pgx_consensus.tsv' \
+  || fail "step 27 did not pass step 36's missing table for a report with outside calls: $(grep "og pgx" "$FAKE_DOCKER_LOG")"
 output_has cpic-stale-outside "PharmCAT's report has outside calls from step 36 \\(HLA-B\\), but step 36's consensus is missing"
 # MT-RNR1's outside call comes from step 20's chrM calls (step 07), never from
 # step 36: it does not ask for step 36 or pass its missing table.
 outside_report MT-RNR1 m.1555A\>G
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 cpic-mtrnr1-outside "${SCRIPTS}/27-cpic-lookup.sh" sample1
-if grep 'pgx_parse.py cpic-report' "$FAKE_DOCKER_LOG" | grep -q -- '--consensus'; then
+if grep 'og pgx cpic-report' "$FAKE_DOCKER_LOG" | grep -q -- '--consensus'; then
   fail "step 27 passed step 36's missing table for a report whose only outside call is MT-RNR1"
 fi
 output_lacks cpic-mtrnr1-outside "consensus is missing"
@@ -193,7 +229,7 @@ output_lacks cpic-mtrnr1-outside "consensus is missing"
 printf 'not json\n' > "$REPORT_JSON"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 cpic-unreadable-report "${SCRIPTS}/27-cpic-lookup.sh" sample1
-grep -q 'pgx_parse.py cpic-report' "$FAKE_DOCKER_LOG" \
+grep -q 'og pgx cpic-report' "$FAKE_DOCKER_LOG" \
   || fail "step 27 stopped before the parser on a report step36-outside cannot read"
 
 echo "Cyrius installs hash-locked with network and runs without; step 07 passes only non-empty outside calls."

@@ -1,0 +1,10 @@
+kind	name	step	process	legs	format	stability	e2e	required
+file	{sample}_cols.tsv	06	-	both	tsv	stable	both	chrom,pos,clnsig
+file	{sample}_bad.json	24	-	both	json	stable	both	sample
+file	{sample}_list.json	24	-	both	json	stable	both	sample
+file	{sample}_gone.tsv	06	-	both	tsv	stable	both	-
+file	{sample}_empty.tsv	06	-	both	tsv	stable	both	chrom
+file	{sample}_bashonly.tsv	06	-	bash	tsv	stable	both	-
+file	{sample}_novcf.vcf	13	-	both	vcf	stable	both	INFO/AF
+file	{sample}_dir	06	-	both	dir	stable	both	-
+file	{sample}_exp.tsv	40	-	both	tsv	experimental	both	never
