@@ -142,13 +142,27 @@ mod tests {
 
     const HEAD: &str = "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n";
 
-    fn table(rows: &[&str]) -> String {
+    /// A table file that is removed, with its folder once empty, when the
+    /// test ends.
+    struct Table(String);
+
+    impl Drop for Table {
+        fn drop(&mut self) {
+            let p = std::path::Path::new(&self.0);
+            let _ = std::fs::remove_file(p);
+            if let Some(dir) = p.parent() {
+                let _ = std::fs::remove_dir(dir);
+            }
+        }
+    }
+
+    fn table(rows: &[&str]) -> Table {
         let dir =
             std::env::temp_dir().join(format!("og-cn-smn-{}-{}", std::process::id(), rows.len()));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join(format!("t{}.tsv", rows.join("").len()));
         std::fs::write(&p, format!("{HEAD}{}", rows.join(""))).unwrap();
-        p.to_string_lossy().into_owned()
+        Table(p.to_string_lossy().into_owned())
     }
 
     const SITES: [i64; 2] = [70_952_074, 70_076_654];
@@ -161,7 +175,7 @@ mod tests {
             "chr5\t70951000\t70953000\tSMN1\tPASS\t4\t30\tLowQual\t1,3\t12,40\tchr5:70075000-70078000\n",
             "chr5\t70951900\t70952000\tSMN1\tPASS\t4\t30\tPASS\t2,2\t40,40\tchr5:70076000-70076100\n",
         ]);
-        let r = read(Some(&p), "chr5", &SITES).unwrap();
+        let r = read(Some(&p.0), "chr5", &SITES).unwrap();
         assert_eq!(r.pscn, None);
         assert_eq!(r.text, "1 (quality 12, filter LowQual), not resolved");
         assert_eq!(r.agcn, Some(4));
@@ -172,7 +186,7 @@ mod tests {
         let p = table(&[
             "chr5\t70925000\t70955000\tSMN1\tPASS\t4\t30\tPASS\t2\t40\tchr5:70049000-70080000\n",
         ]);
-        let r = read(Some(&p), "chr5", &SITES).unwrap();
+        let r = read(Some(&p.0), "chr5", &SITES).unwrap();
         assert_eq!(
             (r.pscn, r.text.as_str()),
             (Some(2), "2 (quality 40, filter PASS)")
@@ -181,7 +195,7 @@ mod tests {
         let p = table(&[
             "chr5\t70049000\t70050000\tSMN2\tPASS\t4\t30\tPASS\t2\t40\tchr5:70951000-70952000\n",
         ]);
-        let r = read(Some(&p), "chr5", &SITES).unwrap();
+        let r = read(Some(&p.0), "chr5", &SITES).unwrap();
         assert_eq!(r.text, "? (quality *, filter PASS), not resolved");
     }
 
@@ -193,7 +207,7 @@ mod tests {
         );
         let p = table(&["chr1\t1\t2\tX\tPASS\t2\t30\tPASS\t2\t40\t.\n"]);
         assert_eq!(
-            read(Some(&p), "chr5", &SITES).unwrap().text,
+            read(Some(&p.0), "chr5", &SITES).unwrap().text,
             "not read (no row of the SMN table covers SMN1 exon 7)"
         );
     }
