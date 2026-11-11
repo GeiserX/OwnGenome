@@ -50,7 +50,10 @@ Checks:
      and class 5 deletion (make_demo_sample.py PLANTED) name their gene and
      positions in no card, chart, chart title, link, symptom ranking or search
      suggestion until each is opened, opening one brings back its own rows,
-     marks and ranking only, and a reload closes them again; DEMO-001's page
+     marks and ranking only, and a reload closes them again; the home page and
+     every finding page of the son (an open finding's rail and related list
+     too) name them nowhere, and the symptom ranking's own page shows the gene
+     once opened on purpose; DEMO-001's page
      mid-replay and at the end leads with the report (a short run band above
      the lead while it runs, none once finished), ends with the step timeline
      folded, keeps the wire to at most eight one-sentence lines with the plain
@@ -60,7 +63,8 @@ Checks 1, 2, 3, 5, the widgets (person.js without its widget line), the family d
 with the son's stretches emptied), the phone width and the son's closed result (person.js whose cards ignore
 the veil, person.js and finding.js that read a missing state as a standalone adult, and search.js
 without its filter; for the planted results, results.json without its veil tags, person.js whose table
-rows ignore them, person.js whose findings ignore them, charts.js that keeps every mark and search.js that ignores a hit's tag), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+rows ignore them, person.js whose findings ignore them, charts.js that keeps every mark, search.js that ignores a hit's tag
+and finding.js whose findings ignore their tags), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -621,16 +625,54 @@ def planted_problems(b, base):
     return out
 
 
+def planted_pages(b, base, out):
+    """[problems] of the son's other pages before any click: the home page and every finding page of his (an open
+    finding's rail and related list included) showing the planted gene or a position; then the page of the
+    finding that names the closed result (the symptom ranking), opened on purpose, shows the gene."""
+    gene, hit, sv = planted_words()
+    with open(os.path.join(out, "runs", OTHERS[1], "results.json")) as f:
+        res = json.load(f)
+    ids = [f["id"] for f in res.get("findings") or []]
+    shown_js = "document.title + ' ' + " + SHOWN_JS
+    out_ = []
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/")
+    b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.documentElement.dataset.pgpPeople", 15)
+    shown = b.eval(shown_js) or ""
+    out_ += [f"{w} on the home page" for w in [gene] + hit + sv if w in shown]
+    for fid in ids:
+        b.go("about:blank")
+        b.wait("location.href === 'about:blank'")
+        b.go(f"{base}/runs/{OTHERS[1]}/finding/{fid}/")
+        b.wait("document.documentElement.dataset.pgpStatus === 'ready' && 'drawn'", 10)
+        shown = b.eval(shown_js) or ""
+        out_ += [f"{w} on the finding page {fid}" for w in [gene] + hit + sv if w in shown]
+    named = [k for k in ((res.get("veil") or {}).get("findings") or {}) if k.startswith("exomiser-")]
+    if len(ids) < 10 or not named:
+        return out_ + [f"the son's findings are not the planted ones: {ids}, ranking {named}"]
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/finding/{named[0]}/")
+    if b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.querySelector('.veil') && 'closed'", 10):
+        b.eval("document.querySelector('.veil button').click(); true")
+        shown = b.wait("!document.querySelector('.veil') && document.body.textContent", 5) or ""
+        if gene not in shown:
+            out_.append(f"opening the page of {named[0]} did not show {gene}")
+        out_ += [f"{w} shown on {named[0]} after opening it" for w in sv if w in shown]
+    return out_
+
+
 def planted_checks(b, base, out):
     """The son's planted secondary finding and class 5 deletion stay closed everywhere on his page: the ClinVar
     card's table and viewer link, the genome chart and the review-star chart (wherever it sits), their titles,
     the search; each opens on purpose with its own rows only, and a reload closes them again."""
     sd = os.path.join(out, "runs", OTHERS[1])
     rj = os.path.join(sd, "results.json")
-    pj, cj, sj = (os.path.join(out, "assets", x) for x in ("person.js", os.path.join("plugins", "charts.js"),
-                                                            os.path.join("plugins", "search.js")))
+    pj, cj, sj, fj = (os.path.join(out, "assets", x) for x in ("person.js", os.path.join("plugins", "charts.js"),
+                                                                os.path.join("plugins", "search.js"), "finding.js"))
     keep = {}
-    for p in (rj, pj, cj, sj):
+    for p in (rj, pj, cj, sj, fj):
         with open(p) as f:
             keep[p] = f.read()
 
@@ -658,6 +700,17 @@ def planted_checks(b, base, out):
             write(p, keep[p].replace(a, z))
             control(desc, not planted_closed(b, base))
             write(p, keep[p])
+        bad = planted_pages(b, base, out)
+        check("browser: the home page and every finding page of the son name the planted gene and positions nowhere "
+              "(the rail's next link and the related list included) until opened, and the symptom ranking's page "
+              "opened on purpose shows it", not bad, bad)
+        a = "!!tagOf(x) && !opened[tagOf(x)]"
+        if a not in keep[fj]:
+            check("control: finding.js whose findings ignore their tags (the planted line is in finding.js)", False, a)
+        else:
+            write(fj, keep[fj].replace(a, "false"))
+            control("finding.js whose findings ignore their tags", not planted_pages(b, base, out))
+            write(fj, keep[fj])
     finally:
         for p, text in keep.items():
             write(p, text)
