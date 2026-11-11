@@ -166,7 +166,7 @@ impl Alleles {
                     .iter()
                     .map(|&k| self.names[(k & u64::from(MAX_ID)) as usize].as_str()),
             );
-            group.sort_unstable_by(|a, b| b.cmp(a));
+            group.sort_unstable();
             rest = &rest[n..];
             let rank = (site >> POS_BITS) as u8;
             let pos = (site & ((1 << POS_BITS) - 1)) as u32;
