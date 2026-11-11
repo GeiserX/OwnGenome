@@ -1,0 +1,22 @@
+{
+ "genes": {
+  "CYP2D6": {
+   "sourceDiplotypes": [
+    {
+     "label": "*1/*41",
+     "phenotypes": [
+      "Normal Metabolizer"
+     ],
+     "activityScore": 2.25
+    },
+    {
+     "label": "*2/*41",
+     "phenotypes": [
+      "Normal Metabolizer"
+     ],
+     "activityScore": 3
+    }
+   ]
+  }
+ }
+}

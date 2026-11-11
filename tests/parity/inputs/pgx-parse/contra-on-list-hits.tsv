@@ -1,0 +1,2 @@
+chrom	pos	ref	alt	genotype	clinvar_id	geneinfo	clnsig	clnrevstat
+chr15	89300000	C	T	0/1	9900001	POLG:1	Likely_pathogenic	criteria_provided,_single_submitter
