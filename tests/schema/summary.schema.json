@@ -1,7 +1,7 @@
 {
  "$schema": "http://json-schema.org/draft-07/schema#",
  "title": "OwnGenome sample summary (bin/collect_summary.py)",
- "description": "Both reports are rendered from this file. tests/schema/validate.py checks a summary against it.",
+ "description": "Both reports are rendered from this file. og dev schema checks a summary against it.",
  "definitions": {
   "section": {
    "type": "object",

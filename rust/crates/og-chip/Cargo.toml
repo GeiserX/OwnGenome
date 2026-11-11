@@ -1,0 +1,17 @@
+[package]
+name = "og-chip"
+description = "Clonal haematopoiesis of step 49: og chip prepare, og chip report, og chip check-table"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+indexmap.workspace = true
+memchr.workspace = true
+og-filters.workspace = true
+og-io.workspace = true
+pycompat.workspace = true
+
+[lints]
+workspace = true

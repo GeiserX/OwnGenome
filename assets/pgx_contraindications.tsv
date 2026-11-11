@@ -1,5 +1,5 @@
 # Drugs that a pathogenic or likely pathogenic variant in a disease gene makes
-# risky, read by bin/pgx_parse.py (step 27 and CPIC_LOOKUP) with step 06's
+# risky, read by og pgx cpic-report (step 27 and CPIC_LOOKUP) with step 06's
 # ClinVar hits (clinvar/<sample>_clinvar_hits.tsv). PharmCAT does not call
 # these genes, so its report never names these drugs for them.
 # The rows are the CPIC gene-drug pairs at level A, B or A/B whose gene is a
