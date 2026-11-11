@@ -17,7 +17,7 @@ for s in positive negative; do
 done
 # A BAM with the same header and no read over MUC1, as a genome slice without
 # chr1:155 Mb gives: VNtyper stops with exit 1 and names the empty read
-# layout, which bin/vntyper_report.py turns into "no read over MUC1".
+# layout, which og vntyper report turns into "no read over MUC1".
 samtools view -b -o /out/data/empty.bam /out/data/negative.bam chr1:1-1000 && samtools index /out/data/empty.bam
 rc=0
 (cd /opt/vntyper && vntyper pipeline --bam /out/data/empty.bam -o /out/empty --sample-name empty \
