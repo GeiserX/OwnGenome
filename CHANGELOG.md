@@ -1,5 +1,7 @@
 # Changelog
 
+Each release's notes. From 1.0.0 on, a major or minor release has hand-written notes under `docs/releases/`, and the release workflow uses them as the release body. Older releases list their commits on GitHub.
+
 ## Unreleased
 
 - The checks CI runs on the pipeline itself now run in the Rust `og` binary: `og dev contract` (the output contract, from `scripts/ci/check-output-contract.py`), `og dev schema` (a `summary.json` against its schema, from `tests/schema/validate.py`) and `og dev report-only` (the report-only error strategy, from `scripts/ci/check-report-only.py`). The two Python checks and their two test files are gone; their checks are cargo tests in Guard's `rust` job. `tests/schema/validate.py` stays only as an in-process helper of three Python test files (the unit-tests job has no `og`), with the same rules as `og dev schema`. Each now fails on what it let pass:
@@ -7,6 +9,12 @@
   - `og dev schema`: `additionalProperties: false` now refuses a key the schema does not list; `true` no longer matches `enum: [1]`; NaN fails `minimum`. A schema with an unknown keyword or type name, or a `$ref` to nothing, anywhere in it, is now exit 2 (a broken schema), not a pass or a traceback. A document that is not JSON prints `ERROR:` and exits 1.
   - `og dev report-only`: a `//` inside a string is no longer read as a comment, and a nested brace in the strategy closure, or a setting before it, no longer hides a `withName` block.
   - `--repo` defaults to the current folder for `og dev contract` and `og dev report-only`.
+
+- VEP consequence ranking (steps 23 and 31) and the gnomAD constraint join now run in the Rust `og` binary, inside `BCFTOOLS_IMAGE`: `og vcf csq-rank` replaces `bin/csq_rank.awk` and `og table constraint-join` replaces `bin/constraint_join.awk`, which are gone. Neither awk program runs on the host anymore (step 23 still uses the host's `awk` for small table edits), and the ranker is no longer the slow stage of step 23's main pipe. Steps 23 and 31 now need `og`: `scripts/setup.sh --og` builds it. Their output is the same, byte for byte, except for these changes.
+  - The seven `##INFO=<ID=PGP_...>` header descriptions end in `(og vcf csq-rank)`, not `(bin/csq_rank.awk)`. No tag, value or column changes.
+  - A ranking floor that is not a number, or a `--keep` other than `all` or `noncommon`, is a usage error (exit 2). awk read such a floor as 0.
+  - An empty constraint file now stops with `ERROR: the constraint table <file> is empty` (exit 3). awk read the summary table as the constraint file and blamed the wrong file.
+  - An unreadable input is reported with its path and the reason: exit 2 from `og table constraint-join`, exit 1 from `og vcf csq-rank`.
 
 - Four VCF filters of steps 04, 05 and 07 now run in the Rust `og` binary: `og sv inv-filter` (step 04), `og sv svlen-fix` (step 05), `og pgx refblock-fill` and `og pgx mito-merge` (step 07). They replace `bin/manta_inv_filter.py`, `bin/sv_svlen_fix.py`, `bin/pgx_refblock_fill.py` and `bin/pgx_mito_merge.py`, which are gone. Their output is the same, byte for byte, except for these fixes. Steps 04, 05 and 07 now need `og`: `scripts/setup.sh <genome_dir>` builds it, and `scripts/setup.sh --og` builds only it.
   - Step 05: an SV record whose INFO held `SVLEN` or `END` twice kept the old last value beside the new one. The rewrite now replaces the item it read.
@@ -21,3 +29,8 @@
 - Genome map, first pieces, in the Rust `og` binary. `og map build` writes one person's map document: the chromosome bands, the runs of homozygosity, and every finding with a place on the genome (its own position, or its gene's span). A result the page keeps closed (a finding to act on, and APOE on every page) is tagged with its id on every row that could reveal it, so the page's own closed-result rule hides those rows too. `og map genes` builds the gene and exon files once per GENCODE release, offline. No pipeline output, option or page changes yet; the live page starts drawing the map in a later change. The format is in `rust/crates/og-map/README.md`.
 - Run logs in the Rust `og` binary. `og run state`, `og run eta`, `og run headroom` and `og run delta` read Nextflow traces, weblog messages, run-all.sh status and the per-box step history the way `bin/run_state.py`, `bin/run_eta.py`, `bin/run_headroom.py` and `bin/run_delta.py` do, and write the same files byte for byte; a parity test runs both on the same inputs. `og run tasks` gives the step of each trace row, and the Nextflow CI check of ClinVar reruns now reads the traces with it. The Python tools stay for now and nothing that calls them changes. Two fixes: a PRS percentile of 0 in the delta report now reads 0, not "none", in og and in `run_delta.py`; and `generate-report.sh` now compares a run with the newest `history/` folder that holds a summary.json, as the delta tool itself does: a newer folder without one, left by a copy that stopped half way, no longer stops the report with "the delta against the previous run was not written". og reads a trace memory cell such as "1.2.3 GB" as no value; `run_eta.py` and `run_headroom.py` still stop on it.
 - Rust building blocks for the ports that look things up by position. `og-io` reads the lines of a region from a bgzipped file through its `.tbi` or `.csi` index, as `tabix` prints them, reading only the blocks the index points at. `og-intervals` reads bases from an uncompressed FASTA through its `.fai`, as `samtools faidx` prints them, and refuses a compressed FASTA or a `.fai` that does not match the file. It also adds sorted interval sets (union, intersection, lookups by binary search, BED files such as the PAR regions) and reciprocal overlap. Nothing calls them yet, so no pipeline output, option or file changes.
+
+## Releases
+
+- 1.0.0 (not released yet): [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md)
+- 0.2.0 to 0.8.2: https://github.com/GeiserX/OwnGenome/releases
