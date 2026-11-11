@@ -224,7 +224,7 @@ jobs:
           echo "Control: the planted test failed, as it must."
 
       - name: cargo test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast
 
       - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
