@@ -15,7 +15,8 @@ pub const USAGE: &str = "usage: og run state --sample S --sample-dir DIR [--trac
        og run eta OUTDIR [--sample S] [--cores N] [--box NAME] [--out FILE] [--steps FILE]
        og run headroom [--events FILE] [--trace FILE]... [--work-dir DIR] [--outdir DIR] [--max-memory SIZE]
                        [--disk-warn-percent N] [--mem-warn-percent N] [--steps FILE]
-       og run delta --sample S --summary FILE [--manifest FILE] [--previous DIR] --out PREFIX [--recheck FILE]
+       og run delta --sample S --summary FILE [--manifest FILE] [--previous DIR | --newest-history SAMPLE_DIR]
+                    --out PREFIX [--recheck FILE]
 ";
 
 /// The clock and zone a call runs with.
@@ -183,6 +184,7 @@ const DELTA: Spec = Spec {
         ("summary", false),
         ("manifest", false),
         ("previous", false),
+        ("newest-history", false),
         ("out", false),
         ("recheck", false),
     ],
@@ -408,12 +410,27 @@ fn headroom(p: &Parsed, env: &Env, out: &mut dyn Write, err: &mut dyn Write) -> 
     }
 }
 
+/// `--previous DIR` names the previous run's folder; `--newest-history
+/// SAMPLE_DIR` lets og pick it by [`crate::delta::newest_history`], so the
+/// report step and the summary share one rule. Neither: no previous run.
 fn delta(p: &Parsed, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let previous: Option<PathBuf> = match (p.one("previous"), p.one("newest-history")) {
+        (Some(_), Some(_)) => {
+            return usage_error(
+                err,
+                "delta",
+                "argument --newest-history: not allowed with argument --previous",
+            );
+        }
+        (Some(d), None) => Some(PathBuf::from(d)),
+        (None, Some(sample_dir)) => crate::delta::newest_history(Path::new(sample_dir)),
+        (None, None) => None,
+    };
     let a = crate::delta::DeltaArgs {
         sample: p.one("sample").unwrap_or_default(),
         summary: Path::new(p.one("summary").unwrap_or_default()),
         manifest: p.one("manifest").map(Path::new),
-        previous: p.one("previous").map(Path::new),
+        previous: previous.as_deref(),
         out: p.one("out").unwrap_or_default(),
         recheck: p.one("recheck").map(Path::new),
     };
@@ -464,6 +481,67 @@ mod tests {
         assert_eq!(call(&["eta"]).0, 2);
         assert_eq!(call(&["eta", "o", "--cores", "x"]).0, 2);
         assert_eq!(call(&["delta", "--help"]).0, 0);
+    }
+
+    #[test]
+    fn newest_history_picks_the_newest_folder_with_a_summary() {
+        let dir = std::env::temp_dir().join(format!("og-run-newest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let h = dir.join("S/history");
+        // <stamp>-02 sorts after <stamp>; the newest folder lost its
+        // summary.json half way through a copy, so it is passed over.
+        for (name, summary) in [
+            ("2026-01-01T000000Z", true),
+            ("2026-01-01T000000Z-02", true),
+            ("2026-01-02T000000Z", false),
+        ] {
+            std::fs::create_dir_all(h.join(name)).unwrap();
+            if summary {
+                std::fs::write(
+                    h.join(name).join("summary.json"),
+                    r#"{"generated_utc": "before", "sections": {}}"#,
+                )
+                .unwrap();
+            }
+        }
+        std::fs::write(
+            dir.join("S/summary.json"),
+            r#"{"generated_utc": "now", "sections": {}}"#,
+        )
+        .unwrap();
+        let (sd, sum, outp) = (
+            dir.join("S").to_string_lossy().into_owned(),
+            dir.join("S/summary.json").to_string_lossy().into_owned(),
+            dir.join("S/S_delta").to_string_lossy().into_owned(),
+        );
+        let base = ["delta", "--sample", "S", "--summary", &sum, "--out", &outp];
+        let previous = || {
+            let j = std::fs::read_to_string(dir.join("S/S_delta.json")).unwrap();
+            match pycompat::json::loads(&j).unwrap() {
+                Value::Object(o) => o.get("previous").cloned(),
+                _ => None,
+            }
+        };
+        let mut a = base.to_vec();
+        a.extend(["--newest-history", &sd]);
+        let (rc, _, e) = call(&a);
+        assert_eq!(rc, 0, "{e}");
+        assert_eq!(previous(), Some(Value::Str("2026-01-01T000000Z-02".into())));
+        // No history folder at all: no previous run, not an error.
+        std::fs::remove_dir_all(&h).unwrap();
+        let (rc, o, e) = call(&a);
+        assert_eq!(rc, 0, "{e}");
+        assert_eq!(previous(), Some(Value::Null));
+        assert!(
+            o.contains("No previous run of this sample on record"),
+            "{o}"
+        );
+        // --previous and --newest-history together is a usage error.
+        a.extend(["--previous", &sd]);
+        let (rc, _, e) = call(&a);
+        assert_eq!(rc, 2);
+        assert!(e.contains("not allowed with argument --previous"), "{e}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
