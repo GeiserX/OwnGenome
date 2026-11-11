@@ -8,6 +8,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-io` | plain, gzip and BGZF input; Python's universal newlines; atomic writes |
 | `crates/og-vcf` | VCF records read in place: INFO kept in order, GT and VEP's CSQ fields, the header passed through |
 | `crates/og-bam` | BAM reading as pysam does it (fetch, `reference_end`, `cigarstring`, `get_blocks`), on htslib linked statically |
+| `crates/og-chip` | step 49, clonal haematopoiesis: `og chip prepare`, `og chip report`, `og chip check-table` |
 | `crates/og-filters` | the VCF filters of steps 04, 05 and 07: `og sv svlen-fix`, `og sv inv-filter`, `og pgx refblock-fill`, `og pgx mito-merge` |
 | `crates/og-setup` | what `scripts/setup.sh` runs once: `og str catalog` (the STRchive catalog of steps 09 and 9b), `og setup unzip` (Exomiser's zips), `og setup genetic-map` (the genetic map of steps 26b and 51) |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |

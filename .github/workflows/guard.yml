@@ -222,9 +222,9 @@ jobs:
           git checkout -- og/src/main.rs
           ./og.sh check --required
 
-      # The tests of the og tools the steps and setup.sh run: unit-tests
-      # has no og, so there they skip; here OG_REQUIRED turns a skip into a
-      # failure. The step 05 tests run the real step with bin/og.
+      # The tests of the og tools the steps and setup.sh run, og chip's
+      # (step 49) among them: unit-tests has no og, so there they skip;
+      # here OG_REQUIRED turns a skip into a failure. The step 05 tests run the real step with bin/og.
       - name: The og filter and setup tests, and step 05, with og
         working-directory: .
         env:
@@ -234,7 +234,8 @@ jobs:
           fail=0
           for t in tests/test_annotsv_sv_inputs.py tests/test_pgx_refblock_fill.py tests/test_pgx_mito_merge.py \
                    tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
-                   tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py; do
+                   tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py tests/test_setup_fine_maps.sh \
+                   tests/test_chip_report.py; do
             rc=0
             echo "::group::${t}"
             case "$t" in

@@ -8,7 +8,7 @@
 #   residue (R882: any change of that residue), one exact change (V617F), a codon range (102-292)
 #   or exons:A-B.
 # A change outside these classes is listed as other_change, not counted.
-# bin/chip_report.py check-table checks the schema; tests/test_chip_report.py runs it.
+# og chip check-table checks the schema; tests/test_chip_report.py runs it.
 gene	truncating	missense	note	pmids
 DNMT3A	all	R882	The most common CHIP gene. R882 is the hotspot of DNMT3A in acute myeloid leukaemia; other missense changes are listed, not counted.	25426837;21067377
 TET2	all	none	Second most common CHIP gene. Truncating changes only; missense changes are listed, not counted.	25426837;19474426
