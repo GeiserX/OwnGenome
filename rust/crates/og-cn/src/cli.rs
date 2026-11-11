@@ -24,7 +24,8 @@
 //!
 //! Exit codes: `call` 0 whatever the status, 2 on unreadable input, 3 on a
 //! broken control, 4 on a BAM with ALT contigs; `check-bam` 0 or 4 (2 when
-//! the header cannot be read); `bed` and `intervals` 0 or 2; `marker-read`
+//! the header cannot be read); `bed`, `marker-regions` and `intervals` 0
+//! or 2 (2 also when stdout or the table cannot be written); `marker-read`
 //! 0 whatever the reading (an unreadable pileup reads 'not assessed'), 2
 //! when the table cannot be written. Usage errors exit 2.
 
@@ -219,10 +220,12 @@ pub fn main(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         "check-bam" => check_bam(&a, err),
         "marker-regions" => {
             let m = markers::marker(&a.pos[0]).expect("checked");
-            for r in markers::regions(m) {
-                let _ = writeln!(out, "{r}");
-            }
-            Ok(0)
+            markers::regions(m)
+                .iter()
+                .try_for_each(|r| writeln!(out, "{r}"))
+                .and_then(|()| out.flush())
+                .map_err(unwritten)
+                .map(|()| 0)
         }
         _ => marker_read(&a, out, err),
     };
@@ -270,6 +273,12 @@ fn fail2(e: Error) -> Fail {
     (2, e)
 }
 
+/// A region list that could not be written in full: exit 2, so a step
+/// never reads a truncated list.
+fn unwritten(e: std::io::Error) -> Fail {
+    fail2(Error(format!("cannot write the regions: {e}")))
+}
+
 fn load(a: &Args) -> Result<Catalog, Error> {
     match a.get("--catalog") {
         Some(p) => Catalog::load(p),
@@ -309,9 +318,10 @@ fn bed(a: &Args, out: &mut dyn Write) -> Result<u8, Fail> {
                 .collect();
             pos.sort();
             for (s, n) in pos {
-                let _ = writeln!(out, "{}\t{s}\t{}\t{n}", r.chrom, s + 1);
+                writeln!(out, "{}\t{s}\t{}\t{n}", r.chrom, s + 1).map_err(unwritten)?;
             }
         }
+        out.flush().map_err(unwritten)?;
         return Ok(0);
     }
     let names: Vec<String> = if a.get("--kind").is_some() {
@@ -342,9 +352,10 @@ fn bed(a: &Args, out: &mut dyn Write) -> Result<u8, Fail> {
             ))));
         };
         for (c, s, e, n) in r.regions() {
-            let _ = writeln!(out, "{c}\t{s}\t{e}\t{n}");
+            writeln!(out, "{c}\t{s}\t{e}\t{n}").map_err(unwritten)?;
         }
     }
+    out.flush().map_err(unwritten)?;
     Ok(0)
 }
 
@@ -699,5 +710,37 @@ mod tests {
             (2, "ERROR: no psv locus 'HBA' in the catalog\n")
         );
         assert_eq!(run(&["call", "--locus", "HBA"]).0, 2);
+    }
+
+    /// A stdout that refuses every write, as a full disk does.
+    struct Full;
+    impl Write for Full {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("no space left on device"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_region_list_that_cannot_be_written_fails() {
+        // A truncated region list would let a step read the marker at one
+        // copy, or count over part of a locus; each writer must exit 2.
+        for args in [
+            &["marker-regions", "SMN1_27134"][..],
+            &["bed", "--catalog", CAT, "--locus", "HBA"],
+            &["bed", "--catalog", CAT, "--psv", "--locus", "CYP21A2"],
+        ] {
+            let args: Vec<String> = args.iter().map(|s| (*s).to_owned()).collect();
+            let mut e = Vec::new();
+            let c = main(&args, &mut Full, &mut e);
+            let e = String::from_utf8(e).unwrap();
+            assert_eq!(c, 2, "{args:?}: {e}");
+            assert!(
+                e.contains("cannot write the regions: no space left on device"),
+                "{e}"
+            );
+        }
     }
 }
