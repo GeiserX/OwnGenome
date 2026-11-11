@@ -81,7 +81,7 @@ pub fn read_bedcov(path: &str, row: &Locus) -> Result<Means, Error> {
         .collect();
     if !seen.is_empty() && seen != want {
         return Err(Error(format!(
-            "{path}: its regions differ from the ones `og cn bed --locus {}` print",
+            "{path}: its regions differ from the ones `og cn bed --locus {}` prints",
             row.id
         )));
     }
