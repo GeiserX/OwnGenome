@@ -1,0 +1,2 @@
+pgx_refblock_fill: kept the gVCF's record at chr2:233760233 (not a reference block), not a 0/0 record beside it
+pgx_refblock_fill: 4 of 9 PharmCAT positions longer than one base called 0/0 from reference blocks with GQ >= 20: DPYD chr1:97450065, TPMT chr6:18149032, RYR1 chr19:38572266, G6PD chrX:154532055; the others stay as the gVCF has them (a variant call, or missing)

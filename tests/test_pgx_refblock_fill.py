@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/pgx_refblock_fill.py: PharmCAT's multi-base positions called 0/0 from
+"""og pgx refblock-fill: PharmCAT's multi-base positions called 0/0 from
 the reference blocks of a gVCF (steps 07 and PHARMCAT_PREPROCESS run it).
 
 The fixture gVCF (tests/fixtures/pharmcat/refblocks.g.vcf) has reference
@@ -22,7 +22,7 @@ checks:
      before it, fills nothing;
      a gVCF with two samples or no #CHROM line is an error (exit 2).
 
-Run: python3 tests/test_pgx_refblock_fill.py
+Run: OG=rust/target/release/og python3 tests/test_pgx_refblock_fill.py
 """
 import os
 import re
@@ -31,7 +31,7 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "pgx_refblock_fill.py")
+OG = os.environ.get("OG", "")
 FX = os.path.join(REPO, "tests", "fixtures", "pharmcat")
 GVCF = os.path.join(FX, "refblocks.g.vcf")
 POSITIONS = os.path.join(FX, "pharmcat_positions-3.4.0-subset.vcf")
@@ -86,7 +86,7 @@ def run(gvcf_text, *opts, positions=POSITIONS, stdin=None):
         g = os.path.join(tmp, "records.vcf")
         with open(g, "w") as f:
             f.write(gvcf_text)
-        p = subprocess.run([sys.executable, SCRIPT, *opts, positions, g], text=True, capture_output=True,
+        p = subprocess.run([OG, "pgx", "refblock-fill", *opts, positions, g], text=True, capture_output=True,
                            input=expand(gvcf_text) if stdin is None else stdin)
     return p.returncode, p.stdout, p.stderr
 
@@ -99,7 +99,19 @@ def fills(vcf):
     return {(r[0], int(r[1])): r for r in records(vcf) if r[7] == "PGX_REFBLOCK"}
 
 
+def og_or_skip():
+    """OG names the og binary (the rust job of guard.yml sets it). Without
+    it the test is skipped with a note; with OG_REQUIRED set too, it fails."""
+    if os.environ.get("OG"):
+        return None
+    print("skip: OG is not set (OG=rust/target/release/og)")
+    return 1 if os.environ.get("OG_REQUIRED") else 0
+
+
 def main():
+    skip = og_or_skip()
+    if skip is not None:
+        return skip
     with open(GVCF) as f:
         gvcf = f.read()
     rc, out, err = run(gvcf)

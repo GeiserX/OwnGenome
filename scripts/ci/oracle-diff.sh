@@ -18,10 +18,11 @@
 #       shadow mode of bin/og against a fake binary
 #
 # A case runs in two directories that hold the same staged inputs: og runs
-# in one, the oracle in the other, with the same arguments. Compared items:
-# the exit code, stdout, stderr, the named outputs and every new file (stdout and
-# stderr as bytes, files with the case's compare kind, through
-# og dev parity-compare). The expected side of an item is the oracle's,
+# in one, the oracle in the other, with the same arguments. A staged input
+# named `stdin` is each side's standard input; without one it is empty.
+# Compared items: the exit code, stdout, stderr, the named outputs and every
+# new file (stdout and stderr as bytes, files with the case's compare kind,
+# through og dev parity-compare). The expected side of an item is the oracle's,
 # unless tests/parity/golden/<tool>/<case>/<item> exists (a deliberate fix:
 # og must write the golden instead; <item>.absent means it must write
 # nothing). A golden the oracle also matches is stale and fails, and so does
@@ -126,14 +127,16 @@ new_files() {
 run_oracle() {
   local tool=$1 image=$2 dir=$3 out=$4
   shift 4
+  local in=/dev/null
+  [ ! -f "${dir}/stdin" ] || in="${dir}/stdin"
   if [ "$RUNNER" = local ]; then
-    (cd "$dir" && "${ORACLES}/${tool}/run" "$@") > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"
+    (cd "$dir" && "${ORACLES}/${tool}/run" "$@") < "$in" > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"
   else
     # Pulled first: docker run's pull progress would land in the oracle's stderr.
     docker image inspect "$image" > /dev/null 2>&1 || docker pull -q "$image" > /dev/null || die "cannot pull ${image}"
-    docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    docker run --rm -i --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
       -v "${ORACLES}:/oracle:ro" -v "${dir}:/w" -w /w "$image" "/oracle/${tool}/run" "$@" \
-      > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"
+      < "$in" > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"
   fi
   [ -s "${out}/exit" ] || echo 0 > "${out}/exit"
 }
@@ -202,7 +205,9 @@ run_case() {
     (cd "${w}/${d}" && find . -type f | sed 's|^\./||' | sort > .staged)
   done
   local t0=${EPOCHREALTIME:-0} t1 t2
-  (cd "${w}/og" && "$OG" "${prefixv[@]}" "${argv[@]}") > "${w}/og.out/stdout" 2> "${w}/og.out/stderr" \
+  local in=/dev/null
+  [ ! -f "${w}/og/stdin" ] || in="${w}/og/stdin"
+  (cd "${w}/og" && "$OG" "${prefixv[@]}" "${argv[@]}") < "$in" > "${w}/og.out/stdout" 2> "${w}/og.out/stderr" \
     || echo $? > "${w}/og.out/exit"
   [ -s "${w}/og.out/exit" ] || echo 0 > "${w}/og.out/exit"
   t1=${EPOCHREALTIME:-0}

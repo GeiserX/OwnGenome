@@ -1,0 +1,2 @@
+pgx_mito_merge: held back: a multi-base change (chrM:1554 TA>CG AF 1.000) at or near m.1555, which this script does not map to PharmCAT's names
+pgx_mito_merge: no MT-RNR1 call passed to PharmCAT: it stays No Result; read the records above in the chrM call set

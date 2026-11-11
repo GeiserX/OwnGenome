@@ -1,0 +1,1 @@
+pgx_refblock_fill: 5 of 10 PharmCAT positions longer than one base called 0/0 from reference blocks with GQ >= 20: DPYD chr1:97450065, UGT1A1 chr2:233760233, TPMT chr6:18149032, RYR1 chr19:38572266, G6PD chrX:154532055; the others stay as the gVCF has them (a variant call, or missing)
