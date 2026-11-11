@@ -2112,7 +2112,7 @@ def str_motif_rows(d, s, after):
 
 def str_not_graded(d, s):
     """{locus: reason} of the loci the catalog ExpansionHunter ran on gives no
-    thresholds (its NoThresholds field, bin/strchive_convert.py: MUC1, CEL,
+    thresholds (its NoThresholds field, og str catalog: MUC1, CEL,
     TYMS and PLIN4 among them), from the copy step 09 keeps beside its VCF
     (expansion_hunter/<id>_eh_catalog.json). Empty without the copy, or with
     one that is not a catalog (Stranger's bundled catalog has no such loci)."""

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/strchive_convert.py and the motif count on its catalog.
+"""og str catalog and the motif count on its catalog.
 
 Reads the two STRchive files versions.env pins (STRCHIVE_VERSION and the
 two sha256), downloaded once into a cache directory (STRCHIVE_DIR, default
@@ -39,11 +39,17 @@ two sha256), downloaded once into a cache directory (STRCHIVE_DIR, default
      the converter (exit 2, nothing written), as does a region shifted by
      one base in the sequence check.
 
-Run: python3 tests/test_str_catalog.py
+og str catalog runs from OG (the og binary, as in the other og tests);
+without OG the test is skipped with a note, and with OG_REQUIRED set too it
+fails. The parity cases of tests/parity (tool str-catalog) compare og with
+the Python it replaced.
+
+Run: OG=rust/target/release/og python3 tests/test_str_catalog.py
 """
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -55,7 +61,39 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 import rfc1_motif as rm  # noqa: E402
-import strchive_convert as sc  # noqa: E402
+
+OG = os.environ.get("OG", "")
+
+
+class sc:  # noqa: N801  (the module name the checks below were written against)
+    """og str catalog, and the two catalog readers the checks use."""
+
+    @staticmethod
+    def main(argv):
+        return subprocess.run([OG, "str", "catalog", *argv]).returncode
+
+    @staticmethod
+    def motifs_of(structure):
+        return re.findall(r"\(([^)]*)\)\*", structure)
+
+    @staticmethod
+    def as_list(x):
+        return x if isinstance(x, list) else [x]
+
+    @staticmethod
+    def region(text):
+        chrom, span = text.split(":")
+        a, b = span.split("-")
+        return chrom, int(a), int(b)
+
+
+def og_or_skip():
+    """None when OG names an og binary; else the exit code: 0 (skip, with a
+    note), or 1 with OG_REQUIRED set."""
+    if OG and os.access(OG, os.X_OK):
+        return None
+    print("skip: OG is not set (OG=rust/target/release/og)")
+    return 1 if os.environ.get("OG_REQUIRED") else 0
 
 FAILS = []
 
@@ -395,6 +433,9 @@ def part_extra(rel, eh, loci):
 
 
 def main():
+    skip = og_or_skip()
+    if skip is not None:
+        return skip
     rel, eh, loci = files()
     part_files(rel, eh, loci)
     cat, cat_path = build_catalog()

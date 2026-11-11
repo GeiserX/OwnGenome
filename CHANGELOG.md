@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The STRchive catalog, Exomiser's zips and the genetic map are now set up by the Rust `og` binary: `og str catalog` (replaces `bin/strchive_convert.py`, which is gone), `og setup unzip` and `og setup genetic-map` (replace two Python programs inside `scripts/setup.sh`). The catalog and its ranges table are the same, byte for byte, and so are the unpacked Exomiser data and the maps. `setup.sh` builds `og` first when these need it. The STRchive catalog is converted once more after this update, because its stamp now names the converter's format instead of the Python file's hash.
+  - Steps 26b and 51: each genetic map file is written whole or not at all. Before, a setup killed while it wrote a map could leave a truncated `.rfmix.map` that every later setup took as done. Step 26b's maps now carry a stamp, `maps/DONE`, written last; an install without it writes every map again once.
+  - `setup.sh --exomiser-data`: a zip member whose name leaves the folder (an absolute path or `..`) is refused, and nothing is unpacked. Python's `extractall` wrote it elsewhere, under a name with those parts dropped.
+  - A genetic map row with fewer than four fields, a STRchive record with a missing coordinate, and a locus structure with no repeat now stop with exit 2 and a message, not a Python traceback.
+
 - Four VCF filters of steps 04, 05 and 07 now run in the Rust `og` binary: `og sv inv-filter` (step 04), `og sv svlen-fix` (step 05), `og pgx refblock-fill` and `og pgx mito-merge` (step 07). They replace `bin/manta_inv_filter.py`, `bin/sv_svlen_fix.py`, `bin/pgx_refblock_fill.py` and `bin/pgx_mito_merge.py`, which are gone. Their output is the same, byte for byte, except for these fixes. Steps 04, 05 and 07 now need `og`: `scripts/setup.sh <genome_dir>` builds it, and `scripts/setup.sh --og` builds only it.
   - Step 05: an SV record whose INFO held `SVLEN` or `END` twice kept the old last value beside the new one. The rewrite now replaces the item it read.
   - Step 07: where the gVCF had a record at a multi-base PharmCAT position that was not a reference block, the input got that record and a 0/0 record at the same position. The gVCF's record is kept, the 0/0 record is dropped, and the log says so, whether the gVCF's reference block at that position comes before or after the record.

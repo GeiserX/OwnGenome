@@ -5,7 +5,7 @@
     Annotates an ExpansionHunter VCF with STR_STATUS (normal / pre_mutation /
     full_mutation), disease name, OMIM number, and repeat-size thresholds from
     the catalog ExpansionHunter ran on when it carries Stranger's thresholds
-    (NormalMax: the STRchive catalog bin/strchive_convert.py writes), else
+    (NormalMax: the STRchive catalog og str catalog writes), else
     Stranger's bundled GRCh38 catalog.
 
     STRANGER_RFC1, after it, counts the repeat motif of the reads at RFC1

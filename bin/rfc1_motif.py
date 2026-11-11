@@ -42,7 +42,7 @@ The verdict, from the reads that carry a run:
   rfc1_motif.py --bam BAM --vcf STRANGER_VCF --catalog CATALOG.json --flagged --out OUT.tsv
 
 The locus is the RFC1 record of the VCF (REPID=RFC1): its POS to its END.
-With --catalog (the STRchive catalog bin/strchive_convert.py writes, which
+With --catalog (the STRchive catalog og str catalog writes, which
 ExpansionHunter and Stranger ran on) the motifs come from the locus's
 BenignMotifs and PathogenicMotifs, the repeat unit is their length, and the
 locus is every repeat of the catalog entry, start of the first to end of
@@ -344,7 +344,7 @@ def main(argv=None):
     ap.add_argument("--skip", help="write the locus as not checked, with this reason")
     ap.add_argument("--no-softclip", action="store_true", help="do not add soft-clipped bases")
     ap.add_argument("--no-mates", action="store_true", help="do not fetch mates mapped elsewhere")
-    ap.add_argument("--catalog", help="the STRchive catalog (bin/strchive_convert.py): motifs and locus from it")
+    ap.add_argument("--catalog", help="the STRchive catalog (og str catalog): motifs and locus from it")
     ap.add_argument("--flagged", action="store_true",
                     help="every flagged locus of --catalog with motifs other than RFC1, one row each")
     a = ap.parse_args(argv)
