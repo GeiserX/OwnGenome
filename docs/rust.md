@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), and `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
+Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), step 27 and `CPIC_LOOKUP` call it (`og pgx cpic-report`), and `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -15,6 +15,7 @@ rust/
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
   crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields; csq-rank
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
+  crates/og-pgx/        og pgx: PharmCAT's report read into typed gene calls (step 27)
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
   crates/og-steps/      the step helpers: constraint-join
   crates/og-chip/       step 49, clonal haematopoiesis: og chip prepare, report, check-table
@@ -23,7 +24,7 @@ bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch> (og-da
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (the commands of `chip_report.py`, which keeps only the detection limit and the column names the reports import).
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 27 uses `og pgx cpic-report` and `og pgx step36-outside` (were the two commands of `pgx_parse.py`). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (the commands of `chip_report.py`, which keeps only the detection limit and the column names the reports import).
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 

@@ -1,0 +1,32 @@
+{
+ "genes": {
+  "CYP2C19": {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "*1"
+     },
+     "allele2": {
+      "name": "*1"
+     },
+     "label": "*1/*1",
+     "phenotypes": [
+      "Normal Metabolizer"
+     ]
+    },
+    {
+     "allele1": {
+      "name": "*1"
+     },
+     "allele2": {
+      "name": "*2"
+     },
+     "label": "*1/*2",
+     "phenotypes": [
+      "Intermediate Metabolizer"
+     ]
+    }
+   ]
+  }
+ }
+}
