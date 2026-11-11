@@ -1185,9 +1185,16 @@ MARKS_TSV = os.path.join(REPO, "tests", "fixtures", "map", "karyogram-marks.tsv"
 
 
 def og_binary():
-    """An og that runs here: bin/og when scripts/setup.sh --og built it, else one cargo builds now from rust/
-    without the BAM feature (the map reads no BAM), kept in CARGO_TARGET_DIR or a folder of the temp dir.
-    None when neither works."""
+    """An og that runs here: OG when set (Guard's unit-tests job and the docs builds set it to the og they
+    built, as tests/og_binary.py reads it), else bin/og when scripts/setup.sh --og built it, else one cargo
+    builds now from rust/ without the BAM feature (the map reads no BAM), kept in CARGO_TARGET_DIR or a folder
+    of the temp dir. None when none of them works."""
+    named = os.environ.get("OG")
+    if named:
+        if os.access(named, os.X_OK):
+            return named
+        print(f"OG={named} is not an executable og binary", file=sys.stderr)
+        return None
     og = os.path.join(REPO, "bin", "og")
     if subprocess.run([og, "map", "--help"], capture_output=True, check=False).returncode == 0:
         return og
@@ -1426,6 +1433,48 @@ def map_veil_problems(b, base, out):
     return bad
 
 
+def overlap_problems(b, base, out):
+    """On the son's closed page, a second result to act on over the first carries only the first one's tag
+    (rust/crates/og-map/README.md). Opening the first leaves the second closed: in no mark, sentence, link,
+    title or address of the map."""
+    son = OTHERS[1]
+    path = os.path.join(out, "runs", son, "map.json")
+    with open(path, "rb") as fh:
+        keep = fh.read()
+    try:
+        doc = read_map(path)
+        f = doc["per"][son]["findings"]
+        acts = [i for i, lv in enumerate(f["level"]) if lv == "act" and not f["gate"][i]]
+        if not acts:
+            return ["the son's map has no result to act on to close"]
+        i, n = acts[0], len(f["id"])
+        fid = f["id"][i]
+        for k in f:
+            if isinstance(f[k], list) and len(f[k]) == n:
+                f[k].append(f[k][i])
+        plant = {"id": "planted-overlap", "gene": "PLANTEDGENE", "title": "Planted overlapping result",
+                 "href": "finding/planted-overlap/", "phrase": "Planted overlap phrase."}
+        for k, v in plant.items():
+            f[k][-1] = v
+        write_map(path, doc)
+        c = map_page(b, base, son, "#" + f["chrom"][i])
+        if c["state"] != "drawn":
+            return [f"the planted map: {c['state']}"]
+        b.eval("document.querySelector('#f-%s .veil button').click(); true" % fid)
+        c = map_now(b)
+        bad = []
+        if fid not in [m["id"] for m in c["marks"]]:
+            bad.append(f"the first result did not open: marks {[m['id'] for m in c['marks']]}")
+        leaked = [w for w in plant.values() if w in c["text"] or w in c["tip"] or w in c["hash"]]
+        leaked += [m["id"] for m in c["marks"] if m["id"] == "planted-overlap"]
+        if leaked:
+            bad.append(f"opening the first shows the second: {leaked}")
+        return bad
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(keep)
+
+
 def missing_layer_problems(b, base, out):
     """A map whose ROH layer is missing says so in words, in the margin, never a blank."""
     path = os.path.join(out, "runs", S, "map.json")
@@ -1478,7 +1527,12 @@ def map_screens(b, base, dest):
             b.call("Emulation.setDeviceMetricsOverride", {"width": w, "height": h, "deviceScaleFactor": 1, "mobile": False},
                    b.session)
             for run, link, name in ((S, "", "genome"), (S, "#chr16", "chromosome"), (OTHERS[1], "", "closed")):
-                map_page(b, base, run, link)
+                got = map_page(b, base, run, link)
+                want = "chromosome" if link else "genome"
+                if got["state"] != "drawn" or got["level"] != want:
+                    print(f"ERROR: {run}{link}: the map is {got['state']} at {got['level'] or 'no'} level, "
+                          f"want drawn at {want}: no screenshot")
+                    continue
                 b.eval("document.getElementById('genome-map').scrollIntoView({block: 'start'}); true")
                 time.sleep(0.5)
                 png = b.call("Page.captureScreenshot", {"format": "png"}, b.session)["data"]
@@ -1545,6 +1599,20 @@ def map_checks(b, base, out):
     finally:
         with open(js, "w") as fh:
             fh.write(keep_js)
+    bad = overlap_problems(b, base, out)
+    check("map: a second closed result to act on over the first stays closed when the first is opened", not bad, bad)
+    mjs = os.path.join(out, "assets", "map.js")
+    with open(mjs) as fh:
+        keep_mjs = fh.read()
+    own = "(r.veil === r.id || M.closable.indexOf(r.id) < 0 ||\n        stateOf(r.id) !== 'closed') && "
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(own, ""))
+        control("map.js whose rows ask only their tag, never their own result", keep_mjs.count(own) != 1 or
+                not overlap_problems(b, base, out))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
     bad = missing_layer_problems(b, base, out)
     check("map: a missing layer says why in words, never a blank", not bad, bad)
     bad = fallback_problems(b, base, out)

@@ -66,3 +66,6 @@
   .gm-titlerow { row-gap: 6px; }
   .gm-title { font-size: 20px; }
 }
+.gm-zoom { display: inline-flex; border: 1px solid var(--hair-2); border-radius: 999px; overflow: hidden; }
+.gm-zoom[hidden] { display: none; }
+.gm-zoom button { border: 0; border-radius: 0; background: transparent; color: var(--ink-2); padding: 6px 14px; font-size: 14px; line-height: 1; }

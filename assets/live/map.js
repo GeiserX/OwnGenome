@@ -3,8 +3,9 @@
 // the 24 chromosomes as rows with their bands, the masked spans hatched, each finding with a place as its
 // level's glyph, and the runs of homozygosity; a click opens a chromosome in place, where the bands, the
 // findings and the runs get lanes of their own under a ruler. Every mark comes from the document, never from
-// results.json, and every sentence the margin shows is one the document wrote (text, phrase, empty, note),
-// with the counts filled in here.
+// results.json. The margin's findings count, chromosome sentences, runs sentence and finding phrases are the
+// document's (text, phrase, empty, note); this file adds only short lines of its own: an empty lane or
+// stretch, the runs in view, how to move, and why a layer is not on the map.
 //
 // The veil. The document is the same for every reader: each row a closed result could reveal carries the id
 // of that result (veil). Whether it is closed is the page's question (person.js veil()): a closed row is not
@@ -93,14 +94,18 @@
     });
     var gated = {};
     rows.forEach(function (r) { if (r.gate) { gated[r.id] = r; } });
+    // What can be closed: each veil tag, and each result to act on that carries another result's tag (a row
+    // over two of them carries only the first one's tag, and one over APOE carries APOE's): its own id too.
+    var closable = veilIds.slice();
+    rows.forEach(function (r) { if (r.veil && r.level === 'act' && !r.gate && closable.indexOf(r.id) < 0) { closable.push(r.id); } });
     return { doc: d, id: id, label: person.label || id, chroms: chroms, by: by, bands: bands, roh: roh, bins: bins,
-      binSize: (per.roh_bins && per.roh_bins.size) || 1e6, findings: rows, gated: gated, veilIds: veilIds,
+      binSize: (per.roh_bins && per.roh_bins.size) || 1e6, findings: rows, gated: gated, veilIds: veilIds, closable: closable,
       layers: d.layers || {}, text: d.text || {}, art: (d.dict && d.dict.art) || [] };
   }
 
   // --- the figure ---------------------------------------------------------------------------------------
   // create({url, veil(id, gated) -> 'open'|'closed'|'opened', now(id) -> shown at this moment, open(id),
-  // close(id), fallback() -> rows}): one figure per page. The page calls refresh(key) on each of its redraws; a new key
+  // close(id), stepDone(step) -> ended at this moment, fallback() -> rows}): one figure per page. The page calls refresh(key) on each of its redraws; a new key
   // fetches the document again and keeps the camera.
   function create(opts) {
     var M = null, key = null, failure = null, t0 = 0;
@@ -113,9 +118,14 @@
     var stopG = el('button', { type: 'button', 'data-stop': 'genome' }, 'Genome');
     var stopC = el('button', { type: 'button', 'data-stop': 'chromosome' }, 'Chromosome');
     add(gauge, stopG, stopC);
+    // Zoom buttons for an open chromosome: the touch path to what the wheel and the + and - keys do.
+    var zoom = el('div', { 'class': 'gm-zoom', role: 'group', 'aria-label': 'Zoom', hidden: 'hidden' });
+    var zoomOut = el('button', { type: 'button', 'aria-label': 'Zoom out', 'data-zoom': 'out' }, '−');
+    var zoomIn = el('button', { type: 'button', 'aria-label': 'Zoom in', 'data-zoom': 'in' }, '+');
+    add(zoom, zoomOut, zoomIn);
     var crumb = el('nav', { 'class': 'gm-crumb mono', 'aria-label': 'Where the map is' });
     var chips = el('div', { 'class': 'gm-chips' });
-    add(head, kicker, add(el('div', { 'class': 'gm-titlerow' }), title, gauge), crumb, chips);
+    add(head, kicker, add(el('div', { 'class': 'gm-titlerow' }), title, gauge, zoom), crumb, chips);
     var stage = el('div', { 'class': 'gm-stage' });
     var canvas = el('canvas', { 'class': 'gm-canvas', tabindex: '0', role: 'img', 'aria-describedby': 'gm-narration' });
     var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: 'hidden' });
@@ -149,7 +159,19 @@
     function stateOf(id) { return opts.veil(id, !!(M && M.gated[id])); }
     // A row shows when its result is not closed and the page shows its finding at this moment (a replay
     // before the finding's step ended does not).
-    function shownRow(r) { return (!r.veil || stateOf(r.veil) !== 'closed') && (!opts.now || opts.now(r.id)); }
+    // A row under another result's tag also stays hidden while its own result is closed.
+    function shownRow(r) {
+      return (!r.veil || stateOf(r.veil) !== 'closed') && (r.veil === r.id || M.closable.indexOf(r.id) < 0 ||
+        stateOf(r.id) !== 'closed') && (!opts.now || opts.now(r.id));
+    }
+    // The runs of homozygosity, as this page shows them now: a replay before their step ended has none yet.
+    function rohLayer() {
+      var lay = M.layers.roh;
+      if (lay && landed(lay) && lay.step && opts.stepDone && !opts.stepDone(lay.step)) {
+        return { state: 'waiting', step: lay.step, step_name: lay.step_name };
+      }
+      return lay;
+    }
     function drawn() { return M ? M.findings.filter(shownRow) : []; }
 
     // --- geometry ---
@@ -189,7 +211,7 @@
       var n = M ? M.chroms.length : 24;
       var h = 18 + n * (phone ? ROW_PHONE : ROW_MIN);
       DPR = Math.min(2, window.devicePixelRatio || 1);
-      if (w !== CW || h !== CH) {
+      if (w !== CW || h !== CH || canvas.width !== Math.round(w * DPR)) {
         CW = w; CH = h;
         canvas.width = Math.round(w * DPR);
         canvas.height = Math.round(h * DPR);
@@ -306,7 +328,7 @@
         c.textAlign = 'left';
         body(c, ch, gx, yc, 8, 1);
         // Runs of homozygosity under the body: the long ones solid, the rest as 1 Mb coverage bins.
-        var bins = M.bins[ch.n], ry = yc + 6.5;
+        var rohOn = landed(rohLayer()), bins = rohOn && M.bins[ch.n], ry = yc + 6.5;
         if (bins) {
           c.fillStyle = INK2;
           for (var b = 0; b < bins.length; b++) {
@@ -316,7 +338,7 @@
           }
           c.globalAlpha = 1;
         }
-        var rr = M.roh[ch.n];
+        var rr = rohOn && M.roh[ch.n];
         if (rr) {
           c.strokeStyle = INK;
           c.lineWidth = 2.5;
@@ -545,7 +567,7 @@
       });
     }
     function openRoh(L, v, ch) {
-      var lay = M.layers.roh || {}, g = gut(), y = L.ry + L.rh / 2;
+      var lay = rohLayer() || {}, g = gut(), y = L.ry + L.rh / 2;
       if (!landed(lay)) { laneWords(ctx, layerWords(lay), g + 4, y); return; }
       var r = M.roh[ch.n];
       if (!r || !r.n) { laneWords(ctx, 'No run of homozygosity on this chromosome.', g + 4, y); return; }
@@ -570,7 +592,7 @@
     function noFindingHere() {
       return closedAny() ? 'No open finding with a place on this chromosome.' : 'No finding with a place on this chromosome.';
     }
-    function closedAny() { return M.veilIds.some(function (id) { return stateOf(id) === 'closed'; }); }
+    function closedAny() { return M.closable.some(function (id) { return stateOf(id) === 'closed'; }); }
     function layerWords(lay) {
       if (lay.state === 'missing') { return 'Not on the map: ' + (lay.note || ('step ' + lay.step + ' wrote no ' + (lay.source || 'file') + '.')); }
       if (lay.state === 'unreadable') { return 'Not on the map: ' + (lay.source || '') + ' could not be read' + (lay.note ? ' (' + lay.note + ')' : '') + '.'; }
@@ -682,7 +704,8 @@
       if (!M) { return; }
       var h;
       try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return; }
-      if (!h) { return; }
+      // Back to the address with no place (the page as first loaded): the whole genome again.
+      if (!h) { if (!scroll && tgt.k) { tgt.k = 0; last = 0; schedule(); } return; }
       var p = parsePlace(h);
       if (p === null) { return; }
       if (p === false) { say('Could not read the place “' + h + '”'); return; }
@@ -717,6 +740,7 @@
       fig.setAttribute('data-view', locusWords());
       stopG.setAttribute('aria-pressed', String(lv === 'genome'));
       stopC.setAttribute('aria-pressed', String(lv !== 'genome'));
+      zoom.hidden = lv === 'genome';
       crumb.textContent = '';
       crumb.hidden = lv === 'genome';  // the gauge already says Genome
       var gl = el('button', { type: 'button', 'class': 'gm-crumb-g' }, 'Genome');
@@ -762,7 +786,8 @@
         add(narr, el('p', {}, fs.some(function (r) { return r.chrom === ch.n; }) ? 'No finding in this stretch.' : noFindingHere()));
       }
       if (lv === 'genome') {
-        var tail = runs(M.text.genome), lead = narr.children.length === 1 ? narr.firstChild : null;
+        var rl = rohLayer();
+        var tail = rl === M.layers.roh ? runs(M.text.genome) : runs([{ t: layerWords(rl), b: false }]), lead = narr.children.length === 1 ? narr.firstChild : null;
         if (phone && lead) {
           // On a phone the count and the runs share one paragraph.
           add(lead, ' ');
@@ -774,10 +799,10 @@
       } else {
         var r = M.roh[ch.n], n = 0, longest = 0;
         if (r) { for (var i = first(r, v[0]); i < r.n && r.s[i] < v[1]; i++) { n++; longest = Math.max(longest, r.e[i] - r.s[i]); } }
-        if (n && landed(M.layers.roh || {})) {
+        if (n && landed(rohLayer())) {
           add(narr, el('p', {}, 'Runs of homozygosity in view: ' + n + ', the longest ' + mb(longest) + ' Mb.'));
         }
-        if (!phone) { add(narr, el('p', { 'class': 'dim' }, 'Drag to move along it, scroll to zoom, Esc for the whole genome.')); }
+        if (!phone) { add(narr, el('p', { 'class': 'dim' }, 'Drag to move along it, scroll or use + and − to zoom, Esc for the whole genome.')); }
       }
       drawLayers();
       drawMarks();
@@ -793,7 +818,7 @@
     function drawLayers() {
       layersBox.textContent = '';
       [['findings', 'Findings'], ['roh', 'Runs of homozygosity']].forEach(function (x) {
-        var lay = M.layers[x[0]];
+        var lay = x[0] === 'roh' ? rohLayer() : M.layers[x[0]];
         var row = el('div', { 'class': 'gm-layer', 'data-layer': x[0], 'data-state': lay ? lay.state : 'missing' });
         var dd = el('dd', {});
         if (!lay) { add(dd, 'Not on the map: this server’s map has no ' + x[1].toLowerCase() + ' layer.'); }
@@ -835,7 +860,7 @@
       chips.textContent = '';
       if (!M) { return; }
       var acts = [], gates = [], opened = [];
-      M.veilIds.forEach(function (id) {
+      M.closable.forEach(function (id) {
         var s = stateOf(id);
         if (s === 'closed') { (M.gated[id] ? gates : acts).push(id); } else if (s === 'opened') { opened.push(id); }
       });
@@ -971,9 +996,7 @@
         var i = (open ? tgt.ci : (e.key === ']' ? -1 : M.chroms.length)) + (e.key === ']' ? 1 : -1);
         openChrom((i + M.chroms.length) % M.chroms.length, undefined, undefined, true);
       } else if (open && (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '−')) {
-        tgt.ls = Math.log(span * (e.key === '-' || e.key === '−' ? 1.6 : 1 / 1.6));
-        clampTgt();
-        changed(false);
+        zoomBy(e.key === '-' || e.key === '−' ? 1.6 : 1 / 1.6);
       } else if (open && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         tgt.c += (e.key === 'ArrowLeft' ? -0.2 : 0.2) * span;
         clampTgt();
@@ -982,6 +1005,14 @@
       else { done = false; }
       if (done) { e.preventDefault(); }
     });
+    function zoomBy(f) {
+      if (!M || level() === 'genome') { return; }
+      tgt.ls = Math.log(Math.exp(tgt.ls) * f);
+      clampTgt();
+      changed(false);
+    }
+    zoomOut.addEventListener('click', function () { zoomBy(1.6); });
+    zoomIn.addEventListener('click', function () { zoomBy(1 / 1.6); });
     stopG.addEventListener('click', function () { closeChrom(true); });
     stopC.addEventListener('click', function () {
       if (level() !== 'genome') { openChrom(tgt.ci, undefined, undefined, true); return; }
@@ -1010,6 +1041,7 @@
       }
       narr.textContent = '';
       layersBox.textContent = '';
+      chips.textContent = '';  // a chip drawn before the failure may name a result closed since
     }
     function load(k) {
       key = k;
