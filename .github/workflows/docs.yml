@@ -31,6 +31,9 @@ on:
       - 'bin/**'
       - 'tests/demo/**'
       - 'tests/fixtures/live/**'
+      # The demo's Figure 1, the genome map, is built by og (og map build) from these.
+      - 'rust/**'
+      - 'tests/fixtures/map/**'
   # No paths filter on pull requests, on purpose: a check skipped by a path
   # filter stays Pending and blocks the merge once it is a required check
   # (repos.md step 5 makes green checks required). The build takes seconds.
@@ -92,10 +95,41 @@ jobs:
       # (tests/demo/build_live_demo.py; standard library only). It is a static
       # folder beside the pages, not a page of the nav, so it goes in after the
       # site check.
+      # The demo's Figure 1 is the genome map, whose documents og writes (og map build). The map reads no
+      # BAM, so a native build without the bam feature is all it needs: no htslib, no container, and the
+      # cache keeps it to seconds.
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: Build og for the demo's map
+        working-directory: rust
+        run: cargo build --release --locked -p og --no-default-features
+
       - name: Add the live-site demo
         run: |
-          python3 tests/demo/build_live_demo.py --out site/demo
+          python3 tests/demo/build_live_demo.py --out site/demo --og rust/target/release/og
           test -s site/demo/runs/DEMO-001/frames.json
+          for r in DEMO-001 DEMO-002 DEMO-003; do test -s "site/demo/runs/${r}/map.json"; done
+
+      # The map at 1440 x 900 and 390 x 844, dark: genome, chromosome and a closed page, kept as the
+      # artifact map-screens (tests/test_live_demo.py --map-screens; Chrome is on the runner).
+      - name: Screenshots of the genome map
+        run: python3 tests/test_live_demo.py --map-screens "$RUNNER_TEMP/map-screens" site/demo
+
+      - name: Upload the map screenshots
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: map-screens
+          path: ${{ runner.temp }}/map-screens/*.png
+          if-no-files-found: error
+          retention-days: 14
 
       # Push to main only: workflow_dispatch can be run on any branch, and the
       # push filter above does not apply to it. Same line as docs-pages-helm.yml.
