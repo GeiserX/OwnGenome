@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/run_state.py and assets/steps.tsv on synthetic run files.
+"""bin/run_state.py (the live server's reader) and assets/steps.tsv on synthetic run files.
 
 Checks (sample demo1; the trace and weblog files are tests/fixtures/run_state):
   1. a planned step with no task is waiting;
@@ -15,8 +15,9 @@ Checks (sample demo1; the trace and weblog files are tests/fixtures/run_state):
   8. once run-all.sh has ended (finished_utc), a planned step with no result
      is not finished; main.nf's process_status.tsv decides a step without a
      result row; run-all.sh's result row wins over the tasks;
-  9. the command writes run_state.json from the files and opens no result
-     file (a planted VCF and the summary's results are not read);
+  9. collect() reads the state from the files and opens no result file (a
+     planted VCF and the summary's results are not read); the command,
+     og run state, is held to the same output by og-runlog's parity test;
  10. assets/steps.tsv against the code: every step run-all.sh plans or
      records has a row with the same label and --tools name, the recorded
      steps are collect_summary.RUN_ALL_STEPS, every SECTIONS key belongs to
@@ -139,8 +140,9 @@ def state_checks(rs, steps):
     return out
 
 
-def command_checks(rs):
-    """The command on a sample folder; records every file it opens."""
+def collect_checks(rs):
+    """collect() on a sample folder, as the live server calls it; records every file it opens.
+    og run state, the command, is held to the same output by og-runlog's parity test."""
     out = {}
     w = tempfile.mkdtemp(prefix="run_state_")
     opened = []
@@ -169,19 +171,17 @@ def command_checks(rs):
             return real_open(path, *a, **k)
         builtins.open = spy
         try:
-            rc = rs.main(["--sample", SAMPLE, "--sample-dir", d, "--events", ev])
+            got = rs.collect(SAMPLE, d, events_path=ev)
         finally:
             builtins.open = real_open
-        with open(os.path.join(d, "run_state.json")) as f:
-            got = json.load(f)
         s = by_step(got)
-        out["the command writes run_state.json"] = (
-            rc == 0 and got["sample"] == SAMPLE and s["06"]["state"] == "done" and s["27"]["state"] == "waiting"
-            and (s["27"]["earlier_result"] or {}).get("section") == "cpic", (rc, s.get("06"), s.get("27")))
-        read = sorted({os.path.relpath(p, w) for p in opened if p.startswith(w) and not p.endswith(".tmp")})
+        out["collect() reads the state from the files"] = (
+            got["sample"] == SAMPLE and s["06"]["state"] == "done" and s["27"]["state"] == "waiting"
+            and (s["27"]["earlier_result"] or {}).get("section") == "cpic", (s.get("06"), s.get("27")))
+        read = sorted({os.path.relpath(p, w) for p in opened if p.startswith(w)})
         allowed = {f"{SAMPLE}/logs/run_status.tsv", f"{SAMPLE}/summary.json", "events.jsonl",
                    "pipeline_info/trace_2026-01-02_10-00-00.txt"}
-        out["the command reads only status, trace, event and summary files"] = (set(read) <= allowed and
+        out["collect() reads only status, trace, event and summary files"] = (set(read) <= allowed and
                                                                               f"{SAMPLE}/logs/run_status.tsv" in read, read)
     finally:
         builtins.open = real_open
@@ -331,10 +331,10 @@ def mutants(steps):
 
 def main():
     steps = run_state.read_steps()
-    # 1-8 on the builder, 9 on the command, 10 on the catalogue
+    # 1-8 on the builder, 9 on collect(), 10 on the catalogue
     results = {}
     results.update(state_checks(run_state, steps))
-    results.update(command_checks(run_state))
+    results.update(collect_checks(run_state))
     results.update(catalogue_checks(steps, collect_summary.SECTIONS, collect_summary.RUN_ALL_STEPS))
     for name, (ok, detail) in results.items():
         check(name, ok, detail)
@@ -343,16 +343,16 @@ def main():
     for name, mod in mutants(steps).items():
         got = state_checks(mod, steps)[name]
         check(f"fails on a planted mistake: {name}", not got[0], "the check passed on the mutant")
-    check("fails on a planted mistake: the command reports an earlier result",
-          not command_checks(mutant(summary_sources=lambda d: {}))["the command writes run_state.json"][0],
+    check("fails on a planted mistake: collect() reports an earlier result",
+          not collect_checks(mutant(summary_sources=lambda d: {}))["collect() reads the state from the files"][0],
           "passed on the mutant")
 
     def opens_vcf(d):
         with open(os.path.join(d, "vcf", f"{SAMPLE}.vcf.gz")) as f:
             f.read()
         return run_state.summary_sources(d)
-    got = command_checks(mutant(summary_sources=opens_vcf))["the command reads only status, trace, event and summary files"]
-    check("fails on a planted mistake: the command opens a VCF", not got[0], "passed on the mutant")
+    got = collect_checks(mutant(summary_sources=opens_vcf))["collect() reads only status, trace, event and summary files"]
+    check("fails on a planted mistake: collect() opens a VCF", not got[0], "passed on the mutant")
     same = state_checks(mutant(), steps)
     check("an unchanged copy passes (the controls test the mistake, not the copy)",
           all(ok for ok, _ in same.values()), [k for k, (ok, _) in same.items() if not ok])

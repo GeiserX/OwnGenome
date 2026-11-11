@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """run_eta.py: how long each step usually takes on this box, and how many hours a run has left.
 
-  run_eta.py OUTDIR [--sample S] [--cores N] [--box NAME] [--out FILE]
+The command is `og run eta OUTDIR` (rust/crates/og-runlog, docs/run-state.md).
+This module is the same estimate for the Python that still imports it: the
+live server's alerts (bin/owngenome_live_ops.py) read the history with it.
 
-OUTDIR is the --outdir of the Nextflow run (GENOME_DIR with run-all.sh). Each
-call first reads the trace files OUTDIR/pipeline_info/trace_*.txt into this
-box's history, OUTDIR/pipeline_info/step_history/<box>.tsv, then prints the
-estimate as JSON (or writes it to --out).
+OUTDIR is the --outdir of the Nextflow run (GENOME_DIR with run-all.sh).
+estimate() first reads the trace files OUTDIR/pipeline_info/trace_*.txt into
+this box's history, OUTDIR/pipeline_info/step_history/<box>.tsv, then returns
+the estimate.
 
 The history keeps one row per task that ended COMPLETED with exit 0. A task
 taken from the cache, a failed task and a task of an unknown process never
@@ -34,10 +36,8 @@ by the cores). A running step already past its high end makes the high end
 unknown. A step with no number is listed under unknown_steps and adds nothing.
 Times are seconds. Standard library only.
 """
-import argparse
 import fcntl
 import glob
-import json
 import os
 import re
 import socket
@@ -458,23 +458,3 @@ def estimate(outdir, sample=None, state=None, now=None, cores=None, box=None, st
     return {"box": box_name(box), "cores": cores, "generated_utc": iso(now),
             "steps": ranges, "remaining": remaining(state, ranges, now, cores) if state else None}
 
-
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("outdir", help="the run's --outdir (GENOME_DIR with run-all.sh)")
-    ap.add_argument("--sample", help="also the hours left of this sample's run")
-    ap.add_argument("--cores", type=int, help="the box's cores (default: all of this machine's)")
-    ap.add_argument("--box", help="the history's name for this box (default: PGP_BOX or the short host name)")
-    ap.add_argument("--out", help="write the JSON here (default: print it)")
-    a = ap.parse_args(argv)
-    est = estimate(a.outdir, a.sample, cores=a.cores, box=a.box)
-    text = json.dumps(est, indent=1) + "\n"
-    if a.out:
-        write_atomic(a.out, text)
-    else:
-        sys.stdout.write(text)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

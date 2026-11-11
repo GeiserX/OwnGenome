@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""run_state.py: where one sample's run stands, step by step, as one JSON file.
+"""run_state.py: where one sample's run stands, step by step.
 
-  run_state.py --sample S --sample-dir DIR [--trace FILE ...] [--events FILE]
-               [--steps assets/steps.tsv] [--out DIR/run_state.json]
+The command is `og run state` (rust/crates/og-runlog, docs/run-state.md),
+which writes DIR/run_state.json. This module is the same reader for the
+Python that still imports it: the live server (bin/owngenome_live.py), its
+alerts and the database re-check.
 
 It reads only files that say how the run goes, never a result:
   DIR/logs/run_status.tsv       scripts/run-all.sh: when the run started, the
@@ -45,13 +47,10 @@ and nothing heard from it (a file it writes as it goes, a message, a task's
 start or end) for longer than stale_after() of the steps; 'last_heard_utc' says
 when it was last heard from. It reads running again once something new arrives.
 """
-import argparse
 import glob
 import json
 import os
 import re
-import sys
-import tempfile
 import threading
 from datetime import datetime, timezone
 
@@ -536,36 +535,3 @@ def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_T
                  event_tasks(events, sample), events, summary_sources(sample_dir),
                  heard=last_heard(sample_dir, [events_path]) if stale else None)
 
-
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--sample", required=True)
-    ap.add_argument("--sample-dir", required=True)
-    ap.add_argument("--trace", action="append", help="a Nextflow trace file (default: the run's under ../pipeline_info)")
-    ap.add_argument("--events", help="Nextflow weblog messages, one JSON object per line")
-    ap.add_argument("--steps", default=STEPS_TSV, help="the steps catalogue (default: assets/steps.tsv)")
-    ap.add_argument("--out", help="default: SAMPLE_DIR/run_state.json")
-    a = ap.parse_args(argv)
-    state = collect(a.sample, a.sample_dir, a.trace, a.events, a.steps)
-    out = a.out or os.path.join(a.sample_dir, "run_state.json")
-    # A temporary file of its own beside the JSON, so two runs at once never write into one file.
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(out)), prefix=".run_state.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(state, f, indent=1)
-            f.write("\n")
-        # The mode a plain open() would give, as for every other output: mkstemp's 0600 ignores the umask.
-        mask = os.umask(0)
-        os.umask(mask)
-        os.chmod(tmp, 0o666 & ~mask)
-        os.replace(tmp, out)
-    except BaseException:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
-    print(f"Run state written: {out}")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """run_headroom.py: how close each task came to its memory request, and how full the work and results disks are.
 
-  run_headroom.py [--events FILE] [--trace FILE ...] [--work-dir DIR] [--outdir DIR]
-                  [--max-memory SIZE] [--disk-warn-percent N] [--mem-warn-percent N]
-
-The one place that measures memory and disk headroom; anything that shows them
-(a page, metrics) calls snapshot() and formats its result. Standard library
-only, on any Linux, macOS or WSL2 box.
+The command is `og run headroom` (rust/crates/og-runlog, docs/run-state.md).
+This module is the same measure for the Python that still imports it: the
+live server's alerts (bin/owngenome_live_ops.py) call snapshot() and format
+its result. Standard library only, on any Linux, macOS or WSL2 box.
 
 Tasks come from Nextflow weblog messages (--events, one JSON object per line,
 the process_* messages) or trace files (--trace). Per task, the ratio is its
@@ -24,10 +22,9 @@ on the same filesystem are reported once. Labels are 'work' and 'results',
 never a path.
 
 The warn percent is 90 for both, or OWNGENOME_DISK_WARN_PERCENT and
-OWNGENOME_MEM_WARN_PERCENT, or the options. The command prints plain lines and
-exits 0; a warn percent outside 1 to 100 exits 2.
+OWNGENOME_MEM_WARN_PERCENT, or the arguments. lines() gives the plain lines
+og run headroom prints; a warn percent outside 1 to 100 raises ValueError.
 """
-import argparse
 import os
 import shutil
 import sys
@@ -305,25 +302,3 @@ def lines(snap):
         out.append(s)
     return out
 
-
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--events", help="Nextflow weblog messages, one JSON object per line")
-    ap.add_argument("--trace", action="append", default=[], help="a Nextflow trace file (repeatable)")
-    ap.add_argument("--work-dir", help="the run's work folder (default: workDir from the weblog metadata)")
-    ap.add_argument("--outdir", help="the run's results folder (default: outdir from the weblog metadata)")
-    ap.add_argument("--max-memory", help="the pipeline's max_memory, e.g. 64.GB (default: from the weblog metadata)")
-    ap.add_argument("--disk-warn-percent", help="warn at this disk use (default: OWNGENOME_DISK_WARN_PERCENT or 90)")
-    ap.add_argument("--mem-warn-percent", help="hint at this peak_rss share of a request (default: OWNGENOME_MEM_WARN_PERCENT or 90)")
-    a = ap.parse_args(argv)
-    try:
-        snap = snapshot(run_state.read_events(a.events), a.work_dir, a.outdir, a.disk_warn_percent,
-                        a.mem_warn_percent, a.max_memory, [r for p in a.trace for r in run_eta.read_trace(p)])
-    except ValueError as e:
-        ap.error(str(e))
-    sys.stdout.write("".join(s + "\n" for s in lines(snap)))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

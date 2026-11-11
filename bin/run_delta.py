@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """run_delta.py: what changed since the previous run of the same sample.
 
+The command is `og run delta` (rust/crates/og-runlog, docs/delta-report.md):
 scripts/generate-report.sh runs it after the text report, before it keeps a
 copy of this run's summary.json and run_manifest.tsv under
-<sample>/history/<UTC time>/. It compares this run with the newest copy there
-and writes <out>.txt, <out>.html and <out>.json. Standard library only, so it
-runs in the plain python image.
-
-  run_delta.py --sample S --summary summary.json --manifest run_manifest.tsv
-               [--previous history/<stamp>] --out <sample_dir>/<sample>_delta
+<sample>/history/<UTC time>/, and it writes <out>.txt, <out>.html and
+<out>.json. This module is the same comparison for bin/collect_summary.py,
+whose "New since" badges need it. Standard library only.
 
 What it compares:
   inputs   the run manifest (bin/write_manifest.sh): versions.env values, the
@@ -27,18 +25,12 @@ What it compares:
            PRS_BAND points or more, or appeared or went away.
 For each result change it lists the changed inputs that feed that section, or
 says that the inputs it tracks are the same and the call itself differs.
-With no --previous it writes that there is no previous run on record. With a
-previous run, previous_utc (when its report was written) heads the changes as
-"New since <date>", and new_since_sections lists the summary sections they
-change. The last database re-check (recheck/state.json beside the summary,
-bin/owngenome_recheck.py) is added as the recheck block when there is one.
-Exits 2 when an input cannot be read.
+changed_sections() names the summary sections the changes touch, and
+read_recheck() the last database re-check (recheck/state.json beside the
+summary, bin/owngenome_recheck.py).
 """
-import argparse
-import html
 import json
 import os
-import sys
 
 PRS_BAND = 5.0  # percentile points
 
@@ -291,114 +283,3 @@ def utc14(text):
     """'2026-09-02 12:00:00 UTC' or '2026-09-02T12:00:00Z' as '20260902120000'; '' without one."""
     return "".join(c for c in str(text or "") if c.isdigit())[:14]
 
-
-def load_json(path):
-    with open(path) as f:
-        return json.load(f)
-
-
-def render_text(d):
-    w = [f"What changed since the previous run: {d['sample']}", ""]
-    if d["previous"] is None:
-        w.append("No previous run of this sample on record (its history/ folder is empty).")
-        w.append("This run is kept as the baseline the next run is compared with.")
-        w.extend(recheck_text(d.get("recheck")))
-        return "\n".join(w) + "\n"
-    w.append(f"Previous run: history/{d['previous']} (summary of {d['previous_generated'] or 'unknown date'})")
-    w.append(f"This run:     summary of {d['current_generated'] or 'unknown date'}")
-    w.extend(recheck_text(d.get("recheck")))
-    w.append("")
-    if not d["changes"]:
-        w.append("No change: the same inputs and the same results as the previous run.")
-        return "\n".join(w) + "\n"
-    w.append(f"New since {d['previous_utc'] or 'the previous run'}: {len(d['changes'])} change(s):")
-    area = None
-    for ch in d["changes"]:
-        if ch["area"] != area:
-            area = ch["area"]
-            w.extend(["", f"## {area}"])
-        w.append(f"  {ch['kind']}: {ch['item']}: {ch['before']} -> {ch['after']}")
-        if ch.get("why"):
-            w.append(f"    why: {ch['why']}")
-    return "\n".join(w) + "\n"
-
-
-def recheck_text(r):
-    """The database re-check lines (bin/owngenome_recheck.py), or none without a check."""
-    if not r:
-        return []
-    newer = [i for i in r["items"] if i.get("class") not in ("no-newer-release", None)]
-    out = [f"Database re-check of {r.get('checked_utc') or 'unknown date'}: "
-           + (f"{len(newer)} item(s) to look at" if newer else "nothing newer than this run")]
-    out += [f"  {i.get('label') or i.get('item')}: {i.get('class')}"
-            + (f" ({i['action']})" if i.get("action") else "") for i in newer]
-    rr = r.get("rerun") or {}
-    if rr:
-        out.append(f"  last rerun: {rr.get('finished_utc') or 'unfinished'} (exit {rr.get('rc')})")
-    return out
-
-
-def render_html(d):
-    e = html.escape
-    body = [f"<h1>What changed since the previous run: {e(d['sample'])}</h1>"]
-    if d["previous"] is None:
-        body.append("<p>No previous run of this sample on record (its history/ folder is empty). "
-                    "This run is kept as the baseline the next run is compared with.</p>")
-    else:
-        body.append(f"<p>Previous run: history/{e(d['previous'])} (summary of {e(d['previous_generated'] or 'unknown date')}). "
-                    f"This run: summary of {e(d['current_generated'] or 'unknown date')}.</p>")
-    rc = recheck_text(d.get("recheck"))
-    if rc:
-        body.append("<p>" + "<br>".join(e(x.strip()) for x in rc) + "</p>")
-    if d["previous"] is not None:
-        if not d["changes"]:
-            body.append("<p>No change: the same inputs and the same results as the previous run.</p>")
-        else:
-            body.append(f"<p>New since {e(d['previous_utc'] or 'the previous run')}: {len(d['changes'])} change(s).</p>")
-            body.append("<table><tr><th>Area</th><th>Change</th><th>Item</th><th>Before</th><th>Now</th><th>Why</th></tr>")
-            for ch in d["changes"]:
-                body.append("<tr>" + "".join(f"<td>{e(str(ch.get(k, '')))}</td>"
-                                             for k in ("area", "kind", "item", "before", "after", "why")) + "</tr>")
-            body.append("</table>")
-    style = ("body{font-family:sans-serif;margin:2em;background:#111;color:#ddd}"
-             "table{border-collapse:collapse}td,th{border:1px solid #444;padding:4px 8px;text-align:left;vertical-align:top}")
-    return (f"<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>{e(d['sample'])}: delta</title>"
-            f"<style>{style}</style></head><body>\n" + "\n".join(body) + "\n</body></html>\n")
-
-
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--sample", required=True)
-    ap.add_argument("--summary", required=True, help="this run's summary.json")
-    ap.add_argument("--manifest", help="this run's run_manifest.tsv")
-    ap.add_argument("--previous", help="the previous run's history folder (summary.json, run_manifest.tsv)")
-    ap.add_argument("--out", required=True, help="output prefix: writes OUT.txt, OUT.html, OUT.json")
-    ap.add_argument("--recheck", help="bin/owngenome_recheck.py's state.json (default: recheck/state.json beside --summary)")
-    a = ap.parse_args(argv)
-    try:
-        cur = load_json(a.summary)
-        prev = load_json(os.path.join(a.previous, "summary.json")) if a.previous else None
-    except (OSError, ValueError) as e:
-        print(f"ERROR: cannot read a summary: {e}", file=sys.stderr)
-        return 2
-    d = {"sample": a.sample, "previous": os.path.basename(os.path.normpath(a.previous)) if a.previous else None,
-         "previous_generated": (prev or {}).get("generated_utc"), "current_generated": cur.get("generated_utc"),
-         "prs_band": PRS_BAND, "changes": []}
-    if prev is not None:
-        # "New since" this date: when the previous run's report was written.
-        d["previous_utc"] = prev.get("generated_utc")
-        d["changes"] = compare(prev, read_manifest(os.path.join(a.previous, "run_manifest.tsv")),
-                               cur, read_manifest(a.manifest))
-        d["new_since_sections"] = changed_sections(d["changes"])
-    recheck = read_recheck(a.recheck or os.path.join(os.path.dirname(os.path.abspath(a.summary)), "recheck", "state.json"))
-    if recheck:
-        d["recheck"] = recheck
-    for ext, text in (("txt", render_text(d)), ("html", render_html(d)), ("json", json.dumps(d, indent=1) + "\n")):
-        with open(f"{a.out}.{ext}", "w") as f:
-            f.write(text)
-    sys.stdout.write(render_text(d))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
