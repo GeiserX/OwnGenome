@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 35's HBA1/HBA2 count from read depth (bin/hba_copy_number.py) on
+# Step 35's HBA1/HBA2 count from read depth (og cn call --locus HBA) on
 # synthetic reads, with a planted one-gene deletion. The fixture has no reads
 # at the alpha-globin cluster, so the case writes its own: 150 bp reads cut
 # from the fixture reference every 5 bp over chr16:95,000-235,000 (30x),
@@ -64,7 +64,7 @@ fa, header, sample, out = sys.argv[1:]
 seq = "".join(l.strip() for l in open(fa) if not l.startswith(">")).upper()
 start0 = 95000                      # 0-based start of chr16:95001-235000
 rg = next((l.split("\t")[1][3:] for l in open(header) if l.startswith("@RG")), None)
-hba2 = (172875, 173710)             # bin/hba_copy_number.py's HBA2, 0-based
+hba2 = (172875, 173710)             # the HBA row's HBA2 (og cn bed --locus HBA), 0-based
 L, step, n = 150, 5, 0
 comp = str.maketrans("ACGTN", "TGCAN")
 seen = {}

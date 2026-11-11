@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The Nextflow HTML report and step 35's HBA1/HBA2 table
-# (<id>_hba_copy_number.tsv, bin/hba_copy_number.py), which the bash report
+# (<id>_hba_copy_number.tsv, og cn call --locus HBA), which the bash report
 # already reads beside the SMN table.
 #   1. HTML_REPORT, run for real in its image through a two-line pipeline, on
 #      HG002's VCF with an SMN table and an HBA table that
-#      bin/hba_copy_number.py writes from made-up depths (four genes). It
+#      og cn writes from made-up depths (four genes). It
 #      must place the HBA table in paralogs/ (a name it has no place for
 #      stops the task), the report must carry the HBA line with the count,
 #      and the not-assessed list must leave HBA1/HBA2 out. Negative control:
@@ -28,12 +28,12 @@ mkdir -p "$T"
 printf 'chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n' \
   > "${T}/${SAMPLE}_smn_copy_number.tsv"
 # Made-up depths: 30x everywhere, a quarter of the gene depth at MAPQ 0
-python3 "${REPO}/bin/hba_copy_number.py" bed \
+"${REPO}/bin/og" cn bed --locus HBA \
   | awk -F'\t' -v OFS='\t' '{print $0, ($3 - $2) * 30}' > "${T}/bedcov.tsv"
-python3 "${REPO}/bin/hba_copy_number.py" bed \
+"${REPO}/bin/og" cn bed --locus HBA \
   | awk -F'\t' -v OFS='\t' '{print $0, ($3 - $2) * ($4 ~ /^HBA/ ? 22.5 : 30)}' > "${T}/bedcov_q1.tsv"
-python3 "${REPO}/bin/hba_copy_number.py" check --bedcov "${T}/bedcov.tsv" --bedcov-mapq1 "${T}/bedcov_q1.tsv" \
-  --out "${T}/${SAMPLE}_hba_copy_number.tsv"
+"${REPO}/bin/og" cn call --locus HBA --bedcov "${T}/bedcov.tsv" --bedcov-mapq1 "${T}/bedcov_q1.tsv" \
+  --table "${T}/${SAMPLE}_hba_copy_number.tsv"
 cat "${T}/${SAMPLE}_hba_copy_number.tsv"
 check_eq "the made-up HBA table counts four" \
   "$(awk -F'\t' '$1 == "alpha_globin_genes" {print $2}' "${T}/${SAMPLE}_hba_copy_number.tsv")" 4

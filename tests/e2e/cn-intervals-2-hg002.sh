@@ -23,7 +23,7 @@ W="${GENOME_DIR}/${P}"
 rm -rf "$W"; mkdir -p "${W}/aligned" "${W}/paralogs"
 ROWS=(AZFa AZFb AZFc_DAZ 22q11.2_DGS_proximal_A-B)
 args=(); for r in "${ROWS[@]}"; do args+=(--locus "$r"); done
-python3 "${REPO}/bin/copy_number.py" bed "${args[@]}" | sort -k1,1 -k2,2n -u > "${W}/fetch.bed"
+"${REPO}/bin/og" cn bed "${args[@]}" | sort -k1,1 -k2,2n -u > "${W}/fetch.bed"
 check_ge "segments of the four rows to fetch" "$(wc -l < "${W}/fetch.bed" | tr -d ' ')" 10
 
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo "  try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }

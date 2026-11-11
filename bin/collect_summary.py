@@ -132,7 +132,7 @@ NOT_ASSESSED = [
     "Variants of uncertain significance (not interpreted)",
 ]
 
-# Added to NOT_ASSESSED unless step 35's depth count (bin/hba_copy_number.py,
+# Added to NOT_ASSESSED unless step 35's depth count (og cn call --locus HBA,
 # short reads) or step 35b (Paraphase, PacBio HiFi, both genes) made a call.
 HBA_NOT_ASSESSED = ("HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count "
                     "(short reads) nor step 35b (Paraphase, PacBio HiFi) made a call")
@@ -914,13 +914,13 @@ def sec_parascopy(d, s):
                "smn1_marker": read_marker_table(os.path.join(d, "paralogs", f"{s}_smn1_marker.tsv"), "35",
                                                 "SMN1_27134"),
                "rows": len(rows),
-               # HBA1/HBA2 from depth (bin/hba_copy_number.py); None when
+               # HBA1/HBA2 from depth (og cn call --locus HBA); None when
                # step 35 wrote no HBA table (a run from before the check)
                "hba": read_hba(hp) if os.path.isfile(hp) else None,
                # the interval rows of bin/cn_loci.tsv (recurrent CNV regions,
                # carrier deletions, AZF); None without step 35's table
                "cn_intervals": read_cn_intervals(ip) if os.path.isfile(ip) else None,
-               # CYP21A2 from depth and PSV sites (bin/copy_number.py, the
+               # CYP21A2 from depth and PSV sites (og cn call, the
                # CYP21A2 row): copies, module total, finding; None without it
                "cyp21a2": read_hba(cp) if os.path.isfile(cp) else None,
                # the gene-dosage rows (HP, LCE3BC, CCL3L1): total copies from
@@ -935,7 +935,7 @@ def sec_parascopy(d, s):
 
 
 def read_cn_intervals(path):
-    """Step 35's interval table (bin/copy_number.py intervals): the rows with
+    """Step 35's interval table (og cn intervals): the rows with
     a deletion or a duplication, and a count of the rows by status."""
     rows = read_tsv(path)
     cols = ("locus", "name", "chrom", "start", "end", "status", "copies", "expected", "change")
@@ -2807,7 +2807,7 @@ LPA_RISK_ALLELES = {"rs10455872": "G", "rs3798220": "C"}
 
 
 def sec_lpa(d, s):
-    """Step 46's KIV-2 count (lpa/<id>_lpa_kiv2.tsv, bin/lpa_kiv2.py), with
+    """Step 46's KIV-2 count (lpa/<id>_lpa_kiv2.tsv, og cn call --locus LPA_KIV2), with
     step 42's two LPA risk variants when the traits table is there, and
     whether either points to a genetically high Lp(a)."""
     p = first_existing(d, [f"lpa/{s}_lpa_kiv2.tsv"])

@@ -442,7 +442,7 @@ def cyp21a2_finding(path, genes):
     copy left."""
     t = cyp21a2_table(path)
     if t.get("status") not in ("called", "not assessed"):
-        die(["%s: not step 35's CYP21A2 table (bin/copy_number.py call --locus CYP21A2)" % path])
+        die(["%s: not step 35's CYP21A2 table (og cn call --locus CYP21A2)" % path])
     if t["status"] != "called":
         return [], "CYP21A2 not assessed (%s)" % t.get("reason", ".")
     what = "CYP21A2 %s copies, RCCX module total %s of %s" % (t.get("cyp21a2_copies", "."), t.get("module_total", "."),
@@ -489,7 +489,7 @@ def read_cn_intervals(path):
         lines = [ln.rstrip("\n").split("\t") for ln in f if ln.strip()]
     if (not lines or lines[0][:6] != ["locus", "name", "chrom", "start", "end", "status"]
             or not {"copies", "expected", "change", "reason"} <= set(lines[0])):
-        die(["%s: not step 35's interval table (bin/copy_number.py intervals)" % path])
+        die(["%s: not step 35's interval table (og cn intervals)" % path])
     head = lines[0]
     return {r[0]: dict(zip(head, r)) for r in lines[1:] if len(r) == len(head)}
 
