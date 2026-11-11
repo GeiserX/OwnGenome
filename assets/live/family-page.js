@@ -80,7 +80,7 @@
   // Opened results are kept for the life of this page, as on the child's page: a reload closes them again. They
   // are kept per child and per run (two children can carry the same result, under the same id).
   var UNKNOWN = '?';
-  var kids = {}, opened = {}, openedAll = {}, last = null;
+  var kids = {}, opened = {}, openedAll = {}, mapShown = {}, last = null;
   function openKey(child, id) { return (kids[child] && kids[child].url) + '|' + child + '|' + id; }
   function loadKids(f) {
     (f.state.children || []).forEach(function (c) {
@@ -115,11 +115,16 @@
     });
   }
   // The closed results a row of CHILD belongs to: their ids, [UNKNOWN] when this page cannot tell, or [].
-  function tagOf(child, text, chrom, pos, end) {
+  // COORDS: the row has a position and no gene name (a de novo candidate, a stretch). A closed result known by its
+  // gene alone (two changes in one gene, with no position) could sit at that position, and only the gene would
+  // tell: such a row stays closed with every result of that kind too.
+  function tagOf(child, text, chrom, pos, end, coords) {
     var k = kids[child];
     if (!k || k.status !== 'known') { return [UNKNOWN]; }
     if (!k.spans) { return k.acts.length ? [UNKNOWN] : []; }  // results without the tags: cannot tell
-    return U.veilIds(k.spans, text, chrom, pos, end);
+    var ids = U.veilIds(k.spans, text, chrom, pos, end);
+    if (coords) { k.spans.forEach(function (s) { if (!s[2] && ids.indexOf(s[0]) < 0) { ids.push(s[0]); } }); }
+    return ids;
   }
   // The results of TAGS still closed for CHILD: a row stays closed while one of them is.
   function stillClosed(child, tags) {
@@ -367,7 +372,7 @@
     // A stretch drawn from a grandparent says which grandparent's copy the child got there, so one over a
     // closed result says whether the child got it: it stays closed. A stretch from a parent alone says nothing.
     var split = veiled(child, all, function (r) {
-      return r.ancestor && r.ancestor !== '.' ? tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end) : [];
+      return r.ancestor && r.ancestor !== '.' ? tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end, true) : [];
     });
     var rows = split.open;
     var lengths = f.chrom_lengths || [];
@@ -458,10 +463,11 @@
         // closed (or this page cannot tell), it stays closed whole.
         var k = kids[c.child] || {};
         var all = k.status !== 'known' || (!k.spans && k.acts.length) ? [UNKNOWN] : (k.spans || []).map(function (s) { return s[0]; });
-        var shut = stillClosed(c.child, all);
-        if (shut.length) {
+        var shut = stillClosed(c.child, all), mk = openKey(c.child, 'map');
+        // "Show the map" opens the map only: each result keeps its own closed rows until it is opened.
+        if (shut.length && !mapShown[mk]) {
           add(d, U.veil('The chromosome map of ' + c.child + ' stays closed while a result to act on in adult life is: ' +
-            'it could show which copy the child got there.', 'Show the map', function () { shut.forEach(function (t) { if (t === UNKNOWN) { openedAll[c.child] = true; } else { opened[openKey(c.child, t)] = true; } }); redraw(); }));
+            'it could show which copy the child got there.', 'Show the map', function () { mapShown[mk] = true; redraw(); }));
         } else {
           add(d, el('img', { src: c.segments, alt: 'Chromosome map of ' + c.child, 'class': 'segments' }));
         }
@@ -471,7 +477,7 @@
       var dn = (f.de_novo || []).filter(function (r) { return r.child === c.child; });
       add(d, el('h3', {}, 'De novo candidates'));
       if (dn.length) {
-        var dv = veiled(c.child, dn, function (r) { return tagOf(c.child, r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.chrom, r.pos); });
+        var dv = veiled(c.child, dn, function (r) { return tagOf(c.child, r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.chrom, r.pos, null, true); });
         add(d, el('p', { 'class': 'dim' }, 'In the child and in neither parent. Most candidates in a genome are genotype errors: ' +
           'check the reads before reading anything into one.'));
         add(d, U.table({ columns: ['Variant', 'Child', 'Father', 'Mother', 'Child DP / GQ', 'Allele balance', 'Quality'],

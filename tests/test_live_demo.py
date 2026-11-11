@@ -60,7 +60,10 @@ Checks:
      count until "Show the result" is clicked there, a row that names both
      planted results stays closed until both are opened (one per click), each
      row then comes back, and a reload closes them again; with the son's results.json
-     unavailable every row of his that could name one stays closed; on his page
+     unavailable, or answered as unreadable, every row of his that could name one
+     stays closed; with a closed result known by its gene alone his de novo rows
+     (a position, no gene) stay closed with it; his map as an image stays closed,
+     and "Show the map" opens the map and no result; on his page
      a CHIP call and a copy-number dot in the gene of a closed result stay out
      of their drawings until it is opened; DEMO-001's page
      mid-replay and at the end leads with the report (a short run band above
@@ -74,7 +77,8 @@ the veil, person.js and finding.js that read a missing state as a standalone adu
 without its filter; for the planted results, results.json without its veil tags, person.js whose table
 rows ignore them, person.js whose findings ignore them, charts.js that keeps every mark, search.js that ignores a hit's tag
 and finding.js whose findings ignore their tags; for the family page, family-page.js whose rows ignore the veil
-and core.js whose veilId() tags nothing; for the drawings, person.js that draws every item), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+core.js whose veilId() tags nothing, family-page.js without the gene-only fallback and a "Show the map" that opens
+the results too; for the drawings, person.js that draws every item), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -812,6 +816,52 @@ def family_unknown(b, base):
     return out
 
 
+def son_tables(b):
+    """[rows of each table] in the son's fold of the family page."""
+    rows = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] "
+                  "table.rows'), function (t) { return t.querySelectorAll('tbody tr').length; }))")
+    return json.loads(rows) if rows else None
+
+
+def gene_only_problems(b, base):
+    """[problems] of the family page when the son also has a closed result known by its gene alone: a de novo row
+    shown before it is opened, a pair in another gene closed, or the rows not back once each result is opened."""
+    family_page(b, base)
+    out = []
+    t = son_tables(b)
+    shown = b.eval(FAMILY_SHOWN_JS) or ""
+    # Open: the stretches' table and the two pairs in other genes; closed: both de novo rows.
+    if t != [80, 2] or "48211904" in shown:
+        out.append(f"before any click: tables {t}")
+    for _ in range(3):  # the gene-only result, then the two planted ones (the pair in KCNH2)
+        b.eval("var x = document.querySelector('details[data-child=\"DEMO-003\"] .veil button'); x && x.click(); true")
+        time.sleep(0.4)
+    t = son_tables(b)
+    if t != [80, 2, 3]:
+        out.append(f"after opening each result: tables {t}")
+    return out
+
+
+def map_problems(b, base):
+    """[problems] of the family page whose son has his map as an image: the image shown while a result is closed,
+    or 'Show the map' opening a result's rows."""
+    family_page(b, base)
+    out = []
+    img = b.eval("!!document.querySelector('details[data-child=\"DEMO-003\"] img.segments')")
+    if img:
+        out.append("the map shown while a result is closed")
+    b.eval("var v = Array.prototype.filter.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] .veil'), "
+           "function (x) { return x.textContent.indexOf('Show the map') >= 0; })[0]; v && v.querySelector('button').click(); true")
+    time.sleep(0.4)
+    img = b.eval("!!document.querySelector('details[data-child=\"DEMO-003\"] img.segments')")
+    shown = b.eval(FAMILY_SHOWN_JS) or ""
+    if not img:
+        out.append("'Show the map' did not show the map")
+    if "KCNH2" in shown or PAIR_B in shown:
+        out.append("'Show the map' opened the closed pair too")
+    return out
+
+
 def family_veil_checks(b, base, out):
     """On the family page a child's rows that name a closed result stay closed as on the child's page, until that
     result is opened there; a page that cannot read the child's results keeps every row of his that could closed."""
@@ -872,6 +922,40 @@ def family_veil_checks(b, base, out):
         bad = family_unknown(b, base)
         check("browser: with the son's results answered as unreadable (a note, no findings) the family page keeps every "
               "row of his that could name a result to act on closed", not bad, bad)
+
+        # A closed result known by its gene alone: a row with only a position (a de novo candidate) could be it.
+        res = json.loads(keep[rj])
+        res["veil"]["spans"].append(["two-hits-g0999", "G0999", None, None, None])
+        write(rj, json.dumps(res))
+        write(fj, keep[fj])  # the fixture's family: two de novo rows, three pairs (one of them in KCNH2)
+        bad = gene_only_problems(b, base)
+        check("browser: with a closed result known by its gene alone, the son's de novo rows (a position, no gene) stay "
+              "closed until it is opened, and his pairs in other genes stay open", not bad, bad)
+        a = "if (coords) {"
+        if a not in keep[fp]:
+            check("control: family-page.js without the gene-only fallback (the planted line is in family-page.js)", False, a)
+        else:
+            write(fp, keep[fp].replace(a, "if (false) {"))
+            control("family-page.js without the gene-only fallback", not gene_only_problems(b, base))
+            write(fp, keep[fp])
+        write(rj, keep[rj])
+
+        # The drawing as an image (no stretches in family.json): "Show the map" opens the map and no result.
+        fam = json.loads(keep[fj])
+        fam["segments"] = {}
+        fam["state"]["children"][0]["segments"] = fam["state"]["pedigree"]
+        write(fj, json.dumps(fam))
+        bad = map_problems(b, base)
+        check("browser: the son's map as an image stays closed while a result is, and 'Show the map' opens the map "
+              "and leaves each result's rows closed", not bad, bad)
+        a = "function () { mapShown[mk] = true; redraw(); }"
+        if a not in keep[fp]:
+            check("control: a 'Show the map' that opens the results too (the planted line is in family-page.js)", False, a)
+        else:
+            write(fp, keep[fp].replace(a, "function () { mapShown[mk] = true; shut.forEach(function (t) { "
+                                          "opened[openKey(c.child, t)] = true; }); redraw(); }"))
+            control("a 'Show the map' that opens the results too", not map_problems(b, base))
+            write(fp, keep[fp])
     finally:
         keep.pop("planted", None)
         for p, text in keep.items():
