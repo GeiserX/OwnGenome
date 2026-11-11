@@ -18,7 +18,7 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og run state|tasks|eta|headroom|delta [args]\n       og setup mask-fasta SRC BED DEST\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og chip prepare|report|check-table [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og run state|tasks|eta|headroom|delta [args]\n       og setup mask-fasta SRC BED DEST\n       og vcf csq-rank [options]\n       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og chip prepare|report|check-table [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -65,6 +65,16 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: setup tool"),
         },
         "run" => ExitCode::from(og_runlog::cli::main(rest)),
+        "vcf" => match rest.first().map(String::as_str) {
+            Some("csq-rank") => ExitCode::from(og_vcf::rank::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown vcf tool '{other}'")),
+            None => usage_error("the following arguments are required: vcf tool"),
+        },
+        "table" => match rest.first().map(String::as_str) {
+            Some("constraint-join") => ExitCode::from(og_steps::constraint::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown table tool '{other}'")),
+            None => usage_error("the following arguments are required: table tool"),
+        },
         "sv" => match rest.first().map(String::as_str) {
             Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
             Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
