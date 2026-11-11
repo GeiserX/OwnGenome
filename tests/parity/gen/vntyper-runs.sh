@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # The VNtyper run folders of the vntyper-report cases, one folder per case
 # (kestrel/kestrel_result.tsv after its ## banner, coverage/coverage_summary.tsv).
 set -euo pipefail

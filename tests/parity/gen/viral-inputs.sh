@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # The inputs of the viral-report cases: a viral FASTA of five small genomes and,
 # per case, samtools coverage of the viral and the human reads and samtools
 # depth -aa of the viral ones, with chosen depths.

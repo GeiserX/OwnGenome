@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # The Locityper output folders of the locityper-report cases: c<N>/loci/CYP2D6
 # with res.json.gz and success as Locityper writes them, and the loci BED.
 set -euo pipefail
