@@ -74,7 +74,7 @@ process CPIC_LOOKUP {
         ${contra_args} \\
         ${hits_args}
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    python: %s\\n    og: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$(og --version)" > versions.yml
     """
 
     stub:
