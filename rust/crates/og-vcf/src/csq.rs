@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 /// The fields of VEP's CSQ annotation, from its header line
 /// `##INFO=<ID=CSQ,...,Description="... Format: Allele|Consequence|...">`.
 ///
-/// Read as `bin/csq_rank.awk` reads it: the names after the last
+/// Read as [`crate::rank`] reads a line that has one: the names after the last
 /// `Format: `, up to the closing quote, split on `|`; a name given twice
 /// means its last position. Indices start at 0.
 #[derive(Debug, Clone, PartialEq, Eq)]

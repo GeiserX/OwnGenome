@@ -13,7 +13,7 @@
       - OR rare or of unknown frequency with REVEL >= 0.644 or AlphaMissense >= 0.564
     With no frequency field no tier is filtered by frequency (as the script).
 
-    bin/csq_rank.awk (on the task PATH, the program scripts/23 runs) ranks each
+    og vcf csq-rank (bin/og on the task PATH, what scripts/23 runs) ranks each
     record on its MANE Select transcript, else the canonical one, else any,
     gives it a frequency tier and checks its genotype call against the floors
     ext.min_gq (30), ext.min_dp (10), ext.het_ab_min and ext.het_ab_max
@@ -71,12 +71,11 @@ process CLINICAL_FILTER {
     bcftools view -h ${vcf} > header.txt
     has_info() { grep -q "^##INFO=<ID=\$1," header.txt; }
     has_format() { grep -q "^##FORMAT=<ID=\$1," header.txt; }
-    # rank KEEP: bin/csq_rank.awk on stdin (as scripts/23); KEEP=noncommon
+    # rank KEEP: og vcf csq-rank on stdin (as scripts/23); KEEP=noncommon
     # drops the records with a known frequency of 1% or more.
     rank() {
-        LC_ALL=C awk -v keep="\$1" -v min_gq=${min_gq} -v min_dp=${min_dp} \\
-            -v het_lo=${het_lo} -v het_hi=${het_hi} -v hom_lo=${hom_lo} \\
-            -f "\$(command -v csq_rank.awk)"
+        og vcf csq-rank --keep "\$1" --min-gq ${min_gq} --min-dp ${min_dp} \\
+            --het-lo ${het_lo} --het-hi ${het_hi} --hom-lo ${hom_lo}
     }
 
     # --- Rarity: MAX_AF, else gnomADe_AF and gnomADg_AF (as scripts/23) ---
@@ -191,7 +190,7 @@ process CLINICAL_FILTER {
 
     # --- Summary TSV (as scripts/23): IMPACT, GENE and Consequence of the
     #     ranked transcript, the worst consequence beside them, the frequency
-    #     tier and the call check of bin/csq_rank.awk ---
+    #     tier and the call check of og vcf csq-rank ---
     COL_FREQ='.'; grep -qx MAX_AF csq_fields.txt && COL_FREQ='%MAX_AF'
     COL_CADD='.'; has_info CADD_PHRED && COL_CADD='%INFO/CADD_PHRED'
     COL_REVEL='.'; has_info REVEL && COL_REVEL='%INFO/REVEL'

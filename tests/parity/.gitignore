@@ -1,2 +1,4 @@
-# The parity inputs are small test FASTAs, which the top .gitignore leaves out.
+# The parity inputs are small test FASTAs and VCFs, which the top .gitignore
+# leaves out.
 !inputs/**/*.fa
+!inputs/**/*.vcf

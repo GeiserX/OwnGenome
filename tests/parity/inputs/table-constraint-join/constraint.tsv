@@ -1,0 +1,7 @@
+gene	gene_id	transcript	canonical	mane_select	lof.oe_ci.upper	lof.pLI	mis.z_score	syn.z_score
+GENEA	ENSG1	ENST00000000002	false	false	0.95	0.01	0.40	0.2
+GENEA	ENSG1	ENST00000000001	true	true	0.21	0.99	3.52	0.1
+GENEB	1001	NM_000003.4	true	false	0.80	0.00	1.10	0.3
+GENEB	ENSG2	ENST00000000004	true	true	0.52	0.20	2.25	0.4
+GENEC	ENSG3	ENST00000000005	true	true	NA	NA	NA	0.5
+GENEC	1002	NM_000006.2	true	false	0.70	0.10	1.50	0.6
