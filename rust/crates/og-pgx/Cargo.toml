@@ -1,0 +1,14 @@
+[package]
+name = "og-pgx"
+description = "PharmCAT's report.json read with the pipeline's own rules: phenotypes, CPIC drug guidance, outside calls, phenoconversion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+
+[lints]
+workspace = true

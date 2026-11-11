@@ -18,7 +18,23 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og run state|tasks|eta|headroom|delta [args]\n       og setup mask-fasta SRC BED DEST\n       og vcf csq-rank [options]\n       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og chip prepare|report|check-table [args]\n       og family plan|prepare|check|report|segments [args]\n       og dev parity-compare KIND ORACLE NEW\n       og dev remnants [--list FILE] [--root DIR]\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]
+       og map <verb> [args]
+       og run state|tasks|eta|headroom|delta [args]
+       og setup mask-fasta SRC BED DEST
+       og vcf csq-rank [options]
+       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
+       og sv svlen-fix|inv-filter [args]
+       og pgx cpic-report|step36-outside [args]
+       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
+       og str motif [args]
+       og chip prepare|report|check-table [args]
+       og family plan|prepare|check|report|segments [args]
+       og dev parity-compare KIND ORACLE NEW
+       og dev remnants [--list FILE] [--root DIR]
+       og version
+       og --tree-hash
+";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -105,9 +121,10 @@ fn main() -> ExitCode {
                 )),
                 #[cfg(not(feature = "bam"))]
                 Some(_) => no_bam(&format!("pgx {other}")),
-                None => usage_error(&format!("unknown pgx tool '{other}'")),
+                // cpic-report and step36-outside, and the usage for any other verb.
+                None => ExitCode::from(og_pgx::main(rest)),
             },
-            None => usage_error("the following arguments are required: pgx tool"),
+            None => ExitCode::from(og_pgx::main(rest)),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
         "family" => ExitCode::from(og_steps::family::cli(rest)),

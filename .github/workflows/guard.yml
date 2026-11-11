@@ -123,10 +123,42 @@ jobs:
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
         run: scripts/ci/check-container-helpers.sh --orad
 
+  # og for the unit tests (tests/og_binary.py): the tests of a ported tool
+  # and the demo sample builder run og as a subprocess. Built once here, so
+  # the three shards do not each spend minutes of their 10 on it.
+  og:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: Build og
+        working-directory: rust
+        run: OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: og-unit-tests
+          path: rust/target/release/og
+          if-no-files-found: error
+          retention-days: 1
+
   # Three shards: one job ran every test file in about 9.5 of its 10 minutes,
   # so each new browser test pushed it over. File i runs in shard i % 3, so
   # every file runs in exactly one shard.
   unit-tests:
+    needs: og
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -135,6 +167,16 @@ jobs:
         shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-unit-tests
+          path: ${{ runner.temp }}/og
+
+      - name: og for the tests (OG)
+        run: |
+          chmod 755 "$RUNNER_TEMP/og/og"
+          echo "OG=${RUNNER_TEMP}/og/og" >> "$GITHUB_ENV"
 
       # Every tests/test_*.py runs with python3 and every tests/test_*.sh with
       # bash, found by glob, so a new test file needs no workflow edit. The
@@ -359,7 +401,7 @@ jobs:
   # job above failed or was skipped, and fails unless every one succeeded.
   ci-ok:
     if: always()
-    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, unit-tests, rust, parity]
+    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, og, unit-tests, rust, parity]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
