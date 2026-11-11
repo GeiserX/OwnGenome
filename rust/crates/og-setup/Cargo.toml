@@ -1,0 +1,18 @@
+[package]
+name = "og-setup"
+description = "What scripts/setup.sh runs once per install: og str catalog, og setup unzip, og setup genetic-map"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+og-bam.workspace = true
+og-filters.workspace = true
+flate2.workspace = true
+indexmap.workspace = true
+
+[lints]
+workspace = true

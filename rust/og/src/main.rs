@@ -18,7 +18,7 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og setup unzip ZIP DEST\n       og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif|catalog [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -61,6 +61,8 @@ fn main() -> ExitCode {
         "map" => map::run(rest, tree_hash()),
         "setup" => match rest.first().map(String::as_str) {
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
+            Some("unzip") => ExitCode::from(og_setup::unzip::cli(&rest[1..])),
+            Some("genetic-map") => ExitCode::from(og_setup::genetic_map::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },
@@ -91,7 +93,8 @@ fn main() -> ExitCode {
                 &mut std::io::stdout().lock(),
                 &mut std::io::stderr().lock(),
             )),
-            _ => usage_error("og str takes motif"),
+            Some("catalog") => ExitCode::from(og_setup::strchive::cli(&rest[1..])),
+            _ => usage_error("og str takes motif or catalog"),
         },
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
         "bam-fetch-probe" if rest.len() == 2 => {

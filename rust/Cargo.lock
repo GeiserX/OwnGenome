@@ -500,6 +500,7 @@ dependencies = [
  "og-intervals",
  "og-io",
  "og-map",
+ "og-setup",
  "pycompat",
 ]
 
@@ -556,6 +557,18 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "indexmap",
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
+name = "og-setup"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-bam",
+ "og-filters",
  "og-io",
  "pycompat",
 ]
