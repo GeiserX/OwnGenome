@@ -535,3 +535,7 @@ def collect(sample, sample_dir, trace=None, events_path=None, steps_path=STEPS_T
                  event_tasks(events, sample), events, summary_sources(sample_dir),
                  heard=last_heard(sample_dir, [events_path]) if stale else None)
 
+
+
+if __name__ == "__main__":
+    raise SystemExit("bin/run_state.py has no command line any more: run bin/og run state (docs/run-state.md)")

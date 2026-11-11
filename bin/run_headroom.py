@@ -302,3 +302,7 @@ def lines(snap):
         out.append(s)
     return out
 
+
+
+if __name__ == "__main__":
+    raise SystemExit("bin/run_headroom.py has no command line any more: run bin/og run headroom (docs/run-state.md)")

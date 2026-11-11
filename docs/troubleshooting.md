@@ -226,6 +226,8 @@ grep -E '(%%|!!) executor|^~> ' "$GENOME_DIR/<sample>/nextflow/.nextflow.log" | 
 bin/og run headroom --work-dir "${GENOME_DIR:?Set GENOME_DIR to your data directory}/<sample>/nextflow/work" --outdir "$GENOME_DIR"
 ```
 
+On macOS `bin/og` does not run on the host: see [where og runs](run-state.md).
+
 A line `disk work and results` means both folders sit on one filesystem. The inode share counts too: a disk can run out of inodes before it runs out of bytes. [Where a run stands](run-state.md#memory-and-disk-headroom) says what each figure means.
 
 **Fix:** free space before the disk fills, with the steps of the next entry. Deleting the work folder while the run goes breaks the run; delete only files of finished steps outside it. To move the work folder to a larger disk for the next run, pass Nextflow's `-work-dir` (or `-w`).

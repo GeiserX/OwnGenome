@@ -26,6 +26,8 @@ Checks:
  15. without --sample, the trace of a run that run-all.sh has not finished is left
      out of the step times, and counts once run_status.tsv says it finished; a
      run_status.tsv that cannot be read leaves out the newest trace, never a crash.
+ 16. bin/run_eta.py, run_state.py, run_headroom.py and run_delta.py, run as commands,
+     exit 1 and name their og run command, never a silent exit 0.
 Each check is then run against a planted mistake (a mutant of run_eta.py or a
 broken config) and must fail there: a check that cannot fail is no check.
 
@@ -36,6 +38,7 @@ import importlib.util
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -290,6 +293,15 @@ def command_checks(m):
     return out
 
 
+OLD_CLIS = {"run_eta.py": "eta", "run_state.py": "state", "run_headroom.py": "headroom", "run_delta.py": "delta"}
+
+
+def old_cli_refuses(path, cmd):
+    """An old run_*.py command exits 1 and names its og command, never a silent exit 0."""
+    p = subprocess.run([sys.executable, path, "--outdir", TMP], capture_output=True, text=True, timeout=60)
+    return p.returncode == 1 and f"bin/og run {cmd}" in p.stderr and not p.stdout, (p.returncode, p.stdout, p.stderr)
+
+
 def all_checks(m):
     r = {}
     r.update(trace_checks(m))
@@ -391,7 +403,19 @@ def main():
         for name, (ok, detail) in results.items():
             check(name, ok, detail)
 
+        for name, cmd in OLD_CLIS.items():
+            ok, detail = old_cli_refuses(os.path.join(REPO, "bin", name), cmd)
+            check(f"bin/{name} refuses to run and names og run {cmd}", ok, detail)
+
         print("\nNegative controls: each check against a planted mistake must fail")
+        for name, cmd in OLD_CLIS.items():
+            src = open(os.path.join(REPO, "bin", name)).read()
+            cut = src.rindex('\nif __name__ == "__main__":')
+            planted = os.path.join(TMP, name)
+            with open(planted, "w") as f:
+                f.write(src[:cut] + "\n")
+            check(f"fails on a planted mistake: bin/{name} without its refusing entry point",
+                  not old_cli_refuses(planted, cmd)[0], "the check passed on the mutant")
         broken = cfg.replace(",memory,start", ",start")
         check("fails on a planted mistake: trace.fields without memory",
               not config_checks(broken)["trace.fields: the 14 defaults in order, then the 7 added"][0], "passed")

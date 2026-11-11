@@ -458,3 +458,7 @@ def estimate(outdir, sample=None, state=None, now=None, cores=None, box=None, st
     return {"box": box_name(box), "cores": cores, "generated_utc": iso(now),
             "steps": ranges, "remaining": remaining(state, ranges, now, cores) if state else None}
 
+
+
+if __name__ == "__main__":
+    raise SystemExit("bin/run_eta.py has no command line any more: run bin/og run eta (docs/run-state.md)")

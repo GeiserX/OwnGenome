@@ -283,3 +283,6 @@ def utc14(text):
     """'2026-09-02 12:00:00 UTC' or '2026-09-02T12:00:00Z' as '20260902120000'; '' without one."""
     return "".join(c for c in str(text or "") if c.isdigit())[:14]
 
+
+if __name__ == "__main__":
+    raise SystemExit("bin/run_delta.py has no command line any more: run bin/og run delta (docs/delta-report.md)")
