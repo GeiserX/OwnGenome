@@ -43,7 +43,7 @@ pub const SHORT_READ_LIMIT: i128 = 300;
 const MIN_PERIOD: usize = 2;
 const MAX_PERIOD: usize = 6;
 /// Listed pathogenic, benign at the sizes short reads see.
-const SIZE_DEPENDENT: &[(&str, &[&str])] = &[("CANVAS_RFC1", &["AAAGG"])];
+const SIZE_DEPENDENT: &[(&str, &[&str])] = &[]; // RED CONTROL: the RFC1 correction dropped
 
 const EXTRA_FIELDS: [&str; 9] = [
     "LocusId",
