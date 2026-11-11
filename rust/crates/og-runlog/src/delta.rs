@@ -694,8 +694,7 @@ pub fn newest_history(sample_dir: &Path) -> Option<PathBuf> {
     let mut names: Vec<std::ffi::OsString> = std::fs::read_dir(&h)
         .ok()?
         .filter_map(|e| e.ok().map(|e| e.file_name()))
-        // PLANTED red control: a newer folder without summary.json is taken
-        .filter(|n| h.join(n).is_dir())
+        .filter(|n| h.join(n).join("summary.json").is_file())
         .collect();
     pycompat::mtime::sort(&mut names);
     names.pop().map(|n| h.join(n))
