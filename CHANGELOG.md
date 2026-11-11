@@ -11,6 +11,7 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
   - A catalog row with a `more=` reading and no numbered reading is refused when the catalog loads, naming the row. Before, a call that reached it failed without naming the row.
   - `og cn call --sex` reads a gene row on chrX or chrY against the sample's count there. The Python call had no sex, so such a row could only read `sex_unknown`. No row of the shipped catalog is a gene row on chrX or chrY.
   - The tables are written to a temporary file and renamed, so a failed run leaves no half-written table.
+  - `og cn bed` and `og cn marker-regions` exit 2 when they cannot write the region list, so a step never reads a truncated list.
   - `copy_number.py call --json` is gone with no replacement: no step passed it.
   - Error messages about a wrong regions table say to make it with `og cn bed`.
 
