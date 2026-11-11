@@ -12,7 +12,7 @@
       MOCHA_CALL    the phased genotypes onto the prepared sites, MoChA
                     (bcftools +mocha, the common germline CNVs as --cnp), and
                     the per-chromosome site counts
-      MOCHA_REPORT  bin/mocha_report.py: the calls above the floor
+      MOCHA_REPORT  og mocha report (bin/og): the calls above the floor
 
     Equivalent to: scripts/51-mocha.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -197,7 +197,7 @@ process MOCHA_REPORT {
 
     script:
     """
-    mocha_report.py --sample ${meta.id} --calls ${calls} --stats ${stats} --sites ${sites} --phasing beagle \\
+    og mocha report --sample ${meta.id} --calls ${calls} --stats ${stats} --sites ${sites} --phasing beagle \\
         --out-calls ${meta.id}_mocha.tsv --out-summary ${meta.id}_mocha_summary.tsv
 
     cat <<-END_VERSIONS > versions.yml

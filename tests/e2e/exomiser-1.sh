@@ -147,7 +147,7 @@ awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) if ($i == "MOI") m = i}
   {o = ""; for (i = 1; i <= NF; i++) if (i != m) o = o (o == "" ? "" : "\t") $i; print o}' \
   "${CASE_TMP}/bash-out/${S}_exomiser.variants.tsv" > "${CASE_TMP}/cut.variants.tsv"
 check "the cut file still has rows" test "$(wc -l < "${CASE_TMP}/cut.variants.tsv")" -gt 1
-OUT=$(python3 -I "${REPO}/bin/exomiser_report.py" report --sample "$S" --variants "${CASE_TMP}/cut.variants.tsv" \
+OUT=$("${REPO}/bin/og" exomiser report --sample "$S" --variants "${CASE_TMP}/cut.variants.tsv" \
   --terms "${CASE_TMP}/bash-out/${S}_exomiser_terms.tsv" --out "${CASE_TMP}/cut.tsv" --text "${CASE_TMP}/cut.txt" 2>&1)
 RC=$?
 check "a variants file without MOI: the report stops (exit ${RC})" test "$RC" -ne 0
