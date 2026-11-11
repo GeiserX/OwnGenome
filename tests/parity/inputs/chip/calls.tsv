@@ -1,0 +1,33 @@
+chr2	1150	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1150C>T	40,6	0.13	46
+chr2	1151	C	T	PASS	missense|DNMT3A|T2.4|protein_coding|-|880M>880L|1151C>T	40,6	0.13	46
+chr2	1302	C	T	PASS	splice_acceptor|DNMT3A|T2|protein_coding|-||1302C>T	40,6	0.13	46
+chr2	1152	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1152C>T	20,19	0.48	39
+chr2	1153	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1153C>T	1,35	0.97	36
+chr2	1154	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1154C>T	25,13	0.34	38
+chr2	1155	C	T	weak_evidence;strand_bias	missense|DNMT3A|T2|protein_coding|-|882R>882H|1155C>T	40,6	0.13	46
+chr2	1156	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1156C>T	30,2	0.06	32
+chr2	1157	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1157C>T	30,10	.	40
+chr2	1158	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1158C>T	30,10	.	.
+chr2	1159	C	T	PASS	missense|DNMT3A|T2|protein_coding|-|882R>882H|1159C>T	.	.	.
+chr2	1160	C	T	PASS	synonymous|DNMT3A|T2|protein_coding|-|882R|1160C>T	40,6	0.13	46
+chr2	3000	C	T	PASS	intron|DNMT3A|T2|protein_coding|-||3000C>T	40,6	0.13	46
+chr2	1161	C	T	PASS	*missense|DNMT3A|T2|protein_coding|-|882R>882H|1161C>T	40,6	0.13	46
+chr2	1162	C	T	PASS	missense|DNMT3A|T1|protein_coding|-|838R>838H|1162C>T	40,6	0.13	46
+chr2	1163	C	T	PASS	missense&splice_region|DNMT3A|T2|protein_coding|-|882RS..883S>882HS|1163C>T	40,6	0.13	46
+chr2	1164	C	T	PASS	inframe_deletion|DNMT3A|T2|protein_coding|-|882RS>882R|1164C>T	40,6	0.13	46
+chr4	15500	C	T	PASS	frameshift|TET2|T4|protein_coding|-|1200QRS>1200P*|15500C>T	40,6	0.13	46
+chr4	10600	C	T	.	stop_gained&splice_donor|TET2|T4|protein_coding|-|100R>100*|10600C>T	40,6	0.13	46
+chr4	15501	C	T	PASS	missense|TET2|T4|protein_coding|-|1201E>1201K|15501C>T	40,6	0.13	46
+chr9	500	C	T	PASS	missense|JAK2|T3|protein_coding|-|617V>617F|500C>T	40,6	0.13	46
+chr9	501	C	T	PASS	missense|JAK2|T3|protein_coding|-|617V>617L|501C>T	40,6	0.13	46
+chr9	502	C	T	PASS	stop_gained|JAK2|T3|protein_coding|-|618R>618*|502C>T	40,6	0.13	46
+chr17	60663500	C	T	PASS	stop_gained|PPM1D|T5|protein_coding|-|500R>500*|60663500C>T	40,6	0.13	46
+chr17	60600100	C	T	PASS	stop_gained|PPM1D|T5|protein_coding|-|100R>100*|60600100C>T	40,6	0.13	46
+chr17	7673800	C	T	PASS	missense|TP53|T6|protein_coding|-|248R>248Q|7673800C>T	40,6	0.13	46
+chr17	7673801	C	T	PASS	missense|TP53|T6|protein_coding|-|340E>340K|7673801C>T	40,6	0.13	46
+chr17	7673802	C	T	PASS	start_lost|TP53|T6|protein_coding|-|1M>1?|7673802C>T	40,6	0.13	46
+chr2	1165	C	T	PASS
+chr2	1166	C	CA,CAA	PASS	frameshift|DNMT3A|T2|protein_coding|-|882R>882RX|1166C>CA,missense|DNMT3A|T2|protein_coding|-|9R>9H|x	10,5,2	0.30,0.1	17
+
+   
+chrX	5	A	G	PASS	missense|BCOR|T9|protein_coding|-|5R>5H|x	1,5	0.8	6

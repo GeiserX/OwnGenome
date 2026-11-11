@@ -553,6 +553,7 @@ name = "og"
 version = "0.1.0"
 dependencies = [
  "og-bam",
+ "og-chip",
  "og-dev",
  "og-filters",
  "og-intervals",
@@ -572,6 +573,17 @@ dependencies = [
  "og-io",
  "pycompat",
  "rust-htslib",
+]
+
+[[package]]
+name = "og-chip"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "memchr",
+ "og-filters",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]

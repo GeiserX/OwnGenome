@@ -3,7 +3,9 @@
 # PATH) or as /pgp-bin/og in a step script. It runs the static Linux build
 # for this machine from bin/.og/, which scripts/setup.sh --og puts there
 # (rust/og.sh). Inside an amd64 image on an Apple Silicon host, uname -m
-# says x86_64, so that build runs under emulation.
+# says x86_64, so that build runs under emulation. On a macOS host (the live
+# site's map) it runs the native macOS build, og-darwin-arm64 or
+# og-darwin-x86_64, which has every tool except the ones that read BAMs.
 #
 # Shadow mode, for CI (tests/parity/README.md): OG_SHADOW names tools of
 # tests/parity/oracle.ref (comma or space separated), materialised into
@@ -16,17 +18,25 @@
 # the oracle changing a file that was there before, or writing into a
 # directory that was there before. stderr is not compared. A call that
 # agrees says so in one stderr line.
-case $(uname -m) in
-  x86_64 | amd64) arch=x86_64 ;;
-  aarch64 | arm64) arch=aarch64 ;;
-  *) arch=$(uname -m) ;;
-esac
 here=$(cd "$(dirname "$0")" && pwd)
-bin="${here}/.og/og-linux-${arch}"
-if [ "$(uname -s)" != Linux ]; then
-  echo "ERROR: og runs inside the pipeline's Linux containers, not on $(uname -s)" >&2
-  exit 127
-fi
+case $(uname -s) in
+  Linux)
+    case $(uname -m) in
+      x86_64 | amd64) arch=x86_64 ;;
+      aarch64 | arm64) arch=aarch64 ;;
+      *) arch=$(uname -m) ;;
+    esac
+    bin="${here}/.og/og-linux-${arch}"
+    ;;
+  Darwin)
+    arch="macOS $(uname -m)"
+    bin="${here}/.og/og-darwin-$(uname -m)"
+    ;;
+  *)
+    echo "ERROR: og runs on Linux and macOS, not on $(uname -s)" >&2
+    exit 127
+    ;;
+esac
 if [ ! -x "$bin" ]; then
   echo "ERROR: og is not built for ${arch}; run scripts/setup.sh --og" >&2
   exit 127
