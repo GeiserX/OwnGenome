@@ -13,6 +13,71 @@ setup-mask-fasta	lone-cr	setup-mask-fasta/lone-cr.fa,setup-mask-fasta/lone-cr.be
 setup-mask-fasta	empty-header	setup-mask-fasta/empty-header.fa,setup-mask-fasta/empty-header.bed	empty-header.fa empty-header.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	bad-bed	setup-mask-fasta/bad-bed.fa,setup-mask-fasta/bad-bed.bed	bad-bed.fa bad-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	synthetic-254mb	gen:synthetic-fasta.sh	synthetic.fa synthetic.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+sv-svlen-fix	test	sv-svlen-fix/test.vcf	test.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	gz	sv-svlen-fix/test.vcf.gz	test.vcf.gz	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	stdin	sv-svlen-fix/stdin	-	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	empty	sv-svlen-fix/empty.vcf	empty.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	two-samples	sv-svlen-fix/two.vcf	two.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	seven-samples	sv-svlen-fix/seven.vcf	seven.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	edge	sv-svlen-fix/edge.vcf	edge.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	crlf	sv-svlen-fix/crlf.vcf	crlf.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	no-final-newline	sv-svlen-fix/no-final-newline.vcf	no-final-newline.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	header-no-newline	sv-svlen-fix/header-no-newline.vcf	header-no-newline.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	declared	sv-svlen-fix/declared.vcf	declared.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	dup-key	sv-svlen-fix/dup-key.vcf	dup-key.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	bad-pos	sv-svlen-fix/bad-pos.vcf	bad-pos.vcf	-	bytes	ANNOTSV_IMAGE
+sv-svlen-fix	missing	-	missing.vcf	-	bytes	ANNOTSV_IMAGE
+sv-inv-filter	test	sv-inv-filter/raw.vcf.gz,sv-inv-filter/conv.vcf	raw.vcf.gz conv.vcf	-	bytes	MANTA_IMAGE
+sv-inv-filter	max-single	sv-inv-filter/raw.vcf.gz,sv-inv-filter/conv.vcf	raw.vcf.gz conv.vcf --max-single-bp 100000000	-	bytes	MANTA_IMAGE
+sv-inv-filter	edges	sv-inv-filter/raw2.vcf,sv-inv-filter/conv2.vcf	raw2.vcf conv2.vcf	-	bytes	MANTA_IMAGE
+sv-inv-filter	edges-narrow	sv-inv-filter/raw2.vcf,sv-inv-filter/conv2.vcf	--pair-bp=999 raw2.vcf conv2.vcf --short-bp 100000 --max-single-bp 1500000	-	bytes	MANTA_IMAGE
+sv-inv-filter	empty	sv-inv-filter/empty.vcf,sv-inv-filter/conv.vcf	empty.vcf conv.vcf	-	bytes	MANTA_IMAGE
+sv-inv-filter	bad-pos	sv-inv-filter/raw2.vcf,sv-inv-filter/bad-pos.vcf	raw2.vcf bad-pos.vcf	-	bytes	MANTA_IMAGE
+sv-inv-filter	short	sv-inv-filter/raw2.vcf,sv-inv-filter/short.vcf	raw2.vcf short.vcf	-	bytes	MANTA_IMAGE
+sv-inv-filter-py3	test	sv-inv-filter/raw.vcf.gz,sv-inv-filter/conv.vcf	raw.vcf.gz conv.vcf	-	bytes	PYTHON_IMAGE
+sv-inv-filter-py3	edges	sv-inv-filter/raw2.vcf,sv-inv-filter/conv2.vcf	raw2.vcf conv2.vcf	-	bytes	PYTHON_IMAGE
+pgx-refblock-fill	fixture	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	bgzip-min-gq-50	pgx-refblock-fill/positions.vcf.bgz,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/stdin	--min-gq 50 positions.vcf.bgz gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	min-gq-51	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/stdin	positions.vcf gvcf.vcf --min-gq=51	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	crlf	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/crlf/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	two-samples	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/two.gvcf,pgx-refblock-fill/stdin	positions.vcf two.gvcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	no-header	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/nohead.gvcf,pgx-refblock-fill/stdin	positions.vcf nohead.gvcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	missing-gvcf	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/stdin	positions.vcf missing.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	inconsistent	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/inconsistent/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	kept-then-block	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/kept-then-block/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	block-then-kept	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/block-then-kept/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	same-start	pgx-refblock-fill/same-start.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/stdin	same-start.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	no-final-newline	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/no-final-newline/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	bad-pos	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/gvcf.vcf,pgx-refblock-fill/bad-pos/stdin	positions.vcf gvcf.vcf	-	bytes	PHARMCAT_IMAGE
+pgx-refblock-fill	short-gvcf	pgx-refblock-fill/positions.vcf,pgx-refblock-fill/short.gvcf,pgx-refblock-fill/stdin	positions.vcf short.gvcf	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	hom	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/hom.vcf	--jar pharmcat.jar --mito hom.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	floor	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/floor.vcf	--jar pharmcat.jar --mito floor.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	het	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/het.vcf	--jar pharmcat.jar --mito het.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	filtered	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/filtered.vcf	--jar pharmcat.jar --mito filtered.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	noaf	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/noaf.vcf	--jar pharmcat.jar --mito noaf.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	two	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/two.vcf	--jar pharmcat.jar --mito two.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	unnamed	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/unnamed.vcf	--jar pharmcat.jar --mito unnamed.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	indel	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/indel.vcf	--jar pharmcat.jar --mito indel.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	background	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/background.vcf	--jar pharmcat.jar --mito background.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	nopass	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/nopass.vcf	--jar pharmcat.jar --mito nopass.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	infoaf	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/infoaf.vcf	--jar pharmcat.jar --mito infoaf.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	nan	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/nan.vcf	--jar pharmcat.jar --mito nan.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	mnv	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/mnv.vcf	--jar pharmcat.jar --mito mnv.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	gz-outside	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/hom.vcf.gz,pgx-mito-merge/outside.tsv	--jar pharmcat.jar --mito hom.vcf.gz --outside outside.tsv --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	stored-min-af	pgx-mito-merge/stored.jar,pgx-mito-merge/het.vcf	--min-af=0.3 --jar stored.jar --mito het.vcf --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	reference	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/hom.vcf,pgx-mito-merge/background.vcf,pgx-mito-merge/deep.depth	--jar pharmcat.jar --mito background.vcf --depth deep.depth --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	low-depth	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/background.vcf,pgx-mito-merge/low.depth	--jar pharmcat.jar --mito background.vcf --depth low.depth --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	min-depth-0	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/background.vcf,pgx-mito-merge/low.depth	--jar pharmcat.jar --mito background.vcf --depth low.depth --min-depth 0 --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	no-reference	pgx-mito-merge/noref.jar,pgx-mito-merge/background.vcf,pgx-mito-merge/deep.depth	--jar noref.jar --mito background.vcf --depth deep.depth --out out.tsv	out.tsv	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	no-member	pgx-mito-merge/nomember.jar,pgx-mito-merge/hom.vcf	--jar nomember.jar --mito hom.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	no-snv	pgx-mito-merge/nosnv.jar,pgx-mito-merge/hom.vcf	--jar nosnv.jar --mito hom.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	not-zip	pgx-mito-merge/notzip.jar,pgx-mito-merge/hom.vcf	--jar notzip.jar --mito hom.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	missing-jar	pgx-mito-merge/hom.vcf	--jar pharmcat.jar --mito hom.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	missing-vcf	pgx-mito-merge/pharmcat.jar	--jar pharmcat.jar --mito hom.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	missing-outside	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/hom.vcf	--jar pharmcat.jar --mito hom.vcf --outside none.tsv --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	short	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/short.vcf	--jar pharmcat.jar --mito short.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	bad-pos	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/badpos.vcf	--jar pharmcat.jar --mito badpos.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
+pgx-mito-merge	bad-depth	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/background.vcf,pgx-mito-merge/bad.depth	--jar pharmcat.jar --mito background.vcf --depth bad.depth --out out.tsv	-	bytes	PHARMCAT_IMAGE
 prs-format	basic	prs-format/PGS000001_hmPOS_GRCh38.txt.gz,prs-format/labels.tsv	--scores . --out pgs --alleles alleles.tsv --labels labels.tsv	pgs/PGS000001.txt.gz,pgs/chrx_rows.tsv,pgs/score_notes.tsv,pgs/score_evaluations.tsv,alleles.tsv	tsv	PYTHON_IMAGE
 prs-format	keep-x	prs-format/PGS000001_hmPOS_GRCh38.txt.gz,prs-format/labels.tsv	--scores . --out pgs --alleles alleles.tsv --labels labels.tsv --keep-x	pgs/PGS000001.txt.gz,pgs/chrx_rows.tsv,pgs/score_notes.tsv,pgs/score_evaluations.tsv,alleles.tsv	tsv	PYTHON_IMAGE
 prs-format	grch37-refused	prs-format/PGS000009.txt.gz	--scores . --out pgs --alleles alleles.tsv	-	tsv	PYTHON_IMAGE

@@ -10,7 +10,7 @@
     gnomAD-SV's common SVs to its benign set and mane_select_refseq.txt, the
     MANE Select transcripts passed as -txFile; the task stops without them.
 
-    Before AnnotSV, bin/sv_svlen_fix.py gives sequence-resolved records their
+    Before AnnotSV, og sv svlen-fix gives sequence-resolved records their
     net length change (SVLEN, and for a net deletion END = POS-1+len(REF)-
     len(ALT), one base less than AnnotSV's own default END, so its POS-1..END
     interval, which counts the anchor base, is as long as the change) and bin/cnvpytor_to_vcf.py adds the Delly (PASS) and
@@ -72,7 +72,7 @@ process ANNOTSV {
         fi
     done
 
-    sv_svlen_fix.py ${sv_vcf} \\
+    og sv svlen-fix ${sv_vcf} \\
         | cnvpytor_to_vcf.py --base - --base-name manta ${delly_arg} ${cnvpytor_arg} \\
         > ${meta.id}_annotsv_input.vcf
 
