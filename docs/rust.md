@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05 and 07 call `og` (the filters of `og sv` and `og pgx`). The pieces below are the base every port builds on.
+Steps 04, 05, 07 and 25 call `og` (the filters of `og sv` and `og pgx`, and `og prs format`); `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -16,12 +16,13 @@ rust/
   crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
+  crates/og-steps/      the step helpers: prs format
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch>
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`).
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og version`, `og --tree-hash` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 25 has `og prs format` (a port of `collect_summary.py prs-format`, named by what it works on).
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`).
 
@@ -53,7 +54,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 - The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- A missing binary is still a note, which names steps 04, 05 and 07: those steps stop with `bin/og`'s message without it. `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
+- A missing binary is still a note, which names steps 04, 05, 07 and 25: those steps stop with `bin/og`'s message without it. `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte

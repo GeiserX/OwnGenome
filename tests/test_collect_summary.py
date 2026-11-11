@@ -304,6 +304,8 @@ def prs_evaluations(work, schema):
              "1\t1100\tA\tG\t0.5\n")
     put(f"{work}/ev_in/PGS000018.txt.gz", score, gz=True)
     og = os.environ.get("OG")
+    if os.environ.get("OG_REQUIRED") and not og:
+        sys.exit("FAIL: OG_REQUIRED is set but OG names no og binary")
 
     def formatted(out, labels, applies="", evals=""):
         """The folder og prs format writes for ev_in with LABELS, and with OG og's own beside it."""

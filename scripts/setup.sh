@@ -2325,14 +2325,14 @@ echo "=== Phase 3: Docker Images (~10-15 GB total) ==="
 # The list is every *_IMAGE line of versions.env not marked `# optional`.
 pull_images || exit 1
 
-# Steps 04, 05 and 07 run OwnGenome's og binary (bin/.og): built from rust/
+# Steps 04, 05, 07 and 25 run OwnGenome's og binary (bin/.og): built from rust/
 # in OG_BUILDER, or downloaded on a release tag, when it is missing or stale.
 if "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1; then
   echo "[OK] og (bin/.og) already built from this checkout's rust/."
 elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
-  echo "[WARN] Could not build og. Steps 04, 05 and 07 stop without it; run: $0 --og"
+  echo "[WARN] Could not build og. Steps 04, 05, 07 and 25 stop without it; run: $0 --og"
 fi
 
 ###############################################################################

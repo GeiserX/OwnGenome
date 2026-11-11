@@ -151,6 +151,8 @@ HM = ("#pgs_id=PGS000001\n#trait_reported=Something else\n#HmPOS_build=GRCh38\n"
 # written by hand as og writes them for these inputs, and with OG og must
 # write the same.
 OG = os.environ.get("OG")
+if os.environ.get("OG_REQUIRED") and not OG:
+    sys.exit("FAIL: OG_REQUIRED is set but OG names no og binary")
 
 
 def og_format(args):
