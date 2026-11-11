@@ -6,6 +6,9 @@
 // phone), each child's stretches painted by parent, the de novo and compound-het candidates, and the
 // members side by side. It draws what the steps wrote and computes nothing about genetics. Text through textContent,
 // the drawing through createElementNS; images from this server only.
+// A child's results to act on stay closed here as on the child's own page (person.js): each child's results.json
+// gives the closed results (veil.spans), and a row of the child that names one (a de novo or compound-het
+// candidate, a stretch painted from a grandparent) stays closed until that result is opened on purpose here.
 (function () {
   'use strict';
   var U = window.PGPUI;
@@ -69,6 +72,73 @@
     return out;
   }
   function memberUrl(f, s) { return f.runs && f.runs[s] ? f.runs[s].url : null; }
+
+  // --- the veil ---------------------------------------------------------------------------------------
+  // What this page knows of each child's results: { status: 'pending', 'known' or 'failed', spans, acts }. A child
+  // with no run here, or whose results.json has not answered or could not be read, cannot say which rows name a
+  // result to act on, so every row of theirs that could stays closed (UNKNOWN) until opened on purpose.
+  // Opened results are kept for the life of this page, as on the child's page: a reload closes them again.
+  var UNKNOWN = '?';
+  var kids = {}, opened = {}, openedAll = {}, last = null;
+  function loadKids(f) {
+    (f.state.children || []).forEach(function (c) {
+      var url = memberUrl(f, c.child);
+      var k = kids[c.child];
+      if (!url) { kids[c.child] = { status: 'failed' }; return; }
+      if (k && k.url === url && k.busy) { return; }
+      kids[c.child] = k && k.url === url ? k : { status: 'pending', url: url };
+      kids[c.child].busy = true;
+      U.getJSON(url + 'results.json').then(function (r) {
+        var cur = kids[c.child];
+        if (!cur || cur.url !== url) { return; }
+        cur.busy = false;
+        var v = (r && r.veil) || {};
+        var acts = ((r && r.findings) || []).filter(function (x) { return x.level === 'act'; }).map(function (x) { return x.id; });
+        var next = r ? { status: 'known', url: url, spans: v.spans || null, acts: acts } : { status: 'failed', url: url };
+        // An answer that cannot be read keeps what was known: the page never opens on a failed request.
+        if (!r && cur.status === 'known') { return; }
+        var key = JSON.stringify([next.status, next.spans, next.acts]);
+        if (key === cur.key) { return; }
+        next.key = key;
+        kids[c.child] = next;
+        if (last) { redraw(); }
+      }).catch(function () {
+        var cur = kids[c.child];
+        if (!cur || cur.url !== url) { return; }
+        cur.busy = false;
+        if (cur.status !== 'known' && cur.status !== 'failed') { cur.status = 'failed'; cur.key = 'failed'; if (last) { redraw(); } }
+      });
+    });
+  }
+  // The closed result a row of CHILD belongs to: its id, UNKNOWN when this page cannot tell, or null.
+  function tagOf(child, text, chrom, pos, end) {
+    var k = kids[child];
+    if (!k || k.status !== 'known') { return UNKNOWN; }
+    if (!k.spans) { return k.acts.length ? UNKNOWN : null; }  // results without the tags: cannot tell
+    return U.veilId(k.spans, text, chrom, pos, end);
+  }
+  function isClosed(child, tag) { return !!tag && !(tag === UNKNOWN ? openedAll[child] : opened[tag]); }
+  // The rows of CHILD split by the veil: { open: rows, closed: [tags of the closed rows] }.
+  function veiled(child, rows, tagFn) {
+    var out = { open: [], closed: [] };
+    rows.forEach(function (r) {
+      var t = tagFn(r);
+      if (isClosed(child, t)) { out.closed.push(t); } else { out.open.push(r); }
+    });
+    return out;
+  }
+  // The closed box under a table of CHILD: how many rows stay closed, and one button that opens one result.
+  function veilBox(child, closed, what, whats) {
+    if (!closed.length) { return null; }
+    var n = closed.length === 1 ? 'One ' + what + ' stays' : closed.length + ' ' + whats + ' stay';
+    var first = closed[0];
+    if (first === UNKNOWN) {
+      return U.veil(n + ' closed: this page cannot read ' + child + '’s results yet, so it cannot tell which ' + whats +
+        ' name a result to act on in adult life.', 'Show the ' + whats, function () { openedAll[child] = true; redraw(); });
+    }
+    return U.veil(n + ' closed with the result to act on in adult life ' + (closed.length === 1 ? 'it belongs' : 'they belong') +
+      ' to, until that result is opened.', null, function () { opened[first] = true; redraw(); });
+  }
 
   // The pedigree drawn from the layout the server gives: a sequenced person with a run here is a link.
   function pedigree(f) {
@@ -286,7 +356,13 @@
   // A child's stretches, painted: per chromosome the father's copy above the mother's, each stretch
   // coloured by the grandparent it came from (or by the parent when no grandparent was sequenced).
   var SIDE = { paternal: 'father', maternal: 'mother' };
-  function painting(f, child, rows) {
+  function painting(f, child, all) {
+    // A stretch drawn from a grandparent says which grandparent's copy the child got there, so one over a
+    // closed result says whether the child got it: it stays closed. A stretch from a parent alone says nothing.
+    var split = veiled(child, all, function (r) {
+      return r.ancestor && r.ancestor !== '.' ? tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end) : null;
+    });
+    var rows = split.open;
     var lengths = f.chrom_lengths || [];
     var longest = Math.max.apply(null, lengths.map(function (x) { return x[1]; }).concat([1]));
     var colours = Object.create(null), next = 1;
@@ -305,6 +381,14 @@
       ['paternal', 'maternal'].forEach(function (side) {
         var track = el('span', { 'class': 'paint-track ' + side });
         track.style.setProperty('--len', (100 * cl[1] / longest).toFixed(2) + '%');
+        all.filter(function (r) { return r.chrom === chrom && r.side === side && rows.indexOf(r) < 0; }).forEach(function (r) {
+          var a = parseInt(r.start, 10), b = parseInt(r.end, 10);
+          if (!isFinite(a) || !isFinite(b) || b < a) { return; }
+          var seg = el('span', { 'class': 'paint-seg closed', title: 'A closed stretch' });
+          seg.style.setProperty('--a', (100 * a / cl[1]).toFixed(3) + '%');
+          seg.style.setProperty('--w', Math.max(0.4, 100 * (b - a) / cl[1]).toFixed(3) + '%');
+          add(track, seg);
+        });
         rows.filter(function (r) { return r.chrom === chrom && r.side === side; }).forEach(function (r) {
           var a = parseInt(r.start, 10), b = parseInt(r.end, 10);
           if (!isFinite(a) || !isFinite(b) || b < a) { return; }
@@ -329,8 +413,10 @@
         who + (colours[who].basis === 'other copy' ? ' (the copy not from the sequenced parent)' : ''));
       add(leg, it);
     });
-    add(leg, el('span', { 'class': 'dim' }, ' Grey: no stretch called (no informative site, a gap of the reference).'));
+    add(leg, el('span', { 'class': 'dim' }, ' Grey: no stretch called (no informative site, a gap of the reference).' +
+      (split.closed.length ? ' Hatched: a closed stretch.' : '')));
     add(fig, leg);
+    add(fig, veilBox(child, split.closed, 'stretch', 'stretches'));
     var d = el('details', { 'class': 'w-fallback' });
     add(d, el('summary', {}, 'Every stretch (' + rows.length + ')'));
     add(d, U.table({ columns: ['Copy', 'Chromosome', 'Start', 'End', 'From', 'Sites', 'Discordant', 'Basis'],
@@ -361,27 +447,41 @@
       if (rows && rows.length) {
         add(d, painting(f, c.child, rows));
       } else if (c.segments) {
-        add(d, el('img', { src: c.segments, alt: 'Chromosome map of ' + c.child, 'class': 'segments' }));
+        // The drawing as an image cannot close one stretch: while this child has a result to act on that is
+        // closed (or this page cannot tell), it stays closed whole.
+        var k = kids[c.child] || {};
+        var shut = k.status !== 'known' ? [UNKNOWN] : (k.spans || []).map(function (s) { return s[0]; }).filter(function (id) { return !opened[id]; });
+        if (!k.spans && k.status === 'known' && k.acts.length) { shut = [UNKNOWN]; }
+        if (shut.length && !(shut[0] === UNKNOWN && openedAll[c.child])) {
+          add(d, U.veil('The chromosome map of ' + c.child + ' stays closed while a result to act on in adult life is: ' +
+            'it could show which copy the child got there.', 'Show the map', function () { shut.forEach(function (t) { if (t === UNKNOWN) { openedAll[c.child] = true; } else { opened[t] = true; } }); redraw(); }));
+        } else {
+          add(d, el('img', { src: c.segments, alt: 'Chromosome map of ' + c.child, 'class': 'segments' }));
+        }
       } else {
         add(d, el('p', { 'class': 'dim' }, 'No chromosome map yet: step 38 draws one for a child with a sequenced parent.'));
       }
       var dn = (f.de_novo || []).filter(function (r) { return r.child === c.child; });
       add(d, el('h3', {}, 'De novo candidates'));
       if (dn.length) {
+        var dv = veiled(c.child, dn, function (r) { return tagOf(c.child, r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.chrom, r.pos); });
         add(d, el('p', { 'class': 'dim' }, 'In the child and in neither parent. Most candidates in a genome are genotype errors: ' +
           'check the reads before reading anything into one.'));
         add(d, U.table({ columns: ['Variant', 'Child', 'Father', 'Mother', 'Child DP / GQ', 'Allele balance', 'Quality'],
-          rows: dn.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
+          rows: dv.open.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
             r.mother_gt, r.child_dp + ' / ' + r.child_gq, r.child_ab, r.quality]; }) }, 8));
+        add(d, veilBox(c.child, dv.closed, 'row', 'rows'));
       } else {
         add(d, el('p', { 'class': 'dim', 'data-trio': 'de_novo' }, empty(c.child, 'de_novo', 'de_novo.tsv')));
       }
       var ch = (f.compound_het || []).filter(function (r) { return r.child === c.child; });
       add(d, el('h3', {}, 'Compound-het pairs'));
       if (ch.length) {
+        var cv = veiled(c.child, ch, function (r) { return tagOf(c.child, [r.gene, r.variant_a, r.variant_b].join(' ')); });
         add(d, el('p', { 'class': 'dim' }, 'Two candidate variants in one gene, in trans first: one from each parent.'));
         add(d, U.table({ columns: ['Gene', 'Phase', 'Variant A', 'From', 'Variant B', 'From'],
-          rows: ch.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
+          rows: cv.open.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
+        add(d, veilBox(c.child, cv.closed, 'row', 'rows'));
       } else {
         add(d, el('p', { 'class': 'dim', 'data-trio': 'compound_het' }, empty(c.child, 'compound_het', 'compound_het.tsv')));
       }
@@ -431,7 +531,12 @@
   }
 
   function draw(f) {
+    last = f;
     var main = document.getElementById('family');
+    // A redraw (a result opened, a child's results answered) keeps each child's fold as the reader left it.
+    var folds = {};
+    Array.prototype.forEach.call(main.querySelectorAll('details[data-child]'), function (x) { folds[x.getAttribute('data-child')] = x.open; });
+    var y = window.scrollY;
     main.textContent = '';
     var page = el('section', { 'class': 'family-page', 'data-plugin': 'family', 'aria-label': 'Family ' + f.state.name });
     if (f.state.error) {
@@ -462,14 +567,22 @@
     add(page, related(f), couples(f), children(f), sideBySide(f));
     if ((f.state.plan || []).length || f.state.reports.length) { add(page, more(f)); }
     add(main, page);
+    Array.prototype.forEach.call(main.querySelectorAll('details[data-child]'), function (x) {
+      var k = x.getAttribute('data-child');
+      if (k in folds) { x.open = folds[k]; }
+    });
+    window.scrollTo(0, y);
+    // What the page knows of each child's results (for the tests): "DEMO-003:known".
+    root.setAttribute('data-pgp-kids', Object.keys(kids).sort().map(function (c) { return c + ':' + kids[c].status; }).join(' '));
     root.setAttribute('data-pgp-status', 'ready');
   }
+  function redraw() { if (last) { draw(last); } }
 
   // The page asks again every 30 s and redraws only when family.json changed (a member's run moved on,
   // step 39 finished). A failed first request says so, with a retry; a later one keeps what is shown.
-  var shown = null;
+  var drawnKey = null;
   function failed() {
-    if (shown !== null) { return; }
+    if (drawnKey !== null) { return; }
     var main = document.getElementById('family');
     main.textContent = '';
     var b = el('button', { type: 'button', 'class': 'more' }, 'Try again');
@@ -481,7 +594,9 @@
     return U.getJSON('family.json').then(function (f) {
       if (!f) { failed(); return; }
       var k = JSON.stringify(f);
-      if (k !== shown) { shown = k; draw(f); }
+      // Each child's results are asked again with the family: a result to act on can appear while a run goes.
+      if (!f.state.error) { loadKids(f); }
+      if (k !== drawnKey) { drawnKey = k; draw(f); }
     }).catch(failed);
   }
   function start() {

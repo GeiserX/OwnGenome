@@ -408,7 +408,7 @@ def widget_checks(b, base, out):
         keep = f.read()
     try:
         with open(js, "w") as f:
-            f.write(keep.replace("add(text, widget(c.widget));", ""))
+            f.write(keep.replace("add(text, widget(of[1]));", ""))
         control("person.js without its widget line", not widget_problems(widget_counts(b, base)))
     finally:
         with open(js, "w") as f:

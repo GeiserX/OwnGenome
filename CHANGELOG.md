@@ -4,6 +4,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- The family page now keeps a child's results to act on closed, as the child's own page does. A de novo candidate or a compound-het pair that names a closed result, and a stretch painted from a grandparent over one, stay behind "Show the result" until that result is opened there; a reload closes them again. While the page cannot read the child's results, every such row of that child stays closed. On a child's page, a copy-number dot and a card's fact that name a closed result's gene now close with it too. `results.json` adds `veil.spans`, `veil.facts` and `veil.widget`; nothing is renamed or removed. The veil is still a browser veil: the files behind the pages hold every row.
+
 - VEP consequence ranking (steps 23 and 31) and the gnomAD constraint join now run in the Rust `og` binary, inside `BCFTOOLS_IMAGE`: `og vcf csq-rank` replaces `bin/csq_rank.awk` and `og table constraint-join` replaces `bin/constraint_join.awk`, which are gone. Neither awk program runs on the host anymore (step 23 still uses the host's `awk` for small table edits), and the ranker is no longer the slow stage of step 23's main pipe. Steps 23 and 31 now need `og`: `scripts/setup.sh --og` builds it. Their output is the same, byte for byte, except for these changes.
   - The seven `##INFO=<ID=PGP_...>` header descriptions end in `(og vcf csq-rank)`, not `(bin/csq_rank.awk)`. No tag, value or column changes.
   - A ranking floor that is not a number, or a `--keep` other than `all` or `noncommon`, is a usage error (exit 2). awk read such a floor as 0.
