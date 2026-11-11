@@ -105,7 +105,8 @@
 
   // --- the figure ---------------------------------------------------------------------------------------
   // create({url, veil(id, gated) -> 'open'|'closed'|'opened', now(id) -> shown at this moment, open(id),
-  // close(id), stepDone(step) -> ended at this moment, fallback() -> rows}): one figure per page. The page calls refresh(key) on each of its redraws; a new key
+  // close(id), known(id) -> a finding of the page's results, stepDone(step) -> ended at this moment,
+  // fallback() -> rows}): one figure per page. The page calls refresh(key) on each of its redraws; a new key
   // fetches the document again and keeps the camera.
   function create(opts) {
     var M = null, key = null, failure = null, t0 = 0;
@@ -157,12 +158,16 @@
 
     // --- the veil: what this page keeps closed at this moment ---
     function stateOf(id) { return opts.veil(id, !!(M && M.gated[id])); }
-    // A row shows when its result is not closed and the page shows its finding at this moment (a replay
+    // A row shows when its own result is not closed and the page shows its finding at this moment (a replay
     // before the finding's step ended does not).
-    // A row under another result's tag also stays hidden while its own result is closed.
+    // A row that is a finding of the page (opts.known) follows the page's own veil only: the page already
+    // hides every finding it keeps closed (opts.now), and its card shows the rest. Hiding such a row for
+    // another result's tag would drop a finding whose card the page shows, and so place that closed result
+    // inside it. A row the page has no finding for (the map's APOE row) follows its tag too.
     function shownRow(r) {
-      return (!r.veil || stateOf(r.veil) !== 'closed') && (r.veil === r.id || M.closable.indexOf(r.id) < 0 ||
-        stateOf(r.id) !== 'closed') && (!opts.now || opts.now(r.id));
+      var own = M.closable.indexOf(r.id) < 0 || stateOf(r.id) !== 'closed';
+      var tag = (opts.known && opts.known(r.id)) || !r.veil || stateOf(r.veil) !== 'closed';
+      return own && tag && (!opts.now || opts.now(r.id));
     }
     // The runs of homozygosity, as this page shows them now: a replay before their step ended has none yet.
     function rohLayer() {
@@ -768,7 +773,8 @@
       if (lv === 'genome') {
         var form = fs.length === 0 ? forms.none : fs.length === 1 ? forms.one : forms.many;
         add(narr, runs((form || []).map(function (x) { return { t: x.t.replace('{n}', String(fs.length)), b: x.b }; })));
-      } else if (M.text.chrom && M.text.chrom[ch.n]) {
+      } else if (M.text.chrom && M.text.chrom[ch.n] && rohLayer() === M.layers.roh) {
+        // The chromosome's sentence is about its runs of homozygosity: a replay before their step ended has none.
         add(narr, runs(M.text.chrom[ch.n]));
       }
       var lay = M.layers.findings || {};
@@ -861,6 +867,8 @@
       if (!M) { return; }
       var acts = [], gates = [], opened = [];
       M.closable.forEach(function (id) {
+        // A gated result (APOE) has a chip only once the page shows its card (a replay before its step has none).
+        if (M.gated[id] && opts.now && !opts.now(id)) { return; }
         var s = stateOf(id);
         if (s === 'closed') { (M.gated[id] ? gates : acts).push(id); } else if (s === 'opened') { opened.push(id); }
       });
@@ -1042,6 +1050,8 @@
       narr.textContent = '';
       layersBox.textContent = '';
       chips.textContent = '';  // a chip drawn before the failure may name a result closed since
+      marks.textContent = '';  // and so may a mark link, hidden or not
+      hideTip();
     }
     function load(k) {
       key = k;

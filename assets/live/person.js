@@ -552,9 +552,16 @@
   }
   // Whether the page shows a finding of the map at this moment: its card's steps are done (a replay draws
   // the run's end results from its first frame). A row with no finding of these results (the map's own APOE
-  // row) follows its card's fold instead.
+  // row) follows the card that holds its fold (the traits card): a replay before that card shows has no APOE.
   // A finding this page keeps closed is not shown either, whatever row tag it shares with another result.
-  function mapNow(id) { var f = findingById(id); var c = f && cardById(f.card); return !f || (!!(c && gate(c) === 'show') && !veiled(f)); }
+  function mapNow(id) {
+    var f = findingById(id);
+    if (!f) { var t = cards().filter(function (c) { return c.hidden; })[0]; return !!(t && gate(t) === 'show'); }
+    var c = cardById(f.card);
+    return !!(c && gate(c) === 'show') && !veiled(f);
+  }
+  // Whether a row of the map is a finding of these results: then the page's own veil alone decides it (map.js).
+  function mapKnown(id) { return !!findingById(id); }
   // Whether a step of the run has ended at this moment (a replay before it has not): the map's layers follow it.
   function stepDone(step) { var s = stepsBy()[step]; return !s || s.state === 'done'; }
   // Without the map (a browser with no DecompressionStream, or a map the server could not build): the findings
@@ -884,7 +891,7 @@
     // reader left it. It asks this page's veil for each closed row, and opens or closes a result through it.
     if (window.PGPMap) {
       if (!genomeMap) {
-        genomeMap = window.PGPMap.create({ url: 'map.json', veil: mapVeil, now: mapNow, stepDone: stepDone, open: function (id) { setShown(id, true); },
+        genomeMap = window.PGPMap.create({ url: 'map.json', veil: mapVeil, now: mapNow, known: mapKnown, stepDone: stepDone, open: function (id) { setShown(id, true); },
           close: function (id) { setShown(id, false); }, fallback: mapFallback });
       }
       add(slot, genomeMap.node);

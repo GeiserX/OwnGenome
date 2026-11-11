@@ -75,6 +75,7 @@ Run: python3 tests/test_live_demo.py
 import base64
 import copy
 import gzip
+import hashlib
 import json
 import os
 import shutil
@@ -1475,6 +1476,158 @@ def overlap_problems(b, base, out):
             fh.write(keep)
 
 
+# The figure as a reader gets it before any click: its HTML (the chips aside, which count the closed results
+# on purpose, and the timing attributes), its marks, margin and layers, and a hash of the canvas's pixels.
+FIGURE_JS = r"""JSON.stringify((function () {
+  var f = document.getElementById('genome-map');
+  if (!f) { return null; }
+  var c = f.cloneNode(true);
+  Array.prototype.forEach.call(c.querySelectorAll('.gm-chips'), function (x) { x.textContent = ''; });
+  c.removeAttribute('data-pgp-map-parse-ms');
+  c.removeAttribute('data-pgp-map-paint-ms');
+  return { html: c.outerHTML, canvas: f.querySelector('.gm-canvas').toDataURL() };
+}()))"""
+
+
+def plant_son(out, extra, og):
+    """The son's results.json with the findings EXTRA added and his map.json built again from it by og map
+    build, as the map plugin builds it: og tags each row itself. Returns what to write back afterwards."""
+    son = OTHERS[1]
+    rj, mj = (os.path.join(out, "runs", son, n) for n in ("results.json", "map.json"))
+    keep = {}
+    for p in (rj, mj):
+        with open(p, "rb") as fh:
+            keep[p] = fh.read()
+    res = json.loads(keep[rj])
+    res["findings"] = res["findings"] + [dict(f) for f in extra]
+    sec = {"act": 1, "medicine": 2, "carrier": 3, "review": 4}
+    for f in extra:  # each in its level's section, as live_results lists them: its card shows on the page
+        for j in res["journal"]:
+            if j["n"] == sec[f["level"]]:
+                j["findings"] = j["findings"] + [f["id"]]
+    with open(rj, "w") as fh:
+        json.dump(res, fh)
+    root = os.path.join(os.path.dirname(out), "root")
+    doc = build_live_demo.og_map(og, ["build", "--root", root, "--run", son, "--assets", os.path.join(REPO, "assets"),
+                                      "--cache-dir", os.path.join(root, ".owngenome-live", "map")],
+                                 json.dumps({"results": res}).encode())
+    with open(mj, "wb") as fh:
+        fh.write(doc)
+    return keep
+
+
+def unplant(keep):
+    for p, data in keep.items():
+        with open(p, "wb") as fh:
+            fh.write(data)
+
+
+def row_tag(out, fid):
+    """The id whose tag og put on FID's row of the son's map, or None."""
+    son = OTHERS[1]
+    doc = read_map(os.path.join(out, "runs", son, "map.json"))
+    f = doc["per"][son]["findings"]
+    if fid not in f["id"]:
+        return None
+    v = f["veil"][f["id"].index(fid)]
+    return doc["dict"]["veil"][v] if v >= 0 else None
+
+
+def son_figure(b, base, hash_=""):
+    """The son's map before any click: (the map's facts, the figure with its canvas hashed)."""
+    c = map_page(b, base, OTHERS[1], hash_)
+    fig = json.loads(b.eval(FIGURE_JS) or "null") or {}
+    fig["canvas"] = hashlib.sha256((fig.get("canvas") or "").encode()).hexdigest()[:12]
+    return c, fig
+
+
+def act(fid, gene, viewer, title):
+    return {"id": fid, "level": "act", "card": "clinical-filter", "gene": gene, "viewer": viewer, "title": title,
+            "detail": f"{gene} {viewer}", "text": f"{title}, planted."}
+
+
+# An open finding over a closed result whose card names another gene: og tags the open finding's row (the
+# whole gene span) with the closed result, while the page shows its card. A map that hides that row only
+# while the result is closed places the closed result inside that gene. Each planting: (what, the closed
+# results, the open findings in both pages, the open finding to watch, chromosome).
+UNDER = (("a gene-only review finding (CFTR) over a closed deletion naming another gene",
+          [act("pl-iota", "PLIOTA", "chr7:117400000-117700000", "Planted iota deletion")],
+          [{"id": "pl-kappa", "level": "review", "card": "exomiser", "gene": "CFTR", "title": "Planted kappa review",
+            "detail": "CFTR", "text": "A planted review finding that names CFTR only."}], "pl-kappa", "chr7"),
+         ("the page's own CYP2D6 medicine finding over a closed variant naming another gene",
+          [act("pl-theta", "PLTHETA", "chr22:42125000", "Planted theta result")], [], "pgx-cyp2d6", "chr22"))
+
+
+def under_problems(b, base, out, og):
+    """For each planting of UNDER: the son's map before any click is the same, figure HTML, canvas, marks,
+    margin and layers, with the closed result and without it, at the genome level and on its chromosome; and
+    the open finding is drawn in both."""
+    bad = []
+    for what, closed, opened, watch, chrom in UNDER:
+        got = {}
+        for name, extra in (("without", opened), ("with", opened + closed)):
+            keep = plant_son(out, extra, og)
+            try:
+                if name == "with" and row_tag(out, watch) != closed[0]["id"]:
+                    bad.append(f"{what}: og did not tag {watch}'s row with {closed[0]['id']} ({row_tag(out, watch)}): "
+                               "the planting tests nothing")
+                got[name] = [son_figure(b, base, h) for h in ("", "#" + chrom)]
+                with open(os.path.join(out, "runs", OTHERS[1], "results.json")) as fh:
+                    title = [f["title"] for f in json.load(fh)["findings"] if f["id"] == watch][0]
+                if not b.eval("document.body.innerText.indexOf(%s) >= 0" % json.dumps(title)):
+                    bad.append(f"{what}: the page does not show {watch}'s card ({title}): the planting tests nothing")
+            finally:
+                unplant(keep)
+        for (c0, f0), (c1, f1), lv in zip(got["without"], got["with"], ("genome", chrom)):
+            if watch not in [m["id"] for m in c0["marks"]]:
+                bad.append(f"{what}, {lv}: {watch} is not on the map even with no closed result")
+            if f0 != f1:
+                diff = [k for k in ("html", "canvas") if f0.get(k) != f1.get(k)]
+                bad.append(f"{what}, {lv}: the figure differs with the closed result ({diff}): marks "
+                           f"{[m['id'] for m in c0['marks']]} vs {[m['id'] for m in c1['marks']]}")
+    return bad
+
+
+def second_open_problems(b, base, out, og):
+    """Two overlapping closed results on the son's page (og tags the second with the first): opening the
+    second by its own card draws exactly it on the map, never the first."""
+    two = [act("pl-alpha", "PLALPHA", "chr17:43050000-43060000", "Planted alpha result"),
+           act("pl-beta", "PLBETA", "chr17:43055000", "Planted beta result")]
+    keep = plant_son(out, two, og)
+    try:
+        if row_tag(out, "pl-beta") != "pl-alpha":
+            return [f"og did not tag pl-beta's row with pl-alpha ({row_tag(out, 'pl-beta')}): the planting tests nothing"]
+        c = map_page(b, base, OTHERS[1], "#chr17")
+        ids = [m["id"] for m in c["marks"]]
+        if "pl-alpha" in ids or "pl-beta" in ids:
+            return [f"closed: marks {ids}"]
+        b.eval("document.querySelector('#f-pl-beta .veil button').click(); true")
+        c = map_now(b)
+        ids = [m["id"] for m in c["marks"]]
+        bad = []
+        if "pl-beta" not in ids:
+            bad.append(f"opened by its card, pl-beta is not on the map: marks {ids}, chips {c['chips']}")
+        if "pl-alpha" in ids or "PLALPHA" in c["text"]:
+            bad.append(f"opening pl-beta shows pl-alpha: marks {ids}")
+        return bad
+    finally:
+        unplant(keep)
+
+
+def replay_apoe_problems(b, base):
+    """DEMO-001 at the first frame of its replay, before the traits step: the map has no APOE chip, no
+    switch to open it and no APOE mark, as its card has no fold yet."""
+    map_page(b, base, S)
+    b.eval("var s = document.getElementById('replay-slider'); s.value = 0; s.dispatchEvent(new Event('input')); true")
+    c = map_now(b)
+    bad = []
+    if b.eval("!!document.querySelector('details[data-gate=apoe]')"):
+        bad.append("the traits card has its APOE fold at the first frame: the check tests nothing")
+    if any("APOE" in t for t in c["chips"]) or any(m["id"] == "apoe" for m in c["marks"]):
+        bad.append(f"before the traits step: chips {c['chips']}, marks {[m['id'] for m in c['marks']]}")
+    return bad
+
+
 def missing_layer_problems(b, base, out):
     """A map whose ROH layer is missing says so in words, in the margin, never a blank."""
     path = os.path.join(out, "runs", S, "map.json")
@@ -1604,13 +1757,46 @@ def map_checks(b, base, out):
     mjs = os.path.join(out, "assets", "map.js")
     with open(mjs) as fh:
         keep_mjs = fh.read()
-    own = "(r.veil === r.id || M.closable.indexOf(r.id) < 0 ||\n        stateOf(r.id) !== 'closed') && "
+    own = "var own = M.closable.indexOf(r.id) < 0 || stateOf(r.id) !== 'closed';"
     try:
         with open(mjs, "w") as fh:
-            fh.write(keep_mjs.replace(own, ""))
+            fh.write(keep_mjs.replace(own, "var own = true;"))
         control("map.js whose rows ask only their tag, never their own result", keep_mjs.count(own) != 1 or
                 not overlap_problems(b, base, out))
     finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    og = og_binary() or build_live_demo.OG
+    bad = under_problems(b, base, out, og)
+    check("map: an open finding over a closed result naming another gene stays on the map; before any click the "
+          "figure is the same with the closed result and without it", not bad, bad)
+    bad = second_open_problems(b, base, out, og)
+    check("map: the second of two overlapping closed results, opened by its own card, is drawn, and the first "
+          "is not", not bad, bad)
+    known = "(opts.known && opts.known(r.id)) || "
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(known, ""))
+        control("map.js whose page findings follow another result's tag", keep_mjs.count(known) != 1 or
+                not under_problems(b, base, out, og))
+        control("map.js whose page findings follow another result's tag (the second result opened)",
+                keep_mjs.count(known) != 1 or not second_open_problems(b, base, out, og))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = replay_apoe_problems(b, base)
+    check("map: before the traits step a replay has no APOE chip, switch or mark", not bad, bad)
+    gated = "if (M.gated[id] && opts.now && !opts.now(id)) { return; }"
+    try:
+        with open(js, "w") as fh:
+            fh.write(keep_js.replace("if (!f) { var t = cards()", "if (!f) { return true; var t = cards()"))
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(gated, ""))
+        control("person.js and map.js that show APOE's chip and row before its card", keep_mjs.count(gated) != 1 or
+                not replay_apoe_problems(b, base))
+    finally:
+        with open(js, "w") as fh:
+            fh.write(keep_js)
         with open(mjs, "w") as fh:
             fh.write(keep_mjs)
     bad = missing_layer_problems(b, base, out)
