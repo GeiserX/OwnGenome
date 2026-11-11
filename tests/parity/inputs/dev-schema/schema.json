@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "a small summary",
+  "description": "The keywords tests/schema/summary.schema.json uses.",
+  "definitions": {
+    "count": {"type": "integer", "minimum": 0},
+    "status": {"enum": ["ok", "missing", "failed"]}
+  },
+  "type": "object",
+  "required": ["sample", "sections"],
+  "properties": {
+    "sample": {"type": "string"},
+    "version": {"type": ["string", "null"]},
+    "score": {"type": "number", "minimum": -1.5},
+    "flags": {"type": "array", "items": {"type": "boolean"}, "minItems": 1, "maxItems": 3},
+    "sections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {"status": {"$ref": "#/definitions/status"}, "n": {"$ref": "#/definitions/count"}},
+        "allOf": [{"required": ["status"]}]
+      }
+    }
+  }
+}

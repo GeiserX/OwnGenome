@@ -1,0 +1,5 @@
+chrom	pos	ref	alt	genotype	clinvar_id	geneinfo	clnsig	clnrevstat
+chr15	89300000	C	T	0/1	9900001	POLG:1	Pathogenic	criteria_provided,_single_submitter
+chr15	89300000	C	T	0/1	9900001	BRCA2:1	Pathogenic	criteria_provided,_single_submitter
+chr15	89300001	C	T	0/1	9900001	POLG:1	Benign	criteria_provided,_single_submitter
+chr15	166000000	C	T	1/1	9900001	SCN1A|POLG:1	Pathogenic/Likely_pathogenic	criteria_provided,_single_submitter

@@ -1,0 +1,2 @@
+INVALID $: key 'b' is not allowed (additionalProperties: false)
+extra.json: 1 schema error(s)

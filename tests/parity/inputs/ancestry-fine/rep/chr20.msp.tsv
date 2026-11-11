@@ -1,0 +1,6 @@
+#Subpopulation order/codes: AFR=0	EAS=1	WEA=2
+#chm	spos	epos	sgpos	egpos	n snps	S.0	S.1
+chr20	1000	5000000	1	2	10	2	2
+chr20	5000000	9000000	2	3	10	2	0
+chr20	9000000	11000000	3	4	10	2	0
+chr20	11000002	30000000	3	4	10	2	0

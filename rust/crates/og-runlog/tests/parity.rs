@@ -1,20 +1,29 @@
 //! `og run` against the Python it replaces, case by case, on the same
-//! files: `bin/run_state.py`, `bin/run_eta.py`, `bin/run_headroom.py` and
-//! `bin/run_delta.py` still sit in the checkout (the live server and the
-//! summary import them). Outputs must agree byte for byte, except
-//! `generated_utc` (the clock), the disk numbers of `headroom` (free space
-//! moves between two calls) and the host memory line where Python can read
-//! the RAM and og cannot (not Linux).
+//! files. The command lines of `bin/run_state.py`, `bin/run_headroom.py` and
+//! `bin/run_delta.py` are gone from the checkout, so their oracle is the
+//! last commit that had them ([`ORACLE`]), materialised once per test run
+//! with `git show` (fetched when a shallow checkout lacks it, as
+//! `scripts/ci/oracle-diff.sh` does). The module functions the live server
+//! and the summary still import stay in `bin/`, and `py_code` calls those.
+//! Outputs must agree byte for byte, except `generated_utc` (the clock), the
+//! disk numbers of `headroom` (free space moves between two calls) and the
+//! host memory line where Python can read the RAM and og cannot (not Linux).
 //!
 //! The Python is `OG_PYTHON`, else `python3`; it must be 3.9 or newer. A
-//! missing Python fails the test: a parity test that skips proves nothing.
+//! missing Python, or an oracle that cannot be materialised, fails the test:
+//! a parity test that skips proves nothing.
 
 use jiff::tz::TimeZone;
 use og_runlog::cli::{Env, run};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// The last commit with the Python command lines (`main()`) of the four
+/// `bin/run_*.py` tools.
+const ORACLE: &str = "630292bd1aef8cb94bbed604e8961a98facdb47d";
 
 const TZ: &str = "Europe/Madrid";
 /// 2026-01-03 12:00:00 UTC: after every fixture time.
@@ -65,11 +74,55 @@ struct Out {
     stderr: String,
 }
 
-/// The Python tool `bin/<tool>.py` with `args`, in the zone [`TZ`].
+fn git(args: &[&str]) -> std::process::Output {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo())
+        .args(args)
+        .output()
+        .unwrap_or_else(|e| panic!("cannot run git: {e}"))
+}
+
+/// `bin/run_*.py` as they were at [`ORACLE`], beside today's
+/// `assets/steps.tsv` (their default catalogue), in a folder of its own.
+fn oracle_bin() -> &'static Path {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let have = git(&["cat-file", "-e", &format!("{ORACLE}^{{commit}}")]);
+        if !have.status.success() {
+            let f = git(&["fetch", "-q", "--depth=1", "origin", ORACLE]);
+            assert!(
+                f.status.success(),
+                "commit {ORACLE} is not here and could not be fetched: {}",
+                String::from_utf8_lossy(&f.stderr)
+            );
+        }
+        let root = tmp("oracle");
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::create_dir_all(root.join("assets")).unwrap();
+        for tool in ["run_state", "run_eta", "run_headroom", "run_delta"] {
+            let o = git(&["show", &format!("{ORACLE}:bin/{tool}.py")]);
+            assert!(
+                o.status.success(),
+                "git show {ORACLE}:bin/{tool}.py: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+            fs::write(root.join("bin").join(format!("{tool}.py")), o.stdout).unwrap();
+        }
+        fs::copy(
+            repo().join("assets/steps.tsv"),
+            root.join("assets/steps.tsv"),
+        )
+        .unwrap();
+        root.join("bin")
+    })
+}
+
+/// The Python tool `<tool>.py` of [`ORACLE`] with `args`, in the zone [`TZ`].
 fn py(tool: &str, args: &[&str]) -> Out {
     let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
     let o = Command::new(&exe)
-        .arg(repo().join("bin").join(format!("{tool}.py")))
+        .arg(oracle_bin().join(format!("{tool}.py")))
         .args(args)
         .env("TZ", TZ)
         .env_remove("PGP_BOX")

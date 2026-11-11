@@ -1,6 +1,6 @@
 [package]
 name = "og-nf"
-description = "Readers of what Nextflow writes about a run: trace files, task names, units and times"
+description = "Readers of Nextflow files: run traces, task names, units and times, and the modules, config, schema and workflows of the pipeline"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,7 @@ publish.workspace = true
 pycompat.workspace = true
 og-io.workspace = true
 jiff.workspace = true
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }
 
 [lints]
 workspace = true

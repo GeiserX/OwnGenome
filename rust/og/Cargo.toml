@@ -12,12 +12,16 @@ og-io.workspace = true
 og-bam = { workspace = true, optional = true }
 og-map.workspace = true
 og-intervals.workspace = true
+og-clinvar.workspace = true
 og-dev.workspace = true
+og-qc.workspace = true
+og-pgx.workspace = true
 og-vcf.workspace = true
 og-steps.workspace = true
 og-filters.workspace = true
 og-chip.workspace = true
 og-runlog.workspace = true
+og-ancestry.workspace = true
 
 [features]
 # BAM reading (og-bam, on a statically linked htslib written in C) is on by

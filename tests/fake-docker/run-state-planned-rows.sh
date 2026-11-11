@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # run-all.sh writes the run's plan before the pipeline starts, so
-# bin/run_state.py can show the run as it goes:
+# og run state can show the run as it goes:
 #   1. while nextflow runs, logs/run_status.tsv has a 'planned' row for every
 #      step that runs (a GRIDSS=true script step too), next to the skipped
-#      rows, and no 'meta finished_utc'; bin/run_state.py reads them as
+#      rows, and no 'meta finished_utc'; og run state reads them as
 #      waiting steps and a running run;
 #   2. after a clean run each step has one row, its result (the planned row
-#      gave way), and 'meta finished_utc' closes the file; run_state.py then
+#      gave way), and 'meta finished_utc' closes the file; og run state then
 #      says the run finished;
 #   3. after a failed pipeline (exit 3) the script step run-all.sh no longer
 #      starts is 'not finished', not left 'planned', and the end time is there.
 # A fake nextflow stands in; a wrapper in front of it copies the status file
-# and runs bin/run_state.py with the host's python3 while "the pipeline runs".
+# and runs og run state (the host's bin/og, which the Guard fake-docker job
+# builds into bin/.og) while "the pipeline runs".
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -24,12 +25,13 @@ seed_clinvar "$G"
 use_output_hook
 seed_sample "$G" sample1
 
+"${REPO_ROOT}/bin/og" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
 mkdir -p "${CASE_WORK}/nfbin"
 cat > "${CASE_WORK}/nfbin/nextflow" <<'NF'
 #!/usr/bin/env bash
 # The launch directory is <sample>/nextflow: the status file is ../logs/run_status.tsv.
 cp ../logs/run_status.tsv "${CASE_WORK}/during.tsv"
-python3 "${REPO_ROOT}/bin/run_state.py" --sample sample1 --sample-dir .. --out "${CASE_WORK}/during.json" > /dev/null
+"${REPO_ROOT}/bin/og" run state --sample sample1 --sample-dir .. --out "${CASE_WORK}/during.json" > /dev/null
 exec "${REPO_ROOT}/scripts/ci/fake-docker/nextflow" "$@"
 NF
 chmod +x "${CASE_WORK}/nfbin/nextflow"
@@ -55,9 +57,9 @@ if grep -q $'^meta\tfinished_utc\t' "$DURING"; then fail "finished_utc is writte
 tools=$(grep '^nextflow :: ' "$FAKE_DOCKER_LOG" | tail -1 | sed -n 's/.* --tools \([^ ]*\) .*/\1/p' | tr -d '\\')
 want=$(( $(tr ',' '\n' <<<"$tools" | grep -c .) + 2 ))
 n=$(grep -c $'\tplanned$' "$DURING"); [ "$want" -gt 10 ] && [ "$n" -eq "$want" ] || fail "${n} planned rows while the pipeline ran, want ${want} (--tools ${tools}, 16, 04b): $(cat "$DURING")"
-[ "$(rs "${CASE_WORK}/during.json" run)" = running ] || fail "run_state.py: the run is not running while nextflow runs"
-[ "$(rs "${CASE_WORK}/during.json" 07)" = waiting ] || fail "run_state.py: step 07 is not waiting while nextflow runs"
-[ "$(rs "${CASE_WORK}/during.json" 13)" = skipped ] || fail "run_state.py: step 13 is not skipped"
+[ "$(rs "${CASE_WORK}/during.json" run)" = running ] || fail "og run state: the run is not running while nextflow runs"
+[ "$(rs "${CASE_WORK}/during.json" 07)" = waiting ] || fail "og run state: step 07 is not waiting while nextflow runs"
+[ "$(rs "${CASE_WORK}/during.json" 13)" = skipped ] || fail "og run state: step 13 is not skipped"
 
 if grep -q $'\tplanned$' "$ST"; then fail "a planned row is left after the run: $(cat "$ST")"; fi
 for s in 06 07 16 04 04b; do [ "$(rows "$s" "$ST")" -eq 1 ] || fail "step ${s} has $(rows "$s" "$ST") rows after the run, want 1: $(cat "$ST")"; done
@@ -65,9 +67,9 @@ grep -q $'^step\t07\tok$' "$ST" || fail "step 07 is not ok: $(cat "$ST")"
 grep -qE $'^step\t04b\t(ok|failed)$' "$ST" || fail "step 04b has no result: $(cat "$ST")"
 grep -qE $'^meta\tfinished_utc\t[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8} UTC$' "$ST" || fail "no finished_utc row: $(cat "$ST")"
 [ "$(tail -n 1 "$ST" | cut -f2)" = finished_utc ] || fail "finished_utc is not the last row: $(cat "$ST")"
-python3 "${REPO_ROOT}/bin/run_state.py" --sample sample1 --sample-dir "$S" --out "${CASE_WORK}/after.json" > /dev/null
-[ "$(rs "${CASE_WORK}/after.json" run)" = finished ] || fail "run_state.py: the run is not finished after run-all.sh ended"
-[ "$(rs "${CASE_WORK}/after.json" 07)" = done ] || fail "run_state.py: step 07 is not done after the run"
+"${REPO_ROOT}/bin/og" run state --sample sample1 --sample-dir "$S" --out "${CASE_WORK}/after.json" > /dev/null
+[ "$(rs "${CASE_WORK}/after.json" run)" = finished ] || fail "og run state: the run is not finished after run-all.sh ended"
+[ "$(rs "${CASE_WORK}/after.json" 07)" = done ] || fail "og run state: step 07 is not done after the run"
 
 # --- 3. a failed pipeline: the script step is not finished -----------------------------------
 rm -f "$DURING"

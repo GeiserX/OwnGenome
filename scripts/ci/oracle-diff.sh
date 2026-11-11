@@ -22,7 +22,8 @@
 # named `stdin` is each side's standard input; without one it is empty.
 # Compared items: the exit code, stdout, stderr, the named outputs and every
 # new file (stdout and stderr as bytes, files with the case's compare kind,
-# through og dev parity-compare). The expected side of an item is the oracle's,
+# through og dev parity-compare; a kind of KIND;GLOB=KIND2 compares the files
+# whose path matches GLOB with KIND2 instead). The expected side of an item is the oracle's,
 # unless tests/parity/golden/<tool>/<case>/<item> exists (a deliberate fix:
 # og must write the golden instead; <item>.absent means it must write
 # nothing). A golden the oracle also matches is stale and fails, and so does
@@ -226,11 +227,21 @@ run_case() {
     case " ${items[*]} " in *" ${item} "*) ;; *) items+=("$item") ;; esac
   done < <({ new_files "${w}/og"; new_files "${w}/oracle"; } | sort -u)
 
+  # The case's kind, and its GLOB=KIND overrides (e.g. bytes;*.png=png-pixels).
+  local -a overrides
+  IFS=';' read -r -a overrides <<< "$kind"
   for item in "${items[@]}"; do
-    local ours oracle k
+    local ours oracle k o
     case "$item" in
       exit | stdout | stderr) ours="${w}/og.out/${item}"; oracle="${w}/oracle.out/${item}"; k=bytes ;;
-      *) ours="${w}/og/${item}"; oracle="${w}/oracle/${item}"; k=$(kind_for "$item" "$kind") ;;
+      *)
+        ours="${w}/og/${item}"; oracle="${w}/oracle/${item}"
+        # Both spellings of a per-file kind: "GLOB=KIND ... KIND" (kind_for) and "KIND;GLOB=KIND".
+        k=$(kind_for "$item" "${overrides[0]}")
+        for o in "${overrides[@]:1}"; do
+          # shellcheck disable=SC2053  # the left side is a glob on purpose
+          [[ "$item" == ${o%%=*} ]] && k=${o#*=}
+        done ;;
     esac
     g="${GOLDEN}/${tool}/${case}/${item}"
     known=$(awk -F'\t' -v t="$tool" -v c="$case" -v i="$item" '$1 == t && $2 == c && $3 == i {print $4; exit}' <(rows "$KNOWN"))

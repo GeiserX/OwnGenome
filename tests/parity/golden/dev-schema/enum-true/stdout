@@ -1,0 +1,2 @@
+INVALID $: True is not one of [1, 2.5, 'x']
+enum-true.json: 1 schema error(s)

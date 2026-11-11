@@ -1,12 +1,14 @@
 # Where a Run Stands
 
-`bin/run_state.py` tells you, during a run or after it, which steps are planned, which are running and which have finished. It writes one file, `<sample>/run_state.json`. It reads only the files that say how the run goes, never a result.
+`og run state` tells you, during a run or after it, which steps are planned, which are running and which have finished. It writes one file, `<sample>/run_state.json`. It reads only the files that say how the run goes, never a result.
 
 ```bash
-python3 bin/run_state.py --sample <sample> --sample-dir "$GENOME_DIR/<sample>"
+bin/og run state --sample <sample> --sample-dir "$GENOME_DIR/<sample>"
 ```
 
-Standard library only, so the plain `python3` on the host is enough. Run it as often as you like: each call reads the files again and replaces the JSON.
+Run it as often as you like: each call reads the files again and replaces the JSON. `--trace FILE` (repeatable), `--events FILE`, `--steps FILE` and `--out FILE` work as below.
+
+**Where og runs.** `og` is OwnGenome's Rust binary ([docs/rust.md](rust.md)). `bin/og` runs the static Linux build that `scripts/setup.sh --og` puts in `bin/.og/`, so on Linux it runs on the host as shown. On macOS, build a host binary once (`cd rust && cargo build --release -p og`) and call `rust/target/release/og` in place of `bin/og`, or run `bin/og` in a Linux container that mounts the checkout and `GENOME_DIR` at the same paths. A container sees its own host name, cores and memory, so give `og run eta` `--box` and `--cores` there, and read the memory line of `og run headroom` as the container's. The same commands were `bin/run_state.py`, `bin/run_eta.py` and `bin/run_headroom.py` before; the options and the output are the same.
 
 ## What it reads
 
@@ -50,16 +52,16 @@ While the run goes, a step whose tasks have all finished shows `done`. If a late
 
 ## How long is left
 
-`bin/run_eta.py` says how long each step usually takes on this box and how many hours a run has left. Both are ranges, and each step's range says where it comes from.
+`og run eta` says how long each step usually takes on this box and how many hours a run has left. Both are ranges, and each step's range says where it comes from.
 
 ```bash
-python3 bin/run_eta.py "$GENOME_DIR"                    # every step's usual time on this box
-python3 bin/run_eta.py "$GENOME_DIR" --sample <sample>  # and the hours left of that sample's run
+bin/og run eta "$GENOME_DIR"                    # every step's usual time on this box
+bin/og run eta "$GENOME_DIR" --sample <sample>  # and the hours left of that sample's run
 ```
 
-The first argument is the run's `--outdir`, which is `GENOME_DIR` with `run-all.sh`. It prints JSON; `--out FILE` writes it to a file instead. Times are in seconds. Standard library only.
+The first argument is the run's `--outdir`, which is `GENOME_DIR` with `run-all.sh`. It prints JSON; `--out FILE` writes it to a file instead. Times are in seconds. `--cores N` sets the box's cores (default: all of this machine's).
 
-**The history.** Each call first reads `GENOME_DIR/pipeline_info/trace_*.txt` into `GENOME_DIR/pipeline_info/step_history/<box>.tsv`. It keeps one row per task that ended `COMPLETED` with exit 0: the trace file's name, the task hash and attempt, its step and process, whether it runs once per run, the CPUs and memory it asked for, its `peak_rss`, its wall time, how long its whole step took for that sample, when it ended, and the box's cores. A cached task, a failed attempt and a process of no step never enter it. It holds no sample id and no path. Reading the same trace again adds nothing, and the rows of a trace you later delete stay. The box is `PGP_BOX` if you set it, else the short host name, reduced to letters, digits, `_` and `-` (`--box` overrides both). Run it on the box that ran the pipeline: the history is named after the box that reads the trace.
+**The history.** Each call first reads `GENOME_DIR/pipeline_info/trace_*.txt` into `GENOME_DIR/pipeline_info/step_history/<box>.tsv`. It keeps one row per task that ended `COMPLETED` with exit 0: the trace file's name, the task hash and attempt, its step and process, whether it runs once per run, the CPUs and memory it asked for, its `peak_rss`, its wall time, how long its whole step took for that sample, when it ended, and the box's cores. A cached task, a failed attempt and a process of no step never enter it. It holds no sample id and no path. Reading the same trace again adds nothing, and the rows of a trace you later delete stay. A call that adds nothing leaves the file as it is, and two calls at once take turns on the lock file `<box>.tsv.lock`. The box is `PGP_BOX` if you set it, else the short host name, reduced to letters, digits, `_` and `-` (`--box` overrides both). Run it on the box that ran the pipeline: the history is named after the box that reads the trace.
 
 Only Nextflow writes a trace, so the history fills from `run-all.sh` and from a bare `nextflow run`, both through `nextflow.config`. The single step scripts write no trace and get no history of their own. A trace from before `nextflow.config` gained the extra columns is still read: its task start and end come from `submit`, `duration` and `realtime`.
 
@@ -78,15 +80,15 @@ With or without `--sample`, the trace files of every run that `run-all.sh` start
 
 ## Memory and disk headroom
 
-`bin/run_headroom.py` says how close each task came to the memory it asked for, and how full the disks of the work folder and the results folder are. It works the same on any Linux, macOS or WSL2 machine and needs no host path set in advance.
+`og run headroom` says how close each task came to the memory it asked for, and how full the disks of the work folder and the results folder are. It needs no host path set in advance.
 
 ```bash
-python3 bin/run_headroom.py --work-dir "${GENOME_DIR:?Set GENOME_DIR to your data directory}/<sample>/nextflow/work" --outdir "$GENOME_DIR" \
+bin/og run headroom --work-dir "${GENOME_DIR:?Set GENOME_DIR to your data directory}/<sample>/nextflow/work" --outdir "$GENOME_DIR" \
   --trace "$GENOME_DIR"/pipeline_info/trace_<time>.txt
-python3 bin/run_headroom.py --events events.jsonl   # folders and max_memory from the weblog metadata
+bin/og run headroom --events events.jsonl   # folders and max_memory from the weblog metadata
 ```
 
-It prints plain lines and exits 0. Standard library only.
+It prints plain lines and exits 0; a warn percent outside 1 to 100 exits 2.
 
 **Memory per task.** The tasks come from trace files (`--trace`, repeatable) or from Nextflow's weblog messages (`--events`, the `process_*` messages; the latest message of a task wins, except that a running message never replaces a finished one of the same attempt). For each task, from its last attempt, the ratio is its `peak_rss` over the memory it asked for. At or above the warn percent the line carries a hint. It is a hint, not a fault: `peak_rss` adds up the resident memory of the task's processes, shared and file-mapped pages included, so it can be above what the container was charged ([measured runtimes](hardware-requirements.md#runtime-per-step) show CPSR above its limit without being killed). A task with no request or no `peak_rss` gets no ratio. A task still running shows its request only. An earlier attempt that ended with one of the exits `conf/base.config` retries (143, 137, 104, 134, 139, 247, which usually mean killed for memory or time) counts as one retry.
 
@@ -96,8 +98,8 @@ It prints plain lines and exits 0. Standard library only.
 
 **Warn percent.** 90 for both by default. `--disk-warn-percent` or `OWNGENOME_DISK_WARN_PERCENT` sets the disk one, `--mem-warn-percent` or `OWNGENOME_MEM_WARN_PERCENT` the memory one, from 1 to 100.
 
-**As a library.** `snapshot(events, work_dir, outdir, disk_warn_percent, mem_warn_percent, max_memory, trace_rows)` returns `{disk, tasks, host, warn_used_ratio, mem_warn_ratio}`; `task_memory`, `host_memory` and `disk` give each part alone. It holds no path, and it formats nothing: a page or a metrics endpoint formats the numbers itself. It measures when called; it does not poll and does not project when a disk will fill.
+**As a library.** The live site's alerts measure with the Python module `bin/run_headroom.py`, the same rules as `og run headroom`: `snapshot(events, work_dir, outdir, disk_warn_percent, mem_warn_percent, max_memory, trace_rows)` returns `{disk, tasks, host, warn_used_ratio, mem_warn_ratio}`; `task_memory`, `host_memory` and `disk` give each part alone. It holds no path, and it formats nothing: a page or a metrics endpoint formats the numbers itself. It measures when called; it does not poll and does not project when a disk will fill.
 
 ## The page built on it
 
-`bin/run_state.py` serves no page itself. The live site's server, `bin/owngenome_live.py`, reads the run's messages with it and serves its state as `state.json` to each person's page, whose step timeline and run band draw it ([Watch a Run Live](live-site.md)).
+`og run state` serves no page itself. The live site's server, `bin/owngenome_live.py`, reads the run's messages with the Python module `bin/run_state.py`, which follows the same rules, and serves its state as `state.json` to each person's page, whose step timeline and run band draw it ([Watch a Run Live](live-site.md)).
