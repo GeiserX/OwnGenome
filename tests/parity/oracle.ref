@@ -10,6 +10,8 @@ pgx-cyp2d6-bed	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_ch
 pgx-cyp2d6-measure	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" measure "$@"'	pgx cyp2d6-measure
 pgx-cyp2d6-check	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" check "$@"'	pgx cyp2d6-check
 str-motif	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/rfc1_motif.py	python3	str motif
+vcf-csq-rank	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/csq_rank.awk	sh ./oracle.sh	vcf csq-rank
+table-constraint-join	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/constraint_join.awk	sh ./oracle.sh	table constraint-join
 sv-svlen-fix	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/sv_svlen_fix.py	python3	sv svlen-fix
 sv-inv-filter	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python	sv inv-filter
 sv-inv-filter-py3	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python3	sv inv-filter

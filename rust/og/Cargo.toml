@@ -13,7 +13,10 @@ og-bam.workspace = true
 og-map.workspace = true
 og-intervals.workspace = true
 og-dev.workspace = true
+og-vcf.workspace = true
+og-steps.workspace = true
 og-filters.workspace = true
+og-runlog.workspace = true
 
 [lints]
 workspace = true
