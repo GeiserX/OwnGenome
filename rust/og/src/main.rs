@@ -21,8 +21,9 @@ fn tree_hash() -> &'static str {
 const USAGE: &str = "usage: og <tool> [args]
        og map <verb> [args]
        og setup mask-fasta SRC BED DEST
+       og sv svlen-fix|inv-filter [args]
        og pgx cpic-report|step36-outside [args]
-       og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
+       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
        og str motif [args]
        og dev parity-compare KIND ORACLE NEW
        og version
@@ -73,17 +74,25 @@ fn main() -> ExitCode {
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },
-        "dev" => ExitCode::from(og_dev::main(rest)),
-        "pgx" => match rest.first().and_then(|v| v.strip_prefix("cyp2d6-")) {
-            Some(verb) => ExitCode::from(og_bam::cyp2d6::cli(
-                verb,
+        "sv" => match rest.first().map(String::as_str) {
+            Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
+            Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown sv tool '{other}'")),
+            None => usage_error("the following arguments are required: sv tool"),
+        },
+        "pgx" => match rest.first().map(String::as_str) {
+            Some("refblock-fill") => ExitCode::from(og_filters::refblock::cli(&rest[1..])),
+            Some("mito-merge") => ExitCode::from(og_filters::mito::cli(&rest[1..])),
+            Some(v) if v.starts_with("cyp2d6-") => ExitCode::from(og_bam::cyp2d6::cli(
+                &v["cyp2d6-".len()..],
                 &rest[1..],
                 &mut std::io::stdout().lock(),
                 &mut std::io::stderr().lock(),
             )),
             // cpic-report and step36-outside, and the usage for any other verb.
-            None => ExitCode::from(og_pgx::main(rest)),
+            _ => ExitCode::from(og_pgx::main(rest)),
         },
+        "dev" => ExitCode::from(og_dev::main(rest)),
         "str" => match rest.first().map(String::as_str) {
             Some("motif") => ExitCode::from(og_bam::motif::cli(
                 &rest[1..],

@@ -14,7 +14,7 @@
     becomes a 0/0 call, an uncovered one (./.) stays missing. The expansion
     writes one-base records, which do not count at a PharmCAT position whose
     REF or ALT is longer than one base (an indel such as UGT1A1 *28), so
-    pgx_refblock_fill.py (bin/) writes a 0/0 record with PharmCAT's own
+    og pgx refblock-fill writes a 0/0 record with PharmCAT's own
     alleles there when reference blocks with GQ >= 20 cover the whole REF
     span and no other record overlaps it. The expanded file is named without
     .g.vcf, which PharmCAT refuses.
@@ -26,7 +26,7 @@
 
     PharmCAT 3.4.0 reads MT-RNR1 only as an outside call: its matcher has
     no MT-RNR1 definition, so the gene is No Result from any VCF. When
-    MITO_VARIANTS called the sample's chrM, pgx_mito_merge.py (bin/) adds
+    MITO_VARIANTS called the sample's chrM, og pgx mito-merge adds
     an MT-RNR1 line to a copy of the outside calls: a homoplasmic (AF >=
     0.95) PASS allele PharmCAT names, or Reference when there is none and
     the BAM has 20 reads or more (samtools depth, MAPQ and base quality 20)
@@ -66,7 +66,7 @@ process PHARMCAT_PREPROCESS {
     bcftools view -R /pharmcat/pharmcat_regions.bed -Ov -o gvcf_records.vcf ${gvcf}
     bcftools convert --gvcf2vcf -f ${reference} -R /pharmcat/pharmcat_regions.bed -Ou ${gvcf} \\
         | bcftools view --trim-alt-alleles -i 'GT!="mis"' -Ov \\
-        | pgx_refblock_fill.py /pharmcat/pharmcat_positions.vcf.bgz gvcf_records.vcf \\
+        | og pgx refblock-fill /pharmcat/pharmcat_positions.vcf.bgz gvcf_records.vcf \\
         | bcftools view -Oz -o ${meta.id}.pgx_regions.vcf.gz --write-index=tbi
     rm -f gvcf_records.vcf
     """ : """
@@ -146,7 +146,7 @@ process PHARMCAT {
         else
             echo "No BAM: MT-RNR1 can be a named allele, not Reference."
         fi
-        pgx_mito_merge.py --jar /pharmcat/pharmcat.jar "\${MERGE[@]}" --out ${meta.id}.pharmcat_outside_calls.tsv
+        og pgx mito-merge --jar /pharmcat/pharmcat.jar "\${MERGE[@]}" --out ${meta.id}.pharmcat_outside_calls.tsv
         OUTSIDE=${meta.id}.pharmcat_outside_calls.tsv FROM="PGX_CONSENSUS, and MT-RNR1 from MITO_VARIANTS"
     else
         echo "No chrM calls (MITO_VARIANTS did not run): MT-RNR1 stays No Result."

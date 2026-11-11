@@ -1,0 +1,6 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Length">
+##INFO=<ID=ORIG_SVLEN,Number=1,Type=Integer,Description="SVLEN before sv_svlen_fix.py set it to the net length change len(ALT)-len(REF)">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr20	1	.	AC	A	.	PASS	.
