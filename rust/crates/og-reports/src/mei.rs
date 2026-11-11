@@ -42,7 +42,7 @@ use std::collections::HashMap;
 use std::io::Write;
 
 /// Mean depth over a catalog window before "not seen" is said.
-const MIN_DEPTH: f64 = 10.0;
+const MIN_DEPTH: f64 = 8.0;
 pub const CALL_HEADER: [&str; 12] = [
     "chrom",
     "pos",

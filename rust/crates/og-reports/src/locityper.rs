@@ -48,7 +48,7 @@ pub const COLUMNS: [&str; 13] = [
     "reason",
 ];
 
-const MAX_WEIGHT_DIST: f64 = 30.0;
+const MAX_WEIGHT_DIST: f64 = 40.0;
 const MAX_UNEXPLAINED: u128 = 1000;
 const MAX_UNEXPLAINED_SHARE: f64 = 0.2;
 

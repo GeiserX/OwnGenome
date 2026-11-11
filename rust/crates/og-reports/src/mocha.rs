@@ -39,7 +39,7 @@ use og_io::Utf8;
 use og_tsv::{Options, Quoting};
 use std::io::Write;
 
-const FLOOR_MIN: f64 = 0.05;
+const FLOOR_MIN: f64 = 0.04;
 const FLOOR_Z: f64 = 3.0;
 const FLOOR_MB: f64 = 10.0;
 const CALL_RATE_MIN: f64 = 0.97;

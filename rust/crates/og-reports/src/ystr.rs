@@ -37,7 +37,7 @@ const MIN_READS: i128 = 10;
 const MIN_Q: f64 = 0.9;
 const MAX_STUTTER: f64 = 0.15;
 const MAX_FLANK: f64 = 0.15;
-const FLANK: i128 = 10;
+const FLANK: i128 = 5;
 
 pub const TSV_COLUMNS: [&str; 10] = [
     "order",
