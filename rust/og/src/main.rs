@@ -22,6 +22,8 @@ const USAGE: &str = "usage: og <tool> [args]
        og map <verb> [args]
        og run state|tasks|eta|headroom|delta [args]
        og setup mask-fasta SRC BED DEST
+       og vcf csq-rank [options]
+       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
        og sv svlen-fix|inv-filter [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
@@ -76,6 +78,16 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: setup tool"),
         },
         "run" => ExitCode::from(og_runlog::cli::main(rest)),
+        "vcf" => match rest.first().map(String::as_str) {
+            Some("csq-rank") => ExitCode::from(og_vcf::rank::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown vcf tool '{other}'")),
+            None => usage_error("the following arguments are required: vcf tool"),
+        },
+        "table" => match rest.first().map(String::as_str) {
+            Some("constraint-join") => ExitCode::from(og_steps::constraint::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown table tool '{other}'")),
+            None => usage_error("the following arguments are required: table tool"),
+        },
         "sv" => match rest.first().map(String::as_str) {
             Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
             Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),

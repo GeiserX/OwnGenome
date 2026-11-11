@@ -1,0 +1,18 @@
+##fileformat=VCFv4.2
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature|CANONICAL|MANE_SELECT|MAX_AF">
+##INFO=<ID=PGP_IMPACT,Number=1,Type=String,Description="IMPACT of the ranked CSQ entry: MANE Select, else canonical, else any transcript (bin/csq_rank.awk)">
+##INFO=<ID=PGP_CSQ,Number=1,Type=String,Description="Consequence of the ranked CSQ entry (bin/csq_rank.awk)">
+##INFO=<ID=PGP_GENE,Number=1,Type=String,Description="SYMBOL of the ranked CSQ entry (bin/csq_rank.awk)">
+##INFO=<ID=PGP_TX,Number=1,Type=String,Description="Transcript set of the ranked CSQ entry: MANE, CANONICAL or ANY (bin/csq_rank.awk)">
+##INFO=<ID=PGP_FREQ,Number=1,Type=String,Description="Frequency tier: rare, common, unknown (no frequency for the allele) or none (no frequency field) (bin/csq_rank.awk)">
+##INFO=<ID=PGP_CALL,Number=1,Type=String,Description="Genotype call check: ok, weak or unknown, against ##PGP_CALL_FLOOR (bin/csq_rank.awk)">
+##INFO=<ID=PGP_CALL_WHY,Number=.,Type=String,Description="What made the call weak: GQ, DP or alt read fraction AB (bin/csq_rank.awk)">
+##PGP_CALL_FLOOR=GQ=20,DP=10,HET_AB=0.2-0.8,HOM_AB=0.8
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+chr2	100	.	C	T	50	PASS	CSQ=T|stop_gained|HIGH|TTN|ENST2|||0.0001,T|intron_variant|MODIFIER|TTN|ENST1|YES|NM_1|0.0001;PGP_IMPACT=MODIFIER;PGP_CSQ=intron_variant;PGP_GENE=TTN;PGP_TX=MANE;PGP_FREQ=rare;PGP_CALL=ok	GT:GQ:DP:AD	0/1:50:30:15,15
+chr13	200	.	A	AT	50	PASS	CSQ=AT|frameshift_variant|HIGH|BRCA2|ENST3|YES|NM_2|0.0001;PGP_IMPACT=HIGH;PGP_CSQ=frameshift_variant;PGP_GENE=BRCA2;PGP_TX=MANE;PGP_FREQ=rare;PGP_CALL=weak;PGP_CALL_WHY=GQ12	GT:GQ:DP:AD	0/1:12:.:3,2
+chr19	300	.	G	A	50	PASS	CSQ=A|stop_gained|HIGH|LDLR|ENST4|YES|NM_3|0.0001;PGP_IMPACT=HIGH;PGP_CSQ=stop_gained;PGP_GENE=LDLR;PGP_TX=MANE;PGP_FREQ=rare;PGP_CALL=weak;PGP_CALL_WHY=GQ11,AB0.29	GT:GQ:DP:AD	1/1:11:17:12,5
+chr11	400	.	G	A	50	PASS	CSQ=A|stop_gained|HIGH|MYBPC3|ENST5|YES|NM_4|0.0001;PGP_IMPACT=HIGH;PGP_CSQ=stop_gained;PGP_GENE=MYBPC3;PGP_TX=MANE;PGP_FREQ=rare;PGP_CALL=ok	GT:GQ:DP:AD	1/1:50:30:0,30
+chr14	500	.	CTTT	C	50	PASS	CSQ=-|frameshift_variant|HIGH|MYH7|ENST6|YES|NM_5|;PGP_IMPACT=HIGH;PGP_CSQ=frameshift_variant;PGP_GENE=MYH7;PGP_TX=MANE;PGP_FREQ=unknown;PGP_CALL=ok	GT:GQ:DP:AD	0/1:50:30:15,15
+chr11	600	.	C	T	50	PASS	CSQ=T|stop_gained|HIGH|KCNQ1|ENST7|YES|NM_6|0.3;PGP_IMPACT=HIGH;PGP_CSQ=stop_gained;PGP_GENE=KCNQ1;PGP_TX=MANE;PGP_FREQ=common;PGP_CALL=ok	GT:GQ:DP:AD	0/1:50:30:15,15
+chr3	700	.	C	T	50	PASS	CSQ=T|missense_variant|MODERATE|SCN5A|ENST8|||0.0001,T|stop_gained|HIGH|SCN5A|ENST9|YES||0.0001;PGP_IMPACT=HIGH;PGP_CSQ=stop_gained;PGP_GENE=SCN5A;PGP_TX=CANONICAL;PGP_FREQ=rare;PGP_CALL=ok	GT:GQ:DP:AD	0/1:50:30:15,15

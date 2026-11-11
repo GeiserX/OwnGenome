@@ -1,0 +1,3 @@
+usage: og vcf csq-rank [--keep all|noncommon] [--rare-af 0.01] [--min-gq 30] [--min-dp 10]
+                       [--het-lo 0.2] [--het-hi 0.8] [--hom-lo 0.8] [--in FILE|-] [--out FILE|-]
+og vcf csq-rank: error: argument --min-gq: not a number: 'abc'
