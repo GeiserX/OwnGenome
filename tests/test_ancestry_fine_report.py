@@ -18,7 +18,8 @@ of bin/ancestry_fine_report.py:
                and the chromosome RFMix failed on, in the table, the text and
                both pipeline reports (collect_summary.py, render_report.py)
   the module   the group names, colours and MIN_REFERENCES collect_summary.py
-               reads from it are the ones og writes
+               reads from it are the ones og writes, and its painting_png
+               draws the same pixels as og's S_painting.png
 
 The Rust unit tests (rust/crates/og-ancestry) and tests/parity check each
 command in detail; this test runs them as the pipeline does, through bin/og.
@@ -55,6 +56,48 @@ def og(*args, cwd=None):
 def write(path, text):
     with open(path, "w") as f:
         f.write(text)
+
+
+def png_pixels(data):
+    """The RGB rows of an 8-bit RGB PNG, every filter undone."""
+    w, h = struct.unpack(">II", data[16:24])
+    idat, pos = b"", 8
+    while pos < len(data):
+        n, kind = struct.unpack(">I4s", data[pos:pos + 8])
+        if kind == b"IDAT":
+            idat += data[pos + 8:pos + 8 + n]
+        pos += 12 + n
+    raw, stride, rows, prev = zlib.decompress(idat), 3 * w, [], bytearray(3 * w)
+    for y in range(h):
+        f, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        for i in range(stride):
+            a = line[i - 3] if i >= 3 else 0
+            b, c = prev[i], prev[i - 3] if i >= 3 else 0
+            if f == 1:
+                line[i] = (line[i] + a) & 255
+            elif f == 2:
+                line[i] = (line[i] + b) & 255
+            elif f == 3:
+                line[i] = (line[i] + (a + b) // 2) & 255
+            elif f == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        rows.append(bytes(line))
+        prev = line
+    return (w, h, rows)
+
+
+def first_difference(a, b):
+    """None if two PNGs hold the same pixels, else where they first differ."""
+    (wa, ha, ra), (wb, hb, rb) = png_pixels(a), png_pixels(b)
+    if (wa, ha) != (wb, hb):
+        return f"size {wa}x{ha} vs {wb}x{hb}"
+    for y, (la, lb) in enumerate(zip(ra, rb)):
+        for x in range(wa):
+            if la[3 * x:3 * x + 3] != lb[3 * x:3 * x + 3]:
+                return f"pixel ({x}, {y}): {tuple(la[3 * x:3 * x + 3])} vs {tuple(lb[3 * x:3 * x + 3])}"
+    return None
 
 
 def run_all(tmp):
@@ -208,6 +251,11 @@ def run_all(tmp):
             for row in table[1:] if row[0] in ("continent", "region", "painting")])
     expect("module: MIN_REFERENCES is 10, as og's", af.MIN_REFERENCES, 10)
     expect("module: a colour for each continental group", sorted(af.COLOURS), sorted(af.LABELS["continent"]))
+    # The legend collect_summary.py draws from af.COLOURS, and the docs demo's
+    # painting_png, must match og's picture: the same rows give the same
+    # pixels (the compressed bytes may differ).
+    demo = af.painting_png([(c, int(s), int(e), int(hp), code) for c, s, e, hp, code in bed])
+    expect("module: painting_png draws og's pixels, colour for colour", first_difference(demo, png), None)
 
     # Both pipeline reports (collect_summary.py, then render_report.py) carry them.
     import collect_summary  # noqa: E402
