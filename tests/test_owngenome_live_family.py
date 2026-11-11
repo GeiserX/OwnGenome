@@ -355,9 +355,11 @@ def browser_checks(port, work):
         b.eval("document.querySelector('details[data-child=child_a]').open = true; true")
         # child_a's results cannot be built here (its summary is cut short), so the page cannot tell whether a
         # result to act on is closed: the map stays closed until "Show the map" is clicked.
-        shut = b.wait("var v = Array.prototype.filter.call(document.querySelectorAll('details[data-child=child_a] .veil'), "
+        # Only once the page has given up on child_a's results: a page still waiting keeps the map closed anyway.
+        shut = b.wait("/\\bchild_a:failed\\b/.test(document.documentElement.dataset.pgpKids || '') && "
+                      "(function () { var v = Array.prototype.filter.call(document.querySelectorAll('details[data-child=child_a] .veil'), "
                       "function (x) { return x.textContent.indexOf('Show the map') >= 0; })[0]; "
-                      "v && !document.querySelector('details[data-child=child_a] img') && (v.querySelector('button').click(), true)", 10)
+                      "return v && !document.querySelector('details[data-child=child_a] img') && (v.querySelector('button').click(), true); }())", 10)
         check("browser: child_a's chromosome map stays closed while its results cannot be read", shut, shut)
         seg = b.wait("var i = document.querySelector('details[data-child=child_a] img'); "
                      "i && i.complete && i.naturalWidth > 0 && i.getAttribute('src')", 10)
@@ -375,7 +377,8 @@ def browser_checks(port, work):
 def open_screen(b):
     """Click the closed boxes of father_a's and mother_a's couple screen, one per partner, once they show with no
     table or link: whether they did and the screen then opened."""
-    shut = b.wait("document.querySelectorAll('#ch-couples .veil').length === 2 && !document.querySelector('#ch-couples table') "
+    shut = b.wait("!/:pending\\b/.test(document.documentElement.dataset.pgpKids || ':pending') && "
+                  "document.querySelectorAll('#ch-couples .veil').length === 2 && !document.querySelector('#ch-couples table') "
                   "&& !document.querySelector('#ch-couples p[data-couple] a') && 'shut'", 10)
     for who in ("father_a", "mother_a"):
         b.eval("var v = document.querySelector('#ch-couples .veil[data-veil-child=%s] button'); v && v.click(); true" % who)

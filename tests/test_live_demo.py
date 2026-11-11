@@ -100,6 +100,7 @@ Run: python3 tests/test_live_demo.py
 import copy
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -905,8 +906,11 @@ def family_unknown(b, base, opens=True):
     planted results shown; then (OPENS) the de novo box's own button opens his de novo rows and no other place."""
     gene, hit, sv = planted_words()
     family_page(b, base)
+    # A page still waiting for his results keeps everything closed anyway: the check is on the state it settles in.
+    kids = b.eval("document.documentElement.dataset.pgpKids || ''") or ""
     shown = b.eval(FAMILY_SHOWN_JS) or ""
-    out = [f"{w} shown with the son's results unreadable" for w in [gene, GRANDPARENT, PAIR_B] + hit + sv[:1] if w in shown]
+    out = [] if re.search(r"\bDEMO-003:(known|failed)\b", kids) else [f"the son's results never settled: {kids!r}"]
+    out += [f"{w} shown with the son's results unreadable" for w in [gene, GRANDPARENT, PAIR_B] + hit + sv[:1] if w in shown]
     if boxes_of(b) != SON_BOXES or son_tables(b) is None or len(son_tables(b)) != 1:
         out.append(f"closed places {boxes_of(b)}, tables {son_tables(b)}")
     words = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.veil[data-veil-child=\"DEMO-003\"] button'), "
