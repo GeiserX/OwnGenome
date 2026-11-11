@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""bin/pgx_parse.py, the one PharmCAT reader (step 27, the CPIC_LOOKUP module
-and this test import or run the same file; there is no copy to keep in sync).
+"""`og pgx cpic-report` and `og pgx step36-outside`, the one PharmCAT reader
+(rust/crates/og-pgx; step 27 and the CPIC_LOOKUP module run the same binary).
+The function-level rules (the phenotype classes, the layouts, the activity
+score bands) are unit tests in that crate; this file runs the binary.
 
 Checks:
   1. the real PharmCAT report.json of the HG002 fixture, from each PharmCAT
@@ -8,7 +10,7 @@ Checks:
      parses to genes; a gene PharmCAT lists several possible diplotypes for,
      with different phenotypes (CYP2C19, 528 of them in 3.2.0), is 'ambiguous'
      and never read as its first diplotype; a report that parses to zero genes
-     makes `pgx_parse.py cpic-report` exit 1 with a PARSING FAILED report,
+     makes `og pgx cpic-report` exit 1 with a PARSING FAILED report,
      never an all-clear;
   2. on PharmCAT's own example report (pharmcat-docs-example.json) exactly 3
      genes count as non-normal (CYP2D6, HLA-B, NAT2); the 7 whose phenotype is
@@ -69,19 +71,31 @@ Checks:
      reported, not fatal. Control: the table without its POLG row gives no
      valproic acid line for the same hit.
 
-Run: python3 tests/test_cpic_parser.py
+Run: python3 tests/test_cpic_parser.py, with OG set to an og binary or
+rust/target/release/og built (cd rust && cargo build --release -p og).
 """
-import contextlib
-import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import pgx_parse  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
+
+OG = og_binary()
+# The genes a medication list is checked for, and the contraindication
+# table's columns, as og reads them.
+PHENOCONVERSION_GENES = ("CYP2D6", "CYP2C19", "CYP2C9", "CYP3A4", "CYP3A5")
+CONTRA_COLUMNS = ["Gene", "Drug", "Names", "CPIC_level", "Note", "Pair_source", "Label_source"]
+
+
+def og(*args):
+    """Run og; returns (exit code, stdout, stderr)."""
+    r = subprocess.run([OG, *args], capture_output=True, text=True)
+    return r.returncode, r.stdout, r.stderr
 
 FIXTURES = os.path.join(REPO, "tests", "fixtures", "pharmcat")
 # One real HG002 report per PharmCAT release the parser is tested on: the
@@ -121,7 +135,7 @@ def run_report(work, name, data, pypgx=None, consensus=None, medications=None, i
     rep = os.path.join(d, "report.json")
     with open(rep, "w") as f:
         json.dump(data, f)
-    args = ["cpic-report", "--sample", name, "--report", rep, "--outdir", d]
+    args = ["pgx", "cpic-report", "--sample", name, "--report", rep, "--outdir", d]
     if consensus is not None:
         cp = os.path.join(d, "consensus.tsv")
         with open(cp, "w") as f:
@@ -149,8 +163,7 @@ def run_report(work, name, data, pypgx=None, consensus=None, medications=None, i
             for g, (dl, ph) in pypgx.items():
                 f.write(f"{g}\t{dl}\t{ph}\t.\tbam\n")
         args += ["--pypgx", p, "--comparison", comp]
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        rc = pgx_parse.main(args)
+    rc, _, _ = og(*args)
     rec = open(os.path.join(d, f"{name}_cpic_recommendations.txt")).read()
     rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(d, f"{name}_phenotypes.tsv"))][1:]
     crow = [l.rstrip("\n").split("\t") for l in open(comp)][1:] if os.path.exists(comp) else []
@@ -205,14 +218,16 @@ def phenoconversion_checks(work):
     check("inhibitors: every row has a gene, a strength, CPIC's factor for it and its sources", not bad, bad)
     keys = [(r[0], r[1]) for r in rows]
     check("inhibitors: no drug twice for one gene", len(keys) == len(set(keys)), keys)
-    check("inhibitors: the genes of the table are the parser's", set(strengths) == set(pgx_parse.PHENOCONVERSION_GENES),
-          pgx_parse.PHENOCONVERSION_GENES)
+    check("inhibitors: the genes of the table are the parser's", set(strengths) == set(PHENOCONVERSION_GENES),
+          PHENOCONVERSION_GENES)
     for gene, sts in strengths.items():
         for st in sts:
             check(f"inhibitors: {gene} has {st} inhibitors", any(r[1] == gene and r[2] == st for r in rows))
     check("inhibitors: CYP3A4 and CYP3A5 list the same strong inhibitors",
           {r[0] for r in rows if r[1] == "CYP3A4"} == {r[0] for r in rows if r[1] == "CYP3A5"})
-    check("inhibitors: the parser reads the table", len(pgx_parse.read_inhibitors(INHIBITORS)) == len(rows))
+    _, rec, _, _ = run_report(work, "PHENOREAD", pheno_report(), medications="paroxetine\n")
+    check("inhibitors: the parser reads the table", "Could not read" not in section(rec)
+          and "phenoconverted by paroxetine" in section(rec), section(rec))
     boosted = {"elvitegravir", "indinavir", "lopinavir", "paritaprevir", "saquinavir", "tipranavir"}
     check("inhibitors: each ritonavir-boosted partner the FDA classes as strong has a CYP3A4 and a CYP3A5 row",
           all((d, g) in keys for d in boosted for g in ("CYP3A4", "CYP3A5")), boosted)
@@ -305,13 +320,8 @@ def phenoconversion_checks(work):
     rc, rec, rows, _ = run_report(work, "PHENONOFAC", pheno_report(), medications="paroxetine\n", inhibitors=nofac)
     check("phenoconversion: a CYP2D6 row with an empty factor is reported as unreadable, the report still written",
           rc == 0 and "Could not read the medication list or the inhibitor table" in section(rec), (rc, section(rec)))
-    with contextlib.redirect_stderr(io.StringIO()):
-        try:
-            pgx_parse.main(["cpic-report", "--sample", "X", "--report", "r.json", "--outdir", work,
-                            "--medications", "m.txt"])
-            code = 0
-        except SystemExit as e:
-            code = e.code
+    code, _, _ = og("pgx", "cpic-report", "--sample", "X", "--report", "r.json", "--outdir", work,
+                    "--medications", "m.txt")
     check("--medications without --inhibitors is refused", code == 2, code)
 
     # 8g. CYP2C9 and CYP3A5: an inhibitor changes the reported column to a note, its absence leaves '-'
@@ -362,7 +372,7 @@ def contraindication_checks(work):
     with open(CONTRA) as f:
         lines = [line for line in f if not line.startswith("#")]
     header = lines[0].rstrip("\n").split("\t")
-    check("contraindications: the header", header == pgx_parse.CONTRA_COLUMNS, header)
+    check("contraindications: the header", header == CONTRA_COLUMNS, header)
     rows = [line.rstrip("\n").split("\t") for line in lines[1:] if line.strip()]
     bad = [r for r in rows if len(r) != 7 or not all(c.strip() for c in r)
            or r[3] not in ("A", "B", "A/B")
@@ -378,7 +388,10 @@ def contraindication_checks(work):
           {("POLG", "valproic acid"), ("ASL", "valproic acid"), ("ASS1", "valproic acid"), ("CPS1", "valproic acid"),
            ("NAGS", "valproic acid"), ("OTC", "valproic acid"), ("HPRT1", "mycophenolic acid"),
            ("SCN1A", "carbamazepine"), ("SCN1A", "phenytoin")} <= set(keys), keys)
-    check("contraindications: the parser reads the table", len(pgx_parse.read_contraindications(CONTRA)) == len(rows))
+    _, rec, _, _ = run_report(work, "CONTRAREAD", pheno_report(), contraindications=CONTRA)
+    check("contraindications: the parser reads the table", "Could not read" not in contra_section(rec)
+          and "Genes it would check: " + ", ".join(dict.fromkeys(r[0] for r in rows)) + "." in contra_section(rec),
+          contra_section(rec))
 
     # 9b. a pathogenic POLG hit adds the valproate line; benign, conflicting or another gene do not
     rep = pheno_report()
@@ -426,13 +439,8 @@ def contraindication_checks(work):
           rc == 0 and "Could not read the ClinVar hits table" in contra_section(rec), (rc, contra_section(rec)))
     _, rec, _, _ = run_report(work, "CONTRANONE", rep)
     check("contraindications: without the table there is no section", "Drug Contraindications" not in rec, rec[:600])
-    with contextlib.redirect_stderr(io.StringIO()):
-        try:
-            pgx_parse.main(["cpic-report", "--sample", "X", "--report", "r.json", "--outdir", work,
-                            "--clinvar-hits", "h.tsv"])
-            code = 0
-        except SystemExit as e:
-            code = e.code
+    code, _, _ = og("pgx", "cpic-report", "--sample", "X", "--report", "r.json", "--outdir", work,
+                    "--clinvar-hits", "h.tsv")
     check("--clinvar-hits without --contraindications is refused", code == 2, code)
 
     # 9d. control: the same hit with the POLG row taken out of the table gives no valproate line
@@ -453,48 +461,39 @@ def main():
             with open(os.path.join(FIXTURES, f"report-{version}.json")) as f:
                 real = json.load(f)
             tag = f"{version}:"
-            status, calls = pgx_parse.parse_genes(real)
-            print(f"fixture: PharmCAT {real.get('pharmcatVersion')}, {len(calls)} genes: "
-                  + ", ".join(f"{c.gene} {c.diplotype} ({c.status})" for c in calls))
-            check(f"{tag} the report is PharmCAT {version}", real.get("pharmcatVersion") == version, real.get("pharmcatVersion"))
-            check(f"{tag} the HG002 report parses (status OK)", status == "OK", status)
-            check(f"{tag} the HG002 report yields genes", len(calls) >= 10, len(calls))
-            check(f"{tag} the HG002 report calls at least one gene", any(c.called for c in calls))
             rc, rec, rows, _ = run_report(work, f"HG002_{version}", real)
+            print(f"fixture: PharmCAT {real.get('pharmcatVersion')}, {len(rows)} genes: "
+                  + ", ".join(f"{r[0]} {r[1]} ({r[3]})" for r in rows))
+            check(f"{tag} the report is PharmCAT {version}", real.get("pharmcatVersion") == version, real.get("pharmcatVersion"))
             check(f"{tag} cpic-report on the HG002 report exits 0", rc == 0, rc)
+            check(f"{tag} the HG002 report yields genes", len(rows) >= 10, len(rows))
+            check(f"{tag} the HG002 report calls at least one gene", any(r[3] != "not called" for r in rows), rows)
             check(f"{tag} one phenotypes row per gene, with a Status",
-                  len(rows) == len(calls) and all(len(r) == 4 for r in rows), rows[:3])
-            by = {c.gene: c for c in calls}
+                  len({r[0] for r in rows}) == len(rows) and all(len(r) == 4 for r in rows), rows[:3])
+            by = {r[0]: r for r in rows}
+            several = {r[0]: int(r[1].rsplit("(1 of ", 1)[1].split()[0]) for r in rows if " possible)" in r[1]}
             check(f"{tag} the genes with more than one possible diplotype are {sorted(ambiguous)}",
-                  sorted(c.gene for c in calls if len(c.labels) > 1) == sorted(ambiguous),
-                  [(c.gene, len(c.labels)) for c in calls if len(c.labels) > 1])
+                  several == ambiguous, several)
             for gene, n in sorted(ambiguous.items()):
                 g = by.get(gene)
                 check(f"{tag} HG002 {gene}: {n} possible diplotypes, status ambiguous",
-                      g is not None and len(g.labels) == n and g.status == "ambiguous", g and (len(g.labels), g.status))
+                      g is not None and g[3] == "ambiguous", g)
                 check(f"{tag} HG002 {gene}: not reported as its first diplotype's phenotype",
-                      g is not None and g.phenotype.startswith("ambiguous: ") and f"(1 of {n} possible)" in g.diplotype,
-                      g and (g.diplotype, g.phenotype))
+                      g is not None and g[2].startswith("ambiguous: ") and f"(1 of {n} possible)" in g[1], g)
                 check(f"{tag} the recommendations list {gene} with the ambiguous genes",
                       "Genes With More Than One Possible Result:" in rec and f"  {gene} -- {n} possible diplotypes" in rec,
                       rec[:2000])
-                check(f"{tag} the phenotypes table says ambiguous for {gene}",
-                      any(r[0] == gene and r[3] == "ambiguous" for r in rows), rows)
-            guidance = pgx_parse.drug_guidance(real)
-            check(f"{tag} the report's drugs section is read", sum(len(v) for v in guidance.values()) > 0)
 
         with open(EXAMPLE) as f:
             example = json.load(f)
-        _, ecalls = pgx_parse.parse_genes(example)
-        nonnormal = [c for c in ecalls if c.status == "non-normal"]
-        check("example report: 3 genes with a non-normal phenotype (CYP2D6, HLA-B, NAT2)",
-              sorted(c.gene for c in nonnormal) == ["CYP2D6", "HLA-B", "NAT2"], [c.gene for c in nonnormal])
-        unclassified = ["CACNA1S", "CFTR", "CYP4F2", "IFNL3", "MT-RNR1", "RYR1", "VKORC1"]
-        check("example report: n/a, 'no phenotype assigned', a genotype and 'Uncertain Susceptibility' are unclassified",
-              sorted(c.gene for c in ecalls if c.status == "unclassified") == unclassified,
-              [(c.gene, c.phenotype, c.status) for c in ecalls])
         rc, rec, erows, _ = run_report(work, "EXAMPLE", example)
         check("cpic-report on the example report exits 0", rc == 0, rc)
+        nonnormal = [r for r in erows if r[3] == "non-normal"]
+        check("example report: 3 genes with a non-normal phenotype (CYP2D6, HLA-B, NAT2)",
+              sorted(r[0] for r in nonnormal) == ["CYP2D6", "HLA-B", "NAT2"], [r[0] for r in nonnormal])
+        unclassified = ["CACNA1S", "CFTR", "CYP4F2", "IFNL3", "MT-RNR1", "RYR1", "VKORC1"]
+        check("example report: n/a, 'no phenotype assigned', a genotype and 'Uncertain Susceptibility' are unclassified",
+              sorted(r[0] for r in erows if r[3] == "unclassified") == unclassified, erows)
         meds = rec.split("Affected Medications:")[1].split("\n\n", 1)[1].split("Called Genes Without")[0]
         check("example: the medications section lists only the 3 non-normal genes",
               sorted(l.split(" -- ")[0].strip() for l in meds.splitlines() if l.startswith("  ") and " -- " in l
@@ -504,31 +503,18 @@ def main():
               all(f"  {g} -- " in own for g in unclassified) and "  VKORC1 -- -1639 GG (" in own, own)
         check("example: the phenotypes table says unclassified for them",
               sorted(r[0] for r in erows if r[3] == "unclassified") == unclassified, erows)
-        for phen, want in (("Likely Poor Metabolizer", True), ("Possible Intermediate Metabolizer", True),
-                           ("Ultrarapid Metabolizer", True), ("Possible Decreased Function", True),
-                           ("Increased Function", True), ("Deficient", True), ("Deficient with CNSHA", True),
-                           ("Malignant Hyperthermia Susceptibility", True), ("*57:01 positive", True),
-                           ("increased risk of aminoglycoside-induced hearing loss", True),
-                           ("ivacaftor responsive in CF patients", True),
-                           ("ivacaftor non-responsive in CF patients", False), ("Indeterminate", False),
-                           ("n/a", False), ("no phenotype assigned", False), ("-1639 GA", True),
-                           ("-1639 AA", True), ("-1639 GG", False),
-                           ("Uncertain Susceptibility", False), ("*58:01 negative", False)):
-            check(f"is_non_normal({phen!r}) is {want}", pgx_parse.is_non_normal(phen) is want)
         ga = json.loads(json.dumps(example))
         ga["genes"]["VKORC1"]["sourceDiplotypes"][0].update(
             label="rs9923231 reference (C)/rs9923231 variant (T)", phenotypes=["-1639 GA"])
-        _, gcalls = pgx_parse.parse_genes(ga)
+        rc, grec, grows, _ = run_report(work, "EXAMPLE_GA", ga)
         check("example with VKORC1 -1639 GA: VKORC1 counts as non-normal",
-              [c.status for c in gcalls if c.gene == "VKORC1"] == ["non-normal"],
-              [(c.gene, c.phenotype, c.status) for c in gcalls if c.gene == "VKORC1"])
-        rc, grec, _, _ = run_report(work, "EXAMPLE_GA", ga)
+              [r[3] for r in grows if r[0] == "VKORC1"] == ["non-normal"], [r for r in grows if r[0] == "VKORC1"])
         check("example with VKORC1 -1639 GA: its drug list names warfarin",
               rc == 0 and "    Drugs" in block(grec, "VKORC1") and "warfarin" in block(grec, "VKORC1"),
               block(grec, "VKORC1"))
-        for c in nonnormal:
-            b = block(rec, c.gene)
-            check(f"example {c.gene} ({c.phenotype}): a drug list", "    Drugs" in b and "not in the drug table" not in b, b)
+        for gene, _, phen, _ in nonnormal:
+            b = block(rec, gene)
+            check(f"example {gene} ({phen}): a drug list", "    Drugs" in b and "not in the drug table" not in b, b)
         check("example CYP2D6 *1/*3 (Intermediate): codeine's recommendation for that diplotype",
               "- codeine [CPIC, Moderate]: Use codeine label recommended age- or weight-specific dosing. "
               "If no response and opioid use is warranted, consider a non-tramadol opioid." in block(rec, "CYP2D6"),
@@ -603,8 +589,8 @@ def main():
                 ("list", {"genes": [dict(g2["CYP2C19"], gene="CYP2C19")]}, 1),
                 ("recommendationDiplotypes", {"genes": {"DPYD": {"recommendationDiplotypes": [
                     {"label": "c.1905+1G>A/Reference", "phenotypes": ["Intermediate Metabolizer"]}]}}}, 1)):
-            st, cl = pgx_parse.parse_genes(d)
-            check(f"layout {label}: {want} gene(s)", st == "OK" and len(cl) == want, (st, [c.gene for c in cl]))
+            rc, _, rows, _ = run_report(work, "LAYOUT" + str(len(label)), d)
+            check(f"layout {label}: {want} gene(s)", rc == 0 and len(rows) == want, (rc, rows))
 
         # 4. PharmCAT no result, pypgx call
         data = {"genes": {"CYP2D6": dict(dip("Unknown", "Unknown", "No Result"),
@@ -655,12 +641,8 @@ def main():
             f.write(b"Gene\tDiplotype\n\xff\xfe\x00broken\n")
         with open(comp, "w") as f:  # a comparison left by an earlier run
             f.write("Gene\tPharmCAT_diplotype\tpypgx_diplotype\tMatch\tCalled_by\nCYP2C19\t*1/*1\t*1/*1\tYes\tboth\n")
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            try:
-                rc = pgx_parse.main(["cpic-report", "--sample", "BADPYPGX", "--report", rep, "--outdir", d,
-                                     "--pypgx", bad, "--comparison", comp])
-            except Exception as e:  # the pre-fix behaviour: the step dies
-                rc = f"raised {type(e).__name__}: {e}"
+        rc, _, _ = og("pgx", "cpic-report", "--sample", "BADPYPGX", "--report", rep, "--outdir", d,
+                      "--pypgx", bad, "--comparison", comp)
         rp = os.path.join(d, "BADPYPGX_cpic_recommendations.txt")
         rec = open(rp).read() if os.path.exists(rp) else ""
         check("unreadable pypgx summary: exits 0 with the CPIC report written", rc == 0 and "CYP2C19 -- Poor" in rec, rc)
@@ -814,19 +796,14 @@ def main():
               and "  CYP2D6 -- " not in rec.split("Affected Medications:", 1)[-1].split("Calls From Other Tools", 1)[0],
               rec[-1500:])
         rep = os.path.join(work, "MTRNR1CONS", "report.json")
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            rc = pgx_parse.main(["step36-outside", "--report", rep])
-        check("step36-outside lists CYP2D6 and not MT-RNR1", rc == 0 and out.getvalue().split() == ["CYP2D6"],
-              (rc, out.getvalue()))
+        rc, out, _ = og("pgx", "step36-outside", "--report", rep)
+        check("step36-outside lists CYP2D6 and not MT-RNR1", rc == 0 and out.split() == ["CYP2D6"], (rc, out))
         only = os.path.join(work, "MTRNR1ONLY.json")
         with open(only, "w") as f:
             json.dump({"genes": {"MT-RNR1": mito["genes"]["MT-RNR1"]}}, f)
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            rc = pgx_parse.main(["step36-outside", "--report", only])
+        rc, out, _ = og("pgx", "step36-outside", "--report", only)
         check("step36-outside lists nothing for a report whose only outside call is MT-RNR1",
-              rc == 0 and out.getvalue() == "", (rc, out.getvalue()))
+              rc == 0 and out == "", (rc, out))
         phenoconversion_checks(work)
         contraindication_checks(work)
     finally:

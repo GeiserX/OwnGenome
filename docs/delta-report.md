@@ -9,12 +9,14 @@ When you run the pipeline again on the same sample, for example after a ClinVar 
 ## How it works
 
 1. Each time `generate-report.sh` runs, it keeps a copy of the run's `summary.json` and `run_manifest.tsv` in `${SAMPLE}/history/<UTC time>/`, for example `history/2026-10-18T091500Z/`.
-2. Before it keeps that copy, `bin/run_delta.py` compares the current `summary.json` and `run_manifest.tsv` with the newest folder in `history/`.
+2. Before it keeps that copy, `og run delta` (OwnGenome's Rust binary, run in the Python image) compares the current `summary.json` and `run_manifest.tsv` with the newest folder in `history/` that holds a `summary.json`. A newer folder without one, from a copy that stopped half way, is passed over.
 3. It writes `${SAMPLE}/${SAMPLE}_delta.txt`, `${SAMPLE}_delta.html` and `${SAMPLE}_delta.json`, and prints the text version at the end of the script's output.
 
 The first run with no `history/` folder says there is no previous run and becomes the baseline. A run whose inputs and results match the previous one says "No change".
 
 Runs made before this feature kept no history, so the first run after it has nothing to compare with.
+
+The report needs `og` in `bin/.og/`, as steps 04, 05 and 07 do: `scripts/setup.sh --og` builds it. Without it the text report is still written, and the script then stops with "the delta against the previous run was not written".
 
 ## What it compares
 

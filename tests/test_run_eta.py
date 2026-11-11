@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/run_eta.py on synthetic traces (tests/fixtures/run_eta) and synthetic run states.
+"""bin/run_eta.py (the live alerts' estimate) on synthetic traces (tests/fixtures/run_eta) and synthetic run states.
 
 Checks:
   1. nextflow.config's trace.fields is Nextflow's 14 default columns in order, then
@@ -21,23 +21,24 @@ Checks:
  11. a running step past its high end makes the high end unknown and says so;
  12. a step the catalogue does not time, or only estimates, lands in unknown_steps, never 0;
  13. a step with a task whose last attempt failed or was stopped gives no span;
- 14. the command writes the estimate and the history from an OUTDIR;
+ 14. estimate() gives the estimate and writes the history from an OUTDIR (the
+     command, og run eta, is held to the same output by og-runlog's parity test);
  15. without --sample, the trace of a run that run-all.sh has not finished is left
      out of the step times, and counts once run_status.tsv says it finished; a
      run_status.tsv that cannot be read leaves out the newest trace, never a crash.
+ 16. bin/run_eta.py, run_state.py, run_headroom.py and run_delta.py, run as commands,
+     exit 1 and name their og run command, never a silent exit 0.
 Each check is then run against a planted mistake (a mutant of run_eta.py or a
 broken config) and must fail there: a check that cannot fail is no check.
 
 Run: python3 tests/test_run_eta.py
 """
-import contextlib
 import glob
 import importlib.util
-import io
-import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -259,14 +260,11 @@ def remaining_checks(m):
 
 def command_checks(m):
     d = outdir(("trace_2026-01-02_09-59-00.txt", "trace_new.txt"))
-    o = os.path.join(d, "eta.json")
-    with contextlib.redirect_stdout(io.StringIO()):
-        rc = m.main([d, "--box", "ci", "--cores", "8", "--out", o])
-    est = json.load(open(o)) if os.path.isfile(o) else {}
-    ok = (rc == 0 and est.get("box") == "ci" and est["steps"]["02"]["source"] == "box"
+    est = m.estimate(d, box="ci", cores=8)
+    ok = (est.get("box") == "ci" and est["steps"]["02"]["source"] == "box"
           and est["steps"]["02"]["high_s"] == 4 * H and est["steps"]["13"]["source"] == "docs"
           and est["remaining"] is None and os.path.isfile(m.history_path(d, "ci")))
-    out = {"the command writes the estimate and the history": (ok, est.get("steps", {}).get("02"))}
+    out = {"estimate() gives the estimate and writes the history": (ok, est.get("steps", {}).get("02"))}
 
     # A run-all.sh run still going: its run_status.tsv has a start and no 'meta finished_utc'.
     d = outdir(("trace_2026-01-02_09-59-00.txt", "trace_new.txt"))
@@ -293,6 +291,15 @@ def command_checks(m):
         run_state.read_run_status = keep
     out["an unreadable run_status.tsv leaves out the newest trace"] = (got == "docs", got)
     return out
+
+
+OLD_CLIS = {"run_eta.py": "eta", "run_state.py": "state", "run_headroom.py": "headroom", "run_delta.py": "delta"}
+
+
+def old_cli_refuses(path, cmd):
+    """An old run_*.py command exits 1 and names its og command, never a silent exit 0."""
+    p = subprocess.run([sys.executable, path, "--outdir", TMP], capture_output=True, text=True, timeout=60)
+    return p.returncode == 1 and f"bin/og run {cmd}" in p.stderr and not p.stdout, (p.returncode, p.stdout, p.stderr)
 
 
 def all_checks(m):
@@ -354,15 +361,8 @@ def mutants():
         orig = mod.remaining
         return lambda st, *a: orig(dict(st, run={"state": "running"}), *a)
 
-    def out_ignored(mod):
-        orig = mod.main
-        def f(argv=None):
-            i = argv.index("--out")
-            return orig(argv[:i] + argv[i + 2:])
-        return f
-
     for f in (forced_ok, old_start_is_submit, slash, sample_in, none_is_zero, estimates_count, no_low, no_guard,
-              finished_ignored, out_ignored):
+              finished_ignored):
         f.wants_mod = True
     return {
         "an old and a new trace give the same spans": mutant(read_trace=old_start_is_submit),
@@ -387,7 +387,7 @@ def mutants():
         "a step with a task that failed or was stopped gives no span": mutant(finished=lambda ts: True),
         "a running step counts only what is left of it": mutant(left_of=lambda lo, hi, gone: (lo, hi, False)),
         "a finished run has nothing left": mutant(remaining=finished_ignored),
-        "the command writes the estimate and the history": mutant(main=out_ignored),
+        "estimate() gives the estimate and writes the history": mutant(box_name=lambda box=None: "box"),
         "the box name keeps only letters, digits, '_' and '-'": mutant(box_name=lambda box=None: box or "box"),
         "the history mutant for samples": mutant(history_rows=sample_in),
     }
@@ -403,7 +403,19 @@ def main():
         for name, (ok, detail) in results.items():
             check(name, ok, detail)
 
+        for name, cmd in OLD_CLIS.items():
+            ok, detail = old_cli_refuses(os.path.join(REPO, "bin", name), cmd)
+            check(f"bin/{name} refuses to run and names og run {cmd}", ok, detail)
+
         print("\nNegative controls: each check against a planted mistake must fail")
+        for name, cmd in OLD_CLIS.items():
+            src = open(os.path.join(REPO, "bin", name)).read()
+            cut = src.rindex('\nif __name__ == "__main__":')
+            planted = os.path.join(TMP, name)
+            with open(planted, "w") as f:
+                f.write(src[:cut] + "\n")
+            check(f"fails on a planted mistake: bin/{name} without its refusing entry point",
+                  not old_cli_refuses(planted, cmd)[0], "the check passed on the mutant")
         broken = cfg.replace(",memory,start", ",start")
         check("fails on a planted mistake: trace.fields without memory",
               not config_checks(broken)["trace.fields: the 14 defaults in order, then the 7 added"][0], "passed")

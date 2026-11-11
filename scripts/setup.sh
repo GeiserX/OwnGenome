@@ -2,7 +2,8 @@
 # setup.sh — One-stop setup: download references, pull Docker images, validate
 # Usage: ./scripts/setup.sh <genome_dir>
 #        ./scripts/setup.sh --pull-only      pull the Docker images and exit
-#        ./scripts/setup.sh --og             put OwnGenome's og binary in bin/.og:
+#        ./scripts/setup.sh --og             put OwnGenome's og binaries in bin/.og
+#                                            (Linux, and macOS for a live-site host):
 #                                            built from rust/ in OG_BUILDER, or on
 #                                            a release tag downloaded and checked
 #                                            (rust/og.sh install; docs/rust.md)
@@ -140,7 +141,8 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
-  echo "  --og          Put OwnGenome's og binary in bin/.og (built from rust/, or a release's) and exit."
+  echo "  --og          Put OwnGenome's og binaries in bin/.og, for Linux and for a macOS live-site host"
+  echo "                (built from rust/, or a release's) and exit."
   echo "  --refresh clinvar"
   echo "                Download NCBI's current ClinVar, rebuild the files made from it"
   echo "                and record its release date in <genome_dir>/clinvar/RELEASE."
@@ -1079,8 +1081,8 @@ ancestry_fine_pins() {
 # academic research use only, and any other use, a personal one included,
 # needs a licence from Stanford. Four parts, each redone only when its inputs change:
 #   samples.tsv  every person of the panel with population, continental and
-#                regional group, reference and painting flags (panel-map of
-#                bin/ancestry_fine_report.py); ANCESTRY_FINE_SAMPLE_MAP gives
+#                regional group, reference and painting flags (og ancestry-fine
+#                panel-map, rust/crates/og-ancestry); ANCESTRY_FINE_SAMPLE_MAP gives
 #                a table of your own instead;
 #   panel/       chrN.vcf.gz: their phased genotypes at the biallelic SNVs with a
 #                minor allele frequency of 5% or more, one per 2 kb (bcftools
@@ -1108,6 +1110,11 @@ install_ancestry_fine_panel() {
   echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
   for v in BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
+  # The sample table and the column order come from og (og ancestry-fine).
+  if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
+    echo "[WARN] Could not build og, which writes the panel's sample table: run ${0} --og and look at its error."
+    return 1
+  fi
   mkdir -p "${dir}/panel" "${dir}/maps" "${dir}/model"
   echo "  Checking the panel's files against ANCESTRY_FINE_PANEL_SHA256..."
   if ! ancestry_fine_pins > "${dir}/pins.tsv"; then
@@ -1160,13 +1167,13 @@ install_ancestry_fine_panel() {
       || { echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} does not start with the header of samples.tsv"; return 1; }
     cp "$smap" "${dir}/samples.tsv.part"
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-          python3 /pgp-bin/ancestry_fine_report.py check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
+          /pgp-bin/og ancestry-fine check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
       rm -f "${dir}/samples.tsv.part"
       echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} has a group too small to model"
       return 1
     fi
   elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-        python3 /pgp-bin/ancestry_fine_report.py panel-map --meta "$(cpath "${dir}/meta.tsv")" \
+        /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
           --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
     rm -f "${dir}/samples.tsv.part"
@@ -1269,7 +1276,7 @@ open(f"{out}/{c}.rfmix.map", "w").write("".join(f"{r[0]}\t{r[3]}\t{r[2]}\n" for 
       # shellcheck disable=SC2016  # $1 to $4 belong to the inner sh
       if ! run_in --rw "$dir" "$ADMIXTURE_IMAGE" sh -c 'cd "$1" && admixture --supervised -j"$4" "ref_$2.bed" "$3" > "admixture_$2.log" 2>&1' \
             _ "$(cpath "$tmp")" "$level" "$k" "$THREADS" \
-         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" python3 /pgp-bin/ancestry_fine_report.py order \
+         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og ancestry-fine order \
               --pop "$(cpath "${tmp}/ref_${level}.pop")" --q "$(cpath "${tmp}/ref_${level}.${k}.Q")"); then
         tail -n 20 "${tmp}/admixture_${level}.log" 2>/dev/null || true
         echo "[WARN] ADMIXTURE could not estimate the frequencies of the ${level} groups"
@@ -2325,14 +2332,14 @@ echo "=== Phase 3: Docker Images (~10-15 GB total) ==="
 # The list is every *_IMAGE line of versions.env not marked `# optional`.
 pull_images || exit 1
 
-# Steps 04, 05 and 07 run OwnGenome's og binary (bin/.og): built from rust/
+# Steps 04, 05, 07 and 25 run OwnGenome's og binary (bin/.og): built from rust/
 # in OG_BUILDER, or downloaded on a release tag, when it is missing or stale.
 if "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1; then
   echo "[OK] og (bin/.og) already built from this checkout's rust/."
 elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
-  echo "[WARN] Could not build og. Steps 04, 05 and 07 stop without it; run: $0 --og"
+  echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
 fi
 
 ###############################################################################

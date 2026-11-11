@@ -6,7 +6,7 @@
 Keeps every gene with all its listed diplotypes (sourceDiplotypes, or
 recommendationDiplotypes when that is all there is) and relatedDrugs, and for
 each drug of each guidance source up to MAX_ANNOTATIONS (default 4) of the
-annotations PharmCAT matched, with only the fields bin/pgx_parse.py reads.
+annotations PharmCAT matched, with only the fields og pgx reads.
 Writes compact JSON. See README.md for how each fixture was made.
 """
 import json
@@ -30,7 +30,7 @@ genes = {}
 for g, v in d["genes"].items():
     genes[g] = {k: v[k] for k in ("geneSymbol", "chr", "phased", "callSource") if k in v}
     genes[g]["relatedDrugs"] = [{"name": r["name"], "id": r.get("id")} for r in v.get("relatedDrugs") or []]
-    # sourceDiplotypes is what pgx_parse.py reads; recommendationDiplotypes only
+    # sourceDiplotypes is what og pgx reads; recommendationDiplotypes only
     # when sourceDiplotypes is absent, so it is kept only then.
     k = "sourceDiplotypes" if v.get("sourceDiplotypes") else "recommendationDiplotypes"
     if k in v: genes[g][k] = [dip(x) for x in v[k] or []]
@@ -53,5 +53,5 @@ out = {k: d[k] for k in ("title", "timestamp", "pharmcatVersion", "dataVersion")
 out["genes"] = genes
 out["drugs"] = drugs
 out["_fixture_note"] = (f"Trimmed by tests/fixtures/pharmcat/trim_report.py: every gene, and up to {MAX_ANN} matched "
-                        "annotations per drug guideline, with only the fields bin/pgx_parse.py reads.")
+                        "annotations per drug guideline, with only the fields og pgx reads.")
 json.dump(out, open(dst, "w"), separators=(",", ":"))

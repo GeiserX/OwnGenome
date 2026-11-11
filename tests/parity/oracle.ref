@@ -10,10 +10,20 @@ pgx-cyp2d6-bed	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_ch
 pgx-cyp2d6-measure	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" measure "$@"'	pgx cyp2d6-measure
 pgx-cyp2d6-check	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/cyp2d6_depth_check.py	sh -c 'exec python3 "$0" check "$@"'	pgx cyp2d6-check
 str-motif	81567aa8960b30dd8df91d6ad4a2f88f5501ace6	file:bin/rfc1_motif.py	python3	str motif
+qc-sex-loss	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/mosaic_sex_loss.py	python3	qc sex-loss
+clinvar-join-adjacent	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_join_adjacent.awk	sh ./oracle.sh	clinvar join-adjacent
+clinvar-hits	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_hits.awk	awk -f	clinvar hits
+clinvar-deep-intronic	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/clinvar_hits.awk	sh ./oracle.sh	clinvar deep-intronic
 vcf-csq-rank	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/csq_rank.awk	sh ./oracle.sh	vcf csq-rank
 table-constraint-join	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/constraint_join.awk	sh ./oracle.sh	table constraint-join
+pgx-parse	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_parse.py	python3	pgx
 sv-svlen-fix	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/sv_svlen_fix.py	python3	sv svlen-fix
 sv-inv-filter	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python	sv inv-filter
 sv-inv-filter-py3	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python3	sv inv-filter
 pgx-refblock-fill	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_refblock_fill.py	python3	pgx refblock-fill
 pgx-mito-merge	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_mito_merge.py	python3	pgx mito-merge
+ancestry-fine	6f2407f9f66cc6bee43ae13c8abae5874b53e1cf	file:bin/ancestry_fine_report.py	python3	ancestry-fine
+dev-schema	630292bd1aef8cb94bbed604e8961a98facdb47d	file:tests/schema/validate.py	python3	dev schema
+dev-contract	630292bd1aef8cb94bbed604e8961a98facdb47d	file:scripts/ci/check-output-contract.py	python3	dev contract
+prs-format	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" prs-format "$@"'	prs format
+chip	6f2407f9f66cc6bee43ae13c8abae5874b53e1cf	file:bin/chip_report.py	python3	chip

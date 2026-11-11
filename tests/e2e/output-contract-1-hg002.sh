@@ -5,11 +5,10 @@
 # column dropped and one file renamed must fail, naming both.
 . "$(dirname "$0")/lib.sh"
 
-CHECK="${REPO}/scripts/ci/check-output-contract.py"
 NF_OUT="${GENOME_DIR}/nf-results"
 
 contract() {  # contract <dir> <leg> <log>: the run check, its output in <log>; returns its exit code
-  python3 "$CHECK" --outputs "$1" --leg "$2" --sample "$SAMPLE" --observe > "$3" 2>&1
+  "${REPO}/bin/og" dev contract --repo "$REPO" --outputs "$1" --leg "$2" --sample "$SAMPLE" --observe > "$3" 2>&1
 }
 
 contract "$GENOME_DIR" bash "${CASE_TMP}/bash.log"; RC_BASH=$?

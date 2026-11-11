@@ -483,12 +483,12 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### ADMIXTURE's bootstrap crashes when it is combined with projection
 - **Failed:** `admixture -P -B100 sample.bed 6` printed `Bootstrap replicate #0` and died with a segmentation fault, on the 1.3.0 BioContainer, on every input we tried: a planted person, a real one, 235 SNVs and 1,003 SNVs.
 - **Why:** not investigated beyond the crash; 1.3.0 is the only build BioContainers publishes, so a newer ADMIXTURE would need an image built here.
-- **Fix:** step 26b runs its own block bootstrap. `bin/ancestry_fine_report.py sample-bed` writes `run_admixture.sh`, which projects the sample once per level, then for each replicate draws 100 blocks of neighbouring SNVs with replacement (awk, seeded by the replicate number), writes them as a PLINK `.ped` with the matching rows of the frequency file, and projects that. 100 replicates of 1,003 SNVs take about a second in total.
+- **Fix:** step 26b runs its own block bootstrap. `og ancestry-fine sample-bed` writes `run_admixture.sh`, which projects the sample once per level, then for each replicate draws 100 blocks of neighbouring SNVs with replacement (awk, seeded by the replicate number), writes them as a PLINK `.ped` with the matching rows of the frequency file, and projects that. 100 replicates of 1,003 SNVs take about a second in total.
 
 ### ADMIXTURE reads a `.ped` the other way round from a `.bed`
 - **Failed:** the same genotypes projected as a `.bed` and as a `.ped` gave different fractions (0.96 against 0.46 for the largest group).
 - **Why:** in PLINK's "12" coding, allele 2 is the `.bim`'s A1 (what plink2 wrote as the ALT allele here), not allele 1. Writing homozygous-ALT as `1 1` mirrors every genotype.
-- **Fix:** `PED_ALLELES` in `bin/ancestry_fine_report.py` maps the `.bed` codes to `2 2`, `1 2` and `1 1`, and `tests/test_ancestry_fine_report.py` checks both encodings of the same three genotypes.
+- **Fix:** `og ancestry-fine sample-bed` (`ped_alleles` in `rust/crates/og-ancestry/src/sample_bed.rs`) maps the `.bed` codes to `2 2`, `1 2` and `1 1`, and `tests/test_ancestry_fine_report.py` checks both encodings of the same three genotypes.
 
 ### ADMIXTURE stops on a SNV with no genotype, which for one person is every missing site
 - **Failed:** `admixture -P` exited 255 with `detected that all genotypes are missing for a SNP locus`.
@@ -498,7 +498,7 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### RFMix dies with a segmentation fault on a short chromosome
 - **Failed:** RFMix 2.03 printed `mm::allocate() ... requesting zero or negative size (0)` at `setup_ref_haplotypes()` and segfaulted on the fixture's slices (0.1 to 2.7 cM each), while the same command on chr6:29.9-33.1 Mb and on chr22:20-35 Mb ran to the end.
 - **Why:** not investigated beyond its message: on those slices `setup_ref_haplotypes()` asks for a buffer of size zero, and the longer ranges do not hit it.
-- **Fix:** the step paints a chromosome only with 100 genotyped SNVs or more spanning 5 cM or more (`bin/ancestry_fine_report.py chroms`, from the panel's genetic map). Every autosome of a whole genome spans more than 40 cM; on a slice panel the step says it painted nothing instead of crashing.
+- **Fix:** the step paints a chromosome only with 100 genotyped SNVs or more spanning 5 cM or more (`og ancestry-fine chroms`, from the panel's genetic map). Every autosome of a whole genome spans more than 40 cM; on a slice panel the step says it painted nothing instead of crashing.
 
 ### htslib writes a remote index into the working directory
 - **Failed:** `bcftools view https://.../hgdp1kgp_chr1...bcf` inside the container could not create `hgdp1kgp_chr1....bcf.csi` in its working directory, so it could not read the index and failed.

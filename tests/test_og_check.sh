@@ -5,10 +5,12 @@
 # (og-tree-hash:<hash>;). Checked: no binary is a note (an error with
 # --required); binaries of this rust/ pass; an edit to rust/, uncommitted,
 # untracked or committed, makes them stale; a file git ignores does not; a
-# binary stamped "unknown" is stale; a tree hash that cannot be computed is
+# binary stamped "unknown" is stale; the macOS pair (og-darwin-*) is
+# optional, but a stale one is refused; a tree hash that cannot be computed is
 # an error; built prints the hash for run_manifest.tsv; outside git the hash
 # cannot be checked. Release downloads: checksum, attestation, a network
-# error, a release without binaries, and a copy into bin/.og that fails. Then the callers:
+# error, a release without binaries or without the macOS pair, and a copy
+# into bin/.og that fails. Then the callers:
 # run-all.sh (with SKIP_VALIDATION=true) and validate-setup.sh refuse a stale
 # binary with the setup command, and write_manifest.sh records the hash.
 set -uo pipefail
@@ -39,6 +41,14 @@ plant() {  # plant HASH [ARCH...]: fake binaries stamped with HASH
     chmod 755 "${C}/bin/.og/og-linux-${a}"
   done
 }
+plant_mac() {  # plant_mac HASH: the macOS pair, stamped with HASH
+  local a
+  mkdir -p "${C}/bin/.og"
+  for a in arm64 x86_64; do
+    printf '\317\372\355\376 junk og-tree-hash:%s;attempt more junk' "$1" > "${C}/bin/.og/og-darwin-${a}"
+    chmod 755 "${C}/bin/.og/og-darwin-${a}"
+  done
+}
 
 h0=$(bash "$OG" tree-hash)
 [ "$h0" = "$(g rev-parse HEAD:rust)" ] && ok "tree-hash of a clean rust/ is HEAD:rust" || bad "tree-hash ${h0} != HEAD:rust"
@@ -53,6 +63,17 @@ plant "$h0"
 out=$(bash "$OG" check); rc=$?
 expect "binaries of this rust/: OK" "$rc" 0 "$out" "OK: og is built for x86_64, aarch64*${h0}*"
 out=$(bash "$OG" built); [ "$out" = "$h0" ] && ok "built prints the one hash" || bad "built printed '${out}'"
+
+# The macOS pair: fresh, it is named; stale, it is refused like a Linux one,
+# even though no pipeline step runs it (the live site's map does).
+plant_mac "$h0"
+out=$(bash "$OG" check); rc=$?
+expect "binaries of this rust/ with the macOS pair: OK" "$rc" 0 "$out" "OK: og is built for x86_64, aarch64 and macOS arm64, x86_64*${h0}*"
+out=$(bash "$OG" built); [ "$out" = "$h0" ] && ok "built still prints the Linux hash" || bad "built printed '${out}'"
+plant_mac "0000000000000000000000000000000000000000"
+out=$(bash "$OG" check); rc=$?
+expect "a stale macOS pair: refused" "$rc" 1 "$out" "ERROR: og is stale: bin/.og/og-darwin-arm64 (rust/ tree 0000000000000000000000000000000000000000) bin/.og/og-darwin-x86_64*run scripts/setup.sh --og"
+rm -f "${C}/bin/.og/og-darwin-"*
 
 plant "$h0" x86_64
 rm -f "${C}/bin/.og/og-linux-aarch64"
@@ -121,8 +142,9 @@ if command -v python3 > /dev/null 2>&1 && command -v curl > /dev/null 2>&1; then
   g tag v9.9.9
   S="${T}/srv/v9.9.9"
   mkdir -p "$S"
-  for a in x86_64 aarch64; do printf 'og-tree-hash:%s;' "$h1" > "${S}/og-linux-${a}"; done
-  (cd "$S" && { sha256sum og-linux-* 2> /dev/null || shasum -a 256 og-linux-*; } > SHA256SUMS)
+  OGS="og-linux-x86_64 og-linux-aarch64 og-darwin-arm64 og-darwin-x86_64"
+  for f in $OGS; do printf 'og-tree-hash:%s;' "$h1" > "${S}/${f}"; done
+  (cd "$S" && { sha256sum og-* 2> /dev/null || shasum -a 256 og-*; } > SHA256SUMS)
   port=$((20000 + RANDOM % 20000))
   (cd "${T}/srv" && exec python3 -m http.server "$port" --bind 127.0.0.1 > /dev/null 2>&1) &
   srv=$!
@@ -133,6 +155,15 @@ exit 0
   out=$(PATH="${T}/fake:${PATH}" OG_RELEASE_BASE="http://127.0.0.1:${port}" bash "$OG" install 2>&1); rc=$?
   expect "a release tag installs the release's binaries" "$rc" 0 "$out" "*Installed og ${h1} from release v9.9.9*"
   [ "$(bash "$OG" built)" = "$h1" ] && ok "the installed binaries carry the tree" || bad "built after install: $(bash "$OG" built)"
+  [ -x "${C}/bin/.og/og-darwin-arm64" ] && [ -x "${C}/bin/.og/og-darwin-x86_64" ] \
+    && ok "a release installs the macOS pair too" || bad "after install: $(ls -A "${C}/bin/.og")"
+  # A release whose SHA256SUMS lists no macOS pair is not this rust/'s.
+  rm -rf "${C}/bin/.og"
+  grep -v og-darwin-x86_64 "${S}/SHA256SUMS" > "${S}/SHA256SUMS.new" && mv "${S}/SHA256SUMS.new" "${S}/SHA256SUMS"
+  out=$(PATH="${T}/fake:${PATH}" OG_RELEASE_BASE="http://127.0.0.1:${port}" bash "$OG" install 2>&1); rc=$?
+  expect "a release without the macOS pair is refused" "$rc" 1 "$out" "*release v9.9.9 lists no og-darwin-x86_64*"
+  [ ! -e "${C}/bin/.og/og-linux-x86_64" ] && ok "a release without the macOS pair installs nothing" || bad "it left $(ls -A "${C}/bin/.og")"
+  (cd "$S" && { sha256sum og-* 2> /dev/null || shasum -a 256 og-*; } > SHA256SUMS)
   rm -rf "${C}/bin/.og"
   printf '#!/bin/sh
 [ "$1" = auth ] && exit 0
@@ -158,8 +189,8 @@ exit 0
   expect "a binary that does not match SHA256SUMS is refused" "$rc" 1 "$out" "*og-linux-aarch64 of release v9.9.9 does not match its SHA256SUMS*"
   [ ! -e "${C}/bin/.og/og-linux-x86_64" ] && ok "a refused release installs nothing" || bad "a refused release left a binary"
   # A copy that fails (bin/.og not writable) keeps the old pair and fails.
-  (cd "$S" && for a in x86_64 aarch64; do printf 'og-tree-hash:%s;' "$h1" > "og-linux-${a}"; done \
-    && { sha256sum og-linux-* 2> /dev/null || shasum -a 256 og-linux-*; } > SHA256SUMS)
+  (cd "$S" && for f in $OGS; do printf 'og-tree-hash:%s;' "$h1" > "$f"; done \
+    && { sha256sum og-* 2> /dev/null || shasum -a 256 og-*; } > SHA256SUMS)
   plant "$h0"
   chmod 555 "${C}/bin/.og"
   out=$(PATH="${T}/fake:${PATH}" OG_RELEASE_BASE="http://127.0.0.1:${port}" bash "$OG" install 2>&1); rc=$?

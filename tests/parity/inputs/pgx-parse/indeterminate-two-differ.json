@@ -1,0 +1,79 @@
+{
+ "genes": {
+  "UGT1A1": {
+   "sourceDiplotypes": [
+    {
+     "allele1": {
+      "name": "*1"
+     },
+     "allele2": {
+      "name": "*80"
+     },
+     "label": "*1/*80",
+     "phenotypes": [
+      "Indeterminate"
+     ]
+    },
+    {
+     "allele1": {
+      "name": "*80"
+     },
+     "allele2": {
+      "name": "*80"
+     },
+     "label": "*80/*80",
+     "phenotypes": [
+      "Indeterminate"
+     ]
+    }
+   ]
+  }
+ },
+ "drugs": {
+  "CPIC Guideline Annotation": {
+   "atazanavir": {
+    "name": "atazanavir",
+    "guidelines": [
+     {
+      "annotations": [
+       {
+        "phenotypes": {
+         "UGT1A1": "Intermediate Metabolizer"
+        },
+        "classification": "Strong",
+        "drugRecommendation": "Guidance for Intermediate Metabolizer.",
+        "genotypes": [
+         {
+          "diplotypes": [
+           {
+            "gene": "UGT1A1",
+            "label": "*1/*80"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "phenotypes": {
+         "UGT1A1": "Intermediate Metabolizer"
+        },
+        "classification": "Strong",
+        "drugRecommendation": "Other guidance.",
+        "genotypes": [
+         {
+          "diplotypes": [
+           {
+            "gene": "UGT1A1",
+            "label": "*80/*80"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

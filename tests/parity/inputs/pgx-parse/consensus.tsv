@@ -1,0 +1,4 @@
+Gene	Result	Outside_call	Reason	Evidence
+CYP2D6	*1/*1	yes	pypgx and Cyrius agree	pypgx *1/*1; Cyrius *1/*1
+HLA-B	*08:01/*57:01	yes	T1K (step 08)	HLA-B*57:01:01 (quality 60)
+HLA-A	indeterminate	no	T1K gives an allele quality 0	-

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/run_headroom.py on synthetic disks, synthetic tasks (tests/fixtures/run_headroom) and a fake host.
+"""bin/run_headroom.py (the live alerts' measure) on synthetic disks, synthetic tasks (tests/fixtures/run_headroom) and a fake host.
 
 Checks:
   1. a disk 91% used warns at the default 90, one 89% used does not;
@@ -14,7 +14,8 @@ Checks:
  10. max_memory 64 GB on a fake 32 GB host warns, on a fake 128 GB host does not;
  11. the snapshot holds no '/' in any string value, and takes its folders from the weblog metadata;
  12. MEMORY_EXITS are the exits conf/base.config's errorStrategy retries;
- 13. a real statvfs on a temp folder gives a used ratio in 0..1 and the command exits 0.
+ 13. a real statvfs on a temp folder gives a used ratio in 0..1 and the lines start with the disk;
+     the command, og run headroom, is held to the same lines by og-runlog's parity test.
  14. a running row read after a finished row of the same attempt keeps the finished ratio;
  15. a relative outdir in the metadata is joined to the run's launchDir, an absolute one is kept;
  16. metadata under 'params' (instead of Nextflow's 'parameters') gives the same outdir and max_memory;
@@ -26,7 +27,6 @@ Run: python3 tests/test_run_headroom.py
 """
 import contextlib
 import importlib.util
-import io
 import os
 import re
 import shutil
@@ -88,15 +88,22 @@ def fake_disks(m, vfs, devs=None):
 
 
 def run_main(m, argv, env=None):
-    out, saved = io.StringIO(), dict(os.environ)
+    """The lines og run headroom prints for ARGV (--work-dir, --outdir,
+    --disk-warn-percent), from snapshot() and lines(), with ENV set; 2 on a
+    warn percent snapshot() refuses. og itself is held to the same lines by
+    og-runlog's parity test."""
+    opts = dict(zip(argv[::2], argv[1::2]))
+    saved = dict(os.environ)
     os.environ.update(env or {})
     try:
-        with contextlib.redirect_stdout(out):
-            rc = m.main(argv)
+        snap = m.snapshot(work_dir=opts.get("--work-dir"), outdir=opts.get("--outdir"),
+                          disk_warn_percent=opts.get("--disk-warn-percent"))
+    except ValueError as e:
+        return 2, str(e)
     finally:
         os.environ.clear()
         os.environ.update(saved)
-    return rc, out.getvalue()
+    return 0, "".join(s + "\n" for s in m.lines(snap))
 
 
 def events():
@@ -171,7 +178,7 @@ def disk_checks(m):
 
     real = m.disk([("work", d)])
     rc, text = run_main(m, ["--work-dir", d, "--outdir", d])
-    out["a real statvfs on a temp folder gives a ratio in 0..1; the command exits 0"] = (
+    out["a real statvfs on a temp folder gives a ratio in 0..1 and a disk line"] = (
         len(real) == 1 and real[0]["used_ratio"] is not None and 0 <= real[0]["used_ratio"] <= 1
         and real[0]["size_bytes"] > 0 and rc == 0 and text.startswith("disk work and results: "), (real, rc, text))
     return out
@@ -288,7 +295,7 @@ def mutants():
             return used, free, size, inodes if inodes is not None else 0.0
         return measure
     ms["f_files 0 gives no inode ratio"] = mutant(_measure=inodes_always)
-    ms["a real statvfs on a temp folder gives a ratio in 0..1; the command exits 0"] = mutant(
+    ms["a real statvfs on a temp folder gives a ratio in 0..1 and a disk line"] = mutant(
         _statvfs=lambda p: FakeVfs(150))
 
     @with_mod
