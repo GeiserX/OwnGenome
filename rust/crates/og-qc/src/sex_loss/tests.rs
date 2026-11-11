@@ -567,3 +567,14 @@ fn the_estimates_match_cpython_to_the_last_bit() {
         }
     );
 }
+
+#[test]
+fn a_table_that_is_not_utf8_names_its_own_line() {
+    let d = Dir::new("table-utf8");
+    let p = d.0.join("S_sample_qc.tsv");
+    std::fs::write(&p, b"key\tvalue\n\n\nsex\t\xff\n").unwrap();
+    assert_eq!(
+        read_table(p.to_str().unwrap()).unwrap_err(),
+        "line 4 is not UTF-8"
+    );
+}

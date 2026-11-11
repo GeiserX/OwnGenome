@@ -25,7 +25,8 @@
 # the sex from the reads; the verdict is still the sex from the reads alone. FREEMIX above FREEMIX_WARN
 # (default 0.03) is a warning only: contamination makes calls less reliable,
 # it does not make them someone else's.
-# The mosaic estimate (og qc sex-loss) never stops the step either:
+# A data problem in the mosaic estimate (og qc sex-loss) never stops the step
+# either (a missing og binary does):
 # below about 10% of the cells nothing can be told at 30x, and above it the
 # result is a population-level marker, not a diagnosis (docs/33-sample-qc.md).
 #

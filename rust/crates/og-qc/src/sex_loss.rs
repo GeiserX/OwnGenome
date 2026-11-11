@@ -843,13 +843,12 @@ pub fn read_table(path: &str) -> Result<Vec<(String, String)>, String> {
     let mut lines = Lines::new(io::BufReader::new(file), Utf8::Strict);
     let mut rows: Vec<(String, Option<String>)> = Vec::new();
     let mut line = String::new();
+    let mut n: u64 = 0;
     loop {
         match lines.read_line(&mut line) {
-            Ok(true) => {}
+            Ok(true) => n += 1,
             Ok(false) => break,
-            Err(e) => {
-                return Err(ReadError::io(&e, path, rows.len() as u64 + 1).message);
-            }
+            Err(e) => return Err(ReadError::io(&e, path, n + 1).message),
         }
         if text::strip(&line, None).is_empty() {
             continue;
