@@ -25,11 +25,12 @@
 # reads it with grep and never runs a binary the host may not be able to.
 set -euo pipefail
 
-# Steps 09b, 21 and 32 (and their modules STRANGER_RFC1, CYRIUS and PYPGX)
-# call og, and stop with "og is not built" (bin/og, exit 127) when it is
-# missing. The check below still refuses only a stale binary unless asked
-# with --required: run-all.sh, main.nf and validate-setup.sh run it without
-# --required, and CI jobs that never reach those steps run without og.
+# Steps 04, 05, 07, 09b, 21 and 32 (and the modules of 09b, 21 and 32:
+# STRANGER_RFC1, CYRIUS and PYPGX) call og, and stop with bin/og's message
+# without it. A run is not refused up front yet: the fake-docker and Nextflow
+# stub tests start runs without og, so they need it first. Until then a
+# checkout without the binary starts, the check names the steps that need it,
+# and only a stale binary is refused.
 REQUIRED=false
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -89,7 +90,7 @@ check() {
     return 1
   fi
   if [ -n "$missing" ]; then
-    echo "NOTE: og is not built for${missing}; steps 09b, 21 and 32 need it (scripts/setup.sh --og builds it)"
+    echo "NOTE: og is not built for${missing}; steps 04, 05, 07, 09b, 21 and 32 stop without it: run scripts/setup.sh --og"
   elif [ -z "$expected" ]; then
     echo "NOTE: og is built, but this is not a git checkout, so its rust/ tree cannot be checked"
   else

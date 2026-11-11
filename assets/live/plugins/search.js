@@ -88,7 +88,8 @@
   // A hit from a section the page keeps closed (a result to act on about a child, person.js's
   // PGP.searchHidden) is left out, and so is a suggested term that only such sections name: the search
   // must not name what the page veils. The page says so whether or not anything was left out.
-  function hidden(it) { return !!(root.PGP.searchHidden && root.PGP.searchHidden(it.section, it.anchor)); }
+  // A hit tagged with a result to act on (it.veil) is left out while that result is closed, whatever its section.
+  function hidden(it) { return !!(root.PGP.searchHidden && root.PGP.searchHidden(it.section, it.anchor, it.veil || null)); }
   function closedNote() {
     return root.PGP.searchHidden && root.PGP.searchHidden(null, null)
       ? el('p', { 'class': 'muted search-closed' }, 'Results this page keeps closed are left out of the search until they are opened.')
