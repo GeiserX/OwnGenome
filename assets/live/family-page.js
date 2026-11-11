@@ -8,7 +8,8 @@
 // the drawing through createElementNS; images from this server only.
 // A child's results to act on stay closed here as on the child's own page (person.js): each child's results.json
 // gives the closed results (veil.spans), and a row of the child that names one (a de novo or compound-het
-// candidate, a stretch painted from a grandparent) stays closed until that result is opened on purpose here.
+// candidate, a side-by-side row) stays closed until that result is opened on purpose here; while a stretch
+// painted from a grandparent lies over one, the child's painting shows each stretch's parent only.
 (function () {
   'use strict';
   var U = window.PGPUI;
@@ -80,6 +81,7 @@
   // Opened results are kept for the life of this page, as on the child's page: a reload closes them again. They
   // are kept per child and per run (two children can carry the same result, under the same id).
   var UNKNOWN = '?';
+  var GENE_GROUPS = { Medicines: true, HLA: true };  // the side-by-side groups whose rows name a gene
   var kids = {}, opened = {}, openedAll = {}, mapShown = {}, last = null;
   function openKey(child, id) { return (kids[child] && kids[child].url) + '|' + child + '|' + id; }
   function loadKids(f) {
@@ -370,11 +372,18 @@
   var SIDE = { paternal: 'father', maternal: 'mother' };
   function painting(f, child, all) {
     // A stretch drawn from a grandparent says which grandparent's copy the child got there, so one over a
-    // closed result says whether the child got it: it stays closed. A stretch from a parent alone says nothing.
+    // closed result says whether the child got it. A stretch from a parent alone says nothing. Closing only that
+    // stretch would point at the closed result (a hatch, a gap in the table), so while one is closed every stretch
+    // of this child is drawn from its parent alone, and no grandparent, basis or closed mark is shown.
     var split = veiled(child, all, function (r) {
       return r.ancestor && r.ancestor !== '.' ? tagOf(child, r.chrom + ':' + r.start + '-' + r.end, r.chrom, r.start, r.end, true) : [];
     });
-    var rows = split.open;
+    var shut = [];
+    split.closed.forEach(function (t) { t.forEach(function (x) { if (shut.indexOf(x) < 0) { shut.push(x); } }); });
+    var rows = !shut.length ? all : all.map(function (r) {
+      return { side: r.side, parent: r.parent, chrom: r.chrom, start: r.start, end: r.end, sites: r.sites,
+        discordant: r.discordant, ancestor: '.', basis: 'parent' };
+    });
     var lengths = f.chrom_lengths || [];
     var longest = Math.max.apply(null, lengths.map(function (x) { return x[1]; }).concat([1]));
     var colours = Object.create(null), next = 1;
@@ -393,14 +402,6 @@
       ['paternal', 'maternal'].forEach(function (side) {
         var track = el('span', { 'class': 'paint-track ' + side });
         track.style.setProperty('--len', (100 * cl[1] / longest).toFixed(2) + '%');
-        all.filter(function (r) { return r.chrom === chrom && r.side === side && rows.indexOf(r) < 0; }).forEach(function (r) {
-          var a = parseInt(r.start, 10), b = parseInt(r.end, 10);
-          if (!isFinite(a) || !isFinite(b) || b < a) { return; }
-          var seg = el('span', { 'class': 'paint-seg closed', title: 'A closed stretch' });
-          seg.style.setProperty('--a', (100 * a / cl[1]).toFixed(3) + '%');
-          seg.style.setProperty('--w', Math.max(0.4, 100 * (b - a) / cl[1]).toFixed(3) + '%');
-          add(track, seg);
-        });
         rows.filter(function (r) { return r.chrom === chrom && r.side === side; }).forEach(function (r) {
           var a = parseInt(r.start, 10), b = parseInt(r.end, 10);
           if (!isFinite(a) || !isFinite(b) || b < a) { return; }
@@ -425,10 +426,18 @@
         who + (colours[who].basis === 'other copy' ? ' (the copy not from the sequenced parent)' : ''));
       add(leg, it);
     });
-    add(leg, el('span', { 'class': 'dim' }, ' Grey: no stretch called (no informative site, a gap of the reference).' +
-      (split.closed.length ? ' Hatched: a closed stretch.' : '')));
+    add(leg, el('span', { 'class': 'dim' }, ' Grey: no stretch called (no informative site, a gap of the reference).'));
     add(fig, leg);
-    add(fig, veilBox(child, split.closed, 'stretch', 'stretches'));
+    if (shut.length) {
+      // One box for the whole painting: a count of closed stretches would say how many sit over the result.
+      add(fig, shut[0] === UNKNOWN
+        ? U.veil('The grandparents of ' + child + '’s stretches stay hidden: this page cannot read ' + child + '’s results yet, ' +
+          'so it cannot tell which stretch lies over a result to act on in adult life. Each stretch shows its parent only.',
+          'Show the grandparents', function () { openedAll[child] = true; redraw(); })
+        : U.veil('The grandparents of ' + child + '’s stretches stay hidden while a result to act on in adult life is ' +
+          'closed: they could show which copy the child got there. Each stretch shows its parent only.', null,
+          function () { opened[openKey(child, shut[0])] = true; redraw(); }));
+    }
     var d = el('details', { 'class': 'w-fallback' });
     add(d, el('summary', {}, 'Every stretch (' + rows.length + ')'));
     add(d, U.table({ columns: ['Copy', 'Chromosome', 'Start', 'End', 'From', 'Sites', 'Discordant', 'Basis'],
@@ -510,9 +519,25 @@
     if (!sb || !sb.rows.length) { add(s, el('p', { 'class': 'dim' }, 'No member has a summary yet, or no summary lists these results.')); return s; }
     add(s, el('p', { 'class': 'dim' }, 'Each member’s own report, one column per person: CYP2D6, the CPIC genes ' +
       '(phenotypes in CPIC’s words), HLA, the haplogroups and the blood groups.'));
+    // A child's value that names a closed result (a CPIC gene that is also the gene of a result to act on, RYR1 or
+    // CACNA1S) closes its whole row, as the child's own page closes that row of its medicines card: a closed cell
+    // under the gene's name would say which gene it is. While this page cannot read a child's results, every row
+    // that names a gene (the medicines and HLA rows) stays closed; the haplogroups and blood groups name none.
+    var kidsHere = (f.state.children || []).map(function (c) { return c.child; });
+    var closedBy = {}, shown = [];
+    sb.rows.forEach(function (r) {
+      var open = true;
+      sb.members.forEach(function (m, i) {
+        if (kidsHere.indexOf(m) < 0) { return; }
+        var t = stillClosed(m, tagOf(m, r.label + ' ' + (r.values[i] || '')));
+        if (t[0] === UNKNOWN && !GENE_GROUPS[r.group]) { return; }
+        if (t.length) { (closedBy[m] = closedBy[m] || []).push(t); open = false; }
+      });
+      if (open) { shown.push(r); }
+    });
     // A value from a section older than its input (state "stale") says so in its own cell.
     var group = null, rows = [], old = 0;
-    sb.rows.forEach(function (r) {
+    shown.forEach(function (r) {
       rows.push([r.group === group ? '' : r.group, r.label].concat(r.values.map(function (v, i) {
         if (!(r.stale || [])[i]) { return v; }
         old++;
@@ -521,6 +546,10 @@
       group = r.group;
     });
     add(s, U.table({ columns: ['', 'Gene or system'].concat(sb.members), rows: rows }, 14));
+    sb.members.forEach(function (m) {
+      var box = closedBy[m] && veilBox(m, closedBy[m], 'row', 'rows');
+      if (box) { box.setAttribute('data-veil-child', m); add(s, box); }
+    });
     if (old) {
       add(s, el('p', { 'class': 'dim', 'data-stale': String(old) }, 'Marked' + STALE + ': the member’s result file is from an ' +
         'earlier run, and the latest run did not write it again; that member’s page says why.'));

@@ -349,6 +349,12 @@ def browser_checks(port, work):
               couple and "1 gene(s) where both carry a finding, 1 X-linked" in couple
               and b.eval("!!document.querySelector('p[data-couple=\\'father_a mother_a\\'] a')"), couple)
         b.eval("document.querySelector('details[data-child=child_a]').open = true; true")
+        # child_a's results cannot be built here (its summary is cut short), so the page cannot tell whether a
+        # result to act on is closed: the map stays closed until "Show the map" is clicked.
+        shut = b.wait("var v = Array.prototype.filter.call(document.querySelectorAll('details[data-child=child_a] .veil'), "
+                      "function (x) { return x.textContent.indexOf('Show the map') >= 0; })[0]; "
+                      "v && !document.querySelector('details[data-child=child_a] img') && (v.querySelector('button').click(), true)", 10)
+        check("browser: child_a's chromosome map stays closed while its results cannot be read", shut, shut)
         seg = b.wait("var i = document.querySelector('details[data-child=child_a] img'); "
                      "i && i.complete && i.naturalWidth > 0 && i.getAttribute('src')", 10)
         check("browser: child_a's chromosome map loads", seg == "/family/family_a/child_a_segments.svg", seg)

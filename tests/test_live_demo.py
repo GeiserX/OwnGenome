@@ -59,9 +59,12 @@ Checks:
      name its gene, positions and that grandparent in no row, link, title or
      count until "Show the result" is clicked there, a row that names both
      planted results stays closed until both are opened (one per click), each
-     row then comes back, and a reload closes them again; with the son's results.json
+     row then comes back, and a reload closes them again; while a stretch painted
+     from a grandparent lies over one, every stretch of his is drawn and listed from
+     its parent alone, none marked; with a closed result of his in RYR1 the side by
+     side's RYR1 row stays closed until opened there; with the son's results.json
      unavailable, or answered as unreadable, every row of his that could name one
-     stays closed; with a closed result known by its gene alone his de novo rows
+     stays closed (in the side by side every medicines and HLA row); with a closed result known by its gene alone his de novo rows
      (a position, no gene) stay closed with it; his map as an image stays closed,
      and "Show the map" opens the map and no result; on his page
      a CHIP call and a copy-number dot in the gene of a closed result stay out
@@ -77,8 +80,8 @@ the veil, person.js and finding.js that read a missing state as a standalone adu
 without its filter; for the planted results, results.json without its veil tags, person.js whose table
 rows ignore them, person.js whose findings ignore them, charts.js that keeps every mark, search.js that ignores a hit's tag
 and finding.js whose findings ignore their tags; for the family page, family-page.js whose rows ignore the veil
-core.js whose veilId() tags nothing, family-page.js without the gene-only fallback and a "Show the map" that opens
-the results too; for the drawings, person.js that draws every item), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+core.js whose veilId() tags nothing, family-page.js without the gene-only fallback, a "Show the map" that opens
+the results too, a closed painting that keeps each stretch's grandparent and a side by side that ignores the veil; for the drawings, person.js that draws every item), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -768,10 +771,14 @@ def family_closed(b, base):
     rows = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('details[data-child=\"DEMO-003\"] "
                   "table.rows'), function (t) { return t.querySelectorAll('tbody tr').length; }))")
     closed = b.eval("document.querySelectorAll('details[data-child=\"DEMO-003\"] .veil').length")
-    segs = b.eval("document.querySelectorAll('[data-painting=\"DEMO-003\"] .paint-seg.closed').length")
-    # The stretches' table, the 2 de novo rows of the fixture and its 2 other pairs stay; one closed box each.
-    if not rows or json.loads(rows)[1:] != [2, 2] or closed != 3 or segs != 1:
-        out.append(f"the open rows and the closed boxes: tables {rows}, {closed} closed boxes, {segs} closed stretches")
+    segs = b.eval("document.querySelectorAll('[data-painting=\"DEMO-003\"] .paint-seg').length")
+    marked = b.eval("document.querySelectorAll('[data-painting=\"DEMO-003\"] .paint-seg.closed, "
+                    "[data-painting=\"DEMO-003\"] .paint-seg.other').length")
+    # The 2 de novo rows of the fixture and its 2 other pairs stay, one closed box each; the painting closes whole
+    # (one box): every stretch drawn and listed from its parent, none marked, so none points at the closed result.
+    if not rows or json.loads(rows)[1:] != [2, 2] or closed != 3 or json.loads(rows)[0] != segs or marked:
+        out.append(f"the open rows and the closed boxes: tables {rows}, {closed} closed boxes, {segs} stretches drawn, "
+                   f"{marked} marked")
     return out
 
 
@@ -813,6 +820,38 @@ def family_unknown(b, base):
                   "table.rows'), function (t) { return t.querySelectorAll('tbody tr').length; }))")
     if rows is None or len(json.loads(rows)) != 1:
         out.append(f"the son's de novo or compound-het rows open with his results unavailable: tables {rows}")
+    side = side_labels(b)
+    if any(g in side for g in SIDE_GENES) or "Mitochondrial" not in side:
+        out.append(f"side by side with the son's results unavailable: rows {sorted(side)[:8]}")
+    return out
+
+
+SIDE_GENES = ("RYR1", "CACNA1S", "CYP2D6", "HLA-A")
+
+
+def side_labels(b):
+    """The 'Gene or system' column of the family page's side by side."""
+    got = b.eval("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#ch-side-by-side table.rows tbody tr'), "
+                 "function (r) { return r.children[1] ? r.children[1].textContent : ''; }))")
+    return json.loads(got) if got else []
+
+
+def side_problems(b, base):
+    """[problems] of the family page's side by side with a closed result of the son's in RYR1: the RYR1 row (his
+    diplotype and phenotype under the gene's name) shown before it is opened there, the other rows closed with it,
+    or the row not back once opened."""
+    family_page(b, base)
+    out = []
+    labels = side_labels(b)
+    shown = b.eval("document.getElementById('ch-side-by-side').textContent") or ""
+    boxes = b.eval("document.querySelectorAll('#ch-side-by-side .veil[data-veil-child=\"DEMO-003\"]').length")
+    if "RYR1" in shown or "CACNA1S" not in labels or boxes != 1:
+        out.append(f"before any click: RYR1 {'shown' if 'RYR1' in shown else 'closed'}, {len(labels)} rows, {boxes} closed boxes")
+    b.eval("var x = document.querySelector('#ch-side-by-side .veil button'); x && x.click(); true")
+    time.sleep(0.4)
+    labels2 = side_labels(b)
+    if "RYR1" not in labels2 or len(labels2) != len(labels) + 1:
+        out.append(f"after 'Show the result': {len(labels2)} rows, RYR1 {'back' if 'RYR1' in labels2 else 'still closed'}")
     return out
 
 
@@ -900,7 +939,9 @@ def family_veil_checks(b, base, out):
         for p, a, z, desc in (
                 (fp, "return tags.filter(function (t) {", "return [].filter(function (t) {",
                  "family-page.js whose rows ignore the veil"),
-                (cj, "    if (!spans || !spans.length) { return null; }", "    return null;", "core.js whose veilId() tags nothing")):
+                (cj, "    if (!spans || !spans.length) { return null; }", "    return null;", "core.js whose veilId() tags nothing"),
+                (fp, "ancestor: '.', basis: 'parent' };", "ancestor: r.ancestor, basis: r.basis };",
+                 "a closed painting that keeps each stretch's grandparent")):
             if a not in keep[p]:
                 check(f"control: {desc} (the planted line is in {os.path.basename(p)})", False, a)
                 continue
@@ -937,6 +978,22 @@ def family_veil_checks(b, base, out):
         else:
             write(fp, keep[fp].replace(a, "if (false) {"))
             control("family-page.js without the gene-only fallback", not gene_only_problems(b, base))
+            write(fp, keep[fp])
+        write(rj, keep[rj])
+
+        # A closed result in a CPIC gene: the side by side lists that gene with the son's diplotype in his column.
+        res = json.loads(keep[rj])
+        res["veil"]["spans"].append(["sf-ryr1-demo", "RYR1", "chr19", 38440000, 38440000])
+        write(rj, json.dumps(res))
+        bad = side_problems(b, base)
+        check("browser: with a closed result of the son's in RYR1, the side by side's RYR1 row (his diplotype and "
+              "phenotype) stays closed until it is opened there, and the other rows stay", not bad, bad)
+        a = "var t = stillClosed(m, tagOf(m, r.label + ' ' + (r.values[i] || '')));"
+        if a not in keep[fp]:
+            check("control: a side by side that ignores the veil (the planted line is in family-page.js)", False, a)
+        else:
+            write(fp, keep[fp].replace(a, "var t = [];"))
+            control("a side by side that ignores the veil", not side_problems(b, base))
             write(fp, keep[fp])
         write(rj, keep[rj])
 
