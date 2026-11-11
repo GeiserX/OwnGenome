@@ -402,7 +402,14 @@ def main():
         # always in CI, elsewhere only when asked for, so a quick local run
         # stays light.
         if os.environ.get("CI") or os.environ.get("PGP_TEST_DOCKER") == "1":
-            if shutil.which("docker"):
+            # OG can be a host og (unit-tests sets one); step 06 needs bin/.og.
+            if subprocess.run([os.path.join(REPO, "bin", "og"), "version"], capture_output=True).returncode != 0:
+                if os.environ.get("OG_REQUIRED"):
+                    check("bin/og is built (check 8 runs the real step 06 with it)", False, "run scripts/setup.sh --og")
+                else:
+                    print("[SKIP] check 8: og is not built for this machine, and step 06 runs it"
+                          " (scripts/setup.sh --og): the rust job of guard.yml runs it")
+            elif shutil.which("docker"):
                 docker_checks(work)
             else:
                 check("docker is installed (check 8 runs the real step 06)", False, "no docker on PATH")
