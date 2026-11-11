@@ -18,7 +18,7 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
+const USAGE: &str = "usage: og <tool> [args]\n       og map <verb> [args]\n       og setup mask-fasta SRC BED DEST\n       og sv svlen-fix|inv-filter [args]\n       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]\n       og str motif [args]\n       og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]\n       og dev parity-compare KIND ORACLE NEW\n       og version\n       og --tree-hash\n";
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -85,6 +85,11 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: pgx tool"),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
+        "ancestry-fine" => ExitCode::from(og_ancestry::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         "str" => match rest.first().map(String::as_str) {
             Some("motif") => ExitCode::from(og_bam::motif::cli(
                 &rest[1..],
