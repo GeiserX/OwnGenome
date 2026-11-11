@@ -21,7 +21,7 @@ fn comb(n: u64, k: u32) -> u128 {
 
 /// `P(X >= k)` for `X ~ Binomial(n, f)`.
 pub fn p_at_least(k: u32, n: u64, f: f64) -> f64 {
-    let terms = (0..k).map(|i| {
+    let terms = (0..=k).map(|i| {
         let rest = n.saturating_sub(u64::from(i));
         // u128 to f64 rounds to nearest, as Python's int to float does.
         comb(n, i) as f64 * f.powf(f64::from(i)) * (1.0 - f).powf(rest as f64)
