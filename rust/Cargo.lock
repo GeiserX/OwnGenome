@@ -560,6 +560,8 @@ dependencies = [
  "og-map",
  "og-qc",
  "og-runlog",
+ "og-steps",
+ "og-vcf",
  "pycompat",
 ]
 
@@ -650,6 +652,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-steps"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+]
+
+[[package]]
 name = "og-tsv"
 version = "0.1.0"
 dependencies = [
@@ -663,6 +673,7 @@ version = "0.1.0"
 dependencies = [
  "memchr",
  "og-io",
+ "pycompat",
  "smallvec",
 ]
 

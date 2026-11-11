@@ -1,0 +1,12 @@
+gene	canonical	transcript	lof.oe_ci.upper	lof.pLI	mis.z_score	gene
+G1	true	NM_1	 0.2	abc	1	X1
+G2	true	ENST1	0x0.1	0.95	2	X2
+G3	true	ENST2	inf	nan	3	X3
+G4	true	ENST3	-1		4	X4
+G5	true	ENST4	2.	1e0	5	X5
+G6	true	ENST5	.3	0.9	6	X6
+G7	TRUE	ENST6	0.1	0.1	7	X7
+G8	true	ENST7	0.36
+	true	ENST8	0.1	0.1	8	
+G9	true	enst9	0.1	0.1	9	X9
+G9	true	NM_9	0.5	0.5	9	X9

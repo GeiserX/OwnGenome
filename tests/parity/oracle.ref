@@ -5,6 +5,8 @@
 #   og words     the og subcommand that replaces it; the oracle gets the arguments after them
 setup-mask-fasta	23a028d37fbceb465ae4de8a263f5da6c9ec8e80	heredoc:scripts/setup.sh:MASK_FASTA_PY	python3	setup mask-fasta
 qc-sex-loss	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/mosaic_sex_loss.py	python3	qc sex-loss
+vcf-csq-rank	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/csq_rank.awk	sh ./oracle.sh	vcf csq-rank
+table-constraint-join	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/constraint_join.awk	sh ./oracle.sh	table constraint-join
 sv-svlen-fix	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/sv_svlen_fix.py	python3	sv svlen-fix
 sv-inv-filter	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python	sv inv-filter
 sv-inv-filter-py3	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python3	sv inv-filter
