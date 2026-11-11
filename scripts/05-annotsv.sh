@@ -2,7 +2,7 @@
 # AnnotSV — Annotate structural variants with ACMG pathogenicity classification
 # Input: step 15's duphold-filtered calls (duphold/<sample>_sv_filtered.vcf.gz),
 #   the input of the Nextflow ANNOTSV; without them, Manta's diploidSV.vcf.gz,
-#   with a note. SV_VCF overrides both. Before AnnotSV, bin/sv_svlen_fix.py
+#   with a note. SV_VCF overrides both. Before AnnotSV, og sv svlen-fix
 #   gives sequence-resolved records their net length change, and, unless
 #   SV_VCF is set, bin/cnvpytor_to_vcf.py adds the Delly (step 19) and
 #   CNVpytor (step 18) deletions and duplications no Manta call covers. The
@@ -120,7 +120,7 @@ if [ -z "${SV_VCF:-}" ]; then
   fi
 fi
 
-# The input AnnotSV reads. bin/sv_svlen_fix.py first: AnnotSV measures a
+# The input AnnotSV reads. og sv svlen-fix first: AnnotSV measures a
 # sequence-resolved SV over POS-1..END, so a deletion that also inserts bases
 # (REF 137 bp, ALT 2 bp) reads as 137 deleted coding bases, a frameshift
 # (criterion 2E-1), although the net change, -135, keeps the frame.
@@ -130,7 +130,7 @@ SV_VCF_C=$(cpath "$MANTA_VCF")
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
   -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro" "${ANNOTSV_IMAGE}" bash -c '
   set -euo pipefail
-  python3 /pgp-bin/sv_svlen_fix.py "$1" | python3 /pgp-bin/cnvpytor_to_vcf.py --base - --base-name "$2" "${@:3}"
+  /pgp-bin/og sv svlen-fix "$1" | python3 /pgp-bin/cnvpytor_to_vcf.py --base - --base-name "$2" "${@:3}"
 ' _ "$SV_VCF_C" "$CALLER_NAME" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} > "${INPUT_VCF}.part"
 mv "${INPUT_VCF}.part" "$INPUT_VCF"
 

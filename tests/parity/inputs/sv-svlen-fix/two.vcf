@@ -1,0 +1,5 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Length">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1	s2
+chr20	1300000	sym	N	<DEL>	50	PASS	END=1310000;SVTYPE=DEL	GT	0/0	0/1
