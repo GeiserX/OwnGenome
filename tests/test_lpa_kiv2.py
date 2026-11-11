@@ -61,6 +61,16 @@ import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
 OG = os.environ.get("OG", "")
+if OG and not os.path.realpath(OG).startswith(os.path.realpath(REPO) + os.sep):
+    # og cn finds bin/cn_loci.tsv beside its own binary. Guard's unit-tests job
+    # builds og in a temporary folder, so the tests run a copy that sits next
+    # to the catalog, as bin/.og/og-* does in a checkout.
+    import atexit, shutil  # noqa: E401
+    _og_dir = tempfile.mkdtemp(prefix="og-cn-")
+    atexit.register(shutil.rmtree, _og_dir, True)
+    shutil.copy2(OG, os.path.join(_og_dir, "og"))
+    shutil.copy2(os.path.join(REPO, "bin", "cn_loci.tsv"), os.path.join(_og_dir, "cn_loci.tsv"))
+    OG = os.environ["OG"] = os.path.join(_og_dir, "og")
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import copy_number as cn  # noqa: E402
 
