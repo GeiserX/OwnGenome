@@ -487,10 +487,10 @@ fn merge(lo: &Run, mid: &[&Run], hi: &Run, i_is: impl Fn(usize) -> bool, keep: u
 
 /// The tie-break of the weakest run: fewest sites, then shortest span,
 /// then the first in the block (`order` grows along it).
-type Key = (usize, i64, Reverse<usize>);
+type Key = (usize, i64, usize);
 
 fn key(r: &Run, order: usize) -> Key {
-    (r.agree, r.end - r.start, Reverse(order))
+    (r.agree, r.end - r.start, order)
 }
 
 /// The smoothed runs of one block of (position, label): repeatedly absorb
