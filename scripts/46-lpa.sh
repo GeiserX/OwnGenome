@@ -94,7 +94,7 @@ rc=0
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
   /pgp-bin/og cn call --locus LPA_KIV2 --bedcov "$(cpath "$DEPTH")" \
     --bedcov-mapq1 "$(cpath "$DEPTH_Q1")" --table "$(cpath "$TABLE")" \
-    --marker LPA_KIV2_4925 --marker-pileup "$(cpath "$PILEUP")" --marker-out "$(cpath "$NULL")" || rc=$?
+    || rc=$?
 if [ "$rc" -ne 0 ]; then
   # No count table: the count itself failed (exit 3 for a broken control).
   [ -s "$TABLE" ] || exit "$rc"
