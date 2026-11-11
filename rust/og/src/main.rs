@@ -27,6 +27,17 @@ fn usage_error(msg: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
+/// A BAM tool called on a build without the `bam` feature (the macOS build
+/// for a live host, rust/og.sh): it says so and exits 2, before any input
+/// is read, so a caller never mistakes it for a result.
+#[cfg(not(feature = "bam"))]
+fn no_bam(tool: &str) -> ExitCode {
+    eprintln!(
+        "og: error: {tool} reads BAMs, and this og ({TARGET}) is built without BAM support; run it in the pipeline's Linux containers"
+    );
+    ExitCode::from(2)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(tool) = args.first() else {
@@ -75,26 +86,33 @@ fn main() -> ExitCode {
             Some("refblock-fill") => ExitCode::from(og_filters::refblock::cli(&rest[1..])),
             Some("mito-merge") => ExitCode::from(og_filters::mito::cli(&rest[1..])),
             Some(other) => match other.strip_prefix("cyp2d6-") {
+                #[cfg(feature = "bam")]
                 Some(verb) => ExitCode::from(og_bam::cyp2d6::cli(
                     verb,
                     &rest[1..],
                     &mut std::io::stdout().lock(),
                     &mut std::io::stderr().lock(),
                 )),
+                #[cfg(not(feature = "bam"))]
+                Some(_) => no_bam(&format!("pgx {other}")),
                 None => usage_error(&format!("unknown pgx tool '{other}'")),
             },
             None => usage_error("the following arguments are required: pgx tool"),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
         "str" => match rest.first().map(String::as_str) {
+            #[cfg(feature = "bam")]
             Some("motif") => ExitCode::from(og_bam::motif::cli(
                 &rest[1..],
                 &mut std::io::stdout().lock(),
                 &mut std::io::stderr().lock(),
             )),
+            #[cfg(not(feature = "bam"))]
+            Some("motif") => no_bam("str motif"),
             _ => usage_error("og str takes motif"),
         },
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
+        #[cfg(feature = "bam")]
         "bam-fetch-probe" if rest.len() == 2 => {
             let run = || -> std::io::Result<()> {
                 let regions = std::io::BufReader::new(std::fs::File::open(&rest[1])?);
@@ -108,6 +126,9 @@ fn main() -> ExitCode {
                 }
             }
         }
+        #[cfg(not(feature = "bam"))]
+        "bam-fetch-probe" => no_bam("bam-fetch-probe"),
+        #[cfg(feature = "bam")]
         "bam-fetch-probe" => usage_error("bam-fetch-probe takes BAM REGIONS"),
         "version" | "--version" | "--tree-hash" | "pycompat-probe" => {
             usage_error(&format!("unrecognized arguments: {}", rest.join(" ")))
