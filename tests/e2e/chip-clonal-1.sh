@@ -31,7 +31,7 @@ echo "+ scripts/setup.sh --chip-data"
 "${REPO}/scripts/setup.sh" --chip-data "$G" 2>&1 | tee "$STEP_LOG"
 check_eq "setup.sh --chip-data exits 0" "${PIPESTATUS[0]}" 0
 check "the annotation is installed" test -s "$GFF"
-python3 "${REPO}/bin/chip_report.py" prepare --gff "$GFF" --genes "${REPO}/assets/chip_genes.tsv" --fai "${REF}.fai" \
+"${REPO}/bin/og" chip prepare --gff "$GFF" --genes "${REPO}/assets/chip_genes.tsv" --fai "${REF}.fai" \
   --out-gff "${T}/chip.gff3" --out-bed "${T}/chip.bed"
 check_eq "genes with exons on the fixture's contigs" "$(cut -f4 "${T}/chip.bed" | sort -u | tr '\n' ' ')" "ASXL1 DNMT3A GNB1 IDH1 SF3B1 TET2 "
 mapfile -t WINDOWS < <(awk -F'\t' '{print $1 ":" ($2 - 300) "-" ($3 + 300)}' "${T}/chip.bed")

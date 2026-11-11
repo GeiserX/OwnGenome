@@ -213,7 +213,7 @@ export GENOME_DIR=/path/to/your/data
 export SAMPLE=your_name
 
 # 2. Download the GRCh38 no-ALT reference genome (~0.8 GB, ~3 GB unpacked),
-#    ClinVar and the images, and build og (bin/.og, which steps 04, 05 and 07
+#    ClinVar and the images, and build og (bin/.og, which steps 04, 05, 07 and 25
 #    run); see docs/00-reference-setup.md for details
 ./scripts/setup.sh $GENOME_DIR
 

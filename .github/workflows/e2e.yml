@@ -1295,8 +1295,8 @@ jobs:
   # the 24 GB of PRS can be honoured; it must finish, with the headroom the
   # script checks. labels: the limits of the process labels before the
   # requests (PRS_PREPARE 2 GB, FORMAT_SCOREFILES 8 GB on 2 threads, as
-  # pgsc_calc gave it), no swap; every task must be killed, which shows the
-  # first leg can fail.
+  # pgsc_calc gave it), no swap; FORMAT_SCOREFILES must be killed, which
+  # shows the first leg can fail, and PRS_PREPARE (og prs format) must fit.
   prs-memory:
     if: github.event_name == 'workflow_dispatch' && inputs.job == 'prs-memory'
     runs-on: ubuntu-latest
@@ -1332,6 +1332,11 @@ jobs:
           sudo mkswap /mnt/swap-prs
           sudo swapon /mnt/swap-prs
           free -m
+
+      - name: Build og as scripts/setup.sh --og does (PRS_PREPARE runs og prs format)
+        run: |
+          scripts/setup.sh --og
+          rust/og.sh check --required
 
       - name: Measure (${{ matrix.leg }})
         env:

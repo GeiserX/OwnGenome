@@ -3,7 +3,7 @@
 # and the cDNA read check on CPSR's P/LP rows, with the real tools.
 #   1. The sample as case 30 left it: at the default floor the hits file has
 #      no floor line (it stays as it was before the floor), every hit has its
-#      GQ and DP, and bin/clinvar_hits.awk and the summary mark the same hits
+#      GQ and DP, and og clinvar hits and the summary mark the same hits
 #      low confidence.
 #   2. Step 06 again on a copy of the sample with CLINVAR_MIN_GQ=99 and
 #      CLINVAR_MIN_DP=999: the floor line says so, every hit is marked, the
@@ -42,14 +42,14 @@ H="${GENOME_DIR}/${SAMPLE}/clinvar/${SAMPLE}_clinvar_hits.vcf"
 check "case 30 left a hits file" test -s "$H"
 check_eq "at the default floor the hits file has no floor line" "$(grep -c '^##PGP_CALL_FLOOR=' "$H")" 0
 N=$(grep -vc '^#' "$H" || true)
-AWK_ROWS=$(awk -f "${REPO}/bin/clinvar_hits.awk" "$H")
-check_eq "bin/clinvar_hits.awk prints 13 columns on every hit" \
-  "$(awk -F'\t' 'NF == 13' <<< "$AWK_ROWS" | wc -l | tr -d ' ')" "$N"
+HIT_ROWS=$("${REPO}/bin/og" clinvar hits "$H")
+check_eq "og clinvar hits prints 13 columns on every hit" \
+  "$(awk -F'\t' 'NF == 13' <<< "$HIT_ROWS" | wc -l | tr -d ' ')" "$N"
 check_eq "every hit has a GQ and a DP from DeepVariant" \
-  "$(awk -F'\t' '$11 ~ /^[0-9]+$/ && $12 ~ /^[0-9]+$/' <<< "$AWK_ROWS" | wc -l | tr -d ' ')" "$N"
-check_eq "the summary marks the same hits low confidence as the awk" \
+  "$(awk -F'\t' '$11 ~ /^[0-9]+$/ && $12 ~ /^[0-9]+$/' <<< "$HIT_ROWS" | wc -l | tr -d ' ')" "$N"
+check_eq "the summary marks the same hits low confidence as og clinvar hits" \
   "$(summary_py "$SAMPLE" "' '.join(f\"{h['chrom']}:{h['pos']}\" for h in sorted(d['sections']['clinvar']['data']['hits'], key=lambda h: (h['chrom'], h['pos'])) if h['low_confidence'])")" \
-  "$(awk -F'\t' '$13 == "yes" {print $2 ":" $3}' <<< "$AWK_ROWS" | sort -t: -k1,1 -k2,2n | tr '\n' ' ' | sed 's/ $//')"
+  "$(awk -F'\t' '$13 == "yes" {print $2 ":" $3}' <<< "$HIT_ROWS" | sort -t: -k1,1 -k2,2n | tr '\n' ' ' | sed 's/ $//')"
 
 # --- 2. step 06 on a copy with a floor no call reaches -------------------------
 T="${SAMPLE}floor"
