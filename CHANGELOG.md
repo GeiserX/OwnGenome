@@ -4,6 +4,12 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- Step 38's shared DNA segments (the IBD report) now run in the Rust `og` binary: `og family ibd` replaces `bin/ibd_report.py`, in step 38 and in the Nextflow process `FAMILY_IBD_REPORT`. `ibd_pairs.tsv`, `ibd_segments.tsv` and `ibd_report.md` keep their names, columns and content. It reads one chromosome at a time and keeps one byte per member per marker, so on a synthetic family of five members over 22 chromosomes of 50,000 markers it takes 0.3 s and 6 MB instead of 6 s and 120 MB. What changes:
+  - A missing or unreadable input (the chromosome list, a genetic map, a phased VCF, a hap-ibd file, the pedigree) stops the step with exit 2 and one `ERROR: cannot read <file>: <reason>` line. The Python stopped with exit 1 and a traceback.
+  - A phased VCF record with fewer sample columns than its `#CHROM` line, or a position that is not a number, stops the step with exit 2 and names the file and line. The Python crashed later, or counted opposite homozygotes against the wrong markers.
+  - A chromosome named twice in the chromosome list stops the step with exit 2. The Python counted that chromosome's stretches twice.
+  - Each table is written to a temporary file and renamed, so a step that stops leaves no half-written table.
+
 - The step tables of steps 20, 25 and 33 are now made by the Rust `og` binary: `og qc sample` (step 33's verdict table), `og prs table` (step 25's score table and step 26's ancestry table) and `og mito annotate`, `og mito deletions` and `og mito copies` (step 20's chrM tables). They replace the `sample-qc`, `prs-table`, `mito-annotate`, `mito-deletions` and `mito-copies` commands of `bin/collect_summary.py`, which are gone. og is static, so each step still runs in the image it ran in. The tables are the same, byte for byte, on the 57 parity cases, except where a line below says otherwise. On a synthetic chrM call set of 4,000 alleles against a ClinVar of 1,000,000 records, `og mito annotate` takes 0.2 to 0.4 s and 28 MB where the Python took 34 to 45 s and 50 MB. What changes on purpose:
   - `og mito copies` reads chrM under the names `chrMT` and `M` as well as `chrM` and `MT`. The Python knew only `chrM` and `MT`, so a BAM with the other names got `not assessed (no_chrM_reads)`.
   - A count of `inf` or `nan` in somalier's table stops `og qc sample` with exit 1 and one `ERROR:` line that names the file, the column and the sample. The Python stopped with a traceback.
