@@ -22,7 +22,7 @@
 //! which the e2e cases read.
 
 use crate::args::{self, Kind, Opt};
-use crate::{basename, finish, float, is_file, text_lines, trunc, write_file};
+use crate::{basename, finish, float, is_file, join, text_lines, trunc, write_file};
 use og_steps::prs::{CHRX_FILE, EVALS_FILE, Eval, Labels, SCORE_NOTES_FILE};
 use pycompat::csv::{DictReader, DictRow, Quoting, Reader};
 use pycompat::fmt::{fixed, general};
@@ -171,7 +171,7 @@ fn totals(scores: &str) -> Result<BTreeMap<String, (i64, Option<String>)>, Strin
     files.sort();
     let mut out = BTreeMap::new();
     for name in files {
-        let p = format!("{}/{name}", scores.trim_end_matches('/'));
+        let p = join(scores, &name);
         let (mut n, mut label) = (0i64, None);
         let mut lines = text_lines(&p)?;
         let mut line = String::new();
@@ -186,7 +186,13 @@ fn totals(scores: &str) -> Result<BTreeMap<String, (i64, Option<String>)>, Strin
             }
         }
         // minus the column header
-        out.insert(pgs_id_of(&name), (n - 1, label));
+        // A second file of one id keeps the first one's label when it has none.
+        let pid = pgs_id_of(&name);
+        let label = label.or_else(|| {
+            out.get(&pid)
+                .and_then(|(_, l): &(i64, Option<String>)| l.clone())
+        });
+        out.insert(pid, (n - 1, label));
     }
     if out.is_empty() {
         return Err(format!("no formatted scoring file in {scores}"));
@@ -242,7 +248,7 @@ fn below_rates(text: &str) -> Result<HashMap<String, String>, String> {
 /// PGS id to the chrX rows pgsc_calc's match logs matched; nothing when
 /// there is no log or a log lacks the columns.
 fn chrx_matched(results: &str, sampleset: &str) -> Result<Option<HashMap<String, i64>>, String> {
-    let dir = format!("{results}/{sampleset}/match");
+    let dir = join(&join(results, sampleset), "match");
     let mut logs: Vec<String> = fs::read_dir(&dir)
         .into_iter()
         .flatten()
@@ -302,7 +308,7 @@ fn chrx_matched(results: &str, sampleset: &str) -> Result<Option<HashMap<String,
 /// The table rows and the ancestry rows (key, value).
 pub fn table(i: &Inputs) -> Result<(Vec<TableRow>, Ancestry), String> {
     let totals = totals(i.scores)?;
-    let side = |name: &str| format!("{}/{name}", i.scores.trim_end_matches('/'));
+    let side = |name: &str| join(i.scores, name);
     // "8 scored", "8 left out" or "0"; none for scores formatted before the file existed
     let (mut chrx, mut chrx_scored) = (HashMap::new(), HashSet::new());
     if is_file(side(CHRX_FILE)) {
@@ -357,7 +363,7 @@ pub fn table(i: &Inputs) -> Result<(Vec<TableRow>, Ancestry), String> {
         Outcome::ZeroMatches => {}
         Outcome::Scored => {
             let (res, ss) = (i.results, i.sampleset);
-            let summ = format!("{res}/{ss}/match/{ss}_summary.csv");
+            let summ = join(&join(&join(res, ss), "match"), &format!("{ss}_summary.csv"));
             if !is_file(&summ) {
                 return Err(format!("pgsc_calc wrote no match summary ({summ})"));
             }
@@ -372,7 +378,7 @@ pub fn table(i: &Inputs) -> Result<(Vec<TableRow>, Ancestry), String> {
                 }
                 Ok(())
             })?;
-            let score_dir = format!("{res}/{ss}/score");
+            let score_dir = join(&join(res, ss), "score");
             let adjusted = format!("{score_dir}/{ss}_pgs.txt.gz");
             let plain = format!("{score_dir}/aggregated_scores.txt.gz");
             let src = if is_file(&adjusted) {

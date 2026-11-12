@@ -65,6 +65,16 @@ pub(crate) fn basename(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
 }
 
+/// `os.path.join(a, b)`: one `/` between them unless `a` is empty or
+/// already ends with one.
+pub(crate) fn join(a: &str, b: &str) -> String {
+    if a.is_empty() || a.ends_with('/') {
+        format!("{a}{b}")
+    } else {
+        format!("{a}/{b}")
+    }
+}
+
 /// `os.path.isfile(p)`.
 pub(crate) fn is_file(p: impl AsRef<Path>) -> bool {
     p.as_ref().is_file()
