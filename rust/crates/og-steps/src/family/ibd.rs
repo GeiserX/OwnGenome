@@ -311,6 +311,8 @@ fn read_ibd(path: &str, chrom: &str) -> std::result::Result<Vec<IbdRow>, Die> {
 }
 
 type Iv = (i64, i64);
+/// One hap-ibd segment of a known pair: (hap of a, hap of b, start, end).
+type HapSeg = (u8, u8, i64, i64);
 
 /// The union of intervals: sorted, overlapping or touching ones merged.
 pub fn union(mut iv: Vec<Iv>) -> Vec<Iv> {
@@ -344,7 +346,7 @@ pub fn intersect(x: &[Iv], y: &[Iv]) -> Vec<Iv> {
 
 /// Where both copies are shared: a's haplotype 1 with one of b's and a's
 /// haplotype 2 with the other. `segs` holds (hap of a, hap of b, start, end).
-pub fn ibd2(segs: &[(u8, u8, i64, i64)]) -> Vec<Iv> {
+pub fn ibd2(segs: &[HapSeg]) -> Vec<Iv> {
     let u = |ha: u8, hb: u8| {
         union(
             segs.iter()
@@ -494,7 +496,7 @@ fn find(a: &Args) -> std::result::Result<Found, Die> {
             .enumerate()
             .map(|(i, s)| (s.as_str(), i))
             .collect();
-        let mut segs: HashMap<(String, String), Vec<(u8, u8, i64, i64)>> = HashMap::new();
+        let mut segs: HashMap<(String, String), Vec<HapSeg>> = HashMap::new();
         let mut order: Vec<(String, String)> = Vec::new();
         for (x, y, ha, hb, s0, e0) in read_ibd(&join(&ibd, &format!("{c}.ibd.gz")), c)? {
             if !col.contains_key(x.as_str()) || !col.contains_key(y.as_str()) {
