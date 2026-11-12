@@ -179,7 +179,7 @@ def a_clinvar(S, s):
     lines = [x for x in (rr.cdna_scan_lines(d) or [])]
     for x in d.get("deep_intronic") or []:
         # Always reported by the report, hit or not: each site's call stays visible on the card.
-        lines.append(f"Known deep intronic site (always reported): {x.get('gene')} {x.get('hgvs')} "
+        lines.append(f"{FIXED_LINES['clinvar']} {x.get('gene')} {x.get('hgvs')} "
                      f"{x.get('chrom')}:{x.get('pos')} {x.get('ref')}>{x.get('alt')}: {rr.deep_intronic_call(x)}")
     freq = rr.clinvar_freq_line(d)
     if freq:
@@ -1166,6 +1166,12 @@ FIXED_PANELS = {
     "traits-panel": "the trait panel's genes",
     "bloodtype": "the blood group systems",
 }
+# The lines of a card that are a fixed panel inside it (card -> the words each such line starts with): the ClinVar
+# card prints one line per known deep intronic site of assets/deep_intronic_sites.tsv, hit or not. veil() tags
+# each of them PANEL, never by its gene, so they close all together while any result to act on is closed and
+# open all together once the last one is opened (assets/live/person.js tagClosed()).
+FIXED_LINES = {"clinvar": "Known deep intronic site (always reported):"}
+PANEL = "*panel*"
 LOCUS_RE = re.compile(r"(?<![A-Za-z0-9])(?:chr)?([0-9]{1,2}|X|Y|M|MT):([0-9][0-9,]*)(?:-([0-9][0-9,]*))?")
 WORD_RE = re.compile(r"[A-Z0-9][A-Z0-9._-]*")
 
@@ -1236,9 +1242,9 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
 def veil(summary, found, chapters, lead_parts=()):
     """The rows a child's page closes with a result to act on, by the result's id: each card's table rows
     (rows: card -> one id or None per row; the ClinVar card's by each hit's own position), each card's viewer
-    links (viewer: card -> one per link), each card's lines (lines: card -> one per line; a known deep
-    intronic site is printed whether hit or not), the marks of the report's charts (marks: chart -> {mark id:
-    id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
+    links (viewer: card -> one per link), each card's lines (lines: card -> one per line; a line of a fixed
+    panel, such as a known deep intronic site, printed whether hit or not, is tagged PANEL: FIXED_LINES), the
+    marks of the report's charts (marks: chart -> {mark id: id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
     rank the gene) and the lead's segments that name one (lead: one per segment of LEAD_PARTS, the "act"
     names left out: the page closes those itself), each card's facts (facts: card -> one per fact) and the items
     of its drawing (widget: card -> one per CHIP call or copy-number dot), and the cards of a fixed panel
@@ -1271,7 +1277,8 @@ def veil(summary, found, chapters, lead_parts=()):
                 tags = [(rt[i] if i < len(rt) else None) or t for i, t in enumerate(tags)]
             if any(tags):
                 out["viewer"][c["id"]] = tags
-            tags = [veil_id(spans, ln) for ln in c.get("lines") or []]
+            fixed = FIXED_LINES.get(c["id"])
+            tags = [PANEL if fixed and str(ln).startswith(fixed) else veil_id(spans, ln) for ln in c.get("lines") or []]
             if any(tags):
                 out["lines"][c["id"]] = tags
             tags = [veil_id(spans, " ".join(str(x) for x in f)) for f in c.get("facts") or []]

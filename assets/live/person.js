@@ -325,7 +325,14 @@
   // A row outside its result's card (a ClinVar row, a card's line, a viewer link, a chart's mark, a search hit)
   // carries the id of the result to act on it names (results.veil, bin/live_results.py veil()): it stays closed
   // while that result is, and "Show the result" opens it with it. A tag naming no finding of these results stays closed.
-  function tagClosed(id) { var f = findingById(id); return closedPage() && (!f || veiled(f)); }
+  // A line of a fixed panel (PANEL, bin/live_results.py FIXED_LINES: a known deep intronic site) names no result:
+  // it stays closed while any result to act on is, whichever, so what is missing never tells the gene.
+  var PANEL = '*panel*';
+  function tagClosed(id) {
+    if (id === PANEL) { return closedPage() && closedActs().length > 0; }
+    var f = findingById(id);
+    return closedPage() && (!f || veiled(f));
+  }
   function veilTags(kind, key) { return ((results && results.veil && results.veil[kind]) || {})[key] || []; }
   // The charts (plugins/charts.js) ask for each mark. A closed page with no results.json yet cannot tell which
   // marks those are, so it leaves every mark out until it can.

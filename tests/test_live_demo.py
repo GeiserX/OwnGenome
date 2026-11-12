@@ -1479,6 +1479,23 @@ def cpsr(gene):
     return change
 
 
+def deep_sites(S):
+    """The ClinVar card's line for each known deep intronic site of assets/deep_intronic_sites.tsv, reference calls:
+    a fixed panel the son's demo summary leaves out."""
+    with open(os.path.join(REPO, "assets", "deep_intronic_sites.tsv")) as fh:
+        rows = [ln.rstrip("\n").split("\t") for ln in fh if ln.strip() and not ln.startswith("#")]
+    S["clinvar"]["data"]["deep_intronic"] = [dict(zip(rows[0], r), call="ref", detail="GQ 50") for r in rows[1:]]
+    return len(rows) - 1
+
+
+def with_sites(gene):
+    """cpsr(GENE) with the known deep intronic sites' lines (deep_sites), the same on both pages."""
+    def change(S):
+        cpsr(gene)(S)
+        deep_sites(S)
+    return change
+
+
 def sv_over(locus, genes):
     """A class 5 deletion over GENES, and a carrier row that names only its second gene."""
     def change(S):
@@ -1505,6 +1522,8 @@ INFER = (("two SNV results in different genes (BRCA1, BRCA2)", cpsr("BRCA1"), cp
          ("SMN1 against HBA1, the same copy numbers", cpsr("SMN1"), cpsr("HBA1")),
          ("a result with a place on the map (BRCA2) against one without (MLH1)", cpsr("BRCA2"), cpsr("MLH1")),
          ("a closed result with one ClinVar row against two", lambda S: None, second_hit),
+         ("a closed result in a gene of a known deep intronic site (ATM) against one in none (BRCA2)", with_sites("ATM"),
+          with_sites("BRCA2")),
          ("a link to each of two closed results (#f/<id>)", cpsr("BRCA1"), cpsr("BRCA2"),
           ("#f/cpsr-brca1-c-68-69del", "#f/cpsr-brca2-c-68-69del")))
 
@@ -1588,8 +1607,9 @@ def infer_checks(b, base, out):
 def widget_veil_checks(b, base, out):
     """On the son's page the copy-number card and the CHIP card, whose rows are a fixed panel (the same genes for
     everyone), close whole while any result of his to act on is closed: no dot, no call, no fact of theirs shows,
-    and their line on a phone is the same words whatever the result. Each "Show the result" of their box opens
-    one result; once every result is opened every dot, call and fact is back."""
+    and their line on a phone is the same words whatever the result; so do the ClinVar card's lines for the known
+    deep intronic sites, a fixed panel inside it. Each "Show the result" of their box opens one result; once every
+    result is opened every dot, call, fact and deep intronic line is back."""
     no_cache(b)
     rj = os.path.join(out, "runs", OTHERS[1], "results.json")
     js = os.path.join(out, "assets", "person.js")
@@ -1632,10 +1652,14 @@ def widget_veil_checks(b, base, out):
     def problems(text, opened):
         page, cops, _ = json.loads(text) if text else ["", "", 0]
         out_ = []
-        if opened and not ("SMN1" in cops and "SMN2" in cops and "p.R175H" in page and "SMN1 copies" in page):
-            out_.append(f"every result opened, yet a dot, the call or the fact is missing: {cops[:200]}")
-        if not opened and (cops or "p.R175H" in page or "SMN1 copies" in page):
-            out_.append(f"a closed result, yet the copy-number or CHIP card shows its rows: {cops[:200]}")
+        deep = page.count(live_results.FIXED_LINES["clinvar"])
+        if opened and not ("SMN1" in cops and "SMN2" in cops and "p.R175H" in page and "SMN1 copies" in page
+                       and deep == sites[0]):
+            out_.append(f"every result opened, yet a dot, the call, the fact or a deep intronic line ({deep} of {sites[0]}) is "
+                        f"missing: {cops[:200]}")
+        if not opened and (cops or "p.R175H" in page or "SMN1 copies" in page or deep):
+            out_.append(f"a closed result, yet the copy-number or CHIP card shows its rows or the ClinVar card "
+                        f"{deep} deep intronic lines: {cops[:200]}")
         return out_
     try:
         with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as f:
@@ -1648,6 +1672,7 @@ def widget_veil_checks(b, base, out):
             {"gene": g, "protein_change": ch, "vaf": v, "alt_reads": 6, "depth": 75, "status": "pass", "note": "a clone"}
             for g, ch, v in (("DNMT3A", "p.R882H", 0.12), ("TP53", "p.R175H", 0.08))],
             "genes": [{"gene": g, "detection_limit_vaf": 0.05, "mean_depth": 75, "status": "ok"} for g in ("DNMT3A", "TP53")]}}
+        sites = [deep_sites(S)]
         S["paralogs"] = {"state": "ok", "data": {"genes": [{"gene": g, "copy_number": n, "status": "called", "detail": "."}
                                                            for g, n in (("SMN1", 2), ("SMN2", 2))]}}
         res = live_results.build(OTHERS[1], summary)
@@ -1666,12 +1691,14 @@ def widget_veil_checks(b, base, out):
                     break
             bad += problems(shown(), True)
         check("browser: on the son's page the copy-number and CHIP cards, a fixed panel, close whole while a result is "
-              "closed (their line on a phone too), their box opens one result per click, and every dot, call and fact is "
-              "back once every result is opened", not bad, bad)
+              "closed (their line on a phone too), and so do the ClinVar card's deep intronic lines; the box opens one "
+              "result per click, and every dot, call, fact and line is back once every result is opened", not bad, bad)
         for desc, a, z in (
                 ("person.js that draws a fixed-panel card's open rows", "} else if (panelShut(c)) {", "} else if (false) {"),
                 ("person.js whose card line reads a fixed-panel card's facts", ": g === 'show' && panelShut(c) ? PANEL_LINE",
-                 ": false ? PANEL_LINE")):
+                 ": false ? PANEL_LINE"),
+                ("person.js that draws a fixed panel's lines", "if (id === PANEL) { return closedPage() && closedActs().length > 0; }",
+                 "if (id === PANEL) { return false; }")):
             if a not in keep_js:
                 check(f"control: {desc} (the planted line is in person.js)", False, a)
                 continue

@@ -36,9 +36,10 @@ Checks:
      link of the planted hit, its genome-chart tick and its review-star bar carry
      the secondary finding's id, the deletion's span carries its own, the search
      index's items that name the gene carry one of them, and nothing else is
-     tagged; DEMO-001, with no result to act on, has no tag; and a known deep
-     intronic site's line in the gene of a closed secondary finding carries
-     that finding's id (the card prints each site whether hit or not), a gene
+     tagged; DEMO-001, with no result to act on, has no tag; and every known
+     deep intronic site's line carries the fixed-panel tag, never the id of a
+     closed result in its gene (the card prints each site whether hit or not,
+     so one missing line would name the gene), a gene
      named before a full stop is that gene, and a ClinVar row closed by its gene
      alone closes its "See the reads at" link with it; every other card's row
      that names the gene (the son's symptom ranking ranks it) carries one of
@@ -404,7 +405,8 @@ def veil_problems(res, idx):
 
 def veil_lines_problems():
     """What is wrong with the veil's tags of the ClinVar card's lines: a known deep intronic site is printed
-    whether hit or not, so its line names the gene of a closed secondary finding in that gene."""
+    whether hit or not, a fixed panel, so every such line carries the panel tag (live_results.PANEL), the one in
+    a closed secondary finding's gene and the others alike: a line closed alone would name the gene."""
     S = {"clinvar": {"state": "ok", "data": {"hits": [], "deep_intronic": [
         {"gene": "GLA", "hgvs": "NM_000169.3:c.640-801G>A", "chrom": "chrX", "pos": 101399747, "ref": "C",
          "alt": "T", "call": "hom", "detail": "GQ 40"},
@@ -413,9 +415,9 @@ def veil_lines_problems():
     lines = live_results.a_clinvar(S, {"sections": S}).get("lines") or []
     found = [{"id": "sf-gla-test", "level": "act", "gene": "GLA", "detail": "GLA"}]
     v = live_results.veil({"sections": S}, found, [{"sections": [{"id": "clinvar", "lines": lines}]}])
-    want = ["sf-gla-test" if "GLA " in ln else None for ln in lines]
+    want = [live_results.PANEL if ln.startswith(live_results.FIXED_LINES["clinvar"]) else None for ln in lines]
     got = (v.get("lines") or {}).get("clinvar")
-    out = [] if "sf-gla-test" in want and None in want and got == want else [f"lines {lines} tagged {got}, want {want}"]
+    out = [] if want.count(live_results.PANEL) == 2 and got == want else [f"lines {lines} tagged {got}, want {want}"]
     # A gene named at the end of a sentence ("in GLA.") is that gene.
     if live_results.veil_id(live_results.closable(found), "A change in GLA.") != "sf-gla-test":
         out.append("'A change in GLA.' carries no tag")
@@ -612,9 +614,15 @@ def main():
             r3["_summary"] = s3
             return r3, results_index.build(s3, sample_dir, rr.SECTION_OF)
         bad = veil_lines_problems()
-        check("8. a known deep intronic site's line in a closed secondary finding's gene carries its id, a gene "
+        check("8. every known deep intronic site's line carries the fixed-panel tag, not a closed result's id, a gene "
               "before a full stop is that gene, a ClinVar row closed by its gene closes its reads link, and a lead "
               "segment naming the gene carries its id", not bad, bad)
+        fixed = live_results.FIXED_LINES
+        try:  # the card still prints its lines; veil() no longer knows they are a panel
+            live_results.FIXED_LINES = type("Unknown", (dict,), {"get": lambda self, k, d=None: None})(fixed)
+            control("a veil that tags a known deep intronic site's line by its gene", not veil_lines_problems())
+        finally:
+            live_results.FIXED_LINES = fixed
         bad = overview_problems()
         check("8. a child's home tile lists no finding that names a closed result, and its closed lead names none",
               not bad, bad)
