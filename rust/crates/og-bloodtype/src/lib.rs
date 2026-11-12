@@ -19,7 +19,9 @@
 //! - [`rules`]: one row per system.
 //!
 //! `og bloodtype check-markers` checks that the marker table and the rules
-//! agree; `og bloodtype systems` prints the systems in report order.
+//! agree; `og bloodtype systems` prints the systems in their base order,
+//! before the report moves the ones that lack a high-prevalence antigen to
+//! the top.
 //!
 //! What changes on purpose: the VCF is read through its `.tbi` or `.csi`
 //! (318 positions, not the whole file), the catalog is read and the RHD row

@@ -96,8 +96,9 @@ fn whole(v: &str, col: &str, path: &str) -> Result<i64, Error> {
 
 /// The site rows of the marker table at `path`, by name, in table order.
 /// `#` lines and blank lines are skipped; the first other line is the
-/// header, which must have a `kind` column. A row of another kind, or a
-/// null row in a system that reads no null rows, is refused.
+/// header, which must have a `kind` column. A row of another kind, a row
+/// with an empty REF or ALT, or a null row in a system that reads no null
+/// rows, is refused.
 pub fn read_markers(path: &str) -> Result<Sites, Error> {
     let text = std::fs::read(path).map_err(|e| Error::io(&e, path))?;
     let mut lines = og_io::Lines::new(&text[..], og_io::Utf8::Strict);
@@ -138,14 +139,20 @@ pub fn read_markers(path: &str) -> Result<Sites, Error> {
                 "{path}: row {name} has kind '{kind}' (site; the RhD depth regions are the RHD row of bin/cn_loci.tsv)"
             )));
         }
+        let (ref_, alt) = (get("ref"), get("alt"));
+        if ref_.is_empty() || alt.split(',').any(str::is_empty) {
+            return Err(Error(format!(
+                "{path}: row {name} has an empty ref or alt: every site needs both"
+            )));
+        }
         let m = Marker {
             chrom: get("chrom"),
             start,
             pos: end,
             system: get("system"),
             name: name.clone(),
-            ref_: get("ref"),
-            alt: get("alt"),
+            ref_,
+            alt,
             ref_means: get("ref_means"),
             alt_means: get("alt_means"),
             hgvs: get("hgvs"),
@@ -170,4 +177,45 @@ pub fn read_markers(path: &str) -> Result<Sites, Error> {
         return Err(no_rows());
     }
     Ok(sites)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HEAD: &str = "chrom\tstart\tend\tkind\tsystem\tname\tref\talt\tref_means\talt_means\n";
+
+    fn table(name: &str, body: &str) -> String {
+        let p = std::env::temp_dir().join(format!(
+            "og-bloodtype-markers-{}-{name}",
+            std::process::id()
+        ));
+        std::fs::write(&p, format!("# a comment\n{HEAD}{body}")).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_site_row_reads() {
+        let p = table("ok", "chr7\t10\t11\tsite\tKell\tKEL_578\tG\tA\tk\tK\n");
+        let s = read_markers(&p).unwrap();
+        assert_eq!((s["KEL_578"].pos, s["KEL_578"].alt.as_str()), (11, "A"));
+    }
+
+    #[test]
+    fn a_row_with_an_empty_ref_or_alt_is_refused() {
+        for (name, body) in [
+            ("noalt", "chr7\t10\t11\tsite\tKell\tKEL_578\tG\t\tk\tK\n"),
+            ("noref", "chr7\t10\t11\tsite\tKell\tKEL_578\t\tA\tk\tK\n"),
+            (
+                "emptyalt",
+                "chr7\t10\t11\tsite\tKell\tKEL_578\tG\tA,\tk\tK\n",
+            ),
+        ] {
+            let e = read_markers(&table(name, body)).unwrap_err();
+            assert!(
+                e.0.ends_with("row KEL_578 has an empty ref or alt: every site needs both"),
+                "{e}"
+            );
+        }
+    }
 }

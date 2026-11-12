@@ -213,7 +213,8 @@ pub const SPECIAL_SITES: [&str; 16] = [
 /// and the systems read from null rows alone).
 pub type System = (String, Option<Vec<&'static str>>);
 
-/// The systems in report order.
+/// The systems in their base order (the report then lists first the ones
+/// that lack a high-prevalence antigen).
 pub static SYSTEMS: LazyLock<Vec<System>> = LazyLock::new(|| {
     let s = |name: &str, sites: &[&'static str]| (name.to_owned(), Some(sites.to_vec()));
     let none = |name: &str| (name.to_owned(), None);
@@ -1183,7 +1184,7 @@ fn missing_sites(sites: &Genotyped) -> Vec<&'static str> {
 }
 
 /// One row per system: the systems that lack a high-prevalence antigen
-/// first, each list in report order.
+/// first, each list in the base order of [`SYSTEMS`].
 pub fn predict(sites: &Genotyped, rhd: &RhdDepth, rhd_row: &Locus) -> Result<Vec<Row>, Error> {
     let gone = missing_sites(sites);
     if !gone.is_empty() {
