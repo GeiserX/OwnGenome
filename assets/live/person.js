@@ -560,6 +560,11 @@
     var c = cardById(f.card);
     return !!(c && gate(c) === 'show') && !veiled(f);
   }
+  // The results to act on this page keeps closed at this moment, in the page's order: the map's chip counts
+  // them, whether or not they have a place on the map.
+  function mapClosed() {
+    return findingsNow().filter(function (f) { return f.level === 'act' && veiled(f); }).map(function (f) { return f.id; });
+  }
   // Whether a row of the map is a finding of these results: then the page's own veil alone decides it (map.js).
   function mapKnown(id) { return !!findingById(id); }
   // Whether a step of the run has ended at this moment (a replay before it has not): the map's layers follow it.
@@ -891,7 +896,7 @@
     // reader left it. It asks this page's veil for each closed row, and opens or closes a result through it.
     if (window.PGPMap) {
       if (!genomeMap) {
-        genomeMap = window.PGPMap.create({ url: 'map.json', veil: mapVeil, now: mapNow, known: mapKnown, stepDone: stepDone, open: function (id) { setShown(id, true); },
+        genomeMap = window.PGPMap.create({ url: 'map.json', veil: mapVeil, now: mapNow, known: mapKnown, closed: mapClosed, stepDone: stepDone, open: function (id) { setShown(id, true); },
           close: function (id) { setShown(id, false); }, fallback: mapFallback });
       }
       add(slot, genomeMap.node);

@@ -1378,8 +1378,12 @@ def map_veil_problems(b, base, out):
         return [f"the son's map: {c['state']}"]
     if leaks(c):
         bad.append(f"closed: the map shows {leaks(c)}")
-    if not any("1 result closed" in t for t in c["chips"]):
-        bad.append(f"closed: no chip counting it: {c['chips']}")
+    # The chip counts every result to act on the page keeps closed, with a place on the map or not.
+    want = b.eval("new Set(Array.prototype.filter.call(document.querySelectorAll('.finding[data-level=act]'), "
+                  "function (a) { return a.querySelector('.veil'); }).map(function (a) { return a.dataset.finding; })).size")
+    label = "1 result closed" if want == 1 else f"{want} results closed"
+    if not want or not any(t.startswith(label + " ") for t in c["chips"]):
+        bad.append(f"closed: no chip counting the page's {want} closed results: {c['chips']}")
     b.eval("document.querySelector('.gm-chip[data-closed=act] button').click(); true")
     c = map_now(b)
     if not b.eval("!!document.querySelector('.gm-chip[data-closed=act] .gm-confirm')") or leaks(c):
@@ -1490,8 +1494,9 @@ FIGURE_JS = r"""JSON.stringify((function () {
 
 
 def plant_son(out, extra, og):
-    """The son's results.json with the findings EXTRA added and his map.json built again from it by og map
-    build, as the map plugin builds it: og tags each row itself. Returns what to write back afterwards."""
+    """The son's results.json with the findings EXTRA added, its findings' veil tags (results.veil.findings)
+    computed again by live_results.veil as the server computes them, and his map.json built again from it by og
+    map build, as the map plugin builds it: og tags each row itself. Returns what to write back afterwards."""
     son = OTHERS[1]
     rj, mj = (os.path.join(out, "runs", son, n) for n in ("results.json", "map.json"))
     keep = {}
@@ -1505,6 +1510,8 @@ def plant_son(out, extra, og):
         for j in res["journal"]:
             if j["n"] == sec[f["level"]]:
                 j["findings"] = j["findings"] + [f["id"]]
+    tags = live_results.veil({}, res["findings"], []).get("findings") or {}
+    res["veil"] = dict(res.get("veil") or {}, findings=dict((res.get("veil") or {}).get("findings") or {}, **tags))
     with open(rj, "w") as fh:
         json.dump(res, fh)
     root = os.path.join(os.path.dirname(out), "root")
@@ -1612,6 +1619,157 @@ def second_open_problems(b, base, out, og):
         return bad
     finally:
         unplant(keep)
+
+
+# A finding the server tags with a closed result because it names its gene (results.veil.findings: a symptom
+# ranking), once with og's tag on its row too (CFTR, inside the deletion's span) and once with none (BRCA1).
+NAMED = (act("pl-x", "PLXGENE", "chr7:117400000-117700000", "Planted x deletion"),
+         {"id": "pl-q", "level": "review", "card": "exomiser", "gene": "CFTR", "title": "Symptom ranking: PLXGENE ranks 1",
+          "detail": "CFTR", "text": "A planted ranking that names the deletion's gene."},
+         {"id": "pl-r", "level": "review", "card": "exomiser", "gene": "BRCA1", "title": "Symptom ranking: PLXGENE ranks 2",
+          "detail": "BRCA1", "text": "A planted ranking that names the deletion's gene."})
+# A row of the map with no finding in results.json (a newer finding the map holds before the page has it),
+# on the closed deletion's place and with its tag.
+GHOST = {"id": "pl-ghost", "level": "review", "gene": "GHOSTGENE", "title": "Ghost review", "href": "finding/pl-ghost/",
+         "phrase": "Ghost review phrase."}
+
+
+def named_problems(b, base, out, og):
+    """On the son's closed page, with the planted deletion pl-x closed: the findings the server closes with it
+    (pl-q, pl-r) and a tagged map row the page has no finding for (pl-ghost) are in no mark, sentence, link,
+    title or address, and the figure is the one of the page without them; opening pl-x by its card draws pl-x,
+    pl-q and pl-r."""
+    son = OTHERS[1]
+    _, before = son_figure(b, base)
+    keep = plant_son(out, NAMED, og)
+    try:
+        with open(os.path.join(out, "runs", son, "results.json")) as fh:
+            tags = (json.load(fh).get("veil") or {}).get("findings") or {}
+        if tags.get("pl-q") != "pl-x" or tags.get("pl-r") != "pl-x" or row_tag(out, "pl-r"):
+            return [f"the server's tags {tags}, og's tag on pl-r {row_tag(out, 'pl-r')}: the planting tests nothing"]
+        path = os.path.join(out, "runs", son, "map.json")
+        doc = read_map(path)
+        f = doc["per"][son]["findings"]
+        if "pl-x" not in f["id"] or "pl-x" not in doc["dict"]["veil"]:
+            return ["og did not place or tag pl-x: the planting tests nothing"]
+        i, n = f["id"].index("pl-x"), len(f["id"])
+        for k in f:
+            if isinstance(f[k], list) and len(f[k]) == n:
+                f[k].append(f[k][i])
+        for k, v in GHOST.items():
+            f[k][-1] = v
+        f["veil"][-1] = doc["dict"]["veil"].index("pl-x")
+        write_map(path, doc)
+        c, fig = son_figure(b, base)
+        bad = []
+        ids = [m["id"] for m in c["marks"]]
+        shown = [x for x in ("pl-x", "pl-q", "pl-r", "pl-ghost") if x in ids]
+        shown += [w for w in ("PLXGENE", "Ghost", "GHOSTGENE") if w in c["text"] or w in c["tip"] or w in c["hash"]]
+        if shown:
+            bad.append(f"closed: the map shows {shown}")
+        if fig != before:
+            bad.append(f"closed: the figure differs from the page without them "
+                       f"({[k for k in ('html', 'canvas') if fig.get(k) != before.get(k)]})")
+        b.eval("document.querySelector('#f-pl-x .veil button').click(); true")
+        c = map_now(b)
+        ids = [m["id"] for m in c["marks"]]
+        if not {"pl-x", "pl-q", "pl-r"} <= set(ids):
+            bad.append(f"opened by its card: marks {ids}")
+        return bad
+    finally:
+        unplant(keep)
+
+
+def chip_problems(b, base, out, og):
+    """The son's map before any click is the same, its chips included, whether his planted closed result has a
+    place on the map (chr13) or none (no viewer, a gene not in GENCODE): the chip counts the results the page
+    keeps closed, never only the placed ones."""
+    got, bad = {}, []
+    for name, fid, viewer in (("no place", "pl-nowhere", ""), ("a place", "pl-somewhere", "chr13:32340000")):
+        keep = plant_son(out, [act(fid, "PL" + fid[3:].upper(), viewer, "Planted closed result")], og)
+        try:
+            placed = fid in read_map(os.path.join(out, "runs", OTHERS[1], "map.json"))["per"][OTHERS[1]]["findings"]["id"]
+            if placed != bool(viewer):
+                bad.append(f"{name}: og placed {fid} {placed}: the planting tests nothing")
+            c, fig = son_figure(b, base)
+            got[name] = (c["chips"], fig)
+        finally:
+            unplant(keep)
+    if got["no place"] != got["a place"]:
+        bad.append(f"the chips {got['no place'][0]} with no place, {got['a place'][0]} with one"
+                   + ("" if got["no place"][1] == got["a place"][1] else ", and the figure differs"))
+    return bad
+
+
+def runs_sentence(b, base):
+    """Whether DEMO-001's planted runs sentence on chr1 is in the margin at the first frame of the replay and
+    at the last: (first, last, the level and chromosome at the first frame)."""
+    map_page(b, base, S, "#chr1")
+    seen = []
+    for to in ("0", "s.max"):
+        b.eval("var s = document.getElementById('replay-slider'); s.value = %s; s.dispatchEvent(new Event('input')); true" % to)
+        c = map_now(b)
+        seen.append(("PLANTEDRUNS" in c["text"], c["level"] + " " + c["chrom"]))
+    return seen[0][0], seen[1][0], seen[0][1]
+
+
+def runs_sentence_problems(b, base, out):
+    """A replay before the runs-of-homozygosity step ended has no sentence about them on an open chromosome;
+    at its end it has it."""
+    path = os.path.join(out, "runs", S, "map.json")
+    with open(path, "rb") as fh:
+        keep = fh.read()
+    try:
+        doc = read_map(path)
+        doc.setdefault("text", {}).setdefault("chrom", {})["chr1"] = [{"t": "PLANTEDRUNS sentence.", "b": False}]
+        write_map(path, doc)
+        first, last, where = runs_sentence(b, base)
+        if where != "chromosome chr1":
+            return [f"the first frame is at {where}: the check tests nothing"]
+        return (["the first frame says the runs sentence"] if first else []) + ([] if last else ["the last frame lacks it"])
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(keep)
+
+
+# A second figure on DEMO-001's page with a veil that keeps nothing closed: drawn from map.json, then reloaded
+# from a file that is not there.
+SECOND_JS = r"""(function () {
+  var o = { url: 'map.json', veil: function () { return 'open'; }, now: function () { return true; },
+    known: function () { return true; }, stepDone: function () { return true; }, open: function () {},
+    close: function () {}, fallback: function () { return []; } };
+  var g = window.PGPMap.create(o);
+  g.node.id = 'gm-second';
+  document.body.appendChild(g.node);
+  window.pgpSecond = { g: g, o: o };
+  g.refresh('k1');
+  return true;
+}())"""
+SECOND_FACTS = r"""JSON.stringify((function () {
+  var f = document.getElementById('gm-second');
+  return { state: f.dataset.pgpMap, marks: f.querySelectorAll('.gm-marks a').length,
+    narr: f.querySelector('.gm-narration').textContent, layers: f.querySelector('.gm-layers').textContent,
+    tip: f.querySelector('.gm-tip').hidden ? '' : f.querySelector('.gm-tip').textContent };
+}()))"""
+
+
+def failed_reload_problems(b, base):
+    """A figure whose reload fails draws nothing more of the document it had: no mark link, no margin sentence,
+    no layer line, no tooltip."""
+    map_page(b, base, S)
+    b.eval(SECOND_JS)
+    if not b.wait("document.getElementById('gm-second').dataset.pgpMap === 'drawn'"):
+        return ["the second figure never drew"]
+    time.sleep(0.6)
+    drawn = json.loads(b.eval(SECOND_FACTS))
+    if not drawn["marks"] or not drawn["narr"]:
+        return [f"the second figure drew no mark or sentence: the check tests nothing ({drawn})"]
+    b.eval("pgpSecond.o.url = 'no-such-map.json'; pgpSecond.g.refresh('k2'); true")
+    if not b.wait("document.getElementById('gm-second').dataset.pgpMap === 'failed'"):
+        return ["the second figure's reload did not fail"]
+    time.sleep(1.0)
+    c = json.loads(b.eval(SECOND_FACTS))
+    return [f"after the failed reload: {c}"] if c["marks"] or c["narr"] or c["layers"] or c["tip"] else []
 
 
 def replay_apoe_problems(b, base):
@@ -1784,6 +1942,33 @@ def map_checks(b, base, out):
     finally:
         with open(mjs, "w") as fh:
             fh.write(keep_mjs)
+    bad = named_problems(b, base, out, og)
+    check("map: a finding the server closes with a closed result, and a tagged map row the page has no finding "
+          "for, stay off the map until the result is opened", not bad, bad)
+    now = "&& (!opts.now || opts.now(r.id));"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(now, "&& true;"))
+        control("map.js whose rows ignore what the page shows now", keep_mjs.count(now) != 1 or
+                not named_problems(b, base, out, og))
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(known, "true || "))
+        control("map.js that takes every row for a finding of the page", keep_mjs.count(known) != 1 or
+                not named_problems(b, base, out, og))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = chip_problems(b, base, out, og)
+    check("map: the closed-results chip counts the results the page keeps closed, with a place on the map or "
+          "without", not bad, bad)
+    try:
+        with open(js, "w") as fh:
+            fh.write(keep_js.replace("closed: mapClosed, ", ""))
+        control("person.js that does not tell the map which results it keeps closed",
+                keep_js.count("closed: mapClosed, ") != 1 or not chip_problems(b, base, out, og))
+    finally:
+        with open(js, "w") as fh:
+            fh.write(keep_js)
     bad = replay_apoe_problems(b, base)
     check("map: before the traits step a replay has no APOE chip, switch or mark", not bad, bad)
     gated = "if (M.gated[id] && opts.now && !opts.now(id)) { return; }"
@@ -1801,6 +1986,32 @@ def map_checks(b, base, out):
             fh.write(keep_mjs)
     bad = missing_layer_problems(b, base, out)
     check("map: a missing layer says why in words, never a blank", not bad, bad)
+    bad = runs_sentence_problems(b, base, out)
+    check("map: a replay says an open chromosome's runs sentence only once the runs' step ended", not bad, bad)
+    waits = "&& rohLayer() === M.layers.roh"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(waits, ""))
+        control("map.js whose runs sentence does not wait for its step", keep_mjs.count(waits) != 1 or
+                not runs_sentence_problems(b, base, out))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = failed_reload_problems(b, base)
+    check("map: after a failed reload the figure draws nothing more of its old document", not bad, bad)
+    undone = [("if (!M || failure) { return; }", "if (!M) { return; }", 2), ("if (!raf && !failure) {", "if (!raf) {", 1),
+              ("window.cancelAnimationFrame(raf);\n      raf = 0;\n      window.clearTimeout(settleT);\n", "", 1)]
+    try:
+        planted_mjs = keep_mjs
+        for a, z, _ in undone:
+            planted_mjs = planted_mjs.replace(a, z)
+        with open(mjs, "w") as fh:
+            fh.write(planted_mjs)
+        control("map.js that keeps drawing after a failed reload",
+                any(keep_mjs.count(a) != n for a, _, n in undone) or not failed_reload_problems(b, base))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
     bad = fallback_problems(b, base, out)
     check("map: a browser with no DecompressionStream gets the sentence and a findings table through the veil", not bad, bad)
     b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False}, b.session)

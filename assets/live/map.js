@@ -105,8 +105,9 @@
 
   // --- the figure ---------------------------------------------------------------------------------------
   // create({url, veil(id, gated) -> 'open'|'closed'|'opened', now(id) -> shown at this moment, open(id),
-  // close(id), known(id) -> a finding of the page's results, stepDone(step) -> ended at this moment,
-  // fallback() -> rows}): one figure per page. The page calls refresh(key) on each of its redraws; a new key
+  // close(id), known(id) -> a finding of the page's results, closed() -> the ids of the results to act on the
+  // page keeps closed at this moment, stepDone(step) -> ended at this moment, fallback() -> rows}): one figure
+  // per page. The page calls refresh(key) on each of its redraws; a new key
   // fetches the document again and keeps the camera.
   function create(opts) {
     var M = null, key = null, failure = null, t0 = 0;
@@ -383,7 +384,7 @@
 
     function draw() {
       raf = 0;
-      if (!M) { return; }
+      if (!M || failure) { return; }  // a failed reload leaves the old document undrawn
       var t = performance.now();
       if (!size()) { return; }  // the page may have changed width since the last frame (a phone turned, a fold opened)
       step();
@@ -597,7 +598,17 @@
     function noFindingHere() {
       return closedAny() ? 'No open finding with a place on this chromosome.' : 'No finding with a place on this chromosome.';
     }
-    function closedAny() { return M.closable.some(function (id) { return stateOf(id) === 'closed'; }); }
+    function closedAny() { return closedActs().length > 0 || M.closable.some(function (id) { return stateOf(id) === 'closed'; }); }
+    // The results to act on this page keeps closed, in the order Open opens them: the ones with a place on the
+    // map first, in map order, then the rest of the page's closed results, which have no place to draw. Its
+    // length is what the chip counts, so the count never tells whether a closed result has a place.
+    function closedActs() {
+      var page = opts.closed ? opts.closed() : null;
+      var placed = M.closable.filter(function (id) {
+        return !M.gated[id] && stateOf(id) === 'closed' && (!page || page.indexOf(id) >= 0);
+      });
+      return page ? placed.concat(page.filter(function (id) { return placed.indexOf(id) < 0; })) : placed;
+    }
     function layerWords(lay) {
       if (lay.state === 'missing') { return 'Not on the map: ' + (lay.note || ('step ' + lay.step + ' wrote no ' + (lay.source || 'file') + '.')); }
       if (lay.state === 'unreadable') { return 'Not on the map: ' + (lay.source || '') + ' could not be read' + (lay.note ? ' (' + lay.note + ')' : '') + '.'; }
@@ -630,7 +641,7 @@
       cam.k += (tgt.k - cam.k) * (1 - Math.exp(-dt / 95));
       if (!moving()) { cam.c = tgt.c; cam.ls = tgt.ls; cam.k = tgt.k; }
     }
-    function schedule() { if (!raf) { raf = window.requestAnimationFrame(function () { last = last || performance.now(); draw(); }); } }
+    function schedule() { if (!raf && !failure) { raf = window.requestAnimationFrame(function () { last = last || performance.now(); draw(); }); } }
     function clampTgt() {
       var ch = M.chroms[tgt.ci], span = clamp(Math.exp(tgt.ls), minSpan(ch.len), ch.len);
       tgt.ls = Math.log(span);
@@ -738,7 +749,7 @@
       settleT = window.setTimeout(describe, 140);
     }
     function describe() {
-      if (!M) { return; }
+      if (!M || failure) { return; }
       var lv = level(), fs = drawn(), ch = chrom();
       fig.setAttribute('data-level', lv);
       fig.setAttribute('data-chrom', lv === 'genome' ? '' : ch.n);
@@ -865,12 +876,12 @@
     function drawChips() {
       chips.textContent = '';
       if (!M) { return; }
-      var acts = [], gates = [], opened = [];
+      var acts = closedActs(), gates = [], opened = [];
       M.closable.forEach(function (id) {
         // A gated result (APOE) has a chip only once the page shows its card (a replay before its step has none).
         if (M.gated[id] && opts.now && !opts.now(id)) { return; }
         var s = stateOf(id);
-        if (s === 'closed') { (M.gated[id] ? gates : acts).push(id); } else if (s === 'opened') { opened.push(id); }
+        if (s === 'closed') { if (M.gated[id]) { gates.push(id); } } else if (s === 'opened') { opened.push(id); }
       });
       // Why it is closed: said beside the count, left out on a phone (the card says it too).
       function why() { return el('span', { 'class': 'gm-why' }, ' · Not drawn until opened on purpose'); }
@@ -1035,6 +1046,10 @@
     // --- loading ---
     function fail(why, words) {
       failure = why;
+      // The frame and the margin the last refresh scheduled would draw the old document again: drop them.
+      window.cancelAnimationFrame(raf);
+      raf = 0;
+      window.clearTimeout(settleT);
       fig.setAttribute('data-pgp-map', why);
       stage.hidden = true;
       marks.hidden = true;
