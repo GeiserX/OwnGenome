@@ -376,7 +376,7 @@ fn covered(gvcf: &Region, chrom: &str, start: u64, end: u64) -> Result<u64, Erro
         let b = b.max(reach + 1);
         if b <= e {
             total += e - b + 1;
-            reach = b.saturating_sub(1);
+            reach = e;
         }
     }
     Ok(total)
