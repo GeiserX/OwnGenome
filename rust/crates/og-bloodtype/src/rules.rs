@@ -1079,7 +1079,7 @@ fn system_rhd(sites: &Genotyped, rhd: &RhdDepth, row: &Locus) -> Result<Row, Err
     let exon = |e: i64| exons.iter().find(|(x, _)| *x == e).map(|(_, c)| *c);
     let hybrid: Vec<i64> = RHD_HYBRID_EXONS
         .into_iter()
-        .filter(|e| call >= 1 && exon(*e).unwrap_or(1.0) < 0.6)
+        .filter(|e| call >= 1 && exon(*e).unwrap_or(1.0) < 0.5)
         .collect();
     let mut sorted: Vec<(i64, f64)> = Vec::new();
     for &(e, c) in exons {

@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Reads (MAPQ >= 20) before a site missing from the VCF counts as reference.
-pub const MIN_DEPTH: f64 = 7.0;
+pub const MIN_DEPTH: f64 = 8.0;
 
 /// What is known at one site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,7 +200,7 @@ pub fn genotype_site(site: &mut Site, rf: &str, alts: &[&str], filt: &str, allel
     // A record whose REF is not the marker's REF says nothing about the
     // marker's ALT, unless it is a reference call over a span that starts
     // with the marker's REF.
-    if rf.is_empty() && !(rf.starts_with(r.ref_.as_str()) && alleles.iter().all(|a| *a == "0")) {
+    if rf != r.ref_ && !(rf.starts_with(r.ref_.as_str()) && alleles.iter().all(|a| *a == "0")) {
         site.note = format!("REF {rf} at this position, the marker's REF is {}", r.ref_);
         site.status = Status::NoCall;
         return;
