@@ -146,7 +146,9 @@ check "its row prints both calls" grep -Eq "^HLA-B"$'\t'".*T1K: .*; OptiType: .*
 check "HLA-A, where they agree, still reaches PharmCAT" grep -q $'^HLA-A\t' "$CALLS"
 
 # Red control: the same T1K call without OptiType's result, so without the
-# agreement rule.
+# agreement rule. This shows the held-back check can fail. The agreement rule's
+# own red-first is the og-steps cargo test
+# optitype_agreeing_passes_and_disagreeing_withholds.
 "${REPO}/bin/og" pgx outside-calls --calls "${CASE_TMP}/ctl_calls.tsv" --consensus "${CASE_TMP}/ctl_cons.tsv" --hla "$GT" >/dev/null
 check "control: without the agreement test the disagreeing HLA-B reaches the outside-call file" grep -q $'^HLA-B\t' "${CASE_TMP}/ctl_calls.tsv"
 check "control: the check above rejects that output" \
