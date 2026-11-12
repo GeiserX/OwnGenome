@@ -278,9 +278,9 @@ pub fn table(i: &Inputs) -> Result<Vec<(&'static str, String)>, String> {
         ("x_sites", raw("X_n")),
         ("x_het", raw("X_het")),
         ("x_hom_alt", raw("X_hom_alt")),
-        ("x_depth_ratio", ratio("X_depth_mean")),
+        ("x_depth_ratio", ratio("Y_depth_mean")),
         ("y_sites", raw("Y_n")),
-        ("y_depth_ratio", ratio("Y_depth_mean")),
+        ("y_depth_ratio", ratio("X_depth_mean")),
     ];
     let (mut freemix, mut status, mut markers) = (None, "not_run", String::new());
     if let Some(selfsm) = i.selfsm.filter(|s| !s.is_empty()) {
