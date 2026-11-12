@@ -50,8 +50,10 @@ Checks:
  11. the copy-aware markers (MARKERS: LPA KIV-2 4925G>A, SMN1 g.27134T>G):
      each pinned dbSNP record is one of the marker's copies with its ref and
      alt, and a planted swap, a minus-strand pair and a position off the
-     copies are each caught; the context's middle base is the ref;
-     --marker-regions prints one region per copy; on mpileup lines made up
+     copies are each caught; the context's middle base is the ref. With OG
+     naming the og binary (skipped without it, a failure with OG_REQUIRED
+     set too): og cn marker-regions prints one region per copy of MARKERS;
+     og cn marker-read SMN1_27134 on mpileup lines made up
      for each case at the SMN1 and SMN2 copies: a quarter of the reads with G
      is 'present' (copies = fraction x agCN), T only (the reference) 'not
      seen', 2 reads with G 'uncertain', under 10 reads 'too little depth', an
@@ -78,6 +80,9 @@ TABLE = os.path.join(REPO, "assets", "traits.tsv")
 RULES = os.path.join(REPO, "assets", "genotype_rules.tsv")
 SCRIPT = os.path.join(REPO, "bin", "traits_report.py")
 CHECK = os.path.join(REPO, "scripts", "ci", "check-rule-alleles.sh")
+OG = os.environ.get("OG", "")
+# The sentence every SMN1 marker message ends with.
+SMN1_NOT_PROOF = "This marker does not prove 2+0, and its absence does not rule 2+0 out."
 FAILS = 0
 
 # The sha256 of the APOE line (its OUT_COLUMNS joined by tabs) the hand code of
@@ -145,6 +150,10 @@ def line_hash(o):
 
 def run(*args):
     return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True)
+
+
+def og_cn(*args):
+    return subprocess.run([OG, "cn", *args], capture_output=True, text=True)
 
 
 def dbsnp_checks(rules):
@@ -294,10 +303,14 @@ def marker_checks():
         e = tr.marker_errors(name, dict(m, context=m["context"][:10] + alt + m["context"][11:]))
         check(f"marker {name} control: a context whose middle base is not the ref is caught",
               any("middle base" in x for x in e), e)
-        res = run("--marker-regions", name)
-        check(f"marker {name}: --marker-regions prints one region per copy",
-              res.returncode == 0 and res.stdout.split() == [f"{chrom}:{p}-{p}" for p in m["copies"]], res)
     check("LPA_KIV2_4925: seven copies (six KIV-2 units and KIV-1)", len(tr.MARKERS["LPA_KIV2_4925"]["copies"]) == 7)
+    if not OG:
+        print("skip: OG is not set (OG=rust/target/release/og): og cn marker-regions and marker-read did not run")
+        return
+    for name, m in tr.MARKERS.items():
+        res = og_cn("marker-regions", name)
+        check(f"marker {name}: og cn marker-regions prints one region per copy of MARKERS",
+              res.returncode == 0 and res.stdout.split() == [f"{m['chrom']}:{p}-{p}" for p in m["copies"]], res)
 
     sm = tr.MARKERS["SMN1_27134"]
     work = tempfile.mkdtemp()
@@ -315,7 +328,9 @@ def marker_checks():
 
         def table(p, smn_path):
             out = os.path.join(work, "o.tsv")
-            res = run("--marker", "SMN1_27134", "--pileup", p, "--copy-table", smn_path, "--marker-out", out)
+            if os.path.exists(out):
+                os.remove(out)
+            res = og_cn("marker-read", "SMN1_27134", "--pileup", p, "--copy-table", smn_path, "--out", out)
             return res, dict(x.split("\t", 1) for x in open(out).read().splitlines()[1:]) if os.path.exists(out) else {}
 
         res, t = table(pileup(15, 5), smn())
@@ -362,13 +377,20 @@ def marker_checks():
 
         # Every status with every psCN: the message says the marker does not prove 2+0.
         msgs = []
-        for counts in [(30, 10, 0), (40, 0, 0), (38, 2, 0), (3, 1, 0), None]:
-            for path in (smn(), smn(pscn="1,3"), smn(pqual="5,5"), os.path.join(work, "missing.tsv")):
-                msgs.append(dict(tr.smn1_marker(counts, path))["message"])
+        for counts in [(30, 10), (40, 0), (38, 2), (3, 1), None]:
+            if counts is None:
+                p = bad
+            else:   # every read at the SMN1 copy
+                p = os.path.join(work, "all.tsv")
+                write(p, f"chr5\t{sm['copies'][0]}\tN\t{sum(counts)}\t{'T' * counts[0]}{'G' * counts[1]}\t.\n")
+            for path in ("2,2", "1,3", "5,5", None):
+                smn_path = (os.path.join(work, "missing.tsv") if path is None
+                            else smn(pqual=path) if path == "5,5" else smn(pscn=path))
+                msgs.append(table(p, smn_path)[1].get("message", ""))
         check(f"SMN1 marker: every message ({len(msgs)}) says it does not prove 2+0",
-              all(says_not_proof(x) for x in msgs), [x for x in msgs if not says_not_proof(x)])
+              len(msgs) == 20 and all(says_not_proof(x) for x in msgs), [x for x in msgs if not says_not_proof(x)])
         check("SMN1 marker control: a message without the sentence fails that test",
-              not says_not_proof(msgs[0].replace(tr.SMN1_NOT_PROOF, "")))
+              not says_not_proof(msgs[0].replace(SMN1_NOT_PROOF, "")))
     finally:
         shutil.rmtree(work)
 
@@ -601,7 +623,7 @@ def main():
     marker_checks()
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
-    return 1 if FAILS else 0
+    return 1 if FAILS or (not OG and os.environ.get("OG_REQUIRED")) else 0
 
 
 if __name__ == "__main__":

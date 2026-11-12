@@ -1,0 +1,2 @@
+chrom	start	end	locus	agCN_filter	agCN	agCN_qual	psCN_filter	psCN	psCN_qual	homologous_regions
+chr5	70925000	70955000	SMN1	PASS	4	30	PASS	2,2	40,40	chr5:70049000-70080000

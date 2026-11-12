@@ -6,14 +6,12 @@
 # of apo(a); a low total goes with a higher Lp(a) level, a mostly inherited
 # cardiovascular risk factor. The step counts the repeats from the depth over
 # the KIV-2 exons against the depth over single-copy LPA exons
-# (bin/copy_number.py on the LPA_KIV2 row of bin/cn_loci.tsv, laid out by
-# bin/lpa_kiv2.py; the same code as the LPA Nextflow processes), with a 95%
-# interval. Beside the count it reads the KIV-2 4925G>A splice variant
+# (og cn call on the LPA_KIV2 row of bin/cn_loci.tsv; the same code as the
+# LPA Nextflow processes), with a 95% interval. Beside the count it reads the KIV-2 4925G>A splice variant
 # (Coassin et al. 2017), which lowers the Lp(a) made from the chromosome that
 # carries it: samtools mpileup at the site's seven GRCh38 copies (the six
-# KIV-2 units and KIV-1), read as a fraction of copies by
-# bin/traits_report.py --marker LPA_KIV2_4925 into its own table, laid out by
-# bin/lpa_kiv2.py.
+# KIV-2 units and KIV-1), read as a fraction of copies in the same og cn
+# call, into its own table.
 # The two common risk variants, rs10455872 and rs3798220, are rows
 # of step 42's traits panel; the report's Lp(a) section reads both. A research
 # estimate, not a diagnostic test: the actionable test is a blood Lp(a)
@@ -59,13 +57,13 @@ echo "BAM: ${BAM}"
 mkdir -p "$OUTDIR"
 rm -f "$TABLE" "$DEPTH" "$DEPTH_Q1" "$PILEUP" "$NULL" "$BED" "$SITES"
 
-echo "[1/4] The regions (bin/copy_number.py bed --locus LPA_KIV2) and the 4925G>A sites..."
+echo "[1/3] The regions (og cn bed --locus LPA_KIV2) and the 4925G>A sites..."
 # shellcheck disable=SC2016  # $1 and $2 belong to the inner shell
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  sh -c 'python3 /pgp-bin/copy_number.py bed --locus LPA_KIV2 > "$1" &&
-    python3 /pgp-bin/traits_report.py --marker-regions LPA_KIV2_4925 > "$2"' _ "$(cpath "$BED")" "$(cpath "$SITES")"
+  sh -c '/pgp-bin/og cn bed --locus LPA_KIV2 > "$1" &&
+    /pgp-bin/og cn marker-regions LPA_KIV2_4925 > "$2"' _ "$(cpath "$BED")" "$(cpath "$SITES")"
 
-echo "[2/4] Read depth over the KIV-2 and single-copy LPA exons (samtools bedcov -j, all MAPQ and MAPQ >= 1)"
+echo "[2/3] Read depth over the KIV-2 and single-copy LPA exons (samtools bedcov -j, all MAPQ and MAPQ >= 1)"
 echo "      and the reads at the 4925G>A sites (samtools mpileup, every MAPQ)..."
 # bedcov stops on a contig the BAM has no @SQ line for: without chr6 the
 # tables stay empty and the count is not assessed. mpileup runs once per site
@@ -86,18 +84,20 @@ run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
   "$(cpath "$PILEUP")" "$(cpath "$SITES")"
 rm -f "$BED" "$SITES"
 
-echo "[3/4] The count and its interval (bin/copy_number.py call --locus LPA_KIV2)..."
+echo "[3/3] The count, its interval and KIV-2 4925G>A beside it (og cn call --locus LPA_KIV2 --marker LPA_KIV2_4925)..."
+# One run reads the count and the marker, so the marker is judged on the
+# count's own MAPQ 0 share. A failure of the marker never costs the count (as
+# step 35's SMN1 marker): when the count table is there, the 4925G>A table
+# then says not assessed, and the step goes on. The LPA process writes the
+# same table.
+rc=0
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/copy_number.py call --locus LPA_KIV2 --bedcov "$(cpath "$DEPTH")" \
-    --bedcov-mapq1 "$(cpath "$DEPTH_Q1")" --table "$(cpath "$TABLE")"
-
-echo "[4/4] KIV-2 4925G>A beside the count (bin/traits_report.py --marker LPA_KIV2_4925)..."
-# A failure here never costs the count (as step 35's SMN1 marker): the
-# 4925G>A table then says not assessed, and the step goes on. The LPA
-# process writes the same table.
-if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/traits_report.py --marker LPA_KIV2_4925 --pileup "$(cpath "$PILEUP")" \
-    --copy-table "$(cpath "$TABLE")" --marker-out "$(cpath "$NULL")"; then
+  /pgp-bin/og cn call --locus LPA_KIV2 --bedcov "$(cpath "$DEPTH")" \
+    --bedcov-mapq1 "$(cpath "$DEPTH_Q1")" --table "$(cpath "$TABLE")" \
+    --marker LPA_KIV2_4925 --marker-pileup "$(cpath "$PILEUP")" --marker-out "$(cpath "$NULL")" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  # No count table: the count itself failed (exit 3 for a broken control).
+  [ -s "$TABLE" ] || exit "$rc"
   echo "WARNING: the KIV-2 4925G>A check failed; ${NULL##*/} says not assessed." >&2
   printf 'metric\tvalue\nmarker\tLPA KIV-2 4925G>A\nrsid\trs1484919544 (first KIV-2 copy)\nstatus\tnot assessed\nalt_reads\t.\ndepth\t.\nfraction\t.\ncopies\t.\nkiv2_copies\t.\nmessage\t%s\n' \
     'LPA KIV-2 4925G>A: not assessed, the check failed; see the log of step 46.' > "$NULL"

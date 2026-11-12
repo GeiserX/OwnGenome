@@ -1,0 +1,11 @@
+metric	value
+marker	SMN1 g.27134T>G
+rsid	rs143838139
+status	present
+alt_reads	5
+depth	60
+fraction	0.0833
+copies	0.3
+smn1_pscn	1 (quality 12, filter LowQual), not resolved
+agcn	4
+message	SMN1 g.27134T>G (rs143838139): present, 5 of 60 reads carry G at the SMN1 and SMN2 copies of the site together (about 0.3 of the 4 SMN1 and SMN2 copies). The reads cannot tell whether a G sits on SMN1 or SMN2. SMN1 copy number: 1 (quality 12, filter LowQual), not resolved; the marker refines the carrier risk of a two-copy result only. This marker does not prove 2+0, and its absence does not rule 2+0 out.

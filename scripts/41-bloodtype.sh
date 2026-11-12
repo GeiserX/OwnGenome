@@ -49,13 +49,13 @@ if [ -f "$BAM" ] && [ -f "${BAM}.bai" ]; then
   echo "[1/2] Read depth at the marker sites and over RHD (samtools bedcov, MAPQ >= 20)..."
   # The marker table is a BED with extra columns; bedcov reads it once the
   # comment and header lines are gone. The RHD regions come from
-  # bin/copy_number.py (BLOODTYPE_REGIONS in Nextflow) as a 4-column BED.
+  # og cn bed (BLOODTYPE_REGIONS in Nextflow) as a 4-column BED.
   # bedcov stops on a contig the BAM has no @SQ line for, so those rows are
   # left out: their sites get no depth row and are not determined. The
   # BLOODTYPE_DEPTH process runs the same commands.
   # shellcheck disable=SC2016  # $1 belongs to the inner shell
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-    sh -c 'python3 /pgp-bin/copy_number.py bed --locus RHD > "$1"' _ "${O}/rhd.bed"
+    sh -c '/pgp-bin/og cn bed --locus RHD > "$1"' _ "${O}/rhd.bed"
   # shellcheck disable=SC2016  # $1 to $6 belong to the inner bash, the two programs to awk
   run_in -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
       samtools view -H "$3" | awk -F "\t" "$5" > "$2/contigs.txt"

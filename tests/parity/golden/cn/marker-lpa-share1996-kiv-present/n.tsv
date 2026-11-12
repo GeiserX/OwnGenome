@@ -1,0 +1,10 @@
+metric	value
+marker	LPA KIV-2 4925G>A
+rsid	rs1484919544 (first KIV-2 copy)
+status	not assessed
+alt_reads	.
+depth	.
+fraction	.
+copies	.
+kiv2_copies	.
+message	LPA KIV-2 4925G>A (a splice variant that lowers the Lp(a) made from its chromosome, Coassin 2017): not assessed, reads of mapping quality 0 make up 20.0% of the KIV-2 depth, so the aligner left out the reads that fit several copies, the ones a carrying repeat gives.

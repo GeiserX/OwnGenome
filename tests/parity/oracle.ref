@@ -39,3 +39,4 @@ viral-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/viral_report.py	p
 y-str-bed	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" bed "$@"'	y str-bed
 y-str-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" report "$@"'	y str-report
 exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	python3	exomiser
+cn	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/copy_number.py	sh ./oracle.sh	cn

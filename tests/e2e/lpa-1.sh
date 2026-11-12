@@ -11,7 +11,7 @@
 #     HG002 is published that this case could compare with, so the value goes
 #     to the notes and the checks are on its arithmetic:
 #   - the same reads with half of those over the KIV-2 block: N + 2 halves
-#     (bin/lpa_kiv2.py: N = 14 x M / D - 2);
+#     (og cn call --locus LPA_KIV2: N = 14 x M / D - 2);
 #   - the same reads at an eighth of the depth: "too little depth";
 #   - nextflow run main.nf --tools lpa,html_report on the real reads publishes
 #     the same three files as the bash step, byte for byte, and the HTML

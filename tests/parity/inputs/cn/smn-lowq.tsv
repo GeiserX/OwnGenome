@@ -1,0 +1,2 @@
+chrom	start	end	locus	agCN_filter	agCN	agCN_qual	psCN_filter	psCN	psCN_qual	homologous_regions
+chr5	70925000	70955000	SMN1	LowQual	4	12	LowQual	2,2	12,12	chr5:70049000-70080000

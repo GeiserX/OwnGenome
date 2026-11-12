@@ -127,7 +127,7 @@ M="${GENOME_DIR}/${P}/module"
 rm -rf "$M"; mkdir -p "$M"
 SPECS=$(awk -F'\t' '/^#/ || !NF {next} !h {for (i = 1; i <= NF; i++) c[$i] = i; h = 1; next}
   {printf "%s%s|%s|%s", sep, $c["model"], $c["region"], $c["table"]; sep = " "}' "$LOCI")
-# bin/ is on PATH in Nextflow; here copy_number.py runs from it mounted, as step 35 runs it.
+# bin/ is on PATH in Nextflow; here og runs from it mounted, as step 35 runs it.
 sed -n '/# Paralog loci (as scripts\/35-paralogs.sh)/,/# end of the paralog loci/p' "$MOD" \
   | sed -e 's/\\\\/\\/g' -e 's/\\\$/$/g' \
         -e "s|\${parascopy_data}|/genome/reference/parascopy-${PARASCOPY_DATA_VERSION}|g" \
@@ -138,7 +138,7 @@ sed -n '/# Paralog loci (as scripts\/35-paralogs.sh)/,/# end of the paralog loci
         -e "s|\${background}|-b /genome/${P}/parascopy_windows.bed --no-gc|g" \
         -e "s|\${task.cpus}|2|g" \
         -e "s/\${loci}/${SPECS}/g" \
-        -e "s|^\( *\)copy_number.py |\1python3 /pgp-bin/copy_number.py |" > "${M}/block.sh"
+        -e "s|^\( *\)og cn |\1/pgp-bin/og cn |" > "${M}/block.sh"
 check_ge "the module's loop was cut from main.nf" "$(wc -l < "${M}/block.sh" | tr -d ' ')" 25
 check "the cut loop has no Nextflow variable left" \
   sh -c "! grep -E '[$][{](parascopy_data|params[.]|bam|meta[.]|reference|background|task[.]|loci)' '${M}/block.sh'"

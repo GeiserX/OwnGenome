@@ -26,8 +26,8 @@ on a chromosome carrying the antigens of its null_on column, as no phase is read
 
 --depth is samtools bedcov -Q 20 -j over the table's sites and the RHD row of
 bin/cn_loci.tsv (scripts/41-bloodtype.sh and the BLOODTYPE_DEPTH process make
-it from the BAM; `copy_number.py bed --locus RHD` prints that row's regions,
-and bin/copy_number.py turns their depth into the copy number). It gives:
+it from the BAM; `og cn bed --locus RHD` prints that row's regions, and the
+catalog code of bin/copy_number.py turns their depth into the copy number). It gives:
   - RhD. The common RhD-negative allele (RHD*01N.01) deletes the whole RHD gene,
     which a VCF does not show. RHD depth over the depth of its two flanks gives
     the copy number (0, 1, 2); exons 3 to 7 without RHD reads in a gene that is
