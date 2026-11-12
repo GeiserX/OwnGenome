@@ -9,7 +9,7 @@
     Stranger's bundled GRCh38 catalog.
 
     STRANGER_RFC1, after it, counts the repeat motif of the reads at RFC1
-    (bin/rfc1_motif.py) when Stranger flags RFC1, from the sample's BAM, and
+    (og str motif) when Stranger flags RFC1, from the sample's BAM, and
     of every other flagged locus whose motifs the catalog names.
 
     Equivalent to: scripts/09b-stranger.sh
@@ -75,12 +75,13 @@ process STRANGER {
     STRANGER_RFC1: Stranger's catalog sizes RFC1's degenerate AARRG unit and
     flags a low count as full_mutation, so the flag says nothing until the
     motif is known. When Stranger flags RFC1 (pre or full mutation), this
-    counts the pentamer motif of the reads at the locus with
-    bin/rfc1_motif.py and writes <id>_rfc1_motif.tsv; without the flag it
+    counts the pentamer motif of the reads at the locus with og str motif
+    and writes <id>_rfc1_motif.tsv; without the flag it
     writes nothing, as step 9b. With a catalog that names motifs (STRchive)
     the count takes RFC1's motifs and repeats from it, and every other
     flagged locus it names motifs for (the FAME loci, SCA31, SCA37) goes
-    into <id>_str_motifs.tsv. pysam is in PYPGX_IMAGE.
+    into <id>_str_motifs.tsv. og reads the BAM itself (no pysam); the task
+    stays in PYPGX_IMAGE, where the Python count it replaced ran.
 
     Equivalent to: the RFC1 part of scripts/09b-stranger.sh
 */
@@ -109,13 +110,13 @@ process STRANGER_RFC1 {
     CAT_ARGS=""
     if [ -n "${cat}" ] && grep -q '"PathogenicMotifs"' "${cat}"; then CAT_ARGS="--catalog ${cat}"; fi
     if awk -F'\\t' '!/^#/ && \$8 ~ /(^|;)REPID=RFC1(;|\$)/ && \$8 ~ /(^|;)STR_STATUS=[^;]*(pre|full)_mutation/ {f = 1; exit} END {exit !f}' ${vcf}; then
-        echo "RFC1 is flagged: counting the repeat motif of its reads (bin/rfc1_motif.py)"
-        rfc1_motif.py --vcf ${vcf} --bam ${bam} --out ${meta.id}_rfc1_motif.tsv \$CAT_ARGS
+        echo "RFC1 is flagged: counting the repeat motif of its reads (og str motif)"
+        og str motif --vcf ${vcf} --bam ${bam} --out ${meta.id}_rfc1_motif.tsv \$CAT_ARGS
     else
         echo "Stranger does not flag RFC1: no motif count"
     fi
     if [ -n "\$CAT_ARGS" ]; then
-        rfc1_motif.py --vcf ${vcf} --bam ${bam} \$CAT_ARGS --flagged --out ${meta.id}_str_motifs.tsv
+        og str motif --vcf ${vcf} --bam ${bam} \$CAT_ARGS --flagged --out ${meta.id}_str_motifs.tsv
     fi
 
     cat <<-END_VERSIONS > versions.yml

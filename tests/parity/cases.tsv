@@ -13,6 +13,12 @@ setup-mask-fasta	lone-cr	setup-mask-fasta/lone-cr.fa,setup-mask-fasta/lone-cr.be
 setup-mask-fasta	empty-header	setup-mask-fasta/empty-header.fa,setup-mask-fasta/empty-header.bed	empty-header.fa empty-header.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	bad-bed	setup-mask-fasta/bad-bed.fa,setup-mask-fasta/bad-bed.bed	bad-bed.fa bad-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	synthetic-254mb	gen:synthetic-fasta.sh	synthetic.fa synthetic.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	clean_no_alt	pgx-cyp2d6-check/clean_no_alt.q0.bed,pgx-cyp2d6-check/clean_no_alt.q1.bed	--all clean_no_alt.q0.bed --mapq1 clean_no_alt.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	multimapped_with_alt	pgx-cyp2d6-check/multimapped_with_alt.q0.bed,pgx-cyp2d6-check/multimapped_with_alt.q1.bed	--all multimapped_with_alt.q0.bed --mapq1 multimapped_with_alt.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	deleted_both	pgx-cyp2d6-check/deleted_both.q0.bed,pgx-cyp2d6-check/deleted_both.q1.bed	--all deleted_both.q0.bed --mapq1 deleted_both.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	deleted_one	pgx-cyp2d6-check/deleted_one.q0.bed,pgx-cyp2d6-check/deleted_one.q1.bed	--all deleted_one.q0.bed --mapq1 deleted_one.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	no_flank_reads	pgx-cyp2d6-check/no_flank_reads.q0.bed,pgx-cyp2d6-check/no_flank_reads.q1.bed	--all no_flank_reads.q0.bed --mapq1 no_flank_reads.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	measured	pgx-cyp2d6-check/clean_no_alt.q0.bed,pgx-cyp2d6-check/clean_no_alt.q1.bed,pgx-cyp2d6-check/shares.tsv	--all clean_no_alt.q0.bed --mapq1 clean_no_alt.q1.bed --measure shares.tsv --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
 qc-sex-loss	male	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions m.bed.gz	male.tsv	bytes	PYTHON_IMAGE
 qc-sex-loss	drift	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions drift.bed.gz	male.tsv	bytes	PYTHON_IMAGE
 qc-sex-loss	loss-30	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions m30.bed.gz	male.tsv	bytes	PYTHON_IMAGE
