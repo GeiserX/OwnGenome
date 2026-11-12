@@ -470,7 +470,7 @@ pub fn cli(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     }
     let mut run = || -> Result<Vec<Row>, String> {
         let pairs = read_pairs(vcf, err)?;
-        let mut reads = bam.map(|b| Reads::open(b, true)).transpose()?;
+        let mut reads = bam.map(|b| Reads::open(b, false)).transpose()?; // RED CONTROL: mates not joined
         let rows = phase(pairs, reads.as_mut(), skip)?;
         if let Some((src, dst)) = variants {
             add_phase_column(src, dst, &rows)?;

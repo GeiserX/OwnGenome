@@ -308,8 +308,13 @@ pub fn allele_at(r: &impl ReadView, site: &Site) -> Option<Seen> {
                 return None;
             }
             let gap = last + 1..hi;
+            // RED CONTROL: a deletion read as ref.
             if gap.clone().all(|p| cell(p) == Cell::Deleted) {
-                Some(Seen::Alt)
+                Some(if site.ref_len > 0 {
+                    Seen::Ref
+                } else {
+                    Seen::Alt
+                })
             } else if gap.clone().all(|p| base(p).is_some()) {
                 Some(Seen::Ref)
             } else {
