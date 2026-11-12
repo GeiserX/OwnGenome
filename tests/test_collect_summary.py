@@ -88,10 +88,9 @@ Checks:
      P/LP with CPSR's ACMG codes, the final P/LP rows CPSR's own rules class
      benign, the rows below the depth floor (DP_CONTROL), the cDNA read
      check of step 17 on the P/LP rows, and CPSR's bundled ClinVar release
-     beside step 6's; a table with one class column shows no disagreement;
-     bin/clip_check.py --cpsr checks the P/LP rows only (a fake pysam: the
-     spliced reads at a P/LP row are flagged, genomic reads at the same row
-     are clear, and CPSR's "13" finds the BAM's "chr13").
+     beside step 6's; a table with one class column shows no disagreement.
+     The read check itself (og cdna check --cpsr: P/LP rows only, CPSR's
+     contig names found with chr added) is og-bam's parity case check-cpsr.
  23. step 32's summary beyond the diplotypes: pypgx's copy-number calls for
      its BAM genes in a PGx copy number block, and no UGT2B17 estimate from
      CNVpytor's calls beside them (pypgx owns UGT2B17); GSTT1
@@ -188,7 +187,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import types
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -734,45 +732,6 @@ CPSR_ROWS = (
     "3_100_A_G\t3:g.100A>G\tMLH1\tVUS\tVUS\tPM2\tCPSR\tVUS\t30\n")
 
 
-class FakeRead:
-    """The pysam.AlignedSegment attributes bin/clip_check.py reads."""
-
-    def __init__(self, name, start, cigar, seq):
-        self.query_name, self.reference_start, self.cigartuples, self.query_sequence = name, start, cigar, seq
-        self.is_unmapped = self.is_secondary = self.is_duplicate = self.is_qcfail = self.is_read2 = False
-        self.is_read1 = True
-
-    def has_tag(self, tag):
-        return False
-
-
-def fake_pysam(pos0, exon_end):
-    """A pysam stand-in with two BAMs on contig chr13: 'spliced' has 8 alt
-    reads clipped at the exon end, 'genomic' 8 alt reads running on; both
-    have 6 genomic ref reads."""
-    def reads(kind):
-        out = [FakeRead(f"ref{i}", pos0 - 50 + i, [(0, 100)], "N" * (50 - i) + "G" + "N" * (49 + i)) for i in range(6)]
-        for i in range(8):
-            if kind == "spliced":
-                aligned = 70 + i
-                s = exon_end - aligned
-                out.append(FakeRead(f"alt{i}", s, [(0, aligned), (4, 100 - aligned)],
-                                    "N" * (pos0 - s) + "A" + "N" * (100 - (pos0 - s) - 1)))
-            else:
-                out.append(FakeRead(f"alt{i}", pos0 - 50 + i, [(0, 100)], "N" * (50 - i) + "A" + "N" * (49 + i)))
-        return out
-
-    class AlignmentFile:
-        references = ("chr13",)
-
-        def __init__(self, path):
-            self.kind = os.path.basename(path)
-
-        def fetch(self, contig, start, end):
-            return reads(self.kind) if contig == "chr13" else []
-    return types.SimpleNamespace(AlignmentFile=AlignmentFile)
-
-
 def cpsr_beside_clinvar(work, schema):
     """22. CPSR's own class beside ClinVar's, its depth, its read check and release."""
     d = os.path.join(work, "cpsr-compare", "S")
@@ -821,38 +780,6 @@ def cpsr_beside_clinvar(work, schema):
     check("CPSR: a table with one class column has no disagreement and says so",
           c1["disagreements"] == [] and c1["own_class_column"] is None
           and "has no CPSR_CLASSIFICATION column" in txt1, c1)
-
-    # bin/clip_check.py --cpsr, with a fake pysam
-    pos0 = 32340299
-    exon_end = pos0 + 30
-    put(f"{d}/exons.bed", f"chr13\t{pos0 - 30}\t{exon_end}\nchr13\t{pos0 + 3000}\t{pos0 + 3150}\n")
-    put(f"{d}/cls.tsv.gz", CPSR_COLS + CPSR_ROWS, gz=True)
-    keep = sys.modules.get("pysam")
-    sys.modules["pysam"] = fake_pysam(pos0, exon_end)
-    try:
-        got = {}
-        for kind in ("spliced", "genomic"):
-            out = f"{d}/{kind}.tsv"
-            with open(os.devnull, "w") as null:
-                so, sys.stdout = sys.stdout, null
-                try:
-                    rc = clip_check.main(["--cpsr", f"{d}/cls.tsv.gz", "--bam", f"{d}/{kind}", "--exons",
-                                          f"{d}/exons.bed", "--out", out])
-                finally:
-                    sys.stdout = so
-            rows = [line.rstrip("\n").split("\t") for line in open(out)][1:]
-            got[kind] = (rc, [(r[0], r[1], r[8]) for r in rows])
-    finally:
-        if keep is None:
-            sys.modules.pop("pysam", None)
-        else:
-            sys.modules["pysam"] = keep
-    check("clip_check --cpsr: the spliced reads at a P/LP row are flagged, CPSR's contig name kept",
-          got["spliced"][0] == 0 and got["spliced"][1][0] == ("13", "32340300", "flagged"), got)
-    check("clip_check --cpsr: genomic reads at the same row are clear",
-          got["genomic"][1][0] == ("13", "32340300", "clear"), got)
-    check("clip_check --cpsr: only the four P/LP rows are checked (not the VUS row)",
-          [r[0] for r in got["spliced"][1]] == ["13", "17", "2", "5"], got)
 
 
 PYPGX_HEAD = ("Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\tDefining_variants\tMin_GQ\tWeakest_variant"

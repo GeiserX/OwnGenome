@@ -40,3 +40,6 @@ y-str-bed	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c
 y-str-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" report "$@"'	y str-report
 exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	python3	exomiser
 cn	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/copy_number.py	sh ./oracle.sh	cn
+cdna-check	954ab367004d63ea639521982299b4976927ccfd	file:bin/clip_check.py	python3	cdna check
+cdna-scan	954ab367004d63ea639521982299b4976927ccfd	file:bin/cdna_scan.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	cdna scan
+comphet-phase	954ab367004d63ea639521982299b4976927ccfd	file:bin/comphet_phase.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	comphet phase

@@ -18,7 +18,7 @@ slivar (by Brent Pedersen, author of vcfanno, mosdepth, duphold) is a streaming 
 
 - `SLIVAR_IMAGE` (compound het detection)
 - `BCFTOOLS_IMAGE` (variant filtering via split-vep)
-- `PYPGX_IMAGE` (its pysam reads the BAM for the phase of each compound-het pair, as in step 06's read check)
+- `PYPGX_IMAGE` (where `og comphet phase` reads the BAM for the phase of each compound-het pair, as in step 06's read check)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
@@ -71,7 +71,7 @@ The command outputs VCF to stdout with `INFO/slivar_comphet` annotations linking
 
 Two variants in one gene hit both copies of the gene only when they sit on different copies (in trans). On the same copy (in cis) the other copy is intact, which for a recessive gene usually means no disease. The genotypes of one sample do not tell the two apart, but the reads can: a read, or a read and its mate, that covers both positions shows both alt alleles together in cis, and one without the other in trans.
 
-`bin/comphet_phase.py` does this for every pair slivar lists, with pysam on the sample's BAM. It counts the reads and read pairs that show an allele at both positions. A read pair counts once, with what its two mates show together; a pair whose mates disagree at a position is not counted. Reads that count are mapped, primary, not duplicates, not QC-failed, with mapping quality 20 or more. The verdict is `trans` or `cis` when at least 2 reads or read pairs cover both positions and at least 80% of them agree; otherwise `unknown`, with the reason. SNVs, MNVs and indels that share their first base with the reference are phased; a complex allele is not.
+`og comphet phase` does this for every pair slivar lists, from the sample's BAM. Each variant's reads are read once. It counts the reads and read pairs that show an allele at both positions. A read pair counts once, with what its two mates show together; a pair whose mates disagree at a position is not counted. Reads that count are mapped, primary, not duplicates, not QC-failed, with mapping quality 20 or more. The verdict is `trans` or `cis` when at least 2 reads or read pairs cover both positions and at least 80% of them agree; otherwise `unknown`, with the reason. SNVs, MNVs and indels that share their first base with the reference are phased; a complex allele is not.
 
 Two positions further apart than a read pair spans (about 500 bp for short reads) are never covered by one fragment, so the pair stays `unknown`. For those, a parent's genome (step 38, [family analysis](multi-sample.md#family-analysis-step-38-opt-in)) or long reads can phase the pair; this step does not run WhatsHap over whole genes.
 

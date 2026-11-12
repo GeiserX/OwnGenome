@@ -13,8 +13,8 @@
 # the TSVs say FREQ_TIER=unknown. The tiers take the worst consequence; the
 # TSVs add the MANE Select consequence (MANE_Consequence) and the gnomAD AF.
 #
-# Each compound-het pair is phased from the sample's BAM (bin/comphet_phase.py,
-# pysam from PYPGX_IMAGE): cis, trans or unknown with the reads that say so,
+# Each compound-het pair is phased from the sample's BAM (og comphet phase,
+# which reads the BAM itself): cis, trans or unknown with the reads that say so,
 # in <sample>_compound_het_pairs.tsv and the PHASE column of the per-variant
 # table. Without the BAM every pair is unknown.
 #
@@ -444,22 +444,24 @@ if [ ! -s "${COMPHET_TSV}.unphased" ]; then
   printf 'GENE\tCHROM\tPOS\tREF\tALT\tIMPACT\tConsequence\tGT\t%s\n' "$EXTRA_HEAD" > "${COMPHET_TSV}.unphased"
 fi
 
-# Phase of each pair from the reads (bin/comphet_phase.py): a read, or a read
+# Phase of each pair from the reads (og comphet phase): a read, or a read
 # and its mate, that covers both positions shows the two alt alleles together
 # (cis, one copy of the gene hit) or apart (trans, both copies hit). Pairs
 # further apart than a read pair spans stay unknown. The pairs table holds the
 # verdict and the read counts; the per-variant table gets a PHASE column after
-# GT. pysam is in PYPGX_IMAGE, as for step 06's read check.
+# GT. og reads the BAM itself; it runs from OUTDIR with relative outputs,
+# so bin/og's shadow mode (OG_SHADOW, CI only) can run the Python it replaced
+# beside it, which needs the pysam of PYPGX_IMAGE, as for step 06's check.
 BAM="${SAMPLE_DIR}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam"
 if [ -f "$BAM" ] && [ -f "${BAM}.bai" ]; then
   PHASE_ARGS=(--bam "$(cpath "$BAM")")
 else
   PHASE_ARGS=(--skip "no BAM (${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam with its .bai)")
 fi
-if ! run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYPGX_IMAGE" \
-  python3 /pgp-bin/comphet_phase.py --vcf "$(cpath "$COMPHET_VCF")" --out "$(cpath "${COMPHET_PAIRS_TSV}.part")" \
-    --variants "$(cpath "${COMPHET_TSV}.unphased")" --variants-out "$(cpath "${COMPHET_TSV}.part")" "${PHASE_ARGS[@]}"; then
-  echo "ERROR: the phase of the compound-het pairs failed (bin/comphet_phase.py, image: ${PYPGX_IMAGE})." >&2
+if ! run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTDIR")" "$PYPGX_IMAGE" \
+  /pgp-bin/og comphet phase --vcf "$(cpath "$COMPHET_VCF")" --out "${COMPHET_PAIRS_TSV##*/}.part" \
+    --variants "$(cpath "${COMPHET_TSV}.unphased")" --variants-out "${COMPHET_TSV##*/}.part" "${PHASE_ARGS[@]}"; then
+  echo "ERROR: the phase of the compound-het pairs failed (og comphet phase)." >&2
   echo "  Input: ${COMPHET_VCF} and ${PHASE_ARGS[*]}; would write ${COMPHET_PAIRS_TSV} and ${COMPHET_TSV}." >&2
   rm -f "${COMPHET_PAIRS_TSV}.part" "${COMPHET_TSV}.part"
   exit 1

@@ -110,7 +110,7 @@ env:
   # tools in a case also runs the Python it replaced, from the oracles the
   # legs materialise, and fails the case when the two disagree. A lane that
   # ports a tool adds it here for its pull request.
-  OG_SHADOW: setup-mask-fasta dev-schema dev-contract pgx-cyp2d6-bed pgx-cyp2d6-measure pgx-cyp2d6-check str-motif str-catalog
+  OG_SHADOW: setup-mask-fasta dev-schema dev-contract pgx-cyp2d6-bed pgx-cyp2d6-measure pgx-cyp2d6-check str-motif str-catalog cdna-check cdna-scan comphet-phase
   # The shard legs besides the base leg. A full run uses all of them; a run
   # of picked cases runs fewer when they fit (scripts/ci/e2e-shards.sh count). The cases took 230
   # minutes in one job on 2026-11-02 (run 41390434697).
