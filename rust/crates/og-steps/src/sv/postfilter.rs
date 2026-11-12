@@ -702,7 +702,16 @@ pub fn run(o: &Opts) -> Result<String, Error> {
     let mut keys: Vec<String> = Vec::new();
     let mut rows: Vec<Row> = Vec::new();
     if meta.len() > 0 {
-        let mut reader = DictReader::new(lines(&o.class45)?, '\t', Quoting::Minimal);
+        // The csv reader wants each line with its ending, as Python's file
+        // gives it, or a quoted cell that spans lines loses its newline.
+        let mut l = lines(&o.class45)?;
+        let kept = std::iter::from_fn(move || {
+            let mut s = String::new();
+            l.read_line(&mut s)
+                .map(|more| more.then_some(s))
+                .transpose()
+        });
+        let mut reader = DictReader::new(kept, '\t', Quoting::Minimal);
         let bad = |e: pycompat::csv::Error| Error(format!("{}: {e}", o.class45));
         for r in reader.by_ref() {
             rows.push(Row {

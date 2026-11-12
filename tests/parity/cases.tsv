@@ -666,5 +666,6 @@ sv-postfilter	clash	gen:sv-oracle.sh,sv-postfilter/clash.tsv	--class45 clash.tsv
 sv-postfilter	traps	gen:sv-oracle.sh,sv-postfilter/traps.tsv,sv-postfilter/genes.bed,sv-postfilter/consensus.vcf	--class45 traps.tsv --genes genes.bed --rules rules.tsv --consensus consensus.vcf --sex male --par-bed par.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	no-genes-file	gen:sv-oracle.sh,sv-postfilter/c45.tsv	--class45 c45.tsv --genes none.bed --out out.tsv	-	bytes	PYTHON_IMAGE
 sv-postfilter	frac-rdcn	gen:sv-oracle.sh,sv-postfilter/frac.tsv	--class45 frac.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+sv-postfilter	multiline	gen:sv-oracle.sh,sv-postfilter/multiline.tsv	--class45 multiline.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	missing-table	gen:sv-oracle.sh	--class45 none.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
 sv-postfilter	bad-rules	gen:sv-oracle.sh,sv-postfilter/rows7.tsv,sv-postfilter/badrules.tsv	--class45 rows7.tsv --rules badrules.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
