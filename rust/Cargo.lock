@@ -588,6 +588,7 @@ dependencies = [
  "og-runlog",
  "og-setup",
  "og-steps",
+ "og-summary",
  "og-vcf",
  "pycompat",
 ]
@@ -788,6 +789,16 @@ dependencies = [
  "rustc-hash",
  "smallvec",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-summary"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "og-io",
+ "og-steps",
+ "pycompat",
 ]
 
 [[package]]

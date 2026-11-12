@@ -10,6 +10,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-bam` | BAM reading as pysam does it (fetch, `reference_end`, `cigarstring`, `get_blocks`), on htslib linked statically |
 | `crates/og-pedigree` | the pedigree rules of step 38: families files, members, kinship, declared relationships, PARs |
 | `crates/og-qc` | `og qc sex-loss`: step 33's mosaic loss of Y or X, with CPython's medians, `fmean` and exact `variance` |
+| `crates/og-summary` | the step tables: `og qc sample` (step 33), `og prs table` (step 25), `og mito annotate`, `og mito deletions`, `og mito copies` (step 20) |
 | `crates/og-chip` | step 49, clonal haematopoiesis: `og chip prepare`, `og chip report`, `og chip check-table` |
 | `crates/og-cn` | copy number from depth, steps 32, 35, 41 and 46: `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions`, `og cn marker-read` |
 | `crates/og-bloodtype` | step 41, blood groups: `og bloodtype report`, `og bloodtype check-markers`, `og bloodtype systems` |

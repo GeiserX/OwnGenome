@@ -23,7 +23,7 @@
                      the panel and adjusts each score for ancestry. With the
                      samplesheet's sex its plink2 gets the sex (--update-sex),
                      which it needs to read chrX
-    PRS_SUMMARY      <id>_prs_summary.tsv (bin/collect_summary.py prs-table),
+    PRS_SUMMARY      <id>_prs_summary.tsv (og prs table),
                      a score of the other sex marked not applicable, also
                      published as <id>_prs_summary.<YYYYMMDD-HHMM>.tsv so a
                      rerun keeps it, and with the panel the ancestry table
@@ -349,7 +349,7 @@ process PRS_SUMMARY {
     FLAGS=()
     if [ -f ${results}/ZERO_MATCHES ]; then FLAGS=(--zero-matches); fi
     if [ -f ${results}/BELOW_THRESHOLD ]; then FLAGS=(--below-threshold ${results}/pgsc_calc.log); fi
-    collect_summary.py prs-table --sample ${meta.id} --results ${results} --sampleset sample \\
+    og prs table --sample ${meta.id} --results ${results} --sampleset sample \\
         --scores pgs --input-kind ${input_kind} --sex '${sex}' \${FLAGS[@]+"\${FLAGS[@]}"} ${anc} --out ${meta.id}_prs_summary.tsv
     cp -p ${meta.id}_prs_summary.tsv ${meta.id}_prs_summary.\$(date -r ${meta.id}_prs_summary.tsv +%Y%m%d-%H%M).tsv
 

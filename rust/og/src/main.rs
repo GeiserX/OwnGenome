@@ -37,7 +37,10 @@ const USAGE: &str = "usage: og <tool> [args]
        og clinvar join-adjacent|hits|deep-intronic [args]
        og str motif|catalog [args]
        og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
+       og qc sample [args]
        og prs format [args]
+       og prs table [args]
+       og mito annotate|deletions|copies [args]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
        og bloodtype report|check-markers|systems [args]
@@ -118,6 +121,11 @@ fn main() -> ExitCode {
         },
         "qc" => match rest.first().map(String::as_str) {
             Some("sex-loss") => ExitCode::from(og_qc::sex_loss::cli(&rest[1..])),
+            Some("sample") => ExitCode::from(og_summary::qc::cli(
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
             Some(other) => usage_error(&format!("unknown qc tool '{other}'")),
             None => usage_error("the following arguments are required: qc tool"),
         },
@@ -216,8 +224,19 @@ fn main() -> ExitCode {
         },
         "prs" => match rest.first().map(String::as_str) {
             Some("format") => ExitCode::from(og_steps::prs::cli(&rest[1..])),
-            _ => usage_error("og prs takes format"),
+            Some("table") => ExitCode::from(og_summary::prs::cli(
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
+            _ => usage_error("og prs takes format or table"),
         },
+        "mito" => ExitCode::from(og_summary::mito::cli(
+            rest.first().map(String::as_str),
+            rest.get(1..).unwrap_or_default(),
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
         #[cfg(feature = "bam")]
         "bam-fetch-probe" if rest.len() == 2 => {

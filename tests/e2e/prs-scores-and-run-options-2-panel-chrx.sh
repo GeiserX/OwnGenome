@@ -14,7 +14,7 @@
 # panel's own chrX variants and writes both to the notes.
 #   - the declared sex with the panel: PGS000004 (breast cancer) gets no
 #     percentile ("not applicable to the declared sex"), PGS000018 gets one;
-#   - control: the same summary read as a no-panel run (prs-table without
+#   - control: the same summary read as a no-panel run (og prs table without
 #     --panel) says "3 scored" whatever the log says, so the check above can
 #     tell the two apart.
 # Removes what it made, the panel too.
@@ -134,7 +134,7 @@ check_eq "male with the panel: PGS000004 has no percentile" "$(col "$SUMMARY" PG
 check_eq "male with the panel: PGS000004 is not applicable" "$(col "$SUMMARY" PGS000004 Sex_Check)" "not applicable to the declared sex"
 # Control: the same pgsc_calc output read as a run without the panel.
 docker run --rm --network none --user "$(id -u):$(id -g)" -v "${D}/prs:/p" -v "${REPO}/bin:/b:ro" "$PYTHON_IMAGE" \
-  python3 /b/collect_summary.py prs-table --sample "$SAMPLE" --results /p/pgsc_calc/results --sampleset sample \
+  /b/og prs table --sample "$SAMPLE" --results /p/pgsc_calc/results --sampleset sample \
     --scores /p/pgsc_calc/scores --input-kind gvcf --sex male --out /p/control.tsv > /dev/null 2>&1
 check_eq "control: read without the panel the ChrX column says 3 scored" "$(col "${D}/prs/control.tsv" PGS000662 ChrX)" "3 scored"
 printf '#### PRS: chrX rows through the ancestry panel (%s)\n\nchrX variants in the panel: %s; PGS000662 chrX rows matched %s of 3; ChrX column "%s"\n\n' \

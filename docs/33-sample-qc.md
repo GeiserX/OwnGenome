@@ -52,7 +52,7 @@ somalier extract -d qc/somalier --sites "${SOMALIER_SITES}" -f "${REF_FASTA}" al
 somalier relate --infer --ped qc/somalier/${SAMPLE}.declared.ped --sites "${SOMALIER_SITES}" -o qc/somalier/${SAMPLE} qc/somalier/<SM>.somalier
 verifybamid2 --SVDPrefix "${VERIFYBAMID2_PANEL}" --Reference "${REF_FASTA}" \
   --BamFile aligned/${SAMPLE}_sorted.bam --Output qc/verifybamid2/${SAMPLE}
-python3 bin/collect_summary.py sample-qc --sample ${SAMPLE} ...   # the verdict table
+bin/og qc sample --sample ${SAMPLE} ...   # the verdict table
 bin/og qc sex-loss --table qc/${SAMPLE}_sample_qc.tsv \
   --regions mosdepth/${SAMPLE}.regions.bed.gz --vcf vcf/${SAMPLE}.vcf.gz   # the mosaic rows, each input when it is there
 ```

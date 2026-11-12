@@ -148,12 +148,11 @@ Checks:
      (hla_optitype/, kir_t1k/) and Nextflow (hla_optitype/, kir/) folders
      alike, in both reports; without either file there is no such line.
  27. step 25's PGS Catalog evaluations (ppm_id, ancestry and effect of
-     assets/pgs_scores.tsv): the shipped list is read entry by entry, and a
-     list with lists of different lengths, an ancestry outside the five
-     1000 Genomes groups or listed twice, a malformed PPM id or an effect
-     that is not an OR or HR is refused; og prs format copies them beside
-     the scores (with OG set to an og binary; the folders prs-table reads
-     are written by hand as og writes them); prs-table writes Evaluated_In and Effect, the effect only for
+     assets/pgs_scores.tsv; the Rust tests of og-steps and og-summary pin
+     how the list is read and what it refuses): og prs format copies them
+     beside the scores (with OG set to an og binary; the folders og prs
+     table reads are written by hand as og writes them); og prs table
+     writes Evaluated_In and Effect, the effect only for
      the group pgsc_calc placed the sample in (EUR: HR 1.53 of PPM000591;
      EAS, where the score was not evaluated: none), and none without the
      panel; a list without evaluations keeps the older columns; both reports print the effect for EUR and say there
@@ -208,12 +207,28 @@ def og_clinvar(*args):
 
 
 sys.path.insert(0, os.path.join(REPO, "bin"))
+sys.path.insert(0, os.path.join(REPO, "tests"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
 import clip_check  # noqa: E402
 import collect_summary  # noqa: E402
 import pgx_outside_calls  # noqa: E402
 import render_report  # noqa: E402
 import validate  # noqa: E402
+from og_binary import og_binary  # noqa: E402
+
+
+def og_tool(*args):
+    """og's exit code for a step tool that once lived in collect_summary.py
+    (og qc sample, og prs table, og mito annotate): they write the tables
+    the checks below read, so they always run."""
+    return subprocess.run([og_binary(), *args], capture_output=True).returncode
+
+
+# The columns of og prs table: Input last, Evaluated_In and Effect before it
+# when the score list names evaluations.
+PRS_COLUMNS = ["Condition", "PGS_ID", "Score_SUM", "Variants_Matched", "Variants_Total",
+               "Matched_Pct", "Percentile", "Ancestry_Group", "ChrX", "Ambiguous", "Applies_To",
+               "Sex_Check", "Input"]
 
 FAILS = 0
 DAY = 86400
@@ -289,31 +304,10 @@ def bash_folder(d, s="S"):
 
 def prs_evaluations(work, schema):
     """Check 27: the PGS Catalog evaluations of each score, from the list to both reports."""
+    # The shipped list's evaluations and the lists it refuses are pinned by
+    # the Rust tests of the reader og prs format and og prs table share
+    # (rust/crates/og-steps, rust/crates/og-summary).
     assets = os.path.join(REPO, "assets", "pgs_scores.tsv")
-    ev = collect_summary.read_metrics(assets)
-    check("27: the shipped list: PGS000018's three evaluations in order",
-          ev.get("PGS000018") == [("EUR", "HR 1.53", "PPM000591"), ("AFR", "HR 1.27", "PPM000594"),
-                                  ("AMR", "HR 1.53", "PPM000597")], ev.get("PGS000018"))
-    check("27: the shipped list: the eMERGE asthma score in all five groups, height and the lipids with none",
-          [x[0] for x in ev.get("PGS002727", [])] == ["EUR", "AFR", "AMR", "EAS", "SAS"]
-          and "PGS002802" not in ev and "PGS000065" not in ev, ev)
-    head = "pgs_id\ttrait_reported\tapplies_to\tppm_id\tancestry\teffect\n"
-    for why, row in (("lists of different lengths", "PGS000018\tx\t\tPPM000591;PPM000594\tEUR\tHR 1.53"),
-                     ("an ancestry that is not a 1000 Genomes group", "PGS000018\tx\t\tPPM000591\tEuropean\tHR 1.53"),
-                     ("an ancestry listed twice", "PGS000018\tx\t\tPPM000591;PPM000594\tEUR;EUR\tHR 1.53;HR 1.27"),
-                     ("a malformed PPM id", "PGS000018\tx\t\tPGS000018\tEUR\tHR 1.53"),
-                     ("a beta, not an OR or HR", "PGS000018\tx\t\tPPM000591\tEUR\tbeta 1.53"),
-                     ("evaluations but no pgs_id", "\tx\t\tPPM000591\tEUR\tHR 1.53"),
-                     ("one score's evaluations on two rows",
-                      "PGS000018\tx\t\tPPM000591\tEUR\tHR 1.53\nPGS000018\tx\t\tPPM000594\tAFR\tHR 1.27")):
-        put(f"{work}/ev_bad.tsv", head + row + "\n")
-        try:
-            collect_summary.read_metrics(f"{work}/ev_bad.tsv")
-            got = "read"
-        except collect_summary.Unreadable as e:
-            got = str(e)
-        check(f"27: a list with {why} is refused", got != "read", got)
-
     # og prs format with the shipped list copies the evaluations beside the
     # scores. The folders prs-table reads below are written as og writes them;
     # with OG set to an og binary, og must write the same.
@@ -328,9 +322,9 @@ def prs_evaluations(work, schema):
         """The folder og prs format writes for ev_in with LABELS, and with OG og's own beside it."""
         put(f"{out}/PGS000018.txt.gz", "#pgs_id=PGS000018\n#pgs_name=PGS000018\n#trait_reported=Coronary artery disease\n"
             "#genome_build=GRCh38\nchr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n1\t1100\tA\tG\t0.5\n", gz=True)
-        put(f"{out}/{collect_summary.CHRX_FILE}", "pgs_id\tchrx_rows\tchrx\nPGS000018\t0\tleft out\n")
-        put(f"{out}/{collect_summary.SCORE_NOTES_FILE}", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\nPGS000018\t{applies}\t0\tdropped\n")
-        put(f"{out}/{collect_summary.EVALS_FILE}", "pgs_id\tppm_id\tancestry\teffect\n" + (f"PGS000018\t{evals}\n" if evals else ""))
+        put(f"{out}/chrx_rows.tsv", "pgs_id\tchrx_rows\tchrx\nPGS000018\t0\tleft out\n")
+        put(f"{out}/score_notes.tsv", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\nPGS000018\t{applies}\t0\tdropped\n")
+        put(f"{out}/score_evaluations.tsv", "pgs_id\tppm_id\tancestry\teffect\n" + (f"PGS000018\t{evals}\n" if evals else ""))
         if not og:
             return
         rc = subprocess.run([og, "prs", "format", "--scores", f"{work}/ev_in", "--labels", labels, "--out", f"{out}_og",
@@ -365,16 +359,16 @@ def prs_evaluations(work, schema):
         res = f"{work}/ev_res_{group}_{os.path.basename(pgs)}_{sex}"
         results(res, group)
         out = f"{res}.tsv"
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", res, "--sampleset", "sample",
-                                   "--scores", pgs, "--input-kind", "gvcf", "--out", out]
-                                  + (["--panel", "pgsc_1000G_v1"] if group else []) + (["--sex", sex] if sex else []))
+        rc = og_tool("prs", "table", "--sample", "S", "--results", res, "--sampleset", "sample",
+                     "--scores", pgs, "--input-kind", "gvcf", "--out", out,
+                     *(["--panel", "pgsc_1000G_v1"] if group else []), *(["--sex", sex] if sex else []))
         with open(out) as f:
             rows = [line.rstrip("\n").split("\t") for line in f]
         return rc, rows[0], dict(zip(rows[0], rows[1])), out
 
     rc, hdr, eur, eur_out = table("EUR")
     check("27: prs-table: Evaluated_In and Effect before Input",
-          rc == 0 and hdr == collect_summary.PRS_COLUMNS[:-1] + ["Evaluated_In", "Effect", "Input"], hdr)
+          rc == 0 and hdr == PRS_COLUMNS[:-1] + ["Evaluated_In", "Effect", "Input"], hdr)
     check("27: placed in EUR: the effect of the EUR evaluation, with its PPM id",
           eur.get("Evaluated_In") == "EUR;AFR;AMR" and eur.get("Effect") == "HR 1.53 (EUR, PPM000591)", eur)
     rc, _, eas, eas_out = table("EAS")
@@ -388,14 +382,14 @@ def prs_evaluations(work, schema):
     formatted(f"{work}/ev_pgs_plain", f"{work}/ev_plain.tsv")
     rc, hdr, plain, plain_out = table("EUR", pgs=f"{work}/ev_pgs_plain")
     check("27: control: a list without evaluations gives the older columns and no effect",
-          rc == 0 and hdr == collect_summary.PRS_COLUMNS and "Effect" not in plain, hdr)
+          rc == 0 and hdr == PRS_COLUMNS and "Effect" not in plain, hdr)
     # A score for one sex, with a EUR evaluation, run for the other sex in EUR: no effect.
     put(f"{work}/ev_female.tsv", "pgs_id\ttrait_reported\tapplies_to\tppm_id\tancestry\teffect\n"
         "PGS000018\tCoronary artery disease\tfemale\tPPM000591\tEUR\tHR 1.53\n")
     formatted(f"{work}/ev_pgs_female", f"{work}/ev_female.tsv", applies="female", evals="PPM000591\tEUR\tHR 1.53")
     rc, _, man, man_out = table("EUR", pgs=f"{work}/ev_pgs_female", sex="male")
     check("27: a female-only score for a male sample in EUR: no effect",
-          rc == 0 and man.get("Sex_Check") == collect_summary.SEX_NOT_APPLICABLE and man.get("Evaluated_In") == "EUR"
+          rc == 0 and man.get("Sex_Check") == "not applicable to the declared sex" and man.get("Evaluated_In") == "EUR"
           and man.get("Effect") == "", man)
     rc, _, woman, _ = table("EUR", pgs=f"{work}/ev_pgs_female", sex="female")
     check("27: control: the same score for a female sample in EUR has its effect",
@@ -451,9 +445,10 @@ def bgzf_block(data):
 
 def write_tabixed_vcf(path, header, blocks):
     """A bgzipped VCF of one BGZF block per item of blocks (lists of record
-    lines, the header in the first block) and its .tbi with the linear index
-    only (no bins: bin/collect_summary.py reads the linear index)."""
-    raw, lin, coff = b"", {}, 0
+    lines, the header in the first block) and its .tbi: bin 0 of each
+    sequence spans its lines (og mito annotate reads the bins), and the
+    linear index (bin/collect_summary.py reads that)."""
+    raw, lin, span, coff = b"", {}, {}, 0
     for i, lines in enumerate(blocks):
         data = (header if i == 0 else "").encode()
         for line in lines:
@@ -461,9 +456,11 @@ def write_tabixed_vcf(path, header, blocks):
             w, ix = (pos - 1) >> 14, lin.setdefault(chrom, [])
             while len(ix) <= w:
                 ix.append(None)
+            start = (coff << 16) | len(data)
             if ix[w] is None:
-                ix[w] = (coff << 16) | len(data)
+                ix[w] = start
             data += (line + "\n").encode()
+            span[chrom] = (span.get(chrom, (start,))[0], (coff << 16) | len(data))
         blk = bgzf_block(data)
         raw += blk
         coff += len(blk)
@@ -477,7 +474,9 @@ def write_tabixed_vcf(path, header, blocks):
         ix, last = lin[n], 0
         for j, v in enumerate(ix):  # an empty window takes the offset before it, as htslib fills it
             ix[j] = last = v if v is not None else last
-        tbi += struct.pack("<i", 0) + struct.pack("<i", len(ix)) + struct.pack(f"<{len(ix)}Q", *ix)
+        # bin 0 spans the sequence's lines: og's tabix reader goes by bins
+        tbi += struct.pack("<iIi", 1, 0, 1) + struct.pack("<QQ", *span[n])
+        tbi += struct.pack("<i", len(ix)) + struct.pack(f"<{len(ix)}Q", *ix)
     with gzip.open(path + ".tbi", "wb") as f:
         f.write(tbi)
     return {n: tuple(v) for n, v in lin.items()}
@@ -2124,10 +2123,10 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
         "chrM\t302\t.\tA\tAC\t.\tPASS\tAN=56434;AF_hom=0.01;AF_het=0.2;max_hl=0.99\n"
         "chrM\t3243\t.\tA\tG\t.\tPASS\tAN=56434;AF_hom=0.00002;AF_het=0.0003;max_hl=0.9\n", gz=True)
     out_tsv = f"{d}/mito/S_chrM_annotated.tsv"
-    rc = collect_summary.main(["mito-annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz",
-                               "--clinvar", f"{work}/rsec/clinvar/clinvar_chr.vcf.gz",
-                               "--gnomad", f"{work}/rsec/gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz",
-                               "--out", out_tsv])
+    rc = og_tool("mito", "annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz",
+                 "--clinvar", f"{work}/rsec/clinvar/clinvar_chr.vcf.gz",
+                 "--gnomad", f"{work}/rsec/gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz",
+                 "--out", out_tsv)
     rows = {(r["pos"], r["ref"], r["alt"]): r for r in csv.DictReader(
         [l for l in open(out_tsv) if not l.startswith("# ")], delimiter="\t")}
     check("annotate: one row per allele, the multi-allelic indel trimmed to ClinVar's and gnomAD's A>AC",
@@ -2150,8 +2149,8 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
           not any(v["pos"] in ("73", "9000") for v in ma["variants"]), ma["variants"])
     errs = validate.validate(schema, json.loads(json.dumps(summ)))
     check("report sections: the summary validates", not errs, errs)
-    rc = collect_summary.main(["mito-annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz", "--clinvar",
-                               f"{work}/rsec/none.vcf.gz", "--gnomad", f"{work}/rsec/none.bgz", "--out", out_tsv])
+    rc = og_tool("mito", "annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz", "--clinvar",
+                 f"{work}/rsec/none.vcf.gz", "--gnomad", f"{work}/rsec/none.bgz", "--out", out_tsv)
     summ, txt, _ = render(d)
     check("annotate: missing ClinVar and gnomAD files leave the columns '.' and the report names them",
           rc == 0 and summ["sections"]["mito"]["data"]["annotation"]["clinvar_plp"] == 0
@@ -2598,7 +2597,11 @@ def main():
             path = os.path.join(work, "somalier.samples.tsv")
             put(path, head + f"S\tS\t-9\t-9\t{sex}\t-9\t{ped}\t30.0\t60\t40\t20\t{mid}\t15.0\t{x_n}\t0\t"
                 f"{x_het}\t{x_hom_alt}\t{y_depth}\t5\n")
-            return dict(collect_summary.sample_qc_table("S", path, declared_sex=declared))
+            out = os.path.join(work, "sample_qc.tsv")
+            rc = og_tool("qc", "sample", "--sample", "S", "--somalier-samples", path, "--declared-sex", declared,
+                         "--out", out)
+            with open(out) as f:
+                return dict(line.rstrip("\n").split("\t", 1) for line in f) if rc == 0 else {"rc": rc}
 
         t = qc("1", "male", 2, 0, 2, "male")
         check("pedigree male kept on 2 chrX sites: unknown, not checked (not ok)",
