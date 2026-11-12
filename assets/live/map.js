@@ -154,6 +154,8 @@
     var CW = 0, CH = 0, DPR = 1, phone = false;
     var cam = { ci: 0, c: 0, ls: 0, k: 0 }, tgt = { ci: 0, c: 0, ls: 0, k: 0 };
     var hover = { row: -1, hit: null }, hits = [], raf = 0, settleT = 0, hashT = 0, confirming = null, touched = false;
+    // The results with no place on the map that its chip opened: each gets an "Opened in its section" chip while open.
+    var inSection = [];
     var cache = null, cacheKey = '';
     var hatch = null;
 
@@ -599,15 +601,14 @@
       return closedAny() ? 'No open finding with a place on this chromosome.' : 'No finding with a place on this chromosome.';
     }
     function closedAny() { return closedActs().length > 0 || M.closable.some(function (id) { return stateOf(id) === 'closed'; }); }
-    // The results to act on this page keeps closed, in the order Open opens them: the ones with a place on the
-    // map first, in map order, then the rest of the page's closed results, which have no place to draw. Its
-    // length is what the chip counts, so the count never tells whether a closed result has a place.
+    // The results to act on this page keeps closed, in the order Open opens them: the page's own order (the
+    // order of its closed cards), with a place on the map or without. Its length is what the chip counts, so
+    // neither the count nor the order tells whether a closed result has a place. A page that passes no list
+    // closes only the map's own rows, in map order.
     function closedActs() {
       var page = opts.closed ? opts.closed() : null;
-      var placed = M.closable.filter(function (id) {
-        return !M.gated[id] && stateOf(id) === 'closed' && (!page || page.indexOf(id) >= 0);
-      });
-      return page ? placed.concat(page.filter(function (id) { return placed.indexOf(id) < 0; })) : placed;
+      if (page) { return page.filter(function (id) { return !M.gated[id]; }); }
+      return M.closable.filter(function (id) { return !M.gated[id] && stateOf(id) === 'closed'; });
     }
     function layerWords(lay) {
       if (lay.state === 'missing') { return 'Not on the map: ' + (lay.note || ('step ' + lay.step + ' wrote no ' + (lay.source || 'file') + '.')); }
@@ -888,30 +889,48 @@
       if (acts.length) {
         var c = el('div', { 'class': 'gm-chip closed', 'data-closed': 'act' });
         add(c, add(el('span', {}, acts.length === 1 ? '1 result closed' : acts.length + ' results closed'), why()));
-        add(c, confirming === 'act' ? confirmBox(acts[0], false) : button('Open', function () { confirming = 'act'; drawChips(); }));
+        add(c, confirming === 'act' ? confirmBox(acts[0], false) : button('Open', function () { confirming = 'act'; drawChips(); keyTo('.gm-yes'); }));
         add(chips, c);
       }
       gates.forEach(function (id) {
         var g = M.gated[id], name = g.gene || 'This result';
         var c = el('div', { 'class': 'gm-chip closed', 'data-closed': 'gate' });
         add(c, add(el('span', {}, name + ' closed'), why()));
-        add(c, confirming === id ? confirmBox(id, true) : button('Open ' + name, function () { confirming = id; drawChips(); }));
+        add(c, confirming === id ? confirmBox(id, true) : button('Open ' + name, function () { confirming = id; drawChips(); keyTo('.gm-yes'); }));
         add(chips, c);
       });
       opened.forEach(function (id) {
         var r = M.findings.filter(function (x) { return x.id === id; })[0];
         var c = el('div', { 'class': 'gm-chip opened', 'data-opened': '1' });
         add(c, el('span', {}, 'Opened: ' + (r ? r.title : 'a result to act on')));
-        add(c, button('Close it again', function () { confirming = null; opts.close(id); }));
+        add(c, button('Close it again', function () { confirming = null; opts.close(id); keyTo(); }));
         add(chips, c);
       });
+      // A result the chip opened that has no place: named only once it is open, with a link to its card.
+      inSection = inSection.filter(function (id) { return stateOf(id) !== 'closed' && opts.title && opts.title(id); });
+      inSection.forEach(function (id) {
+        var c = el('div', { 'class': 'gm-chip opened', 'data-opened': 'section' });
+        add(c, add(el('span', {}, 'Opened in its section: '), el('a', { href: '#f/' + id }, opts.title(id))));
+        add(c, button('Close it again', function () { confirming = null; opts.close(id); keyTo(); }));
+        add(chips, c);
+      });
+    }
+    // Where the keyboard goes once a chip's button rebuilt the chips: the chips' first button, else the map.
+    function keyTo(sel) {
+      var b = chips.querySelector(sel || 'button');
+      (b || canvas).focus({ preventScroll: true });
     }
     function confirmBox(id, gated) {
       var box = el('span', { 'class': 'gm-confirm' });
       add(box, el('span', {}, gated ? 'It is kept behind its warning on every page. Open it here and in its section?'
         : 'A result to act on in adult life is usually not looked at before the child can choose. Open it here and in its section?'));
-      add(box, button('Show the result', function () { confirming = null; opts.open(id); }, 'gm-yes'));
-      add(box, button('Keep it closed', function () { confirming = null; drawChips(); }, 'gm-no'));
+      add(box, button('Show the result', function () {
+        confirming = null;
+        if (!gated && M.closable.indexOf(id) < 0 && inSection.indexOf(id) < 0) { inSection.push(id); }
+        opts.open(id);  // the page draws again, and the map's chips with it (refresh)
+        keyTo();
+      }, 'gm-yes'));
+      add(box, button('Keep it closed', function () { confirming = null; drawChips(); keyTo(); }, 'gm-no'));
       return box;
     }
     function button(text, fn, cls) {
@@ -1047,6 +1066,8 @@
     function fail(why, words) {
       failure = why;
       // The frame and the margin the last refresh scheduled would draw the old document again: drop them.
+      // These lines and the failure guards of draw(), describe() and schedule() cover for each other, so no one
+      // of them can go red alone: the failed-reload check undoes them together.
       window.cancelAnimationFrame(raf);
       raf = 0;
       window.clearTimeout(settleT);

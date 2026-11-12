@@ -1255,7 +1255,7 @@ MAP_JS = r"""JSON.stringify((function () {
     hash: location.hash };
 }()))"""
 MAP_READY = ("document.documentElement.dataset.pgpResults && (function () { var f = document.getElementById('genome-map'); "
-             "return f && /^(drawn|failed|nodecompress)$/.test(f.dataset.pgpMap || '') && f.dataset.level !== undefined "
+             "return f && /^(drawn|failed|nodecompress)$/.test(f.dataset.pgpMap || '') "
              "&& (f.dataset.pgpMap !== 'drawn' || !!f.dataset.level); }())")
 
 
@@ -1273,6 +1273,61 @@ def map_page(b, base, run, hash_=""):
 def map_now(b):
     time.sleep(1.5)  # the camera eases for about 0.6 s, then the margin follows 140 ms after it settles
     return json.loads(b.eval(MAP_JS))
+
+
+# The page's closed results to act on and the map's chips, read at once (a chip's button rebuilds the chips at
+# once: nothing to wait for): the closed act cards in page order, the act chip's count, whether its confirm step
+# shows, where the keyboard is (first: the chips' first button; canvas: the map), and the opened chips.
+CHIP_JS = r"""JSON.stringify((function () {
+  var ids = [];
+  Array.prototype.forEach.call(document.querySelectorAll('.finding[data-level=act]'), function (a) {
+    if (a.querySelector('.veil') && ids.indexOf(a.dataset.finding) < 0) { ids.push(a.dataset.finding); } });
+  var c = document.querySelector('.gm-chip[data-closed=act]'), f = document.activeElement;
+  var first = document.querySelector('.gm-chips button');
+  return { closed: ids, buttons: !!first, chip: c ? c.firstChild.textContent : '', confirm: !!(c && c.querySelector('.gm-confirm')),
+    focus: f && f.classList.contains('gm-yes') ? 'gm-yes' : f === first ? 'first' : f === document.querySelector('.gm-canvas') ? 'canvas'
+      : (f ? f.tagName + '.' + f.className : ''),
+    opened: Array.prototype.map.call(document.querySelectorAll('.gm-chip.opened'), function (o) { var a = o.querySelector('a');
+      return { kind: o.dataset.opened, text: o.textContent, href: a ? a.getAttribute('href') : '' }; }) };
+}()))"""
+
+
+def chips_now(b):
+    time.sleep(0.05)  # a chip's button draws the page and the chips again before its click returns
+    return json.loads(b.eval(CHIP_JS))
+
+
+def closed_words(n):
+    return "" if n == 0 else "1 result closed" if n == 1 else f"{n} results closed"
+
+
+def chip_open(b):
+    """The act chip's Open, then its Show the result, as a keyboard reader does it. Returns (the id it opened,
+    problems): one Open opens exactly one of the page's closed results, the count falls by one, the keyboard
+    goes to Show the result and then to the chips' first button (the map when no chip is left), and an
+    "Opened in its section" chip never names a result that is still closed."""
+    before = chips_now(b)
+    b.eval("var o = document.querySelector('.gm-chip[data-closed=act] button'); o.focus(); o.click(); true")
+    mid = chips_now(b)
+    bad = []
+    if not mid["confirm"] or mid["closed"] != before["closed"]:
+        bad.append(f"Open: confirm step {mid['confirm']}, closed {before['closed']} -> {mid['closed']}")
+    if mid["focus"] != "gm-yes":
+        bad.append(f"Open: the keyboard is on {mid['focus']!r}, not Show the result")
+    b.eval("document.querySelector('.gm-chip[data-closed=act] .gm-yes').click(); true")
+    after = chips_now(b)
+    gone = [x for x in before["closed"] if x not in after["closed"]]
+    n = len(before["closed"]) - 1
+    if len(gone) != 1 or len(after["closed"]) != n:
+        bad.append(f"Show the result opened {gone}, not one: closed {before['closed']} -> {after['closed']}")
+    if not after["chip"].startswith(closed_words(n)) or bool(after["chip"]) != (n > 0):
+        bad.append(f"Show the result: the chip reads {after['chip']!r}, want {closed_words(n)!r}")
+    if after["focus"] != ("first" if after["buttons"] else "canvas"):
+        bad.append(f"Show the result: the keyboard is on {after['focus']!r}")
+    named = [o["href"] for o in after["opened"] if o["kind"] == "section" and o["href"][3:] in after["closed"]]
+    if named:
+        bad.append(f"an Opened in its section chip names a closed result: {named}")
+    return (gone[0] if len(gone) == 1 else None), bad
 
 
 def parity_problems(b, base, rows):
@@ -1323,23 +1378,6 @@ def state_problems(b, base):
     g = map_page(b, base, S)
     if not (g["level"] == "genome" and "all 24 chromosomes" in g["title"] and g["view"] == "genome"):
         bad.append(f"genome: {g['level']} {g['title']!r} {g['view']}")
-    for link, chrom, view in (("#chr16", "chr16", "chr16"), ("#chr16:10.0-40.0M", "chr16", "chr16:10.0-40.0M"),
-                              ("#view=chromosome&chr=11", "chr11", "chr11"), ("#chr2:20000001-60000000", "chr2", "chr2:20.0-60.0M")):
-        c = map_page(b, base, S, link)
-        if not (c["level"] == "chromosome" and c["chrom"] == chrom and c["view"] == view):
-            bad.append(f"{link}: {c['level']} {c['chrom']} {c['view']}")
-        elif any(m["chrom"] != chrom for m in c["marks"]):
-            bad.append(f"{link}: marks of another chromosome listed: {c['marks']}")
-    c = map_page(b, base, S, "#chr16")
-    b.eval("location.hash = '#genome'; true")
-    c = map_now(b)
-    if c["level"] != "genome":
-        bad.append(f"#genome after #chr16: {c['level']}")
-    b.eval("location.hash = '#chrQ'; true")
-    c = map_now(b)
-    if "Could not read the place" not in c["toast"] or c["level"] != "genome":
-        bad.append(f"#chrQ: toast {c['toast']!r}, level {c['level']}")
-    g = map_page(b, base, S)
     click_canvas(b, 200, 9 + 2 * 22 + 11)
     c = map_now(b)
     if not (c["level"] == "chromosome" and c["chrom"] == "chr3" and c["hash"] == "#chr3"):
@@ -1348,14 +1386,31 @@ def state_problems(b, base):
     c = map_now(b)
     if c["level"] != "genome" or c["hash"] != "#genome":
         bad.append(f"Esc: {c['level']} {c['hash']}")
+    for link, chrom, view in (("#chr16", "chr16", "chr16"), ("#chr16:10.0-40.0M", "chr16", "chr16:10.0-40.0M"),
+                              ("#view=chromosome&chr=11", "chr11", "chr11"), ("#chr2:20000001-60000000", "chr2", "chr2:20.0-60.0M")):
+        c = map_page(b, base, S, link)
+        if not (c["level"] == "chromosome" and c["chrom"] == chrom and c["view"] == view):
+            bad.append(f"{link}: {c['level']} {c['chrom']} {c['view']}")
+        elif any(m["chrom"] != chrom for m in c["marks"]):
+            bad.append(f"{link}: marks of another chromosome listed: {c['marks']}")
+    b.eval("location.hash = '#genome'; true")  # after the last link's place
+    c = map_now(b)
+    if c["level"] != "genome":
+        bad.append(f"#genome after a place: {c['level']}")
+    b.eval("location.hash = '#chrQ'; true")
+    c = map_now(b)
+    if "Could not read the place" not in c["toast"] or c["level"] != "genome":
+        bad.append(f"#chrQ: toast {c['toast']!r}, level {c['level']}")
     return bad
 
 
 def map_veil_problems(b, base, out):
     """On the son's closed page: his closed result to act on (the planted deletion) is in no mark, tooltip,
-    chip, sentence, link or address of the map until opened; the chip's Open (after its confirm) and the card's
-    "Show the result" each bring back exactly its mark, on the map and in the card; Close it again and a reload
-    close it. On DEMO-001, an adult's page, APOE stays closed until opened, from the chip or its card's fold."""
+    chip, sentence, link or address of the map until opened; the chip's Open (after its confirm) opens one
+    result per click in the page's order (chip_open), so his result with no place opens first, in its section;
+    then Open and the card's "Show the result" each bring back exactly the deletion's mark, on the map and in
+    the card; Close it again and a reload close it. On DEMO-001, an adult's page, APOE stays closed until
+    opened, from the chip or its card's fold."""
     bad = []
     son = OTHERS[1]
     doc = read_map(os.path.join(out, "runs", son, "map.json"))
@@ -1368,8 +1423,8 @@ def map_veil_problems(b, base, out):
     words = [gene, f"{f['chrom'][i]}:{f['s'][i] + 1}", f"{f['s'][i] + 1:,}", fid]
     x, y = genome_xy(b, doc, f["chrom"][i], (f["s"][i] + f["e"][i]) / 2)
 
-    def leaks(c):
-        return [w for w in words if w in c["text"] or w in c["tip"] or w in c["hash"]] + \
+    def leaks(c, but=""):
+        return [w for w in words if w not in but and (w in c["text"] or w in c["tip"] or w in c["hash"])] + \
             [m["id"] for m in c["marks"] if m["id"] == fid]
     c = map_page(b, base, son)
     click_canvas(b, x, y, move_only=True)
@@ -1384,11 +1439,23 @@ def map_veil_problems(b, base, out):
     label = "1 result closed" if want == 1 else f"{want} results closed"
     if not want or not any(t.startswith(label + " ") for t in c["chips"]):
         bad.append(f"closed: no chip counting the page's {want} closed results: {c['chips']}")
-    b.eval("document.querySelector('.gm-chip[data-closed=act] button').click(); true")
-    c = map_now(b)
-    if not b.eval("!!document.querySelector('.gm-chip[data-closed=act] .gm-confirm')") or leaks(c):
-        bad.append("Open: no confirm step, or it opened at once")
-    b.eval("document.querySelector('.gm-chip[data-closed=act] .gm-yes').click(); true")
+    # Open opens the page's closed results one per click, in the page's order, so the son's own result with no
+    # place (his first closed card) opens before the deletion: the map then names it only in its section chip.
+    order = chips_now(b)["closed"]
+    for k in range(want):
+        got, more = chip_open(b)
+        if more:
+            return bad + [f"Open {k + 1}: {x}" for x in more]
+        if got != order[k]:
+            return bad + [f"Open {k + 1} opened {got}, not the page's next closed result {order[k]} ({order})"]
+        if got == fid:
+            break
+        section = [o for o in chips_now(b)["opened"] if o["kind"] == "section"]
+        if [o["href"] for o in section] != [f"#f/{got}"] or "Opened in its section: " not in section[0]["text"]:
+            bad.append(f"Open {k + 1} opened {got}, which has no place: section chips {section}")
+        c = map_now(b)
+        if leaks(c, " ".join(o["text"] for o in section)):  # the opened result names its own gene
+            bad.append(f"Open {k + 1} ({got}): the map shows {leaks(c)}")
     c = map_now(b)
     card = b.eval("!!document.querySelector('#f-%s h3') && !document.querySelector('#f-%s .veil')" % (fid, fid))
     if [m["id"] for m in c["marks"] if m["id"] == fid] != [fid] or not card:
@@ -1401,7 +1468,12 @@ def map_veil_problems(b, base, out):
     c = map_now(b)
     if gene not in c["tip"]:
         bad.append(f"Open: its tooltip at its place does not name it: {c['tip']!r}")
-    b.eval("document.querySelector('.gm-chip.opened button').click(); true")
+    # The results opened before it in their section close again from their chips, and those chips go.
+    b.eval("Array.prototype.forEach.call(document.querySelectorAll('.gm-chip.opened[data-opened=section]'), "
+           "function () { document.querySelector('.gm-chip.opened[data-opened=section] button').click(); }); true")
+    if [o for o in chips_now(b)["opened"] if o["kind"] == "section"] or chips_now(b)["closed"] != order[:k]:
+        bad.append(f"Close it again on the section chips: chips {chips_now(b)['opened']}, closed {chips_now(b)['closed']}")
+    b.eval("document.querySelector('.gm-chip.opened[data-opened=\\'1\\'] button').click(); true")
     c = map_now(b)
     card = b.eval("!!document.querySelector('#f-%s .veil')" % fid)
     if leaks(c) or not card:
@@ -1701,6 +1773,61 @@ def chip_problems(b, base, out, og):
     return bad
 
 
+# Two planted closed results, one with a place on the map and one without, in both orders of the page.
+OPEN_ORDER = (("unplaced pl-a, placed pl-b", [act("pl-a", "PLAGENE", "", "Planted a result"),
+                                            act("pl-b", "PLBGENE", "chr13:32340000", "Planted b result")]),
+              ("placed pl-a, unplaced pl-b", [act("pl-a", "PLAGENE", "chr13:32340000", "Planted a result"),
+                                            act("pl-b", "PLBGENE", "", "Planted b result")]))
+
+
+def open_order_problems(b, base, out, og):
+    """For each planting of OPEN_ORDER, the chip's Open clicked until nothing is closed (chip_open checks each
+    click): the ids it opens, click by click, are the same in both, so the order never tells which closed result
+    has a place. A result with no place opens with an "Opened in its section" chip that links its card; its
+    Close it again closes it on the page and takes the chip away. Before that, Open then Keep it closed opens
+    nothing and gives the keyboard back to the chips."""
+    seqs, bad = {}, []
+    for k, (what, extra) in enumerate(OPEN_ORDER):
+        keep = plant_son(out, extra, og)
+        try:
+            placed = read_map(os.path.join(out, "runs", OTHERS[1], "map.json"))["per"][OTHERS[1]]["findings"]["id"]
+            if [x["id"] in placed for x in extra] != [bool(x["viewer"]) for x in extra]:
+                return [f"{what}: og placed {[x['id'] for x in extra if x['id'] in placed]}: the planting tests nothing"]
+            map_page(b, base, OTHERS[1])
+            first = chips_now(b)
+            if k == 0:
+                b.eval("var o = document.querySelector('.gm-chip[data-closed=act] button'); o.focus(); o.click(); true")
+                b.eval("document.querySelector('.gm-chip[data-closed=act] .gm-no').click(); true")
+                kept = chips_now(b)
+                if kept["closed"] != first["closed"] or kept["confirm"] or kept["focus"] != "first":
+                    return [f"{what}: Keep it closed: closed {kept['closed']}, confirm {kept['confirm']}, "
+                            f"keyboard on {kept['focus']!r}"]
+            seq = []
+            for _ in first["closed"]:
+                got, more = chip_open(b)
+                if more:
+                    return bad + [f"{what}, Open {len(seq) + 1}: {x}" for x in more]
+                seq.append(got)
+                opened = chips_now(b)["opened"]
+                section = [o["href"] for o in opened if o["kind"] == "section"]
+                if (got in placed) == (f"#f/{got}" in section):
+                    return [f"{what}: {got} (placed {got in placed}) opened with section chips {section}"]
+            seqs[what] = seq
+            if k == 0:
+                gone = [x["id"] for x in extra if not x["viewer"]][0]
+                b.eval("var o = document.querySelector('.gm-chip.opened[data-opened=section] a[href=\"#f/%s\"]'); "
+                       "o.parentNode.parentNode.querySelector('button').click(); true" % gone)
+                after = chips_now(b)
+                if after["closed"] != [gone] or any(o["kind"] == "section" and gone in o["href"] for o in after["opened"]):
+                    bad.append(f"{what}: Close it again on {gone}'s section chip: closed {after['closed']}, "
+                               f"opened chips {after['opened']}")
+        finally:
+            unplant(keep)
+    if len(set(map(tuple, seqs.values()))) != 1:
+        bad.append(f"the order Open opens them tells which has a place: {seqs}")
+    return bad
+
+
 def runs_sentence(b, base):
     """Whether DEMO-001's planted runs sentence on chr1 is in the margin at the first frame of the replay and
     at the last: (first, last, the level and chromosome at the first frame)."""
@@ -1900,21 +2027,36 @@ def map_checks(b, base, out):
         keep_js = fh.read()
     bad = map_veil_problems(b, base, out)
     check("map: the son's closed result is in no mark, tooltip, chip, sentence, link or address until opened; Open "
-          "(after its confirm) and the card's Show the result each bring back exactly its mark there and in the card; "
+          "(after its confirm) opens one result per click, in the page's order, and the count falls by one; Open and "
+          "the card's Show the result each bring back exactly its mark there and in the card; "
           "Close it again and a reload close it; APOE stays closed on an adult's page until opened, from the chip "
           "or its card's fold", not bad, bad)
+    mjs = os.path.join(out, "assets", "map.js")
+    with open(mjs) as fh:
+        keep_mjs = fh.read()
+    one = "opts.open(id);  // "
+    every = "f.level === 'act' && veiled(f); })"
     try:
         with open(js, "w") as fh:
             fh.write(keep_js.replace("function mapVeil(id, gated) {", "function mapVeil(id, gated) { return 'open';"))
         control("person.js whose map veil keeps nothing closed", not map_veil_problems(b, base, out))
+        with open(js, "w") as fh:
+            fh.write(keep_js.replace(every, "f.level === 'act'; })"))
+        control("person.js whose map chip counts every result to act on, closed or open", keep_js.count(every) != 1 or
+                not map_veil_problems(b, base, out))
+        with open(js, "w") as fh:
+            fh.write(keep_js)
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(one, "(gated ? [id] : closedActs()).forEach(function (x) { opts.open(x); });  // "))
+        control("map.js whose Open opens every closed result at once", keep_mjs.count(one) != 1 or
+                not map_veil_problems(b, base, out))
     finally:
         with open(js, "w") as fh:
             fh.write(keep_js)
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
     bad = overlap_problems(b, base, out)
     check("map: a second closed result to act on over the first stays closed when the first is opened", not bad, bad)
-    mjs = os.path.join(out, "assets", "map.js")
-    with open(mjs) as fh:
-        keep_mjs = fh.read()
     own = "var own = M.closable.indexOf(r.id) < 0 || stateOf(r.id) !== 'closed';"
     try:
         with open(mjs, "w") as fh:
@@ -1969,6 +2111,28 @@ def map_checks(b, base, out):
     finally:
         with open(js, "w") as fh:
             fh.write(keep_js)
+    bad = open_order_problems(b, base, out, og)
+    check("map: the chip's Open opens one closed result per click in the page's order, whether it has a place or "
+          "not; one with no place gets an Opened in its section chip until closed again; the keyboard follows",
+          not bad, bad)
+    concat = "if (page) { return page.filter(function (id) { return !M.gated[id]; }); }"
+    placed_first = ("if (page) { var placed = M.closable.filter(function (id) { return !M.gated[id] && stateOf(id) === "
+                    "'closed' && page.indexOf(id) >= 0; }); return placed.concat(page.filter(function (id) { return "
+                    "placed.indexOf(id) < 0; })); }")
+    alive = "stateOf(id) !== 'closed' && opts.title && opts.title(id);"
+    pushed = "inSection.push(id);"
+    focus = "(b || canvas).focus({ preventScroll: true });"
+    try:
+        for desc, a, z in (("map.js whose Open opens the closed results with a place first", concat, placed_first),
+                           ("map.js whose section chip stays for a closed result", alive, "true;"),
+                           ("map.js with no section chip for a result with no place", pushed, ""),
+                           ("map.js that leaves the keyboard where the chips were rebuilt", focus, "void b;")):
+            with open(mjs, "w") as fh:
+                fh.write(keep_mjs.replace(a, z))
+            control(desc, keep_mjs.count(a) != 1 or not open_order_problems(b, base, out, og))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
     bad = replay_apoe_problems(b, base)
     check("map: before the traits step a replay has no APOE chip, switch or mark", not bad, bad)
     gated = "if (M.gated[id] && opts.now && !opts.now(id)) { return; }"
