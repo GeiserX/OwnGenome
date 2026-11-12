@@ -14,7 +14,7 @@
 # Only stable ClinVar fields go into the table (the variation id, the gene, the
 # HGVS name), so any ClinVar release that holds these records writes the same
 # file. The review status and the classification of the day come from the
-# sample's own annotation table (bin/collect_summary.py mito-annotate).
+# sample's own annotation table (og mito annotate).
 #
 # Usage:
 #   scripts/ci/build-mito-confirmed.sh --clinvar VCF           rewrite assets/mito_confirmed.tsv

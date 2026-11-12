@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Steps 33 (sample identity and contamination) and 34 (CRAM archive), with a
 # hook that plays somalier, VerifyBamID2 and samtools, and runs the verdict
-# (bin/collect_summary.py sample-qc) for real on the host.
+# (og qc sample, through bin/og) for real on the host.
 #
 # Step 33: a sex somalier infers that differs from the declared one stops the
 # step; SEX_CHECK=warn goes on; a sex somalier cannot tell, or reads as X and Y
@@ -64,7 +64,7 @@ case "$*" in
     if $few; then echo "WARNING - Insufficient Available markers, check input bam depth"; exit 1; fi
     printf '#SEQ_ID\tRG\tCHIP_ID\t#SNPS\t#READS\tAVG_DP\tFREEMIX\n%s\tNA\tNA\t%s\t1\t30\t%s\n' \
       "${FAKE_SM:-sample1}" "$([ "${FAKE_VB2_FEW:-false}" = true ] && echo 320 || echo 99000)" "${FAKE_FREEMIX:-0.004}" > "${o}.selfSM" ;;
-  "python3 /pgp-bin/"*)
+  "/pgp-bin/og qc sample "*)
     # The real verdict, with the container paths mapped to the host.
     args=()
     for a in "$@"; do

@@ -637,3 +637,60 @@ cn	py311-cyp-conversion	gen:cn-oracle.sh,cn/oracle.sh,cn/cyp-conversion.bedcov.t
 cn	py311-intervals-male	gen:cn-oracle.sh,cn/oracle.sh,cn/intervals.bedcov.tsv	intervals --catalog cn_loci.tsv --bedcov intervals.bedcov.tsv --sex male --out iv.tsv	iv.tsv	tsv	PARASCOPY_IMAGE
 cn	py311-smn-present	gen:cn-oracle.sh,cn/oracle.sh,cn/smn-present.pileup,cn/smn2.tsv	marker-read SMN1_27134 --pileup smn-present.pileup --copy-table smn2.tsv --out m.tsv	m.tsv	kv	PARASCOPY_IMAGE
 cn	py311-check-bam-alt	gen:cn-oracle.sh,cn/oracle.sh,cn/header-alt.sam	check-bam --header header-alt.sam	-	kv	PARASCOPY_IMAGE
+qc-sample	male-ok	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --declared-sex male --selfsm clean.selfSM --somalier-pairs s.pairs.tsv --marker-check passed	q.tsv	kv	PYTHON_IMAGE
+qc-sample	mismatch	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	no-declared-sex	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv	q.tsv	kv	PYTHON_IMAGE
+qc-sample	pedigree-kept	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples ped-kept.samples.tsv --declared-sex male	q.tsv	kv	PYTHON_IMAGE
+qc-sample	pedigree-female	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples ped-female.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	low-quality	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples lowq.samples.tsv --declared-sex male	q.tsv	kv	PYTHON_IMAGE
+qc-sample	low-quality-nan	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples lowq.samples.tsv --declared-sex male --somalier-id U	q.tsv	kv	PYTHON_IMAGE
+qc-sample	x-and-y	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples xy.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	x-and-y-undeclared	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples xy.samples.tsv	q.tsv	kv	PYTHON_IMAGE
+qc-sample	x-and-y-unknown	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples xy-unknown.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	female	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples female.samples.tsv --declared-sex female --marker-check skipped	q.tsv	kv	PYTHON_IMAGE
+qc-sample	contaminated	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --selfsm dirty.selfSM --freemix-warn 0.04	q.tsv	kv	PYTHON_IMAGE
+qc-sample	threshold-sci	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --selfsm dirty.selfSM --freemix-warn 5e-2	q.tsv	kv	PYTHON_IMAGE
+qc-sample	somalier-name	gen:summary-tools.sh	--sample X --out q.tsv --somalier-samples male.samples.tsv --somalier-id T --somalier-pairs s.pairs.tsv	q.tsv	kv	PYTHON_IMAGE
+qc-sample	crlf	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples crlf.samples.tsv --declared-sex male	q.tsv	kv	PYTHON_IMAGE
+qc-sample	gzip	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples s.samples.tsv.gz	q.tsv	kv	PYTHON_IMAGE
+qc-sample	no-row	gen:summary-tools.sh	--sample Q --out q.tsv --somalier-samples male.samples.tsv	-	kv	PYTHON_IMAGE
+qc-sample	no-freemix	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --selfsm nofreemix.selfSM	-	kv	PYTHON_IMAGE
+qc-sample	missing-file	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples nowhere.tsv	-	kv	PYTHON_IMAGE
+qc-sample	inf-count	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples inf.samples.tsv	-	kv	PYTHON_IMAGE
+prs-table	raw	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs --input-kind gvcf	p.tsv	tsv	PYTHON_IMAGE
+prs-table	raw-female	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs --input-kind gvcf --sex female	p.tsv	tsv	PYTHON_IMAGE
+prs-table	panel	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs --input-kind gvcf --panel pgsc_1000G_v1 --ancestry-out a.tsv	p.tsv,a.tsv	tsv	PYTHON_IMAGE
+prs-table	panel-male	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj/ --scores pgs/ --input-kind gvcf --panel pgsc_1000G_v1 --sex male	p.tsv	tsv	PYTHON_IMAGE
+prs-table	panel-female	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs --input-kind gvcf --panel pgsc_1000G_v1 --sex female --ancestry-out a.tsv	p.tsv,a.tsv	tsv	PYTHON_IMAGE
+prs-table	panel-chrx	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs-x --input-kind gvcf --panel p	p.tsv	tsv	PYTHON_IMAGE
+prs-table	no-panel-chrx	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs-x --input-kind gvcf	p.tsv	tsv	PYTHON_IMAGE
+prs-table	plain-list	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs-plain --input-kind vcf --panel p	p.tsv	tsv	PYTHON_IMAGE
+prs-table	old-folder	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs-old --input-kind gvcf	p.tsv	tsv	PYTHON_IMAGE
+prs-table	zero-matches	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results none --scores pgs --input-kind vcf --zero-matches	p.tsv	tsv	PYTHON_IMAGE
+prs-table	below-threshold	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results none --scores pgs --input-kind gvcf --below-threshold below.log --sex male	p.tsv	tsv	PYTHON_IMAGE
+prs-table	no-match-summary	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results none --scores pgs --input-kind gvcf	-	tsv	PYTHON_IMAGE
+prs-table	no-scores	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores empty --input-kind gvcf	-	tsv	PYTHON_IMAGE
+prs-table	two-targets	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results two-targets --scores pgs --input-kind gvcf --panel p	-	tsv	PYTHON_IMAGE
+prs-table	bad-evaluations	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs-bad-evals --input-kind gvcf	-	tsv	PYTHON_IMAGE
+mito-annotate	clinvar-gnomad	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar clinvar_chr.vcf.gz --gnomad gnomad.chrM.vcf.bgz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	clinvar-mt	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar clinvar_mt.vcf.gz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	clinvar-no-chrm	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar clinvar_nochrm.vcf.gz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	none-given	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	files-missing	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar nowhere.vcf.gz --gnomad nowhere.bgz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	bad-position	gen:summary-tools.sh	--vcf bad-pos.vcf --out m.tsv --clinvar clinvar_chr.vcf.gz	-	tsv	PYTHON_IMAGE
+mito-annotate	vcf-missing	gen:summary-tools.sh	--vcf nowhere.vcf.gz --out m.tsv	-	tsv	PYTHON_IMAGE
+mito-deletions	eklipse	gen:summary-tools.sh	--out d.tsv --eklipse eKLIPse_deletions.csv	d.tsv	tsv	PYTHON_IMAGE
+mito-deletions	crlf	gen:summary-tools.sh	--out d.tsv --eklipse crlf_deletions.csv	d.tsv	tsv	PYTHON_IMAGE
+mito-deletions	empty	gen:summary-tools.sh	--out d.tsv --eklipse empty_deletions.csv	d.tsv	tsv	PYTHON_IMAGE
+mito-deletions	not-eklipse	gen:summary-tools.sh	--out d.tsv --eklipse notek.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	short-row	gen:summary-tools.sh	--out d.tsv --eklipse short_deletions.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	inf-level	gen:summary-tools.sh	--out d.tsv --eklipse inf_deletions.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	nan-depth	gen:summary-tools.sh	--out d.tsv --eklipse nan_depth_deletions.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	missing	gen:summary-tools.sh	--out d.tsv --eklipse nowhere.csv	-	tsv	PYTHON_IMAGE
+mito-copies	wgs	gen:summary-tools.sh	--out c.tsv --idxstats wgs.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	mt	gen:summary-tools.sh	--out c.tsv --idxstats mt.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	chrmt	gen:summary-tools.sh	--out c.tsv --idxstats chrmt.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	slice	gen:summary-tools.sh	--out c.tsv --idxstats slice.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	no-chrm	gen:summary-tools.sh	--out c.tsv --idxstats nochrm.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	crlf	gen:summary-tools.sh	--out c.tsv --idxstats crlf.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	bad-count	gen:summary-tools.sh	--out c.tsv --idxstats bad.idxstats	-	kv	PYTHON_IMAGE
