@@ -29,3 +29,4 @@ dev-schema	630292bd1aef8cb94bbed604e8961a98facdb47d	file:tests/schema/validate.p
 dev-contract	630292bd1aef8cb94bbed604e8961a98facdb47d	file:scripts/ci/check-output-contract.py	python3	dev contract
 prs-format	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" prs-format "$@"'	prs format
 chip	6f2407f9f66cc6bee43ae13c8abae5874b53e1cf	file:bin/chip_report.py	python3	chip
+family	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/family_report.py	sh ./oracle.sh	family

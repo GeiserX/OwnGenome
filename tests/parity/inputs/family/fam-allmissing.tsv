@@ -1,0 +1,4 @@
+family	sample	sex	father	mother	partner
+.	kid	male	dad	mum	.
+.	dad	male	.	.	mum
+.	mum	female	.	.	dad

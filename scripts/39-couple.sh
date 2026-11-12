@@ -79,7 +79,7 @@ fi
 
 # A families file (a family column: assets/families.example.tsv) holds several
 # families: this family's rows become its own ${OUT}/pedigree.tsv, written by
-# bin/family_report.py plan (which checks the whole file first), and the step
+# og family plan (which checks the whole file first), and the step
 # reads that. A pedigree without the column is read as it is.
 if awk -F'\t' '{ sub(/\r+$/, "") } /^[ \t]*$/ { next }
      { sub(/^#+/, ""); for (i = 1; i <= NF; i++) { f = tolower($i); gsub(/^[ \t]+|[ \t]+$/, "", f); if (f == "family") found = 1 }; exit }
@@ -92,7 +92,7 @@ if awk -F'\t' '{ sub(/\r+$/, "") } /^[ \t]*$/ { next }
   mkdir -p "$OUT"
   [ "$PEDIGREE" -ef "${OUT}/families.tsv" ] || cp -f "$PEDIGREE" "${OUT}/families.tsv"
   if ! run_in --rw "$OUT" --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-      python3 /pgp-bin/family_report.py plan --families "${OUT_C}/families.tsv" --family "$FAMILY" --write-pedigree /genome \
+      /pgp-bin/og family plan --families "${OUT_C}/families.tsv" --family "$FAMILY" --write-pedigree /genome \
       > /dev/null; then
     echo "  (families.tsv is the step's copy of ${PEDIGREE})" >&2
     [ -z "$NEW_OUT" ] || rm -rf "$OUT"

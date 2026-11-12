@@ -39,9 +39,10 @@ const USAGE: &str = "usage: og <tool> [args]
        og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
        og prs format [args]
        og chip prepare|report|check-table [args]
+       og family plan|prepare|check|report|segments [args]
        og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
-       og dev parity-compare|contract|schema|report-only [args]
+       og dev parity-compare|contract|schema|report-only|remnants [args]
        og version
        og --tree-hash
 ";
@@ -145,6 +146,7 @@ fn main() -> ExitCode {
             None => ExitCode::from(og_pgx::main(rest)),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
+        "family" => ExitCode::from(og_steps::family::cli(rest)),
         "clinvar" => ExitCode::from(og_clinvar::cli::main(rest)),
         "chip" => match rest.first() {
             Some(verb) => ExitCode::from(og_chip::cli(

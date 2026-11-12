@@ -1,0 +1,4 @@
+sample_a	sample_b	declared	expected_relatedness	relatedness	ibs0	ibs0_rate	ibs2	sites	verdict	reason
+dad	kid	parent-child	0.500	0.490	2	0.0004	100	5000	ok	first degree, as declared
+dad	mum	partners	0.000	0.010	600	0.1200	100	5000	ok	unrelated, as declared
+kid	mum	parent-child	0.500	0.510	1	0.0002	100	5000	ok	first degree, as declared
