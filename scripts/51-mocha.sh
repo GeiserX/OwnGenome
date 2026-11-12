@@ -7,7 +7,7 @@
 # (freeseek/mocha, a bcftools plugin) finds one as an allele balance that leans
 # the same way along a phased haplotype. The VCF's heterozygous SNVs are phased
 # with Beagle against the 1000 Genomes high-coverage panel (setup.sh
-# --mocha-data), MoChA calls on chr1 to chr22, and bin/mocha_report.py keeps the
+# --mocha-data), MoChA calls on chr1 to chr22, and og mocha report keeps the
 # calls MoChA's UK Biobank filter keeps whose cell fraction is at or above the
 # floor it prints for the sample's depth. Mosaic loss of Y and X is step 33's.
 # The same commands as the MOCHA_* Nextflow processes. Research result, not a
@@ -142,9 +142,9 @@ run_in --cpus 2 --memory 8g "$MOCHA_IMAGE" bash -euo pipefail -c '
   _ "$WC" "$PHASING" "$O" "$MHC" "$KIR" "$SITES_AWK" "$CNP"
 echo "  $(cat "${W}/mocha_version.txt")"
 
-echo "[4/4] Calls above the floor (bin/mocha_report.py)..."
+echo "[4/4] Calls above the floor (og mocha report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/mocha_report.py --sample "$SAMPLE" --calls "${O}_mocha_calls_raw.tsv" --stats "${O}_mocha_stats.tsv" \
+  /pgp-bin/og mocha report --sample "$SAMPLE" --calls "${O}_mocha_calls_raw.tsv" --stats "${O}_mocha_stats.tsv" \
     --sites "${O}_mocha_sites.tsv" --phasing "$PHASING" --out-calls "${O}_mocha.tsv" --out-summary "${O}_mocha_summary.tsv"
 cp "${W}/mocha.log" "${P}_mocha.log"
 rm -rf "$W"

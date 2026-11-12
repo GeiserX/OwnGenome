@@ -1,0 +1,2 @@
+sample_id	computed_gender	chrom	beg_GRCh38	end_GRCh38	length	p_arm	q_arm	n_sites	n_hets	n50_hets	bdev	bdev_se	rel_cov	rel_cov_se	lod_lrr_baf	lod_baf_phase	n_flips	baf_conc	lod_baf_conc	type	cf
+S	U	chr20	60000	20000000	19940000	T	N	20000	6600	3000	0.02	0.001	2.0	0.01	nan	900.0	0	nan	nan	CN-LOH	0.04

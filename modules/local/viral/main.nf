@@ -8,7 +8,7 @@
                     with minimap2 to the viral genomes; samtools coverage of that
                     BAM and of the sample's BAM (the human depth), and samtools
                     depth -aa over every viral genome
-      VIRAL_REPORT  bin/viral_report.py on those files: one row per viral
+      VIRAL_REPORT  og viral report on those files: one row per viral
                     genome, with inherited integrated HHV-6 called by Liu et
                     al. 2020's depth threshold
 
@@ -94,7 +94,7 @@ process VIRAL_REPORT {
 
     script:
     """
-    viral_report.py --sample ${meta.id} --viral-fasta ${viral_ref} --viral-coverage ${viral_coverage} \\
+    og viral report --sample ${meta.id} --viral-fasta ${viral_ref} --viral-coverage ${viral_coverage} \\
         --viral-depth ${viral_depth} --human-coverage ${human_coverage} --out ${meta.id}_viral.tsv
 
     cat <<-END_VERSIONS > versions.yml

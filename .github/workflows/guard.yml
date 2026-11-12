@@ -313,7 +313,8 @@ jobs:
           grep -q 'summary.json validates (og dev schema)' <<< "$out" \
             || { echo "ERROR: reports-stale-step did not run og dev schema"; exit 1; }
 
-      # The tests of the og filters steps 04, 05 and 07 run, og chip's (step 49), og family's (step 38), og run delta's, step 26b's og ancestry-fine, the
+      # The tests of the og filters steps 04, 05 and 07 run, og chip's (step 49), og family's (step 38), og run delta's, step 26b's og ancestry-fine,
+      # the opt-in step reports' (45, 47, 48, 50 to 53), the
       # og tools setup.sh runs (og str catalog, og setup unzip and genetic-map), and the step 25
       # tests that compare og prs format with the folders they write by hand:
       # unit-tests has no og, so there they skip; here OG_REQUIRED turns a
@@ -330,7 +331,10 @@ jobs:
                    tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
                    tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py tests/test_setup_fine_maps.sh \
                    tests/test_render_report.py tests/test_collect_summary.py tests/test_chip_report.py \
-                   tests/test_family_report.py tests/test_family_segments.py; do
+                   tests/test_family_report.py tests/test_family_segments.py \
+                   tests/test_vntyper_report.py tests/test_locityper_report.py tests/test_mocha_report.py \
+                   tests/test_mei_report.py tests/test_viral_report.py tests/test_ystr_report.py \
+                   tests/test_exomiser_report.py; do
             rc=0
             echo "::group::${t}"
             case "$t" in

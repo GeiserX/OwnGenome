@@ -21,7 +21,7 @@
 #     tests/fixtures/annotsv/class45.sh plus one made-up gene, FIXCHR20, over
 #     all of chr20 (two exons at its ends): every call comes back in
 #     FIXCHR20, with its location there, and with AnnotSV's class of an
-#     insertion, NA. Red control: the same VCF through bin/mei_report.py
+#     insertion, NA. Red control: the same VCF through og mei report
 #     without AnnotSV's table fails those checks;
 #   - the Nextflow pipeline (--tools mei, with --annotsv_annotations) on the
 #     same BAM writes the same calls table as the bash step, and MEI's peak
@@ -154,7 +154,7 @@ echo "AnnotSV columns (calls/in FIXCHR20/with its location/class NA): $(annotsv_
 check_eq "every call is in FIXCHR20, with its location there and AnnotSV's class NA" \
   "$(annotsv_cols "${M}_mei.tsv")" "${N}/${N}/${N}/${N}"
 # Red control: the same VCF without AnnotSV's table.
-python3 -I "${REPO}/bin/mei_report.py" --sample "$H" --vcf "${M}_megane.vcf" --sites "${REPO}/assets/mei_sites.tsv" \
+"${REPO}/bin/og" mei report --sample "$H" --vcf "${M}_megane.vcf" --sites "${REPO}/assets/mei_sites.tsv" \
   --depth "${M}_mei_depth.tsv" --out-calls "${T}/red_mei.tsv" --out-sites "${T}/red_sites.tsv" > /dev/null
 check "red control: without AnnotSV's table the same check fails" \
   test "$(annotsv_cols "${T}/red_mei.tsv")" != "${N}/${N}/${N}/${N}" -a "$(annotsv_cols "${T}/red_mei.tsv")" = "${N}/0/0/0"

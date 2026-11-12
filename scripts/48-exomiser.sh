@@ -7,7 +7,7 @@
 # says how to pick them). Exomiser (EXOMISER_IMAGE) scores each rare coding or
 # splice variant of the VCF by how damaging it looks and each gene by how well
 # its known diseases and animal models match the terms, and ranks the genes
-# under each mode of inheritance. bin/exomiser_report.py checks the terms
+# under each mode of inheritance. og exomiser (bin/og) checks the terms
 # against the HPO release of Exomiser's data, writes the analysis (Exomiser's
 # exome preset) and reads the result: the top genes, their variants, scores,
 # mode of inheritance and Exomiser's ACMG classification, in words too. The
@@ -97,9 +97,9 @@ echo "HPO ontology: ${OBO:-not found in the phenotype data; the terms are checke
 mkdir -p "$OUTDIR"
 rm -f "${P}"* "${OUTDIR}/${SAMPLE}_analysis.yml"
 O=$(cpath "$OUTDIR")
-echo "[1/3] HPO terms and the analysis (bin/exomiser_report.py)..."
+echo "[1/3] HPO terms and the analysis (og exomiser prepare)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/exomiser_report.py prepare --hpo "$HPO" ${OBO:+--obo "$(cpath "$OBO")"} --sample "$SAMPLE" \
+  /pgp-bin/og exomiser prepare --hpo "$HPO" ${OBO:+--obo "$(cpath "$OBO")"} --sample "$SAMPLE" \
     --vcf "$(cpath "$VCF")" --assembly "$ASSEMBLY" --out-dir "$O" --analysis "${O}/${SAMPLE}_analysis.yml" \
     --terms "$(cpath "${P}_terms.tsv")" ${ARGS[@]+"${ARGS[@]}"}
 echo "[2/3] Exomiser..."
@@ -113,7 +113,7 @@ run_in --cpus "$THREADS" --memory "${MEM}g" --entrypoint /usr/local/bin/exomiser
 [ -f "${P}.variants.tsv" ] || { echo "ERROR: Exomiser wrote no ${P}.variants.tsv" >&2; exit 1; }
 echo "[3/3] The top genes in words..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/exomiser_report.py report --sample "$SAMPLE" --variants "${O}/${SAMPLE}_exomiser.variants.tsv" \
+  /pgp-bin/og exomiser report --sample "$SAMPLE" --variants "${O}/${SAMPLE}_exomiser.variants.tsv" \
     --terms "$(cpath "${P}_terms.tsv")" --out "$(cpath "${P}_top.tsv")" --text "$(cpath "${P}.txt")"
 
 echo ""

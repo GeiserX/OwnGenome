@@ -1,0 +1,24 @@
+format-version: 1.2
+
+[Term]
+id: HP:0001156
+name: Brachydactyly
+alt_id: HP:0009803
+
+[Term]
+id: HP:0001363
+name: Craniosynostosis
+
+[Term]
+id: HP:0011304
+name: Broad thumb
+
+[Term]
+id: HP:0001250
+name: obsolete Seizure
+is_obsolete: true
+replaced_by: HP:0012345
+
+[Typedef]
+id: part_of
+name: part of

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/exomiser_report.py: the symptom-driven ranking of step 48 (Exomiser).
+"""og exomiser prepare and og exomiser report: the symptom-driven ranking of step 48 (Exomiser).
 
 Every input is synthetic: a few-term OBO file, one- and four-sample VCF
 headers, a pedigree, and Exomiser variants TSVs in the column layout of
@@ -22,17 +22,21 @@ Exomiser 15's TsvVariantResultsWriter. The cases:
      and render_report.py); the module's -stub table has the same columns and
      reads as no gene
 
-Run: python3 tests/test_exomiser_report.py
+Without OG (the og binary) the test is skipped with a note; with
+OG_REQUIRED set too, it fails (Guard's rust job sets both).
+
+Run: OG=bin/og python3 tests/test_exomiser_report.py
 """
 import gzip
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "exomiser_report.py")
+OG = os.environ.get("OG", "")
 sys.path.insert(0, os.path.join(REPO, "bin"))
 
 FAILS = []
@@ -119,7 +123,7 @@ def check(name, ok, detail=""):
 
 
 def run(*args):
-    return subprocess.run([sys.executable, SCRIPT] + list(args), capture_output=True, text=True)
+    return subprocess.run([OG, "exomiser"] + list(args), capture_output=True, text=True)
 
 
 def write(path, text):
@@ -320,7 +324,7 @@ def case_reports():
         sd = os.path.join(d, "S1", "exomiser")
         os.makedirs(sd)
         r = report(sd, ROWS)
-        os.rename(os.path.join(sd, "top.tsv"), os.path.join(sd, "S1_exomiser_top.tsv"))
+        shutil.copy(os.path.join(sd, "top.tsv"), os.path.join(sd, "S1_exomiser_top.tsv"))
         os.rename(os.path.join(sd, "terms.tsv"), os.path.join(sd, "S1_exomiser_terms.tsv"))
         p, data = cs.sec_exomiser(os.path.join(d, "S1"), "S1")
         check("summary: the section reads the table", p is not None and r.returncode == 0)
@@ -347,11 +351,12 @@ def case_reports():
             check("summary: a table without its columns is unreadable", True)
         # The -stub table of EXOMISER_REPORT reads as "no gene passed", not unreadable.
         import re
-        import exomiser_report as er
+        with open(os.path.join(sd, "top.tsv")) as f:
+            out_header = f.readline()
         nf = open(os.path.join(REPO, "modules", "local", "exomiser", "main.nf")).read()
         m = re.search(r"printf '([^']*)' > \$\{meta\.id\}_exomiser_top\.tsv", nf.split("stub:")[-1])
         head = m.group(1).replace("\\\\t", "\t").replace("\\\\n", "\n") if m else ""
-        check("stub: the top table carries the report's columns", head == "\t".join(er.OUT_HEADER) + "\n", repr(head))
+        check("stub: the top table carries the report's columns", head == out_header, repr(head))
         write(bad, head)
         try:
             _, data = cs.sec_exomiser(os.path.join(d, "S1"), "S1")
@@ -361,6 +366,9 @@ def case_reports():
 
 
 if __name__ == "__main__":
+    if not OG:
+        print("skip: OG is not set (OG=bin/og)")
+        sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
     case_prepare()
     case_prepare_stops()
     case_family()

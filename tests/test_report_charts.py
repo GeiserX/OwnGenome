@@ -131,7 +131,7 @@ def sv_chrom(r):
 
 
 def mca_chrom(c):
-    """The chromosome of a MoChA call, chr prefix put back (mocha_report.py passes bare names through)."""
+    """The chromosome of a MoChA call, chr prefix put back (og mocha report passes bare names through)."""
     ch = str(c["chrom"])
     return ch if ch.startswith("chr") else "chr" + ch
 
@@ -317,7 +317,7 @@ def unit_checks():
             "cell_fraction": "0.12"},
            {"chrom": "chrM", "start": "100", "end": "900", "length_mb": ".", "type": "Del", "cell_fraction": "."},
            {"chrom": "chr3", "start": ".", "end": ".", "length_mb": ".", "type": "Dup", "cell_fraction": "."},
-           # mocha_report.py also passes bare names through
+           # og mocha report also passes bare names through
            {"chrom": "20", "start": "50000000", "end": "52000000", "length_mb": "2.0", "type": "Dup",
             "cell_fraction": "0.05"}]
     sm = copy.deepcopy(s)

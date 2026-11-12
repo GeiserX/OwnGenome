@@ -1,0 +1,4 @@
+gene	chrom	start	end	site	element	inheritance	condition	clinvar	pmid	status	mean_depth	call
+FKTN	chr9	105639156	105640156	105639656	SVA	autosomal recessive	Fukuyama congenital muscular dystrophy	3199	9690476	seen	30.0	chr9:105639660 SVA_F 1 copy PASS
+TAF1	chrX	71439993	71440993	71440493	SVA	X-linked	X-linked dystonia-parkinsonism	9862	29474918	not callable	.	.
+FKTN	chr9	105700000	105701000	105700500	SVA	autosomal recessive	a second window	.	.	not callable	5.0	.

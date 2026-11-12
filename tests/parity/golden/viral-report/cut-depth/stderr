@@ -1,0 +1,1 @@
+ERROR: cut.vdepth.tsv has 490 positions for NC_001422.1, its length is 500 (run samtools depth -aa)

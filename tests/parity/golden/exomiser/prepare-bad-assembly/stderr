@@ -1,0 +1,2 @@
+usage: og exomiser prepare [-h] --hpo HPO [--obo OBO] --sample SAMPLE --vcf VCF [--assembly {hg38,hg19}] --out-dir OUT_DIR --analysis ANALYSIS --terms TERMS [--pedigree PEDIGREE] [--ped PED] [--affected AFFECTED] [--unaffected UNAFFECTED]
+og exomiser prepare: error: argument --assembly: invalid choice: 'grch99' (choose from 'hg38', 'hg19')

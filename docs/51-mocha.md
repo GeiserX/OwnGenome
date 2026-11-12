@@ -14,7 +14,7 @@ mCAs in blood become more common with age. [Loh et al. 2018](https://pubmed.ncbi
 
 - [MoChA](https://github.com/freeseek/mocha) (`bcftools +mocha` and `bcftools +mochatools`, MIT licence), the authors' implementation of that method, version `MOCHA_VERSION` (2025-08-19, commit `MOCHA_COMMIT`)
 - Beagle to phase the VCF against the 1000 Genomes high-coverage panel, as the MoChA README does
-- `bin/mocha_report.py` (standard library Python) for the floor and the calls reported
+- `og mocha report` (OwnGenome's Rust binary, [og](rust.md)) for the floor and the calls reported
 
 ## Docker Image
 
@@ -52,7 +52,7 @@ With `run-all.sh`: `TOOLS=...,mocha`; a run lists step 51 only when `TOOLS` name
 1. The VCF's biallelic PASS SNVs on chr1 to chr22. A genotype under 10 reads or with GQ under 20 is set missing, as the MoChA README does for WGS. `mochatools` adds the GC content around each site from the reference.
 2. Beagle phases the genotypes against the panel, one chromosome at a time (`impute=false`, `seed=1`). A chromosome the panel lacks is left out.
 3. The phased genotypes go back onto the sites of step 1, and MoChA runs in its WGS mode (allele depths from AD) with `--genome GRCh38` and `cnps.bed` as `--cnp`. The MHC and KIR regions are left out of its model.
-4. `bin/mocha_report.py` reads MoChA's tables and decides which calls are reported.
+4. `og mocha report` reads MoChA's tables and decides which calls are reported.
 
 A call is reported when all of these hold:
 

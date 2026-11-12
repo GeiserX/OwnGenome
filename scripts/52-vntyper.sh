@@ -6,7 +6,7 @@
 # inside the MUC1 coding VNTR, a repeat of 60 bp units, most often one extra C
 # (dupC). Short reads cannot be placed inside the repeat, so DeepVariant and
 # ExpansionHunter do not see it. VNtyper (VNTYPER_IMAGE, its reference data
-# inside) genotypes it with k-mers; bin/vntyper_report.py, the same code as
+# inside) genotypes it with k-mers; og vntyper report, the same code as
 # the VNTYPER Nextflow process, turns its result into positive, possible,
 # negative or not assessed, with the share of known positives VNtyper found
 # at the sample's depth over the VNTR. A research call, not a diagnosis.
@@ -54,9 +54,9 @@ run_in --cpus "$THREADS" --memory 8g --entrypoint "" "$VNTYPER_IMAGE" bash -c '
   _ "$(cpath "$BAM")" "$(cpath "$RUN")" "$SAMPLE" "$THREADS" "$(cpath "$LOG")" || rc=$?
 [ "$rc" -eq 0 ] || { echo "WARNING: VNtyper exited ${rc}; last lines of ${LOG}:" >&2; tail -n 20 "$LOG" >&2 || true; }
 
-echo "[2/2] The reading (bin/vntyper_report.py)..."
+echo "[2/2] The reading (og vntyper report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g --entrypoint "" "$VNTYPER_IMAGE" \
-  python3 /pgp-bin/vntyper_report.py --run-dir "$(cpath "$RUN")" --exit-code "$rc" --log "$(cpath "$LOG")" --out "$(cpath "$TABLE")"
+  /pgp-bin/og vntyper report --run-dir "$(cpath "$RUN")" --exit-code "$rc" --log "$(cpath "$LOG")" --out "$(cpath "$TABLE")"
 
 [ -s "$TABLE" ] || { echo "ERROR: no table written (${TABLE})" >&2; exit 1; }
 echo ""

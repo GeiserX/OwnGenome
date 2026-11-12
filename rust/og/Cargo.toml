@@ -21,6 +21,7 @@ og-steps.workspace = true
 og-filters.workspace = true
 og-setup.workspace = true
 og-chip.workspace = true
+og-reports.workspace = true
 og-runlog.workspace = true
 og-ancestry.workspace = true
 

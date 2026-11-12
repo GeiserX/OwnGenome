@@ -10,11 +10,11 @@
       MEI         MEGAnE call_genotype_38 -only_ins on the BAM; 16 GB, the
                   figure of the bash step (conf/base.config)
       MEI_REPORT  in AnnotSV's image: with --annotsv_annotations, AnnotSV on
-                  the insertions the calls table lists (bin/mei_report.py
-                  --annotsv-input): their genes, the location in each, the
+                  the insertions the calls table lists (og mei
+                  annotsv-input): their genes, the location in each, the
                   benign set's frequency of an insertion there, and AnnotSV's
                   class, NA for every insertion (AnnotSV 3.5 scores deletions
-                  and duplications only); then bin/mei_report.py: the calls
+                  and duplications only); then og mei report: the calls
                   with those columns ("." without AnnotSV's data), and the
                   catalog as seen / not seen / not callable. 4 CPUs and 8 GB
                   with AnnotSV's data, as step 05 gives AnnotSV, 1 and 2 GB
@@ -175,7 +175,7 @@ process MEI_REPORT {
             exit 1
         fi
     done
-    mei_report.py --sample ${p} --vcf ${vcf} --annotsv-input ${p}_mei_annotsv_input.vcf
+    og mei annotsv-input --sample ${p} --vcf ${vcf} --out ${p}_mei_annotsv_input.vcf
     AnnotSV -SVinputFile ${p}_mei_annotsv_input.vcf -outputFile ${p}_mei_annotsv.tsv -outputDir . \\
         -genomeBuild GRCh38 -annotationMode both -annotationsDir ${annotations_dir} \\
         -txFile ${annotations_dir}/mane_select_refseq.txt
@@ -184,7 +184,7 @@ process MEI_REPORT {
     def annotsv_arg = annotations_dir ? "--annotsv ${p}_mei_annotsv.tsv" : ''
     """
     ${annotsv}
-    mei_report.py --sample ${meta.id} --vcf ${vcf} --sites ${sites} --depth ${depth} ${annotsv_arg} \\
+    og mei report --sample ${meta.id} --vcf ${vcf} --sites ${sites} --depth ${depth} ${annotsv_arg} \\
         --out-calls ${meta.id}_mei.tsv --out-sites ${meta.id}_mei_sites.tsv
 
     cat <<-END_VERSIONS > versions.yml

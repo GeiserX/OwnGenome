@@ -30,3 +30,12 @@ dev-contract	630292bd1aef8cb94bbed604e8961a98facdb47d	file:scripts/ci/check-outp
 prs-format	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" prs-format "$@"'	prs format
 chip	6f2407f9f66cc6bee43ae13c8abae5874b53e1cf	file:bin/chip_report.py	python3	chip
 family	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/family_report.py	sh ./oracle.sh	family
+vntyper-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/vntyper_report.py	python3	vntyper report
+locityper-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/locityper_report.py	python3	locityper report
+mocha-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/mocha_report.py	python3	mocha report
+mei-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/mei_report.py	python3	mei report
+mei-annotsv-input	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/mei_report.py	sh -c 'p=$0; for a; do shift; [ "$a" = --out ] && a=--annotsv-input; set -- "$@" "$a"; done; exec python3 "$p" "$@"'	mei annotsv-input
+viral-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/viral_report.py	python3	viral report
+y-str-bed	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" bed "$@"'	y str-bed
+y-str-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" report "$@"'	y str-report
+exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	python3	exomiser

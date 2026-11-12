@@ -2,7 +2,7 @@
 # Step 53 (Locityper) and the database it reads, the shipped scripts as a
 # user runs them: setup.sh --locityper-data builds the database, then
 # scripts/53-locityper.sh genotypes HG002 and writes the table
-# bin/locityper_report.py makes. The image's smoke test repeats their
+# og locityper report makes. The image's smoke test repeats their
 # commands; this case runs the scripts.
 #
 # The fixture holds reads over the MHC but none over FCGR or KIR, so the
@@ -86,7 +86,7 @@ check "and builds nothing again" grep -q "already built" "${CASE_TMP}/again.log"
 run53 "${CASE_TMP}/step.log"
 check_eq "scripts/53-locityper.sh exits 0" "$STEP_RC" 0
 TABLE="${S}/locityper/${SAMPLE}_locityper.tsv"
-check_eq "the table's columns are those of bin/locityper_report.py" "$(head -n 1 "$TABLE" 2>/dev/null | tr '\t' ' ')" \
+check_eq "the table's columns are those of og locityper report" "$(head -n 1 "$TABLE" 2>/dev/null | tr '\t' ' ')" \
   "locus region status genotype haplotype_1 haplotype_2 quality total_reads unexplained_reads weighted_distance warnings filter reason"
 check_eq "one row per locus of the database" "$(awk -F'\t' 'NR > 1 {print $1}' "$TABLE" 2>/dev/null | paste -sd' ' -)" "HLA-DQB1"
 l=HLA-DQB1
