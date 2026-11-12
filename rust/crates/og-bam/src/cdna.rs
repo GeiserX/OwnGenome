@@ -1183,6 +1183,9 @@ mod tests {
         assert!(right(end, 20));
         assert!(right(end + EDGE_SLACK, 20));
         assert!(!right(end + EDGE_SLACK + 1, 20));
+        // The slack is 3 bases, as the Python had it.
+        assert!(right(end - 3, 20) && right(end + 3, 20));
+        assert!(!right(end - 4, 20) && !right(end + 4, 20));
         assert!(!right(end, MIN_CLIP - 1));
         // A left clip at an exon end (the wrong side) does not count.
         assert!(!edge_clipped(
