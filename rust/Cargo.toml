@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-qc", "crates/og-clinvar", "crates/og-pgx", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-setup", "crates/og-chip", "crates/og-cn", "crates/og-ancestry", "crates/og-pedigree", "crates/og-reports", "crates/og-summary", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-qc", "crates/og-clinvar", "crates/og-pgx", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-setup", "crates/og-chip", "crates/og-cn", "crates/og-ancestry", "crates/og-pedigree", "crates/og-reports", "crates/og-summary", "crates/og-fresh", "crates/og-recheck", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -31,11 +31,17 @@ og-cn = { path = "crates/og-cn" }
 og-pedigree = { path = "crates/og-pedigree" }
 og-reports = { path = "crates/og-reports" }
 og-summary = { path = "crates/og-summary" }
+og-fresh = { path = "crates/og-fresh" }
+og-recheck = { path = "crates/og-recheck" }
 indexmap = "2"
 flate2 = "1"
 memchr = "2"
 smallvec = "1"
 rustc-hash = "2"
+# The lookups of og dev freshness and og recheck read upstream answers with it.
+regex = "1"
+# og recheck --launch-dir splits a Nextflow command as a shell would.
+shlex = "1"
 # Time zones as Python reads them: TZ, else /etc/localtime, else UTC.
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 # statvfs(2) without unsafe code.

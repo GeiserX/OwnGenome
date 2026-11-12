@@ -26,6 +26,7 @@ fn tree_hash() -> &'static str {
 const USAGE: &str = "usage: og <tool> [args]
        og map <verb> [args]
        og run state|tasks|eta|headroom|delta [args]
+       og recheck --sample S [--genome-dir DIR] [--offline FILE] [--rerun [--refresh-clinvar]] | --affected KEYS | --launch-dir DIR
        og setup mask-fasta SRC BED DEST
        og setup unzip ZIP DEST
        og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...
@@ -57,6 +58,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og exomiser prepare [args]
        og exomiser report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
+       og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash
 ";
@@ -164,7 +166,11 @@ fn main() -> ExitCode {
             },
             None => ExitCode::from(og_pgx::main(rest)),
         },
+        "dev" if rest.first().is_some_and(|v| v == "freshness") => {
+            ExitCode::from(og_fresh::cli::main(&rest[1..]))
+        }
         "dev" => ExitCode::from(og_dev::main(rest)),
+        "recheck" => ExitCode::from(og_recheck::cli::main(rest)),
         "family" => ExitCode::from(og_steps::family::cli(rest)),
         "clinvar" => ExitCode::from(og_clinvar::cli::main(rest)),
         "chip" => match rest.first() {
