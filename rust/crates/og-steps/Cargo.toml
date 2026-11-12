@@ -1,6 +1,6 @@
 [package]
 name = "og-steps"
-description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join; prs, the PGS Catalog scores as pgsc_calc reads them"
+description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join; prs, the PGS Catalog scores as pgsc_calc reads them; consumer, step 40's raw-data export"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,8 @@ og-io.workspace = true
 og-intervals.workspace = true
 flate2.workspace = true
 memchr.workspace = true
+rustc-hash.workspace = true
+zlib-rs.workspace = true
 
 [lints]
 workspace = true

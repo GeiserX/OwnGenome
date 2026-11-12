@@ -2,4 +2,6 @@
 # leaves out.
 !inputs/**/*.fa
 !inputs/**/*.fa.fai
+# The consumer cases read small synthetic VCFs and gVCFs, which the top .gitignore leaves out too.
 !inputs/**/*.vcf
+!inputs/**/*.vcf.gz

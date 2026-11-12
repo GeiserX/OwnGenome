@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# generate-report.sh three times on one sample: what changed since the
-# previous run (bin/run_delta.py) and the history it keeps.
+# generate-report.sh four times on one sample: what changed since the
+# previous run (og run delta) and the history it keeps.
 #   1. the first run writes "no previous run" and keeps its summary.json and
 #      run_manifest.tsv as history/<UTC time>/;
 #   2. a second run with the same outputs writes an empty delta;
 #   3. with one ClinVar hit reclassified and one image digest changed in the
-#      newest history copy, the delta names exactly those two changes.
-# The report renderer and run_delta.py run with the host's python3 on the host
-# side of the call's mounts, so both are the real code.
+#      newest history copy, the delta names exactly those two changes;
+#   4. a newer history folder without a summary.json (a copy that stopped
+#      half way) is passed over: the delta is against the newest folder that
+#      holds one, and the report does not fail.
+# The report renderer runs with the host's python3 and og run delta with the
+# host's bin/og, on the host side of the call's mounts, so both are the real
+# code. The Guard fake-docker job builds og into bin/.og.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -29,8 +33,8 @@ cat > "${CASE_WORK}/tools-hook" <<'HOOK'
 set -euo pipefail
 . "${CASE_WORK:?}/host-path.sh"
 case "${*:2}" in
-  "python3 /pgp-bin/"*)
-    # The real script, on the host paths of every /... argument.
+  "python3 /pgp-bin/"* | "/pgp-bin/og "*)
+    # The real tool, on the host paths of every /... argument.
     shift
     mapped=()
     for a in "$@"; do
@@ -43,6 +47,7 @@ HOOK
 chmod +x "${CASE_WORK}/tools-hook"
 export FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/tools-hook"
 
+"${REPO_ROOT}/bin/og" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
 DELTA="${S}/sample1_delta"
 history_dirs() { find "${S}/history" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort; }
 changes() { python3 -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["changes"]))' "${DELTA}.json"; }
@@ -87,4 +92,14 @@ grep -q 'reclassified: chr2:2000 C>T (GENEB): Uncertain significance -> Likely p
   || fail "the text delta does not show the reclassification: $(cat "${DELTA}.txt")"
 grep -q 'python@sha256:0000' "${DELTA}.html" || fail "the HTML delta does not show the old digest"
 [ "$(history_dirs | wc -l)" -eq 3 ] || fail "after three runs history/ holds $(history_dirs | wc -l) folders, expected 3"
-echo "The delta says no previous run, then no change, then exactly the planted reclassification and digest."
+
+# 4. a newer folder that lost its summary.json half way through the copy
+kept=$(basename "$(history_dirs | tail -n 1)")
+half="${S}/history/9999-12-31T235959Z"
+mkdir -p "$half"
+cp -p "${S}/run_manifest.tsv" "${half}/"
+run_expect 0 fourth "${SCRIPTS}/generate-report.sh" sample1
+prev_of() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["previous"])' "${DELTA}.json"; }
+[ "$(prev_of)" = "$kept" ] || fail "the delta should be against history/${kept}, the newest folder with a summary.json; got: $(prev_of)"
+grep -qF "Previous run: history/${kept} " "${DELTA}.txt" || fail "the text delta does not name history/${kept}: $(cat "${DELTA}.txt")"
+echo "The delta says no previous run, then no change, then exactly the planted reclassification and digest, and passes over a half-copied history folder."

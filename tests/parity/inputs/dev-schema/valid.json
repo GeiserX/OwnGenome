@@ -1,0 +1,2 @@
+{"sample": "S1", "version": null, "score": 0.25, "flags": [true],
+ "sections": {"clinvar": {"status": "ok", "n": 3}, "roh": {"status": "missing", "n": 0}}}

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""bin/clinvar_join_adjacent.awk, the combined-allele joiner of step 06 and the
+"""og clinvar join-adjacent, the combined-allele joiner of step 06 and the
 CLINVAR_SCREEN module, on hand-made records at real GRCh38 chr22 positions.
 
-Checks, with every awk on the machine (the module runs the bcftools image's
-awk, mawk):
+Checks 1 to 7 run og (OG, an og binary: the rust job of guard.yml sets it to
+bin/og after scripts/setup.sh --og; without OG they are skipped and say so),
+in its prepare and finish modes around the fill below, and in build mode,
+which reads the reference itself and must write the same records:
   1. two records within 10 bp, both het with the same unphased GT, are joined
      into one REF/ALT, the bases between them taken from the reference;
      0/1 and 1/0 are the same het call;
@@ -34,8 +36,8 @@ awk, mawk):
      four sites) gives every site a call: het with its GQ, "ref, GQ 50" from a
      gVCF block, the 1/. call, and "no call" with the reason.
 
-The window is 10 bp; set it to 0 in the awk file and checks 1, 2, 3, 6, 7 and
-8 fail.
+The window is 10 bp; set WINDOW to 0 in rust/crates/og-clinvar/src/join.rs
+and checks 1, 2, 3, 6, 7 and 8 fail.
 
 Run: python3 tests/test_clinvar_join_adjacent.py
 """
@@ -47,7 +49,7 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AWK_FILE = os.path.join(REPO, "bin", "clinvar_join_adjacent.awk")
+OG = os.environ.get("OG")
 FIXTURES = os.path.join(REPO, "tests", "fixtures", "vcf")
 
 # GRCh38 chr22 (the same in the NCBI no-ALT analysis set), two short stretches.
@@ -81,21 +83,23 @@ def rec(pos, ref, alt, gt, ps=None):
     return f"chr22\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t.\t{fmt}\t{smp}\n"
 
 
-def awks():
-    found = []
-    for name in ("awk", "mawk", "gawk", "original-awk", "nawk"):
-        p = shutil.which(name)
-        if p and os.path.realpath(p) not in [os.path.realpath(x[1]) for x in found]:
-            found.append((name, p))
-    if shutil.which("busybox"):
-        found.append(("busybox awk", "busybox"))
-    return found
-
-
-def awk_run(awk, args, stdin=""):
-    cmd = ([awk] if awk != "busybox" else ["busybox", "awk"]) + args
-    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+def og_run(args, stdin=""):
+    p = subprocess.run([OG, "clinvar", "join-adjacent"] + args, input=stdin, capture_output=True, text=True)
     return p.returncode, p.stdout, p.stderr
+
+
+def write_reference(path):
+    """chr22 up to the last stretch, N everywhere else, 60 bases a line, with its .fai."""
+    length = max(s + len(q) for s, q in REF.items()) + 50
+    seq = bytearray(b"N" * length)
+    for start, q in REF.items():
+        seq[start - 1:start - 1 + len(q)] = q.encode()
+    with open(path, "wb") as f:
+        f.write(b">chr22\n")
+        for i in range(0, length, 60):
+            f.write(bytes(seq[i:i + 60]) + b"\n")
+    with open(path + ".fai", "w") as f:
+        f.write(f"chr22\t{length}\t7\t60\t61\n")
 
 
 def fill(vcf):
@@ -112,24 +116,29 @@ def fill(vcf):
     return "".join(out)
 
 
-def join(awk, records, fill_fn=fill):
-    """prepare | fill | finish; the records out, as lists of fields."""
-    rc, prep, err = awk_run(awk, ["-v", "mode=prepare", "-f", AWK_FILE], HEAD + "".join(records))
+def join(fasta, records, fill_fn=fill):
+    """prepare | fill | finish; the records out, as lists of fields. build
+    must write the same records."""
+    rc, prep, err = og_run(["--mode", "prepare"], HEAD + "".join(records))
     if rc != 0:
         return None, f"prepare exit {rc}: {err}"
-    rc, done, err = awk_run(awk, ["-v", "mode=finish", "-f", AWK_FILE], fill_fn(prep))
+    rc, done, err = og_run(["--mode", "finish"], fill_fn(prep))
     if rc != 0:
         return None, f"finish exit {rc}: {err}"
-    return [l.split("\t") for l in done.splitlines() if l and not l.startswith("#")], done
+    rc, built, err = og_run(["--mode", "build", "--fasta", fasta], HEAD + "".join(records))
+    body = [l for l in done.splitlines() if l and not l.startswith("#")]
+    if rc != 0 or [l for l in built.splitlines() if l and not l.startswith("#")] != body:
+        return None, f"build exit {rc}: {err}, wrote {built!r}, not the records of prepare and finish {done!r}"
+    return [l.split("\t") for l in body], done
 
 
 def core(r):
     return (r[1], r[3], r[4], r[8], r[9])
 
 
-def awk_checks(name, awk, work):
+def og_checks(name, fasta, work):
     # 1. unphased het pair, 3 bp apart: AGC>A (a 2 bp deletion) and T>TGGG
-    out, raw = join(awk, [rec(30000037, "AGC", "A", "0/1"), rec(30000042, "T", "TGGG", "0/1")])
+    out, raw = join(fasta, [rec(30000037, "AGC", "A", "0/1"), rec(30000042, "T", "TGGG", "0/1")])
     check(f"{name}: two het records 3 bp apart become one REF/ALT with the reference bases between them",
           out is not None and [core(r) for r in out] == [("30000037", "AGCCAT", "ACATGGG", "GT", "0/1")], raw)
     check(f"{name}: the combined record names its two parts",
@@ -137,62 +146,62 @@ def awk_checks(name, awk, work):
           and out[0][7] == "PGP_JOINED_FROM=chr22:30000037:AGC:A|chr22:30000042:T:TGGG", raw)
     check(f"{name}: the header keeps PGP_JOINED_FROM and drops the temporary PGP_JOIN_SEQ",
           "ID=PGP_JOINED_FROM" in raw and "ID=PGP_JOIN_SEQ" not in raw, raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "1/0"), rec(30000208, "T", "C", "0/1")])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "1/0"), rec(30000208, "T", "C", "0/1")])
     check(f"{name}: 1/0 and 0/1 (unphased) are the same het call and are joined",
           out is not None and [core(r) for r in out] == [("30000203", "TGTAAT", "AGTAAC", "GT", "0/1")], raw)
 
     # 2. phase sets
-    out, raw = join(awk, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "0|1", 100)])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "0|1", 100)])
     check(f"{name}: phased, same phase set and GT: joined, with GT and PS",
           out is not None and [core(r) for r in out] == [("30000203", "TGTAAT", "AGTAAC", "GT:PS", "0|1:100")], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "0|1", 200)])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "0|1", 200)])
     check(f"{name}: phased on different phase sets: not joined", out == [], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "1|0", 100)])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "1|0", 100)])
     check(f"{name}: phased on the two haplotypes of one phase set: not joined", out == [], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "0/1")])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "0|1", 100), rec(30000208, "T", "C", "0/1")])
     check(f"{name}: one phased and one unphased record: not joined", out == [], raw)
 
     # 3. what is not one allele, and the window's edge
-    out, raw = join(awk, [rec(30000203, "T", "A", "0/1"), rec(30000208, "T", "C", "1/1")])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "0/1"), rec(30000208, "T", "C", "1/1")])
     check(f"{name}: a het next to a hom: not joined", out == [], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "./1"), rec(30000208, "T", "C", "./1")])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "./1"), rec(30000208, "T", "C", "./1")])
     check(f"{name}: unphased half calls (./1): not joined", out == [], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "1|.", 100), rec(30000208, "T", "C", "1|0", 100)])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "1|.", 100), rec(30000208, "T", "C", "1|0", 100)])
     check(f"{name}: a phased half call (1|.) and 1|0 in one phase set: joined, '.' kept on the other haplotype",
           out is not None and [core(r) for r in out] == [("30000203", "TGTAAT", "AGTAAC", "GT:PS", "1|.:100")], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "1|0", 100), rec(30000208, "T", "C", "1|.", 100)])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "1|0", 100), rec(30000208, "T", "C", "1|.", 100)])
     check(f"{name}: 1|0 then a phased half call (1|.): joined, '.' kept on the other haplotype",
           out is not None and [core(r) for r in out] == [("30000203", "TGTAAT", "AGTAAC", "GT:PS", "1|.:100")], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", ".|1", 100), rec(30000208, "T", "C", ".|1", 100)])
+    out, raw = join(fasta, [rec(30000203, "T", "A", ".|1", 100), rec(30000208, "T", "C", ".|1", 100)])
     check(f"{name}: two phased half calls on one haplotype: joined",
           out is not None and [core(r) for r in out] == [("30000203", "TGTAAT", "AGTAAC", "GT:PS", ".|1:100")], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "1|.", 100), rec(30000208, "T", "C", "0|1", 100)])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "1|.", 100), rec(30000208, "T", "C", "0|1", 100)])
     check(f"{name}: a phased half call and an ALT on the other haplotype: not joined", out == [], raw)
-    out, raw = join(awk, [rec(30000203, "TGT", "T", "0/1"), rec(30000204, "G", "A", "0/1")])
+    out, raw = join(fasta, [rec(30000203, "TGT", "T", "0/1"), rec(30000204, "G", "A", "0/1")])
     check(f"{name}: overlapping records: not joined", out == [], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "0/1"), rec(30000213, "G", "T", "0/1")])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "0/1"), rec(30000213, "G", "T", "0/1")])
     check(f"{name}: 10 bp apart: joined",
           out is not None and [core(r)[:3] for r in out] == [("30000203", "TGTAATCCCAG", "AGTAATCCCAT")], raw)
-    out, raw = join(awk, [rec(30000203, "T", "A", "0/1"), rec(30000214, "C", "A", "0/1")])
+    out, raw = join(fasta, [rec(30000203, "T", "A", "0/1"), rec(30000214, "C", "A", "0/1")])
     check(f"{name}: 11 bp apart: not joined", out == [], raw)
 
     # 4. a single SNV
-    out, raw = join(awk, [rec(30000210, "C", "T", "0/1")])
+    out, raw = join(fasta, [rec(30000210, "C", "T", "0/1")])
     check(f"{name}: a single SNV gives no combined record", out == [], raw)
 
     # 5. a part whose REF is not the reference's base (30000203 is T)
-    out, raw = join(awk, [rec(30000203, "C", "A", "0/1"), rec(30000208, "T", "C", "0/1")])
+    out, raw = join(fasta, [rec(30000203, "C", "A", "0/1"), rec(30000208, "T", "C", "0/1")])
     check(f"{name}: a part that disagrees with the reference: dropped by finish", out == [], raw)
 
     # 6. POS order: a 12 bp deletion that ends after the two records inside it
     recs = [rec(30000201, "CCTGTAATCCCA", "C", "0/1"), rec(30000205, "T", "G", "0/1"),
             rec(30000208, "T", "C", "0/1"), rec(30000214, "C", "A", "0/1")]
-    out, raw = join(awk, recs)
+    out, raw = join(fasta, recs)
     pos = [int(r[1]) for r in out] if out else []
     check(f"{name}: four combined records, in POS order", pos == [30000201, 30000205, 30000205, 30000208], raw)
 
     # mode is required
-    rc, _, err = awk_run(awk, ["-f", AWK_FILE], HEAD)
+    rc, _, err = og_run([], HEAD)
     check(f"{name}: no mode: exit 2 with a message", rc == 2 and "mode" in err, f"exit {rc}: {err}")
 
     # 7. the tag pass on a hits VCF
@@ -215,7 +224,7 @@ def awk_checks(name, awk, work):
     ]
     with open(hits, "w") as f:
         f.write(HEAD + "\n".join(lines) + "\n")
-    rc, out, err = awk_run(awk, ["-v", "mode=tag", "-f", AWK_FILE, hits, hits])
+    rc, out, err = og_run(["--mode", "tag", hits])
     got = [l for l in out.splitlines() if l and not l.startswith("#")]
     info = {tuple(l.split("\t")[1:2]): l.split("\t")[7] for l in got}
     check(f"{name}: tag: exits 0, header and every record kept",
@@ -296,7 +305,7 @@ def polyt_checks(gd, image, env):
     poly = by.get(("30000011", tract, "C"))
     check("poly-A: the ClinVar allele of the 1/2 record is one hit, with GT 1/. (the other copy holds CAA)",
           poly is not None and poly[9].split(":")[0] == "1/." and len(rows) == 2, rows)
-    words = subprocess.run(["awk", "-f", os.path.join(REPO, "bin", "clinvar_hits.awk"), hits_path],
+    words = subprocess.run([OG, "clinvar", "hits", hits_path],
                            capture_output=True, text=True).stdout if os.path.isfile(hits_path) else ""
     zyg = {r.split("\t")[2]: r.split("\t")[5] for r in words.splitlines()}
     check("poly-A: the hit is not worded het", zyg.get("30000011") == "one copy, other copy not called ref (1/.)", zyg)
@@ -331,18 +340,7 @@ def docker_checks(work):
     gd = os.path.join(work, "genome")
     for d in ("reference", "clinvar", "S1/vcf"):
         os.makedirs(os.path.join(gd, d), exist_ok=True)
-    # chr22 up to the last stretch, N everywhere else, 60 bases a line.
-    length = max(s + len(q) for s, q in REF.items()) + 50
-    seq = bytearray(b"N" * length)
-    for start, q in REF.items():
-        seq[start - 1:start - 1 + len(q)] = q.encode()
-    fa = os.path.join(gd, "reference", "GRCh38_no_alt_analysis_set.fasta")
-    with open(fa, "wb") as f:
-        f.write(b">chr22\n")
-        for i in range(0, length, 60):
-            f.write(bytes(seq[i:i + 60]) + b"\n")
-    with open(fa + ".fai", "w") as f:
-        f.write(f"chr22\t{length}\t7\t60\t61\n")
+    write_reference(os.path.join(gd, "reference", "GRCh38_no_alt_analysis_set.fasta"))
     shutil.copy(os.path.join(FIXTURES, "combined_allele_sample.vcf"), os.path.join(gd, "S1", "vcf", "S1.vcf"))
     shutil.copy(os.path.join(FIXTURES, "combined_allele_clinvar.vcf"),
                 os.path.join(gd, "clinvar", "clinvar_pathogenic_chr.vcf"))
@@ -393,14 +391,25 @@ def docker_checks(work):
 def main():
     work = tempfile.mkdtemp()
     try:
-        tools = awks()
-        check("at least one awk is installed", len(tools) >= 1, "no awk on PATH")
-        for name, path in tools:
-            awk_checks(name, path, work)
-        # Check 8 pulls and runs BCFTOOLS_IMAGE: always in CI, elsewhere only
-        # when asked for, so a quick local run stays light.
+        if not OG:
+            print("[SKIP] OG is not set: og clinvar join-adjacent is checked by the rust job of guard.yml"
+                  " (OG=bin/og after scripts/setup.sh --og)")
+            return 0
+        fasta = os.path.join(work, "ref.fa")
+        write_reference(fasta)
+        og_checks("og", fasta, work)
+        # Check 8 pulls and runs BCFTOOLS_IMAGE, and runs bin/og inside it:
+        # always in CI, elsewhere only when asked for, so a quick local run
+        # stays light.
         if os.environ.get("CI") or os.environ.get("PGP_TEST_DOCKER") == "1":
-            if shutil.which("docker"):
+            # OG can be a host og (unit-tests sets one); step 06 needs bin/.og.
+            if subprocess.run([os.path.join(REPO, "bin", "og"), "version"], capture_output=True).returncode != 0:
+                if os.environ.get("OG_REQUIRED"):
+                    check("bin/og is built (check 8 runs the real step 06 with it)", False, "run scripts/setup.sh --og")
+                else:
+                    print("[SKIP] check 8: og is not built for this machine, and step 06 runs it"
+                          " (scripts/setup.sh --og): the rust job of guard.yml runs it")
+            elif shutil.which("docker"):
                 docker_checks(work)
             else:
                 check("docker is installed (check 8 runs the real step 06)", False, "no docker on PATH")

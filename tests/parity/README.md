@@ -5,7 +5,7 @@ Each OwnGenome tool moves from Python to the Rust binary `og` in one pull reques
 | File | What it holds |
 |---|---|
 | `oracle.ref` | One row per ported tool: the commit that still had the Python, where it was (`heredoc:FILE:NAME` or `file:FILE`), its interpreter, and the `og` words that replace it. |
-| `cases.tsv` | One row per case: tool, case name, inputs, arguments, the outputs it must write, the compare kind for its output files, and the `versions.env` image the oracle runs in. |
+| `cases.tsv` | One row per case: tool, case name, inputs, arguments, the outputs it must write, the compare kind for its output files (one kind, or `GLOB=KIND ... DEFAULT`: the kind of the first glob that matches a file's name, else the default), and the `versions.env` image the oracle runs in. |
 | `inputs/<tool>/` | The case inputs, staged into each run by their base name. A staged input named `stdin` is the standard input of both sides; without one it is empty. `.gitattributes` keeps their line endings as they are. |
 | `gen/` | Generators for inputs too large to commit, named in `inputs` as `gen:<script>`. |
 | `golden/<tool>/<case>/` | What `og` must write where it fixes the oracle on purpose: one file per item (`exit`, `stdout`, `stderr` or an output name), or `<item>.absent` when `og` must write nothing. |
@@ -21,7 +21,7 @@ scripts/ci/oracle-diff.sh --self-test      # planted differences must each be re
 OG=path/to/og scripts/ci/oracle-diff.sh    # another og binary
 ```
 
-Each case stages the same inputs into two directories. `og` runs in one directory. The oracle runs in the other, inside its image with no network. Both get the same arguments. The harness then compares the exit code, stdout, stderr, the outputs the case names and every new file either side wrote. A staged input that a tool changes in place is compared only when the case names it as an output, so name such a file in the `outputs` column. Files use the case's compare kind. The exit code, stdout and stderr compare as bytes. `og dev parity-compare` does each comparison. Its kinds are `bytes`, `gz-content`, `zip-content`, `png-pixels`, `tsv[:keys=A,B][:unordered]`, `kv`, `vcf`, `json[:paths=..][:mask=..][:tol=..]`, `mask:REGEX` and `stderr-first-line`. Its own `--self-test` plants a difference of each kind.
+Each case stages the same inputs into two directories. `og` runs in one directory. The oracle runs in the other, inside its image with no network. Both get the same arguments. The harness then compares the exit code, stdout, stderr, the outputs the case names and every new file either side wrote. A staged input that a tool changes in place is compared only when the case names it as an output, so name such a file in the `outputs` column. Files use the case's compare kind. A kind written `KIND;GLOB=KIND2` compares the files whose path matches `GLOB` with `KIND2` instead, so one case can compare its tables as bytes and its picture as pixels (`bytes;*.png=png-pixels`). The exit code, stdout and stderr compare as bytes. `og dev parity-compare` does each comparison. Its kinds are `bytes`, `gz-content`, `zip-content`, `png-pixels`, `tsv[:keys=A,B][:unordered]`, `kv`, `vcf`, `json[:paths=..][:mask=..][:tol=..]`, `mask:REGEX` and `stderr-first-line`. Its own `--self-test` plants a difference of each kind.
 
 Each difference has one of three outcomes:
 

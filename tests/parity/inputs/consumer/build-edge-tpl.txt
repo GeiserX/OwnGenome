@@ -1,0 +1,9 @@
+# comment
+chr1	100	rs30	a
+chr1	200	rs031	C
+
+chrM	16000	rs32	C
+chr1	300	rs33	T
+chrX	400	rs34	A
+chr1	500	rs35	G
+chr1	600	rs36	C
