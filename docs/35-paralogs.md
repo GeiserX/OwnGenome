@@ -317,7 +317,7 @@ On a short-read genome these genes stay where step 35 leaves them: SMN1 and SMN2
 ### Docker Image
 
 - `PARAPHASE_IMAGE` (optional: pulled the first time the step runs)
-- `PYTHON_IMAGE` for the read-group check and the two tables (`bin/paraphase_report.py`)
+- `PYTHON_IMAGE` for the read-group check and the two tables (`og paraphase`, `rust/crates/og-steps/src/paraphase.rs`)
 
 ### Command
 
@@ -335,9 +335,9 @@ With Nextflow: `--tools ...,paraphase` on a samplesheet row whose BAM is PacBio 
 
 ### What the Script Does Internally
 
-1. `bin/paraphase_report.py check-bam`: every read group of the BAM must say `PL:PACBIO`, or the step stops with the reason.
+1. `og paraphase check-bam`: every read group of the BAM must say `PL:PACBIO`, or the step stops with the reason. A BAM whose header announces a negative or huge text length is refused, not read.
 2. `paraphase -b <bam> -r <reference> -o ... -p <sample>`: the calls, as Paraphase's JSON, one VCF per region and a BAM of the phased reads.
-3. `bin/paraphase_report.py table`: the copy-number table and the variant table.
+3. `og paraphase table`: the copy-number table and the variant table, written together or not at all. A copy number that is not a number (an object, a list, `true`) stops the step with the region and the field.
 
 ### Output
 

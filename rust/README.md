@@ -16,6 +16,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-filters` | the VCF filters of steps 04, 05 and 07: `og sv svlen-fix`, `og sv inv-filter`, `og pgx refblock-fill`, `og pgx mito-merge` |
 | `crates/og-setup` | what `scripts/setup.sh` runs once: `og str catalog` (the STRchive catalog of steps 09 and 9b), `og setup unzip` (Exomiser's zips), `og setup genetic-map` (the genetic map of steps 26b and 51) |
 | `crates/og-ancestry` | step 26b, fine-grained ancestry: `og ancestry-fine panel-map`, `check-map`, `order`, `sample-bed`, `chroms`, `report` |
+| `crates/og-steps` | step helpers, among them `og pgx outside-calls`, `og pgx hla-concordance` (steps 08, 36), `og pgx pypgx-summary` (step 32) and `og paraphase check-bam`, `og paraphase table` (step 35b) |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |
 | `og.sh` | build or download `bin/.og/og-linux-{x86_64,aarch64}`, and check they match this `rust/` |
 | `rust-toolchain.toml` | the Rust release, the one `OG_BUILDER` (`versions.env`) ships |
