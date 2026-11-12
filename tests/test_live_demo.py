@@ -108,11 +108,15 @@ fail there (2: a build with one plugin's state hook dropped): a check that canno
 
 Run: python3 tests/test_live_demo.py
 """
+import base64
 import copy
+import gzip
+import hashlib
 import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -351,6 +355,7 @@ def browser_checks(out):
         fold_checks(b, base, out)
         veil_checks(b, base, out)
         planted_checks(b, base, out)
+        map_checks(b, base, out)
         family_veil_checks(b, base, out)
         widget_veil_checks(b, base, out)
     finally:
@@ -1952,6 +1957,1040 @@ def fold_checks(b, base, out):
             f.write(keep_js)
 
 
+# --- the genome map (Figure 1, assets/live/map.js) ------------------------------------------
+
+MARKS_TSV = os.path.join(REPO, "tests", "fixtures", "map", "karyogram-marks.tsv")
+
+
+def og_binary():
+    """An og that runs here: OG when set (Guard's unit-tests job and the docs builds set it to the og they
+    built, as tests/og_binary.py reads it), else bin/og when scripts/setup.sh --og built it, else one cargo
+    builds now from rust/ without the BAM feature (the map reads no BAM), kept in CARGO_TARGET_DIR or a folder
+    of the temp dir. None when none of them works."""
+    named = os.environ.get("OG")
+    if named:
+        if os.access(named, os.X_OK):
+            return named
+        print(f"OG={named} is not an executable og binary", file=sys.stderr)
+        return None
+    og = os.path.join(REPO, "bin", "og")
+    if subprocess.run([og, "map", "--help"], capture_output=True, check=False).returncode == 0:
+        return og
+    cargo = shutil.which("cargo") or os.path.expanduser("~/.cargo/bin/cargo")
+    if not os.path.isfile(cargo):
+        return None
+    target = os.environ.get("CARGO_TARGET_DIR") or os.path.join(tempfile.gettempdir(), "owngenome-test-og")
+    p = subprocess.run([cargo, "build", "--locked", "--quiet", "-p", "og", "--no-default-features"], capture_output=True,
+                       text=True, cwd=os.path.join(REPO, "rust"), env=dict(os.environ, CARGO_TARGET_DIR=target), check=False)
+    exe = os.path.join(target, "debug", "og")
+    if p.returncode != 0 or not os.path.isfile(exe):
+        print(f"cargo could not build og ({p.returncode}): {p.stderr[-2000:]}", file=sys.stderr)
+        return None
+    return exe
+
+
+def karyogram_marks():
+    """(run, id, chrom, mb, level) of each mark the karyogram drew, recorded before the map replaced it."""
+    rows = []
+    with open(MARKS_TSV) as f:
+        for line in f:
+            if line.startswith(("#", "run\t")) or not line.strip():
+                continue
+            run, fid, c, m, lv = line.rstrip("\n").split("\t")
+            rows.append((run, fid, "chr" + c, float(m), lv))
+    return rows
+
+
+def read_map(path):
+    with open(path, "rb") as f:
+        return json.loads(gzip.decompress(f.read()))
+
+
+def write_map(path, doc):
+    with open(path, "wb") as f:
+        f.write(gzip.compress(json.dumps(doc, separators=(",", ":")).encode(), mtime=0))
+
+
+# What the map shows: its state, the findings it draws (its list of marks), its timings, level and place,
+# its chips, its margin's words and every text and title it holds, and the address.
+MAP_JS = r"""JSON.stringify((function () {
+  var f = document.getElementById('genome-map');
+  if (!f) { return { state: 'absent', marks: [] }; }
+  var t = document.querySelector('.gm-tip');
+  return { state: f.dataset.pgpMap || '', level: f.dataset.level || '', chrom: f.dataset.chrom || '', view: f.dataset.view || '',
+    parse: Number(f.dataset.pgpMapParseMs), paint: Number(f.dataset.pgpMapPaintMs),
+    marks: Array.prototype.map.call(f.querySelectorAll('.gm-marks a'), function (a) { return { id: a.dataset.id,
+      level: a.dataset.level, chrom: a.dataset.chrom, s: Number(a.dataset.s), e: Number(a.dataset.e) }; }),
+    chips: Array.prototype.map.call(f.querySelectorAll('.gm-chip'), function (c) { return c.textContent; }),
+    title: (document.getElementById('gm-title') || {}).textContent || '',
+    layers: Array.prototype.map.call(f.querySelectorAll('.gm-layer'), function (l) { return [l.dataset.layer, l.dataset.state,
+      l.querySelector('dd').textContent]; }),
+    toast: (f.querySelector('.gm-toast') || { hidden: true }).hidden ? '' : f.querySelector('.gm-toast').textContent,
+    tip: t && !t.hidden ? t.textContent : '',
+    text: [f.textContent].concat(Array.prototype.map.call(f.querySelectorAll('[href],[title],[aria-label]'), function (e) {
+      return (e.getAttribute('href') || '') + ' ' + (e.getAttribute('title') || '') + ' ' + (e.getAttribute('aria-label') || ''); })).join(' '),
+    hash: location.hash };
+}()))"""
+MAP_READY = ("document.documentElement.dataset.pgpResults && (function () { var f = document.getElementById('genome-map'); "
+             "return f && /^(drawn|failed|nodecompress)$/.test(f.dataset.pgpMap || '') "
+             "&& (f.dataset.pgpMap !== 'drawn' || !!f.dataset.level); }())")
+
+
+def map_page(b, base, run, hash_=""):
+    """A fresh load of RUN's page with HASH_; the map's facts once it settled (None when it never drew)."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{run}/{hash_}")
+    if not b.wait(MAP_READY):
+        return json.loads(b.eval(MAP_JS))
+    time.sleep(0.6)  # the margin follows the camera 140 ms after it settles
+    return json.loads(b.eval(MAP_JS))
+
+
+def map_now(b):
+    time.sleep(1.5)  # the camera eases for about 0.6 s, then the margin follows 140 ms after it settles
+    return json.loads(b.eval(MAP_JS))
+
+
+# The page's closed results to act on and the map's chips, read at once (a chip's button rebuilds the chips at
+# once: nothing to wait for): the closed act cards in page order, the act chip's count, whether its confirm step
+# shows, where the keyboard is (first: the chips' first button; canvas: the map), and the opened chips.
+CHIP_JS = r"""JSON.stringify((function () {
+  var ids = [];
+  Array.prototype.forEach.call(document.querySelectorAll('.finding[data-level=act]'), function (a) {
+    if (a.querySelector('.veil') && ids.indexOf(a.dataset.finding) < 0) { ids.push(a.dataset.finding); } });
+  var c = document.querySelector('.gm-chip[data-closed=act]'), f = document.activeElement;
+  var first = document.querySelector('.gm-chips button');
+  return { closed: ids, buttons: !!first, chip: c ? c.firstChild.textContent : '', confirm: !!(c && c.querySelector('.gm-confirm')),
+    focus: f && f.classList.contains('gm-yes') ? 'gm-yes' : f === first ? 'first' : f === document.querySelector('.gm-canvas') ? 'canvas'
+      : (f ? f.tagName + '.' + f.className : ''),
+    opened: Array.prototype.map.call(document.querySelectorAll('.gm-chip.opened'), function (o) { var a = o.querySelector('a');
+      return { kind: o.dataset.opened, text: o.textContent, href: a ? a.getAttribute('href') : '' }; }) };
+}()))"""
+
+
+def chips_now(b):
+    time.sleep(0.05)  # a chip's button draws the page and the chips again before its click returns
+    return json.loads(b.eval(CHIP_JS))
+
+
+def closed_words(n):
+    return "" if n == 0 else "1 result closed" if n == 1 else f"{n} results closed"
+
+
+def chip_open(b):
+    """The act chip's Open, then its Show the result, as a keyboard reader does it. Returns (the id it opened,
+    problems): one Open opens exactly one of the page's closed results, the count falls by one, the keyboard
+    goes to Show the result and then to the chips' first button (the map when no chip is left), and an
+    "Opened in its section" chip never names a result that is still closed."""
+    before = chips_now(b)
+    b.eval("var o = document.querySelector('.gm-chip[data-closed=act] button'); o.focus(); o.click(); true")
+    mid = chips_now(b)
+    bad = []
+    if not mid["confirm"] or mid["closed"] != before["closed"]:
+        bad.append(f"Open: confirm step {mid['confirm']}, closed {before['closed']} -> {mid['closed']}")
+    if mid["focus"] != "gm-yes":
+        bad.append(f"Open: the keyboard is on {mid['focus']!r}, not Show the result")
+    b.eval("document.querySelector('.gm-chip[data-closed=act] .gm-yes').click(); true")
+    after = chips_now(b)
+    gone = [x for x in before["closed"] if x not in after["closed"]]
+    n = len(before["closed"]) - 1
+    if len(gone) != 1 or len(after["closed"]) != n:
+        bad.append(f"Show the result opened {gone}, not one: closed {before['closed']} -> {after['closed']}")
+    if not after["chip"].startswith(closed_words(n)) or bool(after["chip"]) != (n > 0):
+        bad.append(f"Show the result: the chip reads {after['chip']!r}, want {closed_words(n)!r}")
+    if after["focus"] != ("first" if after["buttons"] else "canvas"):
+        bad.append(f"Show the result: the keyboard is on {after['focus']!r}")
+    named = [o["href"] for o in after["opened"] if o["kind"] == "section" and o["href"][3:] in after["closed"]]
+    if named:
+        bad.append(f"an Opened in its section chip names a closed result: {named}")
+    return (gone[0] if len(gone) == 1 else None), bad
+
+
+def parity_problems(b, base, rows):
+    """The karyogram's marks the map does not place with the same level and chromosome within 0.01 Mb."""
+    bad = []
+    for run in sorted({r[0] for r in rows}):
+        got = map_page(b, base, run)
+        if got["state"] != "drawn":
+            bad.append(f"{run}: map {got['state']}")
+            continue
+        by = {m["id"]: m for m in got["marks"]}
+        for _, fid, c, m, lv in (r for r in rows if r[0] == run):
+            g = by.get(fid)
+            if not g:
+                bad.append(f"{run}: {fid} not on the map")
+            elif g["level"] != lv or g["chrom"] != c or abs(g["s"] / 1e6 - m) > 0.01:
+                bad.append(f"{run}: {fid} at {g['chrom']} {g['s'] / 1e6:.3f} Mb {g['level']}, want {c} {m} {lv}")
+    return bad
+
+
+def click_canvas(b, x, y, move_only=False):
+    """A mouse at (x, y) of the map's canvas, in CSS px from its corner: moved there, and clicked unless MOVE_ONLY."""
+    b.eval("document.querySelector('.gm-canvas').scrollIntoView({block: 'center'}); true")
+    time.sleep(0.3)
+    r = json.loads(b.eval("JSON.stringify(document.querySelector('.gm-canvas').getBoundingClientRect())"))
+    px, py = r["left"] + x, r["top"] + y
+    b.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": px, "y": py}, b.session)
+    if not move_only:
+        for t in ("mousePressed", "mouseReleased"):
+            b.call("Input.dispatchMouseEvent", {"type": t, "x": px, "y": py, "button": "left", "clickCount": 1}, b.session)
+    time.sleep(0.6)
+
+
+def genome_xy(b, doc, chrom, bp):
+    """Where BP of CHROM sits on the genome level of the canvas (map.js gx and rowY, at the desktop width)."""
+    cw = b.eval("document.querySelector('.gm-canvas').clientWidth")
+    rows = [c for c in doc["ref"]["chroms"] if not (c["n"] == "chrY" and doc["people"][0].get("has_y") is False)]
+    i = [c["n"] for c in rows].index(chrom)
+    ch = b.eval("document.querySelector('.gm-canvas').clientHeight")
+    rh = max(22, min(44, (ch - 18) / len(rows)))
+    return 40 + bp * (cw - 40 - 22) / rows[0]["len"], 9 + i * rh + rh / 2 - 1
+
+
+def state_problems(b, base):
+    """The genome and chromosome levels, the links that open each, a click on a row, Esc, and a place that
+    cannot be read."""
+    bad = []
+    g = map_page(b, base, S)
+    if not (g["level"] == "genome" and "all 24 chromosomes" in g["title"] and g["view"] == "genome"):
+        bad.append(f"genome: {g['level']} {g['title']!r} {g['view']}")
+    click_canvas(b, 200, 9 + 2 * 22 + 11)
+    c = map_now(b)
+    if not (c["level"] == "chromosome" and c["chrom"] == "chr3" and c["hash"] == "#chr3"):
+        bad.append(f"a click on chromosome 3's row: {c['level']} {c['chrom']} {c['hash']}")
+    b.eval("document.querySelector('.gm-canvas').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); true")
+    c = map_now(b)
+    if c["level"] != "genome" or c["hash"] != "#genome":
+        bad.append(f"Esc: {c['level']} {c['hash']}")
+    for link, chrom, view in (("#chr16", "chr16", "chr16"), ("#chr16:10.0-40.0M", "chr16", "chr16:10.0-40.0M"),
+                              ("#view=chromosome&chr=11", "chr11", "chr11"), ("#chr2:20000001-60000000", "chr2", "chr2:20.0-60.0M")):
+        c = map_page(b, base, S, link)
+        if not (c["level"] == "chromosome" and c["chrom"] == chrom and c["view"] == view):
+            bad.append(f"{link}: {c['level']} {c['chrom']} {c['view']}")
+        elif any(m["chrom"] != chrom for m in c["marks"]):
+            bad.append(f"{link}: marks of another chromosome listed: {c['marks']}")
+    b.eval("location.hash = '#genome'; true")  # after the last link's place
+    c = map_now(b)
+    if c["level"] != "genome":
+        bad.append(f"#genome after a place: {c['level']}")
+    b.eval("location.hash = '#chrQ'; true")
+    c = map_now(b)
+    if "Could not read the place" not in c["toast"] or c["level"] != "genome":
+        bad.append(f"#chrQ: toast {c['toast']!r}, level {c['level']}")
+    return bad
+
+
+def map_veil_problems(b, base, out):
+    """On the son's closed page: his closed result to act on (the planted deletion) is in no mark, tooltip,
+    chip, sentence, link or address of the map until opened; the chip's Open (after its confirm) opens one
+    result per click in the page's order (chip_open), so his result with no place opens first, in its section;
+    then Open and the card's "Show the result" each bring back exactly the deletion's mark, on the map and in
+    the card; Close it again and a reload close it. On DEMO-001, an adult's page, APOE stays closed until
+    opened, from the chip or its card's fold."""
+    bad = []
+    son = OTHERS[1]
+    doc = read_map(os.path.join(out, "runs", son, "map.json"))
+    f = doc["per"][son]["findings"]
+    acts = [i for i, lv in enumerate(f["level"]) if lv == "act" and not f["gate"][i]]
+    if not acts:
+        return ["the son's map has no result to act on to close"]
+    i = acts[0]
+    fid, gene = f["id"][i], f["gene"][i]
+    words = [gene, f"{f['chrom'][i]}:{f['s'][i] + 1}", f"{f['s'][i] + 1:,}", fid]
+    x, y = genome_xy(b, doc, f["chrom"][i], (f["s"][i] + f["e"][i]) / 2)
+
+    def leaks(c, but=""):
+        return [w for w in words if w not in but and (w in c["text"] or w in c["tip"] or w in c["hash"])] + \
+            [m["id"] for m in c["marks"] if m["id"] == fid]
+    c = map_page(b, base, son)
+    click_canvas(b, x, y, move_only=True)
+    c = map_now(b)
+    if c["state"] != "drawn":
+        return [f"the son's map: {c['state']}"]
+    if leaks(c):
+        bad.append(f"closed: the map shows {leaks(c)}")
+    # The chip counts every result to act on the page keeps closed, with a place on the map or not.
+    want = b.eval("new Set(Array.prototype.filter.call(document.querySelectorAll('.finding[data-level=act]'), "
+                  "function (a) { return a.querySelector('.veil'); }).map(function (a) { return a.dataset.finding; })).size")
+    label = "1 result closed" if want == 1 else f"{want} results closed"
+    if not want or not any(t.startswith(label + " ") for t in c["chips"]):
+        bad.append(f"closed: no chip counting the page's {want} closed results: {c['chips']}")
+    # Open opens the page's closed results one per click, in the page's order, so the son's own result with no
+    # place (his first closed card) opens before the deletion: the map then names it only in its section chip.
+    order = chips_now(b)["closed"]
+    for k in range(want):
+        got, more = chip_open(b)
+        if more:
+            return bad + [f"Open {k + 1}: {x}" for x in more]
+        if got != order[k]:
+            return bad + [f"Open {k + 1} opened {got}, not the page's next closed result {order[k]} ({order})"]
+        if got == fid:
+            break
+        section = [o for o in chips_now(b)["opened"] if o["kind"] == "section"]
+        if [o["href"] for o in section] != [f"#f/{got}"] or "Opened in its section: " not in section[0]["text"]:
+            bad.append(f"Open {k + 1} opened {got}, which has no place: section chips {section}")
+        c = map_now(b)
+        if leaks(c, " ".join(o["text"] for o in section)):  # the opened result names its own gene
+            bad.append(f"Open {k + 1} ({got}): the map shows {leaks(c)}")
+    c = map_now(b)
+    card = b.eval("!!document.querySelector('#f-%s h3') && !document.querySelector('#f-%s .veil')" % (fid, fid))
+    if [m["id"] for m in c["marks"] if m["id"] == fid] != [fid] or not card:
+        bad.append(f"Open: mark {[m['id'] for m in c['marks']]}, card shown {card}")
+    if not any(t.startswith("Opened: " + f["title"][i]) for t in c["chips"]):
+        bad.append(f"Open: chips {c['chips']}")
+    if fid in c["hash"] or gene in c["hash"]:
+        bad.append(f"Open: the address names it: {c['hash']}")
+    click_canvas(b, x, y, move_only=True)
+    c = map_now(b)
+    if gene not in c["tip"]:
+        bad.append(f"Open: its tooltip at its place does not name it: {c['tip']!r}")
+    # The results opened before it in their section close again from their chips, and those chips go.
+    b.eval("Array.prototype.forEach.call(document.querySelectorAll('.gm-chip.opened[data-opened=section]'), "
+           "function () { document.querySelector('.gm-chip.opened[data-opened=section] button').click(); }); true")
+    if [o for o in chips_now(b)["opened"] if o["kind"] == "section"] or chips_now(b)["closed"] != order[:k]:
+        bad.append(f"Close it again on the section chips: chips {chips_now(b)['opened']}, closed {chips_now(b)['closed']}")
+    b.eval("document.querySelector('.gm-chip.opened[data-opened=\\'1\\'] button').click(); true")
+    c = map_now(b)
+    card = b.eval("!!document.querySelector('#f-%s .veil')" % fid)
+    if leaks(c) or not card:
+        bad.append(f"Close it again: map shows {leaks(c)}, card closed {card}")
+    b.eval("document.querySelector('#f-%s .veil button').click(); true" % fid)
+    c = map_now(b)
+    if [m["id"] for m in c["marks"] if m["id"] == fid] != [fid]:
+        bad.append("the card's Show the result does not open it on the map")
+    c = map_page(b, base, son)
+    if leaks(c):
+        bad.append(f"a reload does not close it: {leaks(c)}")
+    # APOE on an adult's page.
+    c = map_page(b, base, S)
+    if any(m["id"] == "apoe" for m in c["marks"]) or not any(t.startswith("APOE closed") for t in c["chips"]):
+        bad.append(f"APOE on DEMO-001: marks {[m['id'] for m in c['marks']]}, chips {c['chips']}")
+    b.eval("document.querySelector('.gm-chip[data-closed=gate] button').click(); true")
+    time.sleep(0.3)
+    b.eval("document.querySelector('.gm-chip[data-closed=gate] .gm-yes').click(); true")
+    c = map_now(b)
+    fold = b.eval("(document.querySelector('details[data-gate=apoe]') || {}).open")
+    if not any(m["id"] == "apoe" for m in c["marks"]) or fold is not True:
+        bad.append(f"Open APOE: marks {[m['id'] for m in c['marks']]}, its card's fold open {fold}")
+    b.eval("document.querySelector('details[data-gate=apoe] summary').click(); true")
+    c = map_now(b)
+    if any(m["id"] == "apoe" for m in c["marks"]):
+        bad.append("closing APOE's card fold leaves it on the map")
+    b.eval("document.querySelector('details[data-gate=apoe] summary').click(); true")
+    c = map_now(b)
+    if not any(m["id"] == "apoe" for m in c["marks"]):
+        bad.append("opening APOE's card fold does not open it on the map")
+    c = map_page(b, base, S)
+    if any(m["id"] == "apoe" for m in c["marks"]):
+        bad.append("a reload does not close APOE")
+    return bad
+
+
+def overlap_problems(b, base, out):
+    """On the son's closed page, a second result to act on over the first carries only the first one's tag
+    (rust/crates/og-map/README.md). Opening the first leaves the second closed: in no mark, sentence, link,
+    title or address of the map."""
+    son = OTHERS[1]
+    path = os.path.join(out, "runs", son, "map.json")
+    with open(path, "rb") as fh:
+        keep = fh.read()
+    try:
+        doc = read_map(path)
+        f = doc["per"][son]["findings"]
+        acts = [i for i, lv in enumerate(f["level"]) if lv == "act" and not f["gate"][i]]
+        if not acts:
+            return ["the son's map has no result to act on to close"]
+        i, n = acts[0], len(f["id"])
+        fid = f["id"][i]
+        for k in f:
+            if isinstance(f[k], list) and len(f[k]) == n:
+                f[k].append(f[k][i])
+        plant = {"id": "planted-overlap", "gene": "PLANTEDGENE", "title": "Planted overlapping result",
+                 "href": "finding/planted-overlap/", "phrase": "Planted overlap phrase."}
+        for k, v in plant.items():
+            f[k][-1] = v
+        write_map(path, doc)
+        c = map_page(b, base, son, "#" + f["chrom"][i])
+        if c["state"] != "drawn":
+            return [f"the planted map: {c['state']}"]
+        b.eval("document.querySelector('#f-%s .veil button').click(); true" % fid)
+        c = map_now(b)
+        bad = []
+        if fid not in [m["id"] for m in c["marks"]]:
+            bad.append(f"the first result did not open: marks {[m['id'] for m in c['marks']]}")
+        leaked = [w for w in plant.values() if w in c["text"] or w in c["tip"] or w in c["hash"]]
+        leaked += [m["id"] for m in c["marks"] if m["id"] == "planted-overlap"]
+        if leaked:
+            bad.append(f"opening the first shows the second: {leaked}")
+        return bad
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(keep)
+
+
+# The figure as a reader gets it before any click: its HTML (the chips aside, which count the closed results
+# on purpose, and the timing attributes), its marks, margin and layers, and a hash of the canvas's pixels.
+FIGURE_JS = r"""JSON.stringify((function () {
+  var f = document.getElementById('genome-map');
+  if (!f) { return null; }
+  var c = f.cloneNode(true);
+  Array.prototype.forEach.call(c.querySelectorAll('.gm-chips'), function (x) { x.textContent = ''; });
+  c.removeAttribute('data-pgp-map-parse-ms');
+  c.removeAttribute('data-pgp-map-paint-ms');
+  return { html: c.outerHTML, canvas: f.querySelector('.gm-canvas').toDataURL() };
+}()))"""
+
+
+def plant_son(out, extra, og):
+    """The son's results.json with the findings EXTRA added, its findings' veil tags (results.veil.findings)
+    computed again by live_results.veil as the server computes them, and his map.json built again from it by og
+    map build, as the map plugin builds it: og tags each row itself. Returns what to write back afterwards."""
+    son = OTHERS[1]
+    rj, mj = (os.path.join(out, "runs", son, n) for n in ("results.json", "map.json"))
+    keep = {}
+    for p in (rj, mj):
+        with open(p, "rb") as fh:
+            keep[p] = fh.read()
+    res = json.loads(keep[rj])
+    res["findings"] = res["findings"] + [dict(f) for f in extra]
+    sec = {"act": 1, "medicine": 2, "carrier": 3, "review": 4}
+    for f in extra:  # each in its level's section, as live_results lists them: its card shows on the page
+        for j in res["journal"]:
+            if j["n"] == sec[f["level"]]:
+                j["findings"] = j["findings"] + [f["id"]]
+    tags = live_results.veil({}, res["findings"], []).get("findings") or {}
+    res["veil"] = dict(res.get("veil") or {}, findings=dict((res.get("veil") or {}).get("findings") or {}, **tags))
+    with open(rj, "w") as fh:
+        json.dump(res, fh)
+    root = os.path.join(os.path.dirname(out), "root")
+    doc = build_live_demo.og_map(og, ["build", "--root", root, "--run", son, "--assets", os.path.join(REPO, "assets"),
+                                      "--cache-dir", os.path.join(root, ".owngenome-live", "map")],
+                                 json.dumps({"results": res}).encode())
+    with open(mj, "wb") as fh:
+        fh.write(doc)
+    return keep
+
+
+def unplant(keep):
+    for p, data in keep.items():
+        with open(p, "wb") as fh:
+            fh.write(data)
+
+
+def row_tag(out, fid):
+    """The id whose tag og put on FID's row of the son's map, or None."""
+    son = OTHERS[1]
+    doc = read_map(os.path.join(out, "runs", son, "map.json"))
+    f = doc["per"][son]["findings"]
+    if fid not in f["id"]:
+        return None
+    v = f["veil"][f["id"].index(fid)]
+    return doc["dict"]["veil"][v] if v >= 0 else None
+
+
+def son_figure(b, base, hash_=""):
+    """The son's map before any click: (the map's facts, the figure with its canvas hashed)."""
+    c = map_page(b, base, OTHERS[1], hash_)
+    fig = json.loads(b.eval(FIGURE_JS) or "null") or {}
+    fig["canvas"] = hashlib.sha256((fig.get("canvas") or "").encode()).hexdigest()[:12]
+    return c, fig
+
+
+def act(fid, gene, viewer, title):
+    return {"id": fid, "level": "act", "card": "clinical-filter", "gene": gene, "viewer": viewer, "title": title,
+            "detail": f"{gene} {viewer}", "text": f"{title}, planted."}
+
+
+# An open finding over a closed result whose card names another gene: og tags the open finding's row (the
+# whole gene span) with the closed result, while the page shows its card. A map that hides that row only
+# while the result is closed places the closed result inside that gene. Each planting: (what, the closed
+# results, the open findings in both pages, the open finding to watch, chromosome).
+UNDER = (("a gene-only review finding (CFTR) over a closed deletion naming another gene",
+          [act("pl-iota", "PLIOTA", "chr7:117400000-117700000", "Planted iota deletion")],
+          [{"id": "pl-kappa", "level": "review", "card": "exomiser", "gene": "CFTR", "title": "Planted kappa review",
+            "detail": "CFTR", "text": "A planted review finding that names CFTR only."}], "pl-kappa", "chr7"),
+         ("the page's own CYP2D6 medicine finding over a closed variant naming another gene",
+          [act("pl-theta", "PLTHETA", "chr22:42125000", "Planted theta result")], [], "pgx-cyp2d6", "chr22"))
+
+
+def under_problems(b, base, out, og):
+    """For each planting of UNDER: the son's map before any click is the same, figure HTML, canvas, marks,
+    margin and layers, with the closed result and without it, at the genome level and on its chromosome; and
+    the open finding is drawn in both."""
+    bad = []
+    for what, closed, opened, watch, chrom in UNDER:
+        got = {}
+        for name, extra in (("without", opened), ("with", opened + closed)):
+            keep = plant_son(out, extra, og)
+            try:
+                if name == "with" and row_tag(out, watch) != closed[0]["id"]:
+                    bad.append(f"{what}: og did not tag {watch}'s row with {closed[0]['id']} ({row_tag(out, watch)}): "
+                               "the planting tests nothing")
+                got[name] = [son_figure(b, base, h) for h in ("", "#" + chrom)]
+                with open(os.path.join(out, "runs", OTHERS[1], "results.json")) as fh:
+                    title = [f["title"] for f in json.load(fh)["findings"] if f["id"] == watch][0]
+                if not b.eval("document.body.innerText.indexOf(%s) >= 0" % json.dumps(title)):
+                    bad.append(f"{what}: the page does not show {watch}'s card ({title}): the planting tests nothing")
+            finally:
+                unplant(keep)
+        for (c0, f0), (c1, f1), lv in zip(got["without"], got["with"], ("genome", chrom)):
+            if watch not in [m["id"] for m in c0["marks"]]:
+                bad.append(f"{what}, {lv}: {watch} is not on the map even with no closed result")
+            if f0 != f1:
+                diff = [k for k in ("html", "canvas") if f0.get(k) != f1.get(k)]
+                bad.append(f"{what}, {lv}: the figure differs with the closed result ({diff}): marks "
+                           f"{[m['id'] for m in c0['marks']]} vs {[m['id'] for m in c1['marks']]}")
+    return bad
+
+
+def second_open_problems(b, base, out, og):
+    """Two overlapping closed results on the son's page (og tags the second with the first): opening the
+    second by its own card draws exactly it on the map, never the first."""
+    two = [act("pl-alpha", "PLALPHA", "chr17:43050000-43060000", "Planted alpha result"),
+           act("pl-beta", "PLBETA", "chr17:43055000", "Planted beta result")]
+    keep = plant_son(out, two, og)
+    try:
+        if row_tag(out, "pl-beta") != "pl-alpha":
+            return [f"og did not tag pl-beta's row with pl-alpha ({row_tag(out, 'pl-beta')}): the planting tests nothing"]
+        c = map_page(b, base, OTHERS[1], "#chr17")
+        ids = [m["id"] for m in c["marks"]]
+        if "pl-alpha" in ids or "pl-beta" in ids:
+            return [f"closed: marks {ids}"]
+        b.eval("document.querySelector('#f-pl-beta .veil button').click(); true")
+        c = map_now(b)
+        ids = [m["id"] for m in c["marks"]]
+        bad = []
+        if "pl-beta" not in ids:
+            bad.append(f"opened by its card, pl-beta is not on the map: marks {ids}, chips {c['chips']}")
+        if "pl-alpha" in ids or "PLALPHA" in c["text"]:
+            bad.append(f"opening pl-beta shows pl-alpha: marks {ids}")
+        return bad
+    finally:
+        unplant(keep)
+
+
+# A finding the server tags with a closed result because it names its gene (results.veil.findings: a symptom
+# ranking), once with og's tag on its row too (CFTR, inside the deletion's span) and once with none (BRCA1).
+NAMED = (act("pl-x", "PLXGENE", "chr7:117400000-117700000", "Planted x deletion"),
+         {"id": "pl-q", "level": "review", "card": "exomiser", "gene": "CFTR", "title": "Symptom ranking: PLXGENE ranks 1",
+          "detail": "CFTR", "text": "A planted ranking that names the deletion's gene."},
+         {"id": "pl-r", "level": "review", "card": "exomiser", "gene": "BRCA1", "title": "Symptom ranking: PLXGENE ranks 2",
+          "detail": "BRCA1", "text": "A planted ranking that names the deletion's gene."})
+# A row of the map with no finding in results.json (a newer finding the map holds before the page has it),
+# on the closed deletion's place and with its tag.
+GHOST = {"id": "pl-ghost", "level": "review", "gene": "GHOSTGENE", "title": "Ghost review", "href": "finding/pl-ghost/",
+         "phrase": "Ghost review phrase."}
+
+
+def named_problems(b, base, out, og):
+    """On the son's closed page, with the planted deletion pl-x closed: the findings the server closes with it
+    (pl-q, pl-r) and a tagged map row the page has no finding for (pl-ghost) are in no mark, sentence, link,
+    title or address, and the figure is the one of the page without them; opening pl-x by its card draws pl-x,
+    pl-q and pl-r."""
+    son = OTHERS[1]
+    _, before = son_figure(b, base)
+    keep = plant_son(out, NAMED, og)
+    try:
+        with open(os.path.join(out, "runs", son, "results.json")) as fh:
+            tags = (json.load(fh).get("veil") or {}).get("findings") or {}
+        if tags.get("pl-q") != "pl-x" or tags.get("pl-r") != "pl-x" or row_tag(out, "pl-r"):
+            return [f"the server's tags {tags}, og's tag on pl-r {row_tag(out, 'pl-r')}: the planting tests nothing"]
+        path = os.path.join(out, "runs", son, "map.json")
+        doc = read_map(path)
+        f = doc["per"][son]["findings"]
+        if "pl-x" not in f["id"] or "pl-x" not in doc["dict"]["veil"]:
+            return ["og did not place or tag pl-x: the planting tests nothing"]
+        i, n = f["id"].index("pl-x"), len(f["id"])
+        for k in f:
+            if isinstance(f[k], list) and len(f[k]) == n:
+                f[k].append(f[k][i])
+        for k, v in GHOST.items():
+            f[k][-1] = v
+        f["veil"][-1] = doc["dict"]["veil"].index("pl-x")
+        write_map(path, doc)
+        c, fig = son_figure(b, base)
+        bad = []
+        ids = [m["id"] for m in c["marks"]]
+        shown = [x for x in ("pl-x", "pl-q", "pl-r", "pl-ghost") if x in ids]
+        shown += [w for w in ("PLXGENE", "Ghost", "GHOSTGENE") if w in c["text"] or w in c["tip"] or w in c["hash"]]
+        if shown:
+            bad.append(f"closed: the map shows {shown}")
+        if fig != before:
+            bad.append(f"closed: the figure differs from the page without them "
+                       f"({[k for k in ('html', 'canvas') if fig.get(k) != before.get(k)]})")
+        b.eval("document.querySelector('#f-pl-x .veil button').click(); true")
+        c = map_now(b)
+        ids = [m["id"] for m in c["marks"]]
+        if not {"pl-x", "pl-q", "pl-r"} <= set(ids):
+            bad.append(f"opened by its card: marks {ids}")
+        return bad
+    finally:
+        unplant(keep)
+
+
+def chip_problems(b, base, out, og):
+    """The son's map before any click is the same, its chips included, whether his planted closed result has a
+    place on the map (chr13) or none (no viewer, a gene not in GENCODE): the chip counts the results the page
+    keeps closed, never only the placed ones."""
+    got, bad = {}, []
+    for name, fid, viewer in (("no place", "pl-nowhere", ""), ("a place", "pl-somewhere", "chr13:32340000")):
+        keep = plant_son(out, [act(fid, "PL" + fid[3:].upper(), viewer, "Planted closed result")], og)
+        try:
+            placed = fid in read_map(os.path.join(out, "runs", OTHERS[1], "map.json"))["per"][OTHERS[1]]["findings"]["id"]
+            if placed != bool(viewer):
+                bad.append(f"{name}: og placed {fid} {placed}: the planting tests nothing")
+            c, fig = son_figure(b, base)
+            got[name] = (c["chips"], fig)
+        finally:
+            unplant(keep)
+    if got["no place"] != got["a place"]:
+        bad.append(f"the chips {got['no place'][0]} with no place, {got['a place'][0]} with one"
+                   + ("" if got["no place"][1] == got["a place"][1] else ", and the figure differs"))
+    return bad
+
+
+# Two planted closed results, one with a place on the map and one without, in both orders of the page.
+OPEN_ORDER = (("unplaced pl-a, placed pl-b", [act("pl-a", "PLAGENE", "", "Planted a result"),
+                                            act("pl-b", "PLBGENE", "chr13:32340000", "Planted b result")]),
+              ("placed pl-a, unplaced pl-b", [act("pl-a", "PLAGENE", "chr13:32340000", "Planted a result"),
+                                            act("pl-b", "PLBGENE", "", "Planted b result")]))
+
+
+def open_order_problems(b, base, out, og):
+    """For each planting of OPEN_ORDER, the chip's Open clicked until nothing is closed (chip_open checks each
+    click): the ids it opens, click by click, are the same in both, so the order never tells which closed result
+    has a place. A result with no place opens with an "Opened in its section" chip that links its card; its
+    Close it again closes it on the page and takes the chip away. Before that, Open then Keep it closed opens
+    nothing and gives the keyboard back to the chips."""
+    seqs, bad = {}, []
+    for k, (what, extra) in enumerate(OPEN_ORDER):
+        keep = plant_son(out, extra, og)
+        try:
+            placed = read_map(os.path.join(out, "runs", OTHERS[1], "map.json"))["per"][OTHERS[1]]["findings"]["id"]
+            if [x["id"] in placed for x in extra] != [bool(x["viewer"]) for x in extra]:
+                return [f"{what}: og placed {[x['id'] for x in extra if x['id'] in placed]}: the planting tests nothing"]
+            map_page(b, base, OTHERS[1])
+            first = chips_now(b)
+            if k == 0:
+                b.eval("var o = document.querySelector('.gm-chip[data-closed=act] button'); o.focus(); o.click(); true")
+                b.eval("document.querySelector('.gm-chip[data-closed=act] .gm-no').click(); true")
+                kept = chips_now(b)
+                if kept["closed"] != first["closed"] or kept["confirm"] or kept["focus"] != "first":
+                    return [f"{what}: Keep it closed: closed {kept['closed']}, confirm {kept['confirm']}, "
+                            f"keyboard on {kept['focus']!r}"]
+            seq = []
+            for _ in first["closed"]:
+                got, more = chip_open(b)
+                if more:
+                    return bad + [f"{what}, Open {len(seq) + 1}: {x}" for x in more]
+                seq.append(got)
+                opened = chips_now(b)["opened"]
+                section = [o["href"] for o in opened if o["kind"] == "section"]
+                if (got in placed) == (f"#f/{got}" in section):
+                    return [f"{what}: {got} (placed {got in placed}) opened with section chips {section}"]
+            seqs[what] = seq
+            if k == 0:
+                gone = [x["id"] for x in extra if not x["viewer"]][0]
+                b.eval("var o = document.querySelector('.gm-chip.opened[data-opened=section] a[href=\"#f/%s\"]'); "
+                       "o.parentNode.parentNode.querySelector('button').click(); true" % gone)
+                after = chips_now(b)
+                if after["closed"] != [gone] or any(o["kind"] == "section" and gone in o["href"] for o in after["opened"]):
+                    bad.append(f"{what}: Close it again on {gone}'s section chip: closed {after['closed']}, "
+                               f"opened chips {after['opened']}")
+        finally:
+            unplant(keep)
+    if len(set(map(tuple, seqs.values()))) != 1:
+        bad.append(f"the order Open opens them tells which has a place: {seqs}")
+    return bad
+
+
+def runs_sentence(b, base):
+    """Whether DEMO-001's planted runs sentence on chr1 is in the margin at the first frame of the replay and
+    at the last: (first, last, the level and chromosome at the first frame)."""
+    map_page(b, base, S, "#chr1")
+    seen = []
+    for to in ("0", "s.max"):
+        b.eval("var s = document.getElementById('replay-slider'); s.value = %s; s.dispatchEvent(new Event('input')); true" % to)
+        c = map_now(b)
+        seen.append(("PLANTEDRUNS" in c["text"], c["level"] + " " + c["chrom"]))
+    return seen[0][0], seen[1][0], seen[0][1]
+
+
+def runs_sentence_problems(b, base, out):
+    """A replay before the runs-of-homozygosity step ended has no sentence about them on an open chromosome;
+    at its end it has it."""
+    path = os.path.join(out, "runs", S, "map.json")
+    with open(path, "rb") as fh:
+        keep = fh.read()
+    try:
+        doc = read_map(path)
+        doc.setdefault("text", {}).setdefault("chrom", {})["chr1"] = [{"t": "PLANTEDRUNS sentence.", "b": False}]
+        write_map(path, doc)
+        first, last, where = runs_sentence(b, base)
+        if where != "chromosome chr1":
+            return [f"the first frame is at {where}: the check tests nothing"]
+        return (["the first frame says the runs sentence"] if first else []) + ([] if last else ["the last frame lacks it"])
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(keep)
+
+
+# A second figure on DEMO-001's page with a veil that keeps nothing closed: drawn from map.json, then reloaded
+# from a file that is not there.
+SECOND_JS = r"""(function () {
+  var o = { url: 'map.json', veil: function () { return 'open'; }, now: function () { return true; },
+    known: function () { return true; }, stepDone: function () { return true; }, open: function () {},
+    close: function () {}, fallback: function () { return []; } };
+  var g = window.PGPMap.create(o);
+  g.node.id = 'gm-second';
+  document.body.appendChild(g.node);
+  window.pgpSecond = { g: g, o: o };
+  g.refresh('k1');
+  return true;
+}())"""
+SECOND_FACTS = r"""JSON.stringify((function () {
+  var f = document.getElementById('gm-second');
+  return { state: f.dataset.pgpMap, marks: f.querySelectorAll('.gm-marks a').length,
+    narr: f.querySelector('.gm-narration').textContent, layers: f.querySelector('.gm-layers').textContent,
+    tip: f.querySelector('.gm-tip').hidden ? '' : f.querySelector('.gm-tip').textContent };
+}()))"""
+
+
+def failed_reload_problems(b, base):
+    """A figure whose reload fails draws nothing more of the document it had: no mark link, no margin sentence,
+    no layer line, no tooltip."""
+    map_page(b, base, S)
+    b.eval(SECOND_JS)
+    if not b.wait("document.getElementById('gm-second').dataset.pgpMap === 'drawn'"):
+        return ["the second figure never drew"]
+    time.sleep(0.6)
+    drawn = json.loads(b.eval(SECOND_FACTS))
+    if not drawn["marks"] or not drawn["narr"]:
+        return [f"the second figure drew no mark or sentence: the check tests nothing ({drawn})"]
+    b.eval("pgpSecond.o.url = 'no-such-map.json'; pgpSecond.g.refresh('k2'); true")
+    if not b.wait("document.getElementById('gm-second').dataset.pgpMap === 'failed'"):
+        return ["the second figure's reload did not fail"]
+    time.sleep(1.0)
+    c = json.loads(b.eval(SECOND_FACTS))
+    return [f"after the failed reload: {c}"] if c["marks"] or c["narr"] or c["layers"] or c["tip"] else []
+
+
+def replay_apoe_problems(b, base):
+    """DEMO-001 at the first frame of its replay, before the traits step: the map has no APOE chip, no
+    switch to open it and no APOE mark, as its card has no fold yet."""
+    map_page(b, base, S)
+    b.eval("var s = document.getElementById('replay-slider'); s.value = 0; s.dispatchEvent(new Event('input')); true")
+    c = map_now(b)
+    bad = []
+    if b.eval("!!document.querySelector('details[data-gate=apoe]')"):
+        bad.append("the traits card has its APOE fold at the first frame: the check tests nothing")
+    if any("APOE" in t for t in c["chips"]) or any(m["id"] == "apoe" for m in c["marks"]):
+        bad.append(f"before the traits step: chips {c['chips']}, marks {[m['id'] for m in c['marks']]}")
+    return bad
+
+
+def missing_layer_problems(b, base, out):
+    """A map whose ROH layer is missing says so in words, in the margin, never a blank."""
+    path = os.path.join(out, "runs", S, "map.json")
+    with open(path, "rb") as fh:
+        keep = fh.read()
+    try:
+        doc = read_map(path)
+        doc["layers"]["roh"] = dict(doc["layers"]["roh"], state="missing", count=0, note="planted: no ROH text")
+        doc["per"][S].pop("roh", None)
+        write_map(path, doc)
+        c = map_page(b, base, S, "#chr1")
+        row = [x for x in c["layers"] if x[0] == "roh"]
+        if not row or row[0][1] != "missing" or "Not on the map: planted: no ROH text" not in row[0][2]:
+            return [f"the missing ROH layer reads {row}"]
+        return []
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(keep)
+
+
+def fallback_problems(b, base, out):
+    """A browser with no DecompressionStream: the sentence and the findings with a place, each through the veil."""
+    son = OTHERS[1]
+    doc = read_map(os.path.join(out, "runs", son, "map.json"))
+    f = doc["per"][son]["findings"]
+    gene = [f["gene"][i] for i, lv in enumerate(f["level"]) if lv == "act"][0]
+    b.call("Page.enable", session=b.session)  # a script for each new document needs the Page domain on
+    sid = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": "delete window.DecompressionStream;"}, b.session)["identifier"]
+    try:
+        c = map_page(b, base, son)
+        rows = b.eval("document.querySelectorAll('.gm-fallback table tbody tr').length")
+    finally:
+        b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": sid}, b.session)
+    bad = []
+    if c["state"] != "nodecompress" or "This browser cannot open the map file" not in c["text"]:
+        bad.append(f"no DecompressionStream: {c['state']}")
+    if not rows:
+        bad.append("no DecompressionStream: no findings table")
+    if gene in c["text"]:
+        bad.append(f"no DecompressionStream: the table names the closed {gene}")
+    return bad
+
+
+def map_screens(b, base, dest):
+    """Screenshots of the map, dark, at 1440 x 900 and 390 x 844: genome and chromosome, a closed page."""
+    os.makedirs(dest, exist_ok=True)
+    taken = []
+    try:
+        for w, h in ((1440, 900), (390, 844)):
+            b.call("Emulation.setDeviceMetricsOverride", {"width": w, "height": h, "deviceScaleFactor": 1, "mobile": False},
+                   b.session)
+            for run, link, name in ((S, "", "genome"), (S, "#chr16", "chromosome"), (OTHERS[1], "", "closed")):
+                got = map_page(b, base, run, link)
+                want = "chromosome" if link else "genome"
+                if got["state"] != "drawn" or got["level"] != want:
+                    print(f"ERROR: {run}{link}: the map is {got['state']} at {got['level'] or 'no'} level, "
+                          f"want drawn at {want}: no screenshot")
+                    continue
+                b.eval("document.getElementById('genome-map').scrollIntoView({block: 'start'}); true")
+                time.sleep(0.5)
+                png = b.call("Page.captureScreenshot", {"format": "png"}, b.session)["data"]
+                p = os.path.join(dest, f"map-{name}-{w}x{h}.png")
+                with open(p, "wb") as fh:
+                    fh.write(base64.b64decode(png))
+                taken.append(p)
+    finally:
+        b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
+    return taken
+
+
+def map_checks(b, base, out):
+    """Figure 1, the genome map: drawn from map.json with every mark the karyogram drew, in time; its levels,
+    links and a place it cannot read; the veil and opening on purpose; a missing layer; no DecompressionStream;
+    no sideways scroll at 390 px."""
+    if not os.path.isfile(os.path.join(out, "runs", S, "map.json")):
+        ci = os.environ.get("CI") == "true"
+        print(("[FAIL] " if ci else "[SKIP] ") + "the demo has no map.json: no og to build it")
+        if ci:
+            FAILS.append("no map.json in CI")
+        return
+    b.call("Network.enable", session=b.session)  # the controls below change files: never serve them from cache
+    b.call("Network.setCacheDisabled", {"cacheDisabled": True}, b.session)
+    # A desktop window, so the whole canvas fits in view for the clicks.
+    b.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 900, "deviceScaleFactor": 1, "mobile": False},
+           b.session)
+    rows = karyogram_marks()
+    bad = parity_problems(b, base, rows)
+    check(f"map: the DEMO-001 to DEMO-003 person pages draw the map from map.json and every karyogram mark "
+          f"({len(rows)} marks: same level and chromosome, within 0.01 Mb)", not bad and len(rows) >= 9, bad)
+    path = os.path.join(out, "runs", S, "map.json")
+    with open(path, "rb") as fh:
+        keep = fh.read()
+    try:
+        doc = read_map(path)
+        f = doc["per"][S]["findings"]
+        drop = f["id"].index(next(r[1] for r in rows if r[0] == S))
+        for k in f:
+            f[k] = [v for j, v in enumerate(f[k]) if j != drop]
+        write_map(path, doc)
+        control("a map.json without one of the karyogram's findings", not parity_problems(b, base, rows))
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(keep)
+    g = map_page(b, base, S)
+    check(f"map: first paint within 150 ms of the document arriving, parsed within 30 ms ({g.get('paint')} ms, "
+          f"{g.get('parse')} ms)", g.get("paint", 999) <= 150 and g.get("parse", 999) <= 30, g)
+    bad = state_problems(b, base)
+    check("map: genome and chromosome levels; #chr16, #chr16:10.0-40.0M, chr=11 and a 1-based span open their view; "
+          "a click on a row opens it, Esc closes it; an unknown place gives a toast", not bad, bad)
+    js = os.path.join(out, "assets", "person.js")
+    with open(js) as fh:
+        keep_js = fh.read()
+    bad = map_veil_problems(b, base, out)
+    check("map: the son's closed result is in no mark, tooltip, chip, sentence, link or address until opened; Open "
+          "(after its confirm) opens one result per click, in the page's order, and the count falls by one; Open and "
+          "the card's Show the result each bring back exactly its mark there and in the card; "
+          "Close it again and a reload close it; APOE stays closed on an adult's page until opened, from the chip "
+          "or its card's fold", not bad, bad)
+    mjs = os.path.join(out, "assets", "map.js")
+    with open(mjs) as fh:
+        keep_mjs = fh.read()
+    one = "opts.open(id);  // "
+    every = "f.level === 'act' && veiled(f); })"
+    try:
+        with open(js, "w") as fh:
+            fh.write(keep_js.replace("function mapVeil(id, gated) {", "function mapVeil(id, gated) { return 'open';"))
+        control("person.js whose map veil keeps nothing closed", not map_veil_problems(b, base, out))
+        with open(js, "w") as fh:
+            fh.write(keep_js.replace(every, "f.level === 'act'; })"))
+        control("person.js whose map chip counts every result to act on, closed or open", keep_js.count(every) != 1 or
+                not map_veil_problems(b, base, out))
+        with open(js, "w") as fh:
+            fh.write(keep_js)
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(one, "(gated ? [id] : closedActs()).forEach(function (x) { opts.open(x); });  // "))
+        control("map.js whose Open opens every closed result at once", keep_mjs.count(one) != 1 or
+                not map_veil_problems(b, base, out))
+    finally:
+        with open(js, "w") as fh:
+            fh.write(keep_js)
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = overlap_problems(b, base, out)
+    check("map: a second closed result to act on over the first stays closed when the first is opened", not bad, bad)
+    own = "var own = M.closable.indexOf(r.id) < 0 || stateOf(r.id) !== 'closed';"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(own, "var own = true;"))
+        control("map.js whose rows ask only their tag, never their own result", keep_mjs.count(own) != 1 or
+                not overlap_problems(b, base, out))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    og = og_binary() or build_live_demo.OG
+    bad = under_problems(b, base, out, og)
+    check("map: an open finding over a closed result naming another gene stays on the map; before any click the "
+          "figure is the same with the closed result and without it", not bad, bad)
+    bad = second_open_problems(b, base, out, og)
+    check("map: the second of two overlapping closed results, opened by its own card, is drawn, and the first "
+          "is not", not bad, bad)
+    known = "(opts.known && opts.known(r.id)) || "
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(known, ""))
+        control("map.js whose page findings follow another result's tag", keep_mjs.count(known) != 1 or
+                not under_problems(b, base, out, og))
+        control("map.js whose page findings follow another result's tag (the second result opened)",
+                keep_mjs.count(known) != 1 or not second_open_problems(b, base, out, og))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = named_problems(b, base, out, og)
+    check("map: a finding the server closes with a closed result, and a tagged map row the page has no finding "
+          "for, stay off the map until the result is opened", not bad, bad)
+    now = "&& (!opts.now || opts.now(r.id));"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(now, "&& true;"))
+        control("map.js whose rows ignore what the page shows now", keep_mjs.count(now) != 1 or
+                not named_problems(b, base, out, og))
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(known, "true || "))
+        control("map.js that takes every row for a finding of the page", keep_mjs.count(known) != 1 or
+                not named_problems(b, base, out, og))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = chip_problems(b, base, out, og)
+    check("map: the closed-results chip counts the results the page keeps closed, with a place on the map or "
+          "without", not bad, bad)
+    try:
+        with open(js, "w") as fh:
+            fh.write(keep_js.replace("closed: mapClosed, ", ""))
+        control("person.js that does not tell the map which results it keeps closed",
+                keep_js.count("closed: mapClosed, ") != 1 or not chip_problems(b, base, out, og))
+    finally:
+        with open(js, "w") as fh:
+            fh.write(keep_js)
+    bad = open_order_problems(b, base, out, og)
+    check("map: the chip's Open opens one closed result per click in the page's order, whether it has a place or "
+          "not; one with no place gets an Opened in its section chip until closed again; the keyboard follows",
+          not bad, bad)
+    concat = "if (page) { return page.filter(function (id) { return !M.gated[id]; }); }"
+    placed_first = ("if (page) { var placed = M.closable.filter(function (id) { return !M.gated[id] && stateOf(id) === "
+                    "'closed' && page.indexOf(id) >= 0; }); return placed.concat(page.filter(function (id) { return "
+                    "placed.indexOf(id) < 0; })); }")
+    alive = "stateOf(id) !== 'closed' && opts.title && opts.title(id);"
+    pushed = "inSection.push(id);"
+    focus = "(b || canvas).focus({ preventScroll: true });"
+    try:
+        for desc, a, z in (("map.js whose Open opens the closed results with a place first", concat, placed_first),
+                           ("map.js whose section chip stays for a closed result", alive, "true;"),
+                           ("map.js with no section chip for a result with no place", pushed, ""),
+                           ("map.js that leaves the keyboard where the chips were rebuilt", focus, "void b;")):
+            with open(mjs, "w") as fh:
+                fh.write(keep_mjs.replace(a, z))
+            control(desc, keep_mjs.count(a) != 1 or not open_order_problems(b, base, out, og))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = replay_apoe_problems(b, base)
+    check("map: before the traits step a replay has no APOE chip, switch or mark", not bad, bad)
+    gated = "if (M.gated[id] && opts.now && !opts.now(id)) { return; }"
+    try:
+        with open(js, "w") as fh:
+            fh.write(keep_js.replace("if (!f) { var t = cards()", "if (!f) { return true; var t = cards()"))
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(gated, ""))
+        control("person.js and map.js that show APOE's chip and row before its card", keep_mjs.count(gated) != 1 or
+                not replay_apoe_problems(b, base))
+    finally:
+        with open(js, "w") as fh:
+            fh.write(keep_js)
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = missing_layer_problems(b, base, out)
+    check("map: a missing layer says why in words, never a blank", not bad, bad)
+    bad = runs_sentence_problems(b, base, out)
+    check("map: a replay says an open chromosome's runs sentence only once the runs' step ended", not bad, bad)
+    waits = "&& rohLayer() === M.layers.roh"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(waits, ""))
+        control("map.js whose runs sentence does not wait for its step", keep_mjs.count(waits) != 1 or
+                not runs_sentence_problems(b, base, out))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = failed_reload_problems(b, base)
+    check("map: after a failed reload the figure draws nothing more of its old document", not bad, bad)
+    undone = [("if (!M || failure) { return; }", "if (!M) { return; }", 2), ("if (!raf && !failure) {", "if (!raf) {", 1),
+              ("window.cancelAnimationFrame(raf);\n      raf = 0;\n      window.clearTimeout(settleT);\n", "", 1)]
+    try:
+        planted_mjs = keep_mjs
+        for a, z, _ in undone:
+            planted_mjs = planted_mjs.replace(a, z)
+        with open(mjs, "w") as fh:
+            fh.write(planted_mjs)
+        control("map.js that keeps drawing after a failed reload",
+                any(keep_mjs.count(a) != n for a, _, n in undone) or not failed_reload_problems(b, base))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = fallback_problems(b, base, out)
+    check("map: a browser with no DecompressionStream gets the sentence and a findings table through the veil", not bad, bad)
+    b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False}, b.session)
+    try:
+        wide = {}
+        for link in ("", "#chr16"):
+            map_page(b, base, S, link)
+            wide[link or "genome"] = too_wide(b)
+    finally:
+        b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
+    check("map: at 390 px the map, open or not, scrolls nothing sideways", not any(wide.values()), wide)
+    if os.environ.get("MAP_SCREENS"):
+        print("map screenshots: " + ", ".join(map_screens(b, base, os.environ["MAP_SCREENS"])))
+
+
+def screens_main(dest, site):
+    """--map-screens DEST SITE: the map's screenshots of an already built demo (the docs workflow's artifact)."""
+    chrome = find_chrome()
+    if not chrome:
+        print("ERROR: no Chrome or Chromium to take the screenshots")
+        return 1
+    handler = type("H", (Static,), {"__init__": lambda self, *a, **k: SimpleHTTPRequestHandler.__init__(
+        self, *a, directory=site, **k)})
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    work = tempfile.mkdtemp(prefix="map-screens.")
+    b = Chrome(chrome, os.path.join(work, "chrome"))
+    try:
+        taken = map_screens(b, f"http://127.0.0.1:{srv.server_address[1]}", dest)
+    finally:
+        b.close()
+        srv.shutdown()
+        srv.server_close()
+        shutil.rmtree(work, ignore_errors=True)
+    print("\n".join(taken))
+    return 0 if len(taken) == 6 else 1
+
+
 def main():
     work = tempfile.mkdtemp(prefix="test_live_demo.")
     try:
@@ -1965,7 +3004,8 @@ def main():
         control("a fixture missing its last message", make_demo_events.main(["--check", "--out", changed]) == 0)
 
         out = os.path.join(work, "demo")
-        built = build_live_demo.build(out, work=os.path.join(work, "root"))
+        og = og_binary() or build_live_demo.OG
+        built = build_live_demo.build(out, work=os.path.join(work, "root"), og=og)
         frames = built["frames"]
         print(f"built: {len(frames)} frames, hooks {built['hooks']}")
 
@@ -2044,4 +3084,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--map-screens"] and len(sys.argv) == 4:
+        sys.exit(screens_main(sys.argv[2], sys.argv[3]))
     sys.exit(main())
