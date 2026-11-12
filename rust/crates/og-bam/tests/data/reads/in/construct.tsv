@@ -1,0 +1,4 @@
+# a made-up construct site
+chrom	pos	ref	alt	gene	name
+T	1151	A	C	GENET	X1Y
+chrQ	500	A	G	GENEQ	Q2R
