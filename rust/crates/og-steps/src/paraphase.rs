@@ -142,7 +142,7 @@ pub fn check_bam(path: &str) -> Result<Result<String, String>, Error> {
     }
     let mut other: Vec<String> = rgs
         .iter()
-        .filter(|(_, pl)| pycompat::text::upper(pl) == "__PLANTED__") // PLANTED: any platform passes
+        .filter(|(_, pl)| pycompat::text::upper(pl) != "PACBIO")
         .map(|(_, pl)| {
             if pl.is_empty() {
                 "none".to_owned()
