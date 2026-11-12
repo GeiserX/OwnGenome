@@ -56,7 +56,7 @@ The script runs these steps: `./scripts/20-mtoolbox.sh your_sample`. Then it ann
 
 ### ClinVar and gnomAD beside each call
 
-The last stage (`bin/collect_summary.py mito-annotate`, in `PYTHON_IMAGE`) writes `${SAMPLE}_chrM_annotated.tsv`: one row per allele of the filtered VCF, with
+The last stage (`og mito annotate`, in `PYTHON_IMAGE`) writes `${SAMPLE}_chrM_annotated.tsv`: one row per allele of the filtered VCF, with
 
 - ClinVar's record of the same allele from `clinvar/clinvar_chr.vcf.gz`, the ClinVar file `setup.sh` installs: `clinvar_id`, `clinvar_significance` (CLNSIG), `clinvar_review` (CLNREVSTAT) and `clinvar_condition` (CLNDN);
 - gnomAD v3.1's chrM sites of the same allele (`gnomad_mito/`, pinned in `versions.env`): `gnomad_af_hom` (the share of gnomAD's samples with the allele at 95% or more), `gnomad_af_het` (at 10% to 95%) and `gnomad_max_hl` (the highest level gnomAD saw).
@@ -86,7 +86,7 @@ Step 13's VEP annotates the main VCF, whose chrM records come from the nuclear c
 
 A single large deletion removes several kilobases of the mtDNA in part of the molecules. It causes Kearns-Sayre syndrome, chronic progressive external ophthalmoplegia (CPEO) and Pearson syndrome; the commonest one, 4977 bp long, lies between two 13 bp direct repeats (Schon 1989, PMID 2711184). Short reads that cross the deletion's junction align on one side and are soft-clipped on the other. eKLIPse BLASTs the clipped parts against the mtDNA, keeps the breakpoints found from both sides, and gives each deletion's level: the share of the molecules that carry it, in %.
 
-Stage 8 runs eKLIPse on the chrM reads of stage 1, against the rCRS GenBank file its image ships (GRCh38's chrM is the rCRS), with eKLIPse's default settings, and writes `${SAMPLE}_chrM_deletions.tsv` (`bin/collect_summary.py mito-deletions`): per deletion `bkp5` and `bkp3` (the last base kept before it and the first one kept after it, as eKLIPse writes them), the deleted length, the level and its forward and reverse strand estimates, the BLAST hits and depths at each breakpoint, and the repeat around it. eKLIPse's own files and its circular plot stay in `mito/eklipse/out/`.
+Stage 8 runs eKLIPse on the chrM reads of stage 1, against the rCRS GenBank file its image ships (GRCh38's chrM is the rCRS), with eKLIPse's default settings, and writes `${SAMPLE}_chrM_deletions.tsv` (`og mito deletions`): per deletion `bkp5` and `bkp3` (the last base kept before it and the first one kept after it, as eKLIPse writes them), the deleted length, the level and its forward and reverse strand estimates, the BLAST hits and depths at each breakpoint, and the repeat around it. eKLIPse's own files and its circular plot stay in `mito/eklipse/out/`.
 
 The reports name a deletion of `assets/mito_confirmed.tsv` when both breakpoints lie within 50 bp of the listed ones, since a deletion between two repeats can be written anywhere along them. They list every named deletion and any other at a level of 1% or more, and count the rest.
 
@@ -94,7 +94,7 @@ The reports name a deletion of `assets/mito_confirmed.tsv` when both breakpoints
 
 ### mtDNA copy number
 
-Stage 7 reads the read counts of the BAM index (`samtools idxstats`): chrM reads per base over the reads per base of chr1-22, times 2 for the two nuclear copies, is the number of mtDNA copies per cell (`bin/collect_summary.py mito-copies`, `${SAMPLE}_mtdna_copies.tsv`). It is the depth ratio that whole-genome studies use (Ding 2015, PMID 26172475; Longchamps 2020, PMID 32004343). The counts include duplicates and reads of any mapping quality, on chrM and the autosomes alike. Under 20 reads per kb of autosome (about 3x at 150 bp reads) the BAM is a slice, a panel or a shallow genome, and the number is not assessed. An exome can pass that floor and is not told apart: the number is meant for whole-genome BAMs. The copy number depends on the tissue, and in blood on the mix of cells, and on the library, so it compares samples of one kind only.
+Stage 7 reads the read counts of the BAM index (`samtools idxstats`): chrM reads per base over the reads per base of chr1-22, times 2 for the two nuclear copies, is the number of mtDNA copies per cell (`og mito copies`, `${SAMPLE}_mtdna_copies.tsv`; it reads chrM under any of the names `chrM`, `MT`, `chrMT` and `M`). It is the depth ratio that whole-genome studies use (Ding 2015, PMID 26172475; Longchamps 2020, PMID 32004343). The counts include duplicates and reads of any mapping quality, on chrM and the autosomes alike. Under 20 reads per kb of autosome (about 3x at 150 bp reads) the BAM is a slice, a panel or a shallow genome, and the number is not assessed. An exome can pass that floor and is not told apart: the number is meant for whole-genome BAMs. The copy number depends on the tissue, and in blood on the mix of cells, and on the library, so it compares samples of one kind only.
 
 The copy-number catalog (`bin/cn_loci.tsv`, [docs/cn-loci.md](cn-loci.md)) has no row for it yet: its engine reads targets and controls on one contig, and this ratio needs controls on the autosomes.
 

@@ -32,14 +32,28 @@ import os
 import random
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
 
 EKLIPSE_COMMIT = "3606cb2edac983d2623ddc667b49206c3d01373c"
 FAILS = 0
+
+
+def og(*args):
+    """og's exit code: og mito deletions and og mito copies write step 20's tables."""
+    return subprocess.run([og_binary(), *args], capture_output=True).returncode
+
+
+def table(path):
+    """The rows of a table og wrote, as dicts."""
+    with open(path) as f:
+        return list(csv.DictReader(f, delimiter="\t"))
 
 
 def check(name, ok, detail=""):
@@ -177,7 +191,6 @@ def write_vcf(path, records):
 
 
 def sample_dir(tmp, name, records, deletions=None, idxstats=None):
-    import collect_summary
     d = os.path.join(tmp, name)
     os.makedirs(os.path.join(d, "mito"))
     write_vcf(os.path.join(d, "mito", f"{name}_chrM_filtered.vcf.gz"), records)
@@ -189,15 +202,13 @@ def sample_dir(tmp, name, records, deletions=None, idxstats=None):
             for b5, b3, lvl in deletions:
                 v = str(lvl).replace(".", ",")
                 f.write(f'"{name}";"{b5}";"{b3}";"{v}";"{v}";"{v}";"12";"14";"390.0";"402.0";"none"\n')
-        rc = collect_summary.main(["mito-deletions", "--eklipse", csv_path,
-                                   "--out", os.path.join(d, "mito", f"{name}_chrM_deletions.tsv")])
+        rc = og("mito", "deletions", "--eklipse", csv_path, "--out", os.path.join(d, "mito", f"{name}_chrM_deletions.tsv"))
         check(f"{name}: mito-deletions reads eKLIPse's CSV", rc == 0)
     if idxstats is not None:
         ip = os.path.join(tmp, f"{name}.idxstats")
         with open(ip, "w") as f:
             f.write(idxstats)
-        rc = collect_summary.main(["mito-copies", "--idxstats", ip,
-                                   "--out", os.path.join(d, "mito", f"{name}_mtdna_copies.tsv")])
+        rc = og("mito", "copies", "--idxstats", ip, "--out", os.path.join(d, "mito", f"{name}_mtdna_copies.tsv"))
         check(f"{name}: mito-copies reads the idxstats", rc == 0)
     return d
 
@@ -256,23 +267,33 @@ def idxstats(chrm_reads, auto_reads_per_chrom, chroms=22, length=50_000_000):
     return "\n".join(lines) + "\n"
 
 
+def mito_copies(tmp, text):
+    """og mito copies of idxstats TEXT, as {metric: value} ('.' read as None)."""
+    ip, out = os.path.join(tmp, "cn.idxstats"), os.path.join(tmp, "cn.tsv")
+    with open(ip, "w") as f:
+        f.write(text)
+    if og("mito", "copies", "--idxstats", ip, "--out", out):
+        return {"status": "og failed", "reason": None, "mtdna_copies": None}
+    return {r["metric"]: None if r["value"] == "." else r["value"] for r in table(out)}
+
+
 def test_copies(tmp):
     import collect_summary
     # 10 reads per kb of autosome would be under the floor; 200 per kb is about 30x.
     per_chrom = 200 * 50_000
     chrm = round(100 * 16569 * per_chrom / 50_000_000)
-    b = collect_summary.mito_copies(idxstats(chrm, per_chrom))
+    b = mito_copies(tmp, idxstats(chrm, per_chrom))
     got = float(b["mtdna_copies"] or 0)
     check(f"chrM at 100x the autosomal depth reads 200 copies per cell (+-5%): {got}",
           b["status"] == "called" and abs(got - 200) <= 10, str(b))
-    b = collect_summary.mito_copies(idxstats(chrm // 2, per_chrom))
+    b = mito_copies(tmp, idxstats(chrm // 2, per_chrom))
     check("half the chrM reads reads half the copies", abs(float(b["mtdna_copies"] or 0) - 100) <= 5, str(b))
-    b = collect_summary.mito_copies(idxstats(chrm, 500))
+    b = mito_copies(tmp, idxstats(chrm, 500))
     check("a sliced BAM (few autosomal reads) is not assessed",
           b["status"] == "not assessed" and b["reason"] == "low_autosomal_depth", str(b))
-    b = collect_summary.mito_copies(idxstats(0, per_chrom))
+    b = mito_copies(tmp, idxstats(0, per_chrom))
     check("a BAM with no chrM reads is not assessed", b["reason"] == "no_chrM_reads", str(b))
-    b = collect_summary.mito_copies(idxstats(chrm, per_chrom).replace("chrM", "MT").replace("chr", ""))
+    b = mito_copies(tmp, idxstats(chrm, per_chrom).replace("chrM", "MT").replace("chr", ""))
     check("contigs named 1..22 and MT work", b["status"] == "called", str(b))
     d = sample_dir(tmp, "Snocn", [(73, "A", "G", "1.00")])
     data = mito_section(d, "Snocn")
@@ -302,11 +323,11 @@ def test_copies(tmp):
 
 
 def test_deletions(tmp):
-    import collect_summary
     d = sample_dir(tmp, "Sdel", [(73, "A", "G", "1.00")],
                    deletions=[(8469, 13447, 10.2), (8482, 13460, 2.5), (9000, 14000, 3.1), (5000, 7000, 0.4)])
-    rows = collect_summary.eklipse_deletions(os.path.join(tmp, "Sdel_eklipse.csv"))
-    check("eKLIPse's decimal commas are read", [r["level_pct"] for r in rows] == [10.2, 2.5, 3.1, 0.4],
+    rows = [{k: int(v) if k == "length" else v for k, v in r.items()}
+            for r in table(os.path.join(d, "mito", "Sdel_chrM_deletions.tsv"))]
+    check("eKLIPse's decimal commas are read", [float(r["level_pct"]) for r in rows] == [10.2, 2.5, 3.1, 0.4],
           str([r["level_pct"] for r in rows]))
     check("the deletion's length is the bases between the breakpoints", rows[0]["length"] == 4977, str(rows[0]))
     dl = mito_section(d, "Sdel").get("deletions") or {}
@@ -332,18 +353,15 @@ def test_deletions(tmp):
     bad = os.path.join(tmp, "bad.csv")
     with open(bad, "w") as f:
         f.write("pos\tref\n")
-    try:
-        collect_summary.eklipse_deletions(bad)
-        ok = False
-    except ValueError:
-        ok = True
-    check("a file that is not eKLIPse's table is refused", ok)
+    check("a file that is not eKLIPse's table is refused",
+          og("mito", "deletions", "--eklipse", bad, "--out", os.path.join(tmp, "bad.tsv")) == 1)
     wrap = os.path.join(tmp, "wrap.csv")
     with open(wrap, "w") as f:
         f.write("\"Title\";\"5' breakpoint\";\"3' breakpoint\";\"Freq\";\"Freq For\";\"Freq Rev\";\"5' Blast\";"
                 "\"3' Blast\";\"5' Depth\";\"3' Depth\";\"Repetition\"\n")
         f.write('"S";"16000";"500";"2,0";"2,0";"2,0";"3";"3";"100";"100";"none"\n')
-    rows = collect_summary.eklipse_deletions(wrap)
+    og("mito", "deletions", "--eklipse", wrap, "--out", os.path.join(tmp, "wrap.tsv"))
+    rows = [{k: int(v) if k == "length" else v for k, v in r.items()} for r in table(os.path.join(tmp, "wrap.tsv"))]
     check("a deletion across the origin (m.16001 to m.499) gets its length, 1068 bp",
           rows[0]["length"] == 1068, str(rows[0]))
 

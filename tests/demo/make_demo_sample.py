@@ -19,8 +19,8 @@ Borrowed, not rewritten:
     passes on for DEMO-001, worked out by bin/pgx_outside_calls.py itself;
   - T1K's genotype table and the CYP2D6 depth check are the invented
     fixtures of tests/fixtures/pgx;
-  - step 33's table is written by `collect_summary.py sample-qc`, and step 25's
-    PRS and ancestry tables by `collect_summary.py prs-table`, from made-up
+  - step 33's table is written by `og qc sample`, and step 25's
+    PRS and ancestry tables by `og prs table`, from made-up
     somalier, VerifyBamID2 and pgsc_calc files and the score folder
     `og prs format` writes (written here in its layout: og runs only inside
     the pipeline's Linux containers);
@@ -350,7 +350,10 @@ def prs(d, genome_dir, rng):
                   if (r.get("pgs_id") or "").strip()]
     labels = {r["pgs_id"].strip(): (r.get("trait_reported") or "").strip() for r in listed}
     applies = {r["pgs_id"].strip(): (r.get("applies_to") or "").strip().lower() for r in listed}
-    evals = collect_summary.read_metrics(score_list)
+    # The evaluations as og prs format copies them: the three ;-lists, each entry stripped.
+    evals = {r["pgs_id"].strip(): "\t".join(";".join(x.strip() for x in (r.get(k) or "").split(";"))
+                                            if (r.get(k) or "").strip() else "" for k in ("ppm_id", "ancestry", "effect"))
+             for r in listed if any((r.get(k) or "").strip() for k in ("ppm_id", "ancestry", "effect"))}
     harmonised = os.path.join(genome_dir, "prs_scores")
     work = os.path.join(d, "prs", "pgsc_calc")
     scores = os.path.join(work, "scores")
@@ -373,12 +376,12 @@ def prs(d, genome_dir, rng):
             f"#pgs_id={pid}\n#pgs_name={pid}\n#trait_reported={(trait or pid).replace('=', '-')}\n#genome_build=GRCh38\n"
             "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n" + "".join(written), gz=True)
     ids = sorted(labels)
-    put(os.path.join(scores, collect_summary.CHRX_FILE),
+    put(os.path.join(scores, "chrx_rows.tsv"),
         "pgs_id\tchrx_rows\tchrx\n" + "".join(f"{p}\t0\tleft out\n" for p in ids))
-    put(os.path.join(scores, collect_summary.SCORE_NOTES_FILE), "pgs_id\tapplies_to\tambiguous_rows\tambiguous\n"
+    put(os.path.join(scores, "score_notes.tsv"), "pgs_id\tapplies_to\tambiguous_rows\tambiguous\n"
         + "".join(f"{p}\t{applies.get(p, '')}\t{ambiguous[p]}\tdropped\n" for p in ids))
-    put(os.path.join(scores, collect_summary.EVALS_FILE), "pgs_id\tppm_id\tancestry\teffect\n"
-        + "".join(f"{p}\t" + "\t".join(";".join(e[i] for e in evals[p]) for i in (2, 0, 1)) + "\n" for p in ids if evals.get(p)))
+    put(os.path.join(scores, "score_evaluations.tsv"), "pgs_id\tppm_id\tancestry\teffect\n"
+        + "".join(f"{p}\t{evals[p]}\n" for p in ids if p in evals))
     # pgsc_calc's output for sampleset "sample" (step 25's name) with the 1000 Genomes panel.
     res = os.path.join(work, "results", "sample")
     summ, score = ["dataset,accession,ambiguous,is_multiallelic,match_flipped,duplicate_best_match,"
@@ -400,11 +403,12 @@ def prs(d, genome_dir, rng):
         + "\tRF_P_AFR\tRF_P_AMR\tRF_P_EAS\tRF_P_EUR\tRF_P_SAS\tMostSimilarPop\tMostSimilarPop_LowConfidence\tREFERENCE\n"
         f"sample\t{SAMPLE}\t{SAMPLE}\t{pcs}\t0.00\t0.02\t0.00\t0.97\t0.01\tEUR\tFalse\tFalse\n", gz=True)
     os.makedirs(os.path.join(d, "ancestry"), exist_ok=True)
-    if collect_summary.prs_table_main(["--sample", SAMPLE, "--results", os.path.join(work, "results"), "--sampleset", "sample",
-                                       "--scores", scores, "--input-kind", "gvcf", "--panel", image_tag_panel(),
-                                       "--ancestry-out", os.path.join(d, "ancestry", f"{SAMPLE}_ancestry.tsv"),
-                                       "--out", os.path.join(d, "prs", f"{SAMPLE}_prs_summary.tsv")]):
-        raise SystemExit("prs-table failed")
+    r = subprocess.run([og_binary(), "prs", "table", "--sample", SAMPLE, "--results", os.path.join(work, "results"),
+                        "--sampleset", "sample", "--scores", scores, "--input-kind", "gvcf", "--panel", image_tag_panel(),
+                        "--ancestry-out", os.path.join(d, "ancestry", f"{SAMPLE}_ancestry.tsv"),
+                        "--out", os.path.join(d, "prs", f"{SAMPLE}_prs_summary.tsv")], capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(f"og prs table failed: {r.stderr.strip()}")
 
 
 def image_tag_panel():
@@ -491,12 +495,14 @@ def sample_qc(d):
         "#SEQ_ID\tRG\tCHIP_ID\t#SNPS\t#READS\tAVG_DP\tFREEMIX\tFREELK1\tFREELK0\tFREE_RH\tFREE_RA\tCHIPMIX\tCHIPLK1\t"
         "CHIPLK0\tCHIP_RH\tCHIP_RA\tDPREF\tRDPHET\tRDPALT\n"
         f"{SAMPLE}\tNA\tNA\t99846\t3087112\t30.92\t0.00412\t-1418823.2\t-1419102.7\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n")
-    if collect_summary.sample_qc_main(["--sample", SAMPLE, "--somalier-samples", os.path.join(q, "somalier", f"{SAMPLE}.samples.tsv"),
-                                       "--somalier-pairs", os.path.join(q, "somalier", f"{SAMPLE}.pairs.tsv"),
-                                       "--selfsm", os.path.join(q, "verifybamid2", f"{SAMPLE}.selfSM"),
-                                       "--declared-sex", SEX, "--marker-check", "passed",
-                                       "--out", os.path.join(q, f"{SAMPLE}_sample_qc.tsv")]):
-        raise SystemExit("sample-qc failed")
+    r = subprocess.run([og_binary(), "qc", "sample", "--sample", SAMPLE,
+                        "--somalier-samples", os.path.join(q, "somalier", f"{SAMPLE}.samples.tsv"),
+                        "--somalier-pairs", os.path.join(q, "somalier", f"{SAMPLE}.pairs.tsv"),
+                        "--selfsm", os.path.join(q, "verifybamid2", f"{SAMPLE}.selfSM"),
+                        "--declared-sex", SEX, "--marker-check", "passed",
+                        "--out", os.path.join(q, f"{SAMPLE}_sample_qc.tsv")], capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(f"og qc sample failed: {r.stderr.strip()}")
 
 
 def reads(d, rng):
