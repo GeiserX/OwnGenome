@@ -1,0 +1,9 @@
+## consumer sites: synthetic
+## template_sites: 3
+## kept: 3
+## dropped: 0
+#rsid	chrom	pos37	ref37	pos38	ref38	strand
+rs2002	7	140	A	150	A	+
+RS3003	MT	73	A	73	A	+
+rs5005	7	340	C	350	C	+
+rs2002	7	141	A	150	A	+

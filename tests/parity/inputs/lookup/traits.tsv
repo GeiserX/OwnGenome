@@ -1,0 +1,6 @@
+# a synthetic traits table
+# ref is the GRCh38 base
+trait	chrom	pos	rsid	ref	alt
+lactase	chr7	180	rs6006	GT	A
+other	chr7	180	RS6006	G	A
+noref	chrX	1500	rs7007		T

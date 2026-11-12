@@ -4,7 +4,7 @@
 //! the same mentions.
 
 use crate::Error;
-use pycompat::json::Value;
+use pycompat::json::{JsonError, Value};
 use pycompat::text;
 use pycompat::value::{py_str, truthy};
 use std::collections::BTreeSet;
@@ -22,7 +22,23 @@ pub fn load(path: &str) -> Summary {
     let bytes = std::fs::read(path).map_err(|e| Error::io(&e, path))?;
     let text =
         String::from_utf8(bytes).map_err(|_| Error::value(format!("{path}: not UTF-8 text")))?;
-    pycompat::json::loads(&text).map_err(|e| Error::value(e.to_string()))
+    pycompat::json::loads(&text).map_err(|e| match e {
+        JsonError::Decode(msg, at) => Error::value(decode_error(&text, msg, at)),
+        other => Error::value(other.to_string()),
+    })
+}
+
+/// A JSONDecodeError as Python words it: `MSG: line L column C (char N)`,
+/// counted in characters.
+fn decode_error(doc: &str, msg: &str, byte: usize) -> String {
+    let before = &doc[..doc.floor_char_boundary(byte)];
+    let pos = before.chars().count();
+    let line = before.matches('\n').count() + 1;
+    let col = match before.rfind('\n') {
+        Some(nl) => before[nl + 1..].chars().count() + 1,
+        None => pos + 1,
+    };
+    format!("{msg}: line {line} column {col} (char {pos})")
 }
 
 /// `^rs\d+$` in any case, `$` also before a final `\n` (Python's `re`).
@@ -266,6 +282,14 @@ mod tests {
         assert_eq!(r.into_iter().collect::<Vec<_>>(), ["rs12", "rs5\n"]);
         let (g, _) = names_of(&v(r#"{"gene": "SMN exon 7-8 deletion"}"#));
         assert_eq!(g.into_iter().collect::<Vec<_>>(), ["SMN"]);
+    }
+
+    #[test]
+    fn a_decode_error_reads_as_python_words_it() {
+        assert_eq!(
+            decode_error("{\n  \"é\": x", "Expecting value", 9),
+            "Expecting value: line 2 column 7 (char 8)"
+        );
     }
 
     #[test]
