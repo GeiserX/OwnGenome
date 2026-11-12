@@ -25,7 +25,8 @@
 # the sex from the reads; the verdict is still the sex from the reads alone. FREEMIX above FREEMIX_WARN
 # (default 0.03) is a warning only: contamination makes calls less reliable,
 # it does not make them someone else's.
-# The mosaic estimate (bin/mosaic_sex_loss.py) never stops the step either:
+# A data problem in the mosaic estimate (og qc sex-loss) never stops the step
+# either (a missing og binary does):
 # below about 10% of the cells nothing can be told at 30x, and above it the
 # result is a population-level marker, not a diagnosis (docs/33-sample-qc.md).
 #
@@ -183,8 +184,9 @@ val() { awk -F'\t' -v k="$1" '$1 == k { print $2; exit }' "$TABLE"; }
 
 # --- 4. Mosaic loss of chrY or of one chrX -----------------------------------------
 # From step 16b's mosdepth windows and, for a woman, the VCF's chrX allele
-# fractions; bin/mosaic_sex_loss.py adds its rows to the table, as in the
-# Nextflow SAMPLE_QC process. A missing input is named in mosaic_reason.
+# fractions; og qc sex-loss (rust/, built by scripts/setup.sh --og) adds its
+# rows to the table, as in the Nextflow SAMPLE_QC process. A missing input is
+# named in mosaic_reason.
 echo ""
 echo "--- mosaic loss of chrY or chrX"
 MOSAIC_ARGS=()
@@ -198,7 +200,7 @@ if [ -s "${SAMPLE_DIR}/vcf/${SAMPLE}.vcf.gz" ]; then
   MOSAIC_ARGS+=(--vcf "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz")
 fi
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/mosaic_sex_loss.py --table "/genome/${SAMPLE}/qc/${SAMPLE}_sample_qc.tsv" "${MOSAIC_ARGS[@]}"
+  /pgp-bin/og qc sex-loss --table "/genome/${SAMPLE}/qc/${SAMPLE}_sample_qc.tsv" "${MOSAIC_ARGS[@]}"
 
 echo ""
 echo "=== Step 33 complete ==="

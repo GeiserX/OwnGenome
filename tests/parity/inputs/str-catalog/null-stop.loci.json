@@ -1,0 +1,170 @@
+[
+ {
+  "id": "HD_HTT",
+  "gene": "HTT",
+  "start_hg38": 3074876,
+  "stop_hg38": 3074933,
+  "benign_max": 26,
+  "pathogenic_min": 36,
+  "intermediate_min": 27,
+  "intermediate_max": 35,
+  "disease_id": "HD",
+  "inheritance": [
+   "AD"
+  ],
+  "locus_structure": [
+   {
+    "type": "pathogenic_repeat",
+    "motif": "CAG"
+   },
+   {
+    "type": "other",
+    "motif": "CCG"
+   }
+  ]
+ },
+ {
+  "id": "EIEE1_ARX",
+  "gene": "ARX",
+  "start_hg38": 25013649,
+  "stop_hg38": null,
+  "benign_max": 16,
+  "pathogenic_min": 20,
+  "inheritance": "XR"
+ },
+ {
+  "id": "PRTS_ARX",
+  "gene": "arx",
+  "start_hg38": 25013529,
+  "stop_hg38": 25013565,
+  "benign_max": null,
+  "pathogenic_min": 20,
+  "disease_id": "",
+  "inheritance": [
+   "XR",
+   "XD"
+  ]
+ },
+ {
+  "id": "FAME1_SAMD12",
+  "gene": "SAMD12",
+  "start_hg38": 118366913,
+  "stop_hg38": 118366918,
+  "benign_max": null,
+  "pathogenic_min": 105,
+  "disease_id": "FAME1",
+  "locus_structure": [
+   {
+    "type": "pathogenic_repeat",
+    "motif": "TTTCA"
+   }
+  ],
+  "pathogenic_motif_reference_orientation": [
+   "tgaaa"
+  ],
+  "reference_motif_reference_orientation": [
+   "TAAAA"
+  ],
+  "benign_motif_reference_orientation": [
+   "TAAAA",
+   "TGAAAA"
+  ]
+ },
+ {
+  "id": "CANVAS_RFC1",
+  "gene": "RFC1",
+  "start_hg38": 39348424,
+  "stop_hg38": 39348483,
+  "benign_max": null,
+  "pathogenic_min": 400,
+  "disease_id": "CANVAS",
+  "inheritance": [
+   "AR"
+  ],
+  "pathogenic_motif_reference_orientation": [
+   "AAGGG",
+   "ACAGG",
+   "AAAGG"
+  ],
+  "reference_motif_reference_orientation": [
+   "AAAAG"
+  ],
+  "benign_motif_reference_orientation": [
+   "AAAGGG",
+   "AAAAG"
+  ]
+ },
+ {
+  "id": "MCKD1_MUC1",
+  "gene": "MUC1",
+  "start_hg38": 155188505,
+  "stop_hg38": 155192239,
+  "benign_max": null,
+  "pathogenic_min": 1
+ },
+ {
+  "id": "NOPATH_GENE",
+  "gene": "NOPATH",
+  "start_hg38": 1000,
+  "stop_hg38": 1030,
+  "benign_max": 30,
+  "pathogenic_min": null
+ },
+ {
+  "id": "CONTRACT_GENE2",
+  "gene": "GENE2",
+  "start_hg38": 2000,
+  "stop_hg38": 2030,
+  "benign_max": 12,
+  "pathogenic_min": 8
+ },
+ {
+  "id": "FLOAT_GENE3",
+  "gene": "GENE3",
+  "start_hg38": 500,
+  "stop_hg38": 520.0,
+  "benign_max": 10.0,
+  "pathogenic_min": 40.0,
+  "intermediate_min": 11.5
+ },
+ {
+  "id": "LOWER_GENE4",
+  "gene": "GENE4",
+  "start_hg38": 100,
+  "stop_hg38": 160,
+  "benign_max": 5,
+  "pathogenic_min": 50,
+  "locus_structure": [
+   {
+    "type": "pathogenic_repeat",
+    "motif": "cag"
+   }
+  ]
+ },
+ {
+  "id": "UNUSED",
+  "gene": "UNUSED",
+  "start_hg38": 1,
+  "stop_hg38": 2
+ },
+ {
+  "id": "HD_HTT",
+  "gene": "HTT",
+  "start_hg38": 3074876,
+  "stop_hg38": 3074933,
+  "benign_max": 26,
+  "pathogenic_min": 36,
+  "intermediate_min": 27,
+  "intermediate_max": 35,
+  "disease_id": "HD",
+  "inheritance": [
+   "AD"
+  ],
+  "locus_structure": [
+   {
+    "type": "pathogenic_repeat",
+    "motif": "CAG"
+   }
+  ]
+ }
+]

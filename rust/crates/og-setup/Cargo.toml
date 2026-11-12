@@ -1,0 +1,23 @@
+[package]
+name = "og-setup"
+description = "What scripts/setup.sh runs once per install: og str catalog, og setup unzip, og setup genetic-map"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+og-filters.workspace = true
+flate2.workspace = true
+zlib-rs.workspace = true
+indexmap.workspace = true
+
+[dev-dependencies]
+# Only for the test that forms() agrees with og str motif's; the library
+# stays free of htslib, so an og built without BAM support can link it.
+og-bam.workspace = true
+
+[lints]
+workspace = true

@@ -99,7 +99,7 @@ GTF = "\n".join([
     'chr7\tHAVANA\tgene\t640\t660\t.\t-\t.\tgene_id "ENSG2"; gene_type "lncRNA"; gene_name "GENEZ"; level 2;',
 ]) + "\n"
 
-# The layout bin/export_consumer.py writes: "## key: value" lines, then a
+# The layout og consumer build-sites writes: "## key: value" lines, then a
 # "#rsid ..." column line, then the sites.
 SITES = ("## consumer sites: synthetic\n## template_sites: 2\n## kept: 2\n## dropped: 0\n"
          "#rsid\tchrom\tpos37\tref37\tpos38\tref38\tstrand\n"

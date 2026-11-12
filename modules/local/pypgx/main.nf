@@ -9,7 +9,7 @@
     3. Call its vcf genes from the VCF
 
     CYP2D6 copy number comes from read depth: the depth CYP2D6_DEPTH measured
-    is judged first (bin/cyp2d6_depth_check.py), and when the reads there are
+    is judged first (og pgx cyp2d6-check), and when the reads there are
     multi-mapped the summary's CYP2D6 row says Indeterminate. Beside the
     verdict, the check gives the MAPQ >= 20 and gene-body (without REP6)
     shares it counts from the BAM.
@@ -79,12 +79,12 @@ process PYPGX {
     # CYP2D6 depth check (CYP2D6_DEPTH measured it), with the MAPQ >= 20 and
     # gene-body shares counted here from the BAM, as scripts/32-pypgx.sh does
     MEASURE=""
-    if cyp2d6_depth_check.py measure --bam ${bam} --out cyp2d6_mapq_shares.tsv && [ -s cyp2d6_mapq_shares.tsv ]; then
+    if og pgx cyp2d6-measure --bam ${bam} --out cyp2d6_mapq_shares.tsv && [ -s cyp2d6_mapq_shares.tsv ]; then
         MEASURE="--measure cyp2d6_mapq_shares.tsv"
     else
         echo "WARNING: the MAPQ >= 20 and gene-body depth at CYP2D6 was not measured; the check says 'not measured'"
     fi
-    cyp2d6_depth_check.py check --all ${depth_q0} --mapq1 ${depth_q1} \$MEASURE --out ${meta.id}_cyp2d6_depth_check.tsv
+    og pgx cyp2d6-check --all ${depth_q0} --mapq1 ${depth_q1} \$MEASURE --out ${meta.id}_cyp2d6_depth_check.tsv
     DEPTH_STATUS=\$(awk -F'\\t' '\$1 == "status" {print \$2}' ${meta.id}_cyp2d6_depth_check.tsv)
 
     # pypgx reads its bundle from ~/pypgx-bundle. HOME is the task directory,

@@ -14,7 +14,7 @@
 # before a CYP2D6 call reaches PharmCAT.
 #
 # Before Cyrius runs, mosdepth measures the depth over CYP2D6 and its flanks
-# (bin/cyp2d6_depth_check.py). When the reads there are multi-mapped (a BAM
+# and og judges it (og pgx cyp2d6-check, docs/rust.md). When the reads there are multi-mapped (a BAM
 # aligned to a reference with ALT contigs), the call is marked: its Filter
 # becomes CYP2D6_depth_unreliable and step 36 does not pass it on.
 #
@@ -73,24 +73,26 @@ echo "============================================"
 echo ""
 
 # [1/3] Depth over CYP2D6 and its flanks, all reads and MAPQ >= 1. The regions
-# come from bin/cyp2d6_depth_check.py, which also judges them.
+# come from og pgx cyp2d6-bed, and og pgx cyp2d6-check judges them. og runs
+# from OUTDIR with relative paths, so bin/og's shadow mode (OG_SHADOW, set
+# only in CI: tests/parity/README.md) can run the Python it replaced beside it.
 echo "[1/3] CYP2D6 depth check..."
 DEPTH_DIR="${OUTDIR}/cyp2d6_depth"
 CHECK="${OUTDIR}/${SAMPLE}_cyp2d6_depth_check.tsv"
 mkdir -p "$DEPTH_DIR"
 rm -f "$CHECK"
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/cyp2d6_depth_check.py bed > "${DEPTH_DIR}/regions.bed"
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTDIR")" "${PYTHON_IMAGE}" \
+  /pgp-bin/og pgx cyp2d6-bed > "${DEPTH_DIR}/regions.bed"
 for Q in 0 1; do
   run_in --cpus 2 --memory 2g "${MOSDEPTH_IMAGE}" \
     mosdepth -n -c chr22 -t 2 -Q "$Q" -b "$(cpath "${DEPTH_DIR}/regions.bed")" \
       "$(cpath "${DEPTH_DIR}/q${Q}")" "$(cpath "$BAM")"
 done
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/cyp2d6_depth_check.py check \
-    --all "$(cpath "${DEPTH_DIR}/q0.regions.bed.gz")" \
-    --mapq1 "$(cpath "${DEPTH_DIR}/q1.regions.bed.gz")" \
-    --out "$(cpath "$CHECK")"
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTDIR")" "${PYTHON_IMAGE}" \
+  /pgp-bin/og pgx cyp2d6-check \
+    --all cyp2d6_depth/q0.regions.bed.gz \
+    --mapq1 cyp2d6_depth/q1.regions.bed.gz \
+    --out "${SAMPLE}_cyp2d6_depth_check.tsv"
 # A check that wrote nothing counts as failed: the call is then marked.
 DEPTH_STATUS=$(awk -F'\t' '$1 == "status" {print $2}' "$CHECK" 2>/dev/null || true)
 

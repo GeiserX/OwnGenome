@@ -19,7 +19,7 @@ Contamination only warns. A contaminated sample is still your sample; its calls 
 ## Docker Image
 - `SOMALIER_IMAGE`
 - `VERIFYBAMID2_IMAGE`
-- `PYTHON_IMAGE` (the verdict, from `bin/collect_summary.py`, and the mosaic estimate, from `bin/mosaic_sex_loss.py`)
+- `PYTHON_IMAGE` (the verdict, from `bin/collect_summary.py`, and the mosaic estimate, from `og qc sex-loss`, the Rust binary `scripts/setup.sh --og` builds)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
@@ -53,7 +53,7 @@ somalier relate --infer --ped qc/somalier/${SAMPLE}.declared.ped --sites "${SOMA
 verifybamid2 --SVDPrefix "${VERIFYBAMID2_PANEL}" --Reference "${REF_FASTA}" \
   --BamFile aligned/${SAMPLE}_sorted.bam --Output qc/verifybamid2/${SAMPLE}
 python3 bin/collect_summary.py sample-qc --sample ${SAMPLE} ...   # the verdict table
-python3 bin/mosaic_sex_loss.py --table qc/${SAMPLE}_sample_qc.tsv \
+bin/og qc sex-loss --table qc/${SAMPLE}_sample_qc.tsv \
   --regions mosdepth/${SAMPLE}.regions.bed.gz --vcf vcf/${SAMPLE}.vcf.gz   # the mosaic rows, each input when it is there
 ```
 

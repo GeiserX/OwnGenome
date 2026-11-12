@@ -15,7 +15,7 @@ The other steps report what is known to be pathogenic (ClinVar, CPSR) or what lo
 ## Tool
 
 - Exomiser 15.1.0 (AGPL-3.0), command `exomiser analyse`, with Exomiser's exome preset: PASS calls only; variants in UTRs, introns and between genes removed; a 2% ceiling on the highest population frequency (UK10K and gnomAD exomes and genomes); REVEL, MVP, AlphaMissense and SpliceAI for pathogenicity; the inheritance filter; then the OMIM and hiPHIVE prioritisers.
-- `bin/exomiser_report.py` (standard library Python): checks the terms against the HPO release inside Exomiser's data, writes the analysis file, and reads Exomiser's variants table into the report.
+- `og exomiser prepare` and `og exomiser report` (OwnGenome's Rust binary, [og](rust.md)): check the terms against the HPO release inside Exomiser's data, write the analysis file, and read Exomiser's variants table into the report.
 
 The genome preset of Exomiser also scores non-coding variants, but it needs the separate REMM data and its regulatory features; this step does not install them.
 

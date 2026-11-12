@@ -397,7 +397,7 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### Stranger over-flags RFC1 (CANVAS) from short reads — do not read it as a diagnosis
 - **Observed:** Stranger can report RFC1 `STR_STATUS=full_mutation` for a modest expansion (e.g. 51/73 of the degenerate `AARRG` motif). CANVAS requires the **AAGGG** motif specifically, **biallelic**, at **~400–2000+** repeats — short-read ExpansionHunter cannot resolve AAGGG vs the benign AAAAG, and the catalog's `STR_PATHOLOGIC_MIN=12` is not the clinical threshold.
 - **Interpretation:** Treat an RFC1 flag as **uninterpretable from short-read WGS** — confirm with motif-aware/flanking-PCR testing only if clinically indicated. (Documented in `docs/09b-stranger.md`.)
-- **Since then:** ExpansionHunter's count still cannot tell the motifs apart, but when Stranger flags RFC1, step 9b counts the motif in the reads over the repeat (`bin/rfc1_motif.py`) and gives a verdict; without the sample's BAM and its index the verdict is `not_checked` ([STR Annotation, Notes](09b-stranger.md#notes)).
+- **Since then:** ExpansionHunter's count still cannot tell the motifs apart, but when Stranger flags RFC1, step 9b counts the motif in the reads over the repeat (`og str motif`, a port of the first `bin/rfc1_motif.py`) and gives a verdict; without the sample's BAM and its index the verdict is `not_checked` ([STR Annotation, Notes](09b-stranger.md#notes)).
 
 ## Vendor VCF intake (2026-10)
 
@@ -422,7 +422,7 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### The planned CYP2D6 depth rule passed the broken BAM and flagged the clean one
 - **Failed:** the plan for step 32's CYP2D6 depth check was a ratio rule: unreliable when CYP2D6 has less than 0.6 of the depth of its flanks. On the e2e fixture's CYP2D slice, mapped to the no-ALT reference, CYP2D6 has 0.62 of the flank depth with all reads and 0.57 at MAPQ >= 1, its normal value; mapped to the Broad hg38 FASTA with ALT contigs, CYP2D6 keeps 0.28 of the flank depth with all reads. On those measured depths the ratio cut at 0.6 flagged the clean BAM and passed the broken one ([CYP2D6 depth check](32-pypgx.md#cyp2d6-depth-check)).
 - **Why:** CYP2D6 sits beside CYP2D7 and CYP2D8, so its depth is below the flanks on a correct alignment too. What an ALT contig changes is where the reads go: a third of them move to `chr22_KI270879v1_alt`, and the ones left get MAPQ 0.
-- **Fix:** the shipped rule (`bin/cyp2d6_depth_check.py`) is the share of reads with MAPQ >= 1: unreliable when more than 40% of the reads at CYP2D6 (when it has at least 15% of the flank depth) or in the flanks have MAPQ 0. The share is 0.91 without ALT contigs and 0.005 with them. The ALT depth A/B workflow runs the check on both mappings and fails unless it passes the first and flags the second.
+- **Fix:** the shipped rule (`og pgx cyp2d6-check`, a port of the first `bin/cyp2d6_depth_check.py`) is the share of reads with MAPQ >= 1: unreliable when more than 40% of the reads at CYP2D6 (when it has at least 15% of the flank depth) or in the flanks have MAPQ 0. The share is 0.91 without ALT contigs and 0.005 with them. The ALT depth A/B workflow runs the check on both mappings and fails unless it passes the first and flags the second.
 - **Rule:** measure a threshold on both the good and the broken input before writing it down; a ratio that sounds right can sit on the wrong side of the normal value.
 
 ### SURVIVOR names its columns after the input samples and exits 0 on a missing file
@@ -483,12 +483,12 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### ADMIXTURE's bootstrap crashes when it is combined with projection
 - **Failed:** `admixture -P -B100 sample.bed 6` printed `Bootstrap replicate #0` and died with a segmentation fault, on the 1.3.0 BioContainer, on every input we tried: a planted person, a real one, 235 SNVs and 1,003 SNVs.
 - **Why:** not investigated beyond the crash; 1.3.0 is the only build BioContainers publishes, so a newer ADMIXTURE would need an image built here.
-- **Fix:** step 26b runs its own block bootstrap. `bin/ancestry_fine_report.py sample-bed` writes `run_admixture.sh`, which projects the sample once per level, then for each replicate draws 100 blocks of neighbouring SNVs with replacement (awk, seeded by the replicate number), writes them as a PLINK `.ped` with the matching rows of the frequency file, and projects that. 100 replicates of 1,003 SNVs take about a second in total.
+- **Fix:** step 26b runs its own block bootstrap. `og ancestry-fine sample-bed` writes `run_admixture.sh`, which projects the sample once per level, then for each replicate draws 100 blocks of neighbouring SNVs with replacement (awk, seeded by the replicate number), writes them as a PLINK `.ped` with the matching rows of the frequency file, and projects that. 100 replicates of 1,003 SNVs take about a second in total.
 
 ### ADMIXTURE reads a `.ped` the other way round from a `.bed`
 - **Failed:** the same genotypes projected as a `.bed` and as a `.ped` gave different fractions (0.96 against 0.46 for the largest group).
 - **Why:** in PLINK's "12" coding, allele 2 is the `.bim`'s A1 (what plink2 wrote as the ALT allele here), not allele 1. Writing homozygous-ALT as `1 1` mirrors every genotype.
-- **Fix:** `PED_ALLELES` in `bin/ancestry_fine_report.py` maps the `.bed` codes to `2 2`, `1 2` and `1 1`, and `tests/test_ancestry_fine_report.py` checks both encodings of the same three genotypes.
+- **Fix:** `og ancestry-fine sample-bed` (`ped_alleles` in `rust/crates/og-ancestry/src/sample_bed.rs`) maps the `.bed` codes to `2 2`, `1 2` and `1 1`, and `tests/test_ancestry_fine_report.py` checks both encodings of the same three genotypes.
 
 ### ADMIXTURE stops on a SNV with no genotype, which for one person is every missing site
 - **Failed:** `admixture -P` exited 255 with `detected that all genotypes are missing for a SNP locus`.
@@ -498,7 +498,7 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### RFMix dies with a segmentation fault on a short chromosome
 - **Failed:** RFMix 2.03 printed `mm::allocate() ... requesting zero or negative size (0)` at `setup_ref_haplotypes()` and segfaulted on the fixture's slices (0.1 to 2.7 cM each), while the same command on chr6:29.9-33.1 Mb and on chr22:20-35 Mb ran to the end.
 - **Why:** not investigated beyond its message: on those slices `setup_ref_haplotypes()` asks for a buffer of size zero, and the longer ranges do not hit it.
-- **Fix:** the step paints a chromosome only with 100 genotyped SNVs or more spanning 5 cM or more (`bin/ancestry_fine_report.py chroms`, from the panel's genetic map). Every autosome of a whole genome spans more than 40 cM; on a slice panel the step says it painted nothing instead of crashing.
+- **Fix:** the step paints a chromosome only with 100 genotyped SNVs or more spanning 5 cM or more (`og ancestry-fine chroms`, from the panel's genetic map). Every autosome of a whole genome spans more than 40 cM; on a slice panel the step says it painted nothing instead of crashing.
 
 ### htslib writes a remote index into the working directory
 - **Failed:** `bcftools view https://.../hgdp1kgp_chr1...bcf` inside the container could not create `hgdp1kgp_chr1....bcf.csi` in its working directory, so it could not read the index and failed.

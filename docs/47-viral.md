@@ -16,7 +16,7 @@ The reads a human alignment leaves unmapped are already in the BAM and nothing e
 
 - samtools to take the reads out of the BAM and to measure the depths
 - minimap2 (`-ax sr --frag=no`) to realign them to the viral genomes
-- `bin/viral_report.py` (standard library Python) for the calls
+- `og viral report` (OwnGenome's Rust binary, [og](rust.md)) for the calls
 
 ## Docker Image
 
@@ -60,7 +60,7 @@ With `run-all.sh`: `TOOLS=...,viral`; a run lists step 47 only when `TOOLS` name
 3. `samtools coverage` gives the reads per viral genome, and `samtools depth -aa` the depth at every base, zero included.
 4. `samtools coverage` over the sample's BAM gives the human depth: chr1 to chr22, over the bases with at least one read. Both coverages count duplicates and leave out unmapped, secondary and QC-failed reads, so the two depths are measured the same way.
 
-Per genome, `bin/viral_report.py` writes:
+Per genome, `og viral report` writes:
 
 | Column | Meaning |
 |---|---|

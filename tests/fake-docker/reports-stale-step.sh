@@ -109,8 +109,15 @@ TXT="${S}/sample1_report.txt"
 HTML="${S}/sample1_report.html"
 [ -s "$TXT" ] || fail "no text report"
 [ -s "$HTML" ] || fail "no HTML report"
-python3 "${REPO_ROOT}/tests/schema/validate.py" "${REPO_ROOT}/tests/schema/summary.schema.json" "${S}/summary.json" \
-  || fail "summary.json does not validate"
+# The schema check needs og: Guard's rust job runs this case with og built
+# and requires the line below; the fake-docker job has no og and says so.
+if "${REPO_ROOT}/bin/og" version > /dev/null 2>&1; then
+  "${REPO_ROOT}/bin/og" dev schema "${REPO_ROOT}/tests/schema/summary.schema.json" "${S}/summary.json" \
+    || fail "summary.json does not validate"
+  echo "summary.json validates (og dev schema)"
+else
+  echo "SKIP the schema check of summary.json: og is not built here (Guard's rust job runs it)"
+fi
 grep -A2 '^## Variant Prioritization (slivar)' "$TXT" | grep -q 'STALE: from an earlier run.*step 31 was skipped' \
   || fail "the text report does not mark the old slivar result stale: $(grep -A3 'slivar' "$TXT" | tr '\n' '|')"
 grep -q '<div class="stale">STALE: from an earlier run.*step 31 was skipped' "$HTML" \

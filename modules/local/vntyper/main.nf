@@ -4,8 +4,8 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Opt-in ('vntyper' in --tools), for each sample with a BAM. One task, as
     scripts/52-vntyper.sh: VNtyper runs on the BAM (fast mode, GRCh38, from
-    /opt/vntyper, where its reference paths point), then bin/vntyper_report.py,
-    with the image's Python, writes the table: positive, possible, negative or
+    /opt/vntyper, where its reference paths point), then og vntyper report
+    (the static binary bin/og) writes the table: positive, possible, negative or
     not assessed, with the sensitivity at the sample's depth over the VNTR.
     VNtyper's exit code goes to the table; a run that stops reads "not
     assessed". The image's entrypoint takes only its own command words, so
@@ -46,7 +46,7 @@ process VNTYPER {
         --fast-mode --reference-assembly hg38 ) > ${meta.id}_vntyper.log 2>&1 || rc=\$?
     [ "\$rc" -eq 0 ] || { echo "WARNING: VNtyper exited \$rc; last lines of its log:" >&2; tail -n 20 ${meta.id}_vntyper.log >&2; }
     mkdir -p run
-    vntyper_report.py --run-dir run --exit-code \$rc --log ${meta.id}_vntyper.log --out ${meta.id}_vntyper.tsv
+    og vntyper report --run-dir run --exit-code \$rc --log ${meta.id}_vntyper.log --out ${meta.id}_vntyper.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

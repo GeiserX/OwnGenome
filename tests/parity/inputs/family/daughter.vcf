@@ -1,0 +1,7 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=248956422>
+##contig=<ID=chrX,assembly=x,length=156040895>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	dad	kid	mum
+chrX	5000000	.	A	G	50	.	.	GT:DP:AD:GQ	1/1:30:15,15:50	1/1:30:15,15:50	0/0:30:15,15:50
+chrX	5000100	.	A	G	50	.	.	GT:DP:AD:GQ	0/0:30:15,15:50	0/1:30:14,16:50	0/0:30:15,15:50
+chrX	5000200	.	A	G	50	.	.	GT:DP:AD:GQ	1/1:30:15,15:50	0/1:30:15,15:50	0/0:30:15,15:50

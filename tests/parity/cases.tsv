@@ -13,6 +13,63 @@ setup-mask-fasta	lone-cr	setup-mask-fasta/lone-cr.fa,setup-mask-fasta/lone-cr.be
 setup-mask-fasta	empty-header	setup-mask-fasta/empty-header.fa,setup-mask-fasta/empty-header.bed	empty-header.fa empty-header.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	bad-bed	setup-mask-fasta/bad-bed.fa,setup-mask-fasta/bad-bed.bed	bad-bed.fa bad-bed.bed out.fa	out.fa	bytes	PYTHON_IMAGE
 setup-mask-fasta	synthetic-254mb	gen:synthetic-fasta.sh	synthetic.fa synthetic.bed out.fa	out.fa	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	clean_no_alt	pgx-cyp2d6-check/clean_no_alt.q0.bed,pgx-cyp2d6-check/clean_no_alt.q1.bed	--all clean_no_alt.q0.bed --mapq1 clean_no_alt.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	multimapped_with_alt	pgx-cyp2d6-check/multimapped_with_alt.q0.bed,pgx-cyp2d6-check/multimapped_with_alt.q1.bed	--all multimapped_with_alt.q0.bed --mapq1 multimapped_with_alt.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	deleted_both	pgx-cyp2d6-check/deleted_both.q0.bed,pgx-cyp2d6-check/deleted_both.q1.bed	--all deleted_both.q0.bed --mapq1 deleted_both.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	deleted_one	pgx-cyp2d6-check/deleted_one.q0.bed,pgx-cyp2d6-check/deleted_one.q1.bed	--all deleted_one.q0.bed --mapq1 deleted_one.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	no_flank_reads	pgx-cyp2d6-check/no_flank_reads.q0.bed,pgx-cyp2d6-check/no_flank_reads.q1.bed	--all no_flank_reads.q0.bed --mapq1 no_flank_reads.q1.bed --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+pgx-cyp2d6-check	measured	pgx-cyp2d6-check/clean_no_alt.q0.bed,pgx-cyp2d6-check/clean_no_alt.q1.bed,pgx-cyp2d6-check/shares.tsv	--all clean_no_alt.q0.bed --mapq1 clean_no_alt.q1.bed --measure shares.tsv --out check.tsv	check.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	male	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions m.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	drift	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions drift.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	loss-30	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions m30.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	xyy	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions xyy.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	slice	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions slice.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-chr-prefix	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions nochr.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	female	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf f.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	female-loss-30	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f30.bed.gz --vcf f30.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	copy-neutral	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf fcn.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	noisy	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf noisy.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	female-no-vcf	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	not-a-vcf	qc-sex-loss/female.tsv,qc-sex-loss/notkv.tsv	--table female.tsv --vcf notkv.tsv	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-sex	gen:sex-loss.sh,qc-sex-loss/nosex.tsv	--table nosex.tsv --regions f.bed.gz	nosex.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-regions	qc-sex-loss/male.tsv	--table male.tsv	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	reads-win	gen:sex-loss.sh,qc-sex-loss/reads.tsv	--table reads.tsv --regions m.bed.gz	reads.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	declared	gen:sex-loss.sh,qc-sex-loss/declared.tsv	--table declared.tsv --regions m.bed.gz	declared.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	rerun	gen:sex-loss.sh,qc-sex-loss/rerun.tsv	--table=rerun.tsv --regions=m30.bed.gz --regions m.bed.gz	rerun.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	missing-regions	qc-sex-loss/male.tsv	--table male.tsv --regions nowhere.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	missing-vcf	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf nowhere.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	regions-is-a-dir	qc-sex-loss/male.tsv	--table male.tsv --regions .	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	truncated-gzip	gen:sex-loss.sh,qc-sex-loss/male.tsv	--table male.tsv --regions trunc.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	short-line	qc-sex-loss/male.tsv,qc-sex-loss/short.bed	--table male.tsv --regions short.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	bad-start	qc-sex-loss/male.tsv,qc-sex-loss/int.bed	--table male.tsv --regions int.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	bad-depth	qc-sex-loss/male.tsv,qc-sex-loss/float.bed	--table male.tsv --regions float.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	bad-pos	gen:sex-loss.sh,qc-sex-loss/female.tsv,qc-sex-loss/badpos.vcf	--table female.tsv --regions f.bed.gz --vcf badpos.vcf	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	missing-table	-	--table nowhere.tsv	-	bytes	PYTHON_IMAGE
+qc-sex-loss	not-key-value	qc-sex-loss/notkv.tsv	--table notkv.tsv	notkv.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	nan-depth	qc-sex-loss/male.tsv,qc-sex-loss/nan.bed	--table male.tsv --regions nan.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	not-utf8	qc-sex-loss/male.tsv,qc-sex-loss/latin1.bed	--table male.tsv --regions latin1.bed	male.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	huge-ad	gen:sex-loss.sh,qc-sex-loss/female.tsv	--table female.tsv --regions f.bed.gz --vcf huge.vcf.gz	female.tsv	bytes	PYTHON_IMAGE
+qc-sex-loss	no-table-arg	gen:sex-loss.sh	--regions m.bed.gz	-	bytes	PYTHON_IMAGE
+qc-sex-loss	genome	gen:sex-loss-genome.sh,qc-sex-loss/male.tsv	--table male.tsv --regions genome.bed.gz	male.tsv	bytes	PYTHON_IMAGE
+clinvar-join-adjacent	prepare	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-window-3	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare --window 3 join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-window-0	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare --window 0 join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-edge	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode prepare join-edge.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	finish	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode finish filled.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	build	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode build --fasta ref.fa join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	build-window-3	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode build --fasta ref.fa --window 3 join.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	tag	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode tag tag.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	tag-window-12	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode tag --window 12 tag.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	tag-edge	gen:clinvar-cases.sh,clinvar-join-adjacent/oracle.sh	--mode tag join-edge.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	build-synthetic	gen:clinvar-synthetic.sh,clinvar-join-adjacent/oracle.sh	--mode build --fasta synthetic.fa synthetic.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-join-adjacent	prepare-synthetic	gen:clinvar-synthetic.sh,clinvar-join-adjacent/oracle.sh	--mode prepare synthetic.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	hits	gen:clinvar-cases.sh	hits.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	floor	gen:clinvar-cases.sh	hits-floor.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	gene	gen:clinvar-cases.sh	hits-gene.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-hits	tag-output	gen:clinvar-cases.sh	tag.vcf	-	bytes	BCFTOOLS_IMAGE
+clinvar-deep-intronic	gvcf	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	sites.tsv sites-vcf.txt sites-gvcf.txt	-	bytes	BCFTOOLS_IMAGE
+clinvar-deep-intronic	no-gvcf	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	--no-gvcf sites.tsv sites-vcf.txt empty.txt	-	bytes	BCFTOOLS_IMAGE
+clinvar-deep-intronic	min-gq-45	gen:clinvar-cases.sh,clinvar-deep-intronic/oracle.sh	--min-gq 45 sites.tsv sites-vcf.txt sites-gvcf.txt	-	bytes	BCFTOOLS_IMAGE
 vcf-csq-rank	unit-records	vcf-csq-rank/unit-records.vcf,vcf-csq-rank/oracle.sh	--in unit-records.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
 vcf-csq-rank	unit-records-noncommon	vcf-csq-rank/unit-records.vcf,vcf-csq-rank/oracle.sh	--keep noncommon --in unit-records.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
 vcf-csq-rank	floors	vcf-csq-rank/unit-records.vcf,vcf-csq-rank/oracle.sh	--keep noncommon --rare-af 0.5 --min-gq 0 --min-dp 0 --het-lo 0 --het-hi 1 --hom-lo 0 --in unit-records.vcf --out out.vcf	out.vcf	mask:^##INFO=<ID=PGP_	BCFTOOLS_IMAGE
@@ -157,6 +214,115 @@ pgx-mito-merge	missing-outside	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/hom.vc
 pgx-mito-merge	short	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/short.vcf	--jar pharmcat.jar --mito short.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
 pgx-mito-merge	bad-pos	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/badpos.vcf	--jar pharmcat.jar --mito badpos.vcf --out out.tsv	-	bytes	PHARMCAT_IMAGE
 pgx-mito-merge	bad-depth	pgx-mito-merge/pharmcat.jar,pgx-mito-merge/background.vcf,pgx-mito-merge/bad.depth	--jar pharmcat.jar --mito background.vcf --depth bad.depth --out out.tsv	-	bytes	PHARMCAT_IMAGE
+str-catalog	release	gen:strchive.sh	--eh eh.json --loci loci.json --release pinned --out catalog.json --ranges str_ranges.tsv	catalog.json,str_ranges.tsv	bytes	PYTHON_IMAGE
+str-catalog	release-extra	gen:strchive.sh	--eh eh.json --loci loci.json --release pinned --out catalog.json --ranges str_ranges.tsv --extra str_extra_loci.json	catalog.json,str_ranges.tsv	bytes	PYTHON_IMAGE
+str-catalog	release-no-ranges	gen:strchive.sh	--eh=eh.json --loci loci.json --release pinned --out catalog.json	catalog.json	bytes	PYTHON_IMAGE
+str-catalog	mix	str-catalog/mix.eh.json,str-catalog/mix.loci.json,str-catalog/extra.json	--eh mix.eh.json --loci mix.loci.json --release t1 --out catalog.json --ranges str_ranges.tsv --extra extra.json	catalog.json,str_ranges.tsv	bytes	PYTHON_IMAGE
+str-catalog	missing-record	str-catalog/missing.eh.json,str-catalog/mix.loci.json	--eh missing.eh.json --loci mix.loci.json --release t1 --out catalog.json --ranges str_ranges.tsv	-	bytes	PYTHON_IMAGE
+str-catalog	tie	str-catalog/tie.eh.json,str-catalog/tie.loci.json	--eh tie.eh.json --loci tie.loci.json --release t1 --out catalog.json	-	bytes	PYTHON_IMAGE
+str-catalog	bad-region	str-catalog/bad-region.eh.json,str-catalog/bad-region.loci.json	--eh bad-region.eh.json --loci bad-region.loci.json --release t1 --out catalog.json	-	bytes	PYTHON_IMAGE
+str-catalog	normal-high	str-catalog/normal-high.eh.json,str-catalog/normal-high.loci.json	--eh normal-high.eh.json --loci normal-high.loci.json --release t1 --out catalog.json	-	bytes	PYTHON_IMAGE
+str-catalog	null-stop	str-catalog/mix.eh.json,str-catalog/null-stop.loci.json	--eh mix.eh.json --loci null-stop.loci.json --release t1 --out catalog.json --ranges str_ranges.tsv	-	bytes	PYTHON_IMAGE
+str-catalog	no-repeat	str-catalog/no-repeat.eh.json,str-catalog/no-repeat.loci.json	--eh no-repeat.eh.json --loci no-repeat.loci.json --release t1 --out catalog.json	-	bytes	PYTHON_IMAGE
+str-catalog	broken-json	str-catalog/broken.json,str-catalog/mix.loci.json	--eh broken.json --loci mix.loci.json --release t1 --out catalog.json	-	bytes	PYTHON_IMAGE
+str-catalog	no-such-file	str-catalog/mix.loci.json	--eh absent.json --loci mix.loci.json --release t1 --out catalog.json	-	bytes	PYTHON_IMAGE
+str-catalog	extra-odd-region	str-catalog/mix.eh.json,str-catalog/mix.loci.json,str-catalog/extra-odd-region.json	--eh mix.eh.json --loci mix.loci.json --release t1 --out catalog.json --ranges str_ranges.tsv --extra extra-odd-region.json	-	bytes	PYTHON_IMAGE
+str-catalog	extra-no-reason	str-catalog/mix.eh.json,str-catalog/mix.loci.json,str-catalog/extra-no-reason.json	--eh mix.eh.json --loci mix.loci.json --release t1 --out catalog.json --extra extra-no-reason.json	-	bytes	PYTHON_IMAGE
+str-catalog	extra-name-taken	str-catalog/mix.eh.json,str-catalog/mix.loci.json,str-catalog/extra-name-taken.json	--eh mix.eh.json --loci mix.loci.json --release t1 --out catalog.json --extra extra-name-taken.json	-	bytes	PYTHON_IMAGE
+str-catalog	extra-thresholds	str-catalog/mix.eh.json,str-catalog/mix.loci.json,str-catalog/extra-thresholds.json	--eh mix.eh.json --loci mix.loci.json --release t1 --out catalog.json --extra extra-thresholds.json	-	bytes	PYTHON_IMAGE
+str-catalog	extra-no-id	str-catalog/mix.eh.json,str-catalog/mix.loci.json,str-catalog/extra-no-id.json	--eh mix.eh.json --loci mix.loci.json --release t1 --out catalog.json --extra extra-no-id.json	-	bytes	PYTHON_IMAGE
+str-catalog	extra-empty	str-catalog/mix.eh.json,str-catalog/mix.loci.json,str-catalog/extra-empty.json	--eh mix.eh.json --loci mix.loci.json --release t1 --out catalog.json --extra extra-empty.json	-	bytes	PYTHON_IMAGE
+consumer	build-sites-unit	consumer/build-tpl.txt.gz,consumer/build-dbsnp.vcf	build-sites --template build-tpl.txt.gz --dbsnp build-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv --source unit	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-bgzf	consumer/build-tpl.txt.gz,consumer/build-dbsnp.vcf.gz	build-sites --template build-tpl.txt.gz --dbsnp build-dbsnp.vcf.gz --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-edge	consumer/build-edge-tpl.txt,consumer/build-edge-dbsnp.vcf	build-sites --source=edge --template build-edge-tpl.txt --dbsnp build-edge-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-same-position	consumer/same-tpl.txt,consumer/same-dbsnp.vcf	build-sites --template same-tpl.txt --dbsnp same-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	build-sites-none-kept	consumer/none-tpl.txt,consumer/same-dbsnp.vcf	build-sites --template none-tpl.txt --dbsnp same-dbsnp.vcf --out sites.tsv.gz --dropped dropped.tsv	sites.tsv.gz,dropped.tsv	*.gz=gz-content bytes	PYTHON_IMAGE
+consumer	export-male	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-female	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex female --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-no-sex	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-male-no-par	consumer/unit.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-bgzf	consumer/unit-bgzf.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit-bgzf.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-hole	consumer/hole.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf hole.g.vcf.gz --sites unit-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-het-run	consumer/run.g.vcf.gz,consumer/run-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf run.g.vcf.gz --sites run-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-shifted	consumer/run.g.vcf.gz,consumer/shifted-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf run.g.vcf.gz --sites shifted-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-unsorted	consumer/unsorted.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unsorted.g.vcf.gz --sites unit-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-contig-twice	consumer/twice.g.vcf.gz,consumer/unit-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf twice.g.vcf.gz --sites unit-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-edge-male	consumer/edge.g.vcf.gz,consumer/edge-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf edge.g.vcf.gz --sites edge-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-edge-female	consumer/edge.g.vcf.gz,consumer/edge-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf edge.g.vcf.gz --sites edge-sites.tsv.gz --sample S --sex=female --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-many-alleles	consumer/many.g.vcf.gz,consumer/many-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf many.g.vcf.gz --sites many-sites.tsv.gz --sample S --par par_grch38.bed --out-dir out	-	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-strict-reader-fails	consumer/unit.g.vcf.gz,consumer/badid-sites.tsv.gz,consumer/par_grch38.bed	export --gvcf unit.g.vcf.gz --sites badid-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.txt,out/S_ancestrydna_layout.txt	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	export-synthetic	gen:consumer-synthetic.sh,consumer/par_grch38.bed	export --gvcf synthetic.g.vcf.gz --sites synthetic-sites.tsv.gz --sample S --sex male --par par_grch38.bed --out-dir out	out/S_23andme_v5.zip,out/S_ancestrydna_layout.zip,out/S_consumer_export.tsv	*.zip=zip-content bytes	PYTHON_IMAGE
+consumer	check-good	consumer/good.txt	check --layout 23andme good.txt	-	bytes	PYTHON_IMAGE
+consumer	check-good-zip	consumer/good.zip	check --layout 23andme good.zip	-	bytes	PYTHON_IMAGE
+consumer	check-two-members	consumer/two.zip	check --layout 23andme two.zip	-	bytes	PYTHON_IMAGE
+consumer	check-crlf	consumer/bad-crlf.txt	check --layout 23andme bad-crlf.txt	-	bytes	PYTHON_IMAGE
+consumer	check-no-header	consumer/bad-no-header.txt	check --layout 23andme bad-no-header.txt	-	bytes	PYTHON_IMAGE
+consumer	check-bad-genotype	consumer/bad-bad-genotype.txt	check --layout 23andme bad-bad-genotype.txt	-	bytes	PYTHON_IMAGE
+consumer	check-one-letter	consumer/bad-one-letter.txt	check --layout 23andme bad-one-letter.txt	-	bytes	PYTHON_IMAGE
+consumer	check-out-of-order	consumer/bad-out-of-order.txt	check --layout 23andme bad-out-of-order.txt	-	bytes	PYTHON_IMAGE
+consumer	check-repeated	consumer/bad-repeated.txt	check --layout 23andme bad-repeated.txt	-	bytes	PYTHON_IMAGE
+consumer	check-cut	consumer/bad-cut.txt	check --layout 23andme bad-cut.txt	-	bytes	PYTHON_IMAGE
+consumer	check-mt-two	consumer/bad-mt-two.txt	check --layout 23andme bad-mt-two.txt	-	bytes	PYTHON_IMAGE
+consumer	check-columns	consumer/bad-columns.txt	check --layout 23andme bad-columns.txt	-	bytes	PYTHON_IMAGE
+consumer	check-not-ascii	consumer/bad-not-ascii.txt	check --layout 23andme bad-not-ascii.txt	-	bytes	PYTHON_IMAGE
+consumer	check-rsid	consumer/bad-rsid.txt	check --layout 23andme bad-rsid.txt	-	bytes	PYTHON_IMAGE
+consumer	check-ancestry-good	consumer/anc-good.txt	check --layout ancestrydna anc-good.txt	-	bytes	PYTHON_IMAGE
+consumer	check-ancestry-bad	consumer/anc-bad.txt	check --layout ancestrydna anc-bad.txt	-	bytes	PYTHON_IMAGE
+consumer	check-wrong-layout	consumer/good.txt	check --layout ancestrydna good.txt	-	bytes	PYTHON_IMAGE
+ancestry-fine	panel-map	ancestry-fine/pm/bcf.txt,ancestry-fine/pm/meta.tsv	panel-map --meta meta.tsv --bcf-samples bcf.txt --exclude x1,a1 --paint-per-group 10 --out samples.tsv	samples.tsv	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	panel-map-default-cap	ancestry-fine/pm/bcf.txt,ancestry-fine/pm/meta.tsv	panel-map --meta meta.tsv --bcf-samples bcf.txt --out samples.tsv	samples.tsv	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	panel-map-unknown-exclude	ancestry-fine/pm/bcf.txt,ancestry-fine/pm/meta.tsv	panel-map --meta meta.tsv --bcf-samples bcf.txt --exclude zz,x1,aa --out samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	panel-map-cap-below-minimum	ancestry-fine/pm/bcf.txt,ancestry-fine/pm/meta.tsv	panel-map --meta meta.tsv --bcf-samples bcf.txt --paint-per-group 9 --out samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	panel-map-no-column	ancestry-fine/pm-nocol/bcf.txt,ancestry-fine/pm-nocol/meta.tsv	panel-map --meta meta.tsv --bcf-samples bcf.txt --out samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	panel-map-no-metadata	ancestry-fine/pm-nocol/bcf.txt,ancestry-fine/pm-nocol/meta.tsv	panel-map --meta meta.tsv --bcf-samples meta.tsv --out samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	check-map-ok	ancestry-fine/cm-ok/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	check-map-problems	ancestry-fine/cm-problems/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	check-map-short-row	ancestry-fine/cm-short/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	check-map-flag	ancestry-fine/cm-flag/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	check-map-no-reference	ancestry-fine/cm-empty/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	order	ancestry-fine/order/ref.3.Q,ancestry-fine/order/ref.pop	order --pop ref.pop --q ref.3.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	order-k	ancestry-fine/order-k/ref.2.Q,ancestry-fine/order-k/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	order-same-group	ancestry-fine/order-dup/ref.2.Q,ancestry-fine/order-dup/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	order-rows	ancestry-fine/order-rows/ref.2.Q,ancestry-fine/order-rows/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	order-tie	ancestry-fine/order-tie/ref.2.Q,ancestry-fine/order-tie/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	sample-bed	ancestry-fine/sb/continent.P,ancestry-fine/sb/g.vcf,ancestry-fine/sb/ref.bim,ancestry-fine/sb/region.P	sample-bed --bim ref.bim --vcf g.vcf --sample S --level continent:3:continent.P --level region:2:region.P --bootstrap 7 --min-sites 10 --out-dir adm	adm/S_continent.bed,adm/S_continent.bim,adm/S_continent.fam,adm/S_continent.3.P.in,adm/S_region.bed,adm/S_region.2.P.in,adm/S.geno,adm/S.map,adm/levels.txt,adm/S_sites.txt,adm/run_admixture.sh	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	sample-bed-gz	ancestry-fine/sb-gz/continent.P,ancestry-fine/sb-gz/g.vcf.gz,ancestry-fine/sb-gz/ref.bim	sample-bed --bim ref.bim --vcf g.vcf.gz --sample HG002 --level continent:3:continent.P --min-sites 10 --out-dir .	HG002_continent.bed,HG002.geno,run_admixture.sh	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	sample-bed-min-sites	ancestry-fine/sb-min-sites/continent.P,ancestry-fine/sb-min-sites/g.vcf,ancestry-fine/sb-min-sites/ref.bim	sample-bed --bim ref.bim --vcf g.vcf --sample S --level continent:3:continent.P --out-dir adm	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	sample-bed-p-rows	ancestry-fine/sb-p-rows/continent.P,ancestry-fine/sb-p-rows/g.vcf,ancestry-fine/sb-p-rows/ref.bim,ancestry-fine/sb-p-rows/region.P	sample-bed --bim ref.bim --vcf g.vcf --sample S --level continent:3:continent.P --level region:2:region.P --min-sites 10 --out-dir adm	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	sample-bed-p-missing	ancestry-fine/sb-p-missing/g.vcf,ancestry-fine/sb-p-missing/ref.bim	sample-bed --bim ref.bim --vcf g.vcf --sample S --level continent:3:continent.P --min-sites 10 --out-dir adm	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	chroms	ancestry-fine/chroms/chr19.map,ancestry-fine/chroms/chr2.map,ancestry-fine/chroms/chr20.map,ancestry-fine/chroms/chr22.map,ancestry-fine/chroms/counts.tsv	chroms --counts counts.tsv --maps .	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	chroms-thresholds	ancestry-fine/chroms/chr19.map,ancestry-fine/chroms/chr2.map,ancestry-fine/chroms/chr20.map,ancestry-fine/chroms/chr22.map,ancestry-fine/chroms/counts.tsv	chroms --counts counts.tsv --maps . --min-sites 50 --min-cm 1.5	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	report	ancestry-fine/rep/S_continent.3.Q,ancestry-fine/rep/S_continent.boot.Q,ancestry-fine/rep/S_region.4.Q,ancestry-fine/rep/S_region.boot.Q,ancestry-fine/rep/S_sites.txt,ancestry-fine/rep/chr2.msp.tsv,ancestry-fine/rep/chr20.msp.tsv,ancestry-fine/rep/chrX.msp.tsv,ancestry-fine/rep/failed.txt,ancestry-fine/rep/levels.tsv,ancestry-fine/rep/samples.tsv	report --sample S --model . --admixture . --paint . --panel test --out out	out/S_ancestry_fine.tsv,out/S_painting.bed,out/S_painting.png,out/S_ancestry_fine.txt	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	report-no-painting	ancestry-fine/rep-bare/S_continent.3.Q,ancestry-fine/rep-bare/S_region.4.Q,ancestry-fine/rep-bare/levels.tsv,ancestry-fine/rep-bare/samples.tsv	report --sample S --model . --admixture . --out .	S_ancestry_fine.tsv,S_painting.bed,S_painting.png,S_ancestry_fine.txt	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	report-shape	ancestry-fine/rep-shape/S_continent.3.Q,ancestry-fine/rep-shape/levels.tsv	report --sample S --model . --admixture . --out out	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	report-missing-q	ancestry-fine/rep-missing/levels.tsv	report --sample S --model . --admixture . --out out	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+ancestry-fine	report-unknown-level	ancestry-fine/rep-level/levels.tsv	report --sample S --model . --admixture . --out out	-	bytes;*.png=png-pixels	PYTHON_IMAGE
+dev-schema	valid	dev-schema/schema.json,dev-schema/valid.json	schema.json valid.json	-	bytes	PYTHON_IMAGE
+dev-schema	invalid	dev-schema/schema.json,dev-schema/invalid.json	schema.json invalid.json	-	bytes	PYTHON_IMAGE
+dev-schema	no-final-newline	dev-schema/schema.json,dev-schema/no-newline.json	schema.json no-newline.json	-	bytes	PYTHON_IMAGE
+dev-schema	crlf	dev-schema/schema.json,dev-schema/crlf.json	schema.json crlf.json	-	bytes	PYTHON_IMAGE
+dev-schema	additional-false	dev-schema/extra-schema.json,dev-schema/extra.json	extra-schema.json extra.json	-	bytes	PYTHON_IMAGE
+dev-schema	enum-true	dev-schema/enum-schema.json,dev-schema/enum-true.json	enum-schema.json enum-true.json	-	bytes	PYTHON_IMAGE
+dev-schema	enum-float	dev-schema/enum-schema.json,dev-schema/enum-float.json	enum-schema.json enum-float.json	-	bytes	PYTHON_IMAGE
+dev-schema	minimum-nan	dev-schema/minimum-schema.json,dev-schema/nan.json	minimum-schema.json nan.json	-	bytes	PYTHON_IMAGE
+dev-schema	ref-missing	dev-schema/ref-schema.json,dev-schema/other.json	ref-schema.json other.json	-	bytes	PYTHON_IMAGE
+dev-schema	type-unknown	dev-schema/type-schema.json,dev-schema/other.json	type-schema.json other.json	-	bytes	PYTHON_IMAGE
+dev-schema	keyword-unvisited	dev-schema/unvisited-schema.json,dev-schema/other.json	unvisited-schema.json other.json	-	bytes	PYTHON_IMAGE
+dev-schema	doc-not-json	dev-schema/schema.json,dev-schema/broken.json	schema.json broken.json	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-ok	dev-contract/ok.tsv,dev-contract/S1.tsv,dev-contract/S1.csv,dev-contract/S1.vcf.gz,dev-contract/S1.json,dev-contract/S1_a.txt,dev-contract/S1_b.txt	--contract ok.tsv --outputs . --leg bash --sample S1 --observe	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-ok-nextflow	dev-contract/ok.tsv,dev-contract/S1.tsv,dev-contract/S1.csv,dev-contract/S1.vcf.gz,dev-contract/S1.json,dev-contract/S1_a.txt,dev-contract/S1_b.txt	--contract ok.tsv --outputs . --leg nextflow --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-broken	dev-contract/broken.tsv,dev-contract/S1_cols.tsv,dev-contract/S1_bad.json,dev-contract/S1_list.json,dev-contract/S1_empty.tsv,dev-contract/S1_bashonly.tsv,dev-contract/S1_novcf.vcf,dev-contract/S1_dir	--contract broken.tsv --outputs . --leg nextflow --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-nothing	dev-contract/nothing.tsv,dev-contract/S1.tsv	--contract nothing.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	outputs-truncated-gzip	dev-contract/trunc.tsv,dev-contract/S1_trunc.vcf.gz	--contract trunc.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-dup	dev-contract/dup.tsv	--contract dup.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bad-row	dev-contract/bad-row.tsv	--contract bad-row.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bad-kind	dev-contract/bad-kind.tsv	--contract bad-kind.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bash-process	dev-contract/bash-process.tsv	--contract bash-process.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-short-row	dev-contract/short-row.tsv	--contract short-row.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-bad-header	dev-contract/bad-header.tsv	--contract bad-header.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-no-header	dev-contract/no-header.tsv	--contract no-header.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-crlf	dev-contract/crlf.tsv,dev-contract/S1.tsv	--contract crlf.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
+dev-contract	contract-missing	-	--contract nope.tsv --outputs . --leg bash --sample S1	-	bytes	PYTHON_IMAGE
 prs-format	basic	prs-format/PGS000001_hmPOS_GRCh38.txt.gz,prs-format/labels.tsv	--scores . --out pgs --alleles alleles.tsv --labels labels.tsv	pgs/PGS000001.txt.gz,pgs/chrx_rows.tsv,pgs/score_notes.tsv,pgs/score_evaluations.tsv,alleles.tsv	tsv	PYTHON_IMAGE
 prs-format	keep-x	prs-format/PGS000001_hmPOS_GRCh38.txt.gz,prs-format/labels.tsv	--scores . --out pgs --alleles alleles.tsv --labels labels.tsv --keep-x	pgs/PGS000001.txt.gz,pgs/chrx_rows.tsv,pgs/score_notes.tsv,pgs/score_evaluations.tsv,alleles.tsv	tsv	PYTHON_IMAGE
 prs-format	grch37-refused	prs-format/PGS000009.txt.gz	--scores . --out pgs --alleles alleles.tsv	-	tsv	PYTHON_IMAGE
@@ -199,6 +365,204 @@ chip	check-bad-table	chip/bad-table.tsv	check-table bad-table.tsv	-	bytes	PYTHON
 chip	check-bad-header	chip/bad-header.tsv	check-table bad-header.tsv	-	bytes	PYTHON_IMAGE
 chip	check-short-row	chip/short-row.tsv	check-table short-row.tsv	-	bytes	PYTHON_IMAGE
 chip	check-no-genes	chip/no-genes.tsv	check-table no-genes.tsv	-	bytes	PYTHON_IMAGE
+family	plan-wait	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sample partner_x --have-gvcf partner_x --out plan.tsv	plan.tsv	content	PYTHON_IMAGE
+family	plan-trio	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --family family_a --have-gvcf child_a father_a mother_a --have-clinvar child_a father_a mother_a --ibd-panel yes --write-pedigree wp --out plan.tsv	plan.tsv,wp/family_a/pedigree.tsv	content	PYTHON_IMAGE
+family	plan-duo	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --family family_a --have-gvcf child_a mother_a --have-clinvar mother_a --ibd-panel no --out plan.tsv	plan.tsv	content	PYTHON_IMAGE
+family	plan-partners	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --family family_b --have-gvcf partner_x partner_y --have-clinvar partner_x --out plan.tsv	plan.tsv	content	PYTHON_IMAGE
+family	plan-couple-no-gvcf	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --family family_b --have-gvcf partner_x --have-clinvar partner_x partner_y --out=plan.tsv	plan.tsv	content	PYTHON_IMAGE
+family	plan-pedigree	gen:family-oracle.sh,family/pedigree.example.tsv	plan --families pedigree.example.tsv --have-gvcf child_a father_a --write-pedigree wp	-	content	PYTHON_IMAGE
+family	plan-pedigree-sample	gen:family-oracle.sh,family/pedigree.example.tsv	plan --families pedigree.example.tsv --sample child_a --sex male --have-gvcf child_a	-	content	PYTHON_IMAGE
+family	plan-which	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sample partner_y --which	-	content	PYTHON_IMAGE
+family	plan-which-none	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sample nobody --which	-	content	PYTHON_IMAGE
+family	plan-nobody	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sample nobody	-	content	PYTHON_IMAGE
+family	plan-two-families	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv	-	content	PYTHON_IMAGE
+family	plan-unknown-family	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --family family_c	-	content	PYTHON_IMAGE
+family	plan-sex-contradicts	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sample partner_x --sex female	-	content	PYTHON_IMAGE
+family	plan-sex-ok	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sample partner_x --sex Male	-	content	PYTHON_IMAGE
+family	plan-sex-bad	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sample partner_x --sex boy	-	content	PYTHON_IMAGE
+family	plan-sex-no-sample	gen:family-oracle.sh,family/two_families.tsv	plan --families two_families.tsv --sex male	-	content	PYTHON_IMAGE
+family	plan-crlf	gen:family-oracle.sh,family/ped-crlf.tsv	plan --families ped-crlf.tsv --have-gvcf kid dad mum --out plan.tsv	plan.tsv	content	PYTHON_IMAGE
+family	plan-family-name-is-sample	gen:family-oracle.sh,family/trio.tsv	plan --families trio.tsv --family kid	-	content	PYTHON_IMAGE
+family	plan-bad-twofam	gen:family-oracle.sh,family/fam-twofam.tsv	plan --families fam-twofam.tsv --family fa	-	content	PYTHON_IMAGE
+family	plan-bad-famname	gen:family-oracle.sh,family/fam-famname.tsv	plan --families fam-famname.tsv --family fa	-	content	PYTHON_IMAGE
+family	plan-bad-famissample	gen:family-oracle.sh,family/fam-famissample.tsv	plan --families fam-famissample.tsv --family fa	-	content	PYTHON_IMAGE
+family	plan-bad-parentother	gen:family-oracle.sh,family/fam-parentother.tsv	plan --families fam-parentother.tsv --family fa	-	content	PYTHON_IMAGE
+family	plan-bad-partnerother	gen:family-oracle.sh,family/fam-partnerother.tsv	plan --families fam-partnerother.tsv --family fa	-	content	PYTHON_IMAGE
+family	plan-bad-partial	gen:family-oracle.sh,family/fam-partial.tsv	plan --families fam-partial.tsv --family fa	-	content	PYTHON_IMAGE
+family	plan-all-missing-family	gen:family-oracle.sh,family/fam-allmissing.tsv	plan --families fam-allmissing.tsv --have-gvcf kid dad mum --out plan.tsv	plan.tsv	content	PYTHON_IMAGE
+family	plan-ped-nohead	gen:family-oracle.sh,family/ped-nohead.tsv	plan --families ped-nohead.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-unknowncol	gen:family-oracle.sh,family/ped-unknowncol.tsv	plan --families ped-unknowncol.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-femalefather	gen:family-oracle.sh,family/ped-femalefather.tsv	plan --families ped-femalefather.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-ownparent	gen:family-oracle.sh,family/ped-ownparent.tsv	plan --families ped-ownparent.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-loop	gen:family-oracle.sh,family/ped-loop.tsv	plan --families ped-loop.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-secondrow	gen:family-oracle.sh,family/ped-secondrow.tsv	plan --families ped-secondrow.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-samefm	gen:family-oracle.sh,family/ped-samefm.tsv	plan --families ped-samefm.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-badsex	gen:family-oracle.sh,family/ped-badsex.tsv	plan --families ped-badsex.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-partners	gen:family-oracle.sh,family/ped-partners.tsv	plan --families ped-partners.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-toomany	gen:family-oracle.sh,family/ped-toomany.tsv	plan --families ped-toomany.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-empty	gen:family-oracle.sh,family/ped-empty.tsv	plan --families ped-empty.tsv	-	content	PYTHON_IMAGE
+family	plan-ped-badname	gen:family-oracle.sh,family/ped-badname.tsv	plan --families ped-badname.tsv	-	content	PYTHON_IMAGE
+family	plan-missing-file	gen:family-oracle.sh	plan --families nothere.tsv	-	content	PYTHON_IMAGE
+family	prepare-trio	gen:family-oracle.sh,family/trio.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree trio.tsv --gvcf kid=kid.g.vcf --gvcf dad=dad.g.vcf --gvcf mum=mum.g.vcf --out-dir out	out/members.tsv,out/family.ped,out/trios.ped,out/family_plan.tsv	content	PYTHON_IMAGE
+family	prepare-duo	gen:family-oracle.sh,family/trio.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree trio.tsv --gvcf kid=kid.g.vcf --gvcf mum=mum.g.vcf --declared-sex kid=Male --have-clinvar mum dad --out-dir out	out/members.tsv,out/family.ped,out/trios.ped,out/family_plan.tsv	content	PYTHON_IMAGE
+family	prepare-declared-contradicts	gen:family-oracle.sh,family/trio.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree trio.tsv --gvcf kid=kid.g.vcf --gvcf dad=dad.g.vcf --gvcf mum=mum.g.vcf --declared-sex mum=male --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-declared-bad	gen:family-oracle.sh,family/trio.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree trio.tsv --gvcf kid=kid.g.vcf --gvcf dad=dad.g.vcf --gvcf mum=mum.g.vcf --declared-sex mum=x --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-one-sample	gen:family-oracle.sh,family/trio.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree trio.tsv --gvcf kid=kid.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-wrong-sample	gen:family-oracle.sh,family/trio.tsv,family/kid.g.vcf,family/hg003.g.vcf	prepare --pedigree trio.tsv --gvcf kid=kid.g.vcf --gvcf dad=hg003.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-no-chrom	gen:family-oracle.sh,family/trio.tsv,family/kid.g.vcf,family/nochrom.g.vcf	prepare --pedigree trio.tsv --gvcf kid=kid.g.vcf --gvcf dad=nochrom.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-ped-femalefather	gen:family-oracle.sh,family/ped-femalefather.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree ped-femalefather.tsv --gvcf kid=kid.g.vcf --gvcf dad=dad.g.vcf --gvcf mum=mum.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-ped-loop	gen:family-oracle.sh,family/ped-loop.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree ped-loop.tsv --gvcf kid=kid.g.vcf --gvcf dad=dad.g.vcf --gvcf mum=mum.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-ped-partners	gen:family-oracle.sh,family/ped-partners.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree ped-partners.tsv --gvcf kid=kid.g.vcf --gvcf dad=dad.g.vcf --gvcf mum=mum.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-ped-badsex	gen:family-oracle.sh,family/ped-badsex.tsv,family/kid.g.vcf,family/dad.g.vcf,family/mum.g.vcf	prepare --pedigree ped-badsex.tsv --gvcf kid=kid.g.vcf --gvcf dad=dad.g.vcf --gvcf mum=mum.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	prepare-example	gen:family-oracle.sh,family/pedigree.example.tsv,family/child_a.g.vcf,family/father_a.g.vcf,family/mother_a.g.vcf	prepare --pedigree pedigree.example.tsv --gvcf child_a=child_a.g.vcf --gvcf father_a=father_a.g.vcf --gvcf mother_a=mother_a.g.vcf --out-dir out	out/members.tsv,out/family.ped,out/trios.ped,out/family_plan.tsv	content	PYTHON_IMAGE
+family	prepare-families	gen:family-oracle.sh,family/two_families.tsv,family/child_a.g.vcf,family/father_a.g.vcf,family/mother_a.g.vcf	prepare --pedigree two_families.tsv --family family_a --have-clinvar father_a --ibd-panel yes --pedigree-out ped.tsv --gvcf child_a=child_a.g.vcf --gvcf father_a=father_a.g.vcf --gvcf mother_a=mother_a.g.vcf --out-dir out	out/members.tsv,out/family.ped,out/trios.ped,out/family_plan.tsv,ped.tsv	content	PYTHON_IMAGE
+family	prepare-families-no-family	gen:family-oracle.sh,family/two_families.tsv,family/child_a.g.vcf,family/father_a.g.vcf,family/mother_a.g.vcf	prepare --pedigree two_families.tsv --gvcf child_a=child_a.g.vcf --gvcf father_a=father_a.g.vcf --gvcf mother_a=mother_a.g.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	check-ok	gen:family-oracle.sh,family/members-trio.tsv,family/pairs-ok.tsv	check --members members-trio.tsv --pairs pairs-ok.tsv --out rel.tsv	rel.tsv	content	PYTHON_IMAGE
+family	check-swap	gen:family-oracle.sh,family/members-swap.tsv,family/pairs-ok.tsv	check --members members-swap.tsv --pairs pairs-ok.tsv --out rel.tsv	rel.tsv	content	PYTHON_IMAGE
+family	check-few	gen:family-oracle.sh,family/members-trio.tsv,family/pairs-few.tsv	check --members members-trio.tsv --pairs pairs-few.tsv --out rel.tsv	rel.tsv	content	PYTHON_IMAGE
+family	check-sib	gen:family-oracle.sh,family/members-trio.tsv,family/pairs-sib.tsv	check --members members-trio.tsv --pairs pairs-sib.tsv --out rel.tsv	rel.tsv	content	PYTHON_IMAGE
+family	check-warn	gen:family-oracle.sh,family/members-trio.tsv,family/pairs-warn.tsv	check --members members-trio.tsv --pairs pairs-warn.tsv --out rel.tsv	rel.tsv	content	PYTHON_IMAGE
+family	check-lost	gen:family-oracle.sh,family/members-trio.tsv,family/pairs-lost.tsv	check --members members-trio.tsv --pairs pairs-lost.tsv --out rel.tsv	-	content	PYTHON_IMAGE
+family	check-duo	gen:family-oracle.sh,family/members-duo.tsv,family/pairs-duo.tsv	check --members members-duo.tsv --pairs pairs-duo.tsv --out rel.tsv	rel.tsv	content	PYTHON_IMAGE
+family	report-trio	gen:family-oracle.sh,family/members-trio.tsv,family/rel.tsv,family/trio.vcf,family/kid_clinical.vcf,family/mum_ann.vcf,family/par.bed	report --members members-trio.tsv --relationships rel.tsv --vcf trio.vcf --candidates kid=kid_clinical.vcf --candidates mum=mum_ann.vcf --candidates nobody=kid_clinical.vcf --par-bed par.bed --out-dir out	out/de_novo.tsv,out/compound_het.tsv,out/family_report.md,out/kid_inheritance.tsv.gz	content	PYTHON_IMAGE
+family	report-unsorted	gen:family-oracle.sh,family/members-trio.tsv,family/rel.tsv,family/unsorted.vcf	report --members members-trio.tsv --relationships rel.tsv --vcf unsorted.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	report-trio-gz-no-par	gen:family-oracle.sh,family/members-trio.tsv,family/rel.tsv,family/trio.vcf.gz	report --members members-trio.tsv --relationships rel.tsv --vcf trio.vcf.gz --out-dir out	out/de_novo.tsv,out/compound_het.tsv,out/family_report.md,out/kid_inheritance.tsv.gz	content	PYTHON_IMAGE
+family	report-low	gen:family-oracle.sh,family/members-trio.tsv,family/rel.tsv,family/low.vcf,family/par.bed	report --members members-trio.tsv --relationships rel.tsv --vcf low.vcf --par-bed par.bed --out-dir out	out/de_novo.tsv,out/compound_het.tsv,out/family_report.md,out/kid_inheritance.tsv.gz	content	PYTHON_IMAGE
+family	report-phased	gen:family-oracle.sh,family/members-trio.tsv,family/rel.tsv,family/trio.vcf,family/phased.vcf,family/par.bed	report --members members-trio.tsv --relationships rel.tsv --vcf trio.vcf --phased phased.vcf --par-bed par.bed --out-dir out	out/de_novo.tsv,out/compound_het.tsv,out/family_report.md,out/kid_inheritance.tsv.gz	content	PYTHON_IMAGE
+family	report-duo	gen:family-oracle.sh,family/members-duo.tsv,family/rel-duo.tsv,family/duo.vcf,family/par.bed	report --members members-duo.tsv --relationships rel-duo.tsv --vcf duo.vcf --par-bed par.bed --out-dir out	out/de_novo.tsv,out/compound_het.tsv,out/family_report.md,out/kid_inheritance.tsv.gz	content	PYTHON_IMAGE
+family	report-daughter-x	gen:family-oracle.sh,family/members-daughter.tsv,family/rel.tsv,family/daughter.vcf,family/par.bed	report --members members-daughter.tsv --relationships rel.tsv --vcf daughter.vcf --par-bed par.bed --out-dir out	out/de_novo.tsv,out/compound_het.tsv,out/family_report.md,out/kid_inheritance.tsv.gz	content	PYTHON_IMAGE
+family	report-no-column	gen:family-oracle.sh,family/members-trio.tsv,family/rel.tsv,family/nocol.vcf	report --members members-trio.tsv --relationships rel.tsv --vcf nocol.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	report-nochrom	gen:family-oracle.sh,family/members-trio.tsv,family/rel.tsv,family/nochrom.vcf	report --members members-trio.tsv --relationships rel.tsv --vcf nochrom.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	report-3gen	gen:family-oracle.sh,family/members-3gen.tsv,family/rel-empty.tsv,gen:family-3gen.sh,family/par.bed	report --members members-3gen.tsv --relationships rel-empty.tsv --vcf 3gen.vcf.gz --par-bed par.bed --out-dir out	out/family_report.md,out/kid_segments.tsv,out/kid_dnapainter.csv,out/kid_segments.svg,out/dad_segments.tsv,out/kid_inheritance.tsv.gz,out/dad_inheritance.tsv.gz	content	PYTHON_IMAGE
+family	report-3gen-duo	gen:family-oracle.sh,family/members-3gen-duo.tsv,family/rel-empty.tsv,gen:family-3gen.sh,family/par.bed	report --members members-3gen-duo.tsv --relationships rel-empty.tsv --vcf 3gen.vcf --par-bed par.bed --out-dir out	out/family_report.md,out/kid_segments.tsv,out/kid_dnapainter.csv,out/kid_segments.svg	content	PYTHON_IMAGE
+family	segments-3gen	gen:family-oracle.sh,family/members-3gen.tsv,gen:family-3gen.sh,family/par.bed	segments --members members-3gen.tsv --vcf 3gen.vcf --par-bed par.bed --out-dir out	out/kid_segments.tsv,out/kid_dnapainter.csv,out/kid_segments.svg,out/dad_segments.tsv	content	PYTHON_IMAGE
+family	segments-3gen-no-par	gen:family-oracle.sh,family/members-3gen.tsv,gen:family-3gen.sh	segments --members members-3gen.tsv --vcf 3gen.vcf.gz --out-dir out	out/kid_segments.tsv,out/kid_dnapainter.csv,out/kid_segments.svg	content	PYTHON_IMAGE
+family	segments-ties	gen:family-oracle.sh,family/members-3gen.tsv,family/ties.vcf	segments --members members-3gen.tsv --vcf ties.vcf --out-dir out	out/kid_segments.tsv,out/kid_dnapainter.csv,out/kid_segments.svg	content	PYTHON_IMAGE
+family	segments-no-child	gen:family-oracle.sh,family/members-duo.tsv,family/duo.vcf	segments --members members-duo.tsv --vcf duo.vcf --out-dir out	-	content	PYTHON_IMAGE
+family	report-bench	gen:family-oracle.sh,family/members-bench.tsv,family/rel-empty.tsv,gen:family-bench.sh,family/par.bed	report --members members-bench.tsv --relationships rel-empty.tsv --vcf bench.vcf.gz --par-bed par.bed --out-dir out	out/family_report.md,out/KID_segments.tsv,out/KID_dnapainter.csv,out/KID_segments.svg,out/DAD_segments.tsv,out/KID_inheritance.tsv.gz,out/DAD_inheritance.tsv.gz	content	PYTHON_IMAGE
+vntyper-report	pos	gen:vntyper-runs.sh	--run-dir pos --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	low	gen:vntyper-runs.sh	--run-dir low --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	flag	gen:vntyper-runs.sh	--run-dir flag --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	holes	gen:vntyper-runs.sh	--run-dir holes --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	nounc	gen:vntyper-runs.sh	--run-dir nounc --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	neg	gen:vntyper-runs.sh	--run-dir neg --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	red	gen:vntyper-runs.sh	--run-dir red --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	thin	gen:vntyper-runs.sh	--run-dir thin --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	na	gen:vntyper-runs.sh	--run-dir na --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	hdr	gen:vntyper-runs.sh	--run-dir hdr --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	nok	gen:vntyper-runs.sh	--run-dir nok --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	crlf	gen:vntyper-runs.sh	--run-dir crlf --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	exit-code	gen:vntyper-runs.sh	--run-dir pos --exit-code 1 --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	no-read-log	gen:vntyper-runs.sh	--run-dir empty --exit-code 1 --log empty.log --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	missing-log	gen:vntyper-runs.sh	--run-dir empty --exit-code 1 --log none.log --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+vntyper-report	negative-mean	gen:vntyper-runs.sh	--run-dir negmean --out out.tsv	-	bytes	PYTHON_IMAGE
+vntyper-report	unreadable	gen:vntyper-runs.sh	--run-dir bad --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	clean	gen:locityper-runs.sh	--gt-dir clean --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	far	gen:locityper-runs.sh	--gt-dir far --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	unexplained	gen:locityper-runs.sh	--gt-dir unexplained --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	share	gen:locityper-runs.sh	--gt-dir share --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	warned	gen:locityper-runs.sh	--gt-dir warned --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nodist	gen:locityper-runs.sh	--gt-dir nodist --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nocounts	gen:locityper-runs.sh	--gt-dir nocounts --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nulltotal	gen:locityper-runs.sh	--gt-dir nulltotal --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nores	gen:locityper-runs.sh	--gt-dir nores --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	haploid	gen:locityper-runs.sh	--gt-dir haploid --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	notjson	gen:locityper-runs.sh	--gt-dir notjson --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	cut	gen:locityper-runs.sh	--gt-dir cut --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	plain	gen:locityper-runs.sh	--gt-dir plain --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	boolcounts	gen:locityper-runs.sh	--gt-dir boolcounts --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	strquality	gen:locityper-runs.sh	--gt-dir strquality --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nanquality	gen:locityper-runs.sh	--gt-dir nanquality --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	nosuccess	gen:locityper-runs.sh	--gt-dir nosuccess --loci loci.bed --exit-code 101 --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	three-loci	gen:locityper-runs.sh	--gt-dir clean --loci three.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	list-json	gen:locityper-runs.sh	--gt-dir list --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	int-genotype	gen:locityper-runs.sh	--gt-dir intgenotype --loci loci.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+locityper-report	bad-bed	gen:locityper-runs.sh	--gt-dir clean --loci bad.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	short-bed	gen:locityper-runs.sh	--gt-dir clean --loci short.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	unicode-bed	gen:locityper-runs.sh	--gt-dir clean --loci unicode.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+locityper-report	missing-bed	gen:locityper-runs.sh	--gt-dir clean --loci none.bed --out out.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	one	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	under-floor	mocha/stats.tsv,mocha/calls-low.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-low.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	5x	mocha/stats-5x.tsv,mocha/calls-one.tsv,mocha/sites-300.tsv	--sample S --stats stats-5x.tsv --calls calls-one.tsv --sites sites-300.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	filters	mocha/stats.tsv,mocha/calls-filter.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-filter.tsv --sites sites.tsv --phasing beagle --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	low-call-rate	mocha/stats-low-rate.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-low-rate.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	nan-call-rate	mocha/stats-nan.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-nan.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	autocorrelation	mocha/stats-autocorr.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-autocorr.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	unphased	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites-unphased.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites-unphased.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	no-calls	mocha/stats.tsv,mocha/calls-empty.tsv,mocha/sites-many.tsv	--sample S --stats stats.tsv --calls calls-empty.tsv --sites sites-many.tsv --phasing beagle --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	two-samples	mocha/stats-two.tsv,mocha/calls-two.tsv,mocha/sites.tsv	--sample S --stats stats-two.tsv --calls calls-two.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	crlf	mocha/stats.tsv,mocha/calls-crlf.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-crlf.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	o.tsv,s.tsv	bytes	PYTHON_IMAGE
+mocha-report	no-cov-median	mocha/stats-nocov.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-nocov.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	sample-not-in-stats	mocha/stats-other.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats-other.tsv --calls calls-one.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	short-sites	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites-short.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites-short.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	short-call	mocha/stats.tsv,mocha/calls-short.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-short.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	missing-calls	mocha/stats.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls none.tsv --sites sites.tsv --phasing input --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mocha-report	bad-phasing	mocha/stats.tsv,mocha/calls-one.tsv,mocha/sites.tsv	--sample S --stats stats.tsv --calls calls-one.tsv --sites sites.tsv --phasing shapeit --out-calls o.tsv --out-summary s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	fktn-seen	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	fktn-not-seen	mei/none.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf none.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	outside-window	mei/outside.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf outside.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	thin	mei/fktn.vcf,mei/sites.tsv,mei/depth-thin.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth-thin.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	thin-no-call	mei/none.vcf,mei/sites.tsv,mei/depth-thin.tsv	--sample S --vcf none.vcf --sites sites.tsv --depth depth-thin.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	empty-depth	mei/fktn.vcf,mei/sites.tsv,mei/depth-empty.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth-empty.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	classes	mei/classes.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf classes.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	no-record	mei/empty.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf empty.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	catalog	mei/fktn.vcf,mei/catalog.tsv,mei/depth-catalog.tsv	--sample S --vcf fktn.vcf --sites catalog.tsv --depth depth-catalog.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	two-windows	mei/fktn.vcf,mei/sites-two-windows.tsv,mei/depth-two-windows.tsv	--sample S --vcf fktn.vcf --sites sites-two-windows.tsv --depth depth-two-windows.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	annotsv	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv,mei/annotsv.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv --annotsv annotsv.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	annotsv-empty	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv,mei/annotsv-empty.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv --annotsv annotsv-empty.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	annotsv-bad	mei/fktn.vcf,mei/sites.tsv,mei/depth.tsv,mei/annotsv-bad.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv --annotsv annotsv-bad.tsv	-	bytes	PYTHON_IMAGE
+mei-report	no-chrom-line	mei/nochrom.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf nochrom.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	not-megane	mei/not-megane.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf not-megane.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	bad-depth	mei/fktn.vcf,mei/sites.tsv,mei/depth-bad.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth-bad.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	bad-catalog	mei/fktn.vcf,mei/sites-bad.tsv,mei/depth.tsv	--sample S --vcf fktn.vcf --sites sites-bad.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-annotsv-input	calls	mei/classes.vcf	--sample S --vcf classes.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
+mei-annotsv-input	annotsv-ids	mei/fktn.vcf	--sample S --vcf fktn.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
+mei-annotsv-input	empty	mei/empty.vcf	--sample S --vcf empty.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
+mei-annotsv-input	no-chrom-line	mei/nochrom.vcf	--sample S --vcf nochrom.vcf --out in.vcf	-	bytes	PYTHON_IMAGE
+viral-report	ici	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth ici.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	relative-30	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage relative-30.vcov.tsv --viral-depth relative-30.vdepth.tsv --human-coverage relative-30.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	pileup	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage pileup.vcov.tsv --viral-depth pileup.vdepth.tsv --human-coverage pileup.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	low	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage low.vcov.tsv --viral-depth low.vdepth.tsv --human-coverage low.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	few	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage few.vcov.tsv --viral-depth few.vdepth.tsv --human-coverage few.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	phix-and-both-hhv6	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage phix.vcov.tsv --viral-depth phix.vdepth.tsv --human-coverage phix.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	no-human-depth	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage no-human.vcov.tsv --viral-depth no-human.vdepth.tsv --human-coverage no-human.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	human-mix	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage human-mix.vcov.tsv --viral-depth human-mix.vdepth.tsv --human-coverage human-mix.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	genome-left-out	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth gone.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	crlf-fasta	gen:viral-inputs.sh	--sample S --viral-fasta crlf.fa --viral-coverage ici.vcov.tsv --viral-depth ici.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+viral-report	cut-depth	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth cut.vdepth.tsv --human-coverage ici.hcov.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
+viral-report	bad-coverage	gen:viral-inputs.sh	--sample S --viral-fasta v.fa --viral-coverage ici.vcov.tsv --viral-depth ici.vdepth.tsv --human-coverage bad.hcov.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
+y-str-bed	panel	y-str/panel.tsv	--panel panel.tsv --out regions.bed	regions.bed	bytes	PYTHON_IMAGE
+y-str-bed	panel-order	y-str/panel-order.tsv	--panel panel-order.tsv --out regions.bed	-	bytes	PYTHON_IMAGE
+y-str-report	calls	y-str/panel.tsv,y-str/calls.vcf.gz	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	plain-vcf	y-str/panel.tsv,y-str/calls.vcf	--panel panel.tsv --vcf calls.vcf --tsv o.tsv --csv o.csv	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	read-length-250	y-str/panel.tsv,y-str/calls.vcf.gz	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv --read-length 250	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	log	y-str/panel.tsv,y-str/calls.vcf.gz,y-str/hipstr.log	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv --log hipstr.log	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	empty-log	y-str/panel.tsv,y-str/calls.vcf.gz,y-str/empty.log	--panel panel.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv --log empty.log	o.tsv,o.csv	bytes	PYTHON_IMAGE
+y-str-report	two-samples	y-str/panel.tsv,y-str/two.vcf.gz	--panel panel.tsv --vcf two.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	no-header	y-str/panel.tsv,y-str/nohead.vcf	--panel panel.tsv --vcf nohead.vcf --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-order	y-str/panel-order.tsv,y-str/calls.vcf.gz	--panel panel-order.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-period	y-str/panel-period.tsv,y-str/calls.vcf.gz	--panel panel-period.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-copies	y-str/panel-copies.tsv,y-str/calls.vcf.gz	--panel panel-copies.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+y-str-report	panel-kind	y-str/panel-kind.tsv,y-str/calls.vcf.gz	--panel panel-kind.tsv --vcf calls.vcf.gz --tsv o.tsv --csv o.csv	-	bytes	PYTHON_IMAGE
+exomiser	prepare-terms	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156,HP:0001363,HP:0009803,HP:0011304 --obo hp.obo	a.yml,terms.tsv	bytes	PYTHON_IMAGE
+exomiser	prepare-no-obo	exomiser/one.vcf.gz	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156	a.yml,terms.tsv	bytes	PYTHON_IMAGE
+exomiser	prepare-hg19	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --assembly hg19	a.yml,terms.tsv	bytes	PYTHON_IMAGE
+exomiser	prepare-family	exomiser/fam.vcf.gz,exomiser/hp.obo,exomiser/pedigree.tsv	prepare --sample S1 --vcf fam.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --pedigree pedigree.tsv --ped fam.ped --unaffected DAD --affected SIB	a.yml,terms.tsv,fam.ped	bytes	PYTHON_IMAGE
+exomiser	prepare-malformed	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:12345 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-unknown	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0009999 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-obsolete	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001250 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-two-samples	exomiser/fam.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf fam.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo	-	bytes	PYTHON_IMAGE
+exomiser	prepare-affected-alone	exomiser/one.vcf.gz,exomiser/hp.obo	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --affected S2	-	bytes	PYTHON_IMAGE
+exomiser	prepare-stranger	exomiser/stranger.vcf.gz,exomiser/hp.obo,exomiser/pedigree.tsv	prepare --sample S1 --vcf stranger.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --obo hp.obo --pedigree pedigree.tsv --ped fam.ped	-	bytes	PYTHON_IMAGE
+exomiser	prepare-bad-assembly	exomiser/one.vcf.gz	prepare --sample S1 --vcf one.vcf.gz --assembly hg38 --out-dir results --analysis a.yml --terms terms.tsv --hpo HP:0001156 --assembly grch99	-	bytes	PYTHON_IMAGE
+exomiser	report-top-3	exomiser/variants.tsv,exomiser/terms.tsv	report --sample S1 --variants variants.tsv --terms terms.tsv --out top.tsv --text words.txt --top 3	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-top-default	exomiser/variants.tsv,exomiser/terms.tsv	report --sample S1 --variants variants.tsv --terms terms.tsv --out top.tsv --text words.txt	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-top-1	exomiser/variants.tsv,exomiser/terms.tsv	report --sample S1 --variants variants.tsv --terms terms.tsv --out top.tsv --text words.txt --top 1	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-header-only	exomiser/header-only.tsv,exomiser/terms.tsv	report --sample S1 --variants header-only.tsv --terms terms.tsv --out top.tsv --text words.txt	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-family	exomiser/family.tsv,exomiser/terms.tsv,exomiser/S1_exomiser.ped	report --sample S1 --variants family.tsv --terms terms.tsv --out top.tsv --text words.txt	top.tsv,words.txt	bytes	PYTHON_IMAGE
+exomiser	report-missing-column	exomiser/no-acmg.tsv,exomiser/terms.tsv	report --sample S1 --variants no-acmg.tsv --terms terms.tsv --out top.tsv --text words.txt	-	bytes	PYTHON_IMAGE
+exomiser	report-short-line	exomiser/short.tsv,exomiser/terms.tsv	report --sample S1 --variants short.tsv --terms terms.tsv --out top.tsv --text words.txt	-	bytes	PYTHON_IMAGE
+exomiser	report-empty-file	exomiser/empty.tsv,exomiser/terms.tsv	report --sample S1 --variants empty.tsv --terms terms.tsv --out top.tsv --text words.txt	-	bytes	PYTHON_IMAGE
 cn	bed-all	gen:cn-oracle.sh,cn/oracle.sh	bed --catalog cn_loci.tsv	-	kv	PYTHON_IMAGE
 cn	bed-loci	gen:cn-oracle.sh,cn/oracle.sh	bed --catalog cn_loci.tsv --locus HBA --locus RHD	-	kv	PYTHON_IMAGE
 cn	bed-interval	gen:cn-oracle.sh,cn/oracle.sh	bed --catalog cn_loci.tsv --kind interval	-	kv	PYTHON_IMAGE

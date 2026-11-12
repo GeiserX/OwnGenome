@@ -1,0 +1,5 @@
+sample	sex	father	mother	partner
+S1	female	DAD	MUM	.
+SIB	male	DAD	MUM	.
+DAD	male	.	.	MUM
+MUM	female	.	.	DAD

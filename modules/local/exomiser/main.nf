@@ -5,12 +5,12 @@
     Opt-in: runs when --hpo names the symptoms of one sample (--exomiser_proband,
     or the only sample of the samplesheet). Three processes, as in
     scripts/48-exomiser.sh:
-      EXOMISER_PREPARE  bin/exomiser_report.py prepare: checks the terms against
+      EXOMISER_PREPARE  og exomiser prepare (bin/og): checks the terms against
                         the HPO release of the phenotype data and writes the
                         analysis (Exomiser's exome preset)
       EXOMISER          Exomiser on the sample's VCF, offline, with its data
                         folder (--exomiser_data, setup.sh --exomiser-data)
-      EXOMISER_REPORT   bin/exomiser_report.py report: the top ten ranks with
+      EXOMISER_REPORT   og exomiser report (bin/og): the top ten ranks with
                         their variants, and the same in words
 
     The family mode of step 48 (EXOMISER_FAMILY) is bash-only.
@@ -49,7 +49,7 @@ process EXOMISER_PREPARE {
     for o in ${exomiser_data}/*_phenotype/hp.obo ${exomiser_data}/*_phenotype/phenix/hp.obo; do
         if [ -s "\$o" ]; then obo="\$o"; break; fi
     done
-    exomiser_report.py prepare --hpo '${hpo}' \${obo:+--obo "\$obo"} --sample ${meta.id} --vcf "${vcf}" \\
+    og exomiser prepare --hpo '${hpo}' \${obo:+--obo "\$obo"} --sample ${meta.id} --vcf "${vcf}" \\
         --assembly ${params.exomiser_assembly} --out-dir results --analysis ${meta.id}_analysis.yml \\
         --terms ${meta.id}_exomiser_terms.tsv
 
@@ -162,7 +162,7 @@ process EXOMISER_REPORT {
     // published with publish_dir_mode link breaks once work/ is cleaned.
     """
     cp ${terms} ${meta.id}_exomiser_terms.tsv
-    exomiser_report.py report --sample ${meta.id} --variants ${variants} --terms ${terms} \\
+    og exomiser report --sample ${meta.id} --variants ${variants} --terms ${terms} \\
         --out ${meta.id}_exomiser_top.tsv --text ${meta.id}_exomiser.txt
 
     cat <<-END_VERSIONS > versions.yml

@@ -20,7 +20,7 @@
     --freemix_warn, and the other samples somalier finds to be the same
     person. workflows/bam_analysis.nf stops the run on a sex mismatch
     (--sex_check warn logs it), the check INDEXCOV makes from the BAM index,
-    made again from the reads. Then bin/mosaic_sex_loss.py adds the mosaic_*
+    made again from the reads. Then og qc sex-loss (rust/) adds the mosaic_*
     rows: the share of cells that lost the Y (or one X), from MOSDEPTH's
     windows (when mosdepth runs) and, for a woman, the VCF's chrX allele
     fractions. SAMPLE_QC waits for the VCF, so on a FASTQ row somalier's sex
@@ -163,7 +163,7 @@ process SAMPLE_QC {
         --freemix-warn ${params.freemix_warn} \\
         --marker-check "\$(cat ${marker_check})" \\
         --out ${meta.id}_sample_qc.tsv
-    mosaic_sex_loss.py --table ${meta.id}_sample_qc.tsv ${mosaic_args}
+    og qc sex-loss --table ${meta.id}_sample_qc.tsv ${mosaic_args}
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """
@@ -193,7 +193,7 @@ process SAMPLE_QC {
     from SOMALIER_RELATE's, so a run with sample_qc keeps both.
 
     FAMILY_CHECK compares, pair by pair, the relatedness the pedigree implies
-    with somalier's (bin/family_report.py check, the rule scripts/38-family.sh
+    with somalier's (og family check, the rule scripts/38-family.sh
     runs too) and stops the run on a pair that disagrees: a sample swap or a
     wrong line in the pedigree. WhatsHap and the report wait for it.
 
@@ -277,7 +277,7 @@ process FAMILY_CHECK {
 
     script:
     """
-    family_report.py check --members ${members} --pairs ${pairs} --out relationships.tsv
+    og family check --members ${members} --pairs ${pairs} --out relationships.tsv
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """

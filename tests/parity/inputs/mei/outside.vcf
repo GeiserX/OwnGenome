@@ -1,0 +1,9 @@
+##fileformat=VCFv4.1
+##source=MEI search version "v1.0.1 2022/04/12"
+##contig=<ID=chr20,length=64444167>
+##ALT=<ID=INS:ME,Description="Insertion of mobile element">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=MEPRED,Number=1,Type=String,Description="ME prediction status">
+##FORMAT=<ID=CN,Number=1,Type=Integer,Description="Copy number genotype for imprecise events">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+chr9	105641200	.	N	<INS:ME>	.	PASS	SVTYPE=Retroposon/SVA;MEPRED=PASS;HOMLEN=9;MEI_rpos=105641208;MEI=SVA_F,1/1500,+/+;CN_conf=H	CN	1

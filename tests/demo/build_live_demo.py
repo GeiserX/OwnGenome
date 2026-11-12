@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """build_live_demo.py: the live site's public demo, a static folder replaying an invented run.
 
-  build_live_demo.py --out DIR [--genome-dir GDIR] [--records N] [--work WDIR]
+  build_live_demo.py --out DIR [--genome-dir GDIR] [--records N] [--work WDIR] [--og OG]
 
 writes DIR, which the docs workflow publishes at /demo/ of the docs site:
 
@@ -13,6 +13,11 @@ writes DIR, which the docs workflow publishes at /demo/ of the docs site:
   runs/DEMO-001/results.json    the person's results (bin/live_results.py), as the results
                                 plugin serves them at the end of the run; each card shows
                                 once the replay reaches the end of its steps
+  runs/DEMO-001/map.json        the genome map of Figure 1: `og map build` with those results on
+                                stdin, as the map plugin (bin/owngenome_live_map.py) sends it
+                                (gzip bytes); the same for each person
+  map/genes/                    `og map genes` of the public GENCODE slice
+                                (tests/fixtures/map/gencode-slice), as /map/genes/ sends them
   runs/DEMO-001/finding/<id>/   one page per finding (assets/live/finding.html), as the
                                 results plugin's finding route serves it
   runs/DEMO-001/...             the files the plugins point at (the charts, the
@@ -56,7 +61,12 @@ What the replay changes, and why:
     meta tag cannot set, left out), and the site's absolute links (/runs/...,
     /family/...) become relative ones;
   - the genome viewer opens the reader's own reads on the reader's own
-    computer, so the demo's viewer/ page says it is not in the demo.
+    computer, so the demo's viewer/ page says it is not in the demo;
+  - the map's genes come from the GENCODE slice copied into the run folder's
+    reference/, since setup has not installed GENCODE there. The map needs og
+    (OG, default bin/og, which scripts/setup.sh --og builds): without it the
+    build writes no map.json, says so, and the page lists the findings with a
+    place in a table instead.
 
 Standard library only. tests/test_live_demo.py builds it and checks it.
 """
@@ -102,6 +112,8 @@ RECHECK_AFTER_S = 3600
 DEMO_RAM = 64 << 30
 DEMO_DISK = os.statvfs_result((4096, 4096, 512 << 20, 230 << 20, 230 << 20, 128 << 20, 100 << 20, 100 << 20, 0, 255))
 INTERVAL_MS = 600
+OG = os.path.join(BIN, "og")
+GENCODE_SLICE = os.path.join(REPO, "tests", "fixtures", "map", "gencode-slice", "reference")
 # The server's policy; a meta tag cannot set frame-ancestors (the browser ignores it there and warns).
 CSP = "; ".join(p for p in owngenome_live.CSP.split("; ") if not p.startswith("frame-ancestors"))
 
@@ -167,6 +179,9 @@ def prepare(root, genome_dir=None, records=20000):
             other_person(root, name, sex, seed, max(2000, records // 4))
     fam = os.path.join(root, FAMILY)
     shutil.copytree(os.path.join(EXTRA, FAMILY), fam)
+    # The genes the map places a gene-level finding on (and draws later): setup's GENCODE files, here the slice.
+    if not os.path.isdir(os.path.join(root, "reference")):
+        shutil.copytree(GENCODE_SLICE, os.path.join(root, "reference"))
     couple = os.path.join(d, "couple", f"{SAMPLE}_couple_carrier.tsv")
     if os.path.isfile(couple):
         a, b = sorted((SAMPLE, PARTNER))
@@ -383,7 +398,44 @@ def person_site(out, root, name, plugin_js, frames, results):
                            "../../../assets/live.css"))
 
 
-def write_site(out, root, frames, fam):
+def og_map(og, args, stdin=b""):
+    """og map ARGS: its stdout, or None when og is not built on this machine (exit 127)."""
+    try:
+        p = subprocess.run([og, "map"] + args, input=stdin, capture_output=True, check=False)
+    except FileNotFoundError:
+        return None
+    if p.returncode == 127:
+        return None
+    if p.returncode != 0:
+        raise SystemExit(f"ERROR: og map {args[0]} failed ({p.returncode}): {p.stderr.decode(errors='replace').strip()}")
+    return p.stdout
+
+
+def map_files(out, root, people, og):
+    """runs/<name>/map.json for each (name, results) of PEOPLE and map/genes/, as the map plugin sends
+    them; False (and a note) when og is not built here."""
+    cache = os.path.join(root, ".owngenome-live", "map")
+    assets = os.path.join(REPO, "assets")
+    for name, results in people:
+        doc = og_map(og, ["build", "--root", root, "--run", name, "--assets", assets, "--cache-dir", cache],
+                     json.dumps({"results": results}).encode())
+        if doc is None:
+            print(f"NOTE: og is not built here ({og}): the demo has no genome map; scripts/setup.sh --og builds it",
+                  file=sys.stderr)
+            return False
+        with open(os.path.join(out, "runs", name, "map.json"), "wb") as f:
+            f.write(doc)
+    gd = os.path.join(out, "map", "genes")
+    os.makedirs(gd)
+    chroms = [f"chr{c}" for c in list(range(1, 23)) + ["X", "Y"]]
+    for which in chroms + ["names"]:
+        data = og_map(og, ["genes", "--root", root, "--cache-dir", cache] + (["--names"] if which == "names" else ["--chrom", which]))
+        with open(os.path.join(gd, f"{which}.json"), "wb") as f:
+            f.write(data)
+    return True
+
+
+def write_site(out, root, frames, fam, og=OG):
     if os.path.exists(out):
         shutil.rmtree(out)
     shutil.copytree(ASSETS, os.path.join(out, "assets"),
@@ -400,6 +452,7 @@ def write_site(out, root, frames, fam):
     for name, _, _ in OTHERS:
         o = fam["others"][name]
         person_site(out, root, name, plugin_js, o["frames"], o["results"])
+    drawn = map_files(out, root, [(SAMPLE, fam["results"])] + [(n, fam["others"][n]["results"]) for n, _, _ in OTHERS], og)
 
     fd = os.path.join(out, "runs", FAMILY)
     os.makedirs(fd)
@@ -414,10 +467,12 @@ def write_site(out, root, frames, fam):
         f.write(pedigree_svg.draw(order, members, FAMILY))
     for name in (fam["state"]["plugins"].get("family") or {}).get("files") or []:
         shutil.copy(os.path.join(ffiles, name), os.path.join(famdir, name))
+    return drawn
 
 
-def build(out, genome_dir=None, records=20000, work=None, drop_hook=None):
-    """Write the demo into out; returns {frames, hooks, family} for the tests."""
+def build(out, genome_dir=None, records=20000, work=None, drop_hook=None, og=OG):
+    """Write the demo into out; returns {frames, hooks, family, map} for the tests (map: the map
+    documents were written)."""
     tmp = None
     if work:
         os.makedirs(work, exist_ok=True)
@@ -430,8 +485,8 @@ def build(out, genome_dir=None, records=20000, work=None, drop_hook=None):
     try:
         held = prepare(root, genome_dir, records)
         frames, fam, app = replay(root, held, drop_hook)
-        write_site(out, root, frames, fam)
-        return {"frames": frames, "family": fam, "hooks": [n for n, _ in app.state_hooks]}
+        drawn = write_site(out, root, frames, fam, og)
+        return {"frames": frames, "family": fam, "hooks": [n for n, _ in app.state_hooks], "map": drawn}
     finally:
         if tmp:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -443,8 +498,9 @@ def main(argv=None):
     ap.add_argument("--genome-dir", help="a folder holding DEMO-001 (default: write one now)")
     ap.add_argument("--records", type=int, default=20000, help="variant records of a DEMO-001 written now")
     ap.add_argument("--work", help="an empty folder for the run folder, kept afterwards (default: a temporary one)")
+    ap.add_argument("--og", default=OG, help="the og that builds the map documents (default: bin/og)")
     a = ap.parse_args(argv)
-    r = build(a.out, a.genome_dir, a.records, a.work)
+    r = build(a.out, a.genome_dir, a.records, a.work, og=a.og)
     size = sum(os.path.getsize(os.path.join(p, f)) for p, _, fs in os.walk(a.out) for f in fs)
     print(f"Demo written: {a.out} ({len(r['frames'])} frames, {size // 1024} KB; plugins {', '.join(r['hooks'])})")
     return 0

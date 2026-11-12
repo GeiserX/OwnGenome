@@ -465,6 +465,15 @@ install_viral_data() {
   echo "[OK] Viral genomes ${VIRAL_REF_VERSION} (step 47, $(grep -c '^>' "$dest") sequences): ${dest}"
 }
 
+# need_og WHAT: build og (bin/.og) when it is missing or stale; when that
+# fails, warn that og WHAT and return 1.
+need_og() {
+  "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && return 0
+  "${PGP_ROOT}/rust/og.sh" install && return 0
+  echo "[WARN] Could not build og, which ${1}: run ${0} --og and look at its error."
+  return 1
+}
+
 # install_masked_reference (--masked-reference): REF_FASTA (the default
 # no-ALT analysis set) with the false duplications of GRCh38 set to N, in
 # <REF_FASTA without extension>_maskedGRC.fasta beside it, with its .fai and
@@ -542,8 +551,9 @@ install_masked_reference() {
 # install_exomiser_data: Exomiser's hg38 and phenotype data of release
 # EXOMISER_DATA_VERSION (step 48) into reference/exomiser-<release>/, the
 # folder Exomiser reads as its data directory. Each archive is checked against
-# its sha256 in versions.env, unpacked with Python's zipfile (no unzip on the
-# host needed), and deleted. A folder is moved into place only once whole.
+# its sha256 in versions.env, unpacked by og (`og setup unzip`, so no unzip
+# on the host is needed; each member streams to disk), and deleted. A
+# folder is moved into place only once whole.
 install_exomiser_data() {
   local dest="${GENOME_DIR}/reference/exomiser-${EXOMISER_DATA_VERSION}" part sha zip
   if [ -d "${dest}/${EXOMISER_DATA_VERSION}_hg38" ] && [ -d "${dest}/${EXOMISER_DATA_VERSION}_phenotype" ]; then
@@ -563,10 +573,9 @@ install_exomiser_data() {
       return 1
     fi
     rm -rf "${dest}/unpack.part"
-    # shellcheck disable=SC2016  # $1 and $2 expand in the container's shell
-    if ! run_in --rw "$dest" --cpus 1 --memory 2g "$PYTHON_IMAGE" bash -euo pipefail -c \
-        'python3 -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$1" "$2"' \
-        _ "$(cpath "$zip")" "$(cpath "${dest}/unpack.part")" \
+    need_og "unpacks Exomiser's data" || return 1
+    if ! run_in --rw "$dest" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+        /pgp-bin/og setup unzip "$(cpath "$zip")" "$(cpath "${dest}/unpack.part")" \
         || [ ! -d "${dest}/unpack.part/${EXOMISER_DATA_VERSION}_${part}" ]; then
       rm -rf "${dest}/unpack.part"
       echo "[WARN] Could not unpack ${zip}; it is kept: run this command again."
@@ -650,18 +659,22 @@ install_megane_kmers() {
 
 # install_strchive_data: STRchive's ExpansionHunter catalog and loci file
 # (STRCHIVE_VERSION), each checked against its sha256 in versions.env, joined
-# by bin/strchive_convert.py into reference/strchive-<version>/catalog.json,
+# by og (`og str catalog`) into reference/strchive-<version>/catalog.json,
 # the catalog steps 09 and 9b and the pipeline use by default, and
 # str_ranges.tsv beside it, the size ranges of each locus. A file that
 # fails its check is removed and nothing is converted; the steps then use
 # the catalogs inside their images. catalog.stamp names the inputs and the
-# converter, so a changed one converts again.
+# converter's output format, so a changed one converts again: bump format
+# below whenever og str catalog writes something different.
+# og runs from the catalog's directory with relative paths, so bin/og's
+# shadow mode (OG_SHADOW, tests/parity/README.md) can run the Python it
+# replaced beside it in CI.
 # STR_EXTRA_LOCI=yes (opt-in) also appends assets/str_extra_loci.json, the
 # repeats STRchive leaves out (CFTR TG/poly-T, UGT1A1 TA): ExpansionHunter
 # sizes them and Stranger leaves them ungraded (docs/09-str-expansions.md).
 # The stamp names that file's sha256, or extra=off.
 install_strchive_data() {
-  local dir="${GENOME_DIR}/reference/strchive-${STRCHIVE_VERSION}" url name sha stamp
+  local dir="${GENOME_DIR}/reference/strchive-${STRCHIVE_VERSION}" url name sha stamp format=og-str-catalog-1
   local extra_json="${PGP_ROOT}/assets/str_extra_loci.json" extra_sha=off extra_args=()
   case "${STR_EXTRA_LOCI:-no}" in
     yes) extra_sha=$(_digest sha256 "$extra_json") extra_args=(--extra /pgp-extra/str_extra_loci.json) ;;
@@ -672,12 +685,14 @@ install_strchive_data() {
   local eh_url="https://github.com/dashnowlab/STRchive/releases/download/${STRCHIVE_VERSION}/STRchive-disease-loci-${STRCHIVE_VERSION}.hg38.expansionhunter.json"
   local loci_url="https://github.com/dashnowlab/STRchive/releases/download/${STRCHIVE_VERSION}/STRchive-loci-${STRCHIVE_VERSION}.json"
   local eh=${eh_url##*/} loci=${loci_url##*/}
-  stamp="release=${STRCHIVE_VERSION} eh=${STRCHIVE_EH_SHA256} loci=${STRCHIVE_LOCI_SHA256} converter=$(_digest sha256 "${PGP_ROOT}/bin/strchive_convert.py") extra=${extra_sha}"
+  stamp="release=${STRCHIVE_VERSION} eh=${STRCHIVE_EH_SHA256} loci=${STRCHIVE_LOCI_SHA256} converter=${format} extra=${extra_sha}"
   if [ -s "${dir}/catalog.json" ] && [ -s "${dir}/str_ranges.tsv" ] && [ "$(cat "${dir}/catalog.stamp" 2>/dev/null)" = "$stamp" ]; then
     echo "[OK] STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b) already present."
     return 0
   fi
-  # A stale catalog goes first, so a failed refetch leaves none for step 09.
+  # og first: when it cannot be built, the catalog already there stays.
+  need_og "converts the STRchive catalog" || return 1
+  # A stale catalog goes next, so a failed refetch leaves none for step 09.
   rm -f "${dir}/catalog.json" "${dir}/str_ranges.tsv" "${dir}/catalog.stamp"
   for url in "${eh_url}|${STRCHIVE_EH_SHA256}" "${loci_url}|${STRCHIVE_LOCI_SHA256}"; do
     sha=${url#*|} url=${url%%|*} name=${url##*/}
@@ -688,13 +703,14 @@ install_strchive_data() {
       return 1
     fi
   done
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-extra:ro" \
-       "$PYTHON_IMAGE" python3 /pgp-bin/strchive_convert.py \
-       --eh "$(cpath "${dir}/${eh}")" --loci "$(cpath "${dir}/${loci}")" --release "$STRCHIVE_VERSION" \
-       --out "$(cpath "${dir}/catalog.json")" --ranges "$(cpath "${dir}/str_ranges.tsv")" ${extra_args[@]+"${extra_args[@]}"} \
+  # -e OG_SHADOW passes the variable only when it is set (CI).
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-extra:ro" -e OG_SHADOW \
+       -w "$(cpath "$dir")" "$PYTHON_IMAGE" /pgp-bin/og str catalog \
+       --eh "$eh" --loci "$loci" --release "$STRCHIVE_VERSION" \
+       --out catalog.json --ranges str_ranges.tsv ${extra_args[@]+"${extra_args[@]}"} \
        || [ ! -s "${dir}/catalog.json" ] || [ ! -s "${dir}/str_ranges.tsv" ]; then
     rm -f "${dir}/catalog.json" "${dir}/str_ranges.tsv"
-    echo "[WARN] Could not convert the STRchive ${STRCHIVE_VERSION} catalog (bin/strchive_convert.py). Steps 09 and 9b use the catalogs inside their images."
+    echo "[WARN] Could not convert the STRchive ${STRCHIVE_VERSION} catalog (og str catalog). Steps 09 and 9b use the catalogs inside their images."
     return 1
   fi
   printf '%s\n' "$stamp" > "${dir}/catalog.stamp"
@@ -705,13 +721,12 @@ install_strchive_data() {
 # 23andMe v5 site list (GRCh37 positions and reference bases) of
 # CONSUMER_SITES_COMMIT, checked against CONSUMER_SITES_SHA256, is joined by
 # rsID with dbSNP CONSUMER_DBSNP_BUILD's GRCh38 VCF (about 30 GB, checked
-# against CONSUMER_DBSNP_MD5) in bin/export_consumer.py build-sites, which
-# takes the GRCh38 position from dbSNP instead of a liftover and lists every
-# site it drops with the reason. grep first keeps the lines of the list's
-# rsIDs, so Python reads about 600,000 lines instead of more than a billion.
-# Each rsID is matched with the tabs around it, which is the whole ID column;
-# never with -w, whose word check made GNU grep read 30 MB in over 20 minutes
-# with 620,000 patterns.
+# against CONSUMER_DBSNP_MD5) in og's `og consumer build-sites`
+# (rust/crates/og-steps), which takes the GRCh38 position from dbSNP instead
+# of a liftover and lists every site it drops with the reason. It reads the
+# BGZF file on 4 cores and looks at the ID column of a line before anything
+# else, so no grep pass runs first. It runs in PYTHON_IMAGE with bin/
+# mounted, so og is built first when it is missing or stale.
 # The dbSNP file is deleted once the table is built. The table built is then
 # compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
 install_consumer_sites() {
@@ -748,16 +763,17 @@ install_consumer_sites() {
       return 1
     fi
   fi
+  if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
+    echo "[WARN] Could not build og, which builds the site table: run ${0} --og and look at its error."
+    return 1
+  fi
   echo "Building the site table (reads the whole dbSNP file once)..."
   # The table is written to reference/consumer/, outside any sample directory.
-  # shellcheck disable=SC2016  # $1 to $5 expand in the container's shell
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 4g "$PYTHON_IMAGE" bash -euo pipefail -c '
-      gzip -dc "$1" | cut -f3 | grep "^rs" | sed "s/.*/\t&\t/" > "$3.ids"
-      gzip -dc "$2" | LC_ALL=C grep -Ff "$3.ids" \
-        | python3 /pgp-bin/export_consumer.py build-sites --template "$1" --dbsnp - --out "$3" --dropped "$4" --source "$5"
-      rm -f "$3.ids"' _ "$(cpath "$tpl")" "$(cpath "$db")" "$(cpath "$out")" "$(cpath "$dropped")" \
-      "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
-    rm -f "$out" "${out}.ids" "${out}.tmp" "${dropped}.tmp"
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$PYTHON_IMAGE" \
+       /pgp-bin/og consumer build-sites --template "$(cpath "$tpl")" --dbsnp "$(cpath "$db")" \
+       --out "$(cpath "$out")" --dropped "$(cpath "$dropped")" \
+       --source "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
+    rm -f "$out"
     echo "[WARN] Could not build the site table of step 40; the dbSNP download is kept: run this command again."
     return 1
   fi
@@ -776,7 +792,7 @@ consumer_sites_pin_check() {
     echo "[OK] Site table of step 40 $2: $1, the same as the pinned build"
   else
     echo "[WARN] Site table of step 40 $2: $1 differs from the pinned build (content sha256 ${got}, pinned ${CONSUMER_SITES_TABLE_SHA256})."
-    echo "       It was built by another version of bin/export_consumer.py build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
+    echo "       It was built by another version of og consumer build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
   fi
 }
 
@@ -1075,14 +1091,41 @@ ancestry_fine_pins() {
   done
 }
 
+# install_fine_maps DIR CHROMS: DIR/maps/ of step 26b, Beagle's map of each
+# chromosome of CHROMS (space separated) and the same in RFMix's column order
+# (chromosome, position, cM), cut from DIR/maps/plink.GRCh38.map.zip by og
+# (`og setup genetic-map`), which writes each file whole or not at all.
+# maps/DONE, written last, names the map and the chromosomes: without it (an
+# install from before og, whose maps a kill could have left cut short), or
+# with a map file missing, every map is written again.
+# tests/test_setup_fine_maps.sh runs it.
+install_fine_maps() {
+  local dir=$1 chroms=$2
+  local gstamp="map=${ANCESTRY_FINE_MAP_SHA256} chroms=${chroms% }" c whole=yes
+  for c in $chroms; do
+    [ -s "${dir}/maps/${c}.map" ] && [ -s "${dir}/maps/${c}.rfmix.map" ] || whole=no
+  done
+  [ "$whole" = yes ] && [ "$(cat "${dir}/maps/DONE" 2>/dev/null)" = "$gstamp" ] && return 0
+  rm -f "${dir}/maps/DONE"
+  need_og "unpacks the genetic map" || return 1
+  # SC2086: one argument per chromosome.
+  # shellcheck disable=SC2086
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
+      --zip "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" --out "$(cpath "${dir}/maps")" --rfmix $chroms; then
+    echo "[WARN] Could not unpack the genetic map"
+    return 1
+  fi
+  echo "$gstamp" > "${dir}/maps/DONE"
+}
+
 # install_ancestry_fine_panel: the reference of step 26b, in
 # reference/ancestry_fine/ANCESTRY_FINE_PANEL (ANCESTRY_FINE_DIR: another
 # folder inside GENOME_DIR). ADMIXTURE is free for academic use; RFMix for
 # academic research use only, and any other use, a personal one included,
 # needs a licence from Stanford. Four parts, each redone only when its inputs change:
 #   samples.tsv  every person of the panel with population, continental and
-#                regional group, reference and painting flags (panel-map of
-#                bin/ancestry_fine_report.py); ANCESTRY_FINE_SAMPLE_MAP gives
+#                regional group, reference and painting flags (og ancestry-fine
+#                panel-map, rust/crates/og-ancestry); ANCESTRY_FINE_SAMPLE_MAP gives
 #                a table of your own instead;
 #   panel/       chrN.vcf.gz: their phased genotypes at the biallelic SNVs with a
 #                minor allele frequency of 5% or more, one per 2 kb (bcftools
@@ -1110,6 +1153,11 @@ install_ancestry_fine_panel() {
   echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
   for v in BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
+  # The sample table and the column order come from og (og ancestry-fine).
+  if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
+    echo "[WARN] Could not build og, which writes the panel's sample table: run ${0} --og and look at its error."
+    return 1
+  fi
   mkdir -p "${dir}/panel" "${dir}/maps" "${dir}/model"
   echo "  Checking the panel's files against ANCESTRY_FINE_PANEL_SHA256..."
   if ! ancestry_fine_pins > "${dir}/pins.tsv"; then
@@ -1162,13 +1210,13 @@ install_ancestry_fine_panel() {
       || { echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} does not start with the header of samples.tsv"; return 1; }
     cp "$smap" "${dir}/samples.tsv.part"
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-          python3 /pgp-bin/ancestry_fine_report.py check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
+          /pgp-bin/og ancestry-fine check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
       rm -f "${dir}/samples.tsv.part"
       echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} has a group too small to model"
       return 1
     fi
   elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-        python3 /pgp-bin/ancestry_fine_report.py panel-map --meta "$(cpath "${dir}/meta.tsv")" \
+        /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
           --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
     rm -f "${dir}/samples.tsv.part"
@@ -1223,24 +1271,7 @@ install_ancestry_fine_panel() {
   fi
   echo "  panel: $(wc -l < "${dir}/panel/sites.tsv" | tr -d ' ') SNVs of $(wc -l < "${dir}/panel/keep.txt" | tr -d ' ') people"
 
-  # maps/: Beagle's file of each chromosome, and the same in RFMix's column
-  # order (chromosome, position, cM).
-  for c in $chroms; do
-    [ -s "${dir}/maps/${c}.rfmix.map" ] && continue
-    # shellcheck disable=SC2016  # no shell variables: the python reads sys.argv
-    if ! run_in --rw "$dir" "$PYTHON_IMAGE" python3 -c '
-import sys, zipfile
-z, c, out = sys.argv[1:]
-with zipfile.ZipFile(z) as f:
-    text = f.read(f"chr_in_chrom_field/plink.chr{c}.GRCh38.map").decode()
-rows = [line.split() for line in text.splitlines() if line.strip()]
-open(f"{out}/{c}.map", "w").write(text)
-open(f"{out}/{c}.rfmix.map", "w").write("".join(f"{r[0]}\t{r[3]}\t{r[2]}\n" for r in rows))
-' "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" "$c" "$(cpath "${dir}/maps")"; then
-      echo "[WARN] Could not unpack the genetic map of ${c}"
-      return 1
-    fi
-  done
+  install_fine_maps "$dir" "$chroms" || return 1
 
   # model/: redone when samples.tsv or the panel changes.
   mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") admixture=${ADMIXTURE_IMAGE}"
@@ -1271,7 +1302,7 @@ open(f"{out}/{c}.rfmix.map", "w").write("".join(f"{r[0]}\t{r[3]}\t{r[2]}\n" for 
       # shellcheck disable=SC2016  # $1 to $4 belong to the inner sh
       if ! run_in --rw "$dir" "$ADMIXTURE_IMAGE" sh -c 'cd "$1" && admixture --supervised -j"$4" "ref_$2.bed" "$3" > "admixture_$2.log" 2>&1' \
             _ "$(cpath "$tmp")" "$level" "$k" "$THREADS" \
-         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" python3 /pgp-bin/ancestry_fine_report.py order \
+         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og ancestry-fine order \
               --pop "$(cpath "${tmp}/ref_${level}.pop")" --q "$(cpath "${tmp}/ref_${level}.${k}.Q")"); then
         tail -n 20 "${tmp}/admixture_${level}.log" 2>/dev/null || true
         echo "[WARN] ADMIXTURE could not estimate the frequencies of the ${level} groups"
@@ -1361,15 +1392,11 @@ install_mocha_data() {
            fetch "$ANCESTRY_FINE_MAP_MIRROR_URL" "$map" sha256 "$ANCESTRY_FINE_MAP_SHA256"; } \
       || { echo "[WARN] Could not download the genetic map; run: $0 --mocha-data ${GENOME_DIR}"; return 1; }
   fi
-  # SC2016: no shell variables, the python reads sys.argv; SC2086: one argument per chromosome.
-  # shellcheck disable=SC2016,SC2086
-  if ! run_in --rw "$dir" "$PYTHON_IMAGE" python3 -c '
-import sys, zipfile
-z, out = sys.argv[1], sys.argv[2]
-with zipfile.ZipFile(z) as f:
-    for c in sys.argv[3:]:
-        open(f"{out}/{c}.map", "w").write(f.read(f"chr_in_chrom_field/plink.chr{c}.GRCh38.map").decode())
-' "$(cpath "$map")" "$(cpath "${dir}/maps")" $chroms; then
+  # og writes each map whole or not at all. SC2086: one argument per chromosome.
+  need_og "unpacks the genetic map" || return 1
+  # shellcheck disable=SC2086
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
+      --zip "$(cpath "$map")" --out "$(cpath "${dir}/maps")" $chroms; then
     echo "[WARN] Could not unpack the genetic map"
     return 1
   fi
@@ -2334,7 +2361,7 @@ if "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1; then
 elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
-  echo "[WARN] Could not build og. Steps 04, 05, 07 and 25 stop without it; run: $0 --og"
+  echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
 fi
 
 ###############################################################################

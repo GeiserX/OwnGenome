@@ -1,0 +1,6 @@
+sample	sex	father	mother	partner	in_pedigree	sequenced
+DAD	male	GF	GM	MOM	yes	yes
+GF	male				yes	yes
+GM	female				yes	yes
+KID	female	DAD	MOM		yes	yes
+MOM	female			DAD	yes	yes

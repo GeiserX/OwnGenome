@@ -5,7 +5,8 @@
 #         compares it with PharmCAT; step 36 compares its CYP2D6 with Cyrius)
 #
 # CYP2D6 copy number comes from read depth. Before pypgx runs, mosdepth
-# measures the depth over CYP2D6 and its flanks (bin/cyp2d6_depth_check.py).
+# measures the depth over CYP2D6 and its flanks, and og judges it
+# (og pgx cyp2d6-check, docs/rust.md).
 # When the reads there are multi-mapped (a BAM aligned to a reference with
 # ALT contigs), the summary's CYP2D6 row says Indeterminate instead of the
 # call, and <sample>_cyp2d6_depth_check.tsv says why.
@@ -133,36 +134,42 @@ GQ_FLOOR=${PYPGX_GQ_FLOOR:-20}
 [[ "$GQ_FLOOR" =~ ^[0-9]+$ ]] || { echo "ERROR: PYPGX_GQ_FLOOR must be a whole number, got '${GQ_FLOOR}'" >&2; exit 1; }
 
 # CYP2D6 depth check: mosdepth over CYP2D6 and its flanks, all reads and
-# MAPQ >= 1, judged by bin/cyp2d6_depth_check.py (the regions come from it too).
-# Beside the verdict, `measure` counts the MAPQ >= 20 depth and the gene body
-# without REP6 from the BAM (pysam, in the pypgx image, as the PYPGX module does).
+# MAPQ >= 1, judged by og pgx cyp2d6-check (the regions come from
+# og pgx cyp2d6-bed). Beside the verdict, og pgx cyp2d6-measure counts the
+# MAPQ >= 20 depth and the gene body without REP6 from the BAM, as the PYPGX
+# module does; it runs in the pypgx image, where the Python it replaced ran.
+# og runs from its output directory with relative paths, so bin/og's shadow
+# mode (OG_SHADOW, set only in CI: tests/parity/README.md) can run that Python
+# beside it. A missing og stops the step (exit 127), even in `measure`.
 DEPTH_DIR="${OUTPUT_DIR}/cyp2d6_depth"
 CHECK="${OUTPUT_DIR}/${SAMPLE}_cyp2d6_depth_check.tsv"
 SHARES="${DEPTH_DIR}/mapq_shares.tsv"
 mkdir -p "$DEPTH_DIR"
 rm -f "$CHECK" "$SHARES"
 echo "CYP2D6 depth check..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/cyp2d6_depth_check.py bed > "${DEPTH_DIR}/regions.bed"
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "${PYTHON_IMAGE}" \
+  /pgp-bin/og pgx cyp2d6-bed > "${DEPTH_DIR}/regions.bed"
 for Q in 0 1; do
   run_in --cpus 2 --memory 2g "${MOSDEPTH_IMAGE}" \
     mosdepth -n -c chr22 -t 2 -Q "$Q" -b "$(cpath "${DEPTH_DIR}/regions.bed")" \
       "$(cpath "${DEPTH_DIR}/q${Q}")" "$(cpath "$BAM")"
 done
 MEASURE=()
-if run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYPGX_IMAGE}" \
-     python3 /pgp-bin/cyp2d6_depth_check.py measure --bam "$(cpath "$BAM")" --out "$(cpath "$SHARES")" \
-   && [ -s "$SHARES" ]; then
-  MEASURE=(--measure "$(cpath "$SHARES")")
+rc=0
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$DEPTH_DIR")" "${PYPGX_IMAGE}" \
+  /pgp-bin/og pgx cyp2d6-measure --bam "$(cpath "$BAM")" --out mapq_shares.tsv || rc=$?
+[ "$rc" -ne 127 ] || exit 1
+if [ "$rc" -eq 0 ] && [ -s "$SHARES" ]; then
+  MEASURE=(--measure cyp2d6_depth/mapq_shares.tsv)
 else
   echo "WARNING: the MAPQ >= 20 and gene-body depth at CYP2D6 was not measured; the check says 'not measured'"
   rm -f "$SHARES"
 fi
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/cyp2d6_depth_check.py check \
-    --all "$(cpath "${DEPTH_DIR}/q0.regions.bed.gz")" \
-    --mapq1 "$(cpath "${DEPTH_DIR}/q1.regions.bed.gz")" \
-    "${MEASURE[@]}" --out "$(cpath "$CHECK")"
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "${PYTHON_IMAGE}" \
+  /pgp-bin/og pgx cyp2d6-check \
+    --all cyp2d6_depth/q0.regions.bed.gz \
+    --mapq1 cyp2d6_depth/q1.regions.bed.gz \
+    ${MEASURE[@]+"${MEASURE[@]}"} --out "${SAMPLE}_cyp2d6_depth_check.tsv"
 # A check that wrote nothing counts as failed: CYP2D6 is then Indeterminate.
 DEPTH_STATUS=$(awk -F'\t' '$1 == "status" {print $2}' "$CHECK" 2>/dev/null || true)
 

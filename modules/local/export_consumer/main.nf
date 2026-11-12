@@ -3,7 +3,7 @@
     CONSUMER_EXPORT — a consumer raw-data file (23andMe v5 layout) from the gVCF
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Opt-in ('consumer_export' in --tools, with --consumer_sites, the site
-    table `scripts/setup.sh --consumer-sites` builds). bin/export_consumer.py
+    table `scripts/setup.sh --consumer-sites` builds). `og consumer export`
     genotypes every site of the 23andMe v5 chip list from the gVCF: a site
     inside a reference block is homozygous reference, a site with no call is
     '--'. It writes the 23andMe layout and the same sites in the AncestryDNA
@@ -41,7 +41,7 @@ process CONSUMER_EXPORT {
 
     script:
     """
-    export_consumer.py export \\
+    og consumer export \\
         --gvcf ${gvcf} \\
         --sites ${sites} \\
         --sample ${meta.id} \\

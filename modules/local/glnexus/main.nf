@@ -2,14 +2,14 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     FAMILY_PREPARE, GLNEXUS, GLNEXUS_VCF — The family's joint VCF
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    FAMILY_PREPARE reads the pedigree (--pedigree) with bin/family_report.py
-    prepare, the rule scripts/38-family.sh runs too: it stops the run on a
+    FAMILY_PREPARE reads the pedigree (--pedigree) with og family prepare
+    (the Rust binary, bin/og), the rule scripts/38-family.sh runs too: it stops the run on a
     pedigree problem, or on a gVCF whose sample column is not the
     samplesheet's id, before the joint call starts. It writes members.tsv,
     somalier's pedigree (family.ped), WhatsHap's trios (trios.ped), the
     family's own rows (pedigree.tsv: one family of a families file, picked
     by --family_name) and family_plan.tsv (which family analyses run, and
-    why: the table run-all.sh writes with family_report.py plan).
+    why: the table run-all.sh writes with og family plan).
 
     GLNEXUS joint-calls the members' DeepVariant gVCFs with GLnexus's
     DeepVariantWGS preset into one BCF, and GLNEXUS_VCF writes it out as
@@ -51,7 +51,7 @@ process FAMILY_PREPARE {
     def cv  = clinvar_ids ? "--have-clinvar ${clinvar_ids.join(' ')}" : ''
     def ibd = params.ancestry_fine_panel ? 'yes' : 'no'
     """
-    family_report.py prepare --pedigree families.tsv ${fam} ${args} ${cv} --ibd-panel ${ibd} \\
+    og family prepare --pedigree families.tsv ${fam} ${args} ${cv} --ibd-panel ${ibd} \\
         --pedigree-out pedigree.tsv --out-dir .
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
