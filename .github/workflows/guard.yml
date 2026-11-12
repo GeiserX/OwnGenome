@@ -256,6 +256,19 @@ jobs:
           file ../bin/.og/og-linux-*
           ../bin/og version
 
+      # Step 06 runs og clinvar in BCFTOOLS_IMAGE, so the tests that run the
+      # real step, or compare og clinvar with the summary, need bin/.og: they
+      # run here, and unit-tests skips them (no OG there).
+      - name: Step 06 with og (the tests that run og clinvar)
+        working-directory: .
+        env:
+          OG: ${{ github.workspace }}/bin/og
+          OG_REQUIRED: 1
+        run: |
+          python3 tests/test_clinvar_join_adjacent.py
+          python3 tests/test_collect_summary.py
+          bash tests/test_isec_columns.sh
+
       - name: The stale-binary guard refuses the real binaries once rust/ changes
         run: |
           echo "// edited" >> og/src/main.rs

@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05, 07 and 25 call `og` (the filters of `og sv` and `og pgx`, and `og prs format`), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), step 27 and `CPIC_LOOKUP` call it (`og pgx cpic-report`), and `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
+Steps 04, 05, 07 and 25 call `og` (the filters of `og sv` and `og pgx`, and `og prs format`), step 06 and its Nextflow module `CLINVAR_SCREEN` call `og clinvar`, steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), step 27 and `CPIC_LOOKUP` call it (`og pgx cpic-report`), and `setup.sh` calls it to mask the reference. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -15,6 +15,7 @@ rust/
   crates/og-io/         plain, gzip and BGZF input, universal newlines, atomic writes
   crates/og-vcf/        VCF records read in place, INFO kept in order, GT and CSQ fields; csq-rank
   crates/og-bam/        BAM reading as pysam does it, on a statically linked htslib
+  crates/og-clinvar/    step 06's ClinVar star table, combined alleles, hit rows and always-report sites
   crates/og-pgx/        og pgx: PharmCAT's report read into typed gene calls (step 27)
   crates/og-filters/    the VCF filters of steps 04, 05 and 07
   crates/og-steps/      the step helpers: constraint-join, prs format
@@ -59,7 +60,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 - The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's. The macOS pair is optional, because no pipeline step runs it, but a stale one is refused like a Linux one.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- A missing binary is still a note, which names steps 04, 05, 07 and 25. Those steps, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
+- A missing binary is still a note, which names steps 04, 05, 07 and 25. Those steps, step 06 and `CLINVAR_SCREEN`, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte

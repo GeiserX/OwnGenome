@@ -554,6 +554,7 @@ version = "0.1.0"
 dependencies = [
  "og-bam",
  "og-chip",
+ "og-clinvar",
  "og-dev",
  "og-filters",
  "og-intervals",
@@ -585,6 +586,15 @@ dependencies = [
  "og-filters",
  "og-io",
  "pycompat",
+]
+
+[[package]]
+name = "og-clinvar"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-intervals",
+ "og-io",
 ]
 
 [[package]]

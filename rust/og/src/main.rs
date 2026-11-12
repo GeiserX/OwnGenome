@@ -27,6 +27,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og sv svlen-fix|inv-filter [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
+       og clinvar join-adjacent|hits|deep-intronic [args]
        og str motif [args]
        og prs format [args]
        og chip prepare|report|check-table [args]
@@ -126,6 +127,7 @@ fn main() -> ExitCode {
             None => ExitCode::from(og_pgx::main(rest)),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
+        "clinvar" => ExitCode::from(og_clinvar::cli::main(rest)),
         "chip" => match rest.first() {
             Some(verb) => ExitCode::from(og_chip::cli(
                 verb,

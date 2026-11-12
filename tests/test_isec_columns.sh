@@ -27,9 +27,18 @@
 #      chr-renamed ClinVar file has) made bcftools norm exit 255; now both are
 #      left out, with a notice, and the hits are unchanged.
 # Needs docker: step 06 runs bcftools in BCFTOOLS_IMAGE from versions.env.
+# Needs og: step 06 runs og clinvar from bin/.og in that image, so the test
+# runs when bin/og is built (the rust job of guard.yml builds it with
+# scripts/setup.sh --og and sets OG_REQUIRED) and is skipped otherwise. OG
+# alone is not enough: unit-tests sets it to a host og, with no bin/.og.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
+if ! "${REPO}/bin/og" version > /dev/null 2>&1; then
+  if [ -n "${OG_REQUIRED:-}" ]; then echo "FAIL: og is not built (scripts/setup.sh --og)"; exit 1; fi
+  echo "[SKIP] og is not built for this machine, and step 06 runs it (scripts/setup.sh --og): the rust job of guard.yml runs this test"
+  exit 0
+fi
 # shellcheck source=../versions.env
 . "${REPO}/versions.env"
 WORK=$(mktemp -d)
