@@ -134,7 +134,7 @@ pub fn depth_contradicts(
     };
     let sex_chrom = matches!(chrom, "chrX" | "chrY") && !in_par;
     let (low, high) = match (sex_chrom, sex) {
-        (true, Sex::Male) => (2, 2),
+        (true, Sex::Male) => (1, 1),
         (true, Sex::Unknown) => (1, 2),
         _ => (2, 2),
     };
@@ -211,7 +211,7 @@ impl OverlapIndex {
         g.by_start.range(lo..end).any(|(&s, ends)| {
             ends.iter().any(|&e| {
                 let overlap = e.min(end) - s.max(start);
-                overlap > 0 && overlap as f64 >= frac * (e - s).min(len) as f64
+                overlap > 0 && overlap as f64 >= frac * (e - s).max(len) as f64
             })
         })
     }
