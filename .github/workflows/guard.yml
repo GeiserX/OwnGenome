@@ -64,9 +64,34 @@ jobs:
 
   fake-docker:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # generate-report.sh runs og run delta, and the run-state case runs og
+      # run state, so the cases need og in bin/.og, stamped with this
+      # checkout's rust/ tree so run-all.sh's stale-binary check passes. One
+      # host build is enough: the fake docker runs og on the host.
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+          key: fake-docker
+
+      - name: Build og into bin/.og
+        working-directory: rust
+        run: |
+          OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
+          mkdir -p ../bin/.og
+          cp target/release/og "../bin/.og/og-linux-$(uname -m)"
+          ./og.sh check
+          ../bin/og version
 
       - name: Self-test (a swallowed empty image, an unknown option and a failing case must be caught)
         run: scripts/ci/run-fake-docker-suite.sh --self-test
@@ -287,7 +312,7 @@ jobs:
           grep -q 'summary.json validates (og dev schema)' <<< "$out" \
             || { echo "ERROR: reports-stale-step did not run og dev schema"; exit 1; }
 
-      # The tests of the og filters steps 04, 05 and 07 run, og chip's (step 49), and the step 25
+      # The tests of the og filters steps 04, 05 and 07 run, og chip's (step 49), og run delta's, and the step 25
       # tests that compare og prs format with the folders they write by hand:
       # unit-tests has no og, so there they skip; here OG_REQUIRED turns a
       # skip into a failure. The step 05 tests run the real step with bin/og.
@@ -298,7 +323,7 @@ jobs:
           OG_REQUIRED: 1
         run: |
           fail=0
-          for t in tests/test_annotsv_sv_inputs.py tests/test_pgx_refblock_fill.py tests/test_pgx_mito_merge.py \
+          for t in tests/test_annotsv_sv_inputs.py tests/test_pgx_refblock_fill.py tests/test_pgx_mito_merge.py tests/test_run_delta.py \
                    tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
                    tests/test_render_report.py tests/test_collect_summary.py tests/test_chip_report.py; do
             rc=0
