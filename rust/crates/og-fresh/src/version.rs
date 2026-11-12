@@ -24,7 +24,7 @@ impl Num {
 
 impl Ord for Num {
     fn cmp(&self, o: &Self) -> Ordering {
-        self.0.cmp(&o.0)
+        self.0.len().cmp(&o.0.len()).then_with(|| self.0.cmp(&o.0))
     }
 }
 
