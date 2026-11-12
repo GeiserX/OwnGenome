@@ -239,7 +239,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         // The replay wrote a new run_manifest.tsv: check again against it,
         // with the same answers, so state.json no longer calls ready what
         // the rerun has just used.
-        let mut fresh = state.clone();
+        let mut fresh = check(sample, &genome, &answers, &steps, &here);
         fresh.rerun = state.rerun.take();
         if let Err(e) = log_check(&log, &fresh).and_then(|()| write_check(&state_path, &fresh)) {
             return io(e, err);

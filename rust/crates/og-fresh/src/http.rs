@@ -107,7 +107,7 @@ impl Headers {
             }
         }
         blocks.extend(cur);
-        Headers(blocks.into_iter().next().unwrap_or_default())
+        Headers(blocks.pop().unwrap_or_default())
     }
 }
 
@@ -166,14 +166,14 @@ pub fn join(base: &str, next: &str) -> String {
     let path_start = base.find("://").map_or(0, |i| i + 3) + host.len();
     let path = &base[path_start..];
     let path = &path[..path.find(['?', '#']).unwrap_or(path.len())];
-    let dir = &path[..path.find('/').map_or(0, |i| i + 1)];
+    let dir = &path[..path.rfind('/').map_or(0, |i| i + 1)];
     format!("{scheme}://{host}{dir}{next}")
 }
 
 /// A value for curl's config file: in double quotes, with `\` and `"`
 /// escaped and no line break (a line break would start a new option).
 fn quoted(v: &str) -> Result<String, LookupError> {
-    if v.contains('\r') {
+    if v.contains(['\n', '\r']) {
         return Err(LookupError::Failed(format!(
             "a request value holds a line break: {v:?}"
         )));

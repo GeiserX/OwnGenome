@@ -100,7 +100,7 @@ pub fn compare(predicted: &[String], redone: Vec<String>, steps: &[Step]) -> Com
         predicted: predicted.to_vec(),
         predicted_not_redone: predicted
             .iter()
-            .filter(|n| !redone.contains(n))
+            .filter(|n| !redone.contains(n) && !script.contains(n))
             .cloned()
             .collect(),
         redone_not_predicted: redone
@@ -135,14 +135,14 @@ pub fn rerun(
     log: &Path,
 ) -> std::io::Result<Rerun> {
     let lock = open_lock(&sample_dir.join("recheck").join("rerun.lock"))?;
-    if false {
+    if lock.try_lock().is_err() {
         return Ok(Rerun::Refused(
             3,
             format!("another --rerun of {sample} is going on: not rerunning."),
         ));
     }
     let before = files(sample_dir)?;
-    if state(&before, sample, steps).run == RunState::NotStarted {
+    if state(&before, sample, steps).run == RunState::Running {
         return Ok(Rerun::Refused(
             3,
             format!(
@@ -237,7 +237,7 @@ pub fn launch_dir_command(dir: &Path) -> Option<String> {
     let cmd = last.rsplit('\t').next().unwrap_or(last).trim();
     let words =
         shlex::split(cmd).unwrap_or_else(|| cmd.split_whitespace().map(str::to_owned).collect());
-    Some(if cmd.contains("-resume") && !words.is_empty() {
+    Some(if words.iter().any(|w| w == "-resume") {
         cmd.to_owned()
     } else {
         format!("{cmd} -resume")
@@ -279,7 +279,7 @@ pub fn refresh_clinvar(
 ) -> std::io::Result<(i32, Option<String>)> {
     let path = genome_dir.join(CLINVAR_LOCK);
     let lock = open_lock(&path)?;
-    if lock.try_lock_shared().is_err() {
+    if lock.try_lock().is_err() {
         return Ok((
             3,
             Some(format!(

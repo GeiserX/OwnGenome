@@ -217,6 +217,7 @@ pub fn date8(text: &str) -> Option<String> {
     if y < 1 {
         return None;
     }
+    jiff::civil::Date::new(y, i8::try_from(m).ok()?, i8::try_from(d).ok()?).ok()?;
     Some(format!("{}{}{}", &c[1], &c[2], &c[3]))
 }
 
@@ -305,7 +306,7 @@ pub fn affected_steps(steps: &[Step], keys: &[&str]) -> Vec<String> {
             direct.insert(&s.step, hits.iter().all(|r| r.ends_with("@self")));
         }
     }
-    if direct.is_empty() || keys.len() < 2 {
+    if direct.is_empty() {
         return vec![];
     }
     let mut hit: BTreeSet<&str> = direct
@@ -358,7 +359,7 @@ pub fn classify(item: &mut Item, release: &Result<Release, String>, clinvar: boo
     }
     let (ran, inst) = (truthy(&item.ran_with), truthy(&item.installed));
     if let (Some(i), Some(r)) = (inst, ran) {
-        if ver(i) > ver(r) && !clinvar {
+        if ver(i) > ver(r) {
             return Class::RerunReady;
         }
         // An image re-pinned at the same tag (a new digest): the tags
@@ -415,7 +416,7 @@ pub fn classify(item: &mut Item, release: &Result<Release, String>, clinvar: boo
     };
     if let Some(rel) =
         pin_value(&item.item, pins.get(&item.item).map(String::as_str)).filter(|r| !r.is_empty())
-        && ver(&rel) >= ver(&base)
+        && ver(&rel) > ver(&base)
     {
         item.in_release = Some((tag.clone(), rel));
         return Class::InPipelineRelease;
@@ -492,7 +493,7 @@ pub fn steps_not_run(sample: &str, sample_dir: &Path, steps: &[Step]) -> BTreeSe
     let st = files.state(sample, steps, now_epoch(), &jiff::tz::TimeZone::system());
     st.steps
         .iter()
-        .filter(|s| matches!(s.state, StepState::Skipped))
+        .filter(|s| matches!(s.state, StepState::Skipped | StepState::NotPlanned))
         .map(|s| s.step.step.clone())
         .collect()
 }
@@ -601,7 +602,7 @@ pub fn check(
             if let Some(a) = answer {
                 match a {
                     Ok(v) => item.upstream = Some(v),
-                    Err(_) => {}
+                    Err(e) => item.error = Some(e.to_string()),
                 }
                 item.class = classify(&mut item, &release, clinvar);
             }
@@ -684,7 +685,7 @@ pub fn check(
         item.class = match (&ran_ref, &inst_ref) {
             (Some(r), Some(i)) if r != i => Class::RerunReady,
             (Some(_), Some(_)) => Class::NoNewerRelease,
-            _ => Class::NoNewerRelease,
+            _ => Class::Unknown,
         };
         if key.ends_with("_IMAGE") {
             item.refs = Some((ran_ref, inst_ref));
