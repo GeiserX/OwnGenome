@@ -15,14 +15,14 @@
     record on a contig the other file lacks cannot match anyway.
 
     Two neighbouring records that can be one allele are also matched as their
-    combined allele (bin/clinvar_join_adjacent.awk): a matched combined
+    combined allele (og clinvar join-adjacent): a matched combined
     record is a hit of its own (INFO/PGP_JOINED_FROM) and its parts are
     marked PGP_PART_OF.
 
     A hit whose call has a genotype quality below ext.min_gq (default 30) or
     a depth below ext.min_dp (default 10) is a low-confidence call; a floor
     other than the default goes into the hits VCF as
-    ##PGP_CALL_FLOOR=GQ=..,DP=.., which bin/clinvar_hits.awk and the report
+    ##PGP_CALL_FLOOR=GQ=..,DP=.., which og clinvar hits and the report
     read (without the line they use the default). Set it in a config with
     withName: 'CLINVAR_SCREEN' { ext.min_gq = 20; ext.min_dp = 8 }
     (scripts/06 reads CLINVAR_MIN_GQ and CLINVAR_MIN_DP).
@@ -152,16 +152,13 @@ process CLINVAR_SCREEN {
     # delins) as two records a few bases apart on the same haplotype; matched
     # one by one, the parts can hit single-submitter ClinVar records and miss
     # the better reviewed record for the whole allele. bcftools norm -m +any
-    # joins only records at the same position, so clinvar_join_adjacent.awk
-    # (on the task PATH) builds the allele of each pair of neighbours that can
-    # be one allele, with the reference bases between the parts
-    # (+fill-from-fasta), left-aligned the way ClinVar is. The candidates
+    # joins only records at the same position, so og clinvar join-adjacent
+    # (bin/og, on the task PATH) builds the allele of each pair of neighbours
+    # that can be one allele, with the reference bases between the parts read
+    # from the reference, left-aligned the way ClinVar is. The candidates
     # matched below are the split calls plus these.
-    JOIN_AWK="\$(command -v clinvar_join_adjacent.awk)"
     bcftools view ${meta.id}_pass.vcf.gz \\
-        | awk -v mode=prepare -f "\${JOIN_AWK}" \\
-        | bcftools +fill-from-fasta --no-version -Ov - -- -c INFO/PGP_JOIN_SEQ -f ${reference} \\
-        | awk -v mode=finish -f "\${JOIN_AWK}" \\
+        | og clinvar join-adjacent --mode build --fasta ${reference} \\
         | bcftools norm --no-version -c w -d exact -f ${reference} -Oz -o joined.vcf.gz -
     bcftools index -t joined.vcf.gz
     bcftools concat --no-version -a -Oz -o candidates.vcf.gz ${meta.id}_pass.vcf.gz joined.vcf.gz
@@ -185,8 +182,8 @@ process CLINVAR_SCREEN {
     bcftools annotate --no-version -a "\${CLINVAR_NORM}" --pair-logic exact \\
         -c ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT -Ou shared.vcf.gz \\
         | bcftools view --no-version -i 'GT~"[1-9]"' -Ov -o hits_untagged.vcf
-    # A floor other than the default, for bin/clinvar_hits.awk and the report.
-    awk -v mode=tag -f "\${JOIN_AWK}" hits_untagged.vcf hits_untagged.vcf \\
+    # A floor other than the default, for og clinvar hits and the report.
+    og clinvar join-adjacent --mode tag hits_untagged.vcf \\
         | awk -v l="${floor_line}" 'l != "" && /^#CHROM/ { print l } { print }' > ${meta.id}_clinvar_hits.vcf
 
     # The same hits as a table, one row per hit
@@ -211,7 +208,7 @@ process CLINVAR_SCREEN {
     if [ "${has_gvcf}" = yes ]; then
         bcftools query -R sites_pos.tsv -f "\$(query_format sample.g.vcf.gz)" -o sites_gvcf.txt sample.g.vcf.gz
     fi
-    awk -v mode=sites -v gvcf=${has_gvcf} -v min_gq=${min_gq} -f "\$(command -v clinvar_hits.awk)" ${sites} sites_vcf.txt sites_gvcf.txt \\
+    og clinvar deep-intronic ${has_gvcf == 'yes' ? '' : '--no-gvcf '}--min-gq ${min_gq} ${sites} sites_vcf.txt sites_gvcf.txt \\
         > ${meta.id}_clinvar_deep_intronic.tsv
     echo "Known deep intronic sites, always reported:"
     awk -F'\\t' 'NR > 1 { printf "  %s %s %s:%s %s>%s: %s%s\\n", \$5, \$6, \$1, \$2, \$3, \$4, \$8, (\$9 != "" ? ", " \$9 : "") }' \\
@@ -220,12 +217,13 @@ process CLINVAR_SCREEN {
     HITS=\$(grep -c -v '^#' ${meta.id}_clinvar_hits.vcf || true)
     echo "ClinVar pathogenic hits: \${HITS}"
     # Grouped by ClinVar review stars, as scripts/06 prints them
-    # (bin/clinvar_hits.awk is on the task PATH).
+    # (og clinvar hits, bin/og on the task PATH).
     if [ "\${HITS}" -gt 0 ]; then
+        og clinvar hits ${meta.id}_clinvar_hits.vcf > hit_rows.tsv
         echo "By review status (ClinVar stars):"
-        awk -f "\$(command -v clinvar_hits.awk)" ${meta.id}_clinvar_hits.vcf | cut -f1 | sort -nr | uniq -c \\
+        cut -f1 hit_rows.tsv | sort -nr | uniq -c \\
             | awk '{printf "  %d star%s: %d\\n", \$2, (\$2 == 1 ? "" : "s"), \$1}'
-        LOW=\$(awk -f "\$(command -v clinvar_hits.awk)" ${meta.id}_clinvar_hits.vcf | awk -F'\\t' '\$13 == "yes"' | wc -l | tr -d ' ')
+        LOW=\$(awk -F'\\t' '\$13 == "yes"' hit_rows.tsv | wc -l | tr -d ' ')
         echo "Low-confidence calls among them (GQ below ${min_gq} or DP below ${min_dp}): \${LOW}"
     fi
 

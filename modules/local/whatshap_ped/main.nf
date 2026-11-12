@@ -8,7 +8,7 @@
     child and both parents are heterozygous stays unphased, as no genotype
     tells it. With no trio it writes nothing.
 
-    FAMILY_REPORT runs bin/family_report.py report (the rule
+    FAMILY_REPORT runs og family report (the rule
     scripts/38-family.sh runs too) on the phased VCF, or on the joint VCF
     when there is no trio: per child with a sequenced parent, the allele from
     each parent at every site where the genotypes tell; de novo candidates
@@ -16,7 +16,7 @@
     cis among the child's clinical-filter candidates (step 23's VCF, when
     clinical_filter ran); the chromosome map of each child (which stretches
     came from which parent, and from which grandparent when one is
-    sequenced; bin/family_segments.py), as a table, a DNA Painter CSV and
+    sequenced; og family segments), as a table, a DNA Painter CSV and
     an SVG; and family_report.md.
 
     Equivalent to: scripts/38-family.sh (its last two stages)
@@ -101,7 +101,7 @@ process FAMILY_REPORT {
     def cand = [candidate_ids, cl].transpose().collect { p -> "--candidates ${p[0]}=${p[1]}" }.join(' ')
     def ph = phased ? "--phased ${phased}" : ''
     """
-    family_report.py report --members ${members} --relationships ${relationships} \\
+    og family report --members ${members} --relationships ${relationships} \\
         --vcf ${vcf} ${ph} ${cand} --par-bed ${par_bed} --out-dir .
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

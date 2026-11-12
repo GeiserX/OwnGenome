@@ -1,0 +1,12 @@
+[
+ {"LocusId": "HD_HTT", "LocusStructure": "(CAG)*CAACAG(CCG)*", "ReferenceRegion": ["chr4:3074876-3074933", "chr4:3074939-3074966"], "VariantType": ["Repeat", "Repeat"]},
+ {"LocusId": "EIEE1_ARX", "LocusStructure": "(GCG)*", "ReferenceRegion": "chrX:25013649-25013697", "VariantType": "Repeat"},
+ {"LocusId": "PRTS_ARX", "LocusStructure": "(GCG)*", "ReferenceRegion": "chrX:25013529-25013565", "VariantType": "Repeat"},
+ {"LocusId": "FAME1_SAMD12", "LocusStructure": "(TAAAA)*(TGAAA)*", "ReferenceRegion": ["chr8:118366812-118366912", "chr8:118366913-118366918"], "VariantType": ["Repeat", "Repeat"]},
+ {"LocusId": "CANVAS_RFC1", "LocusStructure": "(AAAAG)*", "ReferenceRegion": "chr4:39348424-39348483", "VariantType": "Repeat"},
+ {"LocusId": "MCKD1_MUC1", "LocusStructure": "(CCCCACCCCGCCCCGCCCCCACCCCGCCGCCCCCACCCCGCCCCGCCCCCACCCCGCCCCCGCCCCG)*", "ReferenceRegion": "chr1:155188505-155192239", "VariantType": "Repeat"},
+ {"LocusId": "NOPATH_GENE", "LocusStructure": "(CTG)*", "ReferenceRegion": "chr2:1000-1030", "VariantType": "Repeat"},
+ {"LocusId": "CONTRACT_GENE2", "LocusStructure": "(GAA)*", "ReferenceRegion": "chr3:2000-2030", "VariantType": "Repeat"},
+ {"LocusId": "FLOAT_GENE3", "LocusStructure": "(AT)*", "ReferenceRegion": "chr5:500-520", "VariantType": "Repeat"},
+ {"LocusId": "LOWER_GENE4", "LocusStructure": "(cag)*(CCG)*", "ReferenceRegion": ["chr6:100-130", "chr6:130-160"], "VariantType": ["Repeat", "Repeat"]}
+]

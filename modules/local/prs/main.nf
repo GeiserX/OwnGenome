@@ -3,8 +3,9 @@
     PRS — Polygenic scores with pgsc_calc, and the ancestry of step 26
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     PRS_PREPARE      writes every file of --pgs_scoring as the custom GRCh38
-                     scoring file pgsc_calc reads (bin/collect_summary.py
-                     prs-format), labelled from assets/pgs_scores.tsv: once
+                     scoring file pgsc_calc reads (og prs format, bin/og on
+                     the task PATH; one score at a time, so it needs well
+                     under 1 GB), labelled from assets/pgs_scores.tsv: once
                      with the chrX rows (set with_x, for samples whose sex the
                      samplesheet gives) and once without (set autosomes), as
                      the samples of the run need. With
@@ -54,7 +55,7 @@ process PRS_PREPARE {
     def keep_x = score_set == 'with_x' ? '--keep-x' : ''
     def keep_amb = params.prs_keep_ambiguous.toString() == 'true' ? "--keep-ambiguous --reference ${reference}" : ''
     """
-    collect_summary.py prs-format --scores ${scoring_dir} --labels ${labels} --out pgs --alleles score_alleles.tsv ${keep_x} ${keep_amb}
+    og prs format --scores ${scoring_dir} --labels ${labels} --out pgs --alleles score_alleles.tsv ${keep_x} ${keep_amb}
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """

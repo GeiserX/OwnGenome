@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The repeat ranges: the generated str_ranges.tsv, the report's cited subset and the docs.
 
-1. str_ranges.tsv, which bin/strchive_convert.py writes beside the STRchive
+1. str_ranges.tsv, which og str catalog writes beside the STRchive
    catalog (built here from the pinned files by tests/test_str_catalog.py):
    one row per ExpansionHunter locus of the catalog (82), each traced to its
    STRchive id; normal_max and pathogenic_min are the catalog's NormalMax and
@@ -207,6 +207,9 @@ def part_docs(cat):
 
 
 def main():
+    skip = test_str_catalog.og_or_skip()  # the catalog is built with og (OG)
+    if skip is not None:
+        return skip
     cat, cat_path = test_str_catalog.build_catalog()
     gen = part_generated(cat, cat_path)
     part_subset(gen)

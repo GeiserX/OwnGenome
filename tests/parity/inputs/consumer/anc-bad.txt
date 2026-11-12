@@ -1,0 +1,6 @@
+#Ancestry raw data download
+#x
+rsid	chromosome	position	allele1	allele2
+i1	1	5	A	G
+i2	25	70000	0	0
+i3	27	9	T	N

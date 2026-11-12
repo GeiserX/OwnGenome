@@ -1,3 +1,4 @@
 child	gene	variant_a	variant_b	a_from	b_from	phase
 DEMO-003	G0412	chr2:73481166:A>G	chr2:73492310:C>T	mother	.	unknown
 DEMO-003	G0187	chr7:94371020:G>A	chr7:94398114:T>C	father	mother	in trans
+DEMO-003	KCNH2	chr7:150960000:C>T	chr7:150962400:G>A	father	mother	in trans

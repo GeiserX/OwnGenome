@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""bin/family_report.py (step 38 and the Nextflow FAMILY workflow) on
-synthetic pedigrees, somalier tables and joint VCFs.
+"""og family (step 38 and the Nextflow FAMILY workflow) on synthetic
+pedigrees, somalier tables and joint VCFs, and the pedigree rules other
+Python tools still import from bin/family_report.py.
+
+Without og (OG unset) only check 2 runs, on bin/family_report.py.
+With OG naming the og binary, every check runs.
 
 Checks:
   1. prepare: a trio with a grandparent named but not sequenced writes
@@ -21,9 +25,10 @@ Checks:
      outside the PARs taken from the mother only, inside a PAR from both,
      the allele of an unsequenced father inferred from a duo, compound
      heterozygotes in trans and in cis, WhatsHap's phase compared with the
-     genotype origin, and the same bytes on a second run.
+     genotype origin, and the same bytes on a second run; an unsorted joint
+     VCF stops it with exit 2 and writes nothing.
 
-Run: python3 tests/test_family_report.py
+Run: OG=rust/target/release/og python3 tests/test_family_report.py
 """
 import gzip
 import os
@@ -32,7 +37,7 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "family_report.py")
+OG = os.environ.get("OG", "")
 PAR = os.path.join(REPO, "assets", "par_grch38.bed")
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import family_report as fr  # noqa: E402
@@ -47,7 +52,7 @@ def check(desc, ok, detail=""):
 
 
 def run(*args):
-    p = subprocess.run([sys.executable, SCRIPT] + list(args), capture_output=True, text=True)
+    p = subprocess.run([OG, "family"] + list(args), capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr
 
 
@@ -245,9 +250,9 @@ def test_report():
         ("chr2", 200, "C", "T", ["0/0", "0/1", "0/1"]),          # gene G1, from mum -> in trans
         ("chr3", 100, "A", "G", ["0/0", "0/1", "0/1"]),          # gene G2, from mum
         ("chr3", 200, "C", "T", ["0/0", "0/1", "1/1"]),          # gene G2, from mum -> in cis
+        ("chrX", 500000, "C", "T", ["0/1", "0/1", "0/0"]),       # PAR1: autosomal, from dad
         ("chrX", 74000000, "G", "A", ["0/0", "1/1", "0/1"]),     # son's X: from mum only
         ("chrX", 74000100, "G", "A", ["1/1", "0/0", "0/1"]),     # son's X: dad's allele does not count
-        ("chrX", 500000, "C", "T", ["0/1", "0/1", "0/0"]),       # PAR1: autosomal, from dad
         ("chrM", 100, "A", "G", ["0/0", "0/1", "0/0"]),          # left out
     ]
     with tempfile.TemporaryDirectory() as d:
@@ -314,6 +319,14 @@ def test_report():
         check("WhatsHap's phase agrees with the genotype origin at both sites",
               "WhatsHap phased 2 heterozygous sites of kid by inheritance. At 2 of them the genotypes also give the "
               "origin, and the phase agrees with it at 2 (100.0%)" in md, md)
+
+        # An unsorted joint VCF would split the chromosome map wrongly: it stops, writing nothing
+        bad = joint(os.path.join(d, "unsorted.vcf.gz"), [rows[1], rows[0]])
+        rc, log = run("report", "--members", members, "--relationships", rel, "--vcf", bad, "--out-dir",
+                      os.path.join(d, "unsorted"))
+        check("an unsorted joint VCF stops the report (exit 2), naming the two records",
+              rc == 2 and "is not sorted: chr1:100 after chr1:200" in log
+              and not os.path.exists(os.path.join(d, "unsorted", "kid_inheritance.tsv.gz")), "exit %d: %s" % (rc, log))
 
     # A duo: the father is not sequenced; his allele is inferred
     with tempfile.TemporaryDirectory() as d:
@@ -398,7 +411,7 @@ def test_families_file():
             check("plan --write-pedigree: %s gets its own pedigree (exit %d)" % (fam, rc),
                   rc == 0 and [r["sample"] for r in rows] == want, out + str(rows))
             check("%s's pedigree has the pedigree columns, no family column" % fam,
-                  rows and list(rows[0]) == list(fr.PED_COLUMNS), str(rows[:1]))
+                  rows and list(rows[0]) == ["sample", "sex", "father", "mother", "partner"], str(rows[:1]))
         rows, errors = fr.read_pedigree(os.path.join(d, "family_a", "pedigree.tsv"))
         members, more = fr.build_members(rows, {}, "x")
         check("the written pedigree reads back: child_a's parents are father_a and mother_a",
@@ -469,7 +482,7 @@ def test_plan():
         rc, log = plan("--families", TWO, "--sample", "partner_x", "--have-gvcf", "partner_x", "--out", out)
         p = by_analysis(out) if rc == 0 else {}
         check("plan writes the columns family, analysis, members, decision, reason",
-              rc == 0 and open(out).readline().rstrip("\n").split("\t") == list(fr.PLAN_COLUMNS), log)
+              rc == 0 and open(out).readline().rstrip("\n").split("\t") == ["family", "analysis", "members", "decision", "reason"], log)
         check("one member with a gVCF: the joint call waits for partner_y",
               p.get("joint_call", [{}])[0].get("decision") == "waiting"
               and p["joint_call"][0]["reason"] == "partner_y has no gVCF yet: run run-all.sh partner_y first", str(p))
@@ -546,8 +559,11 @@ def test_plan():
 
 
 if __name__ == "__main__":
-    test_prepare()
     test_kinship()
+    if not OG:
+        print("skip: OG is not set (OG=rust/target/release/og): only the kinship check ran")
+        sys.exit(1 if FAILS or os.environ.get("OG_REQUIRED") else 0)
+    test_prepare()
     test_check()
     test_report()
     test_daughter_x()

@@ -1,0 +1,7 @@
+#Sample	Sex	Father	Mother	Partner
+
+   
+kid	male	dad	mum	.
+dad	male	grandpa	.	mum
+mum	female	.	.	dad
+# a comment

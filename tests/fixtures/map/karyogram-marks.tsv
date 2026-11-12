@@ -1,0 +1,16 @@
+# The marks the findings karyogram (core.js karyogram(), person.js Figure 1) drew on the demo's person pages,
+# recorded before the genome map replaced it: one row per mark, from each page at the end of its run. A mark is a
+# finding with a viewer place (chrN:pos or chrN:start-end) that the page did not keep closed (DEMO-003 is a child,
+# so its results to act on and the findings tagged with them were not drawn). mb is the place's first
+# position in Mb, rounded to 0.01. tests/test_live_demo.py checks the map places each one.
+run	id	chr	mb	level
+DEMO-001	clinvar-democ-chr16-2087914-ct-c	16	2.09	review
+DEMO-001	clinvar-demoa-chr2-47403191-c-t	2	47.40	review
+DEMO-001	clinvar-demob-chr11-108259012-g-a	11	108.26	review
+DEMO-002	clinvar-democ-chr16-2087914-ct-c	16	2.09	review
+DEMO-002	clinvar-demoa-chr2-47403191-c-t	2	47.40	review
+DEMO-002	clinvar-demob-chr11-108259012-g-a	11	108.26	review
+DEMO-003	clinvar-democ-chr16-2087914-ct-c	16	2.09	review
+DEMO-003	clinvar-demoa-chr2-47403191-c-t	2	47.40	review
+DEMO-003	clinvar-demob-chr11-108259012-g-a	11	108.26	review
+DEMO-003	sv-chr16-2084000-2096000	16	2.08	review

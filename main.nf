@@ -343,7 +343,7 @@ workflow {
     // be a families file (assets/families.example.tsv), a pedigree with a
     // leading family column: one family runs, the one --family_name names
     // (needed when the file holds more than one). Here only the family and
-    // sample columns are read; FAMILY_PREPARE (bin/family_report.py prepare)
+    // sample columns are read; FAMILY_PREPARE (og family prepare)
     // checks the rest before the joint call starts.
     def pedigree   = params.pedigree
     // The family's folder under --outdir: --family_name, else 'family'

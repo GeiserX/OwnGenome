@@ -8,11 +8,11 @@ STR expansions cause ~40 known neurological/neuromuscular diseases including Hun
 
 ## Tool
 - **ExpansionHunter** v5.0.0 (Illumina): multithreaded, with a bundled GRCh38 variant catalog of 31 pathogenic loci
-- **The catalog: STRchive's 82 disease loci.** STRchive ([Hiatt et al. 2025](https://pubmed.ncbi.nlm.nih.gov/40140942/)) publishes every known disease repeat as an ExpansionHunter catalog, with the benign, intermediate and pathogenic sizes and the motifs of each locus in a second file. `setup.sh` downloads both files of `STRCHIVE_VERSION` (`versions.env`, checked against their sha256) and joins them with `bin/strchive_convert.py` into `reference/strchive-<version>/catalog.json`. A full setup installs it; `./scripts/setup.sh --strchive-data <genome_dir>` installs only it (about 0.5 MB). Without that file the step runs on the 31 bundled loci and says so in its log.
+- **The catalog: STRchive's 82 disease loci.** STRchive ([Hiatt et al. 2025](https://pubmed.ncbi.nlm.nih.gov/40140942/)) publishes every known disease repeat as an ExpansionHunter catalog, with the benign, intermediate and pathogenic sizes and the motifs of each locus in a second file. `setup.sh` downloads both files of `STRCHIVE_VERSION` (`versions.env`, checked against their sha256) and joins them with `og str catalog` (the `og` binary, `docs/rust.md`) into `reference/strchive-<version>/catalog.json`. A full setup installs it; `./scripts/setup.sh --strchive-data <genome_dir>` installs only it (about 0.5 MB). Without that file the step runs on the 31 bundled loci and says so in its log.
 
 ## Docker Image
 - `EXPANSIONHUNTER_IMAGE`
-- `PYTHON_IMAGE` (setup only) runs the converter
+- `PYTHON_IMAGE` (setup only) runs the converter, `og str catalog`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
@@ -38,7 +38,7 @@ What the converter writes for each locus:
 
 ## Repeats STRchive Leaves Out (opt-in)
 
-Two short repeats that change how other findings read are not disease expansions, so STRchive does not list them. `assets/str_extra_loci.json` holds them in ExpansionHunter's form, and `STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir>` appends them to the STRchive catalog (`bin/strchive_convert.py --extra`). Without the opt-in the catalog stays STRchive's 82 loci; the stamp names the file's sha256, so turning it on or off converts again. Both the bash step and the pipeline then size them, since both read that catalog.
+Two short repeats that change how other findings read are not disease expansions, so STRchive does not list them. `assets/str_extra_loci.json` holds them in ExpansionHunter's form, and `STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir>` appends them to the STRchive catalog (`og str catalog --extra`). Without the opt-in the catalog stays STRchive's 82 loci; the stamp names the file's sha256, so turning it on or off converts again. Both the bash step and the pipeline then size them, since both read that catalog.
 
 | Locus | Repeats (GRCh38) | What the counts mean | Source |
 |---|---|---|---|

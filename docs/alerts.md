@@ -2,8 +2,8 @@
 
 The live site (`bin/owngenome_live.py`, its guide is `docs/live-site.md`) can warn you before a run goes wrong, and say so to Prometheus. The plugin `bin/owngenome_live_ops.py` adds a **Run health** card to each run's page and a `GET /metrics` endpoint. Both read the same numbers:
 
-- **Hours left**, as a range, from `bin/run_eta.py` ([How long is left](run-state.md#how-long-is-left)).
-- **Memory and disk headroom**, from `bin/run_headroom.py` ([Memory and disk headroom](run-state.md#memory-and-disk-headroom)).
+- **Hours left**, as a range, by the rules of `og run eta` ([How long is left](run-state.md#how-long-is-left)).
+- **Memory and disk headroom**, by the rules of `og run headroom` ([Memory and disk headroom](run-state.md#memory-and-disk-headroom)).
 - **When the run last showed activity**: its newest message to the site, or the newest change to its `logs/run_status.tsv` or its trace files.
 
 It works the same on any Linux, macOS or WSL2 machine. It needs nothing beyond the live site: no Prometheus is required to see the card.
@@ -20,7 +20,7 @@ It works the same on any Linux, macOS or WSL2 machine. It needs nothing beyond t
 
 A long task posts nothing between its start and its end, so a quiet run is not stalled while its running step is inside its usual time. A step with no usual time (no history on this box and no measured time in the [runtime table](hardware-requirements.md#runtime-per-step)) cannot cover a quiet run: after `--stall-minutes` with no activity, that run shows as stalled. Raise `--stall-minutes` if your box runs such a step for longer than that.
 
-Late and stalled need the step history of this box. The site reads `GENOME_DIR/pipeline_info/step_history/<box>.tsv` and never writes it, so `GENOME_DIR` can stay read-only. To add a finished run to it, run `python3 bin/run_eta.py "$GENOME_DIR"` once. With no history, each step uses its measured time from the runtime table.
+Late and stalled need the step history of this box. The site reads `GENOME_DIR/pipeline_info/step_history/<box>.tsv` and never writes it, so `GENOME_DIR` can stay read-only. To add a finished run to it, run `bin/og run eta "$GENOME_DIR"` once on the box that ran it ([where og runs](run-state.md)). With no history, each step uses its measured time from the runtime table.
 
 ## Flags
 

@@ -1,0 +1,5 @@
+sample	sex	father	mother	partner	in_pedigree	sequenced
+dad	male	kid	mum		yes	yes
+grandpa	male				no	no
+kid	male	grandpa		mum	yes	yes
+mum	female			kid	yes	yes

@@ -20,9 +20,11 @@ Borrowed, not rewritten:
   - T1K's genotype table and the CYP2D6 depth check are the invented
     fixtures of tests/fixtures/pgx;
   - step 33's table is written by `collect_summary.py sample-qc`, and step 25's
-    PRS and ancestry tables by `collect_summary.py prs-format` and `prs-table`,
-    from made-up somalier, VerifyBamID2 and pgsc_calc files;
-  - step 33's mosaic rows come from bin/mosaic_sex_loss.py, step 26b's painting
+    PRS and ancestry tables by `collect_summary.py prs-table`, from made-up
+    somalier, VerifyBamID2 and pgsc_calc files and the score folder
+    `og prs format` writes (written here in its layout: og runs only inside
+    the pipeline's Linux containers);
+  - step 33's mosaic rows come from og qc sex-loss, step 26b's painting
     from bin/ancestry_fine_report.py, step 35b's table from
     bin/paraphase_report.py, step 39's from bin/couple_report.py and step 42's
     from bin/traits_report.py, each fed made-up inputs; step 46's rows come
@@ -59,6 +61,7 @@ Standard library only. tests/demo/retake-screenshots.sh runs both forms.
 import argparse
 import calendar
 import copy
+import csv
 import gzip
 import json
 import math
@@ -108,7 +111,8 @@ RUN_STARTED = calendar.timegm((2026, 10, 1, 9, 0, 0, 0, 0, 0))
 FINDINGS = {"DEMO-002": {"fmr1", "chip", "mocha"}, "DEMO-003": {"annotsv", "act"}}
 # The son's results to act on ("act"): a pathogenic ClinVar hit in KCNH2, an ACMG secondary-findings gene that
 # is on no carrier list, and an AnnotSV class 5 deletion over it. Public gene name, invented positions and
-# alleles. tests/test_live_demo.py checks that his page names neither until each is opened on purpose.
+# alleles. tests/test_live_demo.py checks that his page names neither until each is opened on purpose, and that the
+# family page keeps his places closed with them, the compound-het pairs of tests/fixtures/live/demo/DEMO-FAMILY too.
 PLANTED = {"gene": "KCNH2", "hit": ("chr7", 150960000, "C", "T"), "sv": ("chr7", 150955000, 150965000)}
 # Stranger's thresholds per locus (normal up to, pathologic from), invented for the demo's catalog.
 STR_THRESHOLDS = {"HTT": (26, 40), "FMR1": (54, 200), "C9ORF72": (20, 30), "ATXN1": (35, 39), "DMPK": (34, 50),
@@ -335,24 +339,45 @@ def prune_annotations(report, changed):
 # --- step 25: polygenic scores through pgsc_calc's files -------------------------------
 
 def prs(d, genome_dir, rng):
-    labels = collect_summary.read_labels(os.path.join(REPO, "assets", "pgs_scores.tsv"))
+    """The harmonised files (their headers feed the run manifest) and the score
+    folder og prs format would write from them, without the allele list, which
+    nothing here reads: every row is autosomal, so it is written, an A/T or C/G
+    pair is counted as strand-ambiguous, and no chrX row is left out."""
+    score_list = os.path.join(REPO, "assets", "pgs_scores.tsv")
+    with open(score_list, encoding="utf-8") as f:
+        listed = [r for r in csv.DictReader((line for line in f if not line.startswith("#")), delimiter="\t")
+                  if (r.get("pgs_id") or "").strip()]
+    labels = {r["pgs_id"].strip(): (r.get("trait_reported") or "").strip() for r in listed}
+    applies = {r["pgs_id"].strip(): (r.get("applies_to") or "").strip().lower() for r in listed}
+    evals = collect_summary.read_metrics(score_list)
     harmonised = os.path.join(genome_dir, "prs_scores")
+    work = os.path.join(d, "prs", "pgsc_calc")
+    scores = os.path.join(work, "scores")
+    ambiguous = {}
     for pid, trait in labels.items():
         n = rng.randint(250, 4000)
-        rows = []
+        rows, written = [], []
         for _ in range(n):
             c, length = AUTOSOMES[rng.randrange(len(AUTOSOMES))]
             ea, oa = rng.sample("ACGT", 2)
-            rows.append(f"{c[3:]}\t{rng.randint(1, length)}\t{ea}\t{oa}\t{rng.gauss(0, 0.05):.5f}\t{c[3:]}\t{rng.randint(1, length)}\n")
+            pos, w, hm_pos = rng.randint(1, length), f"{rng.gauss(0, 0.05):.5f}", rng.randint(1, length)
+            rows.append(f"{c[3:]}\t{pos}\t{ea}\t{oa}\t{w}\t{c[3:]}\t{hm_pos}\n")
+            written.append(f"{c[3:]}\t{hm_pos}\t{ea}\t{oa}\t{w}\n")
+        ambiguous[pid] = sum(1 for r in written if r.split("\t")[2] + r.split("\t")[3] in ("AT", "TA", "CG", "GC"))
         put(os.path.join(harmonised, f"{pid}.txt.gz"),
             f"#format_version=2.0\n#pgs_id={pid}\n#pgs_name={pid}\n#trait_reported={trait}\n#variants_number={n}\n"
             "#HmPOS_build=GRCh38\nchr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\thm_chr\thm_pos\n"
             + "".join(rows), gz=True)
-    work = os.path.join(d, "prs", "pgsc_calc")
-    scores = os.path.join(work, "scores")
-    if collect_summary.prs_format_main(["--scores", harmonised, "--labels", os.path.join(REPO, "assets", "pgs_scores.tsv"),
-                                        "--out", scores, "--alleles", os.path.join(work, "score_alleles.tsv")]):
-        raise SystemExit("prs-format failed")
+        put(os.path.join(scores, f"{pid}.txt.gz"),
+            f"#pgs_id={pid}\n#pgs_name={pid}\n#trait_reported={(trait or pid).replace('=', '-')}\n#genome_build=GRCh38\n"
+            "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n" + "".join(written), gz=True)
+    ids = sorted(labels)
+    put(os.path.join(scores, collect_summary.CHRX_FILE),
+        "pgs_id\tchrx_rows\tchrx\n" + "".join(f"{p}\t0\tleft out\n" for p in ids))
+    put(os.path.join(scores, collect_summary.SCORE_NOTES_FILE), "pgs_id\tapplies_to\tambiguous_rows\tambiguous\n"
+        + "".join(f"{p}\t{applies.get(p, '')}\t{ambiguous[p]}\tdropped\n" for p in ids))
+    put(os.path.join(scores, collect_summary.EVALS_FILE), "pgs_id\tppm_id\tancestry\teffect\n"
+        + "".join(f"{p}\t" + "\t".join(";".join(e[i] for e in evals[p]) for i in (2, 0, 1)) + "\n" for p in ids if evals.get(p)))
     # pgsc_calc's output for sampleset "sample" (step 25's name) with the 1000 Genomes panel.
     res = os.path.join(work, "results", "sample")
     summ, score = ["dataset,accession,ambiguous,is_multiallelic,match_flipped,duplicate_best_match,"
@@ -779,12 +804,23 @@ def callability(d, rng):
     put(os.path.join(d, "mosdepth", f"{SAMPLE}_callability.bed.gz"), "\n".join(rows) + "\n", gz=True)
 
 
+# The first ten single-copy pieces of chrY and chrX that og qc sex-loss reads
+# (rust/crates/og-qc/src/sex_loss.rs, SINGLE_COPY_Y and SINGLE_COPY_X).
+SINGLE_COPY_FIRST = {
+    "Y": [(2781479, 3050044), (6748713, 7574481), (11037032, 11592902), (11674123, 13984473),
+          (14058733, 15875093), (15905214, 16159795), (16425965, 17456266), (18870334, 20207793),
+          (20257793, 21305953), (26415435, 26673214)],
+    "X": [(2781479, 37099262), (37285837, 48343310), (48434604, 49157254), (49528394, 50228964),
+          (50278964, 52032464), (52223402, 52489200), (52520537, 55437684), (55547739, 58100000),
+          (61000000, 62412542), (62462542, 63185573)],
+}
+
+
 def mosaic(d, rng):
     """mosdepth's 500 bp windows (step 16b's regions.bed.gz), cut down to three
     200 kb stretches of each autosome and the single-copy part of chrY, then
-    bin/mosaic_sex_loss.py itself adds its rows to step 33's table. One Y in
+    og qc sex-loss itself adds its rows to step 33's table. One Y in
     every cell: the ratio sits near 0.5 and no loss is detected."""
-    import mosaic_sex_loss
     path = os.path.join(d, "mosdepth", f"{SAMPLE}.regions.bed.gz")
     lines = []
     for chrom, length in AUTOSOMES:
@@ -796,13 +832,15 @@ def mosaic(d, rng):
     # A male's single-copy chrY at half the depth; a female's chrX (two copies) at the full depth.
     sx = "Y" if SEX == "male" else "X"
     ymean = MEAN_DEPTH / (2 if SEX == "male" else 1) * rng.uniform(0.98, 1.0)
-    for start, end in mosaic_sex_loss.SINGLE_COPY[sx][:10]:
+    for start, end in SINGLE_COPY_FIRST[sx]:
         s0 = (start // 500 + 1) * 500
         lines += [f"chr{sx}\t{s}\t{s + 500}\t{max(0.0, rng.gauss(ymean, ymean * 0.14)):.2f}"
                   for s in range(s0, min(end, s0 + 1_000_000) - 500, 500)]
     put(path, "\n".join(lines) + "\n", gz=True)
-    if mosaic_sex_loss.main(["--table", os.path.join(d, "qc", f"{SAMPLE}_sample_qc.tsv"), "--regions", path]):
-        raise SystemExit("mosaic_sex_loss failed")
+    r = subprocess.run([og_binary(), "qc", "sex-loss", "--table", os.path.join(d, "qc", f"{SAMPLE}_sample_qc.tsv"),
+                        "--regions", path], stdout=subprocess.DEVNULL)
+    if r.returncode:
+        raise SystemExit(f"og qc sex-loss failed (exit {r.returncode})")
 
 
 def ancestry_fine(d, rng):
@@ -915,7 +953,7 @@ def couple(d, rng):
 
 
 def consumer_export(d):
-    """Step 40's summary table, in bin/export_consumer.py's rows: the pinned
+    """Step 40's summary table, in og consumer export's rows: the pinned
     site table keeps 614,138 of the chip list's 638,463 sites
     (docs/40-export-consumer.md); the counts below are made up."""
     sites, from_blocks, from_records = 614138, 470912, 140206

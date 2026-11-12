@@ -117,7 +117,7 @@ HTML="${R}/${SAMPLE}_report.html"
 JSON="${R}/summary.json"
 check "the report exists" test -s "$HTML"
 check "summary.json validates against the schema" \
-  python3 "${REPO}/tests/schema/validate.py" "${REPO}/tests/schema/summary.schema.json" "$JSON"
+  "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "$JSON"
 FREEMIX=$(python3 -c "import json; print(json.load(open('${JSON}'))['sections']['sample_qc']['data']['freemix'])" 2>/dev/null)
 check "the summary has FREEMIX (${FREEMIX:-none})" test -n "$FREEMIX"
 grep -o '<div class="stat"><span class="label">\(Sex from the reads (somalier)\|Contamination (FREEMIX)\)</span>.*</div>' "$HTML" 2>/dev/null

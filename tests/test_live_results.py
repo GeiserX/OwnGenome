@@ -10,9 +10,12 @@ Checks:
      its SECTION_NOTES constants, word for word, never empty;
   3. the wording gate: no string of results.json, of family.json
      (tests/fixtures/families_live family_a) or of the page assets
-     (assets/live: the text of the pages, the string literals of the scripts)
-     says a result is fine (live_results.FORBIDDEN), a quoted tool term and a
-     caveat aside;
+     (assets/live: the text of the pages, the string literals of the scripts,
+     map.js among them) says a result is fine (live_results.FORBIDDEN), a quoted
+     tool term and a caveat aside; nor does any string of the genome map
+     documents `og map build` writes for DEMO-001 and DEMO-003 (Figure 1 shows
+     their sentences), a layer's state code aside (skipped without og or
+     cargo, except in CI);
   4. ClinVar: with hits the card lists them in a table; with none it has no
      table and its empty text says ClinVar lists only part of what causes
      disease (never an all-clear);
@@ -42,12 +45,15 @@ Checks:
      the ids and no other row does, the ranking's finding carries the secondary
      finding's id, and so does a segment of the lead that names the gene; the
      home page's view of the run (overview) lists no such finding among its
-     first ones and its closed lead names none.
+     first ones and its closed lead names none; a CHIP call, a copy-number dot
+     and a fact that name a closed result's gene carry its id (the CHIP chart's
+     panel of genes never does), and results.json carries the closed results as
+     veil.spans (the family page closes a child's places while one is closed).
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
 registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
-8 with a veil rule that tags nothing (rows and lines) and one that tags every row. A check
+8 with a veil rule that tags nothing (rows, lines, facts and drawings) and one that tags every row. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -143,6 +149,32 @@ def asset_problems(texts):
             if live_results.FORBIDDEN.search(re.sub(r'"[^"]*"', "", s)):
                 out.append(f"{name}: {s[:120]}")
     return out
+
+
+def map_documents(root, people):
+    """[(run, document)] of `og map build` for each (run, results) of PEOPLE, as the map plugin builds them;
+    None without an og (tests/test_live_demo.py og_binary)."""
+    import gzip
+    from test_live_demo import og_binary
+    og = og_binary()
+    if not og:
+        return None
+    ref = os.path.join(root, "reference")
+    if not os.path.isdir(ref):
+        shutil.copytree(os.path.join(REPO, "tests", "fixtures", "map", "gencode-slice", "reference"), ref)
+    out = []
+    for run, results in people:
+        body = {k: v for k, v in results.items() if not k.startswith("_")}
+        p = subprocess.run([og, "map", "build", "--root", root, "--run", run, "--assets", os.path.join(REPO, "assets"),
+                            "--cache-dir", os.path.join(root, ".map-cache")], input=json.dumps({"results": body}).encode(),
+                           capture_output=True, check=True)
+        out.append((run, json.loads(gzip.decompress(p.stdout))))
+    return out
+
+
+def map_wording(doc):
+    """The strings of a map document that read as an all-clear; a layer's state is a code, not words."""
+    return live_results.wording_problems(doc, allow=("state",))
 
 
 # --- 4. ClinVar with and without hits -------------------------------------------------------
@@ -402,6 +434,36 @@ def veil_lines_problems():
     return out
 
 
+def widget_problems():
+    """What is wrong with the veil's tags of a card's facts and drawing: a CHIP call and a copy-number dot, and a
+    fact, that name a closed result's gene carry its id; the CHIP chart's list of genes, the same panel for
+    everyone, is never tagged; nothing else is."""
+    found = [{"id": "cpsr-tp53-test", "level": "act", "gene": "TP53", "detail": "TP53 c.524G>A"},
+             {"id": "two-hits-smn1-test", "level": "act", "gene": "SMN1"}]
+    S = {"chip": {"state": "ok", "data": {"median_limit": 0.05, "median_depth": 72, "calls": [
+        {"gene": "DNMT3A", "protein_change": "p.R882H", "vaf": 0.12, "alt_reads": 9, "depth": 75, "status": "pass", "note": "a clone"},
+        {"gene": "TP53", "protein_change": "p.R175H", "vaf": 0.08, "alt_reads": 6, "depth": 75, "status": "pass", "note": "a clone"}],
+        "genes": [{"gene": "DNMT3A", "detection_limit_vaf": 0.05, "mean_depth": 75, "status": "ok"},
+                  {"gene": "TP53", "detection_limit_vaf": 0.06, "mean_depth": 70, "status": "ok"}]}},
+         "paralogs": {"state": "ok", "data": {"genes": [
+             {"gene": "SMN1", "copy_number": 1, "status": "called", "detail": "."},
+             {"gene": "SMN2", "copy_number": 2, "status": "called", "detail": "."}]}}}
+    summ = {"sections": S}
+    chip = dict(live_results.a_chip(S, summ), id="chip")
+    par = dict(live_results.a_paralogs(S, summ), id="paralogs")
+    par["facts"] = [["SMN1 copies", "1"], ["Genes read", "2"]]
+    v = live_results.veil(summ, found, [{"sections": [chip, par]}])
+    out = []
+    want = {"chip": [None, "cpsr-tp53-test"], "paralogs": ["two-hits-smn1-test", None]}
+    if v.get("widget") != want:
+        out.append(f"drawings tagged {v.get('widget')}, want {want}")
+    if (v.get("facts") or {}) != {"paralogs": ["two-hits-smn1-test", None]}:
+        out.append(f"facts tagged {v.get('facts')}")
+    if v.get("spans") != [list(x) for x in live_results.closable(found)]:
+        out.append(f"spans {v.get('spans')}")
+    return out
+
+
 def overview_problems():
     """What is wrong with the home page's view of a child's run (overview): a finding that names a closed result
     (a symptom ranking of its gene) is listed among the first findings, or the closed lead still names it."""
@@ -519,6 +581,9 @@ def main():
         bad = overview_problems()
         check("8. a child's home tile lists no finding that names a closed result, and its closed lead names none",
               not bad, bad)
+        bad = widget_problems()
+        check("8. a CHIP call, a copy-number dot and a fact that name a closed result's gene carry its id, the CHIP "
+              "chart's gene panel none, and results.json carries the closed results as veil.spans", not bad, bad)
         bad = veil_problems(*tagged(d3))
         check("8. the planted ClinVar hit's row, viewer link, tick and star bar carry its secondary finding's id, the "
               "deletion's span its own, every other card's row of the gene and the symptom ranking's finding one of them, "
@@ -529,10 +594,26 @@ def main():
             live_results.veil_id = lambda spans, *a, **k: None
             control("a veil rule that tags nothing", not veil_problems(*tagged(d3)))
             control("a veil rule that tags no line", not veil_lines_problems())
+            control("a veil rule that tags no fact or drawing", not widget_problems())
             live_results.veil_id = lambda spans, *a, **k: spans[0][0] if spans else None
             control("a veil rule that tags every row", not veil_problems(*tagged(d3)))
         finally:
             live_results.veil_id = keep
+
+        # 3, the map documents: og map build of DEMO-001 and DEMO-003, with the results each page gets.
+        map_docs = map_documents(root, [(SAMPLE, res), ("DEMO-003", tagged(d3)[0])])
+        if map_docs is None:
+            ci = os.environ.get("CI") == "true"
+            print(("[FAIL] " if ci else "[SKIP] ") + "3. no og (and no cargo to build one) for the map documents")
+            if ci:
+                FAILS.append("no og in CI")
+        else:
+            bad = [(run, x) for run, doc in map_docs for x in map_wording(doc)]
+            check(f"3. no string of the genome map documents reads as an all-clear ({len(map_docs)} documents)",
+                  not bad and len(map_docs) == 2, bad)
+            planted = copy.deepcopy(map_docs[0][1])
+            planted["text"]["genome"] = [{"t": "All clear on the map.", "b": False}]
+            control("'All clear' planted in a map document's sentence", not map_wording(planted))
 
         # 5.
         pwfile = os.path.join(work, "password")

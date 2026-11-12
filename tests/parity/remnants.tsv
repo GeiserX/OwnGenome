@@ -1,0 +1,6 @@
+# Python files kept after their tool moved to og, only because other Python
+# still imports names from them. `og dev remnants` checks that each holds the
+# names listed here and nothing else, that every name has a user, and that
+# the importers are exactly these (docs/rust.md).
+# file<TAB>names<TAB>importers<TAB>lane
+bin/family_report.py	COLUMNS,MISSING,SEX,NAME,BINS,die,missing,read_pedigree,build_members,bad_name,kinship_table,declared_relationship,degree,read_par,in_par	bin/annotsv_postfilter.py,bin/cnvpytor_to_vcf.py,bin/couple_report.py,bin/ibd_report.py,bin/pedigree_svg.py,tests/test_family_report.py	R4

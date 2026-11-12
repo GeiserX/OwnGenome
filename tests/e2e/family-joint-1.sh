@@ -293,7 +293,7 @@ check "FAMILY_CHECK is the task that failed (.nextflow.log)" \
 # The pair message, read from the failed FAMILY_CHECK task's own .command.err.
 FC_ERR=""
 for d in "${F}"/nfwork/*/*/; do
-  grep -q 'family_report.py check' "${d}.command.sh" 2>/dev/null || continue
+  grep -q 'og family check' "${d}.command.sh" 2>/dev/null || continue
   [ "$(cat "${d}.exitcode" 2>/dev/null)" = 0 ] && continue
   FC_ERR="${d}.command.err"
 done

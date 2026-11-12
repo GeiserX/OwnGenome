@@ -1,0 +1,2 @@
+##fileformat=VCFv4.2
+chr1	1	.	A	<*>	0	.	END=10	GT:GQ	0/0:50
