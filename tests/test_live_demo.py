@@ -645,15 +645,44 @@ def planted_closed(b, base):
     return out
 
 
+# The handle of a closed finding, as the page counts it (person.js closedOrder()): the closed findings in the order
+# of the sections, then any other; a result to act on is closed until opened, a finding tagged with one while that
+# result is, a finding tagged PANEL while any result to act on is, a finding tagged with no finding of the page always.
+HANDLE_JS = r"""fetch('results.json', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (r) {
+  var fid = %s, byId = {}, tags = (r.veil && r.veil.findings) || {};
+  r.findings.forEach(function (f) { byId[f.id] = f; });
+  function open(id) { return !!document.getElementById('f-' + id); }
+  var acts = r.findings.filter(function (f) { return f.level === 'act'; });
+  var anyShut = acts.some(function (f) { return !open(f.id); });
+  function shut(f) {
+    if (f.level === 'act') { return !open(f.id); }
+    var t = tags[f.id];
+    if (!t || t === f.id) { return false; }
+    if (t === '*panel*') { return anyShut; }
+    return !byId[t] || !open(t);
+  }
+  var order = [];
+  (r.journal || []).forEach(function (s) { (s.findings || []).forEach(function (id) {
+    if (byId[id] && shut(byId[id]) && order.indexOf(id) < 0) { order.push(id); } }); });
+  r.findings.forEach(function (f) { if (shut(f) && order.indexOf(f.id) < 0) { order.push(f.id); } });
+  return order.indexOf(fid) + 1;
+})"""
+
+
 def open_closed(b, fid):
-    """Opens the closed result FID as a reader who holds a link to it does: #f/<id> lands on its closed card, whose
-    address and element carry its handle (#f/closed-<n>), never its id; then its "Show the result". False when the
-    link lands on no closed card."""
-    b.eval("location.hash = %s; true" % json.dumps("#f/" + fid))
-    if not b.wait("/^#f\\/closed-\\d+$/.test(location.hash) && document.getElementById('f-' + location.hash.slice(3)) "
-                  "&& location.hash", 5):
+    """Opens the closed result FID as a reader does who knows its place among the page's closed findings: its handle
+    (#f/closed-<n>), never its id, which the page does not use to find a closed card; then its "Show the result".
+    False when the handle names no closed card."""
+    r = b.call("Runtime.evaluate", {"expression": HANDLE_JS % json.dumps(fid), "awaitPromise": True,
+                                     "returnByValue": True}, b.session)
+    n = (r.get("result") or {}).get("value") or 0
+    if not n:
         return False
-    b.eval("document.getElementById('f-' + location.hash.slice(3)).querySelector('.veil button').click(); true")
+    b.eval("location.hash = %s; true" % json.dumps(f"#f/closed-{n}"))
+    if not b.wait("location.hash === %s && document.getElementById('f-closed-%d') && location.hash"
+                  % (json.dumps(f"#f/closed-{n}"), n), 5):
+        return False
+    b.eval("document.getElementById('f-closed-%d').querySelector('.veil button').click(); true" % n)
     return True
 
 
@@ -777,11 +806,11 @@ def planted_checks(b, base, out):
         check("browser: the home page and every finding page of the son name the planted gene and positions nowhere "
               "(the rail's next link and the related list included) until opened, and the symptom ranking's page "
               "opened on purpose shows it", not bad, bad)
-        a = "!!tagOf(x) && !opened[tagOf(x)]"
+        a = "return t === PANEL ? !opened[x.id] && actShut() : !!t && !opened[t];"
         if a not in keep[fj]:
             check("control: finding.js whose findings ignore their tags (the planted line is in finding.js)", False, a)
         else:
-            write(fj, keep[fj].replace(a, "false"))
+            write(fj, keep[fj].replace(a, "return false;"))
             control("finding.js whose findings ignore their tags", not planted_pages(b, base, out))
             write(fj, keep[fj])
     finally:
@@ -2468,7 +2497,23 @@ CHIP_JS = r"""JSON.stringify((function () {
     focus: f && f.classList.contains('gm-yes') ? 'gm-yes' : f === first ? 'first' : f === document.querySelector('.gm-canvas') ? 'canvas'
       : (f ? f.tagName + '.' + f.className : ''),
     opened: Array.prototype.map.call(document.querySelectorAll('.gm-chip.opened'), function (o) { var a = o.querySelector('a');
-      return { kind: o.dataset.opened, text: o.textContent, href: a ? a.getAttribute('href') : '' }; }) };
+      var raw = a ? a.getAttribute('href') : '';
+      return { kind: o.dataset.opened, text: o.textContent, raw: raw, href: opened(raw) }; }) };
+  // The finding an "Opened in its section" link names: #f/opened-<n> is the n-th finding the page can close and
+  // shows opened, in the order of the sections (person.js openedOrder()).
+  function opened(raw) {
+    var m = /^#f\/opened-(\d+)$/.exec(raw);
+    if (!m) { return raw; }
+    if (!window.__pgpResults) {
+      var x = new XMLHttpRequest(); x.open('GET', 'results.json', false); x.send(); window.__pgpResults = JSON.parse(x.responseText);
+    }
+    var r = window.__pgpResults, tags = (r.veil && r.veil.findings) || {}, byId = {}, order = [];
+    r.findings.forEach(function (f) { byId[f.id] = f; });
+    function ok(f) { return f && (f.level === 'act' || (tags[f.id] && tags[f.id] !== f.id)) && !!document.getElementById('f-' + f.id); }
+    (r.journal || []).forEach(function (s) { (s.findings || []).forEach(function (id) { if (ok(byId[id]) && order.indexOf(id) < 0) { order.push(id); } }); });
+    r.findings.forEach(function (f) { if (ok(f) && order.indexOf(f.id) < 0) { order.push(f.id); } });
+    return '#f/' + (order[Number(m[1]) - 1] || raw);
+  }
 }()))"""
 
 
@@ -2507,6 +2552,9 @@ def chip_open(b):
     named = [o["href"] for o in after["opened"] if o["kind"] == "section" and o["href"][3:] not in after["ids"]]
     if named:
         bad.append(f"an Opened in its section chip names a result that is not open: {named}")
+    raw = [o["raw"] for o in after["opened"] if o["kind"] == "section" and not re.match(r"^#f/opened-\d+$", o["raw"])]
+    if raw:
+        bad.append(f"an Opened in its section chip links a result by its id: {raw}")
     leaked = [after["ids"][i] for i in after["closed"] if not re.match(r"^closed-\d+$", after["ids"][i] or "")]
     if leaked:
         bad.append(f"a closed card carries an id, not a handle: {leaked}")
@@ -2822,8 +2870,13 @@ UNDER = (("a gene-only review finding (CFTR) over a closed deletion naming anoth
           [act("pl-iota", "PLIOTA", "chr7:117400000-117700000", "Planted iota deletion")],
           [{"id": "pl-kappa", "level": "review", "card": "exomiser", "gene": "CFTR", "title": "Planted kappa review",
             "detail": "CFTR", "text": "A planted review finding that names CFTR only."}], "pl-kappa", "chr7"),
-         ("the page's own CYP2D6 medicine finding over a closed variant naming another gene",
-          [act("pl-theta", "PLTHETA", "chr22:42125000", "Planted theta result")], [], "pgx-cyp2d6", "chr22"))
+         # The page's own CYP2D6 medicine finding closes with the medicine card while any result is closed (a fixed
+         # panel), so a carrier finding stands in for a gene-only finding of a card that is no panel.
+         ("a gene-only carrier finding (CYP2D6) over a closed variant naming another gene",
+          [act("pl-theta", "PLTHETA", "chr22:42125000", "Planted theta result")],
+          [{"id": "pl-lambda", "level": "carrier", "card": "carrier-list", "gene": "CYP2D6",
+            "title": "Planted lambda carrier", "detail": "CYP2D6", "text": "A planted carrier finding that names CYP2D6 only."}],
+          "pl-lambda", "chr22"))
 
 
 def under_problems(b, base, out, og):
@@ -3007,10 +3060,13 @@ def open_order_problems(b, base, out, og):
             if k == 0:
                 gone = [x["id"] for x in extra if not x["viewer"]][0]
                 at = chips_now(b)["ids"].index(gone) if gone in chips_now(b)["ids"] else -1
-                b.eval("var o = document.querySelector('.gm-chip.opened[data-opened=section] a[href=\"#f/%s\"]'); "
-                       "o.parentNode.parentNode.querySelector('button').click(); true" % gone)
+                was = [o for o in chips_now(b)["opened"] if o["kind"] == "section"]
+                raw = [o["raw"] for o in was if o["href"] == f"#f/{gone}"]
+                b.eval("var o = document.querySelector('.gm-chip.opened[data-opened=section] a[href=\"%s\"]'); "
+                       "o.parentNode.parentNode.querySelector('button').click(); true" % (raw[0] if raw else ""))
                 after = chips_now(b)
-                if after["closed"] != [at] or any(o["kind"] == "section" and gone in o["href"] for o in after["opened"]):
+                left = [o for o in after["opened"] if o["kind"] == "section"]
+                if after["closed"] != [at] or len(left) != len(was) - 1:
                     bad.append(f"{what}: Close it again on {gone}'s section chip: closed {after['closed']}, "
                                f"opened chips {after['opened']}")
         finally:

@@ -370,7 +370,7 @@
   }
   function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
   // The results to act on this page keeps closed, drawn yet or not.
-  function closedActs() { return ((results && results.findings) || []).filter(function (f) { return f.level === 'act' && veiled(f); }); }
+  function closedActs() { return ((results && results.findings) || []).filter(function (x) { return x.level === 'act' && veiled(x); }); }
   // A card of a fixed panel (results.veil.panels, bin/live_results.py FIXED_PANELS: the same genes or loci for
   // everyone, known in advance): a row or dot of it closed with a result would tell the result's gene by what is
   // missing. So it closes whole while this page keeps any result to act on closed, behind one box with the same
