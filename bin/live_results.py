@@ -1153,6 +1153,7 @@ def lead(found, levels, summary):
 # whatever the result (results.json veil.panels; assets/live/person.js panelShut()). The one table: a card of a
 # fixed panel is listed here and nowhere else.
 FIXED_PANELS = {
+    "mei": "the known disease-causing insertions of assets/mei_sites.tsv",
     "expansions": "the repeat loci of the catalog",
     "vntyper": "MUC1",
     "lpa": "LPA",
