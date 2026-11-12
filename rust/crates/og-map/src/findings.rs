@@ -9,7 +9,9 @@
 //!   reads (`genes::parse_gtf`): medicine genes, HLA, LPA, a gene-level
 //!   result. A name on several chromosomes takes the first in map order.
 //! - A finding with neither is not on the map. The layer note counts those
-//!   that no closed result hides; a closable one is left out of every count.
+//!   that no closed result hides; a closable one, and one the results'
+//!   veil ties to a closable result (`Finding::veiled`), is left out of
+//!   every count.
 //! - The layer's count and totals take the rows with no veil tag only: a
 //!   closable finding, and an open one over a closable one's span, are in
 //!   no number.
@@ -197,7 +199,7 @@ pub fn read(findings: &facts::Findings, root: &Path, run: &str, reference: &Refe
             within((c, s, e, None))
         });
         let Some((chrom, s, e, pos)) = place else {
-            if !veil::closable(f) {
+            if !veil::closable(f) && !f.veiled {
                 open_unplaced += 1;
             }
             continue;

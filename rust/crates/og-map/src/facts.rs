@@ -5,7 +5,9 @@
 //!   when it is male or female; else the results body's `person.inferred_sex`,
 //!   then `person.declared_sex`; else unknown.
 //! - Findings: `results.findings`, one object per finding, in the page's
-//!   order. Each keeps the fields the map places and labels it with.
+//!   order. Each keeps the fields the map places and labels it with, and
+//!   whether `results.veil.findings` ties it to a result the page can close
+//!   (a carrier row in a closed deletion's second gene).
 //! - The gated APOE result: the traits card keeps APOE behind its own
 //!   warning (`hidden` on the card `traits-panel`). It is not a row of
 //!   `results.findings`, so the map adds it as one finding, `apoe`, with
@@ -68,7 +70,15 @@ pub struct Finding {
     /// The evidence row `Genotype`, when there is one.
     pub genotype: Option<String>,
     pub steps: Vec<String>,
+    /// `results.veil.findings` ties it to a closable result (any tag but
+    /// the fixed-panel one, `*panel*`, which is the same whatever is closed):
+    /// it closes with that result, so no count of open findings takes it.
+    pub veiled: bool,
 }
+
+/// The tag of `results.veil.findings` that names no result: a fixed-panel
+/// card's own finding (bin/live_results.py `PANEL`).
+pub const PANEL_TAG: &str = "*panel*";
 
 /// The findings part of stdin.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +144,7 @@ fn finding(v: &Value) -> Option<Finding> {
         hgvs: evidence(f, "Variant"),
         genotype: evidence(f, "Genotype"),
         steps,
+        veiled: false,
     })
 }
 
@@ -224,6 +235,13 @@ pub fn parse(bytes: &[u8]) -> Result<Facts, String> {
         None | Some((_, None)) => Findings::Missing,
         Some((r, Some(Value::Array(list)))) => {
             let mut out: Vec<Finding> = list.iter().filter_map(finding).collect();
+            if let Some(Value::Object(v)) = r.get("veil")
+                && let Some(Value::Object(tags)) = v.get("findings")
+            {
+                for f in &mut out {
+                    f.veiled = matches!(tags.get(&f.id), Some(Value::Str(t)) if t != PANEL_TAG);
+                }
+            }
             let has_apoe = out
                 .iter()
                 .any(|f| f.id == APOE_ID || f.gate.as_deref() == Some(APOE_ID));
@@ -319,5 +337,17 @@ mod tests {
             panic!("not read")
         };
         assert_eq!(f.len(), 2);
+        // A finding the veil ties to a closable result is veiled; the
+        // fixed-panel tag ties it to none.
+        let Findings::Read(f) = p(&body.replace(
+            r#""chapters""#,
+            r#""veil":{"findings":{"q":"sf-x","sf-x":"*panel*"}},"chapters""#,
+        )) else {
+            panic!("not read")
+        };
+        assert_eq!(
+            (f[0].veiled, f[1].veiled, f[2].veiled),
+            (false, true, false)
+        );
     }
 }
