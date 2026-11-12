@@ -607,8 +607,10 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "og-io",
+ "og-tsv",
  "pycompat",
  "rust-htslib",
+ "rustc-hash",
 ]
 
 [[package]]

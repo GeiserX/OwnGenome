@@ -9,8 +9,10 @@ publish.workspace = true
 [dependencies]
 indexmap.workspace = true
 og-io.workspace = true
+og-tsv.workspace = true
 pycompat.workspace = true
 rust-htslib.workspace = true
+rustc-hash.workspace = true
 
 [lints]
 workspace = true
