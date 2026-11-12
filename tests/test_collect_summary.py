@@ -139,7 +139,7 @@ Checks:
      SMN1 copies in both reports with its caveat: present with its reads,
      not assessed without the table or with no known status in it.
  26. step 08's opt-in passes in the HLA section: with HLA_QC=true, one line
-     per class I gene from the concordance table pgx_outside_calls.py writes
+     per class I gene from the concordance table og pgx hla-concordance writes
      (agree, disagree with both calls, not compared with the reason), and
      when OptiType did not run, the reason its result file gives; with
      KIR=true, the KIR genes T1K typed with their alleles and qualities, the
@@ -211,7 +211,6 @@ sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
 import clip_check  # noqa: E402
 import collect_summary  # noqa: E402
-import pgx_outside_calls  # noqa: E402
 import render_report  # noqa: E402
 import validate  # noqa: E402
 
@@ -1896,9 +1895,11 @@ def hla_optitype_kir_section(work, schema):
     put(f"{b}/hla_t1k/S_hla_genotype.tsv", t1k)
     put(f"{b}/hla_optitype/S_optitype_result.tsv",
         "\tA1\tA2\tB1\tB2\tC1\tC2\tReads\tObjective\n0\tA*26:01\tA*01:01\tB*58:01\tB*08:01\tC*07:01\tC*07:02\t900\t880.1\n")
-    rc = pgx_outside_calls.main(["hla-concordance", "--t1k", f"{b}/hla_t1k/S_hla_genotype.tsv",
-                                 "--optitype", f"{b}/hla_optitype/S_optitype_result.tsv",
-                                 "--out", f"{b}/hla_optitype/S_hla_concordance.tsv"])
+    sys.path.insert(0, os.path.join(REPO, "tests"))
+    from og_binary import og_binary
+    rc = subprocess.run([og_binary(), "pgx", "hla-concordance", "--t1k", f"{b}/hla_t1k/S_hla_genotype.tsv",
+                         "--optitype", f"{b}/hla_optitype/S_optitype_result.tsv",
+                         "--out", f"{b}/hla_optitype/S_hla_concordance.tsv"], stdout=subprocess.DEVNULL).returncode
     check("26: step 08's writer made the concordance table", rc == 0)
     put(f"{b}/kir_t1k/S_kir_genotype.tsv",
         "KIR2DL1\t2\tKIR2DL1*00302\t40\t60\tKIR2DL1*0010101\t30\t35\n"

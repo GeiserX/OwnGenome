@@ -14,7 +14,7 @@
     verdict, the check gives the MAPQ >= 20 and gene-body (without REP6)
     shares it counts from the BAM.
 
-    The summary is bin/pgx_outside_calls.py pypgx-summary, as in the bash
+    The summary is og pgx pypgx-summary, as in the bash
     step: the defining variants of each call looked up in the VCF, a call
     resting on one below the GQ floor (task.ext.gq_floor, default 20) marked
     'low-confidence: check the reads', and a gene the table marks
@@ -178,7 +178,7 @@ process PYPGX {
     [ "\$SUCCEEDED" -gt 0 ] || exit 1
 
     # Consolidate results into the summary TSV, as scripts/32-pypgx.sh does
-    pgx_outside_calls.py pypgx-summary --outbase "\$OUTBASE" --bam-genes "${bam_genes}" --vcf-genes "${vcf_genes}" \\
+    og pgx pypgx-summary --outbase "\$OUTBASE" --bam-genes "${bam_genes}" --vcf-genes "${vcf_genes}" \\
         --vcf ${vcf} --gq-floor ${gq_floor} \$NOT_CALLABLE --out ${meta.id}_pypgx_summary.tsv
 
     # A CYP2D6 call from multi-mapped depth is not a call: the row says so

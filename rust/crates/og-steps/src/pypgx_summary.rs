@@ -30,7 +30,7 @@
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 
 use og_io::Utf8;
@@ -346,23 +346,43 @@ fn sort_key(v: &str) -> (usize, String, u64, String, String) {
 }
 
 /// pypgx's packaged tables beside the `pypgx` on `PATH`:
-/// `<prefix>/bin/pypgx` and `<prefix>/lib/python3.*/site-packages/pypgx/api/data`.
+/// `<prefix>/bin/pypgx` and `<prefix>/lib/pythonX.Y/site-packages/pypgx/api/data`,
+/// for the Python its `#!` line names (an image may hold a `python3.1`
+/// link beside `python3.12`), else the newest Python that has them.
 fn find_data() -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     let exe = std::env::split_paths(&path)
         .map(|d| d.join("pypgx"))
         .find(|p| p.is_file())?;
-    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
     let lib = exe.parent()?.parent()?.join("lib");
-    let mut pythons: Vec<PathBuf> = std::fs::read_dir(&lib)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter(|e| e.file_name().to_string_lossy().starts_with("python"))
-        .map(|e| e.path().join("site-packages/pypgx/api/data"))
-        .filter(|p| p.join("allele-table.csv").is_file())
-        .collect();
-    pythons.sort();
-    pythons.pop()
+    let data = |python: &str| lib.join(python).join("site-packages/pypgx/api/data");
+    let has = |p: &Path| p.join("allele-table.csv").is_file();
+    let mut first = String::new();
+    if let Ok(f) = std::fs::File::open(&exe) {
+        let _ = io::BufReader::new(f).take(256).read_line(&mut first);
+    }
+    let named = first
+        .strip_prefix("#!")
+        .and_then(|l| l.split_whitespace().next())
+        .and_then(|i| i.rsplit('/').next())
+        .map(data)
+        .filter(|p| has(p));
+    named.or_else(|| {
+        let version = |name: &str| -> Option<(u32, u32)> {
+            let (a, b) = name.strip_prefix("python")?.split_once('.')?;
+            Some((a.parse().ok()?, b.parse().ok()?))
+        };
+        std::fs::read_dir(&lib)
+            .ok()?
+            .filter_map(Result::ok)
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                Some((version(&name)?, data(&name)))
+            })
+            .filter(|(_, p)| has(p))
+            .max_by_key(|(v, _)| *v)
+            .map(|(_, p)| p)
+    })
 }
 
 // --- results.zip ---------------------------------------------------------------

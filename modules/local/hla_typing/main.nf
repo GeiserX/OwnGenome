@@ -208,7 +208,7 @@ process KIR_TYPING {
     each gene's span in T1K_BUILD's coordinate file, 1 kb either side.
     HLA_QC types them with OptiType against the HLA sequences bundled in its
     image and writes the two-field concordance of T1K and OptiType
-    (pgx_outside_calls.py hla-concordance). PGX_CONSENSUS passes HLA-A and
+    (og pgx hla-concordance). PGX_CONSENSUS passes HLA-A and
     HLA-B to PharmCAT only when the two agree. A BAM with no read pairs
     there gets a result file that says so, which PGX_CONSENSUS reads as no
     OptiType call.
@@ -292,7 +292,7 @@ process HLA_QC {
         out=\$(find out -name '*_result.tsv' | head -n 1)
         [ -n "\$out" ] || { echo "ERROR: OptiType wrote no *_result.tsv" >&2; exit 1; }
         cp "\$out" ${meta.id}_optitype_result.tsv
-        pgx_outside_calls.py hla-concordance --t1k ${t1k_genotype} \\
+        og pgx hla-concordance --t1k ${t1k_genotype} \\
             --optitype ${meta.id}_optitype_result.tsv --out ${meta.id}_hla_concordance.tsv
     fi
 

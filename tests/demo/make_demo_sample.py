@@ -16,7 +16,7 @@ Borrowed, not rewritten:
   - the PharmCAT report starts from PharmCAT's own example report
     (tests/fixtures/pharmcat/pharmcat-docs-example.json, PharmCAT's invented
     example sample); HLA-A, HLA-B and CYP2D6 become the outside calls step 36
-    passes on for DEMO-001, worked out by bin/pgx_outside_calls.py itself;
+    passes on for DEMO-001, worked out by og pgx outside-calls itself;
   - T1K's genotype table and the CYP2D6 depth check are the invented
     fixtures of tests/fixtures/pgx;
   - step 33's table is written by `collect_summary.py sample-qc`, and step 25's
@@ -26,7 +26,7 @@ Borrowed, not rewritten:
     the pipeline's Linux containers);
   - step 33's mosaic rows come from og qc sex-loss, step 26b's painting
     from bin/ancestry_fine_report.py, step 35b's table from
-    bin/paraphase_report.py, step 39's from bin/couple_report.py and step 42's
+    og paraphase table, step 39's from bin/couple_report.py and step 42's
     from bin/traits_report.py, each fed made-up inputs; step 46's table and
     step 35's HBA1/HBA2 table are what og cn call writes for made-up depths
     (HBA_TABLE and LPA_TABLE; tests/test_hba_copy_number.py and
@@ -72,6 +72,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -79,7 +80,6 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 import collect_summary  # noqa: E402
-import pgx_outside_calls  # noqa: E402
 from og_binary import og_binary  # noqa: E402
 
 SAMPLE = "DEMO-001"
@@ -261,16 +261,16 @@ def pgx(d, genome_dir, rng):
     put(os.path.join(d, "cyrius", f"{SAMPLE}_cyp2d6.tsv"), f"Sample\tGenotype\tFilter\n{SAMPLE}\t{cyp}\tPASS\n")
 
     # What step 36 will pass to PharmCAT, from its own code.
-    t1k_calls = pgx_outside_calls.read_t1k(t1k)
-    outside = {}
-    for gene in pgx_outside_calls.HLA_GENES:
-        _, dip = pgx_outside_calls.hla_row(gene, t1k_calls)
-        if dip:
-            outside[gene] = dip
-    _, dip = pgx_outside_calls.cyp2d6_row(os.path.join(d, "pypgx", f"{SAMPLE}_pypgx_summary.tsv"),
-                                          os.path.join(d, "cyrius", f"{SAMPLE}_cyp2d6.tsv"), depth)
-    if dip:
-        outside["CYP2D6"] = dip
+    with tempfile.TemporaryDirectory() as tmp:
+        calls = os.path.join(tmp, "calls.tsv")
+        r = subprocess.run([og_binary(), "pgx", "outside-calls", "--calls", calls,
+                            "--consensus", os.path.join(tmp, "consensus.tsv"), "--hla", t1k,
+                            "--pypgx", os.path.join(d, "pypgx", f"{SAMPLE}_pypgx_summary.tsv"),
+                            "--cyrius", os.path.join(d, "cyrius", f"{SAMPLE}_cyp2d6.tsv"), "--depth-check", depth],
+                           stdout=subprocess.DEVNULL)
+        if r.returncode:
+            raise SystemExit(f"og pgx outside-calls failed (exit {r.returncode})")
+        outside = dict(line.rstrip("\n").split("\t") for line in open(calls))
 
     # The PharmCAT report (step 07, run after step 36): PharmCAT's example,
     # with DEMO-001's outside calls. HLA phenotypes as PharmCAT writes them.
@@ -885,11 +885,9 @@ def ancestry_fine(d, rng):
 
 def paralogs(d):
     """Step 35b: a Paraphase JSON with the usual copy numbers (two of each
-    gene, four in each gene family), as bin/paraphase_report.py tables it.
+    gene, four in each gene family), as og paraphase table tables it.
     Paraphase reads PacBio HiFi; DEMO-001 carries the section so its card is
     in the pictures."""
-    import paraphase_report as pr
-
     def region(total, rsi, **kw):
         return dict({"total_cn": total, "genome_depth": MEAN_DEPTH, "region_depth": {"median": (total or 4) * 15.6},
                      "region_specific_info": rsi}, **kw)
@@ -914,8 +912,17 @@ def paralogs(d):
     }
     out = os.path.join(d, "paralogs")
     os.makedirs(out, exist_ok=True)
-    pr.write_tsv(os.path.join(out, f"{SAMPLE}_paraphase_copy_number.tsv"), pr.CN_HEADER, pr.cn_table(data))
-    pr.write_tsv(os.path.join(out, f"{SAMPLE}_paraphase_variants.tsv"), pr.VARIANT_HEADER, [])
+    with tempfile.TemporaryDirectory() as tmp:
+        j = os.path.join(tmp, f"{SAMPLE}.paraphase.json")
+        with open(j, "w") as f:
+            json.dump(data, f)
+        r = subprocess.run([og_binary(), "paraphase", "table", "--sample", SAMPLE, "--json", j,
+                            "--genes", os.path.join(REPO, "assets", "paraphase_genes.tsv"),
+                            "--out-cn", os.path.join(out, f"{SAMPLE}_paraphase_copy_number.tsv"),
+                            "--out-variants", os.path.join(out, f"{SAMPLE}_paraphase_variants.tsv")],
+                           stdout=subprocess.DEVNULL)
+    if r.returncode:
+        raise SystemExit(f"og paraphase table failed (exit {r.returncode})")
     # Step 35 (Parascopy, short reads): two SMN1 and two SMN2 copies at exon 7,
     # in the columns of its <s>_smn_copy_number.tsv.
     put(os.path.join(out, f"{SAMPLE}_smn_copy_number.tsv"),
