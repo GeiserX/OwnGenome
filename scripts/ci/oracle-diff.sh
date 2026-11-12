@@ -166,6 +166,30 @@ differ() {
   esac
 }
 
+# kind_for ITEM SPEC: the compare kind of ITEM. SPEC is one kind, or a
+# space-separated list of GLOB=KIND (the first glob ITEM matches, as in
+# [[ ITEM == GLOB ]]) ending in the kind of every other item:
+# "*.zip=zip-content bytes". A list starts with GLOB=KIND, whose text before
+# the first = has no colon, so a kind such as mask:REGEX is never split.
+kind_for() {
+  local item=$1 spec=$2 el glob first=${2%% *}
+  local -a els
+  case "${first%%=*}" in *:*) printf '%s\n' "$spec"; return ;; esac
+  [[ "$first" == *=* ]] || { printf '%s\n' "$spec"; return; }
+  read -r -a els <<< "$spec"   # read, not word splitting: no file name expansion
+  for el in "${els[@]}"; do
+    if [[ "$el" == *=* && "${el%%=*}" != *:* ]]; then
+      glob=${el%%=*}
+      # shellcheck disable=SC2053  # the glob is meant to match
+      if [[ "$item" == $glob ]]; then printf '%s\n' "${el#*=}"; return; fi
+    else
+      printf '%s\n' "$el"
+      return
+    fi
+  done
+  die "compare kinds '${spec}' end without the kind of every other item (${item})"
+}
+
 run_case() {
   local tool=$1 case=$2 inputs=$3 args=$4 outputs=$5 kind=$6 image_var=$7
   local w="${WORK}/run/${tool}/${case}" image prefix item exp why known g
@@ -207,11 +231,13 @@ run_case() {
   local -a overrides
   IFS=';' read -r -a overrides <<< "$kind"
   for item in "${items[@]}"; do
-    local ours oracle k=${overrides[0]} o
+    local ours oracle k o
     case "$item" in
       exit | stdout | stderr) ours="${w}/og.out/${item}"; oracle="${w}/oracle.out/${item}"; k=bytes ;;
       *)
         ours="${w}/og/${item}"; oracle="${w}/oracle/${item}"
+        # Both spellings of a per-file kind: "GLOB=KIND ... KIND" (kind_for) and "KIND;GLOB=KIND".
+        k=$(kind_for "$item" "${overrides[0]}")
         for o in "${overrides[@]:1}"; do
           # shellcheck disable=SC2053  # the left side is a glob on purpose
           [[ "$item" == ${o%%=*} ]] && k=${o#*=}
@@ -321,13 +347,13 @@ EOF
   printf 'fixed\n' > "${st}/parity/golden/fake/golden-out/stdout"
   printf 'copied\n' > "${st}/parity/golden/fake/golden-stale/stdout"
 
-  # expect LABEL WANT PLANT [KNOWN_ROW] [CASE]: run one case of the fake
-  # tool; WANT is the status one item must get, or "pass" for all ok.
+  # expect LABEL WANT PLANT [KNOWN_ROW] [CASE] [KIND]: run one case of the
+  # fake tool; WANT is the status one item must get, or "pass" for all ok.
   expect() {
-    local label=$1 want=$2 plant=$3 known=${4:-} case=${5:-plain}
+    local label=$1 want=$2 plant=$3 known=${4:-} case=${5:-plain} kind=${6:-tsv}
     printf '' > "${st}/parity/known.tsv"
     [ -z "$known" ] || printf '%s\n' "$known" > "${st}/parity/known.tsv"
-    printf 'fake\t%s\tin.tsv\tin.tsv out.tsv\tout.tsv\ttsv\tPYTHON_IMAGE\n' "$case" > "${st}/parity/cases.tsv"
+    printf 'fake\t%s\tin.tsv\tin.tsv out.tsv\tout.tsv\t%s\tPYTHON_IMAGE\n' "$case" "$kind" > "${st}/parity/cases.tsv"
     rc=0
     out=$(OG="${st}/bin/og" OG_FAKE_PLANT=$plant OG_FAKE_SAY=$([ "$case" = golden-out ] && echo fixed || echo copied) \
       PARITY_DIR="${st}/parity" ORACLE_RUNNER=local ORACLE_DIR="${st}/oracle" PYTHON_IMAGE=unused \
@@ -350,7 +376,11 @@ EOF
   expect "a stale known row fails" STALE "" $'fake\tplain\tout.tsv\tplanted in the self-test'
   expect "a golden og matches passes" pass "" "" golden-out
   expect "a golden the oracle matches is stale" STALE "" "" golden-stale
-  local n=10
+  # out.tsv is no zip: it passes only when its own glob picks its kind.
+  expect "a per-file kind applies to its file" pass "" "" plain "*.zip=zip-content out.*=tsv zip-content"
+  expect "a per-file kind still reports a change" DIFF byte "" plain "*.zip=zip-content out.*=tsv zip-content"
+  expect "the kind after the globs applies to every other file" DIFF "" "" plain "*.zip=tsv zip-content"
+  local n=13
 
   echo "--- og dev parity-compare --self-test"
   if "$real" dev parity-compare --self-test; then :; else bad=$((bad + 1)); fi

@@ -952,7 +952,7 @@ def couple(d, rng):
 
 
 def consumer_export(d):
-    """Step 40's summary table, in bin/export_consumer.py's rows: the pinned
+    """Step 40's summary table, in og consumer export's rows: the pinned
     site table keeps 614,138 of the chip list's 638,463 sites
     (docs/40-export-consumer.md); the counts below are made up."""
     sites, from_blocks, from_records = 614138, 470912, 140206

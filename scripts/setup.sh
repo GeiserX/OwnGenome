@@ -705,13 +705,12 @@ install_strchive_data() {
 # 23andMe v5 site list (GRCh37 positions and reference bases) of
 # CONSUMER_SITES_COMMIT, checked against CONSUMER_SITES_SHA256, is joined by
 # rsID with dbSNP CONSUMER_DBSNP_BUILD's GRCh38 VCF (about 30 GB, checked
-# against CONSUMER_DBSNP_MD5) in bin/export_consumer.py build-sites, which
-# takes the GRCh38 position from dbSNP instead of a liftover and lists every
-# site it drops with the reason. grep first keeps the lines of the list's
-# rsIDs, so Python reads about 600,000 lines instead of more than a billion.
-# Each rsID is matched with the tabs around it, which is the whole ID column;
-# never with -w, whose word check made GNU grep read 30 MB in over 20 minutes
-# with 620,000 patterns.
+# against CONSUMER_DBSNP_MD5) in og's `og consumer build-sites`
+# (rust/crates/og-steps), which takes the GRCh38 position from dbSNP instead
+# of a liftover and lists every site it drops with the reason. It reads the
+# BGZF file on 4 cores and looks at the ID column of a line before anything
+# else, so no grep pass runs first. It runs in PYTHON_IMAGE with bin/
+# mounted, so og is built first when it is missing or stale.
 # The dbSNP file is deleted once the table is built. The table built is then
 # compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
 install_consumer_sites() {
@@ -748,16 +747,17 @@ install_consumer_sites() {
       return 1
     fi
   fi
+  if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
+    echo "[WARN] Could not build og, which builds the site table: run ${0} --og and look at its error."
+    return 1
+  fi
   echo "Building the site table (reads the whole dbSNP file once)..."
   # The table is written to reference/consumer/, outside any sample directory.
-  # shellcheck disable=SC2016  # $1 to $5 expand in the container's shell
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 4g "$PYTHON_IMAGE" bash -euo pipefail -c '
-      gzip -dc "$1" | cut -f3 | grep "^rs" | sed "s/.*/\t&\t/" > "$3.ids"
-      gzip -dc "$2" | LC_ALL=C grep -Ff "$3.ids" \
-        | python3 /pgp-bin/export_consumer.py build-sites --template "$1" --dbsnp - --out "$3" --dropped "$4" --source "$5"
-      rm -f "$3.ids"' _ "$(cpath "$tpl")" "$(cpath "$db")" "$(cpath "$out")" "$(cpath "$dropped")" \
-      "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
-    rm -f "$out" "${out}.ids" "${out}.tmp" "${dropped}.tmp"
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$PYTHON_IMAGE" \
+       /pgp-bin/og consumer build-sites --template "$(cpath "$tpl")" --dbsnp "$(cpath "$db")" \
+       --out "$(cpath "$out")" --dropped "$(cpath "$dropped")" \
+       --source "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
+    rm -f "$out"
     echo "[WARN] Could not build the site table of step 40; the dbSNP download is kept: run this command again."
     return 1
   fi
@@ -776,7 +776,7 @@ consumer_sites_pin_check() {
     echo "[OK] Site table of step 40 $2: $1, the same as the pinned build"
   else
     echo "[WARN] Site table of step 40 $2: $1 differs from the pinned build (content sha256 ${got}, pinned ${CONSUMER_SITES_TABLE_SHA256})."
-    echo "       It was built by another version of bin/export_consumer.py build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
+    echo "       It was built by another version of og consumer build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
   fi
 }
 

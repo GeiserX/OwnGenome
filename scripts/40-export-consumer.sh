@@ -3,8 +3,8 @@
 # Usage: ./scripts/40-export-consumer.sh <sample_name> [male|female]
 #
 # Opt-in. Genealogy and health services take the raw-data file a chip
-# company gives its customers. bin/export_consumer.py genotypes every site of
-# the 23andMe v5 chip list (the site table `setup.sh --consumer-sites`
+# company gives its customers. og's `og consumer export` genotypes every site
+# of the 23andMe v5 chip list (the site table `setup.sh --consumer-sites`
 # builds) from step 03's gVCF: a site inside a reference block is
 # homozygous reference, a site with no call is '--'. It writes the 23andMe
 # layout and the same sites in the AncestryDNA layout, on GRCh37 positions,
@@ -52,14 +52,19 @@ if [ ! -s "$GVCF" ]; then
   echo "  A VCF alone has no reference calls, so most chip sites would be '--'." >&2
   exit 1
 fi
+if ! og_msg=$("${PGP_ROOT}/rust/og.sh" check --required); then
+  echo "$og_msg" >&2
+  exit 1
+fi
 echo "Input:  ${GVCF}"
 echo "Sites:  ${SITES}"
 echo "Sex:    ${SEX:-not given (each site keeps the ploidy of its call)}"
 
 mkdir -p "$OUTDIR"
 rm -f "${OUTDIR}/${SAMPLE}_23andme_v5.zip" "${OUTDIR}/${SAMPLE}_ancestrydna_layout.zip" "${OUTDIR}/${SAMPLE}_consumer_export.tsv"
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 4g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/export_consumer.py export \
+# og reads the BGZF gVCF on up to 4 cores; bin/og runs it in this image.
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 4 --memory 2g "$PYTHON_IMAGE" \
+  /pgp-bin/og consumer export \
     --gvcf "$(cpath "$GVCF")" --sites "$(cpath "$SITES")" --sample "$SAMPLE" --sex "$SEX" \
     --par /pgp-assets/par_grch38.bed --out-dir "$(cpath "$OUTDIR")"
 

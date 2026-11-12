@@ -30,6 +30,7 @@ indexmap = "2"
 flate2 = "1"
 memchr = "2"
 smallvec = "1"
+rustc-hash = "2"
 # Time zones as Python reads them: TZ, else /etc/localtime, else UTC.
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 # statvfs(2) without unsafe code.

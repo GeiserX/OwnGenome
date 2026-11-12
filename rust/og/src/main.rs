@@ -14,6 +14,11 @@ mod probe;
 const TREE_MARK: &str = concat!("og-tree-hash:", env!("OG_TREE_HASH"), ";");
 const TARGET: &str = env!("OG_TARGET");
 
+/// The release builds are static musl binaries; see `og/Cargo.toml`.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
@@ -32,6 +37,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
        og prs format [args]
        og chip prepare|report|check-table [args]
+       og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
        og dev parity-compare|contract|schema|report-only [args]
        og version
@@ -99,6 +105,7 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: qc tool"),
         },
         "run" => ExitCode::from(og_runlog::cli::main(rest)),
+        "consumer" => ExitCode::from(og_steps::consumer::cli(rest)),
         "vcf" => match rest.first().map(String::as_str) {
             Some("csq-rank") => ExitCode::from(og_vcf::rank::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown vcf tool '{other}'")),

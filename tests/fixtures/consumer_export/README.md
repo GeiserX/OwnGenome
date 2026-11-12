@@ -1,6 +1,6 @@
 # Site table slice for CI
 
-`sites.tsv.gz` is the site table of step 40 (`bin/export_consumer.py
+`sites.tsv.gz` is the site table of step 40 (`og consumer
 build-sites`, the format `setup.sh --consumer-sites` writes) cut to the e2e
 fixture's regions. The e2e case `consumer-export-1` and the all-tools stub
 profile (`conf/test_all.config`) read it.
@@ -13,7 +13,8 @@ How it was made:
    records whose rsID is in the 23andMe v5 site list of
    `CONSUMER_SITES_COMMIT`: 7,667 rsIDs.
 2. The list's rows of those rsIDs and those dbSNP records went through
-   `export_consumer.py build-sites`: 7,623 sites kept; 38 dropped as not an
+   build-sites (then `bin/export_consumer.py`, since ported to `og consumer
+   build-sites`): 7,623 sites kept; 38 dropped as not an
    SNV in dbSNP, and 6 pseudoautosomal chrX sites whose chrX record lies
    outside the fixture's chrX slices.
 
