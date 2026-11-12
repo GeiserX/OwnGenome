@@ -1009,3 +1009,34 @@ fn small_readers() {
         Some("3.66.0")
     );
 }
+
+#[test]
+fn state_json_written_item_by_item_is_byte_for_byte_the_whole_document() {
+    use crate::files::{write_check, write_json};
+    let g = genome("stream", Opt::default());
+    let mut c = run_check(&g, &answers(&[]), &this_pins(), Some("3.66.0"));
+    let d = tmp("stream-out");
+    let same = |c: &Check, name: &str| {
+        let (a, b) = (
+            d.join(format!("{name}-whole.json")),
+            d.join(format!("{name}-items.json")),
+        );
+        write_json(&a, &c.to_json()).unwrap();
+        write_check(&b, c).unwrap();
+        let (a, b) = (
+            fs::read_to_string(a).unwrap(),
+            fs::read_to_string(b).unwrap(),
+        );
+        assert_eq!(a, b, "{name}");
+        a
+    };
+    let text = same(&c, "items");
+    assert!(
+        text.contains("\n  {\n   \"item\": \"clinvar_file_date\""),
+        "{text}"
+    );
+    c.rerun = Some(pycompat::json::loads(r#"{"rc": 0, "command": "x \"y\"\n"}"#).unwrap());
+    same(&c, "rerun");
+    c.items.clear();
+    assert!(same(&c, "empty").contains("\"items\": [],"));
+}

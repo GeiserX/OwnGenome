@@ -3015,7 +3015,7 @@ def main():
         bad = missing_hooks(built, hooks)
         check(f"2. every state hook ({', '.join(hooks)}) has a value on the demo's pages", not bad and len(hooks) >= 5, bad)
         dropped = build_live_demo.build(os.path.join(work, "demo-dropped"), work=os.path.join(work, "root-dropped"),
-                                        drop_hook=hooks[0])
+                                        drop_hook=hooks[0], og=og)
         control(f"a build that drops the {hooks[0]} hook", not missing_hooks(dropped, hooks))
 
         # 3. the frames follow the run

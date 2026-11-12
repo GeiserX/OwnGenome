@@ -11,7 +11,7 @@
 //! replay's own exit code.
 
 use crate::answers::{self, Answers, Memo, Offline};
-use crate::files::{last_rerun, log_check, write_json};
+use crate::files::{last_rerun, log_check, write_check};
 use crate::rerun::{Rerun, launch_dir_command, refresh_clinvar, rerun};
 use crate::{DEFAULT_REPO, Here, RAW, affected_steps, check, print_check};
 use og_fresh::pins::{Pins, hla_db_release};
@@ -220,8 +220,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         let _ = writeln!(err, "ERROR: cannot write {}: {e}", d.display());
         1
     };
-    if let Err(e) = log_check(&log, &state).and_then(|()| write_json(&state_path, &state.to_json()))
-    {
+    if let Err(e) = log_check(&log, &state).and_then(|()| write_check(&state_path, &state)) {
         return io(e, err);
     }
     let _ = print_check(&state, out);
@@ -242,9 +241,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         // the rerun has just used.
         let mut fresh = check(sample, &genome, &answers, &steps, &here);
         fresh.rerun = state.rerun.take();
-        if let Err(e) =
-            log_check(&log, &fresh).and_then(|()| write_json(&state_path, &fresh.to_json()))
-        {
+        if let Err(e) = log_check(&log, &fresh).and_then(|()| write_check(&state_path, &fresh)) {
             return io(e, err);
         }
         if rc != 0 {

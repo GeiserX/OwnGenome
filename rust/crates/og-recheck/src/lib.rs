@@ -537,6 +537,11 @@ pub struct Check {
 
 impl Check {
     pub fn to_json(&self) -> Value {
+        self.json_with(Value::Array(self.items.iter().map(Item::to_json).collect()))
+    }
+
+    /// The document with `items` as given.
+    pub fn json_with(&self, items: Value) -> Value {
         let strs = |v: &[String]| Value::Array(v.iter().map(|s| Value::Str(s.clone())).collect());
         let mut m = IndexMap::new();
         m.insert("schema_version".into(), Value::Int(SCHEMA_VERSION));
@@ -558,10 +563,7 @@ impl Check {
             "pipeline_release".into(),
             Value::Object(IndexMap::from([(k.to_owned(), Value::Str(v.clone()))])),
         );
-        m.insert(
-            "items".into(),
-            Value::Array(self.items.iter().map(Item::to_json).collect()),
-        );
+        m.insert("items".into(), items);
         m.insert("affected_steps".into(), strs(&self.affected_steps));
         m.insert("rerun_ready_steps".into(), strs(&self.rerun_ready_steps));
         if let Some(r) = &self.rerun {

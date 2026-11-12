@@ -155,11 +155,20 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             .map(PathBuf::from)
             .or_else(|| root.as_ref().map(|r| r.join(rel)))
     };
-    let (Some(versions), Some(setup), Some(common)) = (
-        path("versions", "versions.env"),
-        path("setup", "scripts/setup.sh"),
-        root.as_ref().map(|r| r.join("scripts/lib/common.sh")),
-    ) else {
+    let versions = path("versions", "versions.env");
+    // common.sh sits in the checkout of the versions.env read.
+    let common = root.as_ref().map_or_else(
+        || {
+            versions
+                .as_ref()
+                .and_then(|v| v.parent())
+                .map(|d| d.join("scripts/lib/common.sh"))
+        },
+        |r| Some(r.join("scripts/lib/common.sh")),
+    );
+    let (Some(versions), Some(setup), Some(common)) =
+        (versions, path("setup", "scripts/setup.sh"), common)
+    else {
         let _ = writeln!(
             err,
             "ERROR: cannot find the OwnGenome checkout above og or the working directory"

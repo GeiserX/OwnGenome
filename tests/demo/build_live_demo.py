@@ -48,8 +48,8 @@ What the replay changes, and why:
   - step 24's files (the report, the charts, the search index, summary.json)
     are held back until the replay reaches the end of HTML_REPORT, as a run
     writes them then; the re-check (tests/fixtures/live/demo) is written one
-    hour after the run ends, and its steps come from owngenome_recheck's own
-    affected_steps;
+    hour after the run ends, and its steps come from `og recheck --affected`
+    (OG; without og the build stops, since the re-check card would be empty);
   - the clock the plugins read is the time of the message just stored, so the
     run-health card shows the run as it was then, not as a run gone quiet;
     the memory and the disk it measures are an invented machine's (64 GiB of
@@ -89,7 +89,6 @@ sys.path.insert(0, BIN)
 import live_results  # noqa: E402
 import owngenome_live  # noqa: E402
 import owngenome_live_family  # noqa: E402
-import owngenome_recheck  # noqa: E402
 import pedigree_svg  # noqa: E402
 import run_headroom  # noqa: E402
 import run_state  # noqa: E402
@@ -189,13 +188,24 @@ def prepare(root, genome_dir=None, records=20000):
     return held
 
 
-def write_recheck(root, checked):
+def affected_steps(og, key):
+    """The steps `og recheck --affected KEY` names: those a change of this manifest key redoes."""
+    try:
+        p = subprocess.run([og, "recheck", "--affected", key], capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        p = None
+    if p is None or p.returncode != 0:
+        why = p.stderr.strip() if p else "not found"
+        raise SystemExit(f"ERROR: og recheck --affected {key} failed ({og}: {why}); scripts/setup.sh --og builds og")
+    return p.stdout.split()
+
+
+def write_recheck(root, checked, og):
     with open(os.path.join(EXTRA, SAMPLE, "recheck", "state.json")) as f:
         st = json.load(f)
-    steps = run_state.read_steps()
     st["checked_utc"] = checked
     for i in st["items"]:
-        i["steps"] = owngenome_recheck.affected_steps(steps, [i["item"]]) if i["class"] != "no-newer-release" else []
+        i["steps"] = affected_steps(og, i["item"]) if i["class"] != "no-newer-release" else []
     d = os.path.join(root, SAMPLE, "recheck")
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "state.json"), "w") as f:
@@ -223,7 +233,7 @@ def frame_key(st):
                        {k: v for k, v in st["plugins"].items() if k != "ops"}], sort_keys=True, default=str)
 
 
-def replay(root, held, drop_hook=None):
+def replay(root, held, drop_hook=None, og=OG):
     """(frames of DEMO-001, the family page's state, the app) with the clock at each message."""
     app = owngenome_live.App()
     cfg = owngenome_live.configure(["--root", root, "--state-dir", os.path.join(root, ".owngenome-live"),
@@ -262,7 +272,7 @@ def replay(root, held, drop_hook=None):
             if i == len(events) - 1 or events[i + 1].get("utcTime") != ev["utcTime"]:
                 snap(ev["utcTime"])
         checked = utc(epoch(events[-1]["utcTime"]) + RECHECK_AFTER_S)
-        write_recheck(root, checked)
+        write_recheck(root, checked, og)
         snap(checked)
         fam = live.state(live.run(FAMILY))
         fam["generated_utc"] = checked
@@ -484,7 +494,7 @@ def build(out, genome_dir=None, records=20000, work=None, drop_hook=None, og=OG)
         root = tmp
     try:
         held = prepare(root, genome_dir, records)
-        frames, fam, app = replay(root, held, drop_hook)
+        frames, fam, app = replay(root, held, drop_hook, og)
         drawn = write_site(out, root, frames, fam, og)
         return {"frames": frames, "family": fam, "hooks": [n for n, _ in app.state_hooks], "map": drawn}
     finally:
