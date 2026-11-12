@@ -77,9 +77,14 @@ Checks:
      opened from its box, the same page whichever result is closed, and with
      his results unreadable "Show the rows" leaves it closed and "Show the map"
      opens it and no table; on
-     his page a CHIP call, a copy-number dot and a card's fact in the gene of a
-     closed result stay out of sight (on a phone the card's line too) until it
-     is opened; DEMO-001's page
+     his page the copy-number and CHIP cards, a fixed panel, close whole while
+     a result of his is closed (on a phone their line too), their box opens one
+     result per click and every dot, call and fact is back once all are open;
+     two of his pages that differ only in which result is closed (two SNV
+     genes, two deletions of two genes each, SMN1 against HBA1, a result with a
+     place on the map against one without, one ClinVar row against two, a link
+     to each) are the same before any click, HTML, attributes, address and map
+     canvas, and a closed deletion's second gene is named nowhere; DEMO-001's page
      mid-replay and at the end leads with the report (a short run band above
      the lead while it runs, none once finished), ends with the step timeline
      folded, keeps the wire to at most eight one-sentence lines with the plain
@@ -99,8 +104,9 @@ shared by every box or 'Show the grandparents' opening the side by side while th
 request read as nothing closed, malformed veil.spans read as given, results without veil.spans read as nothing
 closed or as closed with nothing to act on, an opened result kept per run only or per child only, a couple screen
 closed only for a result in its genes or opened by 'Show the cells', a map image closed only for a result with a
-position, and de novo rows that 'Show the map' opens; for the son's page, person.js that draws
-every item, shows every fact or builds a card's line from every fact), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
+position, and de novo rows that 'Show the map' opens; for the son's page, person.js that draws a fixed-panel
+card's open rows or builds its line from its facts, that puts a closed card's id back or counts the closed rows,
+and a veil that tags only a deletion's first gene), the phone page (person.js that never folds, and a route that opens only the nearest fold), the
 folds (a flagged section 5 card folded, a redraw that forgets the folds, a Ctrl+click that opens one) and
 the person page's layout (a wire showing every line or every plain finish, a card showing
 every line, a step timeline left open) also run against a planted mistake and must
@@ -110,6 +116,7 @@ Run: python3 tests/test_live_demo.py
 """
 import base64
 import copy
+import difflib
 import gzip
 import hashlib
 import json
@@ -358,6 +365,7 @@ def browser_checks(out):
         map_checks(b, base, out)
         family_veil_checks(b, base, out)
         widget_veil_checks(b, base, out)
+        infer_checks(b, base, out)
     finally:
         b.close()
         srv.shutdown()
@@ -402,8 +410,9 @@ def person_checks(b, base):
 WIDGETS = [("DEMO-002", "expansions", "str", "[data-widget=str] .w-row", 8),
            ("DEMO-002", "lpa", "ci", "[data-widget=ci] .w-tick", 1),
            ("DEMO-002", "chip", "vaf", "[data-widget=vaf] .w-tick.w-call", 1),
-           # five copy-number genes from Paraphase, then Parascopy's SMN1 and SMN2
-           ("DEMO-003", "paralogs", "copies", "[data-widget=copies] li", 7),
+           # five copy-number genes from Paraphase, then Parascopy's SMN1 and SMN2, on the partner's page: the son's keeps
+           # the copy-number card closed while a result of his is closed (a fixed panel)
+           ("DEMO-002", "paralogs", "copies", "[data-widget=copies] li", 7),
            ("DEMO-003", "y-chromosome", "ypath", "[data-widget=ypath] li", 5),
            ("DEMO-002", "clinvar", "MoChA bar", "figure[data-chart=genome] rect.mca", 1),
            ("DEMO-003", "clinvar", "AnnotSV span", "figure[data-chart=genome] rect.sv", 1)]
@@ -636,19 +645,32 @@ def planted_closed(b, base):
     return out
 
 
-def planted_problems(b, base):
+def open_closed(b, fid):
+    """Opens the closed result FID as a reader who holds a link to it does: #f/<id> lands on its closed card, whose
+    address and element carry its handle (#f/closed-<n>), never its id; then its "Show the result". False when the
+    link lands on no closed card."""
+    b.eval("location.hash = %s; true" % json.dumps("#f/" + fid))
+    if not b.wait("/^#f\\/closed-\\d+$/.test(location.hash) && document.getElementById('f-' + location.hash.slice(3)) "
+                  "&& location.hash", 5):
+        return False
+    b.eval("document.getElementById('f-' + location.hash.slice(3)).querySelector('.veil button').click(); true")
+    return True
+
+
+def planted_problems(b, base, out_dir):
     """[problems] of the planted results on the son's page: closed, then opened one at a time, then reloaded."""
     gene, hit, sv = planted_words()
     out = planted_closed(b, base)
-    ids = b.eval("Array.prototype.map.call(document.querySelectorAll('[data-finding][data-level=act]'), "
-                 "function (e) { return e.getAttribute('data-finding'); }).join(' ')") or ""
+    with open(os.path.join(out_dir, "runs", OTHERS[1], "results.json")) as f:
+        ids = " ".join(x["id"] for x in json.load(f)["findings"] if x["level"] == "act")
     sf = next((i for i in ids.split() if i.startswith("sf-")), None)
     import make_demo_sample
     start = str(make_demo_sample.PLANTED["sv"][1])
     del_ = next((i for i in ids.split() if i.startswith("sv-") and start in i), None)
     if not sf or not del_:
         return out + [f"the planted results are not among the son's results to act on: {ids}"]
-    b.eval("document.querySelector('#f-%s .veil button').click(); true" % sf)
+    if not open_closed(b, sf):
+        return out + [f"a link to {sf} lands on no closed card"]
     time.sleep(0.8)
     shown = b.eval(SHOWN_JS) or ""
     rows = b.eval("Array.prototype.filter.call(document.querySelectorAll('#card-clinvar tbody tr'), function (r) { "
@@ -665,7 +687,8 @@ def planted_problems(b, base):
     hits, _ = son_search(b, gene)
     if hits in (None, "0"):
         out.append(f"the search for {gene} finds nothing once its result is opened")
-    b.eval("document.querySelector('#f-%s .veil button').click(); true" % del_)
+    if not open_closed(b, del_):
+        return out + [f"a link to {del_} lands on no closed card"]
     time.sleep(0.8)
     shown = b.eval(SHOWN_JS) or ""
     spans = b.eval("document.querySelectorAll('figure[data-chart=genome] a[data-mark^=sv-]').length")
@@ -730,7 +753,7 @@ def planted_checks(b, base, out):
         with open(p, "w") as f:
             f.write(text)
     try:
-        bad = planted_problems(b, base)
+        bad = planted_problems(b, base, out)
         check("browser: the son's planted secondary finding and class 5 deletion name their gene and positions nowhere "
               "(cards, charts, titles, links, search) until each is opened, each opens only its own rows and marks, "
               "and a reload closes them", not bad, bad)
@@ -1399,10 +1422,174 @@ def family_veil_checks(b, base, out):
             write(p, text)
 
 
+# What a reader of the son's page gets before any click: the whole document (every text and every attribute, the
+# map's timing attributes aside), the address, and a hash of the map's canvas.
+PAGE_JS = r"""JSON.stringify((function () {
+  var c = document.documentElement.cloneNode(true);
+  Array.prototype.forEach.call(c.querySelectorAll('[data-pgp-map-parse-ms],[data-pgp-map-paint-ms]'), function (e) {
+    e.removeAttribute('data-pgp-map-parse-ms'); e.removeAttribute('data-pgp-map-paint-ms'); });
+  var cv = document.querySelector('.gm-canvas');
+  return { html: c.outerHTML, href: location.href, canvas: cv ? cv.toDataURL() : '' };
+}()))"""
+
+
+def page_now(b, base, hash_=""):
+    """The son's page before any click, once its results, its charts and its map have drawn: (lines of its HTML,
+    its address, its canvas hash)."""
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/{hash_}")
+    b.wait("var d = document.documentElement.dataset; d.pgpResults && d.pgpCharts && d.pgpStatus === 'ready' && (" + MAP_READY
+           + ") && 'ready'", 15)
+    time.sleep(0.8)  # the margin follows the camera 140 ms after it settles
+    got = json.loads(b.eval(PAGE_JS) or "{}")
+    return (got.get("html") or "").replace("><", ">\n<").split("\n"), got.get("href") or "", \
+        hashlib.sha256((got.get("canvas") or "").encode()).hexdigest()[:12]
+
+
+def plant_summary(out, og, change):
+    """The son's results.json built again by live_results from his summary.json with CHANGE(sections) applied, and
+    his map.json built again from it by og map build. Returns what to write back afterwards."""
+    son = OTHERS[1]
+    rj, mj = (os.path.join(out, "runs", son, n) for n in ("results.json", "map.json"))
+    keep = {}
+    for p in (rj, mj):
+        with open(p, "rb") as fh:
+            keep[p] = fh.read()
+    root = os.path.join(os.path.dirname(out), "root")
+    with open(os.path.join(root, son, "summary.json")) as fh:
+        summary = json.load(fh)
+    change(summary.setdefault("sections", {}))
+    res = live_results.build(son, summary)
+    with open(rj, "w") as fh:
+        json.dump(res, fh)
+    doc = build_live_demo.og_map(og, ["build", "--root", root, "--run", son, "--assets", os.path.join(REPO, "assets"),
+                                      "--cache-dir", os.path.join(root, ".owngenome-live", "map")],
+                                 json.dumps({"results": res}).encode())
+    with open(mj, "wb") as fh:
+        fh.write(doc)
+    return keep
+
+
+def cpsr(gene):
+    """A CPSR result to act on in GENE, the same variant whatever the gene: a closed result known by its gene."""
+    def change(S):
+        S["cpsr"] = {"state": "ok", "data": {"call_floor_dp": 10, "low_confidence": 0, "plp": [
+            {"gene": gene, "variant": "c.68_69del", "final": "Pathogenic", "clinvar": "Pathogenic"}]}}
+    return change
+
+
+def sv_over(locus, genes):
+    """A class 5 deletion over GENES, and a carrier row that names only its second gene."""
+    def change(S):
+        rows = S["annotsv"]["data"]["rows"]
+        S["annotsv"]["data"]["rows"] = rows + [{"sv": locus, "type": "DEL", "gt": "0/1", "length": "-100000",
+                                                 "acmg_class": "5", "genes": genes, "caller": "Manta", "support": 1,
+                                                 "support_callers": ["Manta"]}]
+        S["carrier"]["data"]["carriers"] = [{"gene": genes[1], "variant": "c.100C>T", "genotype": "het",
+                                             "significance": "Pathogenic", "stars": 2, "inheritance": "AR"}]
+    return change
+
+
+def second_hit(S):
+    """A second ClinVar row in the gene of the son's planted secondary finding, the card's counts kept."""
+    S["clinvar"]["data"]["hits"] = S["clinvar"]["data"]["hits"] + [dict(
+        [h for h in S["clinvar"]["data"]["hits"] if h.get("gene") == "KCNH2"][0], pos=150970000)]
+
+
+# Pairs of son's pages that differ only in which result is closed (or in what only a closed result names): the
+# page before any click must be the same, byte for byte.
+INFER = (("two SNV results in different genes (BRCA1, BRCA2)", cpsr("BRCA1"), cpsr("BRCA2")),
+         ("a deletion over BRCA1 and NBR2 against one over CFTR and CTTNBP2",
+          sv_over("chr17:43044295-43144295", ["BRCA1", "NBR2"]), sv_over("chr7:117480025-117580025", ["CFTR", "CTTNBP2"])),
+         ("SMN1 against HBA1, the same copy numbers", cpsr("SMN1"), cpsr("HBA1")),
+         ("a result with a place on the map (BRCA2) against one without (MLH1)", cpsr("BRCA2"), cpsr("MLH1")),
+         ("a closed result with one ClinVar row against two", lambda S: None, second_hit),
+         ("a link to each of two closed results (#f/<id>)", cpsr("BRCA1"), cpsr("BRCA2"),
+          ("#f/cpsr-brca1-c-68-69del", "#f/cpsr-brca2-c-68-69del")))
+
+
+def infer_problems(b, base, out, og, cases=INFER):
+    """[problems]: for each pair of CASES, the son's page before any click differs (its HTML, an attribute, the
+    address or the map's canvas), with the number of differing lines and the first ones."""
+    bad = []
+    for what, one, two, *hashes in cases:
+        got = []
+        for change, h in zip((one, two), (hashes or [("", "")])[0]):
+            keep = plant_summary(out, og, change)
+            try:
+                got.append(page_now(b, base, h))
+            finally:
+                unplant(keep)
+        (h1, a1, c1), (h2, a2, c2) = got
+        diff = [x for x in difflib.unified_diff(h1, h2, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("+++", "---")]
+        if diff or a1 != a2 or c1 != c2:
+            bad.append(f"{what}: {len(diff)} lines differ, address {a1 == a2}, canvas {c1 == c2}: {diff[:6]}")
+    return bad
+
+
+def sv_gene_problems(b, base, out, og):
+    """[problems]: with a closed deletion over BRCA1 and NBR2, the page names NBR2 nowhere (a carrier row and its
+    finding name only NBR2) before any click."""
+    keep = plant_summary(out, og, sv_over("chr17:43044295-43144295", ["BRCA1", "NBR2"]))
+    try:
+        html = "\n".join(page_now(b, base)[0])
+    finally:
+        unplant(keep)
+    return [f"NBR2 on the page: ...{html[max(0, html.find('NBR2') - 120):html.find('NBR2') + 40]}..."] if "NBR2" in html else []
+
+
+def infer_checks(b, base, out):
+    """The son's page is a function of his open results and the count of his closed ones: two pages that differ only
+    in which result is closed are the same before any click (INFER), and a closed deletion's second gene is named
+    nowhere. Controls: person.js that puts a closed card's id back, that draws a fixed-panel card's open rows, or
+    that counts the closed rows; a veil that tags only a deletion's first gene."""
+    og = og_binary() or build_live_demo.OG
+    if not os.path.isfile(os.path.join(out, "runs", OTHERS[1], "map.json")):
+        print("[SKIP] infer checks: the demo has no map.json")
+        return
+    t0 = time.time()
+    bad = infer_problems(b, base, out, og)
+    check("browser: two pages of the son that differ only in which result is closed are the same before any click, "
+          "HTML, attributes, address and map canvas (" + "; ".join(x[0] for x in INFER) + ")", not bad, bad)
+    bad = sv_gene_problems(b, base, out, og)
+    check("browser: a closed deletion over two genes closes the rows that name only its second gene", not bad, bad)
+    js = os.path.join(out, "assets", "person.js")
+    with open(js) as fh:
+        keep_js = fh.read()
+    try:
+        for desc, a, z, case in (
+                ("person.js that puts a closed card's id back",
+                 "function handle(f) { return veiled(f) ? 'closed-' + (closedOrder().indexOf(f.id) + 1) : f.id; }",
+                 "function handle(f) { return f.id; }", INFER[0]),
+                ("person.js that draws a fixed-panel card's open rows", "} else if (panelShut(c)) {", "} else if (false) {",
+                 INFER[2]),
+                ("person.js that counts the closed rows",
+                 "'Some of its rows or numbers stay closed with a result to act on, until that result is opened.'",
+                 "(ot[1] + (c.lines || []).length - lines.length) + ' rows stay closed with a result to act on.'", INFER[4])):
+            if a not in keep_js:
+                check(f"control: {desc} (the planted line is in person.js)", False, a)
+                continue
+            with open(js, "w") as fh:
+                fh.write(keep_js.replace(a, z))
+            control(desc, not infer_problems(b, base, out, og, [case]))
+    finally:
+        with open(js, "w") as fh:
+            fh.write(keep_js)
+    first = live_results.closable
+    try:
+        live_results.closable = lambda found: first([{k: v for k, v in f.items() if k != "genes"} for f in found])
+        control("a veil that tags only a deletion's first gene", not sv_gene_problems(b, base, out, og))
+    finally:
+        live_results.closable = first
+    print(f"   infer checks: {time.time() - t0:.0f} s")
+
+
 def widget_veil_checks(b, base, out):
-    """On the son's page a CHIP call and a copy-number dot in the gene of a closed result stay out of sight until that
-    result is opened; the other dot stays drawn. A CHIP call is also a finding of its card that names its gene, so
-    the CHIP card closes whole with the result; SMN1 at two copies is no finding, so only its dot's tag closes it."""
+    """On the son's page the copy-number card and the CHIP card, whose rows are a fixed panel (the same genes for
+    everyone), close whole while any result of his to act on is closed: no dot, no call, no fact of theirs shows,
+    and their line on a phone is the same words whatever the result. Each "Show the result" of their box opens
+    one result; once every result is opened every dot, call and fact is back."""
     no_cache(b)
     rj = os.path.join(out, "runs", OTHERS[1], "results.json")
     js = os.path.join(out, "assets", "person.js")
@@ -1416,12 +1603,11 @@ def widget_veil_checks(b, base, out):
         b.wait("location.href === 'about:blank'")
         b.go(f"{base}/runs/{OTHERS[1]}/")
         b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpStatus === 'ready' "
-               "&& document.querySelector('[data-widget=copies]') && document.querySelector('.veil') && 'drawn'", 15)
+               "&& document.querySelector('#card-paralogs') && document.querySelector('.veil') && 'drawn'", 15)
         return shown()
 
     def phone_line():
-        """The copy-number card's one line on a phone (its fold's summary, after the card's own title, the same for
-        everyone), drawn from its first open fact."""
+        """The copy-number card's one line on a phone (its fold's summary, after the card's own title)."""
         b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False},
                b.session)
         try:
@@ -1431,26 +1617,25 @@ def widget_veil_checks(b, base, out):
             return b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.documentElement.dataset.pgpResults "
                           "&& (document.querySelector('[data-card=fold-paralogs] summary .what') || {}).textContent", 15) or ""
         finally:
-            b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
+            b.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 900, "deviceScaleFactor": 1, "mobile": False},
+                   b.session)
 
     def phone_problems():
         line = phone_line()
-        return [] if line and "SMN1" not in line else [f"the copy-number card's line on a phone: {line!r}"]
+        want = "The same genes for everyone, closed while a result about a child is closed."
+        return [] if line == want else [f"the copy-number card's line on a phone: {line!r}, want {want!r}"]
 
     def shown():
-        return b.eval("JSON.stringify([" + SHOWN_JS + ", (document.querySelector('[data-widget=copies]') || {}).textContent || ''])")
+        return b.eval("JSON.stringify([" + SHOWN_JS + ", (document.querySelector('[data-widget=copies]') || {}).textContent || '', "
+                      "document.querySelectorAll('.finding[data-level=act] .veil').length])")
 
     def problems(text, opened):
-        page, cops = json.loads(text) if text else ["", ""]
+        page, cops, _ = json.loads(text) if text else ["", "", 0]
         out_ = []
-        if "SMN2" not in cops:
-            out_.append(f"the open dot is not drawn: {cops[:120]}")
-        if ("p.R175H" in page) != opened or ("SMN1" in cops) != opened:
-            out_.append(f"the CHIP call or the SMN1 dot of the closed results {'not ' if opened else ''}shown: "
-                        f"{'p.R175H' in page} | {cops[:200]}")
-        # The copy-number card's facts name SMN1: closed in its margin and in its line of section 8.
-        if ("SMN1 copies" in page) != opened:
-            out_.append(f"the card's fact on SMN1 {'not ' if opened else ''}shown")
+        if opened and not ("SMN1" in cops and "SMN2" in cops and "p.R175H" in page and "SMN1 copies" in page):
+            out_.append(f"every result opened, yet a dot, the call or the fact is missing: {cops[:200]}")
+        if not opened and (cops or "p.R175H" in page or "SMN1 copies" in page):
+            out_.append(f"a closed result, yet the copy-number or CHIP card shows its rows: {cops[:200]}")
         return out_
     try:
         with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as f:
@@ -1470,19 +1655,23 @@ def widget_veil_checks(b, base, out):
             json.dump(res, f)
         bad = problems(drawn(), False) + phone_problems()
         if not bad:
-            for _ in range(2):  # the CPSR card holds both results: one click opens one
-                b.eval("document.querySelector('#card-cpsr .veil button').click(); true")
-                time.sleep(0.5)
-            bad = problems(shown(), True)
-        check("browser: on the son's page a CHIP call, a copy-number dot and a card's fact in the gene of a closed "
-              "result stay out of sight (the fact in the card's line on a phone too) until it is opened", not bad, bad)
+            # The copy-number card's box opens one result per click, until none is left closed.
+            n = json.loads(shown())[2]
+            for k in range(n):
+                b.eval("var v = document.querySelector('#card-paralogs .veil button'); v && v.click(); true")
+                time.sleep(0.3)
+                left = json.loads(shown())[2]
+                if left != n - k - 1:
+                    bad.append(f"click {k + 1} on the copy-number card's box left {left} of {n} results closed")
+                    break
+            bad += problems(shown(), True)
+        check("browser: on the son's page the copy-number and CHIP cards, a fixed panel, close whole while a result is "
+              "closed (their line on a phone too), their box opens one result per click, and every dot, call and fact is "
+              "back once every result is opened", not bad, bad)
         for desc, a, z in (
-                ("person.js that draws every item", "add(text, widget(of[1]));", "add(text, widget(c.widget));"),
-                ("person.js that shows every fact", "facts = (c.facts || []).filter(function (f, i) { return !(ft[i] && tagClosed(ft[i])); });",
-                 "facts = c.facts || [];"),
-                ("person.js whose card line reads every fact",
-                 "(openFacts(c)[0][0] ? openFacts(c)[0][0][0] + ': ' + openFacts(c)[0][0][1] : NOT_ALL_CLEAR)",
-                 "(c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR)")):
+                ("person.js that draws a fixed-panel card's open rows", "} else if (panelShut(c)) {", "} else if (false) {"),
+                ("person.js whose card line reads a fixed-panel card's facts", ": g === 'show' && panelShut(c) ? PANEL_LINE",
+                 ": false ? PANEL_LINE")):
             if a not in keep_js:
                 check(f"control: {desc} (the planted line is in person.js)", False, a)
                 continue
@@ -2053,15 +2242,17 @@ def map_now(b):
 
 
 # The page's closed results to act on and the map's chips, read at once (a chip's button rebuilds the chips at
-# once: nothing to wait for): the closed act cards in page order, the act chip's count, whether its confirm step
+# once: nothing to wait for): the act cards in page order (ids: each one's id, its handle while it is closed) and
+# the places of the closed ones among them (closed: a closed card names no id, so a result is known by its place), the act chip's count, whether its confirm step
 # shows, where the keyboard is (first: the chips' first button; canvas: the map), and the opened chips.
 CHIP_JS = r"""JSON.stringify((function () {
-  var ids = [];
-  Array.prototype.forEach.call(document.querySelectorAll('.finding[data-level=act]'), function (a) {
-    if (a.querySelector('.veil') && ids.indexOf(a.dataset.finding) < 0) { ids.push(a.dataset.finding); } });
+  var ids = [], closed = [];
+  Array.prototype.forEach.call(document.querySelectorAll('.finding[data-level=act]'), function (a, i) {
+    ids.push(a.dataset.finding);
+    if (a.querySelector('.veil')) { closed.push(i); } });
   var c = document.querySelector('.gm-chip[data-closed=act]'), f = document.activeElement;
   var first = document.querySelector('.gm-chips button');
-  return { closed: ids, buttons: !!first, chip: c ? c.firstChild.textContent : '', confirm: !!(c && c.querySelector('.gm-confirm')),
+  return { closed: closed, ids: ids, buttons: !!first, chip: c ? c.firstChild.textContent : '', confirm: !!(c && c.querySelector('.gm-confirm')),
     focus: f && f.classList.contains('gm-yes') ? 'gm-yes' : f === first ? 'first' : f === document.querySelector('.gm-canvas') ? 'canvas'
       : (f ? f.tagName + '.' + f.className : ''),
     opened: Array.prototype.map.call(document.querySelectorAll('.gm-chip.opened'), function (o) { var a = o.querySelector('a');
@@ -2079,8 +2270,8 @@ def closed_words(n):
 
 
 def chip_open(b):
-    """The act chip's Open, then its Show the result, as a keyboard reader does it. Returns (the id it opened,
-    problems): one Open opens exactly one of the page's closed results, the count falls by one, the keyboard
+    """The act chip's Open, then its Show the result, as a keyboard reader does it. Returns (the id it opened, its
+    place among the act cards, problems): one Open opens exactly one of the page's closed results, the count falls by one, the keyboard
     goes to Show the result and then to the chips' first button (the map when no chip is left), and an
     "Opened in its section" chip never names a result that is still closed."""
     before = chips_now(b)
@@ -2101,10 +2292,15 @@ def chip_open(b):
         bad.append(f"Show the result: the chip reads {after['chip']!r}, want {closed_words(n)!r}")
     if after["focus"] != ("first" if after["buttons"] else "canvas"):
         bad.append(f"Show the result: the keyboard is on {after['focus']!r}")
-    named = [o["href"] for o in after["opened"] if o["kind"] == "section" and o["href"][3:] in after["closed"]]
+    named = [o["href"] for o in after["opened"] if o["kind"] == "section" and o["href"][3:] not in after["ids"]]
     if named:
-        bad.append(f"an Opened in its section chip names a closed result: {named}")
-    return (gone[0] if len(gone) == 1 else None), bad
+        bad.append(f"an Opened in its section chip names a result that is not open: {named}")
+    leaked = [after["ids"][i] for i in after["closed"] if not re.match(r"^closed-\d+$", after["ids"][i] or "")]
+    if leaked:
+        bad.append(f"a closed card carries an id, not a handle: {leaked}")
+    if len(gone) != 1:
+        return None, None, bad
+    return after["ids"][gone[0]], gone[0], bad
 
 
 def parity_problems(b, base, rows):
@@ -2219,12 +2415,15 @@ def map_veil_problems(b, base, out):
     # Open opens the page's closed results one per click, in the page's order, so the son's own result with no
     # place (his first closed card) opens before the deletion: the map then names it only in its section chip.
     order = chips_now(b)["closed"]
+    if not want:
+        return bad + ["the son's page shows no closed result to open"]
+    k, at = 0, None
     for k in range(want):
-        got, more = chip_open(b)
+        got, at, more = chip_open(b)
         if more:
             return bad + [f"Open {k + 1}: {x}" for x in more]
-        if got != order[k]:
-            return bad + [f"Open {k + 1} opened {got}, not the page's next closed result {order[k]} ({order})"]
+        if at != order[k]:
+            return bad + [f"Open {k + 1} opened {got}, the act card at {at}, not the page's next closed one {order[k]} ({order})"]
         if got == fid:
             break
         section = [o for o in chips_now(b)["opened"] if o["kind"] == "section"]
@@ -2252,10 +2451,10 @@ def map_veil_problems(b, base, out):
         bad.append(f"Close it again on the section chips: chips {chips_now(b)['opened']}, closed {chips_now(b)['closed']}")
     b.eval("document.querySelector('.gm-chip.opened[data-opened=\\'1\\'] button').click(); true")
     c = map_now(b)
-    card = b.eval("!!document.querySelector('#f-%s .veil')" % fid)
+    card = at in chips_now(b)["closed"]
     if leaks(c) or not card:
         bad.append(f"Close it again: map shows {leaks(c)}, card closed {card}")
-    b.eval("document.querySelector('#f-%s .veil button').click(); true" % fid)
+    b.eval("document.querySelectorAll('.finding[data-level=act]')[%d].querySelector('.veil button').click(); true" % at)
     c = map_now(b)
     if [m["id"] for m in c["marks"] if m["id"] == fid] != [fid]:
         bad.append("the card's Show the result does not open it on the map")
@@ -2314,7 +2513,8 @@ def overlap_problems(b, base, out):
         c = map_page(b, base, son, "#" + f["chrom"][i])
         if c["state"] != "drawn":
             return [f"the planted map: {c['state']}"]
-        b.eval("document.querySelector('#f-%s .veil button').click(); true" % fid)
+        if not open_closed(b, fid):
+            return [f"a link to {fid} lands on no closed card"]
         c = map_now(b)
         bad = []
         if fid not in [m["id"] for m in c["marks"]]:
@@ -2457,7 +2657,8 @@ def second_open_problems(b, base, out, og):
         ids = [m["id"] for m in c["marks"]]
         if "pl-alpha" in ids or "pl-beta" in ids:
             return [f"closed: marks {ids}"]
-        b.eval("document.querySelector('#f-pl-beta .veil button').click(); true")
+        if not open_closed(b, "pl-beta"):
+            return ["a link to pl-beta lands on no closed card"]
         c = map_now(b)
         ids = [m["id"] for m in c["marks"]]
         bad = []
@@ -2519,7 +2720,8 @@ def named_problems(b, base, out, og):
         if fig != before:
             bad.append(f"closed: the figure differs from the page without them "
                        f"({[k for k in ('html', 'canvas') if fig.get(k) != before.get(k)]})")
-        b.eval("document.querySelector('#f-pl-x .veil button').click(); true")
+        if not open_closed(b, "pl-x"):
+            return bad + ["a link to pl-x lands on no closed card"]
         c = map_now(b)
         ids = [m["id"] for m in c["marks"]]
         if not {"pl-x", "pl-q", "pl-r"} <= set(ids):
@@ -2581,7 +2783,7 @@ def open_order_problems(b, base, out, og):
                             f"keyboard on {kept['focus']!r}"]
             seq = []
             for _ in first["closed"]:
-                got, more = chip_open(b)
+                got, _, more = chip_open(b)
                 if more:
                     return bad + [f"{what}, Open {len(seq) + 1}: {x}" for x in more]
                 seq.append(got)
@@ -2592,10 +2794,11 @@ def open_order_problems(b, base, out, og):
             seqs[what] = seq
             if k == 0:
                 gone = [x["id"] for x in extra if not x["viewer"]][0]
+                at = chips_now(b)["ids"].index(gone) if gone in chips_now(b)["ids"] else -1
                 b.eval("var o = document.querySelector('.gm-chip.opened[data-opened=section] a[href=\"#f/%s\"]'); "
                        "o.parentNode.parentNode.querySelector('button').click(); true" % gone)
                 after = chips_now(b)
-                if after["closed"] != [gone] or any(o["kind"] == "section" and gone in o["href"] for o in after["opened"]):
+                if after["closed"] != [at] or any(o["kind"] == "section" and gone in o["href"] for o in after["opened"]):
                     bad.append(f"{what}: Close it again on {gone}'s section chip: closed {after['closed']}, "
                                f"opened chips {after['opened']}")
         finally:
