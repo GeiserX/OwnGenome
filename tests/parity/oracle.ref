@@ -40,3 +40,7 @@ y-str-bed	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c
 y-str-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" report "$@"'	y str-report
 exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	python3	exomiser
 cn	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/copy_number.py	sh ./oracle.sh	cn
+pgx-outside-calls	954ab367004d63ea639521982299b4976927ccfd	file:bin/pgx_outside_calls.py	python3	pgx outside-calls
+pgx-hla-concordance	954ab367004d63ea639521982299b4976927ccfd	file:bin/pgx_outside_calls.py	sh -c 'exec python3 "$0" hla-concordance "$@"'	pgx hla-concordance
+paraphase-check-bam	954ab367004d63ea639521982299b4976927ccfd	file:bin/paraphase_report.py	sh -c 'exec python3 "$0" check-bam "$@"'	paraphase check-bam
+paraphase-table	954ab367004d63ea639521982299b4976927ccfd	file:bin/paraphase_report.py	sh -c 'exec python3 "$0" table "$@"'	paraphase table
