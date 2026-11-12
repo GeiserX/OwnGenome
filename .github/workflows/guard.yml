@@ -156,11 +156,12 @@ jobs:
 
   # Three shards: one job ran every test file in about 9.5 of its 10 minutes,
   # so each new browser test pushed it over. File i runs in shard i % 3, so
-  # every file runs in exactly one shard.
+  # every file runs in exactly one shard. The limit is 15 minutes: the shard
+  # that holds the browser tests of the live page already takes about 9.
   unit-tests:
     needs: og
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
