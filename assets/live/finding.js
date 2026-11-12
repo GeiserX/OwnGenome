@@ -83,9 +83,18 @@
     var tags = (r.veil && r.veil.findings) || {};
     function tagOf(x) { var t = tags[x.id]; return t && t !== x.id ? t : null; }
     // Opening this finding opens it and the result it names, nothing else: another result keeps its own veil.
+    // A finding of a fixed-panel card (tag PANEL, bin/live_results.py FIXED_PANELS) names no result: it stays closed
+    // while any result to act on is, whichever, as on the person page.
+    var PANEL = '*panel*';
     var opened = {};
-    if (draw.open) { opened[f.id] = true; if (tagOf(f)) { opened[tagOf(f)] = true; } }
-    function shut(x) { return child && (x.level === 'act' ? !opened[x.id] : !!tagOf(x) && !opened[tagOf(x)]); }
+    if (draw.open) { opened[f.id] = true; if (tagOf(f) && tagOf(f) !== PANEL) { opened[tagOf(f)] = true; } }
+    function actShut() { return (r.findings || []).some(function (x) { return x.level === 'act' && !opened[x.id]; }); }
+    function shut(x) {
+      if (!child) { return false; }
+      if (x.level === 'act') { return !opened[x.id]; }
+      var t = tagOf(x);
+      return t === PANEL ? !opened[x.id] && actShut() : !!t && !opened[t];
+    }
     // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
     var closed = shut(f);
     var title = !closed ? f.title : f.level === 'act' ? 'A result to act on' : 'A finding about a result to act on';

@@ -370,7 +370,7 @@
   }
   function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
   // The results to act on this page keeps closed, drawn yet or not.
-  function closedActs() { return ((results && results.findings) || []).filter(function (f) { return veiled(f) && f.level === 'act'; }); }
+  function closedActs() { return ((results && results.findings) || []).filter(function (f) { return f.level === 'act' && veiled(f); }); }
   // A card of a fixed panel (results.veil.panels, bin/live_results.py FIXED_PANELS: the same genes or loci for
   // everyone, known in advance): a row or dot of it closed with a result would tell the result's gene by what is
   // missing. So it closes whole while this page keeps any result to act on closed, behind one box with the same
@@ -447,14 +447,15 @@
         'Step ' + (c.steps || []).join(', ') + ' failed: the step timeline says why, and a rerun of the step fills this section.'));
     } else if (g === 'empty') {
       add(text, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
+    } else if (panelShut(c)) {
+      // A fixed-panel card says the same words whichever result is closed, its own findings' too: so it comes first.
+      // One button opens one result, the next closed one in the page's order, as the map's Open does.
+      add(text, U.veil(PANEL_WORDS, null, function () { var f = nextClosed(); if (f) { openFinding(f); } redraw(true); }));
     } else if (closedFs.length) {
       // One button opens one result: a card with two results to act on asks twice.
       add(text, U.veil((closedFs.length === 1 ? 'This section holds a result' : 'This section holds ' + closedFs.length + ' results') +
         ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.', null,
         function () { openFinding(closedFs[0]); redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } }));
-    } else if (panelShut(c)) {
-      // One button opens one result, the next closed one in the page's order, as the map's Open does.
-      add(text, U.veil(PANEL_WORDS, null, function () { var f = nextClosed(); if (f) { openFinding(f); } redraw(true); }));
     } else {
       (c.notes || []).forEach(function (n) { add(text, el('p', { 'class': 'note-stale' }, n)); });
       if (c.headline) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
@@ -578,26 +579,45 @@
     var t = findingTag(f);
     return !!(t && tagClosed(t));
   }
-  function openFinding(f) { keepHash(function () { shown[f.id] = true; var t = findingTag(f); if (t) { shown[t] = true; } }); }
-  // The address never keeps a closed finding's id. #f/<id> of a finding this page keeps closed (a link from another
-  // page, or a finding closed again since) becomes #f/closed-<n>, its handle, and #f/<id> again once it is opened.
+  // A finding of a fixed-panel card (tag PANEL) stays closed while any result to act on is: opening it opens the next
+  // closed result in the page's order, as its card's box does.
+  function openFinding(f) {
+    var t = findingTag(f), n = t === PANEL ? nextClosed() : null;
+    keepHash(function () { shown[f.id] = true; if (n) { shown[n.id] = true; } else if (t && t !== PANEL) { shown[t] = true; } });
+  }
+  // The address never holds the id of a finding this page can close, closed or opened: #f/closed-<n> while it is
+  // closed (its handle) and #f/opened-<n> once opened on purpose (its place among the opened ones), so no history
+  // entry keeps the id. Any other #f/<x> on a page that keeps a result closed, a closed result's id or no id at all,
+  // lands the same way, on #f/closed-1: the page never picks a closed card by its id, so a guessed id tells nothing.
   // Opening or closing a result moves the handles of the others: the address follows the finding it named. The
   // finding behind a handle in the address is kept here only (hashId); a new address from the reader forgets it.
   var hashId = null;
   window.addEventListener('hashchange', function () { hashId = null; });
+  function closable(f) { return closedPage() && (f.level === 'act' || !!findingTag(f)); }
+  function openedOrder() {
+    var out = [];
+    sectionsList().forEach(function (sec) {
+      (sec.findings || []).forEach(function (id) { var f = findingById(id); if (f && closable(f) && !veiled(f) && out.indexOf(id) < 0) { out.push(id); } });
+    });
+    ((results && results.findings) || []).forEach(function (f) { if (closable(f) && !veiled(f) && out.indexOf(f.id) < 0) { out.push(f.id); } });
+    return out;
+  }
+  function addr(f) { return !closable(f) ? f.id : veiled(f) ? handle(f) : 'opened-' + (openedOrder().indexOf(f.id) + 1); }
   function hashFinding() {
     var h;
     try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return null; }
     if (h.indexOf('f/') !== 0) { return null; }
-    var x = h.slice(2);
-    if (/^closed-\d+$/.test(x)) { return (hashId && findingById(hashId)) || findingById(closedOrder()[Number(x.slice(7)) - 1]) || null; }
-    return findingById(x) || null;
+    var x = h.slice(2), m = /^(closed|opened)-(\d+)$/.exec(x);
+    var f = (m && hashId && findingById(hashId)) ||
+      (m ? findingById((m[1] === 'closed' ? closedOrder() : openedOrder())[Number(m[2]) - 1]) : findingById(x));
+    if (f && !(veiled(f) && !m)) { return f; }
+    return closedOrder().length ? findingById(closedOrder()[0]) : null;
   }
   function syncHash() {
     var f = hashFinding();
     if (!f || !window.history || !window.history.replaceState) { return; }
     hashId = f.id;
-    var to = '#f/' + handle(f);
+    var to = '#f/' + addr(f);
     if (window.location.hash !== to) { window.history.replaceState(null, '', to); }
   }
   function keepHash(change) { var at = hashFinding(); if (at) { hashId = at.id; } change(); syncHash(); }
@@ -639,6 +659,8 @@
     return findingsNow().filter(function (f) { return f.level === 'act' && veiled(f); }).map(function (f) { return f.id; });
   }
   // The title of a result once the page shows it, for the map's "Opened in its section" chip; never a closed one's.
+  // The address of a result the map opened, for its "Opened in its section" link: never its id (addr()).
+  function mapHref(id) { var f = findingById(id); return f ? addr(f) : id; }
   function mapTitle(id) { var f = findingById(id); return f && !veiled(f) ? f.title : ''; }
   // Whether a row of the map is a finding of these results: then the page's own veil alone decides it (map.js).
   function mapKnown(id) { return !!findingById(id); }
@@ -682,7 +704,7 @@
     var rel = (f.related || []).map(findingById).filter(function (r) { return r && !veiled(r); });
     if (rel.length) {
       var box = el('div', {});
-      rel.slice(0, 4).forEach(function (r, i) { if (i) { add(box, el('br', {})); } add(box, el('a', { href: '#f/' + r.id }, r.title)); });
+      rel.slice(0, 4).forEach(function (r, i) { if (i) { add(box, el('br', {})); } add(box, el('a', { href: '#f/' + addr(r) }, r.title)); });
       add(side, note('Linked', box, 'linked-note'));
     }
     add(row, art, side);
@@ -955,7 +977,7 @@
         add(trust, el('span', { title: f[0] + ': ' + f[1] }, String(f[0]).replace(/\s*\([^)]*\)/g, '') + ': ' + String(f[1]).split(/[.;(]\s/)[0].replace(/[.;]$/, '').trim()));
       });
     } else { add(trust, el('span', {}, 'Waiting for the quality steps.')); }
-    openProblems.forEach(function (f) { add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#f/' + f.id }, f.title)); });
+    openProblems.forEach(function (f) { add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#f/' + addr(f) }, f.title)); });
     add(trust, el('span', { 'class': 'sep' }, '·'), el('a', { href: '#s5' }, 'Can I trust this?'));
     add(main, trust);
     var side = el('aside', {});
@@ -967,7 +989,7 @@
     // reader left it. It asks this page's veil for each closed row, and opens or closes a result through it.
     if (window.PGPMap) {
       if (!genomeMap) {
-        genomeMap = window.PGPMap.create({ url: 'map.json', veil: mapVeil, now: mapNow, known: mapKnown, closed: mapClosed, title: mapTitle, stepDone: stepDone, open: function (id) { setShown(id, true); },
+        genomeMap = window.PGPMap.create({ url: 'map.json', veil: mapVeil, now: mapNow, known: mapKnown, closed: mapClosed, title: mapTitle, href: mapHref, stepDone: stepDone, open: function (id) { setShown(id, true); },
           close: function (id) { setShown(id, false); }, fallback: mapFallback });
       }
       add(slot, genomeMap.node);

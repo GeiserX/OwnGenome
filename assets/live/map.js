@@ -106,7 +106,8 @@
   // --- the figure ---------------------------------------------------------------------------------------
   // create({url, veil(id, gated) -> 'open'|'closed'|'opened', now(id) -> shown at this moment, open(id),
   // close(id), known(id) -> a finding of the page's results, closed() -> the ids of the results to act on the
-  // page keeps closed at this moment, stepDone(step) -> ended at this moment, fallback() -> rows}): one figure
+  // page keeps closed at this moment, stepDone(step) -> ended at this moment, href(id) -> the address of a finding
+  // the page opened (never its id on a child's page), fallback() -> rows}): one figure
   // per page. The page calls refresh(key) on each of its redraws; a new key
   // fetches the document again and keeps the camera.
   function create(opts) {
@@ -910,7 +911,7 @@
       inSection = inSection.filter(function (id) { return stateOf(id) !== 'closed' && opts.title && opts.title(id); });
       inSection.forEach(function (id) {
         var c = el('div', { 'class': 'gm-chip opened', 'data-opened': 'section' });
-        add(c, add(el('span', {}, 'Opened in its section: '), el('a', { href: '#f/' + id }, opts.title(id))));
+        add(c, add(el('span', {}, 'Opened in its section: '), el('a', { href: '#f/' + (opts.href ? opts.href(id) : id) }, opts.title(id))));
         add(c, button('Close it again', function () { confirming = null; opts.close(id); keyTo(); }));
         add(chips, c);
       });

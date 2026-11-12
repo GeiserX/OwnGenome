@@ -1423,28 +1423,39 @@ def family_veil_checks(b, base, out):
 
 
 # What a reader of the son's page gets before any click: the whole document (every text and every attribute, the
-# map's timing attributes aside), the address, and a hash of the map's canvas.
+# map's timing attributes aside), the address, where the page is scrolled to and what has the focus, and a hash of
+# the map's canvas.
 PAGE_JS = r"""JSON.stringify((function () {
   var c = document.documentElement.cloneNode(true);
   Array.prototype.forEach.call(c.querySelectorAll('[data-pgp-map-parse-ms],[data-pgp-map-paint-ms]'), function (e) {
     e.removeAttribute('data-pgp-map-parse-ms'); e.removeAttribute('data-pgp-map-paint-ms'); });
-  var cv = document.querySelector('.gm-canvas');
-  return { html: c.outerHTML, href: location.href, canvas: cv ? cv.toDataURL() : '' };
+  // The root's data attributes come from scripts that answer in any order: sort them by name.
+  var at = Array.prototype.map.call(c.attributes, function (x) { return [x.name, x.value]; }).sort();
+  at.forEach(function (x) { c.removeAttribute(x[0]); });
+  at.forEach(function (x) { c.setAttribute(x[0], x[1]); });
+  var cv = document.querySelector('.gm-canvas'), a = document.activeElement;
+  return { html: c.outerHTML, href: location.href + ' scroll ' + Math.round(window.scrollY) + ' focus ' +
+    (a ? a.tagName + '#' + a.id : ''), canvas: cv ? cv.toDataURL() : '' };
 }()))"""
 
 
-def page_now(b, base, hash_=""):
+def page_now(b, base, hash_="", typed=False):
     """The son's page before any click, once its results, its charts and its map have drawn: (lines of its HTML,
-    its address, its canvas hash)."""
+    its address with its scroll position and focus, its canvas hash). TYPED: the page loads without HASH_, which is
+    then set as a reader types it into the address bar (a hashchange); its canvas is left out then (a hashchange
+    can move the map's camera)."""
     b.go("about:blank")
     b.wait("location.href === 'about:blank'")
-    b.go(f"{base}/runs/{OTHERS[1]}/{hash_}")
+    b.go(f"{base}/runs/{OTHERS[1]}/{'' if typed else hash_}")
+    # The son's family answers on its own request: wait for its name in the kicker too, or a pair can differ by it.
     b.wait("var d = document.documentElement.dataset; d.pgpResults && d.pgpCharts && d.pgpStatus === 'ready' && (" + MAP_READY
-           + ") && 'ready'", 15)
+           + ") && document.getElementById('kicker').textContent.indexOf('Family') >= 0 && 'ready'", 15)
+    if typed:
+        b.eval(f"location.hash = {json.dumps(hash_)}; true")
     time.sleep(0.8)  # the margin follows the camera 140 ms after it settles
     got = json.loads(b.eval(PAGE_JS) or "{}")
     return (got.get("html") or "").replace("><", ">\n<").split("\n"), got.get("href") or "", \
-        hashlib.sha256((got.get("canvas") or "").encode()).hexdigest()[:12]
+        "" if typed else hashlib.sha256((got.get("canvas") or "").encode()).hexdigest()[:12]
 
 
 def plant_summary(out, og, change):
@@ -1515,7 +1526,13 @@ def second_hit(S):
 
 
 # Pairs of son's pages that differ only in which result is closed (or in what only a closed result names): the
-# page before any click must be the same, byte for byte.
+# page before any click must be the same, byte for byte. The two sides of each pair differ in the thing it guards:
+# a gene that a fixed-panel card's own finding names (the medicine card's CYP2D6 and NAT2) against one no card names,
+# a gene of the carrier list's two-hit line (SMN1) against one it does not name, a gene of the callability card's
+# list of genes not on this reference (GSTT1) or of hard genes not covered (NBPF1) against one not on it, a gene
+# spelled like a word or unit the report prints (HR, MB) against one that is not, and one guessed address on two
+# pages where it is a closed result's id on one side only, loaded with the page and typed after it.
+GUESS = "#f/cpsr-brca1-c-68-69del"
 INFER = (("two SNV results in different genes (BRCA1, BRCA2)", cpsr("BRCA1"), cpsr("BRCA2")),
          ("a deletion over BRCA1 and NBR2 against one over CFTR and CTTNBP2",
           sv_over("chr17:43044295-43144295", ["BRCA1", "NBR2"]), sv_over("chr7:117480025-117580025", ["CFTR", "CTTNBP2"])),
@@ -1525,19 +1542,33 @@ INFER = (("two SNV results in different genes (BRCA1, BRCA2)", cpsr("BRCA1"), cp
          ("a closed result in a gene of a known deep intronic site (ATM) against one in none (BRCA2)", with_sites("ATM"),
           with_sites("BRCA2")),
          ("a link to each of two closed results (#f/<id>)", cpsr("BRCA1"), cpsr("BRCA2"),
-          ("#f/cpsr-brca1-c-68-69del", "#f/cpsr-brca2-c-68-69del")))
+          ("#f/cpsr-brca1-c-68-69del", "#f/cpsr-brca2-c-68-69del")),
+         ("a gene of the medicine card's own finding (CYP2D6) against the other one (NAT2)", cpsr("CYP2D6"), cpsr("NAT2")),
+         ("a gene of the medicine card's own finding (CYP2D6) against one no card names (BRCA2)", cpsr("CYP2D6"),
+          cpsr("BRCA2")),
+         ("a gene the carrier list's two-hit line names (SMN1) against one it does not (BRCA2)", cpsr("SMN1"),
+          cpsr("BRCA2")),
+         ("a gene not on this reference (GSTT1) against one on it (BRCA2)", cpsr("GSTT1"), cpsr("BRCA2")),
+         ("a hard gene the reads did not cover (NBPF1) against one they did (BRCA2)", cpsr("NBPF1"), cpsr("BRCA2")),
+         ("a gene spelled like a word of the report (HR) against one that is not (BRCA2)", cpsr("HR"),
+          cpsr("BRCA2")),
+         ("a gene spelled like a unit of the report (MB) against one that is not (BRCA2)", cpsr("MB"), cpsr("BRCA2")),
+         ("one guessed address, a closed result's id on one page only (BRCA1 against BRCA2 closed)", cpsr("BRCA1"),
+          cpsr("BRCA2"), (GUESS, GUESS)),
+         ("the same guessed address typed after the page drew (BRCA1 against BRCA2 closed)", cpsr("BRCA1"),
+          cpsr("BRCA2"), (GUESS, GUESS), True))
 
 
 def infer_problems(b, base, out, og, cases=INFER):
     """[problems]: for each pair of CASES, the son's page before any click differs (its HTML, an attribute, the
     address or the map's canvas), with the number of differing lines and the first ones."""
     bad = []
-    for what, one, two, *hashes in cases:
+    for what, one, two, *more in cases:
         got = []
-        for change, h in zip((one, two), (hashes or [("", "")])[0]):
+        for change, h in zip((one, two), (more or [("", "")])[0]):
             keep = plant_summary(out, og, change)
             try:
-                got.append(page_now(b, base, h))
+                got.append(page_now(b, base, h, typed=more[1:] == [True]))
             finally:
                 unplant(keep)
         (h1, a1, c1), (h2, a2, c2) = got
@@ -1558,6 +1589,104 @@ def sv_gene_problems(b, base, out, og):
     return [f"NBR2 on the page: ...{html[max(0, html.find('NBR2') - 120):html.find('NBR2') + 40]}..."] if "NBR2" in html else []
 
 
+def panel_words_problems(b, base, out, og):
+    """[problems]: with a closed result in CYP2D6, a gene the medicine card's own finding names, the medicine card shows
+    the fixed-panel box's words, never 'This section holds a result'."""
+    keep = plant_summary(out, og, cpsr("CYP2D6"))
+    try:
+        page_now(b, base)
+        text = b.eval("(document.querySelector('#card-cpic .card-text') || {}).textContent || ''")
+    finally:
+        unplant(keep)
+    ok = "This section lists the same genes for everyone" in text and "This section holds" not in text
+    return [] if ok else [f"the medicine card says {text[:160]!r}"]
+
+
+ADDRESS_JS = ("window.__seen = window.__seen || []; if (!window.__heard) { window.__heard = 1; ['hashchange', 'popstate']"
+              ".forEach(function (e) { window.addEventListener(e, function () { window.__seen.push(e + ' ' + location.hash); }); "
+              "}); } true")
+
+
+def address_problems(b, base, out):
+    """[problems]: on the son's page, a result opened from its card and the reader's moves after it never put the
+    id of a result his page can close into the address or a history entry: #f/closed-1, Show the result, a link to
+    section 3, Back."""
+    with open(os.path.join(out, "runs", OTHERS[1], "results.json")) as fh:
+        res = json.load(fh)
+    tags = (res.get("veil") or {}).get("findings") or {}
+    ids = [f["id"] for f in res["findings"] if f["level"] == "act" or f["id"] in tags]
+    seen = []
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{OTHERS[1]}/#f/closed-1")
+    b.wait("document.documentElement.dataset.pgpResults && document.documentElement.dataset.pgpStatus === 'ready' && "
+           "document.querySelector('.finding[data-level=act] .veil button') && 'ready'", 15)
+    b.eval(ADDRESS_JS)
+    seen.append(b.eval("location.hash"))
+    b.eval("document.querySelector('.finding[data-level=act] .veil button').click(); true")
+    time.sleep(0.3)
+    seen.append(b.eval("location.hash"))
+    b.eval("location.hash = '#s3'; true")
+    time.sleep(0.3)
+    b.eval("history.back(); true")
+    time.sleep(0.5)
+    seen += [b.eval("location.hash")] + json.loads(b.eval("JSON.stringify(window.__seen)") or "[]")
+    bad = [h for h in seen if any(i in (h or "") for i in ids)]
+    if not str(seen[1]).startswith("#f/opened-"):
+        bad.append(f"the opened result's address: {seen[1]!r}, want #f/opened-<n>")
+    return [f"addresses {seen}: {bad}"] if bad else []
+
+
+def home_now(b, base, out, change):
+    """The home page with the son's view (runs.json, live_results.overview) built from his summary with CHANGE applied:
+    the whole document."""
+    p = os.path.join(out, "runs.json")
+    with open(p, "rb") as fh:
+        keep = fh.read()
+    with open(os.path.join(os.path.dirname(out), "root", OTHERS[1], "summary.json")) as fh:
+        summary = json.load(fh)
+    change(summary.setdefault("sections", {}))
+    idx = json.loads(keep)
+    idx["runs"] = [dict(r, **live_results.overview(summary)) if r["name"] == OTHERS[1] else r for r in idx["runs"]]
+    try:
+        with open(p, "w") as fh:
+            json.dump(idx, fh)
+        b.go("about:blank")
+        b.wait("location.href === 'about:blank'")
+        b.go(f"{base}/")
+        b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.documentElement.dataset.pgpPeople "
+               "&& document.querySelector('#attention li') && 'ready'", 15)
+        time.sleep(0.3)
+        return b.eval("document.documentElement.outerHTML").replace("><", ">\n<").split("\n")
+    finally:
+        with open(p, "wb") as fh:
+            fh.write(keep)
+
+
+def renamed(gene):
+    """The son's summary with his planted gene (KCNH2) named GENE everywhere: his first result to act on, the one the
+    home page lists, is then in GENE."""
+    def change(S):
+        S.update(json.loads(json.dumps(S).replace("KCNH2", gene)))
+    return change
+
+
+HOME = (("his first result in BRCA1 against BRCA2", renamed("BRCA1"), renamed("BRCA2")),
+        ("a gene of the medicine card's own finding (CYP2D6) against BRCA2", cpsr("CYP2D6"), cpsr("BRCA2")))
+
+
+def home_problems(b, base, out, cases=HOME):
+    """[problems]: the home page is the same whichever of the son's results is closed (his tile and the list of what
+    needs attention: no link to a closed result's own page, whose address names its gene)."""
+    bad = []
+    for what, one, two in cases:
+        h1, h2 = home_now(b, base, out, one), home_now(b, base, out, two)
+        diff = [x for x in difflib.unified_diff(h1, h2, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("+++", "---")]
+        if diff:
+            bad.append(f"home, {what}: {len(diff)} lines differ: {diff[:4]}")
+    return bad
+
+
 def infer_checks(b, base, out):
     """The son's page is a function of his open results and the count of his closed ones: two pages that differ only
     in which result is closed are the same before any click (INFER), and a closed deletion's second gene is named
@@ -1573,11 +1702,55 @@ def infer_checks(b, base, out):
           "HTML, attributes, address and map canvas (" + "; ".join(x[0] for x in INFER) + ")", not bad, bad)
     bad = sv_gene_problems(b, base, out, og)
     check("browser: a closed deletion over two genes closes the rows that name only its second gene", not bad, bad)
+    bad = panel_words_problems(b, base, out, og)
+    check("browser: a fixed-panel card whose own finding names the closed result's gene shows the panel's words", not bad,
+          bad)
+    bad = address_problems(b, base, out)
+    check("browser: opening a closed result and moving on never puts its id in the address or a history entry", not bad,
+          bad)
+    bad = home_problems(b, base, out)
+    check("browser: the home page is the same whichever of the son's results is closed (" + "; ".join(x[0] for x in HOME)
+          + ")", not bad, bad)
+    home = os.path.join(out, "assets", "home.js")
+    with open(home) as fh:
+        keep_home = fh.read()
+    a = "x.r.url + (closedRuns[x.r.name] && x.f.level === 'act' ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/')"
+    try:
+        if a not in keep_home:
+            check("control: home.js that links a closed result's own page (the planted line is in home.js)", False, a)
+        else:
+            with open(home, "w") as fh:
+                fh.write(keep_home.replace(a, "x.r.url + 'finding/' + encodeURIComponent(x.f.id) + '/'"))
+            control("home.js that links a closed result's own page", not home_problems(b, base, out, HOME[:1]))
+    finally:
+        with open(home, "w") as fh:
+            fh.write(keep_home)
+    first = live_results.panel_finding
+    try:
+        live_results.panel_finding = lambda f: False
+        control("a veil that tags a fixed-panel card's own finding by the closed result's gene",
+                not infer_problems(b, base, out, og, [x for x in INFER if "(NAT2)" in x[0]]))
+    finally:
+        live_results.panel_finding = first
+    fixed = live_results.FIXED_LINES
+    try:
+        live_results.FIXED_LINES = {k: v for k, v in fixed.items() if k != "carrier-list"}
+        control("a veil that tags the carrier list's two-hit line by its genes",
+                not infer_problems(b, base, out, og, [x for x in INFER if "two-hit" in x[0]]))
+    finally:
+        live_results.FIXED_LINES = fixed
     js = os.path.join(out, "assets", "person.js")
     with open(js) as fh:
         keep_js = fh.read()
     try:
         for desc, a, z, case in (
+                # The guard is the pair of lines: either alone lands every guess the same way.
+                ("person.js that picks a closed card by a guessed id",
+                 "    if (f && !(veiled(f) && !m)) { return f; }\n    return closedOrder().length ? findingById(closedOrder()[0]) : null;",
+                 "    return f || null;", [x for x in INFER if x[0].startswith("the same guessed")][0]),
+                ("person.js that picks a closed card by a guessed id, at load",
+                 "    if (f && !(veiled(f) && !m)) { return f; }\n    return closedOrder().length ? findingById(closedOrder()[0]) : null;",
+                 "    return f || null;", [x for x in INFER if x[0].startswith("one guessed")][0]),
                 ("person.js that puts a closed card's id back",
                  "function handle(f) { return veiled(f) ? 'closed-' + (closedOrder().indexOf(f.id) + 1) : f.id; }",
                  "function handle(f) { return f.id; }", INFER[0]),
@@ -1592,6 +1765,18 @@ def infer_checks(b, base, out):
             with open(js, "w") as fh:
                 fh.write(keep_js.replace(a, z))
             control(desc, not infer_problems(b, base, out, og, [case]))
+        for desc, a, z, still in (
+                ("person.js whose fixed-panel card says 'This section holds a result' first", "} else if (panelShut(c)) {",
+                 "} else if (panelShut(c) && !closedFs.length) {", lambda: not panel_words_problems(b, base, out, og)),
+                ("person.js that writes an opened result's id into the address",
+                 "function addr(f) { return !closable(f) ? f.id : veiled(f) ? handle(f) : 'opened-' + (openedOrder().indexOf(f.id) + 1); }",
+                 "function addr(f) { return veiled(f) ? handle(f) : f.id; }", lambda: not address_problems(b, base, out))):
+            if a not in keep_js:
+                check(f"control: {desc} (the planted line is in person.js)", False, a)
+                continue
+            with open(js, "w") as fh:
+                fh.write(keep_js.replace(a, z))
+            control(desc, still())
     finally:
         with open(js, "w") as fh:
             fh.write(keep_js)
@@ -1652,7 +1837,7 @@ def widget_veil_checks(b, base, out):
     def problems(text, opened):
         page, cops, _ = json.loads(text) if text else ["", "", 0]
         out_ = []
-        deep = page.count(live_results.FIXED_LINES["clinvar"])
+        deep = page.count(live_results.FIXED_LINES["clinvar"][0])
         if opened and not ("SMN1" in cops and "SMN2" in cops and "p.R175H" in page and "SMN1 copies" in page
                        and deep == sites[0]):
             out_.append(f"every result opened, yet a dot, the call, the fact or a deep intronic line ({deep} of {sites[0]}) is "

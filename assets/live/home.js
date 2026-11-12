@@ -192,7 +192,8 @@
     });
     items.sort(function (a, b) { return order[a.f.level] - order[b.f.level]; });
     items.slice(0, 6).forEach(function (x) {
-      var a = el('a', { href: x.r.url + 'finding/' + encodeURIComponent(x.f.id) + '/' });
+      // A child's closed result links to the run's page, never to its own page: its id names its gene and variant.
+      var a = el('a', { href: x.r.url + (closedRuns[x.r.name] && x.f.level === 'act' ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/') });
       var who = el('span', { 'class': 'who' });
       var pc = el('span', { 'class': 'pc' }, x.r.name);
       if (colourOf[x.r.name]) { pc.style.setProperty('--pcol', colourOf[x.r.name]); }

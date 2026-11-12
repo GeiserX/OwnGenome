@@ -394,7 +394,9 @@ def veil_problems(res, idx):
             out.append(f"{cid} rows tagged wrong: {bad or got}")
     exo = (v.get("rows") or {}).get("exomiser") or []
     ranked = [f["id"] for f in res["findings"] if f["level"] != "act" and gene in f["title"]]
-    if sf not in exo or not ranked or v.get("findings") != {i: sf for i in ranked}:
+    # A fixed-panel card's own findings (a medicine gene) carry the panel tag, whatever the closed result.
+    named = {k: t for k, t in (v.get("findings") or {}).items() if t != live_results.PANEL}
+    if sf not in exo or not ranked or named != {i: sf for i in ranked}:
         out.append(f"the symptom ranking of {gene}: rows tagged {exo}, findings tagged {v.get('findings')}, want {ranked} -> {sf}")
     tagged = {(t, it["section"]): it.get("veil") for t, items in idx["terms"].items() for it in items if it.get("veil")}
     named = {(gene, it["section"]) for it in idx["terms"].get(gene) or []}
@@ -501,6 +503,87 @@ def sv_genes_problems():
     if v.get("panels") != ["paralogs"]:
         out.append(f"panels {v.get('panels')}, want the copy-number card, the only fixed panel here")
     return out
+
+
+# The veil's tables, pinned here so that an entry dropped from one turns this file red (each is checked by what
+# veil() does with it, not by reading the table back): the fixed-panel cards, the fixed lines of a card (a sample
+# line or row naming a gene, its card, and whether it is a row), the cards that name no gene, and the words that
+# name no gene though a gene has their name.
+WANT_PANELS = ("mei", "expansions", "vntyper", "lpa", "chip", "paralogs", "cpic", "cyp2d6", "hla", "locityper",
+               "traits-panel", "bloodtype")
+WANT_LINES = (("clinvar", "Known deep intronic site (always reported): GLA c.640-801G>A chrX:1 C>T: hom", False),
+              ("carrier-list", "Two hits across callers (a deletion plus a variant on the other copy): none found; "
+                               "deletions read from Parascopy's SMN1 count (step 35)", False),
+              ("callability", ["GSTT1", "not on this reference", ".", "ALT-only"], True),
+              ("callability", ["NBPF1", "not read", "69%", "segdup, collapsed"], True))
+WANT_NO_GENE = (("prs", ["Asthma", "PGS002727", "68.3 (EUR)", "2605/2872", "HR 1.57 (EUR, PPM014751)"], "HR"),)
+WANT_NOT_A_GENE = (("SET", "the same set of genes"), ("MB", "0.0 MB in runs of 5 MB or more"),
+                   ("HP", "Seizure (HP:0001250)"), ("GC", "reads per million with 48-52% GC"))
+WANT_A_GENE = (("KCNH2", "A change in KCNH2."), ("C9ORF72", "C9orf72 repeat"), ("HLA-A", "HLA-A*02:01"))
+
+
+def gene_of(text):
+    """The first upper-case word of TEXT (a list is a table row) that looks like a gene symbol."""
+    t = " ".join(map(str, text)) if isinstance(text, list) else text
+    return next(w for w in re.findall(r"[A-Z][A-Z0-9]{2,}", t.split(":", 1)[-1] if not isinstance(text, list) else t)
+                if w not in ("ALT", "SMN"))
+
+
+def table_problems():
+    """What is wrong with veil()'s tables (WANT_*): a fixed-panel card missing from veil.panels, a fixed line or row
+    tagged by the gene it names instead of the panel tag, a card that names no gene tagged, a word that names no gene
+    read as one, or a gene symbol not read as one."""
+    out = []
+    found = lambda g: [{"id": "sf-" + g.lower(), "level": "act", "gene": g, "detail": g}]
+    chapters = [{"sections": [{"id": c, "state": "ok"} for c in WANT_PANELS]}]
+    got = live_results.veil({"sections": {}}, found("BRCA2"), chapters).get("panels") or []
+    out += [f"card {c} is not in veil.panels" for c in WANT_PANELS if c not in got]
+    for card, item, is_row in WANT_LINES:
+        g = gene_of(item)
+        sec = {"id": card, "table": {"head": ["a", "b", "c", "d"], "rows": [item]}} if is_row else {"id": card, "lines": [item]}
+        v = live_results.veil({"sections": {}}, found(g), [{"sections": [sec]}])
+        tag = ((v.get("rows" if is_row else "lines") or {}).get(card) or [None])[0]
+        if tag != live_results.PANEL:
+            out.append(f"{card}: {str(item)[:60]} tagged {tag} with a closed result in {g}, want the panel tag")
+    for card, row, g in WANT_NO_GENE:
+        sec = {"id": card, "table": {"head": ["a"] * len(row), "rows": [row]}, "lines": [" ".join(row)], "facts": [row[:2]]}
+        v = live_results.veil({"sections": {}}, found(g), [{"sections": [sec]}])
+        if any((v.get(k) or {}).get(card) for k in ("rows", "lines", "facts")):
+            out.append(f"{card} names no gene, yet a closed result in {g} tags it: {v}")
+    for g, text in WANT_NOT_A_GENE:
+        if live_results.veil_id(live_results.closable(found(g)), text):
+            out.append(f"{text!r} read as naming {g}")
+    for g, text in WANT_A_GENE:
+        if not live_results.veil_id(live_results.closable(found(g)), text):
+            out.append(f"{text!r} not read as naming {g}")
+    return out
+
+
+def table_controls():
+    """Each entry of the veil's tables dropped in turn: table_problems() must fail every time."""
+    keep = (live_results.FIXED_PANELS, live_results.FIXED_LINES, live_results.NAMES_NO_GENE, live_results.UNIT_RE)
+    first_words = live_results.gene_words
+    try:
+        for c in WANT_PANELS:
+            live_results.FIXED_PANELS = {k: v for k, v in keep[0].items() if k != c}
+            control(f"FIXED_PANELS without {c}", not table_problems())
+        live_results.FIXED_PANELS = keep[0]
+        for card, words in keep[1].items():
+            for w in words:
+                live_results.FIXED_LINES = dict(keep[1], **{card: tuple(x for x in words if x != w)})
+                control(f"FIXED_LINES[{card}] without {w!r}", not table_problems())
+        live_results.FIXED_LINES = keep[1]
+        live_results.NAMES_NO_GENE = {}
+        control("NAMES_NO_GENE empty", not table_problems())
+        live_results.NAMES_NO_GENE = keep[2]
+        live_results.UNIT_RE = re.compile(r"(?!)")
+        control("gene_words with no units", not table_problems())
+        live_results.UNIT_RE = keep[3]
+        live_results.gene_words = lambda t: {w.upper().rstrip("._-") for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(t))}
+        control("gene_words that reads every word, in any case, as a gene", not table_problems())
+    finally:
+        (live_results.FIXED_PANELS, live_results.FIXED_LINES, live_results.NAMES_NO_GENE, live_results.UNIT_RE) = keep
+        live_results.gene_words = first_words
 
 
 def overview_problems():
@@ -623,6 +706,10 @@ def main():
             control("a veil that tags a known deep intronic site's line by its gene", not veil_lines_problems())
         finally:
             live_results.FIXED_LINES = fixed
+        bad = table_problems()
+        check("8. every fixed-panel card, fixed line and gene-free card of the veil's tables closes as a panel or never, "
+              "and only a gene symbol written as one names a gene", not bad, bad)
+        table_controls()
         bad = overview_problems()
         check("8. a child's home tile lists no finding that names a closed result, and its closed lead names none",
               not bad, bad)
