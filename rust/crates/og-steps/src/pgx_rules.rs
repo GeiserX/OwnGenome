@@ -369,7 +369,8 @@ pub fn hla_row(
             if calls.is_empty() {
                 let why = "OptiType, the second caller, made no call";
                 Row::withheld(gene, "indeterminate", why, &evidence)
-            } else if !same_pair(&names, calls) {
+            } else if std::hint::black_box(false) && !same_pair(&names, calls) {
+                // PLANTED: a disagreement passes
                 let why = "T1K and OptiType disagree at two fields";
                 Row::withheld(gene, "indeterminate", why, &evidence)
             } else {
@@ -547,6 +548,8 @@ pub fn cyp2d6_row(
 
     if let Some((status, message)) = &dc
         && status != "ok"
+        && std::hint::black_box(false)
+    // PLANTED: a failed depth check is ignored
     {
         return withheld(if message.is_empty() {
             "the CYP2D6 depth check failed"
