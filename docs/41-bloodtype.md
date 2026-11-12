@@ -14,8 +14,8 @@ Most blood group antigens differ by one known variant, so the genome predicts th
 
 ## Tool
 
-- `bin/bloodtype_report.py` (standard library Python), applying the marker table `assets/bloodtype_markers.tsv`
-- samtools `bedcov` for the read depth over the marker sites and RHD; the RHD regions are the RHD row of `bin/cn_loci.tsv`, and `bin/copy_number.py` turns their depth into the copy number (see [Copy number from depth](cn-loci.md))
+- `og bloodtype report` (OwnGenome's Rust binary, `rust/crates/og-bloodtype`), applying the marker table `assets/bloodtype_markers.tsv`. It reads the marker sites through the VCF's `.tbi` or `.csi`; without a usable index (none, or one older than the VCF) it reads the VCF once, line by line, with the same result. `og bloodtype check-markers` checks that the table and the rules agree
+- samtools `bedcov` for the read depth over the marker sites and RHD; the RHD regions are the RHD row of `bin/cn_loci.tsv`, and og cn's engine turns their depth into the copy number (see [Copy number from depth](cn-loci.md))
 
 The variants and the antigens they define are the ISBT allele definitions, as RBCeq2 2.4.4 packages them (database v2.5.1, MIT licence, Australian Red Cross Lifeblood). The table's header names the release and the checksum of the file they were read from. Each position and REF base was checked against Ensembl GRCh38 and its dbSNP id. The HPA positions come from dbSNP through Ensembl, because that RBCeq2 database lists them at their GRCh37 positions.
 

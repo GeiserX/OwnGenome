@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""The PRS path around pgsc_calc in bin/collect_summary.py, and its card in
-bin/render_report.py, on synthetic files shaped like pgsc_calc's own.
+"""The PRS path around pgsc_calc (og prs format and og prs table, then
+bin/collect_summary.py), and its card in bin/render_report.py, on synthetic
+files shaped like pgsc_calc's own.
 
 Checks:
   1. og prs format (run when OG names an og binary; tests/parity pins it
@@ -69,7 +70,7 @@ Checks:
   10. the blood group card (step 41): every system's row in the HTML table and
      the text report, ABO and RhD on top, the "predicted, not typed" caption;
      the card is absent when step 41 did not run; and neither the reports nor
-     bin/bloodtype_report.py say anything about transfusion or donation (the
+     og bloodtype say anything about transfusion or donation (the
      table is information).
   11. the traits card (step 42): both reports carry the not-a-diagnosis
       note; a traits table older than the latest run-all.sh run, whose step
@@ -116,9 +117,11 @@ import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
+sys.path.insert(0, os.path.join(REPO, "tests"))
 import collect_summary  # noqa: E402
 import render_report  # noqa: E402
 import validate  # noqa: E402
+from og_binary import og_binary  # noqa: E402
 
 FAILS = 0
 
@@ -155,6 +158,18 @@ if os.environ.get("OG_REQUIRED") and not OG:
     sys.exit("FAIL: OG_REQUIRED is set but OG names no og binary")
 
 
+def prs_table(argv):
+    """og prs table ARGV (the PRS_SUMMARY table, once collect_summary.py
+    prs-table): its exit code. It always runs; tests/og_binary.py finds og."""
+    return subprocess.run([og_binary(), "prs", "table", *argv], capture_output=True).returncode
+
+
+# The columns of og prs table without evaluations: Input last.
+PRS_COLUMNS = ["Condition", "PGS_ID", "Score_SUM", "Variants_Matched", "Variants_Total",
+               "Matched_Pct", "Percentile", "Ancestry_Group", "ChrX", "Ambiguous", "Applies_To",
+               "Sex_Check", "Input"]
+
+
 def og_format(args):
     """og prs format ARGS: its exit code, or None without OG."""
     if not OG:
@@ -166,9 +181,9 @@ def formatted(out, pid, trait, rows, nx=1, chrx="left out", applies="", amb="0\t
     """The score folder og prs format writes for one score."""
     put(f"{out}/{pid}.txt.gz", f"#pgs_id={pid}\n#pgs_name={pid}\n#trait_reported={trait}\n#genome_build=GRCh38\n"
         "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n" + "".join(r + "\n" for r in rows), gz=True)
-    put(f"{out}/{collect_summary.CHRX_FILE}", f"pgs_id\tchrx_rows\tchrx\n{pid}\t{nx}\t{chrx}\n")
-    put(f"{out}/{collect_summary.SCORE_NOTES_FILE}", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\n{pid}\t{applies}\t{amb}\n")
-    put(f"{out}/{collect_summary.EVALS_FILE}", "pgs_id\tppm_id\tancestry\teffect\n" + (f"{pid}\t{evals}\n" if evals else ""))
+    put(f"{out}/chrx_rows.tsv", f"pgs_id\tchrx_rows\tchrx\n{pid}\t{nx}\t{chrx}\n")
+    put(f"{out}/score_notes.tsv", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\n{pid}\t{applies}\t{amb}\n")
+    put(f"{out}/score_evaluations.tsv", "pgs_id\tppm_id\tancestry\teffect\n" + (f"{pid}\t{evals}\n" if evals else ""))
 
 
 def folder_text(d):
@@ -525,11 +540,11 @@ def main():
         # 2. prs-table, no panel
         pgsc_results(f"{work}/raw", adjusted=False)
         out = f"{work}/S_prs_summary.tsv"
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", f"{work}/raw", "--sampleset", "sample",
-                                   "--scores", f"{work}/pgs", "--input-kind", "gvcf", "--out", out])
+        rc = prs_table(["--sample", "S", "--results", f"{work}/raw", "--sampleset", "sample",
+                        "--scores", f"{work}/pgs", "--input-kind", "gvcf", "--out", out])
         hdr, rows = read_rows(out)
         check("prs-table exits 0", rc == 0, rc)
-        check("prs-table: the columns, Input last", hdr == collect_summary.PRS_COLUMNS and hdr[-1] == "Input", hdr)
+        check("prs-table: the columns, Input last", hdr == PRS_COLUMNS and hdr[-1] == "Input", hdr)
         check("prs-table: sum 62 (not 62.0), 2 of 3 matched, no percentile, its chrX row left out",
               rows[0] == ["Coronary artery disease", "PGS000001", "62", "2", "3", "66.7", "NA", "NA", "1 left out", "0", "", "", "gvcf"], rows[0])
         check("prs-table: a score pgsc_calc dropped has no sum and its counts; no chrX entry for a score og prs format did not write",
@@ -538,9 +553,9 @@ def main():
         # 3. prs-table with a panel
         pgsc_results(f"{work}/adj", adjusted=True)
         anc = f"{work}/S_ancestry.tsv"
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", f"{work}/adj", "--sampleset", "sample",
-                                   "--scores", f"{work}/pgs", "--input-kind", "gvcf", "--panel", "pgsc_1000G_v1",
-                                   "--ancestry-out", anc, "--out", out])
+        rc = prs_table(["--sample", "S", "--results", f"{work}/adj", "--sampleset", "sample",
+                        "--scores", f"{work}/pgs", "--input-kind", "gvcf", "--panel", "pgsc_1000G_v1",
+                        "--ancestry-out", anc, "--out", out])
         hdr, rows = read_rows(out)
         check("prs-table with a panel exits 0", rc == 0, rc)
         check("prs-table: the target's sum, percentile and group, not the reference sample's",
@@ -552,21 +567,21 @@ def main():
               and list(k for k in kv if k.startswith("PC")) == ["PC1", "PC2", "PC10"], kv)
 
         # 4. zero matches
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", f"{work}/none", "--sampleset", "sample",
-                                   "--scores", f"{work}/pgs", "--input-kind", "vcf", "--zero-matches", "--out", out])
+        rc = prs_table(["--sample", "S", "--results", f"{work}/none", "--sampleset", "sample",
+                        "--scores", f"{work}/pgs", "--input-kind", "vcf", "--zero-matches", "--out", out])
         hdr, rows = read_rows(out)
         check("prs-table --zero-matches: every score unmatched, Input vcf",
               rc == 0 and [r[2:6] + r[12:] for r in rows] == [["NA", "0", "3", "0.0", "vcf"], ["NA", "0", "5", "0.0", "vcf"]], rows)
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", f"{work}/none", "--sampleset", "sample",
-                                   "--scores", f"{work}/pgs", "--input-kind", "vcf", "--out", out])
+        rc = prs_table(["--sample", "S", "--results", f"{work}/none", "--sampleset", "sample",
+                        "--scores", f"{work}/pgs", "--input-kind", "vcf", "--out", out])
         check("prs-table: no pgsc_calc output and no --zero-matches is an error", rc == 1, rc)
 
         # 4b. every score under pgsc_calc's minimum overlap: no sum, matched unknown, the rate from the log
         put(f"{work}/below.log", "ERROR Score PGS000001 fails minimum matching threshold (33.33% variants match)\n"
             "ERROR pgscatalog.core.lib.pgsexceptions.ZeroMatchesError: All scores fail to meet match threshold 0.75\n")
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", f"{work}/none", "--sampleset", "sample",
-                                   "--scores", f"{work}/pgs", "--input-kind", "gvcf", "--below-threshold", f"{work}/below.log",
-                                   "--out", out])
+        rc = prs_table(["--sample", "S", "--results", f"{work}/none", "--sampleset", "sample",
+                        "--scores", f"{work}/pgs", "--input-kind", "gvcf", "--below-threshold", f"{work}/below.log",
+                        "--out", out])
         hdr, rows = read_rows(out)
         check("prs-table --below-threshold: no sum, matched NA (not 0), the rate from the log, NA without one",
               rc == 0 and [r[2:6] for r in rows] == [["NA", "NA", "3", "33.3"], ["NA", "NA", "5", "NA"]], rows)
@@ -591,9 +606,9 @@ def main():
                         body = g.read()
                     put(f_, body.replace("PGS000001", "PGS000662"))
             o = f"{work}/sex_{tag}/S_prs_summary.tsv"
-            rc2 = collect_summary.main(["prs-table", "--sample", "S", "--results", res, "--sampleset", "sample",
-                                        "--scores", pgs, "--input-kind", "gvcf", "--panel", "pgsc_1000G_v1",
-                                        "--out", o] + (["--sex", sex] if sex else []))
+            rc2 = prs_table(["--sample", "S", "--results", res, "--sampleset", "sample",
+                             "--scores", pgs, "--input-kind", "gvcf", "--panel", "pgsc_1000G_v1",
+                             "--out", o] + (["--sex", sex] if sex else []))
             h, r = read_rows(o)
             return rc2, dict(zip(h, r[0])), o
 
@@ -679,8 +694,8 @@ def main():
             "sample,PGS000003,true,false,false,false,false,NA,excluded,2,true,0.5\n")
         put(f"{work}/amb_res/sample/score/aggregated_scores.txt.gz",
             "sampleset\tFID\tIID\tPGS\tSUM\tDENOM\nsample\tHG\tHG\tPGS000003\t2\t2\n", gz=True)
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", f"{work}/amb_res", "--sampleset", "sample",
-                                   "--scores", f"{work}/amb_off", "--input-kind", "gvcf", "--out", f"{work}/amb.tsv"])
+        rc = prs_table(["--sample", "S", "--results", f"{work}/amb_res", "--sampleset", "sample",
+                        "--scores", f"{work}/amb_off", "--input-kind", "gvcf", "--out", f"{work}/amb.tsv"])
         h, r = read_rows(f"{work}/amb.tsv")
         check("4d: prs-table: the Ambiguous column counts them per score", rc == 0 and dict(zip(h, r[0])).get("Ambiguous") == "2 dropped", r)
 
@@ -693,9 +708,9 @@ def main():
             + "0,PGS000001,1,1100,A,G,matched,sample\n1,PGS000001,X,51000000,A,G,excluded,sample\n", gz=True)
 
         def chrx_of(res):
-            collect_summary.main(["prs-table", "--sample", "S", "--results", res, "--sampleset", "sample",
-                                  "--scores", f"{work}/pgsx_panel", "--input-kind", "gvcf", "--panel", "pgsc_1000G_v1",
-                                  "--out", f"{work}/xp.tsv"])
+            prs_table(["--sample", "S", "--results", res, "--sampleset", "sample",
+                       "--scores", f"{work}/pgsx_panel", "--input-kind", "gvcf", "--panel", "pgsc_1000G_v1",
+                       "--out", f"{work}/xp.tsv"])
             h, r = read_rows(f"{work}/xp.tsv")
             return dict(zip(h, r[0])).get("ChrX")
         got = chrx_of(f"{work}/xpanel")
@@ -706,14 +721,14 @@ def main():
         got = chrx_of(f"{work}/xpanel")
         check("4e: panel run, the chrX row matched: scored", got == "1 scored", got)
         # Three chrX rows, the log matched one: both counts are named.
-        put(f"{work}/pgsx_panel/{collect_summary.CHRX_FILE}", "pgs_id\tchrx_rows\tchrx\nPGS000001\t3\tscored\n")
+        put(f"{work}/pgsx_panel/chrx_rows.tsv", "pgs_id\tchrx_rows\tchrx\nPGS000001\t3\tscored\n")
         got = chrx_of(f"{work}/xpanel")
         check("4e: panel run, 1 of 3 chrX rows matched: 1 scored, 2 left out",
               got == "1 scored, 2 left out (not matched in the panel run)", got)
 
         # 5. the reports
         d = f"{work}/sample_raw/S"
-        put(f"{d}/prs/S_prs_summary.tsv", "\t".join(collect_summary.PRS_COLUMNS) + "\n"
+        put(f"{d}/prs/S_prs_summary.tsv", "\t".join(PRS_COLUMNS) + "\n"
             "Coronary artery disease\tPGS000001\t62\t2\t3\t66.7\tNA\tNA\t8 left out\tgvcf\n"
             "Trait two\tPGS000002\t1\t5\t5\t100.0\tNA\tNA\t3 scored\tgvcf\n")
         summ = collect_summary.collect("S", d)
@@ -727,7 +742,7 @@ def main():
         check("no panel: not-assessed names the missing percentiles",
               collect_summary.PRS_NOT_ADJUSTED in summ["not_assessed"])
         d = f"{work}/sample_adj/S"
-        put(f"{d}/prs/S_prs_summary.tsv", "\t".join(collect_summary.PRS_COLUMNS) + "\n"
+        put(f"{d}/prs/S_prs_summary.tsv", "\t".join(PRS_COLUMNS) + "\n"
             "Coronary artery disease\tPGS000001\t1.25\t2\t3\t66.7\t94.4\tEUR\t0\tgvcf\n")
         put(f"{d}/ancestry/S_ancestry.tsv", "key\tvalue\nsample\tS\nreference_panel\tpgsc_1000G_v1\npopulation\tEUR\n")
         summ = collect_summary.collect("S", d)
@@ -929,8 +944,10 @@ def main():
         nothing = collect_summary.collect("S", f"{work}/telomere/S")
         check("blood groups: no card without step 41", "Blood Groups" not in render_report.html_report(nothing))
         words = re.compile(r"transfus|donat|donor", re.I)
+        src = os.path.join(REPO, "rust", "crates", "og-bloodtype", "src")
         said = [n for n, t in (("text report", txt), ("HTML report", html),
-                               ("bin/bloodtype_report.py", open(os.path.join(REPO, "bin", "bloodtype_report.py")).read()))
+                               ("og bloodtype", "".join(open(os.path.join(src, f)).read()
+                                                for f in sorted(os.listdir(src)) if f.endswith(".rs"))))
                 if words.search(t)]
         check("blood groups: nothing about transfusion or donation", not said, said)
         check("control: the wording check finds the word", bool(words.search("for a transfusion")))

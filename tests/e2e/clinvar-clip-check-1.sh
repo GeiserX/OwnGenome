@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 06's cDNA read check (bin/clip_check.py) on the fixture. The fixture has
+# Step 06's cDNA read check (og cdna check) on the fixture. The fixture has
 # no GENCODE file, so the case writes an exon file of its own: a made-up exon
 # of 60 bp centred on every hit case 30 found, so each hit's reads cross exon
 # edges on both sides, and a second exon 3 kb after the planted hit.

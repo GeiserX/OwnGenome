@@ -11,13 +11,13 @@
 # combined allele (og clinvar join-adjacent): a matched combined record is
 # a hit of its own (INFO/PGP_JOINED_FROM) and its parts are marked PGP_PART_OF.
 # clinvar/${SAMPLE}_clinvar_cdna_check.tsv says, for each hit, whether its alt
-# reads look like spliced cDNA (bin/clip_check.py; needs the sample's BAM and
+# reads look like spliced cDNA (og cdna check; needs the sample's BAM and
 # the GENCODE exons setup.sh installs, and says "not checked" without them).
 # A hit at a site of assets/construct_variants.tsv (alleles lab constructs and
 # transgenic models carry) is named in its construct_site column and always
 # printed with its read counts. clinvar/${SAMPLE}_clinvar_cdna_scan.tsv lists
 # the loci where reads jump from one exon to another across the whole genome
-# (bin/cdna_scan.py, same inputs; CDNA_SCAN=false skips it).
+# (og cdna scan, same inputs; CDNA_SCAN=false skips it).
 # clinvar/${SAMPLE}_clinvar_deep_intronic.tsv gives the sample's call at every
 # site of assets/deep_intronic_sites.tsv (known pathogenic deep intronic
 # alleles), carrier or not: a genotype, "ref" with the GQ of the record or the
@@ -266,12 +266,15 @@ rm -f "$SITES_POS" "${DEEP_TSV}.vcf" "${DEEP_TSV}.gvcf"
 # Step 4: the cDNA read check. Spliced cDNA or expression-vector DNA (a lab
 # contaminant) gives reads clipped exactly at an exon edge, with the rest of
 # the read on the next exon; a variant it carries is called like any other.
-# For each hit, bin/clip_check.py counts the alt and ref reads clipped at an
+# For each hit, og cdna check counts the alt and ref reads clipped at an
 # exon edge and flags the hit when most alt reads are and few ref reads are.
-# It reads only the reads at the hits. pysam is in PYPGX_IMAGE.
-# Then bin/cdna_scan.py reads the reads over every exon and lists the loci
-# with reads across two or more exon junctions (the same contamination, or a
-# processed retrocopy, where no ClinVar hit is).
+# It reads only the reads at the hits. Then og cdna scan reads the reads over
+# every exon and lists the loci with reads across two or more exon junctions
+# (the same contamination, or a processed retrocopy, where no ClinVar hit
+# is). og reads the BAM itself (docs/rust.md). It runs from OUTPUT_DIR and
+# writes relative paths, so bin/og's shadow mode (OG_SHADOW, set only in CI:
+# tests/parity/README.md) can run the Python it replaced beside it, which
+# needs the pysam of PYPGX_IMAGE.
 if [ ! -f "$BAM" ] || [ ! -f "${BAM}.bai" ]; then
   CDNA_ARGS=(--skip "no BAM (${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam with its .bai)")
 elif [ ! -s "$EXONS_BED" ]; then
@@ -281,11 +284,12 @@ else
 fi
 SCAN_ARGS=("${CDNA_ARGS[@]}")
 [ "${CDNA_SCAN:-true}" = false ] && SCAN_ARGS=(--skip "CDNA_SCAN=false")
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "$PYPGX_IMAGE" \
-  python3 /pgp-bin/clip_check.py --hits "$(cpath "$HITS_TSV")" --out "$(cpath "${CDNA_TSV}.part")" \
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" \
+  -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+  /pgp-bin/og cdna check --hits "$(cpath "$HITS_TSV")" --out "${CDNA_TSV##*/}.part" \
   --construct /pgp-assets/construct_variants.tsv "${CDNA_ARGS[@]}"
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYPGX_IMAGE" \
-  python3 /pgp-bin/cdna_scan.py --out "$(cpath "${SCAN_TSV}.part")" "${SCAN_ARGS[@]}"
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+  /pgp-bin/og cdna scan --out "${SCAN_TSV##*/}.part" "${SCAN_ARGS[@]}"
 mv "${SCAN_TSV}.part" "$SCAN_TSV"
 mv "${CDNA_TSV}.part" "$CDNA_TSV"
 

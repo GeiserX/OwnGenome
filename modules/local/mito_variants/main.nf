@@ -17,8 +17,8 @@
        step 20 does without step 16b's output.
 
     MITO_VARIANTS_ANNOTATE, after it, annotates each call with its ClinVar
-    record and gnomAD v3.1's chrM sites (bin/collect_summary.py
-    mito-annotate), as step 20's last stage does.
+    record and gnomAD v3.1's chrM sites (og mito annotate), as step 20's
+    last stage does.
 
     Equivalent to: scripts/20-mtoolbox.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -160,7 +160,7 @@ process MITO_VARIANTS_ANNOTATE {
     def cv = clinvar ? "--clinvar ${clinvar}" : ''
     def gn = gnomad ? "--gnomad ${gnomad}" : ''
     """
-    collect_summary.py mito-annotate --vcf ${vcf} ${cv} ${gn} --out ${meta.id}_chrM_annotated.tsv
+    og mito annotate --vcf ${vcf} ${cv} ${gn} --out ${meta.id}_chrM_annotated.tsv
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """
@@ -182,13 +182,13 @@ process MITO_VARIANTS_ANNOTATE {
     BAM, in the eKLIPse image (it holds samtools and Python too).
     1. samtools idxstats of the whole BAM: chrM reads per base over the
        autosomal reads per base, times 2, is the mtDNA copy number per cell
-       (bin/collect_summary.py mito-copies, into <id>_mtdna_copies.tsv;
+       (og mito copies, into <id>_mtdna_copies.tsv;
        not assessed under 20 reads per kb of autosome, as on a sliced BAM).
     2. The chrM reads into their own BAM, and eKLIPse on it against the rCRS
        GenBank file its image ships (data/NC_012920.1.gb beside eKLIPse.py;
        GRCh38's chrM is the rCRS). eKLIPse finds deletions from soft-clipped
        reads whose clipped part maps across the deletion
-       (bin/collect_summary.py mito-deletions turns its CSV into
+       (og mito deletions turns its CSV into
        <id>_chrM_deletions.tsv). The report names the deletions of
        assets/mito_confirmed.tsv among them.
 
@@ -215,7 +215,7 @@ process MITO_DELETIONS {
     def id = meta.id
     """
     samtools idxstats ${bam} > ${id}.idxstats
-    collect_summary.py mito-copies --idxstats ${id}.idxstats --out ${id}_mtdna_copies.tsv
+    og mito copies --idxstats ${id}.idxstats --out ${id}_mtdna_copies.tsv
 
     samtools view -b -o ${id}_chrM.bam ${bam} chrM
     samtools index ${id}_chrM.bam
@@ -236,7 +236,7 @@ process MITO_DELETIONS {
     if [ -z "\$CSV" ]; then
         echo "WARNING: eKLIPse wrote no eKLIPse_deletions.csv: no deletion table" >&2
     else
-        collect_summary.py mito-deletions --eklipse "\$CSV" --out ${id}_chrM_deletions.tsv
+        og mito deletions --eklipse "\$CSV" --out ${id}_chrM_deletions.tsv
     fi
 
     printf '"%s":\\n    eklipse: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

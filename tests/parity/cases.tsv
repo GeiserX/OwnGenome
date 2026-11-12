@@ -669,3 +669,94 @@ sv-postfilter	frac-rdcn	gen:sv-oracle.sh,sv-postfilter/frac.tsv	--class45 frac.t
 sv-postfilter	multiline	gen:sv-oracle.sh,sv-postfilter/multiline.tsv	--class45 multiline.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	missing-table	gen:sv-oracle.sh	--class45 none.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
 sv-postfilter	bad-rules	gen:sv-oracle.sh,sv-postfilter/rows7.tsv,sv-postfilter/badrules.tsv	--class45 rows7.tsv --rules badrules.tsv --out out.tsv	-	bytes	PYTHON_IMAGE
+bloodtype	ref-reads	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-2.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	ref-no-bam	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	rhd-one	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-1.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-1.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	rhd-none	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-0.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-0.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	rhd-three	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-3.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-3.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	rhd-boundary	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-145.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-145.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	rhd-hybrid	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-hybrid.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-hybrid.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	rhd-low-flank	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-lowflank.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-lowflank.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	rhd-broken-flank	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-broken.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-broken.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	low-site-depth	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-lowsite.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-lowsite.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	bam-without-chr1-chr9	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-drop.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-drop.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	bam-without-marker-contigs	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf,bloodtype/d-nobam.tsv	report --sample S --vcf empty.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-nobam.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	abo-ab-duffy-gata-kell-null	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/abo.vcf,bloodtype/d-2.tsv	report --sample S --vcf abo.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	abo-ab-no-bam	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/abo.vcf	report --sample S --vcf abo.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	pseudogene-one-copy	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/abo.vcf,bloodtype/d-1.tsv	report --sample S --vcf abo.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-1.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	abo-odd-fyx-kidd-two-nulls	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/abo-odd.vcf,bloodtype/d-2.tsv	report --sample S --vcf abo-odd.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	abo-bad-para-bombay-lan	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/abo-bad.vcf,bloodtype/d-2.tsv	report --sample S --vcf abo-bad.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	bombay-null-null	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/bombay.vcf,bloodtype/d-2.tsv	report --sample S --vcf bombay.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	vcf-quirks	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/vcf-quirks.vcf,bloodtype/d-2.tsv	report --sample S --vcf vcf-quirks.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	gvcf-hna-disagree	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/gvcf.vcf,bloodtype/d-2.tsv	report --sample S --vcf gvcf.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	hna1c	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/hna.vcf,bloodtype/d-2.tsv	report --sample S --vcf hna.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	ref-blocks-second-record	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/blocks.vcf,bloodtype/d-2.tsv	report --sample S --vcf blocks.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	two-samples	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/two.vcf,bloodtype/d-2.tsv	report --sample S --vcf two.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	-	bytes	PYTHON_IMAGE
+bloodtype	no-sample-column	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/nosample.vcf,bloodtype/d-2.tsv	report --sample S --vcf nosample.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	-	bytes	PYTHON_IMAGE
+bloodtype	no-chrom-line	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/noheader.vcf,bloodtype/d-2.tsv	report --sample S --vcf noheader.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	-	bytes	PYTHON_IMAGE
+bloodtype	vcf-missing	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/empty.vcf	report --sample S --vcf nothere.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --out t.tsv --evidence e.tsv	-	bytes	PYTHON_IMAGE
+bloodtype	indexed-abo	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/abo.vcf.gz,bloodtype/abo.vcf.gz.tbi,bloodtype/d-2.tsv	report --sample S --vcf abo.vcf.gz --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	indexed-blocks	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/blocks.vcf.gz,bloodtype/blocks.vcf.gz.tbi,bloodtype/d-2.tsv	report --sample S --vcf blocks.vcf.gz --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	indexed-gvcf	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/gvcf.vcf.gz,bloodtype/gvcf.vcf.gz.tbi,bloodtype/d-2.tsv	report --sample S --vcf gvcf.vcf.gz --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	indexed-vcf-quirks	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/vcf-quirks.vcf.gz,bloodtype/vcf-quirks.vcf.gz.tbi,bloodtype/d-2.tsv	report --sample S --vcf vcf-quirks.vcf.gz --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	indexed-nochr	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/nochr.vcf.gz,bloodtype/nochr.vcf.gz.tbi,bloodtype/d-2.tsv	report --sample S --vcf nochr.vcf.gz --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	indexed-bombay	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/bombay.vcf.gz,bloodtype/bombay.vcf.gz.tbi,bloodtype/d-2.tsv	report --sample S --vcf bombay.vcf.gz --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	bgzip-no-index-abo	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/abo.vcf.gz,bloodtype/d-2.tsv	report --sample S --vcf abo.vcf.gz --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+bloodtype	plain-nochr	gen:bloodtype-oracle.sh,bloodtype/oracle.sh,bloodtype/nochr.vcf,bloodtype/d-2.tsv	report --sample S --vcf nochr.vcf --markers bloodtype_markers.tsv --cn-loci cn_loci.tsv --depth d-2.tsv --out t.tsv --evidence e.tsv	t.tsv,e.tsv	bytes	PYTHON_IMAGE
+qc-sample	male-ok	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --declared-sex male --selfsm clean.selfSM --somalier-pairs s.pairs.tsv --marker-check passed	q.tsv	kv	PYTHON_IMAGE
+qc-sample	mismatch	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	no-declared-sex	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv	q.tsv	kv	PYTHON_IMAGE
+qc-sample	pedigree-kept	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples ped-kept.samples.tsv --declared-sex male	q.tsv	kv	PYTHON_IMAGE
+qc-sample	pedigree-female	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples ped-female.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	low-quality	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples lowq.samples.tsv --declared-sex male	q.tsv	kv	PYTHON_IMAGE
+qc-sample	low-quality-nan	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples lowq.samples.tsv --declared-sex male --somalier-id U	q.tsv	kv	PYTHON_IMAGE
+qc-sample	x-and-y	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples xy.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	x-and-y-undeclared	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples xy.samples.tsv	q.tsv	kv	PYTHON_IMAGE
+qc-sample	x-and-y-unknown	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples xy-unknown.samples.tsv --declared-sex female	q.tsv	kv	PYTHON_IMAGE
+qc-sample	female	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples female.samples.tsv --declared-sex female --marker-check skipped	q.tsv	kv	PYTHON_IMAGE
+qc-sample	contaminated	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --selfsm dirty.selfSM --freemix-warn 0.04	q.tsv	kv	PYTHON_IMAGE
+qc-sample	threshold-sci	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --selfsm dirty.selfSM --freemix-warn 5e-2	q.tsv	kv	PYTHON_IMAGE
+qc-sample	somalier-name	gen:summary-tools.sh	--sample X --out q.tsv --somalier-samples male.samples.tsv --somalier-id T --somalier-pairs s.pairs.tsv	q.tsv	kv	PYTHON_IMAGE
+qc-sample	crlf	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples crlf.samples.tsv --declared-sex male	q.tsv	kv	PYTHON_IMAGE
+qc-sample	gzip	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples s.samples.tsv.gz	q.tsv	kv	PYTHON_IMAGE
+qc-sample	no-row	gen:summary-tools.sh	--sample Q --out q.tsv --somalier-samples male.samples.tsv	-	kv	PYTHON_IMAGE
+qc-sample	no-freemix	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples male.samples.tsv --selfsm nofreemix.selfSM	-	kv	PYTHON_IMAGE
+qc-sample	missing-file	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples nowhere.tsv	-	kv	PYTHON_IMAGE
+qc-sample	inf-count	gen:summary-tools.sh	--sample S --out q.tsv --somalier-samples inf.samples.tsv	-	kv	PYTHON_IMAGE
+prs-table	raw	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs --input-kind gvcf	p.tsv	tsv	PYTHON_IMAGE
+prs-table	raw-female	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs --input-kind gvcf --sex female	p.tsv	tsv	PYTHON_IMAGE
+prs-table	panel	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs --input-kind gvcf --panel pgsc_1000G_v1 --ancestry-out a.tsv	p.tsv,a.tsv	tsv	PYTHON_IMAGE
+prs-table	panel-male	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj/ --scores pgs/ --input-kind gvcf --panel pgsc_1000G_v1 --sex male	p.tsv	tsv	PYTHON_IMAGE
+prs-table	panel-female	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs --input-kind gvcf --panel pgsc_1000G_v1 --sex female --ancestry-out a.tsv	p.tsv,a.tsv	tsv	PYTHON_IMAGE
+prs-table	panel-chrx	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs-x --input-kind gvcf --panel p	p.tsv	tsv	PYTHON_IMAGE
+prs-table	no-panel-chrx	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs-x --input-kind gvcf	p.tsv	tsv	PYTHON_IMAGE
+prs-table	plain-list	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results adj --scores pgs-plain --input-kind vcf --panel p	p.tsv	tsv	PYTHON_IMAGE
+prs-table	old-folder	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs-old --input-kind gvcf	p.tsv	tsv	PYTHON_IMAGE
+prs-table	zero-matches	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results none --scores pgs --input-kind vcf --zero-matches	p.tsv	tsv	PYTHON_IMAGE
+prs-table	below-threshold	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results none --scores pgs --input-kind gvcf --below-threshold below.log --sex male	p.tsv	tsv	PYTHON_IMAGE
+prs-table	no-match-summary	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results none --scores pgs --input-kind gvcf	-	tsv	PYTHON_IMAGE
+prs-table	no-scores	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores empty --input-kind gvcf	-	tsv	PYTHON_IMAGE
+prs-table	two-targets	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results two-targets --scores pgs --input-kind gvcf --panel p	-	tsv	PYTHON_IMAGE
+prs-table	bad-evaluations	gen:summary-tools.sh	--sample S --sampleset sample --out p.tsv --results raw --scores pgs-bad-evals --input-kind gvcf	-	tsv	PYTHON_IMAGE
+mito-annotate	clinvar-gnomad	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar clinvar_chr.vcf.gz --gnomad gnomad.chrM.vcf.bgz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	clinvar-mt	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar clinvar_mt.vcf.gz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	clinvar-no-chrm	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar clinvar_nochrm.vcf.gz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	none-given	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	files-missing	gen:summary-tools.sh	--vcf S_chrM_filtered.vcf.gz --out m.tsv --clinvar nowhere.vcf.gz --gnomad nowhere.bgz	m.tsv	tsv	PYTHON_IMAGE
+mito-annotate	bad-position	gen:summary-tools.sh	--vcf bad-pos.vcf --out m.tsv --clinvar clinvar_chr.vcf.gz	-	tsv	PYTHON_IMAGE
+mito-annotate	vcf-missing	gen:summary-tools.sh	--vcf nowhere.vcf.gz --out m.tsv	-	tsv	PYTHON_IMAGE
+mito-deletions	eklipse	gen:summary-tools.sh	--out d.tsv --eklipse eKLIPse_deletions.csv	d.tsv	tsv	PYTHON_IMAGE
+mito-deletions	crlf	gen:summary-tools.sh	--out d.tsv --eklipse crlf_deletions.csv	d.tsv	tsv	PYTHON_IMAGE
+mito-deletions	empty	gen:summary-tools.sh	--out d.tsv --eklipse empty_deletions.csv	d.tsv	tsv	PYTHON_IMAGE
+mito-deletions	not-eklipse	gen:summary-tools.sh	--out d.tsv --eklipse notek.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	short-row	gen:summary-tools.sh	--out d.tsv --eklipse short_deletions.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	inf-level	gen:summary-tools.sh	--out d.tsv --eklipse inf_deletions.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	nan-depth	gen:summary-tools.sh	--out d.tsv --eklipse nan_depth_deletions.csv	-	tsv	PYTHON_IMAGE
+mito-deletions	missing	gen:summary-tools.sh	--out d.tsv --eklipse nowhere.csv	-	tsv	PYTHON_IMAGE
+mito-copies	wgs	gen:summary-tools.sh	--out c.tsv --idxstats wgs.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	mt	gen:summary-tools.sh	--out c.tsv --idxstats mt.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	chrmt	gen:summary-tools.sh	--out c.tsv --idxstats chrmt.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	slice	gen:summary-tools.sh	--out c.tsv --idxstats slice.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	no-chrm	gen:summary-tools.sh	--out c.tsv --idxstats nochrm.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	crlf	gen:summary-tools.sh	--out c.tsv --idxstats crlf.idxstats	c.tsv	kv	PYTHON_IMAGE
+mito-copies	bad-count	gen:summary-tools.sh	--out c.tsv --idxstats bad.idxstats	-	kv	PYTHON_IMAGE

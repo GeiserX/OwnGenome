@@ -42,3 +42,12 @@ exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	py
 cn	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/copy_number.py	sh ./oracle.sh	cn
 sv-add-callers	954ab367004d63ea639521982299b4976927ccfd	file:bin/cnvpytor_to_vcf.py	sh ./oracle.sh	sv add-callers
 sv-postfilter	954ab367004d63ea639521982299b4976927ccfd	file:bin/annotsv_postfilter.py	sh ./oracle.sh	sv postfilter
+cdna-check	954ab367004d63ea639521982299b4976927ccfd	file:bin/clip_check.py	python3	cdna check
+cdna-scan	954ab367004d63ea639521982299b4976927ccfd	file:bin/cdna_scan.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	cdna scan
+comphet-phase	954ab367004d63ea639521982299b4976927ccfd	file:bin/comphet_phase.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	comphet phase
+bloodtype	954ab367004d63ea639521982299b4976927ccfd	file:bin/bloodtype_report.py	sh ./oracle.sh	bloodtype
+qc-sample	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" sample-qc "$@"'	qc sample
+prs-table	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" prs-table "$@"'	prs table
+mito-annotate	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-annotate "$@"'	mito annotate
+mito-deletions	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-deletions "$@"'	mito deletions
+mito-copies	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-copies "$@"'	mito copies
