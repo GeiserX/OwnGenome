@@ -7,11 +7,13 @@ CFTR and BRCA2, a CPIC table (CYP2C19, CYP2D6), and the tables of steps 23 and
 Nextflow report stages.
 
 Checks:
-  1. every term the index finds in summary.json, genome_lookup.summary_lines
-     finds too, through the one names_of() rule: with a GENE_KEYS entry
-     removed both lose CYP2C19 (so the check can fail); a gene field that
-     holds prose ("VDBP (GC)", "SMN exon 7-8 deletion") gives its symbols
-     only;
+  1. every term the index finds in summary.json, `og lookup report` finds
+     too under "in the reports" (the same names rule, names_of() here and
+     its port in rust/crates/og-lookup): with a GENE_KEYS entry removed the
+     index loses CYP2C19 and og still finds it (so the check can fail); a
+     gene field that holds prose ("VDBP (GC)", "SMN exon 7-8 deletion")
+     gives its symbols only. Without OG (the og binary) these checks are
+     skipped with a note; with OG_REQUIRED set too, the test fails;
   2. the step 23 and 31 genes come from the TSV on the bash path and from the
      VCF on the Nextflow path, and both give the same entries; with the VCF
      reader removed the Nextflow form has none (red);
@@ -32,7 +34,7 @@ Checks:
      state hook; search.js's match() under node answers each fixture query
      as query() does, and has no request in it besides the one index fetch.
 
-Run: python3 tests/test_results_index.py
+Run: OG=bin/og python3 tests/test_results_index.py
 """
 import copy
 import gzip
@@ -56,6 +58,7 @@ import results_index  # noqa: E402
 
 FIXTURE = os.path.join(REPO, "tests", "fixtures", "results_index", "SYNTH")
 SEARCH_JS = os.path.join(REPO, "assets", "live", "plugins", "search.js")
+OG = os.environ.get("OG", "")
 FAILS = 0
 
 
@@ -82,9 +85,19 @@ def sample(work, form):
 
 
 def lookup_says(summary_path, term):
-    """genome_lookup.summary_lines for one gene or rsID, as one string."""
-    rs = term if term.startswith("rs") else None
-    return "\n".join(genome_lookup.summary_lines(summary_path, set() if rs else {term}, rs))
+    """What `og lookup report` prints under "in the reports" for one gene or
+    rsID (a site query for an rsID, a gene query for a gene, on an empty
+    gVCF), as one string."""
+    gvcf = os.path.join(os.path.dirname(summary_path), "empty.g.vcf")
+    with open(gvcf, "w") as f:
+        f.write("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n")
+    kind = "site" if term.startswith("rs") else "gene"
+    r = subprocess.run([OG, "lookup", "report", "--query", term, "--kind", kind, "--chrom", "chr1", "--start", "1",
+                        "--end", "1", "--gvcf", gvcf, "--summary", summary_path], capture_output=True, text=True)
+    mark = "  in the reports:\n"
+    if r.returncode != 0 or mark not in r.stdout:
+        return f"og lookup report failed: {r}"
+    return r.stdout.split(mark, 1)[1]
 
 
 def table_entries(idx, key):
@@ -93,6 +106,11 @@ def table_entries(idx, key):
 
 
 def main():
+    if not OG:
+        print("note: OG is not set (OG=bin/og), so the checks against og lookup are skipped")
+        if os.environ.get("OG_REQUIRED"):
+            print("FAIL: OG_REQUIRED is set but OG is not")
+            return 1
     work = tempfile.mkdtemp()
     try:
         tsv, vcf = sample(work, "tsv"), sample(work, "vcf")
@@ -122,13 +140,17 @@ def main():
             json.dump(s_tsv, f)
         from_summary = sorted({t for t, items in T.items() if any(it["section"] not in results_index.TABLES
                                                                   for it in items)})
-        missed = [t for t in from_summary if "none of the reports mentions" in lookup_says(spath, t)]
-        check("lookup agrees: every term the index finds in summary.json, summary_lines finds too",
-              from_summary == ["BRCA2", "CFTR", "CYP2C19", "CYP2D6"] and not missed, (from_summary, missed))
-        for t in from_summary:
-            secs = {s_tsv["sections"][it["section"]]["title"] for it in T[t] if it["section"] not in results_index.TABLES}
-            said = lookup_says(spath, t)
-            check(f"lookup agrees on {t}: the same sections", all(x in said for x in secs), (secs, said))
+        check("the index finds BRCA2, CFTR, CYP2C19 and CYP2D6 in summary.json",
+              from_summary == ["BRCA2", "CFTR", "CYP2C19", "CYP2D6"], from_summary)
+        if OG:
+            missed = [t for t in from_summary if "none of the reports mentions" in lookup_says(spath, t)]
+            check("lookup agrees: every term the index finds in summary.json, og lookup finds too", not missed,
+                  (from_summary, missed))
+            for t in from_summary:
+                secs = {s_tsv["sections"][it["section"]]["title"] for it in T[t]
+                        if it["section"] not in results_index.TABLES}
+                said = lookup_says(spath, t)
+                check(f"lookup agrees on {t}: the same sections", all(x in said for x in secs), (secs, said))
         # A ClinVar hit's rsids (collect_summary puts them there from VEP): found by both.
         withrs = copy.deepcopy(s_tsv)
         withrs["sections"]["clinvar"]["data"]["hits"][0]["rsids"] = ["rs7000001"]
@@ -136,21 +158,24 @@ def main():
         with open(rpath, "w") as f:
             json.dump(withrs, f)
         ri = results_index.build(withrs, tsv, render_report.SECTION_OF)["terms"]
-        check("a ClinVar hit's rsids: the index and the lookup both find it in the ClinVar section",
-              [it["section"] for it in ri.get("rs7000001", [])] == ["clinvar"]
-              and "ClinVar screen (step 06)" in lookup_says(rpath, "rs7000001"),
-              (ri.get("rs7000001"), lookup_says(rpath, "rs7000001")))
-        check("red control: without the rsids the lookup finds nothing for it",
-              "none of the reports mentions rs7000001" in lookup_says(spath, "rs7000001"))
+        check("a ClinVar hit's rsids: the index finds it in the ClinVar section",
+              [it["section"] for it in ri.get("rs7000001", [])] == ["clinvar"], ri.get("rs7000001"))
+        if OG:
+            check("a ClinVar hit's rsids: og lookup finds it in the ClinVar section too",
+                  "ClinVar screen (step 06)" in lookup_says(rpath, "rs7000001"), lookup_says(rpath, "rs7000001"))
+            check("red control: without the rsids the lookup finds nothing for it",
+                  "none of the reports mentions rs7000001" in lookup_says(spath, "rs7000001"))
         keep = genome_lookup.GENE_KEYS
         genome_lookup.GENE_KEYS = tuple(k for k in keep if k != "gene")
         try:
             gone = results_index.build(s_tsv, tsv, render_report.SECTION_OF)["terms"]
-            said = lookup_says(spath, "CYP2C19")
         finally:
             genome_lookup.GENE_KEYS = keep
-        check("red control: without the 'gene' key both the index and the lookup lose CYP2C19",
-              "CYP2C19" not in gone and "none of the reports mentions CYP2C19" in said, (sorted(gone), said))
+        check("red control: without the 'gene' key the index loses CYP2C19", "CYP2C19" not in gone, sorted(gone))
+        if OG:
+            check("red control: og lookup still finds CYP2C19 then, so the agreement check above can fail",
+                  "none of the reports mentions CYP2C19" not in lookup_says(spath, "CYP2C19"),
+                  lookup_says(spath, "CYP2C19"))
 
         # A gene field that holds prose ("SMN exon 7-8 deletion" from
         # paraphase_report.py, "VDBP (GC)" from assets/traits.tsv): only the
@@ -164,8 +189,9 @@ def main():
         pt = set(results_index.build(prose, tsv, render_report.SECTION_OF)["terms"])
         check("a prose gene field: SMN, VDBP and GC are terms; EXON, DELETION, 7-8 and (GC) are not",
               {"SMN", "VDBP", "GC"} <= pt and not {"EXON", "DELETION", "7-8", "(GC)", "(GC"} & pt, sorted(pt))
-        check("a prose gene field: the lookup finds GC too",
-              "none of the reports mentions GC" not in lookup_says(ppath, "GC"), lookup_says(ppath, "GC"))
+        if OG:
+            check("a prose gene field: the lookup finds GC too",
+                  "none of the reports mentions GC" not in lookup_says(ppath, "GC"), lookup_says(ppath, "GC"))
 
         # Sections that name their gene under "locus": the repeat expansions
         # (flagged, key loci, the CFTR and UGT1A1 readings) and Locityper.
@@ -188,9 +214,10 @@ def main():
               {t: lt.get(t) for t in want})
         check("a 'locus' key: a region is not a term",
               not [t for t in lt if t.startswith("CHR")], sorted(lt))
-        check("a 'locus' key: the lookup finds HTT and FCGR too",
-              all("none of the reports mentions" not in lookup_says(lpath, t) for t in ("HTT", "FCGR")),
-              [lookup_says(lpath, t) for t in ("HTT", "FCGR")])
+        if OG:
+            check("a 'locus' key: the lookup finds HTT and FCGR too",
+                  all("none of the reports mentions" not in lookup_says(lpath, t) for t in ("HTT", "FCGR")),
+                  [lookup_says(lpath, t) for t in ("HTT", "FCGR")])
         keep = genome_lookup.GENE_KEYS
         genome_lookup.GENE_KEYS = tuple(k for k in keep if k != "locus")
         try:

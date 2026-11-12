@@ -4,3 +4,4 @@
 # the importers are exactly these (docs/rust.md).
 # file<TAB>names<TAB>importers<TAB>lane
 bin/family_report.py	COLUMNS,MISSING,SEX,NAME,BINS,die,missing,read_pedigree,build_members,bad_name,kinship_table,declared_relationship,degree,read_par,in_par	bin/annotsv_postfilter.py,bin/cnvpytor_to_vcf.py,bin/couple_report.py,bin/ibd_report.py,bin/pedigree_svg.py,tests/test_family_report.py	R4
+bin/genome_lookup.py	GENE_KEYS,RSID_RE,norm_chrom,parse_query,names_of,walk_mentions,flat	bin/results_index.py,tests/test_results_index.py	R5c
