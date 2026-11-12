@@ -6,7 +6,7 @@
     Friedreich's ataxia, ALS/FTD, SCAs, myotonic dystrophy, etc.
     Runs on --expansion_catalog: run-all.sh passes STRchive's 82 disease loci
     (reference/strchive-<version>/catalog.json, built by setup.sh with
-    bin/strchive_convert.py) when setup.sh installed it, else the 31-locus
+    og str catalog) when setup.sh installed it, else the 31-locus
     GRCh38 catalog bundled in the image (EH_CATALOG=bundled picks that one).
     STRANGER takes the same catalog.
 

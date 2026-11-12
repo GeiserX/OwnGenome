@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-pgx", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-chip", "crates/og-pedigree", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-qc", "crates/og-clinvar", "crates/og-pgx", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-setup", "crates/og-chip", "crates/og-ancestry", "crates/og-pedigree", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -16,18 +16,23 @@ og-bam = { path = "crates/og-bam" }
 og-map = { path = "crates/og-map" }
 og-tsv = { path = "crates/og-tsv" }
 og-intervals = { path = "crates/og-intervals" }
+og-clinvar = { path = "crates/og-clinvar" }
 og-dev = { path = "crates/og-dev" }
+og-qc = { path = "crates/og-qc" }
 og-pgx = { path = "crates/og-pgx" }
 og-filters = { path = "crates/og-filters" }
 og-nf = { path = "crates/og-nf" }
 og-runlog = { path = "crates/og-runlog" }
+og-setup = { path = "crates/og-setup" }
 og-steps = { path = "crates/og-steps" }
+og-ancestry = { path = "crates/og-ancestry" }
 og-chip = { path = "crates/og-chip" }
 og-pedigree = { path = "crates/og-pedigree" }
 indexmap = "2"
 flate2 = "1"
 memchr = "2"
 smallvec = "1"
+rustc-hash = "2"
 # Time zones as Python reads them: TZ, else /etc/localtime, else UTC.
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 # statvfs(2) without unsafe code.

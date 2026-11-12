@@ -34,7 +34,7 @@ SLICE="${REPO}/tests/fixtures/consumer_export/sites.tsv.gz"
 SITES="${G}/reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
 mkdir -p "$(dirname "$SITES")"
 cp "$SLICE" "$SITES"
-TOOL="${REPO}/bin/export_consumer.py"
+OG="${REPO}/bin/og"
 CHAIN_URL=https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz
 CHAIN_SHA256=5c0598e500ceb5a78c73086929e8ef993aec309bcafb595139b53d440b125a1d
 
@@ -50,8 +50,8 @@ ZAN="${OUT}/${SAMPLE}_ancestrydna_layout.zip"
 SUM="${OUT}/${SAMPLE}_consumer_export.tsv"
 check "the 23andMe zip is written" test -s "$Z23"
 check "the AncestryDNA zip is written" test -s "$ZAN"
-check "strict reader: the 23andMe layout" python3 "$TOOL" check --layout 23andme "$Z23"
-check "strict reader: the AncestryDNA layout" python3 "$TOOL" check --layout ancestrydna "$ZAN"
+check "strict reader: the 23andMe layout" "$OG" consumer check --layout 23andme "$Z23"
+check "strict reader: the AncestryDNA layout" "$OG" consumer check --layout ancestrydna "$ZAN"
 unz "$Z23" "${CASE_TMP}/export_23andme.txt"
 unz "$ZAN" "${CASE_TMP}/export_ancestry.txt"
 cat "$SUM"
@@ -294,14 +294,14 @@ S38="${G}/reference/consumer/shift38.tsv.gz"
 S37="${G}/reference/consumer/shift37.tsv.gz"
 gzip -dc "$SITES" | awk -F'\t' -v OFS='\t' '/^#/ {print; next} {$5 = $5 + 1; print}' | gzip -c > "$S38"
 gzip -dc "$SITES" | awk -F'\t' -v OFS='\t' '/^#/ {print; next} {$3 = $3 + 1; print}' | gzip -c > "$S37"
-X38=$(docker run --rm --user "$(id -u):$(id -g)" -v "${G}:/genome" -v "${REPO}:/repo:ro" "$PYTHON_IMAGE" python3 /repo/bin/export_consumer.py export \
+X38=$(docker run --rm --user "$(id -u):$(id -g)" -v "${G}:/genome" -v "${REPO}:/repo:ro" "$PYTHON_IMAGE" /repo/bin/og consumer export \
   --gvcf "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" --sites /genome/reference/consumer/shift38.tsv.gz --sample S38 --sex male \
   --par /repo/assets/par_grch38.bed --out-dir /genome/reference/consumer/out38 2>&1; echo "exit=$?")
 echo "$X38" | tail -n 3
 check "control: the table shifted by one GRCh38 position stops the export" has 'exit=1$' "$X38"
 check "control: it names the reference bases" has 'another reference base than the site table' "$X38"
 check "control: it writes nothing" test ! -e "${G}/reference/consumer/out38/S38_23andme_v5.zip"
-docker run --rm --user "$(id -u):$(id -g)" -v "${G}:/genome" -v "${REPO}:/repo:ro" "$PYTHON_IMAGE" python3 /repo/bin/export_consumer.py export \
+docker run --rm --user "$(id -u):$(id -g)" -v "${G}:/genome" -v "${REPO}:/repo:ro" "$PYTHON_IMAGE" /repo/bin/og consumer export \
   --gvcf "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" --sites /genome/reference/consumer/shift37.tsv.gz --sample S37 --sex male \
   --par /repo/assets/par_grch38.bed --out-dir /genome/reference/consumer/out37
 unz "${G}/reference/consumer/out37/S37_23andme_v5.zip" "${CASE_TMP}/shift37.txt"

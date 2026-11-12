@@ -10,7 +10,7 @@
 #   - Multithreading support (--threads)
 #   - Bundled GRCh38 variant catalog (31 pathogenic loci) inside the container
 # Catalog: STRchive's 82 disease loci (reference/strchive-<version>/catalog.json,
-# which setup.sh builds with bin/strchive_convert.py; with STR_EXTRA_LOCI=yes
+# which setup.sh builds with og str catalog; with STR_EXTRA_LOCI=yes
 # it also holds assets/str_extra_loci.json, the CFTR TG/poly-T and UGT1A1 TA
 # repeats, which the "Not graded" lines below name), or the bundled 31 when
 # that file is missing. EH_CATALOG=bundled picks the bundled one;
@@ -67,7 +67,7 @@ case "${EH_CATALOG:-}" in
 esac
 if [ -n "$CATALOG" ]; then
   CATALOG_C=$(cpath "$CATALOG") || exit 2
-  # bin/strchive_convert.py leaves Stranger's thresholds off a locus whose
+  # og str catalog leaves Stranger's thresholds off a locus whose
   # repeat short reads cannot size, or that STRchive gives no pathogenic size
   # (NoThresholds, one field per line as it writes them): its count is not a call.
   awk -F'"' '$2 == "LocusId" {id = $4} $2 == "NoThresholds" {print "  Not graded (no call from this count): " id ": " $4}' "$CATALOG"

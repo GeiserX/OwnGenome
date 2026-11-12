@@ -59,7 +59,8 @@ jobs:
           sudo apt-get install -y -q fonts-dejavu-core
 
       # Step 27 runs og in its container (bin/og), and the demo sample
-      # builder runs it too (tests/og_binary.py finds bin/.og on Linux).
+      # builder runs it too, for step 27's parser and step 33's mosaic rows
+      # (tests/og_binary.py finds bin/.og on Linux).
       - name: Build og as scripts/setup.sh --og does
         run: |
           scripts/setup.sh --og
@@ -95,7 +96,8 @@ jobs:
           sudo apt-get install -y -q fonts-dejavu-core
 
       # og (rust/, docs/rust.md): the demo sample builder runs step 27's
-      # parser, og pgx cpic-report (tests/og_binary.py reads OG).
+      # parser, og pgx cpic-report, and step 33's og qc sex-loss for the
+      # mosaic rows (tests/og_binary.py reads OG).
       - name: Install the toolchain rust/rust-toolchain.toml pins
         working-directory: rust
         run: |

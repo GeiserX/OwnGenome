@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""bin/rfc1_motif.py: which motif do the reads at RFC1 carry?
+"""og str motif: which motif do the reads at RFC1 carry? By meaning.
 
-Every case is a set of made-up reads at the GRCh38 RFC1 repeat
-(chr4:39348425-39348479, the reference (AAAAG)11) with random flanks:
+This file holds the made-up read sets at the GRCh38 RFC1 repeat
+(chr4:39348425-39348479, the reference (AAAAG)11) with random flanks, which
+the e2e cases (expansions-and-rfc1-1-motif, str-catalog-1-strchive,
+nextflow-report-parity-1-sections) and rust/crates/og-bam/tests/make_parity.py
+import, and a test of what og must write on them:
   benign      reads across the repeat with an expanded AAAAG allele, and
               reads whose AAAAG part is soft-clipped: benign_motif
   pathogenic  AAGGG reads of four kinds: soft-clipped next to the repeat,
@@ -16,32 +19,26 @@ Every case is a set of made-up reads at the GRCh38 RFC1 repeat
   unknown     AAGAG reads (not a known benign or pathogenic motif):
               uncertain_motif
   few         two repeat reads: not_resolved
-and duplicates, secondary and QC-failed alignments are not counted.
+and duplicates, secondary and QC-failed alignments, a homopolymer and a run
+of three units are not counted.
 
-Controls, each a check that fails when the rescue it names is off:
-  - the pathogenic case counts its 6 soft-clipped reads; with the soft-clip
-    rescue off (--no-softclip) it counts fewer;
-  - it counts its 3 rescued mates; with --no-mates fewer;
-  - a homopolymer and a too-short run are not counted.
-
-Part 1 runs the counting in plain Python on read objects. Part 2 writes the
-same reads to a BAM with pysam and runs the script's command line on it,
-as step 9b does. Without pysam on the host, part 2 runs in PYPGX_IMAGE
-(versions.env) through docker.
+`cargo test -p og-bam` (tests/parity.rs) runs og on BAMs of these reads and
+holds it to what the Python tool it replaced wrote there, byte for byte
+(rust/crates/og-bam/tests/data/parity/want/motif-*). This test says what
+those files must mean, so a golden rewritten with another verdict fails here
+even when og agrees with it. Controls, each a check that fails when the
+rescue it names is off: the pathogenic case counts its 6 soft-clipped reads
+(--no-softclip counts 6 fewer) and its 3 rescued mates (--no-mates counts 3
+fewer).
 
 Run: python3 tests/test_rfc1_motif.py
 """
-import contextlib
-import io
 import os
 import random
-import subprocess
 import sys
-import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import rfc1_motif as rm  # noqa: E402
+PARITY = os.path.join(REPO, "rust", "crates", "og-bam", "tests", "data", "parity")
 
 FAILS = []
 CHROM, START, END = "chr4", 39348424, 39348479  # 0-based start, end exclusive: 55 bases, (AAAAG)11
@@ -69,14 +66,13 @@ def expect_true(desc, ok, detail=""):
 
 
 class Read:
-    """The pysam.AlignedSegment attributes rfc1_motif reads, and what part 2 writes."""
+    """A read: the attributes a SAM or BAM writer needs."""
 
     def __init__(self, name, contig, start, cigar, seq, read1=True, unmapped=False, mate=None, reverse=False,
                  dup=False, secondary=False, qcfail=False):
         self.query_name, self.contig, self.reference_start = name, contig, start
         self.reference_id = 0 if contig == CHROM else 1
         self.cigar_text = cigar
-        self.cigartuples = rm.parse_cigar(cigar) if cigar else None
         self.query_sequence = seq
         self.is_read1, self.is_read2 = read1, not read1
         self.is_unmapped, self.is_reverse = unmapped, reverse
@@ -118,7 +114,7 @@ def rescued(name, unit):
 
 
 def revcomp(s):
-    return rm.revcomp(s)
+    return s.translate(str.maketrans("ACGTN", "TGCAN"))[::-1]
 
 
 def case(kind):
@@ -160,57 +156,6 @@ def case(kind):
     return at, elsewhere
 
 
-def run_plain(kind, softclip=True, mates=True):
-    at, elsewhere = case(kind)
-    lo, hi = START - rm.FLANK, END + rm.FLANK
-    mate_of = (lambda r: elsewhere.get(r.query_name)) if mates else None
-    units = rm.min_units(START, END)
-    counts = rm.count_motifs(rm.read_segments(at, lo, hi, mate_of, softclip), units)
-    return counts, rm.verdict(counts, units)
-
-
-def part1():
-    expect("longest run: (AAAAG)11 in flanks", rm.longest_run(LEFT[-30:] + "AAAAG" * 11 + RIGHT[:30])[1] >= 11, True)
-    expect("motif name: GGGAA and CCCTT are AAGGG", (rm.motif_name("GGGAA"), rm.motif_name("CCCTT")), ("AAGGG", "AAGGG"))
-    expect("motif name: an unknown motif by its smallest form", rm.motif_name("GAGAA"), "AAGAG")
-    expect("a homopolymer is not a pentamer run", rm.longest_run("A" * 60), (None, 0))
-    r = clipped("x", "AAGGG")
-    lo, hi = START - rm.FLANK, END + rm.FLANK
-    expect("soft clip on: the clipped repeat bases are kept", rm.repeat_bases(r, lo, hi, True).endswith("AAGGG" * 18), True)
-    expect("soft clip off: only the aligned flank bases", rm.repeat_bases(r, lo, hi, False), LEFT[-rm.FLANK:])
-
-    counts, v = run_plain("benign")
-    expect("benign: 10 AAAAG reads", counts, {"AAAAG": 10})
-    expect("benign: benign_motif", v[4], "benign_motif")
-    expect_true("benign: the note says the flag is not supported", "the flag is not supported" in v[5], v[5])
-
-    counts, v = run_plain("pathogenic")
-    expect("pathogenic: 13 AAGGG reads (6 clipped, 2 placed unmapped, 3 rescued mates, 2 reverse) and 3 expanded "
-           "AAAAG; the 8 reference-allele reads are not counted", counts, {"AAGGG": 13, "AAAAG": 3})
-    at, _ = case("pathogenic")
-    lo, hi = START - rm.FLANK, END + rm.FLANK
-    expect("control: with a 4-unit floor the 8 reference-allele reads would count",
-           rm.count_motifs(rm.read_segments(at, lo, hi, None, True), rm.MIN_UNITS).get("AAAAG"), 3 + 8)
-    expect("the floor is one unit more than the reference allele", rm.min_units(START, END), 12)
-    expect("pathogenic: pathogenic_motif", v[4], "pathogenic_motif")
-    expect("pathogenic: the shares of both motifs", v[3], "AAGGG=0.81,AAAAG=0.19")
-    expect_true("pathogenic: the note asks for repeat-primed PCR", "repeat-primed PCR" in v[5], v[5])
-
-    counts, _ = run_plain("pathogenic", softclip=False)
-    expect_true("control: with the soft-clip rescue off the 6 clipped reads are lost",
-                counts.get("AAGGG", 0) == 13 - 6, counts)
-    counts, _ = run_plain("pathogenic", mates=False)
-    expect_true("control: with the mate rescue off the 3 rescued mates are lost", counts.get("AAGGG", 0) == 13 - 3, counts)
-
-    counts, v = run_plain("mixed")
-    expect("mixed: AAAAG and AAAGG counted apart", counts, {"AAAAG": 6, "AAAGG": 4})
-    expect("mixed: benign_motif with both shares", (v[4], v[3]), ("benign_motif", "AAAAG=0.60,AAAGG=0.40"))
-    expect("acagg: pathogenic_motif", run_plain("acagg")[1][4], "pathogenic_motif")
-    expect("unknown: uncertain_motif", run_plain("unknown")[1][:2] + (run_plain("unknown")[1][4],),
-           ("AAGAG", "unknown", "uncertain_motif"))
-    expect("few: not_resolved", run_plain("few")[1][4], "not_resolved")
-
-
 def write_bam(pysam, path, kind):
     at, elsewhere = case(kind)
     header = {"HD": {"VN": "1.6", "SO": "coordinate"},
@@ -237,86 +182,44 @@ def write_bam(pysam, path, kind):
     os.remove(unsorted)
 
 
-def run_main(args):
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = rm.main(args)
-    return rc, buf.getvalue()
+def golden(case):
+    """og's golden of a parity case when it has one (a deliberate fix), else the oracle's."""
+    d = os.path.join(PARITY, "og", case)
+    return d if os.path.isdir(d) else os.path.join(PARITY, "want", case)
 
 
-def table(path):
+def table(case):
+    path = os.path.join(golden(case), "files", "motif.tsv")
     lines = [line.rstrip("\n").split("\t") for line in open(path)]
     return dict(zip(lines[0], lines[1]))
 
 
-def part2(pysam):
-    with tempfile.TemporaryDirectory() as tmp:
-        vcf = os.path.join(tmp, "S_eh_stranger.vcf")
-        with open(vcf, "w") as fh:
-            fh.write(VCF)
-        out = os.path.join(tmp, "out.tsv")
-        for kind, verdict, reads in (("benign", "benign_motif", "10"), ("pathogenic", "pathogenic_motif", "16"),
-                                     ("mixed", "benign_motif", "10"), ("few", "not_resolved", "2")):
-            bam = os.path.join(tmp, f"{kind}.bam")
-            write_bam(pysam, bam, kind)
-            rc, _ = run_main(["--bam", bam, "--vcf", vcf, "--out", out])
-            t = table(out)
-            expect(f"BAM {kind}: exit 0, {verdict}, {reads} repeat reads",
-                   (rc, t["verdict"], t["repeat_reads"]), (0, verdict, reads))
-        bam = os.path.join(tmp, "pathogenic.bam")
-        run_main(["--bam", bam, "--vcf", vcf, "--out", out])
-        t = table(out)
-        expect("BAM pathogenic: the locus from the VCF, AAGGG dominant, both shares",
-               (t["chrom"], t["start"], t["end"], t["dominant_motif"], t["motif_shares"]),
-               (CHROM, str(START + 1), str(END), "AAGGG", "AAGGG=0.81,AAAAG=0.19"))
-        run_main(["--bam", bam, "--vcf", vcf, "--out", out, "--no-softclip"])
-        expect_true("BAM control: --no-softclip loses the 6 clipped reads", table(out)["repeat_reads"] == "10",
-                    table(out))
-        run_main(["--bam", bam, "--vcf", vcf, "--out", out, "--no-mates"])
-        expect_true("BAM control: --no-mates loses the 3 rescued mates", table(out)["repeat_reads"] == "13", table(out))
-        rc, _ = run_main(["--vcf", vcf, "--out", out, "--skip", "no BAM"])
-        expect("--skip: not_checked with the reason", (rc, table(out)["verdict"], table(out)["note"]),
-               (0, "not_checked", "no BAM"))
-        novcf = os.path.join(tmp, "none.vcf")
-        with open(novcf, "w") as fh:
-            fh.write(VCF.replace("REPID=RFC1", "REPID=HTT").replace("VARID=RFC1", "VARID=HTT"))
-        run_main(["--bam", bam, "--vcf", novcf, "--out", out])
-        expect("a VCF without an RFC1 record: not_checked", table(out)["verdict"], "not_checked")
-
-
-def in_container():
-    """Run part 2 in PYPGX_IMAGE: its exit code."""
-    image = ""
-    for line in open(os.path.join(REPO, "versions.env")):
-        if line.startswith("PYPGX_IMAGE="):
-            image = line.split("=", 1)[1].split("#")[0].strip().strip('"')
-    if not image:
-        print("FAIL no PYPGX_IMAGE line in versions.env")
-        return 1
-    cmd = ["docker", "run", "--rm", "--network", "none", "-u", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp",
-           "-e", "RFC1_MOTIF_TEST_PART=2", "-v", f"{REPO}:/repo:ro", image, "python3", "/repo/tests/test_rfc1_motif.py"]
-    print("+ " + " ".join(cmd), flush=True)
-    try:
-        return subprocess.run(cmd).returncode
-    except FileNotFoundError:
-        print("FAIL part 2 needs pysam or docker, and this machine has neither")
-        return 1
+def exit_code(case):
+    return int(open(os.path.join(golden(case), "exit")).read().strip())
 
 
 def main():
-    part = os.environ.get("RFC1_MOTIF_TEST_PART")
-    if part != "2":
-        part1()
-    try:
-        import pysam
-    except ImportError:
-        if part == "2":
-            print("FAIL pysam is not in this image")
-            return 1
-        if in_container() != 0:
-            FAILS.append("part 2 (in PYPGX_IMAGE)")
-    else:
-        part2(pysam)
+    for kind, verdict, reads in (("benign", "benign_motif", "10"), ("pathogenic", "pathogenic_motif", "16"),
+                                 ("mixed", "benign_motif", "10"), ("acagg", "pathogenic_motif", "5"),
+                                 ("unknown", "uncertain_motif", "5"), ("few", "not_resolved", "2")):
+        t = table(f"motif-{kind}")
+        expect(f"{kind}: exit 0, {verdict}, {reads} repeat reads",
+               (exit_code(f"motif-{kind}"), t["verdict"], t["repeat_reads"]), (0, verdict, reads))
+    t = table("motif-pathogenic")
+    expect("pathogenic: the locus from the VCF, AAGGG dominant, both shares; the 8 reference-allele reads not counted",
+           (t["chrom"], t["start"], t["end"], t["dominant_motif"], t["motif_shares"]),
+           (CHROM, str(START + 1), str(END), "AAGGG", "AAGGG=0.81,AAAAG=0.19"))
+    expect_true("pathogenic: the note asks for repeat-primed PCR", "repeat-primed PCR" in t["note"], t["note"])
+    expect_true("benign: the note says the flag is not supported",
+                "the flag is not supported" in table("motif-benign")["note"], table("motif-benign")["note"])
+    expect("mixed: AAAAG and AAAGG counted apart", table("motif-mixed")["motif_shares"], "AAAAG=0.60,AAAGG=0.40")
+    expect("unknown: AAGAG named by its smallest form, class unknown",
+           (table("motif-unknown")["dominant_motif"], table("motif-unknown")["dominant_class"]), ("AAGAG", "unknown"))
+    expect("control: --no-softclip loses the 6 clipped reads", table("motif-pathogenic-no-softclip")["repeat_reads"], "10")
+    expect("control: --no-mates loses the 3 rescued mates", table("motif-pathogenic-no-mates")["repeat_reads"], "13")
+    t = table("motif-skip")
+    expect("--skip: not_checked with the reason", (t["verdict"], t["note"]), ("not_checked", "no BAM"))
+    expect("a VCF without an RFC1 record: not_checked", table("motif-no-rfc1-record")["verdict"], "not_checked")
     if FAILS:
         print(f"{len(FAILS)} check(s) failed")
         return 1

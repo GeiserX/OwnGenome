@@ -10,7 +10,7 @@
                               (or from a VCF that holds reference calls)
       ANCESTRY_FINE_PREPARE   the one-person ADMIXTURE input, the groups'
                               frequencies at its SNVs and the chromosomes to
-                              paint (bin/ancestry_fine_report.py)
+                              paint (og ancestry-fine)
       ANCESTRY_FINE_ADMIXTURE ADMIXTURE -P: the fractions at each level and
                               their block bootstrap
       ANCESTRY_FINE_PHASE     Beagle phasing against the panel
@@ -128,10 +128,10 @@ process ANCESTRY_FINE_PREPARE {
     set -euo pipefail
     levels=()
     while IFS=\$'\\t' read -r level k _; do levels+=(--level "\${level}:\${k}:${panel}/model/\${level}.P"); done < ${panel}/model/levels.tsv
-    ancestry_fine_report.py sample-bed --bim ${panel}/model/ref.bim --vcf ${genotypes} \\
+    og ancestry-fine sample-bed --bim ${panel}/model/ref.bim --vcf ${genotypes} \\
         --sample ${meta.id} "\${levels[@]}" --bootstrap ${boot} --out-dir admixture
     # The chromosomes to phase and paint, as the bash step picks them.
-    ancestry_fine_report.py chroms --counts ${counts} --maps ${panel}/maps > ${meta.id}_chroms.txt
+    og ancestry-fine chroms --counts ${counts} --maps ${panel}/maps > ${meta.id}_chroms.txt
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """
@@ -300,7 +300,7 @@ process ANCESTRY_FINE_REPORT {
 
     script:
     """
-    ancestry_fine_report.py report --sample ${meta.id} --model ${panel}/model \\
+    og ancestry-fine report --sample ${meta.id} --model ${panel}/model \\
         --admixture adm/admixture --paint pnt/paint --panel ${panel_name} --out .
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

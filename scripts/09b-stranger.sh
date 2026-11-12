@@ -4,7 +4,7 @@
 # inheritance mode, and normal/pathogenic repeat ranges to each locus.
 # Input:  ExpansionHunter VCF produced by step 09 (and the sample's BAM, for RFC1)
 # Output: Annotated VCF in $GENOME_DIR/<sample>/expansion_hunter/, and
-#         <sample>_rfc1_motif.tsv when Stranger flags RFC1 (bin/rfc1_motif.py),
+#         <sample>_rfc1_motif.tsv when Stranger flags RFC1 (og str motif),
 #         <sample>_str_motifs.tsv when it flags another locus whose motif the
 #         catalog names (the FAME loci, SCA31, SCA37)
 # Catalog: STRANGER_REPEATS=FILE, STRANGER_REPEATS=bundled for Stranger's
@@ -106,10 +106,14 @@ fi
 
 # RFC1: Stranger's catalog sizes the degenerate AARRG unit and flags a low
 # count as full_mutation, so the flag says nothing until the motif is known.
-# When RFC1 is flagged, bin/rfc1_motif.py counts the pentamer motif of the
+# When RFC1 is flagged, og str motif counts the pentamer motif of the
 # reads at the locus (soft-clipped bases and mates mapped elsewhere
 # included) and writes a benign, pathogenic or uncertain verdict. It runs
 # again whenever Stranger did, so its table is never older than the VCF.
+# og runs from OUTPUT_DIR and writes a relative path, so bin/og's shadow
+# mode (OG_SHADOW, set only in CI: tests/parity/README.md) can run the
+# Python it replaced beside it. og reads the BAM itself; the call stays in
+# PYPGX_IMAGE, where that Python ran with pysam.
 RFC1_FLAG=$(awk -F'\t' '!/^#/ && $8 ~ /(^|;)REPID=RFC1(;|$)/ && $8 ~ /(^|;)STR_STATUS=[^;]*(pre|full)_mutation/ {print "yes"; exit}' "$OUT_VCF")
 if [ -z "$RFC1_FLAG" ]; then
   rm -f "$MOTIF_TSV"
@@ -125,10 +129,10 @@ else
   else
     MOTIF_ARGS=(--skip "no BAM (${ALIGN_DIR}/${SAMPLE}_sorted.bam with its .bai)")
   fi
-  echo "RFC1 is flagged: counting the repeat motif of its reads (bin/rfc1_motif.py)"
-  # pysam is in PYPGX_IMAGE.
-  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYPGX_IMAGE" \
-    python3 /pgp-bin/rfc1_motif.py --vcf "$(cpath "$OUT_VCF")" --out "$(cpath "${MOTIF_TSV}.part")" "${MOTIF_ARGS[@]}" ${CAT_ARGS[@]+"${CAT_ARGS[@]}"}
+  echo "RFC1 is flagged: counting the repeat motif of its reads (og str motif)"
+  rm -f "${MOTIF_TSV}.part"
+  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+    /pgp-bin/og str motif --vcf "$(cpath "$OUT_VCF")" --out "${SAMPLE}_rfc1_motif.tsv.part" "${MOTIF_ARGS[@]}" ${CAT_ARGS[@]+"${CAT_ARGS[@]}"}
   mv "${MOTIF_TSV}.part" "$MOTIF_TSV"
   echo "RFC1 motif: ${MOTIF_TSV}"
 fi
@@ -146,9 +150,10 @@ elif [ -n "$STRANGER_RAN" ] || [ ! -e "$OTHER_TSV" ] || [ "$OUT_VCF" -nt "$OTHER
   else
     MOTIF_ARGS=(--skip "no BAM (${ALIGN_DIR}/${SAMPLE}_sorted.bam with its .bai)")
   fi
-  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYPGX_IMAGE" \
-    python3 /pgp-bin/rfc1_motif.py --vcf "$(cpath "$OUT_VCF")" "${CAT_ARGS[@]}" --flagged \
-    --out "$(cpath "${OTHER_TSV}.part")" "${MOTIF_ARGS[@]}"
+  rm -f "${OTHER_TSV}.part"
+  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+    /pgp-bin/og str motif --vcf "$(cpath "$OUT_VCF")" "${CAT_ARGS[@]}" --flagged \
+    --out "${SAMPLE}_str_motifs.tsv.part" "${MOTIF_ARGS[@]}"
   if [ -e "${OTHER_TSV}.part" ]; then
     mv "${OTHER_TSV}.part" "$OTHER_TSV"
     echo "Motif count of the other flagged motif loci: ${OTHER_TSV}"
