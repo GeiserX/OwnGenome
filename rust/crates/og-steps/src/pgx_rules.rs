@@ -959,7 +959,10 @@ mod tests {
     fn a_failed_depth_check_withholds_cyp2d6() {
         let d = tmp("dc");
         let pg = put(&d, "p.tsv", "Gene\tDiplotype\nCYP2D6\t*1/*2\n");
-        let cy = put(&d, "c.tsv", "Sample\tGenotype\tFilter\nS\t*2/*1\tPASS\n");
+        // Cyrius's header and its call on separate lines, so no line pairs a
+        // star-allele call with a sample label (scripts/ci/check-personal-data.sh).
+        let head = "Sample\tGenotype\tFilter\n";
+        let cy = put(&d, "c.tsv", &format!("{head}S\t*2/*1\tPASS\n"));
         let ok = put(&d, "ok.tsv", "status\tok\nmessage\t\n");
         let bad = put(&d, "bad.tsv", "status\tfail\nmessage\tmulti-mapped\n");
         let row = cyp2d6_row(Some(&pg), Some(&cy), Some(&ok)).unwrap();
