@@ -270,3 +270,19 @@ fn a_short_record_or_a_listed_twice_chromosome_stops() {
         die.lines
     );
 }
+
+#[test]
+fn a_phased_record_of_another_chromosome_stops() {
+    let d = Scratch::new("otherchrom");
+    family(&d);
+    d.write(
+        "phased/chr1.vcf.gz",
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tA\tB\nchr1\t1000000\t.\tA\tG\t.\tPASS\t.\tGT\t0|1\t0|0\nchr2\t5000000\t.\tA\tG\t.\tPASS\t.\tGT\t0|1\t0|0\n",
+    );
+    let die = stop(run(&args(&d)));
+    assert!(
+        die.lines[0].ends_with("phased/chr1.vcf.gz line 3: chromosome chr2 in the file of chr1"),
+        "{:?}",
+        die.lines
+    );
+}

@@ -212,7 +212,9 @@ pub struct Phased {
 }
 
 impl Phased {
-    pub fn read(path: &str) -> std::result::Result<Phased, Die> {
+    /// Reads `path`, the phased VCF of `chrom`; a record of another
+    /// chromosome is an error.
+    pub fn read(path: &str, chrom: &str) -> std::result::Result<Phased, Die> {
         let mut samples: Option<Vec<String>> = None;
         let mut pos = Vec::new();
         let mut dos: Vec<Vec<Dosage>> = Vec::new();
@@ -233,8 +235,14 @@ impl Phased {
                     )));
                 };
                 let mut c = line.split('\t');
+                let here = c.next().unwrap_or_default();
+                if here != chrom {
+                    return Err(Die::one(format!(
+                        "{path} line {n}: chromosome {here} in the file of {chrom}"
+                    )));
+                }
                 let p = c
-                    .nth(1)
+                    .next()
                     .and_then(|v| parse_int(v).ok())
                     .and_then(|v| i64::try_from(v).ok())
                     .ok_or_else(|| {
@@ -471,7 +479,7 @@ fn find(a: &Args) -> std::result::Result<Found, Die> {
     let mut first: Option<Vec<String>> = None;
     for (ci, c) in chroms.iter().enumerate() {
         let m = GeneticMap::read(&join(&maps, &format!("{c}.map")))?;
-        let ph = Phased::read(&join(&phased, &format!("{c}.vcf.gz")))?;
+        let ph = Phased::read(&join(&phased, &format!("{c}.vcf.gz")), c)?;
         match &first {
             None => first = Some(ph.samples.clone()),
             Some(s) if *s != ph.samples => {

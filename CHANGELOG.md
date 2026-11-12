@@ -6,7 +6,7 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 - Step 38's shared DNA segments (the IBD report) now run in the Rust `og` binary: `og family ibd` replaces `bin/ibd_report.py`, in step 38 and in the Nextflow process `FAMILY_IBD_REPORT`. `ibd_pairs.tsv`, `ibd_segments.tsv` and `ibd_report.md` keep their names, columns and content. It reads one chromosome at a time and keeps one byte per member per marker, so on a synthetic family of five members over 22 chromosomes of 50,000 markers it takes 0.3 s and 6 MB instead of 6 s and 120 MB. What changes:
   - A missing or unreadable input (the chromosome list, a genetic map, a phased VCF, a hap-ibd file, the pedigree) stops the step with exit 2 and one `ERROR: cannot read <file>: <reason>` line. The Python stopped with exit 1 and a traceback.
-  - A phased VCF record with fewer sample columns than its `#CHROM` line, or a position that is not a number, stops the step with exit 2 and names the file and line. The Python crashed later, or counted opposite homozygotes against the wrong markers.
+  - A phased VCF record with fewer sample columns than its `#CHROM` line, a position that is not a number, or a record of another chromosome than the file's stops the step with exit 2 and names the file and line. The Python crashed later, or counted opposite homozygotes against the wrong markers.
   - A chromosome named twice in the chromosome list stops the step with exit 2. The Python counted that chromosome's stretches twice.
   - Each table is written to a temporary file and renamed, so a step that stops leaves no half-written table.
 
