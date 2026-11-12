@@ -48,7 +48,7 @@ cp "$TXT" "${E2E_WORK}/logs/${SAMPLE}_report.txt" 2>/dev/null || true
 
 # 1. one summary, two reports
 check "summary.json validates against the schema" \
-  python3 "${REPO}/tests/schema/validate.py" "${REPO}/tests/schema/summary.schema.json" "$JSON"
+  "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "$JSON"
 jq_py() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print($1)" "$JSON" 2>/dev/null; }
 N=$(jq_py "d['sections']['clinvar']['data'].get('count', 'none')")
 echo "ClinVar hits in summary.json: ${N}"
@@ -97,7 +97,7 @@ check "the report over the Nextflow folder shows ROH" grep -q '^## Runs of Homoz
 check "with its segments" grep -qE '^  Segments: [0-9]+ ' "$NFTXT"
 check "and reads the CPIC table from cpic/" grep -q '^## CPIC Drug-Gene Recommendations' "$NFTXT"
 check "the Nextflow summary validates" \
-  python3 "${REPO}/tests/schema/validate.py" "${REPO}/tests/schema/summary.schema.json" "${NF}/${SAMPLE}/summary.json"
+  "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "${NF}/${SAMPLE}/summary.json"
 
 # 4. a step skipped in the latest run
 SLIVAR="${D}/slivar/${SAMPLE}_slivar_summary.tsv"

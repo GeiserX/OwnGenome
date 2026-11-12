@@ -131,7 +131,7 @@ check "the text report prints the AF and the common mark" \
   has "frequency: gnomAD AF 0.03; common: unlikely to be a high-penetrance finding" "$(cat "${CASE_TMP}/t.txt" 2>/dev/null)"
 check "the HTML hits table has the frequency column" has '<th>gnomAD frequency</th>' "$(cat "${CASE_TMP}/t.html" 2>/dev/null)"
 check "the summary validates against the schema" \
-  python3 "${REPO}/tests/schema/validate.py" "${REPO}/tests/schema/summary.schema.json" "${CASE_TMP}/t.json"
+  "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "${CASE_TMP}/t.json"
 
 # --- 4. the cDNA read check on CPSR rows ----------------------------------------
 C="${SAMPLE}cdna"

@@ -31,7 +31,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og str motif [args]
        og prs format [args]
        og chip prepare|report|check-table [args]
-       og dev parity-compare KIND ORACLE NEW
+       og dev parity-compare|contract|schema|report-only [args]
        og version
        og --tree-hash
 ";

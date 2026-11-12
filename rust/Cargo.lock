@@ -604,6 +604,7 @@ dependencies = [
  "flate2",
  "indexmap",
  "og-io",
+ "og-nf",
  "png",
  "pycompat",
  "regex",
@@ -651,6 +652,7 @@ dependencies = [
  "jiff",
  "og-io",
  "pycompat",
+ "regex",
 ]
 
 [[package]]
