@@ -59,10 +59,10 @@ const SEGMENT_COLUMNS: &str = "sample_a\tsample_b\tchrom\tstart\tend\tcm\tibd2_c
 /// hap-ibd's default min-output: shorter segments are not reported.
 const MIN_OUTPUT_CM: f64 = 2.0;
 /// Opposite homozygotes allowed between two stretches that are joined.
-pub const MAX_DISCORD: usize = 2;
+pub const MAX_DISCORD: usize = 1;
 /// Share of a first-degree pair's genome in both copies from which the
 /// pair reads as full siblings (about 25%) rather than parent and child (0%).
-pub const SIBLING_MIN_IBD2: f64 = 0.30;
+pub const SIBLING_MIN_IBD2: f64 = 0.10;
 const DEGREES: [(f64, &str); 5] = [
     (0.707, "same person or identical twins"),
     (0.354, "first degree"),
