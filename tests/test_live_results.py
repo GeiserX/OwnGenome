@@ -48,12 +48,16 @@ Checks:
      first ones and its closed lead names none; a CHIP call, a copy-number dot
      and a fact that name a closed result's gene carry its id (the CHIP chart's
      panel of genes never does), and results.json carries the closed results as
-     veil.spans (the family page closes a child's places while one is closed).
+     veil.spans (the family page closes a child's places while one is closed);
+     a closed structural variant over two genes closes the rows and the finding
+     that name only its second gene, and veil.panels lists the cards of a fixed
+     panel (live_results.FIXED_PANELS).
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
 registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
-8 with a veil rule that tags nothing (rows, lines, facts and drawings) and one that tags every row. A check
+8 with a veil rule that tags nothing (rows, lines, facts and drawings), one that tags every row and one that tags
+only a structural variant's first gene. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -464,6 +468,39 @@ def widget_problems():
     return out
 
 
+def sv_genes_problems():
+    """What is wrong with the veil's tags of a closed structural variant over two genes: a ClinVar row and a carrier
+    row that name only its second gene (the hit sits elsewhere, so only the gene can tie it) carry its id, and so
+    does the carrier finding; veil.spans lists it once per gene; veil.panels lists the cards of a fixed panel."""
+    S = {"annotsv": {"state": "ok", "data": {"rows": [
+        {"sv": "chr17:43044295-43170245", "type": "deletion", "length": -125950, "acmg_class": "5",
+         "genes": ["BRCA1", "NBR2"], "gt": "0/1", "support": 2, "support_callers": ["Manta", "Delly"]}]}},
+         "clinvar": {"state": "ok", "data": {"hits": [
+             {"gene": "NBR2", "chrom": "chr1", "pos": 5, "ref": "A", "alt": "G", "significance": "Pathogenic"},
+             {"gene": "GENE5", "chrom": "chr1", "pos": 9, "ref": "A", "alt": "G", "significance": "Pathogenic"}]}},
+         "carrier": {"state": "ok", "data": {"genes_on_list": 2, "carriers": [
+             {"gene": "NBR2", "variant": "c.1A>G", "genotype": "het", "significance": "Pathogenic"}]}},
+         "paralogs": {"state": "ok", "data": {"genes": [{"gene": "SMN1", "copy_number": 2, "status": "called"}]}}}
+    res = live_results.build("T", {"sections": S})
+    v = res.get("veil") or {}
+    sv = [f["id"] for f in res["findings"] if f["card"] == "structural-variants"]
+    car = [f["id"] for f in res["findings"] if f["card"] == "carrier-list"]
+    out = []
+    if len(sv) != 1 or len(car) != 1:
+        return [f"the planted findings: {[f['id'] for f in res['findings']]}"]
+    if (v.get("rows") or {}).get("clinvar") != [sv[0], None]:
+        out.append(f"ClinVar rows tagged {(v.get('rows') or {}).get('clinvar')}, want the deletion's id on the NBR2 row")
+    if (v.get("rows") or {}).get("carrier-list") != [sv[0]]:
+        out.append(f"carrier rows tagged {(v.get('rows') or {}).get('carrier-list')}")
+    if (v.get("findings") or {}).get(car[0]) != sv[0]:
+        out.append(f"the NBR2 carrier finding tagged {(v.get('findings') or {}).get(car[0])}")
+    if sorted(s[1] for s in v.get("spans") or [] if s[0] == sv[0]) != ["BRCA1", "NBR2"]:
+        out.append(f"spans {v.get('spans')}")
+    if v.get("panels") != ["paralogs"]:
+        out.append(f"panels {v.get('panels')}, want the copy-number card, the only fixed panel here")
+    return out
+
+
 def overview_problems():
     """What is wrong with the home page's view of a child's run (overview): a finding that names a closed result
     (a symptom ranking of its gene) is listed among the first findings, or the closed lead still names it."""
@@ -584,6 +621,15 @@ def main():
         bad = widget_problems()
         check("8. a CHIP call, a copy-number dot and a fact that name a closed result's gene carry its id, the CHIP "
               "chart's gene panel none, and results.json carries the closed results as veil.spans", not bad, bad)
+        bad = sv_genes_problems()
+        check("8. a closed structural variant over two genes closes the rows and the finding that name only its second "
+              "gene, veil.spans lists it per gene, and veil.panels lists the fixed-panel cards", not bad, bad)
+        first = live_results.closable
+        try:
+            live_results.closable = lambda found: first([{k: v for k, v in f.items() if k != "genes"} for f in found])
+            control("a veil that tags only a structural variant's first gene", not sv_genes_problems())
+        finally:
+            live_results.closable = first
         bad = veil_problems(*tagged(d3))
         check("8. the planted ClinVar hit's row, viewer link, tick and star bar carry its secondary finding's id, the "
               "deletion's span its own, every other card's row of the gene and the symptom ranking's finding one of them, "

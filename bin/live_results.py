@@ -888,6 +888,9 @@ def finding_rows(summary):
                           gene=(x.get("genes") or [None])[0], detail=x.get("sv"),
                           evidence=[["Class", x.get("acmg_class")], ["Callers", rr.annotsv_support_text(x)],
                                     ["Genotype", x.get("gt")]], viewer=str(x.get("sv") or "").replace(" ", "") or None))
+            # Every gene it covers, not only the first: a closed one closes the rows that name any of them (closable()).
+            gl = x.get("genes")
+            out[-1]["genes"] = [str(g) for g in gl if g] if isinstance(gl, list) else []
     # 6. Repeat expansions outside Stranger's "normal", or in an intermediate zone.
     for l in _items(_data(S, "expansions").get("loci")):
         with _Row(out, "expansions", "act"):
@@ -1144,6 +1147,24 @@ def lead(found, levels, summary):
 # belongs to a closed result when it names the result's gene, or its position falls inside the result's
 # position or span; a row that is the result's own position or span belongs to that result first, else
 # the first such result in finding order. The veil lives in the browser: the files still hold every row.
+# The cards whose rows are a fixed panel: the same genes or loci for everyone, known before the run. A row or
+# dot of one that closes with a result would tell which gene the result is in by what is missing, so a child's
+# page closes each of these cards whole while any result to act on is closed, behind one box with the same words
+# whatever the result (results.json veil.panels; assets/live/person.js panelShut()). The one table: a card of a
+# fixed panel is listed here and nowhere else.
+FIXED_PANELS = {
+    "expansions": "the repeat loci of the catalog",
+    "vntyper": "MUC1",
+    "lpa": "LPA",
+    "chip": "the CHIP genes and their detection limits",
+    "paralogs": "SMN1, SMN2, HBA1, HBA2, the RCCX module and the other paralog genes",
+    "cpic": "the CPIC genes",
+    "cyp2d6": "CYP2D6",
+    "hla": "the HLA genes",
+    "locityper": "the Locityper loci",
+    "traits-panel": "the trait panel's genes",
+    "bloodtype": "the blood group systems",
+}
 LOCUS_RE = re.compile(r"(?<![A-Za-z0-9])(?:chr)?([0-9]{1,2}|X|Y|M|MT):([0-9][0-9,]*)(?:-([0-9][0-9,]*))?")
 WORD_RE = re.compile(r"[A-Z0-9][A-Z0-9._-]*")
 
@@ -1159,14 +1180,22 @@ def _loci(text):
 
 
 def closable(found):
-    """[(id, gene, chrom, start, end)] of the findings a child's page keeps closed (level act): the
-    position or span from the finding's viewer locus or its detail, else None (its gene alone)."""
+    """[(id, gene, chrom, start, end)] of the findings a child's page keeps closed (level act), one per gene the
+    finding names (its genes, a structural variant's every gene, else its gene; None for none): the position or
+    span from the finding's viewer locus or its detail, else None (its genes alone). A row that names any of a
+    result's genes belongs to that result."""
     out = []
     for f in found:
         if f.get("level") != "act":
             continue
         loc = (_loci(f.get("viewer")) or _loci(f.get("detail")) or [(None, None, None)])[0]
-        out.append((f["id"], str(f.get("gene") or "").upper() or None) + loc)
+        genes = []
+        for g in list(f.get("genes") or []) + [f.get("gene")]:
+            g = str(g or "").upper()
+            if g and g not in genes:
+                genes.append(g)
+        for g in genes or [None]:
+            out.append((f["id"], g) + loc)
     return out
 
 
@@ -1211,14 +1240,16 @@ def veil(summary, found, chapters, lead_parts=()):
     id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
     rank the gene) and the lead's segments that name one (lead: one per segment of LEAD_PARTS, the "act"
     names left out: the page closes those itself), each card's facts (facts: card -> one per fact) and the items
-    of its drawing (widget: card -> one per CHIP call or copy-number dot). spans is closable() itself: the family
+    of its drawing (widget: card -> one per CHIP call or copy-number dot), and the cards of a fixed panel
+    (panels: FIXED_PANELS, which close whole while any result is closed). spans is closable() itself: the family
     page (assets/live/family-page.js) reads which results are closed from it, and closes every place of the child
     that could carry one while one is. Empty when nothing can be closed."""
     spans = closable(found)
     if not spans:
         return {}
     out = {"rows": {}, "viewer": {}, "lines": {}, "facts": {}, "widget": {}, "marks": {}, "findings": {}, "lead": [],
-           "spans": [list(s) for s in spans]}
+           "spans": [list(s) for s in spans],
+           "panels": [c["id"] for ch in chapters for c in ch["sections"] if c["id"] in FIXED_PANELS and c.get("state") != "missing"]}
     S = summary.get("sections") or {}
     hits = [h for h in _items(_data(S, "clinvar").get("hits"))[:50]]
     tags = [veil_id(spans, str(h.get("gene") or ""), h.get("chrom"), h.get("pos")) if isinstance(h, dict) else None
