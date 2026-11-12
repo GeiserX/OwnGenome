@@ -3036,13 +3036,16 @@ def second_open_problems(b, base, out, og):
         unplant(keep)
 
 
-# A finding the server tags with a closed result because it names its gene (results.veil.findings: a symptom
-# ranking), once with og's tag on its row too (CFTR, inside the deletion's span) and once with none (BRCA1).
+# A finding the server tags with a closed result because it names its gene in its genes (results.veil.findings:
+# an open structural variant over two genes), once with og's tag on its row too (CFTR, inside the deletion's span)
+# and once with none (BRCA1).
 NAMED = (act("pl-x", "PLXGENE", "chr7:117400000-117700000", "Planted x deletion"),
-         {"id": "pl-q", "level": "review", "card": "exomiser", "gene": "CFTR", "title": "Symptom ranking: PLXGENE ranks 1",
-          "detail": "CFTR", "text": "A planted ranking that names the deletion's gene."},
-         {"id": "pl-r", "level": "review", "card": "exomiser", "gene": "BRCA1", "title": "Symptom ranking: PLXGENE ranks 2",
-          "detail": "BRCA1", "text": "A planted ranking that names the deletion's gene."})
+         {"id": "pl-q", "level": "review", "card": "exomiser", "gene": "CFTR", "genes": ["CFTR", "PLXGENE"],
+          "title": "Symptom ranking: PLXGENE ranks 1", "detail": "CFTR",
+          "text": "A planted ranking that names the deletion's gene."},
+         {"id": "pl-r", "level": "review", "card": "exomiser", "gene": "BRCA1", "genes": ["BRCA1", "PLXGENE"],
+          "title": "Symptom ranking: PLXGENE ranks 2", "detail": "BRCA1",
+          "text": "A planted ranking that names the deletion's gene."})
 # A row of the map with no finding in results.json (a newer finding the map holds before the page has it),
 # on the closed deletion's place and with its tag.
 GHOST = {"id": "pl-ghost", "level": "review", "gene": "GHOSTGENE", "title": "Ghost review", "href": "finding/pl-ghost/",
