@@ -48,7 +48,7 @@ use crate::reads::{
 /// The shortest clip, in bases, that counts.
 pub const MIN_CLIP: i64 = 10;
 /// How far a clip point may lie from an exon edge, in bases.
-pub const EDGE_SLACK: i64 = 2; // RED CONTROL: was 3
+pub const EDGE_SLACK: i64 = 3;
 /// The fewest alt reads a hit is judged on.
 pub const MIN_ALT_READS: u64 = 2;
 /// The share of alt reads clipped at an edge that flags a hit.
@@ -788,8 +788,6 @@ fn junctions(
 /// A read as a junction counts it: its name and whether it is the first mate.
 type ReadKey = (Box<[u8]>, bool);
 /// The reads of each (exon end, exon start) junction of one contig.
-static RED: AtomicUsize = AtomicUsize::new(0);
-/// The reads of each junction.
 pub type Junctions = FxHashMap<(i64, i64), FxHashSet<ReadKey>>;
 
 /// Whether a record can show a junction: counted, and with an SA tag or an
@@ -816,17 +814,7 @@ pub fn scan_read(
         found
             .entry(j)
             .or_default()
-            // RED CONTROL: no dedupe; each record is a read of its own.
-            .insert((
-                format!(
-                    "{}#{}",
-                    String::from_utf8_lossy(r.qname()),
-                    RED.fetch_add(1, Ordering::Relaxed)
-                )
-                .into_bytes()
-                .into(),
-                r.has(flag::READ1),
-            ));
+            .insert((r.qname().into(), r.has(flag::READ1)));
     }
     Ok(())
 }
@@ -850,8 +838,9 @@ fn scan_contig(bam: &str, tid: u32, contig: &str, ex: &Exons) -> Result<Junction
             .map_err(|e| format!("{contig}:{a}-{b}: {e}"))?;
         while let Some(r) = reader.read(&mut rec) {
             r.map_err(|e| format!("{bam}: {e}"))?;
-            // RED CONTROL: the once-only rule is off.
-            let _ = prev_end;
+            if rec.pos() < prev_end {
+                continue;
+            }
             scan_read(ex, contig, &rec, &mut found, &mut buf)?;
         }
         prev_end = b;
