@@ -111,7 +111,8 @@ RUN_STARTED = calendar.timegm((2026, 10, 1, 9, 0, 0, 0, 0, 0))
 FINDINGS = {"DEMO-002": {"fmr1", "chip", "mocha"}, "DEMO-003": {"annotsv", "act"}}
 # The son's results to act on ("act"): a pathogenic ClinVar hit in KCNH2, an ACMG secondary-findings gene that
 # is on no carrier list, and an AnnotSV class 5 deletion over it. Public gene name, invented positions and
-# alleles. tests/test_live_demo.py checks that his page names neither until each is opened on purpose.
+# alleles. tests/test_live_demo.py checks that his page names neither until each is opened on purpose, and that the
+# family page keeps his places closed with them, the compound-het pairs of tests/fixtures/live/demo/DEMO-FAMILY too.
 PLANTED = {"gene": "KCNH2", "hit": ("chr7", 150960000, "C", "T"), "sv": ("chr7", 150955000, 150965000)}
 # Stranger's thresholds per locus (normal up to, pathologic from), invented for the demo's catalog.
 STR_THRESHOLDS = {"HTT": (26, 40), "FMR1": (54, 200), "C9ORF72": (20, 30), "ATXN1": (35, 39), "DMPK": (34, 50),

@@ -14,5 +14,7 @@ sample DEMO-001 that `tests/demo/make_demo_sample.py` writes. No real sample, pe
 - `DEMO-FAMILY/family_plan.tsv`, `relationships.tsv`, `ibd_pairs.tsv`, `DEMO-003_segments.tsv`,
   `de_novo.tsv`, `compound_het.tsv`: step 38's files for the trio, invented, in the columns step 38
   writes, so the family page draws its grid, the son's painted stretches and his tables.
+  `compound_het.tsv` also holds a pair in KCNH2 whose first variant is the son's planted result to act on
+  (`make_demo_sample.py` PLANTED): the family page keeps the son's pairs closed until his results are opened there.
 
 The run itself is `../demo-001.weblog.jsonl`, written by `tests/demo/make_demo_events.py`.

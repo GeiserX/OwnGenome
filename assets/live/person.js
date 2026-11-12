@@ -344,6 +344,22 @@
     out.rows = rows;
     return [rows.length ? out : null, t.rows.length - rows.length];
   }
+  // A card's facts and drawing without their closed items (a fact, a CHIP call or a copy-number dot that names a
+  // closed result's gene): [facts, widget, how many items they left out].
+  function openFacts(c) {
+    var ft = veilTags('facts', c.id), facts = (c.facts || []).filter(function (f, i) { return !(ft[i] && tagClosed(ft[i])); });
+    var w = c.widget, key = w && (w.kind === 'vaf' ? 'calls' : w.kind === 'copies' ? 'genes' : null);
+    var wt = veilTags('widget', c.id), shut = (c.facts || []).length - facts.length;
+    if (key && wt.length && w[key]) {
+      var items = w[key].filter(function (x, i) { return !(wt[i] && tagClosed(wt[i])); });
+      shut += w[key].length - items.length;
+      var copy = {};
+      Object.keys(w).forEach(function (k) { copy[k] = w[k]; });
+      copy[key] = items;
+      w = copy;
+    }
+    return [facts, w, shut];
+  }
   function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
   // The search box (plugins/search.js) asks the same question for each hit, by the summary key and the anchor
   // of the section it comes from: a hit from a card this page keeps closed is left out. A closed page with
@@ -398,20 +414,16 @@
     } else if (g === 'empty') {
       add(text, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
     } else if (closedFs.length) {
-      var v = el('div', { 'class': 'veil' });
       // One button opens one result: a card with two results to act on asks twice.
-      add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
-        (closedFs.length === 1 ? 'This section holds a result' : 'This section holds ' + closedFs.length + ' results') +
-        ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.'));
-      var vb = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      vb.addEventListener('click', function () { openFinding(closedFs[0]); redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
-      add(v, vb);
-      add(text, v);
+      add(text, U.veil((closedFs.length === 1 ? 'This section holds a result' : 'This section holds ' + closedFs.length + ' results') +
+        ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.', null,
+        function () { openFinding(closedFs[0]); redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } }));
     } else {
       (c.notes || []).forEach(function (n) { add(text, el('p', { 'class': 'note-stale' }, n)); });
       if (c.headline) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
-      add(margin, U.facts(c.facts));
-      add(text, widget(c.widget));
+      var of = openFacts(c);
+      add(margin, U.facts(of[0]));
+      add(text, widget(of[1]));
       Object.keys((results && results.charts) || {}).forEach(function (chart) {
         if (results.charts[chart] === c.id) { add(text, el('div', { 'class': 'chart-slot', 'data-chart-slot': chart })); }
       });
@@ -419,11 +431,15 @@
       var ot = openTable(c), tb = U.table(ot[0]);
       var lt = veilTags('lines', c.id);
       var lines = (c.lines || []).filter(function (l, i) { return !(lt[i] && tagClosed(lt[i])); });
-      var shut = ot[1] + (c.lines || []).length - lines.length;
+      var shut = ot[1] + (c.lines || []).length - lines.length, items = of[2];
       if (tb) { add(text, tb); } else if (c.empty_text && !ot[1]) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
-      if (shut) {
-        add(text, el('p', { 'class': 'dim veil-rows' }, (shut === 1 ? 'One row stays' : shut + ' rows stay') +
-          ' closed with the result to act on ' + (shut === 1 ? 'it belongs' : 'they belong') + ' to, until that result is opened.'));
+      if (shut || items) {
+        // Rows of its table and lines, and items of its facts and drawing, counted apart.
+        var what = [shut ? (shut === 1 ? 'One row' : shut + ' rows') : '', items ? (items === 1 ? (shut ? 'one item' : 'One item') : items + ' items') +
+          ' of its numbers or drawing' : ''].filter(Boolean).join(' and ');
+        var many = shut + items > 1;
+        add(text, el('p', { 'class': 'dim veil-rows' }, what + (many ? ' stay' : ' stays') +
+          ' closed with the result to act on ' + (many ? 'they belong' : 'it belongs') + ' to, until that result is opened.'));
       }
       add(text, lineList(lines));
       if (c.hidden) {
@@ -534,13 +550,8 @@
     if (at) { art.classList.add('new'); add(art, el('span', { 'class': 'newband' }, 'New at ' + U.hm(at))); add(art, el('br', {})); }
     add(art, U.findingLevel(f.level, f.level_words));
     if (veiled(f)) {
-      var v = el('div', { 'class': 'veil' });
-      add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
-        'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
-      var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      b.addEventListener('click', function () { openFinding(f); redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
-      add(v, b);
-      add(art, v);
+      add(art, U.veil('A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.',
+        null, function () { openFinding(f); redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } }));
       add(row, art, el('aside', {}));
       return row;
     }
@@ -704,7 +715,7 @@
   function cardLine(c) {
     var g = gate(c);
     return g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
-      : g === 'show' ? (c.headline || (c.facts && c.facts[0] ? c.facts[0][0] + ': ' + c.facts[0][1] : NOT_ALL_CLEAR))
+      : g === 'show' ? (c.headline || (openFacts(c)[0][0] ? openFacts(c)[0][0][0] + ': ' + openFacts(c)[0][0][1] : NOT_ALL_CLEAR))
       : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
   }
   // A card the report flags that has no finding of its own: on a phone it is the only place that flag
