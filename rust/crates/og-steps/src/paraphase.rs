@@ -805,12 +805,19 @@ pub fn variants_table(dir: Option<&str>, sample: &str) -> Result<Vec<[String; 8]
     let Some(dir) = dir.filter(|d| !d.is_empty() && Path::new(d).is_dir()) else {
         return Ok(out);
     };
-    let mut names: Vec<String> = std::fs::read_dir(dir)
-        .map_err(|e| Error(og_filters::os_error(&e, dir)))?
-        .filter_map(Result::ok)
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".vcf"))
-        .collect();
+    let mut names = Vec::new();
+    // An entry that cannot be read stops the run: a partial listing would
+    // publish a variant table missing regions.
+    for entry in std::fs::read_dir(dir).map_err(|e| Error(og_filters::os_error(&e, dir)))? {
+        let name = entry
+            .map_err(|e| Error(og_filters::os_error(&e, dir)))?
+            .file_name()
+            .to_string_lossy()
+            .into_owned();
+        if name.ends_with(".vcf") {
+            names.push(name);
+        }
+    }
     names.sort();
     let prefix = format!("{sample}_");
     for name in names {

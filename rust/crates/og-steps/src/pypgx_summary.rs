@@ -447,10 +447,11 @@ pub struct Vcf {
 
 impl Vcf {
     /// Opens a bgzipped VCF with its `.tbi` or `.csi`, and reads the
-    /// contigs its header names.
+    /// contigs its index and its header name (a header may have no
+    /// `##contig` lines).
     pub fn open(path: &str) -> io::Result<Vcf> {
         let reader = og_io::tabix::Reader::open(path)?;
-        let mut contigs = HashSet::new();
+        let mut contigs: HashSet<String> = reader.index().names().iter().cloned().collect();
         let mut head = og_io::open(path)?;
         let mut line = String::new();
         loop {
@@ -899,5 +900,17 @@ mod tests {
         assert_eq!(t.core_variants("CYP2D7", "*1"), None);
         assert_eq!(t.has_phenotype("GSTM1"), Ok(false));
         assert!(t.has_phenotype("CYP2D7").is_err());
+    }
+
+    #[test]
+    fn a_vcf_without_contig_lines_is_still_looked_up() {
+        let path = format!(
+            "{}/../../../tests/fixtures/pgx/summary/no-contig.vcf.gz",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let mut v = Vcf::open(&path).unwrap();
+        let site = v.lookup("10-94781859-G-A").unwrap().unwrap();
+        assert_eq!(site.gq, Some(12));
+        assert_eq!(site.filter, "PASS");
     }
 }

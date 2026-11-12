@@ -166,6 +166,14 @@ pub struct Allele {
     pub quality: f64,
 }
 
+impl Allele {
+    /// T1K says to ignore an allele with quality 0 or below; a quality
+    /// that is not a finite number is no better.
+    fn unusable(&self) -> bool {
+        !self.quality.is_finite() || self.quality <= 0.0
+    }
+}
+
 /// T1K's alleles per gene, for the genes asked for. T1K's genotype TSV:
 /// gene, number of distinct alleles, then allele, abundance, quality twice
 /// (`.` when there is no second allele). The last row of a gene wins.
@@ -356,7 +364,7 @@ pub fn hla_row(
         };
         evidence = format!("T1K: {evidence}; OptiType: {said}");
     }
-    if alleles.iter().any(|a| a.quality <= 0.0) {
+    if alleles.iter().any(Allele::unusable) {
         let why = "T1K gives an allele quality 0 or below (T1K says to ignore it)";
         return Row::withheld(gene, "indeterminate", why, &evidence);
     }
@@ -415,7 +423,7 @@ pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
         };
         let (agree, mut note) = if alleles.is_empty() || ot.is_empty() {
             ("not compared", "a caller made no call".to_owned())
-        } else if alleles.iter().any(|a| a.quality <= 0.0) {
+        } else if alleles.iter().any(Allele::unusable) {
             (
                 "not compared",
                 "T1K gives an allele quality 0 or below".to_owned(),
@@ -952,6 +960,22 @@ mod tests {
         assert_eq!(row.reason, "T1K and OptiType disagree at two fields");
         let row = hla_row("HLA-A", Some(&t1k), None, true);
         assert_eq!(row.reason, NO_OPTITYPE);
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn a_quality_that_is_not_a_finite_number_withholds() {
+        let d = tmp("nan");
+        let ot = read_optitype(&put(&d, "o.tsv", &optitype("A*24:02", "A*02:01"))).unwrap();
+        for q in ["nan", "inf"] {
+            let text = format!("HLA-A\t2\tHLA-A*02:01:01\t10\t{q}\tHLA-A*24:02:01\t9\t60\n");
+            let t1k = read_t1k(&put(&d, "t.tsv", &text), &HLA_GENES).unwrap();
+            let row = hla_row("HLA-A", Some(&t1k), Some(&ot), true);
+            assert_eq!(row.decision, Decision::Withheld("indeterminate"), "{q}");
+            let rows = concordance_rows(&t1k, &ot);
+            let a = rows.iter().find(|r| r[0] == "HLA-A").unwrap();
+            assert_eq!(a[3], "not compared", "{q}");
+        }
         let _ = std::fs::remove_dir_all(d);
     }
 
