@@ -461,6 +461,18 @@ fn depth_support(
             format!("Delly RDCN {}", general(v, 6)),
         );
     }
+    if let Some(v) = rdcn
+        && len > DEPTH_MIN_SIZE
+    {
+        // A fractional, infinite or negative RDCN is no count of copies.
+        return (
+            "not checked",
+            format!(
+                "Delly RDCN {} is not a whole number of copies",
+                general(v, 6)
+            ),
+        );
+    }
     if caller == "delly" && rdcn.is_none() && len > DEPTH_MIN_SIZE {
         // og sv add-callers keeps FORMAT GT only on a Delly call it adds,
         // after it set aside every call over 1,000 bp whose RDCN does not
