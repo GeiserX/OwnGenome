@@ -34,6 +34,7 @@ import copy
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -255,12 +256,18 @@ def main():
         got2 = merged(a_, b2)
         check("8. a system only a later member has keeps step 41's order, also when each lacks one",
               got == ["ABO", "RhD", "Kell", "Duffy"] and got2 == ["ABO", "RhD", "Kell", "Duffy", "Kidd"], (got, got2))
-        import bloodtype_report
-        saved, bloodtype_report.SYSTEMS = bloodtype_report.SYSTEMS, []
+        saved, fam.STEP41_SYSTEMS = fam.STEP41_SYSTEMS, ()
         try:
             control("step 41's order taken away", merged(a_, b2) == ["ABO", "RhD", "Kell", "Duffy", "Kidd"])
         finally:
-            bloodtype_report.SYSTEMS = saved
+            fam.STEP41_SYSTEMS = saved
+        sys.path.insert(0, os.path.join(REPO, "tests"))
+        from og_binary import og_binary
+        step41 = subprocess.run([og_binary(), "bloodtype", "systems"], capture_output=True, text=True, check=True)
+        check("8. the page's order of the systems is step 41's (og bloodtype systems)",
+              list(fam.STEP41_SYSTEMS) == step41.stdout.split(), (fam.STEP41_SYSTEMS, step41.stdout))
+        control("a system moved in the page's order",
+                list(fam.STEP41_SYSTEMS[1:2] + fam.STEP41_SYSTEMS[:1] + fam.STEP41_SYSTEMS[2:]) == step41.stdout.split())
 
         tri = os.path.join(work, "trio")
         shutil.copytree(DEMO, tri)
