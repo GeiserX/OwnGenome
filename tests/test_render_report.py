@@ -929,9 +929,10 @@ def main():
         nothing = collect_summary.collect("S", f"{work}/telomere/S")
         check("blood groups: no card without step 41", "Blood Groups" not in render_report.html_report(nothing))
         words = re.compile(r"transfus|donat|donor", re.I)
+        src = os.path.join(REPO, "rust", "crates", "og-bloodtype", "src")
         said = [n for n, t in (("text report", txt), ("HTML report", html),
-                               ("og bloodtype", "".join(open(os.path.join(REPO, "rust", "crates", "og-bloodtype", "src", f)).read()
-                                                for f in ("lib.rs", "rules.rs"))))
+                               ("og bloodtype", "".join(open(os.path.join(src, f)).read()
+                                                for f in sorted(os.listdir(src)) if f.endswith(".rs"))))
                 if words.search(t)]
         check("blood groups: nothing about transfusion or donation", not said, said)
         check("control: the wording check finds the word", bool(words.search("for a transfusion")))
