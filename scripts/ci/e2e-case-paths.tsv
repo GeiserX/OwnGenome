@@ -60,7 +60,7 @@ bash-step-14-imputation	scripts/14-imputation-prep.sh scripts/ci/fake-docker/lib
 bash-step-19-delly	scripts/19-delly.sh scripts/ci/fake-docker/lib.sh scripts/setup.sh
 bash-step-20-numt	assets/callability_genes.tsv bin/collect_summary.py bin/traits_report.py scripts/16b-mosdepth.sh scripts/20-mtoolbox.sh scripts/ci/fake-docker/lib.sh
 bash-step-bash42	assets/construct_variants.tsv bin/clip_check.py bin/cpsr_sample_id bin/og scripts/03d-octopus.sh scripts/04a-tiddit.sh scripts/10-telomere-hunter.sh scripts/17-cpsr.sh scripts/19-delly.sh scripts/ci/fake-docker/lib.sh
-bloodtype-1	assets/bloodtype_markers.tsv bin/bloodtype_report.py bin/cn_loci.tsv bin/copy_number.py bin/og modules/local/bloodtype/* modules/local/vcf_precheck/* scripts/41-bloodtype.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
+bloodtype-1	assets/bloodtype_markers.tsv bin/cn_loci.tsv bin/og modules/local/bloodtype/* modules/local/vcf_precheck/* scripts/41-bloodtype.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 bumps-drop-in-baseline	scripts/ci/fake-docker/lib.sh
 callability-1-catalog	assets/callability_genes.tsv assets/paralog_loci.tsv assets/pgx_genes.tsv bin/cn_loci.tsv bin/og scripts/ci/build-callability.sh scripts/ci/fake-docker/lib.sh
 callability-2-genes	assets/acmg_sf.tsv assets/callability_genes.tsv assets/carrier_genes.tsv assets/mito_confirmed.tsv assets/stub/sample.vcf.gz bin/collect_summary.py bin/render_report.py bin/results_index.py bin/traits_report.py modules/local/html_report/* modules/local/mosdepth/* modules/local/vcf_precheck/* scripts/16b-mosdepth.sh scripts/24-html-report.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
@@ -73,7 +73,7 @@ clinical-filter-mane-and-quality-3-modules	assets/construct_variants.tsv assets/
 clinvar-clip-check-1	assets/construct_variants.tsv assets/deep_intronic_sites.tsv bin/clip_check.py bin/og bin/render_report.py scripts/06-clinvar-screen.sh scripts/ci/fake-docker/lib.sh
 clinvar-combined-allele-1	assets/construct_variants.tsv assets/deep_intronic_sites.tsv assets/stub/sample.bam assets/stub/sample.bam.bai bin/clip_check.py bin/og modules/local/clinvar_screen/* modules/local/vcf_precheck/* scripts/06-clinvar-screen.sh scripts/24-html-report.sh scripts/ci/fake-docker/lib.sh scripts/generate-report.sh scripts/validate-setup.sh tests/fixtures/vcf/combined_allele_clinvar.vcf tests/fixtures/vcf/combined_allele_sample.vcf
 clinvar-cpsr-quality-1	assets/construct_variants.tsv assets/deep_intronic_sites.tsv bin/clip_check.py bin/og bin/render_report.py scripts/06-clinvar-screen.sh scripts/ci/fake-docker/lib.sh
-cn-engine-1-parity	assets/bloodtype_markers.tsv bin/bloodtype_report.py bin/cn_loci.tsv bin/copy_number.py bin/og bin/traits_report.py scripts/41-bloodtype.sh scripts/46-lpa.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
+cn-engine-1-parity	assets/bloodtype_markers.tsv bin/cn_loci.tsv bin/copy_number.py bin/og bin/traits_report.py scripts/41-bloodtype.sh scripts/46-lpa.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 cn-guard-1-mapq0	bin/cn_loci.tsv bin/copy_number.py bin/og bin/traits_report.py modules/local/parascopy/* scripts/35-paralogs.sh
 cn-intervals-1-catalog	bin/cn_loci.tsv bin/og scripts/ci/build-cn-intervals.py scripts/ci/fake-docker/lib.sh
 cn-intervals-2-hg002	assets/par_grch38.bed assets/paralog_loci.tsv bin/cn_loci.tsv bin/copy_number.py bin/og bin/traits_report.py modules/local/deepvariant/* modules/local/parascopy/* modules/local/vcf_precheck/* scripts/35-paralogs.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
@@ -135,7 +135,7 @@ pgx-inhibitor-rows-1-contraindication	assets/construct_variants.tsv assets/deep_
 pgx-parse-fixes-1-labels	assets/pgx_contraindications.tsv assets/pgx_genes.tsv assets/pgx_inhibitors.tsv bin/cn_loci.tsv bin/collect_summary.py bin/copy_number.py bin/og bin/pgx_outside_calls.py bin/traits_report.py scripts/27-cpic-lookup.sh scripts/32-pypgx.sh scripts/36-pgx-consensus.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 pharmcat-indel-refblocks-1	bin/og scripts/07-pharmacogenomics.sh scripts/ci/fake-docker/lib.sh tests/fixtures/pharmcat/refblocks.g.vcf
 pharmcat-mito-input-and-log-1-mtrnr1	bin/og scripts/07-pharmacogenomics.sh scripts/ci/fake-docker/lib.sh
-platelet-antigens-1	assets/bloodtype_markers.tsv bin/bloodtype_report.py bin/cn_loci.tsv bin/copy_number.py bin/og scripts/41-bloodtype.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
+platelet-antigens-1	assets/bloodtype_markers.tsv bin/cn_loci.tsv bin/og scripts/41-bloodtype.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 prs-1-agreement	assets/pgs_scores.tsv bin/collect_summary.py bin/traits_report.py scripts/25-prs.sh scripts/ci/fake-docker/lib.sh
 prs-2-ancestry	assets/pgs_scores.tsv bin/collect_summary.py bin/render_report.py bin/traits_report.py scripts/25-prs.sh scripts/26-ancestry.sh scripts/ci/fake-docker/lib.sh scripts/setup.sh
 prs-3-panel-measure	assets/pgs_scores.tsv bin/collect_summary.py bin/traits_report.py modules/local/prs/* modules/local/vcf_precheck/* scripts/25-prs.sh scripts/26-ancestry.sh scripts/ci/fake-docker/lib.sh scripts/setup.sh scripts/validate-setup.sh

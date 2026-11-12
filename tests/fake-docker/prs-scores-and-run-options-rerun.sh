@@ -9,7 +9,7 @@
 #     it neither gets the flag;
 #   - PRS_KEEP_AMBIGUOUS=true without the gVCF stops before any container
 #     (WGS only), and a value other than true or false is refused;
-#   - the declared sex reaches prs-table (--sex female).
+#   - the declared sex reaches og prs table (--sex female).
 # Control: a copy of step 25 with the "previous run" block cut out must lose
 # the earlier summary and folder, so the checks above can fail.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
@@ -32,7 +32,7 @@ printf 'placeholder\n' > "${G}/sample1/vcf/sample1.g.vcf.gz"
 printf 'placeholder\n' > "${G}/sample1/vcf/sample1.g.vcf.gz.tbi"
 
 # The tools' outputs: og prs format's score folder and allele list, one genotyped
-# position from bcftools (on stdout, as step 25 reads it), and prs-table's
+# position from bcftools (on stdout, as step 25 reads it), and og prs table's
 # summary, whose second row carries RUN_TAG so each run's table is told apart.
 use_output_hook
 cat > "${CASE_WORK}/hook-prs" <<'HOOK'
@@ -47,7 +47,7 @@ case " $* " in
     out=$(val --out); alleles=$(val --alleles)
     mkdir -p "$out"; : > "${out}/PGS000018.txt.gz"
     printf 'chr20\t100\tA\nchr20\t100\tG\n' > "$alleles" ;;
-  *" prs-table "*)
+  *" prs table "*)
     out=$(val --out)
     printf 'Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tMatched_Pct\tPercentile\tAncestry_Group\tChrX\tAmbiguous\tApplies_To\tSex_Check\tInput\n' > "$out"
     printf 'Coronary artery disease\tPGS000018\t%s\t1\t1\t100.0\tNA\tNA\t0\t0\t\t\tgvcf\n' "${RUN_TAG:?}" >> "$out" ;;
@@ -68,7 +68,7 @@ RUN_TAG=first run_expect 0 first "${SCRIPTS}/25-prs.sh" sample1 female
 FIRST_DATED=$(find "$D" -maxdepth 1 -name 'sample1_prs_summary.*.tsv' | head -n 1)
 [ -n "$FIRST_DATED" ] || fail "the first run kept no dated copy of its summary"
 [[ "$FIRST_DATED" =~ sample1_prs_summary\.[0-9]{8}-[0-9]{4}\.tsv$ ]] || fail "dated name is not <sample>_prs_summary.YYYYMMDD-HHMM.tsv: ${FIRST_DATED}"
-docker_log_has 'prs-table .*--sex female' "the declared sex did not reach prs-table"
+docker_log_has 'og prs table .*--sex female' "the declared sex did not reach og prs table"
 awk '/og prs format/ && /keep-ambiguous/ {f = 1} END {exit f}' "$FAKE_DOCKER_LOG" || fail "og prs format got --keep-ambiguous without PRS_KEEP_AMBIGUOUS"
 awk '/^nextflow / && /keep_ambiguous/ {f = 1} END {exit f}' "$FAKE_DOCKER_LOG" || fail "pgsc_calc got --keep_ambiguous without PRS_KEEP_AMBIGUOUS"
 docker_log_has '^nextflow .*run .*pgsc_calc' "step 25 did not start pgsc_calc"

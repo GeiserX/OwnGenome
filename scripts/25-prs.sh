@@ -386,7 +386,7 @@ if $USE_PANEL; then
   ANC_ARGS=(--panel "$(basename "${PANEL%.tar.zst}")" --ancestry-out "$(cpath "$ANCESTRY_FILE")")
 fi
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/collect_summary.py prs-table \
+  /pgp-bin/og prs table \
     --sample "$SAMPLE" --results "$(cpath "${WORK}/results")" --sampleset "$SAMPLESET" \
     --scores "$(cpath "${WORK}/scores")" --input-kind "$INPUT_KIND" --sex "$SEX" \
     ${ZERO[@]+"${ZERO[@]}"} ${ANC_ARGS[@]+"${ANC_ARGS[@]}"} --out "$(cpath "$RESULTS_FILE")"

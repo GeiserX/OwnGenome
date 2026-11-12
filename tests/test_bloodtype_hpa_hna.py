@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""bin/bloodtype_report.py: the platelet (HPA) and neutrophil (HNA) antigens of step 41.
+"""og bloodtype report: the platelet (HPA) and neutrophil (HNA) antigens of step 41.
 
 Each case writes a synthetic one-sample VCF with planted genotypes at the HPA and
 HNA sites of assets/bloodtype_markers.tsv, a samtools bedcov file with 30 reads
 everywhere (so a site with no record is the reference allele, confidence high),
-runs the script and checks the rows it writes:
+runs og bloodtype report and checks the rows it writes:
 
   1. the table: every HPA and HNA system has its site(s), at the GRCh38 position
      and REF base Ensembl gave for its dbSNP id (FCGR3B's on FCGR3B, not FCGR3A)
@@ -17,7 +17,8 @@ runs the script and checks the rows it writes:
      determined), c.194 that disagrees (a note), and the confidence is always
      low (FCGR3A, copy number)
 
-Run: python3 tests/test_bloodtype_hpa_hna.py
+og is found by tests/og_binary.py (OG, or the release build of rust/).
+Run: OG=rust/target/release/og python3 tests/test_bloodtype_hpa_hna.py
 """
 import csv
 import os
@@ -26,13 +27,35 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "bloodtype_report.py")
 MARKERS = os.path.join(REPO, "assets", "bloodtype_markers.tsv")
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import bloodtype_report as bt  # noqa: E402
+CN_LOCI = os.path.join(REPO, "bin", "cn_loci.tsv")
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
 
+OG = og_binary()
 FAILS = []
-SITES, REGIONS = bt.read_markers(MARKERS)
+
+
+def read_markers():
+    """The marker table's sites by name (pos is the VCF position), and the
+    RhD depth regions og cn bed --locus RHD prints, by name."""
+    with open(MARKERS) as f:
+        lines = [ln for ln in f if not ln.startswith("#") and ln.strip()]
+    sites = {}
+    for r in csv.DictReader(lines, delimiter="\t"):
+        r["start"], r["end"] = int(r["start"]), int(r["end"])
+        r["pos"] = r["end"]
+        sites[r["name"]] = r
+    bed = subprocess.run([OG, "cn", "bed", "--catalog", CN_LOCI, "--locus", "RHD"], capture_output=True, text=True,
+                         check=True).stdout
+    regions = {}
+    for ln in bed.splitlines():
+        chrom, start, end, name = ln.split("\t")[:4]
+        regions[name] = {"chrom": chrom, "start": int(start), "end": int(end), "name": name}
+    return sites, regions
+
+
+SITES, REGIONS = read_markers()
 
 
 def check(desc, got, want):
@@ -56,11 +79,14 @@ def run(records=()):
             f.write("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
                     + "".join(records))
         with open(dp, "w") as f:
-            for r in list(SITES.values()) + list(REGIONS.values()):
+            for r in SITES.values():
                 cols = [r["chrom"], str(r["start"]), str(r["end"]), r["kind"], r["system"], r["name"]]
                 f.write("\t".join(cols + [str(30 * (r["end"] - r["start"]))]) + "\n")
-        p = subprocess.run([sys.executable, SCRIPT, "--sample", "S", "--vcf", vcf, "--markers", MARKERS,
-                            "--depth", dp, "--out", os.path.join(tmp, "t.tsv"),
+            for r in REGIONS.values():
+                cols = [r["chrom"], str(r["start"]), str(r["end"]), r["name"]]
+                f.write("\t".join(cols + [str(30 * (r["end"] - r["start"]))]) + "\n")
+        p = subprocess.run([OG, "bloodtype", "report", "--cn-loci", CN_LOCI, "--sample", "S", "--vcf", vcf,
+                            "--markers", MARKERS, "--depth", dp, "--out", os.path.join(tmp, "t.tsv"),
                             "--evidence", os.path.join(tmp, "e.tsv")], capture_output=True, text=True)
         if p.returncode != 0:
             return p.stderr.strip() or f"exit {p.returncode}"
@@ -98,7 +124,7 @@ for n, w in want_sites.items():
     r = SITES.get(n)
     got = (r["system"], r["chrom"], r["pos"], r["ref"], r["alt"], r["rsid"]) if r else None
     check(f"1 {n} at its GRCh38 position", got, w)
-systems = [s for s, _ in bt.SYSTEMS]
+systems = subprocess.run([OG, "bloodtype", "systems"], capture_output=True, text=True, check=True).stdout.split("\n")
 for s in ("HPA-6", "HNA-1", "HNA-3", "HNA-4", "HNA-5"):
     check(f"1 {s} is a system of the table", s in systems, True)
 check("1 every HPA and HNA site has a meaning",

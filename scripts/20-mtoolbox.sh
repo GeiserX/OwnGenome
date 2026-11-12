@@ -16,7 +16,7 @@
 # Last, each call is annotated with its ClinVar record (clinvar/clinvar_chr.vcf.gz,
 # which setup.sh installs) and with gnomAD v3.1's chrM sites (GNOMAD_MITO_URL in
 # versions.env, which setup.sh installs under gnomad_mito/), into
-# mito/<sample>_chrM_annotated.tsv (bin/collect_summary.py mito-annotate). A
+# mito/<sample>_chrM_annotated.tsv (og mito annotate, bin/og). A
 # missing file leaves its columns '.' and the table says why.
 #
 # Then the mtDNA copy number: chrM reads per base over autosomal reads per base
@@ -135,7 +135,7 @@ if [ ! -s "${OUTPUT_DIR}/${SAMPLE}_chrM_filtered.vcf.gz" ]; then
   exit 1
 fi
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/collect_summary.py mito-annotate \
+  /pgp-bin/og mito annotate \
     --vcf "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_filtered.vcf.gz" \
     --clinvar "$(cpath "$CLINVAR_VCF")" \
     --gnomad "$(cpath "$GNOMAD_MITO")" \
@@ -145,7 +145,7 @@ echo "[7/8] mtDNA copy number (chrM against autosomal reads, from the BAM index)
 run_in --cpus 1 --memory 1g "$SAMTOOLS_IMAGE" \
   bash -c "samtools idxstats /genome/${SAMPLE}/aligned/${SAMPLE}_sorted.bam > /genome/${SAMPLE}/mito/${SAMPLE}_idxstats.txt"
 run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/collect_summary.py mito-copies \
+  /pgp-bin/og mito copies \
     --idxstats "/genome/${SAMPLE}/mito/${SAMPLE}_idxstats.txt" \
     --out "/genome/${SAMPLE}/mito/${SAMPLE}_mtdna_copies.tsv"
 
@@ -169,7 +169,7 @@ if [ -z "$CSV" ]; then
   echo "  WARNING: eKLIPse exited 0 but wrote no eKLIPse_deletions.csv under ${EK_DIR}/out: no deletion table."
 else
   run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-    python3 /pgp-bin/collect_summary.py mito-deletions \
+    /pgp-bin/og mito deletions \
       --eklipse "/genome/${SAMPLE}/mito/eklipse/out/${CSV#"${EK_DIR}/out/"}" \
       --out "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_deletions.tsv"
 fi

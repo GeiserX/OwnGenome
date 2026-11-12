@@ -941,10 +941,10 @@ workflow {
         BLOODTYPE_DEPTH(ch_bam, ch_bloodtype_markers, BLOODTYPE_REGIONS.out.bed)
         BLOODTYPE(
             ch_vcf
-                .map { meta, vcf, idx -> [meta.id, meta, vcf] }
+                .map { meta, vcf, idx -> [meta.id, meta, vcf, idx ?: []] }
                 .join(BLOODTYPE_DEPTH.out.depth.map { meta, f -> [meta.id, f] }, remainder: true)
                 .filter { row -> row[1] != null }
-                .map { row -> [row[1], row[2], row[3] ?: []] },
+                .map { row -> [row[1], row[2], row[3], row[4] ?: []] },
             ch_bloodtype_markers
         )
         ch_bloodtype          = BLOODTYPE.out.table

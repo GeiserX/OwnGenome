@@ -41,9 +41,13 @@ const USAGE: &str = "usage: og <tool> [args]
        og comphet phase [args]
        og bam contigs BAM
        og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
+       og qc sample [args]
        og prs format [args]
+       og prs table [args]
+       og mito annotate|deletions|copies [args]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
+       og bloodtype report|check-markers|systems [args]
        og family plan|prepare|check|report|segments [args]
        og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
@@ -121,6 +125,11 @@ fn main() -> ExitCode {
         },
         "qc" => match rest.first().map(String::as_str) {
             Some("sex-loss") => ExitCode::from(og_qc::sex_loss::cli(&rest[1..])),
+            Some("sample") => ExitCode::from(og_summary::qc::cli(
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
             Some(other) => usage_error(&format!("unknown qc tool '{other}'")),
             None => usage_error("the following arguments are required: qc tool"),
         },
@@ -172,6 +181,15 @@ fn main() -> ExitCode {
             )),
             None => usage_error("the following arguments are required: chip tool"),
         },
+        "bloodtype" => match rest.first() {
+            Some(verb) => ExitCode::from(og_bloodtype::cli(
+                verb,
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
+            None => usage_error("the following arguments are required: bloodtype tool"),
+        },
         "cn" => ExitCode::from(og_cn::cli::main(
             rest,
             &mut std::io::stdout().lock(),
@@ -210,7 +228,12 @@ fn main() -> ExitCode {
         },
         "prs" => match rest.first().map(String::as_str) {
             Some("format") => ExitCode::from(og_steps::prs::cli(&rest[1..])),
-            _ => usage_error("og prs takes format"),
+            Some("table") => ExitCode::from(og_summary::prs::cli(
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
+            _ => usage_error("og prs takes format or table"),
         },
         "cdna" | "comphet" | "bam" => {
             let verb = rest.first().map(String::as_str);
@@ -233,6 +256,12 @@ fn main() -> ExitCode {
                 _ => usage_error(&format!("unknown tool '{}'", words.trim_end())),
             }
         }
+        "mito" => ExitCode::from(og_summary::mito::cli(
+            rest.first().map(String::as_str),
+            rest.get(1..).unwrap_or_default(),
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
         #[cfg(feature = "bam")]
         "bam-fetch-probe" if rest.len() == 2 => {
