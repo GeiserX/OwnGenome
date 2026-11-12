@@ -21,6 +21,7 @@ og-steps.workspace = true
 og-filters.workspace = true
 og-chip.workspace = true
 og-runlog.workspace = true
+og-ancestry.workspace = true
 
 [features]
 # BAM reading (og-bam, on a statically linked htslib written in C) is on by

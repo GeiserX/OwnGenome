@@ -16,6 +16,7 @@ sv-inv-filter	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter
 sv-inv-filter-py3	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/manta_inv_filter.py	python3	sv inv-filter
 pgx-refblock-fill	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_refblock_fill.py	python3	pgx refblock-fill
 pgx-mito-merge	3150ebc2613ed786d8bd3e6b5ddef4b31a0f8376	file:bin/pgx_mito_merge.py	python3	pgx mito-merge
+ancestry-fine	6f2407f9f66cc6bee43ae13c8abae5874b53e1cf	file:bin/ancestry_fine_report.py	python3	ancestry-fine
 dev-schema	630292bd1aef8cb94bbed604e8961a98facdb47d	file:tests/schema/validate.py	python3	dev schema
 dev-contract	630292bd1aef8cb94bbed604e8961a98facdb47d	file:scripts/ci/check-output-contract.py	python3	dev contract
 prs-format	a44d41bcec61365a55ddee137820c4b894b56ff5	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" prs-format "$@"'	prs format

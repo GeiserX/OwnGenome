@@ -32,6 +32,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
        og prs format [args]
        og chip prepare|report|check-table [args]
+       og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
        og dev parity-compare|contract|schema|report-only [args]
        og version
        og --tree-hash
@@ -143,6 +144,11 @@ fn main() -> ExitCode {
             )),
             None => usage_error("the following arguments are required: chip tool"),
         },
+        "ancestry-fine" => ExitCode::from(og_ancestry::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         "str" => match rest.first().map(String::as_str) {
             #[cfg(feature = "bam")]
             Some("motif") => ExitCode::from(og_bam::motif::cli(
