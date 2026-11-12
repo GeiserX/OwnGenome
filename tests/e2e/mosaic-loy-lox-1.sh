@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 33's mosaic loss of chrY or chrX (bin/mosaic_sex_loss.py) on the fixture:
+# Step 33's mosaic loss of chrY or chrX (og qc sex-loss) on the fixture:
 #   - HG002 (male), declared male, with the mosdepth windows of case 35: zero
 #     lies inside the 95% range of the estimated loss of Y, the range is under
 #     0.30 wide, not detected. HG002 reads about 8% above one copy here
@@ -158,7 +158,7 @@ with open(f"{out}/qc/{name}_sample_qc.tsv", "w") as o:
     o.write(f"key\tvalue\nsample\t{name}\ninferred_sex\tunknown\ndeclared_sex\tfemale\n")
 PY
   docker run --rm -u "$(id -u):$(id -g)" -v "${REPO}/bin:/pgp-bin:ro" -v "${G}:/genome" "$PYTHON_IMAGE" \
-    python3 /pgp-bin/mosaic_sex_loss.py --table "/genome/${W}/qc/${W}_sample_qc.tsv" \
+    /pgp-bin/og qc sex-loss --table "/genome/${W}/qc/${W}_sample_qc.tsv" \
       --regions "/genome/${W}/mosdepth/${W}.regions.bed.gz" --vcf "/genome/${W}/vcf/${W}.vcf.gz"
 }
 TW="${G}/${W}/qc/${W}_sample_qc.tsv"

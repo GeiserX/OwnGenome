@@ -29,6 +29,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
        og clinvar join-adjacent|hits|deep-intronic [args]
        og str motif [args]
+       og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
        og prs format [args]
        og chip prepare|report|check-table [args]
        og dev parity-compare|contract|schema|report-only [args]
@@ -90,6 +91,11 @@ fn main() -> ExitCode {
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
+        },
+        "qc" => match rest.first().map(String::as_str) {
+            Some("sex-loss") => ExitCode::from(og_qc::sex_loss::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown qc tool '{other}'")),
+            None => usage_error("the following arguments are required: qc tool"),
         },
         "run" => ExitCode::from(og_runlog::cli::main(rest)),
         "vcf" => match rest.first().map(String::as_str) {

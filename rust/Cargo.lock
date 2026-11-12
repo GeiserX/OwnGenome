@@ -561,6 +561,7 @@ dependencies = [
  "og-io",
  "og-map",
  "og-pgx",
+ "og-qc",
  "og-runlog",
  "og-steps",
  "og-vcf",
@@ -657,6 +658,14 @@ dependencies = [
 
 [[package]]
 name = "og-pgx"
+version = "0.1.0"
+dependencies = [
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
+name = "og-qc"
 version = "0.1.0"
 dependencies = [
  "og-io",

@@ -1,0 +1,10 @@
+key	value
+sample	S
+inferred_sex	female
+
+ 	 
+note
+inferred_sex	male
+mosaic_call	detected
+mosaic_floor	0.100
+freemix	0.004	extra

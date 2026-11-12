@@ -24,7 +24,7 @@ Borrowed, not rewritten:
     somalier, VerifyBamID2 and pgsc_calc files and the score folder
     `og prs format` writes (written here in its layout: og runs only inside
     the pipeline's Linux containers);
-  - step 33's mosaic rows come from bin/mosaic_sex_loss.py, step 26b's painting
+  - step 33's mosaic rows come from og qc sex-loss, step 26b's painting
     from bin/ancestry_fine_report.py, step 35b's table from
     bin/paraphase_report.py, step 39's from bin/couple_report.py and step 42's
     from bin/traits_report.py, each fed made-up inputs; step 45's rows come
@@ -803,12 +803,23 @@ def callability(d, rng):
     put(os.path.join(d, "mosdepth", f"{SAMPLE}_callability.bed.gz"), "\n".join(rows) + "\n", gz=True)
 
 
+# The first ten single-copy pieces of chrY and chrX that og qc sex-loss reads
+# (rust/crates/og-qc/src/sex_loss.rs, SINGLE_COPY_Y and SINGLE_COPY_X).
+SINGLE_COPY_FIRST = {
+    "Y": [(2781479, 3050044), (6748713, 7574481), (11037032, 11592902), (11674123, 13984473),
+          (14058733, 15875093), (15905214, 16159795), (16425965, 17456266), (18870334, 20207793),
+          (20257793, 21305953), (26415435, 26673214)],
+    "X": [(2781479, 37099262), (37285837, 48343310), (48434604, 49157254), (49528394, 50228964),
+          (50278964, 52032464), (52223402, 52489200), (52520537, 55437684), (55547739, 58100000),
+          (61000000, 62412542), (62462542, 63185573)],
+}
+
+
 def mosaic(d, rng):
     """mosdepth's 500 bp windows (step 16b's regions.bed.gz), cut down to three
     200 kb stretches of each autosome and the single-copy part of chrY, then
-    bin/mosaic_sex_loss.py itself adds its rows to step 33's table. One Y in
+    og qc sex-loss itself adds its rows to step 33's table. One Y in
     every cell: the ratio sits near 0.5 and no loss is detected."""
-    import mosaic_sex_loss
     path = os.path.join(d, "mosdepth", f"{SAMPLE}.regions.bed.gz")
     lines = []
     for chrom, length in AUTOSOMES:
@@ -820,13 +831,15 @@ def mosaic(d, rng):
     # A male's single-copy chrY at half the depth; a female's chrX (two copies) at the full depth.
     sx = "Y" if SEX == "male" else "X"
     ymean = MEAN_DEPTH / (2 if SEX == "male" else 1) * rng.uniform(0.98, 1.0)
-    for start, end in mosaic_sex_loss.SINGLE_COPY[sx][:10]:
+    for start, end in SINGLE_COPY_FIRST[sx]:
         s0 = (start // 500 + 1) * 500
         lines += [f"chr{sx}\t{s}\t{s + 500}\t{max(0.0, rng.gauss(ymean, ymean * 0.14)):.2f}"
                   for s in range(s0, min(end, s0 + 1_000_000) - 500, 500)]
     put(path, "\n".join(lines) + "\n", gz=True)
-    if mosaic_sex_loss.main(["--table", os.path.join(d, "qc", f"{SAMPLE}_sample_qc.tsv"), "--regions", path]):
-        raise SystemExit("mosaic_sex_loss failed")
+    r = subprocess.run([og_binary(), "qc", "sex-loss", "--table", os.path.join(d, "qc", f"{SAMPLE}_sample_qc.tsv"),
+                        "--regions", path], stdout=subprocess.DEVNULL)
+    if r.returncode:
+        raise SystemExit(f"og qc sex-loss failed (exit {r.returncode})")
 
 
 def ancestry_fine(d, rng):

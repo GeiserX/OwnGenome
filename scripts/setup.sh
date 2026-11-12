@@ -2334,7 +2334,7 @@ if "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1; then
 elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
-  echo "[WARN] Could not build og. Steps 04, 05, 07 and 25 stop without it; run: $0 --og"
+  echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
 fi
 
 ###############################################################################
