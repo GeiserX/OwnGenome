@@ -568,7 +568,7 @@ pub fn gnomad(c: &Ctx<'_>) -> Lookup<Found> {
 
 /// The first two parts of a dotted version (`25.10.4` is `25.10`).
 fn line_of(v: &str) -> String {
-    v.split('.').take(2).collect::<Vec<_>>().join(".")
+    v.split('.').take(3).collect::<Vec<_>>().join(".")
 }
 
 pub fn nextflow(c: &Ctx<'_>) -> Lookup<Found> {

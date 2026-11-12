@@ -21,7 +21,7 @@ static PIN_LINE: LazyLock<Regex> = LazyLock::new(|| {
 /// The first sentence of a note, without its closing `.` or `;`.
 pub fn first_sentence(text: &str) -> String {
     static S: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^(.+?[.;])(?:\s|$)").expect("sentence"));
+        LazyLock::new(|| Regex::new(r"^(.+[.;])(?:\s|$)").expect("sentence"));
     let first = S
         .captures(text)
         .map_or(text, |c| c.get(1).expect("group").as_str());
@@ -77,7 +77,7 @@ impl Pins {
 /// is read: no notes.
 pub fn plain_pins(text: &str) -> IndexMap<String, String> {
     static P: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r#"(?m)^([A-Z][A-Z0-9_]*)="([^"]*)""#).expect("plain pin"));
+        LazyLock::new(|| Regex::new(r#"(?m)^\s*([A-Z][A-Z0-9_]*)="([^"]*)""#).expect("plain pin"));
     P.captures_iter(text)
         .map(|c| (c[1].to_owned(), c[2].to_owned()))
         .collect()

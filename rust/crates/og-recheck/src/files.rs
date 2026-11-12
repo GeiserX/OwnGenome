@@ -60,7 +60,7 @@ pub fn write_check(path: &Path, c: &Check) -> io::Result<()> {
                 if k > 0 {
                     w.write_all(b"\n")?;
                 }
-                w.write_all(b"  ")?;
+                w.write_all(b" ")?;
                 w.write_all(line.as_bytes())?;
             }
         }
@@ -85,7 +85,11 @@ fn append_rows(path: &Path, rows: impl Iterator<Item = [String; 5]>) -> io::Resu
         std::fs::create_dir_all(d)?;
     }
     let new = !path.exists();
-    let mut f = OpenOptions::new().append(true).create(true).open(path)?;
+    let mut f = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)?;
     if new {
         f.write_all(LOG_HEADER.as_bytes())?;
     }
