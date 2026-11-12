@@ -11,6 +11,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-qc` | `og qc sex-loss`: step 33's mosaic loss of Y or X, with CPython's medians, `fmean` and exact `variance` |
 | `crates/og-chip` | step 49, clonal haematopoiesis: `og chip prepare`, `og chip report`, `og chip check-table` |
 | `crates/og-filters` | the VCF filters of steps 04, 05 and 07: `og sv svlen-fix`, `og sv inv-filter`, `og pgx refblock-fill`, `og pgx mito-merge` |
+| `crates/og-setup` | what `scripts/setup.sh` runs once: `og str catalog` (the STRchive catalog of steps 09 and 9b), `og setup unzip` (Exomiser's zips), `og setup genetic-map` (the genetic map of steps 26b and 51) |
 | `crates/og-ancestry` | step 26b, fine-grained ancestry: `og ancestry-fine panel-map`, `check-map`, `order`, `sample-bed`, `chroms`, `report` |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |
 | `og.sh` | build or download `bin/.og/og-linux-{x86_64,aarch64}`, and check they match this `rust/` |

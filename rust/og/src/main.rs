@@ -27,13 +27,15 @@ const USAGE: &str = "usage: og <tool> [args]
        og map <verb> [args]
        og run state|tasks|eta|headroom|delta [args]
        og setup mask-fasta SRC BED DEST
+       og setup unzip ZIP DEST
+       og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...
        og vcf csq-rank [options]
        og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
        og sv svlen-fix|inv-filter [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
        og clinvar join-adjacent|hits|deep-intronic [args]
-       og str motif [args]
+       og str motif|catalog [args]
        og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
        og prs format [args]
        og chip prepare|report|check-table [args]
@@ -96,6 +98,8 @@ fn main() -> ExitCode {
         "map" => map::run(rest, tree_hash()),
         "setup" => match rest.first().map(String::as_str) {
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
+            Some("unzip") => ExitCode::from(og_setup::unzip::cli(&rest[1..])),
+            Some("genetic-map") => ExitCode::from(og_setup::genetic_map::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },
@@ -165,7 +169,8 @@ fn main() -> ExitCode {
             )),
             #[cfg(not(feature = "bam"))]
             Some("motif") => no_bam("str motif"),
-            _ => usage_error("og str takes motif"),
+            Some("catalog") => ExitCode::from(og_setup::strchive::cli(&rest[1..])),
+            _ => usage_error("og str takes motif or catalog"),
         },
         "prs" => match rest.first().map(String::as_str) {
             Some("format") => ExitCode::from(og_steps::prs::cli(&rest[1..])),

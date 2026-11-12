@@ -1,0 +1,3 @@
+[
+ {"LocusId": "CFTR", "LocusStructure": "(TG)*(T)*", "ReferenceRegion": ["chr7:117548606-117548628", "chr7:117548628-117548635"], "VariantType": ["Repeat", "Repeat"], "VariantId": ["CFTR_TG", "CFTR_T"], "NoThresholds": "read by its counts", "Disease": "CF", "Source": "OwnGenome", "SourceId": "CFTR_TG_T", "SourceDisplay": "OwnGenome", "Note": "kept as is é"}
+]

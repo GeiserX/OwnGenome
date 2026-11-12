@@ -19,6 +19,7 @@ og-pgx.workspace = true
 og-vcf.workspace = true
 og-steps.workspace = true
 og-filters.workspace = true
+og-setup.workspace = true
 og-chip.workspace = true
 og-runlog.workspace = true
 og-ancestry.workspace = true

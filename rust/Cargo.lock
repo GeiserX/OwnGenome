@@ -583,6 +583,7 @@ dependencies = [
  "og-pgx",
  "og-qc",
  "og-runlog",
+ "og-setup",
  "og-steps",
  "og-vcf",
  "pycompat",
@@ -712,6 +713,19 @@ dependencies = [
  "og-nf",
  "pycompat",
  "rustix",
+]
+
+[[package]]
+name = "og-setup"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-bam",
+ "og-filters",
+ "og-io",
+ "pycompat",
+ "zlib-rs",
 ]
 
 [[package]]
