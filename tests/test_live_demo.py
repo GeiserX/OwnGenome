@@ -49,8 +49,12 @@ Checks:
      term of an open card is still found; the son's planted secondary finding
      and class 5 deletion (make_demo_sample.py PLANTED) name their gene and
      positions in no card, chart, chart title, link, symptom ranking or search
-     suggestion until each is opened, opening one brings back its own rows,
-     marks and ranking only, and a reload closes them again; the home page and
+     suggestion until each is opened, a row, mark or ranking that names both
+     comes back only once both are opened (the search too), and a reload
+     closes them again; a place that names two closed results (a lead segment,
+     a duplication over two genes) stays closed until both are opened, and the
+     page after a click is the same whichever closed result shares the opened
+     one's place; the home page and
      every finding page of the son (an open finding's rail and related list
      too) name them nowhere, and the symptom ranking's own page shows the gene
      once opened on purpose; on the family page, while the son has a planted
@@ -271,10 +275,16 @@ def located_term(out):
 
 
 class Static(SimpleHTTPRequestHandler):
-    """A static host: files only, no Content-Security-Policy header."""
+    """A static host: files only, no Content-Security-Policy header. Nothing is cached: the checks rewrite
+    results.json, map.json and the scripts between page loads, and a heuristically fresh copy in the browser's cache
+    (10% of its age since Last-Modified) would load the old file and let a control pass on the planted mistake."""
 
     def log_message(self, *a):
         pass
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
 
 def browser_checks(out):
@@ -697,20 +707,24 @@ def planted_problems(b, base, out_dir):
     del_ = next((i for i in ids.split() if i.startswith("sv-") and start in i), None)
     if not sf or not del_:
         return out + [f"the planted results are not among the son's results to act on: {ids}"]
+    rows_js = ("Array.prototype.filter.call(document.querySelectorAll('#card-clinvar tbody tr'), function (r) { "
+               "return r.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
+    tick_js = ("Array.prototype.filter.call(document.querySelectorAll('figure[data-chart=genome] a[data-mark^=hit-] "
+               "title'), function (t) { return t.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
+    ranked_js = ("Array.prototype.filter.call(document.querySelectorAll('[data-finding^=exomiser-]'), function (e) { "
+                 "return e.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
     if not open_closed(b, sf):
         return out + [f"a link to {sf} lands on no closed card"]
     time.sleep(0.8)
     shown = b.eval(SHOWN_JS) or ""
-    rows = b.eval("Array.prototype.filter.call(document.querySelectorAll('#card-clinvar tbody tr'), function (r) { "
-                  "return r.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
-    tick = b.eval("Array.prototype.filter.call(document.querySelectorAll('figure[data-chart=genome] a[data-mark^=hit-] "
-                  "title'), function (t) { return t.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
-    if rows != 1 or not tick or not all(w in shown for w in [gene, hit[0]]):
-        out.append(f"opening the secondary finding did not bring back its ClinVar row and tick: {rows} rows, {tick} ticks")
-    ranked = b.eval("Array.prototype.filter.call(document.querySelectorAll('[data-finding^=exomiser-]'), function (e) { "
-                    "return e.textContent.indexOf(%s) >= 0; }).length" % json.dumps(gene))
-    if not ranked:
-        out.append(f"opening the secondary finding did not bring back the symptom ranking of {gene}")
+    # The planted hit lies inside the planted deletion, in its gene: its ClinVar row, its tick and the symptom
+    # ranking of the gene name both results, so they stay closed until the deletion is opened too.
+    rows, tick, ranked = b.eval(rows_js), b.eval(tick_js), b.eval(ranked_js)
+    if not all(w in shown for w in [gene, hit[0]]):
+        out.append(f"opening the secondary finding did not bring back its own card ({gene}, {hit[0]})")
+    if rows or tick or ranked:
+        out.append(f"opening the secondary finding alone brought back places that name the closed deletion too: "
+                   f"{rows} ClinVar rows, {tick} ticks, {ranked} rankings")
     out += [f"{w} shown after opening only the secondary finding" for w in sv if w in shown]
     # A search hit quotes the summary's rows (prose): it stays closed while any result is, the same whichever.
     hits, _ = son_search(b, gene)
@@ -726,6 +740,10 @@ def planted_problems(b, base, out_dir):
     hits, _ = son_search(b, gene)
     if hits in (None, "0"):
         out.append(f"the search for {gene} finds nothing once every result is opened")
+    rows, tick, ranked = b.eval(rows_js), b.eval(tick_js), b.eval(ranked_js)
+    if rows != 1 or not tick or not ranked:
+        out.append(f"opening both results did not bring back the hit's ClinVar row, tick and ranking: {rows} rows, "
+                   f"{tick} ticks, {ranked} rankings")
     out += [f"after a reload: {x}" for x in planted_closed(b, base)]
     return out
 
@@ -787,8 +805,8 @@ def planted_checks(b, base, out):
     try:
         bad = planted_problems(b, base, out)
         check("browser: the son's planted secondary finding and class 5 deletion name their gene and positions nowhere "
-              "(cards, charts, titles, links, search) until each is opened, each opens only its own rows and marks, "
-              "and a reload closes them", not bad, bad)
+              "(cards, charts, titles, links, search) until each is opened, each opens only its own rows and marks (a "
+              "place that names both once both are), and a reload closes them", not bad, bad)
         res = json.loads(keep[rj])
         res["veil"] = {}
         write(rj, json.dumps(res))
@@ -2013,16 +2031,15 @@ def infer_checks(b, base, out):
         live_results.closable = first
     cols, names, marks = live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names
     try:
-        live_results.TABLE_COLUMNS = dict(cols, Inheritance=True)
+        live_results.TABLE_COLUMNS = dict(cols, Inheritance="gene")
         control("a veil that reads a table's Inheritance column as naming a gene",
                 not infer_problems(b, base, out, og, [x for x in INFER if x[0].startswith("an inheritance code")]))
         live_results.TABLE_COLUMNS = cols
-        live_results.finding_names = lambda f: (None, f"{f.get('gene') or ''} {f.get('detail') or ''} "
-                                                      f"{f.get('title') or ''}")
+        live_results.finding_names = lambda f: (re.findall(r"[A-Z0-9]+", f"{f.get('title') or ''}"), f.get("detail") or "")
         control("a veil that reads a finding's title word by word",
                 not infer_problems(b, base, out, og, [x for x in INFER if "(INS)" in x[0]]))
         live_results.finding_names = names
-        live_results.mark_names = lambda S, sp, m: (None, f"{m.get('label') or ''} {m.get('detail') or ''}")
+        live_results.mark_names = lambda S, sp, m: (re.findall(r"[A-Z0-9]+", f"{m.get('label') or ''} {m.get('detail') or ''}"), "")
         control("a veil that reads a chart mark's label word by word",
                 not infer_problems(b, base, out, og, [x for x in INFER if "(TG)" in x[0]]))
     finally:
