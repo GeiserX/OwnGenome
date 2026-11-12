@@ -146,8 +146,19 @@
     return isFinite(x) && isFinite(y) && y > x ? (y - x) / 3600e3 : null;
   }
 
+  // --- the veil: a child's results to act on stay closed until someone opens them on purpose ---------
+  // The closed box, the same on a child's page (person.js) and on the family page (family-page.js): what stays
+  // closed, and the button that opens it.
+  function veil(text, button, onOpen) {
+    var v = el('div', { 'class': 'veil' });
+    add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '), text));
+    var b = el('button', { type: 'button', 'class': 'btn' }, button || 'Show the result');
+    b.addEventListener('click', onOpen);
+    add(v, b);
+    return v;
+  }
   window.PGPUI = { el: el, svg: svg, add: add, getJSON: getJSON, avatar: avatar, day: day, caveat: caveat,
     facts: facts, table: table, tablist: tablist, firstSentence: firstSentence, level: level, findingLevel: findingLevel,
     LEVEL_WORDS: LEVEL_WORDS, LEVEL_SHORT: LEVEL_SHORT, LEVEL_ORDER: LEVEL_ORDER,
-    hm: hm, dm: dm, hours: hours };
+    hm: hm, dm: dm, hours: hours, veil: veil };
 }());

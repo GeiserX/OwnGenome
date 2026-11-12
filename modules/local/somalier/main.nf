@@ -20,7 +20,7 @@
     --freemix_warn, and the other samples somalier finds to be the same
     person. workflows/bam_analysis.nf stops the run on a sex mismatch
     (--sex_check warn logs it), the check INDEXCOV makes from the BAM index,
-    made again from the reads. Then bin/mosaic_sex_loss.py adds the mosaic_*
+    made again from the reads. Then og qc sex-loss (rust/) adds the mosaic_*
     rows: the share of cells that lost the Y (or one X), from MOSDEPTH's
     windows (when mosdepth runs) and, for a woman, the VCF's chrX allele
     fractions. SAMPLE_QC waits for the VCF, so on a FASTQ row somalier's sex
@@ -163,7 +163,7 @@ process SAMPLE_QC {
         --freemix-warn ${params.freemix_warn} \\
         --marker-check "\$(cat ${marker_check})" \\
         --out ${meta.id}_sample_qc.tsv
-    mosaic_sex_loss.py --table ${meta.id}_sample_qc.tsv ${mosaic_args}
+    og qc sex-loss --table ${meta.id}_sample_qc.tsv ${mosaic_args}
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """

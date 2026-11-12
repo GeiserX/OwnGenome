@@ -31,8 +31,8 @@ on:
       - 'bin/**'
       - 'tests/demo/**'
       - 'tests/fixtures/live/**'
-      # og builds the demo's Figure 1, the genome map (og map build), and its
-      # CPIC table (og pgx cpic-report).
+      # og builds the demo's Figure 1, the genome map (og map build), its CPIC
+      # table (og pgx cpic-report) and its mosaic rows (og qc sex-loss).
       - 'rust/**'
       - 'tests/fixtures/map/**'
       - 'tests/og_binary.py'
@@ -93,8 +93,9 @@ jobs:
         run: python -I .github/scripts/site-check.py site
 
       # og (rust/, docs/rust.md): the demo sample builder runs step 27's
-      # parser, og pgx cpic-report (tests/og_binary.py reads OG), and writes
-      # the genome map's documents, og map build.
+      # parser, og pgx cpic-report (tests/og_binary.py reads OG), writes the
+      # genome map's documents, og map build, and runs step 33's og qc sex-loss
+      # for the mosaic rows.
       - name: Install the toolchain rust/rust-toolchain.toml pins
         working-directory: rust
         run: |

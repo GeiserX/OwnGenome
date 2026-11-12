@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/strchive_convert.py and the motif count on its catalog.
+"""og str catalog, and Stranger on the catalog it builds.
 
 Reads the two STRchive files versions.env pins (STRCHIVE_VERSION and the
 two sha256), downloaded once into a cache directory (STRCHIVE_DIR, default
@@ -14,13 +14,12 @@ two sha256), downloaded once into a cache directory (STRCHIVE_DIR, default
      locus SAMD12; the loci without thresholds and why; and a planted extra
      ExpansionHunter locus with no STRchive record stops it (exit 2, and
      neither the catalog nor the ranges table is written);
-  3. bin/rfc1_motif.py on the catalog's motifs: every RFC1 case of
-     tests/test_rfc1_motif.py gives the same verdict with the catalog's RFC1
-     motifs and locus as with the built-in ones; at SAMD12 (FAME1) reads
-     with a TTTCA expansion give pathogenic_motif and reads with a TTTTA
-     expansion benign_motif, reads of the reference allele are not counted,
-     and the control: the built-in RFC1 motifs call the same TTTCA reads
-     uncertain, so the catalog's motifs are what label them;
+  3. (moved) the motif count on the catalog's motifs is og str motif now;
+     tests/e2e/str-catalog-1-strchive.sh runs it through step 9b on the
+     real catalog (RFC1 pathogenic_motif with the built-in shares, SAMD12
+     pathogenic_motif for TTTCA reads and benign_motif for TTTTA reads, the
+     reference reads not counted), and rust/crates/og-bam/tests/parity.rs
+     holds og to the Python it replaced on a made-up catalog;
   4. Stranger (STRANGER_IMAGE, through docker) on the catalog: HTT at its
      benign maximum, one above it and at its pathogenic minimum gives
      normal, pre_mutation and full_mutation; SAMD12 at the reference count
@@ -39,11 +38,17 @@ two sha256), downloaded once into a cache directory (STRCHIVE_DIR, default
      the converter (exit 2, nothing written), as does a region shifted by
      one base in the sequence check.
 
-Run: python3 tests/test_str_catalog.py
+og str catalog runs from OG (the og binary, as in the other og tests);
+without OG the test is skipped with a note, and with OG_REQUIRED set too it
+fails. The parity cases of tests/parity (tool str-catalog) compare og with
+the Python it replaced.
+
+Run: OG=rust/target/release/og python3 tests/test_str_catalog.py
 """
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,10 +57,38 @@ import time
 import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
-sys.path.insert(0, os.path.join(REPO, "tests"))
-import rfc1_motif as rm  # noqa: E402
-import strchive_convert as sc  # noqa: E402
+OG = os.environ.get("OG", "")
+
+
+class sc:  # noqa: N801  (the module name the checks below were written against)
+    """og str catalog, and the two catalog readers the checks use."""
+
+    @staticmethod
+    def main(argv):
+        return subprocess.run([OG, "str", "catalog", *argv]).returncode
+
+    @staticmethod
+    def motifs_of(structure):
+        return re.findall(r"\(([^)]*)\)\*", structure)
+
+    @staticmethod
+    def as_list(x):
+        return x if isinstance(x, list) else [x]
+
+    @staticmethod
+    def region(text):
+        chrom, span = text.split(":")
+        a, b = span.split("-")
+        return chrom, int(a), int(b)
+
+
+def og_or_skip():
+    """None when OG names an og binary; else the exit code: 0 (skip, with a
+    note), or 1 with OG_REQUIRED set."""
+    if OG and os.access(OG, os.X_OK):
+        return None
+    print("skip: OG is not set (OG=rust/target/release/og)")
+    return 1 if os.environ.get("OG_REQUIRED") else 0
 
 FAILS = []
 
@@ -177,76 +210,6 @@ def part_convert(rel, eh, loci, cat, cat_path):
         rc = sc.main(["--eh", planted, "--loci", loci, "--release", rel, "--out", out, "--ranges", rng])
         check("control: a planted ExpansionHunter locus with no STRchive record stops the converter (exit 2, "
               "no catalog and no ranges table)", rc == 2 and not os.path.exists(out) and not os.path.exists(rng), rc)
-
-
-# --- 3. the motif count on the catalog --------------------------------------------------
-class Read:
-    """The pysam.AlignedSegment attributes rfc1_motif reads."""
-
-    def __init__(self, name, contig, start, cigar, seq, unmapped=False):
-        self.query_name, self.reference_start, self.query_sequence = name, start, seq
-        self.reference_id = self.next_reference_id = 0
-        self.next_reference_start = start
-        self.cigartuples = rm.parse_cigar(cigar) if cigar else None
-        self.is_read1, self.is_unmapped, self.is_reverse = True, unmapped, False
-        self.is_duplicate = self.is_secondary = self.is_supplementary = self.is_qcfail = False
-        self.is_paired, self.mate_is_unmapped = True, False
-
-
-def count(spec, reads):
-    chrom, start, end = spec["span"]
-    units = rm.min_units(start, end, spec["period"])
-    counts = rm.count_motifs(rm.read_segments(reads, start - rm.FLANK, end + rm.FLANK, None, True),
-                             units, spec["period"], spec["known"])
-    return counts, rm.verdict(counts, units, spec)
-
-
-def part_motifs(cat_path):
-    import test_rfc1_motif as t
-    specs = rm.catalog_specs(cat_path)
-    sp = specs["RFC1"]
-    check("RFC1 from the catalog: chr4, every repeat of the entry (AAAAG and AAGGG), unit 5, CANVAS, recessive",
-          (sp["span"], sp["period"], sp["disease"], sp["recessive"]) == (("chr4", 39348424, 39348483), 5, "CANVAS", True),
-          sp)
-    check("RFC1: the catalog's locus asks for the same 12 units as the built-in one",
-          rm.min_units(*sp["span"][1:], sp["period"]) == rm.min_units(t.START, t.END) == 12)
-    for kind in ("benign", "pathogenic", "mixed", "acagg", "unknown", "few"):
-        at, elsewhere = t.case(kind)
-        mate_of = lambda r: elsewhere.get(r.query_name)  # noqa: E731
-        lo, hi = t.START - rm.FLANK, t.END + rm.FLANK
-        units = rm.min_units(t.START, t.END)
-        plain = rm.verdict(rm.count_motifs(rm.read_segments(at, lo, hi, mate_of, True), units), units)
-        _, s0, e0 = sp["span"]
-        u2 = rm.min_units(s0, e0, 5)
-        cat = rm.verdict(rm.count_motifs(rm.read_segments(at, s0 - rm.FLANK, e0 + rm.FLANK, mate_of, True), u2,
-                                         5, sp["known"]), u2, sp)
-        check(f"RFC1 {kind}: the catalog's motifs give the built-in verdict ({plain[4]}), shares and note",
-              cat == plain, (cat, plain))
-
-    fame = specs["SAMD12"]
-    chrom, start, end = fame["span"]
-    check("SAMD12 from the catalog: chr8, the TTTTA and TTTCA repeats, unit 5",
-          (chrom, start, end, fame["period"]) == ("chr8", 118366812, 118366918, 5), fame)
-    left = "GATTACACCTGGTCAGTGCA" * 3
-    ref_allele = left + "TAAAA" * 20 + "TGAAA" + left[:30]   # the reference: (TAAAA)20 TGAAA
-
-    def reads(unit, n, tag):
-        return [Read(f"{tag}{i}", chrom, start, "150M", unit * 30) for i in range(n)]
-
-    ref_reads = [Read(f"r{i}", chrom, start - 60, f"{len(ref_allele)}M", ref_allele) for i in range(6)]
-    counts, v = count(fame, reads("TTTCA", 5, "c") + ref_reads)
-    check("SAMD12: five reads of a TTTCA expansion are pathogenic_motif (TGAAA), the six reference reads not counted",
-          (counts, v[0], v[4]) == ({"TGAAA": 5}, "TGAAA", "pathogenic_motif"), (counts, v))
-    check("SAMD12: the note does not ask for a second copy (FAME1 is dominant)", "both copies" not in v[5], v[5])
-    counts, v = count(fame, reads("TTTTA", 5, "a") + ref_reads)
-    check("SAMD12: five reads of a TTTTA expansion are benign_motif (TAAAA)",
-          (counts, v[0], v[4]) == ({"TAAAA": 5}, "TAAAA", "benign_motif"), (counts, v))
-    counts, v = count(fame, ref_reads)
-    check("SAMD12: the reference allele alone is not resolved (20 units, the floor is 22)",
-          (counts, v[4], rm.min_units(start, end)) == ({}, "not_resolved", 22), (counts, v))
-    plain = dict(fame, known=rm.KNOWN)
-    _, v = count(plain, reads("TTTCA", 5, "c"))
-    check("control: with the built-in RFC1 motifs the same TTTCA reads are uncertain_motif", v[4] == "uncertain_motif", v)
 
 
 # --- 4. Stranger on the catalog -----------------------------------------------------------
@@ -395,11 +358,13 @@ def part_extra(rel, eh, loci):
 
 
 def main():
+    skip = og_or_skip()
+    if skip is not None:
+        return skip
     rel, eh, loci = files()
     part_files(rel, eh, loci)
     cat, cat_path = build_catalog()
     part_convert(rel, eh, loci, cat, cat_path)
-    part_motifs(cat_path)
     part_stranger(cat_path)
     part_extra(rel, eh, loci)
     if FAILS:

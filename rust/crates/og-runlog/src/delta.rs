@@ -22,8 +22,10 @@ use indexmap::IndexMap;
 use pycompat::json::{Dump, Value, dumps};
 use pycompat::text::html_escape;
 use pycompat::value::{py_str, truthy};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 /// Percentile points a PRS must move to count as a change.
 pub const PRS_BAND: f64 = 5.0;
@@ -206,20 +208,21 @@ fn why_for(area: &str, inputs: &[Obj]) -> String {
     format!("changed inputs: {}", parts.join("; "))
 }
 
-/// `(summary.get("sections") or {}).get(key) or {}`.
-fn section(sm: &Value, key: &str) -> R<Value> {
+/// An empty object, for a missing section.
+fn empty_obj() -> &'static Value {
+    static EMPTY: LazyLock<Value> = LazyLock::new(|| Value::Object(Obj::new()));
+    &EMPTY
+}
+
+/// `(summary.get("sections") or {}).get(key) or {}`, borrowed: the summary
+/// is never copied.
+fn section<'a>(sm: &'a Value, key: &str) -> R<&'a Value> {
     let secs = get_v(sm, "sections")?;
-    let secs = if truthy(secs) {
-        secs.clone()
-    } else {
-        Value::Object(Obj::new())
-    };
-    let sec = get_v(&secs, key)?;
-    Ok(if truthy(sec) {
-        sec.clone()
-    } else {
-        Value::Object(Obj::new())
-    })
+    if !truthy(secs) {
+        return Ok(empty_obj());
+    }
+    let sec = get_v(secs, key)?;
+    Ok(if truthy(sec) { sec } else { empty_obj() })
 }
 
 fn has_data(sec: &Value) -> R<bool> {
@@ -245,10 +248,10 @@ fn diff_states(p: &Value, c: &Value) -> R<Vec<Obj>> {
         let (a, b) = (section(p, &k)?, section(c, &k)?);
         // A section only one summary knows (a newer version added it) and
         // that did not run reads as missing on both sides.
-        let sa = get_or(&a, "state", &missing)?.clone();
-        let sb = get_or(&b, "state", &missing)?.clone();
+        let sa = get_or(a, "state", &missing)?.clone();
+        let sb = get_or(b, "state", &missing)?.clone();
         if !py_eq(&sa, &sb) {
-            let title = [get_v(&b, "title")?, get_v(&a, "title")?]
+            let title = [get_v(b, "title")?, get_v(a, "title")?]
                 .into_iter()
                 .find(|v| truthy(v))
                 .cloned()
@@ -259,34 +262,77 @@ fn diff_states(p: &Value, c: &Value) -> R<Vec<Obj>> {
     Ok(out)
 }
 
-/// Looks a list of objects up by a key value, the later of two equal keys
-/// winning in the earlier's place, as a dict comprehension does.
-fn index_by(list: &[Value], key: impl Fn(&Value) -> R<Value>) -> R<Vec<(Value, Value)>> {
-    let mut out: Vec<(Value, Value)> = Vec::new();
-    for v in list {
-        let k = key(v)?;
-        match out.iter_mut().find(|(x, _)| py_eq(x, &k)) {
-            Some(slot) => slot.1 = v.clone(),
-            None => out.push((k, v.clone())),
+/// A list of objects looked up by a key value, the later of two equal keys
+/// winning in the earlier's place, as a dict comprehension does. String
+/// keys, the usual case, are hashed; Python never finds a `str` equal to
+/// anything but a `str`, so any other key is compared with [`py_eq`] against
+/// the other non-string keys only. That keeps a summary of tens of
+/// thousands of ClinVar hits linear.
+struct Index<'a> {
+    entries: Vec<(Value, &'a Value)>,
+    by_str: HashMap<String, usize>,
+}
+
+impl<'a> Index<'a> {
+    fn new() -> Self {
+        Index {
+            entries: Vec::new(),
+            by_str: HashMap::new(),
         }
+    }
+
+    fn position(&self, k: &Value) -> Option<usize> {
+        match k {
+            Value::Str(t) => self.by_str.get(t).copied(),
+            _ => self
+                .entries
+                .iter()
+                .position(|(x, _)| !matches!(x, Value::Str(_)) && py_eq(x, k)),
+        }
+    }
+
+    /// Adds `k`, or replaces the value of an equal key in its place.
+    fn insert(&mut self, k: Value, v: &'a Value) {
+        match self.position(&k) {
+            Some(i) => self.entries[i].1 = v,
+            None => {
+                if let Value::Str(t) = &k {
+                    self.by_str.insert(t.clone(), self.entries.len());
+                }
+                self.entries.push((k, v));
+            }
+        }
+    }
+
+    fn get(&self, k: &Value) -> Option<&'a Value> {
+        self.position(k).map(|i| self.entries[i].1)
+    }
+}
+
+fn index_by<'a>(list: &'a [Value], key: impl Fn(&Value) -> R<Value>) -> R<Index<'a>> {
+    let mut out = Index::new();
+    for v in list {
+        out.insert(key(v)?, v);
     }
     Ok(out)
 }
 
-/// The union of two indexes' keys, sorted by `str()`.
-fn union_keys(a: &[(Value, Value)], b: &[(Value, Value)]) -> Vec<Value> {
-    let mut keys: Vec<Value> = Vec::new();
-    for (k, _) in a.iter().chain(b) {
-        if !keys.iter().any(|x| py_eq(x, k)) {
-            keys.push(k.clone());
+/// The union of two indexes' keys, sorted by `str()` (a stable sort).
+fn union_keys(a: &Index<'_>, b: &Index<'_>) -> Vec<Value> {
+    let mut seen = Index::new();
+    let none = Value::Null;
+    for (k, _) in a.entries.iter().chain(&b.entries) {
+        if seen.position(k).is_none() {
+            seen.insert(k.clone(), &none);
         }
     }
-    keys.sort_by_key(st);
+    let mut keys: Vec<Value> = seen.entries.into_iter().map(|(k, _)| k).collect();
+    keys.sort_by_cached_key(st);
     keys
 }
 
-fn lookup<'a>(idx: &'a [(Value, Value)], k: &Value) -> Option<&'a Value> {
-    idx.iter().find(|(x, _)| py_eq(x, k)).map(|(_, v)| v)
+fn lookup<'a>(idx: &Index<'a>, k: &Value) -> Option<&'a Value> {
+    idx.get(k)
 }
 
 fn data_list<'a>(
@@ -301,7 +347,7 @@ fn data_list<'a>(
 
 fn diff_clinvar(p: &Value, c: &Value) -> R<Vec<Obj>> {
     let (a, b) = (section(p, "clinvar")?, section(c, "clinvar")?);
-    if !(has_data(&a)? && has_data(&b)?) {
+    if !(has_data(a)? && has_data(b)?) {
         return Ok(Vec::new());
     }
     let (eo, el) = (Value::Object(Obj::new()), Value::Array(Vec::new()));
@@ -314,8 +360,8 @@ fn diff_clinvar(p: &Value, c: &Value) -> R<Vec<Obj>> {
             st(get_v(h, "alt")?)
         )))
     };
-    let ha = index_by(data_list(&a, "hits", &eo, &el)?, key)?;
-    let hb = index_by(data_list(&b, "hits", &eo, &el)?, key)?;
+    let ha = index_by(data_list(a, "hits", &eo, &el)?, key)?;
+    let hb = index_by(data_list(b, "hits", &eo, &el)?, key)?;
     let mut out = Vec::new();
     let dot = s(".");
     for k in union_keys(&ha, &hb) {
@@ -407,7 +453,7 @@ fn diff_clinvar(p: &Value, c: &Value) -> R<Vec<Obj>> {
 
 fn diff_cpsr(p: &Value, c: &Value) -> R<Vec<Obj>> {
     let (a, b) = (section(p, "cpsr")?, section(c, "cpsr")?);
-    if !(has_data(&a)? && has_data(&b)?) {
+    if !(has_data(a)? && has_data(b)?) {
         return Ok(Vec::new());
     }
     let eo = Value::Object(Obj::new());
@@ -418,7 +464,7 @@ fn diff_cpsr(p: &Value, c: &Value) -> R<Vec<Obj>> {
             _ => Err(Malformed("classification is not an object".into())),
         }
     };
-    let (ca, cb) = (classes(&a)?, classes(&b)?);
+    let (ca, cb) = (classes(a)?, classes(b)?);
     let mut keys: Vec<&String> = ca.keys().chain(cb.keys()).collect();
     keys.sort();
     keys.dedup();
@@ -443,14 +489,14 @@ fn diff_cpsr(p: &Value, c: &Value) -> R<Vec<Obj>> {
 
 fn diff_cpic(p: &Value, c: &Value) -> R<Vec<Obj>> {
     let (a, b) = (section(p, "cpic")?, section(c, "cpic")?);
-    if !(has_data(&a)? && has_data(&b)?) {
+    if !(has_data(a)? && has_data(b)?) {
         return Ok(Vec::new());
     }
     let (eo, el) = (Value::Object(Obj::new()), Value::Array(Vec::new()));
-    let ga = index_by(data_list(&a, "genes", &eo, &el)?, |g| {
+    let ga = index_by(data_list(a, "genes", &eo, &el)?, |g| {
         Ok(get_v(g, "gene")?.clone())
     })?;
-    let gb = index_by(data_list(&b, "genes", &eo, &el)?, |g| {
+    let gb = index_by(data_list(b, "genes", &eo, &el)?, |g| {
         Ok(get_v(g, "gene")?.clone())
     })?;
     let call = |g: Option<&Value>| -> R<String> {
@@ -477,9 +523,9 @@ fn diff_cyp2d6(p: &Value, c: &Value) -> R<Vec<Obj>> {
     let mut out = Vec::new();
     let (a, b) = (section(p, "pypgx")?, section(c, "pypgx")?);
     let eo = Value::Object(Obj::new());
-    if has_data(&a)? && has_data(&b)? {
-        let x = get_v(get_or(&a, "data", &eo)?, "cyp2d6")?;
-        let y = get_v(get_or(&b, "data", &eo)?, "cyp2d6")?;
+    if has_data(a)? && has_data(b)? {
+        let x = get_v(get_or(a, "data", &eo)?, "cyp2d6")?;
+        let y = get_v(get_or(b, "data", &eo)?, "cyp2d6")?;
         if !py_eq(x, y) {
             out.push(change(
                 s("PGx (pypgx)"),
@@ -526,14 +572,14 @@ fn pct(v: &Value) -> Option<f64> {
 
 fn diff_prs(p: &Value, c: &Value) -> R<Vec<Obj>> {
     let (a, b) = (section(p, "prs")?, section(c, "prs")?);
-    if !(has_data(&a)? && has_data(&b)?) {
+    if !(has_data(a)? && has_data(b)?) {
         return Ok(Vec::new());
     }
     let (eo, el) = (Value::Object(Obj::new()), Value::Array(Vec::new()));
-    let sa = index_by(data_list(&a, "scores", &eo, &el)?, |r| {
+    let sa = index_by(data_list(a, "scores", &eo, &el)?, |r| {
         Ok(get_v(r, "pgs_id")?.clone())
     })?;
-    let sb = index_by(data_list(&b, "scores", &eo, &el)?, |r| {
+    let sb = index_by(data_list(b, "scores", &eo, &el)?, |r| {
         Ok(get_v(r, "pgs_id")?.clone())
     })?;
     let empty = s("");
@@ -1003,8 +1049,9 @@ pub fn run(a: &DeltaArgs<'_>) -> Result<String, DeltaError> {
         d.insert("recheck".into(), Value::Object(r));
     }
     let text = render_text(&d);
+    let html = render_html(&d);
     let json = dumps(
-        &Value::Object(d.clone()),
+        &Value::Object(d),
         &Dump {
             indent: Some(1),
             ..Dump::default()
@@ -1012,11 +1059,7 @@ pub fn run(a: &DeltaArgs<'_>) -> Result<String, DeltaError> {
     )
     .map_err(|e| bad(e.to_string()))?
         + "\n";
-    for (ext, body) in [
-        ("txt", text.clone()),
-        ("html", render_html(&d)),
-        ("json", json),
-    ] {
+    for (ext, body) in [("txt", text.clone()), ("html", html), ("json", json)] {
         let p = format!("{}.{ext}", a.out);
         let write = || -> std::io::Result<()> {
             let mut f = og_io::AtomicFile::create(&p)?;

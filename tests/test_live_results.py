@@ -45,12 +45,15 @@ Checks:
      the ids and no other row does, the ranking's finding carries the secondary
      finding's id, and so does a segment of the lead that names the gene; the
      home page's view of the run (overview) lists no such finding among its
-     first ones and its closed lead names none.
+     first ones and its closed lead names none; a CHIP call, a copy-number dot
+     and a fact that name a closed result's gene carry its id (the CHIP chart's
+     panel of genes never does), and results.json carries the closed results as
+     veil.spans (the family page closes a child's places while one is closed).
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
 registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
-8 with a veil rule that tags nothing (rows and lines) and one that tags every row. A check
+8 with a veil rule that tags nothing (rows, lines, facts and drawings) and one that tags every row. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -431,6 +434,36 @@ def veil_lines_problems():
     return out
 
 
+def widget_problems():
+    """What is wrong with the veil's tags of a card's facts and drawing: a CHIP call and a copy-number dot, and a
+    fact, that name a closed result's gene carry its id; the CHIP chart's list of genes, the same panel for
+    everyone, is never tagged; nothing else is."""
+    found = [{"id": "cpsr-tp53-test", "level": "act", "gene": "TP53", "detail": "TP53 c.524G>A"},
+             {"id": "two-hits-smn1-test", "level": "act", "gene": "SMN1"}]
+    S = {"chip": {"state": "ok", "data": {"median_limit": 0.05, "median_depth": 72, "calls": [
+        {"gene": "DNMT3A", "protein_change": "p.R882H", "vaf": 0.12, "alt_reads": 9, "depth": 75, "status": "pass", "note": "a clone"},
+        {"gene": "TP53", "protein_change": "p.R175H", "vaf": 0.08, "alt_reads": 6, "depth": 75, "status": "pass", "note": "a clone"}],
+        "genes": [{"gene": "DNMT3A", "detection_limit_vaf": 0.05, "mean_depth": 75, "status": "ok"},
+                  {"gene": "TP53", "detection_limit_vaf": 0.06, "mean_depth": 70, "status": "ok"}]}},
+         "paralogs": {"state": "ok", "data": {"genes": [
+             {"gene": "SMN1", "copy_number": 1, "status": "called", "detail": "."},
+             {"gene": "SMN2", "copy_number": 2, "status": "called", "detail": "."}]}}}
+    summ = {"sections": S}
+    chip = dict(live_results.a_chip(S, summ), id="chip")
+    par = dict(live_results.a_paralogs(S, summ), id="paralogs")
+    par["facts"] = [["SMN1 copies", "1"], ["Genes read", "2"]]
+    v = live_results.veil(summ, found, [{"sections": [chip, par]}])
+    out = []
+    want = {"chip": [None, "cpsr-tp53-test"], "paralogs": ["two-hits-smn1-test", None]}
+    if v.get("widget") != want:
+        out.append(f"drawings tagged {v.get('widget')}, want {want}")
+    if (v.get("facts") or {}) != {"paralogs": ["two-hits-smn1-test", None]}:
+        out.append(f"facts tagged {v.get('facts')}")
+    if v.get("spans") != [list(x) for x in live_results.closable(found)]:
+        out.append(f"spans {v.get('spans')}")
+    return out
+
+
 def overview_problems():
     """What is wrong with the home page's view of a child's run (overview): a finding that names a closed result
     (a symptom ranking of its gene) is listed among the first findings, or the closed lead still names it."""
@@ -548,6 +581,9 @@ def main():
         bad = overview_problems()
         check("8. a child's home tile lists no finding that names a closed result, and its closed lead names none",
               not bad, bad)
+        bad = widget_problems()
+        check("8. a CHIP call, a copy-number dot and a fact that name a closed result's gene carry its id, the CHIP "
+              "chart's gene panel none, and results.json carries the closed results as veil.spans", not bad, bad)
         bad = veil_problems(*tagged(d3))
         check("8. the planted ClinVar hit's row, viewer link, tick and star bar carry its secondary finding's id, the "
               "deletion's span its own, every other card's row of the gene and the symptom ranking's finding one of them, "
@@ -558,6 +594,7 @@ def main():
             live_results.veil_id = lambda spans, *a, **k: None
             control("a veil rule that tags nothing", not veil_problems(*tagged(d3)))
             control("a veil rule that tags no line", not veil_lines_problems())
+            control("a veil rule that tags no fact or drawing", not widget_problems())
             live_results.veil_id = lambda spans, *a, **k: spans[0][0] if spans else None
             control("a veil rule that tags every row", not veil_problems(*tagged(d3)))
         finally:

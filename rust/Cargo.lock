@@ -461,6 +461,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libmimalloc-sys"
+version = "0.1.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "libz-sys"
 version = "1.1.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -502,6 +511,15 @@ name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "mimalloc"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
+dependencies = [
+ "libmimalloc-sys",
+]
 
 [[package]]
 name = "minimal-lexical"
@@ -552,17 +570,32 @@ dependencies = [
 name = "og"
 version = "0.1.0"
 dependencies = [
+ "mimalloc",
+ "og-ancestry",
  "og-bam",
  "og-chip",
+ "og-clinvar",
  "og-dev",
  "og-filters",
  "og-intervals",
  "og-io",
  "og-map",
  "og-pgx",
+ "og-qc",
  "og-runlog",
+ "og-setup",
  "og-steps",
  "og-vcf",
+ "pycompat",
+]
+
+[[package]]
+name = "og-ancestry"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "og-io",
+ "og-tsv",
  "pycompat",
 ]
 
@@ -588,12 +621,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-clinvar"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-intervals",
+ "og-io",
+]
+
+[[package]]
 name = "og-dev"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "indexmap",
  "og-io",
+ "og-nf",
  "png",
  "pycompat",
  "regex",
@@ -641,10 +684,19 @@ dependencies = [
  "jiff",
  "og-io",
  "pycompat",
+ "regex",
 ]
 
 [[package]]
 name = "og-pgx"
+version = "0.1.0"
+dependencies = [
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
+name = "og-qc"
 version = "0.1.0"
 dependencies = [
  "og-io",
@@ -664,11 +716,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-setup"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-bam",
+ "og-filters",
+ "og-io",
+ "pycompat",
+ "zlib-rs",
+]
+
+[[package]]
 name = "og-steps"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "memchr",
+ "og-intervals",
  "og-io",
+ "pycompat",
+ "rustc-hash",
+ "zlib-rs",
 ]
 
 [[package]]

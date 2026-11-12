@@ -107,7 +107,7 @@ def parse_query(q):
 
 def sites_rsid(path, rsid):
     """(chrom, pos38, ref38) rows of the consumer site table for RSID.
-    The table (bin/export_consumer.py) opens with "## key: value" lines and a
+    The table (og consumer build-sites) opens with "## key: value" lines and a
     "#rsid ..." column line."""
     out = []
     with open_text(path) as f:

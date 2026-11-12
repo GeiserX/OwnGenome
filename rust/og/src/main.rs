@@ -14,6 +14,11 @@ mod probe;
 const TREE_MARK: &str = concat!("og-tree-hash:", env!("OG_TREE_HASH"), ";");
 const TARGET: &str = env!("OG_TARGET");
 
+/// The release builds are static musl binaries; see `og/Cargo.toml`.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
@@ -22,14 +27,21 @@ const USAGE: &str = "usage: og <tool> [args]
        og map <verb> [args]
        og run state|tasks|eta|headroom|delta [args]
        og setup mask-fasta SRC BED DEST
+       og setup unzip ZIP DEST
+       og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...
        og vcf csq-rank [options]
        og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
        og sv svlen-fix|inv-filter [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
-       og str motif [args]
+       og clinvar join-adjacent|hits|deep-intronic [args]
+       og str motif|catalog [args]
+       og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
+       og prs format [args]
        og chip prepare|report|check-table [args]
-       og dev parity-compare KIND ORACLE NEW
+       og consumer build-sites|export|check [args]
+       og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
+       og dev parity-compare|contract|schema|report-only [args]
        og version
        og --tree-hash
 ";
@@ -86,10 +98,18 @@ fn main() -> ExitCode {
         "map" => map::run(rest, tree_hash()),
         "setup" => match rest.first().map(String::as_str) {
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
+            Some("unzip") => ExitCode::from(og_setup::unzip::cli(&rest[1..])),
+            Some("genetic-map") => ExitCode::from(og_setup::genetic_map::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },
+        "qc" => match rest.first().map(String::as_str) {
+            Some("sex-loss") => ExitCode::from(og_qc::sex_loss::cli(&rest[1..])),
+            Some(other) => usage_error(&format!("unknown qc tool '{other}'")),
+            None => usage_error("the following arguments are required: qc tool"),
+        },
         "run" => ExitCode::from(og_runlog::cli::main(rest)),
+        "consumer" => ExitCode::from(og_steps::consumer::cli(rest)),
         "vcf" => match rest.first().map(String::as_str) {
             Some("csq-rank") => ExitCode::from(og_vcf::rank::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown vcf tool '{other}'")),
@@ -125,6 +145,7 @@ fn main() -> ExitCode {
             None => ExitCode::from(og_pgx::main(rest)),
         },
         "dev" => ExitCode::from(og_dev::main(rest)),
+        "clinvar" => ExitCode::from(og_clinvar::cli::main(rest)),
         "chip" => match rest.first() {
             Some(verb) => ExitCode::from(og_chip::cli(
                 verb,
@@ -134,6 +155,11 @@ fn main() -> ExitCode {
             )),
             None => usage_error("the following arguments are required: chip tool"),
         },
+        "ancestry-fine" => ExitCode::from(og_ancestry::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         "str" => match rest.first().map(String::as_str) {
             #[cfg(feature = "bam")]
             Some("motif") => ExitCode::from(og_bam::motif::cli(
@@ -143,7 +169,12 @@ fn main() -> ExitCode {
             )),
             #[cfg(not(feature = "bam"))]
             Some("motif") => no_bam("str motif"),
-            _ => usage_error("og str takes motif"),
+            Some("catalog") => ExitCode::from(og_setup::strchive::cli(&rest[1..])),
+            _ => usage_error("og str takes motif or catalog"),
+        },
+        "prs" => match rest.first().map(String::as_str) {
+            Some("format") => ExitCode::from(og_steps::prs::cli(&rest[1..])),
+            _ => usage_error("og prs takes format"),
         },
         // Hidden: the fetch smoke compares it with pysam (crates/og-bam).
         #[cfg(feature = "bam")]

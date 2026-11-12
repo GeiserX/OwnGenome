@@ -13,13 +13,14 @@
 #             ALT, HLA and decoy contigs)
 # It also counts the primary alignments each reference places on ALT or HLA
 # contigs, which a caller or T1K reading chr6 and chr22 never sees, and runs
-# the CYP2D6 depth check of steps 21 and 32 (bin/cyp2d6_depth_check.py) on
+# the CYP2D6 depth check of steps 21 and 32 (og pgx cyp2d6-check) on
 # each mapping: it must pass the no-ALT one and flag the with-ALT one.
 #
 # The whole-genome minimap2 index is built in parts of IDX_PART bases (-I),
 # so it fits a 16 GB runner, and mapped with --split-prefix, which merges the
 # parts into the MAPQ one index would give. Needs Docker, gh (GH_TOKEN), curl,
-# md5sum and about 25 GB of disk. Writes ab.tsv and ab.md into <work_dir>,
+# md5sum and about 25 GB of disk; builds og first (scripts/setup.sh --og) when
+# bin/.og has none for this checkout. Writes ab.tsv and ab.md into <work_dir>,
 # and ab.md to the job summary.
 set -euo pipefail
 
@@ -52,6 +53,11 @@ REGION_ORDER=("CYP2D6" "CYP2D7" "CYP2D flanks" "HLA-A" "HLA-B")
 for tool in docker gh curl md5sum awk sort; do
   command -v "$tool" >/dev/null || { echo "ERROR: ${tool} is required" >&2; exit 1; }
 done
+
+# og for the depth check, built from this checkout's rust/ when missing or stale.
+if ! "${REPO}/rust/og.sh" check --required > /dev/null 2>&1; then
+  "${REPO}/rust/og.sh" install || { echo "ERROR: could not build og (scripts/setup.sh --og)" >&2; exit 1; }
+fi
 
 in_image() {
   local image=$1; shift
@@ -148,8 +154,9 @@ done
 check_fail=0
 : > "${W}/depth_check.tsv"
 for kind in no-ALT with-ALT; do
-  python3 "${REPO}/bin/cyp2d6_depth_check.py" check --all "${W}/${kind}_cyp2d_q0.regions.bed.gz" \
-    --mapq1 "${W}/${kind}_cyp2d_q1.regions.bed.gz" --out "${W}/depth_check_${kind}.tsv"
+  docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${REPO}/bin:/pgp-bin:ro" -v "${W}:/w" -w /w "$PYTHON_IMAGE" \
+    /pgp-bin/og pgx cyp2d6-check --all "${kind}_cyp2d_q0.regions.bed.gz" \
+    --mapq1 "${kind}_cyp2d_q1.regions.bed.gz" --out "depth_check_${kind}.tsv"
   status=$(awk -F'\t' '$1 == "status" {print $2}' "${W}/depth_check_${kind}.tsv")
   printf '%s\t%s\t%s\n' "$kind" "$status" "$(awk -F'\t' '$1 == "message" {print $2}' "${W}/depth_check_${kind}.tsv")" >> "${W}/depth_check.tsv"
   case "$kind:$status" in
@@ -194,7 +201,7 @@ fi
     done
   done
   echo
-  echo "CYP2D6 depth check of steps 21 and 32 (bin/cyp2d6_depth_check.py) on each mapping:"
+  echo "CYP2D6 depth check of steps 21 and 32 (og pgx cyp2d6-check) on each mapping:"
   echo
   echo "| Reference | Status | Message |"
   echo "|---|---|---|"

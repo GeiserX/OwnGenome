@@ -1,0 +1,2 @@
+{"sample": 7, "score": -2, "flags": [1, false, "x", true],
+ "sections": {"clinvar": {"status": "done", "n": -1}, "roh": {"n": 2.5}, "pgx": [], "mito": {"status": "ok", "n": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}}

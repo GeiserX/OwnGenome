@@ -8,7 +8,7 @@
 # (steps 24 and generate-report.sh) read this file and group the hits by ClinVar
 # review stars. clinvar/${SAMPLE}_clinvar_hits.tsv holds the same hits, one row each.
 # Two neighbouring records that can be one allele are also matched as their
-# combined allele (bin/clinvar_join_adjacent.awk): a matched combined record is
+# combined allele (og clinvar join-adjacent): a matched combined record is
 # a hit of its own (INFO/PGP_JOINED_FROM) and its parts are marked PGP_PART_OF.
 # clinvar/${SAMPLE}_clinvar_cdna_check.tsv says, for each hit, whether its alt
 # reads look like spliced cDNA (bin/clip_check.py; needs the sample's BAM and
@@ -28,7 +28,7 @@
 # a depth below CLINVAR_MIN_DP (default 10) is a low-confidence call: it stays
 # in the hits, marked, and the reports count it apart from the others. A floor
 # other than the default is written into the hits VCF as
-# ##PGP_CALL_FLOOR=GQ=..,DP=.., so bin/clinvar_hits.awk and both reports read
+# ##PGP_CALL_FLOOR=GQ=..,DP=.., so og clinvar hits and both reports read
 # the floor this run used; without the line they use the default.
 set -euo pipefail
 
@@ -174,20 +174,18 @@ fi
 # delins) as two records a few bases apart on the same haplotype; matched one by
 # one, the parts can hit single-submitter ClinVar records and miss the better
 # reviewed record ClinVar holds for the whole allele. bcftools norm -m +any joins
-# only records at the same position, so bin/clinvar_join_adjacent.awk builds,
-# for each pair of neighbours that can be one allele (the second starts at most
-# 10 bases after the first ends, same phase set and GT, or the same unphased
-# GT), the allele from the first part's start to the second part's end, with the
-# reference bases between the parts (+fill-from-fasta), left-aligned the way
-# ClinVar is. The candidates matched below are the split calls plus these.
+# only records at the same position, so og clinvar join-adjacent builds, for
+# each pair of neighbours that can be one allele (the second starts at most 10
+# bases after the first ends, same phase set and GT, or the same unphased GT),
+# the allele from the first part's start to the second part's end, with the
+# reference bases between the parts read from the reference, left-aligned the
+# way ClinVar is. The candidates matched below are the split calls plus these.
 JOINED="${OUTPUT_DIR}/${SAMPLE}_joined.vcf.gz"
 CANDIDATES="${OUTPUT_DIR}/${SAMPLE}_candidates.vcf.gz"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
   bash -o pipefail -c "set -e
     bcftools view '$(cpath "$PASS_VCF")' \
-      | awk -v mode=prepare -f /pgp-bin/clinvar_join_adjacent.awk \
-      | bcftools +fill-from-fasta --no-version -Ov - -- -c INFO/PGP_JOIN_SEQ -f '$(cpath "$REF")' \
-      | awk -v mode=finish -f /pgp-bin/clinvar_join_adjacent.awk \
+      | /pgp-bin/og clinvar join-adjacent --mode build --fasta '$(cpath "$REF")' \
       | bcftools norm --no-version -c w -d exact -f '$(cpath "$REF")' -Oz -o '$(cpath "$JOINED")' -
     bcftools index -f -t '$(cpath "$JOINED")'
     bcftools concat --no-version -a -Oz -o '$(cpath "$CANDIDATES")' '$(cpath "$PASS_VCF")' '$(cpath "$JOINED")'
@@ -203,7 +201,7 @@ echo "Combined alleles of neighbouring records: $(bcftools_run bcftools index -n
 # would otherwise be listed. The test is a non-zero allele index anywhere in GT,
 # not GT="alt", which drops a half call such as ./1 that does carry the ALT allele.
 # --no-version keeps command lines out of the header. Last, the tag pass of
-# bin/clinvar_join_adjacent.awk marks each part of a matched combined allele
+# og clinvar join-adjacent marks each part of a matched combined allele
 # (PGP_PART_OF), and two hits in one gene that can be one allele but matched no
 # combined record (PGP_ONE_ALLELE).
 SHARED="${OUTPUT_DIR}/${SAMPLE}_shared.vcf.gz"
@@ -214,12 +212,11 @@ run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
     bcftools annotate --no-version -a '$(cpath "$CLINVAR_NORM")' --pair-logic exact \
       -c ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT -Ou '$(cpath "$SHARED")' \
       | bcftools view --no-version -i 'GT~\"[1-9]\"' -Ov -o '$(cpath "${HITS}.untagged")'
-    awk -v mode=tag -f /pgp-bin/clinvar_join_adjacent.awk '$(cpath "${HITS}.untagged")' '$(cpath "${HITS}.untagged")' \
-      > '$(cpath "${HITS}.part")'
+    /pgp-bin/og clinvar join-adjacent --mode tag '$(cpath "${HITS}.untagged")' > '$(cpath "${HITS}.part")'
     rm -f '$(cpath "${HITS}.untagged")'
     bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t[%GT]\\t%ID\\t%INFO/GENEINFO\\t%INFO/CLNSIG\\t%INFO/CLNREVSTAT\\n' \
       -o '$(cpath "${HITS_TSV}.body")' '$(cpath "${HITS}.part")'"
-# A floor other than the default, for bin/clinvar_hits.awk and the reports. At
+# A floor other than the default, for og clinvar hits and the reports. At
 # the default the hits file stays as it was before the floor existed.
 if [ "$MIN_GQ" -ne 30 ] || [ "$MIN_DP" -ne 10 ]; then
   awk -v l="##PGP_CALL_FLOOR=GQ=${MIN_GQ},DP=${MIN_DP}" '/^#CHROM/ {print l} {print}' "${HITS}.part" > "${HITS}.floor"
@@ -238,9 +235,9 @@ rm -f "$SHARED" "${SHARED}.tbi" "${HITS_TSV}.body" "$CLINVAR_TARGETS" "$SAMPLE_T
 # Step 3b: the always-report list. Every site of the list gets the sample's
 # call: its record in the split PASS records above, else the gVCF record over
 # it (a reference block gives "ref" with the block's GQ), else no call, with
-# why. bin/clinvar_hits.awk (mode=sites) words the genotype as the hits are.
-# query_format FILE: the bcftools query format of bin/clinvar_hits.awk's sites
-# mode, with '.' for a GQ or DP the file's header does not define.
+# why. og clinvar deep-intronic words the genotype as the hits are.
+# query_format FILE: the bcftools query format og clinvar deep-intronic reads,
+# with '.' for a GQ or DP the file's header does not define.
 query_format() {
   local h gq=. dp=.
   h=$(bcftools_run bcftools view -h "$(cpath "$1")")
@@ -259,8 +256,10 @@ if [ -f "$GVCF" ] && [ -f "${GVCF}.tbi" ]; then
   bcftools_run bcftools query -R "$(cpath "$SITES_POS")" -f "$(query_format "$GVCF")" \
     -o "$(cpath "${DEEP_TSV}.gvcf")" "$(cpath "$GVCF")"
 fi
-awk -v mode=sites -v gvcf="$HAS_GVCF" -v min_gq="$MIN_GQ" -f "${PGP_ROOT}/bin/clinvar_hits.awk" "$SITES" "${DEEP_TSV}.vcf" "${DEEP_TSV}.gvcf" \
-  > "${DEEP_TSV}.part"
+NO_GVCF=(); [ "$HAS_GVCF" = yes ] || NO_GVCF=(--no-gvcf)
+# The list can live outside GENOME_DIR (CLINVAR_ALWAYS_REPORT), so it goes in on stdin.
+run_in -i -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" /pgp-bin/og clinvar deep-intronic ${NO_GVCF[@]+"${NO_GVCF[@]}"} \
+  --min-gq "$MIN_GQ" - "$(cpath "${DEEP_TSV}.vcf")" "$(cpath "${DEEP_TSV}.gvcf")" < "$SITES" > "${DEEP_TSV}.part"
 mv "${DEEP_TSV}.part" "$DEEP_TSV"
 rm -f "$SITES_POS" "${DEEP_TSV}.vcf" "${DEEP_TSV}.gvcf"
 
@@ -300,17 +299,18 @@ echo "Known deep intronic sites, always reported: ${DEEP_TSV}"
 awk -F'\t' 'NR > 1 {printf "  %s %s %s:%s %s>%s: %s%s\n", $5, $6, $1, $2, $3, $4, $8, ($9 != "" ? ", " $9 : "")}' "$DEEP_TSV"
 echo "Count: ${HIT_COUNT} pathogenic hits"
 if [ "$HIT_COUNT" -gt 0 ]; then
-  LOW_COUNT=$(awk -f "${PGP_ROOT}/bin/clinvar_hits.awk" "$HITS" | awk -F'\t' '$13 == "yes"' | wc -l | tr -d ' ')
+  HIT_ROWS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" /pgp-bin/og clinvar hits "$(cpath "$HITS")")
+  LOW_COUNT=$(awk -F'\t' '$13 == "yes"' <<< "$HIT_ROWS" | wc -l | tr -d ' ')
   echo "Low-confidence calls among them (GQ below ${MIN_GQ} or DP below ${MIN_DP}): ${LOW_COUNT}"
 fi
 # A zero-star submission counts as a hit like an expert-panel one; the review
 # status (CLNREVSTAT, copied on above) says how much weight each deserves.
-# bin/clinvar_hits.awk maps it to ClinVar's stars, as both reports do, and its
+# og clinvar hits maps it to ClinVar's stars, as both reports do, and its
 # 10th column says when a hit is a combined allele or part of one, and the
 # last when the call is below the floor.
 if [ "$HIT_COUNT" -gt 0 ]; then
   echo "By review status (ClinVar stars):"
-  awk -f "${PGP_ROOT}/bin/clinvar_hits.awk" "$HITS" | sort -t$'\t' -k1,1nr -k2,2V -k3,3n \
+  sort -t$'\t' -k1,1nr -k2,2V -k3,3n <<< "$HIT_ROWS" \
     | awk -F'\t' '{n[$1]++; line[$1] = line[$1] sprintf("    %s %s:%s %s>%s %s %s [%s]%s%s\n", $7, $2, $3, $4, $5, $6, $8, $9, ($10 != "." && $10 != "" ? " (" $10 ")" : ""), ($13 == "yes" ? " LOW-CONFIDENCE CALL (GQ " $12 ", DP " $11 "): check the reads" : ""))}
         END {for (s = 4; s >= 0; s--) if (n[s]) printf "  %d star%s: %d\n%s", s, (s == 1 ? "" : "s"), n[s], line[s]}'
 fi

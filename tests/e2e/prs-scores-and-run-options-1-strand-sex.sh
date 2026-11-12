@@ -193,7 +193,7 @@ check_eq "rerun: the first run's summary is kept under its time, with its own Am
 STRAND=$(grep -E '^  PGS0[0-9]+: .*strand check' "$STEP_LOG")
 echo "$STRAND"
 for id in $NEW_IDS; do
-  check "keep: prs-format checked ${id}'s strand against the reference" has "^  ${id}: .*strand check: [0-9]+ rows agree with the reference, [0-9]+ flipped" "$STRAND"
+  check "keep: og prs format checked ${id}'s strand against the reference" has "^  ${id}: .*strand check: [0-9]+ rows agree with the reference, [0-9]+ flipped" "$STRAND"
 done
 TRACE="${D}/prs/pgsc_calc/pipeline_info/execution_trace.txt"
 TOP=$(awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next}
