@@ -15,6 +15,8 @@
 //!   pypgx's results.
 //! - [`paraphase`]: `og paraphase check-bam|table`, step 35b's read-group
 //!   check and its two tables.
+//! - [`sv`]: `og sv add-callers|postfilter`, step 05's SV calls into
+//!   AnnotSV and the checks of its class 4 and 5 calls.
 
 pub mod constraint;
 pub mod consumer;
@@ -23,3 +25,4 @@ pub mod paraphase;
 pub mod pgx_rules;
 pub mod prs;
 pub mod pypgx_summary;
+pub mod sv;

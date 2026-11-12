@@ -573,6 +573,7 @@ dependencies = [
  "mimalloc",
  "og-ancestry",
  "og-bam",
+ "og-bloodtype",
  "og-chip",
  "og-clinvar",
  "og-cn",
@@ -587,6 +588,7 @@ dependencies = [
  "og-runlog",
  "og-setup",
  "og-steps",
+ "og-summary",
  "og-vcf",
  "pycompat",
 ]
@@ -607,8 +609,22 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "og-io",
+ "og-tsv",
  "pycompat",
  "rust-htslib",
+ "rustc-hash",
+]
+
+[[package]]
+name = "og-bloodtype"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-cn",
+ "og-filters",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -777,6 +793,16 @@ dependencies = [
  "rustc-hash",
  "smallvec",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-summary"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "og-io",
+ "og-steps",
+ "pycompat",
 ]
 
 [[package]]

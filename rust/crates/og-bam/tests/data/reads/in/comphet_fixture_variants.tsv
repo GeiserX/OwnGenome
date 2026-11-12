@@ -1,0 +1,8 @@
+GENE	CHROM	POS	REF	ALT	IMPACT	Consequence	GT	MAX_AF
+G	chrP	1000	A	T	HIGH	stop_gained	0/1	0.0001
+G	chrP	1003	TGT	T	HIGH	stop_gained	0/1	0.0001
+G	chrP	5000	T	G	HIGH	stop_gained	0/1	0.0001
+G	chrP	5400	T	G	HIGH	stop_gained	0/1	0.0001
+G	chrP	20000	C	A	HIGH	stop_gained	0/1	0.0001
+G	chrP	70000	A	T	HIGH	stop_gained	0/1	0.0001
+G	chrP	1	A	C	LOW	x	0/1	.

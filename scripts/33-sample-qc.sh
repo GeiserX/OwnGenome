@@ -163,12 +163,12 @@ fi
 tail -n 3 "$VB_LOG"
 
 # --- 3. The verdict ---------------------------------------------------------------
-# bin/collect_summary.py holds the rule, shared with the Nextflow SAMPLE_QC
+# og qc sample (bin/og) holds the rule, shared with the Nextflow SAMPLE_QC
 # process and read again by the reports.
 echo ""
 echo "--- verdict"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/collect_summary.py sample-qc \
+  /pgp-bin/og qc sample \
     --sample "$SAMPLE" \
     --somalier-id "$SOMALIER_ID" \
     --somalier-samples "/genome/${SAMPLE}/qc/somalier/${SAMPLE}.samples.tsv" \

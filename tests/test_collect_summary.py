@@ -88,10 +88,9 @@ Checks:
      P/LP with CPSR's ACMG codes, the final P/LP rows CPSR's own rules class
      benign, the rows below the depth floor (DP_CONTROL), the cDNA read
      check of step 17 on the P/LP rows, and CPSR's bundled ClinVar release
-     beside step 6's; a table with one class column shows no disagreement;
-     bin/clip_check.py --cpsr checks the P/LP rows only (a fake pysam: the
-     spliced reads at a P/LP row are flagged, genomic reads at the same row
-     are clear, and CPSR's "13" finds the BAM's "chr13").
+     beside step 6's; a table with one class column shows no disagreement.
+     The read check itself (og cdna check --cpsr: P/LP rows only, CPSR's
+     contig names found with chr added) is og-bam's parity case check-cpsr.
  23. step 32's summary beyond the diplotypes: pypgx's copy-number calls for
      its BAM genes in a PGx copy number block, and no UGT2B17 estimate from
      CNVpytor's calls beside them (pypgx owns UGT2B17); GSTT1
@@ -148,12 +147,11 @@ Checks:
      (hla_optitype/, kir_t1k/) and Nextflow (hla_optitype/, kir/) folders
      alike, in both reports; without either file there is no such line.
  27. step 25's PGS Catalog evaluations (ppm_id, ancestry and effect of
-     assets/pgs_scores.tsv): the shipped list is read entry by entry, and a
-     list with lists of different lengths, an ancestry outside the five
-     1000 Genomes groups or listed twice, a malformed PPM id or an effect
-     that is not an OR or HR is refused; og prs format copies them beside
-     the scores (with OG set to an og binary; the folders prs-table reads
-     are written by hand as og writes them); prs-table writes Evaluated_In and Effect, the effect only for
+     assets/pgs_scores.tsv; the Rust tests of og-steps and og-summary pin
+     how the list is read and what it refuses): og prs format copies them
+     beside the scores (with OG set to an og binary; the folders og prs
+     table reads are written by hand as og writes them); og prs table
+     writes Evaluated_In and Effect, the effect only for
      the group pgsc_calc placed the sample in (EUR: HR 1.53 of PPM000591;
      EAS, where the score was not evaluated: none), and none without the
      panel; a list without evaluations keeps the older columns; both reports print the effect for EUR and say there
@@ -188,7 +186,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import types
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -207,12 +204,33 @@ def og_clinvar(*args):
     return subprocess.run([OG, "clinvar", *args], capture_output=True, text=True, check=True).stdout
 
 
+def og_postfilter(args):
+    """og sv postfilter ARGS, step 05's class 4-5 checks (OG must be set)."""
+    subprocess.run([OG, "sv", "postfilter", *args], capture_output=True, text=True, check=True)
+
+
 sys.path.insert(0, os.path.join(REPO, "bin"))
+sys.path.insert(0, os.path.join(REPO, "tests"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
 import clip_check  # noqa: E402
 import collect_summary  # noqa: E402
 import render_report  # noqa: E402
 import validate  # noqa: E402
+from og_binary import og_binary  # noqa: E402
+
+
+def og_tool(*args):
+    """og's exit code for a step tool that once lived in collect_summary.py
+    (og qc sample, og prs table, og mito annotate): they write the tables
+    the checks below read, so they always run."""
+    return subprocess.run([og_binary(), *args], capture_output=True).returncode
+
+
+# The columns of og prs table: Input last, Evaluated_In and Effect before it
+# when the score list names evaluations.
+PRS_COLUMNS = ["Condition", "PGS_ID", "Score_SUM", "Variants_Matched", "Variants_Total",
+               "Matched_Pct", "Percentile", "Ancestry_Group", "ChrX", "Ambiguous", "Applies_To",
+               "Sex_Check", "Input"]
 
 FAILS = 0
 DAY = 86400
@@ -288,31 +306,10 @@ def bash_folder(d, s="S"):
 
 def prs_evaluations(work, schema):
     """Check 27: the PGS Catalog evaluations of each score, from the list to both reports."""
+    # The shipped list's evaluations and the lists it refuses are pinned by
+    # the Rust tests of the reader og prs format and og prs table share
+    # (rust/crates/og-steps, rust/crates/og-summary).
     assets = os.path.join(REPO, "assets", "pgs_scores.tsv")
-    ev = collect_summary.read_metrics(assets)
-    check("27: the shipped list: PGS000018's three evaluations in order",
-          ev.get("PGS000018") == [("EUR", "HR 1.53", "PPM000591"), ("AFR", "HR 1.27", "PPM000594"),
-                                  ("AMR", "HR 1.53", "PPM000597")], ev.get("PGS000018"))
-    check("27: the shipped list: the eMERGE asthma score in all five groups, height and the lipids with none",
-          [x[0] for x in ev.get("PGS002727", [])] == ["EUR", "AFR", "AMR", "EAS", "SAS"]
-          and "PGS002802" not in ev and "PGS000065" not in ev, ev)
-    head = "pgs_id\ttrait_reported\tapplies_to\tppm_id\tancestry\teffect\n"
-    for why, row in (("lists of different lengths", "PGS000018\tx\t\tPPM000591;PPM000594\tEUR\tHR 1.53"),
-                     ("an ancestry that is not a 1000 Genomes group", "PGS000018\tx\t\tPPM000591\tEuropean\tHR 1.53"),
-                     ("an ancestry listed twice", "PGS000018\tx\t\tPPM000591;PPM000594\tEUR;EUR\tHR 1.53;HR 1.27"),
-                     ("a malformed PPM id", "PGS000018\tx\t\tPGS000018\tEUR\tHR 1.53"),
-                     ("a beta, not an OR or HR", "PGS000018\tx\t\tPPM000591\tEUR\tbeta 1.53"),
-                     ("evaluations but no pgs_id", "\tx\t\tPPM000591\tEUR\tHR 1.53"),
-                     ("one score's evaluations on two rows",
-                      "PGS000018\tx\t\tPPM000591\tEUR\tHR 1.53\nPGS000018\tx\t\tPPM000594\tAFR\tHR 1.27")):
-        put(f"{work}/ev_bad.tsv", head + row + "\n")
-        try:
-            collect_summary.read_metrics(f"{work}/ev_bad.tsv")
-            got = "read"
-        except collect_summary.Unreadable as e:
-            got = str(e)
-        check(f"27: a list with {why} is refused", got != "read", got)
-
     # og prs format with the shipped list copies the evaluations beside the
     # scores. The folders prs-table reads below are written as og writes them;
     # with OG set to an og binary, og must write the same.
@@ -327,9 +324,9 @@ def prs_evaluations(work, schema):
         """The folder og prs format writes for ev_in with LABELS, and with OG og's own beside it."""
         put(f"{out}/PGS000018.txt.gz", "#pgs_id=PGS000018\n#pgs_name=PGS000018\n#trait_reported=Coronary artery disease\n"
             "#genome_build=GRCh38\nchr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n1\t1100\tA\tG\t0.5\n", gz=True)
-        put(f"{out}/{collect_summary.CHRX_FILE}", "pgs_id\tchrx_rows\tchrx\nPGS000018\t0\tleft out\n")
-        put(f"{out}/{collect_summary.SCORE_NOTES_FILE}", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\nPGS000018\t{applies}\t0\tdropped\n")
-        put(f"{out}/{collect_summary.EVALS_FILE}", "pgs_id\tppm_id\tancestry\teffect\n" + (f"PGS000018\t{evals}\n" if evals else ""))
+        put(f"{out}/chrx_rows.tsv", "pgs_id\tchrx_rows\tchrx\nPGS000018\t0\tleft out\n")
+        put(f"{out}/score_notes.tsv", f"pgs_id\tapplies_to\tambiguous_rows\tambiguous\nPGS000018\t{applies}\t0\tdropped\n")
+        put(f"{out}/score_evaluations.tsv", "pgs_id\tppm_id\tancestry\teffect\n" + (f"PGS000018\t{evals}\n" if evals else ""))
         if not og:
             return
         rc = subprocess.run([og, "prs", "format", "--scores", f"{work}/ev_in", "--labels", labels, "--out", f"{out}_og",
@@ -364,16 +361,16 @@ def prs_evaluations(work, schema):
         res = f"{work}/ev_res_{group}_{os.path.basename(pgs)}_{sex}"
         results(res, group)
         out = f"{res}.tsv"
-        rc = collect_summary.main(["prs-table", "--sample", "S", "--results", res, "--sampleset", "sample",
-                                   "--scores", pgs, "--input-kind", "gvcf", "--out", out]
-                                  + (["--panel", "pgsc_1000G_v1"] if group else []) + (["--sex", sex] if sex else []))
+        rc = og_tool("prs", "table", "--sample", "S", "--results", res, "--sampleset", "sample",
+                     "--scores", pgs, "--input-kind", "gvcf", "--out", out,
+                     *(["--panel", "pgsc_1000G_v1"] if group else []), *(["--sex", sex] if sex else []))
         with open(out) as f:
             rows = [line.rstrip("\n").split("\t") for line in f]
         return rc, rows[0], dict(zip(rows[0], rows[1])), out
 
     rc, hdr, eur, eur_out = table("EUR")
     check("27: prs-table: Evaluated_In and Effect before Input",
-          rc == 0 and hdr == collect_summary.PRS_COLUMNS[:-1] + ["Evaluated_In", "Effect", "Input"], hdr)
+          rc == 0 and hdr == PRS_COLUMNS[:-1] + ["Evaluated_In", "Effect", "Input"], hdr)
     check("27: placed in EUR: the effect of the EUR evaluation, with its PPM id",
           eur.get("Evaluated_In") == "EUR;AFR;AMR" and eur.get("Effect") == "HR 1.53 (EUR, PPM000591)", eur)
     rc, _, eas, eas_out = table("EAS")
@@ -387,14 +384,14 @@ def prs_evaluations(work, schema):
     formatted(f"{work}/ev_pgs_plain", f"{work}/ev_plain.tsv")
     rc, hdr, plain, plain_out = table("EUR", pgs=f"{work}/ev_pgs_plain")
     check("27: control: a list without evaluations gives the older columns and no effect",
-          rc == 0 and hdr == collect_summary.PRS_COLUMNS and "Effect" not in plain, hdr)
+          rc == 0 and hdr == PRS_COLUMNS and "Effect" not in plain, hdr)
     # A score for one sex, with a EUR evaluation, run for the other sex in EUR: no effect.
     put(f"{work}/ev_female.tsv", "pgs_id\ttrait_reported\tapplies_to\tppm_id\tancestry\teffect\n"
         "PGS000018\tCoronary artery disease\tfemale\tPPM000591\tEUR\tHR 1.53\n")
     formatted(f"{work}/ev_pgs_female", f"{work}/ev_female.tsv", applies="female", evals="PPM000591\tEUR\tHR 1.53")
     rc, _, man, man_out = table("EUR", pgs=f"{work}/ev_pgs_female", sex="male")
     check("27: a female-only score for a male sample in EUR: no effect",
-          rc == 0 and man.get("Sex_Check") == collect_summary.SEX_NOT_APPLICABLE and man.get("Evaluated_In") == "EUR"
+          rc == 0 and man.get("Sex_Check") == "not applicable to the declared sex" and man.get("Evaluated_In") == "EUR"
           and man.get("Effect") == "", man)
     rc, _, woman, _ = table("EUR", pgs=f"{work}/ev_pgs_female", sex="female")
     check("27: control: the same score for a female sample in EUR has its effect",
@@ -450,9 +447,10 @@ def bgzf_block(data):
 
 def write_tabixed_vcf(path, header, blocks):
     """A bgzipped VCF of one BGZF block per item of blocks (lists of record
-    lines, the header in the first block) and its .tbi with the linear index
-    only (no bins: bin/collect_summary.py reads the linear index)."""
-    raw, lin, coff = b"", {}, 0
+    lines, the header in the first block) and its .tbi: bin 0 of each
+    sequence spans its lines (og mito annotate reads the bins), and the
+    linear index (bin/collect_summary.py reads that)."""
+    raw, lin, span, coff = b"", {}, {}, 0
     for i, lines in enumerate(blocks):
         data = (header if i == 0 else "").encode()
         for line in lines:
@@ -460,9 +458,11 @@ def write_tabixed_vcf(path, header, blocks):
             w, ix = (pos - 1) >> 14, lin.setdefault(chrom, [])
             while len(ix) <= w:
                 ix.append(None)
+            start = (coff << 16) | len(data)
             if ix[w] is None:
-                ix[w] = (coff << 16) | len(data)
+                ix[w] = start
             data += (line + "\n").encode()
+            span[chrom] = (span.get(chrom, (start,))[0], (coff << 16) | len(data))
         blk = bgzf_block(data)
         raw += blk
         coff += len(blk)
@@ -476,7 +476,9 @@ def write_tabixed_vcf(path, header, blocks):
         ix, last = lin[n], 0
         for j, v in enumerate(ix):  # an empty window takes the offset before it, as htslib fills it
             ix[j] = last = v if v is not None else last
-        tbi += struct.pack("<i", 0) + struct.pack("<i", len(ix)) + struct.pack(f"<{len(ix)}Q", *ix)
+        # bin 0 spans the sequence's lines: og's tabix reader goes by bins
+        tbi += struct.pack("<iIi", 1, 0, 1) + struct.pack("<QQ", *span[n])
+        tbi += struct.pack("<i", len(ix)) + struct.pack(f"<{len(ix)}Q", *ix)
     with gzip.open(path + ".tbi", "wb") as f:
         f.write(tbi)
     return {n: tuple(v) for n, v in lin.items()}
@@ -733,45 +735,6 @@ CPSR_ROWS = (
     "3_100_A_G\t3:g.100A>G\tMLH1\tVUS\tVUS\tPM2\tCPSR\tVUS\t30\n")
 
 
-class FakeRead:
-    """The pysam.AlignedSegment attributes bin/clip_check.py reads."""
-
-    def __init__(self, name, start, cigar, seq):
-        self.query_name, self.reference_start, self.cigartuples, self.query_sequence = name, start, cigar, seq
-        self.is_unmapped = self.is_secondary = self.is_duplicate = self.is_qcfail = self.is_read2 = False
-        self.is_read1 = True
-
-    def has_tag(self, tag):
-        return False
-
-
-def fake_pysam(pos0, exon_end):
-    """A pysam stand-in with two BAMs on contig chr13: 'spliced' has 8 alt
-    reads clipped at the exon end, 'genomic' 8 alt reads running on; both
-    have 6 genomic ref reads."""
-    def reads(kind):
-        out = [FakeRead(f"ref{i}", pos0 - 50 + i, [(0, 100)], "N" * (50 - i) + "G" + "N" * (49 + i)) for i in range(6)]
-        for i in range(8):
-            if kind == "spliced":
-                aligned = 70 + i
-                s = exon_end - aligned
-                out.append(FakeRead(f"alt{i}", s, [(0, aligned), (4, 100 - aligned)],
-                                    "N" * (pos0 - s) + "A" + "N" * (100 - (pos0 - s) - 1)))
-            else:
-                out.append(FakeRead(f"alt{i}", pos0 - 50 + i, [(0, 100)], "N" * (50 - i) + "A" + "N" * (49 + i)))
-        return out
-
-    class AlignmentFile:
-        references = ("chr13",)
-
-        def __init__(self, path):
-            self.kind = os.path.basename(path)
-
-        def fetch(self, contig, start, end):
-            return reads(self.kind) if contig == "chr13" else []
-    return types.SimpleNamespace(AlignmentFile=AlignmentFile)
-
-
 def cpsr_beside_clinvar(work, schema):
     """22. CPSR's own class beside ClinVar's, its depth, its read check and release."""
     d = os.path.join(work, "cpsr-compare", "S")
@@ -820,38 +783,6 @@ def cpsr_beside_clinvar(work, schema):
     check("CPSR: a table with one class column has no disagreement and says so",
           c1["disagreements"] == [] and c1["own_class_column"] is None
           and "has no CPSR_CLASSIFICATION column" in txt1, c1)
-
-    # bin/clip_check.py --cpsr, with a fake pysam
-    pos0 = 32340299
-    exon_end = pos0 + 30
-    put(f"{d}/exons.bed", f"chr13\t{pos0 - 30}\t{exon_end}\nchr13\t{pos0 + 3000}\t{pos0 + 3150}\n")
-    put(f"{d}/cls.tsv.gz", CPSR_COLS + CPSR_ROWS, gz=True)
-    keep = sys.modules.get("pysam")
-    sys.modules["pysam"] = fake_pysam(pos0, exon_end)
-    try:
-        got = {}
-        for kind in ("spliced", "genomic"):
-            out = f"{d}/{kind}.tsv"
-            with open(os.devnull, "w") as null:
-                so, sys.stdout = sys.stdout, null
-                try:
-                    rc = clip_check.main(["--cpsr", f"{d}/cls.tsv.gz", "--bam", f"{d}/{kind}", "--exons",
-                                          f"{d}/exons.bed", "--out", out])
-                finally:
-                    sys.stdout = so
-            rows = [line.rstrip("\n").split("\t") for line in open(out)][1:]
-            got[kind] = (rc, [(r[0], r[1], r[8]) for r in rows])
-    finally:
-        if keep is None:
-            sys.modules.pop("pysam", None)
-        else:
-            sys.modules["pysam"] = keep
-    check("clip_check --cpsr: the spliced reads at a P/LP row are flagged, CPSR's contig name kept",
-          got["spliced"][0] == 0 and got["spliced"][1][0] == ("13", "32340300", "flagged"), got)
-    check("clip_check --cpsr: genomic reads at the same row are clear",
-          got["genomic"][1][0] == ("13", "32340300", "clear"), got)
-    check("clip_check --cpsr: only the four P/LP rows are checked (not the VUS row)",
-          [r[0] for r in got["spliced"][1]] == ["13", "17", "2", "5"], got)
 
 
 PYPGX_HEAD = ("Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\tDefining_variants\tMin_GQ\tWeakest_variant"
@@ -1115,13 +1046,12 @@ SV_CONSENSUS = ("##fileformat=VCFv4.1\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\t
 def annotsv_section(work, schema):
     """24. step 05's class 4-5 table: support from step 22's consensus, the
     exon-edge flag and the benign-set frequency reach both reports."""
-    import annotsv_postfilter
     import html as htmlmod
     d = os.path.join(work, "annotsv", "S")
     put(f"{d}/annotsv/S_sv_class4_5.tsv", ANNOTSV_HEAD + ANNOTSV_ROWS)
     put(f"{work}/annotsv/genes.RefSeq.sorted.bed", ANNOTSV_GENES)
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
     put(f"{d}/sv_merged/S_sv_consensus.vcf.gz", SV_CONSENSUS, gz=True)
     summ, txt, html_ = render(d)
     html_ = htmlmod.unescape(html_)
@@ -1160,9 +1090,9 @@ def annotsv_section(work, schema):
     # and the class 4-5 count and rows leave it out.
     put(f"{work}/annotsv/rules.tsv", "#chrom\tstart\tend\trule\taction\tname\tsource\n"
         "chr20\t19990000\t20500000\tig_tr_locus\tclass_3\tIGFIX\tfixture\n")
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--rules", f"{work}/annotsv/rules.tsv",
-                             "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--rules", f"{work}/annotsv/rules.tsv",
+                  "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
     summ, txt, html_ = render(d)
     html_ = htmlmod.unescape(html_)
     av = summ["sections"]["annotsv"]["data"]
@@ -1187,8 +1117,8 @@ def annotsv_section(work, schema):
           and render_report.ANNOTSV_NOTE in txt)
     check("annotsv rules: the summary validates", not validate.validate(schema, json.loads(json.dumps(summ))),
           validate.validate(schema, json.loads(json.dumps(summ))))
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
 
     # red control: an empty consensus gives support 1 to every row
     put(f"{d}/sv_merged/S_sv_consensus.vcf.gz", SV_CONSENSUS.split("chr20")[0], gz=True)
@@ -1229,16 +1159,15 @@ PHASE_HEAD = ("AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tI
 
 
 def annotsv_phase_pairing(work):
-    """29. a deletion's GT and PS go through annotsv_postfilter.py into the two-hit rule."""
-    import annotsv_postfilter
+    """29. a deletion's GT and PS go through og sv postfilter into the two-hit rule."""
 
     def run(name, gt):
         d = os.path.join(work, "sv-phase", name, "S")
         put(f"{d}/annotsv/S_sv_class4_5.tsv", PHASE_HEAD
             + f"1_45335001_45337000_DEL_1\t1\t45335000\t45337000\t-2000\tDEL\tSV1\t"
               f"END=45337000;SVTYPE=DEL;SVCALLER=manta\tGT:PS\t{gt}:45330000\tfull\tMUTYH\t\t4\t0.95\n")
-        annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv",
-                                 "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+        og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv",
+                      "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
         put(f"{d}/clinvar/S_clinvar_hits.vcf", VCF_HEAD
             + "chr1\t45332000\t.\tC\tT\t50\tPASS\tGENEINFO=MUTYH:4595;CLNSIG=Pathogenic;"
               "CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts\tGT:GQ:DP:PS\t1|0:50:30:45330000\n")
@@ -2125,10 +2054,10 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
         "chrM\t302\t.\tA\tAC\t.\tPASS\tAN=56434;AF_hom=0.01;AF_het=0.2;max_hl=0.99\n"
         "chrM\t3243\t.\tA\tG\t.\tPASS\tAN=56434;AF_hom=0.00002;AF_het=0.0003;max_hl=0.9\n", gz=True)
     out_tsv = f"{d}/mito/S_chrM_annotated.tsv"
-    rc = collect_summary.main(["mito-annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz",
-                               "--clinvar", f"{work}/rsec/clinvar/clinvar_chr.vcf.gz",
-                               "--gnomad", f"{work}/rsec/gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz",
-                               "--out", out_tsv])
+    rc = og_tool("mito", "annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz",
+                 "--clinvar", f"{work}/rsec/clinvar/clinvar_chr.vcf.gz",
+                 "--gnomad", f"{work}/rsec/gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz",
+                 "--out", out_tsv)
     rows = {(r["pos"], r["ref"], r["alt"]): r for r in csv.DictReader(
         [l for l in open(out_tsv) if not l.startswith("# ")], delimiter="\t")}
     check("annotate: one row per allele, the multi-allelic indel trimmed to ClinVar's and gnomAD's A>AC",
@@ -2151,8 +2080,8 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
           not any(v["pos"] in ("73", "9000") for v in ma["variants"]), ma["variants"])
     errs = validate.validate(schema, json.loads(json.dumps(summ)))
     check("report sections: the summary validates", not errs, errs)
-    rc = collect_summary.main(["mito-annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz", "--clinvar",
-                               f"{work}/rsec/none.vcf.gz", "--gnomad", f"{work}/rsec/none.bgz", "--out", out_tsv])
+    rc = og_tool("mito", "annotate", "--vcf", f"{d}/mito/S_chrM_filtered.vcf.gz", "--clinvar",
+                 f"{work}/rsec/none.vcf.gz", "--gnomad", f"{work}/rsec/none.bgz", "--out", out_tsv)
     summ, txt, _ = render(d)
     check("annotate: missing ClinVar and gnomAD files leave the columns '.' and the report names them",
           rc == 0 and summ["sections"]["mito"]["data"]["annotation"]["clinvar_plp"] == 0
@@ -2599,7 +2528,11 @@ def main():
             path = os.path.join(work, "somalier.samples.tsv")
             put(path, head + f"S\tS\t-9\t-9\t{sex}\t-9\t{ped}\t30.0\t60\t40\t20\t{mid}\t15.0\t{x_n}\t0\t"
                 f"{x_het}\t{x_hom_alt}\t{y_depth}\t5\n")
-            return dict(collect_summary.sample_qc_table("S", path, declared_sex=declared))
+            out = os.path.join(work, "sample_qc.tsv")
+            rc = og_tool("qc", "sample", "--sample", "S", "--somalier-samples", path, "--declared-sex", declared,
+                         "--out", out)
+            with open(out) as f:
+                return dict(line.rstrip("\n").split("\t", 1) for line in f) if rc == 0 else {"rc": rc}
 
         t = qc("1", "male", 2, 0, 2, "male")
         check("pedigree male kept on 2 chrX sites: unknown, not checked (not ok)",
@@ -3031,8 +2964,11 @@ def main():
         pypgx_section(work, schema)
         clinical_mane_quality(work, schema)
         comphet_phase_section(work, schema)
-        annotsv_section(work, schema)
-        annotsv_phase_pairing(work)
+        if OG:
+            annotsv_section(work, schema)
+            annotsv_phase_pairing(work)
+        else:
+            print("[SKIP] the class 4-5 SV checks (og sv postfilter): OG is not set (guard.yml sets it)")
         report_followups_sections(work, schema)
         str_extra_readings(work, schema)
         parascopy_section(work, schema)

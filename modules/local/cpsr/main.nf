@@ -12,7 +12,7 @@
     and its files are renamed back to <meta.id>.cpsr.*. CPSR's own HTML
     title then shows that id.
 
-    The cDNA read check on CPSR's P/LP rows (bin/clip_check.py --cpsr) runs
+    The cDNA read check on CPSR's P/LP rows (og cdna check --cpsr) runs
     after it, in CPSR_CDNA_CHECK (CLINVAR_CDNA_CHECK included under that name,
     source 'cpsr', workflows/clinical.nf), which gets the BAM and the exons
     and writes cpsr/<id>_cpsr_cdna_check.tsv.

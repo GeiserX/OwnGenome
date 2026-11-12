@@ -11,7 +11,7 @@
 #     9b's motif table of the other flagged motif loci
 #     (expansion_hunter/<id>_str_motifs.tsv) gives SAMD12 its verdict.
 # The tables are made with the repository's own writers (bin/traits_report.py,
-# bin/annotsv_postfilter.py) on made-up genotypes and calls; the Stranger
+# og sv postfilter) on made-up genotypes and calls; the Stranger
 # VCF, the catalog and the motif table are made up in their real layouts.
 #   1. Step 24 and generate-report.sh on the sample: both reports carry the
 #      three. Control: the same sample without the three tables (and step 05
@@ -38,10 +38,10 @@ mkdir -p "$G"
 
 # --- the tables: DIR/full has the three, DIR/bare has none of them ------------------------
 python3 - "$REPO" "$G" "$T" <<'PY'
-import json, os, shutil, sys
+import json, os, shutil, subprocess, sys
 repo, g, s = sys.argv[1:4]
 sys.path.insert(0, os.path.join(repo, "bin"))
-import annotsv_postfilter, traits_report  # noqa: E401
+import traits_report  # noqa: E402
 
 
 def put(path, text):
@@ -77,7 +77,7 @@ for kind in ("full", "bare"):
         put(os.path.join(g, "rules.tsv"), "#chrom\tstart\tend\trule\taction\tname\tsource\n"
             "chr20\t19990000\t20500000\tig_tr_locus\tclass_3\tIGFIX\tfixture\n")
         args += ["--rules", os.path.join(g, "rules.tsv")]
-    annotsv_postfilter.main(args)
+    subprocess.run([os.path.join(repo, "bin", "og"), "sv", "postfilter", *args], check=True)
     os.remove(f"{d}/annotsv/{s}_sv_class4_5.tsv")
     # Steps 09 and 9b: MUC1 without a status, SAMD12 flagged.
     vhead = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"

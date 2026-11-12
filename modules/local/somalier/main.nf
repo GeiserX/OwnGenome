@@ -14,8 +14,8 @@
     pedigree (--ped) holds each sample's samplesheet sex, so somalier.samples.tsv
     (and MultiQC) report the declared sex beside the one from the reads.
 
-    SAMPLE_QC writes <id>_sample_qc.tsv with bin/collect_summary.py's
-    sample-qc command (the rule scripts/33-sample-qc.sh runs too): somalier's
+    SAMPLE_QC writes <id>_sample_qc.tsv with og qc sample (rust/, bin/og on
+    the task PATH; the rule scripts/33-sample-qc.sh runs too): somalier's
     sex against the samplesheet's, VERIFYBAMID2's FREEMIX against
     --freemix_warn, and the other samples somalier finds to be the same
     person. workflows/bam_analysis.nf stops the run on a sex mismatch
@@ -153,7 +153,7 @@ process SAMPLE_QC {
     // regions or vcf is [] when mosdepth did not run or the row has no VCF
     def mosaic_args = (regions ? "--regions ${regions}" : '') + (vcf ? " --vcf ${vcf}" : '')
     """
-    collect_summary.py sample-qc \\
+    og qc sample \\
         --sample ${meta.id} \\
         --somalier-id "\$(cat ${somalier_id})" \\
         --somalier-samples ${samples_tsv} \\

@@ -1,0 +1,3 @@
+cDNA scan: 2 loci with reads across 2 or more exon junctions (6 exon regions read)
+  SPLICED READS chr2:1200-5001: 3 exon junctions, 9 reads (cDNA or plasmid contamination, or a processed retrocopy: check the reads)
+  SPLICED READS chr10:1200-5001: 3 exon junctions, 9 reads (cDNA or plasmid contamination, or a processed retrocopy: check the reads)

@@ -70,8 +70,8 @@ process PYPGX {
     # A BAM with ALT or HLA contigs is refused, as scripts/32-pypgx.sh does
     # (og cn check-bam): its depth splits between a gene and its
     # ALT copy, and a depth-based count reads that as a deletion. The contig
-    # names come from pysam, which the image has.
-    python3 -c "import pysam, sys; print(chr(10).join(pysam.AlignmentFile(sys.argv[1]).references))" ${bam} > bam_contigs.txt
+    # names come from the BAM's header (og bam contigs).
+    og bam contigs ${bam} > bam_contigs.txt
     og cn check-bam --header bam_contigs.txt
     OUTBASE="${meta.id}_pypgx_results"
     mkdir -p "\$OUTBASE"
@@ -111,15 +111,10 @@ process PYPGX {
     NOT_CALLABLE=""
     for NEED in ${alt_needs}; do
       G=\${NEED%%:*} C=\${NEED#*:}
-      rc=0
-      python3 -c "import pysam, sys; sys.exit(0 if sys.argv[2] in pysam.AlignmentFile(sys.argv[1]).references else 3)" ${bam} "\$C" || rc=\$?
-      if [ "\$rc" = 3 ]; then
+      if ! grep -qxF -e "\$C" bam_contigs.txt; then
         echo "NOTICE: the BAM has no \$C contig (reference without ALT contigs); \$G is not callable on this reference and is skipped"
         BAM_GENES=\$(echo "\$BAM_GENES" | tr ' ' '\\n' | grep -vxF "\$G" | paste -sd ' ' - || true)
         NOT_CALLABLE="\$NOT_CALLABLE --not-callable \$G"
-      elif [ "\$rc" != 0 ]; then
-        echo "ERROR: could not read the contigs of ${bam} (exit \$rc)" >&2
-        exit 1
       fi
     done
 
