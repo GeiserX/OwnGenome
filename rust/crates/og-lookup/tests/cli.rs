@@ -53,7 +53,7 @@ fn report(
 #[test]
 fn resolve_finds_rsids_and_genes_where_the_python_did() {
     let (sites, ann, gtf, traits) = (
-        p("sites.tsv"),
+        p("sites.tsv.gz"),
         p("ann.vcf"),
         p("gencode.v50.basic.genes.gtf"),
         p("traits.tsv"),
@@ -280,7 +280,7 @@ fn query_answers_every_query_and_says_how_it_read() {
     let base = [
         "query",
         "--sites",
-        &p("sites.tsv"),
+        &p("sites.tsv.gz"),
         "--genes",
         &p("gencode.v50.basic.genes.gtf"),
         "--table",
