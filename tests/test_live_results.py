@@ -32,33 +32,39 @@ Checks:
      report as sentences (never zero counts), an unsized "normal" locus as not
      sized, AnnotSV's exon-edge check, a genotype rule and a deep intronic call;
   8. the veil's tags on DEMO-003 (make_demo_sample.py --sample DEMO-003, with its
-     planted secondary finding and class 5 deletion): the ClinVar row and viewer
-     link of the planted hit, its genome-chart tick and its review-star bar carry
-     the secondary finding's id, the deletion's span carries its own, the search
-     index's items that name the gene carry one of them, and nothing else is
-     tagged; DEMO-001, with no result to act on, has no tag; and every known
-     deep intronic site's line carries the fixed-panel tag, never the id of a
-     closed result in its gene (the card prints each site whether hit or not,
-     so one missing line would name the gene), a gene
-     named before a full stop is that gene, and a ClinVar row closed by its gene
-     alone closes its "See the reads at" link with it; every other card's row
-     that names the gene (the son's symptom ranking ranks it) carries one of
-     the ids and no other row does, the ranking's finding carries the secondary
-     finding's id, and so does a segment of the lead that names the gene; the
-     home page's view of the run (overview) lists no such finding among its
-     first ones and its closed lead names none; a CHIP call, a copy-number dot
-     and a fact that name a closed result's gene carry its id (the CHIP chart's
-     panel of genes never does), and results.json carries the closed results as
-     veil.spans (the family page closes a child's places while one is closed);
-     a closed structural variant over two genes closes the rows and the finding
-     that name only its second gene, and veil.panels lists the cards of a fixed
-     panel (live_results.FIXED_PANELS).
+     planted secondary finding and class 5 deletion): a tag is the list of every
+     closed result a place names; the ClinVar row and viewer link of the planted
+     hit, its genome-chart tick and its review-star bar carry the secondary
+     finding's id, the deletion's span its own, every search item the fixed-panel
+     tag (a hit quotes the summary's rows, prose), and nothing else is tagged;
+     DEMO-001, with no result to act on, has no tag; every known deep intronic
+     site's line carries the fixed-panel tag, never the id of a closed result in
+     its gene (the card prints each site whether hit or not, so one missing line
+     would name the gene); prose (a line, a fact, a headline) is tagged by the
+     fixed-panel tag whatever it names, unless its card is declared as printing
+     no gene there (LINES_NO_GENE, FACTS_NO_GENE, HEADLINES_NO_GENE), so no word
+     is ever read as a gene; a gene cell is read as its list of symbols; a
+     ClinVar row closed by its gene alone closes its "See the reads at" link with
+     it; every other card's row that names the gene (the son's symptom ranking
+     ranks it) carries one of the ids and no other row does, the ranking's
+     finding carries the secondary finding's id, and so does a segment of the
+     lead that prints the ranking, and a segment that prints two closed results'
+     findings carries both ids; the home page's view of the run (overview) lists
+     no such finding among its first ones and its closed lead names none; a CHIP
+     call, a copy-number dot and the carrier list's two-hit fact and line carry
+     the id of the closed result in their gene (the CHIP chart's panel of genes
+     never does), and results.json carries the closed results as veil.spans (the
+     family page closes a child's places while one is closed); a closed
+     structural variant over two genes closes the rows and the finding that name
+     only its second gene, a place over two closed results carries both ids, and
+     veil.panels lists the cards of a fixed panel (live_results.FIXED_PANELS).
 Each check runs again on a planted mistake and must fail there: 1 with VNTYPER's
 entry dropped, 2 with one card's caveat blanked, 3 with "ok" planted in a card
 and "All clear" in a script, 4 with the hits emptied, 5 with the results route
 registered without the login, 6 with a row printed as its Python dict, 7 with the Slivar adapter returning nothing,
-8 with a veil rule that tags nothing (rows, lines, facts and drawings), one that tags every row and one that tags
-only a structural variant's first gene. A check
+8 with a veil rule that tags nothing (rows, lines, facts and drawings), one that tags every row, one that tags
+only a structural variant's first gene, one that keeps only the first id of a place, one that reads prose word by
+word, and each entry of the declared lists dropped. A check
 that cannot fail is no check.
 
 Run: python3 tests/test_live_results.py
@@ -368,19 +374,21 @@ def veil_problems(res, idx):
     v = res.get("veil") or {}
     out = []
     card = next(x for ch in res["chapters"] for x in ch["sections"] if x["id"] == "clinvar")
+    # The planted hit sits inside the planted deletion and names its gene: its places name both closed results.
+    both = sorted([sf, sv])
     rows = (v.get("rows") or {}).get("clinvar") or []
-    want = [sf if r[0] == gene and r[1].startswith(f"{c}:{p} ") else None for r in card["table"]["rows"]]
-    if rows != want:
+    want = [both if r[0] == gene and r[1].startswith(f"{c}:{p} ") else None for r in card["table"]["rows"]]
+    if [sorted(t) if t else None for t in rows] != want:
         out.append(f"ClinVar rows tagged {rows}, want {want}")
     view = (v.get("viewer") or {}).get("clinvar") or []
-    if view != [sf if x == f"{c}:{p}" else None for x in card.get("viewer") or []]:
+    if [sorted(t) if t else None for t in view] != [both if x == f"{c}:{p}" else None for x in card.get("viewer") or []]:
         out.append(f"ClinVar viewer links tagged {view}")
-    marks = v.get("marks") or {}
+    marks = {k: {m: sorted(t) for m, t in x.items()} for k, x in (v.get("marks") or {}).items()}
     specs = {sp["id"]: sp for sp in rr.chart_specs(res["_summary"])}
     hit = [m["id"] for m in specs["genome"]["marks"] if m.get("kind") == "hit" and m["pos"] == p and m["chrom"] == c]
     span = [m["id"] for m in specs["genome"]["marks"] if m.get("kind") == "sv" and (m["chrom"], m["pos"], m["end"]) == (sv_c, a, b)]
     bar = [m["id"] for m in specs["clinvar-stars"]["marks"] if gene in (m.get("detail") or "")]
-    want = {"genome": {**{h: sf for h in hit}, **{s_: sv for s_ in span}}, "clinvar-stars": {x: sf for x in bar}}
+    want = {"genome": {**{h: both for h in hit}, **{s_: both for s_ in span}}, "clinvar-stars": {x: both for x in bar}}
     if not hit or not span or not bar or marks != want:
         out.append(f"chart marks tagged {marks}, want {want}")
     # Every other card's rows: a row that names the gene carries one of the two ids, a row that does not carries
@@ -389,19 +397,20 @@ def veil_problems(res, idx):
         if cid == "clinvar" or not rows_:
             continue
         got = (v.get("rows") or {}).get(cid) or [None] * len(rows_)
-        bad = [(r, t) for r, t in zip(rows_, got) if (t in (sf, sv)) != (gene in " ".join(map(str, r)))]
+        bad = [(r, t) for r, t in zip(rows_, got) if bool(set(t or ()) & {sf, sv}) != (gene in " ".join(map(str, r)))]
         if bad or len(got) != len(rows_):
             out.append(f"{cid} rows tagged wrong: {bad or got}")
     exo = (v.get("rows") or {}).get("exomiser") or []
     ranked = [f["id"] for f in res["findings"] if f["level"] != "act" and gene in f["title"]]
     # A fixed-panel card's own findings (a medicine gene) carry the panel tag, whatever the closed result.
-    named = {k: t for k, t in (v.get("findings") or {}).items() if t != live_results.PANEL}
-    if sf not in exo or not ranked or named != {i: sf for i in ranked}:
+    named = {k: t for k, t in (v.get("findings") or {}).items() if t != [live_results.PANEL]}
+    if not any(sf in (t or ()) for t in exo) or not ranked or set(named) != set(ranked) \
+            or any(sf not in named[i] for i in ranked):
         out.append(f"the symptom ranking of {gene}: rows tagged {exo}, findings tagged {v.get('findings')}, want {ranked} -> {sf}")
-    tagged = {(t, it["section"]): it.get("veil") for t, items in idx["terms"].items() for it in items if it.get("veil")}
-    named = {(gene, it["section"]) for it in idx["terms"].get(gene) or []}
-    if set(tagged) != named or not named or any(x not in (sf, sv) for x in tagged.values()):
-        out.append(f"search items tagged {tagged}, want every item of {gene}: {sorted(named)}")
+    # A search item quotes the summary's rows: prose, so every one carries the fixed-panel tag.
+    items = [it for items in idx["terms"].values() for it in items]
+    if not items or any(it.get("veil") != [live_results.PANEL] for it in items):
+        out.append(f"search items tagged {sorted({str(it.get('veil')) for it in items})}, want every one {[live_results.PANEL]}")
     return out
 
 
@@ -417,17 +426,21 @@ def veil_lines_problems():
     lines = live_results.a_clinvar(S, {"sections": S}).get("lines") or []
     found = [{"id": "sf-gla-test", "level": "act", "gene": "GLA", "detail": "GLA"}]
     v = live_results.veil({"sections": S}, found, [{"sections": [{"id": "clinvar", "lines": lines}]}])
-    want = [live_results.PANEL if ln.startswith(live_results.FIXED_LINES["clinvar"]) else None for ln in lines]
+    panel = [live_results.PANEL]
+    want = [panel if ln.startswith(live_results.FIXED_LINES["clinvar"]) else None for ln in lines]
     got = (v.get("lines") or {}).get("clinvar")
-    out = [] if want.count(live_results.PANEL) == 2 and got == want else [f"lines {lines} tagged {got}, want {want}"]
-    # A gene named at the end of a sentence ("in GLA.") is that gene.
-    if live_results.veil_id(live_results.closable(found), "A change in GLA.") != "sf-gla-test":
-        out.append("'A change in GLA.' carries no tag")
-    # A segment of the lead that names the gene, beside the act names the page closes itself.
-    lead = [[": Symptom ranking: GLA ranks 1. ", False], [": Secondary finding in GLA. ", False, "act"], ["Mean depth", False]]
-    got = live_results.veil({"sections": S}, found, [], lead).get("lead")
-    if got != ["sf-gla-test", None, None]:
-        out.append(f"the lead's segments tagged {got}, want the names that are not the act names")
+    out = [] if want.count(panel) == 2 and got == want else [f"lines {lines} tagged {got}, want {want}"]
+    # A segment of the lead is tagged by the findings it prints (lead()'s names), beside the act names the page
+    # closes itself; a segment printing two closed results' findings carries both ids.
+    rank = {"id": "exomiser-gla", "level": "review", "card": "exomiser", "gene": "GLA", "title": "Symptom ranking: GLA ranks 1"}
+    two = found + [{"id": "sf-tp53-test", "level": "act", "gene": "TP53", "detail": "TP53"},
+                   {"id": "exomiser-tp53", "level": "review", "card": "exomiser", "gene": "TP53",
+                    "title": "Symptom ranking: TP53 ranks 2"}]
+    lead = [[": Symptom ranking: GLA ranks 1 and Symptom ranking: TP53 ranks 2. ", False],
+            [": Secondary finding in GLA. ", False, "act"], ["Mean depth", False]]
+    got = live_results.veil({"sections": S}, two + [rank], [], lead, [[rank, two[2]], [found[0]], []]).get("lead")
+    if got != [["sf-gla-test", "sf-tp53-test"], None, None]:
+        out.append(f"the lead's segments tagged {got}, want both ids on the segment that prints both rankings")
     # A finding known by its gene alone (no position): its ClinVar row is closed by the gene, and the row's
     # "See the reads at" link, which shows only the position, with it.
     S["clinvar"]["data"]["hits"] = [{"gene": "GLA", "chrom": "chrX", "pos": 101398000, "ref": "G", "alt": "A"},
@@ -436,7 +449,7 @@ def veil_lines_problems():
     gene_only = [{"id": "carrier-gla-test", "level": "act", "gene": "GLA"}]
     v = live_results.veil({"sections": S}, gene_only, [{"sections": [card]}])
     rows, view = (v.get("rows") or {}).get("clinvar"), (v.get("viewer") or {}).get("clinvar")
-    if rows != ["carrier-gla-test", None] or view != rows:
+    if rows != [["carrier-gla-test"], None] or view != rows:
         out.append(f"a gene-only finding: ClinVar rows tagged {rows}, viewer links {view}, want both "
                    "['carrier-gla-test', None]")
     return out
@@ -462,13 +475,28 @@ def widget_problems():
     par["facts"] = [["SMN1 copies", "1"], ["Genes read", "2"]]
     v = live_results.veil(summ, found, [{"sections": [chip, par]}])
     out = []
-    want = {"chip": [None, "cpsr-tp53-test"], "paralogs": ["two-hits-smn1-test", None]}
+    want = {"chip": [None, ["cpsr-tp53-test"]], "paralogs": [["two-hits-smn1-test"], None]}
     if v.get("widget") != want:
         out.append(f"drawings tagged {v.get('widget')}, want {want}")
-    if (v.get("facts") or {}) != {"paralogs": ["two-hits-smn1-test", None]}:
+    # A fixed-panel card's facts are prose no list declares: the panel tag, whatever they name.
+    if (v.get("facts") or {}) != {c: [[live_results.PANEL], [live_results.PANEL]] for c in ("chip", "paralogs")}:
         out.append(f"facts tagged {v.get('facts')}")
     if v.get("spans") != [list(x) for x in live_results.closable(found)]:
         out.append(f"spans {v.get('spans')}")
+    # The carrier list's two-hit fact and line are tagged by the two-hit row's gene field, never by their words: the
+    # line prints the inheritance code AR, and a closed result in AR leaves both open.
+    th = {"genes": [{"gene": "CFTR", "verdict": "possible", "condition": "Cystic fibrosis", "deletion": "DEL chr7:117480025-117580025",
+                     "variant": "c.1521_1523del", "genotype": "het", "why": "a deletion and a variant"}],
+          "deletions_read": ["AnnotSV"], "deletions_not_read": []}
+    S2 = {"carrier": {"state": "ok", "data": {"genes_on_list": 2, "carriers": [], "two_hits": th}}}
+    car = dict(live_results.a_carrier(S2, {"sections": S2}), id="carrier-list")
+    for g, want in (("CFTR", ["two-hits-cftr"]), ("AR", None)):
+        found2 = [{"id": "two-hits-cftr", "level": "act", "gene": "CFTR"}] if g == "CFTR" else \
+            [{"id": "cpsr-ar", "level": "act", "gene": "AR", "detail": "AR c.1A>G"}]
+        v2 = live_results.veil({"sections": S2}, found2, [{"sections": [car]}])
+        facts, lines = (v2.get("facts") or {}).get("carrier-list") or [], (v2.get("lines") or {}).get("carrier-list") or []
+        if (facts[2:3] or [None])[0] != want or (lines[:1] or [None])[0] != want or (lines[1:2] or [None])[0] != [live_results.PANEL]:
+            out.append(f"a closed result in {g}: the two-hit fact tagged {facts}, lines {lines}, want {want} and the panel tag")
     return out
 
 
@@ -492,34 +520,65 @@ def sv_genes_problems():
     out = []
     if len(sv) != 1 or len(car) != 1:
         return [f"the planted findings: {[f['id'] for f in res['findings']]}"]
-    if (v.get("rows") or {}).get("clinvar") != [sv[0], None]:
+    if (v.get("rows") or {}).get("clinvar") != [[sv[0]], None]:
         out.append(f"ClinVar rows tagged {(v.get('rows') or {}).get('clinvar')}, want the deletion's id on the NBR2 row")
-    if (v.get("rows") or {}).get("carrier-list") != [sv[0]]:
+    if (v.get("rows") or {}).get("carrier-list") != [[sv[0]]]:
         out.append(f"carrier rows tagged {(v.get('rows') or {}).get('carrier-list')}")
-    if (v.get("findings") or {}).get(car[0]) != sv[0]:
+    if (v.get("findings") or {}).get(car[0]) != [sv[0]]:
         out.append(f"the NBR2 carrier finding tagged {(v.get('findings') or {}).get(car[0])}")
     if sorted(s[1] for s in v.get("spans") or [] if s[0] == sv[0]) != ["BRCA1", "NBR2"]:
         out.append(f"spans {v.get('spans')}")
     if v.get("panels") != ["paralogs"]:
         out.append(f"panels {v.get('panels')}, want the copy-number card, the only fixed panel here")
+    # A place that names two closed results keeps both ids: a class 4 duplication over BRCA1 and BRCA2 with a closed
+    # CPSR result in each, so opening one never brings back a place that still names the other.
+    S["annotsv"]["data"]["rows"] = [{"sv": "chr5:1000000-1300000", "type": "DUP", "length": 300000, "acmg_class": "4",
+                                     "genes": ["BRCA1", "BRCA2"], "gt": "0/1", "support": 1, "caller": "Manta",
+                                     "support_callers": ["Manta"]}]
+    S["cpsr"] = {"state": "ok", "data": {"plp": [{"gene": g, "variant": "c.68_69del", "final": "Pathogenic"}
+                                                 for g in ("BRCA1", "BRCA2")]}}
+    res = live_results.build("T", {"sections": S})
+    v = res.get("veil") or {}
+    acts = [f["id"] for f in res["findings"] if f["card"] == "cpsr"]
+    dup = [f["id"] for f in res["findings"] if f["card"] == "structural-variants"]
+    want = sorted(acts)
+    row = ((v.get("rows") or {}).get("structural-variants") or [None])[0]
+    if len(acts) != 2 or len(dup) != 1 or sorted((v.get("findings") or {}).get(dup[0]) or []) != want \
+            or sorted(row or []) != want:
+        out.append(f"a duplication over two closed results: finding {(v.get('findings') or {}).get(dup[0] if dup else '')}, "
+                   f"row {row}, want {want}")
     return out
 
 
 # The veil's tables, pinned here so that an entry dropped from one turns this file red (each is checked by what
 # veil() does with it, not by reading the table back): the fixed-panel cards, the fixed lines of a card (a sample
-# line or row naming a gene, its card, and whether it is a row), the cards that name no gene, and the words that
-# name no gene though a gene has their name.
+# line or row naming a gene, its card, and whether it is a row), the cards that name no gene, the cards whose lines,
+# facts or headline name no gene, and prose that names a gene or a word spelled like one.
 WANT_PANELS = ("mei", "expansions", "vntyper", "lpa", "chip", "paralogs", "cpic", "cyp2d6", "hla", "locityper",
                "traits-panel", "bloodtype")
 WANT_LINES = (("clinvar", "Known deep intronic site (always reported): GLA c.640-801G>A chrX:1 C>T: hom", False),
-              ("carrier-list", "Two hits across callers (a deletion plus a variant on the other copy): none found; "
-                               "deletions read from Parascopy's SMN1 count (step 35)", False),
               ("callability", ["GSTT1", "not on this reference", ".", "ALT-only"], True),
-              ("callability", ["NBPF1", "not read", "69%", "segdup, collapsed"], True))
+              ("callability", ["NBPF1", "not read", "69%", "segdup, collapsed"], True),
+              ("roh", "Imprinted 6q24 (PLAGL1, HYMAI): from the mother: -; from the father: Transient neonatal diabetes "
+                      "mellitus (6q24-related) (PMID 20301706)", False))
 WANT_NO_GENE = (("prs", ["Asthma", "PGS002727", "68.3 (EUR)", "2605/2872", "HR 1.57 (EUR, PPM014751)"], "HR"),)
-WANT_NOT_A_GENE = (("SET", "the same set of genes"), ("MB", "0.0 MB in runs of 5 MB or more"),
-                   ("HP", "Seizure (HP:0001250)"), ("GC", "reads per million with 48-52% GC"))
-WANT_A_GENE = (("KCNH2", "A change in KCNH2."), ("C9ORF72", "C9orf72 repeat"), ("HLA-A", "HLA-A*02:01"))
+WANT_LINES_NO_GENE = ("qc", "clinvar", "mosaic", "mosaic-mca", "roh", "telomere", "consumer-export")
+WANT_FACTS_NO_GENE = ("qc", "callability", "variants", "clinvar", "clinical-filter", "cpsr", "slivar", "exomiser",
+                      "structural-variants", "mito", "mosaic", "mosaic-mca", "carrier-list", "couple", "pharmcat",
+                      "ancestry-fine", "mt-haplogroup", "y-chromosome", "archaic", "ancient", "roh", "telomere",
+                      "viral", "consumer-export")
+WANT_FACT_PROSE = (("clinical-filter", "High-impact rare variants in its genes"),)
+WANT_HEADLINES_NO_GENE = ("clinvar", "carrier", "roh", "pypgx", "annotsv", "viral", "archaic", "lpa", "cpsr", "mito")
+# Prose, each with the gene it names or the gene its word is spelled like: the tag must be the panel tag either way.
+# The carrier list's summary of the two-hit callers (it names SMN1, HBA1 and HBA2 as the callers it read) is prose of
+# a card with no gene-free lines: the panel tag, as every other line of that card but a two-hit gene's own.
+WANT_PROSE_LINES = (("carrier-list", "Two hits across callers (a deletion plus a variant on the other copy): none found; "
+                                     "deletions read from Parascopy's SMN1 count (step 35)"),)
+WANT_PROSE = (("KCNH2", "A change in KCNH2."), ("C9ORF72", "C9orf72 repeat"), ("HLA-A", "HLA-A*02:01"),
+              ("SET", "the same set of genes"), ("MB", "0.0 MB in runs of 5 MB or more"), ("AR", "CFTR (Cystic fibrosis; AR)"),
+              ("HP", "Seizure (HP:0001250)"), ("GC", "reads per million with 48-52% GC"))
+WANT_GENE_CELLS = (("NKD2, SLC12A7 and 2 more", ["NKD2", "SLC12A7"]), ("SMN1 (Parascopy)", ["SMN1"]),
+                   ("HLA-A", ["HLA-A"]), ("BRCA1, BRCA2", ["BRCA1", "BRCA2"]), (".", []))
 
 
 def gene_of(text):
@@ -531,9 +590,11 @@ def gene_of(text):
 
 def table_problems():
     """What is wrong with veil()'s tables (WANT_*): a fixed-panel card missing from veil.panels, a fixed line or row
-    tagged by the gene it names instead of the panel tag, a card that names no gene tagged, a word that names no gene
-    read as one, or a gene symbol not read as one."""
+    tagged by the gene it names instead of the panel tag, a card that names no gene tagged, a line, fact or headline
+    of a card declared gene-free there tagged by the panel tag (or one of a card not declared not), prose read word by
+    word, or a gene cell not read as its list of symbols."""
     out = []
+    panel = [live_results.PANEL]
     found = lambda g: [{"id": "sf-" + g.lower(), "level": "act", "gene": g, "detail": g}]
     chapters = [{"sections": [{"id": c, "state": "ok"} for c in WANT_PANELS]}]
     got = live_results.veil({"sections": {}}, found("BRCA2"), chapters).get("panels") or []
@@ -543,47 +604,83 @@ def table_problems():
         sec = {"id": card, "table": {"head": ["a", "b", "c", "d"], "rows": [item]}} if is_row else {"id": card, "lines": [item]}
         v = live_results.veil({"sections": {}}, found(g), [{"sections": [sec]}])
         tag = ((v.get("rows" if is_row else "lines") or {}).get(card) or [None])[0]
-        if tag != live_results.PANEL:
+        if tag != panel:
             out.append(f"{card}: {str(item)[:60]} tagged {tag} with a closed result in {g}, want the panel tag")
+    for card, line in WANT_PROSE_LINES:
+        v = live_results.veil({"sections": {}}, found("SMN1"), [{"sections": [{"id": card, "lines": [line]}]}])
+        if ((v.get("lines") or {}).get(card) or [None])[0] != panel:
+            out.append(f"{card}: {line[:60]} tagged {(v.get('lines') or {}).get(card)}, want the panel tag")
     for card, row, g in WANT_NO_GENE:
         sec = {"id": card, "table": {"head": ["a"] * len(row), "rows": [row]}, "lines": [" ".join(row)], "facts": [row[:2]]}
         v = live_results.veil({"sections": {}}, found(g), [{"sections": [sec]}])
         if any((v.get(k) or {}).get(card) for k in ("rows", "lines", "facts")):
             out.append(f"{card} names no gene, yet a closed result in {g} tags it: {v}")
-    for g, text in WANT_NOT_A_GENE:
-        if live_results.veil_id(live_results.closable(found(g)), text):
-            out.append(f"{text!r} read as naming {g}")
-    for g, text in WANT_A_GENE:
-        if not live_results.veil_id(live_results.closable(found(g)), text):
-            out.append(f"{text!r} not read as naming {g}")
+    # A line or fact of a card declared gene-free is untagged even when it spells the closed gene; one of a card not
+    # declared carries the panel tag whatever it says. A headline likewise, by the summary key it comes from.
+    for card in sorted(set(WANT_LINES_NO_GENE) | {"cpsr", "slivar", "archaic"}):
+        v = live_results.veil({"sections": {}}, found("BRCA2"), [{"sections": [{"id": card, "lines": ["a line, BRCA2"]}]}])
+        tag = ((v.get("lines") or {}).get(card) or [None])[0]
+        if tag != (None if card in WANT_LINES_NO_GENE else panel):
+            out.append(f"the line of {card} tagged {tag}")
+    for card in sorted(set(WANT_FACTS_NO_GENE) | set(WANT_PANELS)):
+        v = live_results.veil({"sections": {}}, found("BRCA2"), [{"sections": [{"id": card, "facts": [["A count", "BRCA2"]]}]}])
+        tag = ((v.get("facts") or {}).get(card) or [None])[0]
+        if tag != (None if card in WANT_FACTS_NO_GENE else panel):
+            out.append(f"the fact of {card} tagged {tag}")
+    for card, label in WANT_FACT_PROSE:
+        v = live_results.veil({"sections": {}}, found("BRCA2"), [{"sections": [{"id": card, "facts": [[label, "x"]]}]}])
+        if ((v.get("facts") or {}).get(card) or [None])[0] != panel:
+            out.append(f"the fact {label!r} of {card} is prose, yet not tagged by the panel tag")
+    for key in sorted(set(WANT_HEADLINES_NO_GENE) | {"couple"}):
+        sec = {"id": "c", "keys": [key], "headline": "BRCA2 and more"}
+        v = live_results.veil({"sections": {}}, found("BRCA2"), [{"sections": [sec]}])
+        if ((v.get("headline") or {}).get("c")) != (None if key in WANT_HEADLINES_NO_GENE else panel):
+            out.append(f"the headline from {key} tagged {(v.get('headline') or {}).get('c')}")
+    # Prose read with no gene field: the panel tag whatever it names, so the tag never tells the words apart.
+    for g, text in WANT_PROSE:
+        for spans in (live_results.closable(found(g)), live_results.closable(found("BRCA2"))):
+            if live_results.veil_id(spans, text) != panel:
+                out.append(f"{text!r} tagged {live_results.veil_id(spans, text)}, want the panel tag")
+    for cell, want in WANT_GENE_CELLS:
+        if live_results.gene_cell(cell) != want:
+            out.append(f"gene cell {cell!r} read as {live_results.gene_cell(cell)}, want {want}")
     return out
 
 
 def table_controls():
-    """Each entry of the veil's tables dropped in turn: table_problems() must fail every time."""
-    keep = (live_results.FIXED_PANELS, live_results.FIXED_LINES, live_results.NAMES_NO_GENE, live_results.UNIT_RE)
-    first_words = live_results.gene_words
+    """Each entry of the veil's tables dropped in turn, and the word rule back: table_problems() must fail every time."""
+    names = ("FIXED_PANELS", "FIXED_LINES", "NAMES_NO_GENE", "LINES_NO_GENE", "FACTS_NO_GENE", "FACT_NAMES",
+             "HEADLINES_NO_GENE")
+    keep = {n: getattr(live_results, n) for n in names}
+    first_id = live_results.veil_id
     try:
         for c in WANT_PANELS:
-            live_results.FIXED_PANELS = {k: v for k, v in keep[0].items() if k != c}
+            live_results.FIXED_PANELS = {k: v for k, v in keep["FIXED_PANELS"].items() if k != c}
             control(f"FIXED_PANELS without {c}", not table_problems())
-        live_results.FIXED_PANELS = keep[0]
-        for card, words in keep[1].items():
+        live_results.FIXED_PANELS = keep["FIXED_PANELS"]
+        for card, words in keep["FIXED_LINES"].items():
             for w in words:
-                live_results.FIXED_LINES = dict(keep[1], **{card: tuple(x for x in words if x != w)})
+                live_results.FIXED_LINES = dict(keep["FIXED_LINES"], **{card: tuple(x for x in words if x != w)})
                 control(f"FIXED_LINES[{card}] without {w!r}", not table_problems())
-        live_results.FIXED_LINES = keep[1]
+        live_results.FIXED_LINES = keep["FIXED_LINES"]
         live_results.NAMES_NO_GENE = {}
         control("NAMES_NO_GENE empty", not table_problems())
-        live_results.NAMES_NO_GENE = keep[2]
-        live_results.UNIT_RE = re.compile(r"(?!)")
-        control("gene_words with no units", not table_problems())
-        live_results.UNIT_RE = keep[3]
-        live_results.gene_words = lambda t: {w.upper().rstrip("._-") for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(t))}
-        control("gene_words that reads every word, in any case, as a gene", not table_problems())
+        live_results.NAMES_NO_GENE = keep["NAMES_NO_GENE"]
+        for n in ("LINES_NO_GENE", "FACTS_NO_GENE", "FACT_NAMES", "HEADLINES_NO_GENE"):
+            for k in keep[n]:
+                setattr(live_results, n, {x: y for x, y in keep[n].items() if x != k})
+                control(f"{n} without {k}", not (table_problems() or widget_problems()))
+            setattr(live_results, n, keep[n])
+        live_results.LINES_NO_GENE = dict(keep["LINES_NO_GENE"], cpsr="its lines")
+        control("LINES_NO_GENE with the CPSR card, whose lines name genes", not table_problems())
+        live_results.LINES_NO_GENE = keep["LINES_NO_GENE"]
+        live_results.veil_id = lambda spans, text="", *a, genes=None, **k: live_results.veil_tags(
+            spans, re.findall(r"[A-Za-z0-9][A-Za-z0-9-]*", str(text).upper()), text)
+        control("a veil that reads prose word by word, the word rule", not table_problems())
     finally:
-        (live_results.FIXED_PANELS, live_results.FIXED_LINES, live_results.NAMES_NO_GENE, live_results.UNIT_RE) = keep
-        live_results.gene_words = first_words
+        for n in names:
+            setattr(live_results, n, keep[n])
+        live_results.veil_id = first_id
 
 
 # Every adapter is a fixed panel (live_results.FIXED_PANELS) or listed here as one whose rows say something about this
@@ -633,6 +730,18 @@ def vocabulary_summary(gene):
         "cpsr": {"state": "ok", "data": {"plp": [{"gene": gene, "variant": "c.68_69del", "final": "Pathogenic"}]}}}}
 
 
+def named_tags(v):
+    """The veil's places (rows, lines, facts, marks, ...) whose tag names a result, never the panel tag alone: the
+    same nesting, emptied of the rest."""
+    if v is None or (isinstance(v, list) and all(isinstance(x, str) for x in v)):  # a tag
+        return v if v and v != [live_results.PANEL] else None
+    if isinstance(v, dict):
+        got = {k: named_tags(x) for k, x in v.items()}
+        return {k: x for k, x in got.items() if x} or None
+    got = [named_tags(x) for x in v]
+    return got if any(got) else None
+
+
 def vocabulary_problems():
     """What is wrong with the veil's tags of the report's own vocabulary: a closed result in AR (an inheritance code),
     INS (a structural-variant type) or TG (a trait's abbreviation in a score's name) tags nothing, while one in CFTR
@@ -643,7 +752,7 @@ def vocabulary_problems():
     for g in ("AR", "INS", "TG"):
         res = live_results.build("T", vocabulary_summary(g))
         v = {k: x for k, x in (res.get("veil") or {}).items() if k not in ("spans", "panels")}
-        v["findings"] = {k: t for k, t in (v.get("findings") or {}).items() if t != live_results.PANEL}
+        v = named_tags(v) or {}
         if any(v.values()):
             out.append(f"a closed result in {g} tags {v}")
     for g, where in (("CFTR", ("rows", "carrier-list")), ("GJB2", ("rows", "exomiser")),
@@ -662,16 +771,15 @@ def vocabulary_controls():
     """Each guard of vocabulary_problems() dropped in turn: the check must fail every time."""
     cols, names, marks = live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names
     try:
-        live_results.TABLE_COLUMNS = dict(cols, Inheritance=True)
+        live_results.TABLE_COLUMNS = dict(cols, Inheritance="gene")
         control("TABLE_COLUMNS that reads the Inheritance column as naming a gene", not vocabulary_problems())
-        live_results.TABLE_COLUMNS = dict(cols, Type=True)
+        live_results.TABLE_COLUMNS = dict(cols, Type="gene")
         control("TABLE_COLUMNS that reads the SV Type column as naming a gene", not vocabulary_problems())
         live_results.TABLE_COLUMNS = cols
-        live_results.finding_names = lambda f: (None, f"{f.get('gene') or ''} {f.get('detail') or ''} "
-                                                      f"{f.get('title') or ''}")
+        live_results.finding_names = lambda f: (re.findall(r"[A-Z0-9]+", f"{f.get('title') or ''}"), f.get("detail") or "")
         control("a veil that reads a finding's title word by word", not vocabulary_problems())
         live_results.finding_names = names
-        live_results.mark_names = lambda S, sp, m: (None, f"{m.get('label') or ''} {m.get('detail') or ''}")
+        live_results.mark_names = lambda S, sp, m: (re.findall(r"[A-Z0-9]+", f"{m.get('label') or ''} {m.get('detail') or ''}"), "")
         control("a veil that reads a chart mark's label word by word", not vocabulary_problems())
     finally:
         live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names = cols, names, marks
@@ -693,7 +801,7 @@ def overview_problems():
                       {"id": "exomiser-gla", "level": "review", "title": "Symptom ranking: GLA ranks 1"}],
          "lead": [["Of everything, ", False], [": Secondary finding in GLA. ", False, "act"],
                   ["One result is worth a look", True], [": Symptom ranking: GLA ranks 1.", False]],
-         "veil": {"findings": {"exomiser-gla": "sf-gla-test"}, "lead": [None, None, None, "sf-gla-test"]}}
+         "veil": {"findings": {"exomiser-gla": ["sf-gla-test"]}, "lead": [None, None, None, ["sf-gla-test"]]}}
     keep = live_results.build
     try:
         live_results.build = lambda *a, **k: r
@@ -796,9 +904,9 @@ def main():
             r3["_summary"] = s3
             return r3, results_index.build(s3, sample_dir, rr.SECTION_OF)
         bad = veil_lines_problems()
-        check("8. every known deep intronic site's line carries the fixed-panel tag, not a closed result's id, a gene "
-              "before a full stop is that gene, a ClinVar row closed by its gene closes its reads link, and a lead "
-              "segment naming the gene carries its id", not bad, bad)
+        check("8. every known deep intronic site's line carries the fixed-panel tag, not a closed result's id, a ClinVar "
+              "row closed by its gene closes its reads link, and a lead segment carries the ids of every closed result "
+              "its findings name", not bad, bad)
         fixed = live_results.FIXED_LINES
         try:  # the card still prints its lines; veil() no longer knows they are a panel
             live_results.FIXED_LINES = type("Unknown", (dict,), {"get": lambda self, k, d=None: None})(fixed)
@@ -807,7 +915,7 @@ def main():
             live_results.FIXED_LINES = fixed
         bad = table_problems()
         check("8. every fixed-panel card, fixed line and gene-free card of the veil's tables closes as a panel or never, "
-              "and only a gene symbol written as one names a gene", not bad, bad)
+              "prose is the panel tag whatever it names unless declared gene-free, and a gene cell is its symbols", not bad, bad)
         table_controls()
         bad = declared_problems()
         check("8. every table column is declared as naming a gene or not (TABLE_COLUMNS), and every adapter as a fixed "
@@ -820,11 +928,13 @@ def main():
         check("8. a child's home tile lists no finding that names a closed result, and its closed lead names none",
               not bad, bad)
         bad = widget_problems()
-        check("8. a CHIP call, a copy-number dot and a fact that name a closed result's gene carry its id, the CHIP "
-              "chart's gene panel none, and results.json carries the closed results as veil.spans", not bad, bad)
+        check("8. a CHIP call, a copy-number dot and the two-hit fact and line carry the id of a closed result in their "
+              "gene field, never by their words (AR), the CHIP chart's gene panel none, a fixed-panel card's facts the "
+              "panel tag, and results.json carries the closed results as veil.spans", not bad, bad)
         bad = sv_genes_problems()
         check("8. a closed structural variant over two genes closes the rows and the finding that name only its second "
-              "gene, veil.spans lists it per gene, and veil.panels lists the fixed-panel cards", not bad, bad)
+              "gene, veil.spans lists it per gene, veil.panels lists the fixed-panel cards, and a duplication over two "
+              "closed results carries both ids", not bad, bad)
         first = live_results.closable
         try:
             live_results.closable = lambda found: first([{k: v for k, v in f.items() if k != "genes"} for f in found])
@@ -836,16 +946,25 @@ def main():
               "deletion's span its own, every other card's row of the gene and the symptom ranking's finding one of them, "
               "and every search item of the gene one of them", not bad, bad)
         # The planted mistakes: a rule that tags nothing, and one that tags every row with the first result.
-        keep = live_results.veil_id
+        keep = live_results.veil_tags
         try:
-            live_results.veil_id = lambda spans, *a, **k: None
+            live_results.veil_tags = lambda spans, *a, **k: None
             control("a veil rule that tags nothing", not veil_problems(*tagged(d3)))
             control("a veil rule that tags no line", not veil_lines_problems())
             control("a veil rule that tags no fact or drawing", not widget_problems())
-            live_results.veil_id = lambda spans, *a, **k: spans[0][0] if spans else None
+            live_results.veil_tags = lambda spans, *a, **k: [spans[0][0]] if spans else None
             control("a veil rule that tags every row", not veil_problems(*tagged(d3)))
+            live_results.veil_tags = lambda spans, *a, **k: (keep(spans, *a, **k) or [None])[:1] if keep(spans, *a, **k) else None
+            control("a veil rule that keeps only the first id of a place", not veil_problems(*tagged(d3)))
+            control("a veil rule that keeps only the first id of a place, two closed results", not sv_genes_problems())
         finally:
-            live_results.veil_id = keep
+            live_results.veil_tags = keep
+        first_union = live_results.union
+        try:
+            live_results.union = lambda *t: next((x[:1] for x in t if x), None)
+            control("a veil rule that keeps only the first id of a lead segment", not veil_lines_problems())
+        finally:
+            live_results.union = first_union
 
         # 3, the map documents: og map build of DEMO-001 and DEMO-003, with the results each page gets.
         map_docs = map_documents(root, [(SAMPLE, res), ("DEMO-003", tagged(d3)[0])])
