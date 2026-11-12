@@ -45,7 +45,7 @@ pub fn split_image(image: &str) -> Image {
     } else {
         ("docker.io".to_owned(), name.to_owned())
     };
-    if host == "docker.io" && !repo.contains('/') {
+    if host == "docker.io" && repo.is_empty() {
         repo = format!("library/{repo}");
     }
     Image {
