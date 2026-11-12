@@ -90,12 +90,14 @@
     (f.id || []).forEach(function (fid, i) {
       if (!(f.chrom[i] in by)) { return; }
       rows.push({ id: fid, level: f.level[i], gate: f.gate[i], chrom: f.chrom[i], pos: f.pos[i], s: f.s[i], e: f.e[i],
-        gene: f.gene[i], title: f.title[i], href: f.href[i], phrase: f.phrase[i], veil: f.veil[i] >= 0 ? veilIds[f.veil[i]] : null });
+        gene: f.gene[i], title: f.title[i], href: f.href[i], phrase: f.phrase[i], veil: f.veil[i] >= 0 ? veilIds[f.veil[i]] : null,
+        // Every closable finding the row lies over (veils); a document from before the column has its first only.
+        veils: ((f.veils && f.veils[i]) || (f.veil[i] >= 0 ? [f.veil[i]] : [])).map(function (k) { return veilIds[k]; }) });
     });
     var gated = {};
     rows.forEach(function (r) { if (r.gate) { gated[r.id] = r; } });
-    // What can be closed: each veil tag, and each result to act on that carries another result's tag (a row
-    // over two of them carries only the first one's tag, and one over APOE carries APOE's): its own id too.
+    // What can be closed: each veil tag, and each result to act on whose first tag is another result's (a row over
+    // two of them lists the first one first, and one over APOE lists APOE's first): its own id too.
     var closable = veilIds.slice();
     rows.forEach(function (r) { if (r.veil && r.level === 'act' && !r.gate && closable.indexOf(r.id) < 0) { closable.push(r.id); } });
     return { doc: d, id: id, label: person.label || id, chroms: chroms, by: by, bands: bands, roh: roh, bins: bins,
@@ -170,7 +172,9 @@
     // inside it. A row the page has no finding for (the map's APOE row) follows its tag too.
     function shownRow(r) {
       var own = M.closable.indexOf(r.id) < 0 || stateOf(r.id) !== 'closed';
-      var tag = (opts.known && opts.known(r.id)) || !r.veil || stateOf(r.veil) !== 'closed';
+      // Closed while ANY result the row lies over is closed: a row over two closed results never comes back with
+      // the first one opened.
+      var tag = (opts.known && opts.known(r.id)) || r.veils.every(function (id) { return stateOf(id) !== 'closed'; });
       return own && tag && (!opts.now || opts.now(r.id));
     }
     // The runs of homozygosity, as this page shows them now: a replay before their step ended has none yet.

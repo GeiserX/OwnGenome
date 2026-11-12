@@ -322,18 +322,22 @@
   }
   // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
   // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
-  // A row outside its result's card (a ClinVar row, a card's line, a viewer link, a chart's mark, a search hit)
-  // carries the id of the result to act on it names (results.veil, bin/live_results.py veil()): it stays closed
-  // while that result is, and "Show the result" opens it with it. A tag naming no finding of these results stays closed.
-  // A line of a fixed panel (PANEL, bin/live_results.py FIXED_LINES: a known deep intronic site) names no result:
-  // it stays closed while any result to act on is, whichever, so what is missing never tells the gene.
+  // A place outside its result's card (a ClinVar row, a card's line, fact or headline, a viewer link, a chart's mark,
+  // a search hit) carries a tag (results.veil, bin/live_results.py veil()): the list of every result to act on it
+  // names. It stays closed while ANY of them is, so a place naming two closed results never comes back with the
+  // first one opened. A tag naming no finding of these results stays closed. PANEL (a fixed panel's line, or prose
+  // that cannot be shown to name no gene) names no result: it stays closed while any result to act on is,
+  // whichever, so what is missing never tells the gene. The ids of a tag never reach the page.
   var PANEL = '*panel*';
   function tagClosed(id) {
+    if (Array.isArray(id)) { return id.some(tagClosed); }
     if (id === PANEL) { return closedPage() && closedActs().length > 0; }
     var f = findingById(id);
     return closedPage() && (!f || veiled(f));
   }
   function veilTags(kind, key) { return ((results && results.veil && results.veil[kind]) || {})[key] || []; }
+  // A card's headline is prose: tagged PANEL unless the summary key it comes from prints no gene (veil.headline).
+  function headlineShut(c) { var t = ((results && results.veil && results.veil.headline) || {})[c.id]; return !!(t && tagClosed(t)); }
   // The charts (plugins/charts.js) ask for each mark. A closed page with no results.json yet cannot tell which
   // marks those are, so it leaves every mark out until it can.
   window.PGP.markClosed = function (chart, mark) {
@@ -458,7 +462,7 @@
         function () { openFinding(closedFs[0]); redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } }));
     } else {
       (c.notes || []).forEach(function (n) { add(text, el('p', { 'class': 'note-stale' }, n)); });
-      if (c.headline) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
+      if (c.headline && !headlineShut(c)) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
       var of = openFacts(c);
       add(margin, U.facts(of[0]));
       add(text, widget(of[1]));
@@ -469,7 +473,7 @@
       var ot = openTable(c), tb = U.table(ot[0]);
       var lt = veilTags('lines', c.id);
       var lines = (c.lines || []).filter(function (l, i) { return !(lt[i] && tagClosed(lt[i])); });
-      var shut = ot[1] + (c.lines || []).length - lines.length, items = of[2];
+      var shut = ot[1] + (c.lines || []).length - lines.length + (c.headline && headlineShut(c) ? 1 : 0), items = of[2];
       if (tb) { add(text, tb); } else if (c.empty_text && !ot[1]) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
       if (shut || items) {
         // The same words however many rows or items close, and whichever result they belong to: a count would
@@ -572,18 +576,27 @@
   }
   // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene: results.veil.findings)
   // stays closed while that result is, and opening it opens that result.
-  function findingTag(f) { var t = ((results && results.veil && results.veil.findings) || {})[f.id]; return t && t !== f.id ? t : null; }
+  function findingTag(f) {
+    var t = ((results && results.veil && results.veil.findings) || {})[f.id];
+    t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (x) { return x !== f.id; });
+    return t.length ? t : null;
+  }
   function veiled(f) {
     if (!closedPage()) { return false; }
     if (f.level === 'act') { return !shown[f.id]; }
     var t = findingTag(f);
     return !!(t && tagClosed(t));
   }
-  // A finding of a fixed-panel card (tag PANEL) stays closed while any result to act on is: opening it opens the next
-  // closed result in the page's order, as its card's box does.
+  // Opening a finding opens every result its tag names. One tagged PANEL (a fixed-panel card's own) stays closed while
+  // any result to act on is: opening it opens the next closed result in the page's order too, as its card's box does.
   function openFinding(f) {
-    var t = findingTag(f), n = t === PANEL ? nextClosed() : null;
-    keepHash(function () { shown[f.id] = true; if (n) { shown[n.id] = true; } else if (t && t !== PANEL) { shown[t] = true; } });
+    var t = findingTag(f) || [];
+    keepHash(function () {
+      shown[f.id] = true;
+      t.forEach(function (x) { if (x !== PANEL) { shown[x] = true; } });
+      var n = t.indexOf(PANEL) >= 0 ? nextClosed() : null;
+      if (n) { shown[n.id] = true; }
+    });
   }
   // The address never holds the id of a finding this page can close, closed or opened: #f/closed-<n> while it is
   // closed (its handle) and #f/opened-<n> once opened on purpose (its place among the opened ones), so no history
@@ -638,7 +651,7 @@
     if (on) { if (f) { openFinding(f); } else { shown[id] = true; } } else {
       keepHash(function () {
         delete shown[id];
-        ((results && results.findings) || []).forEach(function (x) { if (findingTag(x) === id) { delete shown[x.id]; } });
+        ((results && results.findings) || []).forEach(function (x) { if ((findingTag(x) || []).indexOf(id) >= 0) { delete shown[x.id]; } });
       });
     }
     redraw(true);
@@ -846,7 +859,7 @@
     var g = gate(c);
     return g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
       : g === 'show' && panelShut(c) ? PANEL_LINE
-      : g === 'show' ? (c.headline || (openFacts(c)[0][0] ? openFacts(c)[0][0][0] + ': ' + openFacts(c)[0][0][1] : NOT_ALL_CLEAR))
+      : g === 'show' ? ((!headlineShut(c) && c.headline) || (openFacts(c)[0][0] ? openFacts(c)[0][0][0] + ': ' + openFacts(c)[0][0][1] : NOT_ALL_CLEAR))
       : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
   }
   // A card the report flags that has no finding of its own: on a phone it is the only place that flag

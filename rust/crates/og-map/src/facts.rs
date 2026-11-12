@@ -70,9 +70,10 @@ pub struct Finding {
     /// The evidence row `Genotype`, when there is one.
     pub genotype: Option<String>,
     pub steps: Vec<String>,
-    /// `results.veil.findings` ties it to a closable result (any tag but
-    /// the fixed-panel one, `*panel*`, which is the same whatever is closed):
-    /// it closes with that result, so no count of open findings takes it.
+    /// `results.veil.findings` ties it to a closable result (a tag, the list
+    /// of the ids it names, holding any id but the fixed-panel one,
+    /// `*panel*`, which is the same whatever is closed): it closes with that
+    /// result, so no count of open findings takes it.
     pub veiled: bool,
 }
 
@@ -239,7 +240,13 @@ pub fn parse(bytes: &[u8]) -> Result<Facts, String> {
                 && let Some(Value::Object(tags)) = v.get("findings")
             {
                 for f in &mut out {
-                    f.veiled = matches!(tags.get(&f.id), Some(Value::Str(t)) if t != PANEL_TAG);
+                    f.veiled = match tags.get(&f.id) {
+                        Some(Value::Str(t)) => t != PANEL_TAG,
+                        Some(Value::Array(ts)) => ts
+                            .iter()
+                            .any(|t| matches!(t, Value::Str(t) if t != PANEL_TAG)),
+                        _ => false,
+                    };
                 }
             }
             let has_apoe = out
@@ -349,5 +356,21 @@ mod tests {
             (f[0].veiled, f[1].veiled, f[2].veiled),
             (false, true, false)
         );
+        // A tag is the list of the ids it names: veiled while it holds any id
+        // but the fixed-panel one.
+        for (tag, want) in [
+            (r#"["sf-x","sf-y"]"#, true),
+            (r#"["*panel*","sf-y"]"#, true),
+            (r#"["*panel*"]"#, false),
+            ("[]", false),
+        ] {
+            let Findings::Read(f) = p(&body.replace(
+                r#""chapters""#,
+                &format!(r#""veil":{{"findings":{{"q":{tag}}}}},"chapters""#),
+            )) else {
+                panic!("not read")
+            };
+            assert_eq!(f[1].veiled, want, "{tag}");
+        }
     }
 }

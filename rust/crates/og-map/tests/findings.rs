@@ -124,6 +124,9 @@ fn findings_land_on_their_place_and_the_rest_are_counted() {
     // APOE is gated, so it comes first in dict.veil. The open ClinVar row
     // at the act finding's base carries that finding's tag.
     assert_eq!(get(f, &["veil"]), &js("[3,1,1,2,-1,0,-1]"));
+    // `veils` holds every closable finding a row overlaps (one each here;
+    // src/veil.rs tests a row over several), its first being `veil`.
+    assert_eq!(get(f, &["veils"]), &js("[[3],[1],[1],[2],[],[0],[]]"));
     assert_eq!(
         get(f, &["href"]),
         &js(

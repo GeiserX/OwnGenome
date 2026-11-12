@@ -652,7 +652,7 @@ def table_controls():
     names = ("FIXED_PANELS", "FIXED_LINES", "NAMES_NO_GENE", "LINES_NO_GENE", "FACTS_NO_GENE", "FACT_NAMES",
              "HEADLINES_NO_GENE")
     keep = {n: getattr(live_results, n) for n in names}
-    first_id = live_results.veil_id
+    first_prose = live_results.prose_tag
     try:
         for c in WANT_PANELS:
             live_results.FIXED_PANELS = {k: v for k, v in keep["FIXED_PANELS"].items() if k != c}
@@ -674,13 +674,14 @@ def table_controls():
         live_results.LINES_NO_GENE = dict(keep["LINES_NO_GENE"], cpsr="its lines")
         control("LINES_NO_GENE with the CPSR card, whose lines name genes", not table_problems())
         live_results.LINES_NO_GENE = keep["LINES_NO_GENE"]
-        live_results.veil_id = lambda spans, text="", *a, genes=None, **k: live_results.veil_tags(
+        live_results.prose_tag = lambda spans, text: live_results.veil_tags(
             spans, re.findall(r"[A-Za-z0-9][A-Za-z0-9-]*", str(text).upper()), text)
         control("a veil that reads prose word by word, the word rule", not table_problems())
+        control("a veil that reads prose word by word, the two-hit line's AR", not widget_problems())
     finally:
         for n in names:
             setattr(live_results, n, keep[n])
-        live_results.veil_id = first_id
+        live_results.prose_tag = first_prose
 
 
 # Every adapter is a fixed panel (live_results.FIXED_PANELS) or listed here as one whose rows say something about this

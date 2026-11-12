@@ -80,20 +80,24 @@
     var child = unknown || (!!known && !me) || !!(me && (me.father || me.mother));
     // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene:
     // results.veil.findings, bin/live_results.py veil()) stays closed with it, as on the person page.
+    // A tag is the list of every result it names: the finding stays closed while any of them is.
     var tags = (r.veil && r.veil.findings) || {};
-    function tagOf(x) { var t = tags[x.id]; return t && t !== x.id ? t : null; }
-    // Opening this finding opens it and the result it names, nothing else: another result keeps its own veil.
+    function tagOf(x) {
+      var t = tags[x.id];
+      t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (y) { return y !== x.id; });
+      return t.length ? t : null;
+    }
+    // Opening this finding opens it and the results it names, nothing else: another result keeps its own veil.
     // A finding of a fixed-panel card (tag PANEL, bin/live_results.py FIXED_PANELS) names no result: it stays closed
     // while any result to act on is, whichever, as on the person page.
     var PANEL = '*panel*';
     var opened = {};
-    if (draw.open) { opened[f.id] = true; if (tagOf(f) && tagOf(f) !== PANEL) { opened[tagOf(f)] = true; } }
+    if (draw.open) { opened[f.id] = true; (tagOf(f) || []).forEach(function (t) { if (t !== PANEL) { opened[t] = true; } }); }
     function actShut() { return (r.findings || []).some(function (x) { return x.level === 'act' && !opened[x.id]; }); }
     function shut(x) {
       if (!child) { return false; }
       if (x.level === 'act') { return !opened[x.id]; }
-      var t = tagOf(x);
-      return t === PANEL ? !opened[x.id] && actShut() : !!t && !opened[t];
+      return (tagOf(x) || []).some(function (t) { return t === PANEL ? !opened[x.id] && actShut() : !opened[t]; });
     }
     // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
     var closed = shut(f);

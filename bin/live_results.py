@@ -1356,12 +1356,19 @@ def veil_tags(spans, genes=(), where="", chrom=None, pos=None, end=None):
     return out or None
 
 
+def prose_tag(spans, text):
+    """The tag of prose (TEXT: a line, a fact, a headline, a search hit's quote) that is on no list of prose naming no
+    gene: nothing proves it names no closed result, so PANEL while there is one to close, whatever its words. Its
+    words are never read: a code the report prints (AR, INS, TG) is a gene symbol too."""
+    return [PANEL] if spans and str(text or "").strip() else None
+
+
 def veil_id(spans, text="", chrom=None, pos=None, end=None, genes=None):
     """veil_tags() for a caller that has the genes a place names (GENES, from its own gene field; TEXT then gives its
-    loci). A place given as TEXT alone is prose: nothing proves it names no closed result, so it is tagged PANEL while
-    there is one to close (bin/results_index.py, whose search hits quote the summary's rows)."""
+    loci). A place given as TEXT alone is prose (prose_tag(); bin/results_index.py, whose search hits quote the
+    summary's rows)."""
     if genes is None:
-        return [PANEL] if spans else None
+        return prose_tag(spans, text)
     return veil_tags(spans, genes, text, chrom, pos, end)
 
 
@@ -1518,7 +1525,7 @@ def veil(summary, found, chapters, lead_parts=(), lead_names=()):
                 elif c["id"] in LINES_NO_GENE:
                     tags.append(veil_tags(spans, (), ln))
                 else:
-                    tags.append([PANEL])
+                    tags.append(prose_tag(spans, ln))
             if any(tags):
                 out["lines"][c["id"]] = tags
             tags = []
@@ -1528,13 +1535,13 @@ def veil(summary, found, chapters, lead_parts=(), lead_names=()):
                 if rule == "two_hits":
                     tags.append(veil_tags(spans, two_genes))
                 elif rule is None or c["id"] not in FACTS_NO_GENE:
-                    tags.append([PANEL])
+                    tags.append(prose_tag(spans, " ".join(map(str, f)) if isinstance(f, (list, tuple)) else f))
                 else:
                     tags.append(None)
             if any(tags):
                 out["facts"][c["id"]] = tags
             if c.get("headline") and not headline_free(c):
-                out["headline"][c["id"]] = [PANEL]
+                out["headline"][c["id"]] = prose_tag(spans, c["headline"])
             # A drawing's items: the CHIP calls (gene) and the copy-number dots (gene), by their gene field. The CHIP
             # chart's list of genes with their detection limits is the same panel for everyone: never tagged.
             w = c.get("widget") or {}
@@ -1564,7 +1571,7 @@ def veil(summary, found, chapters, lead_parts=(), lead_names=()):
             t = [PANEL]
         else:
             got = finding_names(f)
-            t = veil_tags(spans, got[0], got[1]) if got else prose_finding(f, cards.get(f.get("card")) or {})
+            t = veil_tags(spans, got[0], got[1]) if got else prose_finding(spans, f, cards.get(f.get("card")) or {})
         if t:
             out["findings"][f["id"]] = t
     # A lead segment is tagged by the findings it prints (lead()): every closed result one of them names. The
@@ -1577,7 +1584,7 @@ def veil(summary, found, chapters, lead_parts=(), lead_names=()):
     return {k: v for k, v in out.items() if v}
 
 
-def prose_finding(f, card):
+def prose_finding(spans, f, card):
     """The tag of finding F, which has no gene and no place: None when its words are known to name no gene (a
     data-quality finding of its own sentences and a sample's name, a row that could not be read, or a card's
     headline finding whose headline and facts name none), else PANEL."""
@@ -1587,7 +1594,7 @@ def prose_finding(f, card):
     if f.get("id") == slug("card", cid) and cid in FACTS_NO_GENE and headline_free(card) \
             and not any((cid, a) in FACT_NAMES for a, _b in card.get("facts") or []):
         return None
-    return [PANEL]
+    return prose_tag(spans, f"{f.get('title') or ''} {f.get('text') or ''}")
 
 
 def build(sample, summary, files=()):

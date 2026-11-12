@@ -657,9 +657,8 @@ HANDLE_JS = r"""fetch('results.json', {cache: 'no-store'}).then(function (r) { r
   function shut(f) {
     if (f.level === 'act') { return !open(f.id); }
     var t = tags[f.id];
-    if (!t || t === f.id) { return false; }
-    if (t === '*panel*') { return anyShut; }
-    return !byId[t] || !open(t);
+    t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (x) { return x !== f.id; });
+    return t.some(function (x) { return x === '*panel*' ? anyShut : !byId[x] || !open(x); });
   }
   var order = [];
   (r.journal || []).forEach(function (s) { (s.findings || []).forEach(function (id) {
@@ -713,9 +712,10 @@ def planted_problems(b, base, out_dir):
     if not ranked:
         out.append(f"opening the secondary finding did not bring back the symptom ranking of {gene}")
     out += [f"{w} shown after opening only the secondary finding" for w in sv if w in shown]
+    # A search hit quotes the summary's rows (prose): it stays closed while any result is, the same whichever.
     hits, _ = son_search(b, gene)
-    if hits in (None, "0"):
-        out.append(f"the search for {gene} finds nothing once its result is opened")
+    if hits not in ("0", None):
+        out.append(f"the search for {gene} finds {hits} hits while the deletion is still closed")
     if not open_closed(b, del_):
         return out + [f"a link to {del_} lands on no closed card"]
     time.sleep(0.8)
@@ -723,6 +723,9 @@ def planted_problems(b, base, out_dir):
     spans = b.eval("document.querySelectorAll('figure[data-chart=genome] a[data-mark^=sv-]').length")
     if sv[0] not in shown or spans != 2:
         out.append(f"opening the deletion did not bring back its span on the genome chart: {spans} spans")
+    hits, _ = son_search(b, gene)
+    if hits in (None, "0"):
+        out.append(f"the search for {gene} finds nothing once every result is opened")
     out += [f"after a reload: {x}" for x in planted_closed(b, base)]
     return out
 
@@ -806,7 +809,7 @@ def planted_checks(b, base, out):
         check("browser: the home page and every finding page of the son name the planted gene and positions nowhere "
               "(the rail's next link and the related list included) until opened, and the symptom ranking's page "
               "opened on purpose shows it", not bad, bad)
-        a = "return t === PANEL ? !opened[x.id] && actShut() : !!t && !opened[t];"
+        a = "return (tagOf(x) || []).some(function (t) { return t === PANEL ? !opened[x.id] && actShut() : !opened[t]; });"
         if a not in keep[fj]:
             check("control: finding.js whose findings ignore their tags (the planted line is in finding.js)", False, a)
         else:
@@ -1771,6 +1774,120 @@ def home_problems(b, base, out, cases=HOME):
     return bad
 
 
+def two_hits(change):
+    """CHANGE, plus a two-hit gene in CFTR on the carrier list (a result to act on, two-hits-cftr), whose line prints
+    the inheritance code AR."""
+    def go(S):
+        change(S)
+        th = S["carrier"]["data"].setdefault("two_hits", {"deletions_read": [], "deletions_not_read": []})
+        th["genes"] = [{"gene": "CFTR", "verdict": "possible", "condition": "Cystic fibrosis",
+                        "deletion": "DEL chr7:117480025-117580025", "variant": "c.1521_1523del", "genotype": "het",
+                        "why": "a deletion and a variant on the other copy"}]
+    return go
+
+
+def cpsrs(*genes):
+    """A closed CPSR result in each of GENES, the same variant in each."""
+    def change(S):
+        S["cpsr"] = {"state": "ok", "data": {"call_floor_dp": 10, "low_confidence": 0, "plp": [
+            {"gene": g, "variant": "c.68_69del", "final": "Pathogenic", "clinvar": "Pathogenic"} for g in genes]}}
+    return change
+
+
+def dup_over(change, locus, genes):
+    """CHANGE, plus a class 4 duplication over GENES (a finding worth a look, with a place on the map)."""
+    def go(S):
+        change(S)
+        S["annotsv"]["data"]["rows"] = S["annotsv"]["data"]["rows"] + [
+            {"sv": locus, "type": "DUP", "gt": "0/1", "length": 300000, "acmg_class": "4", "genes": genes,
+             "caller": "Manta", "support": 1, "support_callers": ["Manta"]}]
+    return go
+
+
+def cid(gene):
+    """The id of cpsr(GENE)'s result."""
+    return f"cpsr-{gene.lower()}-c-68-69del"
+
+
+# Pairs of the son's pages that differ only in which result is closed, compared after the same click: the result
+# each side opens through its handle (its place among the closed cards, as a reader who never saw its id opens it).
+# A place tied to a closed result must open with the results it names and with nothing else, so the page after a
+# click is again a function of the open results and the count of closed ones. The two-hit line prints the
+# inheritance code AR: a closed result in AR (a CPSR result, or a deletion over AR) must not hold it closed.
+CLICKS = (("a two-hit result in CFTR opened, the other closed result in AR against BRCA2", two_hits(cpsr("AR")),
+           two_hits(cpsr("BRCA2")), ("two-hits-cftr", "two-hits-cftr")),
+          ("a two-hit result in CFTR opened, a closed deletion over AR and OPHN1 against one over BRCA1 and NBR2",
+           two_hits(sv_over("chrX:67500000-67700000", ["AR", "OPHN1"], False)),
+           two_hits(sv_over("chr17:43044295-43144295", ["BRCA1", "NBR2"], False)), ("two-hits-cftr", "two-hits-cftr")))
+
+
+def opened_page(b, base, fid):
+    """The son's page after FID is opened through its handle: (lines of its HTML, its address, its canvas hash)."""
+    page_now(b, base)
+    if not open_closed(b, fid):
+        return None
+    time.sleep(0.8)
+    got = json.loads(b.eval(PAGE_JS) or "{}")
+    return (got.get("html") or "").replace("><", ">\n<").split("\n"), got.get("href") or "", \
+        hashlib.sha256((got.get("canvas") or "").encode()).hexdigest()[:12]
+
+
+def click_problems(b, base, out, og, cases=CLICKS):
+    """[problems]: for each pair of CASES, the son's page after each side opens its result differs (its HTML, an
+    attribute, the address or the map's canvas), with the number of differing lines and the first ones."""
+    bad = []
+    for what, one, two, fids in cases:
+        got = []
+        for change, fid in zip((one, two), fids):
+            keep = plant_summary(out, og, change)
+            try:
+                got.append(opened_page(b, base, fid))
+            finally:
+                unplant(keep)
+        if None in got:
+            bad.append(f"{what}: a side has no closed card for {fids}")
+            continue
+        (h1, a1, c1), (h2, a2, c2) = got
+        diff = [x for x in difflib.unified_diff(h1, h2, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("+++", "---")]
+        if diff or a1 != a2 or c1 != c2:
+            bad.append(f"{what}: {len(diff)} lines differ, address {a1 == a2}, canvas {c1 == c2}: {diff[:6]}")
+    return bad
+
+
+# Two closed results, one opened (each in turn): the other's gene must be on the page no more often than before the
+# click (the search box's example names BRCA2 on every page). A place that names both (the lead's segment of the
+# findings worth a look, which prints the ClinVar findings in DEMOC and DEMOA; a duplication over BRCA1 and BRCA2)
+# stays closed while either is.
+TWO_CLOSED = (("two CPSR results named in one segment of the lead, DEMOC opened", cpsrs("DEMOC", "DEMOA"), cid("DEMOC"),
+               "DEMOA"),
+              ("the same, DEMOA opened", cpsrs("DEMOC", "DEMOA"), cid("DEMOA"), "DEMOC"),
+              ("a class 4 duplication over BRCA1 and BRCA2, both closed, BRCA1 opened",
+               dup_over(cpsrs("BRCA1", "BRCA2"), "chr5:1000000-1300000", ["BRCA1", "BRCA2"]), cid("BRCA1"), "BRCA2"),
+              ("the same, BRCA2 opened", dup_over(cpsrs("BRCA1", "BRCA2"), "chr5:1000000-1300000", ["BRCA1", "BRCA2"]),
+               cid("BRCA2"), "BRCA1"))
+
+
+def two_closed_problems(b, base, out, og, cases=TWO_CLOSED):
+    """[problems]: for each of CASES, the still closed result's gene is on the page more often after the click."""
+    bad = []
+    for what, change, fid, still in cases:
+        keep = plant_summary(out, og, change)
+        try:
+            before = "\n".join(page_now(b, base)[0]).count(still)
+            after = opened_page(b, base, fid)
+        finally:
+            unplant(keep)
+        if after is None:
+            bad.append(f"{what}: no closed card for {fid}")
+            continue
+        html = "\n".join(after[0])
+        if html.count(still) > before:
+            at = html.find(still, 0)
+            bad.append(f"{what}: {still} {before} times before, {html.count(still)} after: "
+                       f"...{html[max(0, at - 160):at + 40]}...")
+    return bad
+
+
 def infer_checks(b, base, out):
     """The son's page is a function of his open results and the count of his closed ones: two pages that differ only
     in which result is closed are the same before any click (INFER), and a closed deletion's second gene is named
@@ -1784,6 +1901,12 @@ def infer_checks(b, base, out):
     bad = infer_problems(b, base, out, og)
     check("browser: two pages of the son that differ only in which result is closed are the same before any click, "
           "HTML, attributes, address and map canvas (" + "; ".join(x[0] for x in INFER) + ")", not bad, bad)
+    bad = click_problems(b, base, out, og)
+    check("browser: two pages of the son that differ only in which result is closed are the same after the same "
+          "result is opened through its handle (" + "; ".join(x[0] for x in CLICKS) + ")", not bad, bad)
+    bad = two_closed_problems(b, base, out, og)
+    check("browser: a place that names two closed results stays closed while either is: opening one never shows the "
+          "other's gene (" + "; ".join(x[0] for x in TWO_CLOSED) + ")", not bad, bad)
     bad = deep_link_problems(b, base)
     check("browser: #f/closed-1 and a guessed #f/<id> scroll to the first closed result, in view, its section marked in "
           "the contents", not bad, bad)
@@ -1819,13 +1942,25 @@ def infer_checks(b, base, out):
                 not infer_problems(b, base, out, og, [x for x in INFER if "(NAT2)" in x[0]]))
     finally:
         live_results.panel_finding = first
-    fixed = live_results.FIXED_LINES
-    try:
-        live_results.FIXED_LINES = {k: v for k, v in fixed.items() if k != "carrier-list"}
-        control("a veil that tags the carrier list's two-hit line by its genes",
+    prose, two_names = live_results.prose_tag, live_results.two_hit_names
+    try:  # the word rule back: prose tagged by its words read as gene symbols
+        live_results.prose_tag = lambda spans, text: live_results.veil_tags(
+            spans, re.findall(r"[A-Za-z0-9][A-Za-z0-9-]*", str(text).upper()), text)
+        control("a veil that tags the carrier list's two-hit callers line by its words",
                 not infer_problems(b, base, out, og, [x for x in INFER if "two-hit" in x[0]]))
+        live_results.two_hit_names = lambda S: {}
+        control("a veil that tags the two-hit gene lines by their words (AR)", not click_problems(b, base, out, og, CLICKS[:1]))
     finally:
-        live_results.FIXED_LINES = fixed
+        live_results.prose_tag = prose
+        live_results.two_hit_names = two_names
+    tags_, union_ = live_results.veil_tags, live_results.union
+    try:  # one id per place, as before: the first closed result a place names
+        live_results.veil_tags = lambda *a, **k: (tags_(*a, **k) or [None])[:1] if tags_(*a, **k) else None
+        live_results.union = lambda *t: next((x[:1] for x in t if x), None)
+        control("a veil that keeps one id per place (the lead's segment)", not two_closed_problems(b, base, out, og, TWO_CLOSED[:1]))
+        control("a veil that keeps one id per place (the duplication)", not two_closed_problems(b, base, out, og, TWO_CLOSED[2:3]))
+    finally:
+        live_results.veil_tags, live_results.union = tags_, union_
     js = os.path.join(out, "assets", "person.js")
     with open(js) as fh:
         keep_js = fh.read()
@@ -1855,6 +1990,9 @@ def infer_checks(b, base, out):
         for desc, a, z, still in (
                 ("person.js whose fixed-panel card says 'This section holds a result' first", "} else if (panelShut(c)) {",
                  "} else if (panelShut(c) && !closedFs.length) {", lambda: not panel_words_problems(b, base, out, og)),
+                ("person.js that reads only the first id of a tag", "if (Array.isArray(id)) { return id.some(tagClosed); }",
+                 "if (Array.isArray(id)) { return tagClosed(id[0]); }",
+                 lambda: not two_closed_problems(b, base, out, og, TWO_CLOSED[2:3])),
                 ("person.js that writes an opened result's id into the address",
                  "function addr(f) { return !closable(f) ? f.id : veiled(f) ? handle(f) : 'opened-' + (openedOrder().indexOf(f.id) + 1); }",
                  "function addr(f) { return veiled(f) ? handle(f) : f.id; }", lambda: not address_problems(b, base, out))):
@@ -3063,7 +3201,7 @@ def named_problems(b, base, out, og):
     try:
         with open(os.path.join(out, "runs", son, "results.json")) as fh:
             tags = (json.load(fh).get("veil") or {}).get("findings") or {}
-        if tags.get("pl-q") != "pl-x" or tags.get("pl-r") != "pl-x" or row_tag(out, "pl-r"):
+        if tags.get("pl-q") != ["pl-x"] or tags.get("pl-r") != ["pl-x"] or row_tag(out, "pl-r"):
             return [f"the server's tags {tags}, og's tag on pl-r {row_tag(out, 'pl-r')}: the planting tests nothing"]
         path = os.path.join(out, "runs", son, "map.json")
         doc = read_map(path)
@@ -3077,6 +3215,7 @@ def named_problems(b, base, out, og):
         for k, v in GHOST.items():
             f[k][-1] = v
         f["veil"][-1] = doc["dict"]["veil"].index("pl-x")
+        f["veils"][-1] = [f["veil"][-1]]
         write_map(path, doc)
         c, fig = son_figure(b, base)
         bad = []
