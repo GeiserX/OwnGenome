@@ -1536,16 +1536,39 @@ def with_sites(gene):
     return change
 
 
-def sv_over(locus, genes):
-    """A class 5 deletion over GENES, and a carrier row that names only its second gene."""
+def sv_over(locus, genes, carrier=True):
+    """A class 5 deletion over GENES, and (CARRIER) a carrier row that names only its second gene."""
     def change(S):
         rows = S["annotsv"]["data"]["rows"]
         S["annotsv"]["data"]["rows"] = rows + [{"sv": locus, "type": "DEL", "gt": "0/1", "length": "-100000",
                                                  "acmg_class": "5", "genes": genes, "caller": "Manta", "support": 1,
                                                  "support_callers": ["Manta"]}]
+        if not carrier:
+            return
         S["carrier"]["data"]["carriers"] = [{"gene": genes[1], "variant": "c.100C>T", "genotype": "het",
                                              "significance": "Pathogenic", "stars": 2, "inheritance": "AR"}]
     return change
+
+
+def recessive(change):
+    """CHANGE, plus two recessive carrier rows (CFTR and HBB, inheritance AR) on the carrier card."""
+    def go(S):
+        change(S)
+        S["carrier"]["data"]["carriers"] = S["carrier"]["data"]["carriers"] + [
+            {"gene": g, "variant": v, "genotype": "het", "significance": "Pathogenic", "stars": 2, "inheritance": "AR",
+             "condition": c} for g, v, c in (("CFTR", "c.1521_1523del", "Cystic fibrosis"),
+                                             ("HBB", "c.20A>T", "Sickle cell disease"))]
+    return go
+
+
+def insertion(change):
+    """CHANGE, plus a class 4 insertion (type INS) over NKD2: a review finding with a place on the map."""
+    def go(S):
+        change(S)
+        S["annotsv"]["data"]["rows"] = S["annotsv"]["data"]["rows"] + [
+            {"sv": "chr5:1000000-1000300", "type": "INS", "gt": "0/1", "length": 300, "acmg_class": "4",
+             "genes": ["NKD2"], "caller": "Manta", "support": 1, "support_callers": ["Manta"]}]
+    return go
 
 
 def second_hit(S):
@@ -1559,7 +1582,8 @@ def second_hit(S):
 # a gene that a fixed-panel card's own finding names (the medicine card's CYP2D6 and NAT2) against one no card names,
 # a gene of the carrier list's two-hit line (SMN1) against one it does not name, a gene of the callability card's
 # list of genes not on this reference (GSTT1) or of hard genes not covered (NBPF1) against one not on it, a gene
-# spelled like a word or unit the report prints (HR, MB) against one that is not, and one guessed address on two
+# spelled like a word or unit the report prints (HR, MB) or like a code it prints (AR as an inheritance, INS as a
+# structural-variant type, TG in a score's name) against one that is not, and one guessed address on two
 # pages where it is a closed result's id on one side only, loaded with the page and typed after it.
 GUESS = "#f/cpsr-brca1-c-68-69del"
 INFER = (("two SNV results in different genes (BRCA1, BRCA2)", cpsr("BRCA1"), cpsr("BRCA2")),
@@ -1582,6 +1606,17 @@ INFER = (("two SNV results in different genes (BRCA1, BRCA2)", cpsr("BRCA1"), cp
          ("a gene spelled like a word of the report (HR) against one that is not (BRCA2)", cpsr("HR"),
           cpsr("BRCA2")),
          ("a gene spelled like a unit of the report (MB) against one that is not (BRCA2)", cpsr("MB"), cpsr("BRCA2")),
+         ("an inheritance code (AR) against a gene (BRCA2), with recessive carrier rows", recessive(cpsr("AR")),
+          recessive(cpsr("BRCA2"))),
+         ("a deletion over AR and OPHN1 against one over BRCA1 and NBR2, with recessive carrier rows",
+          recessive(sv_over("chrX:67500000-67700000", ["AR", "OPHN1"], False)),
+          recessive(sv_over("chr17:43044295-43144295", ["BRCA1", "NBR2"], False))),
+         ("a deletion over AR and OPHN1 against one over BRCA1 and NBR2, each with a carrier row in its second gene "
+          "(OPHN1 has no place on the map, NBR2 has one)", recessive(sv_over("chrX:67500000-67700000", ["AR", "OPHN1"])),
+          recessive(sv_over("chr17:43044295-43144295", ["BRCA1", "NBR2"]))),
+         ("a structural-variant type (INS) against a gene (BRCA2), with an insertion over NKD2", insertion(cpsr("INS")),
+          insertion(cpsr("BRCA2"))),
+         ("a trait's abbreviation in a score's name (TG) against a gene (BRCA2)", cpsr("TG"), cpsr("BRCA2")),
          ("one guessed address, a closed result's id on one page only (BRCA1 against BRCA2 closed)", cpsr("BRCA1"),
           cpsr("BRCA2"), (GUESS, GUESS)),
          ("the same guessed address typed after the page drew (BRCA1 against BRCA2 closed)", cpsr("BRCA1"),
@@ -1604,6 +1639,26 @@ def infer_problems(b, base, out, og, cases=INFER):
         diff = [x for x in difflib.unified_diff(h1, h2, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("+++", "---")]
         if diff or a1 != a2 or c1 != c2:
             bad.append(f"{what}: {len(diff)} lines differ, address {a1 == a2}, canvas {c1 == c2}: {diff[:6]}")
+    return bad
+
+
+DEEP_JS = """(function () {
+  var el = document.getElementById('f-closed-1'), r = el && el.getBoundingClientRect();
+  var sec = el && el.closest('section.sec'), a = sec && document.querySelector('[data-toc="' + sec.id.slice(1) + '"]');
+  return JSON.stringify({ found: !!el, y: Math.round(window.scrollY), inview: !!r && r.bottom > 0 && r.top < innerHeight,
+    current: a ? a.getAttribute('aria-current') : null });
+}())"""
+
+
+def deep_link_problems(b, base):
+    """[problems]: on the son's page, #f/closed-1 and a guessed #f/<id> each scroll to the first closed result's card,
+    put it in view and mark its section in the contents."""
+    bad = []
+    for h in ("#f/closed-1", GUESS):
+        page_now(b, base, h)
+        got = json.loads(b.eval(DEEP_JS) or "{}")
+        if not (got.get("found") and got.get("y", 0) > 0 and got.get("inview") and got.get("current") == "true"):
+            bad.append(f"{h}: {got}")
     return bad
 
 
@@ -1729,6 +1784,9 @@ def infer_checks(b, base, out):
     bad = infer_problems(b, base, out, og)
     check("browser: two pages of the son that differ only in which result is closed are the same before any click, "
           "HTML, attributes, address and map canvas (" + "; ".join(x[0] for x in INFER) + ")", not bad, bad)
+    bad = deep_link_problems(b, base)
+    check("browser: #f/closed-1 and a guessed #f/<id> scroll to the first closed result, in view, its section marked in "
+          "the contents", not bad, bad)
     bad = sv_gene_problems(b, base, out, og)
     check("browser: a closed deletion over two genes closes the rows that name only its second gene", not bad, bad)
     bad = panel_words_problems(b, base, out, og)
@@ -1815,6 +1873,48 @@ def infer_checks(b, base, out):
         control("a veil that tags only a deletion's first gene", not sv_gene_problems(b, base, out, og))
     finally:
         live_results.closable = first
+    cols, names, marks = live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names
+    try:
+        live_results.TABLE_COLUMNS = dict(cols, Inheritance=True)
+        control("a veil that reads a table's Inheritance column as naming a gene",
+                not infer_problems(b, base, out, og, [x for x in INFER if x[0].startswith("an inheritance code")]))
+        live_results.TABLE_COLUMNS = cols
+        live_results.finding_names = lambda f: (None, f"{f.get('gene') or ''} {f.get('detail') or ''} "
+                                                      f"{f.get('title') or ''}")
+        control("a veil that reads a finding's title word by word",
+                not infer_problems(b, base, out, og, [x for x in INFER if "(INS)" in x[0]]))
+        live_results.finding_names = names
+        live_results.mark_names = lambda S, sp, m: (None, f"{m.get('label') or ''} {m.get('detail') or ''}")
+        control("a veil that reads a chart mark's label word by word",
+                not infer_problems(b, base, out, og, [x for x in INFER if "(TG)" in x[0]]))
+    finally:
+        live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names = cols, names, marks
+    og_map = build_live_demo.og_map
+
+    def blind(og_, args, body):
+        """og map without results.veil.findings: it no longer knows which open findings a closed result ties."""
+        d = json.loads(body)
+        (d["results"].get("veil") or {}).pop("findings", None)
+        return og_map(og_, args, json.dumps(d).encode())
+    try:
+        build_live_demo.og_map = blind
+        control("og map that counts a finding a closed result ties among the open findings with no place",
+                not infer_problems(b, base, out, og, [x for x in INFER if "(OPHN1 has no place" in x[0]]))
+    finally:
+        build_live_demo.og_map = og_map
+    with open(js) as fh:
+        keep_js = fh.read()
+    route = "{ var hf = hashFinding(); target = document.getElementById("
+    try:
+        if route not in keep_js:
+            check("control: person.js whose #f/closed-<n> lands nowhere (the planted line is in person.js)", False, route)
+        else:
+            with open(js, "w") as fh:
+                fh.write(keep_js.replace(route, "{ var hf = null; h = 'f/nowhere'; target = document.getElementById("))
+            control("person.js whose #f/closed-<n> lands nowhere", not deep_link_problems(b, base))
+    finally:
+        with open(js, "w") as fh:
+            fh.write(keep_js)
     print(f"   infer checks: {time.time() - t0:.0f} s")
 
 

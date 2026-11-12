@@ -586,6 +586,105 @@ def table_controls():
         live_results.gene_words = first_words
 
 
+# Every adapter is a fixed panel (live_results.FIXED_PANELS) or listed here as one whose rows say something about this
+# genome alone: a new or renamed adapter turns this file red until someone decides which it is.
+WANT_NOT_PANELS = ("qc", "callability", "variants", "clinvar", "clinical-filter", "cpsr", "slivar", "exomiser",
+                   "structural-variants", "mito", "mosaic", "mosaic-mca", "carrier-list", "couple", "pharmcat",
+                   "ancestry-fine", "mt-haplogroup", "y-chromosome", "archaic", "ancient", "roh", "prs", "telomere",
+                   "viral", "consumer-export")
+
+
+def table_columns():
+    """Every column of every table() call in bin/live_results.py, read from its source."""
+    import ast
+    with open(os.path.join(REPO, "bin", "live_results.py")) as fh:
+        tree = ast.parse(fh.read())
+    return {e.value for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "table"
+            and n.args and isinstance(n.args[0], ast.List) for e in n.args[0].elts if isinstance(e, ast.Constant)}
+
+
+def declared_problems(adapters=None):
+    """What the veil's tables leave undeclared: a table column not in TABLE_COLUMNS, a fixed-panel card that is no
+    adapter, an adapter in neither FIXED_PANELS nor WANT_NOT_PANELS."""
+    adapters = live_results.ADAPTERS if adapters is None else adapters
+    out = [f"column {c!r} is not in TABLE_COLUMNS" for c in sorted(table_columns() - set(live_results.TABLE_COLUMNS))]
+    out += [f"FIXED_PANELS card {c} is no adapter" for c in live_results.FIXED_PANELS if c not in adapters]
+    out += [f"adapter {c} is neither a fixed panel nor in WANT_NOT_PANELS" for c in adapters
+            if c not in live_results.FIXED_PANELS and c not in WANT_NOT_PANELS]
+    return out
+
+
+def vocabulary_summary(gene):
+    """A summary with two recessive carrier rows (inheritance AR), an insertion over NKD2 (type INS) and the score of
+    'Triglycerides (TG)', plus a closed CPSR result in GENE."""
+    car = [{"gene": g, "variant": v, "genotype": "het", "significance": "Pathogenic", "stars": 2, "inheritance": "AR",
+            "condition": c} for g, v, c in (("CFTR", "c.1521_1523del", "Cystic fibrosis"),
+                                            ("HBB", "c.20A>T", "Sickle cell disease"))]
+    return {"sections": {
+        "carrier": {"state": "ok", "data": {"genes_on_list": 2, "carriers": car}},
+        "annotsv": {"state": "ok", "data": {"count": 1, "rows": [
+            {"sv": "chr5:1000000-1000300", "type": "INS", "gt": "0/1", "length": 300, "acmg_class": "4", "caller": "Manta",
+             "genes": ["NKD2"], "support": 1, "support_callers": ["Manta"]}]}},
+        "exomiser": {"state": "ok", "data": {"terms": [], "genes": [
+            {"rank": 1, "gene": "GJB2", "moi": "AR", "exomiser_score": 0.9, "variants": [{"hgvs": "c.35del"}]}]}},
+        "roh": {"state": "ok", "data": {"autosomal_over_5mb": []}},
+        "prs": {"state": "ok", "data": {"adjusted": True, "scores": [
+            {"pgs_id": "PGS000066", "condition": "Triglycerides (TG)", "percentile": "63.3"}]}},
+        "cpsr": {"state": "ok", "data": {"plp": [{"gene": gene, "variant": "c.68_69del", "final": "Pathogenic"}]}}}}
+
+
+def vocabulary_problems():
+    """What is wrong with the veil's tags of the report's own vocabulary: a closed result in AR (an inheritance code),
+    INS (a structural-variant type) or TG (a trait's abbreviation in a score's name) tags nothing, while one in CFTR
+    tags the CFTR carrier row, one in GJB2 the symptom ranking's row and one in NKD2 the insertion's row, finding and
+    chart mark."""
+    marks = {(sp["id"], m["id"]) for sp in rr.chart_specs(vocabulary_summary("AR")) for m in sp["marks"]}
+    out = [f"chart mark {m} not drawn" for m in (("genome", "sv-0"), ("prs", "pgs-PGS000066")) if m not in marks]
+    for g in ("AR", "INS", "TG"):
+        res = live_results.build("T", vocabulary_summary(g))
+        v = {k: x for k, x in (res.get("veil") or {}).items() if k not in ("spans", "panels")}
+        v["findings"] = {k: t for k, t in (v.get("findings") or {}).items() if t != live_results.PANEL}
+        if any(v.values()):
+            out.append(f"a closed result in {g} tags {v}")
+    for g, where in (("CFTR", ("rows", "carrier-list")), ("GJB2", ("rows", "exomiser")),
+                     ("NKD2", ("rows", "structural-variants")), ("NKD2", ("marks", "genome"))):
+        v = live_results.build("T", vocabulary_summary(g)).get("veil") or {}
+        if not any((v.get(where[0]) or {}).get(where[1]) or []):
+            out.append(f"a closed result in {g} leaves {where} untagged: {v.get(where[0])}")
+    v = live_results.build("T", vocabulary_summary("NKD2")).get("veil") or {}
+    sv = [k for k in (v.get("findings") or {}) if k.startswith("sv-")]
+    if not sv:
+        out.append(f"a closed result in NKD2 leaves the insertion's finding untagged: {v.get('findings')}")
+    return out
+
+
+def vocabulary_controls():
+    """Each guard of vocabulary_problems() dropped in turn: the check must fail every time."""
+    cols, names, marks = live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names
+    try:
+        live_results.TABLE_COLUMNS = dict(cols, Inheritance=True)
+        control("TABLE_COLUMNS that reads the Inheritance column as naming a gene", not vocabulary_problems())
+        live_results.TABLE_COLUMNS = dict(cols, Type=True)
+        control("TABLE_COLUMNS that reads the SV Type column as naming a gene", not vocabulary_problems())
+        live_results.TABLE_COLUMNS = cols
+        live_results.finding_names = lambda f: (None, f"{f.get('gene') or ''} {f.get('detail') or ''} "
+                                                      f"{f.get('title') or ''}")
+        control("a veil that reads a finding's title word by word", not vocabulary_problems())
+        live_results.finding_names = names
+        live_results.mark_names = lambda S, sp, m: (None, f"{m.get('label') or ''} {m.get('detail') or ''}")
+        control("a veil that reads a chart mark's label word by word", not vocabulary_problems())
+    finally:
+        live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names = cols, names, marks
+    try:
+        live_results.TABLE_COLUMNS = {k: x for k, x in cols.items() if k != "Inheritance"}
+        control("TABLE_COLUMNS without the Inheritance column", not declared_problems())
+    finally:
+        live_results.TABLE_COLUMNS = cols
+    renamed = {("traits" if k == "traits-panel" else k): f for k, f in live_results.ADAPTERS.items()}
+    control("the traits-panel adapter renamed traits", not declared_problems(renamed))
+    control("a new adapter nobody classified", not declared_problems(dict(live_results.ADAPTERS, newcard=None)))
+
+
 def overview_problems():
     """What is wrong with the home page's view of a child's run (overview): a finding that names a closed result
     (a symptom ranking of its gene) is listed among the first findings, or the closed lead still names it."""
@@ -710,6 +809,13 @@ def main():
         check("8. every fixed-panel card, fixed line and gene-free card of the veil's tables closes as a panel or never, "
               "and only a gene symbol written as one names a gene", not bad, bad)
         table_controls()
+        bad = declared_problems()
+        check("8. every table column is declared as naming a gene or not (TABLE_COLUMNS), and every adapter as a fixed "
+              "panel or not", not bad, bad)
+        bad = vocabulary_problems()
+        check("8. the report's own codes (AR as an inheritance, INS as an SV type, TG in a score's name) tag nothing; a "
+              "row, finding or mark is tagged by its gene and place only", not bad, bad)
+        vocabulary_controls()
         bad = overview_problems()
         check("8. a child's home tile lists no finding that names a closed result, and its closed lead names none",
               not bad, bad)

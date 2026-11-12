@@ -1144,7 +1144,8 @@ def lead(found, levels, summary):
 # finding's own card with it, but other places can name the same gene or variant: any card's table and
 # lines, the charts' marks and their titles, another finding (a symptom ranking), the lead, the search index. Each such row carries the id of the
 # result it belongs to, so the page closes it with that result and opens it with it. The rule: a row
-# belongs to a closed result when it names the result's gene, or its position falls inside the result's
+# belongs to a closed result when it names the result's gene in a field that names a gene (TABLE_COLUMNS,
+# finding_names(), mark_names(); words only in prose that has no such field), or its position falls inside the result's
 # position or span; a row that is the result's own position or span belongs to that result first, else
 # the first such result in finding order. The veil lives in the browser: the files still hold every row.
 # The cards whose rows are a fixed panel: the same genes or loci for everyone, known before the run. A row or
@@ -1182,6 +1183,30 @@ PANEL = "*panel*"
 # score card names its scores and their traits (assets/pgs_scores.tsv) and its words "OR 1.57", "HR 1.4", "(TG)"
 # are odds and hazard ratios and a trait, though HR and TG are gene symbols too.
 NAMES_NO_GENE = {"prs": "the polygenic scores of assets/pgs_scores.tsv"}
+# Every column of every card's table (the adapters' table() calls), and whether it names a gene or a place (True)
+# or is the report's own vocabulary (False): an inheritance code (AR), a structural-variant type (INS), a genotype,
+# a class, a significance, a unit, a caller, a condition. veil() tags a table row by its gene and place cells only,
+# because any code a report prints in capitals may also be a gene symbol: a closed result in AR would else close
+# every recessive carrier row, and one in INS every insertion. A column missing here counts as naming a gene;
+# tests/test_live_results.py fails until every column of every table() call is listed.
+TABLE_COLUMNS = {
+    "Gene": True, "Genes": True, "Variant": True, "Where": True, "Locus": True, "Site": True, "Known site": True,
+    "Change": True, "Chromosome": True, "Start": True, "End": True,
+    "Status": False, "Bases read": False, "Why": False, "Genotype": False, "Significance": False, "Stars": False,
+    "Frequency": False, "Call": False, "Kind": False, "Rule": False, "Final class": False, "ClinVar": False,
+    "Rank": False, "Inheritance": False, "Score": False, "ACMG": False, "Disease": False, "Type": False,
+    "Length": False, "Class": False, "Support": False, "Checks": False, "Element": False, "Condition": False,
+    "Depth": False, "Repeats": False, "Stranger status": False, "Normal up to": False, "Pathologic from": False,
+    "95% interval": False, "Allele fraction": False, "VAF": False, "Alt reads": False, "Length (Mb)": False,
+    "Cell fraction": False, "Result": False, "Chance for a child": False, "This person": False, "Partner": False,
+    "Copies": False, "Detail": False, "Diplotype": False, "Phenotype (CPIC's words)": False, "Caller": False,
+    "CYP2D6": False, "Alleles (T1K quality)": False, "Panel haplotypes": False, "Quality": False, "Filter": False,
+    "Primary caller": False, "Level": False, "Group": False, "Share": False, "Bootstrap range": False,
+    "Branch": False, "Derived": False, "Ancestral": False, "No call": False, "Dates": False, "Country": False,
+    "Distance": False, "Trait": False, "Reading": False, "Percentile": False, "Variants matched": False,
+    "Effect": False, "System": False, "Predicted phenotype": False, "Confidence": False, "Virus": False,
+    "Reads": False, "Breadth": False, "Copies per cell": False, "Sizing": False, "Intermediate zone": False,
+}
 
 
 def panel_finding(f):
@@ -1254,9 +1279,10 @@ def closable_of(summary):
     return closable(finding_rows(summary or {}))
 
 
-def veil_id(spans, text="", chrom=None, pos=None, end=None):
+def veil_id(spans, text="", chrom=None, pos=None, end=None, genes=None):
     """The id of the closed result (spans: closable()) a row belongs to, or None. TEXT is what the row
-    shows (its gene names, its loci are read too); chrom, pos and end its own position when it has one."""
+    shows (its gene names, its loci are read too); chrom, pos and end its own position when it has one.
+    GENES, when given, are the genes the row names, from its own gene field: TEXT then gives its loci only."""
     if not spans:
         return None
     locs = []
@@ -1269,7 +1295,7 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
         except (TypeError, ValueError):
             pass
     locs += _loci(text)
-    words = gene_words(text)
+    words = gene_words(text) if genes is None else {str(g).upper() for g in genes if g}
     for fid, _gene, c, a, b in spans:
         if c and (c, a, b) in locs:
             return fid
@@ -1279,6 +1305,52 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
         if c and any(lc == c and ls <= b and le >= a for lc, ls, le in locs):
             return fid
     return None
+
+
+def row_naming_cells(columns, row):
+    """The cells of a table row under a column that names a gene or a place (TABLE_COLUMNS): the only cells veil()
+    reads a row's genes and loci from."""
+    if not isinstance(row, (list, tuple)):
+        return [row]
+    cols = list(columns or [])
+    return [x for i, x in enumerate(row) if i >= len(cols) or TABLE_COLUMNS.get(cols[i], True)]
+
+
+def finding_names(f):
+    """(genes, loci text) a finding is tagged by: a finding with a gene field is known by its gene, its genes (a
+    structural variant's every gene) and the loci of its viewer, detail and evidence, never by its title's words (an
+    SV type such as INS, a condition); one with no gene but a place (a mosaic call) by that place alone; genes None
+    for one with neither (a card's own headline, a data-quality finding): its title and detail are read word by
+    word, the only words it has."""
+    where = " ".join(str(x) for x in [f.get("viewer"), f.get("detail")] + [b for _a, b in f.get("evidence") or []]
+                     if x not in (None, ""))
+    genes = [g for g in list(f.get("genes") or []) + [f.get("gene")] if g]
+    if genes or _loci(where):
+        return genes, where
+    return None, f"{f.get('gene') or ''} {f.get('detail') or ''} {f.get('title') or ''} {f.get('viewer') or ''}"
+
+
+def mark_names(S, sp, m):
+    """(genes, loci text) of a chart mark, from the summary row it draws, never from its label: a ClinVar hit's gene
+    and position, a structural variant's genes, each star bar's hits (the ones its detail lists). A mark of a list
+    known before the run (a polygenic score, an ancestry group, a mitochondrial site) names no gene: its position
+    alone, if it has one."""
+    hits = _items(_data(S, "clinvar").get("hits"))
+    mid = str(m.get("id") or "")
+    try:
+        if m.get("kind") == "hit":
+            h = hits[int(mid.split("-", 1)[1])]
+            return [h.get("gene")], ""
+        if m.get("kind") == "sv":
+            r = _items(_data(S, "annotsv").get("rows"))[int(mid.split("-", 1)[1])]
+            return list(r.get("genes") or []), ""
+        if sp.get("id") == "clinvar-stars" and mid.startswith("stars-"):
+            k = mid.split("-", 1)[1]
+            idx = [h for h in hits if isinstance(h, dict) and str(h.get("stars")) == k and not h.get("low_confidence")][:10]
+            return [h.get("gene") for h in idx], " ".join(f"{h.get('chrom')}:{h.get('pos')}" for h in idx)
+    except (IndexError, ValueError, AttributeError, TypeError):
+        pass
+    return [], ""
 
 
 def veil(summary, found, chapters, lead_parts=()):
@@ -1312,8 +1384,9 @@ def veil(summary, found, chapters, lead_parts=()):
                 continue
             rows = (c.get("table") or {}).get("rows") or []
             if c["id"] != "clinvar" and rows:
+                cols = (c.get("table") or {}).get("columns")
                 tags = [PANEL if any(fixed_line(c["id"], x) for x in (r if isinstance(r, (list, tuple)) else [r]))
-                        else veil_id(spans, " ".join(str(x) for x in r) if isinstance(r, (list, tuple)) else str(r))
+                        else veil_id(spans, " ".join(str(x) for x in row_naming_cells(cols, r)))
                         for r in rows]
                 if any(tags):
                     out["rows"][c["id"]] = tags
@@ -1344,8 +1417,8 @@ def veil(summary, found, chapters, lead_parts=()):
         for m in sp.get("marks") or []:
             if m.get("kind") == "roh":  # a run of homozygosity is no result's source
                 continue
-            fid = veil_id(spans, f"{m.get('label') or ''} {m.get('detail') or ''}", m.get("chrom"), m.get("pos"),
-                          m.get("end"))
+            genes, where = mark_names(S, sp, m)
+            fid = veil_id(spans, where, m.get("chrom"), m.get("pos"), m.get("end"), genes=genes)
             if fid:
                 out["marks"].setdefault(sp["id"], {})[m["id"]] = fid
     # A finding of a fixed-panel card (a medicine gene, a CHIP call, a repeat) is tagged PANEL whatever it names: it
@@ -1355,14 +1428,19 @@ def veil(summary, found, chapters, lead_parts=()):
     panel_spans = [(PANEL, str(g).upper(), None, None, None) for f in panel_found for g in [f.get("gene")] if g]
     for f in found:
         if f.get("level") != "act":
-            fid = PANEL if f in panel_found else veil_id(spans, f"{f.get('gene') or ''} {f.get('detail') or ''} "
-                                                                f"{f.get('title') or ''} {f.get('viewer') or ''}")
+            genes, where = finding_names(f)
+            fid = PANEL if f in panel_found else veil_id(spans, where, genes=genes)
             if fid:
                 out["findings"][f["id"]] = fid
 
+    # A segment that holds findings' titles is tagged as those findings are, never by its words; the others are
+    # the lead's own sentences.
     def lead_tag(t):
         if veil_id(panel_spans, t) or any(f.get("title") and f["title"] in t for f in panel_found):
             return PANEL
+        named = [f for f in found if f.get("level") != "act" and f.get("title") and f["title"] in t]
+        if named:
+            return next((out["findings"][f["id"]] for f in named if f["id"] in out["findings"]), None)
         return veil_id(spans, t)
     tags = [None if len(x) > 2 else lead_tag(x[0]) for x in lead_parts or ()]
     out["lead"] = tags if any(tags) else []
