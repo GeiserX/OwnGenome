@@ -62,6 +62,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og exomiser prepare [args]
        og exomiser report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
+       og dev helpers [args]
        og version
        og --tree-hash
 ";
