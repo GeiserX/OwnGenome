@@ -609,6 +609,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn non_ascii_or_out_of_range_annotation_limits_fail_at_cli() {
+        let d = std::env::temp_dir().join(format!("og-limits-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("in"), br#"{"genes":{},"drugs":{}}"#).unwrap();
+        for limit in ["1_0", "٤", "18446744073709551616"] {
+            fs::write(d.join("out"), b"old").unwrap();
+            let args = vec!["trim-pharmcat".into(), d.join("in").to_str().unwrap().into(),
+                d.join("out").to_str().unwrap().into(), limit.into()];
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            assert_eq!(cli(&args, &mut out, &mut err), 2);
+            let err = String::from_utf8(err).unwrap();
+            assert!(err.contains("error: MAX_ANNOTATIONS") && err.contains("is not a whole number"), "{err}");
+            assert_eq!(fs::read(d.join("out")).unwrap(), b"old");
+        }
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn non_writable_parents_preserve_fixture_destinations() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("og-parent-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("in"), br#"{"genes":{},"drugs":{}}"#).unwrap();
+        for name in ["out", "reads.sam", "vep.vcf", "comphet.vcf"] {
+            fs::write(d.join(name), b"old").unwrap();
+        }
+        for args in [
+            vec!["trim-pharmcat".into(), d.join("in").to_str().unwrap().into(), d.join("out").to_str().unwrap().into()],
+            vec!["comphet".into(), d.to_str().unwrap().into()],
+        ] {
+            fs::set_permissions(&d, fs::Permissions::from_mode(0o555)).unwrap();
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            let code = cli(&args, &mut out, &mut err);
+            fs::set_permissions(&d, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(code, 1);
+            assert!(String::from_utf8(err).unwrap().contains(": parent directory is not writable"));
+            for name in ["out", "reads.sam", "vep.vcf", "comphet.vcf"] {
+                assert_eq!(fs::read(d.join(name)).unwrap(), b"old");
+            }
+        }
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
     fn pharmcat_input_is_plain_json() {
         let d =
             std::env::temp_dir().join(format!("og-pharmcat-compression-{}", std::process::id()));

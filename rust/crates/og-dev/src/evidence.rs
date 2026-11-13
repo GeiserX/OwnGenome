@@ -697,6 +697,75 @@ mod tests {
     }
 
     #[test]
+    fn fai_offsets_reject_overflow_and_out_of_file_before_publication() {
+        for (offset, bases, bytes, position) in [
+            (18446744073709551598u64, 1, 2, 13),
+            (1, 1, u64::MAX, 3),
+            (u64::MAX, 1, 1, 1),
+            (1000, 50, 51, 1),
+        ] {
+            let c = Case::new("hg002-gvcf", &format!("offset-{offset}-{position}"));
+            c.put("ref.fasta.fai", format!("chrA\t50\t{offset}\t{bases}\t{bytes}\n").as_bytes());
+            c.put("sites.tsv", format!("id\tchr\tpos\nx\tchrA\t{position}\n").as_bytes());
+            c.put("truth.bed", b"chrA\t0\t50\n");
+            c.put("truth.vcf.gz", b"##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\n");
+            c.fails_without_publication();
+            assert!(c.run().unwrap_err().contains(": invalid FASTA offset:"));
+        }
+    }
+
+    #[test]
+    fn late_vcf_headers_fail_before_publication() {
+        for header in [b"##late=yes\n".as_slice(), b"#CHROM\tPOS\n"] {
+            let c = Case::new("hg002-gvcf", &format!("late-{}", header.len()));
+            c.put("truth.vcf.gz", &[c.text("truth.vcf.gz"), header.to_vec()].concat());
+            c.fails_without_publication();
+            assert!(c.run().unwrap_err().contains(": VCF header after first data record"));
+        }
+    }
+
+    #[test]
+    fn empty_gzip_inputs_and_unused_zero_width_fai_rows_fail() {
+        for (kind, name) in [
+            ("clashes", "raw.vcf.gz"), ("clashes", "split.vcf.gz"),
+            ("clashes", "chrA.tsv.gz"), ("hg002-gvcf", "truth.vcf.gz"),
+        ] {
+            let c = Case::new(kind, name);
+            fs::write(c.dir.join(name), b"").unwrap();
+            c.fails_without_publication();
+            assert!(c.run().unwrap_err().contains(": wrong compression (expected gzip)"));
+        }
+        let c = Case::new("hg002-gvcf", "unused-row");
+        c.put("ref.fasta.fai", &[c.text("ref.fasta.fai"), b"chrUnused\t0\t0\t0\t0\n".to_vec()].concat());
+        c.fails_without_publication();
+        assert!(c.run().unwrap_err().contains(": a row has 0 bases per line"));
+    }
+
+    #[test]
+    fn gzip_fasta_with_ascii_fname_is_refused_by_format_guard() {
+        let c = Case::new("hg002-gvcf", "fname");
+        let mut gz = flate2::GzBuilder::new().filename(vec![b'A'; 200])
+            .write(Vec::new(), flate2::Compression::default());
+        gz.write_all(&c.text("ref.fasta")).unwrap();
+        fs::write(c.dir.join("ref.fasta"), gz.finish().unwrap()).unwrap();
+        c.fails_without_publication();
+        assert!(c.run().unwrap_err().contains(": wrong compression (expected plain)"));
+    }
+
+    #[test]
+    fn non_writable_parents_preserve_evidence_destinations() {
+        for kind in ["clashes", "hg002-gvcf"] {
+            let c = Case::new(kind, "parent-mode");
+            fs::write(c.dir.join("out"), b"PREVIOUS OUTPUT\n").unwrap();
+            fs::set_permissions(&c.dir, fs::Permissions::from_mode(0o555)).unwrap();
+            let result = c.run();
+            fs::set_permissions(&c.dir, fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(result.unwrap_err().contains(": parent directory is not writable"));
+            assert_eq!(fs::read(c.dir.join("out")).unwrap(), b"PREVIOUS OUTPUT\n");
+        }
+    }
+
+    #[test]
     fn selected_truncated_clash_records_fail() {
         for name in ["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz"] {
             let c = Case::new("clashes", name);
@@ -837,7 +906,7 @@ mod tests {
                 };
                 fs::write(c.dir.join(name), wrong).unwrap();
                 c.fails_without_publication();
-                assert!(c.run().unwrap_err().contains("compression"), "{name}");
+                assert!(c.run().unwrap_err().contains(": wrong compression (expected "), "{name}");
             }
         }
     }

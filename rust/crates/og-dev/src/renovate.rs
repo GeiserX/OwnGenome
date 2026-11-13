@@ -899,6 +899,25 @@ mod tests {
     }
 
     #[test]
+    fn non_writable_summary_parent_preserves_previous_summary() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = planted("summary-parent");
+        let parent = d.join("summary-dir");
+        fs::create_dir(&parent).unwrap();
+        let summary = parent.join("result");
+        fs::write(&summary, b"old").unwrap();
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o555)).unwrap();
+        let args = vec![d.join("renovate.log").to_str().unwrap().into(), "--repo".into(), d.to_str().unwrap().into()];
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = cli_with_summary(&args, &mut out, &mut err, Some(&summary));
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(code, 1);
+        assert!(String::from_utf8(err).unwrap().contains(": parent directory is not writable"));
+        assert_eq!(fs::read(&summary).unwrap(), b"old");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
     fn configured_summary_write_failure_fails_the_check() {
         let d = planted("summary");
         let args = vec![

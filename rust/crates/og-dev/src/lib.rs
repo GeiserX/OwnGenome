@@ -61,7 +61,14 @@ pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
 fn run(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) -> u8 {
     let mut out = std::io::stdout().lock();
     let mut err = std::io::stderr().lock();
-    let code = f(args, &mut out, &mut err);
+    run_with_writers(f, args, &mut out, &mut err)
+}
+
+pub(crate) fn run_with_writers(
+    f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8,
+    args: &[String], out: &mut dyn Write, err: &mut dyn Write,
+) -> u8 {
+    let code = f(args, out, err);
     let _ = out.flush();
     code
 }
@@ -93,5 +100,42 @@ pub fn main(args: &[String]) -> u8 {
             eprintln!("og dev: error: the following arguments are required: verb");
             2
         }
+    }
+}
+
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+    struct Fails { flush_only: bool }
+    impl Write for Fails {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.flush_only { Ok(bytes.len()) } else { Err(std::io::Error::other("write control")) }
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            if self.flush_only { Err(std::io::Error::other("flush control")) } else { Ok(()) }
+        }
+    }
+    #[test]
+    fn added_verbs_propagate_write_and_flush_errors() {
+        let verbs = [fixture::cli, evidence::cli, renovate::cli];
+        for verb in verbs {
+            for flush_only in [false, true] {
+                let mut bad = Fails { flush_only };
+                let mut err = Vec::new();
+                assert_eq!(run_with_writers(verb, &["--help".into()], &mut bad, &mut err), 1);
+                assert!(String::from_utf8(err).unwrap().contains("stdout:"));
+            }
+        }
+    }
+    #[test]
+    fn shared_runner_checks_stderr_and_an_empty_stdout() {
+        fn clean(_: &[String], _: &mut dyn Write, err: &mut dyn Write) -> u8 {
+            let _ = writeln!(err, "status");
+            0
+        }
+        for flush_only in [false, true] {
+            assert_eq!(run_with_writers(clean, &[], &mut Vec::new(), &mut Fails { flush_only }), 1);
+        }
+        assert_eq!(run_with_writers(clean, &[], &mut Fails { flush_only: true }, &mut Vec::new()), 1);
     }
 }
