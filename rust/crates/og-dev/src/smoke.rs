@@ -51,6 +51,31 @@ fn write_fasta(path: &str, seq: &[u8]) -> Result<(), String> {
     }
     out.commit().map_err(|e| e.to_string())
 }
+fn integer(s: Option<&&str>) -> Result<i128, String> {
+    let s = *s.ok_or("missing integer field")?;
+    // Python int accepts every Unicode decimal digit. Nd runs contain one
+    // or more adjacent 0..9 alphabets (the mathematical digits have five).
+    let normalized;
+    let s = if s.is_ascii() {
+        s
+    } else {
+        normalized = s
+            .chars()
+            .map(|c| {
+                if c.is_ascii() || !pycompat::text::is_decimal(c) {
+                    return c;
+                }
+                let mut start = c as u32;
+                while char::from_u32(start - 1).is_some_and(pycompat::text::is_decimal) {
+                    start -= 1;
+                }
+                char::from(b'0' + ((c as u32 - start) % 10) as u8)
+            })
+            .collect::<String>();
+        &normalized
+    };
+    pycompat::num::parse_int(s).map_err(|e| format!("invalid integer: {e}"))
+}
 fn number(s: &str) -> Result<usize, String> {
     s.parse().map_err(|_| format!("invalid integer: {s}"))
 }
@@ -280,13 +305,14 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                 }
                 if r.first() == Some(&"S")
                     && float(r.get(4))? >= 4.
-                    && float(r.get(3))? - float(r.get(2))? >= 50000.
+                    && integer(r.get(3))?.saturating_sub(integer(r.get(2))?) >= 50000
                 {
-                    let a = float(r.get(2))?;
-                    let b = float(r.get(3))?;
+                    let a = integer(r.get(2))?;
+                    let b = integer(r.get(3))?;
                     n += 1;
-                    coverage += (b.min(2600000.) - a.max(2000000.)).max(0.);
-                    if b <= 2000000. || a >= 2600000. {
+                    coverage +=
+                        (b.clamp(2000000, 2600000) - a.clamp(2000000, 2600000)).max(0) as f64;
+                    if b <= 2000000 || a >= 2600000 {
                         outside += 1;
                     }
                 }
@@ -319,10 +345,10 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                 if line.starts_with('#') {
                     continue;
                 }
-                let a = float(r.get(1))?;
-                let b = float(r.get(2))?;
+                let a = integer(r.get(1))?;
+                let b = integer(r.get(2))?;
                 n += 1;
-                for (j, p) in [5000000., 15000000.].iter().enumerate() {
+                for (j, p) in [5000000, 15000000].iter().enumerate() {
                     if at[j].is_none() && a <= *p && *p < b {
                         at[j] = Some([
                             r.get(6).ok_or("short RFMix row")?.to_string(),

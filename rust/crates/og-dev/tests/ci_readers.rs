@@ -319,3 +319,317 @@ fn pca_nonfinite_values_follow_python_comparisons() {
     let p = t.file("quoted.tsv", "# a comment\n\"chr5\"\t1\t2\ta\tb\tc\t\t99\n");
     assert_eq!(run(smoke::cli, &["check", "parascopy", &p]).0, 1);
 }
+
+#[test]
+fn smoke_coordinates_require_integers() {
+    let t = Temp::new();
+    for bad in ["-inf", "inf", "nan", "2000000.0"] {
+        for text in [
+            format!("h\nS 22 {bad} 2600000 4\n"),
+            format!("h\nS 22 2000000 {bad} 4\n"),
+        ] {
+            let p = t.file("ibdmix", &text);
+            assert_ne!(run(smoke::cli, &["check", "ibdmix", &p]).0, 0, "{text}");
+        }
+        for text in [
+            format!(
+                "#codes: POPA=0 POPB=1\n20 {bad} 10000000 0 0 0 0 0\n20 10000000 20000000 0 0 0 1 1\n"
+            ),
+            format!(
+                "#codes: POPA=0 POPB=1\n20 0 {bad} 0 0 0 0 0\n20 10000000 20000000 0 0 0 1 1\n"
+            ),
+        ] {
+            let p = t.file("rfmix", &text);
+            assert_ne!(run(smoke::cli, &["check", "rfmix", &p]).0, 0, "{text}");
+        }
+    }
+    let p = t.file("ints", "h\nS 22 +2_000_000 2_600_000 4.0\n");
+    assert_eq!(run(smoke::cli, &["check", "ibdmix", &p]).0, 0);
+}
+
+#[test]
+fn trace_retains_concrete_duplicate_exit() {
+    let t = Temp::new();
+    let first = "task_id\tname\tattempt\texit\tmemory\n1\tPRS (s)\t1\t-\t25769803776\n";
+    let p = t.file(
+        "trace",
+        &format!("{first}1\tPRS (s)\t1\t137\t25769803776\n"),
+    );
+    let args = [
+        "attempts",
+        &p,
+        "--name-glob",
+        "PRS (s)",
+        "--want",
+        "1:137:24",
+        "--nextflow-exit",
+        "0",
+    ];
+    assert_eq!(run(nf_trace::cli, &args).0, 0);
+    t.file(
+        "trace",
+        &format!("{first}1\tPRS (s)\t1\t137\t25769803776\n1\tPRS (s)\t1\t0\t25769803776\n"),
+    );
+    assert_eq!(run(nf_trace::cli, &args).0, 2);
+}
+
+#[test]
+fn trace_integer_policy() {
+    let t = Temp::new();
+    let p = t.file("spaces", &TRACE.replace("\t8\t", "\t +8 \t"));
+    let want = t.file(
+        "want",
+        "process\tcpus\tmemory_gb\ttime_h\nALIGN_MINIMAP2\t8\t32\t24\n",
+    );
+    let args = [
+        "requests",
+        &p,
+        "--want",
+        &want,
+        "--executor-cpus",
+        "16",
+        "--executor-mem-gb",
+        "96",
+    ];
+    assert_eq!(run(nf_trace::cli, &args).0, 0);
+    t.file("spaces", &TRACE.replace("\t8\t", "\t٨\t"));
+    assert_eq!(run(nf_trace::cli, &args).0, 2);
+}
+
+/// Run explicitly with a full git history and Python available. The oracle
+/// is the actual replaced assertion, not a second maintained implementation.
+#[test]
+#[ignore = "requires archived source and a local Python interpreter"]
+fn differential_coordinate_controls() {
+    use std::process::Command;
+    let t = Temp::new();
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let archived = Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args([
+            "show",
+            "669a8196cf4c377200f9b4af9c235ef85fb774a1:tests/smoke/commands.tsv",
+        ])
+        .output()
+        .unwrap();
+    assert!(archived.status.success());
+    let table = String::from_utf8(archived.stdout).unwrap();
+    for (kind, var, name) in [
+        ("ibdmix", "IBDMIX_IMAGE", "o.txt"),
+        ("rfmix", "RFMIX_IMAGE", "o.msp.tsv"),
+    ] {
+        let row = table
+            .lines()
+            .find(|l| l.starts_with(&format!("{var}\t")))
+            .unwrap();
+        let expect = row.split('\t').nth(4).unwrap();
+        let code = expect
+            .split("\" \"")
+            .nth(1)
+            .unwrap()
+            .strip_suffix('"')
+            .unwrap();
+        for value in [
+            "2000000",
+            "+2_000_000",
+            "٢٠٠٠٠٠٠",
+            "𝟚𝟘𝟘𝟘𝟘𝟘𝟘",
+            "-inf",
+            "inf",
+            "nan",
+            "2000000.0",
+        ] {
+            for column in [0, 1] {
+                let mut bounds = ["2000000", "2600000"];
+                bounds[column] = value;
+                let text = if kind == "ibdmix" {
+                    format!("h\nS 22 {} {} 4\n", bounds[0], bounds[1])
+                } else {
+                    let a = if column == 0 { value } else { "0" };
+                    let b = if column == 1 { value } else { "10000000" };
+                    format!(
+                        "#codes: POPA=0 POPB=1\n20 {a} {b} 0 0 0 0 0\n20 10000000 20000000 0 0 0 1 1\n"
+                    )
+                };
+                let p = t.file(name, &text);
+                let old = Command::new("python3")
+                    .args(["-I", "-c", code])
+                    .current_dir(&t.0)
+                    .output()
+                    .unwrap();
+                let new = run(smoke::cli, &["check", kind, &p]);
+                assert_eq!(
+                    old.status.success(),
+                    new.0 == 0,
+                    "{kind} col={column} value={value}: {}",
+                    new.2
+                );
+                println!(
+                    "{kind} col={column} value={value}: Python={} Rust={}",
+                    old.status.success(),
+                    new.0
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires archived source, jq and a local Python interpreter"]
+fn differential_json_controls() {
+    use std::process::Command;
+    let t = Temp::new();
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let archived = Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args([
+            "show",
+            "669a8196cf4c377200f9b4af9c235ef85fb774a1:tests/smoke/commands.tsv",
+        ])
+        .output()
+        .unwrap();
+    assert!(archived.status.success());
+    let old_table = String::from_utf8(archived.stdout).unwrap();
+    let new_table = std::fs::read_to_string(repo.join("tests/smoke/commands.tsv")).unwrap();
+    let script = std::fs::read_to_string(repo.join("scripts/ci/image-smoke.sh")).unwrap();
+    let helper = script
+        .split("jqcheck() {")
+        .nth(1)
+        .unwrap()
+        .split("\n}\n")
+        .next()
+        .unwrap();
+    let helper = format!(
+        "CHECK_FAILS=0; pass() {{ :; }}; fail() {{ CHECK_FAILS=1; }}; jqcheck() {{{helper}\n}}\njqcheck control \"$1\" \"$2\"; exit \"$CHECK_FAILS\""
+    );
+    for (var, index, file, template, good) in [
+        (
+            "FASTP_IMAGE",
+            0,
+            "fastp.json",
+            "{\"summary\":{\"before_filtering\":{\"total_reads\":100},\"after_filtering\":{\"total_reads\":VALUE}}}",
+            "90",
+        ),
+        (
+            "EXPANSIONHUNTER_IMAGE",
+            0,
+            "bundled_catalog.json",
+            "VALUE",
+            "[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]",
+        ),
+        (
+            "EXPANSIONHUNTER_IMAGE",
+            1,
+            "eh.json",
+            "{\"LocusResults\":{\"SMOKE1\":{\"Variants\":{\"SMOKE1\":{\"Genotype\":VALUE}}}}}",
+            "\"12/12\"",
+        ),
+        (
+            "PARAPHASE_IMAGE",
+            0,
+            "smn1.json",
+            "{\"smn1\":{\"region_specific_info\":{\"smn1_cn\":2,\"smn2_cn\":VALUE,\"smn_del78_cn\":1}}}",
+            "1",
+        ),
+        (
+            "PYTHON_IMAGE",
+            0,
+            "HG002_cyp2d6.json",
+            "{\"HG002_cyrius\":{\"Median_depth\":VALUE,\"Coverage_MAD\":0,\"Genotype\":\"test\"}}",
+            "20",
+        ),
+    ] {
+        let row = |table: &str| {
+            table
+                .lines()
+                .find(|l| l.starts_with(&format!("{var}\t")))
+                .unwrap()
+                .split('\t')
+                .nth(4)
+                .unwrap()
+                .to_owned()
+        };
+        let old = row(&old_table);
+        let code = old
+            .split("py \"")
+            .nth(index + 1)
+            .unwrap()
+            .split("\" \"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let new = row(&new_table);
+        let filter = new
+            .split("jqcheck \"")
+            .nth(index + 1)
+            .unwrap()
+            .split('\'')
+            .nth(1)
+            .unwrap();
+        for value in [
+            good,
+            "\"broken\"",
+            "null",
+            "[]",
+            "{}",
+            "true",
+            "false",
+            "20",
+            "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaa\"",
+        ] {
+            let json = template.replace("VALUE", value);
+            let p = t.file(file, &json);
+            let python = Command::new("python3")
+                .args(["-I", "-c", code])
+                .current_dir(&t.0)
+                .output()
+                .unwrap();
+            let rust = Command::new("bash")
+                .args(["-c", &helper, "_", &p, filter])
+                .output()
+                .unwrap();
+            let deliberate = (var == "EXPANSIONHUNTER_IMAGE"
+                && ((index == 0 && value.starts_with('"'))
+                    || (index == 1 && ["true", "20"].contains(&value))))
+                || (["PARAPHASE_IMAGE", "PYTHON_IMAGE"].contains(&var) && value == "true");
+            if deliberate {
+                assert!(!rust.status.success(), "typed policy: {var} {value}");
+            } else {
+                assert_eq!(
+                    python.status.success(),
+                    rust.status.success(),
+                    "{var} {index} {value}: {}",
+                    String::from_utf8_lossy(&python.stderr)
+                );
+            }
+            println!(
+                "{var}/{index} {value}: Python={} jq={} deliberate={deliberate}",
+                python.status.success(),
+                rust.status.success()
+            );
+        }
+        let valid = template.replace("VALUE", good);
+        let p = t.file(file, &format!("{valid}\n{valid}\n"));
+        assert!(
+            !Command::new("python3")
+                .args(["-I", "-c", code])
+                .current_dir(&t.0)
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+        assert!(
+            !Command::new("bash")
+                .args(["-c", &helper, "_", &p, filter])
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    }
+}

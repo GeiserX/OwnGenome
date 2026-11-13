@@ -38,9 +38,10 @@ fn cell<'a>(r: &'a Record, k: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("missing column {k}"))
 }
 fn num(r: &Record, k: &str) -> Result<u64, String> {
-    cell(r, k)?
-        .parse()
-        .map_err(|_| format!("column {k} is not an unsigned integer"))
+    pycompat::num::parse_int(cell(r, k)?)
+        .ok()
+        .and_then(|v| u64::try_from(v).ok())
+        .ok_or_else(|| format!("column {k} is not an unsigned ASCII integer"))
 }
 fn traces(path: &str, out: &mut dyn Write) -> Result<Vec<Record>, String> {
     let mut rows: Vec<Record> = Vec::new();
@@ -48,7 +49,7 @@ fn traces(path: &str, out: &mut dyn Write) -> Result<Vec<Record>, String> {
     records(path, |r| {
         let id = cell(&r, "task_id")?.to_owned();
         if let Some(&i) = ids.get(&id) {
-            let first: &Record = &rows[i];
+            let first: &mut Record = &mut rows[i];
             let a = cell(first, "exit")?;
             let b = cell(&r, "exit")?;
             if (a != "-" && b != "-" && a != b)
@@ -56,6 +57,9 @@ fn traces(path: &str, out: &mut dyn Write) -> Result<Vec<Record>, String> {
                     .any(|(k, v)| k != "exit" && first.get(k) != Some(v))
             {
                 return Err(format!("task {id} has two different rows in the trace"));
+            }
+            if a == "-" && b != "-" {
+                first.insert("exit".into(), b.into());
             }
             writeln!(
                 out,

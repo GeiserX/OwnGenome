@@ -146,6 +146,71 @@ self_test() {
   if grep -q '^\[PASS\] true filter' <<< "$out" && grep -q '^\[FAIL\] false filter' <<< "$out" && grep -q '^fails=1$' <<< "$out"; then
     echo "[PASS] jqcheck rejects a false filter"
   else echo "[FAIL] jqcheck rejects a false filter: $out"; fails=$((fails + 1)); fi
+  # Read the production filters, so a weakened assertion makes this test red.
+  local counts catalog genotype copies depth
+  counts=$(awk -F '\t' '$1 == "FASTP_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  catalog=$(awk -F '\t' '$1 == "EXPANSIONHUNTER_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  genotype=$(awk -F '\t' '$1 == "EXPANSIONHUNTER_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 4)
+  copies=$(awk -F '\t' '$1 == "PARAPHASE_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  depth=$(awk -F '\t' '$1 == "PYTHON_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  json_case() {
+    local label=$1 filter=$2 json=$3 want=$4
+    printf '%s\n' "$json" > "${tmp}/control.json"
+    out=$(CHECK_FAILS=0; jqcheck "$label" "${tmp}/control.json" "$filter"; echo "fails=$CHECK_FAILS")
+    if grep -qx "fails=$want" <<< "$out"; then echo "[PASS] $label"
+    else echo "[FAIL] $label: $out"; fails=$((fails + 1)); fi
+  }
+  json_case "numeric counts" "$counts" '{"summary":{"before_filtering":{"total_reads":100},"after_filtering":{"total_reads":90}}}' 0
+  json_case "one JSON document" "$counts" $'{"summary":{"before_filtering":{"total_reads":100},"after_filtering":{"total_reads":0}}}\n{"summary":{"before_filtering":{"total_reads":100},"after_filtering":{"total_reads":90}}}' 1
+  json_case "array catalog" "$catalog" "[$(printf '0,%.0s' {1..19})0]" 0
+  json_case "string genotype" "$genotype" '{"LocusResults":{"SMOKE1":{"Variants":{"SMOKE1":{"Genotype":"12/12"}}}}}' 0
+  json_case "numeric copy numbers" "$copies" '{"smn1":{"region_specific_info":{"smn1_cn":2,"smn2_cn":1,"smn_del78_cn":1}}}' 0
+  json_case "numeric depth" "$depth" '{"HG002_cyrius":{"Median_depth":20}}' 0
+  json_case "numeric string depth" "$depth" '{"HG002_cyrius":{"Median_depth":"20"}}' 0
+  local bad
+  for bad in '"broken"' null '[]' '{}' true false; do
+    json_case "output count rejects $bad" "$counts" "{\"summary\":{\"before_filtering\":{\"total_reads\":100},\"after_filtering\":{\"total_reads\":$bad}}}" 1
+    json_case "input count rejects $bad" "$counts" "{\"summary\":{\"before_filtering\":{\"total_reads\":$bad},\"after_filtering\":{\"total_reads\":90}}}" 1
+    json_case "catalog rejects $bad" "$catalog" "$bad" 1
+    json_case "copy numbers reject $bad" "$copies" "{\"smn1\":{\"region_specific_info\":{\"smn1_cn\":2,\"smn2_cn\":$bad,\"smn_del78_cn\":1}}}" 1
+    json_case "depth rejects $bad" "$depth" "{\"HG002_cyrius\":{\"Median_depth\":$bad}}" 1
+  done
+  for bad in 1 null '[]' '{}' true false '""'; do
+    json_case "genotype rejects $bad" "$genotype" "{\"LocusResults\":{\"SMOKE1\":{\"Variants\":{\"SMOKE1\":{\"Genotype\":$bad}}}}}" 1
+  done
+  for filter in "$counts" "$catalog" "$genotype" "$copies" "$depth"; do
+    json_case "missing keys fail" "$filter" '{}' 1
+  done
+  json_case "numeric catalog fails" "$catalog" '20' 1
+  json_case "long string catalog fails" "$catalog" '"aaaaaaaaaaaaaaaaaaaaaaaaaaaa"' 1
+  json_case "no JSON document fails" "$counts" '' 1
+  mkdir -p "${tmp}/repo/bin" "${tmp}/repo/scripts"
+  cat > "${tmp}/repo/bin/og" <<'SH'
+#!/usr/bin/env bash
+[ -f "$(dirname "$0")/../ready" ] || exit 127
+printf '%s\n' "$*"
+SH
+  cat > "${tmp}/repo/scripts/setup.sh" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = --og ] || exit 2
+printf 'built\n' >> "$(dirname "$0")/../ready"
+SH
+  chmod +x "${tmp}/repo/bin/og"
+  # shellcheck disable=SC2016  # variables belong to the isolated test shell
+  out=$(env -u OG REPO="${tmp}/repo" bash -c "$(declare -f smoke_og)"'
+    rc=0
+    "$REPO/bin/og" dev smoke mini-ref >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 127 ] || exit 1
+    smoke_og dev smoke mini-ref || exit 1
+    smoke_og dev smoke csv-cell || exit 1
+    [ "$(wc -l < "$REPO/ready")" -eq 1 ] || exit 1
+    OG="$REPO/bin/absent"
+    rc=0
+    smoke_og version >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 127 ] || exit 1
+  '); rc=$?
+  if [ "$rc" -eq 0 ]; then echo "[PASS] missing default og is built once; explicit OG failure is retained"
+  else echo "[FAIL] og fixture preparation: $out"; fails=$((fails + 1)); fi
   rm -rf "$tmp"
   if [ "$fails" -gt 0 ]; then echo "self-test: ${fails} case(s) failed" >&2; return 1; fi
   echo "self-test: all cases passed"
@@ -296,7 +361,7 @@ need() {
 need_ref() {
   fx_get fixture_ref.fa.gz fixture_ref.fa.gz.fai fixture_ref.fa.gz.gzi || return 1
   hsam faidx /fx/fixture_ref.fa.gz chr20:10000001-10500000 > "${IN}/slice.fa.tmp" || return 1
-  "${OG:-${REPO}/bin/og}" dev smoke mini-ref "${IN}/slice.fa.tmp" "${IN}/orig.fa" "${IN}/mini.fa" "$PLANT_POS" "$PLANT_LEN" || return 1
+  smoke_og dev smoke mini-ref "${IN}/slice.fa.tmp" "${IN}/orig.fa" "${IN}/mini.fa" "$PLANT_POS" "$PLANT_LEN" || return 1
   rm -f "${IN}/slice.fa.tmp"
   hsam faidx /in/orig.fa && hsam faidx /in/mini.fa && hsam dict -o /in/mini.dict /in/mini.fa || return 1
   [ "$(cut -f2 "${IN}/mini.fa.fai")" = "$MINI_LEN" ]
@@ -348,7 +413,7 @@ need_longreads() {
   need ref && need truth || return 1
   hbcf consensus -H 1 -f /in/orig.fa /in/truth.vcf.gz > "${IN}/hap1.fa" &&
     hbcf consensus -H 2 -f /in/orig.fa /in/truth.vcf.gz > "${IN}/hap2.fa" || return 1
-  "${OG:-${REPO}/bin/og}" dev smoke long-reads "${IN}/hap1.fa" "${IN}/hap2.fa" "${IN}/long.fq.gz"
+  smoke_og dev smoke long-reads "${IN}/hap1.fa" "${IN}/hap2.fa" "${IN}/long.fq.gz"
 }
 need_longbam() {
   need longreads || return 1
@@ -429,7 +494,7 @@ need_qc() {
 # in the mini reference, away from the slice ends and the planted bases.
 need_ehcatalog() {
   need ref || return 1
-  "${OG:-${REPO}/bin/og}" dev smoke eh-catalog "${IN}/mini.fa" "${IN}/eh_catalog.json" "$SMALL_END"
+  smoke_og dev smoke eh-catalog "${IN}/mini.fa" "${IN}/eh_catalog.json" "$SMALL_END"
 }
 # A chain that maps chr20 onto itself over the region of the small variants.
 need_chain() {
@@ -470,12 +535,24 @@ contains() { if [ -f "$2" ] && grep -Eq -- "$3" "$2"; then pass "$1"; else fail 
 nonempty() { if [ -s "$2" ]; then pass "$1"; else fail "$1 (${2} is missing or empty)"; fi; }
 jqcheck() {
   local out
-  if out=$(jq -e "$3" "$2" 2>&1); then pass "$1${out:+ (${out//$'\n'/ })}"
+  if out=$(jq -se "if length == 1 then .[0] | ($3) else error(\"expected exactly one JSON document\") end" "$2" 2>&1); then pass "$1${out:+ (${out//$'\n'/ })}"
   else fail "$1: ${out//$'\n'/ }"; fi
+}
+# Build only when a fixture or assertion first needs og. A caller-supplied
+# OG is authoritative; its failure must not silently select another binary.
+smoke_og() {
+  local rc=0
+  "${OG:-${REPO}/bin/og}" --version >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 127 ] && [ -z "${OG:-}" ]; then
+    bash "${REPO}/scripts/setup.sh" --og || return 1
+  elif [ "$rc" -ne 0 ]; then
+    return "$rc"
+  fi
+  "${OG:-${REPO}/bin/og}" "$@"
 }
 smoke_check() {
   local out
-  if out=$("${OG:-${REPO}/bin/og}" dev smoke check "$2" "$3" 2>&1); then pass "$1 ($out)"
+  if out=$(smoke_og dev smoke check "$2" "$3" 2>&1); then pass "$1 ($out)"
   else fail "$1: $out"; fi
 }
 check_pharmcat() {
@@ -528,11 +605,11 @@ tsv_count() {
 }
 # csv_cell FILE KEY=VALUE[,KEY=VALUE] COLUMN: COLUMN of the first row that matches.
 csv_cell() {
-  "${OG:-${REPO}/bin/og}" dev smoke csv-cell "$1" "$2" "$3"
+  smoke_og dev smoke csv-cell "$1" "$2" "$3"
 }
 # pharmcat_called report.json: genes with a named diplotype.
 pharmcat_called() {
-  "${OG:-${REPO}/bin/og}" dev pharmcat diplotypes "$1" --called
+  smoke_og dev pharmcat diplotypes "$1" --called
 }
 
 # ------------------------------------------------------------- the runner
