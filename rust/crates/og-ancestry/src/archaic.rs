@@ -1610,6 +1610,20 @@ mod tests {
     }
 
     #[test]
+    fn a_mask_holds_its_bed_bases_only() {
+        // BED 99-100 and 200-300 are the 1-based bases 100 and 201 to 300.
+        let mut m = Mask {
+            iv: vec![(99, 100), (200, 300)],
+            i: 0,
+        };
+        let got: Vec<i64> = [99, 100, 101, 200, 201, 300, 301]
+            .into_iter()
+            .filter(|&p| m.holds(p))
+            .collect();
+        assert_eq!(got, [100, 201, 300]);
+    }
+
+    #[test]
     fn gt_codes() {
         assert_eq!(gt_code("0/1"), Some(1));
         assert_eq!(gt_code("1|1"), Some(2));
