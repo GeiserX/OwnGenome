@@ -22,7 +22,7 @@ fn summary(d: &Dir, sample_dir: &str) -> Value {
         declared_sex: None,
         assets: d.path("assets"),
     };
-    collect(&input).to_json()
+    collect(&input).unwrap().to_json()
 }
 
 fn section<'a>(v: &'a Value, key: &str) -> &'a Value {
@@ -447,9 +447,22 @@ fn the_command_line() {
     assert!(text.starts_with("{\n \"schema_version\": 2,\n \"sample\": \"S\",\n"));
     assert!(text.ends_with("}\n"));
     // --only is required until every section is ported.
-    let (code, _, err) = run(cli, &["--sample", "S", "--sample-dir", &d.path("S")]);
+    let (code, _, err) = run(
+        cli,
+        &["--sample", "S", "--sample-dir", &d.path("S"), "--out", &out],
+    );
     assert_eq!(code, 2);
     assert!(err.contains("required: --only"), "{err}");
+    // So is --out: a part of the sections must not land on the sample's
+    // complete summary.json.
+    std::fs::write(d.path("S/summary.json"), "complete\n").unwrap();
+    let (code, _, err) = run(
+        cli,
+        &["--sample", "S", "--sample-dir", &d.path("S"), "--only", "a"],
+    );
+    assert_eq!(code, 2);
+    assert!(err.contains("required: --out"), "{err}");
+    assert_eq!(d.read("S/summary.json"), "complete\n");
     let (code, _, err) = run(
         cli,
         &[
@@ -465,6 +478,41 @@ fn the_command_line() {
     );
     assert_eq!(code, 1);
     assert!(err.starts_with("ERROR: cannot write"), "{err}");
+}
+
+/// A run status that is there and cannot be read is no reason to call an
+/// older result current: the collector stops and writes nothing.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_run_status_stops_the_collector() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = Dir::new("collect-unreadable-status");
+    std::fs::create_dir_all(d.path("S/logs")).unwrap();
+    let status = d.path("S/logs/run_status.tsv");
+    std::fs::write(&status, "meta\tstarted_epoch\t1700000000\n").unwrap();
+    std::fs::set_permissions(&status, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read(&status).is_ok() {
+        return; // root reads every file: nothing to prove here
+    }
+    let out = d.path("out.json");
+    let (code, stdout, err) = run(
+        cli,
+        &[
+            "--sample",
+            "S",
+            "--sample-dir",
+            &d.path("S"),
+            "--out",
+            &out,
+            "--only",
+            "a",
+        ],
+    );
+    std::fs::set_permissions(&status, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(code, 1);
+    assert_eq!(stdout, "");
+    assert!(err.contains("run_status.tsv"), "{err}");
+    assert!(!std::path::Path::new(&out).exists());
 }
 
 #[test]

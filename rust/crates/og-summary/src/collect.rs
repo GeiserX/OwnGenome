@@ -30,14 +30,14 @@ use std::io::Write;
 use std::path::Path;
 
 const USAGE: &str = "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR --only a
-                          [--declared-sex DECLARED_SEX] [--out OUT] [--assets ASSETS]
+                          --out OUT [--declared-sex DECLARED_SEX] [--assets ASSETS]
 ";
 
 const OPTS: &[Opt] = &[
     Opt("--sample", Kind::Value, true),
     Opt("--sample-dir", Kind::Value, true),
     Opt("--declared-sex", Kind::Value, false),
-    Opt("--out", Kind::Value, false),
+    Opt("--out", Kind::Value, true),
     Opt("--assets", Kind::Value, false),
     Opt("--only", Kind::Choice(&["a"]), true),
 ];
@@ -72,11 +72,13 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         declared_sex: a.get("--declared-sex").map(str::to_owned),
         assets: a.get("--assets").map_or_else(default_assets, str::to_owned),
     };
-    let target = a.get("--out").map_or_else(
-        || crate::join(&input.sample_dir, "summary.json"),
-        str::to_owned,
-    );
-    let summary = collect(&input);
+    // A part of the sections must never replace the sample's complete
+    // summary.json, so there is no default path while `--only` exists.
+    let target = a.text("--out").to_owned();
+    let summary = match collect(&input) {
+        Ok(s) => s,
+        Err(e) => return crate::finish(Err(e), err),
+    };
     let body = match dumps(
         &summary.to_json(),
         &Dump {
@@ -113,12 +115,15 @@ fn default_assets() -> String {
         .to_string()
 }
 
-/// Reads the folder into the summary of group a.
-pub fn collect(input: &Input) -> Summary {
+/// Reads the folder into the summary of group a. An error is a run status
+/// or a manifest that is there and cannot be read: without it a result of
+/// an earlier run would be called current, so no summary is written.
+pub fn collect(input: &Input) -> Result<Summary, String> {
     let dir = Path::new(&input.sample_dir);
     let index = FolderIndex::walk(dir);
-    let run = read_optional(&dir.join("logs").join("run_status.tsv")).map(|t| RunStatus::parse(&t));
-    let manifest = read_optional(&dir.join("run_manifest.tsv")).map(|t| Manifest::parse(&t));
+    let run =
+        read_optional(&dir.join("logs").join("run_status.tsv"))?.map(|t| RunStatus::parse(&t));
+    let manifest = read_optional(&dir.join("run_manifest.tsv"))?.map(|t| Manifest::parse(&t));
     let s = pycompat::mtime::escape(&input.sample);
     let find = |pats: &[String]| index.first(pats).map(str::to_owned);
     let file = |rel: String| -> (String, String) { (crate::join(&input.sample_dir, &rel), rel) };
@@ -183,14 +188,14 @@ pub fn collect(input: &Input) -> Summary {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |d| d.as_secs_f64());
-    Summary {
+    Ok(Summary {
         sample: input.sample.clone(),
         generated_utc: time::utc_minute(now).unwrap_or_default(),
         run,
         manifest,
         declared_sex,
         sections,
-    }
+    })
 }
 
 /// What one reader gave: the file (relative), its mtime and its data.
@@ -275,13 +280,16 @@ fn with_mtime(path: &str, rel: String, data: Data) -> Read {
     Ok(Some((rel, t, data)))
 }
 
-/// The text of a file that may not be there: `None` when it is no file.
-fn read_optional(p: &Path) -> Option<String> {
-    let p = p.to_str()?;
+/// The text of a file that may not be there: `None` when it is no file,
+/// an error when it is one and cannot be read.
+fn read_optional(p: &Path) -> Result<Option<String>, String> {
+    let Some(p) = p.to_str() else {
+        return Ok(None);
+    };
     if !crate::is_file(p) {
-        return None;
+        return Ok(None);
     }
-    crate::read_text(p).ok()
+    crate::read_text(p).map(Some)
 }
 
 #[cfg(test)]
