@@ -2,14 +2,16 @@
 
 ## What This Does
 
-A finished sample keeps the results of the databases it ran with. ClinVar publishes a new file every month, and Ensembl, PCGR, pypgx, PharmCAT, IPD-IMGT/HLA and the PGS Catalog release less often. `bin/owngenome_recheck.py` says which of them has a newer release than the one your run used, which steps that would change, and what to do about it. With `--rerun` it then runs the same `run-all.sh` command again, so Nextflow redoes only those steps and takes the rest from its cache.
+A finished sample keeps the results of the databases it ran with. ClinVar publishes a new file every month, and Ensembl, PCGR, pypgx, PharmCAT, IPD-IMGT/HLA and the PGS Catalog release less often. `bin/og recheck` says which of them has a newer release than the one your run used, which steps that would change, and what to do about it. With `--rerun` it then runs the same `run-all.sh` command again, so Nextflow redoes only those steps and takes the rest from its cache.
 
 ```bash
 export GENOME_DIR=/path/to/your/data
-python3 bin/owngenome_recheck.py --sample your_sample
+bin/og recheck --sample your_sample
 ```
 
-Standard library only, so the plain `python3` on the host is enough. It needs the sample's `run_manifest.tsv`, which `run-all.sh` writes (`bin/write_manifest.sh`).
+It is part of `og`, OwnGenome's one binary, which `./scripts/setup.sh --og` builds ([og](rust.md)). It asks the network through the host's `curl`. It needs the sample's `run_manifest.tsv`, which `run-all.sh` writes (`bin/write_manifest.sh`).
+
+`bin/owngenome_recheck.py`, the old Python version, now only runs `bin/og recheck` with the same arguments and says on stderr that it is deprecated. It stays for crontabs until 1.1.0; point them at `bin/og recheck`.
 
 ## What it checks
 
@@ -27,7 +29,7 @@ The pins of steps 50 to 53 (`MEGANE_IMAGE`, `MOCHA_PANEL_VERSION`, `MOCHA_IMAGE`
 
 The HTML report (24) and the text report are written again after any of them. The ClinVar release inside the PCGR bundle (`cpsr_clinvar_release`) moves with the PCGR bundle, never with step 06's ClinVar file.
 
-The lookups are the ones the monthly CI check uses (`scripts/ci/freshness.py`). It also reads the newest release of this pipeline (`--owngenome-repo`, default `GeiserX/OwnGenome`) and that release's `versions.env`, to say whether a newer pin is already in a release.
+The lookups are the ones the monthly CI check uses (`og dev freshness`), and the answers stay typed from the lookup to the class: nothing is read back out of the report's text. It also reads the newest release of this pipeline (`--owngenome-repo`, default `GeiserX/OwnGenome`) and that release's `versions.env`, to say whether a newer pin is already in a release.
 
 ### What is sent
 
@@ -53,13 +55,13 @@ The 2-day margin for ClinVar is there because NCBI dates the file a day or two a
 
 `assets/steps.tsv` has a `reads` column: the manifest keys of the databases each step reads itself. A step whose key moved is marked, then every step downstream of it through the `upstream` column, then the reports. A key with `@self` (step 20's ClinVar) changes only a table of that step's own, so nothing below it is marked.
 
-The Nextflow workflow checks this on every pull request: it runs the all-tools stub again with `-resume` and a ClinVar file of another date, and the steps with a task that ran again must be exactly the steps `bin/owngenome_recheck.py --affected clinvar_file_date` names.
+The Nextflow workflow checks this on every pull request: it runs the all-tools stub again with `-resume` and a ClinVar file of another date, and the steps with a task that ran again must be exactly the steps `og recheck --affected clinvar_file_date` names.
 
 ## Rerunning
 
 ```bash
-python3 bin/owngenome_recheck.py --sample your_sample --rerun
-python3 bin/owngenome_recheck.py --sample your_sample --rerun --refresh-clinvar   # refresh ClinVar first
+bin/og recheck --sample your_sample --rerun
+bin/og recheck --sample your_sample --rerun --refresh-clinvar   # refresh ClinVar first
 ```
 
 `run-all.sh` writes its own command into `logs/run_status.tsv` (`meta command`: a `cd` to the directory it was run from, the switches it reads that were set, then its arguments, each shell-quoted; `meta switches`: the names of those switches). `--rerun` runs that command again with those switches only, so a `TOOLS` set in your shell today does not change the run. `NXF_OPTS` and `NXF_JVM_ARGS` are not recorded, because they can hold a proxy password; the replay takes them from your shell. Nextflow's `-resume` then redoes only the tasks whose inputs changed.
@@ -79,7 +81,7 @@ The ClinVar files are shared by every sample of `$GENOME_DIR`. `--refresh-clinva
 A bare `nextflow run main.nf` writes no run manifest, so there is nothing to check. To get the command back, `--launch-dir` prints the last command of that launch directory (its `.nextflow/history`) with `-resume` added. It never runs it.
 
 ```bash
-python3 bin/owngenome_recheck.py --launch-dir /path/to/launch/dir
+bin/og recheck --launch-dir /path/to/launch/dir
 ```
 
 ## The files it writes
@@ -102,8 +104,8 @@ Nothing here installs itself. To check once a month, copy one of these. Each run
 crontab (`crontab -e`), at 06:00 on the 5th of each month:
 
 ```text
-0 6 5 * * GENOME_DIR=/path/to/your/data /usr/bin/python3 /path/to/OwnGenome/bin/owngenome_recheck.py --sample your_sample >> /path/to/your/data/your_sample/recheck-cron.log 2>&1
-# 0 6 5 * * GENOME_DIR=/path/to/your/data /usr/bin/python3 /path/to/OwnGenome/bin/owngenome_recheck.py --sample your_sample --rerun >> /path/to/your/data/your_sample/recheck-cron.log 2>&1
+0 6 5 * * GENOME_DIR=/path/to/your/data /path/to/OwnGenome/bin/og recheck --sample your_sample >> /path/to/your/data/your_sample/recheck-cron.log 2>&1
+# 0 6 5 * * GENOME_DIR=/path/to/your/data /path/to/OwnGenome/bin/og recheck --sample your_sample --rerun >> /path/to/your/data/your_sample/recheck-cron.log 2>&1
 ```
 
 systemd (Linux, as your user): `~/.config/systemd/user/owngenome-recheck.service`
@@ -115,8 +117,8 @@ Description=Check a genome against newer databases
 [Service]
 Type=oneshot
 Environment=GENOME_DIR=/path/to/your/data
-ExecStart=/usr/bin/python3 /path/to/OwnGenome/bin/owngenome_recheck.py --sample your_sample
-# ExecStart=/usr/bin/python3 /path/to/OwnGenome/bin/owngenome_recheck.py --sample your_sample --rerun
+ExecStart=/path/to/OwnGenome/bin/og recheck --sample your_sample
+# ExecStart=/path/to/OwnGenome/bin/og recheck --sample your_sample --rerun
 ```
 
 and `~/.config/systemd/user/owngenome-recheck.timer`, then `systemctl --user enable --now owngenome-recheck.timer`:
@@ -145,8 +147,8 @@ launchd (macOS): `~/Library/LaunchAgents/org.owngenome.recheck.plist`, then `lau
   <key>Label</key><string>org.owngenome.recheck</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/python3</string>
-    <string>/path/to/OwnGenome/bin/owngenome_recheck.py</string>
+    <string>/path/to/OwnGenome/bin/og</string>
+    <string>recheck</string>
     <string>--sample</string><string>your_sample</string>
     <!-- <string>--rerun</string> -->
   </array>
@@ -164,4 +166,4 @@ launchd runs an interval missed during sleep when the Mac wakes; one missed whil
 
 ## Tests
 
-`tests/test_owngenome_recheck.py` checks the classes, the steps each item names, a failed lookup, the files it writes, the refusal during a run, the comparison after a rerun and the live-site plugin, each against a planted mistake too. `tests/fake-docker/run-all-recheck.sh` checks that `--rerun` replays the recorded command exactly, with a control where one dropped argument makes it differ.
+`cargo test -p og-recheck` checks the classes, the steps each item names, a failed lookup (an offline answer and a server on 127.0.0.1), the files it writes, the refusals during a run and while a lock is held, the lock held while `setup.sh` refreshes ClinVar and let go before the replay, the comparison after a rerun and `--launch-dir`. `tests/test_owngenome_recheck.py` runs `og recheck` from the outside, the deprecated `bin/owngenome_recheck.py`, the live-site plugin and the ClinVar lock block of `run-all.sh` and step 06, each against a planted mistake too. `tests/fake-docker/run-all-recheck.sh` checks that `--rerun` replays the recorded command exactly, with a control where one dropped argument makes it differ.

@@ -56,3 +56,6 @@ mito-annotate	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.
 mito-deletions	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-deletions "$@"'	mito deletions
 mito-copies	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-copies "$@"'	mito copies
 summary-collect	98aa9252ff77825a8a797d388b449931fa9a234e	file:bin/collect_summary.py	sh ./oracle.sh	summary collect
+lookup	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	python3	lookup
+lookup-query	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	bash ./oracle.sh	lookup query
+family-ibd	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/ibd_report.py	sh ./ibd_oracle.sh	family ibd
