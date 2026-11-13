@@ -67,7 +67,6 @@ on:
       - '.github/workflows/e2e.yml'
       - '.github/actions/**'
       - 'tests/fixtures/annotsv/class45.sh'
-      - 'tests/fixtures/comphet/make_fixture.py'
       - 'tests/fixtures/consumer_export/sites.tsv.gz'
       - 'tests/fixtures/families/stub_families.tsv'
       - 'tests/fixtures/pharmcat/refblocks.g.vcf'

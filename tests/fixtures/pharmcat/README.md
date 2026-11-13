@@ -1,7 +1,7 @@
 # PharmCAT report fixtures
 
 Real PharmCAT output for `tests/test_cpic_parser.py` (one `report-<version>.json` per release in its `REAL_REPORTS`), trimmed with
-`trim_report.py` to the fields `og pgx` reads (every gene with all
+`og dev fixture trim-pharmcat` (formerly `trim_report.py`, which wrote the files below) to the fields `og pgx` reads (every gene with all
 its listed diplotypes and `relatedDrugs`; up to 4 matched annotations per drug
 guideline).
 
@@ -16,7 +16,7 @@ with `VERSION` replaced by the PharmCAT release (for example `3.4.0`), and add
 the release to `REAL_REPORTS` in `tests/test_cpic_parser.py`:
 
 ```bash
-python3 tests/fixtures/pharmcat/trim_report.py report.json tests/fixtures/pharmcat/report-VERSION.json
+bin/og dev fixture trim-pharmcat report.json tests/fixtures/pharmcat/report-VERSION.json
 ```
 
 ## Reference blocks over PharmCAT's positions longer than one base

@@ -46,7 +46,7 @@ export LC_ALL=C
 SCOPE_DIRS=(scripts modules workflows bin conf assets tests/e2e .github/actions)
 SCOPE_FILES=(tests/fixtures/VERSION main.nf nextflow.config nextflow_schema.json versions.env .github/workflows/e2e.yml
   # The committed fixtures the cases read (their rows name them too).
-  tests/fixtures/annotsv/class45.sh tests/fixtures/comphet/make_fixture.py tests/fixtures/consumer_export/sites.tsv.gz
+  tests/fixtures/annotsv/class45.sh tests/fixtures/consumer_export/sites.tsv.gz
   tests/fixtures/families/stub_families.tsv tests/fixtures/pharmcat/refblocks.g.vcf tests/fixtures/sv/cnvpytor.vcf.in
   tests/fixtures/sv/delly.vcf.in tests/fixtures/sv/manta.vcf.in tests/fixtures/vcf/combined_allele_clinvar.vcf
   tests/fixtures/vcf/combined_allele_sample.vcf tests/fixtures/vcf/grch37_no_contigs.vcf)
