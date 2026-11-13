@@ -72,3 +72,4 @@ dev-nf-attempts	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:.github/workflows/
 dev-smoke-mini	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh mini-ref "$0" "$@"'	dev smoke mini-ref
 dev-smoke-long	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh long-reads "$0" "$@"'	dev smoke long-reads
 dev-smoke-catalog	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh eh-catalog "$0" "$@"'	dev smoke eh-catalog
+dev-smoke-check	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:tests/smoke/commands.tsv	sh -c 'exec bash ./oracle.sh check "$0" "$@"'	dev smoke check

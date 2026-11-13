@@ -219,8 +219,8 @@ fn smoke_tables_reject_removed_properties() {
         ),
         (
             "parascopy",
-            "chr5 1 2 a b c 4 99\n",
-            "chr5 1 2 a b c * 99\n",
+            "chr5\t1\t2\ta\tb\tc\t4\t99\n",
+            "chr5\t1\t2\ta\tb\tc\t*\t99\n",
         ),
     ] {
         let p = t.file("table", good);

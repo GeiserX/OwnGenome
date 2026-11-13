@@ -119,8 +119,8 @@ jobs:
       - name: Validate nextflow_schema.json and the samplesheet schema
         if: steps.scope.outputs.run == 'true'
         run: |
-          jq empty nextflow_schema.json > /dev/null
-          jq empty assets/schema_input.json > /dev/null
+          jq -s -e 'length == 1' nextflow_schema.json > /dev/null
+          jq -s -e 'length == 1' assets/schema_input.json > /dev/null
 
       # The stub run below pulls every image of the default tools: the pinned
       # leg ran out of disk in it twice on 2026-11-05 (#300, job 127077180393;

@@ -966,3 +966,17 @@ dev-nf-attempts	retry	ci-readers/oracle.sh,ci-readers/attempts.tsv	attempts.tsv 
 dev-smoke-mini	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	slice.fa orig.fa mini.fa 450000 3000	orig.fa,mini.fa	bytes	PYTHON_IMAGE
 dev-smoke-long	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	hap1.fa hap2.fa long.fq.gz	long.fq.gz	gz-content	PYTHON_IMAGE
 dev-smoke-catalog	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	slice.fa eh.json 449000	eh.json	json	PYTHON_IMAGE
+dev-smoke-check	hap-ibd	ci-readers/oracle.sh,ci-readers/o.ibd	hap-ibd o.ibd	-	bytes	PYTHON_IMAGE
+dev-smoke-check	ibdmix	ci-readers/oracle.sh,ci-readers/o.txt	ibdmix o.txt	-	bytes	PYTHON_IMAGE
+dev-smoke-check	rfmix	ci-readers/oracle.sh,ci-readers/o.msp.tsv	rfmix o.msp.tsv	-	bytes	PYTHON_IMAGE
+dev-smoke-check	eigen	ci-readers/oracle.sh,ci-readers/t.evec	eigen t.evec	-	bytes	PYTHON_IMAGE
+dev-smoke-check	parascopy	ci-readers/oracle.sh,ci-readers/smn.tsv	parascopy smn.tsv	-	bytes	PYTHON_IMAGE
+dev-pharmcat	report-3.2.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.2.0.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat	report-3.4.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.4.0.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.sh	pharmcat-docs-example.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	report-3.2.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.2.0.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	report-3.4.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.4.0.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.sh	pharmcat-docs-example.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	report-3.2.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.2.0.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	report-3.4.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.4.0.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.sh	pharmcat-docs-example.json --called-lines	-	bytes	PYTHON_IMAGE

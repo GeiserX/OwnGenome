@@ -1,6 +1,6 @@
 //! Small, local smoke fixtures and table checks. No subprocess or network.
 use og_io::{AtomicFile, Lines, Utf8};
-use pycompat::csv::{DictReader, Quoting};
+use pycompat::csv::{DictReader, Quoting, Reader};
 use std::io::Write;
 
 fn lines(path: &str) -> Result<Lines<Box<dyn std::io::BufRead>>, String> {
@@ -27,6 +27,9 @@ fn fasta(path: &str) -> Result<Vec<u8>, String> {
     for line in lines(path)? {
         let line = line.map_err(|e| e.to_string())?;
         if !line.starts_with('>') {
+            if seq.len().saturating_add(line.trim().len()) > 1_003_000 {
+                return Err("smoke reference exceeds 1003000 bases".into());
+            }
             seq.extend(line.trim().bytes().map(|b| b.to_ascii_uppercase()));
         }
     }
@@ -157,7 +160,10 @@ fn csv_cell(args: &[String], out: &mut dyn Write) -> Result<(), String> {
     for row in DictReader::new(csv_lines(&args[0])?, ',', Quoting::Minimal) {
         let row = row.map_err(|e| e.to_string())?;
         if want.iter().all(|(k, v)| row.get(k) == Some(Some(v))) {
-            let val = row.get(&args[2]).flatten().ok_or("missing CSV column")?;
+            let val = row
+                .get(&args[2])
+                .ok_or("missing CSV column")?
+                .unwrap_or("None");
             writeln!(out, "{val}").map_err(|e| e.to_string())?;
             break;
         }
@@ -170,17 +176,90 @@ fn fields(line: &str) -> Vec<&str> {
 fn float(s: Option<&&str>) -> Result<f64, String> {
     pycompat::num::parse_float(s.ok_or("short table row")?).map_err(|e| e.to_string())
 }
+#[derive(Default)]
+struct PcaGroup {
+    n: usize,
+    first: f64,
+    min: f64,
+    max: f64,
+    sum: f64,
+    correction: f64,
+}
+impl PcaGroup {
+    fn add(&mut self, x: f64) {
+        if self.n == 0 {
+            self.first = x;
+            self.min = x;
+            self.max = x;
+        }
+        // Python's min/max keep the first element when a comparison is
+        // unordered (NaN), unlike f64::min/max, which skip NaN.
+        if x < self.min {
+            self.min = x;
+        }
+        if x > self.max {
+            self.max = x;
+        }
+        let t = self.sum + x;
+        self.correction += if self.sum.abs() >= x.abs() {
+            (self.sum - t) + x
+        } else {
+            (x - t) + self.sum
+        };
+        self.sum = t;
+        self.n += 1;
+    }
+    fn mean(&self) -> f64 {
+        (self.sum
+            + if self.correction != 0. && self.correction.is_finite() {
+                self.correction
+            } else {
+                0.
+            })
+            / self.n as f64
+    }
+}
+fn parascopy(path: &str, out: &mut dyn Write) -> Result<bool, String> {
+    let mut found = false;
+    let mut n = 0;
+    for row in Reader::new(csv_lines(path)?, '\t', Quoting::Minimal) {
+        let row = row.map_err(|e| e.to_string())?;
+        if row.is_empty() || row[0].starts_with('#') {
+            continue;
+        }
+        if row.len() < 8 {
+            return Err("short Parascopy row".into());
+        }
+        found |= row[0] == "chr5"
+            && !["", "*"].contains(&row[6].as_str())
+            && !["", "*"].contains(&row[7].as_str());
+        n += 1;
+    }
+    writeln!(
+        out,
+        "parascopy: {n} rows; {}",
+        if found { "OK" } else { "FAIL" }
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(found)
+}
 fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
+    if kind == "parascopy" {
+        return parascopy(path, out);
+    }
     // The windows keep only their first covering row, matching Python's next().
     let mut n = 0;
     let mut ab = 0;
     let mut ab_len = 0.;
     let mut coverage = 0.;
     let mut outside = 0;
-    let mut groups = [Vec::new(), Vec::new(), Vec::new()];
+    let mut groups = [
+        PcaGroup::default(),
+        PcaGroup::default(),
+        PcaGroup::default(),
+    ];
     let mut codes = std::collections::BTreeMap::new();
     let mut at = [None, None];
-    let mut aggregate = false;
     for (i, line) in lines(path)?.enumerate() {
         let line = line.map_err(|e| e.to_string())?;
         let r = fields(&line);
@@ -222,7 +301,7 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                     Some(&"Proj") => 2,
                     _ => continue,
                 };
-                groups[g].push(float(r.get(1))?);
+                groups[g].add(float(r.get(1))?);
             }
             "rfmix" => {
                 if i == 0 {
@@ -251,17 +330,6 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                     }
                 }
             }
-            "parascopy" => {
-                if r.is_empty() || r[0].starts_with('#') {
-                    continue;
-                }
-                if r.len() < 8 {
-                    return Err("short Parascopy row".into());
-                }
-                aggregate |=
-                    r[0] == "chr5" && !["", "*"].contains(&r[6]) && !["", "*"].contains(&r[7]);
-                n += 1;
-            }
             _ => return Err(format!("unknown smoke check {kind}")),
         }
     }
@@ -269,26 +337,19 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
         "hap-ibd" => n == 1 && ab == 1 && (8. ..=11.).contains(&ab_len),
         "ibdmix" => coverage >= 540000. && outside == 0,
         "eigen" => {
-            if groups.iter().any(Vec::is_empty) {
+            if groups.iter().any(|g| g.n == 0) {
                 return Err("missing PCA group".into());
             }
             let a = &groups[0];
             let b = &groups[1];
-            let p = groups[2][0];
-            let ma = pycompat::num::sum(a.iter().copied()) / a.len() as f64;
-            let mb = pycompat::num::sum(b.iter().copied()) / b.len() as f64;
-            (a.iter().copied().fold(f64::NEG_INFINITY, f64::max)
-                < b.iter().copied().fold(f64::INFINITY, f64::min)
-                || a.iter().copied().fold(f64::INFINITY, f64::min)
-                    > b.iter().copied().fold(f64::NEG_INFINITY, f64::max))
-                && (p - ma).abs() < (p - mb).abs()
+            let p = groups[2].first;
+            (a.max < b.min || a.min > b.max) && (p - a.mean()).abs() < (p - b.mean()).abs()
         }
         "rfmix" => ["POPA", "POPB"].iter().enumerate().all(|(i, p)| {
             codes
                 .get(*p)
                 .is_some_and(|c| at[i].as_ref() == Some(&[c.clone(), c.clone()]))
         }),
-        "parascopy" => aggregate,
         _ => false,
     };
     writeln!(out, "{kind}: {n} rows; {}", if ok { "OK" } else { "FAIL" })
