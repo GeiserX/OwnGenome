@@ -16,6 +16,9 @@ use regex::Regex;
 /// A pattern with its look-behind.
 pub struct Rule {
     re: Regex,
+    /// Capture describing the match span: 1 for rewritten look-around,
+    /// 0 for a user's unmodified regular expression.
+    capture: usize,
     /// True for a character the match must not follow.
     not_after: Option<fn(char) -> bool>,
 }
@@ -26,8 +29,16 @@ impl Rule {
     pub fn new(pattern: &str, not_after: Option<fn(char) -> bool>) -> Result<Rule, regex::Error> {
         Ok(Rule {
             re: Regex::new(pattern)?,
+            capture: 1,
             not_after,
         })
+    }
+
+    /// A user's regular expression, whose captures do not change its span.
+    pub fn whole_match(pattern: &str) -> Result<Rule, regex::Error> {
+        let mut rule = Self::new(pattern, None)?;
+        rule.capture = 0;
+        Ok(rule)
     }
 
     /// The spans of `re.finditer` over `line`, in order.
@@ -36,7 +47,7 @@ impl Rule {
         std::iter::from_fn(move || {
             while pos <= line.len() {
                 let caps = self.re.captures_at(line, pos)?;
-                let m = caps.get(1).or_else(|| caps.get(0))?;
+                let m = caps.get(self.capture).or_else(|| caps.get(0))?;
                 let (start, end) = (m.start(), m.end());
                 let refused = self
                     .not_after

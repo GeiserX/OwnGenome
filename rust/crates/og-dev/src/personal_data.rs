@@ -238,7 +238,9 @@ fn own_rules(path: &str) -> Result<Vec<Check>, String> {
         if p.is_empty() || l.starts_with('#') {
             continue;
         }
-        let rule = Rule::new(p, None).map_err(|e| format!("{path}: bad pattern {p}: {e}"))?;
+        // Rule reports capture 1 for the built-in look-around patterns.
+        // A user's captures must not narrow the span checked against ALLOW.
+        let rule = Rule::whole_match(p).map_err(|e| format!("{path}: bad pattern {p}: {e}"))?;
         out.push(Check {
             kind: "own",
             rule,
@@ -562,5 +564,31 @@ mod tests {
         ));
         let got = String::from_utf8(out).unwrap();
         assert!(got.starts_with("FAIL home      x.md:1: "), "{got}");
+    }
+
+    #[test]
+    fn own_patterns_use_the_complete_match() {
+        let path =
+            std::env::temp_dir().join(format!("og-personal-patterns-{}", std::process::id()));
+        std::fs::write(
+            &path,
+            "PREFIX (PUBLIC) SUFFIX\nPREFIX (?P<label>PUBLIC) SUFFIX\n(?i)prefix (public) suffix\nPREFIX (?:PUBLIC) SUFFIX\n(?x)PREFIX\\s+(PUBLIC)\\s+SUFFIX # trailing comment\n",
+        )
+        .unwrap();
+        let rules = own_rules(path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        let line = b"PREFIX PUBLIC SUFFIX";
+        let mut out = Vec::new();
+        assert!(scan_text(&mut out, &rules, &["PUBLIC"], "x.md", line));
+        let got = String::from_utf8(out).unwrap();
+        assert_eq!(got.lines().count(), 5, "{got}");
+        assert!(!scan_text(
+            &mut Vec::new(),
+            &rules,
+            &["PREFIX PUBLIC SUFFIX"],
+            "x.md",
+            line,
+        ));
     }
 }
