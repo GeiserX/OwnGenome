@@ -261,16 +261,27 @@ def main():
 
     rc, o, _ = og([ogp], "--affected", "clinvar_file_date")
     check("4. og recheck --affected names ClinVar's steps", rc == 0 and o.split() == CLINVAR_STEPS, (rc, o))
-    # The shim runs bin/og, which runs the build scripts/setup.sh --og put in bin/.og.
-    if subprocess.run([os.path.join(REPO, "bin", "og"), "version"], capture_output=True, check=False).returncode == 0:
-        rc, o, e = og([sys.executable, SHIM], "--affected", "clinvar_file_date")
+    # The shim runs the og beside it (bin/og). A copy of it beside an og that runs this og checks
+    # it on any machine, with or without a build in bin/.og.
+    tmp = tempfile.mkdtemp(prefix="recheck-shim.")
+    try:
+        shim = os.path.join(tmp, "owngenome_recheck.py")
+        shutil.copy(SHIM, shim)
+        with open(os.path.join(tmp, "og"), "w") as f:
+            f.write(f"#!/bin/sh\nexec '{ogp}' \"$@\"\n")
+        os.chmod(os.path.join(tmp, "og"), 0o755)
+        rc, o, e = og([sys.executable, shim], "--affected", "clinvar_file_date")
         check("4. bin/owngenome_recheck.py runs og recheck and says it is deprecated",
               rc == 0 and o.split() == CLINVAR_STEPS and "deprecated" in e, (rc, o, e))
-        rc, _, _ = og([sys.executable, SHIM], "--sample", "S1", "--genome-dir", "/nonexistent")
+        rc, _, _ = og([sys.executable, shim], "--sample", "S1", "--genome-dir", "/nonexistent")
         check("4. bin/owngenome_recheck.py passes og recheck's exit code on", rc == 2, rc)
-    else:
-        check("4. bin/owngenome_recheck.py runs og recheck (bin/og has no build here: "
-              f"{'FAIL in CI' if os.environ.get('CI') else 'not run here'})", not os.environ.get("CI"))
+        with open(os.path.join(tmp, "og"), "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        rc, o, _ = og([sys.executable, shim], "--affected", "clinvar_file_date")
+        check("fails on a planted mistake: bin/owngenome_recheck.py runs og recheck (an og that does nothing)",
+              o.split() != CLINVAR_STEPS, "passed on the mutant")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
     ok, detail = plugin_ok(load_plugin())
     check("5. the live-site plugin serves the check and gives each step its badges", ok, detail)

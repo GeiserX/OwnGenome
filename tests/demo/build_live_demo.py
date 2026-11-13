@@ -49,7 +49,8 @@ What the replay changes, and why:
     are held back until the replay reaches the end of HTML_REPORT, as a run
     writes them then; the re-check (tests/fixtures/live/demo) is written one
     hour after the run ends, and its steps come from `og recheck --affected`
-    (OG; without og the build stops, since the re-check card would be empty);
+    (OG when set, else bin/og; without og the build stops, since the re-check
+    card would be empty);
   - the clock the plugins read is the time of the message just stored, so the
     run-health card shows the run as it was then, not as a run gone quiet;
     the memory and the disk it measures are an invented machine's (64 GiB of
@@ -111,7 +112,8 @@ RECHECK_AFTER_S = 3600
 DEMO_RAM = 64 << 30
 DEMO_DISK = os.statvfs_result((4096, 4096, 512 << 20, 230 << 20, 230 << 20, 128 << 20, 100 << 20, 100 << 20, 0, 255))
 INTERVAL_MS = 600
-OG = os.path.join(BIN, "og")
+# OG names og when set (tests/og_binary.py reads it the same way), else bin/og.
+OG = os.environ.get("OG") or os.path.join(BIN, "og")
 GENCODE_SLICE = os.path.join(REPO, "tests", "fixtures", "map", "gencode-slice", "reference")
 # The server's policy; a meta tag cannot set frame-ancestors (the browser ignores it there and warns).
 CSP = "; ".join(p for p in owngenome_live.CSP.split("; ") if not p.startswith("frame-ancestors"))
@@ -508,7 +510,7 @@ def main(argv=None):
     ap.add_argument("--genome-dir", help="a folder holding DEMO-001 (default: write one now)")
     ap.add_argument("--records", type=int, default=20000, help="variant records of a DEMO-001 written now")
     ap.add_argument("--work", help="an empty folder for the run folder, kept afterwards (default: a temporary one)")
-    ap.add_argument("--og", default=OG, help="the og that builds the map documents (default: bin/og)")
+    ap.add_argument("--og", default=OG, help="the og that builds the map documents and names the re-check steps (default: $OG, else bin/og)")
     a = ap.parse_args(argv)
     r = build(a.out, a.genome_dir, a.records, a.work, og=a.og)
     size = sum(os.path.getsize(os.path.join(p, f)) for p, _, fs in os.walk(a.out) for f in fs)
