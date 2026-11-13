@@ -110,7 +110,7 @@ pub enum Utf8 {
 pub struct Lines<R> {
     inner: R,
     raw: Vec<u8>,
-    pos: usize,
+    skip_lf: bool,
     utf8: Utf8,
 }
 
@@ -119,7 +119,7 @@ impl<R: BufRead> Lines<R> {
         Lines {
             inner,
             raw: Vec::new(),
-            pos: 0,
+            skip_lf: false,
             utf8,
         }
     }
@@ -128,25 +128,36 @@ impl<R: BufRead> Lines<R> {
     /// `\n` (none on a last line without one), or `false` at the end.
     pub fn read_line(&mut self, out: &mut String) -> io::Result<bool> {
         out.clear();
-        if self.pos == self.raw.len() {
-            self.raw.clear();
-            self.pos = 0;
-            if self.inner.read_until(b'\n', &mut self.raw)? == 0 {
-                return Ok(false);
+        self.raw.clear();
+        // A CR ends this record immediately. Consume a following LF on the
+        // next call, including when CR is the last byte of a buffer.
+        if self.skip_lf {
+            if self.inner.fill_buf()?.first() == Some(&b'\n') {
+                self.inner.consume(1);
             }
+            self.skip_lf = false;
         }
-        let rest = &self.raw[self.pos..];
-        // read_until stops after a \n or at the end, so a \r\n is never split.
-        let (body, used) = match rest.iter().position(|&c| c == b'\n' || c == b'\r') {
-            None => (rest, rest.len()),
-            Some(k) if rest[k] == b'\r' && rest.get(k + 1) == Some(&b'\n') => (&rest[..k], k + 2),
-            Some(k) => (&rest[..k], k + 1),
+        let ended = loop {
+            let bytes = self.inner.fill_buf()?;
+            if bytes.is_empty() {
+                if self.raw.is_empty() {
+                    return Ok(false);
+                }
+                break false;
+            }
+            if let Some(k) = bytes.iter().position(|&b| b == b'\r' || b == b'\n') {
+                self.raw.extend_from_slice(&bytes[..k]);
+                self.skip_lf = bytes[k] == b'\r';
+                self.inner.consume(k + 1);
+                break true;
+            }
+            let n = bytes.len();
+            self.raw.extend_from_slice(bytes);
+            self.inner.consume(n);
         };
-        let ended = used > body.len();
-        // Past the line before decoding it, so a strict error is not raised
-        // again for the same line by a caller that goes on reading. (Python
-        // raises once too; a caller is expected to stop at the error.)
-        self.pos += used;
+        // Consume the record before decoding so a strict UTF-8 error is
+        // raised only once when a caller continues with the next record.
+        let body = &self.raw;
         match self.utf8 {
             Utf8::Strict => out.push_str(
                 std::str::from_utf8(body)
@@ -347,5 +358,60 @@ mod tests {
         assert!(f.commit().is_err());
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
         fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod bounded_line_tests {
+    use super::*;
+
+    #[test]
+    fn all_endings_and_buffer_edges() {
+        for bytes in [
+            b"a\nb\n".as_slice(),
+            b"a\r\nb\r\n",
+            b"a\rb\r",
+            b"a\r\nb\rc\nd",
+            b"tail",
+            b"",
+        ] {
+            for capacity in 1..=8 {
+                let mut input = Lines::new(
+                    BufReader::with_capacity(capacity, io::Cursor::new(bytes)),
+                    Utf8::Strict,
+                );
+                let mut got = Vec::new();
+                let mut line = String::new();
+                while input.read_line(&mut line).unwrap() {
+                    got.push(line.clone());
+                }
+                let normalized = String::from_utf8(bytes.to_vec())
+                    .unwrap()
+                    .replace("\r\n", "\n")
+                    .replace('\r', "\n");
+                let want: Vec<_> = normalized.split_inclusive('\n').collect();
+                assert_eq!(got, want, "capacity {capacity}: {bytes:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn cr_only_storage_is_bounded_by_one_line() {
+        let input = b"a,b\r".repeat(1 << 18);
+        let mut input = Lines::new(
+            BufReader::with_capacity(64, io::Cursor::new(input)),
+            Utf8::Strict,
+        );
+        let mut line = String::new();
+        for _ in 0..1 << 18 {
+            assert!(input.read_line(&mut line).unwrap());
+            assert_eq!(line, "a,b\n");
+            assert!(
+                input.raw.capacity() <= 64,
+                "buffer grew to {} bytes",
+                input.raw.capacity()
+            );
+        }
+        assert!(!input.read_line(&mut line).unwrap());
     }
 }

@@ -279,6 +279,16 @@ jobs:
           grep -E 'planted_failure.*FAILED' "$log" || { cat "$log"; echo "ERROR: the run failed, but not on the planted test"; exit 1; }
           echo "Control: the planted test failed, as it must."
 
+      - name: Control (an unreadable PharmCAT report reported as success must fail)
+        run: |
+          log="${RUNNER_TEMP}/ci-reader-control.log"
+          rc=0
+          cargo test --locked --no-fail-fast -p og-dev --features planted-ci-reader --test ci_readers \
+            unreadable_pharmcat_is_unassessed > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ] || { echo "ERROR: the planted unreadable-report success passed"; exit 1; }
+          grep -E 'unreadable_pharmcat_is_unassessed.*FAILED' "$log"
+          echo "Control: the unreadable-report success was reported as a failed test."
       - name: Traits controls (diplotype order, REF check and missing phase rows)
         env:
           CARGO_BUILD_JOBS: 3
