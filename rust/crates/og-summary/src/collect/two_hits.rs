@@ -143,7 +143,7 @@ pub fn pair_phase(dl: &Deletion, v: &Variant) -> (Verdict, String) {
     let inside = dl.inside && dl.chrom == v.chrom && dl.start <= v.pos && v.pos <= dl.end;
     // Read-backed phase first: on the same copy (cis) is no second hit,
     // wherever the variant sits.
-    let hd = phase_haps(dl.gt.as_deref()).filter(|h| !h.is_empty());
+    let hd = phase_haps(dl.gt.as_deref()).filter(|h| h.is_empty());
     let hv = phase_haps(Some(&v.gt)).filter(|h| !h.is_empty());
     let mut phased: Option<(Verdict, String)> = None;
     if let (Some(hd), Some(hv)) = (&hd, &hv)
