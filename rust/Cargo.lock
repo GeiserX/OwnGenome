@@ -601,6 +601,7 @@ name = "og-ancestry"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "og-intervals",
  "og-io",
  "og-tsv",
  "pycompat",
