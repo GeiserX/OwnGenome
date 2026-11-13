@@ -22,7 +22,8 @@ rust/
   crates/og-setup/      what setup.sh runs once: the STRchive catalog, zips, the genetic map
   crates/og-steps/      the step helpers: constraint-join, prs format, step 40's consumer export; og family (step 38); og pgx outside-calls|hla-concordance|pypgx-summary (steps 08, 32, 36); og paraphase (step 35b)
   crates/og-summary/    the step tables of steps 20, 25 and 33: og mito, og prs table, og qc sample;
-                        og summary collect --only a, the first seven summary sections (no caller yet)
+                        og summary collect --only a, the first seven summary sections (no caller yet);
+                        --only b, the clinical sections: ClinVar, carrier, PGx, CPSR, ACMG SF, two hits
   crates/og-pedigree/   the pedigree rules: families files, members, kinship, PARs
   crates/og-chip/       step 49, clonal haematopoiesis: og chip prepare, report, check-table
   crates/og-cn/         copy number from depth (steps 32, 35, 41, 46): og cn bed, call, intervals, check-bam, marker-regions, marker-read
