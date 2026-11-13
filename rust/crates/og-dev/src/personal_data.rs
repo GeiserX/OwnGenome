@@ -1198,4 +1198,128 @@ mod tests {
             assert!(!String::from_utf8_lossy(&out).contains("PRIVATE"));
         }
     }
+
+    #[test]
+    fn round3_nullable_repetitions_fail_closed() {
+        let f = Fixture::new("r3-nullable");
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["init", "-q"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        for (pattern, text, allow) in [
+            ("(a*|b*?){1,3}", "ba", "own.md b\nown.md a"),
+            (
+                "(?:a*|[ab]{0,2}){0,3}",
+                "baa",
+                "own.md\nown.md a\nown.md ba",
+            ),
+        ] {
+            // Reconfirm that a partial ALLOW does not cover Python's match.
+            std::fs::write(f.0.join("patterns"), pattern).unwrap();
+            std::fs::write(f.0.join("own.md"), text).unwrap();
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&f.0)
+                    .args(["add", "own.md"])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            for cached in [false, true] {
+                for files in [&["own.md"][..], &[][..]] {
+                    let expected = oracle_options(
+                        &f,
+                        files,
+                        cached,
+                        allow,
+                        "",
+                        f.0.join("patterns").to_str().unwrap(),
+                    );
+                    assert!(
+                        expected.contains("[\"own\""),
+                        "partial ALLOW must leave a Python finding"
+                    );
+                    let mut args = f.args(files);
+                    args[3] = allow.into();
+                    args.extend([
+                        "--patterns".into(),
+                        f.0.join("patterns").to_str().unwrap().into(),
+                    ]);
+                    if cached {
+                        args.push("--cached".into());
+                    }
+                    let (mut out, mut err) = (Vec::new(), Vec::new());
+                    assert_eq!(
+                        cli(&args, &mut out, &mut err),
+                        2,
+                        "nullable repetition must be refused"
+                    );
+                    assert!(!String::from_utf8(err).unwrap().contains(pattern));
+                    assert!(out.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn round3_raw_byte_paths_fail_closed() {
+        let f = Fixture::new("r3-raw-path");
+        let git = |args: &[&str], input: &[u8]| {
+            let mut child = Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.take().unwrap().write_all(input).unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success());
+            output.stdout
+        };
+        git(&["init", "-q"], b"");
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        git(&["add", "clean.md"], b"");
+        let hash = git(
+            &["hash-object", "-w", "--stdin"],
+            p("/home/~reviewer_three_synthetic/path").as_bytes(),
+        );
+        let mut entry = b"100644 ".to_vec();
+        entry.extend_from_slice(hash.trim_ascii());
+        entry.extend_from_slice(b"\tbad\xff.md\0");
+        git(&["update-index", "-z", "--index-info"], &entry);
+        for cached in [false, true] {
+            let mut args = f.args(&[]);
+            if cached {
+                args.push("--cached".into());
+            }
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            assert_eq!(
+                cli(&args, &mut out, &mut err),
+                2,
+                "invalid tracked path must stop the whole scan"
+            );
+            assert!(out.is_empty());
+            assert_eq!(
+                String::from_utf8(err).unwrap(),
+                "ERROR: path is not valid UTF-8\n"
+            );
+            // Explicit paths reach the same validation before SKIP or I/O.
+            let mut a = parse(&f.args(&["clean.md"])).unwrap();
+            a.cached = cached;
+            a.files.push(f.0.join(OsStr::from_bytes(b"bad\xff.md")));
+            a.skip.push("*".into());
+            assert_eq!(
+                run(&a, &mut Vec::new()).unwrap_err(),
+                "path is not valid UTF-8"
+            );
+        }
+    }
 }

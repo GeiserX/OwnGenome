@@ -583,4 +583,25 @@ mod python_tests {
             }
         }
     }
+
+    #[test]
+    fn round3_nullable_atoms_are_refused() {
+        for pattern in [
+            "(a*|b*?){1,3}",
+            "(?:a*|[ab]{0,2}){0,3}",
+            "(?:a?)+",
+            "(?:a*)?",
+            "(?:|a)*?",
+            "()*",
+            "(?:a{0}){2}",
+            "(?i:(?:a?|b)){1,2}",
+            "(?:^|a)+",
+            "(?:a|$)?",
+        ] {
+            assert!(
+                PythonRule::compile(pattern, false).is_err(),
+                "nullable operand accepted"
+            );
+        }
+    }
 }
