@@ -4,7 +4,7 @@
 //! pass when they ran. The rules are docs/08-hla-typing.md's "What the
 //! report derives".
 
-use super::util::{Obj, at, bin_rows, bin_table, count, key_error, lines, s, strs, table};
+use super::util::{Obj, at, bin_rows, count, key_error, lines, s, strs, table};
 use super::{Ctx, Out};
 use og_steps::pgx_rules::HLA_GENES;
 use pycompat::json::Value;
@@ -62,7 +62,11 @@ fn name(x: &str) -> &str {
 /// T1K's allele field: one allele, or equally likely candidates separated
 /// by commas.
 fn candidates(allele: &str) -> Vec<&str> {
-    allele.split(',').map(name).filter(|a| !a.is_empty()).collect()
+    allele
+        .split(',')
+        .map(name)
+        .filter(|a| !a.is_empty())
+        .collect()
 }
 
 /// The alleles and their qualities of columns 3 and 6 (`.` is no allele).
@@ -381,7 +385,7 @@ pub fn hla(c: &Ctx<'_>) -> Out {
         let (a, q) = alleles(&c, false);
         loci.push(locus(c[0], a, q, c.get(1).copied().unwrap_or("")));
     }
-    let table = bin_rows(&bin_table("hla_alleles.tsv"))?;
+    let table = bin_rows(&c.table("hla_alleles.tsv"))?;
     let mut out = Obj::new()
         .set("loci", Value::Array(loci.iter().map(Locus::json).collect()))
         .set("derived", derived(&loci, &table)?);

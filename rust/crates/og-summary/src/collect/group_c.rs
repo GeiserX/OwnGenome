@@ -95,6 +95,8 @@ pub struct Ctx<'a> {
     pub sample: &'a str,
     pub dir: &'a str,
     pub assets: &'a str,
+    /// The folder of `hla_alleles.tsv` and `str_intermediate_ranges.tsv`.
+    pub tables: &'a str,
     pub index: &'a FolderIndex,
 }
 
@@ -130,6 +132,11 @@ impl Ctx<'_> {
             rel: crate::join(&dir(&f.rel), name),
             path,
         })
+    }
+
+    /// A table of the `bin/` folder ([`util::default_tables`]).
+    pub fn table(&self, name: &str) -> String {
+        crate::join(self.tables, name)
     }
 
     /// `assets/<name>`.
@@ -197,8 +204,9 @@ pub fn read_all(c: &Ctx<'_>) -> Vec<Out> {
     // others. A panic stays in its section.
     let jobs = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
     let next = std::sync::atomic::AtomicUsize::new(0);
-    let slots: Vec<std::sync::Mutex<Option<Out>>> =
-        (0..readers.len()).map(|_| std::sync::Mutex::new(None)).collect();
+    let slots: Vec<std::sync::Mutex<Option<Out>>> = (0..readers.len())
+        .map(|_| std::sync::Mutex::new(None))
+        .collect();
     std::thread::scope(|scope| {
         for _ in 0..jobs {
             scope.spawn(|| {
@@ -240,9 +248,7 @@ pub fn post(
             .find(|(s, ..)| s.key == key)
             .map_or(State::Missing, |x| x.1)
     };
-    let traits_state = others
-        .traits
-        .unwrap_or_else(|| state("traits", sections));
+    let traits_state = others.traits.unwrap_or_else(|| state("traits", sections));
     let cpic_state = others.cpic.unwrap_or(State::Ok);
     let hla_state = state("hla", sections);
     let hla_data = sections

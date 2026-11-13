@@ -32,7 +32,10 @@ fn sorted_repr(need: &[&str]) -> String {
 }
 
 fn float_err(x: &str) -> String {
-    py_error("ValueError", &format!("could not convert string to float: {}", crate::repr(x)))
+    py_error(
+        "ValueError",
+        &format!("could not convert string to float: {}", crate::repr(x)),
+    )
 }
 
 fn int_of(x: &str) -> Result<i128, String> {
@@ -47,7 +50,10 @@ fn opt_num(x: Option<&str>) -> Value {
 fn first_line(path: &str) -> Result<Vec<String>, String> {
     let l = super::util::lines(path)?;
     let h = l.first().map_or("", String::as_str);
-    Ok(h.trim_end_matches('\r').split('\t').map(str::to_owned).collect())
+    Ok(h.trim_end_matches('\r')
+        .split('\t')
+        .map(str::to_owned)
+        .collect())
 }
 
 /// Base64 of a file's bytes (`base64.b64encode`).
@@ -135,7 +141,10 @@ pub fn couple(c: &Ctx<'_>) -> Out {
             .set("condition", s(&cell(r, "condition")))
             .set("risk", s(&cell(r, "offspring_risk")))
             .set("own", s(&cell(r, &format!("findings_{own}"))))
-            .set("partner_findings", s(&cell(r, &format!("findings_{other}"))))
+            .set(
+                "partner_findings",
+                s(&cell(r, &format!("findings_{other}"))),
+            )
             .set("explanation", s(&cell(r, "explanation")))
             .val()
     };
@@ -161,7 +170,12 @@ pub fn couple(c: &Ctx<'_>) -> Out {
         .set("x_linked", of("x_linked"))
         .set(
             "one_partner",
-            count(t.rows.iter().filter(|r| cell(r, "result") == "one_partner").count()),
+            count(
+                t.rows
+                    .iter()
+                    .filter(|r| cell(r, "result") == "one_partner")
+                    .count(),
+            ),
         )
         .val();
     Ok(Some((p, v)))
@@ -310,7 +324,9 @@ pub fn ancient(c: &Ctx<'_>) -> Out {
         return Ok(None);
     };
     let t = table(&p.path, false)?;
-    let need = ["rank", "group", "n", "distance", "dates", "country", "locality"];
+    let need = [
+        "rank", "group", "n", "distance", "dates", "country", "locality",
+    ];
     if !t.first_has(&need) {
         return unreadable(format!(
             "{} has no rows or lacks a column of {}",
@@ -485,7 +501,11 @@ pub fn haplogroup(c: &Ctx<'_>) -> Out {
                     .and_then(|(_, v)| v)
                     .filter(|x| !x.is_empty())
             };
-            named.or_else(second).unwrap_or("").trim_matches('"').to_owned()
+            named
+                .or_else(second)
+                .unwrap_or("")
+                .trim_matches('"')
+                .to_owned()
         }
     };
     let mut out = Obj::new()
@@ -691,10 +711,7 @@ pub fn consumer_export(c: &Ctx<'_>) -> Out {
     let text = |k: &str| data.get(k).cloned().flatten().unwrap_or_default();
     for k in ["sites", "called", "no_call"] {
         if !isdigit(&text(k)) {
-            return unreadable(format!(
-                "{} has no whole-number '{k}' row",
-                base(&p.path)
-            ));
+            return unreadable(format!("{} has no whole-number '{k}' row", base(&p.path)));
         }
     }
     let mut reasons = Obj::new();
@@ -711,7 +728,11 @@ pub fn consumer_export(c: &Ctx<'_>) -> Out {
         }
     }
     let blocks = text("from_reference_blocks");
-    let blocks = if blocks.is_empty() { 0 } else { int_of(&blocks)? };
+    let blocks = if blocks.is_empty() {
+        0
+    } else {
+        int_of(&blocks)?
+    };
     let dot = |k: &str| {
         let v = text(k);
         s(if v.is_empty() { "." } else { &v })
@@ -807,10 +828,7 @@ pub fn archaic(c: &Ctx<'_>) -> Out {
     ] {
         let v = data.get(k).map_or("", String::as_str);
         if !all_digits(v) {
-            return unreadable(format!(
-                "{} has no whole number for {k}",
-                base(&p.path)
-            ));
+            return unreadable(format!("{} has no whole number for {k}", base(&p.path)));
         }
         out.put(k, Value::Int(int_of(v)?));
     }
@@ -820,10 +838,7 @@ pub fn archaic(c: &Ctx<'_>) -> Out {
             .split_once('.')
             .is_some_and(|(a, b)| all_digits(a) && all_digits(b));
         if !ok {
-            return unreadable(format!(
-                "{} has no percentage for {k}",
-                base(&p.path)
-            ));
+            return unreadable(format!("{} has no percentage for {k}", base(&p.path)));
         }
         out.put(k, s(v));
     }
@@ -997,12 +1012,7 @@ pub fn locityper(c: &Ctx<'_>) -> Out {
         ));
     }
     let loci: Vec<Value> = t.rows.iter().map(|r| dots(r, &LOCITYPER_COLUMNS)).collect();
-    let n = |k: &str, want: &str| {
-        t.rows
-            .iter()
-            .filter(|r| or_dot(r, k) == want)
-            .count()
-    };
+    let n = |k: &str, want: &str| t.rows.iter().filter(|r| or_dot(r, k) == want).count();
     let v = Obj::new()
         .set("called", count(n("status", "called")))
         .set("passed", count(n("filter", "pass")))
@@ -1102,7 +1112,10 @@ pub fn locityper_post(v: &mut Value, hla_state: State, hla: Option<&Value>, othe
         } else {
             format!(
                 " (not usable: Filter {})",
-                filter.as_deref().filter(|f| !f.is_empty()).unwrap_or("missing")
+                filter
+                    .as_deref()
+                    .filter(|f| !f.is_empty())
+                    .unwrap_or("missing")
             )
         };
         cyp.push(format!(
@@ -1161,7 +1174,11 @@ pub fn viral(c: &Ctx<'_>) -> Out {
             need.join(", ")
         ));
     }
-    let all: Vec<&str> = need.iter().copied().chain(["human_depth", "note"]).collect();
+    let all: Vec<&str> = need
+        .iter()
+        .copied()
+        .chain(["human_depth", "note"])
+        .collect();
     let keep = t
         .rows
         .iter()
@@ -1314,11 +1331,7 @@ pub fn mei(c: &Ctx<'_>) -> Out {
     let dir = p.path.rsplit_once('/').map_or("", |x| x.0);
     let cp = crate::join(dir, &format!("{}_mei.tsv", c.sample));
     if !crate::is_file(&cp) {
-        return unreadable(format!(
-            "{} is missing beside {}",
-            base(&cp),
-            base(&p.path)
-        ));
+        return unreadable(format!("{} is missing beside {}", base(&cp), base(&p.path)));
     }
     let calls = table(&cp, false)?;
     if ["chrom", "pos", "element", "copies"]
@@ -1491,10 +1504,17 @@ pub fn exomiser(c: &Ctx<'_>) -> Out {
                 .fold(Obj::new(), |o, k| o.set(k, cell(r, k)));
             genes.push((rank, o, Vec::new()));
         }
-        let v = ["variant", "genotype", "consequence", "hgvs", "acmg", "disease"]
-            .iter()
-            .fold(Obj::new(), |o, k| o.set(k, cell(r, k)))
-            .val();
+        let v = [
+            "variant",
+            "genotype",
+            "consequence",
+            "hgvs",
+            "acmg",
+            "disease",
+        ]
+        .iter()
+        .fold(Obj::new(), |o, k| o.set(k, cell(r, k)))
+        .val();
         if let Some(g) = genes.last_mut() {
             g.2.push(v);
         }

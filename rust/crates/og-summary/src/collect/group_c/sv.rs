@@ -26,7 +26,10 @@ fn totals(p: Found) -> Out {
     let (t, ps) = count_vcf(&p.path)?;
     Ok(Some((
         p,
-        Obj::new().set("total", count(t)).set("pass", count(ps)).val(),
+        Obj::new()
+            .set("total", count(t))
+            .set("pass", count(ps))
+            .val(),
     )))
 }
 
@@ -138,16 +141,14 @@ pub fn cnvpytor(c: &Ctx<'_>) -> Out {
 /// with no declared sex they stay, and the data says so.
 pub fn cnvpytor_sex_filter(v: &mut Value, declared_sex: Option<&str>) {
     let Value::Object(m) = v else { return };
-    let (Some(Value::Int(kept)), Some(Value::Int(y))) =
-        (m.get("significant_filtered").cloned(), m.get("filtered_chry").cloned())
-    else {
+    let (Some(Value::Int(kept)), Some(Value::Int(y))) = (
+        m.get("significant_filtered").cloned(),
+        m.get("filtered_chry").cloned(),
+    ) else {
         return;
     };
     let declared = declared_sex.filter(|x| !x.is_empty());
-    m.insert(
-        "declared_sex".into(),
-        declared.map_or(Value::Null, s),
-    );
+    m.insert("declared_sex".into(), declared.map_or(Value::Null, s));
     if declared == Some("female") {
         if let Some(Value::Object(d)) = m.get_mut("dropped") {
             d.insert("chry_female".into(), Value::Int(y));
@@ -182,7 +183,11 @@ fn info_value<'a>(info: &'a str, key: &str) -> &'a str {
 
 fn kind(t: &str) -> String {
     let t = pycompat::text::upper(t);
-    if t.starts_with("DUP") { "DUP".into() } else { t }
+    if t.starts_with("DUP") {
+        "DUP".into()
+    } else {
+        t
+    }
 }
 
 struct Rec {
@@ -223,17 +228,14 @@ fn read_consensus(path: &str) -> Result<Consensus, String> {
         let (Ok(end), Ok(supp)) = (end, supp) else {
             continue;
         };
-        by.entry((
-            chrom_key(c[0]).to_owned(),
-            kind(info_value(c[7], "SVTYPE")),
-        ))
-        .or_default()
-        .push(Rec {
-            pos,
-            end,
-            supp,
-            vec: info_value(c[7], "SUPP_VEC").to_owned(),
-        });
+        by.entry((chrom_key(c[0]).to_owned(), kind(info_value(c[7], "SVTYPE"))))
+            .or_default()
+            .push(Rec {
+                pos,
+                end,
+                supp,
+                vec: info_value(c[7], "SUPP_VEC").to_owned(),
+            });
     }
     Ok((names, by))
 }
@@ -252,7 +254,10 @@ fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Result<Vec<(Value,
         let cell = |k: &str| r.get(k).flatten().unwrap_or_default();
         let mut best: Option<(i128, &Rec)> = None;
         if let (Ok(start), Ok(end)) = (crate::int(cell("SV_start")), crate::int(cell("SV_end"))) {
-            let key = (chrom_key(cell("SV_chrom")).to_owned(), kind(cell("SV_type")));
+            let key = (
+                chrom_key(cell("SV_chrom")).to_owned(),
+                kind(cell("SV_type")),
+            );
             for rec in by.get(&key).map_or(&[][..], Vec::as_slice) {
                 let (dp, de) = ((rec.pos - start).abs(), (rec.end - end).abs());
                 if dp <= CONSENSUS_BP && de <= CONSENSUS_BP && best.is_none_or(|(d, _)| dp + de < d)
@@ -277,10 +282,7 @@ fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Result<Vec<(Value,
                     .collect();
                 (int(rec.supp), s(&callers.join(",")))
             }
-            None => (
-                int(1),
-                s(&super::util::or(r, "Caller", ".")),
-            ),
+            None => (int(1), s(&super::util::or(r, "Caller", "."))),
         });
     }
     Ok(out)
@@ -360,9 +362,8 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
     let mut moved = Vec::new();
     for (r, (sp, callers)) in t.rows.iter().zip(support) {
         // A row cut short reads None there, as Python's DictReader gives it.
-        let cell = |k: &str| -> Result<String, String> {
-            Ok(at(r, k)?.unwrap_or("None").to_owned())
-        };
+        let cell =
+            |k: &str| -> Result<String, String> { Ok(at(r, k)?.unwrap_or("None").to_owned()) };
         let cellv = |k: &str| -> Result<Value, String> { Ok(super::util::opt_s(at(r, k)?)) };
         let af = match at(r, "Population_AF")? {
             None | Some("") => Value::Null,
@@ -374,7 +375,11 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
             .map(str::to_owned)
             .collect();
         let fmt = sample_format(r, &t.head);
-        let fmt_get = |k: &str| fmt.get(k).filter(|v| !v.is_empty()).map_or(Value::Null, |v| s(v));
+        let fmt_get = |k: &str| {
+            fmt.get(k)
+                .filter(|v| !v.is_empty())
+                .map_or(Value::Null, |v| s(v))
+        };
         let acmg = cell("ACMG_class")?;
         let support_callers = match &callers {
             Value::Str(x) if !x.is_empty() => strs(x.split(',')),

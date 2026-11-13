@@ -58,6 +58,8 @@ pub struct Input {
     pub assets: String,
     /// The group of sections to read: `a` or `c`.
     pub group: Group,
+    /// The folder of the two tables group c reads from `bin/`.
+    pub tables: String,
 }
 
 /// The group of sections a collect reads.
@@ -84,6 +86,7 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         sample_dir: a.text("--sample-dir").to_owned(),
         declared_sex: a.get("--declared-sex").map(str::to_owned),
         assets: a.get("--assets").map_or_else(default_assets, str::to_owned),
+        tables: group_c::util::default_tables(),
         group: if a.text("--only") == "c" {
             Group::C
         } else {
@@ -156,7 +159,12 @@ pub fn collect(input: &Input) -> Result<Summary, String> {
                 .declared_sex()
                 .map(str::to_owned)
         });
-        let declared_sex = declared(input, run.as_ref(), manifest.as_ref(), qc_declared.as_deref());
+        let declared_sex = declared(
+            input,
+            run.as_ref(),
+            manifest.as_ref(),
+            qc_declared.as_deref(),
+        );
         let sections = read_group_c(input, &index, run.as_ref(), declared_sex.as_deref());
         return Ok(Summary {
             sample: input.sample.clone(),
@@ -261,6 +269,7 @@ fn read_group_c(
         sample: &input.sample,
         dir: &input.sample_dir,
         assets: &input.assets,
+        tables: &input.tables,
         index,
     };
     let reads = group_c::read_all(&c);

@@ -61,12 +61,10 @@ pub fn lines(path: &str) -> Result<Vec<String>, String> {
     let mut rd = text_lines(path).map_err(|e| os_note(&e))?;
     let mut out = Vec::new();
     let mut s = String::new();
-    while rd.read_line(&mut s).map_err(|e| {
-        py_error(
-            "OSError",
-            &crate::collect::sections::gzip_message(&e),
-        )
-    })? {
+    while rd
+        .read_line(&mut s)
+        .map_err(|e| py_error("OSError", &crate::collect::sections::gzip_message(&e)))?
+    {
         out.push(s.strip_suffix('\n').unwrap_or(&s).to_owned());
         s.clear();
     }
@@ -290,20 +288,20 @@ pub fn columns(path: &str) -> Result<Vec<String>, String> {
     Ok(table(path, false)?.head)
 }
 
-/// The path of a table the Python collector read beside itself in `bin/`
-/// (`hla_alleles.tsv`, `str_intermediate_ranges.tsv`): the `bin/` of the
-/// checkout the binary sits in (`bin/.og/og-*` and `rust/target/*/og` both
-/// do). `OG_BIN_TABLES` names another folder.
-pub fn bin_table(name: &str) -> String {
+/// The folder of the tables the Python collector read beside itself in
+/// `bin/` (`hla_alleles.tsv`, `str_intermediate_ranges.tsv`): the `bin/` of
+/// the checkout the binary sits in (`bin/.og/og-*` and `rust/target/*/og`
+/// both do). `OG_BIN_TABLES` names another folder.
+pub fn default_tables() -> String {
     if let Some(d) = std::env::var_os("OG_BIN_TABLES") {
-        return std::path::Path::new(&d).join(name).display().to_string();
+        return std::path::Path::new(&d).display().to_string();
     }
     let exe = std::env::current_exe().unwrap_or_default();
     exe.ancestors()
         .skip(1)
-        .flat_map(|a| [a.join(name), a.join("bin").join(name)])
-        .find(|p| p.is_file())
-        .unwrap_or_else(|| std::path::Path::new("bin").join(name))
+        .flat_map(|a| [a.to_path_buf(), a.join("bin")])
+        .find(|p| p.join("hla_alleles.tsv").is_file())
+        .unwrap_or_else(|| std::path::PathBuf::from("bin"))
         .display()
         .to_string()
 }

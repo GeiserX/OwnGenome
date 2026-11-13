@@ -92,7 +92,11 @@ impl FolderIndex {
     /// only).
     pub fn all(&self, pattern: &str) -> Vec<&str> {
         if !has_magic(pattern) {
-            return self.files.get(pattern).map(|f| vec![f.as_str()]).unwrap_or_default();
+            return self
+                .files
+                .get(pattern)
+                .map(|f| vec![f.as_str()])
+                .unwrap_or_default();
         }
         let pat: Vec<&str> = pattern.split('/').collect();
         self.sorted

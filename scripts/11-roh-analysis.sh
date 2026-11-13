@@ -55,7 +55,8 @@ run_in \
   -v "${GENOME_DIR}/${SAMPLE}/vcf:/data" \
   -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
   "${BCFTOOLS_IMAGE}" \
-  /pgp-bin/og roh summary --sample "$SAMPLE" --roh "/data/${SAMPLE}_roh.txt" --out "/data/${SAMPLE}_roh_summary.txt"
+  /pgp-bin/og roh summary --sample "$SAMPLE" --roh "/data/${SAMPLE}_roh.txt" > "${SUMMARY}.tmp"
+mv -f "${SUMMARY}.tmp" "$SUMMARY"
 
 echo "=== ROH complete ==="
 echo "Results: ${OUTPUT}"

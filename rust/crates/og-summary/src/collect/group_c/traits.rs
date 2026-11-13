@@ -160,7 +160,10 @@ pub mod apol1 {
         pub fn json(&self) -> Obj {
             let o = Obj::new()
                 .set("status", s(self.status))
-                .set("copies", self.copies.map_or(Value::Null, |c| Value::Int(c.into())))
+                .set(
+                    "copies",
+                    self.copies.map_or(Value::Null, |c| Value::Int(c.into())),
+                )
                 .set("gq", s(&self.gq));
             let src = super::super::util::opt_s(self.source.as_deref());
             if self.source_first {
@@ -226,8 +229,12 @@ pub mod apol1 {
     /// record has no reads.
     pub fn read_g2(records: &[Vec<String>], gvcf: bool) -> G2 {
         let g2_hap = haplotype();
-        let (mut copies, mut covered, mut gqs, mut problems) =
-            (0i64, Vec::<(i64, i64)>::new(), Vec::<String>::new(), Vec::<String>::new());
+        let (mut copies, mut covered, mut gqs, mut problems) = (
+            0i64,
+            Vec::<(i64, i64)>::new(),
+            Vec::<String>::new(),
+            Vec::<String>::new(),
+        );
         let (mut seen, mut g2_records) = (false, 0);
         'records: for r in records {
             if !overlaps(r) {
@@ -536,7 +543,10 @@ pub mod apol1 {
 
         #[test]
         fn reference_block_over_span_reads_zero() {
-            let g = read_g2(&[rec(36_265_990, "A", "<NON_REF>", "0/0", "END=36266010")], true);
+            let g = read_g2(
+                &[rec(36_265_990, "A", "<NON_REF>", "0/0", "END=36266010")],
+                true,
+            );
             assert_eq!((g.status, g.copies), ("called", Some(0)));
         }
 

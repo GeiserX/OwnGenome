@@ -4,9 +4,7 @@
 //! TG and poly-T tracts and UGT1A1's TA repeat mean.
 
 use super::super::model::State;
-use super::util::{
-    Obj, bin_rows, bin_table, cells, count, get_default, s, strs, table, vcf_lines,
-};
+use super::util::{Obj, bin_rows, cells, count, get_default, s, strs, table, vcf_lines};
 use super::{Ctx, Out};
 use indexmap::IndexMap;
 use pycompat::json::Value;
@@ -120,9 +118,9 @@ fn split_n(x: &str, n: usize) -> Vec<String> {
 }
 
 /// `bin/str_intermediate_ranges.tsv` by locus.
-fn ranges() -> Result<IndexMap<String, IndexMap<String, String>>, String> {
+fn ranges(c: &Ctx<'_>) -> Result<IndexMap<String, IndexMap<String, String>>, String> {
     let mut out = IndexMap::new();
-    for r in bin_rows(&bin_table("str_intermediate_ranges.tsv"))? {
+    for r in bin_rows(&c.table("str_intermediate_ranges.tsv"))? {
         let k = r
             .get("locus")
             .cloned()
@@ -211,11 +209,12 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
     let Some(p) = st.clone().or(eh) else {
         return Ok(None);
     };
-    let ranges = ranges()?;
+    let ranges = ranges(c)?;
     let stp = st.as_ref().map(|f| f.path.as_str());
     let rfc1 = match stp {
-        Some(after) => motif_table(c, "rfc1_motif.tsv", after)?
-            .and_then(|t| t.rows.first().map(motif_row)),
+        Some(after) => {
+            motif_table(c, "rfc1_motif.tsv", after)?.and_then(|t| t.rows.first().map(motif_row))
+        }
         None => None,
     };
     let mut motifs: IndexMap<String, Value> = IndexMap::new();
@@ -269,7 +268,11 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
         };
         let n = counts.len().max(1);
         let path_min = info.get("STR_PATHOLOGIC_MIN").and_then(|v| str_int(v));
-        let cn_list: Vec<&str> = if counts.is_empty() { vec!["."] } else { counts.clone() };
+        let cn_list: Vec<&str> = if counts.is_empty() {
+            vec!["."]
+        } else {
+            counts.clone()
+        };
         let sizing: Vec<Sizing> = split_n(field("SO"), n)
             .iter()
             .zip(split_n(field("ADSP"), n))
@@ -288,10 +291,19 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
             Vec::new()
         };
         let worst = sizing.iter().copied().min().unwrap_or(Sizing::NoCall);
-        let dots = |k: &str| info.get(k).copied().unwrap_or("").trim_matches('.').to_owned();
+        let dots = |k: &str| {
+            info.get(k)
+                .copied()
+                .unwrap_or("")
+                .trim_matches('.')
+                .to_owned()
+        };
         let mut item = Obj::new()
             .set("locus", s(&rep))
-            .set("repeat_count", s(if repcn.is_empty() { "." } else { repcn }))
+            .set(
+                "repeat_count",
+                s(if repcn.is_empty() { "." } else { repcn }),
+            )
             .set("status", s(&status.join(",")))
             .set("normal_max", s(&dots("STR_NORMAL_MAX")))
             .set("pathologic_min", s(&dots("STR_PATHOLOGIC_MIN")))
@@ -301,7 +313,11 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
             .set("sizing", s(worst.word()))
             .set(
                 "allele_sizing",
-                s(&sizing.iter().map(|z| z.word()).collect::<Vec<_>>().join("/")),
+                s(&sizing
+                    .iter()
+                    .map(|z| z.word())
+                    .collect::<Vec<_>>()
+                    .join("/")),
             )
             .set("zone", s(""))
             .set("zone_label", s(""))
@@ -320,11 +336,8 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
             if !sized.is_empty() {
                 let (lo, hi) = (bound("intermediate_min")?, bound("intermediate_max")?);
                 if sized.iter().any(|c| lo <= *c && *c <= hi) {
-                    let cell = |k: &str| {
-                        rng.get(k)
-                            .cloned()
-                            .ok_or_else(|| super::util::key_error(k))
-                    };
+                    let cell =
+                        |k: &str| rng.get(k).cloned().ok_or_else(|| super::util::key_error(k));
                     item.put(
                         "zone",
                         s(&format!(
@@ -389,7 +402,12 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
     }
     let by_unsorted = by_locus(loci.iter().map(|l| (&l.locus, &l.json)));
     loci.sort_by(|a, b| {
-        let rank = |l: &str| EH_LOCI.iter().position(|k| *k == l).unwrap_or(EH_LOCI.len());
+        let rank = |l: &str| {
+            EH_LOCI
+                .iter()
+                .position(|k| *k == l)
+                .unwrap_or(EH_LOCI.len())
+        };
         rank(&a.locus)
             .cmp(&rank(&b.locus))
             .then_with(|| a.locus.cmp(&b.locus))
@@ -401,7 +419,9 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
                 .set("locus", s(k))
                 .set(
                     "repeat_count",
-                    by_unsorted.get(*k).map_or_else(|| s("not in output"), |l| l.repeat_count.clone()),
+                    by_unsorted
+                        .get(*k)
+                        .map_or_else(|| s("not in output"), |l| l.repeat_count.clone()),
                 )
                 .val()
         })
@@ -656,7 +676,9 @@ fn cftr(c: &Ctx<'_>, by: &IndexMap<String, Sized>, traits: State) -> Value {
                 } else {
                     format!("{}T or {}T", b[0], b[1])
                 };
-                line += &format!(" R117H ({g}) is read: with no 5T copy it sits on a {copies} copy.{note}");
+                line += &format!(
+                    " R117H ({g}) is read: with no 5T copy it sits on a {copies} copy.{note}"
+                );
             }
             Some(_) => line += &format!(" No R117H copy.{note}"),
         }
@@ -701,11 +723,16 @@ fn cftr(c: &Ctx<'_>, by: &IndexMap<String, Sized>, traits: State) -> Value {
         Some(g) => {
             let n = a_copies(g);
             let (p, t) = if n == 0 {
-                ("not_needed", " No R117H copy: the 5T is read on its own.".to_owned())
+                (
+                    "not_needed",
+                    " No R117H copy: the 5T is read on its own.".to_owned(),
+                )
             } else if n == 2 || five == 2 {
                 (
                     "in_cis",
-                    format!(" R117H ({g}) and 5T share a copy: R117H with 5T in cis is a CF-causing allele of variable penetrance."),
+                    format!(
+                        " R117H ({g}) and 5T share a copy: R117H with 5T in cis is a CF-causing allele of variable penetrance."
+                    ),
                 )
             } else {
                 (
@@ -816,7 +843,11 @@ fn ugt1a1(c: &Ctx<'_>, by: &IndexMap<String, Sized>, cpic: State) -> Value {
     if let Some(row) = row {
         let d = super::util::or(&row, "Diplotype", "");
         let d = pycompat::num::py_strip(&d);
-        pc = if d.is_empty() { ".".into() } else { d.to_owned() };
+        pc = if d.is_empty() {
+            ".".into()
+        } else {
+            d.to_owned()
+        };
         let alleles: Vec<&str> = pc.split('/').collect();
         if alleles.len() == 2
             && !pc.contains("possible")
@@ -838,9 +869,9 @@ fn ugt1a1(c: &Ctx<'_>, by: &IndexMap<String, Sized>, cpic: State) -> Value {
         ""
     };
     reading += &match agreement {
-        "agrees" => format!(
-            " PharmCAT (step 7) called {pc}: the same number of *28 and *37 copies{old}."
-        ),
+        "agrees" => {
+            format!(" PharmCAT (step 7) called {pc}: the same number of *28 and *37 copies{old}.")
+        }
         "differs" => format!(
             " PharmCAT (step 7) called {pc}, a different number of *28 and *37 copies{old}: read the reads at chr2:233760234 before using either."
         ),

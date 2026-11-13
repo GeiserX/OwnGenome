@@ -85,11 +85,7 @@ pub fn min_allele(mut pos: i128, r: &str, a: &str) -> (i128, String, String) {
         i += 1;
         pos += 1;
     }
-    (
-        pos,
-        r[i..].iter().collect(),
-        a[i..].iter().collect(),
-    )
+    (pos, r[i..].iter().collect(), a[i..].iter().collect())
 }
 
 fn py_int(x: Option<&str>) -> Result<i128, String> {
@@ -367,7 +363,11 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         passed += 1;
         let fmt: Vec<&str> = r[8].split(':').collect();
         let val: Vec<&str> = r[9].split(':').collect();
-        let Some(i) = fmt.iter().position(|f| *f == "AF").filter(|i| *i < val.len()) else {
+        let Some(i) = fmt
+            .iter()
+            .position(|f| *f == "AF")
+            .filter(|i| *i < val.len())
+        else {
             continue;
         };
         let afs: Result<Vec<f64>, _> = val[i]
@@ -385,7 +385,10 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         if r[4].split(',').any(|a| in_polyc(pos, &r[3], a)) {
             polyc.push(
                 Obj::new()
-                    .set("variant", s(&format!("{}:{} {}>{}", r[0], r[1], r[3], r[4])))
+                    .set(
+                        "variant",
+                        s(&format!("{}:{} {}>{}", r[0], r[1], r[3], r[4])),
+                    )
                     .set("af", round(af, 3))
                     .val(),
             );

@@ -107,7 +107,9 @@ fn region(h: &str) -> Option<(String, i128, i128)> {
     }
     let digits = |x: &str| -> Option<(i128, usize)> {
         let n = x.bytes().take_while(u8::is_ascii_digit).count();
-        (n > 0).then(|| (x[..n].parse().ok(), n)).and_then(|(v, n)| Some((v?, n)))
+        (n > 0)
+            .then(|| (x[..n].parse().ok(), n))
+            .and_then(|(v, n)| Some((v?, n)))
     };
     let (b, n) = digits(rest)?;
     let rest = rest[n..].strip_prefix('-')?;
@@ -171,7 +173,9 @@ pub fn parascopy_cn_at(rows: &[DictRow], chrom: &str, pos: i64) -> CnAt {
         })
         .collect();
     cn_at_rows(
-        getters.iter().map(|g| g.as_ref() as &dyn Fn(&str) -> Option<String>),
+        getters
+            .iter()
+            .map(|g| g.as_ref() as &dyn Fn(&str) -> Option<String>),
         chrom,
         pos,
         "no row covers exon 7",
@@ -195,7 +199,9 @@ pub fn parascopy_smn1(path: &str) -> Result<(Option<i128>, String), String> {
         })
         .collect();
     let r = cn_at_rows(
-        getters.iter().map(|g| g.as_ref() as &dyn Fn(&str) -> Option<String>),
+        getters
+            .iter()
+            .map(|g| g.as_ref() as &dyn Fn(&str) -> Option<String>),
         SMN1_EXON7.0,
         SMN1_EXON7.1,
         "no row covers SMN1 exon 7",
@@ -239,7 +245,11 @@ pub fn read_marker_table(path: &str, step: &str, key: &str) -> Value {
     out.insert("status", "not assessed".to_owned());
     let name = base(path);
     let done = |out: indexmap::IndexMap<&str, String>| {
-        Value::Object(out.into_iter().map(|(k, v)| (k.to_owned(), s(&v))).collect())
+        Value::Object(
+            out.into_iter()
+                .map(|(k, v)| (k.to_owned(), s(&v)))
+                .collect(),
+        )
     };
     if !crate::is_file(path) {
         out.insert(
@@ -253,7 +263,10 @@ pub fn read_marker_table(path: &str, step: &str, key: &str) -> Value {
     }
     let kv: std::collections::HashMap<String, String> =
         pairs(path).unwrap_or_default().into_iter().collect();
-    if !kv.get("status").is_some_and(|v| statuses.contains(&v.as_str())) {
+    if !kv
+        .get("status")
+        .is_some_and(|v| statuses.contains(&v.as_str()))
+    {
         out.insert(
             "message",
             format!(
@@ -432,7 +445,8 @@ pub fn parascopy(c: &Ctx<'_>) -> Out {
 /// One catalog table that is not SMN1's: the locus's aggregate copy number
 /// per region of its profile, the catalog's genes, tag and reading.
 fn parascopy_locus(name: &str, path: &str, row: Option<&DictRow>) -> Result<Value, String> {
-    let cat = |k: &str, default: &str| row.map_or_else(|| default.to_owned(), |r| or(r, k, default));
+    let cat =
+        |k: &str, default: &str| row.map_or_else(|| default.to_owned(), |r| or(r, k, default));
     let out = Obj::new()
         .set("table", s(name))
         .set("genes", s(&cat("genes", name)))
@@ -440,7 +454,10 @@ fn parascopy_locus(name: &str, path: &str, row: Option<&DictRow>) -> Result<Valu
         .set("reading", s(&cat("reading", ".")));
     let t = table(path, false)?;
     let with = |o: Obj, status: &str, cnv: Value, text: &str| {
-        o.set("status", s(status)).set("cn", cnv).set("text", s(text)).val()
+        o.set("status", s(status))
+            .set("cn", cnv)
+            .set("text", s(text))
+            .val()
     };
     if !has_all(&t.head, &PARASCOPY_COLUMNS) {
         let text = format!("unreadable: {} lacks the copy-number columns", base(path));
@@ -487,16 +504,20 @@ fn parascopy_locus(name: &str, path: &str, row: Option<&DictRow>) -> Result<Valu
             "not assessed: the table has no region row",
         ));
     }
-    let values: std::collections::HashSet<&str> =
-        regs.iter().filter(|r| r.ok).map(|r| r.cn.as_str()).collect();
+    let values: std::collections::HashSet<&str> = regs
+        .iter()
+        .filter(|r| r.ok)
+        .map(|r| r.cn.as_str())
+        .collect();
     if values.len() == 1 && regs.iter().all(|r| r.ok) {
         let n = crate::int(values.into_iter().next().unwrap_or_default())
             .map_err(|e| super::super::sections::py_error("ValueError", &e))?;
         let mut min = f64::INFINITY;
         for r in &regs {
-            min = min.min(crate::float(&r.qual).map_err(|e| {
-                super::super::sections::py_error("ValueError", &e)
-            })?);
+            min = min.min(
+                crate::float(&r.qual)
+                    .map_err(|e| super::super::sections::py_error("ValueError", &e))?,
+            );
         }
         let text = format!(
             "{n} ({} region(s), quality {} or more, filter PASS)",
@@ -510,7 +531,9 @@ fn parascopy_locus(name: &str, path: &str, row: Option<&DictRow>) -> Result<Valu
         .iter()
         .map(|r| {
             let b = match &r.start {
-                Some(b) if isdigit(b) => crate::int(b).map_or_else(|_| b.clone(), |v| (v + 1).to_string()),
+                Some(b) if isdigit(b) => {
+                    crate::int(b).map_or_else(|_| b.clone(), |v| (v + 1).to_string())
+                }
                 b => none(b),
             };
             format!(
@@ -621,7 +644,8 @@ fn read_hba(path: &str) -> Result<Value, String> {
             out.insert(k.to_owned(), s(v));
         }
     }
-    let ok = matches!(out.get("status"), Some(Value::Str(v)) if v == "called" || v == "not assessed");
+    let ok =
+        matches!(out.get("status"), Some(Value::Str(v)) if v == "called" || v == "not assessed");
     if !ok {
         return Ok(Obj::new()
             .set("status", s("not assessed"))
@@ -669,7 +693,10 @@ pub fn paralogs(c: &Ctx<'_>) -> Out {
     let mut others_called = 0;
     for r in &t.rows {
         let reg = region_of(r);
-        match reg.as_ref().and_then(|g| regions.iter().position(|x| x == g)) {
+        match reg
+            .as_ref()
+            .and_then(|g| regions.iter().position(|x| x == g))
+        {
             Some(i) => {
                 let cell = |k: &str| opt_s(r.get(k).flatten());
                 genes.push((
@@ -723,12 +750,20 @@ pub fn paralogs(c: &Ctx<'_>) -> Out {
         Obj::new().set("cn", cn(n)).set("text", s(&text)).val()
     });
     let data = Obj::new()
-        .set("genes", Value::Array(genes.into_iter().map(|g| g.1).collect()))
+        .set(
+            "genes",
+            Value::Array(genes.into_iter().map(|g| g.1).collect()),
+        )
         .set("other_regions", count(others))
         .set("other_regions_called", count(others_called))
         .set(
             "variants",
-            Value::Object(variants.into_iter().map(|(k, v)| (k, Value::Int(v))).collect()),
+            Value::Object(
+                variants
+                    .into_iter()
+                    .map(|(k, v)| (k, Value::Int(v)))
+                    .collect(),
+            ),
         )
         .set(
             "smn1",
