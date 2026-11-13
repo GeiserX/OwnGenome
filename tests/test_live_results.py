@@ -383,7 +383,8 @@ def veil_problems(res, idx):
     view = (v.get("viewer") or {}).get("clinvar") or []
     if [sorted(t) if t else None for t in view] != [both if x == f"{c}:{p}" else None for x in card.get("viewer") or []]:
         out.append(f"ClinVar viewer links tagged {view}")
-    marks = {k: {m: sorted(t) for m, t in x.items()} for k, x in (v.get("marks") or {}).items()}
+    marks = {k: {m: sorted(t) for m, t in x.items() if t and t != [live_results.PANEL]} for k, x in (v.get("marks") or {}).items()}
+    marks = {k: x for k, x in marks.items() if x}
     specs = {sp["id"]: sp for sp in rr.chart_specs(res["_summary"])}
     hit = [m["id"] for m in specs["genome"]["marks"] if m.get("kind") == "hit" and m["pos"] == p and m["chrom"] == c]
     span = [m["id"] for m in specs["genome"]["marks"] if m.get("kind") == "sv" and (m["chrom"], m["pos"], m["end"]) == (sv_c, a, b)]
@@ -403,7 +404,7 @@ def veil_problems(res, idx):
     exo = (v.get("rows") or {}).get("exomiser") or []
     ranked = [f["id"] for f in res["findings"] if f["level"] != "act" and gene in f["title"]]
     # A fixed-panel card's own findings (a medicine gene) carry the panel tag, whatever the closed result.
-    named = {k: t for k, t in (v.get("findings") or {}).items() if t != [live_results.PANEL]}
+    named = {k: t for k, t in (v.get("findings") or {}).items() if t and t != [live_results.PANEL]}
     if not any(sf in (t or ()) for t in exo) or not ranked or set(named) != set(ranked) \
             or any(sf not in named[i] for i in ranked):
         out.append(f"the symptom ranking of {gene}: rows tagged {exo}, findings tagged {v.get('findings')}, want {ranked} -> {sf}")
@@ -427,7 +428,7 @@ def veil_lines_problems():
     found = [{"id": "sf-gla-test", "level": "act", "gene": "GLA", "detail": "GLA"}]
     v = live_results.veil({"sections": S}, found, [{"sections": [{"id": "clinvar", "lines": lines}]}])
     panel = [live_results.PANEL]
-    want = [panel if ln.startswith(live_results.FIXED_LINES["clinvar"]) else None for ln in lines]
+    want = [panel for ln in lines]
     got = (v.get("lines") or {}).get("clinvar")
     out = [] if want.count(panel) == 2 and got == want else [f"lines {lines} tagged {got}, want {want}"]
     # A segment of the lead is tagged by the findings it prints (lead()'s names), beside the act names the page
@@ -594,14 +595,11 @@ WANT_LINES = (("clinvar", "Known deep intronic site (always reported): GLA c.640
               ("callability", ["NBPF1", "not read", "69%", "segdup, collapsed"], True),
               ("roh", "Imprinted 6q24 (PLAGL1, HYMAI): from the mother: -; from the father: Transient neonatal diabetes "
                       "mellitus (6q24-related) (PMID 20301706)", False))
-WANT_NO_GENE = (("prs", ["Asthma", "PGS002727", "68.3 (EUR)", "2605/2872", "HR 1.57 (EUR, PPM014751)"], "HR"),)
-WANT_LINES_NO_GENE = ("qc", "clinvar", "mosaic", "mosaic-mca", "roh", "telomere", "consumer-export")
-WANT_FACTS_NO_GENE = ("qc", "callability", "variants", "clinvar", "clinical-filter", "cpsr", "slivar", "exomiser",
-                      "structural-variants", "mito", "mosaic", "mosaic-mca", "carrier-list", "couple", "pharmcat",
-                      "ancestry-fine", "mt-haplogroup", "y-chromosome", "archaic", "ancient", "roh", "telomere",
-                      "viral", "consumer-export")
+WANT_NO_GENE = ()
+WANT_LINES_NO_GENE = ()
+WANT_FACTS_NO_GENE = ()
 WANT_FACT_PROSE = (("clinical-filter", "High-impact rare variants in its genes"),)
-WANT_HEADLINES_NO_GENE = ("clinvar", "carrier", "roh", "pypgx", "annotsv", "viral", "archaic", "lpa", "cpsr", "mito")
+WANT_HEADLINES_NO_GENE = ()
 # Prose, each with the gene it names or the gene its word is spelled like: the tag must be the panel tag either way.
 # The carrier list's summary of the two-hit callers (it names SMN1, HBA1 and HBA2 as the callers it read) is prose of
 # a card with no gene-free lines: the panel tag, as every other line of that card but a two-hit gene's own.
@@ -627,6 +625,9 @@ def table_problems():
     of a card declared gene-free there tagged by the panel tag (or one of a card not declared not), prose read word by
     word, or a gene cell not read as its list of symbols."""
     out = []
+    for name in ("NAMES_NO_GENE", "LINES_NO_GENE", "FACTS_NO_GENE", "HEADLINES_NO_GENE"):
+        if getattr(live_results, name):
+            out.append(f"{name}: no card-wide free-text exemption passed the producer audit")
     panel = [live_results.PANEL]
     found = lambda g: [{"id": "sf-" + g.lower(), "level": "act", "gene": g, "detail": g}]
     chapters = [{"sections": [{"id": c, "state": "ok"} for c in WANT_PANELS]}]
@@ -634,7 +635,7 @@ def table_problems():
     out += [f"card {c} is not in veil.panels" for c in WANT_PANELS if c not in got]
     for card, item, is_row in WANT_LINES:
         g = gene_of(item)
-        sec = {"id": card, "table": {"head": ["a", "b", "c", "d"], "rows": [item]}} if is_row else {"id": card, "lines": [item]}
+        sec = {"id": card, "table": {"columns": ["Gene", "Status", "Bases read", "Why"], "rows": [item]}} if is_row else {"id": card, "lines": [item]}
         v = live_results.veil({"sections": {}}, found(g), [{"sections": [sec]}])
         tag = ((v.get("rows" if is_row else "lines") or {}).get(card) or [None])[0]
         if tag != panel:
@@ -669,6 +670,16 @@ def table_problems():
         v = live_results.veil({"sections": {}}, found("BRCA2"), [{"sections": [sec]}])
         if ((v.get("headline") or {}).get("c")) != (None if key in WANT_HEADLINES_NO_GENE else panel):
             out.append(f"the headline from {key} tagged {(v.get('headline') or {}).get('c')}")
+    for card in live_results.ADAPTERS:
+        sec = {"id": card, "keys": ["unknown-producer"], "headline": "MLH1 sample note",
+               "facts": [["Unclassified", "MLH1"]], "lines": ["MLH1 sample note"],
+               "table": {"columns": ["Future field"], "rows": [["MLH1"], ["extra MLH1 record"]]}}
+        v = live_results.veil({"sections": {}}, found("BRCA2"), [{"sections": [sec]}])
+        for kind in ("facts", "lines", "rows"):
+            if not (v.get(kind) or {}).get(card) or any(t != panel for t in v[kind][card]):
+                out.append(f"{card}: unclassified {kind} did not default to PANEL")
+        if (v.get("headline") or {}).get(card) != panel:
+            out.append(f"{card}: unknown headline did not default to PANEL")
     # Prose read with no gene field: the panel tag whatever it names, so the tag never tells the words apart.
     for g, text in WANT_PROSE:
         for spans in (live_results.closable(found(g)), live_results.closable(found("BRCA2"))):
@@ -696,8 +707,8 @@ def table_controls():
                 live_results.FIXED_LINES = dict(keep["FIXED_LINES"], **{card: tuple(x for x in words if x != w)})
                 control(f"FIXED_LINES[{card}] without {w!r}", not table_problems())
         live_results.FIXED_LINES = keep["FIXED_LINES"]
-        live_results.NAMES_NO_GENE = {}
-        control("NAMES_NO_GENE empty", not table_problems())
+        live_results.NAMES_NO_GENE = {"prs": "an unsafe blanket exemption"}
+        control("NAMES_NO_GENE with an unsafe exemption", not table_problems())
         live_results.NAMES_NO_GENE = keep["NAMES_NO_GENE"]
         for n in ("LINES_NO_GENE", "FACTS_NO_GENE", "FACT_NAMES", "HEADLINES_NO_GENE"):
             for k in keep[n]:
@@ -948,11 +959,14 @@ def main():
               "row closed by its gene closes its reads link, and a lead segment carries the ids of every closed result "
               "its findings name", not bad, bad)
         fixed = live_results.FIXED_LINES
+        prose = live_results.prose_tag
         try:  # the card still prints its lines; veil() no longer knows they are a panel
             live_results.FIXED_LINES = type("Unknown", (dict,), {"get": lambda self, k, d=None: None})(fixed)
+            live_results.prose_tag = lambda spans, text: live_results.veil_tags(spans, re.findall(r"[A-Z][A-Z0-9]+", text), text)
             control("a veil that tags a known deep intronic site's line by its gene", not veil_lines_problems())
         finally:
             live_results.FIXED_LINES = fixed
+            live_results.prose_tag = prose
         bad = table_problems()
         check("8. every fixed-panel card, fixed line and gene-free card of the veil's tables closes as a panel or never, "
               "prose is the panel tag whatever it names unless declared gene-free, and a gene cell is its symbols", not bad, bad)

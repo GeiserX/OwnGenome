@@ -439,6 +439,10 @@ def widget_counts(b, base):
         b.go(f"{base}/runs/{person}/#s/{cid}")
         b.wait("document.documentElement.dataset.pgpResults && !!document.getElementById(%s) && 'drawn'"
                % json.dumps("card-" + cid))
+        if kind == "ypath":
+            acts = json.loads(b.eval("JSON.stringify((function () { var x = new XMLHttpRequest(); x.open('GET', 'results.json', false); x.send(); return JSON.parse(x.responseText).findings.filter(function (f) { return f.level === 'act'; }).map(function (f) { return f.id; }); }()))"))
+            for fid in acts:
+                open_closed(b, fid)
         if kind in ("MoChA bar", "AnnotSV span"):
             b.wait("document.documentElement.dataset.pgpCharts")
             time.sleep(0.5)
@@ -670,6 +674,7 @@ HANDLE_JS = r"""fetch('results.json', {cache: 'no-store'}).then(function (r) { r
   function shut(f) {
     if (f.level === 'act') { return !open(f.id); }
     var t = tags[f.id];
+    if (t === undefined) { t = ['*panel*']; }
     t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (x) { return x !== f.id; });
     return t.some(function (x) { return x === '*panel*' ? anyShut : !byId[x] || !open(x); });
   }
@@ -774,7 +779,7 @@ def planted_pages(b, base, out):
         b.wait("document.documentElement.dataset.pgpStatus === 'ready' && 'drawn'", 10)
         shown = b.eval(shown_js) or ""
         out_ += [f"{w} on the finding page {fid}" for w in [gene] + hit + sv if w in shown]
-    named = [k for k in ((res.get("veil") or {}).get("findings") or {}) if k.startswith("exomiser-")]
+    named = [k for k, t in ((res.get("veil") or {}).get("findings") or {}).items() if t and k.startswith("exomiser-")]
     if len(ids) < 10 or not named:
         return out_ + [f"the son's findings are not the planted ones: {ids}, ranking {named}"]
     b.go("about:blank")
@@ -813,10 +818,23 @@ def planted_checks(b, base, out):
         res = json.loads(keep[rj])
         res["veil"] = {}
         write(rj, json.dumps(res))
-        control("results.json without its veil tags", not planted_closed(b, base))
+        bad = planted_closed(b, base)
+        check("browser: results.json without veil metadata still keeps secondary places closed", not bad, bad)
+        res = json.loads(keep[rj])
+        def unsafe_tags(value):
+            if isinstance(value, dict):
+                return {k: unsafe_tags(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return None if all(isinstance(v, str) for v in value) else [unsafe_tags(v) for v in value]
+            return value
+        for kind in ("rows", "viewer", "lines", "facts", "headline", "marks", "findings"):
+            if kind in res["veil"]:
+                res["veil"][kind] = unsafe_tags(res["veil"][kind])
+        write(rj, json.dumps(res))
+        control("results.json falsely exempts tagged secondary places", not planted_closed(b, base))
         write(rj, keep[rj])
         for p, a, z, desc in (
-                (pj, "return !(tags[i] && tagClosed(tags[i]));", "return true;", "person.js whose ClinVar rows ignore their tags"),
+                (pj, "return !placeClosed(tags[i]);", "return true;", "person.js whose ClinVar rows ignore their tags"),
                 (pj, "return !!(t && tagClosed(t));", "return false;", "person.js whose findings ignore their tags"),
                 (cj, "return ask ? (sp.marks", "return false ? (sp.marks", "charts.js that keeps every mark"),
                 (sj, "it.veil || null", "null", "search.js that ignores a hit's tag")):
@@ -1791,6 +1809,9 @@ def home_problems(b, base, out, cases=HOME):
     bad = []
     for what, one, two in cases:
         h1, h2 = home_now(b, base, out, one), home_now(b, base, out, two)
+        links = json.loads(b.eval("JSON.stringify(Array.from(document.querySelectorAll('#attention a')).filter(function (a) { var who = a.querySelector('.who .pc'); return who && who.textContent === " + json.dumps(SON) + "; }).map(function (a) { return a.getAttribute('href'); }))") or "[]")
+        if any("finding/" in link for link in links):
+            bad.append(f"home, {what}: a closed summary links to a finding page")
         diff = [x for x in difflib.unified_diff(h1, h2, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("+++", "---")]
         if diff:
             bad.append(f"home, {what}: {len(diff)} lines differ: {diff[:4]}")
@@ -2105,8 +2126,8 @@ def gate_regression_checks(b, base, out, og):
             ("map.js", "var tag = !!r.gate ||", "var tag =", "map-owned APOE row following overlapping act tags", apoe_pair_problems),
             ("finding.js", "return t.length ? t : null;", "return t.length ? t.slice(0, 1) : null;",
              "finding.js tagOf keeping only the first id", related_set_problems),
-            ("home.js", "(f.level === 'act' || (f.veil || []).indexOf('*panel*') >= 0)", "f.level === 'act'",
-             "home.js ignoring panel tags", home_panel_problems)):
+            ("home.js", "if (!closedSummary(r)) { return r.top || []; }", "if (true) { return r.top || []; }",
+             "home.js ignoring count-based child summaries", lambda *args: fail_closed_problems(*args, cases=["home"]))):
         p = os.path.join(out, "assets", file)
         with open(p) as fh:
             source = fh.read()
@@ -2131,18 +2152,196 @@ def gate_regression_checks(b, base, out, og):
         control("closable without coordinates", not chart_position_problems(b, base, out, og))
     finally:
         live_results.mark_names, live_results.closable = names, spans
-    overview = live_results.overview
-    try:
-        def no_panel(summary):
-            r = overview(summary)
-            for f in r["top"]:
-                f.pop("veil", None)
-            return r
-        live_results.overview = no_panel
-        control("overview dropping panel tags", not home_panel_problems(b, base, out, og))
-    finally:
-        live_results.overview = overview
     print(f"   gate regression checks: {time.time() - t0:.2f} s")
+
+
+def fail_closed_problems(b, base, out, og, cases=None, producers=None):
+    """Producer plantings: home rankings, ontology facts, chart geometry and structured mitochondrial sites."""
+    bad = []
+    cases = cases or ("home", "hpo", "contig", "mito", "producers", "metadata")
+    if "home" in cases:
+        for n in (1, 2, 3):
+            def ranked(g):
+                def change(S):
+                    S.clear()
+                    cpsrs(g, *["MLH1", "MSH2"][:n - 1])(S)
+                    S["exomiser"] = {"state": "ok", "data": {"terms": [], "genes": [
+                        {"gene": "BRCA1", "rank": 1, "moi": "AD", "exomiser_score": 0.9, "variants": []}]}}
+                return change
+            a, z = (home_now(b, base, out, ranked(g)) for g in ("BRCA1", "BRCA2"))
+            if a != z:
+                bad.append(f"home: {n} closed results change the whole document with the same BRCA1 ranking")
+    if "hpo" in cases:
+        import collect_summary
+        with tempfile.TemporaryDirectory() as td:
+            folder = os.path.join(td, "exomiser")
+            os.mkdir(folder)
+            with open(os.path.join(folder, f"{SON}_exomiser_top.tsv"), "w") as fh:
+                fh.write("rank\tgene\tmoi\texomiser_score\tphenotype_score\tvariant\tgenotype\tconsequence\thgvs\tacmg\tdisease\n"
+                         "1\tCFTR\tAR\t0.9\t0.8\tchr7:117559590\thet\tmissense\tc.1521_1523del\tPathogenic\tDemo condition\n")
+            with open(os.path.join(folder, f"{SON}_exomiser_terms.tsv"), "w") as fh:
+                fh.write("hpo_id\tlabel\nHP:0020055\tDiminished MLH1 expression\n")
+            _, data = collect_summary.sec_exomiser(td, SON)
+        def hpo(S):
+            cpsrs("MLH1", "MSH2")(S)
+            S["exomiser"] = {"state": "ok", "data": data}
+        keep = plant_summary(out, og, hpo)
+        try:
+            page_now(b, base)
+            for stage in ("closed", "partly opened", "all opened"):
+                if stage == "partly opened":
+                    assert open_closed(b, cid("MLH1"))
+                if stage == "all opened":
+                    with open(os.path.join(out, "runs", SON, "results.json")) as fh:
+                        acts = [f["id"] for f in json.load(fh)["findings"] if f["level"] == "act"]
+                    for fid in acts:
+                        open_closed(b, fid)
+                visible = b.eval("document.querySelector('#card-exomiser').textContent.includes('Diminished MLH1 expression')")
+                if visible != (stage == "all opened"):
+                    bad.append(f"hpo: label visibility {visible} while {stage}")
+        finally:
+            unplant(keep)
+    if "contig" in cases:
+        views = []
+        for locus in ("chrUn_KI270442v1:100-200", "chr13:32300000-32300100"):
+            keep = plant_summary(out, og, sv_over(locus, ["BRCA1"], False))
+            try:
+                views.append(page_now(b, base))
+                with open(os.path.join(out, "runs", SON, "results.json")) as fh:
+                    acts = [f["id"] for f in json.load(fh)["findings"] if f["level"] == "act"]
+                for fid in acts:
+                    assert open_closed(b, fid), fid
+                note = b.eval("document.querySelector('figure[data-chart=genome]').textContent.includes('SVs on other contigs')")
+                if note != locus.startswith("chrUn"):
+                    bad.append("contig: the full chart note did not return after every act opened")
+                assert b.eval("(function () { var b = document.querySelector('.gm-chip.opened button'); if (!b) return false; b.click(); return true; }())")
+                if b.eval("document.querySelector('figure[data-chart=genome]').textContent.includes('SVs on other contigs')"):
+                    bad.append("contig: re-closing an act leaves the chart note visible")
+            finally:
+                unplant(keep)
+        if views[0] != views[1]:
+            bad.append("contig: closed SV changes text, attributes, address, canvas or SVG geometry")
+    if "mito" in cases:
+        def mito(S):
+            cpsrs("MT-TL1", "MT-TL2")(S)
+            for row in S["cpsr"]["data"]["plp"]:
+                row["variant"] = "chrM:3243 A>G"
+            S["mito"] = {"state": "ok", "data": {"pass": 1, "heteroplasmic": 1,
+                "heteroplasmic_sites": [{"pos": 3243, "ref": "A", "alt": "G", "af": 0.25}]}}
+        keep = plant_summary(out, og, mito)
+        try:
+            page_now(b, base)
+            expr = "JSON.stringify([!!document.querySelector('#card-mito tbody tr'), !!document.querySelector('figure[data-chart=mito] [data-mark=m3243-G]')])"
+            for stage, fid in enumerate((None, "cpsr-mt-tl1-chrm-3243-a-g", "cpsr-mt-tl2-chrm-3243-a-g")):
+                if fid and not open_closed(b, fid):
+                    bad.append(f"mito: no closed result {fid}")
+                    break
+                got = json.loads(b.eval(expr))
+                if got != [stage == 2] * 2:
+                    bad.append(f"mito: row/mark after {stage} matching openings {got}")
+        finally:
+            unplant(keep)
+    if "metadata" in cases:
+        keep = plant_summary(out, og, cpsr("MLH1"))
+        try:
+            path = os.path.join(out, "runs", SON, "results.json")
+            with open(path) as fh:
+                result = json.load(fh)
+            result["veil"] = {k: v for k, v in result["veil"].items() if k in ("spans", "panels")}
+            card = next(c for ch in result["chapters"] for c in ch["sections"] if c["id"] == "qc")
+            token = "MLH1_UNCLASSIFIED_NOTE"
+            card.update(headline=token, facts=[["Unknown", token]], lines=[token], notes=[token],
+                        table={"columns": ["Detail"], "rows": [[token]]})
+            with open(path, "w") as fh:
+                json.dump(result, fh)
+            if token in "\n".join(page_now(b, base)[0]):
+                bad.append("metadata: a missing tag exposes unclassified content")
+            for finding in result["findings"]:
+                if finding["level"] == "act":
+                    assert open_closed(b, finding["id"]), finding["id"]
+            if token not in (b.eval("document.documentElement.outerHTML") or ""):
+                bad.append("metadata: content does not return after every act opens")
+        finally:
+            unplant(keep)
+    if "producers" in cases:
+        # Each adapter receives an unknown free-text field and an extra unstructured row, in turn. Neither
+        # the token's spelling nor its record count earns an exemption from the default PANEL rule.
+        for producer, adapter in list(live_results.ADAPTERS.items()):
+            if producers and producer not in producers:
+                continue
+            def injected(S, summary):
+                got = adapter(S, summary)
+                got.update(facts=[["Unclassified", "MLH1"]], lines=["MLH1 sample note"],
+                           table={"columns": ["Detail"], "rows": [["MLH1"], ["extra MLH1 record"]]})
+                return got
+            live_results.ADAPTERS[producer] = injected
+            try:
+                # Supply each adapter's real demo section. Missing sections are tested by the unit counterpart.
+                views = []
+                for gene in ("MLH1", "BRCA2"):
+                    keep = plant_summary(out, og, cpsr(gene))
+                    try:
+                        views.append(page_now(b, base))
+                        if any(token in "\n".join(views[-1][0]) for token in ("MLH1 sample note", "extra MLH1 record")):
+                            bad.append(f"producer {producer}: unclassified token reached the closed DOM")
+                    finally:
+                        unplant(keep)
+                if views[0] != views[1]:
+                    bad.append(f"producer {producer}: unclassified planting changes the closed document")
+            finally:
+                live_results.ADAPTERS[producer] = adapter
+    return bad
+
+
+def fail_closed_checks(b, base, out, og):
+    started = time.monotonic()
+    for case in ("home", "hpo", "contig", "mito", "producers", "metadata"):
+        bad = fail_closed_problems(b, base, out, og, [case])
+        check("browser: fail-closed producers " + case, not bad, bad)
+    prose, row, veil = live_results.prose_tag, live_results.row_tag, live_results.veil
+    try:
+        live_results.FACTS_NO_GENE["exomiser"] = "unsafe HPO labels"
+        control("an HPO fact declared gene-free", not fail_closed_problems(b, base, out, og, ["hpo"]))
+        live_results.FACTS_NO_GENE.pop("exomiser", None)
+        def no_mito(*args, **kwargs):
+            got = veil(*args, **kwargs)
+            got.get("rows", {}).pop("mito", None)
+            return got
+        live_results.veil = no_mito
+        control("mitochondrial rows without structured positions", not fail_closed_problems(b, base, out, og, ["mito"]))
+        live_results.veil = veil
+        live_results.prose_tag = lambda spans, text: None
+        control("unclassified producer prose left open", not fail_closed_problems(b, base, out, og, ["hpo"]))
+        live_results.prose_tag = prose
+        live_results.row_tag = lambda spans, columns, values, genes=(): \
+            live_results.veil_tags(spans, live_results.gene_cell(values[0])) if columns == ["Detail"] \
+            else row(spans, columns, values, genes)
+        control("unclassified rows read as gene cells", not fail_closed_problems(b, base, out, og, ["producers"], ["qc"]))
+    finally:
+        live_results.FACTS_NO_GENE.pop("exomiser", None)
+        live_results.prose_tag, live_results.row_tag, live_results.veil = prose, row, veil
+    path = os.path.join(out, "assets", "person.js")
+    with open(path) as fh:
+        reader = fh.read()
+    try:
+        old = "parseFromString(sp.svg_closed,"
+        assert reader.count(old) == 1
+        with open(path, "w") as fh:
+            fh.write(reader.replace(old, "parseFromString(sp.svg,"))
+        control("chart notes and geometry outside PANEL", not fail_closed_problems(b, base, out, og, ["contig"]))
+    finally:
+        with open(path, "w") as fh:
+            fh.write(reader)
+    try:
+        old = "tag === undefined ? tagClosed(PANEL)"
+        assert reader.count(old) == 1
+        with open(path, "w") as fh:
+            fh.write(reader.replace(old, "tag === undefined ? false"))
+        control("missing tag metadata treated as open", not fail_closed_problems(b, base, out, og, ["metadata"]))
+    finally:
+        with open(path, "w") as fh:
+            fh.write(reader)
+    print(f"   fail-closed producer checks: {time.monotonic() - started:.2f} s")
 
 
 def infer_checks(b, base, out):
@@ -2281,7 +2480,7 @@ def infer_checks(b, base, out):
         live_results.finding_names = names
         live_results.mark_names = lambda S, sp, m: (re.findall(r"[A-Z0-9]+", f"{m.get('label') or ''} {m.get('detail') or ''}"), "")
         control("a veil that reads a chart mark's label word by word",
-                not infer_problems(b, base, out, og, [x for x in INFER if "(TG)" in x[0]]))
+                not infer_problems(b, base, out, og, [x for x in INFER if "(INS)" in x[0]]))
     finally:
         live_results.TABLE_COLUMNS, live_results.finding_names, live_results.mark_names = cols, names, marks
     og_map = build_live_demo.og_map
@@ -2356,17 +2555,18 @@ def widget_veil_checks(b, base, out):
 
     def shown():
         return b.eval("JSON.stringify([" + SHOWN_JS + ", (document.querySelector('[data-widget=copies]') || {}).textContent || '', "
-                      "document.querySelectorAll('.finding[data-level=act] .veil').length])")
+                      "document.querySelectorAll('.finding[data-level=act] .veil').length, "
+                      "document.querySelectorAll('#card-paralogs tbody tr,#card-chip tbody tr').length])")
 
     def problems(text, opened):
-        page, cops, _ = json.loads(text) if text else ["", "", 0]
+        page, cops, _, rows = json.loads(text) if text else ["", "", 0, 0]
         out_ = []
-        deep = page.count(live_results.FIXED_LINES["clinvar"][0])
+        deep = page.count("Known deep intronic site (always reported):")
         if opened and not ("SMN1" in cops and "SMN2" in cops and "p.R175H" in page and "SMN1 copies" in page
                        and deep == sites[0]):
             out_.append(f"every result opened, yet a dot, the call, the fact or a deep intronic line ({deep} of {sites[0]}) is "
                         f"missing: {cops[:200]}")
-        if not opened and (cops or "p.R175H" in page or "SMN1 copies" in page or deep):
+        if not opened and (rows or cops or "p.R175H" in page or "SMN1 copies" in page or deep):
             out_.append(f"a closed result, yet the copy-number or CHIP card shows its rows or the ClinVar card "
                         f"{deep} deep intronic lines: {cops[:200]}")
         return out_

@@ -46,6 +46,13 @@
   // The runs whose results to act on stay closed on this page: a child in any family, and, while a family's
   // members cannot be read, every run that no readable family lists (it may be that family's child).
   var closedRuns = {};
+  function closedSummary(r) { return !!(r && closedRuns[r.name] && r.levels && r.levels.act); }
+  function homeTop(r) {
+    if (!closedSummary(r)) { return r.top || []; }
+    return ['trust', 'act', 'medicine', 'carrier', 'review'].filter(function (level) {
+      return r.levels[level] > 0;
+    }).map(function (level) { return { level: level, title: 'Results closed until opened on the report' }; });
+  }
   function tile(m, fam, r, colour) {
     var div = el('div', { 'class': 'ptile person-card' + (r ? ' has-run' : ' norun') + (r && r.state === 'running' ? ' running' : ''),
       'data-sample': m.sample });
@@ -58,7 +65,8 @@
     add(meta, (fam ? role(m, fam) + ' · ' : '') + progressText(r));
     if (r && r.failed) { add(meta, ' · ', el('span', { 'class': 'warn' }, r.failed + ' step' + (r.failed > 1 ? 's' : '') + ' not assessed')); }
     add(div, meta);
-    var lead = r && (closedRuns[m.sample] ? r.lead_closed || '' : r.lead);
+    var lead = r && (closedSummary(r) ? 'Results to act on stay closed until opened on the report. Read the report for the other findings and their caveats.'
+      : closedRuns[m.sample] ? r.lead_closed || '' : r.lead);
     if (lead) {
       // Two sentences: the first often says only that nothing needs a doctor, the second names what differs.
       var one = U.firstSentence(lead), rest = lead.slice(one.length).trim();
@@ -147,7 +155,7 @@
       });
     });
     if (rolesUnknown) { runs.forEach(function (r) { if (!listed[r.name]) { closedRuns[r.name] = true; } }); }
-    function homeShut(r, f) { return !!closedRuns[r.name] && (f.level === 'act' || (f.veil || []).indexOf('*panel*') >= 0); }
+    function homeShut(r, f) { return closedSummary(r) || (!!closedRuns[r.name] && (f.level === 'act' || (f.veil || []).indexOf('*panel*') >= 0)); }
     function closedTitle(r, f) {
       return homeShut(r, f) ? (f.level === 'act' ? 'A result to act on, closed until opened on the report'
         : 'A finding in a panel, closed until opened on the report') : f.title;
@@ -186,7 +194,7 @@
     // One line per person and level: the first finding names the line, the rest are counted on it.
     runs.forEach(function (r) {
       var seen = {};
-      (r.top || []).forEach(function (f) {
+      homeTop(r).forEach(function (f) {
         if (order[f.level] === undefined) { return; }
         if (seen[f.level]) { return; }
         // The rest of the level from its count, not from the first four findings the index names.
@@ -234,7 +242,7 @@
       var c2 = el('div', {});
       add(c2, el('div', { 'class': 'fig-label' }, 'Found so far'));
       var fs = el('ul', { 'class': 'fs' });
-      (r.top || []).forEach(function (f) { add(fs, add(el('li', {}), U.findingLevel(f.level, ''), ' ', closedTitle(r, f))); });
+      homeTop(r).forEach(function (f) { add(fs, add(el('li', {}), U.findingLevel(f.level, ''), ' ', closedTitle(r, f))); });
       if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(closedRuns[r.name] ? r.lead_closed || '' : r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
       add(c2, fs);
       var c3 = el('div', {});

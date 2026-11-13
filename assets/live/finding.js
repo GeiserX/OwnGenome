@@ -83,7 +83,9 @@
     // A tag is the list of every result it names: the finding stays closed while any of them is.
     var tags = (r.veil && r.veil.findings) || {};
     function tagOf(x) {
+      if (x.level === 'act') { return null; }
       var t = tags[x.id];
+      if (t === undefined) { t = ['*panel*']; }
       t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (y) { return y !== x.id; });
       return t.length ? t : null;
     }

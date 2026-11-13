@@ -324,6 +324,13 @@ def build(summary, notes, helpers):
     for x in out:
         if x is not None:
             x["svg"] = svg(x)
+            # The live child's drawing keeps structured marks, but no data-derived note, empty-state
+            # sentence, legend choice or variable dimension. Render its geometry from a stable spec.
+            # The complete SVG above remains the report's and an opened/adult page's drawing.
+            if x["kind"] in ("ideogram", "scatter"):
+                closed = dict(x, not_drawn=[], axis=dict(x["axis"], sites_missing=0), veil_geometry=True)
+                closed["marks"] = list(x["marks"])
+                x["svg_closed"] = svg(closed)
     return [x for x in out if x is not None]
 
 
@@ -501,7 +508,7 @@ def svg_ideogram(sp):
               + _text(x0 + 258, y + 8, "ClinVar hit", 11)
               + f'<rect x="{x0 + 340}" y="{y - 2}" width="3" height="12" fill="{TONE["muted"]}"/>'
               + _text(x0 + 348, y + 8, "low-confidence ClinVar call", 11))
-    kinds = {m.get("kind") for m in sp["marks"]}
+    kinds = {"sv", "mca"} if sp.get("veil_geometry") else {m.get("kind") for m in sp["marks"]}
     if kinds & {"sv", "mca"}:
         # A second legend row, drawn only when the chart has these marks.
         y += 18
@@ -531,7 +538,9 @@ def svg_scatter(sp):
     for lo, hi in ((303, 315), (16184, 16193)):
         body.append(f'<rect x="{_f(sx(lo) - 1)}" y="{y0}" width="{_f(max(sx(hi) - sx(lo), 2))}" '
                     f'height="{y1 - y0}" fill="{TONE["muted"]}" opacity="0.25"/>')
-    if sp["axis"].get("sites_missing"):
+    if sp.get("veil_geometry"):
+        pass  # empty-state prose is PANEL too
+    elif sp["axis"].get("sites_missing"):
         body.append(_text((x0 + x1) / 2, (y0 + y1) / 2, "The positions of the heteroplasmic sites are not in this "
                           "summary", 12, "middle"))
     elif not sp["marks"]:

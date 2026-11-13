@@ -335,22 +335,66 @@
     var f = findingById(id);
     return closedPage() && (!f || veiled(f));
   }
+  // Explicit null is a structured place with no matching act. Missing metadata is unclassified: PANEL.
+  function placeClosed(tag) { return tag === undefined ? tagClosed(PANEL) : !!tag && tagClosed(tag); }
   function veilTags(kind, key) { return ((results && results.veil && results.veil[kind]) || {})[key] || []; }
   // A card's headline is prose: tagged PANEL unless the summary key it comes from prints no gene (veil.headline).
-  function headlineShut(c) { var t = ((results && results.veil && results.veil.headline) || {})[c.id]; return !!(t && tagClosed(t)); }
+  function headlineShut(c) { var t = ((results && results.veil && results.veil.headline) || {})[c.id]; return placeClosed(t); }
   // The charts (plugins/charts.js) ask for each mark. A closed page with no results.json yet cannot tell which
   // marks those are, so it leaves every mark out until it can.
   window.PGP.markClosed = function (chart, mark) {
     if (!closedPage()) { return false; }
     if (!results) { return true; }
     var id = ((results.veil && results.veil.marks && results.veil.marks[chart]) || {})[mark];
-    return !!(id && tagClosed(id));
+    return placeClosed(id);
   };
+  // Chart prose and dimensions have no structured result tag. The chart reader asks the same PANEL rule.
+  function chartPanelClosed() { return closedPage() && (!results || tagClosed(PANEL)); }
+  // The chart plugin owns mark links and their click handlers. Keep those nodes, but give the child's
+  // closed drawing only the producer's fixed geometry. The complete SVG lives off the document until
+  // PANEL opens. Older chart files without fixed geometry stay closed in full.
+  function veilCharts() {
+    Array.prototype.forEach.call(document.querySelectorAll('figure[data-chart]'), function (fig) {
+      var sp = fig.pgpSpec, shut = chartPanelClosed();
+      if (!sp || fig.pgpPanelState === shut) { return; }
+      fig.pgpPanelState = shut;
+      if (!fig.pgpFullSVG) { fig.pgpFullSVG = fig.querySelector('svg'); }
+      var current = fig.querySelector('svg,.chart-panel-closed');
+      if (!shut) {
+        if (current && current !== fig.pgpFullSVG) { current.remove(); }
+        if (fig.pgpFullSVG && fig.pgpFullSVG.parentNode !== fig) { fig.appendChild(fig.pgpFullSVG); }
+        return;
+      }
+      var replacement = el('p', { 'class': 'dim chart-panel-closed' },
+        'This chart stays closed until every result to act on is opened.');
+      if (sp.svg_closed && fig.pgpFullSVG) {
+        var doc = new DOMParser().parseFromString(sp.svg_closed, 'image/svg+xml');
+        if (doc.documentElement.nodeName === 'svg') {
+          replacement = document.importNode(doc.documentElement, true);
+          Array.prototype.forEach.call(replacement.querySelectorAll('a[data-mark]'), function (a) {
+            var id = a.getAttribute('data-mark');
+            var live = Array.prototype.find.call(fig.pgpFullSVG.querySelectorAll('a[data-mark]'), function (n) {
+              return n.getAttribute('data-mark') === id;
+            });
+            // Use a clone in the fixed geometry and delegate its click to the plugin's original node.
+            if (!live) { a.remove(); }
+            else { a.addEventListener('click', function (e) { e.preventDefault(); live.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); }
+          });
+        }
+      }
+      if (current) { current.replaceWith(replacement); } else { fig.appendChild(replacement); }
+    });
+  }
+  // The plugin places figures after person.js draws the slots. Mutation callbacks run before paint,
+  // including on the first async charts response; the card event also handles PANEL changing without
+  // any mark changing. No chart filename or data value is used to decide whether PANEL is closed.
+  new MutationObserver(veilCharts).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('pgp:cards', function () { queueMicrotask(veilCharts); });
   // A card's table without its closed rows: [table or null, how many rows it left out].
   function openTable(c) {
     var tags = veilTags('rows', c.id), t = c.table;
-    if (!t || !t.rows || !tags.length) { return [t, 0]; }
-    var rows = t.rows.filter(function (r, i) { return !(tags[i] && tagClosed(tags[i])); });
+    if (!t || !t.rows) { return [t, 0]; }
+    var rows = t.rows.filter(function (r, i) { return !placeClosed(tags[i]); });
     var out = {};
     Object.keys(t).forEach(function (k) { out[k] = t[k]; });
     out.rows = rows;
@@ -359,7 +403,7 @@
   // A card's facts and drawing without their closed items (a fact, a CHIP call or a copy-number dot that names a
   // closed result's gene): [facts, widget, how many items they left out].
   function openFacts(c) {
-    var ft = veilTags('facts', c.id), facts = (c.facts || []).filter(function (f, i) { return !(ft[i] && tagClosed(ft[i])); });
+    var ft = veilTags('facts', c.id), facts = (c.facts || []).filter(function (f, i) { return !placeClosed(ft[i]); });
     var w = c.widget, key = w && (w.kind === 'vaf' ? 'calls' : w.kind === 'copies' ? 'genes' : null);
     var wt = veilTags('widget', c.id), shut = (c.facts || []).length - facts.length;
     if (key && wt.length && w[key]) {
@@ -370,6 +414,7 @@
       copy[key] = items;
       w = copy;
     }
+    if (w && placeClosed(((results.veil || {}).widget_panel || {})[c.id])) { w = null; shut += 1; }
     return [facts, w, shut];
   }
   function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
@@ -461,7 +506,7 @@
         ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.', null,
         function () { openFinding(closedFs[0]); redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } }));
     } else {
-      (c.notes || []).forEach(function (n) { add(text, el('p', { 'class': 'note-stale' }, n)); });
+      (c.notes || []).forEach(function (n, i) { if (!placeClosed(veilTags('notes', c.id)[i])) { add(text, el('p', { 'class': 'note-stale' }, n)); } });
       if (c.headline && !headlineShut(c)) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
       var of = openFacts(c);
       add(margin, U.facts(of[0]));
@@ -472,7 +517,7 @@
       if (c.image) { add(text, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
       var ot = openTable(c), tb = U.table(ot[0]);
       var lt = veilTags('lines', c.id);
-      var lines = (c.lines || []).filter(function (l, i) { return !(lt[i] && tagClosed(lt[i])); });
+      var lines = (c.lines || []).filter(function (l, i) { return !placeClosed(lt[i]); });
       var shut = ot[1] + (c.lines || []).length - lines.length + (c.headline && headlineShut(c) ? 1 : 0), items = of[2];
       if (tb) { add(text, tb); } else if (c.empty_text && !ot[1]) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
       if (shut || items) {
@@ -502,7 +547,7 @@
     var foot = el('p', { 'class': 'card-links' });
     add(foot, el('a', { href: 'report.html#' + encodeURIComponent(c.anchor), 'class': 'report' }, 'Open in the report'));
     var vtags = veilTags('viewer', c.id);
-    var reads = (c.viewer || []).filter(function (x, i) { return !(vtags[i] && tagClosed(vtags[i])); });
+    var reads = (c.viewer || []).filter(function (x, i) { return !placeClosed(vtags[i]); });
     if (g === 'show' && reads.length && !panelShut(c)) {
       add(foot, el('a', { href: 'viewer/#' + reads[0], 'class': 'viewer' }, 'See the reads at ' + reads[0]));
     }
@@ -577,7 +622,9 @@
   // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene: results.veil.findings)
   // stays closed while that result is, and opening it opens that result.
   function findingTag(f) {
+    if (f.level === 'act') { return null; }  // its own switch; never an unclassified secondary place
     var t = ((results && results.veil && results.veil.findings) || {})[f.id];
+    if (t === undefined) { t = [PANEL]; }
     t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (x) { return x !== f.id; });
     return t.length ? t : null;
   }

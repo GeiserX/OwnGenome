@@ -184,6 +184,7 @@ def family_browser_checks(work):
     before, t0 = len(demo.FAILS), demo.time.time()
     try:
         demo.family_veil_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out)
+        demo.fail_closed_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out, og)
         FAILS.extend(demo.FAILS[before:])
     finally:
         b.close()
