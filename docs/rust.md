@@ -167,7 +167,14 @@ still apply.
   before any output write because its temporary sibling name is longer.
 
 Inputs produced by the real tools are never refused: bcftools/DeepVariant VCF,
-samtools faidx, UCSC BED, PharmCAT report JSON and Renovate debug log.
+samtools faidx, header-free BED intervals, PharmCAT report JSON and Renovate
+debug log. A BED file with a UCSC column header, a `track` line or a `browser`
+line is refused, as the Python refused it: remove those lines first.
+
+Valid JSON nested up to the reader's 1000 levels is accepted. The Python stopped
+with a RecursionError at a few hundred levels when it copied or wrote such a
+value. That was a limit of the interpreter, not a check on the input, so the
+Rust commands do not copy it.
 
 `refusals_preserve_bytes_modes_and_link_targets` pins the rule through each CLI.
 Each table row runs with a regular output and with a symlink. It checks nonzero
