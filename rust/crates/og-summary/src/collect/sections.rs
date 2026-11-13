@@ -20,6 +20,8 @@ pub enum Data {
     MosaicSexLoss(Mosaic),
     ReadCount(ReadCount),
     Variants(Variants),
+    /// A section of group c, kept as the ordered JSON it writes.
+    Json(Value),
 }
 
 impl Data {
@@ -32,6 +34,7 @@ impl Data {
             Data::MosaicSexLoss(d) => d.to_json(),
             Data::ReadCount(d) => d.to_json(),
             Data::Variants(d) => d.to_json(),
+            Data::Json(v) => v.clone(),
         }
     }
 }
@@ -750,7 +753,7 @@ fn chars(b: &[u8]) -> usize {
 
 /// What Python's gzip says for the same fault, where the two are the same
 /// fault; otherwise the reader's own words.
-fn gzip_message(e: &std::io::Error) -> String {
+pub(crate) fn gzip_message(e: &std::io::Error) -> String {
     if e.kind() == std::io::ErrorKind::UnexpectedEof {
         "Compressed file ended before the end-of-stream marker was reached".to_owned()
     } else {

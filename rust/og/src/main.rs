@@ -50,7 +50,8 @@ const USAGE: &str = "usage: og <tool> [args]
        og prs format [args]
        og prs table [args]
        og mito annotate|deletions|copies [args]
-       og summary collect --only a [args]
+       og summary collect --only a|c [args]
+       og roh summary --sample SAMPLE --roh ROH --out OUT
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
        og bloodtype report|check-markers|systems [args]
@@ -302,6 +303,13 @@ fn main() -> ExitCode {
                 &mut std::io::stderr().lock(),
             )),
             _ => usage_error("og summary takes collect"),
+        },
+        "roh" => match rest.first().map(String::as_str) {
+            Some("summary") => ExitCode::from(og_summary::collect::group_c::roh::cli(
+                &rest[1..],
+                &mut std::io::stderr().lock(),
+            )),
+            _ => usage_error("og roh takes summary"),
         },
         "mito" => ExitCode::from(og_summary::mito::cli(
             rest.first().map(String::as_str),

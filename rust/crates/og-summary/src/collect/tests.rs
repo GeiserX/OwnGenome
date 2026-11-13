@@ -21,6 +21,7 @@ fn summary(d: &Dir, sample_dir: &str) -> Value {
         sample_dir: d.path(sample_dir),
         declared_sex: None,
         assets: d.path("assets"),
+        group: super::Group::A,
     };
     collect(&input).unwrap().to_json()
 }
