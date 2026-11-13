@@ -12,6 +12,9 @@ og-io.workspace = true
 og-bam.workspace = true
 og-clinvar.workspace = true
 og-steps.workspace = true
+og-ancestry.workspace = true
+og-chip.workspace = true
+og-cn.workspace = true
 indexmap.workspace = true
 memchr.workspace = true
 
