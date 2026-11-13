@@ -500,6 +500,27 @@ pub mod apol1 {
     mod tests {
         use super::*;
 
+        #[test]
+        fn unindexed_window_retains_only_overlaps() {
+            use std::io::Write;
+            let d = crate::testutil::Dir::new("g2-window-bounded");
+            let path = d.put("calls.vcf", "##fileformat=VCFv4.2\n");
+            let mut f = std::io::BufWriter::new(std::fs::OpenOptions::new().append(true).open(&path).unwrap());
+            writeln!(f, "chr21\t1\t.\tA\tT\t.\tPASS\t.").unwrap();
+            writeln!(f, "chr22\t1\t.\tA\tT\t.\tPASS\t.").unwrap();
+            let block = rec(SPAN.0 - 20, "A", "<NON_REF>", "0/0", &format!("END={}", SPAN.1));
+            let call = rec(POS, REF, ALT, "0/1", ".");
+            writeln!(f, "{}", block.join("\t")).unwrap();
+            writeln!(f, "{}", call.join("\t")).unwrap();
+            for i in 1..=250_000 {
+                writeln!(f, "chr22\t{}\t.\tA\tT\t.\tPASS\t.", SPAN.1 + i).unwrap();
+            }
+            f.flush().unwrap();
+            let records = window(&path).unwrap();
+            assert_eq!(records.len(), 2);
+            assert_eq!(records, vec![block, call]);
+        }
+
         fn rec(pos: i64, r: &str, a: &str, gt: &str, info: &str) -> Vec<String> {
             [
                 CHROM,

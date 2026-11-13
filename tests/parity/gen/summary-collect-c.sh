@@ -354,6 +354,35 @@ put $f/delly/S_sv.vcf.gz "\x1f\x8b\x08\x00broken"
 put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t39348425\t.\tA\t<STR100>\t.\tPASS\tVARID=RFC1;REPID=RFC1;STR_STATUS=full_mutation\t${EH_FORMAT}\t\
 1/1:INREPEAT/INREPEAT:500/600:400-700/500-800:0/0\n"
 
+# Non-finite cells follow each Python reader's rules, not a global filter.
+for special in nan inf -inf; do
+  f="float-${special}"
+  cp -R full "$f"
+  put "$f/chip/S_chip_depth.tsv" "gene\tmean_depth\tdetection_limit_vaf\tstatus\nA\t30\t.\tcovered\nB\t${special}\t.\tcovered\nC\t40\t.\tcovered\n"
+  for spec in \
+    'paralogs/S_smn_copy_number.tsv:agCN_qual,psCN_qual' \
+    'paralogs/S_pms2_copy_number.tsv:agCN_qual,psCN_qual' \
+    'ancestry_fine/S_ancestry_fine.tsv:fraction,low,high' \
+    'telomere/S/S/S_summary.tsv:read_lengths' \
+    'mito/S_chrM_deletions.tsv:level_pct' \
+    'mito/S_chrM_annotated.tsv:af'; do
+    file=${spec%%:*}
+    cols=${spec#*:}
+    [ -f "$f/$file" ] || { echo "missing float fixture: $file" >&2; exit 1; }
+    awk -F '\t' -v OFS='\t' -v cols="$cols" -v value="$special" '
+      BEGIN { split(cols, names, ","); for (i in names) want[names[i]] = 1 }
+      NR == 1 { for (i = 1; i <= NF; i++) if ($i in want) change[i] = 1 }
+      NR > 1 { for (i in change) $i = value }
+      { print }
+    ' "$f/$file" > "$f/cells.tmp"
+    mv -f "$f/cells.tmp" "$f/$file"
+  done
+  put "$f/hla_t1k/S_hla_genotype.tsv" "HLA-A\t2\tA*02:01\t1\t${special}\tA*01:01\t1\t${special}\n"
+  put "$f/vcf/S_roh.txt" "RG\tS\tchr2\t1\t7000000\t${special}\n"
+  put "$f/cnvpytor/S_cnvs.txt" "deletion\tchr2:1-100000\t100000\t0.4\t${special}\t1\t1\t1\t${special}\t${special}\t9\n"
+  putgz "$f/mito/S_chrM_filtered.vcf.gz" "${VCF_HEAD}chrM\t3243\t.\tA\tG\t50\tPASS\t.\tGT:AF\t0/1:${special}\n"
+done
+
 # g2-*: the APOL1 G2 deletion beside step 42's APOL1 line --------------------------
 g2() {
   local d=$1 result=$2 status=$3

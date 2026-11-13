@@ -40,6 +40,45 @@ deletion\tchr2:10000001-10100000\t100000\t0.4\t1e-9\t1\t1\t1\t0.01\t0\t9\n\
 deletion\tchr1:122000001-123000000\t1000000\t0.1\t1e-12\t1\t1\t1\t0.2\t0\t9\n";
 
 #[test]
+fn chip_nan_depth_is_unreadable() {
+    let d = Dir::new("c-chip-nan");
+    d.put("S/chip/S_chip.tsv", "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\n");
+    d.put("S/chip/S_chip_depth.tsv", "gene\tmean_depth\tdetection_limit_vaf\tstatus\nA\t30\t.\tcovered\nB\tnan\t.\tcovered\nC\t40\t.\tcovered\n");
+    let v = summary(&d, None);
+    let chip = at(&v, &["sections", "chip"]);
+    assert_eq!(text(at(chip, &["state"])), "unreadable");
+    assert_eq!(at(chip, &["data"]), &Value::Object(Default::default()));
+}
+
+#[test]
+fn chip_infinity_only_fails_when_the_median_is_nonfinite() {
+    let d = Dir::new("c-chip-inf");
+    d.put("S/chip/S_chip.tsv", "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\n");
+    for (depths, median) in [
+        (vec!["30", "inf", "40"], Some(40.0)),
+        (vec!["30", "-inf", "40"], Some(30.0)),
+        (vec!["inf"], None),
+        (vec!["-inf"], None),
+        (vec!["-inf", "inf"], None),
+    ] {
+        let mut body = "gene\tmean_depth\tdetection_limit_vaf\tstatus\n".to_owned();
+        for (i, value) in depths.iter().enumerate() {
+            body.push_str(&format!("G{i}\t{value}\t.\tcovered\n"));
+        }
+        d.put("S/chip/S_chip_depth.tsv", body);
+        let v = summary(&d, None);
+        let chip = at(&v, &["sections", "chip"]);
+        if let Some(median) = median {
+            assert_eq!(text(at(chip, &["state"])), "ok", "{depths:?}");
+            assert_eq!(at(chip, &["data", "median_depth"]), &Value::Float(median));
+        } else {
+            assert_eq!(text(at(chip, &["state"])), "unreadable", "{depths:?}");
+            assert_eq!(at(chip, &["data"]), &Value::Object(Default::default()));
+        }
+    }
+}
+
+#[test]
 fn every_section_of_group_c_is_written_in_order() {
     let d = Dir::new("c-order");
     let v = summary(&d, None);
