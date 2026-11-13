@@ -265,9 +265,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Keep both ends of the Unicode-version differential available. The
+      # Keep Python 3.9's regex cases and the newer Unicode tables available. The
       # scanner fails closed on version-dependent scalars; span iteration
       # intentionally uses Python 3.14+ semantics for empty-text \B.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.9'
+
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -383,6 +387,40 @@ jobs:
             grep -E "round4_${test} .*FAILED" "$log" || { echo "ERROR: missing round-four red control"; exit 1; }
           done
           echo "Control: all 24 Unicode and four symlink scenarios failed before the fix."
+
+      - name: Scanner round-five controls (all five findings must fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          cp "$source" "${RUNNER_TEMP}/round5-personal-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round5-personal-fixed.rs" "$source"' EXIT
+          before=f155efd343e82ebf8b53a563ee4b2c5b6f4dbf85
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          log="${RUNNER_TEMP}/scanner-round5-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round5_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in regex_case_relations stable_case_scalars_pass gitlinks_fail_closed guard_filenames every_symlink_hop; do
+            grep -E "round5_${test} .*FAILED" "$log" || { echo "ERROR: missing round-five red control"; exit 1; }
+          done
+          echo "Control: all five round-five regressions failed before the fix."
+
+      - name: Regex relation verifier rejects a missing table
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          cp "$source" "${RUNNER_TEMP}/regex-case-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/regex-case-fixed.rs" "$source"' EXIT
+          awk '/^const REGEX_CASE_RELATIONS:/ { print "const REGEX_CASE_RELATIONS: &[(u32, u32)] = &[];"; drop=1 }
+               drop && /^];/ { drop=0; next }
+               !drop { print }' "${RUNNER_TEMP}/regex-case-fixed.rs" > "$source"
+          log="${RUNNER_TEMP}/regex-table-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round5_regex_case_table_matches_interpreters > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep 'checked-in regex table misses a differing pair' "$log"
+          echo "Control: real regex engines rejected the incomplete table."
 
       - name: Scanner matcher controls (word classes and swallowed errors must be caught)
         run: |

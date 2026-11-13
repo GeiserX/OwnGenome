@@ -7,7 +7,7 @@ use std::{env, fs, path::Path};
 struct Properties {
     category: String,
     space: bool,
-    case: [String; 4], // simple upper/lower/title mappings and simple case fold
+    case: [String; 4], // simple upper/lower/title mappings and full case fold
 }
 impl Properties {
     fn assigned(&self) -> bool {
@@ -64,7 +64,7 @@ fn read(dir: &Path, version: &str) -> Vec<Properties> {
             continue;
         }
         let f: Vec<_> = line.split(';').map(str::trim).collect();
-        if matches!(f[1], "C" | "S") {
+        if matches!(f[1], "C" | "F") {
             let c = usize::from_str_radix(f[0], 16).unwrap();
             assert!(table[c].assigned());
             table[c].case[3] = f[2].into();
@@ -98,6 +98,11 @@ fn main() {
             for (c, p) in table.iter().enumerate() {
                 for mapping in &p.case {
                     if mapping.is_empty() {
+                        continue;
+                    }
+                    // Full folds can expand to several scalars. They affect
+                    // the signature above, but are not regex case relations.
+                    if mapping.contains(' ') {
                         continue;
                     }
                     let target = usize::from_str_radix(mapping, 16).unwrap();

@@ -4,6 +4,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- The personal-data guard now includes effective Python regex case relations, including Python 3.9 Cyrillic differences. Six stable older scalars pass again. Selected filenames get the same Unicode guard before exclusions, with a generic redacted error. Cached gitlinks and unreadable indexed objects fail with exit 2 unless skipped. Working-copy symlinks validate every hop, including directory components, with a 40-hop bound. The 248 newer stable scalars remain conservatively blocked.
+
 - The personal-data scan fails closed with redacted exit 2 on Unicode-version-dependent text, patterns and ALLOW/SKIP entries. Its generated guard covers UCD 13/15/16/17 and unassigned scalars. Newer emoji and plain symbols still scan. Files with newer script letters need an ASCII SKIP glob. Invalid UTF-8 symlink targets now fail before exclusions in working-copy and index scans.
 
 - The personal-data scan, the image scan and the version checks of CI now run in the Rust `og` binary: `og dev scan personal-data` (`scripts/ci/check-personal-data.sh`), `og dev scan images` and `og dev versions coupled` (`scripts/ci/check-images.sh`), `og dev versions check-run` (`scripts/ci/gen-containers-config.sh --check-versions`), `og dev versions expand` (`scripts/ci/check-links.sh`) and `og dev pgs` (`scripts/ci/check-pgs-labels.sh`). The scripts keep their options and lists; the Python inside them is gone. Fixes:
