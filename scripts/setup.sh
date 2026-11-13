@@ -353,7 +353,7 @@ install_kir_data() {
 # haplogroup trees, the data YLEAF_IMAGE ships too. GitHub's archive of the tag
 # v<version>, checked against YLEAF_DATA_SHA256; the other builds (hg19, T2T)
 # are left out. Then the current Y tree beside it, in data/ytree
-# (bin/y_tree_place.py): YFull's YTree YTREE_VERSION and the GRCh38 SNP tables
+# (og y tree-place): YFull's YTree YTREE_VERSION and the GRCh38 SNP tables
 # of Yleaf YTREE_POSITIONS_VERSION, each at a pinned commit and sha256, and
 # the chrY strict accessibility mask of the 1000 Genomes Project
 # (YCALLABLE_MASK_RELEASE) that the private SNP list keeps to. A failed

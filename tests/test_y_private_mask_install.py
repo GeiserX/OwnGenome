@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """setup.sh --yleaf-data keeps step 37's chrY callable mask between runs.
 
-The mask bin/y_private_snps.py keeps to lives in the reference folder, in
+The mask og y private-snps keeps to lives in the reference folder, in
 <yleaf data>/ytree beside the current tree, checked against
 YCALLABLE_MASK_SHA256. This test runs the real scripts/setup.sh and
 scripts/lib/common.sh from a copy of the repository whose versions.env pins

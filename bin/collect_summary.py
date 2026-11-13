@@ -2077,7 +2077,7 @@ def sec_y_haplogroup(d, s):
 
 def sec_y_tree(d, s):
     """Step 37's placement on the current public tree (y_haplogroup/<id>_y_tree.txt,
-    bin/y_tree_place.py): the terminal branch, how deep it sits, the SNP
+    og y tree-place): the terminal branch, how deep it sits, the SNP
     calls along the path, and the tree release the names come from. The
     per-level table beside it gives each branch of that path."""
     p = first_existing(d, [f"y_haplogroup/{s}_y_tree.txt"])
@@ -2099,7 +2099,7 @@ def sec_y_tree(d, s):
            "explore": haplogroup_explore("y", hg)}
     lvl = first_existing(d, [f"y_haplogroup/{s}_y_tree_path.tsv"])
     if lvl:
-        # bin/y_tree_place.py writes the header alone when no branch is derived:
+        # og y tree-place writes the header alone when no branch is derived:
         # an empty path, not an unreadable file.
         with open_text(lvl) as f:
             rd = csv.DictReader(f, delimiter="\t")
