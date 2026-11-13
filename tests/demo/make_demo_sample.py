@@ -972,7 +972,7 @@ def consumer_export(d):
         "key\tvalue\n" + "".join(f"{k}\t{v}\n" for k, v in rows))
 
 
-# Step 41's rows (bin/bloodtype_report.py's columns and spelling), a common
+# Step 41's rows (og bloodtype report's columns and spelling), a common
 # European set.
 BLOODTYPE = [
     ("ABO", "A1", "A1/O.01", "high", ""),
@@ -1014,15 +1014,16 @@ BLOODTYPE = [
 
 
 def bloodtype(d):
-    import bloodtype_report
-    names = [s for s, _ in bloodtype_report.SYSTEMS]
+    names = subprocess.run([og_binary(), "bloodtype", "systems"], capture_output=True, text=True,
+                           check=True).stdout.split("\n")[:-1]
     if [r[0] for r in BLOODTYPE] != names:
         raise SystemExit(f"BLOODTYPE lists {[r[0] for r in BLOODTYPE]}, step 41 writes {names}")
     # A platelet or neutrophil antigen the phenotype lacks gets the marker table's
-    # meaning at the head of the note, as bin/bloodtype_report.py's meaning() writes it.
-    sites, _ = bloodtype_report.read_markers(os.path.join(REPO, "assets", "bloodtype_markers.tsv"))
+    # meaning at the head of the note, as og bloodtype report writes it.
+    with open(os.path.join(REPO, "assets", "bloodtype_markers.tsv")) as f:
+        lines = [ln for ln in f if not ln.startswith("#") and ln.strip()]
     means = {}
-    for r in sites.values():
+    for r in csv.DictReader(lines, delimiter="\t"):
         if r.get("meaning"):
             means.setdefault(r["system"], r["meaning"])
     rows = []
@@ -1034,9 +1035,10 @@ def bloodtype(d):
             note = "; ".join([head] + ([note] if note else []))
         rows.append((system, phenotype, genotype, conf, note))
     os.makedirs(os.path.join(d, "bloodtype"), exist_ok=True)
-    bloodtype_report.write_tsv(os.path.join(d, "bloodtype", f"{SAMPLE}_bloodtype.tsv"),
-                               bloodtype_report.TABLE_HEADER,
-                               [dict(zip(bloodtype_report.TABLE_HEADER, r)) for r in rows])
+    with open(os.path.join(d, "bloodtype", f"{SAMPLE}_bloodtype.tsv"), "w", newline="") as f:
+        w = csv.writer(f, delimiter="\t", lineterminator="\n")
+        w.writerow(["system", "phenotype", "genotype", "confidence", "note"])
+        w.writerows(rows)
 
 
 # Step 42: copies of each row's alt allele, a common European set; the

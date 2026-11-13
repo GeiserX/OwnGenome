@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""bin/bloodtype_report.py: the blood group antigens a genome predicts (step 41).
+"""og bloodtype report: the blood group antigens a genome predicts (step 41).
 
 Each case writes a synthetic one-sample VCF (only the records it plants) and,
 when the case has a BAM, a samtools bedcov file over assets/bloodtype_markers.tsv
-with chosen depths, runs the script, and checks rows of the table it writes:
+with chosen depths, runs og bloodtype report, and checks rows of the table it writes:
 
-  1. the table and the code agree: every site has a rule, every rule a site,
-     every phenotype template names both antigens of its site
+  1. the table and the code agree (og bloodtype check-markers): every site has
+     a rule, every rule a site, every phenotype template names both antigens
+     of its site; a table missing a rule's site fails the check
   2. nothing planted, reads everywhere: the reference alleles (O, k, Fy(a+b-) ...)
      at confidence high; without the BAM the same calls at medium, and RhD
      not determined
@@ -20,7 +21,8 @@ with chosen depths, runs the script, and checks rows of the table it writes:
   7. a BAM without some contigs (no depth rows there): those systems and RhD
      are not determined, the others are read as usual
 
-Run: python3 tests/test_bloodtype_report.py
+og is found by tests/og_binary.py (OG, or the release build of rust/).
+Run: OG=rust/target/release/og python3 tests/test_bloodtype_report.py
 """
 import csv
 import gzip
@@ -30,13 +32,40 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "bloodtype_report.py")
 MARKERS = os.path.join(REPO, "assets", "bloodtype_markers.tsv")
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import bloodtype_report as bt  # noqa: E402
+CN_LOCI = os.path.join(REPO, "bin", "cn_loci.tsv")
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
+
+OG = og_binary()
+
+
+def read_markers():
+    """The marker table's sites by name (pos is the VCF position), and the
+    RhD depth regions og cn bed --locus RHD prints, by name."""
+    with open(MARKERS) as f:
+        lines = [ln for ln in f if not ln.startswith("#") and ln.strip()]
+    sites = {}
+    for r in csv.DictReader(lines, delimiter="\t"):
+        r["start"], r["end"] = int(r["start"]), int(r["end"])
+        r["pos"] = r["end"]
+        sites[r["name"]] = r
+    bed = subprocess.run([OG, "cn", "bed", "--catalog", CN_LOCI, "--locus", "RHD"], capture_output=True, text=True,
+                         check=True).stdout
+    regions = {}
+    for ln in bed.splitlines():
+        chrom, start, end, name = ln.split("\t")[:4]
+        regions[name] = {"chrom": chrom, "start": int(start), "end": int(end), "name": name}
+    return sites, regions
+
+
+def report(argv):
+    """og bloodtype report ARGV (with this checkout's catalog): the process."""
+    return subprocess.run([OG, "bloodtype", "report", "--cn-loci", CN_LOCI] + argv, capture_output=True, text=True)
+
 
 FAILS = []
-SITES, REGIONS = bt.read_markers(MARKERS)
+SITES, REGIONS = read_markers()
 
 
 def check(desc, got, want):
@@ -65,7 +94,7 @@ def run(records=(), depth=None, gz=False, samples=("S",), raw=None, drop=()):
         else:
             with open(vcf, "w") as f:
                 f.write(text)
-        cmd = [sys.executable, SCRIPT, "--sample", "S", "--vcf", vcf, "--markers", MARKERS,
+        cmd = ["--sample", "S", "--vcf", vcf, "--markers", MARKERS,
                "--out", os.path.join(tmp, "t.tsv"), "--evidence", os.path.join(tmp, "e.tsv")]
         if depth is not None:
             dp = os.path.join(tmp, "d.tsv")
@@ -74,11 +103,15 @@ def run(records=(), depth=None, gz=False, samples=("S",), raw=None, drop=()):
                     if r["chrom"] in drop:
                         continue   # a contig the BAM has no @SQ line for: step 41 leaves its rows out
                     mean = depth.get(r["name"], depth.get("*", 30.0))
-                    cols = [r["chrom"], str(r["start"]), str(r["end"]), r["kind"], r["system"], r["name"]]
-                    f.write("\t".join(cols + ["", "", "", "", "", "", "",
-                                              str(int(mean * (r["end"] - r["start"])))]) + "\n")
+                    total = str(int(mean * (r["end"] - r["start"])))
+                    if r["name"] in REGIONS:   # og cn bed's 4-column BED
+                        cols = [r["chrom"], str(r["start"]), str(r["end"]), r["name"], total]
+                    else:   # a marker row: the table's 16 columns
+                        cols = [r["chrom"], str(r["start"]), str(r["end"]), r["kind"], r["system"], r["name"],
+                                "", "", "", "", "", "", "", "", "", "", total]
+                    f.write("\t".join(cols) + "\n")
             cmd += ["--depth", dp]
-        p = subprocess.run(cmd, capture_output=True, text=True)
+        p = report(cmd)
         if p.returncode != 0:
             return p.stderr.strip() or f"exit {p.returncode}"
         with open(os.path.join(tmp, "t.tsv")) as f:
@@ -102,36 +135,18 @@ def cf(t, system):
     return t[system]["confidence"] if isinstance(t, dict) else t
 
 
-# 1. table and code
-names = set(SITES)
+# 1. table and code: og bloodtype check-markers
+chk = subprocess.run([OG, "bloodtype", "check-markers", MARKERS, "--cn-loci", CN_LOCI], capture_output=True, text=True)
+check("1 the marker table and the rules agree", (chk.returncode, chk.stderr), (0, ""))
 NULLS = {n for n, r in SITES.items() if r["alt_means"] == "null"}
-ruled = set(bt.PAIRS) | bt.SPECIAL_SITES | NULLS
-check("1 every site of the table has a rule", sorted(names - ruled), [])
-check("1 every rule has a site in the table", sorted(ruled - names), [])
-for n, (label, tmpl) in bt.PAIRS.items():
-    r = SITES.get(n)
-    if r:
-        check(f"1 {n}: the template names both antigens",
-              ("{" + r["ref_means"] + "}" in tmpl, "{" + r["alt_means"] + "}" in tmpl), (True, True))
-check("1 every system has a site", sorted({s for s, _ in bt.SYSTEMS} - {r["system"] for r in SITES.values()}), [])
-check("1 positions are unique", len({(r["chrom"], r["pos"]) for r in SITES.values()}), len(SITES))
-check("1 the RhD depth regions are there",
-      sorted(n for n in REGIONS if not n.startswith("RHD_EX")), ["RHD_FLANK_DOWN", "RHD_FLANK_UP", "RHD_GENE"])
-check("1 RHD has ten exons", sorted(int(n[6:]) for n in REGIONS if n.startswith("RHD_EX")), list(range(1, 11)))
-check("1 every null row is in a system that reads null rows",
-      sorted(n for n in NULLS if SITES[n]["system"] not in set(bt.NULL_SYSTEMS) | bt.NULL_HOSTS), [])
-check("1 every system read from null rows has some",
-      sorted(s for s in bt.NULL_SYSTEMS if not any(SITES[n]["system"] == s for n in NULLS)), [])
-check("1 a null row of Kell or Kidd names the alleles it sits with",
-      sorted(n for n in NULLS if SITES[n]["system"] in bt.NULL_HOSTS and not SITES[n]["null_on"]), [])
-LABELS = {}
-for r in SITES.values():
-    if r["alt_means"] != "null":
-        LABELS.setdefault(r["system"], set()).update((r["ref_means"], r["alt_means"]))
-check("1 every null_on allele is an antigen of the row's own system",
-      sorted(n for n in NULLS if set(SITES[n]["null_on"].split()) - LABELS.get(SITES[n]["system"], set())), [])
-check("1 the high_prevalence antigen is one the row gives",
-      sorted(n for n, r in SITES.items() if r["high_prevalence"] and r["high_prevalence"] not in (r["ref_means"], r["alt_means"])), [])
+with tempfile.TemporaryDirectory() as tmp:
+    broken = os.path.join(tmp, "m.tsv")
+    with open(MARKERS) as f, open(broken, "w") as g:
+        g.writelines(ln for ln in f if "\tKEL_841\t" not in ln)
+    chk = subprocess.run([OG, "bloodtype", "check-markers", broken, "--cn-loci", CN_LOCI], capture_output=True,
+                         text=True)
+    check("1 control: a table without KEL_841 fails the check",
+          (chk.returncode, "rule sites the table lacks: KEL_841" in chk.stderr), (1, True))
 
 # 2. nothing planted
 ref = run(depth=rhd(2))
@@ -281,7 +296,9 @@ def span(a, b):
     return 1 if b is None else pos(b) - pos(a) + 1
 
 
-NEW = sorted(NULLS | set(bt.HPA_RARE))
+# HPA-7 to -35 but HPA-15: one site each, the a antigen on the reference allele
+HPA_RARE = {n for n in SITES if n.startswith("HPA") and int(n[3:].split("_")[0]) >= 7 and not n.startswith("HPA15_")}
+NEW = sorted(NULLS | HPA_RARE)
 for n in NEW:
     r = SITES[n]
     gene, _, changes = r["hgvs"].partition(" ")
@@ -300,22 +317,22 @@ check("8 control: a left-aligned deletion in a repeat passes", oriented("FUT2", 
 # 9. every new row, positive and negative: a reference genome carries the antigen
 # (the a antigen for HPA-7 to -35), the row's ALT on both chromosomes lacks it.
 def run_inproc(records):
-    """Like run(), in this process (bin/bloodtype_report.py's main), with reads everywhere."""
+    """Like run(), with reads everywhere: the rows in table order."""
     with tempfile.TemporaryDirectory() as tmp:
         vcf, dp, out = os.path.join(tmp, "s.vcf"), os.path.join(tmp, "d.tsv"), os.path.join(tmp, "t.tsv")
         with open(vcf, "w") as f:
             f.write("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n" + "".join(records))
         with open(dp, "w") as f:
-            for r in list(SITES.values()) + list(REGIONS.values()):
+            for r in SITES.values():
                 f.write("\t".join([r["chrom"], str(r["start"]), str(r["end"]), r["kind"], r["system"], r["name"],
                                    str(30 * (r["end"] - r["start"]))]) + "\n")
-        import contextlib
-        import io
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = bt.main(["--sample", "S", "--vcf", vcf, "--markers", MARKERS, "--depth", dp, "--out", out,
-                          "--evidence", os.path.join(tmp, "e.tsv")])
-        if rc:
-            return f"exit {rc}"
+            for r in REGIONS.values():
+                f.write("\t".join([r["chrom"], str(r["start"]), str(r["end"]), r["name"],
+                                   str(30 * (r["end"] - r["start"]))]) + "\n")
+        p = report(["--sample", "S", "--vcf", vcf, "--markers", MARKERS, "--depth", dp, "--out", out,
+                    "--evidence", os.path.join(tmp, "e.tsv")])
+        if p.returncode:
+            return f"exit {p.returncode}"
         with open(out) as f:
             return [dict(r) for r in csv.DictReader(f, delimiter="\t")]
 
