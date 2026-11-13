@@ -1378,6 +1378,14 @@ def gate_checks(b, base, out, family_only=False):
               '/runs/'+son+'/finding/'+acts[0]['id']+'/', '/runs/'+son+'/#chr7']
     if family_only:
         routes = ['/runs/'+FAM+'/']
+    # Full Chrome asks for a fallback favicon after load, outside page readiness. Give the static
+    # fixture a fixed inline icon. Every request the page makes still stays in the snapshot.
+    html_paths = {os.path.join(out, route.split('#')[0].lstrip('/'), 'index.html') for route in routes}
+    html_saved = {p: open(p, 'rb').read() for p in html_paths}
+    for p, raw in html_saved.items():
+        assert b'<head>' in raw, 'fixture has no head: '+p
+        with open(p, 'wb') as f:
+            f.write(raw.replace(b'<head>', b'<head><link rel="icon" href="data:,">', 1))
     b.call('Network.enable', {}, b.session)
     b.call('Network.setCacheDisabled', {'cacheDisabled': True}, b.session)
     bad = []
@@ -1403,7 +1411,8 @@ def gate_checks(b, base, out, family_only=False):
                             assert b.wait("performance.getEntriesByType('resource').filter(function(r){return r.name.endsWith('/"+son+"/results.json');}).length > "+str(completed)), 'family projection refresh never settled'
                         partials.append(snap())
                 if snapshots[0] != snapshots[1]:
-                    bad.append((width, media, route, [k for k in snapshots[0] if snapshots[0][k] != snapshots[1][k]]))
+                    keys = [k for k in snapshots[0] if snapshots[0][k] != snapshots[1][k]]
+                    bad.append((width, media, route, keys, [v['requests'] for v in snapshots] if 'requests' in keys else []))
                 if partials and partials[0] != partials[1]:
                     bad.append((width, media, route, 'partially opened', [k for k in partials[0] if partials[0][k] != partials[1][k]]))
         print('   gate matrix time: %.2f s' % (time.monotonic()-start))
@@ -1458,7 +1467,7 @@ def gate_checks(b, base, out, family_only=False):
             check('gate handles follow their act after another act opens', b.eval("location.hash") == '#f/closed-2')
 
     finally:
-        for p, raw in saved.items():
+        for p, raw in dict(saved, **html_saved).items():
             with open(p, 'wb') as f:
                 f.write(raw)
         b.call('Emulation.clearDeviceMetricsOverride', {}, b.session)
