@@ -7,11 +7,14 @@
 //!   table from pgsc_calc's output (`prs/<id>_prs_summary.tsv`,
 //!   `ancestry/<id>_ancestry.tsv`).
 //! - [`mito`]: `og mito annotate|deletions|copies`, step 20's chrM tables.
+//! - [`collect`]: `og summary collect`, summary.json, ported one group of
+//!   sections at a time beside the Python collector (`--only a`).
 //!
 //! Each tool exits 0 when it wrote its table, 1 with `ERROR: <message>`
 //! when an input cannot be read or the table cannot be written, and 2 with
 //! the usage for a command line it cannot read.
 
+pub mod collect;
 pub mod mito;
 pub mod prs;
 pub mod qc;
