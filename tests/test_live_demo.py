@@ -1510,11 +1510,11 @@ def page_now(b, base, hash_="", typed=False):
 
 def plant_summary(out, og, change):
     """The son's results.json built again by live_results from his summary.json with CHANGE(sections) applied, and
-    his map.json built again from it by og map build. Returns what to write back afterwards."""
+    his map.json and rendered charts built again from that same summary. Returns what to write back afterwards."""
     son = OTHERS[1]
-    rj, mj = (os.path.join(out, "runs", son, n) for n in ("results.json", "map.json"))
+    rj, mj, cj = (os.path.join(out, "runs", son, n) for n in ("results.json", "map.json", f"{son}_charts.json"))
     keep = {}
-    for p in (rj, mj):
+    for p in (rj, mj, cj):
         with open(p, "rb") as fh:
             keep[p] = fh.read()
     root = os.path.join(os.path.dirname(out), "root")
@@ -1524,6 +1524,8 @@ def plant_summary(out, og, change):
     res = live_results.build(son, summary)
     with open(rj, "w") as fh:
         json.dump(res, fh)
+    with open(cj, "w") as fh:
+        json.dump(live_results.rr.charts_json(summary), fh)
     doc = build_live_demo.og_map(og, ["build", "--root", root, "--run", son, "--assets", os.path.join(REPO, "assets"),
                                       "--cache-dir", os.path.join(root, ".owngenome-live", "map")],
                                  json.dumps({"results": res}).encode())
@@ -1906,6 +1908,178 @@ def two_closed_problems(b, base, out, og, cases=TWO_CLOSED):
     return bad
 
 
+def apoe_pair_problems(b, base, out, og):
+    """Opening the map's own gate cannot say which other result is still closed."""
+    got, bad = [], []
+    for gene in ("APOE", "BRCA2"):
+        keep = plant_summary(out, og, cpsr(gene))
+        try:
+            stages = [page_now(b, base)]
+            if not b.eval("(function () { var c = document.querySelector('.gm-chip[data-closed=gate]'); "
+                          "if (!c) { return false; } c.querySelector('button').click(); "
+                          "document.querySelector('.gm-chip[data-closed=gate] .gm-yes').click(); return true; }())"):
+                return [f"{gene}: no APOE gate"]
+            time.sleep(0.2)
+            stages.append(page_snapshot(b))
+            if not b.eval("!!document.querySelector('.gm-marks [data-id=apoe]')"):
+                bad.append(f"{gene}: opening APOE did not draw its mark")
+            if not b.eval("(function () { var c = Array.from(document.querySelectorAll('.gm-chip.opened')).find("
+                          "function (e) { return e.textContent.indexOf('Opened: APOE') === 0; }); "
+                          "if (!c) { return false; } c.querySelector('button').click(); return true; }())"):
+                return bad + [f"{gene}: no close button for APOE"]
+            time.sleep(0.2)
+            stages.append(page_snapshot(b))
+            if b.eval("!!document.querySelector('.gm-marks [data-id=apoe]')"):
+                bad.append(f"{gene}: closing APOE kept its mark")
+            got.append(stages)
+        finally:
+            unplant(keep)
+    for stage, a, z in zip(("before", "opened", "closed again"), *got):
+        if a != z:
+            bad.append(f"APOE against BRCA2 {stage}: HTML {a[0] == z[0]}, address {a[1] == z[1]}, canvas {a[2] == z[2]}")
+    return bad
+
+
+def page_snapshot(b):
+    """The same complete document, address and canvas comparison used by page_now, after a click."""
+    got = json.loads(b.eval(PAGE_JS) or "{}")
+    return (got.get("html") or "").replace("><", ">\n<").split("\n"), got.get("href") or "", \
+        hashlib.sha256((got.get("canvas") or "").encode()).hexdigest()[:12]
+
+
+def related_set_problems(b, base, out, og):
+    """On each finding's own page, opening one of two results cannot open a related finding naming both."""
+    change = dup_over(cpsrs("BRCA1", "BRCA2"), "chr5:1000000-1300000", ["BRCA1", "BRCA2"])
+    keep = plant_summary(out, og, change)
+    made, bad = [], []
+    folder = os.path.join(out, "runs", SON, "finding")
+    # The demo server is static: give the planted findings the same page template as its original findings.
+    original = "sf-kcnh2-chr7-150960000-c-t"
+    with open(os.path.join(folder, original, "index.html")) as fh:
+        template = fh.read()
+    try:
+        for gene in ("BRCA1", "BRCA2"):
+            fid = cid(gene)
+            dest = os.path.join(folder, fid)
+            os.makedirs(dest)
+            made.append(dest)
+            with open(os.path.join(dest, "index.html"), "w") as fh:
+                fh.write(template.replace(original, fid))
+            b.go("about:blank")
+            b.wait("location.href === 'about:blank'")
+            b.go(f"{base}/runs/{SON}/finding/{fid}/")
+            if not b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.querySelector('.veil button') "
+                          "&& 'ready'", 10):
+                bad.append(f"{gene}: finding never closed")
+                continue
+            b.eval("document.querySelector('.veil button').click(); true")
+            if not b.wait("!document.querySelector('.veil') && document.querySelector('#related') && 'opened'", 5):
+                bad.append(f"{gene}: finding never opened")
+            related = b.eval("document.querySelector('#related').outerHTML") or ""
+            if "sv-chr5-1000000-1300000" in related or "Large DUP" in related:
+                bad.append(f"{gene} opened alone: the duplication names the other closed result in Related results")
+            if not b.eval("document.querySelector('#what').textContent.indexOf(" + json.dumps(gene) + ") >= 0"):
+                bad.append(f"{gene}: opening its finding did not show it")
+    finally:
+        unplant(keep)
+        for dest in made:
+            shutil.rmtree(dest)
+    return bad
+
+
+def chart_position_problems(b, base, out, og):
+    """Gene-only chart tags and coordinate-only mosaic tags, including reopening with two overlapping acts."""
+    def change(S):
+        dup_over(cpsr("KCNQ1"), "chr5:1000000-1300000", ["NKD2", "KCNQ1"])(S)
+        second_hit(S)  # KCNH2, chr7:150970000: outside both closed results' positions, tied by gene alone.
+        S["mosaic"] = {"state": "ok", "data": {"status": "assessed", "floor": 0.05, "depth": 30,
+            "floor_read": 0.05, "floor_min": 0.05, "het_sites": 1000, "chromosomes": 22, "calls_reported": 1,
+            "calls": [{"chrom": "chr7", "start": 150900000, "end": 151000000, "length_mb": 0.1,
+                       "type": "Loss", "arms": "7q", "cell_fraction": 0.2}]}}
+    keep = plant_summary(out, og, change)
+    bad, states = [], []
+    try:
+        with open(os.path.join(out, "runs", SON, f"{SON}_charts.json")) as fh:
+            marks = next(sp["marks"] for sp in json.load(fh)["charts"] if sp["id"] == "genome")
+        hit = next(m["id"] for m in marks if m.get("kind") == "hit" and m.get("pos") == 150970000)
+        sv = next(m["id"] for m in marks if m.get("kind") == "sv" and m.get("pos") == 1000000)
+        # Inspect each surface separately. A link/title leak counts even when its visible row is absent.
+        expression = """JSON.stringify((function () {
+          var c = document.querySelector('#card-mosaic-mca');
+          return [!!document.querySelector('figure[data-chart=genome] [data-mark=%s]'),
+            !!document.querySelector('figure[data-chart=genome] [data-mark=%s]'),
+            !!document.querySelector('[data-finding=mca-chr7-150900000]'),
+            !!(c && Array.from(c.querySelectorAll('tbody tr')).some(function (r) { return r.textContent.includes('150900000'); })),
+            !!document.querySelector('a[href*="150900000"]'),
+            !!(c && Array.from(c.querySelectorAll('li')).some(function (e) { return e.textContent.includes('150900000'); }))];
+        }()))""" % (hit, sv)
+        page_now(b, base)
+        states.append(json.loads(b.eval(expression)))
+        for fid in ("sf-kcnh2-chr7-150960000-c-t", "sv-chr7-150955000-150965000", cid("KCNQ1")):
+            if not open_closed(b, fid):
+                return [f"no closed card for {fid}"]
+            states.append(json.loads(b.eval(expression)))
+        # Positive first: every planted mark and surface must reach the browser when opened. Otherwise a missing
+        # rendered charts file could make the hidden-state assertions vacuous.
+        if states[-1] != [True] * 6:
+            bad.append(f"all opened: planted hit, SV, mosaic finding, row, viewer link and line must exist: {states[-1]}")
+        for stage, got, want in zip(("all closed", "SNV alone opened", "SNV and deletion opened"), states,
+                                   ([False] * 6, [False] * 6, [True, False, True, True, True, True])):
+            if got != want:
+                bad.append(f"{stage}: hit, SV, mosaic finding/row/link/line {got}, want {want}")
+        # Reverse the overlapping results' opening order too. The SNV has no chip of its own on this demo map.
+        page_now(b, base)
+        if not open_closed(b, "sv-chr7-150955000-150965000"):
+            bad.append("no closed deletion after reloading")
+        elif json.loads(b.eval(expression)) != [False] * 6:
+            bad.append(f"deletion alone opened: {b.eval(expression)}")
+    finally:
+        unplant(keep)
+    return bad
+
+
+def gate_regression_checks(b, base, out, og):
+    """Each guard has a browser control that removes exactly the reviewed rule."""
+    t0 = time.time()
+    for desc, probe in (("APOE's gate before opening, opened and closed again gives the same HTML, address and canvas "
+                         "with APOE or BRCA2 closed", apoe_pair_problems),
+                        ("a finding page opened for either BRCA1 or BRCA2 keeps their duplication out of Related results",
+                         related_set_problems),
+                        ("planted charts reach the browser and close by gene alone, and a gene-free mosaic finding, row, "
+                         "viewer link and line close until both overlapping results open", chart_position_problems)):
+        bad = probe(b, base, out, og)
+        check("browser: " + desc, not bad, bad)
+    for file, a, z, desc, probe in (
+            ("map.js", "var tag = !!r.gate ||", "var tag =", "map-owned APOE row following overlapping act tags", apoe_pair_problems),
+            ("finding.js", "return t.length ? t : null;", "return t.length ? t.slice(0, 1) : null;",
+             "finding.js tagOf keeping only the first id", related_set_problems)):
+        p = os.path.join(out, "assets", file)
+        with open(p) as fh:
+            source = fh.read()
+        try:
+            if source.count(a) != 1:
+                check("control: " + desc, False, "missing mutation anchor")
+                continue
+            with open(p, "w") as fh:
+                fh.write(source.replace(a, z))
+            control(desc, not probe(b, base, out, og))
+        finally:
+            with open(p, "w") as fh:
+                fh.write(source)
+    names, spans = live_results.mark_names, live_results.closable
+    try:
+        for kind, desc in (("hit", "ClinVar chart mark without its gene"), ("sv", "SV chart mark with only its first gene")):
+            live_results.mark_names = lambda S, sp, m: (([], "") if kind == "hit" else (names(S, sp, m)[0][:1], "")) \
+                if m.get("kind") == kind else names(S, sp, m)
+            control(desc, not chart_position_problems(b, base, out, og))
+        live_results.mark_names = names
+        live_results.closable = lambda found: [(fid, g, None, None, None) for fid, g, *_ in spans(found)]
+        control("closable without coordinates", not chart_position_problems(b, base, out, og))
+    finally:
+        live_results.mark_names, live_results.closable = names, spans
+    print(f"   gate regression checks: {time.time() - t0:.2f} s")
+
+
 def infer_checks(b, base, out):
     """The son's page is a function of his open results and the count of his closed ones: two pages that differ only
     in which result is closed are the same before any click (INFER), and a closed deletion's second gene is named
@@ -1916,6 +2090,7 @@ def infer_checks(b, base, out):
         print("[SKIP] infer checks: the demo has no map.json")
         return
     t0 = time.time()
+    gate_regression_checks(b, base, out, og)
     bad = infer_problems(b, base, out, og)
     check("browser: two pages of the son that differ only in which result is closed are the same before any click, "
           "HTML, attributes, address and map canvas (" + "; ".join(x[0] for x in INFER) + ")", not bad, bad)

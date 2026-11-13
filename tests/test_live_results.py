@@ -550,6 +550,39 @@ def sv_genes_problems():
     return out
 
 
+def gene_and_position_problems():
+    """Chart genes without position overlap, and a gene-free call with position overlap, need independent tags."""
+    summary = {"sections": {
+        "roh": {"state": "ok", "data": {}},
+        "annotsv": {"state": "ok", "data": {"rows": [
+            {"sv": "chr17:43044295-43170245", "type": "DEL", "length": -125950, "acmg_class": "5",
+             "genes": ["BRCA1", "NBR2"], "gt": "0/1", "support": 1, "caller": "Manta"},
+            {"sv": "chr5:1000000-1300000", "type": "DUP", "length": 300000, "acmg_class": "4",
+             "genes": ["NKD2", "NBR2"], "gt": "0/1", "support": 1, "caller": "Manta"}]}},
+        "clinvar": {"state": "ok", "data": {"hits": [
+            {"gene": "NBR2", "chrom": "chr1", "pos": 5, "ref": "A", "alt": "G", "significance": "Pathogenic"}]}},
+        "mosaic": {"state": "ok", "data": {"status": "assessed", "calls": [
+            {"chrom": "chr17", "start": 43050000, "end": 43100000, "length_mb": 0.05,
+             "type": "Loss", "arms": "17q", "cell_fraction": 0.2}]}}}}
+    res = live_results.build("T", summary)
+    v, out = res["veil"], []
+    closed = "sv-chr17-43044295-43170245"
+    for mark in ("hit-0", "sv-1"):
+        got = v.get("marks", {}).get("genome", {}).get(mark)
+        if got != [closed]:
+            out.append(f"gene-only chart {mark}: {got}, want {[closed]}")
+    if v.get("findings", {}).get("mca-chr17-43050000") != [closed]:
+        out.append("coordinate-only mosaic finding not tagged with the deletion")
+    if v.get("rows", {}).get("mosaic-mca") != [[closed]]:
+        out.append("coordinate-only mosaic table row not tagged with the deletion")
+    card = next(c for ch in res["chapters"] for c in ch["sections"] if c["id"] == "mosaic-mca")
+    lines = [(ln, tag) for ln, tag in zip(card["lines"], v.get("lines", {}).get("mosaic-mca", []))
+             if "chr17:43050000-43100000" in ln]
+    if not lines or any(tag != [closed] for _, tag in lines):
+        out.append(f"coordinate-only mosaic lines: {lines}")
+    return out
+
+
 # The veil's tables, pinned here so that an entry dropped from one turns this file red (each is checked by what
 # veil() does with it, not by reading the table back): the fixed-panel cards, the fixed lines of a card (a sample
 # line or row naming a gene, its card, and whether it is a row), the cards that name no gene, the cards whose lines,
@@ -936,6 +969,20 @@ def main():
         check("8. a closed structural variant over two genes closes the rows and the finding that name only its second "
               "gene, veil.spans lists it per gene, veil.panels lists the fixed-panel cards, and a duplication over two "
               "closed results carries both ids", not bad, bad)
+        bad = gene_and_position_problems()
+        check("8. gene-only ClinVar and second-gene SV chart marks, and coordinate-only mosaic findings, rows and lines "
+              "carry the closed result's tag", not bad, bad)
+        names, spans = live_results.mark_names, live_results.closable
+        try:
+            for kind in ("hit", "sv"):
+                live_results.mark_names = lambda S, sp, m: (([], "") if kind == "hit" else (names(S, sp, m)[0][:1], "")) \
+                    if m.get("kind") == kind else names(S, sp, m)
+                control(f"{kind} chart mark without every gene", not gene_and_position_problems())
+            live_results.mark_names = names
+            live_results.closable = lambda found: [(fid, g, None, None, None) for fid, g, *_ in spans(found)]
+            control("closable without positions", not gene_and_position_problems())
+        finally:
+            live_results.mark_names, live_results.closable = names, spans
         first = live_results.closable
         try:
             live_results.closable = lambda found: first([{k: v for k, v in f.items() if k != "genes"} for f in found])

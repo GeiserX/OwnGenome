@@ -169,12 +169,13 @@
     // A row that is a finding of the page (opts.known) follows the page's own veil only: the page already
     // hides every finding it keeps closed (opts.now), and its card shows the rest. Hiding such a row for
     // another result's tag would drop a finding whose card the page shows, and so place that closed result
-    // inside it. A row the page has no finding for (the map's APOE row) follows its tag too.
+    // inside it. A map-owned gated row (APOE) follows its own gate for the same reason: opening it must not
+    // tell whether another, still-closed result overlaps it. Other rows follow every overlapping tag.
     function shownRow(r) {
       var own = M.closable.indexOf(r.id) < 0 || stateOf(r.id) !== 'closed';
       // Closed while ANY result the row lies over is closed: a row over two closed results never comes back with
       // the first one opened.
-      var tag = (opts.known && opts.known(r.id)) || r.veils.every(function (id) { return stateOf(id) !== 'closed'; });
+      var tag = !!r.gate || (opts.known && opts.known(r.id)) || r.veils.every(function (id) { return stateOf(id) !== 'closed'; });
       return own && tag && (!opts.now || opts.now(r.id));
     }
     // The runs of homozygosity, as this page shows them now: a replay before their step ended has none yet.
