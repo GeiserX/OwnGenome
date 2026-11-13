@@ -9,9 +9,10 @@
                        assets/bloodtype_markers.tsv and those regions, for each
                        sample with a BAM: the read depth at every marker site
                        and over RHD and its flanks
-      BLOODTYPE        bin/bloodtype_report.py on the VCF and that depth; without
-                       a BAM ([] in its place) RhD is not determined and sites
-                       with no VCF record are read as reference (confidence medium)
+      BLOODTYPE        og bloodtype report on the VCF and that depth, reading
+                       the marker sites through the VCF's index; without a BAM
+                       ([] in its place) RhD is not determined and sites with
+                       no VCF record are read as reference (confidence medium)
 
     Equivalent to: scripts/41-bloodtype.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -100,7 +101,7 @@ process BLOODTYPE {
     publishDir { "${params.outdir}/${meta.id}/bloodtype" }, mode: params.publish_dir_mode
 
     input:
-    tuple val(meta), path(vcf), path(depth)   // depth: BLOODTYPE_DEPTH's, or [] without a BAM
+    tuple val(meta), path(vcf), path(vcf_index), path(depth)   // vcf_index: its .tbi or .csi, or []; depth: BLOODTYPE_DEPTH's, or [] without a BAM
     path(markers)
 
     output:
@@ -114,7 +115,7 @@ process BLOODTYPE {
     script:
     def depth_arg = depth ? "--depth ${depth}" : ''
     """
-    bloodtype_report.py --sample ${meta.id} --vcf ${vcf} --markers ${markers} ${depth_arg} \\
+    og bloodtype report --sample ${meta.id} --vcf ${vcf} --markers ${markers} ${depth_arg} \\
         --out ${meta.id}_bloodtype.tsv --evidence ${meta.id}_bloodtype_evidence.tsv
 
     cat <<-END_VERSIONS > versions.yml
