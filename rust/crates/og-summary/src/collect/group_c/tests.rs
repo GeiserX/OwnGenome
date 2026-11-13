@@ -42,7 +42,10 @@ deletion\tchr1:122000001-123000000\t1000000\t0.1\t1e-12\t1\t1\t1\t0.2\t0\t9\n";
 #[test]
 fn chip_nan_depth_is_unreadable() {
     let d = Dir::new("c-chip-nan");
-    d.put("S/chip/S_chip.tsv", "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\n");
+    d.put(
+        "S/chip/S_chip.tsv",
+        "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\n",
+    );
     d.put("S/chip/S_chip_depth.tsv", "gene\tmean_depth\tdetection_limit_vaf\tstatus\nA\t30\t.\tcovered\nB\tnan\t.\tcovered\nC\t40\t.\tcovered\n");
     let v = summary(&d, None);
     let chip = at(&v, &["sections", "chip"]);
@@ -53,7 +56,10 @@ fn chip_nan_depth_is_unreadable() {
 #[test]
 fn chip_infinity_only_fails_when_the_median_is_nonfinite() {
     let d = Dir::new("c-chip-inf");
-    d.put("S/chip/S_chip.tsv", "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\n");
+    d.put(
+        "S/chip/S_chip.tsv",
+        "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\n",
+    );
     for (depths, median) in [
         (vec!["30", "inf", "40"], Some(40.0)),
         (vec!["30", "-inf", "40"], Some(30.0)),

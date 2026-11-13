@@ -4,6 +4,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- The Rust summary's CHIP reader marks a depth table with NaN unreadable instead of sorting it into a usable sensitivity estimate. Its unindexed APOL1 G2 reader keeps only records overlapping the deletion span and stops past that span on sorted input.
+
 - The Rust `og` binary now reads the rest of the summary's own sections: `og summary collect --only c`. It reads 32 sections of summary.json (couple, parascopy, paralogs, hla, prs, ancestry_fine, manta, delly, cnvpytor, sv_consensus, annotsv, expansions and their readings, telomere, roh, haplogroup, y_haplogroup, y_tree, y_str, consumer_export, bloodtype, lpa, vntyper, locityper, mito, traits with the APOL1 G2 call, archaic, ancient, viral, exomiser, chip, mei and mosaic). Nothing calls it yet: the reports still read the summary that `bin/collect_summary.py` writes. The sections are the same as the Python's on 12 new parity cases, compared as JSON with key order. The readers run on a thread pool, one per section. On a synthetic sample folder with every section and a 1,000,000-record VCF it takes 0.33 s and 34 MB, where the Python readers took 0.33 s and 41 to 59 MB. What differs from the Python:
   - A chrM file named `.vcf.gz` that is plain text is read, as the variants section already does. The Python marked the mito section unreadable.
   - The APOL1 G2 deletion is read through the VCF's `.tbi` when there is one, so only its window of chr22 is read.

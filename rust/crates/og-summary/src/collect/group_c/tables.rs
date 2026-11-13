@@ -1269,11 +1269,15 @@ pub fn chip(c: &Ctx<'_>) -> Out {
             covered.push(pycompat::num::parse_float(x).map_err(|_| float_err(x))?);
         }
     }
-    covered.sort_by(f64::total_cmp);
-    let med = match covered.len() {
-        0 => None,
-        n if n % 2 == 1 => Some(covered[n / 2]),
-        n => Some((covered[n / 2 - 1] + covered[n / 2]) / 2.0),
+    let med = if covered.is_empty() {
+        None
+    } else {
+        // NaN has no ordering. Never let sorting move an invalid depth
+        // away from the median and produce a usable sensitivity estimate.
+        Some(
+            pycompat::stats::median(covered)
+                .map_err(|e| py_error(e.exception(), "cannot convert float NaN to integer"))?,
+        )
     };
     let limit = match med {
         None => Value::Null,

@@ -2,7 +2,7 @@
 //! and the APOL1 G2 deletion read from the sample's VCF beside the APOL1
 //! rule, whose single-base sites read G1 only.
 
-use super::util::{Obj, base, count, ragged, s, table, vcf_lines};
+use super::util::{Obj, base, count, ragged, s, table};
 use super::{Ctx, Out};
 use pycompat::json::Value;
 
@@ -382,8 +382,41 @@ pub mod apol1 {
         )
     }
 
-    /// The records of `chr22` that can cover the span: by the tabix index
-    /// when the `.tbi` is there, else the whole file.
+    /// Only records overlapping the span. Like the Python window reader,
+    /// stop past the window or after leaving chr22 on sorted input.
+    fn window_records(
+        lines: impl IntoIterator<Item = Result<String, String>>,
+    ) -> Result<Vec<Vec<String>>, String> {
+        let mut out = Vec::new();
+        let mut seen = false;
+        for line in lines {
+            let line = line?;
+            if line.starts_with('#') {
+                continue;
+            }
+            let c = super::super::util::cells(line.strip_suffix('\n').unwrap_or(&line).as_bytes());
+            if c.len() < 2 || !digits(&c[1]) {
+                continue;
+            }
+            if c[0] != CHROM {
+                if seen {
+                    break;
+                }
+                continue;
+            }
+            seen = true;
+            if c[1].parse::<i128>().is_ok_and(|p| p > i128::from(SPAN.1)) {
+                break;
+            }
+            if overlaps(&c) {
+                out.push(c);
+            }
+        }
+        Ok(out)
+    }
+
+    /// The records over the G2 span, using tabix when a `.tbi` is there,
+    /// otherwise streaming up to the end of the window.
     fn window(path: &str) -> Result<Vec<Vec<String>>, String> {
         let tbi = format!("{path}.tbi");
         let mut out = Vec::new();
@@ -395,13 +428,19 @@ pub mod apol1 {
             }
             return Ok(out);
         }
-        vcf_lines(path, |l| {
-            let c = super::super::util::cells(l);
-            if c.len() >= 2 && c[0] == CHROM && digits(&c[1]) {
-                out.push(c);
+        let mut rd = crate::text_lines(path)?;
+        window_records(std::iter::from_fn(|| {
+            let mut line = String::new();
+            match rd.read_line(&mut line) {
+                Ok(true) => Some(Ok(line)),
+                Ok(false) => None,
+                Err(e) => Some(Err(format!(
+                    "{}: {}",
+                    base(path),
+                    crate::collect::sections::gzip_message(&e)
+                ))),
             }
-        })?;
-        Ok(out)
+        }))
     }
 
     /// G2 from the sample's gVCF when it is there, else its VCF.
@@ -501,14 +540,41 @@ pub mod apol1 {
         use super::*;
 
         #[test]
+        fn unindexed_window_stops_at_the_end_or_next_chromosome() {
+            let call = rec(POS, REF, ALT, "0/1", ".");
+            for stop in [
+                format!("chr22\t{}\t.\tA\tT", SPAN.1 + 1),
+                "chr23\t1\t.\tA\tT".into(),
+            ] {
+                let lines = [
+                    Ok(call.join("\t")),
+                    Ok(stop),
+                    Err("must stop before reading this line".into()),
+                ];
+                assert_eq!(window_records(lines).unwrap(), vec![call.clone()]);
+            }
+        }
+
+        #[test]
         fn unindexed_window_retains_only_overlaps() {
             use std::io::Write;
             let d = crate::testutil::Dir::new("g2-window-bounded");
             let path = d.put("calls.vcf", "##fileformat=VCFv4.2\n");
-            let mut f = std::io::BufWriter::new(std::fs::OpenOptions::new().append(true).open(&path).unwrap());
+            let mut f = std::io::BufWriter::new(
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&path)
+                    .unwrap(),
+            );
             writeln!(f, "chr21\t1\t.\tA\tT\t.\tPASS\t.").unwrap();
             writeln!(f, "chr22\t1\t.\tA\tT\t.\tPASS\t.").unwrap();
-            let block = rec(SPAN.0 - 20, "A", "<NON_REF>", "0/0", &format!("END={}", SPAN.1));
+            let block = rec(
+                SPAN.0 - 20,
+                "A",
+                "<NON_REF>",
+                "0/0",
+                &format!("END={}", SPAN.1),
+            );
             let call = rec(POS, REF, ALT, "0/1", ".");
             writeln!(f, "{}", block.join("\t")).unwrap();
             writeln!(f, "{}", call.join("\t")).unwrap();

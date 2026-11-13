@@ -378,6 +378,12 @@ for special in nan inf -inf; do
     mv -f "$f/cells.tmp" "$f/$file"
   done
   put "$f/hla_t1k/S_hla_genotype.tsv" "HLA-A\t2\tA*02:01\t1\t${special}\tA*01:01\t1\t${special}\n"
+  # Python raises an uncaught OverflowError if an infinite read length
+  # reaches its floor calculation. Keep this full-collector comparison
+  # on its defined no-depth path; Rust isolates that error to the section.
+  if [ "$special" != nan ]; then
+    put "$f/telomere/S/S/S_summary.tsv" "PID\tsample\ttotal_reads\tread_lengths\tintratel_reads\ttel_content\nS\ttumor\t0\t${special}\t40\t1.5\n"
+  fi
   put "$f/vcf/S_roh.txt" "RG\tS\tchr2\t1\t7000000\t${special}\n"
   put "$f/cnvpytor/S_cnvs.txt" "deletion\tchr2:1-100000\t100000\t0.4\t${special}\t1\t1\t1\t${special}\t${special}\t9\n"
   putgz "$f/mito/S_chrM_filtered.vcf.gz" "${VCF_HEAD}chrM\t3243\t.\tA\tG\t50\tPASS\t.\tGT:AF\t0/1:${special}\n"
