@@ -3,7 +3,7 @@
 //! their kind, and Python's way of reading a digit cell.
 
 use crate::{basename, os_error, text_lines};
-use pycompat::csv::{DictReader, DictRow, Quoting};
+use pycompat::csv::{DictReader, DictRow, Quoting, Reader};
 use pycompat::text::{isdigit, strip};
 use std::collections::HashMap;
 
@@ -91,10 +91,10 @@ pub fn each_line(path: &str, mut f: impl FnMut(&str)) -> Result<(), ReadError> {
     Ok(())
 }
 
-/// The rows of a tab-separated table with a header (`csv.DictReader`).
-pub fn rows(path: &str) -> Result<Vec<DictRow>, ReadError> {
+/// Table lines keep their endings so quoted fields may span lines.
+fn table_lines(path: &str) -> Result<impl Iterator<Item = std::io::Result<String>>, ReadError> {
     let mut lines = text_lines(path).map_err(ReadError::Os)?;
-    let iter = std::iter::from_fn(move || {
+    Ok(std::iter::from_fn(move || {
         let mut s = String::new();
         match lines.read_line(&mut s) {
             Ok(true) => Some(Ok(s)),
@@ -104,22 +104,30 @@ pub fn rows(path: &str) -> Result<Vec<DictRow>, ReadError> {
             }
             Err(e) => Some(Err(e)),
         }
-    });
-    DictReader::new(iter, '\t', Quoting::Minimal)
+    }))
+}
+
+fn csv_error(e: pycompat::csv::Error) -> ReadError {
+    match e.exception() {
+        "OSError" => ReadError::Os(e.to_string()),
+        kind => ReadError::Other(format!("{kind}: {e}")),
+    }
+}
+
+/// The rows of a tab-separated table with a header (`csv.DictReader`).
+pub fn rows(path: &str) -> Result<Vec<DictRow>, ReadError> {
+    DictReader::new(table_lines(path)?, '\t', Quoting::Minimal)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| match e.exception() {
-            "OSError" => ReadError::Os(e.to_string()),
-            kind => ReadError::Other(format!("{kind}: {e}")),
-        })
+        .map_err(csv_error)
 }
 
 /// The header of a table as `csv.reader`'s first row reads it.
 pub fn columns(path: &str) -> Result<Vec<String>, ReadError> {
-    let first = lines(path)?.into_iter().next().unwrap_or_default();
-    if first.is_empty() {
-        return Ok(Vec::new());
-    }
-    Ok(first.split('\t').map(str::to_owned).collect())
+    Reader::new(table_lines(path)?, '\t', Quoting::Minimal)
+        .next()
+        .transpose()
+        .map(Option::unwrap_or_default)
+        .map_err(csv_error)
 }
 
 /// `row.get(key)` where a missing key and a short row both read as `None`.

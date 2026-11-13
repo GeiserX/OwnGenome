@@ -376,7 +376,11 @@ fn sample_format(r: &DictRow) -> HashMap<&str, &str> {
 const CONSENSUS_BP: i128 = 1000;
 
 fn chrom_key(c: &str) -> &str {
-    if c.len() >= 3 && c[..3].eq_ignore_ascii_case("chr") {
+    if c.as_bytes()
+        .get(..3)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"chr"))
+    {
+        // An ASCII prefix ends at a UTF-8 boundary.
         &c[3..]
     } else {
         c

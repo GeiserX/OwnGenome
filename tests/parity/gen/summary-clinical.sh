@@ -177,7 +177,7 @@ put cb-quoted-smn/paralogs/S_smn_copy_number.tsv "\"chrom\"${SMN#chrom}"
 full cb-quoted-interval
 put cb-quoted-interval/paralogs/S_cn_intervals.tsv "\"locus\"${IV#locus}"
 full cb-quoted-dosage
-put cb-quoted-dosage/paralogs/S_cn_dosage.tsv '\"locus\"\tstatus\tcopies\testimate\treason\treading\n'
+put cb-quoted-dosage/paralogs/S_cn_dosage.tsv '"locus"\tstatus\tcopies\testimate\treason\treading\n'
 
 # A valid UTF-8 contig with a code point crossing byte offset three must
 # leave the consensus readable. The last chr17 record still matches.
