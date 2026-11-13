@@ -225,7 +225,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     }
     let _ = print_check(&state, out);
     let _ = writeln!(out, "Written: {}", state_path.display());
-    let errors = state.errors();
+    let mut errors = state.errors();
     if flag("rerun") {
         let _ = out.flush();
         let rc = match rerun(sample, &sample_dir, &steps, &mut state, &log) {
@@ -247,6 +247,9 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         if rc != 0 {
             return code(rc);
         }
+        // What state.json now says: the replay's manifest may name a score
+        // the first check did not ask about.
+        errors = fresh.errors();
     }
     u8::from(errors > 0)
 }

@@ -1040,3 +1040,31 @@ fn state_json_written_item_by_item_is_byte_for_byte_the_whole_document() {
     c.items.clear();
     assert!(same(&c, "empty").contains("\"items\": [],"));
 }
+
+#[test]
+fn a_lookup_that_fails_after_the_replay_makes_the_command_exit_1() {
+    let base = tmp("after-fail");
+    let newman = base.join("new_manifest.tsv");
+    let mut text = fs::read_to_string(fix("run_manifest.tsv")).unwrap();
+    text += "data\tpgs:PGS000099\tpgs_id=PGS000099;HmPOS_date=2022-07-29\n";
+    fs::write(&newman, text).unwrap();
+    let g = genome("after-fail-g", Opt::default());
+    let cmd = format!("cp '{}' '{}'", s(&newman), s(&g.manifest()));
+    let st = fs::read_to_string(g.status())
+        .unwrap()
+        .replace("echo replayed", &cmd);
+    fs::write(g.status(), st).unwrap();
+    let off = fix("offline.json");
+    let (rc, out, _) = cli(&[
+        "--sample",
+        "S1",
+        "--genome-dir",
+        s(&g.root),
+        "--offline",
+        s(&off),
+        "--rerun",
+    ]);
+    let state = fs::read_to_string(g.sample().join("recheck/state.json")).unwrap();
+    assert!(state.contains("pgs:PGS000099") && state.contains("\"class\": \"error\""));
+    assert_eq!(rc, 1, "{out}");
+}

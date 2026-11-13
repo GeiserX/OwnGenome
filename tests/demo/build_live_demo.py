@@ -193,7 +193,8 @@ def prepare(root, genome_dir=None, records=20000):
 def affected_steps(og, key):
     """The steps `og recheck --affected KEY` names: those a change of this manifest key redoes."""
     try:
-        p = subprocess.run([og, "recheck", "--affected", key], capture_output=True, text=True, check=False)
+        p = subprocess.run([og, "recheck", "--affected", key, "--steps", os.path.join(REPO, "assets", "steps.tsv")],
+                           capture_output=True, text=True, check=False)
     except FileNotFoundError:
         p = None
     if p is None or p.returncode != 0:

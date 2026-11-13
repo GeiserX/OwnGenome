@@ -188,15 +188,31 @@ fn quoted(v: &str) -> Result<String, LookupError> {
 struct Scratch(PathBuf);
 
 impl Scratch {
+    /// A new folder only this user can read, under a name nobody can guess
+    /// and created here, never one that was already there: on a shared
+    /// temporary folder another user cannot plant it and read an answer.
     fn new() -> std::io::Result<Scratch> {
+        use std::os::unix::fs::DirBuilderExt;
         static N: AtomicUsize = AtomicUsize::new(0);
-        let d = std::env::temp_dir().join(format!(
-            "og-fresh-{}-{}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&d)?;
-        Ok(Scratch(d))
+        let mut last = None;
+        for _ in 0..16 {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            let salt = std::collections::hash_map::RandomState::new();
+            let tag = std::hash::BuildHasher::hash_one(&salt, (nanos, N.load(Ordering::Relaxed)));
+            let d = std::env::temp_dir().join(format!(
+                "og-fresh-{}-{}-{tag:016x}",
+                std::process::id(),
+                N.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::DirBuilder::new().mode(0o700).create(&d) {
+                Ok(()) => return Ok(Scratch(d)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+                Err(e) => return Err(e),
+            }
+        }
+        Err(last.unwrap_or_else(|| std::io::Error::other("no scratch folder")))
     }
 }
 
@@ -254,6 +270,9 @@ impl Client {
         let mut cfg = String::new();
         cfg += "silent\nshow-error\nlocation\nmax-redirs = 10\n";
         cfg += &format!("connect-timeout = {timeout}\nspeed-limit = 1\nspeed-time = {timeout}\n");
+        // A host that trickles a byte a second would pass the speed limit
+        // forever: every attempt also ends after ten timeouts in all.
+        cfg += &format!("max-time = {}\n", timeout * 10);
         cfg += &format!("user-agent = {}\n", quoted(USER_AGENT)?);
         for (n, v) in &req.headers {
             cfg += &format!("header = {}\n", quoted(&format!("{n}: {v}"))?);
@@ -475,6 +494,18 @@ mod tests {
         );
         assert_eq!(h.get("Last-Modified"), Some("new"));
         assert_eq!(h.get("Location"), None);
+    }
+
+    #[test]
+    fn scratch_folders_are_new_and_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let (a, b) = (Scratch::new().unwrap(), Scratch::new().unwrap());
+        assert_ne!(a.0, b.0);
+        let mode = std::fs::metadata(&a.0).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+        let path = a.0.clone();
+        drop(a);
+        assert!(!path.exists());
     }
 
     #[test]
