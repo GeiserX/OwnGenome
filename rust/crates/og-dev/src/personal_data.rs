@@ -109,6 +109,23 @@ struct Check {
     cond: Option<&'static [Rule]>,
 }
 
+impl Check {
+    /// Necessary literal bytes only. This can admit extra lines, but cannot
+    /// decide a match or discard a candidate span. Custom rules always run.
+    fn candidate(&self, line: &str) -> bool {
+        match self.kind {
+            "home" => {
+                line.contains("/home/") || line.contains("/mnt/user") || line.contains("Users")
+            }
+            "address" => line.contains('.'),
+            "diplotype" => line.contains('*') && line.contains('/'),
+            "rsid" => line.contains("rs"),
+            "repeat" => line.contains('/'),
+            _ => true,
+        }
+    }
+}
+
 fn rule(pattern: &str) -> Rule {
     Rule::compile(pattern, true).expect("a valid built-in pattern")
 }
@@ -382,6 +399,9 @@ fn scan_text(
             .flat_map(|t| line.match_indices(*t).map(|(a, s)| (a, a + s.len())))
             .collect();
         for c in rules {
+            if !c.candidate(line) {
+                continue;
+            }
             if let Some(conditions) = c.cond {
                 let mut matched = false;
                 for condition in conditions {
