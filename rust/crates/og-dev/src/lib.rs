@@ -21,7 +21,10 @@
 //!   evidence workflow on GIAB's HG002.
 //! - `og dev renovate-check LOG` ([`renovate`]): what a Renovate dry run
 //!   found, against every pin in the repository.
+//! - `og dev build cn-intervals|callability|sv-rule-regions` ([`build`]):
+//!   rebuild a committed asset table from its pinned downloads.
 
+pub mod build;
 pub mod contract;
 pub mod evidence;
 pub mod fixture;
@@ -36,7 +39,7 @@ mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions [args]\n";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -74,6 +77,7 @@ pub fn main(args: &[String]) -> u8 {
         Some("fixture") => run(fixture::cli, &args[1..]),
         Some("evidence") => run(evidence::cli, &args[1..]),
         Some("renovate-check") => run(renovate::cli, &args[1..]),
+        Some("build") => run(build::cli, &args[1..]),
         Some("helpers") => run(helpers::cli, &args[1..]),
         Some("-h" | "--help") => {
             print!("{USAGE}");

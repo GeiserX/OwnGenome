@@ -80,6 +80,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf
        og dev renovate-check LOG
        og dev helpers [args]
+       og dev build cn-intervals|callability|sv-rule-regions [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash
