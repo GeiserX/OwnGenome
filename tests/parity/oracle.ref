@@ -58,3 +58,7 @@ mito-copies	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py
 lookup	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	python3	lookup
 lookup-query	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	bash ./oracle.sh	lookup query
 family-ibd	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/ibd_report.py	sh ./ibd_oracle.sh	family ibd
+dev-fixture-comphet	fe6b67e09cef81c396c2277472df10407c56d7ac	file:tests/fixtures/comphet/make_fixture.py	python3	dev fixture comphet
+dev-fixture-trim-pharmcat	fe6b67e09cef81c396c2277472df10407c56d7ac	file:tests/fixtures/pharmcat/trim_report.py	python3	dev fixture trim-pharmcat
+dev-evidence-clashes	fe6b67e09cef81c396c2277472df10407c56d7ac	file:.github/workflows/public-evidence.yml	sh -c 'd=$(mktemp -d) && awk -v n=1 "/<<.PY.\$/ {k++; if (k == n) {on = 1; next}} on && /^ *PY\$/ {exit} on {sub(/^          /, \"\"); print}" "$0" > "$d/p.py" && exec python3 -I "$d/p.py" "$@"'	dev evidence clashes
+dev-evidence-hg002-gvcf	fe6b67e09cef81c396c2277472df10407c56d7ac	file:.github/workflows/public-evidence.yml	sh -c 'd=$(mktemp -d) && awk -v n=2 "/<<.PY.\$/ {k++; if (k == n) {on = 1; next}} on && /^ *PY\$/ {exit} on {sub(/^          /, \"\"); print}" "$0" > "$d/p.py" && exec python3 -I "$d/p.py" "$@"'	dev evidence hg002-gvcf
