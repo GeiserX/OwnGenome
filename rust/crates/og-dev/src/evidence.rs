@@ -390,6 +390,139 @@ mod tests {
         );
     }
 
+
+    struct Case {
+        dir: std::path::PathBuf,
+        kind: &'static str,
+    }
+
+    impl Case {
+        fn new(kind: &'static str, label: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "og-evidence-{kind}-{label}-{}-{:?}", std::process::id(), std::thread::current().id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../tests/parity/inputs").join(format!("dev-evidence-{kind}"));
+            for e in fs::read_dir(src).unwrap() {
+                let e = e.unwrap();
+                fs::copy(e.path(), dir.join(e.file_name())).unwrap();
+            }
+            Self { dir, kind }
+        }
+        fn text(&self, name: &str) -> Vec<u8> {
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            open(self.dir.join(name).to_str().unwrap()).unwrap().read_to_end(&mut bytes).unwrap();
+            bytes
+        }
+        fn put(&self, name: &str, bytes: &[u8]) {
+            if name.ends_with(".gz") {
+                let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                gz.write_all(bytes).unwrap();
+                fs::write(self.dir.join(name), gz.finish().unwrap()).unwrap();
+            } else {
+                fs::write(self.dir.join(name), bytes).unwrap();
+            }
+        }
+        fn run(&self) -> Result<(), String> {
+            let p = |n: &str| self.dir.join(n).to_str().unwrap().to_owned();
+            if self.kind == "clashes" {
+                clashes(&p("raw.vcf.gz"), &p("split.vcf.gz"), self.dir.to_str().unwrap(), &p("out"))
+            } else {
+                hg002_gvcf(&p("truth.vcf.gz"), &p("truth.bed"), &p("ref.fasta"), &p("sites.tsv"), &p("out")).map(|_| ())
+            }
+        }
+        fn fails_without_publication(&self) {
+            fs::write(self.dir.join("out"), b"PREVIOUS OUTPUT\n").unwrap();
+            assert!(self.run().is_err(), "{} must fail", self.dir.display());
+            assert_eq!(fs::read(self.dir.join("out")).unwrap(), b"PREVIOUS OUTPUT\n");
+            let leftovers: Vec<_> = fs::read_dir(&self.dir).unwrap().filter_map(|e| {
+                let name = e.unwrap().file_name();
+                name.to_str().filter(|n| n.starts_with(".out.")).map(str::to_owned)
+            }).collect();
+            assert!(leftovers.is_empty(), "{leftovers:?}");
+        }
+    }
+    impl Drop for Case {
+        fn drop(&mut self) { fs::remove_dir_all(&self.dir).unwrap(); }
+    }
+
+    #[test]
+    fn selected_truncated_clash_records_fail() {
+        for name in ["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz"] {
+            let c = Case::new("clashes", name);
+            c.put(name, if name == "chrA.tsv.gz" { b"chrA" } else { b"chrA\t3\n" });
+            c.fails_without_publication();
+        }
+    }
+
+    #[test]
+    fn missing_panel_header_and_blank_bed_fail() {
+        for name in ["sites.tsv", "truth.bed"] {
+            let c = Case::new("hg002-gvcf", name);
+            let bytes = if name == "sites.tsv" { vec![] } else { [c.text(name), b"\n".to_vec()].concat() };
+            c.put(name, &bytes);
+            c.fails_without_publication();
+        }
+    }
+
+    #[test]
+    fn every_evidence_text_input_rejects_invalid_utf8() {
+        for (kind, names) in [
+            ("clashes", vec!["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz"]),
+            ("hg002-gvcf", vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"]),
+        ] {
+            for name in names {
+                let c = Case::new(kind, name);
+                // Invalid bytes in a header or filtered-out record must still fail.
+                let mut bytes = c.text(name);
+                bytes.extend_from_slice(b"#ignored\xff\n");
+                c.put(name, &bytes);
+                c.fails_without_publication();
+            }
+        }
+    }
+
+    #[test]
+    fn every_evidence_text_input_has_universal_newlines() {
+        for (kind, names) in [
+            ("clashes", vec!["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz", "chrB.tsv.gz"]),
+            ("hg002-gvcf", vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"]),
+        ] {
+            for name in names {
+                for ending in [b"\r".as_slice(), b"\r\n".as_slice()] {
+                    let c = Case::new(kind, &format!("{name}-{}", ending.len()));
+                    c.run().unwrap();
+                    let expected = fs::read(c.dir.join("out")).unwrap();
+                    let bytes = c.text(name).split(|b| *b == b'\n').collect::<Vec<_>>().join(ending);
+                    c.put(name, &bytes);
+                    c.run().unwrap();
+                    assert_eq!(fs::read(c.dir.join("out")).unwrap(), expected, "{kind}/{name}/{ending:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn failed_gvcf_inputs_preserve_existing_output() {
+        for name in ["truth.vcf.gz", "sites.tsv"] {
+            for fault in ["missing", "directory", "malformed", "truncated"] {
+                let c = Case::new("hg002-gvcf", &format!("{name}-{fault}"));
+                let path = c.dir.join(name);
+                match fault {
+                    "missing" => fs::remove_file(path).unwrap(),
+                    "directory" => { fs::remove_file(&path).unwrap(); fs::create_dir(path).unwrap(); }
+                    "malformed" => { let mut bytes = c.text(name); bytes.extend_from_slice(b"bad\n"); c.put(name, &bytes); }
+                    _ if name.ends_with(".gz") => { let mut bytes = fs::read(&path).unwrap(); bytes.truncate(bytes.len()-5); fs::write(path, bytes).unwrap(); }
+                    _ => c.put(name, b"header\nbad\n"),
+                }
+                c.fails_without_publication();
+            }
+        }
+    }
+
     #[test]
     fn spans_merge_and_answer_inside() {
         let m = merge(vec![(10, 12), (5, 6), (11, 15), (15, 16)]);

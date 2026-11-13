@@ -62,6 +62,11 @@ struct Pins {
 
 /// Runs `og dev renovate-check ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let summary = std::env::var_os("GITHUB_STEP_SUMMARY").filter(|p| !p.is_empty());
+    cli_with_summary(args, out, err, summary.as_deref().map(Path::new))
+}
+
+fn cli_with_summary(args: &[String], out: &mut dyn Write, err: &mut dyn Write, summary_path: Option<&Path>) -> u8 {
     let (mut log, mut pins, mut repo) = (None, PINS.to_owned(), ".".to_owned());
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -125,7 +130,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     };
     let table = summary(&deps);
     let _ = writeln!(out, "{table}");
-    if let Some(path) = std::env::var_os("GITHUB_STEP_SUMMARY").filter(|p| !p.is_empty()) {
+    if let Some(path) = summary_path {
         let appended = fs::OpenOptions::new()
             .append(true)
             .create(true)
@@ -830,6 +835,45 @@ mod tests {
         assert_eq!(code, 2, "{out}");
         assert!(out.contains("docs/*.txt matches no file"), "{out}");
         let _ = fs::remove_dir_all(&d);
+    }
+
+
+
+    #[test]
+    fn configured_summary_write_failure_fails_the_check() {
+        let d = planted("summary");
+        let args = vec![d.join("renovate.log").to_str().unwrap().to_owned(), "--repo".to_owned(), d.to_str().unwrap().to_owned()];
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli_with_summary(&args, &mut out, &mut err, Some(&d)), 1);
+        assert!(!String::from_utf8_lossy(&out).contains("every check passed"));
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn malformed_log_shapes_and_text_fail() {
+        for (label, bad) in [
+            ("null-deps", r#"{"packageFile":"unused","deps":null}"#),
+            ("null-updates", r#"{"packageFile":"unused","deps":[{"updates":null}]}"#),
+            ("scalar-update", r#"{"packageFile":"unused","deps":[{"updates":[42]}]}"#),
+            ("scalar-dep", r#"{"packageFile":"unused","deps":[42]}"#),
+            ("scalar-file", r#"{"packageFile":[],"deps":[]}"#),
+        ] {
+            let d = planted(label);
+            let log = fs::read_to_string(d.join("renovate.log")).unwrap();
+            let log = log.replacen(r#""regex":["#, &format!(r#""regex":[{bad},"#), 1);
+            fs::write(d.join("renovate.log"), log).unwrap();
+            let (code, out) = run(&d);
+            assert_eq!(code, 1, "{label}: {out}");
+            fs::remove_dir_all(d).unwrap();
+        }
+        for (label, prefix) in [("utf8", b"\xff\n".as_slice()), ("array", b"[]\n".as_slice()), ("null", b"null\n".as_slice())] {
+            let d = planted(label);
+            let log = [prefix, &fs::read(d.join("renovate.log")).unwrap()].concat();
+            fs::write(d.join("renovate.log"), log).unwrap();
+            let (code, out) = run(&d);
+            assert_eq!(code, 1, "{label}: {out}");
+            fs::remove_dir_all(d).unwrap();
+        }
     }
 
     #[test]
