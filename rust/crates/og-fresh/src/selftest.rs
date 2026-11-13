@@ -2,7 +2,7 @@
 //! stubbed answers, a fake GitHub on 127.0.0.1 and, last, the real
 //! registries with a bogus image, a missing tag and a bogus ClinVar URL.
 
-use crate::http::{Body, Client, Fetch, GitHub, Headers, Request};
+use crate::http::{Body, Client, Fetch, GitHub, Headers, Request, Scratch};
 use crate::issue::{self, Action, LABEL, MARKER};
 use crate::lookups::{self, Ctx, image};
 use crate::pins::Pins;
@@ -274,12 +274,8 @@ pub fn data_rows(
     };
     answers.push(("api.github.invalid", Some(gh)));
     let stub = Stub::new(answers);
-    let d = std::env::temp_dir().join(format!(
-        "og-fresh-rows-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::create_dir_all(&d);
+    let scratch = Scratch::new().expect("a private scratch folder");
+    let d = scratch.path();
     let (common, setup) = (d.join("common.sh"), d.join("setup.sh"));
     let _ = std::fs::write(&common, "HLA_DB_RELEASE=${HLA_DB_RELEASE:-3.65.0}\n");
     let _ = std::fs::write(&setup, "PARASCOPY_DATA_RECORD=15019940\n");
@@ -313,7 +309,7 @@ pub fn data_rows(
             Err(e) => r.db_error(what, &e),
         }
     }
-    let _ = std::fs::remove_dir_all(&d);
+    drop(scratch);
     (
         r.db_rows.into_iter().map(|x| x.state).collect(),
         r.errors.len(),
@@ -721,8 +717,8 @@ pub fn run(out: &mut dyn Write) -> u8 {
     // 3. Controls on the real registries: a bogus image name, a pinned tag
     //    that does not exist and a bogus ClinVar URL must make the run exit 1,
     //    and the real image beside them must not be an error.
-    let d = std::env::temp_dir().join(format!("og-fresh-self-test-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&d);
+    let scratch = Scratch::new().expect("a private scratch folder");
+    let d = scratch.path();
     let (ve, se, o) = (d.join("versions.env"), d.join("setup.sh"), d.join("out.md"));
     let _ = std::fs::write(
         &ve,
@@ -750,7 +746,7 @@ pub fn run(out: &mut dyn Write) -> u8 {
     let (mut so, mut se_) = (Vec::new(), Vec::new());
     let rc = crate::cli::run(&args, &mut so, &mut se_);
     let report = std::fs::read_to_string(&o).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&d);
+    drop(scratch);
     let shown = String::from_utf8_lossy(&so).into_owned() + &String::from_utf8_lossy(&se_);
     let mut lines = String::new();
     for l in shown.lines() {

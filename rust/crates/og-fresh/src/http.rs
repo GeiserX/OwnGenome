@@ -172,11 +172,13 @@ pub fn join(base: &str, next: &str) -> String {
 
 /// A value for curl's config file: in double quotes, with `\` and `"`
 /// escaped and no line break (a line break would start a new option).
+/// The error never names the value: it can be an `Authorization` header,
+/// and lookup errors end up in the report and the public issue.
 fn quoted(v: &str) -> Result<String, LookupError> {
     if v.contains(['\n', '\r']) {
-        return Err(LookupError::Failed(format!(
-            "a request value holds a line break: {v:?}"
-        )));
+        return Err(LookupError::Failed(
+            "a request value holds a line break".into(),
+        ));
     }
     Ok(format!(
         "\"{}\"",
@@ -184,14 +186,20 @@ fn quoted(v: &str) -> Result<String, LookupError> {
     ))
 }
 
-/// A scratch folder for one request's body and headers, removed on drop.
-struct Scratch(PathBuf);
+/// A scratch folder for one request's body and headers (and the
+/// self-test's fixtures), removed on drop.
+pub(crate) struct Scratch(PathBuf);
 
 impl Scratch {
+    /// The folder.
+    pub(crate) fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+
     /// A new folder only this user can read, under a name nobody can guess
     /// and created here, never one that was already there: on a shared
     /// temporary folder another user cannot plant it and read an answer.
-    fn new() -> std::io::Result<Scratch> {
+    pub(crate) fn new() -> std::io::Result<Scratch> {
         use std::os::unix::fs::DirBuilderExt;
         static N: AtomicUsize = AtomicUsize::new(0);
         let mut last = None;
@@ -439,7 +447,10 @@ impl GitHub {
         GitHub {
             api: std::env::var("FRESHNESS_GITHUB_API")
                 .unwrap_or_else(|_| "https://api.github.com".into()),
-            token: std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty()),
+            token: std::env::var("GITHUB_TOKEN")
+                .ok()
+                .map(|t| t.trim().to_owned())
+                .filter(|t| !t.is_empty()),
         }
     }
 
@@ -512,5 +523,10 @@ mod tests {
     fn config_values_are_quoted() {
         assert_eq!(quoted(r#"a"b\c"#).unwrap(), r#""a\"b\\c""#);
         assert!(quoted("a\nurl = x").is_err());
+        let secret = "Authorization: Bearer s3cr3t-value\n";
+        let Err(LookupError::Failed(msg)) = quoted(secret) else {
+            panic!("a line break must fail");
+        };
+        assert!(!msg.contains("s3cr3t"), "the error names the value: {msg}");
     }
 }
