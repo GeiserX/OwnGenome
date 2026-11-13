@@ -235,7 +235,12 @@ impl PendingOutput {
     }
 
     pub(crate) fn commit(self) -> Result<(), String> {
-        validate_destination(&self.destination)?;
+        if let Some(permissions) = validate_destination(&self.destination)? {
+            // A write can clear set-user-ID or set-group-ID bits. Apply the
+            // final mode after every byte is staged, immediately before rename.
+            fs::set_permissions(&self.path, permissions)
+                .map_err(|e| format!("{}: {e}", self.destination.display()))?;
+        }
         fs::rename(&self.path, &self.destination)
             .map_err(|e| format!("{}: {e}", self.destination.display()))
     }
@@ -877,6 +882,12 @@ mod tests {
         assert_eq!(
             fs::metadata(&target).unwrap().permissions().mode() & 0o777,
             0o600
+        );
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o4600)).unwrap();
+        publish(&link, b"new").unwrap();
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o7777,
+            0o4600
         );
         fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
         assert!(publish(&link, b"bad").unwrap_err().contains("read-only"));
