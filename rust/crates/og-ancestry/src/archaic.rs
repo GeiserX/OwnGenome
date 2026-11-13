@@ -224,7 +224,7 @@ struct Mask {
 
 impl Mask {
     fn holds(&mut self, pos: i64) -> bool {
-        let p = pos;
+        let p = pos - 1;
         while self.i < self.iv.len() && self.iv[self.i].1 <= p {
             self.i += 1;
         }
