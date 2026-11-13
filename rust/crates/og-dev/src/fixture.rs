@@ -610,6 +610,56 @@ mod tests {
         fs::remove_dir_all(d).unwrap();
     }
 
+
+    #[test]
+    fn downloader_preflights_destinations_and_cleans_handled_failures() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        use std::process::Command;
+        let d = std::env::temp_dir().join(format!("og-download-safety-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("bin")).unwrap();
+        let stub = d.join("bin/curl");
+        fs::write(&stub, "#!/bin/sh\nprintf called >> \"$CALLED\"\nwhile [ \"$1\" != -o ]; do shift; done\nprintf partial > \"$2\"\nexit 22\n").unwrap();
+        fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).unwrap();
+        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/smoke/vntyper_testdata.sh");
+        for fault in ["directory", "directory-link", "curl", "crc", "sha", "signal"] {
+            let out = d.join(fault);
+            fs::create_dir(&out).unwrap();
+            let dst = out.join("negative.bam");
+            match fault {
+                "directory" => fs::create_dir(&dst).unwrap(),
+                "directory-link" => symlink(&d, &dst).unwrap(),
+                _ => {
+                    fs::write(&dst, b"PREVIOUS OUTPUT").unwrap();
+                    symlink("negative.bam", out.join("negative.bam.part")).unwrap();
+                }
+            }
+            if fault == "crc" {
+                fs::write(&stub, "#!/bin/sh\nprintf called >> \"$CALLED\"\nwhile [ \"$1\" != -o ]; do shift; done\ndd if=/dev/zero of=\"$2\" bs=3376349 count=1 2>/dev/null\n").unwrap();
+            } else if fault == "sha" {
+                // Supply an inflater with correct size but the wrong SHA.
+                fs::write(d.join("bin/gzip"), "#!/bin/sh\nprintf wrong-sha\n").unwrap();
+                fs::set_permissions(d.join("bin/gzip"), fs::Permissions::from_mode(0o755)).unwrap();
+            } else if fault == "signal" {
+                fs::remove_file(d.join("bin/gzip")).unwrap();
+                fs::write(&stub, "#!/bin/sh\nkill -TERM \"$PPID\"\nexit 22\n").unwrap();
+            }
+            let called = d.join("called");
+            let _ = fs::remove_file(&called);
+            let result = Command::new("sh").arg(&script).arg(&out).arg("negative.bam")
+                .env("PATH", format!("{}:{}", d.join("bin").display(), std::env::var("PATH").unwrap()))
+                .env("CALLED", &called).output().unwrap();
+            assert!(!result.status.success(), "{fault}");
+            if fault.starts_with("directory") { assert!(!called.exists(), "must reject before curl: {fault}"); }
+            else {
+                assert_eq!(fs::read(&dst).unwrap(), b"PREVIOUS OUTPUT", "{fault}");
+                let entries: Vec<_> = fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name()).collect();
+                assert_eq!(entries.len(), 2, "{fault}: {entries:?}");
+            }
+        }
+        fs::remove_dir_all(d).unwrap();
+    }
+
     #[test]
     fn approved_strict_pharmcat_containers_fail_at_the_cli() {
         let d = std::env::temp_dir().join(format!("og-pharmcat-shapes-{}", std::process::id()));
