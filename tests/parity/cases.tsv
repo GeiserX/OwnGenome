@@ -884,3 +884,7 @@ dev-fixture-trim-pharmcat	all-but-last	gen:pgx-fixtures.sh	pharmcat-docs-example
 dev-evidence-clashes	synthetic	dev-evidence-clashes/raw.vcf.gz,dev-evidence-clashes/split.vcf.gz,dev-evidence-clashes/chrA.tsv.gz,dev-evidence-clashes/chrB.tsv.gz,dev-evidence-clashes/chrZ.tsv.gz,dev-evidence-clashes/notes.tsv.gz	raw.vcf.gz split.vcf.gz . affected.tsv	affected.tsv	bytes	PYTHON_IMAGE
 dev-evidence-hg002-gvcf	synthetic	dev-evidence-hg002-gvcf/truth.vcf.gz,dev-evidence-hg002-gvcf/truth.bed,dev-evidence-hg002-gvcf/ref.fasta,dev-evidence-hg002-gvcf/ref.fasta.fai,dev-evidence-hg002-gvcf/sites.tsv	truth.vcf.gz truth.bed ref.fasta sites.tsv out.vcf	out.vcf	bytes	PYTHON_IMAGE
 dev-evidence-hg002-gvcf	past-the-end	dev-evidence-hg002-gvcf/truth.vcf.gz,dev-evidence-hg002-gvcf/truth-past-end.bed,dev-evidence-hg002-gvcf/ref.fasta,dev-evidence-hg002-gvcf/ref.fasta.fai,dev-evidence-hg002-gvcf/sites-past-end.tsv	truth.vcf.gz truth-past-end.bed ref.fasta sites-past-end.tsv out.vcf	out.vcf	bytes	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge	dev-fixture-trim-pharmcat/edge.json	edge.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge2	dev-fixture-trim-pharmcat/edge.json	edge.json out.json 2	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge0	dev-fixture-trim-pharmcat/edge.json	edge.json out.json 0	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge-all-but-last	dev-fixture-trim-pharmcat/edge.json	edge.json out.json -1	out.json	json:mask=_fixture_note	PYTHON_IMAGE
