@@ -461,10 +461,19 @@ fn diplotype(x: &Value) -> Result<Value, String> {
 }
 
 /// `items[:n]` with Python's slice rule for a negative `n`.
+#[allow(
+    clippy::manual_saturating_arithmetic,
+    reason = "Python slices clamp a checked negative end at zero"
+)]
 fn head(items: &[Value], n: i64) -> &[Value] {
-    let len = items.len() as i64;
-    let end = if n < 0 { (len + n).max(0) } else { n.min(len) };
-    &items[..end as usize]
+    // Clamp before slicing, including i64::MIN, without narrowing lengths.
+    let count = usize::try_from(n.unsigned_abs()).unwrap_or(usize::MAX);
+    let end = if n < 0 {
+        items.len().checked_sub(count).unwrap_or_default()
+    } else {
+        count.min(items.len())
+    };
+    &items[..end]
 }
 
 /// The trimmed report: every gene with its listed diplotypes and related
@@ -609,18 +618,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fixture_verbs_use_checked_runner_even_with_empty_status() {
+        let d = std::env::temp_dir().join(format!("og-fixture-streams-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("in"), br#"{"genes":{},"drugs":{}}"#).unwrap();
+        for args in [
+            vec![
+                "trim-pharmcat".into(),
+                d.join("in").to_str().unwrap().into(),
+                d.join("out").to_str().unwrap().into(),
+            ],
+            vec!["comphet".into(), d.to_str().unwrap().into()],
+        ] {
+            crate::stream_tests::assert_status_errors(cli, &args, false);
+        }
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn annotation_slices_clamp_extreme_counts_without_narrowing() {
+        let items = vec![Value::Null; 3];
+        for (n, expected) in [
+            (i64::MIN, 0),
+            (-4, 0),
+            (-3, 0),
+            (-2, 1),
+            (-1, 2),
+            (0, 0),
+            (1, 1),
+            (i64::MAX, 3),
+        ] {
+            assert_eq!(head(&items, n).len(), expected);
+        }
+    }
+
+    #[test]
     fn non_ascii_or_out_of_range_annotation_limits_fail_at_cli() {
         let d = std::env::temp_dir().join(format!("og-limits-{}", std::process::id()));
         fs::create_dir_all(&d).unwrap();
         fs::write(d.join("in"), br#"{"genes":{},"drugs":{}}"#).unwrap();
         for limit in ["1_0", "٤", "18446744073709551616"] {
             fs::write(d.join("out"), b"old").unwrap();
-            let args = vec!["trim-pharmcat".into(), d.join("in").to_str().unwrap().into(),
-                d.join("out").to_str().unwrap().into(), limit.into()];
+            let args = vec![
+                "trim-pharmcat".into(),
+                d.join("in").to_str().unwrap().into(),
+                d.join("out").to_str().unwrap().into(),
+                limit.into(),
+            ];
             let (mut out, mut err) = (Vec::new(), Vec::new());
             assert_eq!(cli(&args, &mut out, &mut err), 2);
             let err = String::from_utf8(err).unwrap();
-            assert!(err.contains("error: MAX_ANNOTATIONS") && err.contains("is not a whole number"), "{err}");
+            assert!(
+                err.contains("error: MAX_ANNOTATIONS") && err.contains("is not a whole number"),
+                "{err}"
+            );
             assert_eq!(fs::read(d.join("out")).unwrap(), b"old");
         }
         fs::remove_dir_all(d).unwrap();
@@ -636,7 +687,11 @@ mod tests {
             fs::write(d.join(name), b"old").unwrap();
         }
         for args in [
-            vec!["trim-pharmcat".into(), d.join("in").to_str().unwrap().into(), d.join("out").to_str().unwrap().into()],
+            vec![
+                "trim-pharmcat".into(),
+                d.join("in").to_str().unwrap().into(),
+                d.join("out").to_str().unwrap().into(),
+            ],
             vec!["comphet".into(), d.to_str().unwrap().into()],
         ] {
             fs::set_permissions(&d, fs::Permissions::from_mode(0o555)).unwrap();
@@ -644,7 +699,11 @@ mod tests {
             let code = cli(&args, &mut out, &mut err);
             fs::set_permissions(&d, fs::Permissions::from_mode(0o755)).unwrap();
             assert_eq!(code, 1);
-            assert!(String::from_utf8(err).unwrap().contains(": parent directory is not writable"));
+            assert!(
+                String::from_utf8(err)
+                    .unwrap()
+                    .contains(": parent directory is not writable")
+            );
             for name in ["out", "reads.sam", "vep.vcf", "comphet.vcf"] {
                 assert_eq!(fs::read(d.join(name)).unwrap(), b"old");
             }

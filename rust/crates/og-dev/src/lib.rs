@@ -66,11 +66,54 @@ fn run(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) 
 
 pub(crate) fn run_with_writers(
     f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8,
-    args: &[String], out: &mut dyn Write, err: &mut dyn Write,
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
 ) -> u8 {
-    let code = f(args, out, err);
+    let mut out = CheckedWriter {
+        inner: out,
+        failure: None,
+    };
+    let mut err = CheckedWriter {
+        inner: err,
+        failure: None,
+    };
+    let code = f(args, &mut out, &mut err);
     let _ = out.flush();
-    code
+    if let Some(reason) = &out.failure {
+        let _ = writeln!(err, "og dev: stdout: {reason}");
+    }
+    let _ = err.flush();
+    if code == 0 && (out.failure.is_some() || err.failure.is_some()) {
+        1
+    } else {
+        code
+    }
+}
+
+/// Remember errors even when an older verb ignores its Write result.
+struct CheckedWriter<'a> {
+    inner: &'a mut dyn Write,
+    failure: Option<String>,
+}
+impl Write for CheckedWriter<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let result = match self.inner.write(bytes) {
+            Ok(0) if !bytes.is_empty() => Err(std::io::Error::from(std::io::ErrorKind::WriteZero)),
+            result => result,
+        };
+        if let Err(e) = &result {
+            self.failure.get_or_insert_with(|| e.to_string());
+        }
+        result
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        let result = self.inner.flush();
+        if let Err(e) = &result {
+            self.failure.get_or_insert_with(|| e.to_string());
+        }
+        result
+    }
 }
 
 /// Runs `og dev ARGS`; returns the exit code.
@@ -106,15 +149,42 @@ pub fn main(args: &[String]) -> u8 {
 #[cfg(test)]
 mod stream_tests {
     use super::*;
-    struct Fails { flush_only: bool }
+    struct Fails {
+        flush_only: bool,
+    }
     impl Write for Fails {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            if self.flush_only { Ok(bytes.len()) } else { Err(std::io::Error::other("write control")) }
+            if self.flush_only {
+                Ok(bytes.len())
+            } else {
+                Err(std::io::Error::other("write control"))
+            }
         }
         fn flush(&mut self) -> std::io::Result<()> {
-            if self.flush_only { Err(std::io::Error::other("flush control")) } else { Ok(()) }
+            if self.flush_only {
+                Err(std::io::Error::other("flush control"))
+            } else {
+                Ok(())
+            }
         }
     }
+    pub(crate) fn assert_status_errors(
+        verb: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8,
+        args: &[String],
+        writes: bool,
+    ) {
+        for flush_only in [false, true] {
+            let mut bad = Fails { flush_only };
+            let mut err = Vec::new();
+            assert_eq!(
+                run_with_writers(verb, args, &mut bad, &mut err),
+                u8::from(writes || flush_only),
+                "{}",
+                String::from_utf8_lossy(&err)
+            );
+        }
+    }
+
     #[test]
     fn added_verbs_propagate_write_and_flush_errors() {
         let verbs = [fixture::cli, evidence::cli, renovate::cli];
@@ -122,7 +192,10 @@ mod stream_tests {
             for flush_only in [false, true] {
                 let mut bad = Fails { flush_only };
                 let mut err = Vec::new();
-                assert_eq!(run_with_writers(verb, &["--help".into()], &mut bad, &mut err), 1);
+                assert_eq!(
+                    run_with_writers(verb, &["--help".into()], &mut bad, &mut err),
+                    1
+                );
                 assert!(String::from_utf8(err).unwrap().contains("stdout:"));
             }
         }
@@ -134,8 +207,14 @@ mod stream_tests {
             0
         }
         for flush_only in [false, true] {
-            assert_eq!(run_with_writers(clean, &[], &mut Vec::new(), &mut Fails { flush_only }), 1);
+            assert_eq!(
+                run_with_writers(clean, &[], &mut Vec::new(), &mut Fails { flush_only }),
+                1
+            );
         }
-        assert_eq!(run_with_writers(clean, &[], &mut Fails { flush_only: true }, &mut Vec::new()), 1);
+        assert_eq!(
+            run_with_writers(clean, &[], &mut Fails { flush_only: true }, &mut Vec::new()),
+            1
+        );
     }
 }

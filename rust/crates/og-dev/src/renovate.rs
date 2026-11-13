@@ -233,7 +233,8 @@ fn read_pins(repo: &Path, path: &Path) -> Result<Pins, String> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let at = |msg: &str| format!("{}:{}: {msg}", path.display(), i + 1);
+        let number = i.checked_add(1).ok_or("pin line number overflows")?;
+        let at = |msg: &str| format!("{}:{number}: {msg}", path.display());
         let cols: Vec<&str> = line.split('\t').collect();
         let [dep, files, pattern] = cols[..] else {
             return Err(at(
@@ -251,7 +252,7 @@ fn read_pins(repo: &Path, path: &Path) -> Result<Pins, String> {
             }
             let n = re.find_iter(&texts[&f]).count();
             if n > 0 {
-                *pins.want.entry((dep.to_owned(), f.clone())).or_default() += n;
+                add_count(pins.want.entry((dep.to_owned(), f.clone())).or_default(), n)?;
             }
             pins.files.entry(dep.to_owned()).or_default().insert(f);
         }
@@ -443,12 +444,21 @@ fn updates(d: &IndexMap<String, Value>) -> &[Value] {
     }
 }
 
-fn counter<'a>(it: impl Iterator<Item = &'a IndexMap<String, Value>>) -> BTreeMap<String, usize> {
+fn add_count(count: &mut usize, n: usize) -> Result<(), String> {
+    *count = count
+        .checked_add(n)
+        .ok_or("arithmetic: dependency count overflows")?;
+    Ok(())
+}
+
+fn counter<'a>(
+    it: impl Iterator<Item = &'a IndexMap<String, Value>>,
+) -> Result<BTreeMap<String, usize>, String> {
     let mut c = BTreeMap::new();
     for d in it {
-        *c.entry(key(d)).or_default() += 1;
+        add_count(c.entry(key(d)).or_default(), 1)?;
     }
-    c
+    Ok(c)
 }
 
 /// The docker dependencies of one file.
@@ -461,6 +471,10 @@ fn in_file<'a>(
 
 /// Every problem, as `check: ...` lines.
 fn check(deps: &[Dep], env_text: &str, pins: &Pins) -> Vec<String> {
+    check_counts(deps, env_text, pins).unwrap_or_else(|e| vec![e])
+}
+
+fn check_counts(deps: &[Dep], env_text: &str, pins: &Pins) -> Result<Vec<String>, String> {
     let mut fails = Vec::new();
     let docker: Vec<&Dep> = deps.iter().filter(|(_, d)| is_docker(d)).collect();
     let want = env_images(env_text);
@@ -491,9 +505,9 @@ fn check(deps: &[Dep], env_text: &str, pins: &Pins) -> Vec<String> {
             fails.push(format!("names: {f}: package name {}", r(name)));
         }
     }
-    let env_keys = counter(in_file(&docker, ENV));
+    let env_keys = counter(in_file(&docker, ENV))?;
     for f in TWINS {
-        let keys = counter(in_file(&docker, f));
+        let keys = counter(in_file(&docker, f))?;
         if f == DOCS && keys != env_keys {
             let all: BTreeSet<&String> = keys.keys().chain(env_keys.keys()).collect();
             for k in all {
@@ -562,7 +576,7 @@ fn check(deps: &[Dep], env_text: &str, pins: &Pins) -> Vec<String> {
         if let Value::Str(name) = get(d, "depName")
             && pins.files.get(name).is_some_and(|fs| fs.contains(f))
         {
-            *got.entry((name.clone(), f.clone())).or_default() += 1;
+            add_count(got.entry((name.clone(), f.clone())).or_default(), 1)?;
         }
     }
     let all: BTreeSet<&(String, String)> = pins.want.keys().chain(got.keys()).collect();
@@ -578,7 +592,7 @@ fn check(deps: &[Dep], env_text: &str, pins: &Pins) -> Vec<String> {
             ));
         }
     }
-    fails
+    Ok(fails)
 }
 
 /// Plants one fault of each kind in a copy of the dependencies and shows
@@ -899,6 +913,33 @@ mod tests {
     }
 
     #[test]
+    fn renovate_table_uses_checked_runner() {
+        let d = planted("status");
+        let args = vec![
+            d.join("renovate.log").to_str().unwrap().into(),
+            "--repo".into(),
+            d.to_str().unwrap().into(),
+        ];
+        // No dependence on the process's GITHUB_STEP_SUMMARY environment.
+        fn verb(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+            cli_with_summary(args, out, err, None)
+        }
+        crate::stream_tests::assert_status_errors(verb, &args, true);
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn dependency_counts_refuse_overflow() {
+        let mut count = usize::MAX;
+        assert!(
+            add_count(&mut count, 1)
+                .unwrap_err()
+                .contains("dependency count overflows")
+        );
+        assert_eq!(count, usize::MAX);
+    }
+
+    #[test]
     fn non_writable_summary_parent_preserves_previous_summary() {
         use std::os::unix::fs::PermissionsExt;
         let d = planted("summary-parent");
@@ -907,12 +948,20 @@ mod tests {
         let summary = parent.join("result");
         fs::write(&summary, b"old").unwrap();
         fs::set_permissions(&parent, fs::Permissions::from_mode(0o555)).unwrap();
-        let args = vec![d.join("renovate.log").to_str().unwrap().into(), "--repo".into(), d.to_str().unwrap().into()];
+        let args = vec![
+            d.join("renovate.log").to_str().unwrap().into(),
+            "--repo".into(),
+            d.to_str().unwrap().into(),
+        ];
         let (mut out, mut err) = (Vec::new(), Vec::new());
         let code = cli_with_summary(&args, &mut out, &mut err, Some(&summary));
         fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(code, 1);
-        assert!(String::from_utf8(err).unwrap().contains(": parent directory is not writable"));
+        assert!(
+            String::from_utf8(err)
+                .unwrap()
+                .contains(": parent directory is not writable")
+        );
         assert_eq!(fs::read(&summary).unwrap(), b"old");
         fs::remove_dir_all(d).unwrap();
     }

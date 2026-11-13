@@ -132,11 +132,17 @@ Comphet stages all three files and checks all three destinations before the
 first rename. A bad later destination leaves previous outputs intact.
 Three renames are still not one transaction. A crash or a filesystem failure
 between renames can publish only part of the new set. Unhandled SIGKILL can
-leave temporary files. Single-file outputs are replaced by one rename.
+leave temporary files. Single-file outputs are replaced by one rename. Publication replaces the file
+and does not update other hard links. Those links still refer to the old inode.
+
+The shared runner fails the command if stdout or stderr cannot be written or
+flushed. This includes the evidence status and Renovate table. A configured
+Renovate summary must also be written and flushed successfully.
+Guard runs the FASTA offset regression in debug and release profiles.
 
 ### Stricter than the replaced Python, on purpose
 
-Each refusal below has a pinned negative CLI test with exit 1 and a stable
+Each refusal below has a pinned negative CLI test with exit 1 or 2 and a stable
 error class in `og-dev`. The final-LF normalization has a positive byte test.
 
 - BED fields use spaces and tabs as separators. Other Python whitespace
@@ -154,3 +160,20 @@ error class in `og-dev`. The final-LF normalization has a positive byte test.
 - Clash VCF rows need a tab after ALT. A newline in the ALT field of a short
   row fails with `missing trailing VCF columns`.
 - A truth VCF record without its final LF gets one in the output. Valid VCF ends with LF.
+
+- Zero-byte gzip VCFs or selected gzip tables fail with `wrong compression (expected gzip)`.
+- Every FAI row needs nonzero bases per line, including unused rows.
+  A zero width fails with `a row has 0 bases per line`.
+- `MAX_ANNOTATIONS` must parse as a signed 64-bit ASCII integer.
+  Underscores, non-ASCII digits and out-of-range values fail with
+  `MAX_ANNOTATIONS ... is not a whole number` (exit 2).
+- Staging needs a writable parent directory, even for an existing writable file.
+  A parent with no write bits fails with `parent directory is not writable`.
+  Other access failures report the operating system error.
+- The FASTA reader accepts plain files only. A gzip magic prefix fails with
+  `wrong compression (expected plain)`, including gzip with a long FNAME.
+- A VCF header after the first truth record fails with
+  `VCF header after first data record`. The previous destination stays intact.
+- FASTA offsets use checked subtraction, division, multiplication, addition
+  and remainder. Overflow, a position beyond the file, or an offset outside
+  the signed file-offset range fails with `invalid FASTA offset`.

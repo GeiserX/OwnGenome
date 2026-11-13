@@ -123,13 +123,16 @@ fn input_lines(
         }
         let end = chunk.iter().position(|b| matches!(b, b'\r' | b'\n'));
         let n = end.unwrap_or(chunk.len());
-        if line.len() + n > MAX_LINE {
+        if line.len().checked_add(n).is_none_or(|len| len > MAX_LINE) {
             return Err(format!("{path}: record exceeds {MAX_LINE} bytes"));
         }
         line.extend_from_slice(&chunk[..n]);
         if end.is_some() {
             after_cr = chunk[n] == b'\r';
-            r.consume(n + 1);
+            r.consume(
+                n.checked_add(1)
+                    .ok_or_else(|| format!("{path}: record size overflows"))?,
+            );
             std::str::from_utf8(&line).map_err(|e| format!("{path}: invalid UTF-8: {e}"))?;
             f(&line)?;
             line.clear();
@@ -206,6 +209,17 @@ impl PendingOutput {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let destination = resolve_destination(destination)?;
         let permissions = validate_destination(&destination)?;
+        let parent = destination
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let meta = fs::metadata(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        if meta.permissions().mode() & 0o222 == 0 {
+            return Err(format!(
+                "{}: parent directory is not writable",
+                destination.display()
+            ));
+        }
         let name = destination.file_name().ok_or("output has no file name")?;
         loop {
             let mut tmp = std::ffi::OsString::from(".");
@@ -280,7 +294,8 @@ fn clash_positions(
     chroms: &BTreeSet<Vec<u8>>,
 ) -> Result<BTreeSet<(Vec<u8>, u64)>, String> {
     let mut hit = BTreeSet::new();
-    let (mut key, mut n, mut snvs): (Option<(Vec<u8>, u64)>, u32, u32) = (None, 0, 0);
+    let (mut key, mut seen, mut multiple, mut snv): (Option<(Vec<u8>, u64)>, bool, bool, bool) =
+        (None, false, false, false);
     input_lines(path, true, |line| {
         if line.first() == Some(&b'#') {
             return Ok(());
@@ -297,12 +312,13 @@ fn clash_positions(
         let k = (c[0].to_vec(), pos(c[1], path)?);
         if key.as_ref() != Some(&k) {
             key = Some(k.clone());
-            (n, snvs) = (0, 0);
+            (seen, multiple, snv) = (false, false, false);
         }
-        n += 1;
+        multiple |= seen;
+        seen = true;
         let one = |a: &[u8]| std::str::from_utf8(a).map_or(a.len(), |s| s.chars().count()) == 1;
-        snvs += u32::from(one(c[3]) && one(c[4]));
-        if n >= 2 && snvs >= 1 {
+        snv |= one(c[3]) && one(c[4]);
+        if multiple && snv {
             hit.insert(k);
         }
         Ok(())
@@ -355,7 +371,12 @@ fn clashes(raw: &str, split: &str, data: &str, out: &str) -> Result<(), String> 
             }
             let p = pos(c[1], &path)?;
             for (k, w) in want.iter().enumerate() {
-                on_table[k] += u64::from(w.contains(&p));
+                let count = on_table
+                    .get_mut(k)
+                    .ok_or("table counter index out of range")?;
+                *count = count
+                    .checked_add(u64::from(w.contains(&p)))
+                    .ok_or_else(|| format!("{path}: table count overflows"))?;
             }
             Ok(())
         })?;
@@ -365,7 +386,7 @@ fn clashes(raw: &str, split: &str, data: &str, out: &str) -> Result<(), String> 
         text += &format!(
             "{name}_positions\t{}\n{name}_on_table\t{}\n",
             s.len(),
-            on_table[k]
+            on_table.get(k).ok_or("table counter index out of range")?
         );
     }
     publish(Path::new(out), text.as_bytes())
@@ -419,7 +440,9 @@ fn merge(mut spans: Vec<(u64, u64)>) -> Vec<(u64, u64)> {
 /// Is `p` inside one of the sorted, disjoint spans?
 fn inside(spans: &[(u64, u64)], p: u64) -> bool {
     let i = spans.partition_point(|&(s, _)| s <= p);
-    i > 0 && p < spans[i - 1].1
+    i.checked_sub(1)
+        .and_then(|j| spans.get(j))
+        .is_some_and(|&(_, end)| p < end)
 }
 
 fn hg002_gvcf(
@@ -431,6 +454,10 @@ fn hg002_gvcf(
 ) -> Result<(u64, u64), String> {
     let fai = read_fai(&format!("{reference}.fai"))?;
     let fasta = File::open(reference).map_err(|e| format!("{reference}: {e}"))?;
+    let fasta_len = fasta
+        .metadata()
+        .map_err(|e| format!("{reference}: {e}"))?
+        .len();
     let mut magic = [0; 2];
     if fasta
         .read_at(&mut magic, 0)
@@ -471,7 +498,9 @@ fn hg002_gvcf(
     let confident = |c: &[u8], p: u64| {
         conf.get(c).is_some_and(|v| {
             let i = v.partition_point(|&(s, _)| s < p);
-            i > 0 && v[i - 1].1 >= p
+            i.checked_sub(1)
+                .and_then(|j| v.get(j))
+                .is_some_and(|&(_, end)| end >= p)
         })
     };
 
@@ -481,6 +510,9 @@ fn hg002_gvcf(
     let mut covered: HashMap<Vec<u8>, Vec<(u64, u64)>> = HashMap::new();
     let mut records = 0u64;
     input_lines(truth, true, |line| {
+        if line.first() == Some(&b'#') && records != 0 {
+            return Err(format!("{truth}: VCF header after first data record"));
+        }
         if line.starts_with(b"##") {
         } else if line.first() == Some(&b'#') {
             w.write_all(b"##INFO=<ID=END,Number=1,Type=Integer,Description=\"End of the reference block\">\n##ALT=<ID=*,Description=\"Any other allele\">\n")
@@ -497,11 +529,15 @@ fn hg002_gvcf(
                     std::str::from_utf8(f[3])
                         .expect("strict reader")
                         .chars()
-                        .count() as u64,
+                        .count()
+                        .try_into()
+                        .map_err(|_| format!("{truth}: allele length overflows"))?,
                 )
                 .ok_or_else(|| format!("{truth}: position span overflows"))?,
             ));
-            records += 1;
+            records = records
+                .checked_add(1)
+                .ok_or_else(|| format!("{truth}: record count overflows"))?;
         }
         w.write_all(line)
             .and_then(|()| w.write_all(b"\n"))
@@ -527,8 +563,20 @@ fn hg002_gvcf(
         {
             return Ok(());
         }
-        let at =
-            row.offset + ((p - 1) / row.line_bases) * row.line_bytes + (p - 1) % row.line_bases;
+        let invalid = || format!("{reference}: invalid FASTA offset: overflow or outside file");
+        let zero = p.checked_sub(1).ok_or_else(invalid)?;
+        let at = zero
+            .checked_div(row.line_bases)
+            .and_then(|line| line.checked_mul(row.line_bytes))
+            .and_then(|relative| row.offset.checked_add(relative))
+            .and_then(|start| {
+                zero.checked_rem(row.line_bases)
+                    .and_then(|col| start.checked_add(col))
+            })
+            .ok_or_else(invalid)?;
+        if at > i64::MAX as u64 || at.checked_add(1).is_none_or(|end| end > fasta_len) {
+            return Err(invalid());
+        }
         fasta
             .read_exact_at(&mut base, at)
             .map_err(|e| format!("{reference}: {e}"))?;
@@ -537,9 +585,17 @@ fn hg002_gvcf(
         if !b"ACGT".contains(&b) {
             return Ok(());
         }
-        blocks += 1;
+        blocks = blocks
+            .checked_add(1)
+            .ok_or_else(|| format!("{sites}: block count overflows"))?;
         w.write_all(c)
-            .and_then(|()| writeln!(w, "\t{p}\t.\t{}\t<*>\t.\t.\tEND={p}\tGT\t0/0", b as char))
+            .and_then(|()| {
+                writeln!(
+                    w,
+                    "\t{p}\t.\t{}\t<*>\t.\t.\tEND={p}\tGT\t0/0",
+                    char::from(b)
+                )
+            })
             .map_err(werr)
     })?;
     if first {
@@ -644,9 +700,9 @@ mod tests {
                 fs::write(self.dir.join(name), bytes).unwrap();
             }
         }
-        fn run(&self) -> Result<(), String> {
+        fn args(&self) -> Vec<String> {
             let p = |n: &str| self.dir.join(n).to_str().unwrap().to_owned();
-            let args = if self.kind == "clashes" {
+            if self.kind == "clashes" {
                 vec![
                     "clashes".to_owned(),
                     p("raw.vcf.gz"),
@@ -663,9 +719,11 @@ mod tests {
                     p("sites.tsv"),
                     p("out"),
                 ]
-            };
+            }
+        }
+        fn run(&self) -> Result<(), String> {
             let (mut out, mut err) = (Vec::new(), Vec::new());
-            match cli(&args, &mut out, &mut err) {
+            match cli(&self.args(), &mut out, &mut err) {
                 0 => Ok(()),
                 1 => Err(String::from_utf8(err).unwrap()),
                 code => panic!("unexpected CLI exit {code}: {err:?}"),
@@ -697,18 +755,36 @@ mod tests {
     }
 
     #[test]
+    fn evidence_status_uses_checked_runner() {
+        for kind in ["clashes", "hg002-gvcf"] {
+            let c = Case::new(kind, "streams");
+            crate::stream_tests::assert_status_errors(cli, &c.args(), kind == "hg002-gvcf");
+        }
+    }
+
+    #[test]
     fn fai_offsets_reject_overflow_and_out_of_file_before_publication() {
         for (offset, bases, bytes, position) in [
             (18446744073709551598u64, 1, 2, 13),
             (1, 1, u64::MAX, 3),
             (u64::MAX, 1, 1, 1),
+            (u64::MAX - 1, 50, 51, 3),
             (1000, 50, 51, 1),
         ] {
             let c = Case::new("hg002-gvcf", &format!("offset-{offset}-{position}"));
-            c.put("ref.fasta.fai", format!("chrA\t50\t{offset}\t{bases}\t{bytes}\n").as_bytes());
-            c.put("sites.tsv", format!("id\tchr\tpos\nx\tchrA\t{position}\n").as_bytes());
+            c.put(
+                "ref.fasta.fai",
+                format!("chrA\t50\t{offset}\t{bases}\t{bytes}\n").as_bytes(),
+            );
+            c.put(
+                "sites.tsv",
+                format!("id\tchr\tpos\nx\tchrA\t{position}\n").as_bytes(),
+            );
             c.put("truth.bed", b"chrA\t0\t50\n");
-            c.put("truth.vcf.gz", b"##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\n");
+            c.put(
+                "truth.vcf.gz",
+                b"##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\n",
+            );
             c.fails_without_publication();
             assert!(c.run().unwrap_err().contains(": invalid FASTA offset:"));
         }
@@ -718,38 +794,63 @@ mod tests {
     fn late_vcf_headers_fail_before_publication() {
         for header in [b"##late=yes\n".as_slice(), b"#CHROM\tPOS\n"] {
             let c = Case::new("hg002-gvcf", &format!("late-{}", header.len()));
-            c.put("truth.vcf.gz", &[c.text("truth.vcf.gz"), header.to_vec()].concat());
+            c.put(
+                "truth.vcf.gz",
+                &[c.text("truth.vcf.gz"), header.to_vec()].concat(),
+            );
             c.fails_without_publication();
-            assert!(c.run().unwrap_err().contains(": VCF header after first data record"));
+            assert!(
+                c.run()
+                    .unwrap_err()
+                    .contains(": VCF header after first data record")
+            );
         }
     }
 
     #[test]
     fn empty_gzip_inputs_and_unused_zero_width_fai_rows_fail() {
         for (kind, name) in [
-            ("clashes", "raw.vcf.gz"), ("clashes", "split.vcf.gz"),
-            ("clashes", "chrA.tsv.gz"), ("hg002-gvcf", "truth.vcf.gz"),
+            ("clashes", "raw.vcf.gz"),
+            ("clashes", "split.vcf.gz"),
+            ("clashes", "chrA.tsv.gz"),
+            ("hg002-gvcf", "truth.vcf.gz"),
         ] {
             let c = Case::new(kind, name);
             fs::write(c.dir.join(name), b"").unwrap();
             c.fails_without_publication();
-            assert!(c.run().unwrap_err().contains(": wrong compression (expected gzip)"));
+            assert!(
+                c.run()
+                    .unwrap_err()
+                    .contains(": wrong compression (expected gzip)")
+            );
         }
         let c = Case::new("hg002-gvcf", "unused-row");
-        c.put("ref.fasta.fai", &[c.text("ref.fasta.fai"), b"chrUnused\t0\t0\t0\t0\n".to_vec()].concat());
+        c.put(
+            "ref.fasta.fai",
+            &[c.text("ref.fasta.fai"), b"chrUnused\t0\t0\t0\t0\n".to_vec()].concat(),
+        );
         c.fails_without_publication();
-        assert!(c.run().unwrap_err().contains(": a row has 0 bases per line"));
+        assert!(
+            c.run()
+                .unwrap_err()
+                .contains(": a row has 0 bases per line")
+        );
     }
 
     #[test]
     fn gzip_fasta_with_ascii_fname_is_refused_by_format_guard() {
         let c = Case::new("hg002-gvcf", "fname");
-        let mut gz = flate2::GzBuilder::new().filename(vec![b'A'; 200])
+        let mut gz = flate2::GzBuilder::new()
+            .filename(vec![b'A'; 200])
             .write(Vec::new(), flate2::Compression::default());
         gz.write_all(&c.text("ref.fasta")).unwrap();
         fs::write(c.dir.join("ref.fasta"), gz.finish().unwrap()).unwrap();
         c.fails_without_publication();
-        assert!(c.run().unwrap_err().contains(": wrong compression (expected plain)"));
+        assert!(
+            c.run()
+                .unwrap_err()
+                .contains(": wrong compression (expected plain)")
+        );
     }
 
     #[test]
@@ -760,7 +861,11 @@ mod tests {
             fs::set_permissions(&c.dir, fs::Permissions::from_mode(0o555)).unwrap();
             let result = c.run();
             fs::set_permissions(&c.dir, fs::Permissions::from_mode(0o755)).unwrap();
-            assert!(result.unwrap_err().contains(": parent directory is not writable"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .contains(": parent directory is not writable")
+            );
             assert_eq!(fs::read(c.dir.join("out")).unwrap(), b"PREVIOUS OUTPUT\n");
         }
     }
@@ -906,7 +1011,12 @@ mod tests {
                 };
                 fs::write(c.dir.join(name), wrong).unwrap();
                 c.fails_without_publication();
-                assert!(c.run().unwrap_err().contains(": wrong compression (expected "), "{name}");
+                assert!(
+                    c.run()
+                        .unwrap_err()
+                        .contains(": wrong compression (expected "),
+                    "{name}"
+                );
             }
         }
     }
