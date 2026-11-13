@@ -4,6 +4,13 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- The container helpers check (`scripts/ci/check-container-helpers.sh`, Guard job `helper-binaries`) now derives its table with the Rust `og` binary, `og dev helpers`. It replaces the Python inside the script, which is gone; the script keeps the docker probe, the orad download and its self-test. On this tree the table and the rule 1 output are the same, byte for byte. The static run takes 0.01 s and 6 MB where the Python took 0.2 s and 15 MB. What changes:
+  - A helper called in a process's `shell:` or `exec:` block is checked too. The Python read only `script:` blocks, so such a call went unchecked. No module has one today.
+  - A here-document ends only on a line that is exactly its delimiter, as in bash. The Python also ended it on a line with blanks around the delimiter.
+  - `versions.env` is read, not run in bash, and a line that is not `NAME="value"` stops the check with exit 2.
+  - Two `*_IMAGE` variables with the same value are both named, joined by `|`. The Python named only the alphabetically last one. No two share a value today.
+  - `scripts/ci/image-smoke.sh` probes a changed image's helpers only when `bin/og` is built, and says so when it is not. Guard's `helper-binaries` job still probes the helpers of every image on each pull request.
+
 - Steps 06, 17 and 31 (and the CLINVAR_CDNA_CHECK and COMPHET_PHASE modules) now read the reads at a variant with the Rust `og` binary: `og cdna check` (the cDNA read check of each ClinVar or CPSR hit), `og cdna scan` (the genome-wide cDNA scan) and `og comphet phase` (the phase of each compound-het pair). They replace `bin/cdna_scan.py` and `bin/comphet_phase.py`, which are gone, and the read check of `bin/clip_check.py`, which keeps only the names the report imports. Step 32 and the PYPGX module read the BAM's contig names with `og bam contigs` instead of a pysam one-liner. These steps no longer need pysam; they still run in `PYPGX_IMAGE`, so CI can run the deleted Python beside `og`. The tables, file names and options stay the same; 45 parity cases on made-up BAMs hold them. What changes:
   - The cDNA scan lists its loci in the BAM's contig order, then by position. It sorted the contig names as text, so `chr10` came before `chr2`. Only the row order changes.
   - The scan reads each record once, even when it spans two exon regions, and reads the contigs on several threads. On a synthetic BAM of 2 million reads and 59,940 exons it takes 1.3 s and 22 MB where the Python took 2.2 s and 82 MB.

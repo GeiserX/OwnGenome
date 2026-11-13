@@ -33,7 +33,7 @@
 # that /out directory. A row passes when COMMAND exits 0 and every check of
 # EXPECT passes; the run exits 1 when any row fails. The helper binaries the
 # scripts call in an image (scripts/ci/check-container-helpers.sh --list) are
-# probed in that image too.
+# probed in that image too, when bin/og is built.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -603,6 +603,9 @@ helpers_of() {  # helpers_of VAR: helper binaries the scripts call in VAR's imag
   if [ -z "$HELPER_TABLE" ]; then
     HELPER_TABLE=$("${REPO}/scripts/ci/check-container-helpers.sh" --list 2>/dev/null || echo "?")
   fi
+  # The table is og dev helpers; a job without bin/og skips this probe, and
+  # Guard's helper-binaries job probes every image's helpers on each PR.
+  [ "$HELPER_TABLE" != "?" ] || echo "note: no helper table without bin/og; Guard's helper-binaries job probes the helpers" >&2
   awk -v v="$1" '$1 == v {print $2}' <<< "$HELPER_TABLE" | sort -u | tr '\n' ' '
 }
 
