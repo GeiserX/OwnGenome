@@ -950,3 +950,19 @@ family-ibd	mapbp	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree mapbp/pedigree.ts
 family-ibd	nomap	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree nomap/pedigree.tsv --chroms nomap/chroms.txt --maps nomap/maps --phased nomap/phased --ibd nomap/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	short	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree short/pedigree.tsv --chroms short/chroms.txt --maps short/maps --phased short/phased --ibd short/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	twice	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree twice/pedigree.tsv --chroms twice/chroms.txt --maps twice/maps --phased twice/phased --ibd twice/ibd --out-dir out	-	content	PYTHON_IMAGE
+dev-pharmcat	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat	nested	ci-readers/oracle.sh,ci-readers/nested.json	nested.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	nested	ci-readers/oracle.sh,ci-readers/nested.json	nested.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	nested	ci-readers/oracle.sh,ci-readers/nested.json	nested.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat	empty	ci-readers/oracle.sh,ci-readers/empty.json	empty.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	empty	ci-readers/oracle.sh,ci-readers/empty.json	empty.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	empty	ci-readers/oracle.sh,ci-readers/empty.json	empty.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	truncated	ci-readers/oracle.sh,ci-readers/truncated.json	truncated.json --called	-	bytes	PYTHON_IMAGE
+dev-smoke-csv	quoted	ci-readers/oracle.sh,ci-readers/cells.csv	cells.csv Filter=PASS Value	-	bytes	PYTHON_IMAGE
+dev-nf-requests	resources	ci-readers/oracle.sh,ci-readers/requests.tsv,ci-readers/want.tsv	requests.tsv --want want.tsv --executor-cpus 512 --executor-mem-gb 2048	-	bytes	PYTHON_IMAGE
+dev-nf-attempts	retry	ci-readers/oracle.sh,ci-readers/attempts.tsv	attempts.tsv --name-glob *ALIGN_MINIMAP2* --want 1:137:32,2:0:64 --nextflow-exit 0	-	bytes	PYTHON_IMAGE
+dev-smoke-mini	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	slice.fa orig.fa mini.fa 450000 3000	orig.fa,mini.fa	bytes	PYTHON_IMAGE
+dev-smoke-long	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	hap1.fa hap2.fa long.fq.gz	long.fq.gz	gz-content	PYTHON_IMAGE
+dev-smoke-catalog	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	slice.fa eh.json 449000	eh.json	json	PYTHON_IMAGE

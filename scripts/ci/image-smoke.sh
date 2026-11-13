@@ -14,8 +14,7 @@
 #                                              names) and check that every *_IMAGE of
 #                                              versions.env has a row (no docker)
 #   scripts/ci/image-smoke.sh --self-test      prove --check fails on a bad table, and that a
-#                                              host check never imports a module the image
-#                                              planted in its row directory
+#                                              host check fails on a false JSON filter
 #
 # --full also runs the rows marked `full`: they need data too big for every
 # pull request (the monthly run and a run started by hand pass it).
@@ -142,17 +141,11 @@ self_test() {
   t "an unknown input fails" "unknown input 'genome'" "$A" $'B_IMAGE\t-\tgenome\ttrue\ttrue'
   t "also= on an unset variable fails" "also=B_DATA is not set" "$A" $'B_IMAGE\talso=B_DATA\t-\ttrue\ttrue'
   t "a row with four columns fails" "3 tabs, want 4" "$A" $'B_IMAGE\t-\t-\ttrue'
-  # A row's checks run in its row directory, which the image wrote. A json.py
-  # or csv.py the image planted there must not be imported by a host-side
-  # check (python3 -I keeps the working directory off sys.path).
-  mkdir "${tmp}/row"
-  for m in json csv; do printf 'raise SystemExit("planted %s.py was imported")\n' "$m" > "${tmp}/row/${m}.py"; done
-  printf '{"genes": {"CYP2C19": {"sourceDiplotypes": [{"allele1": {"name": "*1"}, "allele2": {"name": "*2"}}]}}}\n' > "${tmp}/row/r.json"
-  printf 'a,b\n1,2\n' > "${tmp}/row/t.csv"
-  out=$(cd "${tmp}/row" && CHECK_FAILS=0 && py "json loads" "import json; print(json.dumps(1))" \
-          && pharmcat_called r.json 2>/dev/null && csv_cell t.csv a=1 b && echo "fails=${CHECK_FAILS}")
-  if [ "$out" = $'[PASS] json loads (1)\n1\n2\nfails=0' ]; then echo "[PASS] a module the image planted in the row directory is not imported"
-  else echo "[FAIL] a module the image planted in the row directory is not imported: ${out//$'\n'/ | }"; fails=$((fails + 1)); fi
+  printf '{"value": 1}\n' > "${tmp}/r.json"
+  out=$(CHECK_FAILS=0; jqcheck "true filter" "${tmp}/r.json" '.value == 1'; jqcheck "false filter" "${tmp}/r.json" '.value == 2'; echo "fails=$CHECK_FAILS")
+  if grep -q '^\[PASS\] true filter' <<< "$out" && grep -q '^\[FAIL\] false filter' <<< "$out" && grep -q '^fails=1$' <<< "$out"; then
+    echo "[PASS] jqcheck rejects a false filter"
+  else echo "[FAIL] jqcheck rejects a false filter: $out"; fails=$((fails + 1)); fi
   rm -rf "$tmp"
   if [ "$fails" -gt 0 ]; then echo "self-test: ${fails} case(s) failed" >&2; return 1; fi
   echo "self-test: all cases passed"
@@ -303,20 +296,7 @@ need() {
 need_ref() {
   fx_get fixture_ref.fa.gz fixture_ref.fa.gz.fai fixture_ref.fa.gz.gzi || return 1
   hsam faidx /fx/fixture_ref.fa.gz chr20:10000001-10500000 > "${IN}/slice.fa.tmp" || return 1
-  python3 -I - "${IN}/slice.fa.tmp" "${IN}/orig.fa" "${IN}/mini.fa" "$PLANT_POS" "$PLANT_LEN" <<'PY' || return 1
-import random, sys
-src, orig, mini, pos, n = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
-seq = "".join(l.strip() for l in open(src) if not l.startswith(">")).upper()
-assert len(seq) == 500000, len(seq)
-def write(path, s):
-    with open(path, "w") as f:
-        f.write(">chr20\n")
-        for i in range(0, len(s), 60):
-            f.write(s[i:i + 60] + "\n")
-write(orig, seq)
-random.seed(20)
-write(mini, seq[:pos] + "".join(random.choice("ACGT") for _ in range(n)) + seq[pos:])
-PY
+  "${OG:-${REPO}/bin/og}" dev smoke mini-ref "${IN}/slice.fa.tmp" "${IN}/orig.fa" "${IN}/mini.fa" "$PLANT_POS" "$PLANT_LEN" || return 1
   rm -f "${IN}/slice.fa.tmp"
   hsam faidx /in/orig.fa && hsam faidx /in/mini.fa && hsam dict -o /in/mini.dict /in/mini.fa || return 1
   [ "$(cut -f2 "${IN}/mini.fa.fai")" = "$MINI_LEN" ]
@@ -368,21 +348,7 @@ need_longreads() {
   need ref && need truth || return 1
   hbcf consensus -H 1 -f /in/orig.fa /in/truth.vcf.gz > "${IN}/hap1.fa" &&
     hbcf consensus -H 2 -f /in/orig.fa /in/truth.vcf.gz > "${IN}/hap2.fa" || return 1
-  python3 -I - "${IN}/hap1.fa" "${IN}/hap2.fa" "${IN}/long.fq.gz" <<'PY'
-import gzip, sys
-comp = str.maketrans("ACGTN", "TGCAN")
-with gzip.open(sys.argv[3], "wt") as out:
-    k = 0
-    for h, path in enumerate(sys.argv[1:3], 1):
-        seq = "".join(l.strip() for l in open(path) if not l.startswith(">")).upper()
-        for start in range(0, len(seq) - 10000 + 1, 1000):
-            r = seq[start:start + 10000]
-            if k % 2:
-                r = r.translate(comp)[::-1]
-            out.write(f"@hap{h}_{start}\n{r}\n+\n{'?' * len(r)}\n")
-            k += 1
-print(k, "reads")
-PY
+  "${OG:-${REPO}/bin/og}" dev smoke long-reads "${IN}/hap1.fa" "${IN}/hap2.fa" "${IN}/long.fq.gz"
 }
 need_longbam() {
   need longreads || return 1
@@ -463,16 +429,7 @@ need_qc() {
 # in the mini reference, away from the slice ends and the planted bases.
 need_ehcatalog() {
   need ref || return 1
-  python3 -I - "${IN}/mini.fa" "${IN}/eh_catalog.json" "$SMALL_END" <<'PY'
-import json, re, sys
-seq = "".join(l.strip() for l in open(sys.argv[1]) if not l.startswith(">"))
-end = int(sys.argv[3])
-m = next(m for m in re.finditer(r"(?:CA){12,}", seq) if 20000 < m.start() and m.end() < end - 20000)
-json.dump([{"LocusId": "SMOKE1", "LocusStructure": "(CA)*",
-            "ReferenceRegion": f"chr20:{m.start()}-{m.end()}", "VariantType": "Repeat"}],
-          open(sys.argv[2], "w"), indent=1)
-print("repeat", m.start(), m.end(), len(m.group()) // 2, "units")
-PY
+  "${OG:-${REPO}/bin/og}" dev smoke eh-catalog "${IN}/mini.fa" "${IN}/eh_catalog.json" "$SMALL_END"
 }
 # A chain that maps chr20 onto itself over the region of the small variants.
 need_chain() {
@@ -511,9 +468,21 @@ same() { if [ -n "$2" ] && [ "$2" = "$3" ]; then pass "$1 (${2})"; else fail "$1
 has() { if [ -n "$2" ] && grep -Eq -- "$3" <<< "$2"; then pass "$1 (${2})"; else fail "$1 (got '${2}', want /${3}/)"; fi; }
 contains() { if [ -f "$2" ] && grep -Eq -- "$3" "$2"; then pass "$1"; else fail "$1 (/${3}/ not in ${2})"; fi; }
 nonempty() { if [ -s "$2" ]; then pass "$1"; else fail "$1 (${2} is missing or empty)"; fi; }
-py() {
+jqcheck() {
   local out
-  if out=$(python3 -I -c "$2" 2>&1); then pass "$1${out:+ (${out//$'\n'/ })}"; else fail "$1: $(tail -n 3 <<< "$out" | tr '\n' ' ')"; fi
+  if out=$(jq -e "$3" "$2" 2>&1); then pass "$1${out:+ (${out//$'\n'/ })}"
+  else fail "$1: ${out//$'\n'/ }"; fi
+}
+smoke_check() {
+  local out
+  if out=$("${OG:-${REPO}/bin/og}" dev smoke check "$2" "$3" 2>&1); then pass "$1 ($out)"
+  else fail "$1: $out"; fi
+}
+check_pharmcat() {
+  local out rc=0
+  out=$(pharmcat_called "$2") || rc=$?
+  if [ "$rc" -ne 0 ]; then fail "$1 (not assessed: unreadable PharmCAT report)"
+  else at_least "$1" "$out" 1; fi
 }
 bcf() { hbcf "$@" 2>/dev/null; }
 # vcf_records FILE: data records (paths relative to the row directory or under /in).
@@ -559,42 +528,11 @@ tsv_count() {
 }
 # csv_cell FILE KEY=VALUE[,KEY=VALUE] COLUMN: COLUMN of the first row that matches.
 csv_cell() {
-  python3 -I - "$1" "$2" "$3" <<'PY'
-import csv, sys
-want = dict(kv.split("=", 1) for kv in sys.argv[2].split(","))
-for row in csv.DictReader(open(sys.argv[1])):
-    if all(row.get(k) == v for k, v in want.items()):
-        print(row[sys.argv[3]])
-        break
-PY
+  "${OG:-${REPO}/bin/og}" dev smoke csv-cell "$1" "$2" "$3"
 }
 # pharmcat_called report.json: genes with a named diplotype.
 pharmcat_called() {
-  python3 -I - "$1" <<'PY'
-import json, sys
-try:
-    data = json.load(open(sys.argv[1]))
-except Exception as e:
-    print(f"unreadable report: {e}", file=sys.stderr)
-    sys.exit(0)
-def called(g):
-    for d in (g.get("sourceDiplotypes") or g.get("recommendationDiplotypes") or []):
-        names = [(d.get(a) or {}).get("name", "") for a in ("allele1", "allele2")]
-        if any(n and n.lower() not in ("unknown", "none", "?") for n in names):
-            return True
-    return False
-out = set()
-for key, val in (data.get("genes") or {}).items():
-    if not isinstance(val, dict):
-        continue
-    if "sourceDiplotypes" in val or "recommendationDiplotypes" in val:
-        if called(val):
-            out.add(key)
-    else:
-        out.update(n for n, g in val.items() if isinstance(g, dict) and called(g))
-print(" ".join(sorted(out)), file=sys.stderr)
-print(len(out))
-PY
+  "${OG:-${REPO}/bin/og}" dev pharmcat diplotypes "$1" --called
 }
 
 # ------------------------------------------------------------- the runner

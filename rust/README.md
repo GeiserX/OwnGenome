@@ -34,3 +34,5 @@ cargo build --release && ../tests/rust/pycompat-diff.sh target/release/og   # py
 ```
 
 A binary from a plain `cargo build` is stamped `unknown`, and `rust/og.sh check` refuses it: only `scripts/setup.sh --og` stamps the tree hash the pipeline checks.
+
+CI readers also run through `og dev pharmcat diplotypes`, `og dev nf-trace requests|attempts` and `og dev smoke`. See [the Rust command notes](../docs/rust.md#ci-readers).

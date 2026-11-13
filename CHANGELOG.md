@@ -4,6 +4,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- CI readers now use `og dev pharmcat diplotypes`, `nf-trace` and `smoke`. Unreadable PharmCAT reports fail with exit 2 and are marked not assessed. Resource checks refuse trace globs and malformed numeric cells. The smoke mini-reference uses a fixed Rust seed for the planted bases. Gzip smoke reads have deterministic headers. Smoke table checks report concise property results.
+
 - The container helpers check (`scripts/ci/check-container-helpers.sh`, Guard job `helper-binaries`) now derives its table with the Rust `og` binary, `og dev helpers`. It replaces the Python inside the script, which is gone; the script keeps the docker probe, the orad download and its self-test. On this tree the table and the rule 1 output are the same, byte for byte. The static run takes 0.01 s and 6 MB where the Python took 0.2 s and 15 MB. What changes:
   - A helper called in a process's `shell:` block is checked too. The Python read only `script:` blocks, so such a call went unchecked. No module has one today.
   - A helper called in a process's `exec:` block always fails the check: Nextflow runs that block on the host, where no image applies.

@@ -111,3 +111,11 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 - **Release** (`release.yml`): a tag builds the four binaries, writes `SHA256SUMS`, attests them and attaches all five files to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.
+
+## CI readers
+
+`og dev pharmcat diplotypes REPORT` prints sorted, unique `GENE\tA1/A2` rows from flat or source-nested reports. `--called` prints the called count and names on stderr. `--called-lines` prints one called gene per line for e2e checks. An unreadable report exits 2 without a count. A valid empty report succeeds with a zero count.
+
+`og dev nf-trace requests TRACE --want FILE --executor-cpus N --executor-mem-gb N` checks initial requests, doubled retry memory and the executor budget. The expectation table is [nf-trace-requests.tsv](../scripts/ci/nf-trace-requests.tsv). `og dev nf-trace attempts TRACE --name-glob PATTERN --want '1:137:32,2:0:64' --nextflow-exit RC` checks a retry sequence. Both accept one explicit path, refuse globs, parse quoted TSV records and reject conflicting duplicates. Identical duplicate task IDs count once. Exit 1 means the check found a mismatch. Exit 2 means input or arguments could not be assessed.
+
+`og dev smoke` supplies `mini-ref SRC ORIG MINI POS LEN`, `long-reads HAP1 HAP2 OUT.gz`, `eh-catalog REF OUT END`, `csv-cell FILE KEY=VALUE[,KEY=VALUE] COLUMN` and `check KIND FILE`. Check kinds are `hap-ibd`, `ibdmix`, `rfmix`, `eigen` and `parascopy`. Mini-reference bases use a fixed Rust seed. Long-read gzip headers are deterministic. These synthetic fixtures do not change pipeline output files. Smoke references are limited to 1,003,000 bases. CSV lookups and table checks read one record at a time.
