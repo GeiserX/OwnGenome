@@ -4,6 +4,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- The scanner's Unicode checks install Python 3.9, 3.12 and 3.15 through pinned uv tooling, so the older oracle remains available on newer `ubuntu-latest` images.
+
 - The personal-data scan refuses every astral cased character from UCD 13/15/16/17, including case-mapping targets. Text in Deseret, Osage, Old Hungarian, Warang Citi, Medefaidrin, Adlam and other astral cased scripts needs an ASCII SKIP glob. Uncased astral text still scans. Custom class ranges with a guarded interior return redacted exit 2. BMP verification now covers composite classes, ranges and alternatives on every available Python. Every working-copy symlink target gets the same redacted Unicode filename guard before following it.
 
 - The personal-data guard now includes effective Python regex case relations, including Python 3.9 Cyrillic differences. Six stable older scalars pass again. Selected filenames get the same Unicode guard before exclusions, with a generic redacted error. Cached gitlinks and unreadable indexed objects fail with exit 2 unless skipped. Working-copy symlinks validate every hop, including directory components, with a 40-hop bound. The 248 newer stable scalars remain conservatively blocked.

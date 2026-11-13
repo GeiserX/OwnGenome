@@ -268,17 +268,25 @@ jobs:
       # Keep Python 3.9's regex cases and the newer Unicode tables available. The
       # scanner fails closed on version-dependent scalars; span iteration
       # intentionally uses Python 3.14+ semantics for empty-text \B.
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      # Standalone builds also provide Python 3.9 on newer ubuntu-latest
+      # images where actions/setup-python has no matching distribution.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: '3.9'
+          version: '0.12.18'
+          enable-cache: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.15'
+      - name: Install all three Unicode oracle interpreters
+        run: |
+          uv python install --no-bin 3.9 3.12 3.15
+          interpreters=""
+          for version in 3.9 3.12 3.15; do
+            python=$(uv python find --managed-python "$version")
+            "$python" -I -c 'import sys,unicodedata; print(sys.version.split()[0],unicodedata.unidata_version)'
+            interpreters="${interpreters:+$interpreters:}$python"
+          done
+          echo "PERSONAL_DATA_PYTHONS=$interpreters" >> "$GITHUB_ENV"
+          # Span iteration intentionally follows the newest interpreter.
+          dirname "$python" >> "$GITHUB_PATH"
 
       - name: Install the toolchain rust/rust-toolchain.toml pins, with rustfmt and clippy
         run: |
