@@ -13,13 +13,13 @@
     PacBio HiFi only: Paraphase is written for HiFi reads, and its licence
     (PacBio Software License Agreement) allows it only on data from a PacBio
     instrument. PARAPHASE_CHECK reads the BAM header with
-    bin/paraphase_report.py check-bam and fails unless every read group says
+    og paraphase check-bam and fails unless every read group says
     PL:PACBIO, so Paraphase never reads another BAM. All three are
     report-only (nextflow.config): a failed check is listed, the step is
     marked failed, and the rest of the run goes on.
 
     PARAPHASE_REPORT turns Paraphase's JSON and VCFs into one row per gene
-    and one per variant (bin/paraphase_report.py table), with the regions and
+    and one per variant (og paraphase table), with the regions and
     JSON fields of assets/paraphase_genes.tsv, which the workflow stages.
 
     Equivalent to: scripts/35b-paraphase.sh
@@ -42,7 +42,7 @@ process PARAPHASE_CHECK {
 
     script:
     """
-    paraphase_report.py check-bam ${bam} > ${meta.id}_paraphase_check.txt
+    og paraphase check-bam ${bam} > ${meta.id}_paraphase_check.txt
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """
@@ -120,7 +120,7 @@ process PARAPHASE_REPORT {
 
     script:
     """
-    paraphase_report.py table --sample ${meta.id} --genes ${genes} \\
+    og paraphase table --sample ${meta.id} --genes ${genes} \\
         --json ${results}/${meta.id}.paraphase.json \\
         --vcf-dir ${results}/${meta.id}_paraphase_vcfs \\
         --out-cn ${meta.id}_paraphase_copy_number.tsv \\

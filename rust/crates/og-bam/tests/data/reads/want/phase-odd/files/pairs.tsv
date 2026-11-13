@@ -1,0 +1,4 @@
+GENE	CHROM	POS_1	REF_1	ALT_1	POS_2	REF_2	ALT_2	DISTANCE	PHASE	CIS_READS	TRANS_READS	PHASE_NOTE
+GENEX	chrP	1000	A	C	500	G	T	.	unknown	.	.	the two variants are on different contigs
+GENEZ	chrZ	10	A	C	20	A	T	10	unknown	.	.	the BAM has no contig chrZ
+HLA/A	chrP	5000	AC	GTT	5400	A	C	400	unknown	.	.	a complex allele: not phased from the reads

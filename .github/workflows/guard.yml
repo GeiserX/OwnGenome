@@ -331,11 +331,12 @@ jobs:
                    tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
                    tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py tests/test_setup_fine_maps.sh \
                    tests/test_render_report.py tests/test_collect_summary.py tests/test_chip_report.py \
-                   tests/test_family_report.py tests/test_family_segments.py \
+                   tests/test_family_report.py tests/test_family_segments.py tests/test_ibd_report.py \
                    tests/test_vntyper_report.py tests/test_locityper_report.py tests/test_mocha_report.py \
                    tests/test_mei_report.py tests/test_viral_report.py tests/test_ystr_report.py \
                    tests/test_exomiser_report.py \
                    tests/test_results_index.py \
+                   tests/test_pgx_outside_calls.py tests/test_hla_second_caller.py tests/test_paraphase_report.py \
                    tests/test_copy_number.py tests/test_hba_copy_number.py \
                    tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_callability.py; do
             rc=0

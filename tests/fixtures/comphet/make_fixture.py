@@ -9,7 +9,7 @@ writes, for the sample CHPH on contig chrP (80 kb of seeded random sequence):
   vep.vcf      the six heterozygous variants with a VEP CSQ, as step 13 writes
                them, for step 31 (all rare, HIGH impact, three genes)
   comphet.vcf  the three pairs as slivar compound-hets names them
-               (INFO/slivar_comphet), for bin/comphet_phase.py alone
+               (INFO/slivar_comphet), for og comphet phase alone
 
 The three pairs and what the reads show:
 

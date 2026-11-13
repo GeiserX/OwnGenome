@@ -22,6 +22,7 @@ og-filters.workspace = true
 og-setup.workspace = true
 og-chip.workspace = true
 og-cn.workspace = true
+og-bloodtype.workspace = true
 og-reports.workspace = true
 og-runlog.workspace = true
 og-ancestry.workspace = true

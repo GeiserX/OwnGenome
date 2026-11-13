@@ -1,0 +1,6 @@
+chrom	pos	ref	alt	alt_reads	alt_clipped	ref_reads	ref_clipped	cdna_check	cdna_note	construct_site
+chrT	1151	A	C	9	9	6	6	clear		GENET X1Y
+chrQ	500	A	G					not_checked	the BAM has no contig chrQ	GENEQ Q2R
+chrT	1151	AAC	GT					not_checked	not a SNV, MNV or simple indel	
+T	1151	a	c	9	9	6	6	clear		GENET X1Y
+chrT	1151	A	<DEL>					not_checked	not a SNV, MNV or simple indel	

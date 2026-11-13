@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""bin/ibd_report.py: the DNA segments two sequenced relatives share (step 38).
+"""og family ibd: the DNA segments two sequenced relatives share (step 38).
 
 Each case writes synthetic Beagle VCFs, hap-ibd segment files, PLINK maps and
-a pedigree, runs the script, and checks what it writes:
+a pedigree, runs og family ibd, and checks what it writes:
 
   1. the output schema: the exact header of ibd_pairs.tsv and ibd_segments.tsv,
      one pairs row for every pair of members (a pair with no segment too),
@@ -26,8 +26,14 @@ a pedigree, runs the script, and checks what it writes:
   9. stretches broken by phasing: two joined across a gap with no opposite
      homozygote, not across one with two; a stretch reaches the chromosome's
      first and last marker across one opposite homozygote, not across three
+ 10. a missing input file (a map, a phased VCF, a hap-ibd file, the
+     chromosome list) stops with an ERROR line naming it, exit 2, and
+     writes nothing
 
-Run: python3 tests/test_ibd_report.py
+Every case needs og: without OG the file skips, and with OG_REQUIRED set
+too it fails (Guard's og job sets both).
+
+Run: OG=bin/og python3 tests/test_ibd_report.py
 """
 import gzip
 import os
@@ -36,7 +42,7 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "ibd_report.py")
+OG = os.environ.get("OG", "")
 FAILS = []
 MB = 1000000
 
@@ -75,13 +81,16 @@ def write_chrom(d, chrom, samples, first, last, ibd_rows, map_end, dos=lambda s,
             f.write("\t".join(str(x) for x in r) + "\n")
 
 
-def run(d, chroms, pedigree=PEDIGREE):
+def run(d, chroms, pedigree=PEDIGREE, gone=None):
+    """gone: an input file to remove before the run."""
     with open(os.path.join(d, "chroms.txt"), "w") as f:
         f.write("".join(c + "\n" for c in chroms))
+    if gone:
+        os.remove(os.path.join(d, gone))
     with open(os.path.join(d, "pedigree.tsv"), "w") as f:
         f.write(pedigree)
     out = os.path.join(d, "out")
-    r = subprocess.run([sys.executable, SCRIPT, "--pedigree", os.path.join(d, "pedigree.tsv"),
+    r = subprocess.run([OG, "family", "ibd", "--pedigree", os.path.join(d, "pedigree.tsv"),
                         "--chroms", os.path.join(d, "chroms.txt"), "--maps", os.path.join(d, "maps"),
                         "--phased", os.path.join(d, "phased"), "--ibd", os.path.join(d, "ibd"), "--out-dir", out],
                        capture_output=True, text=True)
@@ -93,6 +102,13 @@ def table(path):
         head = f.readline().rstrip("\n").split("\t")
         return head, [dict(zip(head, l.rstrip("\n").split("\t"))) for l in f if l.strip()]
 
+
+if not OG:
+    if os.environ.get("OG_REQUIRED"):
+        print("FAIL OG names the og binary (OG_REQUIRED is set)")
+        sys.exit(1)
+    print("skip: every case needs OG (OG=bin/og)")
+    sys.exit(0)
 
 SAMPLES = ["A", "B", "C", "D"]
 # D is 1/1 where A, B and C are 0/0, except over its short segment with B
@@ -208,6 +224,16 @@ with tempfile.TemporaryDirectory() as d:
     check("8 no chromosome: headers only", [open(os.path.join(out, f)).read() for f in ("ibd_pairs.tsv", "ibd_segments.tsv")],
           ["\t".join(PAIRS_HEAD) + "\n", "\t".join(SEGS_HEAD) + "\n"])
     check("8 no chromosome: the report says so", "No chromosome was phased" in open(os.path.join(out, "ibd_report.md")).read(), True)
+
+for gone in ("maps/chr1.map", "phased/chr1.vcf.gz", "ibd/chr1.ibd.gz", "chroms.txt"):
+    with tempfile.TemporaryDirectory() as d:
+        write_chrom(d, "chr1", SAMPLES, 1, 99, CHR1, 100)
+        r, out = run(d, ["chr1"], gone=gone)
+        check(f"10 missing {gone}: exit 2", r.returncode, 2)
+        check(f"10 missing {gone}: one ERROR line naming the file",
+              (r.stderr.startswith("ERROR: cannot read " + os.path.join(d, gone) + ": "), r.stderr.count("\n")),
+              (True, 1))
+        check(f"10 missing {gone}: nothing written", os.path.exists(out), False)
 
 if FAILS:
     print(f"{len(FAILS)} check(s) failed")

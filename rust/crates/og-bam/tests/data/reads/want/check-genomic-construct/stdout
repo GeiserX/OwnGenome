@@ -1,0 +1,4 @@
+cDNA read check: 0 flagged, 2 clear, 3 not checked
+  KNOWN CONSTRUCT SITE GENET X1Y at chrT:1151 A>C: clear, 0 of 8 alt reads and 0 of 6 ref reads clipped at an exon edge
+  KNOWN CONSTRUCT SITE GENEQ Q2R at chrQ:500 A>G: not checked (the BAM has no contig chrQ)
+  KNOWN CONSTRUCT SITE GENET X1Y at T:1151 a>c: clear, 0 of 8 alt reads and 0 of 6 ref reads clipped at an exon edge

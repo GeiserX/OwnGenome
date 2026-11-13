@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-qc", "crates/og-clinvar", "crates/og-pgx", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-setup", "crates/og-chip", "crates/og-cn", "crates/og-ancestry", "crates/og-pedigree", "crates/og-reports", "crates/og-summary", "crates/og-lookup", "og"]
+members = ["crates/pycompat", "crates/og-io", "crates/og-vcf", "crates/og-bam", "crates/og-map", "crates/og-tsv", "crates/og-intervals", "crates/og-dev", "crates/og-qc", "crates/og-clinvar", "crates/og-pgx", "crates/og-filters", "crates/og-nf", "crates/og-runlog", "crates/og-steps", "crates/og-setup", "crates/og-chip", "crates/og-cn", "crates/og-bloodtype", "crates/og-ancestry", "crates/og-pedigree", "crates/og-reports", "crates/og-summary", "crates/og-lookup", "og"]
 
 [workspace.package]
 version = "0.1.0"
@@ -28,6 +28,7 @@ og-steps = { path = "crates/og-steps" }
 og-ancestry = { path = "crates/og-ancestry" }
 og-chip = { path = "crates/og-chip" }
 og-cn = { path = "crates/og-cn" }
+og-bloodtype = { path = "crates/og-bloodtype" }
 og-pedigree = { path = "crates/og-pedigree" }
 og-reports = { path = "crates/og-reports" }
 og-summary = { path = "crates/og-summary" }
