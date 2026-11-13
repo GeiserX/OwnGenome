@@ -839,6 +839,8 @@ dependencies = [
  "flate2",
  "indexmap",
  "memchr",
+ "og-bam",
+ "og-clinvar",
  "og-io",
  "og-steps",
  "pycompat",

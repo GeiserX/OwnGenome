@@ -16,10 +16,20 @@
 //! sections are read. A reader's error stays in its section, which is
 //! then `unreadable` with a note that names the file.
 
+pub mod acmg;
+pub mod assets;
+pub mod carrier;
+pub mod clinical;
+pub mod clinvar;
+pub mod cpsr;
+pub mod group_b;
 pub mod model;
+pub mod pgx;
 pub mod scan;
 pub mod sections;
+pub mod text;
 pub mod time;
+pub mod two_hits;
 
 use crate::args::{self, Kind, Opt};
 use model::{GROUP_A, Manifest, RunStatus, Section, Spec, Summary};
@@ -29,7 +39,7 @@ use sections::{Callability, Coverage, Data, Mosaic, ReadCount, SampleQc, SexChec
 use std::io::Write;
 use std::path::Path;
 
-const USAGE: &str = "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR --only a
+const USAGE: &str = "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR --only {a,b}
                           --out OUT [--declared-sex DECLARED_SEX] [--assets ASSETS]
 ";
 
@@ -39,7 +49,7 @@ const OPTS: &[Opt] = &[
     Opt("--declared-sex", Kind::Value, false),
     Opt("--out", Kind::Value, true),
     Opt("--assets", Kind::Value, false),
-    Opt("--only", Kind::Choice(&["a"]), true),
+    Opt("--only", Kind::Choice(&["a", "b"]), true),
 ];
 
 /// What one collect reads.
@@ -75,7 +85,11 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
     // A part of the sections must never replace the sample's complete
     // summary.json, so there is no default path while `--only` exists.
     let target = a.text("--out").to_owned();
-    let summary = match collect(&input) {
+    let read = match a.text("--only") {
+        "b" => group_b::collect,
+        _ => collect,
+    };
+    let summary = match read(&input) {
         Ok(s) => s,
         Err(e) => return crate::finish(Err(e), err),
     };
@@ -195,6 +209,7 @@ pub fn collect(input: &Input) -> Result<Summary, String> {
         manifest,
         declared_sex,
         sections,
+        cyp2d6: None,
     })
 }
 
