@@ -178,3 +178,4 @@ y-private-report-1-private-and-tree	shard	150	nextflow-hardening-2-nf
 y-str-1	shard	42	-
 y-tree-current-1-placement	shard	21	nextflow-hardening-2-nf
 rust-z2e-readers	shard	1	-
+rust-c2b-traits	shard	2	-

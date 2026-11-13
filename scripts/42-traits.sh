@@ -93,7 +93,7 @@ if [ -f "$BAM" ] && [ -f "${BAM}.bai" ]; then
   # shellcheck disable=SC2016  # $1 to $6 belong to the inner bash
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$WHATSHAP_IMAGE" \
     bash -euo pipefail -c '
-      python3 /pgp-bin/traits_report.py --rules /pgp-assets/genotype_rules.tsv --genotypes "$1" --sample "$2" --phase-sites "$3"
+      /pgp-bin/og traits phase-sites --rules /pgp-assets/genotype_rules.tsv --genotypes "$1" --sample "$2" --out "$3"
       if grep -qv "^#" "$3"; then
         whatshap phase --reference "$4" --ignore-read-groups -o "$5" "$3" "$6"
       else
@@ -118,7 +118,7 @@ fi
 
 echo "[3/3] Reading each genotype and each rule against the tables..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/traits_report.py --table /pgp-assets/traits.tsv --rules /pgp-assets/genotype_rules.tsv \
+  /pgp-bin/og traits table --table /pgp-assets/traits.tsv --rules /pgp-assets/genotype_rules.tsv \
     --genotypes "$(cpath "$GENOTYPES")" ${PHASE_ARGS[@]+"${PHASE_ARGS[@]}"} --sample "$SAMPLE" \
     --out "$(cpath "$OUT")" --rules-out "$(cpath "$RULES_OUT")"
 rm -f "$PHASED"

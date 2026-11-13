@@ -1206,19 +1206,18 @@ def report_followups_sections(work, schema):
     # (G, G, C on the plus strand; rs1726866's G is the reference base).
     t = os.path.join(work, "rules", "S")
     rows = traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))
-    rules = traits_report.read_rules(os.path.join(REPO, "assets", "genotype_rules.tsv"))
     g = os.path.join(work, "rules_g.tsv")
     put(g, "chr7\t141972804\tT\tC\tC/C\t40\nchr7\t141972905\tG\t.\tG/G\t40\nchr7\t141973545\tC\tG\tG/G\t40\n"
            "chr19\t44908684\tT\t.\tT/T\t40\nchr19\t44908822\tC\t.\tC/C\t40\n")
-    recs = traits_report.read_genotypes(g)
-    lines = traits_report.rule_lines(rules, recs)
+    from test_traits_report import traits_tables
     os.makedirs(f"{t}/traits", exist_ok=True)
-    traits_report.write_tsv(f"{t}/traits/S_traits.tsv", traits_report.report(rows, recs, rules, None, lines))
+    saved_rules = os.path.join(work, "rules_saved.tsv")
+    traits_tables(g, f"{t}/traits/S_traits.tsv", saved_rules)
     summ, txt, html_ = render(t)
     check("rules: without the rules table the section has no rule lines and the reports none",
           summ["sections"]["traits"]["data"].get("rules") is None and "Genotype rules (several sites" not in txt + html_,
           summ["sections"]["traits"]["data"].get("rules"))
-    traits_report.write_tsv(f"{t}/traits/S_genotype_rules.tsv", lines, traits_report.RULE_OUT_COLUMNS)
+    shutil.copyfile(saved_rules, f"{t}/traits/S_genotype_rules.tsv")
     summ, txt, html_ = render(t)
     html_ = htmlmod.unescape(html_)
     rl = summ["sections"]["traits"]["data"].get("rules") or []
@@ -1226,7 +1225,9 @@ def report_followups_sections(work, schema):
           [(r["rule"], r["result"], r["status"], r["phase"]) for r in rl if r["rule"] in ("TAS2R38", "APOE")]
           == [("TAS2R38", "PAV/PAV", "called", "not_needed")],
           rl)
-    trait = rules["TAS2R38"]["trait"]
+    import csv
+    with open(saved_rules) as f:
+        trait = next(r["trait"] for r in csv.DictReader(f, delimiter="\t") if r["rule"] == "TAS2R38")
     check("rules: the text report prints the rule line with its result and sites",
           f"{trait} (TAS2R38 rs713598, rs1726866, rs10246939): PAV/PAV (no phase needed). " in txt
           and "traits/S_genotype_rules.tsv" in txt, txt)
@@ -1905,11 +1906,19 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
     """ROH on autosomes outside the bands, the telomere read floor, CNVpytor's
     filtered count, the D-loop poly-C tracts and the chrM annotation."""
     import re as _re
-    # The masked bands: one line in the summary, step 11 and the ROH module.
+    # The masked bands: og's step 11 code holds the one copy that step 11
+    # and the ROH module run (og roh summary); the summary's line agrees.
+    rs = open(os.path.join(REPO, "rust/crates/og-summary/src/collect/group_c/roh.rs")).read()
+    body = rs[rs.index("pub const MASKED_BANDS"):]
+    body = body[:body.index("];")]
+    rust_bands = " ".join(f"{c}:{int(a.replace('_', ''))}-{int(b.replace('_', ''))}"
+                          for c, a, b in _re.findall(r'\("(chr\w+)", ([0-9_]+), ([0-9_]+)\)', body))
+    check("bands: og's MASKED_BANDS is the line of bin/collect_summary.py",
+          rust_bands == collect_summary.MASKED_BANDS, rust_bands[:80])
     for f in ("scripts/11-roh-analysis.sh", "modules/local/roh/main.nf"):
-        m = _re.search(r'^\s*MASKED_BANDS="([^"]*)"', open(os.path.join(REPO, f)).read(), _re.M)
-        check(f"bands: {f} holds the line of bin/collect_summary.py",
-              m is not None and m.group(1) == collect_summary.MASKED_BANDS, m and m.group(1)[:80])
+        text = open(os.path.join(REPO, f)).read()
+        check(f"bands: {f} holds no copy of the bands and runs og roh summary",
+              "MASKED_BANDS=" not in text and "og roh summary" in text, f)
 
     # ROH: a 45 Mb chrY segment, an 18 Mb segment in chr1's 1q12 gvar block,
     # one over chr9's centromere, a 25 Mb chr1 segment with 21.5 Mb in the
@@ -1943,13 +1952,17 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
         collect_summary.masked_bands = orig
     check("ROH red control: without the band mask the gvar segment is the largest again",
           r0["largest_mb"] == 25.0 and len(r0["autosomal_over_5mb"]) == 4, r0)
-    # Step 11's awk on the same file lists the same segments.
-    script = open(os.path.join(REPO, "scripts/11-roh-analysis.sh")).read()
-    awk = script[script.index("  awk -v bands="):script.index('"$OUTPUT"', script.index("  awk -v bands=")) + len('"$OUTPUT"')]
-    out = subprocess.run(["bash", "-c", f'MASKED_BANDS="{collect_summary.MASKED_BANDS}"; OUTPUT="$1"; {awk}', "_",
-                          f"{d}/vcf/S_roh.txt"], capture_output=True, text=True)
-    check("ROH: step 11's summary awk lists the segments the report lists",
-          out.returncode == 0 and out.stdout == "chr2\t10000001\t17000000\t7000000\t7.0\n", (out.stdout, out.stderr))
+    # Step 11's summary (og roh summary) on the same file lists the same segments.
+    if OG:
+        out = subprocess.run([OG, "roh", "summary", "--sample", "S", "--roh", f"{d}/vcf/S_roh.txt",
+                              "--out", f"{d}/vcf/S_roh_summary.txt"], capture_output=True, text=True)
+        rows = open(f"{d}/vcf/S_roh_summary.txt").read().splitlines()[3:] if out.returncode == 0 else []
+        check("ROH: step 11's summary (og roh summary) lists the segments the report lists",
+              rows == ["chr2\t10000001\t17000000\t7000000\t7.0"], (rows, out.stderr))
+    elif os.environ.get("OG_REQUIRED"):
+        sys.exit("FAIL: OG_REQUIRED is set but OG names no og binary")
+    else:
+        print("[SKIP] og roh summary: OG is not set (the rust job of guard.yml runs it)")
 
     # Telomere: 40 and 4,000 intratelomeric reads at 30x (620 M reads of 150 bp).
     head = ("PID\tsample\ttotal_reads\tread_lengths\trepeat_threshold_set\trepeat_threshold_used\tintratel_reads\t"
@@ -2861,7 +2874,8 @@ def main():
                f"{ear['chrom']}\t{ear['pos']}\t{ear['ref']}\t.\t{ear['ref']}/{ear['ref']}\n"
                "chr19\t44908684\tT\t.\tT/T\nchr19\t44908822\tC\t.\tC/C\n")
         os.makedirs(f"{t}/traits", exist_ok=True)
-        traits_report.write_tsv(f"{t}/traits/S_traits.tsv", traits_report.report(rows, traits_report.read_genotypes(g)))
+        from test_traits_report import traits_tables
+        traits_tables(g, f"{t}/traits/S_traits.tsv", os.path.join(work, "traits_rules.tsv"))
         summ_t, txt_t, html_t = render(t)
         td = summ_t["sections"]["traits"]
         check("traits: section ok, counts without the APOE rows",

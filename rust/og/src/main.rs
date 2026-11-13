@@ -50,9 +50,13 @@ const USAGE: &str = "usage: og <tool> [args]
        og prs format [args]
        og prs table [args]
        og mito annotate|deletions|copies [args]
-       og summary collect --only a [args]
+       og summary collect --only {a,b,c} [args]
+       og roh summary --sample SAMPLE --roh ROH [--out OUT]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
+       og traits table [args]
+       og traits phase-sites [args]
+       og traits check [args]
        og bloodtype report|check-markers|systems [args]
        og family plan|prepare|check|report|segments [args]
        og family ibd [args]
@@ -78,6 +82,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og dev nf-trace requests|attempts TRACE [options]
        og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]
        og dev helpers [args]
+       og dev build cn-intervals|callability|sv-rule-regions [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash
@@ -219,6 +224,7 @@ fn main() -> ExitCode {
             )),
             None => usage_error("the following arguments are required: chip tool"),
         },
+        "traits" => ExitCode::from(og_steps::traits::cli(rest)),
         "bloodtype" => match rest.first() {
             Some(verb) => ExitCode::from(og_bloodtype::cli(
                 verb,
@@ -306,6 +312,14 @@ fn main() -> ExitCode {
                 &mut std::io::stderr().lock(),
             )),
             _ => usage_error("og summary takes collect"),
+        },
+        "roh" => match rest.first().map(String::as_str) {
+            Some("summary") => ExitCode::from(og_summary::collect::group_c::roh::cli(
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
+            _ => usage_error("og roh takes summary"),
         },
         "mito" => ExitCode::from(og_summary::mito::cli(
             rest.first().map(String::as_str),

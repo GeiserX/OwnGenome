@@ -9,3 +9,4 @@ bin/pgx_outside_calls.py	HLA_GENES,NO_CALL,PROBABLE,NOT_CALLABLE,LOW_GQ,is_call,
 bin/paraphase_report.py	SMN1_EXON7,parascopy_smn1,compare_smn1	bin/collect_summary.py,bin/couple_report.py,tests/test_paralog_loci.py,tests/test_paraphase_report.py	R4
 bin/cnvpytor_to_vcf.py	DEPTH_MIN_SIZE,delly_depth_contradicts	bin/couple_report.py	R4
 bin/annotsv_postfilter.py	CONSENSUS_BP,KEEP,ADDED,open_text,chrom_key,sv_type,info_value,sample_format,sample_columns,read_consensus,consensus_support	bin/collect_summary.py,tests/demo/make_demo_sample.py	R3
+bin/traits_report.py	COLUMNS,OUT_COLUMNS,RULE_OUT_COLUMNS,TRAITS_TABLE_RULES,TableError,read_table,MARKERS,MARKER_STATUSES	bin/collect_summary.py,tests/demo/make_demo_sample.py,tests/test_traits_report.py,tests/test_traits_table.py,tests/test_collect_summary.py,tests/test_lpa_kiv2.py	R3
