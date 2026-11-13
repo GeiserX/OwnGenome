@@ -1340,4 +1340,119 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn round4_unicode_versions_fail_closed() {
+        let f = Fixture::new("r4-unicode");
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["init", "-q"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let cases = [
+            (p("\u{105c0}rs555~ AG"), None),
+            (p("HG004\u{105c0} *2/~*8"), None),
+            (p("HTT\u{105c0} 18/~32"), None),
+            ("\u{105c0}".into(), Some(r"\W+")),
+            ("\u{1e6c0}".into(), Some(r"\w+")),
+            ("\u{16ebb}".into(), Some(r"(?i)\U00016ea0")),
+        ];
+        let mut failures = Vec::new();
+        for (case, (text, pattern)) in cases.iter().enumerate() {
+            std::fs::write(f.0.join("own.md"), text).unwrap();
+            std::fs::write(f.0.join("patterns"), pattern.unwrap_or("# none")).unwrap();
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&f.0)
+                    .args(["add", "own.md"])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            for cached in [false, true] {
+                for explicit in [false, true] {
+                    let mut args = f.args(if explicit { &["own.md"] } else { &[] });
+                    if cached {
+                        args.push("--cached".into());
+                    }
+                    if pattern.is_some() {
+                        args.extend([
+                            "--patterns".into(),
+                            f.0.join("patterns").display().to_string(),
+                        ]);
+                    }
+                    let (mut out, mut err) = (Vec::new(), Vec::new());
+                    let code = cli(&args, &mut out, &mut err);
+                    if code != 2 {
+                        failures.push((case, cached, explicit, code));
+                    }
+                    assert!(!String::from_utf8_lossy(&out).contains(text));
+                    assert!(!String::from_utf8_lossy(&err).contains(text));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "version-dependent text must fail closed: {failures:?}"
+        );
+    }
+
+    #[test]
+    fn round4_symlink_targets_fail_closed() {
+        let f = Fixture::new("r4-symlinks");
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["init", "-q"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        std::os::unix::fs::symlink(
+            OsStr::from_bytes(b"private_target_\xff.md"),
+            f.0.join("alias.md"),
+        )
+        .unwrap();
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["add", "alias.md", "clean.md"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let mut failures = Vec::new();
+        for cached in [false, true] {
+            for explicit in [false, true] {
+                let mut args = f.args(if explicit {
+                    &["alias.md", "clean.md"]
+                } else {
+                    &[]
+                });
+                if cached {
+                    args.push("--cached".into());
+                }
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                let code = cli(&args, &mut out, &mut err);
+                if code != 2 {
+                    failures.push((cached, explicit, code));
+                }
+                if code == 2 {
+                    assert!(out.is_empty());
+                    assert_eq!(err, b"ERROR: path is not valid UTF-8\n");
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "raw symlink target must stop scan: {failures:?}"
+        );
+    }
 }
