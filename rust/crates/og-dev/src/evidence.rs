@@ -25,6 +25,8 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufWriter, Write};
 use std::os::unix::fs::FileExt;
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const USAGE: &str = "usage: og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv\n       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf\n";
 
@@ -66,21 +68,105 @@ fn open(path: &str) -> Result<Box<dyn BufRead>, String> {
     og_io::open(path).map_err(|e| format!("{path}: {e}"))
 }
 
-/// Each line of `path` without its line end, to `f`.
-fn lines(path: &str, mut f: impl FnMut(&[u8]) -> Result<(), String>) -> Result<(), String> {
+/// Strict UTF-8 and universal newlines, with a 16 MiB record limit. This
+/// local reader can use og-io's bounded reader once that API is available.
+pub(crate) fn lines(
+    path: &str,
+    mut f: impl FnMut(&[u8]) -> Result<(), String>,
+) -> Result<(), String> {
+    const MAX_LINE: usize = 16 << 20;
     let mut r = open(path)?;
-    let mut buf = Vec::new();
+    let mut line = Vec::new();
+    let mut after_cr = false;
     loop {
-        buf.clear();
-        let n = r
-            .read_until(b'\n', &mut buf)
-            .map_err(|e| format!("{path}: {e}"))?;
-        if n == 0 {
+        let chunk = r.fill_buf().map_err(|e| format!("{path}: {e}"))?;
+        if chunk.is_empty() {
+            if !line.is_empty() {
+                std::str::from_utf8(&line).map_err(|e| format!("{path}: invalid UTF-8: {e}"))?;
+                f(&line)?;
+            }
             return Ok(());
         }
-        let line = buf.strip_suffix(b"\n").unwrap_or(&buf);
-        f(line.strip_suffix(b"\r").unwrap_or(line))?;
+        if after_cr {
+            after_cr = false;
+            if chunk[0] == b'\n' {
+                r.consume(1);
+                continue;
+            }
+        }
+        let end = chunk.iter().position(|b| matches!(b, b'\r' | b'\n'));
+        let n = end.unwrap_or(chunk.len());
+        if line.len() + n > MAX_LINE {
+            return Err(format!("{path}: record exceeds {MAX_LINE} bytes"));
+        }
+        line.extend_from_slice(&chunk[..n]);
+        if end.is_some() {
+            after_cr = chunk[n] == b'\r';
+            r.consume(n + 1);
+            std::str::from_utf8(&line).map_err(|e| format!("{path}: invalid UTF-8: {e}"))?;
+            f(&line)?;
+            line.clear();
+        } else {
+            r.consume(n);
+        }
     }
+}
+
+/// A unique, exclusively created sibling. Dropping it on any read, write
+/// or rename error removes the temporary file and preserves the destination.
+pub(crate) struct PendingOutput {
+    path: PathBuf,
+    destination: PathBuf,
+}
+
+impl PendingOutput {
+    pub(crate) fn new(destination: &Path) -> Result<(Self, File), String> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let name = destination.file_name().ok_or("output has no file name")?;
+        loop {
+            let mut tmp = std::ffi::OsString::from(".");
+            tmp.push(name);
+            tmp.push(format!(
+                ".tmp-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let path = destination.with_file_name(tmp);
+            match File::options().write(true).create_new(true).open(&path) {
+                Ok(file) => {
+                    return Ok((
+                        Self {
+                            path,
+                            destination: destination.to_owned(),
+                        },
+                        file,
+                    ));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(format!("{}: {e}", destination.display())),
+            }
+        }
+    }
+
+    pub(crate) fn commit(self) -> Result<(), String> {
+        fs::rename(&self.path, &self.destination)
+            .map_err(|e| format!("{}: {e}", self.destination.display()))
+    }
+}
+
+impl Drop for PendingOutput {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+pub(crate) fn publish(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let (pending, mut file) = PendingOutput::new(path)?;
+    file.write_all(bytes)
+        .and_then(|()| file.flush())
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    drop(file);
+    pending.commit()
 }
 
 fn pos(field: &[u8], path: &str) -> Result<u64, String> {
@@ -108,8 +194,13 @@ fn clash_positions(
             return Ok(());
         }
         let c: Vec<&[u8]> = line.splitn(6, |&b| b == b'\t').collect();
-        if c.len() < 5 || !chroms.contains(c[0]) {
+        if !chroms.contains(c[0]) {
             return Ok(());
+        }
+        if c.len() < 5 {
+            return Err(format!(
+                "{path}: a selected record has fewer than 5 columns"
+            ));
         }
         let k = (c[0].to_vec(), pos(c[1], path)?);
         if key.as_ref() != Some(&k) {
@@ -164,8 +255,11 @@ fn clashes(raw: &str, split: &str, data: &str, out: &str) -> Result<(), String> 
         let path = table.to_string_lossy().into_owned();
         lines(&path, |line| {
             let c: Vec<&[u8]> = line.splitn(3, |&b| b == b'\t').collect();
-            if c[0] != chrom.as_slice() || c.len() < 2 {
+            if c[0] != chrom.as_slice() {
                 return Ok(());
+            }
+            if c.len() < 2 {
+                return Err(format!("{path}: a selected row has fewer than 2 columns"));
             }
             let p = pos(c[1], &path)?;
             for (k, w) in want.iter().enumerate() {
@@ -182,7 +276,7 @@ fn clashes(raw: &str, split: &str, data: &str, out: &str) -> Result<(), String> 
             on_table[k]
         );
     }
-    fs::write(out, text).map_err(|e| format!("{out}: {e}"))
+    publish(Path::new(out), text.as_bytes())
 }
 
 /// One `.fai` row: length, byte offset, bases per line, bytes per line.
@@ -254,9 +348,6 @@ fn hg002_gvcf(
             .split(|b| b.is_ascii_whitespace())
             .filter(|x| !x.is_empty())
             .collect();
-        if f.is_empty() {
-            return Ok(());
-        }
         if f.len() < 3 {
             return Err(format!("{bed}: a row has fewer than 3 columns"));
         }
@@ -275,7 +366,7 @@ fn hg002_gvcf(
         })
     };
 
-    let file = File::create(out).map_err(|e| format!("{out}: {e}"))?;
+    let (pending, file) = PendingOutput::new(Path::new(out))?;
     let mut w = BufWriter::with_capacity(1 << 20, file);
     let werr = |e: std::io::Error| format!("{out}: {e}");
     let mut covered: HashMap<Vec<u8>, Vec<(u64, u64)>> = HashMap::new();
@@ -291,10 +382,13 @@ fn hg002_gvcf(
                 return Err(format!("{truth}: a record has fewer than 5 columns"));
             }
             let p = pos(f[1], truth)?;
-            covered
-                .entry(f[0].to_vec())
-                .or_default()
-                .push((p, p + f[3].len() as u64));
+            covered.entry(f[0].to_vec()).or_default().push((
+                p,
+                p + std::str::from_utf8(f[3])
+                    .expect("strict reader")
+                    .chars()
+                    .count() as u64,
+            ));
             records += 1;
         }
         w.write_all(line)
@@ -326,6 +420,7 @@ fn hg002_gvcf(
         fasta
             .read_exact_at(&mut base, at)
             .map_err(|e| format!("{reference}: {e}"))?;
+        std::str::from_utf8(&base).map_err(|e| format!("{reference}: invalid UTF-8: {e}"))?;
         let b = base[0].to_ascii_uppercase();
         if !b"ACGT".contains(&b) {
             return Ok(());
@@ -335,7 +430,12 @@ fn hg002_gvcf(
             .and_then(|()| writeln!(w, "\t{p}\t.\t{}\t<*>\t.\t.\tEND={p}\tGT\t0/0", b as char))
             .map_err(werr)
     })?;
-    w.flush().map_err(werr)?;
+    if first {
+        return Err(format!("{sites}: missing header"));
+    }
+    let file = w.into_inner().map_err(|e| werr(e.into_error()))?;
+    drop(file);
+    pending.commit()?;
     Ok((records, blocks))
 }
 
@@ -390,7 +490,6 @@ mod tests {
         );
     }
 
-
     struct Case {
         dir: std::path::PathBuf,
         kind: &'static str,
@@ -399,12 +498,15 @@ mod tests {
     impl Case {
         fn new(kind: &'static str, label: &str) -> Self {
             let dir = std::env::temp_dir().join(format!(
-                "og-evidence-{kind}-{label}-{}-{:?}", std::process::id(), std::thread::current().id()
+                "og-evidence-{kind}-{label}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
             ));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
             let src = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../../tests/parity/inputs").join(format!("dev-evidence-{kind}"));
+                .join("../../../tests/parity/inputs")
+                .join(format!("dev-evidence-{kind}"));
             for e in fs::read_dir(src).unwrap() {
                 let e = e.unwrap();
                 fs::copy(e.path(), dir.join(e.file_name())).unwrap();
@@ -414,12 +516,16 @@ mod tests {
         fn text(&self, name: &str) -> Vec<u8> {
             use std::io::Read;
             let mut bytes = Vec::new();
-            open(self.dir.join(name).to_str().unwrap()).unwrap().read_to_end(&mut bytes).unwrap();
+            open(self.dir.join(name).to_str().unwrap())
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
             bytes
         }
         fn put(&self, name: &str, bytes: &[u8]) {
             if name.ends_with(".gz") {
-                let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                let mut gz =
+                    flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
                 gz.write_all(bytes).unwrap();
                 fs::write(self.dir.join(name), gz.finish().unwrap()).unwrap();
             } else {
@@ -429,31 +535,60 @@ mod tests {
         fn run(&self) -> Result<(), String> {
             let p = |n: &str| self.dir.join(n).to_str().unwrap().to_owned();
             if self.kind == "clashes" {
-                clashes(&p("raw.vcf.gz"), &p("split.vcf.gz"), self.dir.to_str().unwrap(), &p("out"))
+                clashes(
+                    &p("raw.vcf.gz"),
+                    &p("split.vcf.gz"),
+                    self.dir.to_str().unwrap(),
+                    &p("out"),
+                )
             } else {
-                hg002_gvcf(&p("truth.vcf.gz"), &p("truth.bed"), &p("ref.fasta"), &p("sites.tsv"), &p("out")).map(|_| ())
+                hg002_gvcf(
+                    &p("truth.vcf.gz"),
+                    &p("truth.bed"),
+                    &p("ref.fasta"),
+                    &p("sites.tsv"),
+                    &p("out"),
+                )
+                .map(|_| ())
             }
         }
         fn fails_without_publication(&self) {
             fs::write(self.dir.join("out"), b"PREVIOUS OUTPUT\n").unwrap();
             assert!(self.run().is_err(), "{} must fail", self.dir.display());
-            assert_eq!(fs::read(self.dir.join("out")).unwrap(), b"PREVIOUS OUTPUT\n");
-            let leftovers: Vec<_> = fs::read_dir(&self.dir).unwrap().filter_map(|e| {
-                let name = e.unwrap().file_name();
-                name.to_str().filter(|n| n.starts_with(".out.")).map(str::to_owned)
-            }).collect();
+            assert_eq!(
+                fs::read(self.dir.join("out")).unwrap(),
+                b"PREVIOUS OUTPUT\n"
+            );
+            let leftovers: Vec<_> = fs::read_dir(&self.dir)
+                .unwrap()
+                .filter_map(|e| {
+                    let name = e.unwrap().file_name();
+                    name.to_str()
+                        .filter(|n| n.starts_with(".out."))
+                        .map(str::to_owned)
+                })
+                .collect();
             assert!(leftovers.is_empty(), "{leftovers:?}");
         }
     }
     impl Drop for Case {
-        fn drop(&mut self) { fs::remove_dir_all(&self.dir).unwrap(); }
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.dir).unwrap();
+        }
     }
 
     #[test]
     fn selected_truncated_clash_records_fail() {
         for name in ["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz"] {
             let c = Case::new("clashes", name);
-            c.put(name, if name == "chrA.tsv.gz" { b"chrA" } else { b"chrA\t3\n" });
+            c.put(
+                name,
+                if name == "chrA.tsv.gz" {
+                    b"chrA"
+                } else {
+                    b"chrA\t3\n"
+                },
+            );
             c.fails_without_publication();
         }
     }
@@ -462,7 +597,11 @@ mod tests {
     fn missing_panel_header_and_blank_bed_fail() {
         for name in ["sites.tsv", "truth.bed"] {
             let c = Case::new("hg002-gvcf", name);
-            let bytes = if name == "sites.tsv" { vec![] } else { [c.text(name), b"\n".to_vec()].concat() };
+            let bytes = if name == "sites.tsv" {
+                vec![]
+            } else {
+                [c.text(name), b"\n".to_vec()].concat()
+            };
             c.put(name, &bytes);
             c.fails_without_publication();
         }
@@ -472,7 +611,10 @@ mod tests {
     fn every_evidence_text_input_rejects_invalid_utf8() {
         for (kind, names) in [
             ("clashes", vec!["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz"]),
-            ("hg002-gvcf", vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"]),
+            (
+                "hg002-gvcf",
+                vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"],
+            ),
         ] {
             for name in names {
                 let c = Case::new(kind, name);
@@ -488,18 +630,32 @@ mod tests {
     #[test]
     fn every_evidence_text_input_has_universal_newlines() {
         for (kind, names) in [
-            ("clashes", vec!["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz", "chrB.tsv.gz"]),
-            ("hg002-gvcf", vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"]),
+            (
+                "clashes",
+                vec!["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz", "chrB.tsv.gz"],
+            ),
+            (
+                "hg002-gvcf",
+                vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"],
+            ),
         ] {
             for name in names {
                 for ending in [b"\r".as_slice(), b"\r\n".as_slice()] {
                     let c = Case::new(kind, &format!("{name}-{}", ending.len()));
                     c.run().unwrap();
                     let expected = fs::read(c.dir.join("out")).unwrap();
-                    let bytes = c.text(name).split(|b| *b == b'\n').collect::<Vec<_>>().join(ending);
+                    let bytes = c
+                        .text(name)
+                        .split(|b| *b == b'\n')
+                        .collect::<Vec<_>>()
+                        .join(ending);
                     c.put(name, &bytes);
                     c.run().unwrap();
-                    assert_eq!(fs::read(c.dir.join("out")).unwrap(), expected, "{kind}/{name}/{ending:?}");
+                    assert_eq!(
+                        fs::read(c.dir.join("out")).unwrap(),
+                        expected,
+                        "{kind}/{name}/{ending:?}"
+                    );
                 }
             }
         }
@@ -513,9 +669,20 @@ mod tests {
                 let path = c.dir.join(name);
                 match fault {
                     "missing" => fs::remove_file(path).unwrap(),
-                    "directory" => { fs::remove_file(&path).unwrap(); fs::create_dir(path).unwrap(); }
-                    "malformed" => { let mut bytes = c.text(name); bytes.extend_from_slice(b"bad\n"); c.put(name, &bytes); }
-                    _ if name.ends_with(".gz") => { let mut bytes = fs::read(&path).unwrap(); bytes.truncate(bytes.len()-5); fs::write(path, bytes).unwrap(); }
+                    "directory" => {
+                        fs::remove_file(&path).unwrap();
+                        fs::create_dir(path).unwrap();
+                    }
+                    "malformed" => {
+                        let mut bytes = c.text(name);
+                        bytes.extend_from_slice(b"bad\n");
+                        c.put(name, &bytes);
+                    }
+                    _ if name.ends_with(".gz") => {
+                        let mut bytes = fs::read(&path).unwrap();
+                        bytes.truncate(bytes.len() - 5);
+                        fs::write(path, bytes).unwrap();
+                    }
                     _ => c.put(name, b"header\nbad\n"),
                 }
                 c.fails_without_publication();

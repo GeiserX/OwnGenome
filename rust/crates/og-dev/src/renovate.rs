@@ -38,7 +38,7 @@ use pycompat::value::{py_repr, py_str, truthy};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::Path;
 
 const USAGE: &str = "usage: og dev renovate-check LOG [--pins FILE] [--repo DIR]\n";
@@ -66,7 +66,12 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     cli_with_summary(args, out, err, summary.as_deref().map(Path::new))
 }
 
-fn cli_with_summary(args: &[String], out: &mut dyn Write, err: &mut dyn Write, summary_path: Option<&Path>) -> u8 {
+fn cli_with_summary(
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    summary_path: Option<&Path>,
+) -> u8 {
     let (mut log, mut pins, mut repo) = (None, PINS.to_owned(), ".".to_owned());
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -131,13 +136,23 @@ fn cli_with_summary(args: &[String], out: &mut dyn Write, err: &mut dyn Write, s
     let table = summary(&deps);
     let _ = writeln!(out, "{table}");
     if let Some(path) = summary_path {
-        let appended = fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&path)
-            .and_then(|mut f| write!(f, "## Renovate dry run\n\n{table}\n"));
+        let appended = (|| -> Result<(), String> {
+            let (pending, mut file) = crate::evidence::PendingOutput::new(path)?;
+            match fs::File::open(path) {
+                Ok(mut old) => {
+                    std::io::copy(&mut old, &mut file).map_err(|e| e.to_string())?;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
+            writeln!(file, "## Renovate dry run\n\n{table}").map_err(|e| e.to_string())?;
+            file.flush().map_err(|e| e.to_string())?;
+            drop(file);
+            pending.commit()
+        })();
         if let Err(e) = appended {
             let _ = writeln!(err, "og dev renovate-check: GITHUB_STEP_SUMMARY: {e}");
+            return 1;
         }
     }
     let mut fails = check(&deps, &env_text, &pins);
@@ -246,25 +261,23 @@ fn read_pins(repo: &Path, path: &Path) -> Result<Pins, String> {
 
 /// Every dependency of the log's last `packageFiles with updates` record.
 fn load(log: &str) -> Result<Vec<Dep>, String> {
-    let f = fs::File::open(log).map_err(|e| format!("FAIL: cannot read {log}: {e}"))?;
     let mut files = None;
-    let mut r = BufReader::new(f);
-    let mut buf = Vec::new();
-    loop {
-        buf.clear();
-        if r.read_until(b'\n', &mut buf)
-            .map_err(|e| format!("FAIL: cannot read {log}: {e}"))?
-            == 0
-        {
-            break;
-        }
-        let Ok(Value::Object(mut rec)) = json::loads(&String::from_utf8_lossy(&buf)) else {
-            continue;
+    crate::evidence::lines(log, |line| {
+        // The old load() skipped only JSON parse errors, not parsed scalars.
+        let Ok(value) = json::loads(std::str::from_utf8(line).expect("strict reader")) else {
+            return Ok(());
+        };
+        let Value::Object(mut rec) = value else {
+            return Err(format!("FAIL: {log}: a log record is not an object"));
         };
         if rec.get("msg") == Some(&Value::Str("packageFiles with updates".to_owned())) {
-            files = Some(rec.swap_remove("config").unwrap_or(Value::Null));
+            files = Some(
+                rec.swap_remove("config")
+                    .ok_or_else(|| format!("FAIL: {log}: missing config"))?,
+            );
         }
-    }
+        Ok(())
+    })?;
     let Some(files) = files else {
         return Err(format!(
             "FAIL: no 'packageFiles with updates' record in {log}"
@@ -287,18 +300,58 @@ fn load(log: &str) -> Result<Vec<Dep>, String> {
             let Value::Object(mut pf) = pf else {
                 return Err(shape());
             };
-            let name = pf
-                .get("packageFile")
-                .map(py_str)
-                .ok_or_else(shape)?
-                .map_err(|_| shape())?;
-            if let Some(Value::Array(ds)) = pf.swap_remove("deps") {
-                for d in ds {
-                    let Value::Object(d) = d else {
+            let Some(Value::Str(name)) = pf.swap_remove("packageFile") else {
+                return Err(shape());
+            };
+            let ds = match pf.swap_remove("deps") {
+                None => Vec::new(),
+                Some(Value::Array(ds)) => ds,
+                _ => return Err(shape()),
+            };
+            for d in ds {
+                let Value::Object(d) = d else {
+                    return Err(shape());
+                };
+                // Optional means absent. Null or a scalar is not an empty list.
+                if let Some(u) = d.get("updates") {
+                    let Value::Array(us) = u else {
                         return Err(shape());
                     };
-                    deps.push((name.clone(), d));
+                    for u in us {
+                        let Value::Object(u) = u else {
+                            return Err(shape());
+                        };
+                        for k in ["newValue", "newDigest", "updateType"] {
+                            if u.get(k)
+                                .is_some_and(|v| !matches!(v, Value::Null | Value::Str(_)))
+                            {
+                                return Err(shape());
+                            }
+                        }
+                    }
                 }
+                for k in [
+                    "datasource",
+                    "depName",
+                    "currentValue",
+                    "currentDigest",
+                    "skipReason",
+                ] {
+                    if d.get(k)
+                        .is_some_and(|v| !matches!(v, Value::Null | Value::Str(_)))
+                    {
+                        return Err(shape());
+                    }
+                }
+                if let Some(ws) = d.get("warnings") {
+                    let Value::Array(ws) = ws else {
+                        return Err(shape());
+                    };
+                    if ws.iter().any(|v| !matches!(v, Value::Object(_))) {
+                        return Err(shape());
+                    }
+                }
+                deps.push((name.clone(), d));
             }
         }
     }
@@ -837,12 +890,14 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
     }
 
-
-
     #[test]
     fn configured_summary_write_failure_fails_the_check() {
         let d = planted("summary");
-        let args = vec![d.join("renovate.log").to_str().unwrap().to_owned(), "--repo".to_owned(), d.to_str().unwrap().to_owned()];
+        let args = vec![
+            d.join("renovate.log").to_str().unwrap().to_owned(),
+            "--repo".to_owned(),
+            d.to_str().unwrap().to_owned(),
+        ];
         let (mut out, mut err) = (Vec::new(), Vec::new());
         assert_eq!(cli_with_summary(&args, &mut out, &mut err, Some(&d)), 1);
         assert!(!String::from_utf8_lossy(&out).contains("every check passed"));
@@ -853,8 +908,14 @@ mod tests {
     fn malformed_log_shapes_and_text_fail() {
         for (label, bad) in [
             ("null-deps", r#"{"packageFile":"unused","deps":null}"#),
-            ("null-updates", r#"{"packageFile":"unused","deps":[{"updates":null}]}"#),
-            ("scalar-update", r#"{"packageFile":"unused","deps":[{"updates":[42]}]}"#),
+            (
+                "null-updates",
+                r#"{"packageFile":"unused","deps":[{"updates":null}]}"#,
+            ),
+            (
+                "scalar-update",
+                r#"{"packageFile":"unused","deps":[{"updates":[42]}]}"#,
+            ),
             ("scalar-dep", r#"{"packageFile":"unused","deps":[42]}"#),
             ("scalar-file", r#"{"packageFile":[],"deps":[]}"#),
         ] {
@@ -866,7 +927,11 @@ mod tests {
             assert_eq!(code, 1, "{label}: {out}");
             fs::remove_dir_all(d).unwrap();
         }
-        for (label, prefix) in [("utf8", b"\xff\n".as_slice()), ("array", b"[]\n".as_slice()), ("null", b"null\n".as_slice())] {
+        for (label, prefix) in [
+            ("utf8", b"\xff\n".as_slice()),
+            ("array", b"[]\n".as_slice()),
+            ("null", b"null\n".as_slice()),
+        ] {
             let d = planted(label);
             let log = [prefix, &fs::read(d.join("renovate.log")).unwrap()].concat();
             fs::write(d.join("renovate.log"), log).unwrap();

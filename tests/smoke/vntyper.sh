@@ -7,6 +7,12 @@
 # the folder its config.json paths are relative to.
 set -e
 sh /smoke/vntyper_testdata.sh /out/data positive.bam negative.bam
+# Hashing stdin must also work when the destination contains a newline.
+newline_out='/out/new
+line'
+sh /smoke/vntyper_testdata.sh "$newline_out" negative.bam
+cmp /out/data/negative.bam "$newline_out/negative.bam"
+rm -rf "$newline_out"
 for s in positive negative; do
   samtools index "/out/data/${s}.bam"
   (cd /opt/vntyper && vntyper pipeline --bam "/out/data/${s}.bam" -o "/out/${s}" --sample-name "$s" \

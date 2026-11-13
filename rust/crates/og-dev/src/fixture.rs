@@ -379,7 +379,7 @@ pub mod comphet {
             ("comphet.vcf", comphet_vcf(&vs)),
         ] {
             let path = dir.join(name);
-            fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+            crate::evidence::publish(&path, text.as_bytes())?;
         }
         Ok(())
     }
@@ -395,6 +395,7 @@ fn truthy(v: &Value) -> bool {
     pycompat::value::truthy(v)
 }
 
+/// The old trimmer used `v or []`: null and every false value are empty.
 /// `v or []` as a list; a truthy value that is not a list is an error.
 fn list<'a>(v: Option<&'a Value>, what: &str) -> Result<&'a [Value], String> {
     match v {
@@ -421,6 +422,7 @@ fn pick(x: &IndexMap<String, Value>, keys: &[&str]) -> IndexMap<String, Value> {
 /// One listed diplotype with the fields `og pgx` reads.
 fn diplotype(x: &Value) -> Result<Value, String> {
     let Value::Object(x) = x else {
+        // The Python dip() explicitly passes non-object listed diplotypes through.
         return Ok(x.clone());
     };
     let mut out = pick(
@@ -457,11 +459,17 @@ fn head(items: &[Value], n: i64) -> &[Value] {
 /// The trimmed report: every gene with its listed diplotypes and related
 /// drugs, and for each drug of each guidance source up to `max` of the
 /// annotations PharmCAT matched, with only the fields `og pgx` reads.
-pub fn trim(d: &Value, max: i64) -> Result<Value, String> {
-    let d = object(d, "the report")?;
+pub fn trim(d: Value, max: i64) -> Result<Value, String> {
+    let Value::Object(mut d) = d else {
+        return Err("the report is not an object".to_owned());
+    };
     let mut genes = IndexMap::new();
-    for (g, v) in object(d.get("genes").unwrap_or(&Value::Null), "genes")? {
-        let v = object(v, &format!("gene {g}"))?;
+    let Some(Value::Object(input_genes)) = d.swap_remove("genes") else {
+        return Err("genes is not an object".to_owned());
+    };
+    // Consume one source gene at a time: do not retain a second full report.
+    for (g, v) in input_genes {
+        let v = object(&v, &format!("gene {g}"))?;
         let mut gene = pick(v, &["geneSymbol", "chr", "phased", "callSource"]);
         let mut related = Vec::new();
         for r in list(v.get("relatedDrugs"), "relatedDrugs")? {
@@ -487,11 +495,14 @@ pub fn trim(d: &Value, max: i64) -> Result<Value, String> {
                 .collect::<Result<_, _>>()?;
             gene.insert(k.to_owned(), Value::Array(dips));
         }
-        genes.insert(g.clone(), Value::Object(gene));
+        genes.insert(g, Value::Object(gene));
     }
     let mut drugs: IndexMap<String, Value> = IndexMap::new();
-    for (source, by) in object(d.get("drugs").unwrap_or(&Value::Null), "drugs")? {
-        for (name, rep) in object(by, &format!("drugs of {source}"))? {
+    let Some(Value::Object(input_drugs)) = d.swap_remove("drugs") else {
+        return Err("drugs is not an object".to_owned());
+    };
+    for (source, by) in input_drugs {
+        for (name, rep) in object(&by, &format!("drugs of {source}"))? {
             let rep = object(rep, &format!("drug {name}"))?;
             let mut gls = Vec::new();
             for gl in list(rep.get("guidelines"), "guidelines")? {
@@ -509,6 +520,7 @@ pub fn trim(d: &Value, max: i64) -> Result<Value, String> {
                                     ("gene".to_owned(), get(x, "gene")),
                                     ("label".to_owned(), get(x, "label")),
                                 ]))),
+                                // The Python comprehension has `if isinstance(x, dict)`.
                                 _ => None,
                             })
                             .collect();
@@ -552,7 +564,10 @@ pub fn trim(d: &Value, max: i64) -> Result<Value, String> {
             }
         }
     }
-    let mut out = pick(d, &["title", "timestamp", "pharmcatVersion", "dataVersion"]);
+    let mut out = pick(
+        &d,
+        &["title", "timestamp", "pharmcatVersion", "dataVersion"],
+    );
     out.insert("genes".to_owned(), Value::Object(genes));
     out.insert("drugs".to_owned(), Value::Object(drugs));
     let mut note = String::new();
@@ -568,13 +583,14 @@ fn trim_pharmcat(src: &Path, dst: &Path, max: i64) -> Result<(), String> {
     let text = fs::read(src).map_err(|e| py_os_error(&e, &src.to_string_lossy()))?;
     let text = String::from_utf8(text).map_err(|_| format!("{}: not UTF-8", src.display()))?;
     let d = json::loads(&text).map_err(|e| format!("{}: {e}", src.display()))?;
-    let out = trim(&d, max)?;
+    drop(text);
+    let out = trim(d, max)?;
     let opts = Dump {
         separators: Some((",", ":")),
         ..Dump::default()
     };
     let text = json::dumps(&out, &opts).map_err(|e| e.to_string())?;
-    fs::write(dst, text).map_err(|e| py_os_error(&e, &dst.to_string_lossy()))
+    crate::evidence::publish(dst, text.as_bytes())
 }
 
 #[cfg(test)]
@@ -629,7 +645,7 @@ mod tests {
             "drugs":{"CPIC":{"d":{"name":"d","guidelines":[{"name":"g","annotations":[{"genotypes":[{"diplotypes":[{"gene":"G"},5]}]},{},{}]},{"annotations":[]}]}}}}"#,
         )
         .expect("json");
-        let out = trim(&d, 2).expect("trim");
+        let out = trim(d.clone(), 2).expect("trim");
         let text = json::dumps(
             &out,
             &Dump {
@@ -642,7 +658,7 @@ mod tests {
         assert!(text.contains(r#""annotations":[{"phenotypes":null,"classification":null,"drugRecommendation":null,"genotypes":[{"diplotypes":[{"gene":"G","label":null}]}]},{"phenotypes":null"#), "{text}");
         assert_eq!(text.matches("drugRecommendation").count(), 2, "{text}");
         // A negative count is Python's slice: all but the last.
-        let out = trim(&d, -2).expect("trim");
+        let out = trim(d, -2).expect("trim");
         let text = json::dumps(&out, &Dump::default()).expect("dumps");
         assert_eq!(text.matches("drugRecommendation").count(), 1, "{text}");
     }

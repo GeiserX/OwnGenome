@@ -58,7 +58,7 @@ EOF
   # then the raw deflate stream; then CRC-32 and size, both little-endian.
   { printf '\037\213\010\000\000\000\000\000\000\377'; cat "${part}.raw"; le32 "$((0x$crc))"; le32 "$size"; } > "${part}.gz"
   gzip -dc "${part}.gz" > "$part" || { echo "${path}: size or CRC-32 differs from the archive's directory" >&2; exit 1; }
-  got=$(sha256sum "$part" | cut -d' ' -f1)
+  got=$(sha256sum < "$part" | cut -d' ' -f1)
   [ "$got" = "$want" ] || { echo "${path}: sha256 ${got}, pinned ${want}" >&2; exit 1; }
   rm -f "${part}.raw" "${part}.gz"
   mv "$part" "${out}/${name}"
