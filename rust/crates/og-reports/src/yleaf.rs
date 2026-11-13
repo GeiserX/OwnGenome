@@ -63,6 +63,7 @@ fn positions(data: &str, out: &str) -> Outcome {
         // Python checked len(cols) > 3, then the digits and the set.
         if let Some(p) = cols.nth(3)
             && crate::digits(p)
+            && !seen.contains(p)
         {
             let _ = writeln!(body, "chrY\t{p}");
             seen.insert(p.to_owned());
