@@ -74,6 +74,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og exomiser report [args]
        og lookup query|resolve|report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
+       og dev helpers [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash
