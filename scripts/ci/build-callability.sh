@@ -8,9 +8,8 @@
 #        scripts/ci/build-callability.sh --list    the downloads, one "NAME URL SHA256" per line
 #
 # Downloads seven pinned files (about 85 MB, each checked against its
-# sha256) into a temporary folder, or reads them from CALLABILITY_CACHE when
-# that folder holds them with the right sha256, writes OUT and deletes the
-# downloads:
+# sha256) into CALLABILITY_CACHE, where a file with the right sha256 is read
+# as it is, or else into a temporary folder that is deleted, and writes OUT:
 #
 #   GIAB CMRG v1.00's GRCh38 gene coordinates (Wagner 2022, PMID 35132260):
 #     the 273 challenging medically relevant genes
@@ -53,7 +52,9 @@
 # NEB, PIK3CA, PLG, VWF). Step 35's own report section reads all of them.
 # tests/test_paralog_loci.py holds that list and goes red when it changes.
 #
-# Needs curl, python3 and sha256sum or shasum. The e2e case
+# The rules are in og dev build callability
+# (rust/crates/og-dev/src/build/callability.rs). Needs curl, og
+# (scripts/setup.sh --og) and sha256sum or shasum. The e2e case
 # tests/e2e/callability-1-catalog.sh runs it and fails on any difference with
 # the committed file.
 set -euo pipefail
@@ -81,208 +82,17 @@ if [ "${1:-}" = --list ]; then
   exit 0
 fi
 
-sha256() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
-}
-
-WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
-
-# get NAME URL SHA256: WORK/NAME from CALLABILITY_CACHE when it matches, else
-# downloaded; stop unless it matches.
-get() {
-  local cached="${CALLABILITY_CACHE:-}/$1" got
-  if [ -n "${CALLABILITY_CACHE:-}" ] && [ -f "$cached" ] && [ "$(sha256 "$cached")" = "$3" ]; then
-    cp "$cached" "${WORK}/$1"
-    return
-  fi
-  echo "Downloading $2" >&2
-  # Tries spread over about five minutes: EBI's FTP server refused every
-  # connection for minutes at a time (curl exit 7, 2026-11-06).
-  curl -fsSL --retry 6 --retry-all-errors --retry-delay 30 --retry-max-time 300 -o "${WORK}/$1" "$2"
-  got=$(sha256 "${WORK}/$1")
-  if [ "$got" != "$3" ]; then
-    echo "ERROR: $1 has sha256 ${got}, want $3" >&2
-    exit 1
-  fi
-  if [ -n "${CALLABILITY_CACHE:-}" ]; then
-    mkdir -p "$CALLABILITY_CACHE" && cp "${WORK}/$1" "$cached"
-  fi
-}
+# shellcheck source=scripts/ci/lib/fetch-pinned.sh
+. "${REPO}/scripts/ci/lib/fetch-pinned.sh"
+DIR=${CALLABILITY_CACHE:-}
+if [ -z "$DIR" ]; then
+  DIR=$(mktemp -d)
+  trap 'rm -rf "$DIR"' EXIT
+fi
 for f in "${FILES[@]}"; do
   IFS='|' read -r name url sum <<<"$f"
-  get "$name" "$url" "$sum"
+  fetch_pinned "$DIR" "$name" "$url" "$sum" || exit 1
 done
 
-python3 - "$WORK" "$REPO" "${OUT}.part" <<'PY'
-import csv
-import gzip
-import re
-import sys
-from collections import defaultdict
-
-work, repo, out = sys.argv[1:4]
-CHROMS = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
-ORDER = {c: i for i, c in enumerate(CHROMS)}
-PRIMARY = set(CHROMS) | {"chrM"}
-ATT = re.compile(r'(\S+) "([^"]*)"')
-SEGDUP_SHARE = 0.5
-REASONS = ("CMRG", "segdup", "false_duplication", "collapsed", "ALT-only")
-
-
-def bed(name):
-    d = defaultdict(list)
-    with (gzip.open if name.endswith(".gz") else open)(f"{work}/{name}", "rt") as f:
-        for line in f:
-            c = line.rstrip("\n").split("\t")
-            if len(c) >= 3 and not line.startswith(("#", "track", "browser")):
-                d[c[0]].append((int(c[1]), int(c[2])))
-    for k in d:
-        d[k].sort()
-    return d
-
-
-def covered(chrom, s, e, d):
-    """Bases of [s, e) inside the intervals of d (merged as it goes)."""
-    n, cur = 0, s
-    for a, b in d.get(chrom, []):
-        if b <= cur:
-            continue
-        if a >= e:
-            break
-        a, b = max(a, cur), min(b, e)
-        if b > a:
-            n += b - a
-            cur = b
-    return n
-
-
-# ALT scaffolds: GenBank accession -> UCSC name (GENCODE names them by accession)
-alt = {}
-with open(f"{work}/report.txt") as f:
-    for line in f:
-        c = line.rstrip("\n").split("\t")
-        if not line.startswith("#") and len(c) >= 10 and c[1] == "alt-scaffold":
-            alt[c[4]] = c[9]
-
-genes = {}                       # hgnc id -> [symbol, chrom, start0, end] (any gene type)
-coding = set()                   # hgnc ids of the protein-coding ones
-on_primary = set()               # every gene symbol on chr1-22, X, Y or M
-alt_genes = {}                   # hgnc id -> [symbol, UCSC ALT name] (first ALT copy)
-with gzip.open(f"{work}/gencode.gtf.gz", "rt") as f:
-    for line in f:
-        if line.startswith("#"):
-            continue
-        c = line.split("\t", 9)
-        if c[2] != "gene":
-            continue
-        a = dict(ATT.findall(c[8]))
-        if c[0] in PRIMARY:
-            on_primary.add(a.get("gene_name"))
-        h = a.get("hgnc_id")
-        if not h or a["gene_id"].endswith("_PAR_Y"):
-            continue
-        if c[0] in ORDER and h not in genes:
-            genes[h] = [a["gene_name"], c[0], int(c[3]) - 1, int(c[4])]
-            if a.get("gene_type") == "protein_coding":
-                coding.add(h)
-        elif c[0] in alt and h not in alt_genes and a.get("gene_type") == "protein_coding":
-            alt_genes[h] = [a["gene_name"], alt[c[0]]]
-
-reasons = defaultdict(set)
-by_symbol = {g[0]: h for h, g in genes.items()}
-with open(f"{work}/cmrg.bed") as f:
-    for line in f:
-        chrom, s, e, sym = line.rstrip("\n").split("\t")[:4]
-        s, e = int(s), int(e)
-        h = by_symbol.get(sym)
-        if h is None:
-            # renamed since CMRG v1.00: the protein-coding gene that covers most of its span
-            best = max(((min(e, genes[k][3]) - max(s, genes[k][2]), k) for k in coding if genes[k][1] == chrom),
-                       default=(0, None))
-            if best[0] <= 0:
-                sys.exit(f"ERROR: CMRG gene {sym} ({chrom}:{s}-{e}) matches no GENCODE 50 gene")
-            h = best[1]
-        reasons[h].add("CMRG")
-
-segdups, collapsed = bed("segdups.bed.gz"), bed("collapsed.bed.gz")
-falsedup = bed("falsedup_correct.bed.gz")
-for k, v in bed("falsedup_incorrect.bed.gz").items():
-    falsedup[k] = sorted(falsedup[k] + v)
-for h in coding:
-    sym, chrom, s, e = genes[h]
-    if covered(chrom, s, e, segdups) >= SEGDUP_SHARE * (e - s):
-        reasons[h].add("segdup")
-    if covered(chrom, s, e, falsedup):
-        reasons[h].add("false_duplication")
-    if covered(chrom, s, e, collapsed):
-        reasons[h].add("collapsed")
-for h, (sym, name) in alt_genes.items():
-    if h not in genes and sym not in on_primary:
-        reasons[h].add("ALT-only")
-
-
-def table(path):
-    with open(path) as f:
-        return list(csv.DictReader((x for x in f if x.strip() and not x.startswith("#")), delimiter="\t",
-                                   quoting=csv.QUOTE_NONE))
-
-
-parascopy = {g for r in table(f"{repo}/assets/paralog_loci.tsv") for g in r["genes"].split(",")}
-# A gene step 32 skips on the default no-ALT reference (callable_without_alt no) has no
-# caller there, and step 32 refuses a BAM with ALT contigs, so it is not pypgx's.
-pypgx = {r["gene"] for r in table(f"{repo}/assets/pgx_genes.tsv")
-         if r["mode"] == "bam" and r["callable_without_alt"] != "no"}
-# A cn_loci gene row reports the genes it names (its locus, as RHD, or LPA for LPA_KIV2,
-# or a target, as HBA1 and HBA2), not every gene whose span holds one of its targets.
-cn_names = {}
-for r in table(f"{repo}/bin/cn_loci.tsv"):
-    if r["kind"] == "gene":
-        names = {r["locus"], r["locus"].split("_")[0]}
-        for part in r["targets"].split(";"):
-            names |= {part.split(":")[0], part.split(":")[0].split("_")[0]}
-        for n in names:
-            cn_names.setdefault(n, r["locus"])
-
-
-def owner(sym):
-    if sym in parascopy:
-        return "parascopy"
-    if sym in pypgx:
-        return "pypgx"
-    if sym in cn_names:
-        return f"cn_loci:{cn_names[sym]}"
-    return "."
-
-
-rows = []
-for h, why in reasons.items():
-    if h in genes:
-        sym, chrom, s, e = genes[h]
-        rows.append((ORDER[chrom], s, sym, h, chrom, s, e, why, owner(sym)))
-    else:
-        sym, name = alt_genes[h]
-        rows.append((len(ORDER), 0, sym, h, name, ".", ".", why, owner(sym)))
-rows.sort()
-syms = [r[2] for r in rows]
-dup = sorted({x for x in syms if syms.count(x) > 1})
-if dup:
-    sys.exit(f"ERROR: gene symbols listed twice: {', '.join(dup)}")
-counts = {k: sum(1 for r in rows if k in r[7]) for k in REASONS}
-owned = sum(1 for r in rows if r[8] != ".")
-with open(out, "w") as f:
-    f.write("# assets/callability_genes.tsv: the genes where short reads are often not placed with confidence, so a\n"
-            "# 'no finding' there needs a reading of its own. Step 16b measures each gene on chr1-22, X and Y; the\n"
-            "# report lists the ones it could not read. Written by scripts/ci/build-callability.sh, which says how the\n"
-            "# rows and the owners are chosen; rebuild it there, do not edit it by hand. start is 0-based and end\n"
-            "# 1-based, as in a BED file; an ALT-only gene has its ALT scaffold as chrom and '.' as start and end.\n"
-            f"# Genes: {len(rows)} (" + ", ".join(f"{k} {counts[k]}" for k in REASONS) + f"); with an owner: {owned}.\n")
-    f.write("gene\thgnc_id\tchrom\tstart\tend\treasons\towner\n")
-    for r in rows:
-        f.write("\t".join(map(str, (r[2], r[3], r[4], r[5], r[6], ",".join(k for k in REASONS if k in r[7]), r[8])))
-                + "\n")
-print(f"Genes: {len(rows)} (" + ", ".join(f"{k} {counts[k]}" for k in REASONS) + f"); with an owner: {owned}",
-      file=sys.stderr)
-PY
-mv "${OUT}.part" "$OUT"
+"${REPO}/bin/og" dev build callability --work "$DIR" --repo "$REPO" --out "$OUT"
 echo "Wrote ${OUT}" >&2
