@@ -2551,7 +2551,7 @@ def main():
             "Path_no_call\tAncestral_in_terminal\tSNPs_called\tMin_depth\tTree\tPositions\t"
             "Outvoted_ancestral\nS\tNA\t0\t0\t0\t0\t.\t12\t10\tYFull YTree 14.06.0\t"
             "Yleaf 4.1.6 tables\t.\n")
-        # bin/y_tree_place.py writes the path table's header alone when no branch is derived.
+        # og y tree-place writes the path table's header alone when no branch is derived.
         put(f"{h}/y_haplogroup/S_y_tree_path.tsv", "Level\tBranch\tSNPs\tOn_tables\tDerived\tAncestral\t"
             "No_call\tAncestral_SNPs\n")
         summ_na, txt_na, _ = render(h)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/y_private_snps.py on a synthetic VCF and synthetic position tables (no
+"""og y private-snps on a synthetic VCF and synthetic position tables (no
 real sample).
 
 Checks:
@@ -23,7 +23,10 @@ Checks:
      quality; --callable-mask points at another mask; a missing mask stops
      the tool.
 
-Run: python3 tests/test_y_private_snps.py
+Without OG (the og binary) the test is skipped with a note; with
+OG_REQUIRED set too, it fails (Guard's rust job sets both).
+
+Run: OG=bin/og python3 tests/test_y_private_snps.py
 """
 import gzip
 import os
@@ -33,7 +36,11 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TOOL = os.path.join(REPO, "bin", "y_private_snps.py")
+OG = os.environ.get("OG", "")
+if not OG:
+    print("skip: OG is not set (OG=bin/og)")
+    sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
+TOOL = [OG, "y", "private-snps"]
 
 FAILS = 0
 
@@ -47,7 +54,7 @@ def check(desc, ok, detail=""):
 
 # name -> position, as the two Yleaf GRCh38 tables place them. The columns are
 # the tables' own: chromosome, name, haplogroup, position, mutation, ancestral,
-# derived (bin/y_tree_place.py reads the same layout).
+# derived (og y tree-place reads the same layout).
 FTDNA = {"pub1": 7000100}
 YFULL = {"pub2": 7000200}
 
@@ -105,7 +112,7 @@ def write_vcf(path, records=RECORDS):
 
 
 def run(d, vcf, prefix, extra=()):
-    r = subprocess.run([sys.executable, TOOL, "--vcf", vcf, "--tree-dir", d,
+    r = subprocess.run([*TOOL, "--vcf", vcf, "--tree-dir", d,
                         "--sample", "S", "--out-prefix", os.path.join(d, prefix), *extra],
                        capture_output=True, text=True)
     out = os.path.join(d, f"{prefix}_y_private_snps.tsv")
@@ -166,14 +173,14 @@ def main():
         check("7. --callable-mask reads another mask (7000300 masked there, 7001300 callable)",
               alt == ["7000400", "7001300"], alt)
         os.remove(os.path.join(d, "callable_mask_chrY.fasta.gz"))
-        r = subprocess.run([sys.executable, TOOL, "--vcf", vcf, "--tree-dir", d, "--sample", "S",
+        r = subprocess.run([*TOOL, "--vcf", vcf, "--tree-dir", d, "--sample", "S",
                             "--out-prefix", os.path.join(d, "nomask")], capture_output=True, text=True)
         check("7. a missing mask stops the tool and names setup.sh --yleaf-data",
               r.returncode != 0 and "setup.sh --yleaf-data" in r.stderr, r.stderr)
         write_mask(os.path.join(d, "callable_mask_chrY.fasta.gz"))
 
         os.remove(os.path.join(d, "positions_yfull_hg38.txt"))
-        r = subprocess.run([sys.executable, TOOL, "--vcf", vcf, "--tree-dir", d, "--sample", "S",
+        r = subprocess.run([*TOOL, "--vcf", vcf, "--tree-dir", d, "--sample", "S",
                             "--out-prefix", os.path.join(d, "missing")], capture_output=True, text=True)
         check("6. a missing table stops the tool and names setup.sh --yleaf-data",
               r.returncode != 0 and "setup.sh --yleaf-data" in r.stderr, r.stderr)

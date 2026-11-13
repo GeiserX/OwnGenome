@@ -2,3 +2,5 @@
 # Python exception text), one per line. A listed difference passes; a listed
 # difference no longer seen fails. A deliberate fix is a golden instead.
 # tool<TAB>case<TAB>item<TAB>reason
+y-yleaf-positions	data	stdout	the line names the data folder by its absolute path, and og and the oracle run in two folders
+y-yleaf-positions	no-tree	stderr	the message names the data folder by its absolute path, and og and the oracle run in two folders

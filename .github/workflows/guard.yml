@@ -314,7 +314,7 @@ jobs:
             || { echo "ERROR: reports-stale-step did not run og dev schema"; exit 1; }
 
       # The tests of the og filters steps 04, 05 and 07 run, og chip's (step 49), og cn's (steps 35, 41 and 46), og family's (step 38), og run delta's, step 26b's og ancestry-fine,
-      # the opt-in step reports' (45, 47, 48, 50 to 53), the
+      # the opt-in step reports' (45, 47, 48, 50 to 53), step 37's Y tree tools, the
       # og tools setup.sh runs (og str catalog, og setup unzip and genetic-map), and the step 25
       # tests that compare og prs format with the folders they write by hand:
       # unit-tests has no og, so there they skip; here OG_REQUIRED turns a
@@ -334,7 +334,7 @@ jobs:
                    tests/test_family_report.py tests/test_family_segments.py \
                    tests/test_vntyper_report.py tests/test_locityper_report.py tests/test_mocha_report.py \
                    tests/test_mei_report.py tests/test_viral_report.py tests/test_ystr_report.py \
-                   tests/test_exomiser_report.py \
+                   tests/test_exomiser_report.py tests/test_y_tree_place.py tests/test_y_private_snps.py \
                    tests/test_copy_number.py tests/test_hba_copy_number.py \
                    tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_callability.py; do
             rc=0

@@ -10,20 +10,21 @@
     --yleaf_data (setup.sh --yleaf-data), and its pileup is made in the
     samtools pass that also writes the chrY BAM, so the work is three
     processes, as in scripts/37-y-haplogroup.sh (bin/yleaf_run.py says why):
-      Y_POSITIONS   Yleaf's GRCh38 marker positions (Yleaf image, once)
+      Y_POSITIONS   Yleaf's GRCh38 marker positions (og y yleaf-positions,
+                    in the Yleaf image, once)
       Y_PILEUP      samtools idxstats and the pileup at those positions, and
                     <id>_chrY.bam (+ .bai), the chrY reads only: the file
                     YFull and the Y-DNA projects read. Nothing is uploaded.
       Y_HAPLOGROUP  Yleaf on that pileup, offline; Hg NA means too few Y
                     markers had reads to call a haplogroup
     Each process also does the same for the pinned YFull YTree release in
-    <yleaf_data>/ytree (bin/y_tree_place.py): its SNP positions, a second
+    <yleaf_data>/ytree (og y tree-positions and og y tree-place): its SNP positions, a second
     pileup at them, and the placement, published as <id>_y_tree.txt and
     <id>_y_tree_path.tsv. Without that folder (an install older than this
     step's current tree) the three say so and Yleaf's result stands alone.
       Y_PRIVATE     the chrY SNVs of the sample's VCF that no public SNP
                     table names, the ones that would place this line below
-                    its branch (bin/y_private_snps.py), published as
+                    its branch (og y private-snps), published as
                     <id>_y_private_snps.tsv. It runs only with the tree
                     folder in place, because its tables are the public lists
                     the scan subtracts and its chrY callable mask is where
@@ -49,9 +50,9 @@ process Y_POSITIONS {
 
     script:
     """
-    yleaf_run.py positions --data ${yleaf_data} y_positions.txt
+    og y yleaf-positions --data ${yleaf_data} y_positions.txt
     if [ -s ${yleaf_data}/ytree/version.txt ]; then
-        y_tree_place.py positions --tree-dir ${yleaf_data}/ytree y_tree_positions.txt
+        og y tree-positions --tree-dir ${yleaf_data}/ytree y_tree_positions.txt
     else
         echo "Current tree: not installed (${yleaf_data}/ytree); run scripts/setup.sh --yleaf-data to add it"
         touch y_tree_positions.txt
@@ -98,7 +99,7 @@ process Y_PILEUP {
     script:
     // -ABQ20q1: the flags Yleaf 4 gives samtools mpileup at its default quality 20
     // (bin/yleaf_run.py stops if Yleaf asks for others). The current tree's
-    // pileup keeps -AQ20q1, the flags bin/y_tree_place.py was checked with.
+    // pileup keeps -AQ20q1, the flags og y tree-place was checked with.
     """
     samtools idxstats ${bam} > ${meta.id}_idxstats.txt
     samtools mpileup -l ${positions} -ABQ20q1 ${bam} > ${meta.id}_y_pileup.txt
@@ -152,7 +153,7 @@ process Y_HAPLOGROUP {
         --idxstats ${idxstats} --pileup ${pileup} --out yleaf
     cp yleaf/hg_prediction.hg ${meta.id}_y_haplogroup.txt
     if [ -s ${yleaf_data}/ytree/version.txt ]; then
-        y_tree_place.py place --tree-dir ${yleaf_data}/ytree --pileup ${tree_pileup} \\
+        og y tree-place --tree-dir ${yleaf_data}/ytree --pileup ${tree_pileup} \\
             --sample ${meta.id} --out-prefix ${meta.id}
     else
         echo "Current tree: not installed (${yleaf_data}/ytree); run scripts/setup.sh --yleaf-data to add it"
@@ -198,7 +199,7 @@ process Y_PRIVATE {
     if [ -s ${yleaf_data}/ytree/version.txt ] && [ ! -s ${yleaf_data}/ytree/callable_mask_chrY.fasta.gz ]; then
         echo "Private SNPs: skipped (${yleaf_data}/ytree has no chrY callable mask; run scripts/setup.sh --yleaf-data again)"
     elif [ -s ${yleaf_data}/ytree/version.txt ]; then
-        y_private_snps.py --vcf ${vcf} --tree-dir ${yleaf_data}/ytree \\
+        og y private-snps --vcf ${vcf} --tree-dir ${yleaf_data}/ytree \\
             --sample ${meta.id} --out-prefix ${meta.id}
     else
         echo "Private SNPs: skipped (${yleaf_data}/ytree is not installed; run scripts/setup.sh --yleaf-data)"

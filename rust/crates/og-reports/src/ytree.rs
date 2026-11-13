@@ -120,7 +120,8 @@ struct Snp {
 enum Call {
     Derived,
     Ancestral,
-    NoCall,
+    /// A no-call (N).
+    None,
 }
 
 /// One branch of the tree.
@@ -568,11 +569,11 @@ fn read_pileup(path: &str) -> Result<Pileup, Error> {
 
 fn call(snp: Snp, pileup: &Pileup, min_depth: i128) -> Call {
     let Some(c) = pileup.counts.get(&snp.pos) else {
-        return Call::NoCall;
+        return Call::None;
     };
     let depth: u64 = c.iter().map(|&x| u64::from(x)).sum();
     if i128::from(depth) < min_depth {
-        return Call::NoCall;
+        return Call::None;
     }
     // As the Python compares: the count against 0.9 times the depth, in floats.
     let limit = MAJORITY * depth as f64;
@@ -581,7 +582,7 @@ fn call(snp: Snp, pileup: &Pileup, min_depth: i128) -> Call {
     } else if f64::from(c[snp.anc as usize]) >= limit {
         Call::Ancestral
     } else {
-        Call::NoCall
+        Call::None
     }
 }
 
@@ -660,7 +661,7 @@ fn node_stats(l: &Loaded, node: &Node, pileup: &Pileup, min_depth: i128) -> Stat
                 s.der_sites = s.der_sites.add(snp.pos);
             }
             Call::Ancestral => s.a += 1,
-            Call::NoCall => s.n += 1,
+            Call::None => s.n += 1,
         }
     }
     s
@@ -822,8 +823,13 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
     if pileup.other_contigs > 0 {
         let _ = write!(
             line,
-            " [{} pileup lines on other contigs than chrY ignored]",
-            pileup.other_contigs
+            " [{} pileup {} on another contig than chrY, ignored]",
+            pileup.other_contigs,
+            if pileup.other_contigs == 1 {
+                "line"
+            } else {
+                "lines"
+            }
         );
     }
     line.push('\n');
@@ -1043,7 +1049,7 @@ mod tests {
         let line = place(&dir, &p, "S", &d.path("o"), 10).unwrap();
         assert_eq!(hg(&d), "A", "the chr1 line does not overwrite the chrY one");
         assert!(
-            line.ends_with("[1 pileup lines on other contigs than chrY ignored]\n"),
+            line.ends_with("[1 pileup line on another contig than chrY, ignored]\n"),
             "{line}"
         );
         let p = d.put(

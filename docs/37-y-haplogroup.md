@@ -12,7 +12,7 @@ The mitochondrial haplogroup (step 12) traces the maternal line only. The Y chro
 
 - **Yleaf** 4.1.6 (Ralf et al., Mol Biol Evol 2018; GPL-3.0), Erasmus MC. It reads the BAM's pileup at its Y markers and predicts the haplogroup they support on its default tree, YFull v14.01 (about 183,000 marker positions on GRCh38).
 
-- **The current YFull YTree** (release 14.06.0 of 22 September 2026, CC BY 4.0, [github.com/YFullTeam/YTree](https://github.com/YFullTeam/YTree)), walked by `bin/y_tree_place.py`. It is newer than Yleaf's v14.01, and the second position table below places SNPs Yleaf's own table does not have, so the branch it reports can sit below the one Yleaf reports. It also writes the path from the root with the calls of every level. The SNPs on YFull's tree have names only; their GRCh38 positions and bases come from two tables of Yleaf 4.1.6 (GPL-3.0): `ftdna_positions_hg38.txt` (made for FamilyTreeDNA's tree, the widest of its tables) first, then `new_positions.txt` (the one Yleaf 4 uses for its YFull v14 tree). SNP names are shared between the trees, so a name is looked up as it stands. Together they place 85% of the tree's 459,468 SNPs (76% from the first table alone), counted on 2026-10-25.
+- **The current YFull YTree** (release 14.06.0 of 22 September 2026, CC BY 4.0, [github.com/YFullTeam/YTree](https://github.com/YFullTeam/YTree)), walked by `og y tree-place` (`rust/crates/og-reports/src/ytree.rs`). It is newer than Yleaf's v14.01, and the second position table below places SNPs Yleaf's own table does not have, so the branch it reports can sit below the one Yleaf reports. It also writes the path from the root with the calls of every level. The SNPs on YFull's tree have names only; their GRCh38 positions and bases come from two tables of Yleaf 4.1.6 (GPL-3.0): `ftdna_positions_hg38.txt` (made for FamilyTreeDNA's tree, the widest of its tables) first, then `new_positions.txt` (the one Yleaf 4 uses for its YFull v14 tree). SNP names are shared between the trees, so a name is looked up as it stands. Together they place 85% of the tree's 459,468 SNPs (76% from the first table alone), counted on 2026-10-25.
 
 The step reports both results, each with the tree it comes from. Both reports (step 24, text and HTML) show them as two sections side by side: "Y-Chromosome Haplogroup (Yleaf)" with Yleaf's call, and "Y Placement on the Current Public Tree" with this one, its level, the derived, ancestral and no-call counts along the path, any ancestral SNP inside the terminal branch or outvoted above it, and one row per level of the path.
 
@@ -20,7 +20,7 @@ The step reports both results, each with the tree it comes from. Both reports (s
 
 - `YLEAF_IMAGE`, and `SAMTOOLS_IMAGE` for the pileup
 
-The step runs in three parts (`bin/yleaf_run.py`): Yleaf's marker positions from its image, `samtools idxstats` and `samtools mpileup -l <positions> -ABQ20q1` (Yleaf 4's own flags at its default quality 20) in `SAMTOOLS_IMAGE`, in the same run as the chrY BAM (step 37 makes the current tree's pileup in a second run; Nextflow's `Y_PILEUP` task makes all three in one task), then Yleaf on that pileup. If a later Yleaf asks samtools for other flags, the launcher stops instead of handing it a pileup made another way.
+The step runs in three parts (`bin/yleaf_run.py` says why): Yleaf's marker positions, written by `og y yleaf-positions` in its image, `samtools idxstats` and `samtools mpileup -l <positions> -ABQ20q1` (Yleaf 4's own flags at its default quality 20) in `SAMTOOLS_IMAGE`, in the same run as the chrY BAM (step 37 makes the current tree's pileup in a second run; Nextflow's `Y_PILEUP` task makes all three in one task), then Yleaf on that pileup. If a later Yleaf asks samtools for other flags, the launcher stops instead of handing it a pileup made another way.
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
@@ -87,7 +87,7 @@ The two volunteer projects older guides name:
 
 Names differ between trees. Yleaf names branches the YFull way; FamilyTreeDNA keeps its own tree. If Discover shows no page for your branch, type the branch name, or the SNP after the dash, into Discover's search: it offers the nearest branch it has (a search for YFull's `A0-T` returns FamilyTreeDNA's `A-L1098`).
 
-**Private SNPs**, the Y mutations you carry that are on no public tree, are what would place you below your branch, next to the men closest to you. The step lists them in `y_haplogroup/${SAMPLE}_y_private_snps.tsv` (`bin/y_private_snps.py`), from your own chrY calls minus every position the two public SNP tables name. YFull's analysis reports the same kind of thing as novel SNPs; the file is a starting point for a comparison with other men, not a result in itself.
+**Private SNPs**, the Y mutations you carry that are on no public tree, are what would place you below your branch, next to the men closest to you. The step lists them in `y_haplogroup/${SAMPLE}_y_private_snps.tsv` (`og y private-snps`), from your own chrY calls minus every position the two public SNP tables name. YFull's analysis reports the same kind of thing as novel SNPs; the file is a starting point for a comparison with other men, not a result in itself.
 
 How that list is built, and what each gate removes:
 
