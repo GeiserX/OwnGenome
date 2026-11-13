@@ -1638,13 +1638,15 @@ def overview(summary):
     order["trust"] = -1  # a problem with the data comes before any finding read from it
     # A finding that names a result to act on (veil: a symptom ranking of its gene) is not listed: a child's tile
     # closes only the results to act on themselves, and the result it names already comes first.
-    # A finding tagged PANEL (a fixed-panel card's own, veil()) names no result: it stays, the same for everyone.
-    named = {k: v for k, v in ((r.get("veil") or {}).get("findings") or {}).items() if any(x != PANEL for x in v)}
+    # A PANEL-only finding stays in top with its tag: the home page closes its title and link for a child,
+    # while adults and runs without a result to act on keep the same title and destination.
+    finding_tags = (r.get("veil") or {}).get("findings") or {}
+    named = {k: v for k, v in finding_tags.items() if any(x != PANEL for x in v)}
     top = sorted((f for f in r["findings"] if f["level"] != "info" and f["id"] not in named),
                  key=lambda f: order[f["level"]])[:4]
     tags = (r.get("veil") or {}).get("lead") or []
     return {"attention": r["attention"], "levels": r["levels"], "screened": screened(summary),
-            "top": [{"id": f["id"], "level": f["level"], "title": f["title"]} for f in top],
+            "top": [{"id": f["id"], "level": f["level"], "title": f["title"], "veil": finding_tags.get(f["id"])} for f in top],
             "lead": "".join(x[0] for x in r["lead"]),
             # The same lead with the names of the findings to act on left out, and every other segment that names
             # one of them: a child's tile shows this one.

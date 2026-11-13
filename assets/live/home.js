@@ -147,7 +147,11 @@
       });
     });
     if (rolesUnknown) { runs.forEach(function (r) { if (!listed[r.name]) { closedRuns[r.name] = true; } }); }
-    function closedTitle(r, f) { return closedRuns[r.name] && f.level === 'act' ? 'A result to act on, closed until opened on the report' : f.title; }
+    function homeShut(r, f) { return !!closedRuns[r.name] && (f.level === 'act' || (f.veil || []).indexOf('*panel*') >= 0); }
+    function closedTitle(r, f) {
+      return homeShut(r, f) ? (f.level === 'act' ? 'A result to act on, closed until opened on the report'
+        : 'A finding in a panel, closed until opened on the report') : f.title;
+    }
     // The dateline and the headline sentence.
     var dl = el('div', { 'class': 'dateline' });
     var today = new Date();
@@ -193,7 +197,7 @@
     items.sort(function (a, b) { return order[a.f.level] - order[b.f.level]; });
     items.slice(0, 6).forEach(function (x) {
       // A child's closed result links to the run's page, never to its own page: its id names its gene and variant.
-      var a = el('a', { href: x.r.url + (closedRuns[x.r.name] && x.f.level === 'act' ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/') });
+      var a = el('a', { href: x.r.url + (homeShut(x.r, x.f) ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/') });
       var who = el('span', { 'class': 'who' });
       var pc = el('span', { 'class': 'pc' }, x.r.name);
       if (colourOf[x.r.name]) { pc.style.setProperty('--pcol', colourOf[x.r.name]); }

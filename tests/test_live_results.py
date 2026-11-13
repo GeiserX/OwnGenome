@@ -832,10 +832,13 @@ def overview_problems():
     (a symptom ranking of its gene) is listed among the first findings, or the closed lead still names it."""
     r = {"attention": 0, "levels": {}, "chapters": [],
          "findings": [{"id": "sf-gla-test", "level": "act", "title": "Secondary finding in GLA"},
-                      {"id": "exomiser-gla", "level": "review", "title": "Symptom ranking: GLA ranks 1"}],
+                      {"id": "exomiser-gla", "level": "review", "title": "Symptom ranking: GLA ranks 1"},
+                      {"id": "pgx-demo", "level": "medicine", "title": "Medicine panel finding"},
+                      {"id": "chip-tp53", "level": "review", "title": "A blood clone in TP53"}],
          "lead": [["Of everything, ", False], [": Secondary finding in GLA. ", False, "act"],
                   ["One result is worth a look", True], [": Symptom ranking: GLA ranks 1.", False]],
-         "veil": {"findings": {"exomiser-gla": ["sf-gla-test"]}, "lead": [None, None, None, ["sf-gla-test"]]}}
+         "veil": {"findings": {"exomiser-gla": ["sf-gla-test"], "pgx-demo": [live_results.PANEL],
+                               "chip-tp53": [live_results.PANEL]}, "lead": [None, None, None, ["sf-gla-test"]]}}
     keep = live_results.build
     try:
         live_results.build = lambda *a, **k: r
@@ -843,8 +846,11 @@ def overview_problems():
     finally:
         live_results.build = keep
     out = []
-    if [f["id"] for f in o["top"]] != ["sf-gla-test"]:
+    if [f["id"] for f in o["top"]] != ["sf-gla-test", "pgx-demo", "chip-tp53"]:
         out.append(f"the home page's first findings: {o['top']}")
+    for f in o["top"]:
+        if f["id"] in ("pgx-demo", "chip-tp53") and f.get("veil") != [live_results.PANEL]:
+            out.append(f"home panel finding has no panel tag: {f}")
     if "GLA" in o["lead_closed"] or "worth a look" not in o["lead_closed"]:
         out.append(f"the closed lead: {o['lead_closed']}")
     return out
@@ -961,6 +967,17 @@ def main():
         bad = overview_problems()
         check("8. a child's home tile lists no finding that names a closed result, and its closed lead names none",
               not bad, bad)
+        overview = live_results.overview
+        try:
+            def no_panel(summary):
+                r = overview(summary)
+                for f in r["top"]:
+                    f.pop("veil", None)
+                return r
+            live_results.overview = no_panel
+            control("overview drops panel tags from medicine and review findings", not overview_problems())
+        finally:
+            live_results.overview = overview
         bad = widget_problems()
         check("8. a CHIP call, a copy-number dot and the two-hit fact and line carry the id of a closed result in their "
               "gene field, never by their words (AR), the CHIP chart's gene panel none, a fixed-panel card's facts the "

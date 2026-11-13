@@ -2048,6 +2048,46 @@ def chart_position_problems(b, base, out, og):
     return bad
 
 
+def home_panel_problems(b, base, out, og):
+    """A panel finding's title and id stay off a closed child's home view, but remain for adults and no-act runs."""
+    p = os.path.join(out, "runs.json")
+    with open(p, "rb") as fh:
+        original = fh.read()
+    idx = json.loads(original)
+    idx["runs"] = [dict(r, state="running") for r in idx["runs"] if r["name"] == SON]
+    bad = []
+
+    def change(S):
+        S.clear()
+        cpsr("TP53")(S)
+        S["chip"] = {"state": "ok", "data": {"calls": [{"gene": "TP53", "protein_change": "p.Demo",
+            "vaf": 0.1, "alt_reads": 10, "depth": 100, "status": "reported"}]}}
+
+    try:
+        for case in ("child", "adult", "no act"):
+            view = copy.deepcopy(idx)
+            if case == "adult":
+                view["families"] = []
+            with open(p, "w") as fh:
+                json.dump(view, fh)
+
+            def plant(S):
+                change(S)
+                if case == "no act":
+                    S["cpsr"]["data"]["plp"] = []
+
+            html = "\n".join(home_now(b, base, out, plant))
+            if case == "child":
+                if "TP53" in html or "chip-tp53-p-demo" in html:
+                    bad.append("closed child's home view exposes a panel finding's title or id")
+            elif "A blood clone in TP53" not in html or "finding/chip-tp53-p-demo/" not in html:
+                bad.append(f"{case}: the open panel title or finding link is missing")
+    finally:
+        with open(p, "wb") as fh:
+            fh.write(original)
+    return bad
+
+
 def gate_regression_checks(b, base, out, og):
     """Each guard has a browser control that removes exactly the reviewed rule."""
     t0 = time.time()
@@ -2055,6 +2095,8 @@ def gate_regression_checks(b, base, out, og):
                          "with APOE or BRCA2 closed", apoe_pair_problems),
                         ("a finding page opened for either BRCA1 or BRCA2 keeps their duplication out of Related results",
                          related_set_problems),
+                        ("a child's home view hides panel finding titles and links, while adults and no-act runs keep them",
+                         home_panel_problems),
                         ("planted charts reach the browser and close by gene alone, and a gene-free mosaic finding, row, "
                          "viewer link and line close until both overlapping results open", chart_position_problems)):
         bad = probe(b, base, out, og)
@@ -2062,7 +2104,9 @@ def gate_regression_checks(b, base, out, og):
     for file, a, z, desc, probe in (
             ("map.js", "var tag = !!r.gate ||", "var tag =", "map-owned APOE row following overlapping act tags", apoe_pair_problems),
             ("finding.js", "return t.length ? t : null;", "return t.length ? t.slice(0, 1) : null;",
-             "finding.js tagOf keeping only the first id", related_set_problems)):
+             "finding.js tagOf keeping only the first id", related_set_problems),
+            ("home.js", "(f.level === 'act' || (f.veil || []).indexOf('*panel*') >= 0)", "f.level === 'act'",
+             "home.js ignoring panel tags", home_panel_problems)):
         p = os.path.join(out, "assets", file)
         with open(p) as fh:
             source = fh.read()
@@ -2087,6 +2131,17 @@ def gate_regression_checks(b, base, out, og):
         control("closable without coordinates", not chart_position_problems(b, base, out, og))
     finally:
         live_results.mark_names, live_results.closable = names, spans
+    overview = live_results.overview
+    try:
+        def no_panel(summary):
+            r = overview(summary)
+            for f in r["top"]:
+                f.pop("veil", None)
+            return r
+        live_results.overview = no_panel
+        control("overview dropping panel tags", not home_panel_problems(b, base, out, og))
+    finally:
+        live_results.overview = overview
     print(f"   gate regression checks: {time.time() - t0:.2f} s")
 
 
@@ -2127,7 +2182,7 @@ def infer_checks(b, base, out):
     home = os.path.join(out, "assets", "home.js")
     with open(home) as fh:
         keep_home = fh.read()
-    a = "x.r.url + (closedRuns[x.r.name] && x.f.level === 'act' ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/')"
+    a = "x.r.url + (homeShut(x.r, x.f) ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/')"
     try:
         if a not in keep_home:
             check("control: home.js that links a closed result's own page (the planted line is in home.js)", False, a)
