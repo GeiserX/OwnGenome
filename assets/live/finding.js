@@ -6,6 +6,8 @@
 // genetics. A result to act on about a child of the family stays closed until it is opened on purpose.
 (function () {
   'use strict';
+  window.PGPUI.ready.then(function () {
+  if (window.PGPUI.gateOwnsPage()) { return; }
   var U = window.PGPUI;
   if (!U) { return; }
   var el = U.el, add = U.add;
@@ -15,7 +17,6 @@
   var replay = root.getAttribute('data-mode') === 'replay';
   var main = document.getElementById('finding');
   var ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii'];
-  var opened = {};
 
   function abs(u) { return !u ? u : (u.charAt(0) === '/' ? u : BASE + u); }
   function note(head, body, cls) {
@@ -78,38 +79,13 @@
     var known = unknown ? null : family;
     var me = known && (known.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
     // A family that does not list this person cannot say they are not a child: closed as well.
-    var child = unknown || (!!known && !me) || !!(me && (me.father || me.mother));
-    // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene:
-    // results.veil.findings, bin/live_results.py veil()) stays closed with it, as on the person page.
-    // A tag is the list of every result it names: the finding stays closed while any of them is.
-    var tags = (r.veil && r.veil.findings) || {};
-    function tagOf(x) {
-      if (x.level === 'act') { return null; }
-      var t = tags[x.id];
-      if (t === undefined) { t = (r.findings || []).some(function (item) { return item.level === 'act'; }) ? ['*panel*'] : null; }
-      t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (y) { return y !== x.id; });
-      return t.length ? t : null;
-    }
-    // Opening this finding opens it and the results it names, nothing else: another result keeps its own veil.
-    // A finding of a fixed-panel card (tag PANEL, bin/live_results.py FIXED_PANELS) names no result: it stays closed
-    // while any result to act on is, whichever, as on the person page.
-    var PANEL = '*panel*';
-    function actShut() { return (r.findings || []).some(function (x) { return x.level === 'act' && !opened[x.id]; }); }
-    function shut(x) {
-      if (!child) { return false; }
-      if (x.level === 'act') { return !opened[x.id]; }
-      return (tagOf(x) || []).some(function (t) { return t === PANEL ? actShut() : !opened[t]; });
-    }
-    // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
-    var closed = shut(f);
-    var title = !closed ? f.title : f.level === 'act' ? 'A result to act on' : 'A finding about a result to act on';
+    var title = f.title;
     document.title = title + ': ' + r.sample + ': OwnGenome';
     document.getElementById('finding-crumb').textContent = title;
     var sec = (r.journal || []).filter(function (s) { return s.n === f.section; })[0];
     var same = (r.findings || []).filter(function (x) { return x.level === f.level; });
     var order = (r.findings || []).filter(function (x) { return x.level !== 'info'; });
     var next = order[order.indexOf(f) + 1];
-    if (next && shut(next)) { next = null; }
     // The rail: back to the report, this page's parts, the next finding of the report.
     var rail = el('aside', { 'class': 'toc frail', 'aria-label': 'This finding' });
     var back = el('a', { 'class': 'back', href: BASE + '#f/' + f.id });
@@ -145,7 +121,7 @@
     if (f.detail) { cs.push(f.detail); }
     if (f.viewer && cs.join(' ').indexOf(f.viewer) < 0) { cs.push(f.viewer); }
     cs.forEach(function (c) { add(chips, el('span', { 'class': 'chip mono' }, c)); });
-    if (cs.length && !closed) { add(cover, chips); }
+    if (cs.length) { add(cover, chips); }
     var main0 = el('div', {});
     add(main0, cover);
     var acts = el('aside', { 'class': 'actions' });
@@ -156,29 +132,6 @@
     var top = el('div', { 'class': 'row' });
     add(top, main0, acts);
     add(col, top);
-    if (closed) {
-      var v = el('div', { 'class': 'veil' });
-      add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
-        (f.level === 'act' ? '' : 'This finding names a result to act on. ') +
-        'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
-      var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      b.addEventListener('click', function () {
-        var ids = tagOf(f) || [];
-        // A panel names no particular act. Its button opens the next closed act, one per click.
-        var nextAct = ids.indexOf(PANEL) >= 0 ? (r.findings || []).filter(function (x) {
-          return x.level === 'act' && !opened[x.id];
-        })[0] : null;
-        if (nextAct) { opened[nextAct.id] = true; }
-        else { opened[f.id] = true; ids.forEach(function (id) { if (id !== PANEL) { opened[id] = true; } }); }
-        draw(r, family);
-      });
-      add(v, b);
-      add(col, v);
-      add(body, rail, col);
-      add(main, body);
-      root.setAttribute('data-pgp-status', 'ready');
-      return;
-    }
     var row1 = el('div', { 'class': 'row' });
     var m1 = el('div', {});
     add(m1, el('p', { 'class': 'lede' }, f.text));
@@ -220,7 +173,7 @@
     }
     // Related findings and the family.
     var rel = (f.related || []).map(function (id) { return (r.findings || []).filter(function (x) { return x.id === id; })[0]; })
-      .filter(function (x) { return x && !shut(x); });
+      .filter(Boolean);
     if (known) {
       var sf = el('section', { 'class': 'sec', id: 'family' });
       add(sf, add(el('div', { 'class': 'sechead' }), el('span', { 'class': 'secnum' }, ROMAN[parts.length - 3]), el('h2', { 'class': 'h2' }, 'In the family')));
@@ -289,4 +242,5 @@
     }).catch(failed);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
+  });
 }());

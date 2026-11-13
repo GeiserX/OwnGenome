@@ -188,7 +188,7 @@ fn strs<'a>(xs: impl IntoIterator<Item = &'a str>) -> Value {
 
 /// The person's findings on the map: one flat column per field, rows in
 /// map order. `veil` is the index in `dict.veil` of the first closable
-/// finding whose span the row overlaps, else -1; `veils` every such index.
+/// finding whose span the row overlaps, else -1.
 fn findings_columns(m: &Model) -> Value {
     let rows = &m.findings.rows;
     let tags = m.findings.veil.tags(rows);
@@ -255,17 +255,6 @@ fn findings_columns(m: &Model) -> Value {
             Value::Array(rows.iter().map(|r| Value::Str(r.phrase())).collect()),
         ),
         ("veil", ints(veil::column(&tags))),
-        (
-            "veils",
-            Value::Array(
-                m.findings
-                    .veil
-                    .all_tags(rows)
-                    .into_iter()
-                    .map(ints)
-                    .collect(),
-            ),
-        ),
     ])
 }
 

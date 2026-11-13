@@ -20,7 +20,8 @@
   var results = null, state = null, family = null, familyFor = null, fetchedFor = null, drawnKey = null, folded = false;
   // 'none': in no family; 'pending' or 'failed': in one whose roles are not known (yet); 'known'.
   var familyStatus = 'none';
-  var shown = {};  // veiled findings the reader opened, by id
+  var openingSeeded = false;
+  var shown = {};  // act openings transferred from the gate, plus the independent APOE switch
   var genomeMap = null, resultsKey = null;  // Figure 1 (map.js), and the results it was built for
   var panel = document.getElementById('results');
   var rail = document.getElementById('rail');
@@ -320,147 +321,15 @@
     add(b, text);
     return b;
   }
-  // The findings of a card that a child's page keeps closed: while one is closed the card's own rows,
-  // numbers and drawing stay closed too, or its table would name the gene and variant under the veil.
-  // A place outside its result's card (a ClinVar row, a card's line, fact or headline, a viewer link, a chart's mark,
-  // a search hit) carries a tag (results.veil, bin/live_results.py veil()): the list of every result to act on it
-  // names. It stays closed while ANY of them is, so a place naming two closed results never comes back with the
-  // first one opened. A tag naming no finding of these results stays closed. PANEL (a fixed panel's line, or prose
-  // that cannot be shown to name no gene) names no result: it stays closed while any result to act on is,
-  // whichever, so what is missing never tells the gene. The ids of a tag never reach the page.
-  var PANEL = '*panel*';
-  function tagClosed(id) {
-    if (Array.isArray(id)) { return id.some(tagClosed); }
-    if (id === PANEL) { return closedPage() && closedActs().length > 0; }
-    var f = findingById(id);
-    return closedPage() && (!f || veiled(f));
-  }
-  // Explicit null is a structured place with no matching act. Missing metadata is unclassified: PANEL.
-  function placeClosed(tag) { return tag === undefined ? tagClosed(PANEL) : !!tag && tagClosed(tag); }
-  function veilTags(kind, key) { return ((results && results.veil && results.veil[kind]) || {})[key] || []; }
-  // A card's headline is prose: tagged PANEL unless the summary key it comes from prints no gene (veil.headline).
-  function headlineShut(c) { var t = ((results && results.veil && results.veil.headline) || {})[c.id]; return placeClosed(t); }
-  // The charts (plugins/charts.js) ask for each mark. A closed page with no results.json yet cannot tell which
-  // marks those are, so it leaves every mark out until it can.
-  window.PGP.markClosed = function (chart, mark) {
-    if (!closedPage()) { return false; }
-    if (!results) { return true; }
-    var id = ((results.veil && results.veil.marks && results.veil.marks[chart]) || {})[mark];
-    return placeClosed(id);
-  };
-  // Chart prose and dimensions have no structured result tag. The chart reader asks the same PANEL rule.
-  function chartPanelClosed() { return closedPage() && (!results || tagClosed(PANEL)); }
-  // The chart plugin owns mark links and their click handlers. Keep those nodes, but give the child's
-  // closed drawing only the producer's fixed geometry. The complete SVG lives off the document until
-  // PANEL opens. Older chart files without fixed geometry stay closed in full.
-  function veilCharts() {
-    Array.prototype.forEach.call(document.querySelectorAll('figure[data-chart]'), function (fig) {
-      var sp = fig.pgpSpec, shut = chartPanelClosed();
-      if (!sp || fig.pgpPanelState === shut) { return; }
-      fig.pgpPanelState = shut;
-      if (!fig.pgpFullSVG) { fig.pgpFullSVG = fig.querySelector('svg'); }
-      var current = fig.querySelector('svg,.chart-panel-closed');
-      if (!shut) {
-        if (current && current !== fig.pgpFullSVG) { current.remove(); }
-        if (fig.pgpFullSVG && fig.pgpFullSVG.parentNode !== fig) { fig.appendChild(fig.pgpFullSVG); }
-        return;
-      }
-      var replacement = el('p', { 'class': 'dim chart-panel-closed' },
-        'This chart stays closed until every result to act on is opened.');
-      if (sp.svg_closed && fig.pgpFullSVG) {
-        var doc = new DOMParser().parseFromString(sp.svg_closed, 'image/svg+xml');
-        if (doc.documentElement.nodeName === 'svg') {
-          replacement = document.importNode(doc.documentElement, true);
-          Array.prototype.forEach.call(replacement.querySelectorAll('a[data-mark]'), function (a) {
-            var id = a.getAttribute('data-mark');
-            var live = Array.prototype.find.call(fig.pgpFullSVG.querySelectorAll('a[data-mark]'), function (n) {
-              return n.getAttribute('data-mark') === id;
-            });
-            // Use a clone in the fixed geometry and delegate its click to the plugin's original node.
-            if (!live) { a.remove(); }
-            else { a.addEventListener('click', function (e) { e.preventDefault(); live.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); }
-          });
-        }
-      }
-      if (current) { current.replaceWith(replacement); } else { fig.appendChild(replacement); }
-    });
-  }
-  // The plugin places figures after person.js draws the slots. Mutation callbacks run before paint,
-  // including on the first async charts response; the card event also handles PANEL changing without
-  // any mark changing. No chart filename or data value is used to decide whether PANEL is closed.
-  new MutationObserver(veilCharts).observe(document.body, { childList: true, subtree: true });
-  document.addEventListener('pgp:cards', function () { queueMicrotask(veilCharts); });
-  // A card's table without its closed rows: [table or null, how many rows it left out].
-  function openTable(c) {
-    var tags = veilTags('rows', c.id), t = c.table;
-    if (!t || !t.rows) { return [t, 0]; }
-    var rows = t.rows.filter(function (r, i) { return !placeClosed(tags[i]); });
-    var out = {};
-    Object.keys(t).forEach(function (k) { out[k] = t[k]; });
-    out.rows = rows;
-    return [rows.length ? out : null, t.rows.length - rows.length];
-  }
-  // A card's facts and drawing without their closed items (a fact, a CHIP call or a copy-number dot that names a
-  // closed result's gene): [facts, widget, how many items they left out].
-  function openFacts(c) {
-    var ft = veilTags('facts', c.id), facts = (c.facts || []).filter(function (f, i) { return !placeClosed(ft[i]); });
-    var w = c.widget, key = w && (w.kind === 'vaf' ? 'calls' : w.kind === 'copies' ? 'genes' : null);
-    var wt = veilTags('widget', c.id), shut = (c.facts || []).length - facts.length;
-    if (key && wt.length && w[key]) {
-      var items = w[key].filter(function (x, i) { return !(wt[i] && tagClosed(wt[i])); });
-      shut += w[key].length - items.length;
-      var copy = {};
-      Object.keys(w).forEach(function (k) { copy[k] = w[k]; });
-      copy[key] = items;
-      w = copy;
-    }
-    if (w && placeClosed(((results.veil || {}).widget_panel || {})[c.id])) { w = null; shut += 1; }
-    return [facts, w, shut];
-  }
-  function veiledOf(c) { return (c.findings || []).map(findingById).filter(function (f) { return f && veiled(f); }); }
-  // The results to act on this page keeps closed, drawn yet or not.
-  function closedActs() { return ((results && results.findings) || []).filter(function (x) { return x.level === 'act' && veiled(x); }); }
-  // A card of a fixed panel (results.veil.panels, bin/live_results.py FIXED_PANELS: the same genes or loci for
-  // everyone, known in advance): a row or dot of it closed with a result would tell the result's gene by what is
-  // missing. So it closes whole while this page keeps any result to act on closed, behind one box with the same
-  // words whatever the result, and comes back once the last one is opened.
-  function panelShut(c) {
-    var p = (results && results.veil && results.veil.panels) || [];
-    return closedPage() && p.indexOf(c.id) >= 0 && closedActs().length > 0;
-  }
-  var PANEL_WORDS = 'This section lists the same genes for everyone, so it stays closed while a result to act on is closed ' +
-    'on this page: what it left out would tell which gene. It opens once every such result is opened.';
-  var PANEL_LINE = 'The same genes for everyone, closed while a result about a child is closed.';
-  // The next closed result in the page's order (the map's Open opens the same one).
-  function nextClosed() { var ids = mapClosed(); return ids.length ? findingById(ids[0]) : closedActs()[0]; }
-  // A closed finding's handle in the page: its place in the page's list of closed findings, never its id, which
-  // names its gene and variant. The id comes back once the finding is opened on purpose (#f/<id> too).
-  function closedOrder() {
-    var out = [];
-    sectionsList().forEach(function (sec) {
-      (sec.findings || []).forEach(function (id) { var f = findingById(id); if (f && veiled(f) && out.indexOf(id) < 0) { out.push(id); } });
-    });
-    ((results && results.findings) || []).forEach(function (f) { if (veiled(f) && out.indexOf(f.id) < 0) { out.push(f.id); } });
-    return out;
-  }
-  function handle(f) { return veiled(f) ? 'closed-' + (closedOrder().indexOf(f.id) + 1) : f.id; }
-  // The search box (plugins/search.js) asks the same question for each hit, by the summary key and the anchor
-  // of the section it comes from: a hit from a card this page keeps closed is left out. A closed page with
-  // no results.json yet cannot tell which cards those are, so it leaves every hit out until it can.
-  // Asked with no key, it answers whether this page keeps anything closed at all.
-  // A hit tagged with a result to act on (veil, bin/results_index.py) is left out while that result is closed.
-  window.PGP.searchHidden = function (key, anchor, tag) {
-    if (!closedPage()) { return false; }
-    if (!results || key === null) { return true; }
-    if (tag && tagClosed(tag)) { return true; }
-    return cards().some(function (c) {
-      return (c.id === anchor || (c.keys || []).indexOf(key) >= 0) && (veiledOf(c).length > 0 || panelShut(c));
-    });
-  };
+  // This renderer receives the full report only after the shared data gate releases.
+  function openTable(c) { return [c.table, 0]; }
+  function openFacts(c) { return [c.facts || [], c.widget, 0]; }
+  function handle(f) { return f.id; }
+  window.PGP.markClosed = function () { return false; };
+  window.PGP.searchHidden = function () { return false; };
 
   function card(c) {
     var g = gate(c);
-    var closedFs = g === 'show' ? veiledOf(c) : [];
     var art = el('article', { 'class': 'card result g-' + g + (attentionNow(c) ? ' attn' : ''), id: 'card-' + c.id,
       'data-section': c.id, 'data-step': (c.steps || []).join(' '), 'data-state': c.state, 'data-level': c.level || '',
       tabindex: '-1', 'aria-labelledby': 'h-' + c.id });
@@ -496,18 +365,9 @@
         'Step ' + (c.steps || []).join(', ') + ' failed: the step timeline says why, and a rerun of the step fills this section.'));
     } else if (g === 'empty') {
       add(text, el('p', { 'class': 'notassessed' }, 'Not assessed: its step ended without a result for this section.'));
-    } else if (panelShut(c)) {
-      // A fixed-panel card says the same words whichever result is closed, its own findings' too: so it comes first.
-      // One button opens one result, the next closed one in the page's order, as the map's Open does.
-      add(text, U.veil(PANEL_WORDS, null, function () { var f = nextClosed(); if (f) { openFinding(f); } redraw(true); }));
-    } else if (closedFs.length) {
-      // One button opens one result: a card with two results to act on asks twice.
-      add(text, U.veil((closedFs.length === 1 ? 'This section holds a result' : 'This section holds ' + closedFs.length + ' results') +
-        ' to act on in adult life. Its rows stay closed until ' + (closedFs.length === 1 ? 'it is' : 'each is') + ' opened.', null,
-        function () { openFinding(closedFs[0]); redraw(true); var x = document.getElementById('f-' + closedFs[0].id) || document.getElementById('card-' + c.id); if (x) { x.scrollIntoView({ block: 'start' }); } }));
     } else {
-      (c.notes || []).forEach(function (n, i) { if (!placeClosed(veilTags('notes', c.id)[i])) { add(text, el('p', { 'class': 'note-stale' }, n)); } });
-      if (c.headline && !headlineShut(c)) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
+      (c.notes || []).forEach(function (n) { add(text, el('p', { 'class': 'note-stale' }, n)); });
+      if (c.headline) { add(text, el('p', { 'class': 'headline' }, c.headline)); }
       var of = openFacts(c);
       add(margin, U.facts(of[0]));
       add(text, widget(of[1]));
@@ -516,15 +376,8 @@
       });
       if (c.image) { add(text, el('img', { 'class': 'plot', src: c.image.src, alt: c.image.alt })); }
       var ot = openTable(c), tb = U.table(ot[0]);
-      var lt = veilTags('lines', c.id);
-      var lines = (c.lines || []).filter(function (l, i) { return !placeClosed(lt[i]); });
-      var shut = ot[1] + (c.lines || []).length - lines.length + (c.headline && headlineShut(c) ? 1 : 0), items = of[2];
-      if (tb) { add(text, tb); } else if (c.empty_text && !ot[1]) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
-      if (shut || items) {
-        // The same words however many rows or items close, and whichever result they belong to: a count would
-        // tell one closed result from another.
-        add(text, el('p', { 'class': 'dim veil-rows' }, 'Some of its rows or numbers stay closed with a result to act on, until that result is opened.'));
-      }
+      var lines = c.lines || [];
+      if (tb) { add(text, tb); } else if (c.empty_text) { add(text, el('p', { 'class': 'empty' }, c.empty_text)); }
       add(text, lineList(lines));
       if (c.hidden) {
         // APOE and the like: behind their warning, opened on purpose.
@@ -546,9 +399,8 @@
     add(margin, U.caveat(c.caveat));
     var foot = el('p', { 'class': 'card-links' });
     add(foot, el('a', { href: 'report.html#' + encodeURIComponent(c.anchor), 'class': 'report' }, 'Open in the report'));
-    var vtags = veilTags('viewer', c.id);
-    var reads = (c.viewer || []).filter(function (x, i) { return !placeClosed(vtags[i]); });
-    if (g === 'show' && reads.length && !panelShut(c)) {
+    var reads = c.viewer || [];
+    if (g === 'show' && reads.length) {
       add(foot, el('a', { href: 'viewer/#' + reads[0], 'class': 'viewer' }, 'See the reads at ' + reads[0]));
     }
     (g === 'show' ? c.links || [] : []).forEach(function (f) {
@@ -619,32 +471,6 @@
     add(box, d);
     return note('Caveat', box, 'caveat-note');
   }
-  // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene: results.veil.findings)
-  // stays closed while that result is, and opening it opens that result.
-  function findingTag(f) {
-    if (f.level === 'act') { return null; }  // its own switch; never an unclassified secondary place
-    var t = ((results && results.veil && results.veil.findings) || {})[f.id];
-    if (t === undefined) { t = ((results && results.findings) || []).some(function (x) { return x.level === 'act'; }) ? [PANEL] : null; }
-    t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (x) { return x !== f.id; });
-    return t.length ? t : null;
-  }
-  function veiled(f) {
-    if (!closedPage()) { return false; }
-    if (f.level === 'act') { return !shown[f.id]; }
-    var t = findingTag(f);
-    return !!(t && tagClosed(t));
-  }
-  // Opening a finding opens every result its tag names. One tagged PANEL (a fixed-panel card's own) stays closed while
-  // any result to act on is: opening it opens the next closed result in the page's order too, as its card's box does.
-  function openFinding(f) {
-    var t = findingTag(f) || [];
-    keepHash(function () {
-      shown[f.id] = true;
-      t.forEach(function (x) { if (x !== PANEL) { shown[x] = true; } });
-      var n = t.indexOf(PANEL) >= 0 ? nextClosed() : null;
-      if (n) { shown[n.id] = true; }
-    });
-  }
   // The address never holds the id of a finding this page can close, closed or opened: #f/closed-<n> while it is
   // closed (its handle) and #f/opened-<n> once opened on purpose (its place among the opened ones), so no history
   // entry keeps the id. Any other #f/<x> on a page that keeps a result closed, a closed result's id or no id at all,
@@ -653,25 +479,24 @@
   // finding behind a handle in the address is kept here only (hashId); a new address from the reader forgets it.
   var hashId = null;
   window.addEventListener('hashchange', function () { hashId = null; });
-  function closable(f) { return closedPage() && (f.level === 'act' || !!findingTag(f)); }
+  function needsHandle(f) { return closedPage() && f.level === 'act'; }
   function openedOrder() {
     var out = [];
     sectionsList().forEach(function (sec) {
-      (sec.findings || []).forEach(function (id) { var f = findingById(id); if (f && closable(f) && !veiled(f) && out.indexOf(id) < 0) { out.push(id); } });
+      (sec.findings || []).forEach(function (id) { var f = findingById(id); if (f && needsHandle(f) && out.indexOf(id) < 0) { out.push(id); } });
     });
-    ((results && results.findings) || []).forEach(function (f) { if (closable(f) && !veiled(f) && out.indexOf(f.id) < 0) { out.push(f.id); } });
+    ((results && results.findings) || []).forEach(function (f) { if (needsHandle(f) && out.indexOf(f.id) < 0) { out.push(f.id); } });
     return out;
   }
-  function addr(f) { return !closable(f) ? f.id : veiled(f) ? handle(f) : 'opened-' + (openedOrder().indexOf(f.id) + 1); }
+  function addr(f) { return !needsHandle(f) ? f.id : 'opened-' + (openedOrder().indexOf(f.id) + 1); }
   function hashFinding() {
     var h;
     try { h = decodeURIComponent((window.location.hash || '').slice(1)); } catch (e) { return null; }
     if (h.indexOf('f/') !== 0) { return null; }
     var x = h.slice(2), m = /^(closed|opened)-(\d+)$/.exec(x);
     var f = (m && hashId && findingById(hashId)) ||
-      (m ? findingById((m[1] === 'closed' ? closedOrder() : openedOrder())[Number(m[2]) - 1]) : findingById(x));
-    if (f && !(veiled(f) && !m)) { return f; }
-    return closedOrder().length ? findingById(closedOrder()[0]) : null;
+      (m ? findingById(openedOrder()[Number(m[2]) - 1]) : findingById(x));
+    return f || null;
   }
   function syncHash() {
     var f = hashFinding();
@@ -688,19 +513,15 @@
     if (gated) { return shown[id] ? 'opened' : 'closed'; }
     if (!closedPage()) { return 'open'; }
     var f = findingById(id);
-    if (!f || veiled(f)) { return 'closed'; }
-    return f.level === 'act' || findingTag(f) ? 'opened' : 'open';
+    if (!f) { return 'closed'; }
+    return f.level === 'act' ? 'opened' : 'open';
   }
   // One switch for a result, from the map's chip or the card's "Show the result" (openFinding): opening it in
   // one place opens it in both. Closing it closes the findings that were opened with it.
   function setShown(id, on) {
+    if (!on && U.closeAct(id)) { return; }
     var f = findingById(id);
-    if (on) { if (f) { openFinding(f); } else { shown[id] = true; } } else {
-      keepHash(function () {
-        delete shown[id];
-        ((results && results.findings) || []).forEach(function (x) { if ((findingTag(x) || []).indexOf(id) >= 0) { delete shown[x.id]; } });
-      });
-    }
+    shown[id] = !!on;
     redraw(true);
   }
   // Whether the page shows a finding of the map at this moment: its card's steps are done (a replay draws
@@ -711,17 +532,17 @@
     var f = findingById(id);
     if (!f) { var t = cards().filter(function (c) { return c.hidden; })[0]; return !!(t && gate(t) === 'show'); }
     var c = cardById(f.card);
-    return !!(c && gate(c) === 'show') && !veiled(f);
+    return !!(c && gate(c) === 'show');
   }
   // The results to act on this page keeps closed at this moment, in the page's order: the map's chip counts
   // them, whether or not they have a place on the map.
   function mapClosed() {
-    return findingsNow().filter(function (f) { return f.level === 'act' && veiled(f); }).map(function (f) { return f.id; });
+    return [];
   }
   // The title of a result once the page shows it, for the map's "Opened in its section" chip; never a closed one's.
   // The address of a result the map opened, for its "Opened in its section" link: never its id (addr()).
   function mapHref(id) { var f = findingById(id); return f ? addr(f) : id; }
-  function mapTitle(id) { var f = findingById(id); return f && !veiled(f) ? f.title : ''; }
+  function mapTitle(id) { var f = findingById(id); return f ? f.title : ''; }
   // Whether a row of the map is a finding of these results: then the page's own veil alone decides it (map.js).
   function mapKnown(id) { return !!findingById(id); }
   // Whether a step of the run has ended at this moment (a replay before it has not): the map's layers follow it.
@@ -729,7 +550,7 @@
   // Without the map (a browser with no DecompressionStream, or a map the server could not build): the findings
   // with a place, as a table, each through this page's veil first.
   function mapFallback() {
-    return findingsNow().filter(function (f) { return f.viewer && !veiled(f); }).map(function (f) {
+    return findingsNow().filter(function (f) { return f.viewer; }).map(function (f) {
       return [U.LEVEL_WORDS[f.level] || f.level, f.title, f.viewer];
     });
   }
@@ -739,12 +560,6 @@
     var at = newAt(f);
     if (at) { art.classList.add('new'); add(art, el('span', { 'class': 'newband' }, 'New at ' + U.hm(at))); add(art, el('br', {})); }
     add(art, U.findingLevel(f.level, f.level_words));
-    if (veiled(f)) {
-      add(art, U.veil('A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.',
-        null, function () { openFinding(f); redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } }));
-      add(row, art, el('aside', {}));
-      return row;
-    }
     var h = el('h3', { 'class': big ? 'h1' : 'h3' });
     add(h, el('a', { href: findingHref(f) }, f.title));
     add(art, h);
@@ -761,7 +576,7 @@
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
     add(side, caveatNote(f.caveat, f.id));
-    var rel = (f.related || []).map(findingById).filter(function (r) { return r && !veiled(r); });
+    var rel = (f.related || []).map(findingById).filter(function (r) { return r; });
     if (rel.length) {
       var box = el('div', {});
       rel.slice(0, 4).forEach(function (r, i) { if (i) { add(box, el('br', {})); } add(box, el('a', { href: '#f/' + addr(r) }, r.title)); });
@@ -772,13 +587,6 @@
   }
   function findingLine(f) {
     var li = el('li', { id: 'f-' + handle(f), 'data-finding': handle(f), 'data-level': f.level });
-    if (veiled(f)) {
-      // A finding that names a closed result (a symptom ranking of its gene): closed with it, opened with it.
-      var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      b.addEventListener('click', function () { openFinding(f); redraw(true); var x = document.getElementById('f-' + f.id); if (x) { x.scrollIntoView({ block: 'start' }); } });
-      add(li, el('span', { 'class': 't' }, 'A result about a child, closed until opened.'), U.findingLevel(f.level, f.level_words), b);
-      return li;
-    }
     add(li, el('a', { 'class': 't', href: findingHref(f) }, f.title), U.findingLevel(f.level, f.level_words));
     if (f.detail) { add(li, el('span', { 'class': 'gene' }, f.detail)); }
     add(li, el('span', { 'class': 'x' }, f.text));
@@ -863,11 +671,6 @@
       add(body, nf);
       return body;
     }
-    if ((sec.n === 9 || sec.n === 10) && tagClosed(PANEL)) {
-      add(body, U.veil('This part can contain data text, so it stays closed until every result to act on is opened.',
-        null, function () { var f = nextClosed(); if (f) { openFinding(f); } redraw(true); }));
-      return body;
-    }
     if (sec.n === 9) {
       var lists = [['No step looks at these', (results && results.not_assessed) || []], ['Steps that did not run', (results && results.not_run) || []]];
       lists.forEach(function (x) {
@@ -909,9 +712,7 @@
   // One line for a card: what it found, or why it has nothing to show yet.
   function cardLine(c) {
     var g = gate(c);
-    return g === 'show' && veiledOf(c).length ? 'A result about a child, closed until opened.'
-      : g === 'show' && panelShut(c) ? PANEL_LINE
-      : g === 'show' ? ((!headlineShut(c) && c.headline) || (openFacts(c)[0][0] ? openFacts(c)[0][0][0] + ': ' + openFacts(c)[0][0][1] : NOT_ALL_CLEAR))
+    return g === 'show' ? ((c.headline) || (openFacts(c)[0][0] ? openFacts(c)[0][0][0] + ': ' + openFacts(c)[0][0][1] : NOT_ALL_CLEAR))
       : pending(g) ? 'Waiting for ' + stepWords(c) + '.' : g === 'failed' ? 'Not assessed: its step failed.' : 'Not assessed in this run.';
   }
   // A card the report flags that has no finding of its own: on a phone it is the only place that flag
@@ -947,7 +748,6 @@
       sec.cards.map(cardById).some(function (c) { return c && flaggedAlone(c); })));
   }
   function sectionLine(sec) {
-    if (sec.n === 9 && tagClosed(PANEL)) { return 'Closed until every result to act on is opened.'; }
     if (sec.n === 9) {
       var na = ((results && results.not_assessed) || []).length, nr = ((results && results.not_run) || []).length;
       return na + (na === 1 ? ' thing' : ' things') + ' no step looks at, ' + nr + (nr === 1 ? ' step' : ' steps') + ' that did not run';
@@ -986,15 +786,6 @@
     n.info = cards().filter(function (c) { return gate(c) === 'show' && c.level === 'info'; }).length;
     return n;
   }
-  // A segment of the lead that names a closed result, without the names: the list after a colon, the genes in
-  // brackets, or what follows "of".
-  function closedLead(t) {
-    var w = 'closed on this page until opened on purpose, in section 1';
-    if (/^\s*:/.test(t)) { return ': ' + w + '. '; }
-    if (/\(.*\)/.test(t)) { return t.replace(/\(.*\)/, '(' + w + ')'); }
-    if (/ of /.test(t)) { return t.replace(/ of .*$/, ' result, ' + w); }
-    return w + '. ';
-  }
   function drawLead() {
     var slot = document.getElementById('lead-slot');
     slot.textContent = '';
@@ -1002,12 +793,7 @@
     var row = el('div', { 'class': 'row' });
     var main = el('div', {});
     var p = el('p', { 'class': 'lede dropcap', id: 'lead' });
-    var closed = (results.findings || []).some(veiled);
-    var leadTags = (results.veil && results.veil.lead) || [];
-    var parts = (results.lead || []).map(function (x, i) {
-      if (x[2] === 'act' && closed) { return [': closed on this page until opened on purpose, in section 1. ', false]; }
-      return leadTags[i] && tagClosed(leadTags[i]) ? [closedLead(x[0]), x[1]] : x;
-    });
+    var parts = results.lead || [];
     if (replay && running()) {
       // A replay holds the results of the finished run: before its end the lead would name findings the
       // sections do not show yet.
@@ -1026,7 +812,7 @@
       add(a, U.level(x[0], { act: 'Take to a doctor', medicine: 'Prescriber', review: 'Worth a look', carrier: 'Family planning', info: 'Information' }[x[0]]));
       add(a, el('span', { 'class': 'n' }, String(n[x[0]])));
       var words = x[0] === 'info' ? 'Origins, traits, scores' : x[0] === 'act' && closed && n.act ? 'Closed until opened' :
-        fs.filter(function (f) { return f.level === x[0] && !veiled(f); }).slice(0, 2).map(function (f) { return f.gene || f.title; }).join(', ') ||
+        fs.filter(function (f) { return f.level === x[0]; }).slice(0, 2).map(function (f) { return f.gene || f.title; }).join(', ') ||
         (fs.some(function (f) { return f.level === x[0]; }) ? 'Closed until opened' : 'None in what was assessed');
       add(a, el('span', { 'class': 'w' }, words));
       add(led, a);
@@ -1034,7 +820,7 @@
     add(main, led);
     var trust = el('div', { 'class': 'trustline' });
     var problems = fs.filter(function (f) { return f.level === 'trust'; });
-    var openProblems = problems.filter(function (f) { return !veiled(f); });
+    var openProblems = problems;
     add(trust, U.level('trust', 'Data quality', problems.length ? 'problem' : ''));
     var qc = cardById('qc');
     if (qc && gate(qc) === 'show') {
@@ -1372,6 +1158,7 @@
   window.PGP.register({
     name: 'person',
     onState: function (s) {
+      if (!openingSeeded) { shown = U.openedActs(); openingSeeded = true; }
       state = s;
       loadFamily();
       if (!replay || !results) { load(); }

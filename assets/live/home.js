@@ -6,6 +6,8 @@
 // member of a family keeps one colour on this page. The plain list of runs is what shows without scripts.
 (function () {
   'use strict';
+  window.PGPUI.ready.then(function () {
+  if (window.PGPUI.gateOwnsPage()) { return; }
   var U = window.PGPUI;
   if (!U) { return; }
   var el = U.el, add = U.add;
@@ -43,16 +45,8 @@
     if (!row.childNodes.length) { add(row, el('span', { 'class': 'dim' }, 'No finding in what was assessed; read the caveats')); }
     return row;
   }
-  // The runs whose results to act on stay closed on this page: a child in any family, and, while a family's
-  // members cannot be read, every run that no readable family lists (it may be that family's child).
-  var closedRuns = {};
-  function closedSummary(r) { return !!(r && closedRuns[r.name] && r.levels && r.levels.act); }
-  function homeTop(r) {
-    if (!closedSummary(r)) { return r.top || []; }
-    return ['trust', 'act', 'medicine', 'carrier', 'review'].filter(function (level) {
-      return r.levels[level] > 0;
-    }).map(function (level) { return { level: level, title: 'Results closed until opened on the report' }; });
-  }
+  // The loader has already replaced each gated child's summary.
+  function homeTop(r) { return r.top || []; }
   function tile(m, fam, r, colour) {
     var div = el('div', { 'class': 'ptile person-card' + (r ? ' has-run' : ' norun') + (r && r.state === 'running' ? ' running' : ''),
       'data-sample': m.sample });
@@ -61,12 +55,12 @@
     var h = el('h3', {});
     add(h, r ? el('a', { href: r.url, 'class': 'person-link' }, m.sample) : el('span', {}, m.sample));
     add(div, h);
+    if (r && r.gated) { add(div, el('p', { 'class': 'lead' }, U.closedText)); return div; }
     var meta = el('div', { 'class': 'meta' });
     add(meta, (fam ? role(m, fam) + ' · ' : '') + progressText(r));
     if (r && r.failed) { add(meta, ' · ', el('span', { 'class': 'warn' }, r.failed + ' step' + (r.failed > 1 ? 's' : '') + ' not assessed')); }
     add(div, meta);
-    var lead = r && (closedSummary(r) ? 'Results to act on stay closed until opened on the report. Read the report for the other findings and their caveats.'
-      : closedRuns[m.sample] ? r.lead_closed || '' : r.lead);
+    var lead = r && (r.lead);
     if (lead) {
       // Two sentences: the first often says only that nothing needs a doctor, the second names what differs.
       var one = U.firstSentence(lead), rest = lead.slice(one.length).trim();
@@ -145,21 +139,8 @@
     // nothing needs a doctor.
     var screened = runs.filter(function (r) { return r.levels && r.screened; }).length;
     // A child of a family: results to act on stay closed on this page too (the report opens them).
-    closedRuns = {};
-    var listed = {};
-    var rolesUnknown = fams.some(function (f) { return !f.members.length; });
-    fams.forEach(function (f) {
-      f.members.forEach(function (m) {
-        listed[m.sample] = true;
-        if (f.members.some(function (x) { return x.sample === m.father || x.sample === m.mother; })) { closedRuns[m.sample] = true; }
-      });
-    });
-    if (rolesUnknown) { runs.forEach(function (r) { if (!listed[r.name]) { closedRuns[r.name] = true; } }); }
-    function homeShut(r, f) { return closedSummary(r) || (!!closedRuns[r.name] && (f.level === 'act' || (f.veil || []).indexOf('*panel*') >= 0)); }
-    function closedTitle(r, f) {
-      return homeShut(r, f) ? (f.level === 'act' ? 'A result to act on, closed until opened on the report'
-        : 'A finding in a panel, closed until opened on the report') : f.title;
-    }
+    function homeShut(r) { return !!r.gated; }
+    function closedTitle(r, f) { return r.gated ? U.closedText : f.title; }
     // The dateline and the headline sentence.
     var dl = el('div', { 'class': 'dateline' });
     var today = new Date();
@@ -243,7 +224,7 @@
       add(c2, el('div', { 'class': 'fig-label' }, 'Found so far'));
       var fs = el('ul', { 'class': 'fs' });
       homeTop(r).forEach(function (f) { add(fs, add(el('li', {}), U.findingLevel(f.level, ''), ' ', closedTitle(r, f))); });
-      if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(closedRuns[r.name] ? r.lead_closed || '' : r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
+      if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
       add(c2, fs);
       var c3 = el('div', {});
       add(c3, el('div', { 'class': 'fig-label' }, 'Timing'));
@@ -324,4 +305,5 @@
     }).catch(function () { root.setAttribute('data-pgp-status', 'offline'); setTimeout(start, 30000); });
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
+  });
 }());

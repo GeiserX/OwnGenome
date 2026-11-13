@@ -183,8 +183,7 @@ def family_browser_checks(work):
     b = demo.Chrome(chrome, os.path.join(work, "family-browser", "chrome"))
     before, t0 = len(demo.FAILS), demo.time.time()
     try:
-        demo.family_veil_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out)
-        demo.fail_closed_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out, og)
+        demo.gate_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out, family_only=True)
         FAILS.extend(demo.FAILS[before:])
     finally:
         b.close()
@@ -377,49 +376,22 @@ def browser_checks(port, work):
         loaded = b.wait("var i = document.querySelector('img.pedigree'); i && i.complete && i.naturalWidth > 0 && "
                         "i.naturalWidth", 10)
         check("browser: the pedigree image loads", loaded, loaded)
-        # father_a and mother_a are also children (of gf_a and gm_a) whose results this server cannot read, so the
-        # couple screen stays closed whole until the button of each opens it.
-        shut = open_screen(b)
-        check("browser: the couple screen of a partner who is a child stays closed until 'Show the screen'", shut, shut)
-        couple = b.eval("var p = document.querySelector('p[data-couple=\\'father_a mother_a\\']'); p && p.textContent")
-        check("browser: the couple line counts 1 shared and 1 X-linked and links the report",
-              couple and "1 gene(s) where both carry a finding, 1 X-linked" in couple
-              and b.eval("!!document.querySelector('p[data-couple=\\'father_a mother_a\\'] a')"), couple)
-        b.eval("document.querySelector('details[data-child=child_a]').open = true; true")
-        # child_a's results cannot be built here (its summary is cut short), so the page cannot tell whether a
-        # result to act on is closed: the map stays closed until "Show the map" is clicked.
-        # Only once the page has given up on child_a's results: a page still waiting keeps the map closed anyway.
-        shut = b.wait("/\\bchild_a:failed\\b/.test(document.documentElement.dataset.pgpKids || '') && "
-                      "(function () { var v = Array.prototype.filter.call(document.querySelectorAll('details[data-child=child_a] .veil'), "
-                      "function (x) { return x.textContent.indexOf('Show the map') >= 0; })[0]; "
-                      "return v && !document.querySelector('details[data-child=child_a] img') && (v.querySelector('button').click(), true); }())", 10)
-        check("browser: child_a's chromosome map stays closed while its results cannot be read", shut, shut)
-        seg = b.wait("var i = document.querySelector('details[data-child=child_a] img'); "
-                     "i && i.complete && i.naturalWidth > 0 && i.getAttribute('src')", 10)
-        check("browser: child_a's chromosome map loads", seg == "/family/family_a/child_a_segments.svg", seg)
+        # Unreadable child reports cannot be opened a place at a time under the data gate.
+        check("browser: unreadable child reports keep the couple screen and chromosome image closed",
+              b.eval("!!document.querySelector('.report-gate') && !document.querySelector('#ch-couples table') && !document.querySelector('img.segments')"))
         blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
         check("browser: the policy blocked nothing on the family page", not blocked, blocked)
         depth_checks(b, base, os.path.join(work, "genome"))
         b.go(base + "/runs/child_a/")
-        href = b.wait("var a = document.querySelector('section[data-plugin=family] a'); a && a.getAttribute('href')")
-        check("browser: child_a's page links to its family", href == "/runs/family_a/", href)
+        closed = b.wait("!!document.querySelector('#report-gate')")
+        check("browser: an unreadable child's page shows the fixed gate", bool(closed), closed)
+
     finally:
         b.close()
 
 
-def open_screen(b):
-    """Click the closed boxes of father_a's and mother_a's couple screen, one per partner, once they show with no
-    table or link: whether they did and the screen then opened."""
-    shut = b.wait("!/:pending\\b/.test(document.documentElement.dataset.pgpKids || ':pending') && "
-                  "document.querySelectorAll('#ch-couples .veil').length === 2 && !document.querySelector('#ch-couples table') "
-                  "&& !document.querySelector('#ch-couples p[data-couple] a') && 'shut'", 10)
-    for who in ("father_a", "mother_a"):
-        b.eval("var v = document.querySelector('#ch-couples .veil[data-veil-child=%s] button'); v && v.click(); true" % who)
-    return bool(shut) and bool(b.wait("!!document.querySelector('#ch-couples table') && !document.querySelector('#ch-couples .veil')", 5))
-
-
 # A stale blood-group section with two systems past ABO and RhD, for child_a's summary.json.
-STALE_SUMMARY = {"sections": {"bloodtype": {"state": "stale", "data": {
+STALE_SUMMARY = {"sections": {"bloodtype": {"state": "stale", "note": "older than its input", "data": {
     "abo": "A1", "rhd": "D+", "systems": [{"system": "ABO", "phenotype": "A1"}, {"system": "RhD", "phenotype": "D+"},
                                           {"system": "Kell", "phenotype": "K-k+"}, {"system": "Duffy", "phenotype": "Fy(a+b-)"}]}},
     "haplogroup": {"state": "ok", "data": {"haplogroup": "H1"}}}}
@@ -443,10 +415,22 @@ def depth_checks(b, base, root):
     os.symlink(secret, os.path.join(fam_dir, "compound_het.tsv"))
     with open(os.path.join(root, "child_a", "summary.json"), "w") as f:
         json.dump(STALE_SUMMARY, f)
+    # Give the formatting fixtures readable no-act results. Unknown results deliberately cannot open.
+    log = os.path.join(root, "child_a", "logs", "run_status.tsv")
+    with open(log) as f:
+        old_log = f.read()
+    with open(log, "a") as f:
+        f.write("step\t06\tok\n")
+    parent_dirs = []
+    for parent in ("father_a", "mother_a"):
+        d = os.path.join(root, parent)
+        os.makedirs(os.path.join(d, "logs"), exist_ok=True)
+        with open(os.path.join(d, "logs", "run_status.tsv"), "w") as f:
+            f.write("step\t06\tok\n")
+        parent_dirs.append(d)
     clin = os.path.join(root, "child_a", "clinical")
     try:
         b.go(base + "/runs/family_a/")
-        open_screen(b)
         ready = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
                        "!!document.querySelector('div[data-shared=GENE4]')")
         four = b.eval("var k = document.querySelector('div[data-shared=GENE1] .kids4 .grid4'); k ? k.children.length : -1")
@@ -497,6 +481,10 @@ def depth_checks(b, base, root):
         os.remove(os.path.join(fam_dir, "compound_het.tsv"))
         os.remove(os.path.join(root, "child_a", "summary.json"))
         shutil.rmtree(clin, ignore_errors=True)
+        with open(log, "w") as f:
+            f.write(old_log)
+        for d in parent_dirs:
+            shutil.rmtree(d)
 
 
 if __name__ == "__main__":

@@ -17,9 +17,7 @@
 //!    veiled span gets that finding's index in `dict.veil`, else -1: the
 //!    first in `dict.veil` when several spans overlap it, where gated
 //!    findings come first (closed on every page), then the act ones in the
-//!    page's order. Its `veils` holds every such index, so a page keeps the
-//!    row closed while any of them is (`Veil::all`): a row over two closed
-//!    results never comes back with the first one opened. A finding's own
+//!    page's order. The child report gate admits no map until every act opens. A finding's own
 //!    row is tagged the same way, so an open finding over a closable one's
 //!    span is tagged. Runs of homozygosity and bands are never a finding's
 //!    source and carry no tag.
@@ -96,31 +94,6 @@ impl Veil {
     pub fn tags<R: Span>(&self, rows: &[R]) -> Vec<Option<u32>> {
         rows.iter().map(|r| self.tag(r.chrom(), r.span())).collect()
     }
-
-    /// The index in `ids` of every closable finding whose span `row`
-    /// overlaps, smallest first, each once: the first of them is
-    /// [`Veil::tag`].
-    pub fn all(&self, chrom: usize, span: (u64, u64)) -> Vec<u32> {
-        let (s, e) = nonempty(span);
-        let mut out: Vec<u32> = self
-            .spans
-            .get(chrom)
-            .map(|v| {
-                v.iter()
-                    .filter(|&&(vs, ve, _)| s < ve && vs < e)
-                    .map(|x| x.2)
-                    .collect()
-            })
-            .unwrap_or_default();
-        out.sort_unstable();
-        out.dedup();
-        out
-    }
-
-    /// [`Veil::all`] of every row, in order.
-    pub fn all_tags<R: Span>(&self, rows: &[R]) -> Vec<Vec<u32>> {
-        rows.iter().map(|r| self.all(r.chrom(), r.span())).collect()
-    }
 }
 
 /// A tag column as the document writes it: the index, or [`NONE`].
@@ -187,29 +160,5 @@ mod tests {
         let tags = v.tags(&rows);
         assert_eq!(column(&tags), [NONE, 0, NONE]);
         assert_eq!(untagged(&tags), 2);
-    }
-
-    #[test]
-    fn every_id_a_row_overlaps() {
-        // A row over two closable findings keeps both, smallest index first,
-        // whatever order their spans were placed in; the first is `tag`.
-        let v = Veil::new([
-            (2, "c", 0, (100, 101)),
-            (0, "a", 0, (90, 300)),
-            (1, "b", 0, (100, 150)),
-            (3, "d", 1, (100, 101)),
-        ]);
-        assert_eq!(v.all(0, (100, 101)), [0, 1, 2]);
-        assert_eq!(v.all(0, (120, 130)), [0, 1]);
-        assert_eq!(v.all(0, (200, 250)), [0]);
-        assert_eq!(v.all(0, (0, 10)), Vec::<u32>::new());
-        assert_eq!(v.all(1, (100, 101)), [3]);
-        assert_eq!(v.all(5, (100, 101)), Vec::<u32>::new());
-        let rows = [R(0, 100, 101), R(0, 0, 10), R(1, 100, 100)];
-        let all = v.all_tags(&rows);
-        assert_eq!(all, [vec![0, 1, 2], vec![], vec![3]]);
-        // `veil` is the first of `veils`, -1 for none.
-        let first: Vec<Option<u32>> = all.iter().map(|x| x.first().copied()).collect();
-        assert_eq!(first, v.tags(&rows));
     }
 }

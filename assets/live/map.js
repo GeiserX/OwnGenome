@@ -90,9 +90,8 @@
     (f.id || []).forEach(function (fid, i) {
       if (!(f.chrom[i] in by)) { return; }
       rows.push({ id: fid, level: f.level[i], gate: f.gate[i], chrom: f.chrom[i], pos: f.pos[i], s: f.s[i], e: f.e[i],
-        gene: f.gene[i], title: f.title[i], href: f.href[i], phrase: f.phrase[i], veil: f.veil[i] >= 0 ? veilIds[f.veil[i]] : null,
-        // Every closable finding the row lies over (veils); a document from before the column has its first only.
-        veils: ((f.veils && f.veils[i]) || (f.veil[i] >= 0 ? [f.veil[i]] : [])).map(function (k) { return veilIds[k]; }) });
+        gene: f.gene[i], title: f.title[i], href: f.href[i], phrase: f.phrase[i], veil: f.veil[i] >= 0 ? veilIds[f.veil[i]] : null });
+
     });
     var gated = {};
     rows.forEach(function (r) { if (r.gate) { gated[r.id] = r; } });
@@ -170,12 +169,12 @@
     // hides every finding it keeps closed (opts.now), and its card shows the rest. Hiding such a row for
     // another result's tag would drop a finding whose card the page shows, and so place that closed result
     // inside it. A map-owned gated row (APOE) follows its own gate for the same reason: opening it must not
-    // tell whether another, still-closed result overlaps it. Other rows follow every overlapping tag.
+    // tell whether another, still-closed result overlaps it. Other rows retain the document's APOE warning tag.
     function shownRow(r) {
       var own = M.closable.indexOf(r.id) < 0 || stateOf(r.id) !== 'closed';
       // Closed while ANY result the row lies over is closed: a row over two closed results never comes back with
       // the first one opened.
-      var tag = !!r.gate || (opts.known && opts.known(r.id)) || r.veils.every(function (id) { return stateOf(id) !== 'closed'; });
+      var tag = !!r.gate || (opts.known && opts.known(r.id)) || !r.veil || stateOf(r.veil) !== 'closed';
       return own && tag && (!opts.now || opts.now(r.id));
     }
     // The runs of homozygosity, as this page shows them now: a replay before their step ended has none yet.
