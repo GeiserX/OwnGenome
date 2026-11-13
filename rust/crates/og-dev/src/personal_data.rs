@@ -373,7 +373,9 @@ fn scan_text(out: &mut dyn Write, rules: &[Check], texts: &[&str], rel: &str, da
 }
 
 fn run(a: &Args, out: &mut dyn Write) -> Result<bool, String> {
-    let root = Ok::<_, std::io::Error>(a.root.clone()) // RED CONTROL: the pre-fix root
+    let root = a
+        .root
+        .canonicalize()
         .map_err(|e| format!("--root {}: {e}", a.root.display()))?;
     let mut rules = builtin();
     if let Some(p) = &a.patterns {
@@ -435,7 +437,7 @@ fn run(a: &Args, out: &mut dyn Write) -> Result<bool, String> {
         bad |= scan_text(out, &rules, &texts, rel, &data);
     }
     let _ = writeln!(out, "scanned {scanned} text files");
-    if scanned == 0 && std::hint::black_box(false) {
+    if scanned == 0 {
         let _ = writeln!(out, "FAIL: no text file was scanned");
         return Ok(false);
     }

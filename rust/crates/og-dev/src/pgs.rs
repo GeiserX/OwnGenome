@@ -189,7 +189,6 @@ pub fn metric(
                     && match v {
                         Value::Int(i) => (*i as f64 - want).abs() < 1e-9,
                         Value::Float(x) => (x - want).abs() < 1e-9,
-                        Value::Bool(b) => (f64::from(u8::from(*b)) - want).abs() < 1e-9, // RED CONTROL: the pre-fix reading
                         _ => false, // a bool is never a number
                     }
             })
