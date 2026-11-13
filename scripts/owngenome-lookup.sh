@@ -27,8 +27,13 @@
 # reference folder of the data directory; when it is elsewhere, point
 # REF_DIR at it.
 #
-# Read-only: it prints the answer and writes nothing but a temporary slice of
-# the VCFs, removed when it ends.
+# One og process answers every query (og lookup query, rust/crates/og-lookup).
+# It reads an indexed gVCF or annotated VCF through its .tbi or .csi, region
+# by region, and streams one without an index whole, with a note. An rsID
+# the tables do not place is looked for in the annotated VCF in one pass for
+# all such rsIDs.
+#
+# Read-only: it prints the answer and writes nothing.
 #
 # Input:  vcf/<sample>.g.vcf.gz (step 3; the VCF if there is no gVCF),
 #         vep/<sample>_annotated.vcf.gz or vep/<sample>_vep.vcf.gz (optional),
@@ -45,7 +50,7 @@ if [ $# -eq 0 ]; then
   echo "Usage: $0 <sample_name> <rsID|chr:pos|GENE> [more queries...]" >&2
   exit 2
 fi
-require_image BCFTOOLS_IMAGE PYTHON_IMAGE
+require_image PYTHON_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 REF_DIR=${REF_DIR:-${GENOME_DIR}/reference}
@@ -82,8 +87,9 @@ echo "Annotation: ${ANN:-none (step 13 writes vep/${SAMPLE}_vep.vcf.gz)}"
 echo "Reports:    ${SUMMARY:-none (generate-report.sh writes summary.json)}"
 echo ""
 
-# The containers see GENOME_DIR at /genome and, when REF_DIR is elsewhere,
-# REF_DIR read-only at /pgp-ref.
+# og runs in PYTHON_IMAGE (it needs no tool of its own; any image would do),
+# which sees GENOME_DIR at /genome and, when REF_DIR is elsewhere, REF_DIR
+# read-only at /pgp-ref.
 MOUNTS=(-v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro")
 ref_c() {
   case "$1" in
@@ -96,58 +102,15 @@ case "$REF_DIR/" in
   *) [ -d "$REF_DIR" ] && MOUNTS+=(-v "${REF_DIR}:/pgp-ref:ro") ;;
 esac
 
-TMP=$(mktemp -d "${S}/.lookup.XXXXXX")
-trap 'rm -rf "$TMP"' EXIT
+ARGS=(--gvcf "$(cpath "$GVCF")" --table /pgp-assets/traits.tsv --table /pgp-assets/bloodtype_markers.tsv)
+[ -z "$ANN" ] || ARGS+=(--annotated "$(cpath "$ANN")")
+[ -z "$SUMMARY" ] || ARGS+=(--summary "$(cpath "$SUMMARY")")
+[ -z "$SITES" ] || ARGS+=(--sites "$(ref_c "$SITES")")
+[ -z "$GENES" ] || ARGS+=(--genes "$(ref_c "$GENES")")
 
-# slice VCF OUT REGION: the records of VCF that overlap REGION (reference
-# blocks by their END), with the header. Without a .tbi, or when bcftools
-# cannot read the region, the whole file is passed on instead: slower, the
-# same answer, because the report streams it and keeps only the records that
-# overlap the region, so memory stays small even on a whole genome.
-slice() {
-  local vcf=$1 out=$2 region=$3
-  if [ -s "${vcf}.tbi" ] || [ -s "${vcf}.csi" ]; then
-    if run_in --cpus 1 --memory 1g "$BCFTOOLS_IMAGE" \
-         bcftools view -r "$region" -o "$(cpath "$out")" "$(cpath "$vcf")" 2> "${TMP}/bcftools.err"; then
-      cpath "$out"
-      return 0
-    fi
-    echo "NOTE: bcftools could not read ${region} from ${vcf} ($(head -n 1 "${TMP}/bcftools.err")); reading the whole file." >&2
-  else
-    echo "NOTE: ${vcf} has no .tbi index; reading the whole file (bcftools index -t makes this fast)." >&2
-  fi
-  cpath "$vcf"
-}
-
+# Each answer ends with a blank line. The exit code is the last failing
+# query's: 3 for one found nowhere, 2 for one that is not a query.
 rc=0
-for QUERY in "$@"; do
-  RES=()
-  [ -z "$SITES" ] || RES+=(--sites "$(ref_c "$SITES")")
-  [ -z "$GENES" ] || RES+=(--genes "$(ref_c "$GENES")")
-  [ -z "$ANN" ] || RES+=(--annotated "$(cpath "$ANN")")
-  qrc=0
-  run_in "${MOUNTS[@]}" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-    python3 /pgp-bin/genome_lookup.py resolve --query "$QUERY" \
-      --table /pgp-assets/traits.tsv --table /pgp-assets/bloodtype_markers.tsv \
-      ${RES[@]+"${RES[@]}"} > "${TMP}/regions.tsv" || qrc=$?
-  if [ "$qrc" -ne 0 ]; then
-    rc=$qrc
-    echo ""
-    continue
-  fi
-  while IFS=$'\t' read -r -u 3 kind chrom start end ref source; do
-    region="${chrom}:${start}-${end}"
-    G_IN=$(slice "$GVCF" "${TMP}/gvcf.vcf" "$region")
-    REP=(--gvcf "$G_IN")
-    if [ -n "$ANN" ]; then
-      REP+=(--annotated "$(slice "$ANN" "${TMP}/annotated.vcf" "$region")")
-    fi
-    [ -z "$SUMMARY" ] || REP+=(--summary "$(cpath "$SUMMARY")")
-    run_in "${MOUNTS[@]}" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-      python3 /pgp-bin/genome_lookup.py report --query "$QUERY" --kind "$kind" \
-        --chrom "$chrom" --start "$start" --end "$end" --ref "$ref" --source "$source" \
-        "${REP[@]}" || rc=$?
-    echo ""
-  done 3< "${TMP}/regions.tsv"
-done
+run_in "${MOUNTS[@]}" --cpus 2 --memory 1g "$PYTHON_IMAGE" \
+  /pgp-bin/og lookup query "${ARGS[@]}" -- "$@" || rc=$?
 exit "$rc"

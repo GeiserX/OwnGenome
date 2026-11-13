@@ -66,6 +66,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og y str-report [args]
        og exomiser prepare [args]
        og exomiser report [args]
+       og lookup query|resolve|report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
        og version
        og --tree-hash
@@ -231,6 +232,11 @@ fn main() -> ExitCode {
                 _ => og_reports::exomiser::cli(verb, args, out, err),
             })
         }
+        "lookup" => ExitCode::from(og_lookup::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         "ancestry-fine" => ExitCode::from(og_ancestry::cli(
             rest,
             &mut std::io::stdout().lock(),

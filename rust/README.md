@@ -15,6 +15,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-cn` | copy number from depth, steps 32, 35, 41 and 46: `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions`, `og cn marker-read` |
 | `crates/og-bloodtype` | step 41, blood groups: `og bloodtype report`, `og bloodtype check-markers`, `og bloodtype systems` |
 | `crates/og-reports` | the opt-in step reports: `og y str-bed`, `og y str-report`, `og viral report`, `og exomiser prepare`, `og exomiser report`, `og mei report`, `og mei annotsv-input`, `og mocha report`, `og vntyper report`, `og locityper report` |
+| `crates/og-lookup` | the genotype lookup of `scripts/owngenome-lookup.sh`: `og lookup query`, `og lookup resolve`, `og lookup report` |
 | `crates/og-filters` | the VCF filters of steps 04, 05 and 07: `og sv svlen-fix`, `og sv inv-filter`, `og pgx refblock-fill`, `og pgx mito-merge` |
 | `crates/og-setup` | what `scripts/setup.sh` runs once: `og str catalog` (the STRchive catalog of steps 09 and 9b), `og setup unzip` (Exomiser's zips), `og setup genetic-map` (the genetic map of steps 26b and 51) |
 | `crates/og-ancestry` | step 26b, fine-grained ancestry: `og ancestry-fine panel-map`, `check-map`, `order`, `sample-bed`, `chroms`, `report` |

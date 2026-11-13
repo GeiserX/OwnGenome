@@ -1,0 +1,9 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr7,length=1000000>
+##contig=<ID=chrX,length=1000000>
+##contig=<ID=chrM,length=16569>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SYNTH1
+chr7	100	.	ACGTA	A,<*>	40	PASS	.	GT:GQ:DP	0/1:30:20
+chr7	101	.	C	<*>	0	.	END=103	GT:GQ:MIN_DP	0/0:30:20
+chr7	106	.	C	<*>	0	.	END=120	GT:GQ:MIN_DP	0/0:30:20

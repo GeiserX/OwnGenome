@@ -1,0 +1,20 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr7,length=1000000>
+##contig=<ID=chrX,length=1000000>
+##contig=<ID=chrM,length=16569>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SYNTH1
+chr7	100	.	A	<*>	0	.	END=200	GT:GQ:MIN_DP	0/0:50:31
+chr7	250	.	C	T,<*>	42.5	PASS	.	GT:GQ:DP	0/1:40:33
+chr7	251	.	G	<*>	0	.	END=299	GT:GQ:MIN_DP	0/0:45:30
+chr7	400	.	T	<*>	0	.	END=410	GT:GQ:MIN_DP	./.:0:0
+chr7	420	.	T	<*>	0	.	END=430	GT:GQ:MIN_DP	0/.:3:2
+chr7	500	.	ACGT	A,<*>	38	PASS	.	GT:GQ:DP	0/1:35:29
+chr7	501	.	C	<*>	0	.	END=520	GT:GQ:MIN_DP	0/0:40:28
+chr7	600	.	G	A,<*>	3.1	RefCall	.	GT:GQ:DP	0/1:5:4
+chr7	650	.	T	G,<*>	50	PASS	.	GT:GQ:DP	1/1:50:40
+chr7	660	.	A	C,G,<*>	30	PASS	.	GT:GQ:DP	1|2:20:18
+chr7	670	.	A	C,<*>	.	PASS	.	GT	./1
+chrX	1000	.	G	A,<*>	44	PASS	.	GT:DP	1:12
+chrX	1001	.	C	<*>	0	.	END=2000	GT:MIN_DP	0:9
+chrM	73	.	A	G,<*>	60	PASS	.	GT:DP	1/1:900
