@@ -32,9 +32,9 @@
 #                                                 and require each to be caught
 #
 # Your own identifiers (names, sample ids, hostnames) do not belong in this
-# public file. Put one extended regular expression per line in a file outside
-# the repository and point PERSONAL_DATA_PATTERNS at it; each match is
-# reported as kind "own".
+# public file. Put one regular expression per line (the syntax of Rust's
+# regex crate, close to POSIX extended) in a file outside the repository and
+# point PERSONAL_DATA_PATTERNS at it; each match is reported as kind "own".
 #
 # The scan is og dev scan personal-data (rust/crates/og-dev); bin/og runs
 # the build scripts/setup.sh --og puts in bin/.og for this machine, and OG
