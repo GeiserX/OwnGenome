@@ -59,8 +59,21 @@ pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
 
 /// Runs a verb that writes to stdout and stderr, flushing both.
 fn run(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) -> u8 {
-    let mut out = std::io::stdout().lock();
-    let mut err = std::io::stderr().lock();
+    use std::os::fd::AsFd;
+    // Stdout/StdoutLock suppress EBADF on Unix. Duplicating the descriptor
+    // preserves its access mode and exposes write errors without unsafe code.
+    let out = match std::io::stdout().as_fd().try_clone_to_owned() {
+        Ok(fd) => std::fs::File::from(fd),
+        Err(e) => {
+            let _ = writeln!(std::io::stderr().lock(), "og dev: stdout: {e}");
+            return 1;
+        }
+    };
+    let mut err = match std::io::stderr().as_fd().try_clone_to_owned() {
+        Ok(fd) => std::fs::File::from(fd),
+        Err(_) => return 1,
+    };
+    let mut out = std::io::BufWriter::new(out);
     run_with_writers(f, args, &mut out, &mut err)
 }
 
@@ -168,6 +181,39 @@ mod stream_tests {
             }
         }
     }
+    #[test]
+    fn stdio_process_control() {
+        if let Ok(verb) = std::env::var("OG_DEV_STREAM_CONTROL") {
+            std::process::exit(i32::from(main(&[verb, "--help".into()])));
+        }
+    }
+
+    #[test]
+    fn read_only_stdout_descriptor_makes_added_verbs_fail() {
+        let path = std::env::temp_dir().join(format!("og-stream-fd-{}", std::process::id()));
+        std::fs::write(&path, b"previous bytes").unwrap();
+        for verb in ["fixture", "evidence", "renovate-check"] {
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "stream_tests::stdio_process_control",
+                    "--nocapture",
+                ])
+                .env("OG_DEV_STREAM_CONTROL", verb)
+                .stdout(std::fs::File::open(&path).unwrap())
+                .output()
+                .unwrap();
+            assert!(!result.status.success(), "{verb} silently lost stdout");
+            assert!(
+                String::from_utf8_lossy(&result.stderr).contains("og dev: stdout:"),
+                "{verb}: {:?}",
+                result.stderr
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), b"previous bytes");
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
     pub(crate) fn assert_status_errors(
         verb: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8,
         args: &[String],
