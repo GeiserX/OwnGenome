@@ -632,49 +632,51 @@ mod tests {
     // Execute the removed scanner itself. Only its reporting is adapted to
     // structured metadata, because printing findings is the bug being fixed.
     fn oracle(f: &Fixture, files: &[&str], cached: bool) -> String {
-        const SHA: &str = "4104a93f2121b457413336574b8563fe85291fd7";
-        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-        let read = || {
-            Command::new("git")
-                .arg("-C")
-                .arg(&repo)
-                .args(["show", &format!("{SHA}:scripts/ci/check-personal-data.sh")])
-                .output()
-                .unwrap()
-        };
-        let mut source = read();
-        if !source.status.success() {
-            assert!(
+        static PYTHON: LazyLock<String> = LazyLock::new(|| {
+            const SHA: &str = "4104a93f2121b457413336574b8563fe85291fd7";
+            let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+            let read = || {
                 Command::new("git")
                     .arg("-C")
                     .arg(&repo)
-                    .args(["fetch", "--quiet", "--depth=1", "origin", SHA])
-                    .status()
+                    .args(["show", &format!("{SHA}:scripts/ci/check-personal-data.sh")])
+                    .output()
                     .unwrap()
-                    .success()
-            );
-            source = read();
-        }
-        assert!(source.status.success());
-        let source = String::from_utf8(source.stdout).unwrap();
-        let python = source
-            .split("<<'PY'\n")
-            .nth(1)
-            .unwrap()
-            .split("\nPY\n")
-            .next()
-            .unwrap();
-        let python = python
-            .replace(
-                "import fnmatch, os, re, subprocess, sys",
-                "import fnmatch, os, re, subprocess, sys, json",
-            )
-            .replace(
-                "print(\"FAIL %-9s %s:%d: %s\" % (kind, rel, n, line.strip()[:160]))",
-                "print(json.dumps([kind, rel, n]))",
-            );
+            };
+            let mut source = read();
+            if !source.status.success() {
+                assert!(
+                    Command::new("git")
+                        .arg("-C")
+                        .arg(&repo)
+                        .args(["fetch", "--quiet", "--depth=1", "origin", SHA])
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+                source = read();
+            }
+            assert!(source.status.success());
+            let source = String::from_utf8(source.stdout).unwrap();
+            let python = source
+                .split("<<'PY'\n")
+                .nth(1)
+                .unwrap()
+                .split("\nPY\n")
+                .next()
+                .unwrap();
+            python
+                .replace(
+                    "import fnmatch, os, re, subprocess, sys",
+                    "import fnmatch, os, re, subprocess, sys, json",
+                )
+                .replace(
+                    "print(\"FAIL %-9s %s:%d: %s\" % (kind, rel, n, line.strip()[:160]))",
+                    "print(json.dumps([kind, rel, n]))",
+                )
+        });
         let mut cmd = Command::new("python3");
-        cmd.args(["-I", "-c", &python])
+        cmd.args(["-I", "-c", &PYTHON])
             .arg(&f.0)
             .args(["", "", "", if cached { "1" } else { "" }]);
         for file in files {
@@ -716,9 +718,7 @@ mod tests {
             // Keep the required report spelling independent of report().
             let finding = format!("FAIL {kind:<9} {}:{n}", rel.escape_debug());
             assert!(
-                reported.iter().any(|l| *l == finding
-                    || l.strip_prefix(&finding)
-                        .is_some_and(|tail| tail.starts_with(": "))),
+                reported.contains(finding.as_str()),
                 "missing oracle finding #{count}"
             );
             count += 1;

@@ -296,6 +296,27 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 
+      # Keep the negative controls executable on the final head. The pinned
+      # test-only commit contains the old scanner and the five regressions.
+      - name: Scanner controls (all five pre-fix differential tests must fail)
+        run: |
+          before=80a675eadf73640c2a0f2d63fcfe30e6fdd0deef
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          source=crates/og-dev/src/personal_data.rs
+          saved="${RUNNER_TEMP}/personal-data-fixed.rs"
+          cp "$source" "$saved"
+          trap 'cp "$saved" "$source"' EXIT
+          git show "$before:rust/$source" > "$source"
+          log="${RUNNER_TEMP}/scanner-red-controls.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast privacy_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ] || { echo "ERROR: the pre-fix scanner passed"; exit 1; }
+          for test in report_never_contains_values_or_patterns python_boundaries_differential python_casefold_differential staged_newline_differential fixed_seed_differential_fuzz; do
+            grep -E "privacy_${test} .*FAILED" "$log" || { echo "ERROR: missing red control $test"; exit 1; }
+          done
+          echo "Control: all five scanner regressions failed, as they must."
+
       - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
         run: |

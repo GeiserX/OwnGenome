@@ -27,18 +27,18 @@
 //!   `assets/pgs_scores.tsv`.
 
 pub mod contract;
+pub mod helpers;
 pub mod images;
 mod lookaround;
-pub mod helpers;
 pub mod parity;
 pub mod personal_data;
 pub mod pgs;
 pub mod remnants;
 pub mod report_only;
 pub mod schema;
+pub mod shlex;
 pub mod versions;
 pub mod versions_env;
-pub mod shlex;
 mod zip;
 
 use std::io::Write;
