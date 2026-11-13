@@ -139,10 +139,43 @@ flushed. This includes the evidence status and Renovate table. A configured
 Renovate summary must also be written and flushed successfully.
 Guard runs the FASTA offset regression in debug and release profiles.
 
-### Stricter than the replaced Python, on purpose
+### Input and destination refusal rule
 
-Each refusal below has a pinned negative CLI test with exit 1 or 2 and a stable
-error class in `og-dev`. The final-LF normalization has a positive byte test.
+These evidence, fixture and Renovate verbs may refuse any input that is
+malformed, outside the numeric ranges or size limits below, or not representable
+by the JSON reader. They may also refuse any destination beside which they
+cannot stage a sibling temporary file. A refusal always exits nonzero with a
+specific message. It leaves every existing output byte-identical, with its mode
+and link target unchanged. The crash and multi-file publication limits above
+still apply.
+
+- Evidence numeric fields use ASCII unsigned integers from 0 through
+  18446744073709551615. A reference lookup needs a position of at least 1.
+  Spans must fit that range. Calculated FASTA offsets must fit 0 through
+  9223372036854775807 and address a byte inside the file.
+- Every FAI row needs at least five columns and nonzero bases per line.
+- `MAX_ANNOTATIONS` is an ASCII signed integer from -9223372036854775808
+  through 9223372036854775807.
+- Evidence and Renovate text records have a 16 MiB (16777216-byte) limit.
+  The PharmCAT reader has no separate file-size limit and materializes JSON.
+- The JSON reader accepts signed 128-bit integers (-2^127 through 2^127-1),
+  Unicode scalar strings and at most 1000 nested arrays or objects.
+  It cannot represent lone surrogates, including in unused fields.
+- Destinations need a writable parent and a regular writable target when one
+  exists. Resolution follows at most 40 final symlinks. Temporary sibling names
+  must fit the filesystem's name limit. A 255-byte basename is refused cleanly
+  before any output write because its temporary sibling name is longer.
+
+Inputs produced by the real tools are never refused: bcftools/DeepVariant VCF,
+samtools faidx, UCSC BED, PharmCAT report JSON and Renovate debug log.
+
+`refusals_preserve_bytes_modes_and_link_targets` pins the rule through each CLI.
+Each table row runs with a regular output and with a symlink. It checks nonzero
+exit, the specific diagnostic, unchanged bytes, mode and link target, and no
+leftover temporary file. Adding a refusal case needs one row.
+
+Examples of refusals follow. This is not an exhaustive input grammar.
+The final-LF normalization has a positive byte test.
 
 - BED fields use spaces and tabs as separators. Other Python whitespace
   (Unicode White_Space and U+001C through U+001F) fails with `unsupported whitespace`.
@@ -176,3 +209,19 @@ error class in `og-dev`. The final-LF normalization has a positive byte test.
 - FASTA offsets use checked subtraction, division, multiplication, addition
   and remainder. Overflow, a position beyond the file, or an offset outside
   the signed file-offset range fails with `invalid FASTA offset`.
+
+- A nonblank unused FAI row with fewer than five columns fails with
+  `a row has fewer than 5 columns`.
+- A truth position that fits u64 but whose REF span does not fails with
+  `position span overflows`.
+- A destination whose temporary sibling name is too long fails with the
+  filesystem diagnostic `File name too long`.
+- JSON integers outside signed 128-bit range and escaped lone surrogates fail
+  with `Integer beyond 128 bits` and `Lone surrogate`, even in unused fields.
+  Excess nesting fails with `nested deeper than 1000 levels`.
+
+Renovate skips genuine JSON syntax errors only. Reader limitations fail the
+command before an earlier matching config or the summary can be used.
+`TooDeep` has its own error variant. The reader currently puts integer and
+surrogate limitations in `JsonError::Decode`, so the loader distinguishes those
+static reasons inside that variant. Other decode errors remain skippable.
