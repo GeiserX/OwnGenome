@@ -958,7 +958,10 @@ def main():
         d = f"{work}/traits/S"
         rows = traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))
         put(f"{d}/traits/S_traits.tsv", "")
-        traits_report.write_tsv(f"{d}/traits/S_traits.tsv", traits_report.report(rows, {}))
+        from test_traits_report import traits_tables
+        g = os.path.join(work, "traits_empty.tsv")
+        put(g, "")
+        traits_tables(g, f"{d}/traits/S_traits.tsv", os.path.join(work, "traits_rules.tsv"))
         summ = collect_summary.collect("S", d)
         txt, html = render_report.text_report(summ), render_report.html_report(summ)
         check("traits: both reports say a reading is not a diagnosis",

@@ -351,7 +351,7 @@ jobs:
                    tests/test_results_index.py \
                    tests/test_pgx_outside_calls.py tests/test_hla_second_caller.py tests/test_paraphase_report.py \
                    tests/test_copy_number.py tests/test_hba_copy_number.py \
-                   tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_callability.py; do
+                   tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_traits_table.py tests/test_genotype_rules_indels.py tests/test_callability.py; do
             rc=0
             echo "::group::${t}"
             case "$t" in

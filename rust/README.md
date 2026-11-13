@@ -34,3 +34,7 @@ cargo build --release && ../tests/rust/pycompat-diff.sh target/release/og   # py
 ```
 
 A binary from a plain `cargo build` is stamped `unknown`, and `rust/og.sh check` refuses it: only `scripts/setup.sh --og` stamps the tree hash the pipeline checks.
+
+`og traits table`, `og traits phase-sites` and `og traits check` read step 42's
+curated catalogs and synthetic or bcftools genotype input. Their tests live
+in `og-steps::traits` and the `traits` parity cases.

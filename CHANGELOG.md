@@ -4,6 +4,10 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- Step 42 reads traits and genotype rules with `og traits table`, exports WhatsHap sites with `og traits phase-sites`, and checks the catalogs with `og traits check`. The replaced Python evaluator is removed. Report columns and readings stay the same. Genotypes outside the catalog are streamed past, and write errors now report a controlled error instead of a traceback.
+- The unused Python copy-number engine is removed. Its historical catalog tests materialise a pinned test oracle and keep testing the Rust commands.
+
+
 - The container helpers check (`scripts/ci/check-container-helpers.sh`, Guard job `helper-binaries`) now derives its table with the Rust `og` binary, `og dev helpers`. It replaces the Python inside the script, which is gone; the script keeps the docker probe, the orad download and its self-test. On this tree the table and the rule 1 output are the same, byte for byte. The static run takes 0.01 s and 6 MB where the Python took 0.2 s and 15 MB. What changes:
   - A helper called in a process's `shell:` block is checked too. The Python read only `script:` blocks, so such a call went unchecked. No module has one today.
   - A helper called in a process's `exec:` block always fails the check: Nextflow runs that block on the host, where no image applies.

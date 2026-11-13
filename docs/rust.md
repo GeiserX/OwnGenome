@@ -111,3 +111,8 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 - **Release** (`release.yml`): a tag builds the four binaries, writes `SHA256SUMS`, attests them and attaches all five files to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.
+
+Step 42 uses `og traits table`, `og traits phase-sites` and `og traits check`.
+The readers retain only catalog sites. The trait and genotype-rule output
+columns and readings stay the same. `bin/traits_report.py` keeps report
+metadata until the Python summary and report collectors move.

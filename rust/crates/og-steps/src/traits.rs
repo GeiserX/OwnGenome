@@ -378,23 +378,21 @@ fn check_rules(rules: &[Rule], rows: Option<&[Site]>) -> Vec<String> {
             }
             if let Some(t) =
                 rows.and_then(|rows| rows.iter().rev().find(|t| t.row["rsid"] == s.row["rsid"]))
-            {
-                if ["chrom", "pos", "ref", "alt"]
+                && ["chrom", "pos", "ref", "alt"]
                     .iter()
                     .any(|k| t.row[*k] != s.row[*k])
-                {
-                    e.push(format!(
-                        "{sw}: the traits table has {}:{} {}>{}, the rule {}:{} {}>{}",
-                        t.row["chrom"],
-                        t.row["pos"],
-                        t.row["ref"],
-                        t.row["alt"],
-                        s.row["chrom"],
-                        s.row["pos"],
-                        s.row["ref"],
-                        s.row["alt"]
-                    ));
-                }
+            {
+                e.push(format!(
+                    "{sw}: the traits table has {}:{} {}>{}, the rule {}:{} {}>{}",
+                    t.row["chrom"],
+                    t.row["pos"],
+                    t.row["ref"],
+                    t.row["alt"],
+                    s.row["chrom"],
+                    s.row["pos"],
+                    s.row["ref"],
+                    s.row["alt"]
+                ));
             }
         }
         if r.sites
@@ -650,10 +648,10 @@ fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
                     })
             })
             .collect();
-        if let Some(al) = idx {
-            if al.len() == 2 {
-                out.insert(key, (al[0].into(), al[1].into(), ps.to_string()));
-            }
+        if let Some(al) = idx
+            && al.len() == 2
+        {
+            out.insert(key, (al[0].into(), al[1].into(), ps.to_string()));
         }
     }
     Ok(out)

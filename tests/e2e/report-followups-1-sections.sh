@@ -41,7 +41,6 @@ python3 - "$REPO" "$G" "$T" <<'PY'
 import json, os, shutil, subprocess, sys
 repo, g, s = sys.argv[1:4]
 sys.path.insert(0, os.path.join(repo, "bin"))
-import traits_report  # noqa: E402
 
 
 def put(path, text):
@@ -56,14 +55,15 @@ for kind in ("full", "bare"):
     # Step 42: TAS2R38 homozygous for PAV (G, G, C on the plus strand).
     geno = os.path.join(g, kind, "genotypes.tsv")
     put(geno, "chr7\t141972804\tT\tC\tC/C\t40\nchr7\t141972905\tG\t.\tG/G\t40\nchr7\t141973545\tC\tG\tG/G\t40\n")
-    rows = traits_report.read_table(os.path.join(repo, "assets", "traits.tsv"))
-    rules = traits_report.read_rules(os.path.join(repo, "assets", "genotype_rules.tsv"))
-    recs = traits_report.read_genotypes(geno)
-    lines = traits_report.rule_lines(rules, recs)
     os.makedirs(f"{d}/traits", exist_ok=True)
-    traits_report.write_tsv(f"{d}/traits/{s}_traits.tsv", traits_report.report(rows, recs, rules, None, lines))
-    if kind == "full":
-        traits_report.write_tsv(f"{d}/traits/{s}_genotype_rules.tsv", lines, traits_report.RULE_OUT_COLUMNS)
+    subprocess.run([os.environ.get("OG", os.path.join(repo, "bin", "og")), "traits", "table",
+                    "--table", os.path.join(repo, "assets", "traits.tsv"),
+                    "--rules", os.path.join(repo, "assets", "genotype_rules.tsv"),
+                    "--genotypes", geno, "--sample", s,
+                    "--out", f"{d}/traits/{s}_traits.tsv",
+                    "--rules-out", f"{d}/traits/{s}_genotype_rules.tsv"], check=True)
+    if kind == "bare":
+        os.remove(f"{d}/traits/{s}_genotype_rules.tsv")
     # Step 05: two class 4 deletions; the rule table puts the second over half inside an IG locus.
     head = ("AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tINFO\tAnnotation_mode\tGene_name\t"
             "B_loss_source\tB_loss_AFmax\tACMG_class\tAnnotSV_ranking_score\n")

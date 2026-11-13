@@ -1,92 +1,26 @@
 #!/usr/bin/env python3
-"""bin/traits_report.py (step 42) on synthetic bcftools output, on assets/traits.tsv and on
-assets/genotype_rules.tsv; and scripts/ci/check-rule-alleles.sh on the rules.
+"""Step 42 CLI goldens, rule-allele controls and og cn marker outputs.
 
-Checks:
-  1. a reference block expanded at a position (ALT '.', genotype G/G) reads as
-     ref/ref with the table's hom_ref text; ref/alt and alt/alt read het and
-     hom_alt, phased (C|T) as unphased, the reference allele printed first;
-  2. a planted alternate allele changes the reading: the same position read
-     as ref/ref and then as ref/alt gives two different readings, each the
-     table's own;
-  3. a position with no line is not_covered (never read as the reference); an
-     allele the table does not describe and a deletion starting at the
-     position are other_allele, not read; a half call that reaches the script
-     (the bcftools genotype filter of step 42 drops it first, so in a run its
-     position is not_covered) is other_allele too;
-  4. a gVCF REF that is not the table's reference base stops the run (exit 1,
-     the row named), so a gVCF on another build is not read;
-  5. the APOE line, now read from the APOE rule: for every pair of rs429358 and
-     rs7412 genotypes, one site not covered and an allele the rule does not
-     describe, the line is byte for byte the line the hand code of main
-     (6056452) wrote, by its sha256; it comes right after the second APOE row,
-     once; control: one changed character in a reading changes the hash;
-     report() without rules reads the repository's rules table;
-  6. the rules table passes the schema check, and planted problems are each
-     caught: a missing and an extra combination line, a haplotype allele that
-     is neither ref nor alt, diplotypes out of haplotype order, a site that
-     disagrees with its traits table row, no APOE rule, a line of an unknown
-     kind;
-  7. the rules on synthetic gVCF records, for each rule: reference blocks only
-     (homozygous reference, with the block's GQ; TAS2R38's reference haplotype
-     is AAI, which the rule does not read); APOE's double heterozygote
-     (e2/e4, maybe e1/e3) without phase; TAS2R38 homozygous PAV/PAV and a
-     single heterozygous site, which need no phase; the triple heterozygote
-     unphased (WhatsHap ran and no read pair spans the sites, or no phasing
-     ran), phased in one block (PAV/AVI, read-backed), phased in two blocks
-     (unphased), phased into a haplotype the rule does not describe; a site
-     not covered;
-  8. --phase-sites writes only the heterozygous sites of a rule that needs
-     phase and has two or more of them, as a sorted VCF; WhatsHap's phased VCF
-     is read back (GT with |, PS), its unphased records left out;
-  9. the command line writes the traits table (one row per table row plus the
-     APOE line, the columns in order) and the rules table (one line per rule),
-     and exits 1 on a traits table or a rules table that fails the schema check;
- 10. scripts/ci/check-rule-alleles.sh passes on the rules and fails, naming the
-     site and the mistake, on planted copies: ref and alt swapped, the
-     minus-strand bases, an rsID the dbSNP table lacks, a wrong position; and
-     on a rules file with no site, and on a dbSNP table of another build than
-     versions.env pins;
- 11. the copy-aware markers (MARKERS: LPA KIV-2 4925G>A, SMN1 g.27134T>G):
-     each pinned dbSNP record is one of the marker's copies with its ref and
-     alt, and a planted swap, a minus-strand pair and a position off the
-     copies are each caught; the context's middle base is the ref. With OG
-     naming the og binary (skipped without it, a failure with OG_REQUIRED
-     set too): og cn marker-regions prints one region per copy of MARKERS;
-     og cn marker-read SMN1_27134 on mpileup lines made up
-     for each case at the SMN1 and SMN2 copies: a quarter of the reads with G
-     is 'present' (copies = fraction x agCN), T only (the reference) 'not
-     seen', 2 reads with G 'uncertain', under 10 reads 'too little depth', an
-     unreadable pileup 'not assessed' (exit 0); the SMN1 psCN and the agCN
-     come from step 35's table (homologous region included, quality under 20
-     not resolved); every message, for every status and every psCN, says the
-     marker does not prove 2+0 (control: a message without the sentence fails
-     the same test).
-
-Run: python3 tests/test_traits_report.py
+Internal validation, phase and bounded-reader assertions live in
+og-steps::traits::tests. The parity harness checks the old Python at oracle.ref.
 """
+import csv
 import hashlib
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import traits_report as tr  # noqa: E402
-
 TABLE = os.path.join(REPO, "assets", "traits.tsv")
 RULES = os.path.join(REPO, "assets", "genotype_rules.tsv")
-SCRIPT = os.path.join(REPO, "bin", "traits_report.py")
 CHECK = os.path.join(REPO, "scripts", "ci", "check-rule-alleles.sh")
 OG = os.environ.get("OG", "")
-# The sentence every SMN1 marker message ends with.
+SMN_HEADER = "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n"
 SMN1_NOT_PROOF = "This marker does not prove 2+0, and its absence does not rule 2+0 out."
 FAILS = 0
-
-# The sha256 of the APOE line (its OUT_COLUMNS joined by tabs) the hand code of
-# main 6056452 wrote, per rs429358 and rs7412 genotype ("." = no line).
 APOE_GOLDEN = {
     ("T/T", "C/C"): "e3d7512b649f1d23f5acbcaa08da19bd6a009d5b39ac57cb6856591c50e7cfda",
     ("T/T", "C/T"): "62e910d8ec7ac45ab15e9c9ed85c93b128ac41703d1149a332082dc0d7b5f389",
@@ -100,10 +34,6 @@ APOE_GOLDEN = {
     ("T/C", "."): "34624db16a92981c0882edb3d8ce8d291162aa78b7c5208eba2360141e6ccbd8",
     ("T/G", "C/C"): "1d0aee0b8d241561ebd7477d6f4a8be274a48157a297abecd444c6c6a0a6abac",
 }
-# TAS2R38's three sites in the rule's order (codons 49, 262, 296).
-T1, T2, T3 = ("chr7", "141973545"), ("chr7", "141972905"), ("chr7", "141972804")
-
-
 def check(desc, ok, detail=""):
     global FAILS
     print(f"[{'PASS' if ok else 'FAIL'}] {desc}{'' if ok else ' -- ' + str(detail)[:600]}")
@@ -114,46 +44,6 @@ def check(desc, ok, detail=""):
 def write(path, text):
     with open(path, "w") as f:
         f.write(text)
-
-
-def recs(*lines):
-    """bcftools' CHROM POS REF ALT GENOTYPE [GQ] lines -> read_genotypes' records."""
-    d = tempfile.mkdtemp()
-    try:
-        p = os.path.join(d, "g.tsv")
-        write(p, "".join("\t".join(map(str, l)) + "\n" for l in lines))
-        return tr.read_genotypes(p)
-    finally:
-        shutil.rmtree(d)
-
-
-def phased_vcf(*records):
-    """WhatsHap-style VCF records (chrom, pos, ref, alt, GT[:PS], GT as allele indexes) -> read_phased's dict."""
-    d = tempfile.mkdtemp()
-    try:
-        p = os.path.join(d, "p.vcf")
-        body = "".join(f"{c}\t{pos}\t.\t{ref}\t{alt}\t.\tPASS\t.\t{'GT:PS' if ':' in g else 'GT'}\t{g}\n"
-                       for c, pos, ref, alt, g in records)
-        write(p, "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n" + body)
-        return tr.read_phased(p)
-    finally:
-        shutil.rmtree(d)
-
-
-def apoe_line(out):
-    return next(o for o in out if o["rsid"] == "rs429358+rs7412")
-
-
-def line_hash(o):
-    return hashlib.sha256("\t".join(str(o[c]) for c in tr.OUT_COLUMNS).encode()).hexdigest()
-
-
-def run(*args):
-    return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True)
-
-
-def og_cn(*args):
-    return subprocess.run([OG, "cn", *args], capture_output=True, text=True)
 
 
 def dbsnp_checks(rules):
@@ -206,9 +96,6 @@ def dbsnp_checks(rules):
         shutil.rmtree(work)
 
 
-# 11. The multi-SNP rules (APOL1, SERPINA1, HFE, GC, CAD9p21, MAPT): per rule, the
-# genotypes (ALT allele per site, "." for a reference block) of one positive case and
-# its label, and of one negative case, a copy of the positive with one allele flipped.
 MULTI_SNP = {
     "APOL1": [(("G/G", "G/G"), "G1/G1"), (("A/G", "T/G"), "G0/G1")],
     "SERPINA1": [(("T/T", "T/T"), "PiZZ"), (("T/A", "C/T"), "PiSZ"), (("A/A", "C/C"), "PiSS")],
@@ -222,64 +109,6 @@ MULTI_SNP_REF = {"APOL1": "G0/G0", "SERPINA1": "PiMM", "HFE": "wt/wt", "GC": "Gc
                  "CAD9p21": "no risk copy", "MAPT": "H1/H1"}
 
 
-def multi_snp_checks(rules):
-    """11. Each multi-SNP rule on synthetic records: every positive genotype gives its label,
-    reference blocks alone give the reference label, and the control: the first positive
-    case with one allele flipped at one site gives another result. Then the lines reach the
-    HTML report: collect_summary reads them from the rules table and render_report writes
-    one row per rule."""
-    import collect_summary as cs
-    import render_report as rr
-
-    def line(rid, gts):
-        sites = rules[rid]["sites"]
-        rows = []
-        for s, gt in zip(sites, gts):
-            a = [x for x in gt.split("/") if x != s["ref"]]
-            rows.append((s["chrom"], s["pos"], s["ref"], a[0] if a else ".", gt, "40"))
-        return next(x for x in tr.rule_lines(rules, recs(*rows)) if x["rule"] == rid)
-
-    check("11. every multi-SNP rule is in the rules table", set(MULTI_SNP) <= set(rules), sorted(rules))
-    for rid, cases in MULTI_SNP.items():
-        if rid not in rules:
-            continue
-        sites = rules[rid]["sites"]
-        for gts, want in cases:
-            ln = line(rid, gts)
-            check(f"{rid} {','.join(gts)}: {want}", (ln["status"], ln["result"]) == ("called", want), ln)
-        ref = tuple(f"{s['ref']}/{s['ref']}" for s in sites)
-        ln = line(rid, ref)
-        check(f"{rid}, reference blocks only: {MULTI_SNP_REF[rid]}",
-              (ln["status"], ln["result"]) == ("called", MULTI_SNP_REF[rid]), ln)
-        gts, want = cases[0]
-        a, b = gts[0].split("/")
-        s0 = sites[0]
-        flip = s0["ref"] if b == s0["alt"] else s0["alt"]
-        flipped = (f"{a}/{flip}",) + tuple(gts[1:])
-        ln = line(rid, flipped)
-        check(f"control: {rid} with one allele flipped at {s0['rsid']} ({','.join(flipped)}) is not {want}",
-              ln["result"] != want, ln)
-    apol1 = line("APOL1", ("A/G", "T/G"))["reading"]
-    check("APOL1 G0/G1 says G2 is not read and the other copy could carry it",
-          "G2 is not read" in apol1 and "G1/G2" in apol1, apol1)
-    work = tempfile.mkdtemp()
-    try:
-        os.makedirs(os.path.join(work, "traits"))
-        lines = [line(rid, cases[0][0]) for rid, cases in MULTI_SNP.items() if rid in rules]
-        tr.write_tsv(os.path.join(work, "traits", "S_genotype_rules.tsv"), lines, tr.RULE_OUT_COLUMNS)
-        read = cs.genotype_rules(work, "S") or []
-        page = "\n".join(rr.rules_html({"rules": read}, "S"))
-        for rid, cases in MULTI_SNP.items():
-            if rid in rules:
-                check(f"HTML report: the {rid} rule row with its result {cases[0][1]}",
-                      rr.E(rules[rid]["trait"]) in page and rr.E(cases[0][1]) in page, page[:300])
-    finally:
-        shutil.rmtree(work)
-
-
-SMN_HEADER = "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n"
-
-
 def says_not_proof(message):
     """The SMN1 marker's message must say the marker does not prove 2+0."""
     return "does not prove 2+0" in message
@@ -287,22 +116,6 @@ def says_not_proof(message):
 
 def marker_checks():
     """11. The copy-aware markers."""
-    for name, m in tr.MARKERS.items():
-        check(f"marker {name}: the pinned dbSNP record agrees with the marker", tr.marker_errors(name) == [],
-              tr.marker_errors(name))
-        rs, chrom, pos, ref, alt = m["dbsnp"]
-        comp = {"A": "T", "C": "G", "G": "C", "T": "A"}
-        e = tr.marker_errors(name, dict(m, ref=alt, alt=ref))
-        check(f"marker {name} control: ref and alt swapped is caught", any("swapped" in x for x in e), e)
-        e = tr.marker_errors(name, dict(m, ref=comp[ref], alt=comp[alt],
-                                        context=m["context"][:10] + comp[ref] + m["context"][11:]))
-        check(f"marker {name} control: the minus-strand bases are caught", any("minus-strand" in x for x in e), e)
-        e = tr.marker_errors(name, dbsnp=(rs, chrom, pos + 1, ref, alt))
-        check(f"marker {name} control: a dbSNP position off the copies is caught",
-              any("not at one of the marker's copies" in x for x in e), e)
-        e = tr.marker_errors(name, dict(m, context=m["context"][:10] + alt + m["context"][11:]))
-        check(f"marker {name} control: a context whose middle base is not the ref is caught",
-              any("middle base" in x for x in e), e)
     check("LPA_KIV2_4925: seven copies (six KIV-2 units and KIV-1)", len(tr.MARKERS["LPA_KIV2_4925"]["copies"]) == 7)
     if not OG:
         print("skip: OG is not set (OG=rust/target/release/og): og cn marker-regions and marker-read did not run")
@@ -395,235 +208,73 @@ def marker_checks():
         shutil.rmtree(work)
 
 
+
+def traits_tables(genotypes, out, rules_out, sample="S"):
+    """Use og in the Rust job. Unit shards without og use the pinned oracle."""
+    args = ["--table", TABLE, "--rules", RULES, "--genotypes", genotypes,
+            "--sample", sample, "--out", out, "--rules-out", rules_out]
+    if OG:
+        subprocess.run([OG, "traits", "table", *args], check=True, capture_output=True, text=True)
+    else:
+        with tempfile.TemporaryDirectory(prefix="traits-oracle-") as work:
+            ref = "669a8196cf4c377200f9b4af9c235ef85fb774a1"
+            if subprocess.run(["git", "-C", REPO, "cat-file", "-e", ref + "^{commit}"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+                subprocess.run(["git", "-C", REPO, "fetch", "--depth=1", "origin", ref], check=True)
+            source = subprocess.check_output(["git", "-C", REPO, "show", ref + ":bin/traits_report.py"])
+            path = os.path.join(work, "traits_report.py")
+            with open(path, "wb") as f:
+                f.write(source)
+            subprocess.run([sys.executable, path, *args], check=True, capture_output=True, text=True)
+
+
+def og_cn(*args):
+    return subprocess.run([OG, "cn", *args], capture_output=True, text=True)
+
+
 def main():
-    rules = tr.read_rules(RULES)
+    rules = {}
+    with open(RULES) as f:
+        for cells in csv.reader((line for line in f if not line.startswith("#")), delimiter="\t"):
+            if cells and cells[0] == "site":
+                rules.setdefault(cells[1], {"sites": []})["sites"].append(cells[2:])
     dbsnp_checks(rules)
-    rows = tr.read_table(TABLE)
-    by_id = {r["rsid"]: r for r in rows}
-    lct = by_id["rs4988235"]   # chr2:135851076 G>A
-    c, p, ref, alt = lct["chrom"], lct["pos"], lct["ref"], lct["alt"]
-    at = lambda *ls: recs(*ls).get((c, p), [])  # noqa: E731
-
-    # 1. genotypes and their readings
-    g = tr.call(lct, at((c, p, ref, ".", f"{ref}/{ref}")))
-    check("expanded reference block: ref/ref, hom_ref reading", g == (f"{ref}/{ref}", "called", lct["hom_ref"]), g)
-    g = tr.call(lct, at((c, p, ref, alt, f"{alt}/{ref}")))
-    check("ref/alt: het reading, reference allele first", g == (f"{ref}/{alt}", "called", lct["het"]), g)
-    g = tr.call(lct, at((c, p, ref, alt, f"{ref}|{alt}")))
-    check("phased ref|alt reads as ref/alt", g == (f"{ref}/{alt}", "called", lct["het"]), g)
-    g = tr.call(lct, at((c, p, ref, alt, f"{alt}/{alt}")))
-    check("alt/alt: hom_alt reading", g == (f"{alt}/{alt}", "called", lct["hom_alt"]), g)
-
-    # 2. a planted alternate allele changes the reading
-    before = tr.call(lct, at((c, p, ref, ".", f"{ref}/{ref}")))[2]
-    after = tr.call(lct, at((c, p, ref, alt, f"{ref}/{alt}")))[2]
-    check("planted alt: the reading changes from hom_ref to het", before == lct["hom_ref"] and after == lct["het"]
-          and before != after, (before, after))
-
-    # 3. not covered and other alleles
-    check("no line: not_covered", tr.call(lct, [])[1] == "not_covered")
-    other = next(b for b in "ACGT" if b not in (ref, alt))
-    g = tr.call(lct, at((c, p, ref, other, f"{ref}/{other}")))
-    check("an allele the table does not describe: other_allele, not read", g[1] == "other_allele"
-          and g[2] == tr.OTHER_ALLELE, g)
-    g = tr.call(lct, at((c, p, ref, alt, f"./{alt}")))
-    check("a half call: other_allele", g[1] == "other_allele", g)
-    g = tr.call(lct, at((c, p, ref + "T", ref, f"{ref}T/{ref}")))
-    check("a deletion starting at the position: other_allele", g[1] == "other_allele", g)
-    g = tr.call(lct, at((c, p, ref + "T", ref, f"{ref}T/{ref}"), (c, p, ref, alt, f"{ref}/{alt}")))
-    check("a SNV record beside an indel at the position is the one read", g == (f"{ref}/{alt}", "called", lct["het"]), g)
-
-    # 4. a REF that is not the GRCh38 base stops
-    try:
-        tr.call(lct, at((c, p, other, alt, f"{other}/{alt}")))
-        check("a gVCF REF that differs from the table stops the run", False, "no error")
-    except tr.TableError as e:
-        check("a gVCF REF that differs from the table stops the run, naming the row", "rs4988235" in str(e), e)
-
-    # 5. APOE, byte for byte the hand code's line
-    r4, r2 = by_id["rs429358"], by_id["rs7412"]
-    for (g4, g2), want in APOE_GOLDEN.items():
-        lines = [(r4["chrom"], r4["pos"], "T", g4.split("/")[1], g4)]
-        if g2 != ".":
-            lines.append((r2["chrom"], r2["pos"], "C", "T", g2))
-        out = tr.report(rows, recs(*lines), rules)
-        line = apoe_line(out)
-        check(f"APOE line byte for byte as before: rs429358 {g4}, rs7412 {g2} -> {line['genotype']} {line['status']}",
-              line_hash(line) == want, line)
-    out = tr.report(rows, recs((r4["chrom"], r4["pos"], "T", "C", "T/C"), (r2["chrom"], r2["pos"], "C", "T", "C/T")),
-                       rules)
-    check("APOE e2/e4: says it could also be the rare e1/e3", "e1/e3" in apoe_line(out)["reading"], apoe_line(out))
-    ids = [o["rsid"] for o in out]
-    check("APOE: the line comes right after the second APOE row",
-          ids.index("rs429358+rs7412") == max(ids.index("rs429358"), ids.index("rs7412")) + 1, ids)
-    check("APOE: one line only", ids.count("rs429358+rs7412") == 1, ids)
-    changed = dict(rules["APOE"], combinations=[dict(x, reading=x["reading"].replace("e3/e3.", "e3/e3!"))
-                                                for x in rules["APOE"]["combinations"]])
-    out = tr.report(rows, recs((r4["chrom"], r4["pos"], "T", "C", "T/C"), (r2["chrom"], r2["pos"], "C", "T", "C/C")),
-                       dict(rules, APOE=changed))
-    check("control: one changed character in an APOE reading changes the hash",
-          line_hash(apoe_line(out)) != APOE_GOLDEN[("T/C", "C/C")], apoe_line(out))
-    e4 = apoe_line(tr.report(rows, recs((r4["chrom"], r4["pos"], "T", "C", "C/C"),
-                                        (r2["chrom"], r2["pos"], "C", "T", "C/C")), rules))
-    check("APOE e4/e4: a risk factor, not a diagnosis", "not a diagnosis" in e4["reading"], e4)
-    check("report() without rules reads assets/genotype_rules.tsv (other tests call it so)",
-          line_hash(apoe_line(tr.report(rows, {}))) == line_hash(apoe_line(tr.report(rows, {}, rules))), rows[:0])
-
-    # 6. the rules table's schema
-    errs = tr.check_rules(rules, rows)
-    check(f"assets/genotype_rules.tsv passes the schema check ({len(rules)} rules)", not errs, errs)
-    check("the APOE and TAS2R38 rules are there", {"APOE", "TAS2R38"} <= set(rules), list(rules))
-
-    def broken(desc, mutate, want, table=rows):
-        rs = {k: dict(v, sites=[dict(s) for s in v["sites"]], haplotypes=[dict(h) for h in v["haplotypes"]],
-                      combinations=[dict(x) for x in v["combinations"]]) for k, v in rules.items()}
-        mutate(rs)
-        e = tr.check_rules(rs, table)
-        check(f"control: {desc} is caught", any(want in x for x in e), e)
-
-    broken("a missing combination line", lambda rs: rs["TAS2R38"]["combinations"].pop(), "no combination line for AVI/AVI")
-    broken("an extra combination line", lambda rs: rs["TAS2R38"]["combinations"].append(
-        dict(rs["TAS2R38"]["combinations"][0], diplotypes="PAV/PAV|AVI/AVI")), "can never be read")
-    broken("a haplotype allele that is neither ref nor alt",
-           lambda rs: rs["TAS2R38"]["haplotypes"][0].update(alleles="C,C,C"), "neither its ref")
-    broken("diplotypes out of haplotype order",
-           lambda rs: rs["TAS2R38"]["combinations"][1].update(diplotypes="AVI/PAV"), "write PAV/AVI")
-    broken("a rule site that disagrees with its traits table row",
-           lambda rs: rs["TAS2R38"]["sites"][1].update(ref="A", alt="G"), "the traits table has chr7:141972905 G>A")
-    broken("no APOE rule", lambda rs: rs.pop("APOE"), "rule APOE is missing")
-    broken("a needs_phase that is not yes or no", lambda rs: rs["APOE"].update(needs_phase="maybe"), "needs_phase")
-    work = tempfile.mkdtemp()
-    try:
-        bad = os.path.join(work, "r.tsv")
-        write(bad, open(RULES).read() + "allele\tAPOE\tx\n")
-        try:
-            tr.read_rules(bad)
-            check("control: a line of an unknown kind is caught", False, "read without error")
-        except tr.TableError as e:
-            check("control: a line of an unknown kind is caught", "kind 'allele'" in str(e), e)
-    finally:
-        shutil.rmtree(work)
-
-    # 7. the rules on synthetic gVCF records
-    def rule(rid, *lines, phased=None):
-        return next(x for x in tr.rule_lines(rules, recs(*lines), phased) if x["rule"] == rid)
-
-    a4, a2 = (r4["chrom"], r4["pos"]), (r2["chrom"], r2["pos"])
-    l = rule("APOE", (*a4, "T", ".", "T/T", "37"), (*a2, "C", ".", "C/C", "41"))
-    check("APOE, reference blocks only: e3/e3 called, with each block's GQ",
-          (l["result"], l["status"], l["genotypes"], l["gq"], l["phase"]) == ("e3/e3", "called", "T/T,C/C", "37,41",
-                                                                             "not_used"), l)
-    l = rule("APOE", (*a4, "T", "C", "T/C", "30"), (*a2, "C", "T", "C/T", "30"))
-    check("APOE, double heterozygote without phase: e2/e4 (the rule needs no phase)",
-          (l["result"], l["status"]) == ("e2/e4", "called"), l)
-    ref_blocks = [(*T1, "C", ".", "C/C", "50"), (*T2, "G", ".", "G/G", "50"), (*T3, "T", ".", "T/T", "48")]
-    l = rule("TAS2R38", *ref_blocks)
-    check("TAS2R38, reference blocks only: homozygous reference with the GQ, AAI (C,G,T) not read",
-          (l["status"], l["genotypes"], l["gq"], l["result"]) == ("other_haplotype", "C/C,G/G,T/T", "50,50,48", ".")
-          and "C,G,T" in l["reading"], l)
-    pav = [(*T1, "C", "G", "G/G", "40"), (*T2, "G", ".", "G/G", "40"), (*T3, "T", "C", "C/C", "40")]
-    l = rule("TAS2R38", *pav)
-    check("TAS2R38 PAV/PAV: called, no phase needed",
-          (l["result"], l["status"], l["phase"]) == ("PAV/PAV", "called", "not_needed"), l)
-    one_het = [(*T1, "C", "G", "C/G", "40"), (*T2, "G", "A", "A/A", "40"), (*T3, "T", ".", "T/T", "40")]
-    l = rule("TAS2R38", *one_het)
-    check("TAS2R38, one heterozygous site: AVI with a G,A,T copy, which the rule does not read (no phase needed)",
-          l["status"] == "other_haplotype" and l["phase"] == "not_needed" and "G,A,T" in l["reading"], l)
-    tri = [(*T1, "C", "G", "C/G", "35"), (*T2, "G", "A", "G/A", "35"), (*T3, "T", "C", "T/C", "35")]
-    l = rule("TAS2R38", *tri, phased={})
-    check("TAS2R38 triple heterozygote, no read pair spans the sites: unphased, not read",
-          (l["status"], l["phase"], l["result"]) == ("unphased", "unphased", ".")
-          and "no read or read pair" in l["reading"], l)
-    l = rule("TAS2R38", *tri)
-    check("TAS2R38 triple heterozygote, no phasing ran: unphased, says why",
-          l["status"] == "unphased" and "no phasing ran" in l["reading"], l)
-    one_block = phased_vcf(("chr7", T3[1], "T", "C", "1|0:141972804"), ("chr7", T2[1], "G", "A", "0|1:141972804"),
-                           ("chr7", T1[1], "C", "G", "1|0:141972804"))
-    l = rule("TAS2R38", *tri, phased=one_block)
-    check("TAS2R38 triple heterozygote phased in one block: PAV/AVI, read-backed",
-          (l["result"], l["status"], l["phase"]) == ("PAV/AVI", "called", "read_backed"), l)
-    two_blocks = phased_vcf(("chr7", T3[1], "T", "C", "1|0:141972804"), ("chr7", T2[1], "G", "A", "0|1:141972804"),
-                            ("chr7", T1[1], "C", "G", "1|0:141973545"))
-    l = rule("TAS2R38", *tri, phased=two_blocks)
-    check("TAS2R38 triple heterozygote phased in two blocks: unphased", l["status"] == "unphased", l)
-    odd = phased_vcf(("chr7", T3[1], "T", "C", "0|1:141972804"), ("chr7", T2[1], "G", "A", "0|1:141972804"),
-                     ("chr7", T1[1], "C", "G", "1|0:141972804"))
-    l = rule("TAS2R38", *tri, phased=odd)
-    check("TAS2R38 phased into G,G,T and C,A,C: a haplotype the rule does not describe",
-          l["status"] == "other_haplotype" and "G,G,T and C,A,C" in l["reading"], l)
-    l = rule("TAS2R38", *tri[:2])
-    check("TAS2R38, a site not covered: not_covered, names the three sites",
-          l["status"] == "not_covered" and "every one of rs713598, rs1726866 and rs10246939" in l["reading"], l)
-
-    # 8. the sites to phase, and WhatsHap's VCF read back
-    s = tr.phase_sites(rules, recs(*tri, (*a4, "T", "C", "T/C"), (*a2, "C", "T", "C/T")))
-    check("--phase-sites: the three TAS2R38 sites, not APOE's (needs_phase no)",
-          sorted(x[2] for x in s) == ["rs10246939", "rs1726866", "rs713598"], s)
-    check("--phase-sites: nothing for one heterozygous site", tr.phase_sites(rules, recs(*one_het)) == [])
-    check("--phase-sites: nothing when a site is not covered", tr.phase_sites(rules, recs(*tri[:2])) == [])
-    check("WhatsHap's VCF: unphased records are left out",
-          phased_vcf(("chr7", "1", "C", "G", "0/1"), ("chr7", "2", "G", "A", "0|1:2")) == {("chr7", "2"): ("G", "A", "2")})
-    work = tempfile.mkdtemp()
-    try:
-        g = os.path.join(work, "g.tsv")
-        write(g, "".join("\t".join(x) + "\n" for x in tri))
-        vcf = os.path.join(work, "in.vcf")
-        res = run("--rules", RULES, "--genotypes", g, "--sample", "S", "--phase-sites", vcf)
-        body = [x.split("\t") for x in open(vcf).read().splitlines() if not x.startswith("#")] if res.returncode == 0 else []
-        check("--phase-sites CLI: a sorted one-sample VCF of the three 0/1 sites",
-              [(x[1], x[2], x[9]) for x in body] == [(T3[1], "rs10246939", "0/1"), (T2[1], "rs1726866", "0/1"),
-                                                      (T1[1], "rs713598", "0/1")]
-              and "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS" in open(vcf).read(), (res.stderr, body))
-
-        # 9. the command line
-        write(g, f"{c}\t{p}\t{ref}\t{alt}\t{ref}/{alt}\t30\n" + "".join("\t".join(x) + "\n" for x in tri))
-        out, rout = os.path.join(work, "S_traits.tsv"), os.path.join(work, "S_genotype_rules.tsv")
-        ph = os.path.join(work, "phased.vcf")
-        write(ph, "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-              f"chr7\t{T3[1]}\t.\tT\tC\t.\tPASS\t.\tGT:PS\t1|0:9\nchr7\t{T2[1]}\t.\tG\tA\t.\tPASS\t.\tGT:PS\t0|1:9\n"
-              f"chr7\t{T1[1]}\t.\tC\tG\t.\tPASS\t.\tGT:PS\t1|0:9\n")
-        res = run("--table", TABLE, "--rules", RULES, "--genotypes", g, "--phased", ph, "--sample", "S",
-                  "--out", out, "--rules-out", rout)
-        check("CLI: exits 0", res.returncode == 0, res.stderr)
-        lines = open(out).read().splitlines() if res.returncode == 0 else [""]
-        check("CLI: the header is the output columns", lines[0].split("\t") == tr.OUT_COLUMNS, lines[0])
-        check("CLI: one row per table row plus the APOE line", len(lines) - 1 == len(rows) + 1, len(lines))
-        row = next((l.split("\t") for l in lines[1:] if l.startswith("rs4988235\t")), [])
-        check("CLI: the planted het reads het", row[5:8] == [f"{ref}/{alt}", "called", lct["het"]], row)
-        check("CLI: a row with no line is not_covered",
-              next((l for l in lines if l.startswith("rs671\t")), "").split("\t")[6:7] == ["not_covered"])
-        rl = open(rout).read().splitlines() if res.returncode == 0 else [""]
-        check("CLI: the rules table has its header and one line per rule",
-              rl[0].split("\t") == tr.RULE_OUT_COLUMNS and len(rl) - 1 == len(rules), rl[:1])
-        t = next((x.split("\t") for x in rl if x.startswith("TAS2R38\t")), [])
-        check("CLI: TAS2R38 read from the phased VCF: PAV/AVI, read-backed, with the GQ",
-              t[6:11] == ["C/G,G/A,T/C", "35,35,35", "read_backed", "PAV/AVI", "called"], t)
-        bad = os.path.join(work, "bad.tsv")
-        write(bad, open(TABLE).read().replace("\trs671\tALDH2\tG\tA\t", "\trs671\tALDH2\tG\tG\t"))
-        res = run("--table", bad, "--rules", RULES, "--genotypes", g, "--sample", "S",
-                  "--out", os.path.join(work, "x.tsv"), "--rules-out", os.path.join(work, "y.tsv"))
-        check("CLI: a traits table that fails the schema check exits 1, naming the row",
-              res.returncode == 1 and "rs671" in res.stderr and not os.path.exists(os.path.join(work, "x.tsv")),
-              (res.returncode, res.stderr))
-        badr = os.path.join(work, "badr.tsv")
-        write(badr, open(RULES).read().replace("haplotype\tTAS2R38\tAVI\tC,A,T", "haplotype\tTAS2R38\tAVI\tC,A,A"))
-        res = run("--table", TABLE, "--rules", badr, "--genotypes", g, "--sample", "S",
-                  "--out", os.path.join(work, "x.tsv"), "--rules-out", os.path.join(work, "y.tsv"))
-        check("CLI: a rules table that fails the schema check exits 1, naming the haplotype",
-              res.returncode == 1 and "AVI" in res.stderr and not os.path.exists(os.path.join(work, "y.tsv")),
-              (res.returncode, res.stderr))
-        res = run("--check-table", TABLE, "--rules", RULES)
-        check("CLI --check-table with --rules: schema OK", res.returncode == 0 and "schema OK" in res.stdout,
-              (res.returncode, res.stderr))
-
-    finally:
-        shutil.rmtree(work)
-
-    multi_snp_checks(rules)
+    if not OG:
+        check("OG_REQUIRED needs the og binary", not os.environ.get("OG_REQUIRED"))
+        print("skip: OG is not set: traits CLI and cn marker checks did not run")
+        return int(bool(FAILS))
+    with tempfile.TemporaryDirectory() as work:
+        def table(records):
+            g = os.path.join(work, "g.tsv")
+            write(g, "".join("\t".join(rec) + "\n" for rec in records))
+            out, rout = os.path.join(work, "traits.tsv"), os.path.join(work, "rules.tsv")
+            res = subprocess.run([OG, "traits", "table", "--table", TABLE, "--rules", RULES,
+                                  "--genotypes", g, "--sample", "S", "--out", out,
+                                  "--rules-out", rout], capture_output=True, text=True)
+            check("traits table exits 0", res.returncode == 0, res.stderr)
+            if res.returncode:
+                return [], []
+            with open(out) as f:
+                traits = list(csv.DictReader(f, delimiter="\t"))
+            with open(rout) as f:
+                lines = list(csv.DictReader(f, delimiter="\t"))
+            return traits, lines
+        for (a, b), want in APOE_GOLDEN.items():
+            records = [("chr19", pos, ref, alt, gt) for pos, ref, alt, gt in
+                       [("44908684", "T", "C", a), ("44908822", "C", "T", b)] if gt != "."]
+            traits, lines = table(records)
+            apoe = next(r for r in traits if "+" in r["rsid"])
+            got = hashlib.sha256("\t".join(apoe[k] for k in tr.OUT_COLUMNS).encode()).hexdigest()
+            check(f"APOE golden {a}, {b}", got == want, got)
+        for rid, cases in MULTI_SNP.items():
+            for gts, label in cases:
+                records = [(s[1], s[2], s[3], s[4], gt) for s, gt in zip(rules[rid]["sites"], gts)]
+                _, lines = table(records)
+                got = next(r for r in lines if r["rule"] == rid)
+                check(f"{rid} {gts}: {label}", got["status"] == "called" and got["result"] == label, got)
     marker_checks()
-
-    print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
-    return 1 if FAILS or (not OG and os.environ.get("OG_REQUIRED")) else 0
+    print("RESULT:", "ALL PASS" if not FAILS else f"{FAILS} FAILED")
+    return int(bool(FAILS))
 
 
 if __name__ == "__main__":

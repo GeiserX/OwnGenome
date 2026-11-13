@@ -86,7 +86,30 @@ if OG and not os.path.realpath(OG).startswith(os.path.realpath(REPO) + os.sep):
 CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
 MODELS = os.path.join(REPO, "assets", "parascopy_models_v1.7.txt")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import copy_number as cn  # noqa: E402
+# The old engine is a test oracle pinned to the traits port's parent. It is
+# materialised only for these historical differential assertions. No pipeline
+# step imports or ships a second engine.
+import importlib.util  # noqa: E402
+
+
+def catalog_oracle():
+    ref = "669a8196cf4c377200f9b4af9c235ef85fb774a1"
+    if subprocess.run(["git", "-C", REPO, "cat-file", "-e", ref + "^{commit}"],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        subprocess.run(["git", "-C", REPO, "fetch", "--depth=1", "origin", ref], check=True)
+    source = subprocess.check_output(["git", "-C", REPO, "show", ref + ":bin/copy_number.py"])
+    with tempfile.TemporaryDirectory(prefix="cn-oracle-") as work:
+        path = os.path.join(work, "copy_number.py")
+        with open(path, "wb") as f:
+            f.write(source)
+        spec = importlib.util.spec_from_file_location("cn_catalog_oracle", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    module.CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
+    return module
+
+
+cn = catalog_oracle()
 
 FAILS = 0
 # Frozen from bin/hba_copy_number.py and bin/lpa_kiv2.py as they were before the
