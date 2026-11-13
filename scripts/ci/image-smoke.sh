@@ -188,11 +188,17 @@ self_test() {
   cat > "${tmp}/repo/bin/og" <<'SH'
 #!/usr/bin/env bash
 [ -f "$(dirname "$0")/../ready" ] || exit 127
-printf '%s\n' "$*"
+case "$1 $2 ${3:-}" in
+  'dev pharmcat diplotypes') printf '1\n' ;;
+  'dev smoke csv-cell') printf '0.9\n' ;;
+  *) printf '%s\n' "$*" ;;
+esac
 SH
   cat > "${tmp}/repo/scripts/setup.sh" <<'SH'
 #!/usr/bin/env bash
 [ "$1" = --og ] || exit 2
+printf 'Building og ...\n'
+printf 'builder diagnostic\n' >&2
 printf 'built\n' >> "$(dirname "$0")/../ready"
 SH
   chmod +x "${tmp}/repo/bin/og"
@@ -211,6 +217,32 @@ SH
   '); rc=$?
   if [ "$rc" -eq 0 ]; then echo "[PASS] missing default og is built once; explicit OG failure is retained"
   else echo "[FAIL] og fixture preparation: $out"; fails=$((fails + 1)); fi
+  # A value helper can trigger setup inside command substitution. Use the
+  # real assertions with a noisy builder and no default binary built yet.
+  rm -f "${tmp}/repo/ready"
+  # shellcheck disable=SC2016  # variables belong to the isolated test shell
+  out=$(env -u OG REPO="${tmp}/repo" bash -c "$(declare -f smoke_og pharmcat_called check_pharmcat csv_cell num at_least between pass fail)"'
+    rc=0
+    "$REPO/bin/og" --version >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 127 ] || exit 1
+    count=$(pharmcat_called report.json 2> "$REPO/build.log") || exit 1
+    [ "$count" = 1 ] || { printf "unexpected count: %s\n" "$count"; exit 1; }
+    grep -qx "Building og ..." "$REPO/build.log" || exit 1
+    grep -qx "builder diagnostic" "$REPO/build.log" || exit 1
+    rm -f "$REPO/ready"
+    CHECK_FAILS=0
+    check_pharmcat "first-use PharmCAT count" report.json 2> "$REPO/build.log"
+    [ "$CHECK_FAILS" -eq 0 ] || exit 1
+    [ "$(wc -l < "$REPO/ready")" -eq 1 ] || exit 1
+    rm -f "$REPO/ready"
+    value=$(csv_cell summary.csv Type=SNP,Filter=PASS METRIC.Recall 2> "$REPO/build.log") || exit 1
+    [ "$value" = 0.9 ] || { printf "unexpected CSV value: %s\n" "$value"; exit 1; }
+    between "first-use CSV recall" "$value" 0.85 0.95
+    [ "$CHECK_FAILS" -eq 0 ] || exit 1
+    [ "$(wc -l < "$REPO/ready")" -eq 1 ] || exit 1
+  '); rc=$?
+  if [ "$rc" -eq 0 ]; then echo "[PASS] first-use PharmCAT and CSV values exclude setup output"
+  else echo "[FAIL] first-use value capture: $out"; fails=$((fails + 1)); fi
   rm -rf "$tmp"
   if [ "$fails" -gt 0 ]; then echo "self-test: ${fails} case(s) failed" >&2; return 1; fi
   echo "self-test: all cases passed"
@@ -544,7 +576,8 @@ smoke_og() {
   local rc=0
   "${OG:-${REPO}/bin/og}" --version >/dev/null 2>&1 || rc=$?
   if [ "$rc" -eq 127 ] && [ -z "${OG:-}" ]; then
-    bash "${REPO}/scripts/setup.sh" --og || return 1
+    # This can run inside a captured value helper: only og's result is stdout.
+    bash "${REPO}/scripts/setup.sh" --og >&2 || return 1
   elif [ "$rc" -ne 0 ]; then
     return "$rc"
   fi
