@@ -977,3 +977,4 @@ traits	sites-single	gen:traits.sh	phase-sites --rules rules.tsv --genotypes sing
 traits	check	gen:traits.sh	check --table traits.tsv --rules rules.tsv	-	bytes	PYTHON_IMAGE
 traits	bad-table	gen:traits.sh	check --table bad-table.tsv --rules rules.tsv	-	bytes	PYTHON_IMAGE
 traits	bad-rules	gen:traits.sh	check --table traits.tsv --rules bad-rules.tsv	-	bytes	PYTHON_IMAGE
+traits	shared-vocabulary	gen:traits.sh	table --table traits.tsv --rules shared-rules.tsv --genotypes shared.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE

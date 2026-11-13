@@ -1,0 +1,69 @@
+Local execution of the Guard step "Traits controls", Rust 1.93.0.
+Command: cargo test --locked -p og-steps traits::tests --no-fail-fast
+Faults: reverse the diplotype key list; remove the genotype REF guard;
+clear the phase-site list before writing the VCF.
+The step requires each of the three named regression tests to fail, then
+restores the source. A compiler failure alone does not satisfy the control.
+
+running 8 tests
+test traits::tests::csv_header_unicode_rules_and_atomic_write_errors ... ok
+test traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls ... FAILED
+test traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory ... FAILED
+test traits::tests::shared_position_keeps_each_rules_allele_vocabulary ... ok
+test traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported ... FAILED
+test traits::tests::unwritable_rules_output_keeps_existing_traits_table ... FAILED
+test traits::tests::committed_catalogs_and_every_rule_genotype ... FAILED
+test traits::tests::schema_faults_are_refused_before_enumeration ... ok
+
+failures:
+
+---- traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls stdout ----
+
+thread 'traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls' (4288523) panicked at crates/og-steps/src/traits.rs:1242:17:
+assertion `left == right` failed
+  left: "other_haplotype"
+ right: "called"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory stdout ----
+
+thread 'traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory' (4288529) panicked at crates/og-steps/src/traits.rs:1336:45:
+called `Result::unwrap_err()` on an `Ok` value: {("chr2", "135851076"): SiteGt { alleles: ["G", "A"], status: Called, gq: "42", snv: true }}
+
+---- traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported stdout ----
+
+thread 'traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported' (4288526) panicked at crates/og-steps/src/traits.rs:1390:9:
+assertion `left == right` failed
+  left: 0
+ right: 3
+
+---- traits::tests::unwritable_rules_output_keeps_existing_traits_table stdout ----
+ERROR: /Volumes/Data/repos/personal/.worktrees/pgp-rust-c2b/rust/crates/og-steps/../../../assets/genotype_rules.tsv: rule APOE (line 19): no combination line for e2/e4|e1/e3
+ERROR: /Volumes/Data/repos/personal/.worktrees/pgp-rust-c2b/rust/crates/og-steps/../../../assets/genotype_rules.tsv: rule APOE (line 19): the combination line e1/e3|e2/e4 can never be read (a rule that needs phase reads one diplotype)
+
+thread 'traits::tests::unwritable_rules_output_keeps_existing_traits_table' (4288530) panicked at crates/og-steps/src/traits.rs:1433:37:
+called `Result::unwrap_err()` on an `Ok` value: 1
+
+---- traits::tests::committed_catalogs_and_every_rule_genotype stdout ----
+
+thread 'traits::tests::committed_catalogs_and_every_rule_genotype' (4288524) panicked at crates/og-steps/src/traits.rs:1216:9:
+assertion `left == right` failed
+  left: ["rule APOE (line 19): no combination line for e2/e4|e1/e3", "rule APOE (line 19): the combination line e1/e3|e2/e4 can never be read (a rule that needs phase reads one diplotype)"]
+ right: []
+
+
+failures:
+    traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls
+    traits::tests::committed_catalogs_and_every_rule_genotype
+    traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported
+    traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory
+    traits::tests::unwritable_rules_output_keeps_existing_traits_table
+
+test result: FAILED. 3 passed; 5 failed; 0 ignored; 0 measured; 91 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p og-steps --lib`
+error: 1 target failed:
+    `-p og-steps --lib`
+test traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls ... FAILED
+test traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory ... FAILED
+test traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported ... FAILED

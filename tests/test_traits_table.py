@@ -1,33 +1,10 @@
 #!/usr/bin/env python3
-"""assets/traits.tsv, the curated table of step 42: its schema, its reference
-bases and its sources.
+"""Validate the curated traits catalog and its GRCh38 reference bases.
 
-  python3 tests/test_traits_table.py                    schema (the unit-tests job)
-  python3 tests/test_traits_table.py --fasta REF.fasta  also: each row's ref is the
-                                                        FASTA's base, on every contig
-                                                        the FASTA has (needs REF.fasta.fai)
-  python3 tests/test_traits_table.py --online           also: every PMID resolves in
-                                                        PubMed, and every rsID's GRCh38
-                                                        position, reference base and
-                                                        alt allele are dbSNP's (curl)
-  --table FILE checks another table (the e2e case plants a broken copy).
-
-The e2e case traits-panel-1 runs it with --fasta (the fixture's GRCh38
-reference) and --online, and on a planted copy with one wrong reference base
-and one PubMed id that does not exist, which must fail.
-
-Checks without options:
-  1. the table passes bin/traits_report.py's schema check (columns, chr1 to
-     chr22, positions, one base each for ref and alt, readings, ancestry
-     yes/no, PubMed ids, the two APOE rows, no SNPedia text);
-  2. planted problems are each caught: a wrong column count, ref = alt, a
-     non-base allele, a duplicate rsID, a PMID that is not a number, a
-     missing APOE row;
-  3. the FASTA check on a three-base synthetic FASTA: the right base passes,
-     a planted wrong base fails, a contig the FASTA lacks is counted as not
-     checked.
-
-Run: python3 tests/test_traits_table.py
+Schema checks use og traits check. Rust unit tests plant invalid catalog
+rows and rules. The optional --fasta and --online checks also verify the
+FASTA bases, PubMed sources and dbSNP records. A synthetic FASTA provides
+positive, wrong-base and missing-contig controls without network access.
 """
 import argparse
 import json

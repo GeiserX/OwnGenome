@@ -4,7 +4,7 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
-- Step 42 reads traits and genotype rules with `og traits table`, exports WhatsHap sites with `og traits phase-sites`, and checks the catalogs with `og traits check`. The replaced Python evaluator is removed. Report columns and readings stay the same. Genotypes outside the catalog are streamed past, and write errors now report a controlled error instead of a traceback.
+- Step 42 reads traits and genotype rules with `og traits table`, exports WhatsHap sites with `og traits phase-sites`, and checks the catalogs with `og traits check`. The replaced Python evaluator is removed. Report columns and readings stay the same. Genotypes outside the catalog are streamed past, and write errors now report a controlled error with the path instead of a traceback. Both tables are staged before either is published, so an unwritable second output leaves the previous traits table intact.
 - The unused Python copy-number engine is removed. Its historical catalog tests materialise a pinned test oracle and keep testing the Rust commands.
 
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """og cn and bin/cn_loci.tsv: one depth-ratio engine for every copy-number
-locus, and what bin/copy_number.py keeps (the catalog reader and assess(),
-which step 41's report imports).
+locus, compared with the pinned historical catalog reader and assess() oracle.
 
 Without og (OG unset) the checks of the catalog and of assess() run, and the
 wiring; with OG naming the og binary (OG=rust/target/release/og, or bin/og)

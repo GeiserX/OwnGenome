@@ -954,9 +954,7 @@ def main():
 
         # 11. traits card
         import time
-        import traits_report
         d = f"{work}/traits/S"
-        rows = traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))
         put(f"{d}/traits/S_traits.tsv", "")
         from test_traits_report import traits_tables
         g = os.path.join(work, "traits_empty.tsv")

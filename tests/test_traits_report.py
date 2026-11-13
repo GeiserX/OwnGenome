@@ -105,8 +105,7 @@ MULTI_SNP = {
     "MAPT": [(("G/G", "G/G"), "H2/H2"), (("A/G", "A/G"), "H1/H2")],
 }
 # The label of the reference blocks alone (every site homozygous for the GRCh38 base).
-MULTI_SNP_REF = {"APOL1": "G0/G0", "SERPINA1": "PiMM", "HFE": "wt/wt", "GC": "Gc1F/Gc1F",
-                 "CAD9p21": "no risk copy", "MAPT": "H1/H1"}
+
 
 
 def says_not_proof(message):

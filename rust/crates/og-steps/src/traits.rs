@@ -112,7 +112,10 @@ fn row(keys: &[&str], values: &[String]) -> Row {
 }
 fn records(path: &str) -> Result<Vec<(usize, Vec<String>)>> {
     // Parse even the header as a CSV record. Comments do not enter the parser.
-    let mut lines = Lines::new(og_io::open(path).map_err(|e| e.to_string())?, Utf8::Strict);
+    let mut lines = Lines::new(
+        og_io::open(path).map_err(|e| og_filters::os_error(&e, path))?,
+        Utf8::Strict,
+    );
     let mut text = String::new();
     let mut number = 0;
     let mut out = Vec::new();
@@ -534,13 +537,48 @@ fn check_rules(rules: &[Rule], rows: Option<&[Site]>) -> Vec<String> {
     e
 }
 
+// A locus may be reused by rules with different alternate alleles. The
+// selected record is shared, but each site's allele vocabulary is its own.
+fn genotype(site: &Site, records: &Genotypes) -> SiteGt {
+    let mut gt = records.get(&site.key()).cloned().unwrap_or_default();
+    if gt.status == Status::NotCovered {
+        return gt;
+    }
+    gt.alleles.sort_by_key(|a| {
+        (
+            if a == &site.row["ref"] {
+                0
+            } else if a == &site.row["alt"] {
+                1
+            } else {
+                2
+            },
+            a.clone(),
+        )
+    });
+    gt.status = if gt.alleles.len() == 2
+        && gt
+            .alleles
+            .iter()
+            .all(|a| a == &site.row["ref"] || a == &site.row["alt"])
+    {
+        Status::Called
+    } else {
+        Status::OtherAllele
+    };
+    gt
+}
+
 fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
     let mut wanted: HashMap<Key, Vec<&Site>> = HashMap::new();
     for s in sites {
         wanted.entry(s.key()).or_default().push(s);
     }
     let mut result = HashMap::new();
-    let mut lines = Lines::new(og_io::open(path).map_err(|e| e.to_string())?, Utf8::Strict);
+    let mut lines = Lines::new(
+        og_io::open(path).map_err(|e| og_filters::os_error(&e, path))?,
+        Utf8::Strict,
+    );
     let mut line = String::new();
     let mut n = 0;
     while lines.read_line(&mut line).map_err(|e| e.to_string())? {
@@ -613,7 +651,10 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
     Ok(result)
 }
 fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
-    let mut lines = Lines::new(og_io::open(path).map_err(|e| e.to_string())?, Utf8::Strict);
+    let mut lines = Lines::new(
+        og_io::open(path).map_err(|e| og_filters::os_error(&e, path))?,
+        Utf8::Strict,
+    );
     let mut text = String::new();
     let mut out = HashMap::new();
     while lines.read_line(&mut text).map_err(|e| e.to_string())? {
@@ -657,11 +698,7 @@ fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
     Ok(out)
 }
 fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
-    let g: Vec<_> = r
-        .sites
-        .iter()
-        .map(|s| gt.get(&s.key()).cloned().unwrap_or_default())
-        .collect();
+    let g: Vec<_> = r.sites.iter().map(|s| genotype(s, gt)).collect();
     let rs: Vec<_> = r.sites.iter().map(|s| s.row["rsid"].as_str()).collect();
     let mut out = r.meta.clone();
     for (k, v) in [
@@ -818,20 +855,22 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
         ),
     }
 }
-fn write_tsv(path: &str, columns: &[&str], rows: &[Row]) -> Result<()> {
-    let mut file = AtomicFile::create(path).map_err(|e| e.to_string())?;
+fn stage_tsv(path: &str, columns: &[&str], rows: &[Row]) -> Result<AtomicFile> {
+    let mut file = AtomicFile::create(path).map_err(|e| format!("cannot write {path}: {e}"))?;
     {
         let mut writer = Writer::new(&mut file, '\t');
         writer
             .write_row(columns.iter().copied())
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("cannot write {path}: {e}"))?;
         for row in rows {
             writer
                 .write_row(columns.iter().map(|k| row[*k].as_str()))
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| format!("cannot write {path}: {e}"))?;
         }
     }
-    file.commit().map_err(|e| e.to_string())
+    file.flush()
+        .map_err(|e| format!("cannot write {path}: {e}"))?;
+    Ok(file)
 }
 fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result<usize> {
     let mut sites = BTreeMap::new();
@@ -839,7 +878,10 @@ fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result
         let calls: Option<Vec<_>> = r
             .sites
             .iter()
-            .map(|s| gt.get(&s.key()).filter(|g| g.status == Status::Called))
+            .map(|s| {
+                let g = genotype(s, gt);
+                (g.status == Status::Called).then_some(g)
+            })
             .collect();
         if let Some(calls) = calls {
             let het: Vec<_> = r
@@ -861,7 +903,7 @@ fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result
             }
         }
     }
-    let mut out = AtomicFile::create(path).map_err(|e| e.to_string())?;
+    let mut out = AtomicFile::create(path).map_err(|e| format!("cannot write {path}: {e}"))?;
     let write = |out: &mut AtomicFile| -> std::io::Result<()> {
         writeln!(out, "##fileformat=VCFv4.2")?;
         for chrom in sites.keys().map(|(c, _)| c).collect::<BTreeSet<_>>() {
@@ -884,8 +926,9 @@ fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result
         }
         Ok(())
     };
-    write(&mut out).map_err(|e| e.to_string())?;
-    out.commit().map_err(|e| e.to_string())?;
+    write(&mut out).map_err(|e| format!("cannot write {path}: {e}"))?;
+    out.commit()
+        .map_err(|e| format!("cannot write {path}: {e}"))?;
     Ok(sites.len())
 }
 fn run(verb: &str, opts: &HashMap<String, String>) -> Result<u8> {
@@ -968,7 +1011,7 @@ fn run(verb: &str, opts: &HashMap<String, String>) -> Result<u8> {
     let mut out = vec![];
     let mut counts = BTreeMap::<String, usize>::new();
     for (i, s) in rows.iter().enumerate() {
-        let g = gt.get(&s.key()).cloned().unwrap_or_default();
+        let g = genotype(s, &gt);
         let mut r = s.row.clone();
         r.insert(
             "genotype".into(),
@@ -1003,8 +1046,16 @@ fn run(verb: &str, opts: &HashMap<String, String>) -> Result<u8> {
         }
     }
     // Compute both tables before opening either output. Each rename is atomic.
-    write_tsv(required("out")?, OUT, &out)?;
-    write_tsv(required("rules-out")?, RULE_OUT, &lines)?;
+    let out_path = required("out")?;
+    let rules_path = required("rules-out")?;
+    let traits_file = stage_tsv(out_path, OUT, &out)?;
+    let rules_file = stage_tsv(rules_path, RULE_OUT, &lines)?;
+    traits_file
+        .commit()
+        .map_err(|e| format!("cannot write {out_path}: {e}"))?;
+    rules_file
+        .commit()
+        .map_err(|e| format!("cannot write {rules_path}: {e}"))?;
     for r in &out {
         *counts.entry(r["status"].clone()).or_default() += 1;
     }
@@ -1285,6 +1336,29 @@ mod tests {
         assert!(read_genotypes(&path, &[s]).unwrap().is_empty());
     }
     #[test]
+    fn shared_position_keeps_each_rules_allele_vocabulary() {
+        let (rows, _) = assets();
+        let first = &rows[0];
+        let mut second = first.clone();
+        let alt = ["A", "C", "G", "T"]
+            .into_iter()
+            .find(|a| *a != first.row["ref"] && *a != first.row["alt"])
+            .unwrap();
+        second.row.insert("alt".into(), alt.into());
+        let scratch = Scratch::new();
+        let path = scratch.put(
+            "g",
+            &format!(
+                "{}\t{}\t{}\t{}\t{}/{}\n",
+                first.row["chrom"], first.row["pos"], first.row["ref"], alt, first.row["ref"], alt
+            ),
+        );
+        let gt = read_genotypes(&path, &[first, &second]).unwrap();
+        assert_eq!(genotype(first, &gt).status, Status::OtherAllele);
+        assert_eq!(genotype(&second, &gt).status, Status::Called);
+    }
+
+    #[test]
     fn phase_requires_one_block_and_only_multiple_hets_are_exported() {
         let (_, rules) = assets();
         let r = rules.iter().find(|r| r.id == "TAS2R38").unwrap();
@@ -1323,6 +1397,45 @@ mod tests {
         assert_eq!(rule_line(r, &gt, None)["phase"], "not_needed");
     }
     #[test]
+    fn unwritable_rules_output_keeps_existing_traits_table() {
+        let scratch = Scratch::new();
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+        let target = scratch.put("out", "previous complete table\n");
+        let gt = scratch.put("g", "");
+        let opts = [
+            (
+                "table",
+                root.join("traits.tsv").to_string_lossy().into_owned(),
+            ),
+            (
+                "rules",
+                root.join("genotype_rules.tsv")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("genotypes", gt),
+            ("sample", "S".into()),
+            ("out", target.clone()),
+            (
+                "rules-out",
+                scratch
+                    .0
+                    .join("missing/rules.tsv")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.into(), v))
+        .collect();
+        assert!(run("table", &opts).unwrap_err().contains("cannot write"));
+        assert_eq!(
+            std::fs::read_to_string(target).unwrap(),
+            "previous complete table\n"
+        );
+    }
+
+    #[test]
     fn csv_header_unicode_rules_and_atomic_write_errors() {
         let scratch = Scratch::new();
         let mut text = COLUMNS
@@ -1335,7 +1448,7 @@ mod tests {
         assert!(read_table(&path).unwrap().is_empty());
         let path = scratch.put("r", "rule\té\tG\tT\tno\tyes\tN\t1\n");
         assert!(!check_rules(&read_rules(&path).unwrap(), None).is_empty());
-        assert!(write_tsv(scratch.0.join("absent/x").to_str().unwrap(), OUT, &[]).is_err());
+        assert!(stage_tsv(scratch.0.join("absent/x").to_str().unwrap(), OUT, &[]).is_err());
         assert_eq!(cli(&["table".into()]), 2);
         assert_eq!(
             cli(&[

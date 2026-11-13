@@ -12,6 +12,7 @@ check_eq 'traits table exits 0' "$?" 0
 check_eq 'APOE double heterozygote is e2/e4' "$(awk -F'\t' '$1 == "APOE" {print $10}' "${CASE_TMP}/rules.tsv")" e2/e4
 check_eq 'the taster rule needs phase' "$(awk -F'\t' '$1 == "TAS2R38" {print $11}' "${CASE_TMP}/rules.tsv")" unphased
 check_eq 'APOE line occurs exactly once' "$(grep -c '^rs429358+rs7412' "${CASE_TMP}/traits.tsv")" 1
+# shellcheck disable=SC2016  # awk field references
 check 'absent LCT has no inferred genotype' awk -F'\t' '$1 == "rs4988235" {ok = ($6 == "." && $7 == "not_covered")} END {exit !ok}' "${CASE_TMP}/traits.tsv"
 "$OG" traits phase-sites --rules "$RULES" --genotypes "$G" --sample S --out "${CASE_TMP}/phase.vcf"
 check_eq 'phase-sites exits 0' "$?" 0

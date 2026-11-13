@@ -279,6 +279,29 @@ jobs:
           grep -E 'planted_failure.*FAILED' "$log" || { cat "$log"; echo "ERROR: the run failed, but not on the planted test"; exit 1; }
           echo "Control: the planted test failed, as it must."
 
+      - name: Traits controls (diplotype order, REF check and missing phase rows)
+        env:
+          CARGO_BUILD_JOBS: 3
+        run: |
+          src=crates/og-steps/src/traits.rs
+          saved="${RUNNER_TEMP}/traits.rs"
+          log="${RUNNER_TEMP}/traits-controls.log"
+          cp -f "$src" "$saved"
+          trap 'cp -f "$saved" "$src"' EXIT
+          perl -0pi -e 's/(fn allowed\b.*?)(\n    out\n)/$1\n    out.reverse();$2/s; s/if c\[2\]\.chars\(\)\.next\(\) != s\.row\["ref"\]\.chars\(\)\.next\(\)/if c[2].is_empty()/; s/(fn phase_vcf\b.*?)(    let mut out = AtomicFile::create\(path\))/$1    sites.clear();\n$2/s' "$src"
+          cmp -s "$saved" "$src" && { echo "ERROR: no traits control was planted"; exit 1; }
+          if cargo test --locked -p og-steps traits::tests --no-fail-fast > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: traits accepted the planted faults"
+            exit 1
+          fi
+          cat "$log"
+          for test in apoe_grid_keeps_haplotype_order_and_missing_calls stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory phase_requires_one_block_and_only_multiple_hets_are_exported; do
+            grep -E "traits::tests::${test} .*FAILED" "$log" || { echo "ERROR: $test did not catch its fault"; exit 1; }
+          done
+          cp -f "$saved" "$src"
+          trap - EXIT
+
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 

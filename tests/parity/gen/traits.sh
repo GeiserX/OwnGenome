@@ -2,8 +2,8 @@
 # Public catalogs and synthetic genotype grids for all three traits verbs.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../.." && pwd)
-cp "$root/assets/traits.tsv" traits.tsv
-cp "$root/assets/genotype_rules.tsv" rules.tsv
+cp -f "$root/assets/traits.tsv" traits.tsv
+cp -f "$root/assets/genotype_rules.tsv" rules.tsv
 cat > oracle.sh <<'EOF'
 prog=$1; shift
 mode=$1; shift
@@ -40,3 +40,15 @@ printf 'chr7\t141973545\t.\tC\tG\t.\tPASS\t.\tGT:PS\t1|0:7\nchr7\t141972905\t.\t
 sed '1s/:7$/:8/' phased.vcf > split.vcf
 awk -F'\t' -v OFS='\t' '$1 == "combination" && $2 == "APOE" && $3 == "e3/e3" {next} {print}' rules.tsv > bad-rules.tsv
 awk -F'\t' -v OFS='\t' '$3 == "rs671" {$6=$5} {print}' traits.tsv > bad-table.tsv
+cp -f rules.tsv shared-rules.tsv
+cat >> shared-rules.tsv <<'TSV'
+rule	SHARE	SHARE	Shared position test	no	no	Synthetic alternate allele vocabulary.	1
+site	SHARE	rs999999991	chr19	44908684	T	G
+site	SHARE	rs999999992	chr19	44908822	C	T
+haplotype	SHARE	h0	T,C
+haplotype	SHARE	h1	G,T
+combination	SHARE	h0/h0	normal	Reference pair.
+combination	SHARE	h0/h1	carrier	One alternate copy.
+combination	SHARE	h1/h1	alternate	Two alternate copies.
+TSV
+printf 'chr19\t44908684\tT\tG\tT/G\t40\nchr19\t44908822\tC\tT\tC/T\t40\n' > shared.tsv
