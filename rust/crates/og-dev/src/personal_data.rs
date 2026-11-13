@@ -35,7 +35,7 @@ use std::sync::LazyLock;
 use pycompat::mtime::fnmatch;
 use pycompat::num::py_strip;
 
-use crate::lookaround::PythonRule as Rule;
+use crate::lookaround::{PythonRule as Rule, Refusal};
 
 // Property drift and astral casing guard text, patterns and exception rows.
 // BMP regex case drift is guarded separately, only where a pattern enables i.
@@ -1069,6 +1069,9 @@ fn parse(args: &[String]) -> Result<Args, String> {
     })
 }
 
+/// Said when a pattern is refused by the case-pairing guard.
+const CASE_REFUSAL: &str = "unsupported custom pattern: it matches case-insensitively a letter whose upper/lower pairing differs between Unicode versions (some Cyrillic letters, for example). Turn the i flag off for that part and list the exact spellings instead, such as (?:Name|NAME|name)";
+
 /// The user's own patterns, one per line; `#` lines and blank lines skipped.
 fn own_rules(path: &str) -> Result<Vec<Check>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
@@ -1081,11 +1084,16 @@ fn own_rules(path: &str) -> Result<Vec<Check>, String> {
         }
         // Rule reports capture 1 for the built-in look-around patterns.
         // A user's captures must not narrow the span checked against ALLOW.
-        let rule = Rule::compile(p, false).map_err(|_| {
+        // The message never quotes the pattern: it is private.
+        let rule = Rule::compile_explained(p, false).map_err(|why| {
             format!(
-                "{}:{}: invalid or unsupported custom pattern",
+                "{}:{}: {}",
                 path.escape_debug(),
-                line + 1
+                line + 1,
+                match why {
+                    Refusal::CaseDependent => CASE_REFUSAL,
+                    Refusal::Other => "invalid or unsupported custom pattern",
+                }
             )
         })?;
         out.push(Check {
@@ -2144,6 +2152,8 @@ mod tests {
             let (mut out, mut err) = (Vec::new(), Vec::new());
             assert_eq!(cli(&args, &mut out, &mut err), 2, "control {index}");
             assert!(!String::from_utf8_lossy(&err).contains("PRIVATE"));
+            // Only the case-pairing guard gives the i-flag advice.
+            assert!(!String::from_utf8_lossy(&err).contains("i flag"));
             assert!(!String::from_utf8_lossy(&out).contains("PRIVATE"));
         }
     }
@@ -2942,6 +2952,12 @@ mod tests {
                     }
                     let (mut out, mut err) = (Vec::new(), Vec::new());
                     assert_eq!(cli(&args, &mut out, &mut err), expected);
+                    // The refusal names the line and says what to change.
+                    assert_eq!(
+                        String::from_utf8_lossy(&err).contains(":1: unsupported custom pattern")
+                            && String::from_utf8_lossy(&err).contains("Turn the i flag off"),
+                        expected == 2
+                    );
                     let output = [out, err].concat();
                     let output = String::from_utf8_lossy(&output);
                     assert!(!output.contains(pattern));

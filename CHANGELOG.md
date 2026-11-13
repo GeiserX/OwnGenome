@@ -4,7 +4,7 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
-- Ordinary Russian, Ukrainian and Serbian text scans again. BMP regex case differences now refuse patterns that name a differing fold class under active case-insensitive flags. This includes negated classes and range interiors. Stable case-sensitive Cyrillic names work. The Unicode property guard and the astral casing guard still apply to text, filenames and exception rows. Indexed symlink target names receive the full filename guard before SKIP, including directory components. Both Unicode verifiers fail when an explicitly requested Python cannot run. CI requires Python 3.9, 3.12 and 3.15.
+- Ordinary Russian, Ukrainian and Serbian text scans again. BMP regex case differences now refuse patterns that name a differing fold class under active case-insensitive flags. This includes negated classes and range interiors. Stable case-sensitive Cyrillic names work. The Unicode property guard and the astral casing guard still apply to text, filenames and exception rows. Indexed symlink target names receive the full filename guard before SKIP, including directory components. Both Unicode verifiers fail when an explicitly requested Python cannot run. CI requires Python 3.9, 3.12 and 3.15. A custom pattern refused by the case-difference rule now says so, with the file and line, and says what to change: turn the `i` flag off for that part and list the exact spellings.
 
 - The scanner's Unicode checks install Python 3.9, 3.12 and 3.15 through pinned uv tooling, so the older oracle remains available on newer `ubuntu-latest` images.
 

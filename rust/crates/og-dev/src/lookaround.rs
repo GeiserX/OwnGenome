@@ -105,6 +105,15 @@ mod tests {
 const WORD: &str = r"[\p{L}\p{N}_]";
 const SPACE: &str = r"[\x09-\x0d\x1c-\x20\x85\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]";
 
+/// Why a pattern was refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// It names, under an active `i` flag, a letter whose case pairing
+    /// differs between Unicode versions.
+    CaseDependent,
+    Other,
+}
+
 #[derive(Clone)]
 pub struct PythonRule {
     re: fancy_regex::Regex,
@@ -113,11 +122,28 @@ pub struct PythonRule {
 
 impl PythonRule {
     pub fn compile(pattern: &str, builtin: bool) -> Result<Self, ()> {
+        Self::compile_explained(pattern, builtin).map_err(|_| ())
+    }
+
+    /// As `compile`, and says when the refusal is the case-pairing guard, so
+    /// the caller can tell the user what to change.
+    pub fn compile_explained(pattern: &str, builtin: bool) -> Result<Self, Refusal> {
+        Self::compile_inner(pattern, builtin).map_err(|case| {
+            if case {
+                Refusal::CaseDependent
+            } else {
+                Refusal::Other
+            }
+        })
+    }
+
+    /// The error is true when the case-pairing guard refused the pattern.
+    fn compile_inner(pattern: &str, builtin: bool) -> Result<Self, bool> {
         if pattern.chars().any(crate::personal_data::version_dependent) {
-            return Err(());
+            return Err(false);
         }
         if pattern.len() > 16_384 {
-            return Err(());
+            return Err(false);
         }
         let mut parser = PythonPattern {
             chars: pattern.chars().collect(),
@@ -125,8 +151,11 @@ impl PythonRule {
             builtin,
             depth: 0,
             names: std::collections::HashSet::new(),
+            case_refused: false,
         };
-        let (translated, _) = parser.group(Flags::default(), false)?;
+        let (translated, _) = parser
+            .group(Flags::default(), false)
+            .map_err(|()| parser.case_refused)?;
         // \G is the search offset. After yielding an empty match, forbid only
         // a match ending at that offset; the engine then tries nonempty
         // alternatives at the same start, exactly as Python finditer does.
@@ -135,7 +164,7 @@ impl PythonRule {
             fancy_regex::RegexBuilder::new(p)
                 .backtrack_limit(1_000_000)
                 .build()
-                .map_err(|_| ())
+                .map_err(|_| false)
         };
         Ok(Self {
             re: build(&translated)?,
@@ -190,9 +219,17 @@ struct PythonPattern {
     builtin: bool,
     depth: usize,
     names: std::collections::HashSet<String>,
+    /// Set when a refusal comes from the case-pairing guard.
+    case_refused: bool,
 }
 
 impl PythonPattern {
+    /// `literal`, recording a refusal by the case-pairing guard.
+    fn lit(&mut self, c: char, ci: bool) -> Result<String, ()> {
+        self.case_refused |= ci && crate::personal_data::range_regex_case_dependent(c, c);
+        literal(c, ci)
+    }
+
     fn take(&mut self) -> Result<char, ()> {
         let c = self.chars.get(self.at).copied().ok_or(())?;
         self.at += 1;
@@ -404,7 +441,7 @@ impl PythonPattern {
                 }
                 '}' => return Err(()),
                 c => {
-                    out.push_str(&literal(c, flags.i)?);
+                    out.push_str(&self.lit(c, flags.i)?);
                     atom_nullable = false;
                     repeatable = true;
                     lazy = false;
@@ -453,10 +490,10 @@ impl PythonPattern {
                     hex.push(c);
                 }
                 let c = char::from_u32(u32::from_str_radix(&hex, 16).map_err(|_| ())?).ok_or(())?;
-                literal(c, ci)?
+                self.lit(c, ci)?
             }
             c if c.is_ascii_alphanumeric() => return Err(()),
-            c => literal(c, ci)?,
+            c => self.lit(c, ci)?,
         })
     }
 
@@ -489,9 +526,11 @@ impl PythonPattern {
                 // classes. Only literal range endpoints can form a range.
                 let start = class_literal(atom).ok_or(())?;
                 let end = class_literal(&atoms[i + 2].0).ok_or(())?;
+                self.case_refused |=
+                    ci && crate::personal_data::range_regex_case_dependent(start, end);
                 if start > end
                     || crate::personal_data::range_version_dependent(start, end)
-                    || (ci && crate::personal_data::range_regex_case_dependent(start, end))
+                    || self.case_refused
                 {
                     return Err(());
                 }
@@ -504,6 +543,7 @@ impl PythonPattern {
                 }
                 if ci && let Some(c) = class_literal(atom) {
                     if crate::personal_data::range_regex_case_dependent(c, c) {
+                        self.case_refused = true;
                         return Err(());
                     }
                     body.push_str(&fold_class(&format!("[{atom}]"))?);
