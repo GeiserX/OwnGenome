@@ -1238,6 +1238,28 @@ mod tests {
     }
 
     #[test]
+    fn an_indented_heredoc_end_is_read_after_nextflow_strips_the_indent() {
+        let body = "cat <<-END_VERSIONS > versions.yml\n    \"V\": 1\n    END_VERSIONS\n    bgzip -c in.vcf > out.vcf.gz";
+        let d = tree(&[
+            ("versions.env", VERSIONS),
+            (
+                "scripts/a.sh",
+                "docker run --rm \"${TOOL_IMAGE}\" bcftools view x\n",
+            ),
+            (
+                "modules/local/v/main.nf",
+                &module("V", "example/bcftools:1.0", "script", body),
+            ),
+        ]);
+        let (code, out) = run(&["--static"], &d.0);
+        assert_eq!(code, 1, "{out}");
+        assert!(
+            out.contains("bgzip     in BCFTOOLS_IMAGE  modules/local/v/main.nf:8 (V)"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn groovy_strings_become_shell() {
         assert_eq!(
             groovy_to_shell("bgzip ${x} $y.z \\$HOME \\n", true),

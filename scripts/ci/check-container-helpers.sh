@@ -116,6 +116,12 @@ if [ "${1:-}" = "--self-test" ]; then
     '    bgzip -c !{vcf} > out.vcf.gz' "    '''" '}' > "${tmp}/bad/modules/local/z/main.nf"
   printf '%s\n' 'process W {' "    container 'example/samtools:1.0'" '    exec:' '    """' \
     '    tabix w.vcf.gz' '    """.execute().waitFor()' '}' > "${tmp}/bad/modules/local/w/main.nf"
+  # Nextflow strips a script's common indent before bash runs it, so an
+  # indented <<- here-document end closes the body and the call after it runs.
+  mkdir -p "${tmp}/bad/modules/local/v"
+  printf '%s\n' 'process V {' "    container 'example/bcftools:1.0'" '    script:' '    """' \
+    '    cat <<-END_VERSIONS > versions.yml' '    "V": 1' '    END_VERSIONS' \
+    '    bgzip -c in.vcf > out.vcf.gz' '    """' '}' > "${tmp}/bad/modules/local/v/main.nf"
   # shellcheck disable=SC2016
   printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -149,7 +155,8 @@ if [ "${1:-}" = "--self-test" ]; then
               'scripts/a\.sh:12 \(\$ODD\)' 'tabix +in BCFTOOLS_IMAGE +modules/local/y/main\.nf:5 \(Y\)$' \
               'tabix +in SAMTOOLS_IMAGE +scripts/a\.sh:13$' 'bgzip +in BCFTOOLS_IMAGE +scripts/a\.sh:14$' \
               'bgzip +in BCFTOOLS_IMAGE +modules/local/z/main\.nf:5 \(Z\)$' \
-              'modules/local/w/main\.nf:5 \(W\) exec: runs on the host$'; do
+              'modules/local/w/main\.nf:5 \(W\) exec: runs on the host$' \
+              'bgzip +in BCFTOOLS_IMAGE +modules/local/v/main\.nf:8 \(V\)$'; do
     grep -qE -- "$want" <<<"$out" || { echo "self-test: planted call not reported: ${want}"; fail=1; }
   done
   for nope in 'TOOL_IMAGE' 'stub_only' ':9 \(X\)' 'IMAGE +modules/local/w/'; do
@@ -210,7 +217,7 @@ if [ "${1:-}" = "--self-test" ]; then
     fail=1
   fi
   if [ "$fail" -eq 0 ]; then
-    echo "self-test: bgzip/tabix behind if !, time, VAR=, \$(...), bash -euo -c, an image alias, the run_in wrapper and in the script:, shell: and exec: blocks of modules are reported; a clean tree passes; a tree whose script calls are not recognised fails; an orad option missing from --help, an empty --help and a tree with no orad call fail: PASS"
+    echo "self-test: bgzip/tabix behind if !, time, VAR=, \$(...), bash -euo -c, an image alias, the run_in wrapper and in the script:, shell: and exec: blocks of modules, also after an indented here-document end, are reported; a clean tree passes; a tree whose script calls are not recognised fails; an orad option missing from --help, an empty --help and a tree with no orad call fail: PASS"
     exit 0
   fi
   echo "self-test: FAIL"
