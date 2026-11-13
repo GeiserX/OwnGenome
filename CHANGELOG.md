@@ -9,6 +9,15 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
   - `og dev renovate-check` stops with exit 2 when a pin's file is missing or its glob matches no file. The Python counted such a pin in no file, so it could never fail.
   - `og dev fixture trim-pharmcat` names itself in the trimmed report's `_fixture_note`.
 
+- The container helpers check (`scripts/ci/check-container-helpers.sh`, Guard job `helper-binaries`) now derives its table with the Rust `og` binary, `og dev helpers`. It replaces the Python inside the script, which is gone; the script keeps the docker probe, the orad download and its self-test. On this tree the table and the rule 1 output are the same, byte for byte. The static run takes 0.01 s and 6 MB where the Python took 0.2 s and 15 MB. What changes:
+  - A helper called in a process's `shell:` block is checked too. The Python read only `script:` blocks, so such a call went unchecked. No module has one today.
+  - A helper called in a process's `exec:` block always fails the check: Nextflow runs that block on the host, where no image applies.
+  - A here-document ends only on a line that is exactly its delimiter, as bash reads it. For a module, that is the script after Nextflow strips its common indent, so an indented `END_VERSIONS` after `<<-` ends the body. The Python also ended it on a line with blanks around the delimiter.
+  - An image word composed of a variable and more text, such as `${IMG}-slim`, is an unresolved image and fails the check. The Python named it by its first variable.
+  - `--entrypoint=NAME` is read like `--entrypoint NAME`.
+  - `versions.env` is read, not run in bash, and a line that is not `NAME="value"` stops the check with exit 2.
+  - Two `*_IMAGE` variables with the same value are both named, joined by `|`. The Python named only the alphabetically last one. No two share a value today.
+  - `scripts/ci/image-smoke.sh` probes a changed image's helpers only when `bin/og` is built, and says so when it is not. Guard's `helper-binaries` job still probes the helpers of every image on each pull request.
 - The Rust `og` binary has a first part of the summary collector: `og summary collect --only a`. It reads seven sections of summary.json (coverage, callability, sex_check, sample_qc, mosaic_sex_loss, read_count and variants), the run status, the manifest and each section's state. Nothing calls it yet: the reports still read the summary that `bin/collect_summary.py` writes. The sections are the same as the Python's on 33 parity cases, compared as JSON with key order. It walks the sample folder once instead of running a `glob` for each candidate path, and it reads step 33's table once for its two sections. On a synthetic 1,000,000-record VCF the variant count takes 0.05 s and 7 MB, where the Python collector took 0.9 s and 38 MB. What differs from the Python:
   - A file named `.vcf.gz` that is plain text is read. The Python marked the variants section unreadable.
   - A sample name with `*`, `?` or `[` is matched as written. The Python read it as a file pattern.
