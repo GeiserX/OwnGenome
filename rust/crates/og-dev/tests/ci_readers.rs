@@ -292,3 +292,26 @@ fn smoke_generators_keep_coordinates_and_reverse_complements() {
         2
     );
 }
+
+#[test]
+fn pca_nonfinite_values_follow_python_comparisons() {
+    let t = Temp::new();
+    for (name, extra) in [
+        ("nan", "n NaN 0 PopA\n"),
+        ("inf", "n inf 0 PopA\n"),
+        ("overflow", "n 1e400 0 PopA\n"),
+    ] {
+        let p = t.file(
+            name,
+            &format!("#h\n{extra}a -2 0 PopA\nb 2 0 PopB\np -1 0 Proj\n"),
+        );
+        assert_eq!(run(smoke::cli, &["check", "eigen", &p]).0, 1, "{name}");
+    }
+    let p = t.file("short.csv", "Type,Value\nSNP\n");
+    assert_eq!(
+        run(smoke::cli, &["csv-cell", &p, "Type=SNP", "Value"]).1,
+        "None\n"
+    );
+    let p = t.file("quoted.tsv", "# a comment\n\"chr5\"\t1\t2\ta\tb\tc\t\t99\n");
+    assert_eq!(run(smoke::cli, &["check", "parascopy", &p]).0, 1);
+}
