@@ -87,6 +87,25 @@ impl FolderIndex {
         }
         None
     }
+
+    /// Every file one pattern names, in sorted order (`glob` with the
+    /// order made stable), for the readers that take the newest of them.
+    pub fn all(&self, pattern: &str) -> Vec<&str> {
+        if !has_magic(pattern) {
+            return self
+                .files
+                .get(pattern)
+                .map(String::as_str)
+                .into_iter()
+                .collect();
+        }
+        let pat: Vec<&str> = pattern.split('/').collect();
+        self.sorted
+            .iter()
+            .filter(|f| matches(&f.split('/').collect::<Vec<_>>(), &pat))
+            .map(String::as_str)
+            .collect()
+    }
 }
 
 fn has_magic(s: &str) -> bool {
