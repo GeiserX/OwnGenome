@@ -20,6 +20,17 @@ pub enum Data {
     MosaicSexLoss(Mosaic),
     ReadCount(ReadCount),
     Variants(Variants),
+    /// A section of group c, kept as the ordered JSON it writes.
+    Json(Value),
+    ClinVar(super::clinvar::ClinVar),
+    Carrier(super::carrier::Carrier),
+    PharmCat(super::pgx::PharmCat),
+    Cpic(super::pgx::Cpic),
+    Pypgx(super::pgx::Pypgx),
+    Cyrius(super::pgx::Cyrius),
+    Cpsr(super::cpsr::Cpsr),
+    Clinical(super::clinical::Clinical),
+    Slivar(super::clinical::Slivar),
 }
 
 impl Data {
@@ -32,6 +43,16 @@ impl Data {
             Data::MosaicSexLoss(d) => d.to_json(),
             Data::ReadCount(d) => d.to_json(),
             Data::Variants(d) => d.to_json(),
+            Data::Json(v) => v.clone(),
+            Data::ClinVar(d) => d.to_json(),
+            Data::Carrier(d) => d.to_json(),
+            Data::PharmCat(d) => d.to_json(),
+            Data::Cpic(d) => d.to_json(),
+            Data::Pypgx(d) => d.to_json(),
+            Data::Cyrius(d) => d.to_json(),
+            Data::Cpsr(d) => d.to_json(),
+            Data::Clinical(d) => d.to_json(),
+            Data::Slivar(d) => d.to_json(),
         }
     }
 }
@@ -750,7 +771,7 @@ fn chars(b: &[u8]) -> usize {
 
 /// What Python's gzip says for the same fault, where the two are the same
 /// fault; otherwise the reader's own words.
-fn gzip_message(e: &std::io::Error) -> String {
+pub(crate) fn gzip_message(e: &std::io::Error) -> String {
     if e.kind() == std::io::ErrorKind::UnexpectedEof {
         "Compressed file ended before the end-of-stream marker was reached".to_owned()
     } else {

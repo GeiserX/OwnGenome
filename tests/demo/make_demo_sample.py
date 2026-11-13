@@ -1293,13 +1293,21 @@ def traits(d):
     unknown = sorted(r["rsid"] for r in rows if r["rsid"] not in TRAIT_ALT_COPIES | {"rs4410790": 0, "rs4481887": 0})
     if unknown:
         raise SystemExit(f"assets/traits.tsv has rows TRAIT_ALT_COPIES does not give: {', '.join(unknown)}")
-    recs = {}
-    for r in rows:
-        if r["rsid"] in TRAIT_ALT_COPIES:
-            n = TRAIT_ALT_COPIES[r["rsid"]]
-            recs[(r["chrom"], r["pos"])] = [(r["ref"], [r["ref"]] * (2 - n) + [r["alt"]] * n, "60")]
     os.makedirs(os.path.join(d, "traits"), exist_ok=True)
-    traits_report.write_tsv(os.path.join(d, "traits", f"{SAMPLE}_traits.tsv"), traits_report.report(rows, recs))
+    with tempfile.TemporaryDirectory() as work:
+        genotypes = os.path.join(work, "g.tsv")
+        with open(genotypes, "w") as f:
+            for r in rows:
+                if r["rsid"] in TRAIT_ALT_COPIES:
+                    n = TRAIT_ALT_COPIES[r["rsid"]]
+                    gt = "/".join([r["ref"]] * (2 - n) + [r["alt"]] * n)
+                    f.write(f"{r['chrom']}\t{r['pos']}\t{r['ref']}\t{r['alt']}\t{gt}\t60\n")
+        subprocess.run([os.environ.get("OG", os.path.join(REPO, "bin", "og")), "traits", "table",
+                        "--table", os.path.join(REPO, "assets", "traits.tsv"),
+                        "--rules", os.path.join(REPO, "assets", "genotype_rules.tsv"),
+                        "--genotypes", genotypes, "--sample", SAMPLE,
+                        "--out", os.path.join(d, "traits", f"{SAMPLE}_traits.tsv"),
+                        "--rules-out", os.path.join(work, "rules.tsv")], check=True)
 
 
 def mocha(d):

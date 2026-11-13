@@ -155,8 +155,7 @@ def bgzip_with_tbi(path, lines):
 def report_checks():
     import collect_summary as cs
     import render_report as rr
-    import traits_report as tr
-    rules = tr.read_rules(os.path.join(REPO, "assets", "genotype_rules.tsv"))
+    from test_traits_report import traits_tables
     head = "##fileformat=VCFv4.2\n##contig=<ID=chr22>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
     g1 = [("chr22", "36265860", "A", "G", "A/G", "40"), ("chr22", "36265988", "T", "G", "T/G", "40")]
     work = tempfile.mkdtemp()
@@ -169,7 +168,7 @@ def report_checks():
             g = os.path.join(work, name + "_g.tsv")
             with open(g, "w") as f:
                 f.writelines("\t".join(x) + "\n" for x in g1)
-            tr.write_tsv(p, tr.rule_lines(rules, tr.read_genotypes(g)), tr.RULE_OUT_COLUMNS)
+            traits_tables(g, os.path.join(d, "traits", "S_traits.tsv"), p)
             v = os.path.join(d, "vcf", "S.g.vcf.gz" if kind == "gvcf" else "S.vcf.gz")
             with gzip.open(v, "wt") as f:
                 f.write(head + "".join("\t".join(r) + "\n" for r in gvcf_lines))

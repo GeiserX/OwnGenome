@@ -72,3 +72,5 @@ ancient-lift	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py
 ancient-person-geno	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" person-geno "$@"'	ancient person-geno
 ancient-align	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" align "$@"'	ancient align
 ancient-report	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" report "$@"'	ancient report
+traits	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:bin/traits_report.py	bash ./oracle.sh	traits
+roh-summary	7c1470bc50933f48a1a0dde3c0e0b2b87bc48718	file:scripts/11-roh-analysis.sh	sh ./oracle.sh	roh summary

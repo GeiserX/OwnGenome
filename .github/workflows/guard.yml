@@ -99,11 +99,24 @@ jobs:
       - name: setup.sh, validate-setup.sh and run-all.sh against a fake docker
         run: scripts/ci/run-fake-docker-suite.sh
 
+  # The helper table is og dev helpers (scripts/ci/check-container-helpers.sh
+  # runs it), so this job takes the og the og job builds.
   helper-binaries:
+    needs: og
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-unit-tests
+          path: ${{ runner.temp }}/og
+
+      - name: og for the helper table (OG)
+        run: |
+          chmod 755 "$RUNNER_TEMP/og/og"
+          echo "OG=${RUNNER_TEMP}/og/og" >> "$GITHUB_ENV"
 
       - name: Self-test (planted bgzip/tabix calls behind if !, time and VAR=, and an orad option orad does not list, must be caught)
         run: scripts/ci/check-container-helpers.sh --self-test
@@ -284,6 +297,29 @@ jobs:
           grep -E 'duplicate_window_keeps_only_one_record_of_lookahead.*FAILED' "$log"
           echo "Control: splitting the window failed its regression test."
 
+      - name: Traits controls (diplotype order, REF check and missing phase rows)
+        env:
+          CARGO_BUILD_JOBS: 3
+        run: |
+          src=crates/og-steps/src/traits.rs
+          saved="${RUNNER_TEMP}/traits.rs"
+          log="${RUNNER_TEMP}/traits-controls.log"
+          cp -f "$src" "$saved"
+          trap 'cp -f "$saved" "$src"' EXIT
+          perl -0pi -e 's/(fn allowed\b.*?)(\n    out\n)/$1\n    out.reverse();$2/s; s/if c\[2\]\.chars\(\)\.next\(\) != s\.row\["ref"\]\.chars\(\)\.next\(\)/if c[2].is_empty()/; s/(fn phase_vcf\b.*?)(    let mut out = AtomicFile::create\(path\))/$1    sites.clear();\n$2/s' "$src"
+          cmp -s "$saved" "$src" && { echo "ERROR: no traits control was planted"; exit 1; }
+          if cargo test --locked -p og-steps traits::tests --no-fail-fast > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: traits accepted the planted faults"
+            exit 1
+          fi
+          cat "$log"
+          for test in apoe_grid_keeps_haplotype_order_and_missing_calls stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory phase_requires_one_block_and_only_multiple_hets_are_exported; do
+            grep -E "traits::tests::${test} .*FAILED" "$log" || { echo "ERROR: $test did not catch its fault"; exit 1; }
+          done
+          cp -f "$saved" "$src"
+          trap - EXIT
+
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 
@@ -356,7 +392,7 @@ jobs:
                    tests/test_results_index.py \
                    tests/test_pgx_outside_calls.py tests/test_hla_second_caller.py tests/test_paraphase_report.py \
                    tests/test_copy_number.py tests/test_hba_copy_number.py \
-                   tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_callability.py; do
+                   tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_traits_table.py tests/test_genotype_rules_indels.py tests/test_callability.py; do
             rc=0
             echo "::group::${t}"
             case "$t" in
@@ -367,6 +403,43 @@ jobs:
             if [ "$rc" -eq 0 ]; then echo "PASS ${t}"; else echo "FAIL ${t} (exit ${rc})"; fail=1; fi
           done
           exit "$fail"
+
+      - name: Traits independent expectations reject changed reference labels and marker metadata
+        working-directory: .
+        env:
+          OG: ${{ github.workspace }}/bin/og
+          OG_REQUIRED: 1
+        run: |
+          python3 - <<'PY'
+          import contextlib, io, pathlib, runpy, tempfile
+          test = runpy.run_path("tests/test_traits_report.py")["main"].__globals__
+          original = pathlib.Path(test["RULES"]).read_text()
+          with tempfile.TemporaryDirectory() as work:
+              for rid, key, label in [("APOL1", "G0/G0", "G0/G0"), ("CAD9p21", "nonrisk/nonrisk", "no risk copy")]:
+                  path = pathlib.Path(work) / "rules.tsv"
+                  old = f"combination\t{rid}\t{key}\t{label}\t"
+                  assert old in original
+                  path.write_text(original.replace(old, f"combination\t{rid}\t{key}\tWRONG_REFERENCE\t"))
+                  test["RULES"], test["FAILS"] = str(path), 0
+                  log = io.StringIO()
+                  with contextlib.redirect_stdout(log):
+                      rc = test["main"]()
+                  print(log.getvalue())
+                  assert rc == 1 and test["FAILS"] == 1
+                  assert f"[FAIL] {rid}, reference blocks only: {label}" in log.getvalue()
+                  print(f"Control: {rid} WRONG_REFERENCE failed its independent expectation")
+          marker = test["tr"].MARKERS["SMN1_27134"]
+          rs, chrom, pos, ref, alt = marker["dbsnp"]
+          marker["dbsnp"] = rs, chrom, pos + 1, ref, alt
+          test["FAILS"] = 0
+          log = io.StringIO()
+          with contextlib.redirect_stdout(log):
+              test["marker_checks"]()
+          print(log.getvalue())
+          assert test["FAILS"] == 1
+          assert "[FAIL] marker SMN1_27134: the pinned dbSNP record agrees" in log.getvalue()
+          print("Control: retained SMN1 off-copy metadata failed its independent expectation")
+          PY
 
       # The fake-docker job builds no og, so its cn-engine-calls case says it
       # is skipped there; here bin/og is built and the case must run.
