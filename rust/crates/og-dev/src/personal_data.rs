@@ -2305,6 +2305,205 @@ mod tests {
         assert_eq!(cli(&args, &mut Vec::new(), &mut Vec::new()), 0);
     }
 
+    fn r5_git(f: &Fixture, args: &[&str], input: &[u8]) -> String {
+        let mut child = Command::new("git")
+            .arg("-C")
+            .arg(&f.0)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(input).unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+
+    fn r5_modes(f: &Fixture, files: &[&str], expected: u8, skip: &str) {
+        let mut failures = Vec::new();
+        for cached in [false, true] {
+            for explicit in [false, true] {
+                let mut args = f.args(if explicit { files } else { &[] });
+                args[5] = skip.into();
+                if cached {
+                    args.push("--cached".into());
+                }
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                let code = cli(&args, &mut out, &mut err);
+                if code != expected {
+                    failures.push((cached, explicit, code));
+                }
+                if expected == 2 && code == 2 {
+                    assert!(out.is_empty());
+                    assert!(!String::from_utf8_lossy(&err).contains("PRIVATE_FIVE"));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "round-five scenarios differ: {failures:?}"
+        );
+    }
+
+    #[test]
+    fn round5_regex_case_relations() {
+        let f = Fixture::new("r5-case");
+        r5_git(&f, &["init", "-q"], b"");
+        // These literal spellings are stable partners. Escape the pattern so
+        // it reaches the compiler's decoded-scalar validation as well.
+        for (text, pattern) in [
+            ("\u{1c80}", r"(?i)[^\u0412]"),
+            ("\u{1c82}", r"(?i)[^\u041e]"),
+            ("\u{1c88}", r"(?i)[^\ua64a]"),
+        ] {
+            std::fs::write(f.0.join("own.md"), text).unwrap();
+            std::fs::write(f.0.join("patterns"), pattern).unwrap();
+            r5_git(&f, &["add", "own.md"], b"");
+            for cached in [false, true] {
+                for explicit in [false, true] {
+                    let mut args = f.args(if explicit { &["own.md"] } else { &[] });
+                    args.extend([
+                        "--patterns".into(),
+                        f.0.join("patterns").display().to_string(),
+                    ]);
+                    if cached {
+                        args.push("--cached".into());
+                    }
+                    let (mut out, mut err) = (Vec::new(), Vec::new());
+                    assert_eq!(cli(&args, &mut out, &mut err), 2);
+                    assert!(out.is_empty());
+                    assert!(!String::from_utf8_lossy(&err).contains(text));
+                }
+            }
+        }
+        for c in [
+            0x412, 0x414, 0x41e, 0x421, 0x422, 0x42a, 0x432, 0x434, 0x43e, 0x441, 0x442, 0x44a,
+            0x462, 0x463, 0x1c80, 0x1c81, 0x1c82, 0x1c83, 0x1c84, 0x1c85, 0x1c86, 0x1c87, 0x1c88,
+            0xa64a, 0xa64b,
+        ] {
+            assert!(version_dependent(char::from_u32(c).unwrap()));
+        }
+    }
+
+    #[test]
+    fn round5_stable_case_scalars_pass() {
+        let f = Fixture::new("r5-stable");
+        r5_git(&f, &["init", "-q"], b"");
+        for c in [
+            '\u{390}', '\u{3b0}', '\u{1fd3}', '\u{1fe3}', '\u{fb05}', '\u{fb06}',
+        ] {
+            std::fs::write(f.0.join("own.md"), c.to_string()).unwrap();
+            r5_git(&f, &["add", "own.md"], b"");
+            r5_modes(&f, &["own.md"], 0, "");
+        }
+    }
+
+    #[test]
+    fn round5_gitlinks_fail_closed() {
+        let f = Fixture::new("r5-gitlink");
+        r5_git(&f, &["init", "-q"], b"");
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        r5_git(&f, &["add", "clean.md"], b"");
+        let tree = r5_git(&f, &["hash-object", "-t", "tree", "-w", "--stdin"], b"");
+        let commit = r5_git(&f, &["hash-object", "-t", "commit", "-w", "--stdin"],
+            format!("tree {tree}\nauthor Synthetic <test@example.org> 0 +0000\ncommitter Synthetic <test@example.org> 0 +0000\n\nPRIVATE_FIVE\n").as_bytes());
+        r5_git(
+            &f,
+            &[
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("160000,{commit},alias.md"),
+            ],
+            b"",
+        );
+        for explicit in [false, true] {
+            for skip in ["", "alias.md"] {
+                let mut args = f.args(if explicit {
+                    &["alias.md", "clean.md"]
+                } else {
+                    &[]
+                });
+                args[5] = skip.into();
+                args.push("--cached".into());
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                assert_eq!(
+                    cli(&args, &mut out, &mut err),
+                    if skip.is_empty() { 2 } else { 0 }
+                );
+                if skip.is_empty() {
+                    assert!(out.is_empty());
+                    assert_eq!(
+                        err,
+                        b"ERROR: alias.md: indexed entry is not a readable blob\n"
+                    );
+                } else {
+                    assert!(err.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn round5_guard_filenames() {
+        let f = Fixture::new("r5-path");
+        r5_git(&f, &["init", "-q"], b"");
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        let name = "x\u{1e6c0}PRIVATE_FIVE.md";
+        std::fs::write(f.0.join(name), "clean").unwrap();
+        r5_git(&f, &["add", name, "clean.md"], b"");
+        for skip in ["", "x*"] {
+            r5_modes(&f, &[name, "clean.md"], 2, skip);
+            for cached in [false, true] {
+                let mut args = f.args(&[name, "clean.md"]);
+                args[5] = skip.into();
+                args[3] = "* clean".into();
+                if cached {
+                    args.push("--cached".into());
+                }
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                assert_eq!(cli(&args, &mut out, &mut err), 2);
+                assert!(out.is_empty());
+                assert_eq!(
+                    err,
+                    b"ERROR: selected filename has Unicode version-dependent text\n"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn round5_every_symlink_hop() {
+        let f = Fixture::new("r5-hops");
+        r5_git(&f, &["init", "-q"], b"");
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        std::os::unix::fs::symlink(
+            OsStr::from_bytes(b"PRIVATE_FIVE_\xff.md"),
+            f.0.join("inner.md"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("inner.md", f.0.join("alias.md")).unwrap();
+        r5_git(&f, &["add", "alias.md", "clean.md"], b"");
+        for explicit in [false, true] {
+            for skip in ["", "alias.md"] {
+                let mut args = f.args(if explicit {
+                    &["alias.md", "clean.md"]
+                } else {
+                    &[]
+                });
+                args[5] = skip.into();
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                assert_eq!(cli(&args, &mut out, &mut err), 2);
+                assert!(out.is_empty());
+                assert_eq!(err, b"ERROR: path is not valid UTF-8\n");
+                // The index contains only the valid first-hop target.
+                args.push("--cached".into());
+                assert_eq!(cli(&args, &mut Vec::new(), &mut Vec::new()), 0);
+            }
+        }
+    }
+
     #[test]
     fn round4_guard_agrees_with_available_pythons() {
         // Every available interpreter is checked, not just whichever python3
