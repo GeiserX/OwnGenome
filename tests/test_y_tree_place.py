@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""bin/y_tree_place.py on a synthetic tree, synthetic position tables and
-synthetic pileups (no real sample).
+"""og y tree-place and og y tree-positions on a synthetic tree, synthetic
+position tables and synthetic pileups (no real sample).
 
 The tree:
     (root) -> A (a1, a2/a2alt) -> B (b1, b2, b3) -> C (c1, c2)
@@ -30,7 +30,10 @@ Checks:
   7. the pileup reader skips read starts, ends and indels, and reads '.' and
      ',' as the reference base.
 
-Run: python3 tests/test_y_tree_place.py
+Without OG (the og binary) the test is skipped with a note; with
+OG_REQUIRED set too, it fails (Guard's rust job sets both).
+
+Run: OG=bin/og python3 tests/test_y_tree_place.py
 """
 import json
 import os
@@ -40,8 +43,10 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TOOL = os.path.join(REPO, "bin", "y_tree_place.py")
-sys.path.insert(0, os.path.join(REPO, "bin"))
+OG = os.environ.get("OG", "")
+if not OG:
+    print("skip: OG is not set (OG=bin/og)")
+    sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
 
 FAILS = 0
 
@@ -112,7 +117,7 @@ def run(d, states, tag, depth=12, extra=()):
     p = os.path.join(d, f"{tag}.pileup")
     pileup(p, states, depth)
     prefix = os.path.join(d, tag)
-    r = subprocess.run([sys.executable, TOOL, "place", "--tree-dir", d, "--pileup", p, "--sample", "S",
+    r = subprocess.run([OG, "y", "tree-place", "--tree-dir", d, "--pileup", p, "--sample", "S",
                         "--out-prefix", prefix, *extra], capture_output=True, text=True)
     if r.returncode != 0:
         return r, {}, []
@@ -198,7 +203,7 @@ def main():
 
         # 6. tables
         out = os.path.join(d, "pos.txt")
-        r = subprocess.run([sys.executable, TOOL, "positions", "--tree-dir", d, out], capture_output=True, text=True)
+        r = subprocess.run([OG, "y", "tree-positions", "--tree-dir", d, out], capture_output=True, text=True)
         pos = open(out).read().split() if r.returncode == 0 else []
         check("6. a1 is asked for at the first table's position, not the second's",
               "3000100" in pos and "3999999" not in pos, pos)
@@ -207,15 +212,27 @@ def main():
         check("6. every line is chrY<TAB>pos", r.returncode == 0 and all(
             x.split("\t")[0] == "chrY" for x in open(out).read().splitlines()), r.stderr)
 
-        # 7. pileup reader
-        import y_tree_place as y
-        c = y.base_counts("^I..,$+2ACt-1Ga*", "t")
-        check("7. read marks and indels skipped, '.'/',' read as the reference",
-              c == {"A": 1, "C": 0, "G": 0, "T": 4}, c)
+        # 7. pileup reader: c1 (G>T) read as "^I..,$+2ACt-1Ga*" on reference t is
+        # four T and one A, so 80% T: a no-call at 90%, derived at --min-depth 1
+        # only if the marks were read as bases (they are not).
+        p7 = os.path.join(d, "marks.pileup")
+        with open(p7, "w") as f:
+            for name in ("a1", "a2alt", "b1", "b2", "b3"):
+                pos, anc, der = pos_of(name)
+                f.write(f"chrY\t{pos}\tN\t12\t{der * 12}\t{'I' * 12}\n")
+            f.write(f"chrY\t{pos_of('c1')[0]}\tt\t5\t^I..,$+2ACt-1Ga*\tIIIII\n")
+            f.write(f"chrY\t{pos_of('c2')[0]}\tt\t5\t^I.$,+2GG,t-1A.\tIIIII\n")
+        r = subprocess.run([OG, "y", "tree-place", "--tree-dir", d, "--pileup", p7, "--sample", "S",
+                            "--out-prefix", os.path.join(d, "marks"), "--min-depth", "5"],
+                           capture_output=True, text=True)
+        rows = open(os.path.join(d, "marks_y_tree_path.tsv")).read().splitlines() if r.returncode == 0 else []
+        c_row = [x.split("\t") for x in rows if x.split("\t")[1:2] == ["C"]]
+        check("7. read marks and indels skipped, '.'/',' read as the reference: c1 is 4 T of 5 (no call), "
+              "c2 5 T of 5 (derived)", c_row and c_row[0][4:7] == ["1", "0", "1"], (r.stderr, rows))
 
         # Missing data is an error that says how to install it
         os.remove(os.path.join(d, "positions_yfull_hg38.txt"))
-        r = subprocess.run([sys.executable, TOOL, "positions", "--tree-dir", d, out], capture_output=True, text=True)
+        r = subprocess.run([OG, "y", "tree-positions", "--tree-dir", d, out], capture_output=True, text=True)
         check("a missing table stops the tool and names setup.sh --yleaf-data",
               r.returncode != 0 and "setup.sh --yleaf-data" in r.stderr, r.stderr)
     finally:
