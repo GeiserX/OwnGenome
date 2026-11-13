@@ -85,7 +85,7 @@
     function tagOf(x) {
       if (x.level === 'act') { return null; }
       var t = tags[x.id];
-      if (t === undefined) { t = ['*panel*']; }
+      if (t === undefined) { t = (r.findings || []).some(function (item) { return item.level === 'act'; }) ? ['*panel*'] : null; }
       t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (y) { return y !== x.id; });
       return t.length ? t : null;
     }

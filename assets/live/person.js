@@ -624,7 +624,7 @@
   function findingTag(f) {
     if (f.level === 'act') { return null; }  // its own switch; never an unclassified secondary place
     var t = ((results && results.veil && results.veil.findings) || {})[f.id];
-    if (t === undefined) { t = [PANEL]; }
+    if (t === undefined) { t = ((results && results.findings) || []).some(function (x) { return x.level === 'act'; }) ? [PANEL] : null; }
     t = (Array.isArray(t) ? t : t ? [t] : []).filter(function (x) { return x !== f.id; });
     return t.length ? t : null;
   }

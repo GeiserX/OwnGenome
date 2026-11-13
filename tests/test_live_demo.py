@@ -2241,6 +2241,18 @@ def fail_closed_problems(b, base, out, og, cases=None, producers=None):
                     bad.append(f"mito: row/mark after {stage} matching openings {got}")
         finally:
             unplant(keep)
+    if "no-act" in cases:
+        def no_act(S):
+            S.clear()
+            S["exomiser"] = {"state": "ok", "data": {"terms": [], "genes": [
+                {"gene": "BRCA1", "rank": 1, "moi": "AD", "exomiser_score": 0.9, "variants": []}]}}
+        keep = plant_summary(out, og, no_act)
+        try:
+            page_now(b, base, "#f/exomiser-brca1")
+            if b.eval("location.hash") != "#f/exomiser-brca1":
+                bad.append("no-act: missing metadata changes an open finding's address")
+        finally:
+            unplant(keep)
     if "metadata" in cases:
         keep = plant_summary(out, og, cpsr("MLH1"))
         try:
@@ -2295,7 +2307,7 @@ def fail_closed_problems(b, base, out, og, cases=None, producers=None):
 
 def fail_closed_checks(b, base, out, og):
     started = time.monotonic()
-    for case in ("home", "hpo", "contig", "mito", "producers", "metadata"):
+    for case in ("home", "hpo", "contig", "mito", "producers", "metadata", "no-act"):
         bad = fail_closed_problems(b, base, out, og, [case])
         check("browser: fail-closed producers " + case, not bad, bad)
     prose, row, veil = live_results.prose_tag, live_results.row_tag, live_results.veil
@@ -2338,6 +2350,15 @@ def fail_closed_checks(b, base, out, og):
         with open(path, "w") as fh:
             fh.write(reader.replace(old, "tag === undefined ? false"))
         control("missing tag metadata treated as open", not fail_closed_problems(b, base, out, og, ["metadata"]))
+    finally:
+        with open(path, "w") as fh:
+            fh.write(reader)
+    try:
+        old = "if (t === undefined) { t = ((results && results.findings) || []).some(function (x) { return x.level === 'act'; }) ? [PANEL] : null; }"
+        assert reader.count(old) == 1
+        with open(path, "w") as fh:
+            fh.write(reader.replace(old, "if (t === undefined) { t = [PANEL]; }"))
+        control("a no-act page treating every unclassified finding as closable", not fail_closed_problems(b, base, out, og, ["no-act"]))
     finally:
         with open(path, "w") as fh:
             fh.write(reader)
