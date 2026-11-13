@@ -296,3 +296,133 @@ mod tests {
         assert!(int("1.5", "x").is_err());
     }
 }
+
+#[cfg(all(test, unix))]
+mod fetch_tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::process::Command;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::time::Duration;
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    const BODY: &str = "hello\n";
+    const SHA: &str = "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03";
+
+    // Real HTTP responses exercise curl's own retries too. Shorten only the
+    // test delays; the production script still supplies its stall limits.
+    fn fetch(statuses: &[u16], sha: &str, cached: bool, succeeds: bool, expected: &[u16]) {
+        let dir = std::env::temp_dir().join(format!(
+            "og-fetch-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        if cached {
+            std::fs::write(dir.join("asset"), BODY).unwrap();
+        }
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        server.set_nonblocking(true).unwrap();
+        let url = format!("http://{}/asset", server.local_addr().unwrap());
+        let stop = AtomicBool::new(false);
+        let (output, seen) = std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                let mut seen = Vec::new();
+                while !stop.load(Ordering::Relaxed) {
+                    match server.accept() {
+                        Ok((mut stream, _)) => {
+                            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                            let mut reader = BufReader::new(&stream);
+                            let mut line = String::new();
+                            loop {
+                                line.clear();
+                                if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                                    break;
+                                }
+                            }
+                            let code = statuses.get(seen.len()).copied().unwrap_or(200);
+                            seen.push(code);
+                            write!(stream,
+                                "HTTP/1.1 {code} Test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{BODY}",
+                                BODY.len()).unwrap();
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(e) => panic!("HTTP test server: {e}"),
+                    }
+                }
+                seen
+            });
+            let output = Command::new("bash")
+                .args([
+                    "-c",
+                    r#"
+                    source "$1"
+                    sleep() { :; }
+                    curl() { command curl "$@" --noproxy '*' --retry-delay 1 --max-time 5; }
+                    fetch_pinned "$2" asset "$3" "$4"
+                "#,
+                    "_",
+                ])
+                .arg(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../scripts/ci/lib/fetch-pinned.sh"
+                ))
+                .arg(&dir)
+                .arg(url)
+                .arg(sha)
+                .output()
+                .unwrap();
+            stop.store(true, Ordering::Relaxed);
+            (output, worker.join().unwrap())
+        });
+        let file = std::fs::read_to_string(dir.join("asset")).ok();
+        let files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(seen, expected, "HTTP sequence {statuses:?}");
+        assert_eq!(
+            output.status.success(),
+            succeeds,
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(file.as_deref(), succeeds.then_some(BODY));
+        assert_eq!(
+            files.len(),
+            usize::from(succeeds),
+            "temporary download leaked: {files:?}"
+        );
+        if let Some(code @ (403 | 404)) = expected.last() {
+            assert!(String::from_utf8_lossy(&output.stderr).contains(&format!("HTTP {code}")));
+        }
+    }
+
+    #[test]
+    fn http_403_stops_after_any_attempt() {
+        fetch(&[403], SHA, false, false, &[403]);
+        fetch(&[503, 403], SHA, false, false, &[503, 403]);
+    }
+
+    #[test]
+    fn http_404_stops_after_any_attempt() {
+        fetch(&[404], SHA, false, false, &[404]);
+        fetch(&[503, 404], SHA, false, false, &[503, 404]);
+    }
+
+    #[test]
+    fn other_failures_retry_but_stop_at_the_bound() {
+        fetch(&[503, 503, 200], SHA, false, true, &[503, 503, 200]);
+        fetch(&[503; 7], SHA, false, false, &[503; 7]);
+    }
+
+    #[test]
+    fn downloads_are_pinned_and_cached() {
+        fetch(&[200], SHA, false, true, &[200]);
+        fetch(&[200], "wrong-sha256", false, false, &[200]);
+        fetch(&[], SHA, true, true, &[]);
+    }
+}

@@ -33,6 +33,7 @@ pinned_sha256() {
 
 fetch_pinned() {
   local dir=$1 name=$2 url=$3 want=$4 file part code got
+  local attempt=0 started=$SECONDS
   file="${dir}/${name}"
   if [ -f "$file" ] && [ "$(pinned_sha256 "$file")" = "$want" ]; then
     return 0
@@ -40,8 +41,8 @@ fetch_pinned() {
   mkdir -p "$dir" || return 1
   part=$(mktemp "${file}.part.XXXXXX") || return 1
   echo "Downloading ${url}" >&2
-  if ! code=$(curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
-      -w '%{http_code}' -o "$part" "$url"); then
+  while ! code=$(curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+      -w '%{http_code}' -o "$part" "$url"); do
     case $code in
       403 | 404)
         rm -f "$part"
@@ -49,13 +50,16 @@ fetch_pinned() {
         return 1
         ;;
     esac
-    if ! curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
-        --retry 6 --retry-all-errors --retry-delay 30 --retry-max-time 300 -o "$part" "$url"; then
+    attempt=$((attempt + 1))
+    # Seven attempts at most. Like curl's retry-max-time, this bounds when
+    # another attempt starts; an active transfer keeps its stall limits.
+    if [ "$attempt" -ge 7 ] || [ "$((SECONDS - started + 30))" -ge 300 ]; then
       rm -f "$part"
       echo "ERROR: cannot download ${url}" >&2
       return 1
     fi
-  fi
+    sleep 30
+  done
   got=$(pinned_sha256 "$part")
   if [ "$got" != "$want" ]; then
     rm -f "$part"
