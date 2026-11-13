@@ -67,7 +67,7 @@ pub const MIN_DEPTH: i64 = 10;
 /// Yleaf's `-b` default (90%).
 const MAJORITY: f64 = 0.9;
 /// Distinct derived sites below a single-ancestral-SNP branch that outvote it.
-pub const OUTVOTE: usize = 2;
+pub const OUTVOTE: usize = 1;
 /// GRCh38 chrY PAR1 is 10,001-2,781,479.
 pub const PAR1_END: u64 = 2_781_479;
 /// GRCh38 chrY PAR2 is 56,887,903-57,217,415.

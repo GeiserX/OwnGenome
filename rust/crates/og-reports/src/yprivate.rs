@@ -99,7 +99,10 @@ impl Mask {
         // 1-based; the Python indexed mask[pos - 1].
         pos >= 1
             && pos <= self.len
-            && self.bits[((pos - 1) / 64) as usize] >> ((pos - 1) % 64) & 1 == 1
+            && self
+                .bits
+                .get((pos / 64) as usize)
+                .is_some_and(|w| w >> (pos % 64) & 1 == 1)
     }
 }
 
