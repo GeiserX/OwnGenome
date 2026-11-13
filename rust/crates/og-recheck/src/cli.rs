@@ -249,7 +249,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         }
         // What state.json now says: the replay's manifest may name a score
         // the first check did not ask about.
-        errors = fresh.errors();
+        errors = state.errors();
     }
     u8::from(errors > 0)
 }
