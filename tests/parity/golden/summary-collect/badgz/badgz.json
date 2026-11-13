@@ -1,0 +1,81 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-13 10:11 UTC",
+ "run": {
+  "status_file": false,
+  "started_utc": null,
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "coverage": {
+   "title": "Coverage (mosdepth)",
+   "step": "16b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "callability": {
+   "title": "Gene callability (mosdepth)",
+   "step": "16b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sex_check": {
+   "title": "Sex check (indexcov)",
+   "step": "16",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sample_qc": {
+   "title": "Sample identity and contamination (somalier, VerifyBamID2)",
+   "step": "33",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mosaic_sex_loss": {
+   "title": "Mosaic loss of chromosome Y or X",
+   "step": "33",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "read_count": {
+   "title": "Reads kept by alignment",
+   "step": "02",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "variants": {
+   "title": "Variant calling",
+   "step": "03",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S.vcf.gz: corrupt deflate stream",
+   "data": {}
+  }
+ }
+}
