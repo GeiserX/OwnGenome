@@ -116,6 +116,9 @@ the person page's layout (a wire showing every line or every plain finish, a car
 every line, a step timeline left open) also run against a planted mistake and must
 fail there (2: a build with one plugin's state hook dropped): a check that cannot fail is no check.
 
+The family veil group described above runs from tests/test_owngenome_live_family.py in another Guard shard.
+Run both files for every browser check.
+
 Run: python3 tests/test_live_demo.py
 """
 import base64
@@ -373,7 +376,7 @@ def browser_checks(out):
         veil_checks(b, base, out)
         planted_checks(b, base, out)
         map_checks(b, base, out)
-        family_veil_checks(b, base, out)
+        # The family veil group runs from test_owngenome_live_family.py in a different Guard shard.
         widget_veil_checks(b, base, out)
         infer_checks(b, base, out)
     finally:

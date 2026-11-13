@@ -26,7 +26,9 @@ Checks:
      row draws the four children and a 1-in-2 row gives its chance in words with no
      drawing, a missing trio file and one linking out of the folder are worded
      apart (the link's target never shown), and the side by side lists every
-     blood group system with a stale value marked in its cell.
+     blood group system with a stale value marked in its cell;
+  7. the demo family's veil checks and every mutation control from test_live_demo.py,
+     run here in Guard shard 0 so the person-page suite in shard 2 stays below its time limit.
 Checks 2 and 4 are run again on a copy of the fixture with two parents swapped
 and must fail there: a check that cannot fail is no check.
 
@@ -161,6 +163,35 @@ def route_checks(app):
              ok and descents(body) == DESCENT, (code, ctype, auth, ok and descents(body)))]
 
 
+def family_browser_checks(work):
+    """Run the demo's family veil group here so its browser time is in another Guard shard."""
+    import test_live_demo as demo
+    chrome = demo.find_chrome()
+    if not chrome:
+        if os.environ.get("CI") == "true":
+            check("family browser group has Chrome in CI", False)
+        else:
+            print("[SKIP] no Chrome or Chromium for the family browser group")
+        return
+    og = demo.og_binary() or demo.build_live_demo.OG
+    out = os.path.join(work, "family-browser", "demo")
+    demo.build_live_demo.build(out, work=os.path.join(work, "family-browser", "root"), og=og)
+    handler = type("H", (demo.Static,), {"__init__": lambda self, *a, **k: demo.SimpleHTTPRequestHandler.__init__(
+        self, *a, directory=out, **k)})
+    srv = demo.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    demo.threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = demo.Chrome(chrome, os.path.join(work, "family-browser", "chrome"))
+    before, t0 = len(demo.FAILS), demo.time.time()
+    try:
+        demo.family_veil_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out)
+        FAILS.extend(demo.FAILS[before:])
+    finally:
+        b.close()
+        srv.shutdown()
+        srv.server_close()
+    print(f"   family browser group: {demo.time.time() - t0:.2f} s")
+
+
 def main():
     work = tempfile.mkdtemp(prefix="pgp-live-family-", dir=os.environ.get("TMPDIR"))
     try:
@@ -277,6 +308,7 @@ def main():
 
         # 6. the real server
         real_server(root)
+        family_browser_checks(work)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:
