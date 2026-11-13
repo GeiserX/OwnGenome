@@ -16,7 +16,7 @@
 //! Each line of a text file (no NUL byte in its first 8 KiB) is matched
 //! against the rules below; a match inside an allowed example of that file
 //! is skipped, the rest of the line still counts. Output: one
-//! `FAIL <kind> <file>:<line>: <text>` per rule and line, then
+//! `FAIL <kind> <escaped-file>:<line>` per rule and line, then
 //! `scanned N text files`. Exit 0 clean, 1 on a finding or when no text
 //! file was scanned, 2 on a usage error or a file or pattern that cannot be
 //! read.
@@ -60,9 +60,9 @@ fn digit_dot_slash(c: char) -> bool {
 }
 
 /// `[A-Za-z]` under Python's `(?i)`, which also folds to the long s and
-/// the Kelvin sign.
+/// the Kelvin sign, plus dotted and dotless I.
 fn letter_ci(c: char) -> bool {
-    c.is_ascii_alphabetic() || c == '\u{17F}' || c == '\u{212A}'
+    c.is_ascii_alphabetic() || c == '\u{130}' || c == '\u{131}' || c == '\u{17F}' || c == '\u{212A}'
 }
 
 const STR_GENES: &str = "HTT|FMR1|C9orf72|C9ORF72|ATXN[0-9]+|DMPK|FXN|CNBP|RFC1|PABPN1|CACNA1A|TCF4|AR|PPP2R2B|TBP|JPH3|NOP56|ATN1|CSTB|AFF2|FMR2|NOTCH2NLC|DAB1|BEAN1|STARD7|YEATS2";
@@ -78,7 +78,7 @@ struct Check {
 }
 
 fn rule(pattern: &str, not_after: Option<fn(char) -> bool>) -> Rule {
-    Rule::new(pattern, not_after).expect("a valid built-in pattern")
+    Rule::python(pattern, not_after).expect("a valid built-in pattern")
 }
 
 /// A sample label, which may carry a number after a separator: sample7,
@@ -86,7 +86,7 @@ fn rule(pattern: &str, not_after: Option<fn(char) -> bool>) -> Rule {
 static LABEL: LazyLock<[Rule; 2]> = LazyLock::new(|| {
     [
         rule(
-            r"(?i)((?:sample|patient|subject|proband|participant|individual|donor)s?(?:[_-]?[0-9]+)?)(?:[^A-Za-z]|$)",
+            r"(?i)((?:sample|pat[iİı]ent|subject|proband|part[iİı]c[iİı]pant|[iİı]nd[iİı]v[iİı]dual|donor)s?(?:[_-]?[0-9]+)?)(?:[^A-Za-zİı]|$)",
             Some(letter_ci),
         ),
         rule(r"\b(?:NA|HG)[0-9]{3,5}\b", None),
@@ -233,14 +233,20 @@ fn parse(args: &[String]) -> Result<Args, String> {
 fn own_rules(path: &str) -> Result<Vec<Check>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let mut out = Vec::new();
-    for l in text.lines() {
+    for (line, l) in text.lines().enumerate() {
         let p = py_strip(l);
         if p.is_empty() || l.starts_with('#') {
             continue;
         }
         // Rule reports capture 1 for the built-in look-around patterns.
         // A user's captures must not narrow the span checked against ALLOW.
-        let rule = Rule::whole_match(p).map_err(|e| format!("{path}: bad pattern {p}: {e}"))?;
+        let rule = Rule::whole_match(p).map_err(|_| {
+            format!(
+                "{}:{}: invalid custom pattern",
+                path.escape_debug(),
+                line + 1
+            )
+        })?;
         out.push(Check {
             kind: "own",
             rule,
@@ -294,10 +300,7 @@ fn git_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 /// The staged blob of each path (relative to `root`), from one
 /// `git cat-file --batch`. A path with no blob in the index is absent.
 fn staged(root: &Path, rels: &[String]) -> Result<HashMap<String, Vec<u8>>, String> {
-    let wanted: Vec<&String> = rels
-        .iter()
-        .filter(|r| !r.starts_with('/') && !r.contains('\n'))
-        .collect();
+    let wanted: Vec<&String> = rels.iter().collect();
     let mut blobs = HashMap::new();
     if wanted.is_empty() {
         return Ok(blobs);
@@ -305,7 +308,7 @@ fn staged(root: &Path, rels: &[String]) -> Result<HashMap<String, Vec<u8>>, Stri
     let mut child = Command::new("git")
         .arg("-C")
         .arg(root)
-        .args(["cat-file", "--batch"])
+        .args(["cat-file", "--batch", "-Z"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -313,16 +316,20 @@ fn staged(root: &Path, rels: &[String]) -> Result<HashMap<String, Vec<u8>>, Stri
     let mut stdin = child.stdin.take().ok_or("no stdin for git")?;
     let input: Vec<u8> = wanted
         .iter()
-        .flat_map(|r| format!(":{r}\n").into_bytes())
+        .flat_map(|r| format!(":{r}\0").into_bytes())
         .collect();
     let writer = std::thread::spawn(move || stdin.write_all(&input));
     let mut out = BufReader::new(child.stdout.take().ok_or("no stdout for git")?);
     for rel in &wanted {
-        let mut head = String::new();
-        if out.read_line(&mut head).map_err(|e| e.to_string())? == 0 {
+        let mut header = Vec::new();
+        if out.read_until(0, &mut header).map_err(|e| e.to_string())? == 0 {
             return Err("git cat-file stopped early".into());
         }
-        let fields: Vec<&str> = head.trim_end().split(' ').collect();
+        if header.pop() != Some(0) {
+            return Err("git cat-file: incomplete header".into());
+        }
+        let head = String::from_utf8_lossy(&header);
+        let fields: Vec<&str> = head.split(' ').collect();
         let [_, kind, size] = fields[..] else {
             continue; // "<name> missing" or "ambiguous"
         };
@@ -334,16 +341,20 @@ fn staged(root: &Path, rels: &[String]) -> Result<HashMap<String, Vec<u8>>, Stri
             blobs.insert((*rel).clone(), data);
         }
     }
-    let _ = writer.join();
-    let _ = child.wait();
+    writer
+        .join()
+        .map_err(|_| "git input writer stopped")?
+        .map_err(|e| e.to_string())?;
+    if !child.wait().map_err(|e| e.to_string())?.success() {
+        return Err("git cat-file failed".into());
+    }
     Ok(blobs)
 }
 
-/// One line of the report: kind padded as Python's `%-9s`, the stripped
-/// line cut at 160 characters.
-fn report(out: &mut dyn Write, kind: &str, rel: &str, n: usize, line: &str) {
-    let text: String = py_strip(line).chars().take(160).collect();
-    let _ = writeln!(out, "FAIL {kind:<9} {rel}:{n}: {text}");
+/// Reports metadata only. Escape control characters in paths so each
+/// finding occupies one line, including filenames containing newlines.
+fn report(out: &mut dyn Write, kind: &str, rel: &str, n: usize) {
+    let _ = writeln!(out, "FAIL {kind:<9} {}:{n}", rel.escape_debug());
 }
 
 /// Scans one file's text; true when something was reported.
@@ -366,7 +377,7 @@ fn scan_text(out: &mut dyn Write, rules: &[Check], texts: &[&str], rel: &str, da
                 .find_iter(line)
                 .find(|&(s, e)| !spans.iter().any(|&(a, b)| a <= s && e <= b));
             if leaked.is_some() {
-                report(out, c.kind, rel, i + 1, line);
+                report(out, c.kind, rel, i + 1);
                 bad = true;
             }
         }
@@ -563,7 +574,7 @@ mod tests {
             line.as_bytes()
         ));
         let got = String::from_utf8(out).unwrap();
-        assert!(got.starts_with("FAIL home      x.md:1: "), "{got}");
+        assert!(got.starts_with("FAIL home      x.md:1"), "{got}");
     }
 
     #[test]
@@ -591,6 +602,7 @@ mod tests {
             line,
         ));
     }
+
     struct Fixture(PathBuf);
     impl Fixture {
         fn new(name: &str) -> Self {

@@ -16,6 +16,7 @@ use regex::Regex;
 /// A pattern with its look-behind.
 pub struct Rule {
     re: Regex,
+    boundaries: Vec<usize>,
     /// Capture describing the match span: 1 for rewritten look-around,
     /// 0 for a user's unmodified regular expression.
     capture: usize,
@@ -29,7 +30,41 @@ impl Rule {
     pub fn new(pattern: &str, not_after: Option<fn(char) -> bool>) -> Result<Rule, regex::Error> {
         Ok(Rule {
             re: Regex::new(pattern)?,
+            boundaries: Vec::new(),
             capture: 1,
+            not_after,
+        })
+    }
+
+    /// A scanner pattern with Python's Unicode word boundaries. Python's
+    /// word characters are Unicode letters and numbers plus underscore;
+    /// Rust regex also includes marks and join controls. Capture each
+    /// boundary position and check it without consuming surrounding text.
+    pub fn python(
+        pattern: &str,
+        not_after: Option<fn(char) -> bool>,
+    ) -> Result<Rule, regex::Error> {
+        let mut translated = String::new();
+        for (i, part) in pattern.split(r"\b").enumerate() {
+            if i > 0 {
+                translated.push_str(&format!("(?P<og_boundary_{i}>)"));
+            }
+            translated.push_str(part);
+        }
+        let re = Regex::new(&translated)?;
+        let mut boundaries = Vec::new();
+        let mut capture = 0;
+        for (i, name) in re.capture_names().enumerate().skip(1) {
+            if name.is_some_and(|n| n.starts_with("og_boundary_")) {
+                boundaries.push(i);
+            } else if capture == 0 {
+                capture = i;
+            }
+        }
+        Ok(Self {
+            re,
+            boundaries,
+            capture,
             not_after,
         })
     }
@@ -52,7 +87,15 @@ impl Rule {
                 let refused = self
                     .not_after
                     .is_some_and(|bad| line[..start].chars().next_back().is_some_and(bad));
-                if refused {
+                let bad_boundary = self.boundaries.iter().any(|&i| {
+                    caps.get(i).is_some_and(|m| {
+                        let at = m.start();
+                        let left = line[..at].chars().next_back().is_some_and(python_word);
+                        let right = line[at..].chars().next().is_some_and(python_word);
+                        left == right
+                    })
+                });
+                if refused || bad_boundary {
                     pos = next_char(line, start);
                     continue;
                 }
@@ -71,6 +114,12 @@ impl Rule {
     pub fn is_match(&self, line: &str) -> bool {
         self.find_iter(line).next().is_some()
     }
+}
+
+fn python_word(c: char) -> bool {
+    static WORD: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"\A[\p{L}\p{N}_]\z").expect("word character"));
+    WORD.is_match(c.encode_utf8(&mut [0; 4]))
 }
 
 /// The byte offset of the character after `i`, or one past the end.
