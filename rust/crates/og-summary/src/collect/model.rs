@@ -145,7 +145,10 @@ impl Section {
                     s.note = Some(format!(
                         "step {} failed in the run of {}; its log is in logs/",
                         spec.step,
-                        run.started_utc.as_deref().unwrap_or("unknown date")
+                        run.started_utc
+                            .as_deref()
+                            .filter(|t| !t.is_empty())
+                            .unwrap_or("unknown date")
                     ));
                 }
             }

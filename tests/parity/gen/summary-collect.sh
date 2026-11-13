@@ -4,9 +4,10 @@
 # is one case of og summary collect --only a against bin/collect_summary.py:
 # the bash and the Nextflow names of each section's file, a stale file of
 # each kind of step result and one written in the very second the run
-# started, failed steps with and without a start time, unreadable files of
-# each section, the karyotypes, CRLF and lone-CR line ends, the three places
-# a declared sex comes from, symlinked folders, and a VCF of 20,000 records.
+# started, failed steps with and without a start time and with an empty
+# one, unreadable files of each section, a corrupt gzip stream, the
+# karyotypes, CRLF and lone-CR line ends, the three places a declared sex
+# comes from, symlinked folders, and a VCF of 20,000 records.
 # assets/ is a copy of the repository's callability catalog.
 # scripts/ci/oracle-diff.sh runs it.
 set -euo pipefail
@@ -93,6 +94,7 @@ put stale/logs/run_status.tsv "meta\tstarted_epoch\t${T0}\nstep\t16b\tskipped (o
 # --- failed: no files, steps that failed, a start time as text only ----------
 put failed/logs/run_status.tsv "meta\tstarted_utc\t2020-02-02 02:02 UTC\nstep\t16b\tfailed (exit 1)\nstep\t16\tfailed\nstep\t33\tfailed (exit 2)\nstep\t02\tfailed\nstep\t03\tok\n"
 put failed-nodate/logs/run_status.tsv "meta\tstarted_epoch\tsoon\nstep\t33\tfailed (exit 1)\nstep\t16b\tfailed\n"
+put failed-emptydate/logs/run_status.tsv "meta\tstarted_utc\t\nstep\t33\tfailed (exit 1)\n"
 
 # --- unreadable files, one fault per section and folder ---------------------
 put bad-a/mosdepth/S.mosdepth.summary.txt "${COV_HEAD}total\t1\t1\tabc\t0\t9\n"
@@ -101,6 +103,10 @@ put bad-a/indexcov/indexcov-indexcov.ped '#family_id\tsample_id\nS\tS\n'
 put bad-a/qc/S_sample_qc.tsv 'key\tvalue\nsex_check\tok\nmosaic_call\tmaybe\n'
 put bad-a/qc/S_read_count.tsv 'key\tvalue\ninput_reads\t1.5\n'
 mkdir -p bad-a/vcf && vcf 2000 > full.tmp && head -c 3000 full.tmp > bad-a/vcf/S.vcf.gz && rm full.tmp
+# a byte flipped inside the deflate data, past the 10-byte gzip header
+mkdir -p badgz/vcf && vcf 2000 > badgz.tmp
+printf '\377' | dd of=badgz.tmp bs=1 seek=40 conv=notrunc 2>/dev/null
+mv badgz.tmp badgz/vcf/S.vcf.gz
 
 putgz bad-b/mosdepth/S_callability.bed.gz '#chrom\tstart\tend\tregion\t10X\nchr1\t0\t10\tA\n'
 put bad-b/indexcov/indexcov-indexcov.ped "$PED_HEAD"

@@ -160,6 +160,20 @@ fn a_missing_file_of_a_failed_step_is_failed() {
 }
 
 #[test]
+fn an_empty_start_time_is_an_unknown_date() {
+    let d = Dir::new("collect-failed-empty-date");
+    d.put(
+        "S/logs/run_status.tsv",
+        "meta\tstarted_utc\t\nstep\t33\tfailed (exit 1)\n",
+    );
+    let v = summary(&d, "S");
+    assert_eq!(
+        get(section(&v, "sample_qc"), "note"),
+        &s("step 33 failed in the run of unknown date; its log is in logs/")
+    );
+}
+
+#[test]
 fn the_run_status_rows() {
     let st = RunStatus::parse(
         "# comment\nmeta\tstarted_epoch\t100\nmeta\tstarted_epoch\tsoon\nmeta\tdeclared_sex\tfemale\nstep\t16\tok\nstep\t33\n",
