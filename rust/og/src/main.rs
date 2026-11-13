@@ -66,6 +66,10 @@ const USAGE: &str = "usage: og <tool> [args]
        og viral report [args]
        og y str-bed [args]
        og y str-report [args]
+       og y tree-positions --tree-dir DIR OUT
+       og y tree-place [args]
+       og y private-snps [args]
+       og y yleaf-positions --data DATA OUT
        og exomiser prepare [args]
        og exomiser report [args]
        og lookup query|resolve|report [args]
@@ -235,7 +239,7 @@ fn main() -> ExitCode {
                 "mocha" => og_reports::mocha::cli(verb, args, out, err),
                 "mei" => og_reports::mei::cli(verb, args, out, err),
                 "viral" => og_reports::viral::cli(verb, args, out, err),
-                "y" => og_reports::ystr::cli(verb, args, out, err),
+                "y" => og_reports::y::cli(verb, args, out, err),
                 _ => og_reports::exomiser::cli(verb, args, out, err),
             })
         }

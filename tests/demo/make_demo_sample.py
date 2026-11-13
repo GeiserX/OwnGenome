@@ -726,7 +726,7 @@ def repeats_and_more(d, rng):
     put(os.path.join(d, "y_haplogroup", f"{SAMPLE}_y_haplogroup.txt"),
         "Sample_name\tHg\tHg_marker\tTotal_reads\tValid_markers\tQC-score\tQC-1\tQC-2\tQC-3\n"
         f"{SAMPLE}_sorted\tI-M253\tM253\t4021876\t1187\t0.982\t1.0\t0.991\t0.982\n")
-    # Step 37's placement on the current tree (bin/y_tree_place.py's columns), read
+    # Step 37's placement on the current tree (og y tree-place's columns), read
     # by the report's y_tree section; the same I-M253 as above, five levels down.
     # As the real writer does: '.' for an empty SNP list, and its default depth of 10.
     put(os.path.join(d, "y_haplogroup", f"{SAMPLE}_y_tree.txt"),

@@ -2052,7 +2052,7 @@ def contamination_text(d):
 
 
 Y_TREE_NOTE = ("A second placement, on a public tree release newer than the one Yleaf carries, walked from the "
-               "reads by bin/y_tree_place.py. The two can differ in depth and in name: branches get renamed and "
+               "reads by og y tree-place. The two can differ in depth and in name: branches get renamed and "
                "split between releases, and the position tables differ. A branch is taken when it has more "
                "derived than ancestral SNPs, and an ancestral call above it blocks the branches below unless the "
                "SNPs below outvote that one site. Every level is in y_haplogroup/<sample>_y_tree_path.tsv; "
