@@ -70,7 +70,7 @@ Checks:
   10. the blood group card (step 41): every system's row in the HTML table and
      the text report, ABO and RhD on top, the "predicted, not typed" caption;
      the card is absent when step 41 did not run; and neither the reports nor
-     bin/bloodtype_report.py say anything about transfusion or donation (the
+     og bloodtype say anything about transfusion or donation (the
      table is information).
   11. the traits card (step 42): both reports carry the not-a-diagnosis
       note; a traits table older than the latest run-all.sh run, whose step
@@ -944,8 +944,10 @@ def main():
         nothing = collect_summary.collect("S", f"{work}/telomere/S")
         check("blood groups: no card without step 41", "Blood Groups" not in render_report.html_report(nothing))
         words = re.compile(r"transfus|donat|donor", re.I)
+        src = os.path.join(REPO, "rust", "crates", "og-bloodtype", "src")
         said = [n for n, t in (("text report", txt), ("HTML report", html),
-                               ("bin/bloodtype_report.py", open(os.path.join(REPO, "bin", "bloodtype_report.py")).read()))
+                               ("og bloodtype", "".join(open(os.path.join(src, f)).read()
+                                                for f in sorted(os.listdir(src)) if f.endswith(".rs"))))
                 if words.search(t)]
         check("blood groups: nothing about transfusion or donation", not said, said)
         check("control: the wording check finds the word", bool(words.search("for a transfusion")))

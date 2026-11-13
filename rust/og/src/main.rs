@@ -43,6 +43,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og mito annotate|deletions|copies [args]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
+       og bloodtype report|check-markers|systems [args]
        og family plan|prepare|check|report|segments [args]
        og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
@@ -179,6 +180,15 @@ fn main() -> ExitCode {
                 &mut std::io::stderr().lock(),
             )),
             None => usage_error("the following arguments are required: chip tool"),
+        },
+        "bloodtype" => match rest.first() {
+            Some(verb) => ExitCode::from(og_bloodtype::cli(
+                verb,
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
+            None => usage_error("the following arguments are required: bloodtype tool"),
         },
         "cn" => ExitCode::from(og_cn::cli::main(
             rest,
