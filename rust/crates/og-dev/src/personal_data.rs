@@ -591,4 +591,269 @@ mod tests {
             line,
         ));
     }
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir().join(format!("og-scan-{name}-{}", std::process::id()));
+            std::fs::create_dir_all(&root).unwrap();
+            Self(root.canonicalize().unwrap())
+        }
+        fn args(&self, files: &[&str]) -> Vec<String> {
+            let mut args = vec![
+                "--root".into(),
+                self.0.display().to_string(),
+                "--allow".into(),
+                "".into(),
+                "--skip".into(),
+                "".into(),
+            ];
+            args.extend(files.iter().map(|f| self.0.join(f).display().to_string()));
+            args
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    // Execute the removed scanner itself. Only its reporting is adapted to
+    // structured metadata, because printing findings is the bug being fixed.
+    fn oracle(f: &Fixture, files: &[&str], cached: bool) -> String {
+        const SHA: &str = "4104a93f2121b457413336574b8563fe85291fd7";
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let read = || {
+            Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(["show", &format!("{SHA}:scripts/ci/check-personal-data.sh")])
+                .output()
+                .unwrap()
+        };
+        let mut source = read();
+        if !source.status.success() {
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&repo)
+                    .args(["fetch", "--quiet", "--depth=1", "origin", SHA])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            source = read();
+        }
+        assert!(source.status.success());
+        let source = String::from_utf8(source.stdout).unwrap();
+        let python = source
+            .split("<<'PY'\n")
+            .nth(1)
+            .unwrap()
+            .split("\nPY\n")
+            .next()
+            .unwrap();
+        let python = python
+            .replace(
+                "import fnmatch, os, re, subprocess, sys",
+                "import fnmatch, os, re, subprocess, sys, json",
+            )
+            .replace(
+                "print(\"FAIL %-9s %s:%d: %s\" % (kind, rel, n, line.strip()[:160]))",
+                "print(json.dumps([kind, rel, n]))",
+            );
+        let mut cmd = Command::new("python3");
+        cmd.args(["-I", "-c", &python])
+            .arg(&f.0)
+            .args(["", "", "", if cached { "1" } else { "" }]);
+        for file in files {
+            cmd.arg(f.0.join(file));
+        }
+        let output = cmd.output().unwrap();
+        assert!(
+            output.status.code().is_some_and(|c| c == 0 || c == 1),
+            "oracle failed"
+        );
+        assert!(output.stderr.is_empty(), "oracle diagnostic");
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    fn assert_oracle_findings(f: &Fixture, files: &[&str], cached: bool) {
+        let expected = oracle(f, files, cached);
+        let mut args = f.args(files);
+        if cached {
+            args.insert(0, "--cached".into());
+        }
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = cli(&args, &mut out, &mut err);
+        let out = String::from_utf8(out).unwrap();
+        assert!(err.is_empty(), "unexpected scanner diagnostic");
+        let reported: std::collections::HashSet<_> = out.lines().collect();
+        let mut count = 0;
+        for line in expected.lines().filter(|l| l.starts_with('[')) {
+            let pycompat::json::Value::Array(row) = pycompat::json::loads(line).unwrap() else {
+                panic!("metadata")
+            };
+            let [
+                pycompat::json::Value::Str(kind),
+                pycompat::json::Value::Str(rel),
+                pycompat::json::Value::Int(n),
+            ] = row.as_slice()
+            else {
+                panic!("metadata fields")
+            };
+            // Keep the required report spelling independent of report().
+            let finding = format!("FAIL {kind:<9} {}:{n}", rel.escape_debug());
+            assert!(
+                reported.iter().any(|l| *l == finding
+                    || l.strip_prefix(&finding)
+                        .is_some_and(|tail| tail.starts_with(": "))),
+                "missing oracle finding #{count}"
+            );
+            count += 1;
+        }
+        assert!(count > 0, "oracle control was clean");
+        assert_eq!(code, 1);
+        assert_eq!(
+            out.lines().filter(|l| l.starts_with("FAIL ")).count(),
+            count
+        );
+    }
+
+    #[test]
+    fn privacy_report_never_contains_values_or_patterns() {
+        let f = Fixture::new("redaction");
+        let secret = p("/home/~synthetic_private_marker/path");
+        std::fs::write(f.0.join("probe.md"), &secret).unwrap();
+        let expected = oracle(&f, &["probe.md"], false);
+        assert!(expected.contains("home"));
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&f.args(&["probe.md"]), &mut out, &mut err), 1);
+        for stream in [&out, &err] {
+            assert!(
+                !String::from_utf8_lossy(stream).contains(&secret),
+                "reported private value"
+            );
+        }
+        assert_oracle_findings(&f, &["probe.md"], false);
+        let pattern = "CUSTOM_PRIVATE_PATTERN_MARKER[";
+        std::fs::write(f.0.join("patterns"), pattern).unwrap();
+        let mut args = f.args(&["probe.md"]);
+        args.extend([
+            "--patterns".into(),
+            f.0.join("patterns").display().to_string(),
+        ]);
+        out.clear();
+        err.clear();
+        assert_eq!(cli(&args, &mut out, &mut err), 2);
+        for stream in [&out, &err] {
+            assert!(
+                !String::from_utf8_lossy(stream).contains("CUSTOM_PRIVATE_PATTERN_MARKER"),
+                "reported custom pattern"
+            );
+        }
+    }
+
+    #[test]
+    fn privacy_python_boundaries_differential() {
+        let f = Fixture::new("boundaries");
+        let text = p(
+            "\u{301}rs123~ AG\nHG0~02\u{301} *1/~*4\nHTT\u{301} 17/~19\nREPCN\u{301} 17/~19\n/mnt/u~ser\u{301}\nx.ts.~net\u{301}\nrs123\t1\t9\t~AA\u{301}\n",
+        );
+        std::fs::write(f.0.join("probe.md"), text).unwrap();
+        assert_oracle_findings(&f, &["probe.md"], false);
+    }
+
+    #[test]
+    fn privacy_python_casefold_differential() {
+        let f = Fixture::new("casefold");
+        let text = p(
+            "patİent *1/~*4\npatıent *1/~*4\nſample *1/~*4\nİpatient *1/~*4\nıpatient *1/~*4\nKpatient *1/~*4\n",
+        );
+        std::fs::write(f.0.join("probe.md"), text).unwrap();
+        assert_oracle_findings(&f, &["probe.md"], false);
+    }
+
+    #[test]
+    fn privacy_staged_newline_differential() {
+        let f = Fixture::new("staged");
+        let git = |args: &[&str]| {
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&f.0)
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            )
+        };
+        git(&["init", "-q"]);
+        std::fs::write(f.0.join("clean.md"), "clean\n").unwrap();
+        std::fs::write(
+            f.0.join("odd\nname.md"),
+            p("/home/~synthetic_private_marker/path\n"),
+        )
+        .unwrap();
+        git(&["add", "--", "clean.md", "odd\nname.md"]);
+        std::fs::write(f.0.join("odd\nname.md"), "clean\n").unwrap();
+        assert_oracle_findings(&f, &["clean.md", "odd\nname.md"], true);
+    }
+
+    #[test]
+    fn privacy_fixed_seed_differential_fuzz() {
+        let f = Fixture::new("fuzz");
+        let vocabulary = [
+            "rs123~ AG",
+            "HG0~02 *1/~*4",
+            "patient *1/~*4",
+            "patİent *1/~*4",
+            "patıent *1/~*4",
+            "ſample *1/~*4",
+            "HTT 17/~19",
+            "REPCN 17/~19",
+            "/home/~synthetic/path",
+            "/mnt/u~ser",
+            "node.ts.~net",
+            "10.2.~3.4",
+            "rs123\t1\t9\t~AA",
+            "clean",
+        ];
+        let noise = [
+            "", "\u{301}", "\u{345}", "\u{200d}", "\u{200b}", "İ", "ı", "ſ", "K", "é", "²", "_",
+            "\u{1c}", "\u{a0}", "\r", "\t",
+        ];
+        let mut seed = 0x5ca1ab1eu64;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed as usize
+        };
+        let mut data = Vec::new();
+        for _ in 0..6144 {
+            let value = p(vocabulary[next() % vocabulary.len()]);
+            let before = noise[next() % noise.len()];
+            let after = noise[next() % noise.len()];
+            // Noise at every internal boundary, not only outside the line.
+            let value = value.replace(' ', &format!("{after} {before}"));
+            data.extend_from_slice(format!("{before}{value}{after}\r\n").as_bytes());
+        }
+        data.extend_from_slice(&[0xff, 0xfe]);
+        data.extend_from_slice(p("rs123~ AG\n").as_bytes());
+        data.extend(std::iter::repeat_n(b'x', 100_000));
+        data.extend_from_slice(p(" HTT 17/~19\n\0REPCN 17/~19\n").as_bytes());
+        let names = [
+            "noise.md",
+            "odd\nname.md",
+            "tab\tname.md",
+            "-dash.md",
+            "unicode-\u{301}.md",
+            "binary.md",
+        ];
+        for name in &names[..5] {
+            std::fs::write(f.0.join(name), &data).unwrap();
+        }
+        std::fs::write(f.0.join(names[5]), b"\0binary").unwrap();
+        assert_oracle_findings(&f, &names, false);
+    }
 }
