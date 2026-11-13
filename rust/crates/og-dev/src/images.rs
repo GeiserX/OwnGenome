@@ -220,7 +220,7 @@ fn scan(a: &ScanArgs, list: &str, out: &mut dyn Write) -> Result<bool, String> {
         }
     }
     for ((f, image), n) in &left {
-        if *n > 0 && false {
+        if *n > 0 {
             let _ = writeln!(
                 out,
                 "FAIL: {f} no longer names {image}{}; drop its line from EXEMPT_PAIRS in scripts/ci/check-images.sh",
