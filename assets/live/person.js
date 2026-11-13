@@ -863,6 +863,11 @@
       add(body, nf);
       return body;
     }
+    if ((sec.n === 9 || sec.n === 10) && tagClosed(PANEL)) {
+      add(body, U.veil('This part can contain data text, so it stays closed until every result to act on is opened.',
+        null, function () { var f = nextClosed(); if (f) { openFinding(f); } redraw(true); }));
+      return body;
+    }
     if (sec.n === 9) {
       var lists = [['No step looks at these', (results && results.not_assessed) || []], ['Steps that did not run', (results && results.not_run) || []]];
       lists.forEach(function (x) {
@@ -942,6 +947,7 @@
       sec.cards.map(cardById).some(function (c) { return c && flaggedAlone(c); })));
   }
   function sectionLine(sec) {
+    if (sec.n === 9 && tagClosed(PANEL)) { return 'Closed until every result to act on is opened.'; }
     if (sec.n === 9) {
       var na = ((results && results.not_assessed) || []).length, nr = ((results && results.not_run) || []).length;
       return na + (na === 1 ? ' thing' : ' things') + ' no step looks at, ' + nr + (nr === 1 ? ' step' : ' steps') + ' that did not run';
@@ -1032,7 +1038,7 @@
     add(trust, U.level('trust', 'Data quality', problems.length ? 'problem' : ''));
     var qc = cardById('qc');
     if (qc && gate(qc) === 'show') {
-      (qc.facts || []).filter(function (f) { return /depth|contamination|sex from/i.test(f[0]); }).slice(0, 3).forEach(function (f, i) {
+      openFacts(qc)[0].filter(function (f) { return /depth|contamination|sex from/i.test(f[0]); }).slice(0, 3).forEach(function (f, i) {
         if (i) { add(trust, el('span', { 'class': 'sep' }, '·')); }
         add(trust, el('span', { title: f[0] + ': ' + f[1] }, String(f[0]).replace(/\s*\([^)]*\)/g, '') + ': ' + String(f[1]).split(/[.;(]\s/)[0].replace(/[.;]$/, '').trim()));
       });

@@ -2241,6 +2241,60 @@ def fail_closed_problems(b, base, out, og, cases=None, producers=None):
                     bad.append(f"mito: row/mark after {stage} matching openings {got}")
         finally:
             unplant(keep)
+    if "report-metadata" in cases:
+        phone_at(b, 390)
+        try:
+            views = []
+            for gene in ("MLH1", "BRCA2"):
+                build = live_results.build
+                def metadata(sample, summary, files=()):
+                    token = "MLH1_METADATA_NOTE"
+                    records = [token] * (2 if gene == "MLH1" else 1)
+                    planted = dict(summary, not_assessed=records, not_run=records,
+                                   databases=dict(summary.get("databases") or {}, test_metadata=token))
+                    return build(sample, planted, files)
+                live_results.build = metadata
+                try:
+                    keep = plant_summary(out, og, cpsr(gene))
+                finally:
+                    live_results.build = build
+                try:
+                    views.append(page_now(b, base))
+                    if "MLH1_METADATA_NOTE" in "\n".join(views[-1][0]):
+                        bad.append("report metadata: unclassified limitation, missing-step or version text reaches the DOM")
+                    with open(os.path.join(out, "runs", SON, "results.json")) as fh:
+                        acts = [f["id"] for f in json.load(fh)["findings"] if f["level"] == "act"]
+                    for fid in acts:
+                        assert open_closed(b, fid), fid
+                    if "MLH1_METADATA_NOTE" not in (b.eval("document.documentElement.outerHTML") or ""):
+                        bad.append("report metadata: text does not return after every act opens")
+                finally:
+                    unplant(keep)
+            if views[0] != views[1]:
+                bad.append("report metadata: extra records change closed text, attributes, address, canvas or SVG sizes")
+        finally:
+            b.call("Emulation.clearDeviceMetricsOverride", {}, b.session)
+    if "trust" in cases:
+        def qc_note(S):
+            cpsr("MLH1")(S)
+            S["sample_qc"] = {"state": "ok", "data": {"sex_check": "not_checked", "inferred_sex": "male",
+                "sex_check_reason": "MLH1_TRUST_NOTE", "contamination": "not_checked"}}
+        keep = plant_summary(out, og, qc_note)
+        try:
+            page_now(b, base)
+            if "MLH1_TRUST_NOTE" in (b.eval("document.documentElement.outerHTML") or ""):
+                bad.append("trust: a PANEL QC fact survives in the trust-line text or title")
+            assert open_closed(b, cid("MLH1"))
+            if "MLH1_TRUST_NOTE" in (b.eval("document.documentElement.outerHTML") or ""):
+                bad.append("trust: opening one act exposes a QC fact while other acts remain closed")
+            with open(os.path.join(out, "runs", SON, "results.json")) as fh:
+                acts = [f["id"] for f in json.load(fh)["findings"] if f["level"] == "act"]
+            for fid in acts:
+                open_closed(b, fid)
+            if "MLH1_TRUST_NOTE" not in (b.eval("document.querySelector('.trustline').outerHTML") or ""):
+                bad.append("trust: the QC fact does not return after every act opens")
+        finally:
+            unplant(keep)
     if "no-act" in cases:
         def no_act(S):
             S.clear()
@@ -2283,7 +2337,7 @@ def fail_closed_problems(b, base, out, og, cases=None, producers=None):
                 continue
             def injected(S, summary):
                 got = adapter(S, summary)
-                got.update(facts=[["Unclassified", "MLH1"]], lines=["MLH1 sample note"],
+                got.update(facts=[["Mean depth", "MLH1 sample note"]], lines=["MLH1 sample note"],
                            table={"columns": ["Detail"], "rows": [["MLH1"], ["extra MLH1 record"]]})
                 return got
             live_results.ADAPTERS[producer] = injected
@@ -2307,7 +2361,7 @@ def fail_closed_problems(b, base, out, og, cases=None, producers=None):
 
 def fail_closed_checks(b, base, out, og):
     started = time.monotonic()
-    for case in ("home", "hpo", "contig", "mito", "producers", "metadata", "no-act"):
+    for case in ("home", "hpo", "contig", "mito", "producers", "metadata", "no-act", "trust", "report-metadata"):
         bad = fail_closed_problems(b, base, out, og, [case])
         check("browser: fail-closed producers " + case, not bad, bad)
     prose, row, veil = live_results.prose_tag, live_results.row_tag, live_results.veil
@@ -2362,6 +2416,28 @@ def fail_closed_checks(b, base, out, og):
     finally:
         with open(path, "w") as fh:
             fh.write(reader)
+    try:
+        old = "openFacts(qc)[0].filter(function (f) { return /depth|contamination|sex from/i.test(f[0]); })"
+        assert reader.count(old) == 1
+        with open(path, "w") as fh:
+            fh.write(reader.replace(old, "(qc.facts || []).filter(function (f) { return /depth|contamination|sex from/i.test(f[0]); })"))
+        control("trust line reading QC facts outside their veil", not fail_closed_problems(b, base, out, og, ["trust"]))
+    finally:
+        with open(path, "w") as fh:
+            fh.write(reader)
+    for old, new, desc in (
+            ("(sec.n === 9 || sec.n === 10) && tagClosed(PANEL)", "false",
+             "report metadata read outside PANEL"),
+            ("sec.n === 9 && tagClosed(PANEL)", "false",
+             "unclassified report metadata counted in the contents")):
+        try:
+            assert reader.count(old) == 1
+            with open(path, "w") as fh:
+                fh.write(reader.replace(old, new))
+            control(desc, not fail_closed_problems(b, base, out, og, ["report-metadata"]))
+        finally:
+            with open(path, "w") as fh:
+                fh.write(reader)
     print(f"   fail-closed producer checks: {time.monotonic() - started:.2f} s")
 
 
