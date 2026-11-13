@@ -7,12 +7,15 @@
 #     Makes DIR/NAME the file at URL with that sha256. A file already there
 #     with the right sha256 is kept, so DIR can be a cache that outlives the
 #     run. Otherwise it prints "Downloading URL" on stderr (the e2e cases
-#     count these lines), downloads to DIR/NAME.part and renames it when the
-#     sha256 matches. A 403 or 404 fails at once: a missing or forbidden file
-#     stays so. Any other failure is tried again 6 times, 30 s apart, for
-#     about five minutes: EBI's FTP server refused every connection for
-#     minutes at a time on 2026-11-06 (curl exit 7). Returns 1 with an ERROR
-#     line when the file cannot be had.
+#     count these lines), downloads to a temporary file of its own beside
+#     DIR/NAME (so two runs on one cache never share one) and renames it
+#     when the sha256 matches. A 403 or 404 fails at once: a missing or
+#     forbidden file stays so. Any other failure is tried again 6 times,
+#     30 s apart, for about five minutes: EBI's FTP server refused every
+#     connection for minutes at a time on 2026-11-06 (curl exit 7). A
+#     connection that does not open in 30 s, or a transfer under 1 KB/s for
+#     60 s, counts as a failure, so a stalled server cannot hold the build.
+#     Returns 1 with an ERROR line when the file cannot be had.
 #
 #   pinned_sha256 FILE
 #     The sha256 of FILE, from sha256sum or shasum.
@@ -29,33 +32,36 @@ pinned_sha256() {
 }
 
 fetch_pinned() {
-  local dir=$1 name=$2 url=$3 want=$4 file code got
+  local dir=$1 name=$2 url=$3 want=$4 file part code got
   file="${dir}/${name}"
   if [ -f "$file" ] && [ "$(pinned_sha256 "$file")" = "$want" ]; then
     return 0
   fi
   mkdir -p "$dir" || return 1
+  part=$(mktemp "${file}.part.XXXXXX") || return 1
   echo "Downloading ${url}" >&2
-  if ! code=$(curl -fsSL -w '%{http_code}' -o "${file}.part" "$url"); then
+  if ! code=$(curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+      -w '%{http_code}' -o "$part" "$url"); then
     case $code in
       403 | 404)
-        rm -f "${file}.part"
+        rm -f "$part"
         echo "ERROR: cannot download ${url}: HTTP ${code}" >&2
         return 1
         ;;
     esac
-    if ! curl -fsSL --retry 6 --retry-all-errors --retry-delay 30 --retry-max-time 300 \
-        -o "${file}.part" "$url"; then
-      rm -f "${file}.part"
+    if ! curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+        --retry 6 --retry-all-errors --retry-delay 30 --retry-max-time 300 -o "$part" "$url"; then
+      rm -f "$part"
       echo "ERROR: cannot download ${url}" >&2
       return 1
     fi
   fi
-  got=$(pinned_sha256 "${file}.part")
+  got=$(pinned_sha256 "$part")
   if [ "$got" != "$want" ]; then
-    rm -f "${file}.part"
+    rm -f "$part"
     echo "ERROR: ${name} has sha256 ${got}, want ${want}" >&2
     return 1
   fi
-  mv "${file}.part" "$file"
+  chmod 644 "$part"
+  mv "$part" "$file"
 }
