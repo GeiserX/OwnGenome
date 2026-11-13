@@ -22,8 +22,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File};
-use std::io::{BufRead, BufWriter, Write};
-use std::os::unix::fs::FileExt;
+use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -64,18 +64,45 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     }
 }
 
-fn open(path: &str) -> Result<Box<dyn BufRead>, String> {
-    og_io::open(path).map_err(|e| format!("{path}: {e}"))
+fn open(path: &str, gzip: bool) -> Result<Box<dyn BufRead>, String> {
+    let mut file = BufReader::new(File::open(path).map_err(|e| format!("{path}: {e}"))?);
+    let head = file.fill_buf().map_err(|e| format!("{path}: {e}"))?;
+    if head.starts_with(&[0x1f, 0x8b]) != gzip {
+        return Err(format!(
+            "{path}: wrong compression (expected {})",
+            if gzip { "gzip" } else { "plain" }
+        ));
+    }
+    if gzip {
+        og_io::reader(file).map_err(|e| format!("{path}: {e}"))
+    } else {
+        Ok(Box::new(file))
+    }
+}
+
+/// Plain repository text with Python's universal-newline normalization.
+pub(crate) fn read_text(path: &Path) -> Result<String, String> {
+    use std::io::Read;
+    let mut text = String::new();
+    open(&path.to_string_lossy(), false)?
+        .read_to_string(&mut text)
+        .map_err(|e| format!("{}: invalid text: {e}", path.display()))?;
+    Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
 }
 
 /// Strict UTF-8 and universal newlines, with a 16 MiB record limit. This
 /// local reader can use og-io's bounded reader once that API is available.
-pub(crate) fn lines(
+pub(crate) fn lines(path: &str, f: impl FnMut(&[u8]) -> Result<(), String>) -> Result<(), String> {
+    input_lines(path, false, f)
+}
+
+fn input_lines(
     path: &str,
+    gzip: bool,
     mut f: impl FnMut(&[u8]) -> Result<(), String>,
 ) -> Result<(), String> {
     const MAX_LINE: usize = 16 << 20;
-    let mut r = open(path)?;
+    let mut r = open(path, gzip)?;
     let mut line = Vec::new();
     let mut after_cr = false;
     loop {
@@ -112,8 +139,63 @@ pub(crate) fn lines(
     }
 }
 
+/// Follow the final symlink, including relative and dangling link targets.
+fn resolve_destination(destination: &Path) -> Result<PathBuf, String> {
+    let mut path = destination.to_owned();
+    for _ in 0..40 {
+        match fs::read_link(&path) {
+            Ok(target) => {
+                path = if target.is_absolute() {
+                    target
+                } else {
+                    path.parent().unwrap_or(Path::new(".")).join(target)
+                }
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::InvalidInput | std::io::ErrorKind::NotFound
+                ) =>
+            {
+                return Ok(path);
+            }
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        }
+    }
+    Err(format!(
+        "{}: too many destination symlinks",
+        destination.display()
+    ))
+}
+
+fn validate_destination(path: &Path) -> Result<Option<fs::Permissions>, String> {
+    match fs::metadata(path) {
+        Ok(meta) => {
+            if !meta.is_file() {
+                return Err(format!(
+                    "{}: destination is not a regular file",
+                    path.display()
+                ));
+            }
+            let permissions = meta.permissions();
+            if permissions.mode() & 0o222 == 0 {
+                return Err(format!("{}: read-only destination", path.display()));
+            }
+            // Check ACLs and effective-user access without truncating the old file.
+            File::options()
+                .write(true)
+                .open(path)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            Ok(Some(permissions))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
 /// A unique, exclusively created sibling. Dropping it on any read, write
-/// or rename error removes the temporary file and preserves the destination.
+/// or rename error removes this temporary file. A multi-file set is staged
+/// together, but its renames are separate transactions.
 pub(crate) struct PendingOutput {
     path: PathBuf,
     destination: PathBuf,
@@ -122,6 +204,8 @@ pub(crate) struct PendingOutput {
 impl PendingOutput {
     pub(crate) fn new(destination: &Path) -> Result<(Self, File), String> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
+        let destination = resolve_destination(destination)?;
+        let permissions = validate_destination(&destination)?;
         let name = destination.file_name().ok_or("output has no file name")?;
         loop {
             let mut tmp = std::ffi::OsString::from(".");
@@ -134,13 +218,15 @@ impl PendingOutput {
             let path = destination.with_file_name(tmp);
             match File::options().write(true).create_new(true).open(&path) {
                 Ok(file) => {
-                    return Ok((
-                        Self {
-                            path,
-                            destination: destination.to_owned(),
-                        },
-                        file,
-                    ));
+                    let pending = Self {
+                        path,
+                        destination: destination.to_owned(),
+                    };
+                    if let Some(permissions) = permissions {
+                        file.set_permissions(permissions)
+                            .map_err(|e| format!("{}: {e}", destination.display()))?;
+                    }
+                    return Ok((pending, file));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(e) => return Err(format!("{}: {e}", destination.display())),
@@ -149,6 +235,7 @@ impl PendingOutput {
     }
 
     pub(crate) fn commit(self) -> Result<(), String> {
+        validate_destination(&self.destination)?;
         fs::rename(&self.path, &self.destination)
             .map_err(|e| format!("{}: {e}", self.destination.display()))
     }
@@ -189,7 +276,7 @@ fn clash_positions(
 ) -> Result<BTreeSet<(Vec<u8>, u64)>, String> {
     let mut hit = BTreeSet::new();
     let (mut key, mut n, mut snvs): (Option<(Vec<u8>, u64)>, u32, u32) = (None, 0, 0);
-    lines(path, |line| {
+    input_lines(path, true, |line| {
         if line.first() == Some(&b'#') {
             return Ok(());
         }
@@ -197,9 +284,9 @@ fn clash_positions(
         if !chroms.contains(c[0]) {
             return Ok(());
         }
-        if c.len() < 5 {
+        if c.len() < 6 {
             return Err(format!(
-                "{path}: a selected record has fewer than 5 columns"
+                "{path}: a selected record has fewer than 5 columns or missing trailing VCF columns"
             ));
         }
         let k = (c[0].to_vec(), pos(c[1], path)?);
@@ -253,7 +340,7 @@ fn clashes(raw: &str, split: &str, data: &str, out: &str) -> Result<(), String> 
             continue;
         }
         let path = table.to_string_lossy().into_owned();
-        lines(&path, |line| {
+        input_lines(&path, true, |line| {
             let c: Vec<&[u8]> = line.splitn(3, |&b| b == b'\t').collect();
             if c[0] != chrom.as_slice() {
                 return Ok(());
@@ -339,15 +426,32 @@ fn hg002_gvcf(
 ) -> Result<(u64, u64), String> {
     let fai = read_fai(&format!("{reference}.fai"))?;
     let fasta = File::open(reference).map_err(|e| format!("{reference}: {e}"))?;
+    let mut magic = [0; 2];
+    if fasta
+        .read_at(&mut magic, 0)
+        .map_err(|e| format!("{reference}: {e}"))?
+        == 2
+        && magic == [0x1f, 0x8b]
+    {
+        return Err(format!("{reference}: wrong compression (expected plain)"));
+    }
     // The benchmark regions, BED 0-based: (start, end) per chromosome,
     // sorted. A site p (1-based) is confident when the region with the
     // largest start below p ends at p or later, as the Python's bisect did.
     let mut conf: HashMap<Vec<u8>, Vec<(u64, u64)>> = HashMap::new();
     lines(bed, |line| {
         let f: Vec<&[u8]> = line
-            .split(|b| b.is_ascii_whitespace())
+            .split(|b| matches!(b, b' ' | b'\t'))
             .filter(|x| !x.is_empty())
             .collect();
+        if f.iter().any(|field| {
+            std::str::from_utf8(field)
+                .expect("strict reader")
+                .chars()
+                .any(|ch| ch.is_whitespace() || matches!(ch, '\u{1c}'..='\u{1f}'))
+        }) {
+            return Err(format!("{bed}: unsupported whitespace in a field"));
+        }
         if f.len() < 3 {
             return Err(format!("{bed}: a row has fewer than 3 columns"));
         }
@@ -371,7 +475,7 @@ fn hg002_gvcf(
     let werr = |e: std::io::Error| format!("{out}: {e}");
     let mut covered: HashMap<Vec<u8>, Vec<(u64, u64)>> = HashMap::new();
     let mut records = 0u64;
-    lines(truth, |line| {
+    input_lines(truth, true, |line| {
         if line.starts_with(b"##") {
         } else if line.first() == Some(&b'#') {
             w.write_all(b"##INFO=<ID=END,Number=1,Type=Integer,Description=\"End of the reference block\">\n##ALT=<ID=*,Description=\"Any other allele\">\n")
@@ -384,10 +488,13 @@ fn hg002_gvcf(
             let p = pos(f[1], truth)?;
             covered.entry(f[0].to_vec()).or_default().push((
                 p,
-                p + std::str::from_utf8(f[3])
-                    .expect("strict reader")
-                    .chars()
-                    .count() as u64,
+                p.checked_add(
+                    std::str::from_utf8(f[3])
+                        .expect("strict reader")
+                        .chars()
+                        .count() as u64,
+                )
+                .ok_or_else(|| format!("{truth}: position span overflows"))?,
             ));
             records += 1;
         }
@@ -516,7 +623,7 @@ mod tests {
         fn text(&self, name: &str) -> Vec<u8> {
             use std::io::Read;
             let mut bytes = Vec::new();
-            open(self.dir.join(name).to_str().unwrap())
+            open(self.dir.join(name).to_str().unwrap(), name.ends_with(".gz"))
                 .unwrap()
                 .read_to_end(&mut bytes)
                 .unwrap();
@@ -534,22 +641,29 @@ mod tests {
         }
         fn run(&self) -> Result<(), String> {
             let p = |n: &str| self.dir.join(n).to_str().unwrap().to_owned();
-            if self.kind == "clashes" {
-                clashes(
-                    &p("raw.vcf.gz"),
-                    &p("split.vcf.gz"),
-                    self.dir.to_str().unwrap(),
-                    &p("out"),
-                )
+            let args = if self.kind == "clashes" {
+                vec![
+                    "clashes".to_owned(),
+                    p("raw.vcf.gz"),
+                    p("split.vcf.gz"),
+                    self.dir.to_str().unwrap().to_owned(),
+                    p("out"),
+                ]
             } else {
-                hg002_gvcf(
-                    &p("truth.vcf.gz"),
-                    &p("truth.bed"),
-                    &p("ref.fasta"),
-                    &p("sites.tsv"),
-                    &p("out"),
-                )
-                .map(|_| ())
+                vec![
+                    "hg002-gvcf".to_owned(),
+                    p("truth.vcf.gz"),
+                    p("truth.bed"),
+                    p("ref.fasta"),
+                    p("sites.tsv"),
+                    p("out"),
+                ]
+            };
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            match cli(&args, &mut out, &mut err) {
+                0 => Ok(()),
+                1 => Err(String::from_utf8(err).unwrap()),
+                code => panic!("unexpected CLI exit {code}: {err:?}"),
             }
         }
         fn fails_without_publication(&self) {
@@ -690,19 +804,31 @@ mod tests {
         }
     }
 
-
     #[test]
     fn explicit_compression_is_required_at_every_input() {
         for (kind, names) in [
             ("clashes", vec!["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz"]),
-            ("hg002-gvcf", vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"]),
+            (
+                "hg002-gvcf",
+                vec![
+                    "truth.vcf.gz",
+                    "truth.bed",
+                    "ref.fasta.fai",
+                    "ref.fasta",
+                    "sites.tsv",
+                ],
+            ),
         ] {
             for name in names {
                 let c = Case::new(kind, &format!("compression-{name}"));
                 let bytes = c.text(name);
-                let wrong = if name.ends_with(".gz") { bytes } else {
-                    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-                    gz.write_all(&bytes).unwrap(); gz.finish().unwrap()
+                let wrong = if name.ends_with(".gz") {
+                    bytes
+                } else {
+                    let mut gz =
+                        flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                    gz.write_all(&bytes).unwrap();
+                    gz.finish().unwrap()
                 };
                 fs::write(c.dir.join(name), wrong).unwrap();
                 c.fails_without_publication();
@@ -713,12 +839,17 @@ mod tests {
 
     #[test]
     fn bed_rejects_python_whitespace_inside_fields_and_as_separators() {
-        for ch in ['\u{2028}', '\u{85}', '\u{b}', '\u{a0}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{1f}'] {
+        for ch in [
+            '\u{2028}', '\u{85}', '\u{b}', '\u{a0}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{1f}',
+        ] {
             for embedded in [true, false] {
                 let c = Case::new("hg002-gvcf", &format!("space-{}-{embedded}", ch as u32));
                 let text = String::from_utf8(c.text("truth.bed")).unwrap();
-                let text = if embedded { text.replacen("chrA", &format!("chr{ch}A"), 1) }
-                           else { text.replace('\t', &ch.to_string()) };
+                let text = if embedded {
+                    text.replacen("chrA", &format!("chr{ch}A"), 1)
+                } else {
+                    text.replace('\t', &ch.to_string())
+                };
                 c.put("truth.bed", text.as_bytes());
                 c.fails_without_publication();
                 assert!(c.run().unwrap_err().contains("unsupported whitespace"));
@@ -736,16 +867,28 @@ mod tests {
         fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
         symlink("target", &link).unwrap();
         publish(&link, b"new").unwrap();
-        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
         assert_eq!(fs::read(&target).unwrap(), b"new");
-        assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
         assert!(publish(&link, b"bad").unwrap_err().contains("read-only"));
         assert_eq!(fs::read(&target).unwrap(), b"new");
         let dir_link = c.dir.join("dir-link");
         symlink(&c.dir, &dir_link).unwrap();
         for path in [&c.dir, &dir_link] {
-            assert!(publish(path, b"bad").unwrap_err().contains("not a regular file"));
+            assert!(
+                publish(path, b"bad")
+                    .unwrap_err()
+                    .contains("not a regular file")
+            );
         }
     }
 
@@ -753,7 +896,10 @@ mod tests {
     fn approved_strict_evidence_shapes_fail_with_stable_errors() {
         for value in ["3_0", "٣", "-3", "18446744073709551616"] {
             let c = Case::new("hg002-gvcf", value);
-            c.put("truth.vcf.gz", format!("chrA\t{value}\t.\tA\tC\n").as_bytes());
+            c.put(
+                "truth.vcf.gz",
+                format!("chrA\t{value}\t.\tA\tC\n").as_bytes(),
+            );
             c.fails_without_publication();
             assert!(c.run().unwrap_err().contains("not a number"));
         }
@@ -776,7 +922,11 @@ mod tests {
         let c = Case::new("clashes", "record-limit");
         c.put("raw.vcf.gz", &vec![b'#'; (16 << 20) + 1]);
         c.fails_without_publication();
-        assert!(c.run().unwrap_err().contains("record exceeds 16777216 bytes"));
+        assert!(
+            c.run()
+                .unwrap_err()
+                .contains("record exceeds 16777216 bytes")
+        );
         let c = Case::new("hg002-gvcf", "final-lf");
         c.run().unwrap();
         let expected = fs::read(c.dir.join("out")).unwrap();

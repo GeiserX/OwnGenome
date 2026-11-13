@@ -111,3 +111,46 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 - **Release** (`release.yml`): a tag builds the four binaries, writes `SHA256SUMS`, attests them and attaches all five files to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.
+
+## CI evidence and fixture verbs
+
+`og dev evidence clashes` reads two gzip VCFs and gzip archaic tables.
+`og dev evidence hg002-gvcf` reads a gzip truth VCF, plain BED, plain FASTA
+and FAI, and a plain sites table. `og dev renovate-check` reads a plain log
+and plain repository sources. Text uses strict UTF-8 and universal newlines
+(LF, CRLF and CR). Compression is explicit, even when a filename is misleading.
+
+Evidence, `og dev fixture comphet`, `og dev fixture trim-pharmcat` and the
+Renovate summary stage output beside its resolved destination. A file symlink
+stays a symlink, existing permission bits are preserved, and read-only files
+and directory destinations fail. New files use the caller's umask.
+The VNtyper downloader follows the same destination policy, uses a private
+`mktemp -d` directory, and removes it on handled failures and signals. It needs
+GNU `mv -T` (`gmv` on macOS) so a directory can never receive a temporary BAM.
+
+Comphet stages all three files and checks all three destinations before the
+first rename. A bad later destination leaves previous outputs intact.
+Three renames are still not one transaction. A crash or a filesystem failure
+between renames can publish only part of the new set. Unhandled SIGKILL can
+leave temporary files. Single-file outputs are replaced by one rename.
+
+### Stricter than the replaced Python, on purpose
+
+Each refusal below has a pinned negative CLI test with exit 1 and a stable
+error class in `og-dev`. The final-LF normalization has a positive byte test.
+
+- BED fields use spaces and tabs as separators. Other Python whitespace
+  (Unicode White_Space and U+001C through U+001F) fails with `unsupported whitespace`.
+- Renovate present fields of the wrong type fail with `not a map of package file lists`.
+  This includes map-valued updates and numeric dependency names, current values,
+  or update values. Falsy warnings and packages with no dependencies remain valid.
+- PharmCAT truthy strings or objects where lists belong fail with `is not a list`.
+- PharmCAT truthy non-object alleles fail with `is not an object`.
+- Evidence positions with underscores, non-ASCII digits, negative values or
+  values outside u64 fail with `not a number`.
+- Four-field truth VCF rows and blank FAI rows fail with `fewer than 5 columns`.
+- Text records over 16 MiB, including ignored headers or log lines, fail with
+  `record exceeds 16777216 bytes`.
+- Clash VCF rows need a tab after ALT. A newline in the ALT field of a short
+  row fails with `missing trailing VCF columns`.
+- A truth VCF record without its final LF gets one in the output. Valid VCF ends with LF.

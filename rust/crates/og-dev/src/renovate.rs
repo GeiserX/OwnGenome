@@ -119,7 +119,7 @@ fn cli_with_summary(
             return 2;
         }
     };
-    let env_text = match fs::read_to_string(repo.join(ENV)) {
+    let env_text = match crate::evidence::read_text(&repo.join(ENV)) {
         Ok(t) => t,
         Err(e) => {
             let _ = writeln!(err, "og dev renovate-check: {ENV}: {e}");
@@ -222,7 +222,7 @@ fn glob(repo: &Path, pattern: &str) -> Result<Vec<String>, String> {
 }
 
 fn read_pins(repo: &Path, path: &Path) -> Result<Pins, String> {
-    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = crate::evidence::read_text(path)?;
     let mut pins = Pins {
         want: BTreeMap::new(),
         files: HashMap::new(),
@@ -246,7 +246,7 @@ fn read_pins(repo: &Path, path: &Path) -> Result<Pins, String> {
         }
         for f in glob(repo, files).map_err(|e| at(&e))? {
             if !texts.contains_key(&f) {
-                let t = fs::read_to_string(repo.join(&f)).map_err(|e| at(&format!("{f}: {e}")))?;
+                let t = crate::evidence::read_text(&repo.join(&f)).map_err(|e| at(&e))?;
                 texts.insert(f.clone(), t);
             }
             let n = re.find_iter(&texts[&f]).count();
@@ -300,13 +300,16 @@ fn load(log: &str) -> Result<Vec<Dep>, String> {
             let Value::Object(mut pf) = pf else {
                 return Err(shape());
             };
-            let Some(Value::Str(name)) = pf.swap_remove("packageFile") else {
-                return Err(shape());
-            };
             let ds = match pf.swap_remove("deps") {
                 None => Vec::new(),
                 Some(Value::Array(ds)) => ds,
                 _ => return Err(shape()),
+            };
+            if ds.is_empty() {
+                continue;
+            }
+            let Some(Value::Str(name)) = pf.swap_remove("packageFile") else {
+                return Err(shape());
             };
             for d in ds {
                 let Value::Object(d) = d else {
@@ -343,7 +346,7 @@ fn load(log: &str) -> Result<Vec<Dep>, String> {
                         return Err(shape());
                     }
                 }
-                if let Some(ws) = d.get("warnings") {
+                if let Some(ws) = d.get("warnings").filter(|v| truthy(v)) {
                     let Value::Array(ws) = ws else {
                         return Err(shape());
                     };
@@ -917,7 +920,23 @@ mod tests {
                 r#"{"packageFile":"unused","deps":[{"updates":[42]}]}"#,
             ),
             ("scalar-dep", r#"{"packageFile":"unused","deps":[42]}"#),
-            ("scalar-file", r#"{"packageFile":[],"deps":[]}"#),
+            ("scalar-file", r#"{"packageFile":[],"deps":[{}]}"#),
+            (
+                "map-updates",
+                r#"{"packageFile":"unused","deps":[{"updates":{}}]}"#,
+            ),
+            (
+                "number-update",
+                r#"{"packageFile":"unused","deps":[{"updates":[{"newValue":0}]}]}"#,
+            ),
+            (
+                "number-name",
+                r#"{"packageFile":"unused","deps":[{"depName":0}]}"#,
+            ),
+            (
+                "number-current",
+                r#"{"packageFile":"unused","deps":[{"currentValue":0}]}"#,
+            ),
         ] {
             let d = planted(label);
             let log = fs::read_to_string(d.join("renovate.log")).unwrap();
@@ -925,6 +944,10 @@ mod tests {
             fs::write(d.join("renovate.log"), log).unwrap();
             let (code, out) = run(&d);
             assert_eq!(code, 1, "{label}: {out}");
+            assert!(
+                out.contains("not a map of package file lists"),
+                "{label}: {out}"
+            );
             fs::remove_dir_all(d).unwrap();
         }
         for (label, prefix) in [
@@ -941,14 +964,19 @@ mod tests {
         }
     }
 
-
     #[test]
     fn repository_sources_use_universal_newlines() {
         for name in [ENV, PINS, ".github/workflows/ci.yml"] {
             for ending in ["\r", "\r\n"] {
-                let d = planted(&format!("newlines-{}-{}", name.replace('/', "-"), ending.len()));
+                let d = planted(&format!(
+                    "newlines-{}-{}",
+                    name.replace('/', "-"),
+                    ending.len()
+                ));
                 let baseline = run(&d);
-                let text = fs::read_to_string(d.join(name)).unwrap().replace('\n', ending);
+                let text = fs::read_to_string(d.join(name))
+                    .unwrap()
+                    .replace('\n', ending);
                 fs::write(d.join(name), text).unwrap();
                 assert_eq!(run(&d), baseline, "{name}/{ending:?}");
                 fs::remove_dir_all(d).unwrap();
@@ -958,16 +986,38 @@ mod tests {
 
     #[test]
     fn real_log_falsy_warnings_and_absent_empty_packages_are_accepted() {
-        for entry in [r#"{}"#, r#"{"deps":[]}"#, r#"{"deps":[],"packageFile":[]}"#,
+        for entry in [
+            r#"{}"#,
+            r#"{"deps":[]}"#,
+            r#"{"deps":[],"packageFile":[]}"#,
             r#"{"packageFile":"unused","deps":[{"warnings":null}]}"#,
             r#"{"packageFile":"unused","deps":[{"warnings":false}]}"#,
             r#"{"packageFile":"unused","deps":[{"warnings":""}]}"#,
-            r#"{"packageFile":"unused","deps":[{"warnings":{}}]}"#] {
+            r#"{"packageFile":"unused","deps":[{"warnings":{}}]}"#,
+        ] {
             let d = planted("falsy");
             let log = fs::read_to_string(d.join("renovate.log")).unwrap();
-            fs::write(d.join("renovate.log"), log.replacen(r#""regex":["#, &format!(r#""regex":[{entry},"#), 1)).unwrap();
+            fs::write(
+                d.join("renovate.log"),
+                log.replacen(r#""regex":["#, &format!(r#""regex":[{entry},"#), 1),
+            )
+            .unwrap();
             let (code, out) = run(&d);
             assert_eq!(code, 0, "{entry}: {out}");
+            fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    #[test]
+    fn repository_sources_reject_gzip_even_under_plain_names() {
+        for name in [ENV, PINS, ".github/workflows/ci.yml"] {
+            let d = planted(&format!("compressed-{}", name.replace('/', "-")));
+            let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            gz.write_all(&fs::read(d.join(name)).unwrap()).unwrap();
+            fs::write(d.join(name), gz.finish().unwrap()).unwrap();
+            let (code, out) = run(&d);
+            assert_eq!(code, 2, "{out}");
+            assert!(out.contains("wrong compression"), "{out}");
             fs::remove_dir_all(d).unwrap();
         }
     }
@@ -980,10 +1030,12 @@ mod tests {
         gz.write_all(&text).unwrap();
         fs::write(d.join("renovate.log"), gz.finish().unwrap()).unwrap();
         let (code, out) = run(&d);
-        assert_eq!(code, 1); assert!(out.contains("compression"), "{out}");
+        assert_eq!(code, 1);
+        assert!(out.contains("compression"), "{out}");
         fs::write(d.join("renovate.log"), vec![b'x'; (16 << 20) + 1]).unwrap();
         let (code, out) = run(&d);
-        assert_eq!(code, 1); assert!(out.contains("record exceeds 16777216 bytes"), "{out}");
+        assert_eq!(code, 1);
+        assert!(out.contains("record exceeds 16777216 bytes"), "{out}");
         fs::remove_dir_all(d).unwrap();
     }
 

@@ -373,13 +373,24 @@ pub mod comphet {
         let seq = reference();
         let vs = variants(&seq, swap);
         fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let mut staged = Vec::new();
         for (name, text) in [
             ("reads.sam", sam(&seq, &vs)),
             ("vep.vcf", vep_vcf(&vs)),
             ("comphet.vcf", comphet_vcf(&vs)),
         ] {
             let path = dir.join(name);
-            crate::evidence::publish(&path, text.as_bytes())?;
+            let (pending, mut file) = crate::evidence::PendingOutput::new(&path)?;
+            std::io::Write::write_all(&mut file, text.as_bytes())
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            std::io::Write::flush(&mut file).map_err(|e| format!("{}: {e}", path.display()))?;
+            drop(file);
+            staged.push(pending);
+        }
+        // Every file is staged and every destination checked before publication.
+        // Three renames are still not one transaction.
+        for pending in staged {
+            pending.commit()?;
         }
         Ok(())
     }
@@ -597,19 +608,42 @@ fn trim_pharmcat(src: &Path, dst: &Path, max: i64) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn pharmcat_input_is_plain_json() {
+        let d =
+            std::env::temp_dir().join(format!("og-pharmcat-compression-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(br#"{"genes":{},"drugs":{}}"#).unwrap();
+        fs::write(d.join("in"), gz.finish().unwrap()).unwrap();
+        fs::write(d.join("out"), b"old").unwrap();
+        let args = vec![
+            "trim-pharmcat".into(),
+            d.join("in").to_str().unwrap().into(),
+            d.join("out").to_str().unwrap().into(),
+        ];
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&args, &mut out, &mut err), 1);
+        assert!(String::from_utf8_lossy(&err).contains("not UTF-8"));
+        assert_eq!(fs::read(d.join("out")).unwrap(), b"old");
+        fs::remove_dir_all(d).unwrap();
+    }
 
     #[test]
     fn comphet_validates_later_destinations_before_publishing() {
         let d = std::env::temp_dir().join(format!("og-comphet-preflight-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(d.join("comphet.vcf")).unwrap();
-        for name in ["reads.sam", "vep.vcf"] { fs::write(d.join(name), b"PREVIOUS OUTPUT").unwrap(); }
+        for name in ["reads.sam", "vep.vcf"] {
+            fs::write(d.join(name), b"PREVIOUS OUTPUT").unwrap();
+        }
         assert!(comphet::write(&d, false).is_err());
-        for name in ["reads.sam", "vep.vcf"] { assert_eq!(fs::read(d.join(name)).unwrap(), b"PREVIOUS OUTPUT"); }
+        for name in ["reads.sam", "vep.vcf"] {
+            assert_eq!(fs::read(d.join(name)).unwrap(), b"PREVIOUS OUTPUT");
+        }
         assert_eq!(fs::read_dir(&d).unwrap().count(), 3);
         fs::remove_dir_all(d).unwrap();
     }
-
 
     #[test]
     fn downloader_preflights_destinations_and_cleans_handled_failures() {
@@ -621,8 +655,16 @@ mod tests {
         let stub = d.join("bin/curl");
         fs::write(&stub, "#!/bin/sh\nprintf called >> \"$CALLED\"\nwhile [ \"$1\" != -o ]; do shift; done\nprintf partial > \"$2\"\nexit 22\n").unwrap();
         fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).unwrap();
-        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/smoke/vntyper_testdata.sh");
-        for fault in ["directory", "directory-link", "curl", "crc", "sha", "signal"] {
+        let script =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/smoke/vntyper_testdata.sh");
+        for fault in [
+            "directory",
+            "directory-link",
+            "curl",
+            "crc",
+            "sha",
+            "signal",
+        ] {
             let out = d.join(fault);
             fs::create_dir(&out).unwrap();
             let dst = out.join("negative.bam");
@@ -646,14 +688,30 @@ mod tests {
             }
             let called = d.join("called");
             let _ = fs::remove_file(&called);
-            let result = Command::new("sh").arg(&script).arg(&out).arg("negative.bam")
-                .env("PATH", format!("{}:{}", d.join("bin").display(), std::env::var("PATH").unwrap()))
-                .env("CALLED", &called).output().unwrap();
+            let result = Command::new("sh")
+                .arg(&script)
+                .arg(&out)
+                .arg("negative.bam")
+                .env(
+                    "PATH",
+                    format!(
+                        "{}:{}",
+                        d.join("bin").display(),
+                        std::env::var("PATH").unwrap()
+                    ),
+                )
+                .env("CALLED", &called)
+                .output()
+                .unwrap();
             assert!(!result.status.success(), "{fault}");
-            if fault.starts_with("directory") { assert!(!called.exists(), "must reject before curl: {fault}"); }
-            else {
+            if fault.starts_with("directory") {
+                assert!(!called.exists(), "must reject before curl: {fault}");
+            } else {
                 assert_eq!(fs::read(&dst).unwrap(), b"PREVIOUS OUTPUT", "{fault}");
-                let entries: Vec<_> = fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name()).collect();
+                let entries: Vec<_> = fs::read_dir(&out)
+                    .unwrap()
+                    .map(|e| e.unwrap().file_name())
+                    .collect();
                 assert_eq!(entries.len(), 2, "{fault}: {entries:?}");
             }
         }
@@ -665,15 +723,34 @@ mod tests {
         let d = std::env::temp_dir().join(format!("og-pharmcat-shapes-{}", std::process::id()));
         fs::create_dir_all(&d).unwrap();
         for (input, class) in [
-            (r#"{"genes":{"G":{"sourceDiplotypes":"x"}},"drugs":{}}"#, "sourceDiplotypes is not a list"),
-            (r#"{"genes":{"G":{"recommendationDiplotypes":"x"}},"drugs":{}}"#, "recommendationDiplotypes is not a list"),
-            (r#"{"genes":{"G":{"sourceDiplotypes":[{"allele1":"x"}]}},"drugs":{}}"#, "allele1 is not an object"),
-            (r#"{"genes":{"G":{"sourceDiplotypes":[{"allele2":["x"]}]}},"drugs":{}}"#, "allele2 is not an object"),
-            (r#"{"genes":{},"drugs":{"S":{"D":{"guidelines":[{"annotations":[{"genotypes":[{"diplotypes":{"x":1}}]}]}]}}}}"#, "diplotypes is not a list"),
+            (
+                r#"{"genes":{"G":{"sourceDiplotypes":"x"}},"drugs":{}}"#,
+                "sourceDiplotypes is not a list",
+            ),
+            (
+                r#"{"genes":{"G":{"recommendationDiplotypes":"x"}},"drugs":{}}"#,
+                "recommendationDiplotypes is not a list",
+            ),
+            (
+                r#"{"genes":{"G":{"sourceDiplotypes":[{"allele1":"x"}]}},"drugs":{}}"#,
+                "allele1 is not an object",
+            ),
+            (
+                r#"{"genes":{"G":{"sourceDiplotypes":[{"allele2":["x"]}]}},"drugs":{}}"#,
+                "allele2 is not an object",
+            ),
+            (
+                r#"{"genes":{},"drugs":{"S":{"D":{"guidelines":[{"annotations":[{"genotypes":[{"diplotypes":{"x":1}}]}]}]}}}}"#,
+                "diplotypes is not a list",
+            ),
         ] {
             fs::write(d.join("in"), input).unwrap();
             fs::write(d.join("out"), b"old").unwrap();
-            let args = vec!["trim-pharmcat".into(), d.join("in").to_str().unwrap().into(), d.join("out").to_str().unwrap().into()];
+            let args = vec![
+                "trim-pharmcat".into(),
+                d.join("in").to_str().unwrap().into(),
+                d.join("out").to_str().unwrap().into(),
+            ];
             let (mut out, mut err) = (Vec::new(), Vec::new());
             assert_eq!(cli(&args, &mut out, &mut err), 1);
             assert!(String::from_utf8_lossy(&err).contains(class), "{err:?}");

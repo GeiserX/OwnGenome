@@ -44,12 +44,46 @@ shift
 for name in "$@"; do
   member "$name" > /dev/null || { echo "vntyper_testdata.sh: unknown member ${name} (positive.bam, negative.bam)" >&2; exit 2; }
 done
+# GNU mv's -T rejects a directory even if it appears during publication.
+# Homebrew calls it gmv on macOS; the pinned Linux image calls it mv.
+if command -v gmv > /dev/null 2>&1; then move="gmv"; else move="mv"; fi
+
+# Resolve file symlinks, including relative/dangling targets, before staging.
+destination() {
+  dest="${out}/${1}"
+  links=0
+  while [ -L "$dest" ]; do
+    links=$((links + 1))
+    [ "$links" -le 40 ] || { echo "destination: too many symlinks: $dest" >&2; return 1; }
+    target=$(readlink "$dest"; printf x)
+    target=${target%x}
+    target=${target%'
+'}
+    case $target in
+      /*) dest=$target ;;
+      *) dest="${dest%/*}/$target" ;;
+    esac
+  done
+  [ ! -d "$dest" ] || { echo "destination is a directory: $dest" >&2; return 1; }
+  if [ -e "$dest" ]; then
+    [ -f "$dest" ] && [ -w "$dest" ] || { echo "destination is not a writable regular file: $dest" >&2; return 1; }
+  fi
+}
+
+work=
+cleanup() { [ -z "$work" ] || rm -rf "$work"; }
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 mkdir -p "$out"
+# A bad destination must fail before any network request.
+for name in "$@"; do destination "$name"; done
 for name in "$@"; do
   read -r path off csize size crc want <<EOF
 $(member "$name")
 EOF
-  part="${out}/${name}.part"
+  destination "$name"
+  work=$(mktemp -d "${dest%/*}/.vntyper.XXXXXXXX")
+  part="${work}/payload"
   # The pinned VNtyper image's curl does not support --retry-all-errors.
   curl -fsSL --retry 4 --retry-delay 15 -r "${off}-$((off + csize - 1))" -o "${part}.raw" "$URL"
   got=$(wc -c < "${part}.raw" | tr -d ' ')
@@ -61,6 +95,16 @@ EOF
   got=$(sha256sum < "$part" | cut -d' ' -f1)
   [ "$got" = "$want" ] || { echo "${path}: sha256 ${got}, pinned ${want}" >&2; exit 1; }
   rm -f "${part}.raw" "${part}.gz"
-  mv "$part" "${out}/${name}"
+  # Preserve the Python output mode. New files inherit the caller's umask.
+  if [ -e "$dest" ]; then
+    case $(uname -s) in
+      Darwin) mode=$(stat -f '%Lp' "$dest") ;;
+      *) mode=$(stat -c '%a' "$dest") ;;
+    esac
+    chmod "$mode" "$part"
+  fi
+  "$move" -fT "$part" "$dest"
+  cleanup
+  work=
   printf '%s\t%s\t%s\t%s\n' "$name" "$path" "$size" "$got"
 done
