@@ -305,12 +305,17 @@ fn load(log: &str) -> Result<Vec<Dep>, String> {
                 Some(Value::Array(ds)) => ds,
                 _ => return Err(shape()),
             };
+            let name = match pf.swap_remove("packageFile") {
+                None => None,
+                Some(Value::Str(name)) => Some(name),
+                // An unused field may be absent, but a present wrong type is
+                // still a deliberate input error.
+                _ => return Err(shape()),
+            };
             if ds.is_empty() {
                 continue;
             }
-            let Some(Value::Str(name)) = pf.swap_remove("packageFile") else {
-                return Err(shape());
-            };
+            let name = name.ok_or_else(shape)?;
             for d in ds {
                 let Value::Object(d) = d else {
                     return Err(shape());
@@ -920,7 +925,7 @@ mod tests {
                 r#"{"packageFile":"unused","deps":[{"updates":[42]}]}"#,
             ),
             ("scalar-dep", r#"{"packageFile":"unused","deps":[42]}"#),
-            ("scalar-file", r#"{"packageFile":[],"deps":[{}]}"#),
+            ("scalar-file", r#"{"packageFile":[],"deps":[]}"#),
             (
                 "map-updates",
                 r#"{"packageFile":"unused","deps":[{"updates":{}}]}"#,
@@ -989,7 +994,6 @@ mod tests {
         for entry in [
             r#"{}"#,
             r#"{"deps":[]}"#,
-            r#"{"deps":[],"packageFile":[]}"#,
             r#"{"packageFile":"unused","deps":[{"warnings":null}]}"#,
             r#"{"packageFile":"unused","deps":[{"warnings":false}]}"#,
             r#"{"packageFile":"unused","deps":[{"warnings":""}]}"#,
