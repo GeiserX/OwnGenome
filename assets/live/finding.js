@@ -15,6 +15,7 @@
   var replay = root.getAttribute('data-mode') === 'replay';
   var main = document.getElementById('finding');
   var ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii'];
+  var opened = {};
 
   function abs(u) { return !u ? u : (u.charAt(0) === '/' ? u : BASE + u); }
   function note(head, body, cls) {
@@ -93,13 +94,11 @@
     // A finding of a fixed-panel card (tag PANEL, bin/live_results.py FIXED_PANELS) names no result: it stays closed
     // while any result to act on is, whichever, as on the person page.
     var PANEL = '*panel*';
-    var opened = {};
-    if (draw.open) { opened[f.id] = true; (tagOf(f) || []).forEach(function (t) { if (t !== PANEL) { opened[t] = true; } }); }
     function actShut() { return (r.findings || []).some(function (x) { return x.level === 'act' && !opened[x.id]; }); }
     function shut(x) {
       if (!child) { return false; }
       if (x.level === 'act') { return !opened[x.id]; }
-      return (tagOf(x) || []).some(function (t) { return t === PANEL ? !opened[x.id] && actShut() : !opened[t]; });
+      return (tagOf(x) || []).some(function (t) { return t === PANEL ? actShut() : !opened[t]; });
     }
     // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
     var closed = shut(f);
@@ -163,7 +162,16 @@
         (f.level === 'act' ? '' : 'This finding names a result to act on. ') +
         'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
       var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      b.addEventListener('click', function () { draw.open = true; draw(r, family); });
+      b.addEventListener('click', function () {
+        var ids = tagOf(f) || [];
+        // A panel names no particular act. Its button opens the next closed act, one per click.
+        var nextAct = ids.indexOf(PANEL) >= 0 ? (r.findings || []).filter(function (x) {
+          return x.level === 'act' && !opened[x.id];
+        })[0] : null;
+        if (nextAct) { opened[nextAct.id] = true; }
+        else { opened[f.id] = true; ids.forEach(function (id) { if (id !== PANEL) { opened[id] = true; } }); }
+        draw(r, family);
+      });
       add(v, b);
       add(col, v);
       add(body, rail, col);

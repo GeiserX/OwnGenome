@@ -2359,8 +2359,100 @@ def fail_closed_problems(b, base, out, og, cases=None, producers=None):
     return bad
 
 
+def panel_finding_problems(b, base, out, og, cases=("child", "missing tags", "adult", "no acts")):
+    """A PANEL finding opens one act per click and reveals its content only after the last act opens."""
+    folder = os.path.join(out, "runs", SON, "finding")
+    original, fid = "sf-kcnh2-chr7-150960000-c-t", "chip-tp53-p-demo"
+    dest = os.path.join(folder, fid)
+    with open(os.path.join(folder, original, "index.html")) as fh:
+        template = fh.read()
+    fj = os.path.join(out, "runs", FAM, "family.json")
+    with open(fj) as fh:
+        family = fh.read()
+    os.makedirs(dest)
+    bad = []
+    try:
+        with open(os.path.join(dest, "index.html"), "w") as fh:
+            fh.write(template.replace(original, fid))
+        for case in cases:
+            def change(S):
+                S.clear()
+                cpsrs("TP53", "BRCA2")(S)
+                if case == "no acts":
+                    S["cpsr"]["data"]["plp"] = []
+                S["chip"] = {"state": "ok", "data": {"calls": [{"gene": "TP53", "protein_change": "p.Demo",
+                    "vaf": 0.1, "alt_reads": 10, "depth": 100, "status": "reported"}]}}
+            keep = plant_summary(out, og, change)
+            try:
+                rj = os.path.join(out, "runs", SON, "results.json")
+                with open(rj) as fh:
+                    res = json.load(fh)
+                tags = (res.get("veil", {}).get("findings") or {}).get(fid)
+                if case != "no acts" and tags != ["*panel*"]:
+                    bad.append(f"{case}: producer did not classify the CHIP finding as PANEL: {tags}")
+                if case == "missing tags":
+                    del res["veil"]["findings"][fid]
+                    with open(rj, "w") as fh:
+                        json.dump(res, fh)
+                fam = json.loads(family)
+                if case == "adult":
+                    for member in fam["state"]["members"]:
+                        if member["sample"] == SON:
+                            member["father"] = member["mother"] = None
+                with open(fj, "w") as fh:
+                    json.dump(fam, fh)
+                b.go("about:blank")
+                b.wait("location.href === 'about:blank'")
+                b.go(f"{base}/runs/{SON}/finding/{fid}/")
+                if not b.wait("document.documentElement.dataset.pgpStatus === 'ready' && 'ready'", 10):
+                    bad.append(f"{case}: finding never ready")
+                    continue
+                for clicks in range(3 if case in ("child", "missing tags") else 1):
+                    should_open = case in ("adult", "no acts") or clicks == 2
+                    visible = b.eval("document.querySelector('#what').textContent.includes('A blood clone in TP53') "
+                                     "&& document.title.includes('TP53') && !!document.querySelector('#evidence')")
+                    shut = b.eval("!!document.querySelector('.veil button')")
+                    if bool(visible) != should_open or bool(shut) == should_open:
+                        bad.append(f"{case}: after {clicks} clicks PANEL finding visible={visible}, closed={shut}; "
+                                   f"expected visible={should_open}")
+                    if not should_open:
+                        b.eval("var button = document.querySelector('.veil button'); button && button.click(); true")
+                if case == "child":
+                    b.go(f"{base}/runs/{SON}/finding/{fid}/")
+                    if not b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.querySelector('.veil button') "
+                                  "&& !document.querySelector('#evidence') && 'closed'", 10):
+                        bad.append("child: a reload did not close the PANEL finding again")
+            finally:
+                unplant(keep)
+    finally:
+        with open(fj, "w") as fh:
+            fh.write(family)
+        shutil.rmtree(dest)
+    return bad
+
+
 def fail_closed_checks(b, base, out, og):
     started = time.monotonic()
+    bad = panel_finding_problems(b, base, out, og)
+    check("browser: a PANEL finding stays closed until one click per act, with missing tags, adult and no-act controls",
+          not bad, bad)
+    finding_path = os.path.join(out, "assets", "finding.js")
+    with open(finding_path) as fh:
+        finding_reader = fh.read()
+    for old, new, desc in (
+            ("return t === PANEL ? actShut() : !opened[t];", "return t === PANEL ? false : !opened[t];",
+             "a finding page that ignores PANEL"),
+            ("if (nextAct) { opened[nextAct.id] = true; }",
+             "if (nextAct) { (r.findings || []).forEach(function (x) { if (x.level === 'act') { opened[x.id] = true; } }); }",
+             "a PANEL finding button that opens every act in one click")):
+        try:
+            assert finding_reader.count(old) == 1
+            with open(finding_path, "w") as fh:
+                fh.write(finding_reader.replace(old, new))
+            control(desc, not panel_finding_problems(b, base, out, og, ["child"]))
+        finally:
+            with open(finding_path, "w") as fh:
+                fh.write(finding_reader)
     for case in ("home", "hpo", "contig", "mito", "producers", "metadata", "no-act", "trust", "report-metadata"):
         bad = fail_closed_problems(b, base, out, og, [case])
         check("browser: fail-closed producers " + case, not bad, bad)
