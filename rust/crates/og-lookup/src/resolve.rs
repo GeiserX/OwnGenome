@@ -51,6 +51,11 @@ type Hit = (String, u64, String);
 /// Hits per rsID, or why the source could not be read.
 type Hits = Result<HashMap<String, Vec<Hit>>, Error>;
 
+/// The annotated VCF's hits per rsID, each with its own error: a record
+/// that names one rsID and cannot be parsed stops only that rsID's query,
+/// as the Python's one scan per query did.
+type PerRsid = Result<HashMap<String, Result<Vec<Hit>, Error>>, Error>;
+
 const SITES_SOURCE: &str = "the consumer site table (dbSNP positions)";
 const ANNOTATED_SOURCE: &str = "the annotated VCF (a variant called in this sample)";
 
@@ -134,7 +139,7 @@ fn rsid_rows(
     inp: &Inputs,
     sites: &Option<Hits>,
     tables: &[(String, Hits)],
-    annotated: &Option<Hits>,
+    annotated: &Option<PerRsid>,
 ) -> Result<Vec<Row>, Error> {
     let take = |h: &Hits| -> Result<Vec<Hit>, Error> {
         match h {
@@ -152,11 +157,11 @@ fn rsid_rows(
     if hits.is_empty()
         && let Some(a) = annotated
     {
-        hits.extend(
-            take(a)?
-                .into_iter()
-                .map(|h| (h, ANNOTATED_SOURCE.to_owned())),
-        );
+        let found = match a {
+            Ok(m) => m.get(rsid).cloned().unwrap_or(Ok(Vec::new()))?,
+            Err(e) => return Err(e.clone()),
+        };
+        hits.extend(found.into_iter().map(|h| (h, ANNOTATED_SOURCE.to_owned())));
     }
     let mut seen = Vec::new();
     let mut rows = Vec::new();
@@ -327,8 +332,8 @@ fn to_pos(v: i128) -> Result<u64, Error> {
 /// `rsids`, in one pass over the whole file (BGZF inflated on several
 /// cores). A line is parsed only when it holds one of the rsIDs' digits
 /// right after `rs` in any case; the record's IDs then decide.
-fn annotated_rsid(path: &str, rsids: &[&str]) -> Hits {
-    let mut out: HashMap<String, Vec<Hit>> = HashMap::new();
+fn annotated_rsid(path: &str, rsids: &[&str]) -> PerRsid {
+    let mut out: HashMap<String, Result<Vec<Hit>, Error>> = HashMap::new();
     let finders: Vec<memmem::Finder> = rsids
         .iter()
         .map(|r| memmem::Finder::new(&r.as_bytes()[2..]))
@@ -364,18 +369,37 @@ fn annotated_rsid(path: &str, rsids: &[&str]) -> Hits {
                 }
                 continue;
             }
-            if !names_one(&finders, line.as_bytes()) {
+            // The rsIDs this line names: a line the Python's scan for an
+            // rsID matched, and so parsed, for that rsID's query only.
+            let named: Vec<&str> = rsids
+                .iter()
+                .zip(&finders)
+                .filter(|(_, f)| names(f, line.as_bytes()))
+                .map(|(r, _)| *r)
+                .collect();
+            if named.is_empty() {
                 continue;
             }
             let c: Vec<&str> = line.split('\t').collect();
-            let r = Rec::parse(&c)?;
+            let r = match Rec::parse(&c) {
+                Ok(r) => r,
+                Err(e) => {
+                    for rsid in named {
+                        let slot = out.entry(rsid.to_owned()).or_insert_with(|| Ok(Vec::new()));
+                        if slot.is_ok() {
+                            *slot = Err(e.clone());
+                        }
+                    }
+                    continue;
+                }
+            };
             let ids: Vec<String> = r.ids(&fields).iter().map(|i| text::lower(i)).collect();
-            for rsid in rsids {
-                if ids.iter().any(|i| i == rsid) {
+            for rsid in named {
+                if ids.iter().any(|i| i == rsid)
+                    && let Ok(v) = out.entry(rsid.to_owned()).or_insert_with(|| Ok(Vec::new()))
+                {
                     let base: String = r.ref_.chars().take(1).collect();
-                    out.entry((*rsid).to_owned())
-                        .or_default()
-                        .push((r.chrom.clone(), r.pos, base));
+                    v.push((r.chrom.clone(), r.pos, base));
                 }
             }
         }
@@ -387,14 +411,17 @@ fn annotated_rsid(path: &str, rsids: &[&str]) -> Hits {
 /// the digits, with no letter or digit before and no digit after (the
 /// boundary rule the Python's lookaround regex had).
 fn names_one(finders: &[memmem::Finder], line: &[u8]) -> bool {
-    finders.iter().any(|f| {
-        let n = f.needle().len();
-        f.find_iter(line).any(|at| {
-            at >= 2
-                && line[at - 2..at].eq_ignore_ascii_case(b"rs")
-                && (at == 2 || !line[at - 3].is_ascii_alphanumeric())
-                && !line.get(at + n).is_some_and(u8::is_ascii_digit)
-        })
+    finders.iter().any(|f| names(f, line))
+}
+
+/// Whether `line` names the one rsID `f` finds, by the rule of [`names_one`].
+fn names(f: &memmem::Finder, line: &[u8]) -> bool {
+    let n = f.needle().len();
+    f.find_iter(line).any(|at| {
+        at >= 2
+            && line[at - 2..at].eq_ignore_ascii_case(b"rs")
+            && (at == 2 || !line[at - 3].is_ascii_alphanumeric())
+            && !line.get(at + n).is_some_and(u8::is_ascii_digit)
     })
 }
 
