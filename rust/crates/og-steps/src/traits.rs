@@ -1,7 +1,6 @@
 //! Step 42: bounded site genotypes, haplotype rules and read-backed phase.
 use indexmap::IndexMap;
 use og_io::{AtomicFile, Lines, Utf8};
-use pycompat::csv::{Quoting, Reader, Writer};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Write;
 
@@ -111,7 +110,7 @@ fn row(keys: &[&str], values: &[String]) -> Row {
         .collect()
 }
 fn records(path: &str) -> Result<Vec<(usize, Vec<String>)>> {
-    // Parse even the header as a CSV record. Comments do not enter the parser.
+    // Catalogs are plain TSV: quotes are literal and never hide a tab.
     let mut lines = Lines::new(
         og_io::open(path).map_err(|e| og_filters::os_error(&e, path))?,
         Utf8::Strict,
@@ -124,14 +123,11 @@ fn records(path: &str) -> Result<Vec<(usize, Vec<String>)>> {
         if text.trim_end_matches('\n').is_empty() || text.starts_with('#') {
             continue;
         }
-        let cells = Reader::new(
-            std::iter::once(Ok::<_, std::io::Error>(text.clone())),
-            '\t',
-            Quoting::Minimal,
-        )
-        .next()
-        .ok_or("empty record")?
-        .map_err(|e| e.to_string())?;
+        let cells = text
+            .trim_end_matches('\n')
+            .split('\t')
+            .map(str::to_owned)
+            .collect();
         out.push((number, cells));
     }
     Ok(out)
@@ -857,16 +853,10 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
 }
 fn stage_tsv(path: &str, columns: &[&str], rows: &[Row]) -> Result<AtomicFile> {
     let mut file = AtomicFile::create(path).map_err(|e| format!("cannot write {path}: {e}"))?;
-    {
-        let mut writer = Writer::new(&mut file, '\t');
-        writer
-            .write_row(columns.iter().copied())
-            .map_err(|e| format!("cannot write {path}: {e}"))?;
-        for row in rows {
-            writer
-                .write_row(columns.iter().map(|k| row[*k].as_str()))
-                .map_err(|e| format!("cannot write {path}: {e}"))?;
-        }
+    writeln!(file, "{}", columns.join("\t")).map_err(|e| format!("cannot write {path}: {e}"))?;
+    for row in rows {
+        let fields: Vec<_> = columns.iter().map(|k| row[*k].as_str()).collect();
+        writeln!(file, "{}", fields.join("\t")).map_err(|e| format!("cannot write {path}: {e}"))?;
     }
     file.flush()
         .map_err(|e| format!("cannot write {path}: {e}"))?;
@@ -1048,6 +1038,13 @@ fn run(verb: &str, opts: &HashMap<String, String>) -> Result<u8> {
     // Compute both tables before opening either output. Each rename is atomic.
     let out_path = required("out")?;
     let rules_path = required("rules-out")?;
+    // Refuse known rename failures before either previous output is replaced.
+    // Publication still uses two renames, not one transaction.
+    for path in [out_path, rules_path] {
+        if std::path::Path::new(path).is_dir() {
+            return Err(format!("cannot write {path}: destination is a directory"));
+        }
+    }
     let traits_file = stage_tsv(out_path, OUT, &out)?;
     let rules_file = stage_tsv(rules_path, RULE_OUT, &lines)?;
     traits_file
@@ -1435,19 +1432,35 @@ mod tests {
         );
     }
 
-
     #[test]
     fn catalog_quotes_are_literal_and_embedded_tabs_are_columns() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
         let text = std::fs::read_to_string(root.join("traits.tsv")).unwrap();
         let rules = std::fs::read_to_string(root.join("genotype_rules.tsv")).unwrap();
         let scratch = Scratch::new();
-        let path = scratch.put("quoted-field", &text.replacen("\tMCM6\t", "\t\"MCM6\"\t", 1));
-        assert!(check_rows(&read_table(&path).unwrap()).iter().any(|e| e.contains("quote")));
-        let path = scratch.put("quoted-rule", &rules.replacen("\tAPOE\t", "\t\"APOE\"\t", 1));
+        let path = scratch.put(
+            "quoted-field",
+            &text.replacen("\tMCM6\t", "\t\"MCM6\"\t", 1),
+        );
+        assert!(
+            check_rows(&read_table(&path).unwrap())
+                .iter()
+                .any(|e| e.contains("quote"))
+        );
+        let path = scratch.put(
+            "quoted-rule",
+            &rules.replacen("\tAPOE\tAPOE\t", "\tAPOE\t\"APOE\"\t", 1),
+        );
         assert!(!check_rules(&read_rules(&path).unwrap(), None).is_empty());
-        let path = scratch.put("embedded-tab", &text.replacen("\tMCM6\t", "\t\"MCM6\textra\"\t", 1));
-        assert!(read_table(&path).unwrap_err().contains("14 columns, expected 13"));
+        let path = scratch.put(
+            "embedded-tab",
+            &text.replacen("\tMCM6\t", "\t\"MCM6\textra\"\t", 1),
+        );
+        assert!(
+            read_table(&path)
+                .unwrap_err()
+                .contains("14 columns, expected 13")
+        );
     }
 
     #[test]
@@ -1458,14 +1471,33 @@ mod tests {
         for directory_key in ["out", "rules-out"] {
             let previous = scratch.put("previous.tsv", "previous complete table\n");
             let mut opts: HashMap<String, String> = [
-                ("table", root.join("traits.tsv").to_string_lossy().into_owned()),
-                ("rules", root.join("genotype_rules.tsv").to_string_lossy().into_owned()),
-                ("genotypes", gt.clone()), ("sample", "S".into()),
-                ("out", previous.clone()), ("rules-out", previous.clone()),
-            ].into_iter().map(|(k,v)| (k.into(),v)).collect();
-            opts.insert(directory_key.into(), scratch.0.to_string_lossy().into_owned());
+                (
+                    "table",
+                    root.join("traits.tsv").to_string_lossy().into_owned(),
+                ),
+                (
+                    "rules",
+                    root.join("genotype_rules.tsv")
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                ("genotypes", gt.clone()),
+                ("sample", "S".into()),
+                ("out", previous.clone()),
+                ("rules-out", previous.clone()),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.into(), v))
+            .collect();
+            opts.insert(
+                directory_key.into(),
+                scratch.0.to_string_lossy().into_owned(),
+            );
             assert!(run("table", &opts).unwrap_err().contains("cannot write"));
-            assert_eq!(std::fs::read_to_string(&previous).unwrap(), "previous complete table\n", "{directory_key}");
+            assert!(
+                std::fs::read_to_string(&previous).unwrap() == "previous complete table\n",
+                "{directory_key}: previous output changed"
+            );
             assert_eq!(std::fs::read_dir(&scratch.0).unwrap().count(), 2);
         }
     }
@@ -1480,7 +1512,11 @@ mod tests {
             .join("\t");
         text.push_str("\r\n");
         let path = scratch.put("quoted", &text);
-        assert!(read_table(&path).unwrap_err().contains("unexpected traits header"));
+        assert!(
+            read_table(&path)
+                .unwrap_err()
+                .contains("unexpected traits header")
+        );
         let path = scratch.put("r", "rule\té\tG\tT\tno\tyes\tN\t1\n");
         assert!(!check_rules(&read_rules(&path).unwrap(), None).is_empty());
         assert!(stage_tsv(scratch.0.join("absent/x").to_str().unwrap(), OUT, &[]).is_err());

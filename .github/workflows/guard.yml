@@ -386,6 +386,43 @@ jobs:
           done
           exit "$fail"
 
+      - name: Traits independent expectations reject changed reference labels and marker metadata
+        working-directory: .
+        env:
+          OG: ${{ github.workspace }}/bin/og
+          OG_REQUIRED: 1
+        run: |
+          python3 - <<'PY'
+          import contextlib, io, pathlib, runpy, tempfile
+          test = runpy.run_path("tests/test_traits_report.py")["main"].__globals__
+          original = pathlib.Path(test["RULES"]).read_text()
+          with tempfile.TemporaryDirectory() as work:
+              for rid, key, label in [("APOL1", "G0/G0", "G0/G0"), ("CAD9p21", "nonrisk/nonrisk", "no risk copy")]:
+                  path = pathlib.Path(work) / "rules.tsv"
+                  old = f"combination\t{rid}\t{key}\t{label}\t"
+                  assert old in original
+                  path.write_text(original.replace(old, f"combination\t{rid}\t{key}\tWRONG_REFERENCE\t"))
+                  test["RULES"], test["FAILS"] = str(path), 0
+                  log = io.StringIO()
+                  with contextlib.redirect_stdout(log):
+                      rc = test["main"]()
+                  print(log.getvalue())
+                  assert rc == 1 and test["FAILS"] == 1
+                  assert f"[FAIL] {rid}, reference blocks only: {label}" in log.getvalue()
+                  print(f"Control: {rid} WRONG_REFERENCE failed its independent expectation")
+          marker = test["tr"].MARKERS["SMN1_27134"]
+          rs, chrom, pos, ref, alt = marker["dbsnp"]
+          marker["dbsnp"] = rs, chrom, pos + 1, ref, alt
+          test["FAILS"] = 0
+          log = io.StringIO()
+          with contextlib.redirect_stdout(log):
+              test["marker_checks"]()
+          print(log.getvalue())
+          assert test["FAILS"] == 1
+          assert "[FAIL] marker SMN1_27134: the pinned dbSNP record agrees" in log.getvalue()
+          print("Control: retained SMN1 off-copy metadata failed its independent expectation")
+          PY
+
       # The fake-docker job builds no og, so its cn-engine-calls case says it
       # is skipped there; here bin/og is built and the case must run.
       - name: The fake-docker case cn-engine-calls (steps 35, 41 and 46 through og cn) with og

@@ -290,7 +290,7 @@ def plain_tsv_checks():
         for name, text, rules_text in [
             ("quoted header", source.replace("chrom\t", '\"chrom\"\t', 1), rules_source),
             ("quoted catalog field", source.replace("\tMCM6\t", '\t\"MCM6\"\t', 1), rules_source),
-            ("quoted rule text", source, rules_source.replace("\tAPOE\t", '\t\"APOE\"\t', 1)),
+            ("quoted rule text", source, rules_source.replace("\tAPOE\tAPOE\t", '\tAPOE\t\"APOE\"\t', 1)),
             ("embedded tab", source.replace("\tMCM6\t", '\t\"MCM6\textra\"\t', 1), rules_source),
         ]:
             # Keep complete, collector-readable outputs from the previous run.
