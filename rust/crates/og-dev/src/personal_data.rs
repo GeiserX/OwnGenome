@@ -2837,6 +2837,83 @@ mod tests {
         );
     }
 
+
+    #[test]
+    fn round7_ordinary_cyrillic() {
+        let f = Fixture::new("r7-cyrillic");
+        r5_git(&f, &["init", "-q"], b"");
+        for text in ["Привет, мир!", "Привіт, світе!", "Здраво, свете!", "о"] {
+            std::fs::write(f.0.join("own.md"), text).unwrap();
+            r5_git(&f, &["add", "own.md"], b"");
+            r5_modes(&f, &["own.md"], 0, "");
+        }
+        std::fs::write(f.0.join("own.md"), p("Привет, мир! rs123~ AG")).unwrap();
+        r5_git(&f, &["add", "own.md"], b"");
+        r5_modes(&f, &["own.md"], 1, "");
+        // The same letters also work in selected names and exception rows.
+        std::fs::write(f.0.join("Привет.md"), "Привет, мир!").unwrap();
+        r5_git(&f, &["add", "Привет.md"], b"");
+        for cached in [false, true] {
+            let mut args = f.args(&["Привет.md"]);
+            args[3] = "Привет.md Привет".into();
+            args[5] = "другое.md".into();
+            if cached { args.push("--cached".into()); }
+            assert_eq!(cli(&args, &mut Vec::new(), &mut Vec::new()), 0);
+        }
+    }
+
+    #[test]
+    fn round7_pattern_case_scope() {
+        for pattern in ["привет", "[а-я]", "[^В]", "(?i:a)(?-i:привет)", r"[\u0410-\u044f]"] {
+            assert!(Rule::compile(pattern, false).is_ok(), "stable pattern refused");
+        }
+        for pattern in ["(?i)привет", "(?i)[а-я]", "(?i)[^В]", "(?i:[^ОZ])", r"(?i)[\u0430-\u044f]", "(?i:т)"] {
+            for builtin in [false, true] {
+                assert!(Rule::compile(pattern, builtin).is_err(), "unstable pattern accepted");
+            }
+        }
+    }
+
+    #[test]
+    fn round7_cached_target_before_skip() {
+        let f = Fixture::new("r7-index-target");
+        r5_git(&f, &["init", "-q"], b"");
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        for target in ["x\u{1e6c0}.md", "x\u{1e6c0}/clean.md"] {
+            std::os::unix::fs::symlink(target, f.0.join("alias.md")).unwrap();
+            r5_git(&f, &["add", "alias.md", "clean.md"], b"");
+            // Only the indexed target matters in cached mode.
+            std::fs::remove_file(f.0.join("alias.md")).unwrap();
+            std::fs::write(f.0.join("alias.md"), "clean").unwrap();
+            for explicit in [false, true] {
+                let mut args = f.args(if explicit { &["alias.md", "clean.md"] } else { &[] });
+                args[5] = "alias.md".into();
+                args.push("--cached".into());
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                assert_eq!(cli(&args, &mut out, &mut err), 2);
+                assert!(out.is_empty());
+                assert_eq!(err, b"ERROR: selected filename has Unicode version-dependent text\n");
+            }
+            std::fs::remove_file(f.0.join("alias.md")).unwrap();
+        }
+    }
+
+    #[test]
+    fn round7_required_interpreters_fail_closed() {
+        let f = Fixture::new("r7-required-python");
+        for interpreter in [f.0.join("missing-python"), PathBuf::from("/usr/bin/false")] {
+            for test in ["round4_guard_agrees_with_available_pythons", "round5_regex_case_table_matches_interpreters"] {
+                let output = Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", &format!("personal_data::tests::{test}"), "--nocapture"])
+                    .env("PERSONAL_DATA_PYTHONS", &interpreter)
+                    .output().unwrap();
+                assert!(!output.status.success(), "required interpreter silently skipped: {test}");
+                let log = String::from_utf8_lossy(&output.stdout);
+                assert!(log.contains("required Python oracle"), "wrong verifier failure");
+            }
+        }
+    }
+
     // Regenerate with PERSONAL_DATA_UPDATE_REGEX_CASES=1 and all supported
     // interpreters on PATH (or in PERSONAL_DATA_PYTHONS). No Python file is
     // added to the repository; these calls use each real interpreter's engine.
