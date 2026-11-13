@@ -856,6 +856,233 @@ mod tests {
     }
 
     #[test]
+    fn malformed_json_lines_are_skipped_before_and_after_the_config() {
+        let d = planted("syntax-errors");
+        let log = fs::read(d.join("renovate.log")).unwrap();
+        let bad = b"{broken}\n{\"x\":}\n\"\\uZZZZ\"\n";
+        fs::write(d.join("renovate.log"), [bad.as_slice(), &log, bad].concat()).unwrap();
+        let (code, out) = run(&d);
+        assert_eq!(code, 0, "{out}");
+        assert!(out.contains("OK: 7 dependencies; every check passed"));
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn json_reader_limits_never_fall_back_to_an_earlier_config() {
+        let huge = "340282366920938463463374607431768211456";
+        let deep = format!("{}{}", "[".repeat(json::MAX_DEPTH + 1), "]".repeat(json::MAX_DEPTH + 1));
+        let records = [
+            ("integer-prefix", format!("{huge}\n"), false, "Integer beyond 128 bits"),
+            ("surrogate-prefix", "\"\\ud800\"\n".into(), false, "Lone surrogate"),
+            ("final-config", format!("{{\"msg\":\"packageFiles with updates\",\"config\":{{\"regex\":[{{\"packageFile\":\"unused\",\"deps\":null}}]}},\"extra\":{huge}}}\n"), true, "Integer beyond 128 bits"),
+            ("nesting-prefix", format!("{deep}\n"), false, "nested deeper than 1000 levels"),
+        ];
+        std::thread::Builder::new().stack_size(8 << 20).spawn(move || {
+            let mut misses = Vec::new();
+            for (label, record, append, diagnostic) in records {
+                let d = planted(label);
+                let old = fs::read_to_string(d.join("renovate.log")).unwrap();
+                let log = if append { old + &record } else { record + &old };
+                fs::write(d.join("renovate.log"), log).unwrap();
+                let (code, out) = run(&d);
+                if code != 1 || !out.contains(diagnostic) || out.contains("every check passed") {
+                    misses.push(format!("{label}: exit {code}, {out}"));
+                }
+                fs::remove_dir_all(d).unwrap();
+            }
+            assert!(misses.is_empty(), "{}", misses.join("\n"));
+        }).unwrap().join().unwrap();
+    }
+
+    /// The refusal contract applies to every row, including unused input fields.
+    /// Run each CLI with both a regular output and a symlink to that output.
+    #[test]
+    fn refusals_preserve_bytes_modes_and_link_targets() {
+        // Match the main-thread stack used by og for the nesting-limit control.
+        std::thread::Builder::new().stack_size(8 << 20).spawn(refusal_table).unwrap().join().unwrap();
+    }
+
+    fn refusal_table() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        #[derive(Clone, Copy, Debug)]
+        enum Verb { Gvcf, Clashes, Trim, Renovate, Comphet }
+        enum Fault {
+            Replace(&'static str, Vec<u8>),
+            Append(&'static str, Vec<u8>),
+            Prefix(Vec<u8>),
+            Limit(&'static str),
+            LongName,
+            ReadOnly,
+            ParentReadOnly,
+            Directory,
+        }
+        use Fault::*;
+        use Verb::*;
+        let bytes = |s: &str| s.as_bytes().to_vec();
+        let huge = "340282366920938463463374607431768211456";
+        let deep = format!("{}{}", "[".repeat(json::MAX_DEPTH + 1), "]".repeat(json::MAX_DEPTH + 1));
+        let final_record = format!(r#"{{"msg":"packageFiles with updates","config":{{"regex":[{{"packageFile":"unused","deps":null}}]}},"extra":{huge}}}"#);
+        // Add a refusal by adding one row: CLI, input fault, diagnostic.
+        let mut cases = vec![
+            (Renovate, Prefix(bytes(&format!("{huge}\n"))), "Integer beyond 128 bits"),
+            (Renovate, Prefix(bytes("\"\\ud800\"\n")), "Lone surrogate"),
+            (Renovate, Append("renovate.log", bytes(&format!("{final_record}\n"))), "Integer beyond 128 bits"),
+            (Renovate, Prefix(bytes(&format!("{deep}\n"))), "nested deeper than 1000 levels"),
+            (Renovate, Prefix(bytes("42\n")), "a log record is not an object"),
+            (Renovate, Prefix(vec![0xff, b'\n']), "not UTF-8"),
+            (Renovate, Prefix(vec![b'x'; (16 << 20) + 1]), "record exceeds 16777216 bytes"),
+            (Renovate, Replace(PINS, bytes("dep\tdocs/*.absent\tx\n")), "matches no file"),
+            (Renovate, Replace(PINS, bytes("dep\tabsent\tx\n")), "is not a file"),
+            (Gvcf, Append("ref.fasta.fai", bytes("chrUnused\t1\n")), "a row has fewer than 5 columns"),
+            (Gvcf, Replace("truth.vcf.gz", bytes("chrA\t18446744073709551615\t.\tA\tC\n")), "position span overflows"),
+            (Gvcf, Replace("ref.fasta.fai", bytes("\n")), "a row has fewer than 5 columns"),
+            (Gvcf, Append("ref.fasta.fai", bytes("chrUnused\t0\t0\t0\t0\n")), "a row has 0 bases per line"),
+            (Gvcf, Replace("truth.vcf.gz", bytes("chrA\t3\t.\tA\n")), "a record has fewer than 5 columns"),
+            (Gvcf, Replace("truth.bed", bytes("\n")), "a row has fewer than 3 columns"),
+            (Gvcf, Replace("truth.bed", bytes("chrA\u{85}0\u{85}50\n")), "unsupported whitespace"),
+            (Gvcf, Replace("sites.tsv", bytes("")), "missing header"),
+            (Gvcf, Append("truth.vcf.gz", bytes("##late=yes\n")), "VCF header after first data record"),
+            (Clashes, Replace("raw.vcf.gz", bytes("chrA\t3\t.\tA\tC\n")), "missing trailing VCF columns"),
+            (Trim, Replace("report.json", bytes(&format!(r#"{{"genes":{{}},"drugs":{{}},"title":{huge}}}"#))), "Integer beyond 128 bits"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":{},"drugs":{},"title":"\ud800"}"#)), "Lone surrogate"),
+            (Trim, Replace("report.json", bytes(&deep)), "nested deeper than 1000 levels"),
+            (Trim, Replace("report.json", bytes("{broken}")), "Expecting property name"),
+            (Trim, Replace("report.json", vec![0xff]), "not UTF-8"),
+            (Trim, Replace("report.json", bytes("[]")), "the report is not an object"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":[],"drugs":{}}"#)), "genes is not an object"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":{},"drugs":[]}"#)), "drugs is not an object"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":{"G":{"sourceDiplotypes":"x"}},"drugs":{}}"#)), "sourceDiplotypes is not a list"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":{"G":{"recommendationDiplotypes":{ "x":1 }}},"drugs":{}}"#)), "recommendationDiplotypes is not a list"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":{"G":{"sourceDiplotypes":[{"allele1":"x"}]}},"drugs":{}}"#)), "allele1 is not an object"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":{"G":{"sourceDiplotypes":[{"allele2":["x"]}]}},"drugs":{}}"#)), "allele2 is not an object"),
+            (Trim, Replace("report.json", bytes(r#"{"genes":{},"drugs":{"S":{"D":{"guidelines":[{"annotations":[{"genotypes":[{"diplotypes":{"x":1}}]}]}]}}}}"#)), "diplotypes is not a list"),
+        ];
+        for limit in ["1_0", "٤", "18446744073709551616"] {
+            cases.push((Trim, Limit(limit), "is not a whole number"));
+        }
+        for value in ["3_0", "٣", "-3", "18446744073709551616"] {
+            cases.push((Gvcf, Replace("truth.vcf.gz", bytes(&format!("chrA\t{value}\t.\tA\tC\n"))), "is not a number"));
+        }
+        for row in ["chrA\t50\t18446744073709551598\t1\t2\n", "chrA\t50\t1\t1\t18446744073709551615\n", "chrA\t50\t1000\t50\t51\n"] {
+            cases.push((Gvcf, Replace("ref.fasta.fai", bytes(row)), "invalid FASTA offset"));
+        }
+        for bad in [r#"{"packageFile":"unused","deps":null}"#, r#"{"packageFile":[],"deps":[]}"#, r#"{"packageFile":"unused","deps":[{"updates":{}}]}"#, r#"{"packageFile":"unused","deps":[{"depName":0}]}"#, r#"{"packageFile":"unused","deps":[{"currentValue":0}]}"#, r#"{"packageFile":"unused","deps":[{"updates":[{"newValue":0}]}]}"#] {
+            cases.push((Renovate, Append("renovate.log", bytes(&format!("{{\"msg\":\"packageFiles with updates\",\"config\":{{\"regex\":[{bad}]}}}}\n"))), "not a map of package file lists"));
+        }
+        // A zero-byte gzip file is written directly, without the test compressor.
+        for (verb, file) in [(Gvcf, "truth.vcf.gz"), (Clashes, "raw.vcf.gz"), (Clashes, "split.vcf.gz"), (Clashes, "chrA.tsv.gz")] {
+            cases.push((verb, Replace(file, Vec::new()), "wrong compression (expected gzip)"));
+        }
+        // Plain inputs reject gzip, and compressed inputs reject plain text.
+        cases.push((Gvcf, Replace("ref.fasta", vec![0x1f, 0x8b, b'A', b'A']), "wrong compression (expected plain)"));
+        cases.push((Gvcf, Replace("truth.bed", vec![0x1f, 0x8b]), "wrong compression (expected plain)"));
+        for verb in [Gvcf, Clashes, Trim, Renovate] { cases.push((verb, LongName, "File name too long")); }
+        for verb in [Gvcf, Clashes, Trim, Renovate, Comphet] {
+            cases.push((verb, ReadOnly, "read-only destination"));
+            cases.push((verb, ParentReadOnly, "parent directory is not writable"));
+            cases.push((verb, Directory, "destination is not a regular file"));
+        }
+        for (index, (verb, fault, message)) in cases.into_iter().enumerate() {
+            for linked in [false, true] {
+                let d = planted(&format!("refusal-{index}-{linked}"));
+                let inputs = d.join("inputs");
+                fs::create_dir(&inputs).unwrap();
+                if matches!(verb, Gvcf | Clashes) {
+                    let kind = if matches!(verb, Gvcf) { "hg002-gvcf" } else { "clashes" };
+                    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/parity/inputs").join(format!("dev-evidence-{kind}"));
+                    for entry in fs::read_dir(src).unwrap() {
+                        let entry = entry.unwrap();
+                        fs::copy(entry.path(), inputs.join(entry.file_name())).unwrap();
+                    }
+                    // Force the offset controls to read position 13.
+                    if matches!(&fault, Replace("ref.fasta.fai", text) if text.starts_with(b"chrA\t50")) {
+                        fs::write(inputs.join("sites.tsv"), b"id\tchr\tpos\nx\tchrA\t13\n").unwrap();
+                        fs::write(inputs.join("truth.bed"), b"chrA\t0\t50\n").unwrap();
+                    }
+                }
+                fs::write(inputs.join("report.json"), br#"{"genes":{},"drugs":{}}"#).unwrap();
+                let input_root = if matches!(verb, Renovate) { &d } else { &inputs };
+                match &fault {
+                    Replace(name, data) | Append(name, data) => {
+                        let path = input_root.join(name);
+                        let mut content = if matches!(fault, Append(..)) {
+                            if name.ends_with(".gz") {
+                                use std::io::Read;
+                                let mut old = Vec::new();
+                                flate2::read::MultiGzDecoder::new(fs::File::open(&path).unwrap()).read_to_end(&mut old).unwrap();
+                                old
+                            } else { fs::read(&path).unwrap() }
+                        } else { Vec::new() };
+                        content.extend_from_slice(data);
+                        if name.ends_with(".gz") && !content.is_empty() {
+                            let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                            gz.write_all(&content).unwrap();
+                            content = gz.finish().unwrap();
+                        }
+                        fs::write(path, content).unwrap();
+                    }
+                    Prefix(data) => {
+                        let old = fs::read(d.join("renovate.log")).unwrap();
+                        fs::write(d.join("renovate.log"), [data.as_slice(), &old].concat()).unwrap();
+                    }
+                    _ => {}
+                }
+                let outputs = d.join("outputs");
+                let targets = d.join("targets");
+                fs::create_dir(&outputs).unwrap();
+                fs::create_dir(&targets).unwrap();
+                let long = "x".repeat(255);
+                let names = if matches!(verb, Comphet) { vec!["reads.sam", "vep.vcf", "comphet.vcf"] } else { vec![if matches!(fault, LongName) { &long } else { "out" }] };
+                let mut previous = Vec::new();
+                for (n, name) in names.iter().enumerate() {
+                    let output = outputs.join(name);
+                    let target = if linked { targets.join(name) } else { output.clone() };
+                    let directory = matches!(fault, Directory) && n == 0;
+                    if directory {
+                        fs::create_dir(&target).unwrap();
+                        fs::write(target.join("sentinel"), b"PREVIOUS OUTPUT\n").unwrap();
+                    } else { fs::write(&target, b"PREVIOUS OUTPUT\n").unwrap(); }
+                    let mode = if matches!(fault, ReadOnly) && n == 0 { 0o444 } else if directory { 0o755 } else { 0o4600 };
+                    fs::set_permissions(&target, fs::Permissions::from_mode(mode)).unwrap();
+                    if linked { symlink(&target, &output).unwrap(); }
+                    previous.push((output, target, mode, directory));
+                }
+                let parent = if linked { &targets } else { &outputs };
+                if matches!(fault, ParentReadOnly) { fs::set_permissions(parent, fs::Permissions::from_mode(0o555)).unwrap(); }
+                let p = |n: &str| inputs.join(n).to_str().unwrap().to_owned();
+                let dest = previous[0].0.to_str().unwrap().to_owned();
+                let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+                let code = match verb {
+                    Gvcf => crate::evidence::cli(&["hg002-gvcf".into(), p("truth.vcf.gz"), p("truth.bed"), p("ref.fasta"), p("sites.tsv"), dest], &mut stdout, &mut stderr),
+                    Clashes => crate::evidence::cli(&["clashes".into(), p("raw.vcf.gz"), p("split.vcf.gz"), inputs.to_str().unwrap().into(), dest], &mut stdout, &mut stderr),
+                    Trim => {
+                        let mut args = vec!["trim-pharmcat".into(), p("report.json"), dest];
+                        if let Limit(limit) = &fault { args.push((*limit).into()); }
+                        crate::fixture::cli(&args, &mut stdout, &mut stderr)
+                    }
+                    Renovate => cli_with_summary(&[d.join("renovate.log").to_str().unwrap().into(), "--repo".into(), d.to_str().unwrap().into()], &mut stdout, &mut stderr, Some(Path::new(&dest))),
+                    Comphet => crate::fixture::cli(&["comphet".into(), outputs.to_str().unwrap().into()], &mut stdout, &mut stderr),
+                };
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o755)).unwrap();
+                let diagnostic = String::from_utf8(stderr).unwrap();
+                assert_ne!(code, 0, "row {index} {verb:?}, linked={linked}: false success");
+                assert!(diagnostic.contains(message), "row {index} {verb:?}, linked={linked}: want {message:?}, got {diagnostic}");
+                for (output, target, mode, directory) in previous {
+                    let meta = fs::symlink_metadata(&output).unwrap();
+                    assert_eq!(meta.file_type().is_symlink(), linked, "row {index}");
+                    assert_eq!(fs::read_link(&output).ok(), linked.then_some(target.clone()), "row {index}: link target changed");
+                    assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o7777, mode, "row {index}: mode changed");
+                    assert_eq!(fs::read(if directory { target.join("sentinel") } else { target }).unwrap(), b"PREVIOUS OUTPUT\n", "row {index}: bytes changed");
+                }
+                for parent in [&outputs, &targets] {
+                    assert!(!fs::read_dir(parent).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().contains(".tmp-")), "row {index}: temporary sibling leaked");
+                }
+                fs::remove_dir_all(d).unwrap();
+            }
+        }
+    }
+
+    #[test]
     fn a_pin_renovate_misses_fails() {
         let d = planted("pin");
         fs::write(
