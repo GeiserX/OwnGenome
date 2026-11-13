@@ -26,6 +26,10 @@ pub struct Step {
     pub hours_from: String,
     /// The measured lower end, as the file spells it (empty when unknown).
     pub hours_low: String,
+    /// The `run_manifest.tsv` keys of the databases and pins it reads
+    /// itself: `KEY`, a prefix `PREFIX*`, either with `@self` when only a
+    /// table of its own reads it (empty when the file has no `reads` column).
+    pub reads: Vec<String>,
 }
 
 /// Why the catalogue could not be read.
@@ -115,6 +119,14 @@ pub fn read_steps(path: &Path) -> Result<Vec<Step>, StepsError> {
             hours,
             hours_from: col("hours_from")?.to_owned(),
             hours_low: row.get("hours_low").copied().unwrap_or("").to_owned(),
+            reads: row
+                .get("reads")
+                .copied()
+                .unwrap_or("")
+                .split(',')
+                .filter(|x| !x.is_empty())
+                .map(str::to_owned)
+                .collect(),
         });
     }
     Ok(out)

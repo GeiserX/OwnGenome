@@ -80,7 +80,7 @@ IBD_PANEL=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_
 # ${OUT}/family.vcf.gz. On each autosome with the panel's SNVs and genetic
 # map: the joint call's genotypes at the panel's SNVs (same position and
 # alleles), phased by Beagle against the panel, then hap-ibd's segments, then
-# bin/ibd_report.py's tables. The Nextflow FAMILY_IBD_* processes
+# og family ibd's tables. The Nextflow FAMILY_IBD_* processes
 # (modules/local/ibd) run the same commands. Returns 1 when a tool fails.
 ibd_segments() {
   local P C chroms
@@ -123,7 +123,7 @@ ibd_segments() {
         done' _ "$P" "$C" "$THREADS" "$chroms" || { echo "ERROR: hap-ibd failed (log above)" >&2; return 1; }
   fi
   run_in --rw "$OUT" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-    python3 /pgp-bin/ibd_report.py --pedigree "${OUT_C}/pedigree.tsv" --chroms "${C}/chroms.txt" \
+    /pgp-bin/og family ibd --pedigree "${OUT_C}/pedigree.tsv" --chroms "${C}/chroms.txt" \
       --maps "${P}/maps" --phased "$C" --ibd "$C" --out-dir "$OUT_C" || return 1
   echo "Shared segments: ${OUT}/ibd_pairs.tsv, ${OUT}/ibd_segments.tsv"
 }

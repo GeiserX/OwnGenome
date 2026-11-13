@@ -12,7 +12,7 @@
 # PacBio HiFi only. Paraphase is written for HiFi reads, and its licence (the
 # PacBio Software License Agreement) allows it only on data from a PacBio
 # instrument. The step reads the BAM header first and stops unless every read
-# group says PL:PACBIO (bin/paraphase_report.py check-bam). The default BAM is
+# group says PL:PACBIO (og paraphase check-bam). The default BAM is
 # the one step 02b writes with PLATFORM=hifi. For short reads, step 35
 # (Parascopy) covers SMN1 and SMN2.
 #
@@ -57,7 +57,7 @@ echo "Regions: ${REGIONS:-all GRCh38 regions of Paraphase}"
 # [1/3] PacBio reads only: the header's read groups must all say PL:PACBIO
 echo "[1/3] Checking the read groups..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/paraphase_report.py check-bam "$(cpath "$BAM")"
+  /pgp-bin/og paraphase check-bam "$(cpath "$BAM")"
 
 # [2/3] Paraphase, into a temporary folder renamed when it finishes
 echo "[2/3] Running Paraphase..."
@@ -69,7 +69,7 @@ run_in --cpus "${THREADS}" --memory 8g "${PARAPHASE_IMAGE}" \
   paraphase -b "$(cpath "$BAM")" -r "$REF_FASTA_C" -o "$(cpath "$WORK")" -p "$SAMPLE" \
     -t "${THREADS}" ${REGIONS:+-g "$REGIONS"}
 
-# [3/3] One row per gene and one per variant (bin/paraphase_report.py, as the PARAPHASE_REPORT module);
+# [3/3] One row per gene and one per variant (og paraphase table, as the PARAPHASE_REPORT module);
 # the regions shown gene by gene, and the JSON field of each, come from assets/paraphase_genes.tsv.
 # The tables are written from WORK before it replaces FINAL, so a failed report leaves the
 # previous results and their tables together.
@@ -77,7 +77,7 @@ echo "[3/3] Writing the tables..."
 CN="${OUTDIR}/${SAMPLE}_paraphase_copy_number.tsv"
 VARS="${OUTDIR}/${SAMPLE}_paraphase_variants.tsv"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/paraphase_report.py table --sample "$SAMPLE" --genes /pgp-assets/paraphase_genes.tsv \
+  /pgp-bin/og paraphase table --sample "$SAMPLE" --genes /pgp-assets/paraphase_genes.tsv \
     --json "$(cpath "${WORK}/${SAMPLE}.paraphase.json")" \
     --vcf-dir "$(cpath "${WORK}/${SAMPLE}_paraphase_vcfs")" \
     --out-cn "$(cpath "$CN")" --out-variants "$(cpath "$VARS")"

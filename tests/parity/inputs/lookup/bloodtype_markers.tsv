@@ -1,0 +1,5 @@
+# a synthetic blood group BED
+#
+chrom	start	end	system	kind	ref	alt	rsid
+chr7	259	260	ABO	site	C	T	rs8008
+chr7	259	260	ABO	site	.	T	bad

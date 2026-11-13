@@ -571,6 +571,7 @@ mod tests {
             hours,
             hours_from: String::new(),
             hours_low: String::new(),
+            reads: vec![],
         }
     }
 

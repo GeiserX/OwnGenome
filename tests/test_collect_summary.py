@@ -138,7 +138,7 @@ Checks:
      SMN1 copies in both reports with its caveat: present with its reads,
      not assessed without the table or with no known status in it.
  26. step 08's opt-in passes in the HLA section: with HLA_QC=true, one line
-     per class I gene from the concordance table pgx_outside_calls.py writes
+     per class I gene from the concordance table og pgx hla-concordance writes
      (agree, disagree with both calls, not compared with the reason), and
      when OptiType did not run, the reason its result file gives; with
      KIR=true, the KIR genes T1K typed with their alleles and qualities, the
@@ -204,12 +204,16 @@ def og_clinvar(*args):
     return subprocess.run([OG, "clinvar", *args], capture_output=True, text=True, check=True).stdout
 
 
+def og_postfilter(args):
+    """og sv postfilter ARGS, step 05's class 4-5 checks (OG must be set)."""
+    subprocess.run([OG, "sv", "postfilter", *args], capture_output=True, text=True, check=True)
+
+
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
 import clip_check  # noqa: E402
 import collect_summary  # noqa: E402
-import pgx_outside_calls  # noqa: E402
 import render_report  # noqa: E402
 import validate  # noqa: E402
 from og_binary import og_binary  # noqa: E402
@@ -1042,13 +1046,12 @@ SV_CONSENSUS = ("##fileformat=VCFv4.1\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\t
 def annotsv_section(work, schema):
     """24. step 05's class 4-5 table: support from step 22's consensus, the
     exon-edge flag and the benign-set frequency reach both reports."""
-    import annotsv_postfilter
     import html as htmlmod
     d = os.path.join(work, "annotsv", "S")
     put(f"{d}/annotsv/S_sv_class4_5.tsv", ANNOTSV_HEAD + ANNOTSV_ROWS)
     put(f"{work}/annotsv/genes.RefSeq.sorted.bed", ANNOTSV_GENES)
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
     put(f"{d}/sv_merged/S_sv_consensus.vcf.gz", SV_CONSENSUS, gz=True)
     summ, txt, html_ = render(d)
     html_ = htmlmod.unescape(html_)
@@ -1087,9 +1090,9 @@ def annotsv_section(work, schema):
     # and the class 4-5 count and rows leave it out.
     put(f"{work}/annotsv/rules.tsv", "#chrom\tstart\tend\trule\taction\tname\tsource\n"
         "chr20\t19990000\t20500000\tig_tr_locus\tclass_3\tIGFIX\tfixture\n")
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--rules", f"{work}/annotsv/rules.tsv",
-                             "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--rules", f"{work}/annotsv/rules.tsv",
+                  "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
     summ, txt, html_ = render(d)
     html_ = htmlmod.unescape(html_)
     av = summ["sections"]["annotsv"]["data"]
@@ -1114,8 +1117,8 @@ def annotsv_section(work, schema):
           and render_report.ANNOTSV_NOTE in txt)
     check("annotsv rules: the summary validates", not validate.validate(schema, json.loads(json.dumps(summ))),
           validate.validate(schema, json.loads(json.dumps(summ))))
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
 
     # red control: an empty consensus gives support 1 to every row
     put(f"{d}/sv_merged/S_sv_consensus.vcf.gz", SV_CONSENSUS.split("chr20")[0], gz=True)
@@ -1156,16 +1159,15 @@ PHASE_HEAD = ("AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tI
 
 
 def annotsv_phase_pairing(work):
-    """29. a deletion's GT and PS go through annotsv_postfilter.py into the two-hit rule."""
-    import annotsv_postfilter
+    """29. a deletion's GT and PS go through og sv postfilter into the two-hit rule."""
 
     def run(name, gt):
         d = os.path.join(work, "sv-phase", name, "S")
         put(f"{d}/annotsv/S_sv_class4_5.tsv", PHASE_HEAD
             + f"1_45335001_45337000_DEL_1\t1\t45335000\t45337000\t-2000\tDEL\tSV1\t"
               f"END=45337000;SVTYPE=DEL;SVCALLER=manta\tGT:PS\t{gt}:45330000\tfull\tMUTYH\t\t4\t0.95\n")
-        annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv",
-                                 "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+        og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv",
+                      "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
         put(f"{d}/clinvar/S_clinvar_hits.vcf", VCF_HEAD
             + "chr1\t45332000\t.\tC\tT\t50\tPASS\tGENEINFO=MUTYH:4595;CLNSIG=Pathogenic;"
               "CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts\tGT:GQ:DP:PS\t1|0:50:30:45330000\n")
@@ -1822,9 +1824,11 @@ def hla_optitype_kir_section(work, schema):
     put(f"{b}/hla_t1k/S_hla_genotype.tsv", t1k)
     put(f"{b}/hla_optitype/S_optitype_result.tsv",
         "\tA1\tA2\tB1\tB2\tC1\tC2\tReads\tObjective\n0\tA*26:01\tA*01:01\tB*58:01\tB*08:01\tC*07:01\tC*07:02\t900\t880.1\n")
-    rc = pgx_outside_calls.main(["hla-concordance", "--t1k", f"{b}/hla_t1k/S_hla_genotype.tsv",
-                                 "--optitype", f"{b}/hla_optitype/S_optitype_result.tsv",
-                                 "--out", f"{b}/hla_optitype/S_hla_concordance.tsv"])
+    sys.path.insert(0, os.path.join(REPO, "tests"))
+    from og_binary import og_binary
+    rc = subprocess.run([og_binary(), "pgx", "hla-concordance", "--t1k", f"{b}/hla_t1k/S_hla_genotype.tsv",
+                         "--optitype", f"{b}/hla_optitype/S_optitype_result.tsv",
+                         "--out", f"{b}/hla_optitype/S_hla_concordance.tsv"], stdout=subprocess.DEVNULL).returncode
     check("26: step 08's writer made the concordance table", rc == 0)
     put(f"{b}/kir_t1k/S_kir_genotype.tsv",
         "KIR2DL1\t2\tKIR2DL1*00302\t40\t60\tKIR2DL1*0010101\t30\t35\n"
@@ -2960,8 +2964,11 @@ def main():
         pypgx_section(work, schema)
         clinical_mane_quality(work, schema)
         comphet_phase_section(work, schema)
-        annotsv_section(work, schema)
-        annotsv_phase_pairing(work)
+        if OG:
+            annotsv_section(work, schema)
+            annotsv_phase_pairing(work)
+        else:
+            print("[SKIP] the class 4-5 SV checks (og sv postfilter): OG is not set (guard.yml sets it)")
         report_followups_sections(work, schema)
         str_extra_readings(work, schema)
         parascopy_section(work, schema)

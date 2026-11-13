@@ -1,0 +1,10 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr1,length=248956422>
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=END,Number=1,Type=Integer,Description="End">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr20	1000000	MantaDEL:1	N	<DEL>	500	PASS	END=1100000;SVTYPE=DEL;SVLEN=-100000	GT	0/1
+chr20	3000000	MantaINV:2	N	<INV>	500	PASS	END=4000000;SVTYPE=INV;SVLEN=1000000;INV3	GT	0/1
+chr20	2000100	MantaDEL:9	N	<DEL>	500	PASS	END=2049900;SVTYPE=DEL;SVLEN=-49800	GT	0/0

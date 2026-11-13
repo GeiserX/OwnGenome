@@ -40,6 +40,12 @@ y-str-bed	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c
 y-str-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" report "$@"'	y str-report
 exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	python3	exomiser
 cn	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/copy_number.py	sh ./oracle.sh	cn
+pgx-outside-calls	954ab367004d63ea639521982299b4976927ccfd	file:bin/pgx_outside_calls.py	python3	pgx outside-calls
+pgx-hla-concordance	954ab367004d63ea639521982299b4976927ccfd	file:bin/pgx_outside_calls.py	sh -c 'exec python3 "$0" hla-concordance "$@"'	pgx hla-concordance
+paraphase-check-bam	954ab367004d63ea639521982299b4976927ccfd	file:bin/paraphase_report.py	sh -c 'exec python3 "$0" check-bam "$@"'	paraphase check-bam
+paraphase-table	954ab367004d63ea639521982299b4976927ccfd	file:bin/paraphase_report.py	sh -c 'exec python3 "$0" table "$@"'	paraphase table
+sv-add-callers	954ab367004d63ea639521982299b4976927ccfd	file:bin/cnvpytor_to_vcf.py	sh ./oracle.sh	sv add-callers
+sv-postfilter	954ab367004d63ea639521982299b4976927ccfd	file:bin/annotsv_postfilter.py	sh ./oracle.sh	sv postfilter
 cdna-check	954ab367004d63ea639521982299b4976927ccfd	file:bin/clip_check.py	python3	cdna check
 cdna-scan	954ab367004d63ea639521982299b4976927ccfd	file:bin/cdna_scan.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	cdna scan
 comphet-phase	954ab367004d63ea639521982299b4976927ccfd	file:bin/comphet_phase.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	comphet phase
@@ -53,3 +59,6 @@ y-tree-positions	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/y_tree_place.
 y-tree-place	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/y_tree_place.py	sh -c 'exec python3 "$0" place "$@"'	y tree-place
 y-private-snps	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/y_private_snps.py	python3	y private-snps
 y-yleaf-positions	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/yleaf_run.py	sh -c 'd=$(mktemp -d) && mkdir "$d/yleaf" && : > "$d/yleaf/__init__.py" && printf "HG38 = \"hg38\"\nNEW_POSITION_FILE = \"new_positions.txt\"\nTREE_FILE = \"tree.json\"\n" > "$d/yleaf/yleaf_constants.py" && PYTHONPATH=$d exec python3 "$0" positions "$@"'	y yleaf-positions
+lookup	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	python3	lookup
+lookup-query	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	bash ./oracle.sh	lookup query
+family-ibd	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/ibd_report.py	sh ./ibd_oracle.sh	family ibd

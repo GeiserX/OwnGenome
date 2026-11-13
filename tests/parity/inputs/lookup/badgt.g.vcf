@@ -1,0 +1,7 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr7,length=1000000>
+##contig=<ID=chrX,length=1000000>
+##contig=<ID=chrM,length=16569>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SYNTH1
+chr7	250	.	C	T,<*>	42.5	PASS	.	GT:GQ:DP	0/x:40:33

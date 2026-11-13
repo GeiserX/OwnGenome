@@ -11,7 +11,10 @@
 //! - `og family report`: the allele each parent passed on, de novo
 //!   candidates, compound heterozygotes and the chromosome map, from one
 //!   read of the joint VCF (`report.rs`);
-//! - `og family segments`: the chromosome map alone ([`segments`]).
+//! - `og family segments`: the chromosome map alone ([`segments`]);
+//! - `og family ibd`: the DNA each pair shares by descent, from Beagle's
+//!   phased genotypes and hap-ibd's segments (`ibd.rs`, port of
+//!   `bin/ibd_report.py`).
 //!
 //! The pedigree rules live in `og-pedigree`. Exit codes are the Python's:
 //! 2 for a problem in the input, 1 when `check` finds a pair that
@@ -19,6 +22,7 @@
 
 mod args;
 mod check;
+mod ibd;
 mod plan;
 mod prepare;
 mod report;
@@ -27,7 +31,7 @@ mod vcf;
 
 use og_pedigree::Die;
 
-const USAGE: &str = "usage: og family {plan,prepare,check,report,segments} ...\n";
+const USAGE: &str = "usage: og family {plan,prepare,check,report,segments,ibd} ...\n";
 
 /// Runs `og family ARGS`; returns the exit code.
 pub fn cli(args: &[String]) -> u8 {
@@ -43,6 +47,7 @@ pub fn cli(args: &[String]) -> u8 {
         "check" => args::parse(&check::SPEC, rest).and_then(|a| check::run(&a)),
         "report" => args::parse(&report::SPEC, rest).and_then(|a| report::run(&a)),
         "segments" => args::parse(&segments::SPEC, rest).and_then(|a| segments::run(&a)),
+        "ibd" => args::parse(&ibd::SPEC, rest).and_then(|a| ibd::run(&a)),
         "-h" | "--help" => {
             print!("{USAGE}");
             return 0;

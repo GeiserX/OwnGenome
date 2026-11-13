@@ -1,0 +1,2 @@
+AnnotSV_ID	SV_chrom	SV_start	SV_end	SV_length	SV_type	Samples_ID	ID	INFO	FORMAT	S1	Annotation_mode	Gene_name	B_loss_AFmax	ACMG_class	AnnotSV_ranking_score
+20_40000000_40300000_DEL_1	20	40000000	40300000	-300000	DEL	S1	FRAC	END=40300000;SVTYPE=DEL;SVCALLER=delly	GT:RDCN	0/1:1.5	full	G1		4	0.99

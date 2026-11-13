@@ -101,7 +101,7 @@ if [ "$1" = /pgp-bin/og ] && [ "$2" = bam ] && [ "$3" = contigs ]; then
   awk -F'\t' '$1 == "@SQ" {sub(/^SN:/, "", $2); print $2}' "$(host "$4")"
 elif [ "$1" = bash ] && [ "$2" = -c ]; then
   PATH="${PYPGX_BIN}:$PATH" bash -c "$3"
-elif [ "$1" = python3 ] && [ "$2" = /pgp-bin/pgx_outside_calls.py ]; then
+elif [ "$1" = /pgp-bin/og ] && [ "$2" = pgx ] && [ "$3" = pypgx-summary ]; then
   printf '%s\n' "$*" >> "$SUMMARY_LOG"
   while [ $# -gt 0 ]; do [ "$1" = --out ] && printf 'Gene\n' > "$(host "$2")"; shift; done
 fi
