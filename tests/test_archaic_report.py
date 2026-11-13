@@ -315,6 +315,37 @@ with gzip.open(f"{bdir}/chr22.tsv.gz", "wt") as f:
 r = run("genotypes", "--table-dir", bdir, "--vcf", f"{TMP}/m.vcf", "--out-dir", f"{TMP}/gtb")
 check("a code the table never holds (7) stops the step", r.returncode == 1 and "code '7'" in r.stderr, r.stderr)
 
+# A streaming join must refuse backwards positions, including records past
+# the table's end and records whose genotype it would otherwise ignore.
+vcf_header = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+for label, records in (
+        ("within-table", [(3000, "G", "A", "GT"), (1000, "A", "G", "GT")]),
+        ("past-table", [(9000, "A", "G", "GT"), (8000, "A", "G", "GT")]),
+        ("ignored-call", [(3000, "G", "A", "GT"), (1000, "A", ".", "GQ")])):
+    bad_vcf = f"{TMP}/{label}.vcf"
+    write(bad_vcf, vcf_header + "".join(
+        f"chr22\t{p}\t.\t{ref}\t{alt}\t.\tPASS\t.\t{fmt}\t0/1\n"
+        for p, ref, alt, fmt in records))
+    out = f"{TMP}/order-{label}"
+    os.makedirs(out)
+    protected = ["chr22.gt.gz", *(f"chr22.{g}.mask.bed" for g in ARCHAICS)]
+    for name in protected:
+        write(f"{out}/{name}", "previous output\n")
+    r = run("genotypes", "--table-dir", tdir, "--vcf", bad_vcf, "--out-dir", out)
+    check(f"unsorted VCF {label} exits 2", r.returncode == 2 and "not sorted" in r.stderr, r.stderr)
+    check(f"unsorted VCF {label} keeps prior genotype and masks",
+          all(open(f"{out}/{name}", "rb").read() == b"previous output\n" for name in protected))
+
+unordered_table = f"{TMP}/table_unordered"
+os.makedirs(unordered_table)
+with gzip.open(f"{unordered_table}/chr22.tsv.gz", "wt") as f:
+    f.write(hdr + "\n".join([rows[1], rows[0], *rows[2:]]) + "\n")
+r = run("genotypes", "--table-dir", unordered_table, "--vcf", f"{TMP}/s.vcf",
+        "--out-dir", f"{TMP}/gt_unordered")
+check("an unsorted table exits 2", r.returncode == 2 and "not sorted" in r.stderr, r.stderr)
+check("an unsorted table leaves no partial genotype or mask",
+      not any(name.endswith((".gt.gz", ".mask.bed")) for name in os.listdir(f"{TMP}/gt_unordered")))
+
 # --- 3. report ---------------------------------------------------------------------
 idir = f"{TMP}/ibd"
 os.makedirs(idir)

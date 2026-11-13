@@ -25,7 +25,7 @@
 //! Each command writes what `bin/archaic_report.py` wrote (checked by
 //! `tests/parity`). Deliberate changes: every output is written under a
 //! temporary name and renamed into place; a gzip input is told by its first
-//! bytes, not its name; `strict` reads its rows in position order and stops
+//! bytes, not its name; `strict` and `genotypes` read in position order and stop
 //! (exit 2) on a row that goes back, instead of keeping every position of a
 //! chromosome in memory; and malformed input is an `ERROR:` line, never a
 //! traceback.
@@ -726,9 +726,17 @@ struct VcfRec {
 /// the reference.
 struct Vcf {
     text: Text,
+    previous: Option<(String, i64)>,
 }
 
 impl Vcf {
+    fn new(text: Text) -> Self {
+        Self {
+            text,
+            previous: None,
+        }
+    }
+
     fn next(&mut self) -> Out<Option<VcfRec>> {
         loop {
             let Some(raw) = self.text.raw()? else {
@@ -750,13 +758,28 @@ impl Vcf {
                 }
                 continue;
             }
-            if c.len() < 10 || c[3].chars().count() != 1 || c[4] == "." {
+            if c.len() < 10 {
+                continue;
+            }
+            let pos = need_int(c[1])?;
+            if let Some((chrom, prev)) = &self.previous
+                && chrom == c[0]
+                && pos < *prev
+            {
+                let message = format!("{}:{pos} comes after {prev}", c[0]);
+                return usage(format!(
+                    "{} is not sorted: {message}",
+                    self.text.path.display()
+                ));
+            }
+            self.previous = Some((c[0].to_owned(), pos));
+            if c[3].chars().count() != 1 || c[4] == "." {
                 continue;
             }
             if c[4].contains(',') || c[4].chars().count() != 1 {
                 return Ok(Some(VcfRec {
                     chrom: c[0].to_owned(),
-                    pos: need_int(c[1])?,
+                    pos,
                     call: Sample {
                         r#ref: c[3].to_owned(),
                         alt: None,
@@ -775,7 +798,7 @@ impl Vcf {
             }
             return Ok(Some(VcfRec {
                 chrom: c[0].to_owned(),
-                pos: need_int(c[1])?,
+                pos,
                 call: Sample {
                     r#ref: c[3].to_owned(),
                     alt: Some(c[4].to_owned()),
@@ -786,39 +809,48 @@ impl Vcf {
     }
 }
 
-/// The sample's calls on one chromosome, one per position after
-/// [`pick_call`], sorted by position: a compact array, not a map.
-fn settle(mut recs: Vec<(i64, Sample)>) -> Vec<(i64, Sample)> {
-    // A stable sort keeps the records of one position in file order.
-    recs.sort_by_key(|(p, _)| *p);
-    let mut out: Vec<(i64, Sample)> = Vec::new();
-    let mut clashed = false;
-    for (pos, call) in recs {
-        match out.last_mut() {
-            Some((p, kept)) if *p == pos => {
-                if clashed {
-                    continue;
-                }
-                let r#ref = call.r#ref.clone();
-                match pick_call(Some(kept.clone()), call) {
-                    Picked::Call(c) => *kept = c,
-                    Picked::Clash => {
-                        *kept = Sample {
-                            r#ref,
-                            alt: None,
-                            code: 9,
+/// Reduce one duplicate-position window in file order. Only the reduced
+/// call and one record of lookahead survive, even for very long windows.
+struct Calls {
+    vcf: Vcf,
+    pending: Option<VcfRec>,
+}
+
+impl Calls {
+    fn next(&mut self) -> Out<Option<VcfRec>> {
+        let first = match self.pending.take() {
+            Some(r) => Some(r),
+            None => self.vcf.next()?,
+        };
+        let Some(mut kept) = first else {
+            return Ok(None);
+        };
+        let mut clashed = false;
+        loop {
+            match self.vcf.next()? {
+                Some(r) if r.chrom == kept.chrom && r.pos == kept.pos => {
+                    if !clashed {
+                        let r#ref = r.call.r#ref.clone();
+                        kept.call = match pick_call(Some(kept.call), r.call) {
+                            Picked::Call(c) => c,
+                            Picked::Clash => {
+                                clashed = true;
+                                Sample {
+                                    r#ref,
+                                    alt: None,
+                                    code: 9,
+                                }
+                            }
                         };
-                        clashed = true;
                     }
                 }
-            }
-            _ => {
-                clashed = false;
-                out.push((pos, call));
+                other => {
+                    self.pending = other;
+                    return Ok(Some(kept));
+                }
             }
         }
     }
-    out
 }
 
 /// `chrN.tsv.gz` with N from 1 to 22: the chromosome's name.
@@ -893,13 +925,14 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
     put(&Path::new(out_dir).join("samples.txt"), samples.as_bytes())?;
 
     let vcf_path = a.req("--vcf");
-    let mut vcf = Vcf {
-        text: Text::open(vcf_path)?,
+    let mut calls = Calls {
+        vcf: Vcf::new(Text::open(vcf_path)?),
+        pending: None,
     };
     let mut spans: Vec<Span> = Vec::new();
     let mut done: Vec<String> = Vec::new();
-    let mut pending = vcf.next()?;
-    while let Some(first) = pending.take() {
+    let mut pending = calls.next()?;
+    while let Some(first) = &pending {
         let chrom = first.chrom.clone();
         if done.contains(&chrom) {
             return die(format!(
@@ -908,33 +941,24 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
         }
         done.push(chrom.clone());
         let table = tables.iter().find(|(c, _)| *c == chrom).map(|(_, t)| t);
-        // The sample's calls on this chromosome; on a chromosome the table
-        // does not hold they are read past.
-        let mut recs = Vec::new();
-        if table.is_some() {
-            recs.push((first.pos, first.call));
-        }
-        loop {
-            match vcf.next()? {
-                Some(r) if r.chrom == chrom => {
-                    if table.is_some() {
-                        recs.push((r.pos, r.call));
-                    }
-                }
-                other => {
-                    pending = other;
-                    break;
-                }
+        if let Some(table) = table {
+            if let Some(span) = write_chrom(
+                &chrom,
+                table,
+                &mut calls,
+                &mut pending,
+                &head,
+                &pseudo,
+                af_col,
+                two_n,
+                out_dir,
+            )? {
+                spans.push(span);
             }
-        }
-        let Some(table) = table else {
-            continue;
-        };
-        let calls = settle(recs);
-        if let Some(span) = write_chrom(
-            &chrom, table, &calls, &head, &pseudo, af_col, two_n, out_dir,
-        )? {
-            spans.push(span);
+        } else {
+            while pending.as_ref().is_some_and(|r| r.chrom == chrom) {
+                pending = calls.next()?;
+            }
         }
     }
     let mut text =
@@ -967,7 +991,8 @@ type Span = (String, i64, i64, u64, u64, u64);
 fn write_chrom(
     chrom: &str,
     table: &str,
-    calls: &[(i64, Sample)],
+    calls: &mut Calls,
+    pending: &mut Option<VcfRec>,
     head: &str,
     pseudo: &[String],
     af_col: usize,
@@ -991,8 +1016,14 @@ fn write_chrom(
     let (mut n, mut first, mut last, mut dropped, mut carried) = (0u64, 0i64, 0i64, 0u64, 0u64);
     // Per archaic genome, the runs of written rows whose call is masked:
     // [first, last] positions, closed at the next unmasked row.
-    let mut runs: [Vec<(i64, i64)>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    let mask_paths =
+        ARCHAICS.map(|name| Path::new(out_dir).join(format!("{chrom}.{name}.mask.bed")));
+    let mut masks: Vec<AtomicFile> = mask_paths
+        .iter()
+        .map(|p| AtomicFile::create(p).map_err(|e| cannot_write(p, &e)))
+        .collect::<Result<_>>()?;
     let mut open_run: [Option<(i64, i64)>; 3] = [None; 3];
+    let mut previous = None;
     let mut row = String::new();
     while let Some(line) = t.next()? {
         let c: Vec<&str> = line.split('\t').collect();
@@ -1004,6 +1035,13 @@ fn write_chrom(
             ));
         }
         let pos = need_int(c[1])?;
+        if previous.is_some_and(|p| pos < p) {
+            return usage(format!(
+                "{table} is not sorted: {chrom}:{pos} comes after {}",
+                previous.unwrap()
+            ));
+        }
+        previous = Some(pos);
         let (r, alt) = (c[2], c[3]);
         let mut arch = [0u8; 3];
         for k in 0..3 {
@@ -1020,10 +1058,19 @@ fn write_chrom(
                 }
             };
         }
-        let code = match calls.binary_search_by_key(&pos, |(p, _)| *p) {
-            Err(_) => 0,
-            Ok(i) => {
-                let call = &calls[i].1;
+        while pending
+            .as_ref()
+            .is_some_and(|r| r.chrom == chrom && r.pos < pos)
+        {
+            *pending = calls.next()?;
+        }
+        let code = match pending
+            .as_ref()
+            .filter(|r| r.chrom == chrom && r.pos == pos)
+        {
+            None => 0,
+            Some(record) => {
+                let call = &record.call;
                 if call.r#ref != r || call.alt.as_ref().is_some_and(|x| x != alt) {
                     // Another allele than the row's: IBDmix's generate_gt
                     // drops the line.
@@ -1052,7 +1099,8 @@ fn write_chrom(
                     Some(run) => run.1 = pos,
                 }
             } else if let Some(run) = open_run[k].take() {
-                runs[k].push(run);
+                writeln!(masks[k], "{num}\t{}\t{}", run.0 - 1, run.1)
+                    .map_err(|e| cannot_write(&mask_paths[k], &e))?;
             }
         }
         row.clear();
@@ -1069,6 +1117,11 @@ fn write_chrom(
         last = pos;
         n += 1;
     }
+    // Read the tail too: an unsorted or unreadable record past the last
+    // table site must fail before committing this chromosome's outputs.
+    while pending.as_ref().is_some_and(|r| r.chrom == chrom) {
+        *pending = calls.next()?;
+    }
     if n == 0 {
         drop(gz);
         match std::fs::remove_file(&path) {
@@ -1082,18 +1135,13 @@ fn write_chrom(
     gz.finish().and_then(AtomicFile::commit).map_err(werr)?;
     // IBDmix's mask (-r): the chromosome as in the genotype file, and a
     // line covers the positions start + 1 to end, as in a BED.
-    for k in 0..3 {
-        if let Some(run) = open_run[k] {
-            runs[k].push(run);
+    for (k, mut mask) in masks.into_iter().enumerate() {
+        if let Some((s, e)) = open_run[k] {
+            writeln!(mask, "{num}\t{}\t{e}", s - 1)
+                .map_err(|e| cannot_write(&mask_paths[k], &e))?;
         }
-        let text: String = runs[k]
-            .iter()
-            .map(|(s, e)| format!("{num}\t{}\t{e}\n", s - 1))
-            .collect();
-        put(
-            &Path::new(out_dir).join(format!("{chrom}.{}.mask.bed", ARCHAICS[k])),
-            text.as_bytes(),
-        )?;
+        mask.commit()
+            .map_err(|e| cannot_write(&mask_paths[k], &e))?;
     }
     Ok(Some((chrom.to_owned(), first, last, n, carried, dropped)))
 }
@@ -1155,7 +1203,7 @@ type Merged = (String, i64, i64, f64, Vec<&'static str>);
 
 /// Overlapping or touching segments of one class as one.
 fn merge(mut segs: Vec<(Seg, &'static str)>) -> Vec<Merged> {
-    segs.sort_by(|(a, _), (b, _)| (chrom_key(&a.0), a.1, a.2).cmp(&(chrom_key(&b.0), b.1, b.2)));
+    segs.sort_by_key(|(a, _)| (chrom_key(&a.0), a.1, a.2));
     let mut out: Vec<Merged> = Vec::new();
     for ((chrom, start, end, lod), who) in segs {
         match out.last_mut() {
@@ -1205,7 +1253,7 @@ fn classify(per: &[Vec<Seg>; 3]) -> Vec<Row> {
             rows.push((c, s, e, "Denisovan", vec!["Denisova"], l));
         }
     }
-    rows.sort_by(|a, b| (chrom_key(&a.0), a.1).cmp(&(chrom_key(&b.0), b.1)));
+    rows.sort_by_key(|a| (chrom_key(&a.0), a.1));
     rows
 }
 
@@ -1659,16 +1707,49 @@ mod tests {
 
     #[test]
     fn a_clash_ends_its_position() {
-        let recs = vec![
-            (4000, s("T", Some("C"), 1)),
-            (4000, s("T", Some("G"), 1)),
-            (4000, s("T", Some("C"), 1)),
-            (10, s("A", Some("G"), 2)),
-        ];
-        assert_eq!(
-            settle(recs),
-            vec![(10, s("A", Some("G"), 2)), (4000, s("T", None, 9))]
-        );
+        let mut calls = sample_calls(&[
+            (10, "A", "G", "1/1"),
+            (4000, "T", "C", "0/1"),
+            (4000, "T", "G", "0/1"),
+            (4000, "T", "C", "0/1"),
+        ]);
+        assert_eq!(calls.next().unwrap().unwrap().call, s("A", Some("G"), 2));
+        assert_eq!(calls.next().unwrap().unwrap().call, s("T", None, 9));
+        assert!(calls.next().unwrap().is_none());
+    }
+
+    fn sample_calls(rows: &[(i64, &str, &str, &str)]) -> Calls {
+        let mut text = String::new();
+        for (p, r, a, gt) in rows {
+            text += &format!("chr22\t{p}\t.\t{r}\t{a}\t.\tPASS\t.\tGT\t{gt}\n");
+        }
+        Calls {
+            vcf: Vcf::new(Text {
+                path: "sample.vcf".into(),
+                lines: Lines::new(Box::new(io::Cursor::new(text.into_bytes())), Utf8::Strict),
+                line: String::new(),
+            }),
+            pending: None,
+        }
+    }
+
+    #[test]
+    fn duplicate_window_keeps_only_one_record_of_lookahead() {
+        let mut rows = vec![(100, "A", "AT", "0/1"); 10_000];
+        rows.push((100, "A", "G", "1/1"));
+        rows.push((200, "C", "T", "0/1"));
+        rows.push((150, "G", "A", "0/1")); // must not be read in the first window
+        let mut calls = sample_calls(&rows);
+        let first = calls.next().unwrap().unwrap();
+        assert_eq!(first.pos, 100);
+        assert_eq!(first.call, s("A", Some("G"), 2));
+        assert_eq!(calls.pending.as_ref().unwrap().pos, 200);
+        let error = calls
+            .next()
+            .err()
+            .expect("the second window sees the unsorted tail");
+        assert_eq!(error.0, 2);
+        assert!(error.1.contains("not sorted"));
     }
 
     #[test]

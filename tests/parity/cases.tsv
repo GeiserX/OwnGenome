@@ -963,7 +963,7 @@ archaic-table	empty-exclude	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv
 archaic-strict	plain	gen:archaic-inputs.sh	--chrom chr22 --strict strict.bed --rows rows.tsv --out s.tsv	s.tsv	bytes	PYTHON_IMAGE
 archaic-strict	unsorted	gen:archaic-inputs.sh	--chrom chr22 --strict strict.bed --rows rows-unsorted.tsv --out s.tsv	-	bytes	PYTHON_IMAGE
 archaic-strict	empty-mask	gen:archaic-inputs.sh	--chrom 22 --strict empty.bed --rows rows.tsv --out s.tsv	-	bytes	PYTHON_IMAGE
-archaic-genotypes	plain	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop EUR --pseudo 3 --out-dir gt	gt/samples.txt,gt/spans.tsv,gt/chr21.gt.gz,gt/chr22.gt.gz,gt/chr22.Altai.mask.bed	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	plain	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop EUR --pseudo 3 --out-dir gt	gt/samples.txt,gt/spans.tsv,gt/chr21.gt.gz,gt/chr22.gt.gz,gt/chr21.Altai.mask.bed,gt/chr21.Vindija.mask.bed,gt/chr21.Denisova.mask.bed,gt/chr22.Altai.mask.bed,gt/chr22.Vindija.mask.bed,gt/chr22.Denisova.mask.bed	*.gz=gz-content bytes	PYTHON_IMAGE
 archaic-genotypes	default	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf.gz --out-dir gt	gt/spans.tsv,gt/chr22.gt.gz	*.gz=gz-content bytes	PYTHON_IMAGE
 archaic-genotypes	afr-one	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop AFR --pseudo 1 --out-dir gt	gt/spans.tsv,gt/chr22.gt.gz	*.gz=gz-content bytes	PYTHON_IMAGE
 archaic-genotypes	two-samples	gen:archaic-inputs.sh	--table-dir . --vcf two.vcf --out-dir gt	-	*.gz=gz-content bytes	PYTHON_IMAGE
