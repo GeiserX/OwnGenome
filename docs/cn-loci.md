@@ -89,7 +89,7 @@ A site is low when its estimate is more than 0.6 copies under the larger of the 
 
 ### The interval rows
 
-`scripts/ci/build-cn-intervals.py` writes these rows, everything in `bin/cn_loci.tsv` after its marker line; do not edit them by hand. Step 35 (and the PARASCOPY module) runs `og cn bed --kind interval`, one `samtools bedcov` over every segment of every row, then `og cn intervals`, which writes one line per row to `<sample>_cn_intervals.tsv`: locus, name, chrom, start, end, status, copies, expected, change (`deletion`, `duplication`, `no change`, or `.` when not called), estimate and reason. The step log lists the rows with a change. The rows give a total copy count only, never breakpoints.
+`scripts/ci/build-cn-intervals.sh` writes these rows with `og dev build cn-intervals`, everything in `bin/cn_loci.tsv` after its marker line; do not edit them by hand. Step 35 (and the PARASCOPY module) runs `og cn bed --kind interval`, one `samtools bedcov` over every segment of every row, then `og cn intervals`, which writes one line per row to `<sample>_cn_intervals.tsv`: locus, name, chrom, start, end, status, copies, expected, change (`deletion`, `duplication`, `no change`, or `.` when not called), estimate and reason. The step log lists the rows with a change. The rows give a total copy count only, never breakpoints.
 
 - **The ClinGen recurrent regions**: every region row of ClinGen Dosage Sensitivity's recurrent CNV BED, version 2.1, GRCh38 (CC0, pinned by `CLINGEN_RECURRENT_CNV_URL` and its sha256 in `versions.env`). The file's breakpoint and LCR rows are the segmental duplications that bound the regions. They are cut out of the targets, as are GIAB v3.6 segmental duplications, assembly gaps, satellites and the regions of every pinned Parascopy model (CHRNA7 in 15q13.3 stays with Parascopy). Targets are cut to pieces of at most 500 kb, and their depth is pooled. Controls are two 100 kb windows, one on each side of the cluster of ClinGen rows the region belongs to, clear of all of that and of the targets of the hand rows below (so no row's control sits on another row's target); a side with no clear window within 3 Mb (a chromosome end, as next to 22q11.2 and 15q11.2) is left out. The BED spells its chrX rows `chrx`; the script normalises them, and the engine refuses any contig name that is not a GRCh38 chromosome. The classification of a CNV found here follows the ACMG and ClinGen technical standards (Riggs 2020, PMID 31690835); a call from this step is a lead for a clinical test, not a classification.
 - **Two more ClinGen curations**: the 1p36 terminal region (ISCA-37434, haploinsufficiency score 3) and the Xq28 region that holds MECP2 (ISCA-46304, triplosensitivity score 3: the MECP2 duplication), from ClinGen's region curation list, read on 2026-11-04.
@@ -100,7 +100,7 @@ A row on chrX or chrY is read against the sample's own count there: its controls
 
 The couple screen (step 39) reads the table with `couple_report.py screen --cn-intervals ID=<id>_cn_intervals.tsv`: each carrier allele is present, absent or not assessable for each partner, and a male partner's AZF deletions are listed the same way (present means the deletion is there). With `--cnvpytor ID=<id>_cnvs.vcf.gz` (step 18), a CNVpytor call that disagrees with the depth call is printed beside it. Step 39 and the Nextflow couple screen pass both when the partner has them. Both reports show the table in step 35's section: the counts by status and each row with a deletion or a duplication.
 
-To change a row, change the script (its hand rows or a pinned download) and run `scripts/ci/build-cn-intervals.py`; `--check` fails when the catalog is not what the downloads give.
+To change a row, change its rule or hand row in `rust/crates/og-dev/src/build/cn_intervals.rs`, or a pinned download in `scripts/ci/build-cn-intervals.sh`, rebuild og (`scripts/setup.sh --og`) and run `scripts/ci/build-cn-intervals.sh`; `--check` fails when the catalog is not what the downloads give.
 
 ## One owner per locus
 
@@ -118,7 +118,7 @@ pypgx owns the genes it calls from the BAM, the `bam` rows of `assets/pgx_genes.
 
 1. Check that no pinned caller owns the gene: Parascopy (`assets/parascopy_models_v1.7.txt`), pypgx, Paraphase.
 2. Choose single-copy controls near the gene, outside any common deletion or duplication there and outside segmental duplications.
-3. Add the row to `bin/cn_loci.tsv`, above its marker line, and cite the method in `pmids`. An interval row (everything after the marker) is never added by hand: add it to `scripts/ci/build-cn-intervals.py` and rerun the script.
+3. Add the row to `bin/cn_loci.tsv`, above its marker line, and cite the method in `pmids`. An interval row (everything after the marker) is never added by hand: add it to the hand rows of `rust/crates/og-dev/src/build/cn_intervals.rs` and rerun `scripts/ci/build-cn-intervals.sh`.
 4. Run it from a step: `og cn bed --locus NAME`, `samtools bedcov` with the row's passes, then `og cn call --locus NAME --bedcov ... --table ...`.
 5. Add made-up bedcov tables for the row to `tests/test_copy_number.py`, at every count it can call and at each guard.
 

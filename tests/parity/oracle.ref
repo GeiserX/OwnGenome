@@ -64,3 +64,4 @@ lookup	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	python
 lookup-query	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	bash ./oracle.sh	lookup query
 family-ibd	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/ibd_report.py	sh ./ibd_oracle.sh	family ibd
 traits	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:bin/traits_report.py	bash ./oracle.sh	traits
+roh-summary	7c1470bc50933f48a1a0dde3c0e0b2b87bc48718	file:scripts/11-roh-analysis.sh	sh ./oracle.sh	roh summary
