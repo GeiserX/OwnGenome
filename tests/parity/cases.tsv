@@ -982,3 +982,31 @@ family-ibd	mapbp	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree mapbp/pedigree.ts
 family-ibd	nomap	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree nomap/pedigree.tsv --chroms nomap/chroms.txt --maps nomap/maps --phased nomap/phased --ibd nomap/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	short	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree short/pedigree.tsv --chroms short/chroms.txt --maps short/maps --phased short/phased --ibd short/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	twice	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree twice/pedigree.tsv --chroms twice/chroms.txt --maps twice/maps --phased twice/phased --ibd twice/ibd --out-dir out	-	content	PYTHON_IMAGE
+traits	empty	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes empty.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	reference	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes reference.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-00	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-00.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-01	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-01.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-02	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-02.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-10	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-10.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-11	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-11.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-12	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-12.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-20	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-20.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-21	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-21.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-22	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-22.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	other	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes other.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	missing	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes missing.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	duplicate	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes duplicate.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	half	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes half.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	wrong-ref	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes wrong-ref.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	-	tsv	PYTHON_IMAGE
+traits	triple	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	single	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes single.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	phase-empty	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --phased empty.vcf --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	phase-phased	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --phased phased.vcf --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	phase-split	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --phased split.vcf --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	sites-empty	gen:traits.sh	phase-sites --rules rules.tsv --genotypes empty.tsv --sample S --out phase.vcf	phase.vcf	vcf	PYTHON_IMAGE
+traits	sites-triple	gen:traits.sh	phase-sites --rules rules.tsv --genotypes triple.tsv --sample S --out phase.vcf	phase.vcf	vcf	PYTHON_IMAGE
+traits	sites-single	gen:traits.sh	phase-sites --rules rules.tsv --genotypes single.tsv --sample S --out phase.vcf	phase.vcf	vcf	PYTHON_IMAGE
+traits	check	gen:traits.sh	check --table traits.tsv --rules rules.tsv	-	bytes	PYTHON_IMAGE
+traits	bad-table	gen:traits.sh	check --table bad-table.tsv --rules rules.tsv	-	bytes	PYTHON_IMAGE
+traits	bad-rules	gen:traits.sh	check --table traits.tsv --rules bad-rules.tsv	-	bytes	PYTHON_IMAGE
+traits	shared-vocabulary	gen:traits.sh	table --table traits.tsv --rules shared-rules.tsv --genotypes shared.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE

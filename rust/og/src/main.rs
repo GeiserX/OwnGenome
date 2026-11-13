@@ -54,6 +54,9 @@ const USAGE: &str = "usage: og <tool> [args]
        og roh summary --sample SAMPLE --roh ROH [--out OUT]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
+       og traits table [args]
+       og traits phase-sites [args]
+       og traits check [args]
        og bloodtype report|check-markers|systems [args]
        og family plan|prepare|check|report|segments [args]
        og family ibd [args]
@@ -218,6 +221,7 @@ fn main() -> ExitCode {
             )),
             None => usage_error("the following arguments are required: chip tool"),
         },
+        "traits" => ExitCode::from(og_steps::traits::cli(rest)),
         "bloodtype" => match rest.first() {
             Some(verb) => ExitCode::from(og_bloodtype::cli(
                 verb,

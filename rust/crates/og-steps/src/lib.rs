@@ -26,3 +26,6 @@ pub mod pgx_rules;
 pub mod prs;
 pub mod pypgx_summary;
 pub mod sv;
+
+/// Step 42 traits and genotype rules.
+pub mod traits;
