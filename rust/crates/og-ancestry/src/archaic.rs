@@ -260,7 +260,6 @@ impl Stream {
     /// SNVs are skipped.
     fn next(&mut self) -> Out<Option<(i64, Rec)>> {
         loop {
-            let path = self.text.path.display().to_string();
             let Some(raw) = self.text.raw()? else {
                 return Ok(None);
             };
@@ -268,10 +267,10 @@ impl Stream {
             let c: Vec<&str> = line.split('\t').collect();
             if self.src == 0 {
                 if c.len() < 9 {
+                    let (n, head) = (c.len(), head80(raw));
                     return die(format!(
-                        "{path}: a line has {} columns, want 9: {}",
-                        c.len(),
-                        head80(raw)
+                        "{}: a line has {n} columns, want 9: {head}",
+                        self.text.path.display()
                     ));
                 }
                 if c[1].chars().count() != 1 || c[2].chars().count() != 1 {
@@ -288,10 +287,10 @@ impl Stream {
                 )));
             }
             if c.len() < 4 {
+                let (n, head) = (c.len(), head80(raw));
                 return die(format!(
-                    "{path}: a line has {} columns, want 4: {}",
-                    c.len(),
-                    head80(raw)
+                    "{}: a line has {n} columns, want 4: {head}",
+                    self.text.path.display()
                 ));
             }
             let pos = need_int(c[0])?;
@@ -732,7 +731,6 @@ struct Vcf {
 impl Vcf {
     fn next(&mut self) -> Out<Option<VcfRec>> {
         loop {
-            let path = self.text.path.display().to_string();
             let Some(raw) = self.text.raw()? else {
                 return Ok(None);
             };
@@ -743,10 +741,11 @@ impl Vcf {
             let c: Vec<&str> = line.split('\t').collect();
             if raw.starts_with('#') {
                 if c.len() != 10 {
+                    let n = c.len().saturating_sub(9);
                     return die(format!(
-                        "{path} holds {} samples; step 43 reads a one-sample VCF \
+                        "{} holds {n} samples; step 43 reads a one-sample VCF \
                          (keep one with bcftools view -s <sample>).",
-                        c.len().saturating_sub(9)
+                        self.text.path.display()
                     ));
                 }
                 continue;

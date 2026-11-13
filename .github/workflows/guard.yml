@@ -327,7 +327,7 @@ jobs:
         run: |
           fail=0
           for t in tests/test_annotsv_sv_inputs.py tests/test_pgx_refblock_fill.py tests/test_pgx_mito_merge.py tests/test_run_delta.py \
-                   tests/test_ancestry_fine_report.py \
+                   tests/test_ancestry_fine_report.py tests/test_archaic_report.py tests/test_ancient_report.py \
                    tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
                    tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py tests/test_setup_fine_maps.sh \
                    tests/test_render_report.py tests/test_collect_summary.py tests/test_chip_report.py \

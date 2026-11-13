@@ -1529,6 +1529,9 @@ mod tests {
         assert_eq!(year_label(1950.0), "1 BCE");
         assert_eq!(year_label(1949.0), "1 CE");
         assert_eq!(year_label(1750.5), "200 CE");
+        assert_eq!(year_label(8025.0), "6075 BCE");
+        assert_eq!(year_label(450.0), "1500 CE");
+        assert_eq!(range_label(3000.0, 3000.0), "1050 BCE");
         assert_eq!(range_label(7250.0, 6850.0), "5300-4900 BCE");
         assert_eq!(range_label(1750.0, 1500.0), "200-450 CE");
         assert_eq!(range_label(2250.0, 1750.0), "300 BCE-200 CE");
