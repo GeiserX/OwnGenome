@@ -391,11 +391,14 @@ jobs:
       - name: Scanner round-five controls (all five findings must fail before the fix)
         run: |
           source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
           cp "$source" "${RUNNER_TEMP}/round5-personal-fixed.rs"
-          trap 'cp "${RUNNER_TEMP}/round5-personal-fixed.rs" "$source"' EXIT
+          cp "$matcher" "${RUNNER_TEMP}/round5-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round5-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round5-matcher-fixed.rs" "$matcher"' EXIT
           before=f155efd343e82ebf8b53a563ee4b2c5b6f4dbf85
           git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
           git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
           log="${RUNNER_TEMP}/scanner-round5-red.log"
           rc=0
           cargo test -p og-dev --locked --no-fail-fast round5_ > "$log" 2>&1 || rc=$?
@@ -405,6 +408,28 @@ jobs:
             grep -E "round5_${test} .*FAILED" "$log" || { echo "ERROR: missing round-five red control"; exit 1; }
           done
           echo "Control: all five round-five regressions failed before the fix."
+
+      - name: Scanner round-six controls (astral cases, range interiors and symlink names fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round6-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round6-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round6-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round6-matcher-fixed.rs" "$matcher"' EXIT
+          before=152bf7860e95951dc585259dcf9f4c66869e36db
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round6-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round6_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in astral_composite_cases guarded_range_interiors symlink_unicode_names; do
+            grep -E "round6_${test} .*FAILED" "$log" || { echo "ERROR: missing round-six red control"; exit 1; }
+          done
+          grep -E 'round6_stable_ranges_and_uncased_astral .*ok' "$log"
+          echo "Control: all three regressions failed; stable ranges and uncased astral text passed."
 
       - name: Regex relation verifier rejects a missing table
         run: |

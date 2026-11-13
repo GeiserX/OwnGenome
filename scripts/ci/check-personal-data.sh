@@ -68,15 +68,24 @@
 # text, filenames, custom patterns (including escaped literals), or ALLOW/SKIP rows.
 # ALLOW cannot exempt such text. Use an ASCII SKIP glob to exempt its file.
 # A letter from a script newer than Unicode 13 therefore stops the scan
-# until its file is skipped. Newer plain symbols and emoji still scan.
+# until its file is skipped. Every astral scalar with a case mapping or used
+# as a mapping target in UCD 13/15/16/17 is also refused, regardless of the
+# pattern shape. Text in Deseret, Osage, Old Hungarian, Warang Citi,
+# Medefaidrin, Adlam and any other astral cased script stops the scan until
+# its file is SKIPped. Newer plain symbols, emoji and uncased CJK still scan.
+# A custom class range containing a guarded scalar is refused, even when
+# its endpoints are stable. ASCII and stable Latin-1 ranges remain supported.
 #
 # The generated conservative set includes every scalar unassigned in UCD
 # 17; post-13 letters, marks, numbers, connectors, spaces and case mappings;
 # and older scalars whose word/digit/space membership or case maps change
 # in UCD 13/15/16/17. Full case folds avoid rejecting six stable old scalars.
-# Another generated table guards both ends of regex case relations that differ
-# across supported Python engines. It comes from real re.fullmatch calls,
-# including literal, positive-class and negative-class patterns both ways.
+# Another generated table guards both ends of BMP regex case relations that
+# differ across supported Python engines. Real re.fullmatch calls check both
+# directions with literals, singleton and composite positive/negative classes,
+# ASCII/category mixtures, range endpoints/interiors, optimized alternatives
+# and grouped forms. Astral mappings come from UnicodeData, SpecialCasing
+# and CaseFolding, all SHA-256-pinned, with no interpreter test needed.
 # The 248 newer scalars with stable effective behavior remain conservatively
 # blocked. The six stable scalars assigned by Unicode 13 pass.
 # This adds one binary-search lookup per non-ASCII character (ASCII is

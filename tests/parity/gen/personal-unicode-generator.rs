@@ -6,6 +6,7 @@ use std::{env, fs, path::Path};
 #[derive(Clone, Default, PartialEq, Eq)]
 struct Properties {
     category: String,
+    astral_case: bool,
     space: bool,
     case: [String; 4], // simple upper/lower/title mappings and full case fold
 }
@@ -50,12 +51,35 @@ fn read(dir: &Path, version: &str) -> Vec<Properties> {
             assert!(!p.assigned());
             *p = Properties {
                 category: f[2].into(),
+                astral_case: false,
                 space: f[2] == "Zs" || matches!(f[4], "WS" | "B" | "S"),
                 case: [f[12].into(), f[13].into(), f[14].into(), String::new()],
             };
         }
     }
     assert!(start.is_none());
+    // The astral rule uses every mapping, including full mappings and their
+    // targets. It does not depend on any interpreter or regex pattern shape.
+    for line in data.lines() {
+        let f: Vec<_> = line.split(';').collect();
+        let c = usize::from_str_radix(f[0], 16).unwrap();
+        for mapping in &f[12..15] {
+            mark_astral_case(&mut table, c, mapping);
+        }
+    }
+    let special = fs::read_to_string(dir.join(version).join("SpecialCasing.txt")).unwrap();
+    assert!(special.contains(&format!("SpecialCasing-{version}.txt")));
+    for line in special.lines() {
+        let line = line.split('#').next().unwrap().trim();
+        if line.is_empty() {
+            continue;
+        }
+        let f: Vec<_> = line.split(';').map(str::trim).collect();
+        let c = usize::from_str_radix(f[0], 16).unwrap();
+        for mapping in &f[1..4] {
+            mark_astral_case(&mut table, c, mapping);
+        }
+    }
     let folding = fs::read_to_string(dir.join(version).join("CaseFolding.txt")).unwrap();
     assert!(folding.contains(&format!("CaseFolding-{version}.txt")));
     for line in folding.lines() {
@@ -64,6 +88,8 @@ fn read(dir: &Path, version: &str) -> Vec<Properties> {
             continue;
         }
         let f: Vec<_> = line.split(';').map(str::trim).collect();
+        let source = usize::from_str_radix(f[0], 16).unwrap();
+        mark_astral_case(&mut table, source, f[2]);
         if matches!(f[1], "C" | "F") {
             let c = usize::from_str_radix(f[0], 16).unwrap();
             assert!(table[c].assigned());
@@ -71,6 +97,19 @@ fn read(dir: &Path, version: &str) -> Vec<Properties> {
         }
     }
     table
+}
+fn mark_astral_case(table: &mut [Properties], source: usize, mapping: &str) {
+    for target in mapping.split_whitespace() {
+        let target = usize::from_str_radix(target, 16).unwrap();
+        if target != source {
+            if source > 0xffff {
+                table[source].astral_case = true;
+            }
+            if target > 0xffff {
+                table[target].astral_case = true;
+            }
+        }
+    }
 }
 fn main() {
     let args: Vec<_> = env::args().collect();
@@ -86,7 +125,8 @@ fn main() {
             continue;
         }
         let old = &tables[0][c];
-        *bad = !tables[3][c].assigned()
+        *bad = tables.iter().any(|t| t[c].astral_case)
+            || !tables[3][c].assigned()
             || (!old.assigned() && tables.iter().any(|t| t[c].sensitive()))
             || (old.assigned() && tables.iter().any(|t| t[c].signature() != old.signature()));
     }

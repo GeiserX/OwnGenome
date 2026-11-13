@@ -487,7 +487,9 @@ impl PythonPattern {
             if i + 2 < atoms.len() && atoms[i + 1].1 {
                 // Categories are not case folded in Python, even inside
                 // classes. Only literal range endpoints can form a range.
-                if class_literal(atom).is_none() || class_literal(&atoms[i + 2].0).is_none() {
+                let start = class_literal(atom).ok_or(())?;
+                let end = class_literal(&atoms[i + 2].0).ok_or(())?;
+                if start > end || crate::personal_data::range_version_dependent(start, end) {
                     return Err(());
                 }
                 let range = format!("[{atom}-{}]", atoms[i + 2].0);

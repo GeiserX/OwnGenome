@@ -404,11 +404,9 @@ const VERSION_DEPENDENT: &[(u32, u32)] = &[
     (0x1037b, 0x1037f),
     (0x1039e, 0x1039e),
     (0x103c4, 0x103c7),
-    (0x103d6, 0x103ff),
+    (0x103d6, 0x1044f),
     (0x1049e, 0x1049f),
-    (0x104aa, 0x104af),
-    (0x104d4, 0x104d7),
-    (0x104fc, 0x104ff),
+    (0x104aa, 0x104ff),
     (0x10528, 0x1052f),
     (0x10564, 0x1056e),
     (0x10570, 0x105ff),
@@ -447,9 +445,7 @@ const VERSION_DEPENDENT: &[(u32, u32)] = &[
     (0x10b92, 0x10b98),
     (0x10b9d, 0x10ba8),
     (0x10bb0, 0x10bff),
-    (0x10c49, 0x10c7f),
-    (0x10cb3, 0x10cbf),
-    (0x10cf3, 0x10cf9),
+    (0x10c49, 0x10cf9),
     (0x10d28, 0x10d2f),
     (0x10d3a, 0x10d6d),
     (0x10d6f, 0x10d8d),
@@ -515,7 +511,7 @@ const VERSION_DEPENDENT: &[(u32, u32)] = &[
     (0x1171b, 0x1171c),
     (0x1172c, 0x1172f),
     (0x11740, 0x117ff),
-    (0x1183c, 0x1189f),
+    (0x1183c, 0x118df),
     (0x118f3, 0x118fe),
     (0x11907, 0x11908),
     (0x1190a, 0x1190b),
@@ -576,7 +572,7 @@ const VERSION_DEPENDENT: &[(u32, u32)] = &[
     (0x16b62, 0x16b62),
     (0x16b78, 0x16b7c),
     (0x16b90, 0x16d6c),
-    (0x16d70, 0x16e3f),
+    (0x16d70, 0x16e7f),
     (0x16e9b, 0x16eff),
     (0x16f4b, 0x16f4e),
     (0x16f88, 0x16f8e),
@@ -644,7 +640,7 @@ const VERSION_DEPENDENT: &[(u32, u32)] = &[
     (0x1e300, 0x1e5fe),
     (0x1e600, 0x1e7ff),
     (0x1e8c5, 0x1e8c6),
-    (0x1e8d7, 0x1e8ff),
+    (0x1e8d7, 0x1e943),
     (0x1e94c, 0x1e94f),
     (0x1e95a, 0x1e95d),
     (0x1e960, 0x1ec70),
@@ -778,88 +774,6 @@ const REGEX_CASE_RELATIONS: &[(u32, u32)] = &[
     (42966, 42967),
     (42968, 42969),
     (42970, 42971),
-    (66928, 66967),
-    (66929, 66968),
-    (66930, 66969),
-    (66931, 66970),
-    (66932, 66971),
-    (66933, 66972),
-    (66934, 66973),
-    (66935, 66974),
-    (66936, 66975),
-    (66937, 66976),
-    (66938, 66977),
-    (66940, 66979),
-    (66941, 66980),
-    (66942, 66981),
-    (66943, 66982),
-    (66944, 66983),
-    (66945, 66984),
-    (66946, 66985),
-    (66947, 66986),
-    (66948, 66987),
-    (66949, 66988),
-    (66950, 66989),
-    (66951, 66990),
-    (66952, 66991),
-    (66953, 66992),
-    (66954, 66993),
-    (66956, 66995),
-    (66957, 66996),
-    (66958, 66997),
-    (66959, 66998),
-    (66960, 66999),
-    (66961, 67000),
-    (66962, 67001),
-    (66964, 67003),
-    (66965, 67004),
-    (68944, 68976),
-    (68945, 68977),
-    (68946, 68978),
-    (68947, 68979),
-    (68948, 68980),
-    (68949, 68981),
-    (68950, 68982),
-    (68951, 68983),
-    (68952, 68984),
-    (68953, 68985),
-    (68954, 68986),
-    (68955, 68987),
-    (68956, 68988),
-    (68957, 68989),
-    (68958, 68990),
-    (68959, 68991),
-    (68960, 68992),
-    (68961, 68993),
-    (68962, 68994),
-    (68963, 68995),
-    (68964, 68996),
-    (68965, 68997),
-    (93856, 93883),
-    (93857, 93884),
-    (93858, 93885),
-    (93859, 93886),
-    (93860, 93887),
-    (93861, 93888),
-    (93862, 93889),
-    (93863, 93890),
-    (93864, 93891),
-    (93865, 93892),
-    (93866, 93893),
-    (93867, 93894),
-    (93868, 93895),
-    (93869, 93896),
-    (93870, 93897),
-    (93871, 93898),
-    (93872, 93899),
-    (93873, 93900),
-    (93874, 93901),
-    (93875, 93902),
-    (93876, 93903),
-    (93877, 93904),
-    (93878, 93905),
-    (93879, 93906),
-    (93880, 93907),
 ];
 // END GENERATED REGEX CASE RELATIONS
 
@@ -885,6 +799,19 @@ pub(super) fn version_dependent(c: char) -> bool {
         .get(at)
         .is_some_and(|&(start, _)| start <= c)
         || REGEX_CASE_ENDPOINTS.binary_search(&c).is_ok()
+}
+
+/// Check the closed range without walking its code points. Endpoints alone
+/// cannot validate a custom class: its interior can name a guarded scalar.
+pub(super) fn range_version_dependent(start: char, end: char) -> bool {
+    let (start, end) = (u32::from(start), u32::from(end));
+    let at = VERSION_DEPENDENT.partition_point(|&(_, last)| last < start);
+    VERSION_DEPENDENT
+        .get(at)
+        .is_some_and(|&(first, _)| first <= end)
+        || REGEX_CASE_ENDPOINTS
+            .get(REGEX_CASE_ENDPOINTS.partition_point(|&c| c < start))
+            .is_some_and(|&c| c <= end)
 }
 
 fn validate_unicode(text: &str, file: &str, mode: Lines) -> Result<(), String> {
@@ -1149,9 +1076,7 @@ fn own_rules(path: &str) -> Result<Vec<Check>, String> {
 /// `path` relative to `root` when it lies below it (both with symbolic
 /// links resolved), else `path` as given.
 fn relative(path: &Path, root: &Path) -> Result<String, String> {
-    if utf8_path(path)?.chars().any(version_dependent) {
-        return Err("selected filename has Unicode version-dependent text".into());
-    }
+    validate_filename(path)?;
     let abs = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -1165,13 +1090,18 @@ fn relative(path: &Path, root: &Path) -> Result<String, String> {
             .map_or_else(|_| abs.clone(), |d| d.join(name)),
         _ => abs.clone(),
     };
-    if utf8_path(&placed)?.chars().any(version_dependent) {
-        return Err("selected filename has Unicode version-dependent text".into());
-    }
+    validate_filename(&placed)?;
     match placed.strip_prefix(root) {
         Ok(rel) if !rel.as_os_str().is_empty() => utf8_path(rel).map(str::to_owned),
         _ => utf8_path(path).map(str::to_owned),
     }
+}
+
+fn validate_filename(path: &Path) -> Result<(), String> {
+    if utf8_path(path)?.chars().any(version_dependent) {
+        return Err("selected filename has Unicode version-dependent text".into());
+    }
+    Ok(())
 }
 
 fn utf8_path(path: &Path) -> Result<&str, String> {
@@ -1325,7 +1255,7 @@ fn validate_symlink_chain(path: &Path) -> Result<(), String> {
         prefix.push(component);
         match std::fs::read_link(&prefix) {
             Ok(target) => {
-                utf8_path(&target)?;
+                validate_filename(&target)?;
                 hops += 1;
                 if hops > 40 {
                     return Err("cannot validate symlink target".into());
@@ -2786,6 +2716,27 @@ mod tests {
                 Rule::compile(pattern, false).is_err(),
                 "guarded range accepted"
             );
+            let f = Fixture::new("r6-range");
+            r5_git(&f, &["init", "-q"], b"");
+            std::fs::write(f.0.join("own.md"), "clean").unwrap();
+            std::fs::write(f.0.join("patterns"), pattern).unwrap();
+            r5_git(&f, &["add", "own.md"], b"");
+            for cached in [false, true] {
+                for explicit in [false, true] {
+                    let mut args = f.args(if explicit { &["own.md"] } else { &[] });
+                    args.extend([
+                        "--patterns".into(),
+                        f.0.join("patterns").display().to_string(),
+                    ]);
+                    if cached {
+                        args.push("--cached".into());
+                    }
+                    let (mut out, mut err) = (Vec::new(), Vec::new());
+                    assert_eq!(cli(&args, &mut out, &mut err), 2);
+                    assert!(out.is_empty());
+                    assert!(!String::from_utf8_lossy(&err).contains(pattern));
+                }
+            }
         }
     }
 
@@ -2935,7 +2886,7 @@ except ImportError:
     import sre_compile
     _EXTRA_CASES=sre_compile._ignorecase_fixes
 buckets={}
-for c in range(0x110000):
+for c in range(0x10000):
     if 0xd800 <= c <= 0xdfff: continue
     lower=_sre.unicode_tolower(c)
     if lower != c or _sre.unicode_iscased(c): buckets.setdefault(lower,set()).add(c)
@@ -2953,7 +2904,9 @@ for group in buckets.values():
             assert!(output.stderr.is_empty());
             for row in String::from_utf8(output.stdout).unwrap().lines() {
                 let (a, b) = row.split_once(' ').unwrap();
-                pairs.insert((a.parse::<u32>().unwrap(), b.parse::<u32>().unwrap()));
+                let pair = (a.parse::<u32>().unwrap(), b.parse::<u32>().unwrap());
+                assert!(pair.0 <= 0xffff && pair.1 <= 0xffff);
+                pairs.insert(pair);
             }
             interpreters.push(command);
         }
@@ -2962,15 +2915,41 @@ for group in buckets.values():
         let mut baseline = None;
         let mut differing = std::collections::BTreeSet::new();
         for command in interpreters {
-            let mut child = Command::new(command).args(["-I", "-c", r#"
+            let mut child = Command::new(command)
+                .args([
+                    "-I",
+                    "-c",
+                    r#"
 import re,sys
 for row in sys.stdin:
     a,b=map(int,row.split()); a,b=chr(a),chr(b)
-    # Both directions, literals, and positive/negative classes. This also
-    # catches compiler asymmetries instead of assuming an equivalence class.
+    # Exercise compiler optimizations in both directions. Category unions,
+    # negation, ranges and grouping can select different engine instructions.
+    def shapes(s):
+        e=re.escape(s)
+        patterns=[e, '(?:'+e+')', '('+e+')', '['+e+']', '[^'+e+']',
+            '['+e+'Z]', '[^'+e+'Z]',
+            e+'|Z', 'Z|'+e, '(?:'+e+'|Z)', '('+e+'|Z)',
+            '(?:'+e+')|(?:Z)', '(?:(?:'+e+')|(?:Z))']
+        for category in (r'\d',r'\D',r'\w',r'\W',r'\s',r'\S'):
+            for extra in (category,'Z'+category):
+                patterns.extend(('['+e+extra+']','[^'+e+extra+']'))
+        c=ord(s)
+        for lo,hi in ((c,c+1),(c-1,c),(c-1,c+1)):
+            if 0 <= lo <= hi <= 0xffff and not (lo <= 0xdfff and hi >= 0xd800):
+                span=re.escape(chr(lo))+'-'+re.escape(chr(hi))
+                for extra in ('','Z',r'\d',r'\D',r'\w',r'\W',r'\s',r'\S'):
+                    patterns.extend(('['+span+extra+']','[^'+span+extra+']'))
+        return patterns
     print(''.join(str(int(re.fullmatch(p,t,re.IGNORECASE) is not None))
-        for s,t in ((a,b),(b,a)) for p in (re.escape(s),'['+re.escape(s)+']','[^'+re.escape(s)+']')))
-"#]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        for s,t in ((a,b),(b,a)) for p in shapes(s)))
+"#,
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
             let mut stdin = child.stdin.take().unwrap();
             let bytes = input.clone();
             let writer = std::thread::spawn(move || stdin.write_all(bytes.as_bytes()));
