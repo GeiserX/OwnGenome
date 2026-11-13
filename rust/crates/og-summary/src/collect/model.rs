@@ -196,7 +196,7 @@ impl Section {
 /// A file written before the run started is from an earlier run. A file
 /// written in the very second the run started is the run's own.
 pub fn is_stale(mtime: f64, started_epoch: f64) -> bool {
-    mtime <= started_epoch
+    mtime < started_epoch
 }
 
 /// `logs/run_status.tsv`, which run-all.sh writes.
