@@ -1435,8 +1435,43 @@ mod tests {
         );
     }
 
+
     #[test]
-    fn csv_header_unicode_rules_and_atomic_write_errors() {
+    fn catalog_quotes_are_literal_and_embedded_tabs_are_columns() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+        let text = std::fs::read_to_string(root.join("traits.tsv")).unwrap();
+        let rules = std::fs::read_to_string(root.join("genotype_rules.tsv")).unwrap();
+        let scratch = Scratch::new();
+        let path = scratch.put("quoted-field", &text.replacen("\tMCM6\t", "\t\"MCM6\"\t", 1));
+        assert!(check_rows(&read_table(&path).unwrap()).iter().any(|e| e.contains("quote")));
+        let path = scratch.put("quoted-rule", &rules.replacen("\tAPOE\t", "\t\"APOE\"\t", 1));
+        assert!(!check_rules(&read_rules(&path).unwrap(), None).is_empty());
+        let path = scratch.put("embedded-tab", &text.replacen("\tMCM6\t", "\t\"MCM6\textra\"\t", 1));
+        assert!(read_table(&path).unwrap_err().contains("14 columns, expected 13"));
+    }
+
+    #[test]
+    fn directory_destinations_keep_both_previous_tables() {
+        let scratch = Scratch::new();
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+        let gt = scratch.put("g", "");
+        for directory_key in ["out", "rules-out"] {
+            let previous = scratch.put("previous.tsv", "previous complete table\n");
+            let mut opts: HashMap<String, String> = [
+                ("table", root.join("traits.tsv").to_string_lossy().into_owned()),
+                ("rules", root.join("genotype_rules.tsv").to_string_lossy().into_owned()),
+                ("genotypes", gt.clone()), ("sample", "S".into()),
+                ("out", previous.clone()), ("rules-out", previous.clone()),
+            ].into_iter().map(|(k,v)| (k.into(),v)).collect();
+            opts.insert(directory_key.into(), scratch.0.to_string_lossy().into_owned());
+            assert!(run("table", &opts).unwrap_err().contains("cannot write"));
+            assert_eq!(std::fs::read_to_string(&previous).unwrap(), "previous complete table\n", "{directory_key}");
+            assert_eq!(std::fs::read_dir(&scratch.0).unwrap().count(), 2);
+        }
+    }
+
+    #[test]
+    fn plain_header_unicode_rules_and_atomic_write_errors() {
         let scratch = Scratch::new();
         let mut text = COLUMNS
             .iter()
@@ -1445,7 +1480,7 @@ mod tests {
             .join("\t");
         text.push_str("\r\n");
         let path = scratch.put("quoted", &text);
-        assert!(read_table(&path).unwrap().is_empty());
+        assert!(read_table(&path).unwrap_err().contains("unexpected traits header"));
         let path = scratch.put("r", "rule\té\tG\tT\tno\tyes\tN\t1\n");
         assert!(!check_rules(&read_rules(&path).unwrap(), None).is_empty());
         assert!(stage_tsv(scratch.0.join("absent/x").to_str().unwrap(), OUT, &[]).is_err());
