@@ -42,3 +42,9 @@ A `known.tsv` row whose difference is gone fails. A golden that the oracle also 
 3. Run `scripts/ci/oracle-diff.sh`. Turn each difference into a fix, a golden or a `known.tsv` row.
 4. Switch the callers to `og`, delete the Python, and add the tool to `OG_SHADOW` in `.github/workflows/e2e.yml`.
 5. Link a red run in the pull request: the cases with one planted change in the port must fail.
+
+The `dev-pharmcat*`, `dev-nf-*` and `dev-smoke-*` cases extract archived heredocs from their pre-port shell/workflow files. The wrapper keeps the original Python as the oracle. The mini-reference golden records the deliberate change to a fixed Rust random seed. Truncated PharmCAT JSON has goldens for exit 2 and the unreadable-report diagnostic. The standalone [CI reader tests](../../rust/crates/og-dev/tests/ci_readers.rs) pair clean inputs with changed requests, exits, CSV fields and smoke properties that must fail.
+The `traits` cases cover all APOE genotype pairs, missing and other alleles,
+duplicate records, TAS2R38 phase blocks, phase-site VCFs and catalog refusals.
+The oracle adapter maps the three Rust verbs to the old flags. The Python
+report keeps only the metadata and table reader listed in `remnants.tsv`.

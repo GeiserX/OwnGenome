@@ -64,7 +64,7 @@ OUT=$(cat "${WORK}/${HASH:-none}"*/.command.out 2>/dev/null)
 echo "PHARMCAT_PREPROCESS (${HASH:-no task}): $(head -n 1 <<< "$OUT")"
 check "PharmCAT's input is the gVCF, its reference blocks expanded" has "^Input: ${P}\.g\.vcf\.gz \(reference blocks expanded" "$OUT"
 JSON="${NF_OUT}/${P}/pharmcat/${P}.report.json"
-check_ge "PHARMCAT genes called" "$( [ -s "$JSON" ] && pharmcat_called "$JSON" | grep -c . || echo 0)" 1
+check_pharmcat_called "PHARMCAT genes called" "$JSON"
 check_eq "PRS input (hom-ref sites from the gVCF)" \
   "$(awk -F'\t' 'NR == 2 {print $NF}' "${NF_OUT}/${P}/prs/${P}_prs_summary.tsv" 2>/dev/null)" gvcf
 

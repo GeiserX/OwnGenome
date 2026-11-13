@@ -40,16 +40,18 @@ mkdir -p "$D"
 for s in G2HET G2REF; do
   mkdir -p "${D}/${s}/vcf" "${D}/${s}/traits"
   python3 - "$REPO" "${D}/${s}" "$s" <<'PY'
-import os, sys
+import os, subprocess, sys
 repo, d, s = sys.argv[1:]
 sys.path.insert(0, os.path.join(repo, "bin"))
-import traits_report as tr
-rules = tr.read_rules(os.path.join(repo, "assets", "genotype_rules.tsv"))
 g = os.path.join(d, "g.tsv")
 with open(g, "w") as f:   # G0/G1 at the two G1 sites
     f.write("chr22\t36265860\tA\tG\tA/G\t40\nchr22\t36265988\tT\tG\tT/G\t40\n")
-tr.write_tsv(os.path.join(d, "traits", f"{s}_genotype_rules.tsv"), tr.rule_lines(rules, tr.read_genotypes(g)),
-             tr.RULE_OUT_COLUMNS)
+subprocess.run([os.environ.get("OG", os.path.join(repo, "bin", "og")), "traits", "table",
+                "--table", os.path.join(repo, "assets", "traits.tsv"),
+                "--rules", os.path.join(repo, "assets", "genotype_rules.tsv"),
+                "--genotypes", g, "--sample", s,
+                "--out", os.path.join(d, "traits", f"{s}_traits.tsv"),
+                "--rules-out", os.path.join(d, "traits", f"{s}_genotype_rules.tsv")], check=True)
 os.remove(g)
 body = ["chr22\t36200000\t.\tA\t<*>\t0\t.\tEND=36265994\tGT:GQ\t0/0:50"]
 if s == "G2HET":
@@ -72,7 +74,7 @@ done
 
 read_result() {
   python3 - "$REPO" "${D}/$1" "$1" <<'PY'
-import os, sys
+import os, subprocess, sys
 repo, d, s = sys.argv[1:]
 sys.path.insert(0, os.path.join(repo, "bin"))
 import collect_summary as cs

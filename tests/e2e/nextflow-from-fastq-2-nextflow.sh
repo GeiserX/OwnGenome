@@ -151,7 +151,7 @@ check_ge "heterozygous calls on the PAR1 slice (diploid there)" "$(vcf_count -g 
 GENE=$(planted gene)
 check_ge "CLINVAR_SCREEN names the planted hit's gene (${GENE})" "$(sample_side_hits "${G}/${R}/clinvar" "$GENE")" 1
 JSON="${G}/${R}/pharmcat/${P}.report.json"
-check_ge "PHARMCAT genes called" "$( [ -s "$JSON" ] && pharmcat_called "$JSON" | grep -c . || echo 0)" 1
+check_pharmcat_called "PHARMCAT genes called" "$JSON"
 check_eq "PRS scores in the summary (one per id of assets/pgs_scores.tsv)" "$(awk 'NR > 1' "${G}/${R}/prs/${P}_prs_summary.tsv" 2>/dev/null | wc -l | tr -d ' ')" \
   "$(awk -F'\t' '$1 ~ /^PGS[0-9]+$/' "${REPO}/assets/pgs_scores.tsv" | wc -l | tr -d ' ')"
 check_eq "PRS input (hom-ref sites from the gVCF)" "$(awk -F'\t' 'NR == 2 {print $NF}' "${G}/${R}/prs/${P}_prs_summary.tsv" 2>/dev/null)" gvcf

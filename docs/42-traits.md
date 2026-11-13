@@ -12,7 +12,7 @@ These are the results most people find easiest to read, and the pipeline had no 
 
 - **bcftools** (`bcftools convert --gvcf2vcf`, `view`, `query`) reads the genotypes at the table's positions from the gVCF.
 - **WhatsHap** (`whatshap phase`) phases the heterozygous sites of a rule that needs phase from the BAM's reads.
-- **`bin/traits_report.py`** (Python standard library) reads each genotype against the table, and each rule against the rule table.
+- **`og traits table`** (Rust) reads each genotype against the table, and each rule against the rule table.
 
 ## Docker Image
 
@@ -122,12 +122,12 @@ Kim et al. (2003) found five TAS2R38 haplotypes worldwide. The rule reads the tw
 
 ### Checks on the rule table
 
-- `bin/traits_report.py --check-table assets/traits.tsv --rules assets/genotype_rules.tsv` (also run by every step-42 run and by `tests/test_traits_report.py`): every haplotype allele is its site's ref or alt, the combination lines are exactly the pairs the genotypes can give (none missing, none that can never be read), and a site that is also a traits table row has the row's position and bases.
+- `bin/og traits check --table assets/traits.tsv --rules assets/genotype_rules.tsv` (also run by every step-42 run and by `tests/test_traits_report.py`): every haplotype allele is its site's ref or alt, the combination lines are exactly the pairs the genotypes can give (none missing, none that can never be read), and a site that is also a traits table row has the row's position and bases.
 - `scripts/ci/check-rule-alleles.sh` checks every site against dbSNP: the rsID at that GRCh38 position, ref as dbSNP's REF and alt among its ALT alleles. A pair written the wrong way round, or as the minus-strand bases (TAS2R38 lies on the minus strand, where the papers name the codon bases), fails with the reason. The dbSNP records it compares with sit in the script, taken from dbSNP's GRCh38 VCF of the build `CONSUMER_DBSNP_BUILD` pins in `versions.env` (b157); `--online` reads them again over HTTPS and fails when they differ, and the e2e case `genotype-rules-1-phase` runs it. A C/G or A/T site is its own complement, so there a strand mistake keeps valid alleles: the check prints a note for each such site (rs713598 is one), and its haplotype alleles rest on the codon: Pro49 has C at the first base of codon 49 on the coding strand (NM_176817.5 c.145C, where Ala49 has G), so the PAV base on GRCh38 is its complement, G. The other such sites: rs17580 (SERPINA1 S, minus strand: Glu264 GAA, Val264 GTA, so the S base on GRCh38 is the complement of T, A), rs1799945 (HFE H63D, plus strand: His63 CAT, Asp63 GAT, so D is G) and rs1333049 (no gene; the risk allele C is the plus-strand base of the WTCCC 2007 record).
 
 ### Adding a rule
 
-Write the rule, site, haplotype and combination lines from the primary papers. Take each site's position and bases from dbSNP's GRCh38 record (plus strand), and turn each haplotype's codon bases into plus-strand bases for a gene on the minus strand. A new site needs its dbSNP record in `scripts/ci/check-rule-alleles.sh`: run it with `--print-table` and add each printed line at the end of the script after `#: `. Then run `python3 tests/test_traits_report.py`.
+Write the rule, site, haplotype and combination lines from the primary papers. Take each site's position and bases from dbSNP's GRCh38 record (plus strand), and turn each haplotype's codon bases into plus-strand bases for a gene on the minus strand. A new site needs its dbSNP record in `scripts/ci/check-rule-alleles.sh`: run it with `--print-table` and add each printed line at the end of the script after `#: `. Then run `OG=bin/og python3 tests/test_traits_report.py`.
 
 ## APOE
 
