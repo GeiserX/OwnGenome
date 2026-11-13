@@ -5,8 +5,11 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 ## Unreleased
 
 - The container helpers check (`scripts/ci/check-container-helpers.sh`, Guard job `helper-binaries`) now derives its table with the Rust `og` binary, `og dev helpers`. It replaces the Python inside the script, which is gone; the script keeps the docker probe, the orad download and its self-test. On this tree the table and the rule 1 output are the same, byte for byte. The static run takes 0.01 s and 6 MB where the Python took 0.2 s and 15 MB. What changes:
-  - A helper called in a process's `shell:` or `exec:` block is checked too. The Python read only `script:` blocks, so such a call went unchecked. No module has one today.
-  - A here-document ends only on a line that is exactly its delimiter, as in bash. The Python also ended it on a line with blanks around the delimiter.
+  - A helper called in a process's `shell:` block is checked too. The Python read only `script:` blocks, so such a call went unchecked. No module has one today.
+  - A helper called in a process's `exec:` block always fails the check: Nextflow runs that block on the host, where no image applies.
+  - A here-document ends only on a line that is exactly its delimiter, as bash reads it. For a module, that is the script after Nextflow strips its common indent, so an indented `END_VERSIONS` after `<<-` ends the body. The Python also ended it on a line with blanks around the delimiter.
+  - An image word composed of a variable and more text, such as `${IMG}-slim`, is an unresolved image and fails the check. The Python named it by its first variable.
+  - `--entrypoint=NAME` is read like `--entrypoint NAME`.
   - `versions.env` is read, not run in bash, and a line that is not `NAME="value"` stops the check with exit 2.
   - Two `*_IMAGE` variables with the same value are both named, joined by `|`. The Python named only the alphabetically last one. No two share a value today.
   - `scripts/ci/image-smoke.sh` probes a changed image's helpers only when `bin/og` is built, and says so when it is not. Guard's `helper-binaries` job still probes the helpers of every image on each pull request.

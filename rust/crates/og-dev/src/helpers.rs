@@ -442,6 +442,24 @@ fn resolve(word: &str, script: &str, v: &Versions) -> (String, Option<String>) {
     (name.to_owned(), None)
 }
 
+/// The text with its common leading indent removed, as Groovy's
+/// `stripIndent` does for a Nextflow script: the smallest run of leading
+/// blanks over the lines that are not blank is cut from every line.
+fn strip_indent(s: &str) -> String {
+    let lead = |l: &str| l.len() - l.trim_start_matches([' ', '\t']).len();
+    let n = s
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(lead)
+        .min()
+        .unwrap_or(0);
+    let mut out = String::with_capacity(s.len());
+    for l in s.split_inclusive('\n') {
+        out.push_str(&l[lead(l).min(n)..]);
+    }
+    out
+}
+
 /// A Groovy string's text as the shell sees it: escapes resolved, and with
 /// `interpolate` every `${…}` or `$name` made the word `GROOVY`.
 fn groovy_to_shell(s: &str, interpolate: bool) -> String {
@@ -585,7 +603,9 @@ fn collect(root: &Path, v: &Versions) -> Result<Table, String> {
                 let sec_end = start + heads.get(j + 1).map_or(body.len(), |h| h.1);
                 let section = &text[sec_start..sec_end];
                 for (interp, qs, qe) in triple_quoted(section) {
-                    let shell = groovy_to_shell(&section[qs..qe], interp);
+                    // Nextflow strips the common indent before bash reads
+                    // the script, so `    END_VERSIONS` ends a `<<-` body.
+                    let shell = strip_indent(&groovy_to_shell(&section[qs..qe], interp));
                     let qstart = sec_start + qs;
                     for bin in shlex::heads(&shlex::lex(&shell)) {
                         if !HELPERS.contains(&bin.as_str()) {
@@ -1257,6 +1277,16 @@ mod tests {
             out.contains("bgzip     in BCFTOOLS_IMAGE  modules/local/v/main.nf:8 (V)"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn strip_indent_cuts_the_common_indent() {
+        assert_eq!(
+            strip_indent("\n    a\n      b\n  \n    END\n    "),
+            "\na\n  b\n\nEND\n"
+        );
+        assert_eq!(strip_indent("\tx\n\t\ty"), "x\n\ty");
+        assert_eq!(strip_indent("x\n  y"), "x\n  y");
     }
 
     #[test]
