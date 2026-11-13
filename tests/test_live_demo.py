@@ -848,7 +848,7 @@ def planted_checks(b, base, out):
         check("browser: the home page and every finding page of the son name the planted gene and positions nowhere "
               "(the rail's next link and the related list included) until opened, and the symptom ranking's page "
               "opened on purpose shows it", not bad, bad)
-        a = "return (tagOf(x) || []).some(function (t) { return t === PANEL ? !opened[x.id] && actShut() : !opened[t]; });"
+        a = "return (tagOf(x) || []).some(function (t) { return t === PANEL ? actShut() : !opened[t]; });"
         if a not in keep[fj]:
             check("control: finding.js whose findings ignore their tags (the planted line is in finding.js)", False, a)
         else:
