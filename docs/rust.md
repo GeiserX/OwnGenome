@@ -36,7 +36,7 @@ bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch> (og-da
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og qc sex-loss` (step 33), `og version`, `og --tree-hash`, `og map`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og dev parity-compare`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif|catalog`, `og cdna check|scan` (were `clip_check.py` and `cdna_scan.py`; `clip_check.py` keeps only the names `collect_summary.py` imports), `og comphet phase` (was `comphet_phase.py`), `og bam contigs`, `og setup unzip|genetic-map` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 05 builds AnnotSV's input with `og sv add-callers` and checks its class 4 and 5 calls with `og sv postfilter` (were `cnvpytor_to_vcf.py` and `annotsv_postfilter.py`); both apply one read-depth rule for long Delly calls (`og-steps::sv`). `cnvpytor_to_vcf.py` keeps only the Python copy of that rule, which step 39's couple screen still imports, and `annotsv_postfilter.py` only the column names and the consensus join the reports import. `og str catalog` (was `strchive_convert.py`) builds the STRchive catalog of steps 09 and 9b; `og setup unzip` and `og setup genetic-map` replace two small Python programs inside `setup.sh`. Step 25 has `og prs format` (a port of `collect_summary.py prs-format`, named by what it works on) and `og prs table` (was `prs-table`). Step 33 has `og qc sample` (was `sample-qc`), and step 20 has `og mito annotate|deletions|copies` (were `mito-annotate`, `mito-deletions` and `mito-copies`). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 27 uses `og pgx cpic-report` and `og pgx step36-outside` (were the two commands of `pgx_parse.py`). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (the commands of `chip_report.py`, which keeps only the detection limit and the column names the reports import). Steps 32, 35, 41 and 46 run `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions` and `og cn marker-read` ([Copy number from depth](cn-loci.md)); they replace `hba_copy_number.py`, `lpa_kiv2.py`, the commands of `copy_number.py` (which keeps the catalog reader the catalog tests import) and the marker reader of `traits_report.py` (which keeps `MARKERS` for the summary). Step 41 runs `og bloodtype report` (was `bloodtype_report.py`), which reads the marker sites through the VCF's index. Step 26b's six commands are `og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report`; `bin/ancestry_fine_report.py` keeps only the names `collect_summary.py` and the docs demo import. Step 40 runs `og consumer build-sites`, `og consumer export` and `og consumer check` (were the three commands of `export_consumer.py`). Step 38 and the Nextflow family workflow run `og family plan`, `prepare`, `check`, `report`, `segments` and `ibd` (were `family_report.py`, `family_segments.py` and `ibd_report.py`). `og family report` reads the joint VCF once, compresses each child's inheritance table on its own thread, and stops with exit 2 on a joint VCF that is not sorted. The opt-in steps read their tool's output with `og y str-bed|str-report` (45), `og viral report` (47), `og exomiser prepare|report` (48), `og mei report|annotsv-input` (50), `og mocha report` (51), `og vntyper report` (52) and `og locityper report` (53); they replaced `ystr_report.py`, `viral_report.py`, `exomiser_report.py`, `mei_report.py`, `mocha_report.py`, `vntyper_report.py` and `locityper_report.py`. Step 37 places the sample on the current YFull YTree with `og y tree-positions` and `og y tree-place` (were the two commands of `y_tree_place.py`), lists its private SNPs with `og y private-snps` (was `y_private_snps.py`) and writes Yleaf's marker positions with `og y yleaf-positions` (was `yleaf_run.py positions`; `yleaf_run.py predict` stays Python, as glue inside Yleaf's own code). Steps 08, 32 and 36 run `og pgx hla-concordance`, `og pgx pypgx-summary` and `og pgx outside-calls` (were the three commands of `pgx_outside_calls.py`, which keeps the CYP2D6 and HLA rules the reports import), and step 35b runs `og paraphase check-bam|table` (were `paraphase_report.py`, which keeps the SMN1 rule beside Parascopy). Both write their two output files together or not at all. `scripts/owngenome-lookup.sh` runs `og lookup query` ([genotype lookup](lookup.md)), which answers every query of the command line in one process; `og lookup resolve` and `og lookup report` are its two halves, with the command lines of `genome_lookup.py`, which keeps only the query reading and the names rule that `results_index.py` imports. `og recheck` replaced `owngenome_recheck.py` ([Newer databases since a run](recheck.md)); the file stays one release as a shim that runs it, for crontabs. `og dev freshness` replaced `scripts/ci/freshness.py`, the monthly freshness issue of `freshness.yml`. `og dev build cn-intervals|callability|sv-rule-regions` rebuild the committed tables `bin/cn_loci.tsv` (its interval rows), `assets/callability_genes.tsv` and `assets/sv_rule_regions.tsv`; they replaced `scripts/ci/build-cn-intervals.py` and the Python inside `build-callability.sh` and `build-sv-rule-regions.sh`. Those scripts keep the downloads (`curl` through `scripts/ci/lib/fetch-pinned.sh`, each file checked against its sha256) and hand `og` the folder, so `og dev build` reads local files only. Both ask the network through the host's `curl` (the config on stdin, so no token reaches the process list), which keeps a TLS stack out of the static binary and its cross-builds.
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og qc sex-loss` (step 33), `og version`, `og --tree-hash`, `og map`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og dev parity-compare`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif|catalog`, `og cdna check|scan` (were `clip_check.py` and `cdna_scan.py`; `clip_check.py` keeps only the names `collect_summary.py` imports), `og comphet phase` (was `comphet_phase.py`), `og bam contigs`, `og setup unzip|genetic-map` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 05 builds AnnotSV's input with `og sv add-callers` and checks its class 4 and 5 calls with `og sv postfilter` (were `cnvpytor_to_vcf.py` and `annotsv_postfilter.py`); both apply one read-depth rule for long Delly calls (`og-steps::sv`). `cnvpytor_to_vcf.py` keeps only the Python copy of that rule, which step 39's couple screen still imports, and `annotsv_postfilter.py` only the column names and the consensus join the reports import. `og str catalog` (was `strchive_convert.py`) builds the STRchive catalog of steps 09 and 9b; `og setup unzip` and `og setup genetic-map` replace two small Python programs inside `setup.sh`. Step 25 has `og prs format` (a port of `collect_summary.py prs-format`, named by what it works on) and `og prs table` (was `prs-table`). Step 33 has `og qc sample` (was `sample-qc`), and step 20 has `og mito annotate|deletions|copies` (were `mito-annotate`, `mito-deletions` and `mito-copies`). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 27 uses `og pgx cpic-report` and `og pgx step36-outside` (were the two commands of `pgx_parse.py`). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (the commands of `chip_report.py`, which keeps only the detection limit and the column names the reports import). Steps 32, 35, 41 and 46 run `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions` and `og cn marker-read` ([Copy number from depth](cn-loci.md)); they replace `hba_copy_number.py`, `lpa_kiv2.py`, `copy_number.py` (the catalog tests materialise its pinned historical version as a differential oracle) and the marker reader of `traits_report.py` (which keeps `MARKERS` for the summary). Step 41 runs `og bloodtype report` (was `bloodtype_report.py`), which reads the marker sites through the VCF's index. Step 26b's six commands are `og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report`; `bin/ancestry_fine_report.py` keeps only the names `collect_summary.py` and the docs demo import. Step 40 runs `og consumer build-sites`, `og consumer export` and `og consumer check` (were the three commands of `export_consumer.py`). Step 38 and the Nextflow family workflow run `og family plan`, `prepare`, `check`, `report`, `segments` and `ibd` (were `family_report.py`, `family_segments.py` and `ibd_report.py`). `og family report` reads the joint VCF once, compresses each child's inheritance table on its own thread, and stops with exit 2 on a joint VCF that is not sorted. The opt-in steps read their tool's output with `og y str-bed|str-report` (45), `og viral report` (47), `og exomiser prepare|report` (48), `og mei report|annotsv-input` (50), `og mocha report` (51), `og vntyper report` (52) and `og locityper report` (53); they replaced `ystr_report.py`, `viral_report.py`, `exomiser_report.py`, `mei_report.py`, `mocha_report.py`, `vntyper_report.py` and `locityper_report.py`. Step 37 places the sample on the current YFull YTree with `og y tree-positions` and `og y tree-place` (were the two commands of `y_tree_place.py`), lists its private SNPs with `og y private-snps` (was `y_private_snps.py`) and writes Yleaf's marker positions with `og y yleaf-positions` (was `yleaf_run.py positions`; `yleaf_run.py predict` stays Python, as glue inside Yleaf's own code). Steps 08, 32 and 36 run `og pgx hla-concordance`, `og pgx pypgx-summary` and `og pgx outside-calls` (were the three commands of `pgx_outside_calls.py`, which keeps the CYP2D6 and HLA rules the reports import), and step 35b runs `og paraphase check-bam|table` (were `paraphase_report.py`, which keeps the SMN1 rule beside Parascopy). Both write their two output files together or not at all. `scripts/owngenome-lookup.sh` runs `og lookup query` ([genotype lookup](lookup.md)), which answers every query of the command line in one process; `og lookup resolve` and `og lookup report` are its two halves, with the command lines of `genome_lookup.py`, which keeps only the query reading and the names rule that `results_index.py` imports. `og recheck` replaced `owngenome_recheck.py` ([Newer databases since a run](recheck.md)); the file stays one release as a shim that runs it, for crontabs. `og dev freshness` replaced `scripts/ci/freshness.py`, the monthly freshness issue of `freshness.yml`. `og dev build cn-intervals|callability|sv-rule-regions` rebuild the committed tables `bin/cn_loci.tsv` (its interval rows), `assets/callability_genes.tsv` and `assets/sv_rule_regions.tsv`; they replaced `scripts/ci/build-cn-intervals.py` and the Python inside `build-callability.sh` and `build-sv-rule-regions.sh`. Those scripts keep the downloads (`curl` through `scripts/ci/lib/fetch-pinned.sh`, each file checked against its sha256) and hand `og` the folder, so `og dev build` reads local files only. Both ask the network through the host's `curl` (the config on stdin, so no token reaches the process list), which keeps a TLS stack out of the static binary and its cross-builds.
 
 A Python file whose tool moved to `og` but whose names other Python still imports stays as a *remnant*: a `# remnant:` header names its importers and the lane that deletes it, and `tests/parity/remnants.tsv` lists the names it may hold and the files that import it. `og dev remnants` (Guard, job `rust`) fails when the file defines a name the list does not allow, when an allowed name has no user left, when a listed importer no longer imports it, or when an unlisted file starts to. So a remnant only shrinks. `bin/family_report.py` is the first one: the pedigree, kinship and PAR rules that `couple_report.py` and `pedigree_svg.py` import. `bin/genome_lookup.py` keeps the query reading and the summary names rule that `results_index.py` imports.
 
@@ -110,3 +110,142 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 - **Release** (`release.yml`): a tag builds the four binaries, writes `SHA256SUMS`, attests them and attaches all five files to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.
+
+## CI evidence and fixture verbs
+
+`og dev evidence clashes` reads two gzip VCFs and gzip archaic tables.
+`og dev evidence hg002-gvcf` reads a gzip truth VCF, plain BED, plain FASTA
+and FAI, and a plain sites table. `og dev renovate-check` reads a plain log
+and plain repository sources. Text uses strict UTF-8 and universal newlines
+(LF, CRLF and CR). Compression is explicit, even when a filename is misleading.
+
+Evidence, `og dev fixture comphet`, `og dev fixture trim-pharmcat` and the
+Renovate summary stage output beside its resolved destination. A file symlink
+stays a symlink, existing permission bits are preserved, and read-only files
+and directory destinations fail. New files use the caller's umask.
+The VNtyper downloader follows the same destination policy, uses a private
+`mktemp -d` directory, and removes it on handled failures and signals. It needs
+GNU `mv -T` (`gmv` on macOS) so a directory can never receive a temporary BAM.
+
+Comphet stages all three files and checks all three destinations before the
+first rename. A bad later destination leaves previous outputs intact.
+Three renames are still not one transaction. A crash or a filesystem failure
+between renames can publish only part of the new set. Unhandled SIGKILL can
+leave temporary files. Single-file outputs are replaced by one rename. Publication replaces the file
+and does not update other hard links. Those links still refer to the old inode.
+
+The shared runner fails the command if stdout or stderr cannot be written or
+flushed. This includes the evidence status and Renovate table. A configured
+Renovate summary must also be written and flushed successfully.
+Guard runs the FASTA offset regression in debug and release profiles.
+
+### Input and destination refusal rule
+
+These evidence, fixture and Renovate verbs may refuse any input that is
+malformed, outside the numeric ranges or size limits below, or not representable
+by the JSON reader. They may also refuse any destination beside which they
+cannot stage a sibling temporary file. A refusal always exits nonzero with a
+specific message. It leaves every existing output byte-identical, with its mode
+and link target unchanged. The crash and multi-file publication limits above
+still apply.
+
+- Evidence numeric fields use ASCII unsigned integers from 0 through
+  18446744073709551615. A reference lookup needs a position of at least 1.
+  Spans must fit that range. Calculated FASTA offsets must fit 0 through
+  9223372036854775807 and address a byte inside the file.
+- Every FAI row needs at least five columns and nonzero bases per line.
+- `MAX_ANNOTATIONS` is an ASCII signed integer from -9223372036854775808
+  through 9223372036854775807.
+- Evidence and Renovate text records have a 16 MiB (16777216-byte) limit.
+  The PharmCAT reader has no separate file-size limit and materializes JSON.
+- The JSON reader accepts signed 128-bit integers (-2^127 through 2^127-1),
+  Unicode scalar strings and at most 1000 nested arrays or objects.
+  It cannot represent lone surrogates, including in unused fields.
+- Destinations need a writable parent and a regular writable target when one
+  exists. Resolution follows at most 40 final symlinks. Temporary sibling names
+  must fit the filesystem's name limit. A 255-byte basename is refused cleanly
+  before any output write because its temporary sibling name is longer.
+
+Inputs produced by the real tools are never refused: bcftools/DeepVariant VCF,
+samtools faidx, header-free BED intervals, PharmCAT report JSON and Renovate
+debug log. A BED file with a UCSC column header, a `track` line or a `browser`
+line is refused, as the Python refused it: remove those lines first.
+
+Valid JSON nested up to the reader's 1000 levels is accepted. The Python stopped
+with a RecursionError at a few hundred levels when it copied or wrote such a
+value. That was a limit of the interpreter, not a check on the input, so the
+Rust commands do not copy it.
+
+`refusals_preserve_bytes_modes_and_link_targets` pins the rule through each CLI.
+Each table row runs with a regular output and with a symlink. It checks nonzero
+exit, the specific diagnostic, unchanged bytes, mode and link target, and no
+leftover temporary file. Adding a refusal case needs one row.
+
+Examples of refusals follow. This is not an exhaustive input grammar.
+The final-LF normalization has a positive byte test.
+
+- BED fields use spaces and tabs as separators. Other Python whitespace
+  (Unicode White_Space and U+001C through U+001F) fails with `unsupported whitespace`.
+- Renovate present fields of the wrong type fail with `not a map of package file lists`.
+  This includes map-valued updates and numeric dependency names, current values,
+  or update values. Falsy warnings and packages with no dependencies remain valid.
+- PharmCAT truthy strings or objects where lists belong fail with `is not a list`.
+- PharmCAT truthy non-object alleles fail with `is not an object`.
+- Evidence positions with underscores, non-ASCII digits, negative values or
+  values outside u64 fail with `not a number`.
+- Four-field truth VCF rows and blank FAI rows fail with `fewer than 5 columns`.
+- Text records over 16 MiB, including ignored headers or log lines, fail with
+  `record exceeds 16777216 bytes`.
+- Clash VCF rows need a tab after ALT. A newline in the ALT field of a short
+  row fails with `missing trailing VCF columns`.
+- A truth VCF record without its final LF gets one in the output. Valid VCF ends with LF.
+
+- Zero-byte gzip VCFs or selected gzip tables fail with `wrong compression (expected gzip)`.
+- Every FAI row needs nonzero bases per line, including unused rows.
+  A zero width fails with `a row has 0 bases per line`.
+- `MAX_ANNOTATIONS` must parse as a signed 64-bit ASCII integer.
+  Underscores, non-ASCII digits and out-of-range values fail with
+  `MAX_ANNOTATIONS ... is not a whole number` (exit 2).
+- Staging needs a writable parent directory, even for an existing writable file.
+  A parent with no write bits fails with `parent directory is not writable`.
+  Other access failures report the operating system error.
+- The FASTA reader accepts plain files only. A gzip magic prefix fails with
+  `wrong compression (expected plain)`, including gzip with a long FNAME.
+- A VCF header after the first truth record fails with
+  `VCF header after first data record`. The previous destination stays intact.
+- FASTA offsets use checked subtraction, division, multiplication, addition
+  and remainder. Overflow, a position beyond the file, or an offset outside
+  the signed file-offset range fails with `invalid FASTA offset`.
+
+- A nonblank unused FAI row with fewer than five columns fails with
+  `a row has fewer than 5 columns`.
+- A truth position that fits u64 but whose REF span does not fails with
+  `position span overflows`.
+- A destination whose temporary sibling name is too long fails with the
+  filesystem diagnostic `File name too long`.
+- JSON integers outside signed 128-bit range and escaped lone surrogates fail
+  with `Integer beyond 128 bits` and `Lone surrogate`, even in unused fields.
+  Excess nesting fails with `nested deeper than 1000 levels`.
+
+Renovate skips genuine JSON syntax errors only. Reader limitations fail the
+command before an earlier matching config or the summary can be used.
+`TooDeep` has its own error variant. The reader currently puts integer and
+surrogate limitations in `JsonError::Decode`, so the loader distinguishes those
+static reasons inside that variant. Other decode errors remain skippable.
+
+## CI readers
+
+`og dev pharmcat diplotypes REPORT` prints sorted, unique `GENE\tA1/A2` rows from flat or source-nested reports. `--called` prints the called count and names on stderr. `--called-lines` prints one called gene per line for e2e checks. An unreadable report exits 2 without a count. A valid empty report succeeds with a zero count.
+
+`og dev nf-trace requests TRACE --want FILE --executor-cpus N --executor-mem-gb N` checks initial requests, doubled retry memory and the executor budget. The expectation table is [nf-trace-requests.tsv](https://github.com/GeiserX/OwnGenome/blob/main/scripts/ci/nf-trace-requests.tsv). `og dev nf-trace attempts TRACE --name-glob PATTERN --want '1:137:32,2:0:64' --nextflow-exit RC` checks a retry sequence. Both accept one explicit path, refuse globs, parse quoted TSV records and reject conflicting duplicates. Identical duplicate task IDs count once. Exit 1 means the check found a mismatch. Exit 2 means input or arguments could not be assessed.
+
+`og dev smoke` supplies `mini-ref SRC ORIG MINI POS LEN`, `long-reads HAP1 HAP2 OUT.gz`, `eh-catalog REF OUT END`, `csv-cell FILE KEY=VALUE[,KEY=VALUE] COLUMN` and `check KIND FILE`. Check kinds are `hap-ibd`, `ibdmix`, `rfmix`, `eigen` and `parascopy`. Mini-reference bases use a fixed Rust seed. Long-read gzip headers are deterministic. These synthetic fixtures do not change pipeline output files. Smoke references are limited to 1,003,000 bases. CSV lookups and table checks read one record at a time.
+
+CI integer cells accept surrounding whitespace, signs and digit separators. Trace cells deliberately refuse Unicode digits and negative resource values. Smoke coordinates accept Unicode decimal digits and use signed 128-bit integers. Integers beyond the target range fail. Decimal and nonfinite coordinates fail. Duplicate trace rows retain the first concrete exit status and reject later conflicts.
+
+The shared `og-io` reader consumes LF, CRLF and lone CR records with storage bounded by the longest line. Smoke JSON checks require one document and typed fields. Catalogs must be arrays and genotypes must be nonempty strings. This deliberately rejects malformed values that Python truthiness or `len()` accepted. Numeric depth strings remain supported; booleans are refused. Smoke fixtures and assertions build `og` on first use if the default binary is missing. An explicit `OG` is used as supplied.
+
+Step 42 uses `og traits table`, `og traits phase-sites` and `og traits check`.
+The readers retain only catalog sites. The trait and genotype-rule output
+columns and readings stay the same. `bin/traits_report.py` keeps report
+metadata until the Python summary and report collectors move.

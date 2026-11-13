@@ -992,3 +992,77 @@ dev-versions-expand	urls	dev-scanners/oracle.sh,dev-scanners/versions.env,gen:de
 dev-pgs-trait	matching	dev-scanners/oracle.sh,dev-scanners/trait.json,gen:dev-scanners-matching-dev-pgs-trait.sh	--id PGS000001	-	bytes	PYTHON_IMAGE
 dev-pgs-label	matching	dev-scanners/oracle.sh	synthetic synthetic-trait	-	bytes	PYTHON_IMAGE
 dev-pgs-metric	effect-format	dev-scanners/oracle.sh,dev-scanners/metric.json,gen:dev-scanners-matching-dev-pgs-metric.sh	--id PGS000001 --ppm PPM000001 --ancestry EUR --effect OR	-	bytes	PYTHON_IMAGE
+dev-fixture-comphet	plain	-	out	out/reads.sam,out/vep.vcf,out/comphet.vcf	bytes	PYTHON_IMAGE
+dev-fixture-comphet	swap	-	out --swap	out/reads.sam,out/vep.vcf,out/comphet.vcf	bytes	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	report-3.2.0	gen:pgx-fixtures.sh	report-3.2.0.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	report-3.4.0	gen:pgx-fixtures.sh	report-3.4.0.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	pharmcat-docs-example	gen:pgx-fixtures.sh	pharmcat-docs-example.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	one-annotation	gen:pgx-fixtures.sh	report-3.4.0.json out.json 1	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	all-but-last	gen:pgx-fixtures.sh	pharmcat-docs-example.json out.json -1	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-evidence-clashes	synthetic	dev-evidence-clashes/raw.vcf.gz,dev-evidence-clashes/split.vcf.gz,dev-evidence-clashes/chrA.tsv.gz,dev-evidence-clashes/chrB.tsv.gz,dev-evidence-clashes/chrZ.tsv.gz,dev-evidence-clashes/notes.tsv.gz	raw.vcf.gz split.vcf.gz . affected.tsv	affected.tsv	bytes	PYTHON_IMAGE
+dev-evidence-hg002-gvcf	synthetic	dev-evidence-hg002-gvcf/truth.vcf.gz,dev-evidence-hg002-gvcf/truth.bed,dev-evidence-hg002-gvcf/ref.fasta,dev-evidence-hg002-gvcf/ref.fasta.fai,dev-evidence-hg002-gvcf/sites.tsv	truth.vcf.gz truth.bed ref.fasta sites.tsv out.vcf	out.vcf	bytes	PYTHON_IMAGE
+dev-evidence-hg002-gvcf	past-the-end	dev-evidence-hg002-gvcf/truth.vcf.gz,dev-evidence-hg002-gvcf/truth-past-end.bed,dev-evidence-hg002-gvcf/ref.fasta,dev-evidence-hg002-gvcf/ref.fasta.fai,dev-evidence-hg002-gvcf/sites-past-end.tsv	truth.vcf.gz truth-past-end.bed ref.fasta sites-past-end.tsv out.vcf	out.vcf	bytes	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge	dev-fixture-trim-pharmcat/edge.json	edge.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge2	dev-fixture-trim-pharmcat/edge.json	edge.json out.json 2	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge0	dev-fixture-trim-pharmcat/edge.json	edge.json out.json 0	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge-all-but-last	dev-fixture-trim-pharmcat/edge.json	edge.json out.json -1	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-pharmcat	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat	nested	ci-readers/oracle.sh,ci-readers/nested.json	nested.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	nested	ci-readers/oracle.sh,ci-readers/nested.json	nested.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	nested	ci-readers/oracle.sh,ci-readers/nested.json	nested.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat	empty	ci-readers/oracle.sh,ci-readers/empty.json	empty.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	empty	ci-readers/oracle.sh,ci-readers/empty.json	empty.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	empty	ci-readers/oracle.sh,ci-readers/empty.json	empty.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	truncated	ci-readers/oracle.sh,ci-readers/truncated.json	truncated.json --called	-	bytes	PYTHON_IMAGE
+dev-smoke-csv	quoted	ci-readers/oracle.sh,ci-readers/cells.csv	cells.csv Filter=PASS Value	-	bytes	PYTHON_IMAGE
+dev-nf-requests	resources	ci-readers/oracle.sh,ci-readers/requests.tsv,ci-readers/want.tsv	requests.tsv --want want.tsv --executor-cpus 512 --executor-mem-gb 2048	-	bytes	PYTHON_IMAGE
+dev-nf-attempts	retry	ci-readers/oracle.sh,ci-readers/attempts.tsv	attempts.tsv --name-glob *ALIGN_MINIMAP2* --want 1:137:32,2:0:64 --nextflow-exit 0	-	bytes	PYTHON_IMAGE
+dev-smoke-mini	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	slice.fa orig.fa mini.fa 450000 3000	orig.fa,mini.fa	bytes	PYTHON_IMAGE
+dev-smoke-long	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	hap1.fa hap2.fa long.fq.gz	long.fq.gz	gz-content	PYTHON_IMAGE
+dev-smoke-catalog	fixture	ci-readers/oracle.sh,gen:ci-smoke.sh	slice.fa eh.json 449000	eh.json	json	PYTHON_IMAGE
+dev-smoke-check	hap-ibd	ci-readers/oracle.sh,ci-readers/o.ibd	hap-ibd o.ibd	-	bytes	PYTHON_IMAGE
+dev-smoke-check	ibdmix	ci-readers/oracle.sh,ci-readers/o.txt	ibdmix o.txt	-	bytes	PYTHON_IMAGE
+dev-smoke-check	rfmix	ci-readers/oracle.sh,ci-readers/o.msp.tsv	rfmix o.msp.tsv	-	bytes	PYTHON_IMAGE
+dev-smoke-check	eigen	ci-readers/oracle.sh,ci-readers/t.evec	eigen t.evec	-	bytes	PYTHON_IMAGE
+dev-smoke-check	parascopy	ci-readers/oracle.sh,ci-readers/smn.tsv	parascopy smn.tsv	-	bytes	PYTHON_IMAGE
+dev-pharmcat	report-3.2.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.2.0.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat	report-3.4.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.4.0.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.sh	pharmcat-docs-example.json	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	report-3.2.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.2.0.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	report-3.4.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.4.0.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-called	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.sh	pharmcat-docs-example.json --called	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	report-3.2.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.2.0.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	report-3.4.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.4.0.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-pharmcat-lines	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.sh	pharmcat-docs-example.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-nf-requests	large-budget	ci-readers/oracle.sh,ci-readers/requests.tsv,ci-readers/want.tsv	requests.tsv --want want.tsv --executor-cpus 1000000 --executor-mem-gb 1000000	-	bytes	PYTHON_IMAGE
+dev-nf-requests	fractional-memory	ci-readers/oracle.sh,ci-readers/requests-frac.tsv,ci-readers/want.tsv	requests-frac.tsv --want want.tsv --executor-cpus 512 --executor-mem-gb 2048	-	bytes	PYTHON_IMAGE
+traits	empty	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes empty.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	reference	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes reference.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-00	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-00.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-01	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-01.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-02	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-02.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-10	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-10.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-11	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-11.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-12	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-12.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-20	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-20.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-21	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-21.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	apoe-22	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes apoe-22.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	other	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes other.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	missing	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes missing.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	duplicate	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes duplicate.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	half	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes half.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	wrong-ref	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes wrong-ref.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	-	tsv	PYTHON_IMAGE
+traits	triple	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	single	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes single.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	phase-empty	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --phased empty.vcf --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	phase-phased	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --phased phased.vcf --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	phase-split	gen:traits.sh	table --table traits.tsv --rules rules.tsv --genotypes triple.tsv --phased split.vcf --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+traits	sites-empty	gen:traits.sh	phase-sites --rules rules.tsv --genotypes empty.tsv --sample S --out phase.vcf	phase.vcf	vcf	PYTHON_IMAGE
+traits	sites-triple	gen:traits.sh	phase-sites --rules rules.tsv --genotypes triple.tsv --sample S --out phase.vcf	phase.vcf	vcf	PYTHON_IMAGE
+traits	sites-single	gen:traits.sh	phase-sites --rules rules.tsv --genotypes single.tsv --sample S --out phase.vcf	phase.vcf	vcf	PYTHON_IMAGE
+traits	check	gen:traits.sh	check --table traits.tsv --rules rules.tsv	-	bytes	PYTHON_IMAGE
+traits	bad-table	gen:traits.sh	check --table bad-table.tsv --rules rules.tsv	-	bytes	PYTHON_IMAGE
+traits	bad-rules	gen:traits.sh	check --table traits.tsv --rules bad-rules.tsv	-	bytes	PYTHON_IMAGE
+traits	shared-vocabulary	gen:traits.sh	table --table traits.tsv --rules shared-rules.tsv --genotypes shared.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE

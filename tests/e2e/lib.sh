@@ -87,31 +87,22 @@ sample_side_hits() {
 # pharmcat_called <report.json>: genes with a named diplotype (flat or nested
 # `genes` map, sourceDiplotypes or recommendationDiplotypes), one per line.
 pharmcat_called() {
-  python3 - "$1" <<'PY'
-import json, sys
-try:
-    data = json.load(open(sys.argv[1]))
-except Exception as e:
-    print(f"unreadable report: {e}", file=sys.stderr)
-    sys.exit(0)
-def called(g):
-    for d in (g.get("sourceDiplotypes") or g.get("recommendationDiplotypes") or []):
-        names = [(d.get(a) or {}).get("name", "") for a in ("allele1", "allele2")]
-        if any(n and n.lower() not in ("unknown", "none", "?") for n in names):
-            return True
-    return False
-genes = data.get("genes") or {}
-out = set()
-for key, val in genes.items():
-    if not isinstance(val, dict):
-        continue
-    if "sourceDiplotypes" in val or "recommendationDiplotypes" in val:
-        if called(val):
-            out.add(key)
-    else:
-        out.update(name for name, g in val.items() if isinstance(g, dict) and called(g))
-print("\n".join(sorted(out)))
-PY
+  local genes rc=0
+  genes=$("${OG:-${REPO}/bin/og}" dev pharmcat diplotypes "$1" --called-lines) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "not assessed: PharmCAT report could not be read" >&2
+    return "$rc"
+  fi
+  printf '%s\n' "$genes"
+}
+
+# An unreadable report is a failed assessment, even when a surrounding pipe
+# would otherwise turn the missing output into a zero count.
+check_pharmcat_called() {
+  local genes rc=0
+  genes=$(pharmcat_called "$2") || rc=$?
+  if [ "$rc" -ne 0 ]; then fail "$1 (not assessed: unreadable PharmCAT report)"
+  else check_ge "$1" "$(grep -c . <<< "$genes" || true)" 1; fi
 }
 
 # --- The ancestry panel, from the Actions cache or the mirror when it is there ---

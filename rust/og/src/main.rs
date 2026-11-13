@@ -54,6 +54,9 @@ const USAGE: &str = "usage: og <tool> [args]
        og roh summary --sample SAMPLE --roh ROH [--out OUT]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
+       og traits table [args]
+       og traits phase-sites [args]
+       og traits check [args]
        og bloodtype report|check-markers|systems [args]
        og family plan|prepare|check|report|segments [args]
        og family ibd [args]
@@ -78,6 +81,14 @@ const USAGE: &str = "usage: og <tool> [args]
        og dev scan personal-data|images [args]
        og dev versions check-run|expand|coupled [args]
        og dev pgs trait|label-match|metric-match [args]
+       og dev fixture comphet OUT [--swap]
+       og dev fixture trim-pharmcat REPORT OUT [MAX]
+       og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv
+       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf
+       og dev renovate-check LOG
+       og dev pharmcat diplotypes REPORT [--called|--called-lines]
+       og dev nf-trace requests|attempts TRACE [options]
+       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]
        og dev helpers [args]
        og dev build cn-intervals|callability|sv-rule-regions [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
@@ -233,6 +244,7 @@ fn main() -> ExitCode {
             )),
             None => usage_error("the following arguments are required: chip tool"),
         },
+        "traits" => ExitCode::from(og_steps::traits::cli(rest)),
         "bloodtype" => match rest.first() {
             Some(verb) => ExitCode::from(og_bloodtype::cli(
                 verb,
