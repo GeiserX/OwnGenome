@@ -632,6 +632,10 @@ mod tests {
     // Execute the removed scanner itself. Only its reporting is adapted to
     // structured metadata, because printing findings is the bug being fixed.
     fn oracle(f: &Fixture, files: &[&str], cached: bool) -> String {
+        oracle_options(f, files, cached, "", "", "")
+    }
+
+    fn oracle_options(f: &Fixture, files: &[&str], cached: bool, allow: &str, skip: &str, patterns: &str) -> String {
         static PYTHON: LazyLock<String> = LazyLock::new(|| {
             const SHA: &str = "4104a93f2121b457413336574b8563fe85291fd7";
             let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -678,7 +682,7 @@ mod tests {
         let mut cmd = Command::new("python3");
         cmd.args(["-I", "-c", &PYTHON])
             .arg(&f.0)
-            .args(["", "", "", if cached { "1" } else { "" }]);
+            .args([allow, skip, patterns, if cached { "1" } else { "" }]);
         for file in files {
             cmd.arg(f.0.join(file));
         }
@@ -692,8 +696,15 @@ mod tests {
     }
 
     fn assert_oracle_findings(f: &Fixture, files: &[&str], cached: bool) {
-        let expected = oracle(f, files, cached);
+        assert_options(f, files, cached, "", "", "", true);
+    }
+
+    fn assert_options(f: &Fixture, files: &[&str], cached: bool, allow: &str, skip: &str, patterns: &str, require_finding: bool) {
+        let expected = oracle_options(f, files, cached, allow, skip, patterns);
         let mut args = f.args(files);
+        args[3] = allow.into();
+        args[5] = skip.into();
+        if !patterns.is_empty() { args.extend(["--patterns".into(), patterns.into()]); }
         if cached {
             args.insert(0, "--cached".into());
         }
@@ -723,8 +734,8 @@ mod tests {
             );
             count += 1;
         }
-        assert!(count > 0, "oracle control was clean");
-        assert_eq!(code, 1);
+        if require_finding { assert!(count > 0, "oracle control was clean"); }
+        assert_eq!(code, u8::from(count > 0));
         assert_eq!(
             out.lines().filter(|l| l.starts_with("FAIL ")).count(),
             count
@@ -868,4 +879,51 @@ mod tests {
         std::fs::write(f.0.join(names[5]), b"\0binary").unwrap();
         assert_oracle_findings(&f, &names, false);
     }
+
+    #[test]
+    fn round2_boundary_backtracking() {
+        let f = Fixture::new("r2-boundary");
+        std::fs::write(f.0.join("chip.md"), "rs987654\t1\t9\tA-\n").unwrap();
+        assert_oracle_findings(&f, &["chip.md"], false);
+        assert!(Command::new("git").arg("-C").arg(&f.0).args(["init", "-q"]).status().unwrap().success());
+        assert!(Command::new("git").arg("-C").arg(&f.0).args(["add", "chip.md"]).status().unwrap().success());
+        assert_oracle_findings(&f, &["chip.md"], true);
+    }
+
+    #[test]
+    fn round2_custom_unicode() {
+        let f = Fixture::new("r2-custom");
+        for (pattern, text) in [(r"\bZetaSecret\b", "\u{301}ZetaSecret"), (r"(?i)patient", "patİent"), (r"(?i)[A-Z]+", "İı"), (r"\s+", "\u{1c}"), (r"\W+", "\u{301}"), (r"[^\w]+", "\u{301}")] {
+            std::fs::write(f.0.join("patterns"), pattern).unwrap();
+            std::fs::write(f.0.join("own.md"), text).unwrap();
+            assert_options(&f, &["own.md"], false, "", "", f.0.join("patterns").to_str().unwrap(), true);
+        }
+    }
+
+    #[test]
+    fn round2_cr_patterns() {
+        let f = Fixture::new("r2-pattern-lines");
+        for prefix in ["# a comment", "Unrelated"] {
+            std::fs::write(f.0.join("patterns"), format!("{prefix}\rZETA_PRIVATE_MARKER\r")).unwrap();
+            std::fs::write(f.0.join("own.md"), "ZETA_PRIVATE_MARKER\n").unwrap();
+            assert_options(&f, &["own.md"], false, "", "", f.0.join("patterns").to_str().unwrap(), true);
+        }
+    }
+
+    #[test]
+    fn round2_empty_alternative() {
+        let f = Fixture::new("r2-empty");
+        std::fs::write(f.0.join("patterns"), "^|PUBLIC_PRIVATE\n").unwrap();
+        std::fs::write(f.0.join("own.md"), "PUBLIC_PRIVATE").unwrap();
+        assert_options(&f, &["own.md"], false, "own.md PUBLIC", "", f.0.join("patterns").to_str().unwrap(), true);
+    }
+
+    #[test]
+    fn round2_exception_lines() {
+        let f = Fixture::new("r2-allow");
+        let text = p("safe\rOTHER.md /home/~synthetic_private_marker/path\n");
+        std::fs::write(f.0.join("builtin-allow.md"), &text).unwrap();
+        assert_options(&f, &["builtin-allow.md"], false, &format!("builtin-allow.md {text}"), "", "", true);
+    }
+
 }
