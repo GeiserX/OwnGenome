@@ -693,6 +693,7 @@ dependencies = [
  "fancy-regex",
  "flate2",
  "indexmap",
+ "og-intervals",
  "og-io",
  "og-nf",
  "png",

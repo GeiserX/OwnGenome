@@ -78,6 +78,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og dev versions check-run|expand|coupled [args]
        og dev pgs trait|label-match|metric-match [args]
        og dev helpers [args]
+       og dev build cn-intervals|callability|sv-rule-regions [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash

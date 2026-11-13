@@ -31,7 +31,7 @@ COLUMNS = ["locus", "kind", "chrom", "targets", "controls", "details", "target_d
            "call", "interval", "readings", "input", "owner", "cross_check", "pmids"]
 KINDS = ("gene", "interval", "organelle")
 # GRCh38 names of the primary chromosomes (the ClinGen BED spells chrX 'chrx':
-# scripts/ci/build-cn-intervals.py normalises it, and a row with any other
+# og dev build cn-intervals normalises it, and a row with any other
 # spelling is refused here).
 CHROMS = {f"chr{c}" for c in list(range(1, 23)) + ["X", "Y", "M"]}
 INPUTS = ("bedcov", "cnvpytor-level")
