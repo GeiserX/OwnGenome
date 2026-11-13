@@ -489,7 +489,10 @@ impl PythonPattern {
                 // classes. Only literal range endpoints can form a range.
                 let start = class_literal(atom).ok_or(())?;
                 let end = class_literal(&atoms[i + 2].0).ok_or(())?;
-                if start > end || crate::personal_data::range_version_dependent(start, end) {
+                if start > end
+                    || crate::personal_data::range_version_dependent(start, end)
+                    || (ci && crate::personal_data::range_regex_case_dependent(start, end))
+                {
                     return Err(());
                 }
                 let range = format!("[{atom}-{}]", atoms[i + 2].0);
@@ -499,7 +502,10 @@ impl PythonPattern {
                 if atoms[i].1 && i != 0 && i + 1 != atoms.len() {
                     return Err(());
                 }
-                if ci && class_literal(atom).is_some() {
+                if ci && let Some(c) = class_literal(atom) {
+                    if crate::personal_data::range_regex_case_dependent(c, c) {
+                        return Err(());
+                    }
                     body.push_str(&fold_class(&format!("[{atom}]"))?);
                 } else {
                     body.push_str(atom);
@@ -523,7 +529,9 @@ fn class_literal(atom: &str) -> Option<char> {
 }
 
 fn literal(c: char, ci: bool) -> Result<String, ()> {
-    if crate::personal_data::version_dependent(c) {
+    if crate::personal_data::version_dependent(c)
+        || (ci && crate::personal_data::range_regex_case_dependent(c, c))
+    {
         return Err(());
     }
     let escaped = format!(r"\x{{{:x}}}", u32::from(c));

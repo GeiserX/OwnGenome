@@ -73,23 +73,35 @@
 # pattern shape. Text in Deseret, Osage, Old Hungarian, Warang Citi,
 # Medefaidrin, Adlam and any other astral cased script stops the scan until
 # its file is SKIPped. Newer plain symbols, emoji and uncased CJK still scan.
-# A custom class range containing a guarded scalar is refused, even when
-# its endpoints are stable. ASCII and stable Latin-1 ranges remain supported.
+# A custom class range containing a property-guarded scalar is refused, even
+# when its endpoints are stable. ASCII and stable Latin-1 ranges still work.
 #
 # The generated conservative set includes every scalar unassigned in UCD
 # 17; post-13 letters, marks, numbers, connectors, spaces and case mappings;
 # and older scalars whose word/digit/space membership or case maps change
 # in UCD 13/15/16/17. Full case folds avoid rejecting six stable old scalars.
-# Another generated table guards both ends of BMP regex case relations that
-# differ across supported Python engines. Real re.fullmatch calls check both
-# directions with literals, singleton and composite positive/negative classes,
-# ASCII/category mixtures, range endpoints/interiors, optimized alternatives
-# and grouped forms. Astral mappings come from UnicodeData, SpecialCasing
+# BMP regex case differences apply only to patterns. Under active global or
+# scoped i flags, a literal or a class range naming any member of a differing
+# fold class is refused. This includes escaped members, positive and negated
+# classes, and range interiors. Disabling i in that scope permits stable
+# case-sensitive names and ranges. Ordinary Russian, Ukrainian and Serbian
+# text, filenames and ALLOW/SKIP rows pass unless the property guard covers
+# them. Dot and category escapes do not name a member of a fold class.
+# Real fullmatch calls discover differing pairs. For each BMP pair, the
+# converse verifier proves that property-guarded endpoints stop the scan.
+# For admitted endpoints, it compares finditer spans using unrelated literals,
+# categories, negated classes, ranges, alternations, scopes and quantifiers.
+# It also discovers third case partners on every interpreter and checks their
+# shapes. Any differing accepted shape on admitted text fails verification.
+# Astral mappings come from UnicodeData, SpecialCasing
 # and CaseFolding, all SHA-256-pinned, with no interpreter test needed.
 # The 248 newer scalars with stable effective behavior remain conservatively
 # blocked. The six stable scalars assigned by Unicode 13 pass.
-# This adds one binary-search lookup per non-ASCII character (ASCII is
-# stable), plus a fixed regex-endpoint table. No per-file index or process.
+# Text validation uses one binary search per non-ASCII character. Pattern
+# compilation also checks a small fixed BMP fold-class set under i flags.
+# That set is initialized once from the embedded pairs and engine fold table.
+# This guard uses no per-file index or process. Cached symlink target names,
+# including directory components, receive the same check before SKIP.
 # Regenerate from SHA-256-pinned official data with the Rust generator:
 # tests/parity/gen/personal-unicode-generate.sh SCRATCH_DIR
 # Guard regenerates byte for byte and compares all available Python oracles,
@@ -98,7 +110,10 @@
 # PERSONAL_DATA_UPDATE_REGEX_CASES=1 cargo test -p og-dev round5_regex_case_table_matches_interpreters
 # Supply all supported Python interpreters on PATH or PERSONAL_DATA_PYTHONS
 # (colon-separated paths). Ordinary tests verify every available interpreter
-# and reject any differing pair missing from the checked-in table.
+# and reject any differing pair missing from the checked-in table. Every
+# explicitly supplied path must run successfully. CI requires
+# 3.9, 3.12 and 3.15 through PERSONAL_DATA_REQUIRE_PYTHONS. Missing explicit
+# paths and failing interpreters are negative controls for both verifiers.
 #
 # The scan is og dev scan personal-data (rust/crates/og-dev); bin/og runs
 # the build scripts/setup.sh --og puts in bin/.og for this machine, and OG
