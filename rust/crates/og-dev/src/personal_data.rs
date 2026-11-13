@@ -115,7 +115,7 @@ impl Check {
     fn candidate(&self, line: &str) -> bool {
         match self.kind {
             "home" => {
-                line.contains("/home/") || line.contains("/mnt/user") || line.contains("Users")
+                line.contains("/home/") || line.contains("/mnt/use") || line.contains("Users")
             }
             "address" => line.contains('.'),
             "diplotype" => line.contains('*') && line.contains('/'),
