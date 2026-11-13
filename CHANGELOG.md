@@ -9,6 +9,9 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
   - `--rerun` prints its own lines before the replayed command's output. The Python held its lines in a buffer, so they could come after the child's.
   - `og dev freshness` finds `scripts/lib/common.sh` beside the `versions.env` it reads when it runs outside a checkout.
   - `state.json` is written one item at a time, so a sample with many PGS scores never holds the whole document in memory.
+  - After `--rerun`, the exit code counts the failed lookups of the check written last. The Python counted the check before the replay, so a score the replayed run added, whose lookup failed, still gave exit 0.
+  - Each answer is written to a new folder that only the user can read, under a name nobody can guess. The Python used Python's own HTTP client and wrote no file.
+  - Each HTTP attempt ends after 300 s in all, so a host that sends a byte a second cannot hold the check for ever.
 
 - The step tables of steps 20, 25 and 33 are now made by the Rust `og` binary: `og qc sample` (step 33's verdict table), `og prs table` (step 25's score table and step 26's ancestry table) and `og mito annotate`, `og mito deletions` and `og mito copies` (step 20's chrM tables). They replace the `sample-qc`, `prs-table`, `mito-annotate`, `mito-deletions` and `mito-copies` commands of `bin/collect_summary.py`, which are gone. og is static, so each step still runs in the image it ran in. The tables are the same, byte for byte, on the 57 parity cases, except where a line below says otherwise. On a synthetic chrM call set of 4,000 alleles against a ClinVar of 1,000,000 records, `og mito annotate` takes 0.2 to 0.4 s and 28 MB where the Python took 34 to 45 s and 50 MB. What changes on purpose:
   - `og mito copies` reads chrM under the names `chrMT` and `M` as well as `chrM` and `MT`. The Python knew only `chrM` and `MT`, so a BAM with the other names got `not assessed (no_chrM_reads)`.
