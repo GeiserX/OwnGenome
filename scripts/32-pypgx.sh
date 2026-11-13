@@ -184,13 +184,16 @@ if [ "${#NEED[@]}" -gt 0 ]; then
   CONTIGS=()
   for n in "${NEED[@]}"; do CONTIGS+=("${n#*$'\t'}"); done
   rc=0
-  MISSING=$(run_in "${PYPGX_IMAGE}" python3 -c \
-    "import pysam, sys; refs = set(pysam.AlignmentFile(sys.argv[1]).references); print(' '.join(c for c in sys.argv[2:] if c not in refs))" \
-    "$(cpath "$BAM")" "${CONTIGS[@]}") || rc=$?
+  # The BAM's contig names, from its header (og bam contigs).
+  REFS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" /pgp-bin/og bam contigs "$(cpath "$BAM")") || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "ERROR: could not read the contigs of ${BAM} (exit ${rc})" >&2
     exit 1
   fi
+  MISSING=""
+  for c in "${CONTIGS[@]}"; do
+    grep -qxF -e "$c" <<<"$REFS" || MISSING="${MISSING} ${c}"
+  done
   for n in "${NEED[@]}"; do
     g=${n%%$'\t'*} c=${n#*$'\t'}
     case " ${MISSING} " in

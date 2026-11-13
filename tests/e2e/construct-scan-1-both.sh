@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 06's genome-wide cDNA scan (bin/cdna_scan.py) and its always-report
+# Step 06's genome-wide cDNA scan (og cdna scan) and its always-report
 # list of known deep intronic sites, in bash and in Nextflow, on copies of the
 # fixture sample (its VCF, its gVCF from case 21 and its BAM).
 #   1. A copy whose BAM also holds spliced reads across three made-up exons

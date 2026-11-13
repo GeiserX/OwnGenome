@@ -1,6 +1,9 @@
 //! og against the Python it replaced: each row of
 //! `tests/data/parity/cases.tsv` runs `og pgx cyp2d6-*` or `og str motif` on
-//! the inputs `make_parity.py` made, and must give the Python's exit code,
+//! the inputs `make_parity.py` made, and each row of
+//! `tests/data/reads/cases.tsv` runs `og cdna check|scan`, `og comphet
+//! phase` or `og bam contigs` on the inputs `make_reads_parity.py` made.
+//! Each must give the Python's exit code,
 //! stdout and output files (`want/<case>/`), byte for byte. stderr is not
 //! compared: it carries Python's exception texts.
 //!
@@ -71,6 +74,10 @@ fn run_og(tool: &str, args: &[String]) -> (u8, Vec<u8>) {
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
     let rc = match tool {
         "str-motif" => og_bam::motif::cli(args, &mut stdout, &mut stderr),
+        "cdna-check" => og_bam::cdna::check_cli(args, &mut stdout, &mut stderr),
+        "cdna-scan" => og_bam::cdna::scan_cli(args, &mut stdout, &mut stderr),
+        "comphet-phase" => og_bam::comphet::cli(args, &mut stdout, &mut stderr),
+        "bam-contigs" => og_bam::contigs_cli(args, &mut stdout, &mut stderr),
         t => og_bam::cyp2d6::cli(
             t.strip_prefix("cyp2d6-").expect("a cyp2d6 verb"),
             args,
@@ -87,9 +94,20 @@ fn show(b: &[u8]) -> String {
 
 #[test]
 fn og_writes_what_the_python_wrote() {
-    let parity = data().join("parity");
+    compare("parity", 60);
+}
+
+#[test]
+fn og_reads_at_the_variant_as_the_python_did() {
+    compare("reads", 40);
+}
+
+/// Runs every case of `tests/data/<set>/cases.tsv`; at least `min` must run
+/// and at least one deliberate fix must be checked.
+fn compare(set: &str, min: usize) {
+    let parity = data().join(set);
     let cases = fs::read_to_string(parity.join("cases.tsv")).expect("cases.tsv");
-    let scratch = Scratch::new("og-bam-parity");
+    let scratch = Scratch::new(&format!("og-bam-{set}"));
     let (mut n, mut fixes, mut bad) = (0, 0, Vec::new());
     for line in cases
         .lines()
@@ -143,7 +161,7 @@ fn og_writes_what_the_python_wrote() {
             }
         }
     }
-    assert!(n >= 60, "only {n} cases ran");
+    assert!(n >= min, "only {n} cases ran");
     assert!(fixes >= 1, "no deliberate fix was checked");
     assert!(
         bad.is_empty(),

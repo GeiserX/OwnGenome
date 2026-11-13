@@ -1,0 +1,3 @@
+# cdna_scan: read 3 exon regions on 1 contigs; 1 loci listed
+chrom	start	end	junctions	reads	junction_list
+chrT	1200	5001	2	4	1200-3001:2,1200-5001:2

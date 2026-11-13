@@ -4,10 +4,11 @@
 from 500 bp fragments on a made-up 80 kb contig (`chrP`, seeded random
 sequence), a VEP VCF of six heterozygous variants for step 31, and the three
 pairs as slivar names them. The reads and variants are made up; they describe
-no person. The same arguments give the same files, so nothing binary is kept
-in git: the tests build the BAM from `reads.sam` (pysam in
-`tests/test_comphet_phase.py`, samtools in
-`tests/e2e/comphet-phasing-1-reads.sh`).
+no person. The same arguments give the same files. The e2e case
+`tests/e2e/comphet-phasing-1-reads.sh` builds the BAM from `reads.sam` with
+samtools. The `og comphet phase` parity cases keep the BAMs it gives, plain and
+`--swap`, in `rust/crates/og-bam/tests/data/reads/in/` (made by
+`rust/crates/og-bam/tests/make_reads_parity.py`).
 
 | Gene | Variants | Copies | Expected phase |
 |---|---|---|---|

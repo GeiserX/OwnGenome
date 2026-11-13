@@ -39,11 +39,11 @@
     are [] for a sample without a gVCF.
 
     CLINVAR_CDNA_CHECK, below, runs scripts/06's cDNA read check
-    (bin/clip_check.py) on these hits: <id>_clinvar_cdna_check.tsv says for
+    (og cdna check) on these hits: <id>_clinvar_cdna_check.tsv says for
     each hit whether its alt reads look like spliced cDNA, and names a hit at
     a site of assets/construct_variants.tsv. It needs the sample's BAM and
     --gencode_exons; without either it writes every hit as not_checked, with
-    the reason, as scripts/06 does. It also runs bin/cdna_scan.py over every
+    the reason, as scripts/06 does. It also runs og cdna scan over every
     exon: <id>_clinvar_cdna_scan.tsv.
 
     Equivalent to: scripts/06-clinvar-screen.sh
@@ -250,20 +250,21 @@ process CLINVAR_SCREEN {
     CLINVAR_CDNA_CHECK — step 06's cDNA read check of each ClinVar hit
     Spliced cDNA or expression-vector DNA (a lab contaminant) gives alt reads
     clipped exactly at an exon edge, with the rest of the read on the next
-    exon; bin/clip_check.py counts them for each hit and flags the hit when
+    exon; og cdna check counts them for each hit and flags the hit when
     most alt reads are clipped that way and few ref reads are. It reads only
-    the reads at the hits. pysam is in PYPGX_IMAGE (conf/containers.config).
+    the reads at the hits; og reads the BAM itself (no pysam). The task keeps
+    PYPGX_IMAGE (conf/containers.config), as the bash step does.
     bam and bai are [] for a sample without a BAM, exons [] without
     --gencode_exons: the table then says "not checked" and why. construct is
     assets/construct_variants.tsv: a hit at one of its sites is named in the
     construct_site column and printed with its counts, whatever the verdict.
-    Then bin/cdna_scan.py reads the reads over every exon and writes
+    Then og cdna scan reads the reads over every exon and writes
     <id>_clinvar_cdna_scan.tsv, the loci with reads across two or more exon
     junctions; ext.cdna_scan = false skips it (the table then says so).
 
     source 'cpsr' runs the same check on CPSR's P/LP rows instead (the
     CLINICAL workflow): hits_tsv is CPSR's classification table, read with
-    clip_check.py --cpsr, and the task writes cpsr/<id>_cpsr_cdna_check.tsv
+    og cdna check --cpsr, and the task writes cpsr/<id>_cpsr_cdna_check.tsv
     and no scan, as scripts/17 does. construct is [] there, as scripts/17
     passes no construct catalog.
 
@@ -306,9 +307,9 @@ process CLINVAR_CDNA_CHECK {
     def rows = source == 'cpsr' ? "--cpsr ${hits_tsv}" : "--hits ${hits_tsv}"
     def cons = construct ? "--construct ${construct}" : ''
     // The scan reads every exon, whatever the rows: once per sample, with step 06.
-    def scan_cmd = source == 'clinvar' ? "cdna_scan.py --out ${meta.id}_clinvar_cdna_scan.tsv ${scan}" : ''
+    def scan_cmd = source == 'clinvar' ? "og cdna scan --out ${meta.id}_clinvar_cdna_scan.tsv ${scan}" : ''
     """
-    clip_check.py ${rows} --out ${meta.id}_${source}_cdna_check.tsv ${cons} ${reads}
+    og cdna check ${rows} --out ${meta.id}_${source}_cdna_check.tsv ${cons} ${reads}
     ${scan_cmd}
 
     cat <<-END_VERSIONS > versions.yml

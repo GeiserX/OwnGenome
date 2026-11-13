@@ -5,7 +5,7 @@
 #      CPSR table holding the planted hit as a P/LP row and a benign row, with
 #      the spliced reads clinvar-clip-check-1 left: it publishes
 #      cpsr/<id>_cpsr_cdna_check.tsv, the P/LP row is flagged with the counts
-#      bin/clip_check.py --cpsr gives step 17, and the benign row is not
+#      og cdna check --cpsr gives step 17, and the benign row is not
 #      checked. Control: no exon file, and the row is not checked.
 #   2. Sample NFW: step 24 and HTML_REPORT on the same tables: the ClinVar
 #      hits, a VEP file with a gnomAD AF on each hit (3% on the planted one),
@@ -99,15 +99,15 @@ cdna_nf cdna "channel.value(file('${EXONS}'))"
 NF_CDNA="${CASE_TMP}/cdna/results/${S}/cpsr/${S}_cpsr_cdna_check.tsv"
 check "the table is published as cpsr/${S}_cpsr_cdna_check.tsv" test -s "$NF_CDNA"
 check "and no ClinVar scan table beside it" test ! -e "${CASE_TMP}/cdna/results/${S}/cpsr/${S}_clinvar_cdna_scan.tsv"
-# Step 17's call of bin/clip_check.py --cpsr on the same files
+# Step 17's call of og cdna check --cpsr on the same files
 docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome:ro" -v "${CASE_TMP}:/t" -v "${REPO}/bin:/pgp-bin:ro" \
-  "$PYPGX_IMAGE" python3 /pgp-bin/clip_check.py --cpsr "/t/in/${S}.cpsr.grch38.classification.tsv.gz" \
+  "$PYPGX_IMAGE" /pgp-bin/og cdna check --cpsr "/t/in/${S}.cpsr.grch38.classification.tsv.gz" \
   --bam "/genome/${C}/aligned/${C}_sorted.bam" --exons /t/in/exons.bed --out /t/in/step17.tsv > /dev/null
 ROW=$(awk -F'\t' -v p="$POS" 'NR > 1 && $2 == p' "$NF_CDNA" 2>/dev/null)
 echo "Nextflow CPSR row: ${ROW}"
 check_eq "only the P/LP row is in the table" "$(awk 'NR > 1' "$NF_CDNA" 2>/dev/null | wc -l | tr -d ' ')" 1
 check_eq "the planted P/LP row is flagged" "$(cut -f9 <<< "$ROW")" flagged
-check "the table is the one bin/clip_check.py --cpsr writes for step 17, byte for byte" cmp -s "${CASE_TMP}/in/step17.tsv" "$NF_CDNA"
+check "the table is the one og cdna check --cpsr writes for step 17, byte for byte" cmp -s "${CASE_TMP}/in/step17.tsv" "$NF_CDNA"
 cdna_nf cdna-no-exons "[]"
 OFF=$(awk -F'\t' -v p="$POS" 'NR > 1 && $2 == p' "${CASE_TMP}/cdna-no-exons/results/${S}/cpsr/${S}_cpsr_cdna_check.tsv" 2>/dev/null)
 check_eq "control: without exons the row is not checked, so the flagged check can fail" "$(cut -f9 <<< "$OFF")" not_checked
