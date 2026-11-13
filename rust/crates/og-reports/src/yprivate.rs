@@ -480,7 +480,9 @@ pub(crate) fn cli(rest: &[String], out: &mut dyn Write, err: &mut dyn Write) -> 
         if !(gates.min_fraction > 0.0 && gates.min_fraction <= 1.0) {
             return refuse("--min-fraction must be above 0 and at most 1");
         }
-        if gates.max_depth_factor < 0.0 {
+        // NaN is refused too: the Python's `< 0` let it through and turned
+        // the depth gate off.
+        if gates.max_depth_factor.is_nan() || gates.max_depth_factor < 0.0 {
             return refuse("--max-depth-factor must be 0 or more");
         }
         Ok(private_snps(&Run {
@@ -568,5 +570,34 @@ mod tests {
             .collect();
         let m = read_mask(&mask_file(&d, "m.fa", &format!(">chrY\n{seq}\n"))).unwrap();
         assert!((1..=200u64).all(|p| m.passes(p) == ((p - 1) % 3 == 0)));
+    }
+
+    /// A NaN depth factor would turn the depth gate off without a word.
+    #[test]
+    fn a_nan_depth_factor_is_refused() {
+        for (factor, refused) in [("nan", true), ("-1", true), ("0", false)] {
+            let args: Vec<String> = [
+                "--vcf",
+                "/nonexistent.vcf",
+                "--tree-dir",
+                "/nonexistent",
+                "--sample",
+                "S",
+                "--out-prefix",
+                "/nonexistent/o",
+                "--max-depth-factor",
+                factor,
+            ]
+            .map(String::from)
+            .into();
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            assert_eq!(cli(&args, &mut out, &mut err), 1, "{factor}");
+            let err = String::from_utf8(err).unwrap();
+            assert_eq!(
+                err.contains("--max-depth-factor must be 0 or more"),
+                refused,
+                "{factor}: {err}"
+            );
+        }
     }
 }

@@ -174,8 +174,12 @@ if [ -s "$NF_TREE" ] && [ -s "${R}/${SAMPLE}_report.html" ]; then
   NF_HG=$(awk -F'\t' 'NR == 1 { for (i = 1; i <= NF; i++) c[$i] = i; next } NR == 2 { print $c["Hg"] }' "$NF_TREE")
   NF_PRIV="${R}/y_haplogroup/${SAMPLE}_y_private_snps.tsv"
   check "the Nextflow run published the private-SNP list" test -s "$NF_PRIV"
+  REF_RC=0
   "${REPO}/bin/og" y private-snps --vcf "${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" --tree-dir "$YT" \
-    --sample "$SAMPLE" --out-prefix "${CASE_TMP}/nf-same" > /dev/null 2>&1
+    --sample "$SAMPLE" --out-prefix "${CASE_TMP}/nf-same" > /dev/null 2>&1 || REF_RC=$?
+  check_eq "og y private-snps makes the reference list on the same VCF and tables" "$REF_RC" 0
+  check "and the reference list has its header" \
+    has "^Pos${T}Ref${T}Alt" "$(cat "${CASE_TMP}/nf-same_y_private_snps.tsv" 2>/dev/null)"
   check "and its rows are the tool's own on the same VCF and tables" \
     test "$(awk -F'\t' '$0 !~ /^(#|Pos\t)/' "$NF_PRIV" 2>/dev/null | md5sum | cut -d' ' -f1)" = \
          "$(awk -F'\t' '$0 !~ /^(#|Pos\t)/' "${CASE_TMP}/nf-same_y_private_snps.tsv" 2>/dev/null | md5sum | cut -d' ' -f1)"

@@ -10,6 +10,7 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
   - A tree branch whose `id`, `snps` or `children` has a type the Python could not use, or that repeats one of those keys, stops `og y tree-place` with the branch named. The Python crashed or kept the last copy.
   - Each output is written to a temporary file and renamed, so a step that stops leaves no half-written table.
   - A gzip mask or VCF is told by its first bytes, not by a `.gz` name.
+  - `og y private-snps --max-depth-factor nan` stops with exit 1. The Python took it and turned the depth gate off; `0` is the way to do that.
 
 - Step 41 (blood groups) now runs in the Rust `og` binary: `og bloodtype report` replaces `bin/bloodtype_report.py`, which is gone, and `og bloodtype check-markers` checks that the marker table and the rules agree. The report reads the 318 marker positions through the VCF's `.tbi` or `.csi` instead of the whole VCF; without a usable index it reads the VCF once, line by line, as before. On a synthetic 5,000,000-record bgzipped VCF it takes 0.04 s with the index and 0.9 s without, against 1.9 s for the Python. The Nextflow `BLOODTYPE` process now stages the VCF's index beside it. The table, the evidence table and the printed summary are the same, byte for byte, on the 34 parity cases. What changes:
   - The RhD call reads the copy-number catalog and assesses the RHD row once per run. The Python read the catalog up to five times.
