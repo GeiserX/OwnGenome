@@ -107,16 +107,21 @@ static EFFECT: LazyLock<Regex> =
 
 /// What the catalog says of an evaluation, and whether it matches. Err is
 /// the reason the answer is not an evaluation with that id.
-pub fn metric(body: &str, id: &str, ppm: &str, anc: &str, eff: &str) -> Result<(String, bool), String> {
+pub fn metric(
+    body: &str,
+    id: &str,
+    ppm: &str,
+    anc: &str,
+    eff: &str,
+) -> Result<(String, bool), String> {
     let d = loads(body).map_err(|_| "(not JSON)".to_owned())?;
     if !matches!(d, Value::Object(_)) || !is_str(field(&d, "id"), ppm) {
         return Err("(no such evaluation)".into());
     }
     let odd = || "(not an evaluation the check can read)".to_owned();
     let empty = Value::Null;
-    let or_empty = |v: Option<&'_ Value>| -> Value {
-        v.filter(|v| truthy(v)).cloned().unwrap_or(Value::Null)
-    };
+    let or_empty =
+        |v: Option<&'_ Value>| -> Value { v.filter(|v| truthy(v)).cloned().unwrap_or(Value::Null) };
     let samples = match or_empty(field(&or_empty(field(&d, "sampleset")), "samples")) {
         Value::Null => Vec::new(),
         Value::Array(a) => a,
@@ -134,7 +139,10 @@ pub fn metric(body: &str, id: &str, ppm: &str, anc: &str, eff: &str) -> Result<(
         }
     }
     let found: std::collections::BTreeSet<Option<&str>> = terms.iter().map(|t| group(t)).collect();
-    let sizes = match or_empty(field(&or_empty(field(&d, "performance_metrics")), "effect_sizes")) {
+    let sizes = match or_empty(field(
+        &or_empty(field(&d, "performance_metrics")),
+        "effect_sizes",
+    )) {
         Value::Null => Vec::new(),
         Value::Array(a) => a,
         _ => return Err(odd()),
@@ -159,8 +167,16 @@ pub fn metric(body: &str, id: &str, ppm: &str, anc: &str, eff: &str) -> Result<(
     let said = format!(
         "{}, {}, {}",
         show(pgs)?,
-        if terms_said.is_empty() { "no samples" } else { &terms_said },
-        if effects_said.is_empty() { "no effect size" } else { &effects_said },
+        if terms_said.is_empty() {
+            "no samples"
+        } else {
+            &terms_said
+        },
+        if effects_said.is_empty() {
+            "no effect size"
+        } else {
+            &effects_said
+        },
     );
     let ok = is_str(Some(pgs), id)
         && group_named(anc)
@@ -259,21 +275,40 @@ mod tests {
     #[test]
     fn trait_needs_the_same_id_and_a_trait() {
         assert_eq!(
-            trait_of(r#"{"id": "PGS000018", "trait_reported": " Coronary artery disease "}"#, "PGS000018").as_deref(),
+            trait_of(
+                r#"{"id": "PGS000018", "trait_reported": " Coronary artery disease "}"#,
+                "PGS000018"
+            )
+            .as_deref(),
             Some("Coronary artery disease")
         );
         assert_eq!(trait_of("{}", "PGS000018"), None);
-        assert_eq!(trait_of(r#"{"id": "PGS000020", "trait_reported": "x"}"#, "PGS000018"), None);
-        assert_eq!(trait_of(r#"{"id": "PGS000018", "trait_reported": ""}"#, "PGS000018"), None);
+        assert_eq!(
+            trait_of(r#"{"id": "PGS000020", "trait_reported": "x"}"#, "PGS000018"),
+            None
+        );
+        assert_eq!(
+            trait_of(r#"{"id": "PGS000018", "trait_reported": ""}"#, "PGS000018"),
+            None
+        );
         assert_eq!(trait_of("not json", "PGS000018"), None);
     }
 
     #[test]
     fn labels_match_by_words() {
-        assert!(label_matches("Type 2 diabetes (T2D)", "Type 2 diabetes (T2D)"));
+        assert!(label_matches(
+            "Type 2 diabetes (T2D)",
+            "Type 2 diabetes (T2D)"
+        ));
         assert!(label_matches("type_2_diabetes", "Type 2 diabetes (T2D)"));
-        assert!(label_matches("Late-onset Alzheimer\u{2019}s disease", "Late-onset Alzheimer's disease"));
-        assert!(!label_matches("inflammatory_bowel_disease", "Type 2 diabetes (T2D)"));
+        assert!(label_matches(
+            "Late-onset Alzheimer\u{2019}s disease",
+            "Late-onset Alzheimer's disease"
+        ));
+        assert!(!label_matches(
+            "inflammatory_bowel_disease",
+            "Type 2 diabetes (T2D)"
+        ));
         assert!(!label_matches("", "anything"));
     }
 
@@ -294,10 +329,19 @@ mod tests {
             ("PGS000018", "XYZ", "HR 1.53"),
             ("PGS000018", "EUR", "HR"),
         ] {
-            assert!(!metric(ANSWER, id, "PPM000591", anc, eff).unwrap().1, "{id} {anc} {eff}");
+            assert!(
+                !metric(ANSWER, id, "PPM000591", anc, eff).unwrap().1,
+                "{id} {anc} {eff}"
+            );
         }
-        assert_eq!(metric("{}", "PGS000018", "PPM000591", "EUR", "HR 1.53").unwrap_err(), "(no such evaluation)");
-        assert_eq!(metric("<html>", "PGS000018", "PPM000591", "EUR", "HR 1.53").unwrap_err(), "(not JSON)");
+        assert_eq!(
+            metric("{}", "PGS000018", "PPM000591", "EUR", "HR 1.53").unwrap_err(),
+            "(no such evaluation)"
+        );
+        assert_eq!(
+            metric("<html>", "PGS000018", "PPM000591", "EUR", "HR 1.53").unwrap_err(),
+            "(not JSON)"
+        );
     }
 
     #[test]
@@ -307,7 +351,11 @@ mod tests {
         assert!(!ok, "{said}");
         assert_eq!(said, "PGS000018, European, HR True");
         let body = ANSWER.replace("1.53", "2");
-        assert!(metric(&body, "PGS000018", "PPM000591", "EUR", "HR 2").unwrap().1);
+        assert!(
+            metric(&body, "PGS000018", "PPM000591", "EUR", "HR 2")
+                .unwrap()
+                .1
+        );
     }
 
     #[test]

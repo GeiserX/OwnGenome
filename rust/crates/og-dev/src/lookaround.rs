@@ -38,9 +38,9 @@ impl Rule {
                 let caps = self.re.captures_at(line, pos)?;
                 let m = caps.get(1).or_else(|| caps.get(0))?;
                 let (start, end) = (m.start(), m.end());
-                let refused = self.not_after.is_some_and(|bad| {
-                    line[..start].chars().next_back().is_some_and(bad)
-                });
+                let refused = self
+                    .not_after
+                    .is_some_and(|bad| line[..start].chars().next_back().is_some_and(bad));
                 if refused {
                     pos = next_char(line, start);
                     continue;
@@ -64,7 +64,10 @@ impl Rule {
 
 /// The byte offset of the character after `i`, or one past the end.
 fn next_char(s: &str, i: usize) -> usize {
-    s[i..].chars().next().map_or(s.len() + 1, |c| i + c.len_utf8())
+    s[i..]
+        .chars()
+        .next()
+        .map_or(s.len() + 1, |c| i + c.len_utf8())
 }
 
 #[cfg(test)]

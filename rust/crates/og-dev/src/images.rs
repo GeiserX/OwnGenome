@@ -73,8 +73,10 @@ static URL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[a-z][a-z0-9+.-]*://[^\s\x1c-\x1f]+").expect("a valid pattern"));
 /// A path to a file, such as modules/local/vep/main.nf:23, is not an image.
 static FILE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\.(nf|sh|md|py|config|ya?ml|json|txt|tsv|csv|vcf|gz|html|css|js|R|r):[0-9]+(-[0-9]+)?$")
-        .expect("a valid pattern")
+    Regex::new(
+        r"\.(nf|sh|md|py|config|ya?ml|json|txt|tsv|csv|vcf|gz|html|css|js|R|r):[0-9]+(-[0-9]+)?$",
+    )
+    .expect("a valid pattern")
 });
 
 fn bare_names(pins: &[Pin]) -> BTreeSet<String> {
@@ -99,8 +101,11 @@ fn patterns(bare: &BTreeSet<String>) -> [Rule; 2] {
             Some(lead),
         )
         .expect("a valid pattern"),
-        Rule::new(&format!(r"((?:{}){TAG}){AHEAD}", names.join("|")), Some(lead))
-            .expect("a valid pattern"),
+        Rule::new(
+            &format!(r"((?:{}){TAG}){AHEAD}", names.join("|")),
+            Some(lead),
+        )
+        .expect("a valid pattern"),
     ]
 }
 
@@ -219,7 +224,11 @@ fn scan(a: &ScanArgs, list: &str, out: &mut dyn Write) -> Result<bool, String> {
             let _ = writeln!(
                 out,
                 "FAIL: {f} no longer names {image}{}; drop its line from EXEMPT_PAIRS in scripts/ci/check-images.sh",
-                if *n > 1 { format!(" {n} more times") } else { String::new() }
+                if *n > 1 {
+                    format!(" {n} more times")
+                } else {
+                    String::new()
+                }
             );
             bad = true;
         }
@@ -267,16 +276,25 @@ static HELD: LazyLock<Regex> = LazyLock::new(|| {
 /// The check on parsed pins; prints one line per tool.
 pub fn coupled(pins: &[Pin], out: &mut dyn Write) -> bool {
     let Some(image) = versions_env::get(pins, "MINIMAP2_SAMTOOLS_IMAGE") else {
-        let _ = writeln!(out, "FAIL: MINIMAP2_SAMTOOLS_IMAGE is not set in versions.env");
+        let _ = writeln!(
+            out,
+            "FAIL: MINIMAP2_SAMTOOLS_IMAGE is not set in versions.env"
+        );
         return false;
     };
     let mut held: BTreeMap<&str, &str> = BTreeMap::new();
     for c in HELD.captures_iter(&image.rest) {
-        let (tool, v) = (c.get(1).map_or("", |m| m.as_str()), c.get(2).map_or("", |m| m.as_str()));
+        let (tool, v) = (
+            c.get(1).map_or("", |m| m.as_str()),
+            c.get(2).map_or("", |m| m.as_str()),
+        );
         held.insert(tool, v.trim_end_matches('.'));
     }
     let mut ok = true;
-    for (tool, var) in [("minimap2", "MINIMAP2_IMAGE"), ("samtools", "SAMTOOLS_IMAGE")] {
+    for (tool, var) in [
+        ("minimap2", "MINIMAP2_IMAGE"),
+        ("samtools", "SAMTOOLS_IMAGE"),
+    ] {
         let want = versions_env::get(pins, var).and_then(|p| release(&p.value));
         let got = held.get(tool).copied();
         match (want, got) {
@@ -337,7 +355,15 @@ mod tests {
         String::from_utf8(out)
             .unwrap()
             .lines()
-            .map(|l| l.split(" names the image ").nth(1).unwrap().split(';').next().unwrap().to_owned())
+            .map(|l| {
+                l.split(" names the image ")
+                    .nth(1)
+                    .unwrap()
+                    .split(';')
+                    .next()
+                    .unwrap()
+                    .to_owned()
+            })
             .collect()
     }
 
@@ -349,12 +375,21 @@ mod tests {
 
     #[test]
     fn literals_are_found_as_python_finds_them() {
-        assert_eq!(found(&p("docker run staphb/bcftools:~1.21 x")), [p("staphb/bcftools:~1.21")]);
-        assert_eq!(found(&p("runs staphb/samtools:~1.19.")), [p("staphb/samtools:~1.19")]);
+        assert_eq!(
+            found(&p("docker run staphb/bcftools:~1.21 x")),
+            [p("staphb/bcftools:~1.21")]
+        );
+        assert_eq!(
+            found(&p("runs staphb/samtools:~1.19.")),
+            [p("staphb/samtools:~1.19")]
+        );
         assert_eq!(found(&p("// container python:~3.12")), [p("python:~3.12")]);
         assert_eq!(found(&p("uses: docker://alpine:~3.8")), [p("alpine:~3.8")]);
         // A tag followed by a slash backs off to the part before a dot.
-        assert_eq!(found(&p("x staphb/samtools:~1.2/x")), [p("staphb/samtools:~1")]);
+        assert_eq!(
+            found(&p("x staphb/samtools:~1.2/x")),
+            [p("staphb/samtools:~1")]
+        );
         for clean in [
             "see https://quay.io/repository/biocontainers/samtools:1.0",
             "modules/local/vep/main.nf:23",
@@ -386,7 +421,9 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(!ok);
         assert!(
-            out.contains(&p("FAIL: a.md no longer names quay.io/x/y:~3; drop its line")),
+            out.contains(&p(
+                "FAIL: a.md no longer names quay.io/x/y:~3; drop its line"
+            )),
             "{out}"
         );
         assert!(!out.contains(&p("y:~2;")), "{out}");

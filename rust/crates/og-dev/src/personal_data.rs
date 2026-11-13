@@ -138,12 +138,18 @@ fn builtin() -> Vec<Check> {
         },
         Check {
             kind: "rsid",
-            rule: rule(r"\brs[0-9]+\t[0-9XYMT]{1,2}\t[0-9]+\t[ACGTDI-]{1,2}\b", None),
+            rule: rule(
+                r"\brs[0-9]+\t[0-9XYMT]{1,2}\t[0-9]+\t[ACGTDI-]{1,2}\b",
+                None,
+            ),
             cond: None,
         },
         Check {
             kind: "repeat",
-            rule: rule(r"([0-9]{1,4}/[0-9]{1,4})(?:[^0-9/]|$)", Some(digit_dot_slash)),
+            rule: rule(
+                r"([0-9]{1,4}/[0-9]{1,4})(?:[^0-9/]|$)",
+                Some(digit_dot_slash),
+            ),
             cond: Some(&*REPCN),
         },
         // Python: \b(?:GENES)\b[^/\n]{0,40}?(?<![0-9.])N/N(?![0-9/]). The
@@ -286,7 +292,10 @@ fn git_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 /// The staged blob of each path (relative to `root`), from one
 /// `git cat-file --batch`. A path with no blob in the index is absent.
 fn staged(root: &Path, rels: &[String]) -> Result<HashMap<String, Vec<u8>>, String> {
-    let wanted: Vec<&String> = rels.iter().filter(|r| !r.starts_with('/') && !r.contains('\n')).collect();
+    let wanted: Vec<&String> = rels
+        .iter()
+        .filter(|r| !r.starts_with('/') && !r.contains('\n'))
+        .collect();
     let mut blobs = HashMap::new();
     if wanted.is_empty() {
         return Ok(blobs);
@@ -345,7 +354,9 @@ fn scan_text(out: &mut dyn Write, rules: &[Check], texts: &[&str], rel: &str, da
             .flat_map(|t| line.match_indices(*t).map(|(a, s)| (a, a + s.len())))
             .collect();
         for c in rules {
-            if c.cond.is_some_and(|cs| !cs.iter().any(|r| r.is_match(line))) {
+            if c.cond
+                .is_some_and(|cs| !cs.iter().any(|r| r.is_match(line)))
+            {
                 continue;
             }
             let leaked = c
@@ -385,7 +396,10 @@ fn run(a: &Args, out: &mut dyn Write) -> Result<bool, String> {
         .filter(|(_, rel)| !a.skip.iter().any(|g| fnmatch(rel, g)))
         .collect();
     let blobs = if a.cached {
-        staged(&root, &todo.iter().map(|(_, r)| r.clone()).collect::<Vec<_>>())?
+        staged(
+            &root,
+            &todo.iter().map(|(_, r)| r.clone()).collect::<Vec<_>>(),
+        )?
     } else {
         HashMap::new()
     };
@@ -458,7 +472,9 @@ mod tests {
         let rules = builtin();
         let mut out = Vec::new();
         for c in &rules {
-            if c.cond.is_some_and(|cs| !cs.iter().any(|r| r.is_match(line))) {
+            if c.cond
+                .is_some_and(|cs| !cs.iter().any(|r| r.is_match(line)))
+            {
                 continue;
             }
             if c.rule.is_match(line) {
@@ -529,9 +545,21 @@ mod tests {
         let rules = builtin();
         let ex = p("(`/mnt/u~ser/`, `/ho~me/username/`, etc.)");
         let mut out = Vec::new();
-        assert!(!scan_text(&mut out, &rules, &[ex.as_str()], "x.md", ex.as_bytes()));
+        assert!(!scan_text(
+            &mut out,
+            &rules,
+            &[ex.as_str()],
+            "x.md",
+            ex.as_bytes()
+        ));
         let line = p(&format!("{ex} see /home/~bob/x"));
-        assert!(scan_text(&mut out, &rules, &[ex.as_str()], "x.md", line.as_bytes()));
+        assert!(scan_text(
+            &mut out,
+            &rules,
+            &[ex.as_str()],
+            "x.md",
+            line.as_bytes()
+        ));
         let got = String::from_utf8(out).unwrap();
         assert!(got.starts_with("FAIL home      x.md:1: "), "{got}");
     }

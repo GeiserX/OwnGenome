@@ -103,7 +103,10 @@ pub fn check_run(
     for p in all {
         match (images.get(p), first.get(p)) {
             (None, _) => {
-                let _ = writeln!(out, "FAIL {p:<20} has no selector in conf/containers.config");
+                let _ = writeln!(
+                    out,
+                    "FAIL {p:<20} has no selector in conf/containers.config"
+                );
                 ok = false;
             }
             (Some(_), None) => {
@@ -142,7 +145,13 @@ pub fn cli_check_run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) 
     }
     let texts = read(config).and_then(|c| Ok((c, read(yml)?)));
     match texts {
-        Ok((c, y)) => u8::from(!check_run(&selectors(&c), &first_entries(&y), yml, expect, out)),
+        Ok((c, y)) => u8::from(!check_run(
+            &selectors(&c),
+            &first_entries(&y),
+            yml,
+            expect,
+            out,
+        )),
         Err(e) => {
             let _ = writeln!(err, "ERROR: {e}");
             2
@@ -150,8 +159,7 @@ pub fn cli_check_run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) 
     }
 }
 
-static VAR: LazyLock<Regex> =
-    LazyLock::new(|| re(r"\$\{([A-Z][A-Z0-9_]*)\}|\$([A-Z][A-Z0-9_]*)"));
+static VAR: LazyLock<Regex> = LazyLock::new(|| re(r"\$\{([A-Z][A-Z0-9_]*)\}|\$([A-Z][A-Z0-9_]*)"));
 
 /// One URL with its variables filled and its trailing punctuation dropped.
 pub fn expand(url: &str, vals: &BTreeMap<String, String>) -> String {
@@ -220,7 +228,13 @@ mod tests {
     fn run(yml: &str, expect: &[&str]) -> (bool, String) {
         let expect: Vec<String> = expect.iter().map(|s| (*s).to_owned()).collect();
         let mut out = Vec::new();
-        let ok = check_run(&selectors(CONFIG), &first_entries(yml), "v.yml", &expect, &mut out);
+        let ok = check_run(
+            &selectors(CONFIG),
+            &first_entries(yml),
+            "v.yml",
+            &expect,
+            &mut out,
+        );
         (ok, String::from_utf8(out).unwrap())
     }
 
@@ -231,7 +245,10 @@ mod tests {
             &[],
         );
         assert!(ok, "{out}");
-        assert!(out.contains("OK   ROH                  bcftools: 1.22--h0_0\n"), "{out}");
+        assert!(
+            out.contains("OK   ROH                  bcftools: 1.22--h0_0\n"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -242,8 +259,14 @@ mod tests {
         );
         assert!(!ok);
         assert!(out.contains("FAIL ROH                  bcftools: 0.0.0-planted, want 1.22--h0_0 (quay.io/x/bcftools:1.22--h0_0)"), "{out}");
-        assert!(out.contains("FAIL NEW_TOOL             has no selector"), "{out}");
-        assert!(out.contains("FAIL VEP                  missing from v.yml"), "{out}");
+        assert!(
+            out.contains("FAIL NEW_TOOL             has no selector"),
+            "{out}"
+        );
+        assert!(
+            out.contains("FAIL VEP                  missing from v.yml"),
+            "{out}"
+        );
         assert!(!out.contains("PRS"), "{out}");
         let (ok, out) = run("nothing: here\n", &["ROH"]);
         assert!(!ok);
@@ -253,10 +276,22 @@ mod tests {
     #[test]
     fn urls_expand_and_lose_trailing_punctuation() {
         let vals = BTreeMap::from([("REL".to_owned(), "1.2".to_owned())]);
-        assert_eq!(expand("https://x.org/${REL}/a.gz", &vals), "https://x.org/1.2/a.gz");
-        assert_eq!(expand("https://x.org/$REL/a.gz).", &vals), "https://x.org/1.2/a.gz)");
-        assert_eq!(expand("https://x.org/${NOPE}/a.", &vals), "https://x.org/${NOPE}/a");
-        assert_eq!(expand("${U:-https://x.org/a}", &vals), "${U:-https://x.org/a}");
+        assert_eq!(
+            expand("https://x.org/${REL}/a.gz", &vals),
+            "https://x.org/1.2/a.gz"
+        );
+        assert_eq!(
+            expand("https://x.org/$REL/a.gz).", &vals),
+            "https://x.org/1.2/a.gz)"
+        );
+        assert_eq!(
+            expand("https://x.org/${NOPE}/a.", &vals),
+            "https://x.org/${NOPE}/a"
+        );
+        assert_eq!(
+            expand("${U:-https://x.org/a}", &vals),
+            "${U:-https://x.org/a}"
+        );
         assert_eq!(expand("https://x.org/a}", &vals), "https://x.org/a");
         assert_eq!(expand("https://x.org/a];:", &vals), "https://x.org/a");
     }
