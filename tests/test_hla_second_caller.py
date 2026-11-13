@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""bin/pgx_outside_calls.py with OptiType, the opt-in second HLA caller.
+"""og pgx outside-calls with OptiType, the opt-in second HLA caller.
 
 With HLA_QC=true (bash) or --hla_qc (Nextflow) step 08 also runs OptiType on
 the HLA-A, -B and -C reads, and step 36 passes HLA-A or HLA-B to PharmCAT
 only when T1K and OptiType give the same two alleles at two fields. Each case
-runs the script on synthetic files:
+runs og on synthetic files:
 
   1. agree          both callers agree: HLA-A and HLA-B reach PharmCAT
   2. disagree       OptiType differs at HLA-B: HLA-B stays 'indeterminate',
@@ -17,11 +17,14 @@ runs the script on synthetic files:
   6. T1K alone      no OptiType asked for: T1K's call passes, as before
   7. quality 0      T1K's quality-0 rule still wins over an agreement
   8. concordance    the hla-concordance subcommand: HLA-A, -B, -C, yes/no
-  9. red control    the agreement test disabled in a copy of the script:
-                    the disagreeing HLA-B reaches the outside-call file and
-                    case 2's check reports it, so case 2 can fail
+  9. red control    the same inputs without OptiType's result, so without
+                    the agreement rule: the disagreeing HLA-B reaches the
+                    outside-call file and case 2's check reports it, so
+                    case 2 can fail (og's own planted control is the cargo
+                    test optitype_agreeing_passes_and_disagreeing_withholds)
 
-Run: python3 tests/test_hla_second_caller.py
+Run: python3 tests/test_hla_second_caller.py (OG names og, else
+tests/og_binary.py finds the build)
 """
 import os
 import re
@@ -30,7 +33,10 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "pgx_outside_calls.py")
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
+
+OG = [og_binary(), "pgx"]
 FAILS = []
 
 T1K = ("HLA-A\t2\tHLA-A*01:01:01\t110.5\t60\tHLA-A*26:01:01\t95.2\t60\t\n"
@@ -53,13 +59,13 @@ def check(name, ok, detail=""):
         FAILS.append(name)
 
 
-def run(tmp, t1k, optitype=None, require=False, script=SCRIPT):
+def run(tmp, t1k, optitype=None, require=False):
     """(outside-call text, {gene: consensus row}) of one run."""
     hla = os.path.join(tmp, "t1k.tsv")
     with open(hla, "w") as f:
         f.write(t1k)
     calls, cons = os.path.join(tmp, "calls.tsv"), os.path.join(tmp, "cons.tsv")
-    cmd = [sys.executable, script, "--calls", calls, "--consensus", cons, "--hla", hla]
+    cmd = [*OG, "outside-calls", "--calls", calls, "--consensus", cons, "--hla", hla]
     if optitype is not None:
         ot = os.path.join(tmp, "optitype.tsv")
         with open(ot, "w") as f:
@@ -89,9 +95,9 @@ def withheld(calls, rows, gene, reason_re):
             and r[1:3] == ["indeterminate", "no"] and re.search(reason_re, r[3]) is not None)
 
 
-def disagree_checks(tag, tmp, script=SCRIPT):
+def disagree_checks(tag, tmp, optitype=OT_DISAGREE):
     """Case 2's checks; True when every one passed."""
-    calls, rows = run(tmp, T1K, OT_DISAGREE, script=script)
+    calls, rows = run(tmp, T1K, optitype)
     before = len(FAILS)
     check(f"{tag} HLA-B withheld when OptiType disagrees",
           withheld(calls, rows, "HLA-B", r"^T1K and OptiType disagree at two fields$"), f"{calls!r} {rows.get('HLA-B')}")
@@ -148,7 +154,7 @@ with tempfile.TemporaryDirectory() as tmp:
         f.write(T1K)
     with open(ot, "w") as f:
         f.write(OT_DISAGREE)
-    r = subprocess.run([sys.executable, SCRIPT, "hla-concordance", "--t1k", t1k, "--optitype", ot, "--out", out],
+    r = subprocess.run([*OG, "hla-concordance", "--t1k", t1k, "--optitype", ot, "--out", out],
                        capture_output=True, text=True)
     want = ("Gene\tT1K\tOptiType\tAgree\tNote\n"
             "HLA-A\t*01:01/*26:01\t*01:01/*26:01\tyes\t-\n"
@@ -157,15 +163,9 @@ with tempfile.TemporaryDirectory() as tmp:
     got = open(out).read() if r.returncode == 0 and os.path.exists(out) else r.stderr
     check("8 the concordance table, byte for byte", got == want, f"\n{got}")
 
-    # 9. red control: case 2 must fail on a script whose agreement test is off
-    src = open(SCRIPT).read()
-    broken = src.replace("if not same_pair(names, ot):", "if False:")
-    check("9 the mutation applies", broken != src)
-    bad = os.path.join(tmp, "pgx_outside_calls_broken.py")
-    with open(bad, "w") as f:
-        f.write(broken)
+    # 9. red control: case 2 must fail when the disagreeing HLA-B gets through
     saved = list(FAILS)
-    caught = not disagree_checks("9 (control, must FAIL)", tmp, script=bad)
+    caught = not disagree_checks("9 (control, must FAIL)", tmp, optitype=None)
     FAILS[:] = saved
     check("9 with the agreement rule disabled, case 2 rejects the disagreeing HLA-B", caught)
 

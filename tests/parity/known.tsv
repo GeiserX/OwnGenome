@@ -2,3 +2,5 @@
 # Python exception text), one per line. A listed difference passes; a listed
 # difference no longer seen fails. A deliberate fix is a golden instead.
 # tool<TAB>case<TAB>item<TAB>reason
+paraphase-table	broken-json	stderr	Python exception text: json.JSONDecodeError gives line and column, og gives the byte
+paraphase-check-bam	plain	stderr	Python exception text: gzip names the bad magic bytes, og says the file is not a BAM

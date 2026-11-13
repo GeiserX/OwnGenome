@@ -8,11 +8,12 @@
     bin/cyp2d6_depth_check.py, which also refuses regions other than its own,
     so the copy of them below cannot drift unnoticed.
 
-    PGX_CONSENSUS runs bin/pgx_outside_calls.py: PharmCAT's outside-call file
+    PGX_CONSENSUS runs og pgx outside-calls: PharmCAT's outside-call file
     (HLA-A and HLA-B from T1K, with --hla_qc only when OptiType agrees;
     CYP2D6 only when pypgx and Cyrius agree and the
     depth check passed) and the consensus table that says what each caller
-    said. PHARMCAT reads the file with -po.
+    said, the two written together or not at all. PHARMCAT reads the file
+    with -po.
 
     Equivalent to: the depth check of scripts/32-pypgx.sh and
     scripts/21-cyrius.sh, and scripts/36-pgx-consensus.sh
@@ -90,7 +91,7 @@ process PGX_CONSENSUS {
     if (optitype_result) { args << "--optitype ${optitype_result}" }
     if (params.hla_qc)   { args << "--require-optitype" }
     """
-    pgx_outside_calls.py \\
+    og pgx outside-calls \\
         --calls ${meta.id}_outside_calls.tsv \\
         --consensus ${meta.id}_pgx_consensus.tsv \\
         ${args.join(' ')}

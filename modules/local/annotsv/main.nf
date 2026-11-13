@@ -13,7 +13,7 @@
     Before AnnotSV, og sv svlen-fix gives sequence-resolved records their
     net length change (SVLEN, and for a net deletion END = POS-1+len(REF)-
     len(ALT), one base less than AnnotSV's own default END, so its POS-1..END
-    interval, which counts the anchor base, is as long as the change) and bin/cnvpytor_to_vcf.py adds the Delly (PASS) and
+    interval, which counts the anchor base, is as long as the change) and og sv add-callers adds the Delly (PASS) and
     CNVpytor (e-val < 0.01, q0 < 0.5) deletions and duplications no Manta
     call covers, each record with its caller in INFO SVCALLER; either input
     may be [] when that caller did not run. A Delly call longer than 1,000 bp
@@ -23,7 +23,7 @@
     keeps a breakend pair MANTA left on purpose (a lone inversion junction of
     1 Mb or more) from being read as a whole-span inversion. The class 4 and
     5 rows are written to their own table, found by column name, and
-    bin/annotsv_postfilter.py writes each of them with its caller, whether a
+    og sv postfilter writes each of them with its caller, whether a
     deletion sits on the exon edges of one transcript of AnnotSV's genes
     file, its benign-set frequency, its read-depth support (a Delly RDCN
     against the same sex- and PAR-aware normal copies) and the class
@@ -73,7 +73,7 @@ process ANNOTSV {
     done
 
     og sv svlen-fix ${sv_vcf} \\
-        | cnvpytor_to_vcf.py --base - --base-name manta ${delly_arg} ${cnvpytor_arg} \\
+        | og sv add-callers --base - --base-name manta ${delly_arg} ${cnvpytor_arg} \\
         > ${meta.id}_annotsv_input.vcf
 
     AnnotSV \\
@@ -101,7 +101,7 @@ process ANNOTSV {
     genes=${annotations_dir}/Annotations_Human/Genes/GRCh38/genes.RefSeq.sorted.bed
     genes_arg=()
     if [ -s "\$genes" ]; then genes_arg=(--genes "\$genes"); fi
-    annotsv_postfilter.py --class45 ${meta.id}_sv_class4_5.tsv \${genes_arg[@]+"\${genes_arg[@]}"} \\
+    og sv postfilter --class45 ${meta.id}_sv_class4_5.tsv \${genes_arg[@]+"\${genes_arg[@]}"} \\
         --rules ${sv_rules} --sex '${meta.sex ?: ''}' --par-bed ${par_bed} --out ${meta.id}_sv_class4_5_checked.tsv
 
     cat <<-END_VERSIONS > versions.yml

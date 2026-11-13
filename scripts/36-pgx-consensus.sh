@@ -12,8 +12,8 @@
 #                 caller alone, a disagreement or multi-mapped depth leaves it
 #                 'indeterminate', and nothing reaches PharmCAT
 # and a consensus table that says, for each gene, what every caller said and
-# what was passed on (bin/pgx_outside_calls.py, the same code as the
-# PGX_CONSENSUS Nextflow module).
+# what was passed on, the two written together or not at all (og pgx
+# outside-calls, the same code as the PGX_CONSENSUS Nextflow module).
 #
 # Run it after steps 08, 32 and (opt-in) 21, then steps 07 and 27: step 07
 # gives PharmCAT the file when it exists, and step 27 lists the outside calls
@@ -62,7 +62,7 @@ input "CYP2D6 depth check" --depth-check "$DEPTH"
 
 rm -f "$CALLS" "$CONSENSUS"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/pgx_outside_calls.py \
+  /pgp-bin/og pgx outside-calls \
     --calls "$(cpath "$CALLS")" \
     --consensus "$(cpath "$CONSENSUS")" \
     ${ARGS[@]+"${ARGS[@]}"}

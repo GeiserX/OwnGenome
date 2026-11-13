@@ -1,6 +1,6 @@
 [package]
 name = "og-steps"
-description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join; prs, the PGS Catalog scores as pgsc_calc reads them; consumer, step 40's raw-data export; family, step 38's family analysis"
+description = "The helpers of the step scripts and modules, one module per tool: constraint, the gnomAD gene constraint join; prs, the PGS Catalog scores as pgsc_calc reads them; consumer, step 40's raw-data export; family, step 38's family analysis; pgx_rules and pypgx_summary, steps 36 and 32; paraphase, step 35b; sv, step 05's SV callers into AnnotSV and the class 4-5 checks"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
+og-filters.workspace = true
+og-setup.workspace = true
 og-intervals.workspace = true
 flate2.workspace = true
 memchr.workspace = true

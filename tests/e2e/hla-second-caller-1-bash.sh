@@ -10,9 +10,9 @@
 #   - where they agree step 36 passes the gene, naming both callers;
 #   - a planted disagreement (OptiType's HLA-B1 rewritten) keeps HLA-B out
 #     of the outside-call file and labels the row; HLA-A still passes;
-#   - red control: the same inputs through a copy of bin/pgx_outside_calls.py
-#     with the agreement test disabled put the disagreeing HLA-B in the
-#     outside-call file, and the check above rejects it;
+#   - red control: the same inputs through og pgx outside-calls without
+#     OptiType's result, so without the agreement rule, put the disagreeing
+#     HLA-B in the outside-call file, and the check above rejects it;
 #   - HLA_QC=true at step 36 with no OptiType result holds both genes back;
 #   - step 08 again without HLA_QC removes the old OptiType result.
 #   - step 24 and the text report (render_report.py on the same summary)
@@ -145,11 +145,11 @@ check "the disagreeing HLA-B is held back and labelled" held_back "$CALLS" "$CON
 check "its row prints both calls" grep -Eq "^HLA-B"$'\t'".*T1K: .*; OptiType: .*\\${PLANT#B}" "$CONS"
 check "HLA-A, where they agree, still reaches PharmCAT" grep -q $'^HLA-A\t' "$CALLS"
 
-# Red control: the agreement test disabled, the same inputs.
-BROKEN="${CASE_TMP}/pgx_outside_calls_broken.py"
-sed 's/if not same_pair(names, ot):/if False:/' "${REPO}/bin/pgx_outside_calls.py" > "$BROKEN"
-check "the control's mutation applied" test "$(grep -c 'if False:' "$BROKEN")" -eq 1
-python3 -I "$BROKEN" --calls "${CASE_TMP}/ctl_calls.tsv" --consensus "${CASE_TMP}/ctl_cons.tsv" --hla "$GT" --optitype "$OT" >/dev/null
+# Red control: the same T1K call without OptiType's result, so without the
+# agreement rule. This shows the held-back check can fail. The agreement rule's
+# own red-first is the og-steps cargo test
+# optitype_agreeing_passes_and_disagreeing_withholds.
+"${REPO}/bin/og" pgx outside-calls --calls "${CASE_TMP}/ctl_calls.tsv" --consensus "${CASE_TMP}/ctl_cons.tsv" --hla "$GT" >/dev/null
 check "control: without the agreement test the disagreeing HLA-B reaches the outside-call file" grep -q $'^HLA-B\t' "${CASE_TMP}/ctl_calls.tsv"
 check "control: the check above rejects that output" \
   not_held_back "${CASE_TMP}/ctl_calls.tsv" "${CASE_TMP}/ctl_cons.tsv" HLA-B 'T1K and OptiType disagree at two fields'

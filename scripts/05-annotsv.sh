@@ -4,7 +4,7 @@
 #   the input of the Nextflow ANNOTSV; without them, Manta's diploidSV.vcf.gz,
 #   with a note. SV_VCF overrides both. Before AnnotSV, og sv svlen-fix
 #   gives sequence-resolved records their net length change, and, unless
-#   SV_VCF is set, bin/cnvpytor_to_vcf.py adds the Delly (step 19) and
+#   SV_VCF is set, og sv add-callers adds the Delly (step 19) and
 #   CNVpytor (step 18) deletions and duplications no Manta call covers. The
 #   sample's sex (male or female, second argument, when known) sets the
 #   normal copies on chrX and chrY for the read-depth check of long Delly calls.
@@ -12,7 +12,7 @@
 #   *_sv_class4_5.tsv (its class 4 and 5 rows), *_sv_class4_5_checked.tsv
 #   (each of those with its caller, an exon-edge flag for a deletion, its
 #   benign-set frequency, its read-depth support and the class after the
-#   rule table assets/sv_rule_regions.tsv, bin/annotsv_postfilter.py) and
+#   rule table assets/sv_rule_regions.tsv, og sv postfilter) and
 #   *_annotsv_input.vcf
 #   (what AnnotSV read, each record with its caller in INFO SVCALLER)
 set -euo pipefail
@@ -130,7 +130,7 @@ SV_VCF_C=$(cpath "$MANTA_VCF")
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
   -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro" "${ANNOTSV_IMAGE}" bash -c '
   set -euo pipefail
-  /pgp-bin/og sv svlen-fix "$1" | python3 /pgp-bin/cnvpytor_to_vcf.py --base - --base-name "$2" "${@:3}"
+  /pgp-bin/og sv svlen-fix "$1" | /pgp-bin/og sv add-callers --base - --base-name "$2" "${@:3}"
 ' _ "$SV_VCF_C" "$CALLER_NAME" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} > "${INPUT_VCF}.part"
 mv "${INPUT_VCF}.part" "$INPUT_VCF"
 
@@ -170,7 +170,7 @@ else
   N45=0
 fi
 
-# The checks a class 4 or 5 call needs (bin/annotsv_postfilter.py): its
+# The checks a class 4 or 5 call needs (og sv postfilter): its
 # caller, whether a deletion sits on the exon edges of one transcript of
 # AnnotSV's genes file (a processed transcript aligned across an intron), the
 # benign-set frequency of its type, and whether its read depth shows the
@@ -190,7 +190,7 @@ fi
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
   -v "${RULES_TSV}:/pgp/sv_rule_regions.tsv:ro" \
   -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro" "${ANNOTSV_IMAGE}" \
-  python3 /pgp-bin/annotsv_postfilter.py --class45 "$(cpath "$CLASS45")" ${GENES_ARGS[@]+"${GENES_ARGS[@]}"} \
+  /pgp-bin/og sv postfilter --class45 "$(cpath "$CLASS45")" ${GENES_ARGS[@]+"${GENES_ARGS[@]}"} \
     --rules /pgp/sv_rule_regions.tsv --sex "$SEX" --par-bed /pgp/par_grch38.bed --out "$(cpath "$CHECKED")"
 
 echo "=== AnnotSV complete ==="
