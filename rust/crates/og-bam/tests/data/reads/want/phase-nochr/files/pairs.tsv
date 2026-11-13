@@ -1,0 +1,2 @@
+GENE	CHROM	POS_1	REF_1	ALT_1	POS_2	REF_2	ALT_2	DISTANCE	PHASE	CIS_READS	TRANS_READS	PHASE_NOTE
+GENET	P	5000	T	G	5400	T	G	400	trans	0	20	20 of 20 reads or read pairs show the two variants on different copies

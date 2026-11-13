@@ -27,6 +27,7 @@ og-reports.workspace = true
 og-runlog.workspace = true
 og-ancestry.workspace = true
 og-summary.workspace = true
+og-lookup.workspace = true
 og-fresh.workspace = true
 og-recheck.workspace = true
 

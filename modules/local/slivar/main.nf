@@ -246,13 +246,14 @@ process SLIVAR {
 
 /*
     COMPHET_PHASE — the phase of each compound-het pair, from the reads
-    bin/comphet_phase.py (the rule scripts/31-slivar.sh runs) counts, for each
+    og comphet phase (the rule scripts/31-slivar.sh runs) counts, for each
     pair SLIVAR found, the reads and read pairs that cover both positions:
     alt with alt or ref with ref is cis (one copy of the gene carries both),
     alt with ref is trans (both copies are hit). It writes
     <id>_compound_het_pairs.tsv with the verdict and the counts. bam and bai
     are [] for a sample without a BAM: every pair is then unknown, with the
-    reason. pysam is in PYPGX_IMAGE (conf/containers.config).
+    reason. og reads the BAM itself (no pysam); the task keeps PYPGX_IMAGE
+    (conf/containers.config), as the bash step does.
 
     Equivalent to: scripts/31-slivar.sh, the phase of the pairs
 */
@@ -277,7 +278,7 @@ process COMPHET_PHASE {
     script:
     def reads = bam ? "--bam ${bam}" : "--skip 'no BAM for this sample in the samplesheet'"
     """
-    comphet_phase.py --vcf ${vcf} --out ${meta.id}_compound_het_pairs.tsv ${reads}
+    og comphet phase --vcf ${vcf} --out ${meta.id}_compound_het_pairs.tsv ${reads}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

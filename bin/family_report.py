@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# remnant: kept for couple_report, ibd_report, pedigree_svg, annotsv_postfilter, cnvpytor_to_vcf; deleted in lane R4
+# remnant: kept for couple_report, pedigree_svg; deleted in lane R4
 """family_report.py: what is left of the family analysis of step 38 once it
 moved to `og family` (rust/crates/og-steps/src/family). Only the pedigree,
 relatedness and PAR rules that other Python tools still import are kept

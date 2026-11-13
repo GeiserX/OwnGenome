@@ -1,0 +1,49 @@
+== GENEA: chr7:90-700 (GRCh38; GENCODE_50_(GENEA))
+  gVCF: 187 of 611 bases have a genotype call (30.6%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - chr7:250 C>T C/T (heterozygous; COSV1,rs1001; depth 33, genotype quality 40, QUAL 42.5)
+      gene: GENEA
+      consequence: missense_variant, splice_region_variant
+      impact: MODERATE
+      HGVSc: ENST1:c.10C>T
+      HGVSp: ENSP1:p.Arg4Cys
+      known as: rs1001, COSV1
+      ClinVar (pipeline's ClinVar file): Pathogenic
+      ClinVar review status: criteria provided, multiple submitters
+      clinical significance (VEP cache): pathogenic, likely pathogenic
+      gnomAD genomes AF: 0.0003
+  - chr7:500 ACGT>A ACGT/A (heterozygous; rs10011; depth 29, genotype quality 35, QUAL 38)
+      gene: GENEA
+      consequence: inframe_deletion
+      impact: MODERATE
+      known as: rs10011
+      gnomAD genomes AF: 0.2
+  - chr7:660 A>C,G C|G (heterozygous; RS2003; depth 18, genotype quality 20, QUAL 30)
+      gene: GENEA
+      consequence: stop_gained
+      impact: HIGH
+  in the reports:
+  PharmCAT (step 07):
+    - gene=GENEA, diplotype=*1/*2, phenotype=Intermediate, activity=1.0, alleles=*1,*2,3, calls=a: x; b: 2
+  many (step 99):
+    - gene=GENEA, diplotype=*1/*0, score=0.0, ok=True
+    - gene=GENEA, diplotype=*1/*1, score=0.1, ok=False
+    - gene=GENEA, diplotype=*1/*2, score=0.2, ok=True
+    - gene=GENEA, diplotype=*1/*3, score=0.30000000000000004, ok=False
+    - gene=GENEA, diplotype=*1/*4, score=0.4, ok=True
+    - gene=GENEA, diplotype=*1/*5, score=0.5, ok=False
+    - gene=GENEA, diplotype=*1/*6, score=0.6000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*7, score=0.7000000000000001, ok=False
+    - gene=GENEA, diplotype=*1/*8, score=0.8, ok=True
+    - gene=GENEA, diplotype=*1/*9, score=0.9, ok=False
+    - gene=GENEA, diplotype=*1/*10, score=1.0, ok=True
+    - gene=GENEA, diplotype=*1/*11, score=1.1, ok=False
+    - gene=GENEA, diplotype=*1/*12, score=1.2000000000000002, ok=True
+    - gene=GENEA, diplotype=*1/*13, score=1.3, ok=False
+    - gene=GENEA, diplotype=*1/*14, score=1.4000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*15, score=1.5, ok=False
+    - gene=GENEA, diplotype=*1/*16, score=1.6, ok=True
+    - gene=GENEA, diplotype=*1/*17, score=1.7000000000000002, ok=False
+    - gene=GENEA, diplotype=*1/*18, score=1.8, ok=True
+    - gene=GENEA, diplotype=*1/*19, score=1.9000000000000001, ok=False
+    - ... and 3 more in many/table.tsv

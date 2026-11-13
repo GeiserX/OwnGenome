@@ -6,7 +6,7 @@
 #   step 21             refuses to run before that install, and after it runs
 #                       every container with --network none (Cyrius from the
 #                       install, not from PyPI)
-#   step 36             writes the outside calls with bin/pgx_outside_calls.py
+#   step 36             writes the outside calls with og pgx outside-calls
 #   step 07             gives PharmCAT -po with a non-empty outside-call file,
 #                       and no -po with an empty one
 #   step 35             refuses to run before its data is installed, and says
@@ -85,7 +85,7 @@ for gene, g in genes.items():
         print(gene)
 PY
     exit $? ;;
-  *"pgx_outside_calls.py pypgx-summary"*)
+  *"/pgp-bin/og pgx pypgx-summary "*)
     # Step 32's summary, at the path it names with --out.
     put "$(opt --out)" \
       'Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\nCYP2D6\t*1/*2\tNormal Metabolizer\tNormal\tBAM\tcalled\n'
@@ -141,8 +141,8 @@ og_runs "step 21" /genome/sample1/cyrius
 # --- step 36 and step 07 ----------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 consensus "${SCRIPTS}/36-pgx-consensus.sh" sample1
-grep -q '^run image=[^ ]*python[^ ]* :: .*pgx_outside_calls\.py --calls /genome/sample1/pgx_consensus/sample1_outside_calls\.tsv' \
-  "$FAKE_DOCKER_LOG" || fail "step 36 did not run bin/pgx_outside_calls.py"
+grep -q '^run image=[^ ]*python[^ ]* :: .*/pgp-bin/og pgx outside-calls --calls /genome/sample1/pgx_consensus/sample1_outside_calls\.tsv' \
+  "$FAKE_DOCKER_LOG" || fail "step 36 did not run og pgx outside-calls"
 grep -q -- '--cyrius /genome/sample1/cyrius/sample1_cyp2d6.tsv' "$FAKE_DOCKER_LOG" || fail "step 36 did not read Cyrius's TSV"
 
 OUT="${G}/sample1/pgx_consensus/sample1_outside_calls.tsv"

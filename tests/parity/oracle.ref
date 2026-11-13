@@ -40,9 +40,21 @@ y-str-bed	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c
 y-str-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" report "$@"'	y str-report
 exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	python3	exomiser
 cn	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/copy_number.py	sh ./oracle.sh	cn
+pgx-outside-calls	954ab367004d63ea639521982299b4976927ccfd	file:bin/pgx_outside_calls.py	python3	pgx outside-calls
+pgx-hla-concordance	954ab367004d63ea639521982299b4976927ccfd	file:bin/pgx_outside_calls.py	sh -c 'exec python3 "$0" hla-concordance "$@"'	pgx hla-concordance
+paraphase-check-bam	954ab367004d63ea639521982299b4976927ccfd	file:bin/paraphase_report.py	sh -c 'exec python3 "$0" check-bam "$@"'	paraphase check-bam
+paraphase-table	954ab367004d63ea639521982299b4976927ccfd	file:bin/paraphase_report.py	sh -c 'exec python3 "$0" table "$@"'	paraphase table
+sv-add-callers	954ab367004d63ea639521982299b4976927ccfd	file:bin/cnvpytor_to_vcf.py	sh ./oracle.sh	sv add-callers
+sv-postfilter	954ab367004d63ea639521982299b4976927ccfd	file:bin/annotsv_postfilter.py	sh ./oracle.sh	sv postfilter
+cdna-check	954ab367004d63ea639521982299b4976927ccfd	file:bin/clip_check.py	python3	cdna check
+cdna-scan	954ab367004d63ea639521982299b4976927ccfd	file:bin/cdna_scan.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	cdna scan
+comphet-phase	954ab367004d63ea639521982299b4976927ccfd	file:bin/comphet_phase.py	sh -c 'd=$(mktemp -d) && cp "$(dirname "$0")/../cdna-check/prog" "$d/clip_check.py" && PYTHONPATH=$d exec python3 "$0" "$@"'	comphet phase
 bloodtype	954ab367004d63ea639521982299b4976927ccfd	file:bin/bloodtype_report.py	sh ./oracle.sh	bloodtype
 qc-sample	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" sample-qc "$@"'	qc sample
 prs-table	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" prs-table "$@"'	prs table
 mito-annotate	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-annotate "$@"'	mito annotate
 mito-deletions	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-deletions "$@"'	mito deletions
 mito-copies	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-copies "$@"'	mito copies
+lookup	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	python3	lookup
+lookup-query	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	bash ./oracle.sh	lookup query
+family-ibd	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/ibd_report.py	sh ./ibd_oracle.sh	family ibd

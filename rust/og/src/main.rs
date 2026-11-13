@@ -33,10 +33,18 @@ const USAGE: &str = "usage: og <tool> [args]
        og vcf csq-rank [options]
        og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
        og sv svlen-fix|inv-filter [args]
+       og sv add-callers [args]
+       og sv postfilter [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
+       og pgx outside-calls|hla-concordance|pypgx-summary [args]
+       og paraphase check-bam|table [args]
        og clinvar join-adjacent|hits|deep-intronic [args]
        og str motif|catalog [args]
+       og cdna check [args]
+       og cdna scan [args]
+       og comphet phase [args]
+       og bam contigs BAM
        og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
        og qc sample [args]
        og prs format [args]
@@ -46,6 +54,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
        og bloodtype report|check-markers|systems [args]
        og family plan|prepare|check|report|segments [args]
+       og family ibd [args]
        og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
        og vntyper report [args]
@@ -58,6 +67,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og y str-report [args]
        og exomiser prepare [args]
        og exomiser report [args]
+       og lookup query|resolve|report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
@@ -146,12 +156,24 @@ fn main() -> ExitCode {
         "sv" => match rest.first().map(String::as_str) {
             Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
             Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
+            Some("add-callers") => ExitCode::from(og_steps::sv::add_callers::cli(&rest[1..])),
+            Some("postfilter") => ExitCode::from(og_steps::sv::postfilter::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown sv tool '{other}'")),
             None => usage_error("the following arguments are required: sv tool"),
         },
         "pgx" => match rest.first().map(String::as_str) {
             Some("refblock-fill") => ExitCode::from(og_filters::refblock::cli(&rest[1..])),
             Some("mito-merge") => ExitCode::from(og_filters::mito::cli(&rest[1..])),
+            Some(verb @ ("outside-calls" | "hla-concordance" | "pypgx-summary")) => {
+                let (out, err) = (&mut std::io::stdout().lock(), &mut std::io::stderr().lock());
+                ExitCode::from(match verb {
+                    "outside-calls" => og_steps::pgx_rules::outside_calls_cli(&rest[1..], out, err),
+                    "hla-concordance" => {
+                        og_steps::pgx_rules::hla_concordance_cli(&rest[1..], out, err)
+                    }
+                    _ => og_steps::pypgx_summary::cli(&rest[1..], out, err),
+                })
+            }
             Some(other) => match other.strip_prefix("cyp2d6-") {
                 #[cfg(feature = "bam")]
                 Some(verb) => ExitCode::from(og_bam::cyp2d6::cli(
@@ -173,6 +195,11 @@ fn main() -> ExitCode {
         "dev" => ExitCode::from(og_dev::main(rest)),
         "recheck" => ExitCode::from(og_recheck::cli::main(rest)),
         "family" => ExitCode::from(og_steps::family::cli(rest)),
+        "paraphase" => ExitCode::from(og_steps::paraphase::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         "clinvar" => ExitCode::from(og_clinvar::cli::main(rest)),
         "chip" => match rest.first() {
             Some(verb) => ExitCode::from(og_chip::cli(
@@ -211,6 +238,11 @@ fn main() -> ExitCode {
                 _ => og_reports::exomiser::cli(verb, args, out, err),
             })
         }
+        "lookup" => ExitCode::from(og_lookup::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
         "ancestry-fine" => ExitCode::from(og_ancestry::cli(
             rest,
             &mut std::io::stdout().lock(),
@@ -237,6 +269,27 @@ fn main() -> ExitCode {
             )),
             _ => usage_error("og prs takes format or table"),
         },
+        "cdna" | "comphet" | "bam" => {
+            let verb = rest.first().map(String::as_str);
+            let words = format!("{tool} {}", verb.unwrap_or_default());
+            #[cfg(feature = "bam")]
+            {
+                let args = rest.get(1..).unwrap_or_default();
+                let (out, err) = (&mut std::io::stdout().lock(), &mut std::io::stderr().lock());
+                match words.as_str() {
+                    "cdna check" => ExitCode::from(og_bam::cdna::check_cli(args, out, err)),
+                    "cdna scan" => ExitCode::from(og_bam::cdna::scan_cli(args, out, err)),
+                    "comphet phase" => ExitCode::from(og_bam::comphet::cli(args, out, err)),
+                    "bam contigs" => ExitCode::from(og_bam::contigs_cli(args, out, err)),
+                    _ => usage_error(&format!("unknown tool '{}'", words.trim_end())),
+                }
+            }
+            #[cfg(not(feature = "bam"))]
+            match words.as_str() {
+                "cdna check" | "cdna scan" | "comphet phase" | "bam contigs" => no_bam(&words),
+                _ => usage_error(&format!("unknown tool '{}'", words.trim_end())),
+            }
+        }
         "mito" => ExitCode::from(og_summary::mito::cli(
             rest.first().map(String::as_str),
             rest.get(1..).unwrap_or_default(),

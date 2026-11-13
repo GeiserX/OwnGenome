@@ -88,10 +88,9 @@ Checks:
      P/LP with CPSR's ACMG codes, the final P/LP rows CPSR's own rules class
      benign, the rows below the depth floor (DP_CONTROL), the cDNA read
      check of step 17 on the P/LP rows, and CPSR's bundled ClinVar release
-     beside step 6's; a table with one class column shows no disagreement;
-     bin/clip_check.py --cpsr checks the P/LP rows only (a fake pysam: the
-     spliced reads at a P/LP row are flagged, genomic reads at the same row
-     are clear, and CPSR's "13" finds the BAM's "chr13").
+     beside step 6's; a table with one class column shows no disagreement.
+     The read check itself (og cdna check --cpsr: P/LP rows only, CPSR's
+     contig names found with chr added) is og-bam's parity case check-cpsr.
  23. step 32's summary beyond the diplotypes: pypgx's copy-number calls for
      its BAM genes in a PGx copy number block, and no UGT2B17 estimate from
      CNVpytor's calls beside them (pypgx owns UGT2B17); GSTT1
@@ -139,7 +138,7 @@ Checks:
      SMN1 copies in both reports with its caveat: present with its reads,
      not assessed without the table or with no known status in it.
  26. step 08's opt-in passes in the HLA section: with HLA_QC=true, one line
-     per class I gene from the concordance table pgx_outside_calls.py writes
+     per class I gene from the concordance table og pgx hla-concordance writes
      (agree, disagree with both calls, not compared with the reason), and
      when OptiType did not run, the reason its result file gives; with
      KIR=true, the KIR genes T1K typed with their alleles and qualities, the
@@ -187,7 +186,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import types
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -206,12 +204,16 @@ def og_clinvar(*args):
     return subprocess.run([OG, "clinvar", *args], capture_output=True, text=True, check=True).stdout
 
 
+def og_postfilter(args):
+    """og sv postfilter ARGS, step 05's class 4-5 checks (OG must be set)."""
+    subprocess.run([OG, "sv", "postfilter", *args], capture_output=True, text=True, check=True)
+
+
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
 import clip_check  # noqa: E402
 import collect_summary  # noqa: E402
-import pgx_outside_calls  # noqa: E402
 import render_report  # noqa: E402
 import validate  # noqa: E402
 from og_binary import og_binary  # noqa: E402
@@ -733,45 +735,6 @@ CPSR_ROWS = (
     "3_100_A_G\t3:g.100A>G\tMLH1\tVUS\tVUS\tPM2\tCPSR\tVUS\t30\n")
 
 
-class FakeRead:
-    """The pysam.AlignedSegment attributes bin/clip_check.py reads."""
-
-    def __init__(self, name, start, cigar, seq):
-        self.query_name, self.reference_start, self.cigartuples, self.query_sequence = name, start, cigar, seq
-        self.is_unmapped = self.is_secondary = self.is_duplicate = self.is_qcfail = self.is_read2 = False
-        self.is_read1 = True
-
-    def has_tag(self, tag):
-        return False
-
-
-def fake_pysam(pos0, exon_end):
-    """A pysam stand-in with two BAMs on contig chr13: 'spliced' has 8 alt
-    reads clipped at the exon end, 'genomic' 8 alt reads running on; both
-    have 6 genomic ref reads."""
-    def reads(kind):
-        out = [FakeRead(f"ref{i}", pos0 - 50 + i, [(0, 100)], "N" * (50 - i) + "G" + "N" * (49 + i)) for i in range(6)]
-        for i in range(8):
-            if kind == "spliced":
-                aligned = 70 + i
-                s = exon_end - aligned
-                out.append(FakeRead(f"alt{i}", s, [(0, aligned), (4, 100 - aligned)],
-                                    "N" * (pos0 - s) + "A" + "N" * (100 - (pos0 - s) - 1)))
-            else:
-                out.append(FakeRead(f"alt{i}", pos0 - 50 + i, [(0, 100)], "N" * (50 - i) + "A" + "N" * (49 + i)))
-        return out
-
-    class AlignmentFile:
-        references = ("chr13",)
-
-        def __init__(self, path):
-            self.kind = os.path.basename(path)
-
-        def fetch(self, contig, start, end):
-            return reads(self.kind) if contig == "chr13" else []
-    return types.SimpleNamespace(AlignmentFile=AlignmentFile)
-
-
 def cpsr_beside_clinvar(work, schema):
     """22. CPSR's own class beside ClinVar's, its depth, its read check and release."""
     d = os.path.join(work, "cpsr-compare", "S")
@@ -820,38 +783,6 @@ def cpsr_beside_clinvar(work, schema):
     check("CPSR: a table with one class column has no disagreement and says so",
           c1["disagreements"] == [] and c1["own_class_column"] is None
           and "has no CPSR_CLASSIFICATION column" in txt1, c1)
-
-    # bin/clip_check.py --cpsr, with a fake pysam
-    pos0 = 32340299
-    exon_end = pos0 + 30
-    put(f"{d}/exons.bed", f"chr13\t{pos0 - 30}\t{exon_end}\nchr13\t{pos0 + 3000}\t{pos0 + 3150}\n")
-    put(f"{d}/cls.tsv.gz", CPSR_COLS + CPSR_ROWS, gz=True)
-    keep = sys.modules.get("pysam")
-    sys.modules["pysam"] = fake_pysam(pos0, exon_end)
-    try:
-        got = {}
-        for kind in ("spliced", "genomic"):
-            out = f"{d}/{kind}.tsv"
-            with open(os.devnull, "w") as null:
-                so, sys.stdout = sys.stdout, null
-                try:
-                    rc = clip_check.main(["--cpsr", f"{d}/cls.tsv.gz", "--bam", f"{d}/{kind}", "--exons",
-                                          f"{d}/exons.bed", "--out", out])
-                finally:
-                    sys.stdout = so
-            rows = [line.rstrip("\n").split("\t") for line in open(out)][1:]
-            got[kind] = (rc, [(r[0], r[1], r[8]) for r in rows])
-    finally:
-        if keep is None:
-            sys.modules.pop("pysam", None)
-        else:
-            sys.modules["pysam"] = keep
-    check("clip_check --cpsr: the spliced reads at a P/LP row are flagged, CPSR's contig name kept",
-          got["spliced"][0] == 0 and got["spliced"][1][0] == ("13", "32340300", "flagged"), got)
-    check("clip_check --cpsr: genomic reads at the same row are clear",
-          got["genomic"][1][0] == ("13", "32340300", "clear"), got)
-    check("clip_check --cpsr: only the four P/LP rows are checked (not the VUS row)",
-          [r[0] for r in got["spliced"][1]] == ["13", "17", "2", "5"], got)
 
 
 PYPGX_HEAD = ("Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\tDefining_variants\tMin_GQ\tWeakest_variant"
@@ -1115,13 +1046,12 @@ SV_CONSENSUS = ("##fileformat=VCFv4.1\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\t
 def annotsv_section(work, schema):
     """24. step 05's class 4-5 table: support from step 22's consensus, the
     exon-edge flag and the benign-set frequency reach both reports."""
-    import annotsv_postfilter
     import html as htmlmod
     d = os.path.join(work, "annotsv", "S")
     put(f"{d}/annotsv/S_sv_class4_5.tsv", ANNOTSV_HEAD + ANNOTSV_ROWS)
     put(f"{work}/annotsv/genes.RefSeq.sorted.bed", ANNOTSV_GENES)
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
     put(f"{d}/sv_merged/S_sv_consensus.vcf.gz", SV_CONSENSUS, gz=True)
     summ, txt, html_ = render(d)
     html_ = htmlmod.unescape(html_)
@@ -1160,9 +1090,9 @@ def annotsv_section(work, schema):
     # and the class 4-5 count and rows leave it out.
     put(f"{work}/annotsv/rules.tsv", "#chrom\tstart\tend\trule\taction\tname\tsource\n"
         "chr20\t19990000\t20500000\tig_tr_locus\tclass_3\tIGFIX\tfixture\n")
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--rules", f"{work}/annotsv/rules.tsv",
-                             "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--rules", f"{work}/annotsv/rules.tsv",
+                  "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
     summ, txt, html_ = render(d)
     html_ = htmlmod.unescape(html_)
     av = summ["sections"]["annotsv"]["data"]
@@ -1187,8 +1117,8 @@ def annotsv_section(work, schema):
           and render_report.ANNOTSV_NOTE in txt)
     check("annotsv rules: the summary validates", not validate.validate(schema, json.loads(json.dumps(summ))),
           validate.validate(schema, json.loads(json.dumps(summ))))
-    annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
-                             f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+    og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv", "--genes",
+                  f"{work}/annotsv/genes.RefSeq.sorted.bed", "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
 
     # red control: an empty consensus gives support 1 to every row
     put(f"{d}/sv_merged/S_sv_consensus.vcf.gz", SV_CONSENSUS.split("chr20")[0], gz=True)
@@ -1229,16 +1159,15 @@ PHASE_HEAD = ("AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tI
 
 
 def annotsv_phase_pairing(work):
-    """29. a deletion's GT and PS go through annotsv_postfilter.py into the two-hit rule."""
-    import annotsv_postfilter
+    """29. a deletion's GT and PS go through og sv postfilter into the two-hit rule."""
 
     def run(name, gt):
         d = os.path.join(work, "sv-phase", name, "S")
         put(f"{d}/annotsv/S_sv_class4_5.tsv", PHASE_HEAD
             + f"1_45335001_45337000_DEL_1\t1\t45335000\t45337000\t-2000\tDEL\tSV1\t"
               f"END=45337000;SVTYPE=DEL;SVCALLER=manta\tGT:PS\t{gt}:45330000\tfull\tMUTYH\t\t4\t0.95\n")
-        annotsv_postfilter.main(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv",
-                                 "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
+        og_postfilter(["--class45", f"{d}/annotsv/S_sv_class4_5.tsv",
+                      "--out", f"{d}/annotsv/S_sv_class4_5_checked.tsv"])
         put(f"{d}/clinvar/S_clinvar_hits.vcf", VCF_HEAD
             + "chr1\t45332000\t.\tC\tT\t50\tPASS\tGENEINFO=MUTYH:4595;CLNSIG=Pathogenic;"
               "CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts\tGT:GQ:DP:PS\t1|0:50:30:45330000\n")
@@ -1895,9 +1824,11 @@ def hla_optitype_kir_section(work, schema):
     put(f"{b}/hla_t1k/S_hla_genotype.tsv", t1k)
     put(f"{b}/hla_optitype/S_optitype_result.tsv",
         "\tA1\tA2\tB1\tB2\tC1\tC2\tReads\tObjective\n0\tA*26:01\tA*01:01\tB*58:01\tB*08:01\tC*07:01\tC*07:02\t900\t880.1\n")
-    rc = pgx_outside_calls.main(["hla-concordance", "--t1k", f"{b}/hla_t1k/S_hla_genotype.tsv",
-                                 "--optitype", f"{b}/hla_optitype/S_optitype_result.tsv",
-                                 "--out", f"{b}/hla_optitype/S_hla_concordance.tsv"])
+    sys.path.insert(0, os.path.join(REPO, "tests"))
+    from og_binary import og_binary
+    rc = subprocess.run([og_binary(), "pgx", "hla-concordance", "--t1k", f"{b}/hla_t1k/S_hla_genotype.tsv",
+                         "--optitype", f"{b}/hla_optitype/S_optitype_result.tsv",
+                         "--out", f"{b}/hla_optitype/S_hla_concordance.tsv"], stdout=subprocess.DEVNULL).returncode
     check("26: step 08's writer made the concordance table", rc == 0)
     put(f"{b}/kir_t1k/S_kir_genotype.tsv",
         "KIR2DL1\t2\tKIR2DL1*00302\t40\t60\tKIR2DL1*0010101\t30\t35\n"
@@ -3033,8 +2964,11 @@ def main():
         pypgx_section(work, schema)
         clinical_mane_quality(work, schema)
         comphet_phase_section(work, schema)
-        annotsv_section(work, schema)
-        annotsv_phase_pairing(work)
+        if OG:
+            annotsv_section(work, schema)
+            annotsv_phase_pairing(work)
+        else:
+            print("[SKIP] the class 4-5 SV checks (og sv postfilter): OG is not set (guard.yml sets it)")
         report_followups_sections(work, schema)
         str_extra_readings(work, schema)
         parascopy_section(work, schema)

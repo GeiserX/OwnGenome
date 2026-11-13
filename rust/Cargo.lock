@@ -582,6 +582,7 @@ dependencies = [
  "og-fresh",
  "og-intervals",
  "og-io",
+ "og-lookup",
  "og-map",
  "og-pgx",
  "og-qc",
@@ -611,8 +612,10 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "og-io",
+ "og-tsv",
  "pycompat",
  "rust-htslib",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -703,6 +706,15 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-lookup"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -807,9 +819,11 @@ dependencies = [
  "flate2",
  "indexmap",
  "memchr",
+ "og-filters",
  "og-intervals",
  "og-io",
  "og-pedigree",
+ "og-setup",
  "og-vcf",
  "pycompat",
  "rustc-hash",

@@ -1,0 +1,4 @@
+chrom	pos	ref	alt	alt_reads	alt_clipped	ref_reads	ref_clipped	cdna_check	cdna_note	construct_site
+chrT	1151	ATGA	A	4	0	4	0	clear		
+chrT	1151	A	ATT	4	0	5	0	clear		
+chrT	1151	AT	CT	0	0	10	0	not_checked	fewer than 2 reads carry the alt allele	

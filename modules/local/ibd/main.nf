@@ -16,7 +16,7 @@
       FAMILY_IBD_PHASE     Beagle phases them against the panel
       FAMILY_IBD_SEGMENTS  hap-ibd's segments (Zhou et al. 2020) on the
                            phased genotypes, its default 2 cM minimum
-      FAMILY_IBD_REPORT    bin/ibd_report.py: ibd_pairs.tsv, ibd_segments.tsv
+      FAMILY_IBD_REPORT    og family ibd: ibd_pairs.tsv, ibd_segments.tsv
                            and ibd_report.md, published under the family folder
 
     Equivalent to: scripts/38-family.sh (its ibd_segments function)
@@ -175,7 +175,7 @@ process FAMILY_IBD_REPORT {
 
     script:
     """
-    ibd_report.py --pedigree ${pedigree} --chroms ${sites}/chroms.txt --maps ${panel}/maps \\
+    og family ibd --pedigree ${pedigree} --chroms ${sites}/chroms.txt --maps ${panel}/maps \\
         --phased ${phased} --ibd ${segments} --out-dir .
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

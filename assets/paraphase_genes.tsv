@@ -1,5 +1,5 @@
 # paraphase_genes.tsv: the Paraphase regions step 35b (scripts/35b-paraphase.sh, Nextflow PARAPHASE_REPORT)
-# reports gene by gene, read by bin/paraphase_report.py and bin/collect_summary.py. Every other region
+# reports gene by gene, read by og paraphase table and bin/collect_summary.py. Every other region
 # Paraphase ran gets one row with its copy number. The report lists the regions in this order.
 # Columns:
 #   region   the region's key in Paraphase's JSON: the name in data/38/config.yaml of the pinned

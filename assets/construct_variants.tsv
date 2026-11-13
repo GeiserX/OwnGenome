@@ -1,5 +1,5 @@
 # Pathogenic alleles that lab expression constructs and transgenic models
-# carry, read by bin/clip_check.py (--construct) in step 06 and
+# carry, read by og cdna check (--construct) in step 06 and
 # CLINVAR_CDNA_CHECK. A ClinVar hit at one of these sites gets a
 # "known construct site" line with its cDNA read check counts, whatever the
 # verdict: spliced cDNA or plasmid DNA in a library is called like a germline

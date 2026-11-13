@@ -8,11 +8,11 @@ ClinVar screening (step 6) finds known pathogenic variants, but CPSR applies ACM
 
 ## Tool
 - **CPSR** (Cancer Predisposition Sequencing Reporter), bundled inside the PCGR image
-- **`bin/clip_check.py --cpsr`** (pysam) — step 6's cDNA read check on CPSR's P/LP rows
+- **`og cdna check --cpsr`** — step 6's cDNA read check on CPSR's P/LP rows
 
 ## Docker Image
 - `PCGR_IMAGE`
-- `PYPGX_IMAGE`, for pysam (the cDNA read check; steps 6 and 32 use the same image)
+- `PYPGX_IMAGE`, where `og cdna check` runs (as in step 6; `og` reads the BAM itself, and CI runs the Python it replaced beside it in this image)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 

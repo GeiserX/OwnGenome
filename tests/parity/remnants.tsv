@@ -3,4 +3,9 @@
 # names listed here and nothing else, that every name has a user, and that
 # the importers are exactly these (docs/rust.md).
 # file<TAB>names<TAB>importers<TAB>lane
-bin/family_report.py	COLUMNS,MISSING,SEX,NAME,BINS,die,missing,read_pedigree,build_members,bad_name,kinship_table,declared_relationship,degree,read_par,in_par	bin/annotsv_postfilter.py,bin/cnvpytor_to_vcf.py,bin/couple_report.py,bin/ibd_report.py,bin/pedigree_svg.py,tests/test_family_report.py	R4
+bin/family_report.py	COLUMNS,MISSING,SEX,NAME,BINS,die,missing,read_pedigree,build_members,bad_name,kinship_table,declared_relationship,degree,read_par,in_par	bin/couple_report.py,bin/pedigree_svg.py,tests/test_family_report.py	R4
+bin/genome_lookup.py	GENE_KEYS,RSID_RE,norm_chrom,parse_query,names_of,walk_mentions,flat	bin/results_index.py,tests/test_results_index.py	R5c
+bin/pgx_outside_calls.py	HLA_GENES,NO_CALL,PROBABLE,NOT_CALLABLE,LOW_GQ,is_call,same_diplotype,probable_cyp2d6	bin/collect_summary.py,tests/test_pgx_outside_calls.py	R3
+bin/paraphase_report.py	SMN1_EXON7,parascopy_smn1,compare_smn1	bin/collect_summary.py,bin/couple_report.py,tests/test_paralog_loci.py,tests/test_paraphase_report.py	R4
+bin/cnvpytor_to_vcf.py	DEPTH_MIN_SIZE,delly_depth_contradicts	bin/couple_report.py	R4
+bin/annotsv_postfilter.py	CONSENSUS_BP,KEEP,ADDED,open_text,chrom_key,sv_type,info_value,sample_format,sample_columns,read_consensus,consensus_support	bin/collect_summary.py,tests/demo/make_demo_sample.py	R3

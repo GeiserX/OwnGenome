@@ -13,8 +13,11 @@ use std::path::Path;
 use rust_htslib::bam::{self, FetchDefinition, Read as _};
 
 mod args;
+pub mod cdna;
+pub mod comphet;
 pub mod cyp2d6;
 pub mod motif;
+pub mod reads;
 
 pub use rust_htslib::bam::Record;
 pub use rust_htslib::errors::Error;
@@ -119,6 +122,32 @@ pub fn blocks(r: &Record) -> Vec<(i64, i64)> {
         }
     }
     out
+}
+
+/// `og bam contigs BAM`: the header's contig names, one per line, in header
+/// order (pysam's `AlignmentFile(path).references`). Only the header is
+/// read; no index is needed. Exit 2 when the file cannot be read.
+pub fn contigs_cli(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let [path] = argv else {
+        let _ = writeln!(err, "usage: og bam contigs BAM\nog: error: takes one BAM");
+        return 2;
+    };
+    let run = || -> Result<String, String> {
+        let r = bam::Reader::from_path(path).map_err(|e| format!("{path}: {e}"))?;
+        let mut s = String::new();
+        for n in r.header().target_names() {
+            s.push_str(&String::from_utf8_lossy(n));
+            s.push('\n');
+        }
+        Ok(s)
+    };
+    match run().and_then(|s| out.write_all(s.as_bytes()).map_err(|e| e.to_string())) {
+        Ok(()) => 0,
+        Err(e) => {
+            let _ = writeln!(err, "ERROR: {e}");
+            2
+        }
+    }
 }
 
 fn none_or<T: std::fmt::Display>(v: Option<T>) -> String {
