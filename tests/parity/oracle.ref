@@ -55,3 +55,4 @@ prs-table	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	s
 mito-annotate	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-annotate "$@"'	mito annotate
 mito-deletions	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-deletions "$@"'	mito deletions
 mito-copies	954ab367004d63ea639521982299b4976927ccfd	file:bin/collect_summary.py	sh -c 'd=$(mktemp -d) && for m in $(sed -n "s/^import \([a-z_]*\)  # noqa.*/\1/p" "$0"); do : > "$d/$m.py"; done && PYTHONPATH=$d exec python3 "$0" mito-copies "$@"'	mito copies
+family-ibd	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/ibd_report.py	sh ./ibd_oracle.sh	family ibd

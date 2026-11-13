@@ -805,3 +805,16 @@ mito-copies	slice	gen:summary-tools.sh	--out c.tsv --idxstats slice.idxstats	c.t
 mito-copies	no-chrm	gen:summary-tools.sh	--out c.tsv --idxstats nochrm.idxstats	c.tsv	kv	PYTHON_IMAGE
 mito-copies	crlf	gen:summary-tools.sh	--out c.tsv --idxstats crlf.idxstats	c.tsv	kv	PYTHON_IMAGE
 mito-copies	bad-count	gen:summary-tools.sh	--out c.tsv --idxstats bad.idxstats	-	kv	PYTHON_IMAGE
+# og family ibd (bin/ibd_report.py): the scenarios of tests/test_ibd_report.py, the damaged and missing inputs, and the speed case
+family-ibd	one	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree one/pedigree.tsv --chroms one/chroms.txt --maps one/maps --phased one/phased --ibd one/ibd --out-dir out	out/ibd_pairs.tsv,out/ibd_segments.tsv,out/ibd_report.md	content	PYTHON_IMAGE
+family-ibd	two	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree two/pedigree.tsv --chroms two/chroms.txt --maps two/maps --phased two/phased --ibd two/ibd --out-dir out	out/ibd_pairs.tsv,out/ibd_segments.tsv,out/ibd_report.md	content	PYTHON_IMAGE
+family-ibd	stitch	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree stitch/pedigree.tsv --chroms stitch/chroms.txt --maps stitch/maps --phased stitch/phased --ibd stitch/ibd --out-dir out	out/ibd_pairs.tsv,out/ibd_segments.tsv,out/ibd_report.md	content	PYTHON_IMAGE
+family-ibd	none	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree none/pedigree.tsv --chroms none/chroms.txt --maps none/maps --phased none/phased --ibd none/ibd --out-dir out	out/ibd_pairs.tsv,out/ibd_segments.tsv,out/ibd_report.md	content	PYTHON_IMAGE
+family-ibd	bench	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree bench/pedigree.tsv --chroms bench/chroms.txt --maps bench/maps --phased bench/phased --ibd bench/ibd --out-dir out	out/ibd_pairs.tsv,out/ibd_segments.tsv,out/ibd_report.md	content	PYTHON_IMAGE
+family-ibd	7col	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree 7col/pedigree.tsv --chroms 7col/chroms.txt --maps 7col/maps --phased 7col/phased --ibd 7col/ibd --out-dir out	-	content	PYTHON_IMAGE
+family-ibd	otherchrom	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree otherchrom/pedigree.tsv --chroms otherchrom/chroms.txt --maps otherchrom/maps --phased otherchrom/phased --ibd otherchrom/ibd --out-dir out	-	content	PYTHON_IMAGE
+family-ibd	nosample	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree nosample/pedigree.tsv --chroms nosample/chroms.txt --maps nosample/maps --phased nosample/phased --ibd nosample/ibd --out-dir out	-	content	PYTHON_IMAGE
+family-ibd	mapbp	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree mapbp/pedigree.tsv --chroms mapbp/chroms.txt --maps mapbp/maps --phased mapbp/phased --ibd mapbp/ibd --out-dir out	-	content	PYTHON_IMAGE
+family-ibd	nomap	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree nomap/pedigree.tsv --chroms nomap/chroms.txt --maps nomap/maps --phased nomap/phased --ibd nomap/ibd --out-dir out	-	content	PYTHON_IMAGE
+family-ibd	short	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree short/pedigree.tsv --chroms short/chroms.txt --maps short/maps --phased short/phased --ibd short/ibd --out-dir out	-	content	PYTHON_IMAGE
+family-ibd	twice	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree twice/pedigree.tsv --chroms twice/chroms.txt --maps twice/maps --phased twice/phased --ibd twice/ibd --out-dir out	-	content	PYTHON_IMAGE

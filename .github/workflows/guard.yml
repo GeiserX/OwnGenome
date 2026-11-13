@@ -331,7 +331,7 @@ jobs:
                    tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
                    tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py tests/test_setup_fine_maps.sh \
                    tests/test_render_report.py tests/test_collect_summary.py tests/test_chip_report.py \
-                   tests/test_family_report.py tests/test_family_segments.py \
+                   tests/test_family_report.py tests/test_family_segments.py tests/test_ibd_report.py \
                    tests/test_vntyper_report.py tests/test_locityper_report.py tests/test_mocha_report.py \
                    tests/test_mei_report.py tests/test_viral_report.py tests/test_ystr_report.py \
                    tests/test_exomiser_report.py \
