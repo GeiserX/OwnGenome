@@ -488,7 +488,7 @@ mod tests {
             ("rs123: (C;~T)", "rsid"),
             ("rs4477212\t1\t82154\t~AA", "rsid"),
             ("HTT CAG repeats: 17/~19", "repeat"),
-            ("GT:REPCN 0/1:17/~19", "repeat"),
+            ("GT:REPCN 0~/1:17/~19", "repeat"),
         ] {
             let line = p(line);
             assert!(kinds(&line).contains(&kind), "{line}: {:?}", kinds(&line));
@@ -520,18 +520,18 @@ mod tests {
         // the number: the line still counts as labelled.
         assert_eq!(kinds(&p("sample7a *1/~*4")), ["diplotype"]);
         assert_eq!(kinds(&p("samples: *1/~*4")), ["diplotype"]);
-        assert_eq!(kinds(&p("10.1.2.3.")), ["address"]);
+        assert_eq!(kinds(&p("10.1.2.~3.")), ["address"]);
         assert_eq!(kinds(&p("FMR1 has 29/~31")), ["repeat"]);
     }
 
     #[test]
     fn an_allowed_example_covers_only_its_own_text() {
         let rules = builtin();
-        let ex = "(`/mnt/user/`, `/home/username/`, etc.)";
+        let ex = p("(`/mnt/u~ser/`, `/ho~me/username/`, etc.)");
         let mut out = Vec::new();
-        assert!(!scan_text(&mut out, &rules, &[ex], "x.md", ex.as_bytes()));
+        assert!(!scan_text(&mut out, &rules, &[ex.as_str()], "x.md", ex.as_bytes()));
         let line = p(&format!("{ex} see /home/~bob/x"));
-        assert!(scan_text(&mut out, &rules, &[ex], "x.md", line.as_bytes()));
+        assert!(scan_text(&mut out, &rules, &[ex.as_str()], "x.md", line.as_bytes()));
         let got = String::from_utf8(out).unwrap();
         assert!(got.starts_with("FAIL home      x.md:1: "), "{got}");
     }

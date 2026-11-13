@@ -36,6 +36,10 @@
 # the repository and point PERSONAL_DATA_PATTERNS at it; each match is
 # reported as kind "own".
 #
+# The scan is og dev scan personal-data (rust/crates/og-dev); bin/og runs
+# the build scripts/setup.sh --og puts in bin/.og for this machine, and OG
+# names another og binary.
+#
 # As a pre-commit hook, checking the staged files:
 #   cat > .git/hooks/pre-commit <<'HOOK'
 #   #!/bin/sh
@@ -47,6 +51,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# og runs the scan (bin/og picks the build for this machine); OG overrides it.
+OG=${OG:-${ROOT}/bin/og}
 
 # file (exact path or glob)   text on the line that makes it a documented example
 # shellcheck disable=SC2016  # the entries are text, nothing expands
@@ -80,89 +86,16 @@ tests/parity/inputs/pgx-refblock-fill/*  built from the public PharmCAT data of 
 tests/parity/golden/pgx-refblock-fill/*  the output og writes on those inputs
 '
 
+# scan [FILE...]: og dev scan personal-data (rust/crates/og-dev) with the
+# lists above; with no FILE, every file git ls-files lists under ROOT. A
+# scan that read no text file fails: it checked nothing.
 scan() {
-  python3 - "$ROOT" "$ALLOW" "$SKIP" "${PERSONAL_DATA_PATTERNS:-}" "${CACHED:-}" "$@" <<'PY'
-import fnmatch, os, re, subprocess, sys
-root, allow_text, skip_text, own_file, cached, args = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6:]
-skip = [l.split()[0] for l in skip_text.splitlines() if l.strip()]
-allow = []
-for l in allow_text.splitlines():
-    if l.strip():
-        path, _, text = l.strip().partition(" ")
-        allow.append((path, text.strip()))
-
-if args:
-    files = args
-else:
-    out = subprocess.run(["git", "-C", root, "ls-files", "-z"], check=True, capture_output=True).stdout
-    files = [os.path.join(root, f) for f in out.decode().split("\0") if f]
-if not files:
-    print("FAIL: no file to scan")
-    sys.exit(1)
-
-# A label may carry a number after a separator: sample7, sample_01, donor-3.
-LABEL = r'(?:(?i:(?<![A-Za-z])(?:sample|patient|subject|proband|participant|individual|donor)s?(?:[_-]?[0-9]+)?(?![A-Za-z]))|\b(?:NA|HG)[0-9]{3,5}\b)'
-GT = r'\(?[ACGTDI][/|;]?[ACGTDI]\)?(?![A-Za-z0-9])'
-STR_GENES = (r'HTT|FMR1|C9orf72|C9ORF72|ATXN[0-9]+|DMPK|FXN|CNBP|RFC1|PABPN1|CACNA1A|TCF4|AR|'
-             r'PPP2R2B|TBP|JPH3|NOP56|ATN1|CSTB|AFF2|FMR2|NOTCH2NLC|DAB1|BEAN1|STARD7|YEATS2')
-OCTET = r'(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
-# (kind, pattern, the line must also match this or None). The pattern
-# marks only the leaked value, so an allowed example covers just its span.
-RULES = [
-    ("home", re.compile(r'(?<![A-Za-z0-9_])(?:/home/[A-Za-z]|/Users/[A-Za-z]|/mnt/use[r]\b|[A-Za-z]:\\\\?Users\\\\?[A-Za-z])'), None),
-    ("address", re.compile(r'(?<![0-9.])(?:10\.' + OCTET + r'|172\.(?:1[6-9]|2[0-9]|3[01])|192\.168|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7]))'
-                           r'\.' + OCTET + r'\.' + OCTET + r'(?![0-9]|\.[0-9])'), None),
-    ("address", re.compile(r'[A-Za-z0-9-]\.ts\.net\b'), None),
-    ("diplotype", re.compile(r'\*[0-9]+[A-Za-z0-9.]*/\*[0-9]+'), re.compile(LABEL)),
-    ("rsid", re.compile(r'\brs[0-9]+\b[\s:=,;|`\'"\[\]-]{1,6}' + GT), None),
-    ("rsid", re.compile(r'\brs[0-9]+\t[0-9XYMT]{1,2}\t[0-9]+\t[ACGTDI-]{1,2}\b'), None),
-    ("repeat", re.compile(r'(?<![0-9./])[0-9]{1,4}/[0-9]{1,4}(?![0-9/])'), re.compile(r'\bREPCN\b')),
-    ("repeat", re.compile(r'\b(?:' + STR_GENES + r')\b[^/\n]{0,40}?(?<![0-9.])[0-9]{1,4}/[0-9]{1,4}(?![0-9/])'), None),
-]
-if own_file:
-    for l in open(own_file):
-        if l.strip() and not l.startswith("#"):
-            RULES.append(("own", re.compile(l.strip()), None))
-
-bad = scanned = 0
-for path in files:
-    full = os.path.abspath(path)
-    rel = os.path.relpath(full, root) if full.startswith(root + os.sep) else path
-    if any(fnmatch.fnmatchcase(rel, g) for g in skip):
-        continue
-    if cached:
-        # The blob in the index: what the commit will hold.
-        r = subprocess.run(["git", "-C", root, "show", ":" + rel], capture_output=True)
-        if r.returncode != 0:
-            continue
-        data = r.stdout
-    else:
-        try:
-            data = open(path, "rb").read()
-        except (IsADirectoryError, FileNotFoundError):
-            continue
-    if b"\0" in data[:8192]:
-        continue  # binary
-    scanned += 1
-    if rel == "scripts/ci/check-personal-data.sh":
-        texts = [t for _, t in allow]
-    else:
-        texts = [t for p, t in allow if fnmatch.fnmatchcase(rel, p)]
-    for n, line in enumerate(data.decode("utf-8", "replace").split("\n"), 1):
-        # Spans of the line that are documented examples.
-        spans = [(i.start(), i.end()) for t in texts for i in re.finditer(re.escape(t), line)]
-        for kind, rx, cond in RULES:
-            if cond is not None and not cond.search(line):
-                continue
-            for m in rx.finditer(line):
-                if any(a <= m.start() and m.end() <= b for a, b in spans):
-                    continue  # inside an allowed example; the rest of the line is still checked
-                print("FAIL %-9s %s:%d: %s" % (kind, rel, n, line.strip()[:160]))
-                bad = 1
-                break
-print("scanned %d text files" % scanned)
-sys.exit(bad)
-PY
+  local cached=()
+  [ -z "${CACHED:-}" ] || cached=(--cached)
+  local patterns=()
+  [ -z "${PERSONAL_DATA_PATTERNS:-}" ] || patterns=(--patterns "$PERSONAL_DATA_PATTERNS")
+  "$OG" dev scan personal-data --root "$ROOT" --allow "$ALLOW" --skip "$SKIP" \
+    ${patterns[@]+"${patterns[@]}"} ${cached[@]+"${cached[@]}"} -- "$@"
 }
 
 self_test() {
@@ -224,6 +157,22 @@ self_test() {
   else
     echo "self-test: caught: $(grep '^FAIL' <<<"$out")"
   fi
+  # A scan that read no text file checked nothing: it fails. Here the only
+  # file is binary.
+  printf 'a\0b\n' > "${tmp}/binary.bin"
+  rc=0; out=$(scan "${tmp}/binary.bin" 2>&1) || rc=$?
+  if [ "$rc" -ne 1 ] || ! grep -q '^FAIL: no text file was scanned' <<<"$out"; then
+    echo "self-test: a scan of no text file passed (exit ${rc}):"; printf '%s\n' "$out"; fail=1
+  else
+    echo "self-test: caught: $(grep '^FAIL' <<<"$out")"
+  fi
+  # ROOT reached through a symbolic link still places the file below it, so
+  # the file's allowed example applies.
+  ln -s "${tmp}/tree" "${tmp}/link"
+  # shellcheck disable=SC2016  # the backticks are text
+  plant tree/CONTRIBUTING.md 'Personal file paths (`/mnt/user/`, `/home/username/`, etc.)'
+  rc=0; out=$(ROOT="${tmp}/link" scan "${tmp}/tree/CONTRIBUTING.md" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || { echo "self-test: an allowed example was reported under a linked ROOT:"; printf '%s\n' "$out"; fail=1; }
   # A pattern of your own, from PERSONAL_DATA_PATTERNS.
   printf '%s\n' 'Report for Jane Example' > "${tmp}/own.md"
   printf '%s\n' '\bJane Example\b' > "${tmp}/patterns"

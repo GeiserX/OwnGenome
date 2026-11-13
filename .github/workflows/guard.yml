@@ -33,12 +33,25 @@ jobs:
   # two files generated from it (conf/containers.config, docs/versions.md)
   # are up to date. Each script's self-test plants its faults first.
   images:
+    needs: og
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Self-test (a literal image in a script, module, workflow or doc, a process with no selector and a stale generated file must be caught)
+      # The scans and the run-versions check are og dev verbs
+      # (rust/crates/og-dev): the og the og job built.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-unit-tests
+          path: ${{ runner.temp }}/og
+
+      - name: og for the checks (OG)
+        run: |
+          chmod 755 "$RUNNER_TEMP/og/og"
+          echo "OG=${RUNNER_TEMP}/og/og" >> "$GITHUB_ENV"
+
+      - name: Self-test (a literal image in a script, module, workflow or doc, a stale exemption, a process with no selector and a stale generated file must be caught)
         run: scripts/ci/check-images.sh --self-test
 
       - name: Self-test of the containers.config generator (a stale tag, a missing or stray selector, a module's own container and a wrong version must be caught)
@@ -125,7 +138,8 @@ jobs:
 
   # og for the unit tests (tests/og_binary.py): the tests of a ported tool
   # and the demo sample builder run og as a subprocess. Built once here, so
-  # the three shards do not each spend minutes of their 10 on it.
+  # the three shards do not each spend minutes of their 10 on it. The images
+  # job runs its og dev scans with it too.
   og:
     runs-on: ubuntu-latest
     timeout-minutes: 20
