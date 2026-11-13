@@ -7,7 +7,10 @@
 //! switches to it. Group `a` is the model and the first seven sections:
 //! coverage, callability, sex_check, sample_qc, mosaic_sex_loss,
 //! read_count and variants, with the run status, the manifest and each
-//! section's state. Group `c` is copy number, HLA, the polygenic scores,
+//! section's state. Group `b` is the clinical sections ([`group_b`]):
+//! clinvar, carrier, pharmcat, cpic, pypgx, cyrius, cpsr, clinical (with
+//! the ACMG SF tier and the two-hit rule) and slivar, and the CYP2D6 block.
+//! Group `c` is copy number, HLA, the polygenic scores,
 //! ancestry, structural variants, repeats, telomeres, runs of
 //! homozygosity, the haplogroups, the opt-in step tables, chrM, traits with
 //! the APOL1 G2 deletion, and the couple screen ([`group_c`]).
@@ -19,11 +22,21 @@
 //! sections are read. A reader's error stays in its section, which is
 //! then `unreadable` with a note that names the file.
 
+pub mod acmg;
+pub mod assets;
+pub mod carrier;
+pub mod clinical;
+pub mod clinvar;
+pub mod cpsr;
+pub mod group_b;
 pub mod group_c;
 pub mod model;
+pub mod pgx;
 pub mod scan;
 pub mod sections;
+pub mod text;
 pub mod time;
+pub mod two_hits;
 
 use crate::args::{self, Kind, Opt};
 use model::{GROUP_A, Manifest, RunStatus, Section, Spec, Summary};
@@ -33,7 +46,8 @@ use sections::{Callability, Coverage, Data, Mosaic, ReadCount, SampleQc, SexChec
 use std::io::Write;
 use std::path::Path;
 
-const USAGE: &str = "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR --only {a,c}
+const USAGE: &str =
+    "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR --only {a,b,c}
                           --out OUT [--declared-sex DECLARED_SEX] [--assets ASSETS]
 ";
 
@@ -43,7 +57,7 @@ const OPTS: &[Opt] = &[
     Opt("--declared-sex", Kind::Value, false),
     Opt("--out", Kind::Value, true),
     Opt("--assets", Kind::Value, false),
-    Opt("--only", Kind::Choice(&["a", "c"]), true),
+    Opt("--only", Kind::Choice(&["a", "b", "c"]), true),
 ];
 
 /// What one collect reads.
@@ -56,7 +70,7 @@ pub struct Input {
     pub declared_sex: Option<String>,
     /// The repository's `assets/` folder.
     pub assets: String,
-    /// The group of sections to read: `a` or `c`.
+    /// The group of sections to read: `a`, `b` or `c`.
     pub group: Group,
     /// The folder of the two tables group c reads from `bin/`.
     pub tables: String,
@@ -66,6 +80,7 @@ pub struct Input {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Group {
     A,
+    B,
     C,
 }
 
@@ -87,21 +102,30 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         declared_sex: a.get("--declared-sex").map(str::to_owned),
         assets: a.get("--assets").map_or_else(default_assets, str::to_owned),
         tables: group_c::util::default_tables(),
-        group: if a.text("--only") == "c" {
-            Group::C
-        } else {
-            Group::A
+        group: match a.text("--only") {
+            "b" => Group::B,
+            "c" => Group::C,
+            _ => Group::A,
         },
     };
     // A part of the sections must never replace the sample's complete
     // summary.json, so there is no default path while `--only` exists.
     let target = a.text("--out").to_owned();
-    let summary = match collect(&input) {
+    let read = match a.text("--only") {
+        "b" => group_b::collect,
+        _ => collect,
+    };
+    let summary = match read(&input) {
         Ok(s) => s,
         Err(e) => return crate::finish(Err(e), err),
     };
+    // The sections' own data is freed before the text is made, and the
+    // tree before the file is written: a large ClinVar list is in memory in
+    // one form at a time.
+    let value = summary.to_json();
+    drop(summary);
     let body = match dumps(
-        &summary.to_json(),
+        &value,
         &Dump {
             indent: Some(1),
             ..Dump::default()
@@ -110,6 +134,7 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         Ok(b) => b + "\n",
         Err(e) => return crate::finish(Err(e.to_string()), err),
     };
+    drop(value);
     let r = crate::write_file(&target, body.as_bytes());
     if r.is_ok() {
         let _ = writeln!(out, "Summary written: {target}");
@@ -173,6 +198,7 @@ pub fn collect(input: &Input) -> Result<Summary, String> {
             manifest,
             declared_sex,
             sections,
+            cyp2d6: None,
         });
     }
 
@@ -228,6 +254,7 @@ pub fn collect(input: &Input) -> Result<Summary, String> {
         manifest,
         declared_sex,
         sections,
+        cyp2d6: None,
     })
 }
 

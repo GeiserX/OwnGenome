@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The interval rows of bin/cn_loci.tsv are what scripts/ci/build-cn-intervals.py
+# The interval rows of bin/cn_loci.tsv are what scripts/ci/build-cn-intervals.sh
 # writes from its pinned downloads (ClinGen's recurrent CNV BED V2.1 and three
 # GIAB v3.6 stratifications, each checked against its sha256): a hand edit of
 # an interval row fails here. Control: a copy of the catalog with one target
@@ -11,9 +11,9 @@
 CACHE="${CASE_TMP}/downloads"
 [ -z "${E2E_DATA_CACHE:-}" ] || CACHE="${E2E_DATA_CACHE}/catalogs/cn-intervals"
 mkdir -p "$CACHE"
-echo "+ scripts/ci/build-cn-intervals.py --check"
-python3 "${REPO}/scripts/ci/build-cn-intervals.py" --cache "$CACHE" --check 2>&1 | tee "$STEP_LOG"
-check_eq "build-cn-intervals.py --check exits 0 on the committed catalog" "${PIPESTATUS[0]}" 0
+echo "+ scripts/ci/build-cn-intervals.sh --check"
+bash "${REPO}/scripts/ci/build-cn-intervals.sh" --cache "$CACHE" --check 2>&1 | tee "$STEP_LOG"
+check_eq "build-cn-intervals.sh --check exits 0 on the committed catalog" "${PIPESTATUS[0]}" 0
 check "the log says all 90 interval rows were checked" grep -q "the 90 interval rows are what the pinned downloads give" "$STEP_LOG"
 
 # Control: one interval target moved by 1 kb
@@ -25,7 +25,7 @@ awk -F'\t' -v OFS='\t' '$1 == "22q11.2_DGS_proximal_A-B" && !done {
   "${REPO}/bin/cn_loci.tsv" > "$EDITED"
 # shellcheck disable=SC2016  # the positional arguments of bash -c
 check "control: the edited copy differs from the catalog" bash -c '! cmp -s "$1" "$2"' _ "$EDITED" "${REPO}/bin/cn_loci.tsv"
-python3 "${REPO}/scripts/ci/build-cn-intervals.py" --cache "$CACHE" --catalog "$EDITED" --check > "${CASE_TMP}/edited.log" 2>&1
+bash "${REPO}/scripts/ci/build-cn-intervals.sh" --cache "$CACHE" --catalog "$EDITED" --check > "${CASE_TMP}/edited.log" 2>&1
 check_eq "control: --check fails (exit 1) on a catalog with one interval target moved" "$?" 1
 cat "${CASE_TMP}/edited.log"
 

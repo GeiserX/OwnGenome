@@ -50,7 +50,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og prs format [args]
        og prs table [args]
        og mito annotate|deletions|copies [args]
-       og summary collect --only a|c [args]
+       og summary collect --only {a,b,c} [args]
        og roh summary --sample SAMPLE --roh ROH [--out OUT]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
@@ -76,6 +76,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og lookup query|resolve|report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
        og dev helpers [args]
+       og dev build cn-intervals|callability|sv-rule-regions [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash

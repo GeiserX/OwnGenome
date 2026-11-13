@@ -666,6 +666,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "indexmap",
+ "og-intervals",
  "og-io",
  "og-nf",
  "png",
@@ -840,7 +841,9 @@ dependencies = [
  "indexmap",
  "memchr",
  "og-ancestry",
+ "og-bam",
  "og-chip",
+ "og-clinvar",
  "og-cn",
  "og-io",
  "og-steps",
