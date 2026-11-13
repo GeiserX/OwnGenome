@@ -206,7 +206,7 @@ impl Scratch {
                 std::process::id(),
                 N.fetch_add(1, Ordering::Relaxed)
             ));
-            match std::fs::DirBuilder::new().mode(0o755).create(&d) {
+            match std::fs::DirBuilder::new().mode(0o700).create(&d) {
                 Ok(()) => return Ok(Scratch(d)),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
                 Err(e) => return Err(e),
