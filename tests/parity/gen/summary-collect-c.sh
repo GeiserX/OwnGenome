@@ -41,6 +41,8 @@ for a in paraphase_genes.tsv paralog_loci.tsv mito_confirmed.tsv callability_gen
   cp "${root}/assets/${a}" assets/
 done
 
+# All calls below are invented. Share the FORMAT header across repeat fixtures.
+EH_FORMAT='GT:SO:REPCN:REPCI:ADSP'
 VCF_HEAD='##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n'
 
 # full: every section, the bash names -------------------------------------------
@@ -128,16 +130,26 @@ a1\t1\t1100\t5100\t-4000\tDEL\tGENE1;GENE2;\t5\tGT:PS\t0/1:77\tsplit\tmanta\tyes
 a2\t2\t150\t880\t730\tDUP\tGENE3\t4\tGT\t1/1\tsplit\tdelly\tno\t\t\t\tno\t\t\t
 a3\t7\t1\t100\t99\tINV\t\t3\tGT\t0/1\tsplit\tmanta\tnot checked\t\tx\tgnomAD\tyes\t4\tmhc\tthe MHC
 a4\t9\t1\t100\t99\tDEL\tG9\t4\t\t\tfull\ttiddit\tno\t\t0.2\tgnomAD\tyes\t\t\t\n"
-put $f/expansion_hunter/S_eh.vcf "${VCF_HEAD}chr4\t3074877\t.\tC\t<STR20>\t.\tPASS\tEND=3074940;REF=21;RL=63;RU=CAG;VARID=HTT;REPID=HTT\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t0/1:SPANNING/SPANNING:17/20:17-17/20-20:10/12:5/5:0/0:30\n"
-EH_RECS="chr4\t3074877\t.\tC\t<STR20>\t.\tPASS\tEND=3074940;REF=21;RL=63;RU=CAG;VARID=HTT;REPID=HTT;STR_STATUS=normal,normal;STR_NORMAL_MAX=26;STR_PATHOLOGIC_MIN=40\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:17/20:17-17/20-20:10/12
-chrX\t147912051\t.\tC\t<STR45>\t.\tPASS\tEND=147912110;VARID=FMR1;REPID=FMR1;STR_STATUS=premutation;STR_NORMAL_MAX=44;STR_PATHOLOGIC_MIN=200\tGT:SO:REPCN:REPCI:ADSP\t1:SPANNING:58:55-60:1
-chr4\t39348425\t.\tA\t<STR100>\t.\tPASS\tEND=39348480;VARID=RFC1;REPID=RFC1;STR_STATUS=full_mutation;STR_NORMAL_MAX=.;STR_PATHOLOGIC_MIN=400\tGT:SO:REPCN:REPCI:ADSP\t1/1:INREPEAT/INREPEAT:500/600:400-700/500-800:0/0
-chr7\t117548628\t.\tT\t<STR11>\t.\tPASS\tEND=117548650;VARID=CFTR_TG;REPID=CFTR_TG\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:11/12:11-11/12-12:8/9
-chr7\t117548651\t.\tT\t<STR5>\t.\tPASS\tEND=117548660;VARID=CFTR_T;REPID=CFTR_T\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:5/7:5-5/7-7:8/9
-chr2\t233760233\t.\tA\t<STR8>\t.\tPASS\tEND=233760250;VARID=UGT1A1;REPID=UGT1A1;STR_STATUS=normal\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:7/8:7-7/8-8:5/6
-chr6\t16327636\t.\tT\t<STR40>\t.\tPASS\tEND=16327700;VARID=ATXN1;REPID=ATXN1;STR_STATUS=normal;STR_NORMAL_MAX=35;STR_PATHOLOGIC_MIN=39\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/FLANKING:30/37:30-30/35-40:4/0
-chr9\t27573528\t.\tC\t<STR8>\t.\tPASS\tEND=27573540;VARID=C9ORF72;REPID=C9ORF72\tGT:SO:REPCN:REPCI:ADSP\t./.:.:.:.:.
-chr1\t10\t.\tC\t<STR8>\t.\tPASS\tEND=20;VARID=EXTRA1\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING:8/9:8-8/9-9:1
+put $f/expansion_hunter/S_eh.vcf "${VCF_HEAD}chr4\t3074877\t.\tC\t<STR20>\t.\tPASS\tEND=3074940;REF=21;RL=63;RU=CAG;VARID=HTT;REPID=HTT\t${EH_FORMAT}:ADFL:ADIR:LC\t\
+0/1:SPANNING/SPANNING:17/20:17-17/20-20:10/12:5/5:0/0:30\n"
+EH_RECS="chr4\t3074877\t.\tC\t<STR20>\t.\tPASS\tEND=3074940;REF=21;RL=63;RU=CAG;VARID=HTT;REPID=HTT;STR_STATUS=normal,normal;STR_NORMAL_MAX=26;STR_PATHOLOGIC_MIN=40\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:17/20:17-17/20-20:10/12
+chrX\t147912051\t.\tC\t<STR45>\t.\tPASS\tEND=147912110;VARID=FMR1;REPID=FMR1;STR_STATUS=premutation;STR_NORMAL_MAX=44;STR_PATHOLOGIC_MIN=200\t${EH_FORMAT}\t\
+1:SPANNING:58:55-60:1
+chr4\t39348425\t.\tA\t<STR100>\t.\tPASS\tEND=39348480;VARID=RFC1;REPID=RFC1;STR_STATUS=full_mutation;STR_NORMAL_MAX=.;STR_PATHOLOGIC_MIN=400\t${EH_FORMAT}\t\
+1/1:INREPEAT/INREPEAT:500/600:400-700/500-800:0/0
+chr7\t117548628\t.\tT\t<STR11>\t.\tPASS\tEND=117548650;VARID=CFTR_TG;REPID=CFTR_TG\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:11/12:11-11/12-12:8/9
+chr7\t117548651\t.\tT\t<STR5>\t.\tPASS\tEND=117548660;VARID=CFTR_T;REPID=CFTR_T\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:5/7:5-5/7-7:8/9
+chr2\t233760233\t.\tA\t<STR8>\t.\tPASS\tEND=233760250;VARID=UGT1A1;REPID=UGT1A1;STR_STATUS=normal\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:7/8:7-7/8-8:5/6
+chr6\t16327636\t.\tT\t<STR40>\t.\tPASS\tEND=16327700;VARID=ATXN1;REPID=ATXN1;STR_STATUS=normal;STR_NORMAL_MAX=35;STR_PATHOLOGIC_MIN=39\t${EH_FORMAT}\t\
+0/1:SPANNING/FLANKING:30/37:30-30/35-40:4/0
+chr9\t27573528\t.\tC\t<STR8>\t.\tPASS\tEND=27573540;VARID=C9ORF72;REPID=C9ORF72\t${EH_FORMAT}\t\
+./.:.:.:.:.
+chr1\t10\t.\tC\t<STR8>\t.\tPASS\tEND=20;VARID=EXTRA1\t${EH_FORMAT}\t\
+0/1:SPANNING:8/9:8-8/9-9:1
 short\t1\t.\tC"
 put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}${EH_RECS}\n"
 at "$OLD" $f/expansion_hunter/S_eh.vcf
@@ -251,11 +263,15 @@ put $f/annotsv/S_sv_class4_5_checked.tsv ""
 put $f/prs/S_prs_summary.tsv "Condition\tPGS_ID\tPercentile\nX\tPGS1\tNA\n"
 put $f/ancestry/S_ancestry.tsv "key\tvalue\n"
 at "$OLD" $f/prs/S_prs_summary.tsv
-put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t3074877\t.\tC\t<STR20>\t.\tPASS\tVARID=HTT;REPID=HTT;STR_STATUS=normal\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:17/20:17-17/20-20:10/12\n"
+put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t3074877\t.\tC\t<STR20>\t.\tPASS\tVARID=HTT;REPID=HTT;STR_STATUS=normal\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:17/20:17-17/20-20:10/12\n"
 at "$OLD" $f/expansion_hunter/S_eh_stranger.vcf
-put $f/expansion_hunter/S_eh.vcf "${VCF_HEAD}chr7\t117548628\t.\tT\t<STR11>\t.\tPASS\tVARID=CFTR_TG;REPID=CFTR_TG\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:12/12:12-12/12-12:8/9
-chr7\t117548651\t.\tT\t<STR5>\t.\tPASS\tVARID=CFTR_T;REPID=CFTR_T\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:5/5:5-5/5-5:8/9
-chr2\t233760233\t.\tA\t<STR8>\t.\tPASS\tVARID=UGT1A1;REPID=UGT1A1\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:8/10:8-8/10-10:5/6\n"
+put $f/expansion_hunter/S_eh.vcf "${VCF_HEAD}chr7\t117548628\t.\tT\t<STR11>\t.\tPASS\tVARID=CFTR_TG;REPID=CFTR_TG\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:12/12:12-12/12-12:8/9
+chr7\t117548651\t.\tT\t<STR5>\t.\tPASS\tVARID=CFTR_T;REPID=CFTR_T\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:5/5:5-5/5-5:8/9
+chr2\t233760233\t.\tA\t<STR8>\t.\tPASS\tVARID=UGT1A1;REPID=UGT1A1\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:8/10:8-8/10-10:5/6\n"
 put $f/locityper/S_locityper.tsv "locus\tregion\tstatus\tgenotype\thaplotype_1\thaplotype_2\tquality\ttotal_reads\tunexplained_reads\tweighted_distance\twarnings\tfilter\treason
 HLA-DRB1\tx\tcalled\th\th\th\t1\t1\t1\t1\t\tpass\t
 HLA-DQB1\tx\tcalled\th\th\th\t1\t1\t1\t1\t\tpass\t
@@ -312,7 +328,9 @@ put $f/paralogs/S_smn_copy_number.tsv "chrom\tstart\tend\n"
 put $f/paralogs/S_paraphase_copy_number.tsv "region\tgene\nsmn1\tSMN1\n"
 put $f/paralogs/S_cn_dosage.tsv "locus\tstatus\n"
 put $f/telomere/S/S_summary.tsv "PID\tsample\tintratel_reads\tread_lengths\ttel_content\nS\ttumor\t40\t150\t1.5\n"
-put $f/expansion_hunter/S_eh.vcf "${VCF_HEAD}chr7\t1\t.\tT\t<STR11>\t.\tPASS\tVARID=CFTR_TG\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/FLANKING:11/12:11-11/12-12:8/0\nchr7\t2\t.\tT\t<STR5>\t.\tPASS\tVARID=CFTR_T\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:7/9:7-7/9-9:8/9\n"
+put $f/expansion_hunter/S_eh.vcf "${VCF_HEAD}chr7\t1\t.\tT\t<STR11>\t.\tPASS\tVARID=CFTR_TG\t${EH_FORMAT}\t\
+0/1:SPANNING/FLANKING:11/12:11-11/12-12:8/0\nchr7\t2\t.\tT\t<STR5>\t.\tPASS\tVARID=CFTR_T\t${EH_FORMAT}\t\
+0/1:SPANNING/SPANNING:7/9:7-7/9-9:8/9\n"
 put $f/mito/S_chrM_deletions.tsv "bkp5\tbkp3\n1\t2\n"
 putgz $f/mito/S_chrM_filtered.vcf.gz "${VCF_HEAD}"
 put $f/vcf/S_roh.txt "RG\tS\tchr1\t1\t2\tx\n"
@@ -333,7 +351,8 @@ put $f/y_haplogroup/S_y_tree_path.tsv "Level\tSNPs\n1\tM\n"
 put $f/paralogs/S_cn_intervals.tsv "locus\tname\tchrom\tstart\tend\tstatus\tcopies\texpected\tchange\nX\tx\tchr1\t1\t2\tcalled\n"
 put $f/mito/S_chrM_filtered.vcf.gz "not gzip\n"
 put $f/delly/S_sv.vcf.gz "\x1f\x8b\x08\x00broken"
-put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t39348425\t.\tA\t<STR100>\t.\tPASS\tVARID=RFC1;REPID=RFC1;STR_STATUS=full_mutation\tGT:SO:REPCN:REPCI:ADSP\t1/1:INREPEAT/INREPEAT:500/600:400-700/500-800:0/0\n"
+put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t39348425\t.\tA\t<STR100>\t.\tPASS\tVARID=RFC1;REPID=RFC1;STR_STATUS=full_mutation\t${EH_FORMAT}\t\
+1/1:INREPEAT/INREPEAT:500/600:400-700/500-800:0/0\n"
 
 # g2-*: the APOL1 G2 deletion beside step 42's APOL1 line --------------------------
 g2() {

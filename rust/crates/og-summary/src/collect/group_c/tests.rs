@@ -117,9 +117,16 @@ fn locityper_reads_pypgx_and_cyrius_from_group_b() {
 #[test]
 fn a_cftr_5t_with_r117h_reads_the_phase() {
     let d = Dir::new("c-cftr");
-    let vcf = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n\
-chr7\t1\t.\tT\t<STR11>\t.\tPASS\tVARID=CFTR_TG;REPID=CFTR_TG\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:11/12:11-11/12-12:8/9\n\
-chr7\t2\t.\tT\t<STR5>\t.\tPASS\tVARID=CFTR_T;REPID=CFTR_T\tGT:SO:REPCN:REPCI:ADSP\t0/1:SPANNING/SPANNING:5/7:5-5/7-7:8/9\n";
+    // Invented calls. Keep FORMAT separate from the values, as in the parity generator.
+    let vcf = concat!(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n",
+        "chr7\t1\t.\tT\t<STR11>\t.\tPASS\tVARID=CFTR_TG;REPID=CFTR_TG\t",
+        "GT:SO:REPCN:REPCI:ADSP\t",
+        "0/1:SPANNING/SPANNING:11/12:11-11/12-12:8/9\n",
+        "chr7\t2\t.\tT\t<STR5>\t.\tPASS\tVARID=CFTR_T;REPID=CFTR_T\t",
+        "GT:SO:REPCN:REPCI:ADSP\t",
+        "0/1:SPANNING/SPANNING:5/7:5-5/7-7:8/9\n",
+    );
     d.put("S/expansion_hunter/S_eh.vcf", vcf);
     d.put(
         "S/traits/S_traits.tsv",
