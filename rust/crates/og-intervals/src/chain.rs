@@ -240,10 +240,10 @@ impl Chain {
         // may still reach past p.
         let mut j = src.blocks.partition_point(|b| i64::from(b.start) <= p);
         let mut first: Option<&Block> = None;
-        while j > 0 && i64::from(src.reach[j - 1]) > p {
+        while j > 0 && i64::from(src.reach[j - 1]) >= p {
             j -= 1;
             let b = &src.blocks[j];
-            if i64::from(b.end) > p {
+            if i64::from(b.end) >= p {
                 match first {
                     None => first = Some(b),
                     Some(f) if f.chain != b.chain => return None,
