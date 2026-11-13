@@ -1952,8 +1952,6 @@ def page_snapshot(b):
 
 def related_set_problems(b, base, out, og):
     """On each finding's own page, opening one of two results cannot open a related finding naming both."""
-    change = dup_over(cpsrs("BRCA1", "BRCA2"), "chr5:1000000-1300000", ["BRCA1", "BRCA2"])
-    keep = plant_summary(out, og, change)
     made, bad = [], []
     folder = os.path.join(out, "runs", SON, "finding")
     # The demo server is static: give the planted findings the same page template as its original findings.
@@ -1961,30 +1959,39 @@ def related_set_problems(b, base, out, og):
     with open(os.path.join(folder, original, "index.html")) as fh:
         template = fh.read()
     try:
-        for gene in ("BRCA1", "BRCA2"):
-            fid = cid(gene)
-            dest = os.path.join(folder, fid)
-            os.makedirs(dest)
-            made.append(dest)
-            with open(os.path.join(dest, "index.html"), "w") as fh:
-                fh.write(template.replace(original, fid))
-            b.go("about:blank")
-            b.wait("location.href === 'about:blank'")
-            b.go(f"{base}/runs/{SON}/finding/{fid}/")
-            if not b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.querySelector('.veil button') "
-                          "&& 'ready'", 10):
-                bad.append(f"{gene}: finding never closed")
-                continue
-            b.eval("document.querySelector('.veil button').click(); true")
-            if not b.wait("!document.querySelector('.veil') && document.querySelector('#related') && 'opened'", 5):
-                bad.append(f"{gene}: finding never opened")
-            related = b.eval("document.querySelector('#related').outerHTML") or ""
-            if "sv-chr5-1000000-1300000" in related or "Large DUP" in related:
-                bad.append(f"{gene} opened alone: the duplication names the other closed result in Related results")
-            if not b.eval("document.querySelector('#what').textContent.indexOf(" + json.dumps(gene) + ") >= 0"):
-                bad.append(f"{gene}: opening its finding did not show it")
+        for genes in (["BRCA1", "BRCA2"], ["BRCA2", "BRCA1"]):
+            # Related links use the finding's first gene. Reverse that as well as the CPSR order, so both
+            # directions can actually list the duplication and expose a first-id reader.
+            gene, fid = genes[0], cid(genes[0])
+            keep = plant_summary(out, og, dup_over(cpsrs(*genes), "chr5:1000000-1300000", genes))
+            try:
+                with open(os.path.join(out, "runs", SON, "results.json")) as fh:
+                    finding = next(f for f in json.load(fh)["findings"] if f["id"] == fid)
+                if "sv-chr5-1000000-1300000" not in finding.get("related", []):
+                    bad.append(f"{gene}: fixture never offers the duplication as a related result")
+                dest = os.path.join(folder, fid)
+                os.makedirs(dest)
+                made.append(dest)
+                with open(os.path.join(dest, "index.html"), "w") as fh:
+                    fh.write(template.replace(original, fid))
+                b.go("about:blank")
+                b.wait("location.href === 'about:blank'")
+                b.go(f"{base}/runs/{SON}/finding/{fid}/")
+                if not b.wait("document.documentElement.dataset.pgpStatus === 'ready' && document.querySelector('.veil button') "
+                              "&& 'ready'", 10):
+                    bad.append(f"{gene}: finding never closed")
+                    continue
+                b.eval("document.querySelector('.veil button').click(); true")
+                if not b.wait("!document.querySelector('.veil') && document.querySelector('#related') && 'opened'", 5):
+                    bad.append(f"{gene}: finding never opened")
+                related = b.eval("document.querySelector('#related').outerHTML") or ""
+                if "sv-chr5-1000000-1300000" in related or "Large DUP" in related:
+                    bad.append(f"{gene} opened alone: the duplication names the other closed result in Related results")
+                if not b.eval("document.querySelector('#what').textContent.indexOf(" + json.dumps(gene) + ") >= 0"):
+                    bad.append(f"{gene}: opening its finding did not show it")
+            finally:
+                unplant(keep)
     finally:
-        unplant(keep)
         for dest in made:
             shutil.rmtree(dest)
     return bad
