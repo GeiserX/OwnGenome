@@ -5,7 +5,7 @@
 #     over MUC1): VNtyper has nothing to read, and the step says "not
 #     assessed" with that reason, never "negative";
 #   - two BAMs of VNtyper's own public test data (tests/smoke/
-#     vntyper_testdata.py reads them out of its Zenodo archive, sha256
+#     vntyper_testdata.sh reads them out of its Zenodo archive, sha256
 #     pinned): their reads over MUC1 carried onto the fixture's header and
 #     added to case 20's BAM, as a whole-genome BAM would hold them. The
 #     sample with a frameshift reads positive, with the variant, and the one
@@ -38,7 +38,7 @@ check "the fixture: the message says the BAM has no read over MUC1" has 'no read
 
 # --- VNtyper's positive and negative samples on the fixture's header -------------------
 check "VNtyper's two test BAMs download and match their sha256" \
-  retry python3 -I "${REPO}/tests/smoke/vntyper_testdata.py" "$T" positive.bam negative.bam
+  retry sh "${REPO}/tests/smoke/vntyper_testdata.sh" "$T" positive.bam negative.bam
 H="${SAMPLE}muc"
 for s in positive negative; do
   dk "$SAMTOOLS_IMAGE" samtools index "${T}/${s}.bam"
