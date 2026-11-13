@@ -471,8 +471,7 @@ fn pieces(spans: &[Span]) -> Vec<Span> {
         // Ceiling divisions of positive numbers.
         let n = (len + PIECE - 1) / PIECE;
         let step = (len + n - 1) / n;
-        // PLANTED, reverted in the next commit: each piece ends one base short.
-        out.extend((0..n).map(|i| (s + i * step, e.min(s + (i + 1) * step) - 1)));
+        out.extend((0..n).map(|i| (s + i * step, e.min(s + (i + 1) * step))));
     }
     out
 }

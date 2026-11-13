@@ -111,8 +111,7 @@ fn read_gtf(path: &Path, alt: &HashMap<String, String>) -> Result<Genes, BuildEr
                 ))
             })
         };
-        // PLANTED, reverted in the next commit: the _PAR_Y skip is gone.
-        if need("gene_id")?.ends_with("_PAR_X") {
+        if need("gene_id")?.ends_with("_PAR_Y") {
             return Ok(());
         }
         let coding = r.attr("gene_type")? == Some("protein_coding");
