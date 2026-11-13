@@ -783,6 +783,7 @@ dependencies = [
  "flate2",
  "indexmap",
  "memchr",
+ "og-filters",
  "og-intervals",
  "og-io",
  "og-pedigree",

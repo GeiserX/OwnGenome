@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Made-up AnnotSV data and SV calls on chr20 for the class 4 and 5 checks
-# (bin/annotsv_postfilter.py), read by tests/test_annotsv_postfilter.sh and
+# (og sv postfilter), read by tests/test_annotsv_postfilter.sh and
 # tests/e2e/annotsv-report-section-1-chain.sh. The records describe no person.
 #
 #   class45_bundle ANN   AnnotSV's annotation data in ANN, small enough for

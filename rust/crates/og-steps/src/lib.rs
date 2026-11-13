@@ -9,8 +9,11 @@
 //!   23andMe and AncestryDNA raw-data files.
 //! - [`family`]: `og family plan|prepare|check|report|segments`, the family
 //!   analysis of step 38 and the Nextflow FAMILY workflow.
+//! - [`sv`]: `og sv add-callers|postfilter`, step 05's SV calls into
+//!   AnnotSV and the checks of its class 4 and 5 calls.
 
 pub mod constraint;
 pub mod consumer;
 pub mod family;
 pub mod prs;
+pub mod sv;

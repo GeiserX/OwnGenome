@@ -32,6 +32,8 @@ const USAGE: &str = "usage: og <tool> [args]
        og vcf csq-rank [options]
        og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
        og sv svlen-fix|inv-filter [args]
+       og sv add-callers [args]
+       og sv postfilter [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
        og clinvar join-adjacent|hits|deep-intronic [args]
@@ -148,6 +150,8 @@ fn main() -> ExitCode {
         "sv" => match rest.first().map(String::as_str) {
             Some("svlen-fix") => ExitCode::from(og_filters::svlen::cli(&rest[1..])),
             Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
+            Some("add-callers") => ExitCode::from(og_steps::sv::add_callers::cli(&rest[1..])),
+            Some("postfilter") => ExitCode::from(og_steps::sv::postfilter::cli(&rest[1..])),
             Some(other) => usage_error(&format!("unknown sv tool '{other}'")),
             None => usage_error("the following arguments are required: sv tool"),
         },

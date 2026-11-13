@@ -1,0 +1,2 @@
+#chrom	start	end	rule	action	name	source
+chr20	x	50	mhc	class_3	MHC	fixture

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # build-sv-rule-regions.sh: rebuild assets/sv_rule_regions.tsv, the regions
-# where bin/annotsv_postfilter.py overrides AnnotSV's class 4 or 5.
+# where og sv postfilter overrides AnnotSV's class 4 or 5.
 #
 # Usage: scripts/ci/build-sv-rule-regions.sh [OUT]   (default: assets/sv_rule_regions.tsv)
 #        scripts/ci/build-sv-rule-regions.sh --check [FILE]   exit 1 when FILE
@@ -211,7 +211,7 @@ counts = defaultdict(int)
 for x in rows:
     counts[x[3]] += 1
 with open(out, "w") as f:
-    f.write("# assets/sv_rule_regions.tsv: the GRCh38 regions where bin/annotsv_postfilter.py overrides AnnotSV's class 4\n"
+    f.write("# assets/sv_rule_regions.tsv: the GRCh38 regions where og sv postfilter overrides AnnotSV's class 4\n"
             "# or 5. Written by scripts/ci/build-sv-rule-regions.sh, which says how each rule's rows are chosen;\n"
             "# rebuild it there, do not edit it by hand. start is 0-based and end 1-based, as in a BED file.\n"
             "# Rows: " + ", ".join(f"{k} {counts[k]}" for k in sorted(counts)) + ".\n")
