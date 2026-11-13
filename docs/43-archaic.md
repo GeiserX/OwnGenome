@@ -72,6 +72,12 @@ The table is built on GRCh37 and lifted once to GRCh38 with Picard `LiftoverVcf`
 - `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample. A site with no record is read as the reference allele, a record whose FILTER is not PASS as unknown, and a site where you carry another ALT than the table's is left out.
 - The GENCODE gene lines `setup.sh` installs, for the genes of each segment (without them the segments are listed without genes)
 
+`og archaic genotypes` reads the VCF and table together, keeping one
+duplicate-position window. Positions within each chromosome must be in
+ascending order in both inputs. A position that goes backwards stops the
+command with exit 2. Mask runs are written as they close. Duplicate calls,
+clashes, masked sites and the output columns keep their previous meaning.
+
 ## Command
 
 ```bash
