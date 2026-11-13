@@ -1,6 +1,6 @@
 [package]
 name = "og-dev"
-description = "og dev: the developer and CI verbs: parity-compare, contract, schema, report-only"
+description = "og dev: the developer and CI verbs: parity-compare, contract, schema, report-only, build"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,7 @@ publish.workspace = true
 pycompat.workspace = true
 og-io.workspace = true
 og-nf.workspace = true
+og-intervals.workspace = true
 flate2.workspace = true
 indexmap.workspace = true
 png = "0.18"

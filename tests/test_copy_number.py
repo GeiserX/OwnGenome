@@ -36,7 +36,7 @@ step 35 cut out and run. With OG_REQUIRED set, a run without og fails.
      each, and a row shifted by 1 kb no longer matches its fixture; the
      PARASCOPY module runs the same list; the CCL3L1 reading names no
      disease (a planted 'HIV' is caught);
-  9. the interval rows (scripts/ci/build-cn-intervals.py): a small ClinGen
+  9. the interval rows (og dev build cn-intervals, with og): a small ClinGen
      BED with a 'chrx' row converts to rows on chrX that load, the same rows
      left as 'chrx' are refused, and an unknown contig stops the build; the
      committed rows are the ClinGen regions plus the named hand rows, with
@@ -684,7 +684,6 @@ def dosage(cat, read):
 
 
 # Section 9: the interval rows.
-BUILD = os.path.join(REPO, "scripts", "ci", "build-cn-intervals.py")
 SMALL_BED = """track name="test"
 #chrom\tstart\tend\tname\tscore\tstrand\tthickStart\tthickEnd\titemRgb
 chr22\t18159724\t18924717\tBP-A\t0\t.\t18159724\t18924717\t0,0,0
@@ -724,39 +723,49 @@ def depths(r, target=30.0, control=30.0):
     return {n: target if n in tg else control for *_, n in cn.regions(r)}
 
 
-def intervals(cat, read):
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("build_cn_intervals", BUILD)
-    bld = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(bld)
-    rows = bld.build(SMALL_BED.splitlines(True), [], [], [], [])
-    check("converter: the two region rows of the small BED, its chrx row on chrX",
-          [(r["locus"], r["chrom"]) for r in rows[:2]] == [("22q11.2_DGS_proximal_A-D", "chr22"), ("Xp22.31", "chrX")],
-          [(r["locus"], r["chrom"]) for r in rows])
+def build_rows(bed):
+    """og dev build cn-intervals --stdout on a ClinGen BED and no masks: (exit code, rows as dicts, stderr)."""
     with tempfile.TemporaryDirectory() as t:
-        p = os.path.join(t, "c.tsv")
-        write_catalog(p, rows)
-        try:
-            got = len(cn.load_catalog(p))
-        except cn.CatalogError as e:
-            got = str(e)
-        check("converter: its rows load", got == len(rows), got)
-        write_catalog(p, [dict(r, chrom="chrx") if r["chrom"] == "chrX" else r for r in rows])
-        try:
-            cn.load_catalog(p)
-            got = "loaded"
-        except cn.CatalogError as e:
-            got = str(e)
-        check("converter: the same rows left as 'chrx' are refused", "chrom 'chrx'" in got, got)
-    try:
-        bld.build(SMALL_BED.replace("chrx", "chrQ").splitlines(True), [], [], [], [])
-        got = "built"
-    except bld.BuildError as e:
-        got = str(e)
-    check("converter: an unknown contig stops the build", "'chrQ' is not a GRCh38 chromosome" in got, got)
-    check("converter: no target piece overlaps a breakpoint row",
-          all(not (s < 18924717 and 18159724 < e) and not (s < 21562827 and 21111384 < e) for r in rows[:1]
-              for _, s, e, _ in cn.parse_row(r)["_targets"]))
+        p = os.path.join(t, "clingen.bed")
+        with open(p, "w") as f:
+            f.write(bed)
+        out = subprocess.run([OG, "dev", "build", "cn-intervals", "--clingen", p, "--segdups", os.devnull,
+                              "--gaps", os.devnull, "--satellites", os.devnull, "--parascopy", os.devnull,
+                              "--stdout"], capture_output=True, text=True)
+    rows = [dict(zip(cn.COLUMNS, line.split("\t"))) for line in out.stdout.splitlines() if not line.startswith("#")]
+    return out.returncode, rows, out.stderr
+
+
+def intervals(cat, read):
+    if not OG:
+        print("skip: OG is not set: the converter checks of og dev build cn-intervals did not run")
+    else:
+        code, rows, err = build_rows(SMALL_BED)
+        check("converter: the two region rows of the small BED, its chrx row on chrX",
+              code == 0 and [(r["locus"], r["chrom"]) for r in rows[:2]]
+              == [("22q11.2_DGS_proximal_A-D", "chr22"), ("Xp22.31", "chrX")],
+              (code, err, [(r["locus"], r["chrom"]) for r in rows]))
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "c.tsv")
+            write_catalog(p, rows)
+            try:
+                got = len(cn.load_catalog(p))
+            except cn.CatalogError as e:
+                got = str(e)
+            check("converter: its rows load", got == len(rows), got)
+            write_catalog(p, [dict(r, chrom="chrx") if r["chrom"] == "chrX" else r for r in rows])
+            try:
+                cn.load_catalog(p)
+                got = "loaded"
+            except cn.CatalogError as e:
+                got = str(e)
+            check("converter: the same rows left as 'chrx' are refused", "chrom 'chrx'" in got, got)
+        code, _, err = build_rows(SMALL_BED.replace("chrx", "chrQ"))
+        check("converter: an unknown contig stops the build",
+              code == 2 and "'chrQ' is not a GRCh38 chromosome" in err, (code, err))
+        check("converter: no target piece overlaps a breakpoint row",
+              all(not (s < 18924717 and 18159724 < e) and not (s < 21562827 and 21111384 < e) for r in rows[:1]
+                  for _, s, e, _ in cn.parse_row(r)["_targets"]))
 
     iv = [r for r in cat.values() if r["kind"] == "interval" and r["_passes"] == ["."]]
     names = [r["locus"] for r in iv]
