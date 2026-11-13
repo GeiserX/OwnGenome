@@ -170,6 +170,20 @@ full() {
 }
 full cb-full
 
+# Change one header at a time. Quoted TSV fields have the same names as
+# the unquoted baseline, including the dosage table's validation columns.
+full cb-quoted-smn
+put cb-quoted-smn/paralogs/S_smn_copy_number.tsv "\"chrom\"${SMN#chrom}"
+full cb-quoted-interval
+put cb-quoted-interval/paralogs/S_cn_intervals.tsv "\"locus\"${IV#locus}"
+full cb-quoted-dosage
+put cb-quoted-dosage/paralogs/S_cn_dosage.tsv '\"locus\"\tstatus\tcopies\testimate\treason\treading\n'
+
+# A valid UTF-8 contig with a code point crossing byte offset three must
+# leave the consensus readable. The last chr17 record still matches.
+full cb-unicode-contig
+putgz cb-unicode-contig/sv_merged/S_sv_consensus.vcf.gz "${CONSV//chr1\\t/éé\\t}"
+
 # nf: the Nextflow names. The clinical VCF and slivar's VCF without their
 # tables, two PharmCAT reports (the newer wins), Cyrius under another name,
 # CPSR by its wildcard names, no VEP output, a consensus older than pypgx,

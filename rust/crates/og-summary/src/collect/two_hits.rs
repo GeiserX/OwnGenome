@@ -887,6 +887,23 @@ pub fn gene_deletions(
 mod tests {
     use super::*;
 
+    #[test]
+    fn chromosome_prefix_is_safe_for_non_ascii_contigs() {
+        for (input, expected) in [
+            ("éé", "éé"),
+            ("é", "é"),
+            ("☃1", "☃1"),
+            ("chr☃", "☃"),
+            ("CHR1", "1"),
+            ("cHrX", "X"),
+            ("chr", ""),
+            ("ch", "ch"),
+            ("", ""),
+        ] {
+            assert_eq!(chrom_key(input), expected);
+        }
+    }
+
     fn del(gt: Option<&str>, ps: Option<&str>) -> Deletion {
         Deletion {
             chrom: "chr1".into(),

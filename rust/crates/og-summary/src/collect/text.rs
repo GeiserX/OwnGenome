@@ -212,6 +212,42 @@ mod tests {
     use crate::testutil::Dir;
 
     #[test]
+    fn quoted_columns_match_the_row_keys() {
+        let d = Dir::new("text-columns");
+        for header in [
+            "\"chrom\"\tstart\tend",
+            "\"a\tb\"\t\"a\"\"b\"\t\"a\nb\"",
+            "\"\"\tstart\tend",
+        ] {
+            let p = d.put("quoted.tsv", format!("{header}\n1\t2\t3\n").as_bytes());
+            let r = rows(&p).unwrap();
+            let keys: Vec<_> = r[0].iter().map(|(k, _)| k.to_owned()).collect();
+            assert_eq!(columns(&p).unwrap(), keys, "{header}");
+        }
+    }
+
+    #[test]
+    fn columns_read_only_the_first_record() {
+        let d = Dir::new("text-first-record");
+        // A row is larger than the CSV field limit. Reading the header
+        // must not parse or retain that unrelated row.
+        let p = d.put(
+            "large.tsv",
+            format!("\"chrom\"\tstart\n{}\t1\n", "a".repeat(140_000)).as_bytes(),
+        );
+        assert_eq!(columns(&p).unwrap(), ["chrom", "start"]);
+        for (header, expected) in [
+            ("", vec![]),
+            ("\n", vec![]),
+            ("\"\"\n", vec![""]),
+            ("\"chrom\"\tstart", vec!["chrom", "start"]),
+        ] {
+            let p = d.put("empty.tsv", header.as_bytes());
+            assert_eq!(columns(&p).unwrap(), expected);
+        }
+    }
+
+    #[test]
     fn a_table_cut_short_is_python_s_eof_error() {
         let d = Dir::new("text-cut");
         let body = "A\tB\n".to_owned() + &"1\t2\n".repeat(2000);
