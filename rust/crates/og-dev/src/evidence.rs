@@ -690,6 +690,105 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn explicit_compression_is_required_at_every_input() {
+        for (kind, names) in [
+            ("clashes", vec!["raw.vcf.gz", "split.vcf.gz", "chrA.tsv.gz"]),
+            ("hg002-gvcf", vec!["truth.vcf.gz", "truth.bed", "ref.fasta.fai", "sites.tsv"]),
+        ] {
+            for name in names {
+                let c = Case::new(kind, &format!("compression-{name}"));
+                let bytes = c.text(name);
+                let wrong = if name.ends_with(".gz") { bytes } else {
+                    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                    gz.write_all(&bytes).unwrap(); gz.finish().unwrap()
+                };
+                fs::write(c.dir.join(name), wrong).unwrap();
+                c.fails_without_publication();
+                assert!(c.run().unwrap_err().contains("compression"), "{name}");
+            }
+        }
+    }
+
+    #[test]
+    fn bed_rejects_python_whitespace_inside_fields_and_as_separators() {
+        for ch in ['\u{2028}', '\u{85}', '\u{b}', '\u{a0}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{1f}'] {
+            for embedded in [true, false] {
+                let c = Case::new("hg002-gvcf", &format!("space-{}-{embedded}", ch as u32));
+                let text = String::from_utf8(c.text("truth.bed")).unwrap();
+                let text = if embedded { text.replacen("chrA", &format!("chr{ch}A"), 1) }
+                           else { text.replace('\t', &ch.to_string()) };
+                c.put("truth.bed", text.as_bytes());
+                c.fails_without_publication();
+                assert!(c.run().unwrap_err().contains("unsupported whitespace"));
+            }
+        }
+    }
+
+    #[test]
+    fn publication_preserves_permissions_and_follows_symlinks() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let c = Case::new("clashes", "publication");
+        let target = c.dir.join("target");
+        let link = c.dir.join("link");
+        fs::write(&target, b"old").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+        symlink("target", &link).unwrap();
+        publish(&link, b"new").unwrap();
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+        assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o600);
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
+        assert!(publish(&link, b"bad").unwrap_err().contains("read-only"));
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+        let dir_link = c.dir.join("dir-link");
+        symlink(&c.dir, &dir_link).unwrap();
+        for path in [&c.dir, &dir_link] {
+            assert!(publish(path, b"bad").unwrap_err().contains("not a regular file"));
+        }
+    }
+
+    #[test]
+    fn approved_strict_evidence_shapes_fail_with_stable_errors() {
+        for value in ["3_0", "٣", "-3", "18446744073709551616"] {
+            let c = Case::new("hg002-gvcf", value);
+            c.put("truth.vcf.gz", format!("chrA\t{value}\t.\tA\tC\n").as_bytes());
+            c.fails_without_publication();
+            assert!(c.run().unwrap_err().contains("not a number"));
+        }
+        let c = Case::new("hg002-gvcf", "short-vcf");
+        c.put("truth.vcf.gz", b"chrA\t3\t.\tA\n");
+        c.fails_without_publication();
+        assert!(c.run().unwrap_err().contains("fewer than 5 columns"));
+        let c = Case::new("hg002-gvcf", "blank-fai");
+        c.put("ref.fasta.fai", b"\n");
+        c.fails_without_publication();
+        assert!(c.run().unwrap_err().contains("fewer than 5 columns"));
+        let c = Case::new("clashes", "newline-alt");
+        c.put("raw.vcf.gz", b"chrA\t3\t.\tA\tC\nchrA\t3\t.\tAA\tA\n");
+        c.fails_without_publication();
+        assert!(c.run().unwrap_err().contains("VCF columns"));
+    }
+
+    #[test]
+    fn approved_record_limit_and_final_lf_are_pinned() {
+        let c = Case::new("clashes", "record-limit");
+        c.put("raw.vcf.gz", &vec![b'#'; (16 << 20) + 1]);
+        c.fails_without_publication();
+        assert!(c.run().unwrap_err().contains("record exceeds 16777216 bytes"));
+        let c = Case::new("hg002-gvcf", "final-lf");
+        c.run().unwrap();
+        let expected = fs::read(c.dir.join("out")).unwrap();
+        let mut truth = c.text("truth.vcf.gz");
+        assert_eq!(truth.pop(), Some(b'\n'));
+        c.put("truth.vcf.gz", &truth);
+        c.run().unwrap();
+        let result = fs::read(c.dir.join("out")).unwrap();
+        assert_eq!(result, expected);
+        assert_eq!(result.last(), Some(&b'\n'));
+    }
+
     #[test]
     fn spans_merge_and_answer_inside() {
         let m = merge(vec![(10, 12), (5, 6), (11, 15), (15, 16)]);

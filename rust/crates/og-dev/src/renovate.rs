@@ -941,6 +941,52 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn repository_sources_use_universal_newlines() {
+        for name in [ENV, PINS, ".github/workflows/ci.yml"] {
+            for ending in ["\r", "\r\n"] {
+                let d = planted(&format!("newlines-{}-{}", name.replace('/', "-"), ending.len()));
+                let baseline = run(&d);
+                let text = fs::read_to_string(d.join(name)).unwrap().replace('\n', ending);
+                fs::write(d.join(name), text).unwrap();
+                assert_eq!(run(&d), baseline, "{name}/{ending:?}");
+                fs::remove_dir_all(d).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn real_log_falsy_warnings_and_absent_empty_packages_are_accepted() {
+        for entry in [r#"{}"#, r#"{"deps":[]}"#, r#"{"deps":[],"packageFile":[]}"#,
+            r#"{"packageFile":"unused","deps":[{"warnings":null}]}"#,
+            r#"{"packageFile":"unused","deps":[{"warnings":false}]}"#,
+            r#"{"packageFile":"unused","deps":[{"warnings":""}]}"#,
+            r#"{"packageFile":"unused","deps":[{"warnings":{}}]}"#] {
+            let d = planted("falsy");
+            let log = fs::read_to_string(d.join("renovate.log")).unwrap();
+            fs::write(d.join("renovate.log"), log.replacen(r#""regex":["#, &format!(r#""regex":[{entry},"#), 1)).unwrap();
+            let (code, out) = run(&d);
+            assert_eq!(code, 0, "{entry}: {out}");
+            fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    #[test]
+    fn renovate_requires_plain_compression_and_pins_record_limit() {
+        let d = planted("compression-limit");
+        let text = fs::read(d.join("renovate.log")).unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(&text).unwrap();
+        fs::write(d.join("renovate.log"), gz.finish().unwrap()).unwrap();
+        let (code, out) = run(&d);
+        assert_eq!(code, 1); assert!(out.contains("compression"), "{out}");
+        fs::write(d.join("renovate.log"), vec![b'x'; (16 << 20) + 1]).unwrap();
+        let (code, out) = run(&d);
+        assert_eq!(code, 1); assert!(out.contains("record exceeds 16777216 bytes"), "{out}");
+        fs::remove_dir_all(d).unwrap();
+    }
+
     #[test]
     fn a_log_without_the_record_fails() {
         let d = planted("nolog");
