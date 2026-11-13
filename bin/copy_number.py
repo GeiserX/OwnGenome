@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """copy_number.py: the catalog reader and the depth-ratio engine of
-bin/cn_loci.tsv, as step 41's report (bin/bloodtype_report.py) imports them.
+bin/cn_loci.tsv, as the catalog tests (tests/test_copy_number.py,
+test_hba_copy_number.py, test_lpa_kiv2.py) import them. No step runs it.
 
 The commands are og cn's (rust/crates/og-cn, docs/cn-loci.md): `og cn bed`
 prints a locus's segments, `og cn call` turns `samtools bedcov` over them
 into the step's table, `og cn intervals` reads the interval rows and `og cn
-check-bam` refuses a BAM aligned with ALT contigs. This file keeps what
-bloodtype_report.py reads the RHD row with until it moves to og too:
-load_catalog, assess, cut_copies, BrokenControl and CatalogError.
+check-bam` refuses a BAM aligned with ALT contigs, and `og bloodtype
+report` reads step 41's RHD row with og cn's engine. This file keeps
+load_catalog, assess, cut_copies, BrokenControl and CatalogError for those
+tests until they move to og too.
 
 One method, one catalog row per locus: the depth over the locus's target
 segments against the depth over single-copy control segments, as

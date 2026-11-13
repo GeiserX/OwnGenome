@@ -6,12 +6,11 @@
 # B, O), RhCE, Kell, Duffy (with the GATA box), Kidd, MNS, Lutheran, Diego,
 # Dombrock, Colton, the platelet antigens HPA-1 to -6 and -15 and the
 # neutrophil antigens HNA-1, -3, -4 and -5 (assets/bloodtype_markers.tsv),
-# and RhD from read depth (the RHD row of bin/cn_loci.tsv, counted by
-# bin/copy_number.py): the common
+# and RhD from read depth (the RHD row of bin/cn_loci.tsv): the common
 # RhD-negative allele deletes the whole RHD gene, which a VCF does not show.
-# bin/bloodtype_report.py applies the rules; it is the same code as the
-# BLOODTYPE Nextflow processes. A prediction from the DNA, not a serological
-# typing.
+# og bloodtype report applies the rules, reading the marker sites through the
+# VCF's .tbi; it is the same code as the BLOODTYPE Nextflow processes. A
+# prediction from the DNA, not a serological typing.
 #
 # Input:  vcf/<sample>.vcf.gz; aligned/<sample>_sorted.bam with its .bai
 #         (ALIGN_DIR as for the other BAM steps), optional: without it RhD is
@@ -69,9 +68,9 @@ if [ -f "$BAM" ] && [ -f "${BAM}.bai" ]; then
 else
   echo "[1/2] No BAM (${BAM}): RhD needs read depth and is reported as not determined."
 fi
-echo "[2/2] Blood group rules (bin/bloodtype_report.py)..."
+echo "[2/2] Blood group rules (og bloodtype report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/bloodtype_report.py --sample "$SAMPLE" --vcf "$(cpath "$VCF")" \
+  /pgp-bin/og bloodtype report --sample "$SAMPLE" --vcf "$(cpath "$VCF")" \
     --markers /pgp-assets/bloodtype_markers.tsv ${ARGS[@]+"${ARGS[@]}"} \
     --out "$(cpath "$TABLE")" --evidence "$(cpath "$EVIDENCE")"
 

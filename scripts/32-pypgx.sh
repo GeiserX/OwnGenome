@@ -11,7 +11,7 @@
 # ALT contigs), the summary's CYP2D6 row says Indeterminate instead of the
 # call, and <sample>_cyp2d6_depth_check.tsv says why.
 #
-# The summary (bin/pgx_outside_calls.py pypgx-summary) also looks up, for each
+# The summary (og pgx pypgx-summary) also looks up, for each
 # star allele called, the variants that define it in the VCF, and marks a call
 # 'low-confidence: check the reads' when one of them has a GQ below
 # PYPGX_GQ_FLOOR (default 20). GSTT1, which GRCh38 has only on an ALT contig,
@@ -184,13 +184,16 @@ if [ "${#NEED[@]}" -gt 0 ]; then
   CONTIGS=()
   for n in "${NEED[@]}"; do CONTIGS+=("${n#*$'\t'}"); done
   rc=0
-  MISSING=$(run_in "${PYPGX_IMAGE}" python3 -c \
-    "import pysam, sys; refs = set(pysam.AlignmentFile(sys.argv[1]).references); print(' '.join(c for c in sys.argv[2:] if c not in refs))" \
-    "$(cpath "$BAM")" "${CONTIGS[@]}") || rc=$?
+  # The BAM's contig names, from its header (og bam contigs).
+  REFS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" /pgp-bin/og bam contigs "$(cpath "$BAM")") || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "ERROR: could not read the contigs of ${BAM} (exit ${rc})" >&2
     exit 1
   fi
+  MISSING=""
+  for c in "${CONTIGS[@]}"; do
+    grep -qxF -e "$c" <<<"$REFS" || MISSING="${MISSING} ${c}"
+  done
   for n in "${NEED[@]}"; do
     g=${n%%$'\t'*} c=${n#*$'\t'}
     case " ${MISSING} " in
@@ -295,8 +298,8 @@ run_in --cpus 4 --memory 8g \
 echo ""
 echo "Extracting results and building summary..."
 
-# Consolidate per-gene results into a summary TSV (bin/pgx_outside_calls.py
-# pypgx-summary, the same code as the PYPGX module). It is written as .partial
+# Consolidate per-gene results into a summary TSV (og pgx pypgx-summary, the
+# same code as the PYPGX module). It is written as .partial
 # and renamed only after the depth check's verdict is applied below, so a run
 # that stops in between never leaves an unchecked CYP2D6 call for step 36.
 SUMMARY="${OUTPUT_DIR}/${SAMPLE}_pypgx_summary.tsv"
@@ -306,7 +309,7 @@ run_in --cpus 2 --memory 4g \
   -v "${PYPGX_BUNDLE}:/tmp/pypgx-bundle:ro" -e PYPGX_BUNDLE=/tmp/pypgx-bundle \
   -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
   "${PYPGX_IMAGE}" \
-  python3 /pgp-bin/pgx_outside_calls.py pypgx-summary \
+  /pgp-bin/og pgx pypgx-summary \
     --outbase "$(cpath "$OUTPUT_DIR")" --bam-genes "$BAM_GENES" --vcf-genes "$VCF_GENES" \
     --vcf "$(cpath "$VCF")" --gq-floor "$GQ_FLOOR" ${NC_ARG[@]+"${NC_ARG[@]}"} \
     --out "$(cpath "${SUMMARY}.partial")" 2>&1

@@ -14,7 +14,7 @@
     verdict, the check gives the MAPQ >= 20 and gene-body (without REP6)
     shares it counts from the BAM.
 
-    The summary is bin/pgx_outside_calls.py pypgx-summary, as in the bash
+    The summary is og pgx pypgx-summary, as in the bash
     step: the defining variants of each call looked up in the VCF, a call
     resting on one below the GQ floor (task.ext.gq_floor, default 20) marked
     'low-confidence: check the reads', and a gene the table marks
@@ -70,8 +70,8 @@ process PYPGX {
     # A BAM with ALT or HLA contigs is refused, as scripts/32-pypgx.sh does
     # (og cn check-bam): its depth splits between a gene and its
     # ALT copy, and a depth-based count reads that as a deletion. The contig
-    # names come from pysam, which the image has.
-    python3 -c "import pysam, sys; print(chr(10).join(pysam.AlignmentFile(sys.argv[1]).references))" ${bam} > bam_contigs.txt
+    # names come from the BAM's header (og bam contigs).
+    og bam contigs ${bam} > bam_contigs.txt
     og cn check-bam --header bam_contigs.txt
     OUTBASE="${meta.id}_pypgx_results"
     mkdir -p "\$OUTBASE"
@@ -111,15 +111,10 @@ process PYPGX {
     NOT_CALLABLE=""
     for NEED in ${alt_needs}; do
       G=\${NEED%%:*} C=\${NEED#*:}
-      rc=0
-      python3 -c "import pysam, sys; sys.exit(0 if sys.argv[2] in pysam.AlignmentFile(sys.argv[1]).references else 3)" ${bam} "\$C" || rc=\$?
-      if [ "\$rc" = 3 ]; then
+      if ! grep -qxF -e "\$C" bam_contigs.txt; then
         echo "NOTICE: the BAM has no \$C contig (reference without ALT contigs); \$G is not callable on this reference and is skipped"
         BAM_GENES=\$(echo "\$BAM_GENES" | tr ' ' '\\n' | grep -vxF "\$G" | paste -sd ' ' - || true)
         NOT_CALLABLE="\$NOT_CALLABLE --not-callable \$G"
-      elif [ "\$rc" != 0 ]; then
-        echo "ERROR: could not read the contigs of ${bam} (exit \$rc)" >&2
-        exit 1
       fi
     done
 
@@ -178,7 +173,7 @@ process PYPGX {
     [ "\$SUCCEEDED" -gt 0 ] || exit 1
 
     # Consolidate results into the summary TSV, as scripts/32-pypgx.sh does
-    pgx_outside_calls.py pypgx-summary --outbase "\$OUTBASE" --bam-genes "${bam_genes}" --vcf-genes "${vcf_genes}" \\
+    og pgx pypgx-summary --outbase "\$OUTBASE" --bam-genes "${bam_genes}" --vcf-genes "${vcf_genes}" \\
         --vcf ${vcf} --gq-floor ${gq_floor} \$NOT_CALLABLE --out ${meta.id}_pypgx_summary.tsv
 
     # A CYP2D6 call from multi-mapped depth is not a call: the row says so

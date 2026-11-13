@@ -103,7 +103,7 @@ sh "${PGP_ROOT}/bin/cpsr_sample_id" --rename "$OUTPUT_DIR" "$SAMPLE"
 # The cDNA read check of step 06 on CPSR's P/LP rows (final class or CPSR's
 # own): spliced cDNA or expression-vector DNA in the sample gives alt reads
 # clipped exactly at an exon edge, and CPSR classes a novel variant such a
-# construct carries like any other. bin/clip_check.py --cpsr reads the rows
+# construct carries like any other. og cdna check --cpsr reads the rows
 # from the classification table and writes ${SAMPLE}_cpsr_cdna_check.tsv,
 # which the reports put beside each row. Same BAM and exons as step 06.
 CLASS_TSV="${OUTPUT_DIR}/${SAMPLE}.cpsr.grch38.classification.tsv.gz"
@@ -121,9 +121,11 @@ else
   else
     CDNA_ARGS=(--bam "$(cpath "$BAM")" --exons "$(cpath "$EXONS_BED")")
   fi
-  # pysam is in PYPGX_IMAGE.
-  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYPGX_IMAGE" \
-    python3 /pgp-bin/clip_check.py --cpsr "$(cpath "$CLASS_TSV")" --out "$(cpath "${CDNA_TSV}.part")" "${CDNA_ARGS[@]}"
+  # og reads the BAM itself. It runs from OUTPUT_DIR with a relative output,
+  # so bin/og's shadow mode (OG_SHADOW, CI only) can run the Python it
+  # replaced beside it, which needs the pysam of PYPGX_IMAGE.
+  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+    /pgp-bin/og cdna check --cpsr "$(cpath "$CLASS_TSV")" --out "${CDNA_TSV##*/}.part" "${CDNA_ARGS[@]}"
   mv "${CDNA_TSV}.part" "$CDNA_TSV"
 fi
 

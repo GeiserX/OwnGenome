@@ -229,7 +229,7 @@ check_eq "HBA1 as on the unchanged slice" "$(tsv "$QCN" hba HBA1 copy_number)" "
 SWJ="${CASE_TMP}/swapped.paraphase.json"
 sed -e 's/hba1hap/hbaXhap/g' -e 's/hba2hap/hba1hap/g' -e 's/hbaXhap/hba2hap/g' \
   "${GENOME_DIR}/${Q}/paralogs/${Q}_paraphase/${Q}.paraphase.json" > "$SWJ"
-python3 "${REPO}/bin/paraphase_report.py" table --sample "$Q" --json "$SWJ" \
+"${REPO}/bin/og" paraphase table --sample "$Q" --json "$SWJ" --genes "${REPO}/assets/paraphase_genes.tsv" \
   --out-cn "${CASE_TMP}/swapped_cn.tsv" --out-variants "${CASE_TMP}/swapped_variants.tsv" >/dev/null
 SW_HBA2=$(tsv "${CASE_TMP}/swapped_cn.tsv" hba HBA2 copy_number)
 check "control: with HBA1 and HBA2 swapped the HBA2 check goes red (HBA2 ${SW_HBA2:-none}, the check wants $([[ "${HBA2_BASE:-}" =~ ^[0-9]+$ ]] && echo $((HBA2_BASE - 1))))" \

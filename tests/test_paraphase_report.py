@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/paraphase_report.py: step 35b's read-group check and its two tables.
+"""og paraphase: step 35b's read-group check and its two tables.
 
 Checks:
   1. check-bam: a BAM whose read groups all say PL:PACBIO passes (exit 0); one
@@ -36,9 +36,17 @@ Checks:
   6. the region count: docs/35-paralogs.md and scripts/35b-paraphase.sh state
      PARAPHASE_REGIONS, the number of regions of the pinned Paraphase
      4.1.0's data/38/config.yaml (the e2e case paralog-rows-1 counts them in
-     the image); a planted other number goes red.
+     the image); a planted other number goes red;
+  7. og's own fixes: a header that announces a negative or huge text length
+     is refused without reading on, a JSON object where a copy number belongs
+     stops the table and names the field, and the copy-number table is not
+     left behind when the variant table cannot be written.
 
-Run: python3 tests/test_paraphase_report.py
+The tables come from og paraphase; the SMN1 rule of section 4 is still
+bin/paraphase_report.py's, which the summary and the couple report import.
+
+Run: python3 tests/test_paraphase_report.py (OG names og, else
+tests/og_binary.py finds the build)
 """
 import gzip
 import json
@@ -51,9 +59,14 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "paraphase_report.py")
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import paraphase_report as pr  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
+
+OG = og_binary()
+GENES_TSV = os.path.join(REPO, "assets", "paraphase_genes.tsv")
+GENES_COLUMNS = ["region", "gene", "field", "reading", "source"]
 
 FAILS = 0
 
@@ -65,16 +78,41 @@ def check(desc, ok, detail=""):
         FAILS += 1
 
 
-def bam(path, header):
-    """A BAM with this header and no reference or read (one gzip member, as BGZF)."""
+def bam(path, header, l_text=None):
+    """A BAM with this header and no reference or read (one gzip member, as
+    BGZF); l_text: the text length it announces, when not the real one."""
     text = header.encode()
     with gzip.open(path, "wb") as f:
-        f.write(b"BAM\x01" + struct.pack("<i", len(text)) + text + struct.pack("<i", 0))
+        f.write(b"BAM\x01" + struct.pack("<i", len(text) if l_text is None else l_text) + text + struct.pack("<i", 0))
 
 
 def run(*args):
-    p = subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True)
+    p = subprocess.run([OG, "paraphase", *args], capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr
+
+
+def load_genes(path=GENES_TSV):
+    """{region: [(gene, field)]} of the region catalog, in the file's order."""
+    out = {}
+    with open(path) as f:
+        lines = [x.rstrip("\n").split("\t") for x in f if x.strip() and not x.startswith("#")]
+    for c in lines[1:]:
+        out.setdefault(c[0], []).append((c[1], c[2]))
+    return out
+
+
+def cn_table(data, genes=GENES_TSV):
+    """The copy-number rows og paraphase table writes for this JSON."""
+    with tempfile.TemporaryDirectory() as tmp:
+        j, cn, var = (os.path.join(tmp, n) for n in ("p.json", "cn.tsv", "var.tsv"))
+        with open(j, "w") as f:
+            json.dump(data, f)
+        p = subprocess.run([OG, "paraphase", "table", "--sample", "S", "--json", j, "--out-cn", cn,
+                            "--out-variants", var, "--genes", genes], capture_output=True, text=True)
+        if p.returncode != 0:
+            return [["error", p.stderr]]
+        with open(cn) as f:
+            return [line.rstrip("\n").split("\t") for line in f][1:]
 
 
 def rows(path):
@@ -213,7 +251,8 @@ def main():
         with open(os.path.join(vd, "S_pms2.vcf"), "w") as f:
             f.write(VCF)
         cn, var = os.path.join(work, "cn.tsv"), os.path.join(work, "var.tsv")
-        rc, out = run("table", "--sample", "S", "--json", j, "--vcf-dir", vd, "--out-cn", cn, "--out-variants", var)
+        rc, out = run("table", "--sample", "S", "--json", j, "--vcf-dir", vd, "--out-cn", cn, "--out-variants", var,
+                      "--genes", GENES_TSV)
         check("table: exit 0", rc == 0, out)
         r = {(x["region"], x["gene"]): x for x in rows(cn)}
         g = lambda reg, gene, k="copy_number": r.get((reg, gene), {}).get(k)  # noqa: E731
@@ -254,13 +293,13 @@ def main():
         data = json.loads(json.dumps(PARAPHASE_JSON))
         data["hba"]["region_specific_info"] = {"genotype": "--/aa", "sv_called": {}}
         data["hba"]["final_haplotypes"] = {"1": "hba_hba1hap1", "2": "hba_hba2hap1"}
-        t = {(x[0], x[1]): x for x in pr.cn_table(data)}
+        t = {(x[0], x[1]): x for x in cn_table(data)}
         check("HBA '--/aa': one HBA1 and one HBA2, and a large deletion that cannot be told apart",
               "large deletion such as --SEA" in t[("hba", "HBA2")][4] and "(2 alpha-globin genes)" in t[("hba", "HBA2")][4]
               and t[("hba", "HBA1")][2] == "1" and t[("hba", "HBA2")][2] == "1", t.get(("hba", "HBA2")))
         data["hba"]["region_specific_info"] = {"genotype": "aa/aa", "sv_called": {}}
         data["hba"]["two_copy_haplotypes"] = ["hba_hba1hap1", "hba_hba2hap1"]
-        t = {(x[0], x[1]): x for x in pr.cn_table(data)}
+        t = {(x[0], x[1]): x for x in cn_table(data)}
         check("HBA 'aa/aa' with identical copies: each two-copy haplotype counted twice, no deletion found",
               t[("hba", "HBA1")][2] == "2" and t[("hba", "HBA2")][2] == "2"
               and "no 3.7 kb or 4.2 kb deletion or duplication found" in t[("hba", "HBA2")][4], t.get(("hba", "HBA2")))
@@ -307,16 +346,16 @@ def main():
               (pr.compare_smn1(2, s1), pr.compare_smn1(2, s2), pr.compare_smn1(None, s1), pr.compare_smn1(2, s3))
               == ("agree", "disagree", None, None))
         # 5. the region catalog
-        genes = pr.load_genes()
+        genes = load_genes()
         got = [(r, g) for r, entries in genes.items() for g, _ in entries]
         check("the catalog holds the expected rows, in order", got == EXPECTED_ROWS, got)
         no_neb = os.path.join(work, "genes-no-neb.tsv")
-        with open(pr.GENES_TSV) as f, open(no_neb, "w") as g:
+        with open(GENES_TSV) as f, open(no_neb, "w") as g:
             g.writelines(x for x in f if not x.startswith("neb\t"))
-        dropped = [(r, g) for r, entries in pr.load_genes(no_neb).items() for g, _ in entries]
+        dropped = [(r, g) for r, entries in load_genes(no_neb).items() for g, _ in entries]
         check("control: the catalog with its NEB row dropped is not the expected one",
               dropped != EXPECTED_ROWS and len(dropped) == len(EXPECTED_ROWS) - 1, len(dropped))
-        rc, out = run("table", "--sample", "S", "--json", j, "--out-cn", cn, "--out-variants", var)
+        rc, out = run("table", "--sample", "S", "--json", j, "--out-cn", cn, "--out-variants", var, "--genes", GENES_TSV)
         with open(cn) as f:
             table = f.read()
         check("the old eight regions give the table byte for byte as before the catalog", rc == 0 and table == GOLDEN_OLD8,
@@ -324,23 +363,23 @@ def main():
         moved = json.loads(json.dumps(PARAPHASE_JSON))
         moved["pms2"]["region_specific_info"]["gene_cn"] = 3
         check("control: one changed field in the JSON is not the old table",
-              "".join("\t".join(map(str, x)) + "\n" for x in pr.cn_table(moved)) not in GOLDEN_OLD8)
+              "".join("\t".join(map(str, x)) + "\n" for x in cn_table(moved)) not in GOLDEN_OLD8)
         new = {k: dict(v[0], genome_depth=30, region_depth={"median": 60}) for k, v in NEW_REGIONS.items()}
-        t = pr.cn_table(new)
+        t = cn_table(new)
         for name, (_, want) in NEW_REGIONS.items():
             rows_ = [x for x in t if x[0] == name]
             ok = len(rows_) == len(want) and all(
                 (x[1], x[2], x[3]) == w[:3] and w[3] in x[4] for x, w in zip(rows_, want))
             check(f"{name}: the synthetic JSON gives its catalog rows", ok, rows_)
         both = {"TPSAB1": dict(NEW_REGIONS["TPSAB1"][0], region_specific_info={"gene_cn": 2})}
-        rows_ = pr.cn_table(both)
+        rows_ = cn_table(both)
         check("TPSAB1: a total_cn row gives the whole family even beside a gene_cn",
               [x[2] for x in rows_] == ["5"] and "whole gene family" in rows_[0][4], rows_)
         check("the new regions with a field of their own are listed first",
               [x[0] for x in t][:4] == ["CFHclust", "CYP11B1", "f8", "ikbkg"], [x[0] for x in t])
         for name in ("f8", "opn1lw", "ikbkg", "neb", "CYP11B1", "CFHclust"):
             bare = {name: dict(NEW_REGIONS[name][0], region_specific_info={})}
-            rows_ = pr.cn_table(bare)
+            rows_ = cn_table(bare)
             check(f"{name}: without its field, not assessed and no copy number",
                   rows_ and all(x[2] == "." and x[3] == "not assessed" and "Paraphase wrote no" in x[4] for x in rows_),
                   rows_)
@@ -351,7 +390,7 @@ def main():
         check("a catalog with the wrong columns stops the table (exit 1)", rc == 1 and "header" in out, (rc, out))
         # genotype is read by HBA's code and annotated_alleles by RCCX's: on another region the row
         # would count no hba1hap haplotype, or show RCCX's detail, so the catalog is refused.
-        head = "\t".join(pr.GENES_COLUMNS) + "\n"
+        head = "\t".join(GENES_COLUMNS) + "\n"
         for region, field in (("smn1", "genotype"), ("pms2", "annotated_alleles")):
             moved_row = os.path.join(work, f"genes-{field}.tsv")
             with open(moved_row, "w") as f:
@@ -363,12 +402,13 @@ def main():
         own = os.path.join(work, "genes-own.tsv")
         with open(own, "w") as f:
             f.write(head + "hba\tHBA1\tgenotype\tr\ts\nrccx\tCYP21A2 (RCCX)\tannotated_alleles\tr\ts\n")
-        check("control: the same fields on their own regions load", list(pr.load_genes(own)) == ["hba", "rccx"])
+        rc, out = run("table", "--sample", "S", "--json", j, "--out-cn", cn, "--out-variants", var, "--genes", own)
+        check("control: the same fields on their own regions load", rc == 0, (rc, out))
         # The two exceptions to "a field Paraphase did not write is not assessed": the copy number
         # does not come from the field, so the rows keep it.
         bare = {"hba": dict(PARAPHASE_JSON["hba"], region_specific_info={}),
                 "rccx": dict(PARAPHASE_JSON["rccx"], region_specific_info={})}
-        got = {x[1]: (x[2], x[3], x[4]) for x in pr.cn_table(bare)}
+        got = {x[1]: (x[2], x[3], x[4]) for x in cn_table(bare)}
         check("HBA without a genotype keeps its gene counts and is no call, not not assessed",
               got.get("HBA1", ("",))[:2] == ("2", "no call") and got.get("HBA2", ("",))[:2] == ("1", "no call")
               and "could not resolve the alleles" in got["HBA1"][2], got)
@@ -384,6 +424,25 @@ def main():
             check(f"{os.path.relpath(path, REPO)} states {PARAPHASE_REGIONS} Paraphase regions",
                   said and set(said) == {PARAPHASE_REGIONS}, said)
         check("control: a planted 162 is caught", 162 in region_counts("It covers 162 GRCh38 regions."))
+
+        # 7. og's own fixes
+        for n in (-1, (1 << 30) + 1):
+            bam(b, "@RG\tID:a\tPL:PACBIO\n", l_text=n)
+            rc, out = run("check-bam", b)
+            check(f"check-bam: a header announcing {n} bytes of text is refused (exit 1)",
+                  rc == 1 and "not a BAM header" in out, (rc, out))
+        bad_json = os.path.join(work, "bad.json")
+        with open(bad_json, "w") as f:
+            json.dump({"pms2": {"total_cn": 4, "region_specific_info": {"gene_cn": {"a": 1}}}}, f)
+        rc, out = run("table", "--sample", "S", "--json", bad_json, "--out-cn", cn, "--out-variants", var,
+                      "--genes", GENES_TSV)
+        check("an object where a copy number belongs stops the table and names the field",
+              rc == 1 and "pms2.gene_cn is not a number" in out, (rc, out))
+        os.remove(cn)
+        rc, out = run("table", "--sample", "S", "--json", j, "--out-cn", cn,
+                      "--out-variants", os.path.join(work, "no-such-dir", "var.tsv"), "--genes", GENES_TSV)
+        check("the variant table cannot be written: exit 1, and no copy-number table left",
+              rc == 1 and not os.path.exists(cn), (rc, out))
     finally:
         shutil.rmtree(work)
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")

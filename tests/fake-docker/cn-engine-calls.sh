@@ -3,9 +3,9 @@
 # through one engine, og cn, with a hook that plays Parascopy and samtools
 # bedcov (made-up depths: 30x everywhere, the KIV-2 block at 20 repeats) and
 # runs og for real on the host (bin/og):
-#   - each step calls og cn bed once and step 35 and 46 call og cn call once
-#     (step 41's report imports bin/copy_number.py), step 46 with the 4925G>A
-#     marker in the same call, and no step calls the old Python any more;
+#   - each step calls og cn bed once, step 35 and 46 call og cn call once
+#     and step 41 og bloodtype report once, step 46 with the 4925G>A marker
+#     in the same call, and no step calls the old Python any more;
 #   - the tables say what the depths give: four alpha-globin genes, RhD D+
 #     with two copies, 20.0 KIV-2 repeats;
 #   - a control segment with no read (FAKE_ZERO=flank_e19, the others at 30x)
@@ -119,6 +119,8 @@ H="${S}/paralogs/sample1_hba_copy_number.tsv"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 bloodtype "${SCRIPTS}/41-bloodtype.sh" sample1
 [ "$(calls 'og cn bed --locus RHD')" = 1 ] || fail "step 41: og cn bed --locus RHD was not called once"
+[ "$(calls 'og bloodtype report')" = 1 ] || fail "step 41: og bloodtype report was not called once"
+[ "$(calls '.py')" = 0 ] || fail "step 41 still calls Python: $(grep -F '.py' "$FAKE_DOCKER_LOG")"
 [ "$(awk -F'\t' '$4 == "RHD_GENE" {n++} END {print n + 0}' "${S}/bloodtype/sample1_bloodtype_depth.tsv")" = 1 ] \
   || fail "step 41: the depth table has no RHD_GENE row"
 R=$(awk -F'\t' '$1 == "RhD"' "${S}/bloodtype/sample1_bloodtype.tsv")

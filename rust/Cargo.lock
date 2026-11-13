@@ -573,6 +573,7 @@ dependencies = [
  "mimalloc",
  "og-ancestry",
  "og-bam",
+ "og-bloodtype",
  "og-chip",
  "og-clinvar",
  "og-cn",
@@ -608,8 +609,22 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "og-io",
+ "og-tsv",
  "pycompat",
  "rust-htslib",
+ "rustc-hash",
+]
+
+[[package]]
+name = "og-bloodtype"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-cn",
+ "og-filters",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -768,9 +783,11 @@ dependencies = [
  "flate2",
  "indexmap",
  "memchr",
+ "og-filters",
  "og-intervals",
  "og-io",
  "og-pedigree",
+ "og-setup",
  "og-vcf",
  "pycompat",
  "rustc-hash",

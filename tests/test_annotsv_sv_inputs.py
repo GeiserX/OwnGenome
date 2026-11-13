@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""og sv inv-filter, og sv svlen-fix and bin/cnvpytor_to_vcf.py on made-up
-VCFs.
+"""og sv inv-filter, og sv svlen-fix and og sv add-callers on made-up VCFs.
 
-Checks 1 and 2 run og, the binary OG names (the rust job of guard.yml sets
+The checks run og, the binary OG names (the rust job of guard.yml sets
 it). Without OG they are skipped with a note, and with OG_REQUIRED set the
 skip is a failure.
 
@@ -22,14 +21,14 @@ Checks:
      a pure deletion keeps SVLEN and gets END POS+135 (POS-1+len(REF)-len(ALT)); a net
      insertion gets its net SVLEN and keeps END; symbolic, breakend and
      multi-ALT records pass unchanged; a second run changes nothing;
-  3. cnvpytor_to_vcf.py: a Delly PASS deletion Manta has is not added, one
+  3. og sv add-callers: a Delly PASS deletion Manta has is not added, one
      Manta lacks is; Delly's LowQual and INV records are left out; a CNVpytor
      deletion Delly's added call covers is not added twice; CNVpytor calls
      with e-val >= 0.01 or q0 >= 0.5, and LOH, are left out; the CNVpytor
      deletion and duplication nobody else has are added, with their
      genotype; every record names its caller, the output is sorted; the
      control: Manta's file alone lacks the CNVpytor deletion;
-  4. cnvpytor_to_vcf.py, Delly's read depth (FORMAT RDCN): a 50 Mb PASS
+  4. og sv add-callers, Delly's read depth (FORMAT RDCN): a 50 Mb PASS
      deletion with RDCN 2 is set aside and one with RDCN 1 added, a long
      duplication with RDCN 2 set aside and one with RDCN 3 added, a short
      precise deletion with RDCN 2 added, a long one with RDCN -1 set aside;
@@ -50,7 +49,6 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BIN = os.path.join(REPO, "bin")
 OG = os.environ.get("OG", "")
 FAILS = 0
 
@@ -64,9 +62,8 @@ def check(desc, ok, detail=""):
         print("FAIL: " + desc + (": " + str(detail) if detail else ""))
 
 
-def run(tool, *args, stdin=""):
-    p = subprocess.run([sys.executable, os.path.join(BIN, tool)] + list(args), input=stdin,
-                       capture_output=True, text=True)
+def add_callers(*args, stdin=""):
+    p = subprocess.run([OG, "sv", "add-callers"] + list(args), input=stdin, capture_output=True, text=True)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -293,8 +290,8 @@ def test_extra_callers(w):
         f.write(CNVPYTOR)
     check("control: Manta's file alone lacks the CNVpytor deletion", "CNVpytor_del1" not in BASE)
 
-    rc, out, err = run("cnvpytor_to_vcf.py", "--base", base, "--delly", delly, "--cnvpytor", cnvp)
-    check("cnvpytor_to_vcf.py exits 0", rc == 0, err)
+    rc, out, err = add_callers("--base", base, "--delly", delly, "--cnvpytor", cnvp)
+    check("og sv add-callers exits 0", rc == 0, err)
     recs = records(out)
     ids = [r[2] for r in recs]
     check("the added records are exactly Delly's DEL00000002 and CNVpytor's del1 and dup5",
@@ -323,17 +320,17 @@ def test_extra_callers(w):
         with open(b, "w") as f:
             f.write(BASE + "chr20\t2000100\tMantaDEL:9\tN\t<DEL>\t500\t{0}\tEND=2049900;SVTYPE=DEL;SVLEN=-49800\tGT\t{1}\n"
                     .format(filt, gt))
-        rc, out, err = run("cnvpytor_to_vcf.py", "--base", b, "--delly", delly)
+        rc, out, err = add_callers("--base", b, "--delly", delly)
         ids = [r[2] for r in records(out)]
         check("{0} Manta deletion stays and does not hide Delly's DEL00000002".format(label),
               rc == 0 and "MantaDEL:9" in ids and "DEL00000002" in ids, (ids, err))
     with open(b, "w") as f:
         f.write(BASE + "chr20\t2000100\tMantaDEL:9\tN\t<DEL>\t500\tPASS\tEND=2049900;SVTYPE=DEL;SVLEN=-49800\tGT\t0|1\n")
-    rc, out, err = run("cnvpytor_to_vcf.py", "--base", b, "--delly", delly)
+    rc, out, err = add_callers("--base", b, "--delly", delly)
     check("control: a PASS 0|1 Manta deletion still covers Delly's DEL00000002",
           rc == 0 and "DEL00000002" not in [r[2] for r in records(out)], err)
     sites = "".join("\t".join(l.split("\t")[:8]) + "\n" for l in (BASE + "chr20\t2000100\tMantaDEL:9\tN\t<DEL>\t500\tPASS\tEND=2049900;SVTYPE=DEL\tGT\t0/0\n").splitlines())
-    rc, out, err = run("cnvpytor_to_vcf.py", "--base", "-", "--delly", delly, stdin=sites)
+    rc, out, err = add_callers("--base", "-", "--delly", delly, stdin=sites)
     check("a sites-only base deletion covers Delly's DEL00000002 (no genotype to read)",
           rc == 0 and "DEL00000002" not in [r[2] for r in records(out)], (records(out), err))
 
@@ -342,14 +339,14 @@ def test_extra_callers(w):
     for gt in ("0/0", "./."):
         with gzip.open(delly, "wt") as f:
             f.write(DELLY.replace("\t1/1:40\n", "\t{0}:40\n".format(gt)))
-        rc, out, err = run("cnvpytor_to_vcf.py", "--base", base, "--delly", delly, "--cnvpytor", cnvp)
+        rc, out, err = add_callers("--base", base, "--delly", delly, "--cnvpytor", cnvp)
         ids = [r[2] for r in records(out)]
         check("a {0} Delly deletion is not added and does not hide CNVpytor_del0".format(gt),
               rc == 0 and "DEL00000002" not in ids and "CNVpytor_del0" in ids, (ids, err))
     with gzip.open(delly, "wt") as f:
         f.write(DELLY)
 
-    rc, out, err = run("cnvpytor_to_vcf.py", "--base", "-", "--base-name", "sv_vcf", stdin=BASE)
+    rc, out, err = add_callers("--base", "-", "--base-name", "sv_vcf", stdin=BASE)
     check("no other caller: stdin in, the base out with SVCALLER=sv_vcf",
           rc == 0 and "none given" in err and [info(r).get("SVCALLER") for r in records(out)] == ["sv_vcf"] * 2, err)
 
@@ -388,9 +385,9 @@ def test_delly_depth(w):
           all(r[6] == "PASS" and r[4] in ("<DEL>", "<DUP>") for r in planted) and len(planted) == 9)
 
     def added(*extra):
-        rc, out, err = run("cnvpytor_to_vcf.py", "--base", base, "--delly", delly, *extra)
+        rc, out, err = add_callers("--base", base, "--delly", delly, *extra)
         ids = {r[2] for r in records(out) if info(r).get("SVCALLER") == "delly"}
-        check("cnvpytor_to_vcf.py {0}exits 0 and adds Delly calls".format(" ".join(extra[:2]) + " " if extra else ""),
+        check("og sv add-callers {0}exits 0 and adds Delly calls".format(" ".join(extra[:2]) + " " if extra else ""),
               rc == 0 and ids, err)
         return rc, ids, out, err
 
@@ -431,12 +428,11 @@ def main():
         if OG:
             test_inv_filter(w)
             test_svlen(w)
+            test_extra_callers(w)
+            test_delly_depth(w)
         else:
-            check("OG names an og binary for checks 1 and 2", not os.environ.get("OG_REQUIRED"),
-                  "OG_REQUIRED is set")
-            print("skip: checks 1 and 2 (og sv inv-filter, og sv svlen-fix): OG is not set")
-        test_extra_callers(w)
-        test_delly_depth(w)
+            check("OG names an og binary", not os.environ.get("OG_REQUIRED"), "OG_REQUIRED is set")
+            print("skip: og sv inv-filter, svlen-fix and add-callers: OG is not set")
     finally:
         shutil.rmtree(w)
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else "{0} FAILED".format(FAILS))

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Step 32 and the PYPGX module on the fixture, after cases 38, 51 and
 # nextflow-hardening-2-nf, which ran them on the same BAM and VCF:
-#   - both summaries have the columns of bin/pgx_outside_calls.py
-#     pypgx-summary, and the same gene, source, status and copy-number call
+#   - both summaries have the columns of og pgx pypgx-summary, and the same gene, source, status and copy-number call
 #     per gene;
 #   - GSTT1, which GRCh38 has only on chr22_KI270879v1_alt, is 'not callable
 #     on this reference' in both (the fixture's reference has no ALT contig),

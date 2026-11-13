@@ -1,0 +1,3 @@
+cDNA read check: 2 flagged, 0 clear, 3 not checked
+  FLAGGED chrT:1151 A>C: 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge (possible cDNA/transgene contamination: check the reads)
+  FLAGGED T:1151 a>c: 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge (possible cDNA/transgene contamination: check the reads)
