@@ -1,0 +1,20 @@
+[package]
+name = "og-recheck"
+description = "og recheck: which of a finished sample's results a newer ClinVar or catalog would change, and the replay that redoes them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+og-fresh.workspace = true
+og-runlog.workspace = true
+indexmap.workspace = true
+jiff.workspace = true
+regex.workspace = true
+shlex.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,6 @@
+== GENED: chr7:100-109 (GRCh38; gene span)
+  gVCF: 9 of 10 bases have a genotype call (90.0%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (gVCF; no annotated VCF from step 13, so no consequence, ClinVar or gnomAD):
+  - chr7:100 ACGTA>A ACGTA/A (heterozygous; depth 20, genotype quality 30, QUAL 40)
+  in the reports:
+  no summary.json for this sample: run scripts/generate-report.sh <sample> (on Nextflow output, GENOME_DIR=<outdir>) to add what the reports say

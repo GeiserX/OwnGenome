@@ -1,0 +1,14 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr7,length=1000000>
+##contig=<ID=chrX,length=1000000>
+##contig=<ID=chrM,length=16569>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Gene|HGVSc|HGVSp|Existing_variation|CANONICAL|CLIN_SIG|gnomADg_AF|ClinVar_CLNSIG|ClinVar_CLNREVSTAT|PICK|MANE_SELECT">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SYNTH1
+chr7	250	rs1001	C	T	42.5	PASS	CSQ=T|upstream_gene_variant|MODIFIER|GENEZ|ENSG2|||rs1001|YES||0.12||||,T|missense_variant&splice_region_variant|MODERATE|GENEA|ENSG1|ENST1:c.10C>T|ENSP1:p.Arg4Cys|rs1001&COSV1|YES|pathogenic&likely_pathogenic|0.0003|Pathogenic|criteria_provided&_multiple_submitters||NM_1	GT:GQ:DP	0/1:40:33
+chr7	500	.	ACGT	A	38	PASS	CSQ=-|inframe_deletion|MODERATE|GENEA|ENSG1|||rs10011|YES||0.2|||1|	GT:GQ:DP	0/1:35:29
+chr7	600	.	G	A	3.1	RefCall	CLNSIG=Uncertain_significance;CLNDN=not_provided	GT:GQ:DP	0/1:5:4
+chr7	650	.	T	G	50	PASS	CSQ=G|intron_variant|MODIFIER|GENEZ|ENSG2||||YES||0.5||||	GT:GQ:DP	1/1:50:40
+chr7	660	.	A	C,G	30	PASS	CSQ=C|stop_gained|HIGH|GENEA|ENSG1|||RS2003|||||||,G|stop_gained|HIGH|GENEA|ENSG1||||YES||||||	GT:GQ:DP	1|2:20:18
+chrX	1000	rs4004;rs4005	G	A	44	PASS	CSQ=A|synonymous_variant|LOW|GENEX|ENSG3||||YES||1e-05||||	GT:DP	1:12
+chrM	73	.	A	G	60	PASS	CSQ=G|non_coding_transcript_exon_variant|MODIFIER|MT-RNR1|ENSG4|||rs3003|YES||||||	GT:DP	1/1:900

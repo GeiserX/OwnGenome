@@ -221,7 +221,7 @@ jobs:
         working-directory: rust
         run: OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
 
-      # bin/owngenome_recheck.py names the steps a new ClinVar release changes, from the
+      # og recheck --affected names the steps a new ClinVar release changes, from the
       # reads and upstream columns of assets/steps.tsv. The all-tools run again
       # with -resume and a ClinVar file of another ##fileDate (as --clinvar and
       # --mito_clinvar, as run-all.sh passes them): the steps with a task that ran
@@ -231,7 +231,7 @@ jobs:
       # The control: the same names from a steps.tsv with ClinVar taken out of
       # step 13's reads must differ from what ran, so the comparison can fail.
       # Right after the all-tools run, so -resume resumes it.
-      - name: A new ClinVar file redoes exactly the steps owngenome_recheck.py names
+      - name: A new ClinVar file redoes exactly the steps og recheck names
         if: steps.scope.outputs.run == 'true'
         timeout-minutes: 10
         run: |
@@ -243,8 +243,8 @@ jobs:
             --hpo HP:0001250 --exomiser_proband stub_sample --exomiser_data assets/stub/db \
             --clinvar "${d}/clinvar.vcf.gz" --clinvar_index "${d}/clinvar.vcf.gz.tbi" --mito_clinvar "${d}/clinvar.vcf.gz"
           awk -F'\t' -v OFS='\t' '$1 == "13" {sub(/clinvar_file_date,/, "", $11)} {print}' assets/steps.tsv > "${d}/steps-control.tsv"
-          named=$(python3 bin/owngenome_recheck.py --affected clinvar_file_date)
-          control=$(python3 bin/owngenome_recheck.py --affected clinvar_file_date --steps "${d}/steps-control.tsv")
+          named=$(rust/target/release/og recheck --affected clinvar_file_date)
+          control=$(rust/target/release/og recheck --affected clinvar_file_date --steps "${d}/steps-control.tsv")
           # step, process and status of every task of a run's traces.
           tasks() {
             local args=() t
@@ -264,7 +264,7 @@ jobs:
           ctl=$(LC_ALL=C comm -12 <(set_of <<<"$control") <(printf '%s\n' "$had" | sed '/^$/d'))
           n1=$(awk 'END {print NR}' "${d}/first.tsv") n2=$(awk 'END {print NR}' "${d}/second.tsv")
           echo "tasks: ${n1} in the first run, ${n2} in the rerun ($(awk -F'\t' '$3 == "COMPLETED" {n++} END {print n + 0}' "${d}/second.tsv") ran again, $(awk -F'\t' '$3 == "CACHED" {n++} END {print n + 0}' "${d}/second.tsv") cached)"
-          echo "named by owngenome_recheck.py, of the steps the run had: $(line <<<"$want")"
+          echo "named by og recheck, of the steps the run had: $(line <<<"$want")"
           echo "redone: $(line <<<"$redone")"
           echo "control names: $(line <<<"$ctl")"
           bad=0

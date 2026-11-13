@@ -1,0 +1,16 @@
+[package]
+name = "og-fresh"
+description = "Which pinned databases, bundles and images have fallen behind upstream: typed answers for og dev freshness and og recheck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+indexmap.workspace = true
+jiff.workspace = true
+regex.workspace = true
+
+[lints]
+workspace = true

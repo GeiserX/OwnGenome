@@ -15,12 +15,11 @@ Most questions about a genome are about one variant or one gene, often one a doc
 
 ## Tool
 
-- **bcftools** (`bcftools view -r`) cuts the region out of the indexed gVCF and annotated VCF.
-- **`bin/genome_lookup.py`** (Python standard library) finds the region and writes the answer.
+- **`og lookup query`** (OwnGenome's Rust binary, `rust/crates/og-lookup`) finds each query's region and writes the answer, for every query of the command line in one process. It reads an indexed gVCF or annotated VCF through its `.tbi` or `.csi` index, so only the region's blocks are read.
 
 ## Docker Image
 
-- `BCFTOOLS_IMAGE` and `PYTHON_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tags. The command adds no image.
+- `PYTHON_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tag. `og` is a static binary, so it needs no tool from the image; it needs `./scripts/setup.sh --og` once ([The Rust core](rust.md)). The command adds no image.
 
 ## Input
 
@@ -82,13 +81,13 @@ How to read the genotype line:
 | `this position lies inside the variant called at ...` | the position is part of a longer variant (a deletion) that starts before it |
 | `filter: RefCall` (or another filter) | the caller did not pass the call; read it as uncertain |
 
-For a gene, the line `N of M bases have a genotype call` tells you how much of the gene was readable. A variant can only be missing from the list where there is no call.
+For a gene, the line `N of M bases have a genotype call` tells you how much of the gene was readable. Each base counts once, also where two gVCF records cover it (a deletion and the reference block after it). A variant can only be missing from the list where there is no call.
 
 Two ClinVar lines can appear. `ClinVar (pipeline's ClinVar file)` comes from the ClinVar release step 13 annotated with, the one [step 6](06-clinvar-screen.md) screens against. `clinical significance (VEP cache)` is Ensembl's copy inside the VEP cache, fixed with the cache release, so it can be older than the first.
 
 ## Runtime
 
-A site or a gene takes a few seconds with indexed files: bcftools reads only the region, and a container starts for each pass. An rsID that is in neither the site table nor the pipeline tables makes the command read the whole annotated VCF once, which takes minutes on a whole genome. A file without a `.tbi` index is streamed whole, with a note: the answer is the same and only the records in the region are kept in memory, but on a whole genome it takes minutes. `bcftools index -t` makes it fast.
+One container starts for the whole command, whatever the number of queries. With indexed files a site or a gene takes well under a second inside it: only the region is read. An rsID that is in neither the site table nor the pipeline tables makes the command read the whole annotated VCF once, for all such rsIDs of the command line together, on two cores. A file without a `.tbi` or `.csi` index is streamed whole for each region, with a note: the answer is the same and only the records in the region are kept in memory, but on a whole genome it takes minutes. `bcftools index -t` makes it fast.
 
 ## Notes
 
