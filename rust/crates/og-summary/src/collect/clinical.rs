@@ -107,7 +107,9 @@ impl Slivar {
             let Some(v) = vcf else {
                 return Ok(Slivar(Value::Null));
             };
-            let n = text::vcf_records(v).map_err(|e| e.unreadable(v))?.len();
+            let mut n = 0;
+            text::each_line(v, |l| n += usize::from(!l.starts_with('#')))
+                .map_err(|e| e.unreadable(v))?;
             m.insert("prioritized".into(), int(n));
             comphet_phase(
                 &crate::join(text::dirname(v), &format!("{s}_compound_het_pairs.tsv")),

@@ -262,72 +262,124 @@ pub struct ClinicalVcf {
 }
 
 impl ClinicalVcf {
+    /// One pass over the file, line by line: a whole-genome clinical VCF
+    /// is never held in memory.
     pub fn read(path: &str) -> Result<ClinicalVcf, String> {
-        let lines = text::lines(path).map_err(|e| e.unreadable(path))?;
-        let records = lines.iter().filter(|l| !l.starts_with('#')).count();
+        let mut records = 0;
+        let mut scan = HighScan::default();
+        text::each_line(path, |l| {
+            if !l.starts_with('#') {
+                records += 1;
+            }
+            scan.line(l);
+        })
+        .map_err(|e| e.unreadable(path))?;
         Ok(ClinicalVcf {
             records,
-            high: high_impact(&lines),
+            high: scan.finish(),
         })
     }
 }
 
-/// `csq_high_impact_genes`.
-fn high_impact(lines: &[String]) -> Result<IndexMap<Key, HighRecord>, String> {
-    let floor = ClinicalFloor::read(lines)?;
-    let mut fmt: Option<Vec<String>> = None;
-    let mut out = IndexMap::new();
-    for line in lines {
+/// `csq_high_impact_genes`, fed one line at a time. The floors come from
+/// the header (`clinical_call_floor`), which ends at the first line that
+/// does not start with `##`.
+#[derive(Default)]
+struct HighScan {
+    header: Vec<String>,
+    floor: Option<Result<ClinicalFloor, String>>,
+    fmt: Option<Vec<String>>,
+    out: IndexMap<Key, HighRecord>,
+    err: Option<String>,
+}
+
+impl HighScan {
+    fn line(&mut self, line: &str) {
+        if self.floor.is_none() {
+            if line.starts_with("##") {
+                self.header.push(line.to_owned());
+            } else {
+                self.floor = Some(ClinicalFloor::read(&std::mem::take(&mut self.header)));
+            }
+        }
+        if self.err.is_some() {
+            return;
+        }
         if line.starts_with("##INFO=<ID=CSQ") {
-            fmt = line.split_once("Format: ").and_then(|(_, f)| {
+            self.fmt = line.split_once("Format: ").and_then(|(_, f)| {
                 let f = f.split('"').next().unwrap_or("");
                 (!f.is_empty()).then(|| f.split('|').map(str::to_owned).collect())
             });
-            continue;
+            return;
         }
-        let Some(fm) = fmt.as_ref() else { continue };
+        let Some(Ok(floor)) = &self.floor else { return };
+        let Some(fm) = self.fmt.as_ref() else { return };
         if line.starts_with('#')
             || !fm.iter().any(|c| c == "IMPACT")
             || !fm.iter().any(|c| c == "SYMBOL")
         {
-            continue;
+            return;
         }
-        let r: Vec<String> = line.split('\t').map(str::to_owned).collect();
-        if r.len() < 8 {
-            continue;
+        if let Err(e) = high_record(fm, line, floor, &mut self.out) {
+            self.err = Some(e);
         }
-        let (cls, entries, freq) = csq_rank(fm, info_map(&r[7]).get("CSQ").copied().unwrap_or(""));
-        let mut genes: IndexMap<String, String> = IndexMap::new();
-        for e in entries.into_iter().filter(|e| e.impact == "HIGH") {
-            genes.entry(e.gene).or_insert(e.consequence);
-        }
-        if genes.is_empty() {
-            continue;
-        }
-        let gt = text::gt_of(&r).to_owned();
-        let (weak, why, gq, dp, ad) = if r.len() > 9 {
-            call_check(&r[8], &r[9], &floor)
-        } else {
-            (false, Vec::new(), None, None, None)
-        };
-        let pos = text::pos(&r)?;
-        out.insert(
-            (r[0].clone(), pos, r[3].clone(), r[4].clone()),
-            HighRecord {
-                genotype: gt,
-                ps: gt_field(&r, "PS"),
-                genes,
-                transcript: cls,
-                frequency: freq,
-                weak,
-                why,
-                gq,
-                dp,
-                ad,
-            },
-        );
     }
-    Ok(out)
+
+    fn finish(mut self) -> Result<IndexMap<Key, HighRecord>, String> {
+        let floor = self
+            .floor
+            .take()
+            .unwrap_or_else(|| ClinicalFloor::read(&self.header));
+        floor?;
+        match self.err {
+            Some(e) => Err(e),
+            None => Ok(self.out),
+        }
+    }
+}
+
+/// One data line of `csq_high_impact_genes`.
+fn high_record(
+    fm: &[String],
+    line: &str,
+    floor: &ClinicalFloor,
+    out: &mut IndexMap<Key, HighRecord>,
+) -> Result<(), String> {
+    let r: Vec<String> = line.split('\t').map(str::to_owned).collect();
+    if r.len() < 8 {
+        return Ok(());
+    }
+    let (cls, entries, freq) = csq_rank(fm, info_map(&r[7]).get("CSQ").copied().unwrap_or(""));
+    let mut genes: IndexMap<String, String> = IndexMap::new();
+    for e in entries.into_iter().filter(|e| e.impact == "HIGH") {
+        genes.entry(e.gene).or_insert(e.consequence);
+    }
+    if genes.is_empty() {
+        return Ok(());
+    }
+    let gt = text::gt_of(&r).to_owned();
+    let (weak, why, gq, dp, ad) = if r.len() > 9 {
+        call_check(&r[8], &r[9], floor)
+    } else {
+        (false, Vec::new(), None, None, None)
+    };
+    let pos = text::pos(&r)?;
+    out.insert(
+        (r[0].clone(), pos, r[3].clone(), r[4].clone()),
+        HighRecord {
+            genotype: gt,
+            ps: gt_field(&r, "PS"),
+            genes,
+            transcript: cls,
+            frequency: freq,
+            weak,
+            why,
+            gq,
+            dp,
+            ad,
+        },
+    );
+    Ok(())
 }
 
 /// A source of a candidate variant.

@@ -7,7 +7,9 @@
 //! switches to it. Group `a` is the model and the first seven sections:
 //! coverage, callability, sex_check, sample_qc, mosaic_sex_loss,
 //! read_count and variants, with the run status, the manifest and each
-//! section's state.
+//! section's state. Group `b` is the clinical sections ([`group_b`]):
+//! clinvar, carrier, pharmcat, cpic, pypgx, cyrius, cpsr, clinical (with
+//! the ACMG SF tier and the two-hit rule) and slivar, and the CYP2D6 block.
 //!
 //! How it reads a folder: one walk of the folder ([`scan::FolderIndex`])
 //! instead of a `glob` per candidate path; each input read once (the
@@ -93,8 +95,13 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         Ok(s) => s,
         Err(e) => return crate::finish(Err(e), err),
     };
+    // The sections' own data is freed before the text is made, and the
+    // tree before the file is written: a large ClinVar list is in memory in
+    // one form at a time.
+    let value = summary.to_json();
+    drop(summary);
     let body = match dumps(
-        &summary.to_json(),
+        &value,
         &Dump {
             indent: Some(1),
             ..Dump::default()
@@ -103,6 +110,7 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         Ok(b) => b + "\n",
         Err(e) => return crate::finish(Err(e.to_string()), err),
     };
+    drop(value);
     let r = crate::write_file(&target, body.as_bytes());
     if r.is_ok() {
         let _ = writeln!(out, "Summary written: {target}");

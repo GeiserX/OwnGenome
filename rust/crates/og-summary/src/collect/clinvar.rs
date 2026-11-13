@@ -79,22 +79,20 @@ pub struct HitsVcf {
 
 impl HitsVcf {
     pub fn read(path: String, rel: String) -> HitsVcf {
-        let read = text::lines(&path)
-            .map(|lines| {
-                let mut floor = Floor::default();
-                for l in lines.iter().take_while(|l| l.starts_with("##")) {
-                    if l.starts_with("##PGP_CALL_FLOOR=") {
-                        floor_values(l, false, &mut floor);
-                    }
-                }
-                let recs = lines
-                    .iter()
-                    .filter(|l| !l.starts_with('#'))
-                    .map(|l| l.split('\t').map(str::to_owned).collect())
-                    .collect();
-                (floor, recs)
-            })
-            .map_err(|e: ReadError| e.unreadable(&path));
+        let mut floor = Floor::default();
+        let mut header = true;
+        let mut recs: Vec<Vec<String>> = Vec::new();
+        let read = text::each_line(&path, |l| {
+            header &= l.starts_with("##");
+            if header && l.starts_with("##PGP_CALL_FLOOR=") {
+                floor_values(l, false, &mut floor);
+            }
+            if !l.starts_with('#') {
+                recs.push(l.split('\t').map(str::to_owned).collect());
+            }
+        })
+        .map(|()| (floor, recs))
+        .map_err(|e: ReadError| e.unreadable(&path));
         HitsVcf { path, rel, read }
     }
 }
@@ -622,7 +620,10 @@ impl ClinVar {
         side: &dyn Fn(&str) -> Option<(String, String)>,
         s: &str,
     ) -> Result<ClinVar, String> {
-        let (floor, recs) = hits.read.clone()?;
+        let (floor, recs) = match &hits.read {
+            Ok((f, r)) => (*f, r),
+            Err(e) => return Err(e.clone()),
+        };
         let mut rows = Vec::new();
         for r in recs.iter().filter(|r| r.len() >= 8) {
             rows.push(Hit::parse(r, floor)?);

@@ -42,7 +42,9 @@ impl ReadError {
 }
 
 fn os_kind(e: &str) -> &'static str {
-    if e.contains("No such file") {
+    if e == GZ_EOF {
+        "EOFError"
+    } else if e.contains("No such file") {
         "FileNotFoundError"
     } else if e.contains("Permission denied") {
         "PermissionError"
@@ -64,22 +66,29 @@ pub fn lines(path: &str) -> Result<Vec<String>, ReadError> {
         .collect()
 }
 
+/// Python's gzip on a stream cut short (an `EOFError`).
+const GZ_EOF: &str = "Compressed file ended before the end-of-stream marker was reached";
+
 /// gzip's own words for a stream cut short; the reader's otherwise.
 fn gz_text(e: &std::io::Error) -> String {
     if e.kind() == std::io::ErrorKind::UnexpectedEof {
-        "Compressed file ended before the end-of-stream marker was reached".to_owned()
+        GZ_EOF.to_owned()
     } else {
         e.to_string()
     }
 }
 
-/// The data lines of a VCF split at tabs (`vcf_records`).
-pub fn vcf_records(path: &str) -> Result<Vec<Vec<String>>, ReadError> {
-    Ok(lines(path)?
-        .into_iter()
-        .filter(|l| !l.starts_with('#'))
-        .map(|l| l.split('\t').map(str::to_owned).collect())
-        .collect())
+/// Calls `f` with each line of a text file in turn (as [`lines`] reads
+/// them), never holding the whole file.
+pub fn each_line(path: &str, mut f: impl FnMut(&str)) -> Result<(), ReadError> {
+    let it = og_io::Lines::new(
+        og_io::open(path).map_err(|e| ReadError::Os(os_error(&e, path)))?,
+        og_io::Utf8::Replace,
+    );
+    for l in it {
+        f(&l.map_err(|e| ReadError::Os(gz_text(&e)))?);
+    }
+    Ok(())
 }
 
 /// The rows of a tab-separated table with a header (`csv.DictReader`).
@@ -90,6 +99,9 @@ pub fn rows(path: &str) -> Result<Vec<DictRow>, ReadError> {
         match lines.read_line(&mut s) {
             Ok(true) => Some(Ok(s)),
             Ok(false) => None,
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                Some(Err(std::io::Error::new(e.kind(), gz_text(&e))))
+            }
             Err(e) => Some(Err(e)),
         }
     });
@@ -192,4 +204,23 @@ pub fn relpath(base: &str, path: &str) -> String {
 /// `os.path.dirname(p)`.
 pub fn dirname(p: &str) -> &str {
     p.rfind('/').map_or("", |i| &p[..i])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testutil::Dir;
+
+    #[test]
+    fn a_table_cut_short_is_python_s_eof_error() {
+        let d = Dir::new("text-cut");
+        let body = "A\tB\n".to_owned() + &"1\t2\n".repeat(2000);
+        let full = std::fs::read(d.put_gz("t.tsv.gz", &body)).unwrap();
+        for n in [30, full.len() / 2, full.len() - 4] {
+            let p = d.put("cut.tsv.gz", &full[..n]);
+            let e = rows(&p).unwrap_err();
+            assert_eq!(e.unreadable(&p), format!("cut.tsv.gz: {GZ_EOF}"), "{n}");
+            assert_eq!(e.note(), format!("EOFError: {GZ_EOF}"), "{n}");
+        }
+    }
 }
