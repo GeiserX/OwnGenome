@@ -65,6 +65,7 @@ on:
       - 'nextflow_schema.json'
       - 'versions.env'
       - '.github/workflows/e2e.yml'
+      - 'rust/crates/og-dev/src/fixture.rs'
       - '.github/actions/**'
       - 'tests/fixtures/annotsv/class45.sh'
       - 'tests/fixtures/consumer_export/sites.tsv.gz'

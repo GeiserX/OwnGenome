@@ -45,6 +45,7 @@ export LC_ALL=C
 # runs no case. The push paths of e2e.yml are the same list (e2e-plan checks).
 SCOPE_DIRS=(scripts modules workflows bin conf assets tests/e2e .github/actions)
 SCOPE_FILES=(tests/fixtures/VERSION main.nf nextflow.config nextflow_schema.json versions.env .github/workflows/e2e.yml
+  rust/crates/og-dev/src/fixture.rs
   # The committed fixtures the cases read (their rows name them too).
   tests/fixtures/annotsv/class45.sh tests/fixtures/consumer_export/sites.tsv.gz
   tests/fixtures/families/stub_families.tsv tests/fixtures/pharmcat/refblocks.g.vcf tests/fixtures/sv/cnvpytor.vcf.in

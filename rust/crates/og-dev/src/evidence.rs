@@ -344,6 +344,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hg002_gvcf_keeps_truth_and_adds_only_valid_reference_blocks() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let inputs = repo.join("tests/parity/inputs/dev-evidence-hg002-gvcf");
+        let temp = std::env::temp_dir().join(format!(
+            "og-evidence-gvcf-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&temp).unwrap();
+        let output = temp.join("out.vcf");
+        let args = [
+            "hg002-gvcf".to_owned(),
+            inputs.join("truth.vcf.gz").to_str().unwrap().to_owned(),
+            inputs
+                .join("truth-past-end.bed")
+                .to_str()
+                .unwrap()
+                .to_owned(),
+            inputs.join("ref.fasta").to_str().unwrap().to_owned(),
+            inputs
+                .join("sites-past-end.tsv")
+                .to_str()
+                .unwrap()
+                .to_owned(),
+            output.to_str().unwrap().to_owned(),
+        ];
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&args, &mut out, &mut err), 0, "{err:?}");
+        assert_eq!(
+            out,
+            b"gVCF: 4 GIAB records, 1 reference blocks at panel sites\n"
+        );
+        assert!(err.is_empty());
+        let actual = fs::read(&output).unwrap();
+        fs::remove_dir_all(&temp).unwrap();
+        assert_eq!(
+            actual,
+            include_bytes!(
+                "../../../../tests/parity/golden/dev-evidence-hg002-gvcf/past-the-end/out.vcf"
+            )
+        );
+    }
+
+    #[test]
     fn spans_merge_and_answer_inside() {
         let m = merge(vec![(10, 12), (5, 6), (11, 15), (15, 16)]);
         assert_eq!(m, [(5, 6), (10, 16)]);
