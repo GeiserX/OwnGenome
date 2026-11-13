@@ -162,6 +162,9 @@ self_test() {
   # An exempt literal that left its file: the exemption is stale.
   copy exempt-stale
   sed -i.bak 's|quay.io/biocontainers/expansionhunter:5.0.0|an example image|' "${tmp}/exempt-stale/docs/stylesheets/theme.css"
+  # sed's backup still names the image and is no exempt file: drop it, so
+  # only the stale exemption can fail this copy.
+  rm "${tmp}/exempt-stale/docs/stylesheets/theme.css.bak"
   expect exempt-stale '^FAIL: docs/stylesheets/theme\.css no longer names quay\.io/biocontainers/expansionhunter:5\.0\.0; drop its line'
 
   # The bwa-mem2 tag scripts/ci/settle-doubts.sh once repeated: it reads
