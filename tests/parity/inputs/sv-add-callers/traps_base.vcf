@@ -1,0 +1,11 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr2>
+##contig=<ID=chr1>
+##contig=<ID=chr2>
+##svcallers_added="old"
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	A	B
+chr9	500	M_un	N	<DEL>	1	PASS	END=900;SVTYPE=DEL	GT	0/1	0/0
+chr2	300	M_b	N	<DUP:TANDEM>	1	.	.	GT	1/1	0/0
+chr1	300	M_a	N	<DEL>	1	PASS		GT	0/1	0/0
+chr1	200	M_c	N	A	1	PASS	SVTYPE=INS;END=200	GT:GQ	0/1:3	0/0:1
+chr1	100000	M_long	N	<DEL>	1	PASS	SVTYPE=DEL;END=110000	GT	0/1	0/0

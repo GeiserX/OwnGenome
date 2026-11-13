@@ -1,0 +1,2 @@
+AnnotSV_ID	ID	SV_chrom	SV_start	SV_end	SV_length	SV_type	Gene_name	ACMG_class	AnnotSV_ranking_score	Caller	Exon_edge	Exon_edge_detail	Population_AF	Population_source	Common	AnnotSV_class	Depth_support	Rule	Rule_detail	FORMAT	S1
+20_40000000_40300000_DEL_1	FRAC	20	40000000	40300000	-300000	DEL	G1	4	0.99	delly	not checked				no	4	not checked			GT:RDCN	0/1:1.5
