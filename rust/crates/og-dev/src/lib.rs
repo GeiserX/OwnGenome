@@ -16,19 +16,22 @@
 //!   compound-het reads, a trimmed PharmCAT report).
 //! - `og dev evidence` ([`evidence`]): the measurements of the public
 //!   evidence workflow on GIAB's HG002.
+//! - `og dev renovate-check LOG` ([`renovate`]): what a Renovate dry run
+//!   found, against every pin in the repository.
 
 pub mod contract;
 pub mod evidence;
 pub mod fixture;
 pub mod parity;
 pub mod remnants;
+pub mod renovate;
 pub mod report_only;
 pub mod schema;
 mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -65,6 +68,7 @@ pub fn main(args: &[String]) -> u8 {
         Some("report-only") => run(report_only::cli, &args[1..]),
         Some("fixture") => run(fixture::cli, &args[1..]),
         Some("evidence") => run(evidence::cli, &args[1..]),
+        Some("renovate-check") => run(renovate::cli, &args[1..]),
         Some("-h" | "--help") => {
             print!("{USAGE}");
             0
