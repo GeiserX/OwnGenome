@@ -21,7 +21,9 @@
 #                  every process: its `container` (or its withName selector
 #                  in conf/containers.config) and the first word of every
 #                  command in the triple-quoted strings of its script:,
-#                  shell: and exec: blocks (never stub:).
+#                  shell: and exec: blocks (never stub:). Nextflow runs an
+#                  exec: block on the host, so a helper call there has no
+#                  image and fails.
 # Only calls to the helper binaries above are kept, by bare name: a call by
 # path ("$LIBEXEC/bgzip", Manta's own copy) is not a PATH lookup, so
 # `command -v` would test another binary. Images are named by their
@@ -107,7 +109,8 @@ if [ "${1:-}" = "--self-test" ]; then
     '    tabix stub_only.vcf.gz' \
     '    """' \
     '}' > "${tmp}/bad/modules/local/x/main.nf"
-  # A shell: block and an exec: block run their commands in the image too.
+  # A shell: block runs its commands in the image too; an exec: block runs
+  # on the host, so its helper call has no image and must fail.
   mkdir -p "${tmp}/bad/modules/local/z" "${tmp}/bad/modules/local/w"
   printf '%s\n' 'process Z {' "    container 'example/bcftools:1.0'" '    shell:' "    '''" \
     '    bgzip -c !{vcf} > out.vcf.gz' "    '''" '}' > "${tmp}/bad/modules/local/z/main.nf"
@@ -146,10 +149,10 @@ if [ "${1:-}" = "--self-test" ]; then
               'scripts/a\.sh:12 \(\$ODD\)' 'tabix +in BCFTOOLS_IMAGE +modules/local/y/main\.nf:5 \(Y\)$' \
               'tabix +in SAMTOOLS_IMAGE +scripts/a\.sh:13$' 'bgzip +in BCFTOOLS_IMAGE +scripts/a\.sh:14$' \
               'bgzip +in BCFTOOLS_IMAGE +modules/local/z/main\.nf:5 \(Z\)$' \
-              'tabix +in SAMTOOLS_IMAGE +modules/local/w/main\.nf:5 \(W\)$'; do
+              'modules/local/w/main\.nf:5 \(W\) exec: runs on the host$'; do
     grep -qE -- "$want" <<<"$out" || { echo "self-test: planted call not reported: ${want}"; fail=1; }
   done
-  for nope in 'TOOL_IMAGE' 'stub_only' ':9 \(X\)'; do
+  for nope in 'TOOL_IMAGE' 'stub_only' ':9 \(X\)' 'IMAGE +modules/local/w/'; do
     if grep -qE -- "$nope" <<<"$out"; then echo "self-test: reported although allowed: ${nope}"; fail=1; fi
   done
   [ "$fail" -eq 0 ] || printf '%s\n' "$out"

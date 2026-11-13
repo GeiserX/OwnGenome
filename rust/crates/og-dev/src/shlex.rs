@@ -232,23 +232,31 @@ fn ends_heredoc(line: &[u8], delim: &[u8], strip_tabs: bool) -> bool {
     line == delim
 }
 
-/// The delimiter word after `<<` or `<<-` (and blanks) at `t[j..]`: `NAME`,
-/// `'NAME'` or `"NAME"`, with the index after it.
+/// The delimiter word after `<<` or `<<-` (and blanks) at `t[j..]`, as bash
+/// reads it: the whole word up to an unquoted blank or operator, with its
+/// quotes and backslashes removed (`EOF-JSON`, `'E"O'F`, `\EOF`), and the
+/// index after it. An unclosed quote gives no word.
 fn heredoc_word(t: &[u8], j: usize) -> Option<(Vec<u8>, usize)> {
-    let quote = t.get(j).copied().filter(|&c| c == b'\'' || c == b'"');
-    let start = j + usize::from(quote.is_some());
-    let mut end = start;
-    while end < t.len() && (t[end].is_ascii_alphanumeric() || t[end] == b'_') {
-        end += 1;
+    let (mut word, mut k) = (Vec::new(), j);
+    while let Some(&c) = t.get(k) {
+        match c {
+            b' ' | b'\t' | b'\n' | b';' | b'&' | b'|' | b'<' | b'>' | b'(' | b')' => break,
+            b'\'' | b'"' => {
+                let close = find(t, c, k + 1)?;
+                word.extend_from_slice(&t[k + 1..close]);
+                k = close + 1;
+            }
+            b'\\' => {
+                word.extend(t.get(k + 1).copied());
+                k += 2;
+            }
+            _ => {
+                word.push(c);
+                k += 1;
+            }
+        }
     }
-    if end == start {
-        return None;
-    }
-    match quote {
-        None => Some((t[start..end].to_vec(), end)),
-        Some(q) if t.get(end) == Some(&q) => Some((t[start..end].to_vec(), end + 1)),
-        Some(_) => None,
-    }
+    (k > j).then_some((word, k.min(t.len())))
 }
 
 fn lex_into(t: &[u8], base: usize, cmds: &mut Vec<Command>) {
@@ -453,6 +461,16 @@ mod tests {
         // "EOF " (a trailing blank): the body goes on to the real "EOF".
         let text = "cat <<EOF\n  EOF\nbgzip inside\nEOF \nEOF\ntabix after\n";
         assert_eq!(heads_of(text), ["cat", "tabix"]);
+    }
+
+    #[test]
+    fn a_here_document_delimiter_is_the_whole_word() {
+        // "EOF-JSON" is the delimiter, so the "EOF" line does not end the
+        // body; quotes inside the word are removed, as bash does.
+        let text = "cat <<EOF-JSON\nEOF\nbgzip inside\nEOF-JSON\ntabix after\n";
+        assert_eq!(heads_of(text), ["cat", "tabix"]);
+        let quoted = "cat <<'E O'F >f\nbgzip inside\nE OF\ntabix after\n";
+        assert_eq!(heads_of(quoted), ["cat", "tabix"]);
     }
 
     #[test]

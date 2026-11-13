@@ -13,6 +13,8 @@
 //!   `withName` selector in `conf/containers.config`) and the command word
 //!   of every command in the triple-quoted strings of its `script:`,
 //!   `shell:` and `exec:` sections. The `stub:` section never runs a tool.
+//!   Nextflow runs `exec:` on the host, outside the container, so a helper
+//!   call there has no image and fails `--static`.
 //!
 //! A call by path (`"$d/bgzip"`) runs that file, not the helper on `PATH`,
 //! and is left out. An image word is named by its `versions.env` variable
@@ -303,7 +305,9 @@ fn docker_run(words: &[String]) -> Option<(&str, Vec<String>)> {
     };
     let mut entry = Vec::new();
     while let Some(w) = words.get(k).filter(|w| w.starts_with('-')) {
-        if w == "--entrypoint"
+        if let Some(e) = w.strip_prefix("--entrypoint=") {
+            entry = vec![e.to_owned()];
+        } else if w == "--entrypoint"
             && let Some(e) = words.get(k + 1)
         {
             entry = vec![e.clone()];
@@ -358,27 +362,19 @@ fn in_image_heads(argv: &[String]) -> Vec<String> {
     }
 }
 
-/// The first `$NAME` or `${NAME` in a word.
-fn first_var(word: &str) -> Option<&str> {
-    let b = word.as_bytes();
-    for (i, _) in word.match_indices('$') {
-        let mut s = i + 1;
-        if b.get(s) == Some(&b'{') {
-            s += 1;
-        }
-        if !b
-            .get(s)
-            .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
-        {
-            continue;
-        }
-        let mut e = s + 1;
-        while e < b.len() && (b[e].is_ascii_alphanumeric() || b[e] == b'_') {
-            e += 1;
-        }
-        return Some(&word[s..e]);
-    }
-    None
+/// `NAME` when the whole word is `$NAME` or `${NAME}`.
+fn whole_var(word: &str) -> Option<&str> {
+    let r = word.strip_prefix('$')?;
+    let r = match r.strip_prefix('{') {
+        Some(inner) => inner.strip_suffix('}')?,
+        None => r,
+    };
+    let ok = r
+        .bytes()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+        && r.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_');
+    ok.then_some(r)
 }
 
 /// The value of `NAME=VALUE` (after optional `export`, `local` or
@@ -401,15 +397,28 @@ fn assigned<'a>(line: &'a str, name: &str) -> Option<&'a str> {
     at(s)
 }
 
-/// `(name, value)` for an image word of a script. A script-local
-/// assignment counts only when its value is a plain literal or one
-/// `versions.env` variable; anything else leaves the value unknown.
+/// `(name, value)` for an image word of a script. A word that is not a
+/// literal must be one whole `$NAME` or `${NAME}`: a composed word such as
+/// `${IMG}-slim` is unknown. A script-local assignment counts only when its
+/// value is a plain literal or one `versions.env` variable; anything else
+/// leaves the value unknown. The name is every `versions.env` name of the
+/// value, so an alias of `BCFTOOLS_IMAGE` still counts as it for rule 1.
 fn resolve(word: &str, script: &str, v: &Versions) -> (String, Option<String>) {
-    let Some(name) = first_var(word) else {
+    if !word.contains('$') {
         return (v.name_of(word), Some(word.to_owned()));
+    }
+    let Some(name) = whole_var(word) else {
+        return (word.to_owned(), None);
+    };
+    let named = |var: &str, val: &str| {
+        let shared = v.by_value.get(val).cloned();
+        (
+            shared.unwrap_or_else(|| var.to_owned()),
+            Some(val.to_owned()),
+        )
     };
     if let Some(val) = v.by_name.get(name) {
-        return (name.to_owned(), Some(val.clone()));
+        return named(name, val);
     }
     for line in script.lines() {
         let Some(raw) = assigned(line, name) else {
@@ -420,22 +429,13 @@ fn resolve(word: &str, script: &str, v: &Versions) -> (String, Option<String>) {
         if b.len() >= 2 && b[0] == b[b.len() - 1] && (b[0] == b'"' || b[0] == b'\'') {
             val = &val[1..val.len() - 1];
         }
-        let inner = val.strip_prefix('$').map(|r| {
-            let r = r.strip_prefix('{').unwrap_or(r);
-            r.strip_suffix('}').unwrap_or(r)
-        });
-        if let Some(r) = inner
-            && !r.is_empty()
-            && r.bytes()
-                .next()
-                .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
-            && r.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
-            && let Some(val) = v.by_name.get(r)
+        if let Some(r) = whole_var(val)
+            && let Some(rv) = v.by_name.get(r)
         {
-            return (r.to_owned(), Some(val.clone()));
+            return named(r, rv);
         }
         if PLAIN.is_match(val) {
-            return (name.to_owned(), Some(val.to_owned()));
+            return named(name, val);
         }
         return (name.to_owned(), None);
     }
@@ -594,6 +594,14 @@ fn collect(root: &Path, v: &Versions) -> Result<Table, String> {
                         let at = find_token(&text[..sec_end], &bin, qstart, &['/', '-'])
                             .unwrap_or(qstart);
                         let loc = format!("{rel}:{} ({pname})", line_of(&text, at));
+                        if *kind == "exec" {
+                            // Nextflow runs an exec: block on the host, where
+                            // no `container` applies: no image provides it.
+                            table
+                                .unresolved
+                                .push(format!("{loc} exec: runs on the host"));
+                            continue;
+                        }
                         match &image {
                             None => table.unresolved.push(loc),
                             Some(img) => table.calls.push(Call {
@@ -996,9 +1004,10 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains("tabix     in SAMTOOLS_IMAGE  modules/local/e/main.nf:5 (E)"),
+            out.contains("  modules/local/e/main.nf:5 (E) exec: runs on the host\n"),
             "{out}"
         );
+        assert!(!out.contains("in SAMTOOLS_IMAGE  modules/local/e"), "{out}");
         assert!(
             !out.contains("stub_only") && !out.contains(":9 (X)"),
             "{out}"
@@ -1087,6 +1096,63 @@ mod tests {
         assert_eq!(code, 1, "{out}");
         assert!(
             out.contains("tabix     in BCFTOOLS_IMAGE|Z_IMAGE scripts/a.sh:1"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_variable_alias_of_a_shared_value_counts_for_rule_1() {
+        let d = tree(&[
+            (
+                "versions.env",
+                "BCFTOOLS_IMAGE=\"x/b:1\"\nZ_IMAGE=\"x/b:1\"\n",
+            ),
+            (
+                "scripts/a.sh",
+                "IMG=\"${Z_IMAGE}\"\nLIT=x/b:1\ndocker run --rm \"${Z_IMAGE}\" tabix y\nrun_in \"$IMG\" bgzip z\nrun_in \"$LIT\" tabix w\n",
+            ),
+        ]);
+        let (code, out) = run(&["--static"], &d.0);
+        assert_eq!(code, 1, "{out}");
+        for want in [
+            "tabix     in BCFTOOLS_IMAGE|Z_IMAGE scripts/a.sh:3",
+            "bgzip     in BCFTOOLS_IMAGE|Z_IMAGE scripts/a.sh:4",
+            "tabix     in BCFTOOLS_IMAGE|Z_IMAGE scripts/a.sh:5",
+        ] {
+            assert!(out.contains(want), "{want}\n{out}");
+        }
+    }
+
+    #[test]
+    fn a_composed_image_word_is_unknown() {
+        let d = tree(&[
+            ("versions.env", VERSIONS),
+            (
+                "scripts/a.sh",
+                "run_in \"${TOOL_IMAGE}\" tabix a\nrun_in \"${TOOL_IMAGE}-slim\" tabix b\n",
+            ),
+        ]);
+        let (code, out) = run(&["--static"], &d.0);
+        assert_eq!(code, 1, "{out}");
+        assert!(
+            out.contains("  scripts/a.sh:2 (${TOOL_IMAGE}-slim)\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn an_entrypoint_in_equals_form_is_the_command() {
+        let d = tree(&[
+            ("versions.env", VERSIONS),
+            (
+                "scripts/a.sh",
+                "docker run --rm --entrypoint=bgzip \"${BCFTOOLS_IMAGE}\" -c x\n",
+            ),
+        ]);
+        let (code, out) = run(&["--static"], &d.0);
+        assert_eq!(code, 1, "{out}");
+        assert!(
+            out.contains("bgzip     in BCFTOOLS_IMAGE  scripts/a.sh:1"),
             "{out}"
         );
     }
