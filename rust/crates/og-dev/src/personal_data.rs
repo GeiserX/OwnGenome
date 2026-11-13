@@ -2730,6 +2730,162 @@ mod tests {
         assert_eq!(err, b"ERROR: path is not valid UTF-8\n");
     }
 
+    #[test]
+    fn round6_astral_composite_cases() {
+        let f = Fixture::new("r6-astral");
+        r5_git(&f, &["init", "-q"], b"");
+        let mut failures = Vec::new();
+        // One lowercase/uppercase pair per astral cased script reported by
+        // the composite oracle. Run each through all four public entry modes.
+        for (lower, upper) in [
+            (0x10428, 0x10400),
+            (0x104d8, 0x104b0),
+            (0x10cc0, 0x10c80),
+            (0x118c0, 0x118a0),
+            (0x16e60, 0x16e40),
+            (0x1e922, 0x1e900),
+        ] {
+            let text = char::from_u32(lower).unwrap().to_string();
+            std::fs::write(f.0.join("own.md"), &text).unwrap();
+            std::fs::write(f.0.join("patterns"), format!(r"(?i)[^\U{upper:08x}Z]")).unwrap();
+            r5_git(&f, &["add", "own.md"], b"");
+            for cached in [false, true] {
+                for explicit in [false, true] {
+                    let mut args = f.args(if explicit { &["own.md"] } else { &[] });
+                    args.extend([
+                        "--patterns".into(),
+                        f.0.join("patterns").display().to_string(),
+                    ]);
+                    if cached {
+                        args.push("--cached".into());
+                    }
+                    let (mut out, mut err) = (Vec::new(), Vec::new());
+                    let code = cli(&args, &mut out, &mut err);
+                    if code != 2 {
+                        failures.push((lower, cached, explicit, code));
+                    } else {
+                        assert!(out.is_empty());
+                        assert!(!String::from_utf8_lossy(&err).contains(&text));
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "astral scenarios differ: {failures:?}");
+    }
+
+    #[test]
+    fn round6_guarded_range_interiors() {
+        // Endpoints are stable. A guarded Cyrillic case partner lies inside.
+        for pattern in [
+            r"[\u0410-\u044f]",
+            r"(?i)[^\u0410-\u044fZ]",
+            r"[\U000103ff-\U00010450]",
+            r"[\u0377-\u037a]",
+        ] {
+            assert!(
+                Rule::compile(pattern, false).is_err(),
+                "guarded range accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn round6_stable_ranges_and_uncased_astral() {
+        for pattern in [r"[A-Z]", r"(?i)[A-Z]", r"[À-Ö]", r"(?i)[À-Ö]"] {
+            let rule = Rule::compile(pattern, false).unwrap();
+            for text in ["aZz", "ÀàÖö", "abc", "😀𠀀Z"] {
+                let oracle = Command::new("python3").args(["-I", "-c",
+                    "import re,sys; print(';'.join(f'{m.start()},{m.end()}' for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
+                assert!(oracle.status.success());
+                let spans = rule
+                    .find_iter(text)
+                    .map(|m| {
+                        let m = m.unwrap();
+                        format!(
+                            "{},{}",
+                            text[..m.0].chars().count(),
+                            text[..m.1].chars().count()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";");
+                assert_eq!(spans, String::from_utf8(oracle.stdout).unwrap().trim());
+            }
+        }
+        let f = Fixture::new("r6-uncased");
+        r5_git(&f, &["init", "-q"], b"");
+        std::fs::write(f.0.join("own.md"), p("😀𠀀 rs123~ AG")).unwrap();
+        r5_git(&f, &["add", "own.md"], b"");
+        r5_modes(&f, &["own.md"], 1, "");
+    }
+
+    #[test]
+    fn round6_symlink_unicode_names() {
+        let f = Fixture::new("r6-link-name");
+        r5_git(&f, &["init", "-q"], b"");
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        let name = "x\u{1e6c0}PRIVATE_SIX";
+        let mut failures = Vec::new();
+        for shape in ["direct", "directory", "intermediate"] {
+            let target = match shape {
+                "direct" => {
+                    std::fs::write(f.0.join(name), "clean").unwrap();
+                    name.to_string()
+                }
+                "directory" => {
+                    let dir = format!("dir{name}");
+                    std::fs::create_dir(f.0.join(&dir)).unwrap();
+                    std::fs::write(f.0.join(&dir).join("clean.md"), "clean").unwrap();
+                    format!("{dir}/clean.md")
+                }
+                _ => {
+                    let link = format!("link{name}");
+                    std::os::unix::fs::symlink("clean.md", f.0.join(&link)).unwrap();
+                    std::os::unix::fs::symlink(link, f.0.join("inner.md")).unwrap();
+                    "inner.md".into()
+                }
+            };
+            std::os::unix::fs::symlink(&target, f.0.join("alias.md")).unwrap();
+            r5_git(&f, &["add", "alias.md", "clean.md"], b"");
+            for explicit in [false, true] {
+                for skip in ["", "alias.md"] {
+                    let mut args = f.args(if explicit {
+                        &["alias.md", "clean.md"]
+                    } else {
+                        &[]
+                    });
+                    args[5] = skip.into();
+                    let (mut out, mut err) = (Vec::new(), Vec::new());
+                    let code = cli(&args, &mut out, &mut err);
+                    if code != 2 {
+                        failures.push((shape, explicit, skip.to_string(), code));
+                    } else {
+                        assert!(out.is_empty());
+                        assert_eq!(
+                            err,
+                            b"ERROR: selected filename has Unicode version-dependent text\n"
+                        );
+                    }
+                    // Working target names never replace the indexed target.
+                    args.push("--cached".into());
+                    assert_eq!(
+                        cli(&args, &mut Vec::new(), &mut Vec::new()),
+                        if skip.is_empty() && shape != "intermediate" {
+                            2
+                        } else {
+                            0
+                        }
+                    );
+                }
+            }
+            std::fs::remove_file(f.0.join("alias.md")).unwrap();
+        }
+        assert!(
+            failures.is_empty(),
+            "symlink names bypass guard: {failures:?}"
+        );
+    }
+
     // Regenerate with PERSONAL_DATA_UPDATE_REGEX_CASES=1 and all supported
     // interpreters on PATH (or in PERSONAL_DATA_PYTHONS). No Python file is
     // added to the repository; these calls use each real interpreter's engine.
