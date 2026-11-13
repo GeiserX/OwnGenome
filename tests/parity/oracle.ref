@@ -71,3 +71,4 @@ dev-versions-expand	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/che
 dev-pgs-trait	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-pgs-labels.sh	bash ./oracle.sh trait	dev pgs trait
 dev-pgs-label	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-pgs-labels.sh	bash ./oracle.sh label	dev pgs label-match
 dev-pgs-metric	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-pgs-labels.sh	bash ./oracle.sh metric	dev pgs metric-match
+roh-summary	7c1470bc50933f48a1a0dde3c0e0b2b87bc48718	file:scripts/11-roh-analysis.sh	sh ./oracle.sh	roh summary
