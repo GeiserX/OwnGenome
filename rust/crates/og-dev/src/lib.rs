@@ -10,6 +10,9 @@
 //!   JSON Schema (`summary.json` against `tests/schema/summary.schema.json`).
 //! - `og dev report-only` ([`report_only`]): every process that feeds only
 //!   the report carries the report-only error strategy.
+//! - `og dev helpers` ([`helpers`]): the helper binaries each script and
+//!   module calls, and the image the call runs in
+//!   (`scripts/ci/check-container-helpers.sh`).
 //! - `og dev remnants` ([`remnants`]): does each Python file kept only for
 //!   its importers (`tests/parity/remnants.tsv`) hold nothing else?
 //! - `og dev scan personal-data` ([`personal_data`]): no tracked file holds
@@ -26,6 +29,7 @@
 pub mod contract;
 pub mod images;
 mod lookaround;
+pub mod helpers;
 pub mod parity;
 pub mod personal_data;
 pub mod pgs;
@@ -34,11 +38,12 @@ pub mod report_only;
 pub mod schema;
 pub mod versions;
 pub mod versions_env;
+pub mod shlex;
 mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -91,6 +96,7 @@ pub fn main(args: &[String]) -> u8 {
             _ => unknown(args.get(1).map_or("versions", String::as_str)),
         },
         Some("pgs") => run(pgs::cli, &args[1..]),
+        Some("helpers") => run(helpers::cli, &args[1..]),
         Some("-h" | "--help") => {
             print!("{USAGE}");
             0
