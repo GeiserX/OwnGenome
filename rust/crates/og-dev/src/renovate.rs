@@ -421,7 +421,7 @@ fn check(deps: &[Dep], env_text: &str, pins: &Pins) -> Vec<String> {
         } else {
             ":".to_owned()
         };
-        if text.contains([':', '@']) {
+        if text.contains(':') {
             fails.push(format!("names: {f}: package name {}", r(name)));
         }
     }
