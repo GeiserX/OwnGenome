@@ -805,6 +805,49 @@ mito-copies	slice	gen:summary-tools.sh	--out c.tsv --idxstats slice.idxstats	c.t
 mito-copies	no-chrm	gen:summary-tools.sh	--out c.tsv --idxstats nochrm.idxstats	c.tsv	kv	PYTHON_IMAGE
 mito-copies	crlf	gen:summary-tools.sh	--out c.tsv --idxstats crlf.idxstats	c.tsv	kv	PYTHON_IMAGE
 mito-copies	bad-count	gen:summary-tools.sh	--out c.tsv --idxstats bad.idxstats	-	kv	PYTHON_IMAGE
+y-tree-positions	small	gen:y-inputs.sh	--tree-dir t pos.txt	pos.txt	bytes	PYTHON_IMAGE
+y-tree-positions	big	gen:y-inputs.sh	--tree-dir ./big/ pos.txt	pos.txt	bytes	PYTHON_IMAGE
+y-tree-positions	odd	gen:y-inputs.sh	--tree-dir odd pos.txt	pos.txt	bytes	PYTHON_IMAGE
+y-tree-positions	no-table	gen:y-inputs.sh	--tree-dir p pos.txt	-	bytes	PYTHON_IMAGE
+y-tree-positions	no-snp-on-tables	gen:y-inputs.sh	--tree-dir yd pos.txt	-	bytes	PYTHON_IMAGE
+y-tree-place	deep	gen:y-inputs.sh	--tree-dir t --pileup t-deep.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	split	gen:y-inputs.sh	--tree-dir t --pileup t-split.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	nocall	gen:y-inputs.sh	--tree-dir t --pileup t-nocall.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	blocked	gen:y-inputs.sh	--tree-dir t --pileup t-blocked.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	outvoted	gen:y-inputs.sh	--tree-dir t --pileup t-outvoted.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	unblocked	gen:y-inputs.sh	--tree-dir t --pileup t-unblocked.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	twoanc	gen:y-inputs.sh	--tree-dir t --pileup t-twoanc.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	twosingles	gen:y-inputs.sh	--tree-dir t --pileup t-twosingles.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	onesite	gen:y-inputs.sh	--tree-dir t --pileup t-onesite.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	none	gen:y-inputs.sh	--tree-dir t --pileup t-none.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	marks	gen:y-inputs.sh	--tree-dir t --pileup t-marks.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	nocall-depth-5	gen:y-inputs.sh	--tree-dir t --pileup t-nocall.pileup --sample S --out-prefix o --min-depth 5	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	marks-depth-1	gen:y-inputs.sh	--tree-dir t --pileup t-marks.pileup --sample S --out-prefix o --min-depth=1	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	depth-0	gen:y-inputs.sh	--tree-dir t --pileup t-deep.pileup --sample S --out-prefix o --min-depth 0	-	bytes	PYTHON_IMAGE
+y-tree-place	contigs	gen:y-inputs.sh	--tree-dir t --pileup t-contigs.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	big-0	gen:y-inputs.sh	--tree-dir big --pileup big-0.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	big-1	gen:y-inputs.sh	--tree-dir big --pileup big-1.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	big-2	gen:y-inputs.sh	--tree-dir big --pileup big-2.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	big-3	gen:y-inputs.sh	--tree-dir big --pileup big-3.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	big-deep	gen:y-inputs.sh	--tree-dir big --pileup big-0.pileup --sample S --out-prefix o --min-depth 25	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	odd	gen:y-inputs.sh	--tree-dir odd --pileup odd.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	odd-ancestral	gen:y-inputs.sh	--tree-dir odd --pileup odd-anc.pileup --sample S --out-prefix o	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-tree-place	empty-pileup	gen:y-inputs.sh	--tree-dir t --pileup t-none.pileup --sample S --out-prefix o --min-depth 100	o_y_tree.txt,o_y_tree_path.tsv	bytes	PYTHON_IMAGE
+y-private-snps	plain	gen:y-inputs.sh	--vcf p.vcf --tree-dir p --sample S --out-prefix o	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	gz	gen:y-inputs.sh	--vcf p.vcf.gz --tree-dir p --sample S --out-prefix o	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	depth-factor-0	gen:y-inputs.sh	--vcf p.vcf --tree-dir p --sample S --out-prefix o --max-depth-factor 0	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	gates	gen:y-inputs.sh	--vcf rand.vcf.gz --tree-dir p --sample S --out-prefix o --min-depth 3 --min-gq -5 --min-fraction 0.5 --max-depth-factor 1.5	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	random	gen:y-inputs.sh	--vcf rand.vcf.gz --tree-dir p --sample S --out-prefix o	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	even-median	gen:y-inputs.sh	--vcf even.vcf --tree-dir p --sample S --out-prefix o	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	dp-vaf	gen:y-inputs.sh	--vcf dpvaf.vcf --tree-dir p --sample S --out-prefix o	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	plain-mask	gen:y-inputs.sh	--vcf p.vcf --tree-dir p --sample S --out-prefix o --callable-mask mask-plain.fa	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	two-record-mask	gen:y-inputs.sh	--vcf p.vcf --tree-dir p --sample S --out-prefix o --callable-mask mask-two.fa.gz	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-private-snps	no-mask	gen:y-inputs.sh	--vcf p.vcf --tree-dir t --sample S --out-prefix o	-	bytes	PYTHON_IMAGE
+y-private-snps	no-tables	gen:y-inputs.sh	--vcf p.vcf --tree-dir yd --sample S --out-prefix o	-	bytes	PYTHON_IMAGE
+y-private-snps	bad-fraction	gen:y-inputs.sh	--vcf p.vcf --tree-dir p --sample S --out-prefix o --min-fraction 1.5	-	bytes	PYTHON_IMAGE
+y-private-snps	nan-factor	gen:y-inputs.sh	--vcf p.vcf --tree-dir p --sample S --out-prefix o --max-depth-factor nan	o_y_private_snps.tsv	bytes	PYTHON_IMAGE
+y-yleaf-positions	data	gen:y-inputs.sh	--data yd pos.txt	pos.txt	bytes	PYTHON_IMAGE
+y-yleaf-positions	no-tree	gen:y-inputs.sh	--data yd-notree pos.txt	-	bytes	PYTHON_IMAGE
 lookup	resolve-rsid-sites	lookup/g.vcf,lookup/ann.vcf,lookup/gencode.v50.basic.genes.gtf,lookup/sites.tsv.gz,lookup/summary.json,lookup/traits.tsv,lookup/bloodtype_markers.tsv,lookup/badsites.tsv,lookup/ann.vcf.gz,lookup/ann.vcf.gz.tbi	resolve --query rs2002 --sites sites.tsv.gz --annotated ann.vcf	-	bytes	PYTHON_IMAGE
 lookup	resolve-rsid-sites-mt	lookup/g.vcf,lookup/ann.vcf,lookup/gencode.v50.basic.genes.gtf,lookup/sites.tsv.gz,lookup/summary.json,lookup/traits.tsv,lookup/bloodtype_markers.tsv,lookup/badsites.tsv,lookup/ann.vcf.gz,lookup/ann.vcf.gz.tbi	resolve --query rs3003 --sites sites.tsv.gz	-	bytes	PYTHON_IMAGE
 lookup	resolve-rsid-traits	lookup/g.vcf,lookup/ann.vcf,lookup/gencode.v50.basic.genes.gtf,lookup/sites.tsv.gz,lookup/summary.json,lookup/traits.tsv,lookup/bloodtype_markers.tsv,lookup/badsites.tsv,lookup/ann.vcf.gz,lookup/ann.vcf.gz.tbi	resolve --query RS6006 --table traits.tsv --table bloodtype_markers.tsv	-	bytes	PYTHON_IMAGE
