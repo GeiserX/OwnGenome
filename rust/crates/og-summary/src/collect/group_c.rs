@@ -9,7 +9,8 @@
 //! readings with the traits and CPIC states, Locityper's primary calls, and
 //! the chrY filter of CNVpytor's count for a declared female. What they
 //! need from group b (the CPIC state, pypgx and Cyrius) comes in
-//! [`Others`]; `--only c` reads none of it, so it is empty there.
+//! [`Others`]; `--only c` reads none of it, so it is empty there. A part
+//! that fails makes only its own section unreadable.
 
 mod chrm;
 mod cn;
@@ -236,13 +237,15 @@ pub fn read_all(c: &Ctx<'_>) -> Vec<Out> {
 /// The post pass over the read sections (`sections` in [`GROUP_C`]
 /// order, each with its state and data): the repeat readings with the
 /// traits and CPIC states, each Locityper locus's primary call, and the
-/// chrY filter of CNVpytor's count.
+/// chrY filter of CNVpytor's count. Each part runs on its own: one that
+/// fails (an error or a panic) is returned as its section's key and why,
+/// and the others still run.
 pub fn post(
     c: &Ctx<'_>,
     sections: &mut [(Spec, State, Option<&mut Data>)],
     others: &Others,
     declared_sex: Option<&str>,
-) {
+) -> Vec<(&'static str, String)> {
     let state = |key: &str, secs: &[(Spec, State, Option<&mut Data>)]| {
         secs.iter()
             .find(|(s, ..)| s.key == key)
@@ -257,19 +260,42 @@ pub fn post(
         .and_then(|x| x.2.as_deref())
         .and_then(json)
         .cloned();
+    let mut failed = Vec::new();
     for (spec, st, data) in sections.iter_mut() {
         let live = matches!(st, State::Ok | State::Stale);
         let Some(Data::Json(v)) = data.as_deref_mut() else {
             continue;
         };
-        match spec.key {
-            "expansions" if live => repeats::post(c, v, traits_state, cpic_state),
-            "locityper" if live => {
-                tables::locityper_post(v, hla_state, hla_data.as_ref(), others);
+        let part = || -> Result<(), String> {
+            match spec.key {
+                "expansions" if live => repeats::post(c, v, traits_state, cpic_state)
+                    .map_err(|e| format!("the repeat readings could not be made: {e}")),
+                "locityper" if live => {
+                    tables::locityper_post(v, hla_state, hla_data.as_ref(), others);
+                    Ok(())
+                }
+                "cnvpytor" => {
+                    sv::cnvpytor_sex_filter(v, declared_sex);
+                    Ok(())
+                }
+                _ => Ok(()),
             }
-            "cnvpytor" => sv::cnvpytor_sex_filter(v, declared_sex),
-            _ => {}
-        }
+        };
+        failed.extend(contain(spec.key, part));
+    }
+    failed
+}
+
+/// Runs one part of the post pass: `None` when it went through, else its
+/// section's key and why it failed, for an error and for a panic alike.
+pub fn contain(
+    key: &'static str,
+    part: impl FnOnce() -> Result<(), String>,
+) -> Option<(&'static str, String)> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(part)) {
+        Ok(Ok(())) => None,
+        Ok(Err(e)) => Some((key, e)),
+        Err(_) => Some((key, format!("internal error: the post pass of {key} stopped"))),
     }
 }
 
