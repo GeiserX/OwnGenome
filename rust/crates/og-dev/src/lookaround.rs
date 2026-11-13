@@ -123,7 +123,7 @@ impl PythonRule {
             depth: 0,
             names: std::collections::HashSet::new(),
         };
-        let translated = parser.group(Flags::default(), false)?;
+        let (translated, _) = parser.group(Flags::default(), false)?;
         // \G is the search offset. After yielding an empty match, forbid only
         // a match ending at that offset; the engine then tries nonempty
         // alternatives at the same start, exactly as Python finditer does.
@@ -200,8 +200,11 @@ impl PythonPattern {
         self.chars.get(self.at).copied()
     }
 
-    fn group(&mut self, mut flags: Flags, nested: bool) -> Result<String, ()> {
+    fn group(&mut self, mut flags: Flags, nested: bool) -> Result<(String, bool), ()> {
         let mut out = String::new();
+        // Nullability is structural: concatenate with AND, alternate with OR.
+        // Keep the last atom separate until its quantifier is known.
+        let (mut prefix_nullable, mut atom_nullable, mut alt_nullable) = (true, true, false);
         let (mut repeatable, mut lazy) = (false, false);
         while let Some(c) = self.peek() {
             self.at += 1;
@@ -214,8 +217,14 @@ impl PythonPattern {
                 }
                 continue;
             }
+            if !matches!(c, ')' | '|' | '*' | '+' | '?' | '{') {
+                prefix_nullable &= atom_nullable;
+                atom_nullable = true;
+            }
             match c {
-                ')' if nested => return Ok(out),
+                ')' if nested => {
+                    return Ok((out, alt_nullable || (prefix_nullable && atom_nullable)));
+                }
                 ')' => return Err(()),
                 '(' => {
                     repeatable = true;
@@ -303,22 +312,27 @@ impl PythonPattern {
                     out.push('(');
                     out.push_str(&prefix);
                     self.depth += 1;
-                    out.push_str(&self.group(inner, true)?);
+                    let (body, nullable) = self.group(inner, true)?;
+                    atom_nullable = prefix != "?:" || nullable;
+                    out.push_str(&body);
                     self.depth -= 1;
                     out.push(')');
                 }
                 '[' => {
                     out.push_str(&self.class(flags.i)?);
+                    atom_nullable = false;
                     repeatable = true;
                     lazy = false;
                 }
                 '\\' => {
                     repeatable = !matches!(self.peek(), Some('b' | 'B' | 'A' | 'Z'));
+                    atom_nullable = !repeatable;
                     lazy = false;
                     out.push_str(&self.escape(flags.i, false)?);
                 }
                 '.' => {
                     out.push_str(if flags.s { r"[\s\S]" } else { r"[^\n]" });
+                    atom_nullable = false;
                     repeatable = true;
                     lazy = false;
                 }
@@ -333,6 +347,9 @@ impl PythonPattern {
                     lazy = false;
                 }
                 '|' => {
+                    alt_nullable |= prefix_nullable && atom_nullable;
+                    prefix_nullable = true;
+                    atom_nullable = true;
                     out.push('|');
                     repeatable = false;
                     lazy = false;
@@ -343,7 +360,7 @@ impl PythonPattern {
                         lazy = false;
                         continue;
                     }
-                    if !repeatable {
+                    if !repeatable || atom_nullable {
                         return Err(());
                     }
                     repeatable = false;
@@ -352,15 +369,17 @@ impl PythonPattern {
                     if matches!(c, '*' | '+' | '?') && self.peek() == Some('+') {
                         return Err(());
                     }
+                    atom_nullable = c != '+';
                     out.push(c);
                 }
                 '{' => {
-                    if !repeatable {
+                    if !repeatable || atom_nullable {
                         return Err(());
                     }
                     repeatable = false;
                     lazy = true;
                     out.push(c);
+                    let minimum_at = self.at;
                     loop {
                         let c = self.take()?;
                         out.push(c);
@@ -371,6 +390,11 @@ impl PythonPattern {
                             return Err(());
                         }
                     }
+                    // Python permits {,n}; a missing minimum means zero.
+                    atom_nullable = self.chars[minimum_at..self.at - 1]
+                        .iter()
+                        .take_while(|&&c| c != ',')
+                        .all(|&c| c == '0');
                     if self.peek() == Some('+') {
                         return Err(());
                     }
@@ -378,12 +402,17 @@ impl PythonPattern {
                 '}' => return Err(()),
                 c => {
                     out.push_str(&literal(c, flags.i)?);
+                    atom_nullable = false;
                     repeatable = true;
                     lazy = false;
                 }
             }
         }
-        if nested { Err(()) } else { Ok(out) }
+        if nested {
+            Err(())
+        } else {
+            Ok((out, alt_nullable || (prefix_nullable && atom_nullable)))
+        }
     }
 
     fn escape(&mut self, ci: bool, class: bool) -> Result<String, ()> {
@@ -546,7 +575,6 @@ mod python_tests {
         for pattern in [
             r"^|a",
             r"a*?",
-            r"(?:|a)+",
             r"a|",
             r"\w*",
             r"\b|\W+",
@@ -586,6 +614,19 @@ mod python_tests {
 
     #[test]
     fn round3_nullable_atoms_are_refused() {
+        for (pattern, text, spans) in [
+            ("(a*|b*?){1,3}", "ba", "0:0,0:2,2:2"),
+            ("(?:a*|[ab]{0,2}){0,3}", "baa", "0:0,0:3,3:3"),
+        ] {
+            let output = std::process::Command::new("python3").args(["-I", "-c",
+                "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), spans);
+            assert!(
+                PythonRule::compile(pattern, false).is_err(),
+                "unsupported span case accepted"
+            );
+        }
         for pattern in [
             "(a*|b*?){1,3}",
             "(?:a*|[ab]{0,2}){0,3}",
@@ -602,6 +643,217 @@ mod python_tests {
                 PythonRule::compile(pattern, false).is_err(),
                 "nullable operand accepted"
             );
+        }
+    }
+
+    // A finite grammar, exhaustively enumerated by AST node count. Every
+    // terminal costs one node; each unary/binary operator costs one more.
+    // No random selection or accepted-pattern sampling occurs in this model.
+    const MODEL_ATOMS: &[&str] = &[
+        "", "a", "b", "0", " ", "\u{301}", ".", "[ab]", "[^ab]", "[a-b]", r"\w", r"\W", r"\d",
+        r"\D", r"\s", r"\S", r"\b", r"\B", "^", "$", r"\A", r"\Z", r"\x61", r"\u0301", r"[\s\S]",
+        r"[\w0]",
+    ];
+    const MODEL_GROUPS: &[&str] = &["", "?:", "?P<n>", "?i:", "?m:", "?s:", "?x:", "?-i:"];
+    const MODEL_QUANTIFIERS: &[&str] = &[
+        "?", "*", "+", "??", "*?", "+?", "{0}", "{1}", "{0,2}", "{1,3}", "{2,}", "{,2}", "{0,2}?",
+        "{1,3}?",
+    ];
+
+    fn unary_patterns(p: &str) -> impl Iterator<Item = String> + '_ {
+        MODEL_GROUPS
+            .iter()
+            .map(move |g| format!("({g}{p})"))
+            .chain(MODEL_QUANTIFIERS.iter().map(move |q| format!("(?:{p}){q}")))
+    }
+
+    fn model_patterns(size: usize) -> Vec<String> {
+        use std::collections::BTreeSet;
+        let mut levels = vec![
+            BTreeSet::new(),
+            MODEL_ATOMS
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<BTreeSet<_>>(),
+        ];
+        for n in 2..=size {
+            let mut level = BTreeSet::new();
+            for p in &levels[n - 1] {
+                level.extend(unary_patterns(p));
+            }
+            for left in 1..n - 1 {
+                for a in &levels[left] {
+                    for b in &levels[n - 1 - left] {
+                        level.insert(format!("(?:{a})(?:{b})"));
+                        level.insert(format!("(?:{a}|{b})"));
+                    }
+                }
+            }
+            levels.push(level);
+        }
+        levels
+            .into_iter()
+            .flatten()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn model_texts(length: usize) -> Vec<String> {
+        let mut all = vec![String::new()];
+        let mut level = vec![String::new()];
+        for _ in 0..length {
+            level = level
+                .iter()
+                .flat_map(|p| ['a', 'b', '0', ' ', '\u{301}'].map(|c| format!("{p}{c}")))
+                .collect();
+            all.extend(level.iter().cloned());
+        }
+        all
+    }
+
+    fn span_list(rule: &PythonRule, text: &str) -> String {
+        rule.find_iter(text)
+            .map(|m| {
+                let (a, b) = m.expect("model matcher exhausted");
+                format!(
+                    "{}:{}",
+                    text[..a].chars().count(),
+                    text[..b].chars().count()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn compare_model(label: &str, patterns: &[String], texts: &[String]) -> usize {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let (mut accepted, mut refused) = (0, 0);
+        for (batch, chunk) in patterns.chunks(128).enumerate() {
+            let rules: Vec<_> = chunk
+                .iter()
+                .filter_map(|p| match PythonRule::compile(p, false) {
+                    Ok(r) => Some((p, r)),
+                    Err(()) => {
+                        refused += 1;
+                        None
+                    }
+                })
+                .collect();
+            if rules.is_empty() {
+                continue;
+            }
+            accepted += rules.len();
+            let array = |items: Vec<&str>| {
+                let mut out = String::from("[");
+                for (i, item) in items.iter().enumerate() {
+                    if i != 0 {
+                        out.push(',');
+                    }
+                    pycompat::json::quote(&mut out, item, true);
+                }
+                out.push(']');
+                out
+            };
+            let input = format!(
+                "[{},{}]",
+                array(rules.iter().map(|(p, _)| p.as_str()).collect()),
+                array(texts.iter().map(String::as_str).collect())
+            );
+            let mut child = Command::new("python3")
+                .args([
+                    "-I",
+                    "-c",
+                    r#"
+import json,re,sys
+patterns,texts=json.load(sys.stdin)
+for p in patterns:
+    r=re.compile(p)
+    for text in texts:
+        print(','.join(str(m.start())+':'+str(m.end()) for m in r.finditer(text)))
+"#,
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut stdin = child.stdin.take().unwrap();
+            let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+            let output = child.wait_with_output().unwrap();
+            writer.join().unwrap().unwrap();
+            assert!(output.status.success(), "model oracle failed");
+            assert!(output.stderr.is_empty(), "model oracle diagnostic");
+            let oracle = String::from_utf8(output.stdout).unwrap();
+            let mut spans = oracle.lines();
+            for (index, (_, rule)) in rules.iter().enumerate() {
+                for (t, text) in texts.iter().enumerate() {
+                    assert_eq!(
+                        Some(span_list(rule, text).as_str()),
+                        spans.next(),
+                        "{label}: batch {batch}, accepted pattern {index}, text {t}"
+                    );
+                }
+            }
+            assert!(spans.next().is_none(), "extra oracle rows");
+        }
+        let pairs = accepted * texts.len();
+        println!(
+            "{label}: {} patterns, {accepted} accepted, {refused} refused, {} texts, {pairs} pairs, zero span differences",
+            patterns.len(),
+            texts.len()
+        );
+        pairs
+    }
+
+    #[test]
+    fn exhaustive_small_model_spans() {
+        // CI: every <=2-node pattern against all <=2-character texts.
+        assert!(compare_model("exhaustive-ci", &model_patterns(2), &model_texts(2)) > 10_000);
+    }
+
+    #[test]
+    #[ignore = "large local model; run explicitly with --ignored --nocapture"]
+    fn exhaustive_large_model_spans() {
+        // Local: every <=3-node pattern against all <=3-character texts.
+        assert!(compare_model("exhaustive-local", &model_patterns(3), &model_texts(3)) > 1_000_000);
+    }
+
+    fn fuzz_pattern(state: &mut u64, depth: usize) -> String {
+        fn next(state: &mut u64) -> usize {
+            *state ^= *state << 13;
+            *state ^= *state >> 7;
+            *state ^= *state << 17;
+            *state as usize
+        }
+        if depth == 0 || next(state).is_multiple_of(4) {
+            return MODEL_ATOMS[next(state) % MODEL_ATOMS.len()].into();
+        }
+        let p = fuzz_pattern(state, depth - 1);
+        match next(state) % 4 {
+            0 => format!("({}{p})", MODEL_GROUPS[next(state) % MODEL_GROUPS.len()]),
+            1 => format!(
+                "(?:{p}){}",
+                MODEL_QUANTIFIERS[next(state) % MODEL_QUANTIFIERS.len()]
+            ),
+            2 => format!("(?:{p}|{})", fuzz_pattern(state, depth - 1)),
+            _ => format!("(?:{p})(?:{})", fuzz_pattern(state, depth - 1)),
+        }
+    }
+
+    #[test]
+    fn round3_two_seed_span_fuzz() {
+        for mut seed in [0x401ad33, 0x3ad401] {
+            let label = format!("fuzz-{seed:x}");
+            let mut patterns = Vec::new();
+            // Focus the same seeds on nullable alternatives and nested repeats.
+            for _ in 0..1500 {
+                let p = fuzz_pattern(&mut seed, 4);
+                patterns.push(p.clone());
+                patterns.push(format!("(?:{p}|a*?){{1,3}}"));
+            }
+            assert!(compare_model(&label, &patterns, &model_texts(3)) > 50_000);
         }
     }
 }

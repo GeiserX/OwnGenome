@@ -16,6 +16,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
   - Built-in and custom personal-data patterns share a Python-subset compiler and a backtracking matcher. Word boundaries stay inside the search, so a chip row ending in `A-` can backtrack to its shorter match. Unicode word, space and case rules also apply to custom patterns.
   - Empty custom matches keep Python's iteration order, including a nonempty alternative at the same position. Capture groups keep the full match when checking allowed examples.
   - Pattern files use universal newlines. ALLOW and SKIP rows use Python's line separators, so a CR or Unicode separator cannot extend an exemption into another file.
+  - Custom patterns cannot quantify an operand that can match empty text. Such patterns stop with redacted exit 2 because their match spans can differ from Python and hide a finding under a partial exemption.
+  - A filename with invalid UTF-8 stops the personal-data scan with redacted exit 2 in working-copy and index modes. It cannot be changed into another name or skipped.
   - Unsupported custom constructs or matcher resource limits stop the scan with a redacted error and exit 2. The supported subset is documented in `scripts/ci/check-personal-data.sh`.
 
 - The container helpers check (`scripts/ci/check-container-helpers.sh`, Guard job `helper-binaries`) now derives its table with the Rust `og` binary, `og dev helpers`. It replaces the Python inside the script, which is gone; the script keeps the docker probe, the orad download and its self-test. On this tree the table and the rule 1 output are the same, byte for byte. The static run takes 0.01 s and 6 MB where the Python took 0.2 s and 15 MB. What changes:

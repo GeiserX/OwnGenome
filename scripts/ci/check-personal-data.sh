@@ -42,8 +42,12 @@
 # and global or scoped i/m/s/x flags. Hex \xHH, \uHHHH and \UHHHHHHHH and
 # standard control escapes are supported. Unicode word characters, spaces
 # and simple case folding follow Python, including dotted and dotless I.
-# Empty matches follow Python 3.14+ finditer, including a nonempty match at
-# the same position. Captures never narrow the span checked against ALLOW.
+# Every quantified operand must be nonnullable: it must consume a character
+# on every successful match. This includes groups and alternatives under
+# greedy or lazy ?, *, + and braces. For example, (a?)+ and (a*|b){1,3}
+# are refused. Nullability propagates through flags, groups and alternatives.
+# Empty matches outside such operands follow Python 3.14+ finditer. A
+# nonempty match can follow an empty match at the same position. Captures never narrow the span checked against ALLOW.
 #
 # Backreferences, look-around in custom patterns, conditionals, atomic or
 # possessive groups, ASCII/locale flags, named Unicode and octal escapes,
@@ -51,6 +55,8 @@
 # over 16 KiB or with more than 64 nested groups are rejected. Unsupported
 # syntax, invalid patterns and a matcher resource-limit error stop the scan
 # with exit 2 and a diagnostic that omits the pattern and scanned values.
+# A path with invalid UTF-8 also stops the scan before SKIP, path conversion
+# or staged-blob requests. File contents still use replacement decoding.
 #
 # The scan is og dev scan personal-data (rust/crates/og-dev); bin/og runs
 # the build scripts/setup.sh --og puts in bin/.og for this machine, and OG

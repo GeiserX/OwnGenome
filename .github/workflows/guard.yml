@@ -265,6 +265,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Scanner patterns target Python 3.14+ finditer, including \B on empty
+      # text. Use the oracle image's minor version for differential tests.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15'
+
       - name: Install the toolchain rust/rust-toolchain.toml pins, with rustfmt and clippy
         run: |
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
@@ -328,6 +334,27 @@ jobs:
             echo "Control: all five scanner regressions in round ${round} failed, as they must."
           done
 
+      - name: Scanner round-three controls (nullable operands and raw-byte paths must fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round3-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round3-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round3-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round3-matcher-fixed.rs" "$matcher"' EXIT
+          before=3c2c2f288c5ac516c22ed85b6aa8b04e43e734c6
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round3-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round3_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in nullable_atoms_are_refused nullable_repetitions_fail_closed raw_byte_paths_fail_closed; do
+            grep -E "round3_${test} .*FAILED" "$log" || { echo "ERROR: missing round-three red control"; exit 1; }
+          done
+          echo "Control: nullable operands and raw-byte paths failed before the fix."
+
       - name: Scanner matcher controls (word classes and swallowed errors must be caught)
         run: |
           source=crates/og-dev/src/lookaround.rs
@@ -342,6 +369,7 @@ jobs:
           [ "$rc" -ne 0 ]
           grep -E 'round2_generated_patterns_and_tables .*FAILED' "$log"
           grep -E 'finditer_spans_match_real_python .*FAILED' "$log"
+          grep -E 'exhaustive_small_model_spans .*FAILED' "$log"
           sed 's/Some(Err(()))/None/' "$saved" > "$source"
           log="${RUNNER_TEMP}/matcher-error-control.log"
           rc=0

@@ -27,9 +27,7 @@
 //! DIR given as `/tmp/x` still finds `/private/tmp/x/CLAUDE.md`'s examples.
 
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::LazyLock;
@@ -284,7 +282,8 @@ fn own_rules(path: &str) -> Result<Vec<Check>, String> {
 
 /// `path` relative to `root` when it lies below it (both with symbolic
 /// links resolved), else `path` as given.
-fn relative(path: &Path, root: &Path) -> String {
+fn relative(path: &Path, root: &Path) -> Result<String, String> {
+    utf8_path(path)?;
     let abs = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -299,9 +298,14 @@ fn relative(path: &Path, root: &Path) -> String {
         _ => abs.clone(),
     };
     match placed.strip_prefix(root) {
-        Ok(rel) if !rel.as_os_str().is_empty() => rel.to_string_lossy().into_owned(),
-        _ => path.to_string_lossy().into_owned(),
+        Ok(rel) if !rel.as_os_str().is_empty() => utf8_path(rel).map(str::to_owned),
+        _ => utf8_path(path).map(str::to_owned),
     }
+}
+
+fn utf8_path(path: &Path) -> Result<&str, String> {
+    path.to_str()
+        .ok_or_else(|| "path is not valid UTF-8".into())
 }
 
 fn git_files(root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -309,18 +313,21 @@ fn git_files(root: &Path) -> Result<Vec<PathBuf>, String> {
         .arg("-C")
         .arg(root)
         .args(["ls-files", "-z"])
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("cannot run git: {e}"))?;
     if !out.status.success() {
         return Err(format!("git ls-files failed in {}", root.display()));
     }
-    Ok(out
-        .stdout
+    out.stdout
         .split(|&b| b == 0)
         .filter(|f| !f.is_empty())
-        .map(|f| root.join(OsStr::from_bytes(f)))
-        .collect())
+        .map(|f| {
+            std::str::from_utf8(f)
+                .map(|s| root.join(s))
+                .map_err(|_| "path is not valid UTF-8".into())
+        })
+        .collect::<Result<Vec<_>, String>>()
 }
 
 /// The staged blob of each path (relative to `root`), from one
@@ -354,12 +361,15 @@ fn staged(root: &Path, rels: &[String]) -> Result<HashMap<String, Vec<u8>>, Stri
         if header.pop() != Some(0) {
             return Err("git cat-file: incomplete header".into());
         }
-        let head = String::from_utf8_lossy(&header);
+        let head =
+            std::str::from_utf8(&header).map_err(|_| "git cat-file: invalid header encoding")?;
         let fields: Vec<&str> = head.split(' ').collect();
         let [_, kind, size] = fields[..] else {
             continue; // "<name> missing" or "ambiguous"
         };
-        let size: usize = size.parse().map_err(|_| format!("git cat-file: {head}"))?;
+        let size: usize = size
+            .parse()
+            .map_err(|_| "git cat-file: invalid object size".to_owned())?;
         let mut data = vec![0; size + 1];
         out.read_exact(&mut data).map_err(|e| e.to_string())?;
         data.pop();
@@ -392,6 +402,8 @@ fn scan_text(
     data: &[u8],
 ) -> Result<bool, ()> {
     let mut bad = false;
+    // Intentional content decoding, matching Python errors="replace". Paths
+    // and Git protocol headers are validated strictly before any conversion.
     let text = String::from_utf8_lossy(data);
     for (i, line) in lines(&text, Lines::Blob).enumerate() {
         let spans: Vec<(usize, usize)> = texts
@@ -425,10 +437,12 @@ fn scan_text(
 }
 
 fn run(a: &Args, out: &mut dyn Write) -> Result<bool, String> {
+    utf8_path(&a.root)?;
     let root = a
         .root
         .canonicalize()
         .map_err(|e| format!("--root {}: {e}", a.root.display()))?;
+    utf8_path(&root)?;
     let mut rules = builtin();
     if let Some(p) = &a.patterns {
         rules.extend(own_rules(p)?);
@@ -444,7 +458,9 @@ fn run(a: &Args, out: &mut dyn Write) -> Result<bool, String> {
     }
     let todo: Vec<(&PathBuf, String)> = files
         .iter()
-        .map(|f| (f, relative(f, &root)))
+        .map(|f| relative(f, &root).map(|rel| (f, rel)))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
         .filter(|(_, rel)| !a.skip.iter().any(|g| fnmatch(rel, g)))
         .collect();
     let blobs = if a.cached {
@@ -524,6 +540,8 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
 
     fn kinds(line: &str) -> Vec<&'static str> {
         let rules = builtin();

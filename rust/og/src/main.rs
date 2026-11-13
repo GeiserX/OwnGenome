@@ -102,6 +102,18 @@ fn no_bam(tool: &str) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    // Refuse raw-byte scanner arguments before std::env::args can panic or
+    // any path can be replaced with a different name. Other verbs retain
+    // their existing argument handling.
+    let raw: Vec<_> = std::env::args_os().skip(1).collect();
+    if raw
+        .get(..3)
+        .is_some_and(|prefix| prefix == ["dev", "scan", "personal-data"])
+        && raw.iter().any(|s| s.to_str().is_none())
+    {
+        eprintln!("ERROR: path is not valid UTF-8");
+        return ExitCode::from(2);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(tool) = args.first() else {
         return usage_error("the following arguments are required: tool");
