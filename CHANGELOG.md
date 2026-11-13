@@ -4,7 +4,7 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
-- The personal-data scan, the image scan and the version checks of CI now run in the Rust `og` binary: `og dev scan personal-data` (`scripts/ci/check-personal-data.sh`), `og dev scan images` and `og dev versions coupled` (`scripts/ci/check-images.sh`), `og dev versions check-run` (`scripts/ci/gen-containers-config.sh --check-versions`), `og dev versions expand` (`scripts/ci/check-links.sh`) and `og dev pgs` (`scripts/ci/check-pgs-labels.sh`). The scripts keep their options and lists; the Python inside them is gone. The personal-data scan of the repository takes 0.5 s instead of 3.6 s. Fixes:
+- The personal-data scan, the image scan and the version checks of CI now run in the Rust `og` binary: `og dev scan personal-data` (`scripts/ci/check-personal-data.sh`), `og dev scan images` and `og dev versions coupled` (`scripts/ci/check-images.sh`), `og dev versions check-run` (`scripts/ci/gen-containers-config.sh --check-versions`), `og dev versions expand` (`scripts/ci/check-links.sh`) and `og dev pgs` (`scripts/ci/check-pgs-labels.sh`). The scripts keep their options and lists; the Python inside them is gone. Fixes:
   - A personal-data scan that read no text file (every file skipped or binary) fails with `FAIL: no text file was scanned`. It printed `scanned 0 text files` and passed.
   - A personal-data scan whose root is reached through a symbolic link places each file under that root, so the lists of skipped files and documented examples still apply to it.
   - An image exemption in `check-images.sh` whose file no longer names that image fails with `FAIL: <file> no longer names <image>; drop its line from EXEMPT_PAIRS`. A stale exemption was never reported.
@@ -13,7 +13,10 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
   - Personal-data findings print only the kind, escaped filename and line number. Matched values and custom-pattern contents never appear in diagnostics. The Python scanner printed the detected line.
   - Built-in word boundaries and sample-label case folding follow Python, including combining marks, dotted and dotless I, long s and the Kelvin sign.
   - The staged scan uses NUL-delimited Git requests and responses, so a filename containing a newline cannot hide a finding.
-  - `PERSONAL_DATA_PATTERNS` holds patterns in the syntax of Rust's regex crate. It was Python's. Capture groups keep the full match when checking allowed examples.
+  - Built-in and custom personal-data patterns share a Python-subset compiler and a backtracking matcher. Word boundaries stay inside the search, so a chip row ending in `A-` can backtrack to its shorter match. Unicode word, space and case rules also apply to custom patterns.
+  - Empty custom matches keep Python's iteration order, including a nonempty alternative at the same position. Capture groups keep the full match when checking allowed examples.
+  - Pattern files use universal newlines. ALLOW and SKIP rows use Python's line separators, so a CR or Unicode separator cannot extend an exemption into another file.
+  - Unsupported custom constructs or matcher resource limits stop the scan with a redacted error and exit 2. The supported subset is documented in `scripts/ci/check-personal-data.sh`.
 
 - The container helpers check (`scripts/ci/check-container-helpers.sh`, Guard job `helper-binaries`) now derives its table with the Rust `og` binary, `og dev helpers`. It replaces the Python inside the script, which is gone; the script keeps the docker probe, the orad download and its self-test. On this tree the table and the rule 1 output are the same, byte for byte. The static run takes 0.01 s and 6 MB where the Python took 0.2 s and 15 MB. What changes:
   - A helper called in a process's `shell:` block is checked too. The Python read only `script:` blocks, so such a call went unchecked. No module has one today.

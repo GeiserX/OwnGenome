@@ -32,9 +32,25 @@
 #                                                 and require each to be caught
 #
 # Your own identifiers (names, sample ids, hostnames) do not belong in this
-# public file. Put one regular expression per line (the syntax of Rust's
-# regex crate, close to POSIX extended) in a file outside the repository and
-# point PERSONAL_DATA_PATTERNS at it; each match is reported as kind "own".
+# public file. Put one Python-subset regular expression per text-file line
+# outside the repository and point PERSONAL_DATA_PATTERNS at it. Each match
+# is reported as kind "own". CRLF, CR and LF separate pattern-file lines.
+#
+# Supported: literals, dot, character classes and ranges (including negated
+# classes), \b \B \w \W \s \S \d \D, ^ $ \A \Z, alternation, capturing,
+# named (?P<name>...) and noncapturing groups, greedy and lazy ? * + {m,n},
+# and global or scoped i/m/s/x flags. Hex \xHH, \uHHHH and \UHHHHHHHH and
+# standard control escapes are supported. Unicode word characters, spaces
+# and simple case folding follow Python, including dotted and dotless I.
+# Empty matches follow Python 3.14+ finditer, including a nonempty match at
+# the same position. Captures never narrow the span checked against ALLOW.
+#
+# Backreferences, look-around in custom patterns, conditionals, atomic or
+# possessive groups, ASCII/locale flags, named Unicode and octal escapes,
+# nested/POSIX classes and other engine extensions are unsupported. Patterns
+# over 16 KiB or with more than 64 nested groups are rejected. Unsupported
+# syntax, invalid patterns and a matcher resource-limit error stop the scan
+# with exit 2 and a diagnostic that omits the pattern and scanned values.
 #
 # The scan is og dev scan personal-data (rust/crates/og-dev); bin/og runs
 # the build scripts/setup.sh --og puts in bin/.og for this machine, and OG

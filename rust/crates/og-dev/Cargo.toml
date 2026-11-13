@@ -13,6 +13,8 @@ og-nf.workspace = true
 flate2.workspace = true
 indexmap.workspace = true
 png = "0.18"
+fancy-regex = "=0.16.2"
+regex-syntax = "=0.8.11"
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }
 
 [lints]

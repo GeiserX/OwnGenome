@@ -296,26 +296,60 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 
-      # Keep the negative controls executable on the final head. The pinned
-      # test-only commit contains the old scanner and the five regressions.
-      - name: Scanner controls (all five pre-fix differential tests must fail)
+      # Each pinned test-only commit still contains the scanner it attacks.
+      - name: Scanner controls (both rounds must fail against their pre-fix code)
         run: |
-          before=80a675eadf73640c2a0f2d63fcfe30e6fdd0deef
-          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
           source=crates/og-dev/src/personal_data.rs
-          saved="${RUNNER_TEMP}/personal-data-fixed.rs"
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/personal-data-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/personal-data-fixed.rs" "$source"; cp "${RUNNER_TEMP}/matcher-fixed.rs" "$matcher"' EXIT
+          for round in 1 2; do
+            if [ "$round" = 1 ]; then
+              before=80a675eadf73640c2a0f2d63fcfe30e6fdd0deef
+              filter=privacy_
+              tests="report_never_contains_values_or_patterns python_boundaries_differential python_casefold_differential staged_newline_differential fixed_seed_differential_fuzz"
+            else
+              before=fcb7ac4ec4dc547074f5b4e12699ae9ecb1c24ef
+              filter=round2_
+              tests="boundary_backtracking custom_unicode cr_patterns empty_alternative exception_lines"
+            fi
+            git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+            git show "$before:rust/$source" > "$source"
+            git show "$before:rust/$matcher" > "$matcher"
+            log="${RUNNER_TEMP}/scanner-red-controls-${round}.log"
+            rc=0
+            cargo test -p og-dev --locked --no-fail-fast "$filter" > "$log" 2>&1 || rc=$?
+            cat "$log"
+            [ "$rc" -ne 0 ] || { echo "ERROR: the pre-fix scanner passed"; exit 1; }
+            for test in $tests; do
+              grep -E "${filter}${test} .*FAILED" "$log" || { echo "ERROR: missing red control $test"; exit 1; }
+            done
+            echo "Control: all five scanner regressions in round ${round} failed, as they must."
+          done
+
+      - name: Scanner matcher controls (word classes and swallowed errors must be caught)
+        run: |
+          source=crates/og-dev/src/lookaround.rs
+          saved="${RUNNER_TEMP}/matcher-controls-fixed.rs"
           cp "$source" "$saved"
           trap 'cp "$saved" "$source"' EXIT
-          git show "$before:rust/$source" > "$source"
-          log="${RUNNER_TEMP}/scanner-red-controls.log"
+          sed 's/^const WORD: .*$/const WORD: \&str = r"[\\w]";/' "$saved" > "$source"
+          log="${RUNNER_TEMP}/matcher-word-control.log"
           rc=0
-          cargo test -p og-dev --locked --no-fail-fast privacy_ > "$log" 2>&1 || rc=$?
+          cargo test -p og-dev --locked --no-fail-fast --lib > "$log" 2>&1 || rc=$?
           cat "$log"
-          [ "$rc" -ne 0 ] || { echo "ERROR: the pre-fix scanner passed"; exit 1; }
-          for test in report_never_contains_values_or_patterns python_boundaries_differential python_casefold_differential staged_newline_differential fixed_seed_differential_fuzz; do
-            grep -E "privacy_${test} .*FAILED" "$log" || { echo "ERROR: missing red control $test"; exit 1; }
-          done
-          echo "Control: all five scanner regressions failed, as they must."
+          [ "$rc" -ne 0 ]
+          grep -E 'round2_generated_patterns_and_tables .*FAILED' "$log"
+          grep -E 'finditer_spans_match_real_python .*FAILED' "$log"
+          sed 's/Some(Err(()))/None/' "$saved" > "$source"
+          log="${RUNNER_TEMP}/matcher-error-control.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round2_unsupported > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep -E 'round2_unsupported_and_exhausted_patterns_fail_closed .*FAILED' "$log"
+          echo "Control: incorrect word classes and a swallowed matcher error both failed."
 
       - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows

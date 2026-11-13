@@ -37,7 +37,7 @@ use std::sync::LazyLock;
 use pycompat::mtime::fnmatch;
 use pycompat::num::py_strip;
 
-use crate::lookaround::Rule;
+use crate::lookaround::PythonRule as Rule;
 
 const USAGE: &str = "usage: og dev scan personal-data --root DIR --allow TEXT --skip TEXT [--patterns FILE] [--cached] [--] [FILE...]\n";
 
@@ -47,126 +47,133 @@ const SELF: &str = "scripts/ci/check-personal-data.sh";
 /// How many leading bytes are searched for a NUL to call a file binary.
 const BINARY_PROBE: usize = 8192;
 
-fn not_word(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
-}
-
-fn digit_or_dot(c: char) -> bool {
-    c.is_ascii_digit() || c == '.'
-}
-
-fn digit_dot_slash(c: char) -> bool {
-    c.is_ascii_digit() || c == '.' || c == '/'
-}
-
-/// `[A-Za-z]` under Python's `(?i)`, which also folds to the long s and
-/// the Kelvin sign, plus dotted and dotless I.
-fn letter_ci(c: char) -> bool {
-    c.is_ascii_alphabetic() || c == '\u{130}' || c == '\u{131}' || c == '\u{17F}' || c == '\u{212A}'
-}
-
 const STR_GENES: &str = "HTT|FMR1|C9orf72|C9ORF72|ATXN[0-9]+|DMPK|FXN|CNBP|RFC1|PABPN1|CACNA1A|TCF4|AR|PPP2R2B|TBP|JPH3|NOP56|ATN1|CSTB|AFF2|FMR2|NOTCH2NLC|DAB1|BEAN1|STARD7|YEATS2";
 const OCTET: &str = "(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
-/// Python's `\s` also holds the four separators U+001C to U+001F.
-const SPACE: &str = r"\s\x1c-\x1f";
+
+/// Python has three distinct line operations here. Pattern files use text
+/// mode universal newlines; exception tables use str.splitlines(); scanned
+/// blobs are decoded from bytes and split on LF, preserving the last empty
+/// line. Keep the distinction in this one helper, including CRLF as one row.
+#[derive(Clone, Copy)]
+enum Lines {
+    Blob,
+    TextFile,
+    ExceptionTable,
+}
+
+fn lines(text: &str, mode: Lines) -> impl Iterator<Item = &str> {
+    let (mut rest, mut finished) = (text, false);
+    std::iter::from_fn(move || {
+        if finished || (rest.is_empty() && !matches!(mode, Lines::Blob)) {
+            return None;
+        }
+        let at = rest.char_indices().find(|&(_, c)| match mode {
+            Lines::Blob => c == '\n',
+            Lines::TextFile => matches!(c, '\n' | '\r'),
+            Lines::ExceptionTable => matches!(
+                c,
+                '\n' | '\r'
+                    | '\u{b}'
+                    | '\u{c}'
+                    | '\u{1c}'
+                    | '\u{1d}'
+                    | '\u{1e}'
+                    | '\u{85}'
+                    | '\u{2028}'
+                    | '\u{2029}'
+            ),
+        });
+        match at {
+            Some((i, c)) => {
+                let line = &rest[..i];
+                let mut end = i + c.len_utf8();
+                if c == '\r' && rest[end..].starts_with('\n') {
+                    end += 1;
+                }
+                rest = &rest[end..];
+                Some(line)
+            }
+            None => {
+                finished = true;
+                Some(rest)
+            }
+        }
+    })
+}
 
 /// A rule: its kind, its pattern, and a pattern the line must also match.
+#[derive(Clone)]
 struct Check {
     kind: &'static str,
     rule: Rule,
     cond: Option<&'static [Rule]>,
 }
 
-fn rule(pattern: &str, not_after: Option<fn(char) -> bool>) -> Rule {
-    Rule::python(pattern, not_after).expect("a valid built-in pattern")
+fn rule(pattern: &str) -> Rule {
+    Rule::compile(pattern, true).expect("a valid built-in pattern")
 }
 
-/// A sample label, which may carry a number after a separator: sample7,
-/// sample_01, donor-3; or a public sample id such as NA12878 or HG002.
-static LABEL: LazyLock<[Rule; 2]> = LazyLock::new(|| {
-    [
-        rule(
-            r"(?i)((?:sample|pat[iİı]ent|subject|proband|part[iİı]c[iİı]pant|[iİı]nd[iİı]v[iİı]dual|donor)s?(?:[_-]?[0-9]+)?)(?:[^A-Za-zİı]|$)",
-            Some(letter_ci),
-        ),
-        rule(r"\b(?:NA|HG)[0-9]{3,5}\b", None),
-    ]
+static LABEL: LazyLock<[Rule; 1]> = LazyLock::new(|| {
+    [rule(
+        r"(?:(?i:(?<![A-Za-z])(?:sample|patient|subject|proband|participant|individual|donor)s?(?:[_-]?[0-9]+)?(?![A-Za-z]))|\b(?:NA|HG)[0-9]{3,5}\b)",
+    )]
 });
+static REPCN: LazyLock<[Rule; 1]> = LazyLock::new(|| [rule(r"\bREPCN\b")]);
 
-static REPCN: LazyLock<[Rule; 1]> = LazyLock::new(|| [rule(r"\bREPCN\b", None)]);
-
-/// The built-in rules, in the order they are reported. Each pattern marks
-/// only the leaked value, so an allowed example covers just its span.
+/// Built-ins use the same compiler and iterator as custom patterns.
 fn builtin() -> Vec<Check> {
-    let gt = r"\(?[ACGTDI][/|;]?[ACGTDI]\)?";
-    vec![
-        Check {
-            kind: "home",
-            rule: rule(
-                r"/home/[A-Za-z]|/Users/[A-Za-z]|/mnt/use[r]\b|[A-Za-z]:\\\\?Users\\\\?[A-Za-z]",
-                Some(not_word),
-            ),
-            cond: None,
-        },
-        Check {
-            kind: "address",
-            rule: rule(
-                &format!(
-                    r"((?:10\.{OCTET}|172\.(?:1[6-9]|2[0-9]|3[01])|192\.168|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7]))\.{OCTET}\.{OCTET})(?:$|\.$|\.[^0-9]|[^0-9.])"
+    static RULES: LazyLock<Vec<Check>> = LazyLock::new(|| {
+        let gt = r"\(?[ACGTDI][/|;]?[ACGTDI]\)?(?![A-Za-z0-9])";
+        vec![
+            Check {
+                kind: "home",
+                rule: rule(
+                    r"(?<![A-Za-z0-9_])(?:/home/[A-Za-z]|/Users/[A-Za-z]|/mnt/use[r]\b|[A-Za-z]:\\\\?Users\\\\?[A-Za-z])",
                 ),
-                Some(digit_or_dot),
-            ),
-            cond: None,
-        },
-        Check {
-            kind: "address",
-            rule: rule(r"[A-Za-z0-9-]\.ts\.net\b", None),
-            cond: None,
-        },
-        Check {
-            kind: "diplotype",
-            rule: rule(r"\*[0-9]+[A-Za-z0-9.]*/\*[0-9]+", None),
-            cond: Some(&*LABEL),
-        },
-        Check {
-            kind: "rsid",
-            rule: rule(
-                &format!(r#"(\brs[0-9]+\b[{SPACE}:=,;|`'"\[\]-]{{1,6}}{gt})(?:[^A-Za-z0-9]|$)"#),
-                None,
-            ),
-            cond: None,
-        },
-        Check {
-            kind: "rsid",
-            rule: rule(
-                r"\brs[0-9]+\t[0-9XYMT]{1,2}\t[0-9]+\t[ACGTDI-]{1,2}\b",
-                None,
-            ),
-            cond: None,
-        },
-        Check {
-            kind: "repeat",
-            rule: rule(
-                r"([0-9]{1,4}/[0-9]{1,4})(?:[^0-9/]|$)",
-                Some(digit_dot_slash),
-            ),
-            cond: Some(&*REPCN),
-        },
-        // Python: \b(?:GENES)\b[^/\n]{0,40}?(?<![0-9.])N/N(?![0-9/]). The
-        // gap after the gene is never empty (a digit right after a gene
-        // name is no word boundary), so its last character carries the
-        // look-behind.
-        Check {
-            kind: "repeat",
-            rule: rule(
-                &format!(
-                    r"(\b(?:{STR_GENES})\b[^/\n]{{0,39}}?[^/\n0-9.][0-9]{{1,4}}/[0-9]{{1,4}})(?:[^0-9/]|$)"
-                ),
-                None,
-            ),
-            cond: None,
-        },
-    ]
+                cond: None,
+            },
+            Check {
+                kind: "address",
+                rule: rule(&format!(
+                    r"(?<![0-9.])(?:10\.{OCTET}|172\.(?:1[6-9]|2[0-9]|3[01])|192\.168|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7]))\.{OCTET}\.{OCTET}(?![0-9]|\.[0-9])"
+                )),
+                cond: None,
+            },
+            Check {
+                kind: "address",
+                rule: rule(r"[A-Za-z0-9-]\.ts\.net\b"),
+                cond: None,
+            },
+            Check {
+                kind: "diplotype",
+                rule: rule(r"\*[0-9]+[A-Za-z0-9.]*/\*[0-9]+"),
+                cond: Some(&*LABEL),
+            },
+            Check {
+                kind: "rsid",
+                rule: rule(&format!(r#"\brs[0-9]+\b[\s:=,;|`'"\[\]-]{{1,6}}{gt}"#)),
+                cond: None,
+            },
+            Check {
+                kind: "rsid",
+                rule: rule(r"\brs[0-9]+\t[0-9XYMT]{1,2}\t[0-9]+\t[ACGTDI-]{1,2}\b"),
+                cond: None,
+            },
+            Check {
+                kind: "repeat",
+                rule: rule(r"(?<![0-9./])[0-9]{1,4}/[0-9]{1,4}(?![0-9/])"),
+                cond: Some(&*REPCN),
+            },
+            Check {
+                kind: "repeat",
+                rule: rule(&format!(
+                    r"\b(?:{STR_GENES})\b[^/\n]{{0,40}}?(?<![0-9.])[0-9]{{1,4}}/[0-9]{{1,4}}(?![0-9/])"
+                )),
+                cond: None,
+            },
+        ]
+    });
+    RULES.clone()
 }
 
 /// The arguments.
@@ -204,20 +211,22 @@ fn parse(args: &[String]) -> Result<Args, String> {
         }
     }
     let root = root.ok_or("--root is required")?;
-    let allow = allow
-        .ok_or("--allow is required")?
-        .lines()
-        .filter(|l| !l.trim().is_empty())
+    let allow_text = allow.ok_or("--allow is required")?;
+    let allow = lines(&allow_text, Lines::ExceptionTable)
+        .filter(|l| !py_strip(l).is_empty())
         .map(|l| {
             let l = py_strip(l);
             let (path, text) = l.split_once(' ').unwrap_or((l, ""));
             (path.to_owned(), py_strip(text).to_owned())
         })
         .collect();
-    let skip = skip
-        .ok_or("--skip is required")?
-        .lines()
-        .filter_map(|l| l.split_whitespace().next().map(str::to_owned))
+    let skip_text = skip.ok_or("--skip is required")?;
+    let skip = lines(&skip_text, Lines::ExceptionTable)
+        .filter_map(|l| {
+            pycompat::text::split(l, None, None)
+                .first()
+                .map(|s| (*s).to_owned())
+        })
         .collect();
     Ok(Args {
         root: PathBuf::from(root),
@@ -233,16 +242,16 @@ fn parse(args: &[String]) -> Result<Args, String> {
 fn own_rules(path: &str) -> Result<Vec<Check>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let mut out = Vec::new();
-    for (line, l) in text.lines().enumerate() {
+    for (line, l) in lines(&text, Lines::TextFile).enumerate() {
         let p = py_strip(l);
         if p.is_empty() || l.starts_with('#') {
             continue;
         }
         // Rule reports capture 1 for the built-in look-around patterns.
         // A user's captures must not narrow the span checked against ALLOW.
-        let rule = Rule::whole_match(p).map_err(|_| {
+        let rule = Rule::compile(p, false).map_err(|_| {
             format!(
-                "{}:{}: invalid custom pattern",
+                "{}:{}: invalid or unsupported custom pattern",
                 path.escape_debug(),
                 line + 1
             )
@@ -358,31 +367,41 @@ fn report(out: &mut dyn Write, kind: &str, rel: &str, n: usize) {
 }
 
 /// Scans one file's text; true when something was reported.
-fn scan_text(out: &mut dyn Write, rules: &[Check], texts: &[&str], rel: &str, data: &[u8]) -> bool {
+fn scan_text(
+    out: &mut dyn Write,
+    rules: &[Check],
+    texts: &[&str],
+    rel: &str,
+    data: &[u8],
+) -> Result<bool, ()> {
     let mut bad = false;
     let text = String::from_utf8_lossy(data);
-    for (i, line) in text.split('\n').enumerate() {
+    for (i, line) in lines(&text, Lines::Blob).enumerate() {
         let spans: Vec<(usize, usize)> = texts
             .iter()
             .flat_map(|t| line.match_indices(*t).map(|(a, s)| (a, a + s.len())))
             .collect();
         for c in rules {
-            if c.cond
-                .is_some_and(|cs| !cs.iter().any(|r| r.is_match(line)))
-            {
-                continue;
+            if let Some(conditions) = c.cond {
+                let mut matched = false;
+                for condition in conditions {
+                    matched |= condition.is_match(line)?;
+                }
+                if !matched {
+                    continue;
+                }
             }
-            let leaked = c
-                .rule
-                .find_iter(line)
-                .find(|&(s, e)| !spans.iter().any(|&(a, b)| a <= s && e <= b));
-            if leaked.is_some() {
-                report(out, c.kind, rel, i + 1);
-                bad = true;
+            for found in c.rule.find_iter(line) {
+                let (s, e) = found?;
+                if !spans.iter().any(|&(a, b)| a <= s && e <= b) {
+                    report(out, c.kind, rel, i + 1);
+                    bad = true;
+                    break;
+                }
             }
         }
     }
-    bad
+    Ok(bad)
 }
 
 fn run(a: &Args, out: &mut dyn Write) -> Result<bool, String> {
@@ -447,7 +466,12 @@ fn run(a: &Args, out: &mut dyn Write) -> Result<bool, String> {
             .filter(|(p, _)| rel == SELF || fnmatch(rel, p))
             .map(|(_, t)| t.as_str())
             .collect();
-        bad |= scan_text(out, &rules, &texts, rel, &data);
+        bad |= scan_text(out, &rules, &texts, rel, &data).map_err(|()| {
+            format!(
+                "{}: pattern matching could not complete",
+                rel.escape_debug()
+            )
+        })?;
     }
     let _ = writeln!(out, "scanned {scanned} text files");
     if scanned == 0 {
@@ -486,11 +510,11 @@ mod tests {
         let mut out = Vec::new();
         for c in &rules {
             if c.cond
-                .is_some_and(|cs| !cs.iter().any(|r| r.is_match(line)))
+                .is_some_and(|cs| !cs.iter().any(|r| r.is_match(line).unwrap()))
             {
                 continue;
             }
-            if c.rule.is_match(line) {
+            if c.rule.is_match(line).unwrap() {
                 out.push(c.kind);
             }
         }
@@ -558,21 +582,9 @@ mod tests {
         let rules = builtin();
         let ex = p("(`/mnt/u~ser/`, `/ho~me/username/`, etc.)");
         let mut out = Vec::new();
-        assert!(!scan_text(
-            &mut out,
-            &rules,
-            &[ex.as_str()],
-            "x.md",
-            ex.as_bytes()
-        ));
+        assert!(!scan_text(&mut out, &rules, &[ex.as_str()], "x.md", ex.as_bytes()).unwrap());
         let line = p(&format!("{ex} see /home/~bob/x"));
-        assert!(scan_text(
-            &mut out,
-            &rules,
-            &[ex.as_str()],
-            "x.md",
-            line.as_bytes()
-        ));
+        assert!(scan_text(&mut out, &rules, &[ex.as_str()], "x.md", line.as_bytes()).unwrap());
         let got = String::from_utf8(out).unwrap();
         assert!(got.starts_with("FAIL home      x.md:1"), "{got}");
     }
@@ -591,16 +603,19 @@ mod tests {
 
         let line = b"PREFIX PUBLIC SUFFIX";
         let mut out = Vec::new();
-        assert!(scan_text(&mut out, &rules, &["PUBLIC"], "x.md", line));
+        assert!(scan_text(&mut out, &rules, &["PUBLIC"], "x.md", line).unwrap());
         let got = String::from_utf8(out).unwrap();
         assert_eq!(got.lines().count(), 5, "{got}");
-        assert!(!scan_text(
-            &mut Vec::new(),
-            &rules,
-            &["PREFIX PUBLIC SUFFIX"],
-            "x.md",
-            line,
-        ));
+        assert!(
+            !scan_text(
+                &mut Vec::new(),
+                &rules,
+                &["PREFIX PUBLIC SUFFIX"],
+                "x.md",
+                line,
+            )
+            .unwrap()
+        );
     }
 
     struct Fixture(PathBuf);
@@ -635,7 +650,14 @@ mod tests {
         oracle_options(f, files, cached, "", "", "")
     }
 
-    fn oracle_options(f: &Fixture, files: &[&str], cached: bool, allow: &str, skip: &str, patterns: &str) -> String {
+    fn oracle_options(
+        f: &Fixture,
+        files: &[&str],
+        cached: bool,
+        allow: &str,
+        skip: &str,
+        patterns: &str,
+    ) -> String {
         static PYTHON: LazyLock<String> = LazyLock::new(|| {
             const SHA: &str = "4104a93f2121b457413336574b8563fe85291fd7";
             let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -680,9 +702,12 @@ mod tests {
                 )
         });
         let mut cmd = Command::new("python3");
-        cmd.args(["-I", "-c", &PYTHON])
-            .arg(&f.0)
-            .args([allow, skip, patterns, if cached { "1" } else { "" }]);
+        cmd.args(["-I", "-c", &PYTHON]).arg(&f.0).args([
+            allow,
+            skip,
+            patterns,
+            if cached { "1" } else { "" },
+        ]);
         for file in files {
             cmd.arg(f.0.join(file));
         }
@@ -699,12 +724,22 @@ mod tests {
         assert_options(f, files, cached, "", "", "", true);
     }
 
-    fn assert_options(f: &Fixture, files: &[&str], cached: bool, allow: &str, skip: &str, patterns: &str, require_finding: bool) {
+    fn assert_options(
+        f: &Fixture,
+        files: &[&str],
+        cached: bool,
+        allow: &str,
+        skip: &str,
+        patterns: &str,
+        require_finding: bool,
+    ) {
         let expected = oracle_options(f, files, cached, allow, skip, patterns);
         let mut args = f.args(files);
         args[3] = allow.into();
         args[5] = skip.into();
-        if !patterns.is_empty() { args.extend(["--patterns".into(), patterns.into()]); }
+        if !patterns.is_empty() {
+            args.extend(["--patterns".into(), patterns.into()]);
+        }
         if cached {
             args.insert(0, "--cached".into());
         }
@@ -714,6 +749,7 @@ mod tests {
         assert!(err.is_empty(), "unexpected scanner diagnostic");
         let reported: std::collections::HashSet<_> = out.lines().collect();
         let mut count = 0;
+        let mut required_reports = Vec::new();
         for line in expected.lines().filter(|l| l.starts_with('[')) {
             let pycompat::json::Value::Array(row) = pycompat::json::loads(line).unwrap() else {
                 panic!("metadata")
@@ -732,9 +768,23 @@ mod tests {
                 reported.contains(finding.as_str()),
                 "missing oracle finding #{count}"
             );
+            required_reports.push(finding);
             count += 1;
         }
-        if require_finding { assert!(count > 0, "oracle control was clean"); }
+        let mut actual_reports: Vec<_> = out
+            .lines()
+            .filter(|l| l.starts_with("FAIL "))
+            .map(str::to_owned)
+            .collect();
+        actual_reports.sort();
+        required_reports.sort();
+        assert_eq!(
+            actual_reports, required_reports,
+            "scanner metadata multiset differs"
+        );
+        if require_finding {
+            assert!(count > 0, "oracle control was clean");
+        }
         assert_eq!(code, u8::from(count > 0));
         assert_eq!(
             out.lines().filter(|l| l.starts_with("FAIL ")).count(),
@@ -885,18 +935,51 @@ mod tests {
         let f = Fixture::new("r2-boundary");
         std::fs::write(f.0.join("chip.md"), "rs987654\t1\t9\tA-\n").unwrap();
         assert_oracle_findings(&f, &["chip.md"], false);
-        assert!(Command::new("git").arg("-C").arg(&f.0).args(["init", "-q"]).status().unwrap().success());
-        assert!(Command::new("git").arg("-C").arg(&f.0).args(["add", "chip.md"]).status().unwrap().success());
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["init", "-q"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["add", "chip.md"])
+                .status()
+                .unwrap()
+                .success()
+        );
         assert_oracle_findings(&f, &["chip.md"], true);
+        assert_oracle_findings(&f, &[], false);
+        assert_oracle_findings(&f, &[], true);
     }
 
     #[test]
     fn round2_custom_unicode() {
         let f = Fixture::new("r2-custom");
-        for (pattern, text) in [(r"\bZetaSecret\b", "\u{301}ZetaSecret"), (r"(?i)patient", "patİent"), (r"(?i)[A-Z]+", "İı"), (r"\s+", "\u{1c}"), (r"\W+", "\u{301}"), (r"[^\w]+", "\u{301}")] {
+        for (pattern, text) in [
+            (r"\bZetaSecret\b", "\u{301}ZetaSecret"),
+            (r"(?i)patient", "patİent"),
+            (r"(?i)[A-Z]+", "İı"),
+            (r"\s+", "\u{1c}"),
+            (r"\W+", "\u{301}"),
+            (r"[^\w]+", "\u{301}"),
+        ] {
             std::fs::write(f.0.join("patterns"), pattern).unwrap();
             std::fs::write(f.0.join("own.md"), text).unwrap();
-            assert_options(&f, &["own.md"], false, "", "", f.0.join("patterns").to_str().unwrap(), true);
+            assert_options(
+                &f,
+                &["own.md"],
+                false,
+                "",
+                "",
+                f.0.join("patterns").to_str().unwrap(),
+                true,
+            );
         }
     }
 
@@ -904,9 +987,21 @@ mod tests {
     fn round2_cr_patterns() {
         let f = Fixture::new("r2-pattern-lines");
         for prefix in ["# a comment", "Unrelated"] {
-            std::fs::write(f.0.join("patterns"), format!("{prefix}\rZETA_PRIVATE_MARKER\r")).unwrap();
+            std::fs::write(
+                f.0.join("patterns"),
+                format!("{prefix}\rZETA_PRIVATE_MARKER\r"),
+            )
+            .unwrap();
             std::fs::write(f.0.join("own.md"), "ZETA_PRIVATE_MARKER\n").unwrap();
-            assert_options(&f, &["own.md"], false, "", "", f.0.join("patterns").to_str().unwrap(), true);
+            assert_options(
+                &f,
+                &["own.md"],
+                false,
+                "",
+                "",
+                f.0.join("patterns").to_str().unwrap(),
+                true,
+            );
         }
     }
 
@@ -915,7 +1010,15 @@ mod tests {
         let f = Fixture::new("r2-empty");
         std::fs::write(f.0.join("patterns"), "^|PUBLIC_PRIVATE\n").unwrap();
         std::fs::write(f.0.join("own.md"), "PUBLIC_PRIVATE").unwrap();
-        assert_options(&f, &["own.md"], false, "own.md PUBLIC", "", f.0.join("patterns").to_str().unwrap(), true);
+        assert_options(
+            &f,
+            &["own.md"],
+            false,
+            "own.md PUBLIC",
+            "",
+            f.0.join("patterns").to_str().unwrap(),
+            true,
+        );
     }
 
     #[test]
@@ -923,7 +1026,156 @@ mod tests {
         let f = Fixture::new("r2-allow");
         let text = p("safe\rOTHER.md /home/~synthetic_private_marker/path\n");
         std::fs::write(f.0.join("builtin-allow.md"), &text).unwrap();
-        assert_options(&f, &["builtin-allow.md"], false, &format!("builtin-allow.md {text}"), "", "", true);
+        assert_options(
+            &f,
+            &["builtin-allow.md"],
+            false,
+            &format!("builtin-allow.md {text}"),
+            "",
+            "",
+            true,
+        );
     }
 
+    #[test]
+    fn round2_generated_patterns_and_tables() {
+        let f = Fixture::new("r2-grammar");
+        std::fs::write(f.0.join("clean.md"), "clean").unwrap();
+        let atoms = [
+            "PUBLIC",
+            "patient",
+            r"\w",
+            r"\W",
+            r"\s",
+            r"\S",
+            r"\d",
+            r"\D",
+            "[A-Z]",
+            r"[^\w]",
+            r"\bZetaSecret\b",
+            r"\BZetaSecret",
+        ];
+        let quantifiers = ["", "?", "+", "*", "{1,2}", "{0,2}?"];
+        let noise = [
+            "", "\u{301}", "\u{200c}", "\u{200d}", "\u{1c}", "\u{85}", "\u{2028}", "\u{2029}",
+            "İı", "ſK", "²", "_", "\t",
+        ];
+        let separators = [
+            "\n", "\r\n", "\r", "\u{85}", "\u{2028}", "\u{2029}", "\u{b}", "\u{1c}",
+        ];
+        let mut seed = 0x2d5ca1ab1eu64;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed as usize
+        };
+        for case in 0..96 {
+            let atom = if case < atoms.len() {
+                atoms[case]
+            } else {
+                atoms[next() % atoms.len()]
+            };
+            let quantified = format!("(?:{atom}){}", quantifiers[next() % quantifiers.len()]);
+            let expression = if case < atoms.len() {
+                atom.to_owned()
+            } else {
+                match next() % 4 {
+                    0 => quantified,
+                    1 => format!("^(?:{quantified})"),
+                    2 => format!("(?:{quantified})$"),
+                    _ => format!("^|{quantified}|PUBLIC_PRIVATE"),
+                }
+            };
+            let pattern = format!("{}{expression}", if next() % 2 == 0 { "(?i)" } else { "" });
+            // Unicode separators are pattern characters, not text-mode
+            // newlines. Only CR, CRLF and LF separate pattern-file rows.
+            let sep = if case < atoms.len() {
+                "\n"
+            } else {
+                separators[case % separators.len()]
+            };
+            std::fs::write(
+                f.0.join("patterns"),
+                format!("# comment{sep}{pattern}{sep}Unrelated{sep}"),
+            )
+            .unwrap();
+            let mut text = String::from("PUBLIC_PRIVATE\n");
+            for value in noise {
+                text.push_str(value);
+                text.push('\n');
+            }
+            for _ in 0..24 {
+                text.push_str(noise[next() % noise.len()]);
+                text.push_str(
+                    [
+                        "ZetaSecret",
+                        "PUBLIC_PRIVATE",
+                        "patİent",
+                        "İı",
+                        "a9",
+                        "\u{1c}",
+                    ][next() % 6],
+                );
+                text.push_str(noise[next() % noise.len()]);
+                text.push_str(separators[next() % separators.len()]);
+            }
+            for ending in ["A-", "-A", "--", "AA", "A"] {
+                text.push_str(&format!("rs987654\t1\t9\t{ending}\n"));
+            }
+            std::fs::write(f.0.join("own.md"), text).unwrap();
+            let allow = format!("own.md PUBLIC{sep}OTHER.md PRIVATE{sep}own.md Zeta");
+            let skip = format!("missing.md reason{sep}OTHER.md reason");
+            assert_options(
+                &f,
+                &["own.md", "clean.md"],
+                false,
+                &allow,
+                &skip,
+                f.0.join("patterns").to_str().unwrap(),
+                false,
+            );
+        }
+        // Cross-file scope and SKIP parsing, with a scanned clean companion.
+        for sep in separators {
+            let secret = p("safe /home/~synthetic/path");
+            std::fs::write(f.0.join("own.md"), &secret).unwrap();
+            let allow = format!("own.md safe{sep}OTHER.md {}", p("/home/~synthetic/path"));
+            assert_options(&f, &["own.md", "clean.md"], false, &allow, "", "", true);
+            let skip = format!("missing.md reason{sep}own.md reason");
+            assert_options(&f, &["own.md", "clean.md"], false, "", &skip, "", false);
+        }
+    }
+
+    #[test]
+    fn round2_unsupported_and_exhausted_patterns_fail_closed() {
+        let f = Fixture::new("r2-unsupported");
+        std::fs::write(f.0.join("own.md"), format!("{}!", "a".repeat(64))).unwrap();
+        for (index, pattern) in [
+            r"\b*",
+            r"(?i)*",
+            r"(?P<a>x)(?P<a>y)",
+            r"(?=PRIVATE)",
+            r"(PRIVATE)\1",
+            r"\p{L}",
+            r"[[:alpha:]]",
+            r"(?a)PRIVATE",
+            r"\N{LATIN CAPITAL LETTER A}",
+            r"(a|\Ba)+$",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            std::fs::write(f.0.join("patterns"), pattern).unwrap();
+            let mut args = f.args(&["own.md"]);
+            args.extend([
+                "--patterns".into(),
+                f.0.join("patterns").display().to_string(),
+            ]);
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            assert_eq!(cli(&args, &mut out, &mut err), 2, "control {index}");
+            assert!(!String::from_utf8_lossy(&err).contains("PRIVATE"));
+            assert!(!String::from_utf8_lossy(&out).contains("PRIVATE"));
+        }
+    }
 }

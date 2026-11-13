@@ -1,7 +1,7 @@
-//! Python's one-character look-behind and look-ahead on the `regex` crate,
-//! which has neither.
+//! Image rules keep their original linear matcher. Personal-data rules use
+//! a Python-subset compiler and a backtracking matcher with assertions.
 //!
-//! Every look-around of the scanners is a single character class: "not
+//! Every look-around of the image scanner is a single character class: "not
 //! after one of these" before the match and "not followed by one of these"
 //! after it. A [`Rule`] keeps the matched text in capture group 1 and
 //! writes the look-ahead as a consumed `(?:[^...]|$)` after it, so the
@@ -16,10 +16,6 @@ use regex::Regex;
 /// A pattern with its look-behind.
 pub struct Rule {
     re: Regex,
-    boundaries: Vec<usize>,
-    /// Capture describing the match span: 1 for rewritten look-around,
-    /// 0 for a user's unmodified regular expression.
-    capture: usize,
     /// True for a character the match must not follow.
     not_after: Option<fn(char) -> bool>,
 }
@@ -30,72 +26,22 @@ impl Rule {
     pub fn new(pattern: &str, not_after: Option<fn(char) -> bool>) -> Result<Rule, regex::Error> {
         Ok(Rule {
             re: Regex::new(pattern)?,
-            boundaries: Vec::new(),
-            capture: 1,
             not_after,
         })
     }
 
-    /// A scanner pattern with Python's Unicode word boundaries. Python's
-    /// word characters are Unicode letters and numbers plus underscore;
-    /// Rust regex also includes marks and join controls. Capture each
-    /// boundary position and check it without consuming surrounding text.
-    pub fn python(
-        pattern: &str,
-        not_after: Option<fn(char) -> bool>,
-    ) -> Result<Rule, regex::Error> {
-        let mut translated = String::new();
-        for (i, part) in pattern.split(r"\b").enumerate() {
-            if i > 0 {
-                translated.push_str(&format!("(?P<og_boundary_{i}>)"));
-            }
-            translated.push_str(part);
-        }
-        let re = Regex::new(&translated)?;
-        let mut boundaries = Vec::new();
-        let mut capture = 0;
-        for (i, name) in re.capture_names().enumerate().skip(1) {
-            if name.is_some_and(|n| n.starts_with("og_boundary_")) {
-                boundaries.push(i);
-            } else if capture == 0 {
-                capture = i;
-            }
-        }
-        Ok(Self {
-            re,
-            boundaries,
-            capture,
-            not_after,
-        })
-    }
-
-    /// A user's regular expression, whose captures do not change its span.
-    pub fn whole_match(pattern: &str) -> Result<Rule, regex::Error> {
-        let mut rule = Self::new(pattern, None)?;
-        rule.capture = 0;
-        Ok(rule)
-    }
-
-    /// The spans of `re.finditer` over `line`, in order.
+    /// The spans of the image rule over `line`, in order.
     pub fn find_iter<'a>(&'a self, line: &'a str) -> impl Iterator<Item = (usize, usize)> + 'a {
         let mut pos = 0;
         std::iter::from_fn(move || {
             while pos <= line.len() {
                 let caps = self.re.captures_at(line, pos)?;
-                let m = caps.get(self.capture).or_else(|| caps.get(0))?;
+                let m = caps.get(1).or_else(|| caps.get(0))?;
                 let (start, end) = (m.start(), m.end());
                 let refused = self
                     .not_after
                     .is_some_and(|bad| line[..start].chars().next_back().is_some_and(bad));
-                let bad_boundary = self.boundaries.iter().any(|&i| {
-                    caps.get(i).is_some_and(|m| {
-                        let at = m.start();
-                        let left = line[..at].chars().next_back().is_some_and(python_word);
-                        let right = line[at..].chars().next().is_some_and(python_word);
-                        left == right
-                    })
-                });
-                if refused || bad_boundary {
+                if refused {
                     pos = next_char(line, start);
                     continue;
                 }
@@ -109,17 +55,6 @@ impl Rule {
             None
         })
     }
-
-    /// `re.search(line) is not None`.
-    pub fn is_match(&self, line: &str) -> bool {
-        self.find_iter(line).next().is_some()
-    }
-}
-
-fn python_word(c: char) -> bool {
-    static WORD: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"\A[\p{L}\p{N}_]\z").expect("word character"));
-    WORD.is_match(c.encode_utf8(&mut [0; 4]))
 }
 
 /// The byte offset of the character after `i`, or one past the end.
@@ -162,5 +97,490 @@ mod tests {
         let s = "a/b:1.2/x";
         let got: Vec<_> = r.find_iter(s).map(|(a, b)| &s[a..b]).collect();
         assert_eq!(got, ["a/b:1"]);
+    }
+}
+
+// Personal-data patterns have one translation and one search path. Assertions
+// stay in the engine so a failed assertion can backtrack at the same start.
+const WORD: &str = r"[\p{L}\p{N}_]";
+const SPACE: &str = r"[\x09-\x0d\x1c-\x20\x85\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]";
+
+#[derive(Clone)]
+pub struct PythonRule {
+    re: fancy_regex::Regex,
+    after_empty: fancy_regex::Regex,
+}
+
+impl PythonRule {
+    pub fn compile(pattern: &str, builtin: bool) -> Result<Self, ()> {
+        if pattern.len() > 16_384 {
+            return Err(());
+        }
+        let mut parser = PythonPattern {
+            chars: pattern.chars().collect(),
+            at: 0,
+            builtin,
+            depth: 0,
+            names: std::collections::HashSet::new(),
+        };
+        let translated = parser.group(Flags::default(), false)?;
+        // \G is the search offset. After yielding an empty match, forbid only
+        // a match ending at that offset; the engine then tries nonempty
+        // alternatives at the same start, exactly as Python finditer does.
+        let after_empty = format!(r"(?:{translated})(?!\G)");
+        let build = |p: &str| {
+            fancy_regex::RegexBuilder::new(p)
+                .backtrack_limit(1_000_000)
+                .build()
+                .map_err(|_| ())
+        };
+        Ok(Self {
+            re: build(&translated)?,
+            after_empty: build(&after_empty)?,
+        })
+    }
+
+    pub fn find_iter<'a>(
+        &'a self,
+        text: &'a str,
+    ) -> impl Iterator<Item = Result<(usize, usize), ()>> + 'a {
+        let (mut pos, mut empty, mut done) = (0, false, false);
+        std::iter::from_fn(move || {
+            if done {
+                return None;
+            }
+            let re = if empty { &self.after_empty } else { &self.re };
+            match re.find_from_pos(text, pos) {
+                Ok(Some(m)) => {
+                    pos = m.end();
+                    empty = m.start() == m.end();
+                    Some(Ok((m.start(), m.end())))
+                }
+                Ok(None) => {
+                    done = true;
+                    None
+                }
+                Err(_) => {
+                    done = true;
+                    Some(Err(()))
+                }
+            }
+        })
+    }
+
+    pub fn is_match(&self, text: &str) -> Result<bool, ()> {
+        self.find_iter(text).next().transpose().map(|m| m.is_some())
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct Flags {
+    i: bool,
+    m: bool,
+    s: bool,
+    x: bool,
+}
+
+struct PythonPattern {
+    chars: Vec<char>,
+    at: usize,
+    builtin: bool,
+    depth: usize,
+    names: std::collections::HashSet<String>,
+}
+
+impl PythonPattern {
+    fn take(&mut self) -> Result<char, ()> {
+        let c = self.chars.get(self.at).copied().ok_or(())?;
+        self.at += 1;
+        Ok(c)
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.chars.get(self.at).copied()
+    }
+
+    fn group(&mut self, mut flags: Flags, nested: bool) -> Result<String, ()> {
+        let mut out = String::new();
+        let (mut repeatable, mut lazy) = (false, false);
+        while let Some(c) = self.peek() {
+            self.at += 1;
+            if flags.x && matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{b}' | '\u{c}') {
+                continue;
+            }
+            if flags.x && c == '#' {
+                while self.peek().is_some_and(|c| c != '\n') {
+                    self.at += 1;
+                }
+                continue;
+            }
+            match c {
+                ')' if nested => return Ok(out),
+                ')' => return Err(()),
+                '(' => {
+                    repeatable = true;
+                    lazy = false;
+                    if self.depth >= 64 {
+                        return Err(());
+                    }
+                    let mut prefix = "?:".to_owned();
+                    let mut inner = flags;
+                    if self.peek() == Some('?') {
+                        self.at += 1;
+                        match self.take()? {
+                            ':' => (),
+                            '=' if self.builtin => prefix = "?=".into(),
+                            '!' if self.builtin => prefix = "?!".into(),
+                            '<' if self.builtin => {
+                                let c = self.take()?;
+                                if !matches!(c, '=' | '!') {
+                                    return Err(());
+                                }
+                                prefix = format!("?<{c}");
+                            }
+                            'P' => {
+                                if self.take()? != '<' {
+                                    return Err(());
+                                }
+                                let mut name = String::new();
+                                loop {
+                                    let c = self.take()?;
+                                    if c == '>' {
+                                        break;
+                                    }
+                                    name.push(c);
+                                }
+                                if name.is_empty()
+                                    || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                                    || name.starts_with(|c: char| c.is_ascii_digit())
+                                    || !self.names.insert(name.clone())
+                                {
+                                    return Err(());
+                                }
+                            }
+                            c if "imsx-".contains(c) => {
+                                self.at -= 1;
+                                let mut on = true;
+                                let mut seen = std::collections::HashSet::new();
+                                let mut disabled = false;
+                                loop {
+                                    let flag = self.take()?;
+                                    if matches!(flag, 'i' | 'm' | 's' | 'x') {
+                                        if !seen.insert(flag) {
+                                            return Err(());
+                                        }
+                                        disabled |= !on;
+                                    }
+                                    match flag {
+                                        '-' if on => on = false,
+                                        'i' => inner.i = on,
+                                        'm' => inner.m = on,
+                                        's' => inner.s = on,
+                                        'x' => inner.x = on,
+                                        ':' if !seen.is_empty() && (on || disabled) => break,
+                                        ')' if on
+                                            && !seen.is_empty()
+                                            && out.is_empty()
+                                            && !nested =>
+                                        {
+                                            flags = inner;
+                                            break;
+                                        }
+                                        _ => return Err(()),
+                                    }
+                                    if self.chars[self.at - 1] == ')' {
+                                        break;
+                                    }
+                                }
+                                if self.chars[self.at - 1] == ')' {
+                                    repeatable = false;
+                                    continue;
+                                }
+                            }
+                            _ => return Err(()),
+                        }
+                    }
+                    out.push('(');
+                    out.push_str(&prefix);
+                    self.depth += 1;
+                    out.push_str(&self.group(inner, true)?);
+                    self.depth -= 1;
+                    out.push(')');
+                }
+                '[' => {
+                    out.push_str(&self.class(flags.i)?);
+                    repeatable = true;
+                    lazy = false;
+                }
+                '\\' => {
+                    repeatable = !matches!(self.peek(), Some('b' | 'B' | 'A' | 'Z'));
+                    lazy = false;
+                    out.push_str(&self.escape(flags.i, false)?);
+                }
+                '.' => {
+                    out.push_str(if flags.s { r"[\s\S]" } else { r"[^\n]" });
+                    repeatable = true;
+                    lazy = false;
+                }
+                '^' => {
+                    out.push_str(if flags.m { r"(?:\A|(?<=\n))" } else { r"\A" });
+                    repeatable = false;
+                    lazy = false;
+                }
+                '$' => {
+                    out.push_str(if flags.m { r"(?=\n|\z)" } else { r"(?=\n?\z)" });
+                    repeatable = false;
+                    lazy = false;
+                }
+                '|' => {
+                    out.push('|');
+                    repeatable = false;
+                    lazy = false;
+                }
+                '*' | '+' | '?' => {
+                    if c == '?' && lazy {
+                        out.push(c);
+                        lazy = false;
+                        continue;
+                    }
+                    if !repeatable {
+                        return Err(());
+                    }
+                    repeatable = false;
+                    lazy = true;
+                    // Possessive quantifiers are outside the supported subset.
+                    if matches!(c, '*' | '+' | '?') && self.peek() == Some('+') {
+                        return Err(());
+                    }
+                    out.push(c);
+                }
+                '{' => {
+                    if !repeatable {
+                        return Err(());
+                    }
+                    repeatable = false;
+                    lazy = true;
+                    out.push(c);
+                    loop {
+                        let c = self.take()?;
+                        out.push(c);
+                        if c == '}' {
+                            break;
+                        }
+                        if !c.is_ascii_digit() && c != ',' {
+                            return Err(());
+                        }
+                    }
+                    if self.peek() == Some('+') {
+                        return Err(());
+                    }
+                }
+                '}' => return Err(()),
+                c => {
+                    out.push_str(&literal(c, flags.i)?);
+                    repeatable = true;
+                    lazy = false;
+                }
+            }
+        }
+        if nested { Err(()) } else { Ok(out) }
+    }
+
+    fn escape(&mut self, ci: bool, class: bool) -> Result<String, ()> {
+        let c = self.take()?;
+        Ok(match c {
+            'w' => WORD.into(),
+            'W' => r"[^\p{L}\p{N}_]".into(),
+            's' => SPACE.into(),
+            'S' => format!("[^{SPACE}]"),
+            'd' => r"[\p{Nd}]".into(),
+            'D' => r"[^\p{Nd}]".into(),
+            'b' if class => r"\x08".into(),
+            'b' => format!(r"(?:(?<!{WORD})(?={WORD})|(?<={WORD})(?!{WORD}))"),
+            'B' if !class => format!(r"(?:(?<={WORD})(?={WORD})|(?<!{WORD})(?!{WORD}))"),
+            'A' if !class => r"\A".into(),
+            'Z' if !class => r"\z".into(),
+            'a' => r"\x07".into(),
+            'f' => r"\x0c".into(),
+            'n' => r"\x0a".into(),
+            'r' => r"\x0d".into(),
+            't' => r"\x09".into(),
+            'v' => r"\x0b".into(),
+            'x' | 'u' | 'U' => {
+                let n = match c {
+                    'x' => 2,
+                    'u' => 4,
+                    _ => 8,
+                };
+                let mut hex = String::new();
+                for _ in 0..n {
+                    let c = self.take()?;
+                    if !c.is_ascii_hexdigit() {
+                        return Err(());
+                    }
+                    hex.push(c);
+                }
+                let c = char::from_u32(u32::from_str_radix(&hex, 16).map_err(|_| ())?).ok_or(())?;
+                literal(c, ci)?
+            }
+            c if c.is_ascii_alphanumeric() => return Err(()),
+            c => literal(c, ci)?,
+        })
+    }
+
+    fn class(&mut self, ci: bool) -> Result<String, ()> {
+        let negative = self.peek() == Some('^');
+        if negative {
+            self.at += 1;
+        }
+        let mut atoms = Vec::new();
+        let mut first = true;
+        loop {
+            let c = self.take()?;
+            if c == ']' && !first {
+                break;
+            }
+            first = false;
+            match c {
+                '\\' => atoms.push((self.escape(false, true)?, false)),
+                '[' => return Err(()),
+                '-' => atoms.push((literal('-', false)?, true)),
+                c => atoms.push((literal(c, false)?, false)),
+            }
+        }
+        let mut body = String::new();
+        let mut i = 0;
+        while i < atoms.len() {
+            let atom = &atoms[i].0;
+            if i + 2 < atoms.len() && atoms[i + 1].1 {
+                // Categories are not case folded in Python, even inside
+                // classes. Only literal range endpoints can form a range.
+                if class_literal(atom).is_none() || class_literal(&atoms[i + 2].0).is_none() {
+                    return Err(());
+                }
+                let range = format!("[{atom}-{}]", atoms[i + 2].0);
+                body.push_str(&if ci { fold_class(&range)? } else { range });
+                i += 3;
+            } else {
+                if atoms[i].1 && i != 0 && i + 1 != atoms.len() {
+                    return Err(());
+                }
+                if ci && class_literal(atom).is_some() {
+                    body.push_str(&fold_class(&format!("[{atom}]"))?);
+                } else {
+                    body.push_str(atom);
+                }
+                i += 1;
+            }
+        }
+        Ok(format!("[{}{body}]", if negative { "^" } else { "" }))
+    }
+}
+
+fn class_literal(atom: &str) -> Option<char> {
+    let hir = regex_syntax::Parser::new().parse(atom).ok()?;
+    let regex_syntax::hir::HirKind::Literal(value) = hir.kind() else {
+        return None;
+    };
+    let text = std::str::from_utf8(&value.0).ok()?;
+    (text.chars().count() == 1)
+        .then(|| text.chars().next())
+        .flatten()
+}
+
+fn literal(c: char, ci: bool) -> Result<String, ()> {
+    let escaped = format!(r"\x{{{:x}}}", u32::from(c));
+    if ci {
+        fold_class(&format!("[{escaped}]"))
+    } else {
+        Ok(escaped)
+    }
+}
+
+fn fold_class(class: &str) -> Result<String, ()> {
+    use regex_syntax::hir::{Class, HirKind};
+    // Rust's simple fold follows Python except the extra dotted/dotless I.
+    let hir = regex_syntax::ParserBuilder::new()
+        .case_insensitive(true)
+        .build()
+        .parse(class)
+        .map_err(|_| ())?;
+    let set = match hir.kind() {
+        HirKind::Class(Class::Unicode(set)) => set.clone(),
+        HirKind::Literal(value) => {
+            let text = std::str::from_utf8(&value.0).map_err(|_| ())?;
+            let c = text.chars().next().ok_or(())?;
+            if text.chars().count() != 1 {
+                return Err(());
+            }
+            regex_syntax::hir::ClassUnicode::new([regex_syntax::hir::ClassUnicodeRange::new(c, c)])
+        }
+        _ => return Err(()),
+    };
+    let mut out = String::from("[");
+    let mut i = false;
+    for range in set.iter() {
+        out.push_str(&format!(
+            r"\x{{{:x}}}-\x{{{:x}}}",
+            u32::from(range.start()),
+            u32::from(range.end())
+        ));
+        i |= range.start() <= 'I' && 'I' <= range.end()
+            || range.start() <= 'i' && 'i' <= range.end()
+            || range.start() <= 'İ' && 'İ' <= range.end()
+            || range.start() <= 'ı' && 'ı' <= range.end();
+    }
+    if i {
+        out.push_str(r"Ii\x{130}\x{131}");
+    }
+    out.push(']');
+    Ok(out)
+}
+
+#[cfg(test)]
+mod python_tests {
+    use super::*;
+
+    #[test]
+    fn finditer_spans_match_real_python() {
+        for pattern in [
+            r"^|a",
+            r"a*?",
+            r"(?:|a)+",
+            r"a|",
+            r"\w*",
+            r"\b|\W+",
+            r"a$",
+            r"(?m)^|$",
+            r"(?s:.)*?",
+            r"(?i)[^I]+",
+            r"(?i:İ|ı|S|k)+",
+            r"[\s\S]",
+            r"(?i)[^\W]+",
+            r"(?i)[\w]+",
+            r"\D*\d?",
+            r"\Bz",
+            r"(?x) a + # comment",
+        ] {
+            for text in ["", "aa", "a\n", "a\n\n", "\u{301}aİıſK9\u{1c}\u{345}Ιι"] {
+                let output = std::process::Command::new("python3").args(["-I", "-c",
+                    "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
+                assert!(output.status.success(), "span oracle failed");
+                let rule = PythonRule::compile(pattern, false).expect("supported span pattern");
+                let actual = rule
+                    .find_iter(text)
+                    .map(|m| {
+                        let (a, b) = m.unwrap();
+                        format!(
+                            "{}:{}",
+                            text[..a].chars().count(),
+                            text[..b].chars().count()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                assert_eq!(actual, String::from_utf8(output.stdout).unwrap().trim());
+            }
+        }
     }
 }
