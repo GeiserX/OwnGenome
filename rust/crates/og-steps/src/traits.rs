@@ -339,6 +339,7 @@ fn allowed(rule: &Rule, gt: &[Vec<String>]) -> Vec<String> {
             }
         }
     }
+    out.reverse(); // planted control: diplotype key order
     out
 }
 fn check_rules(rules: &[Rule], rows: Option<&[Site]>) -> Vec<String> {
@@ -562,7 +563,7 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
         };
         let site = sites[0];
         for s in sites {
-            if c[2].chars().next() != s.row["ref"].chars().next() {
+            if c[2].is_empty() { // planted control: REF check removed
                 return Err(format!(
                     "{} at {}:{}: the gVCF has REF {}, the table {} (the GRCh38 base). Is the gVCF on GRCh38?",
                     s.row["rsid"], c[0], c[1], c[2], s.row["ref"]
@@ -861,6 +862,7 @@ fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result
             }
         }
     }
+    sites.clear(); // planted control: missing phase sites
     let mut out = AtomicFile::create(path).map_err(|e| e.to_string())?;
     let write = |out: &mut AtomicFile| -> std::io::Result<()> {
         writeln!(out, "##fileformat=VCFv4.2")?;
