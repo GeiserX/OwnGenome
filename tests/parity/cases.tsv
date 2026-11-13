@@ -637,6 +637,51 @@ cn	py311-cyp-conversion	gen:cn-oracle.sh,cn/oracle.sh,cn/cyp-conversion.bedcov.t
 cn	py311-intervals-male	gen:cn-oracle.sh,cn/oracle.sh,cn/intervals.bedcov.tsv	intervals --catalog cn_loci.tsv --bedcov intervals.bedcov.tsv --sex male --out iv.tsv	iv.tsv	tsv	PARASCOPY_IMAGE
 cn	py311-smn-present	gen:cn-oracle.sh,cn/oracle.sh,cn/smn-present.pileup,cn/smn2.tsv	marker-read SMN1_27134 --pileup smn-present.pileup --copy-table smn2.tsv --out m.tsv	m.tsv	kv	PARASCOPY_IMAGE
 cn	py311-check-bam-alt	gen:cn-oracle.sh,cn/oracle.sh,cn/header-alt.sam	check-bam --header header-alt.sam	-	kv	PARASCOPY_IMAGE
+pgx-outside-calls	nothing	-	--calls calls.tsv --consensus cons.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	disagree	pgx-outside-calls/pypgx_cyp2d6_1_4.tsv,pgx-outside-calls/cyrius_1_2.tsv,pgx-outside-calls/depth_check_ok.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_4.tsv --cyrius cyrius_1_2.tsv --depth-check depth_check_ok.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	one-caller	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/depth_check_ok.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --depth-check depth_check_ok.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	agree	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/cyrius_1_2.tsv,pgx-outside-calls/depth_check_ok.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --cyrius cyrius_1_2.tsv --depth-check depth_check_ok.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	agree-swapped	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/cyrius_swapped.tsv,pgx-outside-calls/depth_check_ok.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --cyrius cyrius_swapped.tsv --depth-check depth_check_ok.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	depth-unreliable	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/cyrius_1_2.tsv,pgx-outside-calls/depth_check_multimapped.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --cyrius cyrius_1_2.tsv --depth-check depth_check_multimapped.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	depth-unreadable	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/cyrius_1_2.tsv,pgx-outside-calls/depth_empty.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --cyrius cyrius_1_2.tsv --depth-check depth_empty.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	no-depth-check	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/cyrius_1_2.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --cyrius cyrius_1_2.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	cyrius-none	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/cyrius_none.tsv,pgx-outside-calls/depth_check_ok.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --cyrius cyrius_none.tsv --depth-check depth_check_ok.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	cyrius-not-pass	pgx-outside-calls/pypgx_cyp2d6_1_2.tsv,pgx-outside-calls/cyrius_fail.tsv,pgx-outside-calls/depth_check_ok.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_cyp2d6_1_2.tsv --cyrius cyrius_fail.tsv --depth-check depth_check_ok.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	cyrius-no-row	pgx-outside-calls/pypgx_none_row.tsv,pgx-outside-calls/cyrius_empty.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_none_row.tsv --cyrius cyrius_empty.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	pypgx-two-calls	pgx-outside-calls/pypgx_multi.tsv,pgx-outside-calls/cyrius_1_2.tsv,pgx-outside-calls/depth_check_ok.tsv	--calls calls.tsv --consensus cons.tsv --pypgx pypgx_multi.tsv --cyrius cyrius_1_2.tsv --depth-check depth_check_ok.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	hla-t1k	pgx-outside-calls/t1k_genotype.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_genotype.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	hla-homozygous-q0	pgx-outside-calls/t1k_genotype_homozygous_lowqual.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_genotype_homozygous_lowqual.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	hla-float-quality	pgx-outside-calls/t1k_float_q.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_float_q.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	hla-crlf	pgx-outside-calls/crlf_t1k.tsv	--calls calls.tsv --consensus cons.tsv --hla crlf_t1k.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	optitype-agree	pgx-outside-calls/t1k_qc.tsv,pgx-outside-calls/ot_agree.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_qc.tsv --optitype ot_agree.tsv --require-optitype	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	optitype-disagree	pgx-outside-calls/t1k_qc.tsv,pgx-outside-calls/ot_disagree.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_qc.tsv --optitype ot_disagree.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	optitype-homozygous	pgx-outside-calls/t1k_qc.tsv,pgx-outside-calls/ot_hom.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_qc.tsv --optitype ot_hom.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	optitype-not-run	pgx-outside-calls/t1k_qc.tsv,pgx-outside-calls/ot_none.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_qc.tsv --optitype ot_none.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	optitype-quoted	pgx-outside-calls/t1k_qc.tsv,pgx-outside-calls/ot_quoted.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_qc.tsv --optitype ot_quoted.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	optitype-q0	pgx-outside-calls/t1k_q0.tsv,pgx-outside-calls/ot_agree.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_q0.tsv --optitype ot_agree.tsv	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	optitype-required-missing	pgx-outside-calls/t1k_qc.tsv	--calls calls.tsv --consensus cons.tsv --hla t1k_qc.tsv --require-optitype	calls.tsv,cons.tsv	bytes	PYTHON_IMAGE
+pgx-outside-calls	missing-input	-	--calls calls.tsv --consensus cons.tsv --hla nowhere.tsv	-	bytes	PYTHON_IMAGE
+pgx-hla-concordance	agree	pgx-hla-concordance/t1k_qc.tsv,pgx-hla-concordance/ot_agree.tsv	--t1k t1k_qc.tsv --optitype ot_agree.tsv --out conc.tsv	conc.tsv	bytes	PYTHON_IMAGE
+pgx-hla-concordance	disagree	pgx-hla-concordance/t1k_qc.tsv,pgx-hla-concordance/ot_disagree.tsv	--t1k t1k_qc.tsv --optitype ot_disagree.tsv --out conc.tsv	conc.tsv	bytes	PYTHON_IMAGE
+pgx-hla-concordance	not-run	pgx-hla-concordance/t1k_qc.tsv,pgx-hla-concordance/ot_none.tsv	--t1k t1k_qc.tsv --optitype ot_none.tsv --out conc.tsv	conc.tsv	bytes	PYTHON_IMAGE
+pgx-hla-concordance	homozygous	pgx-hla-concordance/t1k_qc.tsv,pgx-hla-concordance/ot_hom.tsv	--t1k t1k_qc.tsv --optitype ot_hom.tsv --out conc.tsv	conc.tsv	bytes	PYTHON_IMAGE
+pgx-hla-concordance	quality-0	pgx-hla-concordance/t1k_q0.tsv,pgx-hla-concordance/ot_agree.tsv	--t1k t1k_q0.tsv --optitype ot_agree.tsv --out conc.tsv	conc.tsv	bytes	PYTHON_IMAGE
+paraphase-check-bam	hifi	paraphase-check-bam/hifi.bam	hifi.bam	-	bytes	PYTHON_IMAGE
+paraphase-check-bam	illumina	paraphase-check-bam/illumina.bam	illumina.bam	-	bytes	PYTHON_IMAGE
+paraphase-check-bam	no-rg	paraphase-check-bam/no_rg.bam	no_rg.bam	-	bytes	PYTHON_IMAGE
+paraphase-check-bam	mixed	paraphase-check-bam/mixed.bam	mixed.bam	-	bytes	PYTHON_IMAGE
+paraphase-check-bam	non-ascii	paraphase-check-bam/non_ascii.bam	non_ascii.bam	-	bytes	PYTHON_IMAGE
+paraphase-check-bam	negative	paraphase-check-bam/negative.bam	negative.bam	-	bytes	PYTHON_IMAGE
+paraphase-check-bam	plain	paraphase-check-bam/plain.bam	plain.bam	-	bytes	PYTHON_IMAGE
+paraphase-table	regions	paraphase-table/S.paraphase.json,paraphase-table/paraphase_genes.tsv	--sample S --json S.paraphase.json --genes paraphase_genes.tsv --out-cn cn.tsv --out-variants var.tsv	cn.tsv,var.tsv	bytes	PYTHON_IMAGE
+paraphase-table	old8	paraphase-table/old8.json,paraphase-table/paraphase_genes.tsv	--sample S --json old8.json --genes paraphase_genes.tsv --vcf-dir nowhere --out-cn cn.tsv --out-variants var.tsv	cn.tsv,var.tsv	bytes	PYTHON_IMAGE
+paraphase-table	object-cn	paraphase-table/object_cn.json,paraphase-table/paraphase_genes.tsv	--sample S --json object_cn.json --genes paraphase_genes.tsv --out-cn cn.tsv --out-variants var.tsv	cn.tsv,var.tsv	bytes	PYTHON_IMAGE
+paraphase-table	bool-cn	paraphase-table/bool_cn.json,paraphase-table/paraphase_genes.tsv	--sample S --json bool_cn.json --genes paraphase_genes.tsv --out-cn cn.tsv --out-variants var.tsv	cn.tsv,var.tsv	bytes	PYTHON_IMAGE
+paraphase-table	no-region	paraphase-table/empty.json,paraphase-table/paraphase_genes.tsv	--sample S --json empty.json --genes paraphase_genes.tsv --out-cn cn.tsv --out-variants var.tsv	-	bytes	PYTHON_IMAGE
+paraphase-table	broken-json	paraphase-table/broken.json,paraphase-table/paraphase_genes.tsv	--sample S --json broken.json --genes paraphase_genes.tsv --out-cn cn.tsv --out-variants var.tsv	-	bytes	PYTHON_IMAGE
+paraphase-table	bad-header	paraphase-table/old8.json,paraphase-table/bad_header.tsv	--sample S --json old8.json --genes bad_header.tsv --out-cn cn.tsv --out-variants var.tsv	-	bytes	PYTHON_IMAGE
+paraphase-table	moved-field	paraphase-table/old8.json,paraphase-table/moved_field.tsv	--sample S --json old8.json --genes moved_field.tsv --out-cn cn.tsv --out-variants var.tsv	-	bytes	PYTHON_IMAGE
+paraphase-table	short-row	paraphase-table/old8.json,paraphase-table/short_row.tsv	--sample S --json old8.json --genes short_row.tsv --out-cn cn.tsv --out-variants var.tsv	-	bytes	PYTHON_IMAGE
 sv-add-callers	extra	gen:sv-oracle.sh,sv-add-callers/base.vcf,sv-add-callers/delly.vcf.gz,sv-add-callers/cnv.vcf.gz	--base base.vcf --delly delly.vcf.gz --cnvpytor cnv.vcf.gz	-	bytes	PYTHON_IMAGE
 sv-add-callers	stdin-name	gen:sv-oracle.sh,sv-add-callers/stdin-base/stdin	--base - --base-name sv_vcf	-	bytes	PYTHON_IMAGE
 sv-add-callers	nocall-00	gen:sv-oracle.sh,sv-add-callers/base_00.vcf,sv-add-callers/delly.vcf.gz	--base base_00.vcf --delly delly.vcf.gz	-	bytes	PYTHON_IMAGE

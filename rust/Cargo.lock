@@ -787,6 +787,7 @@ dependencies = [
  "og-intervals",
  "og-io",
  "og-pedigree",
+ "og-setup",
  "og-vcf",
  "pycompat",
  "rustc-hash",
