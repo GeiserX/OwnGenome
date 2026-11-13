@@ -99,9 +99,10 @@ fn read_gtf(path: &Path) -> Result<Gtf, BuildError> {
             b"gene" => {
                 let (start, end) = r.span()?;
                 if let Some(h) = r.attr("hgnc_id")?.filter(|h| !h.is_empty())
-                    && !r.attr("gene_id")?.is_some_and(|id| id.ends_with("_PAR_Y"))
+                    && !r.attr("gene_id")?.is_some_and(|id| id.ends_with("_PAR_X"))
                 {
-                    g.span.entry(h.to_owned()).or_insert((chrom, start, end));
+                    // PLANTED, reverted in the next commit: the last record wins.
+                    g.span.insert(h.to_owned(), (chrom, start, end));
                 }
                 let (name, ty) = (
                     r.attr("gene_name")?.unwrap_or(""),
