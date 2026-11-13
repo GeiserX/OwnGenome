@@ -295,6 +295,8 @@ pub struct Summary {
     pub manifest: Option<Manifest>,
     pub declared_sex: Option<String>,
     pub sections: Vec<Section>,
+    /// The CYP2D6 callers side by side (group b).
+    pub cyp2d6: Option<super::pgx::Cyp2d6>,
 }
 
 impl Summary {
@@ -334,6 +336,9 @@ impl Summary {
                     .collect(),
             ),
         );
+        if let Some(c) = &self.cyp2d6 {
+            m.insert("cyp2d6".into(), c.to_json());
+        }
         Value::Object(m)
     }
 }
