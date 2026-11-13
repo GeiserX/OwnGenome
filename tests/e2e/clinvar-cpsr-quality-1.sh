@@ -12,7 +12,7 @@
 #      (htslib), with one record per hit and filler records so the file spans
 #      many BGZF blocks: the summary reads each hit's gnomAD AF through the
 #      .tbi, and the 3% hit is marked common in both reports.
-#   4. bin/clip_check.py --cpsr in PYPGX_IMAGE on a CPSR table holding the
+#   4. og cdna check --cpsr in PYPGX_IMAGE on a CPSR table holding the
 #      planted hit as a P/LP row (CPSR's contig name, no "chr") and a benign
 #      row: on the copy with spliced alt reads that clinvar-clip-check-1 left
 #      the row is flagged, on the sample's own reads it is clear, and the
@@ -155,7 +155,7 @@ CLS="${GENOME_DIR}/${C}/cpsr/planted.classification.tsv.gz"
 cp "$EXONS" "${GENOME_DIR}/${C}/cpsr/exons.bed"
 clip() {  # clip <bam relative to GENOME_DIR> <out relative to GENOME_DIR>
   docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -v "${REPO}/bin:/pgp-bin:ro" -w /genome \
-    "$PYPGX_IMAGE" python3 /pgp-bin/clip_check.py --cpsr "${C}/cpsr/planted.classification.tsv.gz" \
+    "$PYPGX_IMAGE" /pgp-bin/og cdna check --cpsr "${C}/cpsr/planted.classification.tsv.gz" \
     --bam "$1" --exons "${C}/cpsr/exons.bed" --out "$2"
 }
 clip "${C}/aligned/${C}_sorted.bam" "${C}/cpsr/spliced.tsv"

@@ -20,7 +20,7 @@ SRC="https://storage.googleapis.com/deepvariant/case-study-testdata/HG002.novase
 P=HG002cnguard
 W="${GENOME_DIR}/${P}"
 rm -rf "$W"; mkdir -p "${W}/aligned" "${W}/paralogs"
-python3 "${REPO}/bin/copy_number.py" bed --locus CYP21A2 | sort -k1,1 -k2,2n > "${W}/fetch.bed"
+"${REPO}/bin/og" cn bed --locus CYP21A2 | sort -k1,1 -k2,2n > "${W}/fetch.bed"
 check_ge "segments of the CYP21A2 row to fetch" "$(wc -l < "${W}/fetch.bed" | tr -d ' ')" 10
 
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo "  try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }

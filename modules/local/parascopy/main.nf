@@ -26,7 +26,7 @@
 
     HBA1 and HBA2 have no Parascopy model: samtools bedcov (in the same
     image) sums the depth over both gene bodies and two single-copy flanks,
-    over all reads and over reads of MAPQ 1 or more, and bin/copy_number.py
+    over all reads and over reads of MAPQ 1 or more, and og cn call
     (the HBA row of bin/cn_loci.tsv) turns it into a count of alpha-globin
     genes (not assessed when no read over the genes has MAPQ 0: the aligner then left
     out the reads that fit both genes).
@@ -46,7 +46,7 @@
 
     Beside the SMN1 psCN, SMN1 g.27134T>G (rs143838139, Luo et al. 2014), a
     marker of SMN1 duplication alleles: samtools mpileup at its SMN1 and SMN2
-    copies, read as a fraction of copies by bin/traits_report.py --marker
+    copies, read as a fraction of copies by og cn marker-read
     SMN1_27134 with the SMN table (<id>_smn1_marker.tsv). It never proves a
     silent 2+0 carrier, and its message says so.
 
@@ -109,10 +109,10 @@ process PARASCOPY {
     # the locus profile (aggregate and paralog-specific copy number, each with
     # filter and quality).
     # A BAM with ALT or HLA contigs is refused, as scripts/35-paralogs.sh does
-    # (bin/copy_number.py check-bam): its depth splits between a gene and its
+    # (og cn check-bam): its depth splits between a gene and its
     # ALT copy, and a depth-based count reads that as a deletion.
     samtools view -H ${bam} > bam_header.txt
-    copy_number.py check-bam --header bam_header.txt
+    og cn check-bam --header bam_header.txt
     models=${parascopy_data}/models_GRCh38_1KGP/${params.parascopy_population}
     [ -d "\$models" ] || { echo "ERROR: no Parascopy models \$models (populations: AFR AMR EAS EUR SAS)" >&2; exit 1; }
     parascopy depth -i ${bam}::${meta.id} -f ${reference} ${background} -o depth -@ ${task.cpus}
@@ -158,11 +158,11 @@ process PARASCOPY {
 
     # SMN1 g.27134T>G beside the SMN1 psCN (as scripts/35-paralogs.sh): mpileup at its SMN1 and SMN2
     # copies, then the reading with the SMN table; not assessed when it fails
-    if traits_report.py --marker-regions SMN1_27134 > smn1_marker_sites.txt \
+    if og cn marker-regions SMN1_27134 > smn1_marker_sites.txt \
         && ( while read -r r; do samtools mpileup -A -B -q 0 -Q 13 -d 100000 -r "\$r" ${bam} || exit 1; done \
             < smn1_marker_sites.txt ) > smn1_marker_pileup.tsv \
-        && traits_report.py --marker SMN1_27134 --pileup smn1_marker_pileup.tsv \
-            --copy-table ${meta.id}_smn_copy_number.tsv --marker-out ${meta.id}_smn1_marker.tsv.tmp; then
+        && og cn marker-read SMN1_27134 --pileup smn1_marker_pileup.tsv \
+            --copy-table ${meta.id}_smn_copy_number.tsv --out ${meta.id}_smn1_marker.tsv.tmp; then
         mv ${meta.id}_smn1_marker.tsv.tmp ${meta.id}_smn1_marker.tsv
     else
         rm -f ${meta.id}_smn1_marker.tsv.tmp
@@ -173,10 +173,10 @@ process PARASCOPY {
     rm -f smn1_marker_sites.txt smn1_marker_pileup.tsv
 
     # HBA1/HBA2 from depth (as scripts/35-paralogs.sh): all MAPQ and MAPQ 1 or more, then the verdict
-    if copy_number.py bed --locus HBA > hba_regions.bed \\
+    if og cn bed --locus HBA > hba_regions.bed \\
         && samtools bedcov hba_regions.bed ${bam} > hba_bedcov.tsv \\
         && samtools bedcov -Q 1 hba_regions.bed ${bam} > hba_bedcov_q1.tsv \\
-        && copy_number.py call --locus HBA --bedcov hba_bedcov.tsv --bedcov-mapq1 hba_bedcov_q1.tsv \\
+        && og cn call --locus HBA --bedcov hba_bedcov.tsv --bedcov-mapq1 hba_bedcov_q1.tsv \\
             --table ${meta.id}_hba_copy_number.tsv.tmp; then
         mv ${meta.id}_hba_copy_number.tsv.tmp ${meta.id}_hba_copy_number.tsv
     else
@@ -192,10 +192,10 @@ process PARASCOPY {
     dosage_loci="HP LCE3BC CCL3L1"
     printf 'locus\\tstatus\\tcopies\\testimate\\treason\\treading\\n' > cn_dosage.part
     for loc in \$dosage_loci; do
-        if copy_number.py bed --locus "\$loc" > dosage_regions.bed \\
+        if og cn bed --locus "\$loc" > dosage_regions.bed \\
             && samtools bedcov dosage_regions.bed ${bam} > dosage_bedcov.tsv \\
             && samtools bedcov -Q 1 dosage_regions.bed ${bam} > dosage_bedcov_q1.tsv \\
-            && copy_number.py call --locus "\$loc" --bedcov dosage_bedcov.tsv --bedcov-mapq1 dosage_bedcov_q1.tsv \\
+            && og cn call --locus "\$loc" --bedcov dosage_bedcov.tsv --bedcov-mapq1 dosage_bedcov_q1.tsv \\
                 --table dosage_table.tsv; then
             awk -F'\\t' -v OFS='\\t' -v l="\$loc" 'NR > 1 {v[\$1] = \$2}
                 END {print l, v["status"], v["copies"], v["estimate"], v["reason"], v["reading"]}' dosage_table.tsv >> cn_dosage.part
@@ -209,14 +209,14 @@ process PARASCOPY {
 
     # CYP21A2 from depth and PSVs (as scripts/35-paralogs.sh): bedcov over the row (the RCCX module
     # total), mpileup without a reference at its PSV sites, then the verdict; not assessed when it fails
-    if copy_number.py bed --locus CYP21A2 > cyp21a2_regions.bed \\
-        && copy_number.py bed --psv --locus CYP21A2 > cyp21a2_psv.bed \\
+    if og cn bed --locus CYP21A2 > cyp21a2_regions.bed \\
+        && og cn bed --psv --locus CYP21A2 > cyp21a2_psv.bed \\
         && samtools bedcov cyp21a2_regions.bed ${bam} > cyp21a2_bedcov.tsv \\
         && samtools bedcov -Q 1 cyp21a2_regions.bed ${bam} > cyp21a2_bedcov_q1.tsv \\
         && samtools mpileup -A -B -q 0 -Q 13 -d 100000 \\
             -r "\$(awk 'NR == 1 {c = \$1; s = \$2 + 1} {e = \$3} END {print c ":" s "-" e}' cyp21a2_psv.bed)" \\
             -l cyp21a2_psv.bed ${bam} > cyp21a2_pileup.tsv \\
-        && copy_number.py call --locus CYP21A2 --bedcov cyp21a2_bedcov.tsv --bedcov-mapq1 cyp21a2_bedcov_q1.tsv \\
+        && og cn call --locus CYP21A2 --bedcov cyp21a2_bedcov.tsv --bedcov-mapq1 cyp21a2_bedcov_q1.tsv \\
             --pileup cyp21a2_pileup.tsv \\
             --table ${meta.id}_cyp21a2_psv.tsv.tmp; then
         mv ${meta.id}_cyp21a2_psv.tsv.tmp ${meta.id}_cyp21a2_psv.tsv
@@ -231,11 +231,11 @@ process PARASCOPY {
 
     # Interval rows of bin/cn_loci.tsv (as scripts/35-paralogs.sh): one bedcov over every row's segments,
     # then the verdict; a failed pass writes every row as not assessed (check_failed)
-    if ! { copy_number.py bed --kind interval > interval_regions.bed \
+    if ! { og cn bed --kind interval > interval_regions.bed \
             && samtools bedcov interval_regions.bed ${bam} > interval_bedcov.tsv \
-            && copy_number.py intervals --bedcov interval_bedcov.tsv --sex ${sex} --out ${meta.id}_cn_intervals.tsv; }; then
+            && og cn intervals --bedcov interval_bedcov.tsv --sex ${sex} --out ${meta.id}_cn_intervals.tsv; }; then
         echo "WARNING: the interval depth check failed; ${meta.id}_cn_intervals.tsv lists every row as not assessed." >&2
-        copy_number.py intervals --failed --out ${meta.id}_cn_intervals.tsv
+        og cn intervals --failed --out ${meta.id}_cn_intervals.tsv
     fi
     rm -f interval_regions.bed interval_bedcov.tsv
 

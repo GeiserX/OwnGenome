@@ -1,0 +1,2 @@
+locus	region	status	genotype	haplotype_1	haplotype_2	quality	total_reads	unexplained_reads	weighted_distance	warnings	filter	reason
+CYP2D6	chr22:42122285-42152960	not called	.	.	.	.	.	.	.	.	.	Locityper gave a genotype that is not text

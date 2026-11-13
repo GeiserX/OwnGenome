@@ -49,7 +49,6 @@ docs/versions.md                      generated from versions.env
 docs/lessons-learned.md               history: names the tags that failed
 docs/research/                        dated research notes, kept as written
 scripts/ci/check-images.sh            this file: the exemptions and the faults its self-test plants
-scripts/ci/freshness.py               reads image references; its self-test plants made-up ones
 scripts/ci/changed-images.sh          reads image references; its self-test plants made-up ones
 tests/fixtures/                       provenance notes name the image that wrote each fixture
 '

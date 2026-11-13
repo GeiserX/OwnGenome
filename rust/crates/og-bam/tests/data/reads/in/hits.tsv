@@ -1,0 +1,6 @@
+chrom	pos	ref	alt	genotype	clinvar_id	geneinfo	clnsig	clnrevstat
+chrT	1151	A	C	0/1	1	GENET:1	Pathogenic	x
+chrQ	500	A	G	0/1	2	GENEQ:2	Pathogenic	x
+chrT	1151	AAC	GT	0/1	3	GENET:1	Pathogenic	x
+T	1151	a	c	0/1	4	GENET:1	Pathogenic	x
+chrT	1151	A	<DEL>	0/1	5	GENET:1	Pathogenic	x

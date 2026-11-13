@@ -1,0 +1,1 @@
+ERROR: depth-bad.tsv line 1: not samtools bedcov -c output of a 4-column BED

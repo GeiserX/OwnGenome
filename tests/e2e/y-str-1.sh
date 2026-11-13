@@ -36,7 +36,7 @@ dk() { local img=$1; shift; docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp 
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo "  try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
 
 # --- the panel against the reference ---------------------------------------------------
-python3 "${REPO}/bin/ystr_report.py" bed --panel "$PANEL" --out "${T}/regions.bed"
+"${REPO}/bin/og" y str-bed --panel "$PANEL" --out "${T}/regions.bed"
 check_eq "HipSTR regions in the panel" "$(grep -c . "${T}/regions.bed")" 86
 awk -F'\t' '{print $1 ":" $2 "-" $3}' "${T}/regions.bed" > "${T}/regions.txt"
 dk "$SAMTOOLS_IMAGE" samtools faidx -r "${T}/regions.txt" "$REF" > "${T}/regions.fa"
@@ -133,7 +133,7 @@ NOREC=$(awk -F'\t' 'NR > 1 && $10 ~ /no record/' "$OUT" 2>/dev/null | wc -l | tr
 echo "  regions without a record: ${NOREC}"
 if [ "$NOREC" -gt 0 ]; then
   : > "${T}/empty.log"
-  python3 "${REPO}/bin/ystr_report.py" report --panel "$PANEL" --vcf "${G}/${H}/y_str/${H}_y_str.vcf.gz" \
+  "${REPO}/bin/og" y str-report --panel "$PANEL" --vcf "${G}/${H}/y_str/${H}_y_str.vcf.gz" \
     --log "${T}/empty.log" --tsv "${T}/nolog.tsv" --csv "${T}/nolog.csv" > /dev/null
   check_eq "control: with an empty log, those rows name no reason" \
     "$(awk -F'\t' 'NR > 1 && $10 ~ /its log gives no reason/' "${T}/nolog.tsv" 2>/dev/null | wc -l | tr -d ' ')" "$NOREC"

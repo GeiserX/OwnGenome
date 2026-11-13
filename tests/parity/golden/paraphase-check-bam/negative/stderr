@@ -1,0 +1,1 @@
+ERROR: negative.bam: not a BAM header (it announces -1 bytes of text)

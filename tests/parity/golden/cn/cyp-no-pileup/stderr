@@ -1,0 +1,1 @@
+ERROR: CYP21A2 is a psv row: --pileup (samtools mpileup over `og cn bed --psv`) is needed

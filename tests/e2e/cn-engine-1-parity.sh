@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The copy-number engine (bin/copy_number.py, bin/cn_loci.tsv) against the
+# The copy-number engine (og cn, bin/cn_loci.tsv) against the
 # per-gene code it replaced, on real reads: HG002's Illumina reads at the
 # alpha-globin cluster (chr16:95,001-235,000), the RH locus
 # (chr1:25.15-25.45 Mb) and LPA (chr6:160.53-160.67 Mb) from the 35x BWA-MEM
@@ -10,8 +10,8 @@
 #   - step 41 of this tree and of the old tree write the same RhD row and the
 #     same RhD evidence rows (other systems may change after the engine);
 #   - step 35's HBA block (bedcov all MAPQ and MAPQ >= 1, then the verdict)
-#     writes the same table through copy_number.py as the old
-#     hba_copy_number.py does.
+#     writes the same table through og cn as the old hba_copy_number.py
+#     does.
 # The old tree is main at OLD_SHA, the last commit before the engine (the one
 # tests/test_copy_number.py froze its GOLD tables from), fetched by its sha
 # at run time, so the comparison keeps its meaning once the engine is on main.
@@ -53,19 +53,20 @@ check_ge "HG002 reads at the three loci" "$(dk "$SAMTOOLS_IMAGE" samtools view -
 
 # dkb BIN IMAGE CMD...: dk with a tree's bin/ at its own path (this checkout is outside the work folder).
 dkb() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "$1:$1:ro" -w "$T" "$2" "${@:3}"; }
-# hba_block TREE OUT BAM: step 35's HBA block with TREE's bin (main: hba_copy_number.py).
+# hba_block TREE OUT BAM: step 35's HBA block with TREE's bin (this tree: og cn;
+# the old tree: hba_copy_number.py).
 hba_block() {
   local bin="$1/bin" out=$2 bam=$3 d="${T}/hba.$$"
   rm -rf "$d"; mkdir -p "$d"
-  if [ -e "${bin}/copy_number.py" ]; then
-    dkb "$bin" "$PARASCOPY_IMAGE" python3 "${bin}/copy_number.py" bed --locus HBA > "${d}/r.bed"
+  if [ -e "${bin}/og" ]; then
+    dkb "$bin" "$PARASCOPY_IMAGE" "${bin}/og" cn bed --locus HBA > "${d}/r.bed"
   else
     dkb "$bin" "$PARASCOPY_IMAGE" python3 "${bin}/hba_copy_number.py" bed > "${d}/r.bed"
   fi
   dkb "$bin" "$PARASCOPY_IMAGE" samtools bedcov "${d}/r.bed" "$bam" > "${d}/c.tsv"
   dkb "$bin" "$PARASCOPY_IMAGE" samtools bedcov -Q 1 "${d}/r.bed" "$bam" > "${d}/q.tsv"
-  if [ -e "${bin}/copy_number.py" ]; then
-    dkb "$bin" "$PARASCOPY_IMAGE" python3 "${bin}/copy_number.py" call --locus HBA --bedcov "${d}/c.tsv" \
+  if [ -e "${bin}/og" ]; then
+    dkb "$bin" "$PARASCOPY_IMAGE" "${bin}/og" cn call --locus HBA --bedcov "${d}/c.tsv" \
       --bedcov-mapq1 "${d}/q.tsv" --table "$out"
   else
     dkb "$bin" "$PARASCOPY_IMAGE" python3 "${bin}/hba_copy_number.py" check --bedcov "${d}/c.tsv" \

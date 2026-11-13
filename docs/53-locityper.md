@@ -15,7 +15,7 @@ Locityper (Prodanov et al., Nat Genet 2025, PMID 41107551, doi 10.1038/s41588-02
 ## Tool
 
 - Locityper, the release `LOCITYPER_IMAGE` pins (1.7.14 today; MIT licence, https://github.com/tprodanov/locityper): `locityper preproc` and `locityper genotype` on the BAM
-- `bin/locityper_report.py` (standard library Python, run with the image's Python) for the table
+- `og locityper report` (OwnGenome's Rust binary, [og](rust.md), static, so it runs inside the Locityper image) for the table
 
 ## Docker Image
 
@@ -65,7 +65,7 @@ With `run-all.sh`: `TOOLS=...,locityper`. It is opt-in, so a run lists step 53 o
 
 ## How the table is made
 
-`bin/locityper_report.py` reads `gt/loci/<locus>/res.json.gz` and writes one row per locus. A locus Locityper did not finish reads "not called", with Locityper's exit code when it stopped.
+`og locityper report` reads `gt/loci/<locus>/res.json.gz` and writes one row per locus. A locus Locityper did not finish reads "not called", with Locityper's exit code when it stopped.
 
 The filter is the one the authors used for their HLA and KIR benchmark (Zenodo 15879519, README): a call passes with no Locityper warning, a weighted distance of 30 or less, and fewer than 1000 or fewer than 20% unexplained reads. A call whose result gives no read counts fails it, and its `total_reads` and `unexplained_reads` read `.`. The weighted distance is the edit distance from the call to the other likely genotypes, weighted by their probability: a high value means the reads fit very different genotypes about as well.
 
@@ -92,7 +92,7 @@ The image test (`tests/smoke/locityper.sh`, the `LOCITYPER_IMAGE` row of `tests/
 
 The red control takes out of the panel HG002's haplotypes and every other haplotype within QV 20 of them, rebuilds the database and genotypes again; the same check must then fail at every locus. Leaving HG002 out with `--leave-out` is not enough: other people in the panel carry near copies of HG002's haplotypes, and the call stays close.
 
-The same row runs the shipped `bin/locityper_report.py` in the image on that run's own `res.json.gz` files: every locus must come back called, with a quality, its reads and a weighted distance. Its red control removes CYP2D6's `success` file, and CYP2D6 must then read "not called".
+The same row runs the shipped `og locityper report` (`bin/og`, built by `scripts/setup.sh --og`) in the image on that run's own `res.json.gz` files: every locus must come back called, with a quality, its reads and a weighted distance. Its red control removes CYP2D6's `success` file, and CYP2D6 must then read "not called".
 
 On the fixture in two CI runs, CYP2D6 and HLA-DQB1 came back as HG002's own two haplotypes. HLA-DRB1 came back at QV 49.9 to both of HG002's haplotypes (one base in about 98 kb): in one run one of HG002's own plus a near copy of the other, in the other two near copies. Locityper's own quality moved between the two runs (HLA-DQB1 7.8 and 5.4, HLA-DRB1 8.5 and 6.1, CYP2D6 18.7 and 28.8) and was below 20 at both HLA loci even where the call is exact. That quality is on the Phred scale (20 means a 1% chance that another genotype is right, 10 a 10% chance), and near-identical panel haplotypes compete for it; a low value there does not mean a wrong call.
 

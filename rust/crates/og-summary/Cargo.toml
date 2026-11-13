@@ -1,0 +1,20 @@
+[package]
+name = "og-summary"
+description = "The summary cluster: the step tools that turn a third-party tool's output into one of OwnGenome's tables (step 33's sample QC verdict, step 25's PRS table, step 20's chrM tables)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-io.workspace = true
+og-steps.workspace = true
+indexmap.workspace = true
+memchr.workspace = true
+
+[dev-dependencies]
+flate2.workspace = true
+
+[lints]
+workspace = true

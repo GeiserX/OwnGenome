@@ -1,0 +1,7 @@
+cDNA read check: 3 flagged, 0 clear, 0 not checked
+  FLAGGED T:1151 A>C: 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge (possible cDNA/transgene contamination: check the reads)
+  FLAGGED T:1151 A>C: 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge (possible cDNA/transgene contamination: check the reads)
+  FLAGGED T:1151 A>C: 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge (possible cDNA/transgene contamination: check the reads)
+  KNOWN CONSTRUCT SITE GENET X1Y at T:1151 A>C: flagged, 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge
+  KNOWN CONSTRUCT SITE GENET X1Y at T:1151 A>C: flagged, 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge
+  KNOWN CONSTRUCT SITE GENET X1Y at T:1151 A>C: flagged, 9 of 9 alt reads and 0 of 6 ref reads clipped at an exon edge

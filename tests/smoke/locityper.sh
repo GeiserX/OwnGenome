@@ -20,7 +20,7 @@
 #      people carry), the database rebuilt from that panel, genotype again:
 #      red_qv.tsv, whose calls cannot reach QV 20;
 #   6. leaves gt/ and a copy without CYP2D6's success file (gt_cut/) for the
-#      row's checks, which run the shipped bin/locityper_report.py on both in
+#      row's checks, which run the shipped og locityper report on both in
 #      this image: every locus called from the real res.json.gz, and CYP2D6
 #      not called once Locityper's per-locus success file is missing.
 # The loci are those of assets/locityper_loci.bed (HLA-DRB1, HLA-DQB1,
@@ -129,6 +129,6 @@ locityper target -d dbred -r mini.fa -j mini.jf -L red.bed -@ "$T" > target_red.
 locityper genotype -a hg.bam -d dbred -p bg -o gtred -@ "$T" > genotype_red.log 2>&1 || { tail -n 30 genotype_red.log; exit 1; }
 python3 qv.py gtred red_qv.tsv
 
-echo "== 6. Locityper's own output for bin/locityper_report.py (run by the row's checks)"
+echo "== 6. Locityper's own output for og locityper report (run by the row's checks)"
 cp -R gt gt_cut && rm gt_cut/loci/CYP2D6/success
 rm -rf collate* hg.bam* mini.jf

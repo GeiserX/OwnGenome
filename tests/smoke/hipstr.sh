@@ -3,8 +3,8 @@
 # Y-STR regions of HipSTR's annotated marker set (the source of
 # assets/ystr_panel.tsv) lie in the fixture's chrY slices; three of them
 # (DYS570, DYS388, DYS442) are FamilyTreeDNA markers. HipSTR runs with the
-# step's flags, and the image's Python, which bin/ystr_report.py runs on,
-# reads the bgzipped VCF.
+# step's flags, and the image's Python reads the bgzipped VCF that og y
+# str-report turns into step 45's table.
 set -e
 printf 'chrY\t%s\t%s\t%s\t%s\t%s\n' \
   2954700 2954743 4 11 DYS453   2974166 2974201 4 9 DYS579    6993190 6993257 4 17 DYS570 \

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""bin/annotsv_postfilter.py on a made-up class 4 and 5 table.
+"""og sv postfilter on a made-up class 4 and 5 table.
+
+Every check runs og, the binary OG names (guard.yml sets it). Without OG
+the test is skipped with a note, and with OG_REQUIRED set the skip is a
+failure.
 
 Checks:
   1. exon edges, on a made-up AnnotSV genes file: a deletion from the last
@@ -15,7 +19,7 @@ Checks:
      and its two callers by the VCF's sample names; a deletion only Manta
      made has support 1; a duplication of the consensus does not count for
      a deletion at the same place; without a consensus file the support is
-     unknown (None), not 1;
+     unknown (empty), not 1;
   5. red control: with an empty consensus (header only) the two-caller
      deletion has support 1, so the support-2 check above can fail;
   6. the command line writes the table, and --consensus adds the support;
@@ -47,7 +51,7 @@ Checks:
      chr14 between 105.5 and 107 Mb, the MHC is GRCh38's 28,510,120 to
      33,480,577, and there are at least 2,000 coding tandem repeats.
 
-Run: python3 tests/test_annotsv_postfilter.py
+Run: OG=rust/target/release/og python3 tests/test_annotsv_postfilter.py
 """
 import csv
 import os
@@ -57,10 +61,27 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import annotsv_postfilter as ap  # noqa: E402
+OG = os.environ.get("OG", "")
+# The columns of the checked table: AnnotSV's kept ones, the checks', and
+# with --consensus the support.
+KEEP = ["AnnotSV_ID", "ID", "SV_chrom", "SV_start", "SV_end", "SV_length", "SV_type", "Gene_name", "ACMG_class",
+        "AnnotSV_ranking_score"]
+ADDED = ["Caller", "Exon_edge", "Exon_edge_detail", "Population_AF", "Population_source", "Common", "AnnotSV_class",
+         "Depth_support", "Rule", "Rule_detail"]
+SUPPORT = ["Support", "Support_callers"]
 
 FAILS = 0
+
+
+def postfilter(*args):
+    """og sv postfilter ARGS: (exit code, stderr)."""
+    p = subprocess.run([OG, "sv", "postfilter"] + list(args), capture_output=True, text=True)
+    return p.returncode, p.stderr
+
+
+def table(path):
+    with open(path) as f:
+        return list(csv.DictReader(f, delimiter="\t"))
 
 
 def check(desc, ok, detail=""):
@@ -150,14 +171,11 @@ def run7(work, name, with_rules=True):
     with open(genes, "w") as f:
         f.write(GENES7)
     dst = os.path.join(work, name + "_checked.tsv")
-    cmd = [sys.executable, os.path.join(REPO, "bin", "annotsv_postfilter.py"), "--class45", c45, "--genes", genes,
-           "--out", dst] + (["--rules", RULES_TSV] if with_rules else [])
-    p = subprocess.run(cmd, capture_output=True, text=True)
-    if p.returncode != 0 or not os.path.isfile(dst):
-        print(f"  (the command failed: {p.stderr.strip()[-300:]})")
-        return {}, p.stderr
-    with open(dst) as f:
-        return {r["ID"]: r for r in csv.DictReader(f, delimiter="\t")}, p.stderr
+    rc, err = postfilter("--class45", c45, "--genes", genes, "--out", dst, *(["--rules", RULES_TSV] if with_rules else []))
+    if rc != 0 or not os.path.isfile(dst):
+        print(f"  (the command failed: {err.strip()[-300:]})")
+        return {}, err
+    return {r["ID"]: r for r in table(dst)}, err
 
 
 SEX_ROWS = "".join([
@@ -182,13 +200,11 @@ def run_sex(work, name, sex, par):
     with open(c45, "w") as f:
         f.write("\t".join(HEAD7) + "\n" + SEX_ROWS)
     dst = os.path.join(work, name + "_checked.tsv")
-    p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "annotsv_postfilter.py"), "--class45", c45,
-                        "--sex", sex, "--par-bed", par, "--out", dst], capture_output=True, text=True)
-    if p.returncode != 0 or not os.path.isfile(dst):
-        print(f"  (the command failed: {p.stderr.strip()[-300:]})")
-        return {}, p.stderr
-    with open(dst) as f:
-        return {r["ID"]: r for r in csv.DictReader(f, delimiter="\t")}, p.stderr
+    rc, err = postfilter("--class45", c45, "--sex", sex, "--par-bed", par, "--out", dst)
+    if rc != 0 or not os.path.isfile(dst):
+        print(f"  (the command failed: {err.strip()[-300:]})")
+        return {}, err
+    return {r["ID"]: r for r in table(dst)}, err
 
 
 def rules_section(work):
@@ -238,7 +254,7 @@ def rules_section(work):
           (col("DELLY_SHORT", "Depth_support"), col("DELLY_SHORT", "ACMG_class")) == ("not checked", "4"),
           got.get("DELLY_SHORT"))
     # Delly RDCN on chrX and chrY by sex and PAR (--sex, --par-bed), the rule
-    # cnvpytor_to_vcf.py applies when step 05 adds a Delly call.
+    # og sv add-callers applies when step 05 adds a Delly call.
     par = os.path.join(REPO, "assets", "par_grch38.bed")
     yes, no = ("yes", "4"), ("no", "3")
     for sex, want_sex in (("male", {"XDEL1": no, "XDUP2": yes, "PARDUP2": no, "XDEL0": yes, "PARDEL1": yes,
@@ -266,10 +282,9 @@ def rules_section(work):
     clash = os.path.join(work, "clash.tsv")
     with open(clash, "w") as f:
         f.write("\t".join("Caller" if h == "S1" else h for h in HEAD7) + "\n" + ROWS7)
-    p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "annotsv_postfilter.py"), "--class45", clash,
-                        "--out", os.path.join(work, "clash_checked.tsv")], capture_output=True, text=True)
+    rc, err = postfilter("--class45", clash, "--out", os.path.join(work, "clash_checked.tsv"))
     check("a sample named Caller stops the step instead of losing its GT and PS",
-          p.returncode != 0 and "rename the sample" in p.stderr, (p.returncode, p.stderr[-300:]))
+          rc != 0 and "rename the sample" in err, (rc, err[-300:]))
 
     # 8. red controls
     plain, _ = run7(work, "norules", with_rules=False)
@@ -290,6 +305,10 @@ def rules_section(work):
 
 
 def main():
+    if not OG:
+        check("OG names an og binary", not os.environ.get("OG_REQUIRED"), "OG_REQUIRED is set")
+        print("skip: og sv postfilter: OG is not set")
+        return 1 if FAILS else 0
     work = tempfile.mkdtemp()
     try:
         genes = os.path.join(work, "genes.RefSeq.sorted.bed")
@@ -298,9 +317,15 @@ def main():
         c45 = os.path.join(work, "S_sv_class4_5.tsv")
         with open(c45, "w") as f:
             f.write(CLASS45)
-        rows = ap.read_tsv(c45)
-        tx = ap.read_transcripts(genes, {"20"})
-        out = {r["Gene_name"]: r for r in ap.check_rows(rows, tx)}
+        dst = os.path.join(work, "checked.tsv")
+
+        def checked(*args):
+            """{Gene_name: written row} of og sv postfilter on CLASS45 with ARGS."""
+            rc, err = postfilter("--class45", c45, "--out", dst, *args)
+            check("og sv postfilter " + " ".join(a for a in args if a.startswith("--")) + " exits 0", rc == 0, err)
+            return {r["Gene_name"]: r for r in table(dst)} if rc == 0 else {}
+
+        out = checked("--genes", genes)
 
         # 1. exon edges
         check("an intron-exact deletion (exon 1 end to exon 3 start) is on exon edges",
@@ -312,7 +337,7 @@ def main():
         check("minus strand: exons numbered from the transcript's start",
               out["GENE6"]["Exon_edge_detail"] == "NM_900005 (MING1): exon 1 and exon 2 edges", out["GENE6"])
         check("a duplication is not checked as a deletion", out["GENE4"]["Exon_edge"] == ".", out["GENE4"])
-        no_genes = {r["Gene_name"]: r for r in ap.check_rows(rows, None)}
+        no_genes = checked()
         check("without the genes file: not checked", no_genes["GENE1"]["Exon_edge"] == "not checked", no_genes["GENE1"])
 
         # 2. population frequency
@@ -331,50 +356,43 @@ def main():
         cons = os.path.join(work, "S_sv_consensus.vcf")
         with open(cons, "w") as f:
             f.write(CONSENSUS)
-        checked = ap.check_rows(rows, tx)
-        sup = {r["Gene_name"]: s for r, s in zip(checked, ap.consensus_support(checked, cons))}
+        sup = {g: {k: r[k] for k in SUPPORT} for g, r in checked("--genes", genes, "--consensus", cons).items()}
         check("a deletion in the consensus: support 2, manta and delly",
-              sup["GENE2"] == {"Support": 2, "Support_callers": "manta,delly"}, sup["GENE2"])
-        check("a deletion only Manta made: support 1", sup["GENE3"] == {"Support": 1, "Support_callers": "manta"},
+              sup["GENE2"] == {"Support": "2", "Support_callers": "manta,delly"}, sup["GENE2"])
+        check("a deletion only Manta made: support 1", sup["GENE3"] == {"Support": "1", "Support_callers": "manta"},
               sup["GENE3"])
+        gone = checked("--consensus", os.path.join(work, "none.vcf"))
         check("without a consensus file the support is unknown, not 1",
-              all(s["Support"] is None for s in ap.consensus_support(checked, os.path.join(work, "none.vcf"))))
+              all(r["Support"] == "" for r in gone.values()), gone)
 
         # 5. red control: an empty consensus
         empty = os.path.join(work, "empty.vcf")
         with open(empty, "w") as f:
             f.write(CONS_HEAD)
-        sup_e = ap.consensus_support(checked, empty)
+        sup_e = checked("--consensus", empty)
         check("red control: with an empty consensus the two-caller deletion has support 1",
-              sup_e[1]["Support"] == 1, sup_e[1])
-        check("red control: and no row has support 2", all(s["Support"] == 1 for s in sup_e), sup_e)
+              sup_e["GENE2"]["Support"] == "1", sup_e["GENE2"])
+        check("red control: and no row has support 2", all(r["Support"] == "1" for r in sup_e.values()), sup_e)
 
         # 6. the command line
-        dst = os.path.join(work, "checked.tsv")
-        p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "annotsv_postfilter.py"), "--class45", c45,
-                            "--genes", genes, "--consensus", cons, "--out", dst], capture_output=True, text=True)
-        check("the command exits 0", p.returncode == 0, p.stderr)
-        with open(dst) as f:
-            got = list(csv.DictReader(f, delimiter="\t"))
+        rc, err = postfilter("--class45", c45, "--genes", genes, "--consensus", cons, "--out", dst)
+        check("the command exits 0", rc == 0, err)
+        got = table(dst)
         check("one row per SV", len(got) == 6, len(got))
-        check("the columns", list(got[0]) == ap.KEEP + ap.ADDED + ap.SUPPORT, list(got[0]) if got else None)
-        check("the summary line", "deletions on exon edges: 2; common (benign-set AF >= 1%): 1" in p.stderr, p.stderr)
+        check("the columns", list(got[0]) == KEEP + ADDED + SUPPORT, list(got[0]) if got else None)
+        check("the summary line", "deletions on exon edges: 2; common (benign-set AF >= 1%): 1" in err, err)
         g2 = next(r for r in got if r["Gene_name"] == "GENE2")
         check("the written support", (g2["Support"], g2["Support_callers"]) == ("2", "manta,delly"), g2)
-        p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "annotsv_postfilter.py"), "--class45", c45,
-                            "--out", dst], capture_output=True, text=True)
+        rc, err = postfilter("--class45", c45, "--out", dst)
         with open(dst) as f:
             head = f.readline().rstrip("\n").split("\t")
         check("without --consensus no support columns, without --genes not checked",
-              p.returncode == 0 and "Support" not in head and "deletions on exon edges: not checked" in p.stderr,
-              p.stderr)
+              rc == 0 and "Support" not in head and "deletions on exon edges: not checked" in err, err)
         open(c45, "w").close()
-        p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "annotsv_postfilter.py"), "--class45", c45,
-                            "--genes", genes, "--out", dst], capture_output=True, text=True)
+        rc, err = postfilter("--class45", c45, "--genes", genes, "--out", dst)
         with open(dst) as f:
             lines = f.read().splitlines()
-        check("an empty class 4 and 5 table gives a header and no row",
-              p.returncode == 0 and len(lines) == 1, (p.stderr, lines))
+        check("an empty class 4 and 5 table gives a header and no row", rc == 0 and len(lines) == 1, (err, lines))
 
         # 7 and 8. the rule table and the depth check
         rules_section(work)

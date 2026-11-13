@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""bin/lpa_kiv2.py: step 46's LPA KIV-2 repeat count from short-read depth,
-and its Lp(a) section in both reports.
+"""og cn call --locus LPA_KIV2: step 46's LPA KIV-2 repeat count from
+short-read depth, with KIV-2 4925G>A beside it, and its Lp(a) section in both
+reports. Part 6 runs without og; the rest needs it: OG names the binary
+(OG=rust/target/release/og, or bin/og); without it they are skipped, and with
+OG_REQUIRED set too the test fails.
 
 On `samtools bedcov` tables made up for each case (summed depth = mean depth
 x exon length), 30x over the single-copy LPA exons, with 90% of the KIV-2
@@ -19,9 +22,10 @@ depth from reads of MAPQ 0 unless a case says otherwise:
      count; no read of MAPQ 0 over KIV-2 (novoalign's default) is 'not
      assessed', naming the cause; two empty tables (a BAM with no chr6) is
      'not assessed';
-  5. the CLI: `bed` prints the 29 regions, 14 KIV-2 exons of 2,394 bp and 15
-     single-copy exons; `estimate` writes the metric table and exits 0; a
-     table with other regions or a short row exits 2;
+  5. the CLI: `og cn bed --locus LPA_KIV2` prints the 29 regions, 14 KIV-2
+     exons of 2,394 bp and 15 single-copy exons; `og cn call --table` writes
+     the metric table and exits 0; a table with other regions or a short row
+     exits 2;
   6. assets/traits.tsv has the two LPA risk variants with the alleles
      bin/collect_summary.py counts, and the blood-test advice;
   7. both reports: a low count with one risk allele is flagged with both
@@ -42,9 +46,11 @@ depth from reads of MAPQ 0 unless a case says otherwise:
      column are not counted; when step 46's table shows the aligner left out
      the reads of MAPQ 0, 'not assessed'; the reading goes to its own table and step 46's
      table is left byte for byte; without a count the copies are '.'; an
-     output that cannot be written exits 2.
+     output that cannot be written exits 2. `og cn marker-read` on step 46's
+     table and `og cn call --marker` (what step 46 and the LPA process run)
+     write the same 4925G>A table.
 
-Run: python3 tests/test_lpa_kiv2.py
+Run: OG=rust/target/release/og python3 tests/test_lpa_kiv2.py
 """
 import math
 import os
@@ -53,15 +59,32 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "lpa_kiv2.py")
+CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
+OG = os.environ.get("OG", "")
+if OG and not os.path.realpath(OG).startswith(os.path.realpath(REPO) + os.sep):
+    # og cn finds bin/cn_loci.tsv beside its own binary. Guard's unit-tests job
+    # builds og in a temporary folder, so the tests run a copy that sits next
+    # to the catalog, as bin/.og/og-* does in a checkout.
+    import atexit, shutil  # noqa: E401
+    _og_dir = tempfile.mkdtemp(prefix="og-cn-")
+    atexit.register(shutil.rmtree, _og_dir, True)
+    shutil.copy2(OG, os.path.join(_og_dir, "og"))
+    shutil.copy2(os.path.join(REPO, "bin", "cn_loci.tsv"), os.path.join(_og_dir, "cn_loci.tsv"))
+    OG = os.environ["OG"] = os.path.join(_og_dir, "og")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import lpa_kiv2 as lpa  # noqa: E402
+import copy_number as cn  # noqa: E402
 
 FAILS = 0
 # The two LPA rows; named once here so no line of this file reads as an rsID with a genotype.
 R1, R2 = "rs10455872", "rs3798220"
-KIV = [n for *_, n in lpa.REGIONS if n.startswith("kiv2_")]
-FLANK = [n for *_, n in lpa.REGIONS if n.startswith("flank_")]
+ROW = cn.load_catalog(CATALOG)["LPA_KIV2"]
+REGIONS = cn.regions(ROW)
+# in catalog order: the KIV-2 block, then the single-copy exons
+KIV = [n for n, *_ in ROW["_targets"]]
+FLANK = [n for n, *_ in ROW["_controls"]]
+# The advice row of step 46's table.
+ADVICE = ("A research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 European "
+          "Atherosclerosis Society consensus advises measuring it at least once in every adult.")
 
 
 def check(desc, ok, detail=""):
@@ -87,10 +110,41 @@ def q1(m, share=0.9):
     return {n: v * (1 - share) if n.startswith("kiv2_") else v for n, v in m.items()}
 
 
-def bedcov(path, m):
+def bedcov(path, m, exact=False):
+    """samtools bedcov at these mean depths: whole sums, or with exact the
+    sums themselves, so each mean comes back as given."""
     with open(path, "w") as f:
-        for c, s, e, n in lpa.REGIONS:
-            f.write(f"{c}\t{s}\t{e}\t{n}\t{round(m[n] * (e - s))}\n")
+        for c, s, e, n in REGIONS:
+            v = m[n] * (e - s)
+            f.write(f"{c}\t{s}\t{e}\t{n}\t{v!r}\n" if exact else f"{c}\t{s}\t{e}\t{n}\t{round(v)}\n")
+
+
+def og_cn(*args):
+    return subprocess.run([OG, "cn", *args], capture_output=True, text=True)
+
+
+def read_table(path):
+    return dict(x.split("\t", 1) for x in open(path).read().splitlines()[1:]) if os.path.exists(path) else {}
+
+
+def estimate(a, b, out):
+    """og cn call on step 46's two bedcov tables, writing its table."""
+    return og_cn("call", "--catalog", CATALOG, "--locus", "LPA_KIV2", "--bedcov", a, "--bedcov-mapq1", b,
+                 "--table", out)
+
+
+def assess(m, q):
+    """Step 46's table for mean depths m (every read) and q (MAPQ >= 1)."""
+    with tempfile.TemporaryDirectory() as t:
+        a, b, o = (os.path.join(t, x) for x in ("a.tsv", "b.tsv", "o.tsv"))
+        if m:
+            bedcov(a, m, exact=True)
+            bedcov(b, q, exact=True)
+        else:
+            open(a, "w").close()
+            open(b, "w").close()
+        estimate(a, b, o)
+        return read_table(o)
 
 
 def cv(vals):
@@ -98,22 +152,52 @@ def cv(vals):
     return math.sqrt(sum((v - mu) ** 2 for v in vals) / (len(vals) - 1)) / mu
 
 
+def pileup(path, per_site, extra=""):
+    """mpileup lines at the seven copies of 4925G>A (traits_report.MARKERS);
+    per_site is (C reads, T reads) at each."""
+    import traits_report
+    with open(path, "w") as f:
+        for p in traits_report.MARKERS["LPA_KIV2_4925"]["copies"]:
+            c, t_ = per_site
+            bases = "^]" + "C" * c + "t" * t_ + "$"
+            f.write(f"chr6\t{p}\tN\t{c + t_}\t{bases}\t{'I' * (c + t_)}\n")
+        f.write(extra)
+
+
+def traits():
+    """6. assets/traits.tsv holds the two LPA risk variants the report counts."""
+    import collect_summary
+    import traits_report
+    table = {r["rsid"]: r for r in traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))}
+    for rs, alt in collect_summary.LPA_RISK_ALLELES.items():
+        r = table.get(rs, {})
+        check(f"traits.tsv: {rs} is an LPA row whose alt ({alt}) is the risk allele the report counts",
+              r.get("gene") == "LPA" and r.get("alt") == alt, r)
+        check(f"traits.tsv: {rs} says the actionable test is a blood Lp(a) measurement",
+              "measure" in (r.get("note") or "").lower() and "blood" in (r.get("note") or ""), r)
+
+
 def main():
+    if not OG:
+        traits()
+        print("skip: OG is not set (OG=rust/target/release/og): only part 6 ran")
+        print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
+        return 1 if FAILS or os.environ.get("OG_REQUIRED") else 0
     # 1. arithmetic
     for n in (12, 20, 40):
-        r = lpa.assess(depths(n), q1(depths(n)))
+        r = assess(depths(n), q1(depths(n)))
         check(f"arithmetic: a block at 30 x {n + 2} / 14 is {n} KIV-2 copies",
               r["status"] == "estimated" and r["kiv2_copies"] == f"{n:.1f}", r)
     # 2. interval
-    r = lpa.assess(depths(20), q1(depths(20)))
+    r = assess(depths(20), q1(depths(20)))
     check("interval: equal depths give a zero-width interval", r["ci95_low"] == r["ci95_high"] == "20.0", r)
     m = depths(20, kiv_spread=0.10, flank_spread=0.15)
-    r = lpa.assess(m, q1(m))
+    r = assess(m, q1(m))
     rel = math.sqrt(cv([m[n] for n in KIV]) ** 2 / 14 + cv([m[n] for n in FLANK]) ** 2 / 15)
-    klen = sum(e - s for _, s, e, n in lpa.REGIONS if n in KIV)
-    flen = sum(e - s for _, s, e, n in lpa.REGIONS if n in FLANK)
-    k = sum(m[n] * (e - s) for _, s, e, n in lpa.REGIONS if n in KIV) / klen
-    f = sum(m[n] * (e - s) for _, s, e, n in lpa.REGIONS if n in FLANK) / flen
+    klen = sum(e - s for _, s, e, n in REGIONS if n in KIV)
+    flen = sum(e - s for _, s, e, n in REGIONS if n in FLANK)
+    k = sum(m[n] * (e - s) for _, s, e, n in REGIONS if n in KIV) / klen
+    f = sum(m[n] * (e - s) for _, s, e, n in REGIONS if n in FLANK) / flen
     total = 14 * k / f
     want = (f"{total - 2:.1f}", f"{total * math.exp(-1.96 * rel) - 2:.1f}", f"{total * math.exp(1.96 * rel) - 2:.1f}")
     got = (r["kiv2_copies"], r["ci95_low"], r["ci95_high"])
@@ -121,38 +205,38 @@ def main():
     check("interval: it contains the estimate",
           float(r["ci95_low"]) < float(r["kiv2_copies"]) < float(r["ci95_high"]), r)
     m2 = depths(20, kiv_spread=0.20, flank_spread=0.30)
-    r2 = lpa.assess(m2, q1(m2))
+    r2 = assess(m2, q1(m2))
     check("interval: twice the spread is wider",
           float(r2["ci95_high"]) - float(r2["ci95_low"]) > float(r["ci95_high"]) - float(r["ci95_low"]), (r, r2))
     # 3. class
     for n, sp, cls in ((20, 0.03, "low"), (29, 0.03, "low"), (29, 0.25, "typical"), (38, 0.03, "typical"),
                        (47, 0.25, "typical"), (60, 0.03, "high")):
         m = depths(n, kiv_spread=sp, flank_spread=sp)
-        r = lpa.assess(m, q1(m))
+        r = assess(m, q1(m))
         check(f"class: {n} copies ({r['ci95_low']} to {r['ci95_high']}) is {cls}", r["class"] == cls, r)
-    r = lpa.assess(depths(20), q1(depths(20)))
+    r = assess(depths(20), q1(depths(20)))
     check("class: the low message says what a low count means",
           "a low count goes with small apo(a) isoforms and a higher Lp(a) level" in r["message"], r)
     # 4. not assessed
-    r = lpa.assess(depths(20, flank=8.0), q1(depths(20, flank=8.0)))
+    r = assess(depths(20, flank=8.0), q1(depths(20, flank=8.0)))
     check("8x over the single-copy exons: too little depth, no count",
           r["status"] == "too little depth" and r["kiv2_copies"] == "." and "8.0x" in r["message"], r)
-    r = lpa.assess(depths(20, flank=10.0), q1(depths(20, flank=10.0)))
+    r = assess(depths(20, flank=10.0), q1(depths(20, flank=10.0)))
     check("10x: estimated", r["status"] == "estimated", r)
-    r = lpa.assess(depths(20), q1(depths(20), share=0.0))
+    r = assess(depths(20), q1(depths(20), share=0.0))
     check("no read of MAPQ 0 over KIV-2: not assessed, naming the cause",
           r["status"] == "not assessed" and r["kiv2_copies"] == "." and "novoalign" in r["message"], r)
-    r = lpa.assess(depths(20), q1(depths(20), share=0.25))
+    r = assess(depths(20), q1(depths(20), share=0.25))
     check("a quarter of the depth from MAPQ 0: estimated", r["status"] == "estimated", r)
-    r = lpa.assess({}, {})
+    r = assess({}, {})
     check("no chr6: not assessed", r["status"] == "not assessed" and "no chr6" in r["message"], r)
-    r = lpa.assess(depths(-1.5), q1(depths(-1.5)))
+    r = assess(depths(-1.5), q1(depths(-1.5)))
     check("KIV-2 depth under the floor of any count: not assessed, never a negative count",
           r["status"] == "not assessed" and r["kiv2_copies"] == "." and "too little for any repeat count" in r["message"],
           r)
 
     # 5. CLI
-    out = subprocess.run([sys.executable, SCRIPT, "bed"], capture_output=True, text=True)
+    out = og_cn("bed", "--catalog", CATALOG, "--locus", "LPA_KIV2")
     rows = [x.split("\t") for x in out.stdout.splitlines()]
     check("bed: 29 regions", out.returncode == 0 and len(rows) == 29, out)
     check("bed: 14 KIV-2 exons of 2,394 bp in total",
@@ -163,42 +247,37 @@ def main():
         a, b, o = (os.path.join(t, x) for x in ("a.tsv", "b.tsv", "o.tsv"))
         bedcov(a, depths(20))
         bedcov(b, q1(depths(20)))
-        cli = [sys.executable, SCRIPT, "estimate", "--bedcov", a, "--bedcov-mapq1", b, "--out", o]
+        cli = [OG, "cn", "call", "--catalog", CATALOG, "--locus", "LPA_KIV2", "--bedcov", a, "--bedcov-mapq1", b,
+               "--table", o]
         out = subprocess.run(cli, capture_output=True, text=True)
         tab = dict(x.split("\t", 1) for x in open(o).read().splitlines()[1:]) if os.path.exists(o) else {}
-        check("estimate: exit 0 and the metric table", out.returncode == 0 and tab.get("kiv2_copies") == "20.0"
+        check("call: exit 0 and the metric table", out.returncode == 0 and tab.get("kiv2_copies") == "20.0"
               and tab.get("status") == "estimated" and "blood" in tab.get("advice", ""), (out, tab))
         open(a, "w").close()
         open(b, "w").close()
         out = subprocess.run(cli, capture_output=True, text=True)
         tab = dict(x.split("\t", 1) for x in open(o).read().splitlines()[1:])
-        check("estimate: two empty tables (no chr6) exit 0, not assessed",
+        check("call: two empty tables (no chr6) exit 0, not assessed",
               out.returncode == 0 and tab.get("status") == "not assessed", (out, tab))
         bedcov(a, depths(20))
         out = subprocess.run(cli, capture_output=True, text=True)
-        check("estimate: an empty MAPQ 1 table beside a full one exits 2",
+        check("call: an empty MAPQ 1 table beside a full one exits 2",
               out.returncode == 2 and "is empty but the other table is not" in out.stderr, out)
         bedcov(a, depths(20))
         with open(a, "a") as f:
             f.write("chr6\t1\t100\tother\t500\n")
         out = subprocess.run(cli, capture_output=True, text=True)
-        check("estimate: other regions exit 2", out.returncode == 2 and "differ" in out.stderr, out)
+        check("call: other regions exit 2", out.returncode == 2 and "differ" in out.stderr, out)
         with open(a, "w") as f:
             f.write("chr6\t160646213\t160646395\n")
         out = subprocess.run(cli, capture_output=True, text=True)
-        check("estimate: a short row exits 2", out.returncode == 2 and "expected chrom" in out.stderr, out)
+        check("call: a short row exits 2", out.returncode == 2 and "expected chrom" in out.stderr, out)
 
     # 6. the traits table
+    traits()
     import collect_summary
     import render_report
     import traits_report
-    table = {r["rsid"]: r for r in traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))}
-    for rs, alt in collect_summary.LPA_RISK_ALLELES.items():
-        r = table.get(rs, {})
-        check(f"traits.tsv: {rs} is an LPA row whose alt ({alt}) is the risk allele the report counts",
-              r.get("gene") == "LPA" and r.get("alt") == alt, r)
-        check(f"traits.tsv: {rs} says the actionable test is a blood Lp(a) measurement",
-              "measure" in (r.get("note") or "").lower() and "blood" in (r.get("note") or ""), r)
 
     # 7. reports
     def sample(t, name, n_copies, flank=30.0, genotypes=None):
@@ -208,7 +287,7 @@ def main():
         m = depths(n_copies, flank=flank, kiv_spread=0.03, flank_spread=0.03)
         bedcov(a, m)
         bedcov(b, q1(m))
-        lpa.main(["estimate", "--bedcov", a, "--bedcov-mapq1", b, "--out", os.path.join(d, "lpa", "S_lpa_kiv2.tsv")])
+        estimate(a, b, os.path.join(d, "lpa", "S_lpa_kiv2.tsv"))
         if genotypes:
             os.makedirs(os.path.join(d, "traits"))
             with open(os.path.join(d, "traits", "S_traits.tsv"), "w") as f:
@@ -231,10 +310,10 @@ def main():
         check("report: the text section has the count, both variants and the advice",
               "## Lp(a): LPA KIV-2 Repeat Count and Risk Variants" in txt and "KIV-2 repeats (both chromosomes): 20.0" in txt
               and f"{R1}: A/G (1 risk allele)" in txt and f"{R2}: T/T (0 risk alleles)" in txt
-              and lpa.ADVICE in txt, txt)
+              and ADVICE in txt, txt)
         check("report: the HTML card has the flag and the advice",
               "<h2>Lp(a): LPA KIV-2 Repeat Count</h2>" in html and "Genetic sign of high Lp(a)" in html
-              and render_report.E(lpa.ADVICE) in html, html[-3000:])
+              and render_report.E(ADVICE) in html, html[-3000:])
         summ, txt, html = sample(t, "typ", 38, genotypes={R1: "A/A", R2: "T|T"})
         check("report: a typical count with no risk allele is not flagged",
               summ["sections"]["lpa"]["data"]["flag"] == "." and "No genetic sign of a high Lp(a)" in txt
@@ -261,8 +340,9 @@ def main():
               and "KIV-2 4925G>A null allele (rs1484919544): not assessed\n" in txt.split(count, 1)[-1].split(R1, 1)[0]
               and "step 46 wrote no S_lpa_kiv2_4925.tsv" in txt and cav in txt, txt)
         d = os.path.join(t, "nul0", "S", "lpa")
-        traits_report.write_metric_table(os.path.join(d, "S_lpa_kiv2_4925.tsv"),
-                                         lpa.null_allele((665, 35, 0), "38.0"))
+        pileup(os.path.join(t, "nul0.pileup"), (95, 5))
+        og_cn("marker-read", "LPA_KIV2_4925", "--pileup", os.path.join(t, "nul0.pileup"), "--copy-table",
+              os.path.join(d, "S_lpa_kiv2.tsv"), "--out", os.path.join(d, "S_lpa_kiv2_4925.tsv"))
         summ = collect_summary.collect("S", os.path.join(t, "nul0", "S"))
         txt, html = render_report.text_report(summ), render_report.html_report(summ)
         beside = txt.split(count, 1)[-1].split(R1, 1)[0]
@@ -291,16 +371,6 @@ def main():
               "<h2>Lp(a)" not in render_report.html_report(nothing) and "## Lp(a)" not in render_report.text_report(nothing))
 
     # 8. KIV-2 4925G>A beside the count
-    sites = traits_report.MARKERS["LPA_KIV2_4925"]["copies"]
-
-    def pileup(path, per_site, extra=""):
-        """mpileup lines at the seven copies; per_site is (C reads, T reads) at each."""
-        with open(path, "w") as f:
-            for p in sites:
-                c, t_ = per_site
-                bases = "^]" + "C" * c + "t" * t_ + "$"
-                f.write(f"chr6\t{p}\tN\t{c + t_}\t{bases}\t{'I' * (c + t_)}\n")
-            f.write(extra)
 
     def table_after(t, name, per_site, n_copies=38, extra=""):
         """Step 46's table, a pileup, then null-allele; returns (rc, the 4925G>A table, LPA table, pileup, out)."""
@@ -309,10 +379,9 @@ def main():
         a, b, o, p, n = (os.path.join(d, x) for x in ("a.tsv", "b.tsv", "S_lpa_kiv2.tsv", "p.tsv", "S_lpa_kiv2_4925.tsv"))
         bedcov(a, depths(n_copies))
         bedcov(b, q1(depths(n_copies)))
-        lpa.main(["estimate", "--bedcov", a, "--bedcov-mapq1", b, "--out", o])
+        estimate(a, b, o)
         pileup(p, per_site, extra)
-        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o, "--out", n],
-                            capture_output=True, text=True)
+        rc = og_cn("marker-read", "LPA_KIV2_4925", "--pileup", p, "--copy-table", o, "--out", n)
         tab = dict(x.split("\t", 1) for x in open(n).read().splitlines()[1:]) if os.path.exists(n) else {}
         return rc, tab, o, p, n
 
@@ -333,15 +402,17 @@ def main():
         a0, b0, o0 = (os.path.join(d0, x) for x in ("a.tsv", "b.tsv", "S_lpa_kiv2.tsv"))
         bedcov(a0, depths(38))
         bedcov(b0, q1(depths(38)))
-        lpa.main(["estimate", "--bedcov", a0, "--bedcov-mapq1", b0, "--out", o0])
+        estimate(a0, b0, o0)
         check("4925G>A: step 46's table is left byte for byte", open(o).read() == open(o0).read(), open(o).read())
-        n3 = os.path.join(t, "viatr.tsv")
-        res = subprocess.run([sys.executable, os.path.join(REPO, "bin", "traits_report.py"), "--marker", "LPA_KIV2_4925",
-                              "--pileup", p, "--copy-table", o, "--marker-out", n3], capture_output=True, text=True)
-        check("4925G>A: traits_report.py --marker LPA_KIV2_4925 (what step 46 and the LPA process run) writes "
-              "the same table as null-allele", res.returncode == 0 and open(n3).read() == open(n).read(), res)
-        res = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table",
-                              os.path.join(t, "none.tsv"), "--out", n3], capture_output=True, text=True)
+        n3, o3 = os.path.join(t, "viacall.tsv"), os.path.join(t, "viacall_lpa.tsv")
+        res = og_cn("call", "--catalog", CATALOG, "--locus", "LPA_KIV2", "--bedcov", a0, "--bedcov-mapq1", b0,
+                    "--table", o3, "--marker", "LPA_KIV2_4925", "--marker-pileup", p, "--marker-out", n3)
+        check("4925G>A: og cn call --marker LPA_KIV2_4925 (what step 46 and the LPA process run) writes the same "
+              "count table and the same 4925G>A table as marker-read on that table",
+              res.returncode == 0 and open(o3).read() == open(o0).read() and open(n3).read() == open(n).read()
+              and res.stdout.splitlines()[-1].startswith("LPA LPA KIV-2 4925G>A"), res)
+        res = og_cn("marker-read", "LPA_KIV2_4925", "--pileup", p, "--copy-table", os.path.join(t, "none.tsv"),
+                    "--out", n3)
         tab = dict(x.split("\t", 1) for x in open(n3).read().splitlines()[1:])
         check("4925G>A: without step 46's table the reading stands and the copies are '.'",
               res.returncode == 0 and tab.get("status") == "present" and tab.get("copies") == "."
@@ -350,8 +421,7 @@ def main():
             lt = os.path.join(t, f"share{share}.tsv")
             with open(lt, "w") as f:
                 f.write(f"metric\tvalue\nstatus\tnot assessed\nkiv2_copies\t.\nmapq0_share\t{share}\n")
-            res = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", lt, "--out", n3],
-                                 capture_output=True, text=True)
+            res = og_cn("marker-read", "LPA_KIV2_4925", "--pileup", p, "--copy-table", lt, "--out", n3)
             tab = dict(x.split("\t", 1) for x in open(n3).read().splitlines()[1:])
             check(f"4925G>A: a MAPQ 0 share of {share} in step 46's table gives {want} on the same reads",
                   res.returncode == 0 and tab.get("status") == want
@@ -374,14 +444,25 @@ def main():
         rc, tab, o, p, n = table_after(t, "bad", (95, 5))
         with open(p, "w") as f:
             f.write("not a pileup\n")
-        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o, "--out", n],
-                            capture_output=True, text=True)
+        rc = og_cn("marker-read", "LPA_KIV2_4925", "--pileup", p, "--copy-table", o, "--out", n)
         tab = dict(x.split("\t", 1) for x in open(n).read().splitlines()[1:])
         check("4925G>A: an unreadable pileup is not assessed, exit 0",
               rc.returncode == 0 and tab.get("status") == "not assessed", (rc, tab))
-        rc = subprocess.run([sys.executable, SCRIPT, "null-allele", "--pileup", p, "--table", o,
-                             "--out", os.path.join(t, "no", "such", "dir.tsv")], capture_output=True, text=True)
+        rc = og_cn("marker-read", "LPA_KIV2_4925", "--pileup", p, "--copy-table", o,
+                   "--out", os.path.join(t, "no", "such", "dir.tsv"))
         check("4925G>A: an output that cannot be written exits 2", rc.returncode == 2, rc)
+
+    # The demo's step 46 table (tests/demo/make_demo_sample.py) is what og writes.
+    sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
+    import make_demo_sample as demo
+    m, q = demo.lpa_depth(ROW)
+    with tempfile.TemporaryDirectory() as t:
+        a, b, o = (os.path.join(t, x) for x in ("a.tsv", "b.tsv", "o.tsv"))
+        bedcov(a, m, exact=True)
+        bedcov(b, q, exact=True)
+        estimate(a, b, o)
+        got = open(o).read() if os.path.exists(o) else ""
+        check("the demo's step 46 table is the one og cn call writes for its depths", got == demo.LPA_TABLE, got)
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
     return 1 if FAILS else 0

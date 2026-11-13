@@ -1,0 +1,1 @@
+ERROR: annotsv-bad.tsv: not AnnotSV's table (a column of ID, Annotation_mode, Gene_name, ACMG_class is missing)

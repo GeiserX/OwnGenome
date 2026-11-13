@@ -1,0 +1,1 @@
+ERROR: sites-bad.tsv: no rows, or a column of gene, chrom, start, end, site, element, inheritance, condition, clinvar, pmid is missing

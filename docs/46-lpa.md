@@ -22,7 +22,7 @@ A VCF cannot show the repeat count or the 4925G>A variant: the six KIV-2 units i
 ## Tool
 
 - samtools `bedcov -j` for the read depth over the exons, `mpileup` for the reads at the 4925G>A sites
-- `bin/copy_number.py` (standard library Python), the copy-number engine, on the LPA_KIV2 row of `bin/cn_loci.tsv` for the count, its interval and the reading; `bin/lpa_kiv2.py` lays out the table. See [Copy number from depth](cn-loci.md)
+- `og cn` (OwnGenome's Rust binary, [docs/rust.md](rust.md)), the copy-number engine, on the LPA_KIV2 row of `bin/cn_loci.tsv` for the count, its interval, the reading and the table, and in the same call the 4925G>A reading. See [Copy number from depth](cn-loci.md)
 
 ## Docker Image
 
@@ -48,7 +48,7 @@ With `run-all.sh`: `TOOLS=...,lpa`. It is opt-in and needs no data, so a run lis
 
 The method is the one published short-read estimators use: depth over the KIV-2 repeat against depth over single-copy sequence (Zekavat et al., Nat Commun 2018, PMID 29973585; Behera et al., BMC Med Genomics 2024, PMID 39449055). Behera et al. give the KIV-2 region in GRCh38 as chr6:160,611,568-160,646,868, six units, and its reads reach into the last exon of KIV-1 and the first exon of KIV-3, which resemble KIV-2.
 
-The regions are exons of the MANE Select transcript ENST00000316300.10 (Ensembl, checked 2026-10-25), numbered from its first exon. They are the LPA_KIV2 row of `bin/cn_loci.tsv`, and `bin/copy_number.py bed --locus LPA_KIV2` prints them:
+The regions are exons of the MANE Select transcript ENST00000316300.10 (Ensembl, checked 2026-10-25), numbered from its first exon. They are the LPA_KIV2 row of `bin/cn_loci.tsv`, and `og cn bed --locus LPA_KIV2` prints them:
 
 | Group | Exons | What they are |
 |---|---|---|
@@ -84,7 +84,7 @@ The count is not made when:
 
 ## How the 4925G>A variant is read
 
-The variant is the last base of the second KIV-2 exon, G>A on LPA's minus strand, so C>T on the plus strand. GRCh38 holds that base at the end of each of its six KIV-2 units (exons 5, 7, ..., 15; `NM_005577.4:c.733G>A` at the first, the one dbSNP names as rs1484919544) and at the near-identical last exon of KIV-1 (exon 3). The 21 bases around it are the same at all seven, so a read from any copy can land on any of them. `samtools mpileup` without a reference reads every read at the seven positions, every mapping quality, duplicates left out, bases of quality 13 or more, and `bin/traits_report.py --marker LPA_KIV2_4925` adds them up into its own table (`bin/lpa_kiv2.py` lays it out). The share of reads with T is a fraction of the copies, not a genotype. With a count, the copies that carry it are that fraction times N + 2 (the KIV-2 repeats plus one KIV-1 per chromosome).
+The variant is the last base of the second KIV-2 exon, G>A on LPA's minus strand, so C>T on the plus strand. GRCh38 holds that base at the end of each of its six KIV-2 units (exons 5, 7, ..., 15; `NM_005577.4:c.733G>A` at the first, the one dbSNP names as rs1484919544) and at the near-identical last exon of KIV-1 (exon 3). The 21 bases around it are the same at all seven, so a read from any copy can land on any of them. `samtools mpileup` without a reference reads every read at the seven positions, every mapping quality, duplicates left out, bases of quality 13 or more, and `og cn call --locus LPA_KIV2 ... --marker LPA_KIV2_4925` adds them up into its own table, in the same call that makes the count. The share of reads with T is a fraction of the copies, not a genotype. With a count, the copies that carry it are that fraction times N + 2 (the KIV-2 repeats plus one KIV-1 per chromosome).
 
 | `status` | When |
 |---|---|
@@ -92,7 +92,7 @@ The variant is the last base of the second KIV-2 exon, G>A on LPA's minus strand
 | `not seen` | 2 reads with T or fewer (one or two can be sequencing errors) |
 | `uncertain` | between the two |
 | `too little depth` | under 100 reads over the seven positions together |
-| `not assessed` | the pileup could not be read (also when `samtools mpileup` failed; the count still runs), or the count found that the aligner left out the reads of MAPQ 0, which are the reads a carrying repeat gives |
+| `not assessed` | the pileup could not be read (also when `samtools mpileup` failed; the count still runs), or the count found that the aligner left out the reads of MAPQ 0, which are the reads a carrying repeat gives. The marker reads the count's own MAPQ 0 share, not the rounded value in the count table, so the two never disagree at the 20% line |
 
 What a short-read fraction cannot say: which chromosome or which repeat carries the variant, so whether it sits on the small or the large isoform. A variant in one repeat among many gives few reads, so `not seen` is not proof of absence at low depth.
 

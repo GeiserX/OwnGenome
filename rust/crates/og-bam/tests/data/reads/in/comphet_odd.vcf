@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chrP	1000	.	A	C	.	PASS	slivar_comphet=S/GENEX/1/chrQ/500/G/T
+chrQ	500	.	G	T	.	PASS	slivar_comphet=S/GENEX/1/chrP/1000/A/C
+chrZ	10	.	A	C	.	PASS	slivar_comphet=S/GENEZ/2/chrZ/20/A/T
+chrP	5000	.	AC	GTT	.	PASS	slivar_comphet=S/HLA/A/3/chrP/5400/A/C
+chrP	7000	.	A	C	.	PASS	slivar_comphet=S/GENEY/4/chrP/7001/A/C,S/GENEY/4/chrP/7002/A/C
+chrP	8000	.	A	C	.	PASS	OTHER=1

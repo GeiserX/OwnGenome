@@ -15,7 +15,7 @@ Short reads from inside the repeat fit every unit equally well and map with mapp
 ## Tool
 
 - VNtyper, the release `VNTYPER_IMAGE` pins (2.0.47 today; BSD-3-Clause, https://github.com/hassansaei/VNtyper), `vntyper pipeline` on the BAM with `--fast-mode` and `--reference-assembly hg38`
-- `bin/vntyper_report.py` (standard library Python, run with the image's Python) for the reading
+- `og vntyper report` (OwnGenome's Rust binary, [og](rust.md), static, so it runs inside the VNtyper image) for the reading
 
 ## Docker Image
 
@@ -37,7 +37,7 @@ With `run-all.sh`: `TOOLS=...,vntyper`. It is opt-in, so a run lists step 52 onl
 
 ## How the reading is made
 
-VNtyper slices the reads of chr1:155,184,000-155,194,000, genotypes the VNTR with Kestrel and grades the call. Its documentation describes the grades. `bin/vntyper_report.py` reads its `kestrel/kestrel_result.tsv` and `coverage/coverage_summary.tsv`:
+VNtyper slices the reads of chr1:155,184,000-155,194,000, genotypes the VNTR with Kestrel and grades the call. Its documentation describes the grades. `og vntyper report` reads its `kestrel/kestrel_result.tsv` and `coverage/coverage_summary.tsv`:
 
 | Result | When |
 |---|---|

@@ -2,7 +2,7 @@
 """build-cn-intervals.py: write the interval rows of bin/cn_loci.tsv.
 
 The interval rows are the copy-number checks step 35 runs with one
-`samtools bedcov` pass (bin/copy_number.py intervals):
+`samtools bedcov` pass (og cn intervals):
 
   - every region row of ClinGen Dosage Sensitivity's recurrent CNV BED,
     version 2.1, GRCh38 (CLINGEN_RECURRENT_CNV_URL and _SHA256 in

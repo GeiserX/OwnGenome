@@ -6,9 +6,9 @@
     workflows/bam_analysis.nf passes the BAMs whose sex is male, the sex
     INDEXCOV has checked against the reads.
 
-    One task: bin/ystr_report.py writes HipSTR's region file from
-    assets/ystr_panel.tsv, HipSTR genotypes those chrY regions, and the
-    same script, with the image's Python, writes the table in
+    One task: og y str-bed (bin/og) writes HipSTR's region file from
+    assets/ystr_panel.tsv, HipSTR genotypes those chrY regions, and og y
+    str-report writes the table in
     FamilyTreeDNA's order and its CSV. Multi-copy markers and repeats
     longer than the reads can span are listed as not callable.
 
@@ -39,11 +39,11 @@ process Y_STR {
 
     script:
     """
-    ystr_report.py bed --panel ${panel} --out regions.bed
+    og y str-bed --panel ${panel} --out regions.bed
     HipSTR --bams ${bam} --fasta ${reference} --regions regions.bed --str-vcf ${meta.id}_y_str.vcf.gz \\
         --bam-samps ${meta.id} --bam-libs ${meta.id} --haploid-chrs chrY --def-stutter-model --min-reads 5 \\
         --max-str-len 150 --output-filters --log ${meta.id}_y_str.log
-    ystr_report.py report --panel ${panel} --vcf ${meta.id}_y_str.vcf.gz --log ${meta.id}_y_str.log \\
+    og y str-report --panel ${panel} --vcf ${meta.id}_y_str.vcf.gz --log ${meta.id}_y_str.log \\
         --tsv ${meta.id}_y_str.tsv --csv ${meta.id}_y_str.csv
 
     cat <<-END_VERSIONS > versions.yml

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Step 35's SMN1 g.27134T>G reading (bin/traits_report.py --marker
-# SMN1_27134) on real reads:
+# Step 35's SMN1 g.27134T>G reading (og cn marker-read SMN1_27134) on
+# real reads:
 #   - dbSNP orientation, online: the record pinned for the marker is what
 #     dbSNP's GRCh38 VCF of the build versions.env pins holds for rs143838139;
 #     control: the same compare with REF and ALT swapped fails;

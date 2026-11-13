@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Step 46's KIV-2 4925G>A reading (bin/lpa_kiv2.py null-allele, MARKERS in
-# bin/traits_report.py) on real reads:
+# Step 46's KIV-2 4925G>A reading (og cn call --marker LPA_KIV2_4925, the
+# marker of MARKERS in bin/traits_report.py) on real reads:
 #   - dbSNP orientation, online: the record pinned for the marker is what
 #     dbSNP's GRCh38 VCF of the build versions.env pins holds for rs1484919544
 #     (same position and REF, the pinned ALT among dbSNP's); control: the same
@@ -19,10 +19,10 @@
 #                   dropped: 'not seen'
 #     The reading goes to lpa/<sample>_lpa_kiv2_4925.tsv; step 46's own table
 #     keeps its rows.
-#   - the LPA module's pileup and 4925G>A lines, cut from its main.nf, write the
-#     same pileup and table in their images, byte for byte, on the planted BAM;
-#     with a 4925G>A reader that crashes, its block writes a table that says
-#     not assessed and leaves the count;
+#   - the LPA module's sites, pileup and count lines, cut from its main.nf,
+#     write the same pileup and tables in their images, byte for byte, on the
+#     planted BAM; with a 4925G>A reader that crashes after the count, its
+#     block writes a table that says not assessed and keeps the count;
 #   - steps 24 and generate-report.sh on the planted and the reference samples:
 #     both reports print the reading under the count with its caveat
 #     ('present' with the reads and copies, 'not seen').
@@ -159,14 +159,15 @@ MOD="${REPO}/modules/local/lpa/main.nf"
 M="${T}/module"
 rm -rf "$M"; mkdir -p "$M"
 unesc() { sed -e 's/\\\\/\\/g' -e 's/\\\$/$/g' -e "s|\${bam}|${G}/${P}/aligned/${P}_sorted.bam|g" -e "s|\${meta.id}|${P}|g" \
-  -e "s|\${pileup}|${P}_lpa_kiv2_4925_pileup.tsv|g"; }
-grep -E '^ *traits_report\.py --marker-regions LPA_KIV2_4925 > lpa_sites\.txt$' "$MOD" | unesc > "${M}/sites.sh"
+  -e "s|\${pileup}|${P}_lpa_kiv2_4925_pileup.tsv|g" -e "s|\${depth}|${P}_lpa_kiv2_depth.tsv|g" \
+  -e "s|\${depth_q1}|${P}_lpa_kiv2_depth_q1.tsv|g"; }
+grep -E '^ *og cn marker-regions LPA_KIV2_4925 > lpa_sites\.txt$' "$MOD" | unesc > "${M}/sites.sh"
 sed -n '/^ *( while read -r r; do samtools mpileup /,/|| echo /p' "$MOD" | unesc > "${M}/pileup.sh"
-sed -n '/^ *if ! traits_report\.py --marker LPA_KIV2_4925 --pileup/,/^ *fi$/p' "$MOD" | unesc > "${M}/null.sh"
-check_eq "the module's sites, pileup and 4925G>A lines were cut from main.nf" \
-  "$(cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh" | wc -l | tr -d ' ')" 9
+sed -n '/^ *rc=0$/,/^ *fi$/p' "$MOD" | unesc > "${M}/null.sh"
+check_eq "the module's sites, pileup and count lines were cut from main.nf" \
+  "$(cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh" | wc -l | tr -d ' ')" 12
 cat "${M}/sites.sh" "${M}/pileup.sh" "${M}/null.sh"
-cp "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "$M/"
+cp "${G}/${P}/lpa/${P}_lpa_kiv2_depth.tsv" "${G}/${P}/lpa/${P}_lpa_kiv2_depth_q1.tsv" "$M/"
 mod() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "${REPO}/bin:/pgp-bin:ro" \
   -w "$M" "$1" sh -c 'PATH="/pgp-bin:$PATH"; set -e; . "./$1"' _ "$2"; }
 mod "$PYTHON_IMAGE" sites.sh && mod "$SAMTOOLS_IMAGE" pileup.sh && mod "$PYTHON_IMAGE" null.sh 2>&1 | tail -n 3
@@ -174,16 +175,30 @@ check "the module writes step 46's pileup, byte for byte" \
   cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2_4925_pileup.tsv" "${M}/${P}_lpa_kiv2_4925_pileup.tsv"
 check "the module writes step 46's 4925G>A table, byte for byte" \
   cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2_4925.tsv" "${M}/${P}_lpa_kiv2_4925.tsv"
-check "the module leaves step 46's table byte for byte" cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "${M}/${P}_lpa_kiv2.tsv"
+check "the module writes step 46's count table, byte for byte" cmp -s "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "${M}/${P}_lpa_kiv2.tsv"
 
-# The module's fallback, in its image: a 4925G>A reader that crashes leaves the
-# count and a table that says not assessed (scripts/46-lpa.sh writes the same
-# table; tests/test_lpa_fallback.sh checks that). Control: the planted table
-# above was 'present'.
+# The module's fallback, in its image: an og whose 4925G>A reader crashes after
+# it wrote the count (the planted og runs the real one without --marker, then
+# exits 1) keeps the count and a table that says not assessed
+# (scripts/46-lpa.sh writes the same table; tests/test_lpa_fallback.sh checks
+# that). Control: the planted table above was 'present'.
 mkdir -p "${M}/broken"
-printf '#!/bin/sh\necho "planted crash" >&2\nexit 1\n' > "${M}/broken/traits_report.py"
-chmod +x "${M}/broken/traits_report.py"
-cp "${G}/${P}/lpa/${P}_lpa_kiv2.tsv" "${M}/count_before.tsv"
+cat > "${M}/broken/og" <<'OG'
+#!/bin/sh
+n=$#
+while [ "$n" -gt 0 ]; do
+  case "$1" in
+    --marker|--marker-pileup|--marker-out) shift 2; n=$((n - 2)); continue ;;
+  esac
+  set -- "$@" "$1"; shift; n=$((n - 1))
+done
+/pgp-bin/og "$@" || exit
+echo "planted crash" >&2
+exit 1
+OG
+chmod +x "${M}/broken/og"
+mv "${M}/${P}_lpa_kiv2.tsv" "${M}/count_before.tsv"
+rm -f "${M}/${P}_lpa_kiv2_4925.tsv"
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "${REPO}/bin:/pgp-bin:ro" \
   -w "$M" "$PYTHON_IMAGE" sh -c "PATH=\"${M}/broken:/pgp-bin:\$PATH\"; set -e; . ./null.sh" 2>&1 | tail -n 2
 check_eq "the module with a crashing 4925G>A reader: not assessed" \

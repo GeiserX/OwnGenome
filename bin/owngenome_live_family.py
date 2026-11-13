@@ -253,6 +253,11 @@ def child_depth(d, order, members):
 
 
 TRIO_FILES = ("de_novo.tsv", "compound_het.tsv")
+# Step 41's own order of the blood group systems, as `og bloodtype systems`
+# prints it (tests/test_live_family_depth.py checks the two agree).
+STEP41_SYSTEMS = ("ABO", "RhD", "RhCE", "Kell", "Duffy", "Kidd", "MNS", "Lutheran", "Diego", "Dombrock", "Colton",
+                  "Vel", "Langereis", "Junior", "H", "Secretor", *(f"HPA-{n}" for n in range(1, 36)),
+                  "HNA-1", "HNA-3", "HNA-4", "HNA-5")
 
 
 def file_state(d, f):
@@ -269,7 +274,7 @@ def file_state(d, f):
 def trio_status(d, order, members, files):
     """Per child, whether step 38 assessed it for de novo candidates and compound-het pairs, and why not:
     {child: {"de_novo": {"assessed": bool, "why": text}, "compound_het": {...}}}. The rule is step 38's
-    (bin/family_report.py): de novo candidates need both parents sequenced, compound-het pairs a sequenced
+    (og family report): de novo candidates need both parents sequenced, compound-het pairs a sequenced
     parent; a file that is not here, or is a link out of the folder, means no child was assessed."""
     plan = {r.get("analysis"): r for r in read_tsv(os.path.join(d, "family_plan.tsv"))}
     trio = plan.get("trio_phasing") or {}
@@ -438,8 +443,7 @@ def side_by_side(names, summaries):
                 keys.insert(keys.index(prev) + 1 if prev else len(keys), (g, label))
             prev = (g, label)
     groups = ["Medicines", "HLA", "Haplogroups", "Blood groups"]
-    import bloodtype_report  # step 41's own order of the systems, for systems two members each lack one of
-    step41 = {s: i for i, (s, _) in enumerate(bloodtype_report.SYSTEMS)}
+    step41 = {s: i for i, s in enumerate(STEP41_SYSTEMS)}   # for systems two members each lack one of
     pos = {k: i for i, k in enumerate(keys)}
     keys.sort(key=lambda k: (groups.index(k[0]) if k[0] in groups else 9,
                              step41.get(k[1], len(step41)) if k[0] == "Blood groups" else 0, pos[k]))

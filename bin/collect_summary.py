@@ -28,30 +28,10 @@ database re-check (S/recheck/state.json, bin/owngenome_recheck.py), and new_sinc
 the date of the previous run kept in S/history/ and the sections whose results
 changed since it (bin/run_delta.py's comparison).
 
-  collect_summary.py sample-qc --sample S --somalier-samples F --selfsm F [...]
-
-writes the sample identity and contamination table of step 33 (and of the
-Nextflow SAMPLE_QC process): the sex somalier infers from the reads, the
-declared sex, VerifyBamID2's FREEMIX against a warning threshold, and the
-other samples somalier finds to be the same person. Both callers stop on the
-sex_check value this writes, so the rule lives here once.
-
-  collect_summary.py prs-table --sample S --results DIR --sampleset NAME --scores DIR --input-kind gvcf --out F
-                               [--sex male|female]
-
-is the last part of step 25 (and of the Nextflow PRS_SUMMARY process), after
-pgsc_calc; its first part, the scoring files pgsc_calc reads, is
-`og prs format` (rust/crates/og-steps). prs-table reads pgsc_calc's match
-summary and scores into <sample>_prs_summary.tsv, with the ancestry-adjusted
-percentile and the reference group when pgsc_calc ran with an ancestry panel,
-and then writes the principal components and population of step 26.
-
-  collect_summary.py mito-deletions --eklipse eKLIPse_deletions.csv --out S_chrM_deletions.tsv
-  collect_summary.py mito-copies --idxstats S_idxstats.txt --out S_mtdna_copies.tsv
-
-are step 20's large mtDNA deletions (eKLIPse's CSV as a table) and its mtDNA
-copy number (chrM against autosomal reads per base, from samtools idxstats),
-for scripts/20-mtoolbox.sh and the Nextflow MITO_DELETIONS process.
+The step tools that once lived here are og verbs now (rust/crates/og-summary):
+`og qc sample` writes step 33's identity and contamination table, `og prs
+table` step 25's PRS table, and `og mito annotate|deletions|copies` step 20's
+chrM tables. This file reads what they write.
 """
 import argparse
 import base64
@@ -128,7 +108,7 @@ NOT_ASSESSED = [
     "Variants of uncertain significance (not interpreted)",
 ]
 
-# Added to NOT_ASSESSED unless step 35's depth count (bin/hba_copy_number.py,
+# Added to NOT_ASSESSED unless step 35's depth count (og cn call --locus HBA,
 # short reads) or step 35b (Paraphase, PacBio HiFi, both genes) made a call.
 HBA_NOT_ASSESSED = ("HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count "
                     "(short reads) nor step 35b (Paraphase, PacBio HiFi) made a call")
@@ -910,13 +890,13 @@ def sec_parascopy(d, s):
                "smn1_marker": read_marker_table(os.path.join(d, "paralogs", f"{s}_smn1_marker.tsv"), "35",
                                                 "SMN1_27134"),
                "rows": len(rows),
-               # HBA1/HBA2 from depth (bin/hba_copy_number.py); None when
+               # HBA1/HBA2 from depth (og cn call --locus HBA); None when
                # step 35 wrote no HBA table (a run from before the check)
                "hba": read_hba(hp) if os.path.isfile(hp) else None,
                # the interval rows of bin/cn_loci.tsv (recurrent CNV regions,
                # carrier deletions, AZF); None without step 35's table
                "cn_intervals": read_cn_intervals(ip) if os.path.isfile(ip) else None,
-               # CYP21A2 from depth and PSV sites (bin/copy_number.py, the
+               # CYP21A2 from depth and PSV sites (og cn call, the
                # CYP21A2 row): copies, module total, finding; None without it
                "cyp21a2": read_hba(cp) if os.path.isfile(cp) else None,
                # the gene-dosage rows (HP, LCE3BC, CCL3L1): total copies from
@@ -931,7 +911,7 @@ def sec_parascopy(d, s):
 
 
 def read_cn_intervals(path):
-    """Step 35's interval table (bin/copy_number.py intervals): the rows with
+    """Step 35's interval table (og cn intervals): the rows with
     a deletion or a duplication, and a count of the rows by status."""
     rows = read_tsv(path)
     cols = ("locus", "name", "chrom", "start", "end", "status", "copies", "expected", "change")
@@ -1229,314 +1209,7 @@ def sec_prs(d, s):
     return p, data
 
 
-# --- PRS with pgsc_calc (steps 25 and 26, and the PRS processes) ------------------
-# The PGS Catalog's pgsc_calc scores the sample. Step 25 and the Nextflow
-# PRS_PREPARE and PRS_SUMMARY processes run the two commands below, so the
-# score files pgsc_calc reads and the table the reports read are made once.
-
-# Input stays last: readers take it as the last column.
-PRS_COLUMNS = ["Condition", "PGS_ID", "Score_SUM", "Variants_Matched", "Variants_Total",
-               "Matched_Pct", "Percentile", "Ancestry_Group", "ChrX", "Ambiguous", "Applies_To",
-               "Sex_Check", "Input"]
-# Written before Input when the score list names PGS Catalog evaluations
-# (ppm_id, ancestry and effect in assets/pgs_scores.tsv): the groups a score
-# was evaluated in, and the effect measured in the sample's group.
-PRS_EFFECT_COLUMNS = ["Evaluated_In", "Effect"]
-# og prs format (PRS_PREPARE) writes it beside the scores: per score, its
-# chrX rows and whether they were kept (scored) or left out (no sex given).
-CHRX_FILE = "chrx_rows.tsv"
-# og prs format writes it beside the scores too: per score, the sex it applies
-# to (applies_to of assets/pgs_scores.tsv) and its strand-ambiguous rows (an
-# A/T or C/G pair) with what happened to them.
-SCORE_NOTES_FILE = "score_notes.tsv"
-# og prs format writes it beside the scores as well: per score, the PGS Catalog
-# evaluations of assets/pgs_scores.tsv (pgs_id, ppm_id, ancestry, effect).
-EVALS_FILE = "score_evaluations.tsv"
-# The 1000 Genomes groups pgsc_calc places a sample in, which the ancestry
-# column of assets/pgs_scores.tsv names.
-PRS_GROUPS = ("AFR", "AMR", "EAS", "EUR", "SAS")
-# Sex_Check of a sex-specific score: the declared sex is the one it applies
-# to, another one (no percentile then), or none was declared.
-SEX_APPLIES = "applies"
-SEX_NOT_APPLICABLE = "not applicable to the declared sex"
-SEX_NOT_DECLARED = "no sex declared"
 AUTOSOMES = frozenset(str(i) for i in range(1, 23))
-
-
-def pgs_id_of(path):
-    """PGS000018 for PGS000018.txt.gz, PGS000018_hmPOS_GRCh38.txt.gz and the like."""
-    name = os.path.basename(path)
-    for suffix in (".gz", ".txt", ".tsv"):
-        if name.endswith(suffix):
-            name = name[: -len(suffix)]
-    return name.split("_hmPOS_")[0]
-
-
-def read_metrics(path):
-    """ID -> [(ancestry, effect, ppm_id), ...]: the PGS Catalog evaluations of
-    each score, from the optional ppm_id, ancestry and effect columns of
-    assets/pgs_scores.tsv (entries separated by ";", in the same order in the
-    three). Raises Unreadable when a row with evaluations has no pgs_id or
-    repeats one, the three lists differ in length, an ancestry is not a 1000
-    Genomes group or appears twice, or an effect is not "OR <number>" or
-    "HR <number>"."""
-    out = {}
-    if not path:
-        return out
-    with open(path, encoding="utf-8") as f:
-        for r in csv.DictReader((line for line in f if not line.startswith("#")), delimiter="\t"):
-            pid = (r.get("pgs_id") or "").strip()
-            cols = [[x.strip() for x in (r.get(k) or "").split(";")] if (r.get(k) or "").strip() else []
-                    for k in ("ppm_id", "ancestry", "effect")]
-            name = os.path.basename(path)
-            if not any(cols):
-                continue
-            if not pid:
-                raise Unreadable(f"{name}: a row has ppm_id, ancestry or effect entries but no pgs_id")
-            if pid in out:
-                raise Unreadable(f"{name}: {pid} has evaluations on two rows")
-            ppm, anc, eff = cols
-            if not (len(ppm) == len(anc) == len(eff)):
-                raise Unreadable(f"{name}: {pid} has {len(ppm)} ppm_id, {len(anc)} ancestry and {len(eff)} effect entries")
-            for p_, a_, e_ in zip(ppm, anc, eff):
-                if a_ not in PRS_GROUPS:
-                    raise Unreadable(f"{name}: ancestry of {pid} is '{a_}', expected one of {', '.join(PRS_GROUPS)}")
-                if not re.fullmatch(r"PPM\d{6}", p_):
-                    raise Unreadable(f"{name}: ppm_id of {pid} is '{p_}', expected PPM and six digits")
-                if not re.fullmatch(r"(OR|HR) \d+(\.\d+)?", e_):
-                    raise Unreadable(f"{name}: effect of {pid} is '{e_}', expected 'OR <number>' or 'HR <number>'")
-            if len(set(anc)) != len(anc):
-                raise Unreadable(f"{name}: {pid} lists an ancestry twice")
-            out[pid] = list(zip(anc, eff, ppm))
-    return out
-
-
-def fmt_num(x):
-    """A number as pgsc_calc wrote it, without a trailing .0: 62.0 -> 62."""
-    try:
-        return f"{float(x):.10g}"
-    except (TypeError, ValueError):
-        return "NA"
-
-
-def read_gz_tsv(path):
-    with open_text(path) as f:
-        return list(csv.DictReader(f, delimiter="\t"))
-
-
-# pgscatalog-match's log line for a score under the minimum overlap.
-BELOW_RE = re.compile(r"Score (\S+) fails minimum matching threshold \(([0-9.]+)% variants match\)")
-
-
-def chrx_matched(results, sampleset):
-    """PGS id -> chrX rows pgsc_calc matched, from its match log; None when
-    there is no log. In a run with an ancestry panel pgsc_calc keeps only
-    the variants it found in the panel too (the rest are 'excluded'), so a
-    chrX row the panel lacks is not scored even with the sex."""
-    logs = sorted(glob.glob(os.path.join(results, sampleset, "match", "*_log.csv.gz")))
-    if not logs:
-        return None
-    out = {}
-    for p in logs:
-        with open_text(p) as f:
-            head = next(csv.reader([f.readline()]), [])
-            c = {k: i for i, k in enumerate(head)}
-            if not {"accession", "chr_name", "match_status"} <= set(c):
-                return None
-            for line in f:
-                # Most lines are not on chrX; split only those that may be.
-                if ",X," not in line and ",23," not in line:
-                    continue
-                r = next(csv.reader([line]))
-                if len(r) > max(c.values()) and r[c["chr_name"]] in ("X", "23") and r[c["match_status"]] == "matched":
-                    pid = pgs_id_of(r[c["accession"]])
-                    out[pid] = out.get(pid, 0) + 1
-    return out
-
-
-def prs_table(results, sampleset, scores_dir, input_kind, zero_matches=False, below_log=None, sex="", panel=False):
-    """Rows of the summary table (PRS_COLUMNS) and the ancestry rows (key,
-    value), from pgsc_calc's output folder RESULTS for SAMPLESET. Totals and
-    labels come from the files og prs format wrote in SCORES_DIR. With
-    zero_matches (pgsc_calc stopped because no score variant is in the
-    sample's genotypes) every score is reported unmatched. With below_log
-    (pgsc_calc stopped because every score matched under its minimum
-    overlap, so it published no match summary) no score has a sum, the
-    matched count is unknown (NA), and the match rate is read from that log
-    when pgscatalog-match printed it. SEX is the declared sex ('' for none):
-    a score that applies to the other sex keeps its sum and loses its
-    percentile. PANEL: pgsc_calc ran with an ancestry panel, so a chrX row
-    counts as scored only when its match log matched it."""
-    totals, labels = {}, {}
-    for p in sorted(glob.glob(os.path.join(scores_dir, "*.txt.gz"))):
-        pid, n = pgs_id_of(p), 0
-        with open_text(p) as f:
-            for line in f:
-                if line.startswith("#trait_reported="):
-                    labels[pid] = line.rstrip("\n").split("=", 1)[1]
-                elif not line.startswith("#"):
-                    n += 1
-        totals[pid] = n - 1   # minus the column header
-    if not totals:
-        raise Unreadable(f"no formatted scoring file in {scores_dir}")
-    # "8 scored", "8 left out" or "0"; empty for scores formatted before the file existed
-    chrx, chrx_scored = {}, set()
-    if os.path.isfile(os.path.join(scores_dir, CHRX_FILE)):
-        for r in read_tsv(os.path.join(scores_dir, CHRX_FILE)):
-            n = r.get("chrx_rows", "")
-            chrx[r.get("pgs_id", "")] = f"{n} {r.get('chrx', '')}" if n not in ("", "0") else n
-            if n not in ("", "0") and r.get("chrx") == "scored":
-                chrx_scored.add(r.get("pgs_id", ""))
-    # "" for a score of both sexes; empty for scores formatted before the file existed
-    applies, ambig, evals = {}, {}, {}
-    notes_path = os.path.join(scores_dir, SCORE_NOTES_FILE)
-    if os.path.isfile(notes_path):
-        for r in read_tsv(notes_path):
-            pid, n = r.get("pgs_id", ""), r.get("ambiguous_rows", "")
-            applies[pid] = r.get("applies_to", "")
-            ambig[pid] = f"{n} {r.get('ambiguous', '')}" if n not in ("", "0") else n
-    # The evaluations og prs format copied from assets/pgs_scores.tsv; none in a
-    # folder formatted before it wrote them.
-    if os.path.isfile(os.path.join(scores_dir, EVALS_FILE)):
-        evals = read_metrics(os.path.join(scores_dir, EVALS_FILE))
-    sex = (sex or "").lower()
-    matched, sums, pct, group = {}, {}, {}, {}
-    pops, rate = {}, {}
-    if below_log:
-        with open(below_log, errors="replace") as f:
-            for m in BELOW_RE.finditer(f.read()):
-                rate[pgs_id_of(m.group(1))] = f"{float(m.group(2)):.1f}"
-    elif not zero_matches:
-        summ = os.path.join(results, sampleset, "match", f"{sampleset}_summary.csv")
-        if not os.path.isfile(summ):
-            raise Unreadable(f"pgsc_calc wrote no match summary ({summ})")
-        with open(summ, newline="") as f:
-            for r in csv.DictReader(f):
-                pid = pgs_id_of(r.get("accession", ""))
-                if r.get("match_status") == "matched":
-                    matched[pid] = matched.get(pid, 0) + int(float(r.get("count") or 0))
-        score_dir = os.path.join(results, sampleset, "score")
-        adjusted = os.path.join(score_dir, f"{sampleset}_pgs.txt.gz")
-        plain = os.path.join(score_dir, "aggregated_scores.txt.gz")
-        src = adjusted if os.path.isfile(adjusted) else plain
-        if not os.path.isfile(src):
-            raise Unreadable(f"pgsc_calc wrote no scores ({plain})")
-        for r in read_gz_tsv(src):
-            if r.get("sampleset") != sampleset:
-                continue   # the reference panel's own samples
-            pid = pgs_id_of(r.get("PGS", ""))
-            sums[pid] = fmt_num(r.get("SUM"))
-            if r.get("percentile_MostSimilarPop") not in (None, ""):
-                v = fmt_num(r["percentile_MostSimilarPop"])
-                pct[pid] = "NA" if v == "NA" else f"{float(v):.1f}"
-        popsim = os.path.join(score_dir, f"{sampleset}_popsimilarity.txt.gz")
-        if os.path.isfile(popsim):
-            target = [r for r in read_gz_tsv(popsim)
-                      if r.get("sampleset") == sampleset and r.get("REFERENCE", "False") != "True"]
-            if len(target) != 1:
-                raise Unreadable(f"{os.path.basename(popsim)} has {len(target)} rows for {sampleset}, expected 1")
-            pops = target[0]
-            for pid in sums:
-                group[pid] = pops.get("MostSimilarPop") or "NA"
-        if panel and chrx_scored:
-            # chrX rows given to pgsc_calc that its matches did not keep:
-            # "3 left out (not matched in the panel run)" for all of them,
-            # "1 scored, 2 left out (not matched in the panel run)" for some
-            xm = chrx_matched(results, sampleset)
-            if xm is not None:
-                for pid in chrx_scored:
-                    n_x, got = int(chrx[pid].split()[0]), xm.get(pid, 0)
-                    if not got:
-                        chrx[pid] = f"{n_x} left out (not matched in the panel run)"
-                    elif got < n_x:
-                        chrx[pid] = f"{got} scored, {n_x - got} left out (not matched in the panel run)"
-    rows = []
-    for pid in sorted(totals):
-        m, t = matched.get(pid, 0), totals[pid]
-        a = applies.get(pid, "")
-        check = "" if not a else (SEX_NOT_DECLARED if not sex else (SEX_APPLIES if sex == a else SEX_NOT_APPLICABLE))
-        ev = evals.get(pid, [])
-        # The effect is printed only for the group pgsc_calc placed the sample
-        # in, and only when that group is one the score was evaluated in: an
-        # odds ratio measured in one ancestry says little about another.
-        g = group.get(pid, "NA")
-        eff = next((f"{e} ({anc}, {ppm})" for anc, e, ppm in ev if anc == g), "")
-        if check == SEX_NOT_APPLICABLE or pct.get(pid, "NA") == "NA" or below_log:
-            eff = ""
-        extra = [chrx.get(pid, ""), ambig.get(pid, ""), a, check, ";".join(x[0] for x in ev), eff, input_kind]
-        if below_log:
-            rows.append([labels.get(pid, pid), pid, "NA", "NA", str(t), rate.get(pid, "NA"), "NA", "NA"] + extra)
-            continue
-        # A score of the other sex keeps its raw sum and gets no percentile:
-        # a percentile for an organ the person does not have reads as a risk.
-        p = "NA" if check == SEX_NOT_APPLICABLE else pct.get(pid, "NA")
-        rows.append([labels.get(pid, pid), pid, sums.get(pid, "NA"), str(m), str(t),
-                     f"{100 * m / t:.1f}" if t else "0.0", p, group.get(pid, "NA")] + extra)
-    ancestry = []
-    if pops:
-        pcs = sorted((k for k in pops if k.startswith("PC") and k[2:].isdigit()), key=lambda k: int(k[2:]))
-        ancestry.append(("population", pops.get("MostSimilarPop", "")))
-        ancestry.append(("population_low_confidence", pops.get("MostSimilarPop_LowConfidence", "")))
-        for k in sorted(k for k in pops if k.startswith("RF_P_")):
-            ancestry.append((f"probability_{k[5:]}", fmt_num(pops[k])))
-        for k in pcs:
-            ancestry.append((k, fmt_num(pops[k])))
-    return rows, ancestry
-
-
-def prs_table_main(argv):
-    ap = argparse.ArgumentParser(prog="collect_summary.py prs-table",
-                                 description="Write step 25's summary (and step 26's ancestry) table from pgsc_calc's output.")
-    ap.add_argument("--sample", required=True)
-    ap.add_argument("--results", required=True, help="pgsc_calc's --outdir")
-    ap.add_argument("--sampleset", required=True, help="the sampleset name given to pgsc_calc")
-    ap.add_argument("--scores", required=True, help="the folder og prs format wrote")
-    ap.add_argument("--input-kind", required=True, choices=["gvcf", "vcf"],
-                    help="gvcf: the score positions were genotyped from the gVCF; vcf: variant sites only")
-    ap.add_argument("--panel", default="", help="name of the ancestry reference panel, when one was used")
-    ap.add_argument("--zero-matches", action="store_true",
-                    help="pgsc_calc stopped because no score variant is in the sample's genotypes")
-    ap.add_argument("--below-threshold", metavar="LOG",
-                    help="pgsc_calc stopped because every score matched under its minimum overlap; LOG is its console output")
-    ap.add_argument("--sex", default="", choices=["", "male", "female"],
-                    help="the declared sex: a score that applies to the other one gets no percentile")
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--ancestry-out", help="written when pgsc_calc ran with the panel: PCs and population")
-    a = ap.parse_args(argv)
-    try:
-        rows, ancestry = prs_table(a.results, a.sampleset, a.scores, a.input_kind, a.zero_matches, a.below_threshold,
-                                   a.sex, bool(a.panel))
-    except (Unreadable, OSError, ValueError, KeyError, EOFError, csv.Error, zlib.error) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-    # A score list without evaluations (an older or a custom one) gives the
-    # table its older columns; the shipped list names some, so its table has
-    # Evaluated_In and Effect before Input.
-    evaluated = any(r[12] for r in rows)
-    with open(a.out + ".tmp", "w", encoding="utf-8") as f:
-        f.write("\t".join(PRS_COLUMNS[:-1] + PRS_EFFECT_COLUMNS + PRS_COLUMNS[-1:] if evaluated else PRS_COLUMNS) + "\n")
-        for r in rows:
-            f.write("\t".join(r if evaluated else r[:12] + r[14:]) + "\n")
-    os.replace(a.out + ".tmp", a.out)
-    if a.ancestry_out and ancestry:
-        with open(a.ancestry_out + ".tmp", "w") as f:
-            f.write("key\tvalue\n")
-            for k, v in [("sample", a.sample), ("reference_panel", a.panel)] + ancestry:
-                f.write(f"{k}\t{v}\n")
-        os.replace(a.ancestry_out + ".tmp", a.ancestry_out)
-    for r in rows:
-        extra = f", percentile {r[6]} among {r[7]}" if r[6] != "NA" else ""
-        if r[11] == SEX_NOT_APPLICABLE:
-            extra = f", {r[10]}-specific: {SEX_NOT_APPLICABLE}, no percentile"
-        elif r[11] == SEX_NOT_DECLARED:
-            extra += f", {r[10]}-specific score: {SEX_NOT_DECLARED}"
-        if r[13]:
-            extra += f", effect in that group {r[13]}"
-        if r[3] == "NA":
-            print(f"  {r[0]} ({r[1]}): no sum, under pgsc_calc's minimum overlap ({r[5]}% of {r[4]} variants matched)")
-        else:
-            print(f"  {r[0]} ({r[1]}): sum {r[2]}, {r[3]} of {r[4]} variants matched ({r[5]}%){extra}")
-    return 0
 
 
 def count_vcf(p):
@@ -2404,7 +2077,7 @@ def sec_y_haplogroup(d, s):
 
 def sec_y_tree(d, s):
     """Step 37's placement on the current public tree (y_haplogroup/<id>_y_tree.txt,
-    bin/y_tree_place.py): the terminal branch, how deep it sits, the SNP
+    og y tree-place): the terminal branch, how deep it sits, the SNP
     calls along the path, and the tree release the names come from. The
     per-level table beside it gives each branch of that path."""
     p = first_existing(d, [f"y_haplogroup/{s}_y_tree.txt"])
@@ -2426,7 +2099,7 @@ def sec_y_tree(d, s):
            "explore": haplogroup_explore("y", hg)}
     lvl = first_existing(d, [f"y_haplogroup/{s}_y_tree_path.tsv"])
     if lvl:
-        # bin/y_tree_place.py writes the header alone when no branch is derived:
+        # og y tree-place writes the header alone when no branch is derived:
         # an empty path, not an unreadable file.
         with open_text(lvl) as f:
             rd = csv.DictReader(f, delimiter="\t")
@@ -2441,7 +2114,7 @@ def sec_y_tree(d, s):
 
 
 def sec_y_str(d, s):
-    """Step 45's table (y_str/<id>_y_str.tsv, bin/ystr_report.py): one row per
+    """Step 45's table (y_str/<id>_y_str.tsv, og y str-report): one row per
     FamilyTreeDNA marker with its count and confidence, and the counts per
     confidence."""
     p = first_existing(d, [f"y_str/{s}_y_str.tsv"])
@@ -2523,7 +2196,7 @@ LPA_RISK_ALLELES = {"rs10455872": "G", "rs3798220": "C"}
 
 
 def sec_lpa(d, s):
-    """Step 46's KIV-2 count (lpa/<id>_lpa_kiv2.tsv, bin/lpa_kiv2.py), with
+    """Step 46's KIV-2 count (lpa/<id>_lpa_kiv2.tsv, og cn call --locus LPA_KIV2), with
     step 42's two LPA risk variants when the traits table is there, and
     whether either points to a genetically high Lp(a)."""
     p = first_existing(d, [f"lpa/{s}_lpa_kiv2.tsv"])
@@ -2566,7 +2239,7 @@ VNTYPER_STATUSES = ("positive", "possible", "negative", "not assessed")
 
 
 def sec_vntyper(d, s):
-    """Step 52's table (vntyper/<id>_vntyper.tsv, bin/vntyper_report.py):
+    """Step 52's table (vntyper/<id>_vntyper.tsv, og vntyper report):
     VNtyper's MUC1 VNTR reading with its depth and sensitivity line."""
     p = first_existing(d, [f"vntyper/{s}_vntyper.tsv"])
     if not p:
@@ -2583,7 +2256,7 @@ LOCITYPER_COLUMNS = ("locus", "region", "status", "genotype", "haplotype_1", "ha
 
 
 def sec_locityper(d, s):
-    """Step 53's table (locityper/<id>_locityper.tsv, bin/locityper_report.py):
+    """Step 53's table (locityper/<id>_locityper.tsv, og locityper report):
     one row per locus of assets/locityper_loci.bed, the two pangenome
     haplotypes Locityper picked with its quality and the authors' filter.
     collect() adds each locus's primary call (locityper_primary)."""
@@ -2630,7 +2303,7 @@ def locityper_primary(sections):
 
 
 def sec_viral(d, s):
-    """Step 47's table (viral/<id>_viral.tsv, bin/viral_report.py): one row per
+    """Step 47's table (viral/<id>_viral.tsv, og viral report): one row per
     viral genome; the HHV-6 line and the genomes with reads (phiX included)."""
     p = first_existing(d, [f"viral/{s}_viral.tsv"])
     if not p:
@@ -2681,7 +2354,7 @@ def sec_chip(d, s):
 
 
 def sec_mei(d, s):
-    """Step 50's tables (mei/<id>_mei.tsv and _mei_sites.tsv, bin/mei_report.py):
+    """Step 50's tables (mei/<id>_mei.tsv and _mei_sites.tsv, og mei report):
     the insertions MEGAnE calls, counted per element, and every row of the
     known-site catalog with seen, not seen or not callable."""
     p = first_existing(d, [f"mei/{s}_mei_sites.tsv"])
@@ -2714,7 +2387,7 @@ MOCHA_CALL_KEYS = ("chrom", "start", "end", "length_mb", "arms", "type", "cell_f
 
 def sec_mocha(d, s):
     """Step 51's tables (mosaic/<id>_mocha_summary.tsv and _mocha.tsv,
-    bin/mocha_report.py): the status, the floor, and the calls reported."""
+    og mocha report): the status, the floor, and the calls reported."""
     p = first_existing(d, [f"mosaic/{s}_mocha_summary.tsv"])
     if not p:
         return None, {}
@@ -2864,7 +2537,7 @@ def sec_carrier(d, s):
 
 
 def sec_exomiser(d, s):
-    """Step 48's ranking (exomiser/<id>_exomiser_top.tsv, bin/exomiser_report.py):
+    """Step 48's ranking (exomiser/<id>_exomiser_top.tsv, og exomiser report):
     the HPO terms searched, and each rank with its gene, mode of inheritance,
     scores and contributing variants. A table without rows means no gene
     passed Exomiser's filters."""
@@ -2974,105 +2647,15 @@ def clinvar_terms(sig):
     return [t for t in re.split(r"[|,]", sig or "") if t and t != "."]
 
 
-def vcf_file_date(path):
-    with open_text(path) as f:
-        for line in f:
-            if not line.startswith("#"):
-                break
-            if line.startswith("##fileDate="):
-                return line.strip().split("=", 1)[1]
-    return None
-
-
-def mito_annotate(vcf, clinvar=None, gnomad=None):
-    """Step 20's annotation table: each ALT of each record of the chrM VCF,
-    with its ClinVar record (CLNSIG, CLNREVSTAT, CLNDN of the same allele) and
-    gnomAD v3.1's chrM sites (AF_hom, AF_het, max_hl of the same allele).
-    Returns (header lines, rows); a file not given or not there is named in
-    the header and its columns are '.'."""
-    head, cv, gn = [], {}, {}
-    if clinvar and os.path.isfile(clinvar) and os.path.isfile(clinvar + ".tbi"):
-        head.append(f"# clinvar\t{os.path.basename(clinvar)}\t{vcf_file_date(clinvar) or 'fileDate unknown'}")
-    else:
-        head.append(f"# clinvar\tnot annotated\t{'no ' + clinvar + ' with its .tbi' if clinvar else 'no ClinVar file given'}")
-        clinvar = None
-    if gnomad and os.path.isfile(gnomad):
-        head.append(f"# gnomad\t{os.path.basename(gnomad)}\t-")
-        for r in vcf_records(gnomad):
-            if len(r) < 8:
-                continue
-            i = info_map(r[7])
-            for alt in r[4].split(","):
-                gn[min_allele(int(r[1]), r[3], alt)] = (i.get("AF_hom", "."), i.get("AF_het", "."), i.get("max_hl", "."))
-    else:
-        head.append(f"# gnomad\tnot annotated\t{'no ' + gnomad if gnomad else 'no gnomAD chrM file given'}")
-    recs = list(vcf_records(vcf))
-    if clinvar:
-        index = tabix_linear_index(clinvar)
-        chrom = next((c for c in ("chrM", "MT") if c in index), None)
-        wanted = {int(r[1]) for r in recs if len(r) >= 5} | {min_allele(int(r[1]), r[3], a)[0] for r in recs if len(r) >= 5 for a in r[4].split(",")}
-        for pos in sorted(wanted) if chrom else ():
-            # ClinVar's own record can start a base earlier or later than
-            # Mutect2's for the same indel; the alleles decide.
-            for q in (x for x in (pos - 1, pos, pos + 1) if x >= 1):
-                for c in tabix_lines(clinvar, index, chrom, q):
-                    i = info_map(c[7]) if len(c) > 7 else {}
-                    for alt in c[4].split(","):
-                        cv[min_allele(int(c[1]), c[3], alt)] = (c[2], i.get("CLNSIG", "."), i.get("CLNREVSTAT", "."),
-                                                                i.get("CLNDN", "."))
-    rows = []
-    for r in recs:
-        if len(r) < 8:
-            continue
-        fmt = r[8].split(":") if len(r) > 9 else []
-        val = r[9].split(":") if len(r) > 9 else []
-        afs = val[fmt.index("AF")].split(",") if "AF" in fmt and fmt.index("AF") < len(val) else []
-        for k, alt in enumerate(r[4].split(",")):
-            key = min_allele(int(r[1]), r[3], alt)
-            rows.append([r[0], str(key[0]), key[1], key[2], r[6], afs[k] if k < len(afs) else ".",
-                         *cv.get(key, (".", ".", ".", ".")), *gn.get(key, (".", ".", "."))])
-    return head, rows
-
-
-def mito_annotate_main(argv):
-    ap = argparse.ArgumentParser(prog="collect_summary.py mito-annotate",
-                                 description="Write step 20's chrM annotation table (ClinVar and gnomAD).")
-    ap.add_argument("--vcf", required=True, help="the filtered chrM VCF (<sample>_chrM_filtered.vcf.gz)")
-    ap.add_argument("--clinvar", default="", help="ClinVar's VCF with chr names, and its .tbi")
-    ap.add_argument("--gnomad", default="", help="gnomAD v3.1's chrM sites VCF")
-    ap.add_argument("--out", required=True)
-    a = ap.parse_args(argv)
-    try:
-        head, rows = mito_annotate(a.vcf, a.clinvar or None, a.gnomad or None)
-    except (Unreadable, OSError, ValueError, struct.error, zlib.error) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-    tmp = a.out + ".tmp"
-    with open(tmp, "w") as f:
-        f.write("".join(h + "\n" for h in head))
-        f.write("\t".join(MITO_ANNOT_COLS) + "\n")
-        f.write("".join("\t".join(r) + "\n" for r in rows))
-    os.replace(tmp, a.out)
-    for h in head:
-        c = h[2:].split("\t")
-        print(f"  {c[0]}: {c[1]}" + (f" ({c[2]})" if c[2] != "-" else ""))
-    n_cv = sum(r[7] != "." for r in rows)
-    n_gn = sum(r[10] != "." for r in rows)
-    print(f"  {len(rows)} chrM alleles: {n_cv} with a ClinVar record, {n_gn} in gnomAD")
-    return 0
-
-
 # --- step 20: large mtDNA deletions (eKLIPse) and the mtDNA copy number ----------
 
-# <id>_chrM_deletions.tsv: eKLIPse's eKLIPse_deletions.csv, one row per
+# <id>_chrM_deletions.tsv (og mito deletions): eKLIPse's deletions, one row per
 # deletion. bkp5 and bkp3 are its 5' and 3' breakpoints as it writes them: the
 # last rCRS base kept before the deletion and the first one kept after it, so
 # the deleted bases are bkp5+1 to bkp3-1 (across the origin, m.16569 to m.1,
 # when bkp3 is the smaller). level is the share of the mtDNA
 # molecules with the deletion (in %), the mean of the forward and reverse
 # strand estimates.
-MITO_DEL_COLS = ["bkp5", "bkp3", "length", "level_pct", "level_fwd_pct", "level_rev_pct", "blast_5", "blast_3",
-                 "depth_5", "depth_3", "repeat"]
 # A deletion of assets/mito_confirmed.tsv is named when both breakpoints lie
 # within this many bases of its own: a deletion between two direct repeats
 # can be written anywhere along them (the common one's repeats are 13 bp).
@@ -3080,113 +2663,14 @@ MITO_DEL_TOLERANCE = 50
 # The report lists every named deletion and any other at this level or more;
 # the rest are counted.
 MITO_DEL_LIST_PCT = 1.0
-MITO_LENGTH = 16569  # the rCRS, GRCh38's chrM
 # The mtDNA copy number: chrM depth over autosomal depth, from the read counts
 # of the BAM index (samtools idxstats), times 2 for the two nuclear copies.
 # Under this many reads per kb of autosome (about 3x at 150 bp) the BAM is a
 # slice, a panel or a shallow genome, and the ratio would mean nothing. An
 # exome can pass the floor and is not told apart from a genome here: the
 # number is meant for whole-genome BAMs (docs/20-mtoolbox.md).
-MITO_CN_MIN_READS_PER_KB = 20
 MITO_CN_COLS = ["status", "reason", "chrm_reads", "chrm_length", "autosomal_reads", "autosomal_length",
                 "depth_ratio", "mtdna_copies"]
-
-
-def _eklipse_num(x):
-    v = float(x.replace(",", "."))
-    if not math.isfinite(v):
-        raise ValueError(f"{x!r} is not a number")
-    return v
-
-
-def eklipse_deletions(path):
-    """The rows of eKLIPse's eKLIPse_deletions.csv (';' between fields, each
-    quoted, a comma for the decimal point), as MITO_DEL_COLS dicts."""
-    with open(path, errors="replace", newline="") as f:
-        rows = [r for r in csv.reader(f, delimiter=";", quotechar='"') if r]
-    if not rows or rows[0][:3] != ["Title", "5' breakpoint", "3' breakpoint"]:
-        raise ValueError(f"{path}: not eKLIPse's deletions table (header {rows[0][:3] if rows else 'missing'})")
-    out = []
-    for r in rows[1:]:
-        if len(r) < 11:
-            raise ValueError(f"{path}: a row with {len(r)} fields, want 11: {';'.join(r)}")
-        b5, b3 = int(r[1]), int(r[2])
-        out.append({"bkp5": b5, "bkp3": b3, "length": b3 - b5 - 1 if b3 > b5 else MITO_LENGTH - b5 + b3 - 1,
-                    "level_pct": round(_eklipse_num(r[3]), 3), "level_fwd_pct": round(_eklipse_num(r[4]), 3),
-                    "level_rev_pct": round(_eklipse_num(r[5]), 3), "blast_5": int(r[6]), "blast_3": int(r[7]),
-                    "depth_5": int(_eklipse_num(r[8])), "depth_3": int(_eklipse_num(r[9])), "repeat": r[10] or "none"})
-    return out
-
-
-def mito_deletions_main(argv):
-    ap = argparse.ArgumentParser(prog="collect_summary.py mito-deletions",
-                                 description="Write step 20's large-deletion table from eKLIPse's deletions CSV.")
-    ap.add_argument("--eklipse", required=True, help="eKLIPse's eKLIPse_deletions.csv")
-    ap.add_argument("--out", required=True, help="<sample>_chrM_deletions.tsv")
-    a = ap.parse_args(argv)
-    try:
-        rows = eklipse_deletions(a.eklipse)
-    except (OSError, ValueError) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-    tmp = a.out + ".tmp"
-    with open(tmp, "w") as f:
-        f.write("\t".join(MITO_DEL_COLS) + "\n")
-        for r in rows:
-            f.write("\t".join("." if r[c] is None else str(r[c]) for c in MITO_DEL_COLS) + "\n")
-    os.replace(tmp, a.out)
-    print(f"  {len(rows)} large deletions (eKLIPse)")
-    return 0
-
-
-def mito_copies(idxstats):
-    """The mtDNA copy number block from `samtools idxstats` text: chrM reads
-    per base over autosomal reads per base, times 2."""
-    chrm = None
-    auto_reads = auto_len = 0
-    for line in idxstats.splitlines():
-        c = line.split("\t")
-        if len(c) < 3 or c[0] == "*":
-            continue
-        name, length, mapped = c[0], int(c[1]), int(c[2])
-        if name in ("chrM", "MT"):
-            chrm = (mapped, length)
-        elif re.fullmatch(r"(chr)?([1-9]|1[0-9]|2[0-2])", name):
-            auto_reads += mapped
-            auto_len += length
-    b = dict.fromkeys(MITO_CN_COLS)
-    b.update(status="not assessed", autosomal_reads=auto_reads, autosomal_length=auto_len)
-    if chrm:
-        b.update(chrm_reads=chrm[0], chrm_length=chrm[1])
-    if not chrm or not chrm[0] or not chrm[1]:
-        b["reason"] = "no_chrM_reads"
-    elif not auto_len or auto_reads / auto_len * 1000 < MITO_CN_MIN_READS_PER_KB:
-        b["reason"] = "low_autosomal_depth"
-    else:
-        ratio = (chrm[0] / chrm[1]) / (auto_reads / auto_len)
-        b.update(status="called", depth_ratio=round(ratio, 3), mtdna_copies=round(2 * ratio, 1))
-    return b
-
-
-def mito_copies_main(argv):
-    ap = argparse.ArgumentParser(prog="collect_summary.py mito-copies",
-                                 description="Write step 20's mtDNA copy number from samtools idxstats.")
-    ap.add_argument("--idxstats", required=True, help="samtools idxstats of the whole BAM")
-    ap.add_argument("--out", required=True, help="<sample>_mtdna_copies.tsv")
-    a = ap.parse_args(argv)
-    try:
-        with open(a.idxstats, errors="replace") as f:
-            b = mito_copies(f.read())
-    except (OSError, ValueError) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-    tmp = a.out + ".tmp"
-    with open(tmp, "w") as f:
-        f.write("metric\tvalue\n")
-        f.write("".join(f"{k}\t{'.' if b[k] is None else b[k]}\n" for k in MITO_CN_COLS))
-    os.replace(tmp, a.out)
-    print(f"  mtDNA copy number: {b['mtdna_copies'] if b['status'] == 'called' else 'not assessed (' + b['reason'] + ')'}")
-    return 0
 
 
 def mito_confirmed():
@@ -4273,121 +3757,12 @@ def sec_sex_check(d, s):
 
 # --- sample identity and contamination (step 33) ----------------------------------
 
-FREEMIX_WARN = 0.03   # VerifyBamID2 FREEMIX above this is reported as possible contamination
-SAME_PERSON = 0.9     # somalier relatedness at or above this: the same person (a duplicate or a swap)
-SOMALIER_SEX = {"1": "male", "2": "female"}   # its samples.tsv sex column; -9 unknown, -2 X and Y disagree
-
-
-def read_rows(path):
-    """Rows of a tab-separated file whose header may start with '#'."""
-    with open_text(path) as f:
-        lines = [l.rstrip("\n").split("\t") for l in f if l.strip()]
-    if not lines:
-        return []
-    head = [lines[0][0].lstrip("#")] + lines[0][1:]
-    return [dict(zip(head, r)) for r in lines[1:]]
-
-
 def num(x):
     try:
         v = float(x)
     except (TypeError, ValueError):
         return None
     return v if v == v else None   # NaN is no value
-
-
-def somalier_x_sex(row):
-    """male or female when somalier's own rule calls the sex from chrX, else
-    None. The rule of relate --infer (relate.nim, add_parents_and_check_sex):
-    more than 10 chrX sites with depth, heterozygous / homozygous-ALT sites
-    below 0.05 for male or above 0.4 for female, and fewer than 6% of all
-    sites with an allele balance outside 0.1 to 0.9."""
-    n, het, hom = num(row.get("X_n")), num(row.get("X_het")), num(row.get("X_hom_alt"))
-    # A missing column passes (older somalier, test stubs); a present value
-    # that is not a number (nan from 0/0 when no autosomal site has a call)
-    # fails, as somalier's own `< 0.06` does.
-    raw_mid = row.get("p_middling_ab")
-    mid = num(raw_mid)
-    if n is None or het is None or hom is None or n <= 10 or (
-            raw_mid is not None and (mid is None or mid >= 0.06)):
-        return None
-    if hom == 0:
-        return "female" if het > 0 else None
-    ratio = het / hom
-    return "male" if ratio < 0.05 else "female" if ratio > 0.4 else None
-
-
-def sample_qc_table(sample, samples_tsv, selfsm=None, pairs_tsv=None, declared_sex=None,
-                    freemix_warn=FREEMIX_WARN, somalier_id=None, marker_check=""):
-    """The step 33 verdict for one sample, as ordered (key, value) pairs."""
-    sid = somalier_id or sample
-    rows = read_rows(samples_tsv)
-    row = next((r for r in rows if r.get("sample_id") == sid), None)
-    if row is None:
-        raise Unreadable(f"{os.path.basename(samples_tsv)} has no row for sample '{sid}' "
-                         f"(it has: {', '.join(r.get('sample_id', '?') for r in rows) or 'none'})")
-    inferred = SOMALIER_SEX.get(row.get("sex", ""), "unknown")
-    declared = (declared_sex or "").lower() or None
-    # With the declared sex as its pedigree (--ped), somalier starts its sex
-    # column from that sex and overwrites it only when the reads tell, so the
-    # pedigree's sex left standing is not a call: unknown, as without a
-    # pedigree. -2 from a pedigree female with chrY reads is not one either
-    # unless chrX looks female too.
-    ped = {"male": "male", "female": "female"}.get(row.get("original_pedigree_sex", "").lower())
-    x_says = somalier_x_sex(row) if ped else None
-    if ped and inferred == ped and x_says != ped:
-        inferred = "unknown"
-    x_and_y = row.get("sex", "") == "-2" and (not ped or x_says == "female")
-    # -2 first: it is worth saying even when no sex was declared
-    if x_and_y:
-        sex_check = "not_checked"
-        why = ("chrX is heterozygous like a female sample but chrY has reads: "
-               "a sex-chromosome aneuploidy or a mixed sample")
-    elif not declared:
-        sex_check, why = "not_checked", "no declared sex"
-    elif inferred == "unknown":
-        sex_check = "not_checked"
-        why = (f"somalier could not tell the sex from {row.get('X_n', '0')} chrX sites "
-               f"(it needs more than 10 with reads, and allele balances that look like one person)")
-    elif inferred == declared:
-        sex_check, why = "ok", f"declared {declared}, somalier infers {inferred}"
-    else:
-        sex_check, why = "mismatch", f"declared {declared}, somalier infers {inferred}"
-    gt = num(row.get("gt_depth_mean"))
-    ydp = num(row.get("Y_depth_mean"))
-    xdp = num(row.get("X_depth_mean"))
-    sites = sum(int(num(row.get(k)) or 0) for k in ("n_hom_ref", "n_het", "n_hom_alt"))
-    out = [("sample", sample), ("somalier_id", sid), ("declared_sex", declared or ""),
-           ("inferred_sex", inferred), ("sex_check", sex_check), ("sex_check_reason", why),
-           ("sites_genotyped", str(sites)), ("depth_at_sites", row.get("gt_depth_mean", "")),
-           ("x_sites", row.get("X_n", "")), ("x_het", row.get("X_het", "")),
-           ("x_hom_alt", row.get("X_hom_alt", "")),
-           ("x_depth_ratio", f"{xdp / gt:.2f}" if gt and xdp is not None else ""),
-           ("y_sites", row.get("Y_n", "")),
-           ("y_depth_ratio", f"{ydp / gt:.2f}" if gt and ydp is not None else "")]
-    freemix, status, markers = None, "not_run", ""
-    if selfsm:
-        sm = read_rows(selfsm)
-        freemix = num(sm[0].get("FREEMIX")) if sm else None
-        if freemix is None:
-            raise Unreadable(f"{os.path.basename(selfsm)} has no FREEMIX value")
-        status = "warn" if freemix > freemix_warn else "ok"
-        # #SNPS of the selfSM is the size of the panel, not the markers with reads
-        markers = sm[0].get("#SNPS", "")
-    # marker_check: passed, or skipped when fewer than 1,000 panel markers had
-    # reads and VerifyBamID2 ran with --DisableSanityCheck.
-    out += [("freemix", f"{freemix:.4f}" if freemix is not None else ""),
-            ("freemix_warn_above", f"{freemix_warn:g}"), ("contamination", status),
-            ("panel_markers", markers), ("verifybamid2_marker_check", marker_check)]
-    same = []
-    if pairs_tsv:
-        for r in read_rows(pairs_tsv):
-            a, b = r.get("sample_a"), r.get("sample_b")
-            rel = num(r.get("relatedness"))
-            if sid in (a, b) and a != b and rel is not None and rel >= SAME_PERSON:
-                same.append(f"{b if a == sid else a} ({rel:.2f})")
-    out.append(("same_person_as", ", ".join(same)))
-    return out
 
 
 def sec_sample_qc(d, s):
@@ -4402,7 +3777,7 @@ def sec_sample_qc(d, s):
         raise Unreadable(f"{os.path.basename(p)} has no inferred_sex row")
     # somalier's chrX and chrY depth over the autosomal depth: one copy reads 0.5.
     # Named only from more than 10 chrX sites, the floor somalier's own sex
-    # call needs (somalier_x_sex); a thinner ratio is noise.
+    # call needs (og qc sample); a thinner ratio is noise.
     xr, yr = num(data.get("x_depth_ratio")), num(data.get("y_depth_ratio"))
     xs = num(data.get("x_sites"))
     data["karyotype"] = (karyotype(2 * xr, 2 * yr)
@@ -4729,49 +4104,8 @@ def new_since(sample_dir, summary):
     return {"previous_utc": prev.get("generated_utc"), "sections": run_delta.changed_sections(changes)}
 
 
-def sample_qc_main(argv):
-    ap = argparse.ArgumentParser(prog="collect_summary.py sample-qc",
-                                 description="Write the step 33 table (key, value) for one sample.")
-    ap.add_argument("--sample", required=True)
-    ap.add_argument("--somalier-samples", required=True, help="somalier relate's samples.tsv")
-    ap.add_argument("--somalier-pairs", help="somalier relate's pairs.tsv (other samples of the run)")
-    ap.add_argument("--somalier-id", help="the sample's name in somalier's files (the BAM's @RG SM in the bash step, the samplesheet id in Nextflow; default --sample)")
-    ap.add_argument("--selfsm", help="VerifyBamID2's .selfSM")
-    ap.add_argument("--declared-sex", choices=["male", "female", ""], default="")
-    ap.add_argument("--freemix-warn", type=float, default=FREEMIX_WARN)
-    ap.add_argument("--marker-check", choices=["passed", "skipped", ""], default="",
-                    help="skipped: VerifyBamID2 ran with --DisableSanityCheck (fewer than 1,000 markers had reads)")
-    ap.add_argument("--out", required=True)
-    a = ap.parse_args(argv)
-    try:
-        rows = sample_qc_table(a.sample, a.somalier_samples, a.selfsm, a.somalier_pairs, a.declared_sex,
-                               a.freemix_warn, a.somalier_id, a.marker_check)
-    except (Unreadable, OSError) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-    tmp = a.out + ".tmp"
-    with open(tmp, "w") as f:
-        f.write("key\tvalue\n")
-        for k, v in rows:
-            f.write(f"{k}\t{v}\n")
-    os.replace(tmp, a.out)
-    for k, v in rows:
-        print(f"  {k}: {v}")
-    return 0
-
-
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] == ["sample-qc"]:
-        return sample_qc_main(argv[1:])
-    if argv[:1] == ["prs-table"]:
-        return prs_table_main(argv[1:])
-    if argv[:1] == ["mito-annotate"]:
-        return mito_annotate_main(argv[1:])
-    if argv[:1] == ["mito-deletions"]:
-        return mito_deletions_main(argv[1:])
-    if argv[:1] == ["mito-copies"]:
-        return mito_copies_main(argv[1:])
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--sample", required=True)
     ap.add_argument("--sample-dir", required=True)

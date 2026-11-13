@@ -10,7 +10,7 @@
 # Illumina's phiX control), and reports per genome the reads, the breadth and
 # the depth against the human autosomal depth. Inherited chromosomally
 # integrated HHV-6 (in about 1 in 100 people) shows as the whole HHV-6 genome at
-# about half the human depth. bin/viral_report.py applies the rules; it is the
+# about half the human depth. og viral report applies the rules; it is the
 # same code as the VIRAL_REPORT Nextflow process. Not a test for an infection.
 #
 # Input:  aligned/<sample>_sorted.bam with its .bai (ALIGN_DIR as for the other
@@ -77,9 +77,9 @@ run_in --cpus 2 --memory 4g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
     samtools coverage --ff UNMAP,SECONDARY,QCFAIL "$1_viral_reads.bam" > "$1_viral_coverage.tsv"
     samtools depth -aa -G UNMAP,SECONDARY,QCFAIL "$1_viral_reads.bam" > "$1_viral_depth.tsv"' _ "$O"
 
-echo "[4/4] Calls (bin/viral_report.py)..."
+echo "[4/4] Calls (og viral report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/viral_report.py --sample "$SAMPLE" --viral-fasta "$V" \
+  /pgp-bin/og viral report --sample "$SAMPLE" --viral-fasta "$V" \
     --viral-coverage "${O}_viral_coverage.tsv" --viral-depth "${O}_viral_depth.tsv" \
     --human-coverage "${O}_human_coverage.tsv" --out "$(cpath "$TABLE")"
 rm -f "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv"

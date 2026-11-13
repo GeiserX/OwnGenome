@@ -213,7 +213,7 @@ if [[ "${HLA_QC:-false}" =~ ^(true|1)$ ]]; then
     fi
     cp "$OUT" "$OT_RESULT"
     run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
-      python3 /pgp-bin/pgx_outside_calls.py hla-concordance \
+      /pgp-bin/og pgx hla-concordance \
         --t1k "/genome/${SAMPLE}/hla_t1k/${SAMPLE}_hla_genotype.tsv" \
         --optitype "/genome/${SAMPLE}/hla_optitype/${SAMPLE}_optitype_result.tsv" \
         --out "/genome/${SAMPLE}/hla_optitype/${SAMPLE}_hla_concordance.tsv"

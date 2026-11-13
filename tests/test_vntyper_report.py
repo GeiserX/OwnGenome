@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/vntyper_report.py: step 52's reading of VNtyper's MUC1 VNTR result,
+"""og vntyper report: step 52's reading of VNtyper's MUC1 VNTR result,
 and its section in both reports.
 
 On VNtyper run folders made up for each case, in the layout VNtyper 2.0.47
@@ -25,12 +25,14 @@ coverage/coverage_summary.tsv as one header and one data line):
      names the MUC1 VNTR when step 52 did not run or gave no reading, and not
      when it read positive or negative; no card without step 52's table; a
      table older than a run-all.sh run that did not run step 52 is stale;
-  7. control: a copy of the script that calls every Kestrel call positive
-     fails case 2, so these checks can fail.
+  7. control: a reading that calls every Kestrel call positive fails case
+     2, so these checks can fail.
 
-Run: python3 tests/test_vntyper_report.py
+Without OG (the og binary) the test is skipped with a note; with
+OG_REQUIRED set too, it fails (Guard's rust job sets both).
+
+Run: OG=bin/og python3 tests/test_vntyper_report.py
 """
-import importlib.util
 import os
 import subprocess
 import sys
@@ -38,9 +40,14 @@ import tempfile
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "vntyper_report.py")
+OG = os.environ.get("OG", "")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import vntyper_report as vr  # noqa: E402
+
+FIELDS = ("status", "confidence", "variant", "flag", "alt_depth", "region_depth", "depth_score",
+          "vntr_mean_depth", "vntr_uncovered_pct", "coverage_qc", "sensitivity", "message", "advice")
+ADVICE_NONE = ("A negative here lowers the chance of the frameshifts VNtyper looks for; it does not rule "
+               "ADTKD-MUC1 out. A family history of kidney failure with gout or a bland urine sediment "
+               "still deserves a clinical test (SNaPshot for dupC).")
 
 FAILS = 0
 
@@ -77,75 +84,100 @@ def call(conf="High_Precision*", flag="Not flagged", name="59dupC"):
     return POS_HEADER + f"2\tInsertion\t67\tG\tGC\t416\t7110\t0.0585\t{conf}\t{flag}\t3\t{name}\tCCCCACC\n"
 
 
-def cases(mod, t):
-    """(description, ok, detail) for cases 1 to 4 run with module mod."""
+def og(*args):
+    return subprocess.run([OG, "vntyper", "report", *args], capture_output=True, text=True)
+
+
+def og_read(d, exit_code=0, log_text=""):
+    """og vntyper report on run folder d: the table as a dict."""
+    out, log = d + ".tsv", d + ".log"
+    with open(log, "w") as f:
+        f.write(log_text)
+    p = og("--run-dir", d, "--exit-code", str(exit_code), "--log", log, "--out", out)
+    if p.returncode:
+        raise SystemExit(f"og vntyper report failed: {p.stderr}")
+    return dict(line.rstrip("\n").split("\t", 1) for line in open(out).readlines()[1:])
+
+
+def every_call_positive(d, exit_code=0, log_text=""):
+    """The control: a reading that calls every Kestrel call positive."""
+    r = og_read(d, exit_code, log_text)
+    if r["status"] == "possible":
+        r["status"] = "positive"
+    return r
+
+
+def cases(read, t):
+    """(description, ok, detail) for cases 1 to 4 read with read."""
     out = []
-    r = mod.read(run_dir(t, "pos", call()), 0)
+    r = read(run_dir(t, "pos", call()), 0)
     out.append(("1. High_Precision*, not flagged, 1,075x: positive with the name",
                 r["status"] == "positive" and r["variant"] == "59dupC" and r["confidence"] == "High_Precision*"
                 and r["alt_depth"] == "416", r))
     out.append(("1. the sensitivity line names the depth and the 100x band (160 of 161)",
                 "1075x" in r["sensitivity"] and "160 of 161 runs (99%)" in r["sensitivity"], r["sensitivity"]))
-    r = mod.read(run_dir(t, "low", call(conf="Low_Precision")), 0)
+    r = read(run_dir(t, "low", call(conf="Low_Precision")), 0)
     out.append(("2. a Low_Precision call is possible, not positive",
                 r["status"] == "possible" and "low precision" in r["message"], r))
-    r = mod.read(run_dir(t, "flag", call(flag="False_Positive_4bp_Insertion")), 0)
+    r = read(run_dir(t, "flag", call(flag="False_Positive_4bp_Insertion")), 0)
     out.append(("2. a flagged High_Precision call is possible, with the flag",
                 r["status"] == "possible" and "False_Positive_4bp_Insertion" in r["message"], r))
-    r = mod.read(run_dir(t, "holes", call(), uncovered="62.00", qc="FAIL"), 0)
+    r = read(run_dir(t, "holes", call(), uncovered="62.00", qc="FAIL"), 0)
     out.append(("2. a call over a VNTR 62% without reads is possible",
                 r["status"] == "possible" and "62% of the VNTR has no read" in r["message"], r))
-    r = mod.read(run_dir(t, "nounc", call(), uncovered="NA"), 0)
+    r = read(run_dir(t, "nounc", call(), uncovered="NA"), 0)
     out.append(("2. a call with no uncovered share from VNtyper is possible, not positive",
                 r["status"] == "possible" and "no share of the VNTR without reads" in r["message"], r))
-    r = mod.read(run_dir(t, "neg", NEG, mean="147.94"), 0)
+    r = read(run_dir(t, "neg", NEG, mean="147.94"), 0)
     out.append(("3. no call at 148x, coverage PASS: negative, 100x band",
                 r["status"] == "negative" and r["variant"] == "." and "160 of 161" in r["sensitivity"]
-                and r["advice"] == mod.ADVICE_NONE, r))
-    r = mod.read(run_dir(t, "red", NEG, mean="70.00", qc="REDUCED"), 0)
+                and r["advice"] == ADVICE_NONE, r))
+    r = read(run_dir(t, "red", NEG, mean="70.00", qc="REDUCED"), 0)
     out.append(("3. no call at 70x, coverage REDUCED: negative, 50x-100x band (95 of 108)",
                 r["status"] == "negative" and "95 of 108 runs (88%)" in r["sensitivity"]
                 and "between 50x and 100x" in r["sensitivity"], r))
-    r = mod.read(run_dir(t, "thin", NEG, mean="20.00", qc="FAIL"), 0)
+    r = read(run_dir(t, "thin", NEG, mean="20.00", qc="FAIL"), 0)
     out.append(("3. no call at 20x, coverage FAIL: not assessed, never negative, below-50x band (48 of 109)",
                 r["status"] == "not assessed" and "cannot be ruled out" in r["message"]
                 and "48 of 109 runs (44%)" in r["sensitivity"], r))
-    r = mod.read(run_dir(t, "na", NEG, mean="NA", qc="NOT_EVALUATED"), 0)
+    r = read(run_dir(t, "na", NEG, mean="NA", qc="NOT_EVALUATED"), 0)
     out.append(("3. no measured depth: not assessed, sensitivity not known",
                 r["status"] == "not assessed" and r["sensitivity"].startswith("Sensitivity not known"), r))
-    r = mod.read(run_dir(t, "rc", call()), 1)
+    r = read(run_dir(t, "rc", call()), 1)
     out.append(("4. VNtyper's exit code 1: not assessed, whatever it wrote",
                 r["status"] == "not assessed" and "exit code 1" in r["message"], r))
-    r = mod.read(run_dir(t, "empty"), 1, "ValueError: FASTQ layout 'empty' cannot be consumed without dropping reads.")
+    r = read(run_dir(t, "empty"), 1, "ValueError: FASTQ layout 'empty' cannot be consumed without dropping reads.")
     out.append(("4. exit 1 on a BAM with no read over MUC1: not assessed, saying so",
                 r["status"] == "not assessed" and "no read in the MUC1 region" in r["message"], r))
-    r = mod.read(run_dir(t, "hdr", NEG.split("\n")[0] + "\n", mean="147.94"), 0)
+    r = read(run_dir(t, "hdr", NEG.split("\n")[0] + "\n", mean="147.94"), 0)
     out.append(("4. a Kestrel file with a header and no result row at 148x: not assessed, never negative",
                 r["status"] == "not assessed" and "no result row" in r["message"], r))
-    r = mod.read(run_dir(t, "nok"), 0)
+    r = read(run_dir(t, "nok"), 0)
     out.append(("4. no kestrel_result.tsv: not assessed, naming the file",
                 r["status"] == "not assessed" and "kestrel/kestrel_result.tsv" in r["message"], r))
     return out
 
 
 def main():
+    if not OG:
+        print("skip: OG is not set (OG=bin/og)")
+        return 1 if os.environ.get("OG_REQUIRED") else 0
     with tempfile.TemporaryDirectory() as t:
-        for desc, ok, detail in cases(vr, os.path.join(t, "real")):
+        for desc, ok, detail in cases(og_read, os.path.join(t, "real")):
             check(desc, ok, detail)
 
         # 5. the CLI
         d = run_dir(t, "cli", call())
         out_tsv = os.path.join(t, "cli.tsv")
-        p = subprocess.run([sys.executable, SCRIPT, "--run-dir", d, "--out", out_tsv], capture_output=True, text=True)
+        p = og("--run-dir", d, "--out", out_tsv)
         rows = [line.rstrip("\n").split("\t") for line in open(out_tsv)] if os.path.exists(out_tsv) else []
         check("5. the CLI exits 0 and writes metric, value and every field once",
               p.returncode == 0 and rows[:1] == [["metric", "value"]]
-              and [r[0] for r in rows[1:]] == list(vr.FIELDS) and all(len(r) == 2 for r in rows), (p, rows))
+              and [r[0] for r in rows[1:]] == list(FIELDS) and all(len(r) == 2 for r in rows), (p, rows))
         bad = run_dir(t, "bad", "Confidence\n\"x\n")
         with open(os.path.join(bad, "kestrel", "kestrel_result.tsv"), "wb") as f:
             f.write(b"\xff\xfe\x00bad")
-        p = subprocess.run([sys.executable, SCRIPT, "--run-dir", bad, "--out", os.path.join(t, "bad.tsv")],
-                           capture_output=True, text=True)
+        p = og("--run-dir", bad, "--out", os.path.join(t, "bad.tsv"))
         check("5. an unreadable result file exits 2", p.returncode == 2 and "cannot read" in p.stderr, p)
 
         # 6. the reports
@@ -155,8 +187,8 @@ def main():
         def sample(name, kestrel, **kw):
             sd = os.path.join(t, "s", name, "S")
             os.makedirs(os.path.join(sd, "vntyper"))
-            vr.main(["--run-dir", run_dir(t, "r" + name, kestrel, **kw),
-                     "--out", os.path.join(sd, "vntyper", "S_vntyper.tsv")])
+            og("--run-dir", run_dir(t, "r" + name, kestrel, **kw),
+               "--out", os.path.join(sd, "vntyper", "S_vntyper.tsv"))
             s = collect_summary.collect("S", sd)
             return s, render_report.text_report(s), render_report.html_report(s)
 
@@ -193,18 +225,9 @@ def main():
         check("6. and both reports list it under what was not assessed",
               line in render_report.text_report(s) and render_report.E(line) in render_report.html_report(s))
 
-        # 7. control: a copy that calls every Kestrel call positive
-        src = open(SCRIPT).read()
-        cond = 'conf.startswith("High_Precision") and not flagged'
-        check("7. control: the condition to break is in the script", cond in src)
-        broken = os.path.join(t, "vntyper_report_broken.py")
-        with open(broken, "w") as f:
-            f.write(src.replace(cond, "True"))
-        spec = importlib.util.spec_from_file_location("vntyper_report_broken", broken)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        failed = [desc for desc, ok, _ in cases(mod, os.path.join(t, "broken")) if not ok]
-        check("7. control: the broken copy fails the possible-not-positive cases",
+        # 7. control: a reading that calls every Kestrel call positive
+        failed = [desc for desc, ok, _ in cases(every_call_positive, os.path.join(t, "broken")) if not ok]
+        check("7. control: the broken reading fails the possible-not-positive cases",
               any(x.startswith("2.") for x in failed), failed)
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")

@@ -1,0 +1,8 @@
+##description: synthetic
+chr7	HAVANA	gene	90	700	.	+	.	gene_id "ENSG1"; gene_type "protein_coding"; gene_name "GENEA"; level 2;
+chr7	HAVANA	gene	640	660	.	-	.	gene_id "ENSG2"; gene_type "lncRNA"; gene_name "GENEZ"; level 2;
+chr7	HAVANA	gene	800	900	.	-	.	gene_id "ENSG5"; gene_type "lncRNA"; gene_name "geneQ"; level 2;
+chrX	HAVANA	gene	900	1100	.	+	.	gene_id "ENSG3"; gene_type "protein_coding"; gene_name "GENEX"; level 2;
+chrY	HAVANA	gene	900	1100	.	+	.	gene_id "ENSG3_PAR_Y"; gene_type "protein_coding"; gene_name "GENEX"; level 2;
+chrM	ENSEMBL	gene	70	1000	.	+	.	gene_id "ENSG4"; gene_type "Mt_rRNA"; gene_name "MT-RNR1"; level 3;
+chr7	HAVANA	transcript	90	700	.	+	.	gene_id "ENSG1"; gene_name "GENEB";

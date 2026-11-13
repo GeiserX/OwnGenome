@@ -1,4 +1,4 @@
-# assets/sv_rule_regions.tsv: the GRCh38 regions where bin/annotsv_postfilter.py overrides AnnotSV's class 4
+# assets/sv_rule_regions.tsv: the GRCh38 regions where og sv postfilter overrides AnnotSV's class 4
 # or 5. Written by scripts/ci/build-sv-rule-regions.sh, which says how each rule's rows are chosen;
 # rebuild it there, do not edit it by hand. start is 0-based and end 1-based, as in a BED file.
 # Rows: gene_alias 10, ig_tr_locus 6, mhc 1, tandem_repeat 2409.

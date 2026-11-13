@@ -573,18 +573,25 @@ dependencies = [
  "mimalloc",
  "og-ancestry",
  "og-bam",
+ "og-bloodtype",
  "og-chip",
  "og-clinvar",
+ "og-cn",
  "og-dev",
  "og-filters",
+ "og-fresh",
  "og-intervals",
  "og-io",
+ "og-lookup",
  "og-map",
  "og-pgx",
  "og-qc",
+ "og-recheck",
+ "og-reports",
  "og-runlog",
  "og-setup",
  "og-steps",
+ "og-summary",
  "og-vcf",
  "pycompat",
 ]
@@ -605,8 +612,22 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "og-io",
+ "og-tsv",
  "pycompat",
  "rust-htslib",
+ "rustc-hash",
+]
+
+[[package]]
+name = "og-bloodtype"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "og-cn",
+ "og-filters",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -627,6 +648,16 @@ dependencies = [
  "memchr",
  "og-intervals",
  "og-io",
+]
+
+[[package]]
+name = "og-cn"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-filters",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -652,6 +683,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-fresh"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "jiff",
+ "pycompat",
+ "regex",
+]
+
+[[package]]
 name = "og-intervals"
 version = "0.1.0"
 dependencies = [
@@ -665,6 +706,15 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-lookup"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+ "pycompat",
 ]
 
 [[package]]
@@ -688,6 +738,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-pedigree"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-io",
+ "pycompat",
+]
+
+[[package]]
 name = "og-pgx"
 version = "0.1.0"
 dependencies = [
@@ -701,6 +760,32 @@ version = "0.1.0"
 dependencies = [
  "og-io",
  "pycompat",
+]
+
+[[package]]
+name = "og-recheck"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "jiff",
+ "og-fresh",
+ "og-io",
+ "og-runlog",
+ "pycompat",
+ "regex",
+ "shlex 1.3.0",
+]
+
+[[package]]
+name = "og-reports"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-filters",
+ "og-io",
+ "og-tsv",
+ "pycompat",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -733,12 +818,30 @@ name = "og-steps"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "indexmap",
  "memchr",
+ "og-filters",
  "og-intervals",
  "og-io",
+ "og-pedigree",
+ "og-setup",
+ "og-vcf",
  "pycompat",
  "rustc-hash",
+ "smallvec",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-summary"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "memchr",
+ "og-io",
+ "og-steps",
+ "pycompat",
 ]
 
 [[package]]

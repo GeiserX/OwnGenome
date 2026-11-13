@@ -343,7 +343,7 @@ workflow {
     // be a families file (assets/families.example.tsv), a pedigree with a
     // leading family column: one family runs, the one --family_name names
     // (needed when the file holds more than one). Here only the family and
-    // sample columns are read; FAMILY_PREPARE (bin/family_report.py prepare)
+    // sample columns are read; FAMILY_PREPARE (og family prepare)
     // checks the rest before the joint call starts.
     def pedigree   = params.pedigree
     // The family's folder under --outdir: --family_name, else 'family'
@@ -941,10 +941,10 @@ workflow {
         BLOODTYPE_DEPTH(ch_bam, ch_bloodtype_markers, BLOODTYPE_REGIONS.out.bed)
         BLOODTYPE(
             ch_vcf
-                .map { meta, vcf, idx -> [meta.id, meta, vcf] }
+                .map { meta, vcf, idx -> [meta.id, meta, vcf, idx ?: []] }
                 .join(BLOODTYPE_DEPTH.out.depth.map { meta, f -> [meta.id, f] }, remainder: true)
                 .filter { row -> row[1] != null }
-                .map { row -> [row[1], row[2], row[3] ?: []] },
+                .map { row -> [row[1], row[2], row[3], row[4] ?: []] },
             ch_bloodtype_markers
         )
         ch_bloodtype          = BLOODTYPE.out.table

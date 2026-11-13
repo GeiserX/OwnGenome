@@ -5,7 +5,7 @@
 # Opt-in. MEGAnE (Kojima et al. 2023, Nat Genet, PMID 37169872) finds the
 # copies of Alu, L1, SVA and HERV elements a genome carries and the reference
 # does not, from read pairs with one end in the element and from reads that
-# cross its edge, and genotypes each insertion. bin/mei_report.py then lists
+# cross its edge, and genotypes each insertion. og mei report then lists
 # the insertions it calls and reads a short catalog of insertions known to
 # cause disease (assets/mei_sites.tsv: the FKTN SVA of Fukuyama muscular
 # dystrophy, the TAF1 SVA of X-linked dystonia-parkinsonism, the BBS1 SVA of
@@ -148,7 +148,7 @@ ANNOTSV_ARGS=()
 if $ANNOTSV; then
   echo "[3/4] AnnotSV on the insertions..."
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-    python3 /pgp-bin/mei_report.py --sample "$SAMPLE" --vcf "${O}_megane.vcf" --annotsv-input "${O}_mei_annotsv_input.vcf"
+    /pgp-bin/og mei annotsv-input --sample "$SAMPLE" --vcf "${O}_megane.vcf" --out "${O}_mei_annotsv_input.vcf"
   AC=$(cpath "$ANNOTATIONS_DIR")
   run_in --rw "$ANNOTATIONS_DIR" --cpus 4 --memory 8g "$ANNOTSV_IMAGE" \
     AnnotSV -SVinputFile "${O}_mei_annotsv_input.vcf" -outputFile "${O}_mei_annotsv.tsv" -genomeBuild GRCh38 \
@@ -160,9 +160,9 @@ else
   echo "[3/4] AnnotSV: skipped (no annotation data)."
 fi
 
-echo "[4/4] Calls and the catalog (bin/mei_report.py)..."
+echo "[4/4] Calls and the catalog (og mei report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SITES}:/pgp-sites.tsv:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/mei_report.py --sample "$SAMPLE" --vcf "${O}_megane.vcf" --sites /pgp-sites.tsv \
+  /pgp-bin/og mei report --sample "$SAMPLE" --vcf "${O}_megane.vcf" --sites /pgp-sites.tsv \
     --depth "${O}_mei_depth.tsv" ${ANNOTSV_ARGS[@]+"${ANNOTSV_ARGS[@]}"} --out-calls "${O}_mei.tsv" --out-sites "${O}_mei_sites.tsv"
 rm -rf "$WORK" "${P}_mei_mainchr.txt"
 

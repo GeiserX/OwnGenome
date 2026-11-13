@@ -1,0 +1,6 @@
+sample	sex	father	mother	partner	in_pedigree	sequenced
+kid	male	dad	mum		yes	yes
+dad	male	gpa	gma	mum	yes	yes
+mum	female			dad	yes	no
+gpa	male			gma	yes	yes
+gma	female			gpa	yes	yes

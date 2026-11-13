@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/family_segments.py (step 38's chromosome map) on a synthetic
+"""og family segments (step 38's chromosome map) on a synthetic
 three-generation family: two grandparents, their son (the father), the
 mother, and a grandchild. Genotypes are drawn from known haplotypes, so the
 truth is known.
@@ -20,11 +20,13 @@ Checks:
   3. the DNA Painter CSV has DNA Painter's own header, a row per segment,
      chromosome names without 'chr', and the grandparent as Ancestor;
   4. the SVG is well-formed XML with a bar per segment;
-  5. family_report.py report writes the files and a "Chromosome map"
+  5. og family report writes the files and a "Chromosome map"
      section in family_report.md that counts the crossover; a second run
      writes the same bytes.
 
-Run: python3 tests/test_family_segments.py
+Needs og: without OG it skips (a failure with OG_REQUIRED set).
+
+Run: OG=rust/target/release/og python3 tests/test_family_segments.py
 """
 import csv
 import os
@@ -36,10 +38,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REPORT = os.path.join(REPO, "bin", "family_report.py")
-SEGMENTS = os.path.join(REPO, "bin", "family_segments.py")
+OG = os.environ.get("OG", "")
 PAR = os.path.join(REPO, "assets", "par_grch38.bed")
-sys.path.insert(0, os.path.join(REPO, "bin"))
 
 FAILS = []
 CROSSOVER = 20_000_000
@@ -116,8 +116,8 @@ def read_tsv(path):
         return [dict(zip(head, l.rstrip("\n").split("\t"))) for l in f]
 
 
-def run(script, *args):
-    p = subprocess.run([sys.executable, script] + list(args), capture_output=True, text=True)
+def run(verb, *args):
+    p = subprocess.run([OG, "family", verb] + list(args), capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr
 
 
@@ -132,8 +132,8 @@ def test_trio(d):
     check("three genotype errors were planted on chr1", len(errors) == 3, errors)
     members = members_tsv(os.path.join(d, "members.tsv"))
     out = os.path.join(d, "trio")
-    rc, log = run(SEGMENTS, "--members", members, "--vcf", vcf, "--par-bed", PAR, "--out-dir", out)
-    check("family_segments.py exits 0", rc == 0, log)
+    rc, log = run("segments", "--members", members, "--vcf", vcf, "--par-bed", PAR, "--out-dir", out)
+    check("og family segments exits 0", rc == 0, log)
     path = os.path.join(out, "kid_segments.tsv")
     check("kid_segments.tsv written", os.path.exists(path), log)
     if not os.path.exists(path):
@@ -198,7 +198,7 @@ def test_trio(d):
 def test_duo(d, vcf):
     members = members_tsv(os.path.join(d, "members_duo.tsv"), mum_sequenced=False)
     out = os.path.join(d, "duo")
-    rc, log = run(SEGMENTS, "--members", members, "--vcf", vcf, "--par-bed", PAR, "--out-dir", out)
+    rc, log = run("segments", "--members", members, "--vcf", vcf, "--par-bed", PAR, "--out-dir", out)
     check("duo: exits 0", rc == 0, log)
     path = os.path.join(out, "kid_segments.tsv")
     if not os.path.exists(path):
@@ -223,7 +223,7 @@ def test_duo(d, vcf):
 
 def test_no_par(d, vcf, members):
     out = os.path.join(d, "nopar")
-    rc, log = run(SEGMENTS, "--members", members, "--vcf", vcf, "--out-dir", out)
+    rc, log = run("segments", "--members", members, "--vcf", vcf, "--out-dir", out)
     check("no --par-bed: exits 0", rc == 0, log)
     path = os.path.join(out, "kid_segments.tsv")
     rows = read_tsv(path) if os.path.exists(path) else []
@@ -237,7 +237,7 @@ def test_report(d, vcf, members):
     outs = []
     for k in (1, 2):
         out = os.path.join(d, "report%d" % k)
-        rc, log = run(REPORT, "report", "--members", members, "--relationships", rel, "--vcf", vcf,
+        rc, log = run("report", "--members", members, "--relationships", rel, "--vcf", vcf,
                       "--par-bed", PAR, "--out-dir", out)
         check("report run %d exits 0" % k, rc == 0, log[-2000:])
         outs.append(out)
@@ -256,6 +256,9 @@ def test_report(d, vcf, members):
 
 
 def main():
+    if not OG:
+        print("skip: OG is not set (OG=rust/target/release/og)")
+        sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
     with tempfile.TemporaryDirectory() as d:
         res = test_trio(d)
         if res:

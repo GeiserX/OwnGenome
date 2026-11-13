@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Step 37's two additions, on the fixture's chrY stretches and the real
 # images and tables:
-#   1. the private-SNP list (bin/y_private_snps.py): the chrY calls of the
+#   1. the private-SNP list (og y private-snps): the chrY calls of the
 #      sample's own VCF that no public SNP table names. The list must drop
 #      calls the tables do name (the header counts them, and at least one
 #      real call is dropped, so the subtraction is doing work on real data),
@@ -106,7 +106,7 @@ print(pin, pout)
 PY
 read -r P_IN P_OUT < "${CASE_TMP}/seed.txt"
 echo "seeded: ${P_IN:-none} (callable), ${P_OUT:-none} (outside the mask)"
-python3 "${REPO}/bin/y_private_snps.py" --vcf "$SEED" --tree-dir "$YT" --sample "$M" \
+"${REPO}/bin/og" y private-snps --vcf "$SEED" --tree-dir "$YT" --sample "$M" \
   --out-prefix "${CASE_TMP}/seeded" > "${CASE_TMP}/seeded.log" 2>&1
 SEEDED="${CASE_TMP}/seeded_y_private_snps.tsv"
 check "the seeded call inside the callable mask is listed" has "^${P_IN:-none}${T}" "$(cat "$SEEDED" 2>/dev/null)"
@@ -121,7 +121,7 @@ rm -rf "$CT"; mkdir -p "$CT"
 cp "${YT}/positions_yfull_hg38.txt" "${CT}/positions_yfull_hg38.txt"
 { cat "${YT}/positions_ftdna_hg38.txt"; printf 'chrY\tE2E_CONTROL\tR\t%s\tC->T\tC\tT\n' "${P_IN:-0}"; } \
   > "${CT}/positions_ftdna_hg38.txt"
-python3 "${REPO}/bin/y_private_snps.py" --vcf "$SEED" --tree-dir "$CT" --callable-mask "$MASK" \
+"${REPO}/bin/og" y private-snps --vcf "$SEED" --tree-dir "$CT" --callable-mask "$MASK" \
   --sample "$M" --out-prefix "${CASE_TMP}/control" > "${CASE_TMP}/control.log" 2>&1
 cat "${CASE_TMP}/control.log"
 check "red control: the seeded position added to a table leaves the list" \
@@ -133,7 +133,7 @@ check "red control: and the rest of the seeded list is unchanged" \
 mkdir -p "${CASE_TMP}/notables"
 cp "${CASE_TMP}/empty_ftdna.txt" "${CASE_TMP}/notables/positions_ftdna_hg38.txt"
 cp "${CASE_TMP}/empty_ftdna.txt" "${CASE_TMP}/notables/positions_yfull_hg38.txt"
-if python3 "${REPO}/bin/y_private_snps.py" --vcf "${GENOME_DIR}/${M}/vcf/${M}.vcf.gz" \
+if "${REPO}/bin/og" y private-snps --vcf "${GENOME_DIR}/${M}/vcf/${M}.vcf.gz" \
      --tree-dir "${CASE_TMP}/notables" --sample "$M" --out-prefix "${CASE_TMP}/none" \
      > "${CASE_TMP}/none.log" 2>&1; then
   fail "red control: tables with no position should stop the tool"
@@ -174,8 +174,12 @@ if [ -s "$NF_TREE" ] && [ -s "${R}/${SAMPLE}_report.html" ]; then
   NF_HG=$(awk -F'\t' 'NR == 1 { for (i = 1; i <= NF; i++) c[$i] = i; next } NR == 2 { print $c["Hg"] }' "$NF_TREE")
   NF_PRIV="${R}/y_haplogroup/${SAMPLE}_y_private_snps.tsv"
   check "the Nextflow run published the private-SNP list" test -s "$NF_PRIV"
-  python3 "${REPO}/bin/y_private_snps.py" --vcf "${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" --tree-dir "$YT" \
-    --sample "$SAMPLE" --out-prefix "${CASE_TMP}/nf-same" > /dev/null 2>&1
+  REF_RC=0
+  "${REPO}/bin/og" y private-snps --vcf "${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" --tree-dir "$YT" \
+    --sample "$SAMPLE" --out-prefix "${CASE_TMP}/nf-same" > /dev/null 2>&1 || REF_RC=$?
+  check_eq "og y private-snps makes the reference list on the same VCF and tables" "$REF_RC" 0
+  check "and the reference list has its header" \
+    has "^Pos${T}Ref${T}Alt" "$(cat "${CASE_TMP}/nf-same_y_private_snps.tsv" 2>/dev/null)"
   check "and its rows are the tool's own on the same VCF and tables" \
     test "$(awk -F'\t' '$0 !~ /^(#|Pos\t)/' "$NF_PRIV" 2>/dev/null | md5sum | cut -d' ' -f1)" = \
          "$(awk -F'\t' '$0 !~ /^(#|Pos\t)/' "${CASE_TMP}/nf-same_y_private_snps.tsv" 2>/dev/null | md5sum | cut -d' ' -f1)"

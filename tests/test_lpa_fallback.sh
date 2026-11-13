@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Step 46 [4/4]: a KIV-2 4925G>A reader that crashes never costs the KIV-2
-# count. scripts/46-lpa.sh then writes lpa/<id>_lpa_kiv2_4925.tsv saying
+# Step 46 [3/3]: a KIV-2 4925G>A reader that crashes never costs the KIV-2
+# count (one og cn call reads both; it writes the count table first). scripts/46-lpa.sh then writes lpa/<id>_lpa_kiv2_4925.tsv saying
 # 'not assessed', exits 0 and keeps lpa/<id>_lpa_kiv2.tsv; the LPA Nextflow
 # process (modules/local/lpa/main.nf) writes the same fallback table, byte for
 # byte. The e2e case genotype-rules-2-lpa-null runs the module's block with a
 # crashing reader in its image.
 #
-# A fake `docker` on PATH stands in for the containers: the count call writes
-# a table, the 4925G>A call exits 1 (or 0 for the control, writing a
-# 'present' table), everything else succeeds.
+# A fake `docker` on PATH stands in for the containers: the og cn call writes
+# the count table, then exits 1 at --marker-out (or 0 for the control,
+# writing a 'present' table), everything else succeeds.
 #
 # Controls: with the reader working the table is the reader's ('present'), so
 # the not-assessed check can fail; with the fallback removed from a copy of
@@ -97,7 +97,7 @@ mkdir -p "${WORK}/scripts/lib"
 cp "${REPO}/scripts/lib/"* "${WORK}/scripts/lib/"
 cp "${REPO}/versions.env" "${WORK}/" 2>/dev/null || true
 # shellcheck disable=SC2016  # the $(cpath ...) is text of the step, not to expand here
-sed -e 's/^if ! run_in -v /run_in -v /' -e 's/--marker-out "$(cpath "$NULL")"; then$/--marker-out "$(cpath "$NULL")"\nif false; then/' \
+sed -e 's/--marker-out "$(cpath "$NULL")" || rc=\$?$/--marker-out "$(cpath "$NULL")"/' \
   "${REPO}/scripts/46-lpa.sh" > "${WORK}/scripts/46-lpa.sh"
 bash -n "${WORK}/scripts/46-lpa.sh" || fail "control: the copy of step 46 without the fallback is not valid bash"
 if cmp -s "${REPO}/scripts/46-lpa.sh" "${WORK}/scripts/46-lpa.sh"; then

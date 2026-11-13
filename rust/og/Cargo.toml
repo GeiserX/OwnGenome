@@ -21,8 +21,15 @@ og-steps.workspace = true
 og-filters.workspace = true
 og-setup.workspace = true
 og-chip.workspace = true
+og-cn.workspace = true
+og-bloodtype.workspace = true
+og-reports.workspace = true
 og-runlog.workspace = true
 og-ancestry.workspace = true
+og-summary.workspace = true
+og-lookup.workspace = true
+og-fresh.workspace = true
+og-recheck.workspace = true
 
 [features]
 # BAM reading (og-bam, on a statically linked htslib written in C) is on by

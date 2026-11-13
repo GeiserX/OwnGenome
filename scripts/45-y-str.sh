@@ -3,8 +3,8 @@
 # Usage: ./scripts/45-y-str.sh <sample_name>
 #
 # Opt-in. HipSTR (HIPSTR_IMAGE) genotypes the Y-STR regions of
-# assets/ystr_panel.tsv on chrY from the BAM, and bin/ystr_report.py, run with
-# the image's own Python, turns its calls into repeat counts in
+# assets/ystr_panel.tsv on chrY from the BAM, and og y str-report (the static
+# binary bin/og), run in the same container, turns its calls into repeat counts in
 # FamilyTreeDNA's marker order (Y-12 to Y-111), with a confidence per marker.
 # Multi-copy markers (DYS385, DYS459, DYS464, YCAII, CDY, DYF395S1, DYS413)
 # and repeats longer than 150 bp reads can span are listed as not callable.
@@ -55,15 +55,15 @@ mkdir -p "$OUTDIR"
 rm -f "$TSV" "${OUTDIR}/${SAMPLE}_y_str."{csv,vcf.gz,log} "${OUTDIR}/regions.bed"
 O=$(cpath "$OUTDIR")
 # One container: the region file from the panel, HipSTR, then the table. The
-# flags and why: bin/ystr_report.py and docs/45-y-str.md.
+# flags and why: rust/crates/og-reports/src/ystr.rs and docs/45-y-str.md.
 # shellcheck disable=SC2016  # $1 to $5 belong to the inner bash
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$HIPSTR_IMAGE" \
   bash -euo pipefail -c '
-    python3 /pgp-bin/ystr_report.py bed --panel /pgp-assets/ystr_panel.tsv --out "$1/regions.bed"
+    /pgp-bin/og y str-bed --panel /pgp-assets/ystr_panel.tsv --out "$1/regions.bed"
     HipSTR --bams "$2" --fasta "$3" --regions "$1/regions.bed" --str-vcf "$1/$4_y_str.vcf.gz" \
       --bam-samps "$4" --bam-libs "$4" --haploid-chrs chrY --def-stutter-model --min-reads 5 \
       --max-str-len 150 --output-filters --log "$1/$4_y_str.log"
-    python3 /pgp-bin/ystr_report.py report --panel /pgp-assets/ystr_panel.tsv --vcf "$1/$4_y_str.vcf.gz" \
+    /pgp-bin/og y str-report --panel /pgp-assets/ystr_panel.tsv --vcf "$1/$4_y_str.vcf.gz" \
       --log "$1/$4_y_str.log" --tsv "$1/$4_y_str.tsv" --csv "$1/$4_y_str.csv"' \
   _ "$O" "$(cpath "$BAM")" "$REF_FASTA_C" "$SAMPLE"
 rm -f "${OUTDIR}/regions.bed"

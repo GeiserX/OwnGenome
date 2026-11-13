@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""bin/hba_copy_number.py: step 35's HBA1/HBA2 count from short-read depth.
+"""og cn call --locus HBA: step 35's HBA1/HBA2 count from short-read depth.
+It needs og: OG names the binary (OG=rust/target/release/og, or bin/og);
+without it the test is skipped, and with OG_REQUIRED set too it fails.
 
 On `samtools bedcov` tables made up for each case (summed depth = mean depth
 x length), at 30x in the flanks, with a quarter of the gene-body depth from
@@ -17,11 +19,12 @@ otherwise:
      15.5x, HBA1 25.7x, flanks 30x and 31x, which main counted as three or
      left between two and three) is 'not assessed', naming the cause; 1%
      is too, 3% is called; no gene at all (no reads to judge by) is still 0;
-  7. the CLI: `bed` prints the four regions, `check` writes the metric table
-     and exits 0; a table with other regions, or a short row, in either
-     input exits 2, and so does a missing --bedcov-mapq1.
+  7. the CLI: `og cn bed --locus HBA` prints the four regions, `og cn call
+     --table` writes the metric table and exits 0; a table with other
+     regions, or a short row, in either input exits 2, and so does a missing
+     --bedcov-mapq1.
 
-Run: python3 tests/test_hba_copy_number.py
+Run: OG=rust/target/release/og python3 tests/test_hba_copy_number.py
 """
 import os
 import subprocess
@@ -29,10 +32,15 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "hba_copy_number.py")
+CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
+OG = os.environ.get("OG", "")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import hba_copy_number as hba  # noqa: E402
+import copy_number as cn  # noqa: E402
 
+REGIONS = cn.regions(cn.load_catalog(CATALOG)["HBA"])
+# Step 35's HBA table, in its order (what bin/hba_copy_number.py wrote).
+ORDER = ["status", "alpha_globin_genes", "estimate", "hba2_depth", "hba1_depth", "flank_left_depth",
+         "flank_right_depth", "mapq0_share", "message"]
 FAILS = 0
 
 
@@ -46,7 +54,7 @@ def check(desc, ok, detail=""):
 def bedcov(path, depth):
     """A bedcov table with the given mean depth per region name."""
     with open(path, "w") as f:
-        for c, s, e, n in hba.REGIONS:
+        for c, s, e, n in REGIONS:
             f.write(f"{c}\t{s}\t{e}\t{n}\t{int(depth[n] * (e - s))}\n")
 
 
@@ -56,12 +64,18 @@ def mapq1(depth, share=0.25):
     return {n: v * (1 - share) if n in ("HBA2", "HBA1") else v for n, v in depth.items()}
 
 
+def og_cn(*args):
+    return subprocess.run([OG, "cn", *args], capture_output=True, text=True)
+
+
 def run(depth, share=0.25):
+    """Step 35's HBA table for these depths, as og cn call writes it."""
     with tempfile.TemporaryDirectory() as t:
-        p, q = os.path.join(t, "cov.tsv"), os.path.join(t, "cov_q1.tsv")
+        p, q, o = (os.path.join(t, x) for x in ("cov.tsv", "cov_q1.tsv", "hba.tsv"))
         bedcov(p, depth)
         bedcov(q, mapq1(depth, share))
-        return hba.assess(hba.read_bedcov(p), hba.read_bedcov(q))
+        og_cn("call", "--catalog", CATALOG, "--locus", "HBA", "--bedcov", p, "--bedcov-mapq1", q, "--table", o)
+        return dict(x.split("\t", 1) for x in open(o).read().splitlines()[1:]) if os.path.exists(o) else {}
 
 
 def depths(hba2, hba1, left=30.0, right=30.0):
@@ -69,6 +83,9 @@ def depths(hba2, hba1, left=30.0, right=30.0):
 
 
 def main():
+    if not OG:
+        print("skip: OG is not set (OG=rust/target/release/og)")
+        return 1 if os.environ.get("OG_REQUIRED") else 0
     r = run(depths(30, 30))
     check("no deletion: four alpha-globin genes, called",
           (r["status"], r["alpha_globin_genes"], r["estimate"]) == ("called", "4", "4.00")
@@ -113,33 +130,45 @@ def main():
           (r["status"], r["alpha_globin_genes"]) == ("called", "0") and "Bart" in r["message"], r)
 
     with tempfile.TemporaryDirectory() as t:
-        out = subprocess.run([sys.executable, SCRIPT, "bed"], capture_output=True, text=True)
+        out = og_cn("bed", "--catalog", CATALOG, "--locus", "HBA")
         rows = [line.split("\t") for line in out.stdout.splitlines()]
         check("bed: four regions, the two genes between the flanks",
               out.returncode == 0 and [x[3] for x in rows] == ["flank_left", "HBA2", "HBA1", "flank_right"], out)
         cov, covq, res = os.path.join(t, "cov.tsv"), os.path.join(t, "cov_q1.tsv"), os.path.join(t, "hba.tsv")
         bedcov(cov, depths(15, 30))
         bedcov(covq, mapq1(depths(15, 30)))
-        cli = [sys.executable, SCRIPT, "check", "--bedcov", cov, "--bedcov-mapq1", covq, "--out", res]
+        cli = [OG, "cn", "call", "--catalog", CATALOG, "--locus", "HBA", "--bedcov", cov, "--bedcov-mapq1", covq,
+               "--table", res]
         out = subprocess.run(cli, capture_output=True, text=True)
         table = dict(line.split("\t", 1) for line in open(res).read().splitlines()[1:]) if os.path.exists(res) else {}
-        check("check: exit 0, the table has the status, the count and the message",
+        check("call: exit 0, the table has the status, the count and the message",
               out.returncode == 0 and table.get("status") == "called" and table.get("alpha_globin_genes") == "3"
               and table.get("mapq0_share") == "0.250"
-              and list(table) == list(hba.ORDER) and "HBA1/HBA2: three" in out.stdout, (out, table))
-        out = subprocess.run(cli[:4] + cli[6:], capture_output=True, text=True)
-        check("check: without --bedcov-mapq1 exits 2", out.returncode == 2 and "--bedcov-mapq1" in out.stderr, out)
+              and list(table) == ORDER and "HBA1/HBA2: three" in out.stdout, (out, table))
+        out = subprocess.run(cli[:9] + cli[11:], capture_output=True, text=True)
+        check("call: without --bedcov-mapq1 exits 2", out.returncode == 2 and "--bedcov-mapq1" in out.stderr, out)
         for name, path in (("all reads", cov), ("MAPQ 1 or more", covq)):
             bedcov(cov, depths(15, 30))
             bedcov(covq, mapq1(depths(15, 30)))
             with open(path, "a") as f:
                 f.write("chr16\t1\t100\tother\t500\n")
             out = subprocess.run(cli, capture_output=True, text=True)
-            check(f"check: a table ({name}) with other regions exits 2", out.returncode == 2 and "differ" in out.stderr, out)
+            check(f"call: a table ({name}) with other regions exits 2", out.returncode == 2 and "differ" in out.stderr, out)
             with open(path, "w") as f:
                 f.write("chr16\t100000\t140000\n")
             out = subprocess.run(cli, capture_output=True, text=True)
-            check(f"check: a short row ({name}) exits 2", out.returncode == 2 and "expected chrom" in out.stderr, out)
+            check(f"call: a short row ({name}) exits 2", out.returncode == 2 and "expected chrom" in out.stderr, out)
+
+    # The demo's HBA table (tests/demo/make_demo_sample.py) is what og writes.
+    sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
+    import make_demo_sample as demo
+    with tempfile.TemporaryDirectory() as t:
+        cov, covq, res = os.path.join(t, "cov.tsv"), os.path.join(t, "cov_q1.tsv"), os.path.join(t, "hba.tsv")
+        bedcov(cov, demo.HBA_DEPTH)
+        bedcov(covq, {n: v * demo.HBA_Q1[n] for n, v in demo.HBA_DEPTH.items()})
+        og_cn("call", "--catalog", CATALOG, "--locus", "HBA", "--bedcov", cov, "--bedcov-mapq1", covq, "--table", res)
+        got = open(res).read() if os.path.exists(res) else ""
+        check("the demo's HBA table is the one og cn call writes for its depths", got == demo.HBA_TABLE, got)
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
     return 1 if FAILS else 0

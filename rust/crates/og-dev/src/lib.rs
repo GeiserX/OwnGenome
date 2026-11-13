@@ -10,16 +10,19 @@
 //!   JSON Schema (`summary.json` against `tests/schema/summary.schema.json`).
 //! - `og dev report-only` ([`report_only`]): every process that feeds only
 //!   the report carries the report-only error strategy.
+//! - `og dev remnants` ([`remnants`]): does each Python file kept only for
+//!   its importers (`tests/parity/remnants.tsv`) hold nothing else?
 
 pub mod contract;
 pub mod parity;
+pub mod remnants;
 pub mod report_only;
 pub mod schema;
 mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -50,6 +53,7 @@ fn run(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) 
 pub fn main(args: &[String]) -> u8 {
     match args.first().map(String::as_str) {
         Some("parity-compare") => parity::cli(&args[1..]),
+        Some("remnants") => remnants::cli(&args[1..]),
         Some("contract") => run(contract::cli, &args[1..]),
         Some("schema") => run(schema::cli, &args[1..]),
         Some("report-only") => run(report_only::cli, &args[1..]),

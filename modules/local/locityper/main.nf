@@ -8,7 +8,7 @@
     depth, insert size and error profile on its background region
     (--locityper_bg_region, or Locityper's own for GRCh38), locityper
     genotype picks two pangenome haplotypes at each locus of the database,
-    and bin/locityper_report.py, with the image's Python, writes one row per
+    and og locityper report (the static binary bin/og) writes one row per
     locus. Locityper's exit code goes to the table; a locus it did not finish
     reads "not called".
 
@@ -52,7 +52,7 @@ process LOCITYPER {
         && locityper genotype -a ${bam} -d ${data}/db -p work/preproc -o work/gt -@ ${task.cpus}; } \\
         > ${meta.id}_locityper.log 2>&1 || rc=\$?
     [ "\$rc" -eq 0 ] || { echo "WARNING: Locityper exited \$rc; last lines of its log:" >&2; tail -n 20 ${meta.id}_locityper.log >&2; }
-    locityper_report.py --gt-dir work/gt --loci ${data}/loci.bed --exit-code \$rc --out ${meta.id}_locityper.tsv
+    og locityper report --gt-dir work/gt --loci ${data}/loci.bed --exit-code \$rc --out ${meta.id}_locityper.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

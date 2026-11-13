@@ -3,15 +3,16 @@
     BLOODTYPE — Blood group antigens (red cell, platelet, neutrophil) predicted from the genome
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Opt-in ('bloodtype' in --tools). Three processes, as in scripts/41-bloodtype.sh:
-      BLOODTYPE_REGIONS bin/copy_number.py bed --locus RHD, once: RHD, its
+      BLOODTYPE_REGIONS og cn bed --locus RHD, once: RHD, its
                        exons and flanks (the RHD row of bin/cn_loci.tsv)
       BLOODTYPE_DEPTH  samtools bedcov -Q 20 -j over the sites of
                        assets/bloodtype_markers.tsv and those regions, for each
                        sample with a BAM: the read depth at every marker site
                        and over RHD and its flanks
-      BLOODTYPE        bin/bloodtype_report.py on the VCF and that depth; without
-                       a BAM ([] in its place) RhD is not determined and sites
-                       with no VCF record are read as reference (confidence medium)
+      BLOODTYPE        og bloodtype report on the VCF and that depth, reading
+                       the marker sites through the VCF's index; without a BAM
+                       ([] in its place) RhD is not determined and sites with
+                       no VCF record are read as reference (confidence medium)
 
     Equivalent to: scripts/41-bloodtype.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -29,7 +30,7 @@ process BLOODTYPE_REGIONS {
 
     script:
     """
-    copy_number.py bed --locus RHD > rhd_regions.bed
+    og cn bed --locus RHD > rhd_regions.bed
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -100,7 +101,7 @@ process BLOODTYPE {
     publishDir { "${params.outdir}/${meta.id}/bloodtype" }, mode: params.publish_dir_mode
 
     input:
-    tuple val(meta), path(vcf), path(depth)   // depth: BLOODTYPE_DEPTH's, or [] without a BAM
+    tuple val(meta), path(vcf), path(vcf_index), path(depth)   // vcf_index: its .tbi or .csi, or []; depth: BLOODTYPE_DEPTH's, or [] without a BAM
     path(markers)
 
     output:
@@ -114,7 +115,7 @@ process BLOODTYPE {
     script:
     def depth_arg = depth ? "--depth ${depth}" : ''
     """
-    bloodtype_report.py --sample ${meta.id} --vcf ${vcf} --markers ${markers} ${depth_arg} \\
+    og bloodtype report --sample ${meta.id} --vcf ${vcf} --markers ${markers} ${depth_arg} \\
         --out ${meta.id}_bloodtype.tsv --evidence ${meta.id}_bloodtype_evidence.tsv
 
     cat <<-END_VERSIONS > versions.yml

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""bin/mei_report.py: the Alu, L1 and SVA insertions MEGAnE calls, and the known disease insertions (step 50).
+"""og mei report: the Alu, L1 and SVA insertions MEGAnE calls, and the known disease insertions (step 50).
 
 Each case writes a synthetic VCF in the format MEGAnE writes (the header and
 INFO fields of its MEI_final_*_genotyped.vcf), the catalog of
 assets/mei_sites.tsv and a samtools bedcov -c file with chosen depths, runs
-the script, and checks what it writes:
+og mei report, and checks what it writes:
 
   1. an SVA planted inside the FKTN window is seen, with its position,
      subfamily and copies; the same VCF without it says not seen; the same
@@ -17,7 +17,7 @@ the script, and checks what it writes:
      copies, with MEGAnE's FILTER and copy-number confidence, in karyotype
      order; it leaves out MEPRED=FAILED, zero copies and other classes (DNA
      transposons, LTRs); the subfamily comes from MEI, else from a breakpoint
-  4. damaged input stops the script: a VCF without its #CHROM line, a VCF
+  4. damaged input stops og: a VCF without its #CHROM line, a VCF
      that is not MEGAnE's (no SVTYPE or MEPRED), a depth file that is not
      samtools bedcov -c output, a catalog without its columns
   5. collect_summary.py's mei section and render_report.py's text block and
@@ -26,8 +26,8 @@ the script, and checks what it writes:
      without the tables the summary's "not assessed" list names mobile
      element insertions, with them it does not
   6. the real catalog: every row is an SVA, its window is the site -/+ 500,
-     and the script reads it
-  7. AnnotSV: --annotsv-input writes the listed calls, and only them, as
+     and og reads it
+  7. AnnotSV: og mei annotsv-input writes the listed calls, and only them, as
      <INS:ME> records with END=POS, an ID per call and the VCF's contigs;
      --annotsv joins a table in AnnotSV's columns back by that ID: genes,
      the location in each gene, the benign insertion frequency and the
@@ -35,7 +35,10 @@ the script, and checks what it writes:
      --annotsv, has "." there; a table that is not AnnotSV's stops it; an
      empty one (AnnotSV had nothing to annotate) leaves every call "."
 
-Run: python3 tests/test_mei_report.py
+Without OG (the og binary) the test is skipped with a note; with
+OG_REQUIRED set too, it fails (Guard's rust job sets both).
+
+Run: OG=bin/og python3 tests/test_mei_report.py
 """
 import csv
 import os
@@ -45,9 +48,13 @@ import tempfile
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "mei_report.py")
+OG = os.environ.get("OG", "")
 CATALOG = os.path.join(REPO, "assets", "mei_sites.tsv")
 sys.path.insert(0, os.path.join(REPO, "bin"))
+
+if not OG:
+    print("skip: OG is not set (OG=bin/og)")
+    sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
 
 FAILS = []
 HEAD = """##fileformat=VCFv4.1
@@ -85,7 +92,7 @@ def check(name, got, want):
 
 
 def run(records, depth=DEPTH_30X, sites=SITES, vcf=None):
-    """(calls, sites) as lists of dicts, or the error text when the script fails."""
+    """(calls, sites) as lists of dicts, or the error text when og fails."""
     with tempfile.TemporaryDirectory() as d:
         with open(f"{d}/m.vcf", "w") as f:
             f.write(vcf if vcf is not None else HEAD + "".join(records))
@@ -93,7 +100,7 @@ def run(records, depth=DEPTH_30X, sites=SITES, vcf=None):
             f.write(sites)
         with open(f"{d}/depth.tsv", "w") as f:
             f.write(depth)
-        p = subprocess.run([sys.executable, SCRIPT, "--sample", "S", "--vcf", f"{d}/m.vcf", "--sites",
+        p = subprocess.run([OG, "mei", "report", "--sample", "S", "--vcf", f"{d}/m.vcf", "--sites",
                             f"{d}/sites.tsv", "--depth", f"{d}/depth.tsv", "--out-calls", f"{d}/c.tsv",
                             "--out-sites", f"{d}/s.tsv"], capture_output=True, text=True)
         if p.returncode:
@@ -161,7 +168,7 @@ check("3 a VCF with no record: an empty table and every site not seen",
 
 # 4. damaged input
 err = run([], vcf=FKTN_SVA)
-check("4 a VCF without #CHROM stops the script", isinstance(err, str) and "not a VCF" in err, True)
+check("4 a VCF without #CHROM stops og", isinstance(err, str) and "not a VCF" in err, True)
 err = run([], vcf=HEAD + "chr9\t1\t.\tN\t<INS:ME>\t.\tPASS\tEND=5\tCN\t1\n")
 check("4 a VCF that is not MEGAnE's stops it", isinstance(err, str) and "not MEGAnE's VCF" in err, True)
 err = run([], depth="chr9\t105639155\t105640156\n")
@@ -171,7 +178,6 @@ check("4 a catalog without its columns stops it", isinstance(err, str) and "colu
 
 # 5. the summary and the reports
 import collect_summary as cs  # noqa: E402
-import mei_report as mr  # noqa: E402
 import render_report as rr  # noqa: E402
 with tempfile.TemporaryDirectory() as d:
     os.makedirs(f"{d}/S")
@@ -193,8 +199,9 @@ with tempfile.TemporaryDirectory() as d:
                        ("depth.tsv", DEPTH_30X)):
         with open(f"{d}/{name}", "w") as f:
             f.write(text)
-    mr.main(["--sample", "S", "--vcf", f"{d}/m.vcf", "--sites", f"{d}/sites.tsv", "--depth", f"{d}/depth.tsv",
-             "--out-calls", f"{d}/S/mei/S_mei.tsv", "--out-sites", f"{d}/S/mei/S_mei_sites.tsv"])
+    subprocess.run([OG, "mei", "report", "--sample", "S", "--vcf", f"{d}/m.vcf", "--sites", f"{d}/sites.tsv",
+                    "--depth", f"{d}/depth.tsv", "--out-calls", f"{d}/S/mei/S_mei.tsv",
+                    "--out-sites", f"{d}/S/mei/S_mei_sites.tsv"], check=True)
     path, data = cs.sec_mei(f"{d}/S", "S")
     check("5 the summary finds the table", path.endswith("mei/S_mei_sites.tsv"), True)
     check("5 the summary counts the calls per element", (data["calls"], data["by_element"]), (2, {"Alu": 1, "SVA": 1}))
@@ -239,12 +246,12 @@ with tempfile.TemporaryDirectory() as d:
         check("5 a sites table without its columns is unreadable", "Unreadable", "Unreadable")
 
 # 6. the real catalog
-rows = mr.read_sites(CATALOG)
+rows = list(csv.DictReader([x for x in open(CATALOG) if not x.startswith("#")], delimiter="\t"))
 check("6 the catalog: FKTN, TAF1 and BBS1", [x["gene"] for x in rows], ["FKTN", "TAF1", "BBS1"])
 check("6 every row is an SVA", {x["element"] for x in rows}, {"SVA"})
 check("6 every window is the site -/+ 500",
       all(int(x["start"]) == int(x["site"]) - 500 and int(x["end"]) == int(x["site"]) + 500 for x in rows), True)
-check("6 the script reads it", [x["status"] for x in run([FKTN_SVA], sites=open(CATALOG).read())[1]],
+check("6 og reads it", [x["status"] for x in run([FKTN_SVA], sites=open(CATALOG).read())[1]],
       ["seen", "not seen", "not callable"])
 
 # 7. AnnotSV
@@ -253,15 +260,15 @@ def annotsv_run(records, table):
     with tempfile.TemporaryDirectory() as d:
         with open(f"{d}/m.vcf", "w") as f:
             f.write(HEAD.replace("##ALT", "##contig=<ID=chr20,length=64444167>\n##ALT", 1) + "".join(records))
-        p = subprocess.run([sys.executable, SCRIPT, "--sample", "S", "--vcf", f"{d}/m.vcf",
-                            "--annotsv-input", f"{d}/in.vcf"], capture_output=True, text=True)
+        p = subprocess.run([OG, "mei", "annotsv-input", "--sample", "S", "--vcf", f"{d}/m.vcf",
+                            "--out", f"{d}/in.vcf"], capture_output=True, text=True)
         if p.returncode:
             return p.stderr
         vcf = open(f"{d}/in.vcf").read()
         for name, text in (("sites.tsv", SITES), ("depth.tsv", DEPTH_30X), ("a.tsv", table)):
             with open(f"{d}/{name}", "w") as f:
                 f.write(text)
-        p = subprocess.run([sys.executable, SCRIPT, "--sample", "S", "--vcf", f"{d}/m.vcf", "--sites",
+        p = subprocess.run([OG, "mei", "report", "--sample", "S", "--vcf", f"{d}/m.vcf", "--sites",
                             f"{d}/sites.tsv", "--depth", f"{d}/depth.tsv", "--annotsv", f"{d}/a.tsv",
                             "--out-calls", f"{d}/c.tsv", "--out-sites", f"{d}/s.tsv"], capture_output=True, text=True)
         if p.returncode:
@@ -313,8 +320,8 @@ check("7 two calls at one place get two IDs", [x.split("\t")[2] for x in dup[0].
 with tempfile.TemporaryDirectory() as d:
     with open(f"{d}/m.vcf", "w") as f:
         f.write(HEAD)
-    p = subprocess.run([sys.executable, SCRIPT, "--sample", "S", "--vcf", f"{d}/m.vcf"], capture_output=True, text=True)
-check("7 without --annotsv-input the report options are required", p.returncode == 2 and "--sites" in p.stderr, True)
+    p = subprocess.run([OG, "mei", "report", "--sample", "S", "--vcf", f"{d}/m.vcf"], capture_output=True, text=True)
+check("7 the report's options are required", p.returncode == 2 and "--sites" in p.stderr, True)
 
 if FAILS:
     print(f"{len(FAILS)} check(s) failed")

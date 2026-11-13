@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""bin/copy_number.py and bin/cn_loci.tsv: one depth-ratio engine for every
-copy-number locus.
+"""og cn and bin/cn_loci.tsv: one depth-ratio engine for every copy-number
+locus, and what bin/copy_number.py keeps (the catalog reader and assess(),
+which step 41's report imports).
+
+Without og (OG unset) the checks of the catalog and of assess() run, and the
+wiring; with OG naming the og binary (OG=rust/target/release/og, or bin/og)
+also those of og cn: the bedcov reader, parity, the CLI, and the blocks of
+step 35 cut out and run. With OG_REQUIRED set, a run without og fails.
 
   1. the catalog: every row loads with its columns checked; a broken row
      (a bad kind, a segment without a span, a class call without an
@@ -9,19 +15,19 @@ copy-number locus.
      (main or paralog copy) of a model the pinned Parascopy data holds
      (assets/parascopy_models_v1.7.txt), except the pairs EXEMPT lists; a
      planted AMY1C row and a planted row on C4A's copy (C4B) are caught;
-  3. parity: the depths of tests/test_hba_copy_number.py and
-     tests/test_lpa_kiv2.py give, through the engine, the very tables the
-     code before the engine wrote (GOLD, frozen from it);
+  3. parity: made-up HBA and LPA depths give, through og cn call, the very
+     tables the code before the engine wrote (GOLD, frozen from it);
   4. synthetic bedcov tables at 0, 1, 2, 3 and 4 copies of a made-up gene
      row are each called right; a MAPQ 0 share above the row's ceiling is
      not assessed; a kind=interval row with pooled depths works the same;
   5. a control segment with no read while the other controls are covered
      raises BrokenControl, and `call` exits 3 naming BROKEN_CONTROL; with no
      read anywhere it is 'not assessed', not an error;
-  6. the CLI: `bed` prints every bedcov locus, `call --json` writes one block;
-  7. the wiring: steps 35, 41 and 46 and their Nextflow modules call
-     copy_number.py, never hba_copy_number.py or lpa_kiv2.py, with the
-     bedcov options of the catalog row. UGT2B17 has no row: pypgx calls it
+  6. the CLI: `bed` prints every bedcov locus, `call --table` writes step
+     46's table; og's catalog reader refuses the broken rows the Python
+     refuses, with the same message;
+  7. the wiring: steps 35, 41 and 46 and their Nextflow modules call og cn,
+     never the old Python, with the bedcov options of the catalog row. UGT2B17 has no row: pypgx calls it
      in BAM mode (assets/pgx_genes.tsv), and tests/test_pypgx_genes.sh
      checks that no catalog row names a gene pypgx calls from the BAM;
   8. the gene-dosage rows (HP, LCE3BC, CCL3L1): made-up depths at 0
@@ -56,7 +62,7 @@ copy-number locus.
      the same commands; the couple screen counts the deletion and the
      conversion as CYP21A2 findings and the unmodified table as none.
 
-Run: python3 tests/test_copy_number.py
+Run: OG=rust/target/release/og python3 tests/test_copy_number.py
 """
 import json
 import os
@@ -66,17 +72,25 @@ import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "bin", "copy_number.py")
+OG = os.environ.get("OG", "")
+if OG and not os.path.realpath(OG).startswith(os.path.realpath(REPO) + os.sep):
+    # og cn finds bin/cn_loci.tsv beside its own binary. Guard's unit-tests job
+    # builds og in a temporary folder, so the tests run a copy that sits next
+    # to the catalog, as bin/.og/og-* does in a checkout.
+    import atexit, shutil  # noqa: E401
+    _og_dir = tempfile.mkdtemp(prefix="og-cn-")
+    atexit.register(shutil.rmtree, _og_dir, True)
+    shutil.copy2(OG, os.path.join(_og_dir, "og"))
+    shutil.copy2(os.path.join(REPO, "bin", "cn_loci.tsv"), os.path.join(_og_dir, "cn_loci.tsv"))
+    OG = os.environ["OG"] = os.path.join(_og_dir, "og")
 CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
 MODELS = os.path.join(REPO, "assets", "parascopy_models_v1.7.txt")
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import copy_number as cn  # noqa: E402
-import hba_copy_number as hba  # noqa: E402
-import lpa_kiv2 as lpa  # noqa: E402
 
 FAILS = 0
 # Frozen from bin/hba_copy_number.py and bin/lpa_kiv2.py as they were before the
-# engine (main at 6056452): inputs [depths..., MAPQ 0 share] and the dict assess() gave.
+# engine (main at 6056452): inputs [depths..., MAPQ 0 share] and the table rows they wrote.
 GOLD = json.loads(''.join((
     '{"hba":[[[30,30,30,30,0.25],{"hba2_depth":30,"hba1_depth":30,"flank_left_depth":30,"flank_right_depth":30,"map'
     'q0_share":"0.250","estimate":"4.00","alpha_globin_genes":"4","status":"called","message":"four alpha-globin ge'
@@ -192,10 +206,40 @@ def write_catalog(path, rows):
             f.write("\t".join(r[c] for c in cn.COLUMNS) + "\n")
 
 
-def bedcov(path, prow, depth):
+def bedcov(path, prow, depth, exact=False):
+    """samtools bedcov over a row's segments at these mean depths: whole sums,
+    or with exact the sums themselves, so each mean comes back as given."""
     with open(path, "w") as f:
         for c, s, e, n in cn.regions(prow):
-            f.write(f"{c}\t{s}\t{e}\t{n}\t{round(depth[n] * (e - s))}\n")
+            v = depth[n] * (e - s)
+            f.write(f"{c}\t{s}\t{e}\t{n}\t{v!r}\n" if exact else f"{c}\t{s}\t{e}\t{n}\t{round(v)}\n")
+
+
+def og_cn(*args, **kw):
+    """og cn with these arguments."""
+    return subprocess.run([OG, "cn", *args], capture_output=True, text=True, **kw)
+
+
+def table(path):
+    """{metric: value} of a metric<TAB>value table, {} when it is not there."""
+    if not os.path.exists(path):
+        return {}
+    return dict(x.split("\t", 1) for x in open(path).read().splitlines()[1:])
+
+
+# Step 46's table, in its order (what bin/lpa_kiv2.py wrote).
+LPA_ORDER = ["status", "kiv2_copies", "ci95_low", "ci95_high", "class", "kiv2_depth", "flank_depth", "mapq0_share",
+             "message", "advice"]
+# Step 35's interval table (what copy_number.py intervals wrote).
+INTERVAL_COLUMNS = ["locus", "name", "chrom", "start", "end", "status", "copies", "expected", "change", "estimate",
+                    "reason"]
+
+
+def change(b):
+    """The change column of an interval row for an assess() block."""
+    if b["copies"] is None or b["expected"] is None:
+        return "."
+    return "deletion" if b["copies"] < b["expected"] else "duplication" if b["copies"] > b["expected"] else "no change"
 
 
 # The only rows allowed to overlap a Parascopy model, each for a stated reason.
@@ -255,6 +299,7 @@ def main():
             want = {"low", "typical", "high"} if mode == "class" else {str(i) for i in range(int(len(vals) + 1))} \
                 if mode == "cut" else None
             check(f"catalog {loc}: a reading for every call", want is None or want <= set(readings), readings)
+    broken = []
     with tempfile.TemporaryDirectory() as t:
         p = os.path.join(t, "c.tsv")
         for desc, kw, err in (("a bad kind", {"kind": "exon"}, "kind"),
@@ -272,6 +317,7 @@ def main():
             except cn.CatalogError as e:
                 got = str(e)
             check(f"catalog: {desc} is refused", err in got, got)
+            broken.append((desc, [row(**kw)], got))
         write_catalog(p, [row(), row(locus="TESTH", targets="TESTG:80000-81000", controls="fl_c:1-2;fl_d:3-4")])
         try:
             cn.load_catalog(p)
@@ -279,30 +325,6 @@ def main():
         except cn.CatalogError as e:
             got = str(e)
         check("catalog: one segment name in two loci is refused", "used by two loci" in got, got)
-
-        g0 = cn.parse_row(row())
-        b = os.path.join(t, "dup.bedcov")
-        bedcov(b, g0, {"fl_a": 30.0, "fl_b": 30.0, "TESTG": 30.0})
-        with open(b) as f:
-            first = f.readline()
-        with open(b, "a") as f:
-            f.write(first.rsplit("\t", 1)[0] + "\t0\n")
-        try:
-            cn.read_bedcov(b, g0)
-            got = "read"
-        except ValueError as e:
-            got = str(e)
-        check("bedcov: a region listed twice is refused, not overwritten", "appears twice" in got, got)
-        with open(b, "w") as f:
-            f.write(first.split("\t")[0] + "\t50000\t50000\tTESTG\t0\n")
-        try:
-            cn.read_bedcov(b, g0)
-            got = "read"
-        except ValueError as e:
-            got = str(e)
-        except ZeroDivisionError as e:
-            got = f"ZeroDivisionError: {e}"
-        check("bedcov: an empty region is refused with its name", "is empty or reversed" in got, got)
 
     # 2. one owner per locus
     models = {}
@@ -354,23 +376,6 @@ def main():
           v == [("DEFB4", "SPAG11A", "DEFB_UNIT_B")], v)
     check("owner: RHD overlaps RHCE's model only (a paralog copy), the exempt pair",
           {m for m, _ in overlaps(cat["RHD"], models)} == {"RHCE"}, overlaps(cat["RHD"], models))
-
-    # 3. parity with the code before the engine
-    for (h2, h1, left, right, share), want in GOLD["hba"]:
-        m = {"flank_left": left, "HBA2": h2, "HBA1": h1, "flank_right": right}
-        q = {n: v * (1 - share) if n in ("HBA2", "HBA1") else v for n, v in m.items()}
-        got = hba.assess(m, q)
-        check(f"parity HBA {h2}/{h1} flanks {left}/{right} MAPQ0 {share}: {want['status']} {want['alpha_globin_genes']}",
-              got == want, (got, want))
-    kiv = [n for *_, n in lpa.REGIONS if n.startswith("kiv2_")]
-    fl = [n for *_, n in lpa.REGIONS if n.startswith("flank_")]
-    for (n, flank, ks, fs, share), want in GOLD["lpa"]:
-        k = flank * (n + 2) / 14
-        m = {x: k * (1 + (ks if i % 2 == 0 else -ks)) for i, x in enumerate(kiv)}
-        m.update({x: flank * (1 + (fs if i % 2 == 0 else -fs)) for i, x in enumerate(fl)})
-        q = {x: v * (1 - share) if x.startswith("kiv2_") else v for x, v in m.items()}
-        got = lpa.assess(m, q)
-        check(f"parity LPA {n} copies at {flank}x: {want['status']} {want['kiv2_copies']}", got == want, (got, want))
 
     # 4. synthetic copies, the MAPQ 0 ceiling, a kind=interval row
     g = cn.parse_row(row())
@@ -430,57 +435,6 @@ def main():
           (b["status"], b["reason"]) == ("not assessed", "low_control_depth"), b)
     b = cn.assess(g, {"fl_a": 0.0, "fl_b": 5.0, "TESTG": 5.0}, {})
     check("one flank empty beside a thin one (5x): too little depth, not an error", b["reason"] == "low_control_depth", b)
-    lrow = cat["LPA_KIV2"]
-    with tempfile.TemporaryDirectory() as t:
-        a, q, j = (os.path.join(t, x) for x in ("a.tsv", "q.tsv", "o.json"))
-        depth = {n: 30.0 for *_, n in cn.regions(lrow)}
-        depth["flank_e19"] = 0.0
-        bedcov(a, lrow, depth)
-        bedcov(q, lrow, depth)
-        out = subprocess.run([sys.executable, SCRIPT, "call", "--locus", "LPA_KIV2", "--bedcov", a,
-                              "--bedcov-mapq1", q, "--json", j], capture_output=True, text=True)
-        check("broken control: `call` exits 3 with BROKEN_CONTROL and writes nothing",
-              out.returncode == 3 and "BROKEN_CONTROL: control segment flank_e19 of LPA_KIV2" in out.stderr
-              and not os.path.exists(j), out)
-
-        # 6. the CLI
-        out = subprocess.run([sys.executable, SCRIPT, "bed"], capture_output=True, text=True)
-        names = [x.split("\t")[3] for x in out.stdout.splitlines()]
-        want = sum(len(cn.regions(r)) for r in cat.values() if r["input"] == "bedcov")
-        check("bed: every segment of the bedcov loci, once", out.returncode == 0 and len(names) == len(set(names)) == want,
-              (out.returncode, len(names), want))
-        depth = {n: 30.0 for *_, n in cn.regions(lrow)}
-        for n in depth:
-            if n.startswith("kiv2_"):
-                depth[n] = 30.0 * 22 / 14
-        bedcov(a, lrow, depth)
-        bedcov(q, lrow, {n: v * (0.1 if n.startswith("kiv2_") else 1) for n, v in depth.items()})
-        tab = os.path.join(t, "t.tsv")
-        out = subprocess.run([sys.executable, SCRIPT, "call", "--locus", "LPA_KIV2", "--bedcov", a,
-                              "--bedcov-mapq1", q, "--json", j, "--table", tab], capture_output=True, text=True)
-        block = json.load(open(j)) if os.path.exists(j) else {}
-        check("call --json: one block, 20 KIV-2 repeats, called",
-              out.returncode == 0 and block.get("locus") == "LPA_KIV2" and block.get("status") == "called"
-              and abs(block.get("estimate", 0) - 20) < 0.01, (out, block))
-        tab_rows = dict(x.split("\t", 1) for x in open(tab).read().splitlines()[1:]) if os.path.exists(tab) else {}
-        check("call --table: step 46's table", tab_rows.get("kiv2_copies") == "20.0" and list(tab_rows) == list(lpa.ORDER),
-              tab_rows)
-        out = subprocess.run([sys.executable, SCRIPT, "call", "--locus", "LPA_KIV2", "--bedcov", a, "--json", j],
-                             capture_output=True, text=True)
-        check("call: a row with a MAPQ 0 guard needs --bedcov-mapq1", out.returncode == 2 and "--bedcov-mapq1" in out.stderr,
-              out)
-        empty = os.path.join(t, "empty.tsv")
-        open(empty, "w").close()
-        for loc, key in (("HBA", "alpha_globin_genes"), ("LPA_KIV2", "kiv2_copies")):
-            if os.path.exists(tab):
-                os.remove(tab)
-            out = subprocess.run([sys.executable, SCRIPT, "call", "--locus", loc, "--bedcov", empty,
-                                  "--bedcov-mapq1", empty, "--table", tab], capture_output=True, text=True)
-            tab_rows = dict(x.split("\t", 1) for x in open(tab).read().splitlines()[1:]) if os.path.exists(tab) else {}
-            check(f"call {loc} on two empty tables (no reads on the contig): exit 0, not assessed",
-                  out.returncode == 0 and tab_rows.get("status") == "not assessed" and tab_rows.get(key) == "."
-                  and "no chr" in tab_rows.get("message", ""), (out, tab_rows))
-
     # 7. the wiring
     def read(p):
         with open(os.path.join(REPO, p)) as f:
@@ -490,9 +444,9 @@ def main():
                        ("scripts/46-lpa.sh", ["LPA_KIV2"]), ("modules/local/lpa/main.nf", ["LPA_KIV2"])):
         text = read(path)
         for loc in loci:
-            check(f"{path}: copy_number.py bed --locus {loc}", f"copy_number.py bed --locus {loc}" in text)
+            check(f"{path}: og cn bed --locus {loc}", f"og cn bed --locus {loc}" in text)
             if loc != "RHD":   # step 41's report imports the engine
-                check(f"{path}: copy_number.py call --locus {loc}", f"copy_number.py call --locus {loc}" in text)
+                check(f"{path}: og cn call --locus {loc}", f"og cn call --locus {loc}" in text)
             passes = ["" if p == "." else p for p in cat[loc]["_passes"]]
             if loc == "HBA":   # and the dosage loop's two passes (section 8), the interval pass (section 9)
                 passes += ["", "-Q 1", "", ""]  # and the CYP21A2 passes (section 10)
@@ -502,15 +456,129 @@ def main():
                      if re.match(r'["$/]|\S+\.bed\b', arg)]
             check(f"{path}: its bedcov passes are the catalog's ({' and '.join(repr(p) for p in passes)})",
                   sorted(c.strip() for c in calls) == sorted(passes), calls)
-        check(f"{path}: no call of the old per-gene scripts",
-              not re.search(r"(hba_copy_number|lpa_kiv2)\.py (bed|check|estimate)", text))
+        check(f"{path}: no call of the old Python",
+              not re.search(r"(copy_number|hba_copy_number|lpa_kiv2)\.py |traits_report\.py --marker", text))
 
     dosage(cat, read)
     intervals(cat, read)
     psv(cat, read)
+    if OG:
+        og_engine(cat, broken)
+    else:
+        print("skip: OG is not set (OG=rust/target/release/og): the og cn checks did not run")
 
     print("\nRESULT:", "ALL PASS" if FAILS == 0 else f"{FAILS} FAILED")
-    return 1 if FAILS else 0
+    return 1 if FAILS or (not OG and os.environ.get("OG_REQUIRED")) else 0
+
+
+def og_engine(cat, broken):
+    """Sections 1, 3, 5 and 6 through og cn: its catalog reader, bedcov
+    reader, the frozen tables, the broken control and the CLI."""
+    with tempfile.TemporaryDirectory() as t:
+        p = os.path.join(t, "c.tsv")
+        for desc, rows, want in broken:
+            write_catalog(p, rows)
+            out = og_cn("bed", "--catalog", p)
+            check(f"og catalog: {desc} is refused with the Python's message",
+                  out.returncode == 2 and out.stderr == f"ERROR: {want}\n", (out.returncode, out.stderr, want))
+
+        write_catalog(p, [row()])
+        g0 = cn.parse_row(row())
+        b = os.path.join(t, "dup.bedcov")
+        bedcov(b, g0, {"fl_a": 30.0, "fl_b": 30.0, "TESTG": 30.0})
+        with open(b) as f:
+            first = f.readline()
+        with open(b, "a") as f:
+            f.write(first.rsplit("\t", 1)[0] + "\t0\n")
+        out = og_cn("call", "--catalog", p, "--locus", "TESTG", "--bedcov", b, "--bedcov-mapq1", b)
+        check("bedcov: a region listed twice is refused, not overwritten",
+              out.returncode == 2 and "appears twice" in out.stderr, out)
+        with open(b, "w") as f:
+            f.write(first.split("\t")[0] + "\t50000\t50000\tTESTG\t0\n")
+        out = og_cn("call", "--catalog", p, "--locus", "TESTG", "--bedcov", b, "--bedcov-mapq1", b)
+        check("bedcov: an empty region is refused with its name",
+              out.returncode == 2 and "is empty or reversed" in out.stderr, out)
+
+        # 3. parity with the code before the engine: every row of the frozen
+        # table, the depths as numbers
+        def same(got, want):
+            def eq(k, v):
+                if isinstance(v, (int, float)):
+                    try:
+                        return abs(float(got.get(k)) - v) < 1e-9
+                    except (TypeError, ValueError):
+                        return False
+                return got.get(k) == v
+            return all(eq(k, v) for k, v in want.items())
+
+        a, q, tab = (os.path.join(t, x) for x in ("a.tsv", "q.tsv", "t.tsv"))
+        hrow = cat["HBA"]
+        for (h2, h1, left, right, share), want in GOLD["hba"]:
+            m = {"flank_left": left, "HBA2": h2, "HBA1": h1, "flank_right": right}
+            bedcov(a, hrow, m, exact=True)
+            bedcov(q, hrow, {n: v * (1 - share) if n in ("HBA2", "HBA1") else v for n, v in m.items()}, exact=True)
+            out = og_cn("call", "--catalog", CATALOG, "--locus", "HBA", "--bedcov", a, "--bedcov-mapq1", q,
+                        "--table", tab)
+            got = table(tab)
+            check(f"parity HBA {h2}/{h1} flanks {left}/{right} MAPQ0 {share}: {want['status']} "
+                  f"{want['alpha_globin_genes']}", out.returncode == 0 and same(got, want), (out.stderr, got, want))
+        lrow = cat["LPA_KIV2"]
+        # in catalog order, as bin/lpa_kiv2.py's REGIONS listed them
+        kiv = [n for n, *_ in lrow["_targets"]]
+        fl = [n for n, *_ in lrow["_controls"]]
+        for (n, flank, ks, fs, share), want in GOLD["lpa"]:
+            k = flank * (n + 2) / 14
+            m = {x: k * (1 + (ks if i % 2 == 0 else -ks)) for i, x in enumerate(kiv)}
+            m.update({x: flank * (1 + (fs if i % 2 == 0 else -fs)) for i, x in enumerate(fl)})
+            bedcov(a, lrow, m, exact=True)
+            bedcov(q, lrow, {x: v * (1 - share) if x.startswith("kiv2_") else v for x, v in m.items()}, exact=True)
+            out = og_cn("call", "--catalog", CATALOG, "--locus", "LPA_KIV2", "--bedcov", a, "--bedcov-mapq1", q,
+                        "--table", tab)
+            got = table(tab)
+            check(f"parity LPA {n} copies at {flank}x: {want['status']} {want['kiv2_copies']}",
+                  out.returncode == 0 and same(got, want), (out.stderr, got, want))
+
+        # 5. a broken control
+        os.remove(tab)
+        depth = {n: 30.0 for *_, n in cn.regions(lrow)}
+        depth["flank_e19"] = 0.0
+        bedcov(a, lrow, depth)
+        bedcov(q, lrow, depth)
+        out = og_cn("call", "--locus", "LPA_KIV2", "--bedcov", a, "--bedcov-mapq1", q, "--table", tab)
+        check("broken control: `call` exits 3 with BROKEN_CONTROL and writes nothing",
+              out.returncode == 3 and "BROKEN_CONTROL: control segment flank_e19 of LPA_KIV2" in out.stderr
+              and not os.path.exists(tab), out)
+
+        # 6. the CLI
+        out = og_cn("bed")
+        names = [x.split("\t")[3] for x in out.stdout.splitlines()]
+        want = sum(len(cn.regions(r)) for r in cat.values() if r["input"] == "bedcov")
+        check("bed: every segment of the bedcov loci, once (the catalog beside og)",
+              out.returncode == 0 and len(names) == len(set(names)) == want, (out.returncode, out.stderr, len(names), want))
+        depth = {n: 30.0 for *_, n in cn.regions(lrow)}
+        for n in depth:
+            if n.startswith("kiv2_"):
+                depth[n] = 30.0 * 22 / 14
+        bedcov(a, lrow, depth)
+        bedcov(q, lrow, {n: v * (0.1 if n.startswith("kiv2_") else 1) for n, v in depth.items()})
+        out = og_cn("call", "--locus", "LPA_KIV2", "--bedcov", a, "--bedcov-mapq1", q, "--table", tab)
+        tab_rows = table(tab)
+        check("call --table: step 46's table, 20 KIV-2 repeats, in its order",
+              out.returncode == 0 and tab_rows.get("status") == "estimated" and tab_rows.get("kiv2_copies") == "20.0"
+              and list(tab_rows) == LPA_ORDER, (out, tab_rows))
+        out = og_cn("call", "--locus", "LPA_KIV2", "--bedcov", a)
+        check("call: a row with a MAPQ 0 guard needs --bedcov-mapq1", out.returncode == 2 and "--bedcov-mapq1" in out.stderr,
+              out)
+        empty = os.path.join(t, "empty.tsv")
+        open(empty, "w").close()
+        for loc, key in (("HBA", "alpha_globin_genes"), ("LPA_KIV2", "kiv2_copies")):
+            if os.path.exists(tab):
+                os.remove(tab)
+            out = og_cn("call", "--locus", loc, "--bedcov", empty, "--bedcov-mapq1", empty, "--table", tab)
+            tab_rows = table(tab)
+            check(f"call {loc} on two empty tables (no reads on the contig): exit 0, not assessed",
+                  out.returncode == 0 and tab_rows.get("status") == "not assessed" and tab_rows.get(key) == "."
+                  and "no chr" in tab_rows.get("message", ""), (out, tab_rows))
 
 
 def dosage_depths(r, copies, q1_share=0.5):
@@ -522,14 +590,14 @@ def dosage_depths(r, copies, q1_share=0.5):
     return m, {n: v * q1_share if n in tg else v for n, v in m.items()}
 
 
-# run_in and cpath for the dosage block of step 35: copy_number.py runs for
-# real, samtools bedcov prints tests/fixtures/cn/<locus>[.q1].bedcov.tsv.
+# run_in and cpath for the dosage block of step 35: og cn runs for real (OG),
+# samtools bedcov prints tests/fixtures/cn/<locus>[.q1].bedcov.tsv.
 STUB = r"""
 run_in() {
   while [ $# -gt 0 ]; do case $1 in -v|--cpus|--memory) shift 2 ;; *) break ;; esac; done
   shift
   case "$1 $2" in
-    "python3 /pgp-bin/copy_number.py") shift 2; python3 "${REPO}/bin/copy_number.py" "$@" ;;
+    "/pgp-bin/og cn") shift; "${OG}" "$@" ;;
     "samtools bedcov") shift 2; q=""; if [ "$1" = -Q ]; then q=.q1; shift 2; fi
       d=$(dirname "$1"); cat "${FIX}/${d##*/}${q}.bedcov.tsv" ;;
     *) return 1 ;;
@@ -549,8 +617,8 @@ def dosage(cat, read):
           m and m.group(1))
     for path, text, q in (("scripts/35-paralogs.sh", step, '"'), ("modules/local/parascopy/main.nf", module, '"\\')):
         for cmd in ("bed", "call"):
-            check(f"{path}: copy_number.py {cmd} --locus on each dosage row",
-                  f"copy_number.py {cmd} --locus {q}$loc" in text)
+            check(f"{path}: og cn {cmd} --locus on each dosage row",
+                  f"og cn {cmd} --locus {q}$loc" in text)
     for loc in DOSAGE:
         r = cat[loc]
         check(f"dosage {loc}: two bedcov passes, all reads then MAPQ >= 1 (what the loop runs)",
@@ -580,6 +648,8 @@ def dosage(cat, read):
     # The block of step 35, cut out and run on the fixtures.
     blk = re.search(r'\n(DOSAGE_LOCI=.*?\nrm -rf "\$DOSAGE_WORK"\n)', step, re.S)
     check("step 35 holds the dosage block", blk is not None)
+    if not OG:
+        return
     fix = os.path.join(REPO, "tests", "fixtures", "cn")
     with tempfile.TemporaryDirectory() as t:
         env = dict(os.environ, REPO=REPO, FIX=fix, OUTDIR=t, SAMPLE="S", PGP_ROOT=REPO, PARASCOPY_IMAGE="img",
@@ -601,16 +671,16 @@ def dosage(cat, read):
                   got[1:3] == ["called", str(n)] and got[5:] == [cn.reading(cat[loc], n)], got)
 
     # A row shifted by 1 kb no longer matches the fixture made for its place.
-    for loc in DOSAGE:
-        r = dict(cat[loc])
-        r["targets"] = ";".join(f"{n}:{s + 1000}-{e + 1000}" for n, s, e, _ in r["_targets"])
-        shifted = cn.parse_row({k: v for k, v in r.items() if not k.startswith("_")})
-        try:
-            cn.read_bedcov(os.path.join(fix, f"{loc}.bedcov.tsv"), shifted)
-            got = "read"
-        except ValueError as e:
-            got = str(e)
-        check(f"dosage {loc}: shifted 1 kb, its fixture is refused", "regions differ" in got, got)
+    with tempfile.TemporaryDirectory() as t:
+        p = os.path.join(t, "c.tsv")
+        for loc in DOSAGE:
+            r = {k: v for k, v in cat[loc].items() if not k.startswith("_")}
+            r["targets"] = ";".join(f"{n}:{s + 1000}-{e + 1000}" for n, s, e, _ in cat[loc]["_targets"])
+            write_catalog(p, [r])
+            f = os.path.join(fix, f"{loc}.bedcov.tsv")
+            out = og_cn("call", "--catalog", p, "--locus", loc, "--bedcov", f, "--bedcov-mapq1", f)
+            check(f"dosage {loc}: shifted 1 kb, its fixture is refused",
+                  out.returncode == 2 and "regions differ" in out.stderr, out)
 
 
 # Section 9: the interval rows.
@@ -630,7 +700,7 @@ run_in() {
   while [ $# -gt 0 ]; do case $1 in -v|--cpus|--memory) shift 2 ;; *) break ;; esac; done
   shift
   case "$1 $2" in
-    "python3 /pgp-bin/copy_number.py") shift 2; python3 "${REPO}/bin/copy_number.py" "$@" ;;
+    "/pgp-bin/og cn") shift; "${OG}" "$@" ;;
     "samtools bedcov") shift 2; python3 "${FAKECOV}" "$1" ;;
     *) return 1 ;;
   esac
@@ -709,12 +779,11 @@ def intervals(cat, read):
           not hits, hits)
 
     a_d, p17 = cat["22q11.2_DGS_proximal_A-D"], cat["17p12_HNPP_CMT1A"]
-    for r, target, want, change in ((a_d, 15.0, 1, "deletion"), (p17, 45.0, 3, "duplication"),
+    for r, target, want, change_ in ((a_d, 15.0, 1, "deletion"), (p17, 45.0, 3, "duplication"),
                                     (a_d, 30.0, 2, "no change"), (p17, 30.0, 2, "no change")):
         b = cn.assess(r, depths(r, target))
-        line = cn.interval_line(r, b)
-        check(f"interval {r['locus']}: targets at {target}x over 30x controls is {want} copies, {change}",
-              (b["status"], b["copies"], line[8]) == ("called", want, change), (b, line))
+        check(f"interval {r['locus']}: targets at {target}x over 30x controls is {want} copies, {change_}",
+              (b["status"], b["copies"], change(b)) == ("called", want, change_), b)
     az = cat["AZFc_DAZ"]
     m = depths(az, 15.0 / 4, 15.0)
     check("AZFc on a male: four DAZ copies at a single copy's depth in all is 4 copies",
@@ -723,12 +792,12 @@ def intervals(cat, read):
     half = {n: (7.5 if n in {x for x, *_ in az["_targets"]} else 15.0) for n in m}
     b = cn.assess(az, half, None, "male")
     check("AZFc on a male at half its DAZ depth: 2 copies, a deletion (gr/gr or b2/b3)",
-          (b["copies"], cn.interval_line(az, b)[8]) == (2, "deletion"), b)
+          (b["copies"], change(b)) == (2, "deletion"), b)
     b = cn.assess(cat["AZFa"], depths(cat["AZFa"], 15.0, 15.0), None, "male")
     check("AZFa on a male: one copy, no change", (b["copies"], b["expected"]) == (1, 1), b)
     b = cn.assess(cat["AZFa"], depths(cat["AZFa"], 0.0, 15.0), None, "male")
     check("AZFa on a male with no read over it: 0 copies, a deletion",
-          (b["copies"], cn.interval_line(cat["AZFa"], b)[8]) == (0, "deletion"), b)
+          (b["copies"], change(b)) == (0, "deletion"), b)
     for loc in ("AZFa", "AZFb", "AZFc_DAZ"):
         b = cn.assess(cat[loc], depths(cat[loc], 15.0, 15.0), None, "female")
         check(f"{loc} on a female: not applicable", (b["status"], b["reason"]) == ("not applicable", "no_y"), b)
@@ -740,12 +809,20 @@ def intervals(cat, read):
     b = cn.assess(xp, depths(xp, 0.0, 15.0), None, "male")
     check("Xp22.31 on a male with no read there: 0 copies, a deletion (the STS deletion)", b["copies"] == 0, b)
 
+    step, module = read("scripts/35-paralogs.sh"), read("modules/local/parascopy/main.nf")
+    for path, text in (("scripts/35-paralogs.sh", step), ("modules/local/parascopy/main.nf", module)):
+        for cmd in ("og cn bed --kind interval", "og cn intervals --bedcov", "og cn intervals --failed"):
+            check(f"{path}: {cmd}", cmd in text)
+    check("PARASCOPY module: the samplesheet sex goes to the interval rows",
+          "def sex = meta.sex in ['male', 'female'] ? meta.sex : 'unknown'" in module and "--sex ${sex}" in module)
+    if not OG:
+        return
     with tempfile.TemporaryDirectory() as t:
         fake = os.path.join(t, "fakecov.py")
         with open(fake, "w") as f:
             f.write(FAKECOV)
         bed = os.path.join(t, "r.bed")
-        out = subprocess.run([sys.executable, SCRIPT, "bed", "--kind", "interval"], capture_output=True, text=True)
+        out = og_cn("bed", "--kind", "interval")
         open(bed, "w").write(out.stdout)
         check("bed --kind interval: every segment of every interval row, once",
               out.returncode == 0 and len(out.stdout.splitlines()) == sum(len(cn.regions(r)) for r in iv), out.stderr)
@@ -755,12 +832,11 @@ def intervals(cat, read):
         with open(cov, "w") as f:
             subprocess.run([sys.executable, fake, bed], stdout=f, env=env, check=True)
         tab = os.path.join(t, "iv.tsv")
-        out = subprocess.run([sys.executable, SCRIPT, "intervals", "--bedcov", cov, "--sex", "female", "--out", tab],
-                             capture_output=True, text=True)
+        out = og_cn("intervals", "--bedcov", cov, "--sex", "female", "--out", tab)
         lines = open(tab).read().splitlines() if os.path.exists(tab) else []
         rows = {x.split("\t")[0]: x.split("\t") for x in lines[1:]}
         check("intervals: exit 0, the header, one line per interval row",
-              out.returncode == 0 and lines[:1] == ["\t".join(cn.INTERVAL_COLUMNS)] and list(rows) == names,
+              out.returncode == 0 and lines[:1] == ["\t".join(INTERVAL_COLUMNS)] and list(rows) == names,
               (out.returncode, out.stderr[-400:], lines[:1]))
         check("intervals: the 22q11.2 A-D deletion at 1 copy", rows.get(a_d["locus"], [""] * 11)[5:9]
               == ["called", "1", "2", "deletion"], rows.get(a_d["locus"]))
@@ -769,12 +845,11 @@ def intervals(cat, read):
               and rows.get("3q29", [""] * 11)[5:9] == ["called", "2", "2", "no change"], rows.get(p17["locus"]))
         check("intervals: chrY rows on a female are not applicable",
               all(rows.get(x, [""] * 11)[5] == "not applicable" for x in ("AZFa", "AZFb", "AZFc_DAZ")))
-        out = subprocess.run([sys.executable, SCRIPT, "intervals", "--failed", "--out", tab], capture_output=True, text=True)
+        out = og_cn("intervals", "--failed", "--out", tab)
         lines = open(tab).read().splitlines()[1:]
         check("intervals --failed: every row not assessed, check_failed",
               out.returncode == 0 and len(lines) == len(iv) and all(x.split("\t")[10] == "check_failed" for x in lines))
 
-        step, module = read("scripts/35-paralogs.sh"), read("modules/local/parascopy/main.nf")
         blk = re.search(r'\n(INTERVAL_OUT=.*?\nrm -rf "\$INTERVAL_WORK"\n)', step, re.S)
         check("step 35 holds the interval block", blk is not None)
         env = dict(os.environ, REPO=REPO, FAKECOV=fake, OUTDIR=t, SAMPLE="S", PGP_ROOT=REPO, PARASCOPY_IMAGE="img",
@@ -799,10 +874,6 @@ def intervals(cat, read):
         check("step 35 interval block with a failed bedcov: exit 0, every row check_failed",
               out.returncode == 0 and len(lines) == len(iv) and all(x.split("\t")[10] == "check_failed" for x in lines),
               (out.returncode, out.stderr[-400:]))
-        for path, text in (("scripts/35-paralogs.sh", step), ("modules/local/parascopy/main.nf", module)):
-            for cmd in ("copy_number.py bed --kind interval", "copy_number.py intervals --bedcov",
-                        "copy_number.py intervals --failed"):
-                check(f"{path}: {cmd}", cmd in text)
         # collect_summary: step 35's section carries the interval rows with a change
         import collect_summary as cs
         sd = os.path.join(t, "sample")
@@ -821,8 +892,6 @@ def intervals(cat, read):
         ci = (data or {}).get("cn_intervals") or {}
         check("collect_summary: the interval rows stay when step 35 wrote no other table",
               [c["locus"] for c in ci.get("changes", [])] == ["AZFc_DAZ"] and ci.get("rows") == len(iv), ci)
-        check("PARASCOPY module: the samplesheet sex goes to the interval rows",
-              "def sex = meta.sex in ['male', 'female'] ? meta.sex : 'unknown'" in module and "--sex ${sex}" in module)
 
 
 # Section 10: the CYP21A2 row, call psv.
@@ -866,26 +935,42 @@ def cyp_fixture(r, total, a2):
 
 
 def cyp_call(r, bedcov_text, pileup_text, mapq0=0.1):
-    """The block of a CYP21A2 genome; mapq0 is the share of every segment's
+    """og cn call on a CYP21A2 genome; mapq0 is the share of every segment's
     depth from MAPQ 0 reads (0.1 as HG002's BWA-MEM and minimap2 reads give
-    over the two targets; 0 for an aligner that leaves those reads out)."""
+    over the two targets; 0 for an aligner that leaves those reads out). The
+    table read back: status, copies, module_total, finding and reason (None
+    for '.'), reading, conversion_sites, each site's copies estimate and
+    ratio, and the table and stdout line themselves."""
     with tempfile.TemporaryDirectory() as t:
-        b, p = os.path.join(t, "b.tsv"), os.path.join(t, "p.tsv")
+        b, q, p, tab = (os.path.join(t, x) for x in ("b.tsv", "q.tsv", "p.tsv", "t.tsv"))
         open(b, "w").write(bedcov_text)
+        open(q, "w").write("".join(
+            "\t".join(c[:4] + [repr(float(c[4]) * (1 - mapq0))]) + "\n"
+            for c in (ln.split("\t") for ln in bedcov_text.splitlines())))
         open(p, "w").write(pileup_text)
-        m = cn.read_bedcov(b, r)
-        q1 = {n: v * (1 - mapq0) for n, v in m.items()}
-        return cn.psv_assess(r, cn.assess(r, m, q1), cn.read_pileup(p, r))
+        out = og_cn("call", "--catalog", CATALOG, "--locus", "CYP21A2", "--bedcov", b, "--bedcov-mapq1", q,
+                    "--pileup", p, "--table", tab)
+        rows = table(tab)
+    val = (lambda k, f=str: None if rows.get(k, ".") == "." else f(rows[k]))
+    sites = {}
+    for k, v in rows.items():
+        m = re.search(r"copies \S+ \(([0-9]+\.[0-9]+)\); ratio ([0-9]+\.[0-9]+)", v) if k.startswith("psv_") else None
+        if m:
+            sites[k[4:]] = {"estimate": float(m.group(1)), "ratio": float(m.group(2))}
+    return {"status": rows.get("status"), "copies": val("cyp21a2_copies", int), "module_total": val("module_total", int),
+            "finding": val("finding"), "reason": val("reason"), "reading": rows.get("reading", ""),
+            "conversion_sites": (val("conversion_sites") or "").split(",") if val("conversion_sites") else [],
+            "sites": sites, "table": rows, "line": out.stdout.strip(), "exit": out.returncode}
 
 
-# run_in and cpath for the CYP21A2 block of step 35: copy_number.py runs for real,
+# run_in and cpath for the CYP21A2 block of step 35: og cn runs for real (OG),
 # samtools bedcov and mpileup print tests/fixtures/cn/CYP21A2_${CYP_CASE}.*.
 STUB_CYP = r"""
 run_in() {
   while [ $# -gt 0 ]; do case $1 in -v|--cpus|--memory) shift 2 ;; *) break ;; esac; done
   shift
   case "$1 $2" in
-    "python3 /pgp-bin/copy_number.py") shift 2; python3 "${REPO}/bin/copy_number.py" "$@" ;;
+    "/pgp-bin/og cn") shift; "${OG}" "$@" ;;
     "samtools bedcov")
       # the MAPQ >= 1 pass: 90% of each depth (HG002's share), or all of it for
       # an aligner that left the MAPQ 0 reads out (CYP_NO_MAPQ0)
@@ -938,16 +1023,29 @@ def psv(cat, read):
                 got = str(e)
             check(f"CYP21A2: {desc} is refused", err in got, got)
 
-    got = cn.count_bases("^]C.,c$+2AGg-1tG*<>N", "C")
-    check("pileup: read starts, ends and indels are not bases; '.' and ',' are the reference base",
-          got == {"A": 0, "C": 4, "G": 2, "T": 0}, got)
+    step, module = read("scripts/35-paralogs.sh"), read("modules/local/parascopy/main.nf")
+    for path, text, q in (("scripts/35-paralogs.sh", step, True), ("modules/local/parascopy/main.nf", module, False)):
+        for cmd in ("og cn bed --locus CYP21A2", "og cn bed --psv --locus CYP21A2",
+                    "--bedcov-mapq1", "cyp21a2_bedcov_q1.tsv" if not q else 'bedcov_q1.tsv")"',
+                    "samtools mpileup -A -B -q 0 -Q 13 -d 100000", "og cn call --locus CYP21A2 --bedcov",
+                    "--pileup", "_cyp21a2_psv.tsv"):
+            check(f"{path}: {cmd}", cmd in text)
+    check("PARASCOPY module: its CYP21A2 table is an output", 'path("${meta.id}_cyp21a2_psv.tsv"),     emit: cyp21a2'
+          in module)
+    check("CYP21A2 row: a MAPQ 0 guard (two bedcov passes, all reads and MAPQ >= 1; minimum share 0.02)",
+          r["_passes"] == [".", "-Q 1"] and r["_mapq0_min"] == 0.02 and r["_mapq0_max"] is None,
+          (r["_passes"], r["_mapq0_min"], r["_mapq0_max"]))
+    if not OG:
+        return
 
-    out = subprocess.run([sys.executable, SCRIPT, "bed", "--psv", "--locus", "CYP21A2"], capture_output=True, text=True)
+    # og's pileup reader (read starts, ends and indels are not bases) is
+    # checked by the crate's own test and by the parity cases.
+    out = og_cn("bed", "--psv", "--locus", "CYP21A2")
     lines = out.stdout.splitlines()
     check("bed --psv: twelve one-base positions (each site on CYP21A2 and on CYP21A1P), sorted",
           out.returncode == 0 and len(lines) == 12 and all(int(x.split("\t")[2]) - int(x.split("\t")[1]) == 1 for x in lines)
           and [int(x.split("\t")[1]) for x in lines] == sorted(int(x.split("\t")[1]) for x in lines), out)
-    out = subprocess.run([sys.executable, SCRIPT, "bed", "--psv", "--locus", "HBA"], capture_output=True, text=True)
+    out = og_cn("bed", "--psv", "--locus", "HBA")
     check("bed --psv on a row without PSV sites is refused", out.returncode == 2 and "no psv locus" in out.stderr, out)
 
     # The committed fixtures are cyp_fixture's, so a change to either shows.
@@ -1008,9 +1106,6 @@ def psv(cat, read):
     # The MAPQ 0 guard: an aligner that left out the reads fitting both copies lowers
     # the module total, so the deletion's tables from such a BAM (no MAPQ 0 read) read
     # not assessed, not a deletion; with HG002's 10% share they still give the deletion.
-    check("CYP21A2 row: a MAPQ 0 guard (two bedcov passes, all reads and MAPQ >= 1; minimum share 0.02)",
-          r["_passes"] == [".", "-Q 1"] and r["_mapq0_min"] == 0.02 and r["_mapq0_max"] is None,
-          (r["_passes"], r["_mapq0_min"], r["_mapq0_max"]))
     total, a2 = CYP_CASES["deletion"]
     bed, pile = cyp_fixture(r, total, a2)
     for share, want in ((0.0, ("not assessed", "low_mapq0_share", None, None)),
@@ -1020,19 +1115,17 @@ def psv(cat, read):
         check(f"CYP21A2: the deletion's tables with a MAPQ 0 share of {share}: {want[0]} ({want[1] or want[2]})",
               (b["status"], b["reason"], b["finding"], b["copies"]) == want, b)
     b = cyp_call(r, bed, pile, 0.0)
-    rows, line = cn.psv_table(r, b)
-    tab = dict(rows)
+    tab, line = b["table"], b["line"]
     check("CYP21A2 without MAPQ 0 reads: the table says so (message, share 0.000), no copies, module total or finding",
           tab["message"].startswith("not assessed: the BAM has few or no multi-mapping reads here")
           and "CYP21A2 and CYP21A1P" in tab["message"] and tab["mapq0_share"] == "0.000"
           and (tab["cyp21a2_copies"], tab["module_total"], tab["finding"]) == (".", ".", ".")
           and "low_mapq0_share" in line, (tab, line))
     bed, pile = cyp_fixture(r, 4, {})
-    tab = dict(cn.psv_table(r, cyp_call(r, bed, pile))[0])
+    tab = cyp_call(r, bed, pile)["table"]
     check("CYP21A2 unmodified with HG002's MAPQ 0 share: called, share 0.100, message '.'",
           (tab["status"], tab["finding"], tab["mapq0_share"], tab["message"]) == ("called", "none", "0.100", "."), tab)
 
-    step, module = read("scripts/35-paralogs.sh"), read("modules/local/parascopy/main.nf")
     blk = re.search(r'\n(CYP21_OUT=.*?\nrm -rf "\$CYP21_WORK"\n)', step, re.S)
     check("step 35 holds the CYP21A2 block", blk is not None)
     tabs = {}
@@ -1071,14 +1164,6 @@ def psv(cat, read):
               (nl.get("mapq0_share"), nl.get("message")) == ("0.100", "."), nl)
         check("step 35 CYP21A2 block with a failed mpileup: the rows of a called table but the sites'",
               list(rd("fail")) == [k for k in nl if not k.startswith("psv_")], (list(rd("fail")), list(nl)))
-        for path, text, q in (("scripts/35-paralogs.sh", step, True), ("modules/local/parascopy/main.nf", module, False)):
-            for cmd in ("copy_number.py bed --locus CYP21A2", "copy_number.py bed --psv --locus CYP21A2",
-                        "--bedcov-mapq1", "cyp21a2_bedcov_q1.tsv" if not q else 'bedcov_q1.tsv")"',
-                        "samtools mpileup -A -B -q 0 -Q 13 -d 100000", "copy_number.py call --locus CYP21A2 --bedcov",
-                        "--pileup", "_cyp21a2_psv.tsv"):
-                check(f"{path}: {cmd}", cmd in text)
-        check("PARASCOPY module: its CYP21A2 table is an output", 'path("${meta.id}_cyp21a2_psv.tsv"),     emit: cyp21a2'
-              in module)
 
         # the couple screen
         genes = {"CYP21A2": {"gene": "CYP21A2"}}

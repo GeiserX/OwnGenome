@@ -8,7 +8,7 @@
 # Nat Genet, PMID 41107551; MIT licence) genotypes a whole locus at once: it
 # picks the two haplotypes of a pangenome panel (here the HPRC v2.1 panel of
 # 232 people) that best explain the reads there and their depth. Its call is
-# shown beside the primary caller's, never as the call. bin/locityper_report.py,
+# shown beside the primary caller's, never as the call. og locityper report,
 # the same code as the LOCITYPER Nextflow process, writes one row per locus of
 # assets/locityper_loci.bed.
 #
@@ -74,9 +74,9 @@ run_in --cpus "$THREADS" --memory 16g "$LOCITYPER_IMAGE" bash -c '
   "${LOCITYPER_BG_REGION:-}" "$(cpath "$LOG")" || rc=$?
 [ "$rc" -eq 0 ] || { echo "WARNING: Locityper exited ${rc}; last lines of ${LOG}:" >&2; tail -n 20 "$LOG" >&2 || true; }
 
-echo "[2/2] The table (bin/locityper_report.py)..."
+echo "[2/2] The table (og locityper report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$LOCITYPER_IMAGE" \
-  python3 /pgp-bin/locityper_report.py --gt-dir "$(cpath "${WORK}/gt")" --loci "$(cpath "${DATA}/loci.bed")" \
+  /pgp-bin/og locityper report --gt-dir "$(cpath "${WORK}/gt")" --loci "$(cpath "${DATA}/loci.bed")" \
     --exit-code "$rc" --out "$(cpath "$TABLE")"
 
 [ -s "$TABLE" ] || { echo "ERROR: no table written (${TABLE})" >&2; exit 1; }
