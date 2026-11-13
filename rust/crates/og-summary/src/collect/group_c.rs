@@ -295,7 +295,10 @@ pub fn contain(
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(part)) {
         Ok(Ok(())) => None,
         Ok(Err(e)) => Some((key, e)),
-        Err(_) => Some((key, format!("internal error: the post pass of {key} stopped"))),
+        Err(_) => Some((
+            key,
+            format!("internal error: the post pass of {key} stopped"),
+        )),
     }
 }
 

@@ -92,7 +92,10 @@ fn an_empty_folder_lists_every_step_and_every_line() {
     let Value::Object(sections) = at(&v, &["sections"]) else {
         panic!()
     };
-    assert_eq!(sections.keys().map(String::as_str).collect::<Vec<_>>(), ORDER);
+    assert_eq!(
+        sections.keys().map(String::as_str).collect::<Vec<_>>(),
+        ORDER
+    );
     let not_run = texts(at(&v, &["not_run"]));
     assert_eq!(not_run.len(), 45);
     assert_eq!(not_run[0], "Coverage (mosdepth)");
@@ -129,30 +132,17 @@ fn a_failed_step_says_so_under_not_run() {
 }
 
 #[test]
-fn the_lines_go_when_their_step_assessed_the_sample() {
+fn step_35s_hba_count_assesses_hba() {
     let d = Dir::new("post-assessed");
-    d.put(
-        "S/vntyper/S_vntyper.tsv",
-        "key\tvalue\nstatus\tnegative\n",
-    );
     d.put(
         "S/paralogs/S_hba_copy_number.tsv",
         "metric\tvalue\nstatus\tcalled\ncopies\t4\nreading\tfour\n",
     );
     let v = summary(&d);
+    assert_eq!(word(at(&v, &["sections", "parascopy", "state"])), "ok");
     let lines = texts(at(&v, &["not_assessed"]));
-    let vntyper = at(&v, &["sections", "vntyper"]);
-    if word(at(vntyper, &["state"])) == "ok" && word(at(vntyper, &["data", "status"])) == "negative" {
-        assert!(!lines.contains(&VNTYPER_NOT_ASSESSED.to_owned()));
-    } else {
-        assert!(lines.contains(&VNTYPER_NOT_ASSESSED.to_owned()));
-    }
-    let parascopy = at(&v, &["sections", "parascopy"]);
-    if word(at(parascopy, &["state"])) == "ok"
-        && word(at(parascopy, &["data", "hba", "status"])) == "called"
-    {
-        assert!(!lines.contains(&HBA_NOT_ASSESSED.to_owned()));
-    }
+    assert!(!lines.contains(&HBA_NOT_ASSESSED.to_owned()));
+    assert!(lines.contains(&VNTYPER_NOT_ASSESSED.to_owned()));
 }
 
 #[test]
@@ -160,7 +150,11 @@ fn a_stale_vntyper_reading_is_not_assessed() {
     // Only an ok section counts for VNtyper; any other state leaves the line.
     let mk = |state: State, status: &str| {
         let mut s = Section::new(
-            GROUP_C.iter().copied().find(|s| s.key == "vntyper").unwrap(),
+            GROUP_C
+                .iter()
+                .copied()
+                .find(|s| s.key == "vntyper")
+                .unwrap(),
             Ok(None),
             None,
         );
@@ -182,7 +176,11 @@ fn a_stale_vntyper_reading_is_not_assessed() {
 fn paraphase_needs_both_hba_genes_called() {
     let paralogs = |genes: &str| {
         let mut s = Section::new(
-            GROUP_C.iter().copied().find(|s| s.key == "paralogs").unwrap(),
+            GROUP_C
+                .iter()
+                .copied()
+                .find(|s| s.key == "paralogs")
+                .unwrap(),
             Ok(None),
             None,
         );
@@ -221,7 +219,11 @@ fn a_part_of_the_post_pass_that_fails_stays_in_its_section() {
     );
     // The section is then unreadable, with no data, and names its file.
     let mut s = Section::new(
-        GROUP_C.iter().copied().find(|s| s.key == "locityper").unwrap(),
+        GROUP_C
+            .iter()
+            .copied()
+            .find(|s| s.key == "locityper")
+            .unwrap(),
         Ok(Some((
             "locityper/S_locityper.tsv".into(),
             1_600_000_000.0,
@@ -254,7 +256,10 @@ fn an_infinite_telomere_read_length_keeps_the_summary() {
         "chrom\tlength\tbases\tmean\tmin\tmax\ntotal\t100\t3000\t30\t0\t60\n",
     );
     let v = summary(&d);
-    assert_eq!(word(at(&v, &["sections", "telomere", "state"])), "unreadable");
+    assert_eq!(
+        word(at(&v, &["sections", "telomere", "state"])),
+        "unreadable"
+    );
     assert_eq!(word(at(&v, &["sections", "coverage", "state"])), "ok");
 }
 
@@ -275,10 +280,9 @@ deletion\tchr2:1-200000\t200000\t0.4\t0.00001\t1\t1\t1\t0.00001\t0.00001\t0.1\n"
     let v = summary(&d);
     assert_eq!(word(at(&v, &["run", "declared_sex"])), "female");
     let cnv = at(&v, &["sections", "cnvpytor"]);
-    if word(at(cnv, &["state"])) == "ok" {
-        assert_eq!(word(at(cnv, &["data", "declared_sex"])), "female");
-        assert!(has(at(cnv, &["data", "dropped"]), "chry_female"));
-    }
+    assert_eq!(word(at(cnv, &["state"])), "ok");
+    assert_eq!(word(at(cnv, &["data", "declared_sex"])), "female");
+    assert!(has(at(cnv, &["data", "dropped"]), "chry_female"));
 }
 
 const PREV: &str = r#"{"schema_version": 2, "generated_utc": "2020-01-01 00:00 UTC",

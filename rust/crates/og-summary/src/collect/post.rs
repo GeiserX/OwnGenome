@@ -139,9 +139,7 @@ pub fn collect(input: &Input) -> Result<Value, String> {
                 })
                 .collect()
         };
-        let a = a
-            .join()
-            .unwrap_or_else(|_| stopped(&super::model::GROUP_A));
+        let a = a.join().unwrap_or_else(|_| stopped(&super::model::GROUP_A));
         let b = b.join().unwrap_or_else(|_| stopped(&group_b::GROUP_B));
         (a, b, c)
     });
@@ -191,10 +189,10 @@ pub fn collect(input: &Input) -> Result<Value, String> {
     if let Some(r) = delta::read_recheck(&dir.join("recheck").join("state.json")) {
         m.insert("recheck".into(), Value::Object(r));
     }
-    if let Some(n) = new_since(dir, &v) {
-        if let Value::Object(m) = &mut v {
-            m.insert("new_since".into(), n);
-        }
+    if let Some(n) = new_since(dir, &v)
+        && let Value::Object(m) = &mut v
+    {
+        m.insert("new_since".into(), n);
     }
     Ok(v)
 }
@@ -216,7 +214,9 @@ fn others(b: &[Section]) -> Others {
         cyrius: sec("cyrius")
             .filter(|s| live(s))
             .and_then(|s| match &s.data {
-                Some(Data::Cyrius(c)) => Some((s.state, Some(c.genotype.clone()), c.filter.clone())),
+                Some(Data::Cyrius(c)) => {
+                    Some((s.state, Some(c.genotype.clone()), c.filter.clone()))
+                }
                 _ => None,
             }),
     }

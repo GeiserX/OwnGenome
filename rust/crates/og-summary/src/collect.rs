@@ -51,8 +51,7 @@ use sections::{Callability, Coverage, Data, Mosaic, ReadCount, SampleQc, SexChec
 use std::io::Write;
 use std::path::Path;
 
-const USAGE: &str =
-    "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR [--out OUT]
+const USAGE: &str = "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR [--out OUT]
                           [--declared-sex DECLARED_SEX] [--assets ASSETS] [--only {a,b,c}]
 ";
 
