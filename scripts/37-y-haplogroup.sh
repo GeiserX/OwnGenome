@@ -17,13 +17,13 @@
 # YFull and the Y-DNA projects read (docs/37-y-haplogroup.md). Nothing is uploaded.
 # The step also places the sample on the YFull YTree release versions.env
 # pins (YTREE_VERSION) (setup.sh --yleaf-data installs it in <data>/ytree) with
-# bin/y_tree_place.py: y_haplogroup/<sample>_y_tree.txt (the terminal branch,
+# og y tree-place: y_haplogroup/<sample>_y_tree.txt (the terminal branch,
 # with the tree it comes from) and <sample>_y_tree_path.tsv (derived,
 # ancestral and no-call counts per level). Without that folder the step says
 # so and writes Yleaf's result only.
 # With step 03's VCF in place it also lists the chrY SNVs that no public SNP
 # table names, the ones that would place this line below its branch
-# (bin/y_private_snps.py): y_haplogroup/<sample>_y_private_snps.tsv. Without
+# (og y private-snps): y_haplogroup/<sample>_y_private_snps.tsv. Without
 # the VCF, or without the tree folder, that part is skipped with one line.
 set -euo pipefail
 
@@ -70,16 +70,16 @@ rm -rf "${OUTDIR}/yleaf" "$OUT" "${OUTDIR}/${SAMPLE}_y_tree.txt" "${OUTDIR}/${SA
 TREE=false
 [ -s "${YTREE}/version.txt" ] && TREE=true
 # Yleaf downloads the whole hg38 FASTA unless its read-only config names one:
-# bin/yleaf_run.py writes Yleaf's marker positions, SAMTOOLS_IMAGE makes the
+# og y yleaf-positions writes Yleaf's marker positions, SAMTOOLS_IMAGE makes the
 # pileup Yleaf would make, and Yleaf then runs on it, offline
 # (bin/yleaf_run.py says why and how).
 O=$(cpath "$OUTDIR")
 echo "[1/3] Yleaf's Y marker positions..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$YLEAF_IMAGE" \
-  python3 /pgp-bin/yleaf_run.py positions --data "$(cpath "$YDATA")" "${O}/positions.txt"
+  /pgp-bin/og y yleaf-positions --data "$(cpath "$YDATA")" "${O}/positions.txt"
 if $TREE; then
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$YLEAF_IMAGE" \
-    python3 /pgp-bin/y_tree_place.py positions --tree-dir "$(cpath "$YTREE")" "${O}/tree_positions.txt"
+    /pgp-bin/og y tree-positions --tree-dir "$(cpath "$YTREE")" "${O}/tree_positions.txt"
 fi
 echo "[2/3] Pileup at those positions, and the chrY reads as their own BAM (samtools)..."
 run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c \
@@ -99,14 +99,14 @@ rm -f "${OUTDIR}/idxstats.txt" "${OUTDIR}/pileup.txt"
 TREE_LINE="Current tree: not installed (${YTREE}); run scripts/setup.sh --yleaf-data ${GENOME_DIR} to add it"
 if $TREE; then
   TREE_LINE=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$YLEAF_IMAGE" \
-    python3 /pgp-bin/y_tree_place.py place --tree-dir "$(cpath "$YTREE")" --pileup "${O}/tree_pileup.txt" \
+    /pgp-bin/og y tree-place --tree-dir "$(cpath "$YTREE")" --pileup "${O}/tree_pileup.txt" \
       --sample "$SAMPLE" --out-prefix "${O}/${SAMPLE}")
   rm -f "${OUTDIR}/tree_positions.txt" "${OUTDIR}/tree_pileup.txt"
 fi
 
 # The SNVs past the deepest branch the public trees have: the sample's own
 # chrY calls minus every position the installed SNP tables name
-# (bin/y_private_snps.py), inside the chrY callable mask. Needs step 03's VCF
+# (og y private-snps), inside the chrY callable mask. Needs step 03's VCF
 # and the tree folder's tables and mask.
 PRIVATE_LINE="Private SNPs: skipped (the current tree's SNP tables are not installed)"
 if $TREE; then
@@ -114,7 +114,7 @@ if $TREE; then
     PRIVATE_LINE="Private SNPs: skipped (${YTREE} has no chrY callable mask: run scripts/setup.sh --yleaf-data again)"
   elif [ -s "$VCF" ]; then
     PRIVATE_LINE=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$YLEAF_IMAGE" \
-      python3 /pgp-bin/y_private_snps.py --vcf "$(cpath "$VCF")" --tree-dir "$(cpath "$YTREE")" \
+      /pgp-bin/og y private-snps --vcf "$(cpath "$VCF")" --tree-dir "$(cpath "$YTREE")" \
         --sample "$SAMPLE" --out-prefix "${O}/${SAMPLE}")
   else
     PRIVATE_LINE="Private SNPs: skipped (no VCF at ${VCF}: run scripts/03-deepvariant.sh ${SAMPLE} first)"

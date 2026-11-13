@@ -2,7 +2,7 @@
 """yleaf_run.py: run Yleaf 4.1.6 (YLEAF_IMAGE) offline, on a pileup made beside it.
 
 Step 37 makes Yleaf's pileup and the chrY BAM in one SAMTOOLS_IMAGE run,
-and the current tree's pileup (y_tree_place.py) in a second one; the
+and the current tree's pileup (og y tree-place) in a second one; the
 Nextflow Y_PILEUP task makes all three in one task. Yleaf then reads its pileup from a file instead of running
 samtools itself, with its data folder (marker positions, haplogroup trees)
 set to the copy `setup.sh --yleaf-data` installs from the release archive as
@@ -10,9 +10,11 @@ reference/yleaf-<version>/data, the folder that also holds the current tree.
 Yleaf also downloads the whole hg38 FASTA when its read-only config names
 none, and checks GitHub for a newer release. So it runs in three parts:
 
-  yleaf_run.py positions --data DATA OUT
+  og y yleaf-positions --data DATA OUT
       (YLEAF_IMAGE) write Yleaf's GRCh38 marker positions as the "chrY<TAB>pos"
-      list `samtools mpileup -l` reads
+      list `samtools mpileup -l` reads (rust/crates/og-reports/src/yleaf.rs;
+      it reads DATA/hg38/new_positions.txt, the file named here by
+      yleaf_constants, so a Yleaf release that renames it stops that step)
   samtools idxstats BAM > IDXSTATS; samtools mpileup -l OUT -ABQ20q1 BAM > PILEUP
       (SAMTOOLS_IMAGE) the two commands Yleaf would run, with its default
       quality threshold of 20
@@ -74,21 +76,6 @@ def use_data(data):
     return c
 
 
-def positions(data, out):
-    c = use_data(data)
-    src = c.DATA_FOLDER / c.HG38 / c.NEW_POSITION_FILE
-    seen = set()
-    with open(src) as f, open(out, "w") as o:
-        for line in f:
-            cols = line.rstrip("\n").split("\t")
-            if len(cols) > 3 and cols[3].isdigit() and cols[3] not in seen:
-                seen.add(cols[3])
-                o.write(f"chrY\t{cols[3]}\n")
-    if not seen:
-        sys.exit(f"ERROR: no marker positions in {src}")
-    print(f"{len(seen)} Y marker positions from {src}")
-
-
 def predict(argv):
     import argparse
     ap = argparse.ArgumentParser(prog="yleaf_run.py predict")
@@ -142,9 +129,7 @@ def predict(argv):
 
 
 def main(argv):
-    if argv[:2] == ["positions", "--data"] and len(argv) == 4:
-        positions(argv[2], argv[3])
-    elif argv[:1] == ["predict"]:
+    if argv[:1] == ["predict"]:
         predict(argv[1:])
     else:
         sys.exit(__doc__)

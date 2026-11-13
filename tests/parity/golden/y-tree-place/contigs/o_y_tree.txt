@@ -1,0 +1,2 @@
+Sample_name	Hg	Level	Path_derived	Path_ancestral	Path_no_call	Ancestral_in_terminal	SNPs_called	Min_depth	Tree	Positions	Outvoted_ancestral
+S	B	2	5	0	0	.	7	10	YFull YTree test	test tables	.

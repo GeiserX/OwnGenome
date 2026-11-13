@@ -19,7 +19,7 @@ YT="${YDATA}/ytree"
 check "Yleaf's tables and the current tree install" "${REPO}/scripts/setup.sh" --yleaf-data "$GENOME_DIR"
 check "the tree folder names YFull YTree ${YTREE_VERSION}" \
   grep -qxF "$(printf 'tree\tYFull YTree %s (CC BY 4.0)' "$YTREE_VERSION")" "${YT}/version.txt"
-python3 "${REPO}/bin/y_tree_place.py" positions --tree-dir "$YT" "${CASE_TMP}/positions.txt" > "${CASE_TMP}/positions.log" 2>&1
+"${REPO}/bin/og" y tree-positions --tree-dir "$YT" "${CASE_TMP}/positions.txt" > "${CASE_TMP}/positions.log" 2>&1
 cat "${CASE_TMP}/positions.log"
 check_ge "tree SNP positions the tables place" "$(grep -c . "${CASE_TMP}/positions.txt" 2>/dev/null || true)" 300000
 
@@ -71,7 +71,7 @@ mkdir -p "${GENOME_DIR}/${M}/tree-control"
 cp "${CASE_TMP}/positions.txt" "${GENOME_DIR}/${M}/tree-control/positions.txt"
 sam mpileup -l "${M}/tree-control/positions.txt" -AQ20q1 "${M}/aligned/${M}_sorted.bam" > "${CASE_TMP}/tree_pileup.txt" 2>/dev/null
 check_ge "pileup rows at the tree's positions" "$(grep -c . "${CASE_TMP}/tree_pileup.txt" || true)" 1000
-python3 "${REPO}/bin/y_tree_place.py" place --tree-dir "$YT" --pileup "${CASE_TMP}/tree_pileup.txt" \
+"${REPO}/bin/og" y tree-place --tree-dir "$YT" --pileup "${CASE_TMP}/tree_pileup.txt" \
   --sample "$M" --out-prefix "${CASE_TMP}/same"
 check "the placement from the case's own pileup is the step's" cmp -s "${CASE_TMP}/same_y_tree.txt" "${OUT}/${M}_y_tree.txt"
 SW="${CASE_TMP}/swapped"
@@ -80,11 +80,11 @@ cp "${YT}/current_tree.json" "${YT}/version.txt" "$SW/"
 for f in positions_ftdna_hg38.txt positions_yfull_hg38.txt; do
   awk -F'\t' -v OFS='\t' '{t = $6; $6 = $7; $7 = t; print}' "${YT}/${f}" > "${SW}/${f}"
 done
-python3 "${REPO}/bin/y_tree_place.py" place --tree-dir "$SW" --pileup "${CASE_TMP}/tree_pileup.txt" \
+"${REPO}/bin/og" y tree-place --tree-dir "$SW" --pileup "${CASE_TMP}/tree_pileup.txt" \
   --sample "$M" --out-prefix "${CASE_TMP}/swapped"
 not() { ! "$@"; }
 check "red control: the judgement fails with ancestral and derived swapped" not judge "${CASE_TMP}/swapped"
-python3 "${REPO}/bin/y_tree_place.py" place --tree-dir "$YT" --pileup "${CASE_TMP}/tree_pileup.txt" \
+"${REPO}/bin/og" y tree-place --tree-dir "$YT" --pileup "${CASE_TMP}/tree_pileup.txt" \
   --sample "$M" --out-prefix "${CASE_TMP}/deep" --min-depth 100000
 check_eq "red control: no SNP is called at depth 100000" "$(col "${CASE_TMP}/deep_y_tree.txt" Hg)|$(col "${CASE_TMP}/deep_y_tree.txt" SNPs_called)" "NA|0"
 rm -rf "${GENOME_DIR:?}/${M}/tree-control" "${SW:?}"

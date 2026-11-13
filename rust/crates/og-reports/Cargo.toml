@@ -1,6 +1,6 @@
 [package]
 name = "og-reports"
-description = "The opt-in step reports: og vntyper, locityper, mocha, mei, viral and exomiser, and og y str-bed/str-report"
+description = "The opt-in step reports: og vntyper, locityper, mocha, mei, viral and exomiser, og y str-bed/str-report, and the Y tree tools of step 37"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,7 @@ og-filters.workspace = true
 og-io.workspace = true
 og-tsv.workspace = true
 pycompat.workspace = true
+rustc-hash.workspace = true
 
 [lints]
 workspace = true
