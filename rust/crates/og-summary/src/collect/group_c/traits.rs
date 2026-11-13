@@ -301,8 +301,7 @@ pub mod apol1 {
                 } else {
                     apply(pos, rf, a)
                 };
-                // RED CONTROL: match the record's own REF and ALT, not the haplotype.
-                if hap.is_some() && hap == g2_hap && pos == POS && rf == REF && a == ALT {
+                if hap.is_some() && hap == g2_hap {
                     n += 1;
                 } else {
                     problems.push(format!(
