@@ -295,6 +295,7 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                 if line.trim_start().starts_with('#') || r.is_empty() {
                     continue;
                 }
+                n += 1;
                 let g = match r.last() {
                     Some(&"PopA") => 0,
                     Some(&"PopB") => 1,

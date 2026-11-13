@@ -7,6 +7,9 @@ const GB: u64 = 1 << 30;
 const H: u64 = 3_600_000;
 type Record = BTreeMap<String, String>;
 
+fn g(value: u64, unit: u64) -> String {
+    pycompat::fmt::general(value as f64 / unit as f64, 6)
+}
 fn records(path: &str, mut f: impl FnMut(Record) -> Result<(), String>) -> Result<(), String> {
     if path.contains(['*', '?', '[', ']']) {
         return Err("trace glob refused: pass exactly one explicit trace path".into());
@@ -214,8 +217,8 @@ fn requests(path: &str, opts: &BTreeMap<&str, &str>, out: &mut dyn Write) -> Res
             out,
             "{name}: attempt {attempt}, exit {}, cpus {cpus}, memory {} GB, time {} h",
             cell(r, "exit")?,
-            mem / GB,
-            time / H
+            g(mem, GB),
+            g(time, H)
         )
         .map_err(|e| e.to_string())?;
         seen.entry(proc)
@@ -260,7 +263,7 @@ fn requests(path: &str, opts: &BTreeMap<&str, &str>, out: &mut dyn Write) -> Res
         }
         for got in first.into_iter().flat_map(|a| a.values()).flatten() {
             if *got != expected {
-                writeln!(out,"FAIL {proc}: first attempt asks for cpus {}, memory {} GB, time {} h; want {}, {} GB, {} h",got.0,got.1/GB,got.2/H,expected.0,expected.1/GB,expected.2/H).map_err(|e| e.to_string())?;
+                writeln!(out,"FAIL {proc}: first attempt asks for cpus {}, memory {} GB, time {} h; want {}, {} GB, {} h",got.0,g(got.1,GB),g(got.2,H),expected.0,g(expected.1,GB),g(expected.2,H)).map_err(|e| e.to_string())?;
                 bad += 1;
             }
         }
@@ -269,8 +272,8 @@ fn requests(path: &str, opts: &BTreeMap<&str, &str>, out: &mut dyn Write) -> Res
                 writeln!(
                     out,
                     "FAIL {proc}: the retry asks for {} GB, want {} GB",
-                    got.1 / GB,
-                    expected.1 / GB * 2
+                    g(got.1, GB),
+                    pycompat::fmt::general(expected.1 as f64 * 2. / GB as f64, 6)
                 )
                 .map_err(|e| e.to_string())?;
                 bad += 1;
@@ -283,7 +286,7 @@ fn requests(path: &str, opts: &BTreeMap<&str, &str>, out: &mut dyn Write) -> Res
     let mem: u64 = opt(opts, "--executor-mem-gb")?
         .parse()
         .map_err(|_| "invalid executor memory")?;
-    writeln!(out,"{} task attempts ask for {all_cpus} CPUs and {} GB added together; the executor is told it has {cpus} CPUs and {mem} GB",rows.len(),all_mem/GB).map_err(|e| e.to_string())?;
+    writeln!(out,"{} task attempts ask for {all_cpus} CPUs and {} GB added together; the executor is told it has {cpus} CPUs and {} GB",rows.len(),g(all_mem,GB),pycompat::fmt::general(mem as f64,6)).map_err(|e| e.to_string())?;
     if all_cpus > cpus || Some(all_mem) > mem.checked_mul(GB) {
         writeln!(out,"FAIL: executor.cpus or executor.memory of this step is below that sum; raise exec_cpus / exec_mem_gb").map_err(|e| e.to_string())?;
         bad += 1;

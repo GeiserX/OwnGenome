@@ -224,7 +224,11 @@ fn smoke_tables_reject_removed_properties() {
         ),
     ] {
         let p = t.file("table", good);
-        assert_eq!(run(smoke::cli, &["check", kind, &p]).0, 0, "{kind}");
+        let clean = run(smoke::cli, &["check", kind, &p]);
+        assert_eq!(clean.0, 0, "{kind}");
+        if kind == "eigen" {
+            assert_eq!(clean.1, "eigen: 3 rows; OK\n");
+        }
         let p = t.file("table", bad);
         assert_eq!(run(smoke::cli, &["check", kind, &p]).0, 1, "{kind}");
     }

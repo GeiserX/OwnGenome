@@ -980,3 +980,5 @@ dev-pharmcat-called	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.s
 dev-pharmcat-lines	report-3.2.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.2.0.json --called-lines	-	bytes	PYTHON_IMAGE
 dev-pharmcat-lines	report-3.4.0	ci-readers/oracle.sh,gen:ci-pharmcat.sh	report-3.4.0.json --called-lines	-	bytes	PYTHON_IMAGE
 dev-pharmcat-lines	pharmcat-docs-example	ci-readers/oracle.sh,gen:ci-pharmcat.sh	pharmcat-docs-example.json --called-lines	-	bytes	PYTHON_IMAGE
+dev-nf-requests	large-budget	ci-readers/oracle.sh,ci-readers/requests.tsv,ci-readers/want.tsv	requests.tsv --want want.tsv --executor-cpus 1000000 --executor-mem-gb 1000000	-	bytes	PYTHON_IMAGE
+dev-nf-requests	fractional-memory	ci-readers/oracle.sh,ci-readers/requests-frac.tsv,ci-readers/want.tsv	requests-frac.tsv --want want.tsv --executor-cpus 512 --executor-mem-gb 2048	-	bytes	PYTHON_IMAGE
