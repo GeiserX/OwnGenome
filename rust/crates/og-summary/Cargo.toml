@@ -10,6 +10,8 @@ publish.workspace = true
 pycompat.workspace = true
 og-io.workspace = true
 og-steps.workspace = true
+indexmap.workspace = true
+memchr.workspace = true
 
 [dev-dependencies]
 flate2.workspace = true
