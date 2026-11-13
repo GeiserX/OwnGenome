@@ -20,6 +20,15 @@ pub enum Data {
     MosaicSexLoss(Mosaic),
     ReadCount(ReadCount),
     Variants(Variants),
+    ClinVar(super::clinvar::ClinVar),
+    Carrier(super::carrier::Carrier),
+    PharmCat(super::pgx::PharmCat),
+    Cpic(super::pgx::Cpic),
+    Pypgx(super::pgx::Pypgx),
+    Cyrius(super::pgx::Cyrius),
+    Cpsr(super::cpsr::Cpsr),
+    Clinical(super::clinical::Clinical),
+    Slivar(super::clinical::Slivar),
 }
 
 impl Data {
@@ -32,6 +41,15 @@ impl Data {
             Data::MosaicSexLoss(d) => d.to_json(),
             Data::ReadCount(d) => d.to_json(),
             Data::Variants(d) => d.to_json(),
+            Data::ClinVar(d) => d.to_json(),
+            Data::Carrier(d) => d.to_json(),
+            Data::PharmCat(d) => d.to_json(),
+            Data::Cpic(d) => d.to_json(),
+            Data::Pypgx(d) => d.to_json(),
+            Data::Cyrius(d) => d.to_json(),
+            Data::Cpsr(d) => d.to_json(),
+            Data::Clinical(d) => d.to_json(),
+            Data::Slivar(d) => d.to_json(),
         }
     }
 }
