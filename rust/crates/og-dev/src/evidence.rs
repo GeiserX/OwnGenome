@@ -332,7 +332,7 @@ fn hg002_gvcf(
         }
         blocks += 1;
         w.write_all(c)
-            .and_then(|()| writeln!(w, "\t{p}\t.\t{}\t<*>\t.\t.\tEND={p}\tGT\t1/1", b as char))
+            .and_then(|()| writeln!(w, "\t{p}\t.\t{}\t<*>\t.\t.\tEND={p}\tGT\t0/0", b as char))
             .map_err(werr)
     })?;
     w.flush().map_err(werr)?;
