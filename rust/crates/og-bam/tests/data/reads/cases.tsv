@@ -1,0 +1,46 @@
+# case<TAB>tool<TAB>arguments...: made by ../../make_reads_parity.py; {d} tests/data, {r} the repository, {o} the output directory
+check-spliced	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_spliced.bam	--exons	{d}/reads/in/exons.bed	--out	{o}/out.tsv
+check-spliced-construct	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_spliced.bam	--exons	{d}/reads/in/exons.bed	--construct	{d}/reads/in/construct.tsv	--out	{o}/out.tsv
+check-genomic	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_genomic.bam	--exons	{d}/reads/in/exons.bed	--out	{o}/out.tsv
+check-genomic-construct	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_genomic.bam	--exons	{d}/reads/in/exons.bed	--construct	{d}/reads/in/construct.tsv	--out	{o}/out.tsv
+check-both	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_both.bam	--exons	{d}/reads/in/exons.bed	--out	{o}/out.tsv
+check-both-construct	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_both.bam	--exons	{d}/reads/in/exons.bed	--construct	{d}/reads/in/construct.tsv	--out	{o}/out.tsv
+check-skip	cdna-check	--hits	{d}/reads/in/hits.tsv	--skip	no BAM	--out	{o}/out.tsv
+check-skip-construct	cdna-check	--hits	{d}/reads/in/hits.tsv	--skip	no BAM	--construct	{d}/reads/in/construct.tsv	--out	{o}/out.tsv
+check-shipped-construct	cdna-check	--hits	{d}/reads/in/hits.tsv	--skip	no BAM	--construct	{r}/assets/construct_variants.tsv	--out	{o}/out.tsv
+check-indels	cdna-check	--hits	{d}/reads/in/indel_hits.tsv	--bam	{d}/reads/in/indels.bam	--exons	{d}/reads/in/exons.bed	--out	{o}/out.tsv
+check-cpsr	cdna-check	--cpsr	{d}/reads/in/cpsr.classification.tsv.gz	--bam	{d}/reads/in/clip_spliced.bam	--exons	{d}/reads/in/exons.bed	--construct	{d}/reads/in/construct.tsv	--out	{o}/out.tsv
+check-cpsr-skip	cdna-check	--cpsr	{d}/reads/in/cpsr.classification.tsv.gz	--skip	no BAM	--out	{o}/out.tsv
+check-no-exons	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_spliced.bam	--exons	{d}/reads/in/none.bed	--out	{o}/out.tsv
+check-hits-without-alt	cdna-check	--hits	{d}/reads/in/bad_hits.tsv	--skip	x	--out	{o}/out.tsv
+check-construct-without-name	cdna-check	--hits	{d}/reads/in/hits.tsv	--skip	x	--construct	{d}/reads/in/bad_construct.tsv	--out	{o}/out.tsv
+check-construct-bad-pos	cdna-check	--hits	{d}/reads/in/hits.tsv	--skip	x	--construct	{d}/reads/in/badpos_construct.tsv	--out	{o}/out.tsv
+check-no-reads	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_spliced.bam	--out	{o}/out.tsv
+check-two-sources	cdna-check	--hits	{d}/reads/in/hits.tsv	--cpsr	{d}/reads/in/cpsr.classification.tsv.gz	--skip	x	--out	{o}/out.tsv
+scan-spliced	cdna-scan	--bam	{d}/reads/in/scan_spliced.bam	--exons	{d}/reads/in/scan_exons.bed	--out	{o}/scan.tsv
+scan-genomic	cdna-scan	--bam	{d}/reads/in/scan_genomic.bam	--exons	{d}/reads/in/scan_exons.bed	--out	{o}/scan.tsv
+scan-one	cdna-scan	--bam	{d}/reads/in/scan_one.bam	--exons	{d}/reads/in/scan_exons.bed	--out	{o}/scan.tsv
+scan-thin	cdna-scan	--bam	{d}/reads/in/scan_thin.bam	--exons	{d}/reads/in/scan_exons.bed	--out	{o}/scan.tsv
+scan-busy	cdna-scan	--bam	{d}/reads/in/scan_busy.bam	--exons	{d}/reads/in/scan_exons.bed	--out	{o}/scan.tsv
+scan-vector	cdna-scan	--bam	{d}/reads/in/scan_vector.bam	--exons	{d}/reads/in/scan_exons.bed	--out	{o}/scan.tsv
+scan-genome-order	cdna-scan	--bam	{d}/reads/in/scan_two_contigs.bam	--exons	{d}/reads/in/scan_exons_multi.bed	--out	{o}/scan.tsv
+scan-close-regions	cdna-scan	--bam	{d}/reads/in/scan_close.bam	--exons	{d}/reads/in/scan_exons_close.bed	--out	{o}/scan.tsv
+scan-skip	cdna-scan	--skip	no BAM	--out	{o}/scan.tsv
+scan-no-exons	cdna-scan	--bam	{d}/reads/in/scan_spliced.bam	--exons	{d}/reads/in/none.bed	--out	{o}/scan.tsv
+scan-no-shared-contig	cdna-scan	--bam	{d}/reads/in/scan_spliced.bam	--exons	{d}/reads/in/scan_exons_other.bed	--out	{o}/scan.tsv
+scan-empty-exons	cdna-scan	--bam	{d}/reads/in/scan_spliced.bam	--exons	{d}/reads/in/scan_exons_empty.bed	--out	{o}/scan.tsv
+scan-no-reads	cdna-scan	--bam	{d}/reads/in/scan_spliced.bam	--out	{o}/scan.tsv
+phase-fixture	comphet-phase	--vcf	{d}/reads/in/comphet_fixture.vcf	--bam	{d}/reads/in/comphet_fixture.bam	--out	{o}/pairs.tsv	--variants	{d}/reads/in/comphet_fixture_variants.tsv	--variants-out	{o}/variants.tsv
+phase-swap	comphet-phase	--vcf	{d}/reads/in/comphet_swap.vcf	--bam	{d}/reads/in/comphet_swap.bam	--out	{o}/pairs.tsv	--variants	{d}/reads/in/comphet_swap_variants.tsv	--variants-out	{o}/variants.tsv
+phase-gz	comphet-phase	--vcf	{d}/reads/in/comphet_fixture.vcf.gz	--bam	{d}/reads/in/comphet_fixture.bam	--out	{o}/pairs.tsv
+phase-skip	comphet-phase	--vcf	{d}/reads/in/comphet_fixture.vcf.gz	--skip	no BAM	--out	{o}/pairs.tsv
+phase-skip-no-gt	comphet-phase	--vcf	{d}/reads/in/comphet_fixture.vcf.gz	--skip	no BAM	--out	{o}/pairs.tsv	--variants	{d}/reads/in/comphet_variants_nogt.tsv	--variants-out	{o}/variants.tsv
+phase-odd	comphet-phase	--vcf	{d}/reads/in/comphet_odd.vcf	--bam	{d}/reads/in/comphet_fixture.bam	--out	{o}/pairs.tsv
+phase-nochr	comphet-phase	--vcf	{d}/reads/in/comphet_nochr.vcf	--bam	{d}/reads/in/comphet_fixture.bam	--out	{o}/pairs.tsv
+phase-bad-entry	comphet-phase	--vcf	{d}/reads/in/comphet_bad.vcf	--bam	{d}/reads/in/comphet_fixture.bam	--out	{o}/pairs.tsv
+phase-no-vcf	comphet-phase	--vcf	{d}/reads/in/none.vcf	--bam	{d}/reads/in/comphet_fixture.bam	--out	{o}/pairs.tsv
+phase-bam-and-skip	comphet-phase	--vcf	{d}/reads/in/comphet_fixture.vcf.gz	--bam	{d}/reads/in/comphet_fixture.bam	--skip	x	--out	{o}/pairs.tsv
+phase-variants-alone	comphet-phase	--vcf	{d}/reads/in/comphet_fixture.vcf.gz	--skip	x	--out	{o}/pairs.tsv	--variants	{d}/reads/in/comphet_variants_nogt.tsv
+contigs-one	bam-contigs	{d}/reads/in/scan_spliced.bam
+contigs-three	bam-contigs	{d}/reads/in/scan_two_contigs.bam
+contigs-missing	bam-contigs	{d}/reads/in/none.bam

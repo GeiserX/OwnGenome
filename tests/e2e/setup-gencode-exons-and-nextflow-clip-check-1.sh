@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The Nextflow side of step 06's cDNA read check: CLINVAR_CDNA_CHECK runs
-# bin/clip_check.py on CLINVAR_SCREEN's hits with the sample's BAM and
+# og cdna check on CLINVAR_SCREEN's hits with the sample's BAM and
 # --gencode_exons, as scripts/06 does. Case clinvar-clip-check-1 ran first and
 # left the copy <sample>cdna, whose reads at the planted hit are spliced alt
 # reads, and step 06's table for it. Its planted BAM holds one region only, so

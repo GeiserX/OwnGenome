@@ -90,17 +90,15 @@ cat > "${WORK}/pypgx-bin/pypgx" <<'SH'
 echo "$*" >> "$PYPGX_LOG"
 SH
 chmod +x "${WORK}/pypgx-bin/pypgx"
-# The docker run hook: the contig check reads the @SQ lines of the BAM
+# The docker run hook: og bam contigs reads the @SQ lines of the BAM
 # placeholder (the header fixture); the pypgx container's bash -c runs with
 # the fake pypgx; the summary call logs its arguments and writes a header.
 cat > "${WORK}/hook" <<'SH'
 #!/usr/bin/env bash
 img=$1; shift
 host() { printf '%s' "${GENOME_DIR}${1#/genome}"; }
-if [ "$1" = python3 ] && [ "$2" = -c ] && [[ "$3" == *pysam.AlignmentFile* ]]; then
-  bam=$(host "$4"); shift 4; miss=()
-  for c in "$@"; do awk -F'\t' -v c="SN:$c" '$1 == "@SQ" && $2 == c {f = 1} END {exit !f}' "$bam" || miss+=("$c"); done
-  echo "${miss[*]}"
+if [ "$1" = /pgp-bin/og ] && [ "$2" = bam ] && [ "$3" = contigs ]; then
+  awk -F'\t' '$1 == "@SQ" {sub(/^SN:/, "", $2); print $2}' "$(host "$4")"
 elif [ "$1" = bash ] && [ "$2" = -c ]; then
   PATH="${PYPGX_BIN}:$PATH" bash -c "$3"
 elif [ "$1" = python3 ] && [ "$2" = /pgp-bin/pgx_outside_calls.py ]; then
