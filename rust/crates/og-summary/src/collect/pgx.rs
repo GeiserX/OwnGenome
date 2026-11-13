@@ -50,14 +50,37 @@ pub struct PharmCat {
     pub html_report: bool,
 }
 
+/// `json.load` of a file opened as text: universal newlines, and Python's
+/// `JSONDecodeError` text (`MSG: line L column C (char N)`, in code points).
+fn json_load(raw: &str) -> Result<Value, String> {
+    let text = raw.replace("\r\n", "\n").replace('\r', "\n");
+    if text.starts_with('\u{feff}') {
+        return Err(
+            "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)".into(),
+        );
+    }
+    pycompat::json::loads(&text).map_err(|e| match e {
+        pycompat::json::JsonError::Decode(what, at) => {
+            let before = &text[..at.min(text.len())];
+            let pos = before.chars().count();
+            let line = before.matches('\n').count() + 1;
+            let col = match before.rfind('\n') {
+                Some(i) => before[i + 1..].chars().count() + 1,
+                None => pos + 1,
+            };
+            format!("{what}: line {line} column {col} (char {pos})")
+        }
+        other => other.to_string(),
+    })
+}
+
 impl PharmCat {
     pub fn read(path: &str) -> Result<PharmCat, String> {
         let raw = std::fs::read(path)
             .map_err(|e| format!("{}: {}", crate::basename(path), crate::os_error(&e, path)))?;
         let body = String::from_utf8(raw)
             .map_err(|e| format!("{}: 'utf-8' codec can't decode: {e}", crate::basename(path)))?;
-        let data =
-            pycompat::json::loads(&body).map_err(|e| format!("{}: {e}", crate::basename(path)))?;
+        let data = json_load(&body).map_err(|e| format!("{}: {e}", crate::basename(path)))?;
         let version = match &data {
             Value::Object(m) => match m.get("pharmcatVersion") {
                 None => String::new(),
@@ -614,5 +637,28 @@ impl Cyp2d6 {
                 }),
             ),
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_errors_read_as_python_words_them() {
+        assert_eq!(
+            json_load("{\"pharmcatVersion\": ").unwrap_err(),
+            "Expecting value: line 1 column 21 (char 20)"
+        );
+        assert_eq!(
+            json_load("{\r\n\"é\": x").unwrap_err(),
+            "Expecting value: line 2 column 6 (char 7)"
+        );
+        assert!(
+            json_load("\u{feff}{}")
+                .unwrap_err()
+                .starts_with("Unexpected UTF-8 BOM")
+        );
+        assert!(json_load("[1]").is_ok());
     }
 }
