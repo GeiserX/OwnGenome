@@ -50,7 +50,8 @@ for name in "$@"; do
 $(member "$name")
 EOF
   part="${out}/${name}.part"
-  curl -fsSL --retry 4 --retry-all-errors --retry-delay 15 -r "${off}-$((off + csize - 1))" -o "${part}.raw" "$URL"
+  # The pinned VNtyper image's curl does not support --retry-all-errors.
+  curl -fsSL --retry 4 --retry-delay 15 -r "${off}-$((off + csize - 1))" -o "${part}.raw" "$URL"
   got=$(wc -c < "${part}.raw" | tr -d ' ')
   [ "$got" -eq "$csize" ] || { echo "${path}: got ${got} bytes, want ${csize} (the server ignored the range?)" >&2; exit 1; }
   # gzip member: magic, deflate, no flags, no time, no extra flags, unknown OS;
