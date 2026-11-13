@@ -200,7 +200,7 @@ pub mod comphet {
 
     /// The contig: `random.Random(31)` choosing among `ACGT` 80,000 times.
     pub fn reference() -> Vec<u8> {
-        let mut rng = Mt19937::new(32);
+        let mut rng = Mt19937::new(31);
         (0..LENGTH)
             .map(|_| b"ACGT"[rng.below(4) as usize])
             .collect()
@@ -423,7 +423,16 @@ fn diplotype(x: &Value) -> Result<Value, String> {
     let Value::Object(x) = x else {
         return Ok(x.clone());
     };
-    let mut out = pick(x, &["gene", "label", "phenotypes", "outsidePhenotype"]);
+    let mut out = pick(
+        x,
+        &[
+            "gene",
+            "label",
+            "phenotypes",
+            "activityScore",
+            "outsidePhenotype",
+        ],
+    );
     for a in ["allele1", "allele2"] {
         let Some(v) = x.get(a) else { continue };
         let kept = match v {

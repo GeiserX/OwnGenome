@@ -119,7 +119,7 @@ fn clash_positions(
         n += 1;
         let one = |a: &[u8]| std::str::from_utf8(a).map_or(a.len(), |s| s.chars().count()) == 1;
         snvs += u32::from(one(c[3]) && one(c[4]));
-        if n >= 3 && snvs >= 1 {
+        if n >= 2 && snvs >= 1 {
             hit.insert(k);
         }
         Ok(())
