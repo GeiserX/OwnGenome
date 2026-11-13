@@ -33,7 +33,7 @@
 # that /out directory. A row passes when COMMAND exits 0 and every check of
 # EXPECT passes; the run exits 1 when any row fails. The helper binaries the
 # scripts call in an image (scripts/ci/check-container-helpers.sh --list) are
-# probed in that image too.
+# probed in that image too, when bin/og is built.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -599,11 +599,25 @@ PY
 
 # ------------------------------------------------------------- the runner
 HELPER_TABLE=""
+load_helper_table() {  # once, in the main shell: helpers_of runs inside $(...)
+  local rc=0
+  # The table is og dev helpers. Exit 127 is bin/og saying it is not built:
+  # that job skips this probe, and Guard's helper-binaries job probes every
+  # image's helpers on each PR. Any other failure is a table that could not
+  # be derived (a malformed versions.env, for one): it stops the run with
+  # og's own message, so the probes are never skipped silently.
+  HELPER_TABLE=$("${REPO}/scripts/ci/check-container-helpers.sh" --list) || rc=$?
+  case "$rc" in
+    0) ;;
+    127) HELPER_TABLE=""
+         echo "note: no helper table without bin/og; Guard's helper-binaries job probes the helpers" >&2 ;;
+    *) echo "ERROR: the helper table could not be derived (check-container-helpers.sh --list, exit ${rc}); the helper probes would be skipped" >&2
+       return 1 ;;
+  esac
+}
 helpers_of() {  # helpers_of VAR: helper binaries the scripts call in VAR's image
-  if [ -z "$HELPER_TABLE" ]; then
-    HELPER_TABLE=$("${REPO}/scripts/ci/check-container-helpers.sh" --list 2>/dev/null || echo "?")
-  fi
-  awk -v v="$1" '$1 == v {print $2}' <<< "$HELPER_TABLE" | sort -u | tr '\n' ' '
+  # Two variables with one value share a row, named "A_IMAGE|B_IMAGE".
+  awk -v v="$1" '{ n = split($1, a, "|"); for (i = 1; i <= n; i++) if (a[i] == v) { print $2; break } }' <<< "$HELPER_TABLE" | sort -u | tr '\n' ' '
 }
 
 pull() {
@@ -691,6 +705,7 @@ smoke() {
   # shellcheck disable=SC2016  # expanded by the inner bash
   env -i bash --noprofile --norc -c '. "$1"; for n in $(grep -oE "^[A-Z][A-Z0-9_]*=" "$1" | tr -d =); do printf "%s=%s\n" "$n" "${!n}"; done' \
     _ "${REPO}/versions.env" > "$ENV_FILE"
+  load_helper_table || exit 2
   FAILED=()
   declare -A seen=()
   for var in "$@"; do
