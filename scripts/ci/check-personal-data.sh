@@ -56,7 +56,27 @@
 # syntax, invalid patterns and a matcher resource-limit error stop the scan
 # with exit 2 and a diagnostic that omits the pattern and scanned values.
 # A path with invalid UTF-8 also stops the scan before SKIP, path conversion
-# or staged-blob requests. File contents still use replacement decoding.
+# or staged-blob requests. Symlink targets are also checked before SKIP:
+# working-copy targets from readlink, staged targets from index mode 120000.
+# File contents still use replacement decoding.
+#
+# Unicode guard: UCD 13, 15, 16 and 17 disagree on newer script letters.
+# The scan stops with redacted exit 2 at file:line for version-dependent
+# text, custom patterns (including escaped literals), or ALLOW/SKIP rows.
+# ALLOW cannot exempt such text. Use an ASCII SKIP glob to exempt its file.
+# A letter from a script newer than Unicode 13 therefore stops the scan
+# until its file is skipped. Newer plain symbols and emoji still scan.
+#
+# The generated conservative set includes every scalar unassigned in UCD
+# 17; post-13 letters, marks, numbers, connectors, spaces and case mappings;
+# and older scalars whose word/digit/space membership or case maps change
+# in UCD 13/15/16/17, including both ends of changed case relations.
+# This adds one binary-search lookup per non-ASCII character (ASCII is
+# stable), with a fixed table and no per-file Unicode index or extra process.
+# Regenerate from SHA-256-pinned official data with the Rust generator:
+# tests/parity/gen/personal-unicode-generate.sh SCRATCH_DIR
+# Guard regenerates byte for byte and compares all available Python oracles,
+# explicitly installing 3.12 and 3.15. Match iteration still follows 3.14+.
 #
 # The scan is og dev scan personal-data (rust/crates/og-dev); bin/og runs
 # the build scripts/setup.sh --og puts in bin/.og for this machine, and OG

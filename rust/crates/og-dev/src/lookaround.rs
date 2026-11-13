@@ -113,6 +113,9 @@ pub struct PythonRule {
 
 impl PythonRule {
     pub fn compile(pattern: &str, builtin: bool) -> Result<Self, ()> {
+        if pattern.chars().any(crate::personal_data::version_dependent) {
+            return Err(());
+        }
         if pattern.len() > 16_384 {
             return Err(());
         }
@@ -518,6 +521,9 @@ fn class_literal(atom: &str) -> Option<char> {
 }
 
 fn literal(c: char, ci: bool) -> Result<String, ()> {
+    if crate::personal_data::version_dependent(c) {
+        return Err(());
+    }
     let escaped = format!(r"\x{{{:x}}}", u32::from(c));
     if ci {
         fold_class(&format!("[{escaped}]"))
@@ -705,7 +711,7 @@ mod python_tests {
         for _ in 0..length {
             level = level
                 .iter()
-                .flat_map(|p| ['a', 'b', '0', ' ', '\u{301}'].map(|c| format!("{p}{c}")))
+                .flat_map(|p| ['a', 'b', '0', ' ', '\u{301}', 'é'].map(|c| format!("{p}{c}")))
                 .collect();
             all.extend(level.iter().cloned());
         }

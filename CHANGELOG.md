@@ -4,6 +4,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 ## Unreleased
 
+- The personal-data scan fails closed with redacted exit 2 on Unicode-version-dependent text, patterns and ALLOW/SKIP entries. Its generated guard covers UCD 13/15/16/17 and unassigned scalars. Newer emoji and plain symbols still scan. Files with newer script letters need an ASCII SKIP glob. Invalid UTF-8 symlink targets now fail before exclusions in working-copy and index scans.
+
 - The personal-data scan, the image scan and the version checks of CI now run in the Rust `og` binary: `og dev scan personal-data` (`scripts/ci/check-personal-data.sh`), `og dev scan images` and `og dev versions coupled` (`scripts/ci/check-images.sh`), `og dev versions check-run` (`scripts/ci/gen-containers-config.sh --check-versions`), `og dev versions expand` (`scripts/ci/check-links.sh`) and `og dev pgs` (`scripts/ci/check-pgs-labels.sh`). The scripts keep their options and lists; the Python inside them is gone. Fixes:
   - A personal-data scan that read no text file (every file skipped or binary) fails with `FAIL: no text file was scanned`. It printed `scanned 0 text files` and passed.
   - A personal-data scan whose root is reached through a symbolic link places each file under that root, so the lists of skipped files and documented examples still apply to it.
