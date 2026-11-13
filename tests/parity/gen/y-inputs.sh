@@ -235,6 +235,11 @@ REC = [
     (3101200, "C", "T", "PASS", "1:0,300:300:50"), (3101300, "C", "T", "PASS", "1:0,30:30:50"),
     (3101500, "C", "T", ".", "1|1:0,31:31:20"), (3101600, "C", "T", "", "1:0,33:33:99"),
     (3200000, "C", "T", "PASS", "1:0,30:30:50"),
+    # the mask's edges: the last P before the Z run, its first and last Z,
+    # the P after it, the mask's last base and the one past its end
+    (3101249, "A", "G", "PASS", "1:0,30:30:50"), (3101250, "A", "G", "PASS", "1:0,30:30:50"),
+    (3101350, "A", "G", "PASS", "1:0,30:30:50"), (3101351, "A", "G", "PASS", "1:0,30:30:50"),
+    (3102000, "A", "G", "PASS", "1:0,30:30:50"), (3102001, "A", "G", "PASS", "1:0,30:30:50"),
 ]
 body = "".join(f"chrY\t{p}\t.\t{r}\t{a}\t50\t{f}\t.\tGT:AD:DP:GQ\t{s}\n" for p, r, a, f, s in REC)
 put("p.vcf", HEAD + body)
