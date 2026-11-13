@@ -71,6 +71,7 @@ DEEP='chrom\tpos\tref\talt\tgene\thgvs\tclinvar_id\tcall\tdetail\nchr7\t11763996
 
 # --- pharmacogenomics ----------------------------------------------------------------
 CPIC='Gene\tDiplotype\tPhenotype\tStatus\nCYP2D6\t*1/*4\tIntermediate Metabolizer\tnon-normal\nCYP2C19\t*1/*17\tRapid\tambiguous\nCYP2C9\t*1/*1\tNormal\tnormal\nDPYD\n'
+CYRIUS_HEADER='Sample\tGenotype\tFilter\n'
 REC='CPIC lookup\n  WARNING:  CYP2C19 has two possible phenotypes\nnothing\nWARNING:last\n'
 PYPGX='Gene\tDiplotype\tPhenotype\tStatus\tSource\tCNV_call\tQuality\tMin_GQ\tWeakest_variant\tDefining_filter\n'
 PYPGX+='CYP2D6\t*1/*2\t Normal Metabolizer \tok\tBAM\tNormal\tok\t\t\tPASS\n'
@@ -150,7 +151,7 @@ full() {
   put "$d/pypgx/S_pypgx_summary.tsv" "$PYPGX"
   put "$d/pypgx/S_cyp2d6_depth_check.tsv" "$DEPTH"
   put "$d/pypgx/S_pharmcat_comparison.tsv" "$COMP"
-  put "$d/cyrius/S_cyp2d6.tsv" 'Sample\tGenotype\tFilter\nS\t*2/*1\tPASS\n'
+  put "$d/cyrius/S_cyp2d6.tsv" "${CYRIUS_HEADER}S\t*2/*1\tPASS\n"
   put "$d/pgx_consensus/S_pgx_consensus.tsv" "$CONS"
   put "$d/cpsr/S.cpsr.grch38.html" '<html></html>'
   putgz "$d/cpsr/S.cpsr.grch38.classification.tsv.gz" "$CPSR"
@@ -180,7 +181,7 @@ put cb-nf/slivar/S_compound_het_pairs.tsv "$PAIRS"
 put cb-nf/vcf/A.report.json '{"pharmcatVersion": 3.2}'
 put cb-nf/vcf/B.report.json '[1, 2]'
 put cb-nf/cpic/S_phenotypes.tsv 'Gene\tDiplotype\tPhenotype\tStatus\nCYP2D6\t*4/*4\tPoor\tnot called\n'
-put cb-nf/cyrius/T_cyp2d6.tsv 'Sample\tGenotype\tFilter\nT\t*1/*2\tLowQ\n'
+put cb-nf/cyrius/T_cyp2d6.tsv "${CYRIUS_HEADER}T\t*1/*2\tLowQ\n"
 put cb-nf/pypgx/S_pypgx_summary.tsv "$PYPGX"
 put cb-nf/pgx_consensus/S_pgx_consensus.tsv "$CONS"
 put cb-nf/cpsr/T.cpsr.grch37.html '<html></html>'
@@ -192,7 +193,7 @@ put cb-nf/logs/run_status.tsv "meta\tstarted_epoch\t${T0}\nstep\t07\tfailed (exi
 # probable: pypgx alone, Cyrius not usable, the depth check ok; no consensus.
 put cb-probable/pypgx/S_pypgx_summary.tsv "$PYPGX"
 put cb-probable/pypgx/S_cyp2d6_depth_check.tsv "$DEPTH"
-put cb-probable/cyrius/S_cyp2d6.tsv 'Sample\tGenotype\tFilter\nS\t*1/*3\tLowQ\n'
+put cb-probable/cyrius/S_cyp2d6.tsv "${CYRIUS_HEADER}S\t*1/*3\tLowQ\n"
 put cb-probable/cpic/S_phenotypes.tsv 'Gene\tDiplotype\tPhenotype\tStatus\nCYP2C9\t*1/*1\tNormal\tnormal\n'
 put cb-probable/cpic/S_cpic_recommendations.txt 'PARSING FAILED for one gene\n'
 
