@@ -500,13 +500,17 @@ jobs:
         run: |
           if mountpoint -q /mnt; then echo "/mnt is already a mount"; df -h /mnt; exit 0; fi
           disk=""
-          while read -r name type; do
+          while read -r name type size; do
             [ "$type" = disk ] || continue
+            # A real disk: some runner images list /dev/zram0 as a disk of
+            # 0 bytes, and mkfs.ext4 stops on it.
+            case $name in /dev/zram*|/dev/ram*|/dev/loop*) continue ;; esac
+            [ "${size:-0}" -gt 0 ] || continue
             # Blank: no partition, no file system, nothing mounted.
             [ "$(lsblk -nro NAME "$name" | wc -l)" -eq 1 ] || continue
             [ -z "$(lsblk -ndro FSTYPE,MOUNTPOINT "$name" | tr -d ' ')" ] || continue
             disk=$name
-          done < <(lsblk -dnpo NAME,TYPE)
+          done < <(lsblk -dnbpo NAME,TYPE,SIZE)
           if [ -z "$disk" ]; then echo "No blank disk on this runner"; exit 0; fi
           echo "Formatting ${disk} ($(lsblk -ndo SIZE "$disk")) and mounting it at /mnt"
           sudo mkfs.ext4 -q -F -E nodiscard "$disk"
