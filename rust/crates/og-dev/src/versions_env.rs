@@ -39,8 +39,6 @@ pub fn parse(text: &str) -> Result<Vec<Pin>, String> {
             continue;
         }
         let Some(c) = LINE.captures(line) else {
-            continue; // RED CONTROL: the pre-fix reading skipped the line
-            #[allow(unreachable_code)]
             return Err(format!(
                 "versions.env:{}: not a NAME=\"value\" line (a value holds no \", $ or backquote): {line}",
                 i + 1
