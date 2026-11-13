@@ -500,6 +500,31 @@ mod tests {
     }
 
     #[test]
+    fn a_bad_record_stops_only_the_rsid_it_names() {
+        let path =
+            std::env::temp_dir().join(format!("og-lookup-badpos-{}.vcf", std::process::id()));
+        std::fs::write(
+            &path,
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+             chr7\tx\trs1\tA\tG\t.\tPASS\t.\nchr7\t20\trs2\tC\tT\t.\tPASS\t.\n",
+        )
+        .unwrap();
+        let inp = Inputs {
+            gvcf: None,
+            annotated: Some(path.to_string_lossy().into_owned()),
+            summary: None,
+            sites: None,
+            tables: Vec::new(),
+            genes: None,
+        };
+        let got = resolve_all(&["rs1".into(), "rs2".into()], &inp);
+        std::fs::remove_file(&path).unwrap();
+        assert!(got[0].is_err(), "rs1 names the bad line: {:?}", got[0]);
+        let rows = got[1].as_ref().expect("rs2 is not on the bad line");
+        assert_eq!((rows.len(), rows[0].start), (1, 20));
+    }
+
+    #[test]
     fn gene_name_takes_the_first_quoted_value() {
         assert_eq!(
             gene_name("gene_id \"E\"; gene_name \"CFTR\"; level 2;"),
