@@ -45,6 +45,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og prs format [args]
        og prs table [args]
        og mito annotate|deletions|copies [args]
+       og summary collect --only a [args]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
        og bloodtype report|check-markers|systems [args]
@@ -256,6 +257,14 @@ fn main() -> ExitCode {
                 _ => usage_error(&format!("unknown tool '{}'", words.trim_end())),
             }
         }
+        "summary" => match rest.first().map(String::as_str) {
+            Some("collect") => ExitCode::from(og_summary::collect::cli(
+                &rest[1..],
+                &mut std::io::stdout().lock(),
+                &mut std::io::stderr().lock(),
+            )),
+            _ => usage_error("og summary takes collect"),
+        },
         "mito" => ExitCode::from(og_summary::mito::cli(
             rest.first().map(String::as_str),
             rest.get(1..).unwrap_or_default(),
