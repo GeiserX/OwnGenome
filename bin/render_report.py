@@ -404,7 +404,7 @@ NOT_CALLABLE_WHY = {"GSTT1": "GRCh38 has it only on the ALT contig chr22_KI27087
 
 
 def probable_text(p):
-    """The probable CYP2D6 call (pgx_outside_calls.probable_cyp2d6) as one line."""
+    """The probable CYP2D6 call (og summary collect's cyp2d6 block) as one line."""
     return (f"{p.get('diplotype')}" + (f", {p['phenotype']}" if p.get("phenotype") else "")
             + "; not passed to PharmCAT, so no drug guidance rests on it")
 
