@@ -22,6 +22,8 @@
 //! A group name is ours: a set of reference populations we put together
 //! and named, not a nationality.
 
+pub mod ancient;
+pub mod archaic;
 pub mod chroms;
 pub mod order;
 pub mod panel;

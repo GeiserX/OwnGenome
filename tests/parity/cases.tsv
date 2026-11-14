@@ -982,6 +982,57 @@ family-ibd	mapbp	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree mapbp/pedigree.ts
 family-ibd	nomap	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree nomap/pedigree.tsv --chroms nomap/chroms.txt --maps nomap/maps --phased nomap/phased --ibd nomap/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	short	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree short/pedigree.tsv --chroms short/chroms.txt --maps short/maps --phased short/phased --ibd short/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	twice	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree twice/pedigree.tsv --chroms twice/chroms.txt --maps twice/maps --phased twice/phased --ibd twice/ibd --out-dir out	-	content	PYTHON_IMAGE
+# Step 43, og archaic (bin/archaic_report.py)
+archaic-table	masked	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv --archaic Altai=altai.tsv --archaic Vindija=vindija.tsv --archaic Denisova=denisova.tsv --mask Altai=altai.bed --mask Vindija=vindija.bed --exclude excl.bed --out t.vcf	t.vcf	bytes	PYTHON_IMAGE
+archaic-table	plain	gen:archaic-inputs.sh	--chrom chr22 --modern modern.tsv --archaic Altai=altai.tsv --archaic Vindija=vindija.tsv --archaic Denisova=denisova.tsv --out t.vcf	t.vcf	bytes	PYTHON_IMAGE
+archaic-table	gz	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv.gz --archaic Altai=altai.tsv.gz --archaic Vindija=vindija.tsv.gz --archaic Denisova=denisova.tsv.gz --mask Denisova=altai.bed --exclude excl.bed --exclude vindija.bed --out t.vcf	t.vcf	bytes	PYTHON_IMAGE
+archaic-table	unsorted	gen:archaic-inputs.sh	--chrom 22 --modern unsorted.tsv --archaic Altai=altai.tsv --archaic Vindija=vindija.tsv --archaic Denisova=denisova.tsv --out t.vcf	-	bytes	PYTHON_IMAGE
+archaic-table	order	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv --archaic Vindija=vindija.tsv --archaic Altai=altai.tsv --archaic Denisova=denisova.tsv --out t.vcf	-	bytes	PYTHON_IMAGE
+archaic-table	bad-name	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv --archaic Neanderthal=altai.tsv --out t.vcf	-	bytes	PYTHON_IMAGE
+archaic-table	mask-twice	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv --archaic Altai=altai.tsv --archaic Vindija=vindija.tsv --archaic Denisova=denisova.tsv --mask Altai=altai.bed --mask Altai=vindija.bed --out t.vcf	-	bytes	PYTHON_IMAGE
+archaic-table	empty-mask	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv --archaic Altai=altai.tsv --archaic Vindija=vindija.tsv --archaic Denisova=denisova.tsv --mask Altai=empty.bed --out t.vcf	-	bytes	PYTHON_IMAGE
+archaic-table	empty-exclude	gen:archaic-inputs.sh	--chrom 22 --modern modern.tsv --archaic Altai=altai.tsv --archaic Vindija=vindija.tsv --archaic Denisova=denisova.tsv --exclude empty.bed --out t.vcf	-	bytes	PYTHON_IMAGE
+archaic-strict	plain	gen:archaic-inputs.sh	--chrom chr22 --strict strict.bed --rows rows.tsv --out s.tsv	s.tsv	bytes	PYTHON_IMAGE
+archaic-strict	unsorted	gen:archaic-inputs.sh	--chrom chr22 --strict strict.bed --rows rows-unsorted.tsv --out s.tsv	-	bytes	PYTHON_IMAGE
+archaic-strict	empty-mask	gen:archaic-inputs.sh	--chrom 22 --strict empty.bed --rows rows.tsv --out s.tsv	-	bytes	PYTHON_IMAGE
+archaic-genotypes	plain	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop EUR --pseudo 3 --out-dir gt	gt/samples.txt,gt/spans.tsv,gt/chr21.gt.gz,gt/chr22.gt.gz,gt/chr21.Altai.mask.bed,gt/chr21.Vindija.mask.bed,gt/chr21.Denisova.mask.bed,gt/chr22.Altai.mask.bed,gt/chr22.Vindija.mask.bed,gt/chr22.Denisova.mask.bed	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	default	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf.gz --out-dir gt	gt/spans.tsv,gt/chr22.gt.gz	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	afr-one	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop AFR --pseudo 1 --out-dir gt	gt/spans.tsv,gt/chr22.gt.gz	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	two-samples	gen:archaic-inputs.sh	--table-dir . --vcf two.vcf --out-dir gt	-	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	comes-back	gen:archaic-inputs.sh	--table-dir . --vcf back.vcf --out-dir gt	-	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	no-table-chrom	gen:archaic-inputs.sh	--table-dir . --vcf none.vcf --out-dir gt	-	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	bad-code	gen:archaic-inputs.sh	--table-dir badcode --vcf s.vcf --out-dir gt	-	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	bad-pop	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop XYZ --out-dir gt	-	bytes	PYTHON_IMAGE
+archaic-genotypes	bad-pseudo	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pseudo 0 --out-dir gt	-	bytes	PYTHON_IMAGE
+archaic-genotypes	no-table	gen:archaic-inputs.sh	--table-dir emptydir --vcf s.vcf --out-dir gt	-	bytes	PYTHON_IMAGE
+archaic-report	genes	gen:archaic-inputs.sh	--sample S --ibdmix-dir . --spans spans.tsv --genes genes.gtf --pop EUR --out-dir rep	rep/S_archaic.tsv,rep/S_archaic.txt,rep/S_archaic_segments.tsv	bytes	PYTHON_IMAGE
+archaic-report	no-genes	gen:archaic-inputs.sh	--sample S --ibdmix-dir . --spans spans.tsv --out-dir rep	rep/S_archaic.tsv,rep/S_archaic.txt,rep/S_archaic_segments.tsv	bytes	PYTHON_IMAGE
+archaic-report	missing-output	gen:archaic-inputs.sh	--sample S --ibdmix-dir rep --spans spans.tsv --out-dir rep	-	bytes	PYTHON_IMAGE
+archaic-report	not-spans	gen:archaic-inputs.sh	--sample S --ibdmix-dir . --spans genes.gtf --out-dir rep	-	bytes	PYTHON_IMAGE
+# Step 44, og ancient (bin/ancient_report.py)
+ancient-select	plain	gen:ancient-inputs.sh	--anno aadr.anno --ind aadr.ind --out-ind o.ind --poplist pops.txt --ancients anc.tsv	o.ind,pops.txt,anc.tsv	bytes	PYTHON_IMAGE
+ancient-select	min-snps	gen:ancient-inputs.sh	--anno aadr.anno --ind aadr.ind --out-ind o.ind --poplist pops.txt --ancients anc.tsv --min-snps 140000	o.ind,pops.txt,anc.tsv	bytes	PYTHON_IMAGE
+ancient-select	too-few	gen:ancient-inputs.sh	--anno aadr.anno --ind few.ind --out-ind o.ind --poplist pops.txt --ancients anc.tsv	-	bytes	PYTHON_IMAGE
+ancient-select	no-column	gen:ancient-inputs.sh	--anno aadr.ind --ind aadr.ind --out-ind o.ind --poplist pops.txt --ancients anc.tsv	-	bytes	PYTHON_IMAGE
+ancient-lift	plain	gen:ancient-inputs.sh	--snp aadr.snp --chain hg19.chain --fasta hg38.fa --out sites.out.tsv	sites.out.tsv	bytes	PYTHON_IMAGE
+ancient-lift	gz-chain	gen:ancient-inputs.sh	--snp aadr.snp --chain hg19.chain.gz --fasta hg38.fa --out sites.out.tsv	sites.out.tsv	bytes	PYTHON_IMAGE
+ancient-lift	minus-source	gen:ancient-inputs.sh	--snp aadr.snp --chain minus-source.chain --fasta hg38.fa --out sites.out.tsv	-	bytes	PYTHON_IMAGE
+ancient-lift	orphan-block	gen:ancient-inputs.sh	--snp aadr.snp --chain orphan.chain --fasta hg38.fa --out sites.out.tsv	-	bytes	PYTHON_IMAGE
+ancient-lift	nothing-placed	gen:ancient-inputs.sh	--snp panel.geno --chain hg19.chain --fasta hg38.fa --out sites.out.tsv	-	bytes	PYTHON_IMAGE
+ancient-person-geno	plain	gen:ancient-inputs.sh	--sites sites.tsv --genotypes genotypes.tsv --snp panel.snp --moderns-geno panel.geno --out o.geno --stats o.stats	o.geno,o.stats	bytes	PYTHON_IMAGE
+ancient-person-geno	short-geno	gen:ancient-inputs.sh	--sites sites.tsv --genotypes genotypes.tsv --snp panel.snp --moderns-geno short.geno --out o.geno --stats o.stats	-	bytes	PYTHON_IMAGE
+ancient-person-geno	long-geno	gen:ancient-inputs.sh	--sites sites.tsv --genotypes genotypes.tsv --snp panel.snp --moderns-geno long.geno --out o.geno --stats o.stats	-	bytes	PYTHON_IMAGE
+ancient-person-geno	wide-geno	gen:ancient-inputs.sh	--sites sites.tsv --genotypes genotypes.tsv --snp panel.snp --moderns-geno wide.geno --out o.geno --stats o.stats	-	bytes	PYTHON_IMAGE
+ancient-person-geno	none-used	gen:ancient-inputs.sh	--sites sites.tsv --genotypes nowhere.tsv --snp panel.snp --moderns-geno panel.geno --out o.geno --stats o.stats	o.geno,o.stats	bytes	PYTHON_IMAGE
+ancient-align	flipped	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec flipped.evec	-	bytes	PYTHON_IMAGE
+ancient-align	five-pcs	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec run.evec --pcs 5	-	bytes	PYTHON_IMAGE
+ancient-align	differ	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec bad.evec	-	bytes	PYTHON_IMAGE
+ancient-align	too-few	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec few.evec	-	bytes	PYTHON_IMAGE
+ancient-align	not-evec	gen:ancient-inputs.sh	--panel-evec stats.tsv --run-evec run.evec	-	bytes	PYTHON_IMAGE
+ancient-report	plain	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec run.evec --ancients ancients.tsv --sample S1 --release v66.p1 --stats stats.tsv --out-tsv o.tsv --out-info o.info --out-txt o.txt --out-svg o.svg	o.tsv,o.info,o.txt,o.svg	bytes	PYTHON_IMAGE
+ancient-report	no-stats	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec run.evec --ancients ancients.tsv --sample S1 --release v66 --out-tsv o.tsv --out-info o.info --out-txt o.txt --out-svg o.svg	o.tsv,o.info,o.txt,o.svg	bytes	PYTHON_IMAGE
+ancient-report	not-person	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec run.evec --ancients ancients.tsv --sample S2 --release v66 --out-tsv o.tsv --out-info o.info --out-txt o.txt --out-svg o.svg	-	bytes	PYTHON_IMAGE
+ancient-report	axes-differ	gen:ancient-inputs.sh	--panel-evec panel.evec --run-evec bad.evec --ancients ancients.tsv --sample S1 --release v66 --out-tsv o.tsv --out-info o.info --out-txt o.txt --out-svg o.svg	-	bytes	PYTHON_IMAGE
 dev-scan-personal	clean	dev-scanners/oracle.sh,dev-scanners/clean.md	--root . --allow _ --skip _ clean.md	-	bytes	PYTHON_IMAGE
 dev-scan-personal	unicode-fixed-seed	dev-scanners/oracle.sh,gen:dev-scanners.sh	--root . --allow _ --skip _ probe.md	-	bytes	PYTHON_IMAGE
 dev-scan-personal	odd-filename	dev-scanners/oracle.sh,gen:dev-scanners.sh	--root . --allow _ --skip _	-	bytes	PYTHON_IMAGE
