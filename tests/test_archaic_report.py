@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bin/archaic_report.py (step 43) on a synthetic archaic panel, with the real IBDmix image.
+"""og archaic (step 43) on a synthetic archaic panel, with the real IBDmix image.
 
 Checks:
   1. table: a 1000 Genomes site keeps its frequencies and gets each archaic
@@ -37,7 +37,12 @@ Checks:
      Set ARCHAIC_TEST_NO_DOCKER=1 to skip part 4 on a machine without docker;
      CI never sets it.
 
-Run: python3 tests/test_archaic_report.py
+The Rust unit tests (rust/crates/og-ancestry) check pick_call's symmetry and
+which genes touch a segment's ends, and tests/parity checks each command
+against the Python it replaced. Without an og binary the test is skipped with
+a note; with OG_REQUIRED set the skip is a failure.
+
+Run: OG=bin/og python3 tests/test_archaic_report.py
 """
 import gzip
 import os
@@ -49,10 +54,17 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import archaic_report as ar  # noqa: E402
-
-SCRIPT = os.path.join(REPO, "bin", "archaic_report.py")
+OG = os.environ.get("OG", "")
 FAILS = 0
+TABLE_HEADER = ["chrom", "pos", "ref", "alt", "Altai", "Vindija", "Denisova",
+                "AF_ALL", "AF_AFR", "AF_AMR", "AF_EAS", "AF_EUR", "AF_SAS"]
+SEGMENT_HEADER = ["chrom", "start", "end", "length_bp", "ancestry", "matched", "lod", "genes"]
+MASKED = 10
+ARCHAICS = ("Altai", "Vindija", "Denisova")
+
+if not OG:
+    print("skip: OG is not set (OG=bin/og)")
+    sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
 
 
 def check(desc, ok, detail=""):
@@ -68,7 +80,7 @@ def write(path, text):
 
 
 def run(*args):
-    return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True)
+    return subprocess.run([OG, "archaic", *args], capture_output=True, text=True)
 
 
 def image(var):
@@ -166,25 +178,30 @@ check("a mask with no interval on the chromosome stops the build, instead of emp
       r.returncode == 1 and "no interval" in r.stderr, r.stderr)
 
 # --- 1b. strict: rows outside the GRCh38 strict mask are marked, not dropped -------
-# Lifted rows (13 columns, no header). Strict mask 1-based 101-300 on chr22:
-# 100 is outside, 150 and 300 inside, 301 outside. A duplicate position keeps
-# the first row. Codes 0, 1, 2 outside become 10, 11, 12; 9 stays 9; a code
-# already masked is not marked twice.
+# Lifted rows (13 columns, no header), sorted by position as Picard writes
+# them. Strict mask 1-based 101-300 on chr22: 100 is outside, 150 and 300
+# inside, 301 outside. A duplicate position keeps the first row. Codes 0, 1, 2
+# outside become 10, 11, 12; 9 stays 9; a code already masked is not marked
+# twice.
 rows = ["chr22\t100\tA\tG\t2\t0\t9\t0.5\t0\t0\t0\t0\t0",
         "chr22\t150\tA\tG\t1\t1\t1\t0.5\t0\t0\t0\t0\t0",
+        "chr22\t300\tG\tA\t0\t0\t0\t0.5\t0\t0\t0\t0\t0",
         "chr22\t301\tC\tT\t0\t10\t12\t0.5\t0\t0\t0\t0\t0",
-        "chr22\t301\tC\tT\t2\t2\t2\t0.5\t0\t0\t0\t0\t0",
-        "chr22\t300\tG\tA\t0\t0\t0\t0.5\t0\t0\t0\t0\t0"]
+        "chr22\t301\tC\tT\t2\t2\t2\t0.5\t0\t0\t0\t0\t0"]
 write(f"{TMP}/lifted.tsv", "\n".join(rows) + "\n")
 write(f"{TMP}/strict.bed", "chr22\t100\t300\n")
 r = run("strict", "--chrom", "22", "--strict", f"{TMP}/strict.bed", "--rows", f"{TMP}/lifted.tsv", "--out", f"{TMP}/marked.tsv")
 check("strict exits 0", r.returncode == 0, r.stderr)
 got = [l.rstrip("\n").split("\t") for l in open(f"{TMP}/marked.tsv")]
 by = {int(c[1]): c[4:7] for c in got}
-check("every position is kept, once", [int(c[1]) for c in got] == [100, 150, 301, 300], [c[1] for c in got])
+check("every position is kept, once", [int(c[1]) for c in got] == [100, 150, 300, 301], [c[1] for c in got])
 check("outside the strict mask 2, 0 and unknown become 12, 10 and 9", by[100] == ["12", "10", "9"], by.get(100))
 check("inside the strict mask the calls are untouched (last base 300 too)", by[150] == ["1", "1", "1"] and by[300] == ["0", "0", "0"], (by.get(150), by.get(300)))
 check("a masked call stays as it is, and the first of a duplicate wins", by[301] == ["10", "10", "12"], by.get(301))
+write(f"{TMP}/unsorted.tsv", "\n".join([rows[0], rows[3], rows[2]]) + "\n")
+r = run("strict", "--chrom", "22", "--strict", f"{TMP}/strict.bed", "--rows", f"{TMP}/unsorted.tsv", "--out", f"{TMP}/marked3.tsv")
+check("rows out of position order stop the step (a duplicate is found only next to its twin)",
+      r.returncode == 2 and "sorted" in r.stderr and not os.path.exists(f"{TMP}/marked3.tsv"), (r.returncode, r.stderr))
 write(f"{TMP}/strict_other.bed", "chr21\t0\t10\n")
 r = run("strict", "--chrom", "22", "--strict", f"{TMP}/strict_other.bed", "--rows", f"{TMP}/lifted.tsv", "--out", f"{TMP}/marked2.tsv")
 check("a strict mask with no interval on the chromosome stops the step", r.returncode != 0 and "no interval" in r.stderr, r.stderr)
@@ -192,7 +209,7 @@ check("a strict mask with no interval on the chromosome stops the step", r.retur
 # --- 2. genotypes ------------------------------------------------------------------
 tdir = f"{TMP}/table"
 os.makedirs(tdir)
-hdr = "\t".join(ar.TABLE_HEADER) + "\n"
+hdr = "\t".join(TABLE_HEADER) + "\n"
 rows = ["chr22\t1000\tA\tG\t2\t2\t0\t0.5\t0.5\t0.5\t0.5\t0.5\t0.5",
         "chr22\t2000\tC\tT\t0\t0\t0\t0.01\t0\t0\t0\t0.02\t0",
         "chr22\t3000\tG\tA\t1\t1\t2\t0\t0\t0\t0\t0\t0",
@@ -267,12 +284,6 @@ check("a 0/0 half of a split site before the carried SNV keeps the SNV call", co
 check("a 0/0 half after the carried SNV keeps the SNV call", code3(6000) == "1", g3.get(6000))
 check("a usable record of the same SNV wins over a filtered one", code3(7000) == "2", g3.get(7000))
 check("two 0/0 halves are the reference (0)", code3(8000) == "0", g3.get(8000))
-pc_code = lambda r: 9 if r is ar.CLASH else r[2]
-check("pick_call gives the same code in either order",
-      all(pc_code(ar.pick_call(x, y)) == pc_code(ar.pick_call(y, x))
-          for x, y in [(("A", "G", 1), ("A", None, 9)), (("A", "G", 1), ("A", "T", 0)), (("A", "G", 9), ("A", "G", 2)),
-                       (("A", "G", 0), ("A", "T", 0)), (("A", "G", 1), ("A", "T", 2)), (("A", "G", 9), ("A", "T", 0)),
-                       (("A", "G", 1), ("A", "G", 2))]))
 
 # Masked calls: IBDmix gets the call itself and a mask per genome of the
 # positions where it is masked, the runs of written rows closed by the next
@@ -291,7 +302,7 @@ gm = {int(l.split("\t")[1]): l.split("\t")[4:7] for l in gzip.open(f"{TMP}/gtm/c
 check("IBDmix gets each masked call as its ALT count (12, 10, 11 are 2, 0, 1)",
       gm.get(100) == ["2", "0", "9"] and gm.get(200) == ["0", "1", "0"] and gm.get(600) == ["1", "0", "0"], gm)
 masks = {g: open(f"{TMP}/gtm/chr22.{g}.mask.bed").read() if os.path.exists(f"{TMP}/gtm/chr22.{g}.mask.bed") else None
-         for g in ar.ARCHAICS}
+         for g in ARCHAICS}
 check("Altai's mask: 100-200, then 400-600 (the left-out row 500 does not close it)",
       masks["Altai"] == "22\t99\t200\n22\t399\t600\n", masks["Altai"])
 check("Vindija's mask: 200 alone", masks["Vindija"] == "22\t199\t200\n", masks["Vindija"])
@@ -303,6 +314,37 @@ with gzip.open(f"{bdir}/chr22.tsv.gz", "wt") as f:
     f.write(hdr + "chr22\t100\tA\tG\t7\t0\t0\t0.2\t0\t0\t0\t0\t0\n")
 r = run("genotypes", "--table-dir", bdir, "--vcf", f"{TMP}/m.vcf", "--out-dir", f"{TMP}/gtb")
 check("a code the table never holds (7) stops the step", r.returncode == 1 and "code '7'" in r.stderr, r.stderr)
+
+# A streaming join must refuse backwards positions, including records past
+# the table's end and records whose genotype it would otherwise ignore.
+vcf_header = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+for label, records in (
+        ("within-table", [(3000, "G", "A", "GT"), (1000, "A", "G", "GT")]),
+        ("past-table", [(9000, "A", "G", "GT"), (8000, "A", "G", "GT")]),
+        ("ignored-call", [(3000, "G", "A", "GT"), (1000, "A", ".", "GQ")])):
+    bad_vcf = f"{TMP}/{label}.vcf"
+    write(bad_vcf, vcf_header + "".join(
+        f"chr22\t{p}\t.\t{ref}\t{alt}\t.\tPASS\t.\t{fmt}\t0/1\n"
+        for p, ref, alt, fmt in records))
+    out = f"{TMP}/order-{label}"
+    os.makedirs(out)
+    protected = ["chr22.gt.gz", *(f"chr22.{g}.mask.bed" for g in ARCHAICS)]
+    for name in protected:
+        write(f"{out}/{name}", "previous output\n")
+    r = run("genotypes", "--table-dir", tdir, "--vcf", bad_vcf, "--out-dir", out)
+    check(f"unsorted VCF {label} exits 2", r.returncode == 2 and "not sorted" in r.stderr, r.stderr)
+    check(f"unsorted VCF {label} keeps prior genotype and masks",
+          all(open(f"{out}/{name}", "rb").read() == b"previous output\n" for name in protected))
+
+unordered_table = f"{TMP}/table_unordered"
+os.makedirs(unordered_table)
+with gzip.open(f"{unordered_table}/chr22.tsv.gz", "wt") as f:
+    f.write(hdr + "\n".join([rows[1], rows[0], *rows[2:]]) + "\n")
+r = run("genotypes", "--table-dir", unordered_table, "--vcf", f"{TMP}/s.vcf",
+        "--out-dir", f"{TMP}/gt_unordered")
+check("an unsorted table exits 2", r.returncode == 2 and "not sorted" in r.stderr, r.stderr)
+check("an unsorted table leaves no partial genotype or mask",
+      not any(name.endswith((".gt.gz", ".mask.bed")) for name in os.listdir(f"{TMP}/gt_unordered")))
 
 # --- 3. report ---------------------------------------------------------------------
 idir = f"{TMP}/ibd"
@@ -321,7 +363,7 @@ r = run("report", "--sample", "S1", "--ibdmix-dir", idir, "--spans", f"{TMP}/spa
         "--out-dir", f"{TMP}/out")
 check("report exits 0", r.returncode == 0, r.stderr)
 segs = [l.split("\t") for l in open(f"{TMP}/out/S1_archaic_segments.tsv").read().splitlines()]
-check("segments header", segs[0] == ar.SEGMENT_HEADER, segs[0])
+check("segments header", segs[0] == SEGMENT_HEADER, segs[0])
 body = segs[1:]
 check("two segments: the merged Neanderthal one and the Denisovan one", len(body) == 2, body)
 check("Altai 1.0-1.3 and Vindija 1.2-1.5 Mb merge into Neanderthal 1.0-1.5 Mb",
@@ -367,9 +409,6 @@ try:
     check("a row cut after its key is unreadable, not a crash", False)
 except cs.Unreadable:
     check("a row cut after its key is unreadable, not a crash", True)
-genes = {"chr22": [(90, 100, "ENDS_AT_START"), (100, 120, "INSIDE"), (200, 210, "STARTS_AT_END"), (50, 99, "BEFORE")]}
-check("genes: a segment [100, 200) takes a gene ending at its first site, not one starting at its end",
-      ar.genes_in(genes, "22", 100, 200) == ["ENDS_AT_START", "INSIDE"], ar.genes_in(genes, "22", 100, 200))
 check("no file: the section is missing", cs.sec_archaic(f"{TMP}/nowhere", "S1") == (None, {}))
 
 # --- 4. the real IBDmix -------------------------------------------------------------
@@ -411,14 +450,14 @@ def synthetic(d, plant, mid=None):
         if mid and MID[0] <= pos < MID[1]:
             if kind == 0:
                 g = [False, False]
-            ta, tv = (al + ar.MASKED, vi + ar.MASKED) if mid == "masked" else (9, 9)
+            ta, tv = (al + MASKED, vi + MASKED) if mid == "masked" else (9, 9)
         rows.append(f"chr22\t{pos}\tA\tG\t{ta}\t{tv}\t{de}\t" + "\t".join([f"{f:.4f}"] * 6))
         if plant and DEN[0] <= pos < DEN[1]:
             g[0] = de == 2
         if any(g):
             calls.append(f"chr22\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t{'1/1' if all(g) else '0/1'}")
     with gzip.open(f"{d}/table/chr22.tsv.gz", "wt") as f:
-        f.write("\t".join(ar.TABLE_HEADER) + "\n" + "\n".join(rows) + "\n")
+        f.write("\t".join(TABLE_HEADER) + "\n" + "\n".join(rows) + "\n")
     write(f"{d}/s.vcf", "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n" + "\n".join(calls) + "\n")
 
 

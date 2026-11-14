@@ -10,8 +10,11 @@
 //!   search, BED files such as the PAR regions read into them) and an
 //!   overlap index with reciprocal overlap.
 //! - [`fasta`]: random access into a FASTA through its `.fai`.
+//! - [`chain`]: UCSC chain files, to lift single positions to another
+//!   assembly.
 
 pub mod bed;
+pub mod chain;
 pub mod fasta;
 pub mod mask;
 pub mod sets;
