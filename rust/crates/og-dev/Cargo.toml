@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# Only the CI red control enables this fault. Normal builds keep it off.
+[features]
+planted-ci-reader = []
+
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
