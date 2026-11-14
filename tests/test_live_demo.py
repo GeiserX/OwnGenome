@@ -3313,6 +3313,14 @@ def map_checks(b, base, out):
     check("map: the region, gene and reads levels open from their addresses with their titles, paths and genes; "
           "Esc steps out one level at a time; the Region and Gene stops land on their level; + and → zoom and pan",
           not bad, bad)
+    lvl = "if (bpp > CHROM_BPP) { return 'chromosome'; }"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(lvl, "return 'chromosome';"))
+        control("map.js whose levels stop at the chromosome", keep_mjs.count(lvl) != 1 or not closer_problems(b, base))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
     bad = find_problems(b, base, out)
     check("map: / opens the search; a gene, a band and a finding are found and Enter flies there (a finding with "
           "its card); the son's closed result is never a line, by its gene, id or title", not bad, bad)
