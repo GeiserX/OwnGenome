@@ -317,6 +317,24 @@ jobs:
           grep -E 'planted_failure.*FAILED' "$log" || { cat "$log"; echo "ERROR: the run failed, but not on the planted test"; exit 1; }
           echo "Control: the planted test failed, as it must."
 
+      - name: Control (archaic duplicate window must fail when equal positions are split)
+        run: |
+          source=crates/og-ancestry/src/archaic.rs
+          saved=$(mktemp "${RUNNER_TEMP}/archaic-window.XXXXXX")
+          cp "$source" "$saved"
+          trap 'cp -f "$saved" "$source"; rm -f "$saved"' EXIT
+          sed 's/r.pos == kept.pos/r.pos < kept.pos/' "$saved" > "$source"
+          grep -q 'r.pos < kept.pos' "$source"
+          log="${RUNNER_TEMP}/archaic-window-red.log"
+          if cargo test --locked --no-fail-fast -p og-ancestry duplicate_window_keeps_only_one_record_of_lookahead > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: splitting a duplicate-position window passed"
+            exit 1
+          fi
+          cat "$log"
+          grep -E 'duplicate_window_keeps_only_one_record_of_lookahead.*FAILED' "$log"
+          echo "Control: splitting the window failed its regression test."
+
       - name: Control (an unreadable PharmCAT report reported as success must fail)
         run: |
           log="${RUNNER_TEMP}/ci-reader-control.log"
@@ -595,7 +613,7 @@ jobs:
         run: |
           fail=0
           for t in tests/test_annotsv_sv_inputs.py tests/test_pgx_refblock_fill.py tests/test_pgx_mito_merge.py tests/test_run_delta.py \
-                   tests/test_ancestry_fine_report.py \
+                   tests/test_ancestry_fine_report.py tests/test_archaic_report.py tests/test_ancient_report.py \
                    tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
                    tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py tests/test_setup_fine_maps.sh \
                    tests/test_render_report.py tests/test_collect_summary.py tests/test_chip_report.py \

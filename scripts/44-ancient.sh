@@ -78,7 +78,7 @@ run_in --cpus 2 --memory 4g "$BCFTOOLS_IMAGE" \
 
 echo "[2/4] Adding ${SAMPLE} to the present-day panel..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/ancient_report.py person-geno --sites "${P}/sites_grch38.tsv" --genotypes "${W}/genotypes.tsv" \
+  /pgp-bin/og ancient person-geno --sites "${P}/sites_grch38.tsv" --genotypes "${W}/genotypes.tsv" \
     --snp "${P}/moderns.snp" --moderns-geno "${P}/moderns.geno" --out "${W}/merged.geno" --stats "${W}/stats.tsv"
 { cat "${PANEL}/moderns.ind"; printf '%s\tU\tPerson\n' "$SAMPLE"; } > "${WORK}/merged.ind"
 
@@ -93,7 +93,7 @@ run_in --cpus "$THREADS" --memory 8g "$EIGENSOFT_IMAGE" smartpca -p "${W}/run.pa
 
 echo "[4/4] The nearest ancient groups..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-  python3 /pgp-bin/ancient_report.py report --panel-evec "${P}/panel.evec" --run-evec "${W}/run.evec" \
+  /pgp-bin/og ancient report --panel-evec "${P}/panel.evec" --run-evec "${W}/run.evec" \
     --ancients "${P}/ancients.tsv" --sample "$SAMPLE" --release "$RELEASE" --stats "${W}/stats.tsv" \
     --out-tsv "${O}/${SAMPLE}_ancient.tsv" --out-info "${O}/${SAMPLE}_ancient_info.tsv" \
     --out-txt "${O}/${SAMPLE}_ancient.txt" --out-svg "${O}/${SAMPLE}_ancient_pca.svg"

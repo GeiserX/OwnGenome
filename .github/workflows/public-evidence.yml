@@ -232,7 +232,7 @@ jobs:
           # The positions of this part where HG002 has two records or more, one
           # of them an SNV, as GIAB writes the VCF and split with bcftools
           # norm -m-, and how many of them are rows of the table (the rows the
-          # same-position rule of archaic_report.py decides).
+          # same-position rule of og archaic genotypes decides).
           docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
             bcftools norm -m- -Oz -o /g/HG002/split.vcf.gz /g/HG002/vcf/HG002.vcf.gz
           bin/og dev evidence clashes "${G}/HG002/vcf/HG002.vcf.gz" "${G}/HG002/split.vcf.gz" "$DATA" "$OUT/affected.tsv"
@@ -435,7 +435,7 @@ jobs:
   archaic-share:
     needs: [archaic-sites, archaic-hg002]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -457,6 +457,12 @@ jobs:
             mv parts "lone-${c}" && mkdir parts && mv "lone-${c}" "parts/archaic-part-${c}"
           fi
           ls parts
+      - name: Build og (og archaic report)
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
       - name: One report per population, over the autosomes that ran
         env:
           WANT: ${{ needs.archaic-sites.outputs.count }}
@@ -482,7 +488,7 @@ jobs:
             mkdir -p "${d}/ibdmix"
             cp parts/archaic-part-*/"${pop}"/chr*.txt "${d}/ibdmix/"
             { printf 'chrom\tfirst\tlast\tsites\n'; for s in parts/archaic-part-*/"${pop}"/spans.tsv; do tail -n +2 "$s" | cut -f1-4; done; } > "${d}/spans.tsv"
-            python3 bin/archaic_report.py report --sample HG002 --ibdmix-dir "${d}/ibdmix" --spans "${d}/spans.tsv" \
+            rust/target/release/og archaic report --sample HG002 --ibdmix-dir "${d}/ibdmix" --spans "${d}/spans.tsv" \
               --pop "$pop" --out-dir "${d}/out"
             kv() { awk -F'\t' -v k="$1" '$1 == k {print $2}' "${d}/out/HG002_archaic.tsv"; }
             [ "$(kv analysed_chromosomes)" -eq "$WANT" ] || { echo "${pop}: $(kv analysed_chromosomes) chromosomes, want ${WANT}"; exit 1; }
