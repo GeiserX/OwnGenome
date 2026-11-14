@@ -238,8 +238,10 @@ pub fn read_all(c: &Ctx<'_>) -> Vec<Out> {
 /// order, each with its state and data): the repeat readings with the
 /// traits and CPIC states, each Locityper locus's primary call, and the
 /// chrY filter of CNVpytor's count. Each part runs on its own: one that
-/// fails (an error or a panic) is returned as its section's key and why,
-/// and the others still run.
+/// returns an error is returned as its section's key and why, and the
+/// others still run. The parts read with defaults, so a row of an
+/// unexpected shape is no error. A panic is not caught: the release binary
+/// aborts on one (`panic = "abort"`).
 pub fn post(
     c: &Ctx<'_>,
     sections: &mut [(Spec, State, Option<&mut Data>)],
@@ -287,19 +289,12 @@ pub fn post(
 }
 
 /// Runs one part of the post pass: `None` when it went through, else its
-/// section's key and why it failed, for an error and for a panic alike.
+/// section's key and the error it returned.
 pub fn contain(
     key: &'static str,
     part: impl FnOnce() -> Result<(), String>,
 ) -> Option<(&'static str, String)> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(part)) {
-        Ok(Ok(())) => None,
-        Ok(Err(e)) => Some((key, e)),
-        Err(_) => Some((
-            key,
-            format!("internal error: the post pass of {key} stopped"),
-        )),
-    }
+    part().err().map(|e| (key, e))
 }
 
 fn json(d: &Data) -> Option<&Value> {

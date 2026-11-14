@@ -13,9 +13,11 @@
 //! - `recheck`: the last database re-check of the sample;
 //! - `new_since`: what changed since the previous run kept in `history/`.
 //!
-//! Each part that changes a section runs on its own: when it fails, only
-//! its section becomes `unreadable`, with a note naming the file, and the
-//! summary is still written. The Python collector ran this pass outside
+//! Each part that changes a section runs on its own: when it returns an
+//! error, only its section becomes `unreadable`, with a note naming the
+//! file, and the summary is still written. The parts read with defaults, so
+//! a row of an unexpected shape is no error; a panic is not caught, as the
+//! release binary aborts on one. The Python collector ran this pass outside
 //! its per-section error handling, so one failure there lost summary.json
 //! and both reports. A previous run that cannot be read leaves `new_since`
 //! out, as before; the comparison itself has no error to hide.

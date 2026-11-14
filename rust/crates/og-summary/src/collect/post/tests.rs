@@ -203,19 +203,11 @@ fn paraphase_needs_both_hba_genes_called() {
 
 #[test]
 fn a_part_of_the_post_pass_that_fails_stays_in_its_section() {
-    // An error and a panic alike come back as the section's key and why.
+    // An error comes back as the section's key and why.
     assert_eq!(group_c::contain("cnvpytor", || Ok(())), None);
     assert_eq!(
         group_c::contain("expansions", || Err("no table".into())),
         Some(("expansions", "no table".to_owned()))
-    );
-    let panicked = group_c::contain("locityper", || panic!("planted"));
-    assert_eq!(
-        panicked,
-        Some((
-            "locityper",
-            "internal error: the post pass of locityper stopped".to_owned()
-        ))
     );
     // The section is then unreadable, with no data, and names its file.
     let mut s = Section::new(
@@ -231,13 +223,10 @@ fn a_part_of_the_post_pass_that_fails_stays_in_its_section() {
         ))),
         None,
     );
-    s.make_unreadable("internal error: the post pass of locityper stopped");
+    s.make_unreadable("no table");
     let j = s.to_json();
     assert_eq!(word(at(&j, &["state"])), "unreadable");
-    assert_eq!(
-        word(at(&j, &["note"])),
-        "S_locityper.tsv: internal error: the post pass of locityper stopped"
-    );
+    assert_eq!(word(at(&j, &["note"])), "S_locityper.tsv: no table");
     assert_eq!(at(&j, &["source"]), &Value::Null);
     assert_eq!(at(&j, &["data"]), &Value::Object(indexmap::IndexMap::new()));
 }
