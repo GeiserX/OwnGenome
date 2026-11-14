@@ -10,7 +10,7 @@ The pipeline produces output across many directories in different formats (VCF, 
 
 ## Tool
 
-`bin/collect_summary.py` reads every step's output once into `${SAMPLE}/summary.json`, and `bin/render_report.py` renders the report from it. `scripts/generate-report.sh` renders the text report from the same summary, so the two reports cannot disagree about a count. Both are Python standard library only.
+`og summary collect` (`rust/crates/og-summary`, run by `bin/render_report.py`) reads every step's output once into `${SAMPLE}/summary.json`, and `bin/render_report.py` renders the report from it. `scripts/generate-report.sh` renders the text report from the same summary, so the two reports cannot disagree about a count. Both are Python standard library only.
 
 ## Docker Image
 
