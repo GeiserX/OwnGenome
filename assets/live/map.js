@@ -703,16 +703,16 @@
       });
       return gs;
     }
-    // The gene under BP, preferring a protein-coding one, then the shortest: the gene level's title.
+    // The gene under BP: the gene level's title.
     function geneAt(ch, bp) {
       var gs = genes[ch.n];
       if (!gs || gs.state !== 'ready') { return null; }
       var G = gs.g, best = -1;
+      // A protein-coding gene with a name first, then any protein-coding one, then any named one.
+      var rank = function (j) { return (G.o.type[j] === 'protein_coding' ? 0 : 2) + (/^ENSG\d/.test(G.o.name[j]) ? 1 : 0); };
       for (var i = first(G, bp); i < G.n && G.s[i] <= bp; i++) {
         if (G.e[i] <= bp) { continue; }
-        var pc = G.o.type[i] === 'protein_coding';
-        if (best < 0 || pc && G.o.type[best] !== 'protein_coding' ||
-            pc === (G.o.type[best] === 'protein_coding') && G.e[i] - G.s[i] < G.e[best] - G.s[best]) { best = i; }
+        if (best < 0 || rank(i) < rank(best) || rank(i) === rank(best) && G.e[i] - G.s[i] < G.e[best] - G.s[best]) { best = i; }
       }
       return best < 0 ? null : G.o.name[best];
     }
@@ -752,28 +752,25 @@
       var close = close_(lv), RH = 29, fg = {}, labels = 0;
       drawn().forEach(function (r) { if (r.chrom === ch.n && r.gene) { fg[r.gene] = 1; } });
       // Who gets a place first: the genes a finding names, then the protein-coding ones, then the rest,
-      // each group left to right. Three rows; a gene with no room for its name takes its bar's room only.
+      // each group left to right. Three rows, each a strip for the bars and a strip for the names under
+      // them: a gene takes the first row whose bar strip is free, and its name goes under it when the name
+      // strip there is free too. A gene with no free bar strip is drawn over the last row, without a name.
       list.sort(function (a, b) {
         var ra = fg[G.o.name[a]] ? 0 : G.o.type[a] === 'protein_coding' ? 1 : 2, rb = fg[G.o.name[b]] ? 0 : G.o.type[b] === 'protein_coding' ? 1 : 2;
         return ra - rb || G.s[a] - G.s[b];
       });
-      for (var r0 = 0; r0 < 3; r0++) {
+      for (var r0 = 0; r0 < 6; r0++) {
         if (!occ[r0] || occ[r0].length !== CW) { occ[r0] = new Uint8Array(CW); } else { occ[r0].fill(0); }
       }
       list.forEach(function (j) {
         var name = G.o.name[j], bold = !!fg[name], font = (bold ? '600 ' : '') + '11px ' + SANS;
         var xa = Math.max(g - 4, ox(G.s[j])), xz = Math.min(g + W + 4, Math.max(xa + 1, ox(G.e[j])));
-        var w = measure(font, name), lx = clamp(xa, g, g + W - w), row = -1, named = labels < 80;
-        for (var k = 0; k < 3 && row < 0; k++) {
-          if (named && !taken(occ[k], Math.min(xa, lx) - 4, Math.max(xz, lx + w) + 6)) { row = k; }
-        }
-        if (row < 0) {
-          named = false;
-          for (k = 0; k < 3 && row < 0; k++) { if (!taken(occ[k], xa - 1, xz + 1)) { row = k; } }
-        }
-        if (row < 0) { return; }
+        var w = measure(font, name), lx = clamp(xa, g, g + W - w), row = -1;
+        for (var k = 0; k < 3 && row < 0; k++) { if (!taken(occ[k], xa - 1, xz + 1)) { row = k; } }
+        if (row < 0) { row = 2; } else { take(occ[row], xa - 1, xz + 1); }
+        var named = labels < 80 && !taken(occ[row + 3], lx - 4, lx + w + 6);
+        if (named) { take(occ[row + 3], lx - 4, lx + w + 6); }
         genesDrawn++;
-        take(occ[row], named ? Math.min(xa, lx) - 4 : xa - 1, named ? Math.max(xz, lx + w) + 6 : xz + 1);
         var yc = y0 + 9 + row * RH;
         ctx.fillStyle = ctx.strokeStyle = bold ? INK : G.o.type[j] === 'protein_coding' ? INK2 : INK3;
         if (close) {
