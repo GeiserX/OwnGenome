@@ -1,6 +1,9 @@
 //! `og map <verb>`: the genome map (`rust/crates/og-map`).
 //!
 //! `og map build --root DIR --run RUN --assets DIR --cache-dir DIR < facts.json > map.json.gz`
+//! `og map build ... --predicate-table < facts.json > table.tsv`: whether each row of the
+//! document (and each installed gene) draws one by one at each level (`og_map::predicate`),
+//! for the browser check that holds the page's `drawsAt()` to the same answers
 //! `og map genes --root DIR --cache-dir DIR (--chrom CHROM | --names) > genes.json.gz`
 //!
 //! Exit codes: 0 the document is on stdout; 2 usage; 3 no map for this run,
@@ -12,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: og map build --root DIR --run RUN --assets DIR --cache-dir DIR < facts.json > map.json.gz
+const USAGE: &str = "usage: og map build --root DIR --run RUN --assets DIR --cache-dir DIR [--predicate-table] < facts.json > map.json.gz
        og map genes --root DIR --cache-dir DIR (--chrom CHROM | --names) > genes.json.gz
 ";
 
@@ -69,17 +72,23 @@ fn options(
     Ok((values, set))
 }
 
-/// The values of `build`'s four options, in order.
+/// The values of `build`'s four options, in order, and its one flag.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Build {
     root: String,
     run: String,
     assets: String,
     cache_dir: String,
+    /// `--predicate-table`: the predicate's answers instead of the document.
+    predicate_table: bool,
 }
 
 fn parse_build(args: &[String]) -> Result<Build, String> {
-    let (v, _) = options(args, &["--root", "--run", "--assets", "--cache-dir"], &[])?;
+    let (v, set) = options(
+        args,
+        &["--root", "--run", "--assets", "--cache-dir"],
+        &["--predicate-table"],
+    )?;
     let [root, run, assets, cache_dir] = <[Option<String>; 4]>::try_from(v)
         .expect("one value per option")
         .map(Option::unwrap_or_default);
@@ -88,6 +97,7 @@ fn parse_build(args: &[String]) -> Result<Build, String> {
         run,
         assets,
         cache_dir,
+        predicate_table: set[0],
     })
 }
 
@@ -161,6 +171,12 @@ fn build(args: &[String], tree_hash: &str) -> ExitCode {
         made_by: tree_hash,
         stdin: &stdin,
     };
+    if b.predicate_table {
+        return finish(
+            "build",
+            og_map::predicate::build_table(&req).map(String::into_bytes),
+        );
+    }
     finish("build", og_map::build_cached(&req, Path::new(&b.cache_dir)))
 }
 
@@ -223,9 +239,15 @@ mod tests {
                 root: "/g".into(),
                 run: "DEMO-001".into(),
                 assets: "/a".into(),
-                cache_dir: "/c".into()
+                cache_dir: "/c".into(),
+                predicate_table: false,
             }
         );
+        let t = parse_build(&args(
+            "--predicate-table --root /g --run R --assets /a --cache-dir /c",
+        ))
+        .unwrap();
+        assert!(t.predicate_table);
         assert_eq!(
             parse_build(&args("--root /g --run X")).unwrap_err(),
             "the following arguments are required: --assets, --cache-dir"
