@@ -64,7 +64,7 @@ mkdir -p empty
 # so do the inputs of its manifest. A database re-check newer than the
 # run's manifest.
 merge history a/full b/cb-full c/full
-put history/run_manifest.tsv "run\twritten_utc\t2021-03-04 05:06:07 UTC\nimage\tDEEPVARIANT_IMAGE\tgoogle/deepvariant:1.10.0\ndata\tclinvar_file_date\t2021-03-01\n"
+put history/run_manifest.tsv "run\twritten_utc\t2021-03-04 05:06:07 UTC\nimage\tDEEPVARIANT_IMAGE\tv1.10.0\ndata\tclinvar_file_date\t2021-03-01\n"
 put history/history/20200101T000000/summary.json '{"schema_version": 2, "sample": "S", "generated_utc": "2019-12-01 00:00 UTC", "sections": {}}'
 put history/history/20210101T000000/summary.json '{"schema_version": 2, "sample": "S", "generated_utc": "2021-01-01 00:00 UTC",
  "sections": {
@@ -77,7 +77,7 @@ put history/history/20210101T000000/summary.json '{"schema_version": 2, "sample"
   "prs": {"title": "PRS", "state": "ok", "data": {"scores": [{"pgs_id": "PGS000001", "condition": "x", "percentile": 10}]}},
   "mei": {"title": "Mobile element insertions (MEGAnE)", "state": "ok", "data": {}}},
  "cyp2d6": {"consensus": {"result": "*1/*1"}}}\n'
-put history/history/20210101T000000/run_manifest.tsv "run\twritten_utc\t2021-01-01 00:00:00 UTC\nimage\tDEEPVARIANT_IMAGE\tgoogle/deepvariant:1.9.0\ndata\tclinvar_file_date\t2020-12-01\n"
+put history/history/20210101T000000/run_manifest.tsv "run\twritten_utc\t2021-01-01 00:00:00 UTC\nimage\tDEEPVARIANT_IMAGE\tv1.9.0\ndata\tclinvar_file_date\t2020-12-01\n"
 mkdir -p history/history/20220101T000000
 put history/history/20220101T000000/run_manifest.tsv "run\twritten_utc\t2022-01-01 00:00:00 UTC\n"
 put history/recheck/state.json '{"checked_utc": "2021-03-05 00:00:00 UTC", "items": [
