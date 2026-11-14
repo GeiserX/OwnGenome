@@ -54,6 +54,28 @@
   var NOT_ON_MAP = { missing: 1, unreadable: 1, not_run: 1, not_in_this_run: 1, running: 1, waiting: 1, failed: 1, skipped: 1 };
   function landed(lay) { return !!lay && !NOT_ON_MAP[lay.state]; }
 
+  // --- what is drawn one by one: the one rule ---------------------------------------------------------
+  // drawsAt(layer, row, level): whether the map draws this row of this layer as a mark of its own at this
+  // level. The canvas, the whole-genome strip and the In view table all ask it, and nothing else in this file
+  // decides what to draw. og_map::predicate (rust/crates/og-map/src/predicate.rs) holds the same rule, and the
+  // browser check compares the two row by row (og map build --predicate-table). A finding draws at every level;
+  // a run of homozygosity of 5 Mb or more at every level, a shorter one once its chromosome is open (at the
+  // genome level it is part of the 1 Mb coverage bins); a gene from the region level down. The veil is apart:
+  // a closed row is dropped before this rule is asked.
+  var LEVELS = ['genome', 'chromosome', 'region', 'gene', 'reads'];
+  function drawsAt(layer, row, level) {
+    var i = LEVELS.indexOf(level);
+    if (i < 0) { return false; }
+    if (layer === 'findings') { return true; }
+    if (layer === 'roh') { return i > 0 || !!(row && row.long); }
+    if (layer === 'genes') { return i >= 2; }
+    return false;
+  }
+  // A lane with more marks than this in view draws its density instead, and the table gives it one line.
+  var DENSE = 4000;
+  // A mark's key: the same for the canvas, the strip and the table, so a check can hold them to one set.
+  function mark(layer, chrom, s, e, id) { return layer + '\t' + chrom + '\t' + s + '\t' + e + '\t' + (id || ''); }
+
   // --- the document: gzip -> JSON -> typed columns ------------------------------------------------------
   // Starts are gaps from the previous row (ds) and ends are lengths (l): s, e and the running maximum of e
   // are rebuilt here in one pass, so a view [a, b) is a binary search on that maximum.
@@ -95,7 +117,7 @@
       if (!(f.chrom[i] in by)) { return; }
       rows.push({ id: fid, level: f.level[i], gate: f.gate[i], chrom: f.chrom[i], pos: f.pos[i], s: f.s[i], e: f.e[i],
         gene: f.gene[i], title: f.title[i], href: f.href[i], phrase: f.phrase[i], veil: f.veil[i] >= 0 ? veilIds[f.veil[i]] : null,
-        hgvs: (f.hgvs || [])[i] || '', zyg: (f.zyg || [])[i] || '' });
+        hgvs: (f.hgvs || [])[i] || '', zyg: (f.zyg || [])[i] || '', steps: (f.steps || [])[i] || [] });
     });
     var gated = {};
     rows.forEach(function (r) { if (r.gate) { gated[r.id] = r; } });
@@ -150,7 +172,10 @@
     // The marks drawn, as links: the keyboard and screen-reader path to each finding (Tab steps through them).
     var marks = el('ul', { 'class': 'gm-marks', 'aria-label': 'Findings on the map' });
     var fallback = el('div', { 'class': 'gm-fallback', hidden: 'hidden' });
-    add(main, head, stage, marks, fallback);
+    // The whole-genome strip over an open chromosome, and the In view table under the map (strip(), table()).
+    var strip = el('canvas', { 'class': 'gm-strip', role: 'img', hidden: 'hidden' });
+    var inview = el('details', { 'class': 'gm-inview' });
+    add(main, head, strip, stage, inview, marks, fallback);
     var margin = el('aside', { 'class': 'gm-margin' });
     var mkick = el('div', { 'class': 'fig-label' }, 'The whole genome');
     var mline = el('div', { 'class': 'gm-mline mono' });
@@ -175,6 +200,9 @@
     // The results with no place on the map that its chip opened: each gets an "Opened in its section" chip while open.
     var inSection = [];
     var cache = null, cacheKey = '';
+    // What the last frame drew one by one (mark() keys), the genome rows' share kept with their cache: the
+    // browser check holds the In view table to it (canvas.pgpDrawn).
+    var painted = [], cachePainted = [];
     var hatch = null;
     // The finding whose card the margin shows (an id of drawn() only), and the mark the keyboard is on.
     var sel = null, focusId = null;
@@ -358,8 +386,9 @@
       var c = cache.getContext('2d');
       c.setTransform(DPR, 0, 0, DPR, 0, 0);
       c.clearRect(0, 0, CW, CH);
-      var fs = drawn();
+      var fs = drawn().filter(function (r) { return drawsAt('findings', r, 'genome'); });
       var occupied = {};
+      cachePainted = fs.map(function (r) { return mark('findings', r.chrom, r.s, r.e, r.id); });
       M.chroms.forEach(function (ch, i) {
         var yc = rowY(i);
         c.fillStyle = INK3;
@@ -385,8 +414,9 @@
           c.strokeStyle = INK;
           c.lineWidth = 2.5;
           for (var j = 0; j < rr.n; j++) {
-            if (!rr.o.long[j]) { continue; }
+            if (!drawsAt('roh', { long: rr.o.long[j] }, 'genome')) { continue; }
             c.beginPath(); c.moveTo(gx(rr.s[j]), ry); c.lineTo(gx(rr.e[j]), ry); c.stroke();
+            cachePainted.push(mark('roh', ch.n, rr.s[j], rr.e[j], ''));
           }
         }
         occupied[i] = [];
@@ -428,8 +458,11 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       hits = [];
+      painted = [];
       if (cam.k < 0.999) { drawGenome(); }
       if (cam.k > 0.001) { drawOpen(); }
+      canvas.pgpDrawn = painted;
+      drawStrip();
       if (!fig.hasAttribute('data-pgp-map-paint-ms') && t0) {
         fig.setAttribute('data-pgp-map-paint-ms', String(Math.round(performance.now() - t0)));
       }
@@ -447,6 +480,7 @@
           if (x + w < CW - 4) { ctx.textBaseline = 'middle'; label(ctx, words, x, rowY(hover.row), font, BRASS); }
         }
         ctx.drawImage(genomeRows(), 0, 0, CW, CH);
+        painted = painted.concat(cachePainted);
         M.chroms.forEach(function (c, i) {
           hits.push({ kind: 'row', i: i, x0: 0, x1: CW, y0: rowY(i) - rowH() / 2, y1: rowY(i) + rowH() / 2 });
         });
@@ -597,7 +631,8 @@
       var lay = M.layers.findings || {}, g = gut();
       if (!landed(lay)) { laneWords(ctx, layerWords(lay), g + 4, L.fy + 16); return; }
       var fs = drawn().filter(function (r) { return r.chrom === ch.n; });
-      var inView = fs.filter(function (r) { return r.e > v[0] && r.s < v[1]; });
+      var lvl = level();
+      var inView = fs.filter(function (r) { return r.e > v[0] && r.s < v[1] && drawsAt('findings', r, lvl); });
       if (!inView.length) {
         var nr = nearest(), words0 = fs.length ? 'No finding in this stretch.' : noFindingHere();
         laneWords(ctx, words0, g + 4, L.fy + 16);
@@ -636,6 +671,7 @@
         }
         glyph(ctx, r.level, x, y, 6);
         hits.push({ kind: 'finding', r: r, x: x, y: y, rad: 9 });
+        painted.push(mark('findings', r.chrom, r.s, r.e, r.id));
         // The level's words under the name; close in, the change itself (HGVS) in mono when it has one.
         var name = r.gene || r.title, mono = close && r.hgvs, words = mono ? r.hgvs : U.LEVEL_WORDS[r.level] || r.level;
         var wf = mono ? '10.5px ' + MONO : '10.5px ' + SANS;
@@ -653,7 +689,11 @@
       if (!landed(lay)) { laneWords(ctx, layerWords(lay), g + 4, y); return; }
       var r = M.roh[ch.n];
       if (!r || !r.n) { laneWords(ctx, 'No run of homozygosity on this chromosome.', g + 4, y); return; }
+      var lvl = level();
       for (var i = first(r, v[0]); i < r.n && r.s[i] < v[1]; i++) {
+        // A run that ends before the view (a short one after a longer one) is out of view: not drawn.
+        if (r.e[i] <= v[0] || !drawsAt('roh', { long: r.o.long[i] }, lvl)) { continue; }
+        painted.push(mark('roh', ch.n, r.s[i], r.e[i], ''));
         var a = ox(r.s[i]), z = ox(r.e[i]), art = M.art[r.o.art[i]] || '';
         if (r.o.long[i]) {
           ctx.fillStyle = INK2;
@@ -728,7 +768,7 @@
     function openGenes(L, v, ch) {
       var g = gut(), lv = level(), y0 = L.gy, ty = y0 + 12;
       genesDrawn = 0;
-      if (lv === 'genome' || lv === 'chromosome') { laneWords(ctx, 'Zoom in to a region to see its genes.', g + 4, ty); return; }
+      if (!drawsAt('genes', null, lv)) { laneWords(ctx, 'Zoom in to a region to see its genes.', g + 4, ty); return; }
       var gs = genesOf(ch);
       if (gs.state === 'none') { laneWords(ctx, 'Not on the map: gene names need step 08’s GENCODE file.', g + 4, ty); return; }
       if (gs.state === 'loading') { laneWords(ctx, 'Loading the genes…', g + 4, ty); return; }
@@ -737,7 +777,7 @@
       for (var i = first(G, v[0]); i < G.n && G.s[i] < v[1]; i++) { if (G.e[i] > v[0]) { list.push(i); } }
       if (!list.length) { laneWords(ctx, 'No gene in this stretch.', g + 4, ty); return; }
       var W = plotW();
-      if (list.length > 4000) {
+      if (list.length > DENSE) {
         // Too many to draw one by one: how many genes start in each 2 px, and the words to zoom in.
         var bins = new Uint16Array(Math.ceil(W / 2) + 1), top = 1;
         list.forEach(function (j) { var b = Math.floor((ox(Math.max(G.s[j], v[0])) - g) / 2); if (b >= 0 && b < bins.length) { top = Math.max(top, ++bins[b]); } });
@@ -773,6 +813,7 @@
         var named = labels < 80 && !taken(occ[row + 3], lx - 4, lx + w + 6);
         if (named) { take(occ[row + 3], lx - 4, lx + w + 6); }
         genesDrawn++;
+        painted.push(mark('genes', ch.n, G.s[j], G.e[j], name));
         var yc = y0 + 9 + row * RH;
         ctx.fillStyle = ctx.strokeStyle = bold ? INK : G.o.type[j] === 'protein_coding' ? INK2 : INK3;
         if (close) {
@@ -956,7 +997,9 @@
     // --- the margin: settled, not per frame ---
     function settle() {
       window.clearTimeout(settleT);
-      settleT = window.setTimeout(describe, 140);
+      // A gene file that lands while the camera moves asks for a settle too: the last frame of the motion settles
+      // again, so the margin and the table describe the view the camera comes to rest on, not one it passes.
+      settleT = window.setTimeout(function () { if (!moving()) { describe(); } }, 140);
     }
     function describe() {
       if (!M || failure) { return; }
@@ -1058,6 +1101,8 @@
       drawCard();
       drawLayers();
       drawMarks();
+      drawTable();
+      stripWords();
     }
     function bandIndex(ch, bp) {
       var b = M.bands[ch.n];
@@ -1495,6 +1540,7 @@
       var t = e.target, tag = t && t.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) { return; }
       if (e.key === '/') { e.preventDefault(); findBox.focus(); }
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); inview.open = !inview.open; }
       else if (e.key === 'l' || e.key === 'L') {
         e.preventDefault();
         more.open = true;
@@ -1531,6 +1577,354 @@
     window.addEventListener('popstate', function () { readHash(false); });
     if (window.ResizeObserver) { new window.ResizeObserver(function () { if (M) { size(); clampTgt(); schedule(); } }).observe(stage); }
 
+    // --- the whole-genome strip: where the open view sits in the genome ---
+    // Every chromosome end to end on one axis, 5 Mb apart, a tick for each finding drawn (a closed one is never
+    // drawn, so never ticked), and the view as a brass brush at least 3 px wide with the rest dimmed. It shows
+    // while a chromosome is open. On a desktop a click opens a chromosome whole, a drag on the brush pans and a
+    // drag elsewhere brushes a new view on the chromosome where it started, clamped to its ends; on a phone the
+    // strip is a picture only (chromosome 21 is a few pixels wide there).
+    var STRIP_GAP = 5e6, SW = 0, SH = 0, brush = null;
+    function stripGeo() {
+      var x0 = phone ? 64 : 128, x1 = Math.max(x0 + 50, CW - pad()), off = [], at = 0;
+      M.chroms.forEach(function (c, i) { off[i] = at; at += c.len + STRIP_GAP; });
+      return { x0: x0, x1: x1, off: off, per: (x1 - x0) / (at - STRIP_GAP) };
+    }
+    function sx(G, i, bp) { return G.x0 + (G.off[i] + bp) * G.per; }
+    // The chromosome under x on the strip, -1 in a gap.
+    function stripChrom(G, x) {
+      for (var i = 0; i < M.chroms.length; i++) { if (x >= sx(G, i, 0) - 1 && x <= sx(G, i, M.chroms[i].len) + 1) { return i; } }
+      return -1;
+    }
+    // The brush: the view, or the span being brushed.
+    function stripBrush(G) {
+      var ch = chrom(), v = view(), a, z;
+      if (brush && brush.mode === 'brush' && brush.moved) {
+        a = sx(G, brush.ci, Math.min(brush.a, brush.z));
+        z = sx(G, brush.ci, Math.max(brush.a, brush.z));
+      } else {
+        a = sx(G, cam.ci, clamp(v[0], 0, ch.len));
+        z = sx(G, cam.ci, clamp(v[1], 0, ch.len));
+      }
+      if (z - a < 3) { var m = (a + z) / 2; a = m - 1.5; z = m + 1.5; }
+      return [a, z];
+    }
+    function drawStrip() {
+      var on = Math.max(cam.k, tgt.k) >= 0.5;
+      if (strip.hidden === on) { strip.hidden = !on; }
+      if (!on) { strip.pgpDrawn = []; return; }
+      var h = phone ? 12 : 34;
+      if (CW !== SW || h !== SH || strip.width !== Math.round(CW * DPR)) {
+        SW = CW; SH = h;
+        strip.width = Math.round(CW * DPR);
+        strip.height = Math.round(h * DPR);
+        strip.style.setProperty('width', CW + 'px');
+        strip.style.setProperty('height', h + 'px');
+      }
+      var c = strip.getContext('2d'), G = stripGeo(), yc = phone ? 6 : 15, bh = phone ? 5 : 8, th = phone ? 10 : 12;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, strip.width, strip.height);
+      c.setTransform(DPR, 0, 0, DPR, 0, 0);
+      c.globalAlpha = clamp((cam.k - 0.5) * 2, 0, 1);
+      c.fillStyle = INK3;
+      c.font = (phone ? '600 8px ' : '600 10.5px ') + SANS;
+      c.textAlign = 'right';
+      c.textBaseline = 'middle';
+      c.fillText(phone ? 'GENOME' : 'WHOLE GENOME', G.x0 - (phone ? 6 : 12), yc);
+      var nf = '9.5px ' + SANS;
+      M.chroms.forEach(function (ch, i) {
+        var a = sx(G, i, 0), z = sx(G, i, ch.len);
+        c.fillStyle = '#2a2c31';
+        c.beginPath(); rounded(c, a, yc - bh / 2, Math.max(1, z - a), bh, bh / 2); c.fill();
+        var nm = short(ch.n);
+        if (!phone && z - a > measure(nf, nm) + 2) {
+          c.fillStyle = INK3;
+          c.font = nf;
+          c.textAlign = 'center';
+          c.textBaseline = 'top';
+          c.fillText(nm, (a + z) / 2, yc + 10);
+        }
+      });
+      var ticked = [];
+      drawn().forEach(function (r) {
+        if (!drawsAt('findings', r, 'genome')) { return; }
+        var x = sx(G, M.by[r.chrom], (r.s + r.e) / 2);
+        c.fillStyle = LV[r.level] || LV.info;
+        c.fillRect(x - 1, yc - th / 2, 2, th);
+        ticked.push(mark('findings', r.chrom, r.s, r.e, r.id));
+      });
+      var B = stripBrush(G);
+      c.fillStyle = 'rgba(14,15,16,.55)';
+      c.fillRect(0, 0, Math.max(0, B[0]), h);
+      c.fillRect(B[1], 0, Math.max(0, CW - B[1]), h);
+      c.beginPath(); rounded(c, B[0], yc - th / 2 - 2, B[1] - B[0], th + 4, 3);
+      c.fillStyle = 'rgba(200,171,120,.10)';
+      c.fill();
+      c.strokeStyle = BRASS;
+      c.lineWidth = 1.5;
+      c.stroke();
+      if (brush && brush.mode === 'brush' && brush.moved) {
+        // While brushing, the size of the span in brass beside the brush.
+        var words = spanWords(Math.abs(brush.z - brush.a)), font = '600 10.5px ' + MONO, w = measure(font, words);
+        c.textAlign = 'left';
+        c.textBaseline = 'middle';
+        label(c, words, B[1] + 6 + w < CW ? B[1] + 6 : B[0] - 6 - w, yc, font, BRASS);
+      }
+      c.globalAlpha = 1;
+      strip.pgpDrawn = ticked;
+    }
+    function stripX(e) { return e.clientX - strip.getBoundingClientRect().left; }
+    strip.addEventListener('pointerdown', function (e) {
+      if (!M || phone || e.button !== 0 || level() === 'genome') { return; }
+      var G = stripGeo(), x = stripX(e), B = stripBrush(G), inside = x >= B[0] - 3 && x <= B[1] + 3;
+      var i = inside ? cam.ci : stripChrom(G, x);
+      brush = { mode: inside ? 'pan' : 'brush', x: x, c: tgt.c, ci: i, moved: false, a: 0, z: 0 };
+      if (i >= 0) { brush.a = brush.z = clamp((x - sx(G, i, 0)) / G.per, 0, M.chroms[i].len); }
+      if (strip.setPointerCapture) { strip.setPointerCapture(e.pointerId); }
+      e.preventDefault();
+    });
+    strip.addEventListener('pointermove', function (e) {
+      if (!M || phone || level() === 'genome') { return; }
+      var G = stripGeo(), x = stripX(e);
+      if (!brush) {
+        var B = stripBrush(G);
+        strip.style.setProperty('cursor', x >= B[0] - 3 && x <= B[1] + 3 ? 'grab' : stripChrom(G, x) >= 0 ? 'pointer' : 'default');
+        return;
+      }
+      brush.moved = brush.moved || Math.abs(x - brush.x) > 3;
+      if (!brush.moved) { return; }
+      if (brush.mode === 'pan') {
+        tgt.c = brush.c + (x - brush.x) / G.per;
+        clampTgt();
+        cam.c = tgt.c;
+        changed(false);
+      } else if (brush.ci >= 0) {
+        brush.z = clamp((x - sx(G, brush.ci, 0)) / G.per, 0, M.chroms[brush.ci].len);
+        schedule();
+      }
+    });
+    strip.addEventListener('pointerup', function (e) {
+      var b0 = brush;
+      brush = null;
+      if (!M || phone || !b0) { return; }
+      if (!b0.moved) {
+        var i = stripChrom(stripGeo(), stripX(e));
+        if (i >= 0) { openChrom(i, undefined, undefined, true); }
+      } else if (b0.mode === 'pan') {
+        writeHash(false);
+      } else if (b0.ci >= 0) {
+        var a = Math.min(b0.a, b0.z), z = Math.max(b0.a, b0.z);
+        openChrom(b0.ci, (a + z) / 2, Math.max(z - a, MIN_SPAN), true);
+      }
+      schedule();
+    });
+    strip.addEventListener('pointercancel', function () { brush = null; schedule(); });
+    // The strip's words for a screen reader, on settle: where the view is.
+    function stripWords() {
+      var lv = level(), v = view(), ch = chrom();
+      strip.setAttribute('aria-label', lv === 'genome' ? 'The whole genome' : 'Where the view is in the whole genome: chromosome ' +
+        short(ch.n) + ', ' + where(Math.max(0, v[0]), v[2]) + ' to ' + where(Math.min(ch.len, v[1]), v[2]));
+    }
+
+    // --- the In view table: every mark the map draws one by one in view ---
+    // A real table under the map, the screen reader's path and the overflow for the names the canvas has no room
+    // for. Its rows are what drawsAt() draws one by one in view, from what the page shows now (drawn(): a closed
+    // result is never a row); a lane drawn as a density adds one line instead. Sorted by place with the findings
+    // first; a header sorts by its column, again the other way. 12 rows, then Show all (a scrolled window past 200
+    // rows, at most 5,000). It follows the map on settle, and its count is the one thing it announces. A row's
+    // button flies the map to the feature, with a finding's card.
+    var TCOLS = [['kind', 'Kind'], ['what', 'What'], ['where', 'Where'], ['size', 'Size'], ['who', 'Who'], ['copy', 'Copy'],
+      ['source', 'Source']];
+    var T_SHORT = 12, T_FULL = 200, T_MAX = 5000, ROW_PX = 30;
+    var tSort = { col: 'where', dir: 1 }, showAll = false, announced = -1, tRows = [], selKey = null, tSig = '';
+    var inCount = el('span', { 'class': 'gm-inview-n' });
+    var inSum = add(el('summary', {}), el('span', { 'class': 'gm-inview-t' }, 'In view'), ' · ', inCount);
+    var inLive = el('p', { 'class': 'gm-inview-live', 'aria-live': 'polite' });
+    var inWrap = el('div', { 'class': 'gm-inview-wrap' });
+    var inDense = el('div', { 'class': 'gm-inview-dense' });
+    var inFoot = el('div', { 'class': 'gm-inview-foot' });
+    add(inview, inSum, inLive, inWrap, inDense, inFoot);
+    // Open beside a desktop map, folded on a phone (the page is long already). T opens and folds it.
+    inview.open = !(window.matchMedia && window.matchMedia('(max-width: 700px)').matches);
+    var COPY = { het: 'one copy (unphased)', hom: 'both copies', hemi: 'the only copy' };
+    function sizeWords(bp) {
+      if (bp < 1000) { return comma(bp) + ' bp'; }
+      if (bp < 1e6) { return (bp / 1e3).toFixed(bp < 1e4 ? 1 : 0) + ' kb'; }
+      return mb(bp) + ' Mb';
+    }
+    function placeWords(c, s, e, pos) {
+      if (pos) { return c + ':' + comma(pos); }
+      return c + ':' + (e - s === 1 ? comma(e) : comma(s + 1) + '-' + comma(e));
+    }
+    function stepWords(steps) {
+      steps = steps || [];
+      return steps.length ? (steps.length === 1 ? 'Step ' : 'Steps ') + steps.join(', ') : '';
+    }
+    function findingRow(r) {
+      return { key: mark('findings', r.chrom, r.s, r.e, r.id), layer: 'findings', r: r, ci: M.by[r.chrom], s: r.s, e: r.e,
+        rank: PRI[r.level], kind: U.LEVEL_WORDS[r.level] || r.level, what: r.title, where: placeWords(r.chrom, r.s, r.e, r.pos),
+        size: r.e - r.s, who: M.label, copy: COPY[r.zyg] || 'not known', source: stepWords(r.steps) };
+    }
+    function rohRow(ch, R, i, lay) {
+      var art = M.art[R.o.art[i]] || '';
+      return { key: mark('roh', ch.n, R.s[i], R.e[i], ''), layer: 'roh', ci: M.by[ch.n], s: R.s[i], e: R.e[i], rank: 10,
+        kind: 'Run of homozygosity', what: art ? 'Not a real run: ' + art : R.o.long[i] ? 'A long run, 5 Mb or more' : 'A run under 5 Mb',
+        where: placeWords(ch.n, R.s[i], R.e[i]), size: R.e[i] - R.s[i], who: M.label, copy: art ? '' : 'both copies alike',
+        source: lay.step ? 'Step ' + lay.step : '' };
+    }
+    function geneRow(ch, G, j) {
+      var type = G.o.type[j] || '';
+      return { key: mark('genes', ch.n, G.s[j], G.e[j], G.o.name[j]), layer: 'genes', ci: M.by[ch.n], s: G.s[j], e: G.e[j], rank: 20,
+        kind: 'Gene', what: G.o.name[j] + (type && type !== 'protein_coding' ? ' · ' + type.replace(/_/g, ' ') : ''),
+        where: placeWords(ch.n, G.s[j], G.e[j]), size: G.e[j] - G.s[j], who: 'Reference', copy: '',
+        source: M.gencode ? 'GENCODE ' + M.gencode : 'GENCODE' };
+    }
+    // What the map draws one by one in view now, by drawsAt(), and the lines of the lanes drawn as a density.
+    function inViewRows() {
+      var lv = level(), all = lv === 'genome', ch = chrom(), v = view(), rows = [], dense = [];
+      function meets(c, s, e) { return all || (c === ch.n && e > v[0] && s < v[1]); }
+      if (landed(M.layers.findings || {})) {
+        drawn().forEach(function (r) { if (meets(r.chrom, r.s, r.e) && drawsAt('findings', r, lv)) { rows.push(findingRow(r)); } });
+      }
+      var rl = rohLayer(), banded = 0;
+      if (landed(rl)) {
+        (all ? M.chroms : [ch]).forEach(function (c) {
+          var R = M.roh[c.n];
+          for (var i = R && !all ? first(R, v[0]) : 0; R && i < R.n && (all || R.s[i] < v[1]); i++) {
+            if (!meets(c.n, R.s[i], R.e[i])) { continue; }
+            if (drawsAt('roh', { long: R.o.long[i] }, lv)) { rows.push(rohRow(c, R, i, rl)); } else { banded++; }
+          }
+        });
+      }
+      if (banded) {
+        dense.push((banded === 1 ? '1 shorter run' : comma(banded) + ' shorter runs') +
+          ' of homozygosity, drawn as a faint band: open a chromosome to list them.');
+      }
+      var gs = !all && drawsAt('genes', null, lv) ? genes[ch.n] : null;
+      if (gs && gs.state === 'ready') {
+        var G = gs.g, list = [];
+        for (var j = first(G, v[0]); j < G.n && G.s[j] < v[1]; j++) { if (G.e[j] > v[0]) { list.push(j); } }
+        if (list.length > DENSE) { dense.push(comma(list.length) + ' genes in view, drawn as a density: zoom in to list them.'); }
+        else { list.forEach(function (k) { rows.push(geneRow(ch, G, k)); }); }
+      }
+      return { rows: rows, dense: dense };
+    }
+    function sortRows(rows) {
+      var col = tSort.col, d = tSort.dir;
+      function place(a, b) { return a.ci - b.ci || a.s - b.s || a.e - b.e || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0); }
+      var by = col === 'where' ? function (a, b) { return (a.layer === 'findings' ? 0 : 1) - (b.layer === 'findings' ? 0 : 1) || place(a, b); }
+        : col === 'size' ? function (a, b) { return a.size - b.size || place(a, b); }
+          : col === 'kind' ? function (a, b) { return a.rank - b.rank || place(a, b); }
+            : function (a, b) { return String(a[col]).localeCompare(String(b[col])) || place(a, b); };
+      return rows.sort(function (a, b) { return d * by(a, b); });
+    }
+    function selected(x) { return x.layer === 'findings' ? sel === x.r.id : x.key === selKey; }
+    // On settle: the rows, the count (announced only when it changes) and the density lines.
+    function drawTable() {
+      var got = inViewRows(), n = got.rows.length;
+      tRows = sortRows(got.rows);
+      inCount.textContent = n === 1 ? '1 feature' : comma(n) + ' features';
+      if (n !== announced) { announced = n; inLive.textContent = inCount.textContent + ' in view'; }
+      inDense.textContent = '';
+      got.dense.forEach(function (t) { add(inDense, el('p', {}, t)); });
+      renderTable();
+    }
+    function renderTable() {
+      // Under 600 px each row is a block of label: value lines, of no fixed height: no scrolled window there,
+      // and Show all stops at 200 rows.
+      var narrow = !!(window.matchMedia && window.matchMedia('(max-width: 600px)').matches), most = narrow ? T_FULL : T_MAX;
+      var n = tRows.length, cap = Math.min(n, most), virtual = showAll && !narrow && cap > T_FULL;
+      var sig = [tSort.col, tSort.dir, showAll, narrow, sel, selKey].join('|') + '|' + tRows.map(function (x) { return x.key; }).join('\n');
+      if (sig === tSig) { return; }
+      tSig = sig;
+      var had = document.activeElement, fk = had && inWrap.contains(had) ? had.getAttribute('data-col') ||
+        (had.closest('tr') && had.closest('tr').getAttribute('data-key')) : null;
+      inWrap.textContent = '';
+      inFoot.textContent = '';
+      inWrap.classList.toggle('gm-virtual', virtual);
+      if (!n) { add(inWrap, el('p', { 'class': 'dim' }, 'No mark drawn one by one in this view.')); return; }
+      var tb = el('table', { 'class': 'rows gm-table' }), hr = el('tr', {});
+      TCOLS.forEach(function (c) {
+        var th = el('th', { scope: 'col' });
+        if (tSort.col === c[0]) { th.setAttribute('aria-sort', tSort.dir > 0 ? 'ascending' : 'descending'); }
+        var b = el('button', { type: 'button', 'class': 'gm-sort', 'data-col': c[0] }, c[1]);
+        b.addEventListener('click', function () {
+          if (tSort.col === c[0]) { tSort.dir = -tSort.dir; } else { tSort.col = c[0]; tSort.dir = 1; }
+          sortRows(tRows);
+          renderTable();
+        });
+        add(hr, add(th, b));
+      });
+      var body = el('tbody', {});
+      add(tb, add(el('thead', {}), hr), body);
+      add(inWrap, tb);
+      if (virtual) { windowRows(body, cap); } else {
+        for (var i = 0; i < (showAll ? cap : Math.min(n, T_SHORT)); i++) { add(body, rowEl(tRows[i])); }
+      }
+      if (n > T_SHORT) {
+        if (!showAll) {
+          add(inFoot, el('span', {}, 'and ' + comma(n - T_SHORT) + ' more in view' + (tSort.col === 'where' && tSort.dir > 0 ?
+            ' · sorted by where · findings first' : '')));
+        } else if (n > most) {
+          add(inFoot, el('span', {}, comma(most) + ' of ' + comma(n) + ' shown; zoom in'));
+        }
+        add(inFoot, button(showAll ? 'Show fewer' : 'Show all', function () { showAll = !showAll; renderTable(); }, 'gm-showall'));
+      }
+      var back = fk && (inWrap.querySelector('[data-col="' + fk + '"]') || inWrap.querySelector('tr[data-key="' + fk.replace(/["\\]/g, '\\$&') + '"] button'));
+      if (back) { back.focus({ preventScroll: true }); }
+    }
+    function rowEl(x) {
+      var tr = el('tr', { 'data-key': x.key, 'data-layer': x.layer });
+      if (selected(x)) { tr.setAttribute('aria-current', 'true'); }
+      var cells = [x.layer === 'findings' ? U.findingLevel(x.r.level) : x.kind,
+        el('button', { type: 'button', 'class': 'gm-go' }, x.what), x.where, sizeWords(x.size), x.who, x.copy || '—', x.source || '—'];
+      cells.forEach(function (c, j) {
+        var td = el('td', { 'data-label': TCOLS[j][1] });
+        if (j === 2 || j === 3) { td.className = j === 2 ? 'mono gm-nw' : 'gm-nw'; }
+        add(tr, add(td, c));
+      });
+      return tr;
+    }
+    // Past 200 rows: only the rows in the scrolled window are in the table, between two spacers.
+    function windowRows(body, cap) {
+      var top = el('tr', { 'class': 'gm-pad', 'aria-hidden': 'true' }), bot = el('tr', { 'class': 'gm-pad', 'aria-hidden': 'true' });
+      add(top, el('td', { colspan: '7' }));
+      add(bot, el('td', { colspan: '7' }));
+      function fill() {
+        var a = clamp(Math.floor(inWrap.scrollTop / ROW_PX) - 10, 0, cap), z = Math.min(cap, a + Math.ceil(inWrap.clientHeight / ROW_PX) + 20);
+        body.textContent = '';
+        top.firstChild.style.setProperty('height', (a * ROW_PX) + 'px');
+        bot.firstChild.style.setProperty('height', ((cap - z) * ROW_PX) + 'px');
+        add(body, top);
+        for (var i = a; i < z; i++) { add(body, rowEl(tRows[i])); }
+        add(body, bot);
+      }
+      fill();
+      inWrap.onscroll = function () { if (!fill.raf) { fill.raf = window.requestAnimationFrame(function () { fill.raf = 0; fill(); }); } };
+    }
+    // A row flies the map to its feature, a finding with its card: 30% of its length on each side, 20 kb at least.
+    function flyRow(key) {
+      var x = tRows.filter(function (r) { return r.key === key; })[0];
+      if (!x) { return; }
+      var len = x.e - x.s, padBp = Math.max(len * 0.3, 20000);
+      selKey = x.key;
+      openChrom(x.ci, (x.s + x.e) / 2, len + 2 * padBp, true);
+      if (x.layer === 'findings') { pick(x.r.id); } else { pick(null); }
+    }
+    inWrap.addEventListener('click', function (e) {
+      var tr = e.target && e.target.closest ? e.target.closest('tbody tr[data-key]') : null;
+      if (tr) { flyRow(tr.getAttribute('data-key')); }
+    });
+    function clearTable() {
+      tRows = [];
+      tSig = '';
+      announced = -1;
+      inWrap.textContent = '';
+      inDense.textContent = '';
+      inFoot.textContent = '';
+      inLive.textContent = '';
+      inCount.textContent = '';
+    }
+
     // --- loading ---
     function fail(why, words) {
       failure = why;
@@ -1543,6 +1937,9 @@
       fig.setAttribute('data-pgp-map', why);
       stage.hidden = true;
       marks.hidden = true;
+      strip.hidden = true;  // the strip and the table may name a result closed since
+      inview.hidden = true;
+      clearTable();
       fallback.hidden = false;
       fallback.textContent = '';
       add(fallback, el('p', { 'class': 'gm-fail' }, words));
@@ -1592,6 +1989,7 @@
         failure = null;
         stage.hidden = false;
         marks.hidden = false;
+        inview.hidden = false;
         fallback.hidden = true;
         hatch = hatch || pattern(0.16);
         fig.setAttribute('data-pgp-map-parse-ms', String(Math.round(x.parse)));
@@ -1641,5 +2039,5 @@
     };
   }
 
-  window.PGPMap = { create: create, prepare: prepare };
+  window.PGPMap = { create: create, prepare: prepare, drawsAt: drawsAt, LEVELS: LEVELS };
 }());
