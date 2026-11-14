@@ -1172,12 +1172,18 @@
       cacheKey = '';
       schedule();
     }
+    // The card is built again only when what it says changes: each settle draws it, and a rebuild would take the
+    // keyboard off its link.
+    var cardSig = '';
     function drawCard() {
       var r = rowOf(sel);
-      card.textContent = '';
-      if (!r) { sel = null; card.hidden = true; return; }
-      card.hidden = false;
+      if (!r) { sel = null; cardSig = ''; card.textContent = ''; card.hidden = true; return; }
       var where_ = r.chrom + ':' + (r.pos ? comma(r.pos) : comma(r.s + 1) + '-' + comma(r.e));
+      var sig = [r.id, r.level, r.title, r.gene, where_, r.hgvs, r.phrase, r.href].join('\u0001');
+      if (sig === cardSig && !card.hidden) { return; }
+      cardSig = sig;
+      card.textContent = '';
+      card.hidden = false;
       add(card, el('div', { 'class': 'fig-label' }, U.LEVEL_WORDS[r.level] || r.level));
       add(card, el('h3', { 'class': 'gm-card-title' }, r.title));
       var facts = el('p', { 'class': 'gm-card-facts mono' }, (r.gene ? r.gene + ' · ' : '') + where_ + (r.hgvs ? ' · ' + r.hgvs : ''));
@@ -1237,8 +1243,10 @@
     function findAll(q) {
       var out = [], Q = q.toUpperCase(), bare = Q.replace(/^CHR/, '');
       if (!q) { return out; }
-      var p = /^chr/i.test(q) && /[:]/.test(q) ? parsePlace(q.replace(/\s+/g, '')) : null;
-      if (p && p.k) { out.push({ kind: 'place', words: 'Go to ' + q, p: p }); }
+      // A place as the address writes it: genome, chr7, chr7:117.4-137.4M (with or without the #).
+      var pq = q.replace(/\s+/g, '').replace(/^#/, '');
+      var p = /^(genome|chr[0-9XYMT]+(:.*)?)$/i.test(pq) ? parsePlace(pq) : null;
+      if (p && typeof p.k === 'number') { out.push({ kind: 'place', words: 'Go to ' + pq, p: p }); }
       var fs = drawn();
       fs.filter(function (r) {
         return (r.gene && r.gene.toUpperCase().indexOf(Q) === 0) || r.id.toUpperCase().indexOf(Q) === 0 ||
@@ -1300,6 +1308,7 @@
       if (!x || !M) { return; }
       closeFind();
       if (x.kind === 'finding') { goTo(x.r); }
+      else if (x.kind === 'place' && x.p.k === 0) { closeChrom(true); }
       else if (x.kind === 'place') { openChrom(x.p.ci, x.p.s === undefined ? undefined : (x.p.s + x.p.e) / 2, x.p.s === undefined ? undefined : x.p.e - x.p.s, true); }
       else { openChrom(M.by[x.c], (x.s + x.e) / 2, Math.max((x.e - x.s) * (x.kind === 'gene' ? 1.3 : 1.1), 60000), true); }
       canvas.focus({ preventScroll: true });
@@ -2002,6 +2011,7 @@
           tgt.ls = cam.ls = Math.log(M.chroms[0].len);
         }
         cacheKey = '';
+        tSig = '';  // a new document may change a row's words under the same key: the table is built again
         drawKey();
         drawPaint();
         drawChips();

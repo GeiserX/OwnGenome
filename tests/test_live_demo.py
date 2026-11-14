@@ -3559,6 +3559,77 @@ def window_problems(b, base):
     return bad
 
 
+def place_find_problems(b, base):
+    """The search box takes a place as the address writes it: chr7 opens the chromosome, #chr11:4.5-6.5M flies to
+    the region, genome steps back out to the whole genome."""
+    bad = []
+    for link, q, chrom, lv in (("", "chr7", "chr7", "chromosome"), ("#chr7", "#chr11:4.5-6.5M", "chr11", "region"),
+                               ("#chr7", "genome", "", "genome")):
+        map_page(b, base, S, link)
+        found = map_find(b, q)
+        if not found or found[0]["kind"] != "place":
+            bad.append(f"{q}: lines {found}")
+            continue
+        b.eval("document.getElementById('gm-find').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); true")
+        for _ in range(5):  # a busy machine eases the camera slower, and the margin follows the settled camera
+            c = map_now(b)
+            if c["level"] == lv and (not chrom or c["chrom"] == chrom):
+                break
+        if c["level"] != lv or (chrom and c["chrom"] != chrom):
+            bad.append(f"{q}: Enter flies to {c['chrom']} at {c['level']}, want {chrom or 'the genome'} at {lv}")
+    return bad
+
+
+def card_focus_problems(b, base):
+    """Tab from a finding's mark to its card's link: the view settles again and the keyboard stays on the link."""
+    map_page(b, base, S, "#chr11")
+    if not b.eval("(function () { var a = document.querySelector('#genome-map .gm-marks a[data-id]'); "
+                  "if (!a) { return false; } a.focus(); return true; }())"):
+        return ["no finding's mark on chr11: the check tests nothing"]
+    time.sleep(0.6)  # the focus picks the finding; its card is drawn and the view settles
+    if not b.eval("(function () { var l = document.querySelector('#genome-map .gm-card:not([hidden]) a'); "
+                  "if (!l) { return false; } l.focus(); return document.activeElement === l; }())"):
+        return ["the finding's card has no link to focus: the check tests nothing"]
+    time.sleep(1.0)  # the mark's blur asks for a frame; the margin settles 140 ms after it
+    if not b.eval("!!(document.activeElement && document.activeElement.closest && "
+                  "document.activeElement.closest('#genome-map .gm-card'))"):
+        return ["the keyboard left the card's link once the view settled: "
+                + str(b.eval("document.activeElement ? document.activeElement.tagName : ''"))]
+    return []
+
+
+ROWS_JS = r"""JSON.stringify(Array.prototype.map.call(
+  document.querySelectorAll('#gm-second .gm-inview tbody tr[data-layer=findings] .gm-go'),
+  function (x) { return x.textContent; }))"""
+
+
+def reload_table_problems(b, base, out):
+    """A reload whose document gives a finding new words under the same place and id: the In view table shows the
+    new words, not the ones it had."""
+    path = os.path.join(out, "runs", S, "map.json")
+    other = os.path.join(out, "runs", S, "map-reload.json")
+    try:
+        map_page(b, base, S)
+        b.eval(SECOND_JS)
+        if not b.wait("document.getElementById('gm-second').dataset.pgpMap === 'drawn'"):
+            return ["the second figure never drew"]
+        time.sleep(0.6)
+        before = json.loads(b.eval(ROWS_JS))
+        doc = read_map(path)
+        titles = doc["per"][S]["findings"]["title"]
+        if not before or titles.count(before[0]) != 1:
+            return [f"no finding row to rename: the check tests nothing ({before})"]
+        titles[titles.index(before[0])] = "Planted new words for this finding"
+        write_map(other, doc)
+        b.eval("pgpSecond.o.url = 'map-reload.json'; pgpSecond.g.refresh('k2'); true")
+        if b.wait("%s.indexOf('Planted new words for this finding') >= 0" % ROWS_JS.replace("JSON.stringify", ""), 5):
+            return []
+        return [f"after the reload the table still reads {json.loads(b.eval(ROWS_JS))[:3]}"]
+    finally:
+        if os.path.exists(other):
+            os.remove(other)
+
+
 def inview_checks(b, base, out, og):
     """The whole-genome strip, the In view table and drawsAt(), each check with its planted mistake."""
     mjs = os.path.join(out, "assets", "map.js")
@@ -3637,6 +3708,22 @@ def inview_checks(b, base, out, og):
             lambda: strip_problems(b, base, out, phone_only=True),
             more=[("if (!M || phone || e.button !== 0 || level() === 'genome') { return; }",
                    "if (!M || e.button !== 0 || level() === 'genome') { return; }")])
+    bad = place_find_problems(b, base)
+    check("map: the search box takes a place as the address writes it (chr7, #chr11:4.5-6.5M, genome) and Enter "
+          "flies there", not bad, bad)
+    planted("map.js whose search takes a place only with a colon",
+            "var p = /^(genome|chr[0-9XYMT]+(:.*)?)$/i.test(pq) ? parsePlace(pq) : null;",
+            "var p = /^chr/i.test(pq) && /[:]/.test(pq) ? parsePlace(pq) : null;", lambda: place_find_problems(b, base))
+    bad = card_focus_problems(b, base)
+    check("map: the keyboard stays on the card's link when the view settles again", not bad, bad)
+    planted("map.js whose card is built again on every settle",
+            "if (sig === cardSig && !card.hidden) { return; }", "", lambda: card_focus_problems(b, base))
+    bad = reload_table_problems(b, base, out)
+    check("map: a reloaded document with new words for a finding under the same key shows them in the In view table",
+          not bad, bad)
+    planted("map.js whose table keeps its rows across a reload",
+            "        tSig = '';  // a new document may", "        void 0;  // a new document may",
+            lambda: reload_table_problems(b, base, out))
 
 
 def map_screens(b, base, dest):
