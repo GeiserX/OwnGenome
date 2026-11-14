@@ -216,12 +216,7 @@ CHECKED=0
 while IFS='=' read -r var val; do
   img=$(sed -E 's/^"([^"]*)".*/\1/' <<< "$val")
   CHECKED=$((CHECKED + 1))
-  user=$(docker buildx imagetools inspect "$img" --format '{{json .Image}}' 2>/dev/null | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-if "config" not in d:
-    d = d.get("linux/amd64") or next(iter(d.values()))
-print((d.get("config") or {}).get("User") or "")' 2>/dev/null || echo "?")
+  user=$(docker buildx imagetools inspect "$img" --format '{{json .Image}}' 2>/dev/null | jq -r 'if has("config") then . else (."linux/amd64" // (to_entries[0].value)) end | .config.User // ""' 2>/dev/null || echo "?")
   case "$user" in
     ""|root|0|0:0) ;;
     *)

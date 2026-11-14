@@ -72,5 +72,15 @@ ancient-lift	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py
 ancient-person-geno	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" person-geno "$@"'	ancient person-geno
 ancient-align	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" align "$@"'	ancient align
 ancient-report	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" report "$@"'	ancient report
+dev-pharmcat	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/parity-diff.sh	sh -c 'exec bash ./oracle.sh diplotypes "$0" "$@"'	dev pharmcat diplotypes
+dev-pharmcat-called	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh called "$0" "$@"'	dev pharmcat diplotypes
+dev-pharmcat-lines	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:tests/e2e/lib.sh	sh -c 'exec bash ./oracle.sh called-lines "$0" "$@"'	dev pharmcat diplotypes
+dev-smoke-csv	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh csv-cell "$0" "$@"'	dev smoke csv-cell
+dev-nf-requests	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:.github/workflows/nextflow.yml	sh -c 'exec bash ./oracle.sh requests "$0" "$@"'	dev nf-trace requests
+dev-nf-attempts	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:.github/workflows/nextflow.yml	sh -c 'exec bash ./oracle.sh attempts "$0" "$@"'	dev nf-trace attempts
+dev-smoke-mini	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh mini-ref "$0" "$@"'	dev smoke mini-ref
+dev-smoke-long	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh long-reads "$0" "$@"'	dev smoke long-reads
+dev-smoke-catalog	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh eh-catalog "$0" "$@"'	dev smoke eh-catalog
+dev-smoke-check	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:tests/smoke/commands.tsv	sh -c 'exec bash ./oracle.sh check "$0" "$@"'	dev smoke check
 traits	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:bin/traits_report.py	bash ./oracle.sh	traits
 roh-summary	7c1470bc50933f48a1a0dde3c0e0b2b87bc48718	file:scripts/11-roh-analysis.sh	sh ./oracle.sh	roh summary
