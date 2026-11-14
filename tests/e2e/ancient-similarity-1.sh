@@ -46,7 +46,7 @@ for e in ANNO:anno IND:ind SNP:snp; do
   curl -fsSL --retry 3 -o "${REAL}/aadr.${e#*:}" "https://dataverse.harvard.edu/api/access/datafile/${!id_var}"
   check_eq "AADR ${AADR_VERSION} .${e#*:}: the md5 versions.env pins" "$(md5sum "${REAL}/aadr.${e#*:}" | cut -d' ' -f1)" "${!md5_var}"
 done
-python3 "${REPO}/bin/ancient_report.py" select --anno "${REAL}/aadr.anno" --ind "${REAL}/aadr.ind" \
+"${REPO}/bin/og" ancient select --anno "${REAL}/aadr.anno" --ind "${REAL}/aadr.ind" \
   --out-ind "${REAL}/panel.ind" --poplist "${REAL}/poplist.txt" --ancients "${REAL}/ancients.tsv" | tee "${CASE_TMP}/select.log"
 check_ge "real AADR: present-day reference people" "$(awk '$3 != "Ignore" && $3 != "Ancient"' "${REAL}/panel.ind" | wc -l | tr -d ' ')" 800
 check_ge "real AADR: present-day groups" "$(wc -l < "${REAL}/poplist.txt" | tr -d ' ')" 35

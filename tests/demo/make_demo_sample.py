@@ -1198,42 +1198,53 @@ def archaic(d, rng):
 
 
 def ancient(d, rng):
-    """Step 44: bin/ancient_report.py's nearest-group table, info table and
-    PC plot (its own svg_plot), made-up distances and PCs over a few
-    AADR-style group labels."""
-    import ancient_report
-    groups = [("England_BellBeaker", "2450-2000 BCE", "United Kingdom", "Amesbury Down"),
-              ("Germany_CordedWare", "2900-2350 BCE", "Germany", "Esperstedt"),
-              ("Spain_BellBeaker", "2500-2000 BCE", "Spain", "Camino de las Yeseras"),
-              ("Czechia_EBA_Unetice", "2200-1700 BCE", "Czech Republic", "Moravia"),
-              ("Hungary_LBA", "1500-1100 BCE", "Hungary", "Tiszafüred"),
-              ("Italy_Imperial_Rome", "1-300 CE", "Italy", "Rome"),
-              ("Sweden_Viking", "800-1050 CE", "Sweden", "Sigtuna"),
-              ("France_Neolithic", "4500-3000 BCE", "France", "Gurgy"),
-              ("Turkey_Neolithic", "6500-6000 BCE", "Turkey", "Barcın"),
-              ("Russia_Yamnaya_Samara", "3300-2700 BCE", "Russia", "Samara")]
+    """Step 44: what og ancient report writes (the nearest-group table, the
+    info table, the text and the PC plot) for a made-up panel: present-day
+    people around the origin, ancient people of a few AADR-style group labels
+    each around its own point, and the person among them."""
+    groups = [("England_BellBeaker", 4200, "United Kingdom", "Amesbury Down"),
+              ("Germany_CordedWare", 4600, "Germany", "Esperstedt"),
+              ("Spain_BellBeaker", 4200, "Spain", "Camino de las Yeseras"),
+              ("Czechia_EBA_Unetice", 3900, "Czech Republic", "Moravia"),
+              ("Hungary_LBA", 3250, "Hungary", "Tiszafüred"),
+              ("Italy_Imperial_Rome", 1800, "Italy", "Rome"),
+              ("Sweden_Viking", 1030, "Sweden", "Sigtuna"),
+              ("France_Neolithic", 5700, "France", "Gurgy"),
+              ("Turkey_Neolithic", 8200, "Turkey", "Barcın"),
+              ("Russia_Yamnaya_Samara", 4950, "Russia", "Samara")]
     person = (0.01234, -0.00456)
-    dist, nearest = 0.0, []
-    lines = ["rank\tgroup\tn\tdistance\tpc1\tpc2\tdate_bp\tdates\tcountry\tlocality\n"]
-    for i, (g, dates, country, loc) in enumerate(groups, 1):
-        dist += rng.uniform(0.002, 0.012)
-        pc1, pc2 = person[0] + rng.uniform(-dist, dist), person[1] + rng.uniform(-dist, dist)
-        nearest.append({"group": g, "pc1": pc1, "pc2": pc2})
-        lines.append(f"{i}\t{g}\t{rng.randint(3, 40)}\t{dist:.5f}\t{pc1:.5f}\t"
-                     f"{pc2:.5f}\t{rng.randint(1000, 8500)}\t{dates}\t{country}\t{loc}\n")
-    put(os.path.join(d, "ancient", f"{SAMPLE}_ancient.tsv"), "".join(lines))
-    panel = {f"m{i}": ("present", (rng.gauss(0.0, 0.03), rng.gauss(0.0, 0.025))) for i in range(300)}
-    ancients = {}
-    for i in range(200):
-        panel[f"a{i}"] = (ancient_report.ANCIENT_LABEL, (rng.gauss(0.005, 0.035), rng.gauss(0.0, 0.03)))
-        ancients[f"a{i}"] = {"date_bp": str(rng.randint(500, 9000))}
-    put(os.path.join(d, "ancient", f"{SAMPLE}_ancient_pca.svg"),
-        ancient_report.svg_plot(person, panel, ancients, SAMPLE, nearest))
-    info = [("release", "v62.0"), ("sites_used", rng.randint(520_000, 560_000)), ("panel_sites", 597_573),
-            ("present_day_people", 819), ("ancient_people", 4_210), ("ancient_groups", 612),
-            ("pcs_in_distance", 4), ("pc1", f"{person[0]:.5f}"), ("pc2", f"{person[1]:.5f}")]
-    put(os.path.join(d, "ancient", f"{SAMPLE}_ancient_info.tsv"),
-        "key\tvalue\n" + "".join(f"{k}\t{v}\n" for k, v in info))
+    evals = "#eigvals: 9.000 4.000 2.000 1.000\n"
+    moderns = [f"m{i} " + " ".join(f"{rng.gauss(0.0, sd):.6f}" for sd in (0.03, 0.025, 0.02, 0.015))
+               + f" {('French', 'Sardinian', 'Basque')[i % 3]}\n" for i in range(300)]
+    ancients, anc_rows = [], ["id\tgroup\tdate_bp\tdate_sd\tfull_date\tlocality\tcountry\tlat\tlon\tsnps\n"]
+    for i, (g, bp, country, loc) in enumerate(groups):
+        spread = 0.004 + 0.006 * i
+        cx, cy = person[0] + rng.uniform(-spread, spread), person[1] + rng.uniform(-spread, spread)
+        for j in range(rng.randint(3, 12)):
+            aid = f"a{i}_{j}"
+            ancients.append(f"{aid} {cx + rng.gauss(0, 0.004):.6f} {cy + rng.gauss(0, 0.004):.6f} 0.000000 0.000000 Ancient\n")
+            date = bp + rng.randint(-150, 150)
+            anc_rows.append(f"{aid}\t{g}\t{date}\t50\t.\t{loc}\t{country}\t50\t10\t500000\n")
+    with tempfile.TemporaryDirectory() as work:
+        paths = {n: os.path.join(work, n) for n in ("panel.evec", "run.evec", "ancients.tsv", "stats.tsv")}
+        put(paths["panel.evec"], evals + "".join(moderns + ancients))
+        put(paths["run.evec"], evals + "".join(moderns)
+            + f"{SAMPLE} {person[0]:.6f} {person[1]:.6f} 0.000000 0.000000 Person\n")
+        put(paths["ancients.tsv"], "".join(anc_rows))
+        put(paths["stats.tsv"], f"panel_sites\t597573\nsites_genotyped\t560000\nother_allele\t120\n"
+            f"sites_used\t{rng.randint(520_000, 560_000)}\n")
+        out = os.path.join(d, "ancient")
+        os.makedirs(out, exist_ok=True)
+        r = subprocess.run([og_binary(), "ancient", "report", "--panel-evec", paths["panel.evec"],
+                            "--run-evec", paths["run.evec"], "--ancients", paths["ancients.tsv"],
+                            "--sample", SAMPLE, "--release", "v62.0", "--stats", paths["stats.tsv"],
+                            "--out-tsv", os.path.join(out, f"{SAMPLE}_ancient.tsv"),
+                            "--out-info", os.path.join(out, f"{SAMPLE}_ancient_info.tsv"),
+                            "--out-txt", os.path.join(out, f"{SAMPLE}_ancient.txt"),
+                            "--out-svg", os.path.join(out, f"{SAMPLE}_ancient_pca.svg")],
+                           stdout=subprocess.DEVNULL)
+        if r.returncode:
+            sys.exit("ERROR: og ancient report failed on the made-up panel")
 
 
 def exomiser(d):
