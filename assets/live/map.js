@@ -1481,7 +1481,7 @@
       else { done = false; }
       if (done) { e.preventDefault(); }
     });
-    // Esc, once no card is open: gene or reads to the region, region to the chromosome, chromosome to the genome.
+    // Esc, once no card is open: reads to the gene, gene to the region, region to the chromosome, chromosome to the genome.
     function stepOut() {
       var lv = level();
       if (lv === 'chromosome') { closeChrom(true); }

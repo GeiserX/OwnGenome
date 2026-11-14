@@ -4,7 +4,7 @@ The genome map is Figure 1 of each person's page on the live site (`docs/live-si
 
 ## What the map shows
 
-The map has five levels. One rule picks the level from how many bases one screen pixel covers, so the level does not change with the window size.
+The map has five levels. The level follows how many bases one screen pixel covers, so each level shows the same detail at any window size; the reads level is any view under 50 kb.
 
 | Level | When | What it draws |
 |---|---|---|
@@ -25,7 +25,7 @@ The exon blocks are the union of the exons of every basic GENCODE transcript of 
 - The path under the title (`Genome › chr16 › 16p13.3 › 2.050-2.300M`) shows where the map is; each step up is a button.
 - Click a gene to zoom to it. Click a finding to open its card in the margin: its level, title, gene, position, change and the map's sentence about it, with a link to the finding's own page.
 - When an open chromosome has no finding in view, a "Nearest" button names the closest finding on that chromosome, or the first one on the next chromosome that has one, and flies there.
-- The address follows the map: `#genome`, `#chr7`, `#chr7:117.4-137.4M`, `#chr7:117.480-117.669M` or `#chr7:117480026-117668665` (1-based, both ends included). A link to one of them opens that view, and Back returns to the view before.
+- The address follows the map: `#genome`, `#chr7`, `#chr7:117.4-137.4M`, `#chr7:117.480-117.669M` or `#chr7:117559001-117599000` (1-based, both ends included). A link to one of them opens that view, and Back returns to the view before.
 
 ### Keys
 
@@ -33,10 +33,10 @@ The exon blocks are the union of the exons of every basic GENCODE transcript of 
 |---|---|
 | `/` | puts the cursor in the search box |
 | ← → | move a tenth of the view; with Shift, a whole view |
-| + − | zoom in or out twice, at the centre |
+| + − | zoom in or out 2×, at the centre |
 | `[` `]` | the chromosome before or after |
 | `0` | the whole genome |
-| Esc | closes the card, then steps out one level: gene to region, region to the whole chromosome, chromosome to the genome |
+| Esc | closes the card, then steps out one level: reads to gene, gene to region, region to the whole chromosome, chromosome to the genome |
 | Tab | steps through the findings in view, each with a ring on the map and its card, then leaves the map |
 | `L` | opens the layers and moves to them |
 
