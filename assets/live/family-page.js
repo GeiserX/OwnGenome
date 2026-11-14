@@ -6,12 +6,10 @@
 // phone), each child's stretches painted by parent, the de novo and compound-het candidates, and the
 // members side by side. It draws what the steps wrote and computes nothing about genetics. Text through textContent,
 // the drawing through createElementNS; images from this server only.
-// A child's results to act on stay closed here as on the child's own page (person.js): each child's results.json
-// is read by the shared gate, which passes no report data of a child with an unopened act to this view.
+// A child's report stays closed here as on the child's own page: the shared gate (core.js) reads each child's
+// results.json and gives this view the family without that child's report data while a result to act on is unopened.
 (function () {
   'use strict';
-  window.PGPUI.ready.then(function () {
-  if (window.PGPUI.gateOwnsPage()) { return; }
   var U = window.PGPUI;
   if (!U) { return; }
   var el = U.el, add = U.add, root = document.documentElement;
@@ -137,7 +135,7 @@
       if (m.father || m.mother) { rel.push('child of ' + [m.father, m.mother].filter(Boolean).join(' and ')); }
       if (m.partner) { rel.push('partner of ' + m.partner); }
       if (rel.length) { add(txt, el('span', { 'class': 'person-place' }, rel.join('; '))); }
-      var state = r && r.gated ? U.closedText : !m.sequenced ? 'Not sequenced' : !r ? 'No run on this server'
+      var state = !m.sequenced ? 'Not sequenced' : !r ? 'No run on this server'
         : r.state === 'finished' ? 'Finished' : (r.state === 'stopped' ? 'Stopped, ' : '') + r.done + ' of ' + r.planned + ' steps';
       add(txt, el('span', { 'class': 'person-state' }, state));
       if (r && r.results) {
@@ -370,8 +368,6 @@
       if (rows && rows.length) {
         add(d, painting(f, c.child, rows));
       } else if (c.segments) {
-        // The drawing as an image is coloured by grandparent too, and cannot close one stretch: it stays closed
-        // whole, as the painting does.
         add(d, el('img', { src: c.segments, alt: 'Chromosome map of ' + c.child, 'class': 'segments' }));
       } else {
         add(d, el('p', { 'class': 'dim' }, 'No chromosome map yet: step 38 draws one for a child with a sequenced parent.'));
@@ -381,10 +377,9 @@
       if (dn.length) {
         add(d, el('p', { 'class': 'dim' }, 'In the child and in neither parent. Most candidates in a genome are genotype errors: ' +
           'check the reads before reading anything into one.'));
-        // Every row closes while a result is: a row closed on its own would say where the result lies.
-          add(d, U.table({ columns: ['Variant', 'Child', 'Father', 'Mother', 'Child DP / GQ', 'Allele balance', 'Quality'],
-            rows: dn.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
-              r.mother_gt, r.child_dp + ' / ' + r.child_gq, r.child_ab, r.quality]; }) }, 8));
+        add(d, U.table({ columns: ['Variant', 'Child', 'Father', 'Mother', 'Child DP / GQ', 'Allele balance', 'Quality'],
+          rows: dn.map(function (r) { return [r.chrom + ':' + r.pos + ' ' + r.ref + '>' + r.alt, r.child_gt, r.father_gt,
+            r.mother_gt, r.child_dp + ' / ' + r.child_gq, r.child_ab, r.quality]; }) }, 8));
       } else {
         add(d, el('p', { 'class': 'dim', 'data-trio': 'de_novo' }, empty(c.child, 'de_novo', 'de_novo.tsv')));
       }
@@ -392,8 +387,8 @@
       add(d, el('h3', {}, 'Compound-het pairs'));
       if (ch.length) {
         add(d, el('p', { 'class': 'dim' }, 'Two candidate variants in one gene, in trans first: one from each parent.'));
-          add(d, U.table({ columns: ['Gene', 'Phase', 'Variant A', 'From', 'Variant B', 'From'],
-            rows: ch.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
+        add(d, U.table({ columns: ['Gene', 'Phase', 'Variant A', 'From', 'Variant B', 'From'],
+          rows: ch.map(function (r) { return [r.gene, r.phase, r.variant_a, r.a_from, r.variant_b, r.b_from]; }) }, 8));
       } else {
         add(d, el('p', { 'class': 'dim', 'data-trio': 'compound_het' }, empty(c.child, 'compound_het', 'compound_het.tsv')));
       }
@@ -444,7 +439,6 @@
   }
 
   function draw(f) {
-
     var main = document.getElementById('family');
     // A redraw (a result opened, a child's results answered) keeps each child's fold as the reader left it.
     var folds = {};
@@ -490,7 +484,6 @@
     root.setAttribute('data-pgp-status', 'ready');
   }
 
-
   // The page asks again every 30 s and redraws only when family.json changed (a member's run moved on,
   // step 39 finished). A failed first request says so, with a retry; a later one keeps what is shown.
   var drawnKey = null;
@@ -516,5 +509,4 @@
     window.setInterval(function () { if (!document.hidden) { fetchFamily(); } }, 30000);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
-  });
 }());

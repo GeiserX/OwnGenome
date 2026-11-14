@@ -6,8 +6,6 @@
 // member of a family keeps one colour on this page. The plain list of runs is what shows without scripts.
 (function () {
   'use strict';
-  window.PGPUI.ready.then(function () {
-  if (window.PGPUI.gateOwnsPage()) { return; }
   var U = window.PGPUI;
   if (!U) { return; }
   var el = U.el, add = U.add;
@@ -45,8 +43,9 @@
     if (!row.childNodes.length) { add(row, el('span', { 'class': 'dim' }, 'No finding in what was assessed; read the caveats')); }
     return row;
   }
-  // The loader has already replaced each gated child's summary.
-  function homeTop(r) { return r.top || []; }
+  // The runs whose results to act on stay closed on this page: a child in any family, and, while a family's
+  // members cannot be read, every run that no readable family lists (it may be that family's child).
+  var closedRuns = {};
   function tile(m, fam, r, colour) {
     var div = el('div', { 'class': 'ptile person-card' + (r ? ' has-run' : ' norun') + (r && r.state === 'running' ? ' running' : ''),
       'data-sample': m.sample });
@@ -55,12 +54,11 @@
     var h = el('h3', {});
     add(h, r ? el('a', { href: r.url, 'class': 'person-link' }, m.sample) : el('span', {}, m.sample));
     add(div, h);
-    if (r && r.gated) { add(div, el('p', { 'class': 'lead' }, U.closedText)); return div; }
     var meta = el('div', { 'class': 'meta' });
     add(meta, (fam ? role(m, fam) + ' · ' : '') + progressText(r));
     if (r && r.failed) { add(meta, ' · ', el('span', { 'class': 'warn' }, r.failed + ' step' + (r.failed > 1 ? 's' : '') + ' not assessed')); }
     add(div, meta);
-    var lead = r && (r.lead);
+    var lead = r && (closedRuns[m.sample] ? r.lead_closed || '' : r.lead);
     if (lead) {
       // Two sentences: the first often says only that nothing needs a doctor, the second names what differs.
       var one = U.firstSentence(lead), rest = lead.slice(one.length).trim();
@@ -139,8 +137,17 @@
     // nothing needs a doctor.
     var screened = runs.filter(function (r) { return r.levels && r.screened; }).length;
     // A child of a family: results to act on stay closed on this page too (the report opens them).
-    function homeShut(r) { return !!r.gated; }
-    function closedTitle(r, f) { return r.gated ? U.closedText : f.title; }
+    closedRuns = {};
+    var listed = {};
+    var rolesUnknown = fams.some(function (f) { return !f.members.length; });
+    fams.forEach(function (f) {
+      f.members.forEach(function (m) {
+        listed[m.sample] = true;
+        if (f.members.some(function (x) { return x.sample === m.father || x.sample === m.mother; })) { closedRuns[m.sample] = true; }
+      });
+    });
+    if (rolesUnknown) { runs.forEach(function (r) { if (!listed[r.name]) { closedRuns[r.name] = true; } }); }
+    function closedTitle(r, f) { return closedRuns[r.name] && f.level === 'act' ? 'A result to act on, closed until opened on the report' : f.title; }
     // The dateline and the headline sentence.
     var dl = el('div', { 'class': 'dateline' });
     var today = new Date();
@@ -175,7 +182,7 @@
     // One line per person and level: the first finding names the line, the rest are counted on it.
     runs.forEach(function (r) {
       var seen = {};
-      homeTop(r).forEach(function (f) {
+      (r.top || []).forEach(function (f) {
         if (order[f.level] === undefined) { return; }
         if (seen[f.level]) { return; }
         // The rest of the level from its count, not from the first four findings the index names.
@@ -185,8 +192,8 @@
     });
     items.sort(function (a, b) { return order[a.f.level] - order[b.f.level]; });
     items.slice(0, 6).forEach(function (x) {
-      // A child's closed result links to the run's page, never to its own page: its id names its gene and variant.
-      var a = el('a', { href: x.r.url + (homeShut(x.r, x.f) ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/') });
+      // A child whose report the gate keeps closed (core.js) links to the run's page, never to a finding's own page.
+      var a = el('a', { href: x.r.url + (x.r.gated ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/') });
       var who = el('span', { 'class': 'who' });
       var pc = el('span', { 'class': 'pc' }, x.r.name);
       if (colourOf[x.r.name]) { pc.style.setProperty('--pcol', colourOf[x.r.name]); }
@@ -223,8 +230,8 @@
       var c2 = el('div', {});
       add(c2, el('div', { 'class': 'fig-label' }, 'Found so far'));
       var fs = el('ul', { 'class': 'fs' });
-      homeTop(r).forEach(function (f) { add(fs, add(el('li', {}), U.findingLevel(f.level, ''), ' ', closedTitle(r, f))); });
-      if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
+      (r.top || []).forEach(function (f) { add(fs, add(el('li', {}), U.findingLevel(f.level, ''), ' ', closedTitle(r, f))); });
+      if (!fs.childNodes.length) { add(fs, el('li', {}, r.lead ? U.firstSentence(closedRuns[r.name] ? r.lead_closed || '' : r.lead) : 'No section is written yet: the first ones appear as their steps end.')); }
       add(c2, fs);
       var c3 = el('div', {});
       add(c3, el('div', { 'class': 'fig-label' }, 'Timing'));
@@ -305,5 +312,4 @@
     }).catch(function () { root.setAttribute('data-pgp-status', 'offline'); setTimeout(start, 30000); });
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
-  });
 }());

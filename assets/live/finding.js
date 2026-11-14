@@ -3,7 +3,7 @@
 // the explanation, the plan under it, then the evidence (the numbers, the frequency on a log strip, the
 // reads with a link to the genome viewer), the caveat, the related findings and the family. Everything
 // comes from the run's results.json (bin/live_results.py findings); nothing is computed here about
-// genetics. A result to act on about a child of the family stays closed until it is opened on purpose.
+// genetics. A child's finding page draws only once the report gate (core.js) has released the child's report.
 (function () {
   'use strict';
   window.PGPUI.ready.then(function () {
@@ -74,14 +74,10 @@
       root.setAttribute('data-pgp-status', 'ready');
       return;
     }
-    // known, not family: the click that opens this finding draws again with family as it came, UNKNOWN kept.
     var unknown = family === UNKNOWN;
     var known = unknown ? null : family;
-    var me = known && (known.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
-    // A family that does not list this person cannot say they are not a child: closed as well.
-    var title = f.title;
-    document.title = title + ': ' + r.sample + ': OwnGenome';
-    document.getElementById('finding-crumb').textContent = title;
+    document.title = f.title + ': ' + r.sample + ': OwnGenome';
+    document.getElementById('finding-crumb').textContent = f.title;
     var sec = (r.journal || []).filter(function (s) { return s.n === f.section; })[0];
     var same = (r.findings || []).filter(function (x) { return x.level === f.level; });
     var order = (r.findings || []).filter(function (x) { return x.level !== 'info'; });
@@ -114,7 +110,7 @@
     add(lv, el('span', { 'class': 'dim' }, same.length === 1 ? 'The only finding at this level in ' + r.sample + '’s genome'
       : same.length + ' findings at this level in ' + r.sample + '’s genome'));
     add(cover, lv);
-    add(cover, el('h1', { 'class': 'h-display' }, title));
+    add(cover, el('h1', { 'class': 'h-display' }, f.title));
     var chips = el('div', { 'class': 'chips' });
     var cs = [];
     if (f.gene) { cs.push(f.gene); }
@@ -223,7 +219,7 @@
     var f = fam && fam.kind === 'member' && (fam.families || [])[0];
     if (!f) { return Promise.resolve(null); }
     familyUrl = f.url;
-    // A family that does not answer: roles unknown, so a result to act on stays closed (draw()).
+    // A family that does not answer: roles unknown (the family part of the page is left out).
     return U.getJSON(abs(f.url) + 'family.json').then(function (d) { return d && d.state ? d : UNKNOWN; }).catch(function () { return UNKNOWN; });
   }
   function failed() {
