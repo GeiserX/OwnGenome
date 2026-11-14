@@ -5,9 +5,7 @@
 //!   when it is male or female; else the results body's `person.inferred_sex`,
 //!   then `person.declared_sex`; else unknown.
 //! - Findings: `results.findings`, one object per finding, in the page's
-//!   order. Each keeps the fields the map places and labels it with, and
-//!   whether `results.veil.findings` ties it to a result the page can close
-//!   (a carrier row in a closed deletion's second gene).
+//!   order. Each keeps the fields the map places and labels it with.
 //! - The gated APOE result: the traits card keeps APOE behind its own
 //!   warning (`hidden` on the card `traits-panel`). It is not a row of
 //!   `results.findings`, so the map adds it as one finding, `apoe`, with

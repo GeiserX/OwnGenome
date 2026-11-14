@@ -14,13 +14,13 @@
 //!    its span, or its gene's span when it has no position.
 //! 3. Row tags: a row of a layer that can be a finding's own source (a
 //!    structural variant, a mosaic call, a ClinVar hit) that overlaps a
-//!    veiled span gets that finding's index in `dict.veil`, else -1: the
-//!    first in `dict.veil` when several spans overlap it, where gated
-//!    findings come first (closed on every page), then the act ones in the
-//!    page's order. The child report gate admits no map until every act opens. A finding's own
-//!    row is tagged the same way, so an open finding over a closable one's
-//!    span is tagged. Runs of homozygosity and bands are never a finding's
-//!    source and carry no tag.
+//!    veiled span gets that finding's index in `dict.veil`, else -1. A row
+//!    holds one tag: when several spans overlap it, the first in
+//!    `dict.veil`, where gated findings come first (closed on every page),
+//!    then the act ones in the page's order. A finding's own row is tagged
+//!    the same way, so an open finding over a closable one's span is
+//!    tagged. Runs of homozygosity and bands are never a finding's source
+//!    and carry no tag.
 //! 4. Counts, totals and density bins cover untagged rows only, so no number on
 //!    the map counts a closed row.
 
