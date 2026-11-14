@@ -3640,7 +3640,8 @@ def inview_checks(b, base, out, og):
 
 
 def map_screens(b, base, dest):
-    """Screenshots of the map, dark, at 1440 x 900 and 390 x 844: genome, chromosome, region and gene, a closed page."""
+    """Screenshots of the map, dark, at 1440 x 900 and 390 x 844: genome, chromosome (with the whole-genome strip),
+    region and gene, a closed page, and the In view table of a region (opened on a phone, where it starts folded)."""
     os.makedirs(dest, exist_ok=True)
     taken = []
     try:
@@ -3649,7 +3650,8 @@ def map_screens(b, base, dest):
                    b.session)
             for run, link, name, want in ((S, "", "genome", "genome"), (S, "#chr16", "chromosome", "chromosome"),
                                           (S, "#chr11:4.5-6.5M", "region", "region"),
-                                          (S, "#chr11:5.150-5.350M", "gene", "gene"), (OTHERS[1], "", "closed", "genome")):
+                                          (S, "#chr11:5.150-5.350M", "gene", "gene"), (OTHERS[1], "", "closed", "genome"),
+                                          (S, "#chr22:40.5-43.5M", "inview", "region")):
                 got = map_page(b, base, run, link)
                 if got["level"] in ("region", "gene"):
                     time.sleep(0.8)  # the chromosome's gene file
@@ -3658,7 +3660,10 @@ def map_screens(b, base, dest):
                     print(f"ERROR: {run}{link}: the map is {got['state']} at {got['level'] or 'no'} level, "
                           f"want drawn at {want}: no screenshot")
                     continue
-                b.eval("document.getElementById('genome-map').scrollIntoView({block: 'start'}); true")
+                if name == "inview":
+                    b.eval("var d = document.querySelector('.gm-inview'); d.open = true; d.scrollIntoView({block: 'start'}); window.scrollBy(0, -80); true")
+                else:
+                    b.eval("document.getElementById('genome-map').scrollIntoView({block: 'start'}); true")
                 time.sleep(0.5)
                 png = b.call("Page.captureScreenshot", {"format": "png"}, b.session)["data"]
                 p = os.path.join(dest, f"map-{name}-{w}x{h}.png")
@@ -3946,7 +3951,7 @@ def screens_main(dest, site):
         srv.server_close()
         shutil.rmtree(work, ignore_errors=True)
     print("\n".join(taken))
-    return 0 if len(taken) == 10 else 1
+    return 0 if len(taken) == 12 else 1
 
 
 def main():

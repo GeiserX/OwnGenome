@@ -1879,7 +1879,7 @@
         el('button', { type: 'button', 'class': 'gm-go' }, x.what), x.where, sizeWords(x.size), x.who, x.copy || '—', x.source || '—'];
       cells.forEach(function (c, j) {
         var td = el('td', { 'data-label': TCOLS[j][1] });
-        if (j === 2 || j === 3) { td.className = j === 2 ? 'mono gm-nw' : 'gm-nw'; }
+        if (j === 2) { td.className = 'mono gm-nw'; } else if (j === 3 || j === 4) { td.className = 'gm-nw'; }
         add(tr, add(td, c));
       });
       return tr;

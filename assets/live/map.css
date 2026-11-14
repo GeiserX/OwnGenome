@@ -136,3 +136,8 @@ table.rows.gm-table th { padding: 0 12px 6px 0; }
 .gm-inview-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 6px; font-size: 12.5px; color: var(--ink-3); }
 .gm-inview-foot:empty { display: none; }
 .gm-inview-foot button { padding: 4px 10px; font-size: 12px; }
+@media (max-width: 600px) {
+  /* Each row a block of label: value lines, as the site's other tables under 600 px. */
+  table.rows.gm-table td { padding: 1px 0; }
+  .gm-table td.gm-nw { white-space: normal; }
+}
