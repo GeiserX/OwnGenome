@@ -319,8 +319,24 @@
     add(b, text);
     return b;
   }
-  // This renderer receives a child's report only once the shared data gate (core.js) has released it, so it
-  // closes nothing itself: no card row, chart mark or search hit.
+  // This renderer receives a child's report only once the shared data gate (core.js) has released it, with every
+  // result to act on opened, so it closes no card row itself. The charts (plugins/charts.js) and the search box
+  // (plugins/search.js) still ask it, as before the gate, and on a page that keeps results closed until opened (a
+  // child's, or one whose family roles are not known) get the same answers: before results.json has answered,
+  // every mark and hit is left out; then only a tag (results.veil) that names no finding of these results, since every
+  // result to act on here is open. Asked with no key, the search hears that the page keeps results closed, and says so.
+  function tagClosed(id) { return closedPage() && !findingById(id); }
+  window.PGP.markClosed = function (chart, mark) {
+    if (!closedPage()) { return false; }
+    if (!results) { return true; }
+    var id = ((results.veil && results.veil.marks && results.veil.marks[chart]) || {})[mark];
+    return !!(id && tagClosed(id));
+  };
+  window.PGP.searchHidden = function (key, anchor, tag) {
+    if (!closedPage()) { return false; }
+    if (!results || key === null) { return true; }
+    return !!(tag && tagClosed(tag));
+  };
 
   function card(c) {
     var g = gate(c);

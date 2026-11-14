@@ -155,7 +155,8 @@
   // unopened. The page is then a function of the opened results alone and of how many are closed: no view (person.js,
   // finding.js, map.js, family-page.js, home.js, live.js, the plugins) receives the child's report, because every
   // view reads through fetch and EventSource and this gate holds both. Adults and children with no result to act on
-  // pass through untouched: each file is fetched as often, and in the same order, as without the gate.
+  // pass through untouched: each file is fetched as often, in the same order and with the same options as without
+  // the gate, and the event stream opens when the view asks for it.
   var originalFetch = window.fetch.bind(window);
   var records = {}, current = null, ownsPage = false, eventSources = [], shared = {}, cleaned = false;
   var CLOSED_TEXT = "This child's report stays closed until every result to act on in adult life is opened on purpose.";
@@ -178,18 +179,24 @@
     if (r.status === 401) { window.location.href = '/login?next=' + encodeURIComponent(location.pathname); }
     return r.ok ? r.json() : null;
   }
+  // The options the views read their JSON with (PGPUI.getJSON); live.js reads a replay's frames.json with none.
+  var NO_STORE = { credentials: 'same-origin', cache: 'no-store' };
   function jsonAt(url) {
-    return originalFetch(url, { credentials: 'same-origin', cache: 'no-store' }).then(read).catch(function () { return null; });
+    return originalFetch(url, NO_STORE).then(read).catch(function () { return null; });
   }
-  // A file the gate reads before the views: kept once, so the view's own first read of it costs no request.
-  function sharedJSON(url) {
+  // A file the gate reads before the views, with the options the view that reads it uses: its answer is kept once,
+  // whatever its status (a 404 or a failed request too), so the view's own first read of it costs no request. The
+  // view gets the response itself; the gate reads a copy of an answer that is ok and leaves any other unread, as
+  // the views do.
+  function sharedJSON(url, options) {
     url = absolute(url);
-    return originalFetch(url, { credentials: 'same-origin', cache: 'no-store' }).then(function (r) {
-      return r.text().then(function (body) {
-        if (r.ok) { shared[url] = { body: body, status: r.status, type: r.headers.get('Content-Type') || 'application/json' }; }
-        return read({ status: r.status, ok: r.ok, json: function () { return Promise.resolve(JSON.parse(body)); } });
-      });
-    }).catch(function () { return null; });
+    return originalFetch(url, options).then(function (r) {
+      shared[url] = { response: r.ok ? r.clone() : r };
+      return r.ok ? read(r) : read({ status: r.status, ok: false });
+    }, function () { shared[url] = { failed: true }; return null; }).catch(function () { return null; });
+  }
+  function keptResponse(kept) {
+    return kept.failed ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(kept.response);
   }
   function random() { var b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] / 4294967296; }
   // The results to act on, one record each: the findings of level "act" (bin/live_results.py). null when unreadable.
@@ -212,7 +219,8 @@
     return out;
   }
   function makeRecord(url, child, r, old) {
-    var acts = actsOf(r), rec = { url: url, child: child, acts: acts, opened: {}, order: [], perm: [] };
+    var acts = actsOf(r), rec = { url: url, child: child, acts: acts, opened: {}, order: [], perm: [],
+      ids: r && Array.isArray(r.findings) ? r.findings.map(function (f) { return f && f.id; }) : [] };
     if (!acts) { return rec; }
     // An act whose record changed is closed again; an unchanged one keeps its opening for this page.
     rec.order = old ? old.order.filter(function (id) { return same(byId(old, id), byId(rec, id)); }) : [];
@@ -223,7 +231,7 @@
   }
   function record(url, child, cached) {
     url = absolute(url);
-    return (cached ? sharedJSON : jsonAt)(url + 'results.json').then(function (r) {
+    return (cached ? sharedJSON(url + 'results.json', NO_STORE) : jsonAt(url + 'results.json')).then(function (r) {
       var old = records[url];
       var rec = makeRecord(url, child !== undefined ? child : old ? old.child : true, r, old);
       records[url] = rec;
@@ -293,10 +301,11 @@
     });
     document.title = 'Results closed: OwnGenome';
   }
+  function runPath() { return new URL('../../', absolute(findingPath)).pathname; }
   function renderGate() {
     cleanPage();
     // A finding's address names its finding: a closed page shows the run's address instead, the same for any id.
-    if (findingPath) { history.replaceState(null, '', new URL('../../', absolute(findingPath)).pathname + location.hash); }
+    if (findingPath) { history.replaceState(null, '', runPath() + location.hash); }
     normalizeHash(current);
     var wrap = el('main', { 'class': 'wrap', id: 'report-gate' });
     add(wrap, el('h1', {}, 'Results about a child'));
@@ -316,7 +325,11 @@
       var ids = current.acts.map(function (f) { return f.id; }), b = new Uint8Array(16);
       crypto.getRandomValues(b);
       var nonce = Array.from(b).map(function (v) { return v.toString(16).padStart(2, '0'); }).join('');
-      var target = findingPath || location.pathname;
+      // A finding address releases to the finding's page only when the results have that finding; any other id
+      // goes to the run's page, as the server answers 404 for it once the report is open.
+      var id = null;
+      try { id = findingPath ? decodeURIComponent(findingPath.split('/finding/')[1].replace(/\/$/, '')) : null; } catch (e) { id = null; }
+      var target = !findingPath ? location.pathname : (current.ids || []).indexOf(id) >= 0 ? findingPath : runPath();
       sessionStorage.setItem(TRANSFER, JSON.stringify({ path: target, stamp: stamp, nonce: nonce,
         name: window.name.indexOf(NONCE) === 0 ? '' : window.name, order: current.order.map(function (id) { return ids.indexOf(id); }) }));
       window.name = NONCE + nonce;
@@ -337,18 +350,25 @@
   }
   // The person and finding pages: the run's state, its family's roles and, for a child, its results, read in the
   // order the views read them (the finding page asks for its results at once, the person page once the state has
-  // answered). An adult's results are not read here: the views read them as they would without the gate.
+  // answered) and with the views' options. The family is read once the page's scripts have run, so live.js has
+  // opened its event stream first, as it does without the gate. An adult's results are not read here: the views read
+  // them as they would without the gate.
+  var parsed = new Promise(function (done) {
+    if (document.readyState === 'complete') { done(); } else { document.addEventListener('DOMContentLoaded', done); window.addEventListener('load', done); }
+  });
   function preparePerson() {
     var url = absolute(findingPath ? '../../' : './');
     var replaying = root.getAttribute('data-mode') === 'replay';
-    var stateRead = sharedJSON(url + (replaying ? 'frames.json' : 'state.json'));
+    // live.js reads a replay's frames.json with no options; finding.js reads it, and state.json, as JSON (NO_STORE).
+    var stateRead = sharedJSON(url + (replaying ? 'frames.json' : 'state.json'), replaying && !findingPath ? undefined : NO_STORE);
     var results = findingPath ? record(url, undefined, true) : null;
-    return stateRead.then(function (raw) {
+    return Promise.all([stateRead, parsed]).then(function (x) {
+      var raw = x[0];
       var state = replaying ? raw && raw.frames && raw.frames.slice(-1)[0] : raw;
       state = replaying ? state && state.state : state;
       var fam = state && state.plugins && state.plugins.family;
       var entry = fam && fam.kind === 'member' && (fam.families || [])[0];
-      return entry ? sharedJSON(absolute(entry.url, url) + 'family.json').then(function (f) {
+      return entry ? sharedJSON(absolute(entry.url, url) + 'family.json', NO_STORE).then(function (f) {
         var member = f && f.state && (f.state.members || []).filter(function (m) { return m.sample === root.getAttribute('data-run'); })[0];
         // A family that cannot be read, or does not list this person, cannot say they are not a child.
         return !member || !!(member.father || member.mother);
@@ -432,21 +452,22 @@
     }
     return f;
   }
-  // The home page decides from runs.json alone, as it always has: a run is a child's when a readable family lists
-  // one of its parents (or, while a family's members cannot be read, when no readable family lists it), and its
-  // summary is closed when runs.json counts or names a result to act on.
+  // Who is a child, one rule for the person page (preparePerson: the first of state.json's families, then its
+  // family.json), this home page and the server (bin/owngenome_live.py child_of): the first family, by name, that
+  // lists the person decides, by a father or a mother there; a person no readable family lists is a child while
+  // some family's members cannot be read.
+  function childIn(fams, name) {
+    function me(f) { return (f.members || []).filter(function (m) { return m.sample === name; })[0]; }
+    var f = fams.filter(me)[0];
+    return f ? !!(me(f).father || me(f).mother) : fams.some(function (x) { return !(x.members || []).length; });
+  }
+  // The home page decides from runs.json alone: a child's summary is closed when runs.json counts or names a result
+  // to act on (the server counts a child's from the summary its results.json reads).
   function projectRuns(data) {
-    var idx = copy(data), fams = idx.families || [], child = {}, listed = {};
-    fams.forEach(function (f) {
-      (f.members || []).forEach(function (m) {
-        listed[m.sample] = true;
-        if ((f.members || []).some(function (x) { return x.sample === m.father || x.sample === m.mother; })) { child[m.sample] = true; }
-      });
-    });
-    var unknown = fams.some(function (f) { return !(f.members || []).length; });
+    var idx = copy(data), fams = idx.families || [];
     idx.runs = (idx.runs || []).map(function (r) {
       var n = (r.levels && r.levels.act) || (r.top || []).filter(function (x) { return x && x.level === 'act'; }).length;
-      if (!(child[r.name] || (unknown && !listed[r.name])) || !n) { return r; }
+      if (!childIn(fams, r.name) || !n) { return r; }
       return Object.assign(progressOf(r), { gated: true, results: true, screened: true, attention: null, levels: { act: n },
         top: [{ id: '', level: 'act', title: CLOSED_TEXT }], lead: CLOSED_TEXT, lead_closed: CLOSED_TEXT });
     });
@@ -481,8 +502,7 @@
       if (ownsPage || closedRun(requestURL)) { return new Promise(function () {}); }
       var kept = shared[requestURL];
       delete shared[requestURL];
-      var got = kept ? Promise.resolve(new Response(kept.body, { status: kept.status, headers: { 'Content-Type': kept.type } }))
-        : originalFetch(url, options);
+      var got = kept ? keptResponse(kept) : originalFetch(url, options);
       return got.then(function (response) {
         if (ownsPage) { return new Promise(function () {}); }
         var path = new URL(requestURL).pathname;
@@ -514,16 +534,25 @@
   });
   window.addEventListener('pageshow', function (e) { if (e.persisted && cleaned) { location.reload(); } });
   var NativeEvents = window.EventSource;
+  // A view's event stream opens the moment the view asks for it, as without the gate (live.js asks right after
+  // state.json). What it says waits until the gate knows whether it owns the page: then it reaches the view, in
+  // order, or the stream closes unread. After that it reaches the view only while the gate does not own the page.
   window.EventSource = function (url, options) {
-    var proxy = this, source = null;
-    proxy.readyState = 0;
-    proxy.close = function () { if (source) { source.close(); } proxy.readyState = 2; };
+    var proxy = this, held = [], closed = false;
+    var source = ownsPage || closedRun(absolute(url)) ? null : new NativeEvents(url, options);
+    Object.defineProperty(proxy, 'readyState', { get: function () { return closed || !source ? 2 : source.readyState; } });
+    proxy.close = function () { closed = true; if (source) { source.close(); } };
+    if (!source) { return; }
+    eventSources.push(source);
+    function deliver(kind, e) { if (!ownsPage && !closed && proxy['on' + kind]) { proxy['on' + kind](e); } }
+    ['message', 'error', 'open'].forEach(function (kind) {
+      source['on' + kind] = function (e) { if (held) { held.push([kind, e]); } else { deliver(kind, e); } };
+    });
     ready.then(function () {
-      if (ownsPage || closedRun(absolute(url)) || proxy.readyState === 2) { return; }
-      source = new NativeEvents(url, options); eventSources.push(source);
-      source.onmessage = function (e) { if (!ownsPage && proxy.onmessage) { proxy.onmessage(e); } };
-      source.onerror = function (e) { proxy.readyState = source.readyState; if (proxy.onerror) { proxy.onerror(e); } };
-      source.onopen = function (e) { proxy.readyState = source.readyState; if (proxy.onopen) { proxy.onopen(e); } };
+      var q = held;
+      held = null;
+      if (ownsPage || closedRun(absolute(url))) { source.close(); return; }
+      q.forEach(function (x) { deliver(x[0], x[1]); });
     });
   };
   window.EventSource.CLOSED = NativeEvents.CLOSED;
