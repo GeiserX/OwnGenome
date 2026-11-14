@@ -2862,7 +2862,12 @@ def nearest_problems(b, base, out):
             bad.append(f"{link}: Nearest reads {n['near']!r}, want {words!r}")
             continue
         b.eval("document.querySelector('.gm-nearest').click(); true")
-        c, n = map_now(b), json.loads(b.eval(NEAR_JS))
+        c = map_now(b)
+        for _ in range(10):  # a busy machine eases the camera slower
+            if any("demob" in m["id"] for m in c["marks"]):
+                break
+            c = map_now(b)
+        n = json.loads(b.eval(NEAR_JS))
         if c["chrom"] != chrom or not any("demob" in m["id"] for m in c["marks"]) or "DEMOB" not in n["card"]:
             bad.append(f"{link}: Nearest flew to {c['chrom']} {c['view']}, marks {[m['id'] for m in c['marks']]}, "
                        f"card {n['card']!r}")
