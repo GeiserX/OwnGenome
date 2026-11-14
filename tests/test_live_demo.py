@@ -1783,7 +1783,9 @@ def gate_transparency(b, base, out):
             n.removeAttribute('data-pgp-map-paint-ms'); n.removeAttribute('data-pgp-map-parse-ms');
           });
           return [clone.outerHTML, location.hash, Array.from(document.querySelectorAll('canvas')).map(function(c){return c.toDataURL();}),
-            performance.getEntriesByType('resource').map(function (r) { return new URL(r.name).pathname; })];
+            // The browser lists a request when it ends: sort by when each one started.
+            performance.getEntriesByType('resource').slice().sort(function (a, z) { return a.startTime - z.startTime; })
+              .map(function (r) { return new URL(r.name).pathname; })];
         }())""")
         # Scripts and the views' own files load in parallel, in any order, with or without the gate: count every
         # request, and keep the order of the files the gate reads first.
