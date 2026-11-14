@@ -292,8 +292,7 @@ pub fn contain(
     key: &'static str,
     part: impl FnOnce() -> Result<(), String>,
 ) -> Option<(&'static str, String)> {
-    // Planted fault (red control): the panic is no longer caught.
-    match Ok::<_, ()>(part()) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(part)) {
         Ok(Ok(())) => None,
         Ok(Err(e)) => Some((key, e)),
         Err(_) => Some((

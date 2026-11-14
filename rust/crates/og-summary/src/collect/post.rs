@@ -234,7 +234,7 @@ fn not_run(sections: &[Section]) -> Vec<String> {
     sections
         .iter()
         .filter(|s| matches!(s.state, State::Missing | State::Failed))
-        .filter(|s| !NOT_A_STEP[..0].contains(&s.spec.key)) // planted fault (red control)
+        .filter(|s| !NOT_A_STEP.contains(&s.spec.key))
         .map(|s| {
             if s.state == State::Failed {
                 format!("{} (step {} failed)", s.spec.title, s.spec.step)
@@ -279,7 +279,7 @@ fn not_assessed(sections: &[Section]) -> Vec<&'static str> {
     if state("mei") == State::Missing {
         out.push(MEI_NOT_ASSESSED);
     }
-    let vntyper_read = matches!(state("vntyper"), State::Ok | State::Stale)
+    let vntyper_read = state("vntyper") == State::Ok
         && ["positive", "possible", "negative"]
             .iter()
             .any(|w| is(field("vntyper", "status"), w));
@@ -317,7 +317,7 @@ fn new_since(dir: &Path, cur: &Value) -> Option<Value> {
     let prev_manifest = files::read_manifest(Some(&prev_dir.join("run_manifest.tsv"))).ok()?;
     let manifest = files::read_manifest(Some(&dir.join("run_manifest.tsv"))).ok()?;
     let changes = delta::compare(&prev, &prev_manifest, cur, &manifest).ok()?;
-    let previous = match cur {
+    let previous = match &prev {
         Value::Object(m) => m.get("generated_utc").cloned().unwrap_or(Value::Null),
         _ => Value::Null,
     };
