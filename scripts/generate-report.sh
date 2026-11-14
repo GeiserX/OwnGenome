@@ -41,11 +41,14 @@ fi
 # the summary or beside it (the reports, the search index, the charts, the
 # delta, the logs other than run_status.tsv, and nextflow/, the Nextflow launch
 # folder with work/), and bin/ (og and the tables it reads there) and assets/. Anything newer, or a
-# summary that is not there, means collect again.
+# summary that is not there, means collect again. A subfolder newer than the
+# summary (other than logs/) had a file added or removed since: collect again.
 summary_current() {
   local s="${SAMPLE_DIR}/summary.json" newer
   [ -s "$s" ] && [ ! -L "$s" ] || return 1
-  newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./summary.json \) -prune -o ! -type d -newer summary.json \
+  newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./summary.json \) -prune \
+    -o -type d ! -path . ! -path ./logs -newer summary.json -print -quit \
+    -o ! -type d -newer summary.json \
     ! \( -path './logs/*' ! -path ./logs/run_status.tsv \) \
     ! -name "${SAMPLE}_report.html" ! -name "${SAMPLE}_report.txt" ! -name "${SAMPLE}_search_index.json" \
     ! -name "${SAMPLE}_charts.json" ! -name "${SAMPLE}_delta.txt" ! -name "${SAMPLE}_delta.html" \

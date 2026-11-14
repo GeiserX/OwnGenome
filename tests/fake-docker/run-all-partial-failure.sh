@@ -166,6 +166,15 @@ if grep -q '^Rendering from summary.json' "${CASE_WORK}/recollect.out" 2> /dev/n
   miss "generate-report.sh rendered from summary.json, but a step output changed after it was written"
 fi
 touch -d '30 days ago' "$roh"   # back to its age, for the cases below
+# A file removed after the collect makes it collect again too.
+extra="${roh%/*}/sample1_extra.txt"
+: > "$extra"
+run_expect 0 recollect-added "${SCRIPTS}/generate-report.sh" sample1
+rm -f "$extra"
+run_expect 0 recollect-removed "${SCRIPTS}/generate-report.sh" sample1
+if grep -q '^Rendering from summary.json' "${CASE_WORK}/recollect-removed.out" 2> /dev/null; then
+  miss "generate-report.sh rendered from summary.json, but a file was removed after it was written"
+fi
 
 # --- 3. the same failure on a first run: nothing cached ------------------------------------
 awk -F'\t' -v OFS='\t' '{$2 += $3; $3 = 0; print}' "${CASE_WORK}/resume.tsv" > "${CASE_WORK}/first.tsv"

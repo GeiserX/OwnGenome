@@ -19,6 +19,7 @@ import gzip
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import zlib
@@ -97,9 +98,9 @@ def collect(sample, sample_dir, declared_sex=None, out=None):
     written)."""
     tmp = None
     if out is None:
-        fd, tmp = tempfile.mkstemp(prefix="summary.", suffix=".json")
-        os.close(fd)
-        out = tmp
+        # A private folder: og writes a sibling file and renames it over OUT.
+        tmp = tempfile.mkdtemp(prefix="summary.")
+        out = os.path.join(tmp, "summary.json")
     cmd = [og(), "summary", "collect", "--sample", sample, "--sample-dir", sample_dir,
            "--assets", ASSETS_DIR, "--out", out]
     if declared_sex:
@@ -118,10 +119,7 @@ def collect(sample, sample_dir, declared_sex=None, out=None):
             return json.load(f)
     finally:
         if tmp:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 # ClinVar review status -> stars. og clinvar hits (rust/crates/og-clinvar) holds the same table
