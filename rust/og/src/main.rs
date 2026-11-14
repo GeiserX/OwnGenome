@@ -62,6 +62,8 @@ const USAGE: &str = "usage: og <tool> [args]
        og family ibd [args]
        og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
+       og archaic table|strict|genotypes|report [args]
+       og ancient select|lift|person-geno|align|report [args]
        og vntyper report [args]
        og locityper report [args]
        og mocha report [args]
@@ -78,6 +80,9 @@ const USAGE: &str = "usage: og <tool> [args]
        og exomiser report [args]
        og lookup query|resolve|report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
+       og dev scan personal-data|images [args]
+       og dev versions check-run|expand|coupled [args]
+       og dev pgs trait|label-match|metric-match [args]
        og dev fixture comphet OUT [--swap]
        og dev fixture trim-pharmcat REPORT OUT [MAX]
        og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv
@@ -112,6 +117,18 @@ fn no_bam(tool: &str) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    // Refuse raw-byte scanner arguments before std::env::args can panic or
+    // any path can be replaced with a different name. Other verbs retain
+    // their existing argument handling.
+    let raw: Vec<_> = std::env::args_os().skip(1).collect();
+    if raw
+        .get(..3)
+        .is_some_and(|prefix| prefix == ["dev", "scan", "personal-data"])
+        && raw.iter().any(|s| s.to_str().is_none())
+    {
+        eprintln!("ERROR: path is not valid UTF-8");
+        return ExitCode::from(2);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(tool) = args.first() else {
         return usage_error("the following arguments are required: tool");
@@ -264,6 +281,16 @@ fn main() -> ExitCode {
             &mut std::io::stderr().lock(),
         )),
         "ancestry-fine" => ExitCode::from(og_ancestry::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
+        "archaic" => ExitCode::from(og_ancestry::archaic::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
+        "ancient" => ExitCode::from(og_ancestry::ancient::cli(
             rest,
             &mut std::io::stdout().lock(),
             &mut std::io::stderr().lock(),

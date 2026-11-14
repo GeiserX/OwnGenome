@@ -172,6 +172,10 @@ PRS  PGSC_CALC_VERSION  sha256=PGSC_CALC_SHA256 pgscatalog_utils=PGSC_UTILS_IMAG
 '
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# og reads a run's versions (rust/crates/og-dev; bin/og picks the build for
+# this machine); OG names another og binary. Set before --root, so a check
+# of another tree still runs this tree's og.
+OG=${OG:-${ROOT}/bin/og}
 MODE="write"
 ARGS=()
 while [ $# -gt 0 ]; do
@@ -272,43 +276,7 @@ check() {
 # its versions.yml block, the tag of the image it ran in (task.container).
 # Compare that line with the image conf/containers.config gives the process.
 check_versions() {
-  python3 - "$CONFIG" "$@" <<'PY'
-import re, sys
-config, yml, expect = sys.argv[1], sys.argv[2], sys.argv[3:]
-text = open(config).read()
-images = dict(re.findall(r"withName: '(\w+)' \{ container = '([^']+)' \}", text))
-# A process that runs on the host states the release of the pipeline it starts.
-images.update(re.findall(r"withName: '(\w+)' \{ ext\.pipeline_version = '([^']+)';", text))
-def tag(image):
-    return re.sub(r"^[^:@]+[:@]", "", image, count=1)
-first, proc = {}, None
-for line in open(yml):
-    m = re.match(r'^"([^"]+)":\s*$', line)
-    if m:
-        proc = m.group(1).split(":")[-1]
-        continue
-    m = re.match(r"^\s+([\w.-]+):\s*(.*?)\s*$", line)
-    if m and proc and proc not in first:
-        first[proc] = (m.group(1), m.group(2))
-fail = 0
-if not first:
-    print("FAIL: %s has no process block" % yml)
-    fail = 1
-for p in sorted(set(expect or images) | set(first)):
-    if p not in images:
-        print("FAIL %-20s has no selector in conf/containers.config" % p)
-        fail = 1
-    elif p not in first:
-        if p in (expect or images):
-            print("FAIL %-20s missing from %s" % (p, yml))
-            fail = 1
-    elif first[p][1] != tag(images[p]):
-        print("FAIL %-20s %s: %s, want %s (%s)" % (p, first[p][0], first[p][1], tag(images[p]), images[p]))
-        fail = 1
-    else:
-        print("OK   %-20s %s: %s" % (p, first[p][0], first[p][1]))
-sys.exit(fail)
-PY
+  "$OG" dev versions check-run --config "$CONFIG" "$@"
 }
 
 # self_test: plant each kind of fault in a copy of this tree and require

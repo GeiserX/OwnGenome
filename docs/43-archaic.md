@@ -13,7 +13,7 @@ Most people outside Africa carry about 2% Neanderthal DNA, and people with ances
 ## Tool
 
 - [IBDmix](https://github.com/PrincetonUniversity/IBDmix) 1.0.1 (Chen et al. 2020, Cell 180:677, doi:10.1016/j.cell.2020.01.012)
-- `bin/archaic_report.py` (standard library Python): IBDmix's genotype files, then the segments and the summary
+- `og archaic` (OwnGenome's Rust binary, `docs/rust.md`): the table at setup, IBDmix's genotype files, then the segments and the summary
 
 IBDmix needs no unadmixed reference population. It scores each site from the modern allele frequency and the two genotypes, so it finds archaic segments in Africans too, where methods that use Africans as the unadmixed reference cannot.
 
@@ -57,13 +57,13 @@ Chen et al. do not score every site. Each archaic genome comes with its own mask
 - a genome's call outside that genome's FilterBed is kept and marked masked in the table (10, 11 or 12: 10 plus its ALT count);
 - every call at a site inside a segmental duplication (UCSC's GRCh37 track), or inside the window of a 1000 Genomes indel, is marked masked the same way. The window is 5 bp on each side of the indel, reaching past the longer of its REF and ALT, as the published script writes it;
 - step 43 writes each masked call to IBDmix as its ALT count, and the masked positions to a mask file per chromosome and archaic genome, which it passes to IBDmix with `-r`;
-- every call at a site outside the 1000 Genomes GRCh38 strict mask is marked masked the same way, in all three archaic columns. `setup.sh --archaic` does that after the liftover (`archaic_report.py strict`), because the mask is on GRCh38 and the table is built on GRCh37.
+- every call at a site outside the 1000 Genomes GRCh38 strict mask is marked masked the same way, in all three archaic columns. `setup.sh --archaic` does that after the liftover (`og archaic strict`), because the mask is on GRCh38 and the table is built on GRCh37.
 
 The first version of the masks dropped the masked calls instead (code 9, or no row), and a second one still dropped every row outside the strict mask. IBDmix then had nothing to score at those sites, the mismatches included, so a segment could run through masked sequence that contradicts it. That is why HG002's share stayed above the published figure after the masks; see Runtime below.
 
 One of their exclusions is not applied here: the CpG mask, which needs a GRCh37 reference and the chimpanzee, orangutan and macaque SNP sets, none of which this pipeline installs. What that leaves out is written down in the Notes below.
 
-The filters cut hard: on chr22 the strict mask covers 25.2 Mb of 50.8, the Vindija FilterBed 19.6 Mb, and segmental duplications take out 4.3 Mb. Without them the step called sequence from positions the archaic genomes cannot be read at, and HG002's Neanderthal total was higher still: the filters took it from 115.2 Mb to 107.5 Mb, which is still 2.1 times the published median (see the same-person section under Runtime). The filters are part of the data version: a change to a pin or to a mask means `snpad2016-1kgp3-v3` and a rebuild. `setup.sh --archaic` also rebuilds a table whose build code changed (its stamp holds the sha256 of the table half of `bin/archaic_report.py`), so a table built before the masked codes, or before the strict-mask rows were kept, is rebuilt on the next `setup.sh --archaic`. Until then step 43 reads it as before: a table with no masked code gives empty masks.
+The filters cut hard: on chr22 the strict mask covers 25.2 Mb of 50.8, the Vindija FilterBed 19.6 Mb, and segmental duplications take out 4.3 Mb. Without them the step called sequence from positions the archaic genomes cannot be read at, and HG002's Neanderthal total was higher still: the filters took it from 115.2 Mb to 107.5 Mb, which is still 2.1 times the published median (see the same-person section under Runtime). The filters are part of the data version: a change to a pin or to a mask means `snpad2016-1kgp3-v3` and a rebuild. `setup.sh --archaic` also rebuilds a table whose format changed (its stamp holds the table format id of `og archaic`, `ARCHAIC_TABLE_FORMAT` in `setup.sh`), so a table built before the masked codes, or before the strict-mask rows were kept, is rebuilt on the next `setup.sh --archaic`. A table the last Python build code wrote has the same bytes, so its stamp is taken as current once and rewritten, and no install downloads the archaic genomes again for the move to Rust. Until then step 43 reads it as before: a table with no masked code gives empty masks.
 
 The table is built on GRCh37 and lifted once to GRCh38 with Picard `LiftoverVcf`. A site that does not lift, or lifts to another chromosome, is dropped. The archaic files are downloaded one chromosome at a time (150 GB in all, at most 13.8 GB at once, for chromosome 2) and deleted once the chromosome is built, so an interrupted install resumes at the chromosome it stopped in. `ARCHAIC_REGIONS` (a GRCh37 BED, chromosomes named 1 to 22) builds only those regions.
 
@@ -71,6 +71,12 @@ The table is built on GRCh37 and lifted once to GRCh38 with Picard `LiftoverVcf`
 
 - `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample. A site with no record is read as the reference allele, a record whose FILTER is not PASS as unknown, and a site where you carry another ALT than the table's is left out.
 - The GENCODE gene lines `setup.sh` installs, for the genes of each segment (without them the segments are listed without genes)
+
+`og archaic genotypes` reads the VCF and table together, keeping one
+duplicate-position window. Positions within each chromosome must be in
+ascending order in both inputs. A position that goes backwards stops the
+command with exit 2. Mask runs are written as they close. Duplicate calls,
+clashes, masked sites and the output columns keep their previous meaning.
 
 ## Command
 

@@ -363,6 +363,8 @@ jobs:
       # the image versions.env gives it.
       - name: Every process ran and states the tag of its image from versions.env
         if: steps.scope.outputs.run == 'true'
+        env:
+          OG: ${{ github.workspace }}/rust/target/release/og   # og dev versions check-run, built above
         run: |
           cat "${RUNNER_TEMP}/all-tools/pipeline_info/software_versions.yml"
           scripts/ci/gen-containers-config.sh --check-versions "${RUNNER_TEMP}/all-tools/pipeline_info/software_versions.yml"
