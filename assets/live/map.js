@@ -105,8 +105,7 @@
 
   // --- the figure ---------------------------------------------------------------------------------------
   // create({url, veil(id, gated) -> 'open'|'closed'|'opened', now(id) -> shown at this moment, open(id),
-  // close(id), known(id) -> a finding of the page's results, closed() -> the ids of the results to act on the
-  // page keeps closed at this moment, stepDone(step) -> ended at this moment, fallback() -> rows}): one figure
+  // close(id), known(id) -> a finding of the page's results, stepDone(step) -> ended at this moment, fallback() -> rows}): one figure
   // per page. The page calls refresh(key) on each of its redraws; a new key
   // fetches the document again and keeps the camera.
   function create(opts) {
@@ -154,8 +153,6 @@
     var CW = 0, CH = 0, DPR = 1, phone = false;
     var cam = { ci: 0, c: 0, ls: 0, k: 0 }, tgt = { ci: 0, c: 0, ls: 0, k: 0 };
     var hover = { row: -1, hit: null }, hits = [], raf = 0, settleT = 0, hashT = 0, confirming = null, touched = false;
-    // The results with no place on the map that its chip opened: each gets an "Opened in its section" chip while open.
-    var inSection = [];
     var cache = null, cacheKey = '';
     var hatch = null;
 
@@ -600,16 +597,7 @@
     function noFindingHere() {
       return closedAny() ? 'No open finding with a place on this chromosome.' : 'No finding with a place on this chromosome.';
     }
-    function closedAny() { return closedActs().length > 0 || M.closable.some(function (id) { return stateOf(id) === 'closed'; }); }
-    // The results to act on this page keeps closed, in the order Open opens them: the page's own order (the
-    // order of its closed cards), with a place on the map or without. Its length is what the chip counts, so
-    // neither the count nor the order tells whether a closed result has a place. A page that passes no list
-    // closes only the map's own rows, in map order.
-    function closedActs() {
-      var page = opts.closed ? opts.closed() : null;
-      if (page) { return page.filter(function (id) { return !M.gated[id]; }); }
-      return M.closable.filter(function (id) { return !M.gated[id] && stateOf(id) === 'closed'; });
-    }
+    function closedAny() { return M.closable.some(function (id) { return stateOf(id) === 'closed'; }); }
     function layerWords(lay) {
       if (lay.state === 'missing') { return 'Not on the map: ' + (lay.note || ('step ' + lay.step + ' wrote no ' + (lay.source || 'file') + '.')); }
       if (lay.state === 'unreadable') { return 'Not on the map: ' + (lay.source || '') + ' could not be read' + (lay.note ? ' (' + lay.note + ')' : '') + '.'; }
@@ -877,7 +865,7 @@
     function drawChips() {
       chips.textContent = '';
       if (!M) { return; }
-      var acts = closedActs(), gates = [], opened = [];
+      var gates = [], opened = [];
       M.closable.forEach(function (id) {
         // A gated result (APOE) has a chip only once the page shows its card (a replay before its step has none).
         if (M.gated[id] && opts.now && !opts.now(id)) { return; }
@@ -886,17 +874,11 @@
       });
       // Why it is closed: said beside the count, left out on a phone (the card says it too).
       function why() { return el('span', { 'class': 'gm-why' }, ' · Not drawn until opened on purpose'); }
-      if (acts.length) {
-        var c = el('div', { 'class': 'gm-chip closed', 'data-closed': 'act' });
-        add(c, add(el('span', {}, acts.length === 1 ? '1 result closed' : acts.length + ' results closed'), why()));
-        add(c, confirming === 'act' ? confirmBox(acts[0], false) : button('Open', function () { confirming = 'act'; drawChips(); keyTo('.gm-yes'); }));
-        add(chips, c);
-      }
       gates.forEach(function (id) {
         var g = M.gated[id], name = g.gene || 'This result';
         var c = el('div', { 'class': 'gm-chip closed', 'data-closed': 'gate' });
         add(c, add(el('span', {}, name + ' closed'), why()));
-        add(c, confirming === id ? confirmBox(id, true) : button('Open ' + name, function () { confirming = id; drawChips(); keyTo('.gm-yes'); }));
+        add(c, confirming === id ? confirmBox(id) : button('Open ' + name, function () { confirming = id; drawChips(); keyTo('.gm-yes'); }));
         add(chips, c);
       });
       opened.forEach(function (id) {
@@ -906,27 +888,17 @@
         add(c, button('Close it again', function () { confirming = null; opts.close(id); keyTo(); }));
         add(chips, c);
       });
-      // A result the chip opened that has no place: named only once it is open, with a link to its card.
-      inSection = inSection.filter(function (id) { return stateOf(id) !== 'closed' && opts.title && opts.title(id); });
-      inSection.forEach(function (id) {
-        var c = el('div', { 'class': 'gm-chip opened', 'data-opened': 'section' });
-        add(c, add(el('span', {}, 'Opened in its section: '), el('a', { href: '#f/' + id }, opts.title(id))));
-        add(c, button('Close it again', function () { confirming = null; opts.close(id); keyTo(); }));
-        add(chips, c);
-      });
     }
     // Where the keyboard goes once a chip's button rebuilt the chips: the chips' first button, else the map.
     function keyTo(sel) {
       var b = chips.querySelector(sel || 'button');
       (b || canvas).focus({ preventScroll: true });
     }
-    function confirmBox(id, gated) {
+    function confirmBox(id) {
       var box = el('span', { 'class': 'gm-confirm' });
-      add(box, el('span', {}, gated ? 'It is kept behind its warning on every page. Open it here and in its section?'
-        : 'A result to act on in adult life is usually not looked at before the child can choose. Open it here and in its section?'));
+      add(box, el('span', {}, 'It is kept behind its warning on every page. Open it here and in its section?'));
       add(box, button('Show the result', function () {
         confirming = null;
-        if (!gated && M.closable.indexOf(id) < 0 && inSection.indexOf(id) < 0) { inSection.push(id); }
         opts.open(id);  // the page draws again, and the map's chips with it (refresh)
         keyTo();
       }, 'gm-yes'));

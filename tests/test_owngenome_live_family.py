@@ -26,7 +26,11 @@ Checks:
      row draws the four children and a 1-in-2 row gives its chance in words with no
      drawing, a missing trio file and one linking out of the folder are worded
      apart (the link's target never shown), and the side by side lists every
-     blood group system with a stale value marked in its cell.
+     blood group system with a stale value marked in its cell;
+  7. the demo family's report-gate property and two children opening on their own (test_live_demo.py's
+     gate_checks on the family page), here so that browser time is not added to test_live_demo.py's;
+  8. the real server answers every finding id of a child with a result to act on with the same page, and keeps
+     the 404 for an adult's id that is not a finding.
 Checks 2 and 4 are run again on a copy of the fixture with two parents swapped
 and must fail there: a check that cannot fail is no check.
 
@@ -161,6 +165,35 @@ def route_checks(app):
              ok and descents(body) == DESCENT, (code, ctype, auth, ok and descents(body)))]
 
 
+def family_browser_checks(work):
+    """Run the demo's family veil group here so its browser time is in another Guard shard."""
+    import test_live_demo as demo
+    chrome = demo.find_chrome()
+    if not chrome:
+        if os.environ.get("CI") == "true":
+            check("family browser group has Chrome in CI", False)
+        else:
+            print("[SKIP] no Chrome or Chromium for the family browser group")
+        return
+    og = demo.og_binary() or demo.build_live_demo.OG
+    out = os.path.join(work, "family-browser", "demo")
+    demo.build_live_demo.build(out, work=os.path.join(work, "family-browser", "root"), og=og)
+    handler = type("H", (demo.Static,), {"__init__": lambda self, *a, **k: demo.SimpleHTTPRequestHandler.__init__(
+        self, *a, directory=out, **k)})
+    srv = demo.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    demo.threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = demo.Chrome(chrome, os.path.join(work, "family-browser", "chrome"))
+    before, t0 = len(demo.FAILS), demo.time.time()
+    try:
+        demo.gate_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out, family_only=True)
+        FAILS.extend(demo.FAILS[before:])
+    finally:
+        b.close()
+        srv.shutdown()
+        srv.server_close()
+    print(f"   family browser group: {demo.time.time() - t0:.2f} s")
+
+
 def main():
     work = tempfile.mkdtemp(prefix="pgp-live-family-", dir=os.environ.get("TMPDIR"))
     try:
@@ -277,6 +310,7 @@ def main():
 
         # 6. the real server
         real_server(root)
+        family_browser_checks(work)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:
@@ -317,11 +351,55 @@ def real_server(root):
         check("the real server does not serve notes.txt", code == 404, code)
         code, _, body = get("/runs/family_a/")
         check("the family page loads family.js", code == 200 and b"/assets/plugins/family.js" in body, code)
+        finding_route_checks(live, get, root)
         browser_checks(port, os.path.dirname(root))
     finally:
         web.shutdown()
         ingest.server_close()
         web.server_close()
+
+
+# A summary with one result to act on (BRCA1): what child_a and loner (an adult in no family) both get below.
+ACT_SUMMARY = {"sections": {"cpsr": {"state": "ok", "data": {"plp": [
+    {"gene": "BRCA1", "variant": "c.68_69del", "final": "Pathogenic", "clinvar": "Pathogenic"}]}},
+    "clinvar": {"state": "ok", "data": {"hits": []}}}}
+
+
+def finding_route_checks(live, get, root):
+    """A child with a result to act on: every well-formed finding id answers the same page, so a guessed address
+    cannot tell whether the child has that result. An adult keeps the plain 404 for an id that is not a finding."""
+    import live_results
+    status = os.path.join(root, "loner", "logs", "run_status.tsv")
+    with open(status, "w") as f:
+        f.write("meta\tstarted_epoch\t1767347940\nstep\t06\tplanned\n")
+    real = live.summary
+    live.summary = lambda name, d, st: ACT_SUMMARY if name in ("child_a", "loner") else real(name, d, st)
+    act = next(f["id"] for f in live_results.build("child_a", ACT_SUMMARY)["findings"] if f["level"] == "act")
+
+    def answers(run):
+        # The page names the id it was asked for (data-finding), as the address does: the rest is the same.
+        return [(lambda r: (r[0], r[2].replace(x.encode(), b"ID")))(get("/runs/%s/finding/%s/" % (run, x)))
+                for x in (act, "two-hits-cftr", "zz-not-a-finding")]
+    try:
+        child, adult = answers("child_a"), answers("loner")
+        check("a child's finding route answers the same page for its act, a guessed act and nonsense",
+              [c[0] for c in child] == [200] * 3 and len({c[1] for c in child}) == 1, [c[0] for c in child])
+        check("an adult's finding route: the page for its finding, 404 for any other id",
+              [c[0] for c in adult] == [200, 404, 404], [c[0] for c in adult])
+        # The server loads its plugins itself: patch every loaded copy of the module.
+        mods = [m for m in list(sys.modules.values()) if getattr(m, "child_run", None) is not None and hasattr(m, "register")]
+        keep = [m.child_run for m in mods]
+        for m in mods:
+            m.child_run = lambda *a: False
+        try:
+            control("a server that tells a child's guessed finding id apart",
+                    bool(mods) and [c[0] for c in answers("child_a")] == [200] * 3)
+        finally:
+            for m, k in zip(mods, keep):
+                m.child_run = k
+    finally:
+        live.summary = real
+        os.remove(status)
 
 
 def browser_checks(port, work):
@@ -344,49 +422,25 @@ def browser_checks(port, work):
         loaded = b.wait("var i = document.querySelector('img.pedigree'); i && i.complete && i.naturalWidth > 0 && "
                         "i.naturalWidth", 10)
         check("browser: the pedigree image loads", loaded, loaded)
-        # father_a and mother_a are also children (of gf_a and gm_a) whose results this server cannot read, so the
-        # couple screen stays closed whole until the button of each opens it.
-        shut = open_screen(b)
-        check("browser: the couple screen of a partner who is a child stays closed until 'Show the screen'", shut, shut)
-        couple = b.eval("var p = document.querySelector('p[data-couple=\\'father_a mother_a\\']'); p && p.textContent")
-        check("browser: the couple line counts 1 shared and 1 X-linked and links the report",
-              couple and "1 gene(s) where both carry a finding, 1 X-linked" in couple
-              and b.eval("!!document.querySelector('p[data-couple=\\'father_a mother_a\\'] a')"), couple)
-        b.eval("document.querySelector('details[data-child=child_a]').open = true; true")
-        # child_a's results cannot be built here (its summary is cut short), so the page cannot tell whether a
-        # result to act on is closed: the map stays closed until "Show the map" is clicked.
-        # Only once the page has given up on child_a's results: a page still waiting keeps the map closed anyway.
-        shut = b.wait("/\\bchild_a:failed\\b/.test(document.documentElement.dataset.pgpKids || '') && "
-                      "(function () { var v = Array.prototype.filter.call(document.querySelectorAll('details[data-child=child_a] .veil'), "
-                      "function (x) { return x.textContent.indexOf('Show the map') >= 0; })[0]; "
-                      "return v && !document.querySelector('details[data-child=child_a] img') && (v.querySelector('button').click(), true); }())", 10)
-        check("browser: child_a's chromosome map stays closed while its results cannot be read", shut, shut)
-        seg = b.wait("var i = document.querySelector('details[data-child=child_a] img'); "
-                     "i && i.complete && i.naturalWidth > 0 && i.getAttribute('src')", 10)
-        check("browser: child_a's chromosome map loads", seg == "/family/family_a/child_a_segments.svg", seg)
+        # child_a has a run whose results cannot be read: closed whole, chromosome image included. Its parents have
+        # no run here, so nothing of theirs is closed: their couple screen shows.
+        got = b.wait("var g = document.querySelector('[data-gate-child=child_a]'); "
+                     "[!!g, !!document.querySelector('img.segments'), !!document.querySelector('#ch-couples table')].join()", 10)
+        check("browser: child_a's unreadable report stays closed whole; its parents' couple screen shows",
+              got == "true,false,true", got)
         blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
         check("browser: the policy blocked nothing on the family page", not blocked, blocked)
         depth_checks(b, base, os.path.join(work, "genome"))
         b.go(base + "/runs/child_a/")
-        href = b.wait("var a = document.querySelector('section[data-plugin=family] a'); a && a.getAttribute('href')")
-        check("browser: child_a's page links to its family", href == "/runs/family_a/", href)
+        closed = b.wait("!!document.querySelector('#report-gate')")
+        check("browser: an unreadable child's page shows the fixed gate", bool(closed), closed)
+
     finally:
         b.close()
 
 
-def open_screen(b):
-    """Click the closed boxes of father_a's and mother_a's couple screen, one per partner, once they show with no
-    table or link: whether they did and the screen then opened."""
-    shut = b.wait("!/:pending\\b/.test(document.documentElement.dataset.pgpKids || ':pending') && "
-                  "document.querySelectorAll('#ch-couples .veil').length === 2 && !document.querySelector('#ch-couples table') "
-                  "&& !document.querySelector('#ch-couples p[data-couple] a') && 'shut'", 10)
-    for who in ("father_a", "mother_a"):
-        b.eval("var v = document.querySelector('#ch-couples .veil[data-veil-child=%s] button'); v && v.click(); true" % who)
-    return bool(shut) and bool(b.wait("!!document.querySelector('#ch-couples table') && !document.querySelector('#ch-couples .veil')", 5))
-
-
 # A stale blood-group section with two systems past ABO and RhD, for child_a's summary.json.
-STALE_SUMMARY = {"sections": {"bloodtype": {"state": "stale", "data": {
+STALE_SUMMARY = {"sections": {"bloodtype": {"state": "stale", "note": "older than its input", "data": {
     "abo": "A1", "rhd": "D+", "systems": [{"system": "ABO", "phenotype": "A1"}, {"system": "RhD", "phenotype": "D+"},
                                           {"system": "Kell", "phenotype": "K-k+"}, {"system": "Duffy", "phenotype": "Fy(a+b-)"}]}},
     "haplogroup": {"state": "ok", "data": {"haplogroup": "H1"}}}}
@@ -410,10 +464,22 @@ def depth_checks(b, base, root):
     os.symlink(secret, os.path.join(fam_dir, "compound_het.tsv"))
     with open(os.path.join(root, "child_a", "summary.json"), "w") as f:
         json.dump(STALE_SUMMARY, f)
+    # Give the formatting fixtures readable no-act results. Unknown results deliberately cannot open.
+    log = os.path.join(root, "child_a", "logs", "run_status.tsv")
+    with open(log) as f:
+        old_log = f.read()
+    with open(log, "a") as f:
+        f.write("step\t06\tok\n")
+    parent_dirs = []
+    for parent in ("father_a", "mother_a"):
+        d = os.path.join(root, parent)
+        os.makedirs(os.path.join(d, "logs"), exist_ok=True)
+        with open(os.path.join(d, "logs", "run_status.tsv"), "w") as f:
+            f.write("step\t06\tok\n")
+        parent_dirs.append(d)
     clin = os.path.join(root, "child_a", "clinical")
     try:
         b.go(base + "/runs/family_a/")
-        open_screen(b)
         ready = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
                        "!!document.querySelector('div[data-shared=GENE4]')")
         four = b.eval("var k = document.querySelector('div[data-shared=GENE1] .kids4 .grid4'); k ? k.children.length : -1")
@@ -464,6 +530,10 @@ def depth_checks(b, base, root):
         os.remove(os.path.join(fam_dir, "compound_het.tsv"))
         os.remove(os.path.join(root, "child_a", "summary.json"))
         shutil.rmtree(clin, ignore_errors=True)
+        with open(log, "w") as f:
+            f.write(old_log)
+        for d in parent_dirs:
+            shutil.rmtree(d)
 
 
 if __name__ == "__main__":

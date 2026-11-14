@@ -3,9 +3,11 @@
 // the explanation, the plan under it, then the evidence (the numbers, the frequency on a log strip, the
 // reads with a link to the genome viewer), the caveat, the related findings and the family. Everything
 // comes from the run's results.json (bin/live_results.py findings); nothing is computed here about
-// genetics. A result to act on about a child of the family stays closed until it is opened on purpose.
+// genetics. A child's finding page draws only once the report gate (core.js) has released the child's report.
 (function () {
   'use strict';
+  window.PGPUI.ready.then(function () {
+  if (window.PGPUI.gateOwnsPage()) { return; }
   var U = window.PGPUI;
   if (!U) { return; }
   var el = U.el, add = U.add;
@@ -72,30 +74,14 @@
       root.setAttribute('data-pgp-status', 'ready');
       return;
     }
-    // known, not family: the click that opens this finding draws again with family as it came, UNKNOWN kept.
     var unknown = family === UNKNOWN;
     var known = unknown ? null : family;
-    var me = known && (known.state.members || []).filter(function (m) { return m.sample === r.sample; })[0];
-    // A family that does not list this person cannot say they are not a child: closed as well.
-    var child = unknown || (!!known && !me) || !!(me && (me.father || me.mother));
-    // A finding that is not itself a result to act on but names one (a symptom ranking can rank the gene:
-    // results.veil.findings, bin/live_results.py veil()) stays closed with it, as on the person page.
-    var tags = (r.veil && r.veil.findings) || {};
-    function tagOf(x) { var t = tags[x.id]; return t && t !== x.id ? t : null; }
-    // Opening this finding opens it and the result it names, nothing else: another result keeps its own veil.
-    var opened = {};
-    if (draw.open) { opened[f.id] = true; if (tagOf(f)) { opened[tagOf(f)] = true; } }
-    function shut(x) { return child && (x.level === 'act' ? !opened[x.id] : !!tagOf(x) && !opened[tagOf(x)]); }
-    // Closed: no title, gene or variant anywhere on the page (its title, crumb, cover, rail) until opened.
-    var closed = shut(f);
-    var title = !closed ? f.title : f.level === 'act' ? 'A result to act on' : 'A finding about a result to act on';
-    document.title = title + ': ' + r.sample + ': OwnGenome';
-    document.getElementById('finding-crumb').textContent = title;
+    document.title = f.title + ': ' + r.sample + ': OwnGenome';
+    document.getElementById('finding-crumb').textContent = f.title;
     var sec = (r.journal || []).filter(function (s) { return s.n === f.section; })[0];
     var same = (r.findings || []).filter(function (x) { return x.level === f.level; });
     var order = (r.findings || []).filter(function (x) { return x.level !== 'info'; });
     var next = order[order.indexOf(f) + 1];
-    if (next && shut(next)) { next = null; }
     // The rail: back to the report, this page's parts, the next finding of the report.
     var rail = el('aside', { 'class': 'toc frail', 'aria-label': 'This finding' });
     var back = el('a', { 'class': 'back', href: BASE + '#f/' + f.id });
@@ -124,14 +110,14 @@
     add(lv, el('span', { 'class': 'dim' }, same.length === 1 ? 'The only finding at this level in ' + r.sample + '’s genome'
       : same.length + ' findings at this level in ' + r.sample + '’s genome'));
     add(cover, lv);
-    add(cover, el('h1', { 'class': 'h-display' }, title));
+    add(cover, el('h1', { 'class': 'h-display' }, f.title));
     var chips = el('div', { 'class': 'chips' });
     var cs = [];
     if (f.gene) { cs.push(f.gene); }
     if (f.detail) { cs.push(f.detail); }
     if (f.viewer && cs.join(' ').indexOf(f.viewer) < 0) { cs.push(f.viewer); }
     cs.forEach(function (c) { add(chips, el('span', { 'class': 'chip mono' }, c)); });
-    if (cs.length && !closed) { add(cover, chips); }
+    if (cs.length) { add(cover, chips); }
     var main0 = el('div', {});
     add(main0, cover);
     var acts = el('aside', { 'class': 'actions' });
@@ -142,20 +128,6 @@
     var top = el('div', { 'class': 'row' });
     add(top, main0, acts);
     add(col, top);
-    if (closed) {
-      var v = el('div', { 'class': 'veil' });
-      add(v, add(el('div', { 'class': 'vt' }), el('b', {}, 'A result about a child. '),
-        (f.level === 'act' ? '' : 'This finding names a result to act on. ') +
-        'A result to act on in adult life is usually not looked at before the child can choose. It stays closed until you open it.'));
-      var b = el('button', { type: 'button', 'class': 'btn' }, 'Show the result');
-      b.addEventListener('click', function () { draw.open = true; draw(r, family); });
-      add(v, b);
-      add(col, v);
-      add(body, rail, col);
-      add(main, body);
-      root.setAttribute('data-pgp-status', 'ready');
-      return;
-    }
     var row1 = el('div', { 'class': 'row' });
     var m1 = el('div', {});
     add(m1, el('p', { 'class': 'lede' }, f.text));
@@ -197,7 +169,7 @@
     }
     // Related findings and the family.
     var rel = (f.related || []).map(function (id) { return (r.findings || []).filter(function (x) { return x.id === id; })[0]; })
-      .filter(function (x) { return x && !shut(x); });
+      .filter(Boolean);
     if (known) {
       var sf = el('section', { 'class': 'sec', id: 'family' });
       add(sf, add(el('div', { 'class': 'sechead' }), el('span', { 'class': 'secnum' }, ROMAN[parts.length - 3]), el('h2', { 'class': 'h2' }, 'In the family')));
@@ -247,7 +219,7 @@
     var f = fam && fam.kind === 'member' && (fam.families || [])[0];
     if (!f) { return Promise.resolve(null); }
     familyUrl = f.url;
-    // A family that does not answer: roles unknown, so a result to act on stays closed (draw()).
+    // A family that does not answer: roles unknown (the family part of the page is left out).
     return U.getJSON(abs(f.url) + 'family.json').then(function (d) { return d && d.state ? d : UNKNOWN; }).catch(function () { return UNKNOWN; });
   }
   function failed() {
@@ -266,4 +238,5 @@
     }).catch(failed);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
+  });
 }());
