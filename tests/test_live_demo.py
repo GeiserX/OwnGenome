@@ -2855,6 +2855,8 @@ def nearest_problems(b, base, out):
     for link, words, chrom in (("#chr11:100.0-101.0M", "Nearest: DEMOB at 108.3 Mb ›", "chr11"),
                                ("#chr3", "Nearest: DEMOB on chr11 ›", "chr11")):
         map_page(b, base, S, link)
+        # The margin, Nearest with it, follows the settled camera; on a busy machine that takes longer.
+        b.wait("!document.querySelector('#genome-map .gm-nearest').hidden", 5)
         n = json.loads(b.eval(NEAR_JS))
         if n["near"] != words:
             bad.append(f"{link}: Nearest reads {n['near']!r}, want {words!r}")
