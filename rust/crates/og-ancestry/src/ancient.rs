@@ -1063,9 +1063,10 @@ fn nearest_populations(
     let mut rows = Vec::with_capacity(order.len());
     for g in order {
         let members = &groups[g];
-        let k = members[0].0.len().min(n_pcs);
-        let mut centre = Vec::with_capacity(k);
-        for i in 0..k {
+        // Every member must hold all n_pcs PCs: a shorter row would rank
+        // its group on fewer PCs than the person's distance claims.
+        let mut centre = Vec::with_capacity(n_pcs);
+        for i in 0..n_pcs {
             let mut xs = Vec::with_capacity(members.len());
             for (pcs, _) in members {
                 xs.push(*pcs.get(i).ok_or_else(|| {
@@ -1348,6 +1349,19 @@ fn cmd_report(a: &Args, out: &mut dyn Write) -> Result<()> {
     let n_pcs = (DISTANCE_PCS as usize)
         .min(panel.evals.len())
         .min(pcs.len());
+    // NaN or infinity in the eigenvalues or the person's PCs would make
+    // every distance and plotted point meaningless: stop instead.
+    let not_finite = |path: &str, what: &str| {
+        Fail(format!(
+            "{path}: {what} holds a value that is not a finite number"
+        ))
+    };
+    if panel.evals.iter().take(n_pcs).any(|v| !v.is_finite()) {
+        return Err(not_finite(pp, "the #eigvals: line"));
+    }
+    if pcs.iter().take(n_pcs.max(2)).any(|v| !v.is_finite()) {
+        return Err(not_finite(rp, &format!("the row of {sample}")));
+    }
     let signs = axis_signs(&panel, pp, &run, rp, n_pcs.max(2))?;
     let person: Vec<f64> = signs.iter().zip(pcs).map(|(s, v)| s * v).collect();
     let ancients = read_ancients(a.req("--ancients"))?;
@@ -1568,5 +1582,105 @@ mod tests {
     fn clean_cells() {
         assert_eq!(clean("  a\t b  "), "a b");
         assert_eq!(clean(" \t "), ".");
+    }
+
+    fn evec(evals: &[f64], rows: &[(&str, &str, &[f64])]) -> Evec {
+        let mut e = Evec {
+            evals: evals.to_vec(),
+            rows: Vec::new(),
+            index: HashMap::new(),
+        };
+        for (id, label, pcs) in rows {
+            e.index.insert((*id).to_owned(), e.rows.len());
+            e.rows
+                .push(((*id).to_owned(), (*label).to_owned(), pcs.to_vec()));
+        }
+        e
+    }
+
+    fn ancient(group: &str) -> AncientRow {
+        AncientRow {
+            group: group.to_owned(),
+            date_bp: None,
+            country: None,
+            locality: None,
+        }
+    }
+
+    #[test]
+    fn every_ancient_member_carries_the_distance_pcs() {
+        // A group whose rows hold 2 PCs must not be ranked on 2 of 4.
+        let panel = evec(
+            &[1.0; 4],
+            &[
+                ("a1", ANCIENT_LABEL, &[0.0, 0.0]),
+                ("a2", ANCIENT_LABEL, &[0.0, 0.0, 9.0, 0.0]),
+            ],
+        );
+        let ancients = vec![
+            ("a1".to_owned(), ancient("Short")),
+            ("a2".to_owned(), ancient("Full")),
+        ];
+        let Err(Fail(msg)) = nearest_populations(&[0.0, 0.0, 10.0, 0.0], &panel, &ancients, 4)
+        else {
+            panic!("a group short of PCs was ranked");
+        };
+        assert!(msg.contains("ancient group Short has no PC3"), "{msg}");
+    }
+
+    #[test]
+    fn a_person_or_eigenvalue_that_is_not_finite_stops_the_report() {
+        let d = std::env::temp_dir().join(format!("og-ancient-finite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let modern: String = (1..=12)
+            .map(|i| format!("M{i} {}.0 {}.5 {} {} Pop\n", i, 13 - i, i % 3, i % 5))
+            .collect();
+        let path = |n: &str| d.join(n).to_str().unwrap().to_owned();
+        for (person, evals) in [
+            ("S1 nan 0.1 0.2 0.3 Person\n", "4 3 2 1"),
+            ("S1 0.1 0.2 0.3 0.4 Person\n", "4 inf 2 1"),
+        ] {
+            std::fs::write(
+                d.join("panel.evec"),
+                format!("#eigvals: {evals}\n{modern}A1 1 2 3 4 Ancient\n"),
+            )
+            .unwrap();
+            std::fs::write(
+                d.join("run.evec"),
+                format!("#eigvals: 4 3 2 1\n{modern}{person}"),
+            )
+            .unwrap();
+            std::fs::write(d.join("anc.tsv"), "id\tgroup\nA1\tG\n").unwrap();
+            let args: Vec<String> = [
+                "report",
+                "--panel-evec",
+                &path("panel.evec"),
+                "--run-evec",
+                &path("run.evec"),
+                "--ancients",
+                &path("anc.tsv"),
+                "--sample",
+                "S1",
+                "--release",
+                "v1",
+                "--out-tsv",
+                &path("o.tsv"),
+                "--out-info",
+                &path("o.info"),
+                "--out-txt",
+                &path("o.txt"),
+                "--out-svg",
+                &path("o.svg"),
+            ]
+            .map(str::to_owned)
+            .to_vec();
+            let mut err = Vec::new();
+            assert_eq!(cli(&args, &mut Vec::new(), &mut err), 1, "{person}{evals}");
+            let err = String::from_utf8(err).unwrap();
+            assert!(err.contains("not a finite number"), "{err}");
+            assert!(!d.join("o.tsv").exists());
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

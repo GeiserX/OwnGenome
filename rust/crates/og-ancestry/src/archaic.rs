@@ -723,7 +723,9 @@ struct VcfRec {
 /// The biallelic SNVs (and the other records, as code 9) of a one-sample
 /// VCF, in file order. A record whose FILTER is not PASS or `.` gives
 /// code 9 (not read), so a DeepVariant RefCall is neither your allele nor
-/// the reference.
+/// the reference. Every record is checked against the last record handed
+/// out (`previous`), so a record that is skipped cannot hide a chromosome
+/// that comes back at a lower position.
 struct Vcf {
     text: Text,
     previous: Option<(String, i64)>,
@@ -772,11 +774,11 @@ impl Vcf {
                     self.text.path.display()
                 ));
             }
-            self.previous = Some((c[0].to_owned(), pos));
             if c[3].chars().count() != 1 || c[4] == "." {
                 continue;
             }
             if c[4].contains(',') || c[4].chars().count() != 1 {
+                self.previous = Some((c[0].to_owned(), pos));
                 return Ok(Some(VcfRec {
                     chrom: c[0].to_owned(),
                     pos,
@@ -796,6 +798,7 @@ impl Vcf {
             if c[6] != "PASS" && c[6] != "." {
                 code = 9;
             }
+            self.previous = Some((c[0].to_owned(), pos));
             return Ok(Some(VcfRec {
                 chrom: c[0].to_owned(),
                 pos,
@@ -922,7 +925,16 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
         samples += &format!("{id}\n");
     }
     head.push('\n');
-    put(&Path::new(out_dir).join("samples.txt"), samples.as_bytes())?;
+    // Every output is staged and published only when the whole run has
+    // passed, so a run that stops leaves the previous set as it was.
+    let samples_path = Path::new(out_dir).join("samples.txt");
+    let mut samples_file =
+        AtomicFile::create(&samples_path).map_err(|e| cannot_write(&samples_path, &e))?;
+    samples_file
+        .write_all(samples.as_bytes())
+        .map_err(|e| cannot_write(&samples_path, &e))?;
+    let mut staged: Vec<(PathBuf, AtomicFile)> = vec![(samples_path, samples_file)];
+    let mut stale: Vec<PathBuf> = Vec::new();
 
     let vcf_path = a.req("--vcf");
     let mut calls = Calls {
@@ -942,7 +954,7 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
         done.push(chrom.clone());
         let table = tables.iter().find(|(c, _)| *c == chrom).map(|(_, t)| t);
         if let Some(table) = table {
-            if let Some(span) = write_chrom(
+            match write_chrom(
                 &chrom,
                 table,
                 &mut calls,
@@ -953,7 +965,11 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
                 two_n,
                 out_dir,
             )? {
-                spans.push(span);
+                Written::Rows(span, files) => {
+                    spans.push(span);
+                    staged.extend(files);
+                }
+                Written::Empty(path) => stale.push(path),
             }
         } else {
             while pending.as_ref().is_some_and(|r| r.chrom == chrom) {
@@ -961,12 +977,6 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
             }
         }
     }
-    let mut text =
-        String::from("chrom\tfirst\tlast\tsites\tsites_with_your_alt\tsites_other_allele\n");
-    for (c, f, l, n, carried, dropped) in &spans {
-        text += &format!("{c}\t{f}\t{l}\t{n}\t{carried}\t{dropped}\n");
-    }
-    put(&Path::new(out_dir).join("spans.tsv"), text.as_bytes())?;
     if spans.is_empty() {
         let names: Vec<&str> = tables.iter().map(|(c, _)| c.as_str()).collect();
         let mut sorted = names.clone();
@@ -976,6 +986,25 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
             sorted.join(", ")
         ));
     }
+    // Published one rename at a time: the set is not one transaction, and
+    // a rename that fails part way leaves part of the new set in place.
+    for (path, file) in staged {
+        file.commit().map_err(|e| cannot_write(&path, &e))?;
+    }
+    for path in stale {
+        match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => {
+                return Err(Stop::from(cannot_write(&path, &e)));
+            }
+            _ => {}
+        }
+    }
+    let mut text =
+        String::from("chrom\tfirst\tlast\tsites\tsites_with_your_alt\tsites_other_allele\n");
+    for (c, f, l, n, carried, dropped) in &spans {
+        text += &format!("{c}\t{f}\t{l}\t{n}\t{carried}\t{dropped}\n");
+    }
+    put(&Path::new(out_dir).join("spans.tsv"), text.as_bytes())?;
     let sites: u64 = spans.iter().map(|s| s.3).sum();
     let _ = writeln!(err, "{} chromosomes, {sites} sites", spans.len());
     Ok(())
@@ -985,8 +1014,18 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
 /// position, sites, sites with your ALT, sites with another allele.
 type Span = (String, i64, i64, u64, u64, u64);
 
+/// What one chromosome leaves to publish when the whole run has passed.
+enum Written {
+    /// Rows were written: the span row, and the staged genotype file and
+    /// masks with their final paths.
+    Rows(Span, Vec<(PathBuf, AtomicFile)>),
+    /// No row was written: a genotype file of this name from an earlier
+    /// run is stale and goes.
+    Empty(PathBuf),
+}
+
 /// IBDmix's genotype file of one chromosome, and each archaic genome's
-/// mask; the chromosome's span row, or `None` when no row was written.
+/// mask, staged under temporary names.
 #[allow(clippy::too_many_arguments)]
 fn write_chrom(
     chrom: &str,
@@ -998,7 +1037,7 @@ fn write_chrom(
     af_col: usize,
     two_n: f64,
     out_dir: &str,
-) -> Out<Option<Span>> {
+) -> Out<Written> {
     let num = &chrom[3..];
     let path = Path::new(out_dir).join(format!("{chrom}.gt.gz"));
     let file = AtomicFile::create(&path).map_err(|e| cannot_write(&path, &e))?;
@@ -1124,26 +1163,22 @@ fn write_chrom(
     }
     if n == 0 {
         drop(gz);
-        match std::fs::remove_file(&path) {
-            Err(e) if e.kind() != io::ErrorKind::NotFound => {
-                return Err(Stop::from(cannot_write(&path, &e)));
-            }
-            _ => {}
-        }
-        return Ok(None);
+        return Ok(Written::Empty(path));
     }
-    gz.finish().and_then(AtomicFile::commit).map_err(werr)?;
+    let gz = gz.finish().map_err(werr)?;
+    let mut files = vec![(path, gz)];
     // IBDmix's mask (-r): the chromosome as in the genotype file, and a
     // line covers the positions start + 1 to end, as in a BED.
-    for (k, mut mask) in masks.into_iter().enumerate() {
+    for ((k, mut mask), mask_path) in masks.into_iter().enumerate().zip(mask_paths) {
         if let Some((s, e)) = open_run[k] {
-            writeln!(mask, "{num}\t{}\t{e}", s - 1)
-                .map_err(|e| cannot_write(&mask_paths[k], &e))?;
+            writeln!(mask, "{num}\t{}\t{e}", s - 1).map_err(|e| cannot_write(&mask_path, &e))?;
         }
-        mask.commit()
-            .map_err(|e| cannot_write(&mask_paths[k], &e))?;
+        files.push((mask_path, mask));
     }
-    Ok(Some((chrom.to_owned(), first, last, n, carried, dropped)))
+    Ok(Written::Rows(
+        (chrom.to_owned(), first, last, n, carried, dropped),
+        files,
+    ))
 }
 
 // --- report (step 43) -------------------------------------------------------------
@@ -1750,6 +1785,126 @@ mod tests {
             .expect("the second window sees the unsorted tail");
         assert_eq!(error.0, 2);
         assert!(error.1.contains("not sorted"));
+    }
+
+    #[test]
+    fn an_ignored_record_cannot_hide_a_chromosome_return() {
+        // chr22 comes back after an ignored chrX record (ALT "."), at a
+        // lower position: the join would write 0 at chr22:1000 and lose
+        // the call, so it must stop as unsorted.
+        let text = "chr22\t3000\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n\
+                    chrX\t1\t.\tA\t.\t.\tPASS\t.\tGT\t0/0\n\
+                    chr22\t1000\t.\tC\tT\t.\tPASS\t.\tGT\t1/1\n";
+        let mut vcf = Vcf::new(Text {
+            path: "sample.vcf".into(),
+            lines: Lines::new(
+                Box::new(io::Cursor::new(text.as_bytes().to_vec())),
+                Utf8::Strict,
+            ),
+            line: String::new(),
+        });
+        assert_eq!(vcf.next().unwrap().unwrap().pos, 3000);
+        let error = vcf.next().err().expect("chr22 goes back to 1000");
+        assert_eq!(error.0, 2);
+        assert!(
+            error.1.contains("chr22:1000 comes after 3000"),
+            "{}",
+            error.1
+        );
+    }
+
+    /// A scratch folder of its own under the system temp folder.
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("og-archaic-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("table")).unwrap();
+        d
+    }
+
+    fn gzip_to(path: &Path, text: &str) {
+        let mut gz = GzEncoder::new(std::fs::File::create(path).unwrap(), Compression::new(1));
+        gz.write_all(text.as_bytes()).unwrap();
+        gz.finish().unwrap();
+    }
+
+    /// `og archaic genotypes` on the folder's table into `gt`, with a VCF
+    /// of these lines: the exit code.
+    fn genotypes(d: &Path, vcf_lines: &str, pseudo: &str) -> u8 {
+        let vcf = d.join("s.vcf");
+        std::fs::write(
+            &vcf,
+            format!("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n{vcf_lines}"),
+        )
+        .unwrap();
+        let args: Vec<String> = [
+            "genotypes",
+            "--table-dir",
+            d.join("table").to_str().unwrap(),
+            "--vcf",
+            vcf.to_str().unwrap(),
+            "--pseudo",
+            pseudo,
+            "--out-dir",
+            d.join("gt").to_str().unwrap(),
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        cli(&args, &mut Vec::new(), &mut Vec::new())
+    }
+
+    fn snapshot(d: &Path) -> Vec<(String, Vec<u8>)> {
+        let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(d.join("gt"))
+            .unwrap()
+            .map(|e| {
+                let e = e.unwrap();
+                (
+                    e.file_name().into_string().unwrap(),
+                    std::fs::read(e.path()).unwrap(),
+                )
+            })
+            .collect();
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn a_failed_run_leaves_every_previous_output() {
+        let d = scratch("failed-run");
+        let head = TABLE_HEADER.join("\t");
+        let row = |c: &str, p: i64, r: &str, a: &str| {
+            format!("{c}\t{p}\t{r}\t{a}\t0\t1\t12\t0.5\t0.5\t0.5\t0.5\t0.5\t0.5\n")
+        };
+        gzip_to(
+            &d.join("table/chr21.tsv.gz"),
+            &format!(
+                "{head}\n{}{}",
+                row("chr21", 100, "A", "G"),
+                row("chr21", 200, "C", "T")
+            ),
+        );
+        gzip_to(
+            &d.join("table/chr22.tsv.gz"),
+            &format!("{head}\n{}", row("chr22", 100, "G", "A")),
+        );
+        let good =
+            "chr21\t100\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\nchr22\t100\t.\tG\tA\t.\tPASS\t.\tGT\t1/1\n";
+        assert_eq!(genotypes(&d, good, "2"), 0);
+        let before = snapshot(&d);
+        assert!(before.iter().any(|(n, _)| n == "chr22.gt.gz"));
+        // chr21 is written, then chr22 is found unsorted: nothing changes,
+        // not samples.txt for the new --pseudo nor chr21's files.
+        let unsorted = "chr21\t100\t.\tA\tG\t.\tPASS\t.\tGT\t1/1\n\
+                        chr22\t300\t.\tG\tA\t.\tPASS\t.\tGT\t1/1\n\
+                        chr22\t400\t.\tG\tA\t.\tPASS\t.\tGT\t1/1\n\
+                        chr22\t100\t.\tG\tA\t.\tPASS\t.\tGT\t1/1\n";
+        assert_eq!(genotypes(&d, unsorted, "3"), 2);
+        assert_eq!(snapshot(&d), before);
+        // No row written on any chromosome (chr22's only site holds
+        // another allele): the run fails and chr22's file stays.
+        let other = "chr22\t100\t.\tG\tC\t.\tPASS\t.\tGT\t1/1\n";
+        assert_ne!(genotypes(&d, other, "3"), 0);
+        assert_eq!(snapshot(&d), before);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
