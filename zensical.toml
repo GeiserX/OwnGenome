@@ -124,6 +124,7 @@ nav = [
       { "What the Pipeline Does Not Report" = "not-reported.md" },
       { "Genome Viewer: See the Reads Behind a Finding" = "viewer.md" },
       { "Watch a Run Live" = "live-site.md" },
+      { "The Genome Map" = "genome-map.md" },
       { "Multi-Sample Comparison Guide" = "multi-sample.md" },
       { "Long-Read Sequencing Guide" = "long-read-guide.md" },
       { "Whole Exome Sequencing (WES) Guide" = "wes-guide.md" },

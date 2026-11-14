@@ -29,8 +29,12 @@
   var BRASS = '#c8ab78', INK = '#f0efec', INK2 = '#c3c2b7', INK3 = '#8f8d86', PAGE = '#0e0f10';
   var SANS = 'system-ui, -apple-system, "Segoe UI", sans-serif';
   var MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
-  // The chromosome level ends at 16,667 bp per CSS pixel: closer views (region, gene, reads) come later.
-  var CHROM_BPP = 16667;
+  // The levels, by bp per CSS pixel of the plot: chromosome above 16,667, region down to 833, then gene,
+  // and reads below a 50 kb span (the read viewer's window is in bp, not pixels). The view never gets
+  // narrower than 100 bp.
+  var CHROM_BPP = 16667, REGION_BPP = 833, READS_SPAN = 50000, MIN_SPAN = 100;
+  // The gauge's Region and Gene stops, in bp per CSS pixel, so each lands inside its level at any width.
+  var REGION_STOP = 8000, GENE_STOP = 300;
   // A genome row's least height: 22 CSS px, 10 on a phone (the page there is long enough already).
   var ROW_MIN = 22, ROW_PHONE = 10;
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -90,7 +94,8 @@
     (f.id || []).forEach(function (fid, i) {
       if (!(f.chrom[i] in by)) { return; }
       rows.push({ id: fid, level: f.level[i], gate: f.gate[i], chrom: f.chrom[i], pos: f.pos[i], s: f.s[i], e: f.e[i],
-        gene: f.gene[i], title: f.title[i], href: f.href[i], phrase: f.phrase[i], veil: f.veil[i] >= 0 ? veilIds[f.veil[i]] : null });
+        gene: f.gene[i], title: f.title[i], href: f.href[i], phrase: f.phrase[i], veil: f.veil[i] >= 0 ? veilIds[f.veil[i]] : null,
+        hgvs: (f.hgvs || [])[i] || '', zyg: (f.zyg || [])[i] || '' });
     });
     var gated = {};
     rows.forEach(function (r) { if (r.gate) { gated[r.id] = r; } });
@@ -100,7 +105,7 @@
     rows.forEach(function (r) { if (r.veil && r.level === 'act' && !r.gate && closable.indexOf(r.id) < 0) { closable.push(r.id); } });
     return { doc: d, id: id, label: person.label || id, chroms: chroms, by: by, bands: bands, roh: roh, bins: bins,
       binSize: (per.roh_bins && per.roh_bins.size) || 1e6, findings: rows, gated: gated, veilIds: veilIds, closable: closable,
-      layers: d.layers || {}, text: d.text || {}, art: (d.dict && d.dict.art) || [] };
+      layers: d.layers || {}, text: d.text || {}, art: (d.dict && d.dict.art) || [], gencode: (d.ref && d.ref.gencode) || null };
   }
 
   // --- the figure ---------------------------------------------------------------------------------------
@@ -119,7 +124,9 @@
     var gauge = el('div', { 'class': 'gm-gauge', role: 'group', 'aria-label': 'Zoom level' });
     var stopG = el('button', { type: 'button', 'data-stop': 'genome' }, 'Genome');
     var stopC = el('button', { type: 'button', 'data-stop': 'chromosome' }, 'Chromosome');
-    add(gauge, stopG, stopC);
+    var stopR = el('button', { type: 'button', 'data-stop': 'region' }, 'Region');
+    var stopN = el('button', { type: 'button', 'data-stop': 'gene' }, 'Gene');
+    add(gauge, stopG, stopC, stopR, stopN);
     // Zoom buttons for an open chromosome: the touch path to what the wheel and the + and - keys do.
     var zoom = el('div', { 'class': 'gm-zoom', role: 'group', 'aria-label': 'Zoom', hidden: 'hidden' });
     var zoomOut = el('button', { type: 'button', 'aria-label': 'Zoom out', 'data-zoom': 'out' }, '−');
@@ -127,7 +134,14 @@
     add(zoom, zoomOut, zoomIn);
     var crumb = el('nav', { 'class': 'gm-crumb mono', 'aria-label': 'Where the map is' });
     var chips = el('div', { 'class': 'gm-chips' });
-    add(head, kicker, add(el('div', { 'class': 'gm-titlerow' }), title, gauge, zoom), crumb, chips);
+    // Search (the / key): gene names, band names, the findings drawn and a place typed as the address takes it.
+    var finder = el('div', { 'class': 'gm-find', role: 'search' });
+    var findBox = el('input', { type: 'search', 'class': 'gm-find-box', id: 'gm-find', autocomplete: 'off', spellcheck: 'false',
+      role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'gm-find-list', 'aria-autocomplete': 'list',
+      'aria-label': 'Find a gene, a band, a finding or a place on the map', placeholder: 'Find a gene, band or finding  /' });
+    var findList = el('ul', { 'class': 'gm-find-list', id: 'gm-find-list', role: 'listbox', 'aria-label': 'Places found', hidden: 'hidden' });
+    add(finder, findBox, findList);
+    add(head, kicker, add(el('div', { 'class': 'gm-titlerow' }), title, gauge, zoom), crumb, finder, chips);
     var stage = el('div', { 'class': 'gm-stage' });
     var canvas = el('canvas', { 'class': 'gm-canvas', tabindex: '0', role: 'img', 'aria-describedby': 'gm-narration' });
     var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: 'hidden' });
@@ -141,13 +155,17 @@
     var mkick = el('div', { 'class': 'fig-label' }, 'The whole genome');
     var mline = el('div', { 'class': 'gm-mline mono' });
     var narr = el('div', { 'class': 'gm-narration', id: 'gm-narration', 'aria-live': 'polite' });
+    // The card of the finding picked on the map, and the way to the nearest finding when none is in view.
+    var card = el('section', { 'class': 'gm-card', 'aria-label': 'The finding picked on the map', hidden: 'hidden' });
+    var nearBtn = el('button', { type: 'button', 'class': 'gm-nearest', hidden: 'hidden' });
+    var paintBox = el('div', { 'class': 'gm-paint', role: 'group', 'aria-label': 'Paint the copies' });
     var layersBox = el('dl', { 'class': 'gm-layers' });
     var keyBox = el('div', { 'class': 'gm-key', 'aria-label': 'Key' });
     // The layers and the key: open beside the map, folded under it on a phone.
     var more = el('details', { 'class': 'gm-more' });
     more.open = !(window.matchMedia && window.matchMedia('(max-width: 700px)').matches);
-    add(more, el('summary', {}, 'Layers and key'), layersBox, keyBox);
-    add(margin, mkick, mline, narr, more);
+    add(more, el('summary', {}, 'Layers and key'), paintBox, layersBox, keyBox);
+    add(margin, mkick, mline, card, narr, nearBtn, more);
     add(fig, main, margin);
 
     var ctx = canvas.getContext('2d');
@@ -158,6 +176,11 @@
     var inSection = [];
     var cache = null, cacheKey = '';
     var hatch = null;
+    // The finding whose card the margin shows (an id of drawn() only), and the mark the keyboard is on.
+    var sel = null, focusId = null;
+    // The gene files, fetched once each: per chromosome when a view first reaches the region level, the
+    // names when the search box gets its first key. Reference data, the same for every reader.
+    var genes = {}, names = null;
 
     // --- the veil: what this page keeps closed at this moment ---
     function stateOf(id) { return opts.veil(id, !!(M && M.gated[id])); }
@@ -184,12 +207,15 @@
 
     // --- geometry ---
     function chrom() { return M.chroms[cam.ci]; }
-    function rowH() { var lo = phone ? ROW_PHONE : ROW_MIN; return M ? clamp((CH - 18) / M.chroms.length, lo, 44) : lo; }
+    // The genome rows keep their height while a phone's canvas grows for an open chromosome (size()).
+    function rowH() { var lo = phone ? ROW_PHONE : ROW_MIN; return M ? clamp((genomeH() - 18) / M.chroms.length, lo, 44) : lo; }
+    function genomeH() { return 18 + (M ? M.chroms.length : 24) * (phone ? ROW_PHONE : ROW_MIN); }
     function gutG() { return phone ? 30 : 40; }
     function pad() { return phone ? 10 : 22; }
     function gut() { return lerp(gutG(), phone ? 64 : 128, cam.k); }
     function plotW() { return CW - gut() - pad(); }
-    function minSpan(len) { return Math.min(len, CHROM_BPP * Math.max(200, CW - (phone ? 64 : 128) - pad())); }
+    function minSpan(len) { return Math.min(len, MIN_SPAN); }
+    function openW() { return Math.max(200, CW - (phone ? 64 : 128) - pad()); }
     function view() {
       var span = Math.exp(cam.ls);
       return [cam.c - span / 2, cam.c + span / 2, span];
@@ -198,15 +224,22 @@
     function ox(bp) { var v = view(); return gut() + (bp - v[0]) / v[2] * plotW(); }
     function xAt(bp, open) { return open ? lerp(gx(bp), ox(bp), cam.k) : gx(bp); }
     function rowY(i) { return 9 + i * rowH() + rowH() / 2; }
-    function level() {
-      if (cam.k < 0.5) { return 'genome'; }
-      return 'chromosome';
+    // One rule for every lane, the gauge, the title and the address: the level of the camera shown now.
+    function level() { return levelOf(cam); }
+    function levelOf(c) {
+      if (c.k < 0.5) { return 'genome'; }
+      var span = Math.exp(c.ls), bpp = span / openW();
+      if (bpp > CHROM_BPP) { return 'chromosome'; }
+      if (bpp > REGION_BPP) { return 'region'; }
+      return span < READS_SPAN ? 'reads' : 'gene';
     }
+    function close_(lv) { return lv === 'gene' || lv === 'reads'; }
     // The lanes of an open chromosome, top to bottom: y of each, stretched to the canvas.
     function lanes() {
       var free = Math.max(0, CH - 230), st = 1 + Math.min(0.75, free / 400);
       var fy = 118, fh = 50 * Math.min(1.2, st), ry = fy + fh + 14, rh = 22 * st;
-      return { over: 10, ruler: 46, bands: 72, bh: 38, fy: fy, fh: fh, ry: ry, rh: rh };
+      var gy = ry + rh + 12, gh = clamp(CH - gy - 6, 60, 96);
+      return { over: 10, ruler: 46, bands: 72, bh: 38, fy: fy, fh: fh, ry: ry, rh: rh, gy: gy, gh: gh };
     }
 
     // --- the canvas size, the hatch pattern ---
@@ -217,7 +250,8 @@
       var w = Math.max(280, Math.floor(stage.clientWidth));
       phone = w < 520;
       var n = M ? M.chroms.length : 24;
-      var h = 18 + n * (phone ? ROW_PHONE : ROW_MIN);
+      // A phone's genome rows are short: an open chromosome makes the canvas taller, for its genes lane.
+      var h = Math.max(18 + n * (phone ? ROW_PHONE : ROW_MIN), phone && tgt.k > 0 ? 330 : 0);
       DPR = Math.min(2, window.devicePixelRatio || 1);
       if (w !== CW || h !== CH || canvas.width !== Math.round(w * DPR)) {
         CW = w; CH = h;
@@ -417,7 +451,13 @@
           hits.push({ kind: 'row', i: i, x0: 0, x1: CW, y0: rowY(i) - rowH() / 2, y1: rowY(i) + rowH() / 2 });
         });
         drawn().forEach(function (r) {
-          hits.push({ kind: 'finding', r: r, x: gx((r.s + r.e) / 2), y: rowY(M.by[r.chrom]) - 1, rad: 7 });
+          var x = gx((r.s + r.e) / 2), y = rowY(M.by[r.chrom]) - 1;
+          if (r.id === sel || r.id === focusId) {
+            ctx.strokeStyle = BRASS;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.stroke();
+          }
+          hits.push({ kind: 'finding', r: r, x: x, y: y, rad: 7 });
         });
         return;
       }
@@ -438,6 +478,16 @@
         body(ctx, M.chroms[i], gx, rowY(i), 8, 1);
         ctx.restore();
       }
+    }
+    // A place on the ruler, in Mb with as many decimals as the step needs, in bp below a 1 kb step.
+    function tick(at, stp) {
+      if (stp < 1000) { return comma(at); }
+      return mb(at, stp >= 1e6 ? 0 : Math.ceil(-Math.log10(stp / 1e6) - 1e-9)) + ' Mb';
+    }
+    // The reading line's place: closer views say it more precisely.
+    function where(bp, span) {
+      if (span < READS_SPAN) { return comma(bp); }
+      return mb(bp, span >= 20e6 ? 1 : span >= 2e6 ? 2 : 3) + ' Mb';
     }
     function niceStep(span, px) {
       var raw = span / Math.max(1, px / 90), p = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -486,15 +536,15 @@
       for (var at = Math.ceil(v[0] / stp) * stp; at <= v[1]; at += stp) {
         var x = ox(at);
         ctx.beginPath(); ctx.moveTo(x, L.ruler); ctx.lineTo(x, L.ruler + 5); ctx.stroke();
-        ctx.fillText(mb(at, stp < 1e6 ? 1 : 0) + ' Mb', x, L.ruler + 8);
+        ctx.fillText(tick(at, stp), x, L.ruler + 8);
       }
-      // Band names where they fit.
-      var b = M.bands[ch.n];
+      // Band names where they fit: the arm's name at the chromosome level, with its chromosome closer in.
+      var b = M.bands[ch.n], lvl = level();
       if (b) {
         ctx.font = '10px ' + SANS;
         ctx.textBaseline = 'middle';
         for (var i = first(b, v[0]); i < b.n && b.s[i] < v[1]; i++) {
-          var a = ox(b.s[i]), z = ox(b.e[i]), nm = b.o.name[i];
+          var a = ox(b.s[i]), z = ox(b.e[i]), nm = b.o.name[i] && lvl !== 'chromosome' ? short(ch.n) + b.o.name[i] : b.o.name[i];
           if (nm && z - a > measure('10px ' + SANS, nm) + 6) {
             ctx.fillStyle = ['gpos75', 'gpos100'].indexOf(b.o.stain[i]) >= 0 ? INK : INK2;
             ctx.fillText(nm, (Math.max(a, g) + Math.min(z, g + W)) / 2, L.bands + L.bh / 2);
@@ -511,9 +561,11 @@
       ctx.font = '11px ' + SANS;
       ctx.fillText('Findings', g - 12, L.fy + 16);
       ctx.fillText(phone ? 'Runs' : 'Homozygous runs', g - 12, L.ry + L.rh / 2);
+      ctx.fillText('Genes', g - 12, L.gy + 12);
       ctx.textAlign = 'left';
       ctx.save();
       ctx.beginPath(); ctx.rect(g - 6, 0, W + 12, CH); ctx.clip();
+      openGenes(L, v, ch);
       openFindings(L, v, ch);
       openRoh(L, v, ch);
       // The reading line: a dashed brass line through every lane at the centre, its place in a pill.
@@ -521,10 +573,10 @@
       ctx.setLineDash([3, 3]);
       ctx.strokeStyle = BRASS;
       ctx.globalAlpha = k * 0.8;
-      ctx.beginPath(); ctx.moveTo(cx, L.ruler + 22); ctx.lineTo(cx, L.ry + L.rh + 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, L.ruler + 22); ctx.lineTo(cx, L.gy + L.gh); ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
-      var pill = mb(cam.c, 1) + ' Mb', pw = measure('600 10.5px ' + SANS, pill) + 12;
+      var pill = where(cam.c, v[2]), pw = measure('600 10.5px ' + SANS, pill) + 12;
       ctx.fillStyle = BRASS;
       rounded(ctx, cx - pw / 2, L.ruler - 20, pw, 15, 7.5);
       ctx.beginPath(); rounded(ctx, cx - pw / 2, L.ruler - 20, pw, 15, 7.5); ctx.fill();
@@ -547,10 +599,19 @@
       var fs = drawn().filter(function (r) { return r.chrom === ch.n; });
       var inView = fs.filter(function (r) { return r.e > v[0] && r.s < v[1]; });
       if (!inView.length) {
-        laneWords(ctx, fs.length ? 'No finding in this stretch.' : noFindingHere(), g + 4, L.fy + 16);
+        var nr = nearest(), words0 = fs.length ? 'No finding in this stretch.' : noFindingHere();
+        laneWords(ctx, words0, g + 4, L.fy + 16);
+        if (nr) {
+          // The way to the nearest finding, on the side it lies: the same button as the margin's.
+          var t = nr.words, font = '500 11.5px ' + SANS, tw = measure(font, t), ww = measure('italic 11.5px ' + SANS, words0);
+          var tx = nr.side < 0 ? g + 4 : Math.max(g + ww + 18, g + plotW() - tw - 4), ty = L.fy + 34;
+          ctx.textBaseline = 'middle';
+          label(ctx, t, tx, ty, font, BRASS);
+          hits.push({ kind: 'nearest', x0: tx - 4, x1: tx + tw + 4, y0: ty - 9, y1: ty + 9 });
+        }
         return;
       }
-      var used = [];
+      var used = [], close = close_(level());
       inView.sort(function (a, b) { return PRI[a.level] - PRI[b.level] || a.s - b.s; }).forEach(function (r) {
         var x = ox((r.s + r.e) / 2), y = L.fy + 14;
         if (r.e - r.s > v[2] / 2000) {
@@ -561,17 +622,30 @@
         ctx.globalAlpha = 0.5;
         ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, L.bands + L.bh); ctx.stroke();
+        if (close) {
+          // Close in, the change is a dashed tick down through every lane, so its place in the gene shows.
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, L.gy + L.gh); ctx.stroke();
+          ctx.setLineDash([]);
+        }
         ctx.globalAlpha = cam.k;
+        if (r.id === sel || r.id === focusId) {
+          ctx.strokeStyle = BRASS;
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.stroke();
+        }
         glyph(ctx, r.level, x, y, 6);
         hits.push({ kind: 'finding', r: r, x: x, y: y, rad: 9 });
-        var name = r.gene || r.title, words = U.LEVEL_WORDS[r.level] || r.level;
-        var w = Math.max(measure('500 12px ' + SANS, name), measure('10.5px ' + SANS, words));
+        // The level's words under the name; close in, the change itself (HGVS) in mono when it has one.
+        var name = r.gene || r.title, mono = close && r.hgvs, words = mono ? r.hgvs : U.LEVEL_WORDS[r.level] || r.level;
+        var wf = mono ? '10.5px ' + MONO : '10.5px ' + SANS;
+        var w = Math.max(measure('500 12px ' + SANS, name), measure(wf, words));
         var lx = x + 11;
         if (lx + w > CW - 4 || used.some(function (u) { return !(lx + w < u[0] || lx > u[1]); })) { return; }
         used.push([lx - 4, lx + w + 6]);
         ctx.textBaseline = 'middle';
         label(ctx, name, lx, y - 1, '500 12px ' + SANS, INK);
-        label(ctx, words, lx, y + 13, '10.5px ' + SANS, INK3);
+        label(ctx, words, lx, y + 13, wf, INK3);
       });
     }
     function openRoh(L, v, ch) {
@@ -596,6 +670,138 @@
         }
         hits.push({ kind: 'roh', x0: a, x1: Math.max(a + 3, z), y0: y - 6, y1: y + 6, s: r.s[i], e: r.e[i], art: art, long: r.o.long[i] });
       }
+    }
+    // --- the genes lane: from the region level down, the chromosome's gene file (og map genes) ---
+    // Beside map.json on a person's page: /runs/<run>/map.json, /map/genes/<chrom>.json.
+    function genesUrl(name) {
+      if (opts.genes) { return opts.genes + name + '.json'; }
+      return new URL('../../map/genes/' + encodeURIComponent(name) + '.json', new URL(opts.url, window.location.href)).href;
+    }
+    // A gzip-wrapped JSON file, or an error carrying the server's first line (og's reason on a 404).
+    function fetchGz(url) {
+      return fetch(url, { credentials: 'same-origin' }).then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (t) { throw new Error((t || '').trim().split('\n')[0] || ('the server answered ' + r.status)); });
+        }
+        return new Response(r.body.pipeThrough(new window.DecompressionStream('gzip'))).text();
+      }).then(function (t) { return JSON.parse(t); });
+    }
+    function genesOf(ch) {
+      if (!M.gencode) { return { state: 'none' }; }
+      var gs = genes[ch.n];
+      if (gs) { return gs; }
+      gs = genes[ch.n] = { state: 'loading' };
+      fetchGz(genesUrl(ch.n)).then(function (d) {
+        gs.g = columns(d.g || {});
+        gs.x = columns(d.x || {});
+        gs.state = 'ready';
+        schedule();
+        settle();
+      }, function (err) {
+        gs.state = 'failed';
+        gs.note = String((err && err.message) || err).replace(/\.$/, '');
+        schedule();
+        settle();
+      });
+      return gs;
+    }
+    // The gene under BP: the gene level's title.
+    function geneAt(ch, bp) {
+      var gs = genes[ch.n];
+      if (!gs || gs.state !== 'ready') { return null; }
+      var G = gs.g, best = -1;
+      // A protein-coding gene with a name first, then any protein-coding one, then any named one.
+      var rank = function (j) { return (G.o.type[j] === 'protein_coding' ? 0 : 2) + (/^ENSG\d/.test(G.o.name[j]) ? 1 : 0); };
+      for (var i = first(G, bp); i < G.n && G.s[i] <= bp; i++) {
+        if (G.e[i] <= bp) { continue; }
+        if (best < 0 || rank(i) < rank(best) || rank(i) === rank(best) && G.e[i] - G.s[i] < G.e[best] - G.s[best]) { best = i; }
+      }
+      return best < 0 ? null : G.o.name[best];
+    }
+    var occ = [], genesDrawn = 0;
+    // One row of the lane is taken from a to z (CSS px)? Rows are pixel maps, so placing a gene costs its width.
+    function taken(row, a, z) {
+      for (var x = Math.max(0, Math.floor(a)), end = Math.min(CW - 1, Math.ceil(z)); x <= end; x++) { if (row[x]) { return true; } }
+      return false;
+    }
+    function take(row, a, z) { row.fill(1, Math.max(0, Math.floor(a)), Math.min(CW, Math.ceil(z) + 1)); }
+    function openGenes(L, v, ch) {
+      var g = gut(), lv = level(), y0 = L.gy, ty = y0 + 12;
+      genesDrawn = 0;
+      if (lv === 'genome' || lv === 'chromosome') { laneWords(ctx, 'Zoom in to a region to see its genes.', g + 4, ty); return; }
+      var gs = genesOf(ch);
+      if (gs.state === 'none') { laneWords(ctx, 'Not on the map: gene names need step 08’s GENCODE file.', g + 4, ty); return; }
+      if (gs.state === 'loading') { laneWords(ctx, 'Loading the genes…', g + 4, ty); return; }
+      if (gs.state === 'failed') { laneWords(ctx, 'Not on the map: ' + gs.note + '.', g + 4, ty); return; }
+      var G = gs.g, X = gs.x, list = [];
+      for (var i = first(G, v[0]); i < G.n && G.s[i] < v[1]; i++) { if (G.e[i] > v[0]) { list.push(i); } }
+      if (!list.length) { laneWords(ctx, 'No gene in this stretch.', g + 4, ty); return; }
+      var W = plotW();
+      if (list.length > 4000) {
+        // Too many to draw one by one: how many genes start in each 2 px, and the words to zoom in.
+        var bins = new Uint16Array(Math.ceil(W / 2) + 1), top = 1;
+        list.forEach(function (j) { var b = Math.floor((ox(Math.max(G.s[j], v[0])) - g) / 2); if (b >= 0 && b < bins.length) { top = Math.max(top, ++bins[b]); } });
+        ctx.fillStyle = INK2;
+        for (var b = 0; b < bins.length; b++) {
+          if (!bins[b]) { continue; }
+          ctx.globalAlpha = 0.25 + 0.6 * bins[b] / top;
+          ctx.fillRect(g + b * 2, y0 + 26, 2, 22);
+        }
+        ctx.globalAlpha = 1;
+        laneWords(ctx, 'Dense here: zoom in to see each one.', g + 4, ty);
+        return;
+      }
+      var close = close_(lv), RH = 29, fg = {}, labels = 0;
+      drawn().forEach(function (r) { if (r.chrom === ch.n && r.gene) { fg[r.gene] = 1; } });
+      // Who gets a place first: the genes a finding names, then the protein-coding ones, then the rest,
+      // each group left to right. Three rows, each a strip for the bars and a strip for the names under
+      // them: a gene takes the first row whose bar strip is free, and its name goes under it when the name
+      // strip there is free too. A gene with no free bar strip is drawn over the last row, without a name.
+      list.sort(function (a, b) {
+        var ra = fg[G.o.name[a]] ? 0 : G.o.type[a] === 'protein_coding' ? 1 : 2, rb = fg[G.o.name[b]] ? 0 : G.o.type[b] === 'protein_coding' ? 1 : 2;
+        return ra - rb || G.s[a] - G.s[b];
+      });
+      for (var r0 = 0; r0 < 6; r0++) {
+        if (!occ[r0] || occ[r0].length !== CW) { occ[r0] = new Uint8Array(CW); } else { occ[r0].fill(0); }
+      }
+      list.forEach(function (j) {
+        var name = G.o.name[j], bold = !!fg[name], font = (bold ? '600 ' : '') + '11px ' + SANS;
+        var xa = Math.max(g - 4, ox(G.s[j])), xz = Math.min(g + W + 4, Math.max(xa + 1, ox(G.e[j])));
+        var w = measure(font, name), lx = clamp(xa, g, g + W - w), row = -1;
+        for (var k = 0; k < 3 && row < 0; k++) { if (!taken(occ[k], xa - 1, xz + 1)) { row = k; } }
+        if (row < 0) { row = 2; } else { take(occ[row], xa - 1, xz + 1); }
+        var named = labels < 80 && !taken(occ[row + 3], lx - 4, lx + w + 6);
+        if (named) { take(occ[row + 3], lx - 4, lx + w + 6); }
+        genesDrawn++;
+        var yc = y0 + 9 + row * RH;
+        ctx.fillStyle = ctx.strokeStyle = bold ? INK : G.o.type[j] === 'protein_coding' ? INK2 : INK3;
+        if (close) {
+          // A gene model: the span as a 1 px line with its strand's chevrons, the exon blocks inside it.
+          ctx.fillRect(xa, yc - 0.5, xz - xa, 1);
+          var dir = G.o.strand[j] === '+' ? 1 : G.o.strand[j] === '-' ? -1 : 0;
+          if (dir) {
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (var cx = xa + 14; cx < xz - 6; cx += 28) { ctx.moveTo(cx - 2 * dir, yc - 3); ctx.lineTo(cx + 2 * dir, yc); ctx.lineTo(cx - 2 * dir, yc + 3); }
+            ctx.stroke();
+          }
+          for (var x = first(X, G.s[j]); x < X.n && X.s[x] < G.e[j]; x++) {
+            var ea = Math.max(X.s[x], G.s[j]), ez = Math.min(X.e[x], G.e[j]);
+            if (ez <= ea || ez <= v[0] || ea >= v[1]) { continue; }
+            var a = ox(ea);
+            ctx.fillRect(a, yc - 5, Math.max(1, ox(ez) - a), 10);
+          }
+        } else {
+          ctx.fillRect(xa, yc - 2.5, xz - xa, 5);
+        }
+        if (named) {
+          labels++;
+          ctx.textBaseline = 'middle';
+          label(ctx, name, lx, yc + 13, font, bold ? INK : INK2);
+        }
+        hits.push({ kind: 'gene', x0: xa, x1: Math.max(xz, xa + 3), y0: yc - 7, y1: yc + 18, name: name, s: G.s[j], e: G.e[j],
+          strand: G.o.strand[j], type: G.o.type[j] });
+      });
     }
     function noFindingHere() {
       return closedAny() ? 'No open finding with a place on this chromosome.' : 'No finding with a place on this chromosome.';
@@ -675,7 +881,10 @@
       if (tgt.k < 0.5) { return 'genome'; }
       var ch = M.chroms[tgt.ci], span = Math.exp(tgt.ls);
       if (span >= ch.len * 0.999) { return ch.n; }
-      return ch.n + ':' + mb(tgt.c - span / 2) + '-' + mb(tgt.c + span / 2) + 'M';
+      var a = Math.max(0, tgt.c - span / 2), z = Math.min(ch.len, tgt.c + span / 2);
+      if (span > 2e6) { return ch.n + ':' + mb(a) + '-' + mb(z) + 'M'; }
+      if (span > 6e4) { return ch.n + ':' + mb(a, 3) + '-' + mb(z, 3) + 'M'; }
+      return ch.n + ':' + Math.round(a + 1) + '-' + Math.round(z);
     }
     function writeHash(push) {
       if (!M || !window.history || !window.history.replaceState) { return; }
@@ -755,8 +964,11 @@
       fig.setAttribute('data-level', lv);
       fig.setAttribute('data-chrom', lv === 'genome' ? '' : ch.n);
       fig.setAttribute('data-view', locusWords());
+      fig.setAttribute('data-genes', lv === 'genome' || lv === 'chromosome' ? '' : String(genesDrawn));
       stopG.setAttribute('aria-pressed', String(lv === 'genome'));
-      stopC.setAttribute('aria-pressed', String(lv !== 'genome'));
+      stopC.setAttribute('aria-pressed', String(lv === 'chromosome'));
+      stopR.setAttribute('aria-pressed', String(lv === 'region'));
+      stopN.setAttribute('aria-pressed', String(close_(lv)));
       zoom.hidden = lv === 'genome';
       crumb.textContent = '';
       crumb.hidden = lv === 'genome';  // the gauge already says Genome
@@ -770,16 +982,34 @@
         mkick.textContent = 'The whole genome';
         mline.textContent = '';
       } else {
-        title.textContent = 'Chromosome ' + short(ch.n);
+        var v0 = view(), band = bandName(ch, cam.c), gn = close_(lv) ? geneAt(ch, cam.c) : null;
+        title.textContent = lv === 'chromosome' ? 'Chromosome ' + short(ch.n)
+          : lv === 'region' ? 'Chromosome ' + short(ch.n) + (band ? ', band ' + band : '')
+            : gn ? gn + ' and its neighbours' : 'Chromosome ' + short(ch.n) + ', ' + spanWords(v0[2]) + ' around ' + where(cam.c, v0[2]);
         kicker.textContent = 'Figure 1 · Genome map · ' + M.label;
-        add(crumb, el('span', { 'class': 'sep', 'aria-hidden': 'true' }, ' › '), el('span', { 'aria-current': 'location' }, ch.n));
+        // Genome › chr13 › 13q13.1 › 32.30-32.42M: each step up is a button, the place itself is not.
+        var sep = function () { return el('span', { 'class': 'sep', 'aria-hidden': 'true' }, ' › '); };
+        if (lv === 'chromosome') { add(crumb, sep(), el('span', { 'aria-current': 'location' }, ch.n)); } else {
+          var cb = el('button', { type: 'button' }, ch.n);
+          cb.addEventListener('click', function () { openChrom(tgt.ci, undefined, undefined, true); });
+          add(crumb, sep(), cb);
+          var bi = bandIndex(ch, cam.c), bb = M.bands[ch.n];
+          if (bi >= 0) {
+            var bt = el('button', { type: 'button' }, band);
+            bt.addEventListener('click', function () { openChrom(tgt.ci, (bb.s[bi] + bb.e[bi]) / 2, (bb.e[bi] - bb.s[bi]) * 1.1, true); });
+            add(crumb, sep(), bt);
+          }
+          add(crumb, sep(), el('span', { 'aria-current': 'location' }, locusWords().replace(/^chr[^:]*:/, '')));
+        }
         mkick.textContent = 'Under the line';
-        mline.textContent = ch.n + ' · ' + mb(cam.c, 2) + ' Mb' + bandAt(ch, cam.c);
+        mline.textContent = ch.n + ' · ' + where(cam.c, v0[2]) + (band ? ' · band ' + band : '');
       }
-      canvas.setAttribute('aria-label', lv === 'genome' ? 'The genome map: ' + nY + ' chromosomes with ' + fs.length + ' findings drawn'
-        : 'Chromosome ' + short(ch.n) + ' open on the genome map');
-      narr.textContent = '';
       var v = view();
+      var inv = lv === 'genome' ? fs.length : fs.filter(function (r) { return r.chrom === ch.n && r.e > v[0] && r.s < v[1]; }).length;
+      canvas.setAttribute('aria-label', lv === 'genome' ? 'The genome map: ' + nY + ' chromosomes with ' + fs.length + ' findings drawn'
+        : 'Chromosome ' + short(ch.n) + ' open on the genome map, ' + where(v[0], v[2]) + ' to ' + where(v[1], v[2]) + ', ' +
+          inv + (inv === 1 ? ' finding' : ' findings') + ' in view');
+      narr.textContent = '';
       var shown = lv === 'genome' ? fs : fs.filter(function (r) { return r.chrom === ch.n && r.e > v[0] && r.s < v[1]; });
       var forms = (M.text.findings || {});
       if (lv === 'genome') {
@@ -820,18 +1050,24 @@
         if (n && landed(rohLayer())) {
           add(narr, el('p', {}, 'Runs of homozygosity in view: ' + n + ', the longest ' + mb(longest) + ' Mb.'));
         }
-        if (!phone) { add(narr, el('p', { 'class': 'dim' }, 'Drag to move along it, scroll or use + and − to zoom, Esc for the whole genome.')); }
+        if (!phone) { add(narr, el('p', { 'class': 'dim' }, 'Drag to move along it, scroll or use + and − to zoom, / to find a gene, Esc to step back out.')); }
       }
+      var nr = nearest();
+      nearBtn.hidden = !nr;
+      nearBtn.textContent = nr ? nr.words : '';
+      drawCard();
       drawLayers();
       drawMarks();
     }
-    function bandAt(ch, bp) {
+    function bandIndex(ch, bp) {
       var b = M.bands[ch.n];
-      if (!b) { return ''; }
-      for (var i = first(b, bp); i < b.n && b.s[i] <= bp; i++) {
-        if (b.e[i] > bp) { return ' · band ' + short(ch.n) + b.o.name[i]; }
-      }
-      return '';
+      if (!b) { return -1; }
+      for (var i = first(b, bp); i < b.n && b.s[i] <= bp; i++) { if (b.e[i] > bp) { return i; } }
+      return -1;
+    }
+    function bandName(ch, bp) { var i = bandIndex(ch, bp); return i < 0 ? '' : short(ch.n) + M.bands[ch.n].o.name[i]; }
+    function spanWords(span) {
+      return span >= 1e6 ? mb(span) + ' Mb' : span >= 1e3 ? Math.round(span / 1e3) + ' kb' : Math.round(span) + ' bp';
     }
     function drawLayers() {
       layersBox.textContent = '';
@@ -855,13 +1091,22 @@
         add(layersBox, row);
       });
     }
+    // The same marks keep their links, so the keyboard stays on the one it is on while the map moves.
+    var marksKey = '';
     function drawMarks() {
-      marks.textContent = '';
       var lv = level(), ch = chrom(), v = view();
-      drawn().filter(function (r) { return lv === 'genome' || (r.chrom === ch.n && r.e > v[0] && r.s < v[1]); })
-        .sort(function (a, b) { return M.by[a.chrom] - M.by[b.chrom] || a.s - b.s; }).forEach(function (r) {
+      var list = drawn().filter(function (r) { return lv === 'genome' || (r.chrom === ch.n && r.e > v[0] && r.s < v[1]); })
+        .sort(function (a, b) { return M.by[a.chrom] - M.by[b.chrom] || a.s - b.s; });
+      var k = list.map(function (r) { return r.id + '\u0000' + r.title + '\u0000' + r.href; }).join('\u0001');
+      if (k === marksKey && marks.childNodes.length === list.length) { return; }
+      marksKey = k;
+      marks.textContent = '';
+      list.forEach(function (r) {
           var a = el('a', { href: r.href, 'data-id': r.id, 'data-level': r.level, 'data-chrom': r.chrom,
             'data-s': String(r.s), 'data-e': String(r.e) }, (U.LEVEL_WORDS[r.level] || r.level) + ': ' + r.title + ', ' + r.chrom);
+          // Tab through the marks: the one with the keyboard gets a ring on the map and its card.
+          a.addEventListener('focus', function () { focusId = r.id; pick(r.id); });
+          a.addEventListener('blur', function () { if (focusId === r.id) { focusId = null; cacheKey = ''; schedule(); } });
           add(marks, add(el('li', {}), a));
         });
     }
@@ -871,6 +1116,187 @@
       ['act', 'medicine', 'review', 'carrier', 'info'].forEach(function (lv) { add(keyBox, U.level(lv)); });
       add(keyBox, add(el('span', { 'class': 'gm-k-roh' }), el('span', { 'class': 'sw', 'aria-hidden': 'true' }), 'Run of homozygosity, 5 Mb or more'));
       add(keyBox, add(el('span', { 'class': 'gm-k-mask' }), el('span', { 'class': 'sw', 'aria-hidden': 'true' }), 'Hatched: centromere or heterochromatin, few reads map there'));
+    }
+
+    // --- the card, Nearest and the search: each reads drawn(), so a closed result is never offered ---
+    function rowOf(id) { return id ? drawn().filter(function (r) { return r.id === id; })[0] || null : null; }
+    // The card of a finding on the map (or none). It lives in the page's memory only, never in the address.
+    function pick(id) {
+      sel = rowOf(id) ? id : null;
+      drawCard();
+      cacheKey = '';
+      schedule();
+    }
+    function drawCard() {
+      var r = rowOf(sel);
+      card.textContent = '';
+      if (!r) { sel = null; card.hidden = true; return; }
+      card.hidden = false;
+      var where_ = r.chrom + ':' + (r.pos ? comma(r.pos) : comma(r.s + 1) + '-' + comma(r.e));
+      add(card, el('div', { 'class': 'fig-label' }, U.LEVEL_WORDS[r.level] || r.level));
+      add(card, el('h3', { 'class': 'gm-card-title' }, r.title));
+      var facts = el('p', { 'class': 'gm-card-facts mono' }, (r.gene ? r.gene + ' · ' : '') + where_ + (r.hgvs ? ' · ' + r.hgvs : ''));
+      add(card, facts);
+      if (r.phrase) { add(card, el('p', { 'class': 'gm-card-phrase' }, r.phrase)); }
+      var foot = el('p', { 'class': 'gm-card-foot' });
+      add(foot, el('a', { href: r.href }, 'The finding’s page ›'), ' ', button('Close the card', function () { pick(null); canvas.focus({ preventScroll: true }); }));
+      add(card, foot);
+    }
+    // The finding nearest the view when none of this chromosome's is in it: the closest one on this
+    // chromosome, else the first on the next chromosome that has one, in reading order. Null when one is in view.
+    function nearest() {
+      if (!M || level() === 'genome') { return null; }
+      var ch = chrom(), v = view(), fs = drawn(), best = null, d = Infinity, side = 0;
+      for (var i = 0; i < fs.length; i++) {
+        var r = fs[i];
+        if (r.chrom !== ch.n) { continue; }
+        if (r.e > v[0] && r.s < v[1]) { return null; }
+        var dr = r.s >= v[1] ? r.s - v[1] : v[0] - r.e;
+        if (dr < d) { d = dr; best = r; side = r.s >= v[1] ? 1 : -1; }
+      }
+      var name;
+      if (best) {
+        name = (best.gene || best.title) + ' at ' + mb((best.s + best.e) / 2) + ' Mb';
+        return { r: best, side: side, words: side < 0 ? '‹ Nearest: ' + name : 'Nearest: ' + name + ' ›' };
+      }
+      for (var k = 1; k < M.chroms.length && !best; k++) {
+        var n = M.chroms[(cam.ci + k) % M.chroms.length].n;
+        fs.forEach(function (x) { if (x.chrom === n && (!best || x.s < best.s)) { best = x; } });
+      }
+      if (!best) { return null; }
+      return { r: best, side: 1, words: 'Nearest: ' + (best.gene || best.title) + ' on ' + best.chrom + ' ›' };
+    }
+    // Fly to a finding at the gene level and open its card.
+    function goTo(r) {
+      var span = Math.max((r.e - r.s) * 1.5, GENE_STOP * openW());
+      openChrom(M.by[r.chrom], (r.s + r.e) / 2, span, true);
+      pick(r.id);
+    }
+    function goNearest() { var n = nearest(); if (n) { goTo(n.r); } }
+
+    // Search: the findings drawn now (gene, id, title), the gene names (the names file, fetched on the
+    // first key), the band names, and a place written as the address writes it.
+    var found = [], active = -1;
+    function loadNames() {
+      if (names || !M.gencode) { return; }
+      names = { state: 'loading' };
+      fetchGz(genesUrl('names')).then(function (d) {
+        names = { state: 'ready', name: d.name || [], up: (d.name || []).map(function (x) { return String(x).toUpperCase(); }),
+          chrom: d.chrom || [], s: d.s || [], e: d.e || [] };
+        if (document.activeElement === findBox) { runFind(); }
+      }, function (err) {
+        names = { state: 'failed', note: String((err && err.message) || err).replace(/\.$/, '') };
+        if (document.activeElement === findBox) { runFind(); }
+      });
+    }
+    function findAll(q) {
+      var out = [], Q = q.toUpperCase(), bare = Q.replace(/^CHR/, '');
+      if (!q) { return out; }
+      var p = /^chr/i.test(q) && /[:]/.test(q) ? parsePlace(q.replace(/\s+/g, '')) : null;
+      if (p && p.k) { out.push({ kind: 'place', words: 'Go to ' + q, p: p }); }
+      var fs = drawn();
+      fs.filter(function (r) {
+        return (r.gene && r.gene.toUpperCase().indexOf(Q) === 0) || r.id.toUpperCase().indexOf(Q) === 0 ||
+          (Q.length >= 3 && String(r.title).toUpperCase().indexOf(Q) >= 0);
+      }).sort(function (a, b) { return PRI[a.level] - PRI[b.level] || M.by[a.chrom] - M.by[b.chrom] || a.s - b.s; }).slice(0, 3).forEach(function (r) {
+        out.push({ kind: 'finding', words: (r.gene ? r.gene + ' · ' : '') + (U.LEVEL_WORDS[r.level] || r.level) + ': ' + r.title, r: r });
+      });
+      if (names && names.state === 'ready') {
+        var exact = [], pre = [];
+        for (var i = 0; i < names.up.length && pre.length < 5; i++) {
+          var u = names.up[i];
+          if (u.indexOf(Q) !== 0 || !(names.chrom[i] in M.by)) { continue; }
+          (u === Q ? exact : pre).push(i);
+        }
+        exact.concat(pre).slice(0, 5).forEach(function (j) {
+          out.push({ kind: 'gene', words: names.name[j] + ' · gene · ' + names.chrom[j], c: names.chrom[j], s: names.s[j], e: names.e[j] });
+        });
+      }
+      var nb = 0;
+      M.chroms.forEach(function (ch) {
+        var b = M.bands[ch.n];
+        for (var i2 = 0; b && i2 < b.n && nb < 2; i2++) {
+          var full = short(ch.n) + b.o.name[i2];
+          if (bare.length >= 2 && full.toUpperCase().indexOf(bare) === 0) {
+            nb++;
+            out.push({ kind: 'band', words: full + ' · band', c: ch.n, s: b.s[i2], e: b.e[i2] });
+          }
+        }
+      });
+      return out.slice(0, 8);
+    }
+    function runFind() {
+      var q = findBox.value.trim();
+      if (q) { loadNames(); }
+      found = M ? findAll(q) : [];
+      active = found.length ? 0 : -1;
+      drawFound(q);
+    }
+    function drawFound(q) {
+      findList.textContent = '';
+      var note = '';
+      if (q && names && names.state === 'loading') { note = 'Looking through the gene names…'; }
+      else if (q && names && names.state === 'failed') { note = 'Gene names: ' + names.note + '.'; }
+      else if (q && !M.gencode) { note = 'Gene names need step 08’s GENCODE file.'; }
+      found.forEach(function (x, i) {
+        var li = el('li', { role: 'option', id: 'gm-find-o' + i, 'data-kind': x.kind, 'aria-selected': String(i === active) }, x.words);
+        li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(i); });
+        add(findList, li);
+      });
+      if (q && !found.length && !note) { note = 'Nothing on the map by that name.'; }
+      if (note) { add(findList, el('li', { 'class': 'gm-find-note', role: 'presentation' }, note)); }
+      findList.hidden = !q;
+      findBox.setAttribute('aria-expanded', String(!!q && found.length > 0));
+      if (active >= 0) { findBox.setAttribute('aria-activedescendant', 'gm-find-o' + active); } else { findBox.removeAttribute('aria-activedescendant'); }
+    }
+    function closeFind() { found = []; active = -1; findList.textContent = ''; findList.hidden = true; findBox.setAttribute('aria-expanded', 'false'); findBox.removeAttribute('aria-activedescendant'); }
+    function choose(i) {
+      var x = found[i];
+      if (!x || !M) { return; }
+      closeFind();
+      if (x.kind === 'finding') { goTo(x.r); }
+      else if (x.kind === 'place') { openChrom(x.p.ci, x.p.s === undefined ? undefined : (x.p.s + x.p.e) / 2, x.p.s === undefined ? undefined : x.p.e - x.p.s, true); }
+      else { openChrom(M.by[x.c], (x.s + x.e) / 2, Math.max((x.e - x.s) * (x.kind === 'gene' ? 1.3 : 1.1), 60000), true); }
+      canvas.focus({ preventScroll: true });
+    }
+    findBox.addEventListener('input', runFind);
+    findBox.addEventListener('focus', function () { if (findBox.value.trim()) { runFind(); } });
+    findBox.addEventListener('blur', function () { window.setTimeout(closeFind, 150); });
+    findBox.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (found.length) { active = (active + (e.key === 'ArrowDown' ? 1 : found.length - 1)) % found.length; drawFound(findBox.value.trim()); }
+        e.preventDefault();
+      } else if (e.key === 'Enter') {
+        if (found.length) { choose(active < 0 ? 0 : active); }
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
+        findBox.value = '';
+        closeFind();
+        canvas.focus({ preventScroll: true });
+        e.preventDefault();
+      }
+    });
+
+    // Paint the copies: none on a person's page. Origin is a family run's answer, so it says why it is off.
+    function inFamily() {
+      var st = window.PGP && window.PGP.state;
+      if (!st || !st.plugins) { return null; }
+      var fam = st.plugins.family;
+      if (fam && fam.unknown) { return null; }  // a family report the server could not read: it cannot say
+      return !!(fam && fam.kind === 'member' && (fam.families || []).length);
+    }
+    function drawPaint() {
+      paintBox.textContent = '';
+      var fam = inFamily();
+      var why = fam ? 'Origin: which parent each stretch came from is painted on the family page.'
+        : fam === false ? 'Origin needs a family run with a sequenced parent: this run is in none.'
+          : 'Origin needs a family run with a sequenced parent.';
+      add(paintBox, el('div', { 'class': 'fig-label' }, 'Paint the copies'));
+      var seg = el('div', { 'class': 'gm-seg' });
+      add(seg, el('button', { type: 'button', 'data-paint': 'none', 'aria-pressed': 'true' }, 'None'));
+      add(seg, el('button', { type: 'button', 'data-paint': 'origin', 'aria-pressed': 'false', 'aria-disabled': 'true',
+        'aria-describedby': 'gm-paint-why' }, 'Origin'));
+      add(paintBox, seg, el('p', { 'class': 'gm-paint-why', id: 'gm-paint-why' }, why));
     }
 
     // --- the closed results: one dashed chip per kind, and the opened ones ---
@@ -954,7 +1380,12 @@
     }
     function tipFor(h) {
       var ch = M.chroms[cam.ci];
-      if (h.kind === 'finding') { return [h.r.phrase, 'Click for the finding’s page']; }
+      if (h.kind === 'finding') { return [h.r.phrase, 'Click for its card']; }
+      if (h.kind === 'gene') {
+        return [h.name + (h.type ? ' · ' + h.type.replace(/_/g, ' ') : ''),
+          ch.n + ':' + comma(h.s + 1) + '-' + comma(h.e) + (h.strand === '+' || h.strand === '-' ? ' · ' + h.strand + ' strand' : '') + ' · click to zoom to it'];
+      }
+      if (h.kind === 'nearest') { return null; }
       if (h.kind === 'band') { return ['Band ' + short(ch.n) + (h.name || ''), ch.n + ':' + comma(h.s + 1) + '-' + comma(h.e)]; }
       if (h.kind === 'masked') {
         return ['Not readable here · ' + ch.n + ':' + comma(h.s + 1) + '-' + comma(h.e),
@@ -995,7 +1426,7 @@
       var row = level() === 'genome' && h ? (h.kind === 'row' ? h.i : h.kind === 'finding' ? M.by[h.r.chrom] : -1) : -1;
       if (row !== hover.row) { hover.row = row; schedule(); }
       hover.hit = h;
-      canvas.style.setProperty('cursor', h && (h.kind === 'finding' || h.kind === 'row') ? 'pointer' : level() === 'genome' ? 'default' : 'grab');
+      canvas.style.setProperty('cursor', h && /^(finding|row|gene|nearest)$/.test(h.kind) ? 'pointer' : level() === 'genome' ? 'default' : 'grab');
       showTip(h, p[0], p[1]);
     });
     canvas.addEventListener('pointerleave', function () { hover.row = -1; hideTip(); schedule(); });
@@ -1009,7 +1440,9 @@
       drag = null;
       if (!M || (was && was.moved)) { if (was && was.moved) { writeHash(false); } return; }
       var p = at(e), h = hitAt(p[0], p[1]);
-      if (h && h.kind === 'finding') { window.location.href = h.r.href; return; }
+      if (h && h.kind === 'finding') { pick(h.r.id); return; }
+      if (h && h.kind === 'nearest') { goNearest(); return; }
+      if (h && h.kind === 'gene') { openChrom(tgt.ci, (h.s + h.e) / 2, Math.max((h.e - h.s) * 1.3, 60000), true); return; }
       if (level() === 'genome' && h && h.kind === 'row') { openChrom(h.i, undefined, undefined, true); }
     });
     canvas.addEventListener('wheel', function (e) {
@@ -1025,23 +1458,49 @@
       clampTgt();
       changed(false);
     }, { passive: false });
+    // The map's keys: arrows pan a tenth of the view (Shift: a whole view), + and − zoom 2× at the centre,
+    // [ and ] step through the chromosomes, 0 is the whole genome, and Esc closes the card, then steps out one
+    // level at a time. Tab is left alone: it steps through the marks' links, then out of the map.
     canvas.addEventListener('keydown', function (e) {
       if (!M || e.altKey || e.ctrlKey || e.metaKey) { return; }
       var open = level() !== 'genome', span = Math.exp(tgt.ls);
       var done = true;
-      if (e.key === 'Escape' || e.key === '0') { if (open) { closeChrom(true); } else { done = false; } }
+      if (e.key === 'Escape') {
+        if (sel) { pick(null); } else if (open) { stepOut(); } else { done = false; }
+      } else if (e.key === '0') { if (open) { closeChrom(true); } else { done = false; } }
       else if (e.key === '[' || e.key === ']') {
         var i = (open ? tgt.ci : (e.key === ']' ? -1 : M.chroms.length)) + (e.key === ']' ? 1 : -1);
         openChrom((i + M.chroms.length) % M.chroms.length, undefined, undefined, true);
       } else if (open && (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '−')) {
-        zoomBy(e.key === '-' || e.key === '−' ? 1.6 : 1 / 1.6);
+        zoomBy(e.key === '-' || e.key === '−' ? 2 : 0.5);
       } else if (open && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        tgt.c += (e.key === 'ArrowLeft' ? -0.2 : 0.2) * span;
+        tgt.c += (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 0.1) * span;
         clampTgt();
         changed(false);
       } else if (!open && e.key === 'Enter') { openChrom(tgt.ci, undefined, undefined, true); }
       else { done = false; }
       if (done) { e.preventDefault(); }
+    });
+    // Esc, once no card is open: reads to the gene, gene to the region, region to the chromosome, chromosome to the genome.
+    function stepOut() {
+      var lv = level();
+      if (lv === 'chromosome') { closeChrom(true); }
+      else if (lv === 'region') { openChrom(tgt.ci, undefined, undefined, true); }
+      else { openChrom(tgt.ci, tgt.c, (lv === 'reads' ? GENE_STOP : REGION_STOP) * openW(), true); }
+    }
+    // The keys of the whole page while the map is on it: / finds, L opens the layers. Never inside a text box,
+    // never with Cmd, Ctrl or Alt.
+    document.addEventListener('keydown', function (e) {
+      if (!M || failure || e.altKey || e.ctrlKey || e.metaKey || !fig.isConnected) { return; }
+      var t = e.target, tag = t && t.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) { return; }
+      if (e.key === '/') { e.preventDefault(); findBox.focus(); }
+      else if (e.key === 'l' || e.key === 'L') {
+        e.preventDefault();
+        more.open = true;
+        var b = paintBox.querySelector('button');
+        if (b) { b.focus(); }
+      }
     });
     function zoomBy(f) {
       if (!M || level() === 'genome') { return; }
@@ -1049,15 +1508,25 @@
       clampTgt();
       changed(false);
     }
-    zoomOut.addEventListener('click', function () { zoomBy(1.6); });
-    zoomIn.addEventListener('click', function () { zoomBy(1 / 1.6); });
+    zoomOut.addEventListener('click', function () { zoomBy(2); });
+    zoomIn.addEventListener('click', function () { zoomBy(0.5); });
     stopG.addEventListener('click', function () { closeChrom(true); });
-    stopC.addEventListener('click', function () {
-      if (level() !== 'genome') { openChrom(tgt.ci, undefined, undefined, true); return; }
-      // From the genome: the chromosome of the first finding by level, else chromosome 1.
-      var f = drawn().slice().sort(function (a, b) { return PRI[a.level] - PRI[b.level] || M.by[a.chrom] - M.by[b.chrom]; })[0];
-      openChrom(f ? M.by[f.chrom] : 0, undefined, undefined, true);
-    });
+    // The other stops keep the place in view; from the genome they go to the first finding by level (act
+    // first), else to the middle of chromosome 1.
+    function stopTo(lv) {
+      var ci = tgt.ci, c = tgt.c;
+      if (level() === 'genome') {
+        var f = drawn().slice().sort(function (a, b) { return PRI[a.level] - PRI[b.level] || M.by[a.chrom] - M.by[b.chrom] || a.s - b.s; })[0];
+        ci = f ? M.by[f.chrom] : 0;
+        c = f ? (f.s + f.e) / 2 : M.chroms[ci].len / 2;
+      }
+      if (lv === 'chromosome') { openChrom(ci, undefined, undefined, true); return; }
+      openChrom(ci, c, (lv === 'region' ? REGION_STOP : GENE_STOP) * openW(), true);
+    }
+    stopC.addEventListener('click', function () { stopTo('chromosome'); });
+    stopR.addEventListener('click', function () { stopTo('region'); });
+    stopN.addEventListener('click', function () { stopTo('gene'); });
+    nearBtn.addEventListener('click', function () { goNearest(); });
     window.addEventListener('hashchange', function () { readHash(false); });
     window.addEventListener('popstate', function () { readHash(false); });
     if (window.ResizeObserver) { new window.ResizeObserver(function () { if (M) { size(); clampTgt(); schedule(); } }).observe(stage); }
@@ -1087,6 +1556,13 @@
       layersBox.textContent = '';
       chips.textContent = '';  // a chip drawn before the failure may name a result closed since
       marks.textContent = '';  // and so may a mark link, hidden or not
+      marksKey = '';
+      sel = null;
+      card.textContent = '';  // the card, the search's suggestions and Nearest too
+      card.hidden = true;
+      closeFind();
+      nearBtn.hidden = true;
+      nearBtn.textContent = '';
       hideTip();
     }
     function load(k) {
@@ -1129,6 +1605,7 @@
         }
         cacheKey = '';
         drawKey();
+        drawPaint();
         drawChips();
         draw();
         describe();
@@ -1154,6 +1631,9 @@
         if (!M) { return; }
         cacheKey = '';
         hideTip();  // a tooltip of a result closed since leaves the page
+        drawCard();  // and so does the card of one
+        if (!findList.hidden) { runFind(); }  // and a search's suggestion of one
+        drawPaint();
         drawChips();
         schedule();
         describe();
