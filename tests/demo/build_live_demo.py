@@ -348,6 +348,10 @@ def family_json(root, index):
     by = {r["name"]: r for r in index["runs"]}
     out["runs"] = {p["sample"]: {k: by[p["sample"]][k] for k in ("url", "state", "planned", "done", "attention", "results")}
                    for p in out["state"].get("members") or [] if p["sample"] in by}
+    # As the family plugin serves it: no count of flagged cards for a child whose own page keeps the report closed.
+    for name, r in out["runs"].items():
+        if owngenome_live.child_of(index.get("families"), name) and (by[name].get("levels") or {}).get("act"):
+            r["attention"] = None
     seq = [p["sample"] for p in out["state"].get("members") or [] if p.get("sequenced")]
     sums = {}
     for name in seq:

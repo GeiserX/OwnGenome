@@ -95,17 +95,9 @@ def register(app):
 
 
 def child_run(live, name):
-    """Whether the person page treats NAME as a child's run: a family lists it with a father or a mother, or a
-    family's members cannot be read and no readable family lists NAME."""
-    fams = [r for r in live.runs().values() if r.get("kind") == "family"]
-    listed = False
-    for f in fams:
-        for m in f.get("members") or []:
-            if m.get("sample") == name:
-                listed = True
-                if m.get("father") or m.get("mother"):
-                    return True
-    return not listed and any(not (f.get("members") or []) for f in fams)
+    """Whether the person page treats NAME as a child's run: the one rule of the page and the home page
+    (bin/owngenome_live.py child_of)."""
+    return live.child(name)
 
 
 def live_results_mod():

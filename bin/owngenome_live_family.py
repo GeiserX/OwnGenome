@@ -526,13 +526,19 @@ def register(app):
         out = family_page(name, d)
         live = getattr(req, "live", None)
         runs = {}
+        listed = live.runs() if live else {}
         for p in out["state"].get("members") or []:
-            r = live.run(p["sample"]) if live else None
+            r = listed.get(p["sample"]) if live else None
             if not r or r.get("kind") == "family":
                 continue
             st = live.base_state(r)
             planned = [s for s in st["steps"] if s["state"] != "not planned"]
-            n, mtime = live.attention(r["dir"] or os.path.join(live.root, r["name"]))
+            rd = r["dir"] or os.path.join(live.root, r["name"])
+            n, mtime = live.attention(rd)
+            # A child whose own page keeps the report closed has no count of flagged cards here: the count changes
+            # with which cards the unopened results flag, and a parent's page would show it.
+            if live.gated(p["sample"], rd, st, listed):
+                n = None
             runs[p["sample"]] = {"url": "/runs/%s/" % p["sample"], "state": st["run"]["state"],
                                  "planned": len(planned), "done": sum(1 for s in planned if s["state"] == "done"),
                                  "attention": n, "results": mtime is not None}
