@@ -6,11 +6,11 @@
                     reference block over a site becomes a record with the
                     reference base, and a site without reads has no line
     ANCIENT_GENO    the sample as one more column of the panel's present-day
-                    EIGENSTRAT genotypes (bin/ancient_report.py person-geno)
+                    EIGENSTRAT genotypes (og ancient person-geno)
     ANCIENT_PCA     smartpca: axes from the present-day West Eurasians, the
                     sample projected (lsqproject)
     ANCIENT_REPORT  the nearest ancient groups, the summary and the plot, on
-                    the panel's axes (bin/ancient_report.py report)
+                    the panel's axes (og ancient report)
 
     The panel is the folder setup.sh --ancient-panel writes
     (reference/ancient/aadr_<release>). Runs for the samples with a gVCF only;
@@ -78,7 +78,7 @@ process ANCIENT_GENO {
 
     script:
     """
-    ancient_report.py person-geno --sites ${panel}/sites_grch38.tsv --genotypes ${genotypes} \\
+    og ancient person-geno --sites ${panel}/sites_grch38.tsv --genotypes ${genotypes} \\
         --snp ${panel}/moderns.snp --moderns-geno ${panel}/moderns.geno --out merged.geno --stats stats.tsv
     { cat ${panel}/moderns.ind; printf '%s\\tU\\tPerson\\n' '${meta.id}'; } > merged.ind
 
@@ -148,7 +148,7 @@ process ANCIENT_REPORT {
     script:
     """
     release=\$(awk -F'\\t' '\$1 == "release" {print \$2}' ${panel}/DONE)
-    ancient_report.py report --panel-evec ${panel}/panel.evec --run-evec ${evec} --ancients ${panel}/ancients.tsv \\
+    og ancient report --panel-evec ${panel}/panel.evec --run-evec ${evec} --ancients ${panel}/ancients.tsv \\
         --sample ${meta.id} --release "\$release" --stats ${stats} \\
         --out-tsv ${meta.id}_ancient.tsv --out-info ${meta.id}_ancient_info.tsv \\
         --out-txt ${meta.id}_ancient.txt --out-svg ${meta.id}_ancient_pca.svg

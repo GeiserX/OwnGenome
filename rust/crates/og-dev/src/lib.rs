@@ -15,6 +15,16 @@
 //!   (`scripts/ci/check-container-helpers.sh`).
 //! - `og dev remnants` ([`remnants`]): does each Python file kept only for
 //!   its importers (`tests/parity/remnants.tsv`) hold nothing else?
+//! - `og dev scan personal-data` ([`personal_data`]): no tracked file holds
+//!   a home path, a private address or a genotype.
+//! - `og dev scan images`, `og dev versions coupled` ([`images`]): no file
+//!   names an image outside `versions.env`; the alignment task's image holds
+//!   the releases of step 02's two images.
+//! - `og dev versions check-run`, `og dev versions expand` ([`versions`]): a
+//!   run used the images `conf/containers.config` names; download URLs with
+//!   their `versions.env` variables filled.
+//! - `og dev pgs` ([`pgs`]): the PGS Catalog's answers against
+//!   `assets/pgs_scores.tsv`.
 //! - `og dev fixture` ([`fixture`]): writers of test fixtures (the
 //!   compound-het reads, a trimmed PharmCAT report).
 //! - `og dev evidence` ([`evidence`]): the measurements of the public
@@ -29,8 +39,12 @@ pub mod contract;
 pub mod evidence;
 pub mod fixture;
 pub mod helpers;
+pub mod images;
+mod lookaround;
 pub mod nf_trace;
 pub mod parity;
+pub mod personal_data;
+pub mod pgs;
 pub mod pharmcat;
 pub mod remnants;
 pub mod renovate;
@@ -38,11 +52,13 @@ pub mod report_only;
 pub mod schema;
 pub mod shlex;
 pub mod smoke;
+pub mod versions;
+pub mod versions_env;
 mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -132,6 +148,12 @@ impl Write for CheckedWriter<'_> {
     }
 }
 
+fn unknown(verb: &str) -> u8 {
+    eprint!("{USAGE}");
+    eprintln!("og dev: error: unknown verb '{verb}'");
+    2
+}
+
 /// Runs `og dev ARGS`; returns the exit code.
 pub fn main(args: &[String]) -> u8 {
     match args.first().map(String::as_str) {
@@ -140,6 +162,18 @@ pub fn main(args: &[String]) -> u8 {
         Some("contract") => run(contract::cli, &args[1..]),
         Some("schema") => run(schema::cli, &args[1..]),
         Some("report-only") => run(report_only::cli, &args[1..]),
+        Some("scan") => match args.get(1).map(String::as_str) {
+            Some("personal-data") => run(personal_data::cli, &args[2..]),
+            Some("images") => run(images::cli_scan, &args[2..]),
+            _ => unknown(args.get(1).map_or("scan", String::as_str)),
+        },
+        Some("versions") => match args.get(1).map(String::as_str) {
+            Some("check-run") => run(versions::cli_check_run, &args[2..]),
+            Some("expand") => run(versions::cli_expand, &args[2..]),
+            Some("coupled") => run(images::cli_coupled, &args[2..]),
+            _ => unknown(args.get(1).map_or("versions", String::as_str)),
+        },
+        Some("pgs") => run(pgs::cli, &args[1..]),
         Some("fixture") => run(fixture::cli, &args[1..]),
         Some("evidence") => run(evidence::cli, &args[1..]),
         Some("renovate-check") => run(renovate::cli, &args[1..]),
@@ -152,11 +186,7 @@ pub fn main(args: &[String]) -> u8 {
             print!("{USAGE}");
             0
         }
-        Some(other) => {
-            eprint!("{USAGE}");
-            eprintln!("og dev: error: unknown verb '{other}'");
-            2
-        }
+        Some(other) => unknown(other),
         None => {
             eprint!("{USAGE}");
             eprintln!("og dev: error: the following arguments are required: verb");

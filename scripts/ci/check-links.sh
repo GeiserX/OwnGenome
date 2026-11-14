@@ -31,6 +31,10 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# og fills the versions.env variables (og dev versions expand,
+# rust/crates/og-dev; bin/og picks the build for this machine); OG names
+# another og binary.
+OG=${OG:-${REPO_ROOT}/bin/og}
 JOBS=${LINKS_JOBS:-8}
 
 # Prints "URL<TAB>file:line" for every candidate URL under $1, before variable
@@ -58,31 +62,10 @@ raw_urls() {
 }
 
 # Fills ${NAME} and $NAME from the versions.env under $1, reading stdin, and
-# drops trailing punctuation.
+# drops trailing punctuation. A versions.env line that is not a plain
+# NAME="value" fails the check instead of being left out.
 expand_vars() {
-  local env=${1}/versions.env
-  # shellcheck disable=SC2016  # Python source, not shell
-  python3 -c '
-import re, sys
-vals = {}
-try:
-    for line in open(sys.argv[1]):
-        m = re.match(r"^([A-Z][A-Z0-9_]*)=\"([^\"]*)\"", line)
-        if m:
-            vals[m.group(1)] = m.group(2)
-except FileNotFoundError:
-    pass
-def sub(m):
-    name = m.group(1) or m.group(2)
-    return vals.get(name, m.group(0))
-for line in sys.stdin:
-    url, loc = line.rstrip("\n").split("\t", 1)
-    url = re.sub(r"\$\{([A-Z][A-Z0-9_]*)\}|\$([A-Z][A-Z0-9_]*)", sub, url)
-    # Trailing punctuation, and the brace that closes ${VAR:-https://...}.
-    while url and (url[-1] in ".,;:]" or (url[-1] == "}" and url.count("}") > url.count("{"))):
-        url = url[:-1]
-    print(url + "\t" + loc)
-' "$env"
+  "$OG" dev versions expand --env "${1}/versions.env"
 }
 
 # Prints "URL<TAB>locations" (locations joined by ", "), one line per URL.
@@ -132,7 +115,7 @@ probe() {
 # ROOT's repository), only the URLs that tree did not already have.
 check_tree() {
   local root=$1 since=${2:-} list tmp n=0 nskip=0 nbad=0 nold=0 url loc code
-  list=$(collect "$root")
+  list=$(collect "$root") || { echo "ERROR: could not read the URLs under ${root}" >&2; return 1; }
   tmp=$(mktemp -d)
   : > "${tmp}/check"; : > "${tmp}/skip"; : > "${tmp}/old"
   if [ -z "$list" ]; then
@@ -147,7 +130,11 @@ check_tree() {
       rm -rf "$tmp"
       return 1
     fi
-    collect "${tmp}/base" | cut -f1 > "${tmp}/old"
+    if ! collect "${tmp}/base" | cut -f1 > "${tmp}/old"; then
+      echo "ERROR: could not read the URLs of ${since}" >&2
+      rm -rf "$tmp"
+      return 1
+    fi
   fi
   while IFS=$'\t' read -r url loc; do
     [ -n "$url" ] || continue
@@ -299,13 +286,24 @@ EOF
     echo "SELF-TEST FAIL: --since did not request exactly the added URL"; fail=1
   fi
 
+  # A versions.env line that is not NAME="value" fails: the URLs built from
+  # it would otherwise go unfilled and be skipped.
+  mkdir -p "${d}/strict/scripts"
+  echo "wget ${good}/blob/main/README.md" > "${d}/strict/scripts/c.sh"
+  # shellcheck disable=SC2016  # the ${...} is the text planted in the file
+  echo 'TESTREPO="${OTHER}"' > "${d}/strict/versions.env"
+  rc=0; out=$(check_tree "${d}/strict" 2>&1) || rc=$?
+  if [ "$rc" -eq 0 ] || ! grep -qF 'versions.env:1: not a NAME="value" line' <<<"$out"; then
+    echo "$out"; echo "SELF-TEST FAIL: a versions.env line with an expansion was read"; fail=1
+  fi
+
   # An empty tree is a failure.
   mkdir -p "${d}/empty"
   rc=0; out=$(check_tree "${d}/empty" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || { echo "SELF-TEST FAIL: an empty tree passed"; fail=1; }
 
   if [ "$fail" -eq 0 ]; then
-    echo "SELF-TEST OK: a 404, no answer and an empty tree fail; comments, prose and scripts/ci are left out; \${VAR} is filled from versions.env; --since requests only added URLs."
+    echo "SELF-TEST OK: a 404, no answer, an unreadable versions.env line and an empty tree fail; comments, prose and scripts/ci are left out; \${VAR} is filled from versions.env; --since requests only added URLs."
   fi
   return "$fail"
 }
