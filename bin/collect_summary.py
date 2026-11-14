@@ -18,6 +18,7 @@ import csv
 import gzip
 import json
 import os
+import re
 import subprocess
 import tempfile
 import zlib

@@ -60,7 +60,8 @@ impl FolderIndex {
                 };
                 if meta.is_file() {
                     files.insert(rel);
-                } else if meta.is_dir() && depth + 1 < MAX_DEPTH && !(depth == 0 && rel == SKIP_TOP) {
+                } else if meta.is_dir() && depth + 1 < MAX_DEPTH && !(depth == 0 && rel == SKIP_TOP)
+                {
                     stack.push((path, rel, depth + 1));
                 }
             }

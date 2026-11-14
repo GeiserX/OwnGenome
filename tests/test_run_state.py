@@ -233,7 +233,7 @@ def catalogue_checks(steps, sections, run_all_set):
     out["the recorded steps are what run-all.sh records"] = (recorded == want, sorted(recorded ^ want))
     out["RUN_ALL_STEPS is the recorded steps"] = (set(run_all_set) == recorded, sorted(set(run_all_set) ^ recorded))
     owner = {k: s["step"] for s in steps for k in s["sections"]}
-    keys = {k: step for k, _, step, _ in sections}
+    keys = {k: step for k, _, step in sections}
     wrong = [(k, step, owner.get(k)) for k, step in keys.items() if owner.get(k) != step]
     out["every SECTIONS key belongs to the row of its step"] = (not wrong and set(owner) <= set(keys),
                                                                 (wrong, sorted(set(owner) - set(keys))))

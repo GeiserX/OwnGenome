@@ -9,14 +9,14 @@
    no_thresholds; intermediate_min and intermediate_max are STRchive's own.
    Controls: a table with one row dropped, or one row twice, is caught.
 2. bin/str_intermediate_ranges.tsv, the GeneReviews ranges the report names
-   (HTT, FMR1, DMPK): the columns bin/collect_summary.py reads, one row per
+   (HTT, FMR1, DMPK): the columns og summary collect reads, one row per
    locus, whole numbers with min <= max ending right below the next class, a
    label and a GeneReviews citation; docs/interpreting-results.md prints the
    same range in the locus's row; every locus has a row in str_ranges.tsv,
    and the range lies above its normal_max and below its pathogenic_min, so a
    count the report calls intermediate is one Stranger calls pre_mutation
-   (control: a planted HTT range of 20-35 is caught); collect_summary reads
-   every row.
+   (control: a planted HTT range of 20-35 is caught). That og reads every
+   row is og-summary's own test (collect::group_c::tests).
 3. The "Key Disease Thresholds" table of docs/09-str-expansions.md: each
    row's normal maximum, pre-mutation band and full-mutation minimum are the
    catalog's (control: the table with HTT's minimum changed to 37 is caught).
@@ -31,7 +31,6 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
-import collect_summary  # noqa: E402
 import test_str_catalog  # noqa: E402
 
 TSV = os.path.join(REPO, "bin", "str_intermediate_ranges.tsv")
@@ -130,7 +129,7 @@ def part_generated(cat, cat_path):
 
 def part_subset(gen):
     head, body = table(TSV)
-    check("the header is the columns collect_summary.py reads", head == COLUMNS, head)
+    check("the header is the columns og summary collect reads", head == COLUMNS, head)
     check("at least HTT, FMR1 and DMPK are listed", {"HTT", "FMR1", "DMPK"} <= {r[0] for r in body},
           [r[0] for r in body])
     loci = [r[0] for r in body]
@@ -162,8 +161,6 @@ def part_subset(gen):
               f"({g.get('normal_max')}) and below its pathogenic minimum ({g.get('pathogenic_min')})",
               inside(d["locus"], lo, hi), g)
     check("control: a planted HTT range of 20-35 is outside STRchive's pre-mutation band", not inside("HTT", 20, 35))
-    got = collect_summary.str_ranges(TSV)
-    check("collect_summary.str_ranges reads every row", sorted(got) == sorted(loci), sorted(got))
 
 
 def threshold_rows(text):

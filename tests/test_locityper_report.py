@@ -429,13 +429,8 @@ def og_cases(t):
     cyp = [x for x in s["sections"]["locityper"]["data"]["loci"] if x["locus"] == "CYP2D6"][0]
     check("5. a primary call older than the last run says it is stale", "(stale: from an earlier run)" in cyp["primary"],
           (s["sections"]["cyrius"]["state"], cyp))
-    hla = {"loci": [{"gene": "DRB1", "alleles": ["*15:01", "*03:01"], "low_confidence": True},
-                    {"gene": "DQB1", "alleles": ["*06:02", "*02:01"], "low_confidence": False}]}
-    prim = collect_summary.locityper_primary({"hla": {"state": "ok", "data": hla}, "pypgx": {"state": "missing"},
-                                              "cyrius": {"state": "missing"}})
-    check("5. a low-confidence T1K call says so in the primary text, a confident one does not",
-          prim["HLA-DRB1"] == "T1K (step 08): *15:01/*03:01 (low confidence)"
-          and prim["HLA-DQB1"] == "T1K (step 08): *06:02/*02:01", prim)
+    # A low-confidence T1K call in the primary text: og-summary's own test
+    # (collect::group_c::tests, the Locityper primary calls).
     os.makedirs(os.path.join(t, "none", "S"))
     s = collect_summary.collect("S", os.path.join(t, "none", "S"))
     check("5. without step 53 there is no card and no text section",

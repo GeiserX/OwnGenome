@@ -38,6 +38,21 @@ import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OG = os.environ.get("OG", "")
 sys.path.insert(0, os.path.join(REPO, "bin"))
+import collect_summary as cs  # noqa: E402
+
+
+class Unreadable(Exception):
+    """A section og summary collect could not read (its state is unreadable)."""
+
+
+def sec(d, s, key):
+    """(source path, data) of section KEY of the summary og summary collect writes
+    for folder D: (None, {}) without its file; Unreadable when it cannot be read."""
+    x = cs.collect(s, d)["sections"][key]
+    if x["state"] == "unreadable":
+        raise Unreadable(x["note"])
+    return (os.path.join(d, x["source"]) if x["source"] else None), x["data"]
+
 
 FAILS = []
 
@@ -318,7 +333,6 @@ def case_report():
 
 
 def case_reports():
-    import collect_summary as cs
     import render_report as rr
     with tempfile.TemporaryDirectory() as d:
         sd = os.path.join(d, "S1", "exomiser")
@@ -326,14 +340,14 @@ def case_reports():
         r = report(sd, ROWS)
         shutil.copy(os.path.join(sd, "top.tsv"), os.path.join(sd, "S1_exomiser_top.tsv"))
         os.rename(os.path.join(sd, "terms.tsv"), os.path.join(sd, "S1_exomiser_terms.tsv"))
-        p, data = cs.sec_exomiser(os.path.join(d, "S1"), "S1")
+        p, data = sec(os.path.join(d, "S1"), "S1", "exomiser")
         check("summary: the section reads the table", p is not None and r.returncode == 0)
         check("summary: ranks with their variants",
               [(g["rank"], g["gene"], len(g["variants"])) for g in data["genes"]]
               == [("1", "GENEA", 1), ("2", "GENEB", 2), ("3", "GENEC", 1)], str(data["genes"]))
         check("summary: the terms", data["terms"] == [{"id": "HP:0001156", "label": "Brachydactyly"}], str(data["terms"]))
         check("summary: the section is listed under step 48",
-              ("exomiser", "Symptom-driven ranking (Exomiser)", "48", cs.sec_exomiser) in cs.SECTIONS
+              ("exomiser", "Symptom-driven ranking (Exomiser)", "48") in cs.SECTIONS
               and "48" in cs.RUN_ALL_STEPS)
         text = "\n".join(rr.exomiser_text(data, "S1"))
         check("text report: rank, gene and variant",
@@ -345,9 +359,9 @@ def case_reports():
         bad = os.path.join(sd, "S1_exomiser_top.tsv")
         write(bad, "rank\tgene\n1\tGENEA\n")
         try:
-            cs.sec_exomiser(os.path.join(d, "S1"), "S1")
+            sec(os.path.join(d, "S1"), "S1", "exomiser")
             check("summary: a table without its columns is unreadable", False, "no error")
-        except cs.Unreadable:
+        except Unreadable:
             check("summary: a table without its columns is unreadable", True)
         # The -stub table of EXOMISER_REPORT reads as "no gene passed", not unreadable.
         import re
@@ -359,9 +373,9 @@ def case_reports():
         check("stub: the top table carries the report's columns", head == out_header, repr(head))
         write(bad, head)
         try:
-            _, data = cs.sec_exomiser(os.path.join(d, "S1"), "S1")
+            _, data = sec(os.path.join(d, "S1"), "S1", "exomiser")
             check("stub: the summary reads it as no gene", data.get("genes") == [], str(data))
-        except cs.Unreadable as e:
+        except Unreadable as e:
             check("stub: the summary reads it as no gene", False, str(e))
 
 
