@@ -1416,7 +1416,10 @@ def gate_checks(b, base, out, family_only=False):
                             assert b.wait("!document.documentElement.dataset.pgpGated && !!document.querySelector('#results .finding')"), 'last opening never released'
                             # Search something while open; closing must replace this whole document and its caches.
                             b.wait("document.querySelector('input[type=search]') && !document.querySelector('input[type=search]').disabled")
-                            b.eval("var s=document.querySelector('input[type=search]'); s.value='KCNH2'; s.dispatchEvent(new Event('input')); true")
+                            said = type_search(b, 'KCNH2')
+                            if SEARCH_CLOSED not in said:
+                                # A child's opened report searches as before the gate: it says what it leaves out.
+                                transitions.append((count, order, stage, 'search lost its closed note'))
                             b.eval("PGPUI.closeAct(%s); true" % json.dumps(acts[i]['id']))
                             assert b.wait("document.documentElement.dataset.pgpGated === 'true'"), 'close did not clean up'
                             if b.eval("!!document.querySelector('input[type=search],.search-results,.search-status,canvas,svg,img')"):
@@ -1480,6 +1483,15 @@ def gate_addresses(b, base, out, acts, visit, snap):
             visit('/runs/'+son+'/finding/'+fid+'/')
             s = snap()
             seen.append({k: s[k] for k in ('dom', 'text', 'title', 'address', 'accessibility')})
+        # Opened on a guessed address, the report opens on the run's page, as main answers no such finding.
+        landed = {}
+        for fid in (acts[0]['id'], 'zz-not-a-finding'):
+            visit('/runs/'+son+'/finding/'+fid+'/')
+            open_gate(b)
+            b.wait("document.readyState === 'complete' && document.documentElement.dataset.pgpStatus === 'ready' && !document.documentElement.dataset.pgpGated")
+            landed[fid] = b.eval('location.pathname')
+        check('gate addresses: opened on a guessed finding address, the report opens on the run page',
+              landed == {acts[0]['id']: '/runs/'+son+'/finding/'+acts[0]['id']+'/', 'zz-not-a-finding': '/runs/'+son+'/'}, landed)
     finally:
         for d in made:
             shutil.rmtree(d)
@@ -1587,7 +1599,8 @@ def gate_controls(b, base, out):
     seen = {}
 
     def visit(route=None):
-        b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
+        # A release's own location.replace can land after about:blank; go there again until it stays.
+        assert any(b.go('about:blank') or b.wait("location.href === 'about:blank'") for _ in range(3)), 'about:blank never stayed'
         b.go(base+(route or '/runs/'+son+'/'))
         if not route:
             assert b.wait("document.documentElement.dataset.pgpGated === 'true'"), 'fixture never gated'
@@ -1688,6 +1701,18 @@ def gate_controls(b, base, out):
             with open(rj, 'w') as f:
                 json.dump(data, f)
 
+    def ticket():
+        # The opening ticket crosses one load only: after closing an opened report again, the closed page keeps no
+        # ticket (it names the opened results' places in the report and a digest of every result's record).
+        visit(); open_gate(b)
+        assert b.wait("!!document.querySelector('#results .finding')"), 'full report never loaded'
+        fid = next(f['id'] for f in data['findings'] if f['level'] == 'act')
+        b.eval('PGPUI.closeAct('+json.dumps(fid)+'); true')
+        assert b.wait("document.documentElement.dataset.pgpGated === 'true' && document.readyState === 'complete'"), 'never closed'
+        left = b.eval("[sessionStorage.getItem('og-report-opening'), window.name]")
+        seen['ticket'] = left[0]
+        return left[0] is None and not left[1].startswith('og-report-opening:')
+
     gate_open = "if (ownsPage || closedRun(requestURL)) { return new Promise(function () {}); }"
     gate_late = "return got.then(function (response) {\n        if (ownsPage) { return new Promise(function () {}); }"
     mutations = [
@@ -1706,7 +1731,9 @@ def gate_controls(b, base, out):
         ('the family view receives a gated child\'s trio rows', ['copy((raw[key] || []).filter(function (r) { return !gated(r.child); }))'],
          ['copy(raw[key] || [])'], family_rows, lambda: seen.get('rows')),
         ('skip cleanup after closing', ['ownsPage = true; eventSources.forEach(function (es) { es.close(); }); cleanPage(); transfer(); return true;'],
-         ['return true;'], cleanup, lambda: seen.get('query') == 'KCNH2')]
+         ['return true;'], cleanup, lambda: seen.get('query') == 'KCNH2'),
+        ('keep the opening ticket after reading it', ['    sessionStorage.removeItem(TRANSFER);\n'], [''], ticket,
+         lambda: seen.get('ticket') is not None)]
     try:
         for desc, befores, afters, probe, broke in mutations:
             for before in befores:
@@ -1743,19 +1770,27 @@ SYNTH = {"sections": {
     "coverage": {"state": "ok", "data": {"mean_depth": 31.2}}}}
 
 
-def gate_transparency(b, base, out):
-    """The gate leaves adult and no-act pages equal to the renderer without it: DOM, attributes, address, canvas and
-    the requests, in order and counted."""
-    son = OTHERS[1]
-    js = os.path.join(out, 'assets', 'core.js')
-    files = [os.path.join(out, 'runs', S, 'results.json'), os.path.join(out, 'runs', son, 'results.json'),
-             os.path.join(out, 'runs.json')]
-    source = open(js).read()
-    saved = {p: open(p).read() for p in files}
-    # The same current renderer with the loader absent is the transparent reference.
+# Each network read a page script starts, in the order it starts it, below every wrapper of the page's own: the
+# path, and for fetch its cache mode and credentials. Installed before any script of the page runs.
+REQUEST_LOG = r"""(function () {
+  var log = window.ogRequests = [], f = window.fetch, E = window.EventSource;
+  window.fetch = function (u, o) {
+    log.push(['fetch', new URL(u && u.url || u, location.href).pathname, (o && o.cache) || 'default', (o && o.credentials) || 'same-origin']);
+    return f.apply(this, arguments);
+  };
+  if (E) {
+    var W = function (u, o) { log.push(['events', new URL(u, location.href).pathname]); return new E(u, o); };
+    W.prototype = E.prototype; W.CONNECTING = E.CONNECTING; W.OPEN = E.OPEN; W.CLOSED = E.CLOSED;
+    window.EventSource = W;
+  }
+}());"""
+
+
+def bare_core(source):
+    """core.js with the report gate cut out: the transparent reference a page without the gate is compared to."""
     marker = '  // --- the report gate'
     assert source.count(marker) == 1, 'gate marker moved'
-    bare = source[:source.index(marker)] + '''
+    return source[:source.index(marker)] + '''
   PGPUI.ready = Promise.resolve();
   PGPUI.gateOwnsPage = function () { return false; };
   PGPUI.openedActs = function () { return {}; };
@@ -1763,7 +1798,31 @@ def gate_transparency(b, base, out):
 }());
 '''
 
-    def capture(route, apoe=False, timeout=20):
+
+SEARCH_CLOSED = 'Results this page keeps closed are left out of the search until they are opened.'
+
+
+def type_search(b, term):
+    """Type TERM in the header search once its index has loaded; the text of what it shows."""
+    assert b.wait("document.querySelector('input[type=search]') && !document.querySelector('input[type=search]').disabled"), 'search never loaded'
+    b.eval("var s=document.querySelector('input[type=search]'); s.value=%s; s.dispatchEvent(new Event('input')); true" % json.dumps(term))
+    assert b.wait("document.documentElement.dataset.pgpSearch !== undefined"), 'search never answered'
+    return b.eval("document.querySelector('.search-results').textContent")
+
+
+def gate_transparency(b, base, out):
+    """The gate leaves adult and no-act pages equal to the renderer without it: DOM, attributes, address, canvas and
+    the requests, counted, each with its fetch options, and the files the gate reads first in their order."""
+    son = OTHERS[1]
+    js = os.path.join(out, 'assets', 'core.js')
+    fam = os.path.join(out, 'runs', FAM, 'family.json')
+    files = [os.path.join(out, 'runs', S, 'results.json'), os.path.join(out, 'runs', son, 'results.json'),
+             os.path.join(out, 'runs.json'), fam]
+    source = open(js).read()
+    saved = {p: open(p).read() for p in files}
+    bare = bare_core(source)
+
+    def capture(route, apoe=False, timeout=20, search=None, family=True):
         b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
         b.go(base + route)
         if route == '/':
@@ -1772,10 +1831,13 @@ def gate_transparency(b, base, out):
             assert b.wait("document.documentElement.dataset.pgpStatus === 'ready' && !!document.querySelector('h1')", timeout=timeout), 'finding never drawn'
         else:
             assert b.wait("document.documentElement.dataset.pgpResults && !!document.querySelector('[data-pgp-map=drawn]')", timeout=timeout), 'open report not drawn'
-            assert b.wait("!!document.querySelector('#rail a[href*=DEMO-FAMILY]') && !!document.documentElement.dataset.pgpCharts"), 'family or charts never settled'
+            assert b.wait("(%s || !!document.querySelector('#rail a[href*=DEMO-FAMILY]')) && !!document.documentElement.dataset.pgpCharts"
+                          % ('false' if family else 'true')), 'family or charts never settled'
         if apoe:
             # A redraw while the address names a place: the contents rail must come back as it did.
             b.eval("document.querySelector('details[data-gate=apoe] summary').click(); true")
+        if search:
+            type_search(b, search)
         time.sleep(0.5)
         got = b.eval("""(function () {
           var clone=document.documentElement.cloneNode(true);
@@ -1783,13 +1845,14 @@ def gate_transparency(b, base, out):
             n.removeAttribute('data-pgp-map-paint-ms'); n.removeAttribute('data-pgp-map-parse-ms');
           });
           return [clone.outerHTML, location.hash, Array.from(document.querySelectorAll('canvas')).map(function(c){return c.toDataURL();}),
-            // The browser lists a request when it ends: sort by when each one started.
-            performance.getEntriesByType('resource').slice().sort(function (a, z) { return a.startTime - z.startTime; })
-              .map(function (r) { return new URL(r.name).pathname; })];
+            performance.getEntriesByType('resource').map(function (r) { return new URL(r.name).pathname; }), window.ogRequests || []];
         }())""")
         # Scripts and the views' own files load in parallel, in any order, with or without the gate: count every
-        # request, and keep the order of the files the gate reads first.
-        got[3] = [sorted(got[3]), [p for p in got[3] if p.endswith(('/state.json', '/frames.json', '/family.json', '/results.json'))]]
+        # request with its options, and keep the order of the files the gate reads first.
+        reads = got.pop()
+        first = [r for r in reads if r[1].endswith(('/state.json', '/frames.json', '/family.json', '/results.json', '/events'))]
+        # Chrome asks for a fallback favicon after load whenever it likes; no script of the page asks for it.
+        got[3] = [sorted(p for p in got[3] if p != '/favicon.ico'), sorted(json.dumps(r) for r in reads), first]
         return got
 
     def write(p, d):
@@ -1819,13 +1882,27 @@ def gate_transparency(b, base, out):
                          lead_closed=o['lead_closed'], screened=o['screened'])
         write(files[2], idx)
 
+    def no_family():
+        # A family that cannot be read (its family.json answers 404): the page asks for it once, as without the gate.
+        os.remove(fam)
+
+    def no_act_no_family():
+        no_act()
+        no_family()
+
+    term = located_term(out)
     first = next(f['id'] for f in json.loads(saved[files[0]])['findings'] if f['level'] != 'act')
-    cases = [('adult', None, '/runs/'+S+'/', False), ('adult, a redraw at a section address', None, '/runs/'+S+'/#s3', True),
-             ('adult finding page', None, '/runs/'+S+'/finding/'+first+'/', False),
-             ('child with no act', no_act, '/runs/'+son+'/', False), ('home with no gated child', no_act, '/', False),
-             ('fresh adult with an act and a same-gene ranking', synthetic, '/runs/'+S+'/', False)]
+    cases = [('adult', None, '/runs/'+S+'/', {}), ('adult, a redraw at a section address', None, '/runs/'+S+'/#s3', {'apoe': True}),
+             ('adult finding page', None, '/runs/'+S+'/finding/'+first+'/', {}),
+             ('child with no act, a search typed', no_act, '/runs/'+son+'/', {'search': term}),
+             ('home with no gated child', no_act, '/', {}),
+             ('fresh adult with an act and a same-gene ranking', synthetic, '/runs/'+S+'/', {}),
+             ('adult whose family cannot be read', no_family, '/runs/'+S+'/', {'family': False}),
+             ('adult finding page whose family cannot be read', no_family, '/runs/'+S+'/finding/'+first+'/', {}),
+             ('child with no act whose family cannot be read', no_act_no_family, '/runs/'+son+'/', {'family': False})]
+    log = b.call('Page.addScriptToEvaluateOnNewDocument', {'source': REQUEST_LOG}, b.session)['identifier']
     try:
-        for label, prep, route, apoe in cases:
+        for label, prep, route, how in cases:
             for p in files:
                 with open(p, 'w') as f:
                     f.write(saved[p])
@@ -1835,14 +1912,21 @@ def gate_transparency(b, base, out):
             for text in (bare, source):
                 with open(js, 'w') as f:
                     f.write(text)
-                pair.append(capture(route, apoe))
+                pair.append(capture(route, **how))
             detail = [('dom', 'hash', 'canvas', 'requests')[i] for i in range(4) if pair[0][i] != pair[1][i]]
-            if pair[0][3] != pair[1][3]:
-                detail += [pair[0][3], pair[1][3]]
+            for k in range(3):
+                if pair[0][3][k] != pair[1][3][k]:
+                    x, y = pair[0][3][k], pair[1][3][k]
+                    detail += [('without the gate only', [r for r in x if r not in y]), ('with it only', [r for r in y if r not in x]), x, y]
             if pair[0][0] != pair[1][0]:
                 at = next((i for i, (a, z) in enumerate(zip(pair[0][0], pair[1][0])) if a != z), 0)
                 detail += [pair[0][0][max(0, at-80):at+120], pair[1][0][max(0, at-80):at+120]]
             check('gate transparency: '+label+' has identical DOM, attributes, address, canvas and requests', pair[0] == pair[1], detail)
+            if how.get('search'):
+                # A child's page keeps results closed until opened, with or without results to act on, and says so
+                # under the hits, as before the gate.
+                check('gate transparency: a search on a child with no act says that closed results are left out',
+                      SEARCH_CLOSED in pair[1][0], term)
         for p in files:
             with open(p, 'w') as f:
                 f.write(saved[p])
@@ -1859,6 +1943,7 @@ def gate_transparency(b, base, out):
                 still_equal = False
             control('gate transparency: '+desc, still_equal)
     finally:
+        b.call('Page.removeScriptToEvaluateOnNewDocument', {'identifier': log}, b.session)
         with open(js, 'w') as f:
             f.write(source)
         for p in files:

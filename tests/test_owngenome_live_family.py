@@ -31,6 +31,11 @@ Checks:
      gate_checks on the family page), here so that browser time is not added to test_live_demo.py's;
   8. the real server answers every finding id of a child with a result to act on with the same page, and keeps
      the 404 for an adult's id that is not a finding.
+  9. the report gate on the real server, in live mode: one rule of who is a child; the home page counts a
+     child's results to act on from the summary its results.json reads (a stale summary.json too); family.json
+     has no flagged-card count for a child whose report is closed, so a parent's page is the same whichever card
+     holds the child's results; and an adult's and a no-act child's pages make the requests of the page without
+     the gate, in its order, the event stream included.
 Checks 2 and 4 are run again on a copy of the fixture with two parents swapped
 and must fail there: a check that cannot fail is no check.
 
@@ -353,6 +358,7 @@ def real_server(root):
         check("the family page loads family.js", code == 200 and b"/assets/plugins/family.js" in body, code)
         finding_route_checks(live, get, root)
         browser_checks(port, os.path.dirname(root))
+        gate_server_checks(live, get, root, port, os.path.dirname(root))
     finally:
         web.shutdown()
         ingest.server_close()
@@ -437,6 +443,160 @@ def browser_checks(port, work):
 
     finally:
         b.close()
+
+
+def plp(gene, variant):
+    return {"gene": gene, "variant": variant, "final": "Pathogenic", "clinvar": "Pathogenic"}
+
+
+# Two reports with the same two results to act on, held by different cards: two CPSR rows, or one CPSR row and a
+# class 5 deletion (which flags the structural-variant card). A parent's page must not tell them apart.
+SV = {"state": "ok", "data": {"count": 1, "consensus": 1, "single_caller": 0, "exon_edge_checked": False, "exon_edge": 0,
+                              "common": 0, "rows": [{"sv": "chr17:43044295-43125483", "type": "DEL", "gt": "0/1",
+                                                     "length": -81188, "acmg_class": 5, "genes": ["BRCA1"]}]}}
+TWO_IN_ONE_CARD = {"sections": {"cpsr": {"state": "ok", "data": {"plp": [plp("BRCA1", "c.68_69del"), plp("TP53", "c.743G>A")]}}}}
+TWO_CARDS = {"sections": {"cpsr": {"state": "ok", "data": {"plp": [plp("BRCA1", "c.68_69del")]}}, "annotsv": SV}}
+NO_ACT = {"sections": {"clinvar": {"state": "ok", "data": {"hits": []}}, "annotsv": dict(SV, data=dict(SV["data"], count=0, rows=[]))}}
+
+
+def gate_server_checks(live, get, root, port, work):
+    """The report gate's server side and its live-mode requests (docstring, check 9)."""
+    import owngenome_live
+    import live_results
+    sys.path.insert(0, os.path.join(REPO, "tests"))
+    fams = [{"name": "b", "members": [{"sample": "x", "father": None, "mother": None}]},
+            {"name": "a", "members": [{"sample": "x", "father": "p", "mother": None}]},
+            {"name": "c", "members": []}]
+    child_of = getattr(owngenome_live, "child_of", lambda *a: None)
+    got = [child_of(fams, "x"), child_of(fams[:1], "x"), child_of(fams, "y"), child_of(fams[:2], "y")]
+    check("one rule of who is a child: the first family by name decides; a run no readable family lists is a child "
+          "while a family cannot be read", got == [True, False, True, False], got)
+    check("the finding route asks the same rule", __import__("owngenome_live_results").child_run(live, "father_a")
+          and not __import__("owngenome_live_results").child_run(live, "gf_a"))
+    made = []
+
+    def run(name, summary=None):
+        d = os.path.join(root, name)
+        os.makedirs(os.path.join(d, "logs"), exist_ok=True)
+        if not os.path.exists(os.path.join(d, "logs", "run_status.tsv")):
+            with open(os.path.join(d, "logs", "run_status.tsv"), "w") as f:
+                f.write("meta\tstarted_epoch\t1767347940\nstep\t06\tplanned\n")
+            made.append(d)
+        p = os.path.join(d, "summary.json")
+        if summary is None:
+            if os.path.exists(p):
+                os.remove(p)
+        else:
+            with open(p, "w") as f:
+                json.dump(summary, f)
+
+    def family():
+        return json.loads(get("/runs/family_a/family.json")[2])
+
+    def index():
+        return {r["name"]: r for r in json.loads(get("/runs.json")[2])["runs"]}
+
+    real = live.summary
+    try:
+        # father_a is a child of gf_a and gm_a; gf_a an adult with a run here.
+        run("gf_a")
+        # A stale summary.json with no result to act on, while the summary results.json reads (summary(): the step
+        # files read again) has one. The home page must count it, so it closes the child as the child's page does.
+        run("child_a", NO_ACT)
+        live.summary = lambda name, d, st: TWO_IN_ONE_CARD if name == "child_a" else real(name, d, st)
+        acts = (index().get("child_a") or {}).get("levels", {}).get("act")
+        check("home: a child's results to act on are counted from the summary its results.json reads, not a stale "
+              "summary.json", acts == 2, acts)
+        check("family.json: no flagged-card count for that child", family()["runs"]["child_a"]["attention"] is None,
+              family()["runs"]["child_a"])
+        live.summary = real
+        run("child_a")
+        # The same two results to act on in one card or in two: the flagged-card count differs (0 and 1).
+        counts = [live_results.overview(x)["attention"] for x in (TWO_IN_ONE_CARD, TWO_CARDS)]
+        assert counts[0] != counts[1], counts
+        seen = []
+        for summary in (TWO_IN_ONE_CARD, TWO_CARDS):
+            run("father_a", summary)
+            seen.append(family()["runs"].get("father_a"))
+        check("family.json: a child's entry is the same whichever card holds its results to act on, with no count",
+              seen[0] == seen[1] and seen[0] and seen[0]["attention"] is None, seen)
+        run("father_a", NO_ACT)
+        n = family()["runs"]["father_a"]["attention"]
+        check("family.json: a child with no result to act on keeps its count", n == live_results.overview(NO_ACT)["attention"], n)
+        live_browser_checks(live, port, work, run, real)
+    finally:
+        live.summary = real
+        for d in made:
+            shutil.rmtree(d)
+        run("child_a")
+
+
+def live_browser_checks(live, port, work, run, real):
+    """In live mode (state.json, then the event stream): an adult's and a no-act child's page make the requests of
+    the page without the gate, in its order; a parent's page is the same whichever card holds a child's results."""
+    import test_live_demo as demo
+    chrome = demo.find_chrome()
+    if not chrome:
+        if os.environ.get("CI") == "true":
+            check("live gate browser checks have Chrome in CI", False)
+        else:
+            print("[SKIP] no Chrome or Chromium for the live gate checks")
+        return
+    assets = os.path.join(work, "gate-assets")
+    shutil.copytree(os.path.join(REPO, "assets", "live"), assets)
+    js = os.path.join(assets, "core.js")
+    source = open(js).read()
+    keep = live.cfg.assets
+    live.cfg.assets = assets
+    # gf_a's own report, so its page draws the contents and the family beside them.
+    adult = live.summary = lambda name, d, st: NO_ACT if name == "gf_a" else real(name, d, st)
+    b = demo.Chrome(chrome, os.path.join(work, "gate-chrome"))
+    base = "http://127.0.0.1:%d" % port
+    t0 = demo.time.time()
+    try:
+        b.call("Page.enable", session=b.session)  # scripts for each new document need the Page domain
+        log = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": demo.REQUEST_LOG}, b.session)["identifier"]
+
+        def capture(route, text):
+            with open(js, "w") as f:
+                f.write(text)
+            b.go("about:blank")
+            assert b.wait("location.href === 'about:blank'")
+            b.go(base + route)
+            assert b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+                          "!!document.querySelector('#rail a[href*=family_a]')"), route + " never drawn"
+            demo.time.sleep(1.0)
+            return b.eval("[document.documentElement.outerHTML, location.href, (window.ogRequests || []).map(function (r) { "
+                          "return r.join(' '); })]")
+        pages = {}
+        for label, route, summary in (("an adult", "/runs/gf_a/", None), ("a no-act child", "/runs/father_a/", NO_ACT)):
+            # The child's results come from its summary as results.json reads it (a step file read now).
+            live.summary = lambda name, d, st: summary if summary and name == "father_a" else adult(name, d, st)
+            try:
+                pair = [capture(route, demo.bare_core(source)), capture(route, source)]
+            finally:
+                live.summary = adult
+            pages[label] = pair
+            check("live mode: the page of %s makes the requests of the page without the gate, in its order, and is the "
+                  "same page" % label, pair[0] == pair[1], [p[2] for p in pair] if pair[0][2] != pair[1][2] else "the pages differ")
+        first = [r.split(" ")[1].rsplit("/", 1)[-1] for r in pages["an adult"][0][2]][:3]
+        print("   live mode, an adult's reads without the gate: " + ", ".join(pages["an adult"][0][2]))
+        check("live mode: without the gate the page asks for state.json, then the event stream, then family.json",
+              first == ["state.json", "events", "family.json"], first)
+        # A parent's page, whichever card holds the child's two results to act on.
+        seen = []
+        for summary in (TWO_IN_ONE_CARD, TWO_CARDS):
+            run("father_a", summary)
+            seen.append(capture("/runs/gf_a/", source)[0])
+        check("live mode: a parent's page is the same whichever card holds a child's results to act on",
+              seen[0] == seen[1], "the pages differ")
+        b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": log}, b.session)
+    finally:
+        live.summary = real
+        live.cfg.assets = keep
+        b.close()
+        shutil.rmtree(assets, ignore_errors=True)
+    print("   live gate browser checks: %.2f s" % (demo.time.time() - t0))
 
 
 # A stale blood-group section with two systems past ABO and RhD, for child_a's summary.json.
