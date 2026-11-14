@@ -1751,7 +1751,10 @@
     var inWrap = el('div', { 'class': 'gm-inview-wrap' });
     var inDense = el('div', { 'class': 'gm-inview-dense' });
     var inFoot = el('div', { 'class': 'gm-inview-foot' });
-    add(inview, inSum, inLive, inWrap, inDense, inFoot);
+    add(inview, inSum, inWrap, inDense, inFoot);
+    // The count's live line sits beside the table, not in it: a folded <details> hides its content from a screen
+    // reader, and the count must still be said while the table is folded (on a phone, or after T).
+    main.insertBefore(inLive, inview.nextSibling);
     // Open beside a desktop map, folded on a phone (the page is long already). T opens and folds it.
     inview.open = !(window.matchMedia && window.matchMedia('(max-width: 700px)').matches);
     var COPY = { het: 'one copy (unphased)', hom: 'both copies', hemi: 'the only copy' };
@@ -1846,7 +1849,7 @@
       if (sig === tSig) { return; }
       tSig = sig;
       var had = document.activeElement, fk = had && inWrap.contains(had) ? had.getAttribute('data-col') ||
-        (had.closest('tr') && had.closest('tr').getAttribute('data-key')) : null;
+        (had.closest('tr') && had.closest('tr').getAttribute('data-key')) : null, footFocus = !!had && inFoot.contains(had);
       inWrap.textContent = '';
       inFoot.textContent = '';
       inWrap.classList.toggle('gm-virtual', virtual);
@@ -1880,6 +1883,9 @@
       }
       var back = fk && (inWrap.querySelector('[data-col="' + fk + '"]') || inWrap.querySelector('tr[data-key="' + fk.replace(/["\\]/g, '\\$&') + '"] button'));
       if (back) { back.focus({ preventScroll: true }); }
+      // Show all / Show fewer is built again too: the keyboard stays on it.
+      var more = footFocus && inFoot.querySelector('.gm-showall');
+      if (more) { more.focus({ preventScroll: true }); }
     }
     function rowEl(x) {
       var tr = el('tr', { 'data-key': x.key, 'data-layer': x.layer });

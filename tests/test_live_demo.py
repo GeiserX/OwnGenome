@@ -3171,11 +3171,12 @@ def plant_long_run(out, og):
     return keep
 
 
-def predicate_problems(b, base, out, og):
+def predicate_problems(b, base, out, og, runs=None):
     """drawsAt() of map.js against og map build --predicate-table, row by row, on the three demo runs (DEMO-001
-    with a planted long run): the same rows and the same answer at each level; and the comparison covers a finding,
-    a long run, a shorter run and a gene, so it cannot pass on rows that agree by chance."""
-    bad, runs = [], [S] + OTHERS
+    with a planted long run; RUNS only when given): the same rows and the same answer at each level; and the
+    comparison covers a finding, a long run, a shorter run and a gene, so it cannot pass on rows that agree by
+    chance."""
+    bad, runs = [], list(runs or [S] + OTHERS)
     map_page(b, base, S)
     r = b.call("Runtime.evaluate", {"expression": PRED_JS % json.dumps(runs), "awaitPromise": True, "returnByValue": True},
                b.session)
@@ -3353,9 +3354,10 @@ def size_bp(words):
     return float(n) * {"bp": 1, "kb": 1e3, "Mb": 1e6}[unit]
 
 
-def sort_problems(b, base):
+def sort_problems(b, base, default_only=False):
     """The table's order: by place with the findings first, aria-sort ascending on Where; Where again reverses it
-    (descending); Size sorts by size, smallest first, with aria-sort moved there."""
+    (descending); Size sorts by size, smallest first, with aria-sort moved there. DEFAULT_ONLY: the first order
+    alone."""
     bad = []
     c, t = inview_page(b, base, S, "#chr22:40.5-43.5M")
     keys = t["rows"]
@@ -3365,6 +3367,8 @@ def sort_problems(b, base):
         bad.append(f"default order {keys[:4]}: want the findings first, then by place (and a gene before the finding)")
     if t["sort"] != ["", "", "ascending", "", "", "", ""]:
         bad.append(f"default aria-sort {t['sort']}")
+    if default_only:
+        return bad
     b.eval("document.querySelector('.gm-table th button[data-col=where]').click(); true")
     r = inview_now(b)
     if r["rows"] != keys[::-1] or r["sort"][2] != "descending":
@@ -3382,9 +3386,10 @@ ANNOUNCE_JS = ("window.__said = []; new MutationObserver(function () { window.__
                "{ childList: true, characterData: true, subtree: true }); true")
 
 
-def announce_problems(b, base):
+def announce_problems(b, base, pans_only=False):
     """The table announces its count once when it changes and never when it does not: three pans along a stretch
-    with nothing in view say nothing; then a view with four marks says "4 features in view", once."""
+    with nothing in view say nothing; then a view with four marks says "4 features in view", once. PANS_ONLY: the
+    pans alone."""
     bad = []
     c, t = inview_page(b, base, S, "#chr3:100.0-101.0M")
     b.eval(ANNOUNCE_JS)
@@ -3395,6 +3400,8 @@ def announce_problems(b, base):
     said = b.eval("JSON.stringify(window.__said)")
     if t["count"] != "0 features" or said != "[]":
         bad.append(f"panning an empty stretch ({t['count']}) announced {said}")
+    if pans_only:
+        return bad
     c, t = go_view(b, "#chr11")
     said = json.loads(b.eval("JSON.stringify(window.__said)"))
     if said != [f"{t['count']} in view"] or t["count"] != "4 features":
@@ -3402,9 +3409,41 @@ def announce_problems(b, base):
     return bad
 
 
-def fly_problems(b, base):
+SHOWALL_JS = r"""(function () {
+  var f = document.getElementById('genome-map'), a = f.querySelector('.gm-showall'), out = [];
+  if (!a) { return JSON.stringify(null); }
+  for (var i = 0; i < 2; i++) {
+    a = f.querySelector('.gm-showall');
+    a.focus();
+    var was = a.textContent;
+    a.click();
+    var now = document.activeElement;
+    out.push(was + ' > ' + (now && now.classList.contains('gm-showall') ? now.textContent : (now ? now.tagName : '')));
+  }
+  return JSON.stringify(out);
+}())"""
+
+
+def showall_problems(b, base):
+    """The keyboard stays on Show all when the table is built again (Show fewer, then Show all again), and the
+    count's live line sits outside the foldable table, so a screen reader hears it while the table is folded."""
+    bad = []
+    inview_page(b, base, S, "#chr22:40.5-43.5M")  # 21 rows with its genes
+    if b.eval("(function () { var l = document.querySelector('#genome-map .gm-inview-live'); "
+              "return !l || !!l.closest('details'); }())"):
+        bad.append("the count's live line is missing or inside the foldable table")
+    said = json.loads(b.eval(SHOWALL_JS))
+    if said is None:
+        return bad + ["no Show all at chr22:40.5-43.5M: the check tests nothing"]
+    if sorted(said) != ["Show all > Show fewer", "Show fewer > Show all"]:
+        bad.append(f"after Show all and Show fewer the keyboard is on {said}")
+    return bad
+
+
+def fly_problems(b, base, finding_only=False):
     """A row's button flies the map to its feature: a finding's row from the genome level to its place with its
-    card, the row then current; a run's row to a view that holds the run, with no card."""
+    card, the row then current; a run's row to a view that holds the run, with no card. FINDING_ONLY: the
+    finding's row alone."""
     bad = []
     c, t = inview_page(b, base, S)
     key = next((k for k in t["rows"] if k.startswith("findings\tchr16\t")), None)
@@ -3420,6 +3459,8 @@ def fly_problems(b, base):
     if c["chrom"] != "chr16" or key not in t["drawn"] or "DEMOC" not in t["card"] or t["current"] != [key]:
         bad.append(f"the DEMOC row flew to {c['chrom']} {c['view']}, drawn {key in t['drawn']}, card {t['card'][:40]!r}, "
                    f"current {t['current']}")
+    if finding_only:
+        return bad
     c, t = go_view(b, "#chr11")
     key = next((k for k in t["rows"] if k.startswith("roh\t")), None)
     if not key:
@@ -3473,10 +3514,11 @@ def view_mb(h):
     return (float(m.group(1)), float(m.group(2))) if m else None
 
 
-def strip_problems(b, base, out, phone_only=False):
+def strip_problems(b, base, out, phone_only=False, click_only=False):
     """The strip: a click opens a chromosome whole, a drag elsewhere brushes a new view on the chromosome where it
     started, a drag on the brush pans; at 390 px it shows 12 px high and a click there does nothing (a picture
-    only), and the table starts folded with its count in its summary."""
+    only), and the table starts folded with its count in its summary. PHONE_ONLY: the 390 px half alone;
+    CLICK_ONLY: the first click alone."""
     bad = []
     doc = read_map(os.path.join(out, "runs", S, "map.json"))
     if not phone_only:
@@ -3488,6 +3530,8 @@ def strip_problems(b, base, out, phone_only=False):
         h = hash_now(b)
         if h != "#chr16":
             bad.append(f"a click on chr16 of the strip opens {h}")
+        if click_only:
+            return bad
         time.sleep(1.2)  # the map opens chr16 before the next drag
         x0, y, n = strip_x(b, doc, "chr2", 0.2)
         x1 = strip_x(b, doc, "chr2", 0.4)[0]
@@ -3559,12 +3603,15 @@ def window_problems(b, base):
     return bad
 
 
-def place_find_problems(b, base):
+PLACES = (("", "chr7", "chr7", "chromosome"), ("#chr7", "#chr11:4.5-6.5M", "chr11", "region"),
+          ("#chr7", "genome", "", "genome"))
+
+
+def place_find_problems(b, base, places=PLACES):
     """The search box takes a place as the address writes it: chr7 opens the chromosome, #chr11:4.5-6.5M flies to
-    the region, genome steps back out to the whole genome."""
+    the region, genome steps back out to the whole genome (PLACES only when given)."""
     bad = []
-    for link, q, chrom, lv in (("", "chr7", "chr7", "chromosome"), ("#chr7", "#chr11:4.5-6.5M", "chr11", "region"),
-                               ("#chr7", "genome", "", "genome")):
+    for link, q, chrom, lv in places:
         map_page(b, base, S, link)
         found = map_find(b, q)
         if not found or found[0]["kind"] != "place":
@@ -3656,7 +3703,8 @@ def inview_checks(b, base, out, og):
         check("map: drawsAt() in map.js gives og map build --predicate-table's answer for every row of the three demo "
               "runs and every gene, at every level", not bad, bad)
         planted("map.js whose drawsAt() drops the long runs at the genome level",
-                "return i > 0 || !!(row && row.long);", "return i > 0;", lambda: predicate_problems(b, base, out, og))
+                "return i > 0 || !!(row && row.long);", "return i > 0;",
+                lambda: predicate_problems(b, base, out, og, runs=[S]))
     finally:
         unplant(keep)
     bad = inview_problems(b, base)
@@ -3685,24 +3733,31 @@ def inview_checks(b, base, out, og):
           "reverses it, and Size sorts by size", not bad, bad)
     planted("map.js whose table sorts by place alone",
             "return (a.layer === 'findings' ? 0 : 1) - (b.layer === 'findings' ? 0 : 1) || place(a, b);",
-            "return place(a, b);", lambda: sort_problems(b, base))
+            "return place(a, b);", lambda: sort_problems(b, base, default_only=True))
     bad = announce_problems(b, base)
     check("map: the In view table announces its count once when it changes, never while it stays the same", not bad, bad)
     planted("map.js whose table announces its count on every settle",
             "if (n !== announced) { announced = n; inLive", "if (true) { announced = n; inLive",
-            lambda: announce_problems(b, base))
+            lambda: announce_problems(b, base, pans_only=True))
+    bad = showall_problems(b, base)
+    check("map: the keyboard stays on Show all and Show fewer, and the count is said outside the foldable table",
+          not bad, bad)
+    planted("map.js whose Show all drops the keyboard", "if (more) { more.focus(", "if (false) { more.focus(",
+            lambda: showall_problems(b, base))
+    planted("map.js whose count's live line folds with the table", "main.insertBefore(inLive, inview.nextSibling);",
+            "inview.insertBefore(inLive, inWrap);", lambda: showall_problems(b, base))
     bad = fly_problems(b, base)
     check("map: a row of the In view table flies the map to its feature (a finding with its card) and becomes the "
           "current row", not bad, bad)
     planted("map.js whose rows fly without the finding's card",
             "if (x.layer === 'findings') { pick(x.r.id); } else { pick(null); }", "pick(null);",
-            lambda: fly_problems(b, base))
+            lambda: fly_problems(b, base, finding_only=True))
     bad = strip_problems(b, base, out)
     check("map: the strip opens a chromosome on a click, brushes a new view and pans on a drag; at 390 px it is a "
           "12 px picture and the table starts folded", not bad, bad)
     planted("map.js whose strip ignores a click",
             "if (i >= 0) { openChrom(i, undefined, undefined, true); }\n      } else if (b0.mode",
-            "void i;\n      } else if (b0.mode", lambda: strip_problems(b, base, out))
+            "void i;\n      } else if (b0.mode", lambda: strip_problems(b, base, out, click_only=True))
     planted("map.js whose strip takes clicks on a phone",
             "if (!M || phone || !b0) { return; }", "if (!M || !b0) { return; }",
             lambda: strip_problems(b, base, out, phone_only=True),
@@ -3713,7 +3768,7 @@ def inview_checks(b, base, out, og):
           "flies there", not bad, bad)
     planted("map.js whose search takes a place only with a colon",
             "var p = /^(genome|chr[0-9XYMT]+(:.*)?)$/i.test(pq) ? parsePlace(pq) : null;",
-            "var p = /^chr/i.test(pq) && /[:]/.test(pq) ? parsePlace(pq) : null;", lambda: place_find_problems(b, base))
+            "var p = /^chr/i.test(pq) && /[:]/.test(pq) ? parsePlace(pq) : null;", lambda: place_find_problems(b, base, PLACES[:1]))
     bad = card_focus_problems(b, base)
     check("map: the keyboard stays on the card's link when the view settles again", not bad, bad)
     planted("map.js whose card is built again on every settle",
