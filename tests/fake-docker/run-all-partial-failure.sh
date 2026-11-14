@@ -157,24 +157,39 @@ grep -q '^Rendering from summary.json' "${S}/logs/generate-report.log" \
 t_txt=$(sed -n 's/^  Generated: //p' "$TXT" | head -1)
 t_html=$(grep -o 'Generated: [^<&]*' "$HTML" | head -1 | sed 's/^Generated: //; s/ *$//')
 [ -n "$t_txt" ] && [ "$t_txt" = "$t_html" ] || miss "the text report says generated '${t_txt}', the HTML report '${t_html}'"
-# The reverse: a step output newer than summary.json makes it collect again.
+# The reverse: a change after summary.json was written makes it collect
+# again. Each check first makes summary.json the newest file, as step 24
+# leaves it (the run's history/ copy came after it), and waits a second, so
+# only the change it makes is newer.
+fresh() { touch "${S}/summary.json" && /bin/sleep 1; }
+rendered_from() { grep -q '^Rendering from summary.json' "${CASE_WORK}/$1.out" 2> /dev/null; }
+fresh
+run_expect 0 current "${SCRIPTS}/generate-report.sh" sample1
+rendered_from current || miss "generate-report.sh collected again, but nothing changed after summary.json was written"
+# A step output newer than summary.json.
 roh=$(find "$S" -name 'sample1_roh.txt' -type f | head -1)
 [ -n "$roh" ] || fail "no ROH output to touch"
+fresh
 touch "$roh"
 run_expect 0 recollect "${SCRIPTS}/generate-report.sh" sample1
-if grep -q '^Rendering from summary.json' "${CASE_WORK}/recollect.out" 2> /dev/null; then
-  miss "generate-report.sh rendered from summary.json, but a step output changed after it was written"
-fi
+! rendered_from recollect || miss "generate-report.sh rendered from summary.json, but a step output changed after it was written"
 touch -d '30 days ago' "$roh"   # back to its age, for the cases below
-# A file removed after the collect makes it collect again too.
+# A file removed: its folder is newer than summary.json.
 extra="${roh%/*}/sample1_extra.txt"
 : > "$extra"
-run_expect 0 recollect-added "${SCRIPTS}/generate-report.sh" sample1
+fresh
 rm -f "$extra"
 run_expect 0 recollect-removed "${SCRIPTS}/generate-report.sh" sample1
-if grep -q '^Rendering from summary.json' "${CASE_WORK}/recollect-removed.out" 2> /dev/null; then
-  miss "generate-report.sh rendered from summary.json, but a file was removed after it was written"
-fi
+! rendered_from recollect-removed || miss "generate-report.sh rendered from summary.json, but a file was removed after it was written"
+# A section's whole folder removed: only the sample folder itself is newer,
+# so the section's missing source must tell.
+src=$(sed -n 's|^   "source": "\([^"/]*\)/.*|\1|p' "${S}/summary.json" | head -1)
+[ -n "$src" ] && [ -d "${S}/${src}" ] || fail "summary.json names no section folder: $(grep -m3 '"source"' "${S}/summary.json")"
+fresh
+mv "${S}/${src}" "${CASE_WORK}/moved-away"
+run_expect 0 recollect-folder "${SCRIPTS}/generate-report.sh" sample1
+mv "${CASE_WORK}/moved-away" "${S}/${src}"
+! rendered_from recollect-folder || miss "generate-report.sh rendered from summary.json, but ${src}/, a section's folder, was removed after it was written"
 
 # --- 3. the same failure on a first run: nothing cached ------------------------------------
 awk -F'\t' -v OFS='\t' '{$2 += $3; $3 = 0; print}' "${CASE_WORK}/resume.tsv" > "${CASE_WORK}/first.tsv"

@@ -42,10 +42,17 @@ fi
 # delta, the logs other than run_status.tsv, and nextflow/, the Nextflow launch
 # folder with work/), and bin/ (og and the tables it reads there) and assets/. Anything newer, or a
 # summary that is not there, means collect again. A subfolder newer than the
-# summary (other than logs/) had a file added or removed since: collect again.
+# summary (other than logs/) had a file added or removed since, and a section's
+# source that is gone (its file or its whole folder removed) means the same:
+# collect again.
 summary_current() {
-  local s="${SAMPLE_DIR}/summary.json" newer
+  local s="${SAMPLE_DIR}/summary.json" newer src
   [ -s "$s" ] && [ ! -L "$s" ] || return 1
+  # Each section's "source", at the sections' depth of og's one-space indent.
+  while IFS= read -r src; do
+    case $src in *\\*) return 1 ;; esac
+    [ -e "${SAMPLE_DIR}/${src}" ] || return 1
+  done < <(sed -n 's/^   "source": "\([^"]*\)",\{0,1\}$/\1/p' "$s")
   newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./summary.json \) -prune \
     -o -type d ! -path . ! -path ./logs -newer summary.json -print -quit \
     -o ! -type d -newer summary.json \
