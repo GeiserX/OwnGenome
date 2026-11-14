@@ -14,13 +14,12 @@ use super::carrier::Carrier;
 use super::clinical::{Clinical, Slivar};
 use super::clinvar::{ClinVar, Floor, HitsVcf};
 use super::cpsr::{self, Cpsr};
-use super::model::{Manifest, RunStatus, Section, Spec, Summary};
+use super::model::{Section, Spec, Summary};
 use super::pgx::{Cpic, Cyp2d6, Cyrius, PharmCat, Pypgx};
 use super::scan::FolderIndex;
 use super::sections::{Data, SampleQc};
 use super::two_hits::{self, DeletionInputs};
-use super::{Input, Read, read_at, read_optional, with_mtime};
-use std::path::Path;
+use super::{Folder, Input, Read, read_at, with_mtime};
 
 /// The sections `og summary collect --only b` reads, in summary.json's order.
 pub const GROUP_B: [Spec; 9] = [
@@ -74,12 +73,42 @@ pub const GROUP_B: [Spec; 9] = [
 /// Reads the folder into the summary of group b. An error is a run status
 /// or a manifest that is there and cannot be read.
 pub fn collect(input: &Input) -> Result<Summary, String> {
-    let dir = Path::new(&input.sample_dir);
+    let folder = Folder::open(input)?;
+    let sections = read(input, &folder);
+    let cyp2d6 = cyp2d6(input, &folder.index, &sections);
+    let s = pycompat::mtime::escape(&input.sample);
+    // The run block is group a's: the declared sex from the command line,
+    // the run status, the manifest or step 33's table, the first that has one.
+    let qc_declared = folder
+        .index
+        .first(&[format!("qc/{s}_sample_qc.tsv")])
+        .and_then(|rel| {
+            let p = crate::join(&input.sample_dir, rel);
+            let rows = super::sections::read_tsv(&p).ok()?;
+            SampleQc::read(&p, &rows)
+                .ok()?
+                .declared_sex()
+                .map(str::to_owned)
+        });
+    let declared_sex = super::declared(input, &folder, qc_declared.as_deref());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64());
+    Ok(Summary {
+        sample: input.sample.clone(),
+        generated_utc: super::time::utc_minute(now).unwrap_or_default(),
+        run: folder.run,
+        manifest: folder.manifest,
+        declared_sex,
+        sections,
+        cyp2d6,
+    })
+}
+
+/// Reads the sections of group b, in [`GROUP_B`] order.
+pub fn read(input: &Input, folder: &Folder) -> Vec<Section> {
     let d = input.sample_dir.as_str();
-    let index = FolderIndex::walk(dir);
-    let run =
-        read_optional(&dir.join("logs").join("run_status.tsv"))?.map(|t| RunStatus::parse(&t));
-    let manifest = read_optional(&dir.join("run_manifest.tsv"))?.map(|t| Manifest::parse(&t));
+    let index = &folder.index;
     let s = pycompat::mtime::escape(&input.sample);
     let raw = input.sample.as_str();
     let file = |rel: &str| -> (String, String) { (crate::join(d, rel), rel.to_owned()) };
@@ -122,7 +151,7 @@ pub fn collect(input: &Input) -> Result<Summary, String> {
             )?;
             with_mtime(&p, rel, Data::Clinical(data))
         });
-        let rest = read_rest(input, &s, &index, &find, &hits, &deletions);
+        let rest = read_rest(input, &s, index, &find, &hits, &deletions);
         let join = |h: std::thread::ScopedJoinHandle<'_, Read>| {
             h.join()
                 .unwrap_or_else(|_| Err("internal error: the section reader stopped".into()))
@@ -133,55 +162,26 @@ pub fn collect(input: &Input) -> Result<Summary, String> {
     let reads = [
         clinvar, carrier, pharmcat, cpic, pypgx, cyrius, cpsr, clinical, slivar,
     ];
-    let sections: Vec<Section> = GROUP_B
+    GROUP_B
         .iter()
         .zip(reads)
-        .map(|(spec, r)| Section::new(*spec, r, run.as_ref()))
-        .collect();
-    let sec = |k: &str| sections.iter().find(|x| x.spec.key == k);
-    let cyp2d6 = match (sec("cpic"), sec("pypgx"), sec("cyrius")) {
-        (Some(c), Some(p), Some(y)) => Some(Cyp2d6::new(
-            c,
-            p,
-            y,
-            one(format!("pgx_consensus/{s}_pgx_consensus.tsv")),
-            d,
-        )),
-        _ => None,
-    };
+        .map(|(spec, r)| Section::new(*spec, r, folder.run.as_ref()))
+        .collect()
+}
 
-    // The run block is group a's: the declared sex from the command line,
-    // the run status, the manifest or step 33's table, the first that has one.
-    let qc_declared = one(format!("qc/{s}_sample_qc.tsv")).and_then(|(p, _)| {
-        let rows = super::sections::read_tsv(&p).ok()?;
-        SampleQc::read(&p, &rows)
-            .ok()?
-            .declared_sex()
-            .map(str::to_owned)
-    });
-    let declared_sex = [
-        input.declared_sex.clone(),
-        run.as_ref().and_then(|r| r.declared_sex.clone()),
-        manifest
-            .as_ref()
-            .and_then(|m| m.value("run", "declared_sex").map(str::to_owned)),
-        qc_declared,
-    ]
-    .into_iter()
-    .flatten()
-    .find(|v| !v.is_empty());
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0.0, |d| d.as_secs_f64());
-    Ok(Summary {
-        sample: input.sample.clone(),
-        generated_utc: super::time::utc_minute(now).unwrap_or_default(),
-        run,
-        manifest,
-        declared_sex,
-        sections,
-        cyp2d6,
-    })
+/// The `cyp2d6` block: CPIC, pypgx and Cyrius side by side, with step 36's
+/// row. `None` when `sections` lack one of the three.
+pub fn cyp2d6(input: &Input, index: &FolderIndex, sections: &[Section]) -> Option<Cyp2d6> {
+    let s = pycompat::mtime::escape(&input.sample);
+    let d = input.sample_dir.as_str();
+    let sec = |k: &str| sections.iter().find(|x| x.spec.key == k);
+    let consensus = index
+        .first(&[format!("pgx_consensus/{s}_pgx_consensus.tsv")])
+        .map(|rel| (crate::join(d, rel), rel.to_owned()));
+    match (sec("cpic"), sec("pypgx"), sec("cyrius")) {
+        (Some(c), Some(p), Some(y)) => Some(Cyp2d6::new(c, p, y, consensus, d)),
+        _ => None,
+    }
 }
 
 /// Finds a section's file: the full path and the path in the folder.

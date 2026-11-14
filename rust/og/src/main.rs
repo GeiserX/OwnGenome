@@ -50,7 +50,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og prs format [args]
        og prs table [args]
        og mito annotate|deletions|copies [args]
-       og summary collect --only {a,b,c} [args]
+       og summary collect [--only {a,b,c}] [args]
        og roh summary --sample SAMPLE --roh ROH [--out OUT]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
@@ -62,6 +62,8 @@ const USAGE: &str = "usage: og <tool> [args]
        og family ibd [args]
        og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
+       og archaic table|strict|genotypes|report [args]
+       og ancient select|lift|person-geno|align|report [args]
        og vntyper report [args]
        og locityper report [args]
        og mocha report [args]
@@ -279,6 +281,16 @@ fn main() -> ExitCode {
             &mut std::io::stderr().lock(),
         )),
         "ancestry-fine" => ExitCode::from(og_ancestry::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
+        "archaic" => ExitCode::from(og_ancestry::archaic::cli(
+            rest,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )),
+        "ancient" => ExitCode::from(og_ancestry::ancient::cli(
             rest,
             &mut std::io::stdout().lock(),
             &mut std::io::stderr().lock(),

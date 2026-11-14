@@ -2169,7 +2169,7 @@ def sec_bloodtype(d, s):
 
 
 def sec_archaic(d, s):
-    """Step 43's summary (archaic/<id>_archaic.tsv, bin/archaic_report.py): the
+    """Step 43's summary (archaic/<id>_archaic.tsv, og archaic report): the
     Neanderthal and Denisovan shares and segment counts, the analysed span and
     the ten longest segments."""
     p = first_existing(d, [f"archaic/{s}_archaic.tsv"])

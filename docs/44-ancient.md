@@ -14,7 +14,7 @@ Most people who look at their ancestry want to know where they fall among ancien
 
 - **smartpca** and **convertf** (EIGENSOFT 9.0.0): the PCA, and the conversion of the present-day people to EIGENSTRAT text. 9.0.0 is the first release that reads the AADR's TGENO genotype format.
 - **bcftools** (`convert --gvcf2vcf`, `view`, `query`) reads your genotypes at the panel's sites from the gVCF.
-- **`bin/ancient_report.py`** (Python standard library): chooses the panel's people, lifts the AADR sites to GRCh38, adds your column to the present-day genotypes, aligns the axes and writes the report and the plot.
+- **`og ancient`** (OwnGenome's Rust binary, `docs/rust.md`): chooses the panel's people, lifts the AADR sites to GRCh38, adds your column to the present-day genotypes, aligns the axes and writes the report and the plot.
 
 ## Docker Image
 

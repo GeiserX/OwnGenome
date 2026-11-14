@@ -801,7 +801,7 @@ consumer_sites_pin_check() {
 # id, each checked against the md5 Dataverse publishes) become the panel of
 # step 44 in reference/ancient/aadr_<release>:
 #   panel.ind, poplist.txt, ancients.tsv  who builds the axes (the present-day
-#        West Eurasians of bin/ancient_report.py's MODERN_GROUPS) and who is
+#        West Eurasians of og ancient's MODERN_GROUPS) and who is
 #        projected (dated West Eurasians with 100,000 sites or more);
 #   sites_grch38.tsv  the autosomal sites on GRCh38 (UCSC's hg19ToHg38 chain,
 #        each kept only when one of its alleles is the GRCh38 base);
@@ -830,6 +830,7 @@ install_ancient_panel() {
   done
   echo "Installing the ancient populations panel, AADR ${AADR_VERSION} 1240K (step 44) in ${dir}"
   ensure_image EIGENSOFT_IMAGE 44 || return 1
+  need_og "chooses the ancient panel's people and places its sites" || return 1
   mkdir -p "$raw"
   for e in anno ind snp geno; do
     f="${raw}/aadr.${e}"
@@ -868,9 +869,9 @@ install_ancient_panel() {
   # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
   if ! run_in --rw "$part" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$PYTHON_IMAGE" \
          bash -euo pipefail -c '
-           python3 /pgp-bin/ancient_report.py select --anno "$1/aadr.anno" --ind "$1/aadr.ind" \
+           /pgp-bin/og ancient select --anno "$1/aadr.anno" --ind "$1/aadr.ind" \
              --out-ind "$2/panel.ind" --poplist "$2/poplist.txt" --ancients "$2/ancients.tsv"
-           python3 /pgp-bin/ancient_report.py lift --snp "$1/aadr.snp" --chain "$3" --fasta "$4" --out "$2/sites_grch38.tsv"' \
+           /pgp-bin/og ancient lift --snp "$1/aadr.snp" --chain "$3" --fasta "$4" --out "$2/sites_grch38.tsv"' \
          _ "$R" "$P" "$C" "$REF_FASTA_C"; then
     echo "[WARN] Could not choose the panel's people or place its sites (the lines above say why)."
     return 1
@@ -894,7 +895,7 @@ install_ancient_panel() {
     return 1
   fi
   if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-         python3 /pgp-bin/ancient_report.py align --panel-evec "${P}/panel.evec" --run-evec "${P}/check.evec"; then
+         /pgp-bin/og ancient align --panel-evec "${P}/panel.evec" --run-evec "${P}/check.evec"; then
     echo "[WARN] The two smartpca runs on the same present-day people gave different axes (logs in ${part})."
     return 1
   fi
@@ -1836,6 +1837,13 @@ archaic_filterbed_sha() {
   return 1
 }
 
+# The version of the table og archaic table and strict write: a change to
+# their bytes changes it, and every install rebuilds its table.
+ARCHAIC_TABLE_FORMAT=archaic-table-v1
+# What code= held when bin/archaic_report.py built the table: the sha256 of
+# its part above "# --- genotypes (step 43)", at its last version.
+ARCHAIC_TABLE_PYTHON_SHA256=6bdc4c99a8d80d96179551e37022a3cd5324f650577b9fd64e27d84383e0f1d7
+
 # install_archaic: the table of step 43 in reference/archaic/ARCHAIC_DATA_VERSION
 # (ARCHAIC_DIR: another folder inside GENOME_DIR), one chrN.tsv.gz per
 # autosome, GRCh38: position, REF, ALT, the ALT count of the Altai, Vindija
@@ -1858,6 +1866,7 @@ install_archaic() {
   cpath "$dir" >/dev/null || return 1
   echo "Installing the archaic data ${ARCHAIC_DATA_VERSION} (step 43) in ${dir}"
   for v in BCFTOOLS_IMAGE PICARD_IMAGE PYTHON_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
+  need_og "builds the archaic table" || return 1
   [ -s "$REF_DICT" ] || { echo "[WARN] ${REF_DICT} is missing: run $0 ${GENOME_DIR} first (it writes the sequence dictionary)"; return 1; }
   mkdir -p "${dir}/md5" "${dir}/download" "${dir}/work" "${dir}/mask" "${dir}/exclude"
   for v in "Altai|${ARCHAIC_ALTAI_MD5SUMS_SHA256}" "Vindija33.19|${ARCHAIC_VINDIJA_MD5SUMS_SHA256}" "Denisova|${ARCHAIC_DENISOVA_MD5SUMS_SHA256}"; do
@@ -1893,9 +1902,18 @@ install_archaic() {
     chroms=$(seq 1 22 | tr '\n' ' ')
   fi
   [ -n "${chroms// /}" ] || { echo "[WARN] ARCHAIC_REGIONS=${regions} names no autosome (1 to 22)"; return 1; }
-  stamp="data=${ARCHAIC_DATA_VERSION} regions=${rstamp} bcftools=${BCFTOOLS_IMAGE} picard=${PICARD_IMAGE} masks=$(_digest sha256 <(printf '%s\n%s\n%s\n%s\n%s\n' "$ARCHAIC_STRICT_MASK_SHA256" "$ARCHAIC_SEGDUPS_SHA256" "$ARCHAIC_FILTERBED_SHA256_ALTAI" "$ARCHAIC_FILTERBED_SHA256_VINDIJA" "$ARCHAIC_FILTERBED_SHA256_DENISOVA")) code=$(_digest sha256 <(sed '/^# --- genotypes (step 43)/,$d' "${PGP_ROOT}/bin/archaic_report.py"))"
+  stamp="data=${ARCHAIC_DATA_VERSION} regions=${rstamp} bcftools=${BCFTOOLS_IMAGE} picard=${PICARD_IMAGE} masks=$(_digest sha256 <(printf '%s\n%s\n%s\n%s\n%s\n' "$ARCHAIC_STRICT_MASK_SHA256" "$ARCHAIC_SEGDUPS_SHA256" "$ARCHAIC_FILTERBED_SHA256_ALTAI" "$ARCHAIC_FILTERBED_SHA256_VINDIJA" "$ARCHAIC_FILTERBED_SHA256_DENISOVA")) code=${ARCHAIC_TABLE_FORMAT}"
+  # Until og archaic replaced bin/archaic_report.py, code= held the sha256 of
+  # that file's table half. The last Python wrote the same table bytes as
+  # og archaic table and strict (tests/parity), so a table it built counts as
+  # built here: its stamp is accepted once and rewritten. Remove this one
+  # release after 1.0.0.
+  local legacy="${stamp% code=*} code=${ARCHAIC_TABLE_PYTHON_SHA256}"
   local have=1
   for c in $chroms; do [ -s "${dir}/chr${c}.tsv.gz" ] || have=0; done
+  for v in "${dir}/DONE" "${dir}"/chr*.stamp; do
+    [ "$(cat "$v" 2>/dev/null)" = "$legacy" ] && echo "$stamp" > "$v"
+  done
   if [ "$have" = 1 ] && [ "$(cat "${dir}/DONE" 2>/dev/null)" = "$stamp" ]; then
     echo "[OK] archaic data ${ARCHAIC_DATA_VERSION} (step 43): ${dir}"
     return 0
@@ -1975,7 +1993,7 @@ install_archaic() {
       echo "[WARN] Could not read the archaic genotypes of chr${c}"; return 1
     fi
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-          python3 /pgp-bin/archaic_report.py table --chrom "$c" --modern "$(cpath "${wk}/modern.tsv")" \
+          /pgp-bin/og archaic table --chrom "$c" --modern "$(cpath "${wk}/modern.tsv")" \
             --archaic "Altai=$(cpath "${wk}/Altai.tsv")" --archaic "Vindija=$(cpath "${wk}/Vindija33.19.tsv")" \
             --archaic "Denisova=$(cpath "${wk}/Denisova.tsv")" \
             --mask "Altai=$(cpath "${dir}/mask/Altai.chr${c}.bed.gz")" \
@@ -2009,7 +2027,7 @@ install_archaic() {
       echo "[WARN] the GRCh38 strict mask has no interval on chr${c}: ${dir}/strict_GRCh38.bed"; return 1
     fi
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-          python3 /pgp-bin/archaic_report.py strict --chrom "$c" --strict "$(cpath "${wk}/strict.bed")" \
+          /pgp-bin/og archaic strict --chrom "$c" --strict "$(cpath "${wk}/strict.bed")" \
             --rows "$(cpath "${wk}/lifted.tsv")" --out "$(cpath "${wk}/marked.tsv")"; then
       echo "[WARN] Could not mark the strict mask on chr${c}"; return 1
     fi

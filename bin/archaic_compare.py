@@ -24,8 +24,25 @@ import os
 import statistics
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import archaic_report  # noqa: E402  (the same reader and cutoffs as step 43)
+ARCHAICS = ("Altai", "Vindija", "Denisova")
+
+
+def ibdmix_segments(path, min_lod=4.0, min_length=50000):
+    """IBDmix's segments for SAMPLE in one of its output files, kept as step 43
+    keeps them (og archaic report: LOD 4 and 50 kb or longer), as (start, end)."""
+    out = []
+    with open(path) as f:
+        head = f.readline().rstrip("\n").split("\t")
+        if head[:5] != ["ID", "chrom", "start", "end", "slod"]:
+            sys.exit(f"ERROR: {path} is not IBDmix output (header {' '.join(head[:5])})")
+        for line in f:
+            c = line.rstrip("\n").split("\t")
+            if len(c) < 5 or c[0] != "SAMPLE":
+                continue
+            s, e, lod = int(c[2]), int(c[3]), float(c[4])
+            if lod >= min_lod and e - s >= min_length:
+                out.append((s, e))
+    return out
 
 
 def norm(c):
@@ -170,9 +187,8 @@ def cmd_genomes(a):
         chroms = list(dict.fromkeys(norm(line.split("\t")[0]) for line in f if line.strip()))
     per = collections.defaultdict(lambda: collections.defaultdict(list))
     for c in chroms:
-        for n in archaic_report.ARCHAICS:
-            segs = archaic_report.keep(archaic_report.read_segments(os.path.join(a.ibdmix_dir, f"chr{c}.{n}.txt")))
-            per[n][c] += [(s, e) for _, s, e, _ in segs]
+        for n in ARCHAICS:
+            per[n][c] += ibdmix_segments(os.path.join(a.ibdmix_dir, f"chr{c}.{n}.txt"))
     per["Altai+Vindija"] = {c: per["Altai"][c] + per["Vindija"][c] for c in chroms}
     released = sum(merged_bp(calls[a.sample].get(c, [])) for c in chroms)
     print(f"| IBDmix output | bp | under the released {a.sample} calls | only here | only released |")
