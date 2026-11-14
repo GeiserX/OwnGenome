@@ -39,8 +39,19 @@ The exon blocks are the union of the exons of every basic GENCODE transcript of 
 | Esc | closes the card, then steps out one level: reads to gene, gene to region, region to the whole chromosome, chromosome to the genome |
 | Tab | steps through the findings in view, each with a ring on the map and its card, then leaves the map |
 | `L` | opens the layers and moves to them |
+| `T` | folds or opens the In view table |
 
-The keys work with the map focused (`/` and `L` anywhere on the page) and never inside a text box or with Cmd, Ctrl or Alt.
+The keys work with the map focused (`/`, `L` and `T` anywhere on the page) and never inside a text box or with Cmd, Ctrl or Alt.
+
+### The whole-genome strip
+
+While a chromosome is open, a strip above the map draws every chromosome end to end, 5 Mb apart, with a tick for each finding on the map. The view is a brass brush, at least 3 pixels wide so a view of a few bases still shows, and the rest of the strip is dimmed. Click a chromosome on the strip to open it whole. Drag across the strip to open the stretch you brush, on the chromosome where the drag started; its size shows beside the brush while you drag. Drag the brush itself to move along the open chromosome. On a phone the strip is a picture only.
+
+### The In view table
+
+Under the map, the "In view" table lists every mark the map draws one by one in the view: findings, runs of homozygosity and, from the region level, genes. Its columns are Kind, What, Where (1-based), Size, Who, Copy and Source. It starts sorted by place with the findings first; click a column header to sort by it, and again to reverse. It shows 12 rows and a "Show all" button, which lists every row (a scrolled list past 200 rows, at most 5,000; past that the table says to zoom in). A layer the map draws as a density at this level gets one line under the table instead of rows, such as the shorter runs of homozygosity at the genome level. Click a row, or its name, to fly the map to it; a finding's card opens too.
+
+The table follows the map once it stops moving, and tells a screen reader only how many marks are in view, once each time that number changes. On a phone it starts folded under its count. The canvas, the strip and the table use one rule for what the map draws one by one at each level (`drawsAt()` in `assets/live/map.js`), and the live demo's tests hold it to the same rule in `og map build --predicate-table`.
 
 ### Search
 
@@ -59,7 +70,7 @@ A layer whose file is missing or cannot be read says so in words in its lane and
 
 ## Closed results
 
-On a child's page in a family, a result to act on stays closed until someone opens it on purpose, and APOE stays behind its warning on every page. While a result is closed, the map draws no mark for it, its card cannot open, search does not suggest it and Nearest does not lead to it. A dashed chip above the map counts the closed results without naming a gene or a place. `docs/live-site.md` describes the rule.
+On a child's page in a family, a result to act on stays closed until someone opens it on purpose, and APOE stays behind its warning on every page. While a result is closed, the map draws no mark for it, the strip has no tick for it, the In view table has no row for it, its card cannot open, search does not suggest it and Nearest does not lead to it. A dashed chip above the map counts the closed results without naming a gene or a place. `docs/live-site.md` describes the rule.
 
 ## The files behind the map
 

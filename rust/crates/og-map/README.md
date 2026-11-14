@@ -17,6 +17,7 @@ og map build --root GENOME_DIR --run RUN --assets ASSETS --cache-dir DIR < facts
 - The person's sex is the one step 16 infers in `RUN/RUN_sex_check.tsv` when it says male or female, else `results.person.inferred_sex`, else `declared_sex`, else unknown.
 - Gene-only findings are placed with the highest GENCODE release installed under `GENOME_DIR/reference` (the genes file `og map genes` reads). Without one they stay off the map, and `ref.gencode` is `null`.
 - stdout: the document.
+- `--predicate-table`: instead of the document, what the map draws one by one at each level, for every row of the document and every gene of the installed GENCODE release: a tab-separated header `layer chrom s e id genome chromosome region gene reads`, then one line per row with `1` where it draws one by one and `0` where it does not. The rule is `og_map::predicate::draws_at`, the same as `drawsAt()` in `assets/live/map.js`: a finding at every level, a run of homozygosity of 5 Mb or more at every level and a shorter one from the chromosome level, a gene from the region level. A closed finding is listed too: the veil is the page's rule. The cache is neither read nor written. The live demo's browser check compares the two row by row.
 
 Exit codes: 0 the document is on stdout; 2 usage (bad option, bad run name, stdin that is not a JSON object); 3 no map for this run (no folder for it under the root), with the reason on stderr; 1 an internal error. A layer that cannot be read is not an exit code: it is that layer's `unreadable` state.
 
