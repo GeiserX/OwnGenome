@@ -82,7 +82,7 @@ Checks:
      frequency caveat on every hit; 21b. each hit carries the rsIDs of VEP's
      Existing_variation ('rs123&COSV1' gives ['rs123']; another allele's ids
      are not taken), [] with no VEP record or no VEP file, and the run delta
-     (bin/run_delta.py) reads the same with or without them;
+     (og run delta) reads the same with or without them;
  22. CPSR beside ClinVar (step 17): the P/LP rows by final or own class, the
      rows where CLINVAR_CLASSIFICATION and CPSR_CLASSIFICATION disagree on
      P/LP with CPSR's ACMG codes, the final P/LP rows CPSR's own rules class
@@ -729,8 +729,24 @@ CSQ_EV_HEAD = ('##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence ann
 
 def clinvar_rsids(work, schema):
     """21b. the rsIDs of each ClinVar hit, from VEP's Existing_variation."""
-    import run_delta
     d = os.path.join(work, "clinvar-rsids", "S")
+
+    def changes(prev, cur):
+        """og run delta's changes from summary PREV to summary CUR."""
+        w = os.path.join(work, "clinvar-rsids-delta")
+        shutil.rmtree(w, ignore_errors=True)
+        for name, summary in (("prev", prev), ("cur", cur)):
+            os.makedirs(f"{w}/{name}")
+            with open(f"{w}/{name}/summary.json", "w") as f:
+                json.dump(summary, f)
+        p = subprocess.run([collect_summary.og(), "run", "delta", "--sample", "S", "--summary",
+                            f"{w}/cur/summary.json", "--out", f"{w}/delta", "--previous", f"{w}/prev"],
+                           capture_output=True, text=True)
+        if p.returncode != 0:
+            return p.stderr
+        with open(f"{w}/delta.json") as f:
+            return json.load(f)["changes"]
+
     put(f"{d}/clinvar/S_clinvar_hits.vcf", FLOOR_HITS)
     vep_head = "##fileformat=VCFv4.2\n" + CSQ_EV_HEAD + VCF_HEAD.split("\n", 1)[1]
     write_tabixed_vcf(f"{d}/vep/S_vep.vcf.gz", vep_head, [
@@ -748,12 +764,13 @@ def clinvar_rsids(work, schema):
     bare = json.loads(json.dumps(summ))
     for h in bare["sections"]["clinvar"]["data"]["hits"]:
         h.pop("rsids")
-    check("ClinVar rsIDs: the run delta reads the same with or without them",
-          run_delta.compare(bare, {}, summ, {}) == run_delta.compare(summ, {}, summ, {}), "")
+    got = changes(bare, summ)
+    check("ClinVar rsIDs: the run delta reads the same with or without them", got == [], got)
     moved = json.loads(json.dumps(summ))
     moved["sections"]["clinvar"]["data"]["hits"][0]["significance"] = "Benign"
+    got = changes(bare, moved)
     check("ClinVar rsIDs: red control, the run delta does see a reclassified hit",
-          run_delta.compare(bare, {}, moved, {}) != run_delta.compare(summ, {}, summ, {}), "")
+          isinstance(got, list) and any(c["kind"] == "reclassified" for c in got), got)
     shutil.rmtree(f"{d}/vep")
     none = collect_summary.collect("S", d)["sections"]["clinvar"]["data"]["hits"]
     check("ClinVar rsIDs: without step 13 every hit has [] and the section still reads",
