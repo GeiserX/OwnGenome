@@ -1,0 +1,1 @@
+ERROR: rows-unsorted.tsv: line 6: position 5001 comes after 5035; the lifted rows must be sorted by position

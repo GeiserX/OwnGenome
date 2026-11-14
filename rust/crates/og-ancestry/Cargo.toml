@@ -1,6 +1,6 @@
 [package]
 name = "og-ancestry"
-description = "Step 26b, fine-grained ancestry: og ancestry-fine panel-map, check-map, order, sample-bed, chroms and report"
+description = "Ancestry steps: og ancestry-fine (26b), og archaic (43) and og ancient (44)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
+og-intervals.workspace = true
 og-tsv.workspace = true
 flate2.workspace = true
 

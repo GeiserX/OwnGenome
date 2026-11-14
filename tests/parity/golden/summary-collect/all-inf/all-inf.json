@@ -1,0 +1,820 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-13 23:22 UTC",
+ "run": {
+  "status_file": true,
+  "started_utc": "2020-01-01 00:00 UTC",
+  "declared_sex": "male"
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "coverage": {
+   "title": "Coverage (mosdepth)",
+   "step": "16b",
+   "state": "ok",
+   "source": "mosdepth/S.mosdepth.summary.txt",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "mean_depth": 31.25
+   }
+  },
+  "callability": {
+   "title": "Gene callability (mosdepth)",
+   "step": "16b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sex_check": {
+   "title": "Sex check (indexcov)",
+   "step": "16",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sample_qc": {
+   "title": "Sample identity and contamination (somalier, VerifyBamID2)",
+   "step": "33",
+   "state": "ok",
+   "source": "qc/S_sample_qc.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "sample": "S",
+    "inferred_sex": "male",
+    "sex_check": "ok",
+    "x_depth_ratio": "0.51",
+    "y_depth_ratio": "0.49",
+    "x_sites": "400",
+    "freemix": "0.0010",
+    "declared_sex": "male",
+    "mosaic_call": "not_detected",
+    "mosaic_depth_ratio": "0.98",
+    "mosaic_depth_ratio_expected": "1",
+    "mosaic_loss_depth": "0.02",
+    "mosaic_loss_depth_low": "-0.01",
+    "mosaic_loss_depth_high": "0.05",
+    "mosaic_loss_af": "NA",
+    "mosaic_floor": "0.1",
+    "mosaic_x_het_sites": "0",
+    "karyotype": null
+   }
+  },
+  "mosaic_sex_loss": {
+   "title": "Mosaic loss of chromosome Y or X",
+   "step": "33",
+   "state": "ok",
+   "source": "qc/S_sample_qc.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "call": "not_detected",
+    "depth_ratio": 0.98,
+    "depth_ratio_expected": 1.0,
+    "loss_depth": 0.02,
+    "loss_depth_low": -0.01,
+    "loss_depth_high": 0.05,
+    "loss_af": null,
+    "floor": 0.1,
+    "x_het_sites": 0,
+    "loss_af_low": null,
+    "loss_af_high": null
+   }
+  },
+  "read_count": {
+   "title": "Reads kept by alignment",
+   "step": "02",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "variants": {
+   "title": "Variant calling",
+   "step": "03",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "clinvar": {
+   "title": "ClinVar screen",
+   "step": "06",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "couple": {
+   "title": "Couple carrier screen",
+   "step": "39",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "carrier": {
+   "title": "Carrier list",
+   "step": "06",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "pharmcat": {
+   "title": "PharmCAT",
+   "step": "07",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cpic": {
+   "title": "CPIC drug-gene recommendations",
+   "step": "27",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "pypgx": {
+   "title": "pypgx",
+   "step": "32",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cyrius": {
+   "title": "Cyrius (CYP2D6)",
+   "step": "21",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "parascopy": {
+   "title": "SMN1/SMN2 copy number (Parascopy, short reads)",
+   "step": "35",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "paralogs": {
+   "title": "Paralog genes (Paraphase, PacBio HiFi)",
+   "step": "35b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "hla": {
+   "title": "HLA typing (T1K)",
+   "step": "08",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "prs": {
+   "title": "Polygenic risk scores",
+   "step": "25",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "ancestry_fine": {
+   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "step": "26b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "manta": {
+   "title": "Structural variants (Manta)",
+   "step": "04",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "delly": {
+   "title": "Structural variants (Delly)",
+   "step": "19",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cnvpytor": {
+   "title": "Copy number (CNVpytor)",
+   "step": "18",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sv_consensus": {
+   "title": "SV consensus merge",
+   "step": "22",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "annotsv": {
+   "title": "Structural variants, class 4 and 5 (AnnotSV)",
+   "step": "05",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "expansions": {
+   "title": "Repeat expansions (ExpansionHunter)",
+   "step": "09",
+   "state": "ok",
+   "source": "expansion_hunter/S_eh_stranger.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "records": 9,
+    "key_loci": [
+     {
+      "locus": "HTT",
+      "repeat_count": "17/20"
+     },
+     {
+      "locus": "FMR1",
+      "repeat_count": "58"
+     },
+     {
+      "locus": "C9ORF72",
+      "repeat_count": "."
+     },
+     {
+      "locus": "ATXN1",
+      "repeat_count": "30/37"
+     },
+     {
+      "locus": "DMPK",
+      "repeat_count": "not in output"
+     }
+    ],
+    "loci": [
+     {
+      "locus": "HTT",
+      "repeat_count": "17/20",
+      "status": "normal,normal",
+      "normal_max": "26",
+      "pathologic_min": "40",
+      "support": "SPANNING/SPANNING",
+      "adsp": "10/12",
+      "ci": "17-17/20-20",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "FMR1",
+      "repeat_count": "58",
+      "status": "premutation",
+      "normal_max": "44",
+      "pathologic_min": "200",
+      "support": "SPANNING",
+      "adsp": "1",
+      "ci": "55-60",
+      "sizing": "low_confidence",
+      "allele_sizing": "low_confidence",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": "",
+      "motif": {
+       "verdict": "interrupted",
+       "note": "AGG",
+       "dominant_motif": "CGG",
+       "dominant_class": ".",
+       "dominant_share": ".",
+       "motif_shares": ".",
+       "repeat_reads": "."
+      }
+     },
+     {
+      "locus": "C9ORF72",
+      "repeat_count": ".",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": ".",
+      "adsp": ".",
+      "ci": ".",
+      "sizing": "no_call",
+      "allele_sizing": "no_call",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "ATXN1",
+      "repeat_count": "30/37",
+      "status": "normal",
+      "normal_max": "35",
+      "pathologic_min": "39",
+      "support": "SPANNING/FLANKING",
+      "adsp": "4/0",
+      "ci": "30-30/35-40",
+      "sizing": "flanking_only",
+      "allele_sizing": "sized/flanking_only",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "CFTR_T",
+      "repeat_count": "5/7",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/SPANNING",
+      "adsp": "8/9",
+      "ci": "5-5/7-7",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "CFTR_TG",
+      "repeat_count": "11/12",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/SPANNING",
+      "adsp": "8/9",
+      "ci": "11-11/12-12",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "EXTRA1",
+      "repeat_count": "8/9",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING",
+      "adsp": "1",
+      "ci": "8-8/9-9",
+      "sizing": "low_confidence",
+      "allele_sizing": "low_confidence/low_confidence",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": "",
+      "not_graded": "no published range"
+     },
+     {
+      "locus": "RFC1",
+      "repeat_count": "500/600",
+      "status": "full_mutation",
+      "normal_max": "",
+      "pathologic_min": "400",
+      "support": "INREPEAT/INREPEAT",
+      "adsp": "0/0",
+      "ci": "400-700/500-800",
+      "sizing": "in_repeat",
+      "allele_sizing": "in_repeat/in_repeat",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": "",
+      "rfc1_motif": {
+       "verdict": "pathogenic",
+       "note": "AAGGG dominant",
+       "dominant_motif": "AAGGG",
+       "dominant_class": "pathogenic",
+       "dominant_share": "0.9",
+       "motif_shares": "AAGGG:0.9",
+       "repeat_reads": "40"
+      }
+     },
+     {
+      "locus": "UGT1A1",
+      "repeat_count": "7/8",
+      "status": "normal",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/SPANNING",
+      "adsp": "5/6",
+      "ci": "7-7/8-8",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     }
+    ],
+    "stranger": true,
+    "stranger_outdated": false,
+    "unsized": [
+     "FMR1",
+     "C9ORF72",
+     "ATXN1",
+     "EXTRA1",
+     "RFC1"
+    ],
+    "intermediate": [],
+    "readings": [
+     {
+      "locus": "CFTR",
+      "repeat": "intron 9 (legacy IVS8) TG and poly-T tract",
+      "source": "Deignan et al. 2020, PMID 32404922",
+      "status": "read",
+      "genotype": "TG11/TG12 5T/7T",
+      "pairings": [
+       "TG11-5T/TG12-7T",
+       "TG12-5T/TG11-7T"
+      ],
+      "tg": [
+       11,
+       12
+      ],
+      "poly_t": [
+       5,
+       7
+      ],
+      "five_t": true,
+      "phase": "not_read",
+      "r117h": ".",
+      "reading": "5T: 1 copy with the 5T poly-T tract, TG11 or TG12 on the 5T copy, not told by the counts (TG11-5T/TG12-7T or TG12-5T/TG11-7T). 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. R117H was not read (no step 42 traits row for rs78655421 was called), so whether it sits on the 5T copy is not known."
+     },
+     {
+      "locus": "UGT1A1",
+      "repeat": "promoter TA repeat",
+      "source": "Gammal et al. 2016, PMID 26417955",
+      "status": "read",
+      "genotype": "*1/*28",
+      "ta_units": [
+       7,
+       8
+      ],
+      "pharmcat": ".",
+      "agreement": "not_compared",
+      "reading": "*1/*28 (TA6/TA7, 7/8 TA units as ExpansionHunter counts them): 1 decreased-function allele (*28 and *37 are decreased function). Not compared with PharmCAT (no unambiguous UGT1A1 call from step 27)."
+     },
+     {
+      "locus": "SLC6A4",
+      "repeat": "5-HTTLPR promoter length polymorphism",
+      "status": "not_tested",
+      "genotype": ".",
+      "reading": "not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation.",
+      "source": "Bousman et al. 2023, PMID 37032427"
+     }
+    ],
+    "flagged": [
+     {
+      "locus": "FMR1",
+      "repeat_count": "58",
+      "status": "premutation",
+      "sizing": "low_confidence",
+      "motif": {
+       "verdict": "interrupted",
+       "note": "AGG",
+       "dominant_motif": "CGG",
+       "dominant_class": ".",
+       "dominant_share": ".",
+       "motif_shares": ".",
+       "repeat_reads": "."
+      }
+     },
+     {
+      "locus": "RFC1",
+      "repeat_count": "500/600",
+      "status": "full_mutation",
+      "sizing": "in_repeat",
+      "rfc1_motif": {
+       "verdict": "pathogenic",
+       "note": "AAGGG dominant",
+       "dominant_motif": "AAGGG",
+       "dominant_class": "pathogenic",
+       "dominant_share": "0.9",
+       "motif_shares": "AAGGG:0.9",
+       "repeat_reads": "40"
+      }
+     }
+    ],
+    "no_status": 3,
+    "not_graded": {
+     "EXTRA1": "no published range"
+    }
+   }
+  },
+  "telomere": {
+   "title": "Telomere content (TelomereHunter)",
+   "step": "10",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "OverflowError: cannot round",
+   "data": {}
+  },
+  "roh": {
+   "title": "Runs of homozygosity",
+   "step": "11",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "haplogroup": {
+   "title": "Mitochondrial haplogroup",
+   "step": "12",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_haplogroup": {
+   "title": "Y-chromosome haplogroup (Yleaf)",
+   "step": "37",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_tree": {
+   "title": "Y placement on the current public tree",
+   "step": "37",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_str": {
+   "title": "Y-STR markers (HipSTR)",
+   "step": "45",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "consumer_export": {
+   "title": "Raw-data export (23andMe v5 layout)",
+   "step": "40",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "bloodtype": {
+   "title": "Blood groups (predicted)",
+   "step": "41",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "lpa": {
+   "title": "Lp(a): LPA KIV-2 repeat count",
+   "step": "46",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "vntyper": {
+   "title": "MUC1 VNTR frameshifts (VNtyper)",
+   "step": "52",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "locityper": {
+   "title": "Locityper second opinion at hard loci",
+   "step": "53",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mito": {
+   "title": "Mitochondrial variants",
+   "step": "20",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "traits": {
+   "title": "Traits panel",
+   "step": "42",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "archaic": {
+   "title": "Archaic ancestry (IBDmix)",
+   "step": "43",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "ancient": {
+   "title": "Ancient populations (AADR PCA)",
+   "step": "44",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "viral": {
+   "title": "Viral DNA in the unmapped reads",
+   "step": "47",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "exomiser": {
+   "title": "Symptom-driven ranking (Exomiser)",
+   "step": "48",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "chip": {
+   "title": "Clonal haematopoiesis (CHIP)",
+   "step": "49",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mei": {
+   "title": "Mobile element insertions (MEGAnE)",
+   "step": "50",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mosaic": {
+   "title": "Mosaic chromosomal alterations (MoChA)",
+   "step": "51",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cpsr": {
+   "title": "Cancer predisposition (CPSR)",
+   "step": "17",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "clinical": {
+   "title": "Clinical variant filter",
+   "step": "23",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "slivar": {
+   "title": "Variant prioritization (slivar)",
+   "step": "31",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  }
+ },
+ "cyp2d6": {
+  "calls": {
+   "PharmCAT": null,
+   "pypgx": null,
+   "Cyrius": null
+  },
+  "agree": null,
+  "consensus": null,
+  "probable": null
+ },
+ "not_run": [
+  "Gene callability (mosdepth)",
+  "Sex check (indexcov)",
+  "Variant calling",
+  "ClinVar screen",
+  "PharmCAT",
+  "CPIC drug-gene recommendations",
+  "pypgx",
+  "Cyrius (CYP2D6)",
+  "SMN1/SMN2 copy number (Parascopy, short reads)",
+  "Paralog genes (Paraphase, PacBio HiFi)",
+  "HLA typing (T1K)",
+  "Polygenic risk scores",
+  "Fine-grained ancestry (ADMIXTURE, RFMix)",
+  "Structural variants (Manta)",
+  "Structural variants (Delly)",
+  "Copy number (CNVpytor)",
+  "SV consensus merge",
+  "Structural variants, class 4 and 5 (AnnotSV)",
+  "Runs of homozygosity",
+  "Mitochondrial haplogroup",
+  "Y-chromosome haplogroup (Yleaf)",
+  "Y placement on the current public tree",
+  "Y-STR markers (HipSTR)",
+  "Raw-data export (23andMe v5 layout)",
+  "Blood groups (predicted)",
+  "Lp(a): LPA KIV-2 repeat count",
+  "MUC1 VNTR frameshifts (VNtyper)",
+  "Locityper second opinion at hard loci",
+  "Mitochondrial variants",
+  "Traits panel",
+  "Archaic ancestry (IBDmix)",
+  "Ancient populations (AADR PCA)",
+  "Viral DNA in the unmapped reads",
+  "Symptom-driven ranking (Exomiser)",
+  "Clonal haematopoiesis (CHIP)",
+  "Mobile element insertions (MEGAnE)",
+  "Mosaic chromosomal alterations (MoChA)",
+  "Cancer predisposition (CPSR)",
+  "Clinical variant filter",
+  "Variant prioritization (slivar)"
+ ],
+ "not_assessed": [
+  "Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)",
+  "Methylation and imprinting",
+  "Repeat expansions outside the ExpansionHunter catalog",
+  "Phase: two variants in one gene are compound-het candidates, not confirmed",
+  "Variants of uncertain significance (not interpreted)",
+  "Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums",
+  "HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call",
+  "Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)",
+  "MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them",
+  "Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample"
+ ]
+}
