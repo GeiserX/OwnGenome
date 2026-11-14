@@ -1,0 +1,25 @@
+{"title":"edge é","timestamp":"t","pharmcatVersion":"3.4.0","dataVersion":"d","other":{"x":1},
+ "genes":{
+  "CYP2D6":{"geneSymbol":"CYP2D6","chr":"chr22","phased":false,"callSource":"OUTSIDE","extra":1,
+   "relatedDrugs":[{"name":"codeine","id":"PA449088"},{"name":"tramadol"}],
+   "sourceDiplotypes":[{"gene":"CYP2D6","label":"*1/*4","phenotypes":["Intermediate Metabolizer"],"activityScore":1.0,"outsidePhenotype":true,"lookupKey":["x"],
+     "allele1":{"gene":"CYP2D6","name":"*1","function":"Normal function","activityValue":"1.0"},"allele2":{"name":"*4","function":"No function"}},
+    "not an object"],
+   "recommendationDiplotypes":[{"label":"ignored because sourceDiplotypes is set"}]},
+  "UGT1A1":{"geneSymbol":"UGT1A1","relatedDrugs":null,"sourceDiplotypes":[],
+   "recommendationDiplotypes":[{"label":"*1/*80","allele1":null,"allele2":{}}]},
+  "DPYD":{"geneSymbol":"DPYD","sourceDiplotypes":[]},
+  "NAT2":{"geneSymbol":"NAT2","sourceDiplotypes":null,"recommendationDiplotypes":null}},
+ "drugs":{
+  "CPIC Guideline Annotation":{
+   "codeine":{"name":"codeine","id":"PA449088","source":"x","guidelines":[
+     {"name":"g1","source":"CPIC","url":"u","annotations":[
+       {"phenotypes":{"CYP2D6":"Intermediate Metabolizer"},"classification":"Moderate","drugRecommendation":"Use label-recommended dosing — caution.","implications":["dropped"],
+        "genotypes":[{"diplotypes":[{"gene":"CYP2D6","label":"*1/*4","x":1},"skip me",{"label":"no gene"}]},{}]},
+       {"classification":"Strong"},
+       {"classification":"Optional"}]},
+     {"name":"g2","annotations":[]},
+     {"name":"g3"}]},
+   "tramadol":{"name":"tramadol","guidelines":[]}},
+  "DPWG Guideline Annotation":{
+   "empty":{"name":"empty","guidelines":null}}}}

@@ -111,6 +111,128 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 [Testing](testing.md) has the rest of CI.
 
+## CI evidence and fixture verbs
+
+`og dev evidence clashes` reads two gzip VCFs and gzip archaic tables.
+`og dev evidence hg002-gvcf` reads a gzip truth VCF, plain BED, plain FASTA
+and FAI, and a plain sites table. `og dev renovate-check` reads a plain log
+and plain repository sources. Text uses strict UTF-8 and universal newlines
+(LF, CRLF and CR). Compression is explicit, even when a filename is misleading.
+
+Evidence, `og dev fixture comphet`, `og dev fixture trim-pharmcat` and the
+Renovate summary stage output beside its resolved destination. A file symlink
+stays a symlink, existing permission bits are preserved, and read-only files
+and directory destinations fail. New files use the caller's umask.
+The VNtyper downloader follows the same destination policy, uses a private
+`mktemp -d` directory, and removes it on handled failures and signals. It needs
+GNU `mv -T` (`gmv` on macOS) so a directory can never receive a temporary BAM.
+
+Comphet stages all three files and checks all three destinations before the
+first rename. A bad later destination leaves previous outputs intact.
+Three renames are still not one transaction. A crash or a filesystem failure
+between renames can publish only part of the new set. Unhandled SIGKILL can
+leave temporary files. Single-file outputs are replaced by one rename. Publication replaces the file
+and does not update other hard links. Those links still refer to the old inode.
+
+The shared runner fails the command if stdout or stderr cannot be written or
+flushed. This includes the evidence status and Renovate table. A configured
+Renovate summary must also be written and flushed successfully.
+Guard runs the FASTA offset regression in debug and release profiles.
+
+### Input and destination refusal rule
+
+These evidence, fixture and Renovate verbs may refuse any input that is
+malformed, outside the numeric ranges or size limits below, or not representable
+by the JSON reader. They may also refuse any destination beside which they
+cannot stage a sibling temporary file. A refusal always exits nonzero with a
+specific message. It leaves every existing output byte-identical, with its mode
+and link target unchanged. The crash and multi-file publication limits above
+still apply.
+
+- Evidence numeric fields use ASCII unsigned integers from 0 through
+  18446744073709551615. A reference lookup needs a position of at least 1.
+  Spans must fit that range. Calculated FASTA offsets must fit 0 through
+  9223372036854775807 and address a byte inside the file.
+- Every FAI row needs at least five columns and nonzero bases per line.
+- `MAX_ANNOTATIONS` is an ASCII signed integer from -9223372036854775808
+  through 9223372036854775807.
+- Evidence and Renovate text records have a 16 MiB (16777216-byte) limit.
+  The PharmCAT reader has no separate file-size limit and materializes JSON.
+- The JSON reader accepts signed 128-bit integers (-2^127 through 2^127-1),
+  Unicode scalar strings and at most 1000 nested arrays or objects.
+  It cannot represent lone surrogates, including in unused fields.
+- Destinations need a writable parent and a regular writable target when one
+  exists. Resolution follows at most 40 final symlinks. Temporary sibling names
+  must fit the filesystem's name limit. A 255-byte basename is refused cleanly
+  before any output write because its temporary sibling name is longer.
+
+Inputs produced by the real tools are never refused: bcftools/DeepVariant VCF,
+samtools faidx, header-free BED intervals, PharmCAT report JSON and Renovate
+debug log. A BED file with a UCSC column header, a `track` line or a `browser`
+line is refused, as the Python refused it: remove those lines first.
+
+Valid JSON nested up to the reader's 1000 levels is accepted. The Python stopped
+with a RecursionError at a few hundred levels when it copied or wrote such a
+value. That was a limit of the interpreter, not a check on the input, so the
+Rust commands do not copy it.
+
+`refusals_preserve_bytes_modes_and_link_targets` pins the rule through each CLI.
+Each table row runs with a regular output and with a symlink. It checks nonzero
+exit, the specific diagnostic, unchanged bytes, mode and link target, and no
+leftover temporary file. Adding a refusal case needs one row.
+
+Examples of refusals follow. This is not an exhaustive input grammar.
+The final-LF normalization has a positive byte test.
+
+- BED fields use spaces and tabs as separators. Other Python whitespace
+  (Unicode White_Space and U+001C through U+001F) fails with `unsupported whitespace`.
+- Renovate present fields of the wrong type fail with `not a map of package file lists`.
+  This includes map-valued updates and numeric dependency names, current values,
+  or update values. Falsy warnings and packages with no dependencies remain valid.
+- PharmCAT truthy strings or objects where lists belong fail with `is not a list`.
+- PharmCAT truthy non-object alleles fail with `is not an object`.
+- Evidence positions with underscores, non-ASCII digits, negative values or
+  values outside u64 fail with `not a number`.
+- Four-field truth VCF rows and blank FAI rows fail with `fewer than 5 columns`.
+- Text records over 16 MiB, including ignored headers or log lines, fail with
+  `record exceeds 16777216 bytes`.
+- Clash VCF rows need a tab after ALT. A newline in the ALT field of a short
+  row fails with `missing trailing VCF columns`.
+- A truth VCF record without its final LF gets one in the output. Valid VCF ends with LF.
+
+- Zero-byte gzip VCFs or selected gzip tables fail with `wrong compression (expected gzip)`.
+- Every FAI row needs nonzero bases per line, including unused rows.
+  A zero width fails with `a row has 0 bases per line`.
+- `MAX_ANNOTATIONS` must parse as a signed 64-bit ASCII integer.
+  Underscores, non-ASCII digits and out-of-range values fail with
+  `MAX_ANNOTATIONS ... is not a whole number` (exit 2).
+- Staging needs a writable parent directory, even for an existing writable file.
+  A parent with no write bits fails with `parent directory is not writable`.
+  Other access failures report the operating system error.
+- The FASTA reader accepts plain files only. A gzip magic prefix fails with
+  `wrong compression (expected plain)`, including gzip with a long FNAME.
+- A VCF header after the first truth record fails with
+  `VCF header after first data record`. The previous destination stays intact.
+- FASTA offsets use checked subtraction, division, multiplication, addition
+  and remainder. Overflow, a position beyond the file, or an offset outside
+  the signed file-offset range fails with `invalid FASTA offset`.
+
+- A nonblank unused FAI row with fewer than five columns fails with
+  `a row has fewer than 5 columns`.
+- A truth position that fits u64 but whose REF span does not fails with
+  `position span overflows`.
+- A destination whose temporary sibling name is too long fails with the
+  filesystem diagnostic `File name too long`.
+- JSON integers outside signed 128-bit range and escaped lone surrogates fail
+  with `Integer beyond 128 bits` and `Lone surrogate`, even in unused fields.
+  Excess nesting fails with `nested deeper than 1000 levels`.
+
+Renovate skips genuine JSON syntax errors only. Reader limitations fail the
+command before an earlier matching config or the summary can be used.
+`TooDeep` has its own error variant. The reader currently puts integer and
+surrogate limitations in `JsonError::Decode`, so the loader distinguishes those
+static reasons inside that variant. Other decode errors remain skippable.
+
 ## CI readers
 
 `og dev pharmcat diplotypes REPORT` prints sorted, unique `GENE\tA1/A2` rows from flat or source-nested reports. `--called` prints the called count and names on stderr. `--called-lines` prints one called gene per line for e2e checks. An unreadable report exits 2 without a count. A valid empty report succeeds with a zero count.
