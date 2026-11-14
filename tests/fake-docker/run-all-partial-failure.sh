@@ -155,7 +155,7 @@ done
 grep -q '^Rendering from summary.json' "${S}/logs/generate-report.log" \
   || miss "generate-report.sh collected the summary again after step 24 wrote it: $(head -3 "${S}/logs/generate-report.log")"
 t_txt=$(sed -n 's/^  Generated: //p' "$TXT" | head -1)
-t_html=$(grep -o 'Generated: [^<]*' "$HTML" | head -1 | sed 's/^Generated: //')
+t_html=$(grep -o 'Generated: [^<&]*' "$HTML" | head -1 | sed 's/^Generated: //; s/ *$//')
 [ -n "$t_txt" ] && [ "$t_txt" = "$t_html" ] || miss "the text report says generated '${t_txt}', the HTML report '${t_html}'"
 # The reverse: a step output newer than summary.json makes it collect again.
 roh=$(find "$S" -name 'sample1_roh.txt' -type f | head -1)
