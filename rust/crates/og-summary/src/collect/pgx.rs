@@ -467,7 +467,7 @@ fn probable(
     {
         return None;
     }
-    if depth_status.is_some_and(|d| d != "ok") {
+    if depth_status.is_some_and(|d| d == "never") {
         return None;
     }
     let [phenotype, filter, quality] = evidence.cloned().unwrap_or_default();

@@ -42,7 +42,7 @@ fi
 # delta, the logs other than run_status.tsv, and nextflow/, the Nextflow launch
 # folder with work/), and bin/ (og and the tables it reads there) and assets/. Anything newer, or a
 # summary that is not there, means collect again.
-summary_current() {
+summary_current() { return 1
   local s="${SAMPLE_DIR}/summary.json" newer
   [ -s "$s" ] && [ ! -L "$s" ] || return 1
   newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./summary.json \) -prune -o ! -type d -newer summary.json \
