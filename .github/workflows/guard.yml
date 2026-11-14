@@ -307,7 +307,6 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "ERROR: the planted unreadable-report success passed"; exit 1; }
           grep -E 'unreadable_pharmcat_is_unassessed.*FAILED' "$log"
           echo "Control: the unreadable-report success was reported as a failed test."
-
       - name: Traits controls (diplotype order, REF check and missing phase rows)
         env:
           CARGO_BUILD_JOBS: 3
@@ -333,6 +332,9 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
+
+      - name: Evidence offset regression in release mode
+        run: cargo test --release --locked -p og-dev --no-fail-fast fai_offsets_reject_overflow_and_out_of_file_before_publication
 
       - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows

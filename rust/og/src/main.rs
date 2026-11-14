@@ -80,6 +80,11 @@ const USAGE: &str = "usage: og <tool> [args]
        og exomiser report [args]
        og lookup query|resolve|report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
+       og dev fixture comphet OUT [--swap]
+       og dev fixture trim-pharmcat REPORT OUT [MAX]
+       og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv
+       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf
+       og dev renovate-check LOG
        og dev pharmcat diplotypes REPORT [--called|--called-lines]
        og dev nf-trace requests|attempts TRACE [options]
        og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]

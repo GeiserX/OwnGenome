@@ -72,6 +72,10 @@ ancient-lift	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py
 ancient-person-geno	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" person-geno "$@"'	ancient person-geno
 ancient-align	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" align "$@"'	ancient align
 ancient-report	fe6b67e09cef81c396c2277472df10407c56d7ac	file:bin/ancient_report.py	sh -c 'exec python3 "$0" report "$@"'	ancient report
+dev-fixture-comphet	fe6b67e09cef81c396c2277472df10407c56d7ac	file:tests/fixtures/comphet/make_fixture.py	python3	dev fixture comphet
+dev-fixture-trim-pharmcat	fe6b67e09cef81c396c2277472df10407c56d7ac	file:tests/fixtures/pharmcat/trim_report.py	python3	dev fixture trim-pharmcat
+dev-evidence-clashes	fe6b67e09cef81c396c2277472df10407c56d7ac	file:.github/workflows/public-evidence.yml	sh -c 'd=$(mktemp -d) && awk -v n=1 "/<<.PY.\$/ {k++; if (k == n) {on = 1; next}} on && /^ *PY\$/ {exit} on {sub(/^          /, \"\"); print}" "$0" > "$d/p.py" && exec python3 -I "$d/p.py" "$@"'	dev evidence clashes
+dev-evidence-hg002-gvcf	fe6b67e09cef81c396c2277472df10407c56d7ac	file:.github/workflows/public-evidence.yml	sh -c 'd=$(mktemp -d) && awk -v n=2 "/<<.PY.\$/ {k++; if (k == n) {on = 1; next}} on && /^ *PY\$/ {exit} on {sub(/^          /, \"\"); print}" "$0" > "$d/p.py" && exec python3 -I "$d/p.py" "$@"'	dev evidence hg002-gvcf
 dev-pharmcat	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/parity-diff.sh	sh -c 'exec bash ./oracle.sh diplotypes "$0" "$@"'	dev pharmcat diplotypes
 dev-pharmcat-called	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image-smoke.sh	sh -c 'exec bash ./oracle.sh called "$0" "$@"'	dev pharmcat diplotypes
 dev-pharmcat-lines	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:tests/e2e/lib.sh	sh -c 'exec bash ./oracle.sh called-lines "$0" "$@"'	dev pharmcat diplotypes
