@@ -982,6 +982,20 @@ family-ibd	mapbp	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree mapbp/pedigree.ts
 family-ibd	nomap	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree nomap/pedigree.tsv --chroms nomap/chroms.txt --maps nomap/maps --phased nomap/phased --ibd nomap/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	short	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree short/pedigree.tsv --chroms short/chroms.txt --maps short/maps --phased short/phased --ibd short/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	twice	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree twice/pedigree.tsv --chroms twice/chroms.txt --maps twice/maps --phased twice/phased --ibd twice/ibd --out-dir out	-	content	PYTHON_IMAGE
+dev-fixture-comphet	plain	-	out	out/reads.sam,out/vep.vcf,out/comphet.vcf	bytes	PYTHON_IMAGE
+dev-fixture-comphet	swap	-	out --swap	out/reads.sam,out/vep.vcf,out/comphet.vcf	bytes	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	report-3.2.0	gen:pgx-fixtures.sh	report-3.2.0.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	report-3.4.0	gen:pgx-fixtures.sh	report-3.4.0.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	pharmcat-docs-example	gen:pgx-fixtures.sh	pharmcat-docs-example.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	one-annotation	gen:pgx-fixtures.sh	report-3.4.0.json out.json 1	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	all-but-last	gen:pgx-fixtures.sh	pharmcat-docs-example.json out.json -1	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-evidence-clashes	synthetic	dev-evidence-clashes/raw.vcf.gz,dev-evidence-clashes/split.vcf.gz,dev-evidence-clashes/chrA.tsv.gz,dev-evidence-clashes/chrB.tsv.gz,dev-evidence-clashes/chrZ.tsv.gz,dev-evidence-clashes/notes.tsv.gz	raw.vcf.gz split.vcf.gz . affected.tsv	affected.tsv	bytes	PYTHON_IMAGE
+dev-evidence-hg002-gvcf	synthetic	dev-evidence-hg002-gvcf/truth.vcf.gz,dev-evidence-hg002-gvcf/truth.bed,dev-evidence-hg002-gvcf/ref.fasta,dev-evidence-hg002-gvcf/ref.fasta.fai,dev-evidence-hg002-gvcf/sites.tsv	truth.vcf.gz truth.bed ref.fasta sites.tsv out.vcf	out.vcf	bytes	PYTHON_IMAGE
+dev-evidence-hg002-gvcf	past-the-end	dev-evidence-hg002-gvcf/truth.vcf.gz,dev-evidence-hg002-gvcf/truth-past-end.bed,dev-evidence-hg002-gvcf/ref.fasta,dev-evidence-hg002-gvcf/ref.fasta.fai,dev-evidence-hg002-gvcf/sites-past-end.tsv	truth.vcf.gz truth-past-end.bed ref.fasta sites-past-end.tsv out.vcf	out.vcf	bytes	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge	dev-fixture-trim-pharmcat/edge.json	edge.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge2	dev-fixture-trim-pharmcat/edge.json	edge.json out.json 2	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge0	dev-fixture-trim-pharmcat/edge.json	edge.json out.json 0	out.json	json:mask=_fixture_note	PYTHON_IMAGE
+dev-fixture-trim-pharmcat	edge-all-but-last	dev-fixture-trim-pharmcat/edge.json	edge.json out.json -1	out.json	json:mask=_fixture_note	PYTHON_IMAGE
 dev-pharmcat	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json	-	bytes	PYTHON_IMAGE
 dev-pharmcat-called	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json --called	-	bytes	PYTHON_IMAGE
 dev-pharmcat-lines	flat	ci-readers/oracle.sh,ci-readers/flat.json	flat.json --called-lines	-	bytes	PYTHON_IMAGE
