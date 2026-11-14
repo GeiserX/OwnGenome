@@ -111,6 +111,18 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 [Testing](testing.md) has the rest of CI.
 
+## CI readers
+
+`og dev pharmcat diplotypes REPORT` prints sorted, unique `GENE\tA1/A2` rows from flat or source-nested reports. `--called` prints the called count and names on stderr. `--called-lines` prints one called gene per line for e2e checks. An unreadable report exits 2 without a count. A valid empty report succeeds with a zero count.
+
+`og dev nf-trace requests TRACE --want FILE --executor-cpus N --executor-mem-gb N` checks initial requests, doubled retry memory and the executor budget. The expectation table is [nf-trace-requests.tsv](https://github.com/GeiserX/OwnGenome/blob/main/scripts/ci/nf-trace-requests.tsv). `og dev nf-trace attempts TRACE --name-glob PATTERN --want '1:137:32,2:0:64' --nextflow-exit RC` checks a retry sequence. Both accept one explicit path, refuse globs, parse quoted TSV records and reject conflicting duplicates. Identical duplicate task IDs count once. Exit 1 means the check found a mismatch. Exit 2 means input or arguments could not be assessed.
+
+`og dev smoke` supplies `mini-ref SRC ORIG MINI POS LEN`, `long-reads HAP1 HAP2 OUT.gz`, `eh-catalog REF OUT END`, `csv-cell FILE KEY=VALUE[,KEY=VALUE] COLUMN` and `check KIND FILE`. Check kinds are `hap-ibd`, `ibdmix`, `rfmix`, `eigen` and `parascopy`. Mini-reference bases use a fixed Rust seed. Long-read gzip headers are deterministic. These synthetic fixtures do not change pipeline output files. Smoke references are limited to 1,003,000 bases. CSV lookups and table checks read one record at a time.
+
+CI integer cells accept surrounding whitespace, signs and digit separators. Trace cells deliberately refuse Unicode digits and negative resource values. Smoke coordinates accept Unicode decimal digits and use signed 128-bit integers. Integers beyond the target range fail. Decimal and nonfinite coordinates fail. Duplicate trace rows retain the first concrete exit status and reject later conflicts.
+
+The shared `og-io` reader consumes LF, CRLF and lone CR records with storage bounded by the longest line. Smoke JSON checks require one document and typed fields. Catalogs must be arrays and genotypes must be nonempty strings. This deliberately rejects malformed values that Python truthiness or `len()` accepted. Numeric depth strings remain supported; booleans are refused. Smoke fixtures and assertions build `og` on first use if the default binary is missing. An explicit `OG` is used as supplied.
+
 Step 42 uses `og traits table`, `og traits phase-sites` and `og traits check`.
 The readers retain only catalog sites. The trait and genotype-rule output
 columns and readings stay the same. `bin/traits_report.py` keeps report

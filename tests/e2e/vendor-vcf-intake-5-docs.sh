@@ -80,7 +80,7 @@ check "the page's Nextflow run wrote the report" test -s "${R}/sample1_report.ht
 check_eq "its ROH card is filled" "$(html_stat "${R}/sample1_report.html" 'Runs of Homozygosity' Status)" Complete
 check_eq "its haplogroup card is filled" "$(html_stat "${R}/sample1_report.html" 'Mitochondrial Haplogroup' Status)" Complete
 JSON="${R}/pharmcat/sample1.report.json"
-check_ge "its PharmCAT calls genes" "$( [ -s "$JSON" ] && pharmcat_called "$JSON" | grep -c . || echo 0)" 1
+check_pharmcat_called "its PharmCAT calls genes" "$JSON"
 
 # --- docs/nextflow.md "Before you share outputs", as pasted ------------------------------
 RECIPE=$(awk '/^## Before you share outputs/ {on = 1} on && /^```bash$/ {b = 1; next} b && /^```/ {exit} b' \
