@@ -150,6 +150,22 @@ for r in "$TXT" "$HTML"; do
   grep -q 'STALE: from an earlier run.*step 19 was not finished' "$r" \
     || miss "${r##*/} does not mark step 19's old result stale, but Delly did not finish in this run"
 done
+# One collect per run: generate-report.sh renders the text report from the
+# summary step 24 wrote just before it, so both reports carry one time.
+grep -q '^Rendering from summary.json' "${S}/logs/generate-report.log" \
+  || miss "generate-report.sh collected the summary again after step 24 wrote it: $(head -3 "${S}/logs/generate-report.log")"
+t_txt=$(sed -n 's/^  Generated: //p' "$TXT" | head -1)
+t_html=$(grep -o 'Generated: [^<]*' "$HTML" | head -1 | sed 's/^Generated: //')
+[ -n "$t_txt" ] && [ "$t_txt" = "$t_html" ] || miss "the text report says generated '${t_txt}', the HTML report '${t_html}'"
+# The reverse: a step output newer than summary.json makes it collect again.
+roh=$(find "$S" -name 'sample1_roh.txt' -type f | head -1)
+[ -n "$roh" ] || fail "no ROH output to touch"
+touch "$roh"
+run_expect 0 recollect "${SCRIPTS}/generate-report.sh" sample1
+if grep -q '^Rendering from summary.json' "${CASE_WORK}/recollect.out" 2> /dev/null; then
+  miss "generate-report.sh rendered from summary.json, but a step output changed after it was written"
+fi
+touch -d '30 days ago' "$roh"   # back to its age, for the cases below
 
 # --- 3. the same failure on a first run: nothing cached ------------------------------------
 awk -F'\t' -v OFS='\t' '{$2 += $3; $3 = 0; print}' "${CASE_WORK}/resume.tsv" > "${CASE_WORK}/first.tsv"
