@@ -910,9 +910,10 @@ fn readings(
 }
 
 /// The post pass: the readings again, with the traits and CPIC states, over
-/// the loci as the section lists them.
-pub fn post(c: &Ctx<'_>, v: &mut Value, traits: State, cpic: State) {
-    let Value::Object(m) = v else { return };
+/// the loci as the section lists them. An error is a reading that could
+/// not be made; the section's data is then left as it was.
+pub fn post(c: &Ctx<'_>, v: &mut Value, traits: State, cpic: State) -> Result<(), String> {
+    let Value::Object(m) = v else { return Ok(()) };
     let loci: Vec<(String, Obj)> = match m.get("loci") {
         Some(Value::Array(xs)) => xs
             .iter()
@@ -924,10 +925,10 @@ pub fn post(c: &Ctx<'_>, v: &mut Value, traits: State, cpic: State) {
                 _ => None,
             })
             .collect(),
-        _ => return,
+        _ => return Ok(()),
     };
     let by = by_locus(loci.iter().map(|(k, o)| (k, o)));
-    if let Ok(r) = readings(c, &by, traits, cpic) {
-        m.insert("readings".into(), r);
-    }
+    let r = readings(c, &by, traits, cpic)?;
+    m.insert("readings".into(), r);
+    Ok(())
 }

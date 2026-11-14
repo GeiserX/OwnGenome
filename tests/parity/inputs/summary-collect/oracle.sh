@@ -6,8 +6,8 @@
 # --only is og's alone (the Python writes every section, and the case
 # compares the group's subtrees). The modules collect_summary imports are
 # stubbed, except those the group b and c generators stage in pymods/
-# and py/. No other module is reached for these sample folders, except
-# run_delta's two readers of history/ and recheck/, which find nothing here.
+# and py/. run_delta is stubbed to find no history/ and no recheck/, unless
+# py/ brings the real one (the whole-file cases, summary-collect-full.sh).
 prog=$1
 shift
 d=$(mktemp -d)

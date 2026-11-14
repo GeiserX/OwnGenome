@@ -448,22 +448,22 @@ fn the_command_line() {
     let text = d.read("out.json");
     assert!(text.starts_with("{\n \"schema_version\": 2,\n \"sample\": \"S\",\n"));
     assert!(text.ends_with("}\n"));
-    // --only is required until every section is ported.
+    // Without --only it writes every section and the post pass.
     let (code, _, err) = run(
         cli,
         &["--sample", "S", "--sample-dir", &d.path("S"), "--out", &out],
     );
-    assert_eq!(code, 2);
-    assert!(err.contains("required: --only"), "{err}");
-    // So is --out: a part of the sections must not land on the sample's
-    // complete summary.json.
+    assert_eq!((code, err.as_str()), (0, ""));
+    assert!(d.read("out.json").contains("\n \"not_assessed\": [\n"));
+    // --only needs --out: a part of the sections must not land on the
+    // sample's complete summary.json.
     std::fs::write(d.path("S/summary.json"), "complete\n").unwrap();
     let (code, _, err) = run(
         cli,
         &["--sample", "S", "--sample-dir", &d.path("S"), "--only", "a"],
     );
     assert_eq!(code, 2);
-    assert!(err.contains("required: --out"), "{err}");
+    assert!(err.contains("--only needs --out"), "{err}");
     assert_eq!(d.read("S/summary.json"), "complete\n");
     let (code, _, err) = run(
         cli,
