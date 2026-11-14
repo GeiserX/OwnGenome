@@ -10,7 +10,8 @@
 sections that name them (bin/results_index.py); the HTML report closes with
 the same list.
 
-With --sample-dir it first collects the summary (bin/collect_summary.py) and
+With --sample-dir it first collects the summary with og summary collect
+(rust/crates/og-summary, through bin/collect_summary.py's collect()), which
 writes it to --json (default DIR/summary.json). Every number in both reports
 comes from that summary, so the two cannot disagree. A section whose result is
 from an earlier run (state "stale") is shown with that date and a STALE mark,
@@ -3223,7 +3224,7 @@ def charts_json(s):
 # --- html page: chapters, contents, section frames -----------------------------
 
 CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
-STEP_OF = {k: step for k, _, step, _ in collect_summary.SECTIONS}
+STEP_OF = {k: step for k, _, step in collect_summary.SECTIONS}
 # A section's state from the states of its keys. Never green: a section that
 # ran is not a finding, and the ClinVar section must show no green at all.
 STATE_BADGE = {"ok": ("Complete", "state"), "stale": ("Stale", "yellow"), "failed": ("Failed", "red"),
@@ -3484,8 +3485,11 @@ def main(argv=None):
     elif a.sample and a.sample_dir:
         if a.assets:
             collect_summary.ASSETS_DIR = a.assets
-        s = collect_summary.collect(a.sample, a.sample_dir, a.declared_sex)
-        write(a.json or os.path.join(a.sample_dir, "summary.json"), json.dumps(s, indent=1) + "\n")
+        try:
+            s = collect_summary.collect(a.sample, a.sample_dir, a.declared_sex,
+                                        out=a.json or os.path.join(a.sample_dir, "summary.json"))
+        except RuntimeError as e:
+            sys.exit(f"ERROR: {e}")
     else:
         ap.error("give --summary, or --sample and --sample-dir")
     # Only the HTML report and --search-index read the index: a text-only run
