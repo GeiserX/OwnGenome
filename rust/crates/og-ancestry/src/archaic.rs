@@ -986,8 +986,21 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
             sorted.join(", ")
         ));
     }
+    let mut text =
+        String::from("chrom\tfirst\tlast\tsites\tsites_with_your_alt\tsites_other_allele\n");
+    for (c, f, l, n, carried, dropped) in &spans {
+        text += &format!("{c}\t{f}\t{l}\t{n}\t{carried}\t{dropped}\n");
+    }
+    let spans_path = Path::new(out_dir).join("spans.tsv");
+    let mut spans_file =
+        AtomicFile::create(&spans_path).map_err(|e| cannot_write(&spans_path, &e))?;
+    spans_file
+        .write_all(text.as_bytes())
+        .map_err(|e| cannot_write(&spans_path, &e))?;
+    staged.push((spans_path, spans_file));
     // Published one rename at a time: the set is not one transaction, and
     // a rename that fails part way leaves part of the new set in place.
+    // Stale genotype files go last, once every new file is in place.
     for (path, file) in staged {
         file.commit().map_err(|e| cannot_write(&path, &e))?;
     }
@@ -999,12 +1012,6 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
             _ => {}
         }
     }
-    let mut text =
-        String::from("chrom\tfirst\tlast\tsites\tsites_with_your_alt\tsites_other_allele\n");
-    for (c, f, l, n, carried, dropped) in &spans {
-        text += &format!("{c}\t{f}\t{l}\t{n}\t{carried}\t{dropped}\n");
-    }
-    put(&Path::new(out_dir).join("spans.tsv"), text.as_bytes())?;
     let sites: u64 = spans.iter().map(|s| s.3).sum();
     let _ = writeln!(err, "{} chromosomes, {sites} sites", spans.len());
     Ok(())
@@ -1904,6 +1911,34 @@ mod tests {
         let other = "chr22\t100\t.\tG\tC\t.\tPASS\t.\tGT\t1/1\n";
         assert_ne!(genotypes(&d, other, "3"), 0);
         assert_eq!(snapshot(&d), before);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_failed_publication_keeps_a_stale_genotype_file() {
+        let d = scratch("failed-publication");
+        let head = TABLE_HEADER.join("\t");
+        let row =
+            |c: &str, p: i64| format!("{c}\t{p}\tA\tG\t0\t1\t2\t0.5\t0.5\t0.5\t0.5\t0.5\t0.5\n");
+        gzip_to(
+            &d.join("table/chr21.tsv.gz"),
+            &format!("{head}\n{}", row("chr21", 100)),
+        );
+        gzip_to(
+            &d.join("table/chr22.tsv.gz"),
+            &format!("{head}\n{}", row("chr22", 100)),
+        );
+        let both =
+            "chr21\t100\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\nchr22\t100\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n";
+        assert_eq!(genotypes(&d, both, "2"), 0);
+        // spans.tsv cannot be replaced: chr22 now has no row, and its old
+        // genotype file must outlive the failed publication.
+        std::fs::remove_file(d.join("gt/spans.tsv")).unwrap();
+        std::fs::create_dir_all(d.join("gt/spans.tsv/full")).unwrap();
+        let chr21_only =
+            "chr21\t100\t.\tA\tG\t.\tPASS\t.\tGT\t1/1\nchr22\t100\t.\tA\tC\t.\tPASS\t.\tGT\t1/1\n";
+        assert_ne!(genotypes(&d, chr21_only, "2"), 0);
+        assert!(d.join("gt/chr22.gt.gz").exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
