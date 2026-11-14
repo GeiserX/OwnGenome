@@ -33,12 +33,25 @@ jobs:
   # two files generated from it (conf/containers.config, docs/versions.md)
   # are up to date. Each script's self-test plants its faults first.
   images:
+    needs: og
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Self-test (a literal image in a script, module, workflow or doc, a process with no selector and a stale generated file must be caught)
+      # The scans and the run-versions check are og dev verbs
+      # (rust/crates/og-dev): the og the og job built.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-unit-tests
+          path: ${{ runner.temp }}/og
+
+      - name: og for the checks (OG)
+        run: |
+          chmod 755 "$RUNNER_TEMP/og/og"
+          echo "OG=${RUNNER_TEMP}/og/og" >> "$GITHUB_ENV"
+
+      - name: Self-test (a literal image in a script, module, workflow or doc, a stale exemption, a process with no selector and a stale generated file must be caught)
         run: scripts/ci/check-images.sh --self-test
 
       - name: Self-test of the containers.config generator (a stale tag, a missing or stray selector, a module's own container and a wrong version must be caught)
@@ -138,7 +151,8 @@ jobs:
 
   # og for the unit tests (tests/og_binary.py): the tests of a ported tool
   # and the demo sample builder run og as a subprocess. Built once here, so
-  # the three shards do not each spend minutes of their 10 on it.
+  # the three shards do not each spend minutes of their 10 on it. The images
+  # job runs its og dev scans with it too.
   og:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -251,6 +265,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Keep Python 3.9's regex cases and the newer Unicode tables available. The
+      # scanner fails closed on version-dependent scalars; span iteration
+      # intentionally uses Python 3.14+ semantics for empty-text \B.
+      # Standalone builds also provide Python 3.9 on newer ubuntu-latest
+      # images where actions/setup-python has no matching distribution.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.12.18'
+          enable-cache: false
+
+      - name: Install all three Unicode oracle interpreters
+        run: |
+          uv python install --no-bin 3.9 3.12 3.15
+          interpreters=""
+          for version in 3.9 3.12 3.15; do
+            python=$(uv python find --managed-python "$version")
+            "$python" -I -c 'import sys,unicodedata; print(sys.version.split()[0],unicodedata.unidata_version)'
+            interpreters="${interpreters:+$interpreters:}$python"
+          done
+          echo "PERSONAL_DATA_PYTHONS=$interpreters" >> "$GITHUB_ENV"
+          echo "PERSONAL_DATA_REQUIRE_PYTHONS=3.9:3.12:3.15" >> "$GITHUB_ENV"
+          # Span iteration intentionally follows the newest interpreter.
+          dirname "$python" >> "$GITHUB_PATH"
+
       - name: Install the toolchain rust/rust-toolchain.toml pins, with rustfmt and clippy
         run: |
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
@@ -314,6 +352,187 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
+
+      # Each pinned test-only commit still contains the scanner it attacks.
+      - name: Scanner controls (both rounds must fail against their pre-fix code)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/personal-data-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/personal-data-fixed.rs" "$source"; cp "${RUNNER_TEMP}/matcher-fixed.rs" "$matcher"' EXIT
+          for round in 1 2; do
+            if [ "$round" = 1 ]; then
+              before=80a675eadf73640c2a0f2d63fcfe30e6fdd0deef
+              filter=privacy_
+              tests="report_never_contains_values_or_patterns python_boundaries_differential python_casefold_differential staged_newline_differential fixed_seed_differential_fuzz"
+            else
+              before=fcb7ac4ec4dc547074f5b4e12699ae9ecb1c24ef
+              filter=round2_
+              tests="boundary_backtracking custom_unicode cr_patterns empty_alternative exception_lines"
+            fi
+            git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+            git show "$before:rust/$source" > "$source"
+            git show "$before:rust/$matcher" > "$matcher"
+            log="${RUNNER_TEMP}/scanner-red-controls-${round}.log"
+            rc=0
+            cargo test -p og-dev --locked --no-fail-fast "$filter" > "$log" 2>&1 || rc=$?
+            cat "$log"
+            [ "$rc" -ne 0 ] || { echo "ERROR: the pre-fix scanner passed"; exit 1; }
+            for test in $tests; do
+              grep -E "${filter}${test} .*FAILED" "$log" || { echo "ERROR: missing red control $test"; exit 1; }
+            done
+            echo "Control: all five scanner regressions in round ${round} failed, as they must."
+          done
+
+      - name: Scanner round-three controls (nullable operands and raw-byte paths must fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round3-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round3-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round3-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round3-matcher-fixed.rs" "$matcher"' EXIT
+          before=3c2c2f288c5ac516c22ed85b6aa8b04e43e734c6
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round3-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round3_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in nullable_atoms_are_refused nullable_repetitions_fail_closed raw_byte_paths_fail_closed; do
+            grep -E "round3_${test} .*FAILED" "$log" || { echo "ERROR: missing round-three red control"; exit 1; }
+          done
+          echo "Control: nullable operands and raw-byte paths failed before the fix."
+
+      - name: Unicode guard regenerates from pinned official data
+        run: bash ../tests/parity/gen/personal-unicode-generate.sh "$RUNNER_TEMP/personal-unicode"
+
+      - name: Scanner round-four controls (Unicode versions and symlink targets fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round4-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round4-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round4-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round4-matcher-fixed.rs" "$matcher"' EXIT
+          before=ac030e631afa5550f2c128a0998d2cb95dee14db
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round4-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round4_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in unicode_versions_fail_closed symlink_targets_fail_closed; do
+            grep -E "round4_${test} .*FAILED" "$log" || { echo "ERROR: missing round-four red control"; exit 1; }
+          done
+          echo "Control: all 24 Unicode and four symlink scenarios failed before the fix."
+
+      - name: Scanner round-five controls (all five findings must fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round5-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round5-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round5-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round5-matcher-fixed.rs" "$matcher"' EXIT
+          before=f155efd343e82ebf8b53a563ee4b2c5b6f4dbf85
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round5-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round5_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in regex_case_relations stable_case_scalars_pass gitlinks_fail_closed guard_filenames every_symlink_hop; do
+            grep -E "round5_${test} .*FAILED" "$log" || { echo "ERROR: missing round-five red control"; exit 1; }
+          done
+          echo "Control: all five round-five regressions failed before the fix."
+
+      - name: Scanner round-six controls (astral cases, range interiors and symlink names fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round6-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round6-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round6-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round6-matcher-fixed.rs" "$matcher"' EXIT
+          before=152bf7860e95951dc585259dcf9f4c66869e36db
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round6-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round6_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in astral_composite_cases guarded_range_interiors symlink_unicode_names; do
+            grep -E "round6_${test} .*FAILED" "$log" || { echo "ERROR: missing round-six red control"; exit 1; }
+          done
+          grep -E 'round6_stable_ranges_and_uncased_astral .*ok' "$log"
+          echo "Control: all three regressions failed; stable ranges and uncased astral text passed."
+
+      - name: Scanner round-seven controls against the pre-fix scanner
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round7-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round7-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round7-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round7-matcher-fixed.rs" "$matcher"' EXIT
+          before=0c881620fe1bee894d6a868ab5d7f06f055bbad3
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round7-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round7_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in ordinary_cyrillic pattern_case_scope cached_target_before_skip required_interpreters_fail_closed; do
+            grep -E "round7_${test} .*FAILED" "$log" || { echo "ERROR: missing round-seven red control"; exit 1; }
+          done
+          echo "Control: Cyrillic text, pattern scope, indexed targets and required oracles all failed before the fix."
+
+      - name: Regex relation verifier rejects a missing table
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          cp "$source" "${RUNNER_TEMP}/regex-case-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/regex-case-fixed.rs" "$source"' EXIT
+          awk '/^const REGEX_CASE_RELATIONS:/ { print "const REGEX_CASE_RELATIONS: &[(u32, u32)] = &[];"; drop=1 }
+               drop && /^];/ { drop=0; next }
+               !drop { print }' "${RUNNER_TEMP}/regex-case-fixed.rs" > "$source"
+          log="${RUNNER_TEMP}/regex-table-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round5_regex_case_table_matches_interpreters > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep 'checked-in regex table misses a differing pair' "$log"
+          echo "Control: real regex engines rejected the incomplete table."
+
+      - name: Scanner matcher controls (word classes and swallowed errors must be caught)
+        run: |
+          source=crates/og-dev/src/lookaround.rs
+          saved="${RUNNER_TEMP}/matcher-controls-fixed.rs"
+          cp "$source" "$saved"
+          trap 'cp "$saved" "$source"' EXIT
+          sed 's/^const WORD: .*$/const WORD: \&str = r"[\\w]";/' "$saved" > "$source"
+          log="${RUNNER_TEMP}/matcher-word-control.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast --lib > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep -E 'round2_generated_patterns_and_tables .*FAILED' "$log"
+          grep -E 'finditer_spans_match_real_python .*FAILED' "$log"
+          grep -E 'exhaustive_small_model_spans .*FAILED' "$log"
+          sed 's/Some(Err(()))/None/' "$saved" > "$source"
+          log="${RUNNER_TEMP}/matcher-error-control.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round2_unsupported > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep -E 'round2_unsupported_and_exhausted_patterns_fail_closed .*FAILED' "$log"
+          echo "Control: incorrect word classes and a swallowed matcher error both failed."
 
       - name: Evidence offset regression in release mode
         run: cargo test --release --locked -p og-dev --no-fail-fast fai_offsets_reject_overflow_and_out_of_file_before_publication

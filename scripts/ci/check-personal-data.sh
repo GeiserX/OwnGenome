@@ -32,9 +32,92 @@
 #                                                 and require each to be caught
 #
 # Your own identifiers (names, sample ids, hostnames) do not belong in this
-# public file. Put one extended regular expression per line in a file outside
-# the repository and point PERSONAL_DATA_PATTERNS at it; each match is
-# reported as kind "own".
+# public file. Put one Python-subset regular expression per text-file line
+# outside the repository and point PERSONAL_DATA_PATTERNS at it. Each match
+# is reported as kind "own". CRLF, CR and LF separate pattern-file lines.
+#
+# Supported: literals, dot, character classes and ranges (including negated
+# classes), \b \B \w \W \s \S \d \D, ^ $ \A \Z, alternation, capturing,
+# named (?P<name>...) and noncapturing groups, greedy and lazy ? * + {m,n},
+# and global or scoped i/m/s/x flags. Hex \xHH, \uHHHH and \UHHHHHHHH and
+# standard control escapes are supported. Unicode word characters, spaces
+# and simple case folding follow Python, including dotted and dotless I.
+# Every quantified operand must be nonnullable: it must consume a character
+# on every successful match. This includes groups and alternatives under
+# greedy or lazy ?, *, + and braces. For example, (a?)+ and (a*|b){1,3}
+# are refused. Nullability propagates through flags, groups and alternatives.
+# Empty matches outside such operands follow Python 3.14+ finditer. A
+# nonempty match can follow an empty match at the same position. Captures never narrow the span checked against ALLOW.
+#
+# Backreferences, look-around in custom patterns, conditionals, atomic or
+# possessive groups, ASCII/locale flags, named Unicode and octal escapes,
+# nested/POSIX classes and other engine extensions are unsupported. Patterns
+# over 16 KiB or with more than 64 nested groups are rejected. Unsupported
+# syntax, invalid patterns and a matcher resource-limit error stop the scan
+# with exit 2 and a diagnostic that omits the pattern and scanned values.
+# A path with invalid UTF-8 also stops the scan before SKIP, path conversion
+# or staged-blob requests. Symlink targets are also checked before SKIP:
+# every working-copy hop (at most 40), staged targets from index mode 120000.
+# Version-dependent filenames fail before ALLOW/SKIP with a generic error.
+# Cached entries must be regular blobs or symlinks. Gitlinks and unreadable
+# indexed objects fail with exit 2 naming only the path, unless SKIP excludes it.
+# File contents still use replacement decoding.
+#
+# Unicode guard: UCD 13, 15, 16 and 17 disagree on newer script letters.
+# The scan stops with redacted exit 2 at file:line for version-dependent
+# text, filenames, custom patterns (including escaped literals), or ALLOW/SKIP rows.
+# ALLOW cannot exempt such text. Use an ASCII SKIP glob to exempt its file.
+# A letter from a script newer than Unicode 13 therefore stops the scan
+# until its file is skipped. Every astral scalar with a case mapping or used
+# as a mapping target in UCD 13/15/16/17 is also refused, regardless of the
+# pattern shape. Text in Deseret, Osage, Old Hungarian, Warang Citi,
+# Medefaidrin, Adlam and any other astral cased script stops the scan until
+# its file is SKIPped. Newer plain symbols, emoji and uncased CJK still scan.
+# A custom class range containing a property-guarded scalar is refused, even
+# when its endpoints are stable. ASCII and stable Latin-1 ranges still work.
+#
+# The generated conservative set includes every scalar unassigned in UCD
+# 17; post-13 letters, marks, numbers, connectors, spaces and case mappings;
+# and older scalars whose word/digit/space membership or case maps change
+# in UCD 13/15/16/17. Full case folds avoid rejecting six stable old scalars.
+# BMP regex case differences apply only to patterns. Under active global or
+# scoped i flags, a literal or a class range naming any member of a differing
+# fold class is refused. This includes escaped members, positive and negated
+# classes, and range interiors. Disabling i in that scope permits stable
+# case-sensitive names and ranges. Ordinary Russian, Ukrainian and Serbian
+# text, filenames and ALLOW/SKIP rows pass unless the property guard covers
+# them. Dot and category escapes do not name a member of a fold class.
+# Real fullmatch calls discover differing pairs. For each BMP pair, the
+# converse verifier proves that property-guarded endpoints stop the scan.
+# For admitted endpoints, it compares finditer spans using unrelated literals,
+# categories, negated classes, ranges, alternations, scopes and quantifiers.
+# It also discovers third case partners on every interpreter and checks their
+# shapes. Any differing accepted shape on admitted text fails verification.
+# Astral mappings come from UnicodeData, SpecialCasing
+# and CaseFolding, all SHA-256-pinned, with no interpreter test needed.
+# The 248 newer scalars with stable effective behavior remain conservatively
+# blocked. The six stable scalars assigned by Unicode 13 pass.
+# Text validation uses one binary search per non-ASCII character. Pattern
+# compilation also checks a small fixed BMP fold-class set under i flags.
+# That set is initialized once from the embedded pairs and engine fold table.
+# This guard uses no per-file index or process. Cached symlink target names,
+# including directory components, receive the same check before SKIP.
+# Regenerate from SHA-256-pinned official data with the Rust generator:
+# tests/parity/gen/personal-unicode-generate.sh SCRATCH_DIR
+# Guard regenerates byte for byte and compares all available Python oracles,
+# explicitly installing 3.9, 3.12 and 3.15. Match iteration follows 3.14+.
+# Regenerate the regex table via the existing Rust differential test:
+# PERSONAL_DATA_UPDATE_REGEX_CASES=1 cargo test -p og-dev round5_regex_case_table_matches_interpreters
+# Supply all supported Python interpreters on PATH or PERSONAL_DATA_PYTHONS
+# (colon-separated paths). Ordinary tests verify every available interpreter
+# and reject any differing pair missing from the checked-in table. Every
+# explicitly supplied path must run successfully. CI requires
+# 3.9, 3.12 and 3.15 through PERSONAL_DATA_REQUIRE_PYTHONS. Missing explicit
+# paths and failing interpreters are negative controls for both verifiers.
+#
+# The scan is og dev scan personal-data (rust/crates/og-dev); bin/og runs
+# the build scripts/setup.sh --og puts in bin/.og for this machine, and OG
+# names another og binary.
 #
 # As a pre-commit hook, checking the staged files:
 #   cat > .git/hooks/pre-commit <<'HOOK'
@@ -47,6 +130,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# og runs the scan (bin/og picks the build for this machine); OG overrides it.
+OG=${OG:-${ROOT}/bin/og}
 
 # file (exact path or glob)   text on the line that makes it a documented example
 # shellcheck disable=SC2016  # the entries are text, nothing expands
@@ -80,89 +165,16 @@ tests/parity/inputs/pgx-refblock-fill/*  built from the public PharmCAT data of 
 tests/parity/golden/pgx-refblock-fill/*  the output og writes on those inputs
 '
 
+# scan [FILE...]: og dev scan personal-data (rust/crates/og-dev) with the
+# lists above; with no FILE, every file git ls-files lists under ROOT. A
+# scan that read no text file fails: it checked nothing.
 scan() {
-  python3 - "$ROOT" "$ALLOW" "$SKIP" "${PERSONAL_DATA_PATTERNS:-}" "${CACHED:-}" "$@" <<'PY'
-import fnmatch, os, re, subprocess, sys
-root, allow_text, skip_text, own_file, cached, args = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6:]
-skip = [l.split()[0] for l in skip_text.splitlines() if l.strip()]
-allow = []
-for l in allow_text.splitlines():
-    if l.strip():
-        path, _, text = l.strip().partition(" ")
-        allow.append((path, text.strip()))
-
-if args:
-    files = args
-else:
-    out = subprocess.run(["git", "-C", root, "ls-files", "-z"], check=True, capture_output=True).stdout
-    files = [os.path.join(root, f) for f in out.decode().split("\0") if f]
-if not files:
-    print("FAIL: no file to scan")
-    sys.exit(1)
-
-# A label may carry a number after a separator: sample7, sample_01, donor-3.
-LABEL = r'(?:(?i:(?<![A-Za-z])(?:sample|patient|subject|proband|participant|individual|donor)s?(?:[_-]?[0-9]+)?(?![A-Za-z]))|\b(?:NA|HG)[0-9]{3,5}\b)'
-GT = r'\(?[ACGTDI][/|;]?[ACGTDI]\)?(?![A-Za-z0-9])'
-STR_GENES = (r'HTT|FMR1|C9orf72|C9ORF72|ATXN[0-9]+|DMPK|FXN|CNBP|RFC1|PABPN1|CACNA1A|TCF4|AR|'
-             r'PPP2R2B|TBP|JPH3|NOP56|ATN1|CSTB|AFF2|FMR2|NOTCH2NLC|DAB1|BEAN1|STARD7|YEATS2')
-OCTET = r'(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
-# (kind, pattern, the line must also match this or None). The pattern
-# marks only the leaked value, so an allowed example covers just its span.
-RULES = [
-    ("home", re.compile(r'(?<![A-Za-z0-9_])(?:/home/[A-Za-z]|/Users/[A-Za-z]|/mnt/use[r]\b|[A-Za-z]:\\\\?Users\\\\?[A-Za-z])'), None),
-    ("address", re.compile(r'(?<![0-9.])(?:10\.' + OCTET + r'|172\.(?:1[6-9]|2[0-9]|3[01])|192\.168|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7]))'
-                           r'\.' + OCTET + r'\.' + OCTET + r'(?![0-9]|\.[0-9])'), None),
-    ("address", re.compile(r'[A-Za-z0-9-]\.ts\.net\b'), None),
-    ("diplotype", re.compile(r'\*[0-9]+[A-Za-z0-9.]*/\*[0-9]+'), re.compile(LABEL)),
-    ("rsid", re.compile(r'\brs[0-9]+\b[\s:=,;|`\'"\[\]-]{1,6}' + GT), None),
-    ("rsid", re.compile(r'\brs[0-9]+\t[0-9XYMT]{1,2}\t[0-9]+\t[ACGTDI-]{1,2}\b'), None),
-    ("repeat", re.compile(r'(?<![0-9./])[0-9]{1,4}/[0-9]{1,4}(?![0-9/])'), re.compile(r'\bREPCN\b')),
-    ("repeat", re.compile(r'\b(?:' + STR_GENES + r')\b[^/\n]{0,40}?(?<![0-9.])[0-9]{1,4}/[0-9]{1,4}(?![0-9/])'), None),
-]
-if own_file:
-    for l in open(own_file):
-        if l.strip() and not l.startswith("#"):
-            RULES.append(("own", re.compile(l.strip()), None))
-
-bad = scanned = 0
-for path in files:
-    full = os.path.abspath(path)
-    rel = os.path.relpath(full, root) if full.startswith(root + os.sep) else path
-    if any(fnmatch.fnmatchcase(rel, g) for g in skip):
-        continue
-    if cached:
-        # The blob in the index: what the commit will hold.
-        r = subprocess.run(["git", "-C", root, "show", ":" + rel], capture_output=True)
-        if r.returncode != 0:
-            continue
-        data = r.stdout
-    else:
-        try:
-            data = open(path, "rb").read()
-        except (IsADirectoryError, FileNotFoundError):
-            continue
-    if b"\0" in data[:8192]:
-        continue  # binary
-    scanned += 1
-    if rel == "scripts/ci/check-personal-data.sh":
-        texts = [t for _, t in allow]
-    else:
-        texts = [t for p, t in allow if fnmatch.fnmatchcase(rel, p)]
-    for n, line in enumerate(data.decode("utf-8", "replace").split("\n"), 1):
-        # Spans of the line that are documented examples.
-        spans = [(i.start(), i.end()) for t in texts for i in re.finditer(re.escape(t), line)]
-        for kind, rx, cond in RULES:
-            if cond is not None and not cond.search(line):
-                continue
-            for m in rx.finditer(line):
-                if any(a <= m.start() and m.end() <= b for a, b in spans):
-                    continue  # inside an allowed example; the rest of the line is still checked
-                print("FAIL %-9s %s:%d: %s" % (kind, rel, n, line.strip()[:160]))
-                bad = 1
-                break
-print("scanned %d text files" % scanned)
-sys.exit(bad)
-PY
+  local cached=()
+  [ -z "${CACHED:-}" ] || cached=(--cached)
+  local patterns=()
+  [ -z "${PERSONAL_DATA_PATTERNS:-}" ] || patterns=(--patterns "$PERSONAL_DATA_PATTERNS")
+  "$OG" dev scan personal-data --root "$ROOT" --allow "$ALLOW" --skip "$SKIP" \
+    ${patterns[@]+"${patterns[@]}"} ${cached[@]+"${cached[@]}"} -- "$@"
 }
 
 self_test() {
@@ -224,6 +236,22 @@ self_test() {
   else
     echo "self-test: caught: $(grep '^FAIL' <<<"$out")"
   fi
+  # A scan that read no text file checked nothing: it fails. Here the only
+  # file is binary.
+  printf 'a\0b\n' > "${tmp}/binary.bin"
+  rc=0; out=$(scan "${tmp}/binary.bin" 2>&1) || rc=$?
+  if [ "$rc" -ne 1 ] || ! grep -q '^FAIL: no text file was scanned' <<<"$out"; then
+    echo "self-test: a scan of no text file passed (exit ${rc}):"; printf '%s\n' "$out"; fail=1
+  else
+    echo "self-test: caught: $(grep '^FAIL' <<<"$out")"
+  fi
+  # ROOT reached through a symbolic link still places the file below it, so
+  # the file's allowed example applies.
+  ln -s "${tmp}/tree" "${tmp}/link"
+  # shellcheck disable=SC2016  # the backticks are text
+  plant tree/CONTRIBUTING.md 'Personal file paths (`/mnt/user/`, `/home/username/`, etc.)'
+  rc=0; out=$(ROOT="${tmp}/link" scan "${tmp}/tree/CONTRIBUTING.md" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || { echo "self-test: an allowed example was reported under a linked ROOT:"; printf '%s\n' "$out"; fail=1; }
   # A pattern of your own, from PERSONAL_DATA_PATTERNS.
   printf '%s\n' 'Report for Jane Example' > "${tmp}/own.md"
   printf '%s\n' '\bJane Example\b' > "${tmp}/patterns"

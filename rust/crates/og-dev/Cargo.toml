@@ -1,6 +1,6 @@
 [package]
 name = "og-dev"
-description = "og dev: the developer and CI verbs: parity-compare, contract, schema, report-only, build"
+description = "og dev: the developer and CI verbs: parity-compare, contract, schema, report-only, build, scans and version checks"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,6 +18,8 @@ og-intervals.workspace = true
 flate2.workspace = true
 indexmap.workspace = true
 png = "0.18"
+fancy-regex = "=0.16.2"
+regex-syntax = "=0.8.11"
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }
 
 [lints]

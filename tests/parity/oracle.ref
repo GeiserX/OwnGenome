@@ -63,6 +63,14 @@ y-yleaf-positions	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/yleaf_run.py
 lookup	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	python3	lookup
 lookup-query	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/genome_lookup.py	bash ./oracle.sh	lookup query
 family-ibd	0baddb45aa3871a57469cf20295bdd832f72f5c0	file:bin/ibd_report.py	sh ./ibd_oracle.sh	family ibd
+dev-scan-personal	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-personal-data.sh	bash ./oracle.sh personal	dev scan personal-data
+dev-scan-images	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-images.sh	bash ./oracle.sh images	dev scan images
+dev-versions-coupled	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-images.sh	bash ./oracle.sh coupled	dev versions coupled
+dev-versions-check-run	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/gen-containers-config.sh	bash ./oracle.sh check-run	dev versions check-run
+dev-versions-expand	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-links.sh	bash ./oracle.sh expand	dev versions expand
+dev-pgs-trait	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-pgs-labels.sh	bash ./oracle.sh trait	dev pgs trait
+dev-pgs-label	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-pgs-labels.sh	bash ./oracle.sh label	dev pgs label-match
+dev-pgs-metric	4104a93f2121b457413336574b8563fe85291fd7	file:scripts/ci/check-pgs-labels.sh	bash ./oracle.sh metric	dev pgs metric-match
 dev-fixture-comphet	fe6b67e09cef81c396c2277472df10407c56d7ac	file:tests/fixtures/comphet/make_fixture.py	python3	dev fixture comphet
 dev-fixture-trim-pharmcat	fe6b67e09cef81c396c2277472df10407c56d7ac	file:tests/fixtures/pharmcat/trim_report.py	python3	dev fixture trim-pharmcat
 dev-evidence-clashes	fe6b67e09cef81c396c2277472df10407c56d7ac	file:.github/workflows/public-evidence.yml	sh -c 'd=$(mktemp -d) && awk -v n=1 "/<<.PY.\$/ {k++; if (k == n) {on = 1; next}} on && /^ *PY\$/ {exit} on {sub(/^          /, \"\"); print}" "$0" > "$d/p.py" && exec python3 -I "$d/p.py" "$@"'	dev evidence clashes

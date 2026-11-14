@@ -982,6 +982,16 @@ family-ibd	mapbp	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree mapbp/pedigree.ts
 family-ibd	nomap	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree nomap/pedigree.tsv --chroms nomap/chroms.txt --maps nomap/maps --phased nomap/phased --ibd nomap/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	short	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree short/pedigree.tsv --chroms short/chroms.txt --maps short/maps --phased short/phased --ibd short/ibd --out-dir out	-	content	PYTHON_IMAGE
 family-ibd	twice	gen:ibd-oracle.sh,gen:ibd-cases.sh	--pedigree twice/pedigree.tsv --chroms twice/chroms.txt --maps twice/maps --phased twice/phased --ibd twice/ibd --out-dir out	-	content	PYTHON_IMAGE
+dev-scan-personal	clean	dev-scanners/oracle.sh,dev-scanners/clean.md	--root . --allow _ --skip _ clean.md	-	bytes	PYTHON_IMAGE
+dev-scan-personal	unicode-fixed-seed	dev-scanners/oracle.sh,gen:dev-scanners.sh	--root . --allow _ --skip _ probe.md	-	bytes	PYTHON_IMAGE
+dev-scan-personal	odd-filename	dev-scanners/oracle.sh,gen:dev-scanners.sh	--root . --allow _ --skip _	-	bytes	PYTHON_IMAGE
+dev-scan-images	clean	dev-scanners/oracle.sh,dev-scanners/versions.env,dev-scanners/image.md,gen:dev-scanners-clean-dev-scan-images.sh	--root . --exempt-files _ --exempt-pairs  	-	bytes	PYTHON_IMAGE
+dev-versions-coupled	coupled	dev-scanners/oracle.sh,dev-scanners/versions.env	--env versions.env	-	bytes	PYTHON_IMAGE
+dev-versions-check-run	matching	dev-scanners/oracle.sh,dev-scanners/containers.config,dev-scanners/software_versions.yml	--config containers.config software_versions.yml	-	bytes	PYTHON_IMAGE
+dev-versions-expand	urls	dev-scanners/oracle.sh,dev-scanners/versions.env,gen:dev-scanners-urls-dev-versions-expand.sh	--env versions.env	-	bytes	PYTHON_IMAGE
+dev-pgs-trait	matching	dev-scanners/oracle.sh,dev-scanners/trait.json,gen:dev-scanners-matching-dev-pgs-trait.sh	--id PGS000001	-	bytes	PYTHON_IMAGE
+dev-pgs-label	matching	dev-scanners/oracle.sh	synthetic synthetic-trait	-	bytes	PYTHON_IMAGE
+dev-pgs-metric	effect-format	dev-scanners/oracle.sh,dev-scanners/metric.json,gen:dev-scanners-matching-dev-pgs-metric.sh	--id PGS000001 --ppm PPM000001 --ancestry EUR --effect OR	-	bytes	PYTHON_IMAGE
 dev-fixture-comphet	plain	-	out	out/reads.sam,out/vep.vcf,out/comphet.vcf	bytes	PYTHON_IMAGE
 dev-fixture-comphet	swap	-	out --swap	out/reads.sam,out/vep.vcf,out/comphet.vcf	bytes	PYTHON_IMAGE
 dev-fixture-trim-pharmcat	report-3.2.0	gen:pgx-fixtures.sh	report-3.2.0.json out.json	out.json	json:mask=_fixture_note	PYTHON_IMAGE
