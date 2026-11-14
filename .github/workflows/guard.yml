@@ -183,12 +183,14 @@ jobs:
 
   # Three shards: one job ran every test file in about 9.5 of its 10 minutes,
   # so each new browser test pushed it over. File i runs in shard i % 3, so
-  # every file runs in exactly one shard. The limit is 15 minutes: the shard
-  # that holds the browser tests of the live page already takes about 9.
+  # every file runs in exactly one shard. The limit is 25 minutes: the shard
+  # that holds the browser tests of the live page takes about 13, and
+  # test_live_demo.py alone takes about 12 of those, so no split of files
+  # between shards brings it under 15.
   unit-tests:
     needs: og
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -255,10 +257,11 @@ jobs:
   # unit-tests is close to its 10 minutes. Format, lint, unit tests with a
   # planted failure that must go red, pycompat against CPython, then the two
   # musl builds as scripts/setup.sh --og makes them and the stale-binary
-  # guard on the real binaries.
+  # guard on the real binaries. It takes 15 to 18 minutes on a free runner,
+  # and a busy runner pushed it past 20, so the limit is 30.
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: rust
