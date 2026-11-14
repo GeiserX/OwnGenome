@@ -207,7 +207,9 @@
 
     // --- geometry ---
     function chrom() { return M.chroms[cam.ci]; }
-    function rowH() { var lo = phone ? ROW_PHONE : ROW_MIN; return M ? clamp((CH - 18) / M.chroms.length, lo, 44) : lo; }
+    // The genome rows keep their height while a phone's canvas grows for an open chromosome (size()).
+    function rowH() { var lo = phone ? ROW_PHONE : ROW_MIN; return M ? clamp((genomeH() - 18) / M.chroms.length, lo, 44) : lo; }
+    function genomeH() { return 18 + (M ? M.chroms.length : 24) * (phone ? ROW_PHONE : ROW_MIN); }
     function gutG() { return phone ? 30 : 40; }
     function pad() { return phone ? 10 : 22; }
     function gut() { return lerp(gutG(), phone ? 64 : 128, cam.k); }
@@ -248,8 +250,8 @@
       var w = Math.max(280, Math.floor(stage.clientWidth));
       phone = w < 520;
       var n = M ? M.chroms.length : 24;
-      // A phone's genome rows are short: the canvas keeps room for an open chromosome's genes lane.
-      var h = Math.max(18 + n * (phone ? ROW_PHONE : ROW_MIN), phone ? 330 : 0);
+      // A phone's genome rows are short: an open chromosome makes the canvas taller, for its genes lane.
+      var h = Math.max(18 + n * (phone ? ROW_PHONE : ROW_MIN), phone && tgt.k > 0 ? 330 : 0);
       DPR = Math.min(2, window.devicePixelRatio || 1);
       if (w !== CW || h !== CH || canvas.width !== Math.round(w * DPR)) {
         CW = w; CH = h;
