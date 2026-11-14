@@ -19,11 +19,32 @@ concurrency:
 jobs:
   personal-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
+    env:
+      OG: ${{ github.workspace }}/rust/target/release/og
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Self-test (a planted home path, address, diplotype, rsID genotype and repeat count must be caught)
+      # The scan is og dev scan personal-data (rust/crates/og-dev): the
+      # toolchain rust/rust-toolchain.toml pins, og built without the BAM
+      # reader, which the scan never needs.
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+          key: personal-data
+
+      - name: Build og
+        working-directory: rust
+        run: cargo build --release --locked -p og --no-default-features
+
+      - name: Self-test (a planted home path, address, diplotype, rsID genotype and repeat count, and a scan of no text file, must be caught)
         run: scripts/ci/check-personal-data.sh --self-test
 
       - name: No tracked file holds a home path, a private address or a genotype

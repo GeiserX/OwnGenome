@@ -1,0 +1,9 @@
+FAIL rsid      probe.md:1
+FAIL diplotype probe.md:2
+FAIL repeat    probe.md:3
+FAIL repeat    probe.md:4
+FAIL diplotype probe.md:5
+FAIL diplotype probe.md:6
+FAIL home      probe.md:7
+FAIL address   probe.md:8
+scanned 1 text files
