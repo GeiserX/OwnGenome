@@ -7,12 +7,9 @@ whole documents, accessibility text, addresses, pixels, storage and resource req
 """
 import base64
 import copy
-import difflib
 import gzip
-import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -172,6 +169,15 @@ class Static(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
+
+    # A path answered after a wait, once (the gate's slow-reload check): {path: seconds}.
+    DELAY = {}
+
+    def do_GET(self):
+        wait = Static.DELAY.pop(self.path.split("?")[0], 0)
+        if wait:
+            time.sleep(wait)
+        super().do_GET()
 
 
 def browser_checks(out):
@@ -358,7 +364,7 @@ def widget_checks(b, base, out):
         keep = f.read()
     try:
         with open(js, "w") as f:
-            f.write(keep.replace("add(text, widget(of[1]));", ""))
+            f.write(keep.replace("add(text, widget(c.widget));", ""))
         control("person.js without its widget line", not widget_problems(widget_counts(b, base)))
     finally:
         with open(js, "w") as f:
@@ -837,87 +843,6 @@ def map_now(b):
     return json.loads(b.eval(MAP_JS))
 
 
-# The page's closed results to act on and the map's chips, read at once (a chip's button rebuilds the chips at
-# once: nothing to wait for): the act cards in page order (ids: each one's id, its handle while it is closed) and
-# the places of the closed ones among them (closed: a closed card names no id, so a result is known by its place), the act chip's count, whether its confirm step
-# shows, where the keyboard is (first: the chips' first button; canvas: the map), and the opened chips.
-CHIP_JS = r"""JSON.stringify((function () {
-  var ids = [], closed = [];
-  Array.prototype.forEach.call(document.querySelectorAll('.finding[data-level=act]'), function (a, i) {
-    ids.push(a.dataset.finding);
-    if (a.querySelector('.veil')) { closed.push(i); } });
-  var c = document.querySelector('.gm-chip[data-closed=act]'), f = document.activeElement;
-  var first = document.querySelector('.gm-chips button');
-  return { closed: closed, ids: ids, buttons: !!first, chip: c ? c.firstChild.textContent : '', confirm: !!(c && c.querySelector('.gm-confirm')),
-    focus: f && f.classList.contains('gm-yes') ? 'gm-yes' : f === first ? 'first' : f === document.querySelector('.gm-canvas') ? 'canvas'
-      : (f ? f.tagName + '.' + f.className : ''),
-    opened: Array.prototype.map.call(document.querySelectorAll('.gm-chip.opened'), function (o) { var a = o.querySelector('a');
-      var raw = a ? a.getAttribute('href') : '';
-      return { kind: o.dataset.opened, text: o.textContent, raw: raw, href: opened(raw) }; }) };
-  // The finding an "Opened in its section" link names: #f/opened-<n> is the n-th finding the page can close and
-  // shows opened, in the order of the sections (person.js openedOrder()).
-  function opened(raw) {
-    var m = /^#f\/opened-(\d+)$/.exec(raw);
-    if (!m) { return raw; }
-    if (!window.__pgpResults) {
-      var x = new XMLHttpRequest(); x.open('GET', 'results.json', false); x.send(); window.__pgpResults = JSON.parse(x.responseText);
-    }
-    var r = window.__pgpResults, tags = (r.veil && r.veil.findings) || {}, byId = {}, order = [];
-    r.findings.forEach(function (f) { byId[f.id] = f; });
-    function ok(f) { return f && (f.level === 'act' || (tags[f.id] && tags[f.id] !== f.id)) && !!document.getElementById('f-' + f.id); }
-    (r.journal || []).forEach(function (s) { (s.findings || []).forEach(function (id) { if (ok(byId[id]) && order.indexOf(id) < 0) { order.push(id); } }); });
-    r.findings.forEach(function (f) { if (ok(f) && order.indexOf(f.id) < 0) { order.push(f.id); } });
-    return '#f/' + (order[Number(m[1]) - 1] || raw);
-  }
-}()))"""
-
-
-def chips_now(b):
-    time.sleep(0.05)  # a chip's button draws the page and the chips again before its click returns
-    return json.loads(b.eval(CHIP_JS))
-
-
-def closed_words(n):
-    return "" if n == 0 else "1 result closed" if n == 1 else f"{n} results closed"
-
-
-def chip_open(b):
-    """The act chip's Open, then its Show the result, as a keyboard reader does it. Returns (the id it opened, its
-    place among the act cards, problems): one Open opens exactly one of the page's closed results, the count falls by one, the keyboard
-    goes to Show the result and then to the chips' first button (the map when no chip is left), and an
-    "Opened in its section" chip never names a result that is still closed."""
-    before = chips_now(b)
-    b.eval("var o = document.querySelector('.gm-chip[data-closed=act] button'); o.focus(); o.click(); true")
-    mid = chips_now(b)
-    bad = []
-    if not mid["confirm"] or mid["closed"] != before["closed"]:
-        bad.append(f"Open: confirm step {mid['confirm']}, closed {before['closed']} -> {mid['closed']}")
-    if mid["focus"] != "gm-yes":
-        bad.append(f"Open: the keyboard is on {mid['focus']!r}, not Show the result")
-    b.eval("document.querySelector('.gm-chip[data-closed=act] .gm-yes').click(); true")
-    after = chips_now(b)
-    gone = [x for x in before["closed"] if x not in after["closed"]]
-    n = len(before["closed"]) - 1
-    if len(gone) != 1 or len(after["closed"]) != n:
-        bad.append(f"Show the result opened {gone}, not one: closed {before['closed']} -> {after['closed']}")
-    if not after["chip"].startswith(closed_words(n)) or bool(after["chip"]) != (n > 0):
-        bad.append(f"Show the result: the chip reads {after['chip']!r}, want {closed_words(n)!r}")
-    if after["focus"] != ("first" if after["buttons"] else "canvas"):
-        bad.append(f"Show the result: the keyboard is on {after['focus']!r}")
-    named = [o["href"] for o in after["opened"] if o["kind"] == "section" and o["href"][3:] not in after["ids"]]
-    if named:
-        bad.append(f"an Opened in its section chip names a result that is not open: {named}")
-    raw = [o["raw"] for o in after["opened"] if o["kind"] == "section" and not re.match(r"^#f/opened-\d+$", o["raw"])]
-    if raw:
-        bad.append(f"an Opened in its section chip links a result by its id: {raw}")
-    leaked = [after["ids"][i] for i in after["closed"] if not re.match(r"^closed-\d+$", after["ids"][i] or "")]
-    if leaked:
-        bad.append(f"a closed card carries an id, not a handle: {leaked}")
-    if len(gone) != 1:
-        return None, None, bad
-    return after["ids"][gone[0]], gone[0], bad
-
-
 def parity_problems(b, base, rows):
     """The karyogram's marks the map does not place with the same level and chromosome within 0.01 Mb."""
     bad = []
@@ -1098,8 +1023,7 @@ def missing_layer_problems(b, base, out):
 
 
 def fallback_problems(b, base, out):
-    """A browser with no DecompressionStream: the sentence and the findings with a place, each through the veil."""
-    son = OTHERS[1]
+    """A browser with no DecompressionStream: the sentence and the findings with a place."""
     b.call("Page.enable", session=b.session)  # a script for each new document needs the Page domain on
     sid = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": "delete window.DecompressionStream;"}, b.session)["identifier"]
     try:
@@ -1254,6 +1178,46 @@ def map_checks(b, base, out):
         print("map screenshots: " + ", ".join(map_screens(b, base, os.environ["MAP_SCREENS"])))
 
 
+# Draws the same numbers in every load, so the order of the closed controls is the same in two loads that are
+# compared; the order property (gate_order) runs without it.
+SEEDED = "crypto.getRandomValues = function (a) { for (var i = 0; i < a.length; i++) { a[i] = %s; } return a; };"
+
+
+def open_act(b, title, scope=''):
+    """Open the act whose own record has TITLE. A closed control opens an act the reader cannot choose, so each is
+    tried in turn and a wrong one is closed again. Returns the number of clicks."""
+    closed, clicks = json.dumps(scope + '[data-opening^=closed]'), 0
+    for k in range(10):
+        n = b.eval("document.querySelectorAll(%s).length" % closed)
+        assert n > k, 'no closed control opens ' + title
+        m = b.eval("document.querySelectorAll(%s).length" % json.dumps(scope + '[data-opening^=opened]')) + 1
+        b.eval("document.querySelectorAll(%s)[%d].click(); true" % (closed, k))
+        clicks += 1
+        if n == 1:
+            return clicks
+        got = json.dumps(scope + '[data-finding=opened-%d] .opened-act h2' % m)
+        assert b.wait("!!document.querySelector(%s)" % got), 'an opening never showed'
+        if b.eval("document.querySelector(%s).textContent" % got) == title:
+            return clicks
+        b.eval("document.querySelector(%s).click(); true" % json.dumps(scope + '[data-opening=opened-%d]' % m))
+        clicks += 1
+        assert b.wait("document.querySelectorAll(%s).length === %d" % (closed, n)), 'closing again never settled'
+    raise AssertionError('no closed control opens ' + title)
+
+
+# How far a run is, never what it found: the home and family pages show it for a gated child too (core.js PROGRESS).
+PROGRESS = ['name', 'kind', 'url', 'state', 'started_utc', 'last_heard_utc', 'finished_utc', 'planned', 'done', 'running', 'failed']
+
+
+def progress(run):
+    return {k: run[k] for k in PROGRESS if k in run}
+
+
+def resources(b, name):
+    return b.eval("performance.getEntriesByType('resource').filter(function (r) { return r.name.endsWith(%s); }).length"
+                  % json.dumps(name))
+
+
 def gate_checks(b, base, out, family_only=False):
     """A single ownership property over every payload, including fields added after this test."""
     import itertools
@@ -1267,8 +1231,10 @@ def gate_checks(b, base, out, family_only=False):
     result_path = os.path.join(out, 'runs', son, 'results.json')
     original = json.loads(saved[result_path])
     acts = [f for f in original['findings'] if f['level'] == 'act']
-    # Include placed, unplaced and multi-gene acts with stable identities. Other records are not controls.
-    acts = (acts + [dict(acts[0], id='gate-third', gene='HBA1', genes=['HBA1', 'HBA2'], viewer=None)])[:3]
+    # Placed, unplaced and multi-gene acts with stable identities and their own titles. Other records are not controls.
+    acts = (acts + [dict(acts[0], id='gate-third', gene='HBA1', genes=['HBA1', 'HBA2'], viewer=None,
+                         title='Gate fixture result in HBA1', detail='HBA1 and HBA2')])[:3]
+    assert len({f['title'] for f in acts}) == 3, 'the acts need their own titles'
 
     def write(p, d):
         if p.endswith('/map.json'):
@@ -1315,7 +1281,9 @@ def gate_checks(b, base, out, family_only=False):
             elif changed and p.endswith('/runs.json'):
                 for i, run in enumerate(d['runs']):
                     if run['name'] == son:
-                        d['runs'][i] = dict(walk(run), name=son, url=run['url'])
+                        d['runs'][i] = dict(walk(run), **dict(progress(run), name=son, url=run['url']))
+                        # How many results to act on is what the closed page may say.
+                        d['runs'][i]['levels']['act'] = run['levels']['act']
             elif changed and p.endswith('/family.json'):
                 # One generic walk, then restore the other open owners and immutable routing controls.
                 changed_family = walk(d)
@@ -1329,7 +1297,11 @@ def gate_checks(b, base, out, family_only=False):
                 for key in ('trio_files', 'trio_file_state'):
                     if key in d:
                         d[key] = changed_family[key]
-                d['state']['plan'] = changed_family['state']['plan']
+                # Plan rows about the parents alone are theirs; a row naming the child is the child's.
+                d['state']['plan'] = [dict(changed_family['state']['plan'][j], members=r['members'])
+                                      if son in str(r.get('members', '')).split(',') else r
+                                      for j, r in enumerate(d['state']['plan'])]
+                d['state']['plan'].append(dict(analysis='future_child_analysis', members=son, decision='runs', reason='new'))
                 d['state']['reports'] = changed_family['state']['reports']
                 for key in ('segments', 'trio_status'):
                     if son in d.get(key, {}):
@@ -1350,7 +1322,7 @@ def gate_checks(b, base, out, family_only=False):
                 sb['rows'].append(copy.deepcopy(sb['rows'][0]))
                 sb['rows'].reverse()
                 if son in d.get('runs', {}):
-                    d['runs'][son] = dict(changed_family['runs'][son], url=d['runs'][son]['url'])
+                    d['runs'][son] = dict(changed_family['runs'][son], **dict(progress(d['runs'][son]), url=d['runs'][son]['url']))
                 d['future_child_payload'] = changed_family['future_payload_field']
                 d = {k: d[k] for k in reversed(d)}
             write(p, d)
@@ -1388,6 +1360,8 @@ def gate_checks(b, base, out, family_only=False):
             f.write(raw.replace(b'<head>', b'<head><link rel="icon" href="data:,">', 1))
     b.call('Network.enable', {}, b.session)
     b.call('Network.setCacheDisabled', {'cacheDisabled': True}, b.session)
+    b.call('Page.enable', session=b.session)  # scripts for each new document need the Page domain
+    seed = b.call('Page.addScriptToEvaluateOnNewDocument', {'source': SEEDED % '0'}, b.session)['identifier']
     bad = []
     try:
         b.eval(helper)
@@ -1402,19 +1376,22 @@ def gate_checks(b, base, out, family_only=False):
                 snapshots, partials = [], []
                 for changed in (False, True):
                     payloads(3, changed); visit(route); snapshots.append(snap())
-                    if route != '/':
+                    if route != '/' and '#' not in route:
                         payloads(3, changed, keep_first=True); visit(route)
-                        completed = b.eval("performance.getEntriesByType('resource').filter(function(r){return r.name.endsWith('/"+son+"/results.json');}).length")
-                        b.eval("document.querySelector('[data-opening^=closed]').click(); true")
-                        assert b.wait("!!document.querySelector('[data-opening=opened-1]')"), 'partial opening never settled'
-                        if route == '/runs/'+FAM+'/':
-                            assert b.wait("performance.getEntriesByType('resource').filter(function(r){return r.name.endsWith('/"+son+"/results.json');}).length > "+str(completed)), 'family projection refresh never settled'
+                        scope = '[data-gate-child=%s] ' % son if route == '/runs/'+FAM+'/' else ''
+                        completed = resources(b, '/'+son+'/results.json')
+                        clicks = open_act(b, acts[0]['title'], scope)
+                        if scope:
+                            # Each click asks for the family again, and the gate for the child's results.
+                            assert b.wait("performance.getEntriesByType('resource').filter(function(r){return r.name.endsWith('/"+son+"/results.json');}).length >= "+str(completed + clicks)), 'family projection refresh never settled'
                         partials.append(snap())
-                if snapshots[0] != snapshots[1]:
-                    keys = [k for k in snapshots[0] if snapshots[0][k] != snapshots[1][k]]
-                    bad.append((width, media, route, keys, [v['requests'] for v in snapshots] if 'requests' in keys else []))
-                if partials and partials[0] != partials[1]:
-                    bad.append((width, media, route, 'partially opened', [k for k in partials[0] if partials[0][k] != partials[1][k]]))
+                for what, pair in (('closed', snapshots), ('partially opened', partials)):
+                    if pair and pair[0] != pair[1]:
+                        keys = [k for k in pair[0] if pair[0][k] != pair[1][k]]
+                        x, y = pair[0]['dom'], pair[1]['dom']
+                        at = next((i for i, (m, n) in enumerate(zip(x, y)) if m != n), min(len(x), len(y)))
+                        bad.append((width, media, route, what, keys, x[max(0, at-60):at+60], y[max(0, at-60):at+60],
+                                    [v['requests'] for v in pair] if 'requests' in keys else []))
         print('   gate matrix time: %.2f s' % (time.monotonic()-start))
         check('gate property: every mutable payload produces identical DOM, AX text, address, pixels, SVG, storage and requests', not bad, bad)
         if not family_only:
@@ -1426,15 +1403,16 @@ def gate_checks(b, base, out, family_only=False):
                 for order in itertools.permutations(range(count)):
                     visit('/runs/'+son+'/')
                     for stage, i in enumerate(order):
-                        before = snap()
-                        b.eval("document.querySelectorAll('[data-opening]')[%d].click()" % i)
                         if stage < count - 1:
+                            before = snap()
+                            open_act(b, acts[i]['title'])
                             assert b.wait("document.documentElement.dataset.pgpGated === 'true'"), 'released early'
-                            b.eval("document.querySelectorAll('[data-opening]')[%d].click()" % i)
+                            b.eval("document.querySelector('[data-opening=opened-%d]').click(); true" % (stage + 1))
                             if snap() != before:
                                 transitions.append((count, order, stage, 'close-again differs'))
-                            b.eval("document.querySelectorAll('[data-opening]')[%d].click()" % i)
+                            open_act(b, acts[i]['title'])
                         else:
+                            b.eval("document.querySelector('[data-opening^=closed]').click(); true")
                             assert b.wait("!document.documentElement.dataset.pgpGated && !!document.querySelector('#results .finding')"), 'last opening never released'
                             # Search something while open; closing must replace this whole document and its caches.
                             b.wait("document.querySelector('input[type=search]') && !document.querySelector('input[type=search]').disabled")
@@ -1465,8 +1443,10 @@ def gate_checks(b, base, out, family_only=False):
             assert b.wait("location.hash === '#f/closed-3'")
             b.eval("document.querySelector('[data-opening=closed-1]').click(); true")
             check('gate handles follow their act after another act opens', b.eval("location.hash") == '#f/closed-2')
-
+            gate_addresses(b, base, out, acts, visit, snap)
+            gate_slow_release(b, base, acts, visit, payloads)
     finally:
+        b.call('Page.removeScriptToEvaluateOnNewDocument', {'identifier': seed}, b.session)
         for p, raw in dict(saved, **html_saved).items():
             with open(p, 'wb') as f:
                 f.write(raw)
@@ -1475,9 +1455,124 @@ def gate_checks(b, base, out, family_only=False):
     if family_only:
         gate_family_independence(b, base, out)
     if not family_only:
+        gate_order(b, base, out)
         gate_controls(b, base, out)
         gate_transparency(b, base, out)
     print('gate browser time: %.2f s' % (time.monotonic()-start))
+
+
+def gate_addresses(b, base, out, acts, visit, snap):
+    """A gated child's finding address answers the same page for any id, and keeps no id in the address; once the
+    report opens, its addresses are the full report's (#f/<id>)."""
+    son = OTHERS[1]
+    src = os.path.join(out, 'runs', son, 'finding', acts[0]['id'], 'index.html')
+    page = open(src).read()
+    made, seen = [], []
+    try:
+        # The live server answers every well-formed id of a gated child with this page (bin/owngenome_live_results.py).
+        for fid in ('two-hits-cftr', 'zz-not-a-finding'):
+            d = os.path.join(out, 'runs', son, 'finding', fid)
+            os.makedirs(d)
+            made.append(d)
+            with open(os.path.join(d, 'index.html'), 'w') as f:
+                f.write(page.replace(acts[0]['id'], fid))
+        for fid in (acts[0]['id'], 'two-hits-cftr', 'zz-not-a-finding'):
+            visit('/runs/'+son+'/finding/'+fid+'/')
+            s = snap()
+            seen.append({k: s[k] for k in ('dom', 'text', 'title', 'address', 'accessibility')})
+    finally:
+        for d in made:
+            shutil.rmtree(d)
+    check('gate addresses: a gated finding page is the same for an act, a guessed act and nonsense, with no id in the address',
+          all(x == seen[0] for x in seen) and acts[0]['id'] not in seen[0]['address'], [x['address'] for x in seen])
+    visit('/runs/'+son+'/')
+    open_gate(b)
+    assert b.wait("!!document.querySelector('#results .finding')"), 'full report never loaded'
+    fid = acts[0]['id']
+    got = b.eval("[!!document.querySelector('a[href=\"#f/%s\"]'), !!document.querySelector('a[href^=\"#f/opened-\"],a[href^=\"#f/closed-\"]')]" % fid)
+    b.eval("location.hash = 'f/%s'; true" % fid)
+    kept = b.wait("location.hash === '#f/%s' && !!document.getElementById('f-%s')" % (fid, fid), timeout=5)
+    check('gate addresses: the opened report links and keeps #f/<id>, as the full report does', got == [True, False] and kept, (got, kept))
+
+
+def gate_slow_release(b, base, acts, visit, payloads):
+    """Opening the last act releases the report however slowly the reloaded page's results arrive."""
+    son = OTHERS[1]
+    payloads(2)
+    visit('/runs/'+son+'/')
+    open_act(b, acts[0]['title'])
+    Static.DELAY['/runs/'+son+'/results.json'] = 6
+    try:
+        b.eval("document.querySelector('[data-opening^=closed]').click(); true")
+        released = b.wait("!document.documentElement.dataset.pgpGated && !!document.querySelector('#results .finding')", timeout=25)
+    finally:
+        Static.DELAY.clear()
+    check('gate release: a reload whose results.json takes 6 s still releases the report', released, released)
+
+
+def gate_order(b, base, out):
+    """Only an unopened act changes, its rule and gene and so its place in the producer's order; the opened act is the
+    same. The pages must not differ, and which act a closed control opens comes from a draw of this page load."""
+    son = OTHERS[1]
+    rj = os.path.join(out, 'runs', son, 'results.json')
+    raw = open(rj).read()
+    data = json.loads(raw)
+    acts = [f for f in data['findings'] if f['level'] == 'act']
+    others = [f for f in data['findings'] if f['level'] != 'act']
+    opened, closed = acts[0], acts[1]
+    tp53 = dict(closed, id='cpsr-tp53-c-743g-a', gene='TP53', genes=['TP53'], title='Cancer predisposition (TP53)',
+                detail='TP53 c.743G>A', viewer='chr17:7674220')
+    # The producer lists findings by rule and gene: the KCNH2 act before a later act, a TP53 CPSR act before it.
+    fixtures = {'later': [opened, closed], 'earlier': [tp53, opened]}
+    pages = {}
+    try:
+        for name, order in fixtures.items():
+            with open(rj, 'w') as f:
+                json.dump(dict(data, findings=order + others, veil=dict(data.get('veil') or {}, acts=[x['id'] for x in order])), f)
+            for route, scope in (('/runs/'+son+'/', ''), ('/runs/'+FAM+'/', '[data-gate-child=%s] ' % son)):
+                b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
+                b.go(base + route)
+                assert b.wait("!!document.querySelector(%s)" % json.dumps(scope + '[data-opening^=closed]')), route + ' not gated'
+                completed = resources(b, '/'+son+'/results.json')
+                clicks = open_act(b, opened['title'], scope)
+                assert b.wait("!!document.querySelector(%s)" % json.dumps(scope + '.opened-act')), 'opening never settled'
+                if scope:
+                    assert b.wait("performance.getEntriesByType('resource').filter(function(r){return r.name.endsWith('/"+son+"/results.json');}).length >= "+str(completed + clicks)), 'family refresh never settled'
+                time.sleep(0.3)
+                pages[(name, route)] = b.eval("[document.documentElement.outerHTML, document.body.innerText, location.href, document.title]")
+        bad = [r for r in ('/runs/'+son+'/', '/runs/'+FAM+'/') if pages[('later', r)] != pages[('earlier', r)]]
+        check('gate order: an unopened act earlier or later in the report leaves the page with an opened act unchanged', not bad, bad)
+
+        def first_opens(draw):
+            seed = b.call('Page.addScriptToEvaluateOnNewDocument', {'source': SEEDED % draw}, b.session)['identifier']
+            try:
+                b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
+                b.go(base + '/runs/'+son+'/')
+                assert b.wait("!!document.querySelector('[data-opening=closed-1]')"), 'not gated'
+                b.eval("document.querySelector('[data-opening=closed-1]').click(); true")
+                assert b.wait("!!document.querySelector('[data-finding=opened-1] .opened-act h2')")
+                return b.eval("document.querySelector('[data-finding=opened-1] .opened-act h2').textContent")
+            finally:
+                b.call('Page.removeScriptToEvaluateOnNewDocument', {'identifier': seed}, b.session)
+
+        def draws():
+            return {first_opens('0'), first_opens('4294967295')}
+        got = draws()
+        check('gate order: which act the first closed control opens comes from the page load, not the report', len(got) == 2, got)
+        js = os.path.join(out, 'assets', 'core.js')
+        source = open(js).read()
+        anchor = ': shuffled(ids);'
+        assert source.count(anchor) == 1, 'mutation anchor moved: shuffled'
+        try:
+            with open(js, 'w') as f:
+                f.write(source.replace(anchor, ': ids.slice();'))
+            control('gate order: closed controls in the producer order', len(draws()) == 2)
+        finally:
+            with open(js, 'w') as f:
+                f.write(source)
+    finally:
+        with open(rj, 'w') as f:
+            f.write(raw)
 
 
 def gate_controls(b, base, out):
@@ -1489,16 +1584,20 @@ def gate_controls(b, base, out):
     data = json.loads(raw); data['future_payload_field'] = 'FUTURE_GATE_SENTINEL'
     with open(rj, 'w') as f:
         json.dump(data, f)
+    seen = {}
 
-    def visit():
+    def visit(route=None):
         b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
-        b.go(base+'/runs/'+son+'/')
-        assert b.wait("document.documentElement.dataset.pgpGated === 'true'"), 'fixture never gated'
+        b.go(base+(route or '/runs/'+son+'/'))
+        if not route:
+            assert b.wait("document.documentElement.dataset.pgpGated === 'true'"), 'fixture never gated'
 
     def partial():
         visit()
         b.eval("document.querySelector('[data-opening^=closed]').click(); true")
-        return bool(b.wait("document.documentElement.dataset.pgpGated === 'true' && document.querySelectorAll('[data-opening^=closed]').length === 1", timeout=2))
+        ok = bool(b.wait("document.documentElement.dataset.pgpGated === 'true' && document.querySelectorAll('[data-opening^=closed]').length === 1", timeout=2))
+        seen['released'] = bool(b.wait("!!document.documentElement.dataset.pgpResults && !document.documentElement.dataset.pgpGated", timeout=10)) if not ok else False
+        return ok
 
     def raw_view():
         visit()
@@ -1508,13 +1607,37 @@ def gate_controls(b, base, out):
             assert b.wait("document.documentElement.dataset.gateRawRead === 'done'", timeout=2), 'raw probe did not settle'
         return not b.eval("document.documentElement.outerHTML.includes('FUTURE_GATE_SENTINEL')")
 
+    def handoff():
+        # A view that asks a closed run for its files gets no answer at all, whatever it reads the body with.
+        visit()
+        b.eval("window.gateRaw = null; fetch('results.json').then(function (r) { return r.text(); }).then(function (t) { window.gateRaw = t.length; }); true")
+        got = b.wait("window.gateRaw", timeout=2)
+        seen['handed'] = bool(got)
+        return not got
+
+    def family_rows():
+        # The family view never receives a gated child's trio rows, even ones it would not draw.
+        visit('/runs/'+FAM+'/')
+        assert b.wait("!!document.querySelector('[data-gate-child=%s]')" % son), 'family never gated'
+        b.eval("window.gateRows = null; PGPUI.getJSON('family.json').then(function (d) { window.gateRows = "
+               "(d.de_novo || []).concat(d.compound_het || []).filter(function (r) { return r.child === %s; }).length; }); true"
+               % json.dumps(son))
+        assert b.wait("window.gateRows !== null"), 'family read never settled'
+        n = b.eval("window.gateRows")
+        seen['rows'] = n
+        return n == 0
+
     def cleanup():
         visit(); open_gate(b)
         assert b.wait("!!document.querySelector('#results .finding')"), 'full report never loaded'
         assert b.wait("document.querySelector('input[type=search]') && !document.querySelector('input[type=search]').disabled"), 'search never loaded'
         b.eval("var s=document.querySelector('input[type=search]'); s.value='KCNH2'; s.dispatchEvent(new Event('input')); true")
         fid = next(f['id'] for f in data['findings'] if f['level']=='act')
-        return b.eval('PGPUI.closeAct('+json.dumps(fid)+"); PGPUI.gateOwnsPage() && !document.querySelector('input[type=search],.search-results,.search-status,canvas,svg,img')")
+        # Read in the same turn as the close: the document replacement that follows would hide a kept query.
+        got = b.eval('PGPUI.closeAct('+json.dumps(fid)+"); var s = document.querySelector('input[type=search]');"
+                     "[PGPUI.gateOwnsPage() && !document.querySelector('input[type=search],.search-results,.search-status,canvas,svg,img'), s ? s.value : '']")
+        seen['query'] = got[1]
+        return got[0]
 
     def address():
         b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
@@ -1523,18 +1646,25 @@ def gate_controls(b, base, out):
         return b.eval("location.search === '' && location.hash === '#f/closed-1'")
 
     def stale_control():
-        b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
-        b.go(base+'/runs/'+FAM+'/')
-        assert b.wait("!!document.querySelector('[data-gate-child=DEMO-003] [data-opening^=closed]')")
-        b.eval("window.gateOldControl=document.querySelector('[data-gate-child=DEMO-003] [data-opening^=closed]'); true")
+        visit('/runs/'+FAM+'/')
+        assert b.wait("!!document.querySelector('[data-gate-child=%s] [data-opening^=closed]')" % son)
+        b.eval("window.gateOldControl=document.querySelector('[data-gate-child=%s] [data-opening^=closed]'); true" % son)
         changed = copy.deepcopy(data)
-        next(f for f in changed['findings'] if f['level']=='act')['text'] += ' REPLACEMENT_ACT_RECORD'
+        for f in changed['findings']:
+            if f['level'] == 'act':
+                f['text'] += ' REPLACEMENT_ACT_RECORD'
         try:
             with open(rj, 'w') as f:
                 json.dump(changed, f)
             b.eval("window.gateRefreshDone=false; PGPUI.getJSON('family.json').then(function(){window.gateRefreshDone=true;}); true")
             assert b.wait('window.gateRefreshDone'), 'family refresh never settled'
-            return b.eval("gateOldControl.click(); !document.querySelector('[data-gate-child=DEMO-003] .opened-act')")
+            b.eval("gateOldControl.click(); true")
+            # Read the outcome while the replacement is still what the server answers: the redraw the click starts
+            # reads results.json again.
+            opened = b.wait("!!document.querySelector('[data-gate-child=%s] .opened-act')" % son, timeout=1.5)
+            seen['replacement'] = bool(opened) and b.eval(
+                "document.querySelector('[data-gate-child=%s] .opened-act').textContent.includes('REPLACEMENT_ACT_RECORD')" % son)
+            return not opened
         finally:
             with open(rj, 'w') as f:
                 json.dump(data, f)
@@ -1551,36 +1681,48 @@ def gate_controls(b, base, out):
                 json.dump(changed, f)
             b.eval("PGPUI.getJSON('results.json'); true")
             assert b.wait('window.gateTransferStarted'), 'refresh never reached document replacement'
-            return b.eval("PGPUI.gateOwnsPage() && !document.querySelector('#results,canvas')")
+            ok = b.eval("PGPUI.gateOwnsPage() && !document.querySelector('#results,canvas')")
+            seen['report'] = b.eval("!!document.querySelector('#results .finding')")
+            return ok
         finally:
             with open(rj, 'w') as f:
                 json.dump(data, f)
 
+    gate_open = "if (ownsPage || closedRun(requestURL)) { return new Promise(function () {}); }"
+    gate_late = "return got.then(function (response) {\n        if (ownsPage) { return new Promise(function () {}); }"
     mutations = [
-        ('stale control opens a replacement act', 'if (!f || JSON.stringify(f) !== JSON.stringify(rec.acts[i]))', 'if (!f)', stale_control),
-        ('refresh leaves the old report visible', 'if (shut(current)) { ownsPage = true; eventSources.forEach(function (es) { es.close(); }); cleanPage(); transfer();', 'if (shut(current)) { transfer();', refresh_cleanup),
-        ('keep a map query in the closed address', 'location.pathname + to', 'location.pathname + location.search + to', address),
-        ('release one act early', "rec.acts.some(function (f) { return !rec.opened[f.id]; })", "rec.acts.filter(function (f) { return !rec.opened[f.id]; }).length > 1", partial),
-        ('one view reads the raw payload', 'add(document.body, wrap);', "add(document.body, wrap); jsonAt(current.url + 'results.json').then(function (r) { add(wrap, el('p', {}, JSON.stringify(r))); document.documentElement.setAttribute('data-gate-raw-read', 'done'); });", raw_view),
-        ('skip cleanup after closing', 'delete current.opened[id]; ownsPage = true; eventSources.forEach(function (es) { es.close(); }); cleanPage(); transfer(); return true;', 'delete current.opened[id]; return true;', cleanup)]
+        ('stale control opens a replacement act', ['if (!same(byId(active, id), byId(rec, id))) { changed(); return; }'], [''], stale_control,
+         lambda: seen.get('replacement')),
+        ('refresh leaves the old report visible', ['if (shut(current)) { ownsPage = true; eventSources.forEach(function (es) { es.close(); }); cleanPage(); transfer();'],
+         ['if (shut(current)) { transfer();'], refresh_cleanup, lambda: seen.get('report')),
+        ('keep a map query in the closed address', ['location.pathname + to'], ['location.pathname + location.search + to'], address, lambda: True),
+        ('release one act early', ["rec.acts.some(function (f) { return !rec.opened[f.id]; })"],
+         ["rec.acts.filter(function (f) { return !rec.opened[f.id]; }).length > 1"], partial, lambda: seen.get('released')),
+        ('one view reads the raw payload', ['add(document.body, wrap);'],
+         ["add(document.body, wrap); jsonAt(current.url + 'results.json').then(function (r) { add(wrap, el('p', {}, JSON.stringify(r))); document.documentElement.setAttribute('data-gate-raw-read', 'done'); });"],
+         raw_view, lambda: True),
+        ('a view receives a closed run file', [gate_open, gate_late], ['', 'return got.then(function (response) {'], handoff,
+         lambda: seen.get('handed')),
+        ('the family view receives a gated child\'s trio rows', ['copy((raw[key] || []).filter(function (r) { return !gated(r.child); }))'],
+         ['copy(raw[key] || [])'], family_rows, lambda: seen.get('rows')),
+        ('skip cleanup after closing', ['ownsPage = true; eventSources.forEach(function (es) { es.close(); }); cleanPage(); transfer(); return true;'],
+         ['return true;'], cleanup, lambda: seen.get('query') == 'KCNH2')]
     try:
-        for desc, before, after, probe in mutations:
-            assert source.count(before)==1, 'mutation anchor moved: '+desc
+        for desc, befores, afters, probe, broke in mutations:
+            for before in befores:
+                assert source.count(before) == 1, 'mutation anchor moved: '+desc
+            seen.clear()
             check('gate guard: '+desc, probe())
+            planted = source
+            for before, after in zip(befores, afters):
+                planted = planted.replace(before, after)
             with open(js, 'w') as f:
-                f.write(source.replace(before, after))
+                f.write(planted)
+            seen.clear()
             still_passes = probe()
             control('gate: '+desc, still_passes)
-            if desc == 'stale control opens a replacement act':
-                assert b.eval("document.querySelector('[data-gate-child=DEMO-003] .opened-act').textContent.includes('REPLACEMENT_ACT_RECORD')"), 'control failed without opening the replacement'
-            elif desc == 'refresh leaves the old report visible':
-                assert b.eval("!!document.querySelector('#results .finding')"), 'control failed without retaining the report'
-            elif desc == 'release one act early':
-                assert b.eval("!!document.documentElement.dataset.pgpResults && !document.documentElement.dataset.pgpGated"), 'control failed without releasing the report'
-            elif desc == 'skip cleanup after closing':
-                assert b.eval("document.querySelector('input[type=search]').value === 'KCNH2'"), 'control failed without retaining the query'
+            assert still_passes or broke(), 'control failed without the broken outcome: '+desc
             print('   observed guard failure: '+desc)
-
             with open(js, 'w') as f:
                 f.write(source)
     finally:
@@ -1590,64 +1732,136 @@ def gate_controls(b, base, out):
             f.write(raw)
 
 
+# A summary that gives an adult a result to act on (BRCA1) and two symptom rankings, one of the same gene: the
+# home page's top entries and the person page come from a fresh producer run, not from the demo's files.
+SYNTH = {"sections": {
+    "cpsr": {"state": "ok", "data": {"plp": [{"gene": "BRCA1", "variant": "c.68_69del", "final": "Pathogenic",
+                                               "clinvar": "Pathogenic"}]}},
+    "exomiser": {"state": "ok", "data": {"genes": [{"gene": "BRCA1", "rank": 1, "exomiser_score": 0.9, "moi": "AD"},
+                                                     {"gene": "TTN", "rank": 2, "exomiser_score": 0.8, "moi": "AR"}]}},
+    "clinvar": {"state": "ok", "data": {"hits": []}},
+    "coverage": {"state": "ok", "data": {"mean_depth": 31.2}}}}
+
+
 def gate_transparency(b, base, out):
-    """The gate must leave adult and no-act documents byte-equal to the unmediated full renderer."""
+    """The gate leaves adult and no-act pages equal to the renderer without it: DOM, attributes, address, canvas and
+    the requests, in order and counted."""
+    son = OTHERS[1]
     js = os.path.join(out, 'assets', 'core.js')
-    rj = os.path.join(out, 'runs', OTHERS[1], 'results.json')
-    source = open(js).read(); original = open(rj).read()
+    files = [os.path.join(out, 'runs', S, 'results.json'), os.path.join(out, 'runs', son, 'results.json'),
+             os.path.join(out, 'runs.json')]
+    source = open(js).read()
+    saved = {p: open(p).read() for p in files}
     # The same current renderer with the loader absent is the transparent reference.
-    bare = source[:source.index('  // The report gate owns raw payloads.')] + '''\n  PGPUI.ready = Promise.resolve();
+    marker = '  // --- the report gate'
+    assert source.count(marker) == 1, 'gate marker moved'
+    bare = source[:source.index(marker)] + '''
+  PGPUI.ready = Promise.resolve();
   PGPUI.gateOwnsPage = function () { return false; };
   PGPUI.openedActs = function () { return {}; };
   PGPUI.closeAct = function () { return false; };
 }());
 '''
-    helper = open(os.path.join(REPO, 'tests', 'demo', 'gate-property.js')).read()
 
-    def capture(run, timeout=20):
+    def capture(route, apoe=False, timeout=20):
         b.go('about:blank'); assert b.wait("location.href === 'about:blank'")
-        b.go(base+'/runs/'+run+'/')
-        assert b.wait("document.documentElement.dataset.pgpResults && !!document.querySelector('[data-pgp-map=drawn]')", timeout=timeout), 'open report not drawn'
-        assert b.wait("!!document.querySelector('#rail a[href*=DEMO-FAMILY]') && !!document.documentElement.dataset.pgpCharts"), 'family or charts never settled'
-        time.sleep(0.2)
-        b.eval(helper)
-        return b.eval("""(function () {
+        b.go(base + route)
+        if route == '/':
+            assert b.wait("document.documentElement.dataset.pgpStatus === 'ready' && !!document.documentElement.dataset.pgpPeople", timeout=timeout), 'home never drawn'
+        elif '/finding/' in route:
+            assert b.wait("document.documentElement.dataset.pgpStatus === 'ready' && !!document.querySelector('h1')", timeout=timeout), 'finding never drawn'
+        else:
+            assert b.wait("document.documentElement.dataset.pgpResults && !!document.querySelector('[data-pgp-map=drawn]')", timeout=timeout), 'open report not drawn'
+            assert b.wait("!!document.querySelector('#rail a[href*=DEMO-FAMILY]') && !!document.documentElement.dataset.pgpCharts"), 'family or charts never settled'
+        if apoe:
+            # A redraw while the address names a place: the contents rail must come back as it did.
+            b.eval("document.querySelector('details[data-gate=apoe] summary').click(); true")
+        time.sleep(0.5)
+        got = b.eval("""(function () {
           var clone=document.documentElement.cloneNode(true);
           clone.querySelectorAll('[data-pgp-map-paint-ms],[data-pgp-map-parse-ms]').forEach(function (n) {
             n.removeAttribute('data-pgp-map-paint-ms'); n.removeAttribute('data-pgp-map-parse-ms');
           });
-          return [clone.outerHTML, location.hash, Array.from(document.querySelectorAll('canvas')).map(function(c){return c.toDataURL();})];
+          return [clone.outerHTML, location.hash, Array.from(document.querySelectorAll('canvas')).map(function(c){return c.toDataURL();}),
+            performance.getEntriesByType('resource').map(function (r) { return new URL(r.name).pathname; })];
         }())""")
+        # Scripts and the views' own files load in parallel, in any order, with or without the gate: count every
+        # request, and keep the order of the files the gate reads first.
+        got[3] = [sorted(got[3]), [p for p in got[3] if p.endswith(('/state.json', '/frames.json', '/family.json', '/results.json'))]]
+        return got
+
+    def write(p, d):
+        with open(p, 'w') as f:
+            json.dump(d, f)
+
+    def no_act():
+        d = json.loads(saved[files[1]]); d['findings'] = [f for f in d['findings'] if f['level'] != 'act']
+        d['levels']['act'] = 0
+        write(files[1], d)
+        idx = json.loads(saved[files[2]])
+        for r in idx['runs']:
+            if r['name'] == son:
+                r['levels']['act'] = 0
+                r['top'] = [t for t in r['top'] if t['level'] != 'act']
+                r['lead'] = r['lead_closed'] = 'No finding in what these steps assessed needs a doctor.'
+        write(files[2], idx)
+
+    def synthetic():
+        no_act()
+        write(files[0], live_results.build(S, SYNTH))
+        o = live_results.overview(SYNTH)
+        idx = json.load(open(files[2]))
+        for r in idx['runs']:
+            if r['name'] == S:
+                r.update(attention=o['attention'], levels=o['levels'], top=o['top'], lead=o['lead'],
+                         lead_closed=o['lead_closed'], screened=o['screened'])
+        write(files[2], idx)
+
+    first = next(f['id'] for f in json.loads(saved[files[0]])['findings'] if f['level'] != 'act')
+    cases = [('adult', None, '/runs/'+S+'/', False), ('adult, a redraw at a section address', None, '/runs/'+S+'/#s3', True),
+             ('adult finding page', None, '/runs/'+S+'/finding/'+first+'/', False),
+             ('child with no act', no_act, '/runs/'+son+'/', False), ('home with no gated child', no_act, '/', False),
+             ('fresh adult with an act and a same-gene ranking', synthetic, '/runs/'+S+'/', False)]
     try:
-        for label, run in (('adult', S), ('child with no act', OTHERS[1])):
-            if run == OTHERS[1]:
-                data=json.loads(original); data['findings']=[f for f in data['findings'] if f['level'] != 'act']; data['veil']={'acts':[]}
-                with open(rj, 'w') as f:
-                    json.dump(data, f)
-            pair=[]
+        for label, prep, route, apoe in cases:
+            for p in files:
+                with open(p, 'w') as f:
+                    f.write(saved[p])
+            if prep:
+                prep()
+            pair = []
             for text in (bare, source):
                 with open(js, 'w') as f:
                     f.write(text)
-                pair.append(capture(run))
-            detail = [i for i in range(3) if pair[0][i] != pair[1][i]]
-            if 0 in detail:
-                at = next((i for i,(a,z) in enumerate(zip(pair[0][0],pair[1][0])) if a!=z),0)
-                detail += [pair[0][0][max(0,at-80):at+120], pair[1][0][max(0,at-80):at+120]]
-            check('gate transparency: '+label+' has identical DOM, attributes, address and canvas', pair[0] == pair[1], detail)
-        assert source.count('ownsPage = shut(current);') == 1
-        with open(js, 'w') as f:
-            f.write(source.replace('ownsPage = shut(current);', 'ownsPage = true;'))
-        try:
-            still_equal = capture(OTHERS[1], timeout=2) == pair[1]
-        except AssertionError:
-            still_equal = False
-        control('gate closing an adult or no-act report', still_equal)
-
+                pair.append(capture(route, apoe))
+            detail = [('dom', 'hash', 'canvas', 'requests')[i] for i in range(4) if pair[0][i] != pair[1][i]]
+            if pair[0][3] != pair[1][3]:
+                detail += [pair[0][3], pair[1][3]]
+            if pair[0][0] != pair[1][0]:
+                at = next((i for i, (a, z) in enumerate(zip(pair[0][0], pair[1][0])) if a != z), 0)
+                detail += [pair[0][0][max(0, at-80):at+120], pair[1][0][max(0, at-80):at+120]]
+            check('gate transparency: '+label+' has identical DOM, attributes, address, canvas and requests', pair[0] == pair[1], detail)
+        for p in files:
+            with open(p, 'w') as f:
+                f.write(saved[p])
+        no_act()
+        reference = capture('/runs/'+son+'/')
+        for desc, before, after in (('closing an adult or no-act report', 'ownsPage = shut(current);', 'ownsPage = true;'),
+                                    ('reading a file twice', 'var kept = shared[requestURL];', 'var kept = null;')):
+            assert source.count(before) == 1, 'mutation anchor moved: '+desc
+            with open(js, 'w') as f:
+                f.write(source.replace(before, after))
+            try:
+                still_equal = capture('/runs/'+son+'/', timeout=4) == reference
+            except AssertionError:
+                still_equal = False
+            control('gate transparency: '+desc, still_equal)
     finally:
         with open(js, 'w') as f:
             f.write(source)
-        with open(rj, 'w') as f:
-            f.write(original)
+        for p in files:
+            with open(p, 'w') as f:
+                f.write(saved[p])
 
 
 def gate_family_independence(b, base, out):

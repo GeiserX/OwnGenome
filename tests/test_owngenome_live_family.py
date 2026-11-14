@@ -27,8 +27,10 @@ Checks:
      drawing, a missing trio file and one linking out of the folder are worded
      apart (the link's target never shown), and the side by side lists every
      blood group system with a stale value marked in its cell;
-  7. the demo family's veil checks and every mutation control from test_live_demo.py,
-     run here in Guard shard 0 so the person-page suite in shard 2 stays below its time limit.
+  7. the demo family's report-gate property and two children opening on their own (test_live_demo.py's
+     gate_checks on the family page), here so that browser time is not added to test_live_demo.py's;
+  8. the real server answers every finding id of a child with a result to act on with the same page, and keeps
+     the 404 for an adult's id that is not a finding.
 Checks 2 and 4 are run again on a copy of the fixture with two parents swapped
 and must fail there: a check that cannot fail is no check.
 
@@ -349,11 +351,55 @@ def real_server(root):
         check("the real server does not serve notes.txt", code == 404, code)
         code, _, body = get("/runs/family_a/")
         check("the family page loads family.js", code == 200 and b"/assets/plugins/family.js" in body, code)
+        finding_route_checks(live, get, root)
         browser_checks(port, os.path.dirname(root))
     finally:
         web.shutdown()
         ingest.server_close()
         web.server_close()
+
+
+# A summary with one result to act on (BRCA1): what child_a and loner (an adult in no family) both get below.
+ACT_SUMMARY = {"sections": {"cpsr": {"state": "ok", "data": {"plp": [
+    {"gene": "BRCA1", "variant": "c.68_69del", "final": "Pathogenic", "clinvar": "Pathogenic"}]}},
+    "clinvar": {"state": "ok", "data": {"hits": []}}}}
+
+
+def finding_route_checks(live, get, root):
+    """A child with a result to act on: every well-formed finding id answers the same page, so a guessed address
+    cannot tell whether the child has that result. An adult keeps the plain 404 for an id that is not a finding."""
+    import live_results
+    status = os.path.join(root, "loner", "logs", "run_status.tsv")
+    with open(status, "w") as f:
+        f.write("meta\tstarted_epoch\t1767347940\nstep\t06\tplanned\n")
+    real = live.summary
+    live.summary = lambda name, d, st: ACT_SUMMARY if name in ("child_a", "loner") else real(name, d, st)
+    act = next(f["id"] for f in live_results.build("child_a", ACT_SUMMARY)["findings"] if f["level"] == "act")
+
+    def answers(run):
+        # The page names the id it was asked for (data-finding), as the address does: the rest is the same.
+        return [(lambda r: (r[0], r[2].replace(x.encode(), b"ID")))(get("/runs/%s/finding/%s/" % (run, x)))
+                for x in (act, "two-hits-cftr", "zz-not-a-finding")]
+    try:
+        child, adult = answers("child_a"), answers("loner")
+        check("a child's finding route answers the same page for its act, a guessed act and nonsense",
+              [c[0] for c in child] == [200] * 3 and len({c[1] for c in child}) == 1, [c[0] for c in child])
+        check("an adult's finding route: the page for its finding, 404 for any other id",
+              [c[0] for c in adult] == [200, 404, 404], [c[0] for c in adult])
+        # The server loads its plugins itself: patch every loaded copy of the module.
+        mods = [m for m in list(sys.modules.values()) if getattr(m, "child_run", None) is not None and hasattr(m, "register")]
+        keep = [m.child_run for m in mods]
+        for m in mods:
+            m.child_run = lambda *a: False
+        try:
+            control("a server that tells a child's guessed finding id apart",
+                    bool(mods) and [c[0] for c in answers("child_a")] == [200] * 3)
+        finally:
+            for m, k in zip(mods, keep):
+                m.child_run = k
+    finally:
+        live.summary = real
+        os.remove(status)
 
 
 def browser_checks(port, work):
@@ -376,9 +422,12 @@ def browser_checks(port, work):
         loaded = b.wait("var i = document.querySelector('img.pedigree'); i && i.complete && i.naturalWidth > 0 && "
                         "i.naturalWidth", 10)
         check("browser: the pedigree image loads", loaded, loaded)
-        # Unreadable child reports cannot be opened a place at a time under the data gate.
-        check("browser: unreadable child reports keep the couple screen and chromosome image closed",
-              b.eval("!!document.querySelector('.report-gate') && !document.querySelector('#ch-couples table') && !document.querySelector('img.segments')"))
+        # child_a has a run whose results cannot be read: closed whole, chromosome image included. Its parents have
+        # no run here, so nothing of theirs is closed: their couple screen shows.
+        got = b.wait("var g = document.querySelector('[data-gate-child=child_a]'); "
+                     "[!!g, !!document.querySelector('img.segments'), !!document.querySelector('#ch-couples table')].join()", 10)
+        check("browser: child_a's unreadable report stays closed whole; its parents' couple screen shows",
+              got == "true,false,true", got)
         blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
         check("browser: the policy blocked nothing on the family page", not blocked, blocked)
         depth_checks(b, base, os.path.join(work, "genome"))
