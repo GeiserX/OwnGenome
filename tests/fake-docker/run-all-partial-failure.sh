@@ -190,6 +190,21 @@ mv "${S}/${src}" "${CASE_WORK}/moved-away"
 run_expect 0 recollect-folder "${SCRIPTS}/generate-report.sh" sample1
 mv "${CASE_WORK}/moved-away" "${S}/${src}"
 ! rendered_from recollect-folder || miss "generate-report.sh rendered from summary.json, but ${src}/, a section's folder, was removed after it was written"
+# The run status the summary read, removed.
+grep -q '^  "status_file": true' "${S}/summary.json" || fail "summary.json read no run status"
+fresh
+mv "${S}/logs/run_status.tsv" "${CASE_WORK}/run_status.away"
+run_expect 0 recollect-status "${SCRIPTS}/generate-report.sh" sample1
+mv "${CASE_WORK}/run_status.away" "${S}/logs/run_status.tsv"
+! rendered_from recollect-status || miss "generate-report.sh rendered from summary.json, but logs/run_status.tsv was removed after it was written"
+# A file removed from assets/ (a table the collect reads, as far as the check
+# can tell): assets/ is newer than summary.json.
+extra="${REPO_ROOT}/assets/.fake-docker-extra"
+: > "$extra"
+fresh
+rm -f "$extra"
+run_expect 0 recollect-asset "${SCRIPTS}/generate-report.sh" sample1
+! rendered_from recollect-asset || miss "generate-report.sh rendered from summary.json, but a file was removed from assets/ after it was written"
 
 # --- 3. the same failure on a first run: nothing cached ------------------------------------
 awk -F'\t' -v OFS='\t' '{$2 += $3; $3 = 0; print}' "${CASE_WORK}/resume.tsv" > "${CASE_WORK}/first.tsv"

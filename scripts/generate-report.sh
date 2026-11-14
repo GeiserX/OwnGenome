@@ -42,12 +42,16 @@ fi
 # delta, the logs other than run_status.tsv, and nextflow/, the Nextflow launch
 # folder with work/), and bin/ (og and the tables it reads there) and assets/. Anything newer, or a
 # summary that is not there, means collect again. A subfolder newer than the
-# summary (other than logs/) had a file added or removed since, and a section's
-# source that is gone (its file or its whole folder removed) means the same:
-# collect again.
+# summary (other than logs/) had a file added or removed since, and so did
+# bin/, bin/.og/ or assets/ when it is newer. A section's source that is gone
+# (its file or its whole folder removed), or the run status the summary read,
+# means the same: collect again.
 summary_current() {
   local s="${SAMPLE_DIR}/summary.json" newer src
   [ -s "$s" ] && [ ! -L "$s" ] || return 1
+  if grep -q '^  "status_file": true' "$s"; then
+    [ -e "${SAMPLE_DIR}/logs/run_status.tsv" ] || return 1
+  fi
   # Each section's "source", at the sections' depth of og's one-space indent.
   while IFS= read -r src; do
     case $src in *\\*) return 1 ;; esac
@@ -60,6 +64,9 @@ summary_current() {
     ! -name "${SAMPLE}_report.html" ! -name "${SAMPLE}_report.txt" ! -name "${SAMPLE}_search_index.json" \
     ! -name "${SAMPLE}_charts.json" ! -name "${SAMPLE}_delta.txt" ! -name "${SAMPLE}_delta.html" \
     ! -name "${SAMPLE}_delta.json" -print -quit) || return 1
+  [ -z "$newer" ] || return 1
+  newer=$(find "${PGP_ROOT}/bin" "${PGP_ROOT}/bin/.og" "${PGP_ROOT}/assets" -maxdepth 0 -newer "$s" -print -quit 2> /dev/null) \
+    || return 1
   [ -z "$newer" ] || return 1
   newer=$(find "${PGP_ROOT}/bin" "${PGP_ROOT}/bin/.og" "${PGP_ROOT}/assets" -maxdepth 1 ! -type d -newer "$s" -print -quit 2> /dev/null) \
     || return 1
