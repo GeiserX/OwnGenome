@@ -89,15 +89,28 @@ same_reads() {
   fi
 }
 
+# How a CRAM is decoded. This step's encoder stores MD and NM explicitly, so
+# its CRAMs decode with generation off and a tag the BAM lacked stays missing.
+# A CRAM written without them (an older step 34, or one made elsewhere) holds
+# only the MD/NM that differ from the reference: it decodes with samtools'
+# default, which regenerates them. Both sides of a check decode the same way.
+CRAM_DECODE=(--input-fmt-option decode_md=0)
+
+# md_stored CRAM_IN_CONTAINER: the last program that wrote the CRAM stored MD
+# and NM (its @PG command line has store_md=1 and store_nm=1).
+md_stored() {
+  run_in "$SAMTOOLS_IMAGE" samtools view -H --no-PG "$1" \
+    | awk '/^@PG/ { last = $0 } END { exit !(last ~ /store_md=1/ && last ~ /store_nm=1/) }'
+}
+
 # The checksum reads every block, unlike flagstat. Use all record fields and
 # tags, including secondary/supplementary records, with order-independent
 # aggregation. Normalize the format-level repairs CRAM makes to unmapped
-# records and CIGARs. Keep explicit MD/NM in the encoder and disable their
-# generation on decode, so missing tags stay missing. Only the filename
-# header is removed; sorting makes read-group row order immaterial too.
+# records and CIGARs. Only the filename header is removed; sorting makes
+# read-group row order immaterial too.
 checksum_rows() {
   local -a ref=()
-  case "$1" in *.cram) ref=(--input-fmt-option "reference=${REF_FASTA_C}" --input-fmt-option decode_md=0) ;; esac
+  case "$1" in *.cram) ref=(--input-fmt-option "reference=${REF_FASTA_C}" ${CRAM_DECODE[@]+"${CRAM_DECODE[@]}"}) ;; esac
   run_in --cpus "$THREADS" --memory 2g "$SAMTOOLS_IMAGE" \
     samtools checksum -@ "$THREADS" -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' \
       ${ref[@]+"${ref[@]}"} "$1" | tail -n +2 | LC_ALL=C sort
@@ -126,8 +139,12 @@ if [ "$MODE" = --restore ]; then
     exit 1
   }
   rm -f "${ALN}/${SAMPLE}_sorted.part.bam" "${ALN}/${SAMPLE}_sorted.part.bam.bai"
+  if ! md_stored "${C}.cram"; then
+    CRAM_DECODE=()
+    echo "  The CRAM has no stored MD/NM tags: the BAM gets them regenerated from the reference."
+  fi
   run_in --cpus "$THREADS" --memory 4g "$SAMTOOLS_IMAGE" \
-    samtools view -@ "$THREADS" -b --reference "$REF_FASTA_C" --input-fmt-option decode_md=0 \
+    samtools view -@ "$THREADS" -b --reference "$REF_FASTA_C" ${CRAM_DECODE[@]+"${CRAM_DECODE[@]}"} \
       -o "${C}.part.bam" "${C}.cram" || fail_restore "samtools could not write the BAM from the CRAM."
   run_in --cpus "$THREADS" --memory 2g "$SAMTOOLS_IMAGE" \
     samtools index -@ "$THREADS" "${C}.part.bam" || fail_restore "samtools could not index the BAM."

@@ -117,7 +117,15 @@ process CRAM_TO_BAM {
 
     script:
     """
-    samtools view -@ ${task.cpus} -b --reference ${reference} --input-fmt-option decode_md=0 -o ${meta.id}_from_cram.bam ${cram}
+    # A CRAM whose last writer stored MD and NM (CRAM_ARCHIVE, step 34) decodes
+    # with generation off, so a tag the BAM lacked stays missing. Any other
+    # CRAM (an older step 34, sarek) holds only the MD/NM that differ from the
+    # reference and decodes with the samtools default, which regenerates them.
+    decode=""
+    if samtools view -H --no-PG ${cram} | awk '/^@PG/ { last = \$0 } END { exit !(last ~ /store_md=1/ && last ~ /store_nm=1/) }'; then
+        decode="--input-fmt-option decode_md=0"
+    fi
+    samtools view -@ ${task.cpus} -b --reference ${reference} \$decode -o ${meta.id}_from_cram.bam ${cram}
     samtools index -@ ${task.cpus} ${meta.id}_from_cram.bam
     samtools quickcheck -v ${meta.id}_from_cram.bam
     samtools flagstat -@ ${task.cpus} --input-fmt-option reference=${reference} ${cram} > cram.flagstat
@@ -128,13 +136,13 @@ process CRAM_TO_BAM {
     fi
 
     # Match every record field and tag, independent of read/tag/group order.
-    # MD/NM are stored explicitly and never regenerated while checking.
+    # The CRAM decodes the way the BAM was written from it.
     # pipefail must propagate decoder failures through tail and sort.
     set -o pipefail
     checksum_rows() {
         samtools checksum -@ ${task.cpus} -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' "\$@" | tail -n +2 | LC_ALL=C sort
     }
-    checksum_rows --input-fmt-option reference=${reference} --input-fmt-option decode_md=0 ${cram} > cram.checksum
+    checksum_rows --input-fmt-option reference=${reference} \$decode ${cram} > cram.checksum
     checksum_rows ${meta.id}_from_cram.bam > bam.checksum
     if [ ! -s cram.checksum ] || [ ! -s bam.checksum ] || ! diff cram.checksum bam.checksum >&2; then
         echo "ERROR: the restored BAM content differs from ${cram}" >&2

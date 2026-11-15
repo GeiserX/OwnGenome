@@ -112,6 +112,20 @@ check "faithful restore writes BAM and index" test -s "${A}/${C}_sorted.bam" -a 
 sam checksum -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' "${C}/aligned/original.bam" | tail -n +2 | LC_ALL=C sort > "${CASE_TMP}/original.checksum"
 sam checksum -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' "${C}/aligned/${C}_sorted.bam" | tail -n +2 | LC_ALL=C sort > "${CASE_TMP}/restored.checksum"
 check "round trip preserves read content and explicit tags" cmp -s "${CASE_TMP}/original.checksum" "${CASE_TMP}/restored.checksum"
+# A CRAM written without store_md/store_nm (an older step 34, or one made
+# elsewhere) drops MD and NM wherever they match the reference. Restoring it
+# regenerates them, so read0's NM:i:0 is back in the BAM.
+plain_cram() {
+  sam view -C -T reference/GRCh38_no_alt_analysis_set.fasta -o "$1" "${C}/aligned/original.bam"
+  sam index "$1"
+}
+nm_of_read0() { sam view "$1" | awk -F '\t' '$1 == "read0" { for (i = 12; i <= NF; i++) if ($i ~ /^NM:i:/) print $i }'; }
+plain_cram "${C}/aligned/${C}_sorted.cram"
+check "the plain CRAM stores no NM for read0" test -z "$(sam view -T reference/GRCh38_no_alt_analysis_set.fasta --input-fmt-option decode_md=0 "${C}/aligned/${C}_sorted.cram" | awk -F '\t' '$1 == "read0" && /NM:i:/')"
+rm -f "${A}/${C}_sorted.bam" "${A}/${C}_sorted.bam.bai"
+run_step 34-cram-archive.sh "$C" --restore
+check_step_exit 34-cram-archive.sh
+check_eq "restore of a plain CRAM regenerates NM" "$(nm_of_read0 "${C}/aligned/${C}_sorted.bam")" "NM:i:0"
 # Run the module's actual script blocks on the same synthetic records. Only
 # Nextflow interpolation and version metadata are omitted by this harness.
 # Literal Nextflow placeholders are substituted by sed, not by this shell.
@@ -135,6 +149,10 @@ module_script() {
 # The function expands its arguments in the container shell.
 # shellcheck disable=SC2016
 EMPTY_CHECKSUM='samtools() { if [ "$1" = checksum ]; then return 0; else command samtools "$@"; fi; }'
+# A checksum that differs on the CRAM side only: the last report row's
+# combined value is replaced. The module must fail on the diff alone.
+# shellcheck disable=SC2016
+CHANGED_CHECKSUM='samtools() { if [ "$1" = checksum ]; then case "${@: -1}" in *.cram) command samtools "$@" | sed "\$s/[0-9a-f]\{8\}\$/00000000/" ;; *) command samtools "$@" ;; esac; else command samtools "$@"; fi; }'
 for process in CRAM_ARCHIVE CRAM_TO_BAM; do
   body=$(module_script "$process")
   rc=0
@@ -144,5 +162,16 @@ for process in CRAM_ARCHIVE CRAM_TO_BAM; do
   in_genome "$SAMTOOLS_IMAGE" bash -euo pipefail -c "${EMPTY_CHECKSUM}
 ${body}" || rc=$?
   check "${process}: empty checksum reports fail" test "$rc" -ne 0
+  rc=0
+  in_genome "$SAMTOOLS_IMAGE" bash -euo pipefail -c "${CHANGED_CHECKSUM}
+${body}" > "${CASE_TMP}/changed-${process}.log" 2>&1 || rc=$?
+  check "${process}: a changed CRAM checksum fails" test "$rc" -ne 0
+  check "${process}: the failure is the content check" has "content .*differs" "$(cat "${CASE_TMP}/changed-${process}.log")"
 done
+# CRAM_TO_BAM on a CRAM without stored MD/NM regenerates them, like --restore.
+plain_cram module_sorted.cram
+rc=0
+in_genome "$SAMTOOLS_IMAGE" bash -euo pipefail -c "$(module_script CRAM_TO_BAM)" || rc=$?
+check_eq "CRAM_TO_BAM: plain CRAM passes" "$rc" 0
+check_eq "CRAM_TO_BAM: plain CRAM regenerates NM" "$(nm_of_read0 module_from_cram.bam)" "NM:i:0"
 finish
