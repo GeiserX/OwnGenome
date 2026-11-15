@@ -11,8 +11,7 @@ use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-const TABLE_HEAD: &str =
-    "chrom\tpos\tref\talt\tAltai\tVindija\tDenisova\tAF_ALL\tAF_AFR\tAF_AMR\tAF_EAS\tAF_EUR\tAF_SAS\n";
+const TABLE_HEAD: &str = "chrom\tpos\tref\talt\tAltai\tVindija\tDenisova\tAF_ALL\tAF_AFR\tAF_AMR\tAF_EAS\tAF_EUR\tAF_SAS\n";
 const VCF_HEAD: &str =
     "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n";
 
@@ -63,7 +62,10 @@ fn run(d: &Path, vcf: &str, gvcf: Option<&str>) -> (u8, String) {
     .to_vec();
     if let Some(g) = gvcf {
         std::fs::write(d.join("s.g.vcf"), format!("{VCF_HEAD}{g}")).unwrap();
-        args.extend(["--gvcf".to_owned(), d.join("s.g.vcf").to_str().unwrap().to_owned()]);
+        args.extend([
+            "--gvcf".to_owned(),
+            d.join("s.g.vcf").to_str().unwrap().to_owned(),
+        ]);
     }
     let mut err = Vec::new();
     let code = cli(&args, &mut Vec::new(), &mut err);
@@ -102,7 +104,13 @@ fn spans(d: &Path) -> Vec<Vec<String>> {
 #[test]
 fn a_gap_in_coverage_is_unknown_not_the_reference() {
     let d = dir("gap");
-    table(&d, "chr22", (100_000..=300_000).step_by(1000).chain((301_000..=351_000).step_by(1000)));
+    table(
+        &d,
+        "chr22",
+        (100_000..=300_000)
+            .step_by(1000)
+            .chain((301_000..=351_000).step_by(1000)),
+    );
     let vcf = "chr22\t50000\t.\tC\tT\t50\tPASS\t.\tGT\t0/1\n";
     let gvcf = block("chr22", 1, 99_999, ".", "GT:GQ:MIN_DP", "0/0:50:30")
         + &block("chr22", 300_500, 360_000, ".", "GT:GQ:MIN_DP", "0/0:50:30");
@@ -111,8 +119,14 @@ fn a_gap_in_coverage_is_unknown_not_the_reference() {
     let c = codes(&d, "chr22");
     let gap: Vec<&String> = c.range(100_000..=300_000).map(|(_, v)| v).collect();
     assert_eq!(gap.len(), 201);
-    assert!(gap.iter().all(|v| *v == "9"), "the gap must be unknown: {gap:?}");
-    assert!(c.range(301_000..).all(|(_, v)| v == "0"), "a covered site is the reference");
+    assert!(
+        gap.iter().all(|v| *v == "9"),
+        "the gap must be unknown: {gap:?}"
+    );
+    assert!(
+        c.range(301_000..).all(|(_, v)| v == "0"),
+        "a covered site is the reference"
+    );
     assert_eq!(spans(&d), [["chr22", "301000", "351000", "51", "0", "0"]]);
     assert!(err.contains("51 sites read, 201 not read"), "{err}");
     let _ = std::fs::remove_dir_all(&d);
@@ -147,14 +161,14 @@ fn only_a_confident_reference_block_reads_as_the_reference() {
     table(&d, "chr22", (1..=12).map(|i| i * 1000));
     let gvcf = [
         block("chr22", 1000, 1000, ".", "GT:GQ:MIN_DP", "0/0:20:10"), // reference
-        block("chr22", 2000, 2000, "PASS", "GT", "0|0"),               // reference, phased, no GQ
-        block("chr22", 3000, 3000, ".", "GT:GQ:MIN_DP", "0/0:0:10"),   // GQ 0
-        block("chr22", 4000, 4000, ".", "GT:GQ:MIN_DP", "0/0:30:0"),   // no reads
-        block("chr22", 5000, 5000, ".", "GT:GQ:DP", "0/0:30:0"),       // no reads (DP)
-        block("chr22", 6000, 6000, "RefCall", "GT:GQ", "0/0:30"),      // filtered
-        block("chr22", 7000, 7000, ".", "GT:GQ", "./.:0"),             // no call
+        block("chr22", 2000, 2000, "PASS", "GT", "0|0"),              // reference, phased, no GQ
+        block("chr22", 3000, 3000, ".", "GT:GQ:MIN_DP", "0/0:0:10"),  // GQ 0
+        block("chr22", 4000, 4000, ".", "GT:GQ:MIN_DP", "0/0:30:0"),  // no reads
+        block("chr22", 5000, 5000, ".", "GT:GQ:DP", "0/0:30:0"),      // no reads (DP)
+        block("chr22", 6000, 6000, "RefCall", "GT:GQ", "0/0:30"),     // filtered
+        block("chr22", 7000, 7000, ".", "GT:GQ", "./.:0"),            // no call
         "chr22\t8000\t.\tA\tG,<*>\t30\tPASS\t.\tGT:GQ\t0/1:30\n".to_owned(), // a variant
-        block("chr22", 9000, 9000, ".", "GT:GQ:MIN_DP", "0:20:10"),    // haploid reference
+        block("chr22", 9000, 9000, ".", "GT:GQ:MIN_DP", "0:20:10"),   // haploid reference
         // 10000 is in no record; 11000 is a VCF call outside every block.
         block("chr22", 12000, 12000, ".", "GT:GQ:MIN_DP", "0/0:.:."), // missing values
     ]
@@ -192,7 +206,11 @@ fn a_site_is_covered_up_to_the_furthest_end() {
     table(&d, "chr22", [1000, 1500, 2500, 3500]);
     let gvcf = block("chr22", 900, 3000, ".", "GT:GQ", "0/0:40")
         + &block("chr22", 1200, 1300, ".", "GT:GQ", "./.:0");
-    let (code, err) = run(&d, "chr22\t1000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n", Some(&gvcf));
+    let (code, err) = run(
+        &d,
+        "chr22\t1000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n",
+        Some(&gvcf),
+    );
     assert_eq!(code, 0, "{err}");
     let c = codes(&d, "chr22");
     assert_eq!(c[&1500], "0");
@@ -209,11 +227,19 @@ fn the_gvcf_is_read_in_the_vcf_order() {
     let d = dir("order");
     table(&d, "chr21", [1000, 2000]);
     table(&d, "chr22", [1000, 2000]);
-    let vcf = "chr21\t1000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\nchr22\t1000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n";
+    let vcf =
+        "chr21\t1000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\nchr22\t1000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n";
     let chr21 = block("chr21", 1, 5000, ".", "GT:GQ", "0/0:40");
     let chr22 = block("chr22", 1, 5000, ".", "GT:GQ", "0/0:40");
     let other = block("chrM", 1, 100, ".", "GT:GQ", "0/0:40");
-    let (code, err) = run(&d, vcf, Some(&format!("{other}{chr21}{other_x}{chr22}", other_x = block("chrX", 1, 9, ".", "GT", "0/0"))));
+    let (code, err) = run(
+        &d,
+        vcf,
+        Some(&format!(
+            "{other}{chr21}{other_x}{chr22}",
+            other_x = block("chrX", 1, 9, ".", "GT", "0/0")
+        )),
+    );
     assert_eq!(code, 0, "{err}");
     assert_eq!(codes(&d, "chr21")[&2000], "0");
     assert_eq!(codes(&d, "chr22")[&2000], "0");
@@ -222,12 +248,18 @@ fn the_gvcf_is_read_in_the_vcf_order() {
     assert_eq!(code, 2, "{err}");
     assert!(err.contains("one chromosome order"), "{err}");
 
-    let back = format!("{chr21}{chr22}{}", block("chr21", 9000, 9100, ".", "GT", "0/0"));
+    let back = format!(
+        "{chr21}{chr22}{}",
+        block("chr21", 9000, 9100, ".", "GT", "0/0")
+    );
     let (code, err) = run(&d, vcf, Some(&back));
     assert_eq!(code, 2, "{err}");
     assert!(err.contains("comes back"), "{err}");
 
-    let unsorted = format!("{}{chr21}{chr22}", block("chr21", 3000, 3100, ".", "GT", "0/0"));
+    let unsorted = format!(
+        "{}{chr21}{chr22}",
+        block("chr21", 3000, 3100, ".", "GT", "0/0")
+    );
     let (code, err) = run(&d, vcf, Some(&unsorted));
     assert_eq!(code, 2, "{err}");
     assert!(err.contains("is not sorted"), "{err}");
@@ -242,7 +274,13 @@ fn a_gvcf_of_one_sample_only() {
     let vcf = "chr22\t1000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n";
     std::fs::write(d.join("s.vcf"), format!("{VCF_HEAD}{vcf}")).unwrap();
     let two = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tA\tB\n";
-    for (gvcf, want) in [(two, "holds 2 samples"), ("chr22\t1\t.\tA\t<*>\t0\t.\tEND=9\tGT\t0/0\n", "no #CHROM header")] {
+    for (gvcf, want) in [
+        (two, "holds 2 samples"),
+        (
+            "chr22\t1\t.\tA\t<*>\t0\t.\tEND=9\tGT\t0/0\n",
+            "no #CHROM header",
+        ),
+    ] {
         std::fs::write(d.join("x.g.vcf"), gvcf).unwrap();
         let args: Vec<String> = [
             "genotypes",

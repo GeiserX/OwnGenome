@@ -1172,9 +1172,13 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
         let names: Vec<&str> = tables.iter().map(|(c, _)| c.as_str()).collect();
         let mut sorted = names.clone();
         sorted.sort_unstable();
+        let why = if callable.is_some() {
+            "no call there, and no reference block of the gVCF over a table site"
+        } else {
+            "no call at a table site (without --gvcf a site with no call is unknown)"
+        };
         return die(format!(
-            "{vcf_path} has no site read on a chromosome of the archaic table ({}): \
-             no call there, and no reference block of the gVCF over a table site",
+            "{vcf_path} has no site read on a chromosome of the archaic table ({}): {why}",
             sorted.join(", ")
         ));
     }
@@ -1821,7 +1825,14 @@ const STRICT: Spec = Spec {
 const GENOTYPES: Spec = Spec {
     verb: "genotypes",
     usage: "usage: og archaic genotypes --table-dir TABLE_DIR --vcf VCF [--gvcf GVCF] [--pop POP] [--pseudo PSEUDO] --out-dir OUT_DIR\n",
-    options: &["--table-dir", "--vcf", "--gvcf", "--pop", "--pseudo", "--out-dir"],
+    options: &[
+        "--table-dir",
+        "--vcf",
+        "--gvcf",
+        "--pop",
+        "--pseudo",
+        "--out-dir",
+    ],
     required: &["--table-dir", "--vcf", "--out-dir"],
 };
 const REPORT: Spec = Spec {
