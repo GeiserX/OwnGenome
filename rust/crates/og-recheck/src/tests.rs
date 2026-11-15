@@ -320,6 +320,11 @@ fn what_cannot_be_compared_is_an_error() {
     let cv = by_item(&c)["clinvar_file_date"];
     assert_eq!(cv.class, Class::Error);
     assert!(cv.error.as_deref().unwrap().contains("which ClinVar file"));
+    // A run value missing from the manifest is no "nothing newer" either,
+    // and is not called a failed lookup.
+    let out = printed(&c);
+    assert!(!out.contains("Nothing here is newer"), "{out}");
+    assert!(out.contains("1 of 7 looked-up items failed"), "{out}");
     let g = genome(
         "nodate",
         Opt {
@@ -1133,7 +1138,7 @@ fn a_failed_lookup_never_prints_nothing_newer_and_keeps_a_newer_file_here_rerun_
     assert!(!out.contains("Nothing here is newer"), "{out}");
     assert!(out.contains("the lookup failed: no answer"), "{out}");
     assert!(out.contains("A rerun would redo steps 06,"), "{out}");
-    assert!(out.contains("1 of 7 lookups failed"), "{out}");
+    assert!(out.contains("1 of 7 looked-up items failed"), "{out}");
 }
 
 #[test]
@@ -1158,7 +1163,7 @@ fn when_every_lookup_is_refused_the_check_says_it_could_not_check() {
     let out = printed(&c);
     assert!(!out.contains("Nothing here is newer"), "{out}");
     assert!(
-        out.contains("Could not check: all 7 lookups failed"),
+        out.contains("Could not check: all 7 looked-up items failed"),
         "{out}"
     );
     // The command: every answer an error, exit 1, the same closing line.
@@ -1182,7 +1187,7 @@ fn when_every_lookup_is_refused_the_check_says_it_could_not_check() {
     assert_eq!(rc, 1, "{out}");
     assert!(!out.contains("Nothing here is newer"), "{out}");
     assert!(
-        out.contains("Could not check: all 7 lookups failed"),
+        out.contains("Could not check: all 7 looked-up items failed"),
         "{out}"
     );
     // Control: with every answer given, nothing newer is said.

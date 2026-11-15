@@ -51,7 +51,7 @@ Each item gets one class:
 
 A newer file or pin installed here stays `rerun-ready` when its lookup fails, because that comparison needs no network. The item then keeps its `error` too, and the command still exits 1.
 
-The last line of the output sums up the check. When something is `rerun-ready` or `refresh-available`, it names the steps a rerun would redo. When a lookup failed, it says how many of how many failed and that the check is incomplete, or "Could not check: all N lookups failed" when none answered. "Nothing here is newer than what the run used." comes only when every lookup answered and nothing is newer.
+The last line of the output sums up the check. When something is `rerun-ready` or `refresh-available`, it names the steps a rerun would redo. When an item failed, because its lookup failed or the run's manifest lacks the value to compare, it says how many of the looked-up items failed and that the check is incomplete, or "Could not check: all N looked-up items failed" when none could be checked. Each item's own line says why. "Nothing here is newer than what the run used." comes only when every looked-up item was checked and nothing is newer.
 
 The 2-day margin for ClinVar is there because NCBI dates the file a day or two after the release in its `##fileDate`. A newer PGS file date means the catalog wrote the harmonised file again; it does not prove the weights changed.
 

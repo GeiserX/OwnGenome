@@ -792,7 +792,9 @@ pub fn print_check(c: &Check, out: &mut dyn std::io::Write) -> std::io::Result<(
         )?;
     }
     // A failed lookup is never read as "nothing newer". An item that was
-    // looked up has an answer or an error; the others were never asked.
+    // looked up has an answer or an error; the others were never asked. An
+    // error is a failed lookup or a run value missing from the manifest, so
+    // the count is of items, and each item's line says which.
     let asked = c
         .items
         .iter()
@@ -806,13 +808,13 @@ pub fn print_check(c: &Check, out: &mut dyn std::io::Write) -> std::io::Result<(
     } else if failed >= asked {
         writeln!(
             out,
-            "Could not check: all {asked} lookups failed (each line above says why). Check again later."
+            "Could not check: all {asked} looked-up items failed (each line above says why)."
         )?;
     } else {
         writeln!(
             out,
-            "{failed} of {asked} lookups failed: this check is incomplete, so it cannot say \
-             nothing else is newer. Check again later."
+            "{failed} of {asked} looked-up items failed (each line above says why): this check is \
+             incomplete, so it cannot say nothing else is newer."
         )?;
     }
     Ok(())
