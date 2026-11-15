@@ -75,7 +75,7 @@ Each hold is a rule in `renovate.json` with its reason in the rule's `descriptio
 
 ## What to check by hand
 
-- **Image licences**: before any image bump, read the upstream licence at the proposed tag. Check the licence fields of every package in the image's conda-meta files too. A version or build number alone does not prove the licence. Keep ExpansionHunter held until that review is complete.
+- **Image licences**: before any image bump, read the upstream licence at the proposed tag. For a Bioconda image, also check the licence fields of every package in its conda-meta files. A version or build number alone does not prove the licence. Keep ExpansionHunter held until that review is complete.
 - **PharmCAT**: diff the diplotype table on the HG002 fixture between the old and the new image, and run the CPIC parser tests on a `report.json` from the new version.
 - **VEP major**: move `VEP_CACHE_RELEASE` to the new major and `GENCODE_RELEASE` (`scripts/lib/common.sh`) to the new major minus 66 in the same PR, download the new cache (about 26 GB) and rerun step 13. CI cannot run the offline cache.
 - **PCGR/CPSR**: move `PCGR_DATA_BUNDLE` and `PCGR_VEP_CACHE_RELEASE` with the image, and rerun step 17 on a sample with an earlier result. CI does not run CPSR on a sample. The image test checks that `cpsr --help` still lists every flag step 17 passes, that `cpsr --version` names the release line of the image tag and the `pcgrr` R package its full release, and runs the bundled VEP with `--database` on 50 variants.
