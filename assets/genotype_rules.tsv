@@ -3,8 +3,9 @@
 # Hand-curated from the primary papers in the pmids column; no text is taken from SNPedia or any
 # other database. GRCh38: ref is the GRCh38 base and alt the other allele the rule reads, both on
 # the plus strand as in dbSNP's GRCh38 record, also for a gene on the minus strand.
-# scripts/ci/check-rule-alleles.sh checks every site against dbSNP; bin/traits_report.py
-# --check-rules checks the rest (tests/test_traits_report.py runs both).
+# scripts/ci/check-rule-alleles.sh checks every site against dbSNP; og traits check --table
+# assets/traits.tsv --rules assets/genotype_rules.tsv checks the rest (tests/test_traits_report.py
+# runs both).
 # Four kinds of line, tab separated, each with its own columns:
 #   rule         <rule> gene trait needs_phase ancestry note pmids
 #   site         <rule> rsid chrom pos ref alt          (one per site, in the order the haplotypes use)

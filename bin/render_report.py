@@ -127,7 +127,7 @@ SMN1_MARKER_CAVEAT = ("The marker raises the chance that two SMN1 copies sit on 
 
 
 def marker_state(m):
-    """A copy-aware marker's state in a few words (collect_summary.read_marker_table):
+    """A copy-aware marker's state in a few words (og summary collect, group_c/cn.rs read_marker_table):
     present or uncertain with the reads and the copies that carry it, not seen
     with the reads, too little depth, or not assessed."""
     st = m.get("status") or "not assessed"
@@ -2027,7 +2027,7 @@ def carrier_lines(c):
 
 
 def two_hit_lines(t):
-    """The genes a called deletion and a ClinVar hit both reach (collect_summary.two_hits), and which deletion
+    """The genes a called deletion and a ClinVar hit both reach (og summary collect, two_hits.rs), and which deletion
     callers were read; none for a summary written before the rule."""
     if not t:
         return []
