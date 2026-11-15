@@ -50,6 +50,16 @@ output_has low '52 GB.*5 GB margin'
 [ ! -e "${G}/vep_cache/homo_sapiens/116_GRCh38" ] || fail 'low-space VEP installed'
 [ -s "${G}/pcgr_data/20260620/data/grch38/README" ] || fail 'small bundle skipped with 40 GB free'
 
+# Model an allocated 22 GiB partial download without writing 22 GiB in CI.
+cat > "${CASE_WORK}/low-bin/du" <<'DU'
+#!/usr/bin/env bash
+case "$2" in
+  */resume/vep_cache/*.part) printf '23068672\t%s\n' "$2" ;;
+  *) /usr/bin/du "$@" ;;
+esac
+DU
+chmod +x "${CASE_WORK}/low-bin/du"
+
 # A partial download counts as space already taken: 40 GiB free plus a
 # 22 GiB .part covers VEP 116's 56 GB peak and margin, so it resumes.
 G="${CASE_WORK}/resume"
@@ -66,11 +76,40 @@ G="${CASE_WORK}/extract"
 mkdir -p "${G}/vep_cache/.extract.old" "${G}/pcgr_data/.extract.old"
 cp "${FAKE_DOWNLOAD_DIR}/homo_sapiens_vep_116_GRCh38.tar.gz" "${G}/vep_cache/"
 cp "${FAKE_DOWNLOAD_DIR}/pcgr_ref_data.20260620.grch38.tgz" "${G}/pcgr_data/"
-FAKE_DOWNLOAD_FAIL='vep_116|pcgr_ref_data' run_expect 0 extract "${SCRIPTS}/setup.sh" --clinical-data "$G"
+# Model space held by each stale tree. Only cleanup can make its preflight pass.
+mkdir -p "${CASE_WORK}/staging-bin"
+cat > "${CASE_WORK}/staging-bin/df" <<'DF'
+#!/usr/bin/env bash
+echo 'Filesystem 1024-blocks Used Available Capacity Mounted on'
+if [ -d "${@: -1}/.extract.old" ]; then
+  echo 'fakefs 2147483648 2141192192 6291456 99% /'
+else
+  echo 'fakefs 2147483648 0 2147483648 0% /'
+fi
+DF
+chmod +x "${CASE_WORK}/staging-bin/df"
+PATH="${CASE_WORK}/staging-bin:${PATH}" FAKE_DOWNLOAD_FAIL='vep_116|pcgr_ref_data' run_expect 0 extract "${SCRIPTS}/setup.sh" --clinical-data "$G"
 [ -s "${G}/vep_cache/homo_sapiens/116_GRCh38/info.txt" ] || fail 'checked VEP 116 archive downloaded again'
 [ -s "${G}/pcgr_data/20260620/data/grch38/README" ] || fail 'checked PCGR archive downloaded again'
 [ ! -e "${G}/vep_cache/.extract.old" ] || fail 'stale VEP staging tree kept'
 [ ! -e "${G}/pcgr_data/.extract.old" ] || fail 'stale PCGR staging tree kept'
+
+# A retained archive with a valid layout but wrong data must be replaced.
+G="${CASE_WORK}/retained-bad"
+mkdir -p "${G}/pcgr_data" "${CASE_WORK}/altered/data/grch38"
+printf 'modified reference\n' > "${CASE_WORK}/altered/data/grch38/README"
+tar -czf "${G}/pcgr_data/pcgr_ref_data.20260620.grch38.tgz" -C "${CASE_WORK}/altered" data
+run_expect 0 retained_bad "${SCRIPTS}/setup.sh" --clinical-data "$G"
+cmp "${G}/pcgr_data/20260620/data/grch38/README" "${CASE_WORK}/bundle/data/grch38/README" || fail 'unverified retained PCGR archive published'
+[ ! -e "${G}/pcgr_data/pcgr_ref_data.20260620.grch38.tgz" ] || fail 'replaced archive kept'
+
+# Sparse holes occupy no disk: they must not grant space for an installation.
+G="${CASE_WORK}/sparse"
+mkdir -p "${G}/vep_cache"
+dd if=/dev/null of="${G}/vep_cache/homo_sapiens_vep_116_GRCh38.tar.gz.part" bs=1048576 seek=22528 2>/dev/null
+PATH="${CASE_WORK}/low-bin:${PATH}" run_expect 1 sparse "${SCRIPTS}/setup.sh" --clinical-data "$G"
+output_has sparse 'Skipping VEP 116'
+[ ! -e "${G}/vep_cache/homo_sapiens/116_GRCh38" ] || fail 'sparse holes counted as allocated space'
 
 # The digest belongs to the original fixture. Serve a different valid tarball.
 printf 'corrupt\n' >> "${FAKE_DOWNLOAD_DIR}/pcgr_ref_data.20260620.grch38.tgz"
