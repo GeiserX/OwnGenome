@@ -540,9 +540,9 @@ fn no_path_in_the_card_and_the_metrics_carry_only_run_and_fs_in_a_valid_text() {
 
 // --- who may read /metrics ------------------------------------------------------------------
 
-fn who(password: bool, logged_in: bool, auth: Option<&str>) -> Asker<'_> {
+fn who(login: bool, logged_in: bool, auth: Option<&str>) -> Asker<'_> {
     Asker {
-        password_set: password,
+        login_required: login,
         logged_in,
         authorization: auth,
     }

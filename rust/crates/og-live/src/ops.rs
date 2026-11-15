@@ -997,8 +997,8 @@ pub fn read_token(path: Option<&Path>) -> io::Result<Option<String>> {
 /// Who asks for `/metrics`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Asker<'a> {
-    /// The site has a password.
-    pub password_set: bool,
+    /// The site asks for a login (it has a password hash).
+    pub login_required: bool,
     /// The request carries a valid session.
     pub logged_in: bool,
     /// Its `Authorization` header.
@@ -1019,7 +1019,7 @@ pub fn metrics_allowed(
     who: &Asker<'_>,
     token: impl FnOnce() -> io::Result<Option<String>>,
 ) -> io::Result<bool> {
-    if !who.password_set || who.logged_in {
+    if !who.login_required || who.logged_in {
         return Ok(true);
     }
     let auth = who.authorization.unwrap_or("");
