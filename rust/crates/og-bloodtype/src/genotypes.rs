@@ -22,6 +22,8 @@
 //!   ALT wins, then a no call of a record that names the marker's ALT,
 //!   then a reference call, then any other no call; the first of equals
 //!   counts, and another allele a losing call names stays in the note;
+//! - called copies of distinct ALTs listed by one marker add up; repeated
+//!   calls of the same ALT count once, and incompatible dosages are no call;
 //! - a reference-only record whose REF is shorter than the marker's (an
 //!   all-sites record or a gVCF block starting at a deletion marker) says
 //!   nothing past its own bases, so the site reads as if it had no record.
@@ -174,6 +176,8 @@ struct Reading {
     status: Status,
     n: Option<i64>,
     note: String,
+    /// Called marker ALTs and their dosages, independent of VCF allele indices.
+    alts: BTreeMap<String, i64>,
 }
 
 impl Reading {
@@ -183,6 +187,7 @@ impl Reading {
             status: Status::NoCall,
             n: None,
             note,
+            alts: BTreeMap::new(),
         }
     }
 }
@@ -196,10 +201,23 @@ struct Evidence {
     others: Vec<String>,
     /// The first upstream record that changes the site's base.
     span: Option<String>,
+    /// One dosage per called marker ALT, bounded by the marker's ALT list.
+    alts: BTreeMap<String, i64>,
+    /// Different calls of one ALT disagree about its dosage.
+    incompatible: bool,
 }
 
 impl Evidence {
     fn add(&mut self, r: Reading) {
+        for (alt, &copies) in &r.alts {
+            match self.alts.get(alt) {
+                Some(&previous) if previous != copies => self.incompatible = true,
+                Some(_) => {}
+                None => {
+                    self.alts.insert(alt.clone(), copies);
+                }
+            }
+        }
         let loser = match &mut self.best {
             Some(b) if r.weight > b.weight => Some(std::mem::replace(b, r)),
             Some(_) => Some(r),
@@ -224,8 +242,19 @@ impl Evidence {
             site.n = None;
             site.note = note;
         } else if let Some(b) = self.best {
+            let copies: i64 = self.alts.values().sum();
+            if self.incompatible || copies > 2 {
+                site.status = Status::NoCall;
+                site.n = None;
+                site.note = "incompatible ALT dosages at this position".to_owned();
+                return;
+            }
             site.status = b.status;
-            site.n = b.n;
+            site.n = if b.weight == Weight::Alt {
+                Some(copies)
+            } else {
+                b.n
+            };
             site.note = if b.status == Status::Called {
                 let others = self.others.into_iter().filter(|o| *o != b.note);
                 std::iter::once(b.note.clone())
@@ -383,6 +412,16 @@ fn read_record(
         .iter()
         .filter(|a| idx.iter().any(|i| i == *a))
         .count() as i64;
+    let mut called_alts = BTreeMap::new();
+    for (i, alt) in alts.iter().enumerate() {
+        if wants.contains(alt) {
+            let index = (i + 1).to_string();
+            let copies = alleles.iter().filter(|a| **a == index).count() as i64;
+            if copies > 0 {
+                *called_alts.entry((*alt).to_owned()).or_default() += copies;
+            }
+        }
+    }
     let note = if alleles
         .iter()
         .any(|a| *a != "0" && !idx.iter().any(|i| i == a))
@@ -403,6 +442,7 @@ fn read_record(
         status: Status::Called,
         n: Some(n),
         note,
+        alts: called_alts,
     })
 }
 

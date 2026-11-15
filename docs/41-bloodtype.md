@@ -67,6 +67,7 @@ A site the VCF has no record for is the reference allele when the BAM has at lea
 When several records cover one site, each one is read and their order does not matter:
 
 - A call of the table's ALT wins over the other records at the site's position. An all-sites VCF writes `T . 0/0` and then `T TC 0/1` at ABO c.261, so the insertion counts. Another allele that a second record calls there (a split `T G 1/0`) is named in the note.
+- When one null marker lists several ALTs, calls of distinct listed ALTs add their copies. Splitting the record keeps the same evidence and phenotype. Repeated calls of the same ALT count once, even if its allele index changes. Different dosages for the same ALT, or a total above two copies, make the site a no call with an incompatible-dosage note.
 - A no call of a record that names the table's ALT (`./.`, or a failed FILTER) comes next: the ALT may be there, so a reference record beside it does not make the site reference.
 - Then a reference call, then any other no call.
 - A record that starts upstream and spans the site with an allele that changes the site's base (a deletion over it, or a padded record such as `CG CA`) makes the site a no call, whatever the site's own records say. A reference call or a no call upstream changes nothing, and neither does an allele that keeps the site's base.

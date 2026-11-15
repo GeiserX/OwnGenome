@@ -458,8 +458,13 @@ fn split_null_marker(name: &str, system: &str, phenotype: &str) {
     let record = |alt: &str, gt: &str| line(&m.chrom, m.pos, &m.ref_, alt, "PASS", gt);
     let unsplit = record(&m.alt, "1/2");
     let expected = report_both_ways(&d, std::slice::from_ref(&unsplit));
-    let row: Vec<&str> = expected.0.lines().find(|l| l.starts_with(&format!("{system}\t")))
-        .unwrap().split('\t').collect();
+    let row: Vec<&str> = expected
+        .0
+        .lines()
+        .find(|l| l.starts_with(&format!("{system}\t")))
+        .unwrap()
+        .split('\t')
+        .collect();
     assert_eq!(row[..4], [system, phenotype, "null/null", "high"]);
     let a = record(alts[0], "1/0");
     let b = record(alts[1], "0/1");
@@ -481,11 +486,16 @@ fn split_null_marker(name: &str, system: &str, phenotype: &str) {
         let single = record(alts[0], gt);
         let expected = report_both_ways(&d, std::slice::from_ref(&single));
         let copies = if gt == "0/1" { 1 } else { 2 };
-        let reordered = record(&format!("{},{}", alts[1], alts[0]),
-            if copies == 1 { "0/2" } else { "2/2" });
+        let reordered = record(
+            &format!("{},{}", alts[1], alts[0]),
+            if copies == 1 { "0/2" } else { "2/2" },
+        );
         let records = [single.clone(), reordered, single];
         assert_eq!(report_both_ways(&d, &records), expected);
-        assert_eq!(site_both_ways(&d, &records, name), ("called".to_owned(), Some(copies), String::new()));
+        assert_eq!(
+            site_both_ways(&d, &records, name),
+            ("called".to_owned(), Some(copies), String::new())
+        );
     }
     assert_eq!(site_both_ways(&d, &[one], name).1, Some(1));
 }
@@ -511,13 +521,20 @@ fn incompatible_null_alt_dosages_are_no_call_in_both_readers() {
         // for the same ALT cannot both be true either.
         let hom = record(alts[0], "1/1");
         for other in [record(alts[1], "0/1"), record(alts[0], "0/1")] {
-            for records in [vec![hom.clone(), other.clone()], vec![other.clone(), hom.clone()]] {
+            for records in [
+                vec![hom.clone(), other.clone()],
+                vec![other.clone(), hom.clone()],
+            ] {
                 let (status, n, note) = site_both_ways(&d, &records, name);
                 assert_eq!((status.as_str(), n), ("no call", None), "{records:?}");
                 assert_eq!(note, "incompatible ALT dosages at this position");
                 let (table, _) = report_both_ways(&d, &records);
-                let row: Vec<&str> = table.lines().find(|l| l.starts_with(&format!("{}\t", m.system)))
-                    .unwrap().split('\t').collect();
+                let row: Vec<&str> = table
+                    .lines()
+                    .find(|l| l.starts_with(&format!("{}\t", m.system)))
+                    .unwrap()
+                    .split('\t')
+                    .collect();
                 assert_ne!(row[3], "high");
             }
         }
