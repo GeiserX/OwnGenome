@@ -77,6 +77,12 @@ pub mod fault {
     pub fn plant(name: &'static str) {
         ON.with(|c| c.set(Some(name)));
     }
+
+    /// The planted mistake on in this thread, to hand to a child process.
+    #[cfg(feature = "fault-inject")]
+    pub fn planted() -> Option<&'static str> {
+        ON.with(std::cell::Cell::get)
+    }
 }
 
 /// One trace row, as the history and the headroom read it.

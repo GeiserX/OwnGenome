@@ -16,5 +16,8 @@ og-nf.workspace = true
 og-runlog.workspace = true
 jiff.workspace = true
 
+[dev-dependencies]
+indexmap.workspace = true
+
 [lints]
 workspace = true
