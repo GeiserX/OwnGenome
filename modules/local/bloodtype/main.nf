@@ -126,9 +126,12 @@ process BLOODTYPE {
     // indel can shift along its repeat) are left-aligned first. A
     // multi-allelic record stays whole; -c w keeps a record whose REF differs
     // from the reference as it is. Records on a contig the reference lacks go
-    // through unchanged. The VCF is read through its index when it has a
-    // current one, else once from the start. The same commands as
-    // scripts/41-bloodtype.sh; og runs from bin/, on the task's PATH.
+    // through unchanged. The VCF is read through its index when the one
+    // htslib loads (.csi before .tbi) is current, else once from the start;
+    // read that way, it first gets a ##contig line for each window contig its
+    // header lacks, because bcftools writes no record on an undeclared contig.
+    // The same commands as scripts/41-bloodtype.sh; og runs from bin/, on the
+    // task's PATH.
     """
     grep -v '^#' ${markers} | tail -n +2 \\
         | awk -F '\\t' -v OFS='\\t' '{s = \$2 - 100; if (s < 0) s = 0; print \$1, s, \$3 + 100; c = \$1; if (sub(/^chr/, "", c)) print c, s, \$3 + 100}' \\
@@ -137,11 +140,27 @@ process BLOODTYPE {
     cut -f1 ${reference_fai} > bt_ref_contigs.txt
     awk -F '\\t' 'NR == FNR {c[\$1] = 1; next} \$1 in c' bt_ref_contigs.txt bt_windows.bed > bt_on_ref.bed
     awk -F '\\t' 'NR == FNR {c[\$1] = 1; next} !(\$1 in c)' bt_ref_contigs.txt bt_windows.bed > bt_off_ref.bed
-    SEL=-T OVERLAP=--targets-overlap
-    for x in tbi csi; do
-        if [ -f "${vcf}.\$x" ] && [ ! "${vcf}" -nt "${vcf}.\$x" ]; then SEL=-R OVERLAP=--regions-overlap; fi
+    SEL=-T OVERLAP=--targets-overlap HDR=${vcf}
+    for x in csi tbi; do
+        if [ -f "${vcf}.\$x" ]; then
+            if [ ! "${vcf}" -nt "${vcf}.\$x" ]; then SEL=-R OVERLAP=--regions-overlap; fi
+            break
+        fi
     done
-    pick() { if [ -s "\$1" ]; then bcftools view "\$SEL" "\$1" "\$OVERLAP" record -Ou ${vcf}; else bcftools view -h -Ou ${vcf}; fi; }
+    if [ "\$SEL" = -T ]; then
+        bcftools head ${vcf} > bt_header.vcf
+        cut -f1 bt_windows.bed \\
+            | awk 'NR == FNR {if (sub(/^##contig=<ID=/, "")) {sub(/[,>].*/, ""); d[\$0] = 1}; next} !(\$1 in d) && !s[\$1]++ {print "##contig=<ID=" \$1 ">"}' bt_header.vcf - > bt_contigs.txt
+        if [ -s bt_contigs.txt ]; then
+            { grep -v '^#CHROM' bt_header.vcf; cat bt_contigs.txt; grep '^#CHROM' bt_header.vcf; } > bt_header2.vcf
+            HDR=bt_header2.vcf
+        fi
+    fi
+    pick() {
+        if [ ! -s "\$1" ]; then bcftools view -h -Ou "\$HDR"
+        elif [ "\$HDR" != "${vcf}" ]; then bcftools reheader -h "\$HDR" ${vcf} | bcftools view -T "\$1" --targets-overlap record -Ou -
+        else bcftools view "\$SEL" "\$1" "\$OVERLAP" record -Ou ${vcf}; fi
+    }
     pick bt_on_ref.bed | bcftools norm -c w -f ${reference} -Ob -o bt_on_ref.bcf
     pick bt_off_ref.bed | bcftools view -Ob -o bt_off_ref.bcf
     bcftools concat -Ou bt_on_ref.bcf bt_off_ref.bcf | bcftools sort -T ./bt_sort -Oz -o bt_norm.vcf.gz

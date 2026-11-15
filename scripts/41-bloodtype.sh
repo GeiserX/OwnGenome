@@ -87,8 +87,11 @@ echo "[2/3] The VCF's records around the marker sites, left-aligned (bcftools no
 # whose REF differs from the reference as it is (og then reads it as a no
 # call). Records on a contig the reference lacks (a VCF named 1, 2, ... against
 # a chr-named reference) cannot be aligned and go through unchanged. The VCF is
-# read through its index when it has a current one, else once from the start.
-# The BLOODTYPE process runs the same commands before og.
+# read through its index when the one htslib loads (.csi before .tbi) is
+# current, else once from the start. Read that way, a VCF with no ##contig line
+# for a window's contig first gets one (bcftools reheader), because bcftools
+# writes no record on an undeclared contig; through an index, htslib takes the
+# names from the index. The BLOODTYPE process runs the same commands before og.
 # shellcheck disable=SC2016  # the program's $ belong to the inner bash and awk
 NORM_PROG='
   MARKERS=$1 VCF=$2 REF=$3 W=$4 OUT=$5
@@ -97,24 +100,45 @@ NORM_PROG='
   cut -f1 "$REF.fai" > "$W/bt_ref_contigs.txt"
   awk -F "\t" "NR == FNR {c[\$1] = 1; next} \$1 in c" "$W/bt_ref_contigs.txt" "$W/bt_windows.bed" > "$W/bt_on_ref.bed"
   awk -F "\t" "NR == FNR {c[\$1] = 1; next} !(\$1 in c)" "$W/bt_ref_contigs.txt" "$W/bt_windows.bed" > "$W/bt_off_ref.bed"
-  SEL=-T OVERLAP=--targets-overlap
-  for x in tbi csi; do
-    if [ -f "$VCF.$x" ] && [ ! "$VCF" -nt "$VCF.$x" ]; then SEL=-R OVERLAP=--regions-overlap; fi
+  SEL=-T OVERLAP=--targets-overlap HDR=$VCF
+  for x in csi tbi; do
+    if [ -f "$VCF.$x" ]; then
+      if [ ! "$VCF" -nt "$VCF.$x" ]; then SEL=-R OVERLAP=--regions-overlap; fi
+      break
+    fi
   done
-  pick() { if [ -s "$1" ]; then bcftools view "$SEL" "$1" "$OVERLAP" record -Ou "$VCF"; else bcftools view -h -Ou "$VCF"; fi; }
+  if [ "$SEL" = -T ]; then
+    bcftools head "$VCF" > "$W/bt_header.vcf"
+    cut -f1 "$W/bt_windows.bed" | awk "$8" "$W/bt_header.vcf" - > "$W/bt_contigs.txt"
+    if [ -s "$W/bt_contigs.txt" ]; then
+      { grep -v "^#CHROM" "$W/bt_header.vcf"; cat "$W/bt_contigs.txt"; grep "^#CHROM" "$W/bt_header.vcf"; } > "$W/bt_header2.vcf"
+      HDR=$W/bt_header2.vcf
+    fi
+  fi
+  pick() {
+    if [ ! -s "$1" ]; then bcftools view -h -Ou "$HDR"
+    elif [ "$HDR" != "$VCF" ]; then bcftools reheader -h "$HDR" "$VCF" | bcftools view -T "$1" --targets-overlap record -Ou -
+    else bcftools view "$SEL" "$1" "$OVERLAP" record -Ou "$VCF"; fi
+  }
   pick "$W/bt_on_ref.bed" | bcftools norm -c w -f "$REF" -Ob -o "$W/bt_on_ref.bcf"
   pick "$W/bt_off_ref.bed" | bcftools view -Ob -o "$W/bt_off_ref.bcf"
   bcftools concat -Ou "$W/bt_on_ref.bcf" "$W/bt_off_ref.bcf" | bcftools sort -T "$W/bt_sort" -Oz -o "$OUT"
   bcftools index -f -t "$OUT"
-  rm -f "$W/bt_windows.bed" "$W/bt_ref_contigs.txt" "$W/bt_on_ref.bed" "$W/bt_off_ref.bed" "$W/bt_on_ref.bcf" "$W/bt_off_ref.bcf"'
+  rm -f "$W/bt_windows.bed" "$W/bt_ref_contigs.txt" "$W/bt_on_ref.bed" "$W/bt_off_ref.bed" "$W/bt_on_ref.bcf" "$W/bt_off_ref.bcf" \
+    "$W/bt_header.vcf" "$W/bt_contigs.txt" "$W/bt_header2.vcf"'
 # Each marker row 100 bp each side, under its chr name and without the chr
 # (og reads a VCF named either way); then the overlapping windows merged.
 # shellcheck disable=SC2016  # awk programs
 WINDOWS_AWK='{s = $2 - 100; if (s < 0) s = 0; print $1, s, $3 + 100; c = $1; if (sub(/^chr/, "", c)) print c, s, $3 + 100}'
 # shellcheck disable=SC2016
 MERGE_AWK='$1 == c && $2 <= e {if ($3 > e) e = $3; next} {if (c != "") print c, s, e; c = $1; s = $2; e = $3} END {if (c != "") print c, s, e}'
+# The window contigs (on stdin) the header (the first file) declares no
+# ##contig line for, as ##contig lines.
+# shellcheck disable=SC2016
+CONTIG_AWK='NR == FNR {if (sub(/^##contig=<ID=/, "")) {sub(/[,>].*/, ""); d[$0] = 1}; next} !($1 in d) && !s[$1]++ {print "##contig=<ID=" $1 ">"}'
 run_in -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c "$NORM_PROG" \
-  _ /pgp-assets/bloodtype_markers.tsv "$(cpath "$VCF")" "$REF_FASTA_C" "$O" "$(cpath "$NORM")" "$WINDOWS_AWK" "$MERGE_AWK"
+  _ /pgp-assets/bloodtype_markers.tsv "$(cpath "$VCF")" "$REF_FASTA_C" "$O" "$(cpath "$NORM")" "$WINDOWS_AWK" "$MERGE_AWK" \
+  "$CONTIG_AWK"
 [ -s "$NORM" ] || { echo "ERROR: no left-aligned VCF written (${NORM})" >&2; exit 1; }
 echo "[3/3] Blood group rules (og bloodtype report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \

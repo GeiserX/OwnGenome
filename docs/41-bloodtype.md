@@ -74,6 +74,7 @@ The table writes each indel left-aligned, the way `bcftools norm` writes it: ABO
 - A multi-allelic indel is left-aligned as a whole, so its REF can stay longer than the marker's (`TCC TC,T` against `TC T`). Its REF then differs from the table's, and the site is a no call, as the paragraph above says.
 - A record whose REF differs from the reference is kept as it is (`-c w`), with a warning in the log.
 - A record on a contig the reference lacks (a VCF named `1`, `2`, ... against the chr-named reference) cannot be aligned. It goes through unchanged.
+- bcftools reads the VCF through its index when the index htslib loads (the `.csi` if there is one, else the `.tbi`) is not older than the VCF. Otherwise it reads the VCF once from the start. Read that way, a VCF whose header has no `##contig` line for a marker's contig first gets one, because bcftools writes no record on an undeclared contig.
 - The left-aligned file is a work file: the bash step deletes it after the rules run, and the pipeline does not publish it.
 
 ### Several records at one site
