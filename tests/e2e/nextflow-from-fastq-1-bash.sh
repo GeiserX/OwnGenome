@@ -47,39 +47,9 @@ check_step_exit 11-roh-analysis.sh
 
 # --- synthetic PRS scores ---------------------------------------------------------
 SITES="${CASE_TMP}/score_sites.tsv"
-python3 - "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" \
-  "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" > "$SITES" <<'PY'
-import gzip, sys
-bed, truth, fasta = sys.argv[1:4]
-iv = [tuple(int(x) for x in l.split()[1:3]) for l in open(bed) if l.startswith("chr20\t")]
-var, snv = [], []
-for l in gzip.open(truth, "rt"):
-    if not l.startswith("chr20\t"):
-        continue
-    f = l.rstrip("\n").split("\t")
-    var.append(int(f[1]))
-    gt = f[9].split(":")[0].replace("|", "/")
-    if len(f[3]) == 1 and len(f[4]) == 1 and 10_050_000 < int(f[1]) < 10_450_000 and gt in ("0/1", "1/1"):
-        snv.append((int(f[1]), f[4]))
-fai = {l.split()[0]: [int(x) for x in l.split()[1:5]] for l in open(fasta + ".fai")}
-length, offset, bases, width = fai["chr20"]
-def base(pos):
-    i = pos - 1
-    with open(fasta, "rb") as fh:
-        fh.seek(offset + (i // bases) * width + i % bases)
-        return fh.read(1).decode().upper()
-out, p = [], 10_050_000
-while len(out) < 5 and p < 10_450_000:
-    inside = any(s + 200 < p <= e - 200 for s, e in iv)
-    clear = all(abs(v - p) > 200 for v in var)
-    b = base(p)
-    if inside and clear and b in "ACGT":
-        out.append((p, b))
-    p += 7_919
-out += snv[:: max(1, len(snv) // 3)][:3]
-for p, a in out:
-    print(f"chr20\t{p}\t{a}")
-PY
+# Five hom-ref sites, then three of the truth set's SNVs (chrom, pos, effect allele).
+"${REPO}/bin/og" dev fixture prs-sites "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" \
+  "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" 5 3 | awk -F'\t' -v OFS='\t' '{print "chr20", $2, $3}' > "$SITES"
 cat "$SITES"
 check_eq "score sites (5 hom-ref, 3 truth SNVs)" "$(wc -l < "$SITES" | tr -d ' ')" 8
 PGS="${E2E_WORK}/parity-pgs"
