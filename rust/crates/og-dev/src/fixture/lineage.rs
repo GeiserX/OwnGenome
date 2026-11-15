@@ -55,7 +55,7 @@ const TABLE: &[(&str, &str, Run)] = &[
         ancient::panel,
     ),
     ("plant-snv", "EVERY FAI READS.sam POS", chip::plant_snv),
-    ("base-count", "POS BASE < READS.sam", chip::base_count),
+    ("base-count", "POS BASE [READS.sam]", chip::base_count),
     ("sites-fasta", "SITES.tsv.gz OUT.fasta", chip::sites_fasta),
     (
         "mt-roundtrip",

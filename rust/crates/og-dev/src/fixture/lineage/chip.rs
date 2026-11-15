@@ -3,7 +3,7 @@
 
 use super::{Fail, Op, bad, cell_int, cigar, create, each_line, fai_contigs, int, want};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::io::{BufRead, Write};
+use std::io::Write;
 
 /// The read offset of 1-based reference `pos` in a read starting at `start`,
 /// when an M, = or X operation covers it.
@@ -76,23 +76,24 @@ pub fn plant_snv(args: &[String], out: &mut dyn Write, _err: &mut dyn Write) -> 
     })
 }
 
-/// `og dev fixture base-count POS BASE < READS.sam`: `A N`, where N is the
-/// reads of a SAM body (`samtools view`) whose alignment covers POS with a
-/// read base, and A those of them with BASE there.
+/// `og dev fixture base-count POS BASE [READS.sam]`: `A N`, where N is the
+/// reads of a SAM body (`samtools view`; stdin without a file) whose
+/// alignment covers POS with a read base, and A those of them with BASE
+/// there.
 pub fn base_count(args: &[String], out: &mut dyn Write, _err: &mut dyn Write) -> Result<(), Fail> {
-    want(args, 2)?;
+    if !(2..=3).contains(&args.len()) {
+        return Err(Fail::Usage("takes POS BASE [READS.sam]".into()));
+    }
     let pos: i64 = int(&args[0], "POS")?;
     let base = match args[1].as_bytes() {
         [b] => *b,
         _ => return Err(Fail::Usage("BASE is one letter".into())),
     };
     let (mut a, mut n) = (0u64, 0u64);
-    let stdin = std::io::stdin();
-    for line in stdin.lock().lines() {
-        let line = line?;
+    each_line(args.get(2).map_or("-", String::as_str), |line| {
         let f: Vec<&str> = line.split('\t').collect();
         if f.len() < 10 || f[5] == "*" {
-            continue;
+            return Ok(());
         }
         if let Some(i) = offset_at(&cigar(f[5]), cell_int(f[3])?, pos) {
             n += 1;
@@ -100,7 +101,8 @@ pub fn base_count(args: &[String], out: &mut dyn Write, _err: &mut dyn Write) ->
                 usize::try_from(i).ok().and_then(|i| f[9].as_bytes().get(i)) == Some(&base),
             );
         }
-    }
+        Ok(())
+    })?;
     writeln!(out, "{a} {n}")?;
     Ok(())
 }
@@ -335,6 +337,15 @@ mod tests {
         );
         let (_, none, _) = run("plant-snv", &["0", &p("ref.fa.fai"), &p("in.sam"), "105"]);
         assert!(!none.contains("AAAAAAATAA"), "{none}");
+        std::fs::write(d.join("planted.sam"), &out).expect("sam");
+        // r0, r2 and r4 carry the T; y covers 105 with a deletion, so not counted.
+        let (code, count, _) = run("base-count", &["105", "T", &p("planted.sam")]);
+        assert_eq!((code, count.as_str()), (0, "3 5\n"));
+        assert_eq!(
+            run("base-count", &["105", "C", &p("planted.sam")]).1,
+            "2 5\n"
+        );
+        assert_eq!(run("base-count", &["105", "TT", &p("planted.sam")]).0, 2);
     }
 
     #[test]
