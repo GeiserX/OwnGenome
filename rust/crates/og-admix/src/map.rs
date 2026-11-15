@@ -97,7 +97,7 @@ impl GeneticMap {
         let (Some(&p_first), Some(&p_last)) = (self.pos.first(), self.pos.last()) else {
             return 0.0;
         };
-        if pos <= p_first {
+        if pos < p_first {
             return self.cm[0];
         }
         if pos >= p_last {
@@ -124,11 +124,15 @@ impl GeneticMap {
         if cm <= c_first {
             return self.pos[0] as f64;
         }
-        if cm >= c_last {
+        if cm > c_last {
             return self.pos[self.pos.len() - 1] as f64;
         }
-        // The first marker above cm, and the last one at or below it.
-        let hi = self.cm.partition_point(|&c| c <= cm);
+        // The first marker at or above cm; it exists, and is not the first.
+        let hi = self.cm.partition_point(|&c| c < cm);
+        if self.cm[hi] == cm {
+            return self.pos[hi] as f64;
+        }
+        // Here cm[hi - 1] < cm < cm[hi], so the stretch rises.
         let (p0, c0, p1, c1) = (self.pos[hi - 1], self.cm[hi - 1], self.pos[hi], self.cm[hi]);
         p0 as f64 + (p1 - p0) as f64 * (cm - c0) / (c1 - c0)
     }
@@ -199,6 +203,21 @@ mod tests {
         // A flat stretch maps back to its first position.
         assert_eq!(map.pos_at(1.0), 100.0);
         assert_eq!(map.pos_at(1.5), 250.0);
+        // A first position with two markers: the last one counts there too.
+        let map = GeneticMap::from_markers(vec![(100, 1.0), (100, 2.0), (200, 3.0)]).unwrap();
+        assert_eq!(map.cm_at(99), 1.0);
+        assert_eq!(map.cm_at(100), 2.0);
+        assert_eq!(map.cm_at(150), 2.5);
+        // An inner and a trailing flat stretch map back to their first
+        // position; a cM between markers still interpolates.
+        let map =
+            GeneticMap::from_markers(vec![(0, 0.0), (10, 1.0), (20, 1.0), (30, 2.0), (40, 2.0)])
+                .unwrap();
+        assert_eq!(map.pos_at(1.0), 10.0);
+        assert_eq!(map.pos_at(2.0), 30.0);
+        assert_eq!(map.pos_at(0.5), 5.0);
+        assert_eq!(map.pos_at(1.5), 25.0);
+        assert_eq!(map.pos_at(3.0), 40.0);
         let empty = GeneticMap::default();
         assert!(empty.is_empty());
         assert_eq!(empty.cm_at(5), 0.0);
