@@ -138,7 +138,7 @@ User's FASTQ/BAM/VCF
 6. Add the module to the step list (a `plan` call) in `scripts/run-all.sh` (its `--tools` name and database parameter), so a default run includes it
 7. Add a row for the image to `tests/smoke/commands.tsv`: a real command on the fixture and a check on what it wrote (an image with no row fails `container-test.yml`)
 8. Update `docs/00-reference-setup.md` if new reference data needed
-9. Update `docs/interpreting-results.md` if output needs explanation
+9. Update the chapter page under `docs/results/` (listed in `docs/interpreting-results.md`) if output needs explanation
 10. Test on at least one sample before committing
 
 ### Bumping a Tool
