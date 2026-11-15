@@ -1,14 +1,17 @@
-# Imprinting disorders caused by uniparental disomy (UPD), one row per chromosome or region.
-# Read by bin/collect_summary.py (IMPRINTED_REGIONS holds the same rows; tests/test_collect_summary.py
-# checks that the two agree) to name what a run of homozygosity over most of one chromosome could mean.
-# start and end: GRCh38, 0-based start, exclusive end, the UCSC cytoBand.hg38.txt bands of the region;
-# empty for a row that applies to the whole chromosome. A row with a region applies when a run on the
-# flagged chromosome overlaps it. "-" is no known imprinting disorder for UPD from that parent.
-# Overview: Eggermann et al., Imprinting disorders, Nat Rev Dis Primers 2023 (PMID 37386011).
+# Imprinted chromosomes and regions. Factual reference rows, curated by OwnGenome.
+# Sole source: embedded by og summary collect at build time. The UPD hint emits region and PMID only;
+# maternal_upd and paternal_upd remain reference facts here, never a diagnosis from a ROH match.
+# start and end are retained for format compatibility and are empty: the hint is chromosome-wide.
+# Mixed iso/heterodisomy may leave the imprinted locus outside the observed homozygous runs.
+# Region labels are broad cytobands, not diagnostic locus coordinates or a specialist-reviewed assay.
+# Overview: Eggermann et al., Imprinting disorders, Nat Rev Dis Primers 9, 33 (2023).
+# https://doi.org/10.1038/s41572-023-00443-4 (PMID 37386011).
+# Mechanism: Robinson, BioEssays 22:452-459 (2000), https://pubmed.ncbi.nlm.nih.gov/10797485/.
+# Per-row PMIDs support the parent-of-origin reference facts; names and symbols are factual labels.
 chrom	start	end	region	maternal_upd	paternal_upd	pmid
 chr6			6q24 (PLAGL1, HYMAI)	-	Transient neonatal diabetes mellitus (6q24-related)	20301706
 chr7			7p12 (GRB10), 7q32 (MEST)	Silver-Russell syndrome	-	27585961
-chr11	0	22000000	11p15 (H19/IGF2, KCNQ1OT1)	Silver-Russell syndrome	Beckwith-Wiedemann syndrome	29377879;27585961
+chr11			11p15 (H19/IGF2, KCNQ1OT1)	Silver-Russell syndrome	Beckwith-Wiedemann syndrome	29377879;27585961
 chr14			14q32.2 (DLK1-MEG3)	Temple syndrome	Kagami-Ogata syndrome	24891339;26377239
-chr15	20500000	33400000	15q11-q13 (SNRPN, UBE3A)	Prader-Willi syndrome	Angelman syndrome	22237428;27615419
+chr15			15q11-q13 (SNRPN, UBE3A)	Prader-Willi syndrome	Angelman syndrome	22237428;27615419
 chr20			20q13.32 (GNAS)	Mulchandani-Bhoj-Conlin syndrome (growth failure)	Pseudohypoparathyroidism type 1B	26248010;29959430

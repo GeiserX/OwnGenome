@@ -2,10 +2,10 @@
 # 24-html-report.sh — Generate a self-contained HTML report of all pipeline results
 # Usage: ./scripts/24-html-report.sh <sample_name>
 #
-# Reads every step's output once into ${SAMPLE}/summary.json
-# (bin/collect_summary.py) and renders the HTML report from it
-# (bin/render_report.py). generate-report.sh renders the text report from the
-# same summary, so the two reports show the same values. A result from an
+# Reads every step's output once into ${SAMPLE}/summary.json (og summary
+# collect, run by bin/render_report.py) and renders the HTML report from it.
+# generate-report.sh renders the text report from the same summary when
+# nothing has changed since, so the two reports show the same values. A result from an
 # earlier run whose step was skipped or failed in the latest run-all.sh run is
 # marked stale with its date. No internet connection is needed to view it.
 # ${SAMPLE}_search_index.json lists every gene and rsID the results mention

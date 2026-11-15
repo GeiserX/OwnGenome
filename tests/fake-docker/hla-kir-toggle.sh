@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Step 08 run with KIR=true, then again without it, as after a realignment:
 # the second run must not leave the first run's KIR genotype files, or the
-# report (collect_summary.kir_genotypes reads kir_t1k/<sample>_kir_genotype.tsv
-# or kir/<sample>_kir_genotype.tsv, where the Nextflow pipeline publishes it,
-# whenever it exists) shows them as this run's. A run that stops early, with
+# report (og summary collect reads kir_t1k/<sample>_kir_genotype.tsv or
+# kir/<sample>_kir_genotype.tsv, where the Nextflow pipeline publishes it,
+# whenever it exists: rust/crates/og-summary, the hla section's kir) shows them
+# as this run's. A run that stops early, with
 # the HLA database removed or on a missing BAM index, must not leave them either.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
@@ -52,10 +53,14 @@ mkdir -p "${G}/kir/IPD-KIR_${KIR_DB_RELEASE}"
 printf 'CC   IPD-KIR Release Version %s\n' "$KIR_DB_RELEASE" > "${G}/kir/IPD-KIR_${KIR_DB_RELEASE}/kir.dat"
 
 K="${G}/sample1/kir_t1k"
-# shown: what the report's summary reads for KIR (None = no KIR block).
+# shown: True when a file the report's summary reads for KIR is there (the
+# two paths of og summary collect's KIR reader, first one first).
 shown() {
-  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import collect_summary as c; print(c.kir_genotypes(sys.argv[2], "sample1") is not None)' \
-    "${REPO_ROOT}/bin" "${G}/sample1"
+  if [ -e "${G}/sample1/kir_t1k/sample1_kir_genotype.tsv" ] || [ -e "${G}/sample1/kir/sample1_kir_genotype.tsv" ]; then
+    echo True
+  else
+    echo False
+  fi
 }
 
 KIR=true run_expect 0 kir-on "${SCRIPTS}/08-hla-typing.sh" sample1

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og cn call --locus LPA_KIV2: step 46's LPA KIV-2 repeat count from
 short-read depth, with KIV-2 4925G>A beside it, and its Lp(a) section in both
 reports. Part 6 runs without og; the rest needs it: OG names the binary
@@ -52,6 +53,7 @@ depth from reads of MAPQ 0 unless a case says otherwise:
 
 Run: OG=rust/target/release/og python3 tests/test_lpa_kiv2.py
 """
+import csv
 import math
 import os
 import subprocess
@@ -75,6 +77,11 @@ sys.path.insert(0, os.path.join(REPO, "bin"))
 from test_copy_number import cn  # noqa: E402  pinned differential oracle
 
 FAILS = 0
+# The seven copies of KIV-2 4925G>A on GRCh38 (rust/crates/og-cn/src/markers.rs LPA_KIV2_4925).
+KIV2_4925_COPIES = (160646214, 160640667, 160635123, 160629574, 160624030, 160618484, 160612932)
+# The columns of step 42's traits table (og traits table --out).
+TRAITS_COLUMNS = ["rsid", "gene", "chrom", "pos", "trait", "genotype", "status", "reading", "ancestry",
+                  "note", "pmids"]
 # The two LPA rows; named once here so no line of this file reads as an rsID with a genotype.
 R1, R2 = "rs10455872", "rs3798220"
 ROW = cn.load_catalog(CATALOG)["LPA_KIV2"]
@@ -153,11 +160,10 @@ def cv(vals):
 
 
 def pileup(path, per_site, extra=""):
-    """mpileup lines at the seven copies of 4925G>A (traits_report.MARKERS);
+    """mpileup lines at the seven copies of 4925G>A (KIV2_4925_COPIES);
     per_site is (C reads, T reads) at each."""
-    import traits_report
     with open(path, "w") as f:
-        for p in traits_report.MARKERS["LPA_KIV2_4925"]["copies"]:
+        for p in KIV2_4925_COPIES:
             c, t_ = per_site
             bases = "^]" + "C" * c + "t" * t_ + "$"
             f.write(f"chr6\t{p}\tN\t{c + t_}\t{bases}\t{'I' * (c + t_)}\n")
@@ -166,10 +172,11 @@ def pileup(path, per_site, extra=""):
 
 def traits():
     """6. assets/traits.tsv holds the two LPA risk variants the report counts."""
-    import collect_summary
-    import traits_report
-    table = {r["rsid"]: r for r in traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))}
-    for rs, alt in collect_summary.LPA_RISK_ALLELES.items():
+    with open(os.path.join(REPO, "assets", "traits.tsv"), encoding="utf-8") as f:
+        table = {r["rsid"]: r for r in csv.DictReader((line for line in f if line.strip() and not line.startswith("#")),
+                                                      delimiter="\t", quoting=csv.QUOTE_NONE)}
+    # The two risk alleles og summary collect counts for the Lp(a) flag.
+    for rs, alt in {"rs10455872": "G", "rs3798220": "C"}.items():
         r = table.get(rs, {})
         check(f"traits.tsv: {rs} is an LPA row whose alt ({alt}) is the risk allele the report counts",
               r.get("gene") == "LPA" and r.get("alt") == alt, r)
@@ -277,7 +284,6 @@ def main():
     traits()
     import collect_summary
     import render_report
-    import traits_report
 
     # 7. reports
     def sample(t, name, n_copies, flank=30.0, genotypes=None):
@@ -291,11 +297,11 @@ def main():
         if genotypes:
             os.makedirs(os.path.join(d, "traits"))
             with open(os.path.join(d, "traits", "S_traits.tsv"), "w") as f:
-                f.write("\t".join(traits_report.OUT_COLUMNS) + "\n")
+                f.write("\t".join(TRAITS_COLUMNS) + "\n")
                 for rs, gt in genotypes.items():
-                    row = {k: "." for k in traits_report.OUT_COLUMNS}
+                    row = {k: "." for k in TRAITS_COLUMNS}
                     row.update(rsid=rs, gene="LPA", genotype=gt, status="called" if gt != "." else "not_covered")
-                    f.write("\t".join(row[k] for k in traits_report.OUT_COLUMNS) + "\n")
+                    f.write("\t".join(row[k] for k in TRAITS_COLUMNS) + "\n")
         summ = collect_summary.collect("S", d)
         return summ, render_report.text_report(summ), render_report.html_report(summ)
 

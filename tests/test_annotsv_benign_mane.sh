@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # Step 05 (AnnotSV) with the two files setup.sh adds to AnnotSV's data, on a
 # made-up annotation set small enough for the unit-test job, with the real
 # AnnotSV image (ANNOTSV_IMAGE).

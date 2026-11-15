@@ -34,7 +34,7 @@ paths() {
   printf '# a comment\n\n'
   printf '%s\n' "01-base${TAB}-" "02-base${TAB}-" "lpa-1${TAB}modules/local/lpa/* scripts/46-lpa.sh" \
     "nextflow-from-fastq-1-bash${TAB}scripts/01b-fastp-qc.sh" "nextflow-from-fastq-2-nextflow${TAB}-" \
-    "traits-1${TAB}-" "traits-2${TAB}bin/traits_report.py"
+    "traits-1${TAB}-" "traits-2${TAB}bin/og"
 }
 paths > "$E2E_PATHS"
 
@@ -53,14 +53,14 @@ broken "a second row for a case" "traits-2 has more than one row" "^NONE" "trait
 broken "a row for a case that is not a file" "row for gone" "^NONE" "gone${TAB}main.nf"
 broken "a base row with globs" "base case 01-base" "^01-base${TAB}" "01-base${TAB}main.nf"
 broken "a glob that matches no file" "bin/no_such_helper.py matches no tracked file" "^traits-2${TAB}" \
-  "traits-2${TAB}bin/traits_report.py bin/no_such_helper.py"
+  "traits-2${TAB}bin/og bin/no_such_helper.py"
 broken "a module glob that matches no file" "modules/local/nope/\\* matches no tracked file" "^lpa-1${TAB}" \
   "lpa-1${TAB}modules/local/nope/*"
 broken "a row of one column" "has 1 columns" "^traits-2${TAB}" "traits-2"
 broken "a glob that matches a file outside the e2e scope" "docs/testing.md matches docs/testing.md, which is outside the e2e scope" \
-  "^traits-2${TAB}" "traits-2${TAB}bin/traits_report.py docs/testing.md"
+  "^traits-2${TAB}" "traits-2${TAB}bin/og docs/testing.md"
 broken "a wildcard glob that reaches outside the e2e scope" "docs/\\* matches docs/" "^traits-2${TAB}" \
-  "traits-2${TAB}bin/traits_report.py docs/*"
+  "traits-2${TAB}bin/og docs/*"
 mkdir -p "${WORK}/nosmoke"
 cp "${E2E_CASE_DIR}"/*.sh "${WORK}/nosmoke/"
 rm "${WORK}/nosmoke/nextflow-from-fastq-2-nextflow.sh"
@@ -86,7 +86,7 @@ expect "a change outside the scope runs nothing" "" tests/test_cpic_parser.py .g
 expect "main.nf runs every shard case" "lpa-1 ${SMOKE} traits-1 traits-2" main.nf docs/testing.md
 expect "a workflow file runs every shard case" "lpa-1 ${SMOKE} traits-1 traits-2" workflows/pgx.nf
 expect "the e2e runner runs every shard case" "lpa-1 ${SMOKE} traits-1 traits-2" tests/e2e/lib.sh
-expect "one helper runs the smoke cases, its case and the case that needs it" "${SMOKE} traits-1 traits-2" bin/traits_report.py
+expect "one helper runs the smoke cases, its case and the case that needs it" "${SMOKE} traits-1 traits-2" bin/og
 expect "a file in one module runs that module's case" "lpa-1 ${SMOKE}" modules/local/lpa/main.nf
 expect "an in-scope path no case runs runs the smoke cases" "${SMOKE}" scripts/ci/check-name.sh
 expect "a committed fixture a case reads is in the scope" "${SMOKE}" tests/fixtures/consumer_export/sites.tsv.gz
@@ -96,11 +96,11 @@ expect "a base step runs the smoke cases only (the base leg runs every base case
 printf '%s\n' traits-2 > "${WORK}/rows.txt"
 ROWS="${WORK}/rows.txt" expect "a changed table row runs its case and what it needs" "${SMOKE} traits-1 traits-2" docs/x.md
 expect "a deleted case file runs the smoke cases" "${SMOKE}" tests/e2e/gone-1.sh
-if grep -q 'traits-1: needed by traits-2' "${WORK}/why.txt" 2> /dev/null || { pick bin/traits_report.py > /dev/null; grep -q 'traits-2: runs bin/traits_report.py' "${WORK}/why.txt"; }; then
+if grep -q 'traits-1: needed by traits-2' "${WORK}/why.txt" 2> /dev/null || { pick bin/og > /dev/null; grep -q 'traits-2: runs bin/og' "${WORK}/why.txt"; }; then
   ok "select says why it picked each case"
 else bad "select gave no reasons: $(cat "${WORK}/why.txt")"; fi
 paths | grep -v "^traits-1${TAB}" > "${WORK}/norow.tsv"
-printf '%s\n' bin/traits_report.py > "${WORK}/changed.txt"
+printf '%s\n' bin/og > "${WORK}/changed.txt"
 if E2E_PATHS="${WORK}/norow.tsv" "$S" select "${WORK}/changed.txt" > /dev/null 2>&1; then bad "select ran with a case that has no row"
 else ok "select refuses a table with a case that has no row"; fi
 
@@ -111,7 +111,7 @@ diff --git a/scripts/ci/e2e-case-paths.tsv b/scripts/ci/e2e-case-paths.tsv
 +++ b/scripts/ci/e2e-case-paths.tsv
 @@ -3 +3,2 @@
 -# an old comment
-+traits-2${TAB}bin/traits_report.py
++traits-2${TAB}bin/og
 +lpa-1${TAB}-
 diff --git a/scripts/ci/e2e-case-times.tsv b/scripts/ci/e2e-case-times.tsv
 --- a/scripts/ci/e2e-case-times.tsv
@@ -131,7 +131,7 @@ have=$(awk '/^  push:/ {p = 1; next} p && /^  [a-z_]+:/ {exit}
             p && /^      - / {sub(/^      - /, ""); gsub(/\047/, ""); print}' "${REPO}/.github/workflows/e2e.yml" | sort)
 if [ "$("$S" scope)" = "$have" ]; then ok "the push paths of e2e.yml are the scope"
 else bad "push paths and scope differ: $(diff <("$S" scope) <(echo "$have") || true)"; fi
-printf '%s\n' bin/traits_report.py > "${WORK}/changed.txt"
+printf '%s\n' bin/og > "${WORK}/changed.txt"
 "$S" select "${WORK}/changed.txt" > "${WORK}/real.txt" 2> /dev/null
 if [ -s "${WORK}/real.txt" ] && E2E_SELECT="${WORK}/real.txt" "${REPO}/scripts/ci/e2e-shards.sh" plan 2 > /dev/null; then
   ok "a real pick splits: $(paste -sd' ' "${WORK}/real.txt")"

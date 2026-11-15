@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two hits in one gene across callers (bin/collect_summary.py two_hits): a
+"""Two hits in one gene across callers (og summary collect's two-hit rule): a
 called deletion plus a small variant, on synthetic sample folders. Nothing
 here describes a person: the calls are made up at real gene positions.
 
@@ -111,7 +111,7 @@ def sample(work, name, hits, annotsv=None):
 
 
 def carrier(d):
-    return collect_summary.sec_carrier(d, "S")[1]
+    return collect_summary.collect("S", d)["sections"]["carrier"]["data"]
 
 
 def two(d, gene):
@@ -119,7 +119,12 @@ def two(d, gene):
 
 
 def sf(d):
-    return collect_summary.acmg_sf_tier(d, "S", None)
+    """The SF tier of the folder: from the hits and the clinical VCF, which is
+    a VCF with no record when the case gives none (the Nextflow layout)."""
+    v = f"{d}/clinical/S_clinical.vcf.gz"
+    if not os.path.exists(v):
+        put(v, VCF_HEAD, gz=True)
+    return collect_summary.collect("S", d)["sections"]["clinical"]["data"].get("acmg_sf") or {}
 
 
 def main():
@@ -294,8 +299,8 @@ def main():
                f"chr1\t{SNV[1]}\t.\tC\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|MUTYH|0.0001\tGT:GQ:DP:AD:PS\t"
                "0|1:50:30:15,15:45330000\n")
         d = sample(work, "high_trans", [], sv(DEL, "MUTYH", "1|0", ps=45330000))
-        clin = put(f"{d}/clinical/S_clinical.vcf", csq)
-        rep = [x for x in collect_summary.acmg_sf_tier(d, "S", clin)["high_impact"] if x["gene"] == "MUTYH"]
+        put(f"{d}/clinical/S_clinical.vcf.gz", csq, gz=True)
+        rep = [x for x in sf(d)["high_impact"] if x["gene"] == "MUTYH"]
         check("a HIGH-impact hit phased in trans with the deletion: biallelic in the SF tier",
               len(rep) == 1 and (rep[0].get("two_hit") or "").startswith("biallelic with DEL"), rep)
         # one hit in cis, one in trans: only the trans one carries the note
@@ -308,15 +313,17 @@ def main():
               and "chr1:45330500 A>G" in rows and rows["chr1:45330500 A>G"] is None, rows)
         # an unreadable carrier list: the SF card says what was not read
         d = sample(work, "no_list", [hit(SNV, "MUTYH", "0/1")], sv(DEL, "MUTYH"))
-        real = collect_summary.carrier_genes
-
-        def broken():
-            raise collect_summary.Unreadable("carrier_genes.tsv row 1: broken")
-        collect_summary.carrier_genes = broken
+        broken = os.path.join(work, "assets-broken")
+        shutil.copytree(collect_summary.ASSETS_DIR, broken)
+        with open(os.path.join(broken, "carrier_genes.tsv")) as f:
+            text = f.read()
+        with open(os.path.join(broken, "carrier_genes.tsv"), "w") as f:
+            f.write(text.replace("gene\tchrom\tstart", "name\tchrom\tstart", 1))
+        real, collect_summary.ASSETS_DIR = collect_summary.ASSETS_DIR, broken
         try:
             s = sf(d)
         finally:
-            collect_summary.carrier_genes = real
+            collect_summary.ASSETS_DIR = real
         check("an unreadable carrier list: a note on the SF card",
               "carrier_genes.tsv" in (s.get("two_hit_note") or "")
               and any("carrier_genes.tsv" in x for x in render_report.sf_apart_lines(s)), s.get("two_hit_note"))

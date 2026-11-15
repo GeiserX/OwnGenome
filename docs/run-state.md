@@ -26,7 +26,7 @@ When `run-all.sh` ends, however it ends, a `planned` row gives way to the step's
 
 `assets/steps.tsv` has one row per step: its number, its label as `run-all.sh` prints it, its `--tools` name, whether `run-all.sh` records it in `run_status.tsv`, its Nextflow processes, the report sections it feeds, the steps whose output it reads, and its usual hours. The hours are the upper end of the step's time in the [runtime table](hardware-requirements.md#runtime-per-step); `hours_from` says whether that figure was measured or is the page's estimate, and is empty when the table has no time for the step. On a measured row, `hours_low` is the lower end of the same measured time, always below `hours`; a part that runs once per reference, such as building an index, is left out of it.
 
-`tests/test_run_state.py` keeps the catalogue true: every step `run-all.sh` plans has its row with the same label and tool, the recorded steps are the ones `bin/collect_summary.py` checks for stale results, every report section belongs to the row of its step, every process in `modules/local` belongs to a step, and the tools are the ones `main.nf` accepts.
+`tests/test_run_state.py` keeps the catalogue true: every step `run-all.sh` plans has its row with the same label and tool, the recorded steps are the ones `og summary collect` checks for stale results, every report section belongs to the row of its step, every process in `modules/local` belongs to a step, and the tools are the ones `main.nf` accepts.
 
 ## What a step's state means
 

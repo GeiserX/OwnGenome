@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """The gene callability of step 16b and the ALT contig refusal.
 
 assets/callability_genes.tsv lists the genes short reads often cannot place
@@ -6,7 +7,7 @@ assets/callability_genes.tsv lists the genes short reads often cannot place
 tests/e2e/callability-1-catalog.sh rebuilds it and compares). Step 16b counts,
 per gene, the bases with 10 or more reads of MAPQ 20 or more
 (<sample>_callability.bed.gz, mosdepth's thresholds table), and
-bin/collect_summary.py turns that into the report's section.
+og summary collect (rust/crates/og-summary) turns that into the report's section.
   1. the catalog: its header, one row per gene, known reasons, an HGNC id per
      row, a position on chr1-22, X or Y unless ALT-only, and owners as the
      build script's rule gives them (assets/paralog_loci.tsv,
@@ -33,6 +34,7 @@ Run: OG=rust/target/release/og python3 tests/test_callability.py
 import csv
 import gzip
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -117,9 +119,22 @@ check("1. a gene that only holds a depth target is not the depth engine's (RSRP1
 
 
 # --- 2 to 4. the reader ----------------------------------------------------------------
+def og_callability(catalog, table):
+    """The callability data og summary collect reads from TABLE as step 16b's
+    table, in a sample folder of its own (og reads the repository's catalog,
+    which is CATALOG)."""
+    assert catalog is cat
+    sd = tempfile.mkdtemp(dir=os.path.dirname(table))
+    os.makedirs(os.path.join(sd, "mosdepth"))
+    shutil.copy(table, os.path.join(sd, "mosdepth", "S_callability.bed.gz"))
+    sec = collect_summary.collect("S", sd)["sections"]["callability"]
+    return sec["data"] if sec["state"] == "ok" else {"not_read": [], "not_read_owned": [], "read": 0,
+                                                     "not_on_reference": [], "state": sec}
+
+
 def alt_read_bug(catalog, table):
     """The planted bug: an ALT-only gene taken as read."""
-    d = collect_summary.callability(catalog, table)
+    d = og_callability(catalog, table)
     d["not_read"] = [g for g in d["not_read"] if g["status"] != "not on this reference"]
     d["read"] += len(d["not_on_reference"])
     return d
@@ -160,12 +175,12 @@ with tempfile.TemporaryDirectory() as work:
     write_thresholds(tsv, cat, zero={MAPQ0, OWNED})
     check("2. control: a reader that takes an ALT-only gene as read fails check 2",
           bool(mapq0_and_alt(alt_read_bug, tsv)), "the planted bug passed")
-    problems = mapq0_and_alt(collect_summary.callability, tsv)
+    problems = mapq0_and_alt(og_callability, tsv)
     check("2. a gene of MAPQ 0 reads is not read, a unique one is read, an ALT-only one is never read",
           not problems, problems)
     check("3. control: the planted bug's list differs from the catalog query",
           not count_matches(alt_read_bug, tsv)[0])
-    ok, d = count_matches(collect_summary.callability, tsv)
+    ok, d = count_matches(og_callability, tsv)
     check("3. the genes not read with no owner are the catalog query's", ok, d["not_read"][:5])
     check("3. owned genes not read are listed apart (HBA1 by the HBA count), GSTT1 is not one of them",
           any(g["gene"] == OWNED and g["owner"] == "cn_loci:HBA" for g in d["not_read_owned"])
@@ -209,7 +224,7 @@ if OG and not os.path.realpath(OG).startswith(os.path.realpath(REPO) + os.sep):
     # og cn finds bin/cn_loci.tsv beside its own binary. Guard's unit-tests job
     # builds og in a temporary folder, so the tests run a copy that sits next
     # to the catalog, as bin/.og/og-* does in a checkout.
-    import atexit, shutil  # noqa: E401
+    import atexit  # noqa: E401
     _og_dir = tempfile.mkdtemp(prefix="og-cn-")
     atexit.register(shutil.rmtree, _og_dir, True)
     shutil.copy2(OG, os.path.join(_og_dir, "og"))

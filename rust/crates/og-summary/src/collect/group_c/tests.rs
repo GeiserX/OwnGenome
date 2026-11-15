@@ -202,3 +202,154 @@ fn a_stale_section_says_from_which_run() {
     assert!(text(at(roh, &["note"])).contains("step 11 was skipped"));
     assert_eq!(at(roh, &["data", "largest_mb"]), &Value::Float(7.0));
 }
+
+/// Every locus of the checkout's `bin/str_intermediate_ranges.tsv` is read
+/// (tests/test_str_ranges.py checked the Python reader the same way).
+#[test]
+fn every_row_of_the_repeat_ranges_table_is_read() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../bin/str_intermediate_ranges.tsv"
+    );
+    let rows = super::util::bin_rows(path).unwrap();
+    let text = std::fs::read_to_string(path).unwrap();
+    let loci: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .skip(1)
+        .map(|l| l.split('\t').next().unwrap_or(""))
+        .collect();
+    let read: Vec<&str> = rows.iter().map(|r| r["locus"].as_str()).collect();
+    assert_eq!(read, loci);
+    assert!(loci.len() >= 3, "{loci:?}");
+}
+
+// i411-roh-scope: ST rows describe assessed chromosomes, including ones
+// with no long run. A run list alone cannot establish whole-genome scope.
+fn roh_scope_summary(sites: &[u8], runs: &str) -> Value {
+    let d = Dir::new("i411-roh-scope");
+    let mut body = String::new();
+    for c in sites {
+        body.push_str(&format!("ST\tS\tchr{c}\t40000000\t0\t60\n"));
+    }
+    body.push_str(runs);
+    d.put("S/roh/S_roh.txt", body);
+    at(&summary(&d, None), &["sections", "roh", "data"]).clone()
+}
+
+#[test]
+fn roh_scope_chr20_uses_its_own_unmasked_denominator() {
+    let r = roh_scope_summary(&[20], "RG\tS\tchr20\t1000001\t22000000\t21000000\n");
+    assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.3515));
+    assert_eq!(at(&r, &["relationship"]), &Value::Null);
+    assert_eq!(at(&r, &["upd_flag"]), &Value::Null);
+    assert_eq!(at(&r, &["scope", "unmasked_bp"]), &Value::Int(59_744_167));
+    assert_eq!(
+        at(&r, &["scope", "autosomes"]),
+        &Value::Array(vec![Value::Str("chr20".into())])
+    );
+}
+
+#[test]
+fn roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty() {
+    let r = roh_scope_summary(
+        &[22, 20, 20],
+        "RG\tS\tchr20\t1000001\t9000000\t8000000\nRG\tS\tchr22\t20000001\t28000000\t8000000\n",
+    );
+    assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.1717));
+    assert_eq!(at(&r, &["relationship"]), &Value::Null);
+    assert_eq!(at(&r, &["scope", "unmasked_bp"]), &Value::Int(93_162_635));
+    let mixed = roh_scope_summary(&[20, 22], "RG\tS\tchr20\t1000001\t9000000\t8000000\n");
+    assert_eq!(at(&mixed, &["f_roh"]), &Value::Float(0.0859));
+    assert_eq!(
+        at(&mixed, &["scope", "unmasked_bp"]),
+        &Value::Int(93_162_635)
+    );
+    let no_runs = roh_scope_summary(&[20], "");
+    assert_eq!(at(&no_runs, &["f_roh"]), &Value::Float(0.0));
+    assert_eq!(at(&no_runs, &["relationship"]), &Value::Null);
+    // Value::Float(-0.0) == Value::Float(0.0), so check the sign apart: a
+    // sample with no long run must read 0.0, never -0.0, in both reports.
+    for key in ["f_roh", "long_mb"] {
+        assert!(
+            matches!(at(&no_runs, &[key]), Value::Float(f) if f.is_sign_positive()),
+            "{key} must be +0.0 without long runs, got {:?}",
+            at(&no_runs, &[key])
+        );
+    }
+}
+
+#[test]
+fn roh_scope_sparse_all_autosomes_keep_the_whole_genome_band() {
+    let sites: Vec<u8> = (1..=22).collect();
+    let r = roh_scope_summary(&sites, "RG\tS\tchr2\t10000001\t18000000\t8000000\n");
+    assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.003));
+    assert_eq!(
+        at(&r, &["relationship"]),
+        &Value::Str("no sign of related parents".into())
+    );
+    assert_eq!(
+        at(&r, &["scope", "unmasked_bp"]),
+        &Value::Int(2_658_001_522)
+    );
+    assert_eq!(at(&r, &["scope", "partial"]), &Value::Bool(false));
+}
+
+#[test]
+fn roh_scope_a_segment_only_file_never_establishes_scope() {
+    let r = roh_scope_summary(&[], "RG\tS\tchr20\t1000001\t22000000\t21000000\n");
+    assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.3515));
+    assert_eq!(at(&r, &["relationship"]), &Value::Null);
+    assert_eq!(at(&r, &["upd_flag"]), &Value::Null);
+    assert_eq!(
+        at(&r, &["scope", "source"]),
+        &Value::Str("segments_only".into())
+    );
+    let empty = roh_scope_summary(&[], "# empty\n");
+    assert_eq!(at(&empty, &["f_roh"]), &Value::Null);
+}
+
+#[test]
+fn roh_scope_upd_is_a_region_hint_without_syndrome_names() {
+    let sites: Vec<u8> = (1..=22).collect();
+    // Distal chr15 and chr11 runs do not establish the imprinted locus's
+    // parental origin, but mixed iso/heterodisomy can involve that locus.
+    for (chrom, start, end, length, region) in [
+        (
+            15,
+            40000001,
+            101991189,
+            61991189,
+            "15q11-q13 (SNRPN, UBE3A)",
+        ),
+        (
+            11,
+            60000001,
+            100000000,
+            40000000,
+            "11p15 (H19/IGF2, KCNQ1OT1)",
+        ),
+        (20, 1000001, 22000000, 21000000, "20q13.32 (GNAS)"),
+    ] {
+        let r = roh_scope_summary(
+            &sites,
+            &format!("RG\tS\tchr{chrom}\t{start}\t{end}\t{length}\n"),
+        );
+        let u = at(&r, &["upd_flag"]);
+        assert_eq!(
+            at(u, &["imprinted", "0", "region"]),
+            &Value::Str(region.into())
+        );
+        assert_eq!(
+            at(u, &["imprinted", "0", "maternal_upd"]),
+            &Value::Str("-".into())
+        );
+        assert_eq!(
+            at(u, &["imprinted", "0", "paternal_upd"]),
+            &Value::Str("-".into())
+        );
+        let note = text(at(u, &["note"]));
+        assert!(note.contains("deletion") && note.contains("acquired") && note.contains("parent"));
+        assert_eq!(at(&r, &["relationship"]), &Value::Null);
+    }
+}

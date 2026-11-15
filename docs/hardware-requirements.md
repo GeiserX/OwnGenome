@@ -43,7 +43,7 @@ A run from FASTQ needs more space than a run from a BAM. Until you delete `<samp
 
 One row per download, in GB as `wget` and `du -h` count them (1 GB = 2^30 bytes); the download sizes were read from each server on 2026-10-02 (the two step 17 rows on 2026-10-03). Each total is the sum of the rows above it; the `setup.sh` line is the sum of the rows it names. [Reference setup](00-reference-setup.md) has the commands, under a heading per database with the same size.
 
-**Default run** (`setup.sh` downloads the first three rows and the Docker images; the VEP caches and the PCGR bundle are for steps 13 and 17, which a default run skips when they are missing):
+**Default run** (`setup.sh` downloads all these rows. `--no-clinical-data` skips both VEP caches and the PCGR bundle):
 
 | Resource | Download | On disk | Used by |
 |---|---|---|---|
@@ -55,9 +55,9 @@ One row per download, in GB as `wget` and `du -h` count them (1 GB = 2^30 bytes)
 | VEP cache, release 115 | ~24 GB | ~28 GB | step 17 (CPSR's own VEP) |
 | Docker images | ~10-15 GB | ~10-15 GB | every step |
 | **Total, default run** | **~73-78 GB** | **~98-103 GB** | |
-| Of which `setup.sh` downloads (first three rows + Docker images) | ~16-21 GB | ~33-38 GB | |
+| With `--no-clinical-data` (first three rows + Docker images) | ~16-21 GB | ~33-38 GB | |
 
-While a VEP cache installs, the tarball and the unpacked tree are on disk together until the tarball is deleted (`install_vep_cache` in `scripts/lib/common.sh`): about 56 GB free for release 116 and 52 GB for release 115.
+While a VEP cache installs, the tarball and the unpacked tree are on disk together until the tarball is deleted (`install_vep_cache` in `scripts/lib/common.sh`): 56 GB peak for release 116 and 52 GB for release 115. The bundle needs 15 GB peak. Setup adds a 5 GB margin to each check and warns when it skips an item. The three clinical downloads add about 57 GB to transfer and 65 GB on disk. Allow 1 to 3 hours. To retry only these downloads, run `./scripts/setup.sh --clinical-data "$GENOME_DIR"`.
 
 **Optional** (only for the step named):
 
@@ -255,6 +255,8 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 | `run_delta.py` (what changed since the previous run) | 0.11-0.16 s | 19-21 MB | |
 
 So the reports cost about 25 s per sample, not 1-3 minutes, and almost all of it is collecting the summary, which each of the two scripts does once. Under `cProfile` (one HTML run), 82% of the collection was `sec_variants` reading every record of the sample's small-variant VCF in Python, and 9% the ROH section. Rendering is under half a second. The HTML report was 2.0-2.7 MiB and the search index 8.3-12.2 MiB.
+
+Since then the Rust `og summary collect` writes `summary.json`, and `generate-report.sh` renders from the `summary.json` step 24 wrote unless a step output is newer than it, so a run collects each sample once. `run_delta.py` is gone: `og run delta` makes the comparison.
 
 The command, per genome (`<genome_dir>` holds the sample folder, `<scratch>` is empty and writable, run from the repo root):
 

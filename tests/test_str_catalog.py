@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og str catalog, and Stranger on the catalog it builds.
 
 Reads the two STRchive files versions.env pins (STRCHIVE_VERSION and the

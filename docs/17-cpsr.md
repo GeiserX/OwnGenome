@@ -22,22 +22,21 @@ The image is PCGR 2.3.2 from `ghcr.io/sigven/pcgr` (Docker Hub's `sigven/pcgr` s
 
 ### 1. VEP Cache
 PCGR 2.3.2 bundles VEP 115, which requires the **release-115** cache (~24 GB). This is different from the release-116 cache used by step 13. Both coexist in the same `vep_cache/` directory under different subdirectories (`116_GRCh38/` and `115_GRCh38/`).
+
+### 2. PCGR ref data bundle
+PCGR 2.x uses a separate ref data bundle (`20260620`, about 7 GB).
+A plain setup installs the VEP 115 cache and this bundle by default, alongside VEP 116 for step 13.
+For an existing setup, install or retry all three with:
+
 ```bash
-mkdir -p ${GENOME_DIR}/vep_cache
-wget -c -P ${GENOME_DIR}/vep_cache https://ftp.ensembl.org/pub/release-115/variation/indexed_vep_cache/homo_sapiens_vep_115_GRCh38.tar.gz
-tar xzf ${GENOME_DIR}/vep_cache/homo_sapiens_vep_115_GRCh38.tar.gz -C ${GENOME_DIR}/vep_cache
+./scripts/setup.sh --clinical-data "$GENOME_DIR"
 ```
 
-### 2. PCGR Ref Data Bundle
-PCGR 2.x uses a ref data bundle (~7 GB for `20260620`) separate from VEP:
-```bash
-mkdir -p ${GENOME_DIR}/pcgr_data
-cd ${GENOME_DIR}/pcgr_data
-wget -c https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.20260620.grch38.tgz
-tar xzf pcgr_ref_data.20260620.grch38.tgz
-mkdir -p 20260620 && mv data/ 20260620/
-```
-This creates a `20260620/data/` directory with ClinVar, CancerMine, UniProt, and other databases. VEP cache is now mounted separately.
+The bundle goes to `pcgr_data/20260620/data/`; the caches coexist under `vep_cache/homo_sapiens/`.
+Setup checks Ensembl's cache checksums and the bundle's pinned SHA-256 before extraction, then removes each archive.
+It checks free space for each install and continues with a warning if one fails or does not fit.
+`--no-clinical-data` skips all three. Without either CPSR item, `run-all.sh` skips step 17.
+See [reference setup](00-reference-setup.md) for disk peaks and the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) for the bundled databases. Review each source's terms before use.
 
 ### Upgrading from PCGR 2.2.5
 PCGR 2.2.5 read bundle `20250314` and the release-113 cache. 2.3.2 needs both new ones: about 31 GB to download (the 7 GB bundle and the 24 GB cache). Once step 17 runs on 2.3.2, `pcgr_data/20250314/` and `vep_cache/homo_sapiens/113_GRCh38/` are no longer read and can be deleted.
@@ -120,7 +119,7 @@ Run by hand like this, `--sample_id` must be 3 to 40 characters long. The script
 - `${SAMPLE}.cpsr.grch38.html` — Interactive HTML report with classified variants
 - `${SAMPLE}.cpsr.grch38.classification.tsv.gz` — Tab-separated variant classifications (gzipped; read it with `zcat`)
 - Every variant in the panel genes gets one of the five ACMG/AMP classes: Pathogenic, Likely pathogenic, VUS, Likely benign, Benign
-- In the TSV, `CLASSIFICATION` is the final class and `ASSERTION_AUTHORITY` says whose it is: ClinVar's, unless ClinVar has no record or a conflicted one, then CPSR's own (`CPSR_CLASSIFICATION`, which every variant has). PCGR 2.2.5 named the final column `FINAL_CLASSIFICATION`; the reports (`bin/collect_summary.py`) read either. The file names are the same in both versions.
+- In the TSV, `CLASSIFICATION` is the final class and `ASSERTION_AUTHORITY` says whose it is: ClinVar's, unless ClinVar has no record or a conflicted one, then CPSR's own (`CPSR_CLASSIFICATION`, which every variant has). PCGR 2.2.5 named the final column `FINAL_CLASSIFICATION`; the reports (`og summary collect`) read either. The file names are the same in both versions.
 - `${SAMPLE}_cpsr_cdna_check.tsv` — step 6's cDNA read check on CPSR's P/LP rows (final class or CPSR's own), in the columns of step 6's `clinvar/${SAMPLE}_clinvar_cdna_check.tsv`. The rows are read from `VAR_ID` (or `GENOMIC_CHANGE`) and keep CPSR's contig names (`13`, not `chr13`); the BAM is read under either name. It needs the sample's BAM, `aligned/${SAMPLE}_sorted.bam` with its `.bai` (`ALIGN_DIR` picks another folder), and the GENCODE exons `setup.sh` installs; without either, every row is "not checked" with the reason. In Nextflow step 6's `CLINVAR_CDNA_CHECK` process runs it after `CPSR` (source `cpsr`) under the name `CPSR_CDNA_CHECK`, so the run's process table and the live view count it under step 17, with the samplesheet's BAM and `--gencode_exons`, and publishes the table to `cpsr/`; the HTML report puts it beside each P/LP row there too. Its image comes from a `withName: 'CPSR_CDNA_CHECK'` selector (a setting for step 6's `CLINVAR_CDNA_CHECK` does not reach it).
 
 ### What the reports show
