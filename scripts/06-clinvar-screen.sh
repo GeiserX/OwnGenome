@@ -23,7 +23,9 @@
 # clinvar/${SAMPLE}_clinvar_deep_intronic.tsv gives the sample's call at every
 # site of assets/deep_intronic_sites.tsv (known pathogenic deep intronic
 # alleles), carrier or not: a genotype, "ref" with the GQ of the record or the
-# gVCF block, or why there is no call (CLINVAR_ALWAYS_REPORT names another list).
+# gVCF block ("ref (low confidence)" for a filtered call or one below the GQ
+# floor or without a GQ, "ref (shallow)" below the depth floor), or why there
+# is no call (CLINVAR_ALWAYS_REPORT names another list).
 # A multiallelic record is split with the other alt allele written as missing
 # (1/2 gives 1/. and ./1), so a hit from it never reads as het.
 # A hit whose call has a genotype quality below CLINVAR_MIN_GQ (default 30) or
@@ -32,6 +34,8 @@
 # other than the default is written into the hits VCF as
 # ##PGP_CALL_FLOOR=GQ=..,DP=.., so og clinvar hits and both reports read
 # the floor this run used; without the line they use the default.
+# The summary counts the sample records whose REF differs from the reference
+# (bcftools norm -c w warns REF_MISMATCH and keeps them as written).
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -160,11 +164,22 @@ fi
 # --multi-overlaps .: the split of a 1/2 record writes 1/. and ./1, not 1/0
 # and 0/1. The other copy holds the other alt allele, not the reference, so a
 # hit from such a record (one length of a poly-T tract) must not read as het.
+# -c w warns REF_MISMATCH for a record whose REF is not the reference's and
+# keeps it as written; such a record matches no ClinVar allele, so the
+# summary counts them.
 PASS_VCF="${OUTPUT_DIR}/${SAMPLE}_pass.vcf.gz"
-run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
+NORM_LOG="${OUTPUT_DIR}/${SAMPLE}_norm.log"
+if ! run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
   sh -c "set -e; bcftools view -f '${FILTER}' -T '$(cpath "$SAMPLE_TARGETS")' -Ou '$(cpath "$VCF")' \
     | bcftools norm -m -any --multi-overlaps . -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "$PASS_VCF")' -
-    bcftools index -f -t '$(cpath "$PASS_VCF")'"
+    bcftools index -f -t '$(cpath "$PASS_VCF")'" 2> "$NORM_LOG"; then
+  cat "$NORM_LOG" >&2
+  rm -f "$NORM_LOG"
+  exit 1
+fi
+cat "$NORM_LOG" >&2
+REF_MISMATCH=$(grep -c '^REF_MISMATCH' "$NORM_LOG" || true)
+rm -f "$NORM_LOG"
 
 PASS_COUNT=$(bcftools_run bcftools index -n "$(cpath "$PASS_VCF")")
 if [ "$PASS_COUNT" -eq 0 ]; then
@@ -248,7 +263,8 @@ rm -f "$SHARED" "${SHARED}.tbi" "${HITS_TSV}.body" "$CLINVAR_TARGETS" "$SAMPLE_T
 # Step 3b: the always-report list. Every site of the list gets the sample's
 # call: its record in the split PASS records above, else the gVCF record over
 # it (a reference block gives "ref" with the block's GQ), else no call, with
-# why. og clinvar deep-intronic words the genotype as the hits are.
+# why. og clinvar deep-intronic words the genotype as the hits are, and reads
+# the FILTER, GQ and DP of a reference call against the floors above.
 # query_format FILE: the bcftools query format og clinvar deep-intronic reads,
 # with '.' for a GQ or DP the file's header does not define.
 query_format() {
@@ -256,7 +272,7 @@ query_format() {
   h=$(bcftools_run bcftools view -h "$(cpath "$1")")
   grep -q '^##FORMAT=<ID=GQ,' <<< "$h" && gq='[%GQ]'
   grep -q '^##FORMAT=<ID=DP,' <<< "$h" && dp='[%DP]'
-  printf '%%CHROM\\t%%POS\\t%%END\\t%%REF\\t%%ALT\\t[%%GT]\\t%s\\t%s\\n' "$gq" "$dp"
+  printf '%%CHROM\\t%%POS\\t%%END\\t%%REF\\t%%ALT\\t[%%GT]\\t%s\\t%s\\t%%FILTER\\n' "$gq" "$dp"
 }
 SITES_POS="${OUTPUT_DIR}/${SAMPLE}_sites_pos.tsv"
 awk -F'\t' -v OFS='\t' '!/^#/ && $1 != "chrom" && NF >= 7 {print $1, $2}' "$SITES" | sort -k1,1 -k2,2n -u > "$SITES_POS"
@@ -272,7 +288,7 @@ fi
 NO_GVCF=(); [ "$HAS_GVCF" = yes ] || NO_GVCF=(--no-gvcf)
 # The list can live outside GENOME_DIR (CLINVAR_ALWAYS_REPORT), so it goes in on stdin.
 run_in -i -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" /pgp-bin/og clinvar deep-intronic ${NO_GVCF[@]+"${NO_GVCF[@]}"} \
-  --min-gq "$MIN_GQ" - "$(cpath "${DEEP_TSV}.vcf")" "$(cpath "${DEEP_TSV}.gvcf")" < "$SITES" > "${DEEP_TSV}.part"
+  --min-gq "$MIN_GQ" --min-dp "$MIN_DP" - "$(cpath "${DEEP_TSV}.vcf")" "$(cpath "${DEEP_TSV}.gvcf")" < "$SITES" > "${DEEP_TSV}.part"
 mv "${DEEP_TSV}.part" "$DEEP_TSV"
 rm -f "$SITES_POS" "${DEEP_TSV}.vcf" "${DEEP_TSV}.gvcf"
 
@@ -315,6 +331,10 @@ echo "cDNA scan of every exon: ${SCAN_TSV}"
 echo "Known deep intronic sites, always reported: ${DEEP_TSV}"
 awk -F'\t' 'NR > 1 {printf "  %s %s %s:%s %s>%s: %s%s\n", $5, $6, $1, $2, $3, $4, $8, ($9 != "" ? ", " $9 : "")}' "$DEEP_TSV"
 echo "Count: ${HIT_COUNT} pathogenic hits"
+echo "Records whose REF differs from the reference (REF_MISMATCH): ${REF_MISMATCH}"
+if [ "$REF_MISMATCH" -gt 0 ]; then
+  echo "NOTICE: ${REF_MISMATCH} sample records have a REF that is not the reference's (bcftools norm REF_MISMATCH above): they stay as written and cannot match a ClinVar allele there. Check that the VCF was called on this reference."
+fi
 if [ "$HIT_COUNT" -gt 0 ]; then
   HIT_ROWS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" /pgp-bin/og clinvar hits "$(cpath "$HITS")")
   LOW_COUNT=$(awk -F'\t' '$13 == "yes"' <<< "$HIT_ROWS" | wc -l | tr -d ' ')
