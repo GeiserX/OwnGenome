@@ -654,6 +654,47 @@ mod tests {
         );
     }
 
+    /// The cM lengths of the truth rows of each ancestry of `cfg(seed)` with
+    /// T = `generations`, seeds 1 to 40, on 3,000 sites over 30 Morgans.
+    /// Rows that touch a chromosome end are cut by it, so they are left out.
+    fn truth_tract_lengths(generations: f64) -> [Vec<f64>; 2] {
+        let d = Dir::new("sim-tracts");
+        let panel = two_group_panel(&d, 3000);
+        let map = GeneticMap::from_markers(vec![(1, 0.0), (3_001_001, 3000.0)]).unwrap();
+        let mut out = [Vec::new(), Vec::new()];
+        for seed in 1..=40 {
+            let cfg = Config {
+                generations,
+                ..cfg(seed)
+            };
+            let chrom = simulate_chrom(&panel, &map, &people(), &cfg, &mut Vec::new()).unwrap();
+            for r in chrom.rows {
+                if r.start != 2000 - 1 && r.end != 3_001_000 {
+                    out[r.ancestry].push(map.cm_at(r.end) - map.cm_at(r.start));
+                }
+            }
+        }
+        out
+    }
+
+    /// A joined truth row of ancestry a ends at an event that draws another
+    /// ancestry, so its length follows the exponential law of rate
+    /// T (1 - mu_a): mean 100 / (T (1 - mu_a)) cM.
+    #[test]
+    fn truth_tracts_follow_the_exponential_law() {
+        let t = 50.0;
+        let mu = [0.6, 0.4];
+        let drawn_t = if crate::PLANTED { 2.0 * t } else { t };
+        for (a, lengths) in truth_tract_lengths(drawn_t).iter().enumerate() {
+            assert!(lengths.len() >= 25_000, "{} tracts", lengths.len());
+            exponential_law(lengths, t * (1.0 - mu[a])).unwrap();
+        }
+        for (a, lengths) in truth_tract_lengths(2.0 * t).iter().enumerate() {
+            let err = exponential_law(lengths, t * (1.0 - mu[a])).unwrap_err();
+            assert!(err.starts_with("mean tract"), "{err}");
+        }
+    }
+
     #[test]
     fn the_cover_check_finds_a_gap_an_overlap_and_a_split() {
         let r = |start, end, haplotype, ancestry| TruthRow {
