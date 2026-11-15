@@ -5,7 +5,9 @@
 # GRCh38's (a GRCh37 file named the chr way or the Ensembl way), and lets a
 # GRCh38 header through. A header without contig lengths gets its REF bases
 # compared with the reference instead: more than 5% of the first 1000
-# records different stops the run, 5% or less goes on.
+# records different stops the run, 5% or less goes on. A GT key after
+# another FORMAT key stops the run with exit 2 before a reader can mistake
+# depth or quality for a genotype.
 #
 # Two places apply the rule, and both are run here on the synthetic VCFs in
 # tests/fixtures/vcf/:
@@ -74,6 +76,8 @@ cat > "${WORK}/bin/bcftools" <<'FAKE'
 case "$1 ${2:-}" in
   "index -s")
     gzip -dc "$3" | awk -F'\t' '!/^#/ { n[$1]++ } END { for (c in n) printf "%s\t.\t%d\n", c, n[c] }' ;;
+  "view -H")
+    gzip -dc "$3" | grep -v '^#' ;;
   "view -h")
     gzip -dc "$3" | grep '^#' ;;
   "head -h")
@@ -171,6 +175,54 @@ if [ "$RC" -eq 0 ] && ! grep -q 'samples (' <<<"$OUT" && grep -q 'FILTER counts 
   pass "VCF_PRECHECK accepts a one-sample VCF and goes on to count FILTER values"
 else
   fail "VCF_PRECHECK on a one-sample VCF: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
+# --- FORMAT order: never read a depth value as the genotype -------------------
+# Only the second record is malformed: checking the header or first record
+# alone cannot catch it. Repeated errors must name the first bad record.
+awk -F'\t' -v OFS='\t' '
+  !/^#/ && ++n >= 2 { $9 = "DP:GT:GQ"; $10 = "30:0/1:50" }
+  { print }' "${FIX}/one_sample.vcf" > "${WORK}/gt-not-first.vcf"
+run_precheck "${WORK}/gt-not-first.vcf"
+if [ "$RC" -eq 2 ] && grep -q "Sample .S1.: input.vcf.gz" <<<"$OUT" \
+   && grep -q 'chr1:10000200.*DP:GT:GQ' <<<"$OUT" \
+   && grep -q 'GT must be the first FORMAT key' <<<"$OUT" \
+   && grep -q 'FORMAT keys and each sample.*values together' <<<"$OUT"; then
+  pass "VCF_PRECHECK refuses misplaced GT with exit 2, the first record and the fix"
+else
+  fail "VCF_PRECHECK on misplaced GT: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
+# GT may also be the last key, even on a filtered record.
+awk -F'\t' -v OFS='\t' '
+  !/^#/ && ++n == 3 { $7 = "LowQual"; $9 = "DP:GQ:GT"; $10 = "30:50:0/1" }
+  { print }' "${FIX}/one_sample.vcf" > "${WORK}/gt-last.vcf"
+run_precheck "${WORK}/gt-last.vcf"
+if [ "$RC" -eq 2 ] && grep -q 'chrM:100.*DP:GQ:GT' <<<"$OUT"; then
+  pass "VCF_PRECHECK checks the last record and filtered records for misplaced GT"
+else
+  fail "VCF_PRECHECK on GT last: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
+# The VCF rule applies when GT is present. A sites-only VCF, FORMAT '.', or
+# FORMAT without GT is valid and must not be labelled a FORMAT-order error.
+for format in GT GT:DP:GQ DP:GQ . XGT:DP; do
+  awk -F'\t' -v OFS='\t' -v fmt="$format" '
+    !/^#/ { $9 = fmt; $10 = (fmt == "GT" ? "0/1" : fmt == "GT:DP:GQ" ? "0/1:30:50" : fmt == "." ? "." : "30:50") }
+    { print }' "${FIX}/one_sample.vcf" > "${WORK}/format.vcf"
+  run_precheck "${WORK}/format.vcf"
+  if [ "$RC" -eq 0 ] && grep -q 'FILTER counts PASS=3' <<<"$OUT"; then
+    pass "VCF_PRECHECK preserves FORMAT $format"
+  else
+    fail "VCF_PRECHECK on FORMAT $format: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+  fi
+done
+cut -f1-8 "${FIX}/one_sample.vcf" > "${WORK}/sites-only.vcf"
+run_precheck "${WORK}/sites-only.vcf"
+if [ "$RC" -eq 0 ] && grep -q 'FILTER counts PASS=3' <<<"$OUT"; then
+  pass "VCF_PRECHECK preserves a sites-only VCF"
+else
+  fail "VCF_PRECHECK on sites-only VCF: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
 fi
 
 # --- build: ##contig lengths that are not GRCh38's --------------------------------------
