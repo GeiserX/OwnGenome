@@ -371,6 +371,38 @@ jobs:
           cp -f "$saved" "$src"
           trap - EXIT
 
+      # The PGx tests moved from Python into cargo test: one planted fault per
+      # crate must fail the moved test that guards that rule.
+      - name: PGx test controls (a planted fault fails its moved test in each crate)
+        run: |
+          files="crates/og-steps/src/pgx_rules.rs crates/og-pgx/src/sections.rs crates/og-filters/src/mito.rs crates/og-filters/src/refblock.rs crates/og-bam/tests/data/parity/want/check-multimapped_with_alt/files/check.tsv"
+          saved="${RUNNER_TEMP}/pgx-controls"
+          mkdir -p "$saved"
+          for f in $files; do cp -f "$f" "$saved/$(basename "$f")"; done
+          trap 'for f in $files; do cp -f "$saved/$(basename "$f")" "$f"; done' EXIT
+          perl -pi -e 's/\} else if !same_pair\(&names, calls\) \{/} else if false \&\& !same_pair(\&names, calls) {/' crates/og-steps/src/pgx_rules.rs
+          perl -pi -e 's/cyp2d6_band\(all\[0\] \* factor\)/cyp2d6_band(all[0])/' crates/og-pgx/src/sections.rs
+          perl -pi -e 's/^pub const MIN_AF: f64 = 0\.95;/pub const MIN_AF: f64 = 0.94;/' crates/og-filters/src/mito.rs
+          perl -pi -e 's/^pub const MIN_GQ: i128 = 20;/pub const MIN_GQ: i128 = 19;/' crates/og-filters/src/refblock.rs
+          perl -pi -e 's/^status\tunreliable$/status\tok/' crates/og-bam/tests/data/parity/want/check-multimapped_with_alt/files/check.tsv
+          for f in $files; do
+            cmp -s "$f" "$saved/$(basename "$f")" && { echo "ERROR: no fault was planted in $f"; exit 1; }
+          done
+          log="${RUNNER_TEMP}/pgx-controls.log"
+          if cargo test --locked --no-fail-fast -p og-steps -p og-pgx -p og-filters -p og-bam \
+              --test pgx_hla_second_caller --test port_tests_pgx_cpic --test port_tests_pgx_mito \
+              --test port_tests_pgx_refblock --test cyp2d6_depth > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the moved PGx tests passed with the planted faults"
+            exit 1
+          fi
+          cat "$log"
+          for test in case2_optitype_disagrees_at_hla_b a_moderate_inhibitor_halves_the_activity_score \
+              case2_the_af_bound the_gq_threshold each_depth_table_gives_its_verdict_and_the_shares; do
+            grep -E "^test ${test} .*FAILED" "$log" || { echo "ERROR: $test did not catch its fault"; exit 1; }
+          done
+          echo "Control: each planted PGx fault failed the moved test that guards it."
+
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 
