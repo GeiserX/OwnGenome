@@ -13,13 +13,13 @@ for step in 26b-ancestry-fine 44-ancient 25-prs; do
   case "$step" in
     26b-*) module=ancestry_fine ;;
     44-*) module=ancient ;;
-    25-*) module=prs ;;
+    25-*) module='prs' ;;
   esac
   for source in "scripts/${step}.sh" "modules/local/${module}/main.nf"; do
     # Keep each view's options verbatim. Only replace its panel path, remove
     # its filename (read stdin instead), and decode Groovy's escaped quotes.
     awk -v source="$source" '
-      /bcftools view -T/ {
+      /bcftools view .*-[T] / {
         line = $0
         sub(/^.*bcftools view /, "bcftools view ", line)
         if (line !~ /-O[uv]/) next
@@ -88,7 +88,7 @@ if ! tar -C "$INPUT" -cf - . \
   fail "the real bcftools extraction completed"
 else
   cat "$LOG"
-  while IFS=$'\t' read -r source kind command; do
+  while IFS=$'\t' read -r source kind _command; do
     case "$source:$kind" in
       *ancient*) expected=10,40,50, ;;
       *:gvcf) expected=10,40,50,70,80,90, ;;
