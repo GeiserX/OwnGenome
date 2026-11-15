@@ -200,36 +200,15 @@ pub fn read_all(c: &Ctx<'_>) -> Vec<Out> {
         tables::mei,
         tables::mosaic,
     ];
-    // The readers are independent: one thread each, over a small pool, so a
-    // big input (a VCF, a table of thousands of rows) never holds up the
-    // others. A panic stays in its section.
-    let jobs = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let slots: Vec<std::sync::Mutex<Option<Out>>> = (0..readers.len())
-        .map(|_| std::sync::Mutex::new(None))
-        .collect();
-    std::thread::scope(|scope| {
-        for _ in 0..jobs {
-            scope.spawn(|| {
-                loop {
-                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let Some(r) = readers.get(i) else { break };
-                    let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| r(c)))
-                        .unwrap_or_else(|_| Err("internal error: the reader stopped".to_owned()));
-                    if let Ok(mut slot) = slots[i].lock() {
-                        *slot = Some(out);
-                    }
-                }
-            });
-        }
-    });
-    slots
-        .into_iter()
-        .map(|m| {
-            m.into_inner()
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| Err("internal error: the reader stopped".to_owned()))
+    // One reader at a time: a run's peak memory is then the biggest single
+    // section, not the sum of all of them. The sample VCF, the one input
+    // that takes time, is read on its own thread meanwhile (`read_a`). A
+    // panic stays in its section.
+    readers
+        .iter()
+        .map(|r| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| r(c)))
+                .unwrap_or_else(|_| Err("internal error: the reader stopped".to_owned()))
         })
         .collect()
 }

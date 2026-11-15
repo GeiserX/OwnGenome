@@ -39,14 +39,20 @@ sample() {
   rm -rf "${G:?}/$1"; mkdir -p "${G}/$1/aligned"
   cp "$2" "${G}/$1/aligned/$1_sorted.bam"; cp "$2.bai" "${G}/$1/aligned/$1_sorted.bam.bai"
 }
-SITES=$(python3 -c "import sys; sys.path.insert(0, '${REPO}/bin'); import traits_report as t; \
-print(','.join(map(str, t.MARKERS['LPA_KIV2_4925']['copies'])))")
+# marker KEY copies|dbsnp: the copies (comma-separated) or the dbSNP record
+# (rsID, POS, REF, ALT) of a copy-aware marker, from og-cn's table of them.
+marker() {
+  awk -v k="$1" -v what="$2" '$0 ~ "key: \"" k "\"" { on = 1 } on && /^};/ { exit } on { b = b $0 "\n" } END {
+    if (what == "copies") { c = b; sub(/.*copies: &\[/, "", c); sub(/\].*/, "", c); gsub(/[ \n_]/, "", c); sub(/,$/, "", c); print c }
+    else { d = b; sub(/.*dbsnp: \(/, "", d); sub(/\).*/, "", d); gsub(/[ "_]/, "", d); split(d, x, ","); print x[1] "\t" x[3] "\t" x[4] "\t" x[5] } }' \
+    "${REPO}/rust/crates/og-cn/src/markers.rs"
+}
+SITES=$(marker LPA_KIV2_4925 copies)
 check_eq "seven copies of the 4925G>A site" "$(tr ',' '\n' <<< "$SITES" | wc -l | tr -d ' ')" 7
 
 # --- dbSNP orientation, online --------------------------------------------------------
 URL="https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD:?}/VCF/GCF_000001405.40.gz"
-PINNED=$(python3 -c "import sys; sys.path.insert(0, '${REPO}/bin'); import traits_report as t; \
-d = t.MARKERS['LPA_KIV2_4925']['dbsnp']; print(d[0], d[2], d[3], d[4], sep='\t')")
+PINNED=$(marker LPA_KIV2_4925 dbsnp)
 same_record() {
   awk -F'\t' 'NR == 1 { id = $1; pos = $2; ref = $3; alt = $4; next }
               $1 == id && $2 == pos && $3 == ref && index("," $4 ",", "," alt ",") { ok = 1 }

@@ -7,6 +7,7 @@ FASTA bases, PubMed sources and dbSNP records. A synthetic FASTA provides
 positive, wrong-base and missing-contig controls without network access.
 """
 import argparse
+import csv
 import json
 import os
 import shutil
@@ -16,9 +17,6 @@ import tempfile
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import traits_report as tr  # noqa: E402
-
 TABLE = os.path.join(REPO, "assets", "traits.tsv")
 FAILS = 0
 NC = {f"NC_0000{n:02d}": f"chr{n}" for n in range(1, 23)}
@@ -122,13 +120,20 @@ def online_errors(rows):
     return errs
 
 
+def read_table(path):
+    """The rows of a traits table as dicts (its schema is og traits check's to judge)."""
+    with open(path, encoding="utf-8") as f:
+        return list(csv.DictReader((line for line in f if line.strip() and not line.startswith("#")),
+                                   delimiter="\t", quoting=csv.QUOTE_NONE))
+
+
 def schema(path):
     return subprocess.run([os.environ.get("OG", os.path.join(REPO, "bin", "og")),
                            "traits", "check", "--table", path], capture_output=True, text=True)
 
 
 def schema_controls():
-    good = tr.read_table(TABLE)
+    good = read_table(TABLE)
     check("the table has at least 30 rows", len(good) >= 30, len(good))
     work = tempfile.mkdtemp()
     try:
@@ -174,13 +179,9 @@ def main(argv=None):
             return 0
         schema_controls()
     else:
-        try:
-            rows = tr.read_table(a.table)
-        except tr.TableError as e:
-            check("the table can be read", False, e)
-            rows = []
         res = schema(a.table)
         check(f"{a.table} passes the schema check", res.returncode == 0, res.stderr)
+        rows = read_table(a.table) if res.returncode == 0 else []
         if a.fasta and rows:
             e, n = fasta_errors(a.fasta, rows)
             print(f"  ref checked against {a.fasta}: {n} rows (the others are on contigs it lacks)")

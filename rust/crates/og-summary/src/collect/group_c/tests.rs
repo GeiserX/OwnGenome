@@ -202,3 +202,24 @@ fn a_stale_section_says_from_which_run() {
     assert!(text(at(roh, &["note"])).contains("step 11 was skipped"));
     assert_eq!(at(roh, &["data", "largest_mb"]), &Value::Float(7.0));
 }
+
+/// Every locus of the checkout's `bin/str_intermediate_ranges.tsv` is read
+/// (tests/test_str_ranges.py checked the Python reader the same way).
+#[test]
+fn every_row_of_the_repeat_ranges_table_is_read() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../bin/str_intermediate_ranges.tsv"
+    );
+    let rows = super::util::bin_rows(path).unwrap();
+    let text = std::fs::read_to_string(path).unwrap();
+    let loci: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .skip(1)
+        .map(|l| l.split('\t').next().unwrap_or(""))
+        .collect();
+    let read: Vec<&str> = rows.iter().map(|r| r["locus"].as_str()).collect();
+    assert_eq!(read, loci);
+    assert!(loci.len() >= 3, "{loci:?}");
+}

@@ -30,14 +30,20 @@ W="${GENOME_DIR}/${P}"
 rm -rf "$W"; mkdir -p "${W}/aligned" "${W}/paralogs"
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo "  try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
 col() { awk -F'\t' -v k="$2" '$1 == k {print $2}' "$1" 2>/dev/null; }
-SITES=$(python3 -c "import sys; sys.path.insert(0, '${REPO}/bin'); import traits_report as t; \
-print(','.join(map(str, t.MARKERS['SMN1_27134']['copies'])))")
+# marker KEY copies|dbsnp: the copies (comma-separated) or the dbSNP record
+# (rsID, POS, REF, ALT) of a copy-aware marker, from og-cn's table of them.
+marker() {
+  awk -v k="$1" -v what="$2" '$0 ~ "key: \"" k "\"" { on = 1 } on && /^};/ { exit } on { b = b $0 "\n" } END {
+    if (what == "copies") { c = b; sub(/.*copies: &\[/, "", c); sub(/\].*/, "", c); gsub(/[ \n_]/, "", c); sub(/,$/, "", c); print c }
+    else { d = b; sub(/.*dbsnp: \(/, "", d); sub(/\).*/, "", d); gsub(/[ "_]/, "", d); split(d, x, ","); print x[1] "\t" x[3] "\t" x[4] "\t" x[5] } }' \
+    "${REPO}/rust/crates/og-cn/src/markers.rs"
+}
+SITES=$(marker SMN1_27134 copies)
 check_eq "two copies of the marker site (SMN1, SMN2)" "$SITES" "70952074,70076654"
 
 # --- dbSNP orientation, online --------------------------------------------------------
 URL="https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD:?}/VCF/GCF_000001405.40.gz"
-PINNED=$(python3 -c "import sys; sys.path.insert(0, '${REPO}/bin'); import traits_report as t; \
-d = t.MARKERS['SMN1_27134']['dbsnp']; print(d[0], d[2], d[3], d[4], sep='\t')")
+PINNED=$(marker SMN1_27134 dbsnp)
 same_record() {
   awk -F'\t' 'NR == 1 { id = $1; pos = $2; ref = $3; alt = $4; next }
               $1 == id && $2 == pos && $3 == ref && index("," $4 ",", "," alt ",") { ok = 1 }

@@ -256,6 +256,8 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 
 So the reports cost about 25 s per sample, not 1-3 minutes, and almost all of it is collecting the summary, which each of the two scripts does once. Under `cProfile` (one HTML run), 82% of the collection was `sec_variants` reading every record of the sample's small-variant VCF in Python, and 9% the ROH section. Rendering is under half a second. The HTML report was 2.0-2.7 MiB and the search index 8.3-12.2 MiB.
 
+Since then the Rust `og summary collect` writes `summary.json`, and `generate-report.sh` renders from the `summary.json` step 24 wrote unless a step output is newer than it, so a run collects each sample once. `run_delta.py` is gone: `og run delta` makes the comparison.
+
 The command, per genome (`<genome_dir>` holds the sample folder, `<scratch>` is empty and writable, run from the repo root):
 
 ```sh

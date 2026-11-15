@@ -23,7 +23,7 @@ Checks:
   3. report: Altai and Vindija segments merge into Neanderthal ones, a
      Denisova segment that overlaps one is not counted as Denisovan, segments
      under 50 kb or LOD 4 are dropped, the share is of the analysed span, and
-     the genes of the longest segments are named; bin/collect_summary.py
+     the genes of the longest segments are named; og summary collect
      reads the summary and stops on a damaged one, and bin/render_report.py
      prints both shares;
   4. with IBDmix itself (IBDMIX_IMAGE, docker): a planted 600 kb stretch where
@@ -387,29 +387,30 @@ check("a missing IBDmix output stops the report", r.returncode != 0 and "no IBDm
 import collect_summary as cs  # noqa: E402
 import render_report as rr  # noqa: E402
 
+
+def archaic(d):
+    """The archaic section og summary collect writes for folder D."""
+    return cs.collect("S1", d)["sections"]["archaic"]
+
+
 sdir = f"{TMP}/sample"
 os.makedirs(f"{sdir}/archaic")
 shutil.copy(f"{TMP}/out/S1_archaic.tsv", f"{sdir}/archaic/S1_archaic.tsv")
-path, data = cs.sec_archaic(sdir, "S1")
-check("collect_summary reads the summary", path and data.get("neanderthal_percent") == "5.00"
-      and data.get("denisovan_segments") == 1 and len(data.get("longest", [])) == 2, data)
-check("the archaic section is in SECTIONS as step 43", any(x[0] == "archaic" and x[2] == "43" for x in cs.SECTIONS))
+sec = archaic(sdir)
+data = sec["data"]
+check("og summary collect reads the summary", sec["state"] == "ok" and data.get("neanderthal_percent") == "5.00"
+      and data.get("denisovan_segments") == 1 and len(data.get("longest", [])) == 2, sec)
+check("the archaic section is in SECTIONS as step 43", any(x[0] == "archaic" and x[2] == "43" for x in cs.SECTIONS)
+      and sec["step"] == "43")
 lines = rr.archaic_lines(data)
 check("the report lines give both shares", lines[0].startswith("Neanderthal: 5.00% (0.5 Mb in 1 segments)")
       and lines[1].startswith("Denisovan: 2.00%"), lines)
 write(f"{sdir}/archaic/S1_archaic.tsv", "key\tvalue\nneanderthal_percent\tlots\n")
-try:
-    cs.sec_archaic(sdir, "S1")
-    check("a damaged summary is unreadable, not a share", False)
-except cs.Unreadable:
-    check("a damaged summary is unreadable, not a share", True)
+check("a damaged summary is unreadable, not a share", archaic(sdir)["state"] == "unreadable", archaic(sdir))
 write(f"{sdir}/archaic/S1_archaic.tsv", "key\tvalue\nneanderthal_segments\n")
-try:
-    cs.sec_archaic(sdir, "S1")
-    check("a row cut after its key is unreadable, not a crash", False)
-except cs.Unreadable:
-    check("a row cut after its key is unreadable, not a crash", True)
-check("no file: the section is missing", cs.sec_archaic(f"{TMP}/nowhere", "S1") == (None, {}))
+check("a row cut after its key is unreadable, not a crash", archaic(sdir)["state"] == "unreadable", archaic(sdir))
+nowhere = archaic(f"{TMP}/nowhere")
+check("no file: the section is missing", (nowhere["state"], nowhere["data"]) == ("missing", {}), nowhere)
 
 # --- 4. the real IBDmix -------------------------------------------------------------
 NEA = (2000000, 2600000)

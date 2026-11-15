@@ -31,11 +31,9 @@ the reports show:
  11. (the star alleles of a diplotype and the defining-variant evidence of
      one call are og's own unit tests: cargo test -p og-steps pypgx_summary)
  13. pypgx alone with the depth check ok and PASS defining variants: the
-     reports' probable call (bin/pgx_outside_calls.py, kept for the
-     summary), while the outside-call file stays empty and step 36's row
-     stays indeterminate; no probable call with a failed depth check, a
-     usable Cyrius call, a low-GQ or non-PASS defining variant, or a
-     summary without the columns
+     outside-call file stays empty and step 36's row stays indeterminate
+     (the reports' probable call itself is og summary collect's rule,
+     tested in rust/crates/og-summary/src/collect/pgx.rs)
  14. the whole subcommand on pypgx results archives, pypgx's own tables
      (rows of pypgx 0.26.0's gene and allele tables, tests/fixtures/pgx/
      summary/) and an indexed VCF: GSTT1 not callable on this reference
@@ -228,8 +226,8 @@ report_has("10 with the table missing, no outside call gets drug guidance", medi
 report_has("10 with the table missing, the report says to run step 36 again", gone, "Run step 36 again, then steps 07 and 27.")
 
 # --- step 32's summary and the probable CYP2D6 call -------------------------------
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import pgx_outside_calls as poc  # noqa: E402
+# The rule for pypgx's call alone (probable_cyp2d6) is og summary collect's,
+# tested in rust/crates/og-summary/src/collect/pgx.rs.
 
 SUMMARY_HEADER = ["Gene", "Diplotype", "Phenotype", "CNV_call", "Source", "Status",
                   "Defining_variants", "Min_GQ", "Weakest_variant", "Defining_filter", "Quality"]
@@ -244,26 +242,6 @@ def same(desc, got, want):
 
 
 # 13.
-ROW = {"Gene": "CYP2D6", "Diplotype": "*1/*2", "Phenotype": "Normal Metabolizer", "Defining_filter": "PASS",
-       "Quality": "ok"}
-same("13 pypgx alone, depth ok, PASS defining variants: probable",
-     poc.probable_cyp2d6(ROW, None, "ok"),
-     {"diplotype": "*1/*2", "phenotype": "Normal Metabolizer", "label": "probable (one caller: pypgx)"})
-same("13 Cyrius ran and made no call: still one caller, probable",
-     (poc.probable_cyp2d6(ROW, ("None", "Not_assigned_to_haplotypes"), "ok") or {}).get("label"), poc.PROBABLE)
-same("13 red control: a failed depth check gives no probable call", poc.probable_cyp2d6(ROW, None, "unreliable"), None)
-same("13 a usable Cyrius call: the two callers decide, no probable call",
-     poc.probable_cyp2d6(ROW, ("*1/*2", "PASS"), "ok"), None)
-same("13 a low-GQ defining variant: no probable call",
-     poc.probable_cyp2d6(dict(ROW, Quality=poc.LOW_GQ), None, "ok"), None)
-same("13 a defining variant not PASS: no probable call",
-     poc.probable_cyp2d6(dict(ROW, Defining_filter="not PASS: chr22:42128945 C>T RefCall"), None, "ok"), None)
-same("13 an allele pypgx's table lacks: no probable call",
-     poc.probable_cyp2d6(dict(ROW, Defining_filter="not in pypgx's table: *99"), None, "ok"), None)
-same("13 a defining variant with no GQ: no probable call",
-     poc.probable_cyp2d6(dict(ROW, Quality="GQ not in the VCF: check the reads"), None, "ok"), None)
-same("13 a summary without the columns: no probable call",
-     poc.probable_cyp2d6({"Diplotype": "*1/*2", "Phenotype": "NM"}, None, "ok"), None)
 with tempfile.TemporaryDirectory() as tmp:
     summ = os.path.join(tmp, "pypgx.tsv")
     with open(summ, "w") as f:
