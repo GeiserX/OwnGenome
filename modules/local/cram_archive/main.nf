@@ -4,7 +4,7 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     CRAM_ARCHIVE writes <id>_sorted.cram (+ .crai) beside the published BAM
     and fails the task unless the CRAM passes `samtools quickcheck` and its
-    `samtools flagstat` equals the BAM's line for line. It never deletes the
+    `samtools flagstat` and full-content checksums equal the BAM's. It never deletes the
     BAM: delete it yourself once the CRAM is there, or use
     scripts/34-cram-archive.sh --delete-bam. A CRAM can only be read with the
     reference it was written with: keep that FASTA. It takes the same lock as
@@ -32,6 +32,7 @@ process CRAM_ARCHIVE {
     output:
     tuple val(meta), path("${meta.id}_sorted.cram"), path("${meta.id}_sorted.cram.crai"), emit: cram
     tuple val(meta), path("${meta.id}_sorted.cram.flagstat"),                            emit: flagstat
+    tuple val(meta), path("${meta.id}_sorted.cram.checksum"),                            emit: checksum
     path "versions.yml",                                                                  emit: versions
 
     when:
@@ -56,7 +57,7 @@ process CRAM_ARCHIVE {
     else
         echo "WARNING: could not take the lock \$lock; nothing stops scripts/34-cram-archive.sh from changing ${bam} during this task." >&2
     fi
-    samtools view -@ ${task.cpus} -C --reference ${reference} -o ${meta.id}_sorted.cram ${bam}
+    samtools view -@ ${task.cpus} -C --reference ${reference} --output-fmt-option store_md=1 --output-fmt-option store_nm=1 -o ${meta.id}_sorted.cram ${bam}
     samtools index -@ ${task.cpus} ${meta.id}_sorted.cram
     samtools quickcheck -v ${meta.id}_sorted.cram
     samtools flagstat -@ ${task.cpus} ${bam} > bam.flagstat
@@ -66,7 +67,20 @@ process CRAM_ARCHIVE {
         echo "ERROR: the CRAM of ${meta.id} does not hold the same reads as its BAM (flagstat above: < BAM, > CRAM)" >&2
         exit 1
     fi
-    echo "${meta.id}: BAM \$(du -k ${bam} | cut -f1) kB, CRAM \$(du -k ${meta.id}_sorted.cram | cut -f1) kB, flagstat equal"
+    # Match every record field and tag, independent of read/tag/group order.
+    # MD/NM are stored explicitly and never regenerated while checking.
+    # pipefail must propagate decoder failures through tail and sort.
+    set -o pipefail
+    checksum_rows() {
+        samtools checksum -@ ${task.cpus} -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' "\$@" | tail -n +2 | LC_ALL=C sort
+    }
+    checksum_rows ${bam} > bam.checksum
+    checksum_rows --input-fmt-option reference=${reference} --input-fmt-option decode_md=0 ${meta.id}_sorted.cram > ${meta.id}_sorted.cram.checksum
+    if ! diff bam.checksum ${meta.id}_sorted.cram.checksum >&2; then
+        echo "ERROR: the CRAM content of ${meta.id} differs from its BAM" >&2
+        exit 1
+    fi
+    echo "${meta.id}: BAM \$(du -k ${bam} | cut -f1) kB, CRAM \$(du -k ${meta.id}_sorted.cram | cut -f1) kB, flagstat and content checksums equal"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -76,7 +90,7 @@ process CRAM_ARCHIVE {
 
     stub:
     """
-    touch ${meta.id}_sorted.cram ${meta.id}_sorted.cram.crai ${meta.id}_sorted.cram.flagstat
+    touch ${meta.id}_sorted.cram ${meta.id}_sorted.cram.crai ${meta.id}_sorted.cram.flagstat ${meta.id}_sorted.cram.checksum
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -103,13 +117,27 @@ process CRAM_TO_BAM {
 
     script:
     """
-    samtools view -@ ${task.cpus} -b --reference ${reference} -o ${meta.id}_from_cram.bam ${cram}
+    samtools view -@ ${task.cpus} -b --reference ${reference} --input-fmt-option decode_md=0 -o ${meta.id}_from_cram.bam ${cram}
     samtools index -@ ${task.cpus} ${meta.id}_from_cram.bam
     samtools quickcheck -v ${meta.id}_from_cram.bam
     samtools flagstat -@ ${task.cpus} --input-fmt-option reference=${reference} ${cram} > cram.flagstat
     samtools flagstat -@ ${task.cpus} ${meta.id}_from_cram.bam > bam.flagstat
     if ! diff cram.flagstat bam.flagstat >&2; then
         echo "ERROR: the BAM written from ${cram} does not hold the same reads (flagstat above: < CRAM, > BAM)" >&2
+        exit 1
+    fi
+
+    # Match every record field and tag, independent of read/tag/group order.
+    # MD/NM are stored explicitly and never regenerated while checking.
+    # pipefail must propagate decoder failures through tail and sort.
+    set -o pipefail
+    checksum_rows() {
+        samtools checksum -@ ${task.cpus} -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' "\$@" | tail -n +2 | LC_ALL=C sort
+    }
+    checksum_rows --input-fmt-option reference=${reference} --input-fmt-option decode_md=0 ${cram} > cram.checksum
+    checksum_rows ${meta.id}_from_cram.bam > bam.checksum
+    if ! diff cram.checksum bam.checksum >&2; then
+        echo "ERROR: the restored BAM content differs from ${cram}" >&2
         exit 1
     fi
 

@@ -11,8 +11,8 @@
 # A CRAM stores each read as its difference from the reference, so it can only
 # be read with the same reference FASTA it was written with: keep that file
 # (REF_FASTA) as long as you keep the CRAM. The check is that the CRAM passes
-# `samtools quickcheck` and that `samtools flagstat` of the CRAM and of the BAM
-# agree line for line (the same number of reads, mapped, paired, duplicates).
+# `samtools quickcheck`, matching `flagstat` counts and matching full-content
+# `samtools checksum` reports (all records, fields and auxiliary tags).
 # The BAM is deleted only with --delete-bam, only after that check passed in
 # this run, and never when it failed. --restore writes the BAM back the same
 # way, checked against the CRAM, for the bash steps, which read the BAM (the
@@ -89,6 +89,27 @@ same_reads() {
   fi
 }
 
+# The checksum reads every block, unlike flagstat. Use all record fields and
+# tags, including secondary/supplementary records, with order-independent
+# aggregation. Normalize the format-level repairs CRAM makes to unmapped
+# records and CIGARs. Keep explicit MD/NM in the encoder and disable their
+# generation on decode, so missing tags stay missing. Only the filename
+# header is removed; sorting makes read-group row order immaterial too.
+checksum_rows() {
+  local -a ref=()
+  case "$1" in *.cram) ref=(--input-fmt-option "reference=${REF_FASTA_C}" --input-fmt-option decode_md=0) ;; esac
+  run_in --cpus "$THREADS" --memory 2g "$SAMTOOLS_IMAGE" \
+    samtools checksum -@ "$THREADS" -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' \
+      ${ref[@]+"${ref[@]}"} "$1" | tail -n +2 | LC_ALL=C sort
+}
+content_checksum() { atomic_out "$2" checksum_rows "$1"; }
+same_content() {
+  if [ ! -s "$1" ] || [ ! -s "$2" ] || ! diff "$1" "$2" >&2; then
+    echo "  content checksum differs or is missing" >&2
+    return 1
+  fi
+}
+
 if [ "$MODE" = --restore ]; then
   for f in "$CRAM" "${CRAM}.crai"; do
     [ -f "$f" ] || { echo "ERROR: File not found: ${f}" >&2; exit 1; }
@@ -100,13 +121,13 @@ if [ "$MODE" = --restore ]; then
   echo "Writing ${BAM} from ${CRAM}..."
   # fail_restore WHY: remove the partial BAM and its index, then stop.
   fail_restore() {
-    rm -f "${ALN}/${SAMPLE}_sorted.part.bam" "${ALN}/${SAMPLE}_sorted.part.bam.bai" "${ALN}/${SAMPLE}_sorted.part.bam.flagstat"
+    rm -f "${ALN}/${SAMPLE}_sorted.part.bam" "${ALN}/${SAMPLE}_sorted.part.bam.bai" "${ALN}/${SAMPLE}_sorted.part.bam.flagstat" "${ALN}/${SAMPLE}_sorted.part.bam.checksum"
     echo "ERROR: $1 Nothing was kept." >&2
     exit 1
   }
   rm -f "${ALN}/${SAMPLE}_sorted.part.bam" "${ALN}/${SAMPLE}_sorted.part.bam.bai"
   run_in --cpus "$THREADS" --memory 4g "$SAMTOOLS_IMAGE" \
-    samtools view -@ "$THREADS" -b --reference "$REF_FASTA_C" \
+    samtools view -@ "$THREADS" -b --reference "$REF_FASTA_C" --input-fmt-option decode_md=0 \
       -o "${C}.part.bam" "${C}.cram" || fail_restore "samtools could not write the BAM from the CRAM."
   run_in --cpus "$THREADS" --memory 2g "$SAMTOOLS_IMAGE" \
     samtools index -@ "$THREADS" "${C}.part.bam" || fail_restore "samtools could not index the BAM."
@@ -115,6 +136,11 @@ if [ "$MODE" = --restore ]; then
   run_in "$SAMTOOLS_IMAGE" samtools quickcheck -v "${C}.part.bam" || fail_restore "The BAM fails samtools quickcheck."
   same_reads "${ALN}/${SAMPLE}_sorted.part.bam.flagstat" "${ALN}/${SAMPLE}_sorted.cram.flagstat" \
     || fail_restore "The BAM written from the CRAM does not hold the same reads."
+  content_checksum "${C}.cram" "${CRAM}.checksum" || fail_restore "samtools checksum failed on the CRAM."
+  content_checksum "${C}.part.bam" "${ALN}/${SAMPLE}_sorted.part.bam.checksum" || fail_restore "samtools checksum failed on the BAM."
+  same_content "${ALN}/${SAMPLE}_sorted.part.bam.checksum" "${CRAM}.checksum" \
+    || fail_restore "The restored BAM content differs from the CRAM."
+  mv -f "${ALN}/${SAMPLE}_sorted.part.bam.checksum" "${BAM}.checksum"
   mv -f "${ALN}/${SAMPLE}_sorted.part.bam.bai" "${BAM}.bai"
   mv -f "${ALN}/${SAMPLE}_sorted.part.bam" "$BAM"
   rm -f "${ALN}/${SAMPLE}_sorted.part.bam.flagstat"
@@ -133,14 +159,15 @@ done
 # trusted: the BAM may have been aligned again since.
 PART="${ALN}/${SAMPLE}_sorted.part.cram"
 discard() {
-  rm -f "$PART" "${PART}.crai" "${ALN}/${SAMPLE}_sorted.part.cram.flagstat"
+  rm -f "$PART" "${PART}.crai" "${ALN}/${SAMPLE}_sorted.part.cram.flagstat" "${ALN}/${SAMPLE}_sorted.part.cram.checksum"
   echo "ERROR: $1 The CRAM was removed; the BAM is kept." >&2
   exit 1
 }
-rm -f "$PART" "${PART}.crai" "${ALN}/${SAMPLE}_sorted.part.cram.flagstat"
+rm -f "$PART" "${PART}.crai" "${ALN}/${SAMPLE}_sorted.part.cram.flagstat" "${ALN}/${SAMPLE}_sorted.part.cram.checksum"
 echo "Writing ${CRAM}..."
 run_in --cpus "$THREADS" --memory 4g "$SAMTOOLS_IMAGE" \
   samtools view -@ "$THREADS" -C --reference "$REF_FASTA_C" \
+    --output-fmt-option store_md=1 --output-fmt-option store_nm=1 \
     -o "${C}.part.cram" "${C}.bam" || discard "samtools could not write the CRAM."
 
 echo "Checking the CRAM against the BAM..."
@@ -152,6 +179,11 @@ flagstat "${C}.bam" "${ALN}/${SAMPLE}_sorted.bam.flagstat" || discard "samtools 
 flagstat "${C}.part.cram" "${ALN}/${SAMPLE}_sorted.part.cram.flagstat" || discard "samtools flagstat failed on the CRAM."
 same_reads "${ALN}/${SAMPLE}_sorted.bam.flagstat" "${ALN}/${SAMPLE}_sorted.part.cram.flagstat" \
   || discard "The CRAM does not hold the same reads as the BAM."
+content_checksum "${C}.bam" "${BAM}.checksum" || discard "samtools checksum failed on the BAM."
+content_checksum "${C}.part.cram" "${PART}.checksum" || discard "samtools checksum failed on the CRAM."
+same_content "${BAM}.checksum" "${PART}.checksum" \
+  || discard "The CRAM content differs from the BAM."
+mv -f "${PART}.checksum" "${CRAM}.checksum"
 mv -f "${PART}.crai" "${CRAM}.crai"
 mv -f "$PART" "$CRAM"
 mv -f "${ALN}/${SAMPLE}_sorted.part.cram.flagstat" "${ALN}/${SAMPLE}_sorted.cram.flagstat"

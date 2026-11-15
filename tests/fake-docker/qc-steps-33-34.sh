@@ -12,7 +12,7 @@
 # reruns VerifyBamID2 with --DisableSanityCheck and records it; any other
 # VerifyBamID2 failure, or missing data, stops the step.
 # Step 34: a CRAM whose flagstat differs from the BAM's, or that fails
-# quickcheck, is removed and the BAM kept, also with --delete-bam; the BAM is
+# quickcheck or its content checksum fails, is removed and the BAM kept; the BAM is
 # deleted only after the check passed; --restore refuses to write over a BAM
 # and leaves no partial BAM when it fails; archive and restore both stop
 # while another run holds the sample's lock, and the lock goes with its run.
@@ -86,6 +86,15 @@ case "$*" in
   "samtools quickcheck"*)
     for a in "$@"; do last=$a; done
     if [ "${FAKE_QUICKCHECK_FAIL:-}" = "${last##*.}" ]; then echo "${last} had no EOF block" >&2; exit 1; fi ;;
+  "samtools checksum"*)
+    for a in "$@"; do last=$a; done
+    case "${FAKE_CHECKSUM_FAIL:-}:$last" in
+      cram:*.cram|bam:*.bam) echo "checksum: decode failed" >&2; exit 1 ;;
+    esac
+    [ "${FAKE_CHECKSUM_EMPTY:-}" != "${last##*.}" ] || exit 0
+    sum=good
+    case "$last" in *.cram) sum=${FAKE_CRAM_CONTENT:-good} ;; esac
+    printf '# Checksum for file: %s\nall all 1000 %s\n' "$last" "$sum" ;;
   "samtools flagstat"*)
     for a in "$@"; do last=$a; done
     n=1000
@@ -173,6 +182,17 @@ FAKE_QUICKCHECK_FAIL=cram run_expect 1 cram-truncated "${SCRIPTS}/34-cram-archiv
 output_has cram-truncated 'fails samtools quickcheck'
 [ -s "${A}/sample1_sorted.bam" ] || fail "the BAM was deleted although the CRAM failed quickcheck"
 
+FAKE_CRAM_CONTENT=changed run_expect 1 cram-content "${SCRIPTS}/34-cram-archive.sh" sample1 --delete-bam
+output_has cram-content 'CRAM content differs from the BAM'
+[ -s "${A}/sample1_sorted.bam" ] && [ -e "${A}/sample1_sorted.bam.bai" ] || fail "a content mismatch deleted the BAM or index"
+[ ! -e "${A}/sample1_sorted.part.cram" ] && [ ! -e "${A}/sample1_sorted.part.cram.checksum" ] || fail "a content mismatch left partial files"
+for format in bam cram; do
+  FAKE_CHECKSUM_FAIL=$format run_expect 1 "cram-checksum-fails-$format" "${SCRIPTS}/34-cram-archive.sh" sample1 --delete-bam
+  output_has "cram-checksum-fails-$format" 'samtools checksum failed'
+  FAKE_CHECKSUM_EMPTY=$format run_expect 1 "cram-checksum-empty-$format" "${SCRIPTS}/34-cram-archive.sh" sample1 --delete-bam
+  [ -s "${A}/sample1_sorted.bam" ] || fail "an empty or failed checksum deleted the BAM"
+done
+
 run_expect 0 cram-keep "${SCRIPTS}/34-cram-archive.sh" sample1
 [ -s "${A}/sample1_sorted.cram" ] && [ -e "${A}/sample1_sorted.cram.crai" ] || fail "no checked CRAM"
 [ -s "${A}/sample1_sorted.bam" ] || fail "the BAM was deleted without --delete-bam"
@@ -213,6 +233,15 @@ output_has cram-restore-again 'exists already; there is nothing to restore'
 rm -f "${A}/sample1_sorted.bam" "${A}/sample1_sorted.bam.bai"
 FAKE_CRAM_READS=999 run_expect 1 cram-restore-differs "${SCRIPTS}/34-cram-archive.sh" sample1 --restore
 [ ! -e "${A}/sample1_sorted.bam" ] && [ ! -e "${A}/sample1_sorted.part.bam" ] || fail "--restore kept a BAM that does not match the CRAM"
+
+FAKE_CRAM_CONTENT=changed run_expect 1 cram-restore-content "${SCRIPTS}/34-cram-archive.sh" sample1 --restore
+output_has cram-restore-content 'restored BAM content differs from the CRAM'
+[ ! -e "${A}/sample1_sorted.bam" ] && [ ! -e "${A}/sample1_sorted.part.bam" ] && [ ! -e "${A}/sample1_sorted.part.bam.checksum" ] || fail "a restore content mismatch left a BAM or partial checksum"
+for format in bam cram; do
+  FAKE_CHECKSUM_FAIL=$format run_expect 1 "restore-checksum-fails-$format" "${SCRIPTS}/34-cram-archive.sh" sample1 --restore
+  FAKE_CHECKSUM_EMPTY=$format run_expect 1 "restore-checksum-empty-$format" "${SCRIPTS}/34-cram-archive.sh" sample1 --restore
+  [ ! -e "${A}/sample1_sorted.bam" ] && [ ! -e "${A}/sample1_sorted.part.bam" ] || fail "a restore with no checksum left a BAM"
+done
 
 FAKE_VIEW_FAIL=1 run_expect 1 cram-restore-write-fails "${SCRIPTS}/34-cram-archive.sh" sample1 --restore
 output_has cram-restore-write-fails 'samtools could not write the BAM from the CRAM'
