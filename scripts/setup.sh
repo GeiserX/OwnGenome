@@ -73,8 +73,9 @@
 #      GENCODE gene coordinates T1K needs (~350 MB) and GENCODE's exons for
 #      the cDNA read check of steps 06 and 17, both from one ~80 MB download,
 #      and somalier's sites and VerifyBamID2's marker panel for step 33 (~10 MB),
-#      and gnomAD v3.1's mitochondrial sites for step 20 (~5 MB), and the
-#      STRchive repeat catalog of steps 09 and 9b (~0.5 MB)
+#      and gnomAD v3.1's mitochondrial sites for step 20 (~5 MB), the
+#      STRchive repeat catalog of steps 09 and 9b (~0.5 MB), and GIAB's
+#      tandem-repeat map for Sniffles2 in step 04c (~9 MB, ~35 MB unpacked)
 #   5. AnnotSV annotation data for step 5 (~5.3 GB download, ~20 GB unpacked),
 #      plus gnomAD-SV's common SVs (~1.7 GB download, kept as a few MB) and the
 #      MANE Select transcript list
@@ -715,6 +716,33 @@ install_strchive_data() {
   fi
   printf '%s\n' "$stamp" > "${dir}/catalog.stamp"
   echo "[OK] STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b): ${dir}/catalog.json"
+}
+
+# install_tandem_repeats: the tandem-repeat map step 04c passes to Sniffles2
+# (--tandem-repeats): TANDEM_REPEATS_URL, checked against
+# TANDEM_REPEATS_SHA256, and its unpacked copy beside it, because Sniffles2
+# reads a plain BED only. The copy is written under a temporary name first,
+# so a file under the final name is whole. Without the map step 04c runs as
+# before and says so.
+install_tandem_repeats() {
+  local gz="${GENOME_DIR}/reference/${TANDEM_REPEATS_URL##*/}"
+  local bed="${gz%.gz}"
+  if [ -s "$bed" ] && [ -s "$gz" ] && [ "$(_digest sha256 "$gz")" = "$TANDEM_REPEATS_SHA256" ]; then
+    echo "[OK] GIAB tandem-repeat map (step 04c) already present."
+    return 0
+  fi
+  rm -f "$bed"
+  if ! fetch "$TANDEM_REPEATS_URL" "$gz" sha256 "$TANDEM_REPEATS_SHA256"; then
+    echo "[WARN] Could not install GIAB's tandem-repeat map (${TANDEM_REPEATS_URL}). Step 04c runs Sniffles2 without it; re-run setup.sh to try again."
+    return 1
+  fi
+  if ! gzip -dc "$gz" > "${bed}.part" || [ ! -s "${bed}.part" ]; then
+    rm -f "${bed}.part"
+    echo "[WARN] Could not unpack ${gz}. Step 04c runs Sniffles2 without the tandem-repeat map; re-run setup.sh to try again."
+    return 1
+  fi
+  mv -f "${bed}.part" "$bed"
+  echo "[OK] GIAB tandem-repeat map (step 04c): ${bed}"
 }
 
 # install_consumer_sites: the site table of the raw-data export (step 40). The
@@ -2445,6 +2473,7 @@ fi
 # A failed download does not stop setup here either.
 install_sample_qc_data || true
 install_strchive_data || true
+install_tandem_repeats || true
 # Step 25: its scores, pgsc_calc and its plugin (warnings only).
 install_prs
 
