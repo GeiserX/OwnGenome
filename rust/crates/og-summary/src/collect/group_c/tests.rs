@@ -244,13 +244,19 @@ fn roh_scope_chr20_uses_its_own_unmasked_denominator() {
     assert_eq!(at(&r, &["relationship"]), &Value::Null);
     assert_eq!(at(&r, &["upd_flag"]), &Value::Null);
     assert_eq!(at(&r, &["scope", "unmasked_bp"]), &Value::Int(59_744_167));
-    assert_eq!(at(&r, &["scope", "autosomes"]), &Value::Array(vec![Value::Str("chr20".into())]));
+    assert_eq!(
+        at(&r, &["scope", "autosomes"]),
+        &Value::Array(vec![Value::Str("chr20".into())])
+    );
 }
 
 #[test]
 fn roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty() {
-    let r = roh_scope_summary(&[22, 20, 20], "RG\tS\tchr20\t1000001\t9000000\t8000000\nRG\tS\tchr22\t20000001\t28000000\t8000000\n");
-    assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.1718));
+    let r = roh_scope_summary(
+        &[22, 20, 20],
+        "RG\tS\tchr20\t1000001\t9000000\t8000000\nRG\tS\tchr22\t20000001\t28000000\t8000000\n",
+    );
+    assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.1717));
     assert_eq!(at(&r, &["relationship"]), &Value::Null);
     assert_eq!(at(&r, &["scope", "unmasked_bp"]), &Value::Int(93_162_635));
     let no_runs = roh_scope_summary(&[20], "");
@@ -263,8 +269,14 @@ fn roh_scope_sparse_all_autosomes_keep_the_whole_genome_band() {
     let sites: Vec<u8> = (1..=22).collect();
     let r = roh_scope_summary(&sites, "RG\tS\tchr2\t10000001\t18000000\t8000000\n");
     assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.003));
-    assert_eq!(at(&r, &["relationship"]), &Value::Str("no sign of related parents".into()));
-    assert_eq!(at(&r, &["scope", "unmasked_bp"]), &Value::Int(2_658_001_522));
+    assert_eq!(
+        at(&r, &["relationship"]),
+        &Value::Str("no sign of related parents".into())
+    );
+    assert_eq!(
+        at(&r, &["scope", "unmasked_bp"]),
+        &Value::Int(2_658_001_522)
+    );
     assert_eq!(at(&r, &["scope", "partial"]), &Value::Bool(false));
 }
 
@@ -274,7 +286,10 @@ fn roh_scope_a_segment_only_file_never_establishes_scope() {
     assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.3515));
     assert_eq!(at(&r, &["relationship"]), &Value::Null);
     assert_eq!(at(&r, &["upd_flag"]), &Value::Null);
-    assert_eq!(at(&r, &["scope", "source"]), &Value::Str("segments_only".into()));
+    assert_eq!(
+        at(&r, &["scope", "source"]),
+        &Value::Str("segments_only".into())
+    );
     let empty = roh_scope_summary(&[], "# empty\n");
     assert_eq!(at(&empty, &["f_roh"]), &Value::Null);
 }
@@ -285,15 +300,39 @@ fn roh_scope_upd_is_a_region_hint_without_syndrome_names() {
     // Distal chr15 and chr11 runs do not establish the imprinted locus's
     // parental origin, but mixed iso/heterodisomy can involve that locus.
     for (chrom, start, end, length, region) in [
-        (15, 40000001, 101991189, 61991189, "15q11-q13 (SNRPN, UBE3A)"),
-        (11, 60000001, 100000000, 40000000, "11p15 (H19/IGF2, KCNQ1OT1)"),
+        (
+            15,
+            40000001,
+            101991189,
+            61991189,
+            "15q11-q13 (SNRPN, UBE3A)",
+        ),
+        (
+            11,
+            60000001,
+            100000000,
+            40000000,
+            "11p15 (H19/IGF2, KCNQ1OT1)",
+        ),
         (20, 1000001, 22000000, 21000000, "20q13.32 (GNAS)"),
     ] {
-        let r = roh_scope_summary(&sites, &format!("RG\tS\tchr{chrom}\t{start}\t{end}\t{length}\n"));
+        let r = roh_scope_summary(
+            &sites,
+            &format!("RG\tS\tchr{chrom}\t{start}\t{end}\t{length}\n"),
+        );
         let u = at(&r, &["upd_flag"]);
-        assert_eq!(at(u, &["imprinted", "0", "region"]), &Value::Str(region.into()));
-        assert_eq!(at(u, &["imprinted", "0", "maternal_upd"]), &Value::Str("-".into()));
-        assert_eq!(at(u, &["imprinted", "0", "paternal_upd"]), &Value::Str("-".into()));
+        assert_eq!(
+            at(u, &["imprinted", "0", "region"]),
+            &Value::Str(region.into())
+        );
+        assert_eq!(
+            at(u, &["imprinted", "0", "maternal_upd"]),
+            &Value::Str("-".into())
+        );
+        assert_eq!(
+            at(u, &["imprinted", "0", "paternal_upd"]),
+            &Value::Str("-".into())
+        );
         let note = text(at(u, &["note"]));
         assert!(note.contains("deletion") && note.contains("acquired") && note.contains("parent"));
         assert_eq!(at(&r, &["relationship"]), &Value::Null);
