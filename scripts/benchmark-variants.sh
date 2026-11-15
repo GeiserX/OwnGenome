@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # benchmark-variants.sh — Compare variant calls across multiple callers
-# Supports pairwise concordance (bcftools isec) and truth set benchmarking (hap.py)
-# Input: VCFs from vcf/, vcf_gatk/, vcf_freebayes/ directories
+# Supports pairwise concordance (bcftools isec, then the genotypes of the shared
+# sites) and truth set benchmarking (hap.py)
+# Input: <sample>.vcf.gz in vcf/ (DeepVariant) and in every vcf_*/ directory
+# (vcf_gatk, vcf_freebayes, vcf_octopus, vcf_clair3, or one of your own), and
+# Strelka2's vcf_strelka2/results/variants/variants.vcf.gz
 # Output: comparison tables in $GENOME_DIR/<sample>/benchmark/
 #
 # Truth sets: --truth VCF (with --regions BED) for any truth set, or
@@ -171,6 +174,22 @@ if [ -f "$OCT_VCF" ]; then
   CALLER_NAMES+=("Octopus")
   CALLER_VCFS+=("$OCT_VCF")
 fi
+# Every other vcf_<name>/<sample>.vcf.gz: Clair3 (step 03e) and any caller's
+# VCF placed there by hand. The same glob decides in run-all.sh whether
+# BENCHMARK=true queues this step, so what queues it is also what it compares.
+for vcf in "${GENOME_DIR}/${SAMPLE}"/vcf_*/"${SAMPLE}.vcf.gz"; do
+  [ -f "$vcf" ] || continue
+  dir=${vcf%/*}
+  dir=${dir##*/vcf_}
+  case "$dir" in
+    gatk|freebayes|octopus|strelka2) continue ;;
+    clair3) name=Clair3 ;;
+    *[!A-Za-z0-9._-]*|"") echo "WARNING: skipping vcf_${dir}/: the directory name must be letters, digits, '.', '_' or '-'" >&2; continue ;;
+    *) name=$dir ;;
+  esac
+  CALLER_NAMES+=("$name")
+  CALLER_VCFS+=("$vcf")
+done
 
 NUM_CALLERS=${#CALLER_VCFS[@]}
 
@@ -189,6 +208,8 @@ if [ "$NUM_CALLERS" -lt 2 ] && [ -z "$TRUTH_VCF" ]; then
   echo "  vcf_freebayes/ (FreeBayes)  — run scripts/03b-freebayes.sh" >&2
   echo "  vcf_strelka2/  (Strelka2)   — run scripts/03c-strelka2-germline.sh" >&2
   echo "  vcf_octopus/   (Octopus)    — run scripts/03d-octopus.sh" >&2
+  echo "  vcf_clair3/    (Clair3)     — run scripts/03e-clair3.sh (long reads)" >&2
+  echo "  vcf_<name>/    (<name>)     — any other caller's <sample>.vcf.gz" >&2
   echo "" >&2
   echo "Or use --truth <vcf> --regions <bed> for single-caller truth set benchmarking." >&2
   exit 1
@@ -382,8 +403,10 @@ else
   echo ""
   echo "=== Pairwise Concordance (bcftools isec) ==="
 
-  # Build the TSV header
-  printf "CallerA\tCallerB\tShared\tA_Unique\tB_Unique\tJaccard\n" > "$TSV"
+  # Build the TSV header. Jaccard counts a site as shared when both callers
+  # have the same allele there, whatever the genotype; GT_Concordant counts the
+  # shared sites where the two genotypes are also the same.
+  printf "CallerA\tCallerB\tShared\tA_Unique\tB_Unique\tJaccard\tGT_Concordant\tGT_Concordance\n" > "$TSV"
 
   {
     echo "================================================================================"
@@ -403,6 +426,38 @@ else
     ISEC_REGIONS_FLAG="-r ${INTERVALS}"
     echo "Restricted to region: ${INTERVALS}"
   fi
+
+  # site_gt VCF: CHROM, POS, REF, ALT and the first sample's genotype of each
+  # record of a plain VCF, one line each (. when the record has no GT).
+  site_gt() {
+    awk -F'\t' '!/^#/ { g = "."; n = split($9, f, ":"); split($10, v, ":")
+      for (i = 1; i <= n; i++) if (f[i] == "GT") { g = v[i]; break }
+      print $1 "\t" $2 "\t" $4 "\t" $5 "\t" g }' "$1"
+  }
+  # gt_agree A_FILE B_FILE: the number of shared sites whose genotypes agree.
+  # bcftools isec writes the shared records of A (0002) and of B (0003) in the
+  # same order, one line per site, so the two files are read side by side and
+  # never held in memory. Genotypes are compared unphased and with their
+  # alleles sorted (1|0 = 0/1), and a homozygous call equals its haploid form
+  # (1/1 = 1), so only a different set of alleles counts as a mismatch.
+  gt_agree() {
+    paste <(site_gt "$1") <(site_gt "$2") | awk -F'\t' '
+      function canon(g,   a, n, i, j, t, same, out) {
+        gsub(/\|/, "/", g)
+        n = split(g, a, "/")
+        for (i = 2; i <= n; i++) for (j = i; j > 1 && (a[j - 1] == "." || (a[j] != "." && a[j - 1] + 0 > a[j] + 0)); j--) { t = a[j]; a[j] = a[j - 1]; a[j - 1] = t }
+        same = 1
+        for (i = 2; i <= n; i++) if (a[i] != a[1]) same = 0
+        if (same) return a[1]
+        out = a[1]
+        for (i = 2; i <= n; i++) out = out "/" a[i]
+        return out
+      }
+      { if ($1 != $6 || $2 != $7 || $3 != $8 || $4 != $9) bad++
+        else if (canon($5) == canon($10)) agree++ }
+      END { if (bad) print "WARNING: " bad " shared records of the two callers did not line up; counted as genotype mismatches" > "/dev/stderr"
+        print agree + 0 }'
+  }
 
   # Normalise each caller's VCF once (split multiallelics, left-align indels)
   # for a fair comparison; every pair below reads the normalised copies.
@@ -462,13 +517,22 @@ else
         JACCARD="0.0000"
       fi
 
+      # Genotype concordance over the shared sites. Without both shared files
+      # (or with no shared site) there is nothing to compare: N/A.
+      GT_AGREE="N/A" GT_CONC="N/A"
+      if [ "$SHARED" -gt 0 ] && [ -f "${ISEC_HOST}/0002.vcf" ] && [ -f "${ISEC_HOST}/0003.vcf" ]; then
+        GT_AGREE=$(gt_agree "${ISEC_HOST}/0002.vcf" "${ISEC_HOST}/0003.vcf")
+        GT_CONC=$(awk "BEGIN {printf \"%.4f\", ${GT_AGREE} / ${SHARED}}")
+      fi
+
       echo "  ${CALLER_A} unique: ${A_UNIQUE}"
       echo "  ${CALLER_B} unique: ${B_UNIQUE}"
       echo "  Shared:             ${SHARED}"
       echo "  Jaccard index:      ${JACCARD}"
+      echo "  Same genotype:      ${GT_AGREE} of ${SHARED} shared (${GT_CONC})"
 
-      printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
-        "$CALLER_A" "$CALLER_B" "$SHARED" "$A_UNIQUE" "$B_UNIQUE" "$JACCARD" >> "$TSV"
+      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+        "$CALLER_A" "$CALLER_B" "$SHARED" "$A_UNIQUE" "$B_UNIQUE" "$JACCARD" "$GT_AGREE" "$GT_CONC" >> "$TSV"
     done
   done
 
@@ -478,15 +542,19 @@ else
   # Print results table
   {
     echo ""
-    printf "%-14s %-14s %12s %12s %12s %10s\n" "Caller A" "Caller B" "Shared" "A Unique" "B Unique" "Jaccard"
-    printf "%-14s %-14s %12s %12s %12s %10s\n" "--------------" "--------------" "------------" "------------" "------------" "----------"
-    while IFS=$'\t' read -r ca cb shared au bu jaccard; do
-      printf "%-14s %-14s %12s %12s %12s %10s\n" "$ca" "$cb" "$shared" "$au" "$bu" "$jaccard"
+    printf "%-14s %-14s %12s %12s %12s %10s %10s\n" "Caller A" "Caller B" "Shared" "A Unique" "B Unique" "Jaccard" "GT Concord"
+    printf "%-14s %-14s %12s %12s %12s %10s %10s\n" "--------------" "--------------" "------------" "------------" "------------" "----------" "----------"
+    while IFS=$'\t' read -r ca cb shared au bu jaccard _gtagree gtconc; do
+      printf "%-14s %-14s %12s %12s %12s %10s %10s\n" "$ca" "$cb" "$shared" "$au" "$bu" "$jaccard" "$gtconc"
     done < <(tail -n +2 "$TSV")
     echo ""
-    echo "NOTE: Jaccard index = shared / (A_unique + B_unique + shared)."
-    echo "Computed on PASS and unfiltered (.) variants after normalization (bcftools norm -m-both)."
-    echo "A value of 1.0 means perfect agreement; typical WGS callers agree on ~95%+ of SNPs."
+    echo "NOTE: Jaccard index = shared / (A_unique + B_unique + shared), where a site is"
+    echo "shared when both callers have the same allele at the same position, whatever"
+    echo "the genotype. GT Concord = shared sites with the same genotype / shared sites"
+    echo "(phase and allele order ignored, 1/1 = 1). Both are computed on PASS and"
+    echo "unfiltered (.) variants after normalization (bcftools norm -m-both)."
+    echo "They measure agreement between callers, not accuracy: use --truth or --giab"
+    echo "for precision and recall."
   } | tee -a "$SUMMARY"
 fi
 
