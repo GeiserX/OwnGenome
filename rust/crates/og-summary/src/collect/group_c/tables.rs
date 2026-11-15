@@ -1258,8 +1258,19 @@ pub fn chip(c: &Ctx<'_>) -> Out {
         .map(|r| dots(r, &need))
         .collect();
     let mut covered = Vec::new();
+    let mut limits = Vec::new();
     for r in &depth.rows {
         if r.get("status").flatten() == Some("covered") {
+            // A covered gene's own limit, from each coding base's depth
+            // (og chip report); a cell that is not a finite number adds none.
+            if let Some(l) = r
+                .get("detection_limit_vaf")
+                .flatten()
+                .and_then(|x| pycompat::num::parse_float(x).ok())
+                .filter(|l| l.is_finite())
+            {
+                limits.push(l);
+            }
             let x = r.get("mean_depth").flatten().ok_or_else(|| {
                 py_error(
                     "TypeError",
@@ -1279,18 +1290,31 @@ pub fn chip(c: &Ctx<'_>) -> Out {
                 .map_err(|e| py_error(e.exception(), "cannot convert float NaN to integer"))?,
         )
     };
-    let limit = match med {
-        None => Value::Null,
-        Some(m) => og_chip::binom::detection_limit(m)
-            .map_err(|e| py_error("ValueError", &e.to_string()))?
-            .map_or(Value::Null, Value::Float),
-    };
+    // The stated limit is the median of the covered genes' own limits, as
+    // og chip report states it, not the limit at the median depth: a gene
+    // with an unread exon has a higher limit, or none, at the same mean.
+    // A median depth that is not finite stays an unreadable table.
+    if let Some(m) = med {
+        og_chip::binom::finite_mean(m).map_err(|e| py_error("ValueError", &e.to_string()))?;
+    }
+    let limit = og_chip::report::stated_limit(limits).map_or(Value::Null, Value::Float);
+    // The two share columns came after the first seven: a table without
+    // them still reads, and the genes then lack them.
+    let gene_keys: Vec<&str> = dneed
+        .iter()
+        .copied()
+        .chain(
+            ["callable_fraction", "assessable_fraction"]
+                .into_iter()
+                .filter(|k| depth.has(k)),
+        )
+        .collect();
     let v = Obj::new()
         .set("calls", Value::Array(chip.clone()))
         .set("other", count(calls.rows.len() - chip.len()))
         .set(
             "genes",
-            Value::Array(depth.rows.iter().map(|r| dots(r, &dneed)).collect()),
+            Value::Array(depth.rows.iter().map(|r| dots(r, &gene_keys)).collect()),
         )
         .set("median_depth", med.map_or(Value::Null, Value::Float))
         .set("median_limit", limit)
