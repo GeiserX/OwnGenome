@@ -88,6 +88,8 @@ case "$*" in
   "samtools bedcov "*) cov "$(map "$3")" ;;
   "bash -euo pipefail -c "*)
     case "$5" in
+      *"bcftools norm"*)   # step 41: the records near the markers, left-aligned (here as they are)
+        cp "$(map "$8")" "$(map "${11}")" ;;
       *targets.bed*)   # step 41: the marker sites, then the RHD regions
         o=$(map "$8")
         { grep -v '^#' "$(map "$7")" | tail -n +2; cat "${o}/rhd.bed"; } > "${o}/targets.bed"

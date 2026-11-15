@@ -16,7 +16,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
 ## Prerequisites
 - The VCF from step 3 **and its `.tbi`**: the step refuses a VCF without its index, which may be half written
-- Offline VEP cache: step 13 downloads, checks and unpacks it the first time it runs (see step 00-reference-setup)
+- Offline VEP cache: setup installs it by default. To retry, run `./scripts/setup.sh --clinical-data "$GENOME_DIR"` ([reference setup](00-reference-setup.md#vep-cache-26-gb)). The pipeline skips VEP when the cache is missing.
 - Cache size: see [Hardware and storage requirements](hardware-requirements.md#shared-reference-data-one-time) (about 26 GB to download, 30 GB unpacked)
 
 ## Command
@@ -112,4 +112,4 @@ After annotation, use step 23 (clinical filter) which automatically detects avai
 - `--dir_cache /opt/vep/.vep`: the cache is mounted there, not in the home directory VEP looks in by default
 - `--fasta`: running `--offline` without a FASTA file disables HGVS notation (`INFO: Disabling --hgvs`), so the script always passes the reference ([`REF_FASTA`](00-reference-setup.md#the-reference-path-on-every-page) is the reference path)
 - VEP does NOT assess variant pathogenicity in ClinVar context — combine with step 6 (ClinVar screen) for full picture
-- **Upgrading from an older release:** VEP reads the cache directory named after the release passed in `--cache_version` (`homo_sapiens/116_GRCh38/` for the pinned release 116). When that directory is missing, VEP stops with an error instead of annotating from an older cache such as `112_GRCh38/`; step 13 downloads the matching cache on its first run.
+- **Upgrading from an older release:** VEP reads the cache directory named after the release passed in `--cache_version` (`homo_sapiens/116_GRCh38/` for the pinned release 116). When that directory is missing, VEP stops with an error instead of annotating from an older cache such as `112_GRCh38/`. Setup installs the matching cache by default. The standalone step script can download a missing cache, but `run-all.sh` skips VEP until the cache is installed.
