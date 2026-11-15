@@ -19,7 +19,7 @@ IBDmix needs no unadmixed reference population. It scores each site from the mod
 
 ### One genome and the stand-ins
 
-IBDmix takes the modern allele frequency of each site from every modern column in its input, and your column is one of them. With one genome the frequency is that person's own genotype, and IBDmix drops nearly every site at its minimum allele count, so almost nothing scores. The step therefore adds 100 stand-in people. Together they carry round(AF × 200) ALT alleles at each site, where AF is the 1000 Genomes phase 3 frequency of the chosen population (`ARCHAIC_POP`, default `ALL`; `AFR`, `AMR`, `EAS`, `EUR` or `SAS`). The stand-ins' own segments are dropped.
+IBDmix takes the modern allele frequency of each site from every modern column in its input, and your column is one of them. With one genome the frequency is that person's own genotype, and IBDmix drops every site at its minimum allele count (`-m 1` needs 2 ALT and 2 REF alleles, and one person has 2 alleles), so nothing scores. The step therefore adds 100 stand-in people. Together they carry round(AF × 200) ALT alleles at each site, where AF is the 1000 Genomes phase 3 frequency of the chosen population (`ARCHAIC_POP`, default `ALL`; `AFR`, `AMR`, `EAS`, `EUR` or `SAS`). The stand-ins' own segments are dropped.
 
 So the frequency IBDmix uses at a site is (the stand-ins' ALT count + yours) / 202, or / 200 where your genotype is unknown. That is you inside a sample of about 100 people, about the size of one 1000 Genomes group (they hold 61 to 113 people). Chen et al. ran IBDmix the same way: once per 1000 Genomes group, with the scored person counted in the group's frequency. What follows from it:
 
@@ -97,7 +97,7 @@ they close. It prints how many table sites it read and how many it did not.
 ./scripts/43-archaic.sh your_name
 ```
 
-With `run-all.sh`: step 43 runs once the table is installed (`ARCHAIC_DIR=none` skips it, `ARCHAIC_POP` picks the frequencies). In the Nextflow pipeline: `archaic` in `--tools` with `--archaic_data <the table folder>` and `--archaic_pop`; `--hla_genes` gives the genes (processes `ARCHAIC_GENOTYPES`, `ARCHAIC_IBDMIX`, `ARCHAIC_REPORT`).
+With `run-all.sh`: step 43 runs once the table is installed (`ARCHAIC_DIR=none` skips it, `ARCHAIC_POP` picks the frequencies). It needs the gVCF: a sample that starts from a VCF with no gVCF and index beside it gets no step 43 output, and the Nextflow log names the sample. In the Nextflow pipeline: `archaic` in `--tools` with `--archaic_data <the table folder>` and `--archaic_pop`; `--hla_genes` gives the genes (processes `ARCHAIC_GENOTYPES`, `ARCHAIC_IBDMIX`, `ARCHAIC_REPORT`).
 
 ## Output
 

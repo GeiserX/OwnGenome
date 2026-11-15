@@ -220,8 +220,9 @@ fn a_site_is_covered_up_to_the_furthest_end() {
 }
 
 /// The gVCF is read alongside the VCF: the chromosomes the table lacks are
-/// read past, and a gVCF in another chromosome order, or unsorted, stops
-/// the step (exit 2) instead of reading as no reference calls.
+/// read past, and a gVCF in another chromosome order, unsorted, or missing
+/// a chromosome the VCF lists before another, stops the step (exit 2)
+/// instead of reading as no reference calls.
 #[test]
 fn the_gvcf_is_read_in_the_vcf_order() {
     let d = dir("order");
@@ -247,6 +248,12 @@ fn the_gvcf_is_read_in_the_vcf_order() {
     let (code, err) = run(&d, vcf, Some(&format!("{chr22}{chr21}")));
     assert_eq!(code, 2, "{err}");
     assert!(err.contains("one chromosome order"), "{err}");
+
+    // A gVCF with no records on chr21 is read to its end looking for it;
+    // the stop then names the missing chromosome, not the order.
+    let (code, err) = run(&d, vcf, Some(&format!("{other}{chr22}")));
+    assert_eq!(code, 2, "{err}");
+    assert!(err.contains("has no records on chr21"), "{err}");
 
     let back = format!(
         "{chr21}{chr22}{}",

@@ -915,6 +915,9 @@ struct Callable {
     chrom: String,
     /// The last position the confident calls so far cover on `chrom`.
     covered: i64,
+    /// The first chromosome of the VCF the gVCF was read to its end for
+    /// without finding a record on it.
+    missing: Option<String>,
 }
 
 impl Callable {
@@ -951,6 +954,7 @@ impl Callable {
             seen: Vec::new(),
             chrom: String::new(),
             covered: 0,
+            missing: None,
         };
         callable.pending = callable.read()?;
         Ok(callable)
@@ -1010,14 +1014,24 @@ impl Callable {
     fn start(&mut self, chrom: &str) -> Out<()> {
         let here = self.pending.as_ref().is_some_and(|b| b.chrom == chrom);
         if !here && self.seen.iter().any(|x| x == chrom) {
-            return usage(format!(
-                "{} lists {chrom} before a chromosome the VCF lists first; \
-                 give the gVCF and the VCF in one chromosome order",
-                self.path
-            ));
+            return usage(match &self.missing {
+                Some(gone) => format!(
+                    "{} has no records on {gone}, which the VCF lists before {chrom}; \
+                     give the gVCF of the same sample, with every chromosome the VCF lists",
+                    self.path
+                ),
+                None => format!(
+                    "{} lists {chrom} before a chromosome the VCF lists first; \
+                     give the gVCF and the VCF in one chromosome order",
+                    self.path
+                ),
+            });
         }
         while self.pending.as_ref().is_some_and(|b| b.chrom != chrom) {
             self.pending = self.read()?;
+        }
+        if self.pending.is_none() && self.missing.is_none() {
+            self.missing = Some(chrom.to_owned());
         }
         self.chrom = chrom.to_owned();
         self.covered = 0;
