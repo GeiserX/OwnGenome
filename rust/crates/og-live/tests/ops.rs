@@ -743,6 +743,205 @@ fn the_state_hook_gives_the_card_or_one_error_line() {
     );
 }
 
+// --- the Python live site, while it still runs the plugin -----------------------------------
+
+/// A free local port.
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .expect("a local port")
+        .port()
+}
+
+/// One GET on the local site: status, content type and body; `None` while
+/// it does not answer.
+fn get(port: u16, path: &str) -> Option<(u16, String, String)> {
+    use std::io::{Read, Write};
+    let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).ok()?;
+    c.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
+    write!(c, "GET {path} HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").ok()?;
+    let mut raw = Vec::new();
+    c.read_to_end(&mut raw).ok()?;
+    let raw = String::from_utf8(raw).ok()?;
+    let (head, body) = raw.split_once("\r\n\r\n")?;
+    let status = head.split(' ').nth(1)?.parse().ok()?;
+    let ctype = head
+        .lines()
+        .find_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            k.eq_ignore_ascii_case("content-type")
+                .then(|| v.trim().to_owned())
+        })
+        .unwrap_or_default();
+    Some((status, ctype, body.to_owned()))
+}
+
+/// The site's process, stopped when the test ends, pass or fail.
+struct Site(std::process::Child);
+
+impl Drop for Site {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// What `bin/owngenome_live.py` serves on the ops tree.
+struct Served {
+    /// `/runs/OPS-001/state.json`.
+    state: Value,
+    /// `/metrics`: content type and text.
+    metrics: (String, String),
+    /// `state.json` again, once the history has lost its `trace_file` column.
+    broken: Option<Value>,
+}
+
+fn key<'a>(v: &'a Value, k: &str) -> Option<&'a Value> {
+    match v {
+        Value::Object(m) => m.get(k),
+        _ => None,
+    }
+}
+
+/// Starts the Python site on a new ops tree (`plugin_dir` in place of
+/// `bin/` when given) and reads it.
+fn python_site(plugin_dir: Option<&Path>) -> Result<Served, String> {
+    let t = make_tree(true, &[]);
+    let base = t.root.parent().unwrap().to_path_buf();
+    let state_dir = base.join("state");
+    let runs = state_dir.join("runs").join(SAMPLE);
+    std::fs::create_dir_all(&runs).unwrap();
+    write_events(&runs.join("events.jsonl"), &t.events);
+    let (port, iport) = (free_port(), free_port());
+    let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
+    let err_log = base.join("site.stderr");
+    let mut cmd = Command::new(&exe);
+    cmd.arg(repo().join("bin/owngenome_live.py"))
+        .arg("--root")
+        .arg(&t.root)
+        .arg("--state-dir")
+        .arg(&state_dir)
+        .args([
+            "--port",
+            &port.to_string(),
+            "--ingest-port",
+            &iport.to_string(),
+        ])
+        .args(["--quiet", "--stall-minutes", "30"])
+        .args(["--disk-warn-percent", "90", "--mem-warn-percent", "90"])
+        .env("PGP_BOX", "opsbox")
+        .env_remove("OWNGENOME_LIVE_PASSWORD_HASH")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::fs::File::create(&err_log).unwrap());
+    if let Some(d) = plugin_dir {
+        cmd.arg("--plugin-dir").arg(d);
+    }
+    let mut site = Site(
+        cmd.spawn()
+            .map_err(|e| format!("cannot run {exe}: {e}; set OG_PYTHON"))?,
+    );
+    let why = || std::fs::read_to_string(&err_log).unwrap_or_default();
+    let state_path = format!("/runs/{SAMPLE}/state.json");
+    let read_state = || match get(port, &state_path) {
+        Some((200, _, body)) => loads(&body).map_err(|e| format!("state.json: {e:?}")),
+        Some((code, _, body)) => Err(format!("state.json answered {code}: {body}")),
+        None => Err("state.json: no answer".into()),
+    };
+    let mut state = Err(String::new());
+    for _ in 0..200 {
+        if let Some(code) = site.0.try_wait().unwrap() {
+            return Err(format!("the site exited ({code}): {}", why()));
+        }
+        state = read_state();
+        if state.is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let state = state.map_err(|e| format!("{e}; {}", why()))?;
+    let (_, ctype, text) = get(port, "/metrics").ok_or("/metrics: no answer")?;
+    std::fs::write(
+        t.root.join("pipeline_info/step_history/opsbox.tsv"),
+        "step\tseconds\nROH\t60\n",
+    )
+    .unwrap();
+    let broken = read_state().ok();
+    Ok(Served {
+        state,
+        metrics: (ctype, text),
+        broken,
+    })
+}
+
+/// Check 14 and 15 of the Python suite this file replaces: the site loads
+/// the plugin (state.json has `plugins.ops`, `/metrics` answers in the
+/// Prometheus text format), and an error in the plugin's hook becomes the
+/// card's error field while the rest of state.json stays.
+fn site_serves_the_plugin(s: &Served) -> Result<(), String> {
+    let ops = key(&s.state, "plugins").and_then(|p| key(p, "ops"));
+    if ops.and_then(|o| key(o, "alerts")).is_none() {
+        return Err(format!("state.json has no plugins.ops card: {ops:?}"));
+    }
+    let (ctype, text) = &s.metrics;
+    let running = format!("pgp_run_running{{run=\"{SAMPLE}\"}} 1");
+    if !ctype.contains("version=0.0.4")
+        || !text.lines().any(|l| l == "pgp_runs 1")
+        || !text.lines().any(|l| l == running)
+    {
+        return Err(format!("/metrics: {ctype} {text}"));
+    }
+    let broken = s
+        .broken
+        .as_ref()
+        .ok_or("state.json fails on a bad history")?;
+    let err = key(broken, "plugins")
+        .and_then(|p| key(p, "ops"))
+        .and_then(|o| key(o, "error"));
+    match err {
+        Some(Value::Str(e))
+            if e.contains("could not be read") && key(broken, "steps").is_some() =>
+        {
+            Ok(())
+        }
+        _ => Err(format!("a hook error gave {err:?}")),
+    }
+}
+
+/// While `bin/owngenome_live.py` lives, it must load the plugin and serve
+/// `/metrics`; the check goes with the Python server. Two controls run the
+/// site on a copy of the plugin with its hook unregistered, and with its
+/// catch-all cut: both must fail the check.
+#[test]
+fn the_python_site_loads_the_plugin_serves_metrics_and_keeps_a_hook_error_on_the_card() {
+    let bin = repo().join("bin");
+    let plugin = bin.join("owngenome_live_ops.py");
+    if !bin.join("owngenome_live.py").is_file() || !plugin.is_file() {
+        eprintln!("bin/owngenome_live.py is gone: the Python site check retired with it");
+        return;
+    }
+    let served = python_site(None).unwrap_or_else(|e| panic!("{e}"));
+    site_serves_the_plugin(&served).unwrap_or_else(|e| panic!("{e}"));
+    let src = std::fs::read_to_string(&plugin).unwrap();
+    let catch_all = "        except Exception as e:  # anything else: the card says so, the rest of the run's state stays\n            return {\"error\": f\"run health could not be read ({type(e).__name__})\"}\n";
+    for (what, from, to) in [
+        ("unregistered", "    app.state_hook(\"ops\", hook)\n", ""),
+        ("no catch-all", catch_all, ""),
+    ] {
+        assert!(
+            src.contains(from),
+            "the control found no line to cut ({what})"
+        );
+        let dir = tmp().join("plugins");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("owngenome_live_ops.py"), src.replacen(from, to, 1)).unwrap();
+        let red = python_site(Some(&dir)).and_then(|s| site_serves_the_plugin(&s));
+        assert!(
+            red.is_err(),
+            "the site check passed a plugin with its hook {what}"
+        );
+    }
+}
+
 // --- parity with the Python plugin ----------------------------------------------------------
 
 fn git(args: &[&str]) -> std::process::Output {

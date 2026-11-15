@@ -48,16 +48,6 @@ fn tmp() -> PathBuf {
     d
 }
 
-/// The warn percents the checks expect come from no environment variable.
-fn no_warn_env() {
-    for k in ["OWNGENOME_DISK_WARN_PERCENT", "OWNGENOME_MEM_WARN_PERCENT"] {
-        assert!(
-            std::env::var_os(k).is_none(),
-            "unset {k}: the checks test the default warn percents"
-        );
-    }
-}
-
 /// A host whose every file system is `used_pct`% used; its device ids are
 /// `devs`, else 1; existence is the real one.
 struct Fake {
@@ -121,6 +111,9 @@ fn snapshot_of(host: &dyn Host, r: &Request<'_>) -> Snapshot {
     headroom::snapshot(host, &steps(), r).expect("the warn percents are good")
 }
 
+/// The warn percents are given as 90, so an `OWNGENOME_*_WARN_PERCENT` of
+/// the shell running the tests changes nothing; only the child test below
+/// reads the environment.
 fn request<'a>(work: Option<&'a str>, outdir: Option<&'a str>) -> Request<'a> {
     Request {
         events: &[],
@@ -128,8 +121,8 @@ fn request<'a>(work: Option<&'a str>, outdir: Option<&'a str>) -> Request<'a> {
         work_dir: work,
         outdir,
         max_memory: None,
-        disk_warn_percent: None,
-        mem_warn_percent: None,
+        disk_warn_percent: Some("90"),
+        mem_warn_percent: Some("90"),
     }
 }
 
@@ -180,7 +173,6 @@ fn disk_91_warns_at_the_default_89_does_not() {
 /// a test may not set a variable of its own process.
 #[test]
 fn disk_warn_percent_80_and_its_environment_variable_warn_at_85() {
-    no_warn_env();
     let d = tmp();
     let host = fake(85);
     let plain = headroom::lines(&snapshot_of(&host, &request(Some(s(&d)), None)));
@@ -202,10 +194,14 @@ fn disk_warn_percent_80_and_its_environment_variable_warn_at_85() {
         child.env("OG_PLANTED", f);
     }
     let out = child.output().unwrap();
+    let said = String::from_utf8_lossy(&out.stdout);
+    // A filter that matches no test exits 0 with "0 passed": the child must have run.
     assert!(
-        !plain[0].contains("WARN") && arg.contains("WARN: at or above 80%") && out.status.success(),
-        "{plain:?} {arg} {}",
-        String::from_utf8_lossy(&out.stdout)
+        !plain[0].contains("WARN")
+            && arg.contains("WARN: at or above 80%")
+            && out.status.success()
+            && said.contains(" 1 passed;"),
+        "{plain:?} {arg} {said}"
     );
 }
 
@@ -217,7 +213,9 @@ fn child_disk_warn_from_the_environment() {
         og_runlog::eta::fault::plant(Box::leak(f.into_boxed_str()));
     }
     let d = std::env::var("OPS_CHILD_DIR").expect("run by its parent test");
-    let text = headroom::lines(&snapshot_of(&fake(85), &request(Some(&d), None))).join("\n");
+    let mut r = request(Some(&d), None);
+    r.disk_warn_percent = None;
+    let text = headroom::lines(&snapshot_of(&fake(85), &r)).join("\n");
     assert!(text.contains("WARN: at or above 80%"), "{text}");
 }
 
@@ -272,7 +270,6 @@ fn f_files_0_gives_no_inode_ratio() {
 
 #[test]
 fn a_real_statvfs_gives_a_ratio_in_0_to_1_and_a_disk_line() {
-    no_warn_env();
     let d = tmp();
     let real = headroom::disk(&System, &[("work", Some(s(&d)))], default_warn());
     let lines = headroom::lines(&snapshot_of(&System, &request(Some(s(&d)), Some(s(&d)))));
@@ -391,7 +388,6 @@ fn a_running_message_after_a_finished_one_of_the_same_task_id_keeps_the_finished
 
 #[test]
 fn max_memory_64_gb_on_a_32_gb_host_warns_on_128_it_does_not() {
-    no_warn_env();
     let mut r = request(None, None);
     r.max_memory = Some("64.GB");
     let mut host = fake(50);
@@ -418,7 +414,6 @@ fn strings(snap: &Snapshot) -> Vec<String> {
 
 #[test]
 fn the_snapshot_holds_no_path_and_takes_its_folders_from_the_metadata() {
-    no_warn_env();
     let d = tmp();
     let (work, res) = (d.join("work"), d.join("results"));
     std::fs::create_dir_all(&work).unwrap();
