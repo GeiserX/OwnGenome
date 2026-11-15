@@ -284,10 +284,14 @@ if [ "$HAS_HITS" -eq 1 ]; then
   cut -f1,2 "$ALLELES" | sort -u > "$TARGETS"
   if [ -s "$TARGETS" ]; then
     # -T narrows the input to the hits' positions; the awk keeps the records
-    # whose allele is one of them.
+    # whose allele is one of them. Step 13 writes one ALT per record; a
+    # record of an unsplit input is kept when any of its ALTs is a hit.
     run_in --cpus 4 --memory 4g "${BCFTOOLS_IMAGE}" \
       bcftools view -f PASS -T "${C}/${SAMPLE}_clinvar_targets.tsv" "${CONTAINER_INPUT}" \
-      | awk -F'\t' 'NR == FNR {want[$0] = 1; next} /^#/ || (($1 "\t" $2 "\t" $4 "\t" $5) in want)' "$ALLELES" - \
+      | awk -F'\t' 'NR == FNR {want[$0] = 1; next} /^#/ {print; next} {
+          n = split($5, alt, ",")
+          for (i = 1; i <= n; i++) if (($1 "\t" $2 "\t" $4 "\t" alt[i]) in want) {print; next}
+        }' "$ALLELES" - \
       | run_in -i --cpus 2 --memory 2g "${BCFTOOLS_IMAGE}" bcftools view -Oz -o "${C}/${SAMPLE}_clinvar_unranked.vcf.gz"
   else
     echo "  Step 6 found no ClinVar hit."
