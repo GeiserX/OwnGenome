@@ -15,8 +15,8 @@ The files are the ones owngenome-view.sh picks by default
 (assets/viewer/serve.py sample_files): the run folder's BAM or CRAM, its VCF
 and its SV VCF, each with its index, and the reference. A track whose file
 or index lies outside GENOME_DIR (a symlink out of it) is left out. The page and the files carry the
-viewer's Content-Security-Policy (serve.CSP): the page talks to this site
-only. The report the site serves (report.html) gets its viewer links pointed
+viewer's Content-Security-Policy (serve.LIVE_CSP): the page talks to this site
+only and allows same-origin framing. The report the site serves (report.html) gets its viewer links pointed
 here. Opening the page writes one access-log row; the byte ranges igv.js reads
 write none.
 
@@ -137,7 +137,7 @@ def viewer(req, m):
     why = ready()
     if why:
         req.log("viewer", run, status=404)
-        return req.deny(404, why)
+        return send(req, 404, "text/plain; charset=utf-8", why)
     try:
         if page:
             with open(os.path.join(VIEWER_DIR, "index.html")) as f:

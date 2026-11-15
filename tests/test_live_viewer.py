@@ -25,6 +25,9 @@ Checks:
   7. in a headless Chrome (skipped without Chrome, except in CI) the page,
      loaded from the site, starts igv.js (status ready, 3 tracks) and the
      policy blocks nothing.
+  8. the map opens a same-origin reads iframe, follows the camera, hides
+     closed findings and returns focus on Escape; a planted page policy
+     without frame-src blocks the iframe. Other routes keep DENY.
 Checks 2, 3 and 5 are also run against planted mistakes (a viewer that serves
 any file of the run folder, a report filter that does nothing, a viewer that
 compares the still-quoted name, one that serves an index out of GENOME_DIR)
@@ -33,6 +36,7 @@ and must fail.
 Run: python3 tests/test_live_viewer.py
 """
 import http.client
+import base64
 import gzip
 import json
 import importlib.util
@@ -197,7 +201,8 @@ def map_reads_checks(srv, work, chrome):
     """
     app, port = srv[0].app, srv[1].server_address[1]
     policy = {"block": False}
-    page = ('<!doctype html><html><head><link rel="stylesheet" href="/assets/live.css">'
+    page = ('<!doctype html><html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<link rel="stylesheet" href="/assets/live.css">'
             '<link rel="stylesheet" href="/assets/map.css">'
             '<script src="/assets/core.js" defer></script>'
             '<script src="/assets/map.js" defer></script></head><body></body></html>')
@@ -221,20 +226,31 @@ def map_reads_checks(srv, work, chrome):
     app.route("GET", r"/map-1g.json", lambda req, _: req.send_body(200, "application/gzip", data))
     b = tl.Chrome(chrome, f"{work}/chrome-map-1g")
     try:
+        visit = 0
+
+        def js(expr):
+            reply = b.call("Runtime.evaluate", {"expression": expr, "returnByValue": True}, b.session)
+            if reply.get("exceptionDetails"):
+                raise RuntimeError(str(reply["exceptionDetails"]))
+            return reply.get("result", {}).get("value")
+
         b.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": "dark"},
                                                           {"name": "prefers-reduced-motion", "value": "reduce"}]}, b.session)
+        b.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 900, "deviceScaleFactor": 1, "mobile": False}, b.session)
 
         def mount(demo=False):
-            b.go(f"http://127.0.0.1:{port}/map-1g/#chr1:1-49000")
-            if not b.wait("window.PGPMap && window.PGPUI"):
+            nonlocal visit
+            visit += 1
+            b.go(f"http://127.0.0.1:{port}/map-1g/?visit={visit}#chr1:1-49000")
+            if not b.wait("!!(window.PGPMap && window.PGPUI)"):
                 return False
-            b.eval("window.closedResult = true; "
+            js("window.closedResult = true;document.documentElement.dataset.run='S'; "
                    "document.documentElement.dataset.mode = " + json.dumps("replay" if demo else "live") + "; "
                    "window.testMap = PGPMap.create({url:'/map-1g.json',"
                    "veil:function(id){return id==='closed' && window.closedResult ? 'closed':'open';},"
                    "known:function(){return true;},now:function(){return true;}});"
                    "document.body.appendChild(testMap.node);testMap.refresh('one');")
-            return b.wait("document.querySelector('.gmap[data-level=reads]')")
+            return b.wait("!!document.querySelector('.gmap[data-level=reads]')")
 
         def loaded():
             return b.wait("(function(){var f=document.querySelector('.gm-reads iframe');"
@@ -256,9 +272,21 @@ def map_reads_checks(srv, work, chrome):
         check("map: moving updates the same iframe to the map's locus",
               b.wait("savedFrame===document.querySelector('.gm-reads iframe') && savedFrame.contentWindow.location.hash==='#chr1:1-49001'"))
         check("viewer: alignments remain visible at 49 kb",
-              b.wait("(function(){var d=savedFrame.contentDocument;return d.querySelector('canvas.igv-canvas') && "
-                     "!Array.from(d.querySelectorAll('.igv-zoom-in-notice-container')).some(function(x){return x.offsetHeight>0;});})()"))
-        b.eval("document.querySelector('.gm-reads-close').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
+              b.wait("(function(){var v=savedFrame.contentDocument.querySelector('.igv-viewport[data-track-type=alignment]');"
+                     "var n=v && v.querySelector('.igv-zoom-in-notice-container');"
+                     "return !!(v && v.querySelector('canvas') && n && n.style.display!=='flex');})()"))
+        if os.environ.get("MAP_SCREENS"):
+            os.makedirs(os.environ["MAP_SCREENS"], exist_ok=True)
+            for width, height in ((1440, 900), (390, 844)):
+                b.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height,
+                       "deviceScaleFactor": 1, "mobile": False}, b.session)
+                b.eval("document.querySelector('.gm-reads').scrollIntoView({block:'center'})")
+                png = b.call("Page.captureScreenshot", {"format": "png"}, b.session)["data"]
+                with open(os.path.join(os.environ["MAP_SCREENS"], f"map-reads-{width}.png"), "wb") as out:
+                    out.write(base64.b64decode(png))
+            b.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 900,
+                   "deviceScaleFactor": 1, "mobile": False}, b.session)
+        b.eval("savedFrame.contentDocument.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
         check("map: Escape closes the reads and returns focus without moving the map",
               b.eval("document.querySelector('.gm-reads').hidden && document.activeElement===document.querySelector('.gm-canvas') && "
                      "document.querySelector('.gmap').dataset.view==='chr1:1-49001'"))
@@ -267,22 +295,39 @@ def map_reads_checks(srv, work, chrome):
         b.eval("document.querySelector('.gm-reads-close').click();document.querySelector('[data-stop=reads]').click()")
         check("map: Reads gauge opens a 2 kb view and the panel", b.wait("!document.querySelector('.gm-reads').hidden && "
                                                                  "document.querySelector('.gmap').dataset.level==='reads'"))
-        b.eval("document.querySelector('.gm-reads-close').click();document.querySelector('.gm-marks [data-id=open]').focus()")
-        b.eval("document.querySelector('.gm-card-reads').click()")
+        js("document.querySelector('.gm-reads-close').click();location.hash='chr1:1-2000'")
+        b.wait("document.querySelector('.gmap').dataset.view==='chr1:1-2000'")
+        js("document.querySelector('.gm-marks [data-id=open]').focus();document.querySelector('.gm-card-reads').click()")
         check("map: the card opens reads at its finding", b.wait("document.querySelector('.gm-reads iframe').contentWindow.location.hash==='#chr1:401-501'"))
-        b.eval("window.closedResult=false;testMap.refresh('one');document.querySelector('.gm-marks [data-id=closed]').focus();"
+        js("window.closedResult=false;testMap.refresh('one');document.querySelector('.gm-marks [data-id=closed]').focus();"
                "document.querySelector('.gm-card-reads').click()")
         check("map: an opened finding offers reads", b.wait("document.querySelector('.gm-reads iframe').contentWindow.location.hash==='#chr1:501-601'"))
         b.eval("window.closedResult=true;testMap.refresh('one')")
         check("map: closing a result removes its open reads panel and link",
               b.eval("document.querySelector('.gm-reads').hidden && !document.querySelector('.gm-card-reads')"))
 
+        # No finding in view: use the view itself, and no viewer flags: show the server's reason.
+        b.eval("location.hash='chr1:10000-59000'")
+        b.wait("document.querySelector('.gmap').dataset.view==='chr1:10000-59000'")
+        fasta = srv[0].cfg.viewer_fasta
+        srv[0].cfg.viewer_fasta = None
+        try:
+            b.eval("document.querySelector('.gm-reads-pill').click()")
+            check("map: a missing viewer shows the server's reason, without a broken frame",
+                  b.wait("document.querySelector('.gm-reads').textContent.includes('not set up')")
+                  and b.eval("!document.querySelector('.gm-reads iframe')"))
+        finally:
+            srv[0].cfg.viewer_fasta = fasta
+
         # CI proves the browser assertion detects the original policy mistake.
         policy["block"] = True
         mount()
         b.eval("window.blockedFrames=0;document.addEventListener('securitypolicyviolation',function(e){"
                "if(e.violatedDirective==='frame-src')window.blockedFrames++;});document.querySelector('.gm-reads-pill').click()")
-        check("control: without frame-src the reads iframe is blocked", b.wait("window.blockedFrames>0") and not loaded())
+        check("control: without frame-src the reads iframe is blocked", b.wait("window.blockedFrames>0") and b.eval(
+              "(function(){var f=document.querySelector('.gm-reads iframe');return !f || !f.contentDocument || "
+              "f.contentDocument.documentElement.dataset.pgpStatus!=='ready';})()"),
+              b.eval("document.documentElement.dataset.pgpBlocked"))
         policy["block"] = False
         mount(demo=True)
         b.eval("document.querySelector('.gm-reads-pill').click()")
@@ -313,7 +358,19 @@ def main():
     proc = None
     try:
         gd = f"{work}/genome"
-        tv.make_sample(gd)
+        _, contigs = tv.make_sample(gd)
+        # A 49 kb alignment check needs a reference longer than the original 3 kb sample.
+        contigs[0] = ("chr1", contigs[0][1] + "ACGT" * 14250)
+        fasta = f"{gd}/reference/synthetic.fasta"
+        with open(fasta, "w") as fa, open(fasta + ".fai", "w") as fai:
+            offset = 0
+            for name, seq in contigs:
+                offset += len(name) + 2
+                fai.write(f"{name}\t{len(seq)}\t{offset}\t60\t61\n")
+                fa.write(f">{name}\n" + "\n".join(seq[i:i + 60] for i in range(0, len(seq), 60)) + "\n")
+                offset += len(seq) + (len(seq) + 59) // 60
+        tv.write_bam(f"{gd}/S/aligned/S_sorted.bam", contigs,
+                     [(0, p, contigs[0][1][p:p + 50]) for p in range(400, 700, 10)])
         s = f"{gd}/S"
         os.makedirs(f"{s}/nextflow")  # the site lists a folder with nextflow/ as a run
         html, _ = tv.findings_report(work)
@@ -402,18 +459,15 @@ def main():
                 if ci:
                     FAILED.append("no Chrome in CI")
             else:
-                r = subprocess.run([chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run",
-                                    "--no-default-browser-check", f"--user-data-dir={work}/chrome",
-                                    "--virtual-time-budget=20000", "--dump-dom",
-                                    f"http://127.0.0.1:{p}/runs/S/viewer/#chr1:451"],
-                                   capture_output=True, text=True, timeout=180)
-                status = re.search(r'data-pgp-status="([^"]*)"', r.stdout)
-                tracks = re.search(r'data-pgp-tracks="([^"]*)"', r.stdout)
-                blocked = re.search(r'data-pgp-blocked="([^"]*)"', r.stdout)
-                check("browser: the page from the site starts igv.js with the run's 3 tracks",
-                      status and status.group(1) == "ready" and tracks and tracks.group(1) == "3",
-                      (status and status.group(1), r.stderr[-800:], r.stdout[:600]))
-                check("browser: the policy blocked nothing the page needed", not blocked, blocked and blocked.group(1))
+                b = tl.Chrome(chrome, f"{work}/chrome")
+                try:
+                    b.go(f"http://127.0.0.1:{p}/runs/S/viewer/#chr1:451")
+                    check("browser: the page from the site starts igv.js with the run's 3 tracks",
+                          b.wait("document.documentElement.dataset.pgpStatus==='ready' && document.documentElement.dataset.pgpTracks==='3'"),
+                          b.eval("document.documentElement.dataset.pgpStatus"))
+                    check("browser: the policy blocked nothing the page needed", not b.eval("document.documentElement.dataset.pgpBlocked"))
+                finally:
+                    b.close()
                 map_reads_checks(srv, work, chrome)
         finally:
             stop(*srv)
