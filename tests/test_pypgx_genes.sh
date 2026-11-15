@@ -241,7 +241,7 @@ def problems(lines):
         os.makedirs(os.path.join(d, "pypgx"))
         with open(os.path.join(d, "pypgx", "s1_pypgx_summary.tsv"), "w") as f:
             f.write("\n".join("\t".join(r) for r in [hdr] + lines) + "\n")
-        _, data = collect_summary.sec_pypgx(d, "s1")
+        data = collect_summary.collect("s1", d)["sections"]["pypgx"]["data"]
     # The rows of the block (gene, text), with CNVpytor's section beside pypgx's:
     # pypgx owns every bam gene, so each has one row, and it is pypgx's.
     block = render_report.pgx_copy_number({"pypgx": {"state": "ok", "data": data},

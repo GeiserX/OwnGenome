@@ -150,6 +150,61 @@ for r in "$TXT" "$HTML"; do
   grep -q 'STALE: from an earlier run.*step 19 was not finished' "$r" \
     || miss "${r##*/} does not mark step 19's old result stale, but Delly did not finish in this run"
 done
+# One collect per run: generate-report.sh renders the text report from the
+# summary step 24 wrote just before it, so both reports carry one time.
+grep -q '^Rendering from summary.json' "${S}/logs/generate-report.log" \
+  || miss "generate-report.sh collected the summary again after step 24 wrote it: $(head -3 "${S}/logs/generate-report.log")"
+t_txt=$(sed -n 's/^  Generated: //p' "$TXT" | head -1)
+t_html=$(grep -o 'Generated: [^<&]*' "$HTML" | head -1 | sed 's/^Generated: //; s/ *$//')
+[ -n "$t_txt" ] && [ "$t_txt" = "$t_html" ] || miss "the text report says generated '${t_txt}', the HTML report '${t_html}'"
+# The reverse: a change after summary.json was written makes it collect
+# again. Each check first makes summary.json the newest file, as step 24
+# leaves it (the run's history/ copy came after it), and waits a second, so
+# only the change it makes is newer.
+fresh() { touch "${S}/summary.json" && /bin/sleep 1; }
+rendered_from() { grep -q '^Rendering from summary.json' "${CASE_WORK}/$1.out" 2> /dev/null; }
+fresh
+run_expect 0 current "${SCRIPTS}/generate-report.sh" sample1
+rendered_from current || miss "generate-report.sh collected again, but nothing changed after summary.json was written"
+# A step output newer than summary.json.
+roh=$(find "$S" -name 'sample1_roh.txt' -type f | head -1)
+[ -n "$roh" ] || fail "no ROH output to touch"
+fresh
+touch "$roh"
+run_expect 0 recollect "${SCRIPTS}/generate-report.sh" sample1
+! rendered_from recollect || miss "generate-report.sh rendered from summary.json, but a step output changed after it was written"
+touch -d '30 days ago' "$roh"   # back to its age, for the cases below
+# A file removed: its folder is newer than summary.json.
+extra="${roh%/*}/sample1_extra.txt"
+: > "$extra"
+fresh
+rm -f "$extra"
+run_expect 0 recollect-removed "${SCRIPTS}/generate-report.sh" sample1
+! rendered_from recollect-removed || miss "generate-report.sh rendered from summary.json, but a file was removed after it was written"
+# A section's whole folder removed: only the sample folder itself is newer,
+# so the section's missing source must tell.
+src=$(sed -n 's|^   "source": "\([^"/]*\)/.*|\1|p' "${S}/summary.json" | head -1)
+[ -n "$src" ] && [ -d "${S}/${src}" ] || fail "summary.json names no section folder: $(grep -m3 '"source"' "${S}/summary.json")"
+fresh
+mv "${S}/${src}" "${CASE_WORK}/moved-away"
+run_expect 0 recollect-folder "${SCRIPTS}/generate-report.sh" sample1
+mv "${CASE_WORK}/moved-away" "${S}/${src}"
+! rendered_from recollect-folder || miss "generate-report.sh rendered from summary.json, but ${src}/, a section's folder, was removed after it was written"
+# The run status the summary read, removed.
+grep -q '^  "status_file": true' "${S}/summary.json" || fail "summary.json read no run status"
+fresh
+mv "${S}/logs/run_status.tsv" "${CASE_WORK}/run_status.away"
+run_expect 0 recollect-status "${SCRIPTS}/generate-report.sh" sample1
+mv "${CASE_WORK}/run_status.away" "${S}/logs/run_status.tsv"
+! rendered_from recollect-status || miss "generate-report.sh rendered from summary.json, but logs/run_status.tsv was removed after it was written"
+# A file removed from assets/ (a table the collect reads, as far as the check
+# can tell): assets/ is newer than summary.json.
+extra="${REPO_ROOT}/assets/.fake-docker-extra"
+: > "$extra"
+fresh
+rm -f "$extra"
+run_expect 0 recollect-asset "${SCRIPTS}/generate-report.sh" sample1
+! rendered_from recollect-asset || miss "generate-report.sh rendered from summary.json, but a file was removed from assets/ after it was written"
 
 # --- 3. the same failure on a first run: nothing cached ------------------------------------
 awk -F'\t' -v OFS='\t' '{$2 += $3; $3 = 0; print}' "${CASE_WORK}/resume.tsv" > "${CASE_WORK}/first.tsv"

@@ -6,8 +6,8 @@
 //! section, the ACMG tier, the carrier list and CPSR's call floor; the
 //! clinical VCF feeds the record count and the ACMG tier; AnnotSV's table
 //! and step 35's copy-number tables feed both two-hit readings. The
-//! ClinVar section (with its VEP lookups) and the clinical section (with
-//! the clinical VCF) are read on their own threads.
+//! sections are read one at a time, so the peak memory is the biggest
+//! section's, not the sum.
 
 use super::acmg::{self, ClinicalVcf};
 use super::carrier::Carrier;
@@ -128,15 +128,15 @@ pub fn read(input: &Input, folder: &Folder) -> Vec<Section> {
     };
     let side = |rel: &str| one(rel.to_owned());
 
-    let (clinvar, clinical, rest) = std::thread::scope(|scope| {
-        let clinvar = scope.spawn(|| -> Read {
-            let Some(h) = &hits else { return Ok(None) };
-            let data = ClinVar::read(h, d, &side, &s)?;
-            with_mtime(&h.path, h.rel.clone(), Data::ClinVar(data))
-        });
-        let clinical = scope.spawn(|| -> Read {
-            let at = clinical_table.clone().or_else(|| clinical_vcf_at.clone());
-            let Some((p, rel)) = at else { return Ok(None) };
+    // One section at a time, so the peak memory is the biggest section's.
+    let clinvar: Read = match &hits {
+        None => Ok(None),
+        Some(h) => ClinVar::read(h, d, &side, &s)
+            .and_then(|data| with_mtime(&h.path, h.rel.clone(), Data::ClinVar(data))),
+    };
+    let clinical: Read = match clinical_table.clone().or_else(|| clinical_vcf_at.clone()) {
+        None => Ok(None),
+        Some((p, rel)) => {
             let vcf = clinical_vcf_at.as_ref().map(|(v, _)| ClinicalVcf::read(v));
             let tier = acmg::Inputs {
                 assets: &input.assets,
@@ -144,20 +144,15 @@ pub fn read(input: &Input, folder: &Folder) -> Vec<Section> {
                 clinical: vcf.as_ref(),
                 deletions: &deletions,
             };
-            let data = Clinical::read(
+            Clinical::read(
                 clinical_table.as_ref().map(|(p, _)| p.as_str()),
                 vcf.as_ref(),
                 &tier,
-            )?;
-            with_mtime(&p, rel, Data::Clinical(data))
-        });
-        let rest = read_rest(input, &s, index, &find, &hits, &deletions);
-        let join = |h: std::thread::ScopedJoinHandle<'_, Read>| {
-            h.join()
-                .unwrap_or_else(|_| Err("internal error: the section reader stopped".into()))
-        };
-        (join(clinvar), join(clinical), rest)
-    });
+            )
+            .and_then(|data| with_mtime(&p, rel, Data::Clinical(data)))
+        }
+    };
+    let rest = read_rest(input, &s, index, &find, &hits, &deletions);
     let [carrier, pharmcat, cpic, pypgx, cyrius, cpsr, slivar] = rest;
     let reads = [
         clinvar, carrier, pharmcat, cpic, pypgx, cyrius, cpsr, clinical, slivar,
