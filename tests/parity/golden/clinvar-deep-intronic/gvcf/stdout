@@ -1,0 +1,14 @@
+chrom	pos	ref	alt	gene	hgvs	clinvar_id	call	detail
+chr1	100	A	G	GENE0	c.0A>T	0	het	GQ 40, DP 30
+chr1	200	C	T	GENE1	c.1A>T	1	ref	GQ 50, DP 30
+chr1	300	G	A	GENE2	c.2A>T	2	ref (low confidence)	GQ 12, DP 30, below the call floor of GQ 30
+chr1	400	T	C	GENE3	c.3A>T	3	other allele	T>G het
+chr1	500	A	T	GENE4	c.4A>T	4	ref	GQ 40 (gVCF block)
+chr1	600	A	T	GENE5	c.5A>T	5	ref (low confidence)	GQ 5 (gVCF block), below the call floor of GQ 30
+chr1	700	A	T	GENE6	c.6A>T	6	no call	the gVCF record over the site has no genotype (GT ./.)
+chr1	800	A	T	GENE7	c.7A>T	7	no call	no record in the VCF or the gVCF covers the site
+chr1	900	A	T	GENE8	c.8A>T	8	ref (low confidence)	(gVCF block), no GQ to check against the call floor of GQ 30
+chr2	0100	A	G	GENE9	c.9A>T	9	het	DP 20
+chr1	1000	A	T	GENE10	c.10A>T	10	one copy, other copy not called ref (./1)	GQ 40, DP 30
+chr1	1100	A	T	GENE11	c.11A>T	11	no call	the gVCF record over the site is not a reference call (GT 0/1)
+chr1	1200	A	T	GENE12	c.12A>T	12	ref	GQ 30 (gVCF block)

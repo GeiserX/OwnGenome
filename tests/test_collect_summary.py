@@ -639,7 +639,7 @@ def construct_scan_section(work, schema):
     check("sites mode: the calls", calls == {
         "G1": ("ref", "GQ 50 (gVCF block)"), "G2": ("hom", "GQ 60, DP 30"), "G3": ("ref", "GQ 35"),
         "G4": ("other allele", "G>C het"),
-        "G5": ("no call", "the gVCF record over the site is not a PASS reference call (GT ./.)")}, calls)
+        "G5": ("no call", "the gVCF record over the site has no genotype (GT ./.)")}, calls)
     # The call floor: a reference call below min_gq (step 6's CLINVAR_MIN_GQ) is no confident ref.
     out = og_clinvar("deep-intronic", "--min-gq", "40", sites, vcf_calls, gvcf_calls).splitlines()
     low = {r.split("\t")[4]: tuple(r.split("\t")[7:9]) for r in out[1:]}
@@ -2114,7 +2114,7 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
 def roh_upd_karyotype(work, schema):
     """F_ROH, the one-chromosome isodisomy flag joined to
     assets/imprinted_regions.tsv, and the sex-chromosome karyotype label."""
-    # The catalog and the rows the summary holds (the Nextflow report task sees bin/, not assets/).
+    # The one table is embedded into og; the flag emits neutral region hints.
     with open(os.path.join(REPO, "assets/imprinted_regions.tsv")) as f:
         rows = list(csv.DictReader((l for l in f if not l.startswith("#")), delimiter="\t"))
     asset = [(r["chrom"], int(r["start"]) if r["start"] else None, int(r["end"]) if r["end"] else None,
@@ -2127,55 +2127,55 @@ def roh_upd_karyotype(work, schema):
     # hg38.chrom.sizes) less the 217,000,000 bp of autosomal bands, written out
     # here rather than recomputed from the code under test.
     denom = 2875001522 - 217000000
+    sites = "".join(f"ST\tS\tchr{c}\t40000000\t0\t60\n" for c in range(1, 23))
     d = os.path.join(work, "roh_upd", "S")
     # Isodisomy: the whole of chr15 in one run (chr15 is 102 Mb; its first
     # 20.5 Mb are the acrocentric band, so 81.5 Mb count) and 8 Mb on chr2.
     upd = "RG\tS\tchr15\t1\t101991189\t101991189\t9000\t50\nRG\tS\tchr2\t10000001\t18000000\t8000000\t900\t50\n"
-    put(f"{d}/vcf/S_roh.txt", upd)
+    put(f"{d}/vcf/S_roh.txt", sites + upd)
     summ, txt, html = render(d)
     r = summ["sections"]["roh"]["data"]
     u = r.get("upd_flag") or {}
     long_bp = (101991189 - 20500000) + 8000000
     check("ROH UPD: chr15 holding most of the long runs raises the flag", u.get("chrom") == "chr15"
           and u.get("mb") == 81.5 and r.get("relationship") is None, r)
-    check("ROH UPD: the flag joins the 15q11-q13 row, Prader-Willi from the mother and Angelman from the father",
+    check("ROH UPD: the flag names the 15q11-q13 region without a syndrome",
           [(x["region"], x["maternal_upd"], x["paternal_upd"]) for x in u.get("imprinted", [])]
-          == [("15q11-q13 (SNRPN, UBE3A)", "Prader-Willi syndrome", "Angelman syndrome")], u)
+          == [("15q11-q13 (SNRPN, UBE3A)", "-", "-")], u)
     check("ROH UPD: F_ROH of the two runs", abs((r.get("f_roh") or -1) - long_bp / denom) < 0.001, r.get("f_roh"))
-    check("ROH UPD: both reports carry the flag and the syndromes",
-          all("chr15 carries 81.5 MB" in t and "Prader-Willi syndrome" in t and "Angelman syndrome" in t
+    check("ROH UPD: both reports carry the flag and region without syndrome names",
+          all("chr15 carries 81.5 MB" in t and "15q11-q13 (SNRPN, UBE3A)" in t and "Prader-Willi" not in t and "Angelman" not in t
               for t in (txt, html)), txt)
     check("ROH UPD summary validates", not validate.validate(schema, json.loads(json.dumps(summ))),
           validate.validate(schema, json.loads(json.dumps(summ))))
-    # Red control: the run on chr15 cut to 15q21 onwards misses 15q11-q13, so no row joins.
-    put(f"{d}/vcf/S_roh.txt", upd.replace("chr15\t1\t101991189\t101991189", "chr15\t40000001\t101991189\t61991189"))
+    # A distal isodisomic run can coexist with heterodisomy at the imprinted locus.
+    put(f"{d}/vcf/S_roh.txt", sites + upd.replace("chr15\t1\t101991189\t101991189", "chr15\t40000001\t101991189\t61991189"))
     u0 = section(d, "roh")["data"].get("upd_flag") or {}
-    check("ROH UPD red control: a chr15 run outside 15q11-q13 is flagged but joins no row",
-          u0.get("chrom") == "chr15" and u0.get("imprinted") == [], u0)
+    check("ROH UPD red control: a distal chr15 run still names the chromosome-wide region hint",
+          u0.get("chrom") == "chr15" and [x["region"] for x in u0.get("imprinted", [])] == ["15q11-q13 (SNRPN, UBE3A)"], u0)
     _, txt0, html0 = render(d)
-    check("ROH UPD: a flagged chr15 run outside 15q11-q13 says no listed region overlaps it, in both reports",
-          all("No listed imprinting-disorder region overlaps the flagged runs on chr15" in t
-              and "No imprinting disorder is listed" not in t for t in (txt0, html0)), txt0)
+    check("ROH UPD: a distal chr15 run lists its region without a syndrome in both reports",
+          all("15q11-q13 (SNRPN, UBE3A)" in t and "Prader-Willi" not in t and "Angelman" not in t for t in (txt0, html0)), txt0)
     check("ROH UPD: with a flag there is no band, so the band sentence of the F_ROH note is left out",
           all("F_ROH is the share of the autosomes" in t and "The band is the row" not in t for t in (txt0, html0)),
           txt0)
     # Just over half: 25.1 of 50 Mb is 50.2%, which a whole percent rounds to 50%.
-    put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr2\t10000001\t35100000\t25100000\t900\t50\n"
+    put(f"{d}/vcf/S_roh.txt", sites + "RG\tS\tchr2\t10000001\t35100000\t25100000\t900\t50\n"
                               "RG\tS\tchr3\t10000001\t34900000\t24900000\t900\t50\n")
     _, txt5, html5 = render(d)
     check("ROH UPD: a share just over half reads more than 50%, never 50%, in both reports",
           all("chr2 carries 25.1 MB, more than 50% of the length" in t and "MB, 50%" not in t
               for t in (txt5, html5)), txt5)
     # chr7 joins as a whole chromosome.
-    put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr7\t70000001\t110000000\t40000000\t900\t50\n")
+    put(f"{d}/vcf/S_roh.txt", sites + "RG\tS\tchr7\t70000001\t110000000\t40000000\t900\t50\n")
     u7 = section(d, "roh")["data"].get("upd_flag") or {}
-    check("ROH UPD: 40 Mb on chr7 joins the whole-chromosome Silver-Russell row",
-          [x["maternal_upd"] for x in u7.get("imprinted", [])] == ["Silver-Russell syndrome"], u7)
+    check("ROH UPD: 40 Mb on chr7 lists a neutral region hint",
+          [(x["region"], x["maternal_upd"]) for x in u7.get("imprinted", [])] == [("7p12 (GRB10), 7q32 (MEST)", "-")], u7)
 
     # The same long total over 12 chromosomes: no flag, F_ROH the same, a relationship band.
     each = long_bp // 12
     spread = "".join(f"RG\tS\tchr{c}\t10000001\t{10000000 + each}\t{each}\t900\t50\n" for c in range(1, 13))
-    put(f"{d}/vcf/S_roh.txt", spread)
+    put(f"{d}/vcf/S_roh.txt", sites + spread)
     summ, txt, html = render(d)
     r = summ["sections"]["roh"]["data"]
     check("ROH spread: 12 chromosomes raise no flag", "upd_flag" in r and r["upd_flag"] is None, r)
@@ -2188,12 +2188,12 @@ def roh_upd_karyotype(work, schema):
               and "may come from one parent" not in t for t in (txt, html)), txt)
     check("ROH spread: with a band the F_ROH note says what the band is", all("The band is the row" in t for t in (txt, html)), txt)
     # Short runs only: F_ROH 0, no sign of related parents.
-    put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr2\t10000001\t13000000\t3000000\t900\t50\n")
+    put(f"{d}/vcf/S_roh.txt", sites + "RG\tS\tchr2\t10000001\t13000000\t3000000\t900\t50\n")
     r = section(d, "roh")["data"]
     check("ROH: runs under 5 Mb only give F_ROH 0 and no sign of related parents",
           r.get("f_roh") == 0 and r.get("relationship") == "no sign of related parents", r)
     # A run of exactly 5 Mb counts, as in step 11's summary (5 Mb or more).
-    put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr2\t10000001\t15000000\t5000000\t900\t50\n")
+    put(f"{d}/vcf/S_roh.txt", sites + "RG\tS\tchr2\t10000001\t15000000\t5000000\t900\t50\n")
     r = section(d, "roh")["data"]
     check("ROH: a run of exactly 5 Mb counts in F_ROH and the long-run list, as in step 11",
           r.get("long_mb") == 5.0 and len(r.get("autosomal_over_5mb") or []) == 1, r)

@@ -1014,6 +1014,8 @@ archaic-genotypes	bad-code	gen:archaic-inputs.sh	--table-dir badcode --vcf s.vcf
 archaic-genotypes	bad-pop	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop XYZ --out-dir gt	-	bytes	PYTHON_IMAGE
 archaic-genotypes	bad-pseudo	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pseudo 0 --out-dir gt	-	bytes	PYTHON_IMAGE
 archaic-genotypes	no-table	gen:archaic-inputs.sh	--table-dir emptydir --vcf s.vcf --out-dir gt	-	bytes	PYTHON_IMAGE
+archaic-genotypes	gvcf	gen:archaic-inputs.sh,archaic-genotypes/s.g.vcf	--table-dir . --vcf s.vcf --gvcf s.g.vcf --pop EUR --pseudo 3 --out-dir gt	gt/samples.txt,gt/spans.tsv,gt/chr21.gt.gz,gt/chr22.gt.gz	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	gvcf-order	gen:archaic-inputs.sh,archaic-genotypes/order.g.vcf	--table-dir . --vcf s.vcf --gvcf order.g.vcf --out-dir gt	-	*.gz=gz-content bytes	PYTHON_IMAGE
 archaic-report	genes	gen:archaic-inputs.sh	--sample S --ibdmix-dir . --spans spans.tsv --genes genes.gtf --pop EUR --out-dir rep	rep/S_archaic.tsv,rep/S_archaic.txt,rep/S_archaic_segments.tsv	bytes	PYTHON_IMAGE
 archaic-report	no-genes	gen:archaic-inputs.sh	--sample S --ibdmix-dir . --spans spans.tsv --out-dir rep	rep/S_archaic.tsv,rep/S_archaic.txt,rep/S_archaic_segments.tsv	bytes	PYTHON_IMAGE
 archaic-report	missing-output	gen:archaic-inputs.sh	--sample S --ibdmix-dir rep --spans spans.tsv --out-dir rep	-	bytes	PYTHON_IMAGE
