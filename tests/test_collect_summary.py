@@ -638,7 +638,7 @@ def construct_scan_section(work, schema):
     check("sites mode: the calls", calls == {
         "G1": ("ref", "GQ 50 (gVCF block)"), "G2": ("hom", "GQ 60, DP 30"), "G3": ("ref", "GQ 35"),
         "G4": ("other allele", "G>C het"),
-        "G5": ("no call", "the gVCF record over the site is not a PASS reference call (GT ./.)")}, calls)
+        "G5": ("no call", "the gVCF record over the site has no genotype (GT ./.)")}, calls)
     # The call floor: a reference call below min_gq (step 6's CLINVAR_MIN_GQ) is no confident ref.
     out = og_clinvar("deep-intronic", "--min-gq", "40", sites, vcf_calls, gvcf_calls).splitlines()
     low = {r.split("\t")[4]: tuple(r.split("\t")[7:9]) for r in out[1:]}

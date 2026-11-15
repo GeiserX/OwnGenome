@@ -94,12 +94,15 @@ GOT=$(cd "$CASE_WORK" && HEADER=$HEADER bash -c 'set -euo pipefail; bcftools() {
 [ "$GOT" = "$WANT" ] || fail "the module queries '${GOT}', want '${WANT}'"
 
 # --- the module: depth floor and REF_MISMATCH count ---------------------------------
+# shellcheck disable=SC2016  # the module's own text, dollar signs included
 grep -qE -- 'og clinvar deep-intronic .*--min-gq \$\{min_gq\} --min-dp \$\{min_dp\} ' "$MOD" \
   || fail "the module does not hand og clinvar deep-intronic ext.min_dp"
+# shellcheck disable=SC2016  # the module's own text
 grep -qF -- '--multi-overlaps . -c w -f ${reference} -Oz -o ${meta.id}_pass.vcf.gz - 2> norm.log' "$MOD" \
   || fail "the module's sample bcftools norm does not keep its REF_MISMATCH warnings"
 grep -qF -- "REF_MISMATCH=\\\$(grep -c '^REF_MISMATCH' norm.log || true)" "$MOD" \
   || fail "the module does not count the REF_MISMATCH warnings"
+# shellcheck disable=SC2016  # the module's own text
 grep -qF -- 'echo "Records whose REF differs from the reference (REF_MISMATCH): \${REF_MISMATCH}"' "$MOD" \
   || fail "the module's log has no REF_MISMATCH count"
 echo "both mirrors read FILTER and the depth floor, and count REF_MISMATCH: PASS"
