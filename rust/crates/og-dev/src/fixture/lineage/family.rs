@@ -197,7 +197,13 @@ mod tests {
             "child\tside\tparent\tchrom\tstart\tend\tsites\nC\tpaternal\tF\tchr1\t10\t500\t19\n",
         )
         .expect("tsv");
-        let (code, _, _) = run("segments-check", &[&p("few.tsv"), &p("d.csv")]);
+        // the same stretch in the CSV, so only its 19 sites fail it
+        std::fs::write(
+            d.join("few.csv"),
+            format!("{head}1,10,500,1,19,C,,,paternal,,,F\n"),
+        )
+        .expect("csv");
+        let (code, _, _) = run("segments-check", &[&p("few.tsv"), &p("few.csv")]);
         assert_eq!(code, 1);
     }
 }

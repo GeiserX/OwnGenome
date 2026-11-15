@@ -370,7 +370,7 @@ mod tests {
     fn periodic_counts_repeats_of_their_period() {
         let d = dir("periodic");
         std::fs::write(d.join("r.bed"), "chrY\t10\t21\t4\tx\tDYS1\nchrY\t30\t41\t4\tx\tDYS2\nchrY\t50\t61\t4\nchrY\t70\t72\t4\n").expect("bed");
-        std::fs::write(d.join("r.fa"), ">chrY:10-21\nAGATAGAT\nagat\n>chrY:30-41\nACGTTGCAACGG\n>chrY:50-61\nAGATAGATAGA\n>chrY:70-72\nAAA\n").expect("fa");
+        std::fs::write(d.join("r.fa"), ">chrY:10-21\nAGATAGAT\nagat\n>chrY:30-41\nAGATAGATCCCC\n>chrY:50-61\nAGATAGATAGA\n>chrY:70-72\nAAA\n").expect("fa");
         let p = |n: &str| d.join(n).to_str().expect("utf8").to_string();
         assert_eq!(run("ystr-periodic", &[&p("r.bed"), &p("r.fa")]).1, "1\n");
         std::fs::write(d.join("one.bed"), "chrY\t10\t21\t1\n").expect("bed");

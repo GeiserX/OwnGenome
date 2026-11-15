@@ -306,7 +306,7 @@ mod tests {
         fasta(&fa, &[("chrX", 20_000)], 9);
         std::fs::write(
             d.join("blocks.tsv"),
-            "100\t200\t0/0\n150\t160\t0/0\n3000\t3100\t0|0\n4000\t4100\t0/0\n7000\t7040\t0/0\n9000\t9200\t0/1\n12000\t12100\t0/0\n13000\t.\t0/0\n",
+            "100\t200\t0/0\n150\t160\t0/0\n3000\t3100\t0|0\n4600\t4700\t0/0\n7000\t7040\t0/0\n9000\t9200\t0/1\n12000\t12100\t0/0\n13000\t.\t0/0\n",
         )
         .expect("blocks");
         std::fs::write(d.join("vars.txt"), "12040\n\n").expect("vars");

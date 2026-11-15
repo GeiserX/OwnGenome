@@ -160,7 +160,7 @@ mod tests {
         );
         w(
             "a.vcf",
-            "##h\n#CHROM\nchr1\t200\t.\tC\tT\t.\t.\t.\tGT:DP\t1|0:4\nchr1\t300\t.\tG\tC\t.\t.\t.\tGT\t0/1\nchr2\t50\t.\tA\tC\t.\t.\t.\tDP:GT\t3:1/1\n",
+            "##h\n#CHROM\nchr1\t100\t.\tA\tG\t.\t.\t.\tGT\t0|0\nchr1\t200\t.\tC\tT\t.\t.\t.\tGT:DP\t1|0:4\nchr1\t300\t.\tG\tC\t.\t.\t.\tGT\t0/1\nchr2\t50\t.\tA\tC\t.\t.\t.\tDP:GT\t3:1/1\n",
         );
         w("a.bed", "chr1\t0\t350\nchr2\t0\t100\n");
         w("b.vcf", "chr1\t100\t.\tA\tG\t.\t.\t.\tGT\t1/2\n");

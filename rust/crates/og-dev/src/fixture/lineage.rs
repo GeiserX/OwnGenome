@@ -495,14 +495,15 @@ mod tests {
     #[test]
     fn cigar_reads_as_the_regex_does() {
         assert_eq!(
-            cigar("5S10M2I3D1N4="),
+            cigar("5S10M2I3D1N4=2X"),
             vec![
                 (5, b'S'),
                 (10, b'M'),
                 (2, b'I'),
                 (3, b'D'),
                 (1, b'N'),
-                (4, b'=')
+                (4, b'='),
+                (2, b'X')
             ]
         );
         assert_eq!(cigar("*"), vec![]);
