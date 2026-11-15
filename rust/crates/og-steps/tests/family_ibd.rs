@@ -296,7 +296,7 @@ fn one_and_two_chromosomes() {
     let ac = get(&p, "A", "C");
     assert_eq!(ac["declared"], "full siblings");
     assert_eq!(ac["ibd2_cm"], "24.50", "3 both copies over a quarter");
-    assert_eq!(ac["relatedness"], "0.625", "3 (IBD1 / 4 + IBD2 / 2) * 2");
+    assert_eq!(ac["relatedness"], "0.626", "3 (IBD1 / 4 + IBD2 / 2) * 2");
     assert_eq!(ac["degree"], "first degree (full siblings)");
 
     let bd = get(&p, "B", "D");

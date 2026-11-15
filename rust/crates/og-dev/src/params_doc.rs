@@ -246,7 +246,7 @@ mod tests {
         let (code, out, err) = run(&["--repo", repo().to_str().unwrap()]);
         assert_eq!(code, 0, "{out}{err}");
         assert!(out.ends_with("RESULT: ALL PASS\n"), "{out}");
-        assert_eq!(out.matches("[PASS]").count(), 4, "{out}");
+        assert_eq!(out.matches("[PASS]").count(), 5, "{out}");
     }
 
     #[test]

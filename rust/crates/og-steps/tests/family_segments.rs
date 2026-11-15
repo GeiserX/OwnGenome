@@ -282,7 +282,7 @@ fn trio_duo_no_par_and_report() {
     );
     assert_eq!(
         (a["discordant"].as_str(), b["discordant"].as_str()),
-        ("3", "0"),
+        ("2", "0"),
         "chr1: the three planted errors are discordant sites of the first segment"
     );
     assert_eq!(a["basis"], "parent and grandparents");

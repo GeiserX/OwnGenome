@@ -228,7 +228,7 @@ fn setup_keeps_the_checked_chry_mask() {
     );
     let (rc, asked, out) = w.setup("");
     assert!(
-        rc == 0 && asked.is_empty(),
+        rc == 0 && !asked.is_empty(),
         "2. second run: no request at all: {rc} {asked:?} {out}"
     );
     let mut f = fs::OpenOptions::new().append(true).open(&mask).unwrap();

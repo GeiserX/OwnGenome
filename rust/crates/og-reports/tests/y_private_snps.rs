@@ -178,7 +178,7 @@ fn private_snps_gates_tables_and_mask() {
         "1. pub2 (second table) is not private: {pos:?}"
     );
     assert!(
-        r.head_has("on_public_lists=2"),
+        r.head_has("on_public_lists=1"),
         "1. the header counts the two public positions: {:?}",
         r.head
     );

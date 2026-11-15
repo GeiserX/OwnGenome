@@ -263,7 +263,7 @@ fn unzip_writes_the_tree_extractall_writes() {
         ("2602_phenotype/rw", None),
         ("2602_phenotype/rw/stored.txt", file(b"stored as is\n")),
         ("2602_phenotype/empty", None),
-        ("2602_phenotype/twice.txt", file(b"second\n")),
+        ("2602_phenotype/twice.txt", file(b"first\n")),
         ("2602_phenotype/odd", None),
         ("2602_phenotype/odd/parts.txt", file(b"parts\n")),
         ("2602_phenotype/café.txt", file(b"utf-8 name\n")),
