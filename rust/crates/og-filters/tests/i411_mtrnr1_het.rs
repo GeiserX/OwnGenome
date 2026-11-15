@@ -130,3 +130,27 @@ fn red_first_a_nan_af_is_no_af_not_a_call() {
         "held back: m.1555A>G (chrM:1555 A>G AF nan) has no allele fraction"
     );
 }
+
+#[test]
+fn a_named_allele_below_the_floor_does_not_hide_a_call() {
+    let (call, lines) = run(&[rec(827, "A", "G", 0.03), rec(1555, "A", "G", 0.99)]);
+    assert_eq!(call.as_deref(), Some("m.1555A>G"), "{lines:?}");
+    assert_eq!(
+        lines,
+        [
+            format!(
+                "MT-RNR1 m.1555A>G passed to PharmCAT as an outside call (homoplasmic, chrM:1555 A>G AF 0.990; {INC})"
+            ),
+            "not passed: m.827A>G (chrM:827 A>G AF 0.030) is below the detection floor (AF below 0.05): not called, and not absent either".to_owned(),
+        ]
+    );
+    // Any other held record still withholds the call.
+    let mut filtered = rec(1494, "C", "T", 0.50);
+    filtered.filter = "strand_bias".into();
+    let (call, _) = run(&[
+        rec(827, "A", "G", 0.03),
+        filtered,
+        rec(1555, "A", "G", 0.99),
+    ]);
+    assert_eq!(call, None);
+}
