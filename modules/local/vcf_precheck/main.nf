@@ -4,7 +4,7 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Reports three facts per sample; main.nf decides what to do with them,
     so every stop names the sample and says how to fix the file. The
-    sample count is the exception: more than one sample stops here.
+    sample count, build and FORMAT order checks stop here on invalid input.
 
     FILTER values. ClinVar screen, clinical filter and slivar keep only
     FILTER=PASS records. A VCF from a caller that leaves FILTER as '.'
@@ -42,6 +42,12 @@
     or cover one of them without saying so. A VCF with more than one
     sample stops here, with the sample count, the first five names and the
     bcftools command that keeps one of them.
+
+    Genotype order. If GT is present, it must be the first FORMAT key.
+    Several readers take the first sample value as the genotype, so a
+    DP:GT:GQ record would read depth as the genotype. Refuse the first such
+    record with exit 2 during the FILTER/reference-block scan. Records
+    without GT are allowed by this ordering check.
 
     Build. The pipeline is GRCh38 only. A ##contig line for chr1-22, chrX or
     chrY (or 1-22, X, Y) whose length is not GRCh38's stops here, naming the
@@ -195,18 +201,33 @@ process VCF_PRECHECK {
     if grep -q '^##GVCFBlock' header.txt; then
         GVCF=blocks
     fi
-    # INFO/END can be read only when the header defines it
-    QUERY='%FILTER\\n'
+    # Keep the header rule for INFO/END, as in the former bcftools query.
+    HAS_END=0
     if grep -q '^##INFO=<ID=END,' header.txt; then
-        QUERY='%FILTER\\t%ALT\\t%INFO/END\\n'
+        HAS_END=1
     fi
 
-    # One pass: FILTER counts, and reference-only records that carry END
-    bcftools query -f "\${QUERY}" ${vcf} \\
-        | awk -F'\\t' '{ if (\$1 == "PASS") p++; else if (\$1 == ".") d++; else o++ }
-                      NF >= 3 && \$3 != "." && (\$2 == "<*>" || \$2 == "<NON_REF>" || \$2 == ".") { b++ }
-                      END { printf "%d %d %d %d\\n", p, d, o, b }' \\
-        > filter_counts.txt
+    # One streaming pass: FILTER counts, reference blocks and FORMAT order.
+    # Consume every record even on error, so pipefail returns exit 2 instead
+    # of an upstream SIGPIPE. Keep only the first offending locus, not rows.
+    bcftools view -H ${vcf} \\
+        | awk -F'\\t' -v has_end="\${HAS_END}" -v sample='${meta.id}' -v file='${vcf.name}' '
+            { if (\$7 == "PASS") p++; else if (\$7 == ".") d++; else o++ }
+            has_end && \$8 ~ /(^|;)END=[0-9]+(;|$)/ && (\$5 == "<*>" || \$5 == "<NON_REF>" || \$5 == ".") { b++ }
+            NF >= 9 && \$9 ~ /(^|:)GT(:|$)/ && \$9 !~ /^GT(:|$)/ && bad == "" {
+                bad = \$1 ":" \$2; format = \$9
+            }
+            END {
+                if (bad != "") {
+                    printf "ERROR: Sample \\047%s\\047: %s has GT after another FORMAT key at %s (FORMAT %s).\\n", sample, file, bad, format > "/dev/stderr"
+                    print "GT must be the first FORMAT key when present. Otherwise depth or quality can be read as the genotype." > "/dev/stderr"
+                    print "Ask the provider for a corrected VCF, or reorder FORMAT keys and each sample\\047s values together." > "/dev/stderr"
+                    print "Then compress with bcftools view -Oz -o corrected.vcf.gz and index with bcftools index -t corrected.vcf.gz." > "/dev/stderr"
+                    print "bcftools norm alone does not move GT to the first position." > "/dev/stderr"
+                    exit 2
+                }
+                printf "%d %d %d %d\\n", p, d, o, b
+            }' > filter_counts.txt
     read -r N_PASS N_DOT N_OTHER N_BLOCKS < filter_counts.txt
     FILTER_COUNTS="PASS=\${N_PASS} .=\${N_DOT} other=\${N_OTHER}"
     echo "${meta.id}: FILTER counts \${FILTER_COUNTS}"

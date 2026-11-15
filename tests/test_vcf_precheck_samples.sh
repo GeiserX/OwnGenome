@@ -98,9 +98,13 @@ case "$1 ${2:-}" in
       !($1 in seq) { print "faidx_fetch_seq failed at " $1 ":" $2 > "/dev/stderr"; exit 255 }
       toupper(substr(seq[$1], $2, length($4))) == toupper($4) { print > out }' "$5" "$8" ;;
   "query -f")
-    # %FILTER, or %FILTER\t%ALT\t%INFO/END: the reference-block columns read '.'
+    # The former query pass, kept so the pre-fix control runs on the same fake.
     case "$3" in
-      *ALT*) gzip -dc "$4" | awk -F'\t' -v OFS='\t' '!/^#/ { print $7, $5, "." }' ;;
+      *ALT*) gzip -dc "$4" | awk -F'\t' -v OFS='\t' '!/^#/ {
+        end = "."
+        n = split($8, info, ";")
+        for (i = 1; i <= n; i++) if (info[i] ~ /^END=/) end = substr(info[i], 5)
+        print $7, $5, end }' ;;
       *) gzip -dc "$4" | awk -F'\t' '!/^#/ { print $7 }' ;;
     esac ;;
   *) echo "fake bcftools: unexpected call: $*" >&2; exit 2 ;;
@@ -223,6 +227,24 @@ if [ "$RC" -eq 0 ] && grep -q 'FILTER counts PASS=3' <<<"$OUT"; then
   pass "VCF_PRECHECK preserves a sites-only VCF"
 else
   fail "VCF_PRECHECK on sites-only VCF: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
+# Changing the scan must preserve FILTER counts and reference-block detection.
+# END may be surrounded by other INFO keys; a variant with END is not a block.
+awk -F'\t' -v OFS='\t' '
+  /^#CHROM/ { print "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End\">" }
+  !/^#/ {
+    n++; $7 = (n == 1 ? "PASS" : n == 2 ? "." : "LowQual")
+    if (n == 2) { $5 = "<NON_REF>"; $8 = "X=1;END=10000300;Y=2" }
+    if (n == 3) $8 = "END=101"
+  }
+  { print }' "${FIX}/one_sample.vcf" > "${WORK}/blocks.vcf"
+run_precheck "${WORK}/blocks.vcf"
+if [ "$RC" -eq 0 ] && grep -q 'FILTER counts PASS=1 .=1 other=1' <<<"$OUT" \
+   && grep -q 'gVCF blocks, reference-block records 1' <<<"$OUT"; then
+  pass "VCF_PRECHECK preserves FILTER and reference-block counts in the shared scan"
+else
+  fail "VCF_PRECHECK on reference blocks: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
 fi
 
 # --- build: ##contig lengths that are not GRCh38's --------------------------------------
