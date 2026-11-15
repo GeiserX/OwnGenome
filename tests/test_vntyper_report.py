@@ -192,7 +192,8 @@ def main():
             s = collect_summary.collect("S", sd)
             return s, render_report.text_report(s), render_report.html_report(s)
 
-        line = collect_summary.VNTYPER_NOT_ASSESSED
+        line = ("MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; "
+                "no standard caller sees them")
         s, txt, html = sample("pos", call())
         sec = s["sections"].get("vntyper", {})
         check("6. the section is read", sec.get("state") == "ok" and sec["data"]["status"] == "positive", sec)

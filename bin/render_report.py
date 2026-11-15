@@ -10,7 +10,8 @@
 sections that name them (bin/results_index.py); the HTML report closes with
 the same list.
 
-With --sample-dir it first collects the summary (bin/collect_summary.py) and
+With --sample-dir it first collects the summary with og summary collect
+(rust/crates/og-summary, through bin/collect_summary.py's collect()), which
 writes it to --json (default DIR/summary.json). Every number in both reports
 comes from that summary, so the two cannot disagree. A section whose result is
 from an earlier run (state "stale") is shown with that date and a STALE mark,
@@ -126,7 +127,7 @@ SMN1_MARKER_CAVEAT = ("The marker raises the chance that two SMN1 copies sit on 
 
 
 def marker_state(m):
-    """A copy-aware marker's state in a few words (collect_summary.read_marker_table):
+    """A copy-aware marker's state in a few words (og summary collect, group_c/cn.rs read_marker_table):
     present or uncertain with the reads and the copies that carry it, not seen
     with the reads, too little depth, or not assessed."""
     st = m.get("status") or "not assessed"
@@ -403,7 +404,7 @@ NOT_CALLABLE_WHY = {"GSTT1": "GRCh38 has it only on the ALT contig chr22_KI27087
 
 
 def probable_text(p):
-    """The probable CYP2D6 call (pgx_outside_calls.probable_cyp2d6) as one line."""
+    """The probable CYP2D6 call (og summary collect's cyp2d6 block) as one line."""
     return (f"{p.get('diplotype')}" + (f", {p['phenotype']}" if p.get("phenotype") else "")
             + "; not passed to PharmCAT, so no drug guidance rests on it")
 
@@ -2026,7 +2027,7 @@ def carrier_lines(c):
 
 
 def two_hit_lines(t):
-    """The genes a called deletion and a ClinVar hit both reach (collect_summary.two_hits), and which deletion
+    """The genes a called deletion and a ClinVar hit both reach (og summary collect, two_hits.rs), and which deletion
     callers were read; none for a summary written before the rule."""
     if not t:
         return []
@@ -3223,7 +3224,7 @@ def charts_json(s):
 # --- html page: chapters, contents, section frames -----------------------------
 
 CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
-STEP_OF = {k: step for k, _, step, _ in collect_summary.SECTIONS}
+STEP_OF = {k: step for k, _, step in collect_summary.SECTIONS}
 # A section's state from the states of its keys. Never green: a section that
 # ran is not a finding, and the ClinVar section must show no green at all.
 STATE_BADGE = {"ok": ("Complete", "state"), "stale": ("Stale", "yellow"), "failed": ("Failed", "red"),
@@ -3484,8 +3485,11 @@ def main(argv=None):
     elif a.sample and a.sample_dir:
         if a.assets:
             collect_summary.ASSETS_DIR = a.assets
-        s = collect_summary.collect(a.sample, a.sample_dir, a.declared_sex)
-        write(a.json or os.path.join(a.sample_dir, "summary.json"), json.dumps(s, indent=1) + "\n")
+        try:
+            s = collect_summary.collect(a.sample, a.sample_dir, a.declared_sex,
+                                        out=a.json or os.path.join(a.sample_dir, "summary.json"))
+        except RuntimeError as e:
+            sys.exit(f"ERROR: {e}")
     else:
         ap.error("give --summary, or --sample and --sample-dir")
     # Only the HTML report and --search-index read the index: a text-only run
