@@ -12,7 +12,10 @@
 #                          check them against SHA256SUMS (and the build
 #                          attestation when gh is logged in); otherwise, or
 #                          when the release has none, build them
-#   rust/og.sh build       build all four from rust/ in OG_BUILDER (versions.env)
+#   rust/og.sh build       build all four from rust/ in OG_BUILDER (versions.env),
+#                          and bin/.og/THIRD-PARTY-LICENSES.txt: the licences of
+#                          every crate and C library they link, which a
+#                          release ships beside them (og dev licences notices)
 #   rust/og.sh check [--required]
 #                          one line, OK, NOTE or ERROR; exit 1 on ERROR: a
 #                          binary built from another rust/, or (with
@@ -186,8 +189,24 @@ build() {
   for out in "${outs[@]}"; do
     [ "$(embedded "$out")" = "$hash" ] || { echo "ERROR: ${out} does not carry tree ${hash}" >&2; return 1; }
   done
+  # The notices of everything the four link, written by the new og itself in
+  # the builder, where cargo and the crate sources are: the Linux binary of
+  # the builder's own arch, with the targets and feature sets built above.
+  local lic=() notices="${cache}/THIRD-PARTY-LICENSES.txt"
+  for a in $ARCHES; do lic+=(--target "$(triple "$a")"); done
+  for a in $DARWIN_ARCHES; do lic+=(--target-no-default "$(darwin_triple "$a")"); done
+  rm -f "$notices"
+  # shellcheck disable=SC2016 # $(uname -m) and $@ expand in the builder's sh
+  "$ENGINE" run --rm --user "$(id -u):$(id -g)" \
+    -e HOME=/cache/home -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target \
+    -v "${ROOT}/rust:/src:ro" -v "${cache}:/cache" -w /src "$OG_BUILDER" \
+    sh -c 'exec "/cache/target/$(uname -m)-unknown-linux-musl/release/og" "$@"' og \
+    dev licences notices "${lic[@]}" --out /cache/THIRD-PARTY-LICENSES.txt || return
+  [ -s "$notices" ] || { echo "ERROR: og dev licences notices wrote no ${notices}" >&2; return 1; }
   put "${outs[@]}" || return 1
-  echo "Built bin/.og/og-linux-{${ARCHES// /,}} and bin/.og/og-darwin-{${DARWIN_ARCHES// /,}} in $(($(date +%s) - t0)) s"
+  { cp "$notices" "${BIN}/.THIRD-PARTY-LICENSES.txt.tmp" && mv -f "${BIN}/.THIRD-PARTY-LICENSES.txt.tmp" "${BIN}/THIRD-PARTY-LICENSES.txt"; } \
+    || { echo "ERROR: could not install ${BIN}/THIRD-PARTY-LICENSES.txt" >&2; return 1; }
+  echo "Built bin/.og/og-linux-{${ARCHES// /,}}, bin/.og/og-darwin-{${DARWIN_ARCHES// /,}} and bin/.og/THIRD-PARTY-LICENSES.txt in $(($(date +%s) - t0)) s"
 }
 
 sha256() {
