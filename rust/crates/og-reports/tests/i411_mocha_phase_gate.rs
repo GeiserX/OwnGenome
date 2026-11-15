@@ -24,10 +24,7 @@ struct Run {
 
 impl Run {
     fn new(name: &str) -> Run {
-        let dir = std::env::temp_dir().join(format!(
-            "og-i411-mocha-{name}-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("og-i411-mocha-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         Run { dir }
@@ -42,7 +39,10 @@ impl Run {
     fn report(&self, sites: &[(&str, u64, u64)]) -> (Vec<(String, String)>, Vec<String>) {
         let mut text = String::new();
         for (c, hets, phased) in sites {
-            text.push_str(&format!("{c}\t10001\t100010001\t{}\t{hets}\t{phased}\n", hets * 3));
+            text.push_str(&format!(
+                "{c}\t10001\t100010001\t{}\t{hets}\t{phased}\n",
+                hets * 3
+            ));
         }
         std::fs::write(self.path("sites.tsv"), text).unwrap();
         std::fs::write(self.path("stats.tsv"), STATS).unwrap();
@@ -126,7 +126,10 @@ fn red_first_one_phased_site_in_the_genome_is_not_assessed() {
     assert_eq!(get(&summary, "status"), "not assessed", "{summary:?}");
     let msg = get(&summary, "message");
     assert!(msg.starts_with("under 0.80 of the heterozygous sites are phased on chr1 (1 of 95000), chr2 (0 of 95000)"), "{msg}");
-    assert!(msg.ends_with("chr22 (0 of 95000), so MoChA cannot follow a haplotype there"), "{msg}");
+    assert!(
+        msg.ends_with("chr22 (0 of 95000), so MoChA cannot follow a haplotype there"),
+        "{msg}"
+    );
     assert_eq!(get(&summary, "phased_het_sites"), "1");
     assert_eq!(call[12], "no");
     assert_eq!(call[13], "sample not assessed");
@@ -158,16 +161,20 @@ fn red_first_the_minimum_minus_one_site_is_not_assessed() {
         let run = Run::new(&format!("min-{phased5}"));
         let sites = autosomes(95_000, |i| if i == 5 { phased5 } else { 93_000 });
         let (summary, call) = run.report(&rows(&sites));
-        assert_eq!(get(&summary, "status"), status, "chr5 {phased5}: {summary:?}");
+        assert_eq!(
+            get(&summary, "status"),
+            status,
+            "chr5 {phased5}: {summary:?}"
+        );
         let reported = if status == "assessed" { "yes" } else { "no" };
         assert_eq!(call[12], reported, "chr5 {phased5}: {call:?}");
     }
 }
 
-/// Control: a whole genome at the lowest phased share measured per
-/// autosome on the two public genomes (docs/51-mocha.md) is assessed and
-/// its call reported, and chrX, which MoChA's report never reads, is not
-/// gated even when none of it is phased.
+/// Control: a whole genome with 0.92 of every autosome phased, under the
+/// lowest share measured on one autosome of the two public genomes (0.933,
+/// docs/51-mocha.md), is assessed and its call reported; chrX, which the
+/// report never reads, is not gated even when none of it is phased.
 #[test]
 fn the_measured_shares_are_assessed() {
     let run = Run::new("measured");

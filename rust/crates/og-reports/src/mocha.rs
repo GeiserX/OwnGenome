@@ -20,9 +20,9 @@
 //! 6 / sqrt(D x H), D MoChA's median depth and H the heterozygous sites per
 //! 10 Mb. The sample is not assessed when MoChA's sample filter fails
 //! (call rate under 0.97, phased BAF autocorrelation over 0.03) or cannot
-//! be applied, or when an autosome has under [`PHASED_MIN_PERCENT`] percent
-//! of its heterozygous sites phased. Exit 0 whatever the result; 2 on
-//! unreadable input.
+//! be applied, or when an autosome has under 80 percent of its
+//! heterozygous sites phased. Exit 0 whatever the result; 2 on unreadable
+//! input.
 //!
 //! The call-rate half of the sample filter never fires on a WGS VCF:
 //! MoChA's WGS mode (allele depths from AD) drops a site with a missing
