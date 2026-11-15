@@ -9,8 +9,9 @@
 #         (docs/12-mito-haplogroup.md lists the routes; nothing is uploaded)
 #
 # Mutect2 in mitochondrial mode is the caller made for chrM: it reports each
-# allele's fraction, so haplogrep3 sees heteroplasmies and haplocheck can look
-# for two haplogroups mixed in one sample. DeepVariant calls chrM as a diploid
+# allele's fraction. haplogrep3 keeps heterozygous calls with FORMAT/AF >= 0.9;
+# haplocheck uses the heteroplasmies to look for two haplogroups mixed in one
+# sample. DeepVariant calls chrM as a diploid
 # nuclear contig, so its calls are the fallback, without the contamination check.
 set -euo pipefail
 
@@ -58,6 +59,7 @@ run_in \
   "${HAPLOGREP3_IMAGE}" \
   haplogrep3 classify \
     --tree phylotree-fu-rcrs@1.2 \
+    --hetLevel 0.9 \
     --input "$(cpath "$CHRM")" \
     --output "/genome/${SAMPLE}/mito/${SAMPLE}_haplogroup.txt" \
     --extend-report
