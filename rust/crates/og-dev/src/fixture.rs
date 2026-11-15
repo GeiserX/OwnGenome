@@ -9,6 +9,9 @@
 //!   `report.json` cut down to the fields `og pgx` reads. It replaces
 //!   `tests/fixtures/pharmcat/trim_report.py` and writes the same bytes.
 //!
+//! - `og dev fixture <kind>` for the kinds of [`e2e`]: the inputs the
+//!   genotype, repeat and copy-number e2e cases make for themselves.
+//!
 //! Exit 0 when written, 1 when an input cannot be read or has the wrong
 //! shape, 2 on a usage error.
 
@@ -19,6 +22,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+
+pub mod e2e;
 
 const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og dev fixture trim-pharmcat REPORT.json OUT.json [MAX_ANNOTATIONS]\n";
 
@@ -58,9 +63,13 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         }
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(e2e::USAGE.as_bytes());
             return 0;
         }
-        Some(other) => return usage(err, &format!("unknown fixture '{other}'")),
+        Some(other) => {
+            return e2e::cli(other, &args[1..], out, err)
+                .unwrap_or_else(|| usage(err, &format!("unknown fixture '{other}'")));
+        }
         None => return usage(err, "the following arguments are required: fixture"),
     };
     match result {
