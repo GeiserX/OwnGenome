@@ -192,13 +192,15 @@ fn case(now: f64) -> Case {
     }
 }
 
+/// The warn percents are given (90 unless the case says otherwise), so an
+/// `OWNGENOME_*_WARN_PERCENT` of the shell running the tests changes nothing.
 fn cfg_for(t: &Tree, c: &Case) -> OpsConfig {
     OpsConfig {
         root: Some(t.root.clone()),
         eta_box: Some("opsbox".into()),
         eta_cores: Some(8),
-        disk_warn_percent: c.disk_warn_percent.map(str::to_owned),
-        mem_warn_percent: None,
+        disk_warn_percent: Some(c.disk_warn_percent.unwrap_or("90").to_owned()),
+        mem_warn_percent: Some("90".into()),
         stall_minutes: Some(c.stall_minutes),
     }
 }
@@ -809,7 +811,7 @@ state = run_state.build(a["sample"], steps, status, None, [], run_state.event_ta
 if a["stopped"]:
     state["run"]["state"] = "stopped"
 cfg = types.SimpleNamespace(root=a["root"], steps=run_state.STEPS_TSV, eta_box="opsbox", eta_cores=8,
-                            disk_warn_percent=a["dwp"], mem_warn_percent=None, stall_minutes=a["stall"])
+                            disk_warn_percent=a["dwp"], mem_warn_percent="90", stall_minutes=a["stall"])
 o = ops.run_ops(a["run_dir"], state, events, cfg, now=a["now"], steps=steps, physical=a["physical"])
 sys.stdout.write(json.dumps(o) + "\n---\n" + ops.metrics_text([(a["sample"], o)], 0.9, a["physical"], 0))
 "#;
@@ -832,8 +834,7 @@ fn py_ops(t: &Tree, c: &Case) -> (Value, String) {
     put("stall", Value::Float(c.stall_minutes));
     put(
         "dwp",
-        c.disk_warn_percent
-            .map_or(Value::Null, |p| Value::Str(p.into())),
+        Value::Str(c.disk_warn_percent.unwrap_or("90").into()),
     );
     let arg =
         pycompat::json::dumps(&Value::Object(args), &pycompat::json::Dump::default()).unwrap();
