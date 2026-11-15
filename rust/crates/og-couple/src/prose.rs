@@ -321,18 +321,37 @@ pub fn screen_couple(
             }
             (o, r, w)
         } else if g.dominant == Dominant::Autosomal {
-            let (who, other) = if fa.is_empty() { (b, a) } else { (a, b) };
-            (
-                Outcome::OnePartner,
-                "each child 1 in 2, dominant".to_owned(),
-                format!(
-                    "Only {who} carries a change in {name}. {name} also causes a dominant condition (it is on the \
-                     ACMG secondary findings list): a child who inherits it can be affected, 1 in 2 per child, and \
-                     {who} can be too. For {} (autosomal recessive), a child can be a carrier like {who}, unless \
-                     {other} carries a change this screen does not see.",
-                    g.condition
-                ),
-            )
+            let (who, other, f) = if fa.is_empty() {
+                (b, a, &fb)
+            } else {
+                (a, b, &fa)
+            };
+            if two_copies(f) {
+                // Both copies changed: every child inherits one of them.
+                (
+                    Outcome::OnePartner,
+                    "every child, dominant".to_owned(),
+                    format!(
+                        "Only {who} carries a change in {name}, on both copies. {name} also causes a dominant \
+                         condition (it is on the ACMG secondary findings list): every child inherits it and can be \
+                         affected, and {who} can be too. For {} (autosomal recessive), a child can also have the \
+                         condition if {other} carries a change this screen does not see.",
+                        g.condition
+                    ),
+                )
+            } else {
+                (
+                    Outcome::OnePartner,
+                    "each child 1 in 2, dominant".to_owned(),
+                    format!(
+                        "Only {who} carries a change in {name}. {name} also causes a dominant condition (it is on \
+                         the ACMG secondary findings list): a child who inherits it can be affected, 1 in 2 per \
+                         child, and {who} can be too. For {} (autosomal recessive), a child can be a carrier like \
+                         {who}, unless {other} carries a change this screen does not see.",
+                        g.condition
+                    ),
+                )
+            }
         } else {
             let (who, other) = if fa.is_empty() { (b, a) } else { (a, b) };
             (

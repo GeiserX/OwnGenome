@@ -127,6 +127,27 @@ fn a_gene_with_a_dominant_condition_reads_that_a_child_can_be_affected() {
 }
 
 #[test]
+fn a_partner_with_both_copies_of_a_dominant_gene_passes_it_to_every_child() {
+    let t = Dir::new("dominant-hom");
+    let a = plain(&[hit("LDLR", "GT", "1/1", "")]);
+    let b = plain(&[]);
+    let (rows, md) = screen(&t, "h", &a, &b, true);
+    let why = cell(&rows, "LDLR", "explanation");
+    assert_eq!(cell(&rows, "LDLR", "result"), "one_partner");
+    assert_eq!(
+        cell(&rows, "LDLR", "offspring_risk"),
+        "every child, dominant"
+    );
+    assert!(
+        why.contains("every child inherits it and can be affected")
+            && !why.contains("1 in 2")
+            && !why.contains("a carrier like"),
+        "{why}"
+    );
+    assert!(md.contains(why), "the report says it too");
+}
+
+#[test]
 fn the_list_marks_the_dominant_genes_of_the_acmg_secondary_findings() {
     let list = genes(&repo("assets/carrier_genes.tsv"));
     let mut acmg: HashMap<String, String> = HashMap::new();
