@@ -427,3 +427,99 @@ fn a_record_that_spans_a_marker_with_another_base_there_is_no_call() {
         assert_eq!(status, "absent", "{recs:?}");
     }
 }
+
+/// The complete table and evidence must agree through both VCF readers.
+fn report_both_ways(d: &Path, records: &[String]) -> (String, String) {
+    let (plain, gz) = both_ways(d, records);
+    let mut outputs = Vec::new();
+    for (vcf, access) in [(plain, Access::Stream), (gz, Access::Index)] {
+        let files = Files {
+            vcf: vcf.to_string_lossy().into_owned(),
+            markers: markers(),
+            depth: Some(depth(d, 2.0, &HashMap::new())),
+            cn_loci: Some(cn_loci()),
+            out: d.join("table.tsv").to_string_lossy().into_owned(),
+            evidence: d.join("evidence.tsv").to_string_lossy().into_owned(),
+        };
+        assert_eq!(report(&files).unwrap().1, access);
+        outputs.push((
+            std::fs::read_to_string(&files.out).unwrap(),
+            std::fs::read_to_string(&files.evidence).unwrap(),
+        ));
+    }
+    assert_eq!(outputs[0], outputs[1]);
+    outputs.remove(0)
+}
+
+fn split_null_marker(name: &str, system: &str, phenotype: &str) {
+    let d = dir(&format!("split-{name}"));
+    let m = read_markers(&markers()).unwrap()[name].clone();
+    let alts: Vec<&str> = m.alt.split(',').collect();
+    let record = |alt: &str, gt: &str| line(&m.chrom, m.pos, &m.ref_, alt, "PASS", gt);
+    let unsplit = record(&m.alt, "1/2");
+    let expected = report_both_ways(&d, std::slice::from_ref(&unsplit));
+    let row: Vec<&str> = expected.0.lines().find(|l| l.starts_with(&format!("{system}\t")))
+        .unwrap().split('\t').collect();
+    assert_eq!(row[..4], [system, phenotype, "null/null", "high"]);
+    let a = record(alts[0], "1/0");
+    let b = record(alts[1], "0/1");
+    for records in [
+        vec![a.clone(), b.clone()],
+        vec![b.clone(), a.clone()],
+        vec![a.clone(), a.clone(), b.clone(), b.clone()],
+        vec![unsplit.clone(), a.clone(), b.clone()],
+        vec![b.clone(), a.clone(), unsplit],
+        vec![record(&format!("{},{}", alts[1], alts[0]), "2/1")],
+        vec![record(".", "0/0"), a, b],
+    ] {
+        assert_eq!(report_both_ways(&d, &records), expected, "{records:?}");
+    }
+    // A repeated call of one ALT is still one copy, even when another
+    // record lists the same ALT at a different allele index.
+    let one = record(alts[0], "0/1");
+    for gt in ["0/1", "1/1"] {
+        let single = record(alts[0], gt);
+        let expected = report_both_ways(&d, std::slice::from_ref(&single));
+        let copies = if gt == "0/1" { 1 } else { 2 };
+        let reordered = record(&format!("{},{}", alts[1], alts[0]),
+            if copies == 1 { "0/2" } else { "2/2" });
+        let records = [single.clone(), reordered, single];
+        assert_eq!(report_both_ways(&d, &records), expected);
+        assert_eq!(site_both_ways(&d, &records, name), ("called".to_owned(), Some(copies), String::new()));
+    }
+    assert_eq!(site_both_ways(&d, &[one], name).1, Some(1));
+}
+
+#[test]
+fn split_kidd_null_alts_match_an_unsplit_call() {
+    split_null_marker("JK_01N06", "Kidd", "Jk(a-b-)");
+}
+
+#[test]
+fn split_kell_null_alts_match_an_unsplit_call() {
+    split_null_marker("KEL_02N01", "Kell", "K-k- Kp(a-b-) Js(a-b-)");
+}
+
+#[test]
+fn incompatible_null_alt_dosages_are_no_call_in_both_readers() {
+    for name in ["JK_01N06", "KEL_02N01"] {
+        let d = dir(&format!("incompatible-{name}"));
+        let m = read_markers(&markers()).unwrap()[name].clone();
+        let alts: Vec<&str> = m.alt.split(',').collect();
+        let record = |alt: &str, gt: &str| line(&m.chrom, m.pos, &m.ref_, alt, "PASS", gt);
+        // Two distinct ALTs cannot have three copies. Different dosages
+        // for the same ALT cannot both be true either.
+        let hom = record(alts[0], "1/1");
+        for other in [record(alts[1], "0/1"), record(alts[0], "0/1")] {
+            for records in [vec![hom.clone(), other.clone()], vec![other.clone(), hom.clone()]] {
+                let (status, n, note) = site_both_ways(&d, &records, name);
+                assert_eq!((status.as_str(), n), ("no call", None), "{records:?}");
+                assert_eq!(note, "incompatible ALT dosages at this position");
+                let (table, _) = report_both_ways(&d, &records);
+                let row: Vec<&str> = table.lines().find(|l| l.starts_with(&format!("{}\t", m.system)))
+                    .unwrap().split('\t').collect();
+                assert_ne!(row[3], "high");
+            }
+        }
+    }
+}
