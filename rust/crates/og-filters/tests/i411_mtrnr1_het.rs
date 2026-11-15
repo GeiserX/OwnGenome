@@ -120,3 +120,13 @@ fn red_first_a_heteroplasmic_unnamed_change_at_a_named_position_holds_reference_
     let (call, _) = run(&[rec(1555, "A", "C", 0.03)]);
     assert_eq!(call.as_deref(), Some("Reference"));
 }
+
+#[test]
+fn red_first_a_nan_af_is_no_af_not_a_call() {
+    let (call, lines) = run(&[rec(1555, "A", "G", f64::NAN)]);
+    assert_eq!(call, None, "{lines:?}");
+    assert_eq!(
+        lines[0],
+        "held back: m.1555A>G (chrM:1555 A>G AF nan) has no allele fraction"
+    );
+}

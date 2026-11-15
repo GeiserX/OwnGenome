@@ -34,7 +34,9 @@
 //!   position now counts as depth 0, as the threshold check already did;
 //! - a named allele at AF 0.05 to 0.95 was held back as heteroplasmic, so
 //!   MT-RNR1 stayed No Result and the aminoglycoside warning was lost; it
-//!   is now the call (issue #411).
+//!   is now the call (issue #411);
+//! - a named allele whose AF reads `nan` was passed as homoplasmic; it is
+//!   now held back as having no allele fraction.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -453,7 +455,9 @@ pub fn decide(
                     shown,
                     filter: r.filter.clone(),
                 }),
+                // A NaN AF says nothing about detection: no AF.
                 None => held.push(Held::NoAf { name, shown }),
+                Some(af) if af.is_nan() => held.push(Held::NoAf { name, shown }),
                 Some(af) if af < min_af => held.push(Held::BelowFloor {
                     name,
                     shown,
