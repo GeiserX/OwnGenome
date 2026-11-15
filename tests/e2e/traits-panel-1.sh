@@ -9,7 +9,7 @@
 #   - scripts/42-traits.sh: one row per table row plus the APOE line; the
 #     table positions inside the fixture's slices carry the genotype of the
 #     GIAB v4.2.1 truth and are read (called), or low_gq when the gVCF's GQ
-#     there is below 20 or its FILTER is not PASS or RefCall; every position
+#     there is below 20 or its FILTER is not PASS, . or RefCall; every position
 #     outside them is not_covered (no reads, never taken for the reference);
 #   - a planted alternate allele: a copy of the gVCF with CYP2A6*2 (rs1801272)
 #     homozygous gives that row the table's hom_alt reading, not HG002's;
@@ -68,13 +68,14 @@ check_ge "table positions inside the fixture's slices" "$IN" 2
 status_of() { awk -F'\t' -v r="$1" '$1 == r { print $7 }' "$OUT"; }
 geno_of()   { awk -F'\t' -v r="$1" '$1 == r { print $6 }' "$OUT"; }
 # What step 42 should make of the gVCF's call at a position: low_gq below GQ
-# 20 or with a FILTER other than PASS or RefCall, else called.
+# 20 or with a FILTER other than PASS, . or RefCall, else called. A missing
+# GQ (.) stays readable.
 GENOS="${G}/${SAMPLE}/traits/${SAMPLE}_traits_genotypes.tsv"
 check "the genotypes table has the GQ and FILTER columns" \
   test "$(awk -F'\t' 'NF != 7' "$GENOS" | wc -l | tr -d ' ')" -eq 0 -a -s "$GENOS"
 want_status() {
   awk -F'\t' -v c="$1" -v p="$2" '$1 == c && $2 == p && length($4) <= 1 {
-      weak = ($7 != "." && $7 != "PASS" && $7 != "RefCall") || ($6 ~ /^[0-9.]+$/ && $6 + 0 < 20)
+      weak = ($7 != "." && $7 != "PASS" && $7 != "RefCall") || ($6 ~ /^[0-9]+(\.[0-9]+)?$/ && $6 + 0 < 20)
       print (weak ? "low_gq" : "called") " (GQ " $6 ", FILTER " $7 ")"; exit }' "$GENOS"
 }
 OUTSIDE_NC=0 OUTSIDE=0

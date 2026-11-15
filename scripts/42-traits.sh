@@ -22,7 +22,7 @@
 #
 # Output: traits/<sample>_traits.tsv (rsid, gene, chrom, pos, trait, genotype,
 # status, reading, ancestry, note, pmids). status: called, not_covered,
-# low_gq (GQ below 20, or a FILTER other than PASS or RefCall: not read), or
+# low_gq (GQ below 20, or a FILTER other than PASS, . or RefCall: not read), or
 # other_allele (an allele the table does not describe).
 # traits/<sample>_genotype_rules.tsv: one line per rule (docs/42-traits.md).
 set -euo pipefail
