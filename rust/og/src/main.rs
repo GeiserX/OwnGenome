@@ -25,16 +25,24 @@ fn tree_hash() -> &'static str {
 
 const USAGE: &str = "usage: og <tool> [args]
        og map <verb> [args]
+       og map svg [args]
        og run state|tasks|eta|headroom|delta [args]
        og recheck --sample S [--genome-dir DIR] [--offline FILE] [--rerun [--refresh-clinvar]] | --affected KEYS | --launch-dir DIR
        og setup mask-fasta SRC BED DEST
        og setup unzip ZIP DEST
        og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...
+       og setup chrm-shift [args]
+       og setup revel [args]
+       og setup roh-af [args]
        og vcf csq-rank [options]
+       og vcf index [args]
+       og vcf shift-back [args]
        og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
        og sv svlen-fix|inv-filter [args]
        og sv add-callers [args]
        og sv postfilter [args]
+       og sv survivor-prep [args]
+       og sv consensus-check [args]
        og pgx cpic-report|step36-outside [args]
        og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
        og pgx outside-calls|hla-concordance|pypgx-summary [args]
@@ -51,6 +59,16 @@ const USAGE: &str = "usage: og <tool> [args]
        og prs table [args]
        og mito annotate|deletions|copies [args]
        og summary collect [--only {a,b,c}] [args]
+       og report render [args]
+       og report index [args]
+       og report charts [args]
+       og live serve [args]
+       og live results [args]
+       og live family [args]
+       og live demo [args]
+       og view serve [args]
+       og couple screen [args]
+       og couple genes [args]
        og roh summary --sample SAMPLE --roh ROH [--out OUT]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
@@ -62,7 +80,13 @@ const USAGE: &str = "usage: og <tool> [args]
        og family ibd [args]
        og consumer build-sites|export|check [args]
        og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
+       og ancestry-fine freqs [args]
+       og ancestry-fine project [args]
+       og ancestry-fine paint [args]
+       og ancestry-fine simulate [args]
        og archaic table|strict|genotypes|report [args]
+       og archaic compare [args]
+       og archaic genomes [args]
        og ancient select|lift|person-geno|align|report [args]
        og vntyper report [args]
        og locityper report [args]
@@ -78,6 +102,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og y yleaf-positions --data DATA OUT
        og exomiser prepare [args]
        og exomiser report [args]
+       og longread clair3-model [args]
        og lookup query|resolve|report [args]
        og dev parity-compare|contract|schema|report-only|remnants [args]
        og dev scan personal-data|images [args]
@@ -93,6 +118,17 @@ const USAGE: &str = "usage: og <tool> [args]
        og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]
        og dev helpers [args]
        og dev build cn-intervals|callability|sv-rule-regions [args]
+       og dev build roh-af [args]
+       og dev build acmg-lof [args]
+       og dev demo-sample [args]
+       og dev demo-events [args]
+       og dev params-doc [args]
+       og dev python-gate [args]
+       og dev everything-check [args]
+       og dev licences [args]
+       og dev docs-check [args]
+       og dev stub-http [args]
+       og dev steps-check [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash
@@ -103,6 +139,15 @@ fn usage_error(msg: &str) -> ExitCode {
     eprint!("{USAGE}");
     eprintln!("og: error: {msg}");
     ExitCode::from(2)
+}
+
+/// Runs a verb that writes to stdout and stderr; returns its exit code.
+fn io(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) -> ExitCode {
+    ExitCode::from(f(
+        args,
+        &mut std::io::stdout().lock(),
+        &mut std::io::stderr().lock(),
+    ))
 }
 
 /// A BAM tool called on a build without the `bam` feature (the macOS build
@@ -159,11 +204,15 @@ fn main() -> ExitCode {
                 }
             }
         }
+        "map" if rest.first().is_some_and(|v| v == "svg") => io(og_map::svg::cli, &rest[1..]),
         "map" => map::run(rest, tree_hash()),
         "setup" => match rest.first().map(String::as_str) {
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
             Some("unzip") => ExitCode::from(og_setup::unzip::cli(&rest[1..])),
             Some("genetic-map") => ExitCode::from(og_setup::genetic_map::cli(&rest[1..])),
+            Some("chrm-shift") => io(og_vcf::shift::chrm_shift_cli, &rest[1..]),
+            Some("revel") => io(og_setup::revel::cli, &rest[1..]),
+            Some("roh-af") => io(og_setup::roh_af::cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },
@@ -181,6 +230,8 @@ fn main() -> ExitCode {
         "consumer" => ExitCode::from(og_steps::consumer::cli(rest)),
         "vcf" => match rest.first().map(String::as_str) {
             Some("csq-rank") => ExitCode::from(og_vcf::rank::cli(&rest[1..])),
+            Some("index") => io(og_io::tabix_write::cli, &rest[1..]),
+            Some("shift-back") => io(og_vcf::shift::shift_back_cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown vcf tool '{other}'")),
             None => usage_error("the following arguments are required: vcf tool"),
         },
@@ -194,6 +245,8 @@ fn main() -> ExitCode {
             Some("inv-filter") => ExitCode::from(og_filters::inv::cli(&rest[1..])),
             Some("add-callers") => ExitCode::from(og_steps::sv::add_callers::cli(&rest[1..])),
             Some("postfilter") => ExitCode::from(og_steps::sv::postfilter::cli(&rest[1..])),
+            Some("survivor-prep") => io(og_steps::sv::survivor_prep::cli, &rest[1..]),
+            Some("consensus-check") => io(og_steps::sv::consensus_check::cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown sv tool '{other}'")),
             None => usage_error("the following arguments are required: sv tool"),
         },
@@ -285,6 +338,12 @@ fn main() -> ExitCode {
             &mut std::io::stdout().lock(),
             &mut std::io::stderr().lock(),
         )),
+        "archaic" if rest.first().is_some_and(|v| v == "compare") => {
+            io(og_ancestry::compare::compare_cli, &rest[1..])
+        }
+        "archaic" if rest.first().is_some_and(|v| v == "genomes") => {
+            io(og_ancestry::compare::genomes_cli, &rest[1..])
+        }
         "archaic" => ExitCode::from(og_ancestry::archaic::cli(
             rest,
             &mut std::io::stdout().lock(),
@@ -344,6 +403,37 @@ fn main() -> ExitCode {
                 &mut std::io::stderr().lock(),
             )),
             _ => usage_error("og summary takes collect"),
+        },
+        "report" => match rest.first().map(String::as_str) {
+            Some("render") => io(og_render::render::cli, &rest[1..]),
+            Some("index") => io(og_render::index::cli, &rest[1..]),
+            Some("charts") => io(og_render::charts::cli, &rest[1..]),
+            Some(other) => usage_error(&format!("unknown report tool '{other}'")),
+            None => usage_error("the following arguments are required: report tool"),
+        },
+        "live" => match rest.first().map(String::as_str) {
+            Some("serve") => io(og_live::server::cli, &rest[1..]),
+            Some("results") => io(og_live::results::cli, &rest[1..]),
+            Some("family") => io(og_live::family::cli, &rest[1..]),
+            Some("demo") => io(og_live::demo::cli, &rest[1..]),
+            Some(other) => usage_error(&format!("unknown live tool '{other}'")),
+            None => usage_error("the following arguments are required: live tool"),
+        },
+        "view" => match rest.first().map(String::as_str) {
+            Some("serve") => io(og_live::viewer::cli, &rest[1..]),
+            Some(other) => usage_error(&format!("unknown view tool '{other}'")),
+            None => usage_error("the following arguments are required: view tool"),
+        },
+        "couple" => match rest.first().map(String::as_str) {
+            Some("screen") => io(og_couple::screen::cli, &rest[1..]),
+            Some("genes") => io(og_couple::genes::cli, &rest[1..]),
+            Some(other) => usage_error(&format!("unknown couple tool '{other}'")),
+            None => usage_error("the following arguments are required: couple tool"),
+        },
+        "longread" => match rest.first().map(String::as_str) {
+            Some("clair3-model") => io(og_steps::longread::clair3_model_cli, &rest[1..]),
+            Some(other) => usage_error(&format!("unknown longread tool '{other}'")),
+            None => usage_error("the following arguments are required: longread tool"),
         },
         "roh" => match rest.first().map(String::as_str) {
             Some("summary") => ExitCode::from(og_summary::collect::group_c::roh::cli(

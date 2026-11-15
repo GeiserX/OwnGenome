@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og y private-snps on a synthetic VCF and synthetic position tables (no
 real sample).
 
