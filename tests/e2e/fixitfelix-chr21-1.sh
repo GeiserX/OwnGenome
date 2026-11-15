@@ -132,32 +132,32 @@ norm reference/ffx/cmrg.vcf.gz "${CASE_TMP}/cmrg.txt"
 for side in stock masked; do
   norm "ffx-${side}/vcf/ffx-${side}.vcf.gz" "${CASE_TMP}/${side}.txt"
 done
-# recall SIDE: "gene matched benchmark recall" lines
+# recall SIDE: "gene matched benchmark recall" lines. A benchmark variant (a
+# non-reference genotype of the truth) counts for a gene when it lies in the
+# gene's span and in a CMRG region, and is matched when the side has a PASS
+# (or ".") call at the same position and alleles with as many alternate alleles.
 recall() {
-  python3 - "${CASE_TMP}/cmrg.txt" "${RD}/cmrg.bed" "${CASE_TMP}/$1.txt" "$GENES" <<'PY'
-import sys
-truth, bed, calls, genes = sys.argv[1:5]
-regions = [(int(c[1]), int(c[2])) for c in (l.split("\t") for l in open(bed)) if c[0] == "chr21"]
-def alts(gt):
-    return sum(1 for a in gt.replace("|", "/").split("/") if a not in ("0", "."))
-def rows(path, pass_only):
-    out = {}
-    for line in open(path):
-        c = line.rstrip("\n").split("\t")
-        if pass_only and c[6] not in ("PASS", "."):
-            continue
-        n = alts(c[9].split(":")[0])
-        if n:
-            out[(int(c[1]), c[3], c[4])] = n
-    return out
-t, k = rows(truth, False), rows(calls, True)
-for g in genes.split():
-    name, s, e = g.split(":")
-    s, e = int(s), int(e)
-    keys = [x for x in t if s < x[0] <= e and any(a < x[0] <= b for a, b in regions)]
-    hit = sum(1 for x in keys if k.get(x) == t[x])
-    print(name, hit, len(keys), f"{hit / len(keys):.3f}" if keys else "nan")
-PY
+  # shellcheck disable=SC2016  # awk program
+  awk -F'\t' -v genes="$GENES" '
+    function alts(gt,   n, a, i, k) { gsub(/\|/, "/", gt); n = split(gt, a, "/"); k = 0
+      for (i = 1; i <= n; i++) if (a[i] != "0" && a[i] != ".") k++; return k }
+    FILENAME == ARGV[1] { if ($1 == "chr21") { nr++; rs[nr] = $2 + 0; re[nr] = $3 + 0 }; next }
+    FILENAME == ARGV[2] { split($10, g, ":"); n = alts(g[1]); if (n) { t[$2 SUBSEP $4 SUBSEP $5] = n; tp[$2 SUBSEP $4 SUBSEP $5] = $2 + 0 }; next }
+    $7 == "PASS" || $7 == "." { split($10, g, ":"); n = alts(g[1]); if (n) k[$2 SUBSEP $4 SUBSEP $5] = n }
+    END {
+      ng = split(genes, gl, " ")
+      for (j = 1; j <= ng; j++) {
+        split(gl[j], f, ":"); s = f[2] + 0; e = f[3] + 0; keys = 0; hit = 0
+        for (x in t) {
+          p = tp[x]
+          if (!(s < p && p <= e)) continue
+          inr = 0; for (i = 1; i <= nr; i++) if (rs[i] < p && p <= re[i]) { inr = 1; break }
+          if (!inr) continue
+          keys++; if ((x in k) && k[x] == t[x]) hit++
+        }
+        if (keys) printf "%s %d %d %.3f\n", f[1], hit, keys, hit / keys; else printf "%s %d %d nan\n", f[1], hit, keys
+      }
+    }' "${RD}/cmrg.bed" "${CASE_TMP}/cmrg.txt" "${CASE_TMP}/$1.txt"
 }
 R_MASKED=$(recall masked 2>&1); echo "masked chr21: ${R_MASKED}"
 R_STOCK=$(recall stock 2>&1); echo "stock chr21: ${R_STOCK}"
@@ -189,13 +189,12 @@ reading() {
   cp "$CAT" "${t}/assets/callability_genes.tsv"
   ln -s "$1" "${t}/S/mosdepth/S_callability.bed.gz"
   "${REPO}/bin/og" summary collect --sample S --sample-dir "${t}/S" --assets "${t}/assets" --out "${t}/summary.json" > /dev/null
-  python3 - "$CAT" "${t}/summary.json" <<'PY'
-import csv, json, sys
-rows = list(csv.DictReader(open(sys.argv[1]), delimiter="\t"))
-d = json.load(open(sys.argv[2]))["sections"]["callability"]["data"]
-bad = {g["gene"] for g in d["not_read"]}
-print(" ".join(f"{r['gene']}={'not_read' if r['gene'] in bad else 'read'}" for r in rows))
-PY
+  # Each gene of the table, in its order, read or not_read.
+  # shellcheck disable=SC2016  # jq program
+  jq -r --arg genes "$(awk -F'\t' 'NR > 1 {print $1}' "$CAT")" \
+    '[.sections.callability.data.not_read[].gene] as $bad
+     | [$genes | split("\n")[] | select(. != "") | . as $g | "\($g)=\(if any($bad[]; . == $g) then "not_read" else "read" end)"]
+     | join(" ")' "${t}/summary.json"
 }
 for side in stock masked; do
   S="ffx-${side}"

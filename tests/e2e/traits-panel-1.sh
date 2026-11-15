@@ -95,31 +95,18 @@ mkdir -p "${G}/${P2}/vcf"
 PL_POS=$(awk -F'\t' '$1 == "rs1801272" { print $3 }' "${CASE_TMP}/where.tsv")
 check "rs1801272 lies in a fixture slice" test "$(awk -F'\t' '$1 == "rs1801272" { print $6 }' "${CASE_TMP}/where.tsv")" = in
 # The gVCF without the records over the position, plus one hom-alt record there.
-python3 - "${G}/${GVCF}" "${G}/${P2}/vcf/planted.vcf" "$PL_POS" "$SAMPLE" <<'PY'
-import gzip, sys
-src, dst, pos, sample = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
-rec = f"chr19\t{pos}\t.\tA\tT,<*>\t40\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:40:30:0,30,0:1,0:990,90,0,990,990,990\n"
-done = False
-with gzip.open(src, "rt") as f, open(dst, "w") as o:
-    for line in f:
-        if line.startswith("#"):
-            o.write(line)
-            continue
-        c = line.split("\t", 8)
-        p = int(c[1])
-        end = p + len(c[3]) - 1
-        for kv in c[7].split(";"):
-            if kv.startswith("END="):
-                end = int(kv[4:])
-        if c[0] == "chr19" and p <= pos <= end:
-            continue
-        if not done and c[0] == "chr19" and p > pos:
-            o.write(rec)
-            done = True
-        o.write(line)
-    if not done:
-        sys.exit("no chr19 record after the planted position")
-PY
+# shellcheck disable=SC2016  # awk program
+gzip -dc "${G}/${GVCF}" | awk -F'\t' -v pos="$PL_POS" '
+  /^#/ { print; next }
+  { p = $2 + 0; end = p + length($4) - 1; n = split($8, kv, ";")
+    for (i = 1; i <= n; i++) if (kv[i] ~ /^END=/) end = substr(kv[i], 5) + 0
+    if ($1 == "chr19" && p <= pos && pos <= end) next
+    if (!done && $1 == "chr19" && p > pos) {
+      print "chr19\t" pos "\t.\tA\tT,<*>\t40\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:40:30:0,30,0:1,0:990,90,0,990,990,990"
+      done = 1 }
+    print }
+  END { if (!done) { print "no chr19 record after the planted position" > "/dev/stderr"; exit 1 } }' \
+  > "${G}/${P2}/vcf/planted.vcf"
 in_genome "$BCFTOOLS_IMAGE" bash -c "bcftools view -Oz -o '${P2}/vcf/${P2}.g.vcf.gz' '${P2}/vcf/planted.vcf' && bcftools index -t '${P2}/vcf/${P2}.g.vcf.gz'"
 check_eq "the planted gVCF has the hom-alt record" \
   "$(bcf query -r "chr19:${PL_POS}" -f '[%GT]\n' "${P2}/vcf/${P2}.g.vcf.gz" 2>/dev/null | head -n 1)" 1/1

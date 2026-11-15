@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The counts of the repeats STRchive leaves out, read into results, with the
 # real tools: ExpansionHunter 5.0.0 (step 09) sizes the CFTR TG/poly-T tract
-# and the UGT1A1 TA repeat of assets/str_extra_loci.json on made-up reads,
+# and the UGT1A1 TA repeat of assets/str_extra_loci.json on made-up reads
+# (og dev fixture str-extra),
 # and the reports (step 24 and generate-report.sh, bin/collect_summary.py and
 # bin/render_report.py) read them:
 #   SXA  CFTR TG12-5T on one copy and TG11-7T on the other, UGT1A1 7 and 8 TA
@@ -29,80 +30,7 @@ rm -rf "$RD"
 mkdir -p "$RD"
 cp "${REPO}/assets/str_extra_loci.json" "${G}/reference-str-readings.json"
 for s in SXA SXB; do rm -rf "${G:?}/${s}"; mkdir -p "${G}/${s}/aligned"; done
-python3 - "$RD" "$G" <<'PY'
-import random, sys
-rd, g = sys.argv[1], sys.argv[2]
-rng = random.Random(11)
-W = 1500  # random bases each side of a tract
-# chrom: (contig length, 0-based tract start, left bases, reference tract units, right bases)
-LOCI = {"chr7": (117551000, 117548606, "TTTTGA", [("TG", 11), ("T", 7)], "AACAGG"),
-        "chr2": (233763000, 233760234, "TTGCCA", [("TA", 7)], "AGTAGG")}
-win = {}
-for c, (length, start, left, units, right) in LOCI.items():
-    lf = "".join(rng.choice("ACGT") for _ in range(W - len(left))) + left
-    rf = right + "".join(rng.choice("ACGT") for _ in range(W - len(right)))
-    win[c] = (start - W, lf, rf)
-    tract = "".join(m * n for m, n in units)
-    with open(f"{rd}/ref.fa", "a") as f:
-        f.write(f">{c}\n")
-        seq_start = start - W
-        body = "N" * seq_start + lf + tract + rf
-        body += "N" * (length - len(body))
-        for i in range(0, len(body), 60):
-            f.write(body[i:i + 60] + "\n")
-
-def reads(c, haps, tag):
-    """Read pairs from each haplotype's tract; the CIGAR puts the tract's length change at its end."""
-    w0, lf, rf = win[c]
-    ref_tract = "".join(m * n for m, n in LOCI[c][3])
-    out = []
-    for h, units in enumerate(haps):
-        tract = "".join(m * n for m, n in units)
-        seq = lf + tract + rf
-        t0, t1 = len(lf), len(lf) + len(tract)
-        d = len(tract) - len(ref_tract)
-
-        def place(a, n=150):
-            """(1-based POS, CIGAR) of hap bases [a, a+n), or None when the read starts in the tract."""
-            if a + n <= t0:
-                return w0 + a + 1, f"{n}M"
-            if a >= t1:
-                return w0 + a - d + 1, f"{n}M"
-            if a >= t0:
-                return None
-            if a + n <= t1:
-                return None
-            pre = t0 - a + min(len(tract), len(ref_tract))
-            post = n - (t0 - a) - len(tract)
-            mid = f"{d}I" if d > 0 else (f"{-d}D" if d < 0 else "")
-            cig = f"{pre}M{mid}{post}M" if mid else f"{n}M"
-            return w0 + a + 1, cig
-        k = 0
-        for a in range(0, len(seq) - 400, 4):
-            f_len = 300 + (a % 7) * 10
-            b = a + f_len - 150
-            p1, p2 = place(a), place(b)
-            if not p1 or not p2:
-                continue
-            k += 1
-            name = f"{tag}{c}h{h}r{k}"
-            r1, r2 = seq[a:a + 150], seq[b:b + 150]
-            tlen = p2[0] + 150 - p1[0]
-            out.append(f"{name}\t99\t{c}\t{p1[0]}\t60\t{p1[1]}\t=\t{p2[0]}\t{tlen}\t{r1}\t{'I' * 150}")
-            out.append(f"{name}\t147\t{c}\t{p2[0]}\t60\t{p2[1]}\t=\t{p1[0]}\t{-tlen}\t{r2}\t{'I' * 150}")
-    return out
-
-SAMPLES = {"SXA": ([[("TG", 12), ("T", 5)], [("TG", 11), ("T", 7)]], [[("TA", 7)], [("TA", 8)]]),
-           "SXB": ([[("TG", 11), ("T", 7)]] * 2, [[("TA", 7)]] * 2)}
-for s, (cftr, ugt) in SAMPLES.items():
-    with open(f"{g}/{s}/aligned/{s}.sam", "w") as f:
-        f.write("@HD\tVN:1.6\tSO:unsorted\n")
-        for c, (length, *_r) in LOCI.items():
-            f.write(f"@SQ\tSN:{c}\tLN:{length}\n")
-        f.write(f"@RG\tID:{s}\tSM:{s}\n")
-        for line in reads("chr7", cftr, s) + reads("chr2", ugt, s):
-            f.write(line + f"\tRG:Z:{s}\n")
-PY
+"${REPO}/bin/og" dev fixture str-extra "${RD}/ref.fa" SXA "${G}/SXA/aligned/SXA.sam" SXB "${G}/SXB/aligned/SXB.sam"
 check "the made-up reference was written" test -s "${RD}/ref.fa"
 sam faidx reference-str-readings/ref.fa
 for s in SXA SXB; do
@@ -117,19 +45,13 @@ for s in SXA SXB; do
   check_step_exit 09-expansion-hunter.sh
 done
 unset REF_FASTA
-python3 - "$G" "$REPO" <<'PY'
-import os, sys
-g, repo = sys.argv[1], sys.argv[2]
-# The columns of step 42's traits table (og traits table).
-OUT_COLUMNS = ["rsid", "gene", "chrom", "pos", "trait", "genotype", "status", "reading", "ancestry", "note", "pmids"]
-os.makedirs(f"{g}/SXA/traits", exist_ok=True)
-os.makedirs(f"{g}/SXA/cpic", exist_ok=True)
-with open(f"{g}/SXA/traits/SXA_traits.tsv", "w") as f:
-    f.write("\t".join(OUT_COLUMNS) + "\n")
-    f.write("rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\tG/G\tcalled\tNo R117H copy.\tno\t-\t32404922\n")
-with open(f"{g}/SXA/cpic/SXA_phenotypes.tsv", "w") as f:
-    f.write("Gene\tDiplotype\tPhenotype\tStatus\nUGT1A1\t*1/*28\tIntermediate Metabolizer\tnon-normal\n")
-PY
+# The columns of step 42's traits table (og traits table), with one R117H row.
+mkdir -p "${G}/SXA/traits" "${G}/SXA/cpic"
+{
+  printf 'rsid\tgene\tchrom\tpos\ttrait\tgenotype\tstatus\treading\tancestry\tnote\tpmids\n'
+  printf 'rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\tG/G\tcalled\tNo R117H copy.\tno\t-\t32404922\n'
+} > "${G}/SXA/traits/SXA_traits.tsv"
+printf 'Gene\tDiplotype\tPhenotype\tStatus\nUGT1A1\t*1/*28\tIntermediate Metabolizer\tnon-normal\n' > "${G}/SXA/cpic/SXA_phenotypes.tsv"
 
 # --- the reports ------------------------------------------------------------------------------
 for s in SXA SXB; do

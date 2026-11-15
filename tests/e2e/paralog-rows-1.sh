@@ -26,17 +26,8 @@ LOCI_ALL="${REPO}/assets/paralog_loci.tsv"
 
 # --- the stand-in reference (as paralog-catalog-1-gba) ----------------------------
 REF="${GENOME_DIR}/reference/paralog_rows_ref.fasta"
-python3 - "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" "$REF" <<'PY'
-import shutil, sys
-with open(sys.argv[2], "wb") as out, open(sys.argv[1], "rb") as src:
-    shutil.copyfileobj(src, out)
-    out.write(b">chr11\n")
-    left = 135086622            # GRCh38 chr11, as the homology table lists it
-    while left:
-        n = min(left, 60)
-        out.write(b"N" * n + b"\n")
-        left -= n
-PY
+# GRCh38 chr11's length, as the homology table lists it.
+"${REPO}/bin/og" dev fixture append-n "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" "$REF" chr11 135086622
 sam faidx "reference/$(basename "$REF")"
 check "the stand-in reference has chr11" grep -q $'^chr11\t135086622\t' "${REF}.fai"
 
@@ -45,33 +36,20 @@ P=HG002rows
 mkdir -p "${GENOME_DIR}/${P}/aligned"
 # Every region of the catalog's models on a chromosome of the fixture's reference, 1 kb padded, BED.
 BEDR="${GENOME_DIR}/${P}/model_regions.bed"
-python3 - "$LOCI_ALL" "${REPO}/assets/parascopy_models_v1.7.txt" "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta.fai" "$BEDR" <<'PY'
-import re, sys
-loci, models, fai, out = sys.argv[1:]
-with open(loci) as f:
-    lines = [x.rstrip("\n").split("\t") for x in f if x.strip() and not x.startswith("#")]
-want = {r[lines[0].index("model")][:-3] for r in lines[1:]}
-contigs = {x.split("\t")[0] for x in open(fai)}
-spans = []
-for line in open(models):
-    if line.startswith("#") or not line.strip():
-        continue
-    g, r, _ = line.rstrip("\n").split("\t")
-    m = re.fullmatch(r"([^:]+):(\d+)-(\d+)", r)
-    if g in want and m.group(1) in contigs:
-        spans.append((m.group(1), max(0, int(m.group(2)) - 1001), int(m.group(3)) + 1000))
-spans.sort()
-merged = []
-for c, s, e in spans:
-    if merged and merged[-1][0] == c and s <= merged[-1][2]:
-        merged[-1][2] = max(merged[-1][2], e)
-    else:
-        merged.append([c, s, e])
-with open(out, "w") as f:
-    for c, s, e in merged:
-        f.write(f"{c}\t{s}\t{e}\n")
-print(f"{len(merged)} regions, {sum(e - s for _, s, e in merged)} bp")
-PY
+# The catalog's model names (its model column without .gz), then each model
+# region on a reference contig padded by 1 kb, sorted and merged.
+# shellcheck disable=SC2016  # awk programs
+awk -F'\t' 'FILENAME == ARGV[1] { if (/^#/ || !NF) next; if (!h) { for (i = 1; i <= NF; i++) if ($i == "model") m = i; h = 1; next }
+             want[substr($m, 1, length($m) - 3)] = 1; next }
+             FILENAME == ARGV[2] { contig[$1] = 1; next }
+             /^#/ || !NF { next }
+             ($1 in want) && match($2, /^[^:]+:[0-9]+-[0-9]+$/) { c = $2; sub(/:.*/, "", c); r = substr($2, length(c) + 2)
+               split(r, x, "-"); if (c in contig) { s = x[1] - 1001; print c "\t" (s < 0 ? 0 : s) "\t" x[2] + 1000 } }' \
+  "$LOCI_ALL" "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta.fai" "${REPO}/assets/parascopy_models_v1.7.txt" \
+  | LC_ALL=C sort -k1,1 -k2,2n -k3,3n \
+  | awk -F'\t' -v OFS='\t' '$1 == c && $2 <= e { if ($3 > e) e = $3; next } { if (n++) print c, s, e; c = $1; s = $2; e = $3 }
+                            END { if (n) print c, s, e }' > "$BEDR"
+echo "$(grep -c . "$BEDR") regions, $(awk '{n += $3 - $2} END {print n + 0}' "$BEDR") bp"
 check_ge "regions to read from GIAB" "$(grep -c . "$BEDR" 2>/dev/null || echo 0)" 20
 GIAB_BAM="https://giab.s3.amazonaws.com/data/AshkenazimTrio/HG002_NA24385_son/NIST_HiSeq_HG002_Homogeneity-10953946/NHGRI_Illumina300X_AJtrio_novoalign_bams/HG002.GRCh38.60x.1.bam"
 sam_https() {  # the image's libcurl has no CA bundle, so lend it the host's
@@ -154,10 +132,7 @@ REP="${CASE_TMP}/report_all"
 mkdir -p "$REP"
 python3 "${REPO}/bin/render_report.py" --assets "${REPO}/assets" --sample "$P" --sample-dir "${GENOME_DIR}/${P}" \
   --json "${REP}/summary.json" -o "${REP}/report.html" > "${REP}/render.log" 2>&1
-loci_in_summary() {
-  python3 -c "import json, sys; d = json.load(open(sys.argv[1]))['sections']['parascopy']['data']; print(len(d.get('loci', [])))" \
-    "${REP}/summary.json" 2>/dev/null || echo 0
-}
+loci_in_summary() { jq '.sections.parascopy.data.loci // [] | length' "${REP}/summary.json" 2>/dev/null || echo 0; }
 check_eq "summary.json has the 36 loci other than SMN1" "$(loci_in_summary)" 36
 check "the HTML report lists the GBA locus" grep -q '<td>GBA1, GBAP1</td>' "${REP}/report.html"
 
@@ -203,11 +178,11 @@ cid=$(docker create "$PARAPHASE_IMAGE" true)
 pbin=$(docker run --rm --entrypoint sh "$PARAPHASE_IMAGE" -c 'command -v paraphase' 2>/dev/null)
 docker cp -L "${cid}:${pbin:-/usr/local/bin/paraphase}" "$BIN" >/dev/null 2>&1
 docker rm "$cid" >/dev/null 2>&1
-embedded() { python3 -c "import sys; sys.exit(0 if open(sys.argv[2], 'rb').read() in open(sys.argv[1], 'rb').read() else 1)" "$1" "$2"; }
-check "the pinned image's paraphase embeds that config byte for byte" embedded "$BIN" "$CFG"
+check "the pinned image's paraphase embeds that config byte for byte" "${REPO}/bin/og" dev fixture contains "$BIN" "$CFG"
 printf 'smn1:\n  genes: X\n' > "${CASE_TMP}/other.yaml"
-check "control: another config is not found in the binary" sh -c "! python3 -c \"import sys; sys.exit(0 if open(sys.argv[2], 'rb').read() in open(sys.argv[1], 'rb').read() else 1)\" '$BIN' '${CASE_TMP}/other.yaml'"
-N=$(python3 -c "import re, sys; print(len(re.findall(r'^[A-Za-z0-9_]+:[ \t]*$', open(sys.argv[1]).read(), re.M)))" "$CFG")
+check "control: another config is not found in the binary" \
+  test "$("${REPO}/bin/og" dev fixture contains "$BIN" "${CASE_TMP}/other.yaml"; echo $?)" = 1
+N=$(grep -cE '^[A-Za-z0-9_]+:[[:blank:]]*$' "$CFG")
 check_eq "regions in the pinned config" "$N" "$(sed -n 's/^PARAPHASE_REGIONS = \([0-9]*\)$/\1/p' "${REPO}/tests/test_paraphase_report.py")"
 check "docs/35-paralogs.md states that count" grep -q "It covers ${N} GRCh38 regions" "${REPO}/docs/35-paralogs.md"
 rm -f "$BIN" "$REF" "${REF}.fai"
