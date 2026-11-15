@@ -89,9 +89,10 @@ echo "[2/3] The VCF's records around the marker sites, left-aligned (bcftools no
 # a chr-named reference) cannot be aligned and go through unchanged. The VCF is
 # read through its index when the one htslib loads (.csi before .tbi) is
 # current, else once from the start. Read that way, a VCF with no ##contig line
-# for a window's contig first gets one (bcftools reheader), because bcftools
-# writes no record on an undeclared contig; through an index, htslib takes the
-# names from the index. The BLOODTYPE process runs the same commands before og.
+# for a window's contig first gets one, because bcftools writes no record on an
+# undeclared contig: the new header, then the records as text, so a VCF in plain
+# gzip (not bgzip) works too. Through an index, htslib takes the names from the
+# index. The BLOODTYPE process runs the same commands before og.
 # shellcheck disable=SC2016  # the program's $ belong to the inner bash and awk
 NORM_PROG='
   MARKERS=$1 VCF=$2 REF=$3 W=$4 OUT=$5
@@ -119,7 +120,7 @@ NORM_PROG='
   fi
   pick() {
     if [ ! -s "$1" ]; then bcftools view -h -Ou "$HDR"
-    elif [ "$HDR" != "$VCF" ]; then bcftools reheader -h "$HDR" "$VCF" | bcftools view -T "$1" --targets-overlap record -Ou -
+    elif [ "$HDR" != "$VCF" ]; then { cat "$HDR"; gzip -cdf "$VCF" | awk "!/^#/"; } | bcftools view -T "$1" --targets-overlap record -Ou -
     else bcftools view "$SEL" "$1" "$OVERLAP" record -Ou "$VCF"; fi
   }
   pick "$W/bt_on_ref.bed" | bcftools norm -c w -f "$REF" -Ob -o "$W/bt_on_ref.bcf"

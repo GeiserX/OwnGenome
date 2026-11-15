@@ -129,7 +129,8 @@ process BLOODTYPE {
     // through unchanged. The VCF is read through its index when the one
     // htslib loads (.csi before .tbi) is current, else once from the start;
     // read that way, it first gets a ##contig line for each window contig its
-    // header lacks, because bcftools writes no record on an undeclared contig.
+    // header lacks, because bcftools writes no record on an undeclared contig
+    // (the new header, then the records as text, so plain gzip works too).
     // The same commands as scripts/41-bloodtype.sh; og runs from bin/, on the
     // task's PATH.
     """
@@ -160,7 +161,7 @@ process BLOODTYPE {
     fi
     pick() {
         if [ ! -s "\$1" ]; then bcftools view -h -Ou "\$HDR"
-        elif [ "\$HDR" != "${vcf}" ]; then bcftools reheader -h "\$HDR" ${vcf} | bcftools view -T "\$1" --targets-overlap record -Ou -
+        elif [ "\$HDR" != "${vcf}" ]; then { cat "\$HDR"; gzip -cdf ${vcf} | awk '!/^#/'; } | bcftools view -T "\$1" --targets-overlap record -Ou -
         else bcftools view "\$SEL" "\$1" "\$OVERLAP" record -Ou ${vcf}; fi
     }
     pick bt_on_ref.bed | bcftools norm -c w -f ${reference} -Ob -o bt_on_ref.bcf
