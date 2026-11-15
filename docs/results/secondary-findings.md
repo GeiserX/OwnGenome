@@ -51,7 +51,7 @@ The TTN rule (truncating variants only) and the LMNA rule (missense only with ca
 
 **Where to look:** `${SAMPLE}/clinical/${SAMPLE}_clinical_summary.tsv`, one row per variant with gene, impact, scores and gnomAD constraint.
 
-Step 23 keeps the HIGH-impact variants, the MODERATE ones below 1% in gnomAD exomes, the ClinVar pathogenic ones and, when step 30 ran, the variants that CADD, SpliceAI, REVEL or AlphaMissense flag. Expect a few hundred rows. Most are heterozygous variants in genes that tolerate one broken copy. Read the rows in constrained genes (low LOEUF, see [gene constraint](clinvar.md#gnomad-gene-constraint-step-23-summary)) first, then the homozygous ones. The HIGH-impact rows have no frequency filter, so check gnomAD for each before you worry. [Step 23](../23-clinical-filter.md#what-gets-filtered) gives the exact rules.
+Step 23 keeps the HIGH-impact and MODERATE variants below 1% in every population VEP reports (`MAX_AF`), the HIGH and MODERATE ones with no known frequency (in a tier of their own), the ClinVar pathogenic ones at any frequency and, when step 30 ran, the variants that CADD, SpliceAI, REVEL or AlphaMissense flag. Expect a few hundred rows. Most are heterozygous variants in genes that tolerate one broken copy. Read the rows in constrained genes (low LOEUF, see [gene constraint](clinvar.md#gnomad-gene-constraint-step-23-summary)) first, then the homozygous ones. A row of unknown frequency is not rare, so check gnomAD for it before you worry. [Step 23](../23-clinical-filter.md#what-gets-filtered) gives the exact rules.
 
 ## Variant Prioritization (Step 31)
 

@@ -13,7 +13,7 @@ Part of [Interpreting Your Results](../interpreting-results.md). Read [Before Yo
 | Gene | Affects | Common Impact |
 |---|---|---|
 | CYP2C19 | PPIs, clopidogrel, SSRIs, voriconazole | Rapid metabolizers burn through drugs too fast |
-| CYP2D6 | Codeine, tramadol, tamoxifen, many psych meds | Poor metabolizers get toxic buildup |
+| CYP2D6 | Codeine, tramadol, tamoxifen, many psych meds | Poor metabolizers get little pain relief from codeine and tramadol, less benefit from tamoxifen, and a toxic buildup of many psych meds; ultrarapid metabolizers risk opioid toxicity from codeine and tramadol |
 | CYP2C9 | Warfarin, NSAIDs, phenytoin | Dose adjustment needed |
 | DPYD | 5-fluorouracil (cancer drug) | Poor metabolizers can die from standard doses |
 | SLCO1B1 | Statins (simvastatin, atorvastatin) | Increased myopathy risk |
