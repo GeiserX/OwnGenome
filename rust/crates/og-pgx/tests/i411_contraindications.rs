@@ -131,10 +131,13 @@ fn every_row_quotes_a_label() {
 fn the_cpic_level_reads_as_provisional() {
     let out = lines(&[hit("POLG", "89300000", "T", "0/1")]);
     assert!(
-        out.iter().any(|l| l.ends_with(
-            "(provisional CPIC level A/B: no CPIC guideline covers this pair)"
-        )),
+        out.iter().any(
+            |l| l.ends_with("(provisional CPIC level A/B: no CPIC guideline covers this pair)")
+        ),
         "{out:#?}"
     );
-    assert!(!out.iter().any(|l| l.ends_with("(CPIC level A/B)")), "{out:#?}");
+    assert!(
+        !out.iter().any(|l| l.ends_with("(CPIC level A/B)")),
+        "{out:#?}"
+    );
 }
