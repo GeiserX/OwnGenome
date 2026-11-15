@@ -20,6 +20,8 @@
 #   - ABO c.1061delC written two bases right (GG>G) gives A2/A2 as the table's
 #     CG>C does, because step 41 left-aligns first (og on the VCF as written
 #     reads A1/A1, the control), and a C>A,G 1/2 at c.803 keeps its one B copy;
+#   - that right-shifted VCF still gives A2/A2 with no ##contig line and no
+#     index, and with a current .tbi beside a stale .csi (htslib loads the .csi);
 #   - the Nextflow processes (BLOODTYPE_DEPTH, BLOODTYPE) on a VCF and BAM
 #     write the same three files as the bash step on the same two files.
 . "$(dirname "$0")/lib.sh"
@@ -211,6 +213,22 @@ sample "$M" "${T}/${M}.vcf.gz" "${T}/win.bam"
 step "$M"
 check_eq "C>A,G 1/2 at c.803 stays one record: one B copy" "$(ev "$M" ABO_803)" "called 1"
 check_eq "and ABO A1/B" "$(cell "$M" ABO genotype)" "A1/B"
+# The right-shifted VCF read once from the start: with no ##contig line (bcftools
+# writes no record on an undeclared contig, so step 41 adds the lines), and with a
+# current .tbi beside a .csi older than the VCF (htslib loads the .csi first).
+BC="${SAMPLE}btc" BI="${SAMPLE}bti"
+zcat "${T}/${R}.vcf.gz" | grep -v '^##contig' > "${T}/${BC}.vcf"
+dk "$BCFTOOLS_IMAGE" bgzip -f "${T}/${BC}.vcf"
+sample "$BC" "${T}/${BC}.vcf.gz" "${T}/win.bam"
+check_eq "control: that VCF declares no contig" "$(zcat "${G}/${BC}/vcf/${BC}.vcf.gz" | grep -c '^##contig')" 0
+step "$BC"
+check_eq "no ##contig line and no index: ABO A2/A2" "$(cell "$BC" ABO phenotype)/$(cell "$BC" ABO genotype)" "A2/A2/A2"
+sample "$BI" "${T}/${R}.vcf.gz" "${T}/win.bam"
+dk "$BCFTOOLS_IMAGE" bcftools index -f -t "${G}/${BI}/vcf/${BI}.vcf.gz"
+: > "${G}/${BI}/vcf/${BI}.vcf.gz.csi"
+touch -d 2000-01-01 "${G}/${BI}/vcf/${BI}.vcf.gz.csi"
+step "$BI"
+check_eq "a current .tbi beside a stale .csi: ABO A2/A2" "$(cell "$BI" ABO phenotype)/$(cell "$BI" ABO genotype)" "A2/A2/A2"
 unset REF_FASTA
 rm -f "$REFBT" "${REFBT}.fai"
 
