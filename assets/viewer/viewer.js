@@ -43,6 +43,11 @@
       return;
     }
     const cfg = await resp.json();
+    cfg.tracks.forEach(function (track) {
+      if (track.type === "alignment") {
+        track.visibilityWindow = 50000;
+      }
+    });
     document.getElementById("sample").textContent = cfg.sample;
     document.title = cfg.sample + " - Genome viewer";
     const browser = await igv.createBrowser(document.getElementById("igv"), {

@@ -108,7 +108,7 @@ def head_writer(req):
         req.send_header("Cross-Origin-Resource-Policy", "same-origin")
         for k, v in extra:
             req.send_header(k, v)
-        req.headers_common(serve.CSP)
+        req.headers_common(serve.LIVE_CSP, frame_options="SAMEORIGIN")
         req.end_headers()
     return head
 
