@@ -21,11 +21,14 @@ family it is in.
                                 compound_het.tsv) with whether each child was
                                 assessed and why not (trio_status; a file linking
                                 out of the folder is "rejected" in trio_file_state),
-                                each member's run progress and attention count,
+                                each member's run progress, attention count and
+                                whether their pages treat them as a child (child),
                                 and the members side by side: CYP2D6, the CPIC
                                 genes, HLA, the haplogroups and every blood group
                                 system, each value with its stale flag (from each
-                                summary.json only)
+                                summary.json only); 500 with a fixed line when a
+                                file of the family cannot be read, and the family
+                                then lists no members until it can
 
 state.json gets plugins.family: {"kind": "family", ...} on a family's page,
 {"kind": "member", "families": [...]} on the page of a sample in a family,
@@ -514,8 +517,15 @@ def register(app):
                            "sequenced": members[s]["sequenced"]} for s in order]
             except (OSError, ValueError):
                 people = []
+            # A family whose family.json could not be built has no readable members either: the server then decides
+            # who is a child as the page does when family.json fails (bin/owngenome_live.py child_of).
+            if n in unreadable:
+                people = []
             out.append({"name": n, "dir": d, "kind": "family", "members": people})
         return out
+
+    # Families whose last family.json failed: listed with no members until one is built again.
+    unreadable = set()
 
     def page_data(req, m):
         name = m.group(1)
@@ -523,6 +533,18 @@ def register(app):
         if not d or not is_family(d) or not inside(d, root()):
             app.log("family", name, "family.json", 404)
             return req.send_body(404, "text/plain; charset=utf-8", "not found\n")
+        try:
+            out = page_json(req, name, d)
+        except Exception as e:  # an unreadable file is a fixed error, never a dropped connection
+            unreadable.add(name)
+            print(f"owngenome_live: family.json of {name} not built: {type(e).__name__}", file=sys.stderr)
+            app.log("family", name, "family.json", 500)
+            return req.send_body(500, "text/plain; charset=utf-8", "family not readable\n")
+        unreadable.discard(name)
+        app.log("family", name, "family.json", 200)
+        return req.send_json(out)
+
+    def page_json(req, name, d):
         out = family_page(name, d)
         live = getattr(req, "live", None)
         runs = {}
@@ -539,9 +561,11 @@ def register(app):
             # with which cards the unopened results flag, and a parent's page would show it.
             if live.gated(p["sample"], rd, st, listed):
                 n = None
+            # child: whether the person's pages treat them as a child, by the one rule over every family (child_of),
+            # so the family page closes the same people as their own pages do.
             runs[p["sample"]] = {"url": "/runs/%s/" % p["sample"], "state": st["run"]["state"],
                                  "planned": len(planned), "done": sum(1 for s in planned if s["state"] == "done"),
-                                 "attention": n, "results": mtime is not None}
+                                 "attention": n, "results": mtime is not None, "child": live.child(p["sample"], listed)}
         out["runs"] = runs
         given = {}
         comp_p = os.path.join(d, "compound_het.tsv")
@@ -559,8 +583,7 @@ def register(app):
             r = live.run(s_) if live else None
             sums[s_] = member_summary(live, r["dir"] or os.path.join(live.root, r["name"])) if r else None
         out["side_by_side"] = side_by_side(seq, sums) if seq else None
-        app.log("family", name, "family.json", 200)
-        return req.send_json(out)
+        return out
 
     def hook(run_dir, state, events):
         if not run_dir:

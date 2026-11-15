@@ -165,7 +165,9 @@
     add(head, kicker, add(el('div', { 'class': 'gm-titlerow' }), title, gauge, zoom), crumb, finder, chips);
     var stage = el('div', { 'class': 'gm-stage' });
     var canvas = el('canvas', { 'class': 'gm-canvas', tabindex: '0', role: 'img', 'aria-describedby': 'gm-narration' });
-    var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: 'hidden' });
+    // hidden as hideTip() writes it (tip.hidden = true gives hidden=""), so the drawing is the same whether or not a
+    // refresh hid the tooltip before the document arrived.
+    var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: '' });
     var toast = el('div', { 'class': 'gm-toast', role: 'status', hidden: 'hidden' });
     add(stage, canvas, tip, toast);
     // The marks drawn, as links: the keyboard and screen-reader path to each finding (Tab steps through them).

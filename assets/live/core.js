@@ -186,17 +186,45 @@
   }
   // A file the gate reads before the views, with the options the view that reads it uses: its answer is kept once,
   // whatever its status (a 404 or a failed request too), so the view's own first read of it costs no request. The
-  // view gets the response itself; the gate reads a copy of an answer that is ok and leaves any other unread, as
-  // the views do.
-  function sharedJSON(url, options) {
+  // view gets the response itself, and the kept answers reach the views in the order they arrived (inTurn), as the
+  // network would have handed them without the gate.
+  var arrivals = 0, claimed = [];
+  function keep(url, options) {
     url = absolute(url);
-    return originalFetch(url, options).then(function (r) {
-      shared[url] = { response: r.ok ? r.clone() : r };
-      return r.ok ? read(r) : read({ status: r.status, ok: false });
-    }, function () { shared[url] = { failed: true }; return null; }).catch(function () { return null; });
+    var entry = shared[url] = { at: null };
+    entry.kept = originalFetch(url, options).then(function (r) {
+      entry.response = r.ok ? r.clone() : r;
+      return r.ok ? r.text().then(function (t) { entry.text = t; }) : null;
+    }).catch(function () { entry.failed = true; }).then(function () { entry.at = ++arrivals; return entry; });
+    return entry;
   }
-  function keptResponse(kept) {
-    return kept.failed ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(kept.response);
+  // What the gate itself reads of a kept answer: its JSON when it is ok, else null (a 401 goes to the login).
+  function parsedOf(entry) {
+    return entry.kept.then(function (e) {
+      if (e.failed) { return null; }
+      if (!e.response.ok) { return read({ status: e.response.status, ok: false }); }
+      return JSON.parse(e.text);
+    }).catch(function () { return null; });
+  }
+  function sharedJSON(url, options) { return parsedOf(keep(url, options)); }
+  // A kept answer reaches its view in a task of its own, after every kept answer the views asked for that arrived
+  // earlier. Its json() gives the body the gate read, at once, so no answer overtakes another while it is parsed.
+  function inTurn(entry) {
+    claimed.push(entry);
+    return entry.kept.then(function () {
+      return new Promise(function (go, fail) {
+        (function wait() {
+          setTimeout(function () {
+            if (claimed.some(function (c) { return !c.handed && c.at !== null && c.at < entry.at; })) { wait(); return; }
+            entry.handed = true;
+            if (entry.failed) { fail(new TypeError('Failed to fetch')); return; }
+            var r = entry.response, text = entry.text;
+            if (r.ok) { r.json = function () { return Promise.resolve().then(function () { return JSON.parse(text); }); }; }
+            go(r);
+          }, 0);
+        }());
+      });
+    });
   }
   function random() { var b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] / 4294967296; }
   // The results to act on, one record each: the findings of level "act" (bin/live_results.py). null when unreadable.
@@ -220,7 +248,8 @@
   }
   function makeRecord(url, child, r, old) {
     var acts = actsOf(r), rec = { url: url, child: child, acts: acts, opened: {}, order: [], perm: [],
-      ids: r && Array.isArray(r.findings) ? r.findings.map(function (f) { return f && f.id; }) : [] };
+      ids: r && Array.isArray(r.findings) ? r.findings.map(function (f) { return f && f.id; }) : [],
+      attention: r && typeof r.attention === 'number' ? r.attention : null };
     if (!acts) { return rec; }
     // An act whose record changed is closed again; an unchanged one keeps its opening for this page.
     rec.order = old ? old.order.filter(function (id) { return same(byId(old, id), byId(rec, id)); }) : [];
@@ -229,9 +258,10 @@
     rec.perm = old && same(ids, (old.acts || []).map(function (f) { return f.id; })) ? old.perm : shuffled(ids);
     return rec;
   }
-  function record(url, child, cached) {
+  // PRE: the kept answer of results.json the gate asked for already (preparePerson), else it is read here.
+  function record(url, child, cached, pre) {
     url = absolute(url);
-    return (cached ? sharedJSON(url + 'results.json', NO_STORE) : jsonAt(url + 'results.json')).then(function (r) {
+    return (pre ? parsedOf(pre) : cached ? sharedJSON(url + 'results.json', NO_STORE) : jsonAt(url + 'results.json')).then(function (r) {
       var old = records[url];
       var rec = makeRecord(url, child !== undefined ? child : old ? old.child : true, r, old);
       records[url] = rec;
@@ -351,8 +381,10 @@
   // The person and finding pages: the run's state, its family's roles and, for a child, its results, read in the
   // order the views read them (the finding page asks for its results at once, the person page once the state has
   // answered) and with the views' options. The family is read once the page's scripts have run, so live.js has
-  // opened its event stream first, as it does without the gate. An adult's results are not read here: the views read
-  // them as they would without the gate.
+  // opened its event stream first, as it does without the gate. In live mode the person page asks for the family and
+  // then its results on its first state, both at once: the gate asks for both in that order before it knows whether
+  // the person is a child, so the two answers race as they do without the gate and reach the views in the order they
+  // arrived. Only a child's results are read by the gate; an adult's answer goes to the views unread.
   var parsed = new Promise(function (done) {
     if (document.readyState === 'complete') { done(); } else { document.addEventListener('DOMContentLoaded', done); window.addEventListener('load', done); }
   });
@@ -361,21 +393,24 @@
     var replaying = root.getAttribute('data-mode') === 'replay';
     // live.js reads a replay's frames.json with no options; finding.js reads it, and state.json, as JSON (NO_STORE).
     var stateRead = sharedJSON(url + (replaying ? 'frames.json' : 'state.json'), replaying && !findingPath ? undefined : NO_STORE);
-    var results = findingPath ? record(url, undefined, true) : null;
+    var results = findingPath ? record(url, undefined, true) : null, pre = null;
     return Promise.all([stateRead, parsed]).then(function (x) {
       var raw = x[0];
       var state = replaying ? raw && raw.frames && raw.frames.slice(-1)[0] : raw;
       state = replaying ? state && state.state : state;
       var fam = state && state.plugins && state.plugins.family;
       var entry = fam && fam.kind === 'member' && (fam.families || [])[0];
-      return entry ? sharedJSON(absolute(entry.url, url) + 'family.json', NO_STORE).then(function (f) {
+      if (!entry) { return !state || !state.plugins || !!(fam && fam.unknown); }
+      var famRead = sharedJSON(absolute(entry.url, url) + 'family.json', NO_STORE);
+      if (!replaying && !findingPath) { pre = keep(url + 'results.json', NO_STORE); }
+      return famRead.then(function (f) {
         var member = f && f.state && (f.state.members || []).filter(function (m) { return m.sample === root.getAttribute('data-run'); })[0];
         // A family that cannot be read, or does not list this person, cannot say they are not a child.
         return !member || !!(member.father || member.mother);
-      }) : !state || !state.plugins || !!(fam && fam.unknown);
+      });
     }).then(function (child) {
       if (!child && !results) { return { url: url, child: false, acts: [], opened: {}, order: [], perm: [] }; }
-      return (results || record(url, child, true)).then(function (rec) { rec.child = child; return rec; });
+      return (results || record(url, child, true, pre)).then(function (rec) { rec.child = child; return rec; });
     }).then(function (rec) {
       current = records[url] = rec;
       return consume(current);
@@ -386,20 +421,31 @@
       current = { child: true, acts: null, opened: {}, order: [], perm: [] }; ownsPage = true; renderGate();
     });
   }
-  // A family's children with a run here; a member who was never sequenced, or has no run, has no report to close.
+  // A family's children with a run here, by the one rule (childIn, bin/owngenome_live.py child_of): family.json
+  // marks each member run `child` as the server decides it over every family, so a person who is a child in another
+  // family is one here too. A member who was never sequenced, or has no run, has no report to close.
+  function childRun(f, s) { var r = f.runs && f.runs[s]; return !!(r && r.url && r.child !== false); }
   function familyRecords(f, base) {
-    return Promise.all(((f.state && f.state.members) || []).filter(function (m) {
-      return (m.father || m.mother) && f.runs && f.runs[m.sample] && f.runs[m.sample].url;
-    }).map(function (m) {
+    return Promise.all(((f.state && f.state.members) || []).filter(function (m) { return childRun(f, m.sample); }).map(function (m) {
       return record(absolute(f.runs[m.sample].url, base), true).then(function (r) { return [m.sample, r]; });
     })).then(function (entries) { var out = {}; entries.forEach(function (e) { out[e[0]] = e[1]; }); return out; });
   }
   // A run's progress on the home and family pages: how far the run is, never what it found.
   var PROGRESS = ['name', 'kind', 'url', 'state', 'started_utc', 'last_heard_utc', 'finished_utc', 'planned', 'done', 'running', 'failed'];
   function progressOf(r) { var out = {}; PROGRESS.forEach(function (k) { if (r[k] !== undefined) { out[k] = r[k]; } }); return out; }
+  // A released child's flagged-card count: family.json leaves it out (null) while the server keeps the child's report
+  // closed, so the page takes it from the results it read, once every result to act on is opened.
+  function released(raw, recs) {
+    Object.keys(recs).forEach(function (k) {
+      var r = raw.runs && raw.runs[k];
+      if (r && r.attention === null && !shut(recs[k]) && recs[k].attention !== null) { r.attention = recs[k].attention; }
+    });
+    return raw;
+  }
   function projectFamily(raw, recs) {
     var closed = Object.keys(recs).filter(function (k) { return shut(recs[k]); });
-    if (!closed.length) { return raw; }
+    if (!closed.length) { return released(raw, recs); }
+    raw = released(raw, recs);
     function gated(s) { return closed.indexOf(s) >= 0; }
     // An ownership allowlist, not a classifier of genes, prose or individual report fields: a field a producer adds
     // tomorrow stays out until it is listed here.
@@ -409,7 +455,8 @@
       layout: raw.layout ? { width: raw.layout.width, height: raw.layout.height, size: raw.layout.size, lines: copy(raw.layout.lines),
         people: (raw.layout.people || []).map(function (m) { return { sample: m.sample, sex: m.sex, sequenced: m.sequenced, x: m.x, y: m.y }; }) } : null,
       couple_note: raw.couple_note, chrom_lengths: copy(raw.chrom_lengths), gated: closed, runs: {} };
-    f.state.children = (raw.state.members || []).filter(function (m) { return m.father || m.mother; }).map(function (m) {
+    // A gated person this family lists as a parent or partner (a child in another family) gets their buttons here too.
+    f.state.children = (raw.state.members || []).filter(function (m) { return m.father || m.mother || gated(m.sample); }).map(function (m) {
       return gated(m.sample) ? { child: m.sample, gated: true } : copy((raw.state.children || []).filter(function (c) { return c.child === m.sample; })[0]);
     }).filter(Boolean);
     // A row belongs to a gated child when it names that child as one of its members, by exact name.
@@ -502,7 +549,7 @@
       if (ownsPage || closedRun(requestURL)) { return new Promise(function () {}); }
       var kept = shared[requestURL];
       delete shared[requestURL];
-      var got = kept ? keptResponse(kept) : originalFetch(url, options);
+      var got = kept ? inTurn(kept) : originalFetch(url, options);
       return got.then(function (response) {
         if (ownsPage) { return new Promise(function () {}); }
         var path = new URL(requestURL).pathname;

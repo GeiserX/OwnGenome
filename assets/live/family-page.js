@@ -138,7 +138,11 @@
       var state = !m.sequenced ? 'Not sequenced' : !r ? 'No run on this server'
         : r.state === 'finished' ? 'Finished' : (r.state === 'stopped' ? 'Stopped, ' : '') + r.done + ' of ' + r.planned + ' steps';
       add(txt, el('span', { 'class': 'person-state' }, state));
-      if (r && r.results) {
+      // A child whose report is closed gets the fixed closed line. A count left out (null: the server keeps the
+      // child's report closed and the page has not opened it) is never read as nothing flagged.
+      if (r && r.gated) {
+        add(txt, el('span', { 'class': 'person-look' }, 'Report closed'));
+      } else if (r && r.results && r.attention !== null && r.attention !== undefined) {
         add(txt, el('span', { 'class': 'person-look' + (r.attention ? ' attn' : '') },
           r.attention ? r.attention + ' worth a look' : 'Nothing flagged; see the caveats'));
       }

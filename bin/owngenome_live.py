@@ -909,10 +909,14 @@ class Live:
                             lo = (hit[0], None)
                         self.live_overview[name] = lo
                     o = lo[1] or o
-                # A child's results to act on decide whether its own page is closed: count them from the summary
-                # its results.json reads, so the home page closes the child whenever the child's page does.
+                # A child's results to act on decide whether its own page is closed: the summary its results.json
+                # reads counts them. When that summary or the overview above has one, that summary's overview
+                # replaces it, so the home page closes the child exactly when the child's page does, with its count.
+                # A child with none in either keeps the numbers it had without the gate.
                 if self.child(name, runs):
-                    o = self.summary_overview(name, r["dir"] or os.path.join(self.root, name), st) or o
+                    so = self.summary_overview(name, r["dir"] or os.path.join(self.root, name), st)
+                    if so and any(((x or {}).get("levels") or {}).get("act") for x in (so, o)):
+                        o = so
                 item["attention"] = o["attention"] if o else None
                 item["results"] = mtime is not None
                 if o:  # the Journal home: counts by level, the first findings, the lead
