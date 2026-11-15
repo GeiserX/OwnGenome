@@ -17,6 +17,7 @@ import copy
 import gzip
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -174,8 +175,12 @@ class Static(SimpleHTTPRequestHandler):
         pass
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
+        if self.path.split("?")[0] not in Static.BFCACHE:
+            self.send_header("Cache-Control", "no-store")
         super().end_headers()
+
+    # Paths answered without no-store, so Chrome may keep their page in the back-forward cache (gate_controls).
+    BFCACHE = set()
 
     # A path answered after a wait, once (the gate's slow-reload check): {path: seconds}.
     DELAY = {}
@@ -1117,8 +1122,8 @@ def map_find(b, q):
 
 def find_problems(b, base, out):
     """The search box: / puts the cursor in it; a gene, a band and a finding are found and Enter flies there (a
-    finding with its card); on the son's closed page his closed result is never a line, by its gene, its id or
-    its title, while his open finding still is."""
+    finding with its card); APOE, closed on every page until opened, is never a line, by its gene, its id or its
+    title, while an open finding still is. (The son's page is closed whole by the report gate: it has no map.)"""
     bad = []
     map_page(b, base, S)
     map_key(b, "/", target="body")
@@ -1138,27 +1143,27 @@ def find_problems(b, base, out):
             bad.append(f"{q}: Enter flies to {c['chrom']} at {c['level']}, want {chrom} at {lv}")
         if kind == "finding" and "DEMOC" not in n["card"]:
             bad.append(f"{q}: Enter opens no card for it: {n['card']!r}")
-    son = OTHERS[1]
-    doc = read_map(os.path.join(out, "runs", son, "map.json"))
-    f = doc["per"][son]["findings"]
-    i = [j for j, lv in enumerate(f["level"]) if lv == "act" and not f["gate"][j]][0]
+    doc = read_map(os.path.join(out, "runs", S, "map.json"))
+    f = doc["per"][S]["findings"]
+    i = [j for j in range(len(f["id"])) if f["gate"][j]][0]
     fid, gene, title = f["id"][i], f["gene"][i], f["title"][i]
-    map_page(b, base, son)
+    map_page(b, base, S)
     for q in (gene, fid, title):
         found = map_find(b, q)
-        named = [x for x in found if (x["kind"] == "finding" and gene in x["text"]) or fid in x["text"] or title in x["text"]]
+        # The gene itself stays findable (a line of kind "gene", from the gene names); its finding never is.
+        named = [x for x in found if x["kind"] == "finding" and (gene in x["text"] or fid in x["text"] or title in x["text"])]
         if named:
-            bad.append(f"the son's closed result is a line for {q!r}: {named}")
+            bad.append(f"{gene}, closed, is a line for {q!r}: {named}")
     found = map_find(b, "DEMOC")
     if not any(x["kind"] == "finding" for x in found):
-        bad.append(f"the son's open finding DEMOC is not found: {found}")
+        bad.append(f"the open finding DEMOC is not found: {found}")
     return bad
 
 
 def nearest_problems(b, base, out):
     """Nearest: with no finding of the open chromosome in view it names the closest one (else the first on the
-    next chromosome that has one) and flies there with its card; Esc closes the card; on the son's closed page
-    it never leads to his closed result."""
+    next chromosome that has one) and flies there with its card; Esc closes the card; it never leads to APOE,
+    closed on every page until opened."""
     bad = []
     for link, words, chrom in (("#chr11:100.0-101.0M", "Nearest: DEMOB at 108.3 Mb ›", "chr11"),
                                ("#chr3", "Nearest: DEMOB on chr11 ›", "chr11")):
@@ -1183,19 +1188,18 @@ def nearest_problems(b, base, out):
         time.sleep(0.2)
         if json.loads(b.eval(NEAR_JS))["card"] or map_now(b)["level"] == "chromosome":
             bad.append(f"{link}: Esc leaves the card open or steps out with a card open")
-    son = OTHERS[1]
-    doc = read_map(os.path.join(out, "runs", son, "map.json"))
-    f = doc["per"][son]["findings"]
-    i = [j for j, lv in enumerate(f["level"]) if lv == "act" and not f["gate"][j]][0]
+    doc = read_map(os.path.join(out, "runs", S, "map.json"))
+    f = doc["per"][S]["findings"]
+    i = [j for j in range(len(f["id"])) if f["gate"][j]][0]
     others = [f["s"][j] for j in range(len(f["id"])) if f["chrom"][j] == f["chrom"][i] and j != i]
-    # A view next to his closed result, with every other finding of that chromosome farther away.
+    # A view next to the closed result, with every other finding of that chromosome farther away.
     a = max(0, f["s"][i] - 3_000_000)
     if not any(abs(x - f["s"][i]) < 6_000_000 for x in others):
-        n = map_page(b, base, son, f"#{f['chrom'][i]}:{a + 1}-{a + 2_000_000}") and json.loads(b.eval(NEAR_JS))
+        n = map_page(b, base, S, f"#{f['chrom'][i]}:{a + 1}-{a + 2_000_000}") and json.loads(b.eval(NEAR_JS))
         if f["gene"][i] in n["near"] or f["gene"][i] in n["card"]:
-            bad.append(f"the son's Nearest leads to his closed result: {n['near']!r}")
+            bad.append(f"Nearest leads to {f['gene'][i]}, closed: {n['near']!r}")
     else:
-        bad.append("the son's closed result has another finding within 6 Mb: no view to check Nearest on")
+        bad.append(f"{f['gene'][i]}, closed, has another finding within 6 Mb: no view to check Nearest on")
     return bad
 
 
@@ -1479,6 +1483,12 @@ def plant_long_run(out, og):
     return keep
 
 
+def unplant(keep):
+    for p, data in keep.items():
+        with open(p, "wb") as fh:
+            fh.write(data)
+
+
 def predicate_problems(b, base, out, og, runs=None):
     """drawsAt() of map.js against og map build --predicate-table, row by row, on the three demo runs (DEMO-001
     with a planted long run; RUNS only when given): the same rows and the same answer at each level; and the
@@ -1573,7 +1583,7 @@ INVIEW_VIEWS = ((S, "", "genome"), (S, "#chr11", "chromosome"), (S, "#chr22", "c
                 (S, "#chr22:40.5-43.5M", "region"), (S, "#chr11:4.0-7.0M", "region"), (S, "#chr19:43.5-46.5M", "region"),
                 (S, "#chr11:5.150-5.350M", "gene"), (S, "#chr22:42.000-42.200M", "gene"),
                 (S, "#chr11:5225001-5250000", "reads"), (S, "#chr22:42110001-42140000", "reads"),
-                (OTHERS[1], "", "genome"), (OTHERS[1], "#chr16", "chromosome"))
+                (OTHERS[0], "", "genome"), (OTHERS[0], "#chr16", "chromosome"))
 
 
 def inview_problems(b, base, views=INVIEW_VIEWS):
@@ -1619,29 +1629,18 @@ def inview_problems(b, base, views=INVIEW_VIEWS):
     return bad
 
 
-def inview_veil_problems(b, base, adult=True):
-    """A closed result is never a row of the table or a tick of the strip: APOE on DEMO-001's page (unless not
-    ADULT), the son's closed result to act on on his; once the son's is opened from the chip it is both, so the
-    check sees it."""
-    bad = []
+def inview_veil_problems(b, base):
+    """A closed result is never a row of the table or a tick of the strip: APOE on DEMO-001's page. The son's page,
+    closed whole by the report gate while a result to act on is unopened, has no map, table or strip at all."""
+    bad = inview_apoe_problems(b, base)
     son = OTHERS[1]
-    if adult:
-        bad += inview_apoe_problems(b, base)
-    c, t = inview_page(b, base, son, "#chr7")
-    closed = [k for k in t["rows"] + (t["ticks"] or []) if k.startswith("findings\tchr7\t")]
-    if closed or "KCNH2" in t["text"]:
-        bad.append(f"{son}: his closed result shows at chr7: {closed}")
-    # The chip opens his closed results one per click, in the page's order: open them until the one at chr7 is.
-    for _ in range(4):
-        _, cbad = chip_open(b)
-        bad += cbad
-        time.sleep(0.5)
-        t = inview_now(b)
-        if any(k.startswith("findings\tchr7\t") for k in t["rows"]) or cbad:
-            break
-    if not any(k.startswith("findings\tchr7\t") for k in t["rows"]) or \
-            not any(k.startswith("findings\tchr7\t") for k in (t["ticks"] or [])):
-        bad.append(f"{son}: opened, his result is not a row and a tick at chr7: {t['rows']}, {t['ticks']}")
+    b.go("about:blank")
+    b.wait("location.href === 'about:blank'")
+    b.go(f"{base}/runs/{son}/#chr7")
+    if not b.wait("document.documentElement.dataset.pgpGated === 'true'"):
+        bad.append(f"{son}: his page is not closed by the report gate")
+    elif b.eval("!!document.querySelector('#genome-map, .gm-inview, .gm-strip, canvas')"):
+        bad.append(f"{son}: his closed page has a map, a table or a strip")
     return bad
 
 
@@ -2027,15 +2026,15 @@ def inview_checks(b, base, out, og):
             "        if (!drawsAt('findings', r, 'genome') || r.chrom !== chrom().n) { return; }",
             lambda: inview_problems(b, base, INVIEW_VIEWS[:2]))
     bad = inview_veil_problems(b, base)
-    check("map: a closed result is no row of the In view table and no tick of the strip (APOE on an adult's page, "
-          "the son's result to act on), until opened", not bad, bad)
+    check("map: a closed result is no row of the In view table and no tick of the strip (APOE on an adult's page); "
+          "the son's page, closed by the report gate, has no map", not bad, bad)
     planted("map.js whose table lists every finding, closed or not",
             "drawn().forEach(function (r) { if (meets(", "M.findings.forEach(function (r) { if (meets(",
-            lambda: inview_veil_problems(b, base, adult=False))
+            lambda: inview_apoe_problems(b, base))
     planted("map.js whose strip ticks every finding, closed or not",
             "      drawn().forEach(function (r) {\n        if (!drawsAt('findings', r, 'genome'))",
             "      M.findings.forEach(function (r) {\n        if (!drawsAt('findings', r, 'genome'))",
-            lambda: inview_veil_problems(b, base, adult=False))
+            lambda: inview_apoe_problems(b, base))
     bad = sort_problems(b, base)
     check("map: the In view table sorts by place with the findings first (aria-sort ascending on Where), Where again "
           "reverses it, and Size sorts by size", not bad, bad)
@@ -2243,7 +2242,7 @@ def map_checks(b, base, out):
             fh.write(keep_mjs)
     bad = find_problems(b, base, out)
     check("map: / opens the search; a gene, a band and a finding are found and Enter flies there (a finding with "
-          "its card); the son's closed result is never a line, by its gene, id or title", not bad, bad)
+          "its card); APOE, closed, is never a line, by its gene, id or title", not bad, bad)
     drawn_ = "var fs = drawn();\n      fs.filter("
     try:
         with open(mjs, "w") as fh:
@@ -2255,7 +2254,7 @@ def map_checks(b, base, out):
             fh.write(keep_mjs)
     bad = nearest_problems(b, base, out)
     check("map: Nearest names the closest finding (else the first on the next chromosome) and flies there with its "
-          "card; Esc closes the card first; it never leads to the son's closed result", not bad, bad)
+          "card; Esc closes the card first; it never leads to APOE, closed", not bad, bad)
     near_ = "var ch = chrom(), v = view(), fs = drawn(),"
     try:
         with open(mjs, "w") as fh:
@@ -2275,6 +2274,7 @@ def map_checks(b, base, out):
     finally:
         with open(mjs, "w") as fh:
             fh.write(keep_mjs)
+    og = og_binary() or build_live_demo.OG
     inview_checks(b, base, out, og)
     perf_checks(b, base, out)
     b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False}, b.session)
@@ -2434,7 +2434,9 @@ def gate_checks(b, base, out, family_only=False):
                 sb['rows'].append(copy.deepcopy(sb['rows'][0]))
                 sb['rows'].reverse()
                 if son in d.get('runs', {}):
-                    d['runs'][son] = dict(changed_family['runs'][son], **dict(progress(d['runs'][son]), url=d['runs'][son]['url']))
+                    # Whether the son is a child (child, the server's one rule) is a routing control, as his url is.
+                    d['runs'][son] = dict(changed_family['runs'][son], **dict(progress(d['runs'][son]), url=d['runs'][son]['url'],
+                                                                              child=d['runs'][son].get('child')))
                 d['future_child_payload'] = changed_family['future_payload_field']
                 d = {k: d[k] for k in reversed(d)}
             write(p, d)
@@ -2559,7 +2561,7 @@ def gate_checks(b, base, out, family_only=False):
             b.eval("document.querySelector('[data-opening=closed-1]').click(); true")
             check('gate handles follow their act after another act opens', b.eval("location.hash") == '#f/closed-2')
             gate_addresses(b, base, out, acts, visit, snap)
-            gate_slow_release(b, base, acts, visit, payloads)
+            gate_slow_release(b, base, out, acts, visit, payloads)
     finally:
         b.call('Page.removeScriptToEvaluateOnNewDocument', {'identifier': seed}, b.session)
         for p, raw in dict(saved, **html_saved).items():
@@ -2619,19 +2621,40 @@ def gate_addresses(b, base, out, acts, visit, snap):
     check('gate addresses: the opened report links and keeps #f/<id>, as the full report does', got == [True, False] and kept, (got, kept))
 
 
-def gate_slow_release(b, base, acts, visit, payloads):
-    """Opening the last act releases the report however slowly the reloaded page's results arrive."""
+def gate_slow_release(b, base, out, acts, visit, payloads):
+    """Opening the last act releases the report however slowly the reloaded page and its results arrive: the opening
+    never depends on the time. A gate that accepts the opening only within 1.5 s must fail here."""
     son = OTHERS[1]
     payloads(2)
-    visit('/runs/'+son+'/')
-    open_act(b, acts[0]['title'])
-    Static.DELAY['/runs/'+son+'/results.json'] = 6
+
+    def release():
+        visit('/runs/'+son+'/')
+        open_act(b, acts[0]['title'])
+        Static.DELAY['/runs/'+son+'/'] = 4
+        Static.DELAY['/runs/'+son+'/results.json'] = 6
+        try:
+            b.eval("document.querySelector('[data-opening^=closed]').click(); true")
+            return b.wait("!document.documentElement.dataset.pgpGated && !!document.querySelector('#results .finding')", timeout=25)
+        finally:
+            Static.DELAY.clear()
+    released = release()
+    check('gate release: a reload whose page takes 4 s and whose results.json takes 6 s still releases the report',
+          released, released)
+    js = os.path.join(out, 'assets', 'core.js')
+    source = open(js).read()
+    pairs = (("sessionStorage.setItem(TRANSFER, JSON.stringify({ path: target,", "sessionStorage.setItem(TRANSFER, JSON.stringify({ at: Date.now(), path: target,"),
+             ("t.path === location.pathname) { ticket = t; }", "t.path === location.pathname && Date.now() - t.at < 1500) { ticket = t; }"))
     try:
-        b.eval("document.querySelector('[data-opening^=closed]').click(); true")
-        released = b.wait("!document.documentElement.dataset.pgpGated && !!document.querySelector('#results .finding')", timeout=25)
+        planted = source
+        for x, y in pairs:
+            assert source.count(x) == 1, 'mutation anchor moved: ' + x
+            planted = planted.replace(x, y)
+        with open(js, 'w') as f:
+            f.write(planted)
+        control('gate release: an opening accepted only within 1.5 s', bool(release()))
     finally:
-        Static.DELAY.clear()
-    check('gate release: a reload whose results.json takes 6 s still releases the report', released, released)
+        with open(js, 'w') as f:
+            f.write(source)
 
 
 def gate_order(b, base, out):
@@ -2825,6 +2848,42 @@ def gate_controls(b, base, out):
         seen['ticket'] = left[0]
         return left[0] is None and not left[1].startswith('og-report-opening:')
 
+    # What <html> may keep once a child's open report is cleared: the gate's own two attributes.
+    LEFT = ("Array.prototype.map.call(document.documentElement.attributes, function (a) { return a.name; }).filter(function (n) {"
+            " return (n.indexOf('data-pgp-') === 0 && n !== 'data-pgp-status' && n !== 'data-pgp-gated') || n === 'data-finding'; })")
+
+    def opened():
+        visit(); open_gate(b)
+        assert b.wait("!!document.querySelector('#results .finding') && !!document.documentElement.dataset.pgpResults"), 'full report never loaded'
+
+    def close_attrs():
+        # Read in the same turn as the close, before the document is replaced.
+        opened()
+        fid = next(f['id'] for f in data['findings'] if f['level'] == 'act')
+        seen['attrs'] = b.eval('PGPUI.closeAct(' + json.dumps(fid) + '); ' + LEFT)
+        return not seen['attrs']
+
+    def pagehide_attrs():
+        opened()
+        seen['attrs'] = b.eval("window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })); " + LEFT)
+        return not seen['attrs'] and b.eval("!document.querySelector('#results')")
+
+    def back():
+        # Leave the open report for another page, then Back: from the back-forward cache the page loads afresh, closed.
+        # The page is served without no-store here, so Chrome keeps it in that cache (a no-store page never enters it).
+        Static.BFCACHE.add('/runs/%s/' % son)
+        try:
+            opened()
+            b.go(base + '/')
+            assert b.wait("document.documentElement.dataset.pgpStatus === 'ready' && !!document.documentElement.dataset.pgpPeople"), 'home never drawn'
+            b.eval('history.back(); true')
+            b.wait("location.pathname === '/runs/%s/' && document.readyState === 'complete'" % son)
+            got = b.wait("document.documentElement.dataset.pgpGated === 'true' && performance.getEntriesByType('navigation')[0].type", timeout=10)
+            seen['back'] = got or b.eval("[performance.getEntriesByType('navigation')[0].type, document.body.textContent.length]")
+        finally:
+            Static.BFCACHE.clear()
+        return got == 'reload'
+
     gate_open = "if (ownsPage || closedRun(requestURL)) { return new Promise(function () {}); }"
     gate_late = "return got.then(function (response) {\n        if (ownsPage) { return new Promise(function () {}); }"
     mutations = [
@@ -2845,7 +2904,14 @@ def gate_controls(b, base, out):
         ('skip cleanup after closing', ['ownsPage = true; eventSources.forEach(function (es) { es.close(); }); cleanPage(); transfer(); return true;'],
          ['return true;'], cleanup, lambda: seen.get('query') == 'KCNH2'),
         ('keep the opening ticket after reading it', ['    sessionStorage.removeItem(TRANSFER);\n'], [''], ticket,
-         lambda: seen.get('ticket') is not None)]
+         lambda: seen.get('ticket') is not None),
+        ('keep the page attributes after closing', ["if (a.name.indexOf('data-pgp-') === 0 || a.name === 'data-finding') { root.removeAttribute(a.name); }"],
+         [''], close_attrs, lambda: bool(seen.get('attrs'))),
+        ('keep the open report on pagehide', ['ownsPage = true; cleaned = true; eventSources.forEach(function (es) { es.close(); }); cleanPage(); }'],
+         ['ownsPage = true; cleaned = true; eventSources.forEach(function (es) { es.close(); }); }'], pagehide_attrs,
+         lambda: bool(seen.get('attrs'))),
+        ('show the cleared report again from the back-forward cache', ["if (e.persisted && cleaned) { location.reload(); }"], [''],
+         back, lambda: seen.get('back') != 'reload')]
     try:
         for desc, befores, afters, probe, broke in mutations:
             for before in befores:
