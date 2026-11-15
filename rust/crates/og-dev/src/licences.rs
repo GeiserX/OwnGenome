@@ -6,8 +6,8 @@
 //!     [--out FILE]
 //! ```
 //!
-//! The og binaries link about seventy crates statically, and the Linux pair
-//! also links htslib and htscodecs (C, built by `hts-sys`). Their licences
+//! The og binaries link about seventy crates statically, and all four also
+//! link htslib and htscodecs (C, built by `hts-sys`). Their licences
 //! (MIT, BSD-3-Clause, Unicode-3.0 and others) ask that a binary carry their
 //! notices, so every release ships the file this verb writes
 //! (`rust/og.sh build`, `.github/workflows/release.yml`).

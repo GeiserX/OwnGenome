@@ -175,7 +175,7 @@ build() {
   t0=$(date +%s)
   # Two cargo runs, because the feature set is per run: Linux with BAM (the
   # default features), macOS without it (zig links against the image's
-  # macOS SDK; no C is compiled).
+  # macOS SDK).
   zigbuild() {
     "$ENGINE" run --rm --user "$(id -u):$(id -g)" \
       -e HOME=/cache/home -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target -e OG_TREE_HASH="$hash" \
