@@ -729,9 +729,11 @@ struct VcfRec {
 }
 
 /// The biallelic SNVs (and the other records, as code 9) of a one-sample
-/// VCF, in file order. A record whose FILTER is not PASS or `.` gives
-/// code 9 (not read), so a DeepVariant RefCall is neither your allele nor
-/// the reference. Every record is checked against the last record handed
+/// VCF, in file order. A one-base record with ALT `.` (an all-sites VCF's
+/// reference call) is the reference (0) when its GT is all 0, and code 9
+/// otherwise. A record whose FILTER is not PASS or `.` gives code 9 (not
+/// read), so a DeepVariant RefCall is neither your allele nor the
+/// reference. Every record is checked against the last record handed
 /// out (`previous`), so a record that is skipped cannot hide a chromosome
 /// that comes back at a lower position.
 struct Vcf {
@@ -782,10 +784,11 @@ impl Vcf {
                     self.text.path.display()
                 ));
             }
-            if c[3].chars().count() != 1 || c[4] == "." {
+            if c[3].chars().count() != 1 {
                 continue;
             }
-            if c[4].contains(',') || c[4].chars().count() != 1 {
+            let reference_only = c[4] == ".";
+            if !reference_only && (c[4].contains(',') || c[4].chars().count() != 1) {
                 self.previous = Some((c[0].to_owned(), pos));
                 return Ok(Some(VcfRec {
                     chrom: c[0].to_owned(),
@@ -803,7 +806,7 @@ impl Vcf {
             };
             let gt = c[9].split(':').nth(k).unwrap_or(".");
             let mut code = gt_code(gt).unwrap_or(9);
-            if c[6] != "PASS" && c[6] != "." {
+            if (c[6] != "PASS" && c[6] != ".") || (reference_only && code != 0) {
                 code = 9;
             }
             self.previous = Some((c[0].to_owned(), pos));
@@ -812,7 +815,7 @@ impl Vcf {
                 pos,
                 call: Sample {
                     r#ref: c[3].to_owned(),
-                    alt: Some(c[4].to_owned()),
+                    alt: (!reference_only).then(|| c[4].to_owned()),
                     code,
                 },
             }));
@@ -904,8 +907,8 @@ fn confident_reference(c: &[&str]) -> bool {
 /// VCF is the reference (0) when such a call covers it, and unknown (9)
 /// otherwise. Only the next record and the furthest end of the calls so
 /// far are kept; a chromosome passed over is remembered by name, so a gVCF
-/// in another chromosome order than the VCF stops the step instead of
-/// reading as no calls.
+/// in another chromosome order than the VCF, or with no records on a table
+/// chromosome of the VCF, stops the step instead of reading as no calls.
 struct Callable {
     text: Text,
     path: String,
@@ -915,9 +918,6 @@ struct Callable {
     chrom: String,
     /// The last position the confident calls so far cover on `chrom`.
     covered: i64,
-    /// The first chromosome of the VCF the gVCF was read to its end for
-    /// without finding a record on it.
-    missing: Option<String>,
 }
 
 impl Callable {
@@ -954,7 +954,6 @@ impl Callable {
             seen: Vec::new(),
             chrom: String::new(),
             covered: 0,
-            missing: None,
         };
         callable.pending = callable.read()?;
         Ok(callable)
@@ -1014,24 +1013,21 @@ impl Callable {
     fn start(&mut self, chrom: &str) -> Out<()> {
         let here = self.pending.as_ref().is_some_and(|b| b.chrom == chrom);
         if !here && self.seen.iter().any(|x| x == chrom) {
-            return usage(match &self.missing {
-                Some(gone) => format!(
-                    "{} has no records on {gone}, which the VCF lists before {chrom}; \
-                     give the gVCF of the same sample, with every chromosome the VCF lists",
-                    self.path
-                ),
-                None => format!(
-                    "{} lists {chrom} before a chromosome the VCF lists first; \
-                     give the gVCF and the VCF in one chromosome order",
-                    self.path
-                ),
-            });
+            return usage(format!(
+                "{} lists {chrom} before a chromosome the VCF lists first; \
+                 give the gVCF and the VCF in one chromosome order",
+                self.path
+            ));
         }
         while self.pending.as_ref().is_some_and(|b| b.chrom != chrom) {
             self.pending = self.read()?;
         }
-        if self.pending.is_none() && self.missing.is_none() {
-            self.missing = Some(chrom.to_owned());
+        if self.pending.is_none() {
+            return usage(format!(
+                "{} has no records on {chrom}, which the VCF lists; \
+                 give the gVCF of the same sample, with every chromosome the VCF lists",
+                self.path
+            ));
         }
         self.chrom = chrom.to_owned();
         self.covered = 0;
@@ -1180,6 +1176,13 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
             while pending.as_ref().is_some_and(|r| r.chrom == chrom) {
                 pending = calls.next()?;
             }
+        }
+    }
+    // Read the gVCF to its end, so a record out of order after the last
+    // table site stops the step here too, before any output is published.
+    if let Some(c) = callable.as_mut() {
+        while c.pending.is_some() {
+            c.pending = c.read()?;
         }
     }
     if spans.is_empty() {
@@ -2042,11 +2045,11 @@ mod tests {
 
     #[test]
     fn an_ignored_record_cannot_hide_a_chromosome_return() {
-        // chr22 comes back after an ignored chrX record (ALT "."), at a
+        // chr22 comes back after an ignored chrX record (a deletion), at a
         // lower position: the join would write 0 at chr22:1000 and lose
         // the call, so it must stop as unsorted.
         let text = "chr22\t3000\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n\
-                    chrX\t1\t.\tA\t.\t.\tPASS\t.\tGT\t0/0\n\
+                    chrX\t1\t.\tAT\tA\t.\tPASS\t.\tGT\t0/1\n\
                     chr22\t1000\t.\tC\tT\t.\tPASS\t.\tGT\t1/1\n";
         let mut vcf = Vcf::new(Text {
             path: "sample.vcf".into(),

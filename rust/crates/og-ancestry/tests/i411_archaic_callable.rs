@@ -255,6 +255,24 @@ fn the_gvcf_is_read_in_the_vcf_order() {
     assert_eq!(code, 2, "{err}");
     assert!(err.contains("has no records on chr21"), "{err}");
 
+    // The same when the gVCF lacks the last table chromosome of the VCF.
+    let (code, err) = run(&d, vcf, Some(&format!("{chr21}{other}")));
+    assert_eq!(code, 2, "{err}");
+    assert!(err.contains("has no records on chr22"), "{err}");
+
+    // A record out of order after the last table site is read too.
+    let tail = format!(
+        "{chr21}{chr22}{}{}",
+        block("chr22", 6000, 6100, ".", "GT", "0/0"),
+        block("chr22", 100, 200, ".", "GT", "0/0")
+    );
+    let (code, err) = run(&d, vcf, Some(&tail));
+    assert_eq!(code, 2, "{err}");
+    assert!(
+        err.contains("is not sorted: chr22:100 comes after 6000"),
+        "{err}"
+    );
+
     let back = format!(
         "{chr21}{chr22}{}",
         block("chr21", 9000, 9100, ".", "GT", "0/0")
@@ -270,6 +288,31 @@ fn the_gvcf_is_read_in_the_vcf_order() {
     let (code, err) = run(&d, vcf, Some(&unsorted));
     assert_eq!(code, 2, "{err}");
     assert!(err.contains("is not sorted"), "{err}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// An all-sites VCF writes a reference call with ALT `.`: with GT all 0
+/// and FILTER PASS or `.` it is the reference, with or without a gVCF, and
+/// any other such record is unknown.
+#[test]
+fn a_reference_record_with_no_alt_is_the_reference() {
+    let d = dir("alt-dot");
+    table(&d, "chr22", [1000, 2000, 3000, 4000]);
+    let vcf = "chr22\t1000\t.\tA\t.\t50\tPASS\t.\tGT\t0/0\n\
+               chr22\t2000\t.\tA\t.\t50\t.\t.\tGT\t0|0\n\
+               chr22\t3000\t.\tA\t.\t50\tLowQual\t.\tGT\t0/0\n\
+               chr22\t4000\t.\tA\t.\t50\tPASS\t.\tGT\t0/1\n";
+    let want: BTreeMap<i64, String> = [(1000, "0"), (2000, "0"), (3000, "9"), (4000, "9")]
+        .map(|(p, c)| (p, c.to_owned()))
+        .into();
+    let (code, err) = run(&d, vcf, None);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(codes(&d, "chr22"), want);
+    assert_eq!(spans(&d), [["chr22", "1000", "2000", "2", "0", "0"]]);
+    // A gVCF block that does not cover them changes nothing: the record wins.
+    let (code, err) = run(&d, vcf, Some(&block("chr22", 1, 10, ".", "GT", "0/0")));
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(codes(&d, "chr22"), want);
     let _ = std::fs::remove_dir_all(&d);
 }
 
