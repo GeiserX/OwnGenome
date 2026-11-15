@@ -295,7 +295,9 @@ fn info_value<'a>(info: &'a [u8], key: &[u8]) -> Option<&'a [u8]> {
         return Some(&info[n..]);
     }
     info.windows(n).position(|w| w == key)?;
-    let at = info.windows(n + 1).position(|w| w[0] == b';' && &w[1..] == key)?;
+    let at = info
+        .windows(n + 1)
+        .position(|w| w[0] == b';' && &w[1..] == key)?;
     Some(&info[at + n + 1..])
 }
 
@@ -713,13 +715,16 @@ impl Builder {
         }
         let end = end.max(1);
         let linear = &mut self.seqs[tid].linear;
-        let (first, last) = ((beg >> MIN_SHIFT) as usize, ((end - 1) >> MIN_SHIFT) as usize);
+        let (first, last) = (
+            (beg >> MIN_SHIFT) as usize,
+            ((end - 1) >> MIN_SHIFT) as usize,
+        );
         if linear.len() <= last {
             linear.resize(last + 1, UNSET);
         }
-        for w in first..=last {
-            if linear[w] == UNSET {
-                linear[w] = self.last_off;
+        for o in linear.iter_mut().take(last + 1).skip(first) {
+            if *o == UNSET {
+                *o = self.last_off;
             }
         }
         let bin = reg2bin(beg, end);
@@ -856,7 +861,7 @@ const USAGE: &str = "usage: og vcf index [-f] VCF.gz\n";
 /// error (nothing written), 2 usage.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let mut usage = |msg: &str| {
-        let _ = write!(err, "{USAGE}og vcf index: error: {msg}\n");
+        let _ = writeln!(err, "{USAGE}og vcf index: error: {msg}");
         2
     };
     let (mut force, mut vcf) = (false, None);
@@ -973,26 +978,56 @@ mod tests {
                     _ => 1,
                 } as usize;
                 let (alt, info, sample) = match rng.below(40) {
-                    0 => ("C", format!("SVTYPE=DEL;END={}", pos + 1 + rng.below(70_000)), "0|1".to_owned()),
-                    1 => ("C", format!("SVTYPE=DUP;END={}", pos + 1 + rng.below(200_000_000)), "0|1".to_owned()),
+                    0 => (
+                        "C",
+                        format!("SVTYPE=DEL;END={}", pos + 1 + rng.below(70_000)),
+                        "0|1".to_owned(),
+                    ),
+                    1 => (
+                        "C",
+                        format!("SVTYPE=DUP;END={}", pos + 1 + rng.below(200_000_000)),
+                        "0|1".to_owned(),
+                    ),
                     2 => ("C", format!("END={}", pos + rng.below(3)), "0|1".to_owned()),
-                    3 => ("C", format!("SVEND={};CIEND=-5,5", pos + 90_000), "0|1".to_owned()),
-                    4 => ("C", format!("END={}", pos.saturating_sub(5)), "0|1".to_owned()),
-                    5 => ("<DEL>", format!("SVLEN=-{}", 1 + rng.below(90_000)), "0|1".to_owned()),
-                    6 => ("C,<DUP:TANDEM>", format!("SVLEN=.,{};CIPOS=-3,3", rng.below(40_000)), "1|2".to_owned()),
-                    7 => ("<*>", "DP=30".to_owned(), format!("0/0:{}", rng.below(30_000))),
+                    3 => (
+                        "C",
+                        format!("SVEND={};CIEND=-5,5", pos + 90_000),
+                        "0|1".to_owned(),
+                    ),
+                    4 => (
+                        "C",
+                        format!("END={}", pos.saturating_sub(5)),
+                        "0|1".to_owned(),
+                    ),
+                    5 => (
+                        "<DEL>",
+                        format!("SVLEN=-{}", 1 + rng.below(90_000)),
+                        "0|1".to_owned(),
+                    ),
+                    6 => (
+                        "C,<DUP:TANDEM>",
+                        format!("SVLEN=.,{};CIPOS=-3,3", rng.below(40_000)),
+                        "1|2".to_owned(),
+                    ),
+                    7 => (
+                        "<*>",
+                        "DP=30".to_owned(),
+                        format!("0/0:{}", rng.below(30_000)),
+                    ),
                     _ => ("C", "DP=30".to_owned(), "0|1".to_owned()),
                 };
                 let eol = if rng.below(15) == 0 { "\r\n" } else { "\n" };
                 let r = "A".repeat(reflen);
                 t.extend(
-                    format!("{seq}\t{pos}\tid{i}\t{r}\t{alt}\t50\tPASS\t{info}\tGT:LEN\t{sample}{eol}")
-                        .as_bytes(),
+                    format!(
+                        "{seq}\t{pos}\tid{i}\t{r}\t{alt}\t50\tPASS\t{info}\tGT:LEN\t{sample}{eol}"
+                    )
+                    .as_bytes(),
                 );
                 pos += rng.below(if i % 500 == 0 { 300_000 } else { 400 });
             }
         }
-        let a = t.iter().position(|&c| c == b'#' ).unwrap() + 30;
+        let a = t.iter().position(|&c| c == b'#').unwrap() + 30;
         let b = t.len() / 3;
         let b = b + t[b..].iter().position(|&c| c == b'\n').unwrap() + 1;
         let c = 2 * t.len() / 3 + 7;
@@ -1137,33 +1172,84 @@ mod tests {
     fn intervals_follow_tbx_parse1() {
         let p = |l: &str| parse(l.as_bytes()).map(|(s, b, e, c)| (s.to_vec(), b, e, c));
         let c = b"c".to_vec();
-        assert_eq!(p("c\t10\t.\tACG\tA\t.\t.\t."), Some((c.clone(), 9, 12, false)));
-        assert_eq!(p("c\t10\t.\tA\t<DEL>\t.\t.\tEND=500"), Some((c.clone(), 9, 500, false)));
+        assert_eq!(
+            p("c\t10\t.\tACG\tA\t.\t.\t."),
+            Some((c.clone(), 9, 12, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\t<DEL>\t.\t.\tEND=500"),
+            Some((c.clone(), 9, 500, false))
+        );
         // END after POS counts, but never shortens the REF span.
-        assert_eq!(p("c\t10\t.\tAAAA\tA\t.\t.\tX;END=11"), Some((c.clone(), 9, 13, false)));
-        assert_eq!(p("c\t10\t.\tAA\tT\t.\t.\tEND=9"), Some((c.clone(), 9, 11, false)));
-        assert_eq!(p("c\t10\t.\tA\tT\t.\t.\tSVEND=900"), Some((c.clone(), 9, 10, false)));
-        assert_eq!(p("c\t10\t.\tA\tT\t.\t.\tEND=0x20"), Some((c.clone(), 9, 32, false)));
-        assert_eq!(p("c\t10\t.\tA\tT\t.\t.\tEND=."), Some((c.clone(), 9, 10, false)));
+        assert_eq!(
+            p("c\t10\t.\tAAAA\tA\t.\t.\tX;END=11"),
+            Some((c.clone(), 9, 13, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tAA\tT\t.\t.\tEND=9"),
+            Some((c.clone(), 9, 11, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\tT\t.\t.\tSVEND=900"),
+            Some((c.clone(), 9, 10, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\tT\t.\t.\tEND=0x20"),
+            Some((c.clone(), 9, 32, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\tT\t.\t.\tEND=."),
+            Some((c.clone(), 9, 10, false))
+        );
         // SVLEN counts for <DEL>, <DUP>, <INV> and <CNV>, with a subtype
         // too, as its absolute value; not for <INS> or a plain ALT.
-        assert_eq!(p("c\t10\t.\tA\t<DEL>\t.\t.\tSVLEN=-500"), Some((c.clone(), 9, 509, false)));
-        assert_eq!(p("c\t10\t.\tA\t<DUP:TANDEM>\t.\t.\tX=1;SVLEN=70"), Some((c.clone(), 9, 79, false)));
-        assert_eq!(p("c\t10\t.\tA\t<INS>\t.\t.\tSVLEN=900"), Some((c.clone(), 9, 10, false)));
-        assert_eq!(p("c\t10\t.\tA\tT\t.\t.\tSVLEN=900"), Some((c.clone(), 9, 10, false)));
-        assert_eq!(p("c\t10\t.\tA\t<DEL\t.\t.\tSVLEN=900"), Some((c.clone(), 9, 10, false)));
+        assert_eq!(
+            p("c\t10\t.\tA\t<DEL>\t.\t.\tSVLEN=-500"),
+            Some((c.clone(), 9, 509, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\t<DUP:TANDEM>\t.\t.\tX=1;SVLEN=70"),
+            Some((c.clone(), 9, 79, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\t<INS>\t.\t.\tSVLEN=900"),
+            Some((c.clone(), 9, 10, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\tT\t.\t.\tSVLEN=900"),
+            Some((c.clone(), 9, 10, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\t<DEL\t.\t.\tSVLEN=900"),
+            Some((c.clone(), 9, 10, false))
+        );
         // One SVLEN per ALT, in order; the next value starts after the
         // next comma anywhere in INFO, as htslib reads it.
-        assert_eq!(p("c\t10\t.\tA\tT,<DEL>\t.\t.\tSVLEN=.,300"), Some((c.clone(), 9, 309, false)));
-        assert_eq!(p("c\t10\t.\tA\t<DEL>,<INV>\t.\t.\tSVLEN=-5;CIPOS=-1,800"), Some((c.clone(), 9, 809, false)));
-        assert_eq!(p("c\t10\t.\tA\t<DEL>\t.\t.\tEND=600;SVLEN=-50"), Some((c.clone(), 9, 600, false)));
+        assert_eq!(
+            p("c\t10\t.\tA\tT,<DEL>\t.\t.\tSVLEN=.,300"),
+            Some((c.clone(), 9, 309, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\t<DEL>,<INV>\t.\t.\tSVLEN=-5;CIPOS=-1,800"),
+            Some((c.clone(), 9, 809, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\t<DEL>\t.\t.\tEND=600;SVLEN=-50"),
+            Some((c.clone(), 9, 600, false))
+        );
         // A gVCF block: the largest sample LEN, when FORMAT has LEN.
         assert_eq!(
             p("c\t10\t.\tA\t<*>\t.\t.\t.\tGT:LEN\t0/0:40\t0/0:7"),
             Some((c.clone(), 9, 49, false))
         );
-        assert_eq!(p("c\t10\t.\tA\t<NON_REF>\t.\t.\t.\tGT\t0/0:40"), Some((c.clone(), 9, 10, false)));
-        assert_eq!(p("c\t10\t.\tA\tT\t.\t.\t.\tGT:LEN\t0/0:40"), Some((c.clone(), 9, 10, false)));
+        assert_eq!(
+            p("c\t10\t.\tA\t<NON_REF>\t.\t.\t.\tGT\t0/0:40"),
+            Some((c.clone(), 9, 10, false))
+        );
+        assert_eq!(
+            p("c\t10\t.\tA\tT\t.\t.\t.\tGT:LEN\t0/0:40"),
+            Some((c.clone(), 9, 10, false))
+        );
         // POS 0 goes to the first base; no REF ends where it begins.
         assert_eq!(p("c\t0\t.\tA"), Some((c.clone(), 0, 1, true)));
         assert_eq!(p("c\t7"), Some((c.clone(), 6, 6, false)));
@@ -1230,7 +1316,10 @@ mod tests {
         let end: [u8; 8] = bad[p + 8..p + 16].try_into().unwrap();
         bad[p..p + 8].copy_from_slice(&end);
         let (wrong, _) = wrong_regions(&text, &path, &bad, "planted");
-        assert!(wrong > 0, "a moved chunk start went unseen by the region check");
+        assert!(
+            wrong > 0,
+            "a moved chunk start went unseen by the region check"
+        );
     }
 
     #[test]
@@ -1254,7 +1343,10 @@ mod tests {
         assert!(l.read_line(&mut line).unwrap());
         assert_eq!((line.as_slice(), l.tell()), (&b"a"[..], starts[1] << 16));
         assert!(l.read_line(&mut line).unwrap());
-        assert_eq!((line.as_slice(), l.tell()), (&b"bcd"[..], (starts[5] << 16) | 2));
+        assert_eq!(
+            (line.as_slice(), l.tell()),
+            (&b"bcd"[..], (starts[5] << 16) | 2)
+        );
         assert!(l.read_line(&mut line).unwrap());
         assert_eq!((line.as_slice(), l.tell()), (&b"e"[..], starts[6] << 16));
         assert!(!l.read_line(&mut line).unwrap());
@@ -1268,7 +1360,9 @@ mod tests {
             let gz = bgzip(&[format!("{head}{body}").as_bytes()]);
             build(&gz[..]).unwrap_err().to_string()
         };
-        assert!(err("c\t5\t.\tA\nc\t4\t.\tA\n").contains("positions go back on c: 5 is followed by 4"));
+        assert!(
+            err("c\t5\t.\tA\nc\t4\t.\tA\n").contains("positions go back on c: 5 is followed by 4")
+        );
         assert!(err("a\t5\t.\tA\nb\t4\t.\tA\na\t6\t.\tA\n").contains("a starts again"));
         assert!(err("c\t1\t.\tA\t.\t.\t.\tEND=536870913\n").contains("past position"));
         assert!(err("c\t536870913\t.\tA\n").contains("past position"));
@@ -1430,7 +1524,11 @@ mod tests {
             let ours = build(&gz[..]).unwrap().tbi;
             let vcf = [("x.vcf.gz", &gz[..])];
             let htslib = in_image(&vcf, "bcftools index -t x.vcf.gz && cat x.vcf.gz.tbi");
-            assert_eq!(ours, inflate_bytes(&htslib), "{name}: bcftools index -t writes another index");
+            assert_eq!(
+                ours,
+                inflate_bytes(&htslib),
+                "{name}: bcftools index -t writes another index"
+            );
             if name == "quirks.vcf.gz" {
                 // A header line among the records is no VCF: bcftools view
                 // refuses it.
@@ -1459,8 +1557,14 @@ mod tests {
                 .split(|&c| c == b'\n')
                 .filter(|l| !l.is_empty() && !l.starts_with(b"=="))
                 .count();
-            assert!(records >= 10, "{name}: bcftools view returned {records} records");
-            assert!(with_og == with_htslib, "{name}: bcftools view -r differs over og's index");
+            assert!(
+                records >= 10,
+                "{name}: bcftools view returned {records} records"
+            );
+            assert!(
+                with_og == with_htslib,
+                "{name}: bcftools view -r differs over og's index"
+            );
         }
     }
 }
