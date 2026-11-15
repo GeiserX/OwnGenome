@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """The PRS path around pgsc_calc (og prs format and og prs table, then
 bin/collect_summary.py), and its card in bin/render_report.py, on synthetic
 files shaped like pgsc_calc's own.

@@ -1,0 +1,53 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: CONTRA_ON_LIST
+Date: 2026-11-15
+Source: PharmCAT 3.4.0 report (contra-on-list.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2D6       *1/*2                          Normal Metabolizer
+CYP2C19      *1/*1                          Normal Metabolizer
+
+Medications and Phenoconversion (CYP2D6, CYP2C19, CYP2C9, CYP3A4, CYP3A5):
+------------------------------------------------------------------------
+
+  Medication list: contra-on-list.txt (1 line).
+  Not in the inhibitor table: Valproate 500 mg.
+  These were not checked. A drug missing from the table (a brand name, a weak inhibitor)
+  can still change the activity of CYP2D6, CYP2C19, CYP2C9, CYP3A4, CYP3A5.
+  The genotype phenotype in the table above is unchanged. A phenoconverted phenotype
+  holds while the inhibitor is taken. This is an aid for your clinician, not advice.
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Drug Contraindications From Disease Variants (ClinVar hits, step 06):
+------------------------------------------------------------------------
+
+  WARNING: valproic acid -- POLG chr15:89300000 C>T, genotype 0/1, ClinVar Likely_pathogenic; ON THE MEDICATION LIST.
+    The valproate label contraindicates it in people with mitochondrial disorders caused by POLG mutations, and in children under two suspected of a POLG-related disorder: valproate can cause acute liver failure in them. (provisional CPIC level A/B: no CPIC guideline covers this pair)
+    https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f
+  In a recessive gene a WARNING needs both copies changed or two variants in the gene.
+  Two variants are not phased here: on the same copy they make a carrier. One variant
+  in a recessive gene gives a NOTE: a carrier, not a patient, unless a second variant
+  was missed. Whether a line applies depends on the disorder the gene causes.
+  Review it with your clinician before taking or stopping the drug.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

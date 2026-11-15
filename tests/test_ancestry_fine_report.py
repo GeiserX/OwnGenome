@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og ancestry-fine, step 26b's commands, on made-up inputs:
 
   panel-map    a group of fewer than 10 unrelated people (one Oceanian, three

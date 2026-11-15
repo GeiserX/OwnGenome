@@ -148,7 +148,7 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - All processing is local; genomic data never leaves the machine
 - Pin tool versions; never use floating tags
 - Reference genome: GRCh38, NCBI's no-ALT analysis set (`reference/GRCh38_no_alt_analysis_set.fasta`). No aligner here runs ALT-aware, so a reference with ALT contigs gives MAPQ 0 at CYP2D6, the MHC and KIR; `validate-setup.sh` refuses one (unless `ALLOW_ALT_REFERENCE=true`) and refuses a BAM whose @SQ lines differ from the `.fai`. A change of reference means realigning every sample (`docs/realignment.md`)
-- License: GPL-3.0
+- License: GPL-3.0-or-later (README, CONTRIBUTING.md, `rust/Cargo.toml` and the `nextflow.config` manifest say the same)
 
 ## Tool-Specific Gotchas
 

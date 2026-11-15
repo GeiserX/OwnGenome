@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og vntyper report: step 52's reading of VNtyper's MUC1 VNTR result,
 and its section in both reports.
 

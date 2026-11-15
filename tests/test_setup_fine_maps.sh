@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # setup.sh's install_fine_maps (step 26b's genetic maps) rebuilds a map an
 # older install left cut short. Before og, setup.sh skipped every chromosome
 # whose .rfmix.map was not empty, so a map a kill had cut short stayed
