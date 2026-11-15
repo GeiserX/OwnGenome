@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::answers::{Offline, Online, PGS_API};
-use crate::rerun::{compare, launch_dir_command};
+use crate::rerun::{Call, compare, launch_dir_command, parse_call};
 use og_fresh::http::GitHub;
 use og_fresh::pins::Pins;
 use std::fs;
@@ -217,6 +217,27 @@ fn cli(args: &[&str]) -> (u8, String, String) {
 
 fn s(p: &Path) -> &str {
     p.to_str().unwrap()
+}
+
+fn chmod_x(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// A stand-in `scripts/run-all.sh` beside the genome folder that runs
+/// `body`, recorded in `logs/run_status.tsv` the way `run-all.sh` records
+/// itself: `cd` to the launch folder, then the script and `S1 male`.
+fn stub_run_all(g: &Genome, body: &str) {
+    let launch = g.root.parent().unwrap().join("launch");
+    let script = launch.join("scripts/run-all.sh");
+    fs::create_dir_all(script.parent().unwrap()).unwrap();
+    fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
+    chmod_x(&script);
+    let cmd = format!("cd '{}' && '{}' S1 male", s(&launch), s(&script));
+    let st = fs::read_to_string(g.status())
+        .unwrap()
+        .replace("echo replayed", &cmd);
+    fs::write(g.status(), st).unwrap();
 }
 
 #[test]
@@ -568,20 +589,11 @@ fn after_rerun_the_check_is_taken_again_on_the_manifest_the_rerun_wrote() {
         .collect();
     fs::write(&newman, text).unwrap();
     let g = genome("after-g", Opt::default());
-    let cmd = format!("cp '{}' '{}'", s(&newman), s(&g.manifest()));
-    let g = Genome {
-        root: {
-            let st = fs::read_to_string(g.status())
-                .unwrap()
-                .replace("echo replayed", &cmd);
-            fs::write(g.status(), st).unwrap();
-            gz(
-                &g.root.join("clinvar/clinvar_pathogenic_chr.vcf.gz"),
-                "##fileformat=VCFv4.1\n##fileDate=20261005\n#CHROM\n",
-            );
-            g.root
-        },
-    };
+    stub_run_all(&g, &format!("cp '{}' '{}'", s(&newman), s(&g.manifest())));
+    gz(
+        &g.root.join("clinvar/clinvar_pathogenic_chr.vcf.gz"),
+        "##fileformat=VCFv4.1\n##fileDate=20261005\n#CHROM\n",
+    );
     let off = fix("offline.json");
     let (rc, out, _) = cli(&[
         "--sample",
@@ -698,11 +710,7 @@ fn refresh_clinvar_holds_the_lock_while_setup_refreshes_and_lets_it_go_before_th
         .status()
         .unwrap();
     let g = genome("refresh-held-g", Opt::default());
-    let replay = probe(s(&g.root.join(CLINVAR_LOCK)), &seen, 20);
-    let st = fs::read_to_string(g.status())
-        .unwrap()
-        .replace("echo replayed", &replay);
-    fs::write(g.status(), st).unwrap();
+    stub_run_all(&g, &probe(s(&g.root.join(CLINVAR_LOCK)), &seen, 20));
     let off = fix("offline.json");
     let (rc, out, err) = cli(&[
         "--sample",
@@ -1049,11 +1057,7 @@ fn a_lookup_that_fails_after_the_replay_makes_the_command_exit_1() {
     text += "data\tpgs:PGS000099\tpgs_id=PGS000099;HmPOS_date=2022-07-29\n";
     fs::write(&newman, text).unwrap();
     let g = genome("after-fail-g", Opt::default());
-    let cmd = format!("cp '{}' '{}'", s(&newman), s(&g.manifest()));
-    let st = fs::read_to_string(g.status())
-        .unwrap()
-        .replace("echo replayed", &cmd);
-    fs::write(g.status(), st).unwrap();
+    stub_run_all(&g, &format!("cp '{}' '{}'", s(&newman), s(&g.manifest())));
     let off = fix("offline.json");
     let (rc, out, _) = cli(&[
         "--sample",
@@ -1067,4 +1071,322 @@ fn a_lookup_that_fails_after_the_replay_makes_the_command_exit_1() {
     let state = fs::read_to_string(g.sample().join("recheck/state.json")).unwrap();
     assert!(state.contains("pgs:PGS000099") && state.contains("\"class\": \"error\""));
     assert_eq!(rc, 1, "{out}");
+}
+
+/// Every lookup through the online client at a port where nothing listens:
+/// a refused connection, not an HTTP error.
+struct Refused(Online, u16);
+
+impl Answers for Refused {
+    fn clinvar(&self) -> og_fresh::Lookup<Option<String>> {
+        let url = format!("http://127.0.0.1:{}/clinvar", self.1);
+        og_fresh::http::Fetch::text(&self.0.client, &url).map(Some)
+    }
+    fn pinned(&self, key: &str) -> og_fresh::Lookup<Option<String>> {
+        let url = format!("http://127.0.0.1:{}/{key}", self.1);
+        og_fresh::http::Fetch::text(&self.0.client, &url).map(Some)
+    }
+    fn pgs(&self, id: &str) -> og_fresh::Lookup<Option<String>> {
+        self.0.pgs(id)
+    }
+    fn release(&self) -> og_fresh::Lookup<answers::Release> {
+        self.0.release()
+    }
+    fn hosts(&self) -> Vec<String> {
+        self.0.hosts()
+    }
+    fn offline(&self) -> bool {
+        false
+    }
+}
+
+fn printed(c: &Check) -> String {
+    let mut o = Vec::new();
+    print_check(c, &mut o).unwrap();
+    String::from_utf8(o).unwrap()
+}
+
+#[test]
+fn a_failed_lookup_never_prints_nothing_newer_and_keeps_a_newer_file_here_rerun_ready() {
+    let g = genome(
+        "cv-down",
+        Opt {
+            installed_clinvar: Some("20261101"),
+            ..Opt::default()
+        },
+    );
+    let c = run_check(
+        &g,
+        &answers(&[(
+            "clinvar_file_date",
+            r#"{"error": "no answer (Could not resolve host)"}"#,
+        )]),
+        &this_pins(),
+        Some("3.66.0"),
+    );
+    let cv = by_item(&c)["clinvar_file_date"];
+    assert_eq!(cv.class, Class::RerunReady, "{cv:?}");
+    assert!(cv.error.as_deref().unwrap().contains("resolve host"));
+    assert_eq!(c.rerun_ready_steps, CLINVAR_STEPS);
+    assert_eq!(c.errors(), 1);
+    let out = printed(&c);
+    assert!(!out.contains("Nothing here is newer"), "{out}");
+    assert!(out.contains("the lookup failed: no answer"), "{out}");
+    assert!(out.contains("A rerun would redo steps 06,"), "{out}");
+    assert!(out.contains("1 of 7 lookups failed"), "{out}");
+}
+
+#[test]
+fn when_every_lookup_is_refused_the_check_says_it_could_not_check() {
+    let port = {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let g = genome("all-refused", Opt::default());
+    let r = Refused(online(port), port);
+    let c = run_check(&g, &r, &this_pins(), Some("3.66.0"));
+    for i in c
+        .items
+        .iter()
+        .filter(|i| i.error.is_some() || i.upstream.is_some())
+    {
+        assert_eq!(i.class, Class::Error, "{i:?}");
+    }
+    assert!(c.release.is_err());
+    assert_eq!(c.errors(), 7);
+    assert!(c.affected_steps.is_empty());
+    let out = printed(&c);
+    assert!(!out.contains("Nothing here is newer"), "{out}");
+    assert!(
+        out.contains("Could not check: all 7 lookups failed"),
+        "{out}"
+    );
+    // The command: every answer an error, exit 1, the same closing line.
+    let p = tmp("all-err").join("all-err.json");
+    fs::write(
+        &p,
+        r#"{"clinvar_file_date": {"error": "no answer"}, "VEP_CACHE_RELEASE": {"error": "no answer"},
+ "PCGR_DATA_BUNDLE": {"error": "no answer"}, "PYPGX_BUNDLE_VERSION": {"error": "no answer"},
+ "PHARMCAT_IMAGE": {"error": "no answer"}, "hla_database": {"error": "no answer"},
+ "pgs:PGS000001": {"error": "no answer"}, "release": {"error": "no answer"}}"#,
+    )
+    .unwrap();
+    let (rc, out, _) = cli(&[
+        "--sample",
+        "S1",
+        "--genome-dir",
+        s(&g.root),
+        "--offline",
+        s(&p),
+    ]);
+    assert_eq!(rc, 1, "{out}");
+    assert!(!out.contains("Nothing here is newer"), "{out}");
+    assert!(
+        out.contains("Could not check: all 7 lookups failed"),
+        "{out}"
+    );
+    // Control: with every answer given, nothing newer is said.
+    let g = genome("all-answered", Opt::default());
+    let c = run_check(
+        &g,
+        &answers(&[
+            ("clinvar_file_date", r#"{"upstream": "20260901"}"#),
+            ("VEP_CACHE_RELEASE", r#"{"upstream": "116"}"#),
+        ]),
+        &this_pins(),
+        Some("3.66.0"),
+    );
+    assert_eq!(c.errors(), 0);
+    let out = printed(&c);
+    assert!(out.contains("Nothing here is newer"), "{out}");
+}
+
+#[test]
+fn a_recorded_command_is_read_as_a_typed_call() {
+    // As bash 5's printf %q writes them: a space, a comma, a tab, a quote,
+    // an empty word, a non-ASCII letter in a C locale.
+    let cmd = "cd /data/my\\ run && TOOLS=deepvariant\\,pharmcat NXF_VER=25.04.6 \
+               /opt/og/scripts/run-all.sh S1 male --publish_dir out\\ dir/x\\;y it\\'s $'a\\tb' '' \
+               $'\\303\\251' a~b a#b";
+    let call = parse_call(cmd, "GENOME_DIR TOOLS NXF_VER").unwrap();
+    assert_eq!(
+        call,
+        Call {
+            dir: "/data/my run".into(),
+            env: vec![
+                ("TOOLS".into(), "deepvariant,pharmcat".into()),
+                ("NXF_VER".into(), "25.04.6".into()),
+            ],
+            script: "/opt/og/scripts/run-all.sh".into(),
+            args: [
+                "S1",
+                "male",
+                "--publish_dir",
+                "out dir/x;y",
+                "it's",
+                "a\tb",
+                "",
+                "\u{e9}",
+                "a~b",
+                "a#b"
+            ]
+            .map(String::from)
+            .to_vec(),
+        }
+    );
+    // Anything else a shell would act on is no call.
+    let base = "cd /d && /o/scripts/run-all.sh S1 male";
+    for bad in [
+        "touch /tmp/X && echo hi".to_owned(),
+        format!("{base}; rm -rf /tmp/X"),
+        format!("{base} ; rm -rf /tmp/X"),
+        format!("{base} && rm -rf /tmp/X"),
+        format!("{base} | tee x"),
+        format!("{base} > x"),
+        format!("{base} $(id)"),
+        format!("{base} `id`"),
+        format!("{base} \"quoted\""),
+        format!("{base} *"),
+        format!("{base} $HOME"),
+        format!("{base} #comment"),
+        format!("{base} ~/x"),
+        format!("{base} 'open"),
+        format!("{base} $'\\u00e9'"),
+        "cd /d && OTHER=1 /o/scripts/run-all.sh S1 male".to_owned(),
+        "cd /d && /o/scripts/evil.sh S1 male".to_owned(),
+        "cd /d /o/scripts/run-all.sh S1 male".to_owned(),
+        "\\cd /d && /o/scripts/run-all.sh S1 male".to_owned(),
+        "cd /d && 'TOOLS=x' /o/scripts/run-all.sh S1".to_owned(),
+    ] {
+        assert_eq!(parse_call(&bad, "TOOLS"), None, "{bad}");
+    }
+}
+
+#[test]
+fn rerun_refuses_a_command_that_is_not_a_run_all_call_and_runs_nothing() {
+    let off = fix("offline.json");
+    let base = tmp("inject");
+    let victim = base.join("victim");
+    let made = base.join("made");
+    for (name, cmd) in [
+        ("touch", format!("touch '{}' && echo not-run-all", s(&made))),
+        (
+            "suffix",
+            format!(
+                "cd '{}' && '{}/scripts/run-all.sh' S1 male; rm -f '{}'",
+                s(&base),
+                s(&base),
+                s(&victim)
+            ),
+        ),
+    ] {
+        fs::write(&victim, "").unwrap();
+        let g = genome(&format!("inject-{name}"), Opt::default());
+        let st = fs::read_to_string(g.status())
+            .unwrap()
+            .replace("echo replayed", &cmd);
+        fs::write(g.status(), st).unwrap();
+        let (rc, out, err) = cli(&[
+            "--sample",
+            "S1",
+            "--genome-dir",
+            s(&g.root),
+            "--offline",
+            s(&off),
+            "--rerun",
+        ]);
+        assert_eq!(rc, 2, "{name}: {out}{err}");
+        assert!(err.contains("not a run-all.sh call"), "{err}");
+        assert!(!out.contains("Rerunning"), "{out}");
+        assert!(!made.exists(), "{name}: the command ran");
+        assert!(victim.exists(), "{name}: the suffix ran");
+        let log = fs::read_to_string(g.sample().join("recheck/log.tsv")).unwrap();
+        assert!(!log.contains("\trerun-start\t"), "{log}");
+    }
+    // A call whose launch folder is gone is refused too.
+    let g = genome("inject-gone", Opt::default());
+    let st = fs::read_to_string(g.status()).unwrap().replace(
+        "echo replayed",
+        &format!(
+            "cd '{}/gone' && '{}/scripts/run-all.sh' S1 male",
+            s(&base),
+            s(&base)
+        ),
+    );
+    fs::write(g.status(), st).unwrap();
+    let (rc, _, err) = cli(&[
+        "--sample",
+        "S1",
+        "--genome-dir",
+        s(&g.root),
+        "--offline",
+        s(&off),
+        "--rerun",
+    ]);
+    assert_eq!(rc, 2, "{err}");
+    assert!(err.contains("is gone"), "{err}");
+}
+
+#[test]
+fn rerun_starts_run_all_with_the_recorded_arguments_one_by_one() {
+    let g = genome("typed", Opt::default());
+    let launch = g.root.parent().unwrap().join("launch dir");
+    let script = launch.join("scripts/run-all.sh");
+    fs::create_dir_all(script.parent().unwrap()).unwrap();
+    let seen = g.root.parent().unwrap().join("seen.txt");
+    fs::write(
+        &script,
+        format!(
+            "{{ printf '%s\\n' \"$PWD\" \"${{TOOLS-unset}}\" \"${{GENOME_DIR-unset}}\" \"$#\"; \
+             for a in \"$@\"; do printf '[%s]\\n' \"$a\"; done; }} > '{}'\n",
+            s(&seen)
+        ),
+    )
+    .unwrap();
+    chmod_x(&script);
+    let q = |p: &Path| s(p).replace(' ', "\\ ");
+    let cmd = format!(
+        "cd {} && TOOLS=deepvariant\\,pharmcat {} S1 male --publish_dir out\\ dir it\\'s $'a\\tb' '' x\\;\\ touch\\ y",
+        q(&launch),
+        q(&script)
+    );
+    let st = fs::read_to_string(g.status())
+        .unwrap()
+        .replace("echo replayed", &cmd);
+    fs::write(g.status(), st).unwrap();
+    let off = fix("offline.json");
+    let (rc, out, err) = cli(&[
+        "--sample",
+        "S1",
+        "--genome-dir",
+        s(&g.root),
+        "--offline",
+        s(&off),
+        "--rerun",
+    ]);
+    assert_eq!(rc, 0, "{out}{err}");
+    let got = fs::read_to_string(&seen).unwrap();
+    let pwd = launch.canonicalize().unwrap();
+    let first = got.lines().next().unwrap();
+    assert!(Path::new(first).canonicalize().unwrap() == pwd, "{got}");
+    let rest: Vec<&str> = got.lines().skip(1).collect();
+    assert_eq!(
+        rest,
+        [
+            "deepvariant,pharmcat",
+            // GENOME_DIR is a recorded switch the command does not set: dropped.
+            "unset",
+            "8",
+            "[S1]",
+            "[male]",
+            "[--publish_dir]",
+            "[out dir]",
+            "[it's]",
+            "[a\tb]",
+            "[]",
+            "[x; touch y]",
+        ],
+        "{got}"
+    );
+    assert!(!launch.join("y").exists());
 }
