@@ -337,7 +337,14 @@ def open_gate(b):
         if not closed:
             return
         b.eval("document.querySelector('[data-opening^=closed]').click(); true")
-        if not b.eval("document.querySelector('[data-opening^=closed]') !== null"):
+        # The last opening loads the page again: a read that meets that navigation means the gate released.
+        try:
+            left = b.eval("document.querySelector('[data-opening^=closed]') !== null")
+        except RuntimeError as e:
+            if 'navigated' not in str(e):
+                raise
+            left = False
+        if not left:
             assert b.wait("!document.documentElement.dataset.pgpGated"), 'gate did not release'
             return
     raise AssertionError('gate did not release in ten clicks')
