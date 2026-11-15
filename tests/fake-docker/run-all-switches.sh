@@ -142,6 +142,12 @@ run_expect 0 bench-clair3 env TOOLS=pharmcat BENCHMARK=true FAKE_DOCKER_RUN_HOOK
 grep -qE $'^DeepVariant\tClair3\t2\t0\t0\t1.0000\t1\t0.5000$' "${G}/sample1/benchmark/comparison.tsv" \
   || fail "DeepVariant and Clair3 were not compared: $(cat "${G}/sample1/benchmark/comparison.tsv" 2>/dev/null)"
 grep -qE $'^Clair3\tmine\t' "${G}/sample1/benchmark/comparison.tsv" || fail "vcf_mine/ was not compared"
+# A hand-placed vcf_strelka2/<sample>.vcf.gz also queues the step, so it is
+# compared when step 03c's results/variants/variants.vcf.gz is absent.
+callers vcf vcf_strelka2
+run_expect 0 bench-strelka2 env TOOLS=pharmcat BENCHMARK=true FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/isec-hook" "${SCRIPTS}/run-all.sh" sample1 male
+grep -qE $'^DeepVariant\tStrelka2\t' "${G}/sample1/benchmark/comparison.tsv" \
+  || fail "vcf_strelka2/sample1.vcf.gz was not compared: $(cat "${G}/sample1/benchmark/comparison.tsv" 2>/dev/null)"
 rm -rf "${G}/sample1"/vcf_* "${G}/sample1/benchmark" "${G}/sample1/vcf/sample1.vcf.gz" "${G}/sample1/vcf/sample1.vcf.gz.tbi"
 
 n=$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")

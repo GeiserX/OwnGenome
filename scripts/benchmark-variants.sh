@@ -182,7 +182,10 @@ for vcf in "${GENOME_DIR}/${SAMPLE}"/vcf_*/"${SAMPLE}.vcf.gz"; do
   dir=${vcf%/*}
   dir=${dir##*/vcf_}
   case "$dir" in
-    gatk|freebayes|octopus|strelka2) continue ;;
+    gatk|freebayes|octopus) continue ;;
+    # Step 03c writes results/variants/variants.vcf.gz; a hand-placed
+    # vcf_strelka2/<sample>.vcf.gz counts only when that file is absent.
+    strelka2) [ -f "$SK_VCF" ] && continue; name=Strelka2 ;;
     clair3) name=Clair3 ;;
     *[!A-Za-z0-9._-]*|"") echo "WARNING: skipping vcf_${dir}/: the directory name must be letters, digits, '.', '_' or '-'" >&2; continue ;;
     *) name=$dir ;;
