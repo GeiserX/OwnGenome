@@ -1,0 +1,60 @@
+# Secondary Findings and Carrier Status
+
+Part of [Interpreting Your Results](../interpreting-results.md). Read [Before You Look](../interpreting-results.md#before-you-look-what-the-pipeline-can-tell-you) first.
+
+## Carrier Status Is Not Disease
+
+The most common "pathogenic" finding in any genome is **heterozygous carrier status for recessive conditions**. This means:
+
+- You have ONE copy of a variant that causes disease when BOTH copies are affected
+- For most recessive conditions, heterozygous carriers are **not clinically affected** (though some carrier states confer subtle phenotypic effects — e.g., sickle cell trait, HFE carriers and iron loading)
+- The primary relevance is for **family planning**: if your partner carries the same gene, each child has a 25% chance of being affected
+- **Note — MUTYH**: Biallelic (homozygous or compound het) MUTYH carriers have a well-established high colorectal cancer risk. For **monoallelic** (single-copy) carriers, the evidence is more nuanced: some meta-analyses show a modest risk increase, but a counseling framework for moderate-penetrance CRC genes (Genetics in Medicine) notes that risk estimates for monoallelic MUTYH are conflicting and that screening recommendations (e.g., earlier colonoscopy) were historically tied to carriers with a CRC family history. Discuss with a genetic counselor, especially if you have a family history of CRC
+- Examples: GJB2 (hearing loss), CFTR (cystic fibrosis), HFE (hemochromatosis)
+
+**Your own carrier list (step 24 report).** The ClinVar card of both reports is followed by a carrier list for this one sample, with no partner needed: every step 6 ClinVar hit in the 3,292 recessive and X-linked genes of `assets/carrier_genes.tsv` (the list of the [couple screen](../39-couple.md#the-carrier-list)). An allele that list marks as a hypomorph (for example BTD p.Asp444His or the GALT Duarte variants) or a pseudodeficiency allele (HEXA c.739C>T and c.745C>T, which lower the enzyme test result but cause no Tay-Sachs disease) is listed as set aside, never as a carrier finding on its own.
+
+**Secondary findings follow each gene's ACMG rule.** The secondary-findings card (step 23's section of the report) applies the reporting rule of each of the 84 ACMG SF v3.3 genes (Lee et al., Genet Med 2025;27(8):101454, Table 1), written gene by gene in `assets/acmg_sf.tsv`:
+
+- a dominant gene (BRCA1, LDLR, MYH7 and most others): one pathogenic or likely pathogenic variant is reported;
+- a recessive gene (MUTYH, ATP7B, BTD, CYP27A1, GAA, RPE65, CASQ2, TRDN): two variants are needed, a homozygote or two different ones even when their phase is unknown. One heterozygous MUTYH variant is listed apart as not reported, with the reason;
+- HFE: only homozygous p.Cys282Tyr. A heterozygous p.Cys282Tyr or a homozygous p.His63Asp is not reported;
+- X-linked: GLA (Fabry disease) and OTC are reported in a hemizygous male and a heterozygous female alike. ABCD1 (X-linked adrenoleukodystrophy) is reported hemizygous, homozygous or with two heterozygous variants, never for one heterozygous variant;
+- BTD with p.Asp444His: reported as partial, not profound, biotinidase deficiency;
+- AnnotSV class 4 and 5 structural variants (step 5) in BRCA1, BRCA2, MLH1, MSH2 and LDLR reach the same card, and so does a deletion of the 3' end of EPCAM (exons 8 and 9), which silences MSH2 (Kovacs et al., Hum Mutat 2009;30(2):197-203).
+
+**Two hits across callers: a deletion plus a variant on the other copy.** Small-variant callers see one hit when the other copy of the gene is deleted. So the carrier list also joins the deletions the other engines call with the ClinVar hits, gene by gene (`og summary collect`, `two_hits`). The deletions come from AnnotSV's class 4 and 5 deletions (step 5), step 35's interval table (the recurrent regions of `bin/cn_loci.tsv`, such as 1q21.1), its HBA1/HBA2 count and Parascopy's SMN1 count. A recessive gene that a deletion and a hit both reach gets one line:
+
+- **biallelic** when the reads show the two hits on different copies. Either the hit is called homozygous inside the deletion, so it sits on the one copy left (the line and the carrier list call it hemizygous), or both calls carry read-backed phase (a `|` genotype with the same phase set, PS) on different copies;
+- **possibly biallelic** otherwise: the phase is unknown. Most short-read calls carry no phase, so this is the usual line. Step 05's checked table keeps no genotype column yet, and step 35's counts have no phase, so in a pipeline run a deletion pairs as possibly biallelic unless the hit is called homozygous inside it. A parent's genome (step 38, [family analysis](../multi-sample.md#family-analysis-step-38-opt-in)) or long reads can settle it;
+- no line when read-backed phase puts both on the same copy (cis): the other copy is intact.
+
+Examples: an exon deletion of MUTYH plus a pathogenic MUTYH variant; three alpha-globin genes plus an HBA2 point variant; one SMN1 copy plus an SMN1 variant (short reads place few SMN1 variants reliably, so check with a targeted test); and the 1q21.1 deletion plus one of the two RBM8A low-expression alleles (c.-21G>A, rs139428292, or c.67+32G>C, rs201779890), the cause of TAR syndrome (thrombocytopenia with absent radius; Albers et al., Nat Genet 2012;44(4):435-439, PMID 22366785). On its own an RBM8A low-expression allele stays set aside. The [couple screen](../39-couple.md) (step 39) applies the same pairing between partners: a hypomorph allele of the list in one partner and a full loss of function in the same gene in the other (a ClinVar pathogenic variant, a Delly deletion) is a shared gene with its risk for a child; the allele in both partners, or in one alone, stays set aside. In the secondary-findings card a called deletion counts as one of the two variants a recessive gene needs, unless read-backed phase puts it on the variant's copy. The line under the carrier list names the deletion callers it read and the ones it could not read. A deletion AnnotSV ranks below class 4 is not counted.
+
+The TTN rule (truncating variants only) and the LMNA rule (missense only with cardiac evidence) are printed beside the finding, not applied. It is still a list to review with a clinician.
+
+---
+
+## CPSR Report (Step 17)
+
+**What it tells you:** Cancer predisposition screening using CPSR's curated cancer gene panels (panel 0 covers 500+ genes). Step 17 also turns on CPSR's secondary findings: the ACMG SF list, which includes cardiac and metabolic genes outside cancer (see [Before you look](../interpreting-results.md#before-you-look-what-the-pipeline-can-tell-you)).
+
+**Where to look:** `${SAMPLE}/cpsr/` — open the HTML report in a browser.
+
+**How to read it:**
+- CPSR puts every variant in its genes into one of the five ACMG/AMP classes: **Pathogenic**, **Likely pathogenic**, **VUS** (uncertain significance), **Likely benign** and **Benign**. A variant that already has a ClinVar entry can carry ClinVar's class instead of the one CPSR computed.
+- Only **Pathogenic** and **Likely pathogenic** call for clinical attention. The report lists them first, and the secondary findings in their own section.
+
+---
+
+## Clinical Filter (Step 23)
+
+**Where to look:** `${SAMPLE}/clinical/${SAMPLE}_clinical_summary.tsv`, one row per variant with gene, impact, scores and gnomAD constraint.
+
+Step 23 keeps the HIGH-impact variants, the MODERATE ones below 1% in gnomAD exomes, the ClinVar pathogenic ones and, when step 30 ran, the variants that CADD, SpliceAI, REVEL or AlphaMissense flag. Expect a few hundred rows. Most are heterozygous variants in genes that tolerate one broken copy. Read the rows in constrained genes (low LOEUF, see [gene constraint](clinvar.md#gnomad-gene-constraint-step-23-summary)) first, then the homozygous ones. The HIGH-impact rows have no frequency filter, so check gnomAD for each before you worry. [Step 23](../23-clinical-filter.md#what-gets-filtered) gives the exact rules.
+
+## Variant Prioritization (Step 31)
+
+**Where to look:** `${SAMPLE}/slivar/${SAMPLE}_slivar_summary.tsv`, `${SAMPLE}/slivar/${SAMPLE}_compound_hets.tsv` and `${SAMPLE}/slivar/${SAMPLE}_compound_het_pairs.tsv`.
+
+slivar sorts the damaging variants into four groups (rare HIGH, rare MODERATE with damaging scores, ClinVar pathogenic, and frequency unknown: HIGH or MODERATE with no population frequency, so not called rare) and lists genes where you carry two such variants. The genotypes alone cannot tell whether the two variants sit on different copies of the gene (in trans, which can cause recessive disease) or on the same copy (in cis, which usually does not), so step 31 reads the phase from the reads: `${SAMPLE}_compound_het_pairs.tsv` says `trans`, `cis` or `unknown` for each pair, with the reads that say so. Only variants close enough for one read pair to cover both (a few hundred bases) can be phased this way, so most pairs read `unknown`. Expect a thousand or more candidate pairs; nearly all are noise. A `trans` pair matters only in a gene that fits your health history, and an `unknown` one needs a parent's DNA or long reads to phase. See [step 31](../31-slivar.md#interpretation).
