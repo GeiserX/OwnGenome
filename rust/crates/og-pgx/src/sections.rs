@@ -643,13 +643,14 @@ pub fn hit_genes(geneinfo: Option<&str>) -> BTreeSet<String> {
         .collect()
 }
 
-/// Every allele of the genotype is called and none is the reference: both
-/// copies changed (`1/1`, `1|2`), or the one copy of a hemizygous call (`1`).
-/// `0/1`, `1|0` and `./1` are one changed copy.
+/// No allele of the genotype is the reference and at least one is a called
+/// ALT: both copies changed (`1/1`, `1|2`), the one copy of a hemizygous
+/// call (`1`), or one allele of a split multi-allelic site (`1/.`, `./1`).
+/// Step 06 splits a `1/2` record into `1/.` and `./1`: the missing allele
+/// is the other ALT, not the reference. `0/1`, `1|0` and `./.` are not.
 fn both_copies(genotype: &str) -> bool {
-    genotype
-        .split(['/', '|'])
-        .all(|a| !matches!(a.trim(), "" | "." | "0"))
+    let alleles = || genotype.split(['/', '|']).map(str::trim);
+    !alleles().any(|a| matches!(a, "" | "0")) && alleles().any(|a| a != ".")
 }
 
 /// The lines for each pathogenic or likely pathogenic hit in a gene of the
@@ -707,9 +708,16 @@ pub fn contraindication_lines(
                 );
                 match r.report_if {
                     ReportIf::Any => lines.push(format!("  WARNING: {head}{on}.")),
-                    ReportIf::Biallelic if both_copies(&h.genotype) => lines.push(format!(
-                        "  WARNING: {head}, both copies changed in this recessive gene{on}."
-                    )),
+                    ReportIf::Biallelic if both_copies(&h.genotype) => {
+                        let why = if h.genotype.split(['/', '|']).any(|a| a.trim() == ".") {
+                            " (the other copy is not the reference)"
+                        } else {
+                            ""
+                        };
+                        lines.push(format!(
+                            "  WARNING: {head}, both copies changed in this recessive gene{why}{on}."
+                        ));
+                    }
                     ReportIf::Biallelic if n >= 2 => lines.push(format!(
                         "  WARNING: {head}, {n} variants in {gene}, a recessive gene (phase not known){on}."
                     )),
