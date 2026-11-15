@@ -116,6 +116,9 @@ fn chroms(a: &Args, panel: &Path, maps: &Path) -> Result<Vec<String>> {
         if c.is_empty() {
             return Err(Fail("--chroms names no chromosome".into()));
         }
+        if let Some((_, x)) = c.iter().enumerate().find(|&(i, x)| c[..i].contains(x)) {
+            return Err(Fail(format!("--chroms names {x} twice")));
+        }
         return Ok(c);
     }
     let entries = std::fs::read_dir(panel).map_err(|e| crate::cannot_read(panel, &e))?;
@@ -161,6 +164,18 @@ pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
         )));
     }
     let vcf_path = PathBuf::from(a.req("--out"));
+    let truth_path = PathBuf::from(a.req("--truth"));
+    for p in [&vcf_path, &truth_path] {
+        if p.is_dir() {
+            return Err(Fail(format!("{}: is a folder, not a file", p.display())));
+        }
+    }
+    if vcf_path == truth_path {
+        return Err(Fail(format!(
+            "--out and --truth name one file: {}",
+            vcf_path.display()
+        )));
+    }
     let mut pending = crate::Pending::new();
     let file = pending.create(vcf_path.clone())?;
     let write_err = |e: std::io::Error| crate::cannot_write(&vcf_path, &e);
@@ -195,7 +210,7 @@ pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
     }
     let mut bed = Vec::new();
     simulate::write_truth(&mut bed, &done, &cfg).map_err(|e| Fail(e.0))?;
-    pending.put(PathBuf::from(a.req("--truth")), &bed)?;
+    pending.put(truth_path, &bed)?;
     pending.commit_all()?;
     let mut bp = vec![0i64; cfg.mu.len()];
     for c in &done {
@@ -362,6 +377,25 @@ mod tests {
             err.contains("argument --generations: invalid float value: 'x'"),
             "{err}"
         );
+        let (rc, _, err) = run_v(&args(&d, &["--out", &vcf, "--chroms", "chr2,chr21,chr2"]));
+        assert_eq!(rc, 1);
+        assert!(err.contains("--chroms names chr2 twice"), "{err}");
+        // An output that is a folder, or one file for both outputs, stops
+        // the run before anything is written.
+        std::fs::create_dir_all(d.path("folder.bed")).unwrap();
+        let mut v = args(&d, &["--out", &vcf]);
+        v[12] = d.path("folder.bed");
+        let (rc, _, err) = run_v(&v);
+        assert_eq!(rc, 1);
+        assert!(err.contains("folder.bed: is a folder, not a file"), "{err}");
+        let (rc, _, err) = run_v(&args(&d, &["--out", &d.path("folder.bed")]));
+        assert_eq!(rc, 1);
+        assert!(err.contains("folder.bed: is a folder, not a file"), "{err}");
+        let mut v = args(&d, &["--out", &vcf]);
+        v[12] = vcf.clone();
+        let (rc, _, err) = run_v(&v);
+        assert_eq!(rc, 1);
+        assert!(err.contains("--out and --truth name one file"), "{err}");
         let (rc, _, err) = run(&["simulate", "--og-scaffold-probe"]);
         assert_eq!(rc, 2);
         assert!(

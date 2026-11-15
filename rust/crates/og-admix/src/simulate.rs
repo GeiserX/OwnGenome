@@ -52,9 +52,15 @@ pub struct Config {
     pub seed: u64,
 }
 
+/// The most events per Morgan T or the switch rate may ask for. A higher
+/// rate gives tracts shorter than the gap between two panel sites, and at
+/// about 1e16 an event's place in cM stops moving, so the draw never ends.
+pub const MAX_PER_MORGAN: f64 = 10_000.0;
+
 impl Config {
-    /// Checks the numbers: T above 0, a switch rate of 0 or more, and
-    /// proportions above 0 that sum to 1 (within 1e-6), one per ancestry.
+    /// Checks the numbers: T above 0, a switch rate of 0 or more, both at
+    /// most [`MAX_PER_MORGAN`], and proportions above 0 that sum to 1
+    /// (within 1e-6), one per ancestry.
     pub fn check(&self) -> Result<()> {
         if !(self.generations.is_finite() && self.generations > 0.0) {
             return Err(Error(format!(
@@ -62,9 +68,21 @@ impl Config {
                 self.generations
             )));
         }
+        if self.generations > MAX_PER_MORGAN {
+            return Err(Error(format!(
+                "T is {}: ancestry events per Morgan must be at most {MAX_PER_MORGAN}",
+                self.generations
+            )));
+        }
         if !(self.switch_rate.is_finite() && self.switch_rate >= 0.0) {
             return Err(Error(format!(
                 "the switch rate is {}: copying switches per Morgan must be 0 or more",
+                self.switch_rate
+            )));
+        }
+        if self.switch_rate > MAX_PER_MORGAN {
+            return Err(Error(format!(
+                "the switch rate is {}: copying switches per Morgan must be at most {MAX_PER_MORGAN}",
                 self.switch_rate
             )));
         }
@@ -743,8 +761,14 @@ mod tests {
         c.generations = 0.0;
         assert!(run(c, &people()).contains("must be above 0"));
         let mut c = cfg(1);
+        c.generations = 1e300;
+        assert!(run(c, &people()).contains("at most 10000"));
+        let mut c = cfg(1);
         c.switch_rate = -1.0;
         assert!(run(c, &people()).contains("must be 0 or more"));
+        let mut c = cfg(1);
+        c.switch_rate = 20_000.0;
+        assert!(run(c, &people()).contains("at most 10000"));
         let mut c = cfg(1);
         c.mu[1].1 = 0.5;
         assert!(run(c, &people()).contains("sum to 1.1, not 1"));
