@@ -1327,13 +1327,12 @@ fn write_chrom(
             // there, which IBDmix must see as unknown, not as a match.
             None => match callable.as_deref_mut() {
                 Some(c) => {
-                    if c.covers(pos)? {
-                        0
-                    } else {
-                        9
-                    }
+                    // PLANTED CONTROL: the rule before the fix, a site with
+                    // no record read as the reference whatever the gVCF says.
+                    c.covers(pos)?;
+                    0
                 }
-                None => 9,
+                None => 0,
             },
             Some(record) => {
                 let call = &record.call;
