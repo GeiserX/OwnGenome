@@ -99,7 +99,7 @@ pub const ADDED: [&str; 10] = [
 pub const SUPPORT: [&str; 2] = ["Support", "Support_callers"];
 
 const EDGE_BP: i64 = 5;
-const COMMON_AF: f64 = 0.1;
+const COMMON_AF: f64 = 0.01;
 const CONSENSUS_BP: i64 = 1000;
 const DHFFC_MAX: f64 = 0.7;
 const DHBFC_MIN: f64 = 1.3;

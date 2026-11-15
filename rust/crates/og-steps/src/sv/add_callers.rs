@@ -424,7 +424,7 @@ pub fn run(o: &Opts, out: impl Write) -> Result<String, Error> {
         let mut keep = |_: &[&str], info: &Info, _: SvKind, _: (i64, i64)| {
             info.float("pytorP1") < o.max_eval && info.float("pytorQ0") < o.max_q0
         };
-        let t = take("cnv", cnvpytor, &mut keep, &mut records)?;
+        let t = take("cnvpytor", cnvpytor, &mut keep, &mut records)?;
         added_any |= t.added > 0;
         summary.push(format!(
             "cnvpytor: {} DEL/DUP calls with e-val < {} and q0 < {}, {} added",

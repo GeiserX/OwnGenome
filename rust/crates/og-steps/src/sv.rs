@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashMap};
 /// Delly's own line between small and large SVs in its read counts
 /// (`src/delly.h`, `indelsize`); short-read Delly can mark PASS a long SV
 /// whose RDCN shows no change, and a short one rests on split reads alone.
-pub const DEPTH_MIN_SIZE: i64 = 1_000_000_000;
+pub const DEPTH_MIN_SIZE: i64 = 1000;
 
 /// The type of a call, as the rules read it: `DUP:TANDEM` is a DUP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

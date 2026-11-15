@@ -29,7 +29,7 @@ use crate::TextLines;
 /// The two header lines the rewrite declares. The script name in them is
 /// kept: the file they go into is a stable output.
 const NEW_INFO: [&str; 2] = [
-    "##INFO=<ID=ORIG_LEN,Number=1,Type=Integer,Description=\"SVLEN before sv_svlen_fix.py set it to the net length change len(ALT)-len(REF)\">",
+    "##INFO=<ID=ORIG_SVLEN,Number=1,Type=Integer,Description=\"SVLEN before sv_svlen_fix.py set it to the net length change len(ALT)-len(REF)\">",
     "##INFO=<ID=ORIG_END,Number=1,Type=Integer,Description=\"END before sv_svlen_fix.py set it to POS-1+len(REF)-len(ALT) for a net deletion, so AnnotSV reads the net length\">",
 ];
 
