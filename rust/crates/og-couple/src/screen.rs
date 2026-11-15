@@ -214,6 +214,17 @@ fn run(a: &args::Args, said: &mut Vec<String>) -> Result<(), Die> {
             code: 1,
         });
     }
+    // couple_<x>_<y> must name one couple: with "_" in the ids, A and B_C
+    // and A_B and C would write the same files.
+    let mut names: HashMap<String, &(String, String)> = HashMap::new();
+    for c in &couples {
+        if let Some(o) = names.insert(format!("couple_{}_{}", c.0, c.1), c) {
+            return Err(Die::one(format!(
+                "{pedigree}: the couples {} + {} and {} + {} would both write couple_{}_{}.tsv: rename a sample",
+                o.0, o.1, c.0, c.1, c.0, c.1
+            )));
+        }
+    }
     let out_dir = req("--out-dir");
     std::fs::create_dir_all(out_dir)
         .map_err(|e| Die::one(format!("cannot create {out_dir}: {e}")))?;

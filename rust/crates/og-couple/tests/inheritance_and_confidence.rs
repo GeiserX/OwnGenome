@@ -148,6 +148,91 @@ fn a_partner_with_both_copies_of_a_dominant_gene_passes_it_to_every_child() {
 }
 
 #[test]
+fn two_changes_in_a_dominant_gene_say_the_chance_can_be_higher() {
+    let t = Dir::new("dominant-two");
+    let second = hit("LDLR", "GT", "0/1", "").replacen("\tA\tG\t", "\tC\tT\t", 1);
+    let a = plain(&[hit("LDLR", "GT", "0/1", ""), second]);
+    let (rows, _) = screen(&t, "t", &a, &plain(&[]), true);
+    let why = cell(&rows, "LDLR", "explanation");
+    assert_eq!(
+        cell(&rows, "LDLR", "offspring_risk"),
+        "each child 1 in 2, dominant"
+    );
+    assert!(
+        why.contains(
+            "A has two changes in the gene; when they sit on different copies, every child gets one"
+        ),
+        "{why}"
+    );
+    // Control: one change keeps the plain 1 in 2.
+    let (rows, _) = screen(
+        &t,
+        "o",
+        &plain(&[hit("LDLR", "GT", "0/1", "")]),
+        &plain(&[]),
+        true,
+    );
+    assert!(!cell(&rows, "LDLR", "explanation").contains("two changes"));
+}
+
+#[test]
+fn both_partners_in_one_x_linked_recessive_gene_give_the_daughters_risk() {
+    let t = Dir::new("xl-both");
+    // A is female, B male: OTC is X-linked recessive.
+    let b = plain(&[hit("OTC", "GT", "1", "")]);
+    let (rows, md) = screen(&t, "het", &plain(&[hit("OTC", "GT", "0/1", "")]), &b, true);
+    assert_eq!(
+        cell(&rows, "OTC", "offspring_risk"),
+        "A: sons 1 in 2; B: daughters carriers; daughters 1 in 2, can be affected"
+    );
+    let why = cell(&rows, "OTC", "explanation");
+    assert!(
+        why.contains(
+            "every daughter inherits B's changed X, and has a 1 in 2 chance of inheriting A's too"
+        ),
+        "{why}"
+    );
+    assert!(md.contains(why), "the report says it too");
+    let (rows, _) = screen(&t, "hom", &plain(&[hit("OTC", "GT", "1/1", "")]), &b, true);
+    assert!(
+        cell(&rows, "OTC", "offspring_risk").ends_with("; every daughter can be affected"),
+        "{}",
+        cell(&rows, "OTC", "offspring_risk")
+    );
+    // Control: one partner alone keeps its own line.
+    let (rows, _) = screen(&t, "one", &plain(&[]), &b, true);
+    assert_eq!(
+        cell(&rows, "OTC", "offspring_risk"),
+        "B: daughters carriers"
+    );
+}
+
+#[test]
+fn two_couples_with_one_file_name_are_refused() {
+    let t = Dir::new("collide");
+    let ped = t.put(
+        "pedigree.tsv",
+        "sample\tsex\tfather\tmother\tpartner\nA\tfemale\t.\t.\tB_C\nB_C\tmale\t.\t.\tA\n\
+         A_B\tfemale\t.\t.\tC\nC\tmale\t.\t.\tA_B\n",
+    );
+    let v = t.put("hits.vcf", &plain(&[hit("CFTR", "GT", "0/1", "")]));
+    let out = t.path("out");
+    let genes = repo("assets/carrier_genes.tsv");
+    let mut args = vec!["--pedigree", &ped, "--genes", &genes, "--out-dir", &out];
+    let cv: Vec<String> = ["A", "B_C", "A_B", "C"]
+        .iter()
+        .map(|s| format!("{s}={v}"))
+        .collect();
+    for c in &cv {
+        args.extend(["--clinvar", c]);
+    }
+    let (rc, log) = og("screen", &args);
+    assert_eq!(rc, 2, "{log}");
+    assert!(log.contains("would both write couple_A_B_C.tsv"), "{log}");
+    assert!(!std::path::Path::new(&format!("{out}/couple_A_B_C.tsv")).exists());
+}
+
+#[test]
 fn the_list_marks_the_dominant_genes_of_the_acmg_secondary_findings() {
     let list = genes(&repo("assets/carrier_genes.tsv"));
     let mut acmg: HashMap<String, String> = HashMap::new();
@@ -292,6 +377,15 @@ fn a_haploid_call_on_an_autosome_is_one_copy() {
         cell(&rows, "CFTR", "offspring_risk"),
         "1 in 2 per pregnancy"
     );
+    // A male's haploid call in PAR1 is one copy too, not hemizygous.
+    let a = plain(&[hit("CSF2RA", "GT", "0/1", "")]);
+    let (rows, _) = screen(&t, "par", &a, &plain(&[hit("CSF2RA", "GT", "1", "")]), true);
+    assert_eq!(
+        cell(&rows, "CSF2RA", "offspring_risk"),
+        "1 in 4 per pregnancy"
+    );
+    let fb = cell(&rows, "CSF2RA", "findings_b");
+    assert!(fb.contains("one copy, a haploid call (1)"), "{fb}");
 }
 
 #[test]

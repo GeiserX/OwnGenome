@@ -81,9 +81,13 @@ fn bad(path: &str, what: &str) -> Die {
     Die::one(format!("{path}: not well-formed XML ({what})"))
 }
 
-/// Calls `f` with every event of the XML file at `path` (plain or gzip).
+/// Calls `f` with every event of the XML file at `path` (plain or gzip). A
+/// file with no root element, or one that ends before its root closes (a
+/// truncated download), is refused.
 pub fn each_event(path: &str, mut f: impl FnMut(Event<'_>) -> Result<(), Die>) -> Result<(), Die> {
     let mut r = og_io::open(path).map_err(|e| Die::io(path, &e))?;
+    // Open elements, and whether a root has started.
+    let (mut depth, mut root) = (0usize, false);
     let mut buf: Vec<u8> = Vec::new();
     let io = |e: std::io::Error| Die::io(path, &e);
     loop {
@@ -98,7 +102,11 @@ pub fn each_event(path: &str, mut f: impl FnMut(Event<'_>) -> Result<(), Die>) -
             f(Event::Text(decode(text)))?;
         }
         if !open {
-            return Ok(());
+            return match (root, depth) {
+                (false, _) => Err(bad(path, "no root element")),
+                (true, 0) => Ok(()),
+                _ => Err(bad(path, "the file ends before its root element closes")),
+            };
         }
         buf.clear();
         r.read_until(b'>', &mut buf).map_err(io)?;
@@ -132,6 +140,9 @@ pub fn each_event(path: &str, mut f: impl FnMut(Event<'_>) -> Result<(), Die>) -
         }
         let tag = std::str::from_utf8(&buf).map_err(|_| bad(path, "a tag is not UTF-8"))?;
         if let Some(name) = tag.strip_prefix('/') {
+            depth = depth
+                .checked_sub(1)
+                .ok_or_else(|| bad(path, "an end tag with no start tag"))?;
             f(Event::End(name.trim()))?;
             continue;
         }
@@ -143,9 +154,15 @@ pub fn each_event(path: &str, mut f: impl FnMut(Event<'_>) -> Result<(), Die>) -
             .find(|c: char| c.is_ascii_whitespace())
             .unwrap_or(tag.len());
         let (name, attrs) = tag.split_at(split);
+        if root && depth == 0 {
+            return Err(bad(path, "a second root element"));
+        }
+        root = true;
         f(Event::Start(name, attrs))?;
         if closed {
             f(Event::End(name))?;
+        } else {
+            depth += 1;
         }
     }
 }
@@ -189,5 +206,32 @@ mod tests {
                 "E R"
             ]
         );
+    }
+
+    #[test]
+    fn a_truncated_or_rootless_file_is_refused() {
+        let dir = std::env::temp_dir().join(format!("og-couple-xml-cut-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |name: &str, body: &str| {
+            let p = dir.join(name);
+            std::fs::write(&p, body).unwrap();
+            each_event(&p.to_string_lossy(), |_| Ok(()))
+                .err()
+                .map(|e| e.lines.join(" "))
+        };
+        let cut = run("cut.xml", "<?xml version=\"1.0\"?><R><N>a</N><D>");
+        assert!(cut.unwrap().contains("ends before its root element closes"));
+        let none = run("none.xml", "<?xml version=\"1.0\"?>\n");
+        assert!(none.unwrap().contains("no root element"));
+        let two = run("two.xml", "<R/><S/>");
+        assert!(two.unwrap().contains("a second root element"));
+        let stray = run("stray.xml", "<R></R></S>");
+        assert!(stray.unwrap().contains("an end tag with no start tag"));
+        // Control: a whole document passes, with a comment after its root.
+        assert_eq!(
+            run("whole.xml", "<R><N>a</N><E/></R>\n<!-- end -->\n"),
+            None
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

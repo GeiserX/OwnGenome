@@ -249,6 +249,46 @@ fn xlr_lines(g: &Gene, who: &str, sex: Option<&str>, f: &[&Finding]) -> (String,
     }
 }
 
+/// The daughters' risk when a female and a male partner both carry a change
+/// in one X-linked recessive gene: each daughter gets the father's X, so she
+/// is affected when she also gets a changed X from her mother. `None` for
+/// any other pair, and for an X-linked dominant gene, whose lines already
+/// say a daughter can be affected.
+fn xlr_both(
+    g: &Gene,
+    partners: [(&str, Option<&str>, &Vec<&Finding>); 2],
+) -> Option<(String, String)> {
+    if g.inheritance == Inheritance::Xld || partners.iter().any(|(_, _, f)| f.is_empty()) {
+        return None;
+    }
+    let of = |want: &str| {
+        partners
+            .iter()
+            .find(|(_, s, _)| *s == Some(want))
+            .map(|(w, _, f)| (*w, f.as_slice()))
+    };
+    let ((mother, fm), (father, _)) = (of("female")?, of("male")?);
+    Some(if two_copies(fm) {
+        (
+            "every daughter can be affected".to_owned(),
+            format!(
+                "Both partners carry a change in {}: every daughter inherits a changed X from each parent and \
+                 can have {}.",
+                g.name, g.condition
+            ),
+        )
+    } else {
+        (
+            "daughters 1 in 2, can be affected".to_owned(),
+            format!(
+                "Both partners carry a change in {}: every daughter inherits {father}'s changed X, and has a 1 \
+                 in 2 chance of inheriting {mother}'s too; a daughter with both can have {}.",
+                g.name, g.condition
+            ),
+        )
+    })
+}
+
 fn joined(f: &[&Finding]) -> String {
     if f.is_empty() {
         ".".to_owned()
@@ -297,19 +337,21 @@ pub fn screen_couple(
                 .filter(|(_, f)| !f.is_empty())
                 .map(|(w, f)| xl_lines(g, w, sex(w), f))
                 .collect();
-            (
-                Outcome::XLinked,
-                parts
-                    .iter()
-                    .map(|p| p.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join("; "),
-                parts
-                    .iter()
-                    .map(|p| p.1.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            )
+            let mut risk = parts
+                .iter()
+                .map(|p| p.0.as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
+            let mut why = parts
+                .iter()
+                .map(|p| p.1.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            if let Some((r, w)) = xlr_both(g, [(a, sex(a), &fa), (b, sex(b), &fb)]) {
+                let _ = write!(risk, "; {r}");
+                let _ = write!(why, " {w}");
+            }
+            (Outcome::XLinked, risk, why)
         } else if !fa.is_empty() && !fb.is_empty() {
             let (o, r, mut w) = ar_row(g, a, b, &fa, &fb);
             if g.dominant == Dominant::Autosomal {
@@ -340,16 +382,24 @@ pub fn screen_couple(
                     ),
                 )
             } else {
+                let mut w = format!(
+                    "Only {who} carries a change in {name}. {name} also causes a dominant condition (it is on the \
+                     ACMG secondary findings list): a child who inherits it can be affected, 1 in 2 per child, and \
+                     {who} can be too. For {} (autosomal recessive), a child can be a carrier like {who}, unless \
+                     {other} carries a change this screen does not see.",
+                    g.condition
+                );
+                if f.len() > 1 {
+                    let _ = write!(
+                        w,
+                        " {who} has two changes in the gene; when they sit on different copies, every child gets \
+                         one, and the chance is higher."
+                    );
+                }
                 (
                     Outcome::OnePartner,
                     "each child 1 in 2, dominant".to_owned(),
-                    format!(
-                        "Only {who} carries a change in {name}. {name} also causes a dominant condition (it is on \
-                         the ACMG secondary findings list): a child who inherits it can be affected, 1 in 2 per \
-                         child, and {who} can be too. For {} (autosomal recessive), a child can be a carrier like \
-                         {who}, unless {other} carries a change this screen does not see.",
-                        g.condition
-                    ),
+                    w,
                 )
             }
         } else {

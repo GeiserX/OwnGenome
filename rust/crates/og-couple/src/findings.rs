@@ -120,7 +120,8 @@ fn sex_chrom(chrom: &str) -> bool {
 /// allele still counts in the ploidy: step 06 splits a GT 1/2 record into
 /// `./1` halves, and each half is one copy, never hom. A haploid call on an
 /// autosome (GT `1`) is one copy too: nothing shows that the other copy
-/// carries the change.
+/// carries the change. So is a haploid call in a PAR, where a male has two
+/// copies as on an autosome.
 pub fn zygosity(gt: &str, chrom: &str, sex: Option<&str>, in_par: bool) -> Option<Zygosity> {
     let alleles: Vec<&str> = gt.split(['/', '|']).filter(|a| !a.is_empty()).collect();
     let alt = alleles.iter().filter(|a| !matches!(**a, "0" | ".")).count();
@@ -131,7 +132,7 @@ pub fn zygosity(gt: &str, chrom: &str, sex: Option<&str>, in_par: bool) -> Optio
         return Some(Zygosity::Hemizygous);
     }
     if alleles.len() == 1 {
-        return Some(if sex_chrom(chrom) {
+        return Some(if sex_chrom(chrom) && !in_par {
             Zygosity::Hemizygous
         } else {
             Zygosity::Het
@@ -154,9 +155,9 @@ fn half_call(gt: &str) -> bool {
     (alt(b[0]) && b[2] == b'.') || (b[0] == b'.' && alt(b[2]))
 }
 
-/// A haploid call on an autosome: one allele, as `1`.
-fn haploid_autosome(gt: &str, chrom: &str) -> bool {
-    !sex_chrom(chrom) && !gt.is_empty() && !gt.contains(['/', '|'])
+/// A haploid call: one allele, as `1`.
+fn haploid(gt: &str) -> bool {
+    !gt.is_empty() && !gt.contains(['/', '|'])
 }
 
 /// ClinVar's condition for the allele (`CLNDN`), as words, without its
@@ -275,7 +276,7 @@ pub fn clinvar(
             // other reports word it.
             let words = if z == Zygosity::Het && half_call(gt) {
                 format!("one copy, other copy not called ref ({gt})")
-            } else if z == Zygosity::Het && haploid_autosome(gt, &h.chrom) {
+            } else if z == Zygosity::Het && haploid(gt) {
                 format!("one copy, a haploid call ({gt})")
             } else {
                 z.word().to_owned()
@@ -731,8 +732,16 @@ mod tests {
         assert_eq!(z("1", "chrX", Some("female")), Some(Zygosity::Hemizygous));
         // A haploid call on an autosome is one copy, never hom.
         assert_eq!(z("1", "chr7", Some("male")), Some(Zygosity::Het));
-        assert!(haploid_autosome("1", "chr7") && !haploid_autosome("1", "chrX"));
-        assert!(!haploid_autosome("0/1", "chr7"));
+        assert!(haploid("1") && !haploid("0/1") && !haploid(""));
+        // So is a haploid call in a PAR: a male has two copies there.
+        assert_eq!(
+            zygosity("1", "chrX", Some("male"), true),
+            Some(Zygosity::Het)
+        );
+        assert_eq!(
+            zygosity("1", "chrX", Some("female"), true),
+            Some(Zygosity::Het)
+        );
         assert_eq!(z("./1", "chrX", Some("male")), Some(Zygosity::Hemizygous));
         assert_eq!(z("./.", "chr7", Some("female")), None);
         assert_eq!(z("./0", "chr7", Some("female")), None);
