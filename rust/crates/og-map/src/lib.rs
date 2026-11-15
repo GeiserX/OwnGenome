@@ -12,6 +12,7 @@ pub mod facts;
 pub mod findings;
 pub mod genes;
 pub mod layers;
+pub mod predicate;
 pub mod reference;
 pub mod stamp;
 pub mod text;
