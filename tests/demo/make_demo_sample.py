@@ -29,7 +29,7 @@ Borrowed, not rewritten:
     og paraphase table, step 39's from bin/couple_report.py and step 42's
     from og traits table, each fed made-up inputs; step 46's table and
     step 35's HBA1/HBA2 table are what og cn call writes for made-up depths
-    (HBA_TABLE and LPA_TABLE; tests/test_hba_copy_number.py and
+    (HBA_TABLE and LPA_TABLE; og-cn's cargo test port_tests_cn_traits and
     tests/test_lpa_kiv2.py check that og still writes them), step 49's depth
     rows with og chip's detection limit, at made-up depths; the
     tables of steps 02, 40, 41, 45, 47, 48, 50, 51, 52 and 53 are written
