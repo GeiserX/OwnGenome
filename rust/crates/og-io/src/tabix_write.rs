@@ -316,16 +316,17 @@ fn svlen_on_ref(alt: &[u8]) -> bool {
 /// htslib 1.24's `tbx_parse1` (the htslib of the pipeline's pysam and
 /// bcftools); `None` for a line it cannot place. A NUL byte splits columns
 /// as a tab does, as in htslib. The flag says the POS was 0 or below and
-/// moved to the first base.
+/// moved to the first base. `sv` is scratch space.
 ///
 /// The end is the largest of: `INFO/END` when after POS, the REF length,
 /// the largest `|SVLEN|` of a `<DEL>`, `<DUP>`, `<INV>` or `<CNV>` ALT, and
 /// the largest sample `LEN` when an ALT is `<*>` or `<NON_REF>`.
-fn parse(line: &[u8]) -> Option<(&[u8], i64, i64, bool)> {
+fn parse<'a>(line: &'a [u8], sv: &mut Vec<bool>) -> Option<(&'a [u8], i64, i64, bool)> {
     let (mut name, mut beg, mut end, mut clamped) = (None, -1i64, -1i64, false);
     let (mut reflen, mut svlen, mut fmtlen) = (0i64, 0i64, 0i64);
-    // Per allele, REF first: an ALT whose SVLEN counts.
-    let mut sv: Vec<bool> = Vec::new();
+    // Per allele, REF first: an ALT whose SVLEN counts. The buffer is the
+    // caller's, so a line costs no allocation.
+    sv.clear();
     let (mut alleles, mut use_svlen, mut getlen) = (0usize, false, false);
     let mut lenpos = None;
     let len = |f: &[u8]| i64::try_from(f.len()).unwrap_or(i64::MAX);
@@ -671,6 +672,11 @@ impl Builder {
 
     /// The sequence id of `name`, added when new.
     fn tid(&mut self, name: &[u8]) -> usize {
+        if let Some(id) = self.last_tid
+            && self.names[id] == name
+        {
+            return id;
+        }
         if let Some(&id) = self.ids.get(name) {
             return id;
         }
@@ -683,31 +689,35 @@ impl Builder {
     /// `hts_idx_push`: one record of `tid` over `[beg, end)`, which ends
     /// at virtual offset `offset`.
     fn push(&mut self, tid: usize, beg: i64, end: i64, offset: u64) -> Result<(), String> {
-        let name = String::from_utf8_lossy(&self.names[tid]).into_owned();
+        let name = || String::from_utf8_lossy(&self.names[tid]).into_owned();
         if beg > MAX_POS || end > MAX_POS {
             return Err(format!(
-                "{name}:{beg}-{end} is past position {MAX_POS}, the last a .tbi index can hold"
+                "{n}:{beg}-{end} is past position {MAX_POS}, the last a .tbi index can hold",
+                n = name()
             ));
         }
         if self.last_tid != Some(tid) {
             if tid < self.seqs.len() {
                 return Err(format!(
-                    "{name} starts again after another sequence: the records are not sorted"
+                    "{n} starts again after another sequence: the records are not sorted",
+                    n = name()
                 ));
             }
             self.last_tid = Some(tid);
             self.last_bin = None;
         } else if self.last_coor > beg {
             return Err(format!(
-                "positions go back on {name}: {} is followed by {}; the records are not sorted",
+                "positions go back on {n}: {} is followed by {}; the records are not sorted",
                 self.last_coor + 1,
-                beg + 1
+                beg + 1,
+                n = name()
             ));
         }
         if end < beg {
             return Err(format!(
-                "the record at {name}:{} ends at {end}, before it begins",
-                beg + 1
+                "the record at {n}:{} ends at {end}, before it begins",
+                beg + 1,
+                n = name()
             ));
         }
         if tid == self.seqs.len() {
@@ -752,30 +762,29 @@ impl Builder {
         Ok(())
     }
 
-    /// `hts_idx_finish` and the `.tbi` as `hts_idx_save` writes it,
-    /// before compression. `end` is the virtual offset of the file's end.
-    fn finish(mut self, end: u64) -> Vec<u8> {
+    /// `hts_idx_finish`, then the `.tbi` as `hts_idx_save` writes it,
+    /// before compression, into `out`. `end` is the virtual offset of the
+    /// file's end.
+    fn finish(mut self, end: u64, out: &mut impl Write) -> io::Result<()> {
         if let Some(saved) = self.save_bin {
             let bins = &mut self.seqs[self.save_tid].bins;
             bins.insert(saved, (self.save_off, end));
             bins.insert(META_BIN, (self.off_beg, end));
             bins.insert(META_BIN, (self.n_mapped, 0));
         }
-        let names: Vec<u8> = self
-            .names
-            .iter()
-            .flat_map(|n| n.iter().copied().chain([0]))
-            .collect();
-        let mut out = b"TBI\x01".to_vec();
-        let int = |out: &mut Vec<u8>, v: usize| {
-            out.extend(i32::try_from(v).unwrap_or(i32::MAX).to_le_bytes());
+        let int = |out: &mut dyn Write, v: usize| {
+            out.write_all(&i32::try_from(v).unwrap_or(i32::MAX).to_le_bytes())
         };
-        int(&mut out, self.seqs.len());
+        out.write_all(b"TBI\x01")?;
+        int(out, self.seqs.len())?;
         for v in VCF_CONF {
-            out.extend(v.to_le_bytes());
+            out.write_all(&v.to_le_bytes())?;
         }
-        int(&mut out, names.len());
-        out.extend(&names);
+        int(out, self.names.iter().map(|n| n.len() + 1).sum())?;
+        for n in &self.names {
+            out.write_all(n)?;
+            out.write_all(&[0])?;
+        }
         for seq in &mut self.seqs {
             // An empty window takes the offset of the next one: the last
             // window always has one.
@@ -786,39 +795,60 @@ impl Builder {
             }
             seq.bins.compress();
             let bins = &seq.bins;
-            int(&mut out, bins.size);
+            int(out, bins.size)?;
             for k in bins.live() {
-                out.extend(bins.keys[k].to_le_bytes());
-                int(&mut out, bins.vals[k].len());
+                out.write_all(&bins.keys[k].to_le_bytes())?;
+                int(out, bins.vals[k].len())?;
                 for &(a, b) in &bins.vals[k] {
-                    out.extend(a.to_le_bytes());
-                    out.extend(b.to_le_bytes());
+                    out.write_all(&a.to_le_bytes())?;
+                    out.write_all(&b.to_le_bytes())?;
                 }
             }
-            int(&mut out, seq.linear.len());
+            int(out, seq.linear.len())?;
             for o in &seq.linear {
-                out.extend(o.to_le_bytes());
+                out.write_all(&o.to_le_bytes())?;
             }
         }
         // No record without coordinates: htslib writes the count anyway.
-        out.extend(0u64.to_le_bytes());
-        out
+        out.write_all(&0u64.to_le_bytes())
     }
 }
 
-/// An index built in memory.
+/// An index read from a VCF, not yet written.
 #[derive(Debug)]
-pub struct Built {
-    /// The `.tbi`, inflated.
-    pub tbi: Vec<u8>,
+pub struct Index {
+    builder: Builder,
+    end: u64,
     /// How many records had a POS of 0 or below.
     pub clamped: u64,
 }
 
-/// The `.tbi` of the BGZF VCF read from `input`.
-pub fn build(input: impl Read) -> io::Result<Built> {
+impl Index {
+    /// Writes the `.tbi`, inflated, into `out`.
+    pub fn write_to(self, out: &mut impl Write) -> io::Result<()> {
+        self.builder.finish(self.end, out)
+    }
+
+    /// The `.tbi`, inflated.
+    pub fn into_bytes(self) -> Vec<u8> {
+        let mut out = Vec::new();
+        self.write_to(&mut out).expect("a Vec takes every write");
+        out
+    }
+
+    /// Writes the `.tbi` to `path` as BGZF, atomically.
+    pub fn write_tbi(self, path: &Path) -> io::Result<()> {
+        let mut w = bgzf::Writer::new(AtomicFile::create(path)?, NonZero::<usize>::MIN)?;
+        self.write_to(&mut w)?;
+        w.finish()?.commit()
+    }
+}
+
+/// Reads the BGZF VCF `input` and builds its index.
+pub fn build(input: impl Read) -> io::Result<Index> {
     let mut lines = Lines::new(input);
     let mut line = Vec::new();
+    let mut sv = Vec::new();
     let mut builder: Option<Builder> = None;
     let mut clamped = 0;
     let mut header_end = 0;
@@ -830,7 +860,7 @@ pub fn build(input: impl Read) -> io::Result<Built> {
             continue;
         }
         let b = builder.get_or_insert_with(|| Builder::new(header_end));
-        let Some((name, beg, end, low)) = parse(&line) else {
+        let Some((name, beg, end, low)) = parse(&line, &mut sv) else {
             let shown = String::from_utf8_lossy(&line[..line.len().min(60)]).into_owned();
             return Err(invalid(format!(
                 "line {lineno} has no position to read: {shown:?}"
@@ -841,18 +871,11 @@ pub fn build(input: impl Read) -> io::Result<Built> {
         b.push(tid, beg, end, lines.tell())
             .map_err(|e| invalid(format!("line {lineno}: {e}")))?;
     }
-    let builder = builder.unwrap_or_else(|| Builder::new(header_end));
-    Ok(Built {
-        tbi: builder.finish(lines.tell()),
+    Ok(Index {
+        builder: builder.unwrap_or_else(|| Builder::new(header_end)),
+        end: lines.tell(),
         clamped,
     })
-}
-
-/// Writes `tbi` (inflated) to `path` as BGZF, atomically.
-pub fn write_tbi(tbi: &[u8], path: &Path) -> io::Result<()> {
-    let mut w = bgzf::Writer::new(AtomicFile::create(path)?, NonZero::<usize>::MIN)?;
-    w.write_all(tbi)?;
-    w.finish()?.commit()
 }
 
 const USAGE: &str = "usage: og vcf index [-f] VCF.gz\n";
@@ -891,21 +914,21 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         );
         return 1;
     }
-    let built = match File::open(&vcf).and_then(|f| build(BufReader::with_capacity(1 << 16, f))) {
-        Ok(b) => b,
+    let index = match File::open(&vcf).and_then(|f| build(BufReader::with_capacity(1 << 16, f))) {
+        Ok(i) => i,
         Err(e) => {
             let _ = writeln!(err, "og vcf index: {}: {e}", vcf.display());
             return 1;
         }
     };
-    if built.clamped > 0 {
+    if index.clamped > 0 {
         let _ = writeln!(
             err,
             "og vcf index: warning: {} records with a POS of 0 or below are indexed at the first base, as tabix does",
-            built.clamped
+            index.clamped
         );
     }
-    if let Err(e) = write_tbi(&built.tbi, &tbi) {
+    if let Err(e) = index.write_tbi(&tbi) {
         let _ = writeln!(err, "og vcf index: {}: {e}", tbi.display());
         return 1;
     }
@@ -1053,7 +1076,7 @@ mod tests {
             .filter(|l| !l.is_empty() && l[0] != b'#')
             .map(|l| {
                 let (s, b, e) = crate::tabix::interval(&conf, l).unwrap();
-                let (_, ib, ie, _) = parse(l).unwrap();
+                let (_, ib, ie, _) = parse(l, &mut Vec::new()).unwrap();
                 assert!(ib as u64 == b && ie as u64 >= e, "{l:?}");
                 (l.to_vec(), s.to_vec(), b as i64, e as i64)
             })
@@ -1094,7 +1117,9 @@ mod tests {
     /// scan of the text, and how many lines the scan found.
     fn wrong_regions(text: &[u8], gz: &Path, tbi: &[u8], name: &str) -> (usize, usize) {
         let idx = temp(&format!("{name}.tbi"));
-        write_tbi(tbi, &idx).unwrap();
+        let mut w = bgzf::Writer::new(File::create(&idx).unwrap(), NonZero::<usize>::MIN).unwrap();
+        w.write_all(tbi).unwrap();
+        w.finish().unwrap();
         let mut r = Reader::with_index(gz, &idx).unwrap();
         let recs = records(text);
         let (mut wrong, mut hits) = (0, 0);
@@ -1170,7 +1195,9 @@ mod tests {
 
     #[test]
     fn intervals_follow_tbx_parse1() {
-        let p = |l: &str| parse(l.as_bytes()).map(|(s, b, e, c)| (s.to_vec(), b, e, c));
+        let p = |l: &str| {
+            parse(l.as_bytes(), &mut Vec::new()).map(|(s, b, e, c)| (s.to_vec(), b, e, c))
+        };
         let c = b"c".to_vec();
         assert_eq!(
             p("c\t10\t.\tACG\tA\t.\t.\t."),
@@ -1291,8 +1318,8 @@ mod tests {
             let mut tbi = vcf.clone().into_os_string();
             tbi.push(".tbi");
             let want = inflate(Path::new(&tbi));
-            let got = build(File::open(&vcf).unwrap()).unwrap();
-            assert_eq!(got.tbi, want, "{rel}: the index differs from htslib's");
+            let got = build(File::open(&vcf).unwrap()).unwrap().into_bytes();
+            assert_eq!(got, want, "{rel}: the index differs from htslib's");
         }
     }
 
@@ -1305,12 +1332,12 @@ mod tests {
         let (text, gz) = synthetic(7);
         let path = temp("synthetic.vcf.gz");
         std::fs::write(&path, &gz).unwrap();
-        let built = build(&gz[..]).unwrap();
-        let (wrong, hits) = wrong_regions(&text, &path, &built.tbi, "good");
+        let tbi = build(&gz[..]).unwrap().into_bytes();
+        let (wrong, hits) = wrong_regions(&text, &path, &tbi, "good");
         assert!(hits > 10_000, "the regions found only {hits} lines");
         assert_eq!(wrong, 0, "{wrong} regions differ from a scan");
 
-        let mut bad = built.tbi.clone();
+        let mut bad = tbi.clone();
         let (p, chunks) = longest_chunk(&bad);
         assert!(chunks > 0, "no chunk to move");
         let end: [u8; 8] = bad[p + 8..p + 16].try_into().unwrap();
@@ -1385,7 +1412,7 @@ mod tests {
     fn an_empty_or_header_only_file_indexes_no_sequence() {
         let head = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
         for data in [bgzip(&[b""]), bgzip(&[head.as_bytes()])] {
-            let tbi = build(&data[..]).unwrap().tbi;
+            let tbi = build(&data[..]).unwrap().into_bytes();
             assert_eq!(&tbi[4..8], &0i32.to_le_bytes());
             assert_eq!(tbi.len(), 4 + 4 + 24 + 4 + 8);
         }
@@ -1521,7 +1548,7 @@ mod tests {
             out
         };
         for (name, gz) in &inputs {
-            let ours = build(&gz[..]).unwrap().tbi;
+            let ours = build(&gz[..]).unwrap().into_bytes();
             let vcf = [("x.vcf.gz", &gz[..])];
             let htslib = in_image(&vcf, "bcftools index -t x.vcf.gz && cat x.vcf.gz.tbi");
             assert_eq!(
