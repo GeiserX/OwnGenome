@@ -642,8 +642,11 @@ install_vep_cache() {
     return 1
   fi
   mkdir -p "${dir}/homo_sapiens"
-  fetch "$url" "$tarball" sum "$(dirname "$url")/CHECKSUMS" || return 1
+  # fetch publishes the tarball only after its check, so one already here is
+  # whole: an install stopped during extraction unpacks it again.
+  [ -f "$tarball" ] || fetch "$url" "$tarball" sum "$(dirname "$url")/CHECKSUMS" || return 1
   echo "  Extracting $(basename "$tarball")..."
+  rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX")
   if ! tar xzf "$tarball" -C "$tmp" || [ ! -f "${tmp}/homo_sapiens/${rel}_GRCh38/info.txt" ]; then
     rm -rf "$tmp"
@@ -657,18 +660,28 @@ install_vep_cache() {
   rm -rf "$tmp" "$tarball"
 }
 
-# clinical_disk_ok DIR PEAK_GB LABEL: GB as du counts them (2^30 bytes),
-# plus a 5 GB margin.
+# clinical_disk_ok DIR PEAK_GB LABEL [ARCHIVE]: GB as du counts them
+# (2^30 bytes), plus a 5 GB margin.
 # Use the destination's filesystem, creating the directory when it is new.
+# The bytes of ARCHIVE, or of its interrupted ARCHIVE.part, are already part
+# of the peak, so a resumed download needs only the rest.
 # An unreadable df is a failed preflight, never permission to fill the disk.
 clinical_disk_ok() {
-  local dir=$1 peak=$2 label=$3 free
+  local dir=$1 peak=$2 label=$3 archive=${4:-} free have=0 f
   mkdir -p "$dir" || return 1
   free=$(df -Pk "$dir" 2>/dev/null | awk 'NR == 2 {print $4}') || free=""
   case "$free" in
     ''|*[!0-9]*) echo "[WARN] Cannot read free space for ${label}; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; return 1 ;;
   esac
-  if [ "$free" -lt "$(( (peak + 5) * 1048576 ))" ]; then
+  if [ -n "$archive" ]; then
+    for f in "$archive" "${archive}.part"; do
+      if [ -f "$f" ]; then
+        have=$(( $(wc -c < "$f") / 1024 ))
+        break
+      fi
+    done
+  fi
+  if [ "$(( free + have ))" -lt "$(( (peak + 5) * 1048576 ))" ]; then
     echo "[WARN] Skipping ${label}: needs ${peak} GB peak plus a 5 GB margin; $(awk -v k="$free" 'BEGIN {printf "%.1f", k / 1048576}') GB free."
     echo "  Install later: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
     return 1
@@ -691,7 +704,9 @@ install_pcgr_bundle() {
   url="https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
   tarball="${dir}/${url##*/}"
   mkdir -p "$dir" || return 1
-  fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
+  # fetch publishes the archive only after its check, so one already here is whole.
+  [ -f "$tarball" ] || fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
+  rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX") || return 1
   if ! tar xzf "$tarball" -C "$tmp" || [ ! -d "${tmp}/data/grch38" ]; then
     rm -rf "$tmp"

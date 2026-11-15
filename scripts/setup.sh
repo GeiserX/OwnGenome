@@ -2082,7 +2082,7 @@ install_vep_cache_opt_in() {
     echo "[OK] VEP ${VEP_CACHE_RELEASE} cache already present: ${dir}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
     return 0
   fi
-  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" || return 1
+  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" "${dir}/$(basename "$(vep_cache_url "$VEP_CACHE_RELEASE")")" || return 1
   echo "Installing the VEP ${VEP_CACHE_RELEASE} cache: ~26 GB download, ~30 GB unpacked, both on disk until it ends."
   if ! install_vep_cache "$dir" "$VEP_CACHE_RELEASE"; then
     echo "[WARN] Could not install the VEP ${VEP_CACHE_RELEASE} cache. Run this command again: the download resumes."
@@ -2092,30 +2092,37 @@ install_vep_cache_opt_in() {
 }
 
 # Each missing item gets its own disk check. A skipped or failed item must
-# not prevent the smaller bundle or the other cache from installing.
+# not prevent the smaller bundle or the other cache from installing; it makes
+# the return status 1.
 install_clinical_data() {
-  local dir="${GENOME_DIR}/vep_cache" rel peak
+  local dir="${GENOME_DIR}/vep_cache" rel peak missing=0
   echo "Clinical data: about 57 GB to download, 65 GB unpacked; allow 1 to 3 hours."
   for rel in "$VEP_CACHE_RELEASE" bundle "$PCGR_VEP_CACHE_RELEASE"; do
     if [ "$rel" = bundle ]; then
       [ ! -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] || { echo "[OK] PCGR/CPSR bundle already present."; continue; }
-      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 14 'PCGR/CPSR bundle'; then
-        install_pcgr_bundle "${GENOME_DIR}/pcgr_data" || echo "[WARN] Could not install PCGR/CPSR. Step 17 needs it; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
+      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "${GENOME_DIR}/pcgr_data/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"; then
+        install_pcgr_bundle "${GENOME_DIR}/pcgr_data" || { missing=1; echo "[WARN] Could not install PCGR/CPSR. Step 17 needs it; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; }
+      else
+        missing=1
       fi
     else
       [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
       peak=56
       [ "$rel" != "$PCGR_VEP_CACHE_RELEASE" ] || peak=52
-      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache"; then
+      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache" "${dir}/$(basename "$(vep_cache_url "$rel")")"; then
         if ! install_vep_cache "$dir" "$rel"; then
+          missing=1
           echo "[WARN] Could not install VEP ${rel}. Run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\" (interrupted downloads resume)."
           if [ "$rel" = "$VEP_CACHE_RELEASE" ]; then
             echo "  To retry only this cache: ./scripts/setup.sh --vep-cache \"${GENOME_DIR}\""
           fi
         fi
+      else
+        missing=1
       fi
     fi
   done
+  return "$missing"
 }
 
 case "$OPT_IN" in
@@ -2510,7 +2517,7 @@ install_annotsv_data || true
 echo ""
 echo "=== Phase 6: Clinical reference data ==="
 if $CLINICAL_DATA; then
-  install_clinical_data
+  install_clinical_data || true
 else
   echo "[SKIP] Clinical data (--no-clinical-data): steps 13, 30, 23, 31 and 17 need the caches or bundle."
   echo "  Install later: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""

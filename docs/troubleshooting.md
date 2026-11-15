@@ -739,7 +739,8 @@ ExpansionHunter \
 
 Setup installs VEP 116, the PCGR/CPSR bundle and VEP 115 by default.
 If one is missing, read the warning above `Setup complete!`.
-The disk checks require 56 GB, 14 GB and 52 GB peak respectively, each plus a 5 GB margin.
+The disk checks require 56 GB, 15 GB and 52 GB peak respectively, each plus a 5 GB margin.
+A partial download on disk counts toward that peak.
 A failed download also leaves a warning. Other installs continue.
 
 Free space, then retry only the clinical data:

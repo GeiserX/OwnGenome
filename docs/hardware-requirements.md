@@ -57,7 +57,7 @@ One row per download, in GB as `wget` and `du -h` count them (1 GB = 2^30 bytes)
 | **Total, default run** | **~73-78 GB** | **~98-103 GB** | |
 | With `--no-clinical-data` (first three rows + Docker images) | ~16-21 GB | ~33-38 GB | |
 
-While a VEP cache installs, the tarball and the unpacked tree are on disk together until the tarball is deleted (`install_vep_cache` in `scripts/lib/common.sh`): 56 GB peak for release 116 and 52 GB for release 115. The bundle needs 14 GB peak. Setup adds a 5 GB margin to each check and warns when it skips an item. The three clinical downloads add about 57 GB to transfer and 65 GB on disk. Allow 1 to 3 hours. To retry only these downloads, run `./scripts/setup.sh --clinical-data "$GENOME_DIR"`.
+While a VEP cache installs, the tarball and the unpacked tree are on disk together until the tarball is deleted (`install_vep_cache` in `scripts/lib/common.sh`): 56 GB peak for release 116 and 52 GB for release 115. The bundle needs 15 GB peak. Setup adds a 5 GB margin to each check and warns when it skips an item. The three clinical downloads add about 57 GB to transfer and 65 GB on disk. Allow 1 to 3 hours. To retry only these downloads, run `./scripts/setup.sh --clinical-data "$GENOME_DIR"`.
 
 **Optional** (only for the step named):
 
