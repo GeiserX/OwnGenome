@@ -4,9 +4,11 @@
 //! IBDmix compares a modern genome with an archaic one site by site and
 //! adds up a log-odds score (LOD) that a stretch of the modern genome shares
 //! a recent ancestor with the archaic genome. It takes each site's allele
-//! frequency from the modern people in its input, and one genome alone
-//! gives no frequency, so `genotypes` adds stand-in columns whose genotypes
-//! carry the 1000 Genomes allele count of the chosen population.
+//! frequency from the modern people in its input, your column included,
+//! and one genome alone gives no usable frequency, so `genotypes` adds 100
+//! stand-in columns that carry round(AF x 200) ALT alleles of the chosen
+//! 1000 Genomes population: about the size of one 1000 Genomes group, as
+//! Chen et al. ran IBDmix once per group with the scored person in it.
 //!
 //! - `table` (setup): one GRCh37 chromosome of the archaic table, a
 //!   sites-only VCF that Picard lifts to GRCh38. The 1000 Genomes SNVs and
@@ -17,7 +19,11 @@
 //!   position, with every call outside the 1000 Genomes strict mask marked
 //!   masked.
 //! - `genotypes` (step 43): IBDmix's genotype file of each chromosome, each
-//!   archaic genome's mask of masked positions, and the spans table.
+//!   archaic genome's mask of masked positions, and the spans table. A table
+//!   site with no record in the VCF is the reference (0) only where a
+//!   confident reference block of the gVCF (`--gvcf`) covers it, and unknown
+//!   (9) otherwise, so a gap in coverage never reads as a match; the span
+//!   runs over the sites read.
 //! - `report` (step 43): the segments at LOD 4 and 50 kb or longer, merged
 //!   into Neanderthal and Denisovan ones, the shares, the ten longest and
 //!   their protein-coding genes.
@@ -53,7 +59,9 @@ const TABLE_HEADER: [&str; 13] = [
 ];
 /// Table code: MASKED plus the ALT count, a call outside its genome's mask.
 const MASKED: u8 = 10;
-/// Stand-in modern people: 200 alleles, about one 1000 Genomes population.
+/// Stand-in modern people: 200 alleles, about one 1000 Genomes group. Each
+/// carries round(AF x 200) ALT alleles in all, so an AF at or under 0.0025
+/// is 0 and one at or over 0.9975 is 200.
 const PSEUDO: i64 = 100;
 /// Chen et al. 2020: LOD 4 and 50 kb.
 const MIN_LOD: f64 = 4.0;
@@ -856,6 +864,182 @@ impl Calls {
     }
 }
 
+/// One record of the gVCF: its chromosome, the positions it covers and
+/// whether it is a confident reference call there.
+struct Block {
+    chrom: String,
+    start: i64,
+    end: i64,
+    reference: bool,
+}
+
+/// Whether the one sample of a gVCF record is a confident reference call:
+/// FILTER PASS or `.`, every allele of GT `0`, and GQ and depth (MIN_DP,
+/// else DP) of 1 or more where the record gives them. A GQ 0 or depth 0
+/// block is a stretch without reads, as HaplotypeCaller writes it.
+fn confident_reference(c: &[&str]) -> bool {
+    if c[6] != "PASS" && c[6] != "." {
+        return false;
+    }
+    let keys: Vec<&str> = c[8].split(':').collect();
+    let values: Vec<&str> = c[9].split(':').collect();
+    let field = |name: &str| {
+        keys.iter()
+            .position(|k| *k == name)
+            .and_then(|i| values.get(i).copied())
+            .filter(|v| *v != ".")
+    };
+    let Some(gt) = field("GT") else {
+        return false;
+    };
+    if !gt.split(['/', '|']).all(|a| a == "0") {
+        return false;
+    }
+    let at_least_one = |v: Option<&str>| v.is_none_or(|v| v.parse::<f64>().is_ok_and(|x| x >= 1.0));
+    at_least_one(field("GQ")) && at_least_one(field("MIN_DP").or_else(|| field("DP")))
+}
+
+/// The confident reference calls of a one-sample gVCF, read alongside the
+/// table in the VCF's chromosome order: a table site with no record in the
+/// VCF is the reference (0) when such a call covers it, and unknown (9)
+/// otherwise. Only the next record and the furthest end of the calls so
+/// far are kept; a chromosome passed over is remembered by name, so a gVCF
+/// in another chromosome order than the VCF stops the step instead of
+/// reading as no calls.
+struct Callable {
+    text: Text,
+    path: String,
+    pending: Option<Block>,
+    /// The chromosomes read so far, in file order.
+    seen: Vec<String>,
+    chrom: String,
+    /// The last position the confident calls so far cover on `chrom`.
+    covered: i64,
+}
+
+impl Callable {
+    fn open(path: &str) -> Out<Self> {
+        let mut text = Text::open(path)?;
+        loop {
+            let Some(raw) = text.raw()? else {
+                return die(format!(
+                    "{path} has no #CHROM header line: step 43 reads a one-sample gVCF"
+                ));
+            };
+            if raw.starts_with("##") {
+                continue;
+            }
+            if !raw.starts_with('#') {
+                return die(format!(
+                    "{path} has no #CHROM header line: step 43 reads a one-sample gVCF"
+                ));
+            }
+            let n = raw.trim_end_matches('\n').split('\t').count();
+            if n != 10 {
+                return die(format!(
+                    "{path} holds {} samples; step 43 reads a one-sample gVCF \
+                     (keep one with bcftools view -s <sample>).",
+                    n.saturating_sub(9)
+                ));
+            }
+            break;
+        }
+        let mut callable = Callable {
+            text,
+            path: path.to_owned(),
+            pending: None,
+            seen: Vec::new(),
+            chrom: String::new(),
+            covered: 0,
+        };
+        callable.pending = callable.read()?;
+        Ok(callable)
+    }
+
+    /// The next record, checked to come after the one before it.
+    fn read(&mut self) -> Out<Option<Block>> {
+        loop {
+            let Some(raw) = self.text.raw()? else {
+                return Ok(None);
+            };
+            let line = raw.strip_suffix('\n').unwrap_or(raw);
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let c: Vec<&str> = line.split('\t').collect();
+            if c.len() < 10 {
+                continue;
+            }
+            let start = need_int(c[1])?;
+            let end = c[7]
+                .split(';')
+                .find_map(|kv| kv.strip_prefix("END="))
+                .map(need_int)
+                .transpose()?
+                .unwrap_or(start + c[3].chars().count().max(1) as i64 - 1);
+            let path = &self.path;
+            match &self.pending {
+                Some(p) if p.chrom == c[0] => {
+                    if start < p.start {
+                        return usage(format!(
+                            "{path} is not sorted: {}:{start} comes after {}",
+                            c[0], p.start
+                        ));
+                    }
+                }
+                _ if self.seen.iter().any(|x| x == c[0]) => {
+                    return usage(format!(
+                        "{path} is not sorted: {} comes back after another chromosome",
+                        c[0]
+                    ));
+                }
+                _ => self.seen.push(c[0].to_owned()),
+            }
+            let reference = confident_reference(&c);
+            return Ok(Some(Block {
+                chrom: c[0].to_owned(),
+                start,
+                end,
+                reference,
+            }));
+        }
+    }
+
+    /// Move to `chrom`, the next table chromosome of the VCF, reading past
+    /// the records of the chromosomes before it.
+    fn start(&mut self, chrom: &str) -> Out<()> {
+        let here = self.pending.as_ref().is_some_and(|b| b.chrom == chrom);
+        if !here && self.seen.iter().any(|x| x == chrom) {
+            return usage(format!(
+                "{} lists {chrom} before a chromosome the VCF lists first; \
+                 give the gVCF and the VCF in one chromosome order",
+                self.path
+            ));
+        }
+        while self.pending.as_ref().is_some_and(|b| b.chrom != chrom) {
+            self.pending = self.read()?;
+        }
+        self.chrom = chrom.to_owned();
+        self.covered = 0;
+        Ok(())
+    }
+
+    /// Whether a confident reference call covers `pos` on the current
+    /// chromosome; positions are asked in ascending order.
+    fn covers(&mut self, pos: i64) -> Out<bool> {
+        while let Some(b) = &self.pending {
+            if b.chrom != self.chrom || b.start > pos {
+                break;
+            }
+            if b.reference && b.end > self.covered {
+                self.covered = b.end;
+            }
+            self.pending = self.read()?;
+        }
+        Ok(self.covered >= pos)
+    }
+}
+
 /// `chrN.tsv.gz` with N from 1 to 22: the chromosome's name.
 fn table_chrom(name: &str) -> Option<&str> {
     let chrom = name.strip_suffix(".tsv.gz")?;
@@ -941,7 +1125,9 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
         vcf: Vcf::new(Text::open(vcf_path)?),
         pending: None,
     };
+    let mut callable = a.get("--gvcf").map(Callable::open).transpose()?;
     let mut spans: Vec<Span> = Vec::new();
+    let mut unread = 0u64;
     let mut done: Vec<String> = Vec::new();
     let mut pending = calls.next()?;
     while let Some(first) = &pending {
@@ -959,17 +1145,22 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
                 table,
                 &mut calls,
                 &mut pending,
+                callable.as_mut(),
                 &head,
                 &pseudo,
                 af_col,
                 two_n,
                 out_dir,
             )? {
-                Written::Rows(span, files) => {
+                Written::Rows(span, not_read, files) => {
                     spans.push(span);
+                    unread += not_read;
                     staged.extend(files);
                 }
-                Written::Empty(path) => stale.push(path),
+                Written::Empty(path, not_read) => {
+                    unread += not_read;
+                    stale.push(path);
+                }
             }
         } else {
             while pending.as_ref().is_some_and(|r| r.chrom == chrom) {
@@ -982,7 +1173,8 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
         let mut sorted = names.clone();
         sorted.sort_unstable();
         return die(format!(
-            "{vcf_path} has no records on a chromosome of the archaic table ({})",
+            "{vcf_path} has no site read on a chromosome of the archaic table ({}): \
+             no call there, and no reference block of the gVCF over a table site",
             sorted.join(", ")
         ));
     }
@@ -1013,7 +1205,11 @@ fn cmd_genotypes(a: &Args, err: &mut dyn Write) -> Out<()> {
         }
     }
     let sites: u64 = spans.iter().map(|s| s.3).sum();
-    let _ = writeln!(err, "{} chromosomes, {sites} sites", spans.len());
+    let _ = writeln!(
+        err,
+        "{} chromosomes, {sites} sites read, {unread} not read (unknown to IBDmix)",
+        spans.len()
+    );
     Ok(())
 }
 
@@ -1023,12 +1219,13 @@ type Span = (String, i64, i64, u64, u64, u64);
 
 /// What one chromosome leaves to publish when the whole run has passed.
 enum Written {
-    /// Rows were written: the span row, and the staged genotype file and
-    /// masks with their final paths.
-    Rows(Span, Vec<(PathBuf, AtomicFile)>),
-    /// No row was written: a genotype file of this name from an earlier
-    /// run is stale and goes.
-    Empty(PathBuf),
+    /// Sites were read: the span row, the count of rows not read, and the
+    /// staged genotype file and masks with their final paths.
+    Rows(Span, u64, Vec<(PathBuf, AtomicFile)>),
+    /// No site was read (no row, or only unknown ones): a genotype file of
+    /// this name from an earlier run is stale and goes. The count of rows
+    /// not read.
+    Empty(PathBuf, u64),
 }
 
 /// IBDmix's genotype file of one chromosome, and each archaic genome's
@@ -1039,6 +1236,7 @@ fn write_chrom(
     table: &str,
     calls: &mut Calls,
     pending: &mut Option<VcfRec>,
+    mut callable: Option<&mut Callable>,
     head: &str,
     pseudo: &[String],
     af_col: usize,
@@ -1059,7 +1257,13 @@ fn write_chrom(
             TABLE_HEADER.join(" ")
         ));
     }
+    if let Some(c) = callable.as_deref_mut() {
+        c.start(chrom)?;
+    }
+    // n: the rows read (code 0, 1 or 2), first and last their positions;
+    // unread: the rows written as unknown (9).
     let (mut n, mut first, mut last, mut dropped, mut carried) = (0u64, 0i64, 0i64, 0u64, 0u64);
+    let mut unread = 0u64;
     // Per archaic genome, the runs of written rows whose call is masked:
     // [first, last] positions, closed at the next unmasked row.
     let mask_paths =
@@ -1114,7 +1318,19 @@ fn write_chrom(
             .as_ref()
             .filter(|r| r.chrom == chrom && r.pos == pos)
         {
-            None => 0,
+            // No record: the reference only where a confident reference
+            // call of the gVCF covers the site; otherwise nothing was read
+            // there, which IBDmix must see as unknown, not as a match.
+            None => match callable.as_deref_mut() {
+                Some(c) => {
+                    if c.covers(pos)? {
+                        0
+                    } else {
+                        9
+                    }
+                }
+                None => 9,
+            },
             Some(record) => {
                 let call = &record.call;
                 if call.r#ref != r || call.alt.as_ref().is_some_and(|x| x != alt) {
@@ -1157,6 +1373,10 @@ fn write_chrom(
         }
         row += &format!("\t{code}\t{}\n", pseudo[ac]);
         gz.write_all(row.as_bytes()).map_err(werr)?;
+        if code == 9 {
+            unread += 1;
+            continue;
+        }
         if n == 0 {
             first = pos;
         }
@@ -1170,7 +1390,7 @@ fn write_chrom(
     }
     if n == 0 {
         drop(gz);
-        return Ok(Written::Empty(path));
+        return Ok(Written::Empty(path, unread));
     }
     let gz = gz.finish().map_err(werr)?;
     let mut files = vec![(path, gz)];
@@ -1184,6 +1404,7 @@ fn write_chrom(
     }
     Ok(Written::Rows(
         (chrom.to_owned(), first, last, n, carried, dropped),
+        unread,
         files,
     ))
 }
@@ -1599,8 +1820,8 @@ const STRICT: Spec = Spec {
 };
 const GENOTYPES: Spec = Spec {
     verb: "genotypes",
-    usage: "usage: og archaic genotypes --table-dir TABLE_DIR --vcf VCF [--pop POP] [--pseudo PSEUDO] --out-dir OUT_DIR\n",
-    options: &["--table-dir", "--vcf", "--pop", "--pseudo", "--out-dir"],
+    usage: "usage: og archaic genotypes --table-dir TABLE_DIR --vcf VCF [--gvcf GVCF] [--pop POP] [--pseudo PSEUDO] --out-dir OUT_DIR\n",
+    options: &["--table-dir", "--vcf", "--gvcf", "--pop", "--pseudo", "--out-dir"],
     required: &["--table-dir", "--vcf", "--out-dir"],
 };
 const REPORT: Spec = Spec {
