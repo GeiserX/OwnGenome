@@ -28,6 +28,11 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         let _ = writeln!(err, "{USAGE}og dev fixture: error: {msg}");
         2
     };
+    if let Some(kind) = args.first()
+        && let Some(code) = lineage::cli(kind, &args[1..], out, err)
+    {
+        return code;
+    }
     let result = match args.first().map(String::as_str) {
         Some("comphet") => {
             let rest: Vec<&String> = args[1..].iter().filter(|a| *a != "--swap").collect();
@@ -612,6 +617,10 @@ fn trim_pharmcat(src: &Path, dst: &Path, max: i64) -> Result<(), String> {
     let text = json::dumps(&out, &opts).map_err(|e| e.to_string())?;
     crate::evidence::publish(dst, text.as_bytes())
 }
+
+// The kinds of the ancestry, family, QC, PRS, Y, CHIP, MoChA, viral and
+// live e2e cases (`og dev fixture <kind> --help`).
+pub mod lineage;
 
 #[cfg(test)]
 mod tests {
