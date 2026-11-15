@@ -22,8 +22,6 @@
 //!    tool.
 
 use std::fs;
-use std::io::Write;
-use std::num::NonZero;
 use std::path::{Path, PathBuf};
 
 const HEADER: &str = "##fileformat=VCFv4.2\n##contig=<ID=chrY,length=57227415>\n\
@@ -60,12 +58,39 @@ fn scratch(name: &str) -> PathBuf {
     d
 }
 
-/// `text` gzipped (as BGZF, which gzip readers read).
+/// `text` as one plain gzip member, not BGZF: the shape Python's
+/// `gzip.open` writes and the 1000 Genomes mask `setup.sh` installs has.
+/// Stored deflate blocks keep the test free of a compression crate.
 fn gz(path: &Path, text: &[u8]) {
-    let mut w =
-        og_io::bgzf::Writer::new(fs::File::create(path).unwrap(), NonZero::<usize>::MIN).unwrap();
-    w.write_all(text).unwrap();
-    w.finish().unwrap();
+    // magic, deflate, no flags, no time, no extra flags, OS unknown
+    let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff];
+    let mut blocks = text.chunks(0xffff).peekable();
+    while let Some(block) = blocks.next() {
+        out.push(u8::from(blocks.peek().is_none())); // BFINAL, BTYPE 00
+        let len = u16::try_from(block.len()).unwrap();
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(&(!len).to_le_bytes());
+        out.extend_from_slice(block);
+    }
+    out.extend_from_slice(&crc32(text).to_le_bytes());
+    out.extend_from_slice(&u32::try_from(text.len()).unwrap().to_le_bytes());
+    fs::write(path, out).unwrap();
+}
+
+/// The gzip CRC-32 (reflected polynomial 0xEDB88320).
+fn crc32(data: &[u8]) -> u32 {
+    let table: [u32; 256] = std::array::from_fn(|n| {
+        (0..8).fold(u32::try_from(n).unwrap(), |c, _| {
+            if c & 1 == 1 {
+                0xedb8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            }
+        })
+    });
+    !data.iter().fold(!0u32, |c, &b| {
+        table[usize::from(c.to_le_bytes()[0] ^ b)] ^ (c >> 8)
+    })
 }
 
 fn write_mask(path: &Path, z: (usize, usize)) {

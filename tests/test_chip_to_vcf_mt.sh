@@ -172,7 +172,7 @@ if [ "$rc" -eq 0 ] && records "$g"; then
   [ "$(wc -l < "$g/records" | tr -d ' ')" -eq 10 ] || st=1
   check "myheritage: 10 records" "$st" "$(cat "$g/records")"
   st=0
-  ! cut -f5 "$g/records" | grep -qvE '^(\.|[0-9]+)([/|](\.|[0-9]+))?$' || st=1
+  awk -F'\t' '$5 !~ /^(\.|[0-9]+)([\/|](\.|[0-9]+))?$/ {bad=1} END {exit bad}' "$g/records" || st=1
   check "myheritage: every genotype is a plain call, no carriage return" "$st" \
     "$(cut -f5 "$g/records" | sort -u | od -c | head -5)"
   got=$(awk -F'\t' '$1 == "chr1" && $2 == 404 { print $5 }' "$g/records")
