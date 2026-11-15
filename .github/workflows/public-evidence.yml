@@ -424,7 +424,7 @@ jobs:
             echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records," \
               "$(wc -l < "${EV}/${label}.nocall.tsv") of them with no call," \
               "$(for t in "${DATA}"/chr*.tsv.gz; do gzip -dc "$t"; done \
-                | awk -F'\t' 'NR == FNR {m[$1 FS $2] = 1; next} ($1 FS $2) in m {n++} END {print n + 0}' "${EV}/${label}.nocall.tsv" -) of those at a table site"
+                | awk -F'\t' 'FILENAME == ARGV[1] {m[$1 FS $2] = 1; next} ($1 FS $2) in m {n++} END {print n + 0}' "${EV}/${label}.nocall.tsv" -) of those at a table site"
             # Step 43 reads a site with no record as the reference only inside
             # a reference block of the gVCF. A panel VCF holds no callable mask,
             # so the gVCF is one block over each whole chromosome: a site with
