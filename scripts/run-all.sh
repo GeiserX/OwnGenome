@@ -3,6 +3,8 @@
 # Usage: GENOME_DIR=/data ./scripts/run-all.sh <sample> <male|female> [nextflow options]
 #   Options after the sex go to `nextflow run` as given (--sex_check warn), except -bg. --max_cpus (THREADS) and --max_memory
 #   cap each task (default: the host's); they do not limit how much runs at once: Nextflow fills the machine's CPUs and RAM.
+#   When the container engine has less (Docker Desktop and colima run the containers in a VM), the defaults are the
+#   engine's, and <sample>/nextflow/executor.config makes Nextflow fill only that.
 #   A full run on 8 CPUs can take more than a day: start it inside tmux or screen, or with nohup. A closed terminal stops
 #   it, and -resume then restarts the task that was running (DeepVariant is one task).
 # Needs Docker, bash 4.4+, Java 17+ and Nextflow (NEXTFLOW_VERSION in versions.env). Results: GENOME_DIR/<sample>/.
@@ -283,9 +285,22 @@ for t in ${T//,/ }; do [[ "${KNOWN} " == *" ${t} "* ]] || { echo "ERROR: unknown
 arg --cytoband "$(data_file cytoband || true)"; ! GEX=$(data_file gencode_exons) || NF+=(--gencode_exons "$GEX"); arg --delly_exclude "$(data_file delly_exclude || true)"; arg --manta_call_regions "${MANTA_CALL_REGIONS:-}"
 # Step 20's annotation of the chrM calls (MITO_VARIANTS_ANNOTATE): ClinVar with its index, and gnomAD's chrM sites.
 MC="${G}/clinvar/clinvar_chr.vcf.gz"; if [ -s "$MC" ] && [ -s "${MC}.tbi" ]; then NF+=(--mito_clinvar "$MC"); fi; arg --gnomad_mito "${G}/gnomad_mito/${GNOMAD_MITO_URL##*/}"
-[ -z "${INTERVALS:-}" ] || NF+=(--intervals "$INTERVALS"); [[ " $* " == *" --max_cpus"* ]] || NF+=(--max_cpus "${USER_THREADS:-$(getconf _NPROCESSORS_ONLN)}")
+[ -z "${INTERVALS:-}" ] || NF+=(--intervals "$INTERVALS")
+# The CPUs and RAM the tasks get: the host's, or the container engine's when docker info reports less. Docker Desktop
+# and colima run the containers in a VM, often smaller than the host; Nextflow books the host's RAM by default, and
+# a task the VM cannot hold is killed (exit 137). Then the default caps are the engine's, and executor.config sets the
+# pool Nextflow fills to it, so a task waits for room instead. A later -c of the user's replaces that pool.
+NC=$(getconf _NPROCESSORS_ONLN) EM="" EC="" EXC="${S}/nextflow/executor.config" EX=""
 M=$(awk '/^MemTotal:/ {print int($2 / 1048576)}' /proc/meminfo 2>/dev/null || echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )))
+read -r EM EC _ < <(docker info --format '{{.MemTotal}} {{.NCPU}}' 2>/dev/null) || true
+if [[ "$EM" =~ ^[0-9]+$ ]] && [ $((EM / 1073741824)) -ge 1 ] && { [ "${M:-0}" -lt 1 ] || [ $((EM / 1073741824)) -lt "$M" ]; }; then M=$((EM / 1073741824)) EX=1; fi
+if [[ "$EC" =~ ^[0-9]+$ ]] && [ "$EC" -ge 1 ] && [ "$EC" -lt "$NC" ]; then NC=$EC EX=1; fi
+[[ " $* " == *" --max_cpus"* ]] || NF+=(--max_cpus "${USER_THREADS:-$NC}")
 [[ " $* " == *" --max_memory"* ]] || [ "${M:-0}" -lt 1 ] || NF+=(--max_memory "${M}.GB")
+if [ -n "$EX" ]; then
+  { printf 'executor {\n    cpus   = %s\n' "$NC"; [ "${M:-0}" -lt 1 ] || printf "    memory = '%s GB'\n" "$M"; printf '}\n'; } > "$EXC"
+  NF+=(-c "$EXC"); echo "[Resources] the container engine has less than this host: Nextflow books at most ${NC} CPUs and ${M} GB (${EXC})"
+else rm -f "$EXC"; fi
 # Publish by hard link when it is sure to work: the BAM and every other output are then stored once, not twice.
 # Nextflow does not fall back to a copy when a link fails; the run stops. The tasks run as root (the docker profile)
 # and their files can stay root's, and Linux lets another user link a file it does not own only when

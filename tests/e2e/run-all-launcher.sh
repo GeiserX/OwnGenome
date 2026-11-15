@@ -21,6 +21,11 @@
 #      the BAM is one file with two names (work/ and aligned/), and no published
 #      file is a symbolic link the direct (copy) run lacks. The second run has
 #      the runner's own setting back (1): run-all.sh passes no link mode.
+#   6. A container engine with less memory and fewer CPUs than the host, as
+#      Docker Desktop and colima have (a docker shim that reports 8 GB and
+#      2 CPUs, and a stand-in nextflow that records its arguments): run-all.sh
+#      passes the engine's as --max_memory and --max_cpus, and the pool
+#      Nextflow fills, executor.config, is the engine's.
 # Each comparison gets a negative control in the same run: a planted missing
 # file must be reported, the first run's trace must show the alignment and
 # calling tasks, and the first run's trace (tasks COMPLETED) must fail the
@@ -76,6 +81,63 @@ published() {
   (cd "$1" && find . -type f | sed -E 's|^\./||; s/_prs_summary\.[0-9]{8}-[0-9]{4}(-[0-9]+)?\.tsv$/_prs_summary.TIME.tsv/' | LC_ALL=C sort) \
     | grep -vE "^(fastq|nextflow|logs|vep)/|^run_manifest\.tsv$|^summary\.json$|^${P}_report\.(html|txt)$|^${P}_delta\.(html|txt|json)$|^history/"
 }
+
+# --- 6. a container engine smaller than the host --------------------------------------------
+# Its own GENOME_DIR with an empty VCF: the stand-in nextflow runs nothing and exits 1, so
+# run-all.sh then writes the reports of nothing. The negative control is an engine as big as
+# the host, as on native Linux: the host's caps, and no executor.config passed or left behind.
+ENG="${CASE_TMP}/engine" G3="${E2E_WORK}/genome-engine" E=ENGINE1
+rm -rf "$ENG" "$G3"; mkdir -p "${ENG}/bin" "${G3}/reference" "${G3}/${E}/vcf"
+: > "${G3}/${E}/vcf/${E}.vcf.gz"; : > "${G3}/${E}/vcf/${E}.vcf.gz.tbi"
+cat > "${ENG}/bin/docker" <<'SH'
+#!/usr/bin/env bash
+# docker info prints ENGINE_INFO; anything else goes to the next docker on PATH.
+if [ "${1:-}" = info ]; then echo "$ENGINE_INFO"; exit 0; fi
+self=$(cd "$(dirname "$0")" && pwd)
+IFS=: read -r -a dirs <<< "$PATH"
+for d in "${dirs[@]}"; do if [ "$d" != "$self" ] && [ -x "${d}/docker" ]; then exec "${d}/docker" "$@"; fi; done
+echo "docker shim: no real docker on PATH" >&2; exit 127
+SH
+cat > "${ENG}/bin/nextflow" <<'SH'
+#!/usr/bin/env bash
+# Records its arguments on one line and a copy of the executor.config it was given; runs nothing.
+echo " $* " > "${ENGINE_REC}.args"
+prev=""; for a in "$@"; do if [ "$prev" = -c ] && [ "${a##*/}" = executor.config ]; then cp "$a" "${ENGINE_REC}.config"; fi; prev=$a; done
+exit 1
+SH
+chmod +x "${ENG}/bin/docker" "${ENG}/bin/nextflow"
+# The host's CPUs and RAM in whole GB, as run-all.sh reads them; the small engine has 8 GB (less on a
+# host with 8 GB or less) and 2 CPUs (1 on a host with 2 or fewer).
+HC=$(getconf _NPROCESSORS_ONLN)
+HM=$(awk '/^MemTotal:/ {print int($2 / 1048576)}' /proc/meminfo 2>/dev/null || echo $(( $(sysctl -n hw.memsize) / 1073741824 )))
+EG=$(( HM > 8 ? 8 : HM / 2 )) ECPU=$(( HC > 2 ? 2 : 1 ))
+engine_run() {  # engine_run NAME 'MEMTOTAL NCPU': run-all.sh with docker info answering that; its log is logs/<case>.engine-NAME.log
+  rm -f "${ENG}/${1}".*
+  echo "+ scripts/run-all.sh ${E} female, docker info reporting '${2}' (${1})"
+  env -u THREADS PATH="${ENG}/bin:${PATH}" ENGINE_INFO="$2" ENGINE_REC="${ENG}/${1}" GENOME_DIR="$G3" SKIP_VALIDATION=true \
+    TOOLS=roh EH_CATALOG="${G3}/none.json" "${REPO}/scripts/run-all.sh" "$E" female > "${E2E_WORK}/logs/${CASE_NAME}.engine-${1}.log" 2>&1
+  echo "+ exit $? (the stand-in nextflow exits 1)"
+}
+EXC="${G3}/${E}/nextflow/executor.config"
+engine_run small "$((EG * 1073741824)) ${ECPU}"
+SMALL=$(cat "${ENG}/small.args" 2>/dev/null)
+echo "+ nextflow${SMALL}"
+check "the stand-in nextflow ran (small engine)" test -n "$SMALL"
+check "nextflow got --max_memory with the engine's ${EG} GB, not the host's ${HM} GB" has " --max_memory ${EG}\.GB " "$SMALL"
+check "nextflow got --max_cpus with the engine's ${ECPU} CPUs, not the host's ${HC}" has " --max_cpus ${ECPU} " "$SMALL"
+check "nextflow got -c ${EXC}" has " -c ${EXC} " "$SMALL"
+check "executor.config sets the pool's memory to ${EG} GB" has "^ *memory = '${EG} GB'\$" "$(cat "${ENG}/small.config" 2>/dev/null)"
+check "executor.config sets the pool's CPUs to ${ECPU}" has "^ *cpus += ${ECPU}\$" "$(cat "${ENG}/small.config" 2>/dev/null)"
+check "run-all.sh says it books the engine's size" has '^\[Resources\] the container engine has less than this host' \
+  "$(cat "${E2E_WORK}/logs/${CASE_NAME}.engine-small.log" 2>/dev/null)"
+engine_run big "$(( (HM + 4) * 1073741824 )) $((HC + 4))"
+BIG=$(cat "${ENG}/big.args" 2>/dev/null)
+echo "+ nextflow${BIG}"
+check "negative control: an engine as big as the host gives the host's --max_memory ${HM}.GB" has " --max_memory ${HM}\.GB " "$BIG"
+check "negative control: and the host's --max_cpus ${HC}" has " --max_cpus ${HC} " "$BIG"
+check "negative control: and no executor.config" lacks "executor\.config" "$BIG"
+check "negative control: the small engine's executor.config is not left behind" test ! -e "$EXC"
+rm -rf "$G3" "$ENG"
 
 # --- first run, with fs.protected_hardlinks 0 ---------------------------------------------
 PH=$(cat /proc/sys/fs/protected_hardlinks 2>/dev/null)
