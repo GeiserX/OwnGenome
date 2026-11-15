@@ -5,7 +5,8 @@
 # host runs amd64 images under emulation, where uname -m says x86_64. On a
 # macOS host (the live site, scripts/owngenome-live.sh) bin/og runs
 # bin/.og/og-darwin-<arm64|x86_64> instead: built without the cargo feature
-# `bam`, because that host never reads a BAM and htslib is C.
+# `bam`, because that host never reads a BAM (htslib is still linked,
+# through og-summary and og-setup).
 #
 #   rust/og.sh install     scripts/setup.sh --og: on a release tag (vX.Y.Z,
 #                          clean rust/) download the release's binaries and
