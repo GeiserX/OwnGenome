@@ -326,7 +326,7 @@ fn deltas_of_two_runs() {
         "planted: the digest change shows both digests: {img:?}"
     );
     assert!(
-        txt.contains("3 change(s):"),
+        txt.contains("2 change(s):"),
         "planted: the text lists 2 changes: {txt}"
     );
 

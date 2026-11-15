@@ -225,7 +225,7 @@ fn tree_place_and_tree_positions() {
         &[],
     );
     assert_eq!(r.code, 0, "1. the tool runs: {}", r.stderr);
-    assert_eq!((r.get("Hg"), r.get("Level")), ("C", "2"), "1. C at level 3");
+    assert_eq!((r.get("Hg"), r.get("Level")), ("C", "3"), "1. C at level 3");
     assert_eq!(r.branches(), ["A", "B", "C"], "1. the path is A, B, C");
     let b = &r.path[1];
     assert_eq!(

@@ -215,7 +215,7 @@ if [ "$rc" -eq 0 ] && records "$g"; then
   check_mt 23andme "$g"
   got=$(awk -F'\t' '$1 == "chrM" { print $2 }' "$g/records" | sort -n | tr '\n' ' ')
   st=0
-  [ "$got" = "73 1555 3244 " ] || st=1
+  [ "$got" = "73 1555 3243 " ] || st=1
   check "23andme: chrM holds 73, 1555 and 3243 only (nothing left at 301, 1557 or 3245)" "$st" "$got"
 else
   check "23andme: the VCF reads back" 1
