@@ -551,8 +551,7 @@ fn is_negative_number(s: &str) -> bool {
 /// A verb's body: the parsed options and stdout.
 type Run = fn(&Args, &mut dyn io::Write) -> Result<()>;
 
-const USAGE: &str =
-    "usage: og ancestry-fine {panel-map,check-map,order,sample-bed,chroms,report} ...\n";
+const USAGE: &str = "usage: og ancestry-fine {panel-map,check-map,order,sample-bed,chroms,report,freqs,project,paint,simulate} ...\n";
 
 /// `og ancestry-fine <verb> [args]`: the exit code. Output goes to `out`,
 /// messages to `err`.
@@ -749,5 +748,25 @@ mod tests {
         let (rc, out, _) = testutil::run(&["report", "--help"]);
         assert_eq!(rc, 0);
         assert!(out.starts_with("usage: og ancestry-fine report"));
+    }
+
+    #[test]
+    fn help_names_every_verb() {
+        let (rc, out, _) = testutil::run(&["--help"]);
+        assert_eq!(rc, 0);
+        for verb in [
+            "panel-map",
+            "check-map",
+            "order",
+            "sample-bed",
+            "chroms",
+            "report",
+            "freqs",
+            "project",
+            "paint",
+            "simulate",
+        ] {
+            assert!(out.contains(verb), "{verb} missing from {out}");
+        }
     }
 }
