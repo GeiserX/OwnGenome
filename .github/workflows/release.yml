@@ -112,7 +112,7 @@ jobs:
             echo ""
             echo "## og binaries"
             echo ""
-            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. THIRD-PARTY-LICENSES.txt holds the licences of the crates and C libraries (htslib, htscodecs) the binaries link. og-darwin-arm64 and og-darwin-x86_64 run the live site's genome map on a Mac; they leave out the tools that read BAMs. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks all four."
+            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. THIRD-PARTY-LICENSES.txt holds the licences of the Rust standard library, the crates and the C libraries (musl, htslib, htscodecs) the binaries link. og-darwin-arm64 and og-darwin-x86_64 run the live site's genome map on a Mac; they leave out the tools that read BAMs. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks all four."
           } >> "${RUNNER_TEMP}/notes.md"
 
       # Only a commit that main's CI passed is released: it must be on main,

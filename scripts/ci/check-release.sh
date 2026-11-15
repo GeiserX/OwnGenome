@@ -31,9 +31,10 @@
 #       DIR is what a release uploads: the four og binaries,
 #       THIRD-PARTY-LICENSES.txt (rust/og.sh build) and SHA256SUMS. Each file
 #       must be there, not empty, listed once in SHA256SUMS and match its
-#       line. The licence file must list its crates and carry the htslib and
-#       htscodecs licences (hts-sys's htslib/LICENSE and
-#       htslib/htscodecs/LICENSE.md). Prints each file with its checksum.
+#       line. The licence file must list its crates and carry the notices of
+#       the Rust standard library, musl, htslib and htscodecs (hts-sys's
+#       htslib/LICENSE and htslib/htscodecs/LICENSE.md). Prints each file
+#       with its checksum.
 #
 # --repo DIR runs against another git work tree (the tests plant one); the
 # default is the checkout this script is in.
@@ -180,9 +181,11 @@ case "$MODE" in
     done
     lic="${DIST}/THIRD-PARTY-LICENSES.txt"
     grep -qE '^Crates \([1-9][0-9]*\)$' "$lic" || die "THIRD-PARTY-LICENSES.txt lists no crates"
+    grep -qE '^For Rust standard library: ' "$lic" || die "THIRD-PARTY-LICENSES.txt does not carry the Rust standard library's notices"
+    grep -qE '^For musl libc: COPYRIGHT$' "$lic" || die "THIRD-PARTY-LICENSES.txt does not carry musl's licence"
     grep -qE '^For hts-sys [^:]+: htslib/LICENSE$' "$lic" || die "THIRD-PARTY-LICENSES.txt does not carry htslib's licence (hts-sys htslib/LICENSE)"
     grep -qE '^For hts-sys [^:]+: htslib/htscodecs/LICENSE\.md$' "$lic" || die "THIRD-PARTY-LICENSES.txt does not carry htscodecs' licence (hts-sys htslib/htscodecs/LICENSE.md)"
-    echo "OK: the og binaries and THIRD-PARTY-LICENSES.txt match SHA256SUMS, and the licences of htslib and htscodecs are in it"
+    echo "OK: the og binaries and THIRD-PARTY-LICENSES.txt match SHA256SUMS, and the notices of the Rust standard library, musl, htslib and htscodecs are in it"
     ;;
   *)
     die "usage: $0 [--repo DIR] {tag TAG [--notes-out FILE] | checks RUNS.TSV [--ignore NAME]... | declared | dist DIR}"

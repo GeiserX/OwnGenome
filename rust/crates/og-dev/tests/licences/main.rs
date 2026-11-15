@@ -91,6 +91,7 @@ devonly = { path = "../../vendor/devonly" }
 [target.'cfg(windows)'.dependencies]
 bad = { path = "../../vendor/bad" }
 notext = { path = "../../vendor/notext" }
+locked = { path = "../../vendor/locked" }
 "#,
     );
     t.write("ws/app/src/lib.rs", "");
@@ -132,6 +133,21 @@ notext = { path = "../../vendor/notext" }
     vendor(&t, "devonly", "license = \"SSPL-1.0\"", &sspl);
     vendor(&t, "bad", "license = \"SSPL-1.0\"", &sspl);
     vendor(&t, "notext", "license = \"Apache-2.0\"", &[]);
+    // A licence file that cannot be read must stop the run, not drop out.
+    vendor(
+        &t,
+        "locked",
+        "license = \"MIT\"",
+        &[("LICENSE", "unreadable\n")],
+    );
+    use std::os::unix::fs::PermissionsExt;
+    let locked = t.0.join("vendor/locked/LICENSE");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    // A part that is no crate, its notices in HTML as the Rust toolchain ships them.
+    t.write(
+        "std/COPYRIGHT-library.html",
+        "<h1>Std notices</h1>\n<p>A &amp; B</p>\n",
+    );
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let lock = std::process::Command::new(cargo)
         .args(["generate-lockfile", "--offline", "--manifest-path"])
@@ -173,7 +189,11 @@ const LINUX: &str = "x86_64-unknown-linux-gnu";
 #[test]
 fn every_linked_crate_is_credited_and_nothing_else() {
     let t = workspace();
-    let (code, text, err) = notices(&t, &["--target", LINUX]);
+    let extra = format!(
+        "Rust standard library={}",
+        t.path("std/COPYRIGHT-library.html")
+    );
+    let (code, text, err) = notices(&t, &["--target", LINUX, "--extra", &extra]);
     assert_eq!(code, 0, "{err}");
     let listed: Vec<&str> = text
         .lines()
@@ -202,6 +222,15 @@ fn every_linked_crate_is_credited_and_nothing_else() {
         text.contains("For csys 0.1.0: vendored/clib/COPYING\n\nthe C library's own notice"),
         "{text}"
     );
+    // A part that is no crate: listed, and its HTML notices as text.
+    assert!(
+        text.contains("Parts that are no crate\n-----------------------\nRust standard library\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("For Rust standard library: COPYRIGHT-library.html\n\nStd notices\nA & B\n"),
+        "{text}"
+    );
     // No file, MIT allowed: the MIT text with the crate's authors.
     assert!(text.contains("For dual 0.1.0: MIT, no licence file in the crate\n\nCopyright (c) Dual Author <dual@example.org>\n\nPermission is hereby granted"), "{text}");
     for absent in [
@@ -212,6 +241,7 @@ fn every_linked_crate_is_credited_and_nothing_else() {
         "devonly",
         "bad 0.1.0",
         "notext",
+        "locked",
         "server side text",
     ] {
         assert!(
@@ -248,9 +278,17 @@ fn a_build_without_default_features_leaves_the_optional_crate_out() {
 #[test]
 fn a_crate_outside_the_allow_list_or_without_a_text_fails() {
     let t = workspace();
+    let missing = format!("musl libc={}", t.path("no/COPYRIGHT"));
     let (code, text, err) = notices(
         &t,
-        &["--target", LINUX, "--target", "x86_64-pc-windows-gnu"],
+        &[
+            "--target",
+            LINUX,
+            "--target",
+            "x86_64-pc-windows-gnu",
+            "--extra",
+            &missing,
+        ],
     );
     assert_eq!(code, 1, "{err}");
     assert!(text.is_empty(), "no file on an error, got:\n{text}");
@@ -264,7 +302,13 @@ fn a_crate_outside_the_allow_list_or_without_a_text_fails() {
         ),
         "{err}"
     );
-    assert_eq!(err.lines().count(), 2, "{err}");
+    assert!(err.contains("musl libc: cannot read "), "{err}");
+    // Root reads a mode-000 file anyway; everyone else must be stopped by it.
+    let root_reads = std::fs::read(t.0.join("vendor/locked/LICENSE")).is_ok();
+    if !root_reads {
+        assert!(err.contains("locked 0.1.0: cannot read LICENSE: "), "{err}");
+    }
+    assert_eq!(err.lines().count(), if root_reads { 3 } else { 4 }, "{err}");
 }
 
 #[test]

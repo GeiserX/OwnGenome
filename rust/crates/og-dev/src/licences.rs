@@ -2,7 +2,8 @@
 //!
 //! ```text
 //! og dev licences notices [--manifest-path FILE] [--package NAME]
-//!     (--target TRIPLE | --target-no-default TRIPLE)... [--out FILE]
+//!     (--target TRIPLE | --target-no-default TRIPLE)... [--extra NAME=FILE]...
+//!     [--out FILE]
 //! ```
 //!
 //! The og binaries link about seventy crates statically, and the Linux pair
@@ -25,8 +26,16 @@
 //! A crate that ships no text, under a licence that MIT satisfies, gets the
 //! MIT text with its authors; any other crate without a text is an error.
 //!
-//! The file lists every crate with its version, licence and, when it is not
-//! in every binary, the targets it is in; then each distinct licence text
+//! The binary also holds code that is no cargo package: the Rust standard
+//! library and, in a musl build, the musl C library. `--extra NAME=FILE`
+//! adds such a part with its licence file (an `.html` file, as the Rust
+//! toolchain ships its notices, is turned into plain text); `rust/og.sh`
+//! passes both from the builder image. A licence file that cannot be read,
+//! a crate's or an extra one, is an error.
+//!
+//! The file lists the extra parts, then every crate with its version,
+//! licence and, when it is not in every binary, the targets it is in; then
+//! each distinct licence text
 //! once, headed by the crates and files it covers. Errors name every crate
 //! at fault and exit 1; usage errors exit 2.
 
@@ -51,7 +60,7 @@ pub const ALLOWED: &[&str] = &[
     "Zlib",
 ];
 
-const USAGE: &str = "usage: og dev licences notices [--manifest-path FILE] [--package NAME] (--target TRIPLE | --target-no-default TRIPLE)... [--out FILE]";
+const USAGE: &str = "usage: og dev licences notices [--manifest-path FILE] [--package NAME] (--target TRIPLE | --target-no-default TRIPLE)... [--extra NAME=FILE]... [--out FILE]";
 
 /// The MIT text, for a crate under MIT that ships no licence file.
 const MIT_TEXT: &str =
@@ -95,6 +104,8 @@ struct Opts {
     manifest: Option<String>,
     package: String,
     builds: Vec<Build>,
+    /// Parts that are no cargo package: (name, licence file).
+    extras: Vec<(String, String)>,
     out: Option<String>,
 }
 
@@ -103,6 +114,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         manifest: None,
         package: "og".into(),
         builds: Vec::new(),
+        extras: Vec::new(),
         out: None,
     };
     let mut it = args.iter();
@@ -116,6 +128,15 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--manifest-path" => o.manifest = Some(value()?),
             "--package" => o.package = value()?,
             "--out" => o.out = Some(value()?),
+            "--extra" => {
+                let v = value()?;
+                match v.split_once('=') {
+                    Some((name, file)) if !name.is_empty() && !file.is_empty() => {
+                        o.extras.push((name.into(), file.into()));
+                    }
+                    _ => return Err(format!("--extra wants NAME=FILE, got {v:?}")),
+                }
+            }
             "--target" | "--target-no-default" => o.builds.push(Build {
                 default_features: a == "--target",
                 triple: value()?,
@@ -185,9 +206,33 @@ fn notices(opts: &Opts) -> Result<String, Vec<String>> {
         }
     }
     let mut problems = Vec::new();
-    // Each distinct text once, in the order its first crate comes.
+    // Each distinct text once, in the order its first part comes.
     let mut texts: Vec<(String, Vec<String>)> = Vec::new();
     let mut index: HashMap<String, usize> = HashMap::new();
+    let mut add = |who: String, text: String| match index.get(&text) {
+        Some(&i) => texts[i].1.push(who),
+        None => {
+            index.insert(text.clone(), texts.len());
+            texts.push((text, vec![who]));
+        }
+    };
+    for (name, file) in &opts.extras {
+        match std::fs::read(file) {
+            Ok(bytes) => {
+                let raw = String::from_utf8_lossy(&bytes);
+                let text = if file.ends_with(".html") {
+                    html_text(&raw)
+                } else {
+                    raw.into_owned()
+                };
+                let base = Path::new(file)
+                    .file_name()
+                    .map_or(file.as_str(), |n| n.to_str().unwrap_or(file.as_str()));
+                add(format!("{name}: {base}"), text);
+            }
+            Err(e) => problems.push(format!("{name}: cannot read {file}: {e}")),
+        }
+    }
     for c in crates.values() {
         let id = format!("{} {}", c.name, c.version);
         let Some(expr) = &c.license else {
@@ -208,7 +253,13 @@ fn notices(opts: &Opts) -> Result<String, Vec<String>> {
                 continue;
             }
         }
-        let mut found = licence_files(c);
+        let mut found = match licence_files(c) {
+            Ok(f) => f,
+            Err(e) => {
+                problems.push(format!("{id}: {e}"));
+                continue;
+            }
+        };
         if found.is_empty() {
             if satisfied(expr, &|l| l == "MIT") == Ok(true) {
                 let who = if c.authors.is_empty() {
@@ -228,14 +279,7 @@ fn notices(opts: &Opts) -> Result<String, Vec<String>> {
             }
         }
         for (label, text) in found {
-            let who = format!("{id}: {label}");
-            match index.get(&text) {
-                Some(&i) => texts[i].1.push(who),
-                None => {
-                    index.insert(text.clone(), texts.len());
-                    texts.push((text, vec![who]));
-                }
-            }
+            add(format!("{id}: {label}"), text);
         }
     }
     if !problems.is_empty() {
@@ -254,16 +298,23 @@ fn render(
     s.push_str("Third-party licences of the og binaries\n");
     s.push_str("=======================================\n\n");
     s.push_str("OwnGenome is GPL-3.0-or-later (LICENSE in its source). The og binaries\n");
-    s.push_str("also hold the code of the crates below, linked statically. A crate that\n");
-    s.push_str("builds C carries that library's licence in its own folder: hts-sys gives\n");
-    s.push_str("htslib/LICENSE and htslib/htscodecs/LICENSE.md, the licences of htslib and\n");
-    s.push_str("htscodecs. Each licence text comes once below, after the crates and files\n");
-    s.push_str("it covers. `og dev licences notices` writes this file from cargo metadata\n");
-    s.push_str("and the files each crate ships.\n\n");
+    s.push_str("also hold the code of the parts and crates below, linked statically. A\n");
+    s.push_str("crate that builds C carries that library's licence in its own folder:\n");
+    s.push_str("hts-sys gives htslib/LICENSE and htslib/htscodecs/LICENSE.md, the licences\n");
+    s.push_str("of htslib and htscodecs. Each licence text comes once below, after the\n");
+    s.push_str("parts, crates and files it covers. `og dev licences notices` writes this\n");
+    s.push_str("file from cargo metadata and the files each crate ships.\n\n");
     s.push_str(&format!(
         "Targets: {}\n\n",
         all.iter().cloned().collect::<Vec<_>>().join(", ")
     ));
+    if !opts.extras.is_empty() {
+        s.push_str("Parts that are no crate\n-----------------------\n");
+        for (name, _) in &opts.extras {
+            s.push_str(&format!("{name}\n"));
+        }
+        s.push('\n');
+    }
     let title = format!("Crates ({})", crates.len());
     s.push_str(&format!("{title}\n{}\n", "-".repeat(title.len())));
     for c in crates.values() {
@@ -441,8 +492,9 @@ fn is_licence_name(name: &str) -> bool {
     .any(|p| n.starts_with(p))
 }
 
-/// (label, text) of every licence file of a crate, label = path in the crate.
-fn licence_files(c: &Crate) -> Vec<(String, String)> {
+/// (label, text) of every licence file of a crate, label = path in the
+/// crate. A file found but not readable is an error, never a silent gap.
+fn licence_files(c: &Crate) -> Result<Vec<(String, String)>, String> {
     let mut paths: BTreeSet<PathBuf> = BTreeSet::new();
     collect(&c.dir, c.builds_c, &mut paths);
     if let Some(f) = &c.license_file {
@@ -453,12 +505,51 @@ fn licence_files(c: &Crate) -> Vec<(String, String)> {
     }
     paths
         .into_iter()
-        .filter_map(|p| {
-            let bytes = std::fs::read(&p).ok()?;
+        .map(|p| {
             let label = p.strip_prefix(&c.dir).unwrap_or(&p).display().to_string();
-            Some((label, String::from_utf8_lossy(&bytes).into_owned()))
+            let bytes = std::fs::read(&p).map_err(|e| format!("cannot read {label}: {e}"))?;
+            Ok((label, String::from_utf8_lossy(&bytes).into_owned()))
         })
         .collect()
+}
+
+/// The text of an HTML notice file: tags dropped, the five escapes HTML
+/// writes undone, runs of blank lines folded to one.
+fn html_text(html: &str) -> String {
+    let mut bare = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            c if !in_tag => bare.push(c),
+            _ => {}
+        }
+    }
+    let bare = bare
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&amp;", "&");
+    let mut out = String::with_capacity(bare.len());
+    let mut blank = true;
+    for line in bare.lines().map(str::trim_end) {
+        if line.is_empty() {
+            if !blank {
+                out.push('\n');
+            }
+            blank = true;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+            blank = false;
+        }
+    }
+    out.truncate(out.trim_end().len());
+    out.push('\n');
+    out
 }
 
 /// Licence files in `dir`, and below it when `deep` (a crate that builds C).
@@ -587,6 +678,13 @@ mod tests {
         ] {
             assert_eq!(allowed(e), Ok(false), "{e}");
         }
+    }
+
+    #[test]
+    fn html_notices_become_text() {
+        let html =
+            "<h1>Notices</h1>\n<p>A &amp; B &lt;x&gt; &quot;q&quot;</p>\n\n\n<pre>line\n</pre>\n";
+        assert_eq!(html_text(html), "Notices\nA & B <x> \"q\"\n\nline\n");
     }
 
     #[test]

@@ -192,15 +192,21 @@ build() {
   # The notices of everything the four link, written by the new og itself in
   # the builder, where cargo and the crate sources are: the Linux binary of
   # the builder's own arch, with the targets and feature sets built above.
+  # Two parts are no crate, so the builder names their notices: the Rust
+  # standard library (the toolchain's COPYRIGHT-library.html) and musl, the
+  # C library of the Linux pair (musl's COPYRIGHT, which zig ships).
   local lic=() notices="${cache}/THIRD-PARTY-LICENSES.txt"
   for a in $ARCHES; do lic+=(--target "$(triple "$a")"); done
   for a in $DARWIN_ARCHES; do lic+=(--target-no-default "$(darwin_triple "$a")"); done
   rm -f "$notices"
-  # shellcheck disable=SC2016 # $(uname -m) and $@ expand in the builder's sh
+  # shellcheck disable=SC2016 # the sh -c script expands in the builder
   "$ENGINE" run --rm --user "$(id -u):$(id -g)" \
     -e HOME=/cache/home -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target \
     -v "${ROOT}/rust:/src:ro" -v "${cache}:/cache" -w /src "$OG_BUILDER" \
-    sh -c 'exec "/cache/target/$(uname -m)-unknown-linux-musl/release/og" "$@"' og \
+    sh -c 'sr=$(rustc --print sysroot) || exit
+      set -- "$@" --extra "Rust standard library=${sr}/share/doc/rust/COPYRIGHT-library.html"
+      for m in /usr/local/zig*/lib/libc/musl/COPYRIGHT; do set -- "$@" --extra "musl libc=${m}"; done
+      exec "/cache/target/$(uname -m)-unknown-linux-musl/release/og" "$@"' og \
     dev licences notices "${lic[@]}" --out /cache/THIRD-PARTY-LICENSES.txt || return
   [ -s "$notices" ] || { echo "ERROR: og dev licences notices wrote no ${notices}" >&2; return 1; }
   put "${outs[@]}" || return 1
