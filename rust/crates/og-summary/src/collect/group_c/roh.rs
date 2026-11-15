@@ -51,6 +51,54 @@ pub const MASKED_BANDS: [(&str, i128, i128); 25] = [
 
 /// GRCh38's chr1 to chr22 (UCSC hg38.chrom.sizes).
 pub const AUTOSOME_BP: i128 = 2_875_001_522;
+
+// UCSC hg38.chrom.sizes, in chromosome order. ST rows tell us which
+// chromosome lengths belong in this run's denominator, not callable bases.
+const AUTOSOME_LENGTHS: [i128; 22] = [
+    248_956_422,
+    242_193_529,
+    198_295_559,
+    190_214_555,
+    181_538_259,
+    170_805_979,
+    159_345_973,
+    145_138_636,
+    138_394_717,
+    133_797_422,
+    135_086_622,
+    133_275_309,
+    114_364_328,
+    107_043_718,
+    101_991_189,
+    90_338_345,
+    83_257_441,
+    80_373_285,
+    58_617_616,
+    64_444_167,
+    46_709_983,
+    50_818_468,
+];
+
+fn autosome_index(chrom: &str) -> Option<usize> {
+    is_autosome(chrom).then(|| chrom[3..].parse::<usize>().unwrap() - 1)
+}
+
+fn covered_unmasked_bp(covered: &[bool; 22]) -> i128 {
+    covered
+        .iter()
+        .enumerate()
+        .filter(|(_, yes)| **yes)
+        .map(|(i, _)| {
+            let chrom = format!("chr{}", i + 1);
+            AUTOSOME_LENGTHS[i]
+                - MASKED_BANDS
+                    .iter()
+                    .filter(|(c, ..)| *c == chrom)
+                    .map(|(_, a, b)| b - a)
+                    .sum::<i128>()
+        })
+        .sum()
+}
 /// The runs F_ROH and the one-chromosome flag count (docs/11-roh-analysis.md).
 pub const ROH_MIN_BP: f64 = 5e6;
 /// One chromosome carrying most of the long runs: at least this much of it
@@ -123,87 +171,31 @@ pub fn roh_band(f: f64) -> &'static str {
         .map_or("parent and child, full siblings (F 1/4)", |b| b.1)
 }
 
-/// assets/imprinted_regions.tsv, the same rows (a test keeps the two
-/// equal): chrom, the region's span (none for the whole chromosome), the
-/// region, the maternal and paternal UPD syndromes and the PMIDs.
-/// chrom, span, then four text fields.
-type Imprinted = (
-    &'static str,
-    Option<(i128, i128)>,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+/// One source for region names and their citations. Embed the shipped
+/// asset so a staged report needs no second runtime file or copied table.
+const IMPRINTED_TSV: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../assets/imprinted_regions.tsv"
+));
 
-pub const IMPRINTED_REGIONS: [Imprinted; 6] = [
-    (
-        "chr6",
-        None,
-        "6q24 (PLAGL1, HYMAI)",
-        "-",
-        "Transient neonatal diabetes mellitus (6q24-related)",
-        "20301706",
-    ),
-    (
-        "chr7",
-        None,
-        "7p12 (GRB10), 7q32 (MEST)",
-        "Silver-Russell syndrome",
-        "-",
-        "27585961",
-    ),
-    (
-        "chr11",
-        Some((0, 22_000_000)),
-        "11p15 (H19/IGF2, KCNQ1OT1)",
-        "Silver-Russell syndrome",
-        "Beckwith-Wiedemann syndrome",
-        "29377879;27585961",
-    ),
-    (
-        "chr14",
-        None,
-        "14q32.2 (DLK1-MEG3)",
-        "Temple syndrome",
-        "Kagami-Ogata syndrome",
-        "24891339;26377239",
-    ),
-    (
-        "chr15",
-        Some((20_500_000, 33_400_000)),
-        "15q11-q13 (SNRPN, UBE3A)",
-        "Prader-Willi syndrome",
-        "Angelman syndrome",
-        "22237428;27615419",
-    ),
-    (
-        "chr20",
-        None,
-        "20q13.32 (GNAS)",
-        "Mulchandani-Bhoj-Conlin syndrome (growth failure)",
-        "Pseudohypoparathyroidism type 1B",
-        "26248010;29959430",
-    ),
-];
-
-/// The imprinted regions a flagged chromosome joins: every row of the
-/// whole chromosome, and a row with a region only when a run overlaps it.
-fn imprinted(chrom: &str, runs: &[(i128, i128)]) -> Value {
+/// A chromosome hint cannot determine parental origin or diagnose a
+/// syndrome. The two legacy keys stay as placeholders for old readers.
+fn imprinted(chrom: &str) -> Value {
     Value::Array(
-        IMPRINTED_REGIONS
-            .iter()
-            .filter(|r| r.0 == chrom)
-            .filter(|r| {
-                r.1.is_none_or(|(a, b)| runs.iter().any(|&(s, e)| overlap(a, b, s, e) > 0))
-            })
-            .map(|r| {
-                Obj::new()
-                    .set("region", s(r.2))
-                    .set("maternal_upd", s(r.3))
-                    .set("paternal_upd", s(r.4))
-                    .set("pmid", s(r.5))
-                    .val()
+        IMPRINTED_TSV
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .skip(1)
+            .filter_map(|line| {
+                let f: Vec<&str> = line.split('\t').collect();
+                (f.len() == 7 && f[0] == chrom).then(|| {
+                    Obj::new()
+                        .set("region", s(f[3]))
+                        .set("maternal_upd", s("-"))
+                        .set("paternal_upd", s("-"))
+                        .set("pmid", s(f[6]))
+                        .val()
+                })
             })
             .collect(),
     )
@@ -228,11 +220,30 @@ pub fn section(c: &Ctx<'_>) -> Out {
     let (mut total, mut largest, mut masked) = (0.0_f64, 0.0_f64, 0.0_f64);
     let (mut segs, mut sex_segs) = (0usize, 0usize);
     let mut big = Vec::new();
-    // chrom -> the bases of its long runs, and the runs (start, end)
-    let mut per_chrom: indexmap::IndexMap<String, (f64, Vec<(i128, i128)>)> =
-        indexmap::IndexMap::new();
-    for line in lines(&p.path)? {
-        let c = pycompat::text::split(&line, None, None);
+    // chrom -> the bases of its long runs
+    let mut per_chrom: indexmap::IndexMap<String, f64> = indexmap::IndexMap::new();
+    let (mut assessed, mut observed) = ([false; 22], [false; 22]);
+    let mut reader = crate::text_lines(&p.path).map_err(|e| super::util::os_note(&e))?;
+    let mut line = String::new();
+    loop {
+        line.clear();
+        if !reader.read_line(&mut line).map_err(|e| {
+            crate::collect::sections::py_error(
+                "OSError",
+                &crate::collect::sections::gzip_message(&e),
+            )
+        })? {
+            break;
+        }
+        let c: Vec<&str> = line.split_whitespace().collect();
+        if c.len() >= 6
+            && c[0] == "ST"
+            && let Some(i) = autosome_index(c[2])
+            && crate::int(c[3]).is_ok_and(|pos| pos > 0 && pos <= AUTOSOME_LENGTHS[i])
+            && matches!(c[4], "0" | "1")
+        {
+            assessed[i] = true;
+        }
         if c.len() < 6 || c[0] != "RG" {
             continue;
         }
@@ -257,6 +268,7 @@ pub fn section(c: &Ctx<'_>) -> Out {
         if !is_autosome(c[2]) {
             continue;
         }
+        observed[autosome_index(c[2]).unwrap()] = true;
         let inside = length.min(masked_overlap(c[2], start, end) as f64);
         masked += inside;
         length -= inside;
@@ -268,8 +280,7 @@ pub fn section(c: &Ctx<'_>) -> Out {
         largest = largest.max(length);
         if length >= ROH_MIN_BP {
             let pc = per_chrom.entry(c[2].to_owned()).or_default();
-            pc.0 += length;
-            pc.1.push((start, end));
+            *pc += length;
             let mut row = Obj::new()
                 .set("region", s(&format!("{}:{}-{}", c[2], c[3], c[4])))
                 .set("mb", r1(length / 1e6, 1));
@@ -279,19 +290,32 @@ pub fn section(c: &Ctx<'_>) -> Out {
             big.push(row.val());
         }
     }
-    let long_bp: f64 = per_chrom.values().fold(0.0, |a, v| a + v.0);
-    let f_roh = long_bp / autosome_unmasked_bp() as f64;
+    // fold from +0.0: an empty f64 sum is -0.0, which the reports print as
+    // "-0.0000" for every sample without a long run.
+    let long_bp: f64 = per_chrom.values().fold(0.0, |a, v| a + v);
+    let has_sites = assessed.iter().any(|yes| *yes);
+    // Old -O r files omit ST rows. Their runs give a lower bound on
+    // chromosome scope, never evidence for a genome-wide interpretation.
+    let covered: [bool; 22] = std::array::from_fn(|i| assessed[i] || observed[i]);
+    let denominator = covered_unmasked_bp(&covered);
+    let complete = has_sites
+        && assessed.iter().all(|yes| *yes)
+        && denominator >= autosome_unmasked_bp()
+        && observed
+            .iter()
+            .zip(assessed)
+            .all(|(run, site)| !run || site);
+    let f_roh = (denominator > 0).then(|| long_bp / denominator as f64);
     let mut upd = Value::Null;
-    // The first chromosome of the most bases, as max() picks.
-    let top =
-        per_chrom.iter().fold(
-            None::<(&String, &(f64, Vec<(i128, i128)>))>,
-            |best, kv| match best {
-                Some(b) if b.1.0 >= kv.1.0 => Some(b),
-                _ => Some(kv),
-            },
-        );
-    if let Some((chrom, (bp, runs))) = top
+    // Retain the first chromosome on ties, as before.
+    let top = per_chrom
+        .iter()
+        .fold(None::<(&String, &f64)>, |best, kv| match best {
+            Some(b) if b.1 >= kv.1 => Some(b),
+            _ => Some(kv),
+        });
+    if complete
+        && let Some((chrom, bp)) = top
         && *bp >= UPD_MIN_BP
         && *bp > UPD_SHARE * long_bp
     {
@@ -299,11 +323,12 @@ pub fn section(c: &Ctx<'_>) -> Out {
             .set("chrom", s(chrom))
             .set("mb", r1(bp / 1e6, 1))
             .set("share", r1(bp / long_bp, 2))
-            .set("imprinted", imprinted(chrom, runs))
+            .set("imprinted", imprinted(chrom))
+            .set("note", s("Long chromosome-focused ROH; investigate possible isodisomy. A deletion, acquired loss of heterozygosity or shared ancestry can give this pattern. Copy neutrality and parental origin are not established; check copy-number results and parents' genotypes. Heterodisomy can leave no ROH."))
             .val();
     }
-    let relationship = if upd == Value::Null {
-        s(roh_band(f_roh))
+    let relationship = if complete && upd == Value::Null {
+        s(roh_band(f_roh.unwrap_or(0.0)))
     } else {
         Value::Null
     };
@@ -315,9 +340,20 @@ pub fn section(c: &Ctx<'_>) -> Out {
         .set("masked_mb", r1(masked / 1e6, 1))
         .set("sex_chromosome_segments", count(sex_segs))
         .set("long_mb", r1(long_bp / 1e6, 1))
-        .set("f_roh", r1(f_roh, 4))
+        .set("f_roh", f_roh.map_or(Value::Null, |f| r1(f, 4)))
         .set("relationship", relationship)
-        .set("upd_flag", upd);
+        .set("upd_flag", upd)
+        .set("scope", Obj::new()
+            .set("source", s(if has_sites { "sites" } else { "segments_only" }))
+            .set("autosomes", Value::Array(covered.iter().enumerate()
+                .filter(|(_, yes)| **yes).map(|(i, _)| s(&format!("chr{}", i + 1))).collect()))
+            .set("unmasked_bp", Value::Int(denominator))
+            .set("partial", Value::Bool(!complete))
+            .set("note", s(if complete {
+                "Sites on all 22 autosomes; marker presence does not establish callable breadth or copy neutrality."
+            } else {
+                "Partial or unverified chromosome scope: no relationship band or UPD flag. F_ROH uses only the listed chromosomes, not callable bases."
+            })).val());
     Ok(Some((p, data.val())))
 }
 
@@ -442,6 +478,32 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
 mod tests {
     use super::*;
     use crate::testutil::Dir;
+
+    #[test]
+    fn imprinted_asset_is_the_only_table() {
+        let rows: Vec<_> = IMPRINTED_TSV
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .skip(1)
+            .collect();
+        assert_eq!(rows.len(), 6);
+        for chrom in ["chr6", "chr7", "chr11", "chr14", "chr15", "chr20"] {
+            let Value::Array(hints) = imprinted(chrom) else {
+                panic!()
+            };
+            assert_eq!(hints.len(), 1);
+            let row = rows
+                .iter()
+                .find(|line| line.starts_with(&format!("{chrom}\t")))
+                .unwrap();
+            let f: Vec<_> = row.split('\t').collect();
+            assert_eq!(f.len(), 7);
+            assert!(f[6].split(';').all(|pmid| pmid.parse::<u32>().is_ok()));
+            assert!(f[1].is_empty() && f[2].is_empty());
+        }
+        assert_eq!(AUTOSOME_LENGTHS.iter().sum::<i128>(), AUTOSOME_BP);
+        assert_eq!(covered_unmasked_bp(&[true; 22]), autosome_unmasked_bp());
+    }
 
     #[test]
     fn awk_reads_the_leading_number() {

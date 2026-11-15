@@ -181,12 +181,18 @@ grep -v '^#' "${REPO}/assets/callability_genes.tsv" \
   | awk -F'\t' 'NR == 1 || $1 == "KCNE1" || $1 == "CBS" || $1 == "U2AF1" || $1 == "CRYAA"' > "$CAT"
 check_eq "the four genes' rows of assets/callability_genes.tsv" "$(tail -n +2 "$CAT" | cut -f1 | sort | tr '\n' ' ')" "CBS CRYAA KCNE1 U2AF1 "
 reading() {
-  python3 - "$CAT" "$1" "${REPO}/bin" <<'PY'
-import csv, sys
-sys.path.insert(0, sys.argv[3])
-import collect_summary
+  # og summary collect's callability section over the table, with the test
+  # catalog as the assets' callability_genes.tsv.
+  local t
+  t=$(mktemp -d "${CASE_TMP}/reading.XXXXXX")
+  mkdir -p "${t}/S/mosdepth" "${t}/assets"
+  cp "$CAT" "${t}/assets/callability_genes.tsv"
+  ln -s "$1" "${t}/S/mosdepth/S_callability.bed.gz"
+  "${REPO}/bin/og" summary collect --sample S --sample-dir "${t}/S" --assets "${t}/assets" --out "${t}/summary.json" > /dev/null
+  python3 - "$CAT" "${t}/summary.json" <<'PY'
+import csv, json, sys
 rows = list(csv.DictReader(open(sys.argv[1]), delimiter="\t"))
-d = collect_summary.callability(rows, sys.argv[2])
+d = json.load(open(sys.argv[2]))["sections"]["callability"]["data"]
 bad = {g["gene"] for g in d["not_read"]}
 print(" ".join(f"{r['gene']}={'not_read' if r['gene'] in bad else 'read'}" for r in rows))
 PY

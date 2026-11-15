@@ -467,6 +467,11 @@ mod tests {
         assert!(in_polyc(302, "A", "AC"));
         assert!(!in_polyc(300, "A", "G"));
         assert!(in_polyc(16189, "T", "C"));
+        // The tract's last base is in it, the next base is not; an SNV just
+        // before a tract is not, an insertion anchored there is.
+        assert!(in_polyc(315, "C", "T"));
+        assert!(!in_polyc(316, "C", "T"));
+        assert!(!in_polyc(302, "A", "G"));
     }
 
     #[test]

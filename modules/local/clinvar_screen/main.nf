@@ -6,7 +6,8 @@
     PASS variants against the ClinVar pathogenic subset. Writes
     <id>_clinvar_hits.vcf: the sample's matching records the person carries
     (genotype with an ALT allele) with ClinVar's ID, GENEINFO, CLNSIG and
-    CLNREVSTAT copied on; <id>_clinvar_hits.tsv: the same hits, one row each;
+    CLNREVSTAT copied on, and ClinVar's condition (CLNDN, CLNDISDB) when the
+    ClinVar file defines it; <id>_clinvar_hits.tsv: the same hits, one row each;
     and prints the hits per ClinVar review-status star tier.
 
     Both files are read only on the contigs they share with each other and
@@ -177,10 +178,20 @@ process CLINVAR_SCREEN {
     # Last, the tag pass marks each part of a matched combined allele
     # (PGP_PART_OF), and two hits in one gene that can be one allele but
     # matched no combined record (PGP_ONE_ALLELE).
+    # The condition goes on too, as scripts/06 copies it: CLNDN (ClinVar's
+    # disease name) and CLNDISDB (its disease database ids), so a later step
+    # can tell which of a gene's diseases ClinVar asserted. bcftools annotate
+    # stops on a tag the ClinVar file does not define, so each is copied only
+    # when the file's header defines it (every ClinVar release does).
+    clinvar_cols="ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT\$(bcftools view -h "\${CLINVAR_NORM}" | awk '/^##INFO=<ID=CLNDN,/ { a = ",INFO/CLNDN" } /^##INFO=<ID=CLNDISDB,/ { b = ",INFO/CLNDISDB" } END { printf "%s%s", a, b }')"
+    case "\${clinvar_cols}" in
+        *CLNDN*CLNDISDB) ;;
+        *) echo "NOTICE: \${CLINVAR_NORM} does not define CLNDN and CLNDISDB; the hits carry no ClinVar condition" ;;
+    esac
     bcftools isec --no-version -n=2 -w1 -Oz -o shared.vcf.gz candidates.vcf.gz "\${CLINVAR_NORM}"
     bcftools index -t shared.vcf.gz
     bcftools annotate --no-version -a "\${CLINVAR_NORM}" --pair-logic exact \\
-        -c ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT -Ou shared.vcf.gz \\
+        -c "\${clinvar_cols}" -Ou shared.vcf.gz \\
         | bcftools view --no-version -i 'GT~"[1-9]"' -Ov -o hits_untagged.vcf
     # A floor other than the default, for og clinvar hits and the report.
     og clinvar join-adjacent --mode tag hits_untagged.vcf \\

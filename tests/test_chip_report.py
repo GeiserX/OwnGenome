@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """Step 49 (clonal haematopoiesis): og chip on synthetic bcftools output and on
-assets/chip_genes.tsv, and what bin/chip_report.py still holds for the reports.
+assets/chip_genes.tsv, and what the reports read of it.
 
 Without og (OG unset) only part A runs:
-  A. bin/chip_report.py's detection limit: about 14% at 30x (binomial, 3
-     reads, 8 in 10), lower at 60x, none under 3x; the summary reader and
-     the report lines show the call and the limit (bin/collect_summary.py
-     sec_chip, bin/render_report.py chip_lines), the median limit included.
+  A. the detection limit, computed here as an independent binomial (3
+     reads, 8 in 10): about 14% at 30x, lower at 60x, none under 3x; the
+     summary (og summary collect, which needs OG; without it part A stops
+     there) and the report lines show the call and the limit
+     (bin/render_report.py chip_lines), the median limit included.
 With OG naming the og binary, also:
   1. og chip check-table passes assets/chip_genes.tsv; a malformed class
      token, a gene listed twice, a gene that counts no class and a bad
@@ -23,7 +25,7 @@ With OG naming the og binary, also:
   5. the depth table reads a base with no pileup line as depth 0, and a gene
      off the reference as not_on_reference; the summary sentence says the
      limit, that CHIP starts at 2%, that a negative result does not rule a
-     clone out, and that it is not a diagnosis; og's limit is the Python's;
+     clone out, and that it is not a diagnosis; og's limit is the binomial's;
   6. prepare picks the MANE Select transcript of a synthetic Ensembl GFF3 (not
      the other one), renames the contigs (2 -> chr2), pads the coding exons by
      10 bases, leaves out a contig the reference lacks, and stops on a gene
@@ -32,6 +34,7 @@ With OG naming the og binary, also:
 
 Run: OG=rust/target/release/og python3 tests/test_chip_report.py
 """
+import math
 import os
 import subprocess
 import sys
@@ -39,11 +42,14 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import chip_report as cr  # noqa: E402
 import collect_summary as cs  # noqa: E402
 import render_report as rr  # noqa: E402
 
 TABLE = os.path.join(REPO, "assets", "chip_genes.tsv")
+# The two tables og chip report writes, in column order.
+OUT_COLUMNS = ["gene", "chrom", "pos", "ref", "alt", "consequence", "protein_change", "exon", "vaf",
+               "alt_reads", "depth", "filter", "status", "class", "note"]
+DEPTH_COLUMNS = ["gene", "transcript", "chrom", "coding_bases", "mean_depth", "detection_limit_vaf", "status"]
 OG = os.environ.get("OG", "")
 FAILS = 0
 
@@ -66,29 +72,65 @@ def og(*args):
     return subprocess.run([OG, "chip", *args], capture_output=True, text=True)
 
 
+def p_at_least(k, n, f):
+    """P(X >= k) for X ~ Binomial(n, f)."""
+    return 1.0 - sum(math.comb(n, i) * f ** i * (1 - f) ** (n - i) for i in range(k))
+
+
+def detection_limit(depth, k=3, power=0.8):
+    """The smallest VAF found with probability POWER at DEPTH (K reads needed), by
+    bisection; None below K reads. The test's own oracle for og chip's limit."""
+    n = int(depth)
+    if n < k:
+        return None
+    lo, hi = 0.0, 1.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if p_at_least(k, n, mid) >= power:
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
+def table_genes(path):
+    """The genes of assets/chip_genes.tsv."""
+    with open(path) as fh:
+        lines = [ln for ln in fh if not ln.startswith("#") and ln.strip()]
+    return [ln.split("\t")[0] for ln in lines[1:]]
+
+
+def chip_section(d, sample):
+    """The chip section's data og summary collect reads from folder D."""
+    if not OG:
+        print("skip: OG is not set (OG=rust/target/release/og): the summary needs og summary collect")
+        sys.exit(1 if FAILS or os.environ.get("OG_REQUIRED") else 0)
+    return cs.collect(sample, d)["sections"]["chip"]["data"]
+
+
 def chip_tables(d, sample, calls, depth):
     """A sample folder with the two tables, as og chip report writes them."""
     os.makedirs(os.path.join(d, sample, "chip"))
     write(os.path.join(d, sample, "chip"), f"{sample}_chip.tsv",
-          "\t".join(cr.OUT_COLUMNS) + "\n" + "".join("\t".join(c) + "\n" for c in calls))
+          "\t".join(OUT_COLUMNS) + "\n" + "".join("\t".join(c) + "\n" for c in calls))
     write(os.path.join(d, sample, "chip"), f"{sample}_chip_depth.tsv",
-          "\t".join(cr.DEPTH_COLUMNS) + "\n" + "".join("\t".join(r) + "\n" for r in depth))
+          "\t".join(DEPTH_COLUMNS) + "\n" + "".join("\t".join(r) + "\n" for r in depth))
     return os.path.join(d, sample)
 
 
-# A. what Python keeps
-lim30, lim60 = cr.detection_limit(30), cr.detection_limit(60)
+# A. the detection limit and what the reports read
+lim30, lim60 = detection_limit(30), detection_limit(60)
 check("the 30x detection limit is between 13% and 16%", 0.13 < lim30 < 0.16, lim30)
-check("P(>=3 reads) at that VAF is 0.8", abs(cr.p_at_least(3, 30, lim30) - 0.8) < 1e-6, cr.p_at_least(3, 30, lim30))
+check("P(>=3 reads) at that VAF is 0.8", abs(p_at_least(3, 30, lim30) - 0.8) < 1e-6, p_at_least(3, 30, lim30))
 check("the 60x limit is lower", lim60 < lim30, (lim60, lim30))
-check("no limit below 3x", cr.detection_limit(2.9) is None)
+check("no limit below 3x", detection_limit(2.9) is None)
 with tempfile.TemporaryDirectory() as d:
     call = ["DNMT3A", "chr2", "1150", "C", "T", "missense", "R882H", "2", "0.130", "6", "46", "PASS", "chip",
             "missense", "hotspot R882"]
     s = chip_tables(d, "S", [call], [["DNMT3A", "T2", "chr2", "392", "30.0", f"{lim30:.3f}", "covered"],
                                      ["JAK2", "T3", "chr9", "0", "", "", "not_on_reference"]])
-    _, sec = cs.sec_chip(s, "S")
-    check("sec_chip reads the chip call and the median limit",
+    sec = chip_section(s, "S")
+    check("the summary reads the chip call and the median limit",
           [c["protein_change"] for c in sec.get("calls", [])] == ["R882H"] and abs(sec["median_limit"] - 0.137) < 0.001
           and sec["not_covered"] == ["JAK2"], sec)
     text = "\n".join(rr.chip_lines(sec, "S"))
@@ -96,13 +138,13 @@ with tempfile.TemporaryDirectory() as d:
           "DNMT3A R882H: VAF 0.130 (6 of 46 reads)" in text and "about 14% or more" in text and "JAK2" in text, text)
     # With an even count of covered genes the median depth is the mean of the two
     # middle depths, and the reported limit must be the one at that depth.
-    e = chip_tables(d, "E", [], [[f"G{x}", "T", "chr1", "10", f"{x}.0", f"{cr.detection_limit(x):.4f}", "covered"]
+    e = chip_tables(d, "E", [], [[f"G{x}", "T", "chr1", "10", f"{x}.0", f"{detection_limit(x):.4f}", "covered"]
                                  for x in (20, 30, 60, 80)])
-    _, sec4 = cs.sec_chip(e, "E")
+    sec4 = chip_section(e, "E")
     check("with 4 covered genes (20, 30, 60, 80x) the limit is the one at the median 45x",
-          sec4.get("median_depth") == 45 and abs(sec4["median_limit"] - cr.detection_limit(45)) < 1e-9, sec4)
+          sec4.get("median_depth") == 45 and abs(sec4["median_limit"] - detection_limit(45)) < 1e-9, sec4)
     check("no call reads 'No CHIP call.'", "No CHIP call." in rr.chip_lines({"calls": [], "median_limit": None}, "S"))
-    check("the table reader reads assets/chip_genes.tsv", "DNMT3A" in [r["gene"] for r in cr.read_table(TABLE)])
+    check("assets/chip_genes.tsv holds DNMT3A", "DNMT3A" in table_genes(TABLE))
 
 if not OG:
     print("skip: OG is not set (OG=rust/target/release/og): only part A ran")
@@ -213,15 +255,15 @@ with tempfile.TemporaryDirectory() as d:
     p = og("report", "--genes", TABLE, "--gff", GFF_PATH, "--bed", bed, "--calls", EMPTY, "--depth", dep,
            "--sample", "S", "--out", out, "--depth-out", dout)
     lines = open(dout).read().splitlines() if p.returncode == 0 else []
-    rows = {ln.split("\t")[0]: dict(zip(cr.DEPTH_COLUMNS, ln.split("\t"))) for ln in lines[1:]}
+    rows = {ln.split("\t")[0]: dict(zip(DEPTH_COLUMNS, ln.split("\t"))) for ln in lines[1:]}
     check("a base with no pileup line counts as depth 0 (mean 15)", rows.get("DNMT3A", {}).get("mean_depth") == "15.0",
           rows.get("DNMT3A"))
     check("a gene with no reads is too_shallow", rows.get("TET2", {}).get("status") == "too_shallow"
           and rows["TET2"]["mean_depth"] == "0.0", rows.get("TET2"))
     check("a gene off the reference is not_on_reference", rows.get("JAK2", {}).get("status") == "not_on_reference",
           rows.get("JAK2"))
-    check("every table gene has a depth row", sorted(rows) == sorted(r["gene"] for r in cr.read_table(TABLE)))
-    check("og's 15x limit is the Python's", rows.get("DNMT3A", {}).get("detection_limit_vaf") == f"{cr.detection_limit(15):.3f}",
+    check("every table gene has a depth row", sorted(rows) == sorted(table_genes(TABLE)))
+    check("og's 15x limit is the binomial's", rows.get("DNMT3A", {}).get("detection_limit_vaf") == f"{detection_limit(15):.3f}",
           rows.get("DNMT3A"))
     s = p.stdout.splitlines()[-1] if p.stdout else ""
     for want in ("about 26%", "15x", "2%", "does not rule", "Not a diagnosis"):
@@ -274,11 +316,11 @@ with tempfile.TemporaryDirectory() as d:
           and "about 14%" in p3.stdout, p3.stdout + p3.stderr)
     lines = open(out).read().splitlines() if p3.returncode == 0 else []
     check("the calls table has the columns in order and one chip row",
-          lines[:1] == ["\t".join(cr.OUT_COLUMNS)] and len(lines) == 2 and "\tchip\t" in lines[1], lines)
+          lines[:1] == ["\t".join(OUT_COLUMNS)] and len(lines) == 2 and "\tchip\t" in lines[1], lines)
     dl = open(dout).read().splitlines() if p3.returncode == 0 else []
     check("the depth table has DNMT3A at 30x and JAK2 not on the reference",
           len(dl) == 3 and "\t30.0\t" in dl[1] and dl[2].endswith("not_on_reference"), dl)
-    _, sec = cs.sec_chip(os.path.join(d, "S"), "S")
+    sec = chip_section(os.path.join(d, "S"), "S")
     check("the reports read og's tables", [c["protein_change"] for c in sec.get("calls", [])] == ["R882H"]
           and sec["not_covered"] == ["JAK2"], sec)
     p4 = og("report", "--genes", genes, "--gff", out_gff, "--bed", out_bed, "--calls", os.path.join(d, "none.tsv"),
