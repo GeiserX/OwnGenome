@@ -28,6 +28,10 @@ pub struct Options {
     pub min_gq: String,
     /// The GQ floor.
     pub min_gq_value: u64,
+    /// The depth floor as given, for the words.
+    pub min_dp: String,
+    /// The depth floor.
+    pub min_dp_value: u64,
     pub gvcf: bool,
 }
 
@@ -196,12 +200,16 @@ pub fn deep_intronic(
 mod tests {
     use super::*;
 
-    fn run(vcf: &str, gvcf: &str, gvcf_on: bool) -> String {
-        let sites = "# test\nchrom\tpos\tref\talt\tgene\thgvs\tclinvar_id\n\
-                     chr1\t100\tA\tG\tG1\tc.1A>G\t1\n";
+    /// The call and detail at `site` (CHROM POS REF ALT), joined by `|`.
+    fn run_at(site: &str, vcf: &str, gvcf: &str, gvcf_on: bool) -> String {
+        let sites = format!(
+            "# test\nchrom\tpos\tref\talt\tgene\thgvs\tclinvar_id\n{site}\tG1\tc.1A>G\t1\n"
+        );
         let o = Options {
             min_gq: "30".into(),
             min_gq_value: 30,
+            min_dp: "10".into(),
+            min_dp_value: 10,
             gvcf: gvcf_on,
         };
         let mut out = Vec::new();
@@ -223,6 +231,10 @@ mod tests {
             .join("|")
     }
 
+    fn run(vcf: &str, gvcf: &str, gvcf_on: bool) -> String {
+        run_at("chr1\t100\tA\tG", vcf, gvcf, gvcf_on)
+    }
+
     #[test]
     fn every_kind_of_call() {
         assert_eq!(
@@ -242,20 +254,148 @@ mod tests {
             "ref|GQ 50 (gVCF block)"
         );
         assert_eq!(
-            run("", "chr1\t90\t120\tA\t<*>\t0/0\t.\t.\n", true),
-            "ref|(gVCF block)"
-        );
-        assert_eq!(
-            run("", "chr1\t90\t120\tA\t<*>\t./.\t.\t.\n", true),
-            "no call|the gVCF record over the site is not a PASS reference call (GT ./.)"
-        );
-        assert_eq!(
             run("", "", true),
             "no call|no record in the VCF or the gVCF covers the site"
         );
         assert_eq!(
             run("", "", false),
             "no call|no record in the VCF, and no gVCF to tell a reference call from no call"
+        );
+    }
+
+    /// Only PASS, `.` (or no FILTER column) and RefCall read as plain
+    /// reference; any other FILTER on a `0/0` is a low-confidence reference
+    /// call that names it.
+    #[test]
+    fn a_filtered_reference_call_is_low_confidence() {
+        for f in ["PASS", ".", "RefCall"] {
+            assert_eq!(
+                run("", &format!("chr1\t90\t120\tA\t<*>\t0/0\t99\t.\t{f}\n"), true),
+                "ref|GQ 99 (gVCF block)",
+                "FILTER {f}"
+            );
+        }
+        assert_eq!(
+            run("", "chr1\t90\t120\tA\t<*>\t0/0\t99\t.\tLowQual\n", true),
+            "ref (low confidence)|GQ 99 (gVCF block), FILTER LowQual"
+        );
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t0/0\t99\t30\tLowGQ;LowDP\n", "", true),
+            "ref (low confidence)|GQ 99, DP 30, FILTER LowGQ;LowDP"
+        );
+    }
+
+    /// A reference call on fewer reads than the step's depth floor is
+    /// shallow, from the record's DP or the block's.
+    #[test]
+    fn a_shallow_reference_call_says_so() {
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t0/0\t99\t1\n", "", true),
+            "ref (shallow)|GQ 99, DP 1, below the depth floor of DP 10"
+        );
+        assert_eq!(
+            run("", "chr1\t90\t120\tA\t<*>\t0/0\t99\t1\tPASS\n", true),
+            "ref (shallow)|GQ 99, DP 1 (gVCF block), below the depth floor of DP 10"
+        );
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t0/0\t99\t10\n", "", true),
+            "ref|GQ 99, DP 10"
+        );
+        // Below both floors: the GQ makes it low confidence, and both are named.
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t0/0\t3\t1\n", "", true),
+            "ref (low confidence)|GQ 3, DP 1, below the call floor of GQ 30, below the depth floor of DP 10"
+        );
+        // A carrier's depth is shown, not floored.
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t0/1\t45\t4\n", "", true),
+            "het|GQ 45, DP 4"
+        );
+    }
+
+    /// A reference call with no GQ was never checked against the floor.
+    #[test]
+    fn a_reference_call_without_gq_is_low_confidence() {
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t0/0\t.\t30\n", "", true),
+            "ref (low confidence)|DP 30, no GQ to check against the call floor of GQ 30"
+        );
+        assert_eq!(
+            run("", "chr1\t90\t120\tA\t<*>\t0/0\t.\t.\n", true),
+            "ref (low confidence)|(gVCF block), no GQ to check against the call floor of GQ 30"
+        );
+    }
+
+    /// GLA c.640-801G>A, on chrX outside the pseudoautosomal regions.
+    const GLA: &str = "chrX\t101399747\tC\tT";
+
+    /// One copy of chrX or chrY outside the pseudoautosomal regions: an
+    /// alt `1` is hemizygous.
+    #[test]
+    fn a_haploid_alt_call_is_hemizygous() {
+        assert_eq!(
+            run_at(GLA, "chrX\t101399747\t101399747\tC\tT\t1\t99\t30\n", "", true),
+            "hemizygous|GQ 99, DP 30"
+        );
+        assert_eq!(
+            run_at(GLA, "chrX\t101399747\t101399747\tC\tG\t1\t99\t30\n", "", true),
+            "other allele|C>G hemizygous"
+        );
+        assert_eq!(
+            run_at("chrY\t3000000\tC\tT", "chrY\t3000000\t3000000\tC\tT\t1\t99\t30\n", "", true),
+            "hemizygous|GQ 99, DP 30"
+        );
+    }
+
+    /// There a `0` is a reference call, under the same floors. Elsewhere
+    /// (inside PAR1, on an autosome) a one-copy GT is no call, with why.
+    #[test]
+    fn a_haploid_reference_call_is_ref() {
+        assert_eq!(
+            run_at(GLA, "chrX\t101399747\t101399747\tC\tT\t0\t99\t30\n", "", true),
+            "ref|GQ 99, DP 30"
+        );
+        assert_eq!(
+            run_at(GLA, "chrX\t101399747\t101399747\tC\tT\t0\t20\t30\n", "", true),
+            "ref (low confidence)|GQ 20, DP 30, below the call floor of GQ 30"
+        );
+        assert_eq!(
+            run_at(GLA, "", "chrX\t101399700\t101399800\tC\t<NON_REF>\t0\t50\t.\n", true),
+            "ref|GQ 50 (gVCF block)"
+        );
+        // Inside PAR1, and on an autosome, the genome has two copies.
+        assert_eq!(
+            run_at("chrX\t100000\tC\tT", "chrX\t100000\t100000\tC\tT\t0\t99\t30\n", "", true),
+            "no call|the VCF record at the site has one copy (GT 0) where the genome has two"
+        );
+        assert_eq!(
+            run("", "chr1\t90\t120\tA\t<*>\t1\t50\t.\n", true),
+            "no call|the gVCF record over the site has one copy (GT 1) where the genome has two"
+        );
+    }
+
+    /// A record without a genotype says so, and never that no record exists.
+    #[test]
+    fn no_call_says_what_was_there() {
+        assert_eq!(
+            run("", "chr1\t90\t120\tA\t<*>\t./.\t.\t.\n", true),
+            "no call|the gVCF record over the site has no genotype (GT ./.)"
+        );
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t./.\t.\t.\n", "", false),
+            "no call|the VCF record at the site has no genotype (GT ./.)"
+        );
+        assert_eq!(
+            run("chr1\t100\t100\tA\tG\t./.\t.\t.\n", "", true),
+            "no call|the VCF record at the site has no genotype (GT ./.)"
+        );
+        assert_eq!(
+            run("", "chr1\t100\t100\tA\tG,<*>\t0/1\t30\t20\tLowQual\n", true),
+            "no call|the gVCF record over the site is not a reference call (GT 0/1, FILTER LowQual)"
+        );
+        assert_eq!(
+            run("", "chr1\t90\t120\tA\t<*>\t0/.\t30\t.\n", true),
+            "no call|the gVCF record over the site is not a reference call (GT 0/.)"
         );
     }
 }
