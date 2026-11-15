@@ -1701,7 +1701,7 @@
     stopR.addEventListener('click', function () { stopTo('region'); });
     stopN.addEventListener('click', function () { stopTo('gene'); });
     stopReads.addEventListener('click', function () {
-      if (!M || failure) { return; }
+      if (failure || !M) { return; }
       stopTo('reads');
       // The target is already at reads level; finish the camera motion before selecting its nearest row.
       cam.ci = tgt.ci; cam.c = tgt.c; cam.ls = tgt.ls; cam.k = tgt.k;
