@@ -97,7 +97,7 @@ they close. It prints how many table sites it read and how many it did not.
 ./scripts/43-archaic.sh your_name
 ```
 
-With `run-all.sh`: step 43 runs once the table is installed (`ARCHAIC_DIR=none` skips it, `ARCHAIC_POP` picks the frequencies). It needs the gVCF: a sample that starts from a VCF with no gVCF and index beside it gets no step 43 output, and the Nextflow log names the sample. In the Nextflow pipeline: `archaic` in `--tools` with `--archaic_data <the table folder>` and `--archaic_pop`; `--hla_genes` gives the genes (processes `ARCHAIC_GENOTYPES`, `ARCHAIC_IBDMIX`, `ARCHAIC_REPORT`).
+With `run-all.sh`: step 43 runs once the table is installed (`ARCHAIC_DIR=none` skips it, `ARCHAIC_POP` picks the frequencies). It needs the gVCF: a sample that starts from a VCF is listed as `skipped (no gVCF: ...)`, as for step 42, unless it has a BAM too and a gVCF with its index beside the VCF (the gVCF `run-all.sh` passes on). In the Nextflow pipeline: `archaic` in `--tools` with `--archaic_data <the table folder>` and `--archaic_pop`; `--hla_genes` gives the genes (processes `ARCHAIC_GENOTYPES`, `ARCHAIC_IBDMIX`, `ARCHAIC_REPORT`).
 
 ## Output
 
@@ -117,7 +117,7 @@ Measured on public HG002 by the `archaic-hg002` jobs of `public-evidence.yml`, o
 - Install: the archaic files were 150.5 GB in all, from 1.8 GB (chromosome 22) to 13.8 GB (chromosome 2). Downloading them took 2 h 32 min summed over the 22 chromosomes, from 3 to 32 minutes each, at the speed MPI-EVA served that day. Building the table took 3 h 15 min summed, from 2 to 20 minutes per chromosome. The finished table is 0.44 GB with 51,812,908 sites.
 - Step 43, one population: 19 to 88 seconds per chromosome, 18 minutes summed over the 22. IBDmix runs once per chromosome and archaic genome, `THREADS` chromosomes at a time.
 
-Every figure in this section was measured before step 43 read the gVCF, when each site GIAB's variant-only VCF had no call for was read as the reference, inside GIAB's confident regions or not. The e2e case now gives GIAB's confident regions as the reference blocks and prints its chr22 figure on every run. The whole-genome figure needs a new release run of `public-evidence.yml` with a gVCF.
+Every figure in this section was measured before step 43 read the gVCF, when each site GIAB's variant-only VCF had no call for was read as the reference, inside GIAB's confident regions or not. The e2e case now gives GIAB's confident regions as the reference blocks and prints its chr22 figure on every run. The `archaic-hg002` jobs of `public-evidence.yml` give the same blocks, one per GIAB benchmark interval, so the next release run measures the whole-genome figure on this rule. The `archaic-same-person` job has no callable mask for the 1000 Genomes panel data, so it gives one reference block over each whole chromosome: every site with no ALT reads as the reference, as it did when the table below was measured.
 
 That run was made before the masks, from a table that held every lifted site. It gave HG002 115.2 Mb of Neanderthal sequence over the 22 autosomes, about twice what Chen et al. report for Europeans (a median of 51.6 Mb per person, and 42.0 to 62.0 Mb across the released per-person calls of their 503 Europeans; see the same-person comparison below for what their method is). The cause was the missing masks: the table carried the positions each archaic genome's own filters exclude, and IBDmix scored them. On chr22, 43% of that run's Neanderthal sequence lay outside the 1000 Genomes GRCh38 strict mask alone.
 

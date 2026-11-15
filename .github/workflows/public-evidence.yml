@@ -8,7 +8,10 @@ name: Public evidence
 #                      downloaded once (its md5 checked) and indexed, for
 #                      every chromosome job.
 #   archaic-hg002      setup.sh --archaic and step 43 on HG002's GIAB v4.2.1
-#                      genotypes, one job per autosome of the chromosomes
+#                      genotypes (with a gVCF of one reference block per
+#                      GIAB benchmark interval, since step 43 reads a site
+#                      with no record as the reference only inside one),
+#                      one job per autosome of the chromosomes
 #                      input (all 22 by default: about 150 GB of archaic
 #                      downloads in all; each job fetches its three files
 #                      side by side first, and setup.sh resumes them and
@@ -22,7 +25,9 @@ name: Public evidence
 #                      list must make it fail.
 #   archaic-same-person  the method check: one 1000 Genomes person with
 #                      Chen et al.'s released calls, step 43 on her high- and
-#                      low-coverage genotypes, beside the released figure.
+#                      low-coverage genotypes (each with a gVCF of one
+#                      reference block per chromosome), beside the released
+#                      figure.
 #   ancient-footprint  setup.sh --ancient-panel on the full AADR 1240K files,
 #                      then step 44 on HG002, each with the peak memory of
 #                      its containers (the cgroup's memory.peak), the peak
@@ -216,6 +221,28 @@ jobs:
           mkdir -p "${G}/HG002/vcf"
           curl -fsSL --retry 5 -o "${G}/HG002/vcf/HG002.vcf.gz" "${GIAB_HG002}.vcf.gz"
           curl -fsSL --retry 5 -o "${G}/HG002/vcf/HG002.vcf.gz.tbi" "${GIAB_HG002}.vcf.gz.tbi"
+          # Step 43 reads a site with no record as the reference only inside a
+          # reference block of the gVCF beside the VCF. GIAB states HG002
+          # matches the reference inside its benchmark regions and makes no
+          # claim outside them, so the gVCF is one block per benchmark
+          # interval of the part's chromosomes (the VCF gives the variants).
+          curl -fsSL --retry 5 -o "${EV}/truth.bed" "${GIAB_HG002}_noinconsistent.bed"
+          FAI="${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai"
+          {
+            printf '##fileformat=VCFv4.2\n'
+            for c in $CHROMS; do awk -F'\t' -v c="chr${c}" '$1 == c {printf "##contig=<ID=%s,length=%s>\n", $1, $2}' "$FAI"; done
+            printf '##ALT=<ID=*,Description="Any other allele">\n'
+            printf '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
+            printf '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\n'
+            for c in $CHROMS; do
+              awk -F'\t' -v c="chr${c}" 'BEGIN {OFS = "\t"} $1 == c {print c, $2 + 1, ".", "N", "<*>", ".", ".", "END=" $3, "GT", "0/0"}' \
+                "${EV}/truth.bed" | sort -k2,2n
+            done
+          } > "${EV}/HG002.g.vcf"
+          docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
+            bcftools view -Oz -o /g/HG002/vcf/HG002.g.vcf.gz /e/HG002.g.vcf
+          echo "gVCF: $(grep -vc '^#' "${EV}/HG002.g.vcf") reference blocks"
           for pop in ALL EUR; do
             if ! ARCHAIC_POP=$pop GENOME_DIR="$G" scripts/43-archaic.sh HG002 2>&1 | tee "${OUT}/step43-${pop}.log"; then
               echo "step 43 (${pop}) failed"; exit 1
@@ -388,7 +415,27 @@ jobs:
               bcftools index -t -f "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz"
             rm -f "${EV}/${label}".chr*.vcf.gz
             echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records"
+            # Step 43 reads a site with no record as the reference only inside
+            # a reference block of the gVCF. A panel VCF holds no callable mask,
+            # so the gVCF is one block over each whole chromosome: every site
+            # with no ALT reads as the reference, as this check measured before
+            # step 43 needed a gVCF (the person's records are taken with
+            # --min-ac 1, so a site with no record is a site with no ALT).
+            {
+              printf '##fileformat=VCFv4.2\n'
+              for c in $LIST; do awk -F'\t' -v c="chr${c}" '$1 == c {printf "##contig=<ID=%s,length=%s>\n", $1, $2}' "$FAI"; done
+              printf '##ALT=<ID=*,Description="Any other allele">\n'
+              printf '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
+              printf '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+              printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n' "${SAMPLE}${label}"
+              for c in $LIST; do
+                awk -F'\t' -v c="chr${c}" 'BEGIN {OFS = "\t"} $1 == c {print c, 1, ".", "N", "<*>", ".", ".", "END=" $2, "GT", "0/0"}' "$FAI"
+              done
+            } > "${EV}/${label}.g.vcf"
+            docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
+              bcftools view -Oz -o "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.g.vcf.gz" "/e/${label}.g.vcf"
           }
+          FAI="${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai"
           pull hc "$HC_URL" '1kGP_high_coverage_Illumina.chr@.filtered.SNV_INDEL_SV_phased_panel.vcf.gz'
           pull lc "$LC_URL" 'ALL.chr@.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz'
           args=()
