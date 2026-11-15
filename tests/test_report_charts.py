@@ -30,7 +30,7 @@ Checks, each with a red control that feeds it a broken input:
      scripts/24-html-report.sh) pass it with <sample>_charts.json beside the
      report, and two renders of the demo give the same file apart from
      generated_utc;
-  9. run_delta.py sees no change between a summary without
+  9. og run delta sees no change between a summary without
      heteroplasmic_sites and one with it;
  10. the live page (bin/owngenome_live.py with bin/owngenome_live_charts.py and
      assets/live/plugins/charts.js): the plugin serves <run>_charts.json and
@@ -48,15 +48,16 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import collect_summary  # noqa: E402
 import render_report  # noqa: E402
 import report_charts  # noqa: E402
-import run_delta  # noqa: E402
+
+OG = os.environ.get("OG") or os.path.join(REPO, "bin", "og")
 
 FAILS = 0
 GREENS = ("#d5f5e3", "#1d3b2a", "#8ee0ae", "#196f3d", "green")
@@ -278,8 +279,8 @@ def unit_checks():
           nd.get("ClinVar hits on chrM") == 1 and nd.get("ClinVar hits on other contigs (alt, unplaced)") == 1
           and "Not drawn:" in g["svg"]
           and not any(m["chrom"] in ("chrM", "chr22_KI270879v1_alt") for m in g["marks"]), nd)
-    check("4. genome: the 5 MB floor is collect_summary.ROH_MIN_BP",
-          report_charts.ROH_MIN_MB * 1e6 == collect_summary.ROH_MIN_BP)
+    # The floor of the roh section (og-summary, collect/group_c/roh.rs ROH_MIN_BP).
+    check("4. genome: the 5 MB floor is the roh section's", report_charts.ROH_MIN_MB * 1e6 == 5e6)
     for region in ("chr3:10000000_22300000", "3:1-2", "chr3:20-10"):
         bad = copy.deepcopy(s)
         bad["sections"]["roh"]["data"]["autosomal_over_5mb"][0]["region"] = region
@@ -426,14 +427,31 @@ def demo_checks(work):
     check("7. the hits table carries the id the charts link to, and its rows keep their shape",
           page.count('<a id="clinvar-hits"></a>') == 1 and len(re.findall(r"<tr><td>chr", page)) >= 50)
 
-    # 9. run_delta with the additive field
+    # 9. og run delta with the additive field
     prev = copy.deepcopy(s)
     del prev["sections"]["mito"]["data"]["heteroplasmic_sites"]
-    check("9. run_delta: no change for the added heteroplasmic_sites", run_delta.compare(prev, {}, s, {}) == [],
-          run_delta.compare(prev, {}, s, {}))
+    got = run_delta(prev, s)
+    check("9. og run delta: no change for the added heteroplasmic_sites", got == [], got)
     moved = copy.deepcopy(s)
     moved["sections"]["clinvar"]["data"]["hits"][0]["significance"] = "Benign"
-    check("9. red control: a reclassified hit is a change", run_delta.compare(prev, {}, moved, {}) != [])
+    check("9. red control: a reclassified hit is a change", run_delta(prev, moved) not in ([], None))
+
+
+def run_delta(prev, cur):
+    """The changes og run delta lists between two summaries (no manifests), or None if it failed."""
+    with tempfile.TemporaryDirectory() as work:
+        os.makedirs(os.path.join(work, "prev"))
+        for path, summ in ((os.path.join(work, "prev", "summary.json"), prev), (os.path.join(work, "cur.json"), cur)):
+            with open(path, "w") as f:
+                json.dump(summ, f)
+        out = os.path.join(work, "delta")
+        p = subprocess.run([OG, "run", "delta", "--sample", "S", "--summary", os.path.join(work, "cur.json"),
+                            "--previous", os.path.join(work, "prev"), "--out", out], capture_output=True, text=True)
+        if p.returncode:
+            print(p.stderr)
+            return None
+        with open(out + ".json") as f:
+            return json.load(f)["changes"]
 
 
 def page_problems(b, base, run):

@@ -65,7 +65,7 @@ CPSR_ID=$(sh "${PGP_ROOT}/bin/cpsr_sample_id" "$SAMPLE")
 # (CPSR_CLASSIFICATION), so 2.2's --classify_all is gone (2.3 refuses it).
 # The final class (CLASSIFICATION, source in ASSERTION_AUTHORITY) is
 # ClinVar's unless ClinVar has no record or a conflicted one: the default
-# --clinvar_trust_level 0. The reports (bin/collect_summary.py) count the
+# --clinvar_trust_level 0. The reports (og summary collect) count the
 # final class and list every row where CPSR's own class and ClinVar's
 # disagree on P/LP.
 

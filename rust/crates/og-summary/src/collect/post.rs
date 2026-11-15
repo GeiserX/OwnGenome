@@ -120,14 +120,17 @@ no standard caller sees them";
 const MCA_NOT_ASSESSED: &str = "Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share \
 of the blood cells): step 51 (MoChA) did not assess this sample";
 
-/// Reads the whole summary of a sample folder. The three groups are read
-/// at once over one walk of the folder. An error is a run status or a
-/// manifest that is there and cannot be read.
+/// Reads the whole summary of a sample folder, over one walk of the
+/// folder. An error is a run status or a manifest that is there and cannot
+/// be read.
 pub fn collect(input: &Input) -> Result<Value, String> {
     let folder = Folder::open(input)?;
+    // Group a reads the sample VCF, the input that takes time, on its own
+    // thread; groups b and c read their sections meanwhile, one at a time,
+    // so the peak memory stays near the biggest section's.
     let (a, b, mut c) = std::thread::scope(|scope| {
         let a = scope.spawn(|| read_a(input, &folder));
-        let b = scope.spawn(|| group_b::read(input, &folder));
+        let b = group_b::read(input, &folder);
         let c = read_c(input, &folder);
         let stopped = |specs: &[super::model::Spec]| -> Vec<Section> {
             specs
@@ -142,7 +145,6 @@ pub fn collect(input: &Input) -> Result<Value, String> {
                 .collect()
         };
         let a = a.join().unwrap_or_else(|_| stopped(&super::model::GROUP_A));
-        let b = b.join().unwrap_or_else(|_| stopped(&group_b::GROUP_B));
         (a, b, c)
     });
     let declared_sex = declared(input, &folder, qc_declared(&a));

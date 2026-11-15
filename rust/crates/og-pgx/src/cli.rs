@@ -355,9 +355,11 @@ fn contraindication_section(a: &CpicArgs, table_path: &str) -> Vec<String> {
     out.extend(found);
     out.extend(
         [
-            "  Whether a warning applies depends on the disorder the gene causes and on how many",
-            "  copies carry the variant: one copy in a recessive gene usually makes a carrier, not a",
-            "  patient. Review it with your clinician before taking or stopping the drug.",
+            "  In a recessive gene a WARNING needs both copies changed or two variants in the gene.",
+            "  Two variants are not phased here: on the same copy they make a carrier. One variant",
+            "  in a recessive gene gives a NOTE: a carrier, not a patient, unless a second variant",
+            "  was missed. Whether a line applies depends on the disorder the gene causes.",
+            "  Review it with your clinician before taking or stopping the drug.",
             "",
         ]
         .map(str::to_owned),

@@ -39,12 +39,18 @@ check_ge "the MAPQ 0 copy has reads of MAPQ 0 in the window" \
 
 # reading SAMPLE_DIR_TABLE: "gene status" lines of a per-gene table read with the test catalog
 reading() {
-  python3 - "$CAT" "$1" "${REPO}/bin" <<'PY'
-import csv, sys
-sys.path.insert(0, sys.argv[3])
-import collect_summary
+  # og summary collect's callability section over the table, with the test
+  # catalog as the assets' callability_genes.tsv.
+  local t
+  t=$(mktemp -d "${CASE_TMP}/reading.XXXXXX")
+  mkdir -p "${t}/S/mosdepth" "${t}/assets"
+  cp "$CAT" "${t}/assets/callability_genes.tsv"
+  ln -s "$1" "${t}/S/mosdepth/S_callability.bed.gz"
+  "${REPO}/bin/og" summary collect --sample S --sample-dir "${t}/S" --assets "${t}/assets" --out "${t}/summary.json" > /dev/null
+  python3 - "$CAT" "${t}/summary.json" <<'PY'
+import csv, json, sys
 rows = list(csv.DictReader(open(sys.argv[1]), delimiter="\t"))
-d = collect_summary.callability(rows, sys.argv[2])
+d = json.load(open(sys.argv[2]))["sections"]["callability"]["data"]
 bad = {g["gene"]: g for g in d["not_read"]}
 for r in rows:
     g = bad.get(r["gene"])

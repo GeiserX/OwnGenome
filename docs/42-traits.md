@@ -6,7 +6,7 @@ Reads your genotype at a small set of well-replicated variants and prints what e
 
 ## Why
 
-These are the results most people find easiest to read, and the pipeline had no such section. SNPedia, the usual source, is CC BY-NC-SA, which a GPL-3.0 project cannot copy, so the table here is written from the primary papers instead: each row's reading follows the cited abstract or its open full text, and the alleles follow dbSNP's GRCh38 record. No text comes from SNPedia or any other database.
+These are the results most people find easiest to read, and the pipeline had no such section. SNPedia, the usual source, is CC BY-NC-SA, which a GPL-3.0-or-later project cannot copy, so the table here is written from the primary papers instead: each row's reading follows the cited abstract or its open full text, and the alleles follow dbSNP's GRCh38 record. No text comes from SNPedia or any other database.
 
 ## Tool
 
@@ -108,12 +108,12 @@ The rules today:
 
 The six rules after TAS2R38 need no phase. Their sites lie close together on one copy (the two APOL1 G1 changes were in perfect linkage disequilibrium in Genovese et al. 2010; the 9p21 and 17q21.31 tags each mark one haplotype), or, for HFE, a double heterozygote reads as one change on each copy. A copy the rule does not describe, such as a 9p21 copy with only one of the two risk alleles, is `other_haplotype`, not read. What each rule leaves out, said in its note:
 
-- APOL1 G2 (rs71785313) is a 6-base deletion. The rule table reads single-base sites only, so the rule itself reads G1, and a G2 copy reads as G0 there. The HTML and text reports read G2 beside the rule (`bin/genotype_rules_indels.py`, through `bin/collect_summary.py`) from the sample's gVCF, or its VCF when there is no gVCF, and show the G1 plus G2 result under "With G2": G1/G2, G2/G2 and G1/G1 are the high-risk genotype. Two G2 copies read G2/G2 even when the G1 sites were not read. A VCF without reference blocks cannot tell a reference base from a position with no reads, so there a result with no G2 copy is marked `(no G2 call)`. The Nextflow report gets the sample's gVCF too (DeepVariant's, or the samplesheet's `gvcf` column), so both runs read the gVCF when there is one.
+- APOL1 G2 (rs71785313) is a 6-base deletion. The rule table reads single-base sites only, so the rule itself reads G1, and a G2 copy reads as G0 there. The HTML and text reports read G2 beside the rule (`og summary collect`, the `apol1` module of `rust/crates/og-summary/src/collect/group_c/traits.rs`) from the sample's gVCF, or its VCF when there is no gVCF, and show the G1 plus G2 result under "With G2": G1/G2, G2/G2 and G1/G1 are the high-risk genotype. Two G2 copies read G2/G2 even when the G1 sites were not read. A VCF without reference blocks cannot tell a reference base from a position with no reads, so there a result with no G2 copy is marked `(no G2 call)`. The Nextflow report gets the sample's gVCF too (DeepVariant's, or the samplesheet's `gvcf` column), so both runs read the gVCF when there is one.
 - SERPINA1: M is any copy with neither S nor Z; rarer deficiency and null alleles are not read. A serum level confirms a deficiency.
 - HFE: the C282Y homozygote is also a secondary finding (`assets/acmg_sf.tsv`, [step 23](23-clinical-filter.md)); the rule gives the reading of every genotype.
 - GC: the protein levels are those of Powe et al. (2013), whose monoclonal assay was questioned in later letters. A protein type, not a vitamin D deficiency.
 
-Two more markers of the planned list are not rules here, because each sits in sequence the genome holds more than once and a gVCF genotype at one position cannot read it. They are read from the BAM by the step that counts the copies, as a fraction of copies rather than a genotype (`MARKERS` in `bin/traits_report.py`, which pins each one's dbSNP b157 record and the GRCh38 sequence around every copy):
+Two more markers of the planned list are not rules here, because each sits in sequence the genome holds more than once and a gVCF genotype at one position cannot read it. They are read from the BAM by the step that counts the copies, as a fraction of copies rather than a genotype (`MARKERS` in `rust/crates/og-cn/src/markers.rs`, which pins each one's dbSNP b157 record and the GRCh38 sequence around every copy):
 
 - **LPA KIV-2 4925G>A** (Coassin et al. 2017, PMID 28444229), a splice variant that lowers the Lp(a) made from the chromosome that carries it. GRCh38 holds the site in each of its six KIV-2 units and in KIV-1. [Step 46](46-lpa.md) reads it beside the KIV-2 count, and the reports print it under the count.
 - **SMN1 g.27134T>G** (rs143838139; Luo et al. 2014, PMID 23788250), a marker of SMN1 duplication alleles that SMN2 holds too. [Step 35](35-paralogs.md) reads it beside the SMN1 copy number, and the reports print it under the SMN1 copies. It refines the chance of a silent 2+0 carrier for a two-copy result, and its line always says that it does not prove 2+0.
@@ -148,4 +148,4 @@ Seconds: bcftools reads the gVCF at the table's positions through its index (36 
 - Each traits table row is read alone. The genotype rules read several sites together: APOE, the TAS2R38 taster haplotype with read-backed phase, and the six rules of the table above. Two different MC1R red-hair variants on the same or on different copies are still read one by one; their note says so.
 - SNVs only; the table has no indel and no chrX, chrY or chrM row.
 - Positions with no genotype (no reads, or a no-call) are listed as not read. On the e2e fixture, a small slice of the HG002 genome, only the table positions inside its slices are read, and the e2e case checks their genotypes against the GIAB truth.
-- The licence: the readings, notes and table are this project's own text, GPL-3.0 like the rest of the repository.
+- The licence: the readings, notes and table are this project's own text, GPL-3.0-or-later like the rest of the repository.

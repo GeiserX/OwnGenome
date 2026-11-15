@@ -5,7 +5,9 @@
 #   - step 27 on a synthetic PharmCAT report and a synthetic step 06 hits
 #     table with a pathogenic POLG hit: the report gives the valproic acid
 #     WARNING, marked when valproate is on MEDICATIONS; fluconazole on the list
-#     gives CYP2C9 a note in the fifth column;
+#     gives CYP2C9 a note in the fifth column; one heterozygous ASS1 hit (a
+#     recessive urea-cycle gene) gives a carrier NOTE and no WARNING, and an
+#     SCN1A hit gives no drug line;
 #   - the same sample without the hits table lists the genes as not checked
 #     and gives no valproic acid line (the bash control);
 #   - Nextflow with --tools pharmcat,clinvar,cpic on the HG002 VCF and a
@@ -30,8 +32,12 @@ cat > "${G}/${S2}/pharmcat/${S2}.report.json" <<'JSON'
  "drugs": {}}
 JSON
 HITS="${G}/${S2}/clinvar/${S2}_clinvar_hits.tsv"
-printf 'chrom\tpos\tref\talt\tgenotype\tclinvar_id\tgeneinfo\tclnsig\tclnrevstat\n' > "$HITS"
-printf 'chr15\t89300000\tC\tT\t0/1\t9900001\tPOLG:5428\tPathogenic\tcriteria_provided,_single_submitter\n' >> "$HITS"
+{
+  printf 'chrom\tpos\tref\talt\tgenotype\tclinvar_id\tgeneinfo\tclnsig\tclnrevstat\n'
+  printf 'chr15\t89300000\tC\tT\t0/1\t9900001\tPOLG:5428\tPathogenic\tcriteria_provided,_single_submitter\n'
+  printf 'chr9\t130500000\tG\tA\t0/1\t9900002\tASS1:445\tLikely_pathogenic\tcriteria_provided,_single_submitter\n'
+  printf 'chr2\t166000000\tC\tT\t0/1\t9900003\tSCN1A:6323\tPathogenic\tcriteria_provided,_single_submitter\n'
+} > "$HITS"
 MED="${CASE_TMP}/medications.txt"
 printf 'valproate 500 mg\nfluconazole\n' > "$MED"
 REC="${G}/${S2}/cpic/${S2}_cpic_recommendations.txt"
@@ -43,8 +49,12 @@ check_step_exit 27-cpic-lookup.sh
 OUT=$(cat "$REC" 2>/dev/null)
 check "step 27: a pathogenic POLG hit gives the valproic acid WARNING, marked as on the list" \
   has 'WARNING: valproic acid -- POLG chr15:89300000 C>T, genotype 0/1, ClinVar Pathogenic; ON THE MEDICATION LIST\.' "$OUT"
-check "step 27: the line carries the label's note and its CPIC level" \
-  has 'mitochondrial disorders caused by POLG mutations.*\(CPIC level A/B\)' "$OUT"
+check "step 27: the line carries the label's note and its provisional CPIC level" \
+  has 'mitochondrial disorders caused by POLG mutations.*\(provisional CPIC level A/B: no CPIC guideline covers this pair\)' "$OUT"
+check "step 27: one heterozygous ASS1 hit gives the carrier NOTE" \
+  has 'NOTE: valproic acid -- ASS1 chr9:130500000 G>A, genotype 0/1, ClinVar Likely_pathogenic; ON THE MEDICATION LIST\.' "$OUT"
+check "step 27: one heterozygous ASS1 hit gives no WARNING" lacks 'WARNING: valproic acid -- ASS1' "$OUT"
+check "step 27: an SCN1A hit gives no drug line" lacks 'SCN1A' "$OUT"
 check "step 27: the step's log names the hits table" grep -q 'ClinVar hits (step 06): .*_clinvar_hits\.tsv' "$STEP_LOG"
 check "step 27: fluconazole gives CYP2C9 a note in the fifth column" \
   grep -q $'^CYP2C9\t\\*1/\\*1\tNormal Metabolizer\tnormal\tnot computed: fluconazole inhibits CYP2C9' "$PHENO"

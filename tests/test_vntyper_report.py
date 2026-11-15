@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og vntyper report: step 52's reading of VNtyper's MUC1 VNTR result,
 and its section in both reports.
 
@@ -192,7 +193,8 @@ def main():
             s = collect_summary.collect("S", sd)
             return s, render_report.text_report(s), render_report.html_report(s)
 
-        line = collect_summary.VNTYPER_NOT_ASSESSED
+        line = ("MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; "
+                "no standard caller sees them")
         s, txt, html = sample("pos", call())
         sec = s["sections"].get("vntyper", {})
         check("6. the section is read", sec.get("state") == "ok" and sec["data"]["status"] == "positive", sec)

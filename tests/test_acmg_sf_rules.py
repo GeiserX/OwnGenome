@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The ACMG SF v3.3 reporting rules (assets/acmg_sf.tsv, bin/collect_summary.py
-acmg_sf_tier) and the one-person carrier list (assets/carrier_genes.tsv), on
+"""The ACMG SF v3.3 reporting rules (assets/acmg_sf.tsv, og summary collect's
+ACMG SF tier, rust/crates/og-summary) and the one-person carrier list (assets/carrier_genes.tsv), on
 synthetic sample folders.
 
 Checks:
@@ -33,6 +33,7 @@ Checks:
   9. without the assets folder the ClinVar hits and the clinical counts stay,
      and both lists say why they were not made.
 """
+import csv
 import gzip
 import os
 import shutil
@@ -102,10 +103,23 @@ def sf_of(d):
 
 
 def sf_of_clinvar(d):
-    """The SF tier of a folder with ClinVar hits only (no clinical VCF): the
-    Nextflow layout gives sec_clinical the clinical VCF, so the tier is read
-    straight from the hits here."""
-    return collect_summary.acmg_sf_tier(d, "S", None)
+    """The SF tier of a folder with ClinVar hits and a clinical VCF with no
+    record (the Nextflow layout: the clinical section is the VCF's count, and
+    the tier comes from the hits alone)."""
+    v = f"{d}/clinical/S_clinical.vcf.gz"
+    if not os.path.exists(v):
+        put(v, VCF_HEAD, gz=True)
+    return sf_of(d)
+
+
+def catalog(folder):
+    """The rows of FOLDER/acmg_sf.tsv, and {gene: rule} with its rule cells
+    read (the variants as collect_summary.parse_alleles reads them)."""
+    with open(os.path.join(folder, "acmg_sf.tsv"), encoding="utf-8") as f:
+        rows = list(csv.DictReader((x for x in f if not x.startswith("#")), delimiter="\t", quoting=csv.QUOTE_NONE))
+    return rows, {r["gene"]: {"inheritance": r["inheritance"], "report_if": r["report_if"],
+                              "table_text": r["table_text"], "sv_cn": r["sv_cn"] == "yes",
+                              "variants": collect_summary.parse_alleles(r["variants"])} for r in rows}
 
 
 def reported(sf, gene):
@@ -122,8 +136,7 @@ def main():
         # 1. the catalog
         p = os.path.join(REPO, "assets", "acmg_sf.tsv")
         try:
-            rows = collect_summary.asset_rows("acmg_sf.tsv")
-            rules = collect_summary.acmg_sf_rules()
+            rows, rules = catalog(os.path.join(REPO, "assets"))
         except Exception as e:  # the pre-fix state: no catalog, no loader
             rows, rules = [], {}
             check("catalog: assets/acmg_sf.tsv loads", False, f"{type(e).__name__}: {e}")
@@ -153,12 +166,7 @@ def main():
         if os.path.isfile(p):
             with open(p) as f, open(os.path.join(dropped, "acmg_sf.tsv"), "w") as g:
                 g.write("".join(x for x in f if not x.startswith("TTN\t")))
-            keep = collect_summary.ASSETS_DIR
-            collect_summary.ASSETS_DIR = dropped
-            try:
-                n = len(collect_summary.acmg_sf_rules())
-            finally:
-                collect_summary.ASSETS_DIR = keep
+            n = len(catalog(dropped)[1])
             check("catalog control: a copy without TTN has 83 genes, not 84", n == 83, n)
 
         # 2. MUTYH: chr1 MUTYH p.Gly396Asp and p.Tyr179Cys (GRCh38)
@@ -287,12 +295,10 @@ def main():
         # 9. without the assets folder
         keep = collect_summary.ASSETS_DIR
         collect_summary.ASSETS_DIR = os.path.join(work, "no-assets")
-        collect_summary._ASSETS.clear()
         try:
             summ = collect_summary.collect("S", d)
         finally:
             collect_summary.ASSETS_DIR = keep
-            collect_summary._ASSETS.clear()
         cv, cl = summ["sections"]["clinvar"], summ["sections"]["clinical"]
         check("no assets: the ClinVar hits stay", cv["state"] == "ok" and cv["data"]["count"] == 4, cv["state"])
         check("no assets: both lists say why they were not made",

@@ -443,6 +443,49 @@ mod tests {
     use super::*;
     use crate::testutil::Dir;
 
+    /// assets/imprinted_regions.tsv holds the rows of [`IMPRINTED_REGIONS`]
+    /// (tests/test_collect_summary.py checked the Python copy the same way).
+    #[test]
+    fn imprinted_regions_are_the_asset_rows() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/imprinted_regions.tsv"
+        );
+        let text = std::fs::read_to_string(path).unwrap();
+        let mut lines = text.lines().filter(|l| !l.starts_with('#'));
+        let head: Vec<&str> = lines.next().unwrap().split('\t').collect();
+        let col = |name: &str| head.iter().position(|h| *h == name).unwrap();
+        let num = |x: &str| (!x.is_empty()).then(|| x.parse::<i128>().unwrap());
+        let rows: Vec<_> = lines
+            .map(|l| {
+                let f: Vec<&str> = l.split('\t').collect();
+                let span = num(f[col("start")]).zip(num(f[col("end")]));
+                (
+                    f[col("chrom")].to_owned(),
+                    span,
+                    f[col("region")].to_owned(),
+                    f[col("maternal_upd")].to_owned(),
+                    f[col("paternal_upd")].to_owned(),
+                    f[col("pmid")].to_owned(),
+                )
+            })
+            .collect();
+        let want: Vec<_> = IMPRINTED_REGIONS
+            .iter()
+            .map(|r| {
+                (
+                    r.0.to_owned(),
+                    r.1,
+                    r.2.to_owned(),
+                    r.3.to_owned(),
+                    r.4.to_owned(),
+                    r.5.to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(rows, want);
+    }
+
     #[test]
     fn awk_reads_the_leading_number() {
         assert_eq!(awk_num("7000000"), 7_000_000.0);

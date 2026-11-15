@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og y str-bed and og y str-report: Y-STR repeat counts from HipSTR's calls (step 45).
 
 Each case writes a synthetic HipSTR VCF (one sample, only the records it
@@ -305,19 +306,33 @@ check("6 a panel out of order stops", "order column" in p.stderr, True)
 import collect_summary as cs  # noqa: E402
 import render_report as rr  # noqa: E402
 
+class Unreadable(Exception):
+    """A section og summary collect could not read (its state is unreadable)."""
+
+
+def sec(d, s, key):
+    """(source path, data) of section KEY of the summary og summary collect writes
+    for folder D: (None, {}) without its file; Unreadable when it cannot be read."""
+    x = cs.collect(s, d)["sections"][key]
+    if x["state"] == "unreadable":
+        raise Unreadable(x["note"])
+    return (os.path.join(d, x["source"]) if x["source"] else None), x["data"]
+
+
+
 sd = os.path.join(TMP, "sample")
 os.makedirs(os.path.join(sd, "y_str"))
 v = vcf({"DYS393": good("4"), "DYS390": ("0", "0", "0.6", "20", "0", "0")})
 subprocess.run([OG, "y", "str-report", "--panel", PANEL, "--vcf", v, "--tsv",
                 os.path.join(sd, "y_str", "S1_y_str.tsv"), "--csv", os.path.join(sd, "y_str", "S1_y_str.csv")],
                check=True, capture_output=True)
-path, data = cs.sec_y_str(sd, "S1")
+path, data = sec(sd, "S1", "y_str")
 check("7 collect_summary finds the table", os.path.basename(path or ""), "S1_y_str.tsv")
 check("7 counts per confidence", (data["high"], data["low"], data["not_callable"], data["no_call"]),
       (1, 1, sum(1 for r in panel if r["kind"] in ("multicopy", "absent")) + 3,  # + DYS452, DYS389II, DYS448: too long
        111 - 2 - sum(1 for r in panel if r["kind"] in ("multicopy", "absent")) - 3))
 check("7 the markers keep their order", [x["marker"] for x in data["markers"]], names)
-check("7 a sample without the step has no section", cs.sec_y_str(TMP, "nobody"), (None, {}))
+check("7 a sample without the step has no section", sec(TMP, "nobody", "y_str"), (None, {}))
 html = "\n".join(rr.ystr_body(data))
 check("7 the card lists DYS393 at 13", "<td>DYS393</td><td>13</td><td>high</td>" in html, True)
 check("7 the card lists the low call too", "<td>DYS390</td><td>24</td><td>low</td>" in html, True)
@@ -328,9 +343,9 @@ with open(os.path.join(sd, "y_str", "S1_y_str.tsv")) as f:
 with open(os.path.join(sd, "y_str", "S1_y_str.tsv"), "w") as f:
     f.write(t)
 try:
-    cs.sec_y_str(sd, "S1")
+    sec(sd, "S1", "y_str")
     check("7 an unknown confidence is unreadable", "read", "Unreadable")
-except cs.Unreadable:
+except Unreadable:
     check("7 an unknown confidence is unreadable", "Unreadable", "Unreadable")
 try:
     page = rr.html_report(cs.collect("S1", sd))
