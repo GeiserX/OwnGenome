@@ -387,8 +387,10 @@ jobs:
           . ./versions.env
           G="${EV}/genome" OUT="${EV}/out"
           mkdir -p "$OUT"
-          # sub LABEL URL-PREFIX NAME-OF-FILE-PATTERN: the person's non-reference
-          # SNVs on the chromosomes, one VCF.
+          # pull LABEL URL-PREFIX NAME-OF-FILE-PATTERN: the person's SNV records
+          # on the chromosomes that are not homozygous reference, one VCF: the
+          # ALT calls, and the sites with no call, which step 43 reads as
+          # unknown (a VCF record wins over the gVCF's reference block).
           pull() {
             local label=$1 url=$2 pat=$3 c parts=""
             mkdir -p "${G}/${SAMPLE}${label}/vcf"
@@ -397,8 +399,8 @@ jobs:
               # The container has no CA bundle, so curl fetches the file here.
               curl -fsSL --retry 5 -o "${EV}/in.vcf.gz" "${url}/${f}"
               curl -fsSL --retry 5 -o "${EV}/in.vcf.gz.tbi" "${url}/${f}.tbi"
-              docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" "$BCFTOOLS_IMAGE" \
-                bcftools view -s "$SAMPLE" -v snps --min-ac 1 -Oz -o "/e/${label}.raw.vcf.gz" /e/in.vcf.gz
+              docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
+                bcftools view -s "$1" -v snps -Ou /e/in.vcf.gz | bcftools view -e "GT=\"ref\"" -Oz -o "/e/$2.raw.vcf.gz"' _ "$SAMPLE" "$label"
               # The 2019 recall names the contigs 22, not chr22: rename them
               # (a name already chrN stays as it is).
               printf '%s\tchr%s\n' "$c" "$c" > "${EV}/rename.txt"
@@ -414,13 +416,14 @@ jobs:
             docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
               bcftools index -t -f "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz"
             rm -f "${EV}/${label}".chr*.vcf.gz
-            echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records"
+            echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records," \
+              "$(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H -i 'GT="mis"' "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) of them with no call"
             # Step 43 reads a site with no record as the reference only inside
             # a reference block of the gVCF. A panel VCF holds no callable mask,
-            # so the gVCF is one block over each whole chromosome: every site
-            # with no ALT reads as the reference, as this check measured before
-            # step 43 needed a gVCF (the person's records are taken with
-            # --min-ac 1, so a site with no record is a site with no ALT).
+            # so the gVCF is one block over each whole chromosome: a site with
+            # no record (the person is 0/0 there, or the panel has no variant
+            # there) reads as the reference, as this check measured before step
+            # 43 needed a gVCF, and a site with no call stays unknown.
             {
               printf '##fileformat=VCFv4.2\n'
               for c in $LIST; do awk -F'\t' -v c="chr${c}" '$1 == c {printf "##contig=<ID=%s,length=%s>\n", $1, $2}' "$FAI"; done

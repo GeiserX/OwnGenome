@@ -79,15 +79,16 @@ The table is built on GRCh37 and lifted once to GRCh38 with Picard `LiftoverVcf`
 
 ## Input
 
-- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample. A record whose FILTER is not PASS is read as unknown, and a site where you carry another ALT than the table's is left out.
-- `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz`: the gVCF of step 3, one sample. A variant-only VCF cannot tell a site that matches the reference from a site without reads, so a table site with no record in the VCF is read as the reference only where a confident reference block of the gVCF covers it. A block is confident when its FILTER is PASS or `.`, every allele of its GT is 0, and its GQ and its depth (MIN_DP, else DP) are 1 or more where it gives them. Any other site with no record goes to IBDmix as unknown (9), which IBDmix skips. Without the gVCF the bash step stops and says why, and the Nextflow pipeline skips the sample with a warning (add the `gvcf` and `gvcf_index` columns to its samplesheet row, or start from the BAM or the reads, as for steps 42 and 44). The gVCF must list the chromosomes in the VCF's order.
+- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample. A record whose FILTER is not PASS is read as unknown, and a site where you carry another ALT than the table's is left out. A reference call with ALT `.`, as an all-sites VCF writes it, is the reference when its GT is all 0, and unknown otherwise.
+- `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz`: the gVCF of step 3, one sample. A variant-only VCF cannot tell a site that matches the reference from a site without reads, so a table site with no record in the VCF is read as the reference only where a confident reference block of the gVCF covers it. A block is confident when its FILTER is PASS or `.`, every allele of its GT is 0, and its GQ and its depth (MIN_DP, else DP) are 1 or more where it gives them. Any other site with no record goes to IBDmix as unknown (9), which IBDmix skips. Without the gVCF the bash step stops and says why, and the Nextflow pipeline skips the sample with a warning (add the `gvcf` and `gvcf_index` columns to its samplesheet row, or start from the BAM or the reads, as for steps 42 and 44). The gVCF must list the chromosomes in the VCF's order, with records on every table chromosome the VCF lists.
 - The GENCODE gene lines `setup.sh` installs, for the genes of each segment (without them the segments are listed without genes)
 
 `og archaic genotypes` reads the VCF, the gVCF (`--gvcf`) and the table
 together, keeping one duplicate-position window of the VCF and one record of
 the gVCF. Positions within each chromosome must be in ascending order in all
-three inputs. A position that goes backwards, or a gVCF in another
-chromosome order, stops the command with exit 2. Mask runs are written as
+three inputs. A position that goes backwards (the gVCF is read to its end
+for this), a gVCF in another chromosome order, or a gVCF with no records on
+a table chromosome of the VCF, stops the command with exit 2. Mask runs are written as
 they close. It prints how many table sites it read and how many it did not.
 
 ## Command
@@ -117,7 +118,7 @@ Measured on public HG002 by the `archaic-hg002` jobs of `public-evidence.yml`, o
 - Install: the archaic files were 150.5 GB in all, from 1.8 GB (chromosome 22) to 13.8 GB (chromosome 2). Downloading them took 2 h 32 min summed over the 22 chromosomes, from 3 to 32 minutes each, at the speed MPI-EVA served that day. Building the table took 3 h 15 min summed, from 2 to 20 minutes per chromosome. The finished table is 0.44 GB with 51,812,908 sites.
 - Step 43, one population: 19 to 88 seconds per chromosome, 18 minutes summed over the 22. IBDmix runs once per chromosome and archaic genome, `THREADS` chromosomes at a time.
 
-Every figure in this section was measured before step 43 read the gVCF, when each site GIAB's variant-only VCF had no call for was read as the reference, inside GIAB's confident regions or not. The e2e case now gives GIAB's confident regions as the reference blocks and prints its chr22 figure on every run. The `archaic-hg002` jobs of `public-evidence.yml` give the same blocks, one per GIAB benchmark interval, so the next release run measures the whole-genome figure on this rule. The `archaic-same-person` job has no callable mask for the 1000 Genomes panel data, so it gives one reference block over each whole chromosome: every site with no ALT reads as the reference, as it did when the table below was measured.
+Every figure in this section was measured before step 43 read the gVCF, when each site GIAB's variant-only VCF had no call for was read as the reference, inside GIAB's confident regions or not. The e2e case now gives GIAB's confident regions as the reference blocks and prints its chr22 figure on every run. The `archaic-hg002` jobs of `public-evidence.yml` give the same blocks, one per GIAB benchmark interval, so the next release run measures the whole-genome figure on this rule. The `archaic-same-person` job has no callable mask for the 1000 Genomes panel data, so it gives one reference block over each whole chromosome: a site where the panel has no record for the person reads as the reference, as it did when the table below was measured, and a site where the panel has no call for the person stays unknown.
 
 That run was made before the masks, from a table that held every lifted site. It gave HG002 115.2 Mb of Neanderthal sequence over the 22 autosomes, about twice what Chen et al. report for Europeans (a median of 51.6 Mb per person, and 42.0 to 62.0 Mb across the released per-person calls of their 503 Europeans; see the same-person comparison below for what their method is). The cause was the missing masks: the table carried the positions each archaic genome's own filters exclude, and IBDmix scored them. On chr22, 43% of that run's Neanderthal sequence lay outside the 1000 Genomes GRCh38 strict mask alone.
 
