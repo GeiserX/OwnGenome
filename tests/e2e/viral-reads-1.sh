@@ -150,8 +150,9 @@ check_eq "VZV: not found" "$(cell "$V" NC_001348.1 call)" "not found"
 for f in viral_reads.bam viral_reads.bam.bai viral_coverage.tsv human_coverage.tsv; do
   check "the step wrote ${V}_${f}" test -s "${G}/${V}/viral/${V}_${f}"
 done
-check "the step removed its intermediate files" bash -c '! ls "$1"/*_unmapped.fq "$1"/*_viral.sam "$1"/*_viral_depth.tsv "$1"/*_viral_hits.sam "$1"/*_bam_idxstats.tsv 2>/dev/null' \
-  _ "${G}/${V}/viral"
+for f in unmapped.fq viral.sam viral_depth.tsv viral_hits.sam bam_idxstats.tsv; do
+  check "the step removed ${V}_${f}" test ! -e "${G}/${V}/viral/${V}_${f}"
+done
 
 # --- the same genome at a tenth of the human depth --------------------------------------------
 L10="${SAMPLE}virlow"
