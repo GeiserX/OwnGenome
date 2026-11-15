@@ -61,7 +61,7 @@
 */
 
 // One spec per row of assets/paralog_loci.tsv, model|region|table, space
-// separated (as scripts/35-paralogs.sh reads it). tests/test_paralog_loci.py
+// separated (as scripts/35-paralogs.sh reads it). og-steps' paralog_loci test
 // keeps these three columns to characters a shell word can carry.
 def paralogSpecs() {
     def lines = file("${projectDir}/assets/paralog_loci.tsv").readLines().findAll { l -> l.trim() && !l.startsWith('#') }

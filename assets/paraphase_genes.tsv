@@ -18,7 +18,7 @@
 #            A field of region_specific_info Paraphase did not write makes the row "not assessed".
 #   reading  what the row says
 #   source   where the reading comes from (Paraphase's documentation is docs/<gene>.md of its 4.1.0 tag)
-# tests/test_paraphase_report.py parses a synthetic JSON for every row and counts the regions of the
+# rust/crates/og-steps/tests/paraphase_report.rs parses a synthetic JSON for every row and counts the regions of the
 # pinned config.yaml against docs/35-paralogs.md (the e2e case paralog-rows-1 reads it from the image).
 region	gene	field	reading	source
 smn1	SMN1	smn1_cn	copies of SMN1; 0 is the pattern of spinal muscular atrophy, 1 that of a carrier	Paraphase docs/SMN1_SMN2.md

@@ -1,4 +1,4 @@
-# carrier_genes.tsv: the genes of the couple carrier screen (step 39, bin/couple_report.py).
+# carrier_genes.tsv: the genes of the couple carrier screen (step 39, og couple screen).
 # One row per gene. chrom, start and end: the gene's GRCh38 span (1-based, inclusive) from the
 # gene lines of GENCODE release 50 (basic annotation). inheritance: AR (autosomal, or in a
 # pseudoautosomal region) or XL (chrX outside the PARs). lists: where the gene comes from:
@@ -15,9 +15,9 @@
 #   hypomorph or pseudodeficiency, then chrom:pos:ref:alt (GRCh38), then a name; "." for none. Such
 #   an allele never makes a carrier finding on its own (the couple screen, step 39, and the
 #   carrier list of the sample report). With a called deletion of the gene it is a second hit (the
-#   two-hit lines of the sample report, bin/collect_summary.py two_hits). In the couple screen a
+#   two-hit lines of the sample report, og summary collect). In the couple screen a
 #   hypomorph beside a full loss of function in the other partner's same gene is a shared gene.
-# Rebuilt with: couple_report.py genes (docs/39-couple.md says how).
+# Rebuilt with: og couple genes (docs/39-couple.md says how).
 gene	chrom	start	end	inheritance	lists	condition	severity
 ISG15	chr1	1001138	1014540	AR	Orphanet	Mendelian susceptibility to mycobacterial diseases due to complete ISG15 deficiency	.
 AGRN	chr1	1020069	1056119	AR	Orphanet	Congenital myasthenic syndrome due to defects in endplate development and maintenance	.

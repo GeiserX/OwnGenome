@@ -697,6 +697,15 @@ dependencies = [
 [[package]]
 name = "og-couple"
 version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-cn",
+ "og-io",
+ "og-pedigree",
+ "og-steps",
+ "og-summary",
+ "pycompat",
+]
 
 [[package]]
 name = "og-dev"

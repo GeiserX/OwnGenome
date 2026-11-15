@@ -13,7 +13,7 @@
 #      table; control: without the HBA table the HBA line is gone;
 #   4. the pinned Paraphase image embeds data/38/config.yaml of its 4.1.0
 #      tag byte for byte, and its top-level regions number what
-#      docs/35-paralogs.md and tests/test_paraphase_report.py state.
+#      docs/35-paralogs.md and rust/crates/og-steps/tests/paraphase_report.rs state.
 # The stand-ins of paralog-catalog-1-gba apply (an N-filled chr11 in a copy of
 # the reference, background depth from 100 bp windows on the chr20 slice). A
 # model with a region on a chromosome the fixture lacks is not assessed. The
@@ -208,7 +208,7 @@ check "the pinned image's paraphase embeds that config byte for byte" embedded "
 printf 'smn1:\n  genes: X\n' > "${CASE_TMP}/other.yaml"
 check "control: another config is not found in the binary" sh -c "! python3 -c \"import sys; sys.exit(0 if open(sys.argv[2], 'rb').read() in open(sys.argv[1], 'rb').read() else 1)\" '$BIN' '${CASE_TMP}/other.yaml'"
 N=$(python3 -c "import re, sys; print(len(re.findall(r'^[A-Za-z0-9_]+:[ \t]*$', open(sys.argv[1]).read(), re.M)))" "$CFG")
-check_eq "regions in the pinned config" "$N" "$(sed -n 's/^PARAPHASE_REGIONS = \([0-9]*\)$/\1/p' "${REPO}/tests/test_paraphase_report.py")"
+check_eq "regions in the pinned config" "$N" "$(sed -n 's/^const PARAPHASE_REGIONS: usize = \([0-9]*\);$/\1/p' "${REPO}/rust/crates/og-steps/tests/paraphase_report.rs")"
 check "docs/35-paralogs.md states that count" grep -q "It covers ${N} GRCh38 regions" "${REPO}/docs/35-paralogs.md"
 rm -f "$BIN" "$REF" "${REF}.fai"
 

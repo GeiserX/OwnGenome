@@ -1,0 +1,27 @@
+# carrier_genes.tsv: the genes of the couple carrier screen (step 39, og couple screen).
+# One row per gene. chrom, start and end: the gene's GRCh38 span (1-based, inclusive) from the
+# gene lines of GENCODE release 99 (basic annotation). inheritance: AR (autosomal, or in a
+# pseudoautosomal region) or XL (chrX outside the PARs). lists: where the gene comes from:
+#   ACMG      Gregg et al., Genet Med 2021;23(10):1793-1806 (doi:10.1038/s41436-021-01203-z),
+#             tier 3: the 97 autosomal recessive genes of its tables 1 to 5 and the 16 X-linked
+#             genes of table 6; condition names from those tables
+#   ACOG      the conditions of ACOG Committee Opinions 690 and 691 (2017): cystic fibrosis, spinal
+#             muscular atrophy, the hemoglobinopathies, fragile X and the Ashkenazi Jewish panel
+#   Orphanet  every other gene of an Orphanet disorder with autosomal recessive or X-linked
+#             inheritance (Orphadata en_product6 and en_product9_ages of 2026-01-02, CC BY 4.0,
+#             https://www.orphadata.com), with a disease-causing germline association that
+#             Orphanet assessed; condition: the first such disorder by name
+# severity: alleles of the gene that are not a full loss of function, separated by ";": each is
+#   hypomorph or pseudodeficiency, then chrom:pos:ref:alt (GRCh38), then a name; "." for none. Such
+#   an allele never makes a carrier finding on its own (the couple screen, step 39, and the
+#   carrier list of the sample report). With a called deletion of the gene it is a second hit (the
+#   two-hit lines of the sample report, og summary collect). In the couple screen a
+#   hypomorph beside a full loss of function in the other partner's same gene is a shared gene.
+# Rebuilt with: og couple genes (docs/39-couple.md says how).
+gene	chrom	start	end	inheritance	lists	condition	severity
+TWO1	chr1	70	80	AR	Orphanet	Two places	.
+AAA1	chr3	10	20	AR	Orphanet	Recessive & two; and 1 other	pseudodeficiency chr3:15:C:T p.Y
+C9orf72	chr9	1	2	AR	Orphanet	Upper case orf	.
+NAGA	chr22	100	900	AR	ACMG	Schindler disease	hypomorph chr22:500:A:G p.X
+PARG1	chrX	20000	30000	AR	Orphanet	Pseudo	.
+XXL1	chrX	5000000	5000100	XL	Orphanet	X dominant; and 1 other	.

@@ -80,7 +80,7 @@ Checks:
  12. the raw-data export (step 40): both reports show how many chip sites
      got a genotype, the '--' reasons, the two files and the privacy note;
      without the step's table there is no card and no text section.
- 13. the couple card (step 39), from a table bin/couple_report.py wrote:
+ 13. the couple card (step 39), from a table og couple screen wrote:
      both reports name the partner, the shared gene with its chance for a
      child and both partners' findings, and point to a genetic counsellor;
      without the table there is no card and no text section.
@@ -997,10 +997,9 @@ def main():
               collect_summary.collect("S", d)["sections"]["traits"]["state"] == "ok")
 
         # 13. couple card (step 39)
-        import couple_report
-        genes = couple_report.read_genes(os.path.join(REPO, "assets", "carrier_genes.tsv"))
-        g = genes["NAGA"]
-        pos = (g["start"] + g["end"]) // 2
+        with open(os.path.join(REPO, "assets", "carrier_genes.tsv")) as f:
+            g = next(x.split("\t") for x in f if x.startswith("NAGA\t"))
+        pos = (int(g[2]) + int(g[3])) // 2
         cv = ("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
               "chr22\t%d\t1\tA\tG\t.\tPASS\tGENEINFO=NAGA:4668;CLNSIG=Pathogenic;"
               "CLNREVSTAT=reviewed_by_expert_panel\tGT\t0/1\n")
@@ -1008,8 +1007,9 @@ def main():
         put(f"{c}/ped.tsv", "sample\tsex\tfather\tmother\tpartner\nP1\tfemale\t.\t.\tP2\nP2\tmale\t.\t.\tP1\n")
         put(f"{c}/P1.vcf", cv % pos)
         put(f"{c}/P2.vcf", cv % (pos + 5))
-        couple_report.main(["screen", "--pedigree", f"{c}/ped.tsv", "--genes", os.path.join(REPO, "assets", "carrier_genes.tsv"),
-                            "--clinvar", f"P1={c}/P1.vcf", "--clinvar", f"P2={c}/P2.vcf", "--out-dir", f"{c}/out"])
+        subprocess.run([og_binary(), "couple", "screen", "--pedigree", f"{c}/ped.tsv", "--genes",
+                        os.path.join(REPO, "assets", "carrier_genes.tsv"), "--clinvar", f"P1={c}/P1.vcf",
+                        "--clinvar", f"P2={c}/P2.vcf", "--out-dir", f"{c}/out"], check=True, stdout=subprocess.DEVNULL)
         d = f"{c}/P2"
         put(f"{d}/couple/P2_couple_carrier.tsv", open(f"{c}/out/P2_couple_carrier.tsv").read())
         summ = collect_summary.collect("P2", d)

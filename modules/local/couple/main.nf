@@ -2,8 +2,8 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     COUPLE_CARRIER — Carrier screen of two partners
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    For every two samples the pedigree marks as partners, bin/couple_report.py
-    screen (the rule scripts/39-couple.sh runs too) collects each partner's
+    For every two samples the pedigree marks as partners, og couple screen
+    (the rule scripts/39-couple.sh runs too) collects each partner's
     findings in the genes of assets/carrier_genes.tsv: ClinVar pathogenic and
     likely pathogenic hits (CLINVAR_SCREEN), Delly deletions over an exon
     of 50 bp or more (with --gencode_exons; one matching a common deletion of
@@ -68,7 +68,7 @@ process COUPLE_CARRIER {
     def ex = exons ? "--exons ${exons}" : ''
     def bn = benign_sv ? "--benign-sv ${benign_sv}" : ''
     """
-    couple_report.py screen --pedigree pedigree.tsv --genes carrier_genes.tsv --par-bed ${par_bed} \\
+    og couple screen --pedigree pedigree.tsv --genes carrier_genes.tsv --par-bed ${par_bed} \\
         ${args} ${ex} ${bn} ${sx} --out-dir .
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

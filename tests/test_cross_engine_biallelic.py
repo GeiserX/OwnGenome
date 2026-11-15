@@ -42,8 +42,9 @@ import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import collect_summary  # noqa: E402
-import couple_report  # noqa: E402
 import render_report  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
 
 FAILS = []
 
@@ -250,34 +251,43 @@ def main():
               txt[-3000:])
         check("HTML report: the SF row carries the two-hit detail", "biallelic with DEL chr1:45335000-45337000" in html)
 
-        # 9. the couple screen: hypomorph x null is a shared gene, hypomorph x hypomorph is not
-        genes = couple_report.read_genes(os.path.join(REPO, "assets", "carrier_genes.tsv"))
+        # 9. the couple screen (og couple screen): hypomorph x null is a shared gene, hypomorph x hypomorph is not
         tar = sample(work, "couple_tar", [hit(TAR_ALLELE, "RBM8A", "0/1")])
-        fa, _ = couple_report.clinvar_findings(f"{tar}/clinvar/S_clinvar_hits.vcf", genes, "female", {}, [])
-        null = couple_report.finding("RBM8A", "deletion chr1:145700000-146000000 (300.0 kb) het, 6 exons of the "
-                                     "gene (Delly)", 1)
-        sexes = {"A": "female", "B": "male"}
-        rows = couple_report.screen_couple("A", "B", sexes, {"A": fa, "B": [null]}, genes)
-        r = [x for x in rows if x["gene"] == "RBM8A"]
-        check("couple: RBM8A allele in A + RBM8A deletion in B is a shared gene, 1 in 4",
-              len(r) == 1 and r[0]["result"] == "shared" and r[0]["offspring_risk"] == "1 in 4 per pregnancy"
-              and "rs139428292" in r[0]["findings_a"] and "hypomorph" in r[0]["explanation"], rows)
-        rows = couple_report.screen_couple("A", "B", sexes, {"A": fa, "B": list(fa)}, genes)
-        check("couple: the RBM8A allele in both partners is set aside, no row",
-              not [x for x in rows if x["gene"] == "RBM8A"], rows)
-        rows = couple_report.screen_couple("A", "B", sexes, {"A": fa, "B": []}, genes)
-        check("couple: the RBM8A allele in one partner alone is set aside, no row",
-              not [x for x in rows if x["gene"] == "RBM8A"], rows)
-        ped = put(f"{work}/couple_run/pedigree.tsv", "sample\tsex\tfather\tmother\tpartner\nA\tfemale\t.\t.\tB\n"
-                  "B\tmale\t.\t.\tA\n")
         empty = sample(work, "couple_empty", [])
-        r = subprocess.run([sys.executable, os.path.join(REPO, "bin", "couple_report.py"), "screen", "--pedigree", ped,
-                            "--genes", os.path.join(REPO, "assets", "carrier_genes.tsv"),
-                            "--clinvar", f"A={tar}/clinvar/S_clinvar_hits.vcf",
-                            "--clinvar", f"B={empty}/clinvar/S_clinvar_hits.vcf",
-                            "--out-dir", f"{work}/couple_run/out"], capture_output=True, text=True)
-        md = f"{work}/couple_run/out/couple_A_B.md"
-        md_text = open(md).read() if os.path.isfile(md) else ""
+        cw = f"{work}/couple_run"
+        ped = put(f"{cw}/pedigree.tsv", "sample\tsex\tfather\tmother\tpartner\nA\tfemale\t.\t.\tB\n"
+                  "B\tmale\t.\t.\tA\n")
+        # B's null allele: a 300 kb Delly deletion over RBM8A's exons (no RDCN, so read depth is no question)
+        null_sv = put(f"{cw}/B_sv.vcf", "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\t"
+                      "FORMAT\tS\nchr1\t145700000\tDEL0\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=146000000\tGT\t0/1\n")
+        exons = put(f"{cw}/exons.bed", "".join(f"chr1\t{s_}\t{s_ + 100}\n" for s_ in range(145921000, 145928000, 1200)))
+
+        def couple(name, b_hits, *extra):
+            out = f"{cw}/{name}"
+            r = subprocess.run([og_binary(), "couple", "screen", "--pedigree", ped,
+                                "--genes", os.path.join(REPO, "assets", "carrier_genes.tsv"),
+                                "--clinvar", f"A={tar}/clinvar/S_clinvar_hits.vcf",
+                                "--clinvar", f"B={b_hits}/clinvar/S_clinvar_hits.vcf", *extra, "--out-dir", out],
+                               capture_output=True, text=True)
+            rows, md_text = [], ""
+            if r.returncode == 0:
+                with open(f"{out}/couple_A_B.tsv") as f:
+                    head = f.readline().rstrip("\n").split("\t")
+                    rows = [dict(zip(head, x.rstrip("\n").split("\t"))) for x in f]
+                with open(f"{out}/couple_A_B.md") as f:
+                    md_text = f.read()
+            return r, rows, md_text
+        r, rows, _ = couple("null", empty, "--delly", f"B={null_sv}", "--exons", exons)
+        x = [y for y in rows if y["gene"] == "RBM8A"]
+        check("couple: RBM8A allele in A + RBM8A deletion in B is a shared gene, 1 in 4",
+              len(x) == 1 and x[0]["result"] == "shared" and x[0]["offspring_risk"] == "1 in 4 per pregnancy"
+              and "rs139428292" in x[0]["findings_a"] and "hypomorph" in x[0]["explanation"], (r.stderr[-500:], rows))
+        r, rows, _ = couple("both", tar)
+        check("couple: the RBM8A allele in both partners is set aside, no row",
+              r.returncode == 0 and not [y for y in rows if y["gene"] == "RBM8A"], (r.stderr[-500:], rows))
+        r, rows, md_text = couple("one", empty)
+        check("couple: the RBM8A allele in one partner alone is set aside, no row",
+              r.returncode == 0 and not [y for y in rows if y["gene"] == "RBM8A"], (r.stderr[-500:], rows))
         check("couple run: the RBM8A allele counts as no finding of the listed genes (0 / 1) and is a gap line",
               r.returncode == 0 and "| A | 0 / 1 |" in md_text and "Set aside for A" in md_text,
               (r.returncode, r.stderr[-500:], md_text[-1500:]))

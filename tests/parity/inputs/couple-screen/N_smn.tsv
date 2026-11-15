@@ -1,0 +1,2 @@
+chrom	start	end	locus	agCN_filter	agCN	agCN_qual	psCN_filter	psCN	psCN_qual	homologous_regions
+chr5	70951945	70951946	SMN1	not assessed: no read over chr5:70951946-70951946	.	.	not assessed: no read over chr5:70951946-70951946	.	.	.
