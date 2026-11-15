@@ -189,7 +189,15 @@ struct Out {
 }
 
 impl Out {
+    /// The MT-RNR1 calls of a run that exited 0 and wrote its output, so an
+    /// empty list never comes from a run that failed early.
     fn mt(&self) -> Vec<&str> {
+        assert!(
+            self.rc == 0 && self.lines.is_some(),
+            "the run must exit 0 and write its output (exit {}): {}",
+            self.rc,
+            self.log
+        );
         self.lines
             .iter()
             .flatten()

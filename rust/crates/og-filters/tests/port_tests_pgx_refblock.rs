@@ -196,6 +196,14 @@ fn run(gvcf: &str, opts: &[&str], stdin: Option<&str>) -> (i32, String, String) 
     )
 }
 
+/// Stdout of a run on valid input, which must exit 0, so "nothing filled"
+/// never comes from a run that failed.
+fn ok(gvcf: &str, opts: &[&str]) -> String {
+    let (rc, out, err) = run(gvcf, opts, None);
+    assert_eq!(rc, 0, "a valid input exits 0: {err}");
+    out
+}
+
 fn records(vcf: &str) -> Vec<Vec<String>> {
     vcf.lines()
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
@@ -319,7 +327,7 @@ fn the_fixture_fills_five_and_leaves_four() {
 #[test]
 fn the_gq_threshold() {
     let g = gvcf();
-    let (_, o, _) = run(&g, &["--min-gq", "50"], None);
+    let o = ok(&g, &["--min-gq", "50"]);
     assert!(
         filled(&o, UGT1A1),
         "--min-gq 50: UGT1A1 (GQ 50) still filled, a block at exactly the threshold counts"
@@ -328,11 +336,11 @@ fn the_gq_threshold() {
         !filled(&o, ("chr1", 97_450_065)),
         "--min-gq 50: DPYD (one block GQ 45) no longer filled"
     );
-    let (_, o, _) = run(&g, &["--min-gq", "51"], None);
+    let o = ok(&g, &["--min-gq", "51"]);
     assert!(fills(&o).is_empty(), "--min-gq 51: nothing filled");
     // the first GQ-50 block of a filled position: UGT1A1
     let low = g.replacen("0/0:50:30\n", "0/0:19:30\n", 1);
-    let (_, o, _) = run(&low, &[], None);
+    let o = ok(&low, &[]);
     assert!(
         !filled(&o, UGT1A1),
         "default threshold 20: UGT1A1 with a GQ 19 block is not filled"
@@ -343,7 +351,7 @@ fn the_gq_threshold() {
 fn edges_that_fill_nothing_and_inputs_that_are_refused() {
     let g = gvcf();
     let hole = g.replace("./.:0:0", "./.:50:0");
-    let (_, o, _) = run(&hole, &[], None);
+    let o = ok(&hole, &[]);
     assert!(
         hole != g && !filled(&o, ("chr10", 94_942_205)),
         "the ./. hole stays a hole when its GQ is 50 (the genotype decides, not only the GQ)"
@@ -357,13 +365,13 @@ fn edges_that_fill_nothing_and_inputs_that_are_refused() {
          chr2\t233760231\t.\tGCCA\tG,<*>\t30\tPASS\t.\tGT:GQ:DP\t0/1:30:28\n\
          chr2\t233760232\t.\tC\t<*>\t0\t.\tEND=233761000\tGT:GQ:MIN_DP\t0/0:50:30\n",
     );
-    let (_, o, _) = run(&dele, &[], None);
+    let o = ok(&dele, &[]);
     assert!(
         dele != g && !filled(&o, UGT1A1),
         "a deletion from before the span that overlaps it fills nothing, though blocks cover the span"
     );
     let short = g.replace("END=233761000", "END=233760234");
-    let (_, o, _) = run(&short, &[], None);
+    let o = ok(&short, &[]);
     assert!(
         !filled(&o, UGT1A1),
         "a block ending one base before the span ends fills nothing"
@@ -372,7 +380,7 @@ fn edges_that_fill_nothing_and_inputs_that_are_refused() {
         "T\t<*>\t0\t.\tEND=233761000",
         "T\t<*>\t0\tLowQual\tEND=233761000",
     );
-    let (_, o, _) = run(&lowq, &[], None);
+    let o = ok(&lowq, &[]);
     assert!(
         lowq != g && !filled(&o, UGT1A1),
         "a block with a failed FILTER fills nothing"

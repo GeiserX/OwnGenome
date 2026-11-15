@@ -698,7 +698,10 @@ fn case14_pypgx_tables_beside_the_pypgx_on_path() {
 #[test]
 fn case14_without_pypgx_tables_the_evidence_says_not_looked_up() {
     let tmp = Scratch::new("14c");
-    let (code, _, se, rows) = summary(&tmp, &[], Some("/usr/bin:/bin"));
+    // An empty folder as PATH: no pypgx, so no tables beside it.
+    let empty = tmp.0.join("empty-path");
+    fs::create_dir_all(&empty).unwrap();
+    let (code, _, se, rows) = summary(&tmp, &[], Some(&empty.to_string_lossy()));
     let evidence = rows.get(3).map(|r| r[6..].to_vec());
     assert_eq!(
         (code, evidence, se.contains("WARNING: no pypgx tables")),
