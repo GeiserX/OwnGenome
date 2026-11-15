@@ -730,9 +730,9 @@ mod tests {
 
     #[test]
     fn unknown_verbs_and_missing_options_are_usage_errors() {
-        let (rc, _, err) = testutil::run(&["paint"]);
+        let (rc, _, err) = testutil::run(&["no-such-verb"]);
         assert_eq!(rc, 2);
-        assert!(err.contains("invalid choice: 'paint'"), "{err}");
+        assert!(err.contains("invalid choice: 'no-such-verb'"), "{err}");
         let (rc, _, err) = testutil::run(&["order", "--pop", "x"]);
         assert_eq!(rc, 2);
         assert!(
