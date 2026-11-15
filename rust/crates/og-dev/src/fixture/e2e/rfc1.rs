@@ -234,8 +234,9 @@ fn samd12(unit: &str) -> String {
     let seq = unit.repeat(30);
     for i in 0..5 {
         s += &format!(
-            "f{i}\t0\tchr8\t{}\t60\t150M\t*\t0\t0\t{seq}\t{}\n",
+            "f{i}\t0\tchr8\t{}\t60\t{}M\t*\t0\t0\t{seq}\t{}\n",
             start + 1,
+            seq.len(),
             "I".repeat(seq.len())
         );
     }
@@ -346,6 +347,16 @@ mod tests {
         let f = Flanks::new();
         assert_eq!(f.spanning("x".into(), "AAAAG", 20).cigar, "40M55M45I10M");
         assert_eq!(f.spanning("x".into(), "AAAAG", 11).cigar, "40M55M55M");
+    }
+
+    #[test]
+    fn samd12_cigars_match_the_read_length_for_any_unit() {
+        for unit in ["TGAAA", "AAGGGA", "AT"] {
+            for line in samd12(unit).lines() {
+                let f: Vec<&str> = line.split('\t').collect();
+                assert_eq!(f[5], format!("{}M", f[9].len()), "{unit}: {line}");
+            }
+        }
     }
 
     #[test]

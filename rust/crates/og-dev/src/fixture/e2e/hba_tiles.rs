@@ -55,6 +55,15 @@ pub fn records(seq: &[u8], sample: &str, rg: Option<&str>) -> String {
     out
 }
 
+/// The `ID:` of the header's first `@RG` line, wherever the field sits.
+fn read_group(header: &str) -> Option<&str> {
+    header
+        .lines()
+        .find(|l| l.starts_with("@RG\t"))?
+        .split('\t')
+        .find_map(|f| f.strip_prefix("ID:"))
+}
+
 pub fn run(args: &[String]) -> Result<(), Fail> {
     let a = exactly(args, 4, "FASTA HEADER SAMPLE OUT")?;
     let fasta = String::from_utf8_lossy(&read(Path::new(&a[0]))?).into_owned();
@@ -66,11 +75,7 @@ pub fn run(args: &[String]) -> Result<(), Fail> {
         .collect();
     let header = read(Path::new(&a[1]))?;
     let text = String::from_utf8_lossy(&header);
-    let rg = text
-        .lines()
-        .find(|l| l.starts_with("@RG"))
-        .and_then(|l| l.split('\t').nth(1))
-        .map(|f| f.get(3..).unwrap_or(""));
+    let rg = read_group(&text);
     let mut out = create(Path::new(&a[3]))?;
     out.write_all(&header)?;
     out.write_all(records(&seq, &a[2], rg).as_bytes())?;
@@ -91,6 +96,14 @@ mod tests {
         s[1000..1300].copy_from_slice(&rep);
         s[1500..1800].copy_from_slice(&revcomp(&rep));
         s
+    }
+
+    #[test]
+    fn the_read_group_is_the_id_field_wherever_it_sits() {
+        assert_eq!(read_group("@HD\tVN:1.6\n@RG\tID:rg1\tSM:S\n"), Some("rg1"));
+        assert_eq!(read_group("@RG\tSM:S\tPL:ILLUMINA\tID:rg2\n"), Some("rg2"));
+        assert_eq!(read_group("@RG\tSM:S\n@RG\tID:rg3\n"), None);
+        assert_eq!(read_group("@SQ\tSN:chr16\tLN:90338345\n"), None);
     }
 
     #[test]
