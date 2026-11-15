@@ -2,14 +2,15 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     HTML_REPORT — The sample's HTML report, rendered by bin/render_report.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    The same code scripts/24-html-report.sh runs: bin/collect_summary.py
-    reads the step outputs into summary.json (the bash step's name for it),
+    The same code scripts/24-html-report.sh runs: og summary collect
+    (rust/crates/og-summary, run by render_report.py through bin/og) reads
+    the step outputs into summary.json (the bash step's name for it),
     and render_report.py writes the report from it, so a number on the
     Nextflow report is the number the bash report shows for the same file.
 
     The inputs are the outputs of the steps that ran for this sample, as one
     list (main.nf joins them, so the report waits for each). They are linked
-    into the folder layout collect_summary.py reads (clinvar/, pharmcat/,
+    into the folder layout og summary collect reads (clinvar/, pharmcat/,
     cpic/, vep/, clinical/, slivar/, cpsr/, qc/, roh/, mito/, telomere/,
     hla_t1k/, hla_optitype/, kir/, pypgx/, annotsv/, traits/, chip/, couple/,
     ...); a step that did
@@ -18,7 +19,7 @@
     name is the user's. indexcov's folder becomes indexcov/ itself (the
     sex check reads indexcov/indexcov-indexcov.ped), and CPIC_LOOKUP's
     PharmCAT comparison goes beside the pypgx summary, where
-    collect_summary.py looks for it. assets/acmg_sf.tsv (the ACMG SF rules)
+    og summary collect looks for it. assets/acmg_sf.tsv (the ACMG SF rules)
     and assets/carrier_genes.tsv (the carrier list) and
     assets/callability_genes.tsv (the hard-to-read genes) come in the same list
     and go to assets/, which --assets names, as do assets/mito_confirmed.tsv
@@ -69,7 +70,7 @@ process HTML_REPORT {
     def gvcf_suffix = gvcf_index.endsWith('.csi') ? 'csi' : 'tbi'
     def release = workflow.manifest.version ?: ''
     """
-    # Where collect_summary.py looks for each output (bin/collect_summary.py)
+    # Where og summary collect looks for each output (rust/crates/og-summary)
     S=layout/${id}
     mkdir -p "\$S"
     place() { mkdir -p "\$S/\$1" && ln -s "\$(readlink -f "\$2")" "\$S/\$1/\$(basename "\$2")"; }
@@ -153,7 +154,7 @@ process HTML_REPORT {
         --search-index ${id}_search_index.json \\
         --charts-json ${id}_charts.json
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    python: %s\\n    og: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$(og --version)" > versions.yml
     """
 
     stub:

@@ -6,8 +6,8 @@ use crate::pyio::PyErr;
 use crate::report::{GeneCall, STEP36_GENES, position_read, text, truthy_field};
 use crate::status::{Status, is_normal};
 use crate::tables::{
-    ClinvarHit, ConsensusRow, Contraindication, Inhibitors, Medication, PypgxCall, norm_drug,
-    pypgx_called,
+    ClinvarHit, ConsensusRow, Contraindication, Inhibitors, Medication, PypgxCall, ReportIf,
+    norm_drug, pypgx_called,
 };
 use pycompat::fmt::general;
 use pycompat::json::Value;
@@ -643,22 +643,53 @@ pub fn hit_genes(geneinfo: Option<&str>) -> BTreeSet<String> {
         .collect()
 }
 
-/// WARNING lines for each pathogenic or likely pathogenic hit in a gene of
-/// the table, one per drug the table names for the gene. A drug whose names
-/// hold a name of the medication list is marked as on it.
+/// No allele of the genotype is the reference and at least one is a called
+/// ALT: both copies changed (`1/1`, `1|2`), the one copy of a hemizygous
+/// call (`1`), or one allele of a split multi-allelic site (`1/.`, `./1`).
+/// Step 06 splits a `1/2` record into `1/.` and `./1`: the missing allele
+/// is the other ALT, not the reference. `0/1`, `1|0` and `./.` are not.
+fn both_copies(genotype: &str) -> bool {
+    let alleles = || genotype.split(['/', '|']).map(str::trim);
+    !alleles().any(|a| matches!(a, "" | "0")) && alleles().any(|a| a != ".")
+}
+
+/// The lines for each pathogenic or likely pathogenic hit in a gene of the
+/// table, one entry per drug the table names for the gene: a `WARNING:`
+/// line, or a `NOTE:` line for one heterozygous variant in a gene whose
+/// row needs both copies (`Report_if` biallelic), which makes a carrier.
+/// A recessive gene warns when a genotype shows both copies changed or
+/// when it holds two distinct variants; their phase is not known here, so
+/// two variants on one copy still warn. A drug whose names hold a name of
+/// the medication list is marked as on it. Only `WARNING:` lines reach the
+/// summary.
 pub fn contraindication_lines(
     hits: &[ClinvarHit],
     table: &[Contraindication],
     med_names: &HashSet<String>,
 ) -> Vec<String> {
-    let mut lines = Vec::new();
-    for h in hits {
-        if !is_plp(h.clnsig.as_deref()) {
-            continue;
+    let plp: Vec<(&ClinvarHit, BTreeSet<String>)> = hits
+        .iter()
+        .filter(|h| is_plp(h.clnsig.as_deref()))
+        .map(|h| (h, hit_genes(h.geneinfo.as_deref())))
+        .collect();
+    // The distinct variants of each gene, for the two-variant rule.
+    let mut variants: HashMap<&str, HashSet<(&str, &str, &str, &str)>> = HashMap::new();
+    for (h, genes) in &plp {
+        for gene in genes {
+            variants.entry(gene.as_str()).or_default().insert((
+                h.chrom.as_str(),
+                h.pos.as_str(),
+                h.ref_.as_str(),
+                h.alt.as_str(),
+            ));
         }
-        for gene in hit_genes(h.geneinfo.as_deref()) {
+    }
+    let mut lines = Vec::new();
+    for (h, genes) in &plp {
+        for gene in genes {
             let where_ = format!("{gene} {}:{} {}>{}", h.chrom, h.pos, h.ref_, h.alt);
-            for r in table.iter().filter(|r| r.gene == gene) {
+            let n = variants.get(gene.as_str()).map_or(0, HashSet::len);
+            for r in table.iter().filter(|r| &r.gene == gene) {
                 let on_list = r
                     .names
                     .split(',')
@@ -669,13 +700,38 @@ pub fn contraindication_lines(
                 } else {
                     ""
                 };
-                lines.push(format!(
-                    "  WARNING: {} -- {where_}, genotype {}, ClinVar {}{on}.",
+                let head = format!(
+                    "{} -- {where_}, genotype {}, ClinVar {}",
                     r.drug,
                     h.genotype,
                     h.clnsig.as_deref().unwrap_or("None")
+                );
+                match r.report_if {
+                    ReportIf::Any => lines.push(format!("  WARNING: {head}{on}.")),
+                    ReportIf::Biallelic if both_copies(&h.genotype) => {
+                        let why = if h.genotype.split(['/', '|']).any(|a| a.trim() == ".") {
+                            " (the other copy is not the reference)"
+                        } else {
+                            ""
+                        };
+                        lines.push(format!(
+                            "  WARNING: {head}, both copies changed in this recessive gene{why}{on}."
+                        ));
+                    }
+                    ReportIf::Biallelic if n >= 2 => lines.push(format!(
+                        "  WARNING: {head}, {n} variants in {gene}, a recessive gene (phase not known){on}."
+                    )),
+                    ReportIf::Biallelic => {
+                        lines.push(format!("  NOTE: {head}{on}."));
+                        lines.push(format!(
+                            "    One variant in {gene}, a recessive gene: a carrier, not a patient, unless a second variant was missed."
+                        ));
+                    }
+                }
+                lines.push(format!(
+                    "    {} (provisional CPIC level {}: no CPIC guideline covers this pair)",
+                    r.note, r.cpic_level
                 ));
-                lines.push(format!("    {} (CPIC level {})", r.note, r.cpic_level));
                 let source = if r.label_source == "-" {
                     &r.pair_source
                 } else {
@@ -733,5 +789,15 @@ mod tests {
         assert!(!is_plp(None));
         let g: Vec<String> = hit_genes(Some("POLG:5428| FOO:1|:3")).into_iter().collect();
         assert_eq!(g, ["FOO", "POLG"]);
+    }
+
+    #[test]
+    fn genotypes_with_both_copies_changed() {
+        for gt in ["1/1", "1|1", "1/2", "2|1", "1", "./1", "1/.", ".|1"] {
+            assert!(both_copies(gt), "{gt}");
+        }
+        for gt in ["0/1", "1|0", "0/.", "./0", "0", "", ".", "./."] {
+            assert!(!both_copies(gt), "{gt}");
+        }
     }
 }

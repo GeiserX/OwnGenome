@@ -42,7 +42,7 @@ For chip data (no `FORMAT/PL`), the script adds `-G30`.
 
 ### Centromere and heterochromatin bands
 
-Few markers map in GRCh38's centromeres (cytoband stain `acen`), its large heterochromatin blocks (`gvar`, such as 1q12, 9q12 and 16q11.2) and the acrocentric stalks (`stalk`), so `bcftools roh` reads long homozygous runs there that are artefacts. The script, the Nextflow module and the reports take the part of each segment that lies in one of these bands out of its length; a segment wholly inside one counts as nothing. The bands are the `acen`, `gvar` and `stalk` rows of UCSC's `cytoBand.hg38.txt` (the file `setup.sh` installs for step 10), neighbouring rows merged into one span around each centromere (two on chrY), written into `scripts/11-roh-analysis.sh`, `modules/local/roh/main.nf` and `bin/collect_summary.py` as the same line (a unit test checks they agree). On chr1 the span is 121.7-143.2 Mb, on chr9 42.2-61.5 Mb, on chr18 15.4-21.5 Mb.
+Few markers map in GRCh38's centromeres (cytoband stain `acen`), its large heterochromatin blocks (`gvar`, such as 1q12, 9q12 and 16q11.2) and the acrocentric stalks (`stalk`), so `bcftools roh` reads long homozygous runs there that are artefacts. The script, the Nextflow module and the reports take the part of each segment that lies in one of these bands out of its length; a segment wholly inside one counts as nothing. The bands are the `acen`, `gvar` and `stalk` rows of UCSC's `cytoBand.hg38.txt` (the file `setup.sh` installs for step 10), neighbouring rows merged into one span around each centromere (two on chrY), written into `scripts/11-roh-analysis.sh`, `modules/local/roh/main.nf` and `og summary collect` as the same line (a unit test checks they agree). On chr1 the span is 121.7-143.2 Mb, on chr9 42.2-61.5 Mb, on chr18 15.4-21.5 Mb.
 
 The reports count autosomes only: Segments, Total and Largest keep chr1 to chr22, so they leave out chrX and chrY (a man's single X reads as one long run) and any other contig (chrM, chrEBV, chrUn_*), and the part of each segment in a band. They say how many chrX and chrY segments and how many megabases in bands were left out.
 
@@ -89,7 +89,7 @@ A flagged chromosome is looked up in `assets/imprinted_regions.tsv`, the chromos
 | 15q11-q13, chr15:20,500,000-33,400,000 (SNRPN, UBE3A) | Prader-Willi syndrome | Angelman syndrome | 22237428, 27615419 |
 | chr20 (20q13.32, GNAS) | Mulchandani-Bhoj-Conlin syndrome (growth failure) | Pseudohypoparathyroidism type 1B | 26248010, 29959430 |
 
-`bin/collect_summary.py` holds the same rows (a unit test checks that the two agree), because the Nextflow report task reads `bin/` but not `assets/`. A flagged chromosome with no row still matters: a recessive variant inside the run, if there is one, would be homozygous.
+`og summary collect` holds the same rows (`IMPRINTED_REGIONS` in `rust/crates/og-summary`; a unit test checks that the two agree). A flagged chromosome with no row still matters: a recessive variant inside the run, if there is one, would be homozygous.
 
 What this cannot tell, and the reports say so:
 

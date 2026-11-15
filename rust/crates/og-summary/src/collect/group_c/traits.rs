@@ -654,6 +654,161 @@ pub mod apol1 {
             assert!(g.text.contains("more than one record"));
         }
 
+        /// The GRCh38 bases `a..=b` of the pinned context.
+        fn ctx(a: i64, b: i64) -> &'static str {
+            &CONTEXT[(a - CONTEXT_START) as usize..=(b - CONTEXT_START) as usize]
+        }
+
+        /// The tested record, with its filter and GQ.
+        fn call(pos: i64, r: &str, a: &str, gt: &str, filter: &str) -> Vec<String> {
+            let mut x = rec(pos, r, a, gt, ".");
+            x[6] = filter.to_owned();
+            x
+        }
+
+        fn block(end: i64) -> Vec<String> {
+            let mut x = rec(36_265_900, "A", "<*>", "0/0", &format!("END={end}"));
+            x[9] = "0/0:50".into();
+            x
+        }
+
+        // The checks of tests/test_genotype_rules_indels.py, which tested the
+        // Python G2 reader before this port replaced it.
+        #[test]
+        fn left_aligned_and_right_shifted_count_each_copy() {
+            let right = (
+                36_265_999,
+                ctx(36_265_999, 36_266_005),
+                ctx(36_265_999, 36_265_999),
+            );
+            for (p, r, a) in [(POS, REF, ALT), right] {
+                for (gt, n) in [("0/1", 1), ("1|1", 2)] {
+                    let g = read_g2(&[rec(p, r, a, gt, ".")], false);
+                    assert_eq!((g.status, g.copies), ("called", Some(n)), "{p} {gt}: {g:?}");
+                }
+            }
+            let two = read_g2(
+                &[
+                    rec(POS, REF, ALT, "0/1", "."),
+                    rec(right.0, right.1, right.2, "0/1", "."),
+                ],
+                false,
+            );
+            assert_eq!((two.status, two.copies), ("not_read", None));
+        }
+
+        #[test]
+        fn a_reference_block_keeps_its_gq_and_no_record_reads_zero() {
+            let g = read_g2(&[block(36_266_100)], true);
+            assert_eq!(
+                (g.status, g.copies, g.gq.as_str()),
+                ("called", Some(0), "50")
+            );
+            let g = read_g2(&[], false);
+            assert_eq!((g.status, g.copies), ("no_call_record", Some(0)));
+            let g = read_g2(&[], true);
+            assert_eq!((g.status, g.copies), ("not_covered", None));
+            let g = read_g2(&[block(36_266_000)], true);
+            assert_eq!(
+                g.status, "not_covered",
+                "a block that stops inside the span"
+            );
+        }
+
+        #[test]
+        fn anything_else_inside_the_span_is_not_read() {
+            let snv = ctx(36_266_001, 36_266_001);
+            let other = if snv == "G" { "C" } else { "G" };
+            for (what, r) in [
+                ("a no-call", call(POS, REF, ALT, "./.", "PASS")),
+                ("a filtered G2 call", call(POS, REF, ALT, "0/1", "RefCall")),
+                (
+                    "an SNV inside the span",
+                    call(36_266_001, snv, other, "0/1", "PASS"),
+                ),
+                (
+                    "a 5-base deletion",
+                    call(POS, ctx(POS, 36_266_000), "A", "0/1", "PASS"),
+                ),
+                (
+                    "a REF that is not GRCh38",
+                    call(POS, "CATAATT", "C", "0/1", "PASS"),
+                ),
+            ] {
+                let g = read_g2(&[block(36_266_100), r], true);
+                assert_eq!((g.status, g.copies), ("not_read", None), "{what}: {g:?}");
+            }
+        }
+
+        #[test]
+        fn records_outside_the_span_are_skipped() {
+            let mut chr21 = rec(POS, REF, ALT, "1/1", ".");
+            chr21[0] = "chr21".into();
+            let g = read_g2(
+                &[
+                    block(36_266_100),
+                    call(36_266_100, "A", "G", "0/1", "PASS"),
+                    chr21,
+                ],
+                true,
+            );
+            assert_eq!((g.status, g.copies), ("called", Some(0)));
+            // Control: a 6-base deletion anchored right after the span is not G2.
+            let out = rec(
+                36_266_006,
+                ctx(36_266_006, 36_266_012),
+                ctx(36_266_006, 36_266_006),
+                "1/1",
+                ".",
+            );
+            assert_eq!(read_g2(&[block(36_266_100), out], true).copies, Some(0));
+        }
+
+        #[test]
+        fn combine_reads_every_count_and_refuses_three_copies() {
+            let called = |c: i64| G2 {
+                status: "called",
+                copies: Some(c),
+                gq: ".".into(),
+                text: "t".into(),
+                source: None,
+                source_first: false,
+            };
+            for (g1, c, label) in [
+                ("G0/G0", 0, "G0/G0"),
+                ("G0/G0", 1, "G0/G2"),
+                ("G0/G0", 2, "G2/G2"),
+                ("G0/G1", 0, "G0/G1"),
+                ("G0/G1", 1, "G1/G2"),
+                ("G1/G1", 0, "G1/G1"),
+            ] {
+                let (got, reading) = combine(g1, "called", &called(c));
+                let word = match label.matches("G1").count() + label.matches("G2").count() {
+                    0 => "No G1 and no G2",
+                    1 => "One APOL1 risk copy",
+                    _ => "Two APOL1 risk copies",
+                };
+                assert_eq!(got, label);
+                assert!(reading.contains(word), "{label}: {reading}");
+            }
+            let (got, reading) = combine("G1/G1", "called", &called(1));
+            assert_eq!(got, ".");
+            assert!(reading.contains("never share"), "{reading}");
+            assert_eq!(combine(".", "not_covered", &called(1)).0, ".");
+            let (got, reading) = combine(".", "not_covered", &called(2));
+            assert_eq!(got, "G2/G2");
+            assert!(reading.contains("Two APOL1 risk copies"));
+            let unread = G2 {
+                status: "not_read",
+                copies: None,
+                text: "G2 x.".into(),
+                ..called(0)
+            };
+            let (got, reading) = combine("G0/G1", "called", &unread);
+            assert_eq!(got, ".");
+            assert!(reading.contains("stands on its own") && !reading.contains("G2 x."));
+        }
+
         #[test]
         fn combine_counts_both() {
             let g2 = read_g2(&[rec(POS, REF, ALT, "0/1", ".")], false);

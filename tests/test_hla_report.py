@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The HLA section of the reports (step 08): bin/hla_alleles.tsv, what
-bin/collect_summary.py derives from T1K's genotype TSV, and what
+og summary collect derives from T1K's genotype TSV, and what
 bin/render_report.py prints. Synthetic T1K rows only.
 
 Checks:
@@ -103,6 +103,11 @@ def t1k(rows):
     return "".join(out)
 
 
+# The label og summary collect gives T1K's HFE row.
+HLA_HFE_LABEL = ("T1K sequence allele, not the HFE C282Y/H63D genotype: that genotype comes from the "
+                 "variant calls (ClinVar section)")
+
+
 def summary(work, name, rows):
     d = os.path.join(work, name, "S")
     os.makedirs(os.path.join(d, "hla_t1k"), exist_ok=True)
@@ -118,7 +123,8 @@ def main():
         # 1. the table
         errs = table_errors(TABLE)
         check("bin/hla_alleles.tsv passes its schema and lists every required allele", not errs, errs)
-        check("collect_summary reads the same rows", [r["allele"] for r in cs.hla_read_table()]
+        derived = summary(work, "table", [("HLA-B", "B*57:01:01", 40, "B*08:01:01", 40)])["sections"]["hla"]["data"]
+        check("og summary collect reads the same rows", [r["allele"] for r in derived["derived"]["alleles"]]
               == [l.split("\t")[0] for l in open(TABLE) if not l.startswith("#") and l.strip()][1:])
         good = open(TABLE).read()
         for desc, bad in (("a wrong kind", good.replace("\tdrug\t", "\tdrugs\t", 1)),
@@ -205,7 +211,7 @@ def main():
         check("a quality-0 allele with 12 candidates is stored with three and the count",
               loci["HLA-DRB5"]["alleles"] == ["DRB5*01:01,DRB5*01:02,DRB5*01:03"]
               and loci["HLA-DRB5"]["candidates"] == [12], loci["HLA-DRB5"])
-        check("the HFE row has its label", loci["HLA-HFE"].get("label") == cs.HLA_HFE_LABEL, loci["HLA-HFE"])
+        check("the HFE row has its label", loci["HLA-HFE"].get("label") == HLA_HFE_LABEL, loci["HLA-HFE"])
         check("cap summary validates", not validate.validate(schema, json.loads(json.dumps(cap))),
               validate.validate(schema, json.loads(json.dumps(cap))))
         txt, html = render_report.text_report(cap), render_report.html_report(cap)

@@ -52,7 +52,8 @@ def recheck_state(run_dir, state, events):
     except (OSError, ValueError, AttributeError):
         return {}
     # A check older than the run's run_manifest.tsv describes an earlier run: what it calls newer may
-    # be what this run used. Not shown, as in the reports (bin/run_delta.py read_recheck).
+    # be what this run used. Not shown, as in the reports (og run delta, read_recheck
+    # in rust/crates/og-runlog/src/delta.rs).
     if utc14(manifest_written(run_dir)) > utc14(st.get("checked_utc")):
         return {}
     steps = {}

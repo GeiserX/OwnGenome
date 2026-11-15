@@ -48,6 +48,23 @@ sys.path.insert(0, os.path.join(REPO, "bin"))
 import collect_summary as cs  # noqa: E402
 import render_report as rr  # noqa: E402
 
+class Unreadable(Exception):
+    """A section og summary collect could not read (its state is unreadable)."""
+
+
+def sec(d, s, key):
+    """(source path, data) of section KEY of the summary og summary collect writes
+    for folder D: (None, {}) without its file; Unreadable when it cannot be read."""
+    x = cs.collect(s, d)["sections"][key]
+    if x["state"] == "unreadable":
+        raise Unreadable(x["note"])
+    return (os.path.join(d, x["source"]) if x["source"] else None), x["data"]
+
+
+MCA_NOT_ASSESSED = ("Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share "
+                   "of the blood cells): step 51 (MoChA) did not assess this sample")
+
+
 FAILS = []
 STATS_HEAD = ("sample_id\tcomputed_gender\tcall_rate\tcov_median\tcov_sd\tcov_auto\tbaf_corr\tbaf_conc\tbaf_auto"
               "\tn_sites\tn_hets\n")
@@ -148,7 +165,7 @@ def cases_1_to_6():
 
     # 6. both reports
     _, _, _, d = run([call(), call(chrom="chrX")])
-    path, data = cs.sec_mocha(f"{d}/S", "S")
+    path, data = sec(f"{d}/S", "S", "mosaic")
     check("6 the section lists the reported call only", [(x["type"], x["chrom"], x["cell_fraction"]) for x in data["calls"]],
           [("CN-LOH", "chr20", "0.150")])
     check("6 and counts the other", data["not_reported"], 1)
@@ -157,24 +174,24 @@ def cases_1_to_6():
           "about 0.150 of the cells")
     check("6 the first line gives the floor", lines[0].startswith("Reported at a cell fraction of 0.050 or more at 30.0x"), True)
     summ = cs.collect("S", f"{d}/S")
-    check("6 assessed: no not-assessed line", cs.MCA_NOT_ASSESSED in summ["not_assessed"], False)
+    check("6 assessed: no not-assessed line", MCA_NOT_ASSESSED in summ["not_assessed"], False)
     os.remove(f"{d}/S/mosaic/S_mocha_summary.tsv")
     summ = cs.collect("S", f"{d}/S")
-    check("6 without step 51: the not-assessed line", cs.MCA_NOT_ASSESSED in summ["not_assessed"], True)
+    check("6 without step 51: the not-assessed line", MCA_NOT_ASSESSED in summ["not_assessed"], True)
     _, _, _, d = run([call()], baf_auto=0.05)
-    data = cs.sec_mocha(f"{d}/S", "S")[1]
+    data = sec(f"{d}/S", "S", "mosaic")[1]
     check("6 not assessed: the text says why", rr.mosaic_mca_lines(data)[0].startswith("Not assessed: phased BAF"), True)
-    check("6 and the not-assessed line stays", cs.MCA_NOT_ASSESSED in cs.collect("S", f"{d}/S")["not_assessed"], True)
+    check("6 and the not-assessed line stays", MCA_NOT_ASSESSED in cs.collect("S", f"{d}/S")["not_assessed"], True)
     check("6 no reported call: the text says none is reported, not that none exists",
-          rr.mosaic_mca_lines(cs.sec_mocha(f"{run([call(cf=0.04)])[3]}/S", "S")[1])[1].startswith("No mosaic alteration reported"), True)
+          rr.mosaic_mca_lines(sec(f"{run([call(cf=0.04)])[3]}/S", "S", "mosaic")[1])[1].startswith("No mosaic alteration reported"), True)
     check("6 the pipeline-wide not-assessed list keeps large mosaic alterations out of its chrM-only line",
-          [x for x in cs.NOT_ASSESSED if x.startswith("Mosaic")], ["Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)"])
+          [x for x in cs.collect("S", f"{d}/S")["not_assessed"] if x.startswith("Mosaic")], ["Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)"])
 
 
     def unreadable(d):
         try:
-            cs.sec_mocha(f"{d}/S", "S")
-        except cs.Unreadable as e:
+            sec(f"{d}/S", "S", "mosaic")
+        except Unreadable as e:
             return str(e)
         return None
 

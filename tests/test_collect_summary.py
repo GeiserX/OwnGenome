@@ -82,7 +82,7 @@ Checks:
      frequency caveat on every hit; 21b. each hit carries the rsIDs of VEP's
      Existing_variation ('rs123&COSV1' gives ['rs123']; another allele's ids
      are not taken), [] with no VEP record or no VEP file, and the run delta
-     (bin/run_delta.py) reads the same with or without them;
+     (og run delta) reads the same with or without them;
  22. CPSR beside ClinVar (step 17): the P/LP rows by final or own class, the
      rows where CLINVAR_CLASSIFICATION and CPSR_CLASSIFICATION disagree on
      P/LP with CPSR's ACMG codes, the final P/LP rows CPSR's own rules class
@@ -212,11 +212,31 @@ def og_postfilter(args):
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 sys.path.insert(0, os.path.join(REPO, "tests", "schema"))
-import clip_check  # noqa: E402
 import collect_summary  # noqa: E402
 import render_report  # noqa: E402
 import validate  # noqa: E402
 from og_binary import og_binary  # noqa: E402
+
+
+def cdna_table():
+    """The header og cdna check writes and the note of its flagged rows, from
+    an og-bam golden (rust/crates/og-bam/tests/data/reads)."""
+    with open(os.path.join(REPO, "rust/crates/og-bam/tests/data/reads/want/check-spliced/files/out.tsv")) as f:
+        rows = [line.rstrip("\n").split("\t") for line in f]
+    return rows[0], {r[9] for r in rows[1:] if r[8] == "flagged"}.pop()
+
+
+CDNA_COLUMNS, CDNA_FLAG_NOTE = cdna_table()
+# The columns of step 42's traits table (og traits panel).
+TRAITS_OUT_COLUMNS = ["rsid", "gene", "chrom", "pos", "trait", "genotype", "status", "reading", "ancestry",
+                      "note", "pmids"]
+
+
+def traits_rows():
+    """The rows of assets/traits.tsv, step 42's panel, as dicts."""
+    with open(os.path.join(REPO, "assets", "traits.tsv"), encoding="utf-8") as f:
+        return list(csv.DictReader((x for x in f if x.strip() and not x.startswith("#")), delimiter="\t",
+                                   quoting=csv.QUOTE_NONE))
 
 
 def og_tool(*args):
@@ -254,6 +274,16 @@ def put(path, text, gz=False, age_days=0):
     if age_days:
         t = time.time() - age_days * DAY
         os.utime(path, (t, t))
+
+
+# gzip's magic and header flags, then no deflate stream: not readable as gzip.
+BROKEN_GZ = b"\x1f\x8b\x08\x00not gzip\n"
+
+
+def put_bytes(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
 
 
 VCF_HEAD = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
@@ -437,6 +467,15 @@ def render(d, s="S"):
     return summ, render_report.text_report(summ), render_report.html_report(summ)
 
 
+def section(d, key, s="S", sex=None):
+    """One section of the summary og summary collect writes for folder D."""
+    return collect_summary.collect(s, d, sex)["sections"][key]
+
+
+# The five repeat loci the expansions section always lists, in this order.
+EH_LOCI = ["HTT", "FMR1", "C9ORF72", "ATXN1", "DMPK"]
+
+
 def bgzf_block(data):
     """One BGZF block (a gzip member with the BC extra field) holding data."""
     c = zlib.compressobj(6, zlib.DEFLATED, -15)
@@ -449,7 +488,7 @@ def write_tabixed_vcf(path, header, blocks):
     """A bgzipped VCF of one BGZF block per item of blocks (lists of record
     lines, the header in the first block) and its .tbi: bin 0 of each
     sequence spans its lines (og mito annotate reads the bins), and the
-    linear index (bin/collect_summary.py reads that)."""
+    linear index (og summary collect reads that)."""
     raw, lin, span, coff = b"", {}, {}, 0
     for i, lines in enumerate(blocks):
         data = (header if i == 0 else "").encode()
@@ -505,7 +544,7 @@ def construct_scan_section(work, schema):
     put(f"{d}/clinvar/S_clinvar_hits.vcf", VCF_HEAD + (
         f"chr7\t117548628\t1\tGTTT\tG\t50\tPASS\t{cftr}\tGT:GQ:DP\t1/.:45:30\n"
         f"chr21\t25897626\t2\tTC\tGA\t50\tPASS\t{app}\tGT:GQ:DP\t0/1:50:35\n"))
-    put(f"{d}/clinvar/S_clinvar_cdna_check.tsv", "\t".join(clip_check.COLUMNS) + "\n"
+    put(f"{d}/clinvar/S_clinvar_cdna_check.tsv", "\t".join(CDNA_COLUMNS) + "\n"
         "chr7\t117548628\tGTTT\tG\t\t\t\t\tnot_checked\tnot a SNV, MNV or simple indel\t\n"
         "chr21\t25897626\tTC\tGA\t12\t0\t10\t0\tclear\t\tAPP Swedish K670N/M671L\n")
     put(f"{d}/clinvar/S_clinvar_cdna_scan.tsv", "# cdna_scan: read 3 exon regions on 1 contigs; 1 loci listed\n"
@@ -526,7 +565,6 @@ def construct_scan_section(work, schema):
     check("split poly-T: both reports print that wording, neither prints it as het",
           f"{half}  Pathogenic" in txt and f"<td>{half}</td>" in html
           and "chr7:117548628 GTTT>G  het" not in txt, [l for l in txt.splitlines() if "117548628" in l])
-    check("split poly-T: one copy of two (not hemizygous)", collect_summary.allele_copies("1/.") == (1, 2))
     carriers = {x["gene"]: x for x in summ["sections"]["carrier"]["data"].get("carriers", [])}
     check("split poly-T: the carrier list words it the same way", carriers.get("CFTR", {}).get("genotype") == half,
           summ["sections"]["carrier"]["data"])
@@ -654,15 +692,12 @@ def clinvar_quality(work, schema):
     og_z = og_clinvar("hits", f"{z}/clinvar/S_clinvar_hits.vcf")
     check("call floor: a floor of GQ 0 and DP 0 marks nothing, so the mark above depends on the floor",
           cz["low_confidence"] == 0 and cz["count"] == 4 and "\tyes" not in (og_z or ""), (cz["low_confidence"], og_z))
-    check("call floor: a hits file without the floor line uses GQ 30 and DP 10",
-          collect_summary.call_floor(f"{work}/cdna/S/clinvar/S_clinvar_hits.vcf") == {"GQ": 30, "DP": 10})
     af = {g: (by[g]["af"], by[g]["common"]) for g in by}
     check("gnomAD AF: read through the tabix index from both BGZF blocks; above 1% is common; no VEP record is unknown",
           af == {"GENEA": (0.03, True), "GENEB": (0.0002, False), "GENEC": (0.0001, False), "GENED": (None, False)}
           and (by["GENEA"]["gnomad_exome_af"], by["GENEA"]["gnomad_genome_af"]) == (0.03, 0.02), af)
-    got_lin = collect_summary.tabix_linear_index(f"{d}/vep/S_vep.vcf.gz")
-    check("tabix: the linear index is read as written (chr2 starts in the second BGZF block)",
-          got_lin == lin and got_lin["chr2"][0] >> 16 > 0 and len(got_lin["chr1"]) == 3, (got_lin, lin))
+    check("tabix: the test's index puts chr2 in the second BGZF block, so the AFs above came through it",
+          lin["chr2"][0] >> 16 > 0 and len(lin["chr1"]) == 3, lin)
     check("gnomAD AF: the summary names the VEP file", cv["frequency"]["source"] == "vep/S_vep.vcf.gz"
           and cv["frequency"]["note"] is None, cv["frequency"])
     check("both reports: the AF and the common mark on the hit, unknown on the hit VEP lacks",
@@ -694,8 +729,24 @@ CSQ_EV_HEAD = ('##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence ann
 
 def clinvar_rsids(work, schema):
     """21b. the rsIDs of each ClinVar hit, from VEP's Existing_variation."""
-    import run_delta
     d = os.path.join(work, "clinvar-rsids", "S")
+
+    def changes(prev, cur):
+        """og run delta's changes from summary PREV to summary CUR."""
+        w = os.path.join(work, "clinvar-rsids-delta")
+        shutil.rmtree(w, ignore_errors=True)
+        for name, summary in (("prev", prev), ("cur", cur)):
+            os.makedirs(f"{w}/{name}")
+            with open(f"{w}/{name}/summary.json", "w") as f:
+                json.dump(summary, f)
+        p = subprocess.run([collect_summary.og(), "run", "delta", "--sample", "S", "--summary",
+                            f"{w}/cur/summary.json", "--out", f"{w}/delta", "--previous", f"{w}/prev"],
+                           capture_output=True, text=True)
+        if p.returncode != 0:
+            return p.stderr
+        with open(f"{w}/delta.json") as f:
+            return json.load(f)["changes"]
+
     put(f"{d}/clinvar/S_clinvar_hits.vcf", FLOOR_HITS)
     vep_head = "##fileformat=VCFv4.2\n" + CSQ_EV_HEAD + VCF_HEAD.split("\n", 1)[1]
     write_tabixed_vcf(f"{d}/vep/S_vep.vcf.gz", vep_head, [
@@ -713,12 +764,13 @@ def clinvar_rsids(work, schema):
     bare = json.loads(json.dumps(summ))
     for h in bare["sections"]["clinvar"]["data"]["hits"]:
         h.pop("rsids")
-    check("ClinVar rsIDs: the run delta reads the same with or without them",
-          run_delta.compare(bare, {}, summ, {}) == run_delta.compare(summ, {}, summ, {}), "")
+    got = changes(bare, summ)
+    check("ClinVar rsIDs: the run delta reads the same with or without them", got == [], got)
     moved = json.loads(json.dumps(summ))
     moved["sections"]["clinvar"]["data"]["hits"][0]["significance"] = "Benign"
+    got = changes(bare, moved)
     check("ClinVar rsIDs: red control, the run delta does see a reclassified hit",
-          run_delta.compare(bare, {}, moved, {}) != run_delta.compare(summ, {}, summ, {}), "")
+          isinstance(got, list) and any(c["kind"] == "reclassified" for c in got), got)
     shutil.rmtree(f"{d}/vep")
     none = collect_summary.collect("S", d)["sections"]["clinvar"]["data"]["hits"]
     check("ClinVar rsIDs: without step 13 every hit has [] and the section still reads",
@@ -741,9 +793,9 @@ def cpsr_beside_clinvar(work, schema):
     put(f"{d}/cpsr/S.cpsr.grch38.classification.tsv.gz", CPSR_COLS + CPSR_ROWS, gz=True)
     put(f"{d}/cpsr/S.cpsr.grch38.html", "<html></html>\n")
     put(f"{d}/clinvar/S_clinvar_hits.vcf", FLOOR_HITS)
-    put(f"{d}/cpsr/S_cpsr_cdna_check.tsv", "\t".join(clip_check.COLUMNS) + "\n"
+    put(f"{d}/cpsr/S_cpsr_cdna_check.tsv", "\t".join(CDNA_COLUMNS) + "\n"
         "13\t32340300\tG\tA\t12\t0\t10\t0\tclear\t\n"
-        f"2\t47800000\tA\tG\t9\t8\t11\t0\tflagged\t{clip_check.FLAG_NOTE}\n")
+        f"2\t47800000\tA\tG\t9\t8\t11\t0\tflagged\t{CDNA_FLAG_NOTE}\n")
     put(f"{d}/run_manifest.tsv", "data\tclinvar_file_date\t20261001\ndata\tcpsr_clinvar_release\t20250309\n")
     summ, txt, html = render(d)
     c = summ["sections"]["cpsr"]["data"]
@@ -861,11 +913,6 @@ def clinical_mane_quality(work, schema):
               rc == 0 and sorted(tags_nc) == [100, 200, 300, 400, 500, 700], sorted(tags_nc))
     else:
         print("[NOTE] OG is not set, so og vcf csq-rank does not run here; its own tests pin these tags")
-    agree = collect_summary.csq_high_impact_genes(f"{d}/clinical/S_clinical.vcf.gz")
-    check("the summary agrees with og vcf csq-rank on which records are HIGH and which calls are weak",
-          {p_ for p_, t in want.items() if t[0] == "HIGH"} == {k[1] for k in agree}
-          and {p_ for p_, t in want.items() if t[3] == "weak"} == {k[1] for k, x in agree.items() if x["weak"]},
-          (want, agree))
     summ, txt, html = render(d)
     sf = summ["sections"]["clinical"]["data"]["acmg_sf"]
     by = {x["gene"]: x for x in sf["high_impact"]}
@@ -1135,7 +1182,7 @@ def annotsv_section(work, schema):
     check("annotsv: without step 22 the summary validates", not validate.validate(schema, json.loads(json.dumps(summ))),
           validate.validate(schema, json.loads(json.dumps(summ))))
     # a corrupt consensus: the rows stay, the note names the file
-    put(f"{d}/sv_merged/S_sv_consensus.vcf.gz", "not gzip")
+    put_bytes(f"{d}/sv_merged/S_sv_consensus.vcf.gz", BROKEN_GZ)
     sec = render(d)[0]["sections"]["annotsv"]
     check("annotsv: an unreadable consensus keeps the rows and says so",
           sec["state"] == "ok" and sec["data"]["count"] == 3 and "could not be read" in (sec["data"]["consensus_note"] or ""),
@@ -1173,7 +1220,7 @@ def annotsv_phase_pairing(work):
               "CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts\tGT:GQ:DP:PS\t1|0:50:30:45330000\n")
         with open(f"{d}/annotsv/S_sv_class4_5_checked.tsv") as f:
             head = f.readline().rstrip("\n").split("\t")
-        two = (collect_summary.sec_carrier(d, "S")[1].get("two_hits") or {}).get("genes", [])
+        two = (section(d, "carrier")["data"].get("two_hits") or {}).get("genes", [])
         return head, [x for x in two if x["gene"] == "MUTYH"]
 
     head, t = run("trans", "0|1")
@@ -1186,14 +1233,10 @@ def annotsv_phase_pairing(work):
     check("sv phase: a deletion genotyped 0/0 pairs with nothing", t == [], t)
 
     # A phased GT with one copy not called says nothing about cis or trans.
-    check("sv phase: '.|1' gives no copy, '0|1' gives copy 1",
-          (collect_summary.phase_haps(".|1"), collect_summary.phase_haps("0|1")) == (None, frozenset({1})),
-          (collect_summary.phase_haps(".|1"), collect_summary.phase_haps("0|1")))
-    dl = {"inside": False, "chrom": "chr1", "start": 100, "end": 200, "gt": ".|1", "ps": "90"}
-    v = {"chrom": "chr1", "pos": 300, "gt": "0|1", "ps": "90", "copies": 1, "ploidy": 2}
-    verdict, why = collect_summary.pair_phase(dl, v)
-    check("sv phase: a deletion '.|1' and a hit '0|1' in one phase set are not called in cis",
-          verdict == "possibly biallelic" and "in cis" not in why, (verdict, why))
+    _, t = run("halfcall", ".|1")
+    check("sv phase: a deletion '.|1' and a hit '1|0' in one phase set: phase unknown, not called in cis",
+          len(t) == 1 and t[0]["verdict"] == "possibly biallelic" and t[0]["why"].startswith("phase unknown")
+          and "in cis" not in t[0]["why"], t)
 
 
 def report_followups_sections(work, schema):
@@ -1201,11 +1244,10 @@ def report_followups_sections(work, schema):
     flagged motif loci and the loci the repeat catalog leaves without
     thresholds reach both reports."""
     import html as htmlmod
-    import traits_report
     # The genotype rules: TAS2R38 homozygous for the taster haplotype PAV
     # (G, G, C on the plus strand; rs1726866's G is the reference base).
     t = os.path.join(work, "rules", "S")
-    rows = traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))
+    rows = traits_rows()
     g = os.path.join(work, "rules_g.tsv")
     put(g, "chr7\t141972804\tT\tC\tC/C\t40\nchr7\t141972905\tG\t.\tG/G\t40\nchr7\t141973545\tC\tG\tG/G\t40\n"
            "chr19\t44908684\tT\t.\tT/T\t40\nchr19\t44908822\tC\t.\tC/C\t40\n")
@@ -1315,7 +1357,7 @@ def str_extra_readings(work, schema):
                 {"LocusId": "CFTR", "NoThresholds": "the CFTR tract"},
                 {"LocusId": "UGT1A1", "NoThresholds": "the UGT1A1 repeat"}]))
         if r117h or traits_text:
-            put(f"{x}/traits/{name}_traits.tsv", traits_text or "\t".join(collect_summary.traits_report.OUT_COLUMNS)
+            put(f"{x}/traits/{name}_traits.tsv", traits_text or "\t".join(TRAITS_OUT_COLUMNS)
                 + "\n" + f"rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\t{r117h}\tcalled\tr\tno\tn\t32404922\n",
                 age_days=side_age)
         if ugt_pc:
@@ -1763,7 +1805,7 @@ def parascopy_section(work, schema):
           and (pd.get("hba") or {}).get("alpha_globin_genes") == "4", pd.get("loci"))
     bound = os.path.join(g, "paralogs", "S_notch2_copy_number.tsv")
     put(bound, SMN_COLS + "chr1\t120000000\t120100000\tNOTCH2\tPASS\t<5\t30\t.\t.\t.\t*\n")
-    lb = collect_summary.parascopy_locus("notch2", bound, None)
+    lb = {x["table"]: x for x in section(g, "parascopy")["data"].get("loci", [])}.get("notch2", {})
     check("loci: a bound such as <5 is not resolved, and the note names the whole-number rule",
           lb["status"] == "not resolved" and lb["cn"] is None
           and lb["text"].endswith(": no region with a whole copy number, filter PASS and quality 20 or more"), lb)
@@ -1905,16 +1947,8 @@ def hla_optitype_kir_section(work, schema):
 def report_sections_mito_roh_telomere_cnv(work, schema):
     """ROH on autosomes outside the bands, the telomere read floor, CNVpytor's
     filtered count, the D-loop poly-C tracts and the chrM annotation."""
-    import re as _re
-    # The masked bands: og's step 11 code holds the one copy that step 11
-    # and the ROH module run (og roh summary); the summary's line agrees.
-    rs = open(os.path.join(REPO, "rust/crates/og-summary/src/collect/group_c/roh.rs")).read()
-    body = rs[rs.index("pub const MASKED_BANDS"):]
-    body = body[:body.index("];")]
-    rust_bands = " ".join(f"{c}:{int(a.replace('_', ''))}-{int(b.replace('_', ''))}"
-                          for c, a, b in _re.findall(r'\("(chr\w+)", ([0-9_]+), ([0-9_]+)\)', body))
-    check("bands: og's MASKED_BANDS is the line of bin/collect_summary.py",
-          rust_bands == collect_summary.MASKED_BANDS, rust_bands[:80])
+    # The masked bands: og's step 11 code holds the one copy that step 11,
+    # the ROH module (og roh summary) and the summary run.
     for f in ("scripts/11-roh-analysis.sh", "modules/local/roh/main.nf"):
         text = open(os.path.join(REPO, f)).read()
         check(f"bands: {f} holds no copy of the bands and runs og roh summary",
@@ -1943,15 +1977,6 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
           "Left out in centromere and heterochromatin bands: 46.5 MB" in txt
           and "No population allele frequencies were used" in txt
           and "Segments on chrX/chrY, not counted: 1" in txt and "No population allele" in html, txt)
-    # Red control: masked_bands() with no bands, so nothing is masked.
-    orig = collect_summary.masked_bands
-    collect_summary.masked_bands = lambda text="": orig("")
-    try:
-        r0 = collect_summary.sec_roh(d, "S")[1]
-    finally:
-        collect_summary.masked_bands = orig
-    check("ROH red control: without the band mask the gvar segment is the largest again",
-          r0["largest_mb"] == 25.0 and len(r0["autosomal_over_5mb"]) == 4, r0)
     # Step 11's summary (og roh summary) on the same file lists the same segments.
     if OG:
         out = subprocess.run([OG, "roh", "summary", "--sample", "S", "--roh", f"{d}/vcf/S_roh.txt",
@@ -1976,16 +2001,8 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
               t["low_reads"] is low and t["depth"] == 30.0 and t["read_floor"] == 2000 and warned is low
               and ("too few telomeric reads" in html) is low and f"Intratelomeric reads: {n:,}" in txt, (t, txt))
     put(f"{d}/telomere/S/S/S_summary.tsv", head + "S\ttumor\t620000000\t150\tn=7\t10\t40\t48-52\t150000000\t1.5\n")
-    saved = collect_summary.TELOMERE_FLOOR_PER_30X
-    collect_summary.TELOMERE_FLOOR_PER_30X = 0
-    try:
-        t0 = collect_summary.sec_telomere(d, "S")[1]
-    finally:
-        collect_summary.TELOMERE_FLOOR_PER_30X = saved
-    check("telomere red control: with the floor at 0 the 40-read sample is not flagged, so the warning comes from it",
-          t0["low_reads"] is False, t0)
     put(f"{d}/telomere/S/S/S_summary.tsv", "PID\tsample\tintratelomeric_reads\ttel_content\nS\ttumor\t61873\t334\n")
-    t1 = collect_summary.sec_telomere(d, "S")[1]
+    t1 = section(d, "telomere")["data"]
     check("telomere: no total_reads or read length gives the count and says the check did not run",
           t1.get("intratelomeric_reads") == 61873 and "low_reads" not in t1 and "not checked" in t1["read_check"], t1)
 
@@ -2040,18 +2057,6 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
           in txt and "Length heteroplasmy in the D-loop poly-C tracts" in html, txt)
     check("mito: no annotation table says so, and why",
           "ClinVar and gnomAD: not annotated (no annotation table" in txt and "MITO_VARIANTS" in txt, txt)
-    saved = collect_summary.POLYC_TRACTS
-    collect_summary.POLYC_TRACTS = ()
-    try:
-        m0 = collect_summary.sec_mito(d, "S")[1]
-    finally:
-        collect_summary.POLYC_TRACTS = saved
-    check("mito red control: without the tracts the count is 3 again", m0["heteroplasmic"] == 3, m0)
-    check("mito red control: without the tracts the poly-C calls are listed sites too, so the check above can fail",
-          len(m0["heteroplasmic_sites"]) == 3 and m0["heteroplasmic_sites"] != mi["heteroplasmic_sites"], m0)
-    check("mito: an SNV just before a tract is not in it, an insertion anchored there is",
-          not collect_summary.in_polyc(302, "A", "G") and collect_summary.in_polyc(302, "A", "AC")
-          and collect_summary.in_polyc(315, "C", "T") and not collect_summary.in_polyc(316, "C", "T"))
 
     # chrM annotation (step 20): ClinVar with chrM, tabixed; gnomAD's chrM sites.
     cv = "##fileformat=VCFv4.1\n##fileDate=2026-10-05\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
@@ -2113,8 +2118,6 @@ def roh_upd_karyotype(work, schema):
         rows = list(csv.DictReader((l for l in f if not l.startswith("#")), delimiter="\t"))
     asset = [(r["chrom"], int(r["start"]) if r["start"] else None, int(r["end"]) if r["end"] else None,
               r["region"], r["maternal_upd"], r["paternal_upd"], r["pmid"]) for r in rows]
-    check("ROH catalog: assets/imprinted_regions.tsv holds the rows of collect_summary.IMPRINTED_REGIONS",
-          asset and asset == [tuple(x) for x in getattr(collect_summary, "IMPRINTED_REGIONS", [])], asset[:2])
     check("ROH catalog: the six imprinted chromosomes, each row with a PMID",
           [r[0] for r in asset] == ["chr6", "chr7", "chr11", "chr14", "chr15", "chr20"]
           and all(x.isdigit() for r in asset for x in r[6].split(";")), asset)
@@ -2145,7 +2148,7 @@ def roh_upd_karyotype(work, schema):
           validate.validate(schema, json.loads(json.dumps(summ))))
     # Red control: the run on chr15 cut to 15q21 onwards misses 15q11-q13, so no row joins.
     put(f"{d}/vcf/S_roh.txt", upd.replace("chr15\t1\t101991189\t101991189", "chr15\t40000001\t101991189\t61991189"))
-    u0 = collect_summary.sec_roh(d, "S")[1].get("upd_flag") or {}
+    u0 = section(d, "roh")["data"].get("upd_flag") or {}
     check("ROH UPD red control: a chr15 run outside 15q11-q13 is flagged but joins no row",
           u0.get("chrom") == "chr15" and u0.get("imprinted") == [], u0)
     _, txt0, html0 = render(d)
@@ -2164,7 +2167,7 @@ def roh_upd_karyotype(work, schema):
               for t in (txt5, html5)), txt5)
     # chr7 joins as a whole chromosome.
     put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr7\t70000001\t110000000\t40000000\t900\t50\n")
-    u7 = collect_summary.sec_roh(d, "S")[1].get("upd_flag") or {}
+    u7 = section(d, "roh")["data"].get("upd_flag") or {}
     check("ROH UPD: 40 Mb on chr7 joins the whole-chromosome Silver-Russell row",
           [x["maternal_upd"] for x in u7.get("imprinted", [])] == ["Silver-Russell syndrome"], u7)
 
@@ -2185,12 +2188,12 @@ def roh_upd_karyotype(work, schema):
     check("ROH spread: with a band the F_ROH note says what the band is", all("The band is the row" in t for t in (txt, html)), txt)
     # Short runs only: F_ROH 0, no sign of related parents.
     put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr2\t10000001\t13000000\t3000000\t900\t50\n")
-    r = collect_summary.sec_roh(d, "S")[1]
+    r = section(d, "roh")["data"]
     check("ROH: runs under 5 Mb only give F_ROH 0 and no sign of related parents",
           r.get("f_roh") == 0 and r.get("relationship") == "no sign of related parents", r)
     # A run of exactly 5 Mb counts, as in step 11's summary (5 Mb or more).
     put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr2\t10000001\t15000000\t5000000\t900\t50\n")
-    r = collect_summary.sec_roh(d, "S")[1]
+    r = section(d, "roh")["data"]
     check("ROH: a run of exactly 5 Mb counts in F_ROH and the long-run list, as in step 11",
           r.get("long_mb") == 5.0 and len(r.get("autosomal_over_5mb") or []) == 1, r)
 
@@ -2216,16 +2219,13 @@ def roh_upd_karyotype(work, schema):
     # somalier's ratios from 10 chrX sites or fewer name nothing: its own sex call needs more.
     for n in (10, "", "inf"):
         put(f"{k}/qc/S_sample_qc.tsv", qc.format(n=n, x="1.02", y="0.49"))
-        got = collect_summary.sec_sample_qc(k, "S")[1].get("karyotype")
+        got = section(k, "sample_qc")["data"].get("karyotype")
         check(f"karyotype: somalier's chrX 2.04, chrY 0.98 from x_sites '{n}' names nothing", got is None, got)
 
     # A run of infinite length makes the ROH file unreadable, not a crash in the band lookup.
     put(f"{d}/vcf/S_roh.txt", "RG\tS\tchr2\t10000001\t13000000\tinf\t900\t50\n")
-    try:
-        r = collect_summary.sec_roh(d, "S")
-    except collect_summary.Unreadable as e:
-        r = e
-    check("ROH: an RG row of length inf is unreadable", isinstance(r, collect_summary.Unreadable), r)
+    r = section(d, "roh")
+    check("ROH: an RG row of length inf is unreadable", r["state"] == "unreadable", r)
 
 
 def main():
@@ -2390,9 +2390,10 @@ def main():
         check("combined allele: the summary validates", not validate.validate(schema, json.loads(json.dumps(summ_cv))),
               validate.validate(schema, json.loads(json.dumps(summ_cv))))
 
-        # 7. a corrupt file
+        # 7. a corrupt file: gzip's magic, then no gzip stream (a file named
+        # .gz that holds plain text is read as text: gzip goes by the magic)
         c = os.path.join(work, "corrupt", "S")
-        put(f"{c}/vcf/S.vcf.gz", "not gzip\n")
+        put_bytes(f"{c}/vcf/S.vcf.gz", BROKEN_GZ)
         put(f"{c}/clinvar/S_clinvar_hits.vcf", HITS)
         summ_c, txt_c, _ = render(c)
         check("corrupt VCF: section unreadable, the report still renders",
@@ -2625,7 +2626,7 @@ def main():
               ed.get("flagged") == [{"locus": "LOCUS_B", "repeat_count": "20/75", "status": "full_mutation",
                                      "sizing": "unknown"}], ed)
         check("Stranger: a record without STR_STATUS is counted apart, not flagged", ed.get("no_status") == 1, ed)
-        check("Stranger: the five key loci stay listed", [k["locus"] for k in ed["key_loci"]] == collect_summary.EH_LOCI, ed)
+        check("Stranger: the five key loci stay listed", [k["locus"] for k in ed["key_loci"]] == EH_LOCI, ed)
         check("Stranger: both reports list LOCUS_B full_mutation and the short-read caveat",
               "LOCUS_B  20/75  full_mutation" in txt_x and "<td>LOCUS_B</td><td>20/75</td><td>full_mutation</td>" in html_x
               and "can be wrong at some loci" in txt_x and "can be wrong at some loci" in html_x, txt_x)
@@ -2681,7 +2682,7 @@ def main():
         zd = summ_z["sections"]["expansions"]["data"]
         zl = {l["locus"]: l for l in zd.get("loci", [])}
         check("every locus: ten records give ten rows, the five key loci first",
-              [l["locus"] for l in zd.get("loci", [])][:5] == collect_summary.EH_LOCI and len(zl) == 10, zd.get("loci"))
+              [l["locus"] for l in zd.get("loci", [])][:5] == EH_LOCI and len(zl) == 10, zd.get("loci"))
         check("every locus: the catalog's normal maximum from STR_NORMAL_MAX", zl.get("HTT", {}).get("normal_max") == "26",
               zl.get("HTT"))
         check("sizing: a FLANKING-only call is flanking_only, not sized", zl.get("LOCUS_FL", {}).get("sizing") == "flanking_only",
@@ -2731,7 +2732,7 @@ def main():
         put(f"{e}/expansion_hunter/S_eh.vcf", VCF_HEAD)
         txt_e = render(e)[1]
         check("text: a VCF without records still lists the five key loci as not in output",
-              all(f"{k:<8} not in output" in txt_e for k in collect_summary.EH_LOCI), txt_e)
+              all(f"{k:<8} not in output" in txt_e for k in EH_LOCI), txt_e)
         put(f"{z}/expansion_hunter/S_rfc1_motif.tsv", open(f"{z}/expansion_hunter/S_rfc1_motif.tsv").read(), age_days=3)
         zd2 = render(z)[0]["sections"]["expansions"]["data"]
         check("RFC1: a motif table older than Stranger's output is not read",
@@ -2864,9 +2865,8 @@ def main():
         check("mosaic: an unknown mosaic_call is unreadable", sec_m["state"] == "unreadable"
               and "mosaic_call" in (sec_m["note"] or ""), sec_m)
         # 18. the traits panel (step 42)
-        import traits_report
         t = os.path.join(work, "traits", "S")
-        rows = traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))
+        rows = traits_rows()
         by_id = {r["rsid"]: r for r in rows}
         lct, ear = by_id["rs4988235"], by_id["rs17822931"]
         g = os.path.join(work, "traits_g.tsv")

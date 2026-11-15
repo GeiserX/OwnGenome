@@ -23,9 +23,9 @@
 # Disease-variant contraindications: with step 06's ClinVar hits
 # (clinvar/<sample>_clinvar_hits.tsv), a pathogenic or likely pathogenic hit
 # in a gene of assets/pgx_contraindications.tsv (POLG and the urea-cycle
-# genes with valproate, HPRT1 with mycophenolate, SCN1A) adds a WARNING
-# naming the drug. Without step 06 the report says those genes were not
-# checked.
+# genes with valproate, HPRT1 with mycophenolate) adds a WARNING naming the
+# drug; one heterozygous hit in a recessive urea-cycle gene gives a NOTE (a
+# carrier). Without step 06 the report says those genes were not checked.
 #
 # Requires: PharmCAT output from step 7. No internet connection needed.
 set -euo pipefail
