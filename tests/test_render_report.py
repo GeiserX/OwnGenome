@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """The PRS path around pgsc_calc (og prs format and og prs table, then
 bin/collect_summary.py), and its card in bin/render_report.py, on synthetic
 files shaped like pgsc_calc's own.
@@ -131,6 +132,21 @@ def check(desc, ok, detail=""):
     print(f"[{'PASS' if ok else 'FAIL'}] {desc}{'' if ok else ' -- ' + str(detail)[:600]}")
     if not ok:
         FAILS += 1
+
+
+PRS_NOT_ADJUSTED = "Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums"
+
+
+def haplogroup_explore(kind, hg):
+    """The explore links og summary collect writes for one Y ('y') or mitochondrial ('mt') haplogroup call."""
+    with tempfile.TemporaryDirectory() as d:
+        if kind == "y":
+            put(f"{d}/y_haplogroup/S_y_haplogroup.txt", f"Sample_name\tHg\tValid_markers\tQC-score\nS\t{hg}\t9\t1\n")
+            key = "y_haplogroup"
+        else:
+            put(f"{d}/mito/S_haplogroup.txt", f"SampleID\tHaplogroup\nS\t{hg}\n")
+            key = "haplogroup"
+        return collect_summary.collect("S", d)["sections"][key]["data"]["explore"]
 
 
 def put(path, text, gz=False):
@@ -330,7 +346,7 @@ def chapter_checks(work):
                                                         ("missing", "missing"), ("ok", "failed"))])
 
     for kind, hg in (("y", "R-M269*(xR-L23)"), ("mt", "H1a+16189")):
-        rows = render_report.explore_html({"haplogroup": hg, "explore": collect_summary.haplogroup_explore(kind, hg)})
+        rows = render_report.explore_html({"haplogroup": hg, "explore": haplogroup_explore(kind, hg)})
         marks = re.findall(r'<span class="offsite-note">\(([^)]*)\)</span>', "".join(rows))
         want = [render_report.OFFSITE_HAPLOGROUP] * (len(marks) - 1) + [render_report.OFFSITE]
         check(f"chapters: {hg}: the FamilyTreeDNA and YFull links say the address carries the haplogroup, the docs link does not",
@@ -390,7 +406,7 @@ def chapter_checks(work):
     check("chapters: red control: a dropped card is caught",
           sorted(re.findall(r"<h2>([^<]*)</h2>", html.replace("<h2>Traits</h2>", ""))) != GOLDEN_TITLES)
 
-    # "New since" and the database re-check (bin/owngenome_recheck.py, bin/run_delta.py through collect_summary)
+    # "New since" and the database re-check (bin/owngenome_recheck.py, og summary collect)
     since = json.loads(json.dumps(summ))
     since["new_since"] = {"previous_utc": "2026-01-01T00:00:00Z", "sections": ["clinvar"]}
     since["recheck"] = {"checked_utc": "2026-02-02T00:00:00Z", "affected_steps": ["06", "24"], "rerun": None,
@@ -740,7 +756,7 @@ def main():
               and "PGS000002 (3)" not in txt, txt)
         check("no panel: the HTML row says raw score only", "<td>raw score only</td>" in html)
         check("no panel: not-assessed names the missing percentiles",
-              collect_summary.PRS_NOT_ADJUSTED in summ["not_assessed"])
+              PRS_NOT_ADJUSTED in summ["not_assessed"])
         d = f"{work}/sample_adj/S"
         put(f"{d}/prs/S_prs_summary.tsv", "\t".join(PRS_COLUMNS) + "\n"
             "Coronary artery disease\tPGS000001\t1.25\t2\t3\t66.7\t94.4\tEUR\t0\tgvcf\n")
@@ -752,7 +768,7 @@ def main():
         check("panel: the note names the group and the panel, no raw-score line, no chrX line",
               "among the EUR samples of the pgsc_1000G_v1 reference panel" in txt and "Raw score only" not in txt
               and "Raw score only" not in html and "Rows on chrX" not in txt, txt)
-        check("panel: no not-assessed line about percentiles", collect_summary.PRS_NOT_ADJUSTED not in summ["not_assessed"])
+        check("panel: no not-assessed line about percentiles", PRS_NOT_ADJUSTED not in summ["not_assessed"])
         caveat = ("Most PRS scores were developed in European-ancestry populations and predict less well for "
                   "other ancestries, even with an ancestry-adjusted percentile.")
         check("panel: the ancestry-transfer caveat in both reports", caveat in txt and caveat in html, txt)

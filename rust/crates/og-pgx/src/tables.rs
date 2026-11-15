@@ -238,7 +238,7 @@ pub fn read_medications(path: &str) -> Result<Vec<Medication>, PyErr> {
 // --- contraindications ---------------------------------------------------
 
 /// The columns of `assets/pgx_contraindications.tsv`, in order.
-pub const CONTRA_COLUMNS: [&str; 7] = [
+pub const CONTRA_COLUMNS: [&str; 8] = [
     "Gene",
     "Drug",
     "Names",
@@ -246,7 +246,19 @@ pub const CONTRA_COLUMNS: [&str; 7] = [
     "Note",
     "Pair_source",
     "Label_source",
+    "Report_if",
 ];
+
+/// When a pathogenic hit in a row's gene gives a WARNING (the table's
+/// `Report_if` column, in the words of `assets/acmg_sf.tsv`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportIf {
+    /// One variant is enough (`any`).
+    Any,
+    /// The disorder is recessive: both copies changed, or two variants in
+    /// the gene (`biallelic`). One heterozygous variant is a carrier.
+    Biallelic,
+}
 
 /// One rule of the contraindication table: a disease gene PharmCAT does not
 /// call, and a drug a pathogenic variant in it makes risky.
@@ -260,11 +272,12 @@ pub struct Contraindication {
     pub note: String,
     pub pair_source: String,
     pub label_source: String,
+    pub report_if: ReportIf,
 }
 
 /// The rows of the contraindication table; lines starting with `#` are
-/// comments. A missing column or an empty cell is an error, never a row
-/// read as half a rule.
+/// comments. A missing column, an empty cell or a `Report_if` other than
+/// `any` or `biallelic` is an error, never a row read as half a rule.
 pub fn read_contraindications(path: &str) -> Result<Vec<Contraindication>, PyErr> {
     let (header, rows) = dict_rows(&uncommented(path)?)?;
     if header.as_deref() != Some(&CONTRA_COLUMNS.map(str::to_owned)[..]) {
@@ -288,6 +301,17 @@ pub fn read_contraindications(path: &str) -> Result<Vec<Contraindication>, PyErr
                     repr_row(r)
                 )));
             }
+            let report_if = match cells[7] {
+                "any" => ReportIf::Any,
+                "biallelic" => ReportIf::Biallelic,
+                other => {
+                    return Err(PyErr::value(format!(
+                        "{path}: Report_if is {}, not any or biallelic: {}",
+                        repr(other),
+                        repr_row(r)
+                    )));
+                }
+            };
             let own = |i: usize| cells[i].to_owned();
             Ok(Contraindication {
                 gene: own(0),
@@ -297,6 +321,7 @@ pub fn read_contraindications(path: &str) -> Result<Vec<Contraindication>, PyErr
                 note: own(4),
                 pair_source: own(5),
                 label_source: own(6),
+                report_if,
             })
         })
         .collect()
@@ -391,10 +416,13 @@ mod tests {
             Some(0.0)
         );
         let contra = read_contraindications(&format!("{root}pgx_contraindications.tsv")).unwrap();
+        assert!(contra.iter().any(|c| c.gene == "POLG"
+            && c.drug == "valproic acid"
+            && c.report_if == ReportIf::Any));
         assert!(
             contra
                 .iter()
-                .any(|c| c.gene == "POLG" && c.drug == "valproic acid")
+                .any(|c| c.gene == "ASS1" && c.report_if == ReportIf::Biallelic)
         );
     }
 
@@ -428,17 +456,27 @@ mod tests {
         assert_eq!(
             read_contraindications(&p).unwrap_err().to_string(),
             format!(
-                "ValueError: {p}: the header is ['Gene', 'Drug'], not ['Gene', 'Drug', 'Names', 'CPIC_level', 'Note', 'Pair_source', 'Label_source']"
+                "ValueError: {p}: the header is ['Gene', 'Drug'], not ['Gene', 'Drug', 'Names', 'CPIC_level', 'Note', 'Pair_source', 'Label_source', 'Report_if']"
             )
         );
         let p = tmp(
             "contra2.tsv",
-            "Gene\tDrug\tNames\tCPIC_level\tNote\tPair_source\tLabel_source\nPOLG\tx\ty\n",
+            "Gene\tDrug\tNames\tCPIC_level\tNote\tPair_source\tLabel_source\tReport_if\nPOLG\tx\ty\n",
         );
         assert_eq!(
             read_contraindications(&p).unwrap_err().to_string(),
             format!(
-                "ValueError: {p}: a row has an empty or missing cell: {{'Gene': 'POLG', 'Drug': 'x', 'Names': 'y', 'CPIC_level': None, 'Note': None, 'Pair_source': None, 'Label_source': None}}"
+                "ValueError: {p}: a row has an empty or missing cell: {{'Gene': 'POLG', 'Drug': 'x', 'Names': 'y', 'CPIC_level': None, 'Note': None, 'Pair_source': None, 'Label_source': None, 'Report_if': None}}"
+            )
+        );
+        let p = tmp(
+            "contra3.tsv",
+            "Gene\tDrug\tNames\tCPIC_level\tNote\tPair_source\tLabel_source\tReport_if\nASL\tv\tv\tB\tn\tp\tl\trecessive\n",
+        );
+        assert_eq!(
+            read_contraindications(&p).unwrap_err().to_string(),
+            format!(
+                "ValueError: {p}: Report_if is 'recessive', not any or biallelic: {{'Gene': 'ASL', 'Drug': 'v', 'Names': 'v', 'CPIC_level': 'B', 'Note': 'n', 'Pair_source': 'p', 'Label_source': 'l', 'Report_if': 'recessive'}}"
             )
         );
         let p = tmp("hits.tsv", "nothing\there\n");

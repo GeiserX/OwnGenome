@@ -120,12 +120,12 @@ unset REF_FASTA
 python3 - "$G" "$REPO" <<'PY'
 import os, sys
 g, repo = sys.argv[1], sys.argv[2]
-sys.path.insert(0, os.path.join(repo, "bin"))
-import traits_report
+# The columns of step 42's traits table (og traits table).
+OUT_COLUMNS = ["rsid", "gene", "chrom", "pos", "trait", "genotype", "status", "reading", "ancestry", "note", "pmids"]
 os.makedirs(f"{g}/SXA/traits", exist_ok=True)
 os.makedirs(f"{g}/SXA/cpic", exist_ok=True)
 with open(f"{g}/SXA/traits/SXA_traits.tsv", "w") as f:
-    f.write("\t".join(traits_report.OUT_COLUMNS) + "\n")
+    f.write("\t".join(OUT_COLUMNS) + "\n")
     f.write("rs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\tG/G\tcalled\tNo R117H copy.\tno\t-\t32404922\n")
 with open(f"{g}/SXA/cpic/SXA_phenotypes.tsv", "w") as f:
     f.write("Gene\tDiplotype\tPhenotype\tStatus\nUGT1A1\t*1/*28\tIntermediate Metabolizer\tnon-normal\n")

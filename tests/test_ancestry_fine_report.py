@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""og ancestry-fine, step 26b's commands, on made-up inputs, and what is left
-of bin/ancestry_fine_report.py:
+# og-leg: OG_REQUIRED
+"""og ancestry-fine, step 26b's commands, on made-up inputs:
 
   panel-map    a group of fewer than 10 unrelated people (one Oceanian, three
                San) is no reference and no painting reference, and the
@@ -16,10 +16,7 @@ of bin/ancestry_fine_report.py:
   report       fractions with the bootstrap range, merged painting rows, the
                painted shares, a PNG of the right size, the left-out group
                and the chromosome RFMix failed on, in the table, the text and
-               both pipeline reports (collect_summary.py, render_report.py)
-  the module   the group names, colours and MIN_REFERENCES collect_summary.py
-               reads from it are the ones og writes, and its painting_png
-               draws the same pixels as og's S_painting.png
+               both pipeline reports (og summary collect, render_report.py)
 
 The Rust unit tests (rust/crates/og-ancestry) and tests/parity check each
 command in detail; this test runs them as the pipeline does, through bin/og.
@@ -35,7 +32,6 @@ import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import ancestry_fine_report as af  # noqa: E402
 
 OG = os.environ.get("OG", "")
 FAILS = []
@@ -58,48 +54,6 @@ def write(path, text):
         f.write(text)
 
 
-def png_pixels(data):
-    """The RGB rows of an 8-bit RGB PNG, every filter undone."""
-    w, h = struct.unpack(">II", data[16:24])
-    idat, pos = b"", 8
-    while pos < len(data):
-        n, kind = struct.unpack(">I4s", data[pos:pos + 8])
-        if kind == b"IDAT":
-            idat += data[pos + 8:pos + 8 + n]
-        pos += 12 + n
-    raw, stride, rows, prev = zlib.decompress(idat), 3 * w, [], bytearray(3 * w)
-    for y in range(h):
-        f, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
-        for i in range(stride):
-            a = line[i - 3] if i >= 3 else 0
-            b, c = prev[i], prev[i - 3] if i >= 3 else 0
-            if f == 1:
-                line[i] = (line[i] + a) & 255
-            elif f == 2:
-                line[i] = (line[i] + b) & 255
-            elif f == 3:
-                line[i] = (line[i] + (a + b) // 2) & 255
-            elif f == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        rows.append(bytes(line))
-        prev = line
-    return (w, h, rows)
-
-
-def first_difference(a, b):
-    """None if two PNGs hold the same pixels, else where they first differ."""
-    (wa, ha, ra), (wb, hb, rb) = png_pixels(a), png_pixels(b)
-    if (wa, ha) != (wb, hb):
-        return f"size {wa}x{ha} vs {wb}x{hb}"
-    for y, (la, lb) in enumerate(zip(ra, rb)):
-        for x in range(wa):
-            if la[3 * x:3 * x + 3] != lb[3 * x:3 * x + 3]:
-                return f"pixel ({x}, {y}): {tuple(la[3 * x:3 * x + 3])} vs {tuple(lb[3 * x:3 * x + 3])}"
-    return None
-
-
 def run_all(tmp):
     # --- panel-map and check-map --------------------------------------------------
     # 10 unrelated Yoruba, 3 unrelated San, one unrelated Papuan and two
@@ -114,7 +68,7 @@ def run_all(tmp):
            "--paint-per-group", "50", "--out", samples)
     expect("panel-map: exits 0", (r.returncode, r.stderr), (0, ""))
     expect("panel-map: the install log names the groups left out",
-           f"Left out of the model, fewer than {af.MIN_REFERENCES} unrelated reference people: "
+           "Left out of the model, fewer than 10 unrelated reference people: "
            "Oceania (continental and regional group), Southern Africa (regional group)" in r.stdout, True)
     rows = [line.split("\t") for line in open(samples).read().splitlines()]
     by = {row[0]: row for row in rows[1:]}
@@ -244,20 +198,7 @@ def run_all(tmp):
     expect("report: the text says chr19 was not painted, and chr20 still was",
            ("Not painted: RFMix failed on chr19" in text, "of chr20:" in text), (True, True))
 
-    # --- the module and og agree on the names collect_summary.py reads ---------------
-    expect("module: each group name in og's table is the module's label",
-           [row[2] for row in table[1:] if row[0] in ("continent", "region", "painting")],
-           [af.label("region" if row[0] == "region" else "continent", row[1])
-            for row in table[1:] if row[0] in ("continent", "region", "painting")])
-    expect("module: MIN_REFERENCES is 10, as og's", af.MIN_REFERENCES, 10)
-    expect("module: a colour for each continental group", sorted(af.COLOURS), sorted(af.LABELS["continent"]))
-    # The legend collect_summary.py draws from af.COLOURS, and the docs demo's
-    # painting_png, must match og's picture: the same rows give the same
-    # pixels (the compressed bytes may differ).
-    demo = af.painting_png([(c, int(s), int(e), int(hp), code) for c, s, e, hp, code in bed])
-    expect("module: painting_png draws og's pixels, colour for colour", first_difference(demo, png), None)
-
-    # Both pipeline reports (collect_summary.py, then render_report.py) carry them.
+    # Both pipeline reports (og summary collect, then render_report.py) carry them.
     import collect_summary  # noqa: E402
     import render_report  # noqa: E402
     sd = os.path.join(tmp, "S")

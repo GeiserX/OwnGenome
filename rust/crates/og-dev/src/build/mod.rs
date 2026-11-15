@@ -11,6 +11,8 @@
 //!   `assets/callability_genes.tsv` (`scripts/ci/build-callability.sh`).
 //! - `og dev build sv-rule-regions` ([`sv_rules`]):
 //!   `assets/sv_rule_regions.tsv` (`scripts/ci/build-sv-rule-regions.sh`).
+//! - `og dev build roh-af` ([`roh_af`]) and `og dev build acmg-lof`
+//!   ([`acmg_lof`]): not ported yet, each says so and exits 2.
 //!
 //! Exit 0 when the file was written (or `--check` found it right); 1 when
 //! `--check` found it different, or when the callability or SV rule
@@ -19,9 +21,11 @@
 //! exited; 2 for a usage error or an input that cannot be read, and for
 //! every cn-intervals input the rules refuse, as its Python builder exited.
 
+pub mod acmg_lof;
 pub mod callability;
 pub mod cn_intervals;
 mod gtf;
+pub mod roh_af;
 pub mod sv_rules;
 
 use og_io::{Lines, Utf8};
@@ -29,7 +33,7 @@ use std::fmt;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
-const USAGE: &str = "usage: og dev build cn-intervals --clingen BED --segdups BED --gaps BED --satellites BED --parascopy TXT (--catalog FILE [--check] | --stdout)\n       og dev build callability --work DIR --repo DIR --out FILE\n       og dev build sv-rule-regions --work DIR --out FILE\n";
+const USAGE: &str = "usage: og dev build cn-intervals --clingen BED --segdups BED --gaps BED --satellites BED --parascopy TXT (--catalog FILE [--check] | --stdout)\n       og dev build callability --work DIR --repo DIR --out FILE\n       og dev build sv-rule-regions --work DIR --out FILE\n       og dev build roh-af [args]\n       og dev build acmg-lof [args]\n";
 
 /// GRCh38's primary chromosomes in their sort order: chr1-22, X, Y.
 pub(crate) const CHROMS: [&str; 24] = [
@@ -194,6 +198,8 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         Some("cn-intervals") => cn_intervals::cli(&args[1..], out, err),
         Some("callability") => callability::cli(&args[1..], err),
         Some("sv-rule-regions") => sv_rules::cli(&args[1..], err),
+        Some("roh-af") => Ok(roh_af::cli(&args[1..], out, err)),
+        Some("acmg-lof") => Ok(acmg_lof::cli(&args[1..], out, err)),
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
             return 0;
