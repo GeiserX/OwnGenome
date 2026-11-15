@@ -7,8 +7,6 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-# Red-first run: every control planted, so CI shows each test fail. Reverted in the next commit.
-default = ["planted-red"]
 # Feeds each red control its broken input in place of the good one
 # (a shuffled map, T doubled, a flipped byte, a swapped sample order, a
 # second seed), so `cargo test -p og-admix --features planted-red
