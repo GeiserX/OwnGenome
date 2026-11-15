@@ -45,7 +45,9 @@ const GOOD_TEXT: &str = "Copyright (c) the good authors\nshared permissive text\
 fn vendor(t: &Temp, name: &str, manifest: &str, files: &[(&str, &str)]) {
     t.write(
         &format!("vendor/{name}/Cargo.toml"),
-        &format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n{manifest}\n"),
+        &format!(
+            "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n{manifest}\n"
+        ),
     );
     t.write(&format!("vendor/{name}/src/lib.rs"), "");
     for (rel, text) in files {
@@ -57,7 +59,10 @@ fn vendor(t: &Temp, name: &str, manifest: &str, files: &[(&str, &str)]) {
 /// vendor/, outside the workspace folder so they are not members.
 fn workspace() -> Temp {
     let t = Temp::new();
-    t.write("ws/Cargo.toml", "[workspace]\nmembers = [\"app\"]\nresolver = \"2\"\n");
+    t.write(
+        "ws/Cargo.toml",
+        "[workspace]\nmembers = [\"app\"]\nresolver = \"2\"\n",
+    );
     t.write(
         "ws/app/Cargo.toml",
         r#"[package]
@@ -91,7 +96,12 @@ notext = { path = "../../vendor/notext" }
     t.write("ws/app/src/lib.rs", "");
     vendor(&t, "good", "license = \"MIT\"", &[("LICENSE", GOOD_TEXT)]);
     // The same text as good: it must come once, for both.
-    vendor(&t, "extra", "license = \"MIT OR Apache-2.0\"", &[("LICENSE-MIT", GOOD_TEXT)]);
+    vendor(
+        &t,
+        "extra",
+        "license = \"MIT OR Apache-2.0\"",
+        &[("LICENSE-MIT", GOOD_TEXT)],
+    );
     vendor(
         &t,
         "dual",
@@ -111,7 +121,12 @@ notext = { path = "../../vendor/notext" }
         ],
     );
     let sspl = [("LICENSE", "server side text\n")];
-    vendor(&t, "pm", "license = \"SSPL-1.0\"\n[lib]\nproc-macro = true\n[dependencies]\npmdep = { path = \"../pmdep\" }", &sspl);
+    vendor(
+        &t,
+        "pm",
+        "license = \"SSPL-1.0\"\n[lib]\nproc-macro = true\n[dependencies]\npmdep = { path = \"../pmdep\" }",
+        &sspl,
+    );
     vendor(&t, "pmdep", "license = \"SSPL-1.0\"", &sspl);
     vendor(&t, "buildonly", "license = \"SSPL-1.0\"", &sspl);
     vendor(&t, "devonly", "license = \"SSPL-1.0\"", &sspl);
@@ -123,16 +138,29 @@ notext = { path = "../../vendor/notext" }
         .arg(Path::new(&t.path("ws/Cargo.toml")))
         .output()
         .unwrap();
-    assert!(lock.status.success(), "{}", String::from_utf8_lossy(&lock.stderr));
+    assert!(
+        lock.status.success(),
+        "{}",
+        String::from_utf8_lossy(&lock.stderr)
+    );
     t
 }
 
 fn notices(t: &Temp, targets: &[&str]) -> (u8, String, String) {
     let out_file = t.path("THIRD-PARTY-LICENSES.txt");
     let _ = std::fs::remove_file(&out_file);
-    let mut args: Vec<String> = vec!["notices".into(), "--manifest-path".into(), t.path("ws/Cargo.toml")];
+    let mut args: Vec<String> = vec![
+        "notices".into(),
+        "--manifest-path".into(),
+        t.path("ws/Cargo.toml"),
+    ];
     args.extend(targets.iter().map(|s| s.to_string()));
-    args.extend(["--package".into(), "app".into(), "--out".into(), out_file.clone()]);
+    args.extend([
+        "--package".into(),
+        "app".into(),
+        "--out".into(),
+        out_file.clone(),
+    ]);
     let mut out = Vec::new();
     let mut err = Vec::new();
     let code = licences::cli(&args, &mut out, &mut err);
@@ -165,44 +193,96 @@ fn every_linked_crate_is_credited_and_nothing_else() {
     );
     // The shared text once, for both crates that ship it.
     assert_eq!(text.matches("shared permissive text").count(), 1, "{text}");
-    assert!(text.contains("For extra 0.1.0: LICENSE-MIT\nFor good 0.1.0: LICENSE\n"), "{text}");
+    assert!(
+        text.contains("For extra 0.1.0: LICENSE-MIT\nFor good 0.1.0: LICENSE\n"),
+        "{text}"
+    );
     // A crate that builds C carries its library's notice from below its root.
-    assert!(text.contains("For csys 0.1.0: vendored/clib/COPYING\n\nthe C library's own notice"), "{text}");
+    assert!(
+        text.contains("For csys 0.1.0: vendored/clib/COPYING\n\nthe C library's own notice"),
+        "{text}"
+    );
     // No file, MIT allowed: the MIT text with the crate's authors.
     assert!(text.contains("For dual 0.1.0: MIT, no licence file in the crate\n\nCopyright (c) Dual Author <dual@example.org>\n\nPermission is hereby granted"), "{text}");
-    for absent in ["app 0.1.0", "pm 0.1.0", "pmdep", "buildonly", "devonly", "bad 0.1.0", "notext", "server side text"] {
-        assert!(!text.contains(absent), "{absent} must not be credited:\n{text}");
+    for absent in [
+        "app 0.1.0",
+        "pm 0.1.0",
+        "pmdep",
+        "buildonly",
+        "devonly",
+        "bad 0.1.0",
+        "notext",
+        "server side text",
+    ] {
+        assert!(
+            !text.contains(absent),
+            "{absent} must not be credited:\n{text}"
+        );
     }
 }
 
 #[test]
 fn a_build_without_default_features_leaves_the_optional_crate_out() {
     let t = workspace();
-    let (code, text, err) = notices(&t, &["--target", LINUX, "--target-no-default", "aarch64-apple-darwin"]);
+    let (code, text, err) = notices(
+        &t,
+        &[
+            "--target",
+            LINUX,
+            "--target-no-default",
+            "aarch64-apple-darwin",
+        ],
+    );
     assert_eq!(code, 0, "{err}");
-    assert!(text.contains("Targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu\n"), "{text}");
-    assert!(text.contains("extra 0.1.0  MIT OR Apache-2.0  (only x86_64-unknown-linux-gnu)\n"), "{text}");
+    assert!(
+        text.contains("Targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("extra 0.1.0  MIT OR Apache-2.0  (only x86_64-unknown-linux-gnu)\n"),
+        "{text}"
+    );
     assert!(text.contains("good 0.1.0  MIT\n"), "{text}");
 }
 
 #[test]
 fn a_crate_outside_the_allow_list_or_without_a_text_fails() {
     let t = workspace();
-    let (code, text, err) = notices(&t, &["--target", LINUX, "--target", "x86_64-pc-windows-gnu"]);
+    let (code, text, err) = notices(
+        &t,
+        &["--target", LINUX, "--target", "x86_64-pc-windows-gnu"],
+    );
     assert_eq!(code, 1, "{err}");
     assert!(text.is_empty(), "no file on an error, got:\n{text}");
-    assert!(err.contains("bad 0.1.0 is licensed \"SSPL-1.0\", which the allow list"), "{err}");
-    assert!(err.contains("notext 0.1.0 ships no licence file, and \"Apache-2.0\" cannot be met with the MIT text"), "{err}");
+    assert!(
+        err.contains("bad 0.1.0 is licensed \"SSPL-1.0\", which the allow list"),
+        "{err}"
+    );
+    assert!(
+        err.contains(
+            "notext 0.1.0 ships no licence file, and \"Apache-2.0\" cannot be met with the MIT text"
+        ),
+        "{err}"
+    );
     assert_eq!(err.lines().count(), 2, "{err}");
 }
 
 #[test]
 fn usage_errors_exit_2() {
     let mut out = Vec::new();
-    for args in [&[][..], &["notices"][..], &["notices", "--target"][..], &["assets"][..]] {
+    for args in [
+        &[][..],
+        &["notices"][..],
+        &["notices", "--target"][..],
+        &["assets"][..],
+    ] {
         let mut err = Vec::new();
         let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         assert_eq!(licences::cli(&args, &mut out, &mut err), 2, "{args:?}");
-        assert!(String::from_utf8(err).unwrap().contains("usage: og dev licences notices"));
+        assert!(
+            String::from_utf8(err)
+                .unwrap()
+                .contains("usage: og dev licences notices")
+        );
     }
 }
