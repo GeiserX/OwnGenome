@@ -110,8 +110,8 @@ run_in \
 # the AF), or Reference when there is none and the BAM has 20 reads or more
 # (samtools depth, MAPQ and base quality 20) at every position PharmCAT names
 # an allele at; no line, with the reason in the log, for a named allele below
-# AF 0.05 or filtered, or a position without that depth (the PHARMCAT module
-# does the same).
+# AF 0.05 (when no other is called) or filtered, or a position without that
+# depth (the PHARMCAT module does the same).
 OUTSIDE="${GENOME_DIR}/${SAMPLE}/pgx_consensus/${SAMPLE}_outside_calls.tsv"
 MITO="${GENOME_DIR}/${SAMPLE}/mito/${SAMPLE}_chrM_filtered.vcf.gz"
 MERGED="${OUTPUT_DIR}/${SAMPLE}.pharmcat_outside_calls.tsv"

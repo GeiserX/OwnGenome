@@ -32,8 +32,8 @@
     heteroplasmy level; the log gives the AF), or Reference when there is
     none and the BAM has 20 reads or more (samtools depth, MAPQ and base
     quality 20) at every position PharmCAT names an allele at; no line, with
-    the reason in the task log, for a named allele below AF 0.05 or
-    filtered, or a position without that depth.
+    the reason in the task log, for a named allele below AF 0.05 (when no
+    other is called) or filtered, or a position without that depth.
 
     The jar's built-in logback.xml writes pharmcat.log into the working
     directory. A task runs in its own writable work directory, so the log

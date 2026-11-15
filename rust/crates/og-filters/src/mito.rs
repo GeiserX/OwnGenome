@@ -13,11 +13,12 @@
 //! homoplasmic guidance for any detected MT-RNR1 variant, so the floor is
 //! the pipeline's heteroplasmy floor (AF 0.05), not homoplasmy (AF 0.95),
 //! and the log line gives the level. A named allele below the floor is not
-//! called and not called absent either. One such allele is the call; of
-//! several, the one PharmCAT ranks highest (increased risk, then uncertain,
-//! then normal).
+//! called and not called absent either: it holds `Reference` back, not a
+//! named allele at the floor, and the log names it. One such allele is the
+//! call; of several, the one PharmCAT ranks highest (increased risk, then
+//! uncertain, then normal).
 //! With none, `Reference`, but only when `--depth` shows `--min-depth`
-//! reads or more at every named position. Anything that makes the answer
+//! reads or more at every named position. Anything else that makes the answer
 //! unsure holds every call back, with a line saying why ([`Held`]).
 //!
 //! `--outside` (step 36's calls) is copied to `--out` without its MT-RNR1
@@ -502,7 +503,10 @@ pub fn decide(
         ));
         return (None, lines);
     }
-    if !held.is_empty() {
+    // A named allele below the floor holds `Reference` back, but not a
+    // named call at the floor: then it is only logged.
+    let only_below = held.iter().all(|h| matches!(h, Held::BelowFloor { .. }));
+    if !held.is_empty() && (calls.is_empty() || !only_below) {
         lines.extend(held.iter().map(|h| format!("held back: {h}")));
         lines.push(format!(
             "no {GENE} call passed to PharmCAT: it stays No Result; read the records above in the chrM call set"
@@ -534,6 +538,7 @@ pub fn decide(
                 c.function
             ));
         }
+        lines.extend(held.iter().map(|h| format!("not passed: {h}")));
         return (Some(best.name.clone()), lines);
     }
     if !a.has_reference {
