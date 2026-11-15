@@ -596,13 +596,14 @@ else
     echo "       Install it: ./scripts/setup.sh --sample-qc-data ${GENOME_DIR}"
   fi
 
-  # --- VEP cache of the VEP image's release, for step 13 (optional) ---
+  # --- Clinical data installed by default by setup.sh ---
   VEP_DIR="${GENOME_DIR}/vep_cache/homo_sapiens"
   if [ -f "${VEP_DIR}/${VEP_CACHE_RELEASE}_GRCh38/info.txt" ]; then
     pass "VEP ${VEP_CACHE_RELEASE} cache (step 13): present"
   else
     warn "VEP ${VEP_CACHE_RELEASE} cache not found at: ${VEP_DIR}/${VEP_CACHE_RELEASE}_GRCh38"
-    echo "       Required for step 13 (VEP annotation), which downloads it (~26 GB) the first time it runs."
+    echo "       Missing cache skips steps 13 (VEP), 30 (vcfanno), 23 (clinical filter) and 31 (slivar)."
+    echo "       Install it: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
     echo "       See docs/00-reference-setup.md for full instructions."
   fi
 
@@ -612,7 +613,7 @@ else
   else
     warn "VEP ${PCGR_VEP_CACHE_RELEASE} cache not found at: ${VEP_DIR}/${PCGR_VEP_CACHE_RELEASE}_GRCh38"
     echo "       Required for step 17 (CPSR). ${PCGR_IMAGE} needs VEP ${PCGR_VEP_CACHE_RELEASE}, separate from step 13's VEP ${VEP_CACHE_RELEASE}."
-    echo "       curl -fL -C - -O $(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")"
+    echo "       Missing cache skips step 17. Install it: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
     echo "       See docs/17-cpsr.md for full instructions."
   fi
 
@@ -622,10 +623,8 @@ else
     pass "PCGR/CPSR ref data bundle: present"
   else
     warn "PCGR ref data bundle not found at: ${PCGR_DIR}"
-    echo "       Required for step 17 (CPSR cancer predisposition). Download ~7 GB:"
-    echo "       cd ${GENOME_DIR}/pcgr_data"
-    echo "       curl -fL -C - -O https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
-    echo "       tar xzf pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz && mkdir -p ${PCGR_DATA_BUNDLE} && mv data/ ${PCGR_DATA_BUNDLE}/"
+    echo "       Missing bundle skips step 17 (CPSR cancer predisposition)."
+    echo "       Install it: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
     echo "       See docs/17-cpsr.md for full instructions."
   fi
 

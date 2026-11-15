@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """The gene callability of step 16b and the ALT contig refusal.
 
 assets/callability_genes.tsv lists the genes short reads often cannot place

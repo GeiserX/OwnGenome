@@ -43,6 +43,11 @@
       return;
     }
     const cfg = await resp.json();
+    cfg.tracks.forEach(function (track) {
+      if (track.type === "alignment") {
+        track.visibilityWindow = 50000;
+      }
+    });
     document.getElementById("sample").textContent = cfg.sample;
     document.title = cfg.sample + " - Genome viewer";
     const browser = await igv.createBrowser(document.getElementById("igv"), {
@@ -53,11 +58,34 @@
       // igv.js otherwise fetches its genome list from igv.org at start.
       loadDefaultGenomes: false,
     });
-    window.addEventListener("hashchange", function () {
+    function followLocus() {
       const locus = locusFromHash();
       if (locus) {
         browser.search(locus);
       }
+    }
+    // igv.js keeps bases per pixel on resize. While igv still shows the locus the URL asks
+    // for, a resize applies that locus again. Once the reader pans, zooms or types a locus in
+    // igv, igv keeps the reader's place, until the URL asks for a new locus. The events
+    // come out of igv's shadow root, because pointer, wheel and key events are composed.
+    let follow = true;
+    ["pointerdown", "wheel", "keydown"].forEach(function (type) {
+      document.getElementById("igv").addEventListener(type, function () {
+        follow = false;
+      }, { capture: true, passive: true });
+    });
+    window.addEventListener("hashchange", function () {
+      follow = true;
+      followLocus();
+    });
+    let resizeTimer;
+    window.addEventListener("resize", function () {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(function () {
+        if (follow) {
+          followLocus();
+        }
+      }, 100);
     });
     root.dataset.pgpTracks = String(cfg.tracks.length);
     root.dataset.pgpStatus = "ready";

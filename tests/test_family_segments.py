@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og family segments (step 38's chromosome map) on a synthetic
 three-generation family: two grandparents, their son (the father), the
 mother, and a grandchild. Genotypes are drawn from known haplotypes, so the

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """Validate the curated traits catalog and its GRCh38 reference bases.
 
 Schema checks use og traits check. Rust unit tests plant invalid catalog

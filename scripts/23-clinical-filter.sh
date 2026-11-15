@@ -255,15 +255,48 @@ rm -f "${CLINVAR_TIER:?}" "${CLINVAR_TIER:?}.tbi" "${CLINVAR_UNRANKED:?}"
 if [ "$HAS_HITS" -eq 1 ]; then
   echo "[5] Extracting the step 6 ClinVar hits..."
   CLINVAR_SOURCE="step 6 ClinVar screen"
+  # The tier takes a VEP record only when its CHROM, POS, REF and ALT are a
+  # hit's: another allele at a hit's position (the C of a T>A,C call split
+  # by step 13) is not what ClinVar classified. Steps 6 and 13 both split and
+  # left-align against the same reference, so the same allele is written the
+  # same way. A combined hit of step 6 (PGP_JOINED_FROM=CHROM:POS:REF:ALT|...)
+  # also gives its parts, the records VEP annotated: VEP never saw the joined
+  # allele, which is often left-aligned to a position neither part has.
+  ALLELES="${OUTDIR}/${SAMPLE}_clinvar_alleles.tsv"
   TARGETS="${OUTDIR}/${SAMPLE}_clinvar_targets.tsv"
-  awk -F'\t' 'BEGIN {OFS = "\t"} !/^#/ {print $1, $2}' "$CLINVAR_HITS" | sort -u > "$TARGETS"
+  awk -F'\t' 'BEGIN {OFS = "\t"} !/^#/ {
+      na = split($5, alt, ",")
+      for (i = 1; i <= na; i++) print $1, $2, $4, alt[i]
+      n = split($8, kv, ";")
+      for (i = 1; i <= n; i++) {
+        if (kv[i] !~ /^PGP_JOINED_FROM=/) continue
+        np = split(substr(kv[i], 17), part, "|")
+        for (j = 1; j <= np; j++) {
+          # CHROM:POS:REF:ALT, read from the right (a contig name may hold ":")
+          m = split(part[j], f, ":")
+          if (m < 4) continue
+          chrom = f[1]
+          for (k = 2; k <= m - 3; k++) chrom = chrom ":" f[k]
+          print chrom, f[m - 2], f[m - 1], f[m]
+        }
+      }
+    }' "$CLINVAR_HITS" | sort -u > "$ALLELES"
+  cut -f1,2 "$ALLELES" | sort -u > "$TARGETS"
   if [ -s "$TARGETS" ]; then
+    # -T narrows the input to the hits' positions; the awk keeps the records
+    # whose allele is one of them. Step 13 writes one ALT per record; a
+    # record of an unsplit input is kept when any of its ALTs is a hit.
     run_in --cpus 4 --memory 4g "${BCFTOOLS_IMAGE}" \
-      bcftools view -f PASS -T "${C}/${SAMPLE}_clinvar_targets.tsv" -Oz -o "${C}/${SAMPLE}_clinvar_unranked.vcf.gz" "${CONTAINER_INPUT}"
+      bcftools view -f PASS -T "${C}/${SAMPLE}_clinvar_targets.tsv" "${CONTAINER_INPUT}" \
+      | awk -F'\t' 'NR == FNR {want[$0] = 1; next} /^#/ {print; next} {
+          n = split($5, alt, ",")
+          for (i = 1; i <= n; i++) if (($1 "\t" $2 "\t" $4 "\t" alt[i]) in want) {print; next}
+        }' "$ALLELES" - \
+      | run_in -i --cpus 2 --memory 2g "${BCFTOOLS_IMAGE}" bcftools view -Oz -o "${C}/${SAMPLE}_clinvar_unranked.vcf.gz"
   else
     echo "  Step 6 found no ClinVar hit."
   fi
-  rm -f "${TARGETS:?}"
+  rm -f "${TARGETS:?}" "${ALLELES:?}"
 elif [ "$HAS_CUSTOM" -eq 1 ]; then
   echo "[5] Extracting ClinVar_CLNSIG pathogenic/likely pathogenic (step 13's --custom ClinVar file)..."
   CLINVAR_SOURCE="ClinVar_CLNSIG (step 13 --custom)"

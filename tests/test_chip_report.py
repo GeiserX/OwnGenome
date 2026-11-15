@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """Step 49 (clonal haematopoiesis): og chip on synthetic bcftools output and on
 assets/chip_genes.tsv, and what the reports read of it.
 

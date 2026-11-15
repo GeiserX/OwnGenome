@@ -1,0 +1,10 @@
+##fileformat=VCFv4.2
+##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Lowest depth in the block">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+chr22	2000	.	N	<*>	0	.	END=2600	GT:GQ:MIN_DP	0/0:40:25
+chr21	1000	.	N	<*>	0	.	END=1150	GT:GQ:MIN_DP	0/0:30:20
+chr21	1151	.	N	<*>	0	.	END=1200	GT:GQ:MIN_DP	0/0:0:5
+chr21	1201	.	N	<*>	0	.	END=1250	GT:GQ:MIN_DP	./.:0:0

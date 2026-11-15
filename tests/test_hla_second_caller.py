@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og pgx outside-calls with OptiType, the opt-in second HLA caller.
 
 With HLA_QC=true (bash) or --hla_qc (Nextflow) step 08 also runs OptiType on
