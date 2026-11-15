@@ -49,6 +49,10 @@ Each item gets one class:
 | `unknown` | A pin of steps 50 to 53 that the run's manifest does not name (a run of an older version): nothing was compared | Nothing; the next run records it. It does not make the command exit 1 |
 | `error` | The lookup failed | Check again later. A failed lookup is never read as "up to date", and the command exits 1 |
 
+A newer file or pin installed here stays `rerun-ready` when its lookup fails, because that comparison needs no network. The item then keeps its `error` too, and the command still exits 1.
+
+The last line of the output sums up the check. When something is `rerun-ready` or `refresh-available`, it names the steps a rerun would redo. When a lookup failed, it says how many of how many failed and that the check is incomplete, or "Could not check: all N lookups failed" when none answered. "Nothing here is newer than what the run used." comes only when every lookup answered and nothing is newer.
+
 The 2-day margin for ClinVar is there because NCBI dates the file a day or two after the release in its `##fileDate`. A newer PGS file date means the catalog wrote the harmonised file again; it does not prove the weights changed.
 
 ## Which steps a change redoes
@@ -64,7 +68,7 @@ bin/og recheck --sample your_sample --rerun
 bin/og recheck --sample your_sample --rerun --refresh-clinvar   # refresh ClinVar first
 ```
 
-`run-all.sh` writes its own command into `logs/run_status.tsv` (`meta command`: a `cd` to the directory it was run from, the switches it reads that were set, then its arguments, each shell-quoted; `meta switches`: the names of those switches). `--rerun` runs that command again with those switches only, so a `TOOLS` set in your shell today does not change the run. `NXF_OPTS` and `NXF_JVM_ARGS` are not recorded, because they can hold a proxy password; the replay takes them from your shell. Nextflow's `-resume` then redoes only the tasks whose inputs changed.
+`run-all.sh` writes its own command into `logs/run_status.tsv` (`meta command`: a `cd` to the directory it was run from, the switches it reads that were set, then its arguments, each shell-quoted; `meta switches`: the names of those switches). `--rerun` reads that command back word by word: the `cd` folder, the switch assignments, the `run-all.sh` path and its arguments. It starts that `run-all.sh` with `bash`, in that folder, with the arguments one by one and those switches only, so a `TOOLS` set in your shell today does not change the run. No shell reads the command. A row of any other shape, for example one edited to add `; rm ...`, is refused with exit 2 and nothing runs; a `cd` folder that no longer exists is refused the same way. Check such a row, then run the command by hand. `NXF_OPTS` and `NXF_JVM_ARGS` are not recorded, because they can hold a proxy password; the replay takes them from your shell. Nextflow's `-resume` then redoes only the tasks whose inputs changed.
 
 It refuses while a run of the sample is going on (`run_status.tsv` has no `finished_utc`), and while another `--rerun` of the sample holds `recheck/rerun.lock`. A run that was killed without its exit trap leaves no `finished_utc` either: run `run-all.sh` by hand once, and the next check can rerun again.
 

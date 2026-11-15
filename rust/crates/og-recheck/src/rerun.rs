@@ -355,6 +355,24 @@ pub fn rerun(
         ));
     };
     let switches = meta.get("switches").cloned().unwrap_or_default();
+    let Some(call) = parse_call(&cmd, &switches) else {
+        return Ok(Rerun::Refused(
+            2,
+            "the command in logs/run_status.tsv is not a run-all.sh call as run-all.sh records it \
+             (cd DIR && [SWITCH=VALUE ...] .../scripts/run-all.sh ARGS): not running it. Check it, \
+             then run it by hand."
+                .into(),
+        ));
+    };
+    if !Path::new(&call.dir).is_dir() {
+        return Ok(Rerun::Refused(
+            2,
+            format!(
+                "the run's directory {} is gone: run the command by hand from where it should run.",
+                call.dir
+            ),
+        ));
+    }
     let started = now_utc();
     // After --refresh-clinvar the new file is installed, so it is rerun-ready.
     let predicted = state_.rerun_ready_steps.clone();
@@ -362,10 +380,14 @@ pub fn rerun(
     let _ = std::io::stdout().flush();
     append_log(log, &[[&started, "rerun-start", "", "", &cmd]])?;
     let mut c = Command::new("bash");
-    c.arg("-c").arg(&cmd);
+    c.arg(&call.script).args(&call.args).current_dir(&call.dir);
     for name in switches.split_whitespace() {
         c.env_remove(name);
     }
+    for (name, value) in &call.env {
+        c.env(name, value);
+    }
+    c.env("PWD", &call.dir);
     let rc = c.status().map(|s| s.code().unwrap_or(1)).unwrap_or(127);
     let after = files(sample_dir)?;
     let cmp = compare(
