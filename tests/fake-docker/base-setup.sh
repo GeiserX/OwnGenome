@@ -4,6 +4,7 @@
 # finish with exit 0.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
+seed_clinical_downloads
 
 G="${CASE_WORK}/genome"
 mkdir -p "$G"

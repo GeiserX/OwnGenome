@@ -22,22 +22,21 @@ The image is PCGR 2.3.2 from `ghcr.io/sigven/pcgr` (Docker Hub's `sigven/pcgr` s
 
 ### 1. VEP Cache
 PCGR 2.3.2 bundles VEP 115, which requires the **release-115** cache (~24 GB). This is different from the release-116 cache used by step 13. Both coexist in the same `vep_cache/` directory under different subdirectories (`116_GRCh38/` and `115_GRCh38/`).
+
+### 2. PCGR ref data bundle
+PCGR 2.x uses a separate ref data bundle (`20260620`, about 7 GB).
+A plain setup installs the VEP 115 cache and this bundle by default, alongside VEP 116 for step 13.
+For an existing setup, install or retry all three with:
+
 ```bash
-mkdir -p ${GENOME_DIR}/vep_cache
-wget -c -P ${GENOME_DIR}/vep_cache https://ftp.ensembl.org/pub/release-115/variation/indexed_vep_cache/homo_sapiens_vep_115_GRCh38.tar.gz
-tar xzf ${GENOME_DIR}/vep_cache/homo_sapiens_vep_115_GRCh38.tar.gz -C ${GENOME_DIR}/vep_cache
+./scripts/setup.sh --clinical-data "$GENOME_DIR"
 ```
 
-### 2. PCGR Ref Data Bundle
-PCGR 2.x uses a ref data bundle (~7 GB for `20260620`) separate from VEP:
-```bash
-mkdir -p ${GENOME_DIR}/pcgr_data
-cd ${GENOME_DIR}/pcgr_data
-wget -c https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.20260620.grch38.tgz
-tar xzf pcgr_ref_data.20260620.grch38.tgz
-mkdir -p 20260620 && mv data/ 20260620/
-```
-This creates a `20260620/data/` directory with ClinVar, CancerMine, UniProt, and other databases. VEP cache is now mounted separately.
+The bundle goes to `pcgr_data/20260620/data/`; the caches coexist under `vep_cache/homo_sapiens/`.
+Setup checks Ensembl's cache checksums and the bundle's pinned SHA-256 before extraction, then removes each archive.
+It checks free space for each install and continues with a warning if one fails or does not fit.
+`--no-clinical-data` skips all three. Without either CPSR item, `run-all.sh` skips step 17.
+See [reference setup](00-reference-setup.md) for disk peaks and the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) for the bundled databases. Review each source's terms before use.
 
 ### Upgrading from PCGR 2.2.5
 PCGR 2.2.5 read bundle `20250314` and the release-113 cache. 2.3.2 needs both new ones: about 31 GB to download (the 7 GB bundle and the 24 GB cache). Once step 17 runs on 2.3.2, `pcgr_data/20250314/` and `vep_cache/homo_sapiens/113_GRCh38/` are no longer read and can be deleted.

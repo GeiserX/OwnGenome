@@ -2,6 +2,7 @@
 # Default clinical downloads, explicit opt-out, disk gates and corrupt input.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
+seed_clinical_downloads
 export FETCH_TRIES=1 FETCH_WAIT=0
 G="${CASE_WORK}/without"
 run_expect 0 without "${SCRIPTS}/setup.sh" --no-clinical-data "$G"
@@ -17,6 +18,16 @@ for rel in 116 115; do
 done
 [ -s "${G}/pcgr_data/20260620/data/grch38/README" ] || fail 'PCGR bundle missing'
 output_lacks clinical 'Phase 1:|Docker Images'
+# Installed clinical data turns the three default launch-plan rows on.
+seed_reference "$G"
+seed_clinvar "$G"
+seed_sample "$G" sample1
+use_output_hook
+GENOME_DIR="$G" SKIP_VALIDATION=true run_expect 0 plan "${SCRIPTS}/run-all.sh" sample1 male
+output_has plan '^  13 VEP +runs$'
+output_has plan '^  23 Clinical filter +runs$'
+output_has plan '^  17 CPSR +runs$'
+
 # A second install does no network work, even with too little space.
 cp "$FAKE_DOCKER_LOG" "${CASE_WORK}/installed.log"
 run_expect 0 again "${SCRIPTS}/setup.sh" --clinical-data "$G"
