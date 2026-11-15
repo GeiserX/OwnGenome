@@ -20,7 +20,16 @@
 //! 6 / sqrt(D x H), D MoChA's median depth and H the heterozygous sites per
 //! 10 Mb. The sample is not assessed when MoChA's sample filter fails
 //! (call rate under 0.97, phased BAF autocorrelation over 0.03) or cannot
-//! be applied. Exit 0 whatever the result; 2 on unreadable input.
+//! be applied, or when an autosome has under [`PHASED_MIN_PERCENT`] percent
+//! of its heterozygous sites phased. Exit 0 whatever the result; 2 on
+//! unreadable input.
+//!
+//! The call-rate half of the sample filter never fires on a WGS VCF:
+//! MoChA's WGS mode (allele depths from AD) drops a site with a missing
+//! genotype before it counts it, so its call rate is 1 whatever the step's
+//! depth and GQ filter set missing. The gate stays for an input whose stats
+//! carry a real call rate; on WGS the phased BAF autocorrelation, the
+//! phased share and the floor are what gate the sample.
 //!
 //! NaN is kept as Python has it: every comparison with NaN is false, so a
 //! call with no BAF deviation, no N50 and no concordance LOD is dropped as
@@ -29,9 +38,10 @@
 //! What changes on purpose: `calls_mocha` counts the calls of this sample
 //! (the Python counted every row of a multi-sample table, other samples'
 //! included; a pipeline run gives MoChA one sample, so its value does not
-//! change), and a calls row that ends before a needed column, or a sites
+//! change), a calls row that ends before a needed column, or a sites
 //! value that is not ASCII digits, is an input error (exit 2), not a
-//! traceback.
+//! traceback, and a sample with an autosome under the phased minimum is not
+//! assessed (the Python assessed it once one site was phased).
 
 use crate::{Error, Outcome};
 use og_filters::args::Spec;
@@ -44,6 +54,14 @@ const FLOOR_Z: f64 = 3.0;
 const FLOOR_MB: f64 = 10.0;
 const CALL_RATE_MIN: f64 = 0.97;
 const BAF_AUTO_MAX: f64 = 0.03;
+/// The least share of an autosome's heterozygous sites that must be phased,
+/// in percent. Beagle phases only the sites its panel holds, so a whole
+/// genome phased against the 1000 Genomes panel keeps most of its
+/// heterozygous sites phased on every autosome (docs/51-mocha.md gives the
+/// measured shares); a panel cut to regions or a partly phased input VCF
+/// leaves whole stretches unphased, where MoChA's phased model is blind and
+/// its phased BAF autocorrelation reads 0.
+const PHASED_MIN_PERCENT: i128 = 80;
 
 pub const CALL_COLUMNS: [&str; 14] = [
     "chrom",
@@ -198,6 +216,19 @@ fn read_sites(path: &str) -> Result<Vec<Sites>, Error> {
     Ok(out)
 }
 
+/// The autosomes whose phased share of heterozygous sites is under
+/// [`PHASED_MIN_PERCENT`], as `chr7 (12 of 95000)`; `None` when every one
+/// with a heterozygous site meets it. Integer arithmetic, so a share of
+/// exactly the minimum passes.
+fn few_phased(auto: &[&Sites]) -> Option<String> {
+    let few: Vec<String> = auto
+        .iter()
+        .filter(|s| s.hets > 0 && s.phased * 100 < s.hets * PHASED_MIN_PERCENT)
+        .map(|s| format!("{} ({} of {})", s.chrom, s.phased, s.hets))
+        .collect();
+    (!few.is_empty()).then(|| few.join(", "))
+}
+
 /// The read-sampling floor: 6 / sqrt(D x H); NaN without data.
 fn floor_read(depth: f64, het_per_10mb: f64) -> f64 {
     if !(depth > 0.0 && het_per_10mb > 0.0) {
@@ -318,6 +349,11 @@ pub fn report(
         Some("no heterozygous site on chr1 to chr22 reached MoChA".to_owned())
     } else if phased == 0 {
         Some("no heterozygous site is phased, so MoChA cannot follow a haplotype".into())
+    } else if let Some(few) = few_phased(&auto) {
+        Some(format!(
+            "under {} of the heterozygous sites are phased on {few}, so MoChA cannot follow a haplotype there",
+            fmt(PHASED_MIN_PERCENT as f64 / 100.0, 2)
+        ))
     } else if floor.is_nan() {
         Some("MoChA gave no median depth, so no floor can be set".into())
     } else if call_rate.is_nan() || baf_auto.is_nan() {
@@ -568,7 +604,7 @@ mod tests {
                 first: 10001,
                 last: 100_010_001,
                 hets: 120_000,
-                phased: 94_000,
+                phased: 114_000,
             })
             .collect();
         report("S", &c, &s, &sites, "beagle").unwrap()
