@@ -121,6 +121,58 @@ pub enum Rerun {
     Refused(u8, String),
 }
 
+/// The switches `scripts/run-all.sh` records (its `SWITCHES` array; a unit
+/// test keeps the two equal). A replay sets or drops only these, whatever
+/// `meta switches` says, so an edited row can never hand `BASH_ENV`, `PATH`,
+/// `LD_PRELOAD` or `DYLD_*` to the `bash` it starts.
+pub const SWITCHES: &[&str] = &[
+    "GENOME_DIR",
+    "SKIP_VALIDATION",
+    "THREADS",
+    "SKIP_TRIM",
+    "INTERVALS",
+    "ALIGN_DIR",
+    "TOOLS",
+    "KIR",
+    "HLA_QC",
+    "HPO",
+    "REF_FASTA",
+    "EH_CATALOG",
+    "MANTA_CALL_REGIONS",
+    "PARASCOPY_POPULATION",
+    "PARAPHASE_REGIONS",
+    "ANCESTRY_PANEL",
+    "ANCESTRY_FINE_DIR",
+    "ARCHAIC_DIR",
+    "ARCHAIC_POP",
+    "PGSC_CALC_DIR",
+    "ANCIENT_PANEL_DIR",
+    "VIRAL_REF",
+    "MEGANE_KMERS",
+    "MOCHA_DATA",
+    "GRIDSS",
+    "IMPUTATION",
+    "SOMATIC",
+    "EXTRA_CALLERS",
+    "BENCHMARK",
+    "FAMILIES",
+    "OWNGENOME_LIVE_URL",
+    "LOCITYPER_DATA",
+    "LOCITYPER_BG_REGION",
+    "NXF_VER",
+    "NXF_WORK",
+    "NXF_HOME",
+    "NXF_OFFLINE",
+];
+
+/// The names of `meta switches` that are also in [`SWITCHES`].
+fn known(switches: &str) -> Vec<&str> {
+    switches
+        .split_whitespace()
+        .filter(|n| SWITCHES.contains(n))
+        .collect()
+}
+
 /// One shell word of a recorded command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Token {
@@ -131,7 +183,8 @@ enum Token {
 }
 
 /// Bytes `printf %q` leaves unquoted anywhere in a word, and that mean
-/// nothing to the shell there. `#` and `~` do too, except first in a word.
+/// nothing to the shell there. `#` and `~` do too, except first in a word
+/// (and `~` after an unquoted `=` or `:`, see [`words`]).
 fn plain(b: u8, first: bool) -> bool {
     b.is_ascii_alphanumeric()
         || b"%+-./:=@_,".contains(&b)
@@ -200,7 +253,8 @@ fn ansi_c(s: &[u8], i: &mut usize, out: &mut Vec<u8>) -> Option<()> {
 /// plain bytes, `\x`, `'...'` and `$'...'`, words split on spaces and tabs,
 /// and the `&&` operator. `None` for anything else a shell would act on (a
 /// `;`, a pipe, a redirect, an expansion, a glob, a double quote, a line
-/// break) and for text that is not UTF-8.
+/// break, a `~` first in a word or after an unquoted `=` or `:`, where bash
+/// expands it) and for text that is not UTF-8.
 fn words(cmd: &str) -> Option<Vec<Token>> {
     let s = cmd.as_bytes();
     let (mut out, mut i) = (Vec::new(), 0);
@@ -215,6 +269,8 @@ fn words(cmd: &str) -> Option<Vec<Token>> {
             continue;
         }
         let (mut w, mut lead, mut quoted) = (Vec::new(), 0, false);
+        // The byte before, when it stood unquoted.
+        let mut prev: Option<u8> = None;
         while i < s.len() && !matches!(s[i], b' ' | b'\t') {
             let b = s[i];
             if b == b'\\' {
@@ -226,17 +282,23 @@ fn words(cmd: &str) -> Option<Vec<Token>> {
                 w.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
                 i += 1 + ch.len_utf8();
                 quoted = true;
+                prev = None;
             } else if b == b'\'' {
                 let end = s[i + 1..].iter().position(|&c| c == b'\'')? + i + 1;
                 w.extend_from_slice(&s[i + 1..end]);
                 i = end + 1;
                 quoted = true;
+                prev = None;
             } else if b == b'$' && s.get(i + 1) == Some(&b'\'') {
                 i += 2;
                 ansi_c(s, &mut i, &mut w)?;
                 quoted = true;
-            } else if plain(b, w.is_empty() && !quoted) {
+                prev = None;
+            } else if plain(b, w.is_empty() && !quoted)
+                && !(b == b'~' && matches!(prev, Some(b'=' | b':')))
+            {
                 w.push(b);
+                prev = Some(b);
                 i += 1;
                 if !quoted {
                     lead = w.len();
@@ -265,10 +327,10 @@ pub struct Call {
 
 /// `meta command` as a typed call, or `None` when it is not the shape
 /// `run-all.sh` writes: `cd DIR && [NAME=VALUE ...] .../scripts/run-all.sh
-/// ARG ...`, every `NAME` one of `switches`. Nothing of it reaches a
-/// shell.
+/// ARG ...`, every `NAME` one of `switches` and of [`SWITCHES`]. Nothing of
+/// it reaches a shell.
 pub fn parse_call(cmd: &str, switches: &str) -> Option<Call> {
-    let names: Vec<&str> = switches.split_whitespace().collect();
+    let names = known(switches);
     let mut t = words(cmd)?.into_iter();
     let mut word = || match t.next() {
         Some(Token::Word(w, lead)) => Some((w, lead)),
@@ -314,7 +376,8 @@ pub fn parse_call(cmd: &str, switches: &str) -> Option<Call> {
 
 /// Replays the last `run-all.sh` command of the sample (`meta command` of
 /// `logs/run_status.tsv`) with the same switches: the switch variables the
-/// run read (`meta switches`) are dropped from the environment, so the
+/// run read (`meta switches`, only names in [`SWITCHES`]) are dropped from
+/// the environment, so the
 /// command's own assignments decide. The command is read as a typed call
 /// ([`parse_call`]) and `run-all.sh` is started by `bash` with its
 /// arguments one by one; a command of any other shape is refused and
@@ -381,7 +444,7 @@ pub fn rerun(
     append_log(log, &[[&started, "rerun-start", "", "", &cmd]])?;
     let mut c = Command::new("bash");
     c.arg(&call.script).args(&call.args).current_dir(&call.dir);
-    for name in switches.split_whitespace() {
+    for name in known(&switches) {
         c.env_remove(name);
     }
     for (name, value) in &call.env {

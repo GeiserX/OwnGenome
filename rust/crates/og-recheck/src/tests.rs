@@ -1262,9 +1262,42 @@ fn a_recorded_command_is_read_as_a_typed_call() {
         "cd /d /o/scripts/run-all.sh S1 male".to_owned(),
         "\\cd /d && /o/scripts/run-all.sh S1 male".to_owned(),
         "cd /d && 'TOOLS=x' /o/scripts/run-all.sh S1".to_owned(),
+        // bash expands a ~ after an unquoted = or :, printf %q writes \~.
+        format!("{base} a=~b"),
+        format!("{base} a:~b"),
+        format!("{base} --x=a:~/y"),
+        "cd /d && TOOLS=~/x /o/scripts/run-all.sh S1 male".to_owned(),
     ] {
         assert_eq!(parse_call(&bad, "TOOLS"), None, "{bad}");
     }
+    // printf %q's own escape of such a ~ reads back as the ~ itself.
+    let call = parse_call(&format!("{base} a=\\~b a:\\~b"), "TOOLS").unwrap();
+    assert_eq!(call.args[2..], ["a=~b", "a:~b"]);
+    // A name only an edited 'meta switches' line names is not a switch:
+    // the replay never hands it to bash.
+    for name in [
+        "BASH_ENV",
+        "PATH",
+        "LD_PRELOAD",
+        "DYLD_INSERT_LIBRARIES",
+        "ENV",
+    ] {
+        let cmd = format!("cd /d && {name}=/tmp/x TOOLS=a /o/scripts/run-all.sh S1 male");
+        assert_eq!(parse_call(&cmd, &format!("TOOLS {name}")), None, "{cmd}");
+    }
+}
+
+#[test]
+fn the_switches_a_replay_may_set_are_the_ones_run_all_records() {
+    let text = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../scripts/run-all.sh"),
+    )
+    .unwrap();
+    let start = text.find("\nSWITCHES=(").expect("SWITCHES in run-all.sh") + 11;
+    let end = start + text[start..].find(')').unwrap();
+    let listed: Vec<&str> = text[start..end].split_whitespace().collect();
+    assert!(listed.len() > 10, "{listed:?}");
+    assert_eq!(listed, crate::rerun::SWITCHES);
 }
 
 #[test]
