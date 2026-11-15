@@ -66,7 +66,7 @@ pub fn traits(c: &Ctx<'_>) -> Out {
             "apoe",
             Value::Array(t.rows.iter().filter(apoe).map(row).collect()),
         );
-    for st in ["called", "not_covered", "other_allele"] {
+    for st in ["called", "not_covered", "other_allele", "low_gq"] {
         out.put(
             st,
             count(

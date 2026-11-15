@@ -67,11 +67,18 @@ struct Rule {
     haps: Vec<Hap>,
     combos: Vec<Combo>,
 }
+/// A call whose GQ is below this is not read (decision D10, the floor of
+/// `og pgx refblock-fill` and the Y private SNPs). A missing GQ stays readable.
+const MIN_GQ: u32 = 20;
+/// The FILTER values that keep a call readable: a pass, no filter (a
+/// reference block), and DeepVariant's RefCall (a candidate it called 0/0).
+const READABLE_FILTERS: &[&str] = &["", ".", "PASS", "RefCall"];
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Status {
     Called,
     NotCovered,
     OtherAllele,
+    LowGq,
     Unphased,
     OtherHaplotype,
 }
@@ -81,8 +88,34 @@ impl Status {
             Self::Called => "called",
             Self::NotCovered => "not_covered",
             Self::OtherAllele => "other_allele",
+            Self::LowGq => "low_gq",
             Self::Unphased => "unphased",
             Self::OtherHaplotype => "other_haplotype",
+        }
+    }
+}
+/// Why a call is too weak to read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Weak {
+    /// Its GQ, below [`MIN_GQ`].
+    Gq(String),
+    /// The caller's FILTER value.
+    Filtered(String),
+}
+impl Weak {
+    /// The record's GQ and FILTER columns: `None` when the call is readable.
+    fn of(gq: &str, filter: &str) -> Option<Self> {
+        if !READABLE_FILTERS.contains(&filter) {
+            return Some(Self::Filtered(filter.to_owned()));
+        }
+        gq.parse::<f64>()
+            .is_ok_and(|q| q.is_finite() && q < f64::from(MIN_GQ))
+            .then(|| Self::Gq(gq.to_owned()))
+    }
+    fn why(&self) -> String {
+        match self {
+            Self::Gq(q) => format!("genotype quality {q}, below {MIN_GQ}"),
+            Self::Filtered(f) => format!("the caller filtered the call: {f}"),
         }
     }
 }
@@ -91,6 +124,8 @@ struct SiteGt {
     alleles: Vec<String>,
     status: Status,
     gq: String,
+    /// Set when the call is too weak to read: the status is then LowGq.
+    weak: Option<Weak>,
     snv: bool,
 }
 impl Default for SiteGt {
@@ -99,6 +134,7 @@ impl Default for SiteGt {
             alleles: vec![],
             status: Status::NotCovered,
             gq: ".".into(),
+            weak: None,
             snv: false,
         }
     }
@@ -552,7 +588,9 @@ fn genotype(site: &Site, records: &Genotypes) -> SiteGt {
             a.clone(),
         )
     });
-    gt.status = if gt.alleles.len() == 2
+    gt.status = if gt.weak.is_some() {
+        Status::LowGq
+    } else if gt.alleles.len() == 2
         && gt
             .alleles
             .iter()
@@ -586,7 +624,7 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
         let c: Vec<_> = line.split('\t').collect();
         if c.len() < 5 {
             return Err(format!(
-                "{path}:{n}: {} columns, expected CHROM POS REF ALT GENOTYPE [GQ]",
+                "{path}:{n}: {} columns, expected CHROM POS REF ALT GENOTYPE [GQ [FILTER]]",
                 c.len()
             ));
         }
@@ -620,7 +658,15 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
                 a.clone(),
             )
         });
-        let status = if al.len() == 2
+        let gq = c
+            .get(5)
+            .filter(|g| !g.is_empty())
+            .unwrap_or(&".")
+            .to_string();
+        let weak = Weak::of(&gq, c.get(6).copied().unwrap_or("."));
+        let status = if weak.is_some() {
+            Status::LowGq
+        } else if al.len() == 2
             && al
                 .iter()
                 .all(|a| a == &site.row["ref"] || a == &site.row["alt"])
@@ -629,17 +675,13 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
         } else {
             Status::OtherAllele
         };
-        let gq = c
-            .get(5)
-            .filter(|g| !g.is_empty())
-            .unwrap_or(&".")
-            .to_string();
         result.insert(
             key,
             SiteGt {
                 alleles: al,
                 status,
                 gq,
+                weak,
                 snv,
             },
         );
@@ -753,18 +795,35 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
                 rs[rs.len() - 1]
             )
         };
-        let status = if g.iter().any(|g| g.status == Status::NotCovered) {
-            Status::NotCovered
+        let weak: Vec<_> = r
+            .sites
+            .iter()
+            .zip(&g)
+            .filter_map(|(s, g)| g.weak.as_ref().map(|w| (s, w)))
+            .collect();
+        let (status, reading) = if g.iter().any(|g| g.status == Status::NotCovered) {
+            (
+                Status::NotCovered,
+                format!("Not read: needs a genotype at {need}."),
+            )
+        } else if !weak.is_empty() {
+            (
+                Status::LowGq,
+                format!(
+                    "A low-quality call at {}: not read; check the reads.",
+                    weak.iter()
+                        .map(|(s, w)| format!("{} ({})", s.row["rsid"], w.why()))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
+            )
         } else {
-            Status::OtherAllele
+            (
+                Status::OtherAllele,
+                format!("Not read: needs a genotype at {need}."),
+            )
         };
-        return finish(
-            out,
-            ".",
-            ".",
-            status,
-            format!("Not read: needs a genotype at {need}."),
-        );
+        return finish(out, ".", ".", status, reading);
     }
     let mut phase = if r.meta["needs_phase"] == "no" {
         "not_used"
@@ -1017,6 +1076,10 @@ fn run(verb: &str, opts: &HashMap<String, String>) -> Result<u8> {
                 "No genotype at this position in the gVCF (no reads, or a no-call): not read."
                     .into()
             }
+            Status::LowGq => format!(
+                "A low-quality call at this position ({}): not read; check the reads.",
+                g.weak.as_ref().map(Weak::why).unwrap_or_default()
+            ),
             Status::Called => s.row[["hom_ref", "het", "hom_alt"]
                 [g.alleles.iter().filter(|a| *a == &s.row["alt"]).count()]]
             .clone(),
@@ -1198,6 +1261,7 @@ mod tests {
                         alleles: al,
                         status: Status::Called,
                         gq: "40".into(),
+                        weak: None,
                         snv: true,
                     },
                 )
@@ -1448,7 +1512,9 @@ mod tests {
         // HFE C282Y/H63D: a LowQual call at C282Y is not read; RefCall and
         // a pass are.
         let hfe = |filter: &str| {
-            format!("chr6\t26092913\tG\tA\tG/A\t50\t{filter}\nchr6\t26090951\tC\tG\tC/G\t50\tRefCall\n")
+            format!(
+                "chr6\t26092913\tG\tA\tG/A\t50\t{filter}\nchr6\t26090951\tC\tG\tC/G\t50\tRefCall\n"
+            )
         };
         let line = read(&hfe("LowQual"), "HFE");
         assert_eq!((&line["status"][..], &line["result"][..]), ("low_gq", "."));
