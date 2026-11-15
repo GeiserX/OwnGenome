@@ -84,7 +84,7 @@ The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min 
 ### GATK HaplotypeCaller: when to use it
 
 - **Closer to a clinical lab's calls.** Many clinical genetics labs and CLIA-certified pipelines call with GATK HaplotypeCaller. If you need to compare your calls with a clinical lab report, running GATK alongside DeepVariant helps identify discrepancies. `scripts/03a-gatk-haplotypecaller.sh` is not the full GATK Best Practices germline workflow, though: it calls the duplicate-marked step-02 BAM directly, without base quality score recalibration (BQSR), and writes a plain VCF (`-ERC NONE`). Its calls can differ from a lab's GATK calls for that reason alone.
-- **Cohort calling.** GATK's GVCF mode (`-ERC GVCF`) produces per-sample genomic VCFs that can be joint-genotyped across a cohort with `GenomicsDBImport` + `GenotypeGVCFs`. This is the standard workflow for family studies and population-scale projects.
+- **Cohort calling.** GATK's GVCF mode (`-ERC GVCF`) produces per-sample genomic VCFs that can be joint-genotyped across a cohort with `GenomicsDBImport` + `GenotypeGVCFs`. This is the standard workflow for family studies and population-scale projects. Step 03a writes a plain VCF (`-ERC NONE`), so change that argument to `-ERC GVCF` before you use it this way.
 - **Balanced performance.** GATK sits between DeepVariant (highest precision) and FreeBayes (highest sensitivity), offering a different precision/recall tradeoff that can complement either tool.
 
 ### FreeBayes: when to use it
@@ -107,7 +107,7 @@ The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min 
 | Closest to a clinical lab's calls | GATK HaplotypeCaller (without BQSR here, so not identical to a lab's GATK Best Practices calls) |
 | Maximum sensitivity (research) | FreeBayes (with quality filtering) |
 | Fastest runtime | Strelka2 (72 min on 8 threads in one historical run; align with BWA-MEM2 for it) |
-| Cohort / family joint calling | GATK HaplotypeCaller (GVCF mode) |
+| Cohort / family joint calling | GATK HaplotypeCaller (GVCF mode; step 03a needs `-ERC GVCF` for it) |
 | Consensus approach (2+ callers agree) | DeepVariant + GATK (or all three) |
 
 **References:**
@@ -218,6 +218,6 @@ Stick with the defaults. The default tools were chosen for the best single-tool 
 | Am I exploring broadly and can tolerate false positives? | Yes | Run all three SNP callers |
 | Do I plan to use Strelka2? | Yes | Align with BWA-MEM2 (XS tag required) |
 | Do I have a GPU? | Yes | Neither entry point uses it; only `call_variants` could ([DeepVariant and a GPU](troubleshooting.md#step-3-deepvariant-and-a-gpu)) |
-| Am I analyzing a family/cohort? | Yes | Use GATK HC in GVCF mode for joint genotyping |
+| Am I analyzing a family/cohort? | Yes | Use GATK HC in GVCF mode for joint genotyping (step 03a writes `-ERC NONE`; switch it to `-ERC GVCF`) |
 | Am I only looking at structural variants? | Yes | Manta + Delly + CNVpytor with consensus merge |
 | Do I want results as fast as possible? | Yes | minimap2 + DeepVariant + Manta (defaults) |
