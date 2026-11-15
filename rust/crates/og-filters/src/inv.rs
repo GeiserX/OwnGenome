@@ -50,7 +50,7 @@ impl Default for Bounds {
         Bounds {
             pair_bp: 1000,
             max_single_bp: 1_000_000,
-            short_bp: 1000,
+            short_bp: 0,
         }
     }
 }

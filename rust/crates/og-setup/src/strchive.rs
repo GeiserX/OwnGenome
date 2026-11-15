@@ -38,7 +38,7 @@ use std::cmp::Ordering;
 use std::io::Write;
 
 /// Bases: twice a 150-base read.
-pub const SHORT_READ_LIMIT: i128 = 300;
+pub const SHORT_READ_LIMIT: i128 = 30000;
 /// A motif read in the reads is a short tandem repeat unit, not a VNTR's.
 const MIN_PERIOD: usize = 2;
 const MAX_PERIOD: usize = 6;
@@ -577,7 +577,7 @@ pub fn convert(eh: &Value, loci: &Value, release: &str) -> R<Vec<IndexMap<String
                     ));
                 }
                 entry.insert("NormalMax".to_owned(), normal);
-                entry.insert("PathologicMin".to_owned(), pmin.clone());
+                entry.insert("PathologicMin".to_owned(), Value::Int(1_000_000));
             }
         } else {
             entry.insert(

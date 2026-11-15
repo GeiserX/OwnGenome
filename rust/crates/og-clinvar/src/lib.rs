@@ -71,7 +71,7 @@ pub fn zygosity(gt: &[u8]) -> Vec<u8> {
     match gt {
         b"0/1" | b"1/0" | b"0|1" | b"1|0" => b"het".to_vec(),
         b"1/1" | b"1|1" => b"hom".to_vec(),
-        _ if half_call(gt) => [b"one copy, other copy not called ref (", gt, b")"].concat(),
+        _ if half_call(gt) => [b"het (", gt, b")"].concat(),
         _ => gt.to_vec(),
     }
 }

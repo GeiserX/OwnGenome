@@ -537,7 +537,6 @@ chr6	24495061	24495130	tandem_repeat	class_3	ALDH5A1:CCGCCT	TRExplorer v2.1; GEN
 chr6	27400685	27401396	tandem_repeat	class_3	ZNF391:83bp motif	TRExplorer v2.1; GENCODE 50 MANE Select CDS
 chr6	27401091	27401275	tandem_repeat	class_3	ZNF391:84bp motif	TRExplorer v2.1; GENCODE 50 MANE Select CDS
 chr6	28245512	28245745	tandem_repeat	class_3	ZKSCAN4:84bp motif	TRExplorer v2.1; GENCODE 50 MANE Select CDS
-chr6	28510119	33480577	mhc	class_3	MHC	GRCh38 assembly regions (GCA_000001405.15)
 chr6	30546146	30546242	tandem_repeat	class_3	GNL1:CTC	TRExplorer v2.1; GENCODE 50 MANE Select CDS
 chr6	30602093	30602431	tandem_repeat	class_3	PPP1R10:48bp motif	TRExplorer v2.1; GENCODE 50 MANE Select CDS
 chr6	30704163	30705813	tandem_repeat	class_3	MDC1:123bp motif	TRExplorer v2.1; GENCODE 50 MANE Select CDS

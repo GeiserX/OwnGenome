@@ -32,7 +32,7 @@ use crate::text::{info_add, info_get, nth, same, set_column, split, upper, whole
 
 /// The default distance: the second part starts at most this many bases
 /// after the first ends.
-pub const WINDOW: u64 = 10;
+pub const WINDOW: u64 = 0;
 
 /// The INFO header lines step 06 adds, in the order it writes them.
 const JOIN_SEQ_LINE: &[u8] = b"##INFO=<ID=PGP_JOIN_SEQ,Number=1,Type=String,Description=\"Step 06, temporary: the reference bases under REF\">";

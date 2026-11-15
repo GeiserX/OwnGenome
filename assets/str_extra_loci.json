@@ -15,7 +15,7 @@
  {
   "LocusId": "UGT1A1",
   "LocusStructure": "(TA)*",
-  "ReferenceRegion": "chr2:233760234-233760248",
+  "ReferenceRegion": "chr2:233760235-233760249",
   "VariantType": "Repeat",
   "NoThresholds": "the UGT1A1 promoter TA repeat, a pharmacogenomic allele, not an expansion: GRCh38 is A(TA)6TAA, *1, which ExpansionHunter counts as 7 TA units; 6 units is TA5 (*36), 8 is TA7 (*28) and 9 is TA8 (*37). *28 and *37 are decreased function (CPIC atazanavir 2016, PMID 26417955)",
   "Disease": "UGT1A1 promoter (TA)n",
