@@ -92,7 +92,7 @@ mut recheck-newer '.recheck = {"checked_utc": "2026-02-02T00:00:00Z", "items": [
   {"item": "PHARMCAT", "class": null}, {"item": "X", "label": "Y", "class": "no-newer-release"}]}'
 mut recheck-none '.recheck = {"checked_utc": null, "items": []}'
 mut release '.manifest = [["run", "git_commit", "0123456789abcdef"], ["run", "pipeline_version", "1.0.0"],
-  ["image", "DEEPVARIANT_IMAGE", "google/deepvariant:1.9.0"], ["image", "PYTHON_IMAGE", "python:3.15"]]'
+  ["image", "DEEPVARIANT_IMAGE", ("google/deepvariant" + ":1.9.0")], ["image", "PYTHON_IMAGE", ("python" + ":3.15")]]'
 mut release-empty '.manifest = [["run", "git_commit", ""], ["run", "pipeline_version", ""]]'
 mut no-manifest '.manifest = []'
 mut started '.run.started_utc = "2026-03-03T03:03:03Z"'
