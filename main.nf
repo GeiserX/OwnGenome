@@ -930,7 +930,8 @@ workflow {
     }
 
     // ─── Blood groups (opt-in: bloodtype) ───────────────────────────────
-    // The antigens of assets/bloodtype_markers.tsv from the VCF, and RhD from
+    // The antigens of assets/bloodtype_markers.tsv from the VCF, its records
+    // near the markers left-aligned against the reference first, and RhD from
     // the BAM's read depth. A sample without a BAM gets [] for the depth: its
     // RhD is not determined. Equivalent to scripts/41-bloodtype.sh.
     ch_bloodtype          = Channel.empty()
@@ -945,7 +946,9 @@ workflow {
                 .join(BLOODTYPE_DEPTH.out.depth.map { meta, f -> [meta.id, f] }, remainder: true)
                 .filter { row -> row[1] != null }
                 .map { row -> [row[1], row[2], row[3], row[4] ?: []] },
-            ch_bloodtype_markers
+            ch_bloodtype_markers,
+            ch_reference,
+            ch_reference_fai
         )
         ch_bloodtype          = BLOODTYPE.out.table
         ch_bloodtype_versions = BLOODTYPE_REGIONS.out.versions.mix(BLOODTYPE_DEPTH.out.versions, BLOODTYPE.out.versions)
