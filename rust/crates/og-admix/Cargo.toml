@@ -1,0 +1,12 @@
+[package]
+name = "og-admix"
+description = "What the fine-ancestry engines share: our own local-ancestry painting and the projection of ancestry fractions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

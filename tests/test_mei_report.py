@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og mei report: the Alu, L1 and SVA insertions MEGAnE calls, and the known disease insertions (step 50).
 
 Each case writes a synthetic VCF in the format MEGAnE writes (the header and
@@ -179,20 +180,37 @@ check("4 a catalog without its columns stops it", isinstance(err, str) and "colu
 # 5. the summary and the reports
 import collect_summary as cs  # noqa: E402
 import render_report as rr  # noqa: E402
+
+class Unreadable(Exception):
+    """A section og summary collect could not read (its state is unreadable)."""
+
+
+def sec(d, s, key):
+    """(source path, data) of section KEY of the summary og summary collect writes
+    for folder D: (None, {}) without its file; Unreadable when it cannot be read."""
+    x = cs.collect(s, d)["sections"][key]
+    if x["state"] == "unreadable":
+        raise Unreadable(x["note"])
+    return (os.path.join(d, x["source"]) if x["source"] else None), x["data"]
+
+
+MEI_NOT_ASSESSED = ("Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): "
+                    "not looked for (step 50, MEGAnE, is opt-in)")
+
 with tempfile.TemporaryDirectory() as d:
     os.makedirs(f"{d}/S")
     summ = cs.collect("S", f"{d}/S")
     check("5 without step 50 the not-assessed list names mobile element insertions",
-          cs.MEI_NOT_ASSESSED in summ["not_assessed"] and cs.MEI_NOT_ASSESSED.startswith("Mobile element insertions"),
+          MEI_NOT_ASSESSED in summ["not_assessed"] and MEI_NOT_ASSESSED.startswith("Mobile element insertions"),
           True)
-    check("5 no table: no section", cs.sec_mei(f"{d}/S", "S"), (None, {}))
+    check("5 no table: no section", sec(f"{d}/S", "S", "mei"), (None, {}))
     # A step 50 that ran and failed was looked for: it is listed as failed, not as opt-in.
     os.makedirs(f"{d}/F/logs")
     with open(f"{d}/F/logs/run_status.tsv", "w") as f:
         f.write(f"meta\tstarted_epoch\t{time.time() - 60}\nstep\t50\tfailed (exit 1)\n")
     summ = cs.collect("F", f"{d}/F")
     check("5 a failed step 50 is listed under not run, not as not looked for",
-          (summ["sections"]["mei"]["state"], cs.MEI_NOT_ASSESSED in summ["not_assessed"],
+          (summ["sections"]["mei"]["state"], MEI_NOT_ASSESSED in summ["not_assessed"],
            any("step 50 failed" in x for x in summ["not_run"])), ("failed", False, True))
     os.makedirs(f"{d}/S/mei")
     for name, text in (("m.vcf", HEAD + FKTN_SVA + rec("chr20", 5040478, "SINE/Alu")), ("sites.tsv", SITES),
@@ -202,14 +220,14 @@ with tempfile.TemporaryDirectory() as d:
     subprocess.run([OG, "mei", "report", "--sample", "S", "--vcf", f"{d}/m.vcf", "--sites", f"{d}/sites.tsv",
                     "--depth", f"{d}/depth.tsv", "--out-calls", f"{d}/S/mei/S_mei.tsv",
                     "--out-sites", f"{d}/S/mei/S_mei_sites.tsv"], check=True)
-    path, data = cs.sec_mei(f"{d}/S", "S")
+    path, data = sec(f"{d}/S", "S", "mei")
     check("5 the summary finds the table", path.endswith("mei/S_mei_sites.tsv"), True)
     check("5 the summary counts the calls per element", (data["calls"], data["by_element"]), (2, {"Alu": 1, "SVA": 1}))
     check("5 the summary has each catalog row", [(x["gene"], x["status"]) for x in data["sites"]],
           [("FKTN", "seen"), ("TAF1", "not seen")])
     summ = cs.collect("S", f"{d}/S")
     check("5 with step 50's tables, mobile element insertions are not listed as not assessed",
-          cs.MEI_NOT_ASSESSED in summ["not_assessed"], False)
+          MEI_NOT_ASSESSED in summ["not_assessed"], False)
     try:
         page = rr.html_report(summ)
     except Exception as e:  # the whole step 24 page is lost if the card raises
@@ -226,23 +244,23 @@ with tempfile.TemporaryDirectory() as d:
     good_calls = open(calls_path).read()
     with open(calls_path, "w") as f:
         f.write(good_calls.splitlines()[0] + "\n")
-    check("5 a calls table with its header and no row is zero calls", cs.sec_mei(f"{d}/S", "S")[1]["calls"], 0)
+    check("5 a calls table with its header and no row is zero calls", sec(f"{d}/S", "S", "mei")[1]["calls"], 0)
     for name, text in (("an empty calls table", ""), ("a calls table without its columns", "chrom\tpos\n")):
         with open(calls_path, "w") as f:
             f.write(text)
         try:
-            cs.sec_mei(f"{d}/S", "S")
+            sec(f"{d}/S", "S", "mei")
             check(f"5 {name} is unreadable", "read", "Unreadable")
-        except cs.Unreadable:
+        except Unreadable:
             check(f"5 {name} is unreadable", "Unreadable", "Unreadable")
     with open(calls_path, "w") as f:
         f.write(good_calls)
     with open(f"{d}/S/mei/S_mei_sites.tsv", "w") as f:
         f.write("gene\tstatus\nFKTN\tseen\n")
     try:
-        cs.sec_mei(f"{d}/S", "S")
+        sec(f"{d}/S", "S", "mei")
         check("5 a sites table without its columns is unreadable", "read", "Unreadable")
-    except cs.Unreadable:
+    except Unreadable:
         check("5 a sites table without its columns is unreadable", "Unreadable", "Unreadable")
 
 # 6. the real catalog

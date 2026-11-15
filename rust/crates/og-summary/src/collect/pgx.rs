@@ -661,4 +661,62 @@ mod tests {
         );
         assert!(json_load("[1]").is_ok());
     }
+
+    /// The checks of step 32's probable CYP2D6 call, from
+    /// tests/test_pgx_outside_calls.py, which tested the Python rule before
+    /// this port replaced it.
+    #[test]
+    fn pypgx_alone_is_probable_only_on_clean_evidence() {
+        let ev = |filter: &str, quality: &str| {
+            Some([
+                "Normal Metabolizer".to_owned(),
+                filter.to_owned(),
+                quality.to_owned(),
+            ])
+        };
+        let cy = |g: &str, f: &str| Cyrius {
+            genotype: g.into(),
+            filter: Some(f.into()),
+        };
+        let p = |e: Option<[String; 3]>, c: Option<&Cyrius>, depth: &str| {
+            probable("*1/*2", e.as_ref(), c, Some(depth))
+        };
+        assert_eq!(
+            p(ev("PASS", "ok"), None, "ok"),
+            Some(Probable {
+                diplotype: "*1/*2".into(),
+                phenotype: "Normal Metabolizer".into()
+            })
+        );
+        let none = cy("None", "Not_assigned_to_haplotypes");
+        assert!(
+            p(ev("PASS", "ok"), Some(&none), "ok").is_some(),
+            "Cyrius ran, no call"
+        );
+        assert!(
+            p(ev("PASS", "ok"), None, "unreliable").is_none(),
+            "a failed depth check"
+        );
+        let call = cy("*1/*2", "PASS");
+        assert!(
+            p(ev("PASS", "ok"), Some(&call), "ok").is_none(),
+            "two callers decide"
+        );
+        for (filter, quality) in [
+            ("PASS", "low-confidence: check the reads"),
+            ("not PASS: chr22:42128945 C>T RefCall", "ok"),
+            ("not in pypgx's table: *99", "ok"),
+            ("PASS", "GQ not in the VCF: check the reads"),
+        ] {
+            assert!(
+                p(ev(filter, quality), None, "ok").is_none(),
+                "{filter} {quality}"
+            );
+        }
+        assert!(
+            p(None, None, "ok").is_none(),
+            "a summary without the columns"
+        );
+        assert!(probable("None", ev("PASS", "ok").as_ref(), None, None).is_none());
+    }
 }

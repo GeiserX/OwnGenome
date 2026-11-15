@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og clinvar join-adjacent, the combined-allele joiner of step 06 and the
 CLINVAR_SCREEN module, on hand-made records at real GRCh38 chr22 positions.
 

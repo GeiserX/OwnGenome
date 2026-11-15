@@ -27,6 +27,7 @@ mod gt;
 mod header;
 pub mod rank;
 mod record;
+pub mod shift;
 
 pub use csq::{CsqLayout, csq_field};
 pub use gt::Gt;

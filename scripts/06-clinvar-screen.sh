@@ -4,7 +4,9 @@
 #
 # Output: clinvar/${SAMPLE}_clinvar_hits.vcf — the sample's records that match a
 # ClinVar Pathogenic/Likely_pathogenic allele and whose genotype carries it,
-# annotated with ClinVar's ID, GENEINFO, CLNSIG and CLNREVSTAT. Both reports
+# annotated with ClinVar's ID, GENEINFO, CLNSIG and CLNREVSTAT, and with the
+# condition ClinVar names for the allele (CLNDN, and its database ids in
+# CLNDISDB) when the ClinVar file defines them. Both reports
 # (steps 24 and generate-report.sh) read this file and group the hits by ClinVar
 # review stars. clinvar/${SAMPLE}_clinvar_hits.tsv holds the same hits, one row each.
 # Two neighbouring records that can be one allele are also matched as their
@@ -204,13 +206,24 @@ echo "Combined alleles of neighbouring records: $(bcftools_run bcftools index -n
 # og clinvar join-adjacent marks each part of a matched combined allele
 # (PGP_PART_OF), and two hits in one gene that can be one allele but matched no
 # combined record (PGP_ONE_ALLELE).
+# The condition goes on too: CLNDN (ClinVar's disease name) and CLNDISDB (its
+# MONDO, OMIM and MedGen ids). A gene can carry more than one disease, and a
+# later step needs to know which one ClinVar asserted for this allele. Every
+# ClinVar release defines both; a hand-built ClinVar file without them (bcftools
+# annotate stops on a tag the file does not define) gives hits without them.
+CLINVAR_COLS="ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT$(bcftools_run bcftools view -h "$(cpath "$CLINVAR_NORM")" \
+  | awk '/^##INFO=<ID=CLNDN,/ { a = ",INFO/CLNDN" } /^##INFO=<ID=CLNDISDB,/ { b = ",INFO/CLNDISDB" } END { printf "%s%s", a, b }')"
+case "$CLINVAR_COLS" in
+  *CLNDN*CLNDISDB) ;;
+  *) echo "NOTICE: ${CLINVAR} does not define CLNDN and CLNDISDB; the hits carry no ClinVar condition" ;;
+esac
 SHARED="${OUTPUT_DIR}/${SAMPLE}_shared.vcf.gz"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
   sh -c "set -e
     bcftools isec --no-version -n=2 -w1 -Oz -o '$(cpath "$SHARED")' '$(cpath "$CANDIDATES")' '$(cpath "$CLINVAR_NORM")'
     bcftools index -f -t '$(cpath "$SHARED")'
     bcftools annotate --no-version -a '$(cpath "$CLINVAR_NORM")' --pair-logic exact \
-      -c ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT -Ou '$(cpath "$SHARED")' \
+      -c '${CLINVAR_COLS}' -Ou '$(cpath "$SHARED")' \
       | bcftools view --no-version -i 'GT~\"[1-9]\"' -Ov -o '$(cpath "${HITS}.untagged")'
     /pgp-bin/og clinvar join-adjacent --mode tag '$(cpath "${HITS}.untagged")' > '$(cpath "${HITS}.part")'
     rm -f '$(cpath "${HITS}.untagged")'

@@ -78,7 +78,7 @@ REQUEST_SECONDS = 60  # a client that stops sending mid-request frees its thread
 FAIL_WINDOW_SECONDS = 15 * 60
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 CSP = ("default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self' data:; "
-       "form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+       "form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'")
 # A run's own HTML (the report, CPSR, PharmCAT, MultiQC) carries inline styles and, for third-party
 # pages, scripts and outside links. It is sent sandboxed: no script runs, nothing is fetched from
 # outside, and it keeps its styles. allow-same-origin lets its links reach the run's other files
@@ -974,12 +974,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 pass
         return peer
 
-    def headers_common(self, csp=CSP):
+    def headers_common(self, csp=CSP, frame_options="DENY"):
         self.send_header("Content-Security-Policy", csp)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Frame-Options", frame_options)
 
     def send_body(self, code, ctype, body, headers=(), csp=CSP):
         if isinstance(body, str):

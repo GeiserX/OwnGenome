@@ -10,7 +10,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-bam` | BAM reading as pysam does it (fetch, `reference_end`, `cigarstring`, `get_blocks`), on htslib linked statically, and the tools that read BAMs: the reads at a variant (`reads`: one CIGAR walk per read, SA pieces, filters per tool), `og cdna check`, `og cdna scan`, `og comphet phase`, `og bam contigs`, the CYP2D6 depth check and the RFC1 motif count |
 | `crates/og-pedigree` | the pedigree rules of step 38: families files, members, kinship, declared relationships, PARs |
 | `crates/og-qc` | `og qc sex-loss`: step 33's mosaic loss of Y or X, with CPython's medians, `fmean` and exact `variance` |
-| `crates/og-summary` | the step tables: `og qc sample` (step 33), `og prs table` (step 25), `og mito annotate`, `og mito deletions`, `og mito copies` (step 20); the sections of summary.json, `og summary collect --only a` (QC), `--only b` (ClinVar, carrier list, PGx, CPSR, the clinical filter with ACMG SF and two hits, slivar) and `--only c` (the remaining summary sections), and without `--only` the whole summary.json with its post pass (the readings that join sections, the CYP2D6 block, `not_run`, `not_assessed`, `recheck`, `new_since`), beside the Python collector, which still writes summary.json; `og roh summary` (step 11) |
+| `crates/og-summary` | the step tables: `og qc sample` (step 33), `og prs table` (step 25), `og mito annotate`, `og mito deletions`, `og mito copies` (step 20); the sections of summary.json, `og summary collect --only a` (QC), `--only b` (ClinVar, carrier list, PGx, CPSR, the clinical filter with ACMG SF and two hits, slivar) and `--only c` (the remaining summary sections), and without `--only` the whole summary.json with its post pass (the readings that join sections, the CYP2D6 block, `not_run`, `not_assessed`, `recheck`, `new_since`), which steps 24 and HTML_REPORT and `generate-report.sh` write through `bin/render_report.py`; `og roh summary` (step 11) |
 | `crates/og-chip` | step 49, clonal haematopoiesis: `og chip prepare`, `og chip report`, `og chip check-table` |
 | `crates/og-cn` | copy number from depth, steps 32, 35, 41 and 46: `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions`, `og cn marker-read` |
 | `crates/og-bloodtype` | step 41, blood groups: `og bloodtype report`, `og bloodtype check-markers`, `og bloodtype systems` |
@@ -22,6 +22,10 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-steps` | step helpers, among them `og pgx outside-calls`, `og pgx hla-concordance` (steps 08, 36), `og pgx pypgx-summary` (step 32) and `og paraphase check-bam`, `og paraphase table` (step 35b) |
 | `crates/og-fresh` | `og dev freshness`: the upstream lookups of the monthly freshness issue, each answer typed, HTTP through the host's `curl` |
 | `crates/og-recheck` | `og recheck`: which of a finished sample's results a newer ClinVar or catalog would change, `--rerun`, `--affected`, `--launch-dir` |
+| `crates/og-render` | `og report render`, `og report index`, `og report charts`: the reports from summary.json (not ported yet) |
+| `crates/og-live` | `og live serve`, `og live results`, `og live family`, `og live demo`, `og view serve`: the live site (not ported yet) |
+| `crates/og-couple` | `og couple screen`, `og couple genes`: step 39's couple screen (not ported yet) |
+| `crates/og-admix` | what the fine-ancestry engines share: our own painting and projection (not ported yet) |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |
 | `og.sh` | build or download `bin/.og/og-linux-{x86_64,aarch64}`, and check they match this `rust/` |
 | `rust-toolchain.toml` | the Rust release, the one `OG_BUILDER` (`versions.env`) ships |

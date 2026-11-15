@@ -149,7 +149,8 @@
     var stopC = el('button', { type: 'button', 'data-stop': 'chromosome' }, 'Chromosome');
     var stopR = el('button', { type: 'button', 'data-stop': 'region' }, 'Region');
     var stopN = el('button', { type: 'button', 'data-stop': 'gene' }, 'Gene');
-    add(gauge, stopG, stopC, stopR, stopN);
+    var stopReads = el('button', { type: 'button', 'data-stop': 'reads' }, 'Reads');
+    add(gauge, stopG, stopC, stopR, stopN, stopReads);
     // Zoom buttons for an open chromosome: the touch path to what the wheel and the + and - keys do.
     var zoom = el('div', { 'class': 'gm-zoom', role: 'group', 'aria-label': 'Zoom', hidden: 'hidden' });
     var zoomOut = el('button', { type: 'button', 'aria-label': 'Zoom out', 'data-zoom': 'out' }, '−');
@@ -169,14 +170,23 @@
     var canvas = el('canvas', { 'class': 'gm-canvas', tabindex: '0', role: 'img', 'aria-describedby': 'gm-narration' });
     var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: 'hidden' });
     var toast = el('div', { 'class': 'gm-toast', role: 'status', hidden: 'hidden' });
-    add(stage, canvas, tip, toast);
+    var readsPill = el('button', { type: 'button', 'class': 'gm-reads-pill', hidden: 'hidden', 'aria-controls': 'gm-reads', 'aria-expanded': 'false' }, 'See the reads · R');
+    var readsHint = el('p', { 'class': 'gm-reads-hint', hidden: 'hidden' }, 'Under 50 kb: the reads are one key away · R');
+    add(stage, canvas, tip, toast, readsPill);
+    var reads = el('section', { 'class': 'gm-reads', id: 'gm-reads', 'aria-label': 'Reads', hidden: 'hidden' });
+    var readsPlace = el('span', { 'class': 'mono gm-reads-place' });
+    var readsFull = el('a', { target: '_blank', rel: 'noopener' }, 'Open full viewer ↗');
+    var readsClose = button('Back to the map · Esc', closeReads, 'gm-reads-close');
+    var readsWho = el('p', { 'class': 'gm-reads-who' });
+    var readsBody = el('div', { 'class': 'gm-reads-body' });
+    add(reads, add(el('div', { 'class': 'gm-reads-head' }), el('b', {}, 'Reads'), readsPlace, readsFull, readsClose), readsWho, readsBody);
     // The marks drawn, as links: the keyboard and screen-reader path to each finding (Tab steps through them).
     var marks = el('ul', { 'class': 'gm-marks', 'aria-label': 'Findings on the map' });
     var fallback = el('div', { 'class': 'gm-fallback', hidden: 'hidden' });
     // The whole-genome strip over an open chromosome, and the In view table under the map (strip(), table()).
     var strip = el('canvas', { 'class': 'gm-strip', role: 'img', hidden: 'hidden' });
     var inview = el('details', { 'class': 'gm-inview' });
-    add(main, head, strip, stage, inview, marks, fallback);
+    add(main, head, strip, stage, readsHint, reads, inview, marks, fallback);
     var margin = el('aside', { 'class': 'gm-margin' });
     var mkick = el('div', { 'class': 'fig-label' }, 'The whole genome');
     var mline = el('div', { 'class': 'gm-mline mono' });
@@ -205,6 +215,7 @@
     var hatch = null;
     // The finding whose card the margin shows (an id of drawn() only), and the mark the keyboard is on.
     var sel = null, focusId = null;
+    var readsFrame = null, readsId = null, readsView = '', readsLocus = '';
     // The gene files, fetched once each: per chromosome when a view first reaches the region level, the
     // names when the search box gets its first key. Reference data, the same for every reader.
     var genes = {}, names = null;
@@ -558,7 +569,11 @@
       ctx.beginPath(); ctx.moveTo(wa, L.over + 12); ctx.lineTo(g, L.ruler); ctx.moveTo(wz, L.over + 12); ctx.lineTo(g + W, L.ruler); ctx.stroke();
       ctx.globalAlpha = k;
       // The ruler, in Mb.
-      ctx.strokeStyle = 'rgba(255,255,255,.14)';
+      if (level() === 'reads') {
+        ctx.fillStyle = 'rgba(200,171,120,.12)';
+        ctx.fillRect(g, L.ruler - 2, W, 23);
+      }
+      ctx.strokeStyle = level() === 'reads' ? BRASS : 'rgba(255,255,255,.14)';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(g, L.ruler); ctx.lineTo(g + W, L.ruler); ctx.stroke();
       var stp = niceStep(v[2], W);
@@ -1001,7 +1016,10 @@
       stopG.setAttribute('aria-pressed', String(lv === 'genome'));
       stopC.setAttribute('aria-pressed', String(lv === 'chromosome'));
       stopR.setAttribute('aria-pressed', String(lv === 'region'));
-      stopN.setAttribute('aria-pressed', String(close_(lv)));
+      stopN.setAttribute('aria-pressed', String(lv === 'gene'));
+      stopReads.setAttribute('aria-pressed', String(lv === 'reads'));
+      readsPill.hidden = readsHint.hidden = lv !== 'reads';
+      syncReads();
       zoom.hidden = lv === 'genome';
       crumb.textContent = '';
       crumb.hidden = lv === 'genome';  // the gauge already says Genome
@@ -1180,9 +1198,107 @@
       add(card, facts);
       if (r.phrase) { add(card, el('p', { 'class': 'gm-card-phrase' }, r.phrase)); }
       var foot = el('p', { 'class': 'gm-card-foot' });
-      add(foot, el('a', { href: r.href }, 'The finding’s page ›'), ' ', button('Close the card', function () { pick(null); canvas.focus({ preventScroll: true }); }));
+      var rb = button('See the reads', function () { openReads(r); }, 'gm-card-reads');
+      rb.setAttribute('data-id', r.id);
+      add(foot, el('a', { href: r.href }, 'The finding’s page ›'), ' ', rb, ' ', button('Close the card', function () { pick(null); canvas.focus({ preventScroll: true }); }));
       add(card, foot);
     }
+
+    // --- reads: only the existing same-origin viewer loads tracks and byte ranges ---
+    // Every candidate comes from drawn(), after the page's own veil callbacks. No result body is fetched here.
+    function readsBase() {
+      var run = document.documentElement.dataset.run || M.id;
+      return '/runs/' + encodeURIComponent(run) + '/viewer/';
+    }
+    function exactView() {
+      var v = view(), ch = chrom();
+      return ch.n + ':' + Math.max(1, Math.round(v[0] + 1)) + '-' + Math.min(ch.len, Math.round(v[1]));
+    }
+    function findingLocus(r) {
+      var ch = M.chroms[M.by[r.chrom]], p = r.pos || Math.round((r.s + r.e) / 2) + 1;
+      return r.chrom + ':' + Math.max(1, p - 50) + '-' + Math.min(ch.len, p + 50);
+    }
+    function nearestInView() {
+      var v = view(), ch = chrom(), best = null, dist = Infinity;
+      drawn().forEach(function (r) {
+        if (r.chrom !== ch.n || r.e <= v[0] || r.s >= v[1]) { return; }
+        var d = Math.abs((r.s + r.e) / 2 - cam.c);
+        if (d < dist) { best = r; dist = d; }
+      });
+      return best;
+    }
+    function setReadsLocus(locus) {
+      if (locus === readsLocus) { return; }
+      readsLocus = locus;
+      readsPlace.textContent = locus;
+      readsFull.href = readsBase() + '#' + locus;
+      if (readsFrame) {
+        // Changing only the fragment lets viewer.js search without reloading igv.js.
+        if (readsFrame.parentNode && readsFrame.contentWindow) {
+          readsFrame.contentWindow.location.replace(readsFull.href);
+        } else { readsFrame.src = readsFull.href; }
+      }
+    }
+    function closeReads() {
+      if (reads.hidden) { return; }
+      reads.hidden = true;
+      readsBody.textContent = '';  // stop reads requests, and discard a result that can close again
+      readsPlace.textContent = '';
+      readsWho.textContent = '';
+      readsFull.removeAttribute('href');
+      readsFull.hidden = true;
+      readsFrame = null; readsId = null; readsLocus = ''; readsView = '';
+      readsPill.setAttribute('aria-expanded', 'false');
+      inview.hidden = !!failure;
+      canvas.focus({ preventScroll: true });
+    }
+    function syncReads() {
+      if (reads.hidden) { return; }
+      if (failure || (readsId && !rowOf(readsId))) { closeReads(); return; }
+      var v = exactView();
+      if (v !== readsView) { readsView = v; setReadsLocus(v); }
+    }
+    function openReads(r) {
+      if (!M || failure || (r && !rowOf(r.id))) { return; }
+      if (!r && level() !== 'reads') { say('Zoom under 50 kb to see the reads, or open a finding’s card'); return; }
+      r = r || nearestInView();
+      readsId = r ? r.id : null;
+      reads.hidden = false;
+      inview.hidden = true;
+      readsPill.setAttribute('aria-expanded', 'true');
+      readsView = exactView();
+      readsWho.textContent = M.label + ' · run ' + (document.documentElement.dataset.run || M.id) +
+        (r ? ' · ' + (r.gene || r.title) + (r.hgvs ? ' ' + r.hgvs : '') : '');
+      var demo = document.documentElement.dataset.mode === 'replay';
+      readsFull.hidden = demo;
+      if (demo) {
+        readsBody.textContent = 'The genome viewer is not in the demo';
+      } else if (!readsFrame) {
+        readsBody.textContent = '';
+        var frame = el('iframe', { title: 'Genome viewer reads', 'class': 'gm-reads-frame' });
+        readsFrame = frame;
+        frame.addEventListener('load', function () {
+          if (readsFrame !== frame) { return; }
+          var doc = frame.contentDocument;
+          if (!doc) { return; }
+          // An unavailable viewer answers with its reason as plain text. Display that reason in the panel.
+          if (!doc.documentElement.hasAttribute('data-pgp-status')) {
+            readsBody.textContent = 'The viewer is off on this site: ' + doc.body.textContent.trim();
+            readsFrame = null;
+            readsFull.hidden = true;
+            return;
+          }
+          doc.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { e.preventDefault(); closeReads(); }
+          });
+        });
+        readsLocus = '';  // a new frame needs its initial URL even when reopening the same place
+      }
+      setReadsLocus(r ? findingLocus(r) : readsView);
+      if (readsFrame && !readsFrame.parentNode) { add(readsBody, readsFrame); }
+      readsClose.focus({ preventScroll: true });
+    }
+    readsPill.addEventListener('click', function () { openReads(); });
     // The finding nearest the view when none of this chromosome's is in it: the closest one on this
     // chromosome, else the first on the next chromosome that has one, in reading order. Null when one is in view.
     function nearest() {
@@ -1494,7 +1610,7 @@
       var open = level() !== 'genome', span = Math.exp(tgt.ls);
       var done = true;
       if (e.key === 'Escape') {
-        if (sel) { pick(null); } else if (open) { stepOut(); } else { done = false; }
+        if (!reads.hidden) { closeReads(); } else if (sel) { pick(null); } else if (open) { stepOut(); } else { done = false; }
       } else if (e.key === '0') { if (open) { closeChrom(true); } else { done = false; } }
       else if (e.key === '[' || e.key === ']') {
         var i = (open ? tgt.ci : (e.key === ']' ? -1 : M.chroms.length)) + (e.key === ']' ? 1 : -1);
@@ -1522,7 +1638,10 @@
       if (!M || failure || e.altKey || e.ctrlKey || e.metaKey || !fig.isConnected) { return; }
       var t = e.target, tag = t && t.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) { return; }
-      if (e.key === '/') { e.preventDefault(); findBox.focus(); }
+      if (e.defaultPrevented) { return; }
+      if (e.key === 'Escape' && !reads.hidden) { e.preventDefault(); closeReads(); }
+      else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); openReads(); }
+      else if (e.key === '/') { e.preventDefault(); findBox.focus(); }
       else if (e.key === 't' || e.key === 'T') { e.preventDefault(); inview.open = !inview.open; }
       else if (e.key === 'l' || e.key === 'L') {
         e.preventDefault();
@@ -1550,11 +1669,18 @@
         c = f ? (f.s + f.e) / 2 : M.chroms[ci].len / 2;
       }
       if (lv === 'chromosome') { openChrom(ci, undefined, undefined, true); return; }
-      openChrom(ci, c, (lv === 'region' ? REGION_STOP : GENE_STOP) * openW(), true);
+      openChrom(ci, c, lv === 'reads' ? 2000 : (lv === 'region' ? REGION_STOP : GENE_STOP) * openW(), true);
     }
     stopC.addEventListener('click', function () { stopTo('chromosome'); });
     stopR.addEventListener('click', function () { stopTo('region'); });
     stopN.addEventListener('click', function () { stopTo('gene'); });
+    stopReads.addEventListener('click', function () {
+      if (failure || !M) { return; }
+      stopTo('reads');
+      // The target is already at reads level; finish the camera motion before selecting its nearest row.
+      cam.ci = tgt.ci; cam.c = tgt.c; cam.ls = tgt.ls; cam.k = tgt.k;
+      openReads();
+    });
     nearBtn.addEventListener('click', function () { goNearest(); });
     window.addEventListener('hashchange', function () { readHash(false); });
     window.addEventListener('popstate', function () { readHash(false); });
@@ -1917,6 +2043,8 @@
     // --- loading ---
     function fail(why, words) {
       failure = why;
+      closeReads();
+      readsHint.hidden = true;
       // The frame and the margin the last refresh scheduled would draw the old document again: drop them.
       // These lines and the failure guards of draw(), describe() and schedule() cover for each other, so no one
       // of them can go red alone: the failed-reload check undoes them together.
@@ -1978,7 +2106,7 @@
         failure = null;
         stage.hidden = false;
         marks.hidden = false;
-        inview.hidden = false;
+        inview.hidden = !reads.hidden;
         fallback.hidden = true;
         hatch = hatch || pattern(0.16);
         fig.setAttribute('data-pgp-map-parse-ms', String(Math.round(x.parse)));
@@ -2017,6 +2145,7 @@
           return;
         }
         if (!M) { return; }
+        syncReads();
         cacheKey = '';
         hideTip();  // a tooltip of a result closed since leaves the page
         drawCard();  // and so does the card of one
