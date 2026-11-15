@@ -60,7 +60,7 @@ In the Nextflow pipeline the same floor is `ext.min_gq` and `ext.min_dp` of `CLI
 10. Runs the cDNA read check on each hit and the cDNA scan of every exon (below).
 11. Prints the hits grouped by ClinVar's review stars (`og clinvar hits`): 4 practice guideline, 3 expert panel, 2 multiple submitters with no conflict, 1 a single submitter or conflicting classifications, 0 no assertion criteria, each with its combined-allele note when it has one and "LOW-CONFIDENCE CALL (GQ .., DP ..): check the reads" when the call is below the floor, and the count of low-confidence calls. The screening file keeps every Pathogenic/Likely_pathogenic submission whatever its review status, so a zero-star hit counts as a hit; the stars say how much weight it deserves. The Nextflow module runs the same steps and prints the same counts; its `CLINVAR_CDNA_CHECK` process runs the cDNA read check and the cDNA scan.
 
-A delins that the caller writes as two records, while ClinVar holds it as one, is matched exactly once, as the combined record of item 5: `tests/test_clinvar_join_adjacent.py` check 8 runs the real step on such a fixture and counts the hits.
+A delins that the caller writes as two records, while ClinVar holds it as one, is matched exactly once, as the combined record of item 5: the e2e case `clinvar-combined-allele-1` runs the real step on such a fixture and counts the hits, and `rust/crates/og-clinvar/tests/port_tests_sv_clinvar_str_join.rs` checks og's part on the same fixture.
 
 ### The always-report list
 

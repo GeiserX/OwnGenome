@@ -46,7 +46,9 @@ fn online(test: &str) -> bool {
     let on = std::env::var_os("CI").is_some_and(|v| !v.is_empty())
         || std::env::var("OG_NET_TESTS").as_deref() == Ok("1");
     if !on {
-        eprintln!("skip: {test} downloads STRchive and runs docker; set OG_NET_TESTS=1 (CI always runs it)");
+        eprintln!(
+            "skip: {test} downloads STRchive and runs docker; set OG_NET_TESTS=1 (CI always runs it)"
+        );
     }
     on
 }
@@ -78,7 +80,16 @@ fn sha256(path: &Path) -> String {
 /// GET `url` into `dest` with curl, three tries.
 fn download(url: &str, dest: &Path) -> Result<(), String> {
     let o = Command::new("curl")
-        .args(["-sSLf", "--retry", "3", "--retry-delay", "5", "--max-time", "120", "-o"])
+        .args([
+            "-sSLf",
+            "--retry",
+            "3",
+            "--retry-delay",
+            "5",
+            "--max-time",
+            "120",
+            "-o",
+        ])
         .arg(dest)
         .arg(url)
         .output()
@@ -86,7 +97,10 @@ fn download(url: &str, dest: &Path) -> Result<(), String> {
     if o.status.success() {
         Ok(())
     } else {
-        Err(format!("curl {url}: {}", String::from_utf8_lossy(&o.stderr)))
+        Err(format!(
+            "curl {url}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        ))
     }
 }
 
@@ -101,22 +115,33 @@ fn files() -> &'static Files {
     static FILES: OnceLock<Files> = OnceLock::new();
     FILES.get_or_init(|| {
         let rel = env("STRCHIVE_VERSION");
-        let dir = std::env::var_os("STRCHIVE_DIR")
-            .map_or_else(|| std::env::temp_dir().join(format!("pgp-strchive-{rel}")), PathBuf::from);
+        let dir = std::env::var_os("STRCHIVE_DIR").map_or_else(
+            || std::env::temp_dir().join(format!("pgp-strchive-{rel}")),
+            PathBuf::from,
+        );
         std::fs::create_dir_all(&dir).unwrap();
         let mut out = Vec::new();
         for (name, var) in [
-            (format!("STRchive-disease-loci-{rel}.hg38.expansionhunter.json"), "STRCHIVE_EH_SHA256"),
+            (
+                format!("STRchive-disease-loci-{rel}.hg38.expansionhunter.json"),
+                "STRCHIVE_EH_SHA256",
+            ),
             (format!("STRchive-loci-{rel}.json"), "STRCHIVE_LOCI_SHA256"),
         ] {
             let path = dir.join(&name);
             if !(path.exists() && sha256(&path) == env(var)) {
                 let part = dir.join(format!("{name}.part"));
-                let url = format!("https://github.com/dashnowlab/STRchive/releases/download/{rel}/{name}");
+                let url = format!(
+                    "https://github.com/dashnowlab/STRchive/releases/download/{rel}/{name}"
+                );
                 download(&url, &part).unwrap();
                 std::fs::rename(&part, &path).unwrap();
             }
-            assert_eq!(sha256(&path), env(var), "{name} does not have the sha256 {var} pins");
+            assert_eq!(
+                sha256(&path),
+                env(var),
+                "{name} does not have the sha256 {var} pins"
+            );
             out.push(path.to_string_lossy().into_owned());
         }
         Files {
@@ -211,7 +236,11 @@ fn a_flipped_byte_fails_the_checksum() {
     data[mid] ^= 1;
     let bad = w.0.join("flipped.json");
     std::fs::write(&bad, data).unwrap();
-    assert_ne!(sha256(&bad), env("STRCHIVE_EH_SHA256"), "control: a copy with one byte flipped fails the sha256 check");
+    assert_ne!(
+        sha256(&bad),
+        env("STRCHIVE_EH_SHA256"),
+        "control: a copy with one byte flipped fails the sha256 check"
+    );
 }
 
 #[test]
@@ -221,23 +250,42 @@ fn the_converter_on_the_pinned_files() {
     }
     let w = Scratch::new("convert");
     let (out, rng) = (w.path("catalog.json"), w.path("str_ranges.tsv"));
-    assert_eq!(catalog(&["--out", &out, "--ranges", &rng]), 0, "the converter runs on the pinned files");
+    assert_eq!(
+        catalog(&["--out", &out, "--ranges", &rng]),
+        0,
+        "the converter runs on the pinned files"
+    );
     let src_v = load(&files().eh);
     let src = list(&src_v);
     let cat_v = load(&out);
     let cat: Vec<&IndexMap<String, Value>> = list(&cat_v).iter().map(obj).collect();
-    assert_eq!(src.len(), 82, "STRchive's ExpansionHunter catalog has 82 loci");
-    assert_eq!(cat.len(), src.len(), "the catalog has one entry per ExpansionHunter locus");
+    assert_eq!(
+        src.len(),
+        82,
+        "STRchive's ExpansionHunter catalog has 82 loci"
+    );
+    assert_eq!(
+        cat.len(),
+        src.len(),
+        "the catalog has one entry per ExpansionHunter locus"
+    );
 
     let mut by_src: HashMap<&str, Vec<&str>> = HashMap::new();
     for e in &cat {
-        by_src.entry(s(&e["SourceId"])).or_default().push(s(&e["LocusId"]));
+        by_src
+            .entry(s(&e["SourceId"]))
+            .or_default()
+            .push(s(&e["LocusId"]));
     }
     let src_ids: BTreeSet<&str> = src.iter().map(|x| s(&obj(x)["LocusId"])).collect();
     assert!(
-        by_src.keys().copied().collect::<BTreeSet<_>>() == src_ids && by_src.values().all(|v| v.len() == 1),
+        by_src.keys().copied().collect::<BTreeSet<_>>() == src_ids
+            && by_src.values().all(|v| v.len() == 1),
         "every ExpansionHunter LocusId has exactly one entry: {:?}",
-        by_src.iter().filter(|(_, v)| v.len() != 1).collect::<Vec<_>>()
+        by_src
+            .iter()
+            .filter(|(_, v)| v.len() != 1)
+            .collect::<Vec<_>>()
     );
     let names: Vec<&str> = cat
         .iter()
@@ -249,16 +297,27 @@ fn the_converter_on_the_pinned_files() {
     let unique: BTreeSet<&str> = names.iter().copied().collect();
     assert_eq!(unique.len(), names.len(), "no variant name twice");
 
-    let by: HashMap<&str, &IndexMap<String, Value>> = cat.iter().map(|e| (s(&e["LocusId"]), *e)).collect();
+    let by: HashMap<&str, &IndexMap<String, Value>> =
+        cat.iter().map(|e| (s(&e["LocusId"]), *e)).collect();
     for k in ["HTT", "FMR1", "C9ORF72", "ATXN1", "DMPK", "RFC1"] {
-        assert!(by.contains_key(k), "the report's key loci and RFC1 keep their names: {k}");
+        assert!(
+            by.contains_key(k),
+            "the report's key loci and RFC1 keep their names: {k}"
+        );
     }
     for k in ["EIEE1_ARX", "PRTS_ARX", "HFG_HOXA13-I"] {
-        assert!(by.contains_key(k), "one gene with two loci keeps STRchive's ids: {k}");
+        assert!(
+            by.contains_key(k),
+            "one gene with two loci keeps STRchive's ids: {k}"
+        );
     }
     let htt = by["HTT"];
     assert_eq!(
-        (int(htt.get("NormalMax")), int(htt.get("PathologicMin")), strs(htt.get("VariantId"))),
+        (
+            int(htt.get("NormalMax")),
+            int(htt.get("PathologicMin")),
+            strs(htt.get("VariantId"))
+        ),
         (Some(26), Some(36), Some(vec!["HTT", "HTT_CCG"])),
         "HTT: normal to 26, pathogenic from 36 (STRchive), the CAG repeat is REPID HTT"
     );
@@ -277,14 +336,26 @@ fn the_converter_on_the_pinned_files() {
             strs(s12.get("PathogenicMotifs")),
             strs(s12.get("VariantId")),
         ),
-        (Some(1), Some(105), Some(vec!["TAAAA"]), Some(vec!["TGAAA"]), Some(vec!["SAMD12_TAAAA", "SAMD12"])),
+        (
+            Some(1),
+            Some(105),
+            Some(vec!["TAAAA"]),
+            Some(vec!["TGAAA"]),
+            Some(vec!["SAMD12_TAAAA", "SAMD12"])
+        ),
         "SAMD12 (FAME1): no benign maximum in STRchive, so normal is the reference count (1 TGAAA), pathogenic \
          from 105; TTTTA benign, TTTCA pathogenic"
     );
     let rfc1 = by["RFC1"];
     assert_eq!(
-        (strs(rfc1.get("BenignMotifs")), strs(rfc1.get("PathogenicMotifs"))),
-        (Some(vec!["AAAAG", "AAAGG"]), Some(vec!["AAGGG", "ACAGG", "CAGGG"])),
+        (
+            strs(rfc1.get("BenignMotifs")),
+            strs(rfc1.get("PathogenicMotifs"))
+        ),
+        (
+            Some(vec!["AAAAG", "AAAGG"]),
+            Some(vec!["AAGGG", "ACAGG", "CAGGG"])
+        ),
         "RFC1: AAAGG is counted benign, CAGGG pathogenic"
     );
     let motif_loci: BTreeSet<&str> = cat
@@ -292,8 +363,14 @@ fn the_converter_on_the_pinned_files() {
         .filter(|e| e.contains_key("PathogenicMotifs"))
         .map(|e| s(&e["LocusId"]))
         .collect();
-    for k in ["RFC1", "SAMD12", "STARD7", "YEATS2", "MARCHF6", "RAPGEF2", "TNRC6A", "RAI1", "BEAN1", "DAB1"] {
-        assert!(motif_loci.contains(k), "motif loci: RFC1, the FAME loci, SCA31 and SCA37: {k}");
+    for k in [
+        "RFC1", "SAMD12", "STARD7", "YEATS2", "MARCHF6", "RAPGEF2", "TNRC6A", "RAI1", "BEAN1",
+        "DAB1",
+    ] {
+        assert!(
+            motif_loci.contains(k),
+            "motif loci: RFC1, the FAME loci, SCA31 and SCA37: {k}"
+        );
     }
     let none: BTreeSet<&str> = cat
         .iter()
@@ -306,7 +383,8 @@ fn the_converter_on_the_pinned_files() {
         "no thresholds: the four repeats longer than two reads, two without a pathogenic size, one contraction"
     );
     assert!(
-        none.iter().all(|k| !by[k].contains_key("NormalMax") && !by[k].contains_key("PathologicMin")),
+        none.iter()
+            .all(|k| !by[k].contains_key("NormalMax") && !by[k].contains_key("PathologicMin")),
         "a locus without thresholds has no NormalMax, so Stranger gives it no status"
     );
     assert!(
@@ -329,7 +407,19 @@ fn the_converter_on_the_pinned_files() {
     let (o2, r2) = (w.path("out.json"), w.path("ranges.tsv"));
     let f = files();
     let rc = og_setup::strchive::cli(
-        &["--eh", &eh, "--loci", &f.loci, "--release", &f.release, "--out", &o2, "--ranges", &r2].map(str::to_owned),
+        &[
+            "--eh",
+            &eh,
+            "--loci",
+            &f.loci,
+            "--release",
+            &f.release,
+            "--out",
+            &o2,
+            "--ranges",
+            &r2,
+        ]
+        .map(str::to_owned),
     );
     assert!(
         rc == 2 && !Path::new(&o2).exists() && !Path::new(&r2).exists(),
@@ -350,9 +440,17 @@ fn id(flag: &str) -> String {
 /// STR_STATUS per record id from STRANGER_IMAGE on a VCF of (id, chrom,
 /// pos, end, count) records; `catalog` None is the GRCh38 catalog Stranger
 /// bundles, as step 9b passes it.
-fn stranger(dir: &Path, catalog: Option<&str>, records: &[(&str, &str, u64, u64, u32)]) -> HashMap<String, String> {
+fn stranger(
+    dir: &Path,
+    catalog: Option<&str>,
+    records: &[(&str, &str, u64, u64, u32)],
+) -> HashMap<String, String> {
     let smoke = std::fs::read_to_string(repo().join("tests/smoke/stranger_input.vcf.in")).unwrap();
-    let mut vcf: String = smoke.lines().filter(|l| l.starts_with("##")).map(|l| l.to_owned() + "\n").collect();
+    let mut vcf: String = smoke
+        .lines()
+        .filter(|l| l.starts_with("##"))
+        .map(|l| l.to_owned() + "\n")
+        .collect();
     let alts: BTreeSet<u32> = records.iter().map(|r| r.4).collect();
     for a in alts {
         vcf += &format!("##ALT=<ID=STR{a},Description=\"Allele comprised of {a} repeat units\">\n");
@@ -370,9 +468,17 @@ fn stranger(dir: &Path, catalog: Option<&str>, records: &[(&str, &str, u64, u64,
     }
     std::fs::write(dir.join("in.vcf"), vcf).unwrap();
     let mut cmd = Command::new("docker");
-    cmd.args(["run", "--rm", "--network", "none", "-u", &format!("{}:{}", id("-u"), id("-g")), "-v"])
-        .arg(format!("{}:/w", dir.display()))
-        .arg(env("STRANGER_IMAGE"));
+    cmd.args([
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "-u",
+        &format!("{}:{}", id("-u"), id("-g")),
+        "-v",
+    ])
+    .arg(format!("{}:/w", dir.display()))
+    .arg(env("STRANGER_IMAGE"));
     match catalog {
         Some(c) => cmd.args(["stranger", "--repeats-file", &format!("/w/{c}"), "/w/in.vcf"]),
         None => cmd.args([
@@ -383,7 +489,11 @@ fn stranger(dir: &Path, catalog: Option<&str>, records: &[(&str, &str, u64, u64,
         ]),
     };
     let o = cmd.output().unwrap_or_else(|e| panic!("docker: {e}"));
-    assert!(o.status.success(), "Stranger runs: {}", String::from_utf8_lossy(&o.stderr));
+    assert!(
+        o.status.success(),
+        "Stranger runs: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
     String::from_utf8(o.stdout)
         .unwrap()
         .lines()
@@ -405,9 +515,20 @@ fn stranger_grades_with_the_catalog() {
         return;
     }
     let w = Scratch::new("stranger");
-    assert_eq!(catalog(&["--out", &w.path("catalog.json")]), 0, "the converter runs on the pinned files");
+    assert_eq!(
+        catalog(&["--out", &w.path("catalog.json")]),
+        0,
+        "the converter runs on the pinned files"
+    );
     // The container runs as the caller and reads the folder.
-    assert!(Command::new("chmod").args(["755"]).arg(&w.0).status().unwrap().success());
+    assert!(
+        Command::new("chmod")
+            .args(["755"])
+            .arg(&w.0)
+            .status()
+            .unwrap()
+            .success()
+    );
     let recs = [
         ("HTT", "chr4", 3074877, 3074933, 26),
         ("HTT", "chr4", 3074877, 3074933, 27),
@@ -490,7 +611,9 @@ fn region_errors(entry: &IndexMap<String, Value>, shift: u64) -> Vec<String> {
         if inner != m.repeat(((b - a) as usize) / k) {
             errs.push(format!("{r}: GRCh38 has {inner}, not {m} repeated"));
         } else if left == *m || right == *m {
-            errs.push(format!("{r}: the {m} run goes on past the region ({left}|...|{right})"));
+            errs.push(format!(
+                "{r}: the {m} run goes on past the region ({left}|...|{right})"
+            ));
         }
     }
     errs
@@ -502,7 +625,10 @@ fn the_extra_repeats() {
         return;
     }
     let w = Scratch::new("extra");
-    let extra_path = repo().join("assets/str_extra_loci.json").to_string_lossy().into_owned();
+    let extra_path = repo()
+        .join("assets/str_extra_loci.json")
+        .to_string_lossy()
+        .into_owned();
     let extra_v = load(&extra_path);
     let extra = list(&extra_v);
     let shape: Vec<(&str, &str)> = extra
@@ -529,8 +655,15 @@ fn the_extra_repeats() {
     assert_eq!(rc, 0, "--extra: the converter runs");
     let cat_v = load(&out);
     let cat = list(&cat_v);
-    assert_eq!(cat.len(), 82 + extra.len(), "--extra: STRchive's 82 entries and the extra loci");
-    assert!(missing(&cat_v).is_empty(), "every extra locus is in the merged catalog");
+    assert_eq!(
+        cat.len(),
+        82 + extra.len(),
+        "--extra: STRchive's 82 entries and the extra loci"
+    );
+    assert!(
+        missing(&cat_v).is_empty(),
+        "every extra locus is in the merged catalog"
+    );
     let tail = &cat[cat.len() - extra.len()..];
     assert_eq!(tail, extra, "the extra loci are copied as they are, last");
     assert!(
@@ -540,12 +673,28 @@ fn the_extra_repeats() {
         "no extra locus has Stranger thresholds, each says why"
     );
     let ranges = std::fs::read_to_string(&rng).unwrap();
-    let rows: Vec<Vec<&str>> = ranges.lines().skip(2).map(|l| l.split('\t').collect()).collect();
+    let rows: Vec<Vec<&str>> = ranges
+        .lines()
+        .skip(2)
+        .map(|l| l.split('\t').collect())
+        .collect();
     let want_tail: Vec<Vec<&str>> = extra
         .iter()
-        .map(|e| vec![s(&obj(e)["LocusId"]), s(&obj(e)["SourceId"]), "", "", "", ""])
+        .map(|e| {
+            vec![
+                s(&obj(e)["LocusId"]),
+                s(&obj(e)["SourceId"]),
+                "",
+                "",
+                "",
+                "",
+            ]
+        })
         .collect();
-    let got_tail: Vec<Vec<&str>> = rows[rows.len() - extra.len()..].iter().map(|r| r[..6].to_vec()).collect();
+    let got_tail: Vec<Vec<&str>> = rows[rows.len() - extra.len()..]
+        .iter()
+        .map(|r| r[..6].to_vec())
+        .collect();
     assert!(
         rows.len() == cat.len() && got_tail == want_tail,
         "the ranges table has a row per entry, the extra ones without STRchive ranges: {got_tail:?}"
@@ -556,7 +705,13 @@ fn the_extra_repeats() {
     let short = w.path("short.json");
     dump(
         &short,
-        &Value::Array(extra.iter().filter(|e| s(&obj(e)["LocusId"]) != "UGT1A1").cloned().collect()),
+        &Value::Array(
+            extra
+                .iter()
+                .filter(|e| s(&obj(e)["LocusId"]) != "UGT1A1")
+                .cloned()
+                .collect(),
+        ),
     );
     catalog(&["--out", &out, "--extra", &short]);
     assert_eq!(
@@ -573,7 +728,10 @@ fn the_extra_repeats() {
         Value::Object(e)
     };
     let planted = [
-        ("no NoThresholds", with("NoThresholds", Value::Str(String::new()))),
+        (
+            "no NoThresholds",
+            with("NoThresholds", Value::Str(String::new())),
+        ),
         (
             "a region that is not a whole number of motifs",
             with(
@@ -584,7 +742,10 @@ fn the_extra_repeats() {
                 ]),
             ),
         ),
-        ("a STRchive locus name", with("LocusId", Value::Str("HTT".into()))),
+        (
+            "a STRchive locus name",
+            with("LocusId", Value::Str("HTT".into())),
+        ),
         ("Stranger thresholds", {
             let mut e = cftr.clone();
             e.insert("NormalMax".into(), Value::Int(11));
@@ -593,7 +754,11 @@ fn the_extra_repeats() {
         }),
     ];
     for (desc, bad) in planted {
-        let (p, o, g) = (w.path("bad.json"), w.path("bad_out.json"), w.path("bad_ranges.tsv"));
+        let (p, o, g) = (
+            w.path("bad.json"),
+            w.path("bad_out.json"),
+            w.path("bad_ranges.tsv"),
+        );
         dump(&p, &Value::Array(vec![bad]));
         let rc = catalog(&["--out", &o, "--ranges", &g, "--extra", &p]);
         assert!(
@@ -604,7 +769,11 @@ fn the_extra_repeats() {
 
     for e in extra.iter().map(obj) {
         let errs = region_errors(e, 0);
-        assert!(errs.is_empty(), "{}: every region is a whole run of its motif in GRCh38: {errs:?}", s(&e["LocusId"]));
+        assert!(
+            errs.is_empty(),
+            "{}: every region is a whole run of its motif in GRCh38: {errs:?}",
+            s(&e["LocusId"])
+        );
     }
     assert!(
         !region_errors(obj(&extra[1]), 1).is_empty(),

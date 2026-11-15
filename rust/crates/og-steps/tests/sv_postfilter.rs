@@ -32,7 +32,11 @@ fn repo() -> PathBuf {
 }
 
 fn asset(name: &str) -> String {
-    repo().join("assets").join(name).to_string_lossy().into_owned()
+    repo()
+        .join("assets")
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// A scratch folder of its own for one test, removed when dropped.
@@ -40,7 +44,8 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Scratch {
-        let d = std::env::temp_dir().join(format!("og-sv-postfilter-{name}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("og-sv-postfilter-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         Scratch(d)
@@ -145,7 +150,16 @@ const HEAD: [&str; 16] = [
 
 /// One class 4 or 5 row of the first table: chr20, AnnotSV's columns.
 #[allow(clippy::too_many_arguments)]
-fn row(i: u32, start: i64, end: i64, t: &str, cls: u8, caller: &str, loss_af: &str, loss_src: &str) -> String {
+fn row(
+    i: u32,
+    start: i64,
+    end: i64,
+    t: &str,
+    cls: u8,
+    caller: &str,
+    loss_af: &str,
+    loss_src: &str,
+) -> String {
     let len = if t == "DEL" { start - end } else { end - start };
     [
         format!("20_{start}_{end}_{t}_1"),
@@ -172,7 +186,16 @@ fn row(i: u32, start: i64, end: i64, t: &str, cls: u8, caller: &str, loss_af: &s
 fn class45() -> String {
     HEAD.join("\t")
         + "\n"
-        + &row(1, 1000200, 1009800, "DEL", 4, "manta", "0.05", "gnomAD-SV_v4.1_DEL_fixture")
+        + &row(
+            1,
+            1000200,
+            1009800,
+            "DEL",
+            4,
+            "manta",
+            "0.05",
+            "gnomAD-SV_v4.1_DEL_fixture",
+        )
         + &row(2, 10100999, 10102999, "DEL", 5, "manta", "", "")
         + &row(3, 20000000, 20450000, "DEL", 4, "manta", "", "")
         + &row(4, 30000000, 30500000, "DUP", 4, "delly", "", "")
@@ -230,42 +253,75 @@ fn exon_edges_population_caller_and_support() {
             ..opts(&c45, &dst)
         };
         let (by, summary) = run(&o, "Gene_name");
-        assert!(!summary.starts_with("ERROR"), "og sv postfilter stopped: {summary}");
+        assert!(
+            !summary.starts_with("ERROR"),
+            "og sv postfilter stopped: {summary}"
+        );
         by
     };
 
     // 1. exon edges
     let out = checked(Some(&genes), None);
-    assert_eq!(col(&out, "GENE1", "Exon_edge"), "yes", "an intron-exact deletion (exon 1 end to exon 3 start) is on exon edges");
+    assert_eq!(
+        col(&out, "GENE1", "Exon_edge"),
+        "yes",
+        "an intron-exact deletion (exon 1 end to exon 3 start) is on exon edges"
+    );
     assert_eq!(
         col(&out, "GENE1", "Exon_edge_detail"),
         "NM_900001 (FIXG1): exon 1 and exon 3 edges",
         "it names the transcript and the exons"
     );
-    assert_eq!(col(&out, "GENE5", "Exon_edge"), "no", "a deletion starting 10 bp inside the intron is not");
-    assert_eq!(col(&out, "GENE3", "Exon_edge"), "no", "a deletion in no transcript is not");
+    assert_eq!(
+        col(&out, "GENE5", "Exon_edge"),
+        "no",
+        "a deletion starting 10 bp inside the intron is not"
+    );
+    assert_eq!(
+        col(&out, "GENE3", "Exon_edge"),
+        "no",
+        "a deletion in no transcript is not"
+    );
     assert_eq!(
         col(&out, "GENE6", "Exon_edge_detail"),
         "NM_900005 (MING1): exon 1 and exon 2 edges",
         "minus strand: exons numbered from the transcript's start"
     );
-    assert_eq!(col(&out, "GENE4", "Exon_edge"), ".", "a duplication is not checked as a deletion");
+    assert_eq!(
+        col(&out, "GENE4", "Exon_edge"),
+        ".",
+        "a duplication is not checked as a deletion"
+    );
     let no_genes = checked(None, None);
-    assert_eq!(col(&no_genes, "GENE1", "Exon_edge"), "not checked", "without the genes file: not checked");
+    assert_eq!(
+        col(&no_genes, "GENE1", "Exon_edge"),
+        "not checked",
+        "without the genes file: not checked"
+    );
 
     // 2. population frequency
     assert_eq!(
-        (col(&out, "GENE1", "Population_AF"), col(&out, "GENE1", "Population_source")),
+        (
+            col(&out, "GENE1", "Population_AF"),
+            col(&out, "GENE1", "Population_source")
+        ),
         ("0.05", "gnomAD-SV_v4.1_DEL_fixture"),
         "the deletion's B_loss_AFmax and its source"
     );
     assert_eq!(col(&out, "GENE1", "Common"), "yes", "AF 0.05 is common");
     assert_eq!(
-        (col(&out, "GENE2", "Population_AF"), col(&out, "GENE2", "Common")),
+        (
+            col(&out, "GENE2", "Population_AF"),
+            col(&out, "GENE2", "Common")
+        ),
         ("", "no"),
         "no benign record: no AF, not common"
     );
-    assert_eq!(col(&out, "GENE4", "Population_AF"), "", "a duplication reads B_gain_AFmax (empty here)");
+    assert_eq!(
+        col(&out, "GENE4", "Population_AF"),
+        "",
+        "a duplication reads B_gain_AFmax (empty here)"
+    );
 
     // 3. caller
     assert_eq!(
@@ -278,12 +334,18 @@ fn exon_edges_population_caller_and_support() {
     let cons = w.put("S_sv_consensus.vcf", &consensus());
     let sup = checked(Some(&genes), Some(&cons));
     assert_eq!(
-        (col(&sup, "GENE2", "Support"), col(&sup, "GENE2", "Support_callers")),
+        (
+            col(&sup, "GENE2", "Support"),
+            col(&sup, "GENE2", "Support_callers")
+        ),
         ("2", "manta,delly"),
         "a deletion in the consensus: support 2, manta and delly"
     );
     assert_eq!(
-        (col(&sup, "GENE3", "Support"), col(&sup, "GENE3", "Support_callers")),
+        (
+            col(&sup, "GENE3", "Support"),
+            col(&sup, "GENE3", "Support_callers")
+        ),
         ("1", "manta"),
         "a deletion only Manta made: support 1 (the consensus DUP at its place does not count)"
     );
@@ -297,7 +359,11 @@ fn exon_edges_population_caller_and_support() {
     // deletion support 1, so the support-2 check above can fail.
     let empty = w.put("empty.vcf", CONS_HEAD);
     let sup_e = checked(None, Some(&empty));
-    assert_eq!(col(&sup_e, "GENE2", "Support"), "1", "red control: with an empty consensus the two-caller deletion has support 1");
+    assert_eq!(
+        col(&sup_e, "GENE2", "Support"),
+        "1",
+        "red control: with an empty consensus the two-caller deletion has support 1"
+    );
     assert!(
         sup_e.values().all(|r| r["Support"] == "1"),
         "red control: and no row has support 2: {sup_e:?}"
@@ -328,7 +394,10 @@ fn the_command_line_writes_the_table() {
     assert_eq!(got.len(), 6, "one row per SV");
     let want: Vec<&str> = KEEP.iter().chain(&ADDED).chain(&SUPPORT).copied().collect();
     assert_eq!(head, want, "the columns");
-    let g2 = got.iter().find(|r| r["Gene_name"] == "GENE2").expect("GENE2");
+    let g2 = got
+        .iter()
+        .find(|r| r["Gene_name"] == "GENE2")
+        .expect("GENE2");
     assert_eq!(
         (g2["Support"].as_str(), g2["Support_callers"].as_str()),
         ("2", "manta,delly"),
@@ -349,14 +418,19 @@ fn the_command_line_writes_the_table() {
     let (head, _) = table(&dst);
     let summary = postfilter::run(&opts(&c45, &dst)).expect("og sv postfilter");
     assert!(
-        !head.iter().any(|h| h == "Support") && summary.contains("deletions on exon edges: not checked"),
+        !head.iter().any(|h| h == "Support")
+            && summary.contains("deletions on exon edges: not checked"),
         "without --consensus no support columns, without --genes not checked: {head:?} {summary}"
     );
 
     std::fs::write(&c45, "").unwrap();
     assert_eq!(postfilter::cli(&argv(&["--genes", &genes])), 0);
     let text = std::fs::read_to_string(&dst).unwrap();
-    assert_eq!(text.lines().count(), 1, "an empty class 4 and 5 table gives a header and no row: {text:?}");
+    assert_eq!(
+        text.lines().count(),
+        1,
+        "an empty class 4 and 5 table gives a header and no row: {text:?}"
+    );
 }
 
 // --- the rule table and the depth check --------------------------------------------------
@@ -382,7 +456,18 @@ const HEAD7: [&str; 16] = [
 
 /// One row of the rule and depth table: (ID, chrom, start, end, type,
 /// class, caller, gene, FORMAT, sample).
-type R7<'a> = (&'a str, &'a str, i64, i64, &'a str, u8, &'a str, &'a str, &'a str, &'a str);
+type R7<'a> = (
+    &'a str,
+    &'a str,
+    i64,
+    i64,
+    &'a str,
+    u8,
+    &'a str,
+    &'a str,
+    &'a str,
+    &'a str,
+);
 
 fn row7(r: &R7) -> String {
     let (id, chrom, start, end, t, cls, caller, gene, fmt, sample) = *r;
@@ -410,24 +495,69 @@ fn row7(r: &R7) -> String {
 }
 
 const ROWS7: [R7; 18] = [
-    ("TR_IN", "4", 87614600, 87615500, "DEL", 4, "manta", "DSPP", "GT:DHFFC", "0/1:0.45"),
-    ("TR_OUT", "4", 87614600, 87616700, "DEL", 4, "manta", "DSPP", "GT:DHFFC", "0/1:0.45"),
-    ("IGH_IN", "14", 106000000, 106100000, "DEL", 4, "manta", "IGHV3-23", "GT:DHFFC", "0/1:0.5"),
-    ("IGH_EDGE", "14", 105400000, 105700000, "DEL", 4, "manta", "TMEM121", "GT:DHFFC", "0/1:0.5"),
-    ("IGH_MOST", "14", 105550000, 105650000, "DEL", 4, "manta", "IGHA2", "GT:DHFFC", "0/1:0.5"),
-    ("MHC_IN", "6", 31000000, 31100000, "DEL", 4, "manta", "HLA-C", "GT:DHFFC", "0/1:0.5"),
-    ("ALIAS", "10", 46634800, 46635600, "DEL", 5, "manta", "RHEB", "GT:DHFFC", "0/1:0.3"),
-    ("REAL", "7", 151470000, 151480000, "DEL", 5, "manta", "RHEB", "GT:DHFFC", "0/1:0.3"),
-    ("D_LOW", "20", 40000000, 40300000, "DEL", 4, "manta", "G7", "GT:DHFFC", "0/1:0.95"),
-    ("D_OK", "20", 40000000, 40300000, "DEL", 4, "manta", "G8", "GT:DHFFC", "0/1:0.5"),
-    ("DUP_LOW", "20", 41000000, 41300000, "DUP", 4, "manta", "G9", "GT:DHBFC", "0/1:1.1"),
-    ("DELLY2", "20", 42000000, 42300000, "DEL", 4, "delly", "G10", "GT:RDCN", "0/1:2"),
-    ("DELLY1", "20", 43000000, 43300000, "DEL", 4, "delly", "G11", "GT:RDCN", "0/1:1"),
-    ("XDUP", "X", 50000000, 50300000, "DUP", 4, "delly", "G12", "GT:RDCN", "0/1:2"),
-    ("NODEPTH", "20", 44000000, 44300000, "DEL", 4, "manta", "G13", "GT", "0/1"),
-    ("CNV", "20", 45000000, 45300000, "DEL", 4, "cnvpytor", "G14", "GT", "0/1"),
-    ("DELLY_GT", "20", 46000000, 46300000, "DEL", 4, "delly", "G15", "GT", "0/1"),
-    ("DELLY_SHORT", "20", 47000000, 47000800, "DEL", 4, "delly", "G16", "GT", "0/1"),
+    (
+        "TR_IN", "4", 87614600, 87615500, "DEL", 4, "manta", "DSPP", "GT:DHFFC", "0/1:0.45",
+    ),
+    (
+        "TR_OUT", "4", 87614600, 87616700, "DEL", 4, "manta", "DSPP", "GT:DHFFC", "0/1:0.45",
+    ),
+    (
+        "IGH_IN", "14", 106000000, 106100000, "DEL", 4, "manta", "IGHV3-23", "GT:DHFFC", "0/1:0.5",
+    ),
+    (
+        "IGH_EDGE", "14", 105400000, 105700000, "DEL", 4, "manta", "TMEM121", "GT:DHFFC", "0/1:0.5",
+    ),
+    (
+        "IGH_MOST", "14", 105550000, 105650000, "DEL", 4, "manta", "IGHA2", "GT:DHFFC", "0/1:0.5",
+    ),
+    (
+        "MHC_IN", "6", 31000000, 31100000, "DEL", 4, "manta", "HLA-C", "GT:DHFFC", "0/1:0.5",
+    ),
+    (
+        "ALIAS", "10", 46634800, 46635600, "DEL", 5, "manta", "RHEB", "GT:DHFFC", "0/1:0.3",
+    ),
+    (
+        "REAL", "7", 151470000, 151480000, "DEL", 5, "manta", "RHEB", "GT:DHFFC", "0/1:0.3",
+    ),
+    (
+        "D_LOW", "20", 40000000, 40300000, "DEL", 4, "manta", "G7", "GT:DHFFC", "0/1:0.95",
+    ),
+    (
+        "D_OK", "20", 40000000, 40300000, "DEL", 4, "manta", "G8", "GT:DHFFC", "0/1:0.5",
+    ),
+    (
+        "DUP_LOW", "20", 41000000, 41300000, "DUP", 4, "manta", "G9", "GT:DHBFC", "0/1:1.1",
+    ),
+    (
+        "DELLY2", "20", 42000000, 42300000, "DEL", 4, "delly", "G10", "GT:RDCN", "0/1:2",
+    ),
+    (
+        "DELLY1", "20", 43000000, 43300000, "DEL", 4, "delly", "G11", "GT:RDCN", "0/1:1",
+    ),
+    (
+        "XDUP", "X", 50000000, 50300000, "DUP", 4, "delly", "G12", "GT:RDCN", "0/1:2",
+    ),
+    (
+        "NODEPTH", "20", 44000000, 44300000, "DEL", 4, "manta", "G13", "GT", "0/1",
+    ),
+    (
+        "CNV", "20", 45000000, 45300000, "DEL", 4, "cnvpytor", "G14", "GT", "0/1",
+    ),
+    (
+        "DELLY_GT", "20", 46000000, 46300000, "DEL", 4, "delly", "G15", "GT", "0/1",
+    ),
+    (
+        "DELLY_SHORT",
+        "20",
+        47000000,
+        47000800,
+        "DEL",
+        4,
+        "delly",
+        "G16",
+        "GT",
+        "0/1",
+    ),
 ];
 
 /// RHEB as AnnotSV's genes file would name it: once on the pseudogene
@@ -437,18 +567,65 @@ const GENES7: &str = "10\t46634910\t46635466\t+\tRHEB\tNM_990001\t46634910\t4663
 7\t151466000\t151520000\t-\tRHEB\tNM_005614\t151466100\t151519900\t151466000,151519000,\t151467000,151520000,\n";
 
 const SEX_ROWS: [R7; 10] = [
-    ("XDEL1", "X", 50000000, 50050000, "DEL", 4, "delly", "G20", "GT:RDCN", "1/1:1"),
-    ("XDEL0", "X", 51000000, 51050000, "DEL", 4, "delly", "G21", "GT:RDCN", "1/1:0"),
-    ("XDUP2", "X", 52000000, 52050000, "DUP", 4, "delly", "G22", "GT:RDCN", "0/1:2"),
-    ("PARDUP2", "X", 1000000, 1050000, "DUP", 4, "delly", "G23", "GT:RDCN", "0/1:2"),
-    ("PARDEL1", "X", 1000000, 1050000, "DEL", 4, "delly", "G24", "GT:RDCN", "0/1:1"),
-    ("YDEL1", "Y", 20000000, 20050000, "DEL", 4, "delly", "G25", "GT:RDCN", "1/1:1"),
-    ("YDUP2", "Y", 21000000, 21050000, "DUP", 4, "delly", "G26", "GT:RDCN", "0/1:2"),
+    (
+        "XDEL1", "X", 50000000, 50050000, "DEL", 4, "delly", "G20", "GT:RDCN", "1/1:1",
+    ),
+    (
+        "XDEL0", "X", 51000000, 51050000, "DEL", 4, "delly", "G21", "GT:RDCN", "1/1:0",
+    ),
+    (
+        "XDUP2", "X", 52000000, 52050000, "DUP", 4, "delly", "G22", "GT:RDCN", "0/1:2",
+    ),
+    (
+        "PARDUP2", "X", 1000000, 1050000, "DUP", 4, "delly", "G23", "GT:RDCN", "0/1:2",
+    ),
+    (
+        "PARDEL1", "X", 1000000, 1050000, "DEL", 4, "delly", "G24", "GT:RDCN", "0/1:1",
+    ),
+    (
+        "YDEL1", "Y", 20000000, 20050000, "DEL", 4, "delly", "G25", "GT:RDCN", "1/1:1",
+    ),
+    (
+        "YDUP2", "Y", 21000000, 21050000, "DUP", 4, "delly", "G26", "GT:RDCN", "0/1:2",
+    ),
     // PAR1 ends at chrX:2,781,479 (assets/par_grch38.bed): the last base in
     // it, then the first base past it.
-    ("PAREDGE_IN", "X", 2781479, 2831479, "DUP", 4, "delly", "G27", "GT:RDCN", "0/1:2"),
-    ("PAREDGE_OUT", "X", 2781480, 2831480, "DUP", 4, "delly", "G28", "GT:RDCN", "0/1:2"),
-    ("BIGDUP", "20", 48000000, 48050000, "DUP", 4, "delly", "G29", "GT:RDCN", "0/1:1000000"),
+    (
+        "PAREDGE_IN",
+        "X",
+        2781479,
+        2831479,
+        "DUP",
+        4,
+        "delly",
+        "G27",
+        "GT:RDCN",
+        "0/1:2",
+    ),
+    (
+        "PAREDGE_OUT",
+        "X",
+        2781480,
+        2831480,
+        "DUP",
+        4,
+        "delly",
+        "G28",
+        "GT:RDCN",
+        "0/1:2",
+    ),
+    (
+        "BIGDUP",
+        "20",
+        48000000,
+        48050000,
+        "DUP",
+        4,
+        "delly",
+        "G29",
+        "GT:RDCN",
+        "0/1:1000000",
+    ),
 ];
 
 fn table7(header: &[&str], rows: &[R7]) -> String {
@@ -475,7 +652,11 @@ fn region_rules_and_the_depth_check() {
 
     // the region rules
     assert_eq!(
-        (c("TR_IN", "ACMG_class"), c("TR_IN", "AnnotSV_class"), c("TR_IN", "Rule")),
+        (
+            c("TR_IN", "ACMG_class"),
+            c("TR_IN", "AnnotSV_class"),
+            c("TR_IN", "Rule")
+        ),
         ("3".into(), "4".into(), "tandem_repeat".into()),
         "an in-frame deletion inside DSPP's coding tandem repeat is class 3, not likely pathogenic"
     );
@@ -489,27 +670,47 @@ fn region_rules_and_the_depth_check() {
         ("3".into(), "ig_tr_locus".into()),
         "a deletion inside IGH is class 3 (V(D)J)"
     );
-    assert_eq!(c("IGH_EDGE", "ACMG_class"), "4", "a deletion 39% inside IGH stays class 4");
-    assert_eq!(c("IGH_MOST", "ACMG_class"), "3", "a deletion 66% inside IGH is class 3 (gnomAD-SV's rule: over half)");
+    assert_eq!(
+        c("IGH_EDGE", "ACMG_class"),
+        "4",
+        "a deletion 39% inside IGH stays class 4"
+    );
+    assert_eq!(
+        c("IGH_MOST", "ACMG_class"),
+        "3",
+        "a deletion 66% inside IGH is class 3 (gnomAD-SV's rule: over half)"
+    );
     assert_eq!(
         (c("MHC_IN", "ACMG_class"), c("MHC_IN", "Rule")),
         ("3".into(), "mhc".into()),
         "a deletion inside the MHC is class 3"
     );
     assert_eq!(
-        (c("ALIAS", "Gene_name"), c("ALIAS", "ACMG_class"), c("ALIAS", "Rule")),
+        (
+            c("ALIAS", "Gene_name"),
+            c("ALIAS", "ACMG_class"),
+            c("ALIAS", "Rule")
+        ),
         ("RHEBP1".into(), "3".into(), "gene_alias".into()),
         "a class 5 deletion on the pseudogene RHEBP1 is not mapped to RHEB"
     );
     assert_eq!(
-        (c("REAL", "Gene_name"), c("REAL", "ACMG_class"), c("REAL", "Rule")),
+        (
+            c("REAL", "Gene_name"),
+            c("REAL", "ACMG_class"),
+            c("REAL", "Rule")
+        ),
         ("RHEB".into(), "5".into(), String::new()),
         "a class 5 deletion on RHEB itself stays RHEB and class 5"
     );
 
     // the depth check
     assert_eq!(
-        (c("D_LOW", "Depth_support"), c("D_LOW", "ACMG_class"), c("D_LOW", "Rule")),
+        (
+            c("D_LOW", "Depth_support"),
+            c("D_LOW", "ACMG_class"),
+            c("D_LOW", "Rule")
+        ),
         ("no".into(), "3".into(), "no_depth_support".into()),
         "a Manta deletion with DHFFC 0.95 has no depth support and is class 3"
     );
@@ -528,20 +729,31 @@ fn region_rules_and_the_depth_check() {
         ("no".into(), "yes".into()),
         "Delly RDCN 2 on a deletion: no support; RDCN 1: support"
     );
-    assert_eq!(c("XDUP", "Depth_support"), "yes", "a chrX duplication with RDCN 2 counts when the sex is not given");
+    assert_eq!(
+        c("XDUP", "Depth_support"),
+        "yes",
+        "a chrX duplication with RDCN 2 counts when the sex is not given"
+    );
     assert_eq!(
         (c("NODEPTH", "Depth_support"), c("NODEPTH", "ACMG_class")),
         ("not checked".into(), "4".into()),
         "no depth value: not checked, class kept"
     );
-    assert_eq!(c("CNV", "Depth_support"), "yes", "a CNVpytor call has depth support");
+    assert_eq!(
+        c("CNV", "Depth_support"),
+        "yes",
+        "a CNVpytor call has depth support"
+    );
     assert_eq!(
         (c("DELLY_GT", "Depth_support"), c("DELLY_GT", "ACMG_class")),
         ("yes".into(), "4".into()),
         "a Delly call step 05 added (FORMAT GT only) over 1,000 bp passed its RDCN gate there: support"
     );
     assert_eq!(
-        (c("DELLY_SHORT", "Depth_support"), c("DELLY_SHORT", "ACMG_class")),
+        (
+            c("DELLY_SHORT", "Depth_support"),
+            c("DELLY_SHORT", "ACMG_class")
+        ),
         ("not checked".into(), "4".into()),
         "the same call of 800 bp had no RDCN gate: not checked, class kept"
     );
@@ -552,9 +764,14 @@ fn region_rules_and_the_depth_check() {
         .map(|(i, _)| i.as_str())
         .collect();
     moved.sort_unstable();
-    let mut want = vec!["TR_IN", "IGH_IN", "IGH_MOST", "MHC_IN", "ALIAS", "D_LOW", "DUP_LOW", "DELLY2"];
+    let mut want = vec![
+        "TR_IN", "IGH_IN", "IGH_MOST", "MHC_IN", "ALIAS", "D_LOW", "DUP_LOW", "DELLY2",
+    ];
     want.sort_unstable();
-    assert_eq!(moved, want, "exactly the eight rows above are moved to class 3");
+    assert_eq!(
+        moved, want,
+        "exactly the eight rows above are moved to class 3"
+    );
     assert!(
         summary.contains("moved to class 3: 8; depth support no: 3, not checked: 2"),
         "the summary line counts them: {summary}"
@@ -566,7 +783,10 @@ fn region_rules_and_the_depth_check() {
     );
 
     // A sample named like a checked column stops the step.
-    let clash_head: Vec<&str> = HEAD7.iter().map(|&h| if h == "S1" { "Caller" } else { h }).collect();
+    let clash_head: Vec<&str> = HEAD7
+        .iter()
+        .map(|&h| if h == "S1" { "Caller" } else { h })
+        .collect();
     let clash = w.put("clash.tsv", &table7(&clash_head, &ROWS7));
     let err = postfilter::run(&opts(&clash, &w.path("clash_checked.tsv")))
         .expect_err("a sample named Caller must stop the step");
@@ -578,7 +798,10 @@ fn region_rules_and_the_depth_check() {
     // Red control: without --rules the DSPP and IGH deletions stay class 4.
     let (plain, _) = run7(&w, "norules", false);
     assert_eq!(
-        (col(&plain, "TR_IN", "ACMG_class"), col(&plain, "IGH_IN", "ACMG_class")),
+        (
+            col(&plain, "TR_IN", "ACMG_class"),
+            col(&plain, "IGH_IN", "ACMG_class")
+        ),
         ("4", "4"),
         "red control: without --rules the DSPP and IGH deletions stay class 4"
     );
@@ -605,7 +828,10 @@ fn delly_depth_by_sex_and_par() {
     for (sex, want) in [
         (Sex::Male, [no, yes, no, yes, yes, no, yes, no, yes, yes]),
         (Sex::Female, [yes, no, no, yes, yes, yes, no, no, no, yes]),
-        (Sex::Unknown, [yes, yes, no, yes, yes, yes, yes, no, yes, yes]),
+        (
+            Sex::Unknown,
+            [yes, yes, no, yes, yes, yes, yes, no, yes, yes],
+        ),
     ] {
         let o = Opts {
             sex,
@@ -619,8 +845,7 @@ fn delly_depth_by_sex_and_par() {
             .map(|i| (col(&got, i, "Depth_support"), col(&got, i, "ACMG_class")))
             .collect();
         assert_eq!(
-            got,
-            want,
+            got, want,
             "sex {sex:?}: chrX and chrY RDCN against 1 copy (male), 2 (female), either (not given); \
              inside the PAR, up to its last base, 2 copies; RDCN 1000000 is a gain ({ids:?})"
         );
@@ -635,13 +860,22 @@ fn the_rule_table() {
         .filter(|l| !l.starts_with('#'))
         .map(|l| l.split('\t').collect())
         .collect();
-    let rules: std::collections::BTreeSet<&str> = table.iter().map(|r| r.get(3).copied().unwrap_or("")).collect();
+    let rules: std::collections::BTreeSet<&str> = table
+        .iter()
+        .map(|r| r.get(3).copied().unwrap_or(""))
+        .collect();
     assert!(
         table.iter().all(|r| r.len() == 7)
-            && rules == ["gene_alias", "ig_tr_locus", "mhc", "tandem_repeat"].into_iter().collect(),
+            && rules
+                == ["gene_alias", "ig_tr_locus", "mhc", "tandem_repeat"]
+                    .into_iter()
+                    .collect(),
         "the rule table: every row has 7 columns and a known rule: {rules:?}"
     );
-    let igh: Vec<&Vec<&str>> = table.iter().filter(|r| r[3] == "ig_tr_locus" && r[5] == "IGH").collect();
+    let igh: Vec<&Vec<&str>> = table
+        .iter()
+        .filter(|r| r[3] == "ig_tr_locus" && r[5] == "IGH")
+        .collect();
     let n = |s: &str| s.parse::<i64>().unwrap();
     assert!(
         igh.len() == 1
@@ -651,8 +885,16 @@ fn the_rule_table() {
             && n(igh[0][2]) < 107_000_000,
         "the rule table: IGH on chr14 between 105.5 and 107 Mb: {igh:?}"
     );
-    let mhc: Vec<&[&str]> = table.iter().filter(|r| r[3] == "mhc").map(|r| &r[..3]).collect();
-    assert_eq!(mhc, [["chr6", "28510119", "33480577"]], "the rule table: the MHC is GRCh38's 28,510,120-33,480,577");
+    let mhc: Vec<&[&str]> = table
+        .iter()
+        .filter(|r| r[3] == "mhc")
+        .map(|r| &r[..3])
+        .collect();
+    assert_eq!(
+        mhc,
+        [["chr6", "28510119", "33480577"]],
+        "the rule table: the MHC is GRCh38's 28,510,120-33,480,577"
+    );
     assert!(
         table.iter().filter(|r| r[3] == "tandem_repeat").count() >= 2000,
         "the rule table: at least 2,000 coding tandem repeats"

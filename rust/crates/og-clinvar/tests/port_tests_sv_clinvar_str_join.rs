@@ -43,7 +43,10 @@ use og_intervals::fasta::Indexed;
 /// GRCh38 chr22 (the same in the NCBI no-ALT analysis set), two short
 /// stretches.
 const REF: [(u64, &str); 2] = [
-    (30000000, "AGACTCTGTCGCAAAAAAAAAATTAATGTAACCATTTAGCCATTACCCAGTTCCTTAAAAT"),
+    (
+        30000000,
+        "AGACTCTGTCGCAAAAAAAAAATTAATGTAACCATTTAGCCATTACCCAGTTCCTTAAAAT",
+    ),
     (30000200, "GCCTGTAATCCCAGCACTTTGGGAGGCTGAG"),
 ];
 
@@ -87,7 +90,12 @@ fn ref_at(pos: u64, n: usize) -> String {
 /// chr22 up to the last stretch, N everywhere else, 60 bases a line, with
 /// its .fai.
 fn write_reference(dir: &Path) -> String {
-    let length = REF.iter().map(|(s, q)| *s as usize + q.len()).max().unwrap() + 50;
+    let length = REF
+        .iter()
+        .map(|(s, q)| *s as usize + q.len())
+        .max()
+        .unwrap()
+        + 50;
     let mut seq = vec![b'N'; length];
     for (start, q) in REF {
         let s = start as usize - 1;
@@ -100,7 +108,11 @@ fn write_reference(dir: &Path) -> String {
     }
     let path = dir.join("ref.fa");
     std::fs::write(&path, fa).unwrap();
-    std::fs::write(dir.join("ref.fa.fai"), format!("chr22\t{length}\t7\t60\t61\n")).unwrap();
+    std::fs::write(
+        dir.join("ref.fa.fai"),
+        format!("chr22\t{length}\t7\t60\t61\n"),
+    )
+    .unwrap();
     path.to_string_lossy().into_owned()
 }
 
@@ -140,13 +152,29 @@ fn body(text: &str) -> Vec<String> {
 fn joined(fasta: &str, records: &[String]) -> (Vec<Vec<String>>, String) {
     let input = HEAD.to_owned() + &records.concat();
     let mut prep = Vec::new();
-    join::join(Mode::Prepare, WINDOW, Cursor::new(input.as_bytes()), &mut prep).expect("prepare");
+    join::join(
+        Mode::Prepare,
+        WINDOW,
+        Cursor::new(input.as_bytes()),
+        &mut prep,
+    )
+    .expect("prepare");
     let mut done = Vec::new();
-    join::finish(Cursor::new(fill(&String::from_utf8(prep).unwrap()).into_bytes()), &mut done).expect("finish");
+    join::finish(
+        Cursor::new(fill(&String::from_utf8(prep).unwrap()).into_bytes()),
+        &mut done,
+    )
+    .expect("finish");
     let done = String::from_utf8(done).unwrap();
     let mut ix = Indexed::open(fasta).expect("the test reference");
     let mut built = Vec::new();
-    join::join(Mode::Build(&mut ix), WINDOW, Cursor::new(input.as_bytes()), &mut built).expect("build");
+    join::join(
+        Mode::Build(&mut ix),
+        WINDOW,
+        Cursor::new(input.as_bytes()),
+        &mut built,
+    )
+    .expect("build");
     let built = String::from_utf8(built).unwrap();
     assert_eq!(
         body(&built),
@@ -174,7 +202,10 @@ fn neighbouring_records_join_into_one_allele() {
     let j = |records: &[String]| joined(&fasta, records);
 
     // 1. unphased het pair, 3 bp apart: AGC>A (a 2 bp deletion) and T>TGGG
-    let (out, raw) = j(&[rec(30000037, "AGC", "A", "0/1", None), rec(30000042, "T", "TGGG", "0/1", None)]);
+    let (out, raw) = j(&[
+        rec(30000037, "AGC", "A", "0/1", None),
+        rec(30000042, "T", "TGGG", "0/1", None),
+    ]);
     assert_eq!(
         core(&out),
         [["30000037", "AGCCAT", "ACATGGG", "GT", "0/1"]],
@@ -188,7 +219,10 @@ fn neighbouring_records_join_into_one_allele() {
         raw.contains("ID=PGP_JOINED_FROM") && !raw.contains("ID=PGP_JOIN_SEQ"),
         "the header keeps PGP_JOINED_FROM and drops the temporary PGP_JOIN_SEQ: {raw}"
     );
-    let (out, _) = j(&[rec(30000203, "T", "A", "1/0", None), rec(30000208, "T", "C", "0/1", None)]);
+    let (out, _) = j(&[
+        rec(30000203, "T", "A", "1/0", None),
+        rec(30000208, "T", "C", "0/1", None),
+    ]);
     assert_eq!(
         core(&out),
         [["30000203", "TGTAAT", "AGTAAC", "GT", "0/1"]],
@@ -196,7 +230,10 @@ fn neighbouring_records_join_into_one_allele() {
     );
 
     // 2. phase sets
-    let (out, _) = j(&[rec(30000203, "T", "A", "0|1", Some(100)), rec(30000208, "T", "C", "0|1", Some(100))]);
+    let (out, _) = j(&[
+        rec(30000203, "T", "A", "0|1", Some(100)),
+        rec(30000208, "T", "C", "0|1", Some(100)),
+    ]);
     assert_eq!(
         core(&out),
         [["30000203", "TGTAAT", "AGTAAC", "GT:PS", "0|1:100"]],
@@ -260,7 +297,10 @@ fn neighbouring_records_join_into_one_allele() {
         ("1|0", "1|.", "1|."),
         (".|1", ".|1", ".|1"),
     ] {
-        let (out, _) = j(&[rec(30000203, "T", "A", a, Some(100)), rec(30000208, "T", "C", b, Some(100))]);
+        let (out, _) = j(&[
+            rec(30000203, "T", "A", a, Some(100)),
+            rec(30000208, "T", "C", b, Some(100)),
+        ]);
         let sample = format!("{gt}:100");
         assert_eq!(
             core(&out),
@@ -268,9 +308,16 @@ fn neighbouring_records_join_into_one_allele() {
             "phased half calls {a} and {b} in one phase set: joined, '.' kept on the other haplotype"
         );
     }
-    let (out, _) = j(&[rec(30000203, "T", "A", "0/1", None), rec(30000213, "G", "T", "0/1", None)]);
+    let (out, _) = j(&[
+        rec(30000203, "T", "A", "0/1", None),
+        rec(30000213, "G", "T", "0/1", None),
+    ]);
     let three: Vec<[&str; 3]> = core(&out).iter().map(|c| [c[0], c[1], c[2]]).collect();
-    assert_eq!(three, [["30000203", "TGTAATCCCAG", "AGTAATCCCAT"]], "10 bp apart: joined");
+    assert_eq!(
+        three,
+        [["30000203", "TGTAATCCCAG", "AGTAATCCCAT"]],
+        "10 bp apart: joined"
+    );
 
     // 4. a single SNV
     let (out, _) = j(&[rec(30000210, "C", "T", "0/1", None)]);
@@ -284,11 +331,19 @@ fn neighbouring_records_join_into_one_allele() {
         rec(30000214, "C", "A", "0/1", None),
     ]);
     let pos: Vec<&str> = out.iter().map(|r| r[1].as_str()).collect();
-    assert_eq!(pos, ["30000201", "30000205", "30000205", "30000208"], "four combined records, in POS order: {raw}");
+    assert_eq!(
+        pos,
+        ["30000201", "30000205", "30000205", "30000208"],
+        "four combined records, in POS order: {raw}"
+    );
 
     // mode is required
     let args = ["join-adjacent".to_owned()];
-    assert_eq!(og_clinvar::cli::main(&args), 2, "no mode: exit 2 with a message");
+    assert_eq!(
+        og_clinvar::cli::main(&args),
+        2,
+        "no mode: exit 2 with a message"
+    );
 }
 
 const CV: &str = "GENEINFO={g};CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter";
@@ -315,21 +370,54 @@ fn tag(hits: &str) -> (String, std::collections::HashMap<String, String>) {
 #[test]
 fn the_tag_pass_marks_parts_and_one_allele_pairs() {
     let lines = [
-        format!("chr22\t30000037\t9900001\tAGC\tA\t50\tPASS\t{}\tGT\t0/1", cv("SYNTH1:1")),
+        format!(
+            "chr22\t30000037\t9900001\tAGC\tA\t50\tPASS\t{}\tGT\t0/1",
+            cv("SYNTH1:1")
+        ),
         format!(
             "chr22\t30000038\t9900003\tGCCAT\tCATGGG\t.\tPASS\tPGP_JOINED_FROM=chr22:30000037:AGC:A|chr22:30000042:T:TGGG;{}\tGT\t0/1",
             cv("SYNTH1:1").replace("single_submitter", "multiple_submitters,_no_conflicts")
         ),
-        format!("chr22\t30000042\t9900002\tT\tTGGG\t50\tPASS\t{}\tGT\t0/1", cv("SYNTH1:1")),
-        format!("chr22\t30000210\t9900004\tC\tT\t50\tPASS\t{}\tGT\t0/1", cv("SYNTH2:2")),
-        format!("chr22\t30000300\t9900005\tA\tG\t50\tPASS\t{}\tGT\t0/1", cv("SYNTH3:3")),
-        format!("chr22\t30000305\t9900006\tC\tT\t50\tPASS\t{}\tGT\t0/1", cv("SYNTH3:3")),
-        format!("chr22\t30000400\t9900007\tA\tG\t50\tPASS\t{}\tGT\t0/1", cv("SYNTH4:4")),
-        format!("chr22\t30000404\t9900008\tC\tT\t50\tPASS\t{}\tGT\t0/1", cv("SYNTH5:5")),
-        format!("chr22\t30000500\t9900009\tA\tG\t50\tPASS\t{}\tGT:PS\t0|1:7", cv("SYNTH6:6")),
-        format!("chr22\t30000504\t9900010\tC\tT\t50\tPASS\t{}\tGT:PS\t1|0:7", cv("SYNTH6:6")),
-        format!("chr22\t30000600\t9900011\tA\tG\t50\tPASS\t{}\tGT:PS\t1|.:8", cv("SYNTH7:7")),
-        format!("chr22\t30000605\t9900012\tC\tT\t50\tPASS\t{}\tGT:PS\t1|0:8", cv("SYNTH7:7")),
+        format!(
+            "chr22\t30000042\t9900002\tT\tTGGG\t50\tPASS\t{}\tGT\t0/1",
+            cv("SYNTH1:1")
+        ),
+        format!(
+            "chr22\t30000210\t9900004\tC\tT\t50\tPASS\t{}\tGT\t0/1",
+            cv("SYNTH2:2")
+        ),
+        format!(
+            "chr22\t30000300\t9900005\tA\tG\t50\tPASS\t{}\tGT\t0/1",
+            cv("SYNTH3:3")
+        ),
+        format!(
+            "chr22\t30000305\t9900006\tC\tT\t50\tPASS\t{}\tGT\t0/1",
+            cv("SYNTH3:3")
+        ),
+        format!(
+            "chr22\t30000400\t9900007\tA\tG\t50\tPASS\t{}\tGT\t0/1",
+            cv("SYNTH4:4")
+        ),
+        format!(
+            "chr22\t30000404\t9900008\tC\tT\t50\tPASS\t{}\tGT\t0/1",
+            cv("SYNTH5:5")
+        ),
+        format!(
+            "chr22\t30000500\t9900009\tA\tG\t50\tPASS\t{}\tGT:PS\t0|1:7",
+            cv("SYNTH6:6")
+        ),
+        format!(
+            "chr22\t30000504\t9900010\tC\tT\t50\tPASS\t{}\tGT:PS\t1|0:7",
+            cv("SYNTH6:6")
+        ),
+        format!(
+            "chr22\t30000600\t9900011\tA\tG\t50\tPASS\t{}\tGT:PS\t1|.:8",
+            cv("SYNTH7:7")
+        ),
+        format!(
+            "chr22\t30000605\t9900012\tC\tT\t50\tPASS\t{}\tGT:PS\t1|0:8",
+            cv("SYNTH7:7")
+        ),
     ];
     let (out, info) = tag(&(HEAD.to_owned() + &lines.join("\n") + "\n"));
     let got = body(&out);
@@ -347,7 +435,10 @@ fn the_tag_pass_marks_parts_and_one_allele_pairs() {
         !i("30000038").contains("PGP_PART_OF") && !i("30000038").contains("PGP_ONE_ALLELE"),
         "tag: the combined hit itself gets no part mark: {info:?}"
     );
-    assert!(got.contains(&lines[3]), "tag: the single SNV hit is unchanged");
+    assert!(
+        got.contains(&lines[3]),
+        "tag: the single SNV hit is unchanged"
+    );
     assert!(
         i("30000300").ends_with("PGP_ONE_ALLELE=chr22:30000305:C:T")
             && i("30000305").ends_with("PGP_ONE_ALLELE=chr22:30000300:A:G"),
@@ -402,12 +493,22 @@ fn the_fixture_delins_matches_clinvar_once_as_one_allele() {
 
     let mut ix = Indexed::open(&fasta).expect("the test reference");
     let mut built = Vec::new();
-    join::join(Mode::Build(&mut ix), WINDOW, Cursor::new(sample.as_bytes()), &mut built).expect("build");
+    join::join(
+        Mode::Build(&mut ix),
+        WINDOW,
+        Cursor::new(sample.as_bytes()),
+        &mut built,
+    )
+    .expect("build");
     let combined: Vec<Vec<String>> = body(&String::from_utf8(built).unwrap())
         .iter()
         .map(|l| l.split('\t').map(str::to_owned).collect())
         .collect();
-    assert_eq!(combined.len(), 1, "the delins written as two records gives one combined record: {combined:?}");
+    assert_eq!(
+        combined.len(),
+        1,
+        "the delins written as two records gives one combined record: {combined:?}"
+    );
     let c = &combined[0];
     let (pos, r, a) = left_trim(c[1].parse().unwrap(), &c[3], &c[4]);
 
@@ -424,16 +525,21 @@ fn the_fixture_delins_matches_clinvar_once_as_one_allele() {
     });
     assert!(
         two_star[2] == "9900003"
-            && two_star[7].contains("CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts"),
+            && two_star[7]
+                .contains("CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts"),
         "the combined allele is ClinVar's 2-star record 9900003: {two_star:?}"
     );
     assert_eq!(
         c[7], "PGP_JOINED_FROM=chr22:30000037:AGC:A|chr22:30000042:T:TGGG",
         "the combined record names its two parts"
     );
-    for (p, r, a, id) in [(30000037, "AGC", "A", "9900001"), (30000042, "T", "TGGG", "9900002")] {
+    for (p, r, a, id) in [
+        (30000037, "AGC", "A", "9900001"),
+        (30000042, "T", "TGGG", "9900002"),
+    ] {
         assert_eq!(
-            cv.get(&(p, r.to_owned(), a.to_owned())).map(|f| f[2].as_str()),
+            cv.get(&(p, r.to_owned(), a.to_owned()))
+                .map(|f| f[2].as_str()),
             Some(id),
             "the part {p} {r}>{a} is ClinVar's 1-star record {id}"
         );
@@ -451,7 +557,11 @@ fn the_fixture_delins_matches_clinvar_once_as_one_allele() {
         .iter()
         .filter_map(|f| {
             let m = cv.get(&(f[1].parse().unwrap(), f[3].clone(), f[4].clone()))?;
-            let info = if f[7] == "." { m[7].clone() } else { format!("{};{}", f[7], m[7]) };
+            let info = if f[7] == "." {
+                m[7].clone()
+            } else {
+                format!("{};{}", f[7], m[7])
+            };
             let mut h = f.clone();
             (h[2], h[7]) = (m[2].clone(), info);
             Some(h.join("\t"))
@@ -459,7 +569,11 @@ fn the_fixture_delins_matches_clinvar_once_as_one_allele() {
         .collect();
     let (out, info) = tag(&(HEAD.to_owned() + &hits_lines.join("\n") + "\n"));
     let got = body(&out);
-    assert_eq!(got.len(), 4, "four hits in all: the combined allele is matched once: {out}");
+    assert_eq!(
+        got.len(),
+        4,
+        "four hits in all: the combined allele is matched once: {out}"
+    );
     let i = |p: &str| info.get(p).map_or("", String::as_str);
     assert!(
         i("30000038").contains("PGP_JOINED_FROM=chr22:30000037:AGC:A|chr22:30000042:T:TGGG"),
@@ -471,7 +585,10 @@ fn the_fixture_delins_matches_clinvar_once_as_one_allele() {
             .all(|p| i(p).contains("PGP_PART_OF=chr22:30000038:GCCAT:CATGGG")),
         "both 1-star parts are hits, marked part of the combined allele: {info:?}"
     );
-    let snv = got.iter().find(|l| l.split('\t').nth(1) == Some("30000210")).expect("the SNV hit");
+    let snv = got
+        .iter()
+        .find(|l| l.split('\t').nth(1) == Some("30000210"))
+        .expect("the SNV hit");
     assert!(
         snv.split('\t').nth(2) == Some("9900004") && !snv.contains("PGP_"),
         "the single SNV hit is unchanged (its ClinVar fields, no combined-allele tag): {snv}"
@@ -481,7 +598,10 @@ fn the_fixture_delins_matches_clinvar_once_as_one_allele() {
 #[test]
 fn a_split_multiallelic_call_is_not_het_and_every_listed_site_gets_a_call() {
     let tract = ref_at(30000011, 5);
-    assert_eq!(tract, "CAAAA", "poly-A: the reference holds C and a run of A at chr22:30000011");
+    assert_eq!(
+        tract, "CAAAA",
+        "poly-A: the reference holds C and a run of A at chr22:30000011"
+    );
 
     // Step 06's hits after `bcftools norm -m -any --multi-overlaps .`: the
     // ClinVar allele of the 1/2 record (the 4-base deletion) is 1/., the
@@ -507,7 +627,11 @@ CLNREVSTAT=criteria_provided,_single_submitter\tGT:GQ:DP\t0/1:40:30\n"
         Some("one copy, other copy not called ref (1/.)"),
         "poly-A: the hit is not worded het: {rows}"
     );
-    assert_eq!(zyg.get("30000210").copied(), Some("het"), "poly-A: the plain 0/1 SNV hit beside it is still het");
+    assert_eq!(
+        zyg.get("30000210").copied(),
+        Some("het"),
+        "poly-A: the plain 0/1 SNV hit beside it is still het"
+    );
 
     // The always-report list: four sites, and the calls as step 06's
     // `bcftools query '%CHROM\t%POS\t%END\t%REF\t%ALT\t[%GT]\t[%GQ]\t[%DP]\n'`
@@ -535,8 +659,14 @@ chr22\t30000210\t30000210\tC\tT,<*>\t0/1\t40\t30\n"
         gvcf: true,
     };
     let mut out = Vec::new();
-    sites::deep_intronic(list.as_bytes(), vcf_calls.as_bytes(), gvcf_calls.as_bytes(), &o, &mut out)
-        .expect("og clinvar deep-intronic");
+    sites::deep_intronic(
+        list.as_bytes(),
+        vcf_calls.as_bytes(),
+        gvcf_calls.as_bytes(),
+        &o,
+        &mut out,
+    )
+    .expect("og clinvar deep-intronic");
     let out = String::from_utf8(out).unwrap();
     let got: std::collections::BTreeMap<&str, (&str, &str)> = out
         .lines()
@@ -551,7 +681,11 @@ chr22\t30000210\t30000210\tC\tT,<*>\t0/1\t40\t30\n"
         ["100", "30000011", "30000030", "30000210"],
         "always-report: one row per site, all four: {out}"
     );
-    assert_eq!(got["30000210"], ("het", "GQ 40, DP 30"), "always-report: the carried SNV gives het with its GQ and DP");
+    assert_eq!(
+        got["30000210"],
+        ("het", "GQ 40, DP 30"),
+        "always-report: the carried SNV gives het with its GQ and DP"
+    );
     assert_eq!(
         got["30000030"],
         ("ref", "GQ 50 (gVCF block)"),
@@ -564,7 +698,10 @@ chr22\t30000210\t30000210\tC\tT,<*>\t0/1\t40\t30\n"
     );
     assert_eq!(
         got["100"],
-        ("no call", "no record in the VCF or the gVCF covers the site"),
+        (
+            "no call",
+            "no record in the VCF or the gVCF covers the site"
+        ),
         "always-report: a site no record covers gives no call, and why"
     );
 }

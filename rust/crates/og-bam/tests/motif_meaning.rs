@@ -30,7 +30,11 @@ fn parity() -> PathBuf {
 /// the oracle's.
 fn golden(case: &str) -> PathBuf {
     let og = parity().join("og").join(case);
-    if og.is_dir() { og } else { parity().join("want").join(case) }
+    if og.is_dir() {
+        og
+    } else {
+        parity().join("want").join(case)
+    }
 }
 
 /// The one row of the case's motif.tsv, by column.
@@ -40,7 +44,9 @@ fn table(case: &str) -> HashMap<String, String> {
     let mut lines = text.lines();
     let head = lines.next().unwrap_or_default().split('\t');
     let row = lines.next().unwrap_or_default().split('\t');
-    head.zip(row).map(|(k, v)| (k.to_owned(), v.to_owned())).collect()
+    head.zip(row)
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect()
 }
 
 fn exit_code(case: &str) -> i32 {
@@ -69,7 +75,11 @@ fn each_read_set_gets_its_verdict() {
         let case = format!("motif-{kind}");
         let t = table(&case);
         assert_eq!(
-            (exit_code(&case), get(&t, "verdict"), get(&t, "repeat_reads")),
+            (
+                exit_code(&case),
+                get(&t, "verdict"),
+                get(&t, "repeat_reads")
+            ),
             (0, verdict, reads),
             "{kind}: exit 0, {verdict}, {reads} repeat reads"
         );
@@ -81,7 +91,13 @@ fn the_pathogenic_reads_and_their_shares() {
     let t = table("motif-pathogenic");
     assert_eq!(
         ["chrom", "start", "end", "dominant_motif", "motif_shares"].map(|k| get(&t, k)),
-        ["chr4", "39348425", "39348479", "AAGGG", "AAGGG=0.81,AAAAG=0.19"],
+        [
+            "chr4",
+            "39348425",
+            "39348479",
+            "AAGGG",
+            "AAGGG=0.81,AAAAG=0.19"
+        ],
         "pathogenic: the locus from the VCF, AAGGG dominant, both shares; the 8 reference-allele reads not counted"
     );
     assert!(
@@ -102,7 +118,10 @@ fn the_pathogenic_reads_and_their_shares() {
     );
     let unknown = table("motif-unknown");
     assert_eq!(
-        (get(&unknown, "dominant_motif"), get(&unknown, "dominant_class")),
+        (
+            get(&unknown, "dominant_motif"),
+            get(&unknown, "dominant_class")
+        ),
         ("AAGAG", "unknown"),
         "unknown: AAGAG named by its smallest form, class unknown"
     );

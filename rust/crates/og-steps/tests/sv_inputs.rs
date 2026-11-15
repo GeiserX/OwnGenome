@@ -54,7 +54,10 @@ impl Scratch {
 
     fn put_gz(&self, name: &str, text: &str) -> String {
         let p = self.0.join(name);
-        let mut gz = flate2::write::GzEncoder::new(std::fs::File::create(&p).unwrap(), flate2::Compression::default());
+        let mut gz = flate2::write::GzEncoder::new(
+            std::fs::File::create(&p).unwrap(),
+            flate2::Compression::default(),
+        );
         gz.write_all(text.as_bytes()).unwrap();
         gz.finish().unwrap();
         p.to_string_lossy().into_owned()
@@ -120,19 +123,79 @@ const DEL: &str = "chr20\t40000000\tMantaDEL:9:0:0:0:0:0\tN\t<DEL>\t500\tPASS\tE
 fn raw() -> String {
     [
         // reciprocal inversion chr20:1,000,000-2,000,000: INV3 and INV5 junctions
-        bnd("chr20", 1000000, "MantaBND:10:0:1:0:0:0:0", "N]chr20:2000000]", "MantaBND:10:0:1:0:0:0:1"),
-        bnd("chr20", 1000101, "MantaBND:10:0:2:0:0:0:0", "[chr20:2000101[N", "MantaBND:10:0:2:0:0:0:1"),
-        bnd("chr20", 2000000, "MantaBND:10:0:1:0:0:0:1", "N]chr20:1000000]", "MantaBND:10:0:1:0:0:0:0"),
-        bnd("chr20", 2000101, "MantaBND:10:0:2:0:0:0:1", "[chr20:1000101[N", "MantaBND:10:0:2:0:0:0:0"),
+        bnd(
+            "chr20",
+            1000000,
+            "MantaBND:10:0:1:0:0:0:0",
+            "N]chr20:2000000]",
+            "MantaBND:10:0:1:0:0:0:1",
+        ),
+        bnd(
+            "chr20",
+            1000101,
+            "MantaBND:10:0:2:0:0:0:0",
+            "[chr20:2000101[N",
+            "MantaBND:10:0:2:0:0:0:1",
+        ),
+        bnd(
+            "chr20",
+            2000000,
+            "MantaBND:10:0:1:0:0:0:1",
+            "N]chr20:1000000]",
+            "MantaBND:10:0:1:0:0:0:0",
+        ),
+        bnd(
+            "chr20",
+            2000101,
+            "MantaBND:10:0:2:0:0:0:1",
+            "[chr20:1000101[N",
+            "MantaBND:10:0:2:0:0:0:0",
+        ),
         // one INV3 junction, 50 Mb
-        bnd("chr20", 5000000, "MantaBND:20:0:1:0:0:0:0", "N]chr20:55000000]", "MantaBND:20:0:1:0:0:0:1"),
-        bnd("chr20", 55000000, "MantaBND:20:0:1:0:0:0:1", "N]chr20:5000000]", "MantaBND:20:0:1:0:0:0:0"),
+        bnd(
+            "chr20",
+            5000000,
+            "MantaBND:20:0:1:0:0:0:0",
+            "N]chr20:55000000]",
+            "MantaBND:20:0:1:0:0:0:1",
+        ),
+        bnd(
+            "chr20",
+            55000000,
+            "MantaBND:20:0:1:0:0:0:1",
+            "N]chr20:5000000]",
+            "MantaBND:20:0:1:0:0:0:0",
+        ),
         // one INV5 junction, 400 bp
-        bnd("chr20", 30000000, "MantaBND:30:0:1:0:0:0:0", "[chr20:30000400[N", "MantaBND:30:0:1:0:0:0:1"),
-        bnd("chr20", 30000400, "MantaBND:30:0:1:0:0:0:1", "[chr20:30000000[N", "MantaBND:30:0:1:0:0:0:0"),
+        bnd(
+            "chr20",
+            30000000,
+            "MantaBND:30:0:1:0:0:0:0",
+            "[chr20:30000400[N",
+            "MantaBND:30:0:1:0:0:0:1",
+        ),
+        bnd(
+            "chr20",
+            30000400,
+            "MantaBND:30:0:1:0:0:0:1",
+            "[chr20:30000000[N",
+            "MantaBND:30:0:1:0:0:0:0",
+        ),
         // one INV3 junction, 100 kb
-        bnd("chr1", 3000000, "MantaBND:40:0:1:0:0:0:0", "N]chr1:3100000]", "MantaBND:40:0:1:0:0:0:1"),
-        bnd("chr1", 3100000, "MantaBND:40:0:1:0:0:0:1", "N]chr1:3000000]", "MantaBND:40:0:1:0:0:0:0"),
+        bnd(
+            "chr1",
+            3000000,
+            "MantaBND:40:0:1:0:0:0:0",
+            "N]chr1:3100000]",
+            "MantaBND:40:0:1:0:0:0:1",
+        ),
+        bnd(
+            "chr1",
+            3100000,
+            "MantaBND:40:0:1:0:0:0:1",
+            "N]chr1:3000000]",
+            "MantaBND:40:0:1:0:0:0:0",
+        ),
         DEL.to_owned(),
     ]
     .iter()
@@ -175,48 +238,73 @@ fn inv_filter_keeps_paired_inversions_and_returns_long_single_junctions() {
         .into_iter()
         .filter(|r| {
             info_of(r, "SVTYPE").as_deref() == Some("INV")
-                && info_of(r, "END").unwrap().parse::<u64>().unwrap() - r[1].parse::<u64>().unwrap() >= 1_000_000
+                && info_of(r, "END").unwrap().parse::<u64>().unwrap() - r[1].parse::<u64>().unwrap()
+                    >= 1_000_000
                 && r[2] == "MantaINV:20:0:1:0:0:0"
         })
         .count();
-    assert_eq!(long_inv, 1, "control: the converted file holds the 50 Mb single-junction INV");
+    assert_eq!(
+        long_inv, 1,
+        "control: the converted file holds the 50 Mb single-junction INV"
+    );
 
     let (out, counts) = inv_filter(&raw_path, &conv_path, Bounds::default());
     let recs = records(&out);
     let by = by_id(&recs);
-    for rid in ["MantaINV:10:0:1:0:0:0", "MantaINV:10:0:2:0:0:0", "MantaINV:50:0:1:0:0:0", "MantaINV:50:0:2:0:0:0"] {
+    for rid in [
+        "MantaINV:10:0:1:0:0:0",
+        "MantaINV:10:0:2:0:0:0",
+        "MantaINV:50:0:1:0:0:0",
+        "MantaINV:50:0:2:0:0:0",
+    ] {
         assert_eq!(
-            by.get(rid).and_then(|r| info_of(r, "INV_JUNCTIONS")).as_deref(),
+            by.get(rid)
+                .and_then(|r| info_of(r, "INV_JUNCTIONS"))
+                .as_deref(),
             Some("2"),
             "both junctions present: {rid} keeps its INV, INV_JUNCTIONS=2"
         );
     }
-    assert!(!by.contains_key("MantaINV:20:0:1:0:0:0"), "the 50 Mb single junction is no INV record any more");
+    assert!(
+        !by.contains_key("MantaINV:20:0:1:0:0:0"),
+        "the 50 Mb single junction is no INV record any more"
+    );
     let mb_invs: Vec<&String> = recs
         .iter()
         .filter(|r| {
             info_of(r, "SVTYPE").as_deref() == Some("INV")
-                && info_of(r, "END").unwrap().parse::<u64>().unwrap() - r[1].parse::<u64>().unwrap() > 1_000_000
+                && info_of(r, "END").unwrap().parse::<u64>().unwrap() - r[1].parse::<u64>().unwrap()
+                    > 1_000_000
         })
         .map(|r| &r[2])
         .collect();
-    assert!(mb_invs.is_empty(), "no INV record longer than the largest paired inversion (1 Mb): {mb_invs:?}");
+    assert!(
+        mb_invs.is_empty(),
+        "no INV record longer than the largest paired inversion (1 Mb): {mb_invs:?}"
+    );
     for rid in ["MantaBND:20:0:1:0:0:0:0", "MantaBND:20:0:1:0:0:0:1"] {
-        let r = by.get(rid).unwrap_or_else(|| panic!("its breakend {rid} is back"));
+        let r = by
+            .get(rid)
+            .unwrap_or_else(|| panic!("its breakend {rid} is back"));
         assert_eq!(
-            (info_of(r, "SVTYPE").as_deref(), info_of(r, "INV_JUNCTIONS").as_deref()),
+            (
+                info_of(r, "SVTYPE").as_deref(),
+                info_of(r, "INV_JUNCTIONS").as_deref()
+            ),
             (Some("BND"), Some("1")),
             "its breakend {rid} is back, INV_JUNCTIONS=1"
         );
     }
     let r = &by["MantaINV:40:0:1:0:0:0"];
     assert!(
-        info_of(r, "INV_JUNCTIONS").as_deref() == Some("1") && !info(r).contains_key("INVDUP_CANDIDATE"),
+        info_of(r, "INV_JUNCTIONS").as_deref() == Some("1")
+            && !info(r).contains_key("INVDUP_CANDIDATE"),
         "the 100 kb single junction stays an INV, INV_JUNCTIONS=1, no INVDUP_CANDIDATE: {r:?}"
     );
     let r = &by["MantaINV:30:0:1:0:0:0"];
     assert!(
-        info_of(r, "INV_JUNCTIONS").as_deref() == Some("1") && info(r).get("INVDUP_CANDIDATE") == Some(&None),
+        info_of(r, "INV_JUNCTIONS").as_deref() == Some("1")
+            && info(r).get("INVDUP_CANDIDATE") == Some(&None),
         "the 400 bp single junction gets INVDUP_CANDIDATE: {r:?}"
     );
     let del: Vec<String> = DEL.trim_end().split('\t').map(str::to_owned).collect();
@@ -227,7 +315,10 @@ fn inv_filter_keeps_paired_inversions_and_returns_long_single_junctions() {
         .collect();
     let mut sorted = order.clone();
     sorted.sort_unstable();
-    assert_eq!(order, sorted, "records sorted by the ##contig order, then POS");
+    assert_eq!(
+        order, sorted,
+        "records sorted by the ##contig order, then POS"
+    );
     assert!(
         out.contains("##INFO=<ID=INV_JUNCTIONS,") && out.contains("##INFO=<ID=INVDUP_CANDIDATE,"),
         "the header declares INV_JUNCTIONS and INVDUP_CANDIDATE"
@@ -253,9 +344,8 @@ fn inv_filter_keeps_paired_inversions_and_returns_long_single_junctions() {
         },
     );
     assert!(
-        records(&out)
-            .iter()
-            .any(|r| r[2] == "MantaINV:20:0:1:0:0:0" && info_of(r, "INV_JUNCTIONS").as_deref() == Some("1")),
+        records(&out).iter().any(|r| r[2] == "MantaINV:20:0:1:0:0:0"
+            && info_of(r, "INV_JUNCTIONS").as_deref() == Some("1")),
         "with a 100 Mb limit the 50 Mb junction stays an INV (INV_JUNCTIONS=1)"
     );
 }
@@ -279,16 +369,48 @@ fn svlen_fix_sets_the_net_length_change() {
     let (ref137, alt2) = ("A".repeat(137), "AC".to_owned());
     let ins_alt = format!("A{}", "T".repeat(59));
     let rows = [
-        ("1005400", "complex", ref137.as_str(), alt2.as_str(), "END=1005536;SVTYPE=DEL;SVLEN=-136"),
-        ("1100000", "pure", ref137.as_str(), "A", "END=1100136;SVTYPE=DEL;SVLEN=-136"),
-        ("1200000", "ins", "ACG", ins_alt.as_str(), "END=1200002;SVTYPE=INS;SVLEN=59"),
-        ("1300000", "sym", "N", "<DEL>", "END=1310000;SVTYPE=DEL;SVLEN=-10000"),
+        (
+            "1005400",
+            "complex",
+            ref137.as_str(),
+            alt2.as_str(),
+            "END=1005536;SVTYPE=DEL;SVLEN=-136",
+        ),
+        (
+            "1100000",
+            "pure",
+            ref137.as_str(),
+            "A",
+            "END=1100136;SVTYPE=DEL;SVLEN=-136",
+        ),
+        (
+            "1200000",
+            "ins",
+            "ACG",
+            ins_alt.as_str(),
+            "END=1200002;SVTYPE=INS;SVLEN=59",
+        ),
+        (
+            "1300000",
+            "sym",
+            "N",
+            "<DEL>",
+            "END=1310000;SVTYPE=DEL;SVLEN=-10000",
+        ),
         ("1400000", "bnd", "N", "N]chr20:1500000]", "SVTYPE=BND"),
-        ("1600000", "multi", ref137.as_str(), "A,AC", "END=1600136;SVTYPE=DEL;SVLEN=-136"),
+        (
+            "1600000",
+            "multi",
+            ref137.as_str(),
+            "A,AC",
+            "END=1600136;SVTYPE=DEL;SVLEN=-136",
+        ),
     ];
-    let vcf = rows.iter().fold(SV.to_owned(), |a, (pos, id, r, alt, inf)| {
-        a + &format!("chr20\t{pos}\t{id}\t{r}\t{alt}\t50\tPASS\t{inf}\tGT\t0/1\n")
-    });
+    let vcf = rows
+        .iter()
+        .fold(SV.to_owned(), |a, (pos, id, r, alt, inf)| {
+            a + &format!("chr20\t{pos}\t{id}\t{r}\t{alt}\t50\tPASS\t{inf}\tGT\t0/1\n")
+        });
     let src = w.put("sv.vcf", &vcf);
     let input = by_id(&records(&vcf));
     assert_eq!(
@@ -307,7 +429,10 @@ fn svlen_fix_sets_the_net_length_change() {
         "REF 137 / ALT 2: SVLEN -135, END POS+134 (an interval of 135 bp for AnnotSV)"
     );
     assert_eq!(
-        (get(&c, "ORIG_SVLEN").as_deref(), get(&c, "ORIG_END").as_deref()),
+        (
+            get(&c, "ORIG_SVLEN").as_deref(),
+            get(&c, "ORIG_END").as_deref()
+        ),
         (Some("-136"), Some("1005536")),
         "REF 137 / ALT 2: the old values kept"
     );
@@ -331,7 +456,10 @@ fn svlen_fix_sets_the_net_length_change() {
         out.contains("##INFO=<ID=ORIG_SVLEN,") && out.contains("##INFO=<ID=ORIG_END,"),
         "the header declares ORIG_SVLEN and ORIG_END"
     );
-    assert_eq!(n, 3, "the summary counts the 3 rewritten sequence-resolved records");
+    assert_eq!(
+        n, 3,
+        "the summary counts the 3 rewritten sequence-resolved records"
+    );
     let again = w.put("sv2.vcf", &out);
     let (out2, _) = svlen_fix(&again).expect("a second run");
     assert_eq!(out2, out, "a second run changes nothing");
@@ -369,7 +497,18 @@ chr20\t2000000\tDEL00000002\tN\t<DEL>\t60\tPASS\tPRECISE;SVTYPE=DEL;END=2050000\
 chr20\t2500000\tDEL00000003\tN\t<DEL>\t10\tLowQual\tIMPRECISE;SVTYPE=DEL;END=2600000\tGT\t0/1\n\
 chr20\t3000000\tINV00000004\tN\t<INV>\t60\tPASS\tIMPRECISE;SVTYPE=INV;END=4000000;CT=3to3\tGT\t0/1\n";
 
-fn cnv(chrom: &str, pos: u64, rid: &str, alt: &str, end: u64, p1: &str, q0: &str, gt: &str) -> String {
+/// One CNVpytor record: its fields as CNVpytor writes them.
+#[allow(clippy::too_many_arguments)]
+fn cnv(
+    chrom: &str,
+    pos: u64,
+    rid: &str,
+    alt: &str,
+    end: u64,
+    p1: &str,
+    q0: &str,
+    gt: &str,
+) -> String {
     let t = &alt[1..4];
     format!(
         "chr{chrom}\t{pos}\t{rid}\tN\t{alt}\t.\tPASS\tEND={end};IMPRECISE;SVLEN={};SVTYPE={t};pytorRD=0.5;pytorP1={p1};\
@@ -419,7 +558,10 @@ fn add_callers_adds_what_manta_lacks() {
     let base = w.put("base.vcf", BASE);
     let delly = w.put_gz("delly.vcf.gz", DELLY);
     let cnvp = w.put_gz("cnv.vcf.gz", &cnvpytor());
-    assert!(!BASE.contains("CNVpytor_del1"), "control: Manta's file alone lacks the CNVpytor deletion");
+    assert!(
+        !BASE.contains("CNVpytor_del1"),
+        "control: Manta's file alone lacks the CNVpytor deletion"
+    );
 
     let all = Opts {
         delly: Some(delly.clone()),
@@ -429,7 +571,13 @@ fn add_callers_adds_what_manta_lacks() {
     let (out, note) = add(&all);
     assert_eq!(
         ids(&out),
-        ["CNVpytor_dup5", "MantaDEL:1", "DEL00000002", "MantaINV:2", "CNVpytor_del1"],
+        [
+            "CNVpytor_dup5",
+            "MantaDEL:1",
+            "DEL00000002",
+            "MantaINV:2",
+            "CNVpytor_del1"
+        ],
         "the added records are exactly Delly's DEL00000002 and CNVpytor's del1 and dup5, sorted"
     );
     let by = by_id(&records(&out));
@@ -461,7 +609,10 @@ fn add_callers_adds_what_manta_lacks() {
         c[4] == "<DUP>" && info_of(c, "SVTYPE").as_deref() == Some("DUP"),
         "CNVpytor's duplication is a <DUP>: {c:?}"
     );
-    assert!(out.contains("##INFO=<ID=SVCALLER,"), "the header declares SVCALLER");
+    assert!(
+        out.contains("##INFO=<ID=SVCALLER,"),
+        "the header declares SVCALLER"
+    );
     assert!(
         note.contains("delly: 2 PASS DEL/DUP calls, 1 added")
             && note.contains("cnvpytor: 3 DEL/DUP calls with e-val < 0.01 and q0 < 0.5, 2 added"),
@@ -471,18 +622,35 @@ fn add_callers_adds_what_manta_lacks() {
     // A Manta record that is filtered or genotyped 0/0 is no call: it must
     // not hide the Delly PASS deletion it overlaps.
     let manta9 = |filt: &str, gt: &str| {
-        format!("chr20\t2000100\tMantaDEL:9\tN\t<DEL>\t500\t{filt}\tEND=2049900;SVTYPE=DEL;SVLEN=-49800\tGT\t{gt}\n")
+        format!(
+            "chr20\t2000100\tMantaDEL:9\tN\t<DEL>\t500\t{filt}\tEND=2049900;SVTYPE=DEL;SVLEN=-49800\tGT\t{gt}\n"
+        )
     };
-    for (label, gt, filt) in [("a 0/0", "0/0", "PASS"), ("a MinGQ", "0/1", "MinGQ"), ("a ./.", "./.", "PASS")] {
+    for (label, gt, filt) in [
+        ("a 0/0", "0/0", "PASS"),
+        ("a MinGQ", "0/1", "MinGQ"),
+        ("a ./.", "./.", "PASS"),
+    ] {
         let b = w.put("base_nocall.vcf", &(BASE.to_owned() + &manta9(filt, gt)));
-        let got = ids(&add(&Opts { delly: Some(delly.clone()), ..opts(&b) }).0);
+        let got = ids(&add(&Opts {
+            delly: Some(delly.clone()),
+            ..opts(&b)
+        })
+        .0);
         assert!(
             got.iter().any(|i| i == "MantaDEL:9") && got.iter().any(|i| i == "DEL00000002"),
             "{label} Manta deletion stays and does not hide Delly's DEL00000002: {got:?}"
         );
     }
-    let b = w.put("base_nocall.vcf", &(BASE.to_owned() + &manta9("PASS", "0|1")));
-    let got = ids(&add(&Opts { delly: Some(delly.clone()), ..opts(&b) }).0);
+    let b = w.put(
+        "base_nocall.vcf",
+        &(BASE.to_owned() + &manta9("PASS", "0|1")),
+    );
+    let got = ids(&add(&Opts {
+        delly: Some(delly.clone()),
+        ..opts(&b)
+    })
+    .0);
     assert!(
         !got.iter().any(|i| i == "DEL00000002"),
         "control: a PASS 0|1 Manta deletion still covers Delly's DEL00000002: {got:?}"
@@ -493,7 +661,11 @@ fn add_callers_adds_what_manta_lacks() {
         .map(|l| l.split('\t').take(8).collect::<Vec<_>>().join("\t") + "\n")
         .collect();
     let b = w.put("sites.vcf", &sites);
-    let got = ids(&add(&Opts { delly: Some(delly.clone()), ..opts(&b) }).0);
+    let got = ids(&add(&Opts {
+        delly: Some(delly.clone()),
+        ..opts(&b)
+    })
+    .0);
     assert!(
         !got.iter().any(|i| i == "DEL00000002"),
         "a sites-only base deletion covers Delly's DEL00000002 (no genotype to read): {got:?}"
@@ -502,7 +674,10 @@ fn add_callers_adds_what_manta_lacks() {
     // A Delly PASS deletion genotyped 0/0 or ./. is no call either: it is
     // not added, and CNVpytor's deletion at the same place is added instead.
     for gt in ["0/0", "./."] {
-        let d = w.put_gz("delly_nocall.vcf.gz", &DELLY.replace("\t1/1:40\n", &format!("\t{gt}:40\n")));
+        let d = w.put_gz(
+            "delly_nocall.vcf.gz",
+            &DELLY.replace("\t1/1:40\n", &format!("\t{gt}:40\n")),
+        );
         let got = ids(&add(&Opts {
             delly: Some(d),
             cnvpytor: Some(cnvp.clone()),
@@ -519,9 +694,13 @@ fn add_callers_adds_what_manta_lacks() {
         base_name: "sv_vcf".to_owned(),
         ..opts(&base)
     });
-    let callers: Vec<Option<String>> = records(&out).iter().map(|r| info_of(r, "SVCALLER")).collect();
+    let callers: Vec<Option<String>> = records(&out)
+        .iter()
+        .map(|r| info_of(r, "SVCALLER"))
+        .collect();
     assert!(
-        note.contains("none given") && callers == [Some("sv_vcf".to_owned()), Some("sv_vcf".to_owned())],
+        note.contains("none given")
+            && callers == [Some("sv_vcf".to_owned()), Some("sv_vcf".to_owned())],
         "no other caller: the base out with SVCALLER=sv_vcf: {note} {callers:?}"
     );
 }
@@ -530,7 +709,15 @@ fn add_callers_adds_what_manta_lacks() {
 
 const DELLY_FMT: &str = "GT:GL:GQ:FT:RCL:RC:RCR:RDCN:DR:DV:RR:RV";
 
-fn delly_rdcn(chrom: &str, pos: u64, rid: &str, kind: &str, end: u64, rdcn: &str, precise: bool) -> String {
+fn delly_rdcn(
+    chrom: &str,
+    pos: u64,
+    rid: &str,
+    kind: &str,
+    end: u64,
+    rdcn: &str,
+    precise: bool,
+) -> String {
     let flag = if precise { "PRECISE" } else { "IMPRECISE" };
     format!(
         "{chrom}\t{pos}\t{rid}\tN\t<{kind}>\t60\tPASS\t{flag};SVTYPE={kind};END={end}\t{DELLY_FMT}\t\
@@ -556,10 +743,16 @@ fn add_callers_checks_delly_read_depth() {
     let w = Scratch::new("depth");
     let base = w.put("base.vcf", BASE);
     let delly = w.put_gz("delly_rdcn.vcf.gz", &depth());
-    let par = repo().join("assets/par_grch38.bed").to_string_lossy().into_owned();
+    let par = repo()
+        .join("assets/par_grch38.bed")
+        .to_string_lossy()
+        .into_owned();
     let planted = records(&depth());
     assert!(
-        planted.len() == 9 && planted.iter().all(|r| r[6] == "PASS" && (r[4] == "<DEL>" || r[4] == "<DUP>")),
+        planted.len() == 9
+            && planted
+                .iter()
+                .all(|r| r[6] == "PASS" && (r[4] == "<DEL>" || r[4] == "<DUP>")),
         "control: every planted Delly call is PASS DEL or DUP"
     );
 
@@ -575,22 +768,42 @@ fn add_callers_checks_delly_read_depth() {
             .filter(|r| info_of(r, "SVCALLER").as_deref() == Some("delly"))
             .map(|r| r[2].clone())
             .collect();
-        assert!(!ids.is_empty(), "og sv add-callers adds Delly calls: {note}");
+        assert!(
+            !ids.is_empty(),
+            "og sv add-callers adds Delly calls: {note}"
+        );
         (ids, out, note)
     };
     let has = |ids: &BTreeSet<String>, i: &str| ids.contains(i);
 
     // No sex and no PAR file first: the arguments step 05 gave before.
     let (ids, _, _) = added(Sex::Unknown, None);
-    assert!(!has(&ids, "DEL_rd2"), "no sex: the 50 Mb deletion with RDCN 2 is set aside: {ids:?}");
-    assert!(!has(&ids, "DUP_rd2"), "no sex: the duplication with RDCN 2 is set aside: {ids:?}");
-    assert!(!has(&ids, "DEL_rdneg"), "no sex: the long deletion with RDCN -1 is set aside: {ids:?}");
     assert!(
-        ["DEL_rd1", "DUP_rd3", "DEL_short"].iter().all(|i| has(&ids, i)),
+        !has(&ids, "DEL_rd2"),
+        "no sex: the 50 Mb deletion with RDCN 2 is set aside: {ids:?}"
+    );
+    assert!(
+        !has(&ids, "DUP_rd2"),
+        "no sex: the duplication with RDCN 2 is set aside: {ids:?}"
+    );
+    assert!(
+        !has(&ids, "DEL_rdneg"),
+        "no sex: the long deletion with RDCN -1 is set aside: {ids:?}"
+    );
+    assert!(
+        ["DEL_rd1", "DUP_rd3", "DEL_short"]
+            .iter()
+            .all(|i| has(&ids, i)),
         "no sex: the deletion with RDCN 1, the duplication with RDCN 3 and the short call are added: {ids:?}"
     );
-    assert!(has(&ids, "DEL_x1"), "no sex: the chrX deletion with RDCN 1 is added: {ids:?}");
-    assert!(has(&ids, "DUP_x2"), "no sex: the chrX duplication with RDCN 2 is added: {ids:?}");
+    assert!(
+        has(&ids, "DEL_x1"),
+        "no sex: the chrX deletion with RDCN 1 is added: {ids:?}"
+    );
+    assert!(
+        has(&ids, "DUP_x2"),
+        "no sex: the chrX duplication with RDCN 2 is added: {ids:?}"
+    );
 
     let (ids, out, note) = added(Sex::Male, Some(&par));
     let want: BTreeSet<String> = ["DEL_rd1", "DUP_rd3", "DEL_short", "DUP_x2", "DEL_par1"]
@@ -603,8 +816,12 @@ fn add_callers_checks_delly_read_depth() {
          RDCN 1 deletion, RDCN 3 duplication, the short call, the chrX RDCN 2 duplication and the PAR RDCN 1 \
          deletion added"
     );
-    let line = "delly: 5 PASS DEL/DUP calls, 5 added, and 4 PASS calls longer than 1000 bp set aside";
-    assert!(note.contains(line), "male: the summary counts the 4 calls set aside: {note}");
+    let line =
+        "delly: 5 PASS DEL/DUP calls, 5 added, and 4 PASS calls longer than 1000 bp set aside";
+    assert!(
+        note.contains(line),
+        "male: the summary counts the 4 calls set aside: {note}"
+    );
     assert!(
         out.contains(&format!("##svcallers_added=\"Callers beside manta: {line}"))
             && out.find("##svcallers_added=") < out.find("#CHROM"),
@@ -612,6 +829,12 @@ fn add_callers_checks_delly_read_depth() {
     );
 
     let (ids, _, _) = added(Sex::Female, Some(&par));
-    assert!(!has(&ids, "DUP_x2"), "female: the chrX duplication with RDCN 2 is set aside: {ids:?}");
-    assert!(has(&ids, "DEL_x1"), "female: the chrX deletion with RDCN 1 is added: {ids:?}");
+    assert!(
+        !has(&ids, "DUP_x2"),
+        "female: the chrX duplication with RDCN 2 is set aside: {ids:?}"
+    );
+    assert!(
+        has(&ids, "DEL_x1"),
+        "female: the chrX deletion with RDCN 1 is added: {ids:?}"
+    );
 }
