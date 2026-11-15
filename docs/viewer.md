@@ -84,6 +84,8 @@ Then open `http://127.0.0.1:8765/` on your computer. The report's links work the
 
 On the genome map, zoom below 50 kb and press **R** or select **See the reads**. The **Reads** gauge opens a 2 kb view. A finding's map card also offers **See the reads**, centred on its position with 50 bases on each side. The panel otherwise starts at the nearest open finding in view, or at the view itself. Moving the map updates the viewer's locus. Alignments are visible up to 50 kb.
 
+Back follows the map's history. Moving the map creates no extra history entry for the iframe, and the Reads gauge adds one camera view. Resizing the viewer keeps its requested locus.
+
 The panel takes the place of the In view table. Press **Esc**, including from inside the viewer, or select **Back to the map** to close it. Focus returns to the map at the same view. Closing the panel clears its previous locus, title, and link to the full viewer. **Open full viewer** opens that locus in a new tab. A closed result has no reads button, and closing an opened result removes its reads panel. When the viewer is off, the panel shows the server's reason. The static demo explains that it has no viewer.
 
 The live viewer allows framing only by the same origin: it sends `frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`. Live pages allow `frame-src 'self'`. Other routes keep `frame-ancestors 'none'` and `X-Frame-Options: DENY`. The standalone local viewer keeps its original policy, which blocks all framing.

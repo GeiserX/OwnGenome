@@ -268,9 +268,12 @@ def map_reads_checks(srv, work, chrome):
         check("map: a closed result has no card or reads link",
               b.eval("!document.querySelector('.gm-marks [data-id=closed]') && !document.querySelector('.gm-card-reads[data-id=closed]')"))
         # A moved view must update the existing frame, with no page reload.
-        b.eval("window.savedFrame=document.querySelector('.gm-reads iframe');location.hash='chr1:1-49001'")
+        b.eval("window.savedFrame=document.querySelector('.gm-reads iframe');window.savedViewerDocument=savedFrame.contentDocument;"
+               "window.savedHistoryLength=history.length;location.hash='chr1:1-49001'")
         check("map: moving updates the same iframe to the map's locus",
               b.wait("savedFrame===document.querySelector('.gm-reads iframe') && savedFrame.contentWindow.location.hash==='#chr1:1-49001'"))
+        check("map: a camera move keeps the viewer document and adds no iframe history entry",
+              b.eval("savedViewerDocument===savedFrame.contentDocument && history.length===savedHistoryLength+1"))
         check("viewer: alignments remain visible at 49 kb",
               b.wait("(function(){var h=savedFrame.contentDocument.getElementById('igv');"
                      "var v=h && h.shadowRoot && h.shadowRoot.querySelector('.igv-viewport[data-track-type=alignment]');"
@@ -279,11 +282,31 @@ def map_reads_checks(srv, work, chrome):
               b.eval("JSON.stringify(Array.from(savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelectorAll('.igv-viewport')).map(function(v){"
                      "var n=v.querySelector('.igv-zoom-in-notice-container');return {type:v.dataset.trackType,"
                      "notice:n && n.style.display,canvas:v.querySelectorAll('canvas').length,text:v.textContent.slice(0,180)};}))"))
+        def viewer_locus():
+            return b.eval("savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelector('input.igv-search-input').value")
+
+        def resized():
+            b.call("Runtime.evaluate", {"expression": "new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))",
+                                       "awaitPromise": True}, b.session)
+
+        expected_locus = viewer_locus()
+        js("savedFrame.style.width='50%'")
+        resized()
+        check("viewer: resizing keeps the full requested locus",
+              b.wait("savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelector('input.igv-search-input').value==="
+                     + json.dumps(expected_locus)), viewer_locus())
+        js("savedFrame.style.width=''")
+        resized()
+        b.wait("savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelector('input.igv-search-input').value==="
+               + json.dumps(expected_locus))
         if os.environ.get("MAP_SCREENS"):
             os.makedirs(os.environ["MAP_SCREENS"], exist_ok=True)
             for width, height in ((1440, 900), (390, 844)):
                 b.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height,
                        "deviceScaleFactor": 1, "mobile": False}, b.session)
+                resized()
+                b.wait("savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelector('input.igv-search-input').value==="
+                       + json.dumps(expected_locus))
                 b.eval("document.querySelector('.gm-reads').scrollIntoView({block:'center'})")
                 png = b.call("Page.captureScreenshot", {"format": "png"}, b.session)["data"]
                 with open(os.path.join(os.environ["MAP_SCREENS"], f"map-reads-{width}.png"), "wb") as out:
@@ -296,9 +319,12 @@ def map_reads_checks(srv, work, chrome):
                      "document.querySelector('.gmap').dataset.view==='chr1:1-49001'"))
         b.eval("document.querySelector('.gm-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'r',bubbles:true}))")
         check("map: R reopens the panel", loaded())
-        b.eval("document.querySelector('.gm-reads-close').click();document.querySelector('[data-stop=reads]').click()")
+        b.eval("document.querySelector('.gm-reads-close').click();window.gaugeHistoryLength=history.length;"
+               "document.querySelector('[data-stop=reads]').click()")
         check("map: Reads gauge opens a 2 kb view and the panel", b.wait("!document.querySelector('.gm-reads').hidden && "
                                                                  "document.querySelector('.gmap').dataset.level==='reads'"))
+        check("map: the Reads gauge adds one camera history entry",
+              b.eval("history.length===gaugeHistoryLength+1"))
         js("document.querySelector('.gm-reads-close').click();location.hash='chr1:1-2000'")
         b.wait("document.querySelector('.gmap').dataset.view==='chr1:1-2000'")
         js("document.querySelector('.gm-marks [data-id=open]').focus();document.querySelector('.gm-card-reads').click()")

@@ -58,11 +58,18 @@
       // igv.js otherwise fetches its genome list from igv.org at start.
       loadDefaultGenomes: false,
     });
-    window.addEventListener("hashchange", function () {
+    function followLocus() {
       const locus = locusFromHash();
       if (locus) {
         browser.search(locus);
       }
+    }
+    window.addEventListener("hashchange", followLocus);
+    // igv.js keeps bases per pixel on resize. Keep the requested absolute locus instead.
+    let resizeTimer;
+    window.addEventListener("resize", function () {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(followLocus, 100);
     });
     root.dataset.pgpTracks = String(cfg.tracks.length);
     root.dataset.pgpStatus = "ready";

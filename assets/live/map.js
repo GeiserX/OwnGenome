@@ -1244,7 +1244,9 @@
       readsFull.href = readsBase() + '#' + locus;
       if (readsFrame) {
         // Changing only the fragment lets viewer.js search without reloading igv.js.
-        readsFrame.src = readsFull.href;
+        if (readsFrame.parentNode && readsFrame.contentWindow) {
+          readsFrame.contentWindow.location.replace(readsFull.href);
+        } else { readsFrame.src = readsFull.href; }
       }
     }
     function closeReads() {
@@ -1693,14 +1695,14 @@
         c = f ? (f.s + f.e) / 2 : M.chroms[ci].len / 2;
       }
       if (lv === 'chromosome') { openChrom(ci, undefined, undefined, true); return; }
-      openChrom(ci, c, (lv === 'region' ? REGION_STOP : GENE_STOP) * openW(), true);
+      openChrom(ci, c, lv === 'reads' ? 2000 : (lv === 'region' ? REGION_STOP : GENE_STOP) * openW(), true);
     }
     stopC.addEventListener('click', function () { stopTo('chromosome'); });
     stopR.addEventListener('click', function () { stopTo('region'); });
     stopN.addEventListener('click', function () { stopTo('gene'); });
     stopReads.addEventListener('click', function () {
-      stopTo('gene');
-      openChrom(tgt.ci, tgt.c, 2000, true);
+      if (!M || failure) { return; }
+      stopTo('reads');
       // The target is already at reads level; finish the camera motion before selecting its nearest row.
       cam.ci = tgt.ci; cam.c = tgt.c; cam.ls = tgt.ls; cam.k = tgt.k;
       openReads();
