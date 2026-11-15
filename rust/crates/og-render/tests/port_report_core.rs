@@ -461,6 +461,14 @@ fn a_malformed_section_reads_as_unreadable_and_the_rest_is_written() {
         frame_of(&page, "qc")
             .contains("could not be read: sections.read_count.data has no primary_records")
     );
+    // The section that could not be read is failed in the contents and its
+    // badge, though each of its keys says ok.
+    assert!(
+        page.contains("<a href=\"#qc\"><span class=\"dot dot-failed\" title=\"Failed\">"),
+        "{page}"
+    );
+    assert!(frame_of(&page, "qc").contains("<span class=\"badge badge-red\">Failed</span>"));
+    assert!(page.contains("<a href=\"#variants\"><span class=\"dot dot-ok\""));
     assert!(frame_of(&page, "variants").contains("Total variants"));
     // The four quality keys and the variants gone (Python stopped with a
     // KeyError): the text leaves both blocks and the chapter out, the

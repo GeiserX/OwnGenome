@@ -97,8 +97,15 @@ pub fn card(sec: &Section<'_>, mut c: Card) -> Result<Card, Malformed> {
     Ok(c)
 }
 
-/// The step line under a section's first card title.
-fn meta(s: &Summary, sid: &str, keys: &[&str], since: Option<&str>) -> Result<String, Malformed> {
+/// The step line under a section's first card title, with the section's
+/// state badge.
+fn meta(
+    s: &Summary,
+    sid: &str,
+    keys: &[&str],
+    state: FrameState,
+    since: Option<&str>,
+) -> Result<String, Malformed> {
     let secs: Vec<Section<'_>> = keys.iter().map(|k| s.section(k)).collect();
     let mut steps: Vec<&str> = Vec::new();
     for k in keys {
@@ -107,7 +114,7 @@ fn meta(s: &Summary, sid: &str, keys: &[&str], since: Option<&str>) -> Result<St
             steps.push(step);
         }
     }
-    let (label, colour) = FrameState::of(&secs.iter().map(|x| x.state).collect::<Vec<_>>()).badge();
+    let (label, colour) = state.badge();
     let mut dates = Vec::new();
     for x in &secs {
         if let Some(d) = x.file_date.filter(|d| crate::model::truthy(d)) {
@@ -243,9 +250,14 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
         let mut shown = Vec::new();
         for sec in chapter.sections {
             if let Some((_, html)) = writer(sec.id) {
-                let part = html(s).unwrap_or_else(|why| unreadable(sec, &why));
+                // A section whose data could not be read shows as failed in
+                // the contents and its badge, whatever its keys' states say.
+                let (part, failed) = match html(s) {
+                    Ok(part) => (part, false),
+                    Err(why) => (unreadable(sec, &why), true),
+                };
                 if !part.cards.is_empty() {
-                    shown.push((sec, part));
+                    shown.push((sec, part, failed));
                 }
             }
         }
@@ -259,9 +271,13 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
         ));
         toc.push("      <ol>".to_owned());
         chapter_open(&mut body, chapter.id, chapter.title, chapter.question);
-        for (sec, part) in shown {
-            let states: Vec<State> = sec.keys.iter().map(|k| s.section(k).state).collect();
-            let state = FrameState::of(&states);
+        for (sec, part, failed) in shown {
+            let state = if failed {
+                FrameState::Failed
+            } else {
+                let states: Vec<State> = sec.keys.iter().map(|k| s.section(k).state).collect();
+                FrameState::of(&states)
+            };
             toc.push(format!(
                 "        <li><a href=\"#{}\"><span class=\"dot dot-{}\" title=\"{}\"></span>{}</a></li>",
                 sec.id,
@@ -274,7 +290,7 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
             } else {
                 None
             };
-            let m = meta(s, sec.id, sec.keys, since.as_deref())?;
+            let m = meta(s, sec.id, sec.keys, state, since.as_deref())?;
             body.extend(frame(sec.id, &part, Some(m), false));
         }
         toc.push("      </ol>".to_owned());
