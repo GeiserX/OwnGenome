@@ -215,3 +215,211 @@ fn an_index_older_than_its_vcf_is_not_used() {
     let (_, how) = read_vcf(&gz.to_string_lossy(), read_markers(&markers()).unwrap()).unwrap();
     assert_eq!(how, Access::Stream);
 }
+
+/// A one-sample VCF record line.
+fn line(chrom: &str, pos: i64, r: &str, alt: &str, filt: &str, gt: &str) -> String {
+    format!("{chrom}\t{pos}\t.\t{r}\t{alt}\t50\t{filt}\t.\tGT\t{gt}\n")
+}
+
+/// `records` (sorted, under 64 KiB) as a plain VCF and as a bgzipped VCF
+/// with a `.tbi`: one bin per sequence whose one chunk spans that
+/// sequence's lines, the smallest index the reader takes.
+fn both_ways(d: &Path, records: &[String]) -> (PathBuf, PathBuf) {
+    use std::io::Write;
+    let text = format!("{HEAD}{}", records.concat());
+    let plain = d.join("s.vcf");
+    std::fs::write(&plain, &text).unwrap();
+    let gz = d.join("s.vcf.gz");
+    let mut w = og_io::bgzf::Writer::new(
+        std::fs::File::create(&gz).unwrap(),
+        std::num::NonZero::new(1).unwrap(),
+    )
+    .unwrap();
+    w.write_all(text.as_bytes()).unwrap();
+    w.finish().unwrap();
+    // Each sequence's (first byte, end byte) in the one block's text.
+    let mut seqs: Vec<(String, u64, u64)> = Vec::new();
+    let mut at = HEAD.len() as u64;
+    for r in records {
+        let chrom = r.split('\t').next().unwrap().to_owned();
+        let end = at + r.len() as u64;
+        match seqs.last_mut() {
+            Some(s) if s.0 == chrom => s.2 = end,
+            _ => seqs.push((chrom, at, end)),
+        }
+        at = end;
+    }
+    let names: Vec<u8> = seqs
+        .iter()
+        .flat_map(|s| s.0.bytes().chain([0]))
+        .collect();
+    let mut tbi: Vec<u8> = b"TBI\x01".to_vec();
+    let i32s = |v: &mut Vec<u8>, xs: &[i32]| xs.iter().for_each(|x| v.extend(x.to_le_bytes()));
+    // n_ref, VCF preset, columns 1 2 0, meta '#', skip 0, names.
+    i32s(&mut tbi, &[seqs.len() as i32, 2, 1, 2, 0, b'#' as i32, 0]);
+    i32s(&mut tbi, &[names.len() as i32]);
+    tbi.extend(&names);
+    for (_, beg, end) in &seqs {
+        // One bin (0, the whole sequence), one chunk, no linear index.
+        i32s(&mut tbi, &[1, 0, 1]);
+        tbi.extend(beg.to_le_bytes());
+        tbi.extend(end.to_le_bytes());
+        i32s(&mut tbi, &[0]);
+    }
+    std::fs::write(d.join("s.vcf.gz.tbi"), tbi).unwrap();
+    (plain, gz)
+}
+
+/// (status, alt copies, note) of the site `name`, read through the index
+/// and by a full pass, which must agree.
+fn site_both_ways(d: &Path, records: &[String], name: &str) -> (String, Option<i64>, String) {
+    let (plain, gz) = both_ways(d, records);
+    let (whole, how) =
+        read_vcf(&plain.to_string_lossy(), read_markers(&markers()).unwrap()).unwrap();
+    assert_eq!(how, Access::Stream);
+    let (indexed, how) =
+        read_vcf(&gz.to_string_lossy(), read_markers(&markers()).unwrap()).unwrap();
+    assert_eq!(how, Access::Index);
+    assert_eq!(indexed, whole, "{records:?}");
+    let s = &whole[name];
+    (s.status.as_str().to_owned(), s.n, s.note.clone())
+}
+
+#[test]
+fn the_abo_insertion_counts_after_a_reference_or_other_record() {
+    let d = dir("abo261");
+    let ins = |gt: &str| line("chr9", 133257521, "T", "TC", "PASS", gt);
+    for (first, gt, copies) in [
+        // An all-sites VCF (bcftools call -m without -v): the reference
+        // record comes first, then the insertion.
+        (line("chr9", 133257521, "T", ".", ".", "0/0"), "0/1", 1),
+        (line("chr9", 133257521, "T", ".", ".", "0/0"), "1/1", 2),
+        // A gVCF-style reference record.
+        (line("chr9", 133257521, "T", "<*>", ".", "0/0"), "0/1", 1),
+    ] {
+        for recs in [[first.clone(), ins(gt)], [ins(gt), first.clone()]] {
+            let (status, n, note) = site_both_ways(&d, &recs, "ABO_261");
+            assert_eq!(
+                (status.as_str(), n, note.as_str()),
+                ("called", Some(copies), ""),
+                "{recs:?}"
+            );
+        }
+    }
+    // A split multi-allelic record (bcftools norm -m-any writes the SNV
+    // first): the insertion counts and the SNV is named.
+    let snv = line("chr9", 133257521, "T", "G", "PASS", "1/0");
+    for recs in [[snv.clone(), ins("0/1")], [ins("0/1"), snv.clone()]] {
+        let (status, n, note) = site_both_ways(&d, &recs, "ABO_261");
+        assert_eq!((status.as_str(), n), ("called", Some(1)), "{recs:?}");
+        assert_eq!(note, "another allele at this position (T>G, genotype 1/0)");
+    }
+    // The whole report: A1/O.01, not O.
+    let t = run(
+        &d,
+        &[line("chr9", 133257521, "T", ".", ".", "0/0"), ins("0/1")],
+        Some(depth(&d, 2.0, &HashMap::new())),
+    );
+    assert_eq!(t["ABO"][..3], ["A1", "A1/O.01", "high"]);
+}
+
+#[test]
+fn a_later_record_of_the_marker_allele_that_is_no_call_wins_over_a_reference_record() {
+    let d = dir("abo261-nocall");
+    let r = line("chr9", 133257521, "T", ".", ".", "0/0");
+    for (later, note) in [
+        (line("chr9", 133257521, "T", "TC", "PASS", "./."), "genotype ./."),
+        (
+            line("chr9", 133257521, "T", "TC", "LowQual", "0/1"),
+            "FILTER LowQual",
+        ),
+    ] {
+        for recs in [[r.clone(), later.clone()], [later.clone(), r.clone()]] {
+            let (status, n, got) = site_both_ways(&d, &recs, "ABO_261");
+            assert_eq!(
+                (status.as_str(), n, got.as_str()),
+                ("no call", None, note),
+                "{recs:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_shorter_reference_record_leaves_a_deletion_marker_to_the_reads() {
+    let d = dir("abo1061");
+    let ins = line("chr9", 133257521, "T", "TC", "PASS", "0/1");
+    // An all-sites VCF writes `C . 0/0` at the A2 marker (REF CG): it says
+    // nothing past its own base, so the reads decide, as with no record.
+    for r in [
+        line("chr9", 133255669, "C", ".", ".", "0/0"),
+        line("chr9", 133255669, "C", "<*>", ".", "0/0"),
+    ] {
+        let recs = [r.clone(), ins.clone()];
+        assert_eq!(
+            site_both_ways(&d, &recs, "ABO_1061"),
+            ("absent".to_owned(), None, String::new())
+        );
+        let t = run(&d, &recs, Some(depth(&d, 2.0, &HashMap::new())));
+        assert_eq!(t["ABO"][..3], ["A1", "A1/O.01", "high"], "{r}");
+        // The deletion after it still counts, in either order.
+        let del = line("chr9", 133255669, "CG", "C", "PASS", "0/1");
+        for recs in [[r.clone(), del.clone()], [del.clone(), r.clone()]] {
+            let (status, n, _) = site_both_ways(&d, &recs, "ABO_1061");
+            assert_eq!((status.as_str(), n), ("called", Some(1)), "{recs:?}");
+        }
+    }
+    // A shorter record with a non-reference call stays a no call.
+    let (status, _, note) = site_both_ways(
+        &d,
+        &[line("chr9", 133255669, "C", "T", "PASS", "0/1")],
+        "ABO_1061",
+    );
+    assert_eq!(
+        (status.as_str(), note.as_str()),
+        ("no call", "REF C at this position, the marker's REF is CG")
+    );
+}
+
+#[test]
+fn a_record_that_spans_a_marker_with_another_base_there_is_no_call() {
+    let d = dir("kel578");
+    let reads = || Some(depth(&d, 2.0, &HashMap::new()));
+    // KEL c.578C>T (K) is chr7:142957921 G>A. A padded record one base
+    // upstream carries the same change (CG>CA), or a deletion of that
+    // base with it (DeepVariant's CG>C,CA 1/2).
+    for (r, alt, gt) in [("CG", "CA", "1/1"), ("CG", "C,CA", "1/2"), ("CG", "C", "0/1")] {
+        let recs = [line("chr7", 142957920, r, alt, "PASS", gt)];
+        let (status, n, note) = site_both_ways(&d, &recs, "KEL_578");
+        assert_eq!(
+            (status.as_str(), n, note.as_str()),
+            (
+                "no call",
+                None,
+                format!("a record at chr7:142957920 ({r}>{alt}, genotype {gt}) spans this site")
+                    .as_str()
+            )
+        );
+        let t = run(&d, &recs, reads());
+        assert_eq!(t["Kell"][0], "K/k not determined", "{recs:?}");
+        assert_ne!(t["Kell"][2], "high", "{recs:?}");
+    }
+    // Split (bcftools norm -m-any): the deletion before the SNV record
+    // still makes the SNV's copy count unknown (one copy may be deleted).
+    let recs = [
+        line("chr7", 142957920, "CG", "C", "PASS", "0/1"),
+        line("chr7", 142957921, "G", "A", "PASS", "0/1"),
+    ];
+    let (status, ..) = site_both_ways(&d, &recs, "KEL_578");
+    assert_eq!(status, "no call");
+    // A spanning record that keeps the marker's base, or calls reference,
+    // leaves the site to its own records and the reads.
+    for recs in [
+        [line("chr7", 142957920, "CG", "TG", "PASS", "1/1")],
+        [line("chr7", 142957920, "CG", "C", "PASS", "0/0")],
+        [line("chr7", 142957920, "CG", "C", "PASS", "./.")],
+    ] {
+        let (status, ..) = site_both_ways(&d, &recs, "KEL_578");
+        assert_eq!(status, "absent", "{recs:?}");
+    }
+}
