@@ -30,7 +30,7 @@ const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og d
 /// Runs `og dev fixture ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let usage = |err: &mut dyn Write, msg: &str| {
-        let _ = writeln!(err, "{USAGE}og dev fixture: error: {msg}");
+        let _ = writeln!(err, "{USAGE}{}og dev fixture: error: {msg}", e2e::USAGE);
         2
     };
     let result = match args.first().map(String::as_str) {
@@ -642,6 +642,31 @@ mod tests {
             crate::stream_tests::assert_status_errors(cli, &args, false);
         }
         fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn an_unknown_kind_lists_every_kind_in_its_usage() {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&["bogus".into()], &mut out, &mut err), 2);
+        let err = String::from_utf8(err).unwrap();
+        assert!(err.contains("unknown fixture 'bogus'"), "{err}");
+        for kind in [
+            "comphet",
+            "trim-pharmcat",
+            "append-n",
+            "rfc1",
+            "str-extra",
+            "tas2r38",
+            "mito-sam",
+            "hba-tiles",
+            "cut-haplotype",
+            "contains",
+        ] {
+            assert!(
+                err.contains(&format!("og dev fixture {kind} ")),
+                "{kind}: {err}"
+            );
+        }
     }
 
     #[test]
