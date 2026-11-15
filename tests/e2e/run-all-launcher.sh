@@ -141,7 +141,7 @@ check "negative control: and the host's --max_cpus ${HC}" has " --max_cpus ${HC}
 check "negative control: and no executor.config" lacks "executor\.config" "$BIG"
 check "negative control: the small engine's executor.config is not left behind" test ! -e "$EXC"
 # Each limit alone, and what the user passes wins: THREADS and an explicit --max_memory stay, and a
-# -c of the user's comes after the engine's executor.config, so its executor block replaces the pool.
+# -c of the user's comes after the engine's executor.config, so each setting in its executor block wins.
 UC="${G3}/user.config"
 ET=3 engine_run memory "$((EG * 1073741824)) $((HC + 4))" -c "$UC"
 MEMO=$(cat "${ENG}/memory.args" 2>/dev/null) MEMC=$(cat "${ENG}/memory.config" 2>/dev/null)

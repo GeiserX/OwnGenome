@@ -289,7 +289,7 @@ MC="${G}/clinvar/clinvar_chr.vcf.gz"; if [ -s "$MC" ] && [ -s "${MC}.tbi" ]; the
 # The CPUs and RAM the tasks get: the host's, or the container engine's when docker info reports less. Docker Desktop
 # and colima run the containers in a VM, often smaller than the host; Nextflow books the host's RAM by default, and
 # a task the VM cannot hold is killed (exit 137). Then the default caps are the engine's, and executor.config sets the
-# pool Nextflow fills to it, so a task waits for room instead. A later -c of the user's replaces that pool.
+# pool Nextflow fills to it, so a task waits for room instead. Each executor setting in a later -c of the user's wins.
 NC=$(getconf _NPROCESSORS_ONLN) EM="" EC="" EXC="${S}/nextflow/executor.config" EX=""
 M=$(awk '/^MemTotal:/ {print int($2 / 1048576)}' /proc/meminfo 2>/dev/null || echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )))
 read -r EM EC _ < <(docker info --format '{{.MemTotal}} {{.NCPU}}' 2>/dev/null) || true
