@@ -9,9 +9,10 @@ Checks:
      chromosome map (child_a has one, child_b none), the relationship check,
      the shared segments, the couple screen counted from step 39's table, the
      plan, and exactly the result files that exist;
-  3. child_a's state links to family_a; a sample in no family gets null; while a
-     family's pedigree cannot be read, a sample no readable family lists gets
-     "unknown" (it may be that family's child), and child_a still its family;
+  3. child_a's state links to family_a and says it is a child, gf_a's that it is
+     not; a sample in no family gets null; while a family's pedigree cannot be
+     read, a sample no readable family lists gets "unknown" (it may be that
+     family's child), and every listed sample is treated as a child;
   4. GET /family/<family>/pedigree.svg is the drawing of the declared parents;
      a listed file is served as written; notes.txt (in the folder, written by
      no step), a name with '..', a symlink out of the folder, a sample's
@@ -31,17 +32,21 @@ Checks:
      gate_checks on the family page), here so that browser time is not added to test_live_demo.py's;
   8. the real server answers every finding id of a child with a result to act on with the same page, and keeps
      the 404 for an adult's id that is not a finding.
-  9. the report gate on the real server, in live mode: one rule of who is a child; the home page counts a
+  9. the report gate on the real server, in live mode: one rule of who is a child (a child in any family is one);
+     the home page counts a
      child's results to act on from the summary its results.json reads (a stale summary.json too); family.json
      has no flagged-card count for a child whose report is closed, so a parent's page is the same whichever card
      holds the child's results; and an adult's and a no-act child's pages make the requests of the page without
      the gate, in its order, the event stream included, and are the same page (the genome map drawn with OG); an
-     adult's page at a section address is the page without the gate whichever of the family and the results
-     answers first; each member run of family.json says whether it is a child by the one rule; a no-act child
-     with a stale summary.json keeps its numbers on the home page; a family file that cannot be read gives a
-     fixed 500 and the server then reads that family as unreadable; on the family page a gated child reads
-     "Report closed" and, once opened there, the real count; a child of one family is closed on another family's
-     page where it is a partner.
+     adult's and a no-act child's page at a section address give the outcome main's view files give in each order
+     (marks kept when the family answers first, cleared when the results do, the map's tooltip hidden="hidden");
+     each member run of family.json says whether it is a child by the one rule; a no-act child with a stale
+     summary.json keeps its numbers on the home page; a family file that cannot be read gives a fixed 500, and
+     while it cannot be read the people that family lists are closed alike on the server, in state.json, on the
+     finding route, on their page and home tile, and reopen once it reads, all with no family.json request; on
+     the family page a gated child reads "Report closed" and, once opened there, the count summary.json gives; an
+     adult's member line is as without the gate; a child of one family is closed on another family's page where
+     it is a partner, keeps that role there, and stays a child when that family sorts first.
 Checks 2 and 4 are run again on a copy of the fixture with two parents swapped
 and must fail there: a check that cannot fail is no check.
 
@@ -246,8 +251,10 @@ def main():
 
         # 3. a sample's page
         hook = dict(app.hooks)["family"]
-        check("child_a's page links to family_a", hook(os.path.join(root, "child_a"), {}, []) ==
-              {"kind": "member", "families": [{"name": "family_a", "url": "/runs/family_a/"}]})
+        check("child_a's page links to family_a and says it is a child", hook(os.path.join(root, "child_a"), {}, []) ==
+              {"kind": "member", "families": [{"name": "family_a", "url": "/runs/family_a/"}], "child": True})
+        check("gf_a's page links to family_a and says it is not a child", hook(os.path.join(root, "gf_a"), {}, []) ==
+              {"kind": "member", "families": [{"name": "family_a", "url": "/runs/family_a/"}], "child": False})
         check("a sample in no family gets null", hook(os.path.join(root, "loner"), {}, []) is None)
 
         # 4. the route
@@ -288,7 +295,10 @@ def main():
         got = (hook(os.path.join(root, "loner"), {}, []), hook(os.path.join(root, "child_a"), {}, []))
         check("while a family cannot be read, a sample no readable family lists is unknown, never in no family",
               got == ({"kind": "member", "families": [], "unknown": True},
-                      {"kind": "member", "families": [{"name": "family_a", "url": "/runs/family_a/"}]}), got)
+                      {"kind": "member", "families": [{"name": "family_a", "url": "/runs/family_a/"}], "child": True}), got)
+        got = hook(os.path.join(root, "gf_a"), {}, [])
+        check("...and an adult a readable family lists is treated as a child too: the unreadable family may list it as one",
+              got == {"kind": "member", "families": [{"name": "family_a", "url": "/runs/family_a/"}], "child": True}, got)
         shutil.rmtree(empty)
         check("...and once it reads again, in no family", hook(os.path.join(root, "loner"), {}, []) is None)
 
@@ -475,9 +485,14 @@ def gate_server_checks(live, get, root, port, work):
             {"name": "a", "members": [{"sample": "x", "father": "p", "mother": None}]},
             {"name": "c", "members": []}]
     child_of = getattr(owngenome_live, "child_of", lambda *a: None)
-    got = [child_of(fams, "x"), child_of(fams[:1], "x"), child_of(fams, "y"), child_of(fams[:2], "y")]
-    check("one rule of who is a child: the first family by name decides; a run no readable family lists is a child "
-          "while a family cannot be read", got == [True, False, True, False], got)
+    got = [child_of(fams, "x"), child_of(fams[:1], "x"), child_of(fams, "y"), child_of(fams[:2], "y"),
+           child_of([fams[1], fams[0]], "x"), child_of([dict(fams[0], name="0")] + fams[1:2], "x")]
+    check("one rule of who is a child: a child in any readable family is one, whichever family sorts first; every run "
+          "is one while a family's members cannot be read", got == [True, False, True, False, True, True], got)
+    unread = [dict(fams[0], unreadable=True)]
+    got = [child_of(unread, "x"), child_of(unread, "y")]
+    check("...and while another file of a family cannot be read, the runs it lists are, and no other run",
+          got == [True, False], got)
     check("the finding route asks the same rule", __import__("owngenome_live_results").child_run(live, "father_a")
           and not __import__("owngenome_live_results").child_run(live, "gf_a"))
     made = []
@@ -553,26 +568,100 @@ def gate_server_checks(live, get, root, port, work):
         run("child_a")
 
 
+def failure_state(live, get):
+    """What the server says of gf_a (an adult family_a lists) and loner (an adult in no family), both with a result
+    to act on: child_of, state.json's family plugin (child, unknown) and a guessed finding address; and family_a as
+    /runs.json lists it (unreadable, how many members)."""
+    def fam(n):
+        f = (json.loads(get("/runs/%s/state.json" % n)[2]).get("plugins") or {}).get("family") or {}
+        return f.get("child"), f.get("unknown")
+    fa = [f for f in json.loads(get("/runs.json")[2])["families"] if f["name"] == "family_a"][0]
+    return {n: (live.child(n), fam(n), get("/runs/%s/finding/two-hits-cftr/" % n)[0]) for n in ("gf_a", "loner")} | {
+        "family_a": (fa.get("unreadable"), len(fa["members"]))}
+
+
 def family_failure_checks(live, get, root):
-    """A family file that cannot be read: family.json answers a fixed error, never a dropped connection, and the server
-    then reads that family as unreadable, as the page does when family.json fails (one rule of who is a child)."""
+    """A family file that cannot be read: family.json answers a fixed error, never a dropped connection. Who is a child
+    is computed from the files on each request, never from which requests came before: while a file of family_a cannot
+    be read, the runs it lists are closed alike on their pages, home and the finding route (fail closed), runs in no
+    family stay as they were, and all reopen as soon as the file reads again, with no family.json request."""
+    status = os.path.join(root, "loner", "logs", "run_status.tsv")
+    with open(status, "w") as f:
+        f.write("meta\tstarted_epoch\t1767347940\nstep\t06\tplanned\n")
+    real = live.summary
+    live.summary = lambda name, d, st: ACT_SUMMARY if name in ("gf_a", "loner") else real(name, d, st)
+    rel, mem = os.path.join(root, "family_a", "relationships.tsv"), os.path.join(root, "family_a", "members.tsv")
+    mode = os.stat(rel).st_mode
+    try:
+        before = failure_state(live, get)
+        os.chmod(rel, 0)
+        try:
+            closed = failure_state(live, get)  # no family.json request yet
+            try:
+                code, _, body = get("/runs/family_a/family.json")
+            except (OSError, http.client.HTTPException) as e:
+                code, body = type(e).__name__, b""
+        finally:
+            os.chmod(rel, mode)
+        reopened = failure_state(live, get)  # no family.json request since the file reads again
+        os.chmod(mem, 0)
+        try:
+            unread = failure_state(live, get)
+        finally:
+            os.chmod(mem, mode)
+    finally:
+        live.summary = real
+        os.remove(status)
+    adult = {"gf_a": (False, (False, None), 404), "loner": (False, (None, None), 404), "family_a": (False, 7)}
+    check("with every family file readable: gf_a and loner are adults on the server, in state.json and on the finding "
+          "route", before == adult, before)
+    check("family.json with an unreadable file: a fixed error", code == 500 and body == b"family not readable\n",
+          (code, body[:80]))
+    check("...and while it cannot be read, before any family.json request, the runs family_a lists are closed alike "
+          "(child_of, state.json, the finding route) and keep their member list; a run in no family is as it was",
+          closed == {"gf_a": (True, (True, None), 200), "loner": (False, (None, None), 404), "family_a": (True, 7)}, closed)
+    check("...and once it reads again, all reopen with no family.json request", reopened == adult, reopened)
+    check("while family_a's members cannot be read, every run is closed, and one no family lists is unknown",
+          unread == {"gf_a": (True, (None, True), 200), "loner": (True, (None, True), 200), "family_a": (True, 0)}, unread)
+
+
+def failure_browser_checks(b, base, live, root):
+    """The pages agree with the server while a file of family_a cannot be read: gf_a's page and home tile are closed,
+    loner's are not, and gf_a's page opens again once the file reads, with no family.json request."""
+    status = os.path.join(root, "loner", "logs", "run_status.tsv")
+    with open(status, "w") as f:
+        f.write("meta\tstarted_epoch\t1767347940\nstep\t06\tplanned\n")
+    prev = live.summary
+    live.summary = lambda name, d, st: ACT_SUMMARY if name in ("gf_a", "loner") else prev(name, d, st)
     rel = os.path.join(root, "family_a", "relationships.tsv")
     mode = os.stat(rel).st_mode
-    os.chmod(rel, 0)
+
+    def page(run):
+        b.go("about:blank")
+        assert b.wait("location.href === 'about:blank'")
+        b.go(base + "/runs/%s/" % run)
+        return b.wait("document.documentElement.dataset.pgpGated === 'true' ? 'closed' : "
+                      "document.documentElement.dataset.pgpStatus === 'ready' && !!document.querySelector('#results .card') ? 'open' : ''", 15)
+
+    def home():
+        b.go("about:blank")
+        assert b.wait("location.href === 'about:blank'")
+        b.go(base + "/")
+        return b.wait("var t = function (n) { var x = document.querySelector('.ptile[data-sample=' + n + ']'); "
+                      "return x ? (x.textContent.indexOf(PGPUI.closedText) >= 0 ? 'closed' : 'open') : null; }; "
+                      "t('gf_a') && t('loner') && [t('gf_a'), t('loner')].join()", 15)
     try:
+        os.chmod(rel, 0)
         try:
-            code, _, body = get("/runs/family_a/family.json")
-        except (OSError, http.client.HTTPException) as e:
-            code, body = type(e).__name__, b""
-        check("family.json with an unreadable file: a fixed error", code == 500 and body == b"family not readable\n",
-              (code, body[:80]))
-        check("...and the server then reads that family as unreadable: an adult it lists is a child until it reads again",
-              live.child("gf_a"), live.child("gf_a"))
+            got = [page("gf_a"), page("loner"), home()]
+        finally:
+            os.chmod(rel, mode)
+        got.append(page("gf_a"))
     finally:
-        os.chmod(rel, mode)
-    code = get("/runs/family_a/family.json")[0]
-    check("...and once the file reads again, family.json answers and the adult is an adult", code == 200 and not live.child("gf_a"),
-          (code, live.child("gf_a")))
+        live.summary = prev
+        os.remove(status)
+    check("browser: while a file of family_a cannot be read, gf_a's page and home tile are closed and loner's open; once "
+          "it reads again gf_a's page opens", got == ["closed", "open", "closed,open", "open"], got)
 
 
 # The map's per-load timings, the live free-disk figure and the run's elapsed time change between two loads of the
@@ -660,13 +749,18 @@ def live_browser_checks(live, port, work, run, real):
             return b.eval("[%s, location.href, (window.ogRequests || []).map(function (r) { "
                           "return r.join(' '); }), (document.getElementById('genome-map') || {dataset: {}}).dataset.pgpMap || '']" % PAGE_JS)
         pages = {}
+        # The family and the map's document race when nothing is held: the map's tooltip ends hidden="hidden" when the
+        # family answers first and hidden="" when it answers after the map was drawn, with the gate or without. Held
+        # back a little, the map comes last, so the two captures can be compared whole.
         for label, route, summary in (("an adult", "/runs/gf_a/", None), ("a no-act child", "/runs/father_a/", NO_ACT)):
             # The child's results come from its summary as results.json reads it (a step file read now).
             live.summary = lambda name, d, st: summary if summary and name == "father_a" else adult(name, d, st)
+            keep_routes = slow_routes(live, {"/map.json": 0.5})
             try:
                 pair = [capture(route, demo.bare_core(source)), capture(route, source)]
             finally:
                 live.summary = adult
+                live.app.routes[:] = keep_routes
             pages[label] = pair
             check("live mode: the page of %s makes the requests of the page without the gate, in its order, and is the "
                   "same page" % label, pair[0][:3] == pair[1][:3],
@@ -680,27 +774,32 @@ def live_browser_checks(live, port, work, run, real):
         print("   live mode, an adult's reads without the gate: " + ", ".join(pages["an adult"][0][2]))
         check("live mode: without the gate the page asks for state.json, then the event stream, then family.json",
               first == ["state.json", "events", "family.json"], first)
-        # A section address on an adult's page: the marks it sets (the contents' aria-current, the card's .target)
-        # depend on whether the family or the results answer first, without the gate as with it. Each order is forced
-        # by holding the other answer back, twice each; the map's document, asked for once the results are in, comes
-        # last, as it does when nothing is held.
+        # A section address on an adult's and a no-act child's page: the marks it sets (the contents' aria-current, the
+        # card's .target) depend on whether the family or the results answer first. Each order is forced by holding the
+        # other answer back, twice each, and the map's document comes last. The outcomes asserted are the ones main's
+        # own view files give on this server (no gate, its person.js and map.js): the marks stay when the family answers
+        # first and the family's redraw clears them when the results answer first, and the map's tooltip starts and
+        # stays hidden="hidden". So a change to a shared view file shows here, not only a change the gate makes.
+        live.summary = lambda name, d, st: NO_ACT if name == "father_a" else adult(name, d, st)
         marks = []
         for first_, held in (("results.json", "/family.json"), ("family.json", "/results.json")):
-            keep_routes = slow_routes(live, {held: 0.6, "/map.json": 1.5})
+            keep_routes = slow_routes(live, {held: 0.5, "/map.json": 1.0})
             try:
-                for route in ("/runs/gf_a/#s3", "/runs/gf_a/#s/clinvar"):
-                    for _ in range(2):
-                        pair = [capture(route, demo.bare_core(source)), capture(route, source)]
-                        marks.append((first_, route, pair[0][0].count('aria-current="true"'), pair[0][:3] == pair[1][:3]))
-                        if pair[0][:3] != pair[1][:3]:
-                            print("   %s first, %s: %r" % (first_, route, differences(pair[0][0], pair[1][0]) or
-                                                          [p[1:3] for p in pair]))
+                for who in ("gf_a", "father_a"):
+                    for route in ("/runs/%s/#s3" % who, "/runs/%s/#s/clinvar" % who):
+                        for _ in range(2):
+                            page = capture(route, source)[0]
+                            tip = re.search(r'<div class="gm-tip"[^>]*>', page)
+                            got = (page.count('aria-current="true"'), bool(re.search(r'<article class="[^"]*\btarget\b', page)),
+                                   bool(tip and 'hidden="hidden"' in tip.group(0)))
+                            want = (0, False, True) if first_ == "results.json" else (1, route.endswith("clinvar"), True)
+                            marks.append((first_, route, got, got == want))
             finally:
                 live.app.routes[:] = keep_routes
-        check("live mode: an adult's page at a section address is the page without the gate, whichever of the family "
-              "and the results answers first", all(m[3] for m in marks), marks)
-        check("...and the two orders give the page two outcomes, so the check sees the order",
-              len({(m[0], m[2] > 0) for m in marks}) == 2 and len({m[2] > 0 for m in marks}) == 2, marks)
+        live.summary = adult
+        check("live mode: an adult's and a no-act child's page at a section address give main's outcome in each order: "
+              "the marks stay when the family answers first, clear when the results do, and the map's tooltip stays "
+              "hidden=\"hidden\"", all(m[3] for m in marks), [m for m in marks if not m[3]] or marks[:2])
         # A parent's page, whichever card holds the child's two results to act on.
         seen = []
         for summary in (TWO_IN_ONE_CARD, TWO_CARDS):
@@ -709,6 +808,7 @@ def live_browser_checks(live, port, work, run, real):
         check("live mode: a parent's page is the same whichever card holds a child's results to act on",
               seen[0] == seen[1], "the pages differ")
         b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": log}, b.session)
+        failure_browser_checks(b, base, live, live.root)
         family_gate_checks(b, base, live, run)
     finally:
         live.summary = real
@@ -722,22 +822,32 @@ def live_browser_checks(live, port, work, run, real):
 
 def family_gate_checks(b, base, live, run):
     """The family page: a gated child's member line is the fixed closed line, never "Nothing flagged"; once the child's
-    results are opened there, the line and the pedigree's mark give the real count, as without the gate. A person who
-    is a child in one family and a partner in another is closed on both family pages (one rule of who is a child)."""
+    results are opened there, the line and the pedigree's mark give the count family.json gives without the gate (the
+    child's summary.json, here older than the results the page reads); an adult's line is as without the gate, also when
+    its summary.json cannot be read. A person who is a child in one family and a partner in another is closed on both
+    family pages, keeps the partner role there (no child counted, the couple line kept), and stays a child when the
+    family where it is a partner sorts first (a child in any family is one)."""
     import live_results
-    run("father_a", TWO_CARDS)
+    # summary.json is older than the results the page reads: its count is the one family.json gives without the gate.
+    saved = {"sections": dict(TWO_CARDS["sections"], **STALE_SUMMARY["sections"])}
+    run("father_a", saved)
     prev = live.summary
     live.summary = lambda name, d, st: TWO_CARDS if name == "father_a" else prev(name, d, st)
-    n = live_results.overview(TWO_CARDS)["attention"]
-    assert n, "the released child needs a count to show"
+    n, now = live_results.overview(saved)["attention"], live_results.overview(TWO_CARDS)["attention"]
+    assert n and n != now, (n, now)
+    gf = os.path.join(live.root, "gf_a", "summary.json")
+    with open(gf, "w") as f:
+        f.write("{not json")
     z = os.path.join(live.root, "family_z")
     os.makedirs(z)
     with open(os.path.join(z, "members.tsv"), "w") as f:
         f.write("sample\tsex\tfather\tmother\tpartner\tin_pedigree\tsequenced\n"
                 "father_a\tmale\t\t\tzara\tyes\tyes\nzara\tfemale\t\t\tfather_a\tyes\tno\n")
-    line = ("Array.prototype.filter.call(document.querySelectorAll('.person-card'), function (c) { "
-            "return c.querySelector('.person-name').textContent === 'father_a'; }).map(function (c) { "
-            "var l = c.querySelector('.person-look'); return l ? l.textContent : ''; })[0]")
+    def look(who):
+        return ("Array.prototype.filter.call(document.querySelectorAll('.person-card'), function (c) { "
+                "return c.querySelector('.person-name').textContent === '%s'; }).map(function (c) { "
+                "var l = c.querySelector('.person-look'); return l ? l.textContent : ''; })[0]" % who)
+    line = look("father_a")
     flag = ("Array.prototype.filter.call(document.querySelectorAll('.ped-person'), function (g) { "
             "return g.querySelector('.ped-name').textContent === 'father_a'; }).map(function (g) { "
             "var f = g.querySelector('.ped-flag'); return f ? f.textContent : ''; })[0]")
@@ -747,6 +857,7 @@ def family_gate_checks(b, base, live, run):
         b.go(base + "/runs/family_a/")
         assert b.wait("!!document.querySelector('[data-gate-child=father_a] [data-opening^=closed]')"), "father_a never gated"
         closed = [b.eval(line), b.eval(flag)]
+        adult = b.eval(look("gf_a"))
         for _ in range(4):
             if not b.eval("document.querySelectorAll('[data-gate-child=father_a] [data-opening^=closed]').length"):
                 break
@@ -755,18 +866,35 @@ def family_gate_checks(b, base, live, run):
                    "!!document.querySelector('[data-gate-child=father_a] [data-opening^=opened]')", 10)
         b.wait("!document.querySelector('[data-gate-child=father_a]') && /worth a look|Nothing flagged/.test(%s || '')" % line, 15)
         opened = [b.eval(line), b.eval(flag)]
-        check("family page: a gated child's member line is the fixed closed line; once opened, the real count shows on "
-              "the line and the pedigree", closed == ["Report closed", ""] and opened == ["%d worth a look" % n, "▲ %d" % n],
-              (closed, opened))
+        check("family page: a gated child's member line is the fixed closed line; once opened, the count family.json gives "
+              "without the gate (summary.json's, not the newer results') shows on the line and the pedigree",
+              closed == ["Report closed", ""] and opened == ["%d worth a look" % n, "▲ %d" % n], (closed, opened, n, now))
+        check("family page: an adult whose summary.json cannot be read reads as without the gate",
+              adult == "Nothing flagged; see the caveats", adult)
         b.go("about:blank")
         assert b.wait("location.href === 'about:blank'")
         b.go(base + "/runs/family_z/")
         got = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && !!document.querySelector('.person-card') && "
-                     "(document.querySelector('[data-gate-child=father_a]') ? 'closed' : 'open')", 15)
-        check("family page: a person who is a child in another family is closed on this family's page too", got == "closed", got)
+                     "[document.querySelector('[data-gate-child=father_a]') ? 'closed' : 'open', "
+                     "/One child|children:/.test(document.getElementById('family-lead').textContent) ? 'child counted' : 'no child', "
+                     "/father_a and zara are not screened as a couple yet/.test(document.body.textContent) ? 'couple line' : 'no couple line'].join()", 15)
+        check("family page: a person who is a child in another family is closed on this family's page too, keeps the "
+              "partner role (no child counted) and the couple's line", got == "closed,no child,couple line", got)
+        first = os.path.join(live.root, "family_0")
+        os.rename(z, first)
+        z = first
+        b.go("about:blank")
+        assert b.wait("location.href === 'about:blank'")
+        b.go(base + "/runs/family_0/")
+        got = [live.child("father_a"), b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+                                              "!!document.querySelector('.person-card') && "
+                                              "(document.querySelector('[data-gate-child=father_a]') ? 'closed' : 'open')", 15)]
+        check("a child in any family is one: closed when the family where it is a partner sorts first",
+              got == [True, "closed"], got)
     finally:
         live.summary = prev
         shutil.rmtree(z, ignore_errors=True)
+        os.remove(gf)
         run("father_a", NO_ACT)
 
 
