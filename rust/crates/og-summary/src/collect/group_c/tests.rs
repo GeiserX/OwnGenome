@@ -259,6 +259,12 @@ fn roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty() {
     assert_eq!(at(&r, &["f_roh"]), &Value::Float(0.1717));
     assert_eq!(at(&r, &["relationship"]), &Value::Null);
     assert_eq!(at(&r, &["scope", "unmasked_bp"]), &Value::Int(93_162_635));
+    let mixed = roh_scope_summary(&[20, 22], "RG\tS\tchr20\t1000001\t9000000\t8000000\n");
+    assert_eq!(at(&mixed, &["f_roh"]), &Value::Float(0.0859));
+    assert_eq!(
+        at(&mixed, &["scope", "unmasked_bp"]),
+        &Value::Int(93_162_635)
+    );
     let no_runs = roh_scope_summary(&[20], "");
     assert_eq!(at(&no_runs, &["f_roh"]), &Value::Float(0.0));
     assert_eq!(at(&no_runs, &["relationship"]), &Value::Null);

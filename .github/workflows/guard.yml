@@ -371,6 +371,37 @@ jobs:
           cp -f "$saved" "$src"
           trap - EXIT
 
+      - name: Control (ROH scope and neutral hints reject planted faults)
+        run: |
+          reader=crates/og-summary/src/collect/group_c/roh.rs
+          table=../assets/imprinted_regions.tsv
+          cp "$reader" "$RUNNER_TEMP/roh-reader.rs"
+          cp "$table" "$RUNNER_TEMP/imprinted-regions.tsv"
+          restore_roh() {
+            cp "$RUNNER_TEMP/roh-reader.rs" "$reader"
+            cp "$RUNNER_TEMP/imprinted-regions.tsv" "$table"
+          }
+          trap restore_roh EXIT
+          sed -i 's/let denominator = covered_unmasked_bp(&covered);/let denominator = autosome_unmasked_bp();/' "$reader"
+          sed -i 's/s("-")/s("Example syndrome")/g' "$reader"
+          sed -i 's/26248010;29959430/not-pmid/' "$table"
+          log="$RUNNER_TEMP/roh-scope-planted.log"
+          rc=0
+          cargo test --locked -p og-summary --no-fail-fast > "$log" 2>&1 || rc=$?
+          cat "$log"
+          test "$rc" -ne 0
+          for name in \
+            roh_scope_chr20_uses_its_own_unmasked_denominator \
+            roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty \
+            roh_scope_a_segment_only_file_never_establishes_scope \
+            roh_scope_upd_is_a_region_hint_without_syndrome_names \
+            imprinted_asset_is_the_only_table; do
+            grep -E "test .*${name} .* FAILED" "$log"
+          done
+          grep -E 'test result: FAILED\. [0-9]+ passed; 5 failed;' "$log"
+          restore_roh
+          trap - EXIT
+
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 

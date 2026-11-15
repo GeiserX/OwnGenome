@@ -289,7 +289,7 @@ pub fn section(c: &Ctx<'_>) -> Out {
     let has_sites = assessed.iter().any(|yes| *yes);
     // Old -O r files omit ST rows. Their runs give a lower bound on
     // chromosome scope, never evidence for a genome-wide interpretation.
-    let covered = std::array::from_fn(|i| assessed[i] || observed[i]);
+    let covered: [bool; 22] = std::array::from_fn(|i| assessed[i] || observed[i]);
     let denominator = covered_unmasked_bp(&covered);
     let complete = has_sites
         && assessed.iter().all(|yes| *yes)
