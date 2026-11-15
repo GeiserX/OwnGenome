@@ -22,7 +22,9 @@ section id, the same anchors as report.html. Each card carries:
 
 Beside the cards, "veil" tags the rows that name a result to act on outside its own card (every card's
 table rows and lines, the viewer links, the charts' marks, the other findings and the lead's names) with
-that result's id, so a child's page closes them with it (veil() below).
+that result's id (veil() below). A child's page no longer closes them one by one: one gate in
+assets/live/core.js holds the whole report while a result to act on is unopened, and of "veil" the page
+still reads only the charts' marks.
 
 Nothing here reads a file or computes anything about genetics; the adapters pick
 fields the summary already holds. A section id with no adapter falls back to its
@@ -793,8 +795,9 @@ class _Row:
     cannot read (a field of the wrong type, a stars value that is not a number) costs that row only: it
     becomes a finding on its card that says the row could not be read, and every other row and card still
     renders. Its words name no gene or variant: the row is unreadable. Its level is the highest the rule
-    can give (level "act" for a rule that can give one): a child's page veils a card that holds a finding
-    to act on, and the card's table may still draw the row the rule could not read."""
+    can give (level "act" for a rule that can give one): a child's report stays closed while a finding to act
+    on is unopened (the gate in assets/live/core.js), and the card's table may still draw the row the rule could
+    not read."""
 
     def __init__(self, out, card_id, level="review"):
         self.out, self.card_id, self.level = out, card_id, level
@@ -1137,10 +1140,11 @@ def lead(found, levels, summary):
 
 
 # --- the veil's tags -----------------------------------------------------------------------------
-# A child's page keeps each result to act on closed (assets/live/person.js veiled()). The page closes a
-# finding's own card with it, but other places can name the same gene or variant: any card's table and
-# lines, the charts' marks and their titles, another finding (a symptom ranking), the lead, the search index. Each such row carries the id of the
-# result it belongs to, so the page closes it with that result and opens it with it. The rule: a row
+# Places outside the own card of a result to act on can name the same gene or variant: any card's table and
+# lines, the charts' marks and their titles, another finding (a symptom ranking), the lead, the search index.
+# Each such row carries the id of the result it belongs to. A child's page no longer closes them one by one:
+# one gate (assets/live/core.js) holds the whole report while a result to act on is unopened, and of these
+# tags the page still reads only the charts' marks (veil() below). The rule: a row
 # belongs to a closed result when it names the result's gene, or its position falls inside the result's
 # position or span; a row that is the result's own position or span belongs to that result first, else
 # the first such result in finding order. The veil lives in the browser: the files still hold every row.
