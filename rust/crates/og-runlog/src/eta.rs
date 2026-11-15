@@ -152,7 +152,8 @@ pub fn read_trace(path: &Path, tz: &TimeZone) -> Vec<TraceTask> {
         };
         let forced = fault::on("eta-forced-ok");
         let mut memory_bytes = memory(r.get("memory"));
-        if fault::on("eta-memory-decimal-gb") && r.get("memory").is_some_and(|m| m.ends_with("GB")) {
+        if fault::on("eta-memory-decimal-gb") && r.get("memory").is_some_and(|m| m.ends_with("GB"))
+        {
             memory_bytes = memory_bytes.map(|m| m / 1024 / 1024 / 1024 * 1_000_000_000);
         }
         out.push(TraceTask {

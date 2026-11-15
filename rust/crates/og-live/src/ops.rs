@@ -87,7 +87,11 @@ pub const METRICS: [(&str, &str, &str); 21] = [
         "gauge",
         "Steps left with no usual time.",
     ),
-    ("pgp_run_seconds_left_low", "gauge", "Low end of the time left."),
+    (
+        "pgp_run_seconds_left_low",
+        "gauge",
+        "Low end of the time left.",
+    ),
     (
         "pgp_run_seconds_left_high",
         "gauge",
@@ -119,7 +123,11 @@ pub const METRICS: [(&str, &str, &str); 21] = [
         "gauge",
         "Used share of the filesystem's inodes.",
     ),
-    ("pgp_disk_free_bytes", "gauge", "Bytes free on the filesystem."),
+    (
+        "pgp_disk_free_bytes",
+        "gauge",
+        "Bytes free on the filesystem.",
+    ),
     ("pgp_disk_size_bytes", "gauge", "Size of the filesystem."),
 ];
 
@@ -264,7 +272,11 @@ pub enum OpsState {
 /// is not the newest message, and from the last weblog `started`.
 pub fn current_run(events: &[Value]) -> &[Value] {
     let mut start = 0;
-    for (i, ev) in events.iter().enumerate().take(events.len().saturating_sub(1)) {
+    for (i, ev) in events
+        .iter()
+        .enumerate()
+        .take(events.len().saturating_sub(1))
+    {
         if is_event(ev, "pgp_run_finished") {
             start = i + 1;
         }
@@ -311,7 +323,11 @@ fn abs_dir(v: Option<Value>) -> Option<String> {
 
 /// The newest sign of life: a message's `utcTime`, the run's
 /// `logs/run_status.tsv`, or a trace file of the run.
-pub fn last_activity(run_dir: Option<&Path>, events: &[Value], started: Option<f64>) -> Option<f64> {
+pub fn last_activity(
+    run_dir: Option<&Path>,
+    events: &[Value],
+    started: Option<f64>,
+) -> Option<f64> {
     let mut times: Vec<f64> = events
         .iter()
         .filter_map(|ev| epoch_of(field(ev, "utcTime")))
@@ -359,7 +375,12 @@ fn started_of(state: &State<'_>) -> Option<f64> {
 }
 
 /// This run's own tasks from its trace files.
-fn trace_rows(run_dir: Option<&Path>, sample: &str, started: Option<f64>, tz: &TimeZone) -> Vec<eta::TraceTask> {
+fn trace_rows(
+    run_dir: Option<&Path>,
+    sample: &str,
+    started: Option<f64>,
+    tz: &TimeZone,
+) -> Vec<eta::TraceTask> {
     let Some(dir) = is_dir(run_dir) else {
         return Vec::new();
     };
@@ -391,7 +412,11 @@ fn exit_ok(v: &Value) -> bool {
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
-    if n > 1 { many.to_owned() } else { one.to_owned() }
+    if n > 1 {
+        many.to_owned()
+    } else {
+        one.to_owned()
+    }
 }
 
 /// The ops card of the run in `run_dir` (none or missing for a run known
@@ -420,7 +445,9 @@ pub fn run_ops(
     };
     // run-all.sh posts pgp_run_finished as its last message; the site marks
     // the run finished on it too.
-    let ended = cur.last().is_some_and(|ev| is_event(ev, "pgp_run_finished"));
+    let ended = cur
+        .last()
+        .is_some_and(|ev| is_event(ev, "pgp_run_finished"));
     let run_st = if ended && state.run == RunState::Running {
         RunState::Finished
     } else {
@@ -433,15 +460,22 @@ pub fn run_ops(
     let cores = cfg.eta_cores.filter(|c| *c != 0).unwrap_or_else(cpu_count);
     let history = root
         .as_deref()
-        .map(|r| eta::read_history(&eta::history_path(r, &eta::box_name(cfg.eta_box.as_deref()))))
+        .map(|r| {
+            eta::read_history(&eta::history_path(
+                r,
+                &eta::box_name(cfg.eta_box.as_deref()),
+            ))
+        })
         .unwrap_or_default();
     let mut exclude = root.as_deref().map(eta::live_traces).unwrap_or_default();
     if let Some(dir) = is_dir(run_dir)
         && state.run == RunState::Running
     {
-        exclude.extend(trace_files(dir, started).iter().filter_map(|p| {
-            p.file_name().map(|n| n.to_string_lossy().into_owned())
-        }));
+        exclude.extend(
+            trace_files(dir, started)
+                .iter()
+                .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())),
+        );
     }
     let ranges = eta::step_ranges(&history, ctx.steps, cores, &exclude);
     let rem = running.then(|| eta::remaining(state, &ranges, now, cores));
@@ -489,18 +523,27 @@ pub fn run_ops(
     let exit = cur
         .iter()
         .rfind(|ev| is_event(ev, "pgp_run_finished"))
-        .map_or(Value::Null, |ev| field(ev, "exit").cloned().unwrap_or(Value::Null));
+        .map_or(Value::Null, |ev| {
+            field(ev, "exit").cloned().unwrap_or(Value::Null)
+        });
     let error = cur.iter().any(|ev| is_event(ev, "error"));
     let finished = run_st == RunState::Finished;
     let bad_exit = !exit_ok(&exit) && !fault::on("ops-exit-ignored");
     let failed = !failed_steps.is_empty() || (finished && (bad_exit || error));
     let quiet = last_activity(run_dir, cur, started).map(|a| (now - a).max(0.0));
-    let stall_s = cfg.stall_minutes.filter(|m| *m != 0.0).unwrap_or(DEFAULT_STALL_MINUTES) * 60.0;
+    let stall_s = cfg
+        .stall_minutes
+        .filter(|m| *m != 0.0)
+        .unwrap_or(DEFAULT_STALL_MINUTES)
+        * 60.0;
     // Running steps still inside their usual high end: a long task posts
     // nothing meanwhile.
     let covered = state.steps.iter().any(|s| {
         let high = ranges.get(&s.step.step).and_then(|r| r.high_s);
-        let st = s.started_utc.as_deref().and_then(|v| parse_utc(v, &[ISO_Z]));
+        let st = s
+            .started_utc
+            .as_deref()
+            .and_then(|v| parse_utc(v, &[ISO_Z]));
         s.state == StepState::Running
             && matches!((high, st), (Some(h), Some(st)) if now - st < h)
             && !fault::on("ops-stall-ignores-steps")
@@ -538,7 +581,10 @@ pub fn run_ops(
                 failed_steps.join(", ")
             )
         } else if !exit_ok(&exit) {
-            format!("the run ended with exit {}", py_str(&exit).unwrap_or_default())
+            format!(
+                "the run ended with exit {}",
+                py_str(&exit).unwrap_or_default()
+            )
         } else {
             "Nextflow reported an error".to_owned()
         };
@@ -650,7 +696,13 @@ pub fn run_ops(
 /// The state hook: the card, or the line it shows instead. Only a warn
 /// percent outside 1 to 100 fails it (the readers take a missing or
 /// half-written file as no value), and the rest of the run's state stays.
-pub fn hook(run_dir: Option<&Path>, state: &State<'_>, events: &[Value], cfg: &OpsConfig, ctx: &Ctx<'_>) -> OpsState {
+pub fn hook(
+    run_dir: Option<&Path>,
+    state: &State<'_>,
+    events: &[Value],
+    cfg: &OpsConfig,
+    ctx: &Ctx<'_>,
+) -> OpsState {
     match run_ops(run_dir, state, events, cfg, ctx) {
         Ok(o) => OpsState::Ok(Box::new(o)),
         Err(BadPercent(m)) => OpsState::Error(m.chars().take(200).collect()),
@@ -691,7 +743,10 @@ impl RunOps {
                     ("failed_steps", strs(&r.failed_steps)),
                     ("exit", r.exit.clone()),
                     ("stalled", Value::Bool(r.stalled)),
-                    ("seconds_since_activity", opt_float(r.seconds_since_activity)),
+                    (
+                        "seconds_since_activity",
+                        opt_float(r.seconds_since_activity),
+                    ),
                     ("stall_seconds", Value::Float(r.stall_seconds)),
                 ]),
             ),
@@ -822,9 +877,12 @@ fn label(v: &str) -> String {
 /// `OWNGENOME_DISK_WARN_PERCENT`, else 90) over 100; none when it is not a
 /// number from 1 to 100.
 pub fn disk_warn_ratio(cfg: &OpsConfig) -> Option<f64> {
-    headroom::warn_percent(cfg.disk_warn_percent.as_deref(), Some("OWNGENOME_DISK_WARN_PERCENT"))
-        .ok()
-        .map(|p| p / 100.0)
+    headroom::warn_percent(
+        cfg.disk_warn_percent.as_deref(),
+        Some("OWNGENOME_DISK_WARN_PERCENT"),
+    )
+    .ok()
+    .map(|p| p / 100.0)
 }
 
 /// The Prometheus text of `runs` (run name, card). A value that is not
@@ -860,27 +918,51 @@ pub fn metrics_text(
     for (name, o) in runs {
         let run = [("run", *name)];
         let (r, m) = (&o.run, &o.memory);
-        put("pgp_run_running", Some(Num::Flag(r.state == RunState::Running)), &run);
+        put(
+            "pgp_run_running",
+            Some(Num::Flag(r.state == RunState::Running)),
+            &run,
+        );
         put("pgp_run_failed", Some(Num::Flag(r.failed)), &run);
         put("pgp_run_failed_steps", whole(r.failed_steps.len()), &run);
         put("pgp_run_stalled", Some(Num::Flag(r.stalled)), &run);
-        put("pgp_run_seconds_since_activity", r.seconds_since_activity.map(Num::Real), &run);
+        put(
+            "pgp_run_seconds_since_activity",
+            r.seconds_since_activity.map(Num::Real),
+            &run,
+        );
         if let Some(h) = &o.hours_left {
             put("pgp_run_late_steps", whole(h.late_steps.len()), &run);
             put("pgp_run_unknown_steps", whole(h.unknown_steps.len()), &run);
             put("pgp_run_seconds_left_low", Some(Num::Real(h.low_s)), &run);
             put("pgp_run_seconds_left_high", h.high_s.map(Num::Real), &run);
         }
-        put("pgp_run_tasks_near_memory_request", whole(m.near_request), &run);
+        put(
+            "pgp_run_tasks_near_memory_request",
+            whole(m.near_request),
+            &run,
+        );
         put("pgp_run_memory_retries", whole(m.retries), &run);
-        put("pgp_run_max_memory_bytes", m.max_memory_bytes.and_then(whole), &run);
+        put(
+            "pgp_run_max_memory_bytes",
+            m.max_memory_bytes.and_then(whole),
+            &run,
+        );
         if m.max_memory_bytes.is_some() {
-            put("pgp_run_max_memory_above_ram", Some(Num::Flag(m.max_memory_above_ram)), &run);
+            put(
+                "pgp_run_max_memory_above_ram",
+                Some(Num::Flag(m.max_memory_above_ram)),
+                &run,
+            );
         }
         for d in &o.disk {
             let at = [("run", *name), ("fs", d.fs.as_str())];
             put("pgp_disk_used_ratio", d.used_ratio.map(Num::Real), &at);
-            put("pgp_disk_inodes_used_ratio", d.inodes_used_ratio.map(Num::Real), &at);
+            put(
+                "pgp_disk_inodes_used_ratio",
+                d.inodes_used_ratio.map(Num::Real),
+                &at,
+            );
             put("pgp_disk_free_bytes", whole(d.free_bytes), &at);
             put("pgp_disk_size_bytes", whole(d.size_bytes), &at);
         }

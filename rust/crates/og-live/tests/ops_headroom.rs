@@ -167,7 +167,11 @@ fn disk_91_warns_at_the_default_89_does_not() {
     let hi = headroom::disk(&fake(91), &[("work", Some(s(&d)))], default_warn());
     let lo = headroom::disk(&fake(89), &[("work", Some(s(&d)))], default_warn());
     assert!(
-        hi.len() == 1 && hi[0].warn && close(hi[0].used_ratio, 0.91) && lo.len() == 1 && !lo[0].warn,
+        hi.len() == 1
+            && hi[0].warn
+            && close(hi[0].used_ratio, 0.91)
+            && lo.len() == 1
+            && !lo[0].warn,
         "{hi:?} {lo:?}"
     );
 }
@@ -185,7 +189,12 @@ fn disk_warn_percent_80_and_its_environment_variable_warn_at_85() {
     let arg = headroom::lines(&snapshot_of(&host, &with)).join("\n");
     let mut child = Command::new(std::env::current_exe().unwrap());
     child
-        .args(["child_disk_warn_from_the_environment", "--exact", "--ignored", "--quiet"])
+        .args([
+            "child_disk_warn_from_the_environment",
+            "--exact",
+            "--ignored",
+            "--quiet",
+        ])
         .env("OWNGENOME_DISK_WARN_PERCENT", "80")
         .env("OPS_CHILD_DIR", &d);
     #[cfg(feature = "fault-inject")]
@@ -216,7 +225,11 @@ fn child_disk_warn_from_the_environment() {
 fn a_missing_work_folder_is_measured_on_its_parent() {
     let d = tmp();
     let host = fake(50);
-    let miss = headroom::disk(&host, &[("work", Some(s(&d.join("not/yet"))))], default_warn());
+    let miss = headroom::disk(
+        &host,
+        &[("work", Some(s(&d.join("not/yet"))))],
+        default_warn(),
+    );
     let seen = host.seen.borrow().clone();
     assert!(
         miss.len() == 1 && miss[0].missing && seen == [d.clone()],
@@ -278,7 +291,10 @@ fn a_real_statvfs_gives_a_ratio_in_0_to_1_and_a_disk_line() {
 fn seven_point_six_of_8_gb_warns_6_of_8_does_not() {
     let t = by_process(trace_memory(&trace("trace.txt")));
     assert!(
-        t["FASTP"].warn && close(t["FASTP"].ratio, 0.95) && !t["VEP"].warn && close(t["VEP"].ratio, 0.75),
+        t["FASTP"].warn
+            && close(t["FASTP"].ratio, 0.95)
+            && !t["VEP"].warn
+            && close(t["VEP"].ratio, 0.75),
         "{t:?}"
     );
 }
@@ -423,7 +439,10 @@ fn the_snapshot_holds_no_path_and_takes_its_folders_from_the_metadata() {
     r.events = &evs;
     r.trace_rows = &rows;
     let snap = snapshot_of(&host, &r);
-    let bad: Vec<String> = strings(&snap).into_iter().filter(|x| x.contains('/')).collect();
+    let bad: Vec<String> = strings(&snap)
+        .into_iter()
+        .filter(|x| x.contains('/'))
+        .collect();
     let fs: Vec<&str> = snap.disk.iter().map(|d| d.fs.as_str()).collect();
     let mut procs: Vec<&str> = snap.tasks.iter().map(|t| t.process.as_str()).collect();
     procs.sort_unstable();
@@ -449,15 +468,21 @@ fn st(v: &str) -> Option<Value> {
 
 #[test]
 fn a_relative_outdir_is_under_launch_dir_an_absolute_one_is_kept() {
-    let rel = md(r#"{"metadata":{"workflow":{"workDir":"/x/work","launchDir":"/x"},"parameters":{"outdir":"./results"}}}"#);
-    let ab = md(r#"{"metadata":{"workflow":{"workDir":"/x/work","launchDir":"/x"},"parameters":{"outdir":"/y/results"}}}"#);
+    let rel = md(
+        r#"{"metadata":{"workflow":{"workDir":"/x/work","launchDir":"/x"},"parameters":{"outdir":"./results"}}}"#,
+    );
+    let ab = md(
+        r#"{"metadata":{"workflow":{"workDir":"/x/work","launchDir":"/x"},"parameters":{"outdir":"/y/results"}}}"#,
+    );
     assert_eq!(rel, (st("/x/work"), st("/x/./results"), None));
     assert_eq!(ab, (st("/x/work"), st("/y/results"), None));
 }
 
 #[test]
 fn metadata_under_params_gives_the_outdir_and_max_memory() {
-    let alt = md(r#"{"metadata":{"workflow":{"workDir":"/x/work"},"params":{"outdir":"/y/r","max_memory":"8.GB"}}}"#);
+    let alt = md(
+        r#"{"metadata":{"workflow":{"workDir":"/x/work"},"params":{"outdir":"/y/r","max_memory":"8.GB"}}}"#,
+    );
     assert_eq!(alt, (st("/x/work"), st("/y/r"), st("8.GB")));
 }
 

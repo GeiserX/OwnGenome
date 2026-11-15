@@ -123,9 +123,20 @@ fn human_and_raw_units_read_the_same() {
     // And as the history reads a trace: a size and its bytes are one value.
     let d = tmp();
     let head = "task_id\thash\tname\tstatus\texit\tmemory\n";
-    std::fs::write(d.join("a.txt"), format!("{head}1\tab/1\tFASTP (s)\tCOMPLETED\t0\t18.3 GB\n")).unwrap();
-    std::fs::write(d.join("b.txt"), format!("{head}1\tab/1\tFASTP (s)\tCOMPLETED\t0\t{raw_18}\n")).unwrap();
-    let (a, b) = (read_trace(&d.join("a.txt"), &UTC), read_trace(&d.join("b.txt"), &UTC));
+    std::fs::write(
+        d.join("a.txt"),
+        format!("{head}1\tab/1\tFASTP (s)\tCOMPLETED\t0\t18.3 GB\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        d.join("b.txt"),
+        format!("{head}1\tab/1\tFASTP (s)\tCOMPLETED\t0\t{raw_18}\n"),
+    )
+    .unwrap();
+    let (a, b) = (
+        read_trace(&d.join("a.txt"), &UTC),
+        read_trace(&d.join("b.txt"), &UTC),
+    );
     assert!(a[0].memory_bytes.is_some());
     assert_eq!(a[0].memory_bytes, b[0].memory_bytes);
 }
@@ -135,7 +146,10 @@ fn cached_failed_and_unknown_process_tasks_never_enter_the_history() {
     let rows = ingest_as(&outdir(&[(OLD, "trace_new.txt")]), "t");
     let mut hashes: Vec<&str> = rows.iter().map(|r| r[1].as_str()).collect();
     hashes.sort_unstable();
-    assert_eq!(hashes, ["aa000001", "aa000002", "aa000003", "aa000006", "aa000007"]);
+    assert_eq!(
+        hashes,
+        ["aa000001", "aa000002", "aa000003", "aa000006", "aa000007"]
+    );
 }
 
 #[test]
@@ -215,7 +229,10 @@ fn ranges(history: &[HistoryRow], cores: usize) -> IndexMap<String, Range> {
 }
 
 fn step(id: &str) -> &'static Step {
-    steps().iter().find(|s| s.step == id).expect("a catalogue step")
+    steps()
+        .iter()
+        .find(|s| s.step == id)
+        .expect("a catalogue step")
 }
 
 #[test]
@@ -235,7 +252,10 @@ fn only_the_last_5_runs_count() {
 
 fn docs_hours(id: &str) -> (f64, f64) {
     let s = step(id);
-    (s.hours.unwrap() * H, s.hours_low.parse::<f64>().unwrap() * H)
+    (
+        s.hours.unwrap() * H,
+        s.hours_low.parse::<f64>().unwrap() * H,
+    )
 }
 
 #[test]
@@ -272,7 +292,8 @@ fn on_16_and_32_cores_every_measured_step_has_low_below_high() {
             .iter()
             .filter(|k| {
                 let x = &r[**k];
-                !(x.source == Source::Docs && matches!((x.low_s, x.high_s), (Some(l), Some(h)) if l < h))
+                !(x.source == Source::Docs
+                    && matches!((x.low_s, x.high_s), (Some(l), Some(h)) if l < h))
             })
             .collect();
         assert!(one.is_empty(), "{cores} cores: {one:?}");
@@ -313,7 +334,10 @@ use StepState::{Done, Running, Waiting};
 fn a_step_the_table_only_estimates_gets_no_number() {
     let est = ranges(&[], 16);
     let unk = remaining(
-        &state(&[("03", Done, None), ("14", Waiting, None)], RunState::Running),
+        &state(
+            &[("03", Done, None), ("14", Waiting, None)],
+            RunState::Running,
+        ),
         &est,
         NOW,
         16,
@@ -330,7 +354,15 @@ fn a_step_the_table_only_estimates_gets_no_number() {
     );
 }
 
-fn task(hash: &str, process: &str, status: &str, exit: &str, start: f64, end: f64, attempt: &str) -> TraceTask {
+fn task(
+    hash: &str,
+    process: &str,
+    status: &str,
+    exit: &str,
+    start: f64,
+    end: f64,
+    attempt: &str,
+) -> TraceTask {
     TraceTask {
         trace_file: "trace_x.txt".into(),
         hash: hash.into(),
@@ -354,7 +386,15 @@ fn a_step_with_a_task_that_failed_or_was_stopped_gives_no_span() {
     // failed first attempt that a second one replaced still counts.
     let rows = history_rows(
         &[
-            task("p1", "PHARMCAT_PREPROCESS", "COMPLETED", "0", 0.0, 40.0, "1"),
+            task(
+                "p1",
+                "PHARMCAT_PREPROCESS",
+                "COMPLETED",
+                "0",
+                0.0,
+                40.0,
+                "1",
+            ),
             task("p2", "PHARMCAT", "ABORTED", "-", 41.0, 50.0, "1"),
             task("d1", "DEEPVARIANT", "FAILED", "137", 0.0, 100.0, "1"),
             task("d2", "DEEPVARIANT", "COMPLETED", "0", 110.0, 300.0, "2"),
@@ -423,21 +463,31 @@ fn chain_state() -> State<'static> {
 fn the_hours_left_are_the_longest_chain() {
     // 03 -> 13 -> 23 is the longest chain: low 10 + 4 + 0.1, high 12 + 5 + 0.2.
     let big = remaining(&chain_state(), &fixed_ranges(), NOW, 64);
-    assert!(close(Some(big.low_s), 14.1 * H) && close(big.high_s, 17.2 * H), "{big:?}");
+    assert!(
+        close(Some(big.low_s), 14.1 * H) && close(big.high_s, 17.2 * H),
+        "{big:?}"
+    );
 }
 
 #[test]
 fn the_cpu_work_bound_when_it_is_larger() {
     // CPU work: 12*8 + 5*8 + 0.2*1 + 1*8 = 144.2 CPU-hours; over 4 cores 36.05 h.
     let small = remaining(&chain_state(), &fixed_ranges(), NOW, 4);
-    assert!(close(Some(small.low_s), 14.1 * H) && close(small.high_s, 36.05 * H), "{small:?}");
+    assert!(
+        close(Some(small.low_s), 14.1 * H) && close(small.high_s, 36.05 * H),
+        "{small:?}"
+    );
 }
 
 #[test]
 fn a_running_step_past_its_high_end_makes_the_high_end_unknown_and_says_so() {
     let late = remaining(
         &state(
-            &[("02", Done, None), ("03", Running, Some("2026-01-01T21:00:00Z")), ("13", Waiting, None)],
+            &[
+                ("02", Done, None),
+                ("03", Running, Some("2026-01-01T21:00:00Z")),
+                ("13", Waiting, None),
+            ],
             RunState::Running,
         ),
         &fixed_ranges(),
@@ -457,21 +507,31 @@ fn a_running_step_past_its_high_end_makes_the_high_end_unknown_and_says_so() {
 fn a_running_step_counts_only_what_is_left_of_it() {
     let going = remaining(
         &state(
-            &[("02", Done, None), ("03", Running, Some("2026-01-02T06:00:00Z")), ("13", Waiting, None)],
+            &[
+                ("02", Done, None),
+                ("03", Running, Some("2026-01-02T06:00:00Z")),
+                ("13", Waiting, None),
+            ],
             RunState::Running,
         ),
         &fixed_ranges(),
         NOW,
         64,
     );
-    assert!(close(Some(going.low_s), 10.0 * H) && close(going.high_s, 13.0 * H), "{going:?}");
+    assert!(
+        close(Some(going.low_s), 10.0 * H) && close(going.high_s, 13.0 * H),
+        "{going:?}"
+    );
 }
 
 #[test]
 fn a_step_with_no_time_lands_in_unknown_steps_never_0() {
     let r = ranges(&[], 16);
     let unk = remaining(
-        &state(&[("02", Done, None), ("33", Waiting, None)], RunState::Running),
+        &state(
+            &[("02", Done, None), ("33", Waiting, None)],
+            RunState::Running,
+        ),
         &r,
         NOW,
         16,
@@ -542,7 +602,10 @@ fn going(d: &Path) -> PathBuf {
     let status = logs.join("run_status.tsv");
     std::fs::write(
         &status,
-        format!("meta\tstarted_epoch\t{}\nstep\t02\tplanned\n", now() as i64 - 60),
+        format!(
+            "meta\tstarted_epoch\t{}\nstep\t02\tplanned\n",
+            now() as i64 - 60
+        ),
     )
     .unwrap();
     status
@@ -585,26 +648,52 @@ fn trace_fields(config: &str) -> Option<Vec<String>> {
     let start = config.find("\ntrace {\n")?;
     let block = &config[start..];
     let block = &block[..block.find("\n}")?];
-    let line = block.lines().find(|l| l.trim_start().starts_with("fields"))?;
+    let line = block
+        .lines()
+        .find(|l| l.trim_start().starts_with("fields"))?;
     let value = line.split_once('\'')?.1.split_once('\'')?.0;
     Some(value.split(',').map(str::to_owned).collect())
 }
 
 /// Nextflow's 14 default trace columns, then the 7 the history reads.
 const TRACE_FIELDS: [&str; 21] = [
-    "task_id", "hash", "native_id", "name", "status", "exit", "submit", "duration", "realtime",
-    "%cpu", "peak_rss", "peak_vmem", "rchar", "wchar", "process", "tag", "attempt", "cpus",
-    "memory", "start", "complete",
+    "task_id",
+    "hash",
+    "native_id",
+    "name",
+    "status",
+    "exit",
+    "submit",
+    "duration",
+    "realtime",
+    "%cpu",
+    "peak_rss",
+    "peak_vmem",
+    "rchar",
+    "wchar",
+    "process",
+    "tag",
+    "attempt",
+    "cpus",
+    "memory",
+    "start",
+    "complete",
 ];
 
 #[test]
 fn nextflow_config_traces_the_14_default_columns_then_the_7_added() {
     let cfg = std::fs::read_to_string(repo().join("nextflow.config")).unwrap();
-    assert_eq!(trace_fields(&cfg), Some(TRACE_FIELDS.map(str::to_owned).to_vec()));
+    assert_eq!(
+        trace_fields(&cfg),
+        Some(TRACE_FIELDS.map(str::to_owned).to_vec())
+    );
     // Control: the same reading of a config without memory must differ.
     let broken = cfg.replace(",memory,start", ",start");
     assert_ne!(broken, cfg, "the control found no trace.fields to break");
-    assert_ne!(trace_fields(&broken), Some(TRACE_FIELDS.map(str::to_owned).to_vec()));
+    assert_ne!(
+        trace_fields(&broken),
+        Some(TRACE_FIELDS.map(str::to_owned).to_vec())
+    );
 }
 
 /// An old `bin/run_*.py` exits 1 and names its og command, never a silent 0.
@@ -616,7 +705,10 @@ fn refuses(script: &Path, cmd: &str) -> Result<(), String> {
         .output()
         .map_err(|e| format!("cannot run {exe}: {e}; set OG_PYTHON"))?;
     let err = String::from_utf8_lossy(&o.stderr);
-    if o.status.code() == Some(1) && err.contains(&format!("bin/og run {cmd}")) && o.stdout.is_empty() {
+    if o.status.code() == Some(1)
+        && err.contains(&format!("bin/og run {cmd}"))
+        && o.stdout.is_empty()
+    {
         Ok(())
     } else {
         Err(format!("{:?} {err}", o.status))
@@ -627,7 +719,11 @@ fn refuses(script: &Path, cmd: &str) -> Result<(), String> {
 /// shut (they go with the Python server, and so does this check).
 #[test]
 fn the_old_python_command_lines_refuse_and_name_og_run() {
-    for (name, cmd) in [("run_eta", "eta"), ("run_state", "state"), ("run_headroom", "headroom")] {
+    for (name, cmd) in [
+        ("run_eta", "eta"),
+        ("run_state", "state"),
+        ("run_headroom", "headroom"),
+    ] {
         let script = repo().join("bin").join(format!("{name}.py"));
         if !script.is_file() {
             continue;
