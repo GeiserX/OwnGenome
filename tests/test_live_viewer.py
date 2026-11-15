@@ -313,6 +313,24 @@ def map_reads_checks(srv, work, chrome):
                     out.write(base64.b64decode(png))
             b.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 900,
                    "deviceScaleFactor": 1, "mobile": False}, b.session)
+        # A locus the reader types in igv stays through a resize: only a new map locus moves igv again.
+        js("var i=savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelector('input.igv-search-input');"
+           "i.focus();i.select();")
+        b.call("Input.insertText", {"text": "chr1:2001-3000"}, b.session)
+        for kind in ("keyDown", "keyUp"):
+            b.call("Input.dispatchKeyEvent", {"type": kind, "key": "Enter", "code": "Enter",
+                                             "windowsVirtualKeyCode": 13, "text": "\r"}, b.session)
+        typed = b.wait("/^chr1:2,0/.test(savedFrame.contentDocument.getElementById('igv').shadowRoot"
+                       ".querySelector('input.igv-search-input').value)")
+        js("savedFrame.style.width='50%'")
+        resized()
+        time.sleep(0.5)  # past viewer.js's 100 ms resize timer
+        m = re.match(r"chr1:([\d,]+)-([\d,]+)$", viewer_locus() or "")
+        check("viewer: a locus typed in igv stays through a resize",
+              typed and m and 1500 <= int(m.group(1).replace(",", "")) <= 3000
+              and int(m.group(2).replace(",", "")) <= 3500, viewer_locus())
+        js("savedFrame.style.width=''")
+        resized()
         b.eval("savedFrame.contentDocument.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
         check("map: Escape closes the reads and returns focus without moving the map",
               b.eval("document.querySelector('.gm-reads').hidden && document.activeElement===document.querySelector('.gm-canvas') && "
