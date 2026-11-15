@@ -785,10 +785,10 @@ mod tests {
 
     #[test]
     fn genotypes_with_both_copies_changed() {
-        for gt in ["1/1", "1|1", "1/2", "2|1", "1"] {
+        for gt in ["1/1", "1|1", "1/2", "2|1", "1", "./1", "1/.", ".|1"] {
             assert!(both_copies(gt), "{gt}");
         }
-        for gt in ["0/1", "1|0", "./1", "1/.", "0", "", "./."] {
+        for gt in ["0/1", "1|0", "0/.", "./0", "0", "", ".", "./."] {
             assert!(!both_copies(gt), "{gt}");
         }
     }

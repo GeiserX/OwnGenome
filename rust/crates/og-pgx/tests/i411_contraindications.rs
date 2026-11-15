@@ -59,8 +59,8 @@ fn one_heterozygous_urea_cycle_hit_is_a_note() {
             "{gene}: {out:#?}"
         );
     }
-    // A phased or partly missing genotype is still one changed copy.
-    for gt in ["0|1", "1|0", "./1"] {
+    // A phased genotype is still one changed copy.
+    for gt in ["0|1", "1|0"] {
         let out = lines(&[hit("ASS1", "40000000", "A", gt)]);
         assert!(warnings(&out).is_empty(), "{gt}: {out:#?}");
     }
@@ -75,6 +75,19 @@ fn both_copies_or_two_variants_in_a_urea_cycle_gene_warn() {
             warnings(&out)[0].contains("both copies changed"),
             "{gt}: {out:#?}"
         );
+    }
+    // Step 06 splits a 1/2 record into 1/. and ./1: the missing allele is
+    // the other ALT, so both copies are changed.
+    for gt in ["1/.", "./1"] {
+        let out = lines(&[hit("ASS1", "40000000", "A", gt)]);
+        assert_eq!(
+            warnings(&out),
+            [format!(
+                "WARNING: valproic acid -- ASS1 chr13:40000000 G>A, genotype {gt}, ClinVar Pathogenic, both copies changed in this recessive gene (the other copy is not the reference); ON THE MEDICATION LIST."
+            )],
+            "{gt}: {out:#?}"
+        );
+        assert!(!out.iter().any(|l| l.contains("NOTE:")), "{gt}: {out:#?}");
     }
     // Two variants in trans, at two positions or as the two alleles of one
     // split multi-allelic site: one WARNING for each.
