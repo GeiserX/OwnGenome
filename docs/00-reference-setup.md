@@ -201,6 +201,7 @@ Setup installs it by default. To add the clinical data to an existing setup:
 ```
 
 The installer checks the archive against `PCGR_DATA_SHA256` in `versions.env`, then extracts it into a temporary folder.
+The server publishes no checksum, so the size (`PCGR_DATA_BYTES`) and the digest are measured from a full download. `PCGR_DATA_MEASURED_FOR` names the image tag and bundle date they belong to, and `scripts/ci/check-coupled-versions.sh` fails when `PCGR_IMAGE` or `PCGR_DATA_BUNDLE` moves without it.
 Only a complete tree is moved to `pcgr_data/20260620/data/`. The archive is deleted after installation.
 The [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) names the bundle's third-party databases. Their own terms apply. Setup prints the resource link before downloading.
 
