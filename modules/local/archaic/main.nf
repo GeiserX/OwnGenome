@@ -7,7 +7,9 @@
       ARCHAIC_GENOTYPES  og archaic genotypes: IBDmix's genotype file of
                          each chromosome (the archaic genomes, the sample's VCF and
                          the 1000 Genomes stand-ins of --archaic_pop), and each
-                         archaic genome's mask
+                         archaic genome's mask; a site with no call is the
+                         reference only inside a reference block of the gVCF,
+                         and unknown to IBDmix otherwise
       ARCHAIC_IBDMIX     IBDmix against each archaic genome, LOD 4, the options of
                          Chen et al. 2020, with that genome's mask
       ARCHAIC_REPORT     og archaic report: the segments of 50 kb or
@@ -22,7 +24,7 @@ process ARCHAIC_GENOTYPES {
     label 'process_single'
 
     input:
-    tuple val(meta), path(vcf)
+    tuple val(meta), path(vcf), path(gvcf)
     path(archaic_data)   // the folder setup.sh --archaic writes
 
     output:
@@ -34,7 +36,7 @@ process ARCHAIC_GENOTYPES {
 
     script:
     """
-    og archaic genotypes --table-dir ${archaic_data} --vcf ${vcf} --pop ${params.archaic_pop} --out-dir gt
+    og archaic genotypes --table-dir ${archaic_data} --vcf ${vcf} --gvcf ${gvcf} --pop ${params.archaic_pop} --out-dir gt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

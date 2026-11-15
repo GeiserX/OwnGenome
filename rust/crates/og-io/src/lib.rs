@@ -11,9 +11,12 @@
 //!   BGZF writer that compresses on many cores.
 //! - [`tabix`]: the lines of a region of a bgzipped file, through its
 //!   `.tbi` or `.csi` index, as `tabix FILE seq:beg-end` prints them.
+//! - [`tabix_write`]: `og vcf index`, a `.tbi` for a BGZF VCF (not ported
+//!   yet).
 
 pub mod bgzf;
 pub mod tabix;
+pub mod tabix_write;
 
 use flate2::bufread::GzDecoder;
 use std::fs::{self, File};

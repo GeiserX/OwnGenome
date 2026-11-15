@@ -6,9 +6,9 @@
 //! og recheck --launch-dir DIR             the last bare `nextflow run` there, with -resume
 //! ```
 //!
-//! Exit codes: 0, 1 when a lookup failed, 2 on a usage error or a sample
-//! with no manifest, 3 when a lock is held or a run is going on, else the
-//! replay's own exit code.
+//! Exit codes: 0, 1 when a lookup failed, 2 on a usage error, a sample
+//! with no manifest or a recorded command `--rerun` will not run, 3 when a
+//! lock is held or a run is going on, else the replay's own exit code.
 
 use crate::answers::{self, Answers, Memo, Offline};
 use crate::files::{last_rerun, log_check, write_check};

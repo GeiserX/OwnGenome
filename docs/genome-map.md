@@ -12,7 +12,7 @@ The map has five levels. The level follows how many bases one screen pixel cover
 | Chromosome | more than 16,667 bases per pixel | one chromosome open in place: an overview with the part in view, a ruler, the bands with their names, a findings lane with each gene and its level's words, and the runs of homozygosity with their lengths |
 | Region | 833 to 16,667 bases per pixel | the same lanes, with each band named with its chromosome (`16p13.3`), and the genes lane: every gene that fits in three rows, its name beside it; the genes a finding names come first, in bold, then the protein-coding genes, then the rest |
 | Gene | 833 bases per pixel or fewer, a view of 50 kb or more | the genes as models: the span as a thin line with its strand's chevrons and the exon blocks inside it; each finding is a dashed tick down through every lane, with its change (HGVS) under its gene |
-| Reads | a view under 50 kb | drawn as the gene level |
+| Reads | a view under 50 kb | drawn as the gene level, with a brass band under the ruler, a line that says the reads are one key away, and a **See the reads** button on the map |
 
 A dashed line marks the centre of an open chromosome. The margin beside the map says what is under it: the chromosome, the position and the band, the findings in view and the runs of homozygosity.
 
@@ -21,9 +21,9 @@ The exon blocks are the union of the exons of every basic GENCODE transcript of 
 ## Moving around
 
 - Click a chromosome to open it, and drag to move along it. Scroll, the + and − buttons or the + and − keys zoom.
-- The zoom stops above the map (Genome, Chromosome, Region, Gene) jump to a level and keep the place in view. From the whole genome they go to the first finding by level.
+- The zoom stops above the map (Genome, Chromosome, Region, Gene, Reads) jump to a level and keep the place in view. From the whole genome they go to the first finding by level. Reads opens a 2 kb view and the reads panel.
 - The path under the title (`Genome › chr16 › 16p13.3 › 2.050-2.300M`) shows where the map is; each step up is a button.
-- Click a gene to zoom to it. Click a finding to open its card in the margin: its level, title, gene, position, change and the map's sentence about it, with a link to the finding's own page.
+- Click a gene to zoom to it. Click a finding to open its card in the margin: its level, title, gene, position, change and the map's sentence about it, with a link to the finding's own page and a **See the reads** button.
 - When an open chromosome has no finding in view, a "Nearest" button names the closest finding on that chromosome, or the first one on the next chromosome that has one, and flies there.
 - The address follows the map: `#genome`, `#chr7`, `#chr7:117.4-137.4M`, `#chr7:117.480-117.669M` or `#chr7:117559001-117599000` (1-based, both ends included). A link to one of them opens that view, and Back returns to the view before.
 
@@ -36,12 +36,17 @@ The exon blocks are the union of the exons of every basic GENCODE transcript of 
 | + − | zoom in or out 2×, at the centre |
 | `[` `]` | the chromosome before or after |
 | `0` | the whole genome |
-| Esc | closes the card, then steps out one level: reads to gene, gene to region, region to the whole chromosome, chromosome to the genome |
+| Esc | closes the reads panel, then the card, then steps out one level: reads to gene, gene to region, region to the whole chromosome, chromosome to the genome |
 | Tab | steps through the findings in view, each with a ring on the map and its card, then leaves the map |
 | `L` | opens the layers and moves to them |
 | `T` | folds or opens the In view table |
+| `R` | opens the reads panel, in a view under 50 kb |
 
-The keys work with the map focused (`/`, `L` and `T` anywhere on the page) and never inside a text box or with Cmd, Ctrl or Alt.
+The keys work with the map focused (`/`, `L`, `T` and `R` anywhere on the page) and never inside a text box or with Cmd, Ctrl or Alt.
+
+### The reads
+
+Under 50 kb, the run's reads open in a panel under the map, in the genome viewer. `docs/viewer.md` describes the panel.
 
 ### The whole-genome strip
 

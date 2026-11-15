@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og ancient (step 44) on synthetic files, run as the pipeline runs it.
 
 Checks:

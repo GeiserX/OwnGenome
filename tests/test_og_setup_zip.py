@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og setup unzip and og setup genetic-map against the Python they replaced.
 
 scripts/setup.sh unpacked Exomiser's data zips with

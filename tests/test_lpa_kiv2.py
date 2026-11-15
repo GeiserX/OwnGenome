@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og cn call --locus LPA_KIV2: step 46's LPA KIV-2 repeat count from
 short-read depth, with KIV-2 4925G>A beside it, and its Lp(a) section in both
 reports. Part 6 runs without og; the rest needs it: OG names the binary

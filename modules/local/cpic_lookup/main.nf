@@ -20,8 +20,10 @@
     or CYP3A5 gets a note.
     With CLINVAR_SCREEN's hits table and assets/pgx_contraindications.tsv, a
     pathogenic or likely pathogenic hit in one of its disease genes (POLG
-    and the urea-cycle genes with valproate, HPRT1, SCN1A) adds a WARNING
-    naming the drug; without the hits the report says they were not checked.
+    and the urea-cycle genes with valproate, HPRT1 with mycophenolate) adds
+    a WARNING naming the drug, or a NOTE for one heterozygous hit in a
+    recessive urea-cycle gene (a carrier); without the hits the report says
+    they were not checked.
     Fails when the report yields no gene.
 
     Equivalent to: scripts/27-cpic-lookup.sh

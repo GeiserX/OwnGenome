@@ -27,12 +27,13 @@
     PharmCAT 3.4.0 reads MT-RNR1 only as an outside call: its matcher has
     no MT-RNR1 definition, so the gene is No Result from any VCF. When
     MITO_VARIANTS called the sample's chrM, og pgx mito-merge adds
-    an MT-RNR1 line to a copy of the outside calls: a homoplasmic (AF >=
-    0.95) PASS allele PharmCAT names, or Reference when there is none and
-    the BAM has 20 reads or more (samtools depth, MAPQ and base quality 20)
-    at every position PharmCAT names an allele at; no line, with the reason
-    in the task log, for a heteroplasmic or filtered named allele or a
-    position without that depth.
+    an MT-RNR1 line to a copy of the outside calls: a PASS allele PharmCAT
+    names at AF 0.05 or more, heteroplasmic included (CPIC sets no safe
+    heteroplasmy level; the log gives the AF), or Reference when there is
+    none and the BAM has 20 reads or more (samtools depth, MAPQ and base
+    quality 20) at every position PharmCAT names an allele at; no line, with
+    the reason in the task log, for a named allele below AF 0.05 (when no
+    other is called) or filtered, or a position without that depth.
 
     The jar's built-in logback.xml writes pharmcat.log into the working
     directory. A task runs in its own writable work directory, so the log

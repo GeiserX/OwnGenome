@@ -120,7 +120,16 @@ nav = [
         ] },
     ] },
   { Guides = [
-      { "Interpreting Your Results" = "interpreting-results.md" },
+      { "Interpreting Your Results" = [
+          { "Interpreting Your Results" = "interpreting-results.md" },
+          { "Secondary Findings and Carrier Status" = "results/secondary-findings.md" },
+          { "ClinVar and Variant Annotation" = "results/clinvar.md" },
+          { "Pharmacogenomics and HLA" = "results/pharmacogenomics.md" },
+          { "Structural Variants, Copy Number and Repeats" = "results/structural-and-repeats.md" },
+          { "Ancestry, Lineage and Polygenic Scores" = "results/ancestry-and-lineage.md" },
+          { "Telomeres and Somatic Variants" = "results/traits-and-somatic.md" },
+          { "Data Quality and Reports" = "results/quality.md" },
+        ] },
       { "What the Pipeline Does Not Report" = "not-reported.md" },
       { "Genome Viewer: See the Reads Behind a Finding" = "viewer.md" },
       { "Watch a Run Live" = "live-site.md" },

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """bin/results_index.py, its report appendix and the live search on a synthetic sample.
 
 The sample (tests/fixtures/results_index/SYNTH, invented) has ClinVar hits in
