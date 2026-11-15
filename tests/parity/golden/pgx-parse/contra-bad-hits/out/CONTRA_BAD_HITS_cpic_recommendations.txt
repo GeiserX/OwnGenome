@@ -1,0 +1,37 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: CONTRA_BAD_HITS
+Date: 2026-11-15
+Source: PharmCAT 3.4.0 report (contra-bad-hits.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2D6       *1/*2                          Normal Metabolizer
+CYP2C19      *1/*1                          Normal Metabolizer
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Drug Contraindications From Disease Variants (ClinVar hits, step 06):
+------------------------------------------------------------------------
+
+  Could not read the ClinVar hits table (ValueError: contra-bad-hits-hits.tsv: no column alt, chrom, clnsig, geneinfo, genotype, pos, ref).
+  Not checked: POLG, ASL, ASS1, CPS1, NAGS, OTC, HPRT1. Run step 06 again, then this step.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

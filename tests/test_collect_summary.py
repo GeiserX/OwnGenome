@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """bin/collect_summary.py and bin/render_report.py on synthetic sample folders.
 
 Checks:

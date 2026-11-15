@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og paraphase: step 35b's read-group check and its two tables.
 
 Checks:

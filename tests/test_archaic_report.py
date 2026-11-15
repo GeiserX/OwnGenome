@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og archaic (step 43) on a synthetic archaic panel, with the real IBDmix image.
 
 Checks:

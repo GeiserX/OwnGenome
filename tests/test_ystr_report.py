@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og y str-bed and og y str-report: Y-STR repeat counts from HipSTR's calls (step 45).
 
 Each case writes a synthetic HipSTR VCF (one sample, only the records it

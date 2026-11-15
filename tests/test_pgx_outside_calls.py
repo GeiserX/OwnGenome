@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og pgx outside-calls: what reaches PharmCAT as an outside call.
 
 CYP2D6 reaches PharmCAT only when pypgx and a second caller (Cyrius) give the
