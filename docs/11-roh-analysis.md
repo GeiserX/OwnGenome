@@ -85,7 +85,7 @@ In uniparental disomy (UPD) both copies of a chromosome come from one parent. Wh
 
 The reports flag a chromosome when its segments of 5 Mb or more (band parts left out) add up to at least 20 Mb **and** to more than half of the length of all such autosomal segments. Both numbers are our thresholds, not a published cut-off: 20 Mb on one chromosome is the long-standing sign of isodisomy (see the uniparental disomy note under [Important Notes](#important-notes)), and the share rule keeps out a child of related parents, whose runs spread over many chromosomes. The flag says "may": a run that long can also be chance in a child of related parents.
 
-A flagged chromosome is looked up in [assets/imprinted_regions.tsv](../assets/imprinted_regions.tsv). That file is the only imprinting table and is embedded into `og` at build time. Its header credits [Eggermann et al. 2023](https://doi.org/10.1038/s41572-023-00443-4), with per-row PMIDs for the reference facts.
+A flagged chromosome is looked up in [assets/imprinted_regions.tsv](https://github.com/GeiserX/OwnGenome/blob/main/assets/imprinted_regions.tsv). That file is the only imprinting table and is embedded into `og` at build time. Its header credits [Eggermann et al. 2023](https://doi.org/10.1038/s41572-023-00443-4), with per-row PMIDs for the reference facts.
 
 The flag lists the chromosome, run length, share, region names and citations. It names no syndrome. The existing `maternal_upd` and `paternal_upd` JSON keys stay as `"-"` for reader compatibility. The asset retains their reference facts. Those facts cannot be inferred from a region match in one genome.
 
