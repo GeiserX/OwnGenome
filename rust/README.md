@@ -22,7 +22,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-steps` | step helpers, among them `og pgx outside-calls`, `og pgx hla-concordance` (steps 08, 36), `og pgx pypgx-summary` (step 32) and `og paraphase check-bam`, `og paraphase table` (step 35b) |
 | `crates/og-fresh` | `og dev freshness`: the upstream lookups of the monthly freshness issue, each answer typed, HTTP through the host's `curl` |
 | `crates/og-recheck` | `og recheck`: which of a finished sample's results a newer ClinVar or catalog would change, `--rerun`, `--affected`, `--launch-dir` |
-| `crates/og-render` | `og report render`, `og report index`, `og report charts`: the reports from summary.json (not ported yet) |
+| `crates/og-render` | `og report render`, `og report index`, `og report charts`: the reports from summary.json (render: the frame, QC and variants so far, no caller yet; index and charts not ported yet) |
 | `crates/og-live` | `og live serve`, `og live results`, `og live family`, `og live demo`, `og view serve`: the live site (not ported yet) |
 | `crates/og-couple` | `og couple screen`, `og couple genes`: step 39's couple screen (not ported yet) |
 | `crates/og-admix` | what the fine-ancestry engines share: our own painting and projection (not ported yet) |
