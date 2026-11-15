@@ -73,7 +73,7 @@ Variants whose effect allele the papers we could read did not state were left ou
 
 ### Adding a row
 
-Read the primary paper first and write the reading from it, in your own words. Take the GRCh38 position, the reference base and the allele from dbSNP's record of the rsID, and the direction of the effect from the paper, checking the strand: an allele named on the gene's strand of a gene on the minus strand is the complement on GRCh38. Then run `python3 tests/test_traits_table.py --online`, which looks up every PubMed id and checks each rsID's GRCh38 position and alleles against dbSNP.
+Read the primary paper first and write the reading from it, in your own words. Take the GRCh38 position, the reference base and the allele from dbSNP's record of the rsID, and the direction of the effect from the paper, checking the strand: an allele named on the gene's strand of a gene on the minus strand is the complement on GRCh38. Then run `bin/og traits check --table assets/traits.tsv`, which checks the schema, and `bin/og dev traits-sources --online`, which looks up every PubMed id and checks each rsID's GRCh38 position and alleles against dbSNP (add `--fasta` with the reference to check each reference base too).
 
 ## Genotype Rules
 

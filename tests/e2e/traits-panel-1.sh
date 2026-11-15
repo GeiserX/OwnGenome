@@ -3,7 +3,7 @@
 # Nextflow mirror:
 #   - assets/traits.tsv: every reference base is the fixture reference's base
 #     (on the contigs it has), every PubMed id resolves and every rsID's GRCh38
-#     position and alleles are dbSNP's (tests/test_traits_table.py --fasta
+#     position and alleles are dbSNP's (og dev traits-sources --fasta
 #     --online); control: a copy with one wrong reference base and one PubMed
 #     id that does not exist must fail, naming both;
 #   - scripts/42-traits.sh: one row per table row plus the APOE line; the
@@ -28,10 +28,11 @@ GVCF="${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz"
 check "case 21 wrote a gVCF" vcf_ok "$GVCF"
 
 # --- the table: reference bases, PubMed ids, dbSNP --------------------------------
-python3 "${REPO}/tests/test_traits_table.py" --fasta "$REF" --min-fasta-rows 20 --online > "${CASE_TMP}/table.log" 2>&1
+OG_BIN="${OG:-${REPO}/bin/og}"
+"$OG_BIN" dev traits-sources --table "$TABLE" --fasta "$REF" --min-fasta-rows 20 --online > "${CASE_TMP}/table.log" 2>&1
 TRC=$?
 cat "${CASE_TMP}/table.log"
-check_eq "tests/test_traits_table.py --fasta --online exits 0" "$TRC" 0
+check_eq "og dev traits-sources --fasta --online exits 0" "$TRC" 0
 check "the reference bases were checked on the fixture contigs" has 'ref checked against .*: [0-9]+ rows' "$(cat "${CASE_TMP}/table.log")"
 
 # Control: one wrong reference base (rs1801133, chr1, a fixture contig) and one
@@ -40,7 +41,7 @@ BAD="${CASE_TMP}/traits-planted.tsv"
 awk -F'\t' -v OFS='\t' '$3 == "rs1801133" { $5 = "C" } $3 == "rs671" { $13 = "99999999" } { print }' "$TABLE" > "$BAD"
 check_eq "control: the planted copy differs from the table in two lines" \
   "$(diff "$TABLE" "$BAD" | grep -c '^>' || true)" 2
-python3 "${REPO}/tests/test_traits_table.py" --table "$BAD" --fasta "$REF" --online > "${CASE_TMP}/table-bad.log" 2>&1
+"$OG_BIN" dev traits-sources --table "$BAD" --fasta "$REF" --online > "${CASE_TMP}/table-bad.log" 2>&1
 BRC=$?
 BADLOG=$(cat "${CASE_TMP}/table-bad.log")
 check "control: the planted copy fails (exit ${BRC})" test "$BRC" -ne 0
