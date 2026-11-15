@@ -331,10 +331,6 @@ echo "cDNA scan of every exon: ${SCAN_TSV}"
 echo "Known deep intronic sites, always reported: ${DEEP_TSV}"
 awk -F'\t' 'NR > 1 {printf "  %s %s %s:%s %s>%s: %s%s\n", $5, $6, $1, $2, $3, $4, $8, ($9 != "" ? ", " $9 : "")}' "$DEEP_TSV"
 echo "Count: ${HIT_COUNT} pathogenic hits"
-echo "Records whose REF differs from the reference (REF_MISMATCH): ${REF_MISMATCH}"
-if [ "$REF_MISMATCH" -gt 0 ]; then
-  echo "NOTICE: ${REF_MISMATCH} sample records have a REF that is not the reference's (bcftools norm REF_MISMATCH above): they stay as written and cannot match a ClinVar allele there. Check that the VCF was called on this reference."
-fi
 if [ "$HIT_COUNT" -gt 0 ]; then
   HIT_ROWS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" /pgp-bin/og clinvar hits "$(cpath "$HITS")")
   LOW_COUNT=$(awk -F'\t' '$13 == "yes"' <<< "$HIT_ROWS" | wc -l | tr -d ' ')
@@ -350,4 +346,8 @@ if [ "$HIT_COUNT" -gt 0 ]; then
   sort -t$'\t' -k1,1nr -k2,2V -k3,3n <<< "$HIT_ROWS" \
     | awk -F'\t' '{n[$1]++; line[$1] = line[$1] sprintf("    %s %s:%s %s>%s %s %s [%s]%s%s\n", $7, $2, $3, $4, $5, $6, $8, $9, ($10 != "." && $10 != "" ? " (" $10 ")" : ""), ($13 == "yes" ? " LOW-CONFIDENCE CALL (GQ " $12 ", DP " $11 "): check the reads" : ""))}
         END {for (s = 4; s >= 0; s--) if (n[s]) printf "  %d star%s: %d\n%s", s, (s == 1 ? "" : "s"), n[s], line[s]}'
+fi
+echo "Records whose REF differs from the reference (REF_MISMATCH): ${REF_MISMATCH}"
+if [ "$REF_MISMATCH" -gt 0 ]; then
+  echo "NOTICE: ${REF_MISMATCH} sample records have a REF that is not the reference's (bcftools norm REF_MISMATCH above): they stay as written and cannot match a ClinVar allele there. Check that the VCF was called on this reference."
 fi

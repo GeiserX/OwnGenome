@@ -240,10 +240,6 @@ process CLINVAR_SCREEN {
 
     HITS=\$(grep -c -v '^#' ${meta.id}_clinvar_hits.vcf || true)
     echo "ClinVar pathogenic hits: \${HITS}"
-    echo "Records whose REF differs from the reference (REF_MISMATCH): \${REF_MISMATCH}"
-    if [ "\${REF_MISMATCH}" -gt 0 ]; then
-        echo "NOTICE: \${REF_MISMATCH} sample records have a REF that is not the reference's (bcftools norm REF_MISMATCH above): they stay as written and cannot match a ClinVar allele there. Check that the VCF was called on this reference."
-    fi
     # Grouped by ClinVar review stars, as scripts/06 prints them
     # (og clinvar hits, bin/og on the task PATH).
     if [ "\${HITS}" -gt 0 ]; then
@@ -253,6 +249,10 @@ process CLINVAR_SCREEN {
             | awk '{printf "  %d star%s: %d\\n", \$2, (\$2 == 1 ? "" : "s"), \$1}'
         LOW=\$(awk -F'\\t' '\$13 == "yes"' hit_rows.tsv | wc -l | tr -d ' ')
         echo "Low-confidence calls among them (GQ below ${min_gq} or DP below ${min_dp}): \${LOW}"
+    fi
+    echo "Records whose REF differs from the reference (REF_MISMATCH): \${REF_MISMATCH}"
+    if [ "\${REF_MISMATCH}" -gt 0 ]; then
+        echo "NOTICE: \${REF_MISMATCH} sample records have a REF that is not the reference's (bcftools norm REF_MISMATCH above): they stay as written and cannot match a ClinVar allele there. Check that the VCF was called on this reference."
     fi
 
     cat <<-END_VERSIONS > versions.yml
