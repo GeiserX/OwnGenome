@@ -133,7 +133,7 @@ pub mod apol1 {
     const CHROM: &str = "chr22";
     const POS: i64 = 36_265_995;
     const REF: &str = "AATAATT";
-    const ALT: &str = "A";
+    const ALT: &str = "AT";
     /// GRCh38 chr22:36265975-36266025, the plus strand.
     const CONTEXT_START: i64 = 36_265_975;
     const CONTEXT: &str = "AGAAGCTAAACATTCTCAACAATAATTATAAGATTCTGCAGGCGGACCAAG";
@@ -508,7 +508,7 @@ pub mod apol1 {
         let Some(c) = g2.copies else {
             return (".".into(), "The G1 result above stands on its own.".into());
         };
-        if g1 + c > 2 {
+        if g1 + c > 3 {
             return (
                 ".".into(),
                 format!(

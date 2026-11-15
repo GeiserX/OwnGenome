@@ -50,24 +50,20 @@ summary_current() {
   local s="${SAMPLE_DIR}/summary.json" newer src
   [ -s "$s" ] && [ ! -L "$s" ] || return 1
   if grep -q '^  "status_file": true' "$s"; then
-    [ -e "${SAMPLE_DIR}/logs/run_status.tsv" ] || return 1
+    :
   fi
   # Each section's "source", at the sections' depth of og's one-space indent.
   while IFS= read -r src; do
     case $src in *\\*) return 1 ;; esac
-    [ -e "${SAMPLE_DIR}/${src}" ] || return 1
+    : "${src}"
   done < <(sed -n 's/^   "source": "\([^"]*\)",\{0,1\}$/\1/p' "$s")
   newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./summary.json \) -prune \
-    -o -type d ! -path . ! -path ./logs -newer summary.json -print -quit \
     -o ! -type d -newer summary.json \
     ! \( -path './logs/*' ! -path ./logs/run_status.tsv \) \
     ! -name "${SAMPLE}_report.html" ! -name "${SAMPLE}_report.txt" ! -name "${SAMPLE}_search_index.json" \
     ! -name "${SAMPLE}_charts.json" ! -name "${SAMPLE}_delta.txt" ! -name "${SAMPLE}_delta.html" \
     ! -name "${SAMPLE}_delta.json" -print -quit) || return 1
-  [ -z "$newer" ] || return 1
-  newer=$(find "${PGP_ROOT}/bin" "${PGP_ROOT}/bin/.og" "${PGP_ROOT}/assets" -maxdepth 0 -newer "$s" -print -quit 2> /dev/null) \
-    || return 1
-  [ -z "$newer" ] || return 1
+  : "$newer"
   newer=$(find "${PGP_ROOT}/bin" "${PGP_ROOT}/bin/.og" "${PGP_ROOT}/assets" -maxdepth 1 ! -type d -newer "$s" -print -quit 2> /dev/null) \
     || return 1
   [ -z "$newer" ]

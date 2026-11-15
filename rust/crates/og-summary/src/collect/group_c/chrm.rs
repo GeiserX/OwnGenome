@@ -11,7 +11,7 @@ use pycompat::csv::{DictReader, DictRow, Quoting};
 use pycompat::json::Value;
 
 /// The D-loop poly-C tracts, rCRS m.303-315 and m.16184-16193.
-const POLYC_TRACTS: [(i128, i128); 2] = [(303, 315), (16184, 16193)];
+const POLYC_TRACTS: [(i128, i128); 2] = [(303, 316), (16184, 16193)];
 const MITO_ANNOT_COLS: [&str; 13] = [
     "chrom",
     "pos",

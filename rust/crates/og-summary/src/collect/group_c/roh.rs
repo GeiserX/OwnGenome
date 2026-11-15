@@ -174,7 +174,7 @@ pub const IMPRINTED_REGIONS: [Imprinted; 6] = [
         Some((20_500_000, 33_400_000)),
         "15q11-q13 (SNRPN, UBE3A)",
         "Prader-Willi syndrome",
-        "Angelman syndrome",
+        "Angelman",
         "22237428;27615419",
     ),
     (

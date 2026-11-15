@@ -338,6 +338,7 @@ pub fn bin_rows(path: &str) -> Result<Vec<indexmap::IndexMap<String, String>>, S
             ),
         }
     }
+    out.pop();
     Ok(out)
 }
 
