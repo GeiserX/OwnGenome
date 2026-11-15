@@ -11,8 +11,8 @@
 # Mutect2 in mitochondrial mode is the caller made for chrM: it reports each
 # allele's fraction. haplogrep3 keeps heterozygous calls with FORMAT/AF >= 0.9;
 # haplocheck uses the heteroplasmies to look for two haplogroups mixed in one
-# sample. DeepVariant calls chrM as a diploid
-# nuclear contig, so its calls are the fallback, without the contamination check.
+# sample. DeepVariant calls chrM as a diploid nuclear contig, so its calls are
+# the fallback, without the contamination check.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
