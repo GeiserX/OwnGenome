@@ -25,7 +25,8 @@
 #      Docker Desktop and colima have (a docker shim that reports 8 GB and
 #      2 CPUs, and a stand-in nextflow that records its arguments): run-all.sh
 #      passes the engine's as --max_memory and --max_cpus, and the pool
-#      Nextflow fills, executor.config, is the engine's.
+#      Nextflow fills, executor.config, is the engine's. Each limit also
+#      alone; THREADS, an explicit --max_memory and a -c of the user's win.
 # Each comparison gets a negative control in the same run: a planted missing
 # file must be reported, the first run's trace must show the alignment and
 # calling tasks, and the first run's trace (tasks COMPLETED) must fail the
@@ -111,11 +112,13 @@ chmod +x "${ENG}/bin/docker" "${ENG}/bin/nextflow"
 HC=$(getconf _NPROCESSORS_ONLN)
 HM=$(awk '/^MemTotal:/ {print int($2 / 1048576)}' /proc/meminfo 2>/dev/null || echo $(( $(sysctl -n hw.memsize) / 1073741824 )))
 EG=$(( HM > 8 ? 8 : HM / 2 )) ECPU=$(( HC > 2 ? 2 : 1 ))
-engine_run() {  # engine_run NAME 'MEMTOTAL NCPU': run-all.sh with docker info answering that; its log is logs/<case>.engine-NAME.log
-  rm -f "${ENG}/${1}".*
-  echo "+ scripts/run-all.sh ${E} female, docker info reporting '${2}' (${1})"
-  env -u THREADS PATH="${ENG}/bin:${PATH}" ENGINE_INFO="$2" ENGINE_REC="${ENG}/${1}" GENOME_DIR="$G3" SKIP_VALIDATION=true \
-    TOOLS=roh EH_CATALOG="${G3}/none.json" "${REPO}/scripts/run-all.sh" "$E" female > "${E2E_WORK}/logs/${CASE_NAME}.engine-${1}.log" 2>&1
+engine_run() {  # engine_run NAME 'MEMTOTAL NCPU' [OPTION...]: run-all.sh with docker info answering that, THREADS=$ET when
+  local n=$1 info=$2; shift 2  # ET is set; its log is logs/<case>.engine-NAME.log
+  rm -f "${ENG}/${n}".*
+  echo "+ ${ET:+THREADS=${ET} }scripts/run-all.sh ${E} female $*, docker info reporting '${info}' (${n})"
+  env -u THREADS ${ET:+"THREADS=${ET}"} PATH="${ENG}/bin:${PATH}" ENGINE_INFO="$info" ENGINE_REC="${ENG}/${n}" GENOME_DIR="$G3" \
+    SKIP_VALIDATION=true TOOLS=roh EH_CATALOG="${G3}/none.json" "${REPO}/scripts/run-all.sh" "$E" female "$@" \
+    > "${E2E_WORK}/logs/${CASE_NAME}.engine-${n}.log" 2>&1
   echo "+ exit $? (the stand-in nextflow exits 1)"
 }
 EXC="${G3}/${E}/nextflow/executor.config"
@@ -137,6 +140,24 @@ check "negative control: an engine as big as the host gives the host's --max_mem
 check "negative control: and the host's --max_cpus ${HC}" has " --max_cpus ${HC} " "$BIG"
 check "negative control: and no executor.config" lacks "executor\.config" "$BIG"
 check "negative control: the small engine's executor.config is not left behind" test ! -e "$EXC"
+# Each limit alone, and what the user passes wins: THREADS and an explicit --max_memory stay, and a
+# -c of the user's comes after the engine's executor.config, so its executor block replaces the pool.
+UC="${G3}/user.config"
+ET=3 engine_run memory "$((EG * 1073741824)) $((HC + 4))" -c "$UC"
+MEMO=$(cat "${ENG}/memory.args" 2>/dev/null) MEMC=$(cat "${ENG}/memory.config" 2>/dev/null)
+echo "+ nextflow${MEMO}"
+check "less memory alone: --max_memory ${EG}.GB" has " --max_memory ${EG}\.GB " "$MEMO"
+check "less memory alone: THREADS=3 stays --max_cpus 3" has " --max_cpus 3 " "$MEMO"
+check "less memory alone: the pool keeps the host's ${HC} CPUs" has "^ *cpus += ${HC}\$" "$MEMC"
+check "less memory alone: the pool has ${EG} GB" has "^ *memory = '${EG} GB'\$" "$MEMC"
+check "the user's -c comes after the engine's executor.config" has " -c ${EXC} (.* )?-c ${UC} " "$MEMO"
+engine_run cpus "$(( (HM + 4) * 1073741824 )) ${ECPU}" --max_memory 6.GB
+CPUO=$(cat "${ENG}/cpus.args" 2>/dev/null) CPUC=$(cat "${ENG}/cpus.config" 2>/dev/null)
+echo "+ nextflow${CPUO}"
+check "fewer CPUs alone: --max_cpus ${ECPU}" has " --max_cpus ${ECPU} " "$CPUO"
+check_eq "fewer CPUs alone: the user's --max_memory 6.GB is the only one" "$(grep -o ' --max_memory [^ ]*' <<<"$CPUO" | tr -d '\n')" " --max_memory 6.GB"
+check "fewer CPUs alone: the pool has ${ECPU} CPUs" has "^ *cpus += ${ECPU}\$" "$CPUC"
+check "fewer CPUs alone: the pool keeps the host's ${HM} GB" has "^ *memory = '${HM} GB'\$" "$CPUC"
 rm -rf "$G3" "$ENG"
 
 # --- first run, with fs.protected_hardlinks 0 ---------------------------------------------
