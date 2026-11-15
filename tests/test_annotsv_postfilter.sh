@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # The class 4 and 5 checks with the real tools: step 05 (AnnotSV, then
 # og sv postfilter in ANNOTSV_IMAGE) and step 22 (SURVIVOR_IMAGE,
 # BCFTOOLS_IMAGE) on the made-up data of tests/fixtures/annotsv/class45.sh,

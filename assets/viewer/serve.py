@@ -38,6 +38,8 @@ ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 CSP = ("default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; "
        "style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+# Only the live site's viewer can be embedded by another page of that site.
+LIVE_CSP = CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
 LOCUS_RE = re.compile(r"^([A-Za-z0-9._-]+)(?::([0-9][0-9,]*)(?:-([0-9][0-9,]*))?)?$")
 
 

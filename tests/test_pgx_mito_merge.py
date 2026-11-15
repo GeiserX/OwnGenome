@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og pgx mito-merge: the MT-RNR1 outside call PharmCAT gets from the chrM
 calls of step 20 / MITO_VARIANTS (step 07 and PHARMCAT run it).
 

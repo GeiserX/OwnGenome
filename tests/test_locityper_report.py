@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og locityper report: step 53's table from what Locityper genotype
 wrote, and its section in both reports.
 

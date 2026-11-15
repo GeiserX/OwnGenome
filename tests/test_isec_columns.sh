@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # Step 06 + both reports on a tiny synthetic genome.
 #
 # Builds a 200-base reference, a three-record sample VCF and a three-record

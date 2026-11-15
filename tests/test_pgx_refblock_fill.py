@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og pgx refblock-fill: PharmCAT's multi-base positions called 0/0 from
 the reference blocks of a gVCF (steps 07 and PHARMCAT_PREPROCESS run it).
 

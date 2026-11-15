@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og y tree-place and og y tree-positions on a synthetic tree, synthetic
 position tables and synthetic pileups (no real sample).
 

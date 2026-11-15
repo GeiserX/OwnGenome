@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og exomiser prepare and og exomiser report: the symptom-driven ranking of step 48 (Exomiser).
 
 Every input is synthetic: a few-term OBO file, one- and four-sample VCF

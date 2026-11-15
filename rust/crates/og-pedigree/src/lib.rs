@@ -14,6 +14,10 @@
 //! - [`Par`]: the pseudoautosomal regions of a BED file.
 //!
 //! A problem is a [`Die`]: `ERROR: ` lines on stderr and an exit code.
+//! [`layout`], the drawing layout of a pedigree, is empty until its port
+//! lands.
+
+pub mod layout;
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;

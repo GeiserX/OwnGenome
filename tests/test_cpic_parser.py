@@ -89,7 +89,7 @@ OG = og_binary()
 # The genes a medication list is checked for, and the contraindication
 # table's columns, as og reads them.
 PHENOCONVERSION_GENES = ("CYP2D6", "CYP2C19", "CYP2C9", "CYP3A4", "CYP3A5")
-CONTRA_COLUMNS = ["Gene", "Drug", "Names", "CPIC_level", "Note", "Pair_source", "Label_source"]
+CONTRA_COLUMNS = ["Gene", "Drug", "Names", "CPIC_level", "Note", "Pair_source", "Label_source", "Report_if"]
 
 
 def og(*args):
@@ -374,20 +374,22 @@ def contraindication_checks(work):
     header = lines[0].rstrip("\n").split("\t")
     check("contraindications: the header", header == CONTRA_COLUMNS, header)
     rows = [line.rstrip("\n").split("\t") for line in lines[1:] if line.strip()]
-    bad = [r for r in rows if len(r) != 7 or not all(c.strip() for c in r)
+    bad = [r for r in rows if len(r) != 8 or not all(c.strip() for c in r)
            or r[3] not in ("A", "B", "A/B")
            or r[5] != f"https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.{r[0]}"
-           or not (r[6] == "-" or r[6].startswith("https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid="))
+           or not r[6].startswith("https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=")
+           or r[7] not in ("any", "biallelic")
            or any(n != n.strip().lower() or not n for n in r[2].split(","))
            or r[1].split()[0] not in r[2].split(",")]
     check("contraindications: every row has a gene, a drug, its names, a CPIC level, a note and its sources",
           not bad, bad)
     keys = [(r[0], r[1]) for r in rows]
     check("contraindications: no gene-drug pair twice", len(keys) == len(set(keys)), keys)
-    check("contraindications: POLG with valproic acid, the urea-cycle genes, HPRT1 and SCN1A are there",
+    check("contraindications: POLG with valproic acid, the urea-cycle genes and HPRT1 are there",
           {("POLG", "valproic acid"), ("ASL", "valproic acid"), ("ASS1", "valproic acid"), ("CPS1", "valproic acid"),
-           ("NAGS", "valproic acid"), ("OTC", "valproic acid"), ("HPRT1", "mycophenolic acid"),
-           ("SCN1A", "carbamazepine"), ("SCN1A", "phenytoin")} <= set(keys), keys)
+           ("NAGS", "valproic acid"), ("OTC", "valproic acid"), ("HPRT1", "mycophenolic acid")} <= set(keys), keys)
+    check("contraindications: SCN1A is left out (no label or guideline names it)",
+          not any(r[0] == "SCN1A" for r in rows), keys)
     _, rec, _, _ = run_report(work, "CONTRAREAD", pheno_report(), contraindications=CONTRA)
     check("contraindications: the parser reads the table", "Could not read" not in contra_section(rec)
           and "Genes it would check: " + ", ".join(dict.fromkeys(r[0] for r in rows)) + "." in contra_section(rec),
@@ -402,7 +404,8 @@ def contraindication_checks(work):
     check("contraindications: a pathogenic POLG hit adds the valproic acid WARNING",
           "WARNING: valproic acid -- POLG chr15:89300000 C>T, genotype 0/1, ClinVar Pathogenic." in sec, sec)
     check("contraindications: the line carries the label's note, the CPIC level and the label",
-          "mitochondrial disorders caused by POLG mutations" in sec and "(CPIC level A/B)" in sec
+          "mitochondrial disorders caused by POLG mutations" in sec
+          and "(provisional CPIC level A/B: no CPIC guideline covers this pair)" in sec
           and "dailymed.nlm.nih.gov" in sec, sec)
     check("contraindications: the section says to review it with a clinician",
           "Review it with your clinician" in sec, sec)

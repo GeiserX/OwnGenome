@@ -138,7 +138,7 @@ User's FASTQ/BAM/VCF
 6. Add the module to the step list (a `plan` call) in `scripts/run-all.sh` (its `--tools` name and database parameter), so a default run includes it
 7. Add a row for the image to `tests/smoke/commands.tsv`: a real command on the fixture and a check on what it wrote (an image with no row fails `container-test.yml`)
 8. Update `docs/00-reference-setup.md` if new reference data needed
-9. Update `docs/interpreting-results.md` if output needs explanation
+9. Update the chapter page under `docs/results/` (listed in `docs/interpreting-results.md`) if output needs explanation
 10. Test on at least one sample before committing
 
 ### Bumping a Tool
@@ -148,7 +148,7 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - All processing is local; genomic data never leaves the machine
 - Pin tool versions; never use floating tags
 - Reference genome: GRCh38, NCBI's no-ALT analysis set (`reference/GRCh38_no_alt_analysis_set.fasta`). No aligner here runs ALT-aware, so a reference with ALT contigs gives MAPQ 0 at CYP2D6, the MHC and KIR; `validate-setup.sh` refuses one (unless `ALLOW_ALT_REFERENCE=true`) and refuses a BAM whose @SQ lines differ from the `.fai`. A change of reference means realigning every sample (`docs/realignment.md`)
-- License: GPL-3.0
+- License: GPL-3.0-or-later (README, CONTRIBUTING.md, `rust/Cargo.toml` and the `nextflow.config` manifest say the same)
 
 ## Tool-Specific Gotchas
 
