@@ -10,7 +10,8 @@ on:
         required: true
         type: string
   # A dry run: a pull request that changes this file or rust/ builds the og
-  # binaries and their SHA256SUMS as an artifact; nothing is released.
+  # binaries, THIRD-PARTY-LICENSES.txt and their SHA256SUMS as an artifact;
+  # nothing is released.
   pull_request:
     branches: [main]
     paths: ['.github/workflows/release.yml', 'rust/**']
@@ -21,7 +22,9 @@ permissions:
 jobs:
   # The og binaries every release carries (docs/rust.md): both musl builds
   # and the macOS pair (without BAM, for a live-site host), made by
-  # scripts/setup.sh --og as a checkout makes them, with SHA256SUMS.
+  # scripts/setup.sh --og as a checkout makes them, with
+  # THIRD-PARTY-LICENSES.txt (the notices of every crate and C library they
+  # link) and SHA256SUMS over all five.
   # A checkout of the tag downloads them instead of building (rust/og.sh).
   og-binaries:
     runs-on: ubuntu-latest
@@ -44,16 +47,17 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
-      - name: Build og for Linux and macOS (scripts/setup.sh --og builds in OG_BUILDER)
+      - name: Build og for Linux and macOS, and its licence notices (scripts/setup.sh --og builds in OG_BUILDER)
         run: |
           # On a tag, setup.sh --og would download the release's own binaries,
           # which this job is about to make: build them.
           rust/og.sh build
           rust/og.sh check --required
           mkdir -p dist
-          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64 bin/.og/og-darwin-arm64 bin/.og/og-darwin-x86_64 dist/
+          cp bin/.og/og-linux-x86_64 bin/.og/og-linux-aarch64 bin/.og/og-darwin-arm64 bin/.og/og-darwin-x86_64 bin/.og/THIRD-PARTY-LICENSES.txt dist/
           file dist/og-*
-          (cd dist && sha256sum og-* > SHA256SUMS && cat SHA256SUMS)
+          (cd dist && sha256sum og-* THIRD-PARTY-LICENSES.txt > SHA256SUMS)
+          scripts/ci/check-release.sh dist dist
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -108,7 +112,7 @@ jobs:
             echo ""
             echo "## og binaries"
             echo ""
-            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. og-darwin-arm64 and og-darwin-x86_64 run the live site's genome map on a Mac; they leave out the tools that read BAMs. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks all four."
+            echo "og-linux-x86_64 and og-linux-aarch64 are this release's Rust binaries, with their SHA256SUMS and a build attestation. THIRD-PARTY-LICENSES.txt holds the licences of the Rust standard library, the crates and the C libraries (musl, htslib, htscodecs) the binaries link. og-darwin-arm64 and og-darwin-x86_64 run the live site's genome map on a Mac; they leave out the tools that read BAMs. \`./scripts/setup.sh --og\` on a checkout of this tag downloads and checks all four."
           } >> "${RUNNER_TEMP}/notes.md"
 
       # Only a commit that main's CI passed is released: it must be on main,
@@ -135,10 +139,12 @@ jobs:
 
       # rust/og.sh install checks a downloaded binary with
       # `gh attestation verify` when gh is installed.
-      - name: Attest the og binaries
+      - name: Attest the og binaries and their licence notices
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: 'dist/og-*'
+          subject-path: |
+            dist/og-*
+            dist/THIRD-PARTY-LICENSES.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -152,4 +158,5 @@ jobs:
             dist/og-linux-aarch64
             dist/og-darwin-arm64
             dist/og-darwin-x86_64
+            dist/THIRD-PARTY-LICENSES.txt
             dist/SHA256SUMS
