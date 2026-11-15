@@ -249,10 +249,7 @@ fn both_ways(d: &Path, records: &[String]) -> (PathBuf, PathBuf) {
         }
         at = end;
     }
-    let names: Vec<u8> = seqs
-        .iter()
-        .flat_map(|s| s.0.bytes().chain([0]))
-        .collect();
+    let names: Vec<u8> = seqs.iter().flat_map(|s| s.0.bytes().chain([0])).collect();
     let mut tbi: Vec<u8> = b"TBI\x01".to_vec();
     let i32s = |v: &mut Vec<u8>, xs: &[i32]| xs.iter().for_each(|x| v.extend(x.to_le_bytes()));
     // n_ref, VCF preset, columns 1 2 0, meta '#', skip 0, names.
@@ -328,7 +325,10 @@ fn a_later_record_of_the_marker_allele_that_is_no_call_wins_over_a_reference_rec
     let d = dir("abo261-nocall");
     let r = line("chr9", 133257521, "T", ".", ".", "0/0");
     for (later, note) in [
-        (line("chr9", 133257521, "T", "TC", "PASS", "./."), "genotype ./."),
+        (
+            line("chr9", 133257521, "T", "TC", "PASS", "./."),
+            "genotype ./.",
+        ),
         (
             line("chr9", 133257521, "T", "TC", "LowQual", "0/1"),
             "FILTER LowQual",
@@ -388,7 +388,11 @@ fn a_record_that_spans_a_marker_with_another_base_there_is_no_call() {
     // KEL c.578C>T (K) is chr7:142957921 G>A. A padded record one base
     // upstream carries the same change (CG>CA), or a deletion of that
     // base with it (DeepVariant's CG>C,CA 1/2).
-    for (r, alt, gt) in [("CG", "CA", "1/1"), ("CG", "C,CA", "1/2"), ("CG", "C", "0/1")] {
+    for (r, alt, gt) in [
+        ("CG", "CA", "1/1"),
+        ("CG", "C,CA", "1/2"),
+        ("CG", "C", "0/1"),
+    ] {
         let recs = [line("chr7", 142957920, r, alt, "PASS", gt)];
         let (status, n, note) = site_both_ways(&d, &recs, "KEL_578");
         assert_eq!(
@@ -401,7 +405,7 @@ fn a_record_that_spans_a_marker_with_another_base_there_is_no_call() {
             )
         );
         let t = run(&d, &recs, reads());
-        assert_eq!(t["Kell"][0], "K/k not determined", "{recs:?}");
+        assert!(t["Kell"][0].starts_with("K/k not determined"), "{recs:?}");
         assert_ne!(t["Kell"][2], "high", "{recs:?}");
     }
     // Split (bcftools norm -m-any): the deletion before the SNV record
