@@ -28,6 +28,29 @@ REF_FASTA_MD5=$(fake_body "$REF_FASTA_URL" | fake_md5)
 REF_FAI_MD5=$(fake_body "${REF_FASTA_URL}.fai" | fake_md5)
 export REF_FASTA_MD5 REF_FAI_MD5
 
+# Clinical setup uses real archive layouts, served by the existing fake curl
+# and wget. CHECKSUMS is shared by basename, so it lists both VEP archives.
+export FAKE_DOWNLOAD_DIR="${CASE_WORK}/downloads"
+mkdir -p "$FAKE_DOWNLOAD_DIR"
+for rel in 116 115; do
+  mkdir -p "${CASE_WORK}/cache/homo_sapiens/${rel}_GRCh38"
+  printf 'fake VEP cache\n' > "${CASE_WORK}/cache/homo_sapiens/${rel}_GRCh38/info.txt"
+  tar -czf "${FAKE_DOWNLOAD_DIR}/homo_sapiens_vep_${rel}_GRCh38.tar.gz" -C "${CASE_WORK}/cache" "homo_sapiens/${rel}_GRCh38"
+done
+for rel in 116 115; do
+  name="homo_sapiens_vep_${rel}_GRCh38.tar.gz"
+  printf '%s %s\n' "$(sum -r "${FAKE_DOWNLOAD_DIR}/${name}" | awk '{print $1, $2}')" "$name"
+done > "${FAKE_DOWNLOAD_DIR}/CHECKSUMS"
+mkdir -p "${CASE_WORK}/bundle/data/grch38"
+printf 'fake PCGR data\n' > "${CASE_WORK}/bundle/data/grch38/README"
+tar -czf "${FAKE_DOWNLOAD_DIR}/pcgr_ref_data.20260620.grch38.tgz" -C "${CASE_WORK}/bundle" data
+if command -v sha256sum >/dev/null 2>&1; then
+  PCGR_DATA_SHA256=$(sha256sum "${FAKE_DOWNLOAD_DIR}/pcgr_ref_data.20260620.grch38.tgz" | awk '{print $1}')
+else
+  PCGR_DATA_SHA256=$(shasum -a 256 "${FAKE_DOWNLOAD_DIR}/pcgr_ref_data.20260620.grch38.tgz" | awk '{print $1}')
+fi
+export PCGR_DATA_SHA256
+
 fail() {
   echo "ASSERT FAIL: $*" >&2
   exit 1

@@ -13,7 +13,9 @@ output_lacks setup 'unbound variable'
 output_has setup 'Setup complete!'
 
 for f in reference/GRCh38_no_alt_analysis_set.fasta reference/GRCh38_no_alt_analysis_set.fasta.fai \
-         clinvar/clinvar.vcf.gz clinvar/clinvar.vcf.gz.tbi; do
+         clinvar/clinvar.vcf.gz clinvar/clinvar.vcf.gz.tbi \
+         vep_cache/homo_sapiens/116_GRCh38/info.txt vep_cache/homo_sapiens/115_GRCh38/info.txt \
+         pcgr_data/20260620/data/grch38/README; do
   [ -s "${G}/${f}" ] || fail "setup.sh did not download ${f}"
 done
 grep -q '^image inspect' "$FAKE_DOCKER_LOG" || fail "setup.sh never checked a docker image"
