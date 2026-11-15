@@ -168,7 +168,7 @@ process CHIP_REPORT {
     stub:
     """
     printf 'gene\\tchrom\\tpos\\tref\\talt\\tconsequence\\tprotein_change\\texon\\tvaf\\talt_reads\\tdepth\\tfilter\\tstatus\\tclass\\tnote\\n' > ${meta.id}_chip.tsv
-    printf 'gene\\ttranscript\\tchrom\\tcoding_bases\\tmean_depth\\tdetection_limit_vaf\\tstatus\\n' > ${meta.id}_chip_depth.tsv
+    printf 'gene\\ttranscript\\tchrom\\tcoding_bases\\tmean_depth\\tdetection_limit_vaf\\tstatus\\tcallable_fraction\\tassessable_fraction\\n' > ${meta.id}_chip_depth.tsv
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """
 }

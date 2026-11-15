@@ -229,7 +229,12 @@ put $f/exomiser/S_exomiser_terms.tsv "hpo_id\tlabel\nHP:0001250\tSeizure\nHP:000
 put $f/chip/S_chip.tsv "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\tchrom
 DNMT3A\tR882H\t0.05\t3\t60\tchip\t\tchr2
 TET2\tQ1\t0.5\t30\t60\tgermline\tlikely inherited\tchr4\n"
-put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\nDNMT3A\t30.5\t0.1\tcovered\nTET2\t40\t0.08\tcovered\nASXL1\t2\t.\tlow depth\nJAK2\t35\t0.1\tcovered\nTP53\t25\t0.1\tcovered\n"
+# The two share columns og chip report adds since the per-base limit, and a
+# partly_covered gene: the stated limit is the median of the covered genes'
+# own limits (0.1), not the limit at their median depth (issue #411).
+put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\tcallable_fraction\tassessable_fraction
+DNMT3A\t30.5\t0.1\tcovered\t0.990\t0.600\nTET2\t40\t0.08\tcovered\t1.000\t0.900\nASXL1\t2\t.\tlow depth\t0.000\t0.000
+JAK2\t35\t0.1\tcovered\t0.980\t0.550\nTP53\t25\t0.1\tcovered\t0.950\t0.400\nSRSF2\t28\t\tpartly_covered\t0.700\t0.650\n"
 put $f/mei/S_mei_sites.tsv "gene\telement\tcondition\tinheritance\tstatus\tmean_depth\tcall
 FKTN\tSVA\tFukuyama\tAR\tcallable\t30\tnot seen
 TAF1\tSVA\tXDP\tXL\tnot callable\t2\t\n"
@@ -357,7 +362,7 @@ put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t39348425\t.\tA\t<STR
 # Non-finite cells follow each Python reader's rules, not a global filter.
 for special in nan inf -inf; do
   f="float-${special}"
-  cp -R full "$f"
+  cp -Rp full "$f"   # -p: the copies keep the times put set, so the cases do not depend on the clock
   put "$f/chip/S_chip_depth.tsv" "gene\tmean_depth\tdetection_limit_vaf\tstatus\nA\t30\t.\tcovered\nB\t${special}\t.\tcovered\nC\t40\t.\tcovered\n"
   for spec in \
     'paralogs/S_smn_copy_number.tsv:agCN_qual,psCN_qual' \

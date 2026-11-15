@@ -8,7 +8,8 @@
 # GIAB's S3 mirror. Then:
 #   - the reads as they are: no call at DNMT3A R882, a depth row for every gene
 #     of the table (the genes on contigs the fixture lacks not_on_reference),
-#     and a detection limit under 10% at about 60x;
+#     and a read-support limit from each base's depth under 10% at about 60x,
+#     with nearly every coding base of DNMT3A at 10 reads or more;
 #   - the same reads with DNMT3A R882H (chr2:25234373 C>T) planted in every
 #     fifth read over it: a chip row R882H at a VAF near 20%. The reads as they
 #     are are the negative control of that check;
@@ -138,10 +139,14 @@ check_eq "DNMT3A is covered" "$(depth "$U" DNMT3A status)" covered
 check_eq "JAK2 (chr9, not in the fixture) is not_on_reference" "$(depth "$U" JAK2 status)" not_on_reference
 check "DNMT3A's mean depth is about 60x ($(depth "$U" DNMT3A mean_depth))" \
   awk -v d="$(depth "$U" DNMT3A mean_depth)" 'BEGIN {exit !(d >= 35 && d <= 90)}'
-check "DNMT3A's detection limit is under 10% ($(depth "$U" DNMT3A detection_limit_vaf))" \
+check "DNMT3A's read-support limit is under 10% ($(depth "$U" DNMT3A detection_limit_vaf))" \
   awk -v d="$(depth "$U" DNMT3A detection_limit_vaf)" 'BEGIN {exit !(d > 0.02 && d < 0.10)}'
-check "the step prints the detection limit and that it is not a diagnosis" \
-  has 'Detection limit at this depth.*does not rule one out\. Not a diagnosis\.' "$(cat "$STEP_LOG")"
+check "DNMT3A has 10 reads or more on 95% of its coding bases ($(depth "$U" DNMT3A callable_fraction))" \
+  awk -v d="$(depth "$U" DNMT3A callable_fraction)" 'BEGIN {exit !(d >= 0.95 && d <= 1)}'
+check "DNMT3A has a share of bases at the stated limit ($(depth "$U" DNMT3A assessable_fraction))" \
+  awk -v d="$(depth "$U" DNMT3A assessable_fraction)" 'BEGIN {exit !(d ~ /^[01]\.[0-9][0-9][0-9]$/ && d > 0)}'
+check "the step prints the read-support limit and that it is not a diagnosis" \
+  has 'Read-support limit \(median [0-9]+x.*does not rule one out\. Not a diagnosis\.' "$(cat "$STEP_LOG")"
 IFS=, read -r st pc vaf <<< "$(row "$P" "$R882")"
 check_eq "planted at a fifth: a chip row" "${st:-none}" chip
 check_eq "named R882H on DNMT3A's MANE transcript" "${pc:-none}" R882H
