@@ -125,9 +125,10 @@ REF="$REF_FASTA"
 
 # --- Path validation helper ---
 # Canonicalize GENOME_DIR and verify paths are within it (prevents sibling prefix matches)
-# Uses python3 (macOS) with readlink -f fallback (GNU/Linux) — realpath -e is not portable.
+# realpath is in GNU coreutils and in macOS 13 and later; readlink -f is the
+# fallback for an older macOS (12.3 and later), and the path as given the last.
 _resolve() {
-  python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1" 2>/dev/null \
+  realpath "$1" 2>/dev/null \
     || readlink -f "$1" 2>/dev/null \
     || echo "$1"
 }

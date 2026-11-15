@@ -14,7 +14,7 @@
 #                                          CYP2D7 and 3,000 depth-normalisation
 #                                          bins on chr1-chr22; plus the two 50 kb
 #                                          flanks step 21's depth check compares
-#                                          CYP2D6 with (bin/cyp2d6_depth_check.py)
+#                                          CYP2D6 with (og pgx cyp2d6-bed)
 #   fixture_ref.fa.gz (+.fai .gzi .dict)   whole chr1 chr2 chr4 chr5 chr6 chr10
 #                                          chr12 chr16 chr19 chr20 chr22 chrX chrY
 #                                          chrM of the NCBI GRCh38 no-ALT analysis
@@ -40,7 +40,7 @@
 #   regions.bed, planted.tsv, MANIFEST.txt, SHA256SUMS
 #
 # HG002 is a public, consented Genome in a Bottle sample, so nothing here is
-# personal data. Needs Docker, curl, bgzip and tabix (htslib), python3, about 10 GB of
+# personal data. Needs Docker, curl, bgzip and tabix (htslib), about 10 GB of
 # free disk and a network connection (VEP queries Ensembl's public database).
 # The release tag the e2e job downloads is tests/fixtures/VERSION; see
 # docs/testing.md for how to rebuild and publish a new version.
@@ -133,9 +133,14 @@ PLANT_WINDOW="chr20:10230000-10300000"   # inside SNAP25
 PLANT_GENE="SNAP25:6616"
 PLANT_ID=900000001
 
-for tool in docker curl bgzip tabix md5sum sha256sum awk sort python3; do
+for tool in docker curl bgzip tabix md5sum sha256sum awk sort; do
   command -v "$tool" >/dev/null || { echo "ERROR: ${tool} is required" >&2; exit 1; }
 done
+# og prints the CYP2D6 depth check's flanks below: built from this checkout's
+# rust/ (in Docker, scripts/setup.sh --og) when missing or stale.
+if ! "${REPO}/rust/og.sh" check --required > /dev/null 2>&1; then
+  "${REPO}/rust/og.sh" install || { echo "ERROR: could not build og (scripts/setup.sh --og)" >&2; exit 1; }
+fi
 
 # Run a tool from a pinned image, as the calling user, with OUT mounted at /w.
 in_image() {
@@ -233,9 +238,9 @@ echo "  ${CYRIUS_BINS} normalisation bins on ${CYRIUS_CONTIGS} contigs"
 # Step 21's depth check compares CYP2D6 with two 50 kb flanks; without reads
 # there it can only say "no reads in the flanks". The flanks come from the
 # check itself, so the two cannot drift apart.
-python3 "${REPO}/bin/cyp2d6_depth_check.py" bed | awk -F'\t' '$4 == "flank"' > "${WORK}/cyp2d6_flanks.bed"
+"${REPO}/bin/og" pgx cyp2d6-bed | awk -F'\t' '$4 == "flank"' > "${WORK}/cyp2d6_flanks.bed"
 if [ "$(wc -l < "${WORK}/cyp2d6_flanks.bed" | tr -d ' ')" -ne 2 ]; then
-  echo "ERROR: bin/cyp2d6_depth_check.py bed did not print two flank regions" >&2
+  echo "ERROR: og pgx cyp2d6-bed did not print two flank regions" >&2
   exit 1
 fi
 CYRIUS_FLANKS=$(awk '{printf "%s%s:%d-%d", (NR > 1 ? " " : ""), $1, $2 + 1, $3}' "${WORK}/cyp2d6_flanks.bed")
