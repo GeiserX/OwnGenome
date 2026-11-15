@@ -39,14 +39,17 @@ Checks:
      holds the child's results; and an adult's and a no-act child's pages make the requests of the page without
      the gate, in its order, the event stream included, and are the same page (the genome map drawn with OG); an
      adult's and a no-act child's page at a section address give the outcome main's view files give in each order
-     (marks kept when the family answers first, cleared when the results do, the map's tooltip hidden="hidden");
+     (marks kept when the family answers first, cleared when the results do, the map's tooltip hidden="hidden"), also
+     when a copied answer read as JSON comes late; an adult with a result to act on whose family.json answers 502 or
+     drops the connection gets the page it gets when the family answers, nothing closed and nothing left out of search;
      each member run of family.json says whether it is a child by the one rule; a no-act child with a stale
      summary.json keeps its numbers on the home page; a family file that cannot be read gives a fixed 500, and
      while it cannot be read the people that family lists are closed alike on the server, in state.json, on the
      finding route, on their page and home tile, and reopen once it reads, all with no family.json request; on
      the family page a gated child reads "Report closed" and, once opened there, the count summary.json gives; an
      adult's member line is as without the gate; a child of one family is closed on another family's page where
-     it is a partner, keeps that role there, and stays a child when that family sorts first.
+     it is a partner, keeps that role there with its buttons under the members, and stays a child when that family
+     sorts first.
 Checks 2 and 4 are run again on a copy of the fixture with two parents swapped
 and must fail there: a check that cannot fail is no check.
 
@@ -702,6 +705,16 @@ def slow_routes(live, delays):
     return keep
 
 
+SLOW_CLONE = """(function () {
+  var clone = Response.prototype.clone;
+  Response.prototype.clone = function () {
+    var copy = clone.call(this), json = copy.json.bind(copy);
+    copy.json = function () { return json().then(function (v) { return new Promise(function (done) { setTimeout(function () { done(v); }, 1000); }); }); };
+    return copy;
+  };
+}())"""
+
+
 def live_browser_checks(live, port, work, run, real):
     """In live mode (state.json, then the event stream): an adult's and a no-act child's page make the requests of
     the page without the gate, in its order; a parent's page is the same whichever card holds a child's results."""
@@ -782,6 +795,10 @@ def live_browser_checks(live, port, work, run, real):
         # stays hidden="hidden". So a change to a shared view file shows here, not only a change the gate makes.
         live.summary = lambda name, d, st: NO_ACT if name == "father_a" else adult(name, d, st)
         marks = []
+        # A copied answer read as JSON (Response.clone().json()) resolves 1 s late, after the family's answer held back
+        # 0.5 s: a gate that checked a child's results on such a copy, not on the text it read, would hand them to the
+        # view after the family's answer, and the results-first order would give the family-first outcome.
+        slow = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": SLOW_CLONE}, b.session)["identifier"]
         for first_, held in (("results.json", "/family.json"), ("family.json", "/results.json")):
             keep_routes = slow_routes(live, {held: 0.5, "/map.json": 1.0})
             try:
@@ -796,10 +813,12 @@ def live_browser_checks(live, port, work, run, real):
                             marks.append((first_, route, got, got == want))
             finally:
                 live.app.routes[:] = keep_routes
+        b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": slow}, b.session)
         live.summary = adult
         check("live mode: an adult's and a no-act child's page at a section address give main's outcome in each order: "
               "the marks stay when the family answers first, clear when the results do, and the map's tooltip stays "
               "hidden=\"hidden\"", all(m[3] for m in marks), [m for m in marks if not m[3]] or marks[:2])
+        family_fetch_failure_checks(b, base, live, source, adult)
         # A parent's page, whichever card holds the child's two results to act on.
         # The map's document is held back, as above, so the tooltip's end state does not depend on the race.
         seen = []
@@ -823,6 +842,77 @@ def live_browser_checks(live, port, work, run, real):
         b.close()
         shutil.rmtree(assets, ignore_errors=True)
     print("   live gate browser checks: %.2f s" % (demo.time.time() - t0))
+
+
+def failing_routes(live, suffix, how):
+    """The server's routes, with every answer whose path ends with SUFFIX replaced: a 502 when HOW is "502", else a
+    connection dropped with no answer. Returns the routes to put back."""
+    import urllib.parse
+    keep = list(live.app.routes)
+
+    def wrap(fn):
+        def run_(req, m):
+            if not urllib.parse.urlsplit(req.path).path.endswith(suffix):
+                return fn(req, m)
+            if how == "502":
+                return req.send_body(502, "text/plain; charset=utf-8", b"bad gateway\n")
+            req.close_connection = True
+            return None
+        return run_
+    live.app.routes[:] = [(a, rx, wrap(fn), auth) for a, rx, fn, auth in keep]
+    return keep
+
+
+# What a page shows of its results to act on beyond the DOM: whether the search leaves them out, and the
+# map's chips for them (closed ones, or ones opened with a button to close them again).
+ACT_JS = ("[String(PGP.searchHidden(null)), Array.prototype.map.call(document.querySelectorAll('.gm-chip'), function (c) { return c.textContent; }).join(' | ')]")
+
+
+def without_family(page):
+    """A person's page with the parts family.json draws taken out: the kicker's family name, the role in the family and
+    the rail's family group."""
+    page = re.sub(r'(<div class="kicker" id="kicker">[^<]*?)(?: · )?(?:Family [^<]*)?<', r'\1<', page)
+    page = re.sub(r'<span>(?:(?:son|daughter|child|father|mother|parent|partner) of )[^<]*</span>', '', page)
+    return re.sub(r'<div class="group">The family</div><div class="people">.*?</div>', '', page, flags=re.S)
+
+
+def family_fetch_failure_checks(b, base, live, source, adult):
+    """An adult with results to act on whose family.json fails (a 502 or a dropped connection) gets the page it gets when
+    the family answers, apart from the family's own parts (the rail's link and the role): the gate's answer from
+    state.json alone decides whether a page keeps results closed, so nothing is closed, nothing is marked opened with a
+    button that cannot close it, and the search leaves nothing out. The map's document comes last, as above."""
+    live.summary = lambda name, d, st: ACT_SUMMARY if name == "gf_a" else adult(name, d, st)
+    pages = {}
+    try:
+        for how in ("ok", "502", "drop"):
+            keep_routes = failing_routes(live, "/family.json", how) if how != "ok" else list(live.app.routes)
+            slow_routes(live, {"/map.json": 0.5})
+            try:
+                with open(os.path.join(live.cfg.assets, "core.js"), "w") as f:
+                    f.write(source)
+                b.go("about:blank")
+                assert b.wait("location.href === 'about:blank'")
+                b.go(base + "/runs/gf_a/")
+                assert b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
+                              "!!document.querySelector('#results .card')"), how + ": gf_a never drawn"
+                if how == "ok":
+                    assert b.wait("!!document.querySelector('#rail a[href*=family_a]')"), "family never drawn"
+                b.wait("/^(drawn|failed|nodecompress|unavailable)$/.test((document.getElementById('genome-map') || "
+                       "{dataset: {}}).dataset.pgpMap || '')", 15)
+                time.sleep(1.0)
+                page, acts = b.eval("[%s, %s]" % (PAGE_JS, ACT_JS))
+                pages[how] = [without_family(page), acts, page != without_family(page)]
+            finally:
+                live.app.routes[:] = keep_routes
+    finally:
+        live.summary = adult
+    for how in ("502", "drop"):
+        got, want = pages[how], pages["ok"]
+        check("live mode: an adult with results to act on whose family.json %s gets the page it gets when the family "
+              "answers: no result closed or marked opened, the search leaves nothing out"
+              % ("answers 502" if how == "502" else "drops the connection"),
+              got[:2] == want[:2] and want[2] and want[1][0] == "false" and "Opened" not in want[1][1],
+              (got[1], want[1], differences(got[0], want[0], 12)))
 
 
 def family_gate_checks(b, base, live, run):
@@ -882,9 +972,11 @@ def family_gate_checks(b, base, live, run):
         got = b.wait("document.documentElement.dataset.pgpStatus === 'ready' && !!document.querySelector('.person-card') && "
                      "[document.querySelector('[data-gate-child=father_a]') ? 'closed' : 'open', "
                      "/One child|children:/.test(document.getElementById('family-lead').textContent) ? 'child counted' : 'no child', "
-                     "/father_a and zara are not screened as a couple yet/.test(document.body.textContent) ? 'couple line' : 'no couple line'].join()", 15)
+                     "/father_a and zara are not screened as a couple yet/.test(document.body.textContent) ? 'couple line' : 'no couple line', "
+                     "((document.querySelector('[data-gate-child=father_a]') || document.body).parentElement.closest('section') || {}).id].join()", 15)
         check("family page: a person who is a child in another family is closed on this family's page too, keeps the "
-              "partner role (no child counted) and the couple's line", got == "closed,no child,couple line", got)
+              "partner role (no child counted) and the couple's line, and has its buttons under the members, not in the "
+              "chapter of this family's children", got == "closed,no child,couple line,ch-members", got)
         first = os.path.join(live.root, "family_0")
         os.rename(z, first)
         z = first
