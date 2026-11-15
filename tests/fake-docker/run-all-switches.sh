@@ -6,6 +6,9 @@
 # EXTRA_CALLERS stop it with exit 2 before nextflow.
 #   plain run      the host's CPU count and RAM as --max_cpus and --max_memory;
 #                  BENCHMARK=true with one caller VCF is skipped, not failed
+#   benchmark      BENCHMARK=true counts the shared sites whose genotypes
+#                  agree (0/1 against 1/1 is a mismatch), and compares Clair3
+#                  and any other vcf_*/ VCF run-all.sh counts
 #   ALIGN_DIR run  its BAM replaces the plain run's samplesheet row
 #   plain again    back to aligned/: a kept row names this call's BAM only
 #   publish mode   --publish_dir_mode link for root (a fake `id`) when a
@@ -98,6 +101,48 @@ if compgen -G "${G}/.pgp-link-probe*" > /dev/null || compgen -G "${G}/sample1/.p
    || compgen -G "${G}/sample1/nextflow/work/.pgp-link-probe*" > /dev/null; then
   fail "the link probe left files behind"
 fi
+
+# BENCHMARK=true compares genotypes, and finds every caller run-all.sh counts.
+# The isec hook writes two callers that agree on both alleles but not on one
+# genotype (0/1 against 1/1): the Jaccard index is 1, the genotypes agree on
+# one site of two.
+cat > "${CASE_WORK}/isec-hook" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+. "${CASE_WORK:?}/host-path.sh"
+w=("$@")
+for ((i = 0; i < ${#w[@]} - 1; i++)); do [ "${w[i]}" != -p ] || d=$(host_path "${w[i + 1]}"); done
+[ -n "${d:-}" ] && [[ " $* " == *" bcftools isec "* ]] || exec "${CASE_WORK}/hook-outputs" "$@"
+mkdir -p "$d"
+h=$'##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS'
+printf '%s\n' "$h" > "${d}/0000.vcf"
+printf '%s\n' "$h" > "${d}/0001.vcf"
+printf '%s\nchr1\t10\t.\tA\tG\t50\tPASS\t.\tGT:DP\t0/1:30\nchr1\t20\t.\tC\tT\t50\tPASS\t.\tGT\t1|0\n' "$h" > "${d}/0002.vcf"
+printf '%s\nchr1\t10\t.\tA\tG\t50\tPASS\t.\tDP:GT\t30:1/1\nchr1\t20\t.\tC\tT\t50\tPASS\t.\tGT\t0/1\n' "$h" > "${d}/0003.vcf"
+HOOK
+chmod +x "${CASE_WORK}/isec-hook"
+callers() {
+  rm -rf "${G}/sample1"/vcf_* "${G}/sample1/benchmark"
+  local d
+  for d in "$@"; do
+    mkdir -p "${G}/sample1/${d}"
+    printf 'placeholder\n' > "${G}/sample1/${d}/sample1.vcf.gz"
+    printf 'placeholder\n' > "${G}/sample1/${d}/sample1.vcf.gz.tbi"
+  done
+}
+cmp_row() { sed -n 2p "${G}/sample1/benchmark/comparison.tsv" 2>/dev/null; }
+callers vcf vcf_gatk
+run_expect 0 bench-gt env TOOLS=pharmcat BENCHMARK=true FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/isec-hook" "${SCRIPTS}/run-all.sh" sample1 male
+[ "$(cmp_row)" = $'DeepVariant\tGATK\t2\t0\t0\t1.0000\t1\t0.5000' ] \
+  || fail "0/1 against 1/1 is not a genotype mismatch in comparison.tsv: $(cmp_row)"
+# Clair3 (step 03e) and a VCF in a directory of one's own: run-all.sh queues
+# the step for them, and the step compares them instead of exiting 1.
+callers vcf vcf_clair3 vcf_mine
+run_expect 0 bench-clair3 env TOOLS=pharmcat BENCHMARK=true FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/isec-hook" "${SCRIPTS}/run-all.sh" sample1 male
+grep -qE $'^DeepVariant\tClair3\t2\t0\t0\t1.0000\t1\t0.5000$' "${G}/sample1/benchmark/comparison.tsv" \
+  || fail "DeepVariant and Clair3 were not compared: $(cat "${G}/sample1/benchmark/comparison.tsv" 2>/dev/null)"
+grep -qE $'^Clair3\tmine\t' "${G}/sample1/benchmark/comparison.tsv" || fail "vcf_mine/ was not compared"
+rm -rf "${G}/sample1"/vcf_* "${G}/sample1/benchmark" "${G}/sample1/vcf/sample1.vcf.gz" "${G}/sample1/vcf/sample1.vcf.gz.tbi"
 
 n=$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")
 run_expect 2 bg env TOOLS=pharmcat "${SCRIPTS}/run-all.sh" sample1 male -bg
