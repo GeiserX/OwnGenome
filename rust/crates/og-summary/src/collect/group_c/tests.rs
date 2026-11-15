@@ -268,6 +268,15 @@ fn roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty() {
     let no_runs = roh_scope_summary(&[20], "");
     assert_eq!(at(&no_runs, &["f_roh"]), &Value::Float(0.0));
     assert_eq!(at(&no_runs, &["relationship"]), &Value::Null);
+    // Value::Float(-0.0) == Value::Float(0.0), so check the sign apart: a
+    // sample with no long run must read 0.0, never -0.0, in both reports.
+    for key in ["f_roh", "long_mb"] {
+        assert!(
+            matches!(at(&no_runs, &[key]), Value::Float(f) if f.is_sign_positive()),
+            "{key} must be +0.0 without long runs, got {:?}",
+            at(&no_runs, &[key])
+        );
+    }
 }
 
 #[test]

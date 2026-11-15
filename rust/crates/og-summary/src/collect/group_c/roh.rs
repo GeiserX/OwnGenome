@@ -223,11 +223,16 @@ pub fn section(c: &Ctx<'_>) -> Out {
     // chrom -> the bases of its long runs
     let mut per_chrom: indexmap::IndexMap<String, f64> = indexmap::IndexMap::new();
     let (mut assessed, mut observed) = ([false; 22], [false; 22]);
-    let mut reader = crate::text_lines(&p.path)?;
+    let mut reader = crate::text_lines(&p.path).map_err(|e| super::util::os_note(&e))?;
     let mut line = String::new();
     loop {
         line.clear();
-        if !reader.read_line(&mut line).map_err(|e| e.to_string())? {
+        if !reader.read_line(&mut line).map_err(|e| {
+            crate::collect::sections::py_error(
+                "OSError",
+                &crate::collect::sections::gzip_message(&e),
+            )
+        })? {
             break;
         }
         let c: Vec<&str> = line.split_whitespace().collect();
@@ -285,7 +290,9 @@ pub fn section(c: &Ctx<'_>) -> Out {
             big.push(row.val());
         }
     }
-    let long_bp: f64 = per_chrom.values().sum();
+    // fold from +0.0: an empty f64 sum is -0.0, which the reports print as
+    // "-0.0000" for every sample without a long run.
+    let long_bp: f64 = per_chrom.values().fold(0.0, |a, v| a + v);
     let has_sites = assessed.iter().any(|yes| *yes);
     // Old -O r files omit ST rows. Their runs give a lower bound on
     // chromosome scope, never evidence for a genome-wide interpretation.

@@ -514,7 +514,7 @@
         "autosomal_over_5mb": [],
         "masked_mb": 0.0,
         "sex_chromosome_segments": 0,
-        "long_mb": -0.0,
+        "long_mb": 0.0,
         "f_roh": null,
         "relationship": null,
         "upd_flag": null,
