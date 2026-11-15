@@ -308,7 +308,9 @@ def map_reads_checks(srv, work, chrome):
         check("map: an opened finding offers reads", b.wait("document.querySelector('.gm-reads iframe').contentWindow.location.hash==='#chr1:501-601'"))
         b.eval("window.closedResult=true;testMap.refresh('one')")
         check("map: closing a result removes its open reads panel and link",
-              b.eval("document.querySelector('.gm-reads').hidden && !document.querySelector('.gm-card-reads')"))
+              b.eval("document.querySelector('.gm-reads').hidden && !document.querySelector('.gm-card-reads') && "
+                     "!document.querySelector('.gm-reads a[href]') && "
+                     "!document.querySelector('.gm-reads').textContent.includes('Closed finding')"))
 
         # No finding in view: use the view itself, and no viewer flags: show the server's reason.
         b.eval("location.hash='chr1:10000-59000'")

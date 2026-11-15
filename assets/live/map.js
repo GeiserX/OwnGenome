@@ -1251,6 +1251,10 @@
       if (reads.hidden) { return; }
       reads.hidden = true;
       readsBody.textContent = '';  // stop reads requests, and discard a result that can close again
+      readsPlace.textContent = '';
+      readsWho.textContent = '';
+      readsFull.removeAttribute('href');
+      readsFull.hidden = true;
       readsFrame = null; readsId = null; readsLocus = ''; readsView = '';
       readsPill.setAttribute('aria-expanded', 'false');
       inview.hidden = !!failure;
