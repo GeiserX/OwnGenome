@@ -60,7 +60,7 @@ check "VCFANNO output is indexed" nonempty "${R}/vep/${SAMPLE}_annotated.vcf.gz.
 check_ge "VCFANNO records carrying REVEL" "$(vcf_count -i 'INFO/REVEL!="."' "${R}/vep/${SAMPLE}_annotated.vcf.gz")" 1
 check_ge "ROH output lines" "$(cat "${GENOME_DIR}/${R}"/roh/*_roh.txt 2>/dev/null | grep -vc '^#' || true)" 1
 JSON=$(find "${GENOME_DIR}/${R}/pharmcat" -name '*.report.json' 2>/dev/null | awk 'NR == 1')
-check_ge "PHARMCAT genes called" "$( [ -n "$JSON" ] && pharmcat_called "$JSON" | grep -c . || echo 0)" 1
+check_pharmcat_called "PHARMCAT genes called" "$JSON"
 check_ge "CPIC_LOOKUP gene rows" \
   "$(awk -F'\t' 'NF >= 3' "${GENOME_DIR}/${R}/cpic/${SAMPLE}_phenotypes.tsv" 2>/dev/null | wc -l | tr -d ' ')" 1
 

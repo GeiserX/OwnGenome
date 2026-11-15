@@ -4,6 +4,13 @@
 The gate property walks all report payloads, including unknown fields. Immutable act records,
 family membership, transport routes and other people's records are its controls. It compares
 whole documents, accessibility text, addresses, pixels, storage and resource requests.
+
+The genome map of each person page (map_checks) is checked the same way, each check with its planted mistake: its
+levels from the genome down to the reads and the addresses that open them, Esc and the zoom keys, the search box,
+Nearest and the finding's card, Paint the copies, the veil and opening on purpose, and the frame budget on a
+genome-scale document (perf_checks, with a 20 ms busy loop in draw() as its control).
+
+Run: python3 tests/test_live_demo.py
 """
 import base64
 import copy
@@ -1039,31 +1046,1088 @@ def fallback_problems(b, base, out):
     return bad
 
 
+# The closer levels: (address, level, view the address keeps, words the title starts or ends with, genes drawn).
+CLOSER = (("#chr11:4.5-6.5M", "region", "chr11:4.500-6.500M", "Chromosome 11, band 11p15", 10),
+          ("#chr11:5.150-5.350M", "gene", "chr11:5.150-5.350M", "and its neighbours", 10),
+          ("#chr11:5225001-5235000", "reads", "chr11:5225001-5235000", "and its neighbours", 1))
+# The card, the Nearest button, the genes drawn and the search box's lines, read at once.
+NEAR_JS = r"""JSON.stringify((function () {
+  var f = document.getElementById('genome-map'), n = f.querySelector('.gm-nearest'), c = f.querySelector('.gm-card');
+  return { near: n.hidden ? '' : n.textContent, card: c.hidden ? '' : c.textContent, genes: f.dataset.genes || '',
+    crumb: f.querySelector('.gm-crumb').textContent,
+    found: Array.prototype.map.call(f.querySelectorAll('.gm-find-list li'), function (li) {
+      return { kind: li.dataset.kind || '', text: li.textContent }; }) };
+}()))"""
+
+
+def map_key(b, key, target="canvas"):
+    """A key pressed on the map's canvas, or on the page's body."""
+    sel = "document.querySelector('.gm-canvas')" if target == "canvas" else "document.body"
+    b.eval("%s.dispatchEvent(new KeyboardEvent('keydown', {key: %s, bubbles: true})); true" % (sel, json.dumps(key)))
+
+
+def closer_problems(b, base):
+    """The region, gene and reads levels from their addresses (the title, the path, the genes lane, the address
+    kept); Esc steps out one level at a time; the gauge's Region and Gene stops land on their level."""
+    bad = []
+    for link, lv, view, words, genes in CLOSER:
+        c = map_page(b, base, S, link)
+        time.sleep(0.8)  # the chromosome's gene file arrives after the first frame
+        c, n = map_now(b), json.loads(b.eval(NEAR_JS))
+        if c["level"] != lv or c["view"] != view:
+            bad.append(f"{link}: level {c['level']}, view {c['view']}, want {lv} {view}")
+        if not (c["title"].startswith(words) or c["title"].endswith(words)):
+            bad.append(f"{link}: title {c['title']!r}")
+        if not n["genes"].isdigit() or int(n["genes"]) < genes:
+            bad.append(f"{link}: {n['genes']!r} genes drawn, want {genes} or more")
+        if "11p15" not in n["crumb"] or not n["crumb"].startswith("Genome › chr11"):
+            bad.append(f"{link}: path {n['crumb']!r}")
+    c = map_page(b, base, S, "#chr11:5.150-5.350M")
+    steps = []
+    for _ in range(3):
+        map_key(b, "Escape")
+        steps.append(map_now(b)["level"])
+    if steps != ["region", "chromosome", "genome"]:
+        bad.append(f"Esc from the gene level steps through {steps}")
+    for stop, lv in (("region", "region"), ("gene", "gene")):
+        map_page(b, base, S)
+        b.eval("document.querySelector('.gm-gauge [data-stop=%s]').click(); true" % stop)
+        c = map_now(b)
+        if c["level"] != lv:
+            bad.append(f"the {stop} stop from the genome: level {c['level']}")
+    c = map_page(b, base, S, "#chr11:100.0-120.0M")
+    map_key(b, "+")
+    z = map_now(b)
+    map_key(b, "ArrowRight")
+    r = map_now(b)
+    if z["view"] != "chr11:105.0-115.0M" or r["view"] != "chr11:106.0-116.0M":
+        bad.append(f"+ then → from chr11:100.0-120.0M: {z['view']}, then {r['view']}")
+    return bad
+
+
+def map_find(b, q):
+    """Q typed in the map's search box: its lines once they settled (the gene names arrive with the first key)."""
+    b.eval("var i = document.getElementById('gm-find'); i.focus(); i.value = %s; "
+           "i.dispatchEvent(new Event('input')); true" % json.dumps(q))
+    time.sleep(0.8)
+    b.eval("document.getElementById('gm-find').dispatchEvent(new Event('input')); true")
+    time.sleep(0.2)
+    return json.loads(b.eval(NEAR_JS))["found"]
+
+
+def find_problems(b, base, out):
+    """The search box: / puts the cursor in it; a gene, a band and a finding are found and Enter flies there (a
+    finding with its card); on the son's closed page his closed result is never a line, by its gene, its id or
+    its title, while his open finding still is."""
+    bad = []
+    map_page(b, base, S)
+    map_key(b, "/", target="body")
+    if b.eval("document.activeElement && document.activeElement.id") != "gm-find":
+        bad.append("/ does not put the cursor in the map's search box")
+    for q, kind, words, chrom, lv in (("HBB", "gene", "HBB · gene · chr11", "chr11", ("gene", "reads")),
+                                      ("11p15.4", "band", "11p15.4 · band", "chr11", ("chromosome", "region")),
+                                      ("DEMOC", "finding", "DEMOC · ", "chr16", ("gene", "reads"))):
+        map_page(b, base, S)
+        found = map_find(b, q)
+        if not found or found[0]["kind"] != kind or not found[0]["text"].startswith(words):
+            bad.append(f"{q}: lines {found}")
+            continue
+        b.eval("document.getElementById('gm-find').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); true")
+        c, n = map_now(b), json.loads(b.eval(NEAR_JS))
+        if c["chrom"] != chrom or c["level"] not in lv:
+            bad.append(f"{q}: Enter flies to {c['chrom']} at {c['level']}, want {chrom} at {lv}")
+        if kind == "finding" and "DEMOC" not in n["card"]:
+            bad.append(f"{q}: Enter opens no card for it: {n['card']!r}")
+    son = OTHERS[1]
+    doc = read_map(os.path.join(out, "runs", son, "map.json"))
+    f = doc["per"][son]["findings"]
+    i = [j for j, lv in enumerate(f["level"]) if lv == "act" and not f["gate"][j]][0]
+    fid, gene, title = f["id"][i], f["gene"][i], f["title"][i]
+    map_page(b, base, son)
+    for q in (gene, fid, title):
+        found = map_find(b, q)
+        named = [x for x in found if (x["kind"] == "finding" and gene in x["text"]) or fid in x["text"] or title in x["text"]]
+        if named:
+            bad.append(f"the son's closed result is a line for {q!r}: {named}")
+    found = map_find(b, "DEMOC")
+    if not any(x["kind"] == "finding" for x in found):
+        bad.append(f"the son's open finding DEMOC is not found: {found}")
+    return bad
+
+
+def nearest_problems(b, base, out):
+    """Nearest: with no finding of the open chromosome in view it names the closest one (else the first on the
+    next chromosome that has one) and flies there with its card; Esc closes the card; on the son's closed page
+    it never leads to his closed result."""
+    bad = []
+    for link, words, chrom in (("#chr11:100.0-101.0M", "Nearest: DEMOB at 108.3 Mb ›", "chr11"),
+                               ("#chr3", "Nearest: DEMOB on chr11 ›", "chr11")):
+        map_page(b, base, S, link)
+        # The margin, Nearest with it, follows the settled camera; on a busy machine that takes longer.
+        b.wait("!document.querySelector('#genome-map .gm-nearest').hidden", 5)
+        n = json.loads(b.eval(NEAR_JS))
+        if n["near"] != words:
+            bad.append(f"{link}: Nearest reads {n['near']!r}, want {words!r}")
+            continue
+        b.eval("document.querySelector('.gm-nearest').click(); true")
+        c = map_now(b)
+        for _ in range(10):  # a busy machine eases the camera slower
+            if any("demob" in m["id"] for m in c["marks"]):
+                break
+            c = map_now(b)
+        n = json.loads(b.eval(NEAR_JS))
+        if c["chrom"] != chrom or not any("demob" in m["id"] for m in c["marks"]) or "DEMOB" not in n["card"]:
+            bad.append(f"{link}: Nearest flew to {c['chrom']} {c['view']}, marks {[m['id'] for m in c['marks']]}, "
+                       f"card {n['card']!r}")
+        map_key(b, "Escape")
+        time.sleep(0.2)
+        if json.loads(b.eval(NEAR_JS))["card"] or map_now(b)["level"] == "chromosome":
+            bad.append(f"{link}: Esc leaves the card open or steps out with a card open")
+    son = OTHERS[1]
+    doc = read_map(os.path.join(out, "runs", son, "map.json"))
+    f = doc["per"][son]["findings"]
+    i = [j for j, lv in enumerate(f["level"]) if lv == "act" and not f["gate"][j]][0]
+    others = [f["s"][j] for j in range(len(f["id"])) if f["chrom"][j] == f["chrom"][i] and j != i]
+    # A view next to his closed result, with every other finding of that chromosome farther away.
+    a = max(0, f["s"][i] - 3_000_000)
+    if not any(abs(x - f["s"][i]) < 6_000_000 for x in others):
+        n = map_page(b, base, son, f"#{f['chrom'][i]}:{a + 1}-{a + 2_000_000}") and json.loads(b.eval(NEAR_JS))
+        if f["gene"][i] in n["near"] or f["gene"][i] in n["card"]:
+            bad.append(f"the son's Nearest leads to his closed result: {n['near']!r}")
+    else:
+        bad.append("the son's closed result has another finding within 6 Mb: no view to check Nearest on")
+    return bad
+
+
+def origin_problems(b, base, out):
+    """Paint the copies: Origin is off with its reason, on a run in a family and on one in none (DEMO-001's
+    frames with the family plugin taken out)."""
+    bad = []
+    js = "JSON.stringify([document.querySelector('.gm-paint [data-paint=origin]').getAttribute('aria-disabled'), " \
+         "document.querySelector('.gm-paint-why').textContent])"
+    c = map_page(b, base, S)
+    got = json.loads(b.eval(js))
+    if got != ["true", "Origin: which parent each stretch came from is painted on the family page."]:
+        bad.append(f"in a family: {got}")
+    path = os.path.join(out, "runs", S, "frames.json")
+    with open(path, "rb") as fh:
+        keep = fh.read()
+    try:
+        frames = json.loads(keep)
+        for fr in frames["frames"] if isinstance(frames, dict) else frames:
+            ((fr.get("state") or {}).get("plugins") or {}).pop("family", None)
+        with open(path, "w") as fh:
+            json.dump(frames, fh)
+        c = map_page(b, base, S)
+        got = json.loads(b.eval(js))
+        if got != ["true", "Origin needs a family run with a sequenced parent: this run is in none."]:
+            bad.append(f"in no family: {got}")
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(keep)
+    return bad
+
+
+def genome_scale(out):
+    """DEMO-001's map document and chr1's gene file made genome-scale, as a 30x genome's are: about 4,000 runs
+    of homozygosity over the 24 chromosomes (every 50th one 5 Mb or longer) and 5,000 genes with 40,000 exon
+    blocks on chr1. Invented, made by arithmetic, so the same every time. Returns what to write back."""
+    mp, gp = os.path.join(out, "runs", S, "map.json"), os.path.join(out, "map", "genes", "chr1.json")
+    keep = {}
+    for p in (mp, gp):
+        with open(p, "rb") as fh:
+            keep[p] = fh.read()
+    doc = read_map(mp)
+    chroms = doc["ref"]["chroms"]
+    total = sum(c["len"] for c in chroms)
+    roh, bins, k = {}, {"size": 1_000_000}, 0
+    for c in chroms:
+        n = round(4000 * c["len"] / total)
+        step = c["len"] // (n + 1)
+        rows = {"ds": [], "l": [], "markers": [], "q": [], "long": [], "art": []}
+        cov = [0] * (c["len"] // 1_000_000 + 1)
+        last = 0
+        for j in range(n):
+            k += 1
+            s0 = (j + 1) * step - step // 2
+            ln = 6_000_000 if k % 50 == 0 else 100_000 + (k * 7919) % 1_300_000
+            ln = min(ln, c["len"] - s0 - 1)
+            rows["ds"].append(s0 - last)
+            last = s0
+            rows["l"].append(ln)
+            rows["markers"].append(ln // 1400 + 1)
+            rows["q"].append(50.0)
+            rows["long"].append(1 if ln >= 5_000_000 else 0)
+            rows["art"].append(0)
+            for bi in range(s0 // 1_000_000, (s0 + ln - 1) // 1_000_000 + 1):
+                cov[bi] += min(s0 + ln, (bi + 1) * 1_000_000) - max(s0, bi * 1_000_000)
+        roh[c["n"]] = rows
+        bins[c["n"]] = cov
+    doc["per"][S]["roh"], doc["per"][S]["roh_bins"] = roh, bins
+    doc["layers"]["roh"] = dict(doc["layers"]["roh"], state="ok", count=k)
+    write_map(mp, doc)
+    length = chroms[0]["len"]
+    g = {"ds": [], "l": [], "strand": [], "name": [], "type": []}
+    blocks, last = [], 0
+    for j in range(5000):
+        s0 = 10_000 + j * (length - 200_000) // 5000
+        ln = 20_000 + (j * 104_729) % 100_000
+        g["ds"].append(s0 - last)
+        last = s0
+        g["l"].append(ln)
+        g["strand"].append("+" if j % 2 else "-")
+        g["name"].append(f"SYNG{j + 1}")
+        g["type"].append("protein_coding" if j % 3 else "lncRNA")
+        blocks += [(s0 + x * ln // 8, s0 + x * ln // 8 + 300 + (j * 31 + x * 97) % 900) for x in range(8)]
+    blocks.sort()
+    merged = []
+    for a, z in blocks:
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], z)
+        else:
+            merged.append([a, z])
+    x, last = {"ds": [], "l": []}, 0
+    for a, z in merged:
+        x["ds"].append(a - last)
+        x["l"].append(z - a)
+        last = a
+    write_map(gp, {"v": 1, "gencode": "v50", "chrom": "chr1", "g": g, "x": x})
+    return keep
+
+
+# Inside the page, before its scripts: the time each animation frame's callbacks take (the map's draw()), plus
+# the time the pointer handlers took since the last frame. A pointer event is timed from a listener on window
+# that runs before the canvas's (capture) to one that runs after it (bubble).
+FRAME_HOOK = r"""(function () {
+  var raf = window.requestAnimationFrame.bind(window), pending = 0, t0 = 0;
+  window.__mapFrames = [];
+  window.addEventListener('pointermove', function () { t0 = performance.now(); }, true);
+  window.addEventListener('pointermove', function () { if (t0) { pending += performance.now() - t0; t0 = 0; } }, false);
+  window.requestAnimationFrame = function (cb) {
+    return raf(function (t) { var a = performance.now(); cb(t); window.__mapFrames.push(performance.now() - a + pending); pending = 0; });
+  };
+}());"""
+PAN_PLACES = ("#chr1:100.0-160.0M", "#chr1:100.0-105.0M", "#chr1:100.000-100.200M")
+
+
+def map_pan(b, base):
+    """A scripted pan of 300 steps on DEMO-001's map, 100 at each of the chromosome, region and gene levels:
+    the work of each frame in ms (pointer handlers plus draw()), the first paint and parse times, the JS heap in
+    MB and the levels and genes the pan drew at."""
+    b.call("Page.enable", session=b.session)
+    sid = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": FRAME_HOOK}, b.session)["identifier"]
+    work, seen = [], []
+    try:
+        first = map_page(b, base, S)
+        for place in PAN_PLACES:
+            b.eval(f"location.hash = '{place}'; true")
+            time.sleep(1.5)  # settled, and the gene file of chr1 in
+            r = json.loads(b.eval("document.querySelector('.gm-canvas').scrollIntoView({block: 'center'}); "
+                                  "JSON.stringify(document.querySelector('.gm-canvas').getBoundingClientRect())"))
+            time.sleep(0.3)
+            x, y = r["left"] + r["width"] / 2, r["top"] + r["height"] - 30
+            b.eval("window.__mapFrames = []; true")
+            b.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "buttons": 1,
+                                                "clickCount": 1}, b.session)
+            for i in range(100):
+                x += 4 if (i // 25) % 2 == 0 else -4
+                b.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y, "button": "left", "buttons": 1},
+                       b.session)
+                time.sleep(0.02)
+            b.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "buttons": 0,
+                                                "clickCount": 1}, b.session)
+            time.sleep(0.3)
+            work += json.loads(b.eval("JSON.stringify(window.__mapFrames)"))
+            f = json.loads(b.eval("JSON.stringify([document.getElementById('genome-map').dataset.level, "
+                                  "document.getElementById('genome-map').dataset.genes])"))
+            seen.append(f)
+        heap = b.eval("performance.memory ? performance.memory.usedJSHeapSize : -1")
+    finally:
+        b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": sid}, b.session)
+    return {"work": work, "paint": first.get("paint"), "parse": first.get("parse"), "heap": heap / 1e6, "seen": seen}
+
+
+def pct(xs, q):
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, int(q * len(xs)))] if xs else float("inf")
+
+
+def perf_problems(got):
+    """The budget: at least 200 frames drawn, through the chromosome, region and gene levels with genes drawn
+    below the chromosome level; work per frame median 8 ms and 95th percentile 16 ms at most; first paint within
+    150 ms of the document arriving, parsed within 30 ms; JS heap 60 MB at most."""
+    bad, w = [], got["work"]
+    if len(w) < 200:
+        bad.append(f"the pan drew {len(w)} frames, want 200 or more")
+    if [s[0] for s in got["seen"]] != ["chromosome", "region", "gene"] or not all(int(s[1] or 0) > 0 for s in got["seen"][1:]):
+        bad.append(f"the pan ran at {got['seen']}")
+    if pct(w, 0.5) > 8 or pct(w, 0.95) > 16:
+        bad.append(f"work per frame: median {pct(w, 0.5):.2f} ms, p95 {pct(w, 0.95):.2f} ms")
+    if not (got["paint"] <= 150 and got["parse"] <= 30):
+        bad.append(f"first paint {got['paint']} ms, parse {got['parse']} ms")
+    if not 0 < got["heap"] <= 60:
+        bad.append(f"JS heap {got['heap']:.1f} MB")
+    return bad
+
+
+def perf_checks(b, base, out):
+    """The frame budget on a genome-scale document, and the same check with a 20 ms busy loop in draw()."""
+    keep = genome_scale(out)
+    mjs = os.path.join(out, "assets", "map.js")
+    with open(mjs) as fh:
+        keep_mjs = fh.read()
+    head = "function draw() {\n      raf = 0;"
+    try:
+        got = map_pan(b, base)
+        w = got["work"]
+        print(f"map pan: {len(w)} frames, work median {pct(w, 0.5):.2f} ms, p95 {pct(w, 0.95):.2f} ms, max "
+              f"{max(w or [0]):.2f} ms; first paint {got['paint']} ms, parse {got['parse']} ms, heap {got['heap']:.1f} MB")
+        bad = window_problems(b, base)
+        check("map: past 200 rows the In view table's Show all is a scrolled window that shows every mark drawn",
+              not bad, bad)
+        win = "var a = clamp(Math.floor(inWrap.scrollTop / ROW_PX) - 10, 0, cap)"
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(win, "var a = 0"))
+        control("map.js whose scrolled window always starts at the first row", keep_mjs.count(win) != 1 or
+                not window_problems(b, base))
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+        bad = perf_problems(got)
+        check("map: on a genome-scale document, a 300-step pan through the chromosome, region and gene levels works "
+              "each frame in 8 ms at the median and 16 ms at the 95th percentile, first paint within 150 ms (parse "
+              "30 ms), JS heap 60 MB at most", not bad, bad)
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(head, "function draw() {\n      var bz = performance.now(); "
+                                            "while (performance.now() - bz < 20) { void 0; }\n      raf = 0;"))
+        slow = map_pan(b, base)
+        print(f"map pan, busy loop: work median {pct(slow['work'], 0.5):.2f} ms, p95 {pct(slow['work'], 0.95):.2f} ms")
+        control("map.js with a 20 ms busy loop in draw()", keep_mjs.count(head) != 1 or not perf_problems(slow))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+        unplant(keep)
+
+
+# --- the whole-genome strip and the In view table (map.js drawsAt(), strip, table) -------------------
+
+# drawsAt() of the page's map.js asked for every row of each run's document and every gene of the demo's gene
+# files, as og map build --predicate-table writes its own answers: one tab-separated line per row.
+PRED_JS = r"""(async function (runs) {
+  var LV = window.PGPMap.LEVELS, on = window.PGPMap.drawsAt, out = {}, genes = [];
+  async function gz(u) {
+    var r = await fetch(u, { cache: 'no-store' });
+    if (!r.ok) { throw new Error(u + ': ' + r.status); }
+    return JSON.parse(await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text());
+  }
+  function line(lines, layer, c, s, e, id, row) {
+    lines.push([layer, c, s, e, id].concat(LV.map(function (lv) { return on(layer, row, lv) ? 1 : 0; })).join('\t'));
+  }
+  function each(o, fn) { var at = 0; (o.ds || []).forEach(function (d, i) { at += d; fn(at, at + o.l[i], i); }); }
+  var chroms = [];
+  for (var i = 1; i <= 22; i++) { chroms.push('chr' + i); }
+  chroms.push('chrX', 'chrY');
+  for (var c = 0; c < chroms.length; c++) {
+    var g = (await gz('/map/genes/' + chroms[c] + '.json')).g || {};
+    each(g, function (s, e, j) { line(genes, 'genes', chroms[c], s, e, g.name[j], { name: g.name[j] }); });
+  }
+  for (var k = 0; k < runs.length; k++) {
+    var d = await gz('/runs/' + runs[k] + '/map.json'), per = d.per[runs[k]], f = per.findings, lines = [];
+    f.id.forEach(function (id, j) {
+      line(lines, 'findings', f.chrom[j], f.s[j], f.e[j], id, { id: id, level: f.level[j], s: f.s[j], e: f.e[j] });
+    });
+    Object.keys(per.roh || {}).forEach(function (cn) {
+      var r = per.roh[cn];
+      each(r, function (s, e, j) { line(lines, 'roh', cn, s, e, '', { long: r.long[j] }); });
+    });
+    out[runs[k]] = lines.concat(genes);
+  }
+  return JSON.stringify(out);
+})(%s)"""
+
+# A run of homozygosity of 7 Mb planted in DEMO-001's step 11 text for the predicate check: the demo's own runs
+# are all shorter than 5 Mb, and a long one is the row whose answer differs at the genome level.
+LONG_RG = "RG\t{run}\tchr2\t60000001\t67000000\t7000000\t5000\t80.0\n"
+
+
+def predicate_lines(og, out, run):
+    """(exit code, lines) of og map build --predicate-table for RUN of the demo, with the results its page gets."""
+    root = os.path.join(os.path.dirname(out), "root")
+    with open(os.path.join(out, "runs", run, "results.json"), "rb") as fh:
+        body = b'{"results": ' + fh.read() + b"}"
+    p = subprocess.run([og, "map", "build", "--root", root, "--run", run, "--assets", os.path.join(REPO, "assets"),
+                        "--cache-dir", os.path.join(root, ".owngenome-live", "map"), "--predicate-table"],
+                       input=body, capture_output=True, check=False)
+    return p.returncode, p.stdout.decode().splitlines()
+
+
+def plant_long_run(out, og):
+    """DEMO-001's step 11 text with LONG_RG added and its map.json built again from it. Returns what to write back."""
+    root = os.path.join(os.path.dirname(out), "root")
+    txt, mj = os.path.join(root, S, "vcf", f"{S}_roh.txt"), os.path.join(out, "runs", S, "map.json")
+    keep = {}
+    for p in (txt, mj):
+        with open(p, "rb") as fh:
+            keep[p] = fh.read()
+    with open(txt, "ab") as fh:
+        fh.write(LONG_RG.format(run=S).encode())
+    with open(os.path.join(out, "runs", S, "results.json"), "rb") as fh:
+        body = b'{"results": ' + fh.read() + b"}"
+    doc = build_live_demo.og_map(og, ["build", "--root", root, "--run", S, "--assets", os.path.join(REPO, "assets"),
+                                      "--cache-dir", os.path.join(root, ".owngenome-live", "map")], body)
+    with open(mj, "wb") as fh:
+        fh.write(doc)
+    return keep
+
+
+def predicate_problems(b, base, out, og, runs=None):
+    """drawsAt() of map.js against og map build --predicate-table, row by row, on the three demo runs (DEMO-001
+    with a planted long run; RUNS only when given): the same rows and the same answer at each level; and the
+    comparison covers a finding, a long run, a shorter run and a gene, so it cannot pass on rows that agree by
+    chance."""
+    bad, runs = [], list(runs or [S] + OTHERS)
+    map_page(b, base, S)
+    r = b.call("Runtime.evaluate", {"expression": PRED_JS % json.dumps(runs), "awaitPromise": True, "returnByValue": True},
+               b.session)
+    js = json.loads(r.get("result", {}).get("value") or "{}")
+    seen = set()
+    for run in runs:
+        code, lines = predicate_lines(og, out, run)
+        if code != 0 or not lines or lines[0] != "layer\tchrom\ts\te\tid\tgenome\tchromosome\tregion\tgene\treads":
+            bad.append(f"{run}: og map build --predicate-table exit {code}, header {lines[:1]}")
+            continue
+        want, got = sorted(lines[1:]), sorted(js.get(run) or [])
+        if want != got:
+            bad.append(f"{run}: og and drawsAt() differ: og only {sorted(set(want) - set(got))[:4]}, "
+                       f"drawsAt() only {sorted(set(got) - set(want))[:4]}")
+        for x in want:
+            c = x.split("\t")
+            seen.add((c[0], c[5]))
+    if not {("findings", "1"), ("roh", "1"), ("roh", "0"), ("genes", "0")} <= seen:
+        bad.append(f"the rows compared miss a finding, a long run, a shorter run or a gene: {sorted(seen)}")
+    return bad
+
+
+# The In view table, the canvas and the strip, read at once: the table's rows (Show all first), what the last
+# frame drew one by one (canvas.pgpDrawn), the strip's ticks (null while it is hidden), the count, the line it
+# announces, the density lines, the sort, each row's cells and the current row.
+INVIEW_JS = r"""JSON.stringify((function () {
+  var f = document.getElementById('genome-map'), cv = f.querySelector('.gm-canvas'), st = f.querySelector('.gm-strip');
+  var all = f.querySelector('.gm-showall');
+  if (all && all.textContent === 'Show all') { all.click(); }
+  var trs = f.querySelectorAll('.gm-table tbody tr[data-key]');
+  return { rows: Array.prototype.map.call(trs, function (r) { return r.dataset.key; }), drawn: (cv.pgpDrawn || []).slice(),
+    ticks: st.hidden ? null : (st.pgpDrawn || []).slice(), stripH: st.hidden ? 0 : st.clientHeight,
+    count: (f.querySelector('.gm-inview-n') || {}).textContent || '', live: f.querySelector('.gm-inview-live').textContent,
+    dense: f.querySelector('.gm-inview-dense').textContent, open: f.querySelector('.gm-inview').open,
+    summary: f.querySelector('.gm-inview > summary').textContent,
+    sort: Array.prototype.map.call(f.querySelectorAll('.gm-table th'), function (t) { return t.getAttribute('aria-sort') || ''; }),
+    cells: Array.prototype.map.call(trs, function (r) { return Array.prototype.map.call(r.cells, function (c) { return c.textContent; }); }),
+    current: Array.prototype.map.call(f.querySelectorAll('.gm-table tr[aria-current=true]'), function (r) { return r.dataset.key; }),
+    card: (f.querySelector('.gm-card') || {}).textContent || '', text: f.querySelector('.gm-inview').textContent };
+}()))"""
+
+
+def inview_now(b):
+    return json.loads(b.eval(INVIEW_JS))
+
+
+def inview_page(b, base, run, link=""):
+    """RUN's page at LINK, settled with the gene file in when the view is close enough for genes: (map, table)."""
+    c = map_page(b, base, run, link)
+    if c.get("level") in ("region", "gene", "reads"):
+        time.sleep(0.8)  # the chromosome's gene file arrives after the first frame
+        c = map_now(b)
+    return c, inview_now(b)
+
+
+SETTLED_JS = ("JSON.stringify((function () { var f = document.getElementById('genome-map'); return [f.dataset.view || '', "
+              "f.dataset.level || '', (f.querySelector('.gm-inview-n') || {}).textContent || '', "
+              "(f.querySelector('.gm-canvas').pgpDrawn || []).length, f.dataset.genes || '']; }()))")
+
+
+def settled_at(b, view):
+    """Waits until the map has settled on VIEW (its address as the map writes it): the margin and the table follow
+    the camera, then the gene file of the view if it needs one. (map, table)."""
+    end, last = time.time() + 8, None
+    while time.time() < end:
+        time.sleep(0.25)
+        now = json.loads(b.eval(SETTLED_JS))
+        if now[0] == view and now == last:
+            break
+        last = now
+    return json.loads(b.eval(MAP_JS)), inview_now(b)
+
+
+def go_view(b, link):
+    """The open page moved to LINK (an address as the map writes it) without a reload, settled."""
+    b.eval("location.hash = %s; true" % json.dumps(link))
+    return settled_at(b, link[1:])
+
+
+def count_words(n):
+    return "1 feature" if n == 1 else f"{n:,} features"
+
+
+# Views at every level, several per level: a page load for each run's genome level, then the rest by address.
+INVIEW_VIEWS = ((S, "", "genome"), (S, "#chr11", "chromosome"), (S, "#chr22", "chromosome"),
+                (S, "#chr22:40.5-43.5M", "region"), (S, "#chr11:4.0-7.0M", "region"), (S, "#chr19:43.5-46.5M", "region"),
+                (S, "#chr11:5.150-5.350M", "gene"), (S, "#chr22:42.000-42.200M", "gene"),
+                (S, "#chr11:5225001-5250000", "reads"), (S, "#chr22:42110001-42140000", "reads"),
+                (OTHERS[1], "", "genome"), (OTHERS[1], "#chr16", "chromosome"))
+
+
+def inview_problems(b, base, views=INVIEW_VIEWS):
+    """On views at every level: the table's rows are exactly what the canvas drew one by one, each once, its count
+    says how many, and the shorter runs drawn as a band have a line of their own at the genome level; the strip is
+    hidden at the genome level and over an open chromosome ticks exactly the findings the genome level draws; T
+    folds the table and opens it again."""
+    bad, genome, page = [], {}, None
+    for run, link, lv in views:
+        if run != page:
+            c, t = inview_page(b, base, run, link)
+            page = run
+        else:
+            c, t = go_view(b, link)
+        where = f"{run}{link or ' genome'}"
+        if c.get("level") != lv:
+            bad.append(f"{where}: level {c.get('level')}, want {lv}")
+            continue
+        if sorted(t["rows"]) != sorted(t["drawn"]) or len(set(t["rows"])) != len(t["rows"]):
+            bad.append(f"{where}: table only {sorted(set(t['rows']) - set(t['drawn']))[:3]}, "
+                       f"canvas only {sorted(set(t['drawn']) - set(t['rows']))[:3]}")
+        if t["count"] != count_words(len(t["rows"])):
+            bad.append(f"{where}: the count says {t['count']!r} for {len(t['rows'])} rows")
+        if lv == "genome" and not any(k.startswith("findings\t") for k in t["rows"]):
+            bad.append(f"{where}: no finding in the table: {t['rows'][:3]}")
+        if lv in ("region", "gene", "reads") and not any(k.startswith("genes\t") for k in t["rows"]):
+            bad.append(f"{where}: no gene in the table")
+        if lv == "genome":
+            genome[run] = sorted(k for k in t["rows"] if k.startswith("findings\t"))
+            if t["ticks"] is not None or t["stripH"]:
+                bad.append(f"{where}: the strip shows at the genome level")
+            if "shorter runs of homozygosity, drawn as a faint band" not in t["dense"]:
+                bad.append(f"{where}: no line for the shorter runs: {t['dense']!r}")
+        elif t["ticks"] is None or t["stripH"] != 34 or (run in genome and sorted(t["ticks"]) != genome[run]):
+            bad.append(f"{where}: strip {t['stripH']} px, ticks {t['ticks']}, want {genome.get(run)}")
+    if views is INVIEW_VIEWS:
+        folds = []
+        for _ in range(2):
+            map_key(b, "t", target="body")
+            folds.append(inview_now(b)["open"])
+        if folds != [False, True]:
+            bad.append(f"T folds and opens the table: {folds}")
+    return bad
+
+
+def inview_veil_problems(b, base, adult=True):
+    """A closed result is never a row of the table or a tick of the strip: APOE on DEMO-001's page (unless not
+    ADULT), the son's closed result to act on on his; once the son's is opened from the chip it is both, so the
+    check sees it."""
+    bad = []
+    son = OTHERS[1]
+    if adult:
+        bad += inview_apoe_problems(b, base)
+    c, t = inview_page(b, base, son, "#chr7")
+    closed = [k for k in t["rows"] + (t["ticks"] or []) if k.startswith("findings\tchr7\t")]
+    if closed or "KCNH2" in t["text"]:
+        bad.append(f"{son}: his closed result shows at chr7: {closed}")
+    # The chip opens his closed results one per click, in the page's order: open them until the one at chr7 is.
+    for _ in range(4):
+        _, cbad = chip_open(b)
+        bad += cbad
+        time.sleep(0.5)
+        t = inview_now(b)
+        if any(k.startswith("findings\tchr7\t") for k in t["rows"]) or cbad:
+            break
+    if not any(k.startswith("findings\tchr7\t") for k in t["rows"]) or \
+            not any(k.startswith("findings\tchr7\t") for k in (t["ticks"] or [])):
+        bad.append(f"{son}: opened, his result is not a row and a tick at chr7: {t['rows']}, {t['ticks']}")
+    return bad
+
+
+def inview_apoe_problems(b, base):
+    """APOE, closed on every page until opened, is no row and no tick on DEMO-001's page."""
+    bad = []
+    c, t = inview_page(b, base, S)
+    if any("\tapoe" in k for k in t["rows"]):
+        bad.append(f"{S}: APOE, closed, is a row: {t['rows']}")
+    c, t = go_view(b, "#chr19")
+    if any("\tapoe" in k for k in (t["ticks"] or []) + t["rows"]):
+        bad.append(f"{S}: APOE, closed, is a strip tick or a row at chr19")
+    return bad
+
+
+def size_bp(words):
+    n, unit = words.replace(",", "").split()
+    return float(n) * {"bp": 1, "kb": 1e3, "Mb": 1e6}[unit]
+
+
+def sort_problems(b, base, default_only=False):
+    """The table's order: by place with the findings first, aria-sort ascending on Where; Where again reverses it
+    (descending); Size sorts by size, smallest first, with aria-sort moved there. DEFAULT_ONLY: the first order
+    alone."""
+    bad = []
+    c, t = inview_page(b, base, S, "#chr22:40.5-43.5M")
+    keys = t["rows"]
+    place = sorted(keys, key=lambda k: (int(k.split("\t")[2]), int(k.split("\t")[3]), k))
+    first = sorted([k for k in place if k.startswith("findings\t")], key=place.index)
+    if keys != first + [k for k in place if k not in first] or place[0] in first:
+        bad.append(f"default order {keys[:4]}: want the findings first, then by place (and a gene before the finding)")
+    if t["sort"] != ["", "", "ascending", "", "", "", ""]:
+        bad.append(f"default aria-sort {t['sort']}")
+    if default_only:
+        return bad
+    b.eval("document.querySelector('.gm-table th button[data-col=where]').click(); true")
+    r = inview_now(b)
+    if r["rows"] != keys[::-1] or r["sort"][2] != "descending":
+        bad.append(f"Where again: {r['rows'][:3]}, aria-sort {r['sort']}")
+    b.eval("document.querySelector('.gm-table th button[data-col=size]').click(); true")
+    r = inview_now(b)
+    sizes = [size_bp(x[3]) for x in r["cells"]]
+    if sizes != sorted(sizes) or r["sort"] != ["", "", "", "ascending", "", "", ""]:
+        bad.append(f"Size: {sizes[:5]}, aria-sort {r['sort']}")
+    return bad
+
+
+ANNOUNCE_JS = ("window.__said = []; new MutationObserver(function () { window.__said.push(document.querySelector("
+               "'.gm-inview-live').textContent); }).observe(document.querySelector('.gm-inview-live'), "
+               "{ childList: true, characterData: true, subtree: true }); true")
+
+
+def announce_problems(b, base, pans_only=False):
+    """The table announces its count once when it changes and never when it does not: three pans along a stretch
+    with nothing in view say nothing; then a view with four marks says "4 features in view", once. PANS_ONLY: the
+    pans alone."""
+    bad = []
+    c, t = inview_page(b, base, S, "#chr3:100.0-101.0M")
+    b.eval(ANNOUNCE_JS)
+    for _ in range(3):
+        map_key(b, "ArrowRight")
+        time.sleep(0.4)
+    settled_at(b, "chr3:100.300-101.300M")
+    said = b.eval("JSON.stringify(window.__said)")
+    if t["count"] != "0 features" or said != "[]":
+        bad.append(f"panning an empty stretch ({t['count']}) announced {said}")
+    if pans_only:
+        return bad
+    c, t = go_view(b, "#chr11")
+    said = json.loads(b.eval("JSON.stringify(window.__said)"))
+    if said != [f"{t['count']} in view"] or t["count"] != "4 features":
+        bad.append(f"#chr11 ({t['count']}) announced {said}")
+    return bad
+
+
+SHOWALL_JS = r"""(function () {
+  var f = document.getElementById('genome-map'), a = f.querySelector('.gm-showall'), out = [];
+  if (!a) { return JSON.stringify(null); }
+  for (var i = 0; i < 2; i++) {
+    a = f.querySelector('.gm-showall');
+    a.focus();
+    var was = a.textContent;
+    a.click();
+    var now = document.activeElement;
+    out.push(was + ' > ' + (now && now.classList.contains('gm-showall') ? now.textContent : (now ? now.tagName : '')));
+  }
+  return JSON.stringify(out);
+}())"""
+
+
+def showall_problems(b, base):
+    """The keyboard stays on Show all when the table is built again (Show fewer, then Show all again), and the
+    count's live line sits outside the foldable table, so a screen reader hears it while the table is folded."""
+    bad = []
+    inview_page(b, base, S, "#chr22:40.5-43.5M")  # 21 rows with its genes
+    if b.eval("(function () { var l = document.querySelector('#genome-map .gm-inview-live'); "
+              "return !l || !!l.closest('details'); }())"):
+        bad.append("the count's live line is missing or inside the foldable table")
+    said = json.loads(b.eval(SHOWALL_JS))
+    if said is None:
+        return bad + ["no Show all at chr22:40.5-43.5M: the check tests nothing"]
+    if sorted(said) != ["Show all > Show fewer", "Show fewer > Show all"]:
+        bad.append(f"after Show all and Show fewer the keyboard is on {said}")
+    return bad
+
+
+def fly_problems(b, base, finding_only=False):
+    """A row's button flies the map to its feature: a finding's row from the genome level to its place with its
+    card, the row then current; a run's row to a view that holds the run, with no card. FINDING_ONLY: the
+    finding's row alone."""
+    bad = []
+    c, t = inview_page(b, base, S)
+    key = next((k for k in t["rows"] if k.startswith("findings\tchr16\t")), None)
+    if not key:
+        return [f"no chr16 finding row at the genome level: {t['rows']}"]
+    b.eval("document.querySelector('.gm-table tr[data-key=\"%s\"] .gm-go').click(); true" % key.replace("\t", "\\t"))
+    for _ in range(6):  # a busy machine eases the camera slower
+        c = map_now(b)
+        if c["chrom"] == "chr16":
+            break
+    t = inview_now(b)
+    s, e = int(key.split("\t")[2]), int(key.split("\t")[3])
+    if c["chrom"] != "chr16" or key not in t["drawn"] or "DEMOC" not in t["card"] or t["current"] != [key]:
+        bad.append(f"the DEMOC row flew to {c['chrom']} {c['view']}, drawn {key in t['drawn']}, card {t['card'][:40]!r}, "
+                   f"current {t['current']}")
+    if finding_only:
+        return bad
+    c, t = go_view(b, "#chr11")
+    key = next((k for k in t["rows"] if k.startswith("roh\t")), None)
+    if not key:
+        return bad + [f"no run of homozygosity row at chr11: {t['rows']}"]
+    b.eval("document.querySelector('.gm-table tr[data-key=\"%s\"] .gm-go').click(); true" % key.replace("\t", "\\t"))
+    c, t = map_now(b), inview_now(b)
+    s, e = int(key.split("\t")[2]), int(key.split("\t")[3])
+    m = re.match(r"chr11:([0-9.]+)-([0-9.]+)M$", c["view"])
+    if not m or not float(m.group(1)) * 1e6 <= s + 1e5 or not float(m.group(2)) * 1e6 >= e - 1e5 or t["card"] or \
+            t["current"] != [key]:
+        bad.append(f"the run's row {key!r} flew to {c['view']}, card {t['card'][:40]!r}, current {t['current']}")
+    return bad
+
+
+def strip_x(b, doc, chrom, frac, x0=128, pad=22):
+    """Where FRAC of CHROM sits on the strip, in page px (map.js stripGeo() and sx(); X0 and PAD are a phone's
+    64 and 10)."""
+    r = json.loads(b.eval("JSON.stringify(document.querySelector('.gm-strip').getBoundingClientRect())"))
+    rows = [c for c in doc["ref"]["chroms"] if not (c["n"] == "chrY" and doc["people"][0].get("has_y") is False)]
+    total = sum(c["len"] for c in rows) + 5e6 * (len(rows) - 1)
+    off = 0
+    for c in rows:
+        if c["n"] == chrom:
+            return (r["left"] + x0 + (off + frac * c["len"]) * (r["width"] - pad - x0) / total,
+                    r["top"] + r["height"] / 2 - (2 if r["height"] > 20 else 0), c["len"])
+        off += c["len"] + 5e6
+    raise ValueError(chrom)
+
+
+def drag(b, x0, y, x1):
+    b.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x0, "y": y}, b.session)
+    b.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x0, "y": y, "button": "left", "buttons": 1,
+                                        "clickCount": 1}, b.session)
+    for i in range(1, 9):
+        b.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x0 + (x1 - x0) * i / 8, "y": y, "button": "left",
+                                            "buttons": 1}, b.session)
+        time.sleep(0.02)
+    b.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x1, "y": y, "button": "left", "buttons": 0,
+                                        "clickCount": 1}, b.session)
+
+
+def hash_now(b, wait=0.35):
+    """The address shortly after an action: a click or a brush on the strip pushes its place at once, a pan
+    replaces it 250 ms after the last move."""
+    time.sleep(wait)
+    return b.eval("location.hash")
+
+
+def view_mb(h):
+    m = re.match(r"#chr[0-9XY]+:([0-9.]+)-([0-9.]+)M$", h or "")
+    return (float(m.group(1)), float(m.group(2))) if m else None
+
+
+def strip_problems(b, base, out, phone_only=False, click_only=False):
+    """The strip: a click opens a chromosome whole, a drag elsewhere brushes a new view on the chromosome where it
+    started, a drag on the brush pans; at 390 px it shows 12 px high and a click there does nothing (a picture
+    only), and the table starts folded with its count in its summary. PHONE_ONLY: the 390 px half alone;
+    CLICK_ONLY: the first click alone."""
+    bad = []
+    doc = read_map(os.path.join(out, "runs", S, "map.json"))
+    if not phone_only:
+        map_page(b, base, S, "#chr11")
+        b.eval("document.querySelector('.gm-strip').scrollIntoView({block: 'center'}); true")
+        time.sleep(0.3)
+        x, y, _ = strip_x(b, doc, "chr16", 0.5)
+        drag(b, x, y, x)
+        h = hash_now(b)
+        if h != "#chr16":
+            bad.append(f"a click on chr16 of the strip opens {h}")
+        if click_only:
+            return bad
+        time.sleep(1.2)  # the map opens chr16 before the next drag
+        x0, y, n = strip_x(b, doc, "chr2", 0.2)
+        x1 = strip_x(b, doc, "chr2", 0.4)[0]
+        drag(b, x0, y, x1)
+        h = hash_now(b)
+        v = view_mb(h)
+        if not h.startswith("#chr2:") or not v or abs(v[0] - 0.2 * n / 1e6) > 4 or abs(v[1] - 0.4 * n / 1e6) > 4:
+            bad.append(f"a brush over chr2 20-40% opens {h}")
+        if v:
+            time.sleep(1.2)  # the map opens the brushed view before the brush is dragged
+            mid = strip_x(b, doc, "chr2", (v[0] + v[1]) / 2 * 1e6 / n)[0]
+            drag(b, mid, y, mid + 12)
+            p = view_mb(hash_now(b, 0.6))
+            if not p or not (p[0] - v[0]) > 5:
+                bad.append(f"a drag on the brush from {v} moved the view to {p}")
+    b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False},
+           b.session)
+    try:
+        map_page(b, base, S, "#chr11")
+        t = inview_now(b)
+        if t["stripH"] != 12 or t["open"] or not t["summary"].startswith("In view · ") or not t["summary"].endswith("features"):
+            bad.append(f"at 390 px: strip {t['stripH']} px, table open {t['open']}, summary {t['summary']!r}")
+        b.eval("document.querySelector('.gm-strip').scrollIntoView({block: 'center'}); true")
+        time.sleep(0.3)
+        x, y, _ = strip_x(b, doc, "chr16", 0.5, 64, 10)
+        drag(b, x, y, x)
+        h = hash_now(b)
+        if h != "#chr11":
+            bad.append(f"at 390 px a click on chr16 of the strip moved the map to {h}")
+    finally:
+        b.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 900, "deviceScaleFactor": 1, "mobile": False},
+               b.session)
+    return bad
+
+
+WINDOW_JS = r"""(function () {
+  var w = document.querySelector('.gm-inview-wrap'), seen = {}, steps = 0;
+  return new Promise(function (done) {
+    function look() {
+      Array.prototype.forEach.call(w.querySelectorAll('tbody tr[data-key]'), function (r) { seen[r.dataset.key] = 1; });
+      if (w.scrollTop + w.clientHeight >= w.scrollHeight - 1 || steps++ > 400) { done(JSON.stringify(Object.keys(seen))); return; }
+      w.scrollTop += 240;
+      window.requestAnimationFrame(function () { window.requestAnimationFrame(look); });
+    }
+    look();
+  });
+}())"""
+
+
+def window_problems(b, base):
+    """On the genome-scale document, chromosome 1 open: 12 rows and the words for the rest, then Show all lists
+    every run in a scrolled window (fewer rows in the table at once than in view), and scrolling it through shows
+    each mark the canvas drew, once."""
+    bad = []
+    map_page(b, base, S, "#chr1")
+    first = json.loads(b.eval("JSON.stringify([document.querySelectorAll('.gm-table tbody tr[data-key]').length, "
+                              "document.querySelector('.gm-inview-foot').textContent])"))
+    t = inview_now(b)  # Show all
+    n = len(t["drawn"])
+    if n <= 200 or first[0] != 12 or not first[1].startswith(f"and {n - 12:,} more in view · sorted by where · findings first"):
+        bad.append(f"before Show all: {first} for {n} marks")
+    virtual = b.eval("document.querySelector('.gm-inview-wrap').classList.contains('gm-virtual')")
+    if not virtual or not 12 < len(t["rows"]) < n or t["count"] != count_words(n):
+        bad.append(f"Show all: window {virtual}, {len(t['rows'])} rows in the table of {n} ({t['count']})")
+    r = b.call("Runtime.evaluate", {"expression": WINDOW_JS, "awaitPromise": True, "returnByValue": True}, b.session)
+    seen = json.loads(r.get("result", {}).get("value") or "[]")
+    if sorted(seen) != sorted(t["drawn"]):
+        bad.append(f"scrolled through, the window showed {len(seen)} of the {n} marks drawn")
+    return bad
+
+
+PLACES = (("", "chr7", "chr7", "chromosome"), ("#chr7", "#chr11:4.5-6.5M", "chr11", "region"),
+          ("#chr7", "genome", "", "genome"))
+
+
+def place_find_problems(b, base, places=PLACES):
+    """The search box takes a place as the address writes it: chr7 opens the chromosome, #chr11:4.5-6.5M flies to
+    the region, genome steps back out to the whole genome (PLACES only when given)."""
+    bad = []
+    for link, q, chrom, lv in places:
+        map_page(b, base, S, link)
+        found = map_find(b, q)
+        if not found or found[0]["kind"] != "place":
+            bad.append(f"{q}: lines {found}")
+            continue
+        b.eval("document.getElementById('gm-find').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); true")
+        for _ in range(5):  # a busy machine eases the camera slower, and the margin follows the settled camera
+            c = map_now(b)
+            if c["level"] == lv and (not chrom or c["chrom"] == chrom):
+                break
+        if c["level"] != lv or (chrom and c["chrom"] != chrom):
+            bad.append(f"{q}: Enter flies to {c['chrom']} at {c['level']}, want {chrom or 'the genome'} at {lv}")
+    return bad
+
+
+def card_focus_problems(b, base):
+    """Tab from a finding's mark to its card's link: the view settles again and the keyboard stays on the link."""
+    map_page(b, base, S, "#chr11")
+    if not b.eval("(function () { var a = document.querySelector('#genome-map .gm-marks a[data-id]'); "
+                  "if (!a) { return false; } a.focus(); return true; }())"):
+        return ["no finding's mark on chr11: the check tests nothing"]
+    time.sleep(0.6)  # the focus picks the finding; its card is drawn and the view settles
+    if not b.eval("(function () { var l = document.querySelector('#genome-map .gm-card:not([hidden]) a'); "
+                  "if (!l) { return false; } l.focus(); return document.activeElement === l; }())"):
+        return ["the finding's card has no link to focus: the check tests nothing"]
+    time.sleep(1.0)  # the mark's blur asks for a frame; the margin settles 140 ms after it
+    if not b.eval("!!(document.activeElement && document.activeElement.closest && "
+                  "document.activeElement.closest('#genome-map .gm-card'))"):
+        return ["the keyboard left the card's link once the view settled: "
+                + str(b.eval("document.activeElement ? document.activeElement.tagName : ''"))]
+    return []
+
+
+ROWS_JS = r"""JSON.stringify(Array.prototype.map.call(
+  document.querySelectorAll('#gm-second .gm-inview tbody tr[data-layer=findings] .gm-go'),
+  function (x) { return x.textContent; }))"""
+
+
+def reload_table_problems(b, base, out):
+    """A reload whose document gives a finding new words under the same place and id: the In view table shows the
+    new words, not the ones it had."""
+    path = os.path.join(out, "runs", S, "map.json")
+    other = os.path.join(out, "runs", S, "map-reload.json")
+    try:
+        map_page(b, base, S)
+        b.eval(SECOND_JS)
+        if not b.wait("document.getElementById('gm-second').dataset.pgpMap === 'drawn'"):
+            return ["the second figure never drew"]
+        time.sleep(0.6)
+        before = json.loads(b.eval(ROWS_JS))
+        doc = read_map(path)
+        titles = doc["per"][S]["findings"]["title"]
+        if not before or titles.count(before[0]) != 1:
+            return [f"no finding row to rename: the check tests nothing ({before})"]
+        titles[titles.index(before[0])] = "Planted new words for this finding"
+        write_map(other, doc)
+        b.eval("pgpSecond.o.url = 'map-reload.json'; pgpSecond.g.refresh('k2'); true")
+        if b.wait("%s.indexOf('Planted new words for this finding') >= 0" % ROWS_JS.replace("JSON.stringify", ""), 5):
+            return []
+        return [f"after the reload the table still reads {json.loads(b.eval(ROWS_JS))[:3]}"]
+    finally:
+        if os.path.exists(other):
+            os.remove(other)
+
+
+def inview_checks(b, base, out, og):
+    """The whole-genome strip, the In view table and drawsAt(), each check with its planted mistake."""
+    mjs = os.path.join(out, "assets", "map.js")
+    with open(mjs) as fh:
+        keep_mjs = fh.read()
+
+    def planted(desc, a, z, fn, more=()):
+        """FN's problems with map.js changed from A to Z (and each pair of MORE): the check must fail there."""
+        pairs = [(a, z)] + list(more)
+        try:
+            text = keep_mjs
+            for x, y in pairs:
+                text = text.replace(x, y)
+            with open(mjs, "w") as fh:
+                fh.write(text)
+            control(desc, any(keep_mjs.count(x) != 1 for x, _ in pairs) or not fn())
+        finally:
+            with open(mjs, "w") as fh:
+                fh.write(keep_mjs)
+
+    keep = plant_long_run(out, og)
+    try:
+        bad = predicate_problems(b, base, out, og)
+        check("map: drawsAt() in map.js gives og map build --predicate-table's answer for every row of the three demo "
+              "runs and every gene, at every level", not bad, bad)
+        planted("map.js whose drawsAt() drops the long runs at the genome level",
+                "return i > 0 || !!(row && row.long);", "return i > 0;",
+                lambda: predicate_problems(b, base, out, og, runs=[S]))
+    finally:
+        unplant(keep)
+    bad = inview_problems(b, base)
+    check("map: on views at every level the In view table lists exactly what the canvas draws one by one, with its "
+          "count and a line for the runs drawn as a band; the strip shows only over an open chromosome and ticks the "
+          "findings the genome level draws; T folds and opens the table", not bad, bad)
+    planted("map.js whose table lists every run of homozygosity, drawn one by one or not",
+            "if (drawsAt('roh', { long: R.o.long[i] }, lv)) { rows.push(", "if (true) { rows.push(",
+            lambda: inview_problems(b, base, INVIEW_VIEWS[:1]))
+    planted("map.js whose strip ticks the findings of the open chromosome only",
+            "        if (!drawsAt('findings', r, 'genome')) { return; }",
+            "        if (!drawsAt('findings', r, 'genome') || r.chrom !== chrom().n) { return; }",
+            lambda: inview_problems(b, base, INVIEW_VIEWS[:2]))
+    bad = inview_veil_problems(b, base)
+    check("map: a closed result is no row of the In view table and no tick of the strip (APOE on an adult's page, "
+          "the son's result to act on), until opened", not bad, bad)
+    planted("map.js whose table lists every finding, closed or not",
+            "drawn().forEach(function (r) { if (meets(", "M.findings.forEach(function (r) { if (meets(",
+            lambda: inview_veil_problems(b, base, adult=False))
+    planted("map.js whose strip ticks every finding, closed or not",
+            "      drawn().forEach(function (r) {\n        if (!drawsAt('findings', r, 'genome'))",
+            "      M.findings.forEach(function (r) {\n        if (!drawsAt('findings', r, 'genome'))",
+            lambda: inview_veil_problems(b, base, adult=False))
+    bad = sort_problems(b, base)
+    check("map: the In view table sorts by place with the findings first (aria-sort ascending on Where), Where again "
+          "reverses it, and Size sorts by size", not bad, bad)
+    planted("map.js whose table sorts by place alone",
+            "return (a.layer === 'findings' ? 0 : 1) - (b.layer === 'findings' ? 0 : 1) || place(a, b);",
+            "return place(a, b);", lambda: sort_problems(b, base, default_only=True))
+    bad = announce_problems(b, base)
+    check("map: the In view table announces its count once when it changes, never while it stays the same", not bad, bad)
+    planted("map.js whose table announces its count on every settle",
+            "if (n !== announced) { announced = n; inLive", "if (true) { announced = n; inLive",
+            lambda: announce_problems(b, base, pans_only=True))
+    bad = showall_problems(b, base)
+    check("map: the keyboard stays on Show all and Show fewer, and the count is said outside the foldable table",
+          not bad, bad)
+    planted("map.js whose Show all drops the keyboard", "if (more) { more.focus(", "if (false) { more.focus(",
+            lambda: showall_problems(b, base))
+    planted("map.js whose count's live line folds with the table", "main.insertBefore(inLive, inview.nextSibling);",
+            "inview.insertBefore(inLive, inWrap);", lambda: showall_problems(b, base))
+    bad = fly_problems(b, base)
+    check("map: a row of the In view table flies the map to its feature (a finding with its card) and becomes the "
+          "current row", not bad, bad)
+    planted("map.js whose rows fly without the finding's card",
+            "if (x.layer === 'findings') { pick(x.r.id); } else { pick(null); }", "pick(null);",
+            lambda: fly_problems(b, base, finding_only=True))
+    bad = strip_problems(b, base, out)
+    check("map: the strip opens a chromosome on a click, brushes a new view and pans on a drag; at 390 px it is a "
+          "12 px picture and the table starts folded", not bad, bad)
+    planted("map.js whose strip ignores a click",
+            "if (i >= 0) { openChrom(i, undefined, undefined, true); }\n      } else if (b0.mode",
+            "void i;\n      } else if (b0.mode", lambda: strip_problems(b, base, out, click_only=True))
+    planted("map.js whose strip takes clicks on a phone",
+            "if (!M || phone || !b0) { return; }", "if (!M || !b0) { return; }",
+            lambda: strip_problems(b, base, out, phone_only=True),
+            more=[("if (!M || phone || e.button !== 0 || level() === 'genome') { return; }",
+                   "if (!M || e.button !== 0 || level() === 'genome') { return; }")])
+    bad = place_find_problems(b, base)
+    check("map: the search box takes a place as the address writes it (chr7, #chr11:4.5-6.5M, genome) and Enter "
+          "flies there", not bad, bad)
+    planted("map.js whose search takes a place only with a colon",
+            "var p = /^(genome|chr[0-9XYMT]+(:.*)?)$/i.test(pq) ? parsePlace(pq) : null;",
+            "var p = /^chr/i.test(pq) && /[:]/.test(pq) ? parsePlace(pq) : null;", lambda: place_find_problems(b, base, PLACES[:1]))
+    bad = card_focus_problems(b, base)
+    check("map: the keyboard stays on the card's link when the view settles again", not bad, bad)
+    planted("map.js whose card is built again on every settle",
+            "if (sig === cardSig && !card.hidden) { return; }", "", lambda: card_focus_problems(b, base))
+    bad = reload_table_problems(b, base, out)
+    check("map: a reloaded document with new words for a finding under the same key shows them in the In view table",
+          not bad, bad)
+    planted("map.js whose table keeps its rows across a reload",
+            "        tSig = '';  // a new document may", "        void 0;  // a new document may",
+            lambda: reload_table_problems(b, base, out))
+
+
 def map_screens(b, base, dest):
-    """Screenshots of the map, dark, at 1440 x 900 and 390 x 844: genome and chromosome, a closed page."""
+    """Screenshots of the map, dark, at 1440 x 900 and 390 x 844: genome, chromosome (with the whole-genome strip),
+    region and gene, a closed page, and the In view table of a region (opened on a phone, where it starts folded)."""
     os.makedirs(dest, exist_ok=True)
     taken = []
     try:
         for w, h in ((1440, 900), (390, 844)):
             b.call("Emulation.setDeviceMetricsOverride", {"width": w, "height": h, "deviceScaleFactor": 1, "mobile": False},
                    b.session)
-            for run, link, name in ((S, "", "genome"), (S, "#chr16", "chromosome"), (OTHERS[1], "", "closed")):
-                if name == 'closed':
+            for run, link, name, want in ((S, "", "genome", "genome"), (S, "#chr16", "chromosome", "chromosome"),
+                                          (S, "#chr11:4.5-6.5M", "region", "region"),
+                                          (S, "#chr11:5.150-5.350M", "gene", "gene"), (OTHERS[1], "", "closed", "gate"),
+                                          (S, "#chr22:40.5-43.5M", "inview", "region")):
+                if name == "closed":
                     b.go('about:blank'); b.wait("location.href === 'about:blank'")
                     b.go(base+'/runs/'+run+'/')
                     if not b.wait("document.documentElement.dataset.pgpGated === 'true'"):
                         print(f"ERROR: {run}: no closed report gate: no screenshot")
                         continue
-                    target = 'report-gate'
+                    b.eval("document.getElementById('report-gate').scrollIntoView({block: 'start'}); true")
+                    time.sleep(0.5)
+                    png = b.call("Page.captureScreenshot", {"format": "png"}, b.session)["data"]
+                    p = os.path.join(dest, f"map-{name}-{w}x{h}.png")
+                    with open(p, "wb") as fh:
+                        fh.write(base64.b64decode(png))
+                    taken.append(p)
+                    continue
+                got = map_page(b, base, run, link)
+                if got["level"] in ("region", "gene"):
+                    time.sleep(0.8)  # the chromosome's gene file
+                    got = map_now(b)
+                if got["state"] != "drawn" or got["level"] != want:
+                    print(f"ERROR: {run}{link}: the map is {got['state']} at {got['level'] or 'no'} level, "
+                          f"want drawn at {want}: no screenshot")
+                    continue
+                if name == "inview":
+                    b.eval("var d = document.querySelector('.gm-inview'); d.open = true; d.scrollIntoView({block: 'start'}); window.scrollBy(0, -80); true")
                 else:
-                    got = map_page(b, base, run, link)
-                    want = "chromosome" if link else "genome"
-                    if got["state"] != "drawn" or got["level"] != want:
-                        print(f"ERROR: {run}{link}: the map is {got['state']} at {got['level'] or 'no'} level, "
-                              f"want drawn at {want}: no screenshot")
-                        continue
-                    target = 'genome-map'
-                b.eval("document.getElementById(%s).scrollIntoView({block: 'start'}); true" % json.dumps(target))
+                    b.eval("document.getElementById('genome-map').scrollIntoView({block: 'start'}); true")
                 time.sleep(0.5)
                 png = b.call("Page.captureScreenshot", {"format": "png"}, b.session)["data"]
                 p = os.path.join(dest, f"map-{name}-{w}x{h}.png")
@@ -1165,6 +2229,54 @@ def map_checks(b, base, out):
             fh.write(keep_mjs)
     bad = fallback_problems(b, base, out)
     check("map: a browser with no DecompressionStream gets the sentence and a findings table through the veil", not bad, bad)
+    bad = closer_problems(b, base)
+    check("map: the region, gene and reads levels open from their addresses with their titles, paths and genes; "
+          "Esc steps out one level at a time; the Region and Gene stops land on their level; + and → zoom and pan",
+          not bad, bad)
+    lvl = "if (bpp > CHROM_BPP) { return 'chromosome'; }"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(lvl, "return 'chromosome';"))
+        control("map.js whose levels stop at the chromosome", keep_mjs.count(lvl) != 1 or not closer_problems(b, base))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = find_problems(b, base, out)
+    check("map: / opens the search; a gene, a band and a finding are found and Enter flies there (a finding with "
+          "its card); the son's closed result is never a line, by its gene, id or title", not bad, bad)
+    drawn_ = "var fs = drawn();\n      fs.filter("
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(drawn_, "var fs = M.findings;\n      fs.filter("))
+        control("map.js whose search looks through every finding, closed or not", keep_mjs.count(drawn_) != 1 or
+                not find_problems(b, base, out))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = nearest_problems(b, base, out)
+    check("map: Nearest names the closest finding (else the first on the next chromosome) and flies there with its "
+          "card; Esc closes the card first; it never leads to the son's closed result", not bad, bad)
+    near_ = "var ch = chrom(), v = view(), fs = drawn(),"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(near_, "var ch = chrom(), v = view(), fs = M.findings,"))
+        control("map.js whose Nearest leads to every finding, closed or not", keep_mjs.count(near_) != 1 or
+                not nearest_problems(b, base, out))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    bad = origin_problems(b, base, out)
+    check("map: Paint the copies keeps Origin off with its reason, on a run in a family and on one in none", not bad, bad)
+    off = "'aria-pressed': 'false', 'aria-disabled': 'true',"
+    try:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs.replace(off, "'aria-pressed': 'false',"))
+        control("map.js whose Origin button is not off", keep_mjs.count(off) != 1 or not origin_problems(b, base, out))
+    finally:
+        with open(mjs, "w") as fh:
+            fh.write(keep_mjs)
+    inview_checks(b, base, out, og)
+    perf_checks(b, base, out)
     b.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": False}, b.session)
     try:
         wide = {}
@@ -2009,7 +3121,7 @@ def screens_main(dest, site):
         srv.server_close()
         shutil.rmtree(work, ignore_errors=True)
     print("\n".join(taken))
-    return 0 if len(taken) == 6 else 1
+    return 0 if len(taken) == 12 else 1
 
 
 def main():

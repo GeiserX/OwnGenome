@@ -72,7 +72,7 @@ if OG and not os.path.realpath(OG).startswith(os.path.realpath(REPO) + os.sep):
     shutil.copy2(os.path.join(REPO, "bin", "cn_loci.tsv"), os.path.join(_og_dir, "cn_loci.tsv"))
     OG = os.environ["OG"] = os.path.join(_og_dir, "og")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import copy_number as cn  # noqa: E402
+from test_copy_number import cn  # noqa: E402  pinned differential oracle
 
 FAILS = 0
 # The two LPA rows; named once here so no line of this file reads as an rsID with a genotype.

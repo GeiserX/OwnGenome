@@ -1,33 +1,10 @@
 #!/usr/bin/env python3
-"""assets/traits.tsv, the curated table of step 42: its schema, its reference
-bases and its sources.
+"""Validate the curated traits catalog and its GRCh38 reference bases.
 
-  python3 tests/test_traits_table.py                    schema (the unit-tests job)
-  python3 tests/test_traits_table.py --fasta REF.fasta  also: each row's ref is the
-                                                        FASTA's base, on every contig
-                                                        the FASTA has (needs REF.fasta.fai)
-  python3 tests/test_traits_table.py --online           also: every PMID resolves in
-                                                        PubMed, and every rsID's GRCh38
-                                                        position, reference base and
-                                                        alt allele are dbSNP's (curl)
-  --table FILE checks another table (the e2e case plants a broken copy).
-
-The e2e case traits-panel-1 runs it with --fasta (the fixture's GRCh38
-reference) and --online, and on a planted copy with one wrong reference base
-and one PubMed id that does not exist, which must fail.
-
-Checks without options:
-  1. the table passes bin/traits_report.py's schema check (columns, chr1 to
-     chr22, positions, one base each for ref and alt, readings, ancestry
-     yes/no, PubMed ids, the two APOE rows, no SNPedia text);
-  2. planted problems are each caught: a wrong column count, ref = alt, a
-     non-base allele, a duplicate rsID, a PMID that is not a number, a
-     missing APOE row;
-  3. the FASTA check on a three-base synthetic FASTA: the right base passes,
-     a planted wrong base fails, a contig the FASTA lacks is counted as not
-     checked.
-
-Run: python3 tests/test_traits_table.py
+Schema checks use og traits check. Rust unit tests plant invalid catalog
+rows and rules. The optional --fasta and --online checks also verify the
+FASTA bases, PubMed sources and dbSNP records. A synthetic FASTA provides
+positive, wrong-base and missing-contig controls without network access.
 """
 import argparse
 import json
@@ -145,39 +122,19 @@ def online_errors(rows):
     return errs
 
 
+def schema(path):
+    return subprocess.run([os.environ.get("OG", os.path.join(REPO, "bin", "og")),
+                           "traits", "check", "--table", path], capture_output=True, text=True)
+
+
 def schema_controls():
     good = tr.read_table(TABLE)
-    errs = tr.check_rows(good)
-    check(f"assets/traits.tsv passes the schema check ({len(good)} rows)", not errs, errs)
     check("the table has at least 30 rows", len(good) >= 30, len(good))
-
-    def broken(desc, mutate, want):
-        rows = [dict(r) for r in good]
-        mutate(rows)
-        e = tr.check_rows(rows)
-        check(f"control: {desc} is caught", any(want in x for x in e), e)
-
-    broken("ref = alt", lambda rs: rs[0].update(alt=rs[0]["ref"]), "same base")
-    broken("a ref that is not a base", lambda rs: rs[0].update(ref="N"), "is not one of A, C, G, T")
-    broken("a duplicate rsID", lambda rs: rs[1].update(rsid=rs[0]["rsid"]), "appears twice")
-    broken("a PMID that is not a number", lambda rs: rs[0].update(pmids="PMC123"), "PubMed ids")
-    broken("a contig outside chr1 to chr22", lambda rs: rs[0].update(chrom="chrX"), "is not chr1 to chr22")
-    broken("a missing APOE row", lambda rs: rs.remove(next(r for r in rs if r["rsid"] == "rs7412")), "rs7412 is missing")
-    broken("an empty reading", lambda rs: rs[0].update(het=" "), "het is empty")
-    broken("SNPedia text", lambda rs: rs[0].update(note="From SNPedia."), "SNPedia")
     work = tempfile.mkdtemp()
     try:
-        bad = os.path.join(work, "t.tsv")
-        with open(TABLE) as f:
-            text = f.read()
-        with open(bad, "w") as f:
-            f.write(text.replace("\trs671\t", "\trs671\textra\t", 1))
-        try:
-            tr.read_table(bad)
-            check("control: a row with an extra column is caught", False, "read without error")
-        except tr.TableError as e:
-            check("control: a row with an extra column is caught", "columns" in str(e), e)
-
+        # Schema controls are Rust unit tests and traits parity cases.
+        res = schema(TABLE)
+        check("assets/traits.tsv passes og traits check", res.returncode == 0, res.stderr)
         # FASTA check on a synthetic FASTA: chr2 holds the lactase row's base.
         lct = next(r for r in good if r["rsid"] == "rs4988235")
         pos = int(lct["pos"])
@@ -212,6 +169,9 @@ def main(argv=None):
     ap.add_argument("--online", action="store_true", help="look the PMIDs up in PubMed and the rsIDs in dbSNP")
     a = ap.parse_args(argv)
     if a.table == TABLE and not a.fasta and not a.online:
+        if not os.environ.get("OG") and not os.environ.get("OG_REQUIRED"):
+            print("skip: OG is not set: traits schema controls run in the Rust job")
+            return 0
         schema_controls()
     else:
         try:
@@ -219,8 +179,8 @@ def main(argv=None):
         except tr.TableError as e:
             check("the table can be read", False, e)
             rows = []
-        errs = tr.check_rows(rows)
-        check(f"{a.table} passes the schema check", not errs, errs)
+        res = schema(a.table)
+        check(f"{a.table} passes the schema check", res.returncode == 0, res.stderr)
         if a.fasta and rows:
             e, n = fasta_errors(a.fasta, rows)
             print(f"  ref checked against {a.fasta}: {n} rows (the others are on contigs it lacks)")

@@ -14,6 +14,10 @@
 //! ancestry, structural variants, repeats, telomeres, runs of
 //! homozygosity, the haplogroups, the opt-in step tables, chrM, traits with
 //! the APOL1 G2 deletion, and the couple screen ([`group_c`]).
+//! Without `--only` it reads all three groups and runs the post pass
+//! ([`post`]): the readings that join sections, the steps not run, what no
+//! step assessed, the last database re-check and what changed since the
+//! previous run. That is the whole summary.json.
 //!
 //! How it reads a folder: one walk of the folder ([`scan::FolderIndex`])
 //! instead of a `glob` per candidate path; each input read once (the
@@ -32,6 +36,7 @@ pub mod group_b;
 pub mod group_c;
 pub mod model;
 pub mod pgx;
+pub mod post;
 pub mod scan;
 pub mod sections;
 pub mod text;
@@ -46,18 +51,17 @@ use sections::{Callability, Coverage, Data, Mosaic, ReadCount, SampleQc, SexChec
 use std::io::Write;
 use std::path::Path;
 
-const USAGE: &str =
-    "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR --only {a,b,c}
-                          --out OUT [--declared-sex DECLARED_SEX] [--assets ASSETS]
+const USAGE: &str = "usage: og summary collect --sample SAMPLE --sample-dir SAMPLE_DIR [--out OUT]
+                          [--declared-sex DECLARED_SEX] [--assets ASSETS] [--only {a,b,c}]
 ";
 
 const OPTS: &[Opt] = &[
     Opt("--sample", Kind::Value, true),
     Opt("--sample-dir", Kind::Value, true),
     Opt("--declared-sex", Kind::Value, false),
-    Opt("--out", Kind::Value, true),
+    Opt("--out", Kind::Value, false),
     Opt("--assets", Kind::Value, false),
-    Opt("--only", Kind::Choice(&["a", "b", "c"]), true),
+    Opt("--only", Kind::Choice(&["a", "b", "c"]), false),
 ];
 
 /// What one collect reads.
@@ -70,7 +74,7 @@ pub struct Input {
     pub declared_sex: Option<String>,
     /// The repository's `assets/` folder.
     pub assets: String,
-    /// The group of sections to read: `a`, `b` or `c`.
+    /// The group of sections to read: `a`, `b`, `c`, or all of them.
     pub group: Group,
     /// The folder of the two tables group c reads from `bin/`.
     pub tables: String,
@@ -82,6 +86,8 @@ pub enum Group {
     A,
     B,
     C,
+    /// Every section and the post pass: the whole summary.json.
+    All,
 }
 
 /// `og summary collect`: exit 0 when summary.json is written (whatever
@@ -102,28 +108,39 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         declared_sex: a.get("--declared-sex").map(str::to_owned),
         assets: a.get("--assets").map_or_else(default_assets, str::to_owned),
         tables: group_c::util::default_tables(),
-        group: match a.text("--only") {
-            "b" => Group::B,
-            "c" => Group::C,
-            _ => Group::A,
+        group: match a.get("--only") {
+            Some("a") => Group::A,
+            Some("b") => Group::B,
+            Some("c") => Group::C,
+            _ => Group::All,
         },
     };
     // A part of the sections must never replace the sample's complete
-    // summary.json, so there is no default path while `--only` exists.
-    let target = a.text("--out").to_owned();
-    let read = match a.text("--only") {
-        "b" => group_b::collect,
-        _ => collect,
-    };
-    let summary = match read(&input) {
-        Ok(s) => s,
-        Err(e) => return crate::finish(Err(e), err),
+    // summary.json, so a part is written only where `--out` says.
+    let target = match a.get("--out") {
+        Some(t) => t.to_owned(),
+        None if input.group == Group::All => crate::join(&input.sample_dir, "summary.json"),
+        None => {
+            let _ = write!(err, "{USAGE}");
+            let _ = writeln!(
+                err,
+                "og summary collect: error: --only needs --out: a part of the sections never replaces summary.json"
+            );
+            return 2;
+        }
     };
     // The sections' own data is freed before the text is made, and the
     // tree before the file is written: a large ClinVar list is in memory in
     // one form at a time.
-    let value = summary.to_json();
-    drop(summary);
+    let read = match input.group {
+        Group::All => post::collect(&input),
+        Group::B => group_b::collect(&input).map(|s| s.to_json()),
+        Group::A | Group::C => collect(&input).map(|s| s.to_json()),
+    };
+    let value = match read {
+        Ok(v) => v,
+        Err(e) => return crate::finish(Err(e), err),
+    };
     let body = match dumps(
         &value,
         &Dump {
@@ -161,47 +178,83 @@ fn default_assets() -> String {
         .to_string()
 }
 
-/// Reads the folder into the summary of group a. An error is a run status
-/// or a manifest that is there and cannot be read: without it a result of
-/// an earlier run would be called current, so no summary is written.
+/// What every group reads first: one walk of the folder, the run status
+/// and the manifest.
+pub struct Folder {
+    pub index: FolderIndex,
+    pub run: Option<RunStatus>,
+    pub manifest: Option<Manifest>,
+}
+
+impl Folder {
+    /// Walks the folder and reads its run status and manifest. An error is
+    /// a run status or a manifest that is there and cannot be read: without
+    /// it a result of an earlier run would be called current, so no summary
+    /// is written.
+    pub fn open(input: &Input) -> Result<Folder, String> {
+        let dir = Path::new(&input.sample_dir);
+        let index = FolderIndex::walk(dir);
+        let run =
+            read_optional(&dir.join("logs").join("run_status.tsv"))?.map(|t| RunStatus::parse(&t));
+        let manifest = read_optional(&dir.join("run_manifest.tsv"))?.map(|t| Manifest::parse(&t));
+        Ok(Folder {
+            index,
+            run,
+            manifest,
+        })
+    }
+}
+
+/// Reads the folder into the summary of group a or group c.
 pub fn collect(input: &Input) -> Result<Summary, String> {
-    let dir = Path::new(&input.sample_dir);
-    let index = FolderIndex::walk(dir);
-    let run =
-        read_optional(&dir.join("logs").join("run_status.tsv"))?.map(|t| RunStatus::parse(&t));
-    let manifest = read_optional(&dir.join("run_manifest.tsv"))?.map(|t| Manifest::parse(&t));
-    let s = pycompat::mtime::escape(&input.sample);
-    let find = |pats: &[String]| index.first(pats).map(str::to_owned);
-    let file = |rel: String| -> (String, String) { (crate::join(&input.sample_dir, &rel), rel) };
-    if input.group == Group::C {
+    let folder = Folder::open(input)?;
+    let (sections, declared_sex) = if input.group == Group::C {
         // The declared sex the chrY filter of CNVpytor reads comes from
         // step 33's table when the run status and manifest have none.
-        let qc = find(&[format!("qc/{s}_sample_qc.tsv")]).map(file);
-        let qc_declared = qc.and_then(|(p, _)| {
+        let s = pycompat::mtime::escape(&input.sample);
+        let qc = folder
+            .index
+            .first(&[format!("qc/{s}_sample_qc.tsv")])
+            .map(|rel| crate::join(&input.sample_dir, rel));
+        let qc_declared = qc.and_then(|p| {
             let rows = sections::read_tsv(&p).ok()?;
             SampleQc::read(&p, &rows)
                 .ok()?
                 .declared_sex()
                 .map(str::to_owned)
         });
-        let declared_sex = declared(
+        let declared_sex = declared(input, &folder, qc_declared.as_deref());
+        let mut sections = read_c(input, &folder);
+        post_c(
             input,
-            run.as_ref(),
-            manifest.as_ref(),
-            qc_declared.as_deref(),
+            &folder.index,
+            &mut sections,
+            &group_c::Others::default(),
+            declared_sex.as_deref(),
         );
-        let sections = read_group_c(input, &index, run.as_ref(), declared_sex.as_deref());
-        return Ok(Summary {
-            sample: input.sample.clone(),
-            generated_utc: time::utc_minute(now()).unwrap_or_default(),
-            run,
-            manifest,
-            declared_sex,
-            sections,
-            cyp2d6: None,
-        });
-    }
+        (sections, declared_sex)
+    } else {
+        let sections = read_a(input, &folder);
+        let declared_sex = declared(input, &folder, qc_declared(&sections));
+        (sections, declared_sex)
+    };
+    Ok(Summary {
+        sample: input.sample.clone(),
+        generated_utc: time::utc_minute(now()).unwrap_or_default(),
+        run: folder.run,
+        manifest: folder.manifest,
+        declared_sex,
+        sections,
+        cyp2d6: None,
+    })
+}
 
+/// Reads the sections of group a, in [`GROUP_A`] order: the sample VCF on
+/// its own thread while the other six are read.
+pub fn read_a(input: &Input, folder: &Folder) -> Vec<Section> {
+    let s = pycompat::mtime::escape(&input.sample);
+    let find = |pats: &[String]| folder.index.first(pats).map(str::to_owned);
+    let file = |rel: String| -> (String, String) { (crate::join(&input.sample_dir, &rel), rel) };
     let variants_at = find(&[format!("vcf/{s}.vcf.gz")]);
     let (variants, rest) = std::thread::scope(|scope| {
         let v = scope.spawn(|| {
@@ -233,29 +286,23 @@ pub fn collect(input: &Input) -> Result<Summary, String> {
         read_count,
         variants,
     ];
-    let sections: Vec<Section> = GROUP_A
+    GROUP_A
         .iter()
         .zip(reads)
-        .map(|(spec, r): (&Spec, _)| Section::new(*spec, r, run.as_ref()))
-        .collect();
+        .map(|(spec, r): (&Spec, _)| Section::new(*spec, r, folder.run.as_ref()))
+        .collect()
+}
 
-    let qc_declared = sections
+/// The declared sex step 33's table records, from its section (read when
+/// the section is ok or stale).
+pub fn qc_declared(sections: &[Section]) -> Option<&str> {
+    sections
         .iter()
         .find(|s| s.spec.key == "sample_qc")
         .and_then(|s| match &s.data {
             Some(Data::SampleQc(q)) => q.declared_sex(),
             _ => None,
-        });
-    let declared_sex = declared(input, run.as_ref(), manifest.as_ref(), qc_declared);
-    Ok(Summary {
-        sample: input.sample.clone(),
-        generated_utc: time::utc_minute(now()).unwrap_or_default(),
-        run,
-        manifest,
-        declared_sex,
-        sections,
-        cyp2d6: None,
-    })
+        })
 }
 
 fn now() -> f64 {
@@ -266,16 +313,14 @@ fn now() -> f64 {
 
 /// The declared sex: the command line's, the run status's, the
 /// manifest's, then step 33's; the first that is not empty.
-fn declared(
-    input: &Input,
-    run: Option<&RunStatus>,
-    manifest: Option<&Manifest>,
-    qc: Option<&str>,
-) -> Option<String> {
+pub fn declared(input: &Input, folder: &Folder, qc: Option<&str>) -> Option<String> {
     [
         input.declared_sex.as_deref(),
-        run.and_then(|r| r.declared_sex.as_deref()),
-        manifest.and_then(|m| m.value("run", "declared_sex")),
+        folder.run.as_ref().and_then(|r| r.declared_sex.as_deref()),
+        folder
+            .manifest
+            .as_ref()
+            .and_then(|m| m.value("run", "declared_sex")),
         qc,
     ]
     .into_iter()
@@ -284,39 +329,56 @@ fn declared(
     .map(str::to_owned)
 }
 
-/// Reads the sections of group c, then runs the parts of the post pass
-/// that change them.
-fn read_group_c(
+/// Reads the sections of group c, in [`group_c::GROUP_C`] order.
+pub fn read_c(input: &Input, folder: &Folder) -> Vec<Section> {
+    let c = ctx_c(input, &folder.index);
+    group_c::read_all(&c)
+        .into_iter()
+        .zip(group_c::GROUP_C.iter())
+        .map(|(r, spec)| {
+            let r = r.and_then(|found| match found {
+                None => Ok(None),
+                Some((f, v)) => with_mtime(&f.path, f.rel, Data::Json(v)),
+            });
+            Section::new(*spec, r, folder.run.as_ref())
+        })
+        .collect()
+}
+
+/// The parts of the post pass that change group c's sections: the repeat
+/// readings, Locityper's primary calls and CNVpytor's chrY filter. A part
+/// that fails makes its own section unreadable, with a note that names the
+/// file and the reading; the other sections and the summary stay.
+pub fn post_c(
     input: &Input,
     index: &FolderIndex,
-    run: Option<&RunStatus>,
+    sections: &mut [Section],
+    others: &group_c::Others,
     declared_sex: Option<&str>,
-) -> Vec<Section> {
-    let c = group_c::Ctx {
+) {
+    let c = ctx_c(input, index);
+    let failed = {
+        let mut view: Vec<(Spec, model::State, Option<&mut Data>)> = sections
+            .iter_mut()
+            .map(|s| (s.spec, s.state, s.data.as_mut()))
+            .collect();
+        group_c::post(&c, &mut view, others, declared_sex)
+    };
+    for (key, why) in failed {
+        if let Some(s) = sections.iter_mut().find(|s| s.spec.key == key) {
+            s.make_unreadable(&why);
+        }
+    }
+}
+
+fn ctx_c<'a>(input: &'a Input, index: &'a FolderIndex) -> group_c::Ctx<'a> {
+    group_c::Ctx {
         sample: &input.sample,
         dir: &input.sample_dir,
         assets: &input.assets,
         tables: &input.tables,
         index,
-    };
-    let reads = group_c::read_all(&c);
-    let mut sections: Vec<Section> = group_c::GROUP_C
-        .iter()
-        .zip(reads)
-        .map(|(spec, r)| {
-            let r = r.and_then(|found| match found {
-                None => Ok(None),
-                Some((f, v)) => with_mtime(&f.path, f.rel, Data::Json(v)),
-            });
-            Section::new(*spec, r, run)
-        })
-        .collect();
-    let mut view: Vec<(Spec, model::State, Option<&mut Data>)> = sections
-        .iter_mut()
-        .map(|s| (s.spec, s.state, s.data.as_mut()))
-        .collect();
-    group_c::post(&c, &mut view, &group_c::Others::default(), declared_sex);
-    sections
+    }
 }
 
 /// What one reader gave: the file (relative), its mtime and its data.

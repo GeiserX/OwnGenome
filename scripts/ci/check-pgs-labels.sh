@@ -40,6 +40,9 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# og reads the API's answers (og dev pgs, rust/crates/og-dev; bin/og picks
+# the build for this machine); OG names another og binary. curl asks.
+OG=${OG:-${ROOT}/bin/og}
 
 # Prints "ID<TAB>label" for every entry of the map in $1.
 read_map() {
@@ -62,31 +65,12 @@ trait_of() {
   local id=$1 body api=${PGS_API:-https://www.pgscatalog.org/rest/score}
   body=$(curl -fsS --connect-timeout 10 --max-time 30 --retry "${PGS_RETRY:-3}" --retry-delay 5 --retry-all-errors \
     -H 'Accept: application/json' "${api}/${id}") || return 1
-  ID="$id" python3 -c '
-import json, os, sys
-try:
-    d = json.loads(sys.stdin.read())
-except ValueError:
-    sys.exit(1)
-if not isinstance(d, dict) or d.get("id") != os.environ["ID"]:
-    sys.exit(1)
-t = (d.get("trait_reported") or "").strip()
-if not t:
-    sys.exit(1)
-print(t)
-' <<<"$body"
+  "$OG" dev pgs trait --id "$id" <<<"$body"
 }
 
 # Exit 0 when every word of label $1 appears in trait $2.
 label_matches() {
-  python3 - "$1" "$2" <<'EOF'
-import re, sys
-def words(s):
-    s = s.lower().replace("’", "").replace("'", "")
-    return set(re.sub(r"[^a-z0-9]+", " ", s).split())
-label, trait = words(sys.argv[1]), words(sys.argv[2])
-sys.exit(0 if label and label <= trait else 1)
-EOF
+  "$OG" dev pgs label-match "$1" "$2"
 }
 
 # Prints "ID<TAB>ppm_id<TAB>ancestry<TAB>effect" for every row of a score
@@ -100,49 +84,15 @@ read_metrics() {
 }
 
 # Exit 0 when evaluation $2 of the PGS Catalog belongs to score $1, was
-# measured in samples of ancestry $3 and reports effect $4 ("OR 1.61").
-# Prints what the catalog says, or why it does not match, on stdout. An
-# API that fails or answers without that id is exit 2.
+# measured in samples of ancestry $3 and reports effect $4 ("OR 1.61"; a
+# JSON true is not the number 1). Prints what the catalog says, or why it
+# does not match, on stdout. An API that fails or answers without that id
+# is exit 2.
 metric_matches() {
   local id=$1 ppm=$2 anc=$3 eff=$4 body api=${PGS_PERF_API:-https://www.pgscatalog.org/rest/performance}
   body=$(curl -fsS --connect-timeout 10 --max-time 30 --retry "${PGS_RETRY:-3}" --retry-delay 5 --retry-all-errors \
     -H 'Accept: application/json' "${api}/${ppm}") || { echo "(no answer)"; return 2; }
-  ID="$id" PPM="$ppm" ANC="$anc" EFF="$eff" python3 -c '
-import json, os, re, sys
-# The PGS Catalog ancestry_broad terms of each 1000 Genomes group pgsc_calc
-# reports (its ancestry_distribution uses the same codes).
-GROUPS = {
-    "EUR": {"European"},
-    "AFR": {"African unspecified", "African American or Afro-Caribbean", "Sub-Saharan African"},
-    "AMR": {"Hispanic or Latin American"},
-    "EAS": {"East Asian"},
-    "SAS": {"South Asian"},
-}
-def group(term):
-    for g, terms in GROUPS.items():
-        if term in terms:
-            return g
-    return None
-try:
-    d = json.loads(sys.stdin.read())
-except ValueError:
-    print("(not JSON)"); sys.exit(2)
-if not isinstance(d, dict) or d.get("id") != os.environ["PPM"]:
-    print("(no such evaluation)"); sys.exit(2)
-samples = (d.get("sampleset") or {}).get("samples") or []
-terms = [s.get("ancestry_broad") or "" for s in samples]
-found = {group(t) for t in terms}
-effects = [(e.get("name_short"), e.get("estimate")) for e in (d.get("performance_metrics") or {}).get("effect_sizes") or []]
-said = "%s, %s, %s" % (d.get("associated_pgs_id"), "; ".join(terms) or "no samples",
-                       "; ".join("%s %s" % e for e in effects) or "no effect size")
-print(said)
-m = re.fullmatch(r"(OR|HR) ([0-9]+(?:\.[0-9]+)?)", os.environ["EFF"])
-ok = (d.get("associated_pgs_id") == os.environ["ID"]
-      and os.environ["ANC"] in GROUPS and found == {os.environ["ANC"]}
-      and m is not None
-      and any(n == m.group(1) and isinstance(v, (int, float)) and abs(v - float(m.group(2))) < 1e-9 for n, v in effects))
-sys.exit(0 if ok else 1)
-' <<<"$body"
+  "$OG" dev pgs metric-match --id "$id" --ppm "$ppm" --ancestry "$anc" --effect "$eff" <<<"$body"
 }
 
 # The evaluations table of file $1; exit 1 when one is wrong. A score's
@@ -308,8 +258,24 @@ self_test() {
     echo "SELF-TEST FAIL: an evaluation was judged wrongly:"; echo "$out"; fail=1
   fi
 
+  # Control 7: an evaluation whose effect is the JSON value true is not an
+  # effect of 1. The answers are files (curl reads file:// URLs), so this
+  # control needs no network.
+  mkdir -p "${d}/perf"
+  printf '%s' '{"id": "PPM000001", "associated_pgs_id": "PGS000018", "sampleset": {"samples": [{"ancestry_broad": "European"}]}, "performance_metrics": {"effect_sizes": [{"name_short": "OR", "estimate": true}]}}' > "${d}/perf/PPM000001"
+  rc=0; out=$(PGS_PERF_API="file://${d}/perf" metric_matches PGS000018 PPM000001 EUR 'OR 1') || rc=$?
+  if [ "$rc" -ne 1 ]; then
+    echo "SELF-TEST FAIL: an effect of true was read as OR 1 (exit ${rc}): ${out}"; fail=1
+  fi
+  sed 's/true/1.0/' "${d}/perf/PPM000001" > "${d}/perf/PPM000002"
+  sed -i.bak 's/PPM000001/PPM000002/' "${d}/perf/PPM000002"
+  rc=0; out=$(PGS_PERF_API="file://${d}/perf" metric_matches PGS000018 PPM000002 EUR 'OR 1') || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "SELF-TEST FAIL: an effect of 1.0 was not read as OR 1 (exit ${rc}): ${out}"; fail=1
+  fi
+
   if [ "$fail" -eq 0 ]; then
-    echo "SELF-TEST OK: wrong label (list and map formats), old format, empty answer, no answer, empty map, and a wrong PPM id, ancestry or effect or an empty entry are all caught."
+    echo "SELF-TEST OK: wrong label (list and map formats), old format, empty answer, no answer, empty map, a wrong PPM id, ancestry or effect, an empty entry and an effect of true are all caught."
   fi
   return "$fail"
 }

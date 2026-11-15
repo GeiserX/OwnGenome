@@ -1,0 +1,25 @@
+# The non-image pins `og dev renovate-check` counts (.github/workflows/renovate-dry-run.yml):
+# each must be a dependency Renovate detects in every place it is pinned, as often as the text has it.
+# dependency<TAB>file or glob (wildcards in the last part only)<TAB>regular expression for one pin,
+# with ^ and $ at line ends. A missing file or a glob that matches nothing is an error.
+# Only the files listed for a dependency are counted: python is also the docker image of
+# versions.env, which the image checks cover.
+# A setup-nextflow step is a pin when a version: line with a literal version follows its uses:
+# line inside the same step (the lines in between are blank or start with anything but '-',
+# which opens the next step); a computed version (an expression) is not a pin.
+nextflow-io/nextflow	versions.env	^NEXTFLOW_VERSION="
+nextflow-io/nextflow	.github/workflows/*.yml	uses: ["\x27]?nf-core/setup-nextflow@[^\n]*\n(?:[ \t]*(?:[^\s-][^\n]*)?\n)*?[ \t]+version: ["\x27]?\d
+nextflow-io/nextflow	docs/*.md	NXF_VER=\d
+rhysd/actionlint	.github/workflows/*.yml	ACTIONLINT_VERSION=\d
+gitleaks/gitleaks	.github/workflows/*.yml	GITLEAKS_VERSION=\d
+koalaman/shellcheck	.github/workflows/lint.yml	^[ \t]+version: v\d
+renovate	.github/workflows/renovate-dry-run.yml	RENOVATE_VERSION: \d
+renovate	docs/updating.md	renovate@\d
+python	.github/workflows/docs.yml	python-version: ['\"]?\d
+ANHIG/IMGTHLA	scripts/lib/common.sh	^HLA_DB_RELEASE=\$\{HLA_DB_RELEASE:-\d
+PGScatalog/pgsc_calc	versions.env	^PGSC_CALC_VERSION="
+PGScatalog/pgsc_calc	conf/containers.config	ext\.pipeline_version = '
+playwright	tests/demo/retake-screenshots.sh	playwright==\d
+pillow	tests/demo/retake-screenshots.sh	pillow==\d
+pyobjc-framework-Vision	tests/demo/retake-screenshots.sh	pyobjc-framework-Vision==\d
+aldy	docs/21-cyrius.md	aldy==\d|\[Aldy\]\([^)]*\) v\d

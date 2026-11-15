@@ -1206,19 +1206,18 @@ def report_followups_sections(work, schema):
     # (G, G, C on the plus strand; rs1726866's G is the reference base).
     t = os.path.join(work, "rules", "S")
     rows = traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))
-    rules = traits_report.read_rules(os.path.join(REPO, "assets", "genotype_rules.tsv"))
     g = os.path.join(work, "rules_g.tsv")
     put(g, "chr7\t141972804\tT\tC\tC/C\t40\nchr7\t141972905\tG\t.\tG/G\t40\nchr7\t141973545\tC\tG\tG/G\t40\n"
            "chr19\t44908684\tT\t.\tT/T\t40\nchr19\t44908822\tC\t.\tC/C\t40\n")
-    recs = traits_report.read_genotypes(g)
-    lines = traits_report.rule_lines(rules, recs)
+    from test_traits_report import traits_tables
     os.makedirs(f"{t}/traits", exist_ok=True)
-    traits_report.write_tsv(f"{t}/traits/S_traits.tsv", traits_report.report(rows, recs, rules, None, lines))
+    saved_rules = os.path.join(work, "rules_saved.tsv")
+    traits_tables(g, f"{t}/traits/S_traits.tsv", saved_rules)
     summ, txt, html_ = render(t)
     check("rules: without the rules table the section has no rule lines and the reports none",
           summ["sections"]["traits"]["data"].get("rules") is None and "Genotype rules (several sites" not in txt + html_,
           summ["sections"]["traits"]["data"].get("rules"))
-    traits_report.write_tsv(f"{t}/traits/S_genotype_rules.tsv", lines, traits_report.RULE_OUT_COLUMNS)
+    shutil.copyfile(saved_rules, f"{t}/traits/S_genotype_rules.tsv")
     summ, txt, html_ = render(t)
     html_ = htmlmod.unescape(html_)
     rl = summ["sections"]["traits"]["data"].get("rules") or []
@@ -1226,7 +1225,9 @@ def report_followups_sections(work, schema):
           [(r["rule"], r["result"], r["status"], r["phase"]) for r in rl if r["rule"] in ("TAS2R38", "APOE")]
           == [("TAS2R38", "PAV/PAV", "called", "not_needed")],
           rl)
-    trait = rules["TAS2R38"]["trait"]
+    import csv
+    with open(saved_rules) as f:
+        trait = next(r["trait"] for r in csv.DictReader(f, delimiter="\t") if r["rule"] == "TAS2R38")
     check("rules: the text report prints the rule line with its result and sites",
           f"{trait} (TAS2R38 rs713598, rs1726866, rs10246939): PAV/PAV (no phase needed). " in txt
           and "traits/S_genotype_rules.tsv" in txt, txt)
@@ -2873,7 +2874,8 @@ def main():
                f"{ear['chrom']}\t{ear['pos']}\t{ear['ref']}\t.\t{ear['ref']}/{ear['ref']}\n"
                "chr19\t44908684\tT\t.\tT/T\nchr19\t44908822\tC\t.\tC/C\n")
         os.makedirs(f"{t}/traits", exist_ok=True)
-        traits_report.write_tsv(f"{t}/traits/S_traits.tsv", traits_report.report(rows, traits_report.read_genotypes(g)))
+        from test_traits_report import traits_tables
+        traits_tables(g, f"{t}/traits/S_traits.tsv", os.path.join(work, "traits_rules.tsv"))
         summ_t, txt_t, html_t = render(t)
         td = summ_t["sections"]["traits"]
         check("traits: section ok, counts without the APOE rows",

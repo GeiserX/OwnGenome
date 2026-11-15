@@ -4,13 +4,13 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Opt-in ('archaic' in --tools, with --archaic_data). Three processes, as in
     scripts/43-archaic.sh:
-      ARCHAIC_GENOTYPES  bin/archaic_report.py genotypes: IBDmix's genotype file of
+      ARCHAIC_GENOTYPES  og archaic genotypes: IBDmix's genotype file of
                          each chromosome (the archaic genomes, the sample's VCF and
                          the 1000 Genomes stand-ins of --archaic_pop), and each
                          archaic genome's mask
       ARCHAIC_IBDMIX     IBDmix against each archaic genome, LOD 4, the options of
                          Chen et al. 2020, with that genome's mask
-      ARCHAIC_REPORT     bin/archaic_report.py report: the segments of 50 kb or
+      ARCHAIC_REPORT     og archaic report: the segments of 50 kb or
                          more, the share, the ten longest with their genes
 
     Equivalent to: scripts/43-archaic.sh
@@ -34,7 +34,7 @@ process ARCHAIC_GENOTYPES {
 
     script:
     """
-    archaic_report.py genotypes --table-dir ${archaic_data} --vcf ${vcf} --pop ${params.archaic_pop} --out-dir gt
+    og archaic genotypes --table-dir ${archaic_data} --vcf ${vcf} --pop ${params.archaic_pop} --out-dir gt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -126,7 +126,7 @@ process ARCHAIC_REPORT {
     script:
     def genes_arg = genes ? "--genes ${genes}" : ''
     """
-    archaic_report.py report --sample ${meta.id} --ibdmix-dir ${ibdmix} --spans ${ibdmix}/spans.tsv \\
+    og archaic report --sample ${meta.id} --ibdmix-dir ${ibdmix} --spans ${ibdmix}/spans.tsv \\
         --pop ${params.archaic_pop} ${genes_arg} --out-dir .
 
     cat <<-END_VERSIONS > versions.yml

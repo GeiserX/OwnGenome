@@ -8,9 +8,7 @@ check_step_exit 07-pharmacogenomics.sh
 
 JSON="${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.report.json"
 check "report.json exists" test -s "$JSON"
-CALLED=$(pharmcat_called "$JSON")
-echo "genes with a named diplotype: ${CALLED//$'\n'/ }"
-check_ge "genes called in report.json" "$(grep -c . <<< "$CALLED" || true)" 1
+check_pharmcat_called "genes called in report.json" "$JSON"
 check "HTML report exists" nonempty "${SAMPLE}/vcf/${SAMPLE}.report.html"
 
 finish

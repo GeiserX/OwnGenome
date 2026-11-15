@@ -6,14 +6,14 @@
 # high-coverage archaic genomes, the Altai and Vindija 33.19 Neanderthals and
 # the Altai Denisovan, and calls the stretches you share with one of them.
 # It needs the archaic data setup.sh --archaic builds (reference/archaic/):
-#   1. bin/archaic_report.py genotypes writes IBDmix's genotype file of each
+#   1. og archaic genotypes writes IBDmix's genotype file of each
 #      chromosome: the archaic genotypes, yours from the VCF, and 100
 #      stand-ins carrying the 1000 Genomes allele count of ARCHAIC_POP at each
 #      site (IBDmix takes the modern frequency from the modern columns, and
 #      one genome alone gives it none; docs/43-archaic.md says why this is
 #      the same score);
 #   2. IBDmix scores your column against each archaic genome (LOD 4);
-#   3. bin/archaic_report.py report keeps the segments of 50 kb or more,
+#   3. og archaic report keeps the segments of 50 kb or more,
 #      merges the two Neanderthals, and writes the share, the segments and
 #      the ten longest with their protein-coding genes.
 #
@@ -61,7 +61,7 @@ W=$(cpath "$WORK")
 
 echo "[1/3] Writing IBDmix's genotype files (your VCF, the archaic genomes, the stand-ins)..."
 run_in --cpus 1 --memory 4g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/archaic_report.py genotypes --table-dir "$D" --vcf "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" \
+  /pgp-bin/og archaic genotypes --table-dir "$D" --vcf "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" \
     --pop "$POP" --out-dir "${W}/gt"
 
 # One IBDmix run per chromosome and archaic genome, THREADS at a time, with the
@@ -101,7 +101,7 @@ else
   echo "  No GENCODE gene file (${GENES}): the segments are listed without their genes (setup.sh installs it)."
 fi
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/archaic_report.py report --sample "$SAMPLE" --ibdmix-dir "${W}/ibdmix" \
+  /pgp-bin/og archaic report --sample "$SAMPLE" --ibdmix-dir "${W}/ibdmix" \
     --spans "${W}/gt/spans.tsv" --pop "$POP" ${GARG[@]+"${GARG[@]}"} --out-dir "$(cpath "$OUT")"
 for f in "${OUT}/${SAMPLE}_archaic.tsv" "${OUT}/${SAMPLE}_archaic_segments.tsv"; do
   [ -s "$f" ] || { echo "ERROR: step 43 wrote no ${f}" >&2; exit 1; }

@@ -14,8 +14,7 @@
 #                                              names) and check that every *_IMAGE of
 #                                              versions.env has a row (no docker)
 #   scripts/ci/image-smoke.sh --self-test      prove --check fails on a bad table, and that a
-#                                              host check never imports a module the image
-#                                              planted in its row directory
+#                                              host check fails on a false JSON filter
 #
 # --full also runs the rows marked `full`: they need data too big for every
 # pull request (the monthly run and a run started by hand pass it).
@@ -142,17 +141,108 @@ self_test() {
   t "an unknown input fails" "unknown input 'genome'" "$A" $'B_IMAGE\t-\tgenome\ttrue\ttrue'
   t "also= on an unset variable fails" "also=B_DATA is not set" "$A" $'B_IMAGE\talso=B_DATA\t-\ttrue\ttrue'
   t "a row with four columns fails" "3 tabs, want 4" "$A" $'B_IMAGE\t-\t-\ttrue'
-  # A row's checks run in its row directory, which the image wrote. A json.py
-  # or csv.py the image planted there must not be imported by a host-side
-  # check (python3 -I keeps the working directory off sys.path).
-  mkdir "${tmp}/row"
-  for m in json csv; do printf 'raise SystemExit("planted %s.py was imported")\n' "$m" > "${tmp}/row/${m}.py"; done
-  printf '{"genes": {"CYP2C19": {"sourceDiplotypes": [{"allele1": {"name": "*1"}, "allele2": {"name": "*2"}}]}}}\n' > "${tmp}/row/r.json"
-  printf 'a,b\n1,2\n' > "${tmp}/row/t.csv"
-  out=$(cd "${tmp}/row" && CHECK_FAILS=0 && py "json loads" "import json; print(json.dumps(1))" \
-          && pharmcat_called r.json 2>/dev/null && csv_cell t.csv a=1 b && echo "fails=${CHECK_FAILS}")
-  if [ "$out" = $'[PASS] json loads (1)\n1\n2\nfails=0' ]; then echo "[PASS] a module the image planted in the row directory is not imported"
-  else echo "[FAIL] a module the image planted in the row directory is not imported: ${out//$'\n'/ | }"; fails=$((fails + 1)); fi
+  printf '{"value": 1}\n' > "${tmp}/r.json"
+  out=$(CHECK_FAILS=0; jqcheck "true filter" "${tmp}/r.json" '.value == 1'; jqcheck "false filter" "${tmp}/r.json" '.value == 2'; echo "fails=$CHECK_FAILS")
+  if grep -q '^\[PASS\] true filter' <<< "$out" && grep -q '^\[FAIL\] false filter' <<< "$out" && grep -q '^fails=1$' <<< "$out"; then
+    echo "[PASS] jqcheck rejects a false filter"
+  else echo "[FAIL] jqcheck rejects a false filter: $out"; fails=$((fails + 1)); fi
+  # Read the production filters, so a weakened assertion makes this test red.
+  local counts catalog genotype copies depth
+  counts=$(awk -F '\t' '$1 == "FASTP_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  catalog=$(awk -F '\t' '$1 == "EXPANSIONHUNTER_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  genotype=$(awk -F '\t' '$1 == "EXPANSIONHUNTER_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 4)
+  copies=$(awk -F '\t' '$1 == "PARAPHASE_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  depth=$(awk -F '\t' '$1 == "PYTHON_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
+  json_case() {
+    local label=$1 filter=$2 json=$3 want=$4
+    printf '%s\n' "$json" > "${tmp}/control.json"
+    out=$(CHECK_FAILS=0; jqcheck "$label" "${tmp}/control.json" "$filter"; echo "fails=$CHECK_FAILS")
+    if grep -qx "fails=$want" <<< "$out"; then echo "[PASS] $label"
+    else echo "[FAIL] $label: $out"; fails=$((fails + 1)); fi
+  }
+  json_case "numeric counts" "$counts" '{"summary":{"before_filtering":{"total_reads":100},"after_filtering":{"total_reads":90}}}' 0
+  json_case "one JSON document" "$counts" $'{"summary":{"before_filtering":{"total_reads":100},"after_filtering":{"total_reads":0}}}\n{"summary":{"before_filtering":{"total_reads":100},"after_filtering":{"total_reads":90}}}' 1
+  json_case "array catalog" "$catalog" "[$(printf '0,%.0s' {1..19})0]" 0
+  json_case "string genotype" "$genotype" '{"LocusResults":{"SMOKE1":{"Variants":{"SMOKE1":{"Genotype":"12/12"}}}}}' 0
+  json_case "numeric copy numbers" "$copies" '{"smn1":{"region_specific_info":{"smn1_cn":2,"smn2_cn":1,"smn_del78_cn":1}}}' 0
+  json_case "numeric depth" "$depth" '{"HG002_cyrius":{"Median_depth":20}}' 0
+  json_case "numeric string depth" "$depth" '{"HG002_cyrius":{"Median_depth":"20"}}' 0
+  local bad
+  for bad in '"broken"' null '[]' '{}' true false; do
+    json_case "output count rejects $bad" "$counts" "{\"summary\":{\"before_filtering\":{\"total_reads\":100},\"after_filtering\":{\"total_reads\":$bad}}}" 1
+    json_case "input count rejects $bad" "$counts" "{\"summary\":{\"before_filtering\":{\"total_reads\":$bad},\"after_filtering\":{\"total_reads\":90}}}" 1
+    json_case "catalog rejects $bad" "$catalog" "$bad" 1
+    json_case "copy numbers reject $bad" "$copies" "{\"smn1\":{\"region_specific_info\":{\"smn1_cn\":2,\"smn2_cn\":$bad,\"smn_del78_cn\":1}}}" 1
+    json_case "depth rejects $bad" "$depth" "{\"HG002_cyrius\":{\"Median_depth\":$bad}}" 1
+  done
+  for bad in 1 null '[]' '{}' true false '""'; do
+    json_case "genotype rejects $bad" "$genotype" "{\"LocusResults\":{\"SMOKE1\":{\"Variants\":{\"SMOKE1\":{\"Genotype\":$bad}}}}}" 1
+  done
+  for filter in "$counts" "$catalog" "$genotype" "$copies" "$depth"; do
+    json_case "missing keys fail" "$filter" '{}' 1
+  done
+  json_case "numeric catalog fails" "$catalog" '20' 1
+  json_case "long string catalog fails" "$catalog" '"aaaaaaaaaaaaaaaaaaaaaaaaaaaa"' 1
+  json_case "no JSON document fails" "$counts" '' 1
+  mkdir -p "${tmp}/repo/bin" "${tmp}/repo/scripts"
+  cat > "${tmp}/repo/bin/og" <<'SH'
+#!/usr/bin/env bash
+[ -f "$(dirname "$0")/../ready" ] || exit 127
+case "$1 $2 ${3:-}" in
+  'dev pharmcat diplotypes') printf '1\n' ;;
+  'dev smoke csv-cell') printf '0.9\n' ;;
+  *) printf '%s\n' "$*" ;;
+esac
+SH
+  cat > "${tmp}/repo/scripts/setup.sh" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = --og ] || exit 2
+printf 'Building og ...\n'
+printf 'builder diagnostic\n' >&2
+printf 'built\n' >> "$(dirname "$0")/../ready"
+SH
+  chmod +x "${tmp}/repo/bin/og"
+  # shellcheck disable=SC2016  # variables belong to the isolated test shell
+  out=$(env -u OG REPO="${tmp}/repo" bash -c "$(declare -f smoke_og)"'
+    rc=0
+    "$REPO/bin/og" dev smoke mini-ref >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 127 ] || exit 1
+    smoke_og dev smoke mini-ref || exit 1
+    smoke_og dev smoke csv-cell || exit 1
+    [ "$(wc -l < "$REPO/ready")" -eq 1 ] || exit 1
+    OG="$REPO/bin/absent"
+    rc=0
+    smoke_og version >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 127 ] || exit 1
+  '); rc=$?
+  if [ "$rc" -eq 0 ]; then echo "[PASS] missing default og is built once; explicit OG failure is retained"
+  else echo "[FAIL] og fixture preparation: $out"; fails=$((fails + 1)); fi
+  # A value helper can trigger setup inside command substitution. Use the
+  # real assertions with a noisy builder and no default binary built yet.
+  rm -f "${tmp}/repo/ready"
+  # shellcheck disable=SC2016  # variables belong to the isolated test shell
+  out=$(env -u OG REPO="${tmp}/repo" bash -c "$(declare -f smoke_og pharmcat_called check_pharmcat csv_cell num at_least between pass fail)"'
+    rc=0
+    "$REPO/bin/og" --version >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 127 ] || exit 1
+    count=$(pharmcat_called report.json 2> "$REPO/build.log") || exit 1
+    [ "$count" = 1 ] || { printf "unexpected count: %s\n" "$count"; exit 1; }
+    grep -qx "Building og ..." "$REPO/build.log" || exit 1
+    grep -qx "builder diagnostic" "$REPO/build.log" || exit 1
+    rm -f "$REPO/ready"
+    CHECK_FAILS=0
+    check_pharmcat "first-use PharmCAT count" report.json 2> "$REPO/build.log"
+    [ "$CHECK_FAILS" -eq 0 ] || exit 1
+    [ "$(wc -l < "$REPO/ready")" -eq 1 ] || exit 1
+    rm -f "$REPO/ready"
+    value=$(csv_cell summary.csv Type=SNP,Filter=PASS METRIC.Recall 2> "$REPO/build.log") || exit 1
+    [ "$value" = 0.9 ] || { printf "unexpected CSV value: %s\n" "$value"; exit 1; }
+    between "first-use CSV recall" "$value" 0.85 0.95
+    [ "$CHECK_FAILS" -eq 0 ] || exit 1
+    [ "$(wc -l < "$REPO/ready")" -eq 1 ] || exit 1
+  '); rc=$?
+  if [ "$rc" -eq 0 ]; then echo "[PASS] first-use PharmCAT and CSV values exclude setup output"
+  else echo "[FAIL] first-use value capture: $out"; fails=$((fails + 1)); fi
   rm -rf "$tmp"
   if [ "$fails" -gt 0 ]; then echo "self-test: ${fails} case(s) failed" >&2; return 1; fi
   echo "self-test: all cases passed"
@@ -303,20 +393,7 @@ need() {
 need_ref() {
   fx_get fixture_ref.fa.gz fixture_ref.fa.gz.fai fixture_ref.fa.gz.gzi || return 1
   hsam faidx /fx/fixture_ref.fa.gz chr20:10000001-10500000 > "${IN}/slice.fa.tmp" || return 1
-  python3 -I - "${IN}/slice.fa.tmp" "${IN}/orig.fa" "${IN}/mini.fa" "$PLANT_POS" "$PLANT_LEN" <<'PY' || return 1
-import random, sys
-src, orig, mini, pos, n = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
-seq = "".join(l.strip() for l in open(src) if not l.startswith(">")).upper()
-assert len(seq) == 500000, len(seq)
-def write(path, s):
-    with open(path, "w") as f:
-        f.write(">chr20\n")
-        for i in range(0, len(s), 60):
-            f.write(s[i:i + 60] + "\n")
-write(orig, seq)
-random.seed(20)
-write(mini, seq[:pos] + "".join(random.choice("ACGT") for _ in range(n)) + seq[pos:])
-PY
+  smoke_og dev smoke mini-ref "${IN}/slice.fa.tmp" "${IN}/orig.fa" "${IN}/mini.fa" "$PLANT_POS" "$PLANT_LEN" || return 1
   rm -f "${IN}/slice.fa.tmp"
   hsam faidx /in/orig.fa && hsam faidx /in/mini.fa && hsam dict -o /in/mini.dict /in/mini.fa || return 1
   [ "$(cut -f2 "${IN}/mini.fa.fai")" = "$MINI_LEN" ]
@@ -368,21 +445,7 @@ need_longreads() {
   need ref && need truth || return 1
   hbcf consensus -H 1 -f /in/orig.fa /in/truth.vcf.gz > "${IN}/hap1.fa" &&
     hbcf consensus -H 2 -f /in/orig.fa /in/truth.vcf.gz > "${IN}/hap2.fa" || return 1
-  python3 -I - "${IN}/hap1.fa" "${IN}/hap2.fa" "${IN}/long.fq.gz" <<'PY'
-import gzip, sys
-comp = str.maketrans("ACGTN", "TGCAN")
-with gzip.open(sys.argv[3], "wt") as out:
-    k = 0
-    for h, path in enumerate(sys.argv[1:3], 1):
-        seq = "".join(l.strip() for l in open(path) if not l.startswith(">")).upper()
-        for start in range(0, len(seq) - 10000 + 1, 1000):
-            r = seq[start:start + 10000]
-            if k % 2:
-                r = r.translate(comp)[::-1]
-            out.write(f"@hap{h}_{start}\n{r}\n+\n{'?' * len(r)}\n")
-            k += 1
-print(k, "reads")
-PY
+  smoke_og dev smoke long-reads "${IN}/hap1.fa" "${IN}/hap2.fa" "${IN}/long.fq.gz"
 }
 need_longbam() {
   need longreads || return 1
@@ -463,16 +526,7 @@ need_qc() {
 # in the mini reference, away from the slice ends and the planted bases.
 need_ehcatalog() {
   need ref || return 1
-  python3 -I - "${IN}/mini.fa" "${IN}/eh_catalog.json" "$SMALL_END" <<'PY'
-import json, re, sys
-seq = "".join(l.strip() for l in open(sys.argv[1]) if not l.startswith(">"))
-end = int(sys.argv[3])
-m = next(m for m in re.finditer(r"(?:CA){12,}", seq) if 20000 < m.start() and m.end() < end - 20000)
-json.dump([{"LocusId": "SMOKE1", "LocusStructure": "(CA)*",
-            "ReferenceRegion": f"chr20:{m.start()}-{m.end()}", "VariantType": "Repeat"}],
-          open(sys.argv[2], "w"), indent=1)
-print("repeat", m.start(), m.end(), len(m.group()) // 2, "units")
-PY
+  smoke_og dev smoke eh-catalog "${IN}/mini.fa" "${IN}/eh_catalog.json" "$SMALL_END"
 }
 # A chain that maps chr20 onto itself over the region of the small variants.
 need_chain() {
@@ -511,9 +565,34 @@ same() { if [ -n "$2" ] && [ "$2" = "$3" ]; then pass "$1 (${2})"; else fail "$1
 has() { if [ -n "$2" ] && grep -Eq -- "$3" <<< "$2"; then pass "$1 (${2})"; else fail "$1 (got '${2}', want /${3}/)"; fi; }
 contains() { if [ -f "$2" ] && grep -Eq -- "$3" "$2"; then pass "$1"; else fail "$1 (/${3}/ not in ${2})"; fi; }
 nonempty() { if [ -s "$2" ]; then pass "$1"; else fail "$1 (${2} is missing or empty)"; fi; }
-py() {
+jqcheck() {
   local out
-  if out=$(python3 -I -c "$2" 2>&1); then pass "$1${out:+ (${out//$'\n'/ })}"; else fail "$1: $(tail -n 3 <<< "$out" | tr '\n' ' ')"; fi
+  if out=$(jq -se "if length == 1 then .[0] | ($3) else error(\"expected exactly one JSON document\") end" "$2" 2>&1); then pass "$1${out:+ (${out//$'\n'/ })}"
+  else fail "$1: ${out//$'\n'/ }"; fi
+}
+# Build only when a fixture or assertion first needs og. A caller-supplied
+# OG is authoritative; its failure must not silently select another binary.
+smoke_og() {
+  local rc=0
+  "${OG:-${REPO}/bin/og}" --version >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 127 ] && [ -z "${OG:-}" ]; then
+    # This can run inside a captured value helper: only og's result is stdout.
+    bash "${REPO}/scripts/setup.sh" --og >&2 || return 1
+  elif [ "$rc" -ne 0 ]; then
+    return "$rc"
+  fi
+  "${OG:-${REPO}/bin/og}" "$@"
+}
+smoke_check() {
+  local out
+  if out=$(smoke_og dev smoke check "$2" "$3" 2>&1); then pass "$1 ($out)"
+  else fail "$1: $out"; fi
+}
+check_pharmcat() {
+  local out rc=0
+  out=$(pharmcat_called "$2") || rc=$?
+  if [ "$rc" -ne 0 ]; then fail "$1 (not assessed: unreadable PharmCAT report)"
+  else at_least "$1" "$out" 1; fi
 }
 bcf() { hbcf "$@" 2>/dev/null; }
 # vcf_records FILE: data records (paths relative to the row directory or under /in).
@@ -559,42 +638,11 @@ tsv_count() {
 }
 # csv_cell FILE KEY=VALUE[,KEY=VALUE] COLUMN: COLUMN of the first row that matches.
 csv_cell() {
-  python3 -I - "$1" "$2" "$3" <<'PY'
-import csv, sys
-want = dict(kv.split("=", 1) for kv in sys.argv[2].split(","))
-for row in csv.DictReader(open(sys.argv[1])):
-    if all(row.get(k) == v for k, v in want.items()):
-        print(row[sys.argv[3]])
-        break
-PY
+  smoke_og dev smoke csv-cell "$1" "$2" "$3"
 }
 # pharmcat_called report.json: genes with a named diplotype.
 pharmcat_called() {
-  python3 -I - "$1" <<'PY'
-import json, sys
-try:
-    data = json.load(open(sys.argv[1]))
-except Exception as e:
-    print(f"unreadable report: {e}", file=sys.stderr)
-    sys.exit(0)
-def called(g):
-    for d in (g.get("sourceDiplotypes") or g.get("recommendationDiplotypes") or []):
-        names = [(d.get(a) or {}).get("name", "") for a in ("allele1", "allele2")]
-        if any(n and n.lower() not in ("unknown", "none", "?") for n in names):
-            return True
-    return False
-out = set()
-for key, val in (data.get("genes") or {}).items():
-    if not isinstance(val, dict):
-        continue
-    if "sourceDiplotypes" in val or "recommendationDiplotypes" in val:
-        if called(val):
-            out.add(key)
-    else:
-        out.update(n for n, g in val.items() if isinstance(g, dict) and called(g))
-print(" ".join(sorted(out)), file=sys.stderr)
-print(len(out))
-PY
+  smoke_og dev pharmcat diplotypes "$1" --called
 }
 
 # ------------------------------------------------------------- the runner

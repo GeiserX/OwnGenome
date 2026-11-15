@@ -1,6 +1,7 @@
 # Made-up reads for the compound-het phase (step 31)
 
-`make_fixture.py OUT_DIR [--swap]` writes the fixture: read pairs of 100 bp
+`bin/og dev fixture comphet OUT_DIR [--swap]` writes the fixture
+(`rust/crates/og-dev/src/fixture.rs`): read pairs of 100 bp
 from 500 bp fragments on a made-up 80 kb contig (`chrP`, seeded random
 sequence), a VEP VCF of six heterozygous variants for step 31, and the three
 pairs as slivar names them. The reads and variants are made up; they describe

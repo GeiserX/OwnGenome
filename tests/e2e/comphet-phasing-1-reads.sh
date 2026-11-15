@@ -2,7 +2,7 @@
 # Step 31 phases each compound-het pair from the reads, and the Nextflow
 # COMPHET_PHASE process writes the same pairs table.
 #
-# The fixture is tests/fixtures/comphet/make_fixture.py: read pairs on a
+# The fixture is og dev fixture comphet (tests/fixtures/comphet): read pairs on a
 # made-up contig (chrP) and a VEP VCF with three pairs, all rare and HIGH:
 #   GENEC  SNV at 1000 and a deletion at 1003 on one copy   -> cis, 22 reads
 #   GENET  SNVs at 5000 and 5400, one on each copy; only a read and its mate
@@ -28,7 +28,7 @@ cell() {
 make_sample() {
   local s=$1 f="${CASE_TMP}/fixture-$1"
   rm -rf "$f" "${GENOME_DIR:?}/${s}"
-  python3 "${REPO}/tests/fixtures/comphet/make_fixture.py" "$f" "${@:2}"
+  "${REPO}/bin/og" dev fixture comphet "$f" "${@:2}"
   mkdir -p "${GENOME_DIR}/${s}/vep" "${GENOME_DIR}/${s}/aligned"
   sed "s/CHPH/${s}/g" "${f}/vep.vcf" > "${GENOME_DIR}/${s}/vep/${s}_vep.vcf"
   sed "s/CHPH/${s}/g" "${f}/reads.sam" > "${GENOME_DIR}/${s}/aligned/${s}.sam"
