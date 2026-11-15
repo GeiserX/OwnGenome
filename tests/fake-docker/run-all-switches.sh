@@ -7,7 +7,8 @@
 #   plain run      the host's CPU count and RAM as --max_cpus and --max_memory;
 #                  BENCHMARK=true with one caller VCF is skipped, not failed
 #   benchmark      BENCHMARK=true counts the shared sites whose genotypes
-#                  agree (0/1 against 1/1 is a mismatch), and compares Clair3
+#                  agree (0/1 against 1/1, or no genotype on either side, is
+#                  not a match), and compares Clair3
 #                  and any other vcf_*/ VCF run-all.sh counts
 #   ALIGN_DIR run  its BAM replaces the plain run's samplesheet row
 #   plain again    back to aligned/: a kept row names this call's BAM only
@@ -103,9 +104,11 @@ if compgen -G "${G}/.pgp-link-probe*" > /dev/null || compgen -G "${G}/sample1/.p
 fi
 
 # BENCHMARK=true compares genotypes, and finds every caller run-all.sh counts.
-# The isec hook writes two callers that agree on both alleles but not on one
-# genotype (0/1 against 1/1): the Jaccard index is 1, the genotypes agree on
-# one site of two.
+# The isec hook writes two callers that agree on the alleles of three sites:
+# one genotype mismatch (0/1 against 1/1), one match (1|0 against 0/1) and one
+# site with no genotype on either side (./. against a sites-only record), which
+# is not a match. The Jaccard index is 1, the genotypes agree on one site of
+# three.
 cat > "${CASE_WORK}/isec-hook" <<'HOOK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -117,8 +120,8 @@ mkdir -p "$d"
 h=$'##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS'
 printf '%s\n' "$h" > "${d}/0000.vcf"
 printf '%s\n' "$h" > "${d}/0001.vcf"
-printf '%s\nchr1\t10\t.\tA\tG\t50\tPASS\t.\tGT:DP\t0/1:30\nchr1\t20\t.\tC\tT\t50\tPASS\t.\tGT\t1|0\n' "$h" > "${d}/0002.vcf"
-printf '%s\nchr1\t10\t.\tA\tG\t50\tPASS\t.\tDP:GT\t30:1/1\nchr1\t20\t.\tC\tT\t50\tPASS\t.\tGT\t0/1\n' "$h" > "${d}/0003.vcf"
+printf '%s\nchr1\t10\t.\tA\tG\t50\tPASS\t.\tGT:DP\t0/1:30\nchr1\t20\t.\tC\tT\t50\tPASS\t.\tGT\t1|0\nchr1\t30\t.\tG\tA\t50\tPASS\t.\tGT\t./.\n' "$h" > "${d}/0002.vcf"
+printf '%s\nchr1\t10\t.\tA\tG\t50\tPASS\t.\tDP:GT\t30:1/1\nchr1\t20\t.\tC\tT\t50\tPASS\t.\tGT\t0/1\nchr1\t30\t.\tG\tA\t50\tPASS\t.\t.\t.\n' "$h" > "${d}/0003.vcf"
 HOOK
 chmod +x "${CASE_WORK}/isec-hook"
 callers() {
@@ -133,13 +136,13 @@ callers() {
 cmp_row() { sed -n 2p "${G}/sample1/benchmark/comparison.tsv" 2>/dev/null; }
 callers vcf vcf_gatk
 run_expect 0 bench-gt env TOOLS=pharmcat BENCHMARK=true FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/isec-hook" "${SCRIPTS}/run-all.sh" sample1 male
-[ "$(cmp_row)" = $'DeepVariant\tGATK\t2\t0\t0\t1.0000\t1\t0.5000' ] \
-  || fail "0/1 against 1/1 is not a genotype mismatch in comparison.tsv: $(cmp_row)"
+[ "$(cmp_row)" = $'DeepVariant\tGATK\t3\t0\t0\t1.0000\t1\t0.3333' ] \
+  || fail "0/1 against 1/1, or no genotype on both sides, counted as a genotype match in comparison.tsv: $(cmp_row)"
 # Clair3 (step 03e) and a VCF in a directory of one's own: run-all.sh queues
 # the step for them, and the step compares them instead of exiting 1.
 callers vcf vcf_clair3 vcf_mine
 run_expect 0 bench-clair3 env TOOLS=pharmcat BENCHMARK=true FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/isec-hook" "${SCRIPTS}/run-all.sh" sample1 male
-grep -qE $'^DeepVariant\tClair3\t2\t0\t0\t1.0000\t1\t0.5000$' "${G}/sample1/benchmark/comparison.tsv" \
+grep -qE $'^DeepVariant\tClair3\t3\t0\t0\t1.0000\t1\t0.3333$' "${G}/sample1/benchmark/comparison.tsv" \
   || fail "DeepVariant and Clair3 were not compared: $(cat "${G}/sample1/benchmark/comparison.tsv" 2>/dev/null)"
 grep -qE $'^Clair3\tmine\t' "${G}/sample1/benchmark/comparison.tsv" || fail "vcf_mine/ was not compared"
 # A hand-placed vcf_strelka2/<sample>.vcf.gz also queues the step, so it is

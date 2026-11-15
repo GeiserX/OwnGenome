@@ -442,7 +442,8 @@ else
   # same order, one line per site, so the two files are read side by side and
   # never held in memory. Genotypes are compared unphased and with their
   # alleles sorted (1|0 = 0/1), and a homozygous call equals its haploid form
-  # (1/1 = 1), so only a different set of alleles counts as a mismatch.
+  # (1/1 = 1), so only a different set of alleles counts as a mismatch. A site
+  # with no genotype on both sides (./., ., or no GT field) is not a match.
   gt_agree() {
     paste <(site_gt "$1") <(site_gt "$2") | awk -F'\t' '
       function canon(g,   a, n, i, j, t, same, out) {
@@ -457,7 +458,7 @@ else
         return out
       }
       { if ($1 != $6 || $2 != $7 || $3 != $8 || $4 != $9) bad++
-        else if (canon($5) == canon($10)) agree++ }
+        else if (canon($5) == canon($10) && canon($5) != ".") agree++ }
       END { if (bad) print "WARNING: " bad " shared records of the two callers did not line up; counted as genotype mismatches" > "/dev/stderr"
         print agree + 0 }'
   }

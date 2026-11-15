@@ -70,7 +70,7 @@ Compare two or more caller VCFs against each other to measure agreement. This te
 | `GT_Concordant` | shared sites where the two genotypes are also the same |
 | `GT_Concordance` | `GT_Concordant / Shared`; `N/A` when nothing is shared |
 
-A site one caller calls 0/1 and the other 1/1 counts in `Shared` and in the Jaccard index, but not in `GT_Concordant`. Genotypes are compared without phase and with their alleles sorted (`1|0` equals `0/1`), and a homozygous call equals its haploid form (`1/1` equals `1`), so a caller that writes male chrX haploid still agrees with one that writes it diploid.
+A site one caller calls 0/1 and the other 1/1 counts in `Shared` and in the Jaccard index, but not in `GT_Concordant`. Genotypes are compared without phase and with their alleles sorted (`1|0` equals `0/1`), and a homozygous call equals its haploid form (`1/1` equals `1`), so a caller that writes male chrX haploid still agrees with one that writes it diploid. A site with no genotype on either side (`./.`, `.`, or a record with no `GT` field) does not count as concordant.
 
 The commands below do the allele part by hand:
 
