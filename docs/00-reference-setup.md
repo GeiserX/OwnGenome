@@ -7,7 +7,8 @@ One-time downloads required before running the pipeline. Each heading below give
 A plain `./scripts/setup.sh "$GENOME_DIR"` installs both VEP caches and the PCGR/CPSR bundle after AnnotSV.
 These clinical downloads add about 57 GB to transfer and 65 GB on disk. Allow 1 to 3 hours.
 Setup checks each install separately: VEP 116 needs 56 GB peak, the bundle 15 GB, and VEP 115 needs 52 GB.
-Each check adds a 5 GB margin and counts a partial download already on disk. An item that does not fit is skipped with a warning. Setup continues.
+Each check adds a 5 GB margin and credits the disk space occupied by a partial download.
+Stale extraction files are removed before the check. Retained PCGR archives are checked against the pinned SHA-256 before reuse. An item that does not fit is skipped with a warning. Setup continues.
 
 ```bash
 ./scripts/setup.sh --no-clinical-data "$GENOME_DIR"  # skip all three clinical downloads

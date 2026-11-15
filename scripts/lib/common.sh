@@ -663,12 +663,15 @@ install_vep_cache() {
 # clinical_disk_ok DIR PEAK_GB LABEL [ARCHIVE]: GB as du counts them
 # (2^30 bytes), plus a 5 GB margin.
 # Use the destination's filesystem, creating the directory when it is new.
-# The bytes of ARCHIVE, or of its interrupted ARCHIVE.part, are already part
-# of the peak, so a resumed download needs only the rest.
+# Allocated blocks of ARCHIVE, or of its interrupted ARCHIVE.part, are already
+# part of the peak, so a resumed download needs only the rest.
 # An unreadable df is a failed preflight, never permission to fill the disk.
 clinical_disk_ok() {
   local dir=$1 peak=$2 label=$3 archive=${4:-} free have=0 f
   mkdir -p "$dir" || return 1
+  # A stopped extraction is disposable. Reclaim it before measuring space,
+  # otherwise its staging tree can prevent every retry from reaching cleanup.
+  rm -rf "${dir}"/.extract.* || return 1
   free=$(df -Pk "$dir" 2>/dev/null | awk 'NR == 2 {print $4}') || free=""
   case "$free" in
     ''|*[!0-9]*) echo "[WARN] Cannot read free space for ${label}; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; return 1 ;;
@@ -676,7 +679,10 @@ clinical_disk_ok() {
   if [ -n "$archive" ]; then
     for f in "$archive" "${archive}.part"; do
       if [ -f "$f" ]; then
-        have=$(( $(wc -c < "$f") / 1024 ))
+        have=$(du -k "$f" 2>/dev/null | awk 'NR == 1 {print $1}') || have=""
+        case "$have" in
+          ''|*[!0-9]*) echo "[WARN] Cannot read allocated space for ${label}; retry the clinical install."; return 1 ;;
+        esac
         break
       fi
     done
@@ -704,7 +710,12 @@ install_pcgr_bundle() {
   url="https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
   tarball="${dir}/${url##*/}"
   mkdir -p "$dir" || return 1
-  # fetch publishes the archive only after its check, so one already here is whole.
+  # A retained archive may have changed since fetch checked it. Verify it
+  # against the pin again before reuse, replacing a mismatch through fetch.
+  if [ -f "$tarball" ] && ! _fetch_check sha256 "$PCGR_DATA_SHA256" "$tarball" "$tarball" "${url##*/}"; then
+    echo "[WARN] Removing PCGR/CPSR archive that failed its checksum; downloading it again."
+    rm -f "$tarball" || return 1
+  fi
   [ -f "$tarball" ] || fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
   rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX") || return 1
