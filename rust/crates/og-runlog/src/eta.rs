@@ -45,6 +45,40 @@ pub const LAST_RUNS: usize = 5;
 /// The threads the catalogue's hours were measured on.
 pub const DOCS_THREADS: f64 = 16.0;
 
+/// Planted mistakes for the red controls of the live site's tests
+/// (`og-live/tests/ops*.rs`, docs/rust.md). With the cargo feature
+/// `fault-inject` a test turns one on by name for its own thread, and the
+/// check it plants against must then fail. Without the feature [`on`] is
+/// always false and the release binary holds none of them.
+///
+/// [`on`]: fault::on
+pub mod fault {
+    #[cfg(feature = "fault-inject")]
+    thread_local! {
+        static ON: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+    }
+
+    /// Whether the planted mistake `name` is on in this thread.
+    #[inline]
+    pub fn on(name: &str) -> bool {
+        #[cfg(feature = "fault-inject")]
+        {
+            ON.with(|c| c.get() == Some(name))
+        }
+        #[cfg(not(feature = "fault-inject"))]
+        {
+            let _ = name;
+            false
+        }
+    }
+
+    /// Turns the planted mistake `name` on for this thread.
+    #[cfg(feature = "fault-inject")]
+    pub fn plant(name: &'static str) {
+        ON.with(|c| c.set(Some(name)));
+    }
+}
+
 /// One trace row, as the history and the headroom read it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraceTask {
@@ -94,6 +128,9 @@ pub fn read_trace(path: &Path, tz: &TimeZone) -> Vec<TraceTask> {
         let real = duration(r.get("realtime"));
         let complete = time(r.get("complete"), tz).or_else(|| submit.zip(dur).map(|(s, d)| s + d));
         let start = time(r.get("start"), tz).or_else(|| {
+            if fault::on("eta-old-start-is-submit") {
+                return submit;
+            }
             complete.and_then(|c| {
                 if let Some(x) = real {
                     Some(c - x)
@@ -107,6 +144,11 @@ pub fn read_trace(path: &Path, tz: &TimeZone) -> Vec<TraceTask> {
         } else {
             r.get("cpus").and_then(|v| pycompat::num::parse_int(v).ok())
         };
+        let forced = fault::on("eta-forced-ok");
+        let mut memory_bytes = memory(r.get("memory"));
+        if fault::on("eta-memory-decimal-gb") && r.get("memory").is_some_and(|m| m.ends_with("GB")) {
+            memory_bytes = memory_bytes.map(|m| m / 1024 / 1024 / 1024 * 1_000_000_000);
+        }
         out.push(TraceTask {
             trace_file: file.clone(),
             hash: r.get("hash").unwrap_or("").replace('/', ""),
@@ -118,10 +160,18 @@ pub fn read_trace(path: &Path, tz: &TimeZone) -> Vec<TraceTask> {
             .to_owned(),
             process: proc,
             tag,
-            status: pycompat::text::upper(r.get("status").unwrap_or("")),
-            exit: pycompat::text::strip(r.get("exit").unwrap_or(""), None).to_owned(),
+            status: if forced {
+                "COMPLETED".to_owned()
+            } else {
+                pycompat::text::upper(r.get("status").unwrap_or(""))
+            },
+            exit: if forced {
+                "0".to_owned()
+            } else {
+                pycompat::text::strip(r.get("exit").unwrap_or(""), None).to_owned()
+            },
             cpus,
-            memory_bytes: memory(r.get("memory")),
+            memory_bytes,
             peak_rss_bytes: memory(r.get("peak_rss")),
             realtime_s: real,
             start,
@@ -144,6 +194,9 @@ fn run_level(t: &TraceTask) -> bool {
 /// True when every task of a step's group ended well: per process and tag,
 /// the attempt that ended last is COMPLETED with exit 0.
 fn finished(ts: &[&TraceTask]) -> bool {
+    if fault::on("eta-finished-always") {
+        return true;
+    }
     type Last<'t> = (f64, usize, &'t TraceTask);
     let mut last: IndexMap<(Option<&str>, Option<&str>), Last<'_>> = IndexMap::new();
     for (i, t) in ts.iter().enumerate() {
@@ -223,12 +276,20 @@ pub fn history_rows(
             if !seen.insert((t.hash.as_str(), t.attempt.as_str())) {
                 continue;
             }
+            let mut file = t.trace_file.clone();
+            let mut process = t.process.clone().unwrap_or_default();
+            if fault::on("eta-history-path-in-name") {
+                file.insert_str(0, "pipeline_info/");
+            }
+            if fault::on("eta-history-sample-in-process") {
+                process.push_str("_demo1");
+            }
             rows.push([
-                t.trace_file.clone(),
+                file,
                 t.hash.clone(),
                 t.attempt.clone(),
                 key.0.to_owned(),
-                t.process.clone().unwrap_or_default(),
+                process,
                 if key.1.is_empty() { "yes" } else { "no" }.to_owned(),
                 fmt_opt_i(t.cpus),
                 fmt_opt_i(t.memory_bytes),
@@ -253,6 +314,12 @@ pub fn box_name(name: Option<&str>) -> String {
         .map(str::to_owned)
         .or(env.filter(|e| !e.is_empty()))
         .unwrap_or_else(crate::host::short_hostname);
+    if fault::on("eta-box-same") {
+        return "same".to_owned();
+    }
+    if fault::on("eta-box-raw") {
+        return raw;
+    }
     let clean: String = raw
         .chars()
         .map(|c| {
@@ -341,7 +408,7 @@ pub fn ingest(
         let name = basename(&tp);
         let others: IndexSet<(String, String)> = by_file
             .iter()
-            .filter(|(f, _)| **f != name)
+            .filter(|(f, _)| **f != name && !fault::on("eta-ingest-adds-again"))
             .flat_map(|(_, rs)| rs.iter().map(|r| (r[1].clone(), r[2].clone())))
             .collect();
         let new: Vec<HistoryRow> = history_rows(&read_trace(&tp, tz), &proc_step, box_cpus)
@@ -384,7 +451,15 @@ fn num(v: &str) -> Option<f64> {
 /// The catalogue's hours were measured on 16 threads: fewer cores scale
 /// them up, more never scale them below that.
 pub fn docs_scale(cores: usize) -> f64 {
-    let x = DOCS_THREADS / cores.max(1) as f64;
+    let threads = if fault::on("eta-docs-threads-8") {
+        8.0
+    } else {
+        DOCS_THREADS
+    };
+    let x = threads / cores.max(1) as f64;
+    if fault::on("eta-docs-scale-down") {
+        return x;
+    }
     if x > 1.0 { x } else { 1.0 }
 }
 
@@ -457,7 +532,14 @@ pub fn step_ranges(
             .map(|m| m.values().filter(|v| !v.spans.is_empty()).collect())
             .unwrap_or_default();
         mine.sort_by(|a, b| a.end.cmp(&b.end));
-        let mine = &mine[mine.len().saturating_sub(LAST_RUNS)..];
+        let last = if fault::on("eta-last-runs-2") {
+            2
+        } else if fault::on("eta-last-runs-6") {
+            6
+        } else {
+            LAST_RUNS
+        };
+        let mine = &mine[mine.len().saturating_sub(last)..];
         let range = if !mine.is_empty() {
             let spans: Vec<f64> = mine
                 .iter()
@@ -478,9 +560,16 @@ pub fn step_ranges(
                         .unwrap_or(1),
                 ),
             }
-        } else if let (Some(h), "measured") = (s.hours, s.hours_from.as_str()) {
+        } else if let (Some(h), "measured") = (
+            s.hours,
+            if fault::on("eta-estimates-count") {
+                "measured"
+            } else {
+                s.hours_from.as_str()
+            },
+        ) {
             let h = h * 3600.0;
-            let lo = num(&s.hours_low);
+            let lo = num(&s.hours_low).filter(|_| !fault::on("eta-no-hours-low"));
             Range {
                 low_s: Some(lo.map_or(h, |l| l * 3600.0)),
                 high_s: Some(h * scale),
@@ -497,9 +586,10 @@ pub fn step_ranges(
                 cpus: Some(1),
             }
         } else {
+            let zero = fault::on("eta-none-is-zero").then_some(0.0);
             Range {
-                low_s: None,
-                high_s: None,
+                low_s: zero,
+                high_s: zero,
                 n: 0,
                 source: Source::None,
                 label: "not measured".to_owned(),
@@ -535,7 +625,7 @@ pub fn remaining(
     for s in &state.steps {
         steps.insert(s.step.step.as_str(), s);
     }
-    let left: Vec<&str> = if state.run == RunState::Finished {
+    let left: Vec<&str> = if state.run == RunState::Finished && !fault::on("eta-finished-ignored") {
         Vec::new()
     } else {
         steps
@@ -561,13 +651,18 @@ pub fn remaining(
         if steps[k].state == StepState::Running
             && let Some(st) = started
         {
-            let gone = if now - st > 0.0 { now - st } else { 0.0 };
+            let mut gone = if now - st > 0.0 { now - st } else { 0.0 };
+            if fault::on("eta-gone-ignored") {
+                gone = 0.0;
+            }
             let l = lo - gone;
             lo = if l > 0.0 { l } else { 0.0 };
             hi -= gone;
             if hi < 0.0 {
                 hi = 0.0;
-                late.push(k.to_owned());
+                if !fault::on("eta-late-not-flagged") {
+                    late.push(k.to_owned());
+                }
             }
         }
         dur.insert(k, (lo, hi));
@@ -589,6 +684,9 @@ pub fn remaining(
         path.push(k);
         let mut up = Vec::new();
         for u in &steps[k].step.upstream {
+            if fault::on("eta-chain-ignores-upstream") {
+                break;
+            }
             if let Some((u, _)) = dur.get_key_value(u.as_str())
                 && let Some((&u, _)) = steps.get_key_value(*u)
             {
@@ -621,6 +719,11 @@ pub fn remaining(
                 .unwrap_or(1);
             acc + dur[k].1 * cpus as f64
         });
+    let work = if fault::on("eta-no-cpu-work") {
+        0.0
+    } else {
+        work
+    };
     let cores_f = cores.max(1) as f64;
     let bound = work / cores_f;
     let high = if late.is_empty() {
@@ -656,13 +759,18 @@ pub fn remaining(
 /// finished_utc`. Their partial spans are not history yet.
 pub fn live_traces(outdir: &Path) -> IndexSet<String> {
     let mut out = IndexSet::new();
+    if fault::on("eta-live-traces-none") {
+        return out;
+    }
     let pattern = outdir.join("*").join("logs").join("run_status.tsv");
     for p in pycompat::mtime::glob(pattern.as_os_str(), false) {
         let sample_dir = p.parent().and_then(Path::parent).unwrap_or(Path::new("/"));
         let meta = match crate::files::read_run_status(&p) {
             Ok(st) => st.unwrap_or_default().meta,
             Err(_) => {
-                out.extend(trace_files(sample_dir, None).iter().map(|t| basename(t)));
+                if !fault::on("eta-unreadable-status-ignored") {
+                    out.extend(trace_files(sample_dir, None).iter().map(|t| basename(t)));
+                }
                 continue;
             }
         };

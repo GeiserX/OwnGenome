@@ -6,7 +6,15 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Planted mistakes for the red controls of tests/ops*.rs (og_runlog::eta::fault).
+fault-inject = ["og-runlog/fault-inject"]
+
 [dependencies]
+pycompat.workspace = true
+og-nf.workspace = true
+og-runlog.workspace = true
+jiff.workspace = true
 
 [lints]
 workspace = true
