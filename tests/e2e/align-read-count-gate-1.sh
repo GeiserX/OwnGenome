@@ -50,7 +50,7 @@ TT="${T}/qc/${T}_read_count.tsv"
 check_eq "input_reads equals fastp's total_reads" "$(val input_reads "$TT")" "$FASTP"
 check_eq "the BAM's primary records equal fastp's total_reads" "$(primary "${T}/aligned/${T}_sorted.bam")" "$FASTP"
 check_eq "read_count_check" "$(val read_count_check "$TT")" ok
-"${OG:-${REPO}/bin/og}" summary collect --sample "$T" --sample-dir "${G}/${T}" --out "${CASE_TMP}/T.json" >/dev/null
+"${REPO}/bin/og" summary collect --sample "$T" --sample-dir "${G}/${T}" --assets "${REPO}/assets" --out "${CASE_TMP}/T.json" >/dev/null
 python3 "${REPO}/bin/render_report.py" --summary "${CASE_TMP}/T.json" -o "${CASE_TMP}/T.txt" >/dev/null
 check "the text report shows both counts" \
   has "^  Alignment: ${FASTP} reads in, ${FASTP} primary records in the BAM\$" "$(cat "${CASE_TMP}/T.txt" 2>/dev/null)"
@@ -141,7 +141,7 @@ check_eq "the published table: primary_records" "$(val primary_records "${R}/qc/
 check_eq "the published table: missing_reads" "$(val missing_reads "${R}/qc/${X}_read_count.tsv")" 8000
 check_eq "the published BAM's primary records" "$(primary "${R}/aligned/${X}_sorted.bam")" 24000
 check "the table is not published beside the BAM" test ! -e "${G}/${R}/aligned/${X}_read_count.tsv"
-"${OG:-${REPO}/bin/og}" summary collect --sample "$X" --sample-dir "${G}/${R}" --out "${CASE_TMP}/X.json" >/dev/null
+"${REPO}/bin/og" summary collect --sample "$X" --sample-dir "${G}/${R}" --assets "${REPO}/assets" --out "${CASE_TMP}/X.json" >/dev/null
 python3 "${REPO}/bin/render_report.py" --summary "${CASE_TMP}/X.json" -o "${CASE_TMP}/X.txt" >/dev/null
 python3 "${REPO}/bin/render_report.py" --summary "${CASE_TMP}/X.json" -o "${CASE_TMP}/X.html" >/dev/null
 check "the text report flags the missing reads" \

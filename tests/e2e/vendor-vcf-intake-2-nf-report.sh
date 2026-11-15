@@ -35,8 +35,8 @@ check "the report exists" test -s "$HTML"
 for h in 'Runs of Homozygosity' 'Mitochondrial Haplogroup' 'CPIC Drug Recommendations'; do
   check_eq "report card '${h}' is filled" "$(html_stat "$HTML" "$h" Status)" Complete
 done
-"${OG:-${REPO}/bin/og}" summary collect --sample "$SAMPLE" --sample-dir "$R" --out "${CASE_TMP}/summary.json" \
-  > "${CASE_TMP}/summary.log" 2>&1 || cat "${CASE_TMP}/summary.log"
+"${REPO}/bin/og" summary collect --sample "$SAMPLE" --sample-dir "$R" --assets "${REPO}/assets" \
+  --out "${CASE_TMP}/summary.json" > "${CASE_TMP}/summary.log" 2>&1 || cat "${CASE_TMP}/summary.log"
 want() { python3 -c "import json, sys; d = json.load(open('${CASE_TMP}/summary.json'))['sections']$1; print($2)" 2>/dev/null; }
 ROH_TOTAL=$(want "['roh']['data']['total_mb']" "'%.1f MB' % d")
 ROH_LARGEST=$(want "['roh']['data']['largest_mb']" "'%.1f MB' % d")
