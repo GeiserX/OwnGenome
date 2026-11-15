@@ -32,8 +32,10 @@
 #      E2E_MIN_FREE_GB  fail before the first case when less is free under
 #                E2E_WORK (default 0)
 #      E2E_BASE_OUT  after the cases, pack every file they wrote or changed
-#                (under E2E_WORK and the checkout) into this .tar.zst, and
-#                write "E2E_WORK CHECKOUT" to E2E_BASE_OUT.from
+#                (under E2E_WORK and the checkout) into this .tar.zst, except
+#                the Cyrius install (tools/cyrius-*) and the pypgx bundle,
+#                which may not be redistributed, check the archive holds
+#                neither, and write "E2E_WORK CHECKOUT" to E2E_BASE_OUT.from
 #      E2E_BASE_IN   after the layout, unpack this .tar.zst from E2E_BASE_OUT,
 #                which must have been packed with the same E2E_WORK and
 #                checkout, then delete it to give the cases its disk space
@@ -68,7 +70,8 @@
 #      the <package-key>-*.sh cases later packages add), or those of E2E_CASES,
 #      and keeps going after a failure, so one run lists every broken step;
 #   5. prints a case / result / time / log table to the job summary;
-#   6. with E2E_BASE_OUT, packs what the cases wrote; exits 1 if any case failed.
+#   6. with E2E_BASE_OUT, packs what the cases wrote, except the Cyrius install
+#      and the pypgx bundle, and checks the archive; exits 1 if any case failed.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -1006,7 +1009,10 @@ docker system df
 
 # --- 6. Pack for the shards ---------------------------------------------------
 # Everything the cases wrote or changed, at its absolute path, owners, modes
-# and times (ns) kept, the base cases' logs too (a case may read one).
+# and times (ns) kept, the base cases' logs too (a case may read one), except
+# the Cyrius install (tools/cyrius-*) and the pypgx bundle, which may not be
+# redistributed. Their results stay in; a shard case that needs the bundle
+# clones it. check_base_archive fails the job if the archive holds either.
 # Directories go in as entries alone (--no-recursion), so the reference and
 # the fixture copies of the layout stay out.
 if [ -n "${E2E_BASE_OUT:-}" ] && [ "$failed" -eq 0 ]; then
