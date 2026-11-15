@@ -1,5 +1,5 @@
 //! `og pgx mito-merge --jar pharmcat.jar --mito chrM.vcf.gz [--outside F]
-//! [--depth F] [--min-af 0.95] [--min-depth 20] --out F`: an MT-RNR1
+//! [--depth F] [--min-af 0.05] [--min-depth 20] --out F`: an MT-RNR1
 //! outside call for PharmCAT from the chrM calls (replaces
 //! `bin/pgx_mito_merge.py`).
 //!
@@ -8,8 +8,14 @@
 //! MT-RNR1 alleles are read from the jar. A chrM record with a named
 //! single-base allele's position, REF and ALT counts when its FILTER is
 //! PASS (or `.`) and its allele fraction (FORMAT AF, else INFO AF) is
-//! `--min-af` or more. One such allele is the call; of several, the one
-//! PharmCAT ranks highest (increased risk, then uncertain, then normal).
+//! `--min-af` or more, the detection floor. Heteroplasmic counts: CPIC sets
+//! no heteroplasmy level at which aminoglycosides are safe and follows the
+//! homoplasmic guidance for any detected MT-RNR1 variant, so the floor is
+//! the pipeline's heteroplasmy floor (AF 0.05), not homoplasmy (AF 0.95),
+//! and the log line gives the level. A named allele below the floor is not
+//! called and not called absent either. One such allele is the call; of
+//! several, the one PharmCAT ranks highest (increased risk, then uncertain,
+//! then normal).
 //! With none, `Reference`, but only when `--depth` shows `--min-depth`
 //! reads or more at every named position. Anything that makes the answer
 //! unsure holds every call back, with a line saying why ([`Held`]).
@@ -25,7 +31,10 @@
 //!   nothing is passed;
 //! - with `--min-depth 0` and a named position missing from the depth
 //!   file, the Python crashed (`KeyError`) on the lowest depth; that
-//!   position now counts as depth 0, as the threshold check already did.
+//!   position now counts as depth 0, as the threshold check already did;
+//! - a named allele at AF 0.05 to 0.95 was held back as heteroplasmic, so
+//!   MT-RNR1 stayed No Result and the aminoglycoside warning was lost; it
+//!   is now the call (issue #411).
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -37,7 +46,10 @@ use pycompat::json::Value;
 
 use crate::args::{self, ArgError, Spec};
 
-pub const MIN_AF: f64 = 0.95;
+/// The detection floor: a named allele at this AF or more is the call.
+pub const MIN_AF: f64 = 0.05;
+/// The AF the log calls homoplasmic; below it, heteroplasmic.
+pub const HOMOPLASMIC: f64 = 0.95;
 pub const MIN_DEPTH: i128 = 20;
 const GENE: &str = "MT-RNR1";
 const RESOURCE: &str = "org/pharmgkb/pharmcat/phenotype/MT_RNR1.json";
@@ -314,7 +326,8 @@ impl Rank {
 /// Why no call is passed although a record was read.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Held {
-    /// A homoplasmic PASS change at a named position PharmCAT does not name.
+    /// A PASS change at or above the floor, at a named position PharmCAT
+    /// does not name.
     UnnamedChange {
         shown: String,
     },
@@ -327,7 +340,8 @@ pub enum Held {
         name: String,
         shown: String,
     },
-    Heteroplasmic {
+    /// A named allele below the detection floor: not called, not absent.
+    BelowFloor {
         name: String,
         shown: String,
         min_af: f64,
@@ -355,13 +369,13 @@ impl fmt::Display for Held {
                 filter,
             } => write!(f, "{name} ({shown}) is filtered ({filter})"),
             Held::NoAf { name, shown } => write!(f, "{name} ({shown}) has no allele fraction"),
-            Held::Heteroplasmic {
+            Held::BelowFloor {
                 name,
                 shown,
                 min_af,
             } => write!(
                 f,
-                "{name} ({shown}) is heteroplasmic (AF below {}); PharmCAT takes one homoplasmic allele",
+                "{name} ({shown}) is below the detection floor (AF below {}): not called, and not absent either",
                 general(*min_af, 6)
             ),
             Held::Near { shown, pos, mnv } => {
@@ -379,7 +393,7 @@ impl fmt::Display for Held {
     }
 }
 
-/// A homoplasmic named allele.
+/// A named allele at or above the floor.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 struct Called {
     rank: Rank,
@@ -387,6 +401,17 @@ struct Called {
     name: String,
     function: String,
     shown: String,
+    af: f64,
+}
+
+impl Called {
+    fn plasmy(&self) -> &'static str {
+        if self.af >= HOMOPLASMIC {
+            "homoplasmic"
+        } else {
+            "heteroplasmic"
+        }
+    }
 }
 
 /// The MT-RNR1 call, if any, and the lines that say why.
@@ -429,17 +454,18 @@ pub fn decide(
                     filter: r.filter.clone(),
                 }),
                 None => held.push(Held::NoAf { name, shown }),
-                Some(af) if af < min_af => held.push(Held::Heteroplasmic {
+                Some(af) if af < min_af => held.push(Held::BelowFloor {
                     name,
                     shown,
                     min_af,
                 }),
-                Some(_) => calls.push(Called {
+                Some(af) => calls.push(Called {
                     rank: Rank::of(function),
                     pos: r.pos,
                     name,
                     function: function.clone(),
                     shown,
+                    af,
                 }),
             }
             continue;
@@ -482,14 +508,26 @@ pub fn decide(
     if !calls.is_empty() {
         calls.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
         let best = &calls[0];
-        lines.push(format!(
-            "{GENE} {} passed to PharmCAT as an outside call (homoplasmic, {}; {})",
-            best.name, best.shown, best.function
-        ));
+        let mut line = format!(
+            "{GENE} {} passed to PharmCAT as an outside call ({}, {}; {})",
+            best.name,
+            best.plasmy(),
+            best.shown,
+            best.function
+        );
+        if best.af < HOMOPLASMIC {
+            line.push_str(
+                "; CPIC sets no heteroplasmy level at which aminoglycosides are safe, so the homoplasmic guidance applies",
+            );
+        }
+        lines.push(line);
         for c in &calls[1..] {
             lines.push(format!(
-                "also homoplasmic, not passed (PharmCAT takes one {GENE} allele): {} ({}; {})",
-                c.name, c.shown, c.function
+                "also {}, not passed (PharmCAT takes one {GENE} allele): {} ({}; {})",
+                c.plasmy(),
+                c.name,
+                c.shown,
+                c.function
             ));
         }
         return (Some(best.name.clone()), lines);
@@ -668,15 +706,15 @@ mod tests {
     }
 
     #[test]
-    fn red_first_an_af_at_the_floor_is_homoplasmic() {
+    fn red_first_an_af_at_the_floor_is_called() {
         let a = alleles();
-        let (call, lines) = decide(&[rec(1555, "A", "G", Some(0.95))], 1, &a, 0.95, None, 20);
+        let (call, lines) = decide(&[rec(1555, "A", "G", Some(0.05))], 1, &a, MIN_AF, None, 20);
         assert_eq!(call.as_deref(), Some("m.1555A>G"), "{lines:?}");
-        let (call, lines) = decide(&[rec(1555, "A", "G", Some(0.949))], 1, &a, 0.95, None, 20);
+        let (call, lines) = decide(&[rec(1555, "A", "G", Some(0.049))], 1, &a, MIN_AF, None, 20);
         assert_eq!(call, None);
         assert_eq!(
             lines[0],
-            "held back: m.1555A>G (chrM:1555 A>G AF 0.949) is heteroplasmic (AF below 0.95); PharmCAT takes one homoplasmic allele"
+            "held back: m.1555A>G (chrM:1555 A>G AF 0.049) is below the detection floor (AF below 0.05): not called, and not absent either"
         );
     }
 
@@ -687,7 +725,7 @@ mod tests {
             rec(827, "A", "G", Some(1.0)),
             rec(1555, "A", "G", Some(0.99)),
         ];
-        let (call, lines) = decide(&r, 2, &a, 0.95, None, 20);
+        let (call, lines) = decide(&r, 2, &a, MIN_AF, None, 20);
         assert_eq!(call.as_deref(), Some("m.1555A>G"));
         assert!(lines[1].starts_with("also homoplasmic, not passed"));
     }
@@ -695,13 +733,13 @@ mod tests {
     #[test]
     fn an_mnv_is_named_as_one() {
         let a = alleles();
-        let (call, lines) = decide(&[rec(1554, "TA", "CG", Some(1.0))], 1, &a, 0.95, None, 20);
+        let (call, lines) = decide(&[rec(1554, "TA", "CG", Some(1.0))], 1, &a, MIN_AF, None, 20);
         assert_eq!(call, None);
         assert_eq!(
             lines[0],
             "held back: a multi-base change (chrM:1554 TA>CG AF 1.000) at or near m.1555, which this script does not map to PharmCAT's names"
         );
-        let (_, lines) = decide(&[rec(955, "AC", "A", Some(1.0))], 1, &a, 0.95, None, 20);
+        let (_, lines) = decide(&[rec(955, "AC", "A", Some(1.0))], 1, &a, MIN_AF, None, 20);
         assert!(lines[0].starts_with(
             "held back: an insertion or deletion (chrM:955 AC>A AF 1.000) at or near m.961"
         ));
@@ -715,13 +753,13 @@ mod tests {
             .into_iter()
             .map(|p| (p, 30))
             .collect();
-        let (call, _) = decide(&r, 1, &a, 0.95, Some(&d), 20);
+        let (call, _) = decide(&r, 1, &a, MIN_AF, Some(&d), 20);
         assert_eq!(call.as_deref(), Some("Reference"));
         d.insert(961, 19);
-        let (call, lines) = decide(&r, 1, &a, 0.95, Some(&d), 20);
+        let (call, lines) = decide(&r, 1, &a, MIN_AF, Some(&d), 20);
         assert_eq!(call, None);
         assert!(lines[0].contains("1 of its 4 positions have depth below 20 (chrM:961 depth 19)"));
-        let (call, _) = decide(&r, 1, &a, 0.95, None, 20);
+        let (call, _) = decide(&r, 1, &a, MIN_AF, None, 20);
         assert_eq!(call, None);
     }
 

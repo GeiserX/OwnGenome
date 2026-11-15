@@ -65,7 +65,10 @@ fn red_first_m1494_from_0_06_to_0_94_is_the_call() {
     for af in [0.05, 0.06, 0.10, 0.50, 0.94, 0.949] {
         let (call, lines) = run(&[rec(1494, "C", "T", af)]);
         assert_eq!(call.as_deref(), Some("m.1494C>T"), "AF {af}: {lines:?}");
-        assert!(lines[0].contains("(heteroplasmic, chrM:1494 C>T AF "), "{lines:?}");
+        assert!(
+            lines[0].contains("(heteroplasmic, chrM:1494 C>T AF "),
+            "{lines:?}"
+        );
     }
 }
 
