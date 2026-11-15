@@ -46,7 +46,7 @@ pub const LAST_RUNS: usize = 5;
 pub const DOCS_THREADS: f64 = 16.0;
 
 /// Planted mistakes for the red controls of the live site's tests
-/// (`og-live/tests/ops*.rs`, docs/rust.md). With the cargo feature
+/// (`og-live/tests/ops*.rs`). With the cargo feature
 /// `fault-inject` a test turns one on by name for its own thread, and the
 /// check it plants against must then fail. Without the feature [`on`] is
 /// always false and the release binary holds none of them.

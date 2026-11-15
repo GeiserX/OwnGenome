@@ -348,6 +348,26 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "ERROR: the planted unreadable-report success passed"; exit 1; }
           grep -E 'unreadable_pharmcat_is_unassessed.*FAILED' "$log"
           echo "Control: the unreadable-report success was reported as a failed test."
+      # The live ops card (og-live/tests/ops*.rs): each planted_* test turns
+      # on one planted mistake of the fault-inject feature, so every one of
+      # them must fail, and none may pass.
+      - name: Control (every planted mistake of the live ops card must fail its check)
+        run: |
+          set -o pipefail
+          tests=(--test ops --test ops_eta --test ops_headroom)
+          log="${RUNNER_TEMP}/ops-planted.log"
+          want=$(cargo test --locked -p og-live --features fault-inject "${tests[@]}" planted_ -- --list 2>/dev/null \
+            | grep -cE '^planted::planted_[a-z0-9_]+: test$' || true)
+          [ "$want" -gt 0 ] || { echo "ERROR: no planted test was found"; exit 1; }
+          rc=0
+          cargo test --locked --no-fail-fast -p og-live --features fault-inject "${tests[@]}" planted_ > "$log" 2>&1 || rc=$?
+          grep -E '^test planted::planted_' "$log" || true
+          [ "$rc" -ne 0 ] || { cat "$log"; echo "ERROR: every planted mistake passed"; exit 1; }
+          passed=$(grep -E '^test planted::planted_[a-z0-9_]+ \.\.\. ok$' "$log" || true)
+          [ -z "$passed" ] || { echo "ERROR: a check passed with its planted mistake on:"; echo "$passed"; exit 1; }
+          failed=$(grep -cE '^test planted::planted_[a-z0-9_]+ \.\.\. FAILED$' "$log" || true)
+          [ "$failed" -eq "$want" ] || { cat "$log"; echo "ERROR: ${want} planted tests, ${failed} failed"; exit 1; }
+          echo "Control: all ${failed} planted mistakes of the live ops card failed their checks."
       - name: Traits controls (diplotype order, REF check and missing phase rows)
         env:
           CARGO_BUILD_JOBS: 3
