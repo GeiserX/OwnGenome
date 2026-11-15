@@ -178,7 +178,7 @@ executor {
 }
 ```
 
-Check the shares on a running task: `docker ps` lists the pipeline's containers as `nxf-...`, and `docker inspect -f '{{.HostConfig.CpuShares}}' <container>` should print 256. On Docker Desktop and colima, `run-all.sh` already writes an `executor` block with the VM's CPUs and memory to `<sample>/nextflow/executor.config`. It passes that file before your options, so each setting in an `executor` block of your own (`-c`) wins over it; a setting you leave out keeps the VM's figure. Keep `THREADS` and `--max_memory` no larger than your block, or Nextflow refuses the tasks that ask for more.
+Check the shares on a running task: `docker ps` lists the pipeline's containers as `nxf-...`, and `docker inspect -f '{{.HostConfig.CpuShares}}' <container>` should print 256. On Docker Desktop and colima, `run-all.sh` already writes an `executor` block with the VM's CPUs and memory to `<sample>/nextflow/executor.config`. It passes that file before your options, so each setting in an `executor` block of your own (`-c`) wins over it; a setting you leave out keeps the VM's figure. Keep `THREADS` and `--max_memory` no larger than your block, or Nextflow refuses the tasks that ask for more. Without a block of your own, `run-all.sh` never books less than a cap you set: `THREADS`, `--max_cpus` or a whole-GB `--max_memory` above the VM's figure raises the CPUs or memory in `executor.config` to it, and a `--max_memory` in other units leaves the memory to Nextflow. The run then starts as it would without the VM's figure, and a task the VM cannot hold can be killed (exit 137); `run-all.sh` prints a `[Resources]` line that says so.
 
 ### Runtime per step
 

@@ -26,7 +26,8 @@
 #      2 CPUs, and a stand-in nextflow that records its arguments): run-all.sh
 #      passes the engine's as --max_memory and --max_cpus, and the pool
 #      Nextflow fills, executor.config, is the engine's. Each limit also
-#      alone; THREADS, an explicit --max_memory and a -c of the user's win.
+#      alone; THREADS, an explicit --max_memory and a -c of the user's win,
+#      and a cap the user sets above the engine's raises the pool to it.
 # Each comparison gets a negative control in the same run: a planted missing
 # file must be reported, the first run's trace must show the alignment and
 # calling tasks, and the first run's trace (tasks COMPLETED) must fail the
@@ -158,6 +159,21 @@ check "fewer CPUs alone: --max_cpus ${ECPU}" has " --max_cpus ${ECPU} " "$CPUO"
 check_eq "fewer CPUs alone: the user's --max_memory 6.GB is the only one" "$(grep -o ' --max_memory [^ ]*' <<<"$CPUO" | tr -d '\n')" " --max_memory 6.GB"
 check "fewer CPUs alone: the pool has ${ECPU} CPUs" has "^ *cpus += ${ECPU}\$" "$CPUC"
 check "fewer CPUs alone: the pool keeps the host's ${HM} GB" has "^ *memory = '${HM} GB'\$" "$CPUC"
+# A cap the user sets above the engine's figure: the pool must hold it, or Nextflow refuses each task
+# that asks for more than the pool (Process requirement exceeds available CPUs/memory) and the run stops.
+AT=$((ECPU + 2)) AM=$((EG + 4))
+ET=$AT engine_run above "$((EG * 1073741824)) ${ECPU}" --max_memory "${AM}.GB"
+ABO=$(cat "${ENG}/above.args" 2>/dev/null) ABC=$(cat "${ENG}/above.config" 2>/dev/null)
+echo "+ nextflow${ABO}"
+check "THREADS=${AT} above the engine's ${ECPU} CPUs: --max_cpus ${AT}" has " --max_cpus ${AT} " "$ABO"
+check "THREADS=${AT} above the engine's ${ECPU} CPUs: the pool has ${AT} CPUs, not ${ECPU}" has "^ *cpus += ${AT}\$" "$ABC"
+check "--max_memory ${AM}.GB above the engine's ${EG} GB: the pool has ${AM} GB" has "^ *memory = '${AM} GB'\$" "$ABC"
+check "run-all.sh says the pool follows the user's cap" has '^\[Resources\] the pool follows a task cap you set' \
+  "$(cat "${E2E_WORK}/logs/${CASE_NAME}.engine-above.log" 2>/dev/null)"
+engine_run above2 "$((EG * 1073741824)) ${ECPU}" "--max_cpus=$((AT + 1))" --max_memory 9000.MB
+AB2=$(cat "${ENG}/above2.config" 2>/dev/null)
+check "--max_cpus=$((AT + 1)) above the engine's: the pool has $((AT + 1)) CPUs" has "^ *cpus += $((AT + 1))\$" "$AB2"
+check "--max_memory 9000.MB, not whole GB: the pool leaves memory to Nextflow" lacks "memory" "$AB2"
 rm -rf "$G3" "$ENG"
 
 # --- first run, with fs.protected_hardlinks 0 ---------------------------------------------

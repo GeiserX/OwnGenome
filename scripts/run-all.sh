@@ -298,8 +298,19 @@ if [[ "$EC" =~ ^[0-9]+$ ]] && [ "$EC" -ge 1 ] && [ "$EC" -lt "$NC" ]; then NC=$E
 [[ " $* " == *" --max_cpus"* ]] || NF+=(--max_cpus "${USER_THREADS:-$NC}")
 [[ " $* " == *" --max_memory"* ]] || [ "${M:-0}" -lt 1 ] || NF+=(--max_memory "${M}.GB")
 if [ -n "$EX" ]; then
-  { printf 'executor {\n    cpus   = %s\n' "$NC"; [ "${M:-0}" -lt 1 ] || printf "    memory = '%s GB'\n" "$M"; printf '}\n'; } > "$EXC"
-  NF+=(-c "$EXC"); echo "[Resources] the container engine has less than this host: Nextflow books at most ${NC} CPUs and ${M} GB (${EXC})"
+  # The pool never goes below a cap the user set (THREADS, --max_cpus, --max_memory): Nextflow refuses a task that asks
+  # for more than the pool. A cap it cannot read (not whole CPUs, not whole GB) leaves that line out, as on the host.
+  XC=$NC XM=$M UC=${USER_THREADS:-} UM="" prev="" GB_RE='^([0-9]+)[[:space:]]*\.?[[:space:]]*[Gg][Bb]?$'
+  for a in "$@"; do
+    case "$prev" in --max_cpus) UC=$a ;; --max_memory) UM=$a ;; esac
+    case "$a" in --max_cpus=*) UC=${a#*=} ;; --max_memory=*) UM=${a#*=} ;; esac; prev=$a
+  done
+  if [ -n "$UC" ]; then if [[ "$UC" =~ ^[0-9]+$ ]]; then [ "$UC" -le "$XC" ] || XC=$UC; else XC=""; fi; fi
+  if [ -n "$UM" ]; then if [[ "$UM" =~ $GB_RE ]]; then [ "${BASH_REMATCH[1]}" -le "${XM:-0}" ] || XM=${BASH_REMATCH[1]}; else XM=""; fi; fi
+  { printf 'executor {\n'; [ -z "$XC" ] || printf '    cpus   = %s\n' "$XC"; [ "${XM:-0}" -lt 1 ] || printf "    memory = '%s GB'\n" "$XM"; printf '}\n'; } > "$EXC"
+  XCS="${XC} CPUs" XMS="${XM} GB"; [ -n "$XC" ] || XCS="the host's CPUs"; [ "${XM:-0}" -ge 1 ] || XMS="the host's RAM"
+  NF+=(-c "$EXC"); echo "[Resources] the container engine has less than this host: Nextflow books at most ${XCS} and ${XMS} (${EXC})"
+  [ "$XC" = "$NC" ] && [ "$XM" = "$M" ] || echo "[Resources] the pool follows a task cap you set above the engine's ${NC} CPUs and ${M} GB, or one not in whole CPUs or GB: a task can then be killed inside the engine (exit 137)"
 else rm -f "$EXC"; fi
 # Publish by hard link when it is sure to work: the BAM and every other output are then stored once, not twice.
 # Nextflow does not fall back to a copy when a link fails; the run stops. The tasks run as root (the docker profile)

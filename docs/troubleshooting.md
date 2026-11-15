@@ -982,7 +982,7 @@ docker stats --no-stream
 
 ### When to reduce `--cpus` or `--memory`
 
-With `run-all.sh` you do not edit the scripts' flags: `THREADS=N` caps every task's CPUs (`--max_cpus`), and `--max_memory 24.GB` after the sex caps every task's memory. They cap each task, not the run. Nextflow starts a task when its request fits in what is left of the machine's CPUs and RAM after the tasks it already started; it does not look at what other programs use. To bound the total, see [a shared host](hardware-requirements.md#a-shared-host).
+With `run-all.sh` you do not edit the scripts' flags: `THREADS=N` caps every task's CPUs (`--max_cpus`), and `--max_memory 24.GB` after the sex caps every task's memory. They cap each task, not the run. Nextflow starts a task when its request fits in what is left of the machine's CPUs and RAM (the container engine's when it has less) after the tasks it already started; it does not look at what other programs use. To bound the total, see [a shared host](hardware-requirements.md#a-shared-host).
 
 **Reduce `--cpus` when:**
 - Running multiple steps in parallel on a machine with limited cores
