@@ -287,6 +287,8 @@ def replay(root, held, drop_hook=None, og=OG):
         results = live_results.build(SAMPLE, live.summary(SAMPLE, d, live.base_state(run)),
                                      owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE}))
         results["generated_utc"] = checked
+        if live.gated(SAMPLE, d, live.base_state(run)):  # as the results plugin adds it
+            results["saved_attention"] = live.attention(d)[0]
         # The other people: one frame each, their state at the end, and their results.
         others = {}
         for name, _, _ in OTHERS:
@@ -297,6 +299,8 @@ def replay(root, held, drop_hook=None, og=OG):
             res = live_results.build(name, live.summary(name, od, live.base_state(r)),
                                      owngenome_live.Live.run_files(None, {"dir": od, "name": name}))
             res["generated_utc"] = checked
+            if live.gated(name, od, live.base_state(r)):
+                res["saved_attention"] = live.attention(od)[0]
             others[name] = {"frames": [{"t": checked, "state": st}], "results": res}
     finally:
         time.time, run_headroom._statvfs, run_headroom.physical_memory = real

@@ -8,11 +8,13 @@
 // stretch, the runs in view, how to move, and why a layer is not on the map.
 //
 // The veil. The document is the same for every reader: each row a closed result could reveal carries the id
-// of that result (veil). Whether it is closed is the page's question (person.js veil()): a closed row is not
-// drawn, has no hit target, no tooltip, no line in the margin and never reaches the address. The closed
-// results are counted in a dashed chip that names no gene and no place, with an Open button that asks once,
-// then opens the result through the page's own function, so the map and the card open together. A reload
-// closes them again: the open state lives in the page's memory only.
+// of that result (veil). Whether it is closed is the page's question (person.js mapVeil): a closed row is not
+// drawn, has no hit target, no tooltip, no line in the margin and never reaches the address. A child's report
+// never reaches this figure while one of its results to act on is unopened: the page's one gate (core.js) holds
+// the whole page. So on a page the gate has released, a result to act on is opened, with a chip that closes it
+// again through the page (which hands the page back to the gate), and the rows closed here are a gated result
+// (APOE, behind its warning) until its own chip opens it, and a row whose result is not among the page's results.
+// A reload closes them again: the open state lives in the page's memory only.
 //
 // No library and no build step: one canvas, the camera {ci, c, ls, k} (open chromosome, centre bp, natural
 // log of the span, 0 genome .. 1 open) eased toward its target each frame, one level() by bp per CSS pixel.
@@ -165,9 +167,7 @@
     add(head, kicker, add(el('div', { 'class': 'gm-titlerow' }), title, gauge, zoom), crumb, finder, chips);
     var stage = el('div', { 'class': 'gm-stage' });
     var canvas = el('canvas', { 'class': 'gm-canvas', tabindex: '0', role: 'img', 'aria-describedby': 'gm-narration' });
-    // hidden as hideTip() writes it (tip.hidden = true gives hidden=""), so the drawing is the same whether or not a
-    // refresh hid the tooltip before the document arrived.
-    var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: '' });
+    var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: 'hidden' });
     var toast = el('div', { 'class': 'gm-toast', role: 'status', hidden: 'hidden' });
     add(stage, canvas, tip, toast);
     // The marks drawn, as links: the keyboard and screen-reader path to each finding (Tab steps through them).

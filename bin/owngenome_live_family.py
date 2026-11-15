@@ -484,23 +484,71 @@ def member_summary(live, d):
     return got if isinstance(got, dict) else None
 
 
-def member_state(root, sample):
-    """The families that list the sample. A family whose pedigree cannot be read may be the one that
-    lists it as a child: with no readable family listing it, the answer is unknown, never "in no
-    family" ({"kind": "member", "families": [], "unknown": true}), and its pages keep results to act
-    on closed, as the home page does for a run no readable family lists."""
-    fams, unread = [], False
-    for name, d in family_dirs(root):
+_BUILT = {}
+
+
+def folder_stamp(d):
+    """What a read of the family folder depends on: each entry's name, mode, size, mtime and ctime (a chmod changes
+    the ctime alone). None when the folder cannot be listed."""
+    try:
+        names = sorted(os.listdir(d))
+    except OSError:
+        return None
+    out = []
+    for n in names:
         try:
-            order, _ = members_of(d)
+            st = os.stat(os.path.join(d, n))
+            out.append((n, st.st_mode, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+        except OSError:
+            out.append((n, None))
+    return tuple(out)
+
+
+def family_readable(name, d):
+    """Whether family.json's family part (family_page) builds from the folder's files as they are now, with its
+    pedigree read. Cached by folder_stamp, so a file that reads again counts at once, with no request needed."""
+    stamp = folder_stamp(d)
+    hit = _BUILT.get(d)
+    if stamp is not None and hit and hit[0] == stamp:
+        return hit[1]
+    try:
+        ok = stamp is not None and not family_page(name, d)["state"].get("error")
+    except Exception:  # any file of the folder that cannot be read
+        ok = False
+    _BUILT[d] = (stamp, ok)
+    return ok
+
+
+def families(root):
+    """Each family folder under root as /runs.json lists it: {"name", "dir", "kind", "members", "unreadable"}.
+    members is [] while the pedigree cannot be read; unreadable while family.json cannot be built from the folder."""
+    out = []
+    for n, d in family_dirs(root):
+        try:
+            order, members = members_of(d)
+            people = [{"sample": s, "sex": members[s]["sex"], "father": members[s]["father"],
+                       "mother": members[s]["mother"], "partner": members[s]["partner"],
+                       "sequenced": members[s]["sequenced"]} for s in order]
         except (OSError, ValueError):
-            unread = True
-            continue
-        if sample in order:
-            fams.append({"name": name, "url": "/runs/%s/" % name})
-    if fams:
-        return {"kind": "member", "families": fams}
-    return {"kind": "member", "families": [], "unknown": True} if unread else None
+            people = []
+        out.append({"name": n, "dir": d, "kind": "family", "members": people,
+                    "unreadable": not people or not family_readable(n, d)})
+    return out
+
+
+def member_state(root, sample):
+    """The families that list the sample, and child: whether its pages treat it as a child, by the one rule over
+    every family (bin/owngenome_live.py child_of). A family that cannot be read may be the one that lists it as a
+    child: with no readable family listing it, the answer is unknown, never "in no family" ({"kind": "member",
+    "families": [], "unknown": true}), and its pages keep results to act on closed, as the home page does."""
+    from owngenome_live import child_of
+    fams = families(root)
+    child = child_of(fams, sample)
+    mine = [{"name": f["name"], "url": "/runs/%s/" % f["name"]} for f in fams
+            if any(m["sample"] == sample for m in f["members"])]
+    if mine:
+        return {"kind": "member", "families": mine, "child": child}
+    return {"kind": "member", "families": [], "unknown": True} if child else None
 
 
 def register(app):
@@ -508,24 +556,7 @@ def register(app):
         return os.path.realpath(app.config.root)
 
     def runs(app_):
-        out = []
-        for n, d in family_dirs(root()):
-            try:
-                order, members = members_of(d)
-                people = [{"sample": s, "sex": members[s]["sex"], "father": members[s]["father"],
-                           "mother": members[s]["mother"], "partner": members[s]["partner"],
-                           "sequenced": members[s]["sequenced"]} for s in order]
-            except (OSError, ValueError):
-                people = []
-            # A family whose family.json could not be built has no readable members either: the server then decides
-            # who is a child as the page does when family.json fails (bin/owngenome_live.py child_of).
-            if n in unreadable:
-                people = []
-            out.append({"name": n, "dir": d, "kind": "family", "members": people})
-        return out
-
-    # Families whose last family.json failed: listed with no members until one is built again.
-    unreadable = set()
+        return families(root())
 
     def page_data(req, m):
         name = m.group(1)
@@ -536,11 +567,9 @@ def register(app):
         try:
             out = page_json(req, name, d)
         except Exception as e:  # an unreadable file is a fixed error, never a dropped connection
-            unreadable.add(name)
             print(f"owngenome_live: family.json of {name} not built: {type(e).__name__}", file=sys.stderr)
             app.log("family", name, "family.json", 500)
             return req.send_body(500, "text/plain; charset=utf-8", "family not readable\n")
-        unreadable.discard(name)
         app.log("family", name, "family.json", 200)
         return req.send_json(out)
 

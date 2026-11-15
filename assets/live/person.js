@@ -108,7 +108,11 @@
   function isChild() { var m = me(); return !!(m && (m.father || m.mother)); }
   // A page whose results to act on were opened on purpose (core.js releases a child's report, or a person whose
   // family roles are not known, only once each is opened): the map marks them opened, with a chip to close them.
-  function closedPage() { return isChild() || familyStatus === 'pending' || familyStatus === 'failed' || (familyStatus === 'known' && !me()); }
+  // The gate's own answer counts too: a child in any family, by the server's one rule, not only in the first.
+  function closedPage() {
+    return isChild() || familyStatus === 'pending' || familyStatus === 'failed' || (familyStatus === 'known' && !me()) ||
+      !!(U.gateChild && U.gateChild());
+  }
   function memberUrl(s) {
     var r = family && family.data.runs && family.data.runs[s];
     return r && r.url ? r.url : null;

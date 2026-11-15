@@ -44,6 +44,11 @@ def register(app):
             if summary:
                 files = live.run_files(run) if run["dir"] else set()
                 out = live_results.build(name, summary, files)
+                # For a child whose report the server keeps closed (family.json leaves its count out): the
+                # flagged-card count of summary.json, as family.json counts it otherwise. The family page shows it
+                # once every result to act on is opened there (assets/live/core.js released).
+                if live.gated(name, d, st):
+                    out["saved_attention"] = live.attention(d)[0]
             else:
                 out["note"] = "No step has finished yet: the results appear here as the steps end."
         except Exception as e:  # a reader bug must not take the page down

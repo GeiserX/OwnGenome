@@ -1204,16 +1204,18 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
 
 
 def veil(summary, found, chapters, lead_parts=()):
-    """The rows a child's page closes with a result to act on, by the result's id: each card's table rows
+    """Which rows outside a result's own card name a result to act on, by the result's id: each card's table rows
     (rows: card -> one id or None per row; the ClinVar card's by each hit's own position), each card's viewer
     links (viewer: card -> one per link), each card's lines (lines: card -> one per line; a known deep
     intronic site is printed whether hit or not), the marks of the report's charts (marks: chart -> {mark id:
     id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
     rank the gene) and the lead's segments that name one (lead: one per segment of LEAD_PARTS, the "act"
-    names left out: the page closes those itself), each card's facts (facts: card -> one per fact) and the items
-    of its drawing (widget: card -> one per CHIP call or copy-number dot). spans is closable() itself: the family
-    page (assets/live/family-page.js) reads which results are closed from it, and closes every place of the child
-    that could carry one while one is. Empty when nothing can be closed."""
+    names left out), each card's facts (facts: card -> one per fact) and the items of its drawing (widget: card
+    -> one per CHIP call or copy-number dot); spans is closable() itself. A child's page no longer closes these
+    rows one by one: its one gate (assets/live/core.js) holds the whole report while a result to act on is
+    unopened and reads the findings of level "act" for it. Of this field only marks is still read, by person.js,
+    for a chart mark on a page the gate released (the search index and the genome map carry their own tags); the
+    other subfields stay so that no field of results.json is removed. Empty when nothing can be closed."""
     spans = closable(found)
     if not spans:
         return {}

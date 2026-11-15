@@ -52,6 +52,7 @@
     var seq = (st.members || []).filter(function (m) { return m.sequenced; }).length;
     out.push([seq + ' genome' + (seq === 1 ? '' : 's') + ' of this family are read together here. ', false]);
     (st.couples || []).forEach(function (c) {
+      if (c.closed) { out.push([c.a + ' and ' + c.b + '’s carrier screen stays closed in chapter III. ', false]); return; }
       if (!c.screened) { out.push([c.a + ' and ' + c.b + ' are not screened as a couple yet. ', false]); return; }
       if (c.shared) { out.push([c.a + ' and ' + c.b + ' both carry a change in ' + c.shared + ' gene' + (c.shared > 1 ? 's' : '') + ': chapter III gives the chance per pregnancy for each. ', true]); }
       else { out.push([c.a + ' and ' + c.b + ' share no carrier gene in what the screen sees; ', false], ['it does not see everything. ', false]); }
@@ -138,11 +139,11 @@
       var state = !m.sequenced ? 'Not sequenced' : !r ? 'No run on this server'
         : r.state === 'finished' ? 'Finished' : (r.state === 'stopped' ? 'Stopped, ' : '') + r.done + ' of ' + r.planned + ' steps';
       add(txt, el('span', { 'class': 'person-state' }, state));
-      // A child whose report is closed gets the fixed closed line. A count left out (null: the server keeps the
-      // child's report closed and the page has not opened it) is never read as nothing flagged.
+      // A person whose report is closed gets the fixed closed line, never a count; every other member the line
+      // it has without the gate.
       if (r && r.gated) {
         add(txt, el('span', { 'class': 'person-look' }, 'Report closed'));
-      } else if (r && r.results && r.attention !== null && r.attention !== undefined) {
+      } else if (r && r.results) {
         add(txt, el('span', { 'class': 'person-look' + (r.attention ? ' attn' : '') },
           r.attention ? r.attention + ' worth a look' : 'Nothing flagged; see the caveats'));
       }
@@ -173,6 +174,12 @@
     if (!f.state.couples.length) { add(s, el('p', { 'class': 'dim' }, 'The pedigree names no partners.')); }
     f.state.couples.forEach(function (c) {
       var p = el('p', { 'data-couple': c.a + ' ' + c.b, 'class': 'couple-line' });
+      // A couple with a partner whose report is closed (core.js): the screen is that partner's data.
+      if (c.closed) {
+        p.textContent = c.a + ' and ' + c.b + ': the carrier screen stays closed while a partner’s report is closed.';
+        add(s, p);
+        return;
+      }
       if (!c.screened) {
         p.textContent = c.a + ' and ' + c.b + ': not screened yet (step 39).';
         add(s, p);
@@ -397,6 +404,12 @@
         add(d, el('p', { 'class': 'dim', 'data-trio': 'compound_het' }, empty(c.child, 'compound_het', 'compound_het.tsv')));
       }
       add(s, d);
+    });
+    // A person whose report is closed and whom this family lists as a parent or partner (a child in another family)
+    // gets their buttons here too, after the children.
+    (f.gated || []).forEach(function (name) {
+      if (f.state.children.some(function (c) { return c.child === name; })) { return; }
+      add(s, el('h3', {}, name), U.familyControls(name, fetchFamily));
     });
     return s;
   }

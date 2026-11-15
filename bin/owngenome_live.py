@@ -106,16 +106,20 @@ def valid_run(name):
 
 
 def child_of(families, name):
-    """Whether NAME's pages treat it as a child, the one rule of assets/live/core.js (childIn, preparePerson):
-    the first family, by name, whose members list NAME decides, by a father or a mother there; a run no
-    readable family lists is a child while some family's members cannot be read (an empty member list).
-    families: [{"name", "members": [{"sample", "father", "mother"}]}], as /runs.json lists them."""
-    fams = sorted(families or [], key=lambda f: f.get("name") or "")
-    for f in fams:
-        for m in f.get("members") or []:
-            if m.get("sample") == name:
-                return bool(m.get("father") or m.get("mother"))
-    return any(not (f.get("members") or []) for f in fams)
+    """Whether NAME's pages treat it as a child, the one rule of the person page (state.json's plugins.family.child,
+    from bin/owngenome_live_family.py member_state), the home page (assets/live/core.js childIn), the family page
+    (family.json's child) and the finding route: a run that any readable family lists with a father or a mother is a
+    child, whatever the other families say. While a family cannot be read, a run it might list is treated as a child
+    too (fail closed): every run while its members cannot be read (an empty member list), and the members it lists
+    while another of its files cannot be read (unreadable). Computed from the files on each request.
+    families: [{"name", "members": [{"sample", "father", "mother"}], "unreadable"}], as /runs.json lists them."""
+    fams = families or []
+
+    def listed(f):
+        return [m for m in f.get("members") or [] if m.get("sample") == name]
+    if any(m.get("father") or m.get("mother") for f in fams for m in listed(f)):
+        return True
+    return any(not (f.get("members") or []) or (f.get("unreadable") and listed(f)) for f in fams)
 
 
 def utc_now():
@@ -924,8 +928,10 @@ class Live:
                                 screened=o.get("screened", False))
             else:
                 item["members"] = r.get("members") or []
+                item["unreadable"] = bool(r.get("unreadable"))
             out.append(item)
-        fams = [{"name": x["name"], "url": x["url"], "members": x["members"]} for x in out if x["kind"] == "family"]
+        fams = [{"name": x["name"], "url": x["url"], "members": x["members"], "unreadable": x["unreadable"]}
+                for x in out if x["kind"] == "family"]
         return {"runs": [x for x in out if x["kind"] != "family"], "families": fams}
 
 
