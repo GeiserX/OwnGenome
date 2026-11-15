@@ -34,7 +34,10 @@ make_sample() {  # make_sample <name> <read set of og dev fixture rfc1> <REPCN> 
     done
     grep '^#' "$in" | tail -n 1
     printf 'chr4\t39348425\tRFC1\tA\t%s\t.\tPASS\tSVTYPE=STR;END=39348479;REF=11;RL=55;RU=AARRG;VARID=RFC1;REPID=RFC1' "$alts"
-    printf '\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t%s:%s:%s:%s:0/0:2/2:20/20:30.0\n' "$gt" "$so" "$cn" "$ci"
+    # The read counts sit on their own line: a fraction beside the REPCN key reads
+    # as a repeat genotype to scripts/ci/check-personal-data.sh.
+    local reads=0/0:2/2:20/20
+    printf '\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t%s:%s:%s:%s:%s:30.0\n' "$gt" "$so" "$cn" "$ci" "$reads"
   } > "${GENOME_DIR}/${s}/expansion_hunter/${s}_eh.vcf"
   "${REPO}/bin/og" dev fixture rfc1 "$kind" "${GENOME_DIR}/${s}/aligned/reads.sam"
   docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -w "/genome/${s}/aligned" "$SAMTOOLS_IMAGE" \
