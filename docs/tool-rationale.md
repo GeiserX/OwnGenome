@@ -83,7 +83,7 @@ The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min 
 
 ### GATK HaplotypeCaller: when to use it
 
-- **Clinical reproducibility.** GATK HaplotypeCaller is the gold standard in clinical genetics labs and CLIA-certified pipelines. If you need to compare your calls with a clinical lab report, running GATK alongside DeepVariant helps identify discrepancies.
+- **Closer to a clinical lab's calls.** Many clinical genetics labs and CLIA-certified pipelines call with GATK HaplotypeCaller. If you need to compare your calls with a clinical lab report, running GATK alongside DeepVariant helps identify discrepancies. `scripts/03a-gatk-haplotypecaller.sh` is not the full GATK Best Practices germline workflow, though: it calls the duplicate-marked step-02 BAM directly, without base quality score recalibration (BQSR), and writes a plain VCF (`-ERC NONE`). Its calls can differ from a lab's GATK calls for that reason alone.
 - **Cohort calling.** GATK's GVCF mode (`-ERC GVCF`) produces per-sample genomic VCFs that can be joint-genotyped across a cohort with `GenomicsDBImport` + `GenotypeGVCFs`. This is the standard workflow for family studies and population-scale projects.
 - **Balanced performance.** GATK sits between DeepVariant (highest precision) and FreeBayes (highest sensitivity), offering a different precision/recall tradeoff that can complement either tool.
 
@@ -104,7 +104,7 @@ The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min 
 | Priority | Recommended Caller |
 |---|---|
 | Highest accuracy (single sample) | DeepVariant |
-| Clinical lab compatibility | GATK HaplotypeCaller |
+| Closest to a clinical lab's calls | GATK HaplotypeCaller (without BQSR here, so not identical to a lab's GATK Best Practices calls) |
 | Maximum sensitivity (research) | FreeBayes (with quality filtering) |
 | Fastest runtime | Strelka2 (72 min on 8 threads in one historical run; align with BWA-MEM2 for it) |
 | Cohort / family joint calling | GATK HaplotypeCaller (GVCF mode) |
@@ -213,7 +213,7 @@ Stick with the defaults. The default tools were chosen for the best single-tool 
 
 | Question | Answer | Action |
 |---|---|---|
-| Do I need to match a clinical lab? | Yes | Use BWA-MEM2 + GATK HC |
+| Do I need to match a clinical lab? | Yes | Use BWA-MEM2 + GATK HC; it still runs without BQSR, so expect some differences |
 | Do I want maximum accuracy for a specific variant? | Yes | Run DeepVariant + GATK, keep shared calls |
 | Am I exploring broadly and can tolerate false positives? | Yes | Run all three SNP callers |
 | Do I plan to use Strelka2? | Yes | Align with BWA-MEM2 (XS tag required) |
