@@ -386,6 +386,7 @@ jobs:
           set -euo pipefail
           . ./versions.env
           G="${EV}/genome" OUT="${EV}/out"
+          DATA="${G}/reference/archaic/${ARCHAIC_DATA_VERSION}"
           mkdir -p "$OUT"
           # pull LABEL URL-PREFIX NAME-OF-FILE-PATTERN: the person's SNV records
           # on the chromosomes that are not homozygous reference, one VCF: the
@@ -416,8 +417,14 @@ jobs:
             docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
               bcftools index -t -f "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz"
             rm -f "${EV}/${label}".chr*.vcf.gz
+            # How many records, how many of them with no call, and how many of
+            # those at a table site (the sites step 43 reads as unknown).
+            docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools query -i 'GT="mis"' -f '%CHROM\t%POS\n' \
+              "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" > "${EV}/${label}.nocall.tsv"
             echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records," \
-              "$(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H -i 'GT="mis"' "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) of them with no call"
+              "$(wc -l < "${EV}/${label}.nocall.tsv") of them with no call," \
+              "$(for t in "${DATA}"/chr*.tsv.gz; do gzip -dc "$t"; done \
+                | awk -F'\t' 'NR == FNR {m[$1 FS $2] = 1; next} ($1 FS $2) in m {n++} END {print n + 0}' "${EV}/${label}.nocall.tsv" -) of those at a table site"
             # Step 43 reads a site with no record as the reference only inside
             # a reference block of the gVCF. A panel VCF holds no callable mask,
             # so the gVCF is one block over each whole chromosome: a site with
