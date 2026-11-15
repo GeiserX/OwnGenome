@@ -7,9 +7,12 @@
 //! - [`genetic_map`] (`og setup genetic-map`): the PLINK GRCh38 genetic map
 //!   per chromosome for steps 26b and 51, written atomically.
 //!
-//! [`zip`] reads the archives the last two take.
+//! [`zip`] reads the archives the last two take. [`revel`] (`og setup
+//! revel`) and [`roh_af`] (`og setup roh-af`) are not ported yet.
 
 pub mod genetic_map;
+pub mod revel;
+pub mod roh_af;
 pub mod strchive;
 pub mod unzip;
 pub mod zip;

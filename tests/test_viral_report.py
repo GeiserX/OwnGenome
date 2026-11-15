@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og viral report: the viral DNA in the reads that do not map to the human genome (step 47).
 
 Each case writes a synthetic viral FASTA, the samtools coverage and depth -aa

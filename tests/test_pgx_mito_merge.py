@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og pgx mito-merge: the MT-RNR1 outside call PharmCAT gets from the chrM
 calls of step 20 / MITO_VARIANTS (step 07 and PHARMCAT run it).
 
@@ -8,8 +9,10 @@ MT-RNR1 alleles and their function values, writes invented Mutect2-style chrM
 VCFs (GT 0/1 at every AF, as Mutect2 writes them), and checks:
   1. a homoplasmic PASS m.1555A>G (AF 0.99) is the call; step 36's lines are
      copied before it and an MT-RNR1 line there is dropped;
-  2. AF 0.95 counts as homoplasmic, 0.949 does not; --min-af moves the bound;
-  3. a heteroplasmic, a filtered or an AF-less m.1555A>G passes nothing and
+  2. AF 0.95 counts as homoplasmic; a heteroplasmic allele down to the
+     detection floor, AF 0.05, is the call too (CPIC: no safe heteroplasmy
+     level), 0.049 is not; --min-af moves the floor;
+  3. one below the floor, a filtered or an AF-less m.1555A>G passes nothing and
      says why; so do a homoplasmic PASS change at a named position that
      PharmCAT does not name and a PASS deletion near m.961; a filtered one,
      or a low-AF unnamed change, does not;
@@ -132,14 +135,20 @@ def main():
         # 2. the AF bound
         rc, log, lines = c.run(BACKGROUND + rec(1555, "A", "G", 0.95))
         check("2: AF 0.95 is homoplasmic", c.mt(lines) == ["m.1555A>G"], log)
-        rc, log, lines = c.run(BACKGROUND + rec(1555, "A", "G", 0.949))
-        check("2: AF 0.949 passes nothing", c.mt(lines) == [], log)
+        rc, log, lines = c.run(BACKGROUND + rec(1555, "A", "G", 0.4))
+        check("2: AF 0.4 is the call", c.mt(lines) == ["m.1555A>G"], log)
+        check("2: AF 0.4: the log says heteroplasmic and why it still counts",
+              "(heteroplasmic, chrM:1555 A>G AF 0.400; " in log and "homoplasmic guidance applies" in log, log)
+        rc, log, lines = c.run(BACKGROUND + rec(1555, "A", "G", 0.05))
+        check("2: AF 0.05 is the call", c.mt(lines) == ["m.1555A>G"], log)
+        rc, log, lines = c.run(BACKGROUND + rec(1555, "A", "G", 0.049))
+        check("2: AF 0.049 passes nothing", c.mt(lines) == [], log)
         rc, log, lines = c.run(BACKGROUND + rec(1555, "A", "G", 0.9), extra=("--min-af", "0.85"))
         check("2: --min-af 0.85 takes AF 0.9", c.mt(lines) == ["m.1555A>G"], log)
 
         # 3. what passes nothing
         for desc, records, want in [
-            ("heteroplasmic", rec(1555, "A", "G", 0.4), "is heteroplasmic (AF below 0.95)"),
+            ("below the floor", rec(1555, "A", "G", 0.03), "is below the detection floor (AF below 0.05)"),
             ("filtered", rec(1555, "A", "G", 0.99, filt="possible_numt"), "is filtered (possible_numt)"),
             ("without an allele fraction", rec(1555, "A", "G", None), "has no allele fraction"),
             ("a change PharmCAT does not name", rec(1555, "A", "C", 0.99),

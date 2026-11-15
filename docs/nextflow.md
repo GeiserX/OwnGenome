@@ -451,7 +451,7 @@ Cyrius (CYP2D6 star alleles) is under a non-commercial licence and is not in the
 
 ## Relationship to nf-core
 
-This pipeline uses [nf-core](https://nf-co.re/) template patterns and tooling for code quality, but is **not an official nf-core pipeline** (it uses a GPL-3.0 license; nf-core requires MIT).
+This pipeline uses [nf-core](https://nf-co.re/) template patterns and tooling for code quality, but is **not an official nf-core pipeline** (it uses the GPL-3.0-or-later license; nf-core requires MIT).
 
 Individual modules (PharmCAT, pypgx, slivar) will be contributed to [nf-core/modules](https://github.com/nf-core/modules) under MIT license for use by the broader community.
 

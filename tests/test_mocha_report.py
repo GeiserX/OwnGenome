@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og mocha report: step 51's mosaic chromosomal alterations from MoChA's tables.
 
 Each case writes MoChA's --stats and --calls tables and the per-chromosome

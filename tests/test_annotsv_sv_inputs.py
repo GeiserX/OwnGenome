@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og sv inv-filter, og sv svlen-fix and og sv add-callers on made-up VCFs.
 
 The checks run og, the binary OG names (the rust job of guard.yml sets

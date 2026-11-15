@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og run delta on two synthetic runs of the same sample.
 
 Checks:
