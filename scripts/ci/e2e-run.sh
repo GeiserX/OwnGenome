@@ -4,11 +4,13 @@
 # Usage: scripts/ci/e2e-run.sh [pattern]
 #        scripts/ci/e2e-run.sh --self-test-pull | --image-groups | --pull-images
 #        scripts/ci/e2e-run.sh --pull-image REF
+#        scripts/ci/e2e-run.sh --self-test-base
 #   pattern  optional shell glob; runs only the cases whose file name matches
 #            (e.g. '2*' or '*cyrius*'). Later cases read earlier cases' outputs,
 #            so a partial run is for debugging only.
 #   --self-test-pull  checks the pull retry of step 3 against a fake docker
-#            (seconds, no network) and the image cache groups, and exits.
+#            (seconds, no network), image cache groups and base archive guard.
+#   --self-test-base  checks the base archive guard with synthetic files.
 #   --image-groups  prints "GROUP IMAGE" for every image the cases use (the
 #            e2e workflow's image cache entries) and exits.
 #   --pull-images  pulls those images, as step 3 below does, and exits.
@@ -489,6 +491,61 @@ disk_check() {
   fi
 }
 
+# Read the finished archive, not the find input: a future packing change must
+# not publish either install. Read the whole stream so pipefail also catches
+# a broken archive, without grep -q closing the pipe before tar finishes.
+check_base_archive() {
+  local archive=$1 listing="${1}.list" rc=0
+  if ! zstd -dc "$archive" | tar -tPf - > "$listing"; then
+    echo "ERROR: cannot list the base archive: ${archive}" >&2
+    rc=1
+  elif [ ! -s "$listing" ]; then
+    echo "ERROR: the base archive is empty" >&2
+    rc=1
+  elif grep -E '(^|/)(tools/cyrius-[^/]*|reference/pypgx-bundle)(/|$)' "$listing" >&2; then
+    echo "ERROR: the base archive contains a Cyrius install or pypgx bundle" >&2
+    rc=1
+  fi
+  rm -f "$listing"
+  return "$rc"
+}
+
+self_test_base_archive() (
+  local t
+  t=$(mktemp -d)
+  trap 'rm -rf "$t"' EXIT
+  mkdir -p "${t}/genome/tools/cyrius-x" "${t}/genome/reference/pypgx-bundle/.git" \
+    "${t}/genome/tools/pgsc_calc-x" "${t}/genome/HG002/cyrius"
+  touch "${t}/genome/tools/cyrius-x/INSTALLED" "${t}/genome/reference/pypgx-bundle/.git/config" \
+    "${t}/genome/tools/pgsc_calc-x/main.nf" "${t}/genome/HG002/cyrius/result.tsv"
+  for path in genome/tools/cyrius-x genome/reference/pypgx-bundle; do
+    tar -C "$t" -cf - "$path" | zstd -q -f -o "${t}/bad.tar.zst"
+    if check_base_archive "${t}/bad.tar.zst"; then
+      echo "FAIL: the base archive guard accepted planted ${path}" >&2
+      exit 1
+    fi
+    echo "ok: the base archive guard rejected planted ${path}"
+  done
+  tar -C "$t" -cf - genome/tools/pgsc_calc-x genome/HG002/cyrius \
+    | zstd -q -o "${t}/good.tar.zst"
+  check_base_archive "${t}/good.tar.zst"
+  echo "ok: the base archive guard keeps pgsc_calc and Cyrius results"
+  tar -cf - -T /dev/null | zstd -q -o "${t}/empty.tar.zst"
+  printf 'not an archive\n' > "${t}/broken.tar.zst"
+  for path in empty broken; do
+    if check_base_archive "${t}/${path}.tar.zst"; then
+      echo "FAIL: the base archive guard accepted an archive (${path})" >&2
+      exit 1
+    fi
+    echo "ok: the base archive guard rejected an archive (${path})"
+  done
+)
+
+if [ "${1:-}" = --self-test-base ]; then
+  self_test_base_archive
+  exit
+fi
+
 if [ "${1:-}" = --self-test-pull ]; then
   T=$(mktemp -d)
   trap 'rm -rf "$T"' EXIT
@@ -599,6 +656,7 @@ FAKE
   else
     echo "FAIL: the docker shim's lazy pulls:"; sed 's/^/  /' "${T}/calls"; st_failed=1
   fi
+  self_test_base_archive
   exit "$st_failed"
 fi
 
@@ -956,9 +1014,11 @@ if [ -n "${E2E_BASE_OUT:-}" ] && [ "$failed" -eq 0 ]; then
   # Beside the archive too, so a shard learns the work area before it unpacks.
   cp "${E2E_WORK}/base-from" "${E2E_BASE_OUT}.from"
   sudo find "$E2E_WORK" "$REPO" \( -path "$FIXTURE_DIR" -o -path "$REPORT_DIR" \
-      -o -path "${REPO}/.git" -o -path "$E2E_NOTES" -o -path "${E2E_WORK}/all-cases-ran" \) -prune \
+      -o -path "${REPO}/.git" -o -path "$E2E_NOTES" -o -path "${E2E_WORK}/all-cases-ran" \
+      -o -path "${GENOME_DIR}/tools/cyrius-*" -o -path "${GENOME_DIR}/reference/pypgx-bundle" \) -prune \
       -o -cnewer "${E2E_WORK}/.layout-done" -print0 \
     | sudo tar -P --format=posix --no-recursion --null -T - -cf - | zstd -T0 -3 -q -o "$E2E_BASE_OUT"
+  check_base_archive "$E2E_BASE_OUT"
   echo "Packed the base outputs: $(du -h "$E2E_BASE_OUT" | cut -f1), $(zstd -dc "$E2E_BASE_OUT" | tar -tf - | wc -l) entries. The largest:"
   zstd -dc "$E2E_BASE_OUT" | tar -tvf - | sort -k3,3n | tail -n 5
 fi
