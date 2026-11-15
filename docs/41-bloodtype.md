@@ -33,7 +33,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
 ## Input
 
-- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample, left-aligned records (DeepVariant writes them so; split multi-allelic records are read as they are)
+- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample, left-aligned records (DeepVariant writes them so). Split multi-allelic records, all-sites VCFs (a reference record and then the variant at one position) and gVCF reference blocks are read too: every record that covers a site counts, whatever their order (see below)
 - `${SAMPLE}/aligned/${SAMPLE}_sorted.bam` with its `.bai` (`ALIGN_DIR` as for the other BAM steps). Optional: without it RhD is not determined, and a site the VCF has no record for is read as the reference allele at confidence medium.
 
 ## Command
@@ -62,7 +62,14 @@ With `run-all.sh`: `TOOLS=...,bloodtype`. It is opt-in and needs no data, so a r
 | HPA-7 to -14, -16 to -35 | one variant each in ITGB3, ITGA2B, ITGA2, GP1BB or GP9 | one allele per copy; the a antigen is on the reference allele, the low-prevalence b antigen on the other |
 | HNA-3, -4, -5 | SLC44A2 c.461G>A, ITGAM c.230G>A, ITGAL c.2372G>C | one allele per copy; GRCh38 carries HNA-3b |
 
-A site the VCF has no record for is the reference allele when the BAM has at least 8 reads there at MAPQ 20, and not determined below that. Without the BAM it is read as reference, and the confidence says so. The step leaves out of `samtools bedcov` the rows on a contig the BAM has no `@SQ` line for (a BAM cut to a few chromosomes), because `bedcov` would stop on them. Those sites then have no depth row: the ones with no VCF record are not determined, and RhD is not determined without chr1. A record at a site whose REF is not the table's REF is a no call, because it says nothing about the table's ALT; the one exception is a 0/0 call over a longer REF that starts with the table's REF, which is the reference allele.
+A site the VCF has no record for is the reference allele when the BAM has at least 8 reads there at MAPQ 20, and not determined below that. Without the BAM it is read as reference, and the confidence says so. The step leaves out of `samtools bedcov` the rows on a contig the BAM has no `@SQ` line for (a BAM cut to a few chromosomes), because `bedcov` would stop on them. Those sites then have no depth row: the ones with no VCF record are not determined, and RhD is not determined without chr1. A record at a site whose REF is not the table's REF is a no call, because it says nothing about the table's ALT. There are two exceptions. A 0/0 call over a longer REF that starts with the table's REF is the reference allele. A 0/0 record over a shorter REF (an all-sites VCF's `C . 0/0`, or a gVCF block that starts at a deletion marker such as ABO c.1061delC) says nothing past its own base, so the site reads as one with no record: the reads decide.
+
+When several records cover one site, each one is read and their order does not matter:
+
+- A call of the table's ALT wins over the other records at the site's position. An all-sites VCF writes `T . 0/0` and then `T TC 0/1` at ABO c.261, so the insertion counts. Another allele that a second record calls there (a split `T G 1/0`) is named in the note.
+- A no call of a record that names the table's ALT (`./.`, or a failed FILTER) comes next: the ALT may be there, so a reference record beside it does not make the site reference.
+- Then a reference call, then any other no call.
+- A record that starts upstream and spans the site with an allele that changes the site's base (a deletion over it, or a padded record such as `CG CA`) makes the site a no call, whatever the site's own records say. A reference call or a no call upstream changes nothing, and neither does an allele that keeps the site's base.
 
 ## Output
 
@@ -94,7 +101,7 @@ Lacking an antigen is common (most people lack HPA-1b, for example). It means a 
 
 ## Runtime
 
-Not measured on a whole genome. The step reads the VCF once, line by line, and samtools reads the BAM at 284 small regions.
+Not measured on a whole genome. The step reads the marker positions through the VCF's index (the VCF once, line by line, without one), and samtools reads the BAM at 284 small regions.
 
 ## Notes
 
