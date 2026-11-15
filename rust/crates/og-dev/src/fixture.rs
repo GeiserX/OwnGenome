@@ -25,7 +25,11 @@ const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og d
 /// Runs `og dev fixture ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let usage = |err: &mut dyn Write, msg: &str| {
-        let _ = writeln!(err, "{USAGE}og dev fixture: error: {msg}");
+        let _ = writeln!(
+            err,
+            "{USAGE}{}og dev fixture: error: {msg}",
+            lineage::usage()
+        );
         2
     };
     if let Some(kind) = args.first()
@@ -63,6 +67,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         }
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(lineage::usage().as_bytes());
             return 0;
         }
         Some(other) => return usage(err, &format!("unknown fixture '{other}'")),

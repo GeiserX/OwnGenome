@@ -104,7 +104,10 @@ const TABLE: &[(&str, &str, Run)] = &[
 pub fn usage() -> String {
     TABLE
         .iter()
-        .map(|(name, args, _)| format!("       og dev fixture {name} {args}\n"))
+        .map(|(name, args, _)| {
+            let line = format!("       og dev fixture {name} {args}");
+            format!("{}\n", line.trim_end())
+        })
         .collect()
 }
 
@@ -527,6 +530,31 @@ mod tests {
         let (code, _, err) = run("ystr-cut", &["1"]);
         assert_eq!(code, 2, "{err}");
         assert!(usage().lines().count() == TABLE.len());
+    }
+
+    #[test]
+    fn fixture_help_and_an_unknown_kind_list_every_lineage_kind() {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(super::super::cli(&["--help".into()], &mut out, &mut err), 0);
+        let help = String::from_utf8(out).expect("utf-8");
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(super::super::cli(&["bogus".into()], &mut out, &mut err), 2);
+        let err = String::from_utf8(err).expect("utf-8");
+        assert!(err.contains("unknown fixture 'bogus'"), "{err}");
+        // The kind each `og dev fixture KIND ...` line names.
+        let kinds = |text: &str| -> Vec<String> {
+            text.lines()
+                .filter_map(|l| {
+                    let mut w = l.split_whitespace().skip_while(|w| *w != "fixture");
+                    w.nth(1).map(str::to_owned)
+                })
+                .collect()
+        };
+        let (help, err) = (kinds(&help), kinds(&err));
+        for (name, _, _) in TABLE {
+            assert!(help.iter().any(|k| k == name), "{name}: {help:?}");
+            assert!(err.iter().any(|k| k == name), "{name}: {err:?}");
+        }
     }
 
     #[test]
