@@ -5,24 +5,32 @@
 # The rows are the CPIC gene-drug pairs at level A, B or A/B whose gene is a
 # disease gene outside PharmCAT and whose drug the variant makes risky
 # (CPIC API pair_view, queried 2026-11-03; Pair_source is the query for the
-# gene). Left out: NAGS with carglumic acid (the treatment, not a risk), and
-# ABL2 with valproic acid (no label or guideline names it).
+# gene). Every pair here is provisional in CPIC (provisional true, no CPIC
+# guideline): a gene with a CPIC guideline is one PharmCAT calls. A row needs
+# a drug label that names the gene's disorder. Left out: NAGS with carglumic
+# acid (the treatment, not a risk), ABL2 with valproic acid, and SCN1A with
+# carbamazepine and phenytoin (no label or guideline names them; SCN1A also
+# has gain-of-function disease variants, for which a warning against these
+# drugs does not follow).
 # Gene: the HGNC symbol, as ClinVar's GENEINFO writes it.
 # Drug: the drug as CPIC names it.
 # Names: the first words a medication list may use for it, comma-separated,
 # lower case; a drug on the list is marked in the report.
-# CPIC_level: the pair's CPIC level.
-# Note: what the label says, or for a pair no label names, what CPIC says.
-# Label_source: the FDA label (DailyMed) the note quotes, or '-' when none
-# names the gene.
+# CPIC_level: the pair's CPIC level, printed as provisional.
+# Note: what the label says.
+# Label_source: the FDA label (DailyMed) the note quotes.
+# Report_if: when a hit gives a WARNING. any: one variant does (POLG, where
+# one variant is a known valproate risk, and the X-linked OTC and HPRT1,
+# where a male has one copy and a female carrier can be affected).
+# biallelic: the disorder is recessive, so the WARNING needs both copies
+# changed (a homozygous or hemizygous genotype) or two variants in the gene;
+# one heterozygous variant makes a carrier and gives a NOTE instead.
 # tests/test_cpic_parser.py checks the shape of every row.
-Gene	Drug	Names	CPIC_level	Note	Pair_source	Label_source
-POLG	valproic acid	valproic,valproate,divalproex	A/B	The valproate label contraindicates it in people with mitochondrial disorders caused by POLG mutations, and in children under two suspected of a POLG-related disorder: valproate can cause acute liver failure in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.POLG	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f
-ASL	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.ASL	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f
-ASS1	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.ASS1	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f
-CPS1	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.CPS1	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f
-NAGS	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.NAGS	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f
-OTC	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.OTC	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f
-HPRT1	mycophenolic acid	mycophenolic,mycophenolate	B	The mycophenolate label says to avoid it in people with a hereditary HGPRT deficiency, such as Lesch-Nyhan or Kelley-Seegmiller syndrome.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.HPRT1	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=37241e87-4af4-4dc3-a1aa-ea6f20d8dc40
-SCN1A	carbamazepine	carbamazepine	B	CPIC lists SCN1A with carbamazepine at level B, with no CPIC guideline and no label that names the gene: read its ClinPGx clinical annotations.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.SCN1A	-
-SCN1A	phenytoin	phenytoin	B	CPIC lists SCN1A with phenytoin at level B, with no CPIC guideline and no label that names the gene: read its ClinPGx clinical annotations.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.SCN1A	-
+Gene	Drug	Names	CPIC_level	Note	Pair_source	Label_source	Report_if
+POLG	valproic acid	valproic,valproate,divalproex	A/B	The valproate label contraindicates it in people with mitochondrial disorders caused by POLG mutations, and in children under two suspected of a POLG-related disorder: valproate can cause acute liver failure in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.POLG	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	any
+ASL	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.ASL	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	biallelic
+ASS1	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.ASS1	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	biallelic
+CPS1	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.CPS1	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	biallelic
+NAGS	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.NAGS	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	biallelic
+OTC	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.OTC	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	any
+HPRT1	mycophenolic acid	mycophenolic,mycophenolate	B	The mycophenolate label says to avoid it in people with a hereditary HGPRT deficiency, such as Lesch-Nyhan or Kelley-Seegmiller syndrome.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.HPRT1	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=37241e87-4af4-4dc3-a1aa-ea6f20d8dc40	any
