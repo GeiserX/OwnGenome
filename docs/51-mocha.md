@@ -67,7 +67,45 @@ A call is reported when all of these hold:
 
 At 30x with about 3,000 heterozygous sites per 10 Mb the read-sampling floor is about 0.02, so the floor is 0.05. At 5x with 300 sites per 10 Mb it is about 0.15. The floor is a lower bound: phasing errors and read bias are not in it, so an event above it is not always found.
 
-The sample is **not assessed** when MoChA's sample filter of the same README fails (a call rate under 0.97, or a phased BAF autocorrelation over 0.03), when MoChA gives no value for one of the two, when MoChA gives no median depth (so no floor can be set), or when no heterozygous site on chr1 to chr22 reached MoChA or none is phased. Then no call is reported, and the reports say why.
+The sample is **not assessed** when MoChA's sample filter of the same README fails (a call rate under 0.97, or a phased BAF autocorrelation over 0.03), when MoChA gives no value for one of the two, when MoChA gives no median depth (so no floor can be set), when no heterozygous site on chr1 to chr22 reached MoChA, or when an autosome has under 0.80 of its heterozygous sites phased. Then no call is reported, and the reports say why. The message names each autosome under the minimum, with its phased and heterozygous sites.
+
+**The call rate on WGS.** MoChA reads a WGS VCF by its allele depths (AD). In that mode it drops a site with a missing genotype before it counts the sites, so the call rate in its stats is 1 on every WGS VCF, whatever step 1's depth and GQ filter set missing. The call-rate half of the sample filter therefore never fires on this step's input. It applies only to a stats table that carries a real call rate. On WGS the phased BAF autocorrelation, the phased share below and the floor are what gate the sample.
+
+**The phased share.** MoChA follows a haplotype only across phased heterozygous sites. An unphased site adds nothing to its phased model and adds 0 to its phased BAF autocorrelation, so a chromosome that is mostly unphased passes that filter and shows no event, even one above the floor. Beagle phases only the sites the panel holds, so the share of an autosome's heterozygous sites that end up phased is the share the panel holds. A panel cut with `MOCHA_REGIONS`, or a `MOCHA_PHASED_VCF` that is only partly phased, leaves whole stretches unphased.
+
+We measured that share on two public genomes, with step 1's filters (biallelic PASS SNVs, at least 10 reads and GQ 20) and the panel's sites (biallelic SNVs seen twice or more, the same position and alleles):
+
+- HG002, of Ashkenazi Jewish descent: the DeepVariant 1.0 call set of a 30x Illumina whole genome (Google's DeepVariant WGS case study), every region.
+- HG005, of Han Chinese descent: the Genome in a Bottle v4.2.1 benchmark call set, which holds only its benchmark regions.
+
+| Autosome | HG002 heterozygous sites | HG002 share in the panel | HG005 heterozygous sites | HG005 share in the panel |
+|---|---|---|---|---|
+| chr1 | 167816 | 0.9705 | 149656 | 0.9614 |
+| chr2 | 168167 | 0.9698 | 162468 | 0.9684 |
+| chr3 | 157028 | 0.9732 | 138142 | 0.9752 |
+| chr4 | 158076 | 0.9729 | 145939 | 0.9717 |
+| chr5 | 148594 | 0.9733 | 124577 | 0.9709 |
+| chr6 | 145168 | 0.9598 | 131235 | 0.9680 |
+| chr7 | 131005 | 0.9692 | 115320 | 0.9676 |
+| chr8 | 124187 | 0.9712 | 106123 | 0.9685 |
+| chr9 | 95946 | 0.9614 | 81566 | 0.9570 |
+| chr10 | 113721 | 0.9706 | 95840 | 0.9641 |
+| chr11 | 103275 | 0.9723 | 89849 | 0.9730 |
+| chr12 | 107852 | 0.9720 | 92700 | 0.9739 |
+| chr13 | 81021 | 0.9747 | 68967 | 0.9679 |
+| chr14 | 73041 | 0.9679 | 63691 | 0.9733 |
+| chr15 | 64200 | 0.9555 | 55996 | 0.9566 |
+| chr16 | 66355 | 0.9683 | 61311 | 0.9561 |
+| chr17 | 58942 | 0.9554 | 48337 | 0.9647 |
+| chr18 | 59704 | 0.9747 | 56497 | 0.9742 |
+| chr19 | 53980 | 0.9517 | 44114 | 0.9695 |
+| chr20 | 51614 | 0.9471 | 40867 | 0.9751 |
+| chr21 | 29933 | 0.9335 | 24548 | 0.9733 |
+| chr22 | 31687 | 0.9410 | 24923 | 0.9651 |
+
+Over the whole genome the share is 0.967 (HG002) and 0.968 (HG005). The lowest share on one autosome is 0.933 (HG002, chr21). The minimum is that lowest share less 0.10, rounded down to a multiple of 0.05: 0.80. The 0.10 margin is for a genome whose ancestry the panel holds fewer people of, which has more variants the panel lacks, and for a caller with more false heterozygous calls. A whole genome phased against the full panel stays well above it; a chromosome that the phasing left mostly unphased falls far below it.
+
+Below the minimum, MoChA's unphased model can still see a large event, but the step reports no call, the same as when nothing is phased. The check counts genotypes written with `|`. A VCF phased only in short read-backed blocks (WhatsHap, for example) passes it, but MoChA needs phase along the whole chromosome: give `MOCHA_PHASED_VCF` phase from a population panel or a trio.
 
 ## Output
 
