@@ -213,8 +213,8 @@ process VCF_PRECHECK {
     bcftools view -H ${vcf} \\
         | awk -F'\\t' -v has_end="\${HAS_END}" -v sample='${meta.id}' -v file='${vcf.name}' '
             { if (\$7 == "PASS") p++; else if (\$7 == ".") d++; else o++ }
-            has_end && \$8 ~ /(^|;)END=[0-9]+(;|$)/ && (\$5 == "<*>" || \$5 == "<NON_REF>" || \$5 == ".") { b++ }
-            NF >= 9 && \$9 ~ /(^|:)GT(:|$)/ && \$9 !~ /^GT(:|$)/ && bad == "" {
+            has_end && \$8 ~ /(^|;)END=[0-9]+(;|\$)/ && (\$5 == "<*>" || \$5 == "<NON_REF>" || \$5 == ".") { b++ }
+            NF >= 9 && \$9 ~ /(^|:)GT(:|\$)/ && \$9 !~ /^GT(:|\$)/ && bad == "" {
                 bad = \$1 ":" \$2; format = \$9
             }
             END {
@@ -222,7 +222,7 @@ process VCF_PRECHECK {
                     printf "ERROR: Sample \\047%s\\047: %s has GT after another FORMAT key at %s (FORMAT %s).\\n", sample, file, bad, format > "/dev/stderr"
                     print "GT must be the first FORMAT key when present. Otherwise depth or quality can be read as the genotype." > "/dev/stderr"
                     print "Ask the provider for a corrected VCF, or reorder FORMAT keys and each sample\\047s values together." > "/dev/stderr"
-                    print "Then compress with bcftools view -Oz -o corrected.vcf.gz and index with bcftools index -t corrected.vcf.gz." > "/dev/stderr"
+                    print "Then compress with bcftools view -Oz -o corrected.vcf.gz corrected.vcf and index with bcftools index -t corrected.vcf.gz." > "/dev/stderr"
                     print "bcftools norm alone does not move GT to the first position." > "/dev/stderr"
                     exit 2
                 }

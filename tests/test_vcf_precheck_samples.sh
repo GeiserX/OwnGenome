@@ -29,6 +29,16 @@ fail() { echo "FAIL: $*"; FAILS=$((FAILS + 1)); }
 pass() { echo "ok:   $*"; }
 
 # --- the script: block of VCF_PRECHECK, as a bash file ---------------------------
+# Literal dollar signs must survive Groovy before the rendered bash runs.
+# A raw regex end anchor parses in bash/awk but breaks a Nextflow GString.
+# shellcheck disable=SC2016  # Match literal dollar signs in the Groovy source.
+if sed -n '/^    script:/,/^    stub:/p' "${REPO}/modules/local/vcf_precheck/main.nf" \
+   | grep -nE '(^|[^\\])\$([^[:alpha:]_{]|$)'; then
+  fail "VCF_PRECHECK has an unescaped literal dollar in its Groovy script block"
+  exit 1
+fi
+pass "VCF_PRECHECK escapes literal dollar signs for Groovy"
+
 python3 - "${REPO}/modules/local/vcf_precheck/main.nf" "${WORK}/precheck.sh" <<'PY'
 import re, sys, textwrap
 src, out = sys.argv[1], sys.argv[2]
