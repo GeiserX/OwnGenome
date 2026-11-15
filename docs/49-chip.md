@@ -76,22 +76,42 @@ With `run-all.sh`: `TOOLS=...,chip`. It is opt-in, so a run lists step 49 only w
 
 Synonymous, intronic and UTR changes are left out.
 
-## The detection limit
+## The read-support limit
 
-The step counts the depth over the same exons with bcftools mpileup at Mutect2's default read filters (mapping quality 20 and up, base quality 10 and up, duplicates left out), and gives each gene a detection limit: the smallest VAF at which a clone shows at least 3 reads with the change 8 times in 10 at that gene's mean depth (a binomial count). At 20x that is about 20%, at 30x about 14%, at 40x about 10%, at 60x about 7% and at 100x about 4%.
+The step counts the depth of each coding base with bcftools mpileup, at Mutect2's default read filters (mapping quality 20 and up, base quality 10 and up, duplicates left out). A base with no pileup line has depth 0.
 
-So at the depth of a usual 30x genome, a clone has to hold about 14% of the alleles to be found reliably. CHIP starts at 2%, so a clone between 2% and the limit is likely missed: a result with no call does not rule out CHIP. A gene whose depth is far below the genome's (reads that map with low quality there) gets a higher limit, or `too_shallow` when it has fewer than 3 reads.
+Each gene then gets a read-support limit: the smallest VAF at which a clone shows at least 3 reads with the change 8 times in 10, averaged over the gene's coding bases, each at its own depth (a binomial count per base). A base the run did not read counts as a base where no clone can show. With every base at one depth, the limit is about 20% at 20x, 14% at 30x, 10% at 40x, 7% at 60x and 4% at 100x. Uneven depth raises it: half the bases at 20x and half at 40x give about 16%, where the mean of 30x would say 14%.
+
+It is a read count, not the caller's sensitivity. Mutect2's model and FilterMutectCalls can still reject a change that 3 reads carry, so they find fewer clones than the limit says.
+
+The status of each gene:
+
+| Status | Rule |
+|---|---|
+| `covered` | some VAF reaches 8 in 10; `detection_limit_vaf` holds it |
+| `partly_covered` | some coding bases have 3 reads or more, but too few: no VAF reaches 8 in 10 (a fifth of the bases or more under 3 reads is enough). No limit |
+| `too_shallow` | no coding base has 3 reads. No limit |
+| `not_on_reference` | none of its coding bases is on the reference |
+
+The stated limit of the run is the median of the covered genes' limits. The step's log line, the summary (`median_limit`) and both reports give that one figure, with the median of the covered genes' mean depths.
+
+Two more columns help to find a gene with a region the run did not read:
+
+- `callable_fraction`: the share of the gene's coding bases with 10 reads or more.
+- `assessable_fraction`: the share of its coding bases where a clone at the stated limit shows 3 reads 8 times in 10. The limit is an average over bases, so a gene read near the median depth has only part of its bases at full power, often under half. Compare genes by it: a gene far below the others has bases the run did not read. Empty when no gene is covered.
+
+So at the depth of a usual 30x genome, a clone has to hold about 14% of the alleles to show its reads reliably. CHIP starts at 2%, so a clone between 2% and the limit is likely missed: a result with no call does not rule out CHIP. A gene whose depth is far below the genome's (reads that map with low quality there) gets a higher limit, `partly_covered` when part of it has no reads, or `too_shallow`.
 
 ## Output
 
 | File | Contents |
 |---|---|
 | `chip/${SAMPLE}_chip.tsv` | one row per protein change in a CHIP gene: `gene`, `chrom`, `pos`, `ref`, `alt`, `consequence`, `protein_change` (for example `R882H`, `Q1200fs`), `exon`, `vaf`, `alt_reads`, `depth`, `filter`, `status`, `class` (truncating or missense, for a change in the gene's class), `note` |
-| `chip/${SAMPLE}_chip_depth.tsv` | one row per gene: `transcript`, `chrom`, `coding_bases`, `mean_depth`, `detection_limit_vaf`, `status` (covered, too_shallow, not_on_reference) |
+| `chip/${SAMPLE}_chip_depth.tsv` | one row per gene: `transcript`, `chrom`, `coding_bases`, `mean_depth`, `detection_limit_vaf` (the read-support limit), `status` (covered, partly_covered, too_shallow, not_on_reference), `callable_fraction`, `assessable_fraction` |
 | `chip/${SAMPLE}_chip_filtered.vcf.gz` | Mutect2's calls after FilterMutectCalls |
 | `chip/${SAMPLE}_chip.gff3`, `chip/${SAMPLE}_chip.bed` | the transcripts and exons it called on (the bash step) |
 
-Both reports show a "Clonal Haematopoiesis (CHIP)" section: the calls, the detection limit at the sample's depth, the genes too shallow to read, and how many other changes were listed.
+Both reports show a "Clonal Haematopoiesis (CHIP)" section: the calls, the stated read-support limit, the genes that are not covered, and how many other changes were listed.
 
 ## Runtime
 
@@ -101,5 +121,5 @@ Not measured on a whole genome. Mutect2 reads about 35 kb of the BAM, which take
 
 - A `chip` row is a finding worth showing a haematologist, together with a blood count. It does not mean a blood cancer, and the risks the studies report are averages over many people.
 - Tumour-only calling cannot prove a change is acquired. The VAF rule removes most inherited variants, but a change at 35% or more is never counted, and a real large clone there is missed too.
-- **U2AF1 on the default reference.** GRCh38 added to the short arm of chr21 a near copy of the U2AF1 locus that real genomes do not have, and the no-ALT analysis set keeps it. Reads from U2AF1 then fit both copies equally well and get mapping quality 0. Miller et al. 2022 (PMID 35041928) found that GRCh38 pipelines missed U2AF1 mutations for this reason, and that they were found again once the copy was masked. This step counts depth and Mutect2 reads only from mapping quality 20 up, so on the default reference expect U2AF1 to show `too_shallow` in `chip_depth.tsv`, or a detection limit far above the other genes'. Either way, no call at S34 or Q157 does not mean there is none. The fix is the masked reference, at the same coordinates: `setup.sh --masked-reference` builds it, with the false copies set to N as FixItFelix (Behera et al. 2023, PMID 36810122) and GIAB do, and a sample realigned to it gets its U2AF1 reads back ([the masked reference](realignment.md#the-masked-reference)). On chr21 of GIAB's HG002, step 16b reads U2AF1 on the masked reference and not on the default one (CI case `fixitfelix-chr21-1`); this step has not been measured on a whole genome either way.
+- **U2AF1 on the default reference.** GRCh38 added to the short arm of chr21 a near copy of the U2AF1 locus that real genomes do not have, and the no-ALT analysis set keeps it. Reads from U2AF1 then fit both copies equally well and get mapping quality 0. Miller et al. 2022 (PMID 35041928) found that GRCh38 pipelines missed U2AF1 mutations for this reason, and that they were found again once the copy was masked. This step counts depth and Mutect2 reads only from mapping quality 20 up, so on the default reference expect U2AF1 to show `too_shallow` or `partly_covered` in `chip_depth.tsv`, or a read-support limit far above the other genes'. Either way, no call at S34 or Q157 does not mean there is none. The fix is the masked reference, at the same coordinates: `setup.sh --masked-reference` builds it, with the false copies set to N as FixItFelix (Behera et al. 2023, PMID 36810122) and GIAB do, and a sample realigned to it gets its U2AF1 reads back ([the masked reference](realignment.md#the-masked-reference)). On chr21 of GIAB's HG002, step 16b reads U2AF1 on the masked reference and not on the default one (CI case `fixitfelix-chr21-1`); this step has not been measured on a whole genome either way.
 - Steps 29 and 49 call the same genes in two ways: step 29 calls gene bodies and leaves the calls unread, step 49 calls the coding exons and reads them.
