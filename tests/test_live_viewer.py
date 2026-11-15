@@ -272,9 +272,13 @@ def map_reads_checks(srv, work, chrome):
         check("map: moving updates the same iframe to the map's locus",
               b.wait("savedFrame===document.querySelector('.gm-reads iframe') && savedFrame.contentWindow.location.hash==='#chr1:1-49001'"))
         check("viewer: alignments remain visible at 49 kb",
-              b.wait("(function(){var v=savedFrame.contentDocument.querySelector('.igv-viewport[data-track-type=alignment]');"
+              b.wait("(function(){var h=savedFrame.contentDocument.getElementById('igv');"
+                     "var v=h && h.shadowRoot && h.shadowRoot.querySelector('.igv-viewport[data-track-type=alignment]');"
                      "var n=v && v.querySelector('.igv-zoom-in-notice-container');"
-                     "return !!(v && v.querySelector('canvas') && n && n.style.display!=='flex');})()"))
+                     "return !!(v && v.querySelector('canvas') && n && n.style.display!=='flex');})()"),
+              b.eval("JSON.stringify(Array.from(savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelectorAll('.igv-viewport')).map(function(v){"
+                     "var n=v.querySelector('.igv-zoom-in-notice-container');return {type:v.dataset.trackType,"
+                     "notice:n && n.style.display,canvas:v.querySelectorAll('canvas').length,text:v.textContent.slice(0,180)};}))"))
         if os.environ.get("MAP_SCREENS"):
             os.makedirs(os.environ["MAP_SCREENS"], exist_ok=True)
             for width, height in ((1440, 900), (390, 844)):
