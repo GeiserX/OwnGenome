@@ -218,7 +218,12 @@ fn tree_place_and_tree_positions() {
     let ab: Vec<(&str, St)> = with(&ALL_A, &ALL_B);
 
     // 1. deepest branch
-    let r = run(&d, &with(&ab, &[("c1", St::D), ("c2", St::D), ("x1", St::A)]), "deep", &[]);
+    let r = run(
+        &d,
+        &with(&ab, &[("c1", St::D), ("c2", St::D), ("x1", St::A)]),
+        "deep",
+        &[],
+    );
     assert_eq!(r.code, 0, "1. the tool runs: {}", r.stderr);
     assert_eq!((r.get("Hg"), r.get("Level")), ("C", "3"), "1. C at level 3");
     assert_eq!(r.branches(), ["A", "B", "C"], "1. the path is A, B, C");
@@ -228,7 +233,11 @@ fn tree_place_and_tree_positions() {
         ["4", "3", "3", "0"],
         "1. B's counts"
     );
-    assert_eq!(r.get("Ancestral_in_terminal"), ".", "1. nothing ancestral in the terminal block");
+    assert_eq!(
+        r.get("Ancestral_in_terminal"),
+        ".",
+        "1. nothing ancestral in the terminal block"
+    );
     assert_eq!((r.get("Path_derived"), r.get("Path_ancestral")), ("7", "0"));
     assert_eq!(
         (r.get("Tree"), r.get("Positions")),
@@ -236,7 +245,8 @@ fn tree_place_and_tree_positions() {
         "1. the result names its tree and tables"
     );
     assert!(
-        r.stdout.contains("Current tree (YFull YTree test): C (level 3"),
+        r.stdout
+            .contains("Current tree (YFull YTree test): C (level 3"),
         "1. the step line names the current tree: {}",
         r.stdout
     );
@@ -244,7 +254,10 @@ fn tree_place_and_tree_positions() {
     // 2. one ancestral SNP in the terminal block
     let r = run(
         &d,
-        &with(&ALL_A, &[("b1", St::D), ("b2", St::D), ("b3", St::A), ("x1", St::A)]),
+        &with(
+            &ALL_A,
+            &[("b1", St::D), ("b2", St::D), ("b3", St::A), ("x1", St::A)],
+        ),
         "split",
         &[],
     );
@@ -272,8 +285,17 @@ fn tree_place_and_tree_positions() {
     );
 
     // 4. a negative branch blocks the walk below it, unless outvoted
-    let r = run(&d, &with(&ab, &[("x1", St::A), ("y1", St::D)]), "blocked", &[]);
-    assert_eq!((r.get("Hg"), r.get("Outvoted_ancestral")), ("B", "."), "4. one derived below: blocked");
+    let r = run(
+        &d,
+        &with(&ab, &[("x1", St::A), ("y1", St::D)]),
+        "blocked",
+        &[],
+    );
+    assert_eq!(
+        (r.get("Hg"), r.get("Outvoted_ancestral")),
+        ("B", "."),
+        "4. one derived below: blocked"
+    );
     let r = run(
         &d,
         &with(&ab, &[("x1", St::A), ("y1", St::D), ("z1", St::D)]),
@@ -282,21 +304,35 @@ fn tree_place_and_tree_positions() {
     );
     assert_eq!(r.get("Hg"), "Z", "4. two derived below: Z");
     assert_eq!(r.branches(), ["A", "X", "Y", "Z"]);
-    assert_eq!(r.get("Outvoted_ancestral"), "x1", "4. x1 is the outvoted site");
+    assert_eq!(
+        r.get("Outvoted_ancestral"),
+        "x1",
+        "4. x1 is the outvoted site"
+    );
     assert_eq!(r.path[1]["Ancestral"], "1");
     assert!(
         r.stdout.contains("outvoted") && r.stdout.contains("x1"),
         "4. the step line names the outvoted site: {}",
         r.stdout
     );
-    let r = run(&d, &with(&ab, &[("y1", St::D), ("z1", St::D)]), "unblocked", &[]);
+    let r = run(
+        &d,
+        &with(&ab, &[("y1", St::D), ("z1", St::D)]),
+        "unblocked",
+        &[],
+    );
     assert!(
-        r.get("Hg") == "Z" && r.branches() == ["A", "X", "Y", "Z"] && r.get("Outvoted_ancestral") == ".",
+        r.get("Hg") == "Z"
+            && r.branches() == ["A", "X", "Y", "Z"]
+            && r.get("Outvoted_ancestral") == ".",
         "4. X with no call: Z wins, nothing outvoted"
     );
     let r = run(
         &d,
-        &with(&[("a1", St::A), ("a2alt", St::A)], &with(&ALL_B, &[("c1", St::D), ("c2", St::D)])),
+        &with(
+            &[("a1", St::A), ("a2alt", St::A)],
+            &with(&ALL_B, &[("c1", St::D), ("c2", St::D)]),
+        ),
         "twoanc",
         &[],
     );
@@ -306,7 +342,10 @@ fn tree_place_and_tree_positions() {
     );
     let r = run(
         &d,
-        &with(&ab, &[("x1", St::A), ("y1", St::A), ("z1", St::D), ("w1", St::D)]),
+        &with(
+            &ab,
+            &[("x1", St::A), ("y1", St::A), ("z1", St::D), ("w1", St::D)],
+        ),
         "twosingles",
         &[],
     );
@@ -315,7 +354,12 @@ fn tree_place_and_tree_positions() {
         ("B", "."),
         "4. two single-ancestral branches on one path block Z and W"
     );
-    let r = run(&d, &with(&ab, &[("p1", St::A), ("q1", St::D)]), "onesite", &[]);
+    let r = run(
+        &d,
+        &with(&ab, &[("p1", St::A), ("q1", St::D)]),
+        "onesite",
+        &[],
+    );
     assert_eq!(
         (r.get("Hg"), r.get("Outvoted_ancestral")),
         ("B", "."),
@@ -349,8 +393,14 @@ fn tree_place_and_tree_positions() {
         pos.contains(&"3000100") && !pos.contains(&"3999999"),
         "6. a1 at the first table's position: {pos:?}"
     );
-    assert!(pos.contains(&"3000700"), "6. c2, on the second table only, is asked for");
-    assert!(!pos.contains(&"2000000"), "6. the pseudoautosomal SNP is never asked for");
+    assert!(
+        pos.contains(&"3000700"),
+        "6. c2, on the second table only, is asked for"
+    );
+    assert!(
+        !pos.contains(&"2000000"),
+        "6. the pseudoautosomal SNP is never asked for"
+    );
     assert!(
         text.lines().all(|l| l.split('\t').next() == Some("chrY")),
         "6. every line is chrY<TAB>pos"
@@ -363,7 +413,11 @@ fn tree_place_and_tree_positions() {
     let mut text = String::new();
     for name in ["a1", "a2alt", "b1", "b2", "b3"] {
         let (pos, _, der) = pos_of(name);
-        text += &format!("chrY\t{pos}\tN\t12\t{}\t{}\n", der.to_string().repeat(12), "I".repeat(12));
+        text += &format!(
+            "chrY\t{pos}\tN\t12\t{}\t{}\n",
+            der.to_string().repeat(12),
+            "I".repeat(12)
+        );
     }
     text += &format!("chrY\t{}\tt\t5\t^I..,$+2ACt-1Ga*\tIIIII\n", pos_of("c1").0);
     text += &format!("chrY\t{}\tt\t5\t^I.$,+2GG,t-1A.\tIIIII\n", pos_of("c2").0);

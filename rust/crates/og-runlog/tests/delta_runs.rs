@@ -67,8 +67,16 @@ const MANIFEST: [(&str, &str, &str); 12] = [
     ("image", "python-ref", "digest-aaa"),
     ("image", "deepvariant-ref", "digest-bbb"),
     ("image", "pharmcat-ref", "digest-ccc"),
-    ("data", "clinvar_file_date", "20260101 (clinvar/clinvar.vcf.gz)"),
-    ("data", "ancestry_panel", "not installed (setup.sh --ancestry-panel)"),
+    (
+        "data",
+        "clinvar_file_date",
+        "20260101 (clinvar/clinvar.vcf.gz)",
+    ),
+    (
+        "data",
+        "ancestry_panel",
+        "not installed (setup.sh --ancestry-panel)",
+    ),
 ];
 
 type Manifest = Vec<(String, String, String)>;
@@ -142,8 +150,15 @@ fn text(v: Option<&Value>) -> &str {
 
 fn write_run(d: &Path, summ: &Value, m: &Manifest) {
     fs::create_dir_all(d).unwrap();
-    fs::write(d.join("summary.json"), dumps(summ, &Dump::default()).unwrap()).unwrap();
-    let rows: String = m.iter().map(|(a, b, c)| format!("{a}\t{b}\t{c}\n")).collect();
+    fs::write(
+        d.join("summary.json"),
+        dumps(summ, &Dump::default()).unwrap(),
+    )
+    .unwrap();
+    let rows: String = m
+        .iter()
+        .map(|(a, b, c)| format!("{a}\t{b}\t{c}\n"))
+        .collect();
     fs::write(d.join("run_manifest.tsv"), rows).unwrap();
 }
 
@@ -178,7 +193,13 @@ impl W {
     }
 
     /// The written (JSON, text, HTML) of one delta, which must exit 0.
-    fn delta(&self, prev: Option<&Path>, cur: &Path, name: &str, extra: &[&str]) -> (Value, String, String) {
+    fn delta(
+        &self,
+        prev: Option<&Path>,
+        cur: &Path,
+        name: &str,
+        extra: &[&str],
+    ) -> (Value, String, String) {
         let (code, err) = og_run(&self.args(prev, cur, name, extra));
         assert_eq!(code, 0, "{name}: exits 0: {err}");
         let read = |ext: &str| fs::read_to_string(self.0.join(format!("{name}.{ext}"))).unwrap();
@@ -238,25 +259,46 @@ fn deltas_of_two_runs() {
     write_run(&prev, &summary("2026-01-01T00:00:00Z"), &manifest());
 
     // 1. no previous run
-    write_run(&cur, &summary(FEB), &set_row(&manifest(), "run", "written_utc", "later"));
+    write_run(
+        &cur,
+        &summary(FEB),
+        &set_row(&manifest(), "run", "written_utc", "later"),
+    );
     let (d, txt, page) = w.delta(None, &cur, "first", &[]);
     assert!(
         get(&d, "previous") == Some(&Value::Null) && changes(&d).is_empty(),
         "first run: previous is null and no change: {d:?}"
     );
-    assert!(txt.contains("No previous run of this sample"), "first run: the text says so");
-    assert!(page.contains("No previous run of this sample"), "first run: the HTML says so");
+    assert!(
+        txt.contains("No previous run of this sample"),
+        "first run: the text says so"
+    );
+    assert!(
+        page.contains("No previous run of this sample"),
+        "first run: the HTML says so"
+    );
 
     // 2. identical runs
     let (d, txt, _) = w.delta(Some(&prev), &cur, "same", &[]);
     assert!(changes(&d).is_empty(), "identical runs: no change: {d:?}");
-    assert!(txt.contains("No change:"), "identical runs: the text says no change");
-    assert_eq!(text(get(&d, "previous")), "2026-01-01T000000Z", "previous is the history folder name");
+    assert!(
+        txt.contains("No change:"),
+        "identical runs: the text says no change"
+    );
+    assert_eq!(
+        text(get(&d, "previous")),
+        "2026-01-01T000000Z",
+        "previous is the history folder name"
+    );
 
     // 3. one reclassification and one new digest
     let mut sm = summary(FEB);
     *at(&mut sm, "sections.clinvar.data.hits.1.significance") = s("Benign");
-    write_run(&cur, &sm, &set_row(&manifest(), "image", "deepvariant-ref", "digest-ddd"));
+    write_run(
+        &cur,
+        &sm,
+        &set_row(&manifest(), "image", "deepvariant-ref", "digest-ddd"),
+    );
     let (d, txt, _) = w.delta(Some(&prev), &cur, "planted", &[]);
     assert_eq!(
         kinds(&d),
@@ -279,13 +321,21 @@ fn deltas_of_two_runs() {
     );
     let img = find(&d, "item", "DEEPVARIANT_IMAGE");
     assert!(
-        text(get(&img, "before")).contains("digest-bbb") && text(get(&img, "after")).contains("digest-ddd"),
+        text(get(&img, "before")).contains("digest-bbb")
+            && text(get(&img, "after")).contains("digest-ddd"),
         "planted: the digest change shows both digests: {img:?}"
     );
-    assert!(txt.contains("2 change(s):"), "planted: the text lists 2 changes: {txt}");
+    assert!(
+        txt.contains("2 change(s):"),
+        "planted: the text lists 2 changes: {txt}"
+    );
 
     // 3b. the same reclassification with only the PharmCAT digest changed
-    write_run(&cur, &sm, &set_row(&manifest(), "image", "pharmcat-ref", "digest-eee"));
+    write_run(
+        &cur,
+        &sm,
+        &set_row(&manifest(), "image", "pharmcat-ref", "digest-eee"),
+    );
     let (d, _, _) = w.delta(Some(&prev), &cur, "unrelated", &[]);
     assert_eq!(
         text(get(&find(&d, "kind", "reclassified"), "why")),
@@ -315,8 +365,17 @@ fn deltas_of_two_runs() {
     *at(&mut sm, "sections.prs.data.scores.1.percentile") = s("53.0");
     *at(&mut sm, "sections.cpsr.data.classification") = json(r#"{"Benign": 10, "VUS": 4}"#);
     *at(&mut sm, "sections.roh.state") = s("missing");
-    let m = set_row(&manifest(), "data", "clinvar_file_date", "20260201 (clinvar/clinvar.vcf.gz)");
-    write_run(&cur, &sm, &set_row(&m, "version", "VEP_CACHE_RELEASE", "116"));
+    let m = set_row(
+        &manifest(),
+        "data",
+        "clinvar_file_date",
+        "20260201 (clinvar/clinvar.vcf.gz)",
+    );
+    write_run(
+        &cur,
+        &sm,
+        &set_row(&m, "version", "VEP_CACHE_RELEASE", "116"),
+    );
     let (d, _, _) = w.delta(Some(&prev), &cur, "many", &[]);
     assert_eq!(
         kinds(&d),
@@ -378,7 +437,10 @@ fn deltas_of_two_runs() {
     *at(&mut sm, "sections.newstep") = new_section("missing");
     write_run(&cur, &sm, &manifest());
     let (d, _, _) = w.delta(Some(&prev), &cur, "newsection", &[]);
-    assert!(changes(&d).is_empty(), "a new section that did not run is no change: {d:?}");
+    assert!(
+        changes(&d).is_empty(),
+        "a new section that did not run is no change: {d:?}"
+    );
     *at(&mut sm, "sections.newstep") = new_section("ok");
     write_run(&cur, &sm, &manifest());
     let (d, _, _) = w.delta(Some(&prev), &cur, "newsection-ran", &[]);
@@ -436,7 +498,9 @@ fn deltas_of_two_runs() {
     );
     let (d, txt, _) = w.delta(None, &cur, "newsince-first", &[]);
     assert!(
-        get(&d, "previous_utc").is_none() && get(&d, "new_since_sections").is_none() && !txt.contains("New since"),
+        get(&d, "previous_utc").is_none()
+            && get(&d, "new_since_sections").is_none()
+            && !txt.contains("New since"),
         "new since: no previous run, no previous_utc and no changed sections: {d:?}"
     );
     let (_, txt, page) = w.delta(None, &cur, "recheck-first", &[]);
@@ -453,13 +517,21 @@ fn deltas_of_two_runs() {
     // that is not an object is dropped and the delta is still written.
     let late = root.join("late");
     let odd = root.join("odd");
-    write_run(&late, &sm, &set_row(&manifest(), "run", "written_utc", "2026-03-01 00:00:00 UTC"));
+    write_run(
+        &late,
+        &sm,
+        &set_row(&manifest(), "run", "written_utc", "2026-03-01 00:00:00 UTC"),
+    );
     write_run(&odd, &sm, &manifest());
     for (dir, rerun) in [(&late, Value::Null), (&odd, json("[1]"))] {
         let mut st = json(state);
         *at(&mut st, "rerun") = rerun;
         fs::create_dir_all(dir.join("recheck")).unwrap();
-        fs::write(dir.join("recheck/state.json"), dumps(&st, &Dump::default()).unwrap()).unwrap();
+        fs::write(
+            dir.join("recheck/state.json"),
+            dumps(&st, &Dump::default()).unwrap(),
+        )
+        .unwrap();
     }
     let quiet = |dir: &Path, name: &str| -> (u8, Value, String) {
         let (code, _) = og_run(&w.args(Some(&prev), dir, name, &[]));
@@ -487,8 +559,16 @@ fn deltas_of_two_runs() {
     // 8. --newest-history: og picks the previous run, as generate-report.sh asks it to.
     let sd = root.join("sample");
     let h = sd.join("history");
-    write_run(&h.join("2026-01-01T000000Z"), &summary("2026-01-01T00:00:00Z"), &manifest());
-    write_run(&h.join("2026-01-01T000000Z-02"), &summary("2026-01-15T00:00:00Z"), &manifest());
+    write_run(
+        &h.join("2026-01-01T000000Z"),
+        &summary("2026-01-01T00:00:00Z"),
+        &manifest(),
+    );
+    write_run(
+        &h.join("2026-01-01T000000Z-02"),
+        &summary("2026-01-15T00:00:00Z"),
+        &manifest(),
+    );
     fs::create_dir_all(h.join("2026-03-01T000000Z")).unwrap(); // stopped before its summary.json
     write_run(&sd, &summary(FEB), &manifest());
     let sds = sd.to_str().unwrap();
@@ -505,7 +585,8 @@ fn deltas_of_two_runs() {
     fs::remove_dir_all(&h).unwrap();
     let (d, txt, _) = w.delta(None, &sd, "newest-none", &["--newest-history", sds]);
     assert!(
-        get(&d, "previous") == Some(&Value::Null) && txt.contains("No previous run of this sample on record"),
+        get(&d, "previous") == Some(&Value::Null)
+            && txt.contains("No previous run of this sample on record"),
         "--newest-history without history/: a first run: {d:?}"
     );
     let both: Vec<String> = [

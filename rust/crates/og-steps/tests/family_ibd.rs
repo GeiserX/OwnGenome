@@ -48,8 +48,7 @@ const CHILD: &str = "OG_TEST_FAMILY_IBD_CHILD";
 const PAIRS_HEAD: &str = "sample_a\tsample_b\tdeclared\texpected_relatedness\tsegments\tshared_cm\t\
 ibd2_cm\tlongest_cm\tanalysed_cm\tshared_fraction\trelatedness\tdegree";
 const SEGS_HEAD: &str = "sample_a\tsample_b\tchrom\tstart\tend\tcm\tibd2_cm";
-const PEDIGREE: &str =
-    "sample\tsex\tfather\tmother\tpartner\nA\tmale\tB\tX\t.\nC\tfemale\tB\tX\t.\nB\tmale\t.\t.\tX\n";
+const PEDIGREE: &str = "sample\tsex\tfather\tmother\tpartner\nA\tmale\tB\tX\t.\nC\tfemale\tB\tX\t.\nB\tmale\t.\t.\tX\n";
 
 /// In the child process only: runs `og family` with the arguments in
 /// [`CHILD`] (separated by U+001F) and exits with its code, so the parent
@@ -79,7 +78,16 @@ fn family_child(args: &[String]) -> (i32, String) {
 
 /// A hap-ibd row: sample 1, haplotype, sample 2, haplotype, chrom, start,
 /// end and cM (None leaves the cM column out).
-type Seg = (&'static str, u8, &'static str, u8, &'static str, i64, i64, Option<f64>);
+type Seg = (
+    &'static str,
+    u8,
+    &'static str,
+    u8,
+    &'static str,
+    i64,
+    i64,
+    Option<f64>,
+);
 
 fn scratch(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("og-family-ibd-{}-{name}", std::process::id()));
@@ -121,7 +129,11 @@ fn write_chrom(
             .iter()
             .map(|s| ["0|0", "0|1", "1|1"][usize::from(dos(s, i))])
             .collect();
-        vcf += &format!("{chrom}\t{}\t.\tA\tG\t.\tPASS\t.\tGT\t{}\n", i * MB, gts.join("\t"));
+        vcf += &format!(
+            "{chrom}\t{}\t.\tA\tG\t.\tPASS\t.\tGT\t{}\n",
+            i * MB,
+            gts.join("\t")
+        );
     }
     gz(&d.join(format!("phased/{chrom}.vcf.gz")), &vcf);
     let ibd: String = rows
@@ -241,7 +253,14 @@ fn one_and_two_chromosomes() {
     assert_eq!(head, PAIRS_HEAD, "1 ibd_pairs.tsv header");
     assert_eq!(
         pairs_of(&pairs),
-        owned(&[("A", "B"), ("A", "C"), ("A", "D"), ("B", "C"), ("B", "D"), ("C", "D")]),
+        owned(&[
+            ("A", "B"),
+            ("A", "C"),
+            ("A", "D"),
+            ("B", "C"),
+            ("B", "D"),
+            ("C", "D")
+        ]),
         "1 one row for every pair of the four members"
     );
     let (shead, segs) = table(&out.join("ibd_segments.tsv"));
@@ -256,7 +275,10 @@ fn one_and_two_chromosomes() {
     let f = |r: &Row, ks: &[&str]| ks.iter().map(|k| r[*k].clone()).collect::<Vec<_>>();
     assert_eq!(ab["declared"], "parent-child");
     assert_eq!(ab["expected_relatedness"], "0.500");
-    assert_eq!(ab["segments"], "1", "2 the two hap-ibd segments are one stretch");
+    assert_eq!(
+        ab["segments"], "1",
+        "2 the two hap-ibd segments are one stretch"
+    );
     assert_eq!(f(ab, &["shared_cm", "analysed_cm"]), ["98.00", "98.00"]);
     assert_eq!(ab["longest_cm"], "98.00");
     assert_eq!(f(ab, &["shared_fraction", "ibd2_cm"]), ["1.0000", "0.00"]);
@@ -292,7 +314,10 @@ fn one_and_two_chromosomes() {
         ),
         "6 the report has the pair's line"
     );
-    assert!(md.contains("rough estimate"), "6 one chromosome is a rough estimate");
+    assert!(
+        md.contains("rough estimate"),
+        "6 one chromosome is a rough estimate"
+    );
     assert!(
         md.contains("Analysed: 1 chromosome (chr1), 98.0 cM"),
         "6 the report names what was analysed"
@@ -308,19 +333,29 @@ fn one_and_two_chromosomes() {
         50,
         &dos1,
     );
-    assert_eq!(run(&d, &["chr1", "chr2"], PEDIGREE), 0, "5 two chromosomes: exit 0");
+    assert_eq!(
+        run(&d, &["chr1", "chr2"], PEDIGREE),
+        0,
+        "5 two chromosomes: exit 0"
+    );
     let (_, pairs) = table(&out.join("ibd_pairs.tsv"));
     let p = by_pair(&pairs);
     let ab = get(&p, "A", "B");
-    assert_eq!(ab["analysed_cm"], "145.00", "5 the analysed map is the sum (98 + 47 cM)");
     assert_eq!(
-        f(ab, &["segments", "shared_cm", "longest_cm", "shared_fraction"]),
+        ab["analysed_cm"], "145.00",
+        "5 the analysed map is the sum (98 + 47 cM)"
+    );
+    assert_eq!(
+        f(
+            ab,
+            &["segments", "shared_cm", "longest_cm", "shared_fraction"]
+        ),
         ["2", "145.00", "98.00", "1.0000"]
     );
     fs::remove_dir_all(d).unwrap();
 }
 
-/// 9. P and Q: 1-30 and 35-60 Mb joined (nothing between), 70-99 Mb not
+/// Case 9. P and Q: 1-30 and 35-60 Mb joined (nothing between), 70-99 Mb not
 /// (Q is 1/1 at 62 and 66 Mb); P and R: 5-50 Mb, R 1/1 at 1-3 and 51-99
 /// Mb, so no reach to the ends; P and S: 3-97 Mb reaches 1 and 99 Mb, S 1/1
 /// at 99 Mb only.
@@ -443,9 +478,14 @@ fn no_chromosome_phased() {
 
 #[test]
 fn a_missing_input_file_stops_with_one_error_line_naming_it() {
-    for (i, gone) in ["maps/chr1.map", "phased/chr1.vcf.gz", "ibd/chr1.ibd.gz", "chroms.txt"]
-        .into_iter()
-        .enumerate()
+    for (i, gone) in [
+        "maps/chr1.map",
+        "phased/chr1.vcf.gz",
+        "ibd/chr1.ibd.gz",
+        "chroms.txt",
+    ]
+    .into_iter()
+    .enumerate()
     {
         let d = scratch(&format!("gone{i}"));
         write_chrom(&d, "chr1", &SAMPLES, (1, 99), &CHR1, 100, &one);
@@ -456,7 +496,10 @@ fn a_missing_input_file_stops_with_one_error_line_naming_it() {
             err.starts_with(&want) && err.matches('\n').count() == 1,
             "10 missing {gone}: one ERROR line naming the file: {err:?}"
         );
-        assert!(!d.join("out").exists(), "10 missing {gone}: nothing written");
+        assert!(
+            !d.join("out").exists(),
+            "10 missing {gone}: nothing written"
+        );
         fs::remove_dir_all(d).unwrap();
     }
 }

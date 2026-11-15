@@ -223,7 +223,10 @@ fn file(v: &[u8]) -> Option<Vec<u8>> {
     Some(v.to_vec())
 }
 
-fn diff(a: &BTreeMap<String, Option<Vec<u8>>>, b: &BTreeMap<String, Option<Vec<u8>>>) -> Vec<String> {
+fn diff(
+    a: &BTreeMap<String, Option<Vec<u8>>>,
+    b: &BTreeMap<String, Option<Vec<u8>>>,
+) -> Vec<String> {
     a.keys()
         .chain(b.keys())
         .filter(|k| a.get(*k) != b.get(*k))
@@ -238,11 +241,19 @@ fn unzip_writes_the_tree_extractall_writes() {
     let members: [(&str, &[u8], Method); 8] = [
         ("2602_phenotype/", b"", Method::Dir),
         ("2602_phenotype/phenotype.mv.db", &big, Method::Deflated),
-        ("2602_phenotype/rw/stored.txt", b"stored as is\n", Method::Stored),
+        (
+            "2602_phenotype/rw/stored.txt",
+            b"stored as is\n",
+            Method::Stored,
+        ),
         ("2602_phenotype/empty/", b"", Method::Dir),
         ("2602_phenotype/twice.txt", b"first\n", Method::Deflated),
         ("2602_phenotype/twice.txt", b"second\n", Method::Stored),
-        ("2602_phenotype/./odd//parts.txt", b"parts\n", Method::Deflated),
+        (
+            "2602_phenotype/./odd//parts.txt",
+            b"parts\n",
+            Method::Deflated,
+        ),
         ("2602_phenotype/café.txt", b"utf-8 name\n", Method::Deflated),
     ];
     // What zipfile.ZipFile(z).extractall(dest) wrote for these members.
@@ -276,7 +287,10 @@ fn unzip_writes_the_tree_extractall_writes() {
         if !zip64 {
             let mut changed = got.clone();
             changed.insert("2602_phenotype/twice.txt".into(), file(b"secone\n"));
-            assert!(changed != want, "control: a tree with one byte changed differs");
+            assert!(
+                changed != want,
+                "control: a tree with one byte changed differs"
+            );
         }
     }
 
@@ -284,7 +298,13 @@ fn unzip_writes_the_tree_extractall_writes() {
         let z = tmp.join("bad.zip");
         fs::write(
             &z,
-            build(&[("fine.txt", b"x", Method::Stored), (bad, b"y", Method::Stored)], false),
+            build(
+                &[
+                    ("fine.txt", b"x", Method::Stored),
+                    (bad, b"y", Method::Stored),
+                ],
+                false,
+            ),
         )
         .unwrap();
         let dest = tmp.join("bad/out");
@@ -303,7 +323,11 @@ fn unzip_writes_the_tree_extractall_writes() {
         .unwrap();
     data[at] ^= 1;
     fs::write(&z, data).unwrap();
-    let (code, err) = og_setup(&["unzip", z.to_str().unwrap(), tmp.join("crc").to_str().unwrap()]);
+    let (code, err) = og_setup(&[
+        "unzip",
+        z.to_str().unwrap(),
+        tmp.join("crc").to_str().unwrap(),
+    ]);
     assert!(
         code == 2 && err.contains("CRC"),
         "unzip: a flipped byte fails the CRC check (exit 2): {code} {err}"
@@ -323,9 +347,21 @@ fn genetic_map_cuts_the_maps_setup_cut_before_og() {
         build(
             &[
                 ("chr_in_chrom_field/", b"", Method::Dir),
-                ("chr_in_chrom_field/plink.chrchr20.GRCh38.map", MAP20.as_bytes(), Method::Deflated),
-                ("chr_in_chrom_field/plink.chrchr21.GRCh38.map", MAP21.as_bytes(), Method::Deflated),
-                ("chr_in_chrom_field/plink.chrchr22.GRCh38.map", b"chr22 . 0.0 1\nchr22 . 0.4\n", Method::Deflated),
+                (
+                    "chr_in_chrom_field/plink.chrchr20.GRCh38.map",
+                    MAP20.as_bytes(),
+                    Method::Deflated,
+                ),
+                (
+                    "chr_in_chrom_field/plink.chrchr21.GRCh38.map",
+                    MAP21.as_bytes(),
+                    Method::Deflated,
+                ),
+                (
+                    "chr_in_chrom_field/plink.chrchr22.GRCh38.map",
+                    b"chr22 . 0.0 1\nchr22 . 0.4\n",
+                    Method::Deflated,
+                ),
             ],
             false,
         ),
@@ -334,15 +370,30 @@ fn genetic_map_cuts_the_maps_setup_cut_before_og() {
     let zs = z.to_str().unwrap();
     let ours = tmp.join("og-maps");
     fs::create_dir_all(&ours).unwrap();
-    let (code, err) = og_setup(&["genetic-map", "--zip", zs, "--out", ours.to_str().unwrap(), "--rfmix", "chr20", "chr21"]);
+    let (code, err) = og_setup(&[
+        "genetic-map",
+        "--zip",
+        zs,
+        "--out",
+        ours.to_str().unwrap(),
+        "--rfmix",
+        "chr20",
+        "chr21",
+    ]);
     assert_eq!(code, 0, "genetic-map --rfmix chr20 chr21: exit 0: {err}");
     // What setup.sh's inline program wrote before og: the member as it is,
     // and fields 1, 4 and 3 of each non-blank line.
     let want: BTreeMap<String, Option<Vec<u8>>> = [
         ("chr20.map", MAP20),
-        ("chr20.rfmix.map", "chr20\t60000\t0.0\nchr20\t70001\t0.12\nchr20\t80000\t1.5\n"),
+        (
+            "chr20.rfmix.map",
+            "chr20\t60000\t0.0\nchr20\t70001\t0.12\nchr20\t80000\t1.5\n",
+        ),
         ("chr21.map", MAP21),
-        ("chr21.rfmix.map", "chr21\t1\t0\nchr21\t2\t0.5\nchr21\t3\t1.25\n"),
+        (
+            "chr21.rfmix.map",
+            "chr21\t1\t0\nchr21\t2\t0.5\nchr21\t3\t1.25\n",
+        ),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_owned(), file(v.as_bytes())))
@@ -356,7 +407,14 @@ fn genetic_map_cuts_the_maps_setup_cut_before_og() {
 
     let only = tmp.join("only-map");
     fs::create_dir_all(&only).unwrap();
-    let (code, err) = og_setup(&["genetic-map", "--zip", zs, "--out", only.to_str().unwrap(), "chr20"]);
+    let (code, err) = og_setup(&[
+        "genetic-map",
+        "--zip",
+        zs,
+        "--out",
+        only.to_str().unwrap(),
+        "chr20",
+    ]);
     assert!(
         code == 0 && tree(&only).keys().collect::<Vec<_>>() == ["chr20.map"],
         "genetic-map without --rfmix writes only chr20.map: {code} {err}"
@@ -366,7 +424,15 @@ fn genetic_map_cuts_the_maps_setup_cut_before_og() {
     fs::create_dir_all(&keep).unwrap();
     fs::write(keep.join("chr22.rfmix.map"), "old\n").unwrap();
     let before = tree(&keep);
-    let (code, err) = og_setup(&["genetic-map", "--zip", zs, "--out", keep.to_str().unwrap(), "--rfmix", "chr22"]);
+    let (code, err) = og_setup(&[
+        "genetic-map",
+        "--zip",
+        zs,
+        "--out",
+        keep.to_str().unwrap(),
+        "--rfmix",
+        "chr22",
+    ]);
     assert!(
         code == 2 && err.contains("line 2"),
         "genetic-map: a row with three fields stops it (exit 2) and names the line: {code} {err}"
@@ -375,7 +441,17 @@ fn genetic_map_cuts_the_maps_setup_cut_before_og() {
         tree(&keep) == before,
         "genetic-map: and leaves that chromosome's files as they were"
     );
-    let (code, err) = og_setup(&["genetic-map", "--zip", zs, "--out", keep.to_str().unwrap(), "chrX"]);
-    assert_eq!(code, 2, "genetic-map: a chromosome the zip lacks stops it: {err}");
+    let (code, err) = og_setup(&[
+        "genetic-map",
+        "--zip",
+        zs,
+        "--out",
+        keep.to_str().unwrap(),
+        "chrX",
+    ]);
+    assert_eq!(
+        code, 2,
+        "genetic-map: a chromosome the zip lacks stops it: {err}"
+    );
     fs::remove_dir_all(tmp).unwrap();
 }

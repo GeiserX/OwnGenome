@@ -60,7 +60,12 @@ fn sha256(path: &Path) -> Option<String> {
     let out = Command::new("sha256sum")
         .arg(path)
         .output()
-        .or_else(|_| Command::new("shasum").args(["-a", "256"]).arg(path).output())
+        .or_else(|_| {
+            Command::new("shasum")
+                .args(["-a", "256"])
+                .arg(path)
+                .output()
+        })
         .unwrap();
     assert!(out.status.success(), "sha256 of {}", path.display());
     let text = String::from_utf8(out.stdout).unwrap();
@@ -84,13 +89,15 @@ fn set_pin(env: &str, name: &str, value: &str) -> String {
     let mut hits = 0;
     let out: String = env
         .split_inclusive('\n')
-        .map(|l| match l.strip_prefix(&prefix).and_then(|r| r.split_once('"')) {
-            Some((_, rest)) => {
-                hits += 1;
-                format!("{prefix}{value}\"{rest}")
-            }
-            None => l.to_owned(),
-        })
+        .map(
+            |l| match l.strip_prefix(&prefix).and_then(|r| r.split_once('"')) {
+                Some((_, rest)) => {
+                    hits += 1;
+                    format!("{prefix}{value}\"{rest}")
+                }
+                None => l.to_owned(),
+            },
+        )
         .collect();
     assert_eq!(hits, 1, "versions.env has one {name} line");
     out
@@ -156,7 +163,11 @@ fn setup_keeps_the_checked_chry_mask() {
     fs::create_dir_all(w.root.join("scripts/lib")).unwrap();
     fs::create_dir_all(&w.serve).unwrap();
     fs::create_dir_all(&w.bindir).unwrap();
-    fs::copy(repo().join("scripts/setup.sh"), w.root.join("scripts/setup.sh")).unwrap();
+    fs::copy(
+        repo().join("scripts/setup.sh"),
+        w.root.join("scripts/setup.sh"),
+    )
+    .unwrap();
     fs::copy(
         repo().join("scripts/lib/common.sh"),
         w.root.join("scripts/lib/common.sh"),
@@ -171,7 +182,10 @@ fn setup_keeps_the_checked_chry_mask() {
     // The synthetic files, under the base names of the URLs setup.sh asks for.
     let files: [(&str, Vec<u8>); 4] = [
         ("current_tree.json", b"{\"id\": \"synthetic\"}\n".to_vec()),
-        ("ftdna_positions_hg38.txt", b"A1\tchrY\t100\tA\tG\n".to_vec()),
+        (
+            "ftdna_positions_hg38.txt",
+            b"A1\tchrY\t100\tA\tG\n".to_vec(),
+        ),
         ("new_positions.txt", b"B1\tchrY\t200\tC\tT\n".to_vec()),
         (&mask_name, gz.finish().unwrap()),
     ];
@@ -200,7 +214,11 @@ fn setup_keeps_the_checked_chry_mask() {
     let mask = yt.join("callable_mask_chrY.fasta.gz");
     let version = yt.join("version.txt");
     let want_mask = sha256(&w.serve.join(&mask_name));
-    let tree3 = ["current_tree.json", "ftdna_positions_hg38.txt", "new_positions.txt"];
+    let tree3 = [
+        "current_tree.json",
+        "ftdna_positions_hg38.txt",
+        "new_positions.txt",
+    ];
     let with_mask: Vec<&str> = tree3.iter().copied().chain([mask_name.as_str()]).collect();
 
     let (rc, asked, out) = w.setup("");

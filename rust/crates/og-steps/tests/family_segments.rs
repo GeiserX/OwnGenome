@@ -150,7 +150,10 @@ fn family_vcf(path: &Path) -> String {
                         gt(from_dad, mum1),
                     ]
                 };
-                out += &format!("{chrom}\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t{}\n", g.join("\t"));
+                out += &format!(
+                    "{chrom}\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t{}\n",
+                    g.join("\t")
+                );
                 pos += STEP;
             }
         }
@@ -284,7 +287,11 @@ fn trio_duo_no_par_and_report() {
     );
     assert_eq!(a["basis"], "parent and grandparents");
     let pat2 = pick(&rows, "paternal", "chr2");
-    assert_eq!(pat2.len(), 2, "chr2, paternal: exactly two segments: {pat2:?}");
+    assert_eq!(
+        pat2.len(),
+        2,
+        "chr2, paternal: exactly two segments: {pat2:?}"
+    );
     for (r, (s, e)) in pat2
         .iter()
         .zip([(1_000_000, 11_000_000), (21_000_000, 31_000_000)])
@@ -326,9 +333,10 @@ fn trio_duo_no_par_and_report() {
     // 3. the DNA Painter CSV
     let csv = fs::read_to_string(out.join("kid_dnapainter.csv")).unwrap();
     let lines = csv.split_inclusive('\n').map(Ok::<_, std::io::Error>);
-    let r: Vec<Vec<String>> = pycompat::csv::Reader::new(lines, ',', pycompat::csv::Quoting::Minimal)
-        .map(Result::unwrap)
-        .collect();
+    let r: Vec<Vec<String>> =
+        pycompat::csv::Reader::new(lines, ',', pycompat::csv::Quoting::Minimal)
+            .map(Result::unwrap)
+            .collect();
     assert_eq!(
         r[0],
         [
@@ -370,7 +378,11 @@ fn trio_duo_no_par_and_report() {
 
     // 4. the SVG
     let svg = fs::read_to_string(out.join("kid_segments.svg")).unwrap();
-    assert_eq!(svg_bars(&svg), Ok(rows.len()), "SVG: well-formed, a bar per segment");
+    assert_eq!(
+        svg_bars(&svg),
+        Ok(rows.len()),
+        "SVG: well-formed, a bar per segment"
+    );
 
     // 2. duo
     let duo_members = members_tsv(&d.join("members_duo.tsv"), false);
@@ -474,7 +486,11 @@ fn trio_duo_no_par_and_report() {
         (digits > 0 && (tail.starts_with(" crossover,") || tail.starts_with(" crossovers,")))
             .then(|| &rest[..digits])
     });
-    assert_eq!(count, Some("1"), "the section counts kid's one crossover: {line}");
+    assert_eq!(
+        count,
+        Some("1"),
+        "the section counts kid's one crossover: {line}"
+    );
     for name in [
         "kid_segments.tsv",
         "kid_dnapainter.csv",
@@ -483,7 +499,10 @@ fn trio_duo_no_par_and_report() {
     ] {
         let a = fs::read(outs[0].join(name)).unwrap();
         let b = fs::read(outs[1].join(name)).unwrap();
-        assert!(a == b, "report writes {name}, the same bytes on a second run");
+        assert!(
+            a == b,
+            "report writes {name}, the same bytes on a second run"
+        );
     }
     fs::remove_dir_all(d).unwrap();
 }

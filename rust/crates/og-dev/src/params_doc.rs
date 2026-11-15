@@ -261,7 +261,10 @@ mod tests {
             .collect();
         assert_ne!(dropped, page, "the row was there to drop");
         let (missing, extra, twice) = problems(&params, &dropped, &main_nf);
-        assert_eq!((missing, extra, twice), (vec![victim.clone()], vec![], vec![]));
+        assert_eq!(
+            (missing, extra, twice),
+            (vec![victim.clone()], vec![], vec![])
+        );
         let d = scratch("dropped", |p| {
             p.lines()
                 .filter(|l| !l.starts_with(&row))
@@ -300,7 +303,11 @@ mod tests {
     fn a_doc_only_row_stays_only_while_main_nf_reads_it() {
         let params: BTreeSet<String> = ["input".to_owned()].into();
         let page = "| `--input` | none | x |\n| `--pedigree` | none | y |\n";
-        assert!(problems(&params, page, "def p = params.pedigree\n").1.is_empty());
+        assert!(
+            problems(&params, page, "def p = params.pedigree\n")
+                .1
+                .is_empty()
+        );
         assert!(problems(&params, page, "x = ['pedigree']\n").1.is_empty());
         assert_eq!(
             problems(&params, page, "def p = params.pedigree_file\n").1,
@@ -312,10 +319,7 @@ mod tests {
     fn groups_under_defs_count_when_there_is_no_definitions() {
         let s = loads(r#"{"properties": {"a": {}}, "$defs": {"g": {"properties": {"b": {}}}}}"#)
             .unwrap();
-        assert_eq!(
-            schema_params(&s),
-            ["a".to_owned(), "b".to_owned()].into()
-        );
+        assert_eq!(schema_params(&s), ["a".to_owned(), "b".to_owned()].into());
     }
 
     #[test]
@@ -330,7 +334,9 @@ mod tests {
         assert_eq!(code, 2);
         assert!(out.is_empty());
         assert!(
-            err.ends_with("og dev params-doc: error: unrecognized arguments: --og-scaffold-probe\n"),
+            err.ends_with(
+                "og dev params-doc: error: unrecognized arguments: --og-scaffold-probe\n"
+            ),
             "{err}"
         );
     }

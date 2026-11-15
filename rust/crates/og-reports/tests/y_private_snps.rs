@@ -62,8 +62,8 @@ fn scratch(name: &str) -> PathBuf {
 
 /// `text` gzipped (as BGZF, which gzip readers read).
 fn gz(path: &Path, text: &[u8]) {
-    let mut w = og_io::bgzf::Writer::new(fs::File::create(path).unwrap(), NonZero::<usize>::MIN)
-        .unwrap();
+    let mut w =
+        og_io::bgzf::Writer::new(fs::File::create(path).unwrap(), NonZero::<usize>::MIN).unwrap();
     w.write_all(text).unwrap();
     w.finish().unwrap();
 }
@@ -139,7 +139,8 @@ fn run(d: &Path, vcf: &Path, prefix: &str, extra: &[&str]) -> Run {
     args.extend(extra.iter().map(|s| (*s).to_owned()));
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let code = og_reports::y::cli(Some("private-snps"), &args, &mut out, &mut err);
-    let text = fs::read_to_string(d.join(format!("{prefix}_y_private_snps.tsv"))).unwrap_or_default();
+    let text =
+        fs::read_to_string(d.join(format!("{prefix}_y_private_snps.tsv"))).unwrap_or_default();
     let mut head = Vec::new();
     let mut rows = Vec::new();
     for line in text.lines() {
@@ -168,24 +169,43 @@ fn private_snps_gates_tables_and_mask() {
     let r = run(&d, &vcf, "S", &[]);
     assert_eq!(r.code, 0, "the tool exits 0: {}", r.stderr);
     let pos = r.pos();
-    assert!(!pos.contains(&"7000100"), "1. pub1 (first table) is not private: {pos:?}");
-    assert!(!pos.contains(&"7000200"), "1. pub2 (second table) is not private: {pos:?}");
+    assert!(
+        !pos.contains(&"7000100"),
+        "1. pub1 (first table) is not private: {pos:?}"
+    );
+    assert!(
+        !pos.contains(&"7000200"),
+        "1. pub2 (second table) is not private: {pos:?}"
+    );
     assert!(
         r.head_has("on_public_lists=2"),
         "1. the header counts the two public positions: {:?}",
         r.head
     );
-    assert!(pos.contains(&"7000300"), "2. the private haploid call is listed");
-    assert!(pos.contains(&"7000400"), "2. the private diploid ALT/ALT call is listed");
     assert!(
-        r.rows
-            .contains(&["7000300", "C", "T", "30", "1.000", "50", "1"].map(str::to_owned).to_vec()),
+        pos.contains(&"7000300"),
+        "2. the private haploid call is listed"
+    );
+    assert!(
+        pos.contains(&"7000400"),
+        "2. the private diploid ALT/ALT call is listed"
+    );
+    assert!(
+        r.rows.contains(
+            &["7000300", "C", "T", "30", "1.000", "50", "1"]
+                .map(str::to_owned)
+                .to_vec()
+        ),
         "2. its row carries the depth, ALT fraction, quality and genotype: {:?}",
         r.rows
     );
     let mut sorted = pos.clone();
     sorted.sort_unstable();
-    assert_eq!(sorted, ["7000300", "7000400"], "3. no other position is listed");
+    assert_eq!(
+        sorted,
+        ["7000300", "7000400"],
+        "3. no other position is listed"
+    );
     for label in [
         "PAR=2",
         "not_PASS=1",
@@ -196,10 +216,16 @@ fn private_snps_gates_tables_and_mask() {
         "excess_depth=1",
         "outside_callable=1",
     ] {
-        assert!(r.head_has(label), "3. the header counts {label}: {:?}", r.head);
+        assert!(
+            r.head_has(label),
+            "3. the header counts {label}: {:?}",
+            r.head
+        );
     }
     assert!(
-        r.stdout.lines().any(|l| l.contains("13 chrY SNV records read")),
+        r.stdout
+            .lines()
+            .any(|l| l.contains("13 chrY SNV records read")),
         "3. the indel and the second-ALT record never reach the gates: {}",
         r.stdout
     );
@@ -211,7 +237,10 @@ fn private_snps_gates_tables_and_mask() {
 
     // 4. the depth gate off
     let off = run(&d, &vcf, "off", &["--max-depth-factor", "0"]);
-    assert!(off.pos().contains(&"7001200"), "4. --max-depth-factor 0 keeps the deep call");
+    assert!(
+        off.pos().contains(&"7001200"),
+        "4. --max-depth-factor 0 keeps the deep call"
+    );
 
     // 5. gzipped
     let gzv = d.join("s.vcf.gz");
@@ -223,7 +252,10 @@ fn private_snps_gates_tables_and_mask() {
     );
 
     // 7. the callable mask
-    assert!(!pos.contains(&"7001300"), "7. the call outside the mask is not listed");
+    assert!(
+        !pos.contains(&"7001300"),
+        "7. the call outside the mask is not listed"
+    );
     assert!(
         r.head_has("callable_mask=callable_mask_chrY.fasta.gz"),
         "7. the header names the mask it used: {:?}",
@@ -232,7 +264,13 @@ fn private_snps_gates_tables_and_mask() {
     let other = d.join("other_mask.fa.gz");
     write_mask(&other, (7_000_250, 7_000_350));
     assert_eq!(
-        run(&d, &vcf, "alt", &["--callable-mask", other.to_str().unwrap()]).pos(),
+        run(
+            &d,
+            &vcf,
+            "alt",
+            &["--callable-mask", other.to_str().unwrap()]
+        )
+        .pos(),
         ["7000400", "7001300"],
         "7. --callable-mask reads another mask (7000300 masked there, 7001300 callable)"
     );
