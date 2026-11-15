@@ -1393,6 +1393,136 @@ mod tests {
         let gt = genotypes(r, &[0, 0, 0]);
         assert_eq!(rule_line(r, &gt, None)["phase"], "not_needed");
     }
+    /// The call floor (decision D10): a site whose GQ is below 20, or whose
+    /// record the caller filtered, is not read. GQ 20, a missing GQ and
+    /// DeepVariant's RefCall stay readable.
+    #[test]
+    fn low_quality_calls_at_rule_sites_are_not_read() {
+        let (rows, rules) = assets();
+        let rule = |id: &str| rules.iter().find(|r| r.id == id).unwrap();
+        let sites: Vec<&Site> = rows
+            .iter()
+            .chain(rules.iter().flat_map(|r| &r.sites))
+            .collect();
+        let scratch = Scratch::new();
+        let read = |text: &str, id: &str| {
+            let path = scratch.put("g", text);
+            rule_line(rule(id), &read_genotypes(&path, &sites).unwrap(), None)
+        };
+        // APOE e2/e4: heterozygous at both sites.
+        let apoe = |tail: &str| {
+            format!("chr19\t44908684\tT\tC\tT/C{tail}\nchr19\t44908822\tC\tT\tC/T{tail}\n")
+        };
+        for (tail, status, result) in [
+            ("\t0", "low_gq", "."),
+            ("\t1", "low_gq", "."),
+            ("\t19", "low_gq", "."),
+            ("\t20", "called", "e2/e4"),
+            ("\t99", "called", "e2/e4"),
+            ("\t.", "called", "e2/e4"),
+            ("", "called", "e2/e4"),
+            ("\t50\tPASS", "called", "e2/e4"),
+            ("\t50\t.", "called", "e2/e4"),
+            ("\t50\tLowQual", "low_gq", "."),
+        ] {
+            let line = read(&apoe(tail), "APOE");
+            assert_eq!(line["status"], status, "APOE with '{tail}'");
+            assert_eq!(line["result"], result, "APOE with '{tail}'");
+            assert_eq!(line["genotypes"], "T/C,C/T", "APOE with '{tail}'");
+            if status == "low_gq" {
+                assert!(line["reading"].contains("not read"), "{}", line["reading"]);
+                assert!(line["reading"].contains("rs429358"), "{}", line["reading"]);
+            }
+        }
+        // One weak site is enough to stop the rule, and the reading names it.
+        let line = read(
+            "chr19\t44908684\tT\tC\tC/C\t1\nchr19\t44908822\tC\tT\tC/C\t50\n",
+            "APOE",
+        );
+        assert_eq!((&line["status"][..], &line["result"][..]), ("low_gq", "."));
+        assert!(line["reading"].contains("rs429358"), "{}", line["reading"]);
+        assert!(!line["reading"].contains("rs7412"), "{}", line["reading"]);
+        // A site with no call at all still reads not_covered.
+        let line = read("chr19\t44908684\tT\tC\tT/C\t1\n", "APOE");
+        assert_eq!(line["status"], "not_covered");
+        // HFE C282Y/H63D: a LowQual call at C282Y is not read; RefCall and
+        // a pass are.
+        let hfe = |filter: &str| {
+            format!("chr6\t26092913\tG\tA\tG/A\t50\t{filter}\nchr6\t26090951\tC\tG\tC/G\t50\tRefCall\n")
+        };
+        let line = read(&hfe("LowQual"), "HFE");
+        assert_eq!((&line["status"][..], &line["result"][..]), ("low_gq", "."));
+        assert!(line["reading"].contains("LowQual"), "{}", line["reading"]);
+        assert_eq!(read(&hfe("PASS"), "HFE")["status"], "called");
+        // SERPINA1 PiMZ at GQ 0 is not read; at GQ 30 it is.
+        let serpina1 = |gq: u32| {
+            format!("chr14\t94380925\tT\tA\tT/T\t{gq}\nchr14\t94378610\tC\tT\tC/T\t{gq}\n")
+        };
+        assert_eq!(read(&serpina1(0), "SERPINA1")["status"], "low_gq");
+        assert_eq!(read(&serpina1(30), "SERPINA1")["status"], "called");
+        // A low-quality heterozygous site is not sent to WhatsHap.
+        let tas2r38 = |gq: u32| {
+            format!(
+                "chr7\t141973545\tC\tG\tC/G\t{gq}\nchr7\t141972905\tG\tA\tG/A\t{gq}\nchr7\t141972804\tT\tC\tT/C\t{gq}\n"
+            )
+        };
+        for (gq, n) in [(5, 0), (40, 3)] {
+            let path = scratch.put("g", &tas2r38(gq));
+            let gt = read_genotypes(&path, &sites).unwrap();
+            let out = scratch.put("phase.vcf", "");
+            assert_eq!(phase_vcf(&out, "S", &rules, &gt).unwrap(), n, "GQ {gq}");
+        }
+    }
+
+    /// The traits table: a weak table row and the APOE line built from weak
+    /// sites read low_gq with a "not read" reading.
+    #[test]
+    fn low_quality_calls_in_the_traits_table_are_not_read() {
+        let scratch = Scratch::new();
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+        let gt = scratch.put(
+            "g",
+            "chr2\t135851076\tG\tA\tG/G\t3\n\
+             chr19\t40848628\tA\tT\tA/T\t40\tLowQual\n\
+             chr2\t135859184\tC\tT\tC/T\t20\n\
+             chr19\t44908684\tT\tC\tC/C\t0\nchr19\t44908822\tC\tT\tC/C\t0\n",
+        );
+        let out = scratch.0.join("traits.tsv").to_string_lossy().into_owned();
+        let rules_out = scratch.0.join("rules.tsv").to_string_lossy().into_owned();
+        let opts = [
+            ("table", root.join("traits.tsv")),
+            ("rules", root.join("genotype_rules.tsv")),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string_lossy().into_owned()))
+        .chain([
+            ("genotypes".into(), gt),
+            ("sample".into(), "S".into()),
+            ("out".into(), out.clone()),
+            ("rules-out".into(), rules_out),
+        ])
+        .collect();
+        assert_eq!(run("table", &opts).unwrap(), 0);
+        let text = std::fs::read_to_string(&out).unwrap();
+        let row = |rsid: &str| -> Vec<String> {
+            text.lines()
+                .map(|l| l.split('\t').map(str::to_owned).collect::<Vec<_>>())
+                .find(|c| c[0] == rsid)
+                .unwrap_or_else(|| panic!("no row {rsid}"))
+        };
+        // rsid gene chrom pos trait genotype status reading ...
+        for rsid in ["rs4988235", "rs1801272", "rs429358", "rs7412"] {
+            let r = row(rsid);
+            assert_eq!(r[6], "low_gq", "{rsid}: {r:?}");
+            assert!(r[7].contains("not read"), "{rsid}: {r:?}");
+        }
+        assert_eq!(row("rs4988235")[5], "G/G");
+        assert!(row("rs1801272")[7].contains("LowQual"));
+        assert_eq!(row("rs182549")[6], "called");
+        let apoe = row("rs429358+rs7412");
+        assert_eq!((&apoe[5][..], &apoe[6][..]), (".", "low_gq"));
+    }
+
     #[test]
     fn unwritable_rules_output_keeps_existing_traits_table() {
         let scratch = Scratch::new();

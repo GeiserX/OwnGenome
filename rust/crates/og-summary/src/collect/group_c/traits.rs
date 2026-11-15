@@ -820,3 +820,56 @@ pub mod apol1 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::collect::{Group, Input, collect};
+    use crate::testutil::Dir;
+    use pycompat::json::Value;
+
+    /// A low_gq row (decision D10: a call below GQ 20, or one the caller
+    /// filtered) has its own count, so it does not drop out of the totals.
+    #[test]
+    fn low_gq_rows_are_counted() {
+        let d = Dir::new("c-traits-low-gq");
+        d.put(
+            "S/traits/S_traits.tsv",
+            "rsid\tgene\ttrait\tgenotype\tstatus\treading\tancestry\tnote\tpmids\n\
+rs1\tX\tx\tA/A\tcalled\tr\ta\tn\tp\n\
+rs2\tX\tx\tA/G\tlow_gq\tnot read\ta\tn\tp\n\
+rs3\tX\tx\tC/C\tlow_gq\tnot read\ta\tn\tp\n\
+rs4\tX\tx\t.\tnot_covered\tnot read\ta\tn\tp\n\
+rs429358\tAPOE\tx\tC/C\tlow_gq\tnot read\ta\tn\tp\n",
+        );
+        let input = Input {
+            sample: "S".into(),
+            sample_dir: d.path("S"),
+            declared_sex: None,
+            assets: d.path("assets"),
+            group: Group::C,
+            tables: concat!(env!("CARGO_MANIFEST_DIR"), "/../../../bin").into(),
+        };
+        let v = collect(&input).unwrap().to_json();
+        let Value::Object(top) = &v else {
+            panic!("{v:?}")
+        };
+        let Some(Value::Object(sections)) = top.get("sections") else {
+            panic!("{v:?}")
+        };
+        let Some(Value::Object(traits)) = sections.get("traits") else {
+            panic!("{v:?}")
+        };
+        let Some(Value::Object(data)) = traits.get("data") else {
+            panic!("{traits:?}")
+        };
+        // The APOE rows are left out of the counts, as for the other statuses.
+        for (k, n) in [
+            ("called", 1),
+            ("not_covered", 1),
+            ("other_allele", 0),
+            ("low_gq", 2),
+        ] {
+            assert_eq!(data.get(k), Some(&Value::Int(n.into())), "{k}: {data:?}");
+        }
+    }
+}
