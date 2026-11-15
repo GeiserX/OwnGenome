@@ -801,12 +801,17 @@ def live_browser_checks(live, port, work, run, real):
               "the marks stay when the family answers first, clear when the results do, and the map's tooltip stays "
               "hidden=\"hidden\"", all(m[3] for m in marks), [m for m in marks if not m[3]] or marks[:2])
         # A parent's page, whichever card holds the child's two results to act on.
+        # The map's document is held back, as above, so the tooltip's end state does not depend on the race.
         seen = []
-        for summary in (TWO_IN_ONE_CARD, TWO_CARDS):
-            run("father_a", summary)
-            seen.append(capture("/runs/gf_a/", source)[0])
+        keep_routes = slow_routes(live, {"/map.json": 0.5})
+        try:
+            for summary in (TWO_IN_ONE_CARD, TWO_CARDS):
+                run("father_a", summary)
+                seen.append(capture("/runs/gf_a/", source)[0])
+        finally:
+            live.app.routes[:] = keep_routes
         check("live mode: a parent's page is the same whichever card holds a child's results to act on",
-              seen[0] == seen[1], "the pages differ")
+              seen[0] == seen[1], differences(seen[0], seen[1]))
         b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": log}, b.session)
         failure_browser_checks(b, base, live, live.root)
         family_gate_checks(b, base, live, run)
