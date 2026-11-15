@@ -17,6 +17,9 @@
 #   - the same reads without any RHD read (both copies deleted) give D-, and
 #     with half of them (one copy) D+ with one copy;
 #   - the VCF without a BAM gives RhD not determined and ABO O at medium;
+#   - ABO c.1061delC written two bases right (GG>G) gives A2/A2 as the table's
+#     CG>C does, because step 41 left-aligns first (og on the VCF as written
+#     reads A1/A1, the control), and a C>A,G 1/2 at c.803 keeps its one B copy;
 #   - the Nextflow processes (BLOODTYPE_DEPTH, BLOODTYPE) on a VCF and BAM
 #     write the same three files as the bash step on the same two files.
 . "$(dirname "$0")/lib.sh"
@@ -142,6 +145,74 @@ step "$V"
 check_eq "without a BAM RhD is not determined" "$(cell "$V" RhD phenotype)" "not determined"
 check "and the step says why" has 'No BAM .*RhD needs read depth' "$(cat "$STEP_LOG")"
 check_eq "without a BAM ABO is O at medium" "$(cell "$V" ABO phenotype)/$(cell "$V" ABO confidence)" "O/medium"
+
+# --- an indel written further right, and a multi-allelic record ------------------------
+# og matches a marker by position, REF and ALT. A caller can write ABO c.1061delC
+# (CG>C at chr9:133255669, in a run of G) as GG>G two bases right; step 41
+# left-aligns the records near the markers against the reference first, so both
+# forms give A2. A multi-allelic C>A,G 1/2 at c.803 stays one record and keeps its
+# one B copy. The fixture reference has no chr9, so these samples get their own:
+# GRCh38's bases over ABO (from the Broad's public copy of GRCh38) after N up to
+# there, as contig chr9. Records on other contigs go through unchanged.
+HG38="https://storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta"
+fetch_abo() {
+  rm -f "${T}/abo.fa"
+  docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v /etc/ssl/certs:/etc/ssl/certs:ro \
+    -e CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt -v "${E2E_WORK}:${E2E_WORK}" -w "$T" "$SAMTOOLS_IMAGE" \
+    samtools faidx -o "${T}/abo.fa" "$HG38" chr9:133255001-133258500
+}
+check "GRCh38's bases over ABO download" retry fetch_abo
+ABO_SEQ=$(grep -v '^>' "${T}/abo.fa" 2>/dev/null | tr -d '\n')
+check_eq "bases fetched over ABO" "${#ABO_SEQ}" 3500
+check_eq "GRCh38 at c.1061delC (chr9:133255669-133255673): C, then the run of G" "${ABO_SEQ:668:5}" CGGGT
+check_eq "GRCh38 at c.803 (chr9:133255928)" "${ABO_SEQ:927:1}" C
+check_eq "GRCh38 at c.261 (chr9:133257521)" "${ABO_SEQ:2520:1}" T
+REFBT="${G}/reference-bt/chr9_abo.fa"
+mkdir -p "${G}/reference-bt"
+{ echo ">chr9"; { head -c 133255000 /dev/zero | tr '\0' N; printf '%s' "$ABO_SEQ"; } | fold -w 60; echo; } > "$REFBT"
+dk "$SAMTOOLS_IMAGE" samtools faidx "$REFBT"
+check_eq "the ABO reference's chr9" "$(cut -f1,2 "${REFBT}.fai" 2>/dev/null)" "$(printf 'chr9\t133258500')"
+# bt_vcf NAME RECORD...: GIAB's records without those over ABO, plus RECORD (fields split by |).
+bt_vcf() {
+  { dk "$BCFTOOLS_IMAGE" bcftools view -t ^chr9:133255000-133258500 "${T}/truth.vcf.gz"
+    printf '%s\n' "${@:2}" | tr '|' '\t'; } > "${T}/$1.vcf"
+  dk "$BCFTOOLS_IMAGE" bcftools sort -Oz -o "${T}/$1.vcf.gz" "${T}/$1.vcf"
+}
+# ev SAMPLE MARKER: the marker's status and ALT copies in the sample's evidence file.
+ev() {
+  awk -F'\t' -v m="$2" 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} $2 == m {print $c["status"] " " $c["alt_copies"]}' \
+    "${G}/$1/bloodtype/$1_bloodtype_evidence.tsv" 2>/dev/null
+}
+# The realigned count of bcftools norm's summary in the last step's log.
+realigned() { awk -F'\t' '/realigned/ {split($2, n, "/"); print n[4]}' "$STEP_LOG"; }
+R="${SAMPLE}btr" L="${SAMPLE}btl" M="${SAMPLE}btm"
+bt_vcf "$R" 'chr9|133255671|.|GG|G|50|PASS|.|GT|1/1' 'chr9|133257521|.|T|TC|50|PASS|.|GT|1/1'
+bt_vcf "$L" 'chr9|133255669|.|CG|C|50|PASS|.|GT|1/1' 'chr9|133257521|.|T|TC|50|PASS|.|GT|1/1'
+bt_vcf "$M" 'chr9|133255928|.|C|A,G|50|PASS|.|GT|1/2' 'chr9|133257521|.|T|TC|50|PASS|.|GT|1/1'
+export REF_FASTA="$REFBT"
+sample "$R" "${T}/${R}.vcf.gz" "${T}/win.bam"
+step "$R"
+check_eq "right-shifted GG>G: bcftools norm moved one record" "$(realigned)" 1
+check_eq "right-shifted GG>G at c.1061: ABO A2/A2" "$(cell "$R" ABO phenotype)/$(cell "$R" ABO genotype)" "A2/A2/A2"
+check_eq "and c.1061delC reads two copies" "$(ev "$R" ABO_1061)" "called 2"
+check "the left-aligned VCF is not left behind" test ! -e "${G}/${R}/bloodtype/${R}_bloodtype_norm.vcf.gz"
+sample "$L" "${T}/${L}.vcf.gz" "${T}/win.bam"
+step "$L"
+check_eq "the same deletion as the table writes it: nothing to move" "$(realigned)" 0
+check_eq "both forms give the same ABO row" "$(grep '^ABO' "${G}/${R}/bloodtype/${R}_bloodtype.tsv" 2>/dev/null)" \
+  "$(grep '^ABO' "${G}/${L}/bloodtype/${L}_bloodtype.tsv" 2>/dev/null)"
+# Control: og on the right-shifted VCF as written, with the same depth, misses
+# the deletion (what step 41 gave before it left-aligned).
+"${REPO}/bin/og" bloodtype report --sample "$R" --vcf "${T}/${R}.vcf.gz" --markers "$MARKERS" \
+  --depth "${G}/${R}/bloodtype/${R}_bloodtype_depth.tsv" --out "${T}/raw.tsv" --evidence "${T}/raw_evidence.tsv" > /dev/null
+check_eq "control: og on the VCF as written reads A1/A1" \
+  "$(awk -F'\t' '$1 == "ABO" {print $3}' "${T}/raw.tsv" 2>/dev/null)" "A1/A1"
+sample "$M" "${T}/${M}.vcf.gz" "${T}/win.bam"
+step "$M"
+check_eq "C>A,G 1/2 at c.803 stays one record: one B copy" "$(ev "$M" ABO_803)" "called 1"
+check_eq "and ABO A1/B" "$(cell "$M" ABO genotype)" "A1/B"
+unset REF_FASTA
+rm -f "$REFBT" "${REFBT}.fai"
 
 # --- Nextflow against the bash step ------------------------------------------------------
 # The same VCF, and the BAM step 02 wrote from the fixture's reads (its header is the
