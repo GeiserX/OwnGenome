@@ -15,7 +15,9 @@
 //! ([`OverlapIndex`]).
 
 pub mod add_callers;
+pub mod consensus_check;
 pub mod postfilter;
+pub mod survivor_prep;
 
 use std::collections::{BTreeMap, HashMap};
 

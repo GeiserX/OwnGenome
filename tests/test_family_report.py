@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og family (step 38 and the Nextflow FAMILY workflow) on synthetic
 pedigrees, somalier tables and joint VCFs, and the pedigree rules other
 Python tools still import from bin/family_report.py.

@@ -215,8 +215,7 @@ def sample_dir(tmp, name, records, deletions=None, idxstats=None):
 
 def mito_section(d, name):
     import collect_summary
-    _, data = collect_summary.sec_mito(d, name)
-    return data
+    return collect_summary.collect(name, d)["sections"]["mito"]["data"]
 
 
 def reports(d, name):
@@ -247,13 +246,11 @@ def test_confirmed_snv(tmp):
           "Confirmed disease variants (assets/mito_confirmed.tsv): 0" in text)
     import collect_summary
     saved, collect_summary.ASSETS_DIR = collect_summary.ASSETS_DIR, os.path.join(tmp, "no-assets")
-    collect_summary._ASSETS.clear()
     try:
         data = mito_section(d, "Snone")
         text, html = reports(d, "Snone")
     finally:
         collect_summary.ASSETS_DIR = saved
-        collect_summary._ASSETS.clear()
     check("without the list the summary has no confirmed count, only why",
           "confirmed" not in data and "mito_confirmed.tsv is not in" in (data.get("confirmed_note") or ""), str(data))
     check("without the list neither report shows a count of confirmed variants",

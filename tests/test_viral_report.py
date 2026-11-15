@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og viral report: the viral DNA in the reads that do not map to the human genome (step 47).
 
 Each case writes a synthetic viral FASTA, the samtools coverage and depth -aa
@@ -206,6 +207,20 @@ check("7 a coverage file that is not samtools coverage output stops it",
 import collect_summary as cs  # noqa: E402
 import render_report as rr  # noqa: E402
 
+class Unreadable(Exception):
+    """A section og summary collect could not read (its state is unreadable)."""
+
+
+def sec(d, s, key):
+    """(source path, data) of section KEY of the summary og summary collect writes
+    for folder D: (None, {}) without its file; Unreadable when it cannot be read."""
+    x = cs.collect(s, d)["sections"][key]
+    if x["state"] == "unreadable":
+        raise Unreadable(x["note"])
+    return (os.path.join(d, x["source"]) if x["source"] else None), x["data"]
+
+
+
 
 def og_report(d):
     """og viral report on the inputs in d, into d/S/viral/S_viral.tsv."""
@@ -218,12 +233,12 @@ with tempfile.TemporaryDirectory() as d:
     write_inputs(d, {B: flat(15), EBV: flat(1), PHIX: flat(3)}, {B: 400, EBV: 30, PHIX: 20})
     os.makedirs(f"{d}/S/viral")
     og_report(d)
-    path, data = cs.sec_viral(f"{d}/S", "S")
+    path, data = sec(f"{d}/S", "S", "viral")
     check("8 the summary finds the table", path.endswith("viral/S_viral.tsv"), True)
     check("8 the summary's HHV-6 line", data["hhv6"], "inherited integrated HHV-6B likely")
     check("8 the summary lists what was found", [x["virus"] for x in data["found"]],
           ["HHV-6B", "Human gammaherpesvirus 4", "Escherichia phage phiX174"])
-    check("8 no table: no section", cs.sec_viral(f"{d}/none", "S"), (None, {}))
+    check("8 no table: no section", sec(f"{d}/none", "S", "viral"), (None, {}))
     lines = rr.viral_lines(data)
     check("8 the text block opens with the HHV-6 line", lines[0], "HHV-6: inherited integrated HHV-6B likely")
     check("8 and ends with the note", lines[-1], rr.VIRAL_NOTE)
@@ -232,9 +247,9 @@ with tempfile.TemporaryDirectory() as d:
     with open(f"{d}/S/viral/S_viral.tsv", "w") as f:
         f.write("virus\tcall\n")
     try:
-        cs.sec_viral(f"{d}/S", "S")
+        sec(f"{d}/S", "S", "viral")
         check("8 a table without its columns is unreadable", "read", "Unreadable")
-    except cs.Unreadable:
+    except Unreadable:
         check("8 a table without its columns is unreadable", "Unreadable", "Unreadable")
 
 # 8. the summary's HHV-6 line without a human depth, and with one but no integration
@@ -244,7 +259,7 @@ for human, want in (([("chrX", 1000, 1000, 30.0)], "not assessed (no human depth
         write_inputs(d, {EBV: flat(1)}, {EBV: 30}, human=human)
         os.makedirs(f"{d}/S/viral")
         og_report(d)
-        data = cs.sec_viral(f"{d}/S", "S")[1]
+        data = sec(f"{d}/S", "S", "viral")[1]
         check(f"8 the summary's HHV-6 line reads {want!r}", data["hhv6"], want)
         if human:
             check("8 no human depth: the text line leaves out copies per cell", rr.viral_lines(data)[1],
@@ -255,7 +270,7 @@ with tempfile.TemporaryDirectory() as d:
     write_inputs(d, {HCV: lambda i: 1 if i < 50 else 0}, {HCV: 5})
     os.makedirs(f"{d}/S/viral")
     og_report(d)
-    data = cs.sec_viral(f"{d}/S", "S")[1]
+    data = sec(f"{d}/S", "S", "viral")[1]
     check("8 a genome with 5 reads is listed", [(x["virus"], x["call"], x["reads"]) for x in data["found"]],
           [("Hepatitis C virus genotype 1", CALL_NONE, "5")])
     check("8 and the text does not say no read", any(ln.startswith("No read") for ln in rr.viral_lines(data)), False)

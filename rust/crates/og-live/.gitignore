@@ -1,0 +1,3 @@
+# The repo root ignores results/ (Nextflow run output); this crate keeps a
+# source module of that name.
+!/src/results/

@@ -1,0 +1,1 @@
+WARNING: could not read the ClinVar hits table (ValueError: contra-bad-hits-hits.tsv: no column alt, chrom, clnsig, geneinfo, genotype, pos, ref)

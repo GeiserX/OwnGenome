@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """Step 42 CLI goldens, rule-allele controls and og cn marker outputs.
 
 Internal validation, phase and bounded-reader assertions live in
@@ -13,7 +14,6 @@ import sys
 import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import traits_report as tr  # noqa: E402
 TABLE = os.path.join(REPO, "assets", "traits.tsv")
 RULES = os.path.join(REPO, "assets", "genotype_rules.tsv")
 CHECK = os.path.join(REPO, "scripts", "ci", "check-rule-alleles.sh")
@@ -21,6 +21,36 @@ OG = os.environ.get("OG", "")
 SMN_HEADER = "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n"
 SMN1_NOT_PROOF = "This marker does not prove 2+0, and its absence does not rule 2+0 out."
 FAILS = 0
+# The traits table's columns (og traits table --out).
+OUT_COLUMNS = ["rsid", "gene", "chrom", "pos", "trait", "genotype", "status", "reading", "ancestry",
+               "note", "pmids"]
+# The copy-aware markers, pinned here as the test's own copy: og cn
+# marker-regions must print the same copies (rust/crates/og-cn/src/markers.rs).
+MARKERS = {
+    # KIV-2 4925G>A: the last base of the second KIV-2 exon (its donor splice
+    # site), G>A on LPA's minus strand, so C>T on the plus strand. GRCh38 holds
+    # it at the end of each of the six KIV-2 units (exons 5, 7, ..., 15 of
+    # ENST00000316300.10; NM_005577.4:c.733G>A at the first, p.Ala245Thr) and
+    # at the near-identical last exon of KIV-1 (exon 3, c.391): seven copies,
+    # the block og cn call --locus LPA_KIV2 counts as N + 2 copies (N KIV-2 repeats and
+    # one KIV-1 per chromosome). dbSNP names the first KIV-2 copy only.
+    "LPA_KIV2_4925": {
+        "name": "LPA KIV-2 4925G>A", "chrom": "chr6", "ref": "C", "alt": "T",
+        "dbsnp": ("rs1484919544", "chr6", 160640667, "C", "T"),
+        "copies": (160646214, 160640667, 160635123, 160629574, 160624030, 160618484, 160612932),
+        "context": "GACTCCTTACCTTGTTCGGAA",
+        "min_depth": 100, "min_alt": 5, "min_fraction": 0.008, "max_absent": 2,
+    },
+    # SMN1 g.27134T>G is NM_000344.4:c.*3+80T>G in intron 7 (plus strand).
+    # SMN2 holds the same 21 bases 875,420 bases upstream, as at exon 7.
+    "SMN1_27134": {
+        "name": "SMN1 g.27134T>G", "chrom": "chr5", "ref": "T", "alt": "G",
+        "dbsnp": ("rs143838139", "chr5", 70952074, "T", "G"),
+        "copies": (70952074, 70076654),
+        "context": "TTTTTGAACATTTAAAAAGTT",
+        "min_depth": 10, "min_alt": 3, "min_fraction": 0.05, "max_absent": 1,
+    },
+}
 APOE_GOLDEN = {
     ("T/T", "C/C"): "e3d7512b649f1d23f5acbcaa08da19bd6a009d5b39ac57cb6856591c50e7cfda",
     ("T/T", "C/T"): "62e910d8ec7ac45ab15e9c9ed85c93b128ac41703d1149a332082dc0d7b5f389",
@@ -120,7 +150,7 @@ def marker_errors(name, m=None, dbsnp=None):
     is one of its copies with its ref and alt, on the plus strand and not
     swapped; every copy sits in the middle of the same context, whose middle
     base is the ref."""
-    m = tr.MARKERS[name] if m is None else m
+    m = MARKERS[name] if m is None else m
     rs, chrom, pos, ref, alt = m["dbsnp"] if dbsnp is None else dbsnp
     comp = {"A": "T", "C": "G", "G": "C", "T": "A"}
     errs = []
@@ -143,7 +173,7 @@ def marker_errors(name, m=None, dbsnp=None):
 
 def marker_checks():
     """11. The copy-aware markers."""
-    for name, m in tr.MARKERS.items():
+    for name, m in MARKERS.items():
         check(f"marker {name}: the pinned dbSNP record agrees with the marker", marker_errors(name) == [],
               marker_errors(name))
         rs, chrom, pos, ref, alt = m["dbsnp"]
@@ -159,16 +189,16 @@ def marker_checks():
         e = marker_errors(name, dict(m, context=m["context"][:10] + alt + m["context"][11:]))
         check(f"marker {name} control: a context whose middle base is not the ref is caught",
               any("middle base" in x for x in e), e)
-    check("LPA_KIV2_4925: seven copies (six KIV-2 units and KIV-1)", len(tr.MARKERS["LPA_KIV2_4925"]["copies"]) == 7)
+    check("LPA_KIV2_4925: seven copies (six KIV-2 units and KIV-1)", len(MARKERS["LPA_KIV2_4925"]["copies"]) == 7)
     if not OG:
         print("skip: OG is not set (OG=rust/target/release/og): og cn marker-regions and marker-read did not run")
         return
-    for name, m in tr.MARKERS.items():
+    for name, m in MARKERS.items():
         res = og_cn("marker-regions", name)
         check(f"marker {name}: og cn marker-regions prints one region per copy of MARKERS",
               res.returncode == 0 and res.stdout.split() == [f"{m['chrom']}:{p}-{p}" for p in m["copies"]], res)
 
-    sm = tr.MARKERS["SMN1_27134"]
+    sm = MARKERS["SMN1_27134"]
     work = tempfile.mkdtemp()
     try:
         def pileup(t_reads, g_reads, extra=""):
@@ -305,11 +335,8 @@ def plain_tsv_checks():
             check(f"plain TSV control: {name} is refused", res.returncode == 1, res.stderr)
             check(f"plain TSV control: {name} preserves both outputs",
                   previous == (open(out, "rb").read(), open(rout, "rb").read()))
-            try:
-                _, collected = cs.sec_traits(work, "S")
-                readable = bool(collected["rows"])
-            except cs.Unreadable:
-                readable = False
+            sec = cs.collect("S", work)["sections"]["traits"]
+            readable = sec["state"] == "ok" and bool(sec["data"]["rows"])
             check(f"plain TSV control: {name} leaves collector-readable output", readable)
 
 
@@ -348,7 +375,7 @@ def main():
                        [("44908684", "T", "C", a), ("44908822", "C", "T", b)] if gt != "."]
             traits, lines = table(records)
             apoe = next(r for r in traits if "+" in r["rsid"])
-            got = hashlib.sha256("\t".join(apoe[k] for k in tr.OUT_COLUMNS).encode()).hexdigest()
+            got = hashlib.sha256("\t".join(apoe[k] for k in OUT_COLUMNS).encode()).hexdigest()
             check(f"APOE golden {a}, {b}", got == want, got)
         for rid, cases in MULTI_SNP.items():
             for gts, label in cases:
@@ -378,7 +405,7 @@ def main():
             # Collect and render the actual CLI output, independently for each rule.
             records = [(s[1], s[2], s[3], s[4], gt) for s, gt in zip(sites, gts)]
             _, lines = table(records)
-            read = cs.genotype_rules(work, "S") or []
+            read = cs.collect("S", work)["sections"]["traits"]["data"]["rules"] or []
             page = "\n".join(rr.rules_html({"rules": read}, "S"))
             got = next(r for r in lines if r["rule"] == rid)
             check(f"HTML report: {rid} with result {want}", rr.E(got["trait"]) in page and rr.E(want) in page, page[:300])

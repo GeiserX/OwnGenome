@@ -86,4 +86,4 @@ Your genome data is sensitive personal information. This pipeline runs locally a
 
 ## License
 
-[GPL-3.0-or-later](LICENSE)
+[GPL-3.0-or-later](LICENSE). OwnGenome is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. Contributions come in under the same terms ([CONTRIBUTING.md](CONTRIBUTING.md#license)).
