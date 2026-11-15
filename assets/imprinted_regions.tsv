@@ -1,6 +1,6 @@
 # Imprinting disorders caused by uniparental disomy (UPD), one row per chromosome or region.
-# Read by bin/collect_summary.py (IMPRINTED_REGIONS holds the same rows; tests/test_collect_summary.py
-# checks that the two agree) to name what a run of homozygosity over most of one chromosome could mean.
+# Read by og summary collect (IMPRINTED_REGIONS in rust/crates/og-summary holds the same rows; its
+# tests check that the two agree) to name what a run of homozygosity over most of one chromosome could mean.
 # start and end: GRCh38, 0-based start, exclusive end, the UCSC cytoBand.hg38.txt bands of the region;
 # empty for a row that applies to the whole chromosome. A row with a region applies when a run on the
 # flagged chromosome overlaps it. "-" is no known imprinting disorder for UPD from that parent.

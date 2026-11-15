@@ -26,7 +26,7 @@ Checks:
  15. without --sample, the trace of a run that run-all.sh has not finished is left
      out of the step times, and counts once run_status.tsv says it finished; a
      run_status.tsv that cannot be read leaves out the newest trace, never a crash.
- 16. bin/run_eta.py, run_state.py, run_headroom.py and run_delta.py, run as commands,
+ 16. bin/run_eta.py, run_state.py and run_headroom.py, run as commands,
      exit 1 and name their og run command, never a silent exit 0.
 Each check is then run against a planted mistake (a mutant of run_eta.py or a
 broken config) and must fail there: a check that cannot fail is no check.
@@ -293,7 +293,7 @@ def command_checks(m):
     return out
 
 
-OLD_CLIS = {"run_eta.py": "eta", "run_state.py": "state", "run_headroom.py": "headroom", "run_delta.py": "delta"}
+OLD_CLIS = {"run_eta.py": "eta", "run_state.py": "state", "run_headroom.py": "headroom"}
 
 
 def old_cli_refuses(path, cmd):

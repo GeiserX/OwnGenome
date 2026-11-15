@@ -627,7 +627,7 @@ jobs:
                    tests/test_results_index.py \
                    tests/test_pgx_outside_calls.py tests/test_hla_second_caller.py tests/test_paraphase_report.py \
                    tests/test_copy_number.py tests/test_hba_copy_number.py \
-                   tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_traits_table.py tests/test_genotype_rules_indels.py tests/test_callability.py; do
+                   tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_traits_table.py tests/test_callability.py; do
             rc=0
             echo "::group::${t}"
             case "$t" in
@@ -663,7 +663,7 @@ jobs:
                   assert rc == 1 and test["FAILS"] == 1
                   assert f"[FAIL] {rid}, reference blocks only: {label}" in log.getvalue()
                   print(f"Control: {rid} WRONG_REFERENCE failed its independent expectation")
-          marker = test["tr"].MARKERS["SMN1_27134"]
+          marker = test["MARKERS"]["SMN1_27134"]
           rs, chrom, pos, ref, alt = marker["dbsnp"]
           marker["dbsnp"] = rs, chrom, pos + 1, ref, alt
           test["FAILS"] = 0

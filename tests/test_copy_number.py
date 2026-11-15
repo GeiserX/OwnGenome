@@ -905,7 +905,7 @@ def intervals(cat, read):
         check("step 35 interval block with a failed bedcov: exit 0, every row check_failed",
               out.returncode == 0 and len(lines) == len(iv) and all(x.split("\t")[10] == "check_failed" for x in lines),
               (out.returncode, out.stderr[-400:]))
-        # collect_summary: step 35's section carries the interval rows with a change
+        # og summary collect: step 35's section carries the interval rows with a change
         import collect_summary as cs
         sd = os.path.join(t, "sample")
         os.makedirs(os.path.join(sd, "paralogs"))
@@ -914,14 +914,14 @@ def intervals(cat, read):
                     "homologous_regions\n")
         if os.path.exists(good):
             os.replace(good, os.path.join(sd, "paralogs", "S_cn_intervals.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         ci = data.get("cn_intervals") or {}
-        check("collect_summary: step 35's section lists the interval rows with a change (AZFc) and counts the rest",
+        check("summary: step 35's section lists the interval rows with a change (AZFc) and counts the rest",
               [c["locus"] for c in ci.get("changes", [])] == ["AZFc_DAZ"] and ci.get("rows") == len(iv), ci)
         os.remove(os.path.join(sd, "paralogs", "S_smn_copy_number.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         ci = (data or {}).get("cn_intervals") or {}
-        check("collect_summary: the interval rows stay when step 35 wrote no other table",
+        check("summary: the interval rows stay when step 35 wrote no other table",
               [c["locus"] for c in ci.get("changes", [])] == ["AZFc_DAZ"] and ci.get("rows") == len(iv), ci)
 
 
@@ -1242,7 +1242,7 @@ def psv(cat, read):
                                          "to the couple screen (--cyp21a2).") in md}
             check(f"couple screen, {desc}: a gap line for each partner without a CYP21A2 table", got == want, (got, md[-600:]))
 
-        # collect_summary: step 35's section carries the CYP21A2 table
+        # og summary collect: step 35's section carries the CYP21A2 table
         import collect_summary as cs
         sd = os.path.join(t, "sample")
         os.makedirs(os.path.join(sd, "paralogs"))
@@ -1251,15 +1251,15 @@ def psv(cat, read):
                     "homologous_regions\n")
         if os.path.exists(tabs["deletion"]):
             os.replace(tabs["deletion"], os.path.join(sd, "paralogs", "S_cyp21a2_psv.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         c = data.get("cyp21a2") or {}
-        check("collect_summary: step 35's section carries the CYP21A2 table (deletion, 1 copy)",
+        check("summary: step 35's section carries the CYP21A2 table (deletion, 1 copy)",
               (c.get("finding"), c.get("cyp21a2_copies")) == ("deletion", "1"), c)
         # and the reports print why a table without MAPQ 0 reads is not assessed
         import render_report
         if os.path.exists(tabs["no_mapq0"]):
             os.replace(tabs["no_mapq0"], os.path.join(sd, "paralogs", "S_cyp21a2_psv.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         got = render_report.cyp21a2_line(data.get("cyp21a2"))
         check("report: the CYP21A2 line without MAPQ 0 reads is not assessed and says the BAM has few or no multi-mapping reads",
               ": not assessed (the BAM has few or no multi-mapping reads here" in got and "deletion," not in got, got)
