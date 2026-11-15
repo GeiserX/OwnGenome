@@ -11,10 +11,18 @@
 //! autosomal recessive or X-linked inheritance), and every row gets its
 //! GRCh38 span from the GENCODE gene lines. Each input is read once, as a
 //! stream.
+//!
+//! An X-linked gene is `XLD` when its main disorder is X-linked dominant:
+//! every X-linked disorder Orphanet gives the gene is dominant, or the gene
+//! is one of [`MAIN_DOMINANT`]. Every other X-linked gene is `XL`; when one
+//! of its disorders is X-linked dominant, its `dominant` cell is `XLD`
+//! (females who carry a change can show signs). The `severity` cell and an
+//! autosomal gene's `dominant` cell (`AD` or `SD`, from the ACMG secondary
+//! findings list) are written by hand and kept.
 
 use crate::args::{self, Kind, Spec};
 use crate::files::{each_line, int};
-use crate::list::{GENE_COLUMNS, SEVERITY_COLUMN};
+use crate::list::{DOMINANT_COLUMN, GENE_COLUMNS, SEVERITY_COLUMN, header_ok};
 use crate::xml::{self, Event};
 use indexmap::IndexMap;
 use og_io::Utf8;
@@ -66,17 +74,29 @@ fn primary(chrom: &str) -> Option<usize> {
     PRIMARY.iter().position(|c| *c == chrom)
 }
 
+/// The genes with both X-linked dominant and X-linked recessive disorders
+/// whose main disorder is the dominant one, with that disorder. A gene whose
+/// X-linked disorders are all dominant needs no entry.
+pub const MAIN_DOMINANT: [(&str, &str); 4] = [
+    ("CDKL5", "CDKL5-deficiency disorder"),
+    ("IKBKG", "Incontinentia pigmenti"),
+    ("MECP2", "Rett syndrome"),
+    ("OFD1", "Orofaciodigital syndrome type 1"),
+];
+
 /// An Orphanet mode of inheritance the list keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Mode {
     Ar,
-    Xl,
+    Xlr,
+    Xld,
 }
 
 fn mode(name: &str) -> Option<Mode> {
     match name {
         "Autosomal recessive" => Some(Mode::Ar),
-        "X-linked recessive" | "X-linked dominant" => Some(Mode::Xl),
+        "X-linked recessive" => Some(Mode::Xlr),
+        "X-linked dominant" => Some(Mode::Xld),
         _ => None,
     }
 }
@@ -341,13 +361,9 @@ fn run(
         Ok(())
     })?;
     let cols = lines.first().cloned().unwrap_or_default();
-    let ok = cols == GENE_COLUMNS
-        || (cols.len() == GENE_COLUMNS.len() + 1
-            && cols[..GENE_COLUMNS.len()] == GENE_COLUMNS
-            && cols[GENE_COLUMNS.len()] == SEVERITY_COLUMN);
-    if !ok {
+    if !header_ok(&cols) {
         return Err(Die::one(format!(
-            "{table}: the header must be {}, optionally followed by {SEVERITY_COLUMN}",
+            "{table}: the header must be {}, optionally followed by {SEVERITY_COLUMN} and {DOMINANT_COLUMN}",
             GENE_COLUMNS.join("\t")
         )));
     }
@@ -362,14 +378,20 @@ fn run(
         })
         .collect();
     let cell = |r: &HashMap<&str, &str>, k: &str| r.get(k).copied().unwrap_or_default().to_owned();
-    // The severity cell is written by hand: every gene keeps its own.
+    // The severity cell, and the dominant cell of an autosomal gene, are
+    // written by hand: every gene keeps its own.
     let mut severity: HashMap<String, String> = HashMap::new();
+    let mut dominant: HashMap<String, String> = HashMap::new();
     for r in &rows_in {
         let s = cell(r, SEVERITY_COLUMN);
         severity.insert(
             cell(r, "gene"),
             if s.is_empty() { ".".to_owned() } else { s },
         );
+        let d = cell(r, DOMINANT_COLUMN);
+        if matches!(d.as_str(), "AD" | "SD") {
+            dominant.insert(cell(r, "gene"), d);
+        }
     }
     let panel: Vec<&HashMap<&str, &str>> = rows_in
         .iter()
@@ -406,6 +428,21 @@ fn run(
     let inh = inheritance(p9)?;
     let (disorders, date) = associations(p6, &inh)?;
 
+    // The X-linked disorders of each listed gene: (name, dominant, recessive).
+    let mut x_of: HashMap<&str, Vec<(&str, bool, bool)>> = HashMap::new();
+    for (sym, ds) in &disorders {
+        let Some(gene) = canonical(sym) else { continue };
+        if x_of.contains_key(gene) {
+            continue;
+        }
+        let x: Vec<(&str, bool, bool)> = ds
+            .iter()
+            .filter(|(_, m)| m.contains(&Mode::Xld) || m.contains(&Mode::Xlr))
+            .map(|(n, m)| (n.as_str(), m.contains(&Mode::Xld), m.contains(&Mode::Xlr)))
+            .collect();
+        x_of.insert(gene, x);
+    }
+    let some_dominant = |g: &str| x_of.get(g).is_some_and(|x| x.iter().any(|d| d.1));
     // gene -> its seven cells, in order.
     let mut rows: IndexMap<String, [String; 7]> = IndexMap::new();
     for r in &panel {
@@ -431,22 +468,34 @@ fn run(
         let (c, s, e) = &genes[gene];
         // The chromosome decides how a gene is passed on: X outside the
         // PARs is X-linked, an autosome or a PAR is autosomal.
-        let m = if c == "chrX" && !par.contains(c, *s) {
-            Mode::Xl
-        } else {
-            Mode::Ar
-        };
+        let x = c == "chrX" && !par.contains(c, *s);
         let names: BTreeSet<&str> = ds
             .iter()
-            .filter(|(_, modes)| modes.contains(&m))
+            .filter(|(_, modes)| {
+                if x {
+                    modes.contains(&Mode::Xlr) || modes.contains(&Mode::Xld)
+                } else {
+                    modes.contains(&Mode::Ar)
+                }
+            })
             .map(|(n, _)| n.as_str())
             .collect();
-        let Some(first) = names.first() else { continue };
-        if c == "chrY" {
+        if names.is_empty() || c == "chrY" {
             continue;
         }
+        // Rule (y): X-linked dominant only when the main disorder is.
+        let xd = &x_of[gene];
+        let xld = x
+            && xd.iter().any(|d| d.1)
+            && (xd.iter().all(|d| !d.2) || MAIN_DOMINANT.iter().any(|(g, _)| *g == gene));
+        // An X-linked dominant gene is named by a dominant disorder first.
+        let mut names: Vec<&str> = names.into_iter().collect();
+        if xld {
+            names.sort_by_key(|n| !xd.iter().any(|d| d.0 == *n && d.1));
+        }
+        let first = names[0];
         let cond = match names.len() {
-            1 => (*first).to_owned(),
+            1 => first.to_owned(),
             n => format!(
                 "{first}; and {} other{}",
                 n - 1,
@@ -460,7 +509,14 @@ fn run(
                 c.clone(),
                 s.to_string(),
                 e.to_string(),
-                if m == Mode::Xl { "XL" } else { "AR" }.to_owned(),
+                if xld {
+                    "XLD"
+                } else if x {
+                    "XL"
+                } else {
+                    "AR"
+                }
+                .to_owned(),
                 "Orphanet".to_owned(),
                 cond.replace('\t', " "),
             ],
@@ -475,6 +531,8 @@ fn run(
     text.push_str(&GENE_COLUMNS.join("\t"));
     text.push('\t');
     text.push_str(SEVERITY_COLUMN);
+    text.push('\t');
+    text.push_str(DOMINANT_COLUMN);
     text.push('\n');
     let mut order: Vec<&String> = rows.keys().collect();
     order.sort_by_key(|g| {
@@ -485,6 +543,13 @@ fn run(
         text.push_str(&rows[g].join("\t"));
         text.push('\t');
         text.push_str(severity.get(g).map_or(".", String::as_str));
+        text.push('\t');
+        let d = match rows[g][4].as_str() {
+            "XL" if some_dominant(g) => "XLD",
+            "AR" => dominant.get(g.as_str()).map_or(".", String::as_str),
+            _ => ".",
+        };
+        text.push_str(d);
         text.push('\n');
     }
     let mut f = og_io::AtomicFile::create(out_path).map_err(|e| Die::io(out_path, &e))?;
@@ -505,7 +570,9 @@ fn header(release: &str, date6: &str) -> String {
         "# carrier_genes.tsv: the genes of the couple carrier screen (step 39, og couple screen).".to_owned(),
         "# One row per gene. chrom, start and end: the gene's GRCh38 span (1-based, inclusive) from the".to_owned(),
         format!("# gene lines of GENCODE release {release} (basic annotation). inheritance: AR (autosomal, or in a"),
-        "# pseudoautosomal region) or XL (chrX outside the PARs). lists: where the gene comes from:".to_owned(),
+        "# pseudoautosomal region), XL (chrX outside the PARs) or XLD (X-linked with a dominant main".to_owned(),
+        "# disorder: every X-linked disorder Orphanet gives the gene is dominant, or the gene is CDKL5,".to_owned(),
+        "# IKBKG, MECP2 or OFD1). lists: where the gene comes from:".to_owned(),
         "#   ACMG      Gregg et al., Genet Med 2021;23(10):1793-1806 (doi:10.1038/s41436-021-01203-z),".to_owned(),
         "#             tier 3: the 97 autosomal recessive genes of its tables 1 to 5 and the 16 X-linked".to_owned(),
         "#             genes of table 6; condition names from those tables".to_owned(),
@@ -514,13 +581,18 @@ fn header(release: &str, date6: &str) -> String {
         "#   Orphanet  every other gene of an Orphanet disorder with autosomal recessive or X-linked".to_owned(),
         format!("#             inheritance (Orphadata en_product6 and en_product9_ages of {date6}, CC BY 4.0,"),
         "#             https://www.orphadata.com), with a disease-causing germline association that".to_owned(),
-        "#             Orphanet assessed; condition: the first such disorder by name".to_owned(),
+        "#             Orphanet assessed; condition: the first such disorder by name (for XLD, the first".to_owned(),
+        "#             X-linked dominant one)".to_owned(),
         "# severity: alleles of the gene that are not a full loss of function, separated by \";\": each is".to_owned(),
         "#   hypomorph or pseudodeficiency, then chrom:pos:ref:alt (GRCh38), then a name; \".\" for none. Such".to_owned(),
         "#   an allele never makes a carrier finding on its own (the couple screen, step 39, and the".to_owned(),
         "#   carrier list of the sample report). With a called deletion of the gene it is a second hit (the".to_owned(),
         "#   two-hit lines of the sample report, og summary collect). In the couple screen a".to_owned(),
         "#   hypomorph beside a full loss of function in the other partner's same gene is a shared gene.".to_owned(),
+        "# dominant: a dominant condition of the gene besides the one it is listed for. AD or SD: the".to_owned(),
+        "#   gene's condition on the ACMG secondary findings list (assets/acmg_sf.tsv) is autosomal".to_owned(),
+        "#   dominant or semidominant, written by hand; XLD: an XL gene with an Orphanet X-linked dominant".to_owned(),
+        "#   disorder, so females who carry a change can show signs; \".\" for none.".to_owned(),
         "# Rebuilt with: og couple genes (docs/39-couple.md says how).".to_owned(),
     ]
     .iter()

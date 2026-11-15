@@ -2,7 +2,7 @@
 //! mean for a child, gene by gene, then in words.
 
 use crate::findings::{DEPTH_MIN, Finding, SV_MIN_SIZE};
-use crate::list::{CarrierList, Gene, Inheritance};
+use crate::list::{CarrierList, Dominant, Gene, Inheritance};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 
@@ -141,8 +141,65 @@ fn ar_row(
     (Outcome::Shared, risk, why)
 }
 
+/// One partner's lines for an X-linked dominant gene: the risk and the
+/// explanation. A child who inherits the change can be affected, a
+/// daughter as well as a son.
+fn xld_lines(g: &Gene, who: &str, sex: Option<&str>, f: &[&Finding]) -> (String, String) {
+    match sex {
+        Some("female") if two_copies(f) => (
+            format!("{who}: every child, can be affected"),
+            format!(
+                "{who} carries the change in {} on both X chromosomes (X-linked dominant: {}): every son and \
+                 every daughter inherits it and can be affected.",
+                g.name, g.condition
+            ),
+        ),
+        Some("female") => (
+            format!("{who}: each child 1 in 2, can be affected"),
+            format!(
+                "{who} carries a change in {} on one X chromosome (X-linked dominant: {}). Each child has a 1 in \
+                 2 chance of inheriting it, and a daughter or a son who inherits it can be affected; {who} can \
+                 have signs herself.",
+                g.name, g.condition
+            ),
+        ),
+        Some("male") => (
+            format!("{who}: every daughter, can be affected"),
+            format!(
+                "{who} has a change in {} on his X chromosome (X-linked dominant: {}). Every daughter inherits it \
+                 and can be affected; a son gets his Y chromosome, not this X.",
+                g.name, g.condition
+            ),
+        ),
+        _ => (
+            format!("{who}: sex unknown"),
+            format!(
+                "{who} has a change in {} (X-linked dominant: {}). The pedigree gives no sex for {who}, so the \
+                 chance for sons and daughters cannot be said.",
+                g.name, g.condition
+            ),
+        ),
+    }
+}
+
 /// One partner's lines for an X-linked gene: the risk and the explanation.
 fn xl_lines(g: &Gene, who: &str, sex: Option<&str>, f: &[&Finding]) -> (String, String) {
+    if g.inheritance == Inheritance::Xld {
+        return xld_lines(g, who, sex, f);
+    }
+    let (risk, mut why) = xlr_lines(g, who, sex, f);
+    if g.dominant == Dominant::XLinked {
+        let _ = write!(
+            why,
+            " {} also has an X-linked dominant disorder: females can show signs.",
+            g.name
+        );
+    }
+    (risk, why)
+}
+
+/// One partner's lines for an X-linked recessive gene.
+fn xlr_lines(g: &Gene, who: &str, sex: Option<&str>, f: &[&Finding]) -> (String, String) {
     let fmr1 = g.name == "FMR1" && f.iter().any(|x| x.text.contains("premutation"));
     match sex {
         Some("female") => {
@@ -234,7 +291,7 @@ pub fn screen_couple(
                 .collect()
         };
         let (fa, fb) = (pick(a, &full_b), pick(b, &full_a));
-        let (outcome, risk, why) = if g.inheritance == Inheritance::Xl {
+        let (outcome, risk, mut why) = if g.inheritance.x_linked() {
             let parts: Vec<(String, String)> = [(a, &fa), (b, &fb)]
                 .iter()
                 .filter(|(_, f)| !f.is_empty())
@@ -254,7 +311,28 @@ pub fn screen_couple(
                     .join(" "),
             )
         } else if !fa.is_empty() && !fb.is_empty() {
-            ar_row(g, a, b, &fa, &fb)
+            let (o, r, mut w) = ar_row(g, a, b, &fa, &fb);
+            if g.dominant == Dominant::Autosomal {
+                let _ = write!(
+                    w,
+                    " {name} also causes a dominant condition (it is on the ACMG secondary findings list): a child \
+                     who inherits either parent's change can be affected by it."
+                );
+            }
+            (o, r, w)
+        } else if g.dominant == Dominant::Autosomal {
+            let (who, other) = if fa.is_empty() { (b, a) } else { (a, b) };
+            (
+                Outcome::OnePartner,
+                "each child 1 in 2, dominant".to_owned(),
+                format!(
+                    "Only {who} carries a change in {name}. {name} also causes a dominant condition (it is on the \
+                     ACMG secondary findings list): a child who inherits it can be affected, 1 in 2 per child, and \
+                     {who} can be too. For {} (autosomal recessive), a child can be a carrier like {who}, unless \
+                     {other} carries a change this screen does not see.",
+                    g.condition
+                ),
+            )
         } else {
             let (who, other) = if fa.is_empty() { (b, a) } else { (a, b) };
             (
@@ -267,6 +345,19 @@ pub fn screen_couple(
                 ),
             )
         };
+        let weak: Vec<&str> = [(a, &fa), (b, &fb)]
+            .iter()
+            .filter(|(_, f)| f.iter().any(|x| x.low))
+            .map(|(w, _)| *w)
+            .collect();
+        if !weak.is_empty() {
+            let _ = write!(
+                why,
+                " The finding of {} rests on a low-confidence call (GQ or DP below step 06's floor): confirm it in \
+                 the reads, or with a clinical test, before reading the chance.",
+                weak.join(" and ")
+            );
+        }
         rows.push(Row {
             gene: (*name).to_owned(),
             inheritance: g.inheritance.code(),

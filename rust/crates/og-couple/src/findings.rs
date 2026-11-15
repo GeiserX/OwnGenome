@@ -7,7 +7,7 @@ use crate::list::{CarrierList, GeneIndex};
 use og_io::Utf8;
 use og_pedigree::{Die, Par};
 use og_steps::sv::{DEPTH_MIN_SIZE, Rdcn, Sex, SvKind, depth_contradicts};
-use og_summary::collect::clinvar::{Floor, Hit};
+use og_summary::collect::clinvar::{Floor, Hit, floor_values};
 use std::collections::HashMap;
 
 /// A structural variant is 50 bp or longer. A shorter Delly deletion is
@@ -27,6 +27,41 @@ const FMR1_FULL: i64 = 201;
 /// The repeat loci of the list: the smallest repeat count counted as a
 /// carrier finding, and the repeat unit.
 const REPEATS: [(&str, i64, &str); 2] = [("FMR1", 55, "CGG"), ("FXN", 66, "GAA")];
+/// GRCh38's pseudoautosomal regions as a BED (0-based start, end), the rows
+/// of `assets/par_grch38.bed`: the screen's PARs when no `--par-bed` is
+/// given, so a male's call in PAR1 is never read as hemizygous.
+pub const GRCH38_PAR: [(&str, i64, i64); 4] = [
+    ("chrX", 10000, 2781479),
+    ("chrX", 155701382, 156030895),
+    ("chrY", 10000, 2781479),
+    ("chrY", 56887902, 57217415),
+];
+
+/// The pseudoautosomal regions the screen reads: the `--par-bed` file, or
+/// GRCh38's when none is given.
+pub enum Pars {
+    File(Par),
+    Grch38,
+}
+
+impl Pars {
+    pub fn read(path: Option<&str>) -> Result<Pars, Die> {
+        Ok(match path {
+            Some(p) => Pars::File(Par::read(Some(p))?),
+            None => Pars::Grch38,
+        })
+    }
+
+    /// Whether the 1-based `pos` on `chrom` is in a PAR.
+    pub fn contains(&self, chrom: &str, pos: i64) -> bool {
+        match self {
+            Pars::File(p) => p.contains(chrom, pos),
+            Pars::Grch38 => GRCH38_PAR
+                .iter()
+                .any(|&(c, s, e)| c == chrom && s < pos && pos <= e),
+        }
+    }
+}
 
 /// One carrier finding of one person in one gene.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +73,8 @@ pub struct Finding {
     /// The name of a low-function allele of the list's severity column: it
     /// counts only beside a full loss of function in the partner.
     pub hypomorph: Option<String>,
+    /// A call below step 06's floor (GQ or DP): it still counts, marked.
+    pub low: bool,
 }
 
 impl Finding {
@@ -47,6 +84,7 @@ impl Finding {
             text,
             copies,
             hypomorph: None,
+            low: false,
         }
     }
 }
@@ -80,7 +118,9 @@ fn sex_chrom(chrom: &str) -> bool {
 
 /// The zygosity of a GT, or `None` when it carries no alt allele. A `.`
 /// allele still counts in the ploidy: step 06 splits a GT 1/2 record into
-/// `./1` halves, and each half is one copy, never hom.
+/// `./1` halves, and each half is one copy, never hom. A haploid call on an
+/// autosome (GT `1`) is one copy too: nothing shows that the other copy
+/// carries the change.
 pub fn zygosity(gt: &str, chrom: &str, sex: Option<&str>, in_par: bool) -> Option<Zygosity> {
     let alleles: Vec<&str> = gt.split(['/', '|']).filter(|a| !a.is_empty()).collect();
     let alt = alleles.iter().filter(|a| !matches!(**a, "0" | ".")).count();
@@ -94,7 +134,7 @@ pub fn zygosity(gt: &str, chrom: &str, sex: Option<&str>, in_par: bool) -> Optio
         return Some(if sex_chrom(chrom) {
             Zygosity::Hemizygous
         } else {
-            Zygosity::Hom
+            Zygosity::Het
         });
     }
     Some(if alt == alleles.len() {
@@ -112,6 +152,32 @@ fn half_call(gt: &str) -> bool {
     }
     let alt = |c: u8| (b'1'..=b'9').contains(&c);
     (alt(b[0]) && b[2] == b'.') || (b[0] == b'.' && alt(b[2]))
+}
+
+/// A haploid call on an autosome: one allele, as `1`.
+fn haploid_autosome(gt: &str, chrom: &str) -> bool {
+    !sex_chrom(chrom) && !gt.is_empty() && !gt.contains(['/', '|'])
+}
+
+/// ClinVar's condition for the allele (`CLNDN`), as words, without its
+/// placeholders "not provided" and "not specified"; `None` when nothing is
+/// left.
+fn condition(info: &str) -> Option<String> {
+    let names: Vec<String> = info_get(info, "CLNDN")?
+        .split('|')
+        .map(|n| n.replace('_', " "))
+        .filter(|n| !n.is_empty() && n != "not provided" && n != "not specified")
+        .collect();
+    (!names.is_empty()).then(|| names.join(" / "))
+}
+
+/// The mark of a call below step 06's floor, as the reports word it.
+fn low_text(h: &Hit) -> String {
+    let vals: Vec<String> = [("GQ", h.gq), ("DP", h.dp)]
+        .iter()
+        .filter_map(|(k, v)| v.map(|v| format!("{k} {v}")))
+        .collect();
+    format!("low-confidence call ({}): check the reads", vals.join(", "))
 }
 
 /// `1 star`, `2 stars`.
@@ -134,25 +200,37 @@ pub struct Clinvar {
 /// hypomorph is also kept as a finding marked hypomorph, which beside a
 /// full loss of function in the partner's same gene is the child's second
 /// hit (TAR syndrome is a null allele plus an RBM8A low-expression allele).
+/// Each finding names the condition ClinVar gives for the allele; a call
+/// below the run's floor (the file's `##PGP_CALL_FLOOR` line, else GQ 30
+/// and DP 10) is marked low confidence, and still counts.
 pub fn clinvar(
     path: &str,
     list: &CarrierList,
     sex: Option<&str>,
-    par: &Par,
+    par: &Pars,
 ) -> Result<Clinvar, Die> {
     let mut out = Clinvar {
         findings: Vec::new(),
         total: 0,
         aside: Vec::new(),
     };
-    each_record(path, |r| {
+    let mut floor = Floor::default();
+    let mut header = true;
+    each_line(path, Utf8::Replace, |line| {
+        header &= line.starts_with("##");
+        if header && line.starts_with("##PGP_CALL_FLOOR=") {
+            floor_values(line, false, &mut floor);
+        }
+        if line.starts_with('#') {
+            return Ok(());
+        }
+        let r: Vec<&str> = line.split('\t').collect();
         if r.len() < 8 {
             return Ok(());
         }
         out.total += 1;
         let owned: Vec<String> = r.iter().map(|s| (*s).to_owned()).collect();
-        let h =
-            Hit::parse(&owned, Floor::default()).map_err(|e| Die::one(format!("{path}: {e}")))?;
+        let h = Hit::parse(&owned, floor).map_err(|e| Die::one(format!("{path}: {e}")))?;
         let gt = r.get(9).map_or("", |s| s.split(':').next().unwrap_or(""));
         let pos = i64::try_from(h.pos)
             .map_err(|_| Die::one(format!("{path}: POS {} is out of range", h.pos)))?;
@@ -160,6 +238,11 @@ pub fn clinvar(
             return Ok(());
         };
         let variant = format!("{}:{} {}>{}", h.chrom, h.pos, h.reference, h.alt);
+        let low = if h.low_confidence {
+            format!(", {}", low_text(&h))
+        } else {
+            String::new()
+        };
         for g in h.gene.split(',') {
             let Some(gene) = list.get(g) else { continue };
             if let Some(sev) = gene.alleles.get(&h.key()) {
@@ -172,9 +255,14 @@ pub fn clinvar(
                 if kind == "hypomorph" {
                     out.findings.push(Finding {
                         gene: g.to_owned(),
-                        text: format!("{variant} {}, {}, a hypomorph allele", z.word(), sev.name),
+                        text: format!(
+                            "{variant} {}, {}, a hypomorph allele{low}",
+                            z.word(),
+                            sev.name
+                        ),
                         copies: z.copies(),
                         hypomorph: Some(sev.name.clone()),
+                        low: h.low_confidence,
                     });
                 }
                 continue;
@@ -187,15 +275,20 @@ pub fn clinvar(
             // other reports word it.
             let words = if z == Zygosity::Het && half_call(gt) {
                 format!("one copy, other copy not called ref ({gt})")
+            } else if z == Zygosity::Het && haploid_autosome(gt, &h.chrom) {
+                format!("one copy, a haploid call ({gt})")
             } else {
                 z.word().to_owned()
             };
+            let cond = condition(r[7]).map_or(String::new(), |c| format!(", {c}"));
             let text = format!(
-                "{variant} {words}, {}, {}{ident}",
+                "{variant} {words}, {}, {}{ident}{cond}{low}",
                 h.significance,
                 stars_text(h.stars)
             );
-            out.findings.push(Finding::new(g, text, z.copies()));
+            let mut f = Finding::new(g, text, z.copies());
+            f.low = h.low_confidence;
+            out.findings.push(f);
         }
         Ok(())
     })?;
@@ -356,7 +449,7 @@ pub fn delly(
     index: &GeneIndex,
     exons: &Exons,
     sex: Option<&str>,
-    par: &Par,
+    par: &Pars,
     benign: Option<&Benign>,
 ) -> Result<(Vec<Finding>, DellySkips), Die> {
     let mut out = Vec::new();
@@ -636,11 +729,47 @@ mod tests {
         assert_eq!(z("1|.", "chr7", Some("male")), Some(Zygosity::Het));
         assert_eq!(z("1/1", "chr7", Some("female")), Some(Zygosity::Hom));
         assert_eq!(z("1", "chrX", Some("female")), Some(Zygosity::Hemizygous));
+        // A haploid call on an autosome is one copy, never hom.
+        assert_eq!(z("1", "chr7", Some("male")), Some(Zygosity::Het));
+        assert!(haploid_autosome("1", "chr7") && !haploid_autosome("1", "chrX"));
+        assert!(!haploid_autosome("0/1", "chr7"));
         assert_eq!(z("./1", "chrX", Some("male")), Some(Zygosity::Hemizygous));
         assert_eq!(z("./.", "chr7", Some("female")), None);
         assert_eq!(z("./0", "chr7", Some("female")), None);
         assert_eq!(z("", "chr7", None), None);
         assert!(half_call("./1") && half_call("2|.") && !half_call("0/1") && !half_call("./."));
+    }
+
+    #[test]
+    fn the_built_in_pars_are_the_assets() {
+        let bed = std::fs::read_to_string(format!(
+            "{}/../../../assets/par_grch38.bed",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        let rows: Vec<(String, i64, i64)> = bed
+            .lines()
+            .map(|l| {
+                let c: Vec<&str> = l.split('\t').collect();
+                (
+                    c[0].to_owned(),
+                    c[1].parse().unwrap(),
+                    c[2].parse().unwrap(),
+                )
+            })
+            .collect();
+        let built: Vec<(String, i64, i64)> = GRCH38_PAR
+            .iter()
+            .map(|&(c, s, e)| (c.to_owned(), s, e))
+            .collect();
+        assert_eq!(built, rows);
+        let p = Pars::Grch38;
+        assert!(p.contains("chrX", 10001) && p.contains("chrX", 2781479));
+        assert!(
+            !p.contains("chrX", 10000)
+                && !p.contains("chrX", 2781480)
+                && !p.contains("chr7", 20000)
+        );
     }
 
     #[test]

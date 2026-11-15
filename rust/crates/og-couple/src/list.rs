@@ -1,6 +1,7 @@
 //! The carrier list, `assets/carrier_genes.tsv`: one row per gene with its
 //! GRCh38 span, how it is passed on, where it comes from, its condition,
-//! and the alleles that are not a full loss of function.
+//! the alleles that are not a full loss of function, and a dominant
+//! condition of the gene besides the one it is listed for.
 
 use crate::files::{each_line, is_digits};
 use indexmap::IndexMap;
@@ -22,14 +23,35 @@ pub const GENE_COLUMNS: [&str; 7] = [
 /// The optional column after them: alleles that are not a full loss of
 /// function.
 pub const SEVERITY_COLUMN: &str = "severity";
+/// The optional column after `severity`: a dominant condition of the gene
+/// besides the one its inheritance gives ([`Dominant`]).
+pub const DOMINANT_COLUMN: &str = "dominant";
+
+/// Whether `cols` is a list's header: the gene columns, then optionally
+/// `severity`, then optionally `dominant`.
+pub fn header_ok<S: AsRef<str>>(cols: &[S]) -> bool {
+    let n = GENE_COLUMNS.len();
+    let more = [SEVERITY_COLUMN, DOMINANT_COLUMN];
+    cols.len() >= n
+        && cols.len() <= n + more.len()
+        && cols.iter().map(AsRef::as_ref).eq(GENE_COLUMNS
+            .iter()
+            .chain(more.iter())
+            .take(cols.len())
+            .copied())
+}
 
 /// How a gene of the list is passed on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Inheritance {
     /// Autosomal recessive, or in a pseudoautosomal region.
     Ar,
-    /// X-linked: chrX outside the PARs.
+    /// X-linked: chrX outside the PARs, the main disorder recessive.
     Xl,
+    /// X-linked dominant: chrX outside the PARs, the main disorder
+    /// dominant, so a daughter or a son who inherits a change can be
+    /// affected.
+    Xld,
 }
 
 impl Inheritance {
@@ -37,6 +59,7 @@ impl Inheritance {
         match s {
             "AR" => Some(Inheritance::Ar),
             "XL" => Some(Inheritance::Xl),
+            "XLD" => Some(Inheritance::Xld),
             _ => None,
         }
     }
@@ -46,6 +69,38 @@ impl Inheritance {
         match self {
             Inheritance::Ar => "AR",
             Inheritance::Xl => "XL",
+            Inheritance::Xld => "XLD",
+        }
+    }
+
+    /// X-linked, recessive or dominant.
+    pub fn x_linked(self) -> bool {
+        self != Inheritance::Ar
+    }
+}
+
+/// A dominant condition of a gene besides the one its inheritance gives:
+/// the `dominant` column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dominant {
+    /// `.`: none.
+    No,
+    /// `AD` or `SD`: the gene's condition on the ACMG secondary findings
+    /// list (`assets/acmg_sf.tsv`) is autosomal dominant or semidominant,
+    /// so one change can affect a child who inherits it.
+    Autosomal,
+    /// `XLD` on an X-linked gene: an Orphanet disorder of the gene is X-linked
+    /// dominant, so females who carry a change can show signs.
+    XLinked,
+}
+
+impl Dominant {
+    pub fn parse(s: &str) -> Option<Dominant> {
+        match s {
+            "." => Some(Dominant::No),
+            "AD" | "SD" => Some(Dominant::Autosomal),
+            "XLD" => Some(Dominant::XLinked),
+            _ => None,
         }
     }
 }
@@ -62,6 +117,8 @@ pub struct Gene {
     pub condition: String,
     /// The severity column: hypomorph and pseudodeficiency alleles.
     pub alleles: IndexMap<Key, Allele>,
+    /// The dominant column.
+    pub dominant: Dominant,
 }
 
 /// The list: every gene by name, a gene on two rows keeping its last.
@@ -85,14 +142,10 @@ impl CarrierList {
             }
             let vals: Vec<&str> = line.split('\t').collect();
             let Some(head) = &header else {
-                let ok = vals.len() >= GENE_COLUMNS.len()
-                    && vals[..GENE_COLUMNS.len()] == GENE_COLUMNS
-                    && (vals.len() == GENE_COLUMNS.len()
-                        || (vals.len() == GENE_COLUMNS.len() + 1
-                            && vals[GENE_COLUMNS.len()] == SEVERITY_COLUMN));
-                if !ok {
+                if !header_ok(&vals) {
                     return Err(Die::one(format!(
-                        "{path}: the header must be {}, optionally followed by {SEVERITY_COLUMN}",
+                        "{path}: the header must be {}, optionally followed by {SEVERITY_COLUMN} and \
+                         {DOMINANT_COLUMN}",
                         GENE_COLUMNS.join("\t")
                     )));
                 }
@@ -107,11 +160,16 @@ impl CarrierList {
                 )));
             }
             let inheritance = Inheritance::parse(vals[4]);
-            let (Some(inheritance), true, true) =
-                (inheritance, is_digits(vals[2]), is_digits(vals[3]))
-            else {
+            let dominant = Dominant::parse(vals.get(8).copied().unwrap_or("."));
+            let (Some(inheritance), Some(dominant), true, true) = (
+                inheritance,
+                dominant,
+                is_digits(vals[2]),
+                is_digits(vals[3]),
+            ) else {
                 return Err(Die::one(format!(
-                    "{path} line {n}: inheritance must be AR or XL, start and end whole numbers"
+                    "{path} line {n}: inheritance must be AR, XL or XLD, dominant ., AD, SD or XLD, start and \
+                     end whole numbers"
                 )));
             };
             let num = |s: &str| crate::files::int(s, &format!("{path} line {n}"));
@@ -126,6 +184,7 @@ impl CarrierList {
                 lists: vals[5].to_owned(),
                 condition: vals[6].to_owned(),
                 alleles,
+                dominant,
             };
             genes.insert(gene.name.clone(), gene);
             Ok(())

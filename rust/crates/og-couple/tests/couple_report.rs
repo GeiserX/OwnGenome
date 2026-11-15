@@ -155,9 +155,9 @@ fn the_carrier_list_holds_the_panels() {
     for (n, g) in &f.list {
         let outside = g.chrom == "chrX" && !par.contains("chrX", g.start);
         assert_eq!(
-            g.inheritance == "XL",
+            g.inheritance != "AR",
             outside,
-            "{n}: a chrX gene outside the PARs is X-linked, inside a PAR autosomal"
+            "{n}: a chrX gene outside the PARs is X-linked (XL or XLD), inside a PAR autosomal"
         );
     }
     assert!(

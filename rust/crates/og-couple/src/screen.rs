@@ -19,6 +19,8 @@
 //! each partner's own report, `D/A_couple_carrier.tsv` and
 //! `D/B_couple_carrier.tsv`.
 //!
+//! Without `--par-bed` the PARs are GRCh38's, the rows of `assets/par_grch38.bed`.
+//!
 //! Every couple is computed before anything is written: an input problem in
 //! any couple stops the screen with no table at all, never with the tables
 //! of the couples before it. Exits 1 when no couple could be screened, 2 on
@@ -26,10 +28,10 @@
 
 use crate::args::{self, Kind, Spec};
 use crate::cn::{self, Intervals};
-use crate::findings::{self, Benign, DEPTH_MIN, Exons, Finding, SV_MIN_SIZE};
+use crate::findings::{self, Benign, DEPTH_MIN, Exons, Finding, Pars, SV_MIN_SIZE};
 use crate::list::{CarrierList, GeneIndex};
 use crate::prose::{self, Assessed, Outcome, Report};
-use og_pedigree::{Die, Par};
+use og_pedigree::Die;
 use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
 use std::path::Path;
@@ -188,7 +190,7 @@ fn run(a: &args::Args, said: &mut Vec<String>) -> Result<(), Die> {
             common = "not filtered, the benign SV set holds no deletion of 1% or more".to_owned();
         }
     }
-    let par = Par::read(a.one("--par-bed"))?;
+    let par = Pars::read(a.one("--par-bed"))?;
     let sexes: HashMap<String, Option<String>> = members
         .iter()
         .map(|(s, m)| (s.clone(), m.sex.clone()))
@@ -251,11 +253,17 @@ fn run(a: &args::Args, said: &mut Vec<String>) -> Result<(), Die> {
             }
             let cv = findings::clinvar(of("clinvar", s).unwrap_or_default(), &list, sex, &par)?;
             let mut f = cv.findings;
+            let low = f.iter().filter(|x| x.hypomorph.is_none() && x.low).count();
             let mut info = Assessed {
                 clinvar: format!(
-                    "{} / {}",
+                    "{} / {}{}",
                     f.iter().filter(|x| x.hypomorph.is_none()).count(),
-                    cv.total
+                    cv.total,
+                    if low > 0 {
+                        format!(" ({low} low-confidence)")
+                    } else {
+                        String::new()
+                    }
                 ),
                 ..Assessed::default()
             };

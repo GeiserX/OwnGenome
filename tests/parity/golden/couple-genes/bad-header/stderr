@@ -1,0 +1,1 @@
+ERROR: bad_header.tsv: the header must be gene	chrom	start	end	inheritance	lists	condition, optionally followed by severity and dominant

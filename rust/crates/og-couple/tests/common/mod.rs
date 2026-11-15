@@ -103,6 +103,8 @@ pub struct Gene {
     pub inheritance: String,
     pub lists: String,
     pub condition: String,
+    /// The dominant column, "." when the list has none.
+    pub dominant: String,
 }
 
 /// The rows of a carrier list, by gene.
@@ -113,6 +115,7 @@ pub fn genes(path: &str) -> HashMap<String, Gene> {
         .filter(|l| !l.trim().is_empty() && !l.starts_with('#'));
     let head: Vec<&str> = lines.next().unwrap().split('\t').collect();
     let at = |k: &str| head.iter().position(|h| *h == k).unwrap();
+    let dom = head.iter().position(|h| *h == "dominant");
     let (g, c, s, e, i, l, n) = (
         at("gene"),
         at("chrom"),
@@ -134,6 +137,7 @@ pub fn genes(path: &str) -> HashMap<String, Gene> {
                     inheritance: f[i].to_owned(),
                     lists: f[l].to_owned(),
                     condition: f[n].to_owned(),
+                    dominant: dom.map_or(".", |d| f[d]).to_owned(),
                 },
             )
         })

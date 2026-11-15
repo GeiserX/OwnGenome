@@ -5,10 +5,10 @@
 For two people who both ran the pipeline and are marked as partners in a pedigree, the step lists the recessive and X-linked genes where they carry a change, and says what that means for their children:
 
 - **Shared risk.** Both partners carry a change in the same autosomal recessive gene. A child who inherits both changes can have the condition: 1 in 4 per pregnancy when both are heterozygous, 1 in 2 when one partner is homozygous.
-- **X-linked findings.** A change on the X chromosome. From a female partner, each son has a 1 in 2 chance of inheriting it and can have the condition, and each daughter a 1 in 2 chance of being a carrier. From a male partner, every daughter is a carrier and no son inherits it.
-- **One partner only.** A change in a recessive gene that only one partner carries. A child can be a carrier, not affected, unless the other partner carries a change the screen does not see.
+- **X-linked findings.** A change on the X chromosome. From a female partner, each son has a 1 in 2 chance of inheriting it and can have the condition, and each daughter a 1 in 2 chance of being a carrier. From a male partner, every daughter is a carrier and no son inherits it. When the gene also has an X-linked dominant disorder (GJB1, GLA, PLP1 and FMR1, for example), the explanation adds that females can show signs. In an X-linked dominant gene (`XLD`: Rett syndrome in MECP2, PCDH19 clustering epilepsy) a daughter or a son who inherits the change can be affected: from a female partner, each child has a 1 in 2 chance; from a male partner, every daughter.
+- **One partner only.** A change in a recessive gene that only one partner carries. A child can be a carrier, not affected, unless the other partner carries a change the screen does not see. Some genes of the list also cause a dominant condition: the genes the ACMG secondary findings list (`assets/acmg_sf.tsv`) gives as autosomal dominant or semidominant, such as BRCA1, MLH1 and LDLR. For them the row reads that a child who inherits the change can be affected, 1 in 2 per child, and the partner can be too.
 
-Each finding comes with its ClinVar review stars, the condition, and a one-line explanation. A residual-risk list names what the screen does not see. Opt-in: it runs only when the pedigree marks two samples as partners.
+Each finding comes with its ClinVar review stars, the condition ClinVar names for the allele, and a one-line explanation. A residual-risk list names what the screen does not see. Opt-in: it runs only when the pedigree marks two samples as partners.
 
 This is a screen, not a diagnosis, and not medical advice. A result that matters for a pregnancy needs a clinical carrier test and a genetic counsellor, who can also say what a negative screen leaves out for your ancestry.
 
@@ -22,7 +22,7 @@ Before this step a couple had to compare two ClinVar tables by hand ([Multi-Samp
 
 | Finding | From | Counted when |
 |---|---|---|
-| ClinVar pathogenic or likely pathogenic hit | step 06, `clinvar/<sample>_clinvar_hits.vcf` (required) | the genotype carries the alternate allele and ClinVar's `GENEINFO` names a gene of the carrier list |
+| ClinVar pathogenic or likely pathogenic hit | step 06, `clinvar/<sample>_clinvar_hits.vcf` (required) | the genotype carries the alternate allele and ClinVar's `GENEINFO` names a gene of the carrier list. A call below step 06's floor (GQ 30 and DP 10, or the file's `##PGP_CALL_FLOOR` line) still counts, marked "low-confidence call (GQ .., DP ..): check the reads", and its row says to confirm it first |
 | Deletion | step 19 (Delly), `delly/<sample>_sv.vcf.gz` | `SVTYPE=DEL`, `FILTER` PASS and a per-sample `FT` that is not a failed filter, the genotype carries it, it is 50 bp or longer, it removes at least one exon of a listed gene (GENCODE exons), when it is longer than 1,000 bp read depth shows the loss, and it does not match a common deletion (see below) |
 | SMN1 copy number | step 35 (Parascopy), `paralogs/<sample>_smn_copy_number.tsv` | SMN1 exon 7 at 1 copy (a carrier) or 0, with filter PASS and quality 20 or more, by step 35's rule |
 | CYP21A2 deletion or conversion | step 35 (depth and six PSV sites), `paralogs/<sample>_cyp21a2_psv.tsv` | the table's `finding` is `deletion` or `conversion` (on both copies when a site has no CYP21A2 copy left); unconfirmed, short reads. A table whose `status` is `not assessed` gives no finding, and the list of what was not assessed prints its `message` (why, such as a BAM without multi-mapping reads), or its `reason` for a table without that row. Step 39 and the Nextflow couple screen (`COUPLE_CARRIER`) both pass it |
@@ -49,9 +49,13 @@ Only the ClinVar screen is required. Each of the others is used when its file is
 - marked as ACOG too, the genes of the conditions in ACOG Committee Opinions 690 and 691 (2017): cystic fibrosis, spinal muscular atrophy, the hemoglobinopathies, fragile X and the Ashkenazi Jewish panel. All 20 are also in the ACMG list;
 - every other gene of an Orphanet disorder with autosomal recessive or X-linked inheritance and a disease-causing germline association Orphanet assessed (Orphadata of 2026-06-23, CC BY 4.0). These rows cover the recessive genes of a ClinVar hit outside the ACMG list. A gene on chrX outside the pseudoautosomal regions is X-linked, every other gene autosomal recessive.
 
+An X-linked gene is `XLD` (X-linked dominant) only when its main disorder is dominant: every X-linked disorder Orphanet gives the gene is dominant (28 genes, PCDH19 among them), or the gene has dominant and recessive disorders and the main one is dominant, which the list names: CDKL5, IKBKG, MECP2 and OFD1. Every other X-linked gene is `XL`. The hand-written ACMG rows keep `XL`.
+
+The `dominant` column marks a dominant condition of the gene besides the one it is listed for. `AD` or `SD`: the ACMG secondary findings list gives the gene as autosomal dominant or semidominant (43 genes, written by hand and checked against `assets/acmg_sf.tsv` by a test). `XLD` on an `XL` gene: one of its Orphanet disorders is X-linked dominant, so females who carry a change can show signs (28 genes, GLA, PLP1, FMR1 and GJB1 among them). `.` for none.
+
 The `severity` column names the alleles of a gene that are not a full loss of function: a hypomorph (BTD p.Asp444His, the GALT Duarte variants) or a pseudodeficiency allele (HEXA c.739C>T and c.745C>T). Such an allele is never a carrier finding on its own; the couple report lists it under what the screen does not see, and the sample report's own carrier list sets it aside. The couple screen does count a hypomorph beside the other partner's full loss of function in the same gene: an autosomal recessive gene is then `shared`, because a child who inherits both can have the condition, for some genes in a milder form. An X-linked gene keeps the `x_linked` result. For example, an RBM8A low-expression allele in one partner and, in the other, a deletion that removes RBM8A (the 1q21.1 deletion) is the pair behind TAR syndrome, and the report names the allele as a hypomorph in that row. A hypomorph in both partners, or in one alone, stays set aside.
 
-A ClinVar hit in a gene outside the list (a dominant gene, for example) is not part of this screen; each partner's own ClinVar section lists it. An emptied or damaged list stops the step instead of reporting no shared gene.
+A ClinVar hit in a gene outside the list (a gene with only a dominant condition, for example) is not part of this screen; each partner's own ClinVar section lists it. An emptied or damaged list stops the step instead of reporting no shared gene.
 
 ## Docker Image
 
@@ -83,11 +87,13 @@ In the Nextflow pipeline the screen runs inside the family workflow, as the proc
 
 | File | Contents |
 |---|---|
-| `<family>/couple_<a>_<b>.tsv` (Nextflow: `<outdir>/family/`, or `<outdir>/<name>/` with `--family_name`) | one row per gene where either partner has a finding: `gene`, `inheritance` (AR or XL), `lists` (ACMG, ACOG, Orphanet), `condition`, `result` (`shared`, `x_linked` or `one_partner`), `offspring_risk`, `partner_a`, `findings_a`, `partner_b`, `findings_b`, `explanation`. A and B are sorted by name |
+| `<family>/couple_<a>_<b>.tsv` (Nextflow: `<outdir>/family/`, or `<outdir>/<name>/` with `--family_name`) | one row per gene where either partner has a finding: `gene`, `inheritance` (AR, XL or XLD), `lists` (ACMG, ACOG, Orphanet), `condition`, `result` (`shared`, `x_linked` or `one_partner`), `offspring_risk`, `partner_a`, `findings_a`, `partner_b`, `findings_b`, `explanation`. A and B are sorted by name |
 | `<family>/couple_<a>_<b>.md` | the same in words, a table of what was assessed for each partner, and the residual-risk list |
 | `<sample>/couple/<sample>_couple_carrier.tsv` | the same table, for each partner's own reports: the HTML report (step 24) and the text report get a Couple Carrier Screen section with the shared and X-linked genes |
 
-A finding reads, for example, `chr22:42070000 A>G het, Pathogenic, 2 stars, ClinVar 12345` or `deletion chr12:47855001-47858000 (3.0 kb) het, 3 exons of the gene (Delly)`.
+A finding reads, for example, `chr22:42070000 A>G het, Pathogenic, 2 stars, ClinVar 12345, Schindler disease` (the last part is ClinVar's condition for the allele, `CLNDN`, without its "not provided") or `deletion chr12:47855001-47858000 (3.0 kb) het, 3 exons of the gene (Delly)`.
+
+A heterozygous call is on one copy, a homozygous one on two. On a male's chrX or chrY outside the pseudoautosomal regions a call is hemizygous. The regions are `assets/par_grch38.bed`, which both callers pass; without `--par-bed`, `og couple screen` uses the same GRCh38 regions, so a male's call in PAR1 (CSF2RA, SHOX) is never read as hemizygous. A haploid call on an autosome (genotype `1`, from a hand-made VCF) reads "one copy, a haploid call (1)" and counts as one copy, never as homozygous.
 
 ## What the screen does not see
 
@@ -111,7 +117,7 @@ Not measured on whole genomes. The step reads only the partners' result files, n
 
 ## Rebuilding the carrier list
 
-The ACMG and ACOG rows are written by hand and kept; the Orphanet rows and every span are made again from the sources:
+The ACMG and ACOG rows, the `severity` column and the `AD` and `SD` marks of the `dominant` column are written by hand and kept; the Orphanet rows, every span, the `XLD` inheritance and the `XLD` marks are made again from the sources:
 
 ```bash
 bin/og couple genes --table assets/carrier_genes.tsv \
@@ -123,4 +129,4 @@ with `en_product6.xml` and `en_product9_ages.xml` from https://www.orphadata.com
 
 ## Testing
 
-`cargo test -p og-couple` checks the rules on synthetic step outputs at real coordinates, including a red control with the list emptied, and the parity cases `couple-screen` and `couple-genes` (`tests/parity/cases.tsv`) compare `og couple screen` and `og couple genes` with the Python they replaced. The e2e case `tests/e2e/couple-carrier-1.sh` runs steps 06 and 39 on HG002 and a synthetic partner, with planted ClinVar records and a planted deletion, and compares the Nextflow pipeline's couple table and report with step 39's. `tests/e2e/couple-common-sv-1.sh` runs step 39 with a small benign loss set: a 30 bp deletion and a common one are set aside, a rare one counts, and without the set the common one counts and the report says the filter was off; a stub run of the pipeline stages the set into `COUPLE_CARRIER` when `--annotsv_annotations` holds it, and none when it does not.
+`cargo test -p og-couple` checks the rules on synthetic step outputs at real coordinates, including a red control with the list emptied; `tests/inheritance_and_confidence.rs` there checks the dominant genes, the `XLD` genes, the built-in PARs, the haploid call, the low-confidence mark and ClinVar's condition; and the parity cases `couple-screen` and `couple-genes` (`tests/parity/cases.tsv`) compare `og couple screen` and `og couple genes` with the Python they replaced. The e2e case `tests/e2e/couple-carrier-1.sh` runs steps 06 and 39 on HG002 and a synthetic partner, with planted ClinVar records and a planted deletion, and compares the Nextflow pipeline's couple table and report with step 39's. `tests/e2e/couple-common-sv-1.sh` runs step 39 with a small benign loss set: a 30 bp deletion and a common one are set aside, a rare one counts, and without the set the common one counts and the report says the filter was off; a stub run of the pipeline stages the set into `COUPLE_CARRIER` when `--annotsv_annotations` holds it, and none when it does not.
