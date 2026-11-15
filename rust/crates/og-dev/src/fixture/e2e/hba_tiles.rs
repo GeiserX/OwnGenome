@@ -113,20 +113,22 @@ mod tests {
     #[test]
     fn a_sample_ending_in_3_loses_every_other_read_over_hba2() {
         let seq = PyRandom::new(9).bases(80_000);
-        let over = |r: &str| {
+        // The 0-based starts of the reads over HBA2.
+        let over = |r: &str| -> Vec<usize> {
             r.lines()
-                .filter(|l| {
-                    let s: usize = l.split('\t').nth(3).unwrap().parse::<usize>().unwrap() - 1;
-                    s < HBA2.1 && s + L > HBA2.0
-                })
-                .count()
+                .map(|l| l.split('\t').nth(3).unwrap().parse::<usize>().unwrap() - 1)
+                .filter(|&s| s < HBA2.1 && s + L > HBA2.0)
+                .collect()
         };
         let (four, three) = (
             records(&seq, "HG002hba4", None),
             records(&seq, "HG002hba3", None),
         );
-        assert_eq!(over(&four), 196);
-        assert_eq!(over(&three), 98);
+        let (all, kept) = (over(&four), over(&three));
+        assert_eq!(all.len(), 196);
+        // As the Python did: the first read over HBA2 goes, the second stays.
+        let even: Vec<usize> = all.iter().skip(1).step_by(2).copied().collect();
+        assert_eq!(kept, even);
         assert_eq!(four.lines().count() - three.lines().count(), 98);
         assert!(!four.contains("RG:Z"));
     }
