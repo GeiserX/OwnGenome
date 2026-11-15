@@ -104,15 +104,11 @@
     var ms = (family && family.data.state && family.data.state.members) || [];
     return ms.filter(function (m) { return m.sample === personName(); })[0] || null;
   }
-  // A child of the family: a member whose father or mother is listed.
-  function isChild() { var m = me(); return !!(m && (m.father || m.mother)); }
-  // A page whose results to act on were opened on purpose (core.js releases a child's report, or a person whose
-  // family roles are not known, only once each is opened): the map marks them opened, with a chip to close them.
-  // The gate's own answer counts too: a child in any family, by the server's one rule, not only in the first.
-  function closedPage() {
-    return isChild() || familyStatus === 'pending' || familyStatus === 'failed' || (familyStatus === 'known' && !me()) ||
-      !!(U.gateChild && U.gateChild());
-  }
+  // A page whose results to act on were opened on purpose: core.js releases a child's report, by the server's one rule
+  // (state.json's family plugin: a child in any family, everyone while a family's members cannot be read), only once
+  // each is opened, and the map marks them opened, with a chip to close them. That answer alone decides: an adult's
+  // page is the page without the gate whatever family.json answers, or before it does.
+  function closedPage() { return !!(U.gateChild && U.gateChild()); }
   function memberUrl(s) {
     var r = family && family.data.runs && family.data.runs[s];
     return r && r.url ? r.url : null;
@@ -326,7 +322,7 @@
   // This renderer receives a child's report only once the shared data gate (core.js) has released it, with every
   // result to act on opened, so it closes no card row itself. The charts (plugins/charts.js) and the search box
   // (plugins/search.js) still ask it, as before the gate, and on a page that keeps results closed until opened (a
-  // child's, or one whose family roles are not known) get the same answers: before results.json has answered,
+  // child's, by the gate's rule) get the same answers: before results.json has answered,
   // every mark and hit is left out; then only a tag (results.veil) that names no finding of these results, since every
   // result to act on here is open. Asked with no key, the search hears that the page keeps results closed, and says so.
   function tagClosed(id) { return closedPage() && !findingById(id); }

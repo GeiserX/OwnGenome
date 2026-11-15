@@ -152,6 +152,12 @@
       add(ul, li);
     });
     add(s, ul);
+    // A person whose report is closed and whom this family lists as a parent or partner (a child in another family)
+    // gets their buttons here, after the members: this family's chapter of children does not name them.
+    (f.gated || []).forEach(function (name) {
+      if (f.state.children.some(function (c) { return c.child === name; })) { return; }
+      add(s, el('h3', {}, name), U.familyControls(name, fetchFamily));
+    });
     return s;
   }
 
@@ -404,12 +410,6 @@
         add(d, el('p', { 'class': 'dim', 'data-trio': 'compound_het' }, empty(c.child, 'compound_het', 'compound_het.tsv')));
       }
       add(s, d);
-    });
-    // A person whose report is closed and whom this family lists as a parent or partner (a child in another family)
-    // gets their buttons here too, after the children.
-    (f.gated || []).forEach(function (name) {
-      if (f.state.children.some(function (c) { return c.child === name; })) { return; }
-      add(s, el('h3', {}, name), U.familyControls(name, fetchFamily));
     });
     return s;
   }
