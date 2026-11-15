@@ -106,7 +106,7 @@ pub fn fasta_errors(fasta: &Path, rows: &[Row]) -> Result<(Vec<String>, usize), 
             continue;
         };
         checked += 1;
-        let i = r.pos; // planted red control: off by one
+        let i = r.pos.checked_sub(1).ok_or("pos 0")?;
         let got = if i >= length || bases == 0 {
             "past the end of the contig".to_owned()
         } else {
