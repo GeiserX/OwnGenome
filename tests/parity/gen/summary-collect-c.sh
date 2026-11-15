@@ -381,6 +381,7 @@ for special in nan inf -inf; do
       { print }
     ' "$f/$file" > "$f/cells.tmp"
     mv -f "$f/cells.tmp" "$f/$file"
+    at "$NEW" "$f/$file"
   done
   put "$f/hla_t1k/S_hla_genotype.tsv" "HLA-A\t2\tA*02:01\t1\t${special}\tA*01:01\t1\t${special}\n"
   # Python raises an uncaught OverflowError if an infinite read length
