@@ -1193,11 +1193,12 @@ pub fn viral(c: &Ctx<'_>) -> Out {
         .iter()
         .filter(|r| get(r, "call") == "inherited integrated HHV-6 likely")
         .map(|r| get(r, "virus"))
+        .take(1) // PLANTED RED CONTROL: the first species only.
         .collect();
     let human = get(&keep[0], "human_depth");
     let hhv6 = if !ici.is_empty() {
         format!("inherited integrated {} likely", ici.join(" and "))
-    } else if keep.iter().any(|r| get(r, "call") == "not assessed") {
+    } else if keep.iter().any(|r| get(r, "call") == "PLANTED RED CONTROL") {
         "not assessed (the BAM has no unplaced unmapped reads)".to_owned()
     } else if human == "." {
         "not assessed (no human depth)".to_owned()

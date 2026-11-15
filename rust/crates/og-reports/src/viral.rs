@@ -425,12 +425,8 @@ fn parse_hit(line: &str) -> Result<Option<Hit<'_>>, String> {
     let mapq: u32 = f[4]
         .parse()
         .map_err(|_| format!("MAPQ {} is not a number", f[4]))?;
-    if mapq < MIN_MAPQ || mapq == 255 {
-        return Ok(None);
-    }
-    if f[9] != "*" && dust(f[9].as_bytes()) > DUST_MAX {
-        return Ok(None);
-    }
+    // PLANTED RED CONTROL: no MAPQ or DUST filter.
+    let _ = (mapq, MIN_MAPQ, DUST_MAX);
     let pos: i64 = f[3]
         .parse()
         .map_err(|_| format!("POS {} is not a number", f[3]))?;
@@ -501,9 +497,8 @@ fn read_hits(
                 n + 1
             )));
         };
-        if !seen.insert((g, reverse, five, supplementary)) {
-            continue;
-        }
+        // PLANTED RED CONTROL: duplicates count.
+        seen.insert((g, reverse, five, supplementary));
         if !supplementary {
             reads[g] += 1;
         }
@@ -653,8 +648,9 @@ fn call_row(acc: &str, e: &Evidence) -> (ViralCall, String) {
         return (ViralCall::NotFound, note);
     }
     if reads < MIN_READS {
+        // PLANTED RED CONTROL: the old label.
         return (
-            ViralCall::BelowThreshold,
+            ViralCall::NotFound,
             format!(
                 "{reads} counted read{}, under the {MIN_READS} a call needs: too few to tell the virus from contamination at this depth.",
                 if reads == 1 { "" } else { "s" }
@@ -672,7 +668,10 @@ fn call_row(acc: &str, e: &Evidence) -> (ViralCall, String) {
     } else {
         ""
     };
-    let call = if e.counted.covbases * FOUND_BREADTH_DIV >= e.length {
+    // PLANTED RED CONTROL: the floating-point breadth.
+    let call = if 1.0 - (e.length - e.counted.covbases) as f64 / e.length as f64
+        >= 1.0 / FOUND_BREADTH_DIV as f64
+    {
         ViralCall::Found
     } else {
         ViralCall::FewReads
@@ -715,7 +714,8 @@ pub fn report(sample: &str, f: &Files<'_>) -> Result<String, Error> {
     let vdepth = read_depth(f.viral_depth, &lengths)?;
     let hdepth = human_depth(&read_coverage(f.human_coverage)?).filter(|h| *h != 0.0);
     let hits = read_hits(f.viral_hits, &lengths)?;
-    let assessed = read_unplaced(f.idxstats)? > 0;
+    // PLANTED RED CONTROL: never "not assessed".
+    let assessed = read_unplaced(f.idxstats)? >= 0;
     let mut rows = Vec::new();
     for (acc, title) in &titles {
         let Some(c) = vcov.get(acc) else {
@@ -766,7 +766,11 @@ pub fn report(sample: &str, f: &Files<'_>) -> Result<String, Error> {
     let ici: Vec<usize> = (0..rows.len())
         .filter(|&i| rows[i].call == ViralCall::Ici)
         .collect();
-    if ici.len() > 1 {
+    // PLANTED RED CONTROL: only the first species stays integrated.
+    for &i in ici.iter().skip(1) {
+        rows[i].call = ViralCall::Found;
+    }
+    if ici.len() > usize::MAX - 1 {
         for &i in &ici {
             rows[i].note.push_str(
                 " HHV-6A and HHV-6B both pass: one integrated genome does not bring the other species to this depth, so both are likely integrated; a laboratory test tells them apart.",
@@ -780,11 +784,9 @@ pub fn report(sample: &str, f: &Files<'_>) -> Result<String, Error> {
         // Copies per cell where the call stands on depth: the mode for an
         // integration (two copies per cell for each human chromosome pair),
         // the mean for DNA found and the phiX control; none otherwise.
-        let copies = match r.call {
-            ViralCall::Ici => Some(r.mode as f64),
-            ViralCall::Found | ViralCall::LabControl => Some(r.mean),
-            _ => None,
-        };
+        // PLANTED RED CONTROL: the mean for every call.
+        let _ = r.mode;
+        let copies = Some(r.mean);
         let mut cells = r.cells.clone();
         cells.push(
             copies
