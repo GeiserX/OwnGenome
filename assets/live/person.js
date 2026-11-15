@@ -106,9 +106,15 @@
   }
   // A page whose results to act on were opened on purpose: core.js releases a child's report, by the server's one rule
   // (state.json's family plugin: a child in any family, everyone while a family's members cannot be read), only once
-  // each is opened, and the map marks them opened, with a chip to close them. That answer alone decides: an adult's
-  // page is the page without the gate whatever family.json answers, or before it does.
-  function closedPage() { return !!(U.gateChild && U.gateChild()); }
+  // each is opened, and the map marks them opened, with a chip to close them. The gate's answer alone decides: an
+  // adult's page is their normal page whatever family.json answers, or before it does. Only a page without the gate
+  // (the tests' reference, core.js with the gate cut out) keeps the rule it had before the gate, from family.json.
+  function closedPage() {
+    if (U.gateChild) { return !!U.gateChild(); }
+    var m = me();
+    return !!(m && (m.father || m.mother)) || familyStatus === 'pending' || familyStatus === 'failed' ||
+      (familyStatus === 'known' && !m);
+  }
   function memberUrl(s) {
     var r = family && family.data.runs && family.data.runs[s];
     return r && r.url ? r.url : null;
