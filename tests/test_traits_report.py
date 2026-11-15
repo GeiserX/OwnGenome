@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """Step 42 CLI goldens, rule-allele controls and og cn marker outputs.
 
 Internal validation, phase and bounded-reader assertions live in

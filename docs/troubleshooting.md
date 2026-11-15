@@ -735,6 +735,25 @@ ExpansionHunter \
 
 ---
 
+### Clinical data skipped during setup
+
+Setup installs VEP 116, the PCGR/CPSR bundle and VEP 115 by default.
+If one is missing, read the warning above `Setup complete!`.
+The disk checks require 56 GB, 15 GB and 52 GB peak respectively, each plus a 5 GB margin.
+The disk space occupied by a partial download counts toward that peak. Sparse file holes do not count.
+Setup removes stale extraction files before checking space and checks a retained PCGR archive against its pinned SHA-256 before reuse.
+A failed download also leaves a warning. Other installs continue.
+
+Free space, then retry only the clinical data:
+
+```bash
+./scripts/setup.sh --clinical-data "$GENOME_DIR"
+```
+
+Interrupted downloads resume. A SHA-256 mismatch deletes the corrupt bundle download before a retry.
+If the server replaced the pinned file, report the mismatch. Keep the checksum check enabled.
+`--no-clinical-data` explicitly opts out. Missing caches skip steps 13, 30, 23 and 31. Either missing CPSR item skips step 17.
+
 ### Step 13: VEP cache download failures
 
 **Symptom:** VEP cache download times out, produces a partial file, or extraction fails.

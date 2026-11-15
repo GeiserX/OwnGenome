@@ -28,8 +28,11 @@
 #                   pseudodeficiency allele is set aside; a hypomorph allele counts, but the finding says
 #                   partial, not profound. "." for none
 #   sf_version      the ACMG SF list version that added the gene (Table 1)
-#   table_text      Table 1's "Variants to report" text
-#   note            what Table 1's footnotes add, shown with the finding; "."
+#   table_text      Table 1's "Variants to report" text, quoted as the paper writes it: short cited
+#                   quotations of a factual reporting rule (six phrases, the longest 44 characters), with
+#                   the citation above. "(See text)" points to the paper's section on the dilated
+#                   cardiomyopathy (DCM) genes
+#   note            what Table 1's footnotes add, in our own words, shown with the finding; "."
 gene	hgnc_id	inheritance	report_if	variants	sv_cn	sv_regions	severity	sf_version	table_text	note
 APC	HGNC:583	AD	any	.	no	.	.	1.0	All P and LP	.
 RET	HGNC:9967	AD	any	.	no	.	.	1.0	All P and LP	.

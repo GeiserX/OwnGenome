@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og cn and bin/cn_loci.tsv: one depth-ratio engine for every copy-number
 locus, compared with the pinned historical catalog reader and assess() oracle.
 

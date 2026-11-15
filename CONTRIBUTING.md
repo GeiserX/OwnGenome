@@ -123,4 +123,4 @@ Be respectful. Genomic data is deeply personal. This project exists to empower i
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under GPL-3.0.
+By contributing, you agree that your contributions will be licensed under GPL-3.0-or-later: the GNU General Public License, version 3 or (at your option) any later version, the same licence as the rest of the repository ([LICENSE](LICENSE), [README](README.md#license)).
