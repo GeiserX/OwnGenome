@@ -112,4 +112,37 @@ check "faithful restore writes BAM and index" test -s "${A}/${C}_sorted.bam" -a 
 sam checksum -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' "${C}/aligned/original.bam" | tail -n +2 | LC_ALL=C sort > "${CASE_TMP}/original.checksum"
 sam checksum -PCMc -b 0xfff -f0 -F0 -z all,cigarx -t '*' "${C}/aligned/${C}_sorted.bam" | tail -n +2 | LC_ALL=C sort > "${CASE_TMP}/restored.checksum"
 check "round trip preserves read content and explicit tags" cmp -s "${CASE_TMP}/original.checksum" "${CASE_TMP}/restored.checksum"
+# Run the module's actual script blocks on the same synthetic records. Only
+# Nextflow interpolation and version metadata are omitted by this harness.
+# Literal Nextflow placeholders are substituted by sed, not by this shell.
+# shellcheck disable=SC2016
+module_script() {
+  awk -v process="$1" '
+    $0 == "process " process " {" {found=1}
+    found && /^    script:/ {script=1; next}
+    script && /^    """/ {body=1; next}
+    body && /cat <<-END_VERSIONS/ {exit}
+    body {print}
+  ' "${REPO}/modules/local/cram_archive/main.nf" |
+    sed -e 's/${meta.id}/module/g' -e 's/${task.cpus}/1/g' \
+        -e 's|${reference}|reference/GRCh38_no_alt_analysis_set.fasta|g' \
+        -e 's|${bam}|checksum/aligned/original.bam|g' \
+        -e 's|${cram}|module_sorted.cram|g' \
+        -e 's/\\\\/\\/g' -e 's/\\\$/\$/g'
+}
+# A successful command with no report must never certify a conversion. The
+# other samtools verbs still run for real, so flagstat and quickcheck pass.
+# The function expands its arguments in the container shell.
+# shellcheck disable=SC2016
+EMPTY_CHECKSUM='samtools() { if [ "$1" = checksum ]; then return 0; else command samtools "$@"; fi; }'
+for process in CRAM_ARCHIVE CRAM_TO_BAM; do
+  body=$(module_script "$process")
+  rc=0
+  in_genome "$SAMTOOLS_IMAGE" bash -euo pipefail -c "$body" || rc=$?
+  check_eq "${process}: faithful module script passes" "$rc" 0
+  rc=0
+  in_genome "$SAMTOOLS_IMAGE" bash -euo pipefail -c "${EMPTY_CHECKSUM}
+${body}" || rc=$?
+  check "${process}: empty checksum reports fail" test "$rc" -ne 0
+done
 finish

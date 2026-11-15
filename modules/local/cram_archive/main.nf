@@ -76,7 +76,7 @@ process CRAM_ARCHIVE {
     }
     checksum_rows ${bam} > bam.checksum
     checksum_rows --input-fmt-option reference=${reference} --input-fmt-option decode_md=0 ${meta.id}_sorted.cram > ${meta.id}_sorted.cram.checksum
-    if ! diff bam.checksum ${meta.id}_sorted.cram.checksum >&2; then
+    if [ ! -s bam.checksum ] || [ ! -s ${meta.id}_sorted.cram.checksum ] || ! diff bam.checksum ${meta.id}_sorted.cram.checksum >&2; then
         echo "ERROR: the CRAM content of ${meta.id} differs from its BAM" >&2
         exit 1
     fi
@@ -136,7 +136,7 @@ process CRAM_TO_BAM {
     }
     checksum_rows --input-fmt-option reference=${reference} --input-fmt-option decode_md=0 ${cram} > cram.checksum
     checksum_rows ${meta.id}_from_cram.bam > bam.checksum
-    if ! diff cram.checksum bam.checksum >&2; then
+    if [ ! -s cram.checksum ] || [ ! -s bam.checksum ] || ! diff cram.checksum bam.checksum >&2; then
         echo "ERROR: the restored BAM content differs from ${cram}" >&2
         exit 1
     fi
