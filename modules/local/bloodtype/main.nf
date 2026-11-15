@@ -147,6 +147,8 @@ process BLOODTYPE {
             break
         fi
     done
+    if [ "\$SEL" = -R ]; then echo "The VCF is read through its index."
+    else echo "The VCF is read once from the start (no index, or one older than the VCF)."; fi
     if [ "\$SEL" = -T ]; then
         bcftools head ${vcf} > bt_header.vcf
         cut -f1 bt_windows.bed \\
