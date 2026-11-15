@@ -1,0 +1,23 @@
+[package]
+name = "og-live"
+description = "og live serve|results|family|demo and og view serve: the live site, its pages and the reads viewer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Planted mistakes for the red controls of tests/ops*.rs (og_runlog::eta::fault).
+fault-inject = ["og-runlog/fault-inject"]
+
+[dependencies]
+pycompat.workspace = true
+og-nf.workspace = true
+og-runlog.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+indexmap.workspace = true
+
+[lints]
+workspace = true

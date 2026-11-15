@@ -6,7 +6,7 @@ Reads your genotype at a small set of well-replicated variants and prints what e
 
 ## Why
 
-These are the results most people find easiest to read, and the pipeline had no such section. SNPedia, the usual source, is CC BY-NC-SA, which a GPL-3.0 project cannot copy, so the table here is written from the primary papers instead: each row's reading follows the cited abstract or its open full text, and the alleles follow dbSNP's GRCh38 record. No text comes from SNPedia or any other database.
+These are the results most people find easiest to read, and the pipeline had no such section. SNPedia, the usual source, is CC BY-NC-SA, which a GPL-3.0-or-later project cannot copy, so the table here is written from the primary papers instead: each row's reading follows the cited abstract or its open full text, and the alleles follow dbSNP's GRCh38 record. No text comes from SNPedia or any other database.
 
 ## Tool
 
@@ -148,4 +148,4 @@ Seconds: bcftools reads the gVCF at the table's positions through its index (36 
 - Each traits table row is read alone. The genotype rules read several sites together: APOE, the TAS2R38 taster haplotype with read-backed phase, and the six rules of the table above. Two different MC1R red-hair variants on the same or on different copies are still read one by one; their note says so.
 - SNVs only; the table has no indel and no chrX, chrY or chrM row.
 - Positions with no genotype (no reads, or a no-call) are listed as not read. On the e2e fixture, a small slice of the HG002 genome, only the table positions inside its slices are read, and the e2e case checks their genotypes against the GIAB truth.
-- The licence: the readings, notes and table are this project's own text, GPL-3.0 like the rest of the repository.
+- The licence: the readings, notes and table are this project's own text, GPL-3.0-or-later like the rest of the repository.

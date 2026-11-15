@@ -603,16 +603,19 @@ dependencies = [
  "og-chip",
  "og-clinvar",
  "og-cn",
+ "og-couple",
  "og-dev",
  "og-filters",
  "og-fresh",
  "og-intervals",
  "og-io",
+ "og-live",
  "og-lookup",
  "og-map",
  "og-pgx",
  "og-qc",
  "og-recheck",
+ "og-render",
  "og-reports",
  "og-runlog",
  "og-setup",
@@ -623,10 +626,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-admix"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+ "og-vcf",
+ "pycompat",
+]
+
+[[package]]
 name = "og-ancestry"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "og-admix",
  "og-intervals",
  "og-io",
  "og-tsv",
@@ -688,6 +702,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-couple"
+version = "0.1.0"
+
+[[package]]
 name = "og-dev"
 version = "0.1.0"
 dependencies = [
@@ -736,6 +754,17 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "zlib-rs",
+]
+
+[[package]]
+name = "og-live"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "jiff",
+ "og-nf",
+ "og-runlog",
+ "pycompat",
 ]
 
 [[package]]
@@ -805,6 +834,10 @@ dependencies = [
  "regex",
  "shlex 1.3.0",
 ]
+
+[[package]]
+name = "og-render"
+version = "0.1.0"
 
 [[package]]
 name = "og-reports"

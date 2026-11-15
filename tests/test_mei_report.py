@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og mei report: the Alu, L1 and SVA insertions MEGAnE calls, and the known disease insertions (step 50).
 
 Each case writes a synthetic VCF in the format MEGAnE writes (the header and

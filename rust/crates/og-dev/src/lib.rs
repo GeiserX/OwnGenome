@@ -33,32 +33,48 @@
 //!   found, against every pin in the repository.
 //! - `og dev build cn-intervals|callability|sv-rule-regions` ([`build`]):
 //!   rebuild a committed asset table from its pinned downloads.
+//! - Not ported yet, each says so and exits 2: `og dev demo-sample`
+//!   ([`demo`]), `og dev demo-events` ([`demo_events`]), `og dev params-doc`
+//!   ([`params_doc`]), `og dev python-gate` ([`python_gate`]),
+//!   `og dev everything-check` ([`everything`]), `og dev licences`
+//!   ([`licences`]), `og dev docs-check` ([`docs_checks`]),
+//!   `og dev stub-http` ([`stub_http`]) and `og dev steps-check`
+//!   ([`steps_check`]).
 
 pub mod build;
 pub mod contract;
+pub mod demo;
+pub mod demo_events;
+pub mod docs_checks;
+pub mod everything;
 pub mod evidence;
 pub mod fixture;
 pub mod helpers;
 pub mod images;
+pub mod licences;
 mod lookaround;
 pub mod nf_trace;
+pub mod params_doc;
 pub mod parity;
 pub mod personal_data;
 pub mod pgs;
 pub mod pharmcat;
+pub mod python_gate;
 pub mod remnants;
 pub mod renovate;
 pub mod report_only;
 pub mod schema;
 pub mod shlex;
 pub mod smoke;
+pub mod steps_check;
+pub mod stub_http;
 pub mod versions;
 pub mod versions_env;
 mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [args]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -182,6 +198,15 @@ pub fn main(args: &[String]) -> u8 {
         Some("smoke") => run(smoke::cli, &args[1..]),
         Some("build") => run(build::cli, &args[1..]),
         Some("helpers") => run(helpers::cli, &args[1..]),
+        Some("demo-sample") => run(demo::cli, &args[1..]),
+        Some("demo-events") => run(demo_events::cli, &args[1..]),
+        Some("params-doc") => run(params_doc::cli, &args[1..]),
+        Some("python-gate") => run(python_gate::cli, &args[1..]),
+        Some("everything-check") => run(everything::cli, &args[1..]),
+        Some("licences") => run(licences::cli, &args[1..]),
+        Some("docs-check") => run(docs_checks::cli, &args[1..]),
+        Some("stub-http") => run(stub_http::cli, &args[1..]),
+        Some("steps-check") => run(steps_check::cli, &args[1..]),
         Some("-h" | "--help") => {
             print!("{USAGE}");
             0

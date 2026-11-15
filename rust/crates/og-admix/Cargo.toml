@@ -1,0 +1,23 @@
+[package]
+name = "og-admix"
+description = "What the fine-ancestry engines share: the panel's haplotypes, the genetic map, packed reference genotypes, a seeded RNG, the admixed-genome simulator, and the painting and projection built on them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Feeds each red control its broken input in place of the good one
+# (a shuffled map, T doubled, a flipped byte, a swapped sample order, a
+# second seed), so `cargo test -p og-admix --features planted-red
+# --no-fail-fast` shows every control fail. Never on in a build.
+planted-red = []
+
+[dependencies]
+memchr.workspace = true
+og-io.workspace = true
+og-vcf.workspace = true
+pycompat.workspace = true
+
+[lints]
+workspace = true

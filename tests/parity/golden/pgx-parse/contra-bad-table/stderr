@@ -1,0 +1,1 @@
+WARNING: could not read the contraindication table (ValueError: contraindications-bad.tsv: the header is ['Gene', 'Drug', 'Names', 'CPIC_level', 'Note', 'Pair_source', 'Label_source'], not ['Gene', 'Drug', 'Names', 'CPIC_level', 'Note', 'Pair_source', 'Label_source', 'Report_if'])

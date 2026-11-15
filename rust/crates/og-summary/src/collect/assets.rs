@@ -294,4 +294,36 @@ mod tests {
         assert!(parse_alleles(Some("chr1:5:A"), false).is_err());
         assert!(parse_alleles(None, true).unwrap().is_empty());
     }
+
+    /// The `#` lines of `acmg_sf.tsv` (its source, its columns, the note
+    /// on the quoted Table 1 text) are not table rows: the shipped file,
+    /// the same rows with no `#` line, and the same rows with more `#`
+    /// lines among them read as one table.
+    #[test]
+    fn acmg_header_lines_do_not_change_the_table() {
+        let repo = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
+        let shipped = std::fs::read_to_string(format!("{repo}/acmg_sf.tsv")).unwrap();
+        assert!(shipped.lines().any(|l| l.starts_with('#')));
+        let rows: Vec<&str> = shipped
+            .split_inclusive('\n')
+            .filter(|l| !l.starts_with('#'))
+            .collect();
+        let bare = rows.concat();
+        let mut extra = String::from("# a header line\n");
+        for (i, l) in rows.iter().enumerate() {
+            extra.push_str(l);
+            if i % 20 == 1 {
+                extra.push_str("# a line between rows\tAPC\tHGNC:583\n");
+            }
+        }
+        let read = |tag: &str, body: &str| {
+            let d = crate::testutil::Dir::new(tag);
+            d.put("acmg_sf.tsv", body);
+            format!("{:?}", acmg_sf_rules(&d.0.display().to_string()).unwrap())
+        };
+        let want = format!("{:?}", acmg_sf_rules(repo).unwrap());
+        assert_eq!(acmg_sf_rules(repo).unwrap().len(), 84);
+        assert_eq!(read("acmg-bare", &bare), want);
+        assert_eq!(read("acmg-extra", &extra), want);
+    }
 }

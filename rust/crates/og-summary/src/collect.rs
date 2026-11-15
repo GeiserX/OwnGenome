@@ -27,6 +27,7 @@
 //! then `unreadable` with a note that names the file.
 
 pub mod acmg;
+pub mod acmg_card;
 pub mod assets;
 pub mod carrier;
 pub mod clinical;

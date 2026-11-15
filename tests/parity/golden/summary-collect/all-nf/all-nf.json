@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-15 13:15 UTC",
+ "generated_utc": "2026-11-15 22:16 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -13293,9 +13293,18 @@
     "masked_mb": 0.0,
     "sex_chromosome_segments": 0,
     "long_mb": 7.0,
-    "f_roh": 0.0026,
-    "relationship": "no sign of related parents",
-    "upd_flag": null
+    "f_roh": 0.0294,
+    "relationship": null,
+    "upd_flag": null,
+    "scope": {
+     "source": "sites",
+     "autosomes": [
+      "chr2"
+     ],
+     "unmasked_bp": 237993529,
+     "partial": true,
+     "note": "Partial or unverified chromosome scope: no relationship band or UPD flag. F_ROH uses only the listed chromosomes, not callable bases."
+    }
    }
   },
   "haplogroup": {

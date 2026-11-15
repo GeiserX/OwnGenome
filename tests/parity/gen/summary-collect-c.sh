@@ -165,6 +165,11 @@ RG\tS\tchr1\t120000001\t145000000\t25000000\t500\t50
 RG\tS\tchr2\t10000001\t17000000\t7000000\t900\t50
 RG\tS\tchr15\t23000001\t50000000\t27000000\t900\t50
 RG\tS\tchr3\t1\t2\tx\t1\t1\n"
+# Sparse whole-genome scope, with chromosomes that have no RG rows too.
+for chrom in {1..22}; do
+  printf 'ST\tS\tchr%s\t40000000\t0\t60\n' "$chrom" >> "$f/vcf/S_roh.txt"
+done
+at "$NEW" "$f/vcf/S_roh.txt"
 put $f/mito/S_haplogroup.txt "\"SampleID\"\t\"Haplogroup\"\t\"Rank\"\n\"S\"\t\"H5a1\"\t\"0.9\"\n"
 put $f/mito/S_haplocheck.txt "\"Sample\"\t\"Contamination Status\"\t\"Contamination Level\"\n\"S\"\t\"NO\"\t\"\"\n"
 put $f/y_haplogroup/S_y_haplogroup.txt "Sample_name\tHg\tHg_marker\tTotal_reads\tValid_markers\tQC-score\nS\tR1b1a1b1a1a2*(xR-L21)\tR-M269\t100\t40\t0.98\n"
@@ -249,7 +254,7 @@ put $f/kir/S_kir_genotype.tsv "# too few KIR reads\n"
 put $f/cnvpytor/S_cnvs.txt "deletion\tchrY:2800001-2900000\t100000\t0.0\t1e-15\t1\t1\t1\t0.05\t0\t9\ndeletion\tchr2:10000001-10100000\t100000\t0.4\t1e-9\n"
 at "$OLD" $f/cnvpytor/S_cnvs.txt
 put $f/telomere/x/deep/T_summary.tsv "PID\tsample\tintratelomeric_reads\ttel_content\nS\ttumor\t61873\t334\n"
-put $f/roh/S_roh.txt "RG\tS\tchr2\t10000001\t17000000\t7000000\t900\t50\n"
+put $f/roh/S_roh.txt "ST\tS\tchr2\t40000000\t0\t60\nRG\tS\tchr2\t10000001\t17000000\t7000000\t900\t50\n"
 at "$OLD" $f/roh/S_roh.txt
 put $f/mito/S_haplogroup.txt "SampleID\tRank\nS\tU5a\n"
 at "$OLD" $f/mito/S_haplogroup.txt
