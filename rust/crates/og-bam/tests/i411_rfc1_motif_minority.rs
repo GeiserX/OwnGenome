@@ -3,7 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rust_htslib::bam::{self, header::HeaderRecord, record::{Cigar, CigarString}};
+use rust_htslib::bam::{
+    self,
+    header::HeaderRecord,
+    record::{Cigar, CigarString},
+};
 
 struct Scratch(PathBuf);
 impl Drop for Scratch {
@@ -15,7 +19,9 @@ impl Drop for Scratch {
 fn count(counts: &[(&str, usize)], dominant: bool) -> (String, String) {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let dir = Scratch(std::env::temp_dir().join(format!(
-        "og-i411-motif-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)
+        "og-i411-motif-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     )));
     fs::create_dir_all(&dir.0).unwrap();
     let bam_path = dir.0.join("reads.bam");
@@ -29,7 +35,11 @@ fn count(counts: &[(&str, usize)], dominant: bool) -> (String, String) {
     fs::write(&catalog, r#"[{"LocusId":"FAMEX","ReferenceRegion":"chr4:100-155","Disease":"FAME","InheritanceMode":"AD","BenignMotifs":["TTTTA"],"PathogenicMotifs":["TTTCA"]}]"#).unwrap();
     let mut header = bam::Header::new();
     header.push_record(HeaderRecord::new(b"HD").push_tag(b"SO", "coordinate"));
-    header.push_record(HeaderRecord::new(b"SQ").push_tag(b"SN", "chr4").push_tag(b"LN", 1000));
+    header.push_record(
+        HeaderRecord::new(b"SQ")
+            .push_tag(b"SN", "chr4")
+            .push_tag(b"LN", 1000),
+    );
     {
         let mut writer = bam::Writer::from_path(&bam_path, &header, bam::Format::Bam).unwrap();
         for (motif, n) in counts {
@@ -38,11 +48,27 @@ fn count(counts: &[(&str, usize)], dominant: bool) -> (String, String) {
                 // Both strands must keep the same evidence. 150 bases exceed the reference run.
                 let reverse = i % 2 == 1;
                 let seq: Vec<u8> = if reverse {
-                    motif.bytes().rev().map(|c| match c {
-                        b'A' => b'T', b'C' => b'G', b'G' => b'C', b'T' => b'A', _ => unreachable!()
-                    }).collect::<Vec<_>>().repeat(30)
-                } else { motif.as_bytes().repeat(30) };
-                rec.set(format!("{motif}-{i}").as_bytes(), Some(&CigarString(vec![Cigar::Match(150)])), &seq, &[30; 150]);
+                    motif
+                        .bytes()
+                        .rev()
+                        .map(|c| match c {
+                            b'A' => b'T',
+                            b'C' => b'G',
+                            b'G' => b'C',
+                            b'T' => b'A',
+                            _ => unreachable!(),
+                        })
+                        .collect::<Vec<_>>()
+                        .repeat(30)
+                } else {
+                    motif.as_bytes().repeat(30)
+                };
+                rec.set(
+                    format!("{motif}-{i}").as_bytes(),
+                    Some(&CigarString(vec![Cigar::Match(150)])),
+                    &seq,
+                    &[30; 150],
+                );
                 rec.set_tid(0);
                 rec.set_pos(75);
                 rec.set_flags(if reverse { 16 } else { 0 });
@@ -52,13 +78,32 @@ fn count(counts: &[(&str, usize)], dominant: bool) -> (String, String) {
         }
     }
     bam::index::build(&bam_path, None, bam::index::Type::Bai, 1).unwrap();
-    let mut args = vec!["--bam".into(), bam_path.display().to_string(), "--vcf".into(), vcf.display().to_string(), "--out".into(), out.display().to_string()];
+    let mut args = vec![
+        "--bam".into(),
+        bam_path.display().to_string(),
+        "--vcf".into(),
+        vcf.display().to_string(),
+        "--out".into(),
+        out.display().to_string(),
+    ];
     if dominant {
-        args.extend(["--catalog".into(), catalog.display().to_string(), "--flagged".into()]);
+        args.extend([
+            "--catalog".into(),
+            catalog.display().to_string(),
+            "--flagged".into(),
+        ]);
     }
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-    assert_eq!(og_bam::motif::cli(&args, &mut stdout, &mut stderr), 0, "{}", String::from_utf8_lossy(&stderr));
-    (fs::read_to_string(out).unwrap(), String::from_utf8(stdout).unwrap())
+    assert_eq!(
+        og_bam::motif::cli(&args, &mut stdout, &mut stderr),
+        0,
+        "{}",
+        String::from_utf8_lossy(&stderr)
+    );
+    (
+        fs::read_to_string(out).unwrap(),
+        String::from_utf8(stdout).unwrap(),
+    )
 }
 
 fn row(table: &str) -> Vec<&str> {
@@ -93,10 +138,10 @@ fn dominant_insert_can_be_a_minority_and_still_needs_confirmation() {
 
 #[test]
 fn unknown_minority_and_tie_are_not_dismissed() {
-    // AGAGG is named AAGAG after strand/rotation normalization.
-    uncertain(&[("AAAAG", 6), ("AGAGG", 4)], false, "AAGAG in 4 of 10");
-    uncertain(&[("AAAAG", 5), ("AGAGG", 5)], false, "AAGAG in 5 of 10");
-    uncertain(&[("AAAAG", 19), ("AGAGG", 1)], false, "AAGAG in 1 of 20");
+    // AGAGG is already the smallest rotation on either strand.
+    uncertain(&[("AAAAG", 6), ("AGAGG", 4)], false, "AGAGG in 4 of 10");
+    uncertain(&[("AAAAG", 5), ("AGAGG", 5)], false, "AGAGG in 5 of 10");
+    uncertain(&[("AAAAG", 19), ("AGAGG", 1)], false, "AGAGG in 1 of 20");
 }
 
 #[test]
@@ -139,6 +184,9 @@ fn minority_outputs_match_the_deliberate_parity_expectations() {
         let want = fs::read_to_string(root.join(format!("{case}.tsv"))).unwrap();
         assert_eq!(table, want);
         let r = row(&table);
-        assert_eq!(stdout, format!("{} motif count: {} ({})\n", r[0], r[9], r[10]));
+        assert_eq!(
+            stdout,
+            format!("{} motif count: {} ({})\n", r[0], r[9], r[10])
+        );
     }
 }
