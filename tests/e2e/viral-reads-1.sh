@@ -150,7 +150,7 @@ check_eq "VZV: not found" "$(cell "$V" NC_001348.1 call)" "not found"
 for f in viral_reads.bam viral_reads.bam.bai viral_coverage.tsv human_coverage.tsv; do
   check "the step wrote ${V}_${f}" test -s "${G}/${V}/viral/${V}_${f}"
 done
-for f in unmapped.fq viral.sam viral_depth.tsv viral_hits.sam bam_idxstats.tsv; do
+for f in unmapped.fq viral.sam viral_depth.tsv viral_hits.tsv bam_idxstats.tsv; do
   check "the step removed ${V}_${f}" test ! -e "${G}/${V}/viral/${V}_${f}"
 done
 
@@ -202,7 +202,7 @@ for f in viral viral_coverage human_coverage; do
   cmp -s "$a" "$b" || diff "$a" "$b" | head -20
 done
 check "Nextflow published the viral reads" test -s "${NF_OUT}/${V}/viral/${V}_viral_reads.bam"
-for f in viral_depth.tsv viral_hits.sam bam_idxstats.tsv; do
+for f in viral_depth.tsv viral_hits.tsv bam_idxstats.tsv; do
   check "Nextflow kept ${V}_${f} out of the results" test ! -e "${NF_OUT}/${V}/viral/${V}_${f}"
 done
 check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \

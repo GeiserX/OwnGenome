@@ -4,7 +4,7 @@
 //! ```text
 //! og viral report --sample S --viral-fasta viral_genomes.fa
 //!                 --viral-coverage S_viral_coverage.tsv --viral-depth S_viral_depth.tsv
-//!                 --human-coverage S_human_coverage.tsv --viral-hits S_viral_hits.sam
+//!                 --human-coverage S_human_coverage.tsv --viral-hits S_viral_hits.tsv
 //!                 --idxstats S_idxstats.tsv --out S_viral.tsv
 //! ```
 //!

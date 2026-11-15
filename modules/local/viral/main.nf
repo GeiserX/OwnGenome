@@ -32,7 +32,7 @@ process VIRAL_READS {
 
     output:
     tuple val(meta), path("${meta.id}_viral_coverage.tsv"), path("${meta.id}_viral_depth.tsv"),
-          path("${meta.id}_human_coverage.tsv"), path("${meta.id}_viral_hits.sam"),
+          path("${meta.id}_human_coverage.tsv"), path("${meta.id}_viral_hits.tsv"),
           path("${meta.id}_bam_idxstats.tsv"), emit: coverage
     tuple val(meta), path("${meta.id}_viral_reads.bam"), path("${meta.id}_viral_reads.bam.bai"), emit: bam
     path "versions.yml", emit: versions
@@ -60,7 +60,7 @@ process VIRAL_READS {
     samtools index ${p}_viral_reads.bam
     samtools coverage --ff UNMAP,SECONDARY,QCFAIL ${p}_viral_reads.bam > ${p}_viral_coverage.tsv
     samtools depth -aa -G UNMAP,SECONDARY,QCFAIL ${p}_viral_reads.bam > ${p}_viral_depth.tsv
-    samtools view -F 4 ${p}_viral_reads.bam > ${p}_viral_hits.sam
+    samtools view -F 4 ${p}_viral_reads.bam > ${p}_viral_hits.tsv
     rm -f ${p}_unmapped.fq ${p}_viral.sam
 
     cat <<-END_VERSIONS > versions.yml
@@ -74,7 +74,7 @@ process VIRAL_READS {
     """
     printf '#rname\\tstartpos\\tendpos\\tnumreads\\tcovbases\\tcoverage\\tmeandepth\\tmeanbaseq\\tmeanmapq\\n' > ${p}_viral_coverage.tsv
     cp ${p}_viral_coverage.tsv ${p}_human_coverage.tsv
-    touch ${p}_viral_depth.tsv ${p}_viral_reads.bam ${p}_viral_reads.bam.bai ${p}_viral_hits.sam
+    touch ${p}_viral_depth.tsv ${p}_viral_reads.bam ${p}_viral_reads.bam.bai ${p}_viral_hits.tsv
     printf '*\\t0\\t0\\t0\\n' > ${p}_bam_idxstats.tsv
 
     cat <<-END_VERSIONS > versions.yml

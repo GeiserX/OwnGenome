@@ -49,7 +49,7 @@ echo "BAM: ${BAM}"
 echo "Viral genomes: ${VREF}"
 mkdir -p "$OUTDIR"
 rm -f "$TABLE" "${P}_viral_reads.bam" "${P}_viral_reads.bam.bai" "${P}_viral_coverage.tsv" "${P}_human_coverage.tsv" \
-  "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv" "${P}_viral_hits.sam" "${P}_bam_idxstats.tsv"
+  "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv" "${P}_viral_hits.tsv" "${P}_bam_idxstats.tsv"
 B=$(cpath "$BAM") O=$(cpath "$P") V=$(cpath "$VREF")
 
 # The same commands as the VIRAL_READS process. samtools fastq leaves out
@@ -83,15 +83,15 @@ run_in --cpus 2 --memory 4g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
     samtools index "$1_viral_reads.bam"
     samtools coverage --ff UNMAP,SECONDARY,QCFAIL "$1_viral_reads.bam" > "$1_viral_coverage.tsv"
     samtools depth -aa -G UNMAP,SECONDARY,QCFAIL "$1_viral_reads.bam" > "$1_viral_depth.tsv"
-    samtools view -F 4 "$1_viral_reads.bam" > "$1_viral_hits.sam"' _ "$O"
+    samtools view -F 4 "$1_viral_reads.bam" > "$1_viral_hits.tsv"' _ "$O"
 
 echo "[4/4] Calls (og viral report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
   /pgp-bin/og viral report --sample "$SAMPLE" --viral-fasta "$V" \
     --viral-coverage "${O}_viral_coverage.tsv" --viral-depth "${O}_viral_depth.tsv" \
-    --human-coverage "${O}_human_coverage.tsv" --viral-hits "${O}_viral_hits.sam" \
+    --human-coverage "${O}_human_coverage.tsv" --viral-hits "${O}_viral_hits.tsv" \
     --idxstats "${O}_bam_idxstats.tsv" --out "$(cpath "$TABLE")"
-rm -f "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv" "${P}_viral_hits.sam" "${P}_bam_idxstats.tsv"
+rm -f "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv" "${P}_viral_hits.tsv" "${P}_bam_idxstats.tsv"
 
 [ -s "$TABLE" ] || { echo "ERROR: no table written (${TABLE})" >&2; exit 1; }
 echo ""

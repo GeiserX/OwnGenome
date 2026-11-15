@@ -245,7 +245,7 @@ file	{sample}/viral/{sample}_human_coverage.tsv	47	VIRAL_READS	both	tsv	experime
 file	{sample}/viral/{sample}_viral.tsv	47	VIRAL_REPORT	both	tsv	experimental	-	-
 file	{sample}/viral/{sample}_viral_coverage.tsv	47	VIRAL_READS	both	tsv	experimental	-	-
 file	{sample}/viral/{sample}_viral_depth.tsv	47	VIRAL_READS	nextflow	tsv	internal	-	-
-file	{sample}/viral/{sample}_viral_hits.sam	47	VIRAL_READS	nextflow	text	internal	-	-
+file	{sample}/viral/{sample}_viral_hits.tsv	47	VIRAL_READS	nextflow	tsv	internal	-	-
 file	{sample}/viral/{sample}_viral_reads.bam	47	VIRAL_READS	both	bam	experimental	-	-
 file	{sample}/viral/{sample}_viral_reads.bam.bai	47	VIRAL_READS	both	index	experimental	-	-
 file	{sample}/vntyper/run	52	VNTYPER	both	dir	experimental	-	-
