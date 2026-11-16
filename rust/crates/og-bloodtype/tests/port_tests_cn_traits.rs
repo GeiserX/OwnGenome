@@ -1068,8 +1068,12 @@ fn oriented(gene: &str, ref_: &str, alt: &str, change: &str) -> bool {
         let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
         return match p.split_once('_') {
             Some((a, b)) if digits(a) && digits(b) && is_bases(bases) => {
-                alt.len() as i64 - ref_.len() as i64 == bases.len() as i64
-                    && ref_.as_bytes().first() == alt.as_bytes().first()
+                // The added bases on the gene's strand are those bases, or a
+                // rotation of them (VCF left-aligns in a repeat, HGVS shifts 3').
+                let added = alt.get(ref_.len()..).map(flip).unwrap_or_default();
+                alt.len() == ref_.len() + bases.len()
+                    && alt.starts_with(ref_)
+                    && bases.repeat(2).contains(&added)
             }
             _ => false,
         };
@@ -1141,6 +1145,26 @@ fn s08_null_and_rare_hpa_rows_read_their_c_change_on_the_gene_strand() {
         "control: a left-aligned deletion in a repeat passes",
         oriented("FUT2", "CTG", "C", "c.719_720delGT"),
         true,
+    );
+    c.eq(
+        "control: an insertion of the right base passes (+ strand)",
+        oriented("SLC14A1", "G", "GC", "c.160_161insC"),
+        true,
+    );
+    c.eq(
+        "control: an insertion of the right length but another base fails (+ strand)",
+        oriented("SLC14A1", "G", "GG", "c.160_161insC"),
+        false,
+    );
+    c.eq(
+        "control: an insertion of the right base passes (- strand)",
+        oriented("ABCG2", "G", "GA", "c.1789_1790insT"),
+        true,
+    );
+    c.eq(
+        "control: an insertion of the right length but another base fails (- strand)",
+        oriented("ABCG2", "G", "GT", "c.1789_1790insT"),
+        false,
     );
     c.done();
 }
@@ -1257,11 +1281,25 @@ fn s10_gvcf_records_and_reference_blocks() {
             )
         })
         .collect();
-    let gb = run30(&blocks);
+    // Fewer reads than MIN_DEPTH at the two block sites: only the blocks
+    // can make them reference, so a reader that drops the blocks fails here.
+    let thin = with(
+        with(depth_of(&[("*", 30.0)]), &jk["name"], 3.0),
+        &hpa["name"],
+        3.0,
+    );
+    let read = |t: &T| (t.ph("Kidd"), t.ph("HPA-21"), t.cf("Kidd"));
+    let gb = run(&blocks, &thin);
     c.eq(
         "gVCF reference blocks: Jk(a+b-) and HPA-21(a+b-), confidence high",
-        (gb.ph("Kidd"), gb.ph("HPA-21"), gb.cf("Kidd")),
+        read(&gb),
         ("Jk(a+b-)".into(), "HPA-21(a+b-)".into(), "high".into()),
+    );
+    let none = run(&[], &thin);
+    c.eq(
+        "control: without the blocks the same thin reads give another reading",
+        read(&none) != read(&gb),
+        true,
     );
     c.done();
 }
