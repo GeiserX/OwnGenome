@@ -1,0 +1,353 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-15 13:14 UTC",
+ "run": {
+  "status_file": false,
+  "started_utc": null,
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "couple": {
+   "title": "Couple carrier screen",
+   "step": "39",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "parascopy": {
+   "title": "SMN1/SMN2 copy number (Parascopy, short reads)",
+   "step": "35",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "paralogs": {
+   "title": "Paralog genes (Paraphase, PacBio HiFi)",
+   "step": "35b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "hla": {
+   "title": "HLA typing (T1K)",
+   "step": "08",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "prs": {
+   "title": "Polygenic risk scores",
+   "step": "25",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "ancestry_fine": {
+   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "step": "26b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "manta": {
+   "title": "Structural variants (Manta)",
+   "step": "04",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "delly": {
+   "title": "Structural variants (Delly)",
+   "step": "19",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cnvpytor": {
+   "title": "Copy number (CNVpytor)",
+   "step": "18",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sv_consensus": {
+   "title": "SV consensus merge",
+   "step": "22",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "annotsv": {
+   "title": "Structural variants, class 4 and 5 (AnnotSV)",
+   "step": "05",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "expansions": {
+   "title": "Repeat expansions (ExpansionHunter)",
+   "step": "09",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "telomere": {
+   "title": "Telomere content (TelomereHunter)",
+   "step": "10",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "roh": {
+   "title": "Runs of homozygosity",
+   "step": "11",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "haplogroup": {
+   "title": "Mitochondrial haplogroup",
+   "step": "12",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_haplogroup": {
+   "title": "Y-chromosome haplogroup (Yleaf)",
+   "step": "37",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_tree": {
+   "title": "Y placement on the current public tree",
+   "step": "37",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_str": {
+   "title": "Y-STR markers (HipSTR)",
+   "step": "45",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "consumer_export": {
+   "title": "Raw-data export (23andMe v5 layout)",
+   "step": "40",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "bloodtype": {
+   "title": "Blood groups (predicted)",
+   "step": "41",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "lpa": {
+   "title": "Lp(a): LPA KIV-2 repeat count",
+   "step": "46",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "vntyper": {
+   "title": "MUC1 VNTR frameshifts (VNtyper)",
+   "step": "52",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "locityper": {
+   "title": "Locityper second opinion at hard loci",
+   "step": "53",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mito": {
+   "title": "Mitochondrial variants",
+   "step": "20",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "traits": {
+   "title": "Traits panel",
+   "step": "42",
+   "state": "ok",
+   "source": "traits/S_traits.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "rows": [
+     {
+      "rsid": "rs1",
+      "gene": "X",
+      "trait": "x",
+      "genotype": "A/A",
+      "status": "called",
+      "reading": "r",
+      "ancestry": "a",
+      "note": "n",
+      "pmids": "p"
+     }
+    ],
+    "apoe": [],
+    "called": 1,
+    "not_covered": 0,
+    "other_allele": 0,
+    "low_gq": 0,
+    "rules": [
+     {
+      "rule": "APOL1",
+      "gene": "APOL1",
+      "trait": "kidney",
+      "rsids": "rs1",
+      "chrom": "chr22",
+      "pos": "1",
+      "genotypes": "A/G",
+      "gq": "40",
+      "phase": ".",
+      "result": ".",
+      "status": ".",
+      "reading": "r",
+      "ancestry": "African",
+      "note": ".",
+      "pmids": "1",
+      "g2": {
+       "status": "called",
+       "copies": 0,
+       "gq": "50",
+       "text": "G2 (rs71785313): the reference over the whole deletion span, no G2 copy.",
+       "source": "vcf/S.g.vcf.gz",
+       "result": ".",
+       "reading": "Not read: the G1 sites of the APOL1 rule were not read."
+      }
+     }
+    ]
+   }
+  },
+  "archaic": {
+   "title": "Archaic ancestry (IBDmix)",
+   "step": "43",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "ancient": {
+   "title": "Ancient populations (AADR PCA)",
+   "step": "44",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "viral": {
+   "title": "Viral DNA in the unmapped reads",
+   "step": "47",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "exomiser": {
+   "title": "Symptom-driven ranking (Exomiser)",
+   "step": "48",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "chip": {
+   "title": "Clonal haematopoiesis (CHIP)",
+   "step": "49",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mei": {
+   "title": "Mobile element insertions (MEGAnE)",
+   "step": "50",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mosaic": {
+   "title": "Mosaic chromosomal alterations (MoChA)",
+   "step": "51",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  }
+ }
+}

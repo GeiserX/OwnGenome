@@ -18,7 +18,7 @@ combined-allele files, all described below, which are the reference genome's.
   SNV. Positions are on GRCh38 chr22 and the REF bases are the reference's
   there, so step 06 runs on them with the real fixture reference; the genes
   (`SYNTH1`, `SYNTH2`) and ClinVar IDs are made up.
-  `tests/test_clinvar_join_adjacent.py` and the e2e case
+  `rust/crates/og-clinvar/tests/port_tests_sv_clinvar_str_join.rs` and the e2e case
   `clinvar-combined-allele-1` read them.
 - `grch37_no_contigs.vcf`, for the e2e case
   `tests/e2e/vcf-precheck-ref-spotcheck-1.sh`: 60 SNVs on chr1 and chr20

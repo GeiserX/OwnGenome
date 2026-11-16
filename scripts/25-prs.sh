@@ -227,7 +227,7 @@ if [ -f "$GVCF" ] && [ -f "${GVCF}.tbi" ]; then
     "${BCFTOOLS_IMAGE}" \
     bash -euo pipefail -c '
       bcftools convert --gvcf2vcf -f "$1" -R "$2" -Ou "$3" \
-        | bcftools view -T "$2" --trim-alt-alleles -i "GT!=\"mis\"" -Ov' \
+        | bcftools view -f PASS,. -T "$2" --trim-alt-alleles -i "GT!=\"mis\"" -Ov' \
     _ "${REF_FASTA_C}" "$(cpath "$SITES")" "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" \
   | awk -F'\t' -v OFS='\t' -v alleles="$ALLELES" '
       BEGIN { while ((getline l < alleles) > 0) { split(l, f, "\t"); k = f[1] ":" f[2]; ea[k] = ea[k] " " f[3] } }
@@ -242,7 +242,7 @@ else
   echo "[3/5] No gVCF beside the VCF: scoring the variant sites only (sites where you match the reference are missing)..."
   # shellcheck disable=SC2016  # $1 and $2 belong to the inner bash
   run_in --cpus 1 --memory 4g "${BCFTOOLS_IMAGE}" \
-    bash -euo pipefail -c 'bcftools view -T "$1" -Ov "$2"' \
+    bash -euo pipefail -c 'bcftools view -f PASS,. -T "$1" -Ov "$2"' \
     _ "$(cpath "$SITES")" "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" | gzip -c > "${TARGET}.tmp"
 fi
 mv -f "${TARGET}.tmp" "$TARGET"

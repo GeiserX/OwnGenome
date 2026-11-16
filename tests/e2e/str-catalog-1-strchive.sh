@@ -12,7 +12,7 @@
 #      (FAME1) TTTCA reads, with an ExpansionHunter VCF that sizes both
 #      above the catalog's normal maximum. Step 9b flags both with the real
 #      Stranger, the RFC1 count reads the catalog's RFC1 (pathogenic_motif,
-#      the shares of tests/test_rfc1_motif.py) and the SAMD12 count
+#      the shares of og dev fixture rfc1 pathogenic) and the SAMD12 count
 #      pathogenic_motif; the same with TTTTA reads at SAMD12 gives
 #      benign_motif.
 #   5. STRANGER and STRANGER_RFC1 in Nextflow, given the same catalog, write
@@ -35,7 +35,7 @@ CAT="${SETUP}/reference/strchive-${STRCHIVE_VERSION}/catalog.json"
 check_eq "setup.sh --strchive-data exits 0" "$?" 0
 cat "${CASE_TMP}/setup.log"
 check "setup.sh names the catalog it wrote" has "\[OK\] STRchive ${STRCHIVE_VERSION//./\\.} catalog" "$(cat "${CASE_TMP}/setup.log")"
-check_eq "the catalog has 82 loci" "$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))))' "$CAT" 2>/dev/null)" 82
+check_eq "the catalog has 82 loci" "$(jq length "$CAT" 2>/dev/null)" 82
 
 # --- 2. ExpansionHunter on the loci of the fixture's contigs ------------------------------------
 S="${SAMPLE}strc"
@@ -45,16 +45,17 @@ mkdir -p "${SD}/aligned"
 ln -f "${GENOME_DIR}/${SAMPLE}/aligned/${SAMPLE}_sorted.bam" "${SD}/aligned/${S}_sorted.bam"
 ln -f "${GENOME_DIR}/${SAMPLE}/aligned/${SAMPLE}_sorted.bam.bai" "${SD}/aligned/${S}_sorted.bam.bai"
 SUB="${GENOME_DIR}/reference/strchive_fixture.json"
-python3 - "$CAT" "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta.fai" "$SUB" > "${CASE_TMP}/subset.txt" <<'PY'
-import json, sys
-loci = json.load(open(sys.argv[1]))
-contigs = {line.split("\t")[0] for line in open(sys.argv[2])}
-regions = lambda l: l["ReferenceRegion"] if isinstance(l["ReferenceRegion"], list) else [l["ReferenceRegion"]]
-kept = [l for l in loci if all(r.split(":")[0] in contigs for r in regions(l))]
-json.dump(kept, open(sys.argv[3], "w"), indent=1)
-print(len(kept), sum(len(regions(l)) for l in kept), sum("NormalMax" in l for l in kept),
-      ",".join(l["LocusId"] for l in kept if "NoThresholds" in l))
-PY
+# The loci whose every reference region is on a fixture contig; then their
+# count, their repeats, the graded ones (with NormalMax) and the ids of the
+# ones the catalog leaves ungraded (NoThresholds).
+# shellcheck disable=SC2016  # jq programs
+jq --rawfile fai "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta.fai" '
+  ($fai | split("\n") | map(split("\t")[0] | select(. != null and . != "")) | map({(.): true}) | add) as $c
+  | map(select([.ReferenceRegion | if type == "array" then .[] else . end | split(":")[0] | $c[.]] | all))' \
+  "$CAT" > "$SUB"
+jq -r '"\(length) \(map(.ReferenceRegion | if type == "array" then length else 1 end) | add // 0)" +
+  " \(map(select(has("NormalMax"))) | length) \(map(select(has("NoThresholds")) | .LocusId) | join(","))"' \
+  "$SUB" > "${CASE_TMP}/subset.txt"
 read -r N_LOCI N_VAR N_GRADED UNGRADED < "${CASE_TMP}/subset.txt"
 echo "loci on the fixture's contigs: ${N_LOCI} (${N_VAR} repeats, ${N_GRADED} graded; not graded: ${UNGRADED})"
 check_ge "catalog loci on the fixture's contigs" "$N_LOCI" 40
@@ -62,9 +63,8 @@ EH_CATALOG="$SUB" run_step 09-expansion-hunter.sh "$S" male
 check_step_exit 09-expansion-hunter.sh
 if [ "$STEP_RC" != 0 ]; then
   echo "ExpansionHunter stopped: each locus alone"
-  python3 -c 'import json, sys; [print(l["LocusId"]) for l in json.load(open(sys.argv[1]))]' "$SUB" | while read -r id; do
-    python3 -c 'import json, sys; json.dump([l for l in json.load(open(sys.argv[1])) if l["LocusId"] == sys.argv[2]], open(sys.argv[3], "w"))' \
-      "$SUB" "$id" "${GENOME_DIR}/reference/one_locus.json"
+  jq -r '.[].LocusId' "$SUB" | while read -r id; do
+    jq --arg id "$id" 'map(select(.LocusId == $id))' "$SUB" > "${GENOME_DIR}/reference/one_locus.json"
     docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" "$EXPANSIONHUNTER_IMAGE" ExpansionHunter \
       --reads "/genome/${S}/aligned/${S}_sorted.bam" --reference /genome/reference/GRCh38_no_alt_analysis_set.fasta \
       --variant-catalog /genome/reference/one_locus.json --output-prefix "/genome/${S}/one" --sex male \
@@ -96,47 +96,21 @@ make_sample() {  # make_sample <name> <SAMD12 unit>
   rm -rf "${GENOME_DIR:?}/${s}"
   mkdir -p "${GENOME_DIR}/${s}/expansion_hunter" "${GENOME_DIR}/${s}/aligned"
   cp "$CAT" "${GENOME_DIR}/${s}/expansion_hunter/${s}_eh_catalog.json"
-  python3 - "$REPO" "$unit" "${GENOME_DIR}/${s}/expansion_hunter/${s}_eh.vcf" "${GENOME_DIR}/${s}/aligned/reads.sam" <<'PY'
-import os, random, sys
-repo, unit, vcf, sam = sys.argv[1:5]
-sys.path.insert(0, os.path.join(repo, "tests"))
-import test_rfc1_motif as t
-head = [l for l in open(os.path.join(repo, "tests", "smoke", "stranger_input.vcf.in")) if l.startswith("##")
-        and not l.startswith("##contig")]
-head += [f'##ALT=<ID=STR{a},Description="Allele comprised of {a} repeat units">\n' for a in (40, 100, 150)]
-head += ["##contig=<ID=chr1,length=248956422>\n", "##contig=<ID=chr4,length=190214555>\n",
-         "##contig=<ID=chr8,length=145138636>\n"]
-fmt = "GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC"
-expanded = "1/2:INREPEAT/INREPEAT:100/150:80-120/130-170:0/0:2/2:20/20:30.0"  # two long alleles
-with open(vcf, "w") as fh:
-    fh.writelines(head)
-    fh.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n")
-    # The catalog's RFC1 record is its AAGGG repeat, and SAMD12's its TGAAA one.
-    fh.write(f"chr4\t39348480\tRFC1\tA\t<STR100>,<STR150>\t.\tPASS\tSVTYPE=STR;END=39348483;REF=0;RL=4;RU=AAGGG;"
-             f"VARID=RFC1;REPID=RFC1\t{fmt}\t{expanded}\n")
-    fh.write(f"chr8\t118366913\tSAMD12\tA\t<STR40>\t.\tPASS\tSVTYPE=STR;END=118366918;REF=1;RL=6;RU=TGAAA;"
-             f"VARID=SAMD12;REPID=SAMD12\t{fmt}\t0/1:SPANNING/INREPEAT:1/40:1-1/30-50:10/0:2/2:0/10:30.0\n")
-at, elsewhere = t.case("pathogenic")
-rng = random.Random(3)
-start = 118366812
-fame = [(f"f{i}", "chr8", start, "150M", unit * 30) for i in range(5)]
-left = "".join(rng.choice("ACGT") for _ in range(60))
-ref_allele = left + "TAAAA" * 20 + "TGAAA" + left[:30]
-fame += [(f"fr{i}", "chr8", start - 60, f"{len(ref_allele)}M", ref_allele) for i in range(6)]
-with open(sam, "w") as fh:
-    fh.write("@HD\tVN:1.6\tSO:unsorted\n")
-    fh.write(f"@SQ\tSN:{t.CHROM}\tLN:190214555\n@SQ\tSN:{t.OTHER}\tLN:248956422\n@SQ\tSN:chr8\tLN:145138636\n")
-    for r in at + list(elsewhere.values()):
-        flag = (1 | (64 if r.is_read1 else 128) | (4 if r.is_unmapped else 0) | (16 if r.is_reverse else 0)
-                | (256 if r.is_secondary else 0) | (512 if r.is_qcfail else 0) | (1024 if r.is_duplicate else 0))
-        mate = "=" if r.mate_contig == r.contig else r.mate_contig
-        fh.write("\t".join(map(str, [r.query_name, flag, r.contig, r.reference_start + 1,
-                                     0 if r.is_unmapped else 60, r.cigar_text or "*", mate,
-                                     r.next_reference_start + 1, 0, r.query_sequence,
-                                     "I" * len(r.query_sequence)])) + "\n")
-    for name, chrom, pos, cig, seq in fame:
-        fh.write("\t".join(map(str, [name, 0, chrom, pos + 1, 60, cig, "*", 0, 0, seq, "I" * len(seq)])) + "\n")
-PY
+  # The smoke VCF's header with its contigs replaced, and two expanded records:
+  # the catalog's RFC1 record is its AAGGG repeat, and SAMD12's its TGAAA one.
+  local in="${REPO}/tests/smoke/stranger_input.vcf.in" fmt=GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC a
+  {
+    grep '^##' "$in" | grep -v '^##contig'
+    for a in 40 100 150; do printf '##ALT=<ID=STR%s,Description="Allele comprised of %s repeat units">\n' "$a" "$a"; done
+    printf '##contig=<ID=chr1,length=248956422>\n##contig=<ID=chr4,length=190214555>\n##contig=<ID=chr8,length=145138636>\n'
+    printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n'
+    printf 'chr4\t39348480\tRFC1\tA\t<STR100>,<STR150>\t.\tPASS\tSVTYPE=STR;END=39348483;REF=0;RL=4;RU=AAGGG;VARID=RFC1;REPID=RFC1'
+    printf '\t%s\t1/2:INREPEAT/INREPEAT:100/150:80-120/130-170:0/0:2/2:20/20:30.0\n' "$fmt"
+    printf 'chr8\t118366913\tSAMD12\tA\t<STR40>\t.\tPASS\tSVTYPE=STR;END=118366918;REF=1;RL=6;RU=TGAAA;VARID=SAMD12;REPID=SAMD12'
+    printf '\t%s\t0/1:SPANNING/INREPEAT:1/40:1-1/30-50:10/0:2/2:0/10:30.0\n' "$fmt"
+  } > "${GENOME_DIR}/${s}/expansion_hunter/${s}_eh.vcf"
+  # The RFC1 reads of og dev fixture rfc1 pathogenic, and SAMD12 reads of the unit.
+  "${REPO}/bin/og" dev fixture rfc1 pathogenic "${GENOME_DIR}/${s}/aligned/reads.sam" --samd12 "$unit"
   docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -w "/genome/${s}/aligned" "$SAMTOOLS_IMAGE" \
     sh -c "samtools sort -o ${s}_sorted.bam reads.sam && samtools index ${s}_sorted.bam"
   rm -f "${GENOME_DIR}/${s}/aligned/reads.sam"
@@ -202,12 +176,12 @@ NF
   [ "$rc" = 0 ] || grep -E 'ERROR|Error executing process|Command error' -A 8 "${CASE_TMP}/nf.log" | head -40
   NF_DIR="${CASE_TMP}/nf/results/${P}/expansion_hunter"
   records() {  # records <vcf>: the records with their INFO keys sorted
-    python3 -c 'import sys
-for line in open(sys.argv[1]):
-    if not line.startswith("#"):
-        f = line.rstrip("\n").split("\t")
-        f[7] = ";".join(sorted(f[7].split(";")))
-        print("\t".join(f))' "$1"
+    # shellcheck disable=SC2016  # awk program
+    LC_ALL=C awk -F'\t' -v OFS='\t' '!/^#/ {
+        n = split($8, kv, ";")
+        for (i = 2; i <= n; i++) { v = kv[i]; for (j = i - 1; j >= 1 && (kv[j] "") > (v ""); j--) kv[j + 1] = kv[j]; kv[j + 1] = v }
+        $8 = kv[1]; for (i = 2; i <= n; i++) $8 = $8 ";" kv[i]
+        print }' "$1"
   }
   check_ge "step 9b graded records to compare" "$(records "${GENOME_DIR}/${P}/expansion_hunter/${P}_eh_stranger.vcf" | grep -c 'STR_STATUS=')" 2
   check "STRANGER grades as step 9b, the same records" \

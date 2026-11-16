@@ -4,6 +4,22 @@ One-time downloads required before running the pipeline. Each heading below give
 
 > **Estimated time:** 1-3 hours depending on internet speed. The two VEP caches (26 GB for step 13, 24 GB for step 17) are the largest downloads of a default run.
 
+A plain `./scripts/setup.sh "$GENOME_DIR"` installs both VEP caches and the PCGR/CPSR bundle after AnnotSV.
+These clinical downloads add about 57 GB to transfer and 65 GB on disk. Allow 1 to 3 hours.
+Setup checks each install separately: VEP 116 needs 56 GB peak, the bundle 15 GB, and VEP 115 needs 52 GB.
+Each check adds a 5 GB margin and credits the disk space occupied by a partial download.
+Stale extraction files are removed before the check. Retained PCGR archives are checked against the pinned SHA-256 before reuse. An item that does not fit is skipped with a warning. Setup continues.
+
+```bash
+./scripts/setup.sh --no-clinical-data "$GENOME_DIR"  # skip all three clinical downloads
+./scripts/setup.sh --clinical-data "$GENOME_DIR"     # install or retry only these three
+```
+
+An interrupted transfer resumes. Existing caches and bundles are kept.
+`--clinical-data` exits 1 when any of the three is still missing after it runs.
+Without these data, `run-all.sh` skips the affected steps and records the reason.
+A bare `nextflow run` still needs its tools and data parameters. Setup does not change that selection.
+
 ## GRCh38 Reference Genome
 
 The foundation for everything. All tools need this. The pipeline uses NCBI's **GRCh38 no-ALT analysis set**: chr1-22, X, Y and M, the unplaced and unlocalized scaffolds and the EBV genome, 195 sequences, with UCSC names (`chr1`, `chrM`). `setup.sh` downloads it, checks it and stores it as `reference/GRCh38_no_alt_analysis_set.fasta`:
@@ -143,7 +159,7 @@ Required for step 5. `setup.sh` downloads them (about 5 GB, about 20 GB unpacked
 
 ## VEP Cache (~26 GB)
 
-Ensembl Variant Effect Predictor annotation database. Required for step 13 and the pipeline's VEP. Without it, a run skips VEP, vcfanno, the clinical filter and slivar. Install it before the first run:
+Ensembl Variant Effect Predictor annotation database. Required for step 13 and the pipeline's VEP. Setup installs it by default. Without it, a run skips VEP, vcfanno, the clinical filter and slivar. To install only this cache:
 
 ```bash
 ./scripts/setup.sh --vep-cache ${GENOME_DIR}
@@ -178,38 +194,22 @@ Required for step 17 (CPSR cancer predisposition screening). Includes ClinVar, g
 
 > **Important:** PCGR 2.3.2 bundles VEP 115, which requires a **release-115** cache — different from the release-116 cache used by step 13 above. See the next section for the VEP 115 download. The bundle date (`PCGR_DATA_BUNDLE`) and the cache release (`PCGR_VEP_CACHE_RELEASE`) are in `versions.env` and move with `PCGR_IMAGE`.
 
+Setup installs it by default. To add the clinical data to an existing setup:
+
 ```bash
-mkdir -p ${GENOME_DIR}/pcgr_data
-cd ${GENOME_DIR}/pcgr_data
-
-# Download (~7 GB)
-wget -c https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.20260620.grch38.tgz
-
-# Extract and organize into version-stamped directory
-tar xzf pcgr_ref_data.20260620.grch38.tgz
-mkdir -p 20260620 && mv data/ 20260620/
-# Creates: ${GENOME_DIR}/pcgr_data/20260620/data/
-
-# Optional: delete the tarball to save 7 GB
-# rm pcgr_ref_data.20260620.grch38.tgz
+./scripts/setup.sh --clinical-data "$GENOME_DIR"
 ```
+
+The installer checks the archive against `PCGR_DATA_SHA256` in `versions.env`, then extracts it into a temporary folder.
+The server publishes no checksum, so the size (`PCGR_DATA_BYTES`) and the digest are measured from a full download. `PCGR_DATA_MEASURED_FOR` names the image tag and bundle date they belong to, and `scripts/ci/check-coupled-versions.sh` fails when `PCGR_IMAGE` or `PCGR_DATA_BUNDLE` moves without it.
+Only a complete tree is moved to `pcgr_data/20260620/data/`. The archive is deleted after installation.
+The [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) names the bundle's third-party databases. Their own terms apply. Setup prints the resource link before downloading.
 
 ## VEP 115 Cache for CPSR (~24 GB)
 
 PCGR 2.3.2 (step 17) bundles VEP 115 internally, which needs the **release-115** cache. This is separate from the release-116 cache used by step 13. Both coexist in the same `vep_cache/` directory under different subdirectories (`116_GRCh38/` and `115_GRCh38/`). A `113_GRCh38/` cache left from PCGR 2.2.5 is no longer read and can be deleted.
 
-```bash
-mkdir -p ${GENOME_DIR}/vep_cache/tmp
-cd ${GENOME_DIR}/vep_cache/tmp
-
-# Download VEP 115 cache (~24 GB)
-wget -c https://ftp.ensembl.org/pub/release-115/variation/indexed_vep_cache/homo_sapiens_vep_115_GRCh38.tar.gz
-
-# Extract alongside the existing release-116 cache
-cd ${GENOME_DIR}/vep_cache
-tar xzf tmp/homo_sapiens_vep_115_GRCh38.tar.gz
-# Creates: ${GENOME_DIR}/vep_cache/homo_sapiens/115_GRCh38/
-```
+Setup installs this cache by default, after the PCGR bundle. `--clinical-data` retries it using Ensembl's `CHECKSUMS` file and a temporary extraction folder.
 
 > If you only run step 13 (VEP annotation) and skip step 17 (CPSR), you only need the release-116 cache. If you only run step 17, you only need release-115.
 
@@ -510,7 +510,7 @@ wget -c https://giab.s3.amazonaws.com/release/AshkenazimTrio/HG002_NA24385_son/N
 
 [Hardware and storage requirements](hardware-requirements.md#shared-reference-data-one-time) has the one table of every download above, with the totals.
 
-> **Tip:** If disk space is tight, you can skip the VEP cache (step 13) and PCGR bundle (step 17) initially. The core pipeline (steps 2-3-6-7) only needs the reference FASTA and ClinVar (~3.5 GB unpacked).
+> **Tip:** If disk space is tight, use `setup.sh --no-clinical-data` to skip both VEP caches and the PCGR bundle initially. The core pipeline (steps 2-3-6-7) only needs the reference FASTA and ClinVar (~3.5 GB unpacked).
 
 ## Verifying Your Setup
 

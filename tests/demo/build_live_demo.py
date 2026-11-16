@@ -287,6 +287,8 @@ def replay(root, held, drop_hook=None, og=OG):
         results = live_results.build(SAMPLE, live.summary(SAMPLE, d, live.base_state(run)),
                                      owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE}))
         results["generated_utc"] = checked
+        if live.gated(SAMPLE, d, live.base_state(run)):  # as the results plugin adds it
+            results["saved_attention"] = live.attention(d)[0]
         # The other people: one frame each, their state at the end, and their results.
         others = {}
         for name, _, _ in OTHERS:
@@ -297,6 +299,8 @@ def replay(root, held, drop_hook=None, og=OG):
             res = live_results.build(name, live.summary(name, od, live.base_state(r)),
                                      owngenome_live.Live.run_files(None, {"dir": od, "name": name}))
             res["generated_utc"] = checked
+            if live.gated(name, od, live.base_state(r)):
+                res["saved_attention"] = live.attention(od)[0]
             others[name] = {"frames": [{"t": checked, "state": st}], "results": res}
     finally:
         time.time, run_headroom._statvfs, run_headroom.physical_memory = real
@@ -348,6 +352,11 @@ def family_json(root, index):
     by = {r["name"]: r for r in index["runs"]}
     out["runs"] = {p["sample"]: {k: by[p["sample"]][k] for k in ("url", "state", "planned", "done", "attention", "results")}
                    for p in out["state"].get("members") or [] if p["sample"] in by}
+    # As the family plugin serves it: no count of flagged cards for a child whose own page keeps the report closed.
+    for name, r in out["runs"].items():
+        r["child"] = owngenome_live.child_of(index.get("families"), name)
+        if r["child"] and (by[name].get("levels") or {}).get("act"):
+            r["attention"] = None
     seq = [p["sample"] for p in out["state"].get("members") or [] if p.get("sequenced")]
     sums = {}
     for name in seq:

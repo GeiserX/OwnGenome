@@ -22,7 +22,9 @@ section id, the same anchors as report.html. Each card carries:
 
 Beside the cards, "veil" tags the rows that name a result to act on outside its own card (every card's
 table rows and lines, the viewer links, the charts' marks, the other findings and the lead's names) with
-that result's id, so a child's page closes them with it (veil() below).
+that result's id (veil() below). A child's page no longer closes them one by one: one gate in
+assets/live/core.js holds the whole report while a result to act on is unopened, and of "veil" the page
+still reads only the charts' marks.
 
 Nothing here reads a file or computes anything about genetics; the adapters pick
 fields the summary already holds. A section id with no adapter falls back to its
@@ -793,8 +795,9 @@ class _Row:
     cannot read (a field of the wrong type, a stars value that is not a number) costs that row only: it
     becomes a finding on its card that says the row could not be read, and every other row and card still
     renders. Its words name no gene or variant: the row is unreadable. Its level is the highest the rule
-    can give (level "act" for a rule that can give one): a child's page veils a card that holds a finding
-    to act on, and the card's table may still draw the row the rule could not read."""
+    can give (level "act" for a rule that can give one): a child's report stays closed while a finding to act
+    on is unopened (the gate in assets/live/core.js), and the card's table may still draw the row the rule could
+    not read."""
 
     def __init__(self, out, card_id, level="review"):
         self.out, self.card_id, self.level = out, card_id, level
@@ -1137,10 +1140,11 @@ def lead(found, levels, summary):
 
 
 # --- the veil's tags -----------------------------------------------------------------------------
-# A child's page keeps each result to act on closed (assets/live/person.js veiled()). The page closes a
-# finding's own card with it, but other places can name the same gene or variant: any card's table and
-# lines, the charts' marks and their titles, another finding (a symptom ranking), the lead, the search index. Each such row carries the id of the
-# result it belongs to, so the page closes it with that result and opens it with it. The rule: a row
+# Places outside the own card of a result to act on can name the same gene or variant: any card's table and
+# lines, the charts' marks and their titles, another finding (a symptom ranking), the lead, the search index.
+# Each such row carries the id of the result it belongs to. A child's page no longer closes them one by one:
+# one gate (assets/live/core.js) holds the whole report while a result to act on is unopened, and of these
+# tags the page still reads only the charts' marks (veil() below). The rule: a row
 # belongs to a closed result when it names the result's gene, or its position falls inside the result's
 # position or span; a row that is the result's own position or span belongs to that result first, else
 # the first such result in finding order. The veil lives in the browser: the files still hold every row.
@@ -1204,16 +1208,18 @@ def veil_id(spans, text="", chrom=None, pos=None, end=None):
 
 
 def veil(summary, found, chapters, lead_parts=()):
-    """The rows a child's page closes with a result to act on, by the result's id: each card's table rows
+    """Which rows outside a result's own card name a result to act on, by the result's id: each card's table rows
     (rows: card -> one id or None per row; the ClinVar card's by each hit's own position), each card's viewer
     links (viewer: card -> one per link), each card's lines (lines: card -> one per line; a known deep
     intronic site is printed whether hit or not), the marks of the report's charts (marks: chart -> {mark id:
     id}), every other finding that names a closed result (findings: finding id -> id; a symptom ranking can
     rank the gene) and the lead's segments that name one (lead: one per segment of LEAD_PARTS, the "act"
-    names left out: the page closes those itself), each card's facts (facts: card -> one per fact) and the items
-    of its drawing (widget: card -> one per CHIP call or copy-number dot). spans is closable() itself: the family
-    page (assets/live/family-page.js) reads which results are closed from it, and closes every place of the child
-    that could carry one while one is. Empty when nothing can be closed."""
+    names left out), each card's facts (facts: card -> one per fact) and the items of its drawing (widget: card
+    -> one per CHIP call or copy-number dot); spans is closable() itself. A child's page no longer closes these
+    rows one by one: its one gate (assets/live/core.js) holds the whole report while a result to act on is
+    unopened and reads the findings of level "act" for it. Of this field only marks is still read, by person.js,
+    for a chart mark on a page the gate released (the search index and the genome map carry their own tags); the
+    other subfields stay so that no field of results.json is removed. Empty when nothing can be closed."""
     spans = closable(found)
     if not spans:
         return {}

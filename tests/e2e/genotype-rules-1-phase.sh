@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Step 42's genotype rules (assets/genotype_rules.tsv) on synthetic data, with
-# the real bcftools, WhatsHap and Python images, and the Nextflow mirror:
+# the real bcftools, WhatsHap and Python images, and the Nextflow mirror
+# (the made-up chr7, gVCFs and reads are og dev fixture tas2r38):
 #   - scripts/ci/check-rule-alleles.sh --online: every rule site matches
 #     dbSNP's GRCh38 record, and the dbSNP table pinned in the script is what
 #     dbSNP's VCF of the pinned build holds today; controls: a rules copy with
@@ -58,103 +59,7 @@ RD="${G}/reference-genotype-rules"
 rm -rf "$RD"
 mkdir -p "$RD"
 for s in GRSPAN GRSWAP GRNOSPAN GRREF; do rm -rf "${G:?}/${s}"; mkdir -p "${G}/${s}/vcf" "${G}/${s}/aligned"; done
-python3 - "$RD" "$G" <<'PY'
-import random, sys
-rd, g = sys.argv[1], sys.argv[2]
-random.seed(42)
-LEN, W0, W1 = 159345973, 141972000, 141974600   # GRCh38 chr7 length; the window [W0, W1), 1-based
-S3, S2, S1 = 141972804, 141972905, 141973545     # rs10246939 (T), rs1726866 (G), rs713598 (C)
-REF = {S3: "T", S2: "G", S1: "C"}
-win = [random.choice("ACGT") for _ in range(W1 - W0)]
-for p, b in REF.items():
-    win[p - W0] = b
-seq = lambda p: win[p - W0]                       # noqa: E731
-with open(f"{rd}/chr7.fa", "w") as f:
-    f.write(">chr7\n")
-    line = 60
-    buf = []
-    for start in range(1, LEN + 1, line):
-        end = min(start + line, LEN + 1)
-        if end <= W0 or start >= W1:
-            buf.append("N" * (end - start))
-        else:
-            buf.append("".join(win[p - W0] if W0 <= p < W1 else "N" for p in range(start, end)))
-        if len(buf) >= 100000:
-            f.write("\n".join(buf) + "\n"); buf = []
-    f.write("\n".join(buf) + "\n")
-
-def gvcf(path, het):
-    hdr = ("##fileformat=VCFv4.2\n##contig=<ID=chr7,length=%d>\n" % LEN
-           + '##ALT=<ID=*,Description="Any other allele">\n'
-           + '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
-           + '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
-           + '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
-           + '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
-           + '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
-           + '##FORMAT=<ID=PL,Number=G,Type=Integer,Description="Phred likelihoods">\n'
-           + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n")
-    rec, start = [], W0
-    for p in (sorted(het) if het else []):
-        rec.append(f"chr7\t{start}\t.\t{seq(start)}\t<*>\t0\t.\tEND={p - 1}\tGT:GQ:MIN_DP:PL\t0/0:42:30:0,90,900")
-        rec.append(f"chr7\t{p}\t.\t{seq(p)}\t{het[p]},<*>\t40\tPASS\t.\tGT:GQ:DP:PL\t0/1:35:40:400,0,400,990,990,990")
-        start = p + 1
-    rec.append(f"chr7\t{start}\t.\t{seq(start)}\t<*>\t0\t.\tEND={W1 - 1}\tGT:GQ:MIN_DP:PL\t0/0:42:30:0,90,900")
-    with open(path, "w") as f:
-        f.write(hdr + "\n".join(rec) + "\n")
-
-HET = {S3: "C", S2: "A", S1: "G"}
-for s in ("GRSPAN", "GRSWAP", "GRNOSPAN"):
-    gvcf(f"{g}/{s}/vcf/{s}.g.vcf", HET)
-    with open(f"{g}/{s}/vcf/{s}.vcf", "w") as f:   # the variant-only VCF the samplesheet needs
-        f.write("##fileformat=VCFv4.2\n##contig=<ID=chr7,length=%d>\n" % LEN
-                + '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
-                + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-                + "".join(f"chr7\t{p}\t.\t{seq(p)}\t{HET[p]}\t40\tPASS\t.\tGT\t0/1\n" for p in sorted(HET)))
-gvcf(f"{g}/GRREF/vcf/GRREF.g.vcf", {})
-
-def hap(alleles):
-    """The window with these alleles at S1, S2, S3."""
-    h = list(win)
-    for p, b in zip((S1, S2, S3), alleles):
-        h[p - W0] = b
-    return h
-
-def comp(s):
-    return s[::-1].translate(str.maketrans("ACGT", "TGCA"))
-
-def sam(path, frags):
-    with open(path, "w") as f:
-        f.write(f"@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr7\tLN:{LEN}\n")
-        for line in frags:
-            f.write(line + "\n")
-
-def pairs(h, tag, n=20):
-    """Read pairs: read 1 covers S3 and S2, its mate S1."""
-    out = []
-    for i in range(n):
-        a, b = S3 - 40 + i, S1 - 60 + i
-        s1, s2 = "".join(h[a - W0:a - W0 + 150]), "".join(h[b - W0:b - W0 + 150])
-        tlen = b + 150 - a
-        name = f"{tag}{i}"
-        out.append(f"{name}\t99\tchr7\t{a}\t60\t150M\t=\t{b}\t{tlen}\t{s1}\t{'I' * 150}")
-        out.append(f"{name}\t147\tchr7\t{b}\t60\t150M\t=\t{a}\t{-tlen}\t{s2}\t{'I' * 150}")
-    return out
-
-def singles(h, tag, n=20):
-    """Single 60-base reads centred on one site each: none covers two."""
-    out = []
-    for p in (S3, S2, S1):
-        for i in range(n):
-            a = p - 30 + (i % 10) - 5
-            s = "".join(h[a - W0:a - W0 + 60])
-            out.append(f"{tag}{p}_{i}\t{16 if i % 2 else 0}\tchr7\t{a}\t60\t60M\t*\t0\t0\t{s}\t{'I' * 60}")
-    return out
-
-PAV, AVI = hap("GGC"), hap("CAT")
-sam(f"{g}/GRSPAN/aligned/GRSPAN.sam", pairs(PAV, "pav") + pairs(AVI, "avi"))
-sam(f"{g}/GRSWAP/aligned/GRSWAP.sam", pairs(hap("GAC"), "gac") + pairs(hap("CGT"), "cgt"))
-sam(f"{g}/GRNOSPAN/aligned/GRNOSPAN.sam", singles(PAV, "pav") + singles(AVI, "avi"))
-PY
+"${REPO}/bin/og" dev fixture tas2r38 "$RD" "$G"
 check "the synthetic chr7 was written" test -s "${RD}/chr7.fa"
 sam faidx reference-genotype-rules/chr7.fa
 check_eq "chr7.fa.fai: one contig of GRCh38 chr7's length" "$(cut -f1,2 "${RD}/chr7.fa.fai" 2>/dev/null | tr '\t' ' ')" "chr7 159345973"

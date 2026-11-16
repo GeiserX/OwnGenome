@@ -51,44 +51,7 @@ check_ge "reads fetched" "$(wc -l < "${T}/win.sam" 2>/dev/null || echo 0)" 20000
 # Nth read whose aligned base there is C (0: none). A mate on another contig loses its
 # position, so samtools accepts the record under the shorter header.
 plant() {
-  python3 - "$1" "${REF}.fai" "${T}/win.sam" "$R882" <<'EOF'
-import sys
-n, fai, sam, pos = int(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4])
-contigs = [ln.split("\t")[:2] for ln in open(fai)]
-names = {c for c, _ in contigs}
-print("@HD\tVN:1.6\tSO:unsorted")
-for c, l in contigs:
-    print(f"@SQ\tSN:{c}\tLN:{l}")
-print("@RG\tID:giab\tSM:HG002\tPL:ILLUMINA")
-k = 0
-for ln in open(sam):
-    f = ln.rstrip("\n").split("\t")
-    if f[2] not in names:
-        continue
-    f = [x for x in f if not x.startswith("RG:Z:")] + ["RG:Z:giab"]
-    if f[6] not in ("=", "*") and f[6] not in names:
-        f[6], f[7] = "*", "0"
-    if n and f[2] == "chr2" and f[5] != "*":
-        ref, q, num, hit = int(f[3]), 0, "", None
-        for ch in f[5]:
-            if ch.isdigit():
-                num += ch
-                continue
-            ln_ = int(num); num = ""
-            if ch in "M=X":
-                if ref <= pos < ref + ln_:
-                    hit = q + pos - ref
-                ref += ln_; q += ln_
-            elif ch in "IS":
-                q += ln_
-            elif ch in "DN":
-                ref += ln_
-        if hit is not None and f[9][hit] == "C":
-            if k % n == 0:
-                f[9] = f[9][:hit] + "T" + f[9][hit + 1:]
-            k += 1
-    print("\t".join(f))
-EOF
+  "${REPO}/bin/og" dev fixture plant-snv "$1" "${REF}.fai" "${T}/win.sam" "$R882"
 }
 # sample NAME N: a sample folder with the reads, planted every Nth read.
 sample() {
@@ -109,21 +72,9 @@ U="${SAMPLE}chu" P="${SAMPLE}chp" H="${SAMPLE}chh"
 check "the reads as they are" sample "$U" 0
 check "R882H in every fifth read" sample "$P" 5
 check "R882H in every second read" sample "$H" 2
-alt_at() { dk "$SAMTOOLS_IMAGE" samtools view "${G}/$1/aligned/$1_sorted.bam" "chr2:${R882}-${R882}" | python3 -c '
-import sys
-pos = int(sys.argv[1]); a = n = 0
-for ln in sys.stdin:
-    f = ln.split("\t"); ref, q, num = int(f[3]), 0, ""
-    for ch in f[5]:
-        if ch.isdigit(): num += ch; continue
-        k = int(num); num = ""
-        if ch in "M=X":
-            if ref <= pos < ref + k:
-                n += 1; a += f[9][q + pos - ref] == "T"
-            ref += k; q += k
-        elif ch in "IS": q += k
-        elif ch in "DN": ref += k
-print(a, n)' "$R882"; }
+# alt_at NAME: "T reads" over R882 in the sample's BAM.
+alt_at() { dk "$SAMTOOLS_IMAGE" samtools view "${G}/$1/aligned/$1_sorted.bam" "chr2:${R882}-${R882}" \
+  | "${REPO}/bin/og" dev fixture base-count "$R882" T; }
 read -r A0 N0 < <(alt_at "$U"); read -r A5 N5 < <(alt_at "$P")
 check_ge "reads over R882" "${N0:-0}" 30
 check_eq "no T at R882 in HG002's own reads" "${A0:-x}" 0

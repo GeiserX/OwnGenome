@@ -34,17 +34,8 @@ check_eq "models on the list" "$(printf '%s\n' "$COMMITTED" | grep -c .)" 167
 
 # --- the stand-in reference (as pgx-4-parascopy.sh) -------------------------------
 REF="${GENOME_DIR}/reference/paralog_catalog_ref.fasta"
-python3 - "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" "$REF" <<'PY'
-import shutil, sys
-with open(sys.argv[2], "wb") as out, open(sys.argv[1], "rb") as src:
-    shutil.copyfileobj(src, out)
-    out.write(b">chr11\n")
-    left = 135086622            # GRCh38 chr11, as the homology table lists it
-    while left:
-        n = min(left, 60)
-        out.write(b"N" * n + b"\n")
-        left -= n
-PY
+# GRCh38 chr11's length, as the homology table lists it.
+"${REPO}/bin/og" dev fixture append-n "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" "$REF" chr11 135086622
 sam faidx "reference/$(basename "$REF")"
 check "the stand-in reference has chr11" grep -q $'^chr11\t135086622\t' "${REF}.fai"
 

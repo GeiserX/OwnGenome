@@ -1120,10 +1120,11 @@ def viral(d):
     control, at a human depth of 31."""
     head = ("virus\taccession\tlength\treads\tbreadth\tmean_depth\tmode_depth\thuman_depth\trelative_depth"
             "\tcopies_per_cell\tcall\tnote\n")
-    rows = [("HHV-6A", "NC_001664.4", "159378", "0", "0.0000", "0.000", "0", "0.000", "0.0000", "not found", ""),
-            ("HHV-6B", "NC_000898.1", "162114", "0", "0.0000", "0.000", "0", "0.000", "0.0000", "not found", ""),
-            ("Human gammaherpesvirus 4", "NC_007605.1", "171823", "7", "0.0041", "0.006", "0", "0.000", "0.0004",
-             "not found", ""),
+    rows = [("HHV-6A", "NC_001664.4", "159378", "0", "0.0000", "0.000", "0", "0.000", ".", "not found", ""),
+            ("HHV-6B", "NC_000898.1", "162114", "0", "0.0000", "0.000", "0", "0.000", ".", "not found", ""),
+            ("Human gammaherpesvirus 4", "NC_007605.1", "171823", "7", "0.0041", "0.006", "0", "0.000", ".",
+             "below threshold", "7 counted reads, under the 10 a call needs: too few to tell the virus from "
+             "contamination at this depth."),
             ("Escherichia phage phiX174", "NC_001422.1", "5386", "1412", "1.0000", "38.200", "37", "1.194", "2.4645",
              "lab control (phiX)", "Illumina adds phiX to the run as a control: these reads were added in the lab.")]
     put(os.path.join(d, "viral", f"{SAMPLE}_viral.tsv"),
