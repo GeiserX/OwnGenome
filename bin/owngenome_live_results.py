@@ -5,7 +5,9 @@
                                  facts, its rows, its caveats and its attention flag, and
                                  the Journal's findings, levels, lead and ten sections
   GET /runs/<run>/finding/<id>/  one finding's page (assets/live/finding.html): 404 unless
-                                 <id> is a finding of that run's results.json now
+                                 <id> is a finding of that run's results.json now; for a
+                                 child (child_run) with a result to act on, the page for
+                                 any well-formed id
 
 The summary is the one the server already reads for the step headlines
 (Live.summary): the run's summary.json when step 24 wrote it after every done
@@ -42,6 +44,11 @@ def register(app):
             if summary:
                 files = live.run_files(run) if run["dir"] else set()
                 out = live_results.build(name, summary, files)
+                # For a child whose report the server keeps closed (family.json leaves its count out): the
+                # flagged-card count of summary.json, as family.json counts it otherwise. The family page shows it
+                # once every result to act on is opened there (assets/live/core.js released).
+                if live.gated(name, d, st):
+                    out["saved_attention"] = live.attention(d)[0]
             else:
                 out["note"] = "No step has finished yet: the results appear here as the steps end."
         except Exception as e:  # a reader bug must not take the page down
@@ -56,7 +63,10 @@ def register(app):
 
     def finding(req, m):
         """One finding's page. The page itself reads ../../results.json; this only checks that the id is
-        a finding of the run now, so a typed or stale address is a plain 404, never an empty page."""
+        a finding of the run now, so a typed or stale address is a plain 404, never an empty page. A child with a
+        result to act on gets the page for any well-formed id: the page keeps the child's report closed
+        (assets/live/core.js) until every such result is opened, and a 404 would tell a guessed id apart from a
+        result the child has."""
         live = req.live
         # A page: without a session it sends the browser to the login and back, as the viewer does.
         if live.password_hash and req.sid is None:
@@ -70,7 +80,9 @@ def register(app):
             try:
                 d = run["dir"] or os.path.join(live.root, run["name"])
                 summary = live.summary(run["name"], d, live.base_state(run))
-                ok = bool(summary) and any(f["id"] == fid for f in live_results_mod().build(run["name"], summary)["findings"])
+                found = live_results_mod().build(run["name"], summary)["findings"] if summary else []
+                ok = any(f["id"] == fid for f in found) or (
+                    any(f["level"] == "act" for f in found) and child_run(live, run["name"]))
             except Exception as e:  # a reader bug is a 404 here, never a 500
                 print(f"owngenome_live: finding of {run['name']} not checked: {type(e).__name__}", file=sys.stderr)
         if not ok:
@@ -85,6 +97,12 @@ def register(app):
 
     # auth=False: finding() asks for the login itself, so a bookmarked finding leads to the login form.
     app.route("GET", r"/runs/(%s)/finding/([^/]{1,200})/" % NAME, finding, auth=False)
+
+
+def child_run(live, name):
+    """Whether the person page treats NAME as a child's run: the one rule of the page and the home page
+    (bin/owngenome_live.py child_of)."""
+    return live.child(name)
 
 
 def live_results_mod():

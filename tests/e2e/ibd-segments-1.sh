@@ -75,53 +75,10 @@ done
 joint() {
   local dir=$1; shift
   mkdir -p "${G}/${dir}"
-  python3 -I - "${PANEL}/panel/sites.tsv" "$REF_FAI" "$CASE_TMP" "$@" > "${G}/${dir}/family.vcf" <<'PY'
-import bisect, sys
-sites, fai, tmp, *members = sys.argv[1:]
-names = [m.split("=")[0] for m in members]
-srcs = [m.split("=")[1] for m in members]
-def bed(path):
-    iv = sorted((int(c[1]), int(c[2])) for c in (l.split() for l in open(path)) if len(c) >= 3)
-    return [s for s, _ in iv], [e for _, e in iv]
-def inside(b, p):
-    i = bisect.bisect_right(b[0], p - 1) - 1
-    return i >= 0 and b[1][i] >= p
-beds = [bed(f"{tmp}/{s}.bed") for s in srcs]
-gts = []
-for s in srcs:
-    g = {}
-    for l in open(f"{tmp}/{s}.vcf"):
-        f = l.rstrip("\n").split("\t")
-        gt = f[9].split(":")[f[8].split(":").index("GT")].replace("|", "/")
-        g[int(f[1])] = (f[3], f[4], {"1/0": "0/1"}.get(gt, gt))
-    gts.append(g)
-print("##fileformat=VCFv4.2")
-for l in open(fai):
-    c = l.split("\t")
-    if c[0] == "chr20":
-        print(f"##contig=<ID=chr20,length={c[1]}>")
-print('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
-print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(names))
-n = 0
-for l in open(sites):
-    c, p, r, a = l.rstrip("\n").split("\t")
-    p = int(p)
-    if c != "chr20" or not all(inside(b, p) for b in beds):
-        continue
-    row = []
-    for g in gts:
-        t = g.get(p)
-        if t is None:
-            row.append("0/0")
-        elif t[0] == r and t[1] == a and t[2] in ("0/0", "0/1", "1/1"):
-            row.append(t[2])
-        else:
-            break
-    if len(row) == len(gts):
-        print(f"chr20\t{p}\t.\t{r}\t{a}\t.\tPASS\t.\tGT\t" + "\t".join(row))
-        n += 1
-print(n, "sites", file=sys.stderr)
-PY
+  local m members=()
+  for m in "$@"; do members+=("${m%%=*}=${CASE_TMP}/${m#*=}.vcf,${CASE_TMP}/${m#*=}.bed"); done
+  "${REPO}/bin/og" dev fixture truth-genotypes "${PANEL}/panel/sites.tsv" "$REF_FAI" --chrom chr20 "${members[@]}" \
+    > "${G}/${dir}/family.vcf"
   in_genome "$BCFTOOLS_IMAGE" bash -c "bcftools view -Oz -o ${dir}/family.vcf.gz ${dir}/family.vcf && bcftools index -t ${dir}/family.vcf.gz" \
     && rm -f "${G}/${dir}/family.vcf"
   printf 'sample\tsex\tfather\tmother\tpartner\nHG002\tmale\tHG003\tHG004\t.\nHG003\tmale\t.\t.\tHG004\nHG004\tfemale\t.\t.\tHG003\n' \
@@ -148,20 +105,17 @@ check_eq "one pairs row per pair of the three" "$(awk 'NR > 1' "${D}/ibd_pairs.t
 check_eq "phased and analysed: chr20" "$(cat "${D}/ibd/chroms.txt" 2>/dev/null)" chr20
 check "the analysed map is most of chr20 (90 cM or more: $(pval "$D" HG002 HG003 analysed_cm))" ge "$(pval "$D" HG002 HG003 analysed_cm)" 90
 # Each pair's segments rows add up to its pairs row
-check "segments rows add up to each pair's count, total and longest" python3 -I - "${D}/ibd_pairs.tsv" "${D}/ibd_segments.tsv" <<'PY'
-import sys
-with open(sys.argv[1]) as f:
-    h = f.readline().rstrip("\n").split("\t")
-    P = [dict(zip(h, l.rstrip("\n").split("\t"))) for l in f]
-with open(sys.argv[2]) as f:
-    h = f.readline().rstrip("\n").split("\t")
-    S = [dict(zip(h, l.rstrip("\n").split("\t"))) for l in f]
-for p in P:
-    s = [float(x["cm"]) for x in S if (x["sample_a"], x["sample_b"]) == (p["sample_a"], p["sample_b"])]
-    assert len(s) == int(p["segments"]), (p, len(s))
-    assert abs(sum(s) - float(p["shared_cm"])) <= 0.01 * len(s) + 0.01, (p, sum(s))
-    assert abs(max(s or [0.0]) - float(p["longest_cm"])) <= 0.01, (p, max(s or [0.0]))
-PY
+check "segments rows add up to each pair's count, total and longest" awk -F'\t' '
+  FNR == 1 {for (i = 1; i <= NF; i++) h[$i] = i; next}
+  FILENAME == ARGV[1] {pairs[$h["sample_a"] "|" $h["sample_b"]] = $h["segments"] "|" $h["shared_cm"] "|" $h["longest_cm"]; next}
+  {k = $h["sample_a"] "|" $h["sample_b"]; x = $h["cm"] + 0; n[k]++; s[k] += x; if (!(k in m) || x > m[k]) m[k] = x}
+  END {
+    for (k in pairs) {
+      split(pairs[k], p, "|"); d = s[k] - p[2]; e = m[k] - p[3]; tol = 0.01 * n[k] + 0.01
+      if (n[k] + 0 != p[1] + 0 || d > tol || -d > tol || e > 0.01 || -e > 0.01) {print "differs: " k " " pairs[k]; bad++}
+    }
+    exit (bad > 0)
+  }' "${D}/ibd_pairs.tsv" "${D}/ibd_segments.tsv"
 for p in "HG002 HG003" "HG002 HG004"; do
   # shellcheck disable=SC2086  # the pair splits on purpose
   set -- $p

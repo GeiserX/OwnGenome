@@ -12,10 +12,11 @@
 2. bin/str_intermediate_ranges.tsv, the GeneReviews ranges the report names
    (HTT, FMR1, DMPK): the columns og summary collect reads, one row per
    locus, whole numbers with min <= max ending right below the next class, a
-   label and a GeneReviews citation; docs/interpreting-results.md prints the
-   same range in the locus's row; every locus has a row in str_ranges.tsv,
-   and the range lies above its normal_max and below its pathogenic_min, so a
-   count the report calls intermediate is one Stranger calls pre_mutation
+   label and a GeneReviews citation; docs/results/structural-and-repeats.md
+   prints the same range in the locus's row; every locus has a row in
+   str_ranges.tsv, and the range lies above its normal_max and below its
+   pathogenic_min, so a count the report calls intermediate is one Stranger
+   calls pre_mutation
    (control: a planted HTT range of 20-35 is caught). That og reads every
    row is og-summary's own test (collect::group_c::tests).
 3. The "Key Disease Thresholds" table of docs/09-str-expansions.md: each
@@ -35,7 +36,7 @@ sys.path.insert(0, os.path.join(REPO, "tests"))
 import test_str_catalog  # noqa: E402
 
 TSV = os.path.join(REPO, "bin", "str_intermediate_ranges.tsv")
-DOC = os.path.join(REPO, "docs", "interpreting-results.md")
+DOC = os.path.join(REPO, "docs", "results", "structural-and-repeats.md")
 STEP_DOC = os.path.join(REPO, "docs", "09-str-expansions.md")
 COLUMNS = ["locus", "intermediate_min", "intermediate_max", "next_min", "next_class", "label", "citation"]
 RANGE_COLUMNS = ["locus", "source_id", "normal_max", "intermediate_min", "intermediate_max", "pathogenic_min",
@@ -65,7 +66,7 @@ def table(path):
 
 
 def doc_rows():
-    """Locus -> its row of the repeat table in docs/interpreting-results.md."""
+    """Locus -> its row of the repeat table in docs/results/structural-and-repeats.md."""
     out = {}
     for line in open(DOC):
         c = [x.strip() for x in line.strip().strip("|").split("|")]
@@ -155,7 +156,7 @@ def part_subset(gen):
         check(f"{d['locus']}: a label and a next class", bool(d["label"].strip() and d["next_class"].strip()), d)
         check(f"{d['locus']}: cited to a GeneReviews chapter", bool(CITATION.match(d["citation"])), d["citation"])
         row = docs.get(d["locus"].upper(), "")
-        check(f"{d['locus']}: docs/interpreting-results.md prints {lo}-{hi} in its row",
+        check(f"{d['locus']}: docs/results/structural-and-repeats.md prints {lo}-{hi} in its row",
               bool(re.search(rf"(?<![\d-]){lo}-{hi}(?![\d-])", row)), row.strip())
         g = gen.get(d["locus"], {})
         check(f"{d['locus']}: {lo}-{hi} has a row in str_ranges.tsv and lies above its normal maximum "

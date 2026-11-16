@@ -67,11 +67,18 @@ struct Rule {
     haps: Vec<Hap>,
     combos: Vec<Combo>,
 }
+/// A call whose GQ is below this is not read (decision D10, the floor of
+/// `og pgx refblock-fill` and the Y private SNPs). A missing GQ stays readable.
+const MIN_GQ: u32 = 20;
+/// The FILTER values that keep a call readable: a pass, no filter (a
+/// reference block), and DeepVariant's RefCall (a candidate it called 0/0).
+const READABLE_FILTERS: &[&str] = &["", ".", "PASS", "RefCall"];
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Status {
     Called,
     NotCovered,
     OtherAllele,
+    LowGq,
     Unphased,
     OtherHaplotype,
 }
@@ -81,8 +88,34 @@ impl Status {
             Self::Called => "called",
             Self::NotCovered => "not_covered",
             Self::OtherAllele => "other_allele",
+            Self::LowGq => "low_gq",
             Self::Unphased => "unphased",
             Self::OtherHaplotype => "other_haplotype",
+        }
+    }
+}
+/// Why a call is too weak to read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Weak {
+    /// Its GQ, below [`MIN_GQ`].
+    Gq(String),
+    /// The caller's FILTER value.
+    Filtered(String),
+}
+impl Weak {
+    /// The record's GQ and FILTER columns: `None` when the call is readable.
+    fn of(gq: &str, filter: &str) -> Option<Self> {
+        if !READABLE_FILTERS.contains(&filter) {
+            return Some(Self::Filtered(filter.to_owned()));
+        }
+        gq.parse::<f64>()
+            .is_ok_and(|q| q.is_finite() && q < f64::from(MIN_GQ))
+            .then(|| Self::Gq(gq.to_owned()))
+    }
+    fn why(&self) -> String {
+        match self {
+            Self::Gq(q) => format!("genotype quality {q}, below {MIN_GQ}"),
+            Self::Filtered(f) => format!("the caller filtered the call: {f}"),
         }
     }
 }
@@ -91,6 +124,8 @@ struct SiteGt {
     alleles: Vec<String>,
     status: Status,
     gq: String,
+    /// Set when the call is too weak to read: the status is then LowGq.
+    weak: Option<Weak>,
     snv: bool,
 }
 impl Default for SiteGt {
@@ -99,6 +134,7 @@ impl Default for SiteGt {
             alleles: vec![],
             status: Status::NotCovered,
             gq: ".".into(),
+            weak: None,
             snv: false,
         }
     }
@@ -552,7 +588,9 @@ fn genotype(site: &Site, records: &Genotypes) -> SiteGt {
             a.clone(),
         )
     });
-    gt.status = if gt.alleles.len() == 2
+    gt.status = if gt.weak.is_some() {
+        Status::LowGq
+    } else if gt.alleles.len() == 2
         && gt
             .alleles
             .iter()
@@ -586,7 +624,7 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
         let c: Vec<_> = line.split('\t').collect();
         if c.len() < 5 {
             return Err(format!(
-                "{path}:{n}: {} columns, expected CHROM POS REF ALT GENOTYPE [GQ]",
+                "{path}:{n}: {} columns, expected CHROM POS REF ALT GENOTYPE [GQ [FILTER]]",
                 c.len()
             ));
         }
@@ -620,7 +658,15 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
                 a.clone(),
             )
         });
-        let status = if al.len() == 2
+        let gq = c
+            .get(5)
+            .filter(|g| !g.is_empty())
+            .unwrap_or(&".")
+            .to_string();
+        let weak = Weak::of(&gq, c.get(6).copied().unwrap_or("."));
+        let status = if weak.is_some() {
+            Status::LowGq
+        } else if al.len() == 2
             && al
                 .iter()
                 .all(|a| a == &site.row["ref"] || a == &site.row["alt"])
@@ -629,17 +675,13 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
         } else {
             Status::OtherAllele
         };
-        let gq = c
-            .get(5)
-            .filter(|g| !g.is_empty())
-            .unwrap_or(&".")
-            .to_string();
         result.insert(
             key,
             SiteGt {
                 alleles: al,
                 status,
                 gq,
+                weak,
                 snv,
             },
         );
@@ -753,18 +795,35 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
                 rs[rs.len() - 1]
             )
         };
-        let status = if g.iter().any(|g| g.status == Status::NotCovered) {
-            Status::NotCovered
+        let weak: Vec<_> = r
+            .sites
+            .iter()
+            .zip(&g)
+            .filter_map(|(s, g)| g.weak.as_ref().map(|w| (s, w)))
+            .collect();
+        let (status, reading) = if g.iter().any(|g| g.status == Status::NotCovered) {
+            (
+                Status::NotCovered,
+                format!("Not read: needs a genotype at {need}."),
+            )
+        } else if !weak.is_empty() {
+            (
+                Status::LowGq,
+                format!(
+                    "A low-quality call at {}: not read; check the reads.",
+                    weak.iter()
+                        .map(|(s, w)| format!("{} ({})", s.row["rsid"], w.why()))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
+            )
         } else {
-            Status::OtherAllele
+            (
+                Status::OtherAllele,
+                format!("Not read: needs a genotype at {need}."),
+            )
         };
-        return finish(
-            out,
-            ".",
-            ".",
-            status,
-            format!("Not read: needs a genotype at {need}."),
-        );
+        return finish(out, ".", ".", status, reading);
     }
     let mut phase = if r.meta["needs_phase"] == "no" {
         "not_used"
@@ -1017,6 +1076,10 @@ fn run(verb: &str, opts: &HashMap<String, String>) -> Result<u8> {
                 "No genotype at this position in the gVCF (no reads, or a no-call): not read."
                     .into()
             }
+            Status::LowGq => format!(
+                "A low-quality call at this position ({}): not read; check the reads.",
+                g.weak.as_ref().map(Weak::why).unwrap_or_default()
+            ),
             Status::Called => s.row[["hom_ref", "het", "hom_alt"]
                 [g.alleles.iter().filter(|a| *a == &s.row["alt"]).count()]]
             .clone(),
@@ -1198,6 +1261,7 @@ mod tests {
                         alleles: al,
                         status: Status::Called,
                         gq: "40".into(),
+                        weak: None,
                         snv: true,
                     },
                 )
@@ -1393,6 +1457,138 @@ mod tests {
         let gt = genotypes(r, &[0, 0, 0]);
         assert_eq!(rule_line(r, &gt, None)["phase"], "not_needed");
     }
+    /// The call floor (decision D10): a site whose GQ is below 20, or whose
+    /// record the caller filtered, is not read. GQ 20, a missing GQ and
+    /// DeepVariant's RefCall stay readable.
+    #[test]
+    fn low_quality_calls_at_rule_sites_are_not_read() {
+        let (rows, rules) = assets();
+        let rule = |id: &str| rules.iter().find(|r| r.id == id).unwrap();
+        let sites: Vec<&Site> = rows
+            .iter()
+            .chain(rules.iter().flat_map(|r| &r.sites))
+            .collect();
+        let scratch = Scratch::new();
+        let read = |text: &str, id: &str| {
+            let path = scratch.put("g", text);
+            rule_line(rule(id), &read_genotypes(&path, &sites).unwrap(), None)
+        };
+        // APOE e2/e4: heterozygous at both sites.
+        let apoe = |tail: &str| {
+            format!("chr19\t44908684\tT\tC\tT/C{tail}\nchr19\t44908822\tC\tT\tC/T{tail}\n")
+        };
+        for (tail, status, result) in [
+            ("\t0", "low_gq", "."),
+            ("\t1", "low_gq", "."),
+            ("\t19", "low_gq", "."),
+            ("\t20", "called", "e2/e4"),
+            ("\t99", "called", "e2/e4"),
+            ("\t.", "called", "e2/e4"),
+            ("", "called", "e2/e4"),
+            ("\t50\tPASS", "called", "e2/e4"),
+            ("\t50\t.", "called", "e2/e4"),
+            ("\t50\tLowQual", "low_gq", "."),
+        ] {
+            let line = read(&apoe(tail), "APOE");
+            assert_eq!(line["status"], status, "APOE with '{tail}'");
+            assert_eq!(line["result"], result, "APOE with '{tail}'");
+            assert_eq!(line["genotypes"], "T/C,C/T", "APOE with '{tail}'");
+            if status == "low_gq" {
+                assert!(line["reading"].contains("not read"), "{}", line["reading"]);
+                assert!(line["reading"].contains("rs429358"), "{}", line["reading"]);
+            }
+        }
+        // One weak site is enough to stop the rule, and the reading names it.
+        let line = read(
+            "chr19\t44908684\tT\tC\tC/C\t1\nchr19\t44908822\tC\tT\tC/C\t50\n",
+            "APOE",
+        );
+        assert_eq!((&line["status"][..], &line["result"][..]), ("low_gq", "."));
+        assert!(line["reading"].contains("rs429358"), "{}", line["reading"]);
+        assert!(!line["reading"].contains("rs7412"), "{}", line["reading"]);
+        // A site with no call at all still reads not_covered.
+        let line = read("chr19\t44908684\tT\tC\tT/C\t1\n", "APOE");
+        assert_eq!(line["status"], "not_covered");
+        // HFE C282Y/H63D: a LowQual call at C282Y is not read; RefCall and
+        // a pass are.
+        let hfe = |filter: &str| {
+            format!(
+                "chr6\t26092913\tG\tA\tG/A\t50\t{filter}\nchr6\t26090951\tC\tG\tC/G\t50\tRefCall\n"
+            )
+        };
+        let line = read(&hfe("LowQual"), "HFE");
+        assert_eq!((&line["status"][..], &line["result"][..]), ("low_gq", "."));
+        assert!(line["reading"].contains("LowQual"), "{}", line["reading"]);
+        assert_eq!(read(&hfe("PASS"), "HFE")["status"], "called");
+        // SERPINA1 PiMZ at GQ 0 is not read; at GQ 30 it is.
+        let serpina1 = |gq: u32| {
+            format!("chr14\t94380925\tT\tA\tT/T\t{gq}\nchr14\t94378610\tC\tT\tC/T\t{gq}\n")
+        };
+        assert_eq!(read(&serpina1(0), "SERPINA1")["status"], "low_gq");
+        assert_eq!(read(&serpina1(30), "SERPINA1")["status"], "called");
+        // A low-quality heterozygous site is not sent to WhatsHap.
+        let tas2r38 = |gq: u32| {
+            format!(
+                "chr7\t141973545\tC\tG\tC/G\t{gq}\nchr7\t141972905\tG\tA\tG/A\t{gq}\nchr7\t141972804\tT\tC\tT/C\t{gq}\n"
+            )
+        };
+        for (gq, n) in [(5, 0), (40, 3)] {
+            let path = scratch.put("g", &tas2r38(gq));
+            let gt = read_genotypes(&path, &sites).unwrap();
+            let out = scratch.put("phase.vcf", "");
+            assert_eq!(phase_vcf(&out, "S", &rules, &gt).unwrap(), n, "GQ {gq}");
+        }
+    }
+
+    /// The traits table: a weak table row and the APOE line built from weak
+    /// sites read low_gq with a "not read" reading.
+    #[test]
+    fn low_quality_calls_in_the_traits_table_are_not_read() {
+        let scratch = Scratch::new();
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+        let gt = scratch.put(
+            "g",
+            "chr2\t135851076\tG\tA\tG/G\t3\n\
+             chr19\t40848628\tA\tT\tA/T\t40\tLowQual\n\
+             chr2\t135859184\tC\tT\tC/T\t20\n\
+             chr19\t44908684\tT\tC\tC/C\t0\nchr19\t44908822\tC\tT\tC/C\t0\n",
+        );
+        let out = scratch.0.join("traits.tsv").to_string_lossy().into_owned();
+        let rules_out = scratch.0.join("rules.tsv").to_string_lossy().into_owned();
+        let opts = [
+            ("table", root.join("traits.tsv")),
+            ("rules", root.join("genotype_rules.tsv")),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string_lossy().into_owned()))
+        .chain([
+            ("genotypes".into(), gt),
+            ("sample".into(), "S".into()),
+            ("out".into(), out.clone()),
+            ("rules-out".into(), rules_out),
+        ])
+        .collect();
+        assert_eq!(run("table", &opts).unwrap(), 0);
+        let text = std::fs::read_to_string(&out).unwrap();
+        let row = |rsid: &str| -> Vec<String> {
+            text.lines()
+                .map(|l| l.split('\t').map(str::to_owned).collect::<Vec<_>>())
+                .find(|c| c[0] == rsid)
+                .unwrap_or_else(|| panic!("no row {rsid}"))
+        };
+        // rsid gene chrom pos trait genotype status reading ...
+        for rsid in ["rs4988235", "rs1801272", "rs429358", "rs7412"] {
+            let r = row(rsid);
+            assert_eq!(r[6], "low_gq", "{rsid}: {r:?}");
+            assert!(r[7].contains("not read"), "{rsid}: {r:?}");
+        }
+        assert_eq!(row("rs4988235")[5], "G/G");
+        assert!(row("rs1801272")[7].contains("LowQual"));
+        assert_eq!(row("rs182549")[6], "called");
+        let apoe = row("rs429358+rs7412");
+        assert_eq!((&apoe[5][..], &apoe[6][..]), (".", "low_gq"));
+    }
+
     #[test]
     fn unwritable_rules_output_keeps_existing_traits_table() {
         let scratch = Scratch::new();

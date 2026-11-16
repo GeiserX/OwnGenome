@@ -25,7 +25,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-render` | `og report render`, `og report index`, `og report charts`: the reports from summary.json (not ported yet) |
 | `crates/og-live` | `og live serve`, `og live results`, `og live family`, `og live demo`, `og view serve`: the live site (not ported yet) |
 | `crates/og-couple` | `og couple screen`, `og couple genes`: step 39's couple screen (not ported yet) |
-| `crates/og-admix` | what the fine-ancestry engines share: our own painting and projection (not ported yet) |
+| `crates/og-admix` | what the fine-ancestry engines share: the panel's haplotypes, the genetic map, `model/ref.geno`, a seeded RNG and the admixed-genome simulator of `og ancestry-fine simulate`; our own painting and projection (not ported yet) |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |
 | `og.sh` | build or download `bin/.og/og-linux-{x86_64,aarch64}`, and check they match this `rust/` |
 | `rust-toolchain.toml` | the Rust release, the one `OG_BUILDER` (`versions.env`) ships |
@@ -37,7 +37,7 @@ cargo clippy --all-targets -- -D warnings
 cargo build --release && ../tests/rust/pycompat-diff.sh target/release/og   # pycompat against CPython
 ```
 
-A binary from a plain `cargo build` is stamped `unknown`, and `rust/og.sh check` refuses it: only `scripts/setup.sh --og` stamps the tree hash the pipeline checks.
+A binary from a plain `cargo build` is stamped `unknown`, and `rust/og.sh check` refuses it: only `scripts/setup.sh --og` stamps the source hash of `rust/` and its embedded imprinting table that the pipeline checks.
 
 CI readers also run through `og dev pharmcat diplotypes`, `og dev nf-trace requests|attempts` and `og dev smoke`. See [the Rust command notes](../docs/rust.md#ci-readers).
 `og traits table`, `og traits phase-sites` and `og traits check` read step 42's

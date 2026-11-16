@@ -192,7 +192,8 @@
     });
     items.sort(function (a, b) { return order[a.f.level] - order[b.f.level]; });
     items.slice(0, 6).forEach(function (x) {
-      var a = el('a', { href: x.r.url + 'finding/' + encodeURIComponent(x.f.id) + '/' });
+      // A child whose report the gate keeps closed (core.js) links to the run's page, never to a finding's own page.
+      var a = el('a', { href: x.r.url + (x.r.gated ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/') });
       var who = el('span', { 'class': 'who' });
       var pc = el('span', { 'class': 'pc' }, x.r.name);
       if (colourOf[x.r.name]) { pc.style.setProperty('--pcol', colourOf[x.r.name]); }
