@@ -48,3 +48,5 @@ The `traits` cases cover all APOE genotype pairs, missing and other alleles,
 duplicate records, TAS2R38 phase blocks, phase-site VCFs and catalog refusals.
 The oracle adapter maps the three Rust verbs to the old flags. The Python
 report keeps only the metadata and table reader listed in `remnants.tsv`.
+
+The `report-render` cases render the summaries that `gen/report-corpus.sh` writes: each summary-collect folder collected whole by `og summary collect`, and 28 changes of one summary made with `jq`. `og report render` writes only the frame and the sections ported so far, so the generator's `oracle.sh` keeps those parts of `bin/render_report.py`'s reports (awk, by each section's title in the text report and its anchor in the HTML report) and drops the rest; what is kept compares byte for byte. Six summaries whose PRS scores the Python's HTML report cannot render run as text-only cases.
