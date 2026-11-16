@@ -36,7 +36,7 @@ check_eq "the image is Bioconda's build 1.8--hdfd78af_6" "$TAG" "1.8--hdfd78af_6
 check "Bioconda's package of that build downloads" \
   retry curl -fsSL -o "$PKG" "https://conda.anaconda.org/bioconda/noarch/eklipse-1.8-hdfd78af_6.conda"
 rm -rf "${T}/pkg"; mkdir -p "${T}/pkg"
-python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$PKG" "${T}/pkg"
+"${REPO}/bin/og" setup unzip "$PKG" "${T}/pkg"
 zstd -dc "${T}"/pkg/info-*.tar.zst | tar -x -C "${T}/pkg" info/recipe/meta.yaml
 zstd -dc "${T}"/pkg/pkg-*.tar.zst | tar -x -C "${T}/pkg" bin/eKLIPse_sc.py bin/eKLIPse.py
 URL=$(awk '$1 == "url:" {print $2; exit}' "${T}/pkg/info/recipe/meta.yaml" 2>/dev/null)
@@ -72,7 +72,7 @@ DEL="${SAMPLE}mtdel" WT="${SAMPLE}mtwt"
 for N in "$DEL" "$WT"; do
   args=()
   [ "$N" = "$DEL" ] && args=(--deletion 8470-13446 --level 0.10)
-  python3 "${REPO}/tests/test_mito_extended.py" synth-sam --fasta "${T}/chrM.fa" --header "${T}/header.sam" \
+  "${REPO}/bin/og" dev fixture mito-sam --fasta "${T}/chrM.fa" --header "${T}/header.sam" \
     --sample "$N" --depth 2000 "${args[@]}" --out "${T}/${N}.sam"
   dk "$SAMTOOLS_IMAGE" samtools sort -o "${T}/${N}.bam" "${T}/${N}.sam"
   rm -rf "${G:?}/${N}"; mkdir -p "${G}/${N}/aligned"
@@ -87,14 +87,10 @@ check_eq "no soft-clipped read in the control BAM" \
 
 # near N: deletions of N's table within 50 bp of the common deletion's breakpoints.
 near() { awk -F'\t' 'NR > 1 && ($1 - 8469) ^ 2 <= 2500 && ($2 - 13447) ^ 2 <= 2500' "${G}/$1/mito/$1_chrM_deletions.tsv" 2>/dev/null | wc -l | tr -d ' '; }
+# summary_text N: the text report generate-report.sh writes for N.
 summary_text() {
-  python3 - "${REPO}/bin" "${G}/$1" "$1" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[1])
-import collect_summary, render_report
-s = collect_summary.collect(sys.argv[3], sys.argv[2])
-print(render_report.text_report(s))
-PY
+  run_step generate-report.sh "$1" > /dev/null
+  cat "${G}/$1/$1_report.txt" 2>/dev/null
 }
 for N in "$DEL" "$WT"; do
   run_step 20-mtoolbox.sh "$N"
@@ -106,8 +102,9 @@ done
 check_eq "one deletion within 50 bp of both breakpoints, with 10% of the molecules deleted" "$(near "$DEL")" 1
 LEVEL=$(awk -F'\t' 'NR > 1 && ($1 - 8469) ^ 2 <= 2500 && ($2 - 13447) ^ 2 <= 2500 {print $4}' \
   "${G}/${DEL}/mito/${DEL}_chrM_deletions.tsv" 2>/dev/null | head -n 1)
+# shellcheck disable=SC2016  # awk program
 check "its level is above 0 and at most 20% (${LEVEL:-none})" \
-  python3 -c "import sys; v = float(sys.argv[1]); sys.exit(not 0 < v <= 20)" "${LEVEL:-x}"
+  awk -v v="${LEVEL:-x}" 'BEGIN { exit !(v ~ /^[0-9]+(\.[0-9]+)?$/ && v + 0 > 0 && v + 0 <= 20) }'
 check_eq "red control: no deletion in the BAM without one" \
   "$(awk 'NR > 1' "${G}/${WT}/mito/${WT}_chrM_deletions.tsv" 2>/dev/null | wc -l | tr -d ' ')" 0
 check_eq "the copy number of a BAM with no autosomal reads is not assessed" \

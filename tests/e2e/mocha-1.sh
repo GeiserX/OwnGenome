@@ -105,61 +105,8 @@ echo "mocha: HG002 chr20 slice: $(summ "$SAMPLE" het_sites) hets ($(summ "$SAMPL
 
 # --- MOSAIC and MOSAIC0: a planted CN-LOH, and none ---------------------------------
 for s in MOSAIC MOSAIC0; do rm -rf "${G:?}/${s}"; mkdir -p "${G}/${s}/vcf"; done
-python3 -I - "${G}/reference/GRCh38_no_alt_analysis_set.fasta" "${G}/MOSAIC/vcf/MOSAIC.vcf" "${G}/MOSAIC0/vcf/MOSAIC0.vcf" <<'PY'
-import math, random, sys
-fa, out_shift, out_flat = sys.argv[1:]
-CHROMS = ("chr16", "chr19", "chr20", "chr22")
-EVENT = ("chr20", 1, 20_000_000)          # 20p from the telomere
-BDEV = 0.075                              # CN-LOH in 15% of the cells: haplotype balance 0.575
-fai = {}
-for line in open(fa + ".fai"):
-    c = line.split("\t")
-    fai[c[0]] = (int(c[1]), int(c[2]), int(c[3]), int(c[4]))
-ALT = {"A": "G", "G": "A", "C": "T", "T": "C"}
-def poisson(lam):
-    l, k, p = math.exp(-lam), 0, 1.0
-    while True:
-        p *= random.random()
-        if p <= l:
-            return k
-        k += 1
-def binom(n, f):
-    return sum(random.random() < f for _ in range(n))
-outs = {}
-for path, shift in ((out_shift, True), (out_flat, False)):
-    random.seed(51)
-    lines = ["##fileformat=VCFv4.2", '##FILTER=<ID=PASS,Description="All filters passed">']
-    lines += [f"##contig=<ID={c},length={fai[c][0]}>" for c in CHROMS]
-    lines += ['##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
-              '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">',
-              '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">',
-              '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">',
-              "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + ("MOSAIC" if shift else "MOSAIC0")]
-    with open(fa, "rb") as f:
-        for c in CHROMS:
-            length, off, lb, lw = fai[c]
-            pos = 100_000
-            while pos < length - 100_000:
-                pos += random.randint(800, 1200)
-                f.seek(off + (pos - 1) // lb * lw + (pos - 1) % lb)
-                ref = f.read(1).decode().upper()
-                p, r, depth = random.uniform(0.05, 0.5), random.random(), poisson(30)
-                o = random.random() < 0.5
-                bal = 0.5 + BDEV if shift and c == EVENT[0] and EVENT[1] <= pos <= EVENT[2] else 0.5
-                k_het, k_err = binom(depth, bal), binom(depth, 0.005)
-                if ref not in ALT:
-                    continue
-                if r < 2 * p * (1 - p):
-                    gt = "0|1" if o else "1|0"
-                    alt = depth - k_het if o else k_het
-                elif r < 2 * p * (1 - p) + p * p:
-                    gt, alt = "1|1", depth - k_err
-                else:
-                    continue
-                lines.append(f"{c}\t{pos}\t.\t{ref}\t{ALT[ref]}\t50\tPASS\t.\tGT:GQ:DP:AD\t{gt}:50:{depth}:{depth - alt},{alt}")
-    open(path, "w").write("\n".join(lines) + "\n")
-    print(path, len(lines), "lines")
-PY
+"${REPO}/bin/og" dev fixture mocha-vcf "${G}/reference/GRCh38_no_alt_analysis_set.fasta" \
+  "${G}/MOSAIC/vcf/MOSAIC.vcf" "${G}/MOSAIC0/vcf/MOSAIC0.vcf"
 for s in MOSAIC MOSAIC0; do
   in_genome "$BCFTOOLS_IMAGE" bash -c "bcftools view -Oz -o ${s}/vcf/${s}.vcf.gz ${s}/vcf/${s}.vcf && bcftools index -t ${s}/vcf/${s}.vcf.gz"
   check_ge "${s}: synthetic records" "$(vcf_count "${s}/vcf/${s}.vcf.gz")" 80000

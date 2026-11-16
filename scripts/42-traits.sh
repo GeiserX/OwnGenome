@@ -21,7 +21,8 @@
 # processes.
 #
 # Output: traits/<sample>_traits.tsv (rsid, gene, chrom, pos, trait, genotype,
-# status, reading, ancestry, note, pmids). status: called, not_covered, or
+# status, reading, ancestry, note, pmids). status: called, not_covered,
+# low_gq (GQ below 20, or a FILTER other than PASS, . or RefCall: not read), or
 # other_allele (an allele the table does not describe).
 # traits/<sample>_genotype_rules.tsv: one line per rule (docs/42-traits.md).
 set -euo pipefail
@@ -68,7 +69,7 @@ rm -f "$OUT" "$RULES_OUT" "$PHASE_IN" "$PHASED"
   awk -F'\t' '$1 == "site" { print $4 "\t" $5 }' "$RULES"; } | LC_ALL=C sort -k1,1 -k2,2n -u > "$SITES"
 
 # gvcf2vcf expands each reference block over a position into a record with
-# the reference base (with the block's GQ), -T keeps the table's positions,
+# the reference base (with the block's GQ and FILTER), -T keeps the table's positions,
 # --trim-alt-alleles drops <*>, and a no-call is dropped, so a position
 # without reads has no line.
 echo "[1/3] Genotyping the table's positions from the gVCF..."
@@ -79,7 +80,7 @@ run_in --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" \
     [ "$n" -eq 1 ] || { echo "ERROR: $3 holds $n samples; step 42 reads a one-sample gVCF (keep one with bcftools view -s <sample>)." >&2; exit 1; }
     bcftools convert --gvcf2vcf -f "$1" -R "$2" -Ou "$3" \
       | bcftools view -T "$2" --trim-alt-alleles -i "GT!=\"mis\"" -Ou \
-      | bcftools query -u -f "%CHROM\t%POS\t%REF\t%ALT\t[%TGT]\t[%GQ]\n"' \
+      | bcftools query -u -f "%CHROM\t%POS\t%REF\t%ALT\t[%TGT]\t[%GQ]\t%FILTER\n"' \
   _ "${REF_FASTA_C}" "$(cpath "$SITES")" "$(cpath "$GVCF")" > "${GENOTYPES}.tmp" \
   || { rm -f "${GENOTYPES}.tmp" "$SITES"; echo "ERROR: step 42 could not genotype ${GVCF} at the table's positions (the line above says why)." >&2; exit 1; }
 mv -f "${GENOTYPES}.tmp" "$GENOTYPES"

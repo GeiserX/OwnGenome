@@ -36,17 +36,8 @@ echo "+ scripts/setup.sh --parascopy-data"
 "${REPO}/scripts/setup.sh" --parascopy-data "$GENOME_DIR"
 
 REF="${GENOME_DIR}/reference/parascopy_hba_ref.fasta"
-python3 - "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" "$REF" <<'PY'
-import shutil, sys
-with open(sys.argv[2], "wb") as out, open(sys.argv[1], "rb") as src:
-    shutil.copyfileobj(src, out)
-    out.write(b">chr11\n")
-    left = 135086622            # GRCh38 chr11, as the homology table lists it
-    while left:
-        n = min(left, 60)
-        out.write(b"N" * n + b"\n")
-        left -= n
-PY
+# GRCh38 chr11's length, as the homology table lists it.
+"${REPO}/bin/og" dev fixture append-n "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" "$REF" chr11 135086622
 sam faidx "reference/$(basename "$REF")"
 
 W="hba_e2e"
@@ -58,31 +49,7 @@ sam view -H "${W}/slice.bam" > "${GENOME_DIR}/${W}/header.sam"
 sam faidx reference/GRCh38_no_alt_analysis_set.fasta chr16:95001-235000 > "${GENOME_DIR}/${W}/chr16.fa"
 
 for P in HG002hba4 HG002hba3; do
-  python3 - "${GENOME_DIR}/${W}/chr16.fa" "${GENOME_DIR}/${W}/header.sam" "$P" "${GENOME_DIR}/${W}/${P}_syn.sam" <<'PY'
-import sys
-fa, header, sample, out = sys.argv[1:]
-seq = "".join(l.strip() for l in open(fa) if not l.startswith(">")).upper()
-start0 = 95000                      # 0-based start of chr16:95001-235000
-rg = next((l.split("\t")[1][3:] for l in open(header) if l.startswith("@RG")), None)
-hba2 = (172875, 173710)             # the HBA row's HBA2 (og cn bed --locus HBA), 0-based
-L, step, n = 150, 5, 0
-comp = str.maketrans("ACGTN", "TGCAN")
-seen = {}
-for i in range(len(seq) - L + 1):
-    seen[seq[i:i + L]] = seen.get(seq[i:i + L], 0) + 1
-def mapq(r):                        # 0 for a read that fits more than one place
-    return 0 if seen.get(r, 0) + seen.get(r.translate(comp)[::-1], 0) > 1 else 60
-with open(out, "w") as f:
-    f.write(open(header).read())
-    for i in range(0, len(seq) - L + 1, step):
-        s = start0 + i
-        if sample.endswith("3") and s < hba2[1] and s + L > hba2[0]:
-            n += 1
-            if n % 2:
-                continue
-        f.write(f"syn{s}\t0\tchr16\t{s + 1}\t{mapq(seq[i:i + L])}\t{L}M\t*\t0\t0\t{seq[i:i + L]}\t{'I' * L}"
-                + (f"\tRG:Z:{rg}" if rg else "") + "\n")
-PY
+  "${REPO}/bin/og" dev fixture hba-tiles "${GENOME_DIR}/${W}/chr16.fa" "${GENOME_DIR}/${W}/header.sam" "$P" "${GENOME_DIR}/${W}/${P}_syn.sam"
   mkdir -p "${GENOME_DIR}/${P}/aligned"
   sam sort -o "${W}/${P}_syn.bam" "${W}/${P}_syn.sam"
   sam merge -f "${P}/aligned/${P}_sorted.bam" "${W}/slice_chr5_chr20.bam" "${W}/${P}_syn.bam"

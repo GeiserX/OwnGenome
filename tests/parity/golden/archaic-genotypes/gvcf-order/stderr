@@ -1,0 +1,1 @@
+ERROR: order.g.vcf lists chr22 before a chromosome the VCF lists first; give the gVCF and the VCF in one chromosome order
