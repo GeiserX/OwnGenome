@@ -72,34 +72,7 @@ decoys() {
 # depth, 300 CMV reads and 200 phiX reads (150 bp, random strand, 0.3% substitutions, seed fixed),
 # and the decoys.
 plant() {
-  python3 - "$VREF" "$HUMAN" "$2" > "${T}/spike.sam" <<'PY'
-import random, sys
-fasta, human, frac = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
-seqs, name = {}, None
-for line in open(fasta):
-    line = line.strip()
-    if line.startswith(">"):
-        name = line[1:].split()[0]; seqs[name] = []
-    elif line:
-        seqs[name].append(line.upper())
-seqs = {k: "".join(v) for k, v in seqs.items()}
-rng, L, comp = random.Random(47), 150, str.maketrans("ACGT", "TGCA")
-def reads(acc, n, tag):
-    s = seqs[acc]
-    for i in range(n):
-        p = rng.randrange(0, len(s) - L)
-        r = list(s[p:p + L])
-        for j in range(L):
-            if rng.random() < 0.003:
-                r[j] = rng.choice([b for b in "ACGT" if b != r[j]])
-        r = "".join(r)
-        if rng.random() < 0.5:
-            r = r.translate(comp)[::-1]
-        print(f"{tag}_{i}\t4\t*\t0\t0\t*\t*\t0\t0\t{r}\t{'I' * L}")
-reads("NC_000898.1", round(frac * human * len(seqs["NC_000898.1"]) / L), "spk6b")
-reads("NC_006273.2", 300, "spkcmv")
-reads("NC_001422.1", 200, "spkphix")
-PY
+  "${REPO}/bin/og" dev fixture viral-spike "$VREF" "$HUMAN" "$2" > "${T}/spike.sam"
   mkdir -p "${G}/$1/aligned" "${G}/$1/vcf"
   decoys "$VREF" > "${T}/decoy.sam"
   # The planted records go after the BAM's own unmapped reads, at the end of a coordinate-sorted file.

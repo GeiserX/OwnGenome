@@ -63,6 +63,7 @@ Each hold is a rule in `renovate.json` with its reason in the rule's `descriptio
 
 | Pin | Rule | Why | When it ends |
 |---|---|---|---|
+| ExpansionHunter 5.0.0 | disabled, including Bioconda rebuilds | [5.0.0 is Apache-2.0](https://github.com/Illumina/ExpansionHunter/blob/v5.0.0/LICENSE.txt). [Upstream's default branch uses PolyForm Strict 1.0.0](https://github.com/Illumina/ExpansionHunter/blob/master/LICENSE.txt) | read the proposed tag's licence and the image's conda-meta licence before changing the hold. A PolyForm Strict version must become opt-in with a notice, like Cyrius |
 | pypgx 0.26.0 | only `0.26.0--` tags | 0.27.0 pulled pandas 3.0 and broke every gene while its smoke test still passed | upstream releases the pandas fix and a pypgx-bundle tag of the same version exists; move `PYPGX_BUNDLE_VERSION` with it |
 | plink2 2.00a5.10 | disabled | the only versioned tag `pgscatalog/plink2` ships, and the build pgsc_calc uses | a newer tag from that publisher |
 | Manta, Strelka2, duphold, Octopus, GRIDSS | disabled | legacy: archived or quiet upstream | bump by hand after a run on the fixture |
@@ -74,6 +75,7 @@ Each hold is a rule in `renovate.json` with its reason in the rule's `descriptio
 
 ## What to check by hand
 
+- **Image licences**: before any image bump, read the upstream licence at the proposed tag. For a Bioconda image, also check the licence fields of every package in its conda-meta files. A version or build number alone does not prove the licence. Keep ExpansionHunter held until that review is complete.
 - **PharmCAT**: diff the diplotype table on the HG002 fixture between the old and the new image, and run the CPIC parser tests on a `report.json` from the new version.
 - **VEP major**: move `VEP_CACHE_RELEASE` to the new major and `GENCODE_RELEASE` (`scripts/lib/common.sh`) to the new major minus 66 in the same PR, download the new cache (about 26 GB) and rerun step 13. CI cannot run the offline cache.
 - **PCGR/CPSR**: move `PCGR_DATA_BUNDLE` and `PCGR_VEP_CACHE_RELEASE` with the image. Download the new bundle once, measure its size and sha256, and set `PCGR_DATA_BYTES`, `PCGR_DATA_SHA256` and `PCGR_DATA_MEASURED_FOR` (`<image tag> <bundle date>`) in the same PR: the server publishes no checksum, and `scripts/ci/check-coupled-versions.sh` fails until all of them move together. Then rerun step 17 on a sample with an earlier result. CI does not run CPSR on a sample. The image test checks that `cpsr --help` still lists every flag step 17 passes, that `cpsr --version` names the release line of the image tag and the `pcgrr` R package its full release, and runs the bundled VEP with `--database` on 50 variants.

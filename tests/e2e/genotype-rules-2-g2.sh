@@ -42,33 +42,28 @@ in_genome "$BCFTOOLS_IMAGE" rm -rf genotype-rules-g2
 mkdir -p "$D"
 for s in G2HET G2REF; do
   mkdir -p "${D}/${s}/vcf" "${D}/${s}/traits"
-  python3 - "$REPO" "${D}/${s}" "$s" <<'PY'
-import os, subprocess, sys
-repo, d, s = sys.argv[1:]
-sys.path.insert(0, os.path.join(repo, "bin"))
-g = os.path.join(d, "g.tsv")
-with open(g, "w") as f:   # G0/G1 at the two G1 sites
-    f.write("chr22\t36265860\tA\tG\tA/G\t40\nchr22\t36265988\tT\tG\tT/G\t40\n")
-subprocess.run([os.environ.get("OG", os.path.join(repo, "bin", "og")), "traits", "table",
-                "--table", os.path.join(repo, "assets", "traits.tsv"),
-                "--rules", os.path.join(repo, "assets", "genotype_rules.tsv"),
-                "--genotypes", g, "--sample", s,
-                "--out", os.path.join(d, "traits", f"{s}_traits.tsv"),
-                "--rules-out", os.path.join(d, "traits", f"{s}_genotype_rules.tsv")], check=True)
-os.remove(g)
-body = ["chr22\t36200000\t.\tA\t<*>\t0\t.\tEND=36265994\tGT:GQ\t0/0:50"]
-if s == "G2HET":
-    body.append("chr22\t36265995\trs71785313\tAATAATT\tA,<*>\t30\tPASS\t.\tGT:GQ\t0/1:30")
-    body.append("chr22\t36266002\t.\tT\t<*>\t0\t.\tEND=36300000\tGT:GQ\t0/0:50")
-else:
-    body.append("chr22\t36265995\t.\tA\t<*>\t0\t.\tEND=36300000\tGT:GQ\t0/0:50")
-with open(os.path.join(d, "vcf", f"{s}.g.vcf"), "w") as f:
-    f.write("##fileformat=VCFv4.2\n##contig=<ID=chr22,length=50818468>\n"
-            "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End\">\n"
-            "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n"
-            "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"GQ\">\n"
-            f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{s}\n" + "\n".join(body) + "\n")
-PY
+  # The rule line: og traits table on G0/G1 at the two G1 sites.
+  printf 'chr22\t36265860\tA\tG\tA/G\t40\nchr22\t36265988\tT\tG\tT/G\t40\n' > "${D}/${s}/g.tsv"
+  "${OG:-${REPO}/bin/og}" traits table --table "${REPO}/assets/traits.tsv" --rules "${REPO}/assets/genotype_rules.tsv" \
+    --genotypes "${D}/${s}/g.tsv" --sample "$s" --out "${D}/${s}/traits/${s}_traits.tsv" \
+    --rules-out "${D}/${s}/traits/${s}_genotype_rules.tsv"
+  rm -f "${D}/${s}/g.tsv"
+  # The gVCF: a reference block up to G2, then G2 heterozygous (G2HET) or a
+  # reference block over it (G2REF).
+  {
+    printf '##fileformat=VCFv4.2\n##contig=<ID=chr22,length=50818468>\n'
+    printf '##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n'
+    printf '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+    printf '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="GQ">\n'
+    printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n' "$s"
+    printf 'chr22\t36200000\t.\tA\t<*>\t0\t.\tEND=36265994\tGT:GQ\t0/0:50\n'
+    if [ "$s" = G2HET ]; then
+      printf 'chr22\t36265995\trs71785313\tAATAATT\tA,<*>\t30\tPASS\t.\tGT:GQ\t0/1:30\n'
+      printf 'chr22\t36266002\t.\tT\t<*>\t0\t.\tEND=36300000\tGT:GQ\t0/0:50\n'
+    else
+      printf 'chr22\t36265995\t.\tA\t<*>\t0\t.\tEND=36300000\tGT:GQ\t0/0:50\n'
+    fi
+  } > "${D}/${s}/vcf/${s}.g.vcf"
   in_genome "$BCFTOOLS_IMAGE" bash -c "bcftools view -Oz -o 'genotype-rules-g2/${s}/vcf/${s}.g.vcf.gz' \
     'genotype-rules-g2/${s}/vcf/${s}.g.vcf' && bcftools index -t 'genotype-rules-g2/${s}/vcf/${s}.g.vcf.gz' \
     && rm 'genotype-rules-g2/${s}/vcf/${s}.g.vcf'"
@@ -78,12 +73,8 @@ done
 read_result() {
   "${REPO}/bin/og" summary collect --sample "$1" --sample-dir "${D}/$1" --assets "${REPO}/assets" \
     --out "${CASE_TMP}/$1.summary.json" > /dev/null
-  python3 - "${CASE_TMP}/$1.summary.json" <<'PY'
-import json, sys
-rules = json.load(open(sys.argv[1]))["sections"]["traits"]["data"]["rules"]
-r = next(x for x in rules if x["rule"] == "APOL1")
-print(r["result"], r["g2"]["result"], r["g2"]["source"], r["g2"]["status"], sep="\t")
-PY
+  jq -r '.sections.traits.data.rules[] | select(.rule == "APOL1") | [.result, .g2.result, .g2.source, .g2.status] | @tsv' \
+    "${CASE_TMP}/$1.summary.json"
 }
 HET=$(read_result G2HET)
 REF=$(read_result G2REF)

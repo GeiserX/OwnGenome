@@ -105,10 +105,10 @@ process PRS_SCORE_SITES {
     fi
 
     if [ "${input_kind}" = vcf ]; then
-        bcftools view -T sites.tsv -Ov ${gvcf} | gzip -c > ${meta.id}_score_sites.vcf.gz
+        bcftools view -f PASS,. -T sites.tsv -Ov ${gvcf} | gzip -c > ${meta.id}_score_sites.vcf.gz
     else
     bcftools convert --gvcf2vcf -f ${reference} -R sites.tsv -Ou ${gvcf} \\
-        | bcftools view -T sites.tsv --trim-alt-alleles -i 'GT!="mis"' -Ov \\
+        | bcftools view -f PASS,. -T sites.tsv --trim-alt-alleles -i 'GT!="mis"' -Ov \\
         | awk -F'\\t' -v OFS='\\t' -v alleles=alleles.tsv '
             BEGIN { while ((getline l < alleles) > 0) { split(l, f, "\\t"); k = f[1] ":" f[2]; ea[k] = ea[k] " " f[3] } }
             /^#/ { print; next }

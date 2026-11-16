@@ -1002,6 +1002,8 @@ archaic-genotypes	bad-code	gen:archaic-inputs.sh	--table-dir badcode --vcf s.vcf
 archaic-genotypes	bad-pop	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pop XYZ --out-dir gt	-	bytes	PYTHON_IMAGE
 archaic-genotypes	bad-pseudo	gen:archaic-inputs.sh	--table-dir . --vcf s.vcf --pseudo 0 --out-dir gt	-	bytes	PYTHON_IMAGE
 archaic-genotypes	no-table	gen:archaic-inputs.sh	--table-dir emptydir --vcf s.vcf --out-dir gt	-	bytes	PYTHON_IMAGE
+archaic-genotypes	gvcf	gen:archaic-inputs.sh,archaic-genotypes/s.g.vcf	--table-dir . --vcf s.vcf --gvcf s.g.vcf --pop EUR --pseudo 3 --out-dir gt	gt/samples.txt,gt/spans.tsv,gt/chr21.gt.gz,gt/chr22.gt.gz	*.gz=gz-content bytes	PYTHON_IMAGE
+archaic-genotypes	gvcf-order	gen:archaic-inputs.sh,archaic-genotypes/order.g.vcf	--table-dir . --vcf s.vcf --gvcf order.g.vcf --out-dir gt	-	*.gz=gz-content bytes	PYTHON_IMAGE
 archaic-report	genes	gen:archaic-inputs.sh	--sample S --ibdmix-dir . --spans spans.tsv --genes genes.gtf --pop EUR --out-dir rep	rep/S_archaic.tsv,rep/S_archaic.txt,rep/S_archaic_segments.tsv	bytes	PYTHON_IMAGE
 archaic-report	no-genes	gen:archaic-inputs.sh	--sample S --ibdmix-dir . --spans spans.tsv --out-dir rep	rep/S_archaic.tsv,rep/S_archaic.txt,rep/S_archaic_segments.tsv	bytes	PYTHON_IMAGE
 archaic-report	missing-output	gen:archaic-inputs.sh	--sample S --ibdmix-dir rep --spans spans.tsv --out-dir rep	-	bytes	PYTHON_IMAGE
@@ -1114,3 +1116,105 @@ traits	check	gen:traits.sh	check --table traits.tsv --rules rules.tsv	-	bytes	PY
 traits	bad-table	gen:traits.sh	check --table bad-table.tsv --rules rules.tsv	-	bytes	PYTHON_IMAGE
 traits	bad-rules	gen:traits.sh	check --table traits.tsv --rules bad-rules.tsv	-	bytes	PYTHON_IMAGE
 traits	shared-vocabulary	gen:traits.sh	table --table traits.tsv --rules shared-rules.tsv --genotypes shared.tsv --sample S --out traits-out.tsv --rules-out rules-out.tsv	traits-out.tsv,rules-out.tsv	tsv	PYTHON_IMAGE
+# report-render: og report render against bin/render_report.py on the summaries of tests/parity/gen/report-corpus.sh,
+# the frame and the sections ported so far (the generator's oracle.sh keeps those parts of the Python's reports).
+# The six text-only cases are summaries whose PRS scores the Python's HTML report cannot render.
+report-render	full	gen:report-corpus.sh	--summary full.json -o full.txt -o full.html	full.txt,full.html	bytes	PYTHON_IMAGE
+report-render	nf	gen:report-corpus.sh	--summary nf.json -o nf.txt -o nf.html	nf.txt,nf.html	bytes	PYTHON_IMAGE
+report-render	hidden	gen:report-corpus.sh	--summary hidden.json -o hidden.txt -o hidden.html	hidden.txt,hidden.html	bytes	PYTHON_IMAGE
+report-render	stale	gen:report-corpus.sh	--summary stale.json -o stale.txt -o stale.html	stale.txt,stale.html	bytes	PYTHON_IMAGE
+report-render	failed	gen:report-corpus.sh	--summary failed.json -o failed.txt -o failed.html	failed.txt,failed.html	bytes	PYTHON_IMAGE
+report-render	failed-nodate	gen:report-corpus.sh	--summary failed-nodate.json -o failed-nodate.txt -o failed-nodate.html	failed-nodate.txt,failed-nodate.html	bytes	PYTHON_IMAGE
+report-render	failed-emptydate	gen:report-corpus.sh	--summary failed-emptydate.json -o failed-emptydate.txt -o failed-emptydate.html	failed-emptydate.txt,failed-emptydate.html	bytes	PYTHON_IMAGE
+report-render	bad-a	gen:report-corpus.sh	--summary bad-a.json -o bad-a.txt -o bad-a.html	bad-a.txt,bad-a.html	bytes	PYTHON_IMAGE
+report-render	bad-b	gen:report-corpus.sh	--summary bad-b.json -o bad-b.txt -o bad-b.html	bad-b.txt,bad-b.html	bytes	PYTHON_IMAGE
+report-render	bad-c	gen:report-corpus.sh	--summary bad-c.json -o bad-c.txt -o bad-c.html	bad-c.txt,bad-c.html	bytes	PYTHON_IMAGE
+report-render	bad-d	gen:report-corpus.sh	--summary bad-d.json -o bad-d.txt -o bad-d.html	bad-d.txt,bad-d.html	bytes	PYTHON_IMAGE
+report-render	bad-e	gen:report-corpus.sh	--summary bad-e.json -o bad-e.txt -o bad-e.html	bad-e.txt,bad-e.html	bytes	PYTHON_IMAGE
+report-render	badgz	gen:report-corpus.sh	--summary badgz.json -o badgz.txt -o badgz.html	badgz.txt,badgz.html	bytes	PYTHON_IMAGE
+report-render	kary-1	gen:report-corpus.sh	--summary kary-1.json -o kary-1.txt -o kary-1.html	kary-1.txt,kary-1.html	bytes	PYTHON_IMAGE
+report-render	kary-2	gen:report-corpus.sh	--summary kary-2.json -o kary-2.txt -o kary-2.html	kary-2.txt,kary-2.html	bytes	PYTHON_IMAGE
+report-render	kary-3	gen:report-corpus.sh	--summary kary-3.json -o kary-3.txt -o kary-3.html	kary-3.txt,kary-3.html	bytes	PYTHON_IMAGE
+report-render	kary-4	gen:report-corpus.sh	--summary kary-4.json -o kary-4.txt -o kary-4.html	kary-4.txt,kary-4.html	bytes	PYTHON_IMAGE
+report-render	kary-5	gen:report-corpus.sh	--summary kary-5.json -o kary-5.txt -o kary-5.html	kary-5.txt,kary-5.html	bytes	PYTHON_IMAGE
+report-render	kary-6	gen:report-corpus.sh	--summary kary-6.json -o kary-6.txt -o kary-6.html	kary-6.txt,kary-6.html	bytes	PYTHON_IMAGE
+report-render	kary-7	gen:report-corpus.sh	--summary kary-7.json -o kary-7.txt -o kary-7.html	kary-7.txt,kary-7.html	bytes	PYTHON_IMAGE
+report-render	kary-8	gen:report-corpus.sh	--summary kary-8.json -o kary-8.txt -o kary-8.html	kary-8.txt,kary-8.html	bytes	PYTHON_IMAGE
+report-render	kary-9	gen:report-corpus.sh	--summary kary-9.json -o kary-9.txt -o kary-9.html	kary-9.txt,kary-9.html	bytes	PYTHON_IMAGE
+report-render	kary-10	gen:report-corpus.sh	--summary kary-10.json -o kary-10.txt -o kary-10.html	kary-10.txt,kary-10.html	bytes	PYTHON_IMAGE
+report-render	crlf	gen:report-corpus.sh	--summary crlf.json -o crlf.txt -o crlf.html	crlf.txt,crlf.html	bytes	PYTHON_IMAGE
+report-render	declared-status	gen:report-corpus.sh	--summary declared-status.json -o declared-status.txt -o declared-status.html	declared-status.txt,declared-status.html	bytes	PYTHON_IMAGE
+report-render	declared-manifest	gen:report-corpus.sh	--summary declared-manifest.json -o declared-manifest.txt -o declared-manifest.html	declared-manifest.txt,declared-manifest.html	bytes	PYTHON_IMAGE
+report-render	declared-qc	gen:report-corpus.sh	--summary declared-qc.json -o declared-qc.txt -o declared-qc.html	declared-qc.txt,declared-qc.html	bytes	PYTHON_IMAGE
+report-render	links	gen:report-corpus.sh	--summary links.json -o links.txt -o links.html	links.txt,links.html	bytes	PYTHON_IMAGE
+report-render	notgz	gen:report-corpus.sh	--summary notgz.json -o notgz.txt -o notgz.html	notgz.txt,notgz.html	bytes	PYTHON_IMAGE
+report-render	empty	gen:report-corpus.sh	--summary empty.json -o empty.txt -o empty.html	empty.txt,empty.html	bytes	PYTHON_IMAGE
+report-render	declared-arg	gen:report-corpus.sh	--summary declared-arg.json -o declared-arg.txt -o declared-arg.html	declared-arg.txt,declared-arg.html	bytes	PYTHON_IMAGE
+report-render	no-assets	gen:report-corpus.sh	--summary no-assets.json -o no-assets.txt -o no-assets.html	no-assets.txt,no-assets.html	bytes	PYTHON_IMAGE
+report-render	no-folder	gen:report-corpus.sh	--summary no-folder.json -o no-folder.txt -o no-folder.html	no-folder.txt,no-folder.html	bytes	PYTHON_IMAGE
+report-render	c-full	gen:report-corpus.sh	--summary c-full.json -o c-full.txt	c-full.txt	bytes	PYTHON_IMAGE
+report-render	c-float-nan	gen:report-corpus.sh	--summary c-float-nan.json -o c-float-nan.txt	c-float-nan.txt	bytes	PYTHON_IMAGE
+report-render	c-float-inf	gen:report-corpus.sh	--summary c-float-inf.json -o c-float-inf.txt	c-float-inf.txt	bytes	PYTHON_IMAGE
+report-render	c-float--inf	gen:report-corpus.sh	--summary c-float--inf.json -o c-float--inf.txt	c-float--inf.txt	bytes	PYTHON_IMAGE
+report-render	c-nf	gen:report-corpus.sh	--summary c-nf.json -o c-nf.txt -o c-nf.html	c-nf.txt,c-nf.html	bytes	PYTHON_IMAGE
+report-render	c-bad1	gen:report-corpus.sh	--summary c-bad1.json -o c-bad1.txt -o c-bad1.html	c-bad1.txt,c-bad1.html	bytes	PYTHON_IMAGE
+report-render	c-bad2	gen:report-corpus.sh	--summary c-bad2.json -o c-bad2.txt -o c-bad2.html	c-bad2.txt,c-bad2.html	bytes	PYTHON_IMAGE
+report-render	c-g2-left	gen:report-corpus.sh	--summary c-g2-left.json -o c-g2-left.txt -o c-g2-left.html	c-g2-left.txt,c-g2-left.html	bytes	PYTHON_IMAGE
+report-render	c-g2-shifted	gen:report-corpus.sh	--summary c-g2-shifted.json -o c-g2-shifted.txt -o c-g2-shifted.html	c-g2-shifted.txt,c-g2-shifted.html	bytes	PYTHON_IMAGE
+report-render	c-g2-two	gen:report-corpus.sh	--summary c-g2-two.json -o c-g2-two.txt -o c-g2-two.html	c-g2-two.txt,c-g2-two.html	bytes	PYTHON_IMAGE
+report-render	c-g2-gvcf	gen:report-corpus.sh	--summary c-g2-gvcf.json -o c-g2-gvcf.txt -o c-g2-gvcf.html	c-g2-gvcf.txt,c-g2-gvcf.html	bytes	PYTHON_IMAGE
+report-render	c-g2-none	gen:report-corpus.sh	--summary c-g2-none.json -o c-g2-none.txt -o c-g2-none.html	c-g2-none.txt,c-g2-none.html	bytes	PYTHON_IMAGE
+report-render	c-g2-other	gen:report-corpus.sh	--summary c-g2-other.json -o c-g2-other.txt -o c-g2-other.html	c-g2-other.txt,c-g2-other.html	bytes	PYTHON_IMAGE
+report-render	c-g2-nocall	gen:report-corpus.sh	--summary c-g2-nocall.json -o c-g2-nocall.txt -o c-g2-nocall.html	c-g2-nocall.txt,c-g2-nocall.html	bytes	PYTHON_IMAGE
+report-render	c-g2-novcf	gen:report-corpus.sh	--summary c-g2-novcf.json -o c-g2-novcf.txt -o c-g2-novcf.html	c-g2-novcf.txt,c-g2-novcf.html	bytes	PYTHON_IMAGE
+report-render	cb-full	gen:report-corpus.sh	--summary cb-full.json -o cb-full.txt -o cb-full.html	cb-full.txt,cb-full.html	bytes	PYTHON_IMAGE
+report-render	cb-quoted-smn	gen:report-corpus.sh	--summary cb-quoted-smn.json -o cb-quoted-smn.txt -o cb-quoted-smn.html	cb-quoted-smn.txt,cb-quoted-smn.html	bytes	PYTHON_IMAGE
+report-render	cb-quoted-interval	gen:report-corpus.sh	--summary cb-quoted-interval.json -o cb-quoted-interval.txt -o cb-quoted-interval.html	cb-quoted-interval.txt,cb-quoted-interval.html	bytes	PYTHON_IMAGE
+report-render	cb-quoted-dosage	gen:report-corpus.sh	--summary cb-quoted-dosage.json -o cb-quoted-dosage.txt -o cb-quoted-dosage.html	cb-quoted-dosage.txt,cb-quoted-dosage.html	bytes	PYTHON_IMAGE
+report-render	cb-unicode-contig	gen:report-corpus.sh	--summary cb-unicode-contig.json -o cb-unicode-contig.txt -o cb-unicode-contig.html	cb-unicode-contig.txt,cb-unicode-contig.html	bytes	PYTHON_IMAGE
+report-render	cb-nf	gen:report-corpus.sh	--summary cb-nf.json -o cb-nf.txt -o cb-nf.html	cb-nf.txt,cb-nf.html	bytes	PYTHON_IMAGE
+report-render	cb-probable	gen:report-corpus.sh	--summary cb-probable.json -o cb-probable.txt -o cb-probable.html	cb-probable.txt,cb-probable.html	bytes	PYTHON_IMAGE
+report-render	cb-failed	gen:report-corpus.sh	--summary cb-failed.json -o cb-failed.txt -o cb-failed.html	cb-failed.txt,cb-failed.html	bytes	PYTHON_IMAGE
+report-render	cb-bad	gen:report-corpus.sh	--summary cb-bad.json -o cb-bad.txt -o cb-bad.html	cb-bad.txt,cb-bad.html	bytes	PYTHON_IMAGE
+report-render	cb-nfbad	gen:report-corpus.sh	--summary cb-nfbad.json -o cb-nfbad.txt -o cb-nfbad.html	cb-nfbad.txt,cb-nfbad.html	bytes	PYTHON_IMAGE
+report-render	cb-notbi	gen:report-corpus.sh	--summary cb-notbi.json -o cb-notbi.txt -o cb-notbi.html	cb-notbi.txt,cb-notbi.html	bytes	PYTHON_IMAGE
+report-render	cb-notgz	gen:report-corpus.sh	--summary cb-notgz.json -o cb-notgz.txt -o cb-notgz.html	cb-notgz.txt,cb-notgz.html	bytes	PYTHON_IMAGE
+report-render	cb-empty	gen:report-corpus.sh	--summary cb-empty.json -o cb-empty.txt -o cb-empty.html	cb-empty.txt,cb-empty.html	bytes	PYTHON_IMAGE
+report-render	cb-no-assets	gen:report-corpus.sh	--summary cb-no-assets.json -o cb-no-assets.txt -o cb-no-assets.html	cb-no-assets.txt,cb-no-assets.html	bytes	PYTHON_IMAGE
+report-render	all	gen:report-corpus.sh	--summary all.json -o all.txt	all.txt	bytes	PYTHON_IMAGE
+report-render	all-nf	gen:report-corpus.sh	--summary all-nf.json -o all-nf.txt -o all-nf.html	all-nf.txt,all-nf.html	bytes	PYTHON_IMAGE
+report-render	all-bad	gen:report-corpus.sh	--summary all-bad.json -o all-bad.txt -o all-bad.html	all-bad.txt,all-bad.html	bytes	PYTHON_IMAGE
+report-render	all-failed	gen:report-corpus.sh	--summary all-failed.json -o all-failed.txt -o all-failed.html	all-failed.txt,all-failed.html	bytes	PYTHON_IMAGE
+report-render	all-empty	gen:report-corpus.sh	--summary all-empty.json -o all-empty.txt -o all-empty.html	all-empty.txt,all-empty.html	bytes	PYTHON_IMAGE
+report-render	all-history	gen:report-corpus.sh	--summary all-history.json -o all-history.txt	all-history.txt	bytes	PYTHON_IMAGE
+report-render	all-history-bad	gen:report-corpus.sh	--summary all-history-bad.json -o all-history-bad.txt -o all-history-bad.html	all-history-bad.txt,all-history-bad.html	bytes	PYTHON_IMAGE
+report-render	all-inf	gen:report-corpus.sh	--summary all-inf.json -o all-inf.txt -o all-inf.html	all-inf.txt,all-inf.html	bytes	PYTHON_IMAGE
+report-render	all-default-out	gen:report-corpus.sh	--summary all-default-out.json -o all-default-out.txt -o all-default-out.html	all-default-out.txt,all-default-out.html	bytes	PYTHON_IMAGE
+report-render	m-counts-float	gen:report-corpus.sh	--summary m-counts-float.json -o m-counts-float.txt -o m-counts-float.html	m-counts-float.txt,m-counts-float.html	bytes	PYTHON_IMAGE
+report-render	m-counts	gen:report-corpus.sh	--summary m-counts.json -o m-counts.txt -o m-counts.html	m-counts.txt,m-counts.html	bytes	PYTHON_IMAGE
+report-render	m-limits	gen:report-corpus.sh	--summary m-limits.json -o m-limits.txt -o m-limits.html	m-limits.txt,m-limits.html	bytes	PYTHON_IMAGE
+report-render	m-no-manifest	gen:report-corpus.sh	--summary m-no-manifest.json -o m-no-manifest.txt -o m-no-manifest.html	m-no-manifest.txt,m-no-manifest.html	bytes	PYTHON_IMAGE
+report-render	m-qc-failed	gen:report-corpus.sh	--summary m-qc-failed.json -o m-qc-failed.txt -o m-qc-failed.html	m-qc-failed.txt,m-qc-failed.html	bytes	PYTHON_IMAGE
+report-render	m-qc-missing	gen:report-corpus.sh	--summary m-qc-missing.json -o m-qc-missing.txt -o m-qc-missing.html	m-qc-missing.txt,m-qc-missing.html	bytes	PYTHON_IMAGE
+report-render	m-qc-mixed	gen:report-corpus.sh	--summary m-qc-mixed.json -o m-qc-mixed.txt -o m-qc-mixed.html	m-qc-mixed.txt,m-qc-mixed.html	bytes	PYTHON_IMAGE
+report-render	m-qc-ok	gen:report-corpus.sh	--summary m-qc-ok.json -o m-qc-ok.txt -o m-qc-ok.html	m-qc-ok.txt,m-qc-ok.html	bytes	PYTHON_IMAGE
+report-render	m-qc-stale	gen:report-corpus.sh	--summary m-qc-stale.json -o m-qc-stale.txt -o m-qc-stale.html	m-qc-stale.txt,m-qc-stale.html	bytes	PYTHON_IMAGE
+report-render	m-qc-unreadable	gen:report-corpus.sh	--summary m-qc-unreadable.json -o m-qc-unreadable.txt -o m-qc-unreadable.html	m-qc-unreadable.txt,m-qc-unreadable.html	bytes	PYTHON_IMAGE
+report-render	m-recheck-newer	gen:report-corpus.sh	--summary m-recheck-newer.json -o m-recheck-newer.txt -o m-recheck-newer.html	m-recheck-newer.txt,m-recheck-newer.html	bytes	PYTHON_IMAGE
+report-render	m-recheck-none	gen:report-corpus.sh	--summary m-recheck-none.json -o m-recheck-none.txt -o m-recheck-none.html	m-recheck-none.txt,m-recheck-none.html	bytes	PYTHON_IMAGE
+report-render	m-release-empty	gen:report-corpus.sh	--summary m-release-empty.json -o m-release-empty.txt -o m-release-empty.html	m-release-empty.txt,m-release-empty.html	bytes	PYTHON_IMAGE
+report-render	m-release	gen:report-corpus.sh	--summary m-release.json -o m-release.txt -o m-release.html	m-release.txt,m-release.html	bytes	PYTHON_IMAGE
+report-render	m-sample-escape	gen:report-corpus.sh	--summary m-sample-escape.json -o m-sample-escape.txt -o m-sample-escape.html	m-sample-escape.txt,m-sample-escape.html	bytes	PYTHON_IMAGE
+report-render	m-sample-unicode	gen:report-corpus.sh	--summary m-sample-unicode.json -o m-sample-unicode.txt -o m-sample-unicode.html	m-sample-unicode.txt,m-sample-unicode.html	bytes	PYTHON_IMAGE
+report-render	m-sex-agree	gen:report-corpus.sh	--summary m-sex-agree.json -o m-sex-agree.txt -o m-sex-agree.html	m-sex-agree.txt,m-sex-agree.html	bytes	PYTHON_IMAGE
+report-render	m-sex	gen:report-corpus.sh	--summary m-sex.json -o m-sex.txt -o m-sex.html	m-sex.txt,m-sex.html	bytes	PYTHON_IMAGE
+report-render	m-since-all	gen:report-corpus.sh	--summary m-since-all.json -o m-since-all.txt -o m-since-all.html	m-since-all.txt,m-since-all.html	bytes	PYTHON_IMAGE
+report-render	m-since-empty	gen:report-corpus.sh	--summary m-since-empty.json -o m-since-empty.txt -o m-since-empty.html	m-since-empty.txt,m-since-empty.html	bytes	PYTHON_IMAGE
+report-render	m-since-qc	gen:report-corpus.sh	--summary m-since-qc.json -o m-since-qc.txt -o m-since-qc.html	m-since-qc.txt,m-since-qc.html	bytes	PYTHON_IMAGE
+report-render	m-since-text	gen:report-corpus.sh	--summary m-since-text.json -o m-since-text.txt -o m-since-text.html	m-since-text.txt,m-since-text.html	bytes	PYTHON_IMAGE
+report-render	m-started	gen:report-corpus.sh	--summary m-started.json -o m-started.txt -o m-started.html	m-started.txt,m-started.html	bytes	PYTHON_IMAGE
+report-render	m-variants-failed	gen:report-corpus.sh	--summary m-variants-failed.json -o m-variants-failed.txt -o m-variants-failed.html	m-variants-failed.txt,m-variants-failed.html	bytes	PYTHON_IMAGE
+report-render	m-variants-missing	gen:report-corpus.sh	--summary m-variants-missing.json -o m-variants-missing.txt -o m-variants-missing.html	m-variants-missing.txt,m-variants-missing.html	bytes	PYTHON_IMAGE
+report-render	m-variants-ok	gen:report-corpus.sh	--summary m-variants-ok.json -o m-variants-ok.txt -o m-variants-ok.html	m-variants-ok.txt,m-variants-ok.html	bytes	PYTHON_IMAGE
+report-render	m-variants-stale	gen:report-corpus.sh	--summary m-variants-stale.json -o m-variants-stale.txt -o m-variants-stale.html	m-variants-stale.txt,m-variants-stale.html	bytes	PYTHON_IMAGE
+report-render	m-variants-unreadable	gen:report-corpus.sh	--summary m-variants-unreadable.json -o m-variants-unreadable.txt -o m-variants-unreadable.html	m-variants-unreadable.txt,m-variants-unreadable.html	bytes	PYTHON_IMAGE

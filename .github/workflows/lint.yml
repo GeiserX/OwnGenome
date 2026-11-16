@@ -132,7 +132,7 @@ jobs:
         run: |
           echo "Checking internal markdown links..."
           rm -f /tmp/link_fail
-          for md in docs/*.md README.md; do
+          for md in docs/*.md docs/results/*.md README.md; do
             # Extract markdown links: [text](target)
             grep -oP '\]\([^)]+\)' "$md" 2>/dev/null | \
               grep -oP '\(([^)]+)\)' | tr -d '()' | \

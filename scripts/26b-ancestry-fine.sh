@@ -82,13 +82,13 @@ if [ -f "$GVCF" ] && [ -f "${GVCF}.tbi" ]; then
   INPUT_KIND=gvcf
   echo "[1/5] Genotyping the panel's SNVs from the gVCF (${GVCF})..."
   # shellcheck disable=SC2016  # $1 to $3 belong to the inner bash
-  CMD=(bash -euo pipefail -c 'n=$(bcftools query -l "$3" | wc -l | tr -d " "); [ "$n" -eq 1 ] || { echo "ERROR: $3 holds $n samples; step 26b reads a one-sample file (keep one with bcftools view -s <sample>)." >&2; exit 1; }; bcftools convert --gvcf2vcf -f "$1" -R "$2" -Ou "$3" | bcftools view -T "$2" --trim-alt-alleles -i "GT!=\"mis\"" -Ov'
+  CMD=(bash -euo pipefail -c 'n=$(bcftools query -l "$3" | wc -l | tr -d " "); [ "$n" -eq 1 ] || { echo "ERROR: $3 holds $n samples; step 26b reads a one-sample file (keep one with bcftools view -s <sample>)." >&2; exit 1; }; bcftools convert --gvcf2vcf -f "$1" -R "$2" -Ou "$3" | bcftools view -f PASS,. -T "$2" --trim-alt-alleles -i "GT!=\"mis\"" -Ov'
        _ "$REF_FASTA_C" "${P}/panel/positions.tsv" "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz")
 else
   INPUT_KIND=vcf
   echo "[1/5] No gVCF beside the VCF: genotyping the panel's SNVs from the VCF (${VCF})..."
   # shellcheck disable=SC2016  # $1 and $2 belong to the inner bash
-  CMD=(bash -euo pipefail -c 'n=$(bcftools query -l "$2" | wc -l | tr -d " "); [ "$n" -eq 1 ] || { echo "ERROR: $2 holds $n samples; step 26b reads a one-sample file (keep one with bcftools view -s <sample>)." >&2; exit 1; }; bcftools view -T "$1" -Ov "$2"' _ "${P}/panel/positions.tsv" "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz")
+  CMD=(bash -euo pipefail -c 'n=$(bcftools query -l "$2" | wc -l | tr -d " "); [ "$n" -eq 1 ] || { echo "ERROR: $2 holds $n samples; step 26b reads a one-sample file (keep one with bcftools view -s <sample>)." >&2; exit 1; }; bcftools view -f PASS,. -T "$1" -Ov "$2"' _ "${P}/panel/positions.tsv" "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz")
 fi
 run_in --cpus 2 --memory 4g "$BCFTOOLS_IMAGE" "${CMD[@]}" \
   | awk -F'\t' -v OFS='\t' -v sites="${PANEL}/panel/sites.tsv" -v counts="${WORK}/counts.tsv" '
