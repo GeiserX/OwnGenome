@@ -186,7 +186,8 @@ rs3798220\tLPA\tchr6\t2\tLp(a)\tT|C\tcalled\tone copy\tall\t.\t1
 rs78655421\tCFTR\tchr7\t3\tR117H\tG/A\tcalled\tone copy\tall\t.\t1
 rs429358\tAPOE\tchr19\t4\tAPOE\tT/C\tcalled\te3/e4\tall\t.\t1
 rs1\tX\tchr1\t5\tx\t.\tnot_covered\tno reads\tall\t.\t1
-rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1\n"
+rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1
+rs3\tX\tchr1\t7\tx\tC/T\tlow_gq\tA low-quality call at this position (genotype quality 5, below 20): not read; check the reads.\tall\t.\t1\n"
 put $f/traits/S_genotype_rules.tsv "rule\tgene\ttrait\trsids\tchrom\tpos\tgenotypes\tgq\tphase\tresult\tstatus\treading\tancestry\tnote\tpmids
 APOE\tAPOE\tAPOE\trs429358,rs7412\tchr19\t1,2\tT/C,C/C\t40\t.\te3/e4\tcalled\tr\tall\t.\t1
 TAS2R38\tTAS2R38\tbitter\trs1\tchr7\t1\tC/G\t40\tunphased\tPAV/AVI\tcalled\ttaster\tall\t.\t1

@@ -3,7 +3,8 @@
 """The repeat ranges: the generated str_ranges.tsv, the report's cited subset and the docs.
 
 1. str_ranges.tsv, which og str catalog writes beside the STRchive
-   catalog (built here from the pinned files by tests/test_str_catalog.py):
+   catalog (built here with og from the pinned files, as
+   rust/crates/og-setup/tests/strchive_catalog.rs builds it):
    one row per ExpansionHunter locus of the catalog (82), each traced to its
    STRchive id; normal_max and pathogenic_min are the catalog's NormalMax and
    PathologicMin, empty where the catalog has no thresholds and the reason in
@@ -12,10 +13,11 @@
 2. bin/str_intermediate_ranges.tsv, the GeneReviews ranges the report names
    (HTT, FMR1, DMPK): the columns og summary collect reads, one row per
    locus, whole numbers with min <= max ending right below the next class, a
-   label and a GeneReviews citation; docs/interpreting-results.md prints the
-   same range in the locus's row; every locus has a row in str_ranges.tsv,
-   and the range lies above its normal_max and below its pathogenic_min, so a
-   count the report calls intermediate is one Stranger calls pre_mutation
+   label and a GeneReviews citation; docs/results/structural-and-repeats.md
+   prints the same range in the locus's row; every locus has a row in
+   str_ranges.tsv, and the range lies above its normal_max and below its
+   pathogenic_min, so a count the report calls intermediate is one Stranger
+   calls pre_mutation
    (control: a planted HTT range of 20-35 is caught). That og reads every
    row is og-summary's own test (collect::group_c::tests).
 3. The "Key Disease Thresholds" table of docs/09-str-expansions.md: each
@@ -24,18 +26,22 @@
 
 Run: python3 tests/test_str_ranges.py
 """
+import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
+import time
+import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
-sys.path.insert(0, os.path.join(REPO, "tests"))
-import test_str_catalog  # noqa: E402
+OG = os.environ.get("OG", "")
 
 TSV = os.path.join(REPO, "bin", "str_intermediate_ranges.tsv")
-DOC = os.path.join(REPO, "docs", "interpreting-results.md")
+DOC = os.path.join(REPO, "docs", "results", "structural-and-repeats.md")
 STEP_DOC = os.path.join(REPO, "docs", "09-str-expansions.md")
 COLUMNS = ["locus", "intermediate_min", "intermediate_max", "next_min", "next_class", "label", "citation"]
 RANGE_COLUMNS = ["locus", "source_id", "normal_max", "intermediate_min", "intermediate_max", "pathogenic_min",
@@ -49,6 +55,68 @@ def check(desc, ok, detail=""):
     print(f"{'PASS' if ok else 'FAIL'} {desc}" + ("" if ok else f": {detail}"))
     if not ok:
         FAILS.append(desc)
+
+
+def og_or_skip():
+    """None when OG names an og binary; else the exit code: 0 (skip, with a
+    note), or 1 with OG_REQUIRED set."""
+    if OG and os.access(OG, os.X_OK):
+        return None
+    print("skip: OG is not set (OG=rust/target/release/og)")
+    return 1 if os.environ.get("OG_REQUIRED") else 0
+
+
+def env(name):
+    for line in open(os.path.join(REPO, "versions.env")):
+        if line.startswith(name + "="):
+            return line.split("=", 1)[1].split("#")[0].strip().strip('"')
+    raise SystemExit(f"FAIL no {name} line in versions.env")
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def files():
+    """(release, EH catalog path, loci path), downloaded and checked."""
+    rel = env("STRCHIVE_VERSION")
+    d = os.environ.get("STRCHIVE_DIR") or os.path.join(tempfile.gettempdir(), f"pgp-strchive-{rel}")
+    os.makedirs(d, exist_ok=True)
+    out = []
+    for name, var in ((f"STRchive-disease-loci-{rel}.hg38.expansionhunter.json", "STRCHIVE_EH_SHA256"),
+                      (f"STRchive-loci-{rel}.json", "STRCHIVE_LOCI_SHA256")):
+        path = os.path.join(d, name)
+        if not (os.path.exists(path) and sha256(path) == env(var)):
+            url = f"https://github.com/dashnowlab/STRchive/releases/download/{rel}/{name}"
+            for i in range(3):
+                try:
+                    with urllib.request.urlopen(url, timeout=60) as r, open(path + ".part", "wb") as f:
+                        shutil.copyfileobj(r, f)
+                    break
+                except OSError as e:
+                    print(f"download {i + 1}/3 of {url} failed: {e}")
+                    time.sleep(5 * (i + 1))
+            os.replace(path + ".part", path)
+        if sha256(path) != env(var):
+            raise SystemExit(f"FAIL {name} does not have the sha256 {var} pins")
+        out.append(path)
+    return rel, out[0], out[1]
+
+
+def build_catalog():
+    """The converted catalog (list of entries) and its path, in a temp file; the
+    ranges table (--ranges) is str_ranges.tsv beside it."""
+    rel, eh, loci = files()
+    out = os.path.join(tempfile.mkdtemp(), "catalog.json")
+    rc = subprocess.run([OG, "str", "catalog", "--eh", eh, "--loci", loci, "--release", rel, "--out", out,
+                         "--ranges", os.path.join(os.path.dirname(out), "str_ranges.tsv")]).returncode
+    if rc != 0:
+        raise SystemExit("FAIL the converter failed on the pinned files")
+    return json.load(open(out)), out
 
 
 def table(path):
@@ -65,7 +133,7 @@ def table(path):
 
 
 def doc_rows():
-    """Locus -> its row of the repeat table in docs/interpreting-results.md."""
+    """Locus -> its row of the repeat table in docs/results/structural-and-repeats.md."""
     out = {}
     for line in open(DOC):
         c = [x.strip() for x in line.strip().strip("|").split("|")]
@@ -115,7 +183,7 @@ def part_generated(cat, cat_path):
     check("control: a table with one row dropped is caught", bool(range_problems(rows[1:], cat)))
     check("control: a table with one row twice is caught", bool(range_problems(rows + rows[:1], cat)))
     by = {r[0]: dict(zip(RANGE_COLUMNS, r)) for r in rows}
-    loci = test_str_catalog.files()[2]
+    loci = files()[2]
     rec = {x["id"]: x for x in json.load(open(loci))}
     same = all((num(d["intermediate_min"]), num(d["intermediate_max"]))
                == (rec[d["source_id"]].get("intermediate_min"), rec[d["source_id"]].get("intermediate_max"))
@@ -155,7 +223,7 @@ def part_subset(gen):
         check(f"{d['locus']}: a label and a next class", bool(d["label"].strip() and d["next_class"].strip()), d)
         check(f"{d['locus']}: cited to a GeneReviews chapter", bool(CITATION.match(d["citation"])), d["citation"])
         row = docs.get(d["locus"].upper(), "")
-        check(f"{d['locus']}: docs/interpreting-results.md prints {lo}-{hi} in its row",
+        check(f"{d['locus']}: docs/results/structural-and-repeats.md prints {lo}-{hi} in its row",
               bool(re.search(rf"(?<![\d-]){lo}-{hi}(?![\d-])", row)), row.strip())
         g = gen.get(d["locus"], {})
         check(f"{d['locus']}: {lo}-{hi} has a row in str_ranges.tsv and lies above its normal maximum "
@@ -205,10 +273,10 @@ def part_docs(cat):
 
 
 def main():
-    skip = test_str_catalog.og_or_skip()  # the catalog is built with og (OG)
+    skip = og_or_skip()  # the catalog is built with og (OG)
     if skip is not None:
         return skip
-    cat, cat_path = test_str_catalog.build_catalog()
+    cat, cat_path = build_catalog()
     gen = part_generated(cat, cat_path)
     part_subset(gen)
     part_docs(cat)

@@ -38,7 +38,7 @@ for r in R1 R2; do ln -f "${FQ}/${SAMPLE}_${r}.fastq.gz" "${G}/${T}/fastq/${T}_$
 run_step 01b-fastp-qc.sh "$T"
 check_step_exit 01b-fastp-qc.sh
 JSON="${G}/${T}/fastq_trimmed/${T}_fastp.json"
-FASTP=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["summary"]["after_filtering"]["total_reads"])' "$JSON" 2>/dev/null)
+FASTP=$(jq -r '.summary.after_filtering.total_reads // empty' "$JSON" 2>/dev/null)
 TRIM1=$(records "${G}/${T}/fastq_trimmed/${T}_R1.fastq.gz")
 TRIM2=$(records "${G}/${T}/fastq_trimmed/${T}_R2.fastq.gz")
 check_ge "fastp kept reads" "${FASTP:-0}" 100000

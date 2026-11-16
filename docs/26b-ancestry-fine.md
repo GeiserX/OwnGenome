@@ -90,7 +90,7 @@ The Allen Ancient DNA Resource (AADR, release v66.p1, CC0 1.0 on the [Harvard Da
 
 ## What the Script Does Internally
 
-1. Genotypes the panel's SNVs from the gVCF (`bcftools convert --gvcf2vcf`, as step 25 does) and keeps a record only with the panel's two alleles.
+1. Genotypes the panel's SNVs from the gVCF (`bcftools convert --gvcf2vcf`, as step 25 does) and keeps a record only with the panel's two alleles. Both gVCF and VCF inputs keep only `FILTER=PASS` or `.`. LowQual, RefCall and other filtered records stay missing. Unfiltered reference blocks still count as reference. This can lower the genotype and reference counts. The VCF rule requiring one reference call in five uses those filtered counts.
 2. Writes a one-person ADMIXTURE input on the SNVs ADMIXTURE uses that you have a genotype for (ADMIXTURE stops on a SNV with no genotype, so a missing one is left out), projects it on each level's frequencies, then runs the bootstrap replicates.
 3. Chooses the chromosomes to paint: 100 genotyped SNVs or more spanning 5 cM or more. RFMix stops with a segmentation fault on a span of a few cM; on a whole genome every autosome spans more than 40 cM.
 4. Phases those chromosomes with Beagle against the panel (`impute=false`, `seed=1`).

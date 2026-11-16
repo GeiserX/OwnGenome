@@ -930,7 +930,8 @@ workflow {
     }
 
     // ─── Blood groups (opt-in: bloodtype) ───────────────────────────────
-    // The antigens of assets/bloodtype_markers.tsv from the VCF, and RhD from
+    // The antigens of assets/bloodtype_markers.tsv from the VCF, its records
+    // near the markers left-aligned against the reference first, and RhD from
     // the BAM's read depth. A sample without a BAM gets [] for the depth: its
     // RhD is not determined. Equivalent to scripts/41-bloodtype.sh.
     ch_bloodtype          = Channel.empty()
@@ -945,7 +946,9 @@ workflow {
                 .join(BLOODTYPE_DEPTH.out.depth.map { meta, f -> [meta.id, f] }, remainder: true)
                 .filter { row -> row[1] != null }
                 .map { row -> [row[1], row[2], row[3], row[4] ?: []] },
-            ch_bloodtype_markers
+            ch_bloodtype_markers,
+            ch_reference,
+            ch_reference_fai
         )
         ch_bloodtype          = BLOODTYPE.out.table
         ch_bloodtype_versions = BLOODTYPE_REGIONS.out.versions.mix(BLOODTYPE_DEPTH.out.versions, BLOODTYPE.out.versions)
@@ -953,8 +956,10 @@ workflow {
 
     // ─── Archaic ancestry (opt-in: archaic, step 43) ────────────────────
     // IBDmix against the Altai and Vindija Neanderthals and the Altai
-    // Denisovan, from the VCF and the table setup.sh --archaic builds; the
-    // genes of the segments come from --hla_genes (GENCODE's gene lines).
+    // Denisovan, from the VCF, the gVCF and the table setup.sh --archaic
+    // builds; the genes of the segments come from --hla_genes (GENCODE's gene
+    // lines). The gVCF's reference blocks tell a reference match from a site
+    // without reads, so a sample without a gVCF is skipped with a warning.
     // Equivalent to scripts/43-archaic.sh.
     ch_archaic          = Channel.empty()
     ch_archaic_versions = Channel.empty()
@@ -965,8 +970,19 @@ workflow {
         if (!(params.archaic_pop in ['ALL', 'AFR', 'AMR', 'EAS', 'EUR', 'SAS'])) {
             error "--archaic_pop must be ALL, AFR, AMR, EAS, EUR or SAS, got '${params.archaic_pop}'."
         }
+        ch_vcf
+            .map { meta, _vcf, _idx -> [meta.id, meta] }
+            .join(ch_gvcf.map { meta, _gvcf, _gidx -> [meta.id, true] }, remainder: true)
+            .filter { _id, meta, has_gvcf -> meta != null && !has_gvcf }
+            .subscribe { id, _meta, _has_gvcf ->
+                log.warn "archaic skipped for ${id}: it reads the gVCF's reference blocks, and the samplesheet row has none " +
+                         "(add the gvcf and gvcf_index columns, or start from the BAM or FASTQ)."
+            }
         ARCHAIC_GENOTYPES(
-            ch_vcf.map { meta, vcf, idx -> [meta, vcf] },
+            ch_vcf
+                .map { meta, vcf, _idx -> [meta.id, meta, vcf] }
+                .join(ch_gvcf.map { meta, gvcf, _gidx -> [meta.id, gvcf] })
+                .map { _id, meta, vcf, gvcf -> [meta, vcf, gvcf] },
             Channel.value(file(params.archaic_data, checkIfExists: true))
         )
         ARCHAIC_IBDMIX(ARCHAIC_GENOTYPES.out.genotypes)

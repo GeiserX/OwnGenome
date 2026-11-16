@@ -7,7 +7,12 @@
 #   VEP_CACHE_RELEASE            must equal the major of VEP_IMAGE (release_116.0 -> 116)
 #   PYPGX_BUNDLE_VERSION         must equal the version of PYPGX_IMAGE (0.26.0--pyh... -> 0.26.0)
 #   ANNOTSV_ANNOTATIONS_VERSION  must equal major.minor of ANNOTSV_IMAGE (3.5.10--h... -> 3.5)
-#   PCGR_IMAGE, PCGR_VEP_CACHE_RELEASE and PCGR_DATA_BUNDLE must all be set
+#   PCGR_IMAGE, PCGR_VEP_CACHE_RELEASE, PCGR_DATA_BUNDLE, PCGR_DATA_BYTES and
+#                                PCGR_DATA_SHA256 must all be set, the size a byte
+#                                count and the digest 64 hex digits
+#   PCGR_DATA_MEASURED_FOR       must be "<tag of PCGR_IMAGE> <PCGR_DATA_BUNDLE>"
+#                                (2.3.2 20260620): the size and digest were measured
+#                                for that image and bundle, so either moving alone fails
 #   YLEAF_DATA_VERSION           must equal the version of YLEAF_IMAGE (3.2.1--pyh... -> 3.2.1)
 #   GENCODE_RELEASE              (scripts/lib/common.sh) must be the GENCODE release of the
 #                                Ensembl release of VEP_IMAGE, its major minus 66 (116 -> 50)
@@ -31,7 +36,7 @@ check() {
   # shellcheck disable=SC2016  # $1 and ${!v} expand in the inner shell
   vals=$(env -i bash --noprofile --norc -c '. "$1"; for v in VEP_IMAGE VEP_CACHE_RELEASE PYPGX_IMAGE PYPGX_BUNDLE_VERSION \
       ANNOTSV_IMAGE ANNOTSV_ANNOTATIONS_VERSION PCGR_IMAGE PCGR_VEP_CACHE_RELEASE PCGR_DATA_BUNDLE \
-      YLEAF_IMAGE YLEAF_DATA_VERSION VERIFYBAMID2_IMAGE; do
+      PCGR_DATA_BYTES PCGR_DATA_SHA256 PCGR_DATA_MEASURED_FOR YLEAF_IMAGE YLEAF_DATA_VERSION VERIFYBAMID2_IMAGE; do
       printf "%s=%s\n" "$v" "${!v-}"; done' _ "$1") || { echo "FAIL: cannot read $1"; return 1; }
   get() { sed -n "s/^$1=//p" <<<"$vals"; }
   tag() { local i; i=$(get "$1"); i=${i##*/}; [[ "$i" == *:* ]] && echo "${i#*:}"; }
@@ -64,15 +69,24 @@ check() {
   t=$(tag VERIFYBAMID2_IMAGE || true); t=${t%%--*}
   rule "VB2_PANEL_FILES (scripts/setup.sh) come from the VerifyBamID tag of VERIFYBAMID2_IMAGE" "$tags" "${t:+v$t}"
   local v missing=""
-  for v in PCGR_IMAGE PCGR_VEP_CACHE_RELEASE PCGR_DATA_BUNDLE; do
+  for v in PCGR_IMAGE PCGR_VEP_CACHE_RELEASE PCGR_DATA_BUNDLE PCGR_DATA_BYTES PCGR_DATA_SHA256; do
     [ -n "$(get "$v")" ] || missing="${missing} ${v}"
   done
   if [ -z "$missing" ]; then
-    echo "OK   PCGR_IMAGE, PCGR_VEP_CACHE_RELEASE and PCGR_DATA_BUNDLE are set together"
+    echo "OK   PCGR_IMAGE, PCGR_VEP_CACHE_RELEASE, PCGR_DATA_BUNDLE, PCGR_DATA_BYTES and PCGR_DATA_SHA256 are set together"
   else
     echo "FAIL PCGR variables must be set together; unset:${missing}"
     fail=1
   fi
+  if [[ "$(get PCGR_DATA_BYTES)" =~ ^[1-9][0-9]*$ ]] && [[ "$(get PCGR_DATA_SHA256)" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "OK   PCGR_DATA_BYTES is a byte count and PCGR_DATA_SHA256 a SHA-256 digest"
+  else
+    echo "FAIL PCGR_DATA_BYTES must be a byte count and PCGR_DATA_SHA256 64 lowercase hex digits: $(get PCGR_DATA_BYTES), $(get PCGR_DATA_SHA256)"
+    fail=1
+  fi
+  t=$(tag PCGR_IMAGE || true)
+  rule "PCGR_DATA_MEASURED_FOR names the PCGR_IMAGE tag and PCGR_DATA_BUNDLE of PCGR_DATA_BYTES and PCGR_DATA_SHA256" \
+    "$(get PCGR_DATA_MEASURED_FOR)" "$( [ -n "$t" ] && [ -n "$(get PCGR_DATA_BUNDLE)" ] && echo "$t $(get PCGR_DATA_BUNDLE)")"
   return "$fail"
 }
 
@@ -103,20 +117,29 @@ self_test() {
   [ "$rc" -eq 0 ] || { echo "self-test: versions.env itself failed:"; printf '%s\n' "$out"; fail=1; }
   # The values the unchanged file holds, so a legitimate bump keeps this
   # test green; each planted value differs from them.
-  local vep pypgx annotsv yleaf vb2
+  local vep pypgx annotsv yleaf vb2 pcgr
   vep=$(sed -nE 's/^VEP_IMAGE="[^"]*:release_([0-9]+).*/\1/p' "${ROOT}/versions.env")
   pypgx=$(sed -nE 's/^PYPGX_IMAGE="[^"]*:([^"]*)--.*/\1/p' "${ROOT}/versions.env")
   annotsv=$(sed -nE 's/^ANNOTSV_IMAGE="[^"]*:([0-9]+\.[0-9]+).*/\1/p' "${ROOT}/versions.env")
   yleaf=$(sed -nE 's/^YLEAF_IMAGE="[^"]*:([^"]*)--.*/\1/p' "${ROOT}/versions.env")
   vb2=$(sed -nE 's/^VERIFYBAMID2_IMAGE="[^"]*:([^"]*)--.*/\1/p' "${ROOT}/versions.env")
-  if [ -z "$vep" ] || [ -z "$pypgx" ] || [ -z "$annotsv" ] || [ -z "$yleaf" ] || [ -z "$vb2" ]; then
-    echo "self-test: cannot read VEP_IMAGE, PYPGX_IMAGE, ANNOTSV_IMAGE, YLEAF_IMAGE or VERIFYBAMID2_IMAGE from versions.env"; return 1
+  pcgr=$(sed -nE 's/^PCGR_IMAGE="[^"]*:([^"]*)".*/\1/p' "${ROOT}/versions.env")
+  if [ -z "$vep" ] || [ -z "$pypgx" ] || [ -z "$annotsv" ] || [ -z "$yleaf" ] || [ -z "$vb2" ] || [ -z "$pcgr" ]; then
+    echo "self-test: cannot read VEP_IMAGE, PYPGX_IMAGE, ANNOTSV_IMAGE, YLEAF_IMAGE, VERIFYBAMID2_IMAGE or PCGR_IMAGE from versions.env"; return 1
   fi
   expect vep-cache "s/^VEP_CACHE_RELEASE=.*/VEP_CACHE_RELEASE=\"$((vep - 1))\"/" "^FAIL VEP_CACHE_RELEASE .*: $((vep - 1)), want ${vep}\$"
   expect vep-image "s/^(VEP_IMAGE=\"[^\"]*:release_)[0-9]+/\\1$((vep + 1))/" "^FAIL VEP_CACHE_RELEASE .*: ${vep}, want $((vep + 1))\$"
   expect pypgx 's/^PYPGX_BUNDLE_VERSION=.*/PYPGX_BUNDLE_VERSION="9.9.9"/' "^FAIL PYPGX_BUNDLE_VERSION .*: 9\\.9\\.9, want ${pypgx//./\\.}\$"
   expect annotsv 's/^ANNOTSV_ANNOTATIONS_VERSION=.*/ANNOTSV_ANNOTATIONS_VERSION="0.1"/' "^FAIL ANNOTSV_ANNOTATIONS_VERSION .*: 0\\.1, want ${annotsv//./\\.}\$"
   expect pcgr '/^PCGR_DATA_BUNDLE=/d' '^FAIL PCGR variables must be set together; unset: PCGR_DATA_BUNDLE'
+  expect pcgr-sha256 '/^PCGR_DATA_SHA256=/d' '^FAIL PCGR variables must be set together; unset: PCGR_DATA_SHA256'
+  expect pcgr-bytes 's/^PCGR_DATA_BYTES=.*/PCGR_DATA_BYTES="7.6 GB"/' '^FAIL PCGR_DATA_BYTES must be a byte count'
+  expect pcgr-digest 's/^PCGR_DATA_SHA256=.*/PCGR_DATA_SHA256="0123"/' '^FAIL PCGR_DATA_BYTES must be a byte count and PCGR_DATA_SHA256 64'
+  # A new bundle date, or a new image, without a new size and digest.
+  expect pcgr-bundle-alone 's/^PCGR_DATA_BUNDLE=.*/PCGR_DATA_BUNDLE="29991231"/' \
+    "^FAIL PCGR_DATA_MEASURED_FOR .*: ${pcgr//./\\.} [0-9]+, want ${pcgr//./\\.} 29991231\$"
+  expect pcgr-image-alone 's/^(PCGR_IMAGE="[^"]*:)[^"]*/\19.9.9/' \
+    "^FAIL PCGR_DATA_MEASURED_FOR .*: ${pcgr//./\\.} [0-9]+, want 9\\.9\\.9 [0-9]+\$"
   expect yleaf 's/^YLEAF_DATA_VERSION=.*/YLEAF_DATA_VERSION="9.9.9"/' "^FAIL YLEAF_DATA_VERSION .*: 9\\.9\\.9, want ${yleaf//./\\.}\$"
   expect gencode "s/^(GENCODE_RELEASE=)[^ ]*/\\1$((vep - 67))/" "^FAIL GENCODE_RELEASE .*: $((vep - 67)), want $((vep - 66))\$" common
   expect gencode-vep "s/^(VEP_IMAGE=\"[^\"]*:release_)[0-9]+/\\1$((vep + 1))/" "^FAIL GENCODE_RELEASE .*: $((vep - 66)), want $((vep - 65))\$"

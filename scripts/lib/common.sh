@@ -632,22 +632,110 @@ install_vep_cache() {
   url=$(vep_cache_url "$rel")
   tarball="${dir}/$(basename "$url")"
   final="${dir}/homo_sapiens/${rel}_GRCh38"
+  if [ -f "${final}/info.txt" ]; then
+    echo "[OK] VEP ${rel} cache already present."
+    return 0
+  fi
   if [ -e "$final" ]; then
     echo "ERROR: ${final} exists but has no info.txt (an interrupted extraction?)." >&2
     echo "  Remove it and run again." >&2
     return 1
   fi
   mkdir -p "${dir}/homo_sapiens"
-  fetch "$url" "$tarball" sum "$(dirname "$url")/CHECKSUMS" || return 1
+  # fetch publishes the tarball only after its check, so one already here is
+  # whole: an install stopped during extraction unpacks it again.
+  [ -f "$tarball" ] || fetch "$url" "$tarball" sum "$(dirname "$url")/CHECKSUMS" || return 1
   echo "  Extracting $(basename "$tarball")..."
+  rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX")
   if ! tar xzf "$tarball" -C "$tmp" || [ ! -f "${tmp}/homo_sapiens/${rel}_GRCh38/info.txt" ]; then
     rm -rf "$tmp"
     echo "ERROR: could not unpack ${tarball} into a ${rel}_GRCh38 cache." >&2
     return 1
   fi
-  mv "${tmp}/homo_sapiens/${rel}_GRCh38" "$final"
+  if ! mv "${tmp}/homo_sapiens/${rel}_GRCh38" "$final"; then
+    rm -rf "$tmp"
+    return 1
+  fi
   rm -rf "$tmp" "$tarball"
+}
+
+# clinical_disk_ok DIR PEAK_GB LABEL [ARCHIVE]: GB as du counts them
+# (2^30 bytes), plus a 5 GB margin.
+# Use the destination's filesystem, creating the directory when it is new.
+# Allocated blocks of ARCHIVE, or of its interrupted ARCHIVE.part, are already
+# part of the peak, so a resumed download needs only the rest.
+# An unreadable df is a failed preflight, never permission to fill the disk.
+clinical_disk_ok() {
+  local dir=$1 peak=$2 label=$3 archive=${4:-} free have=0 f
+  mkdir -p "$dir" || return 1
+  # A stopped extraction is disposable. Reclaim it before measuring space,
+  # otherwise its staging tree can prevent every retry from reaching cleanup.
+  rm -rf "${dir}"/.extract.* || return 1
+  free=$(df -Pk "$dir" 2>/dev/null | awk 'NR == 2 {print $4}') || free=""
+  case "$free" in
+    ''|*[!0-9]*) echo "[WARN] Cannot read free space for ${label}; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; return 1 ;;
+  esac
+  if [ -n "$archive" ]; then
+    for f in "$archive" "${archive}.part"; do
+      if [ -f "$f" ]; then
+        have=$(du -k "$f" 2>/dev/null | awk 'NR == 1 {print $1}') || have=""
+        case "$have" in
+          ''|*[!0-9]*) echo "[WARN] Cannot read allocated space for ${label}; retry the clinical install."; return 1 ;;
+        esac
+        break
+      fi
+    done
+  fi
+  if [ "$(( free + have ))" -lt "$(( (peak + 5) * 1048576 ))" ]; then
+    echo "[WARN] Skipping ${label}: needs ${peak} GB peak plus a 5 GB margin; $(awk -v k="$free" 'BEGIN {printf "%.1f", k / 1048576}') GB free."
+    echo "  Install later: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
+    return 1
+  fi
+}
+
+# install_pcgr_bundle DIR: check the pinned archive before extracting into a
+# staging tree. Upstream ships data/ at the root; CPSR reads BUNDLE/data/.
+# The shared fetch helper resumes interrupted transfers and deletes bad ones.
+# shellcheck disable=SC2154  # PCGR_DATA_BUNDLE and PCGR_DATA_SHA256 are pins in versions.env
+install_pcgr_bundle() {
+  local dir=$1 url tarball tmp
+  if [ -d "${dir}/${PCGR_DATA_BUNDLE}/data" ]; then
+    echo "[OK] PCGR/CPSR ${PCGR_DATA_BUNDLE} bundle already present."
+    return 0
+  fi
+  echo "PCGR/CPSR reference data includes third-party databases with their own terms:"
+  echo "  https://sigven.github.io/pcgr/articles/annotation_resources.html"
+  echo "  Review those terms before use; --no-clinical-data skips this download."
+  url="https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
+  tarball="${dir}/${url##*/}"
+  mkdir -p "$dir" || return 1
+  # A retained archive may have changed since fetch checked it. Verify it
+  # against the pin again before reuse, replacing a mismatch through fetch.
+  if [ -f "$tarball" ] && ! _fetch_check sha256 "$PCGR_DATA_SHA256" "$tarball" "$tarball" "${url##*/}"; then
+    echo "[WARN] Removing PCGR/CPSR archive that failed its checksum; downloading it again."
+    rm -f "$tarball" || return 1
+  fi
+  [ -f "$tarball" ] || fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
+  rm -rf "${dir}"/.extract.*
+  tmp=$(mktemp -d "${dir}/.extract.XXXXXX") || return 1
+  if ! tar xzf "$tarball" -C "$tmp" || [ ! -d "${tmp}/data/grch38" ]; then
+    rm -rf "$tmp"
+    echo "ERROR: could not unpack ${tarball} into PCGR data/grch38." >&2
+    return 1
+  fi
+  # An incomplete destination is never mistaken for a completed bundle.
+  if [ -e "${dir}/${PCGR_DATA_BUNDLE}" ]; then
+    rm -rf "$tmp"
+    echo "ERROR: ${dir}/${PCGR_DATA_BUNDLE} exists without data; remove it and retry." >&2
+    return 1
+  fi
+  if ! mv "$tmp" "${dir}/${PCGR_DATA_BUNDLE}"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+  rm -f "$tarball"
+  echo "[OK] PCGR/CPSR ${PCGR_DATA_BUNDLE} bundle installed."
 }
 
 # lock_acquire DIR / lock_release DIR: a lock shared by concurrent runs. The

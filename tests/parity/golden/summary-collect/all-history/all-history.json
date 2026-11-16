@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-16 00:31 UTC",
+ "generated_utc": "2026-11-16 16:16 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -14695,6 +14695,17 @@
       "ancestry": "all",
       "note": ".",
       "pmids": "1"
+     },
+     {
+      "rsid": "rs3",
+      "gene": "X",
+      "trait": "x",
+      "genotype": "C/T",
+      "status": "low_gq",
+      "reading": "A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
      }
     ],
     "apoe": [
@@ -14713,6 +14724,7 @@
     "called": 3,
     "not_covered": 1,
     "other_allele": 1,
+    "low_gq": 1,
     "rules": [
      {
       "rule": "TAS2R38",

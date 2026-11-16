@@ -72,6 +72,7 @@ clinical-filter-mane-and-quality-3-modules	shard	8	clinical-filter-mane-and-qual
 clinvar-clip-check-1	shard	8	-
 clinvar-combined-allele-1	shard	25	-
 clinvar-cpsr-quality-1	shard	5	clinvar-clip-check-1
+clinvar-tier-allele-match	shard	6	-
 cn-engine-1-parity	shard	33	-
 cn-guard-1-mapq0	shard	5	-
 cn-intervals-1-catalog	shard	0	-
@@ -180,3 +181,4 @@ y-tree-current-1-placement	shard	21	nextflow-hardening-2-nf
 rust-z2e-readers	shard	1	-
 rust-c2b-traits	shard	2	-
 qc-3-cram-checksum	shard	34	-
+gvcf-pass-gate	shard	1	-
