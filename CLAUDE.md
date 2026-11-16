@@ -138,7 +138,7 @@ User's FASTQ/BAM/VCF
 6. Add the module to the step list (a `plan` call) in `scripts/run-all.sh` (its `--tools` name and database parameter), so a default run includes it
 7. Add a row for the image to `tests/smoke/commands.tsv`: a real command on the fixture and a check on what it wrote (an image with no row fails `container-test.yml`)
 8. Update `docs/00-reference-setup.md` if new reference data needed
-9. Update `docs/interpreting-results.md` if output needs explanation
+9. Update the chapter page under `docs/results/` (listed in `docs/interpreting-results.md`) if output needs explanation
 10. Test on at least one sample before committing
 
 ### Bumping a Tool
@@ -185,7 +185,8 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - **BWA-MEM2 index files**: Created alongside FASTA. Check for `.bwt.2bit.64`.
 - **ALIGN_DIR env var**: All alternative scripts accept `ALIGN_DIR=aligned_bwamem2`.
 - **TIDDIT --skip_assembly auto-detected**: Checks for BWA index files.
-- **benchmark-variants.sh**: Pairwise mode (auto-discovers vcf*/ dirs) and truth set mode (hap.py).
+- **benchmark-variants.sh**: Pairwise mode and truth set mode (hap.py). It compares `vcf/`, Strelka2's `vcf_strelka2/results/variants/variants.vcf.gz` and `<sample>.vcf.gz` in every `vcf_*/` dir (Clair3 included), the same glob `run-all.sh` uses for `BENCHMARK=true`. `comparison.tsv` has the allele-level Jaccard and `GT_Concordant`/`GT_Concordance`, the shared sites whose genotypes also agree.
+- **03a runs without BQSR** and with `-ERC NONE`: not the full GATK Best Practices workflow, so its calls can differ from a clinical lab's GATK calls.
 
 ### bcftools
 - **`bcftools sort` requires `##contig` headers** — fails on VCFs without them. Inject from reference `.fai`.

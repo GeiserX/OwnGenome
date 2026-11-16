@@ -35,7 +35,6 @@ locityper-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/locityper_rep
 mocha-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/mocha_report.py	python3	mocha report
 mei-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/mei_report.py	python3	mei report
 mei-annotsv-input	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/mei_report.py	sh -c 'p=$0; for a; do shift; [ "$a" = --out ] && a=--annotsv-input; set -- "$@" "$a"; done; exec python3 "$p" "$@"'	mei annotsv-input
-viral-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/viral_report.py	python3	viral report
 y-str-bed	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" bed "$@"'	y str-bed
 y-str-report	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/ystr_report.py	sh -c 'exec python3 "$0" report "$@"'	y str-report
 exomiser	9885cc594d7b4d3295a086599cdcb2946263d899	file:bin/exomiser_report.py	python3	exomiser
@@ -96,3 +95,4 @@ dev-smoke-catalog	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:scripts/ci/image
 dev-smoke-check	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:tests/smoke/commands.tsv	sh -c 'exec bash ./oracle.sh check "$0" "$@"'	dev smoke check
 traits	669a8196cf4c377200f9b4af9c235ef85fb774a1	file:bin/traits_report.py	bash ./oracle.sh	traits
 roh-summary	7c1470bc50933f48a1a0dde3c0e0b2b87bc48718	file:scripts/11-roh-analysis.sh	sh ./oracle.sh	roh summary
+report-render	1ec630690e63796b4410d23ec65768200adb8dc0	file:bin/render_report.py	sh ./oracle.sh	report render

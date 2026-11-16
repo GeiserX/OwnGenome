@@ -18,7 +18,7 @@
 | **CPU** | 4 cores | 8-16 cores | `run-all.sh` runs DeepVariant with at most 8 shards, fewer when `--max_cpus` is lower; more cores run other steps beside it ([CPU](hardware-requirements.md#cpu-requirements)) |
 | **RAM** | 16 GB | 32 GB | Every container has a hard memory limit; the 8-CPU steps ask for 32 GB, capped at the machine's RAM |
 | **Disk** | 500 GB free from a BAM, about 700 GB from FASTQ | 1 TB+ | See [detailed breakdown](hardware-requirements.md#disk-space-breakdown) |
-| **Internet** | Broadband | 100+ Mbps | ~70-75 GB core downloads + ~175 GB optional annotation databases |
+| **Internet** | Broadband | 100+ Mbps | ~73-78 GB core downloads + ~175 GB optional annotation databases |
 | **OS** | Linux (amd64) | Ubuntu 22.04+ | macOS/ARM works but slower (see below) |
 
 > **Disk space is the #1 surprise.** A single 30X WGS sample produces 60-90 GB of FASTQ, 80-120 GB of BAM, plus reference genomes and databases. See [docs/hardware-requirements.md](hardware-requirements.md) for the full breakdown.
@@ -46,10 +46,16 @@ Every analysis tool runs inside Docker: no conda environments, no Python version
 | PCGR/CPSR data bundle + VEP 115 cache | ~31 GB | Step 17 (cancer predisposition) |
 | Docker images (all steps) | ~10-15 GB | All steps |
 | Annotation databases (CADD, SpliceAI, REVEL, AlphaMissense) | ~175 GB | Steps 30-31 (optional) |
-| **Total one-time setup (core)** | **~70-75 GB** | |
+| **Total one-time setup (core)** | **~73-78 GB** | |
 | **Total with annotation enrichment** | **~250 GB** | |
 
 See [docs/00-reference-setup.md](00-reference-setup.md) for download instructions.
+
+Plain setup includes VEP 116, the PCGR/CPSR bundle and VEP 115: about 57 GB of clinical downloads and 65 GB unpacked.
+Allow 1 to 3 hours. Setup checks each install's disk peak plus a 5 GB margin and warns if it skips one.
+Use `./scripts/setup.sh --no-clinical-data "$GENOME_DIR"` to opt out.
+Use `./scripts/setup.sh --clinical-data "$GENOME_DIR"` to add or retry only these data later.
+`run-all.sh` skips steps whose data are still missing; inspect its plan and setup warnings.
 
 ## Platform Notes
 
@@ -120,7 +126,7 @@ Then, once per machine and once per sample:
 
 ```bash
 export GENOME_DIR=/path/to/your/data
-./scripts/setup.sh $GENOME_DIR             # reference, ClinVar, small data files, images and og (once)
+./scripts/setup.sh $GENOME_DIR             # reference, ClinVar, VEP caches, CPSR bundle, images and og (once)
 ./scripts/validate-setup.sh your_name      # what is installed and what is missing
 ./scripts/run-all.sh your_name male        # or female: sets the chrX/chrY ploidy and the sex check
 ```
