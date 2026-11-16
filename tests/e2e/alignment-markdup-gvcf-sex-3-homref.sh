@@ -17,30 +17,8 @@ check "gVCF index exists" nonempty "${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz.tbi"
 
 # --- five hom-ref sites on the chr20 slice, from the truth set -------------------
 SITES="${CASE_TMP}/homref_sites.tsv"
-python3 - "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" \
-  "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" > "$SITES" <<'PY'
-import gzip, sys
-bed, truth, fasta = sys.argv[1:4]
-iv = [tuple(int(x) for x in l.split()[1:3]) for l in open(bed) if l.startswith("chr20\t")]
-var = [int(l.split("\t")[1]) for l in gzip.open(truth, "rt") if l.startswith("chr20\t")]
-fai = {l.split()[0]: [int(x) for x in l.split()[1:5]] for l in open(fasta + ".fai")}
-length, offset, bases, width = fai["chr20"]
-def base(pos):
-    i = pos - 1
-    with open(fasta, "rb") as f:
-        f.seek(offset + (i // bases) * width + i % bases)
-        return f.read(1).decode().upper()
-out, p = [], 10_050_000
-while len(out) < 5 and p < 10_450_000:
-    inside = any(s + 200 < p <= e - 200 for s, e in iv)
-    clear = all(abs(v - p) > 200 for v in var)
-    b = base(p)
-    if inside and clear and b in "ACGT":
-        out.append((p, b))
-    p += 7_919
-for p, b in out:
-    print(f"chr20\t{p}\t{b}")
-PY
+"${REPO}/bin/og" dev fixture prs-sites "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" \
+  "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" 5 | awk -F'\t' -v OFS='\t' '{print "chr20", $2, $3}' > "$SITES"
 cat "$SITES"
 check_eq "hom-ref sites chosen on the chr20 slice" "$(wc -l < "$SITES" | tr -d ' ')" 5
 

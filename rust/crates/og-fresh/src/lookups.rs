@@ -223,6 +223,77 @@ pub fn pcgr(c: &Ctx<'_>) -> Lookup<Found> {
     })
 }
 
+/// Verify a pinned cache URL and its entry in Ensembl's small CHECKSUMS file.
+/// Large archives are only read with HEAD, never downloaded by freshness.
+fn cache_download(c: &Ctx<'_>, pin: &str, label: &str) -> Lookup<Found> {
+    let release = c.pins.need(pin)?;
+    let url = vep_cache_template(c.common)?.replace("%s", release);
+    c.fetch.head(&url)?;
+    let (base, name) = url.rsplit_once('/').expect("cache URL has a basename");
+    let checksums = c.fetch.text(&format!("{base}/CHECKSUMS"))?;
+    let listed = checksums.lines().any(|line| {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        fields.len() == 3
+            && fields[2] == name
+            && fields[0].parse::<u16>().is_ok()
+            && fields[1].parse::<u64>().is_ok_and(|n| n > 0)
+    });
+    if !listed {
+        return failed(format!("{name} has no usable entry in {base}/CHECKSUMS"));
+    }
+    Ok(Found {
+        row: row(
+            label,
+            release.into(),
+            "URL live; CHECKSUMS entry present".into(),
+            false,
+            String::new,
+        ),
+        upstream: Upstream::ReportOnly,
+    })
+}
+
+/// The release used by steps 13, 30, 23 and 31.
+pub fn vep_download(c: &Ctx<'_>) -> Lookup<Found> {
+    cache_download(c, "VEP_CACHE_RELEASE", "VEP cache download")
+}
+
+/// The separate release used inside CPSR's image.
+pub fn cpsr_download(c: &Ctx<'_>) -> Lookup<Found> {
+    cache_download(c, "PCGR_VEP_CACHE_RELEASE", "CPSR cache download")
+}
+
+/// The pinned PCGR bundle URL and size. SHA-256 is checked by setup, which
+/// downloads the file; freshness deliberately reads only its headers.
+pub fn pcgr_download(c: &Ctx<'_>) -> Lookup<Found> {
+    let bundle = c.pins.need("PCGR_DATA_BUNDLE")?;
+    let expected = c
+        .pins
+        .need("PCGR_DATA_BYTES")?
+        .parse::<u64>()
+        .map_err(|_| LookupError::Shape("PCGR_DATA_BYTES is not a byte count".into()))?;
+    let url = format!("https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.{bundle}.grch38.tgz");
+    let headers = c.fetch.head(&url)?;
+    let size = headers
+        .get("Content-Length")
+        .and_then(|s| s.parse::<u64>().ok());
+    if expected == 0 || size != Some(expected) {
+        return failed(format!(
+            "{url}: Content-Length {size:?}, expected {expected}"
+        ));
+    }
+    Ok(Found {
+        row: row(
+            "PCGR bundle download",
+            bundle.into(),
+            format!("URL live; {expected} bytes"),
+            false,
+            String::new,
+        ),
+        upstream: Upstream::ReportOnly,
+    })
+}
+
 pub fn pypgx(c: &Ctx<'_>) -> Lookup<Found> {
     let image_tag = tag_of(c.pins, "PYPGX_IMAGE")?;
     let held = image_tag.split("--").next().unwrap_or("").to_owned();
@@ -667,6 +738,9 @@ pub type LookupFn = fn(&Ctx<'_>) -> Lookup<Found>;
 pub const DATABASES: &[(&str, LookupFn)] = &[
     ("Ensembl / VEP cache", ensembl),
     ("PCGR / CPSR", pcgr),
+    ("VEP cache download", vep_download),
+    ("CPSR cache download", cpsr_download),
+    ("PCGR bundle download", pcgr_download),
     ("pypgx", pypgx),
     ("PharmCAT", pharmcat),
     ("IPD-IMGT/HLA", imgt),

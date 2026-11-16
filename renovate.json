@@ -193,7 +193,7 @@
       "versioning": "regex:^release_(?<major>\\d+)\\.(?<minor>\\d+)$"
     },
     {
-      "description": "PCGR/CPSR: every update waits for approval on the dependency dashboard, because each release reads its own reference bundle and VEP cache (PCGR_DATA_BUNDLE and PCGR_VEP_CACHE_RELEASE in versions.env). The image comes from ghcr.io/sigven/pcgr (Docker Hub's sigven/pcgr stops at 2.2.5); the image matcher reads ghcr.io like any other registry. allowedVersions keeps the release tags (x.y.z): ghcr also carries development builds (2.3.2.9006) and .singularity tags.",
+      "description": "PCGR/CPSR: every update waits for approval on the dependency dashboard, because each release reads its own reference bundle and VEP cache (PCGR_DATA_BUNDLE and PCGR_VEP_CACHE_RELEASE in versions.env). Renovate never moves the bundle: no manager matches PCGR_DATA_BUNDLE, PCGR_DATA_BYTES or PCGR_DATA_SHA256, because the server publishes no checksum and the digest has to be measured from a full download. So an approved image PR fails scripts/ci/check-coupled-versions.sh until a person moves the bundle date, the VEP cache release, the size, the digest and PCGR_DATA_MEASURED_FOR in the same PR. The image comes from ghcr.io/sigven/pcgr (Docker Hub's sigven/pcgr stops at 2.2.5); the image matcher reads ghcr.io like any other registry. allowedVersions keeps the release tags (x.y.z): ghcr also carries development builds (2.3.2.9006) and .singularity tags.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["ghcr.io/sigven/pcgr"],
       "allowedVersions": "/^\\d+\\.\\d+\\.\\d+$/",
