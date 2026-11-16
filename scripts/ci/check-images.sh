@@ -104,7 +104,9 @@ self_test() {
   trap "rm -rf '$tmp'" EXIT
   copy() {
     mkdir -p "${tmp}/$1"
-    (cd "$ROOT" && git ls-files -z | xargs -0 tar -cf -) | tar -xf - -C "${tmp}/$1"
+    # One tar reads the whole list: xargs would split a long list over two
+    # tars, and the reading tar stops after the first archive.
+    (cd "$ROOT" && git ls-files -z | tar --null -T - -cf -) | tar -xf - -C "${tmp}/$1"
     cp "${BASH_SOURCE[0]}" "${tmp}/$1/scripts/ci/check-images.sh"   # this script, even before it is committed
   }
   # expect NAME PATTERN: the check of copy NAME exits 1 and prints PATTERN.
