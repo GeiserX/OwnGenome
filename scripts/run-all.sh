@@ -239,8 +239,11 @@ else KNOWN+=" chip"; fi
 # Step 42 reads the gVCF only: DeepVariant writes one for a FASTQ or BAM row, a BAM+VCF row has one when it lies beside the VCF.
 plan "42 Traits panel" traits "$([ -z "$fv" ] || [ -n "$GROW" ] || echo "no gVCF: ${GV#"$G"/}")" || true
 # Step 43 against the table setup.sh --archaic builds (DONE is written last); the genes of its segments come from GENCODE.
+# It reads the gVCF too (a site with no call is the reference only inside a reference block): with the table installed,
+# a row that starts from a VCF without one beside it is skipped, as for step 42.
 AR=${ARCHAIC_DIR:-${G}/reference/archaic/${ARCHAIC_DATA_VERSION}}
-plan "43 Archaic ancestry (IBDmix)" archaic "$(if [ "$AR" = none ]; then echo 'ARCHAIC_DIR=none'; else need "${AR}/DONE"; fi)" \
+plan "43 Archaic ancestry (IBDmix)" archaic "$(if [ "$AR" = none ]; then echo 'ARCHAIC_DIR=none'
+  elif [ -e "${AR}/DONE" ] && [ -n "$fv" ] && [ -z "$GROW" ]; then echo "no gVCF: ${GV#"$G"/}"; else need "${AR}/DONE"; fi)" \
   && NF+=(--archaic_data "$AR" --archaic_pop "${ARCHAIC_POP:-ALL}") && { [[ " ${NF[*]} " == *" --hla_genes "* ]] || [ ! -s "$GT" ] || NF+=(--hla_genes "$GT"); }
 # Step 44 (ancient populations) is opt-in and listed only when TOOLS names it; it reads the gVCF and the panel
 # setup.sh --ancient-panel builds (DONE is written last). ANCIENT_PANEL_DIR picks another panel.
