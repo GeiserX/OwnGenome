@@ -128,6 +128,11 @@ fn per_base_limit(depths: &[(u64, u64)]) -> f64 {
     hi
 }
 
+/// A limit as the depth table writes it: rounded up at the third decimal.
+fn up3(l: f64) -> String {
+    fixed((l * 1000.0 - 1e-9).ceil() / 1000.0, 3)
+}
+
 /// Every base of `start..end` (0-based, half-open) at `depth`.
 fn even(contig: &'static str, start: u64, end: u64, depth: u64) -> Vec<(&'static str, u64, u64)> {
     (start + 1..=end).map(|p| (contig, p, depth)).collect()
@@ -169,7 +174,7 @@ fn red_first_a_gene_with_a_fifth_of_its_bases_unread_has_no_limit() {
     assert_eq!(r.cell("DNMT3A", "assessable_fraction"), "0.800");
     let lim33 = detection_limit(33.0).unwrap().unwrap();
     assert_eq!(r.cell("TET2", "status"), "covered");
-    assert_eq!(r.cell("TET2", "detection_limit_vaf"), fixed(lim33, 3));
+    assert_eq!(r.cell("TET2", "detection_limit_vaf"), up3(lim33));
     assert_eq!(r.cell("TET2", "callable_fraction"), "1.000");
     assert_eq!(r.cell("TET2", "assessable_fraction"), "1.000");
     assert!(
@@ -192,7 +197,7 @@ fn red_first_a_30x_run_with_uneven_depth_states_the_higher_vaf() {
     assert!(want > at_mean + 0.01, "{want} vs {at_mean}");
     assert_eq!(r.cell("DNMT3A", "mean_depth"), "30.0");
     assert_eq!(r.cell("DNMT3A", "status"), "covered");
-    assert_eq!(r.cell("DNMT3A", "detection_limit_vaf"), fixed(want, 3));
+    assert_eq!(r.cell("DNMT3A", "detection_limit_vaf"), up3(want));
     assert!(
         r.stdout.contains(&format!(
             "a clone with a VAF of about {}% or more",
@@ -211,7 +216,11 @@ fn uniform_30x_states_the_binomial_limit_and_says_what_it_is() {
         &even("chr2", 1000, 1500, 30),
     );
     assert_eq!(r.cell("DNMT3A", "status"), "covered");
-    assert_eq!(r.cell("DNMT3A", "detection_limit_vaf"), "0.137");
+    // The limit at 30x is 0.13729; 0.137 would fall short of 8 in 10 at
+    // 30x, where every base is still counted assessable. The table writes
+    // the limit rounded up, so the shares and the written figure agree.
+    assert_eq!(r.cell("DNMT3A", "detection_limit_vaf"), "0.138");
+    assert!(p_at_least(3, 30, 0.137) < 0.8 && p_at_least(3, 30, 0.138) >= 0.8);
     assert_eq!(r.cell("DNMT3A", "assessable_fraction"), "1.000");
     assert_eq!(r.cell("TET2", "status"), "not_on_reference");
     assert_eq!(r.cell("TET2", "callable_fraction"), "");
@@ -257,7 +266,7 @@ fn red_first_a_base_two_genes_share_is_read_for_both() {
         &[("chr2", 1000, 1500, "DNMT3A"), ("chr2", 1400, 1600, "TET2")],
         &even("chr2", 1000, 1600, 33),
     );
-    let lim33 = fixed(detection_limit(33.0).unwrap().unwrap(), 3);
+    let lim33 = up3(detection_limit(33.0).unwrap().unwrap());
     assert_eq!(r.cell("DNMT3A", "mean_depth"), "26.4");
     assert_eq!(r.cell("DNMT3A", "status"), "covered");
     assert_eq!(r.cell("DNMT3A", "detection_limit_vaf"), lim33);

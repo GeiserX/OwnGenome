@@ -31,7 +31,10 @@
 //! - `too_shallow`: no base has [`MIN_ALT_READS`] reads;
 //! - `not_on_reference`: no coding base on the reference.
 //!
-//! The stated limit of the run is the median of the covered genes' limits.
+//! A limit is written rounded up at the third decimal, so a clone at the
+//! written VAF reaches the power. The stated limit of the run is the median
+//! of the covered genes' written limits, the figure every reader of the
+//! table takes, and the shares are counted at that same figure.
 //! Each gene also gets the share of its coding bases with
 //! [`CALLABLE_DEPTH`] reads or more, and the share where a clone at the
 //! stated limit shows its reads.
@@ -677,7 +680,11 @@ pub fn depth_rows(
             }),
         ));
     }
-    let stated = stated_limit(per_gene.iter().filter_map(|(_, g)| g.as_ref()?.limit));
+    let stated = stated_limit(
+        per_gene
+            .iter()
+            .filter_map(|(_, g)| g.as_ref()?.limit.map(written_limit)),
+    );
 
     let mut out = Vec::with_capacity(per_gene.len());
     for (r, gd) in per_gene {
@@ -714,13 +721,21 @@ pub fn depth_rows(
             info.chrom,
             gd.n.to_string(),
             fixed(gd.mean, 1),
-            gd.limit.map_or(String::new(), |l| fixed(l, 3)),
+            gd.limit
+                .map_or(String::new(), |l| fixed(written_limit(l), 3)),
             status.to_owned(),
             gd.share(|d| d >= CALLABLE_DEPTH),
             stated.map_or(String::new(), |f| gd.share(|d| readable_at(d, f))),
         ]);
     }
     Ok(out)
+}
+
+/// A limit as the depth table writes it: rounded up at the third decimal,
+/// so the power at the written VAF is [`DETECT_POWER`] or more. The `1e-9`
+/// keeps a limit that is already a whole thousandth from moving up by one.
+fn written_limit(l: f64) -> f64 {
+    (l * 1000.0 - 1e-9).ceil() / 1000.0
 }
 
 /// The stated limit of a run: the median of the covered genes' limits
