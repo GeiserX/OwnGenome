@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # setup.sh — One-stop setup: download references, pull Docker images, validate
 # Usage: ./scripts/setup.sh <genome_dir>
+#        ./scripts/setup.sh --no-clinical-data <genome_dir>
+#        ./scripts/setup.sh --clinical-data <genome_dir>
 #        ./scripts/setup.sh --pull-only      pull the Docker images and exit
 #        ./scripts/setup.sh --og             put OwnGenome's og binaries in bin/.og
 #                                            (Linux, and macOS for a live-site host):
@@ -83,8 +85,8 @@
 #      checkout of pgsc_calc and the Nextflow plugin it needs, so step 25 and
 #      the PRS process run without the network
 #
-# The VEP cache (~26 GB, --vep-cache) and PCGR ref data (~7 GB) are
-# downloaded separately because they take a long time.
+#   7. VEP 116, PCGR/CPSR data and VEP 115 (~57 GB download, ~65 GB unpacked).
+#      --no-clinical-data skips them; --clinical-data installs only these three.
 #
 # Every download goes through fetch (scripts/lib/common.sh): it is written to
 # <file>.part, checked, and only then renamed, so a file that exists is whole.
@@ -100,6 +102,9 @@
 # existing samples.
 set -euo pipefail
 
+# Keep an explicit checksum override for fixture tests and verified mirrors.
+PCGR_SHA_OVERRIDE=${PCGR_DATA_SHA256:-}
+
 # The usage text below names data releases, so read them before it prints.
 # shellcheck source=../versions.env
 . "$(dirname "$0")/../versions.env"
@@ -108,11 +113,18 @@ PULL_ONLY=false
 REFRESH=""
 SAMPLE_QC_ONLY=false
 OPT_IN=""
+CLINICAL_DATA=true
 case "${1:-}" in
   --og)
     exec "$(dirname "$0")/../rust/og.sh" install ;;
   --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--archaic)
     OPT_IN=${1#--}
+    shift ;;
+  --clinical-data)
+    OPT_IN=clinical-data
+    shift ;;
+  --no-clinical-data)
+    CLINICAL_DATA=false
     shift ;;
   --pull-only)
     PULL_ONLY=true
@@ -133,6 +145,8 @@ esac
 GENOME_DIR=${1:-${GENOME_DIR:-""}}
 if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "Usage: $0 <genome_dir>"
+  echo "       $0 --no-clinical-data <genome_dir>"
+  echo "       $0 --clinical-data <genome_dir>"
   echo "       $0 --pull-only"
   echo "       $0 --og"
   echo "       $0 --refresh clinvar <genome_dir>"
@@ -141,6 +155,8 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo ""
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
+  echo "  --no-clinical-data  Skip both VEP caches and the PCGR/CPSR bundle."
+  echo "  --clinical-data     Install only those three downloads for an existing setup."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
   echo "  --og          Put OwnGenome's og binaries in bin/.og, for Linux and for a macOS live-site host"
   echo "                (built from rust/, or a release's) and exit."
@@ -211,6 +227,7 @@ export GENOME_DIR
 # Image tags, data versions and the helpers (run_in, fetch, pipeline_images)
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
+if [ -n "$PCGR_SHA_OVERRIDE" ]; then PCGR_DATA_SHA256=$PCGR_SHA_OVERRIDE; fi
 
 # NCBI's GRCh38 analysis set without ALT contigs: chr1-22, X, Y, M, the
 # unplaced and unlocalized scaffolds and chrEBV, 195 sequences. NCBI lists the
@@ -2093,12 +2110,47 @@ install_vep_cache_opt_in() {
     echo "[OK] VEP ${VEP_CACHE_RELEASE} cache already present: ${dir}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
     return 0
   fi
+  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" "${dir}/$(basename "$(vep_cache_url "$VEP_CACHE_RELEASE")")" || return 1
   echo "Installing the VEP ${VEP_CACHE_RELEASE} cache: ~26 GB download, ~30 GB unpacked, both on disk until it ends."
   if ! install_vep_cache "$dir" "$VEP_CACHE_RELEASE"; then
     echo "[WARN] Could not install the VEP ${VEP_CACHE_RELEASE} cache. Run this command again: the download resumes."
     return 1
   fi
   echo "[OK] VEP ${VEP_CACHE_RELEASE} cache: ${dir}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
+}
+
+# Each missing item gets its own disk check. A skipped or failed item must
+# not prevent the smaller bundle or the other cache from installing; it makes
+# the return status 1.
+install_clinical_data() {
+  local dir="${GENOME_DIR}/vep_cache" rel peak missing=0
+  echo "Clinical data: about 57 GB to download, 65 GB unpacked; allow 1 to 3 hours."
+  for rel in "$VEP_CACHE_RELEASE" bundle "$PCGR_VEP_CACHE_RELEASE"; do
+    if [ "$rel" = bundle ]; then
+      [ ! -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] || { echo "[OK] PCGR/CPSR bundle already present."; continue; }
+      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "${GENOME_DIR}/pcgr_data/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"; then
+        install_pcgr_bundle "${GENOME_DIR}/pcgr_data" || { missing=1; echo "[WARN] Could not install PCGR/CPSR. Step 17 needs it; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; }
+      else
+        missing=1
+      fi
+    else
+      [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
+      peak=56
+      [ "$rel" != "$PCGR_VEP_CACHE_RELEASE" ] || peak=52
+      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache" "${dir}/$(basename "$(vep_cache_url "$rel")")"; then
+        if ! install_vep_cache "$dir" "$rel"; then
+          missing=1
+          echo "[WARN] Could not install VEP ${rel}. Run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\" (interrupted downloads resume)."
+          if [ "$rel" = "$VEP_CACHE_RELEASE" ]; then
+            echo "  To retry only this cache: ./scripts/setup.sh --vep-cache \"${GENOME_DIR}\""
+          fi
+        fi
+      else
+        missing=1
+      fi
+    fi
+  done
+  return "$missing"
 }
 
 case "$OPT_IN" in
@@ -2118,6 +2170,7 @@ case "$OPT_IN" in
   megane-kmers) ensure_image MEGANE_IMAGE 50 && install_megane_kmers; exit $? ;;
   mocha-data) install_mocha_data; exit $? ;;
   locityper-data) install_locityper_data; exit $? ;;
+  clinical-data) install_clinical_data; exit $? ;;
   vep-cache) install_vep_cache_opt_in; exit $? ;;
   annotsv-data) install_annotsv_data; exit $? ;;
   archaic) install_archaic; exit $? ;;
@@ -2488,47 +2541,15 @@ echo "=== Phase 5: AnnotSV annotation data (~5.3 GB + ~1.7 GB download, ~20 GB u
 install_annotsv_data || true
 
 ###############################################################################
-# Phase 6: Optional Downloads (instructions only)
+# Phase 6: Clinical reference data (default)
 ###############################################################################
 echo ""
-echo "=== Phase 6: Optional Downloads (manual) ==="
-echo ""
-echo "The following are only needed for specific steps and are large downloads:"
-echo ""
-
-VEPDIR="${GENOME_DIR}/vep_cache"
-if [ -f "${VEPDIR}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38/info.txt" ]; then
-  echo "[OK] VEP ${VEP_CACHE_RELEASE} cache already present."
+echo "=== Phase 6: Clinical reference data ==="
+if $CLINICAL_DATA; then
+  install_clinical_data || true
 else
-  echo "[SKIP] VEP ${VEP_CACHE_RELEASE} cache (~26 GB) — without it a run skips VEP, vcfanno, the clinical filter and slivar"
-  echo "  Install it before the first run (downloads, checks and unpacks it; ~30 GB unpacked):"
-  echo "    ./scripts/setup.sh --vep-cache ${GENOME_DIR}"
-fi
-echo ""
-
-PCGRDIR="${GENOME_DIR}/pcgr_data"
-if [ -d "${PCGRDIR}/${PCGR_DATA_BUNDLE}/data" ]; then
-  echo "[OK] PCGR/CPSR ref data bundle already present."
-else
-  echo "[SKIP] PCGR/CPSR ref data (~7 GB download) — needed for step 17 (cancer predisposition)"
-  echo "  Download:"
-  echo "    mkdir -p ${PCGRDIR} && cd ${PCGRDIR}"
-  echo "    curl -fL -C - -O https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
-  echo "    tar xzf pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
-  echo "    mkdir -p ${PCGR_DATA_BUNDLE} && mv data/ ${PCGR_DATA_BUNDLE}/"
-fi
-echo ""
-
-# CPSR runs the VEP release inside the PCGR image, not the one step 13 uses.
-if [ -f "${VEPDIR}/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/info.txt" ]; then
-  echo "[OK] VEP ${PCGR_VEP_CACHE_RELEASE} cache (for CPSR) already present."
-else
-  echo "[SKIP] VEP ${PCGR_VEP_CACHE_RELEASE} cache (~24 GB) — needed for step 17 (CPSR runs VEP ${PCGR_VEP_CACHE_RELEASE} inside the PCGR image)"
-  echo "  This is separate from the release-${VEP_CACHE_RELEASE} cache used by step 13. Both coexist in vep_cache/."
-  echo "  Download:"
-  echo "    mkdir -p ${VEPDIR}"
-  echo "    curl -fL -C - -o ${VEPDIR}/$(basename "$(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")") $(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")"
-  echo "    tar xzf ${VEPDIR}/$(basename "$(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")") -C ${VEPDIR}"
+  echo "[SKIP] Clinical data (--no-clinical-data): steps 13, 30, 23, 31 and 17 need the caches or bundle."
+  echo "  Install later: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
 fi
 
 ###############################################################################
@@ -2549,4 +2570,4 @@ echo "  2. Run: export GENOME_DIR=${GENOME_DIR}"
 echo "  3. Run: ./scripts/validate-setup.sh <sample_name>"
 echo "  4. Run: ./scripts/run-all.sh <sample_name> <male|female>"
 echo ""
-echo "For optional VEP and CPSR setup, see the instructions above."
+echo "Review any warnings above; use --clinical-data to retry missing clinical downloads."

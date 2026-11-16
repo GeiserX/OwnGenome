@@ -82,6 +82,8 @@ work/
 .nextflow/
 .nextflow.log*
 results/
+# docs/results/ is the results guide, one page per report chapter, not run output
+!docs/results/
 results_*/
 .nf-test/
 /nextflow
