@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-15 18:08 UTC",
+ "generated_utc": "2026-11-16 00:31 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -14068,11 +14068,42 @@
      "imprinted": [
       {
        "region": "15q11-q13 (SNRPN, UBE3A)",
-       "maternal_upd": "Prader-Willi syndrome",
-       "paternal_upd": "Angelman syndrome",
+       "maternal_upd": "-",
+       "paternal_upd": "-",
        "pmid": "22237428;27615419"
       }
-     ]
+     ],
+     "note": "Long chromosome-focused ROH; investigate possible isodisomy. A deletion, acquired loss of heterozygosity or shared ancestry can give this pattern. Copy neutrality and parental origin are not established; check copy-number results and parents' genotypes. Heterodisomy can leave no ROH."
+    },
+    "scope": {
+     "source": "sites",
+     "autosomes": [
+      "chr1",
+      "chr2",
+      "chr3",
+      "chr4",
+      "chr5",
+      "chr6",
+      "chr7",
+      "chr8",
+      "chr9",
+      "chr10",
+      "chr11",
+      "chr12",
+      "chr13",
+      "chr14",
+      "chr15",
+      "chr16",
+      "chr17",
+      "chr18",
+      "chr19",
+      "chr20",
+      "chr21",
+      "chr22"
+     ],
+     "unmasked_bp": 2658001522,
+     "partial": false,
+     "note": "Sites on all 22 autosomes; marker presence does not establish callable breadth or copy neutrality."
     }
    }
   },
