@@ -426,7 +426,7 @@ jobs:
           plant crates/og-steps/src/pgx_rules.rs 's/if !same_diplotype\(&pg, &cy\.0\) \{/if same_diplotype(\&pg, \&cy.0) {/'
           plant crates/og-pgx/src/sections.rs 's/cyp2d6_band\(all\[0\] \* factor\)/cyp2d6_band(all[0])/'
           plant crates/og-pgx/src/sections.rs 's/STEP36_GENES\.contains\(&c\.gene\.as_str\(\)\) && !confirmed \{/STEP36_GENES.contains(\&c.gene.as_str()) \&\& false \&\& !confirmed {/'
-          plant crates/og-filters/src/mito.rs 's/^pub const MIN_AF: f64 = 0\.95;/pub const MIN_AF: f64 = 0.94;/'
+          plant crates/og-filters/src/mito.rs 's/^pub const MIN_AF: f64 = 0\.05;/pub const MIN_AF: f64 = 0.06;/'
           plant crates/og-filters/src/refblock.rs 's/^pub const MIN_GQ: i128 = 20;/pub const MIN_GQ: i128 = 19;/'
           plant crates/og-bam/tests/data/parity/want/check-multimapped_with_alt/files/check.tsv 's/^status\tunreliable$/status\tok/'
           log="${RUNNER_TEMP}/pgx-controls.log"

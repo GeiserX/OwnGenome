@@ -10,9 +10,10 @@
 //!
 //! 1. a homoplasmic PASS m.1555A>G (AF 0.99) is the call; step 36's lines
 //!    are copied before it and an MT-RNR1 line there is dropped;
-//! 2. AF 0.95 counts as homoplasmic, 0.949 does not; `--min-af` moves the
-//!    bound;
-//! 3. a heteroplasmic, a filtered or an AF-less m.1555A>G passes nothing and
+//! 2. AF 0.95 counts as homoplasmic; a heteroplasmic allele down to the
+//!    detection floor, AF 0.05, is the call too (CPIC: no safe heteroplasmy
+//!    level), 0.049 is not; `--min-af` moves the floor;
+//! 3. one below the floor, a filtered or an AF-less m.1555A>G passes nothing and
 //!    says why; so do a homoplasmic PASS change at a named position that
 //!    PharmCAT does not name and a PASS deletion near m.961; a filtered one,
 //!    or a low-AF unnamed change, does not;
@@ -362,10 +363,26 @@ fn case2_the_af_bound() {
         r.log
     );
     let r = c.run(
-        &(background() + &pass(1555, "A", "G", 0.949)),
+        &(background() + &pass(1555, "A", "G", 0.4)),
         &Run::default(),
     );
-    assert!(r.mt().is_empty(), "2: AF 0.949 passes nothing: {}", r.log);
+    assert_eq!(r.mt(), ["m.1555A>G"], "2: AF 0.4 is the call: {}", r.log);
+    assert!(
+        r.log.contains("(heteroplasmic, chrM:1555 A>G AF 0.400; ")
+            && r.log.contains("homoplasmic guidance applies"),
+        "2: AF 0.4: the log says heteroplasmic and why it still counts: {}",
+        r.log
+    );
+    let r = c.run(
+        &(background() + &pass(1555, "A", "G", 0.05)),
+        &Run::default(),
+    );
+    assert_eq!(r.mt(), ["m.1555A>G"], "2: AF 0.05 is the call: {}", r.log);
+    let r = c.run(
+        &(background() + &pass(1555, "A", "G", 0.049)),
+        &Run::default(),
+    );
+    assert!(r.mt().is_empty(), "2: AF 0.049 passes nothing: {}", r.log);
     let r = c.run(
         &(background() + &pass(1555, "A", "G", 0.9)),
         &Run {
@@ -386,9 +403,9 @@ fn case3_what_passes_nothing() {
     let mut c = Case::new("3");
     let cases = [
         (
-            "heteroplasmic",
-            pass(1555, "A", "G", 0.4),
-            "is heteroplasmic (AF below 0.95)",
+            "below the floor",
+            pass(1555, "A", "G", 0.03),
+            "is below the detection floor (AF below 0.05)",
         ),
         (
             "filtered",
