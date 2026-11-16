@@ -5,7 +5,7 @@
 #                           c32), each the same two stretches of GRCh38 chr22
 #                           (from 30000000 and 30000200, here at 100 and 300)
 #                           with N between; lc holds them in lower case
-#   join.vcf                the scenarios of tests/test_clinvar_join_adjacent.py
+#   join.vcf                the scenarios of og-clinvar's tests/port_tests_sv_clinvar_str_join.rs
 #                           and more, one contig each, header without a PASS
 #                           line and with old PGP_ INFO lines
 #   join-edge.vcf           lines a joiner must pass or skip: a ## line between
