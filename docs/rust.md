@@ -76,7 +76,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 
 `bin/.og` is not in git, so after a pull or an edit it can hold a binary built from other code. Results would then come from code the checkout does not show. To stop that:
 
-- The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
+- The build stamps the binary with a source hash of two git object IDs: the tree of `rust/` as it is on disk and the blob of `assets/imprinted_regions.tsv`. The table is embedded at compile time. Any edit to either input, committed or not, changes the hash. The `tree-hash` verb and stamp format retain their names.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's. The macOS pair is optional, because no pipeline step runs it, but a stale one is refused like a Linux one.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
 - A missing binary is still a note, which names steps 04, 05, 07, 09b, 21, 25, 32 and 33. Those steps, step 06 with `CLINVAR_SCREEN` and `CLINVAR_CDNA_CHECK`, step 17, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). Step 32 does not read that as an unmeasured share: it stops. `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
