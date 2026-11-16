@@ -245,3 +245,25 @@ fn shallow_everywhere_and_shallow_in_part_are_told_apart() {
     assert_eq!(r.cell("TET2", "assessable_fraction"), "");
     assert!(r.stdout.contains("no result either way"), "{}", r.stdout);
 }
+
+#[test]
+fn red_first_a_base_two_genes_share_is_read_for_both() {
+    // DNMT3A 1000..1500 and TET2 1400..1600 on chr2, all at 33x. The last
+    // 100 bases of DNMT3A are TET2's too. Before, they counted only for
+    // TET2, the last gene of the BED, so DNMT3A read them as depth 0:
+    // "partly_covered", callable 0.800. Its mean stays the Python's.
+    let r = report(
+        "shared",
+        &[("chr2", 1000, 1500, "DNMT3A"), ("chr2", 1400, 1600, "TET2")],
+        &even("chr2", 1000, 1600, 33),
+    );
+    let lim33 = fixed(detection_limit(33.0).unwrap().unwrap(), 3);
+    assert_eq!(r.cell("DNMT3A", "mean_depth"), "26.4");
+    assert_eq!(r.cell("DNMT3A", "status"), "covered");
+    assert_eq!(r.cell("DNMT3A", "detection_limit_vaf"), lim33);
+    assert_eq!(r.cell("DNMT3A", "callable_fraction"), "1.000");
+    assert_eq!(r.cell("DNMT3A", "assessable_fraction"), "1.000");
+    assert_eq!(r.cell("TET2", "mean_depth"), "33.0");
+    assert_eq!(r.cell("TET2", "detection_limit_vaf"), lim33);
+    assert_eq!(r.cell("TET2", "callable_fraction"), "1.000");
+}

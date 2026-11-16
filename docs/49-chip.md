@@ -100,6 +100,8 @@ Two more columns help to find a gene with a region the run did not read:
 - `callable_fraction`: the share of the gene's coding bases with 10 reads or more.
 - `assessable_fraction`: the share of its coding bases where a clone at the stated limit shows 3 reads 8 times in 10. The limit is an average over bases, so a gene read near the median depth has only part of its bases at full power, often under half. Compare genes by it: a gene far below the others has bases the run did not read. Empty when no gene is covered.
 
+A coding base that two genes of the BED share counts for the limit and both shares of each gene. Its depth counts in the mean depth of only the last of them in the BED, as before. The CHIP genes' exons do not overlap, so this matters only for a BED of your own with overlapping or padded rows.
+
 So at the depth of a usual 30x genome, a clone has to hold about 14% of the alleles to show its reads reliably. CHIP starts at 2%, so a clone between 2% and the limit is likely missed: a result with no call does not rule out CHIP. A gene whose depth is far below the genome's (reads that map with low quality there) gets a higher limit, `partly_covered` when part of it has no reads, or `too_shallow`.
 
 ## Output

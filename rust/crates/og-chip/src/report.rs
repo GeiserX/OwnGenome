@@ -16,8 +16,11 @@
 //! - `chip`: in the table's classes;
 //! - `other_change`: a protein change outside them.
 //!
-//! The depth of a base counts once, for the last gene of the BED that
-//! covers it, even when the depth file lists the base twice.
+//! A base counts once per gene, even when the depth file lists it twice.
+//! Its depth goes into the mean of only the last gene of the BED that
+//! covers it, as the Python's mean did, and into the per-base limit and
+//! the shares of every gene that covers it, so a base two genes share is
+//! read for both.
 //!
 //! Per gene, the limit comes from each coding base's own depth, not from
 //! the mean ([`crate::binom::limit_over`]), so an exon the run did not read
@@ -464,11 +467,13 @@ pub fn classify(
     Ok(out)
 }
 
-/// The bases of one contig the BED covers, cut where the owner changes:
-/// `(first, last + 1, owner)`, 1-based, ascending and disjoint, with a flag
-/// per base for "its depth was counted".
+/// The bases of one contig the BED covers, cut where the set of covering
+/// rows changes: `(first, last + 1, owner, genes)`, 1-based, ascending and
+/// disjoint, where `owner` is the gene whose mean counts the base and
+/// `genes` every gene that covers it, with a flag per base for "its depth
+/// was counted".
 struct Segments {
-    segs: Vec<(i128, i128, usize)>,
+    segs: Vec<(i128, i128, usize, Vec<usize>)>,
     counted: Vec<Vec<bool>>,
 }
 
@@ -497,8 +502,11 @@ impl Segments {
                 active.insert((starts[si].3, starts[si].2));
                 si += 1;
             }
-            if let Some(&(_, gene)) = active.last() {
-                segs.push((lo, hi, gene));
+            if let Some(&(_, owner)) = active.last() {
+                let mut genes: Vec<usize> = active.iter().map(|&(_, g)| g).collect();
+                genes.sort_unstable();
+                genes.dedup();
+                segs.push((lo, hi, owner, genes));
             }
         }
         let counted = segs
@@ -508,14 +516,14 @@ impl Segments {
         Segments { segs, counted }
     }
 
-    /// The owner of `pos` and its counted flag.
-    fn at(&mut self, pos: i128) -> Option<(usize, &mut bool)> {
+    /// The owner of `pos`, every gene that covers it, and its counted flag.
+    fn at(&mut self, pos: i128) -> Option<(usize, &[usize], &mut bool)> {
         let i = self.segs.partition_point(|s| s.1 <= pos);
-        let &(lo, hi, gene) = self.segs.get(i)?;
-        if pos < lo || pos >= hi {
+        let (lo, hi, owner, genes) = self.segs.get(i)?;
+        if pos < *lo || pos >= *hi {
             return None;
         }
-        Some((gene, &mut self.counted[i][(pos - lo) as usize]))
+        Some((*owner, genes, &mut self.counted[i][(pos - lo) as usize]))
     }
 }
 
@@ -589,8 +597,9 @@ pub fn depth_rows(
         }
         Ok(())
     })?;
-    // Per contig, who owns each base: the last assignment in gene order,
-    // then row order, as the Python's position dictionary kept it.
+    // Per contig, who covers each base, and who owns it for the mean: the
+    // last assignment in gene order, then row order, as the Python's
+    // position dictionary kept it.
     let mut by_chrom: HashMap<&str, Vec<(i128, i128, usize, usize)>> = HashMap::new();
     let mut order = 0;
     for (gi, rows) in regions.values().enumerate() {
@@ -616,13 +625,16 @@ pub fn depth_rows(
         }
         let pos = int(f[1], depth)?;
         if let Some(seg) = owner.get_mut(f[0])
-            && let Some((gi, counted)) = seg.at(pos)
+            && let Some((gi, genes, counted)) = seg.at(pos)
             && !*counted
-            && !names[gi].is_empty()
             && let Some(d) = num(f[2])
         {
-            total[gi] += d;
-            *hist[gi].entry(reads(d)).or_default() += 1;
+            if !names[gi].is_empty() {
+                total[gi] += d;
+            }
+            for &g in genes.iter().filter(|&&g| !names[g].is_empty()) {
+                *hist[g].entry(reads(d)).or_default() += 1;
+            }
             *counted = true;
         }
         Ok(())
