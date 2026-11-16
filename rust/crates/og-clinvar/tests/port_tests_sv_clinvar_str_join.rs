@@ -656,6 +656,8 @@ chr22\t30000210\t30000210\tC\tT,<*>\t0/1\t40\t30\n"
     let o = sites::Options {
         min_gq: "30".to_owned(),
         min_gq_value: 30,
+        min_dp: "10".to_owned(),
+        min_dp_value: 10,
         gvcf: true,
     };
     let mut out = Vec::new();
