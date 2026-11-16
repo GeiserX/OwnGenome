@@ -1,0 +1,12 @@
+[package]
+name = "og-render"
+description = "og report render|index|charts: the HTML and text reports, the run's search index and the chart specs, from summary.json"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # Step 05 (AnnotSV) on what it now reads: Manta's calls after step 04, with
 # the net length change of sequence-resolved records, plus the Delly and
 # CNVpytor calls no Manta call covers. The real AnnotSV image (ANNOTSV_IMAGE)

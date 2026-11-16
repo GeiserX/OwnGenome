@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """The repeat ranges: the generated str_ranges.tsv, the report's cited subset and the docs.
 
 1. str_ranges.tsv, which og str catalog writes beside the STRchive
