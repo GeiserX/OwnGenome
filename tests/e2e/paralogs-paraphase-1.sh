@@ -69,38 +69,32 @@ D="${GENOME_DIR}/${P}/aligned_longread"
 mkdir -p "$D"
 curl -fsSL --retry 5 -o "${CASE_TMP}/config.yaml" "${RAW}/config.yaml"
 curl -fsSL --retry 5 -o "${CASE_TMP}/genome_region.bed" "${RAW}/genome_region.bed"
-python3 - "${CASE_TMP}/config.yaml" "${CASE_TMP}/genome_region.bed" "$REGIONS" > "${D}/regions.bed" <<'PY'
-import re, sys
-cfg, depth, wanted = open(sys.argv[1]).read(), sys.argv[2], set(sys.argv[3].split(","))
-iv, block, chrom = [], None, None
-for line in cfg.splitlines():
-    m = re.match(r"^(\S+):\s*$", line)
-    if m:
-        block = m.group(1)
-        continue
-    if block not in wanted:
-        continue
-    for c, s, e in re.findall(r"(chr[0-9XY]+):(\d+)-(\d+)", line):
-        iv.append((c, int(s), int(e)))
-        chrom = c
-    if "depth_region" in line and chrom:   # [[start, end]] on the family's chromosome
-        for s, e in re.findall(r"\[(\d+),\s*(\d+)\]", line):
-            iv.append((chrom, int(s), int(e)))
-iv = [(c, max(0, s - 30000), e + 30000) for c, s, e in iv]
-for line in open(depth):   # positions of 1.6 kb depth windows: 2 kb either side
-    f = line.split()
-    if len(f) >= 2:
-        iv.append((f[0], max(0, int(f[1]) - 2000), int(f[1]) + 2000))
-iv.sort()
-out = []
-for c, s, e in iv:
-    if out and out[-1][0] == c and s <= out[-1][2]:
-        out[-1][2] = max(out[-1][2], e)
-    else:
-        out.append([c, s, e])
-for c, s, e in out:
-    print(f"{c}\t{s}\t{e}")
-PY
+# The regions of the wanted families in the config ("chrN:start-end", and each
+# depth_region's [start, end] pairs on the family's chromosome) 30 kb padded,
+# and the depth windows 2 kb either side, sorted and merged.
+# shellcheck disable=SC2016  # awk programs
+{
+  awk -v wanted=",${REGIONS}," '
+    /^[^[:space:]]+:[[:space:]]*$/ { block = $0; sub(/:[[:space:]]*$/, "", block); next }
+    index(wanted, "," block ",") == 0 { next }
+    { line = $0
+      while (match(line, /chr[0-9XY]+:[0-9]+-[0-9]+/)) {
+        r = substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH)
+        c = r; sub(/:.*/, "", c); split(substr(r, length(c) + 2), x, "-"); chrom = c
+        s = x[1] - 30000; print c "\t" (s < 0 ? 0 : s) "\t" x[2] + 30000
+      }
+      if (index($0, "depth_region") && chrom != "") {
+        line = $0
+        while (match(line, /\[[0-9]+,[[:space:]]*[0-9]+\]/)) {
+          r = substr(line, RSTART + 1, RLENGTH - 2); line = substr(line, RSTART + RLENGTH)
+          split(r, x, ","); s = x[1] - 30000; print chrom "\t" (s < 0 ? 0 : s) "\t" x[2] + 30000
+        }
+      }
+    }' "${CASE_TMP}/config.yaml"
+  awk 'NF >= 2 { s = $2 - 2000; print $1 "\t" (s < 0 ? 0 : s) "\t" $2 + 2000 }' "${CASE_TMP}/genome_region.bed"
+} | LC_ALL=C sort -k1,1 -k2,2n -k3,3n \
+  | awk -F'\t' -v OFS='\t' '$1 == c && $2 <= e { if ($3 > e) e = $3; next } { if (n++) print c, s, e; c = $1; s = $2; e = $3 }
+                            END { if (n) print c, s, e }' > "${D}/regions.bed"
 echo "HiFi slice: $(wc -l < "${D}/regions.bed") regions, $(awk '{n += $3 - $2} END {print n}' "${D}/regions.bed") bp"
 check_ge "the slice has the families' regions and the depth windows" "$(wc -l < "${D}/regions.bed" | tr -d ' ')" 20
 retry sam_https view -b -M -L "${P}/aligned_longread/regions.bed" --keep-tag RG,NM,SA,rq,HP,PS \
@@ -154,53 +148,8 @@ DEL_START=169742 DEL_END=173999   # 1-based: bases DEL_START..DEL_END-1 go
 # spans them is joined across the gap, one that ends or starts inside keeps
 # the part outside (at least 1 kb, or it is dropped). They are written as
 # FASTQ, their tags in the comment for minimap2 -y, and listed for pass 2.
-cat > "${CASE_TMP}/cut.py" <<'PY'
-import re, sys
-a, b, fq, names = int(sys.argv[1]), int(sys.argv[2]), open(sys.argv[3], "w"), open(sys.argv[4], "w")
-spanning = trimmed = dropped = 0
-for line in sys.stdin:
-    f = line.rstrip("\n").split("\t")
-    tags = f[11:]
-    if "HP:i:1" not in tags or int(f[1]) & 0x900:
-        continue
-    pos = ref = int(f[3])
-    qry, qa, qb = 0, None, None   # query offsets of the first base at or after a, and b
-    for n, op in re.findall(r"(\d+)([MIDNSHP=X])", f[5]):
-        n = int(n)
-        if op in "M=XDN":
-            for x, attr in ((a, "qa"), (b, "qb")):
-                if (qa if attr == "qa" else qb) is None and ref + n > x:
-                    off = qry + max(0, x - ref) if op in "M=X" else qry
-                    if attr == "qa":
-                        qa = off
-                    else:
-                        qb = off
-            ref += n
-            if op in "M=X":
-                qry += n
-        elif op in "IS":
-            qry += n
-    if ref <= a or pos >= b:
-        continue
-    names.write(f[0] + "\n")
-    left = f[9][:qa] if pos < a else ""
-    right = f[9][qb:] if ref > b else ""
-    lq = f[10][:qa] if pos < a else ""
-    rq = f[10][qb:] if ref > b else ""
-    if left and right:
-        spanning += 1
-    elif len(left + right) >= 1000:
-        trimmed += 1
-    else:
-        dropped += 1
-        continue
-    keep = [t for t in tags if t[:2] in ("RG", "rq", "HP", "PS")]
-    fq.write(f"@{f[0]}\t" + "\t".join(keep) + f"\n{left + right}\n+\n{lq + rq}\n")
-print(f"haplotype-1 reads joined across the deletion: {spanning}, trimmed: {trimmed}, dropped: {dropped}", file=sys.stderr)
-print(spanning)
-PY
 SPAN=$(sam view "${P}/aligned_longread/${P}_sorted.bam" "chr16:$((DEL_START - 50000))-$((DEL_END + 50000))" \
-  | python3 "${CASE_TMP}/cut.py" "$DEL_START" "$DEL_END" "${QD}/cut.fq" "${QD}/names.txt")
+  | "${REPO}/bin/og" dev fixture cut-haplotype "$DEL_START" "$DEL_END" "${QD}/cut.fq" "${QD}/names.txt")
 check_ge "haplotype-1 reads joined across the planted deletion" "${SPAN:-0}" 5
 # Pass 2: every other read as it was, and the cut reads aligned again to chr16.
 sam view -b -N "^${Q}/aligned_longread/names.txt" -o "${Q}/aligned_longread/kept.bam" "${P}/aligned_longread/${P}_sorted.bam"

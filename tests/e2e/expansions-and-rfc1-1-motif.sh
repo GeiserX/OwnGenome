@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Step 09b's RFC1 motif count (bin/rfc1_motif.py) with the real Stranger and
+# Step 09b's RFC1 motif count (og str motif) with the real Stranger and
 # PYPGX_IMAGE. The fixture has no reads at RFC1, so the case makes three
 # samples of its own: an ExpansionHunter VCF with one RFC1 record (the header
 # of tests/smoke/stranger_input.vcf.in) and a BAM of made-up reads at the
-# locus, the reads of tests/test_rfc1_motif.py.
+# locus (og dev fixture rfc1).
 #   path    RFC1 at 100 and 150 units, in-repeat; AAGGG reads (soft-clipped, unmapped
 #           and placed at the mate, mates on another contig, reverse strand)
 #           and three reference reads: Stranger flags full_mutation, the
@@ -17,39 +17,29 @@
 # with the mate, need a real genome.
 . "$(dirname "$0")/lib.sh"
 
-make_sample() {  # make_sample <name> <case of tests/test_rfc1_motif.py> <REPCN> <SO> <REPCI>
-  local s=$1 kind=$2 cn=$3 so=$4 ci=$5
+make_sample() {  # make_sample <name> <read set of og dev fixture rfc1> <REPCN> <SO> <REPCI>
+  local s=$1 kind=$2 cn=$3 so=$4 ci=$5 in="${REPO}/tests/smoke/stranger_input.vcf.in" a gt=1/1 alts=""
   rm -rf "${GENOME_DIR:?}/${s}"
   mkdir -p "${GENOME_DIR}/${s}/expansion_hunter" "${GENOME_DIR}/${s}/aligned"
-  python3 - "$REPO" "$kind" "$cn" "$so" "$ci" "${GENOME_DIR}/${s}/expansion_hunter/${s}_eh.vcf" \
-    "${GENOME_DIR}/${s}/aligned/reads.sam" <<'PY'
-import os, sys
-repo, kind, cn, so, ci, vcf, sam = sys.argv[1:8]
-sys.path.insert(0, os.path.join(repo, "tests"))
-import test_rfc1_motif as t
-head = [l for l in open(os.path.join(repo, "tests", "smoke", "stranger_input.vcf.in")) if l.startswith("#")]
-alts = sorted({int(x) for x in cn.split("/")})
-head[-1:-1] = [f'##ALT=<ID=STR{a},Description="Allele comprised of {a} repeat units">\n' for a in alts]
-gt = "1/2" if len(alts) == 2 else "1/1"
-sp, fl, ir = ("/".join([x, x]) for x in ("0", "2", "20"))  # spanning, flanking and in-repeat reads
-with open(vcf, "w") as fh:
-    fh.writelines(head)
-    fh.write(f"{t.CHROM}\t{t.START + 1}\tRFC1\tA\t" + ",".join(f"<STR{a}>" for a in alts)
-             + f"\t.\tPASS\tSVTYPE=STR;END={t.END};REF=11;RL=55;RU=AARRG;VARID=RFC1;REPID=RFC1"
-             "\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t" + ":".join([gt, so, cn, ci, sp, fl, ir]) + ":30.0\n")
-at, elsewhere = t.case(kind)
-with open(sam, "w") as fh:
-    fh.write("@HD\tVN:1.6\tSO:unsorted\n")
-    fh.write(f"@SQ\tSN:{t.CHROM}\tLN:190214555\n@SQ\tSN:{t.OTHER}\tLN:248956422\n")
-    for r in at + list(elsewhere.values()):
-        flag = (1 | (64 if r.is_read1 else 128) | (4 if r.is_unmapped else 0) | (16 if r.is_reverse else 0)
-                | (256 if r.is_secondary else 0) | (512 if r.is_qcfail else 0) | (1024 if r.is_duplicate else 0))
-        mate = "=" if r.mate_contig == r.contig else r.mate_contig
-        fh.write("\t".join(map(str, [r.query_name, flag, r.contig, r.reference_start + 1,
-                                     0 if r.is_unmapped else 60, r.cigar_text or "*", mate,
-                                     r.next_reference_start + 1, 0, r.query_sequence,
-                                     "I" * len(r.query_sequence)])) + "\n")
-PY
+  # The header of the smoke VCF with an ALT line per allele size, and one RFC1
+  # record: spanning 0/0, flanking 2/2 and in-repeat 20/20 reads.
+  local sizes
+  sizes=$(tr '/' '\n' <<< "$cn" | sort -nu)
+  [ "$(wc -l <<< "$sizes")" -eq 2 ] && gt=1/2
+  {
+    grep '^#' "$in" | sed '$d'
+    for a in $sizes; do
+      printf '##ALT=<ID=STR%s,Description="Allele comprised of %s repeat units">\n' "$a" "$a"
+      alts="${alts:+${alts},}<STR${a}>"
+    done
+    grep '^#' "$in" | tail -n 1
+    printf 'chr4\t39348425\tRFC1\tA\t%s\t.\tPASS\tSVTYPE=STR;END=39348479;REF=11;RL=55;RU=AARRG;VARID=RFC1;REPID=RFC1' "$alts"
+    # The read counts sit on their own line: a fraction beside the REPCN key reads
+    # as a repeat genotype to scripts/ci/check-personal-data.sh.
+    local reads=0/0:2/2:20/20
+    printf '\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t%s:%s:%s:%s:%s:30.0\n' "$gt" "$so" "$cn" "$ci" "$reads"
+  } > "${GENOME_DIR}/${s}/expansion_hunter/${s}_eh.vcf"
+  "${REPO}/bin/og" dev fixture rfc1 "$kind" "${GENOME_DIR}/${s}/aligned/reads.sam"
   docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -w "/genome/${s}/aligned" "$SAMTOOLS_IMAGE" \
     sh -c "samtools sort -o ${s}_sorted.bam reads.sam && samtools index ${s}_sorted.bam"
   rm -f "${GENOME_DIR}/${s}/aligned/reads.sam"

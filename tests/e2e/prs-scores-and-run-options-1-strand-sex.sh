@@ -42,68 +42,26 @@ done
 # --- sites -----------------------------------------------------------------------
 # chrom, pos, effect allele, other allele, weight, kind
 SITES="${CASE_TMP}/sites.tsv"
-python3 - "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" "$REF" > "$SITES" <<'PY'
-import gzip, sys
-bed, truth, fasta = sys.argv[1:4]
-iv = [tuple(int(x) for x in l.split()[1:3]) for l in open(bed) if l.startswith("chr20\t")]
-var = [int(l.split("\t")[1]) for l in gzip.open(truth, "rt") if l.startswith("chr20\t")]
-fai = {l.split()[0]: [int(x) for x in l.split()[1:5]] for l in open(fasta + ".fai")}
-length, offset, bases, width = fai["chr20"]
-fh = open(fasta, "rb")
-def base(pos):
-    i = pos - 1
-    fh.seek(offset + (i // bases) * width + i % bases)
-    return fh.read(1).decode().upper()
-comp = {"A": "T", "T": "A", "C": "G", "G": "C"}
-homref, p = [], 10_050_000
-while len(homref) < 14 and p < 10_450_000:
-    inside = any(s + 200 < p <= e - 200 for s, e in iv)
-    clear = all(abs(v - p) > 200 for v in var)
-    b = base(p)
-    if inside and clear and b in comp:
-        homref.append((p, b))
-    p += 7_919
-for i, (p, b) in enumerate(homref[:10]):
-    other = next(x for x in "ACGT" if x not in (b, comp[b]))
-    print(f"20\t{p}\t{b}\t{other}\t{2 ** i}\thomref")
-for (p, b), w in zip(homref[10:13], (1024, 2048, 4096)):
-    print(f"20\t{p}\t{b}\t{comp[b]}\t{w}\tambiguous")
-# A row given on the other strand: its alleles are the complements of the
-# reference base and of a third base.
-p, b = homref[13]
-third = next(x for x in "ACGT" if x not in (b, comp[b]))
-print(f"20\t{p}\t{comp[b]}\t{comp[third]}\t0.5\tflipped")
-PY
+# Ten hom-ref rows, three strand-ambiguous ones (the reference base and its
+# complement), and a row given on the other strand: its alleles are the
+# complements of the reference base and of a third base.
+"${REPO}/bin/og" dev fixture prs-sites "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" "$REF" 14 \
+  | awk -F'\t' -v OFS='\t' 'BEGIN {c["A"] = "T"; c["T"] = "A"; c["C"] = "G"; c["G"] = "C"}
+      {for (i = 1; i <= 4; i++) {o = substr("ACGT", i, 1); if (o != $3 && o != c[$3]) break}}
+      n < 10 {print "20", $2, $3, o, 2 ^ n, "homref"}
+      n >= 10 && n < 13 {print "20", $2, $3, c[$3], 2 ^ n, "ambiguous"}
+      n == 13 {print "20", $2, c[$3], c[o], "0.5", "flipped"}
+      {n++}' > "$SITES"
 cat "$SITES"
 check_eq "score sites (10 hom-ref, 3 ambiguous hom-ref, 1 flipped)" "$(wc -l < "$SITES" | tr -d ' ')" 14
 XR=chrX:73700001-74000000
 bcf query -r "$XR" -f '%POS\t%INFO/END\t[%GT]\n' "${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" > "${CASE_TMP}/x_blocks.tsv"
 bcf query -r "$XR" -i 'GT="alt"' -f '%POS\n' "${SAMPLE}/vcf/${SAMPLE}.vcf.gz" > "${CASE_TMP}/x_vars.tsv"
 X_SITES="${CASE_TMP}/x_sites.tsv"
-python3 - "${CASE_TMP}/x_blocks.tsv" "${CASE_TMP}/x_vars.tsv" "$REF" > "$X_SITES" <<'PY2'
-import sys
-blocks, variants, fasta = sys.argv[1:4]
-var = [int(l) for l in open(variants) if l.strip()]
-fai = {l.split()[0]: [int(x) for x in l.split()[1:5]] for l in open(fasta + ".fai")}
-length, offset, bases, width = fai["chrX"]
-fh = open(fasta, "rb")
-def base(pos):
-    i = pos - 1
-    fh.seek(offset + (i // bases) * width + i % bases)
-    return fh.read(1).decode().upper()
-comp = {"A": "T", "T": "A", "C": "G", "G": "C"}
-rows = [l.rstrip("\n").split("\t") for l in open(blocks) if l.strip()]
-refs = [(int(r[0]), int(r[1])) for r in rows if len(r) == 3 and r[1] not in ("", ".") and r[2] in ("0/0", "0|0")]
-out, last = [], 0
-for start, end in refs:
-    p = (start + end) // 2
-    if end - start >= 50 and p - last > 2000 and all(abs(v - p) > 100 for v in var) and base(p) in comp:
-        out.append((p, base(p)))
-        last = p
-for (p, b), w in zip(out[:3], (0.25, 0.25, 0.25)):
-    other = next(x for x in "ACGT" if x not in (b, comp[b]))
-    print(f"X\t{p}\t{b}\t{other}\t{w}\tchrx")
-PY2
+"${REPO}/bin/og" dev fixture x-ref-sites "${CASE_TMP}/x_blocks.tsv" "${CASE_TMP}/x_vars.tsv" "$REF" chrX 3 \
+  | awk -F'\t' -v OFS='\t' 'BEGIN {c["A"] = "T"; c["T"] = "A"; c["C"] = "G"; c["G"] = "C"}
+      {for (i = 1; i <= 4; i++) {o = substr("ACGT", i, 1); if (o != $2 && o != c[$2]) break}
+       print "X", $1, $2, o, "0.25", "chrx"}' > "$X_SITES"
 cat "$X_SITES"
 check_eq "chrX hom-ref rows" "$(wc -l < "$X_SITES" | tr -d ' ')" 3
 
