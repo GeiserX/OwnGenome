@@ -11,25 +11,15 @@
 CAT="${GENOME_DIR}/reference/eh_catalog_fixture.json"
 docker run --rm "$EXPANSIONHUNTER_IMAGE" cat /usr/local/share/ExpansionHunter/variant_catalog/grch38/variant_catalog.json \
   > "${CASE_TMP}/catalog.json"
-python3 - "${CASE_TMP}/catalog.json" "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta.fai" "$CAT" <<'PY2'
-import json, sys
-loci = json.load(open(sys.argv[1]))
-contigs = {line.split("\t")[0] for line in open(sys.argv[2])}
-def regions(locus):
-    out = []
-    for key in ("ReferenceRegion", "OfftargetRegions"):
-        r = locus.get(key, [])
-        out += r if isinstance(r, list) else [r]
-    return out
 # The bundled catalog names contigs without "chr" (X, 14); ExpansionHunter
 # matches them to chrX, chr14. It stops on the first one the reference lacks.
-def known(c):
-    return c in contigs or "chr" + c in contigs
-kept = [l for l in loci if all(known(r.split(":")[0]) for r in regions(l))]
-print(f"catalog loci: {len(loci)}, on the fixture's contigs: {len(kept)}")
-json.dump(kept, open(sys.argv[3], "w"), indent=1)
-PY2
-N_CAT=$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))))' "$CAT" 2>/dev/null || echo 0)
+# shellcheck disable=SC2016  # jq program
+jq --rawfile fai "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta.fai" '
+  ($fai | split("\n") | map(split("\t")[0] | select(. != null and . != "")) | map({(.): true}) | add) as $c
+  | [.[] | select([(.ReferenceRegion, .OfftargetRegions) | select(. != null) | if type == "array" then .[] else . end
+                   | split(":")[0] | $c[.] or $c["chr" + .]] | all)]' "${CASE_TMP}/catalog.json" > "$CAT"
+N_CAT=$(jq length "$CAT" 2>/dev/null || echo 0)
+echo "catalog loci: $(jq length "${CASE_TMP}/catalog.json"), on the fixture's contigs: ${N_CAT}"
 check_ge "catalog loci on the fixture's contigs" "$N_CAT" 5
 
 EH_CATALOG="$CAT" run_step 09-expansion-hunter.sh "$SAMPLE" male

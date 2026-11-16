@@ -4,7 +4,8 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     ANCIENT_SITES   genotypes the panel's GRCh38 sites from the gVCF: each
                     reference block over a site becomes a record with the
-                    reference base, and a site without reads has no line
+                    reference base. Only PASS or unfiltered calls with
+                    GQ >= 20 count; no-calls and missing GQ have no line
     ANCIENT_GENO    the sample as one more column of the panel's present-day
                     EIGENSTRAT genotypes (og ancient person-geno)
     ANCIENT_PCA     smartpca: axes from the present-day West Eurasians, the
@@ -47,7 +48,7 @@ process ANCIENT_SITES {
     fi
     awk -F'\\t' -v OFS='\\t' 'NR > 1 {print \$2, \$3}' ${panel}/sites_grch38.tsv > sites.tsv
     bcftools convert --gvcf2vcf -f ${reference} -R sites.tsv -Ou ${gvcf} \\
-        | bcftools view -T sites.tsv --trim-alt-alleles -i 'GT!="mis"' -Ou \\
+        | bcftools view -f PASS,. -T sites.tsv --trim-alt-alleles -i 'GT!="mis" && FMT/GQ>=20' -Ou \\
         | bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t[%TGT]\\n' > ${meta.id}_ancient_genotypes.tsv
     rm -f sites.tsv
 

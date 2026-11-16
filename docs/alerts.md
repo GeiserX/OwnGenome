@@ -97,4 +97,4 @@ The hours left, the late steps and the unknown steps are written only while a ru
 
 ## How it is tested
 
-`tests/test_owngenome_live_ops.py` runs the plugin on the made-up run of `tests/fixtures/live/ops/` with a fake disk and a fake host, then against planted mistakes that must fail it. The `promtool` job in `.github/workflows/lint.yml` runs `pgp-alerts.test.yml`, then changes one threshold and requires the test to fail.
+`rust/crates/og-live/tests/ops.rs` runs og-live's ops module, the Rust port of the plugin, on the made-up run of `tests/fixtures/live/ops/` with a fake disk and a fake host. It also runs the plugin itself on the same inputs: the card must match by meaning and the metrics text byte for byte. `ops_eta.rs` and `ops_headroom.rs` beside it check the hours left and the headroom. Each planted mistake of the `fault-inject` feature must fail its check: Guard's rust job runs them and requires every one to fail. The `promtool` job in `.github/workflows/lint.yml` runs `pgp-alerts.test.yml`, then changes one threshold and requires the test to fail.

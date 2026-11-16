@@ -3,17 +3,19 @@
 """og viral report: the viral DNA in the reads that do not map to the human genome (step 47).
 
 Each case writes a synthetic viral FASTA, the samtools coverage and depth -aa
-files with chosen depths, and a human coverage file, runs og viral report, and
-checks the rows it writes:
+files with chosen depths, the alignments (samtools view -F 4) that cover the
+same bases, a human coverage file and samtools idxstats, runs og viral report,
+and checks the rows it writes (the read selection itself is tested in
+rust/crates/og-reports/tests/i411_viral_calls.rs):
 
   1. the integrated HHV-6 pattern: the whole HHV-6B genome at half the human
      depth is called inherited integrated HHV-6; just above and just below
      Liu et al. 2020's 0.30 threshold flip the call
   2. low-level reads (viraemia-like depth over the whole genome) are viral DNA
      found but not integration; a few reads over a small part are "a few
-     reads"; under 10 reads is not found
+     reads"; 1 to 9 reads is below threshold
   3. phiX is the lab control whatever its depth, and never integration
-  4. both HHV-6 species over the threshold: only the deeper one is called
+  4. both HHV-6 species over the threshold: both are called
   5. no read on chr1 to chr22: no human depth, integration not assessed
   6. the human depth is over the autosomal bases with reads: chrX, chrY and
      unplaced contigs are left out, and so are bases with no read
@@ -22,7 +24,8 @@ checks the rows it writes:
      position at all in the depth file has no read, and is not found
   8. collect_summary.py's viral section and render_report.py's text block
      read the table; with no human depth the HHV-6 line says not assessed and
-     the text leaves out copies per cell; a genome with 1 to 9 reads is listed
+     the text leaves out copies per cell; a genome with 1 to 9 reads is listed,
+     below threshold
 
 Without OG (the og binary) the test is skipped with a note; with
 OG_REQUIRED set too, it fails (Guard's rust job sets both).
@@ -48,6 +51,7 @@ CALL_CONTROL = "lab control (phiX)"
 CALL_FOUND = "viral DNA found"
 CALL_FEW = "a few reads"
 CALL_NONE = "not found"
+CALL_BELOW = "below threshold"
 
 FAILS = []
 COV_HEAD = "#rname\tstartpos\tendpos\tnumreads\tcovbases\tcoverage\tmeandepth\tmeanbaseq\tmeanmapq\n"
@@ -67,17 +71,45 @@ def check(name, got, want):
         FAILS.append(name)
 
 
+def hits(acc, covered, n, rng):
+    """n SAM records (MAPQ 60, not low complexity) over the covered positions: the positions in n
+    chunks in order, each chunk one record whose CIGAR skips (N) the gaps; past one read per
+    position, the rest on the reverse strand, then copies (duplicates, counted once)."""
+    out = []
+    if not covered or not n:
+        return out
+    k = len(covered)
+    chunks = [covered[i * k // n:(i + 1) * k // n] for i in range(n)] if n <= k else \
+        [[p] for p in covered] * (n // k) + [[p] for p in covered[:n % k]]
+    for i, c in enumerate(chunks):
+        cigar, run, prev = [], 0, None
+        for p in c:
+            if prev is not None and p != prev + 1:
+                cigar += [f"{run}M", f"{p - prev - 1}N"]
+                run = 0
+            run, prev = run + 1, p
+        cigar.append(f"{run}M")
+        seq = "".join(rng.choice("ACGT") for _ in range(len(c)))
+        flag = 16 if i >= k else 0
+        out.append(f"r{i}\t{flag}\t{acc}\t{c[0]}\t60\t{''.join(cigar)}\t*\t0\t0\t{seq}\t*\n")
+    return out
+
+
 def write_inputs(d, depths, reads, human=None):
     """depths: {acc: function(pos) -> depth}; reads: {acc: n}; human: [(rname, length, covbases, meandepth)]."""
+    import random
+    rng = random.Random(47)
     with open(os.path.join(d, "v.fa"), "w") as f:
         for acc, title, length in GENOMES:
             f.write(f">{acc} {title}\n" + "A" * length + "\n\n")
-    with open(os.path.join(d, "vcov.tsv"), "w") as f, open(os.path.join(d, "vdepth.tsv"), "w") as g:
+    with open(os.path.join(d, "vcov.tsv"), "w") as f, open(os.path.join(d, "vdepth.tsv"), "w") as g, \
+            open(os.path.join(d, "hits.sam"), "w") as h:
         f.write(COV_HEAD)
         for acc, _, length in GENOMES:
             fn = depths.get(acc, lambda p: 0)
             dep = [fn(p) for p in range(1, length + 1)]
             cov = sum(1 for x in dep if x)
+            h.writelines(hits(acc, [p for p, x in enumerate(dep, 1) if x], reads.get(acc, 0), rng))
             f.write(f"{acc}\t1\t{length}\t{reads.get(acc, 0)}\t{cov}\t{100 * cov / length:.4g}\t"
                     f"{sum(dep) / length:.6g}\t30\t60\n")
             g.writelines(f"{acc}\t{p}\t{x}\n" for p, x in enumerate(dep, 1))
@@ -87,6 +119,8 @@ def write_inputs(d, depths, reads, human=None):
         f.write(COV_HEAD)
         for rname, length, covbases, mean in human:
             f.write(f"{rname}\t1\t{length}\t1000\t{covbases}\t{100 * covbases / length:.4g}\t{mean:.6g}\t30\t60\n")
+    with open(os.path.join(d, "idx.tsv"), "w") as f:
+        f.write("chr1\t100000\t1000\t2\n*\t0\t0\t1000\n")
 
 
 def run(depths=None, reads=None, human=None, raw=None):
@@ -98,7 +132,8 @@ def run(depths=None, reads=None, human=None, raw=None):
         out = os.path.join(d, "out.tsv")
         p = subprocess.run([OG, "viral", "report", "--sample", "S", "--viral-fasta", f"{d}/v.fa",
                             "--viral-coverage", f"{d}/vcov.tsv", "--viral-depth", f"{d}/vdepth.tsv",
-                            "--human-coverage", f"{d}/hcov.tsv", "--out", out], capture_output=True, text=True)
+                            "--human-coverage", f"{d}/hcov.tsv", "--viral-hits", f"{d}/hits.sam",
+                            "--idxstats", f"{d}/idx.tsv", "--out", out], capture_output=True, text=True)
         if p.returncode:
             return p.stderr
         with open(out) as f:
@@ -142,7 +177,7 @@ check("2 its mode depth is 0 or 1, relative far below integration", float(low[EB
 few = run({EBV: lambda p: 1 if p <= 100 else 0}, {EBV: 12})
 check("2 12 reads over 7% of EBV: a few reads", few[EBV]["call"], CALL_FEW)
 nine = run({EBV: lambda p: 1 if p <= 1000 else 0}, {EBV: 9})
-check("2 nine reads: not found", nine[EBV]["call"], CALL_NONE)
+check("2 nine reads: below threshold", nine[EBV]["call"], CALL_BELOW)
 hcv = run({HCV: flat(2)}, {HCV: 50})
 check("2 HCV DNA is flagged as an RNA virus", "RNA virus with no DNA stage" in hcv[HCV]["note"], True)
 check("2 HHV-6 rule never applies to EBV at integration depth",
@@ -155,11 +190,10 @@ check("3 one phiX read is still the lab control", run({PHIX: lambda p: 1 if p < 
       CALL_CONTROL)
 check("3 no phiX read: not found", run()[PHIX]["call"], CALL_NONE)
 
-# 4. both species pass: the deeper one wins
+# 4. both species pass: both are called
 both = run({A: flat(10), B: flat(15)}, {A: 300, B: 400})
-check("4 HHV-6B (deeper) is the integrated call", both[B]["call"], CALL_ICI)
-check("4 HHV-6A is read as shared reads", (both[A]["call"], "Reads shared with HHV-6B" in both[A]["note"]),
-      (CALL_FOUND, True))
+check("4 HHV-6B is called integrated", both[B]["call"], CALL_ICI)
+check("4 and so is HHV-6A", (both[A]["call"], "both pass" in both[A]["note"]), (CALL_ICI, True))
 
 # 5. no human depth
 nohum = run({B: flat(15)}, {B: 400}, human=[("chrX", 1000, 1000, 30.0)])
@@ -226,6 +260,7 @@ def og_report(d):
     """og viral report on the inputs in d, into d/S/viral/S_viral.tsv."""
     subprocess.run([OG, "viral", "report", "--sample", "S", "--viral-fasta", f"{d}/v.fa", "--viral-coverage",
                     f"{d}/vcov.tsv", "--viral-depth", f"{d}/vdepth.tsv", "--human-coverage", f"{d}/hcov.tsv",
+                    "--viral-hits", f"{d}/hits.sam", "--idxstats", f"{d}/idx.tsv",
                     "--out", f"{d}/S/viral/S_viral.tsv"], check=True, capture_output=True)
 
 
@@ -265,14 +300,14 @@ for human, want in (([("chrX", 1000, 1000, 30.0)], "not assessed (no human depth
             check("8 no human depth: the text line leaves out copies per cell", rr.viral_lines(data)[1],
                   "Human gammaherpesvirus 4: viral DNA found (30 reads, 100% of the genome)")
 
-# 8. under 10 reads is "not found" but still listed with its reads, never "No read"
+# 8. under 10 reads is "below threshold", listed with its reads, never "No read"
 with tempfile.TemporaryDirectory() as d:
     write_inputs(d, {HCV: lambda i: 1 if i < 50 else 0}, {HCV: 5})
     os.makedirs(f"{d}/S/viral")
     og_report(d)
     data = sec(f"{d}/S", "S", "viral")[1]
     check("8 a genome with 5 reads is listed", [(x["virus"], x["call"], x["reads"]) for x in data["found"]],
-          [("Hepatitis C virus genotype 1", CALL_NONE, "5")])
+          [("Hepatitis C virus genotype 1", CALL_BELOW, "5")])
     check("8 and the text does not say no read", any(ln.startswith("No read") for ln in rr.viral_lines(data)), False)
 
 if FAILS:

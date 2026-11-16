@@ -21,11 +21,14 @@ family it is in.
                                 compound_het.tsv) with whether each child was
                                 assessed and why not (trio_status; a file linking
                                 out of the folder is "rejected" in trio_file_state),
-                                each member's run progress and attention count,
+                                each member's run progress, attention count and
+                                whether their pages treat them as a child (child),
                                 and the members side by side: CYP2D6, the CPIC
                                 genes, HLA, the haplogroups and every blood group
                                 system, each value with its stale flag (from each
-                                summary.json only)
+                                summary.json only); 500 with a fixed line when a
+                                file of the family cannot be read, and the family
+                                then lists no members until it can
 
 state.json gets plugins.family: {"kind": "family", ...} on a family's page,
 {"kind": "member", "families": [...]} on the page of a sample in a family,
@@ -481,23 +484,71 @@ def member_summary(live, d):
     return got if isinstance(got, dict) else None
 
 
-def member_state(root, sample):
-    """The families that list the sample. A family whose pedigree cannot be read may be the one that
-    lists it as a child: with no readable family listing it, the answer is unknown, never "in no
-    family" ({"kind": "member", "families": [], "unknown": true}), and its pages keep results to act
-    on closed, as the home page does for a run no readable family lists."""
-    fams, unread = [], False
-    for name, d in family_dirs(root):
+_BUILT = {}
+
+
+def folder_stamp(d):
+    """What a read of the family folder depends on: each entry's name, mode, size, mtime and ctime (a chmod changes
+    the ctime alone). None when the folder cannot be listed."""
+    try:
+        names = sorted(os.listdir(d))
+    except OSError:
+        return None
+    out = []
+    for n in names:
         try:
-            order, _ = members_of(d)
+            st = os.stat(os.path.join(d, n))
+            out.append((n, st.st_mode, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+        except OSError:
+            out.append((n, None))
+    return tuple(out)
+
+
+def family_readable(name, d):
+    """Whether family.json's family part (family_page) builds from the folder's files as they are now, with its
+    pedigree read. Cached by folder_stamp, so a file that reads again counts at once, with no request needed."""
+    stamp = folder_stamp(d)
+    hit = _BUILT.get(d)
+    if stamp is not None and hit and hit[0] == stamp:
+        return hit[1]
+    try:
+        ok = stamp is not None and not family_page(name, d)["state"].get("error")
+    except Exception:  # any file of the folder that cannot be read
+        ok = False
+    _BUILT[d] = (stamp, ok)
+    return ok
+
+
+def families(root):
+    """Each family folder under root as /runs.json lists it: {"name", "dir", "kind", "members", "unreadable"}.
+    members is [] while the pedigree cannot be read; unreadable while family.json cannot be built from the folder."""
+    out = []
+    for n, d in family_dirs(root):
+        try:
+            order, members = members_of(d)
+            people = [{"sample": s, "sex": members[s]["sex"], "father": members[s]["father"],
+                       "mother": members[s]["mother"], "partner": members[s]["partner"],
+                       "sequenced": members[s]["sequenced"]} for s in order]
         except (OSError, ValueError):
-            unread = True
-            continue
-        if sample in order:
-            fams.append({"name": name, "url": "/runs/%s/" % name})
-    if fams:
-        return {"kind": "member", "families": fams}
-    return {"kind": "member", "families": [], "unknown": True} if unread else None
+            people = []
+        out.append({"name": n, "dir": d, "kind": "family", "members": people,
+                    "unreadable": not people or not family_readable(n, d)})
+    return out
+
+
+def member_state(root, sample):
+    """The families that list the sample, and child: whether its pages treat it as a child, by the one rule over
+    every family (bin/owngenome_live.py child_of). A family that cannot be read may be the one that lists it as a
+    child: with no readable family listing it, the answer is unknown, never "in no family" ({"kind": "member",
+    "families": [], "unknown": true}), and its pages keep results to act on closed, as the home page does."""
+    from owngenome_live import child_of
+    fams = families(root)
+    child = child_of(fams, sample)
+    mine = [{"name": f["name"], "url": "/runs/%s/" % f["name"]} for f in fams
+            if any(m["sample"] == sample for m in f["members"])]
+    if mine:
+        return {"kind": "member", "families": mine, "child": child}
+    return {"kind": "member", "families": [], "unknown": True} if child else None
 
 
 def register(app):
@@ -505,17 +556,7 @@ def register(app):
         return os.path.realpath(app.config.root)
 
     def runs(app_):
-        out = []
-        for n, d in family_dirs(root()):
-            try:
-                order, members = members_of(d)
-                people = [{"sample": s, "sex": members[s]["sex"], "father": members[s]["father"],
-                           "mother": members[s]["mother"], "partner": members[s]["partner"],
-                           "sequenced": members[s]["sequenced"]} for s in order]
-            except (OSError, ValueError):
-                people = []
-            out.append({"name": n, "dir": d, "kind": "family", "members": people})
-        return out
+        return families(root())
 
     def page_data(req, m):
         name = m.group(1)
@@ -523,19 +564,37 @@ def register(app):
         if not d or not is_family(d) or not inside(d, root()):
             app.log("family", name, "family.json", 404)
             return req.send_body(404, "text/plain; charset=utf-8", "not found\n")
+        try:
+            out = page_json(req, name, d)
+        except Exception as e:  # an unreadable file is a fixed error, never a dropped connection
+            print(f"owngenome_live: family.json of {name} not built: {type(e).__name__}", file=sys.stderr)
+            app.log("family", name, "family.json", 500)
+            return req.send_body(500, "text/plain; charset=utf-8", "family not readable\n")
+        app.log("family", name, "family.json", 200)
+        return req.send_json(out)
+
+    def page_json(req, name, d):
         out = family_page(name, d)
         live = getattr(req, "live", None)
         runs = {}
+        listed = live.runs() if live else {}
         for p in out["state"].get("members") or []:
-            r = live.run(p["sample"]) if live else None
+            r = listed.get(p["sample"]) if live else None
             if not r or r.get("kind") == "family":
                 continue
             st = live.base_state(r)
             planned = [s for s in st["steps"] if s["state"] != "not planned"]
-            n, mtime = live.attention(r["dir"] or os.path.join(live.root, r["name"]))
+            rd = r["dir"] or os.path.join(live.root, r["name"])
+            n, mtime = live.attention(rd)
+            # A child whose own page keeps the report closed has no count of flagged cards here: the count changes
+            # with which cards the unopened results flag, and a parent's page would show it.
+            if live.gated(p["sample"], rd, st, listed):
+                n = None
+            # child: whether the person's pages treat them as a child, by the one rule over every family (child_of),
+            # so the family page closes the same people as their own pages do.
             runs[p["sample"]] = {"url": "/runs/%s/" % p["sample"], "state": st["run"]["state"],
                                  "planned": len(planned), "done": sum(1 for s in planned if s["state"] == "done"),
-                                 "attention": n, "results": mtime is not None}
+                                 "attention": n, "results": mtime is not None, "child": live.child(p["sample"], listed)}
         out["runs"] = runs
         given = {}
         comp_p = os.path.join(d, "compound_het.tsv")
@@ -553,8 +612,7 @@ def register(app):
             r = live.run(s_) if live else None
             sums[s_] = member_summary(live, r["dir"] or os.path.join(live.root, r["name"])) if r else None
         out["side_by_side"] = side_by_side(seq, sums) if seq else None
-        app.log("family", name, "family.json", 200)
-        return req.send_json(out)
+        return out
 
     def hook(run_dir, state, events):
         if not run_dir:

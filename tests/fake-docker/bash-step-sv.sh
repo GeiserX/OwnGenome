@@ -10,6 +10,11 @@
 #     than GRIDSS_MIN_MEM_GB (default 32; the fake Docker reports 16 GiB).
 #   Delly (19): gets -x with the exclude map setup.sh installs; without it,
 #     runs as before and warns.
+#   Sniffles2 (04c): stops with exit 1, before Sniffles2, when the first
+#     primary reads of the BAM average under 1,000 bp (Sniffles2 finds no SV
+#     in short reads and exits 0 with an empty VCF), or when it has none;
+#     gets --tandem-repeats with the tandem-repeat map setup.sh installs;
+#     without it, runs as before and says so.
 #   duphold (15): writes duphold/<sample>_sv_filtered.vcf.gz with the filter
 #     expression of the Nextflow DUPHOLD_FILTER, and its index.
 #   AnnotSV (05): builds its input from that file, the input of the Nextflow
@@ -31,6 +36,15 @@ set -euo pipefail
 . "${CASE_WORK:?}/host-path.sh"
 args=" ${*:2} "
 case "$args" in
+  *"samtools view -F 0x900 "*)
+    # Step 04c's read-length check: reads read, and their mean length.
+    printf '%s\n' "${FAKE_READS:-10000 15000}" ;;
+  *" sniffles "*)
+    v=$(sed -n 's/.* -v \([^ ]*\) .*/\1/p' <<<"$args")
+    h=$(host_path "$v")
+    mkdir -p "$(dirname "$h")"
+    printf '##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n' | gzip -c > "$h"
+    : > "${h}.tbi" ;;
   *" tiddit "*)
     if [ "${FAKE_TIDDIT_NO_VCF:-}" = 1 ]; then
       echo "fake TIDDIT: the BAM index does not match the BAM; stopping"
@@ -92,6 +106,38 @@ printf 'chr1\t0\t10000\ttelomere\n' > "${GENOME_DIR}/reference/delly_human.hg38.
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 delly "${SCRIPTS}/19-delly.sh" sample1
 docker_log_has '^run image=[^ ]*delly.* delly sr .*-x /genome/reference/delly_human\.hg38\.excl\.tsv ' "Delly ran without its exclude map"
+
+# --- Sniffles2 ------------------------------------------------------------------------
+mkdir -p "${GENOME_DIR}/sample1/aligned_longread"
+cp "${GENOME_DIR}/sample1/aligned/"* "${GENOME_DIR}/sample1/aligned_longread/"
+sniffles_ran() { awk '/^run image=[^ ]*sniffles/ && / sniffles / { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG"; }
+# A short-read BAM: the step stops before Sniffles2 and names the fix.
+: > "$FAKE_DOCKER_LOG"
+FAKE_READS='10000 151' run_rc sniffles-short "${SCRIPTS}/04c-sniffles2.sh" sample1
+expect_rc sniffles-short 1
+output_has sniffles-short 'average 151 bp'
+output_has sniffles-short 'Point ALIGN_DIR at the long-read BAM'
+docker_log_has '^run image=[^ ]*samtools[^ ]* .*samtools.*view.*-F.*0x900' "step 04c did not read the read lengths with samtools"
+if sniffles_ran; then fail "step 04c ran Sniffles2 on a short-read BAM"; fi
+# No primary read with a sequence: an empty BAM, or one samtools cannot read.
+: > "$FAKE_DOCKER_LOG"
+FAKE_READS='0 0' run_rc sniffles-no-reads "${SCRIPTS}/04c-sniffles2.sh" sample1
+expect_rc sniffles-no-reads 1
+output_has sniffles-no-reads 'no primary read'
+if sniffles_ran; then fail "step 04c ran Sniffles2 on a BAM with no read"; fi
+# Long reads without the tandem-repeat map: Sniffles2 runs without it, with a note.
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 sniffles-no-tr "${SCRIPTS}/04c-sniffles2.sh" sample1
+sniffles_ran || fail "step 04c did not run Sniffles2 on a long-read BAM"
+output_has sniffles-no-tr 'NOTE: no tandem-repeat map'
+if grep -q -- '--tandem-repeats' "$FAKE_DOCKER_LOG"; then fail "Sniffles2 got --tandem-repeats although no map is installed"; fi
+# With the map setup.sh installs (the name of TANDEM_REPEATS_URL, unpacked).
+printf 'chr1\t10000\t11014\n' > "${GENOME_DIR}/reference/GRCh38_AllTandemRepeats.bed"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 sniffles-tr "${SCRIPTS}/04c-sniffles2.sh" sample1
+docker_log_has '^run image=[^ ]*sniffles[^ ]* .* sniffles .*--tandem-repeats /genome/reference/GRCh38_AllTandemRepeats\.bed( |$)' \
+  "Sniffles2 ran without the tandem-repeat map setup.sh installs"
+output_lacks sniffles-tr 'NOTE: no tandem-repeat map'
 
 # --- duphold --------------------------------------------------------------------------
 mkdir -p "${GENOME_DIR}/sample1/manta/results/variants"

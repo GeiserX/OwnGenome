@@ -1,6 +1,6 @@
 //! `og chip report`: each protein change of a table gene on its MANE
 //! transcript, with its class and status, and per gene the depth and the
-//! detection limit.
+//! read-support limit.
 //!
 //! Inputs, written by bcftools (`scripts/49-chip.sh`, `CHIP_ANNOTATE`):
 //! - calls: `CHROM POS REF ALT FILTER BCSQ AD AF DP`, one ALT per line,
@@ -16,17 +16,38 @@
 //! - `chip`: in the table's classes;
 //! - `other_change`: a protein change outside them.
 //!
-//! The depth of a base counts once, for the last gene of the BED that
-//! covers it, even when the depth file lists the base twice.
+//! A base counts once per gene, even when the depth file lists it twice.
+//! Its depth goes into the mean of only the last gene of the BED that
+//! covers it, as the Python's mean did, and into the per-base limit and
+//! the shares of every gene that covers it, so a base two genes share is
+//! read for both.
 //!
-//! The output is the Python's, byte for byte.
+//! Per gene, the limit comes from each coding base's own depth, not from
+//! the mean ([`crate::binom::limit_over`]), so an exon the run did not read
+//! raises the limit or leaves none:
+//! - `covered`: a limit exists;
+//! - `partly_covered`: some bases have [`MIN_ALT_READS`] reads, too few
+//!   for any VAF to reach the power over the gene;
+//! - `too_shallow`: no base has [`MIN_ALT_READS`] reads;
+//! - `not_on_reference`: no coding base on the reference.
+//!
+//! A limit is written rounded up at the third decimal, so a clone at the
+//! written VAF reaches the power. The stated limit of the run is the median
+//! of the covered genes' written limits, the figure every reader of the
+//! table takes, and the shares are counted at that same figure.
+//! Each gene also gets the share of its coding bases with
+//! [`CALLABLE_DEPTH`] reads or more, and the share where a clone at the
+//! stated limit shows its reads.
+//!
+//! The calls table is the Python's, byte for byte; the depth table and the
+//! summary line differ on purpose since the per-base limit (issue #411).
 
-use crate::binom::detection_limit;
+use crate::binom::{detection_limit_over, finite_mean, readable_at};
 use crate::prepare::{attr, columns};
 use crate::table::{
     Missense, Row, Truncating, digits, parse_missense, parse_truncating, read_table,
 };
-use crate::{DETECT_POWER, Error, MIN_ALT_READS, each_line, int, write_atomic};
+use crate::{CALLABLE_DEPTH, DETECT_POWER, Error, MIN_ALT_READS, each_line, int, write_atomic};
 use indexmap::IndexMap;
 use pycompat::fmt::fixed;
 use pycompat::num::{parse_float, py_strip};
@@ -55,8 +76,9 @@ pub const OUT_COLUMNS: [&str; 15] = [
     "class",
     "note",
 ];
-/// The depth table's columns.
-pub const DEPTH_COLUMNS: [&str; 7] = [
+/// The depth table's columns. The last two came after the first release
+/// of the table, so a reader of the first seven still reads it.
+pub const DEPTH_COLUMNS: [&str; 9] = [
     "gene",
     "transcript",
     "chrom",
@@ -64,6 +86,8 @@ pub const DEPTH_COLUMNS: [&str; 7] = [
     "mean_depth",
     "detection_limit_vaf",
     "status",
+    "callable_fraction",
+    "assessable_fraction",
 ];
 
 const TRUNCATING: [&str; 4] = [
@@ -446,11 +470,13 @@ pub fn classify(
     Ok(out)
 }
 
-/// The bases of one contig the BED covers, cut where the owner changes:
-/// `(first, last + 1, owner)`, 1-based, ascending and disjoint, with a flag
-/// per base for "its depth was counted".
+/// The bases of one contig the BED covers, cut where the set of covering
+/// rows changes: `(first, last + 1, owner, genes)`, 1-based, ascending and
+/// disjoint, where `owner` is the gene whose mean counts the base and
+/// `genes` every gene that covers it, with a flag per base for "its depth
+/// was counted".
 struct Segments {
-    segs: Vec<(i128, i128, usize)>,
+    segs: Vec<(i128, i128, usize, Vec<usize>)>,
     counted: Vec<Vec<bool>>,
 }
 
@@ -479,8 +505,11 @@ impl Segments {
                 active.insert((starts[si].3, starts[si].2));
                 si += 1;
             }
-            if let Some(&(_, gene)) = active.last() {
-                segs.push((lo, hi, gene));
+            if let Some(&(_, owner)) = active.last() {
+                let mut genes: Vec<usize> = active.iter().map(|&(_, g)| g).collect();
+                genes.sort_unstable();
+                genes.dedup();
+                segs.push((lo, hi, owner, genes));
             }
         }
         let counted = segs
@@ -490,14 +519,14 @@ impl Segments {
         Segments { segs, counted }
     }
 
-    /// The owner of `pos` and its counted flag.
-    fn at(&mut self, pos: i128) -> Option<(usize, &mut bool)> {
+    /// The owner of `pos`, every gene that covers it, and its counted flag.
+    fn at(&mut self, pos: i128) -> Option<(usize, &[usize], &mut bool)> {
         let i = self.segs.partition_point(|s| s.1 <= pos);
-        let &(lo, hi, gene) = self.segs.get(i)?;
-        if pos < lo || pos >= hi {
+        let (lo, hi, owner, genes) = self.segs.get(i)?;
+        if pos < *lo || pos >= *hi {
             return None;
         }
-        Some((gene, &mut self.counted[i][(pos - lo) as usize]))
+        Some((*owner, genes, &mut self.counted[i][(pos - lo) as usize]))
     }
 }
 
@@ -520,10 +549,41 @@ fn bases(mut rows: Vec<(i128, i128)>) -> i128 {
 }
 
 /// One row of the depth table, in [`DEPTH_COLUMNS`] order.
-pub type DepthRow = [String; 7];
+pub type DepthRow = [String; 9];
+
+/// What one gene's coding bases hold, for its depth row.
+struct GeneDepth {
+    /// Coding bases on the reference.
+    n: u64,
+    mean: f64,
+    /// `(depth, bases)`, the unread bases at depth 0.
+    depths: Vec<(u64, u64)>,
+    limit: Option<f64>,
+}
+
+impl GeneDepth {
+    /// The share of the coding bases where `keep` holds for the depth.
+    fn share(&self, keep: impl Fn(u64) -> bool) -> String {
+        let k: u64 = self
+            .depths
+            .iter()
+            .filter(|&&(d, _)| keep(d))
+            .map(|&(_, b)| b)
+            .sum();
+        fixed(k as f64 / self.n as f64, 3)
+    }
+}
+
+/// A depth as whole reads: a fraction is cut, a negative or `nan` is 0.
+fn reads(d: f64) -> u64 {
+    // `as` truncates, saturates and turns NaN into 0.
+    d as u64
+}
 
 /// One row per table gene: its coding bases on the reference, the mean
-/// depth over them and the detection limit at that depth.
+/// depth over them, the read-support limit from each base's depth, its
+/// status, and the shares of its bases at [`CALLABLE_DEPTH`] reads and at
+/// the stated limit of the run.
 pub fn depth_rows(
     table: &[Row],
     genes: &IndexMap<String, GeneModel>,
@@ -540,8 +600,9 @@ pub fn depth_rows(
         }
         Ok(())
     })?;
-    // Per contig, who owns each base: the last assignment in gene order,
-    // then row order, as the Python's position dictionary kept it.
+    // Per contig, who covers each base, and who owns it for the mean: the
+    // last assignment in gene order, then row order, as the Python's
+    // position dictionary kept it.
     let mut by_chrom: HashMap<&str, Vec<(i128, i128, usize, usize)>> = HashMap::new();
     let mut order = 0;
     for (gi, rows) in regions.values().enumerate() {
@@ -559,6 +620,7 @@ pub fn depth_rows(
         .collect();
     let names: Vec<&str> = regions.keys().map(String::as_str).collect();
     let mut total = vec![0.0f64; regions.len()];
+    let mut hist: Vec<HashMap<u64, u64>> = vec![HashMap::new(); regions.len()];
     each_line(depth, |ln| {
         let f: Vec<&str> = ln.strip_suffix('\n').unwrap_or(ln).split('\t').collect();
         if f.len() < 3 {
@@ -566,22 +628,24 @@ pub fn depth_rows(
         }
         let pos = int(f[1], depth)?;
         if let Some(seg) = owner.get_mut(f[0])
-            && let Some((gi, counted)) = seg.at(pos)
+            && let Some((gi, genes, counted)) = seg.at(pos)
             && !*counted
-            && !names[gi].is_empty()
             && let Some(d) = num(f[2])
         {
-            total[gi] += d;
+            if !names[gi].is_empty() {
+                total[gi] += d;
+            }
+            for &g in genes.iter().filter(|&&g| !names[g].is_empty()) {
+                *hist[g].entry(reads(d)).or_default() += 1;
+            }
             *counted = true;
         }
         Ok(())
     })?;
 
-    let mut out = Vec::with_capacity(table.len());
+    let mut per_gene: Vec<(&Row, Option<GeneDepth>)> = Vec::with_capacity(table.len());
     for r in table {
-        let g = r.gene.as_str();
-        let info = genes.get(g).cloned().unwrap_or_default();
-        let gi = regions.get_index_of(g);
+        let gi = regions.get_index_of(r.gene.as_str());
         let n = gi.map_or(0, |i| {
             let rows = &regions[i];
             let mut per: HashMap<&str, Vec<(i128, i128)>> = HashMap::new();
@@ -590,7 +654,43 @@ pub fn depth_rows(
             }
             per.into_values().map(bases).sum()
         });
-        if n == 0 {
+        if n <= 0 {
+            per_gene.push((r, None));
+            continue;
+        }
+        let n = n as u64;
+        let mean = gi.map_or(0.0, |i| total[i]) / n as f64;
+        finite_mean(mean)?;
+        let mut depths: Vec<(u64, u64)> = gi
+            .map(|i| hist[i].iter().map(|(&d, &b)| (d, b)).collect())
+            .unwrap_or_default();
+        let read: u64 = depths.iter().map(|&(_, b)| b).sum();
+        if read < n {
+            depths.push((0, n - read));
+        }
+        depths.sort_unstable();
+        let limit = detection_limit_over(&depths);
+        per_gene.push((
+            r,
+            Some(GeneDepth {
+                n,
+                mean,
+                depths,
+                limit,
+            }),
+        ));
+    }
+    let stated = stated_limit(
+        per_gene
+            .iter()
+            .filter_map(|(_, g)| g.as_ref()?.limit.map(written_limit)),
+    );
+
+    let mut out = Vec::with_capacity(per_gene.len());
+    for (r, gd) in per_gene {
+        let g = r.gene.as_str();
+        let info = genes.get(g).cloned().unwrap_or_default();
+        let Some(gd) = gd else {
             out.push([
                 g.to_owned(),
                 info.tx,
@@ -599,56 +699,88 @@ pub fn depth_rows(
                 String::new(),
                 String::new(),
                 "not_on_reference".to_owned(),
+                String::new(),
+                String::new(),
             ]);
             continue;
-        }
-        let mean = gi.map_or(0.0, |i| total[i]) / n as f64;
-        let lim = detection_limit(mean)?;
+        };
+        let status = if gd.limit.is_some() {
+            "covered"
+        } else if gd
+            .depths
+            .iter()
+            .any(|&(d, b)| b > 0 && d >= u64::from(MIN_ALT_READS))
+        {
+            "partly_covered"
+        } else {
+            "too_shallow"
+        };
         out.push([
             g.to_owned(),
             info.tx,
             info.chrom,
-            n.to_string(),
-            fixed(mean, 1),
-            lim.map_or(String::new(), |l| fixed(l, 3)),
-            if lim.is_some() {
-                "covered"
-            } else {
-                "too_shallow"
-            }
-            .to_owned(),
+            gd.n.to_string(),
+            fixed(gd.mean, 1),
+            gd.limit
+                .map_or(String::new(), |l| fixed(written_limit(l), 3)),
+            status.to_owned(),
+            gd.share(|d| d >= CALLABLE_DEPTH),
+            stated.map_or(String::new(), |f| gd.share(|d| readable_at(d, f))),
         ]);
     }
     Ok(out)
 }
 
-/// The detection-limit sentence for the depth rows.
-pub fn summary_line(depth: &[DepthRow]) -> Result<String, Error> {
-    let mut covered: Vec<f64> = depth
-        .iter()
-        .filter(|r| r[6] == "covered")
-        .filter_map(|r| num(&r[4]))
-        .collect();
-    if covered.is_empty() {
-        return Ok(format!(
+/// A limit as the depth table writes it: rounded up at the third decimal,
+/// so the power at the written VAF is [`DETECT_POWER`] or more. The `1e-9`
+/// keeps a limit that is already a whole thousandth from moving up by one.
+fn written_limit(l: f64) -> f64 {
+    (l * 1000.0 - 1e-9).ceil() / 1000.0
+}
+
+/// The stated limit of a run: the median of the covered genes' limits
+/// (the mean of the middle two for an even count); `None` with none.
+pub fn stated_limit(limits: impl IntoIterator<Item = f64>) -> Option<f64> {
+    pycompat::stats::median(limits).ok()
+}
+
+/// The read-support sentence for the depth rows, read back from the rows
+/// as `og summary collect` reads them.
+pub fn summary_line(depth: &[DepthRow]) -> String {
+    let covered: Vec<&DepthRow> = depth.iter().filter(|r| r[6] == "covered").collect();
+    let (Some(med), Some(lim)) = (
+        stated_limit(covered.iter().filter_map(|r| num(&r[4]))),
+        stated_limit(covered.iter().filter_map(|r| num(&r[5]))),
+    ) else {
+        return format!(
             "No CHIP gene has the depth to find a clone (at least {MIN_ALT_READS} reads with the change): no result either way."
-        ));
-    }
-    covered.sort_by(f64::total_cmp);
-    let k = covered.len();
-    let med = if k % 2 == 1 {
-        covered[k / 2]
-    } else {
-        (covered[k / 2 - 1] + covered[k / 2]) / 2.0
+        );
     };
-    let lim = detection_limit(med)?.unwrap_or(f64::NAN);
-    Ok(format!(
-        "Detection limit at this depth (median {}x over the CHIP genes' coding exons): a clone with a VAF of about {}% or more is found {} times in 10. CHIP starts at a VAF of {}%, so smaller clones are likely missed: no call here does not rule one out. Not a diagnosis.",
+    let short: Vec<String> = depth
+        .iter()
+        .filter(|r| r[6] == "partly_covered" || r[6] == "too_shallow")
+        .map(|r| match num(&r[8]) {
+            Some(a) => format!("{} {}%", r[0], fixed(a * 100.0, 0)),
+            None => r[0].clone(),
+        })
+        .collect();
+    let short = if short.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Too few reads for any limit in {} gene{}; the share of each one's coding bases read deep enough for that VAF: {}.",
+            short.len(),
+            if short.len() == 1 { "" } else { "s" },
+            short.join(", ")
+        )
+    };
+    format!(
+        "Read-support limit (median {}x over the CHIP genes' coding exons): in the median CHIP gene, a clone with a VAF of about {}% or more shows at least {MIN_ALT_READS} reads with the change {} times in 10, counted base by base. Mutect2 and its filters call fewer than that.{short} CHIP starts at a VAF of {}%, so smaller clones are likely missed: no call here does not rule one out. Not a diagnosis.",
         fixed(med, 0),
         fixed(lim * 100.0, 0),
         (DETECT_POWER * 10.0) as i64,
         fixed(CHIP_MIN_VAF * 100.0, 0)
-    ))
+    )
 }
 
 fn tsv<const N: usize>(columns: &[&str; N], rows: &[[String; N]]) -> String {
@@ -698,7 +830,7 @@ pub fn report(files: &Files, sample: &str) -> Result<String, Error> {
     let genes = read_gff(&files.gff)?;
     let rows = classify(&read_calls(&files.calls)?, &table, &genes, &files.calls)?;
     let depth = depth_rows(&table, &genes, &files.bed, &files.depth)?;
-    let summary = summary_line(&depth)?;
+    let summary = summary_line(&depth);
     write_atomic(&files.out, tsv(&OUT_COLUMNS, &rows).as_bytes())?;
     write_atomic(&files.depth_out, tsv(&DEPTH_COLUMNS, &depth).as_bytes())?;
     let n = rows.iter().filter(|r| r[12] == "chip").count();
