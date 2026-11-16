@@ -51,23 +51,7 @@ done
 FIX_SITES="${G}/reference/somalier/sites_fixture.vcf"
 FIX_PANEL="${G}/reference/verifybamid2_fixture/1000g.phase3.100k.b38.vcf.gz.dat"
 mkdir -p "$(dirname "$FIX_PANEL")"
-python3 - "${REF}.fai" "$SITES" "$FIX_SITES" "$PANEL" "$FIX_PANEL" <<'PY'
-import gzip, sys
-fai, sites, fix_sites, panel, fix_panel = sys.argv[1:]
-contigs = {l.split("\t")[0] for l in open(fai)}
-with gzip.open(sites, "rt") as f, open(fix_sites, "w") as out:
-    for l in f:
-        if l.startswith("#") or l.split("\t", 1)[0] in contigs:
-            out.write(l)
-bed = open(panel + ".bed").read().splitlines()
-keep = [i for i, l in enumerate(bed) if l.split("\t", 1)[0] in contigs]
-for ext in ("bed", "mu", "UD"):
-    lines = open(panel + "." + ext).read().splitlines()
-    assert len(lines) == len(bed), ext
-    with open(fix_panel + "." + ext, "w") as out:
-        out.writelines(lines[i] + "\n" for i in keep)
-print(len(keep), "panel markers on the fixture's contigs")
-PY
+"${REPO}/bin/og" dev fixture contig-cut "${REF}.fai" "$SITES" "$FIX_SITES" "$PANEL" "$FIX_PANEL"
 check_ge "somalier sites on the fixture's contigs" "$(grep -vc '^#' "$FIX_SITES" 2>/dev/null || true)" 9000
 check_ge "panel markers on the fixture's contigs" "$(wc -l < "${FIX_PANEL}.bed" 2>/dev/null | tr -d ' ')" 40000
 export SOMALIER_SITES="$FIX_SITES" VERIFYBAMID2_PANEL="$FIX_PANEL"
@@ -109,27 +93,7 @@ bcf view -H -f PASS -v snps -i 'FMT/AD[0:0]==0 && QUAL>=30' -r chrX:2781480-1557
   | awk -F'\t' -v OFS='\t' '{ split($5, a, ","); print $1, $2, ".", $4, a[1], ".", "PASS", "AF=0.5" }' \
   > "${CASE_TMP}/x_sites.tsv"
 check_ge "chrX SNVs of case 21 outside the PARs, no reference read" "$(wc -l < "${CASE_TMP}/x_sites.tsv" | tr -d ' ')" 15
-python3 - "$FIX_SITES" "${CASE_TMP}/x_sites.tsv" "${REF}.fai" "$XS" <<'PY'
-import sys
-sites, extra, fai, out = sys.argv[1:]
-order = {l.split("\t")[0]: i for i, l in enumerate(open(fai))}
-head, recs = [], []
-for l in open(sites):
-    if l.startswith("##"):
-        head.append(l)
-    elif l.startswith("#"):
-        cols = l
-    else:
-        recs.append(l.rstrip("\n").split("\t")[:8])
-seen = {(r[0], r[1]) for r in recs}
-recs += [r.rstrip("\n").split("\t") for r in open(extra) if tuple(r.split("\t")[:2]) not in seen]
-recs.sort(key=lambda r: (order.get(r[0], 1 << 30), int(r[1])))
-with open(out, "w") as f:
-    f.writelines(head)
-    f.write(cols)
-    f.writelines("\t".join(r) + "\n" for r in recs)
-print(len(recs), "sites")
-PY
+"${REPO}/bin/og" dev fixture add-sites "$FIX_SITES" "${CASE_TMP}/x_sites.tsv" "${REF}.fai" "$XS"
 
 SOMALIER_SITES="$XS" run_step 33-sample-qc.sh "$SAMPLE" female
 check "declared female: the step stops (exit ${STEP_RC})" test "$STEP_RC" -ne 0

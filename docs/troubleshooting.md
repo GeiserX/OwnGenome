@@ -40,7 +40,7 @@ dmesg | grep -i "oom\|killed" | tail -10
 
 **Fix:**
 1. Increase the `--memory` flag in the script that failed (for step 3, `DV_MEM`). With `run-all.sh` you do not edit a script: the pipeline gives each task a memory request and doubles it on the one retry after an out-of-memory exit, up to `--max_memory`
-2. Bound what runs at once. With `run-all.sh`, `--max_memory` (e.g. `./scripts/run-all.sh <sample> <sex> --max_memory 24.GB`; without it, the machine's RAM) and `THREADS=N` (`--max_cpus`, by default the machine's CPU count) cap each task, not the total: Nextflow starts tasks until their requests fill the machine's CPUs and RAM, and on a Mac with Docker Desktop that is the Mac's, not the VM's. To bound the total, pass a config with an `executor` block ([a shared host](hardware-requirements.md#a-shared-host)); on a Mac, also pass `THREADS` and `--max_memory` no larger than the VM's (e.g. `THREADS=6 ... --max_memory 14.GB`); a rerun reuses the steps that finished
+2. Bound what runs at once. With `run-all.sh`, `--max_memory` (e.g. `./scripts/run-all.sh <sample> <sex> --max_memory 24.GB`; without it, the machine's RAM) and `THREADS=N` (`--max_cpus`, by default the machine's CPU count) cap each task, not the total: Nextflow starts tasks until their requests fill the machine's CPUs and RAM. On Docker Desktop and colima that is the VM's: `run-all.sh` reads its size from `docker info` and books no more (`<sample>/nextflow/executor.config`). To bound the total lower, pass a config with an `executor` block ([a shared host](hardware-requirements.md#a-shared-host)); a rerun reuses the steps that finished
 3. Increase Docker Desktop memory allocation (see [Docker Desktop not enough memory](#docker-desktop-not-enough-memory-macwindows))
 4. For DeepVariant run as a script, lower `THREADS` (its shard count) and `DV_MEM` together, e.g. `THREADS=4 DV_MEM=16g ./scripts/03-deepvariant.sh <sample> <sex>`
 
@@ -207,7 +207,7 @@ grep -E '(%%|!!) executor|^~> ' "$GENOME_DIR/<sample>/nextflow/.nextflow.log" | 
 
 `!! executor local > No more task to compute` next to `%% executor local > tasks in the submission queue: 2` (the number is how many wait), with the same tasks listed each time, means tasks are waiting to start while nothing is running. A line `tasks to be completed` means a task is still running. That is the entry above, not this one.
 
-**Cause:** Nextflow before 26.10.0 can lose track of the CPUs and memory it has free ([Lessons learned](lessons-learned.md#the-local-executor-can-lose-track-of-free-memory-and-a-task-that-needs-all-of-it-then-never-starts)). After that it believes less is free than there is, and a task that asks for more than that never starts. The tasks most exposed ask for all, or nearly all, of what the machine has: `run-all.sh` caps a task at the machine's CPU count and RAM, so that is every 8-CPU task on a machine with 8 CPUs or fewer, and DeepVariant and the alignment (32 GB each) on a 32 GB machine. We have seen this in the CI stub runs only, never in a real run. Nextflow 26.10.0, the release `versions.env` pins, fixes the race ([nextflow-io/nextflow#7816](https://github.com/nextflow-io/nextflow/issues/7816)), so this applies when you run an older release. On 26.10.0 or later, a run in this state has another cause: keep the log and open an issue.
+**Cause:** Nextflow before 26.10.0 can lose track of the CPUs and memory it has free ([Lessons learned](lessons-learned.md#the-local-executor-can-lose-track-of-free-memory-and-a-task-that-needs-all-of-it-then-never-starts)). After that it believes less is free than there is, and a task that asks for more than that never starts. The tasks most exposed ask for all, or nearly all, of what the machine has: `run-all.sh` caps a task at the machine's CPU count and RAM (the container engine's when it has less), so that is every 8-CPU task on a machine with 8 CPUs or fewer, and DeepVariant and the alignment (32 GB each) on a 32 GB machine. We have seen this in the CI stub runs only, never in a real run. Nextflow 26.10.0, the release `versions.env` pins, fixes the race ([nextflow-io/nextflow#7816](https://github.com/nextflow-io/nextflow/issues/7816)), so this applies when you run an older release. On 26.10.0 or later, a run in this state has another cause: keep the log and open an issue.
 
 **Fix:**
 
@@ -950,7 +950,7 @@ HLA typing from WGS data is unreliable in Docker. The two main tools have unreso
 We have not measured a run on Apple Silicon. Natively on Linux with 8 shards, DeepVariant alone took 8 h 50 min to 13 h 30 min in three measured 30-40x runs ([runtime](hardware-requirements.md#runtime-per-step)); under emulation every step takes longer.
 
 **Mitigation strategies:**
-1. **Run fewer heavy steps at once.** With `run-all.sh`, bound the total with an `executor` block set to Docker Desktop's CPUs and memory ([a shared host](hardware-requirements.md#a-shared-host)), and pass `THREADS` and `--max_memory` no larger than the VM's (e.g. `THREADS=6 ... --max_memory 14.GB`); `--max_cpus` and `--max_memory` alone cap each task, not the total.
+1. **Run fewer heavy steps at once.** `run-all.sh` already books no more than Docker Desktop's CPUs and memory, which it reads from `docker info`. To run fewer at once, bound the total lower with an `executor` block ([a shared host](hardware-requirements.md#a-shared-host)), and pass `THREADS` and `--max_memory` no larger than the block (e.g. `THREADS=6 ... --max_memory 14.GB`); `--max_cpus` and `--max_memory` alone cap each task, not the total.
 2. **Lower the step scripts' limits.** For step 3, `THREADS=2 DV_MEM=12g` instead of the default 8 CPUs and 32 GB ([DeepVariant crashes on Mac](#step-3-deepvariant-crashes-on-mac-amd64-emulation)).
 3. **Offload the heaviest steps.** Run steps 2, 3, 18, 19 on a remote Linux machine and bring back the outputs. Everything after step 3 needs only the VCF or BAM.
 4. **Use a cloud instance.** A Hetzner CCX33 has 8 vCPUs and 32 GB at ~$0.18/hr; plan for more than a day of run time on 8 vCPUs.
@@ -1001,7 +1001,7 @@ docker stats --no-stream
 
 ### When to reduce `--cpus` or `--memory`
 
-With `run-all.sh` you do not edit the scripts' flags: `THREADS=N` caps every task's CPUs (`--max_cpus`), and `--max_memory 24.GB` after the sex caps every task's memory. They cap each task, not the run. Nextflow starts a task when its request fits in what is left of the machine's CPUs and RAM after the tasks it already started; it does not look at what other programs use. To bound the total, see [a shared host](hardware-requirements.md#a-shared-host).
+With `run-all.sh` you do not edit the scripts' flags: `THREADS=N` caps every task's CPUs (`--max_cpus`), and `--max_memory 24.GB` after the sex caps every task's memory. They cap each task, not the run. Nextflow starts a task when its request fits in what is left of the machine's CPUs and RAM (the container engine's when it has less) after the tasks it already started; it does not look at what other programs use. To bound the total, see [a shared host](hardware-requirements.md#a-shared-host).
 
 **Reduce `--cpus` when:**
 - Running multiple steps in parallel on a machine with limited cores

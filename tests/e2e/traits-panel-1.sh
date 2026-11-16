@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Step 42, the traits panel, on the HG002 gVCF case 21 wrote, and its
 # Nextflow mirror:
-#   - assets/traits.tsv: every reference base is the fixture reference's base
+#   - assets/traits.tsv: og traits check passes, every reference base is the fixture reference's base
 #     (on the contigs it has), every PubMed id resolves and every rsID's GRCh38
-#     position and alleles are dbSNP's (tests/test_traits_table.py --fasta
+#     position and alleles are dbSNP's (og dev traits-sources --fasta
 #     --online); control: a copy with one wrong reference base and one PubMed
 #     id that does not exist must fail, naming both;
 #   - scripts/42-traits.sh: one row per table row plus the APOE line; the
-#     table positions inside the fixture's slices are read (called) with the
-#     genotype of the GIAB v4.2.1 truth, every position outside them is
-#     not_covered (no reads, never taken for the reference);
+#     table positions inside the fixture's slices carry the genotype of the
+#     GIAB v4.2.1 truth and are read (called), or low_gq when the gVCF's GQ
+#     there is below 20 or its FILTER is not PASS, . or RefCall; every position
+#     outside them is not_covered (no reads, never taken for the reference);
 #   - a planted alternate allele: a copy of the gVCF with CYP2A6*2 (rs1801272)
 #     homozygous gives that row the table's hom_alt reading, not HG002's;
+#   - the call floor: the same planted call at GQ 5, and at GQ 40 with FILTER
+#     LowQual, reads low_gq ("not read"), and every other row is as in HG002;
 #   - both reports (bin/render_report.py on the sample folder) carry the
 #     section, the HTML one with the APOE lines folded away;
 #   - nextflow run main.nf --tools traits,html_report on the same VCF and
@@ -28,10 +31,12 @@ GVCF="${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz"
 check "case 21 wrote a gVCF" vcf_ok "$GVCF"
 
 # --- the table: reference bases, PubMed ids, dbSNP --------------------------------
-python3 "${REPO}/tests/test_traits_table.py" --fasta "$REF" --min-fasta-rows 20 --online > "${CASE_TMP}/table.log" 2>&1
+OG_BIN="${OG:-${REPO}/bin/og}"
+check_eq "og traits check passes on the table" "$("$OG_BIN" traits check --table "$TABLE" >/dev/null 2>&1; echo $?)" 0
+"$OG_BIN" dev traits-sources --table "$TABLE" --fasta "$REF" --min-fasta-rows 20 --online > "${CASE_TMP}/table.log" 2>&1
 TRC=$?
 cat "${CASE_TMP}/table.log"
-check_eq "tests/test_traits_table.py --fasta --online exits 0" "$TRC" 0
+check_eq "og dev traits-sources --fasta --online exits 0" "$TRC" 0
 check "the reference bases were checked on the fixture contigs" has 'ref checked against .*: [0-9]+ rows' "$(cat "${CASE_TMP}/table.log")"
 
 # Control: one wrong reference base (rs1801133, chr1, a fixture contig) and one
@@ -40,7 +45,7 @@ BAD="${CASE_TMP}/traits-planted.tsv"
 awk -F'\t' -v OFS='\t' '$3 == "rs1801133" { $5 = "C" } $3 == "rs671" { $13 = "99999999" } { print }' "$TABLE" > "$BAD"
 check_eq "control: the planted copy differs from the table in two lines" \
   "$(diff "$TABLE" "$BAD" | grep -c '^>' || true)" 2
-python3 "${REPO}/tests/test_traits_table.py" --table "$BAD" --fasta "$REF" --online > "${CASE_TMP}/table-bad.log" 2>&1
+"$OG_BIN" dev traits-sources --table "$BAD" --fasta "$REF" --online > "${CASE_TMP}/table-bad.log" 2>&1
 BRC=$?
 BADLOG=$(cat "${CASE_TMP}/table-bad.log")
 check "control: the planted copy fails (exit ${BRC})" test "$BRC" -ne 0
@@ -64,6 +69,17 @@ IN=$(awk -F'\t' '$6 == "in"' "${CASE_TMP}/where.tsv" | wc -l | tr -d ' ')
 check_ge "table positions inside the fixture's slices" "$IN" 2
 status_of() { awk -F'\t' -v r="$1" '$1 == r { print $7 }' "$OUT"; }
 geno_of()   { awk -F'\t' -v r="$1" '$1 == r { print $6 }' "$OUT"; }
+# What step 42 should make of the gVCF's call at a position: low_gq below GQ
+# 20 or with a FILTER other than PASS, . or RefCall, else called. A missing
+# GQ (.) stays readable.
+GENOS="${G}/${SAMPLE}/traits/${SAMPLE}_traits_genotypes.tsv"
+check "the genotypes table has the GQ and FILTER columns" \
+  test "$(awk -F'\t' 'NF != 7' "$GENOS" | wc -l | tr -d ' ')" -eq 0 -a -s "$GENOS"
+want_status() {
+  awk -F'\t' -v c="$1" -v p="$2" '$1 == c && $2 == p && length($4) <= 1 {
+      weak = ($7 != "." && $7 != "PASS" && $7 != "RefCall") || ($6 ~ /^[0-9]+(\.[0-9]+)?$/ && $6 + 0 < 20)
+      print (weak ? "low_gq" : "called") " (GQ " $6 ", FILTER " $7 ")"; exit }' "$GENOS"
+}
 OUTSIDE_NC=0 OUTSIDE=0
 while IFS=$'\t' read -r rs c p ref _alt where; do
   if [ "$where" = out ]; then
@@ -79,7 +95,8 @@ while IFS=$'\t' read -r rs c p ref _alt where; do
     WANT=$(tr '|' '/' <<< "$T" | awk -F/ -v r="$ref" '{ if ($2 == r) print $2 "/" $1; else print $1 "/" $2 }')
   elif [ -n "$INBED" ]; then WANT="${ref}/${ref}"
   else WANT="outside the GIAB benchmark regions"; fi
-  check_eq "${rs} (${c}:${p}) is read" "$(status_of "$rs")" called
+  W=$(want_status "$c" "$p")
+  check_eq "${rs} (${c}:${p}) reads ${W}" "$(status_of "$rs")" "${W%% *}"
   check_eq "${rs} genotype is the GIAB truth's" "$(geno_of "$rs")" "$WANT"
 done < "${CASE_TMP}/where.tsv"
 check_eq "table positions outside the slices that are not_covered" "$OUTSIDE_NC" "$OUTSIDE"
@@ -95,31 +112,18 @@ mkdir -p "${G}/${P2}/vcf"
 PL_POS=$(awk -F'\t' '$1 == "rs1801272" { print $3 }' "${CASE_TMP}/where.tsv")
 check "rs1801272 lies in a fixture slice" test "$(awk -F'\t' '$1 == "rs1801272" { print $6 }' "${CASE_TMP}/where.tsv")" = in
 # The gVCF without the records over the position, plus one hom-alt record there.
-python3 - "${G}/${GVCF}" "${G}/${P2}/vcf/planted.vcf" "$PL_POS" "$SAMPLE" <<'PY'
-import gzip, sys
-src, dst, pos, sample = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
-rec = f"chr19\t{pos}\t.\tA\tT,<*>\t40\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:40:30:0,30,0:1,0:990,90,0,990,990,990\n"
-done = False
-with gzip.open(src, "rt") as f, open(dst, "w") as o:
-    for line in f:
-        if line.startswith("#"):
-            o.write(line)
-            continue
-        c = line.split("\t", 8)
-        p = int(c[1])
-        end = p + len(c[3]) - 1
-        for kv in c[7].split(";"):
-            if kv.startswith("END="):
-                end = int(kv[4:])
-        if c[0] == "chr19" and p <= pos <= end:
-            continue
-        if not done and c[0] == "chr19" and p > pos:
-            o.write(rec)
-            done = True
-        o.write(line)
-    if not done:
-        sys.exit("no chr19 record after the planted position")
-PY
+# shellcheck disable=SC2016  # awk program
+gzip -dc "${G}/${GVCF}" | awk -F'\t' -v pos="$PL_POS" '
+  /^#/ { print; next }
+  { p = $2 + 0; end = p + length($4) - 1; n = split($8, kv, ";")
+    for (i = 1; i <= n; i++) if (kv[i] ~ /^END=/) end = substr(kv[i], 5) + 0
+    if ($1 == "chr19" && p <= pos && pos <= end) next
+    if (!done && $1 == "chr19" && p > pos) {
+      print "chr19\t" pos "\t.\tA\tT,<*>\t40\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:40:30:0,30,0:1,0:990,90,0,990,990,990"
+      done = 1 }
+    print }
+  END { if (!done) { print "no chr19 record after the planted position" > "/dev/stderr"; exit 1 } }' \
+  > "${G}/${P2}/vcf/planted.vcf"
 in_genome "$BCFTOOLS_IMAGE" bash -c "bcftools view -Oz -o '${P2}/vcf/${P2}.g.vcf.gz' '${P2}/vcf/planted.vcf' && bcftools index -t '${P2}/vcf/${P2}.g.vcf.gz'"
 check_eq "the planted gVCF has the hom-alt record" \
   "$(bcf query -r "chr19:${PL_POS}" -f '[%GT]\n' "${P2}/vcf/${P2}.g.vcf.gz" 2>/dev/null | head -n 1)" 1/1
@@ -135,6 +139,35 @@ check "planted: the reading differs from HG002's (${R1})" test "$R1" != "$R2"
 check_eq "planted: the other rows read as in HG002" \
   "$(awk -F'\t' '$1 != "rs1801272"' "$OUT2" 2>/dev/null | md5sum)" "$(awk -F'\t' '$1 != "rs1801272"' "$OUT" | md5sum)"
 cp "$OUT2" "${CASE_TMP}/planted_traits.tsv" 2>/dev/null
+
+# --- the call floor: the planted call at GQ 5, and with FILTER LowQual --------------
+for weak in gq lowqual; do
+  P3="${SAMPLE}W${weak}"
+  rm -rf "${G:?}/${P3}"
+  mkdir -p "${G}/${P3}/vcf"
+  awk -F'\t' -v OFS='\t' -v p="$PL_POS" -v w="$weak" '$1 == "chr19" && $2 == p {
+      if (w == "gq") sub(/^1\/1:40:/, "1/1:5:", $10); else $7 = "LowQual" } { print }' \
+    "${G}/${P2}/vcf/planted.vcf" > "${G}/${P3}/vcf/planted.vcf"
+  check_eq "floor (${weak}): the copy differs from the planted gVCF in one line" \
+    "$(diff "${G}/${P2}/vcf/planted.vcf" "${G}/${P3}/vcf/planted.vcf" | grep -c '^>' || true)" 1
+  in_genome "$BCFTOOLS_IMAGE" bash -c "bcftools view -Oz -o '${P3}/vcf/${P3}.g.vcf.gz' '${P3}/vcf/planted.vcf' && bcftools index -t '${P3}/vcf/${P3}.g.vcf.gz'"
+  run_step 42-traits.sh "$P3"
+  check_step_exit 42-traits.sh
+  OUT3="${G}/${P3}/traits/${P3}_traits.tsv"
+  check_eq "floor (${weak}): rs1801272 status" "$(awk -F'\t' '$1 == "rs1801272" { print $7 }' "$OUT3" 2>/dev/null)" low_gq
+  check_eq "floor (${weak}): rs1801272 genotype is still shown" "$(awk -F'\t' '$1 == "rs1801272" { print $6 }' "$OUT3" 2>/dev/null)" T/T
+  R3=$(awk -F'\t' '$1 == "rs1801272" { print $8 }' "$OUT3" 2>/dev/null)
+  check "floor (${weak}): the reading says not read (${R3})" has 'not read; check the reads' "$R3"
+  if [ "$weak" = gq ]; then
+    check "floor (gq): the reading names the GQ" has 'genotype quality 5, below 20' "$R3"
+  else
+    check "floor (lowqual): the reading names the filter" has 'filtered the call: LowQual' "$R3"
+  fi
+  check "floor (${weak}): the hom_alt reading is not given" test "$R3" != "$HOMALT"
+  check_eq "floor (${weak}): the other rows read as in HG002" \
+    "$(awk -F'\t' '$1 != "rs1801272"' "$OUT3" 2>/dev/null | md5sum)" "$(awk -F'\t' '$1 != "rs1801272"' "$OUT" | md5sum)"
+  in_genome "$BCFTOOLS_IMAGE" rm -rf "$P3"
+done
 in_genome "$BCFTOOLS_IMAGE" rm -rf "$P2"
 
 # --- both reports ---------------------------------------------------------------------

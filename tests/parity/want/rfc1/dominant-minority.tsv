@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+FAMEX	chr4	101	155	20	TTTTA	benign	0.85	TTTTA=0.85,TTTCA=0.15	uncertain_motif	TTTCA in 3 of 20 repeat reads (15%): a pathogenic expansion remains possible; one pathogenic expansion can be sufficient; these reads do not resolve an allele; confirm with repeat-primed PCR if symptoms fit

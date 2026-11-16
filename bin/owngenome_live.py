@@ -105,6 +105,23 @@ def valid_run(name):
     return bool(name) and name not in (".", "..") and bool(RUN_RE.match(name))
 
 
+def child_of(families, name):
+    """Whether NAME's pages treat it as a child, the one rule of the person page (state.json's plugins.family.child,
+    from bin/owngenome_live_family.py member_state), the home page (assets/live/core.js childIn), the family page
+    (family.json's child) and the finding route: a run that any readable family lists with a father or a mother is a
+    child, whatever the other families say. While a family cannot be read, a run it might list is treated as a child
+    too (fail closed): every run while its members cannot be read (an empty member list), and the members it lists
+    while another of its files cannot be read (unreadable). Computed from the files on each request.
+    families: [{"name", "members": [{"sample", "father", "mother"}], "unreadable"}], as /runs.json lists them."""
+    fams = families or []
+
+    def listed(f):
+        return [m for m in f.get("members") or [] if m.get("sample") == name]
+    if any(m.get("father") or m.get("mother") for f in fams for m in listed(f)):
+        return True
+    return any(not (f.get("members") or []) or (f.get("unreadable") and listed(f)) for f in fams)
+
+
 def utc_now():
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -529,6 +546,7 @@ class Live:
         self.headline_cache = {}
         self.attention_cache = {}
         self.live_overview = {}  # run -> (the headline cache key, live_results.overview of that summary)
+        self.summary_overviews = {}  # run -> (the summary summary() gave, live_results.overview of it)
         self.allowed = set(LOOPBACK_HOSTS) | {h.lower() for h in cfg.allowed_host or []}
         if cfg.bind not in ("0.0.0.0", "::"):
             self.allowed.add(cfg.bind.strip("[]").lower())
@@ -817,6 +835,35 @@ class Live:
             self.attention_cache[p] = (stamp, n)
         return n, mtime
 
+    def child(self, name, runs=None):
+        """child_of() over the families the server lists now."""
+        return child_of([r for r in (runs or self.runs()).values() if r.get("kind") == "family"], name)
+
+    def summary_overview(self, name, d, st):
+        """live_results.overview of the summary results.json reads now (summary()), cached with that summary;
+        None while there is none."""
+        s = self.summary(name, d, st)
+        if not s:
+            return None
+        hit = self.summary_overviews.get(name)
+        if not hit or hit[0] is not s:
+            try:
+                import live_results
+                hit = (s, live_results.overview(s))
+            except Exception as e:  # one bad summary must not take a page down
+                print(f"owngenome_live: overview of {name} not built: {type(e).__name__}", file=sys.stderr)
+                hit = (s, None)
+            self.summary_overviews[name] = hit
+        return hit[1]
+
+    def gated(self, name, d, st, runs=None):
+        """Whether NAME's own page keeps its report closed (assets/live/core.js): a child whose results hold a
+        result to act on, counted from the summary its results.json reads (summary.json while that has none)."""
+        if not self.child(name, runs):
+            return False
+        o = self.summary_overview(name, d, st) or self.overview(d)[0]
+        return bool(((o or {}).get("levels") or {}).get("act"))
+
     def runs_index(self):
         """/runs.json: each run's progress, and the families with their members, for the home page.
         No result beyond the attention count, the counts by level, the titles of the first four
@@ -827,6 +874,8 @@ class Live:
             self.headline_cache.pop(k, None)
         for k in [k for k in list(self.live_overview) if k not in runs]:
             self.live_overview.pop(k, None)
+        for k in [k for k in list(self.summary_overviews) if k not in runs]:
+            self.summary_overviews.pop(k, None)
         keep = {os.path.join(r["dir"] or os.path.join(self.root, n), "summary.json") for n, r in runs.items()}
         for k in [k for k in list(self.attention_cache) if k not in keep]:
             self.attention_cache.pop(k, None)
@@ -864,6 +913,14 @@ class Live:
                             lo = (hit[0], None)
                         self.live_overview[name] = lo
                     o = lo[1] or o
+                # A child's results to act on decide whether its own page is closed: the summary its results.json
+                # reads counts them. When that summary or the overview above has one, that summary's overview
+                # replaces it, so the home page closes the child exactly when the child's page does, with its count.
+                # A child with none in either keeps the numbers it had without the gate.
+                if self.child(name, runs):
+                    so = self.summary_overview(name, r["dir"] or os.path.join(self.root, name), st)
+                    if so and any(((x or {}).get("levels") or {}).get("act") for x in (so, o)):
+                        o = so
                 item["attention"] = o["attention"] if o else None
                 item["results"] = mtime is not None
                 if o:  # the Journal home: counts by level, the first findings, the lead
@@ -871,8 +928,10 @@ class Live:
                                 screened=o.get("screened", False))
             else:
                 item["members"] = r.get("members") or []
+                item["unreadable"] = bool(r.get("unreadable"))
             out.append(item)
-        fams = [{"name": x["name"], "url": x["url"], "members": x["members"]} for x in out if x["kind"] == "family"]
+        fams = [{"name": x["name"], "url": x["url"], "members": x["members"], "unreadable": x["unreadable"]}
+                for x in out if x["kind"] == "family"]
         return {"runs": [x for x in out if x["kind"] != "family"], "families": fams}
 
 

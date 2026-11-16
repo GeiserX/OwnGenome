@@ -3,7 +3,7 @@
     CPIC Lookup — Drug-gene recommendations from PharmCAT results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Reads PharmCAT's report.json with og pgx cpic-report (bin/og, on the task
-    PATH; the same code scripts/27-cpic-lookup.sh and tests/test_cpic_parser.py
+    PATH; the same code scripts/27-cpic-lookup.sh and cargo test -p og-pgx
     run) and writes the gene phenotypes and the medications PharmCAT's own report
     matches to them. With the PYPGX summary it also writes the PharmCAT/pypgx
     comparison (published to pypgx/, as the bash steps do) and warns, in the

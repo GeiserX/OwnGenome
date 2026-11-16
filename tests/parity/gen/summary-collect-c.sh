@@ -186,7 +186,8 @@ rs3798220\tLPA\tchr6\t2\tLp(a)\tT|C\tcalled\tone copy\tall\t.\t1
 rs78655421\tCFTR\tchr7\t3\tR117H\tG/A\tcalled\tone copy\tall\t.\t1
 rs429358\tAPOE\tchr19\t4\tAPOE\tT/C\tcalled\te3/e4\tall\t.\t1
 rs1\tX\tchr1\t5\tx\t.\tnot_covered\tno reads\tall\t.\t1
-rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1\n"
+rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1
+rs3\tX\tchr1\t7\tx\tC/T\tlow_gq\tA low-quality call at this position (genotype quality 5, below 20): not read; check the reads.\tall\t.\t1\n"
 put $f/traits/S_genotype_rules.tsv "rule\tgene\ttrait\trsids\tchrom\tpos\tgenotypes\tgq\tphase\tresult\tstatus\treading\tancestry\tnote\tpmids
 APOE\tAPOE\tAPOE\trs429358,rs7412\tchr19\t1,2\tT/C,C/C\t40\t.\te3/e4\tcalled\tr\tall\t.\t1
 TAS2R38\tTAS2R38\tbitter\trs1\tchr7\t1\tC/G\t40\tunphased\tPAV/AVI\tcalled\ttaster\tall\t.\t1
@@ -234,7 +235,12 @@ put $f/exomiser/S_exomiser_terms.tsv "hpo_id\tlabel\nHP:0001250\tSeizure\nHP:000
 put $f/chip/S_chip.tsv "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\tchrom
 DNMT3A\tR882H\t0.05\t3\t60\tchip\t\tchr2
 TET2\tQ1\t0.5\t30\t60\tgermline\tlikely inherited\tchr4\n"
-put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\nDNMT3A\t30.5\t0.1\tcovered\nTET2\t40\t0.08\tcovered\nASXL1\t2\t.\tlow depth\nJAK2\t35\t0.1\tcovered\nTP53\t25\t0.1\tcovered\n"
+# The two share columns og chip report adds since the per-base limit, and a
+# partly_covered gene: the stated limit is the median of the covered genes'
+# own limits (0.1), not the limit at their median depth (issue #411).
+put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\tcallable_fraction\tassessable_fraction
+DNMT3A\t30.5\t0.1\tcovered\t0.990\t0.600\nTET2\t40\t0.08\tcovered\t1.000\t0.900\nASXL1\t2\t.\tlow depth\t0.000\t0.000
+JAK2\t35\t0.1\tcovered\t0.980\t0.550\nTP53\t25\t0.1\tcovered\t0.950\t0.400\nSRSF2\t28\t\tpartly_covered\t0.700\t0.650\n"
 put $f/mei/S_mei_sites.tsv "gene\telement\tcondition\tinheritance\tstatus\tmean_depth\tcall
 FKTN\tSVA\tFukuyama\tAR\tcallable\t30\tnot seen
 TAF1\tSVA\tXDP\tXL\tnot callable\t2\t\n"
@@ -362,7 +368,7 @@ put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t39348425\t.\tA\t<STR
 # Non-finite cells follow each Python reader's rules, not a global filter.
 for special in nan inf -inf; do
   f="float-${special}"
-  cp -R full "$f"
+  cp -Rp full "$f"   # -p: the copies keep the times put set, so the cases do not depend on the clock
   put "$f/chip/S_chip_depth.tsv" "gene\tmean_depth\tdetection_limit_vaf\tstatus\nA\t30\t.\tcovered\nB\t${special}\t.\tcovered\nC\t40\t.\tcovered\n"
   for spec in \
     'paralogs/S_smn_copy_number.tsv:agCN_qual,psCN_qual' \
@@ -381,6 +387,7 @@ for special in nan inf -inf; do
       { print }
     ' "$f/$file" > "$f/cells.tmp"
     mv -f "$f/cells.tmp" "$f/$file"
+    at "$NEW" "$f/$file"
   done
   put "$f/hla_t1k/S_hla_genotype.tsv" "HLA-A\t2\tA*02:01\t1\t${special}\tA*01:01\t1\t${special}\n"
   # Python raises an uncaught OverflowError if an infinite read length

@@ -362,6 +362,14 @@ if [ "$RAM_KB" -gt 0 ] 2>/dev/null; then
 else
   info "Could not detect system RAM"
 fi
+# --- Container engine smaller than the host ---
+# Docker Desktop and colima run the containers in a VM. run-all.sh then sizes the run to the VM, by the same rule (whole GB).
+ENGINE_GB=0 HOST_GB=0
+[[ "${DOCKER_MEM_BYTES:-}" =~ ^[0-9]+$ ]] && ENGINE_GB=$((DOCKER_MEM_BYTES / 1073741824))
+[[ "$RAM_KB" =~ ^[0-9]+$ ]] && HOST_GB=$((RAM_KB / 1048576))
+if [ "$ENGINE_GB" -ge 1 ] && [ "$HOST_GB" -ge 1 ] && [ "$ENGINE_GB" -lt "$HOST_GB" ]; then
+  info "Docker has ${ENGINE_GB} GB of this host's ${HOST_GB} GB: run-all.sh sizes the tasks to Docker's ${ENGINE_GB} GB, not the host's"
+fi
 
 # --- Disk space ---
 # Check free space in GENOME_DIR if set, otherwise CWD

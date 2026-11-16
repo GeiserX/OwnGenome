@@ -15,7 +15,9 @@ Checks:
   2. genotypes: a masked archaic call (10 to 12) goes to IBDmix as its ALT
      count and its position into that genome's mask file; the stand-in
      columns carry the population's ALT count; your column is your ALT
-     count, 0 where your VCF has no record, 9 for a non-PASS record; a site where your VCF has another ALT is left out; a
+     count, 9 for a non-PASS record, and where your VCF has no record 0
+     inside a reference block of the gVCF and 9 (unknown) outside every
+     one; the span runs over the sites read; a site where your VCF has another ALT is left out; a
      chromosome your VCF has no record on is not analysed; in a split VCF an
      SNV keeps its call beside an insertion, a multi-allelic record or the
      0/0 half of a split site, in either order, a usable record of the same
@@ -34,7 +36,11 @@ Checks:
      where the person contradicts both Neanderthals inside the planted
      stretch and their calls there are masked, the segment stops at the
      masked mismatches, while the same calls written as unknown (9, the
-     table before the fix) let it run through.
+     table before the fix) let it run through; a stretch where the person
+     has no call matches archaic genomes that carry the common reference
+     allele, and gives a segment only when a gVCF reference block says the
+     stretch was read (the step before that fix read it as the reference
+     either way).
      Set ARCHAIC_TEST_NO_DOCKER=1 to skip part 4 on a machine without docker;
      CI never sets it.
 
@@ -225,7 +231,17 @@ vcf = ("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFOR
        "chr22\t3000\t.\tG\tA\t50\tRefCall\t.\tGT\t1/1\n"
        "chr22\t5000\t.\tA\tT\t50\tPASS\t.\tGT\t1/1\n")
 write(f"{TMP}/s.vcf", vcf)
-r = run("genotypes", "--table-dir", tdir, "--vcf", f"{TMP}/s.vcf", "--pop", "EUR", "--pseudo", "10", "--out-dir", f"{TMP}/gt")
+GVCF_HEAD = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+
+
+def ref_block(chrom, start, end):
+    return f"{chrom}\t{start}\t.\tN\t<*>\t0\t.\tEND={end}\tGT:GQ:MIN_DP\t0/0:50:30\n"
+
+
+# A reference block over 1-2500: 2000 was read as the reference; 4000 was not read.
+write(f"{TMP}/s.g.vcf", GVCF_HEAD + ref_block("chr22", 1, 2500))
+r = run("genotypes", "--table-dir", tdir, "--vcf", f"{TMP}/s.vcf", "--gvcf", f"{TMP}/s.g.vcf",
+        "--pop", "EUR", "--pseudo", "10", "--out-dir", f"{TMP}/gt")
 check("genotypes exits 0", r.returncode == 0, r.stderr)
 lines = gzip.open(f"{TMP}/gt/chr22.gt.gz", "rt").read().splitlines()
 g = {int(l.split("\t")[1]): l.split("\t") for l in lines[1:]}
@@ -234,7 +250,8 @@ check("header: four columns, three archaic, SAMPLE, ten stand-ins",
       and len(lines[0].split("\t")) == 18, lines[0])
 check("the chromosome is an integer for IBDmix", g[1000][0] == "22", g[1000][0])
 check("your heterozygous call is 1", g[1000][7] == "1", g[1000])
-check("no record is 0 (reference)", g[2000][7] == "0", g[2000])
+check("no record inside a gVCF reference block is 0 (reference)", g[2000][7] == "0", g[2000])
+check("no record outside every reference block is 9 (unknown)", g[4000][7] == "9", g[4000])
 check("a non-PASS record is 9", g[3000][7] == "9", g[3000])
 check("a site where you carry another ALT is left out", 5000 not in g, sorted(g))
 check("stand-ins carry EUR's ALT count (0.5 of 20 alleles = 10)", sum(int(x) for x in g[1000][8:]) == 10, g[1000][8:])
@@ -242,7 +259,7 @@ check("and 0.02 of 20 rounds to 0", sum(int(x) for x in g[2000][8:]) == 0, g[200
 check("each stand-in column is one character", all(len(x) == 1 for x in g[1000][4:]), g[1000])
 check("a chromosome the VCF has no record on is not analysed", not os.path.exists(f"{TMP}/gt/chr21.gt.gz"))
 spans = open(f"{TMP}/gt/spans.tsv").read().splitlines()
-check("spans: chr22 from 1000 to 4000, four sites", spans[1].split("\t")[:4] == ["chr22", "1000", "4000", "4"], spans)
+check("spans: the sites read, chr22 from 1000 to 2000, two sites", spans[1].split("\t")[:4] == ["chr22", "1000", "2000", "2"], spans)
 samples = open(f"{TMP}/gt/samples.txt").read().split()
 check("samples.txt: SAMPLE and the stand-ins", samples[0] == "SAMPLE" and len(samples) == 11, samples)
 write(f"{TMP}/two.vcf", "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tA\tB\n")
@@ -297,7 +314,9 @@ with gzip.open(f"{mdir}/chr22.tsv.gz", "wt") as f:
     f.write(hdr + "".join(f"chr22\t{p}\t{ra}\t{c}\t0.2\t0\t0\t0\t0\t0\n" for p, (ra, c) in mrows.items()))
 write(f"{TMP}/m.vcf", "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
       "chr22\t500\t.\tA\tT\t50\tPASS\t.\tGT\t0/1\n")      # another ALT: row 500 is left out
-r = run("genotypes", "--table-dir", mdir, "--vcf", f"{TMP}/m.vcf", "--pseudo", "10", "--out-dir", f"{TMP}/gtm")
+write(f"{TMP}/m.g.vcf", GVCF_HEAD + ref_block("chr22", 1, 1000))
+r = run("genotypes", "--table-dir", mdir, "--vcf", f"{TMP}/m.vcf", "--gvcf", f"{TMP}/m.g.vcf", "--pseudo", "10",
+        "--out-dir", f"{TMP}/gtm")
 check("genotypes on a table with masked calls exits 0", r.returncode == 0, r.stderr)
 gm = {int(l.split("\t")[1]): l.split("\t")[4:7] for l in gzip.open(f"{TMP}/gtm/chr22.gt.gz", "rt").read().splitlines()[1:]}
 check("IBDmix gets each masked call as its ALT count (12, 10, 11 are 2, 0, 1)",
@@ -463,8 +482,12 @@ def synthetic(d, plant, mid=None):
     write(f"{d}/s.vcf", "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n" + "\n".join(calls) + "\n")
 
 
-def ibdmix_run(d):
-    r = run("genotypes", "--table-dir", f"{d}/table", "--vcf", f"{d}/s.vcf", "--out-dir", f"{d}/gt")
+def ibdmix_run(d, gvcf=None):
+    if gvcf is None:
+        gvcf = GVCF_HEAD + ref_block("chr22", 1, 6000000)   # every site read
+    write(f"{d}/s.g.vcf", gvcf)
+    r = run("genotypes", "--table-dir", f"{d}/table", "--vcf", f"{d}/s.vcf", "--gvcf", f"{d}/s.g.vcf",
+            "--out-dir", f"{d}/gt")
     if r.returncode:
         return r
     os.makedirs(f"{d}/ibd")
@@ -530,6 +553,39 @@ else:
           cover_mid.get("unknown", 0) >= 0.9 * span, cover_mid)
     check("calls written as masked: IBDmix's mask keeps the mismatches, and no segment covers the middle",
           "masked" in cover_mid and cover_mid["masked"] <= 0.1 * span, cover_mid)
+
+    # A stretch with no call (lin-01 of the 1.0.0 review). 150 sites where
+    # all three archaic genomes carry the reference allele and modern people
+    # carry the ALT at 0.9, and a person with one call far away: read as the
+    # reference, the stretch matches the archaic genomes. Control: with a
+    # reference block over it (the person was read and matches the
+    # reference) IBDmix calls a segment there. With no block over it,
+    # nothing was read, and no segment may come out.
+    gap_lo, gap_hi = 200000, 349000
+    gap_segment = {}
+    for covered in (True, False):
+        d = f"{TMP}/real_gap_{covered}"
+        os.makedirs(f"{d}/table")
+        os.chmod(d, 0o777)
+        with gzip.open(f"{d}/table/chr22.tsv.gz", "wt") as f:
+            f.write("\t".join(TABLE_HEADER) + "\n" + "".join(
+                f"chr22\t{p}\tC\tT\t0\t0\t0\t" + "\t".join(["0.9"] * 6) + "\n"
+                for p in range(gap_lo, gap_hi + 1, 1000)))
+        write(f"{d}/s.vcf", GVCF_HEAD + "chr22\t10000000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n")
+        # Without the block the person has one read site left, at the start.
+        block = ref_block("chr22", 1, 400000) if covered else ref_block("chr22", 1, gap_lo)
+        r = ibdmix_run(d, GVCF_HEAD + block)
+        check(f"IBDmix chain exits 0 (stretch {'read' if covered else 'with no call'})", r.returncode == 0,
+              r.stderr + r.stdout)
+        if r.returncode:
+            continue
+        body = [l.split("\t") for l in open(f"{d}/out/S_archaic_segments.tsv").read().splitlines()[1:]]
+        print(f"  segments (stretch {'read' if covered else 'with no call'}): {[(b[1], b[2], b[4]) for b in body]}")
+        gap_segment[covered] = sum(int(b[3]) for b in body if b[4] == "Neanderthal")
+    check("control: a stretch read as the reference gives a Neanderthal segment of 100 kb or more",
+          gap_segment.get(True, 0) >= 100000, gap_segment)
+    check("a stretch with no call and no reference block gives no segment (it scored 149 kb when read as the reference)",
+          gap_segment.get(False, 1) == 0, gap_segment)
 
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"{FAILS} check(s) failed" if FAILS else "all checks passed")
