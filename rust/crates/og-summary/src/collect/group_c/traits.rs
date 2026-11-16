@@ -66,7 +66,7 @@ pub fn traits(c: &Ctx<'_>) -> Out {
             "apoe",
             Value::Array(t.rows.iter().filter(apoe).map(row).collect()),
         );
-    for st in ["called", "not_covered", "other_allele"] {
+    for st in ["called", "not_covered", "other_allele", "low_gq"] {
         out.put(
             st,
             count(
@@ -221,6 +221,17 @@ pub mod apol1 {
             && record_end(r).is_some_and(|e| e >= SPAN.0)
     }
 
+    /// A call below this GQ is not read (decision D10, the floor of step
+    /// 42's trait sites). A missing GQ stays readable.
+    const MIN_GQ: f64 = 20.0;
+
+    /// The GQ of a call when it is below [`MIN_GQ`].
+    fn weak_gq(gq: &str) -> Option<&str> {
+        gq.parse::<f64>()
+            .is_ok_and(|q| q.is_finite() && q < MIN_GQ)
+            .then_some(gq)
+    }
+
     fn symbolic(a: &str) -> bool {
         a == "*" || a == "." || (a.len() >= 2 && a.starts_with('<') && a.ends_with('>'))
     }
@@ -268,16 +279,28 @@ pub mod apol1 {
                 ));
                 continue;
             }
-            if idx.iter().all(|i| *i == 0) {
-                covered.push((pos, end));
-                gqs.push(field("GQ"));
-                continue;
-            }
-            if r[6] != "PASS" && r[6] != "." {
+            let reference = idx.iter().all(|i| *i == 0);
+            // A reference call may carry DeepVariant's RefCall; a G2 call must pass.
+            let readable =
+                ["PASS", "."].contains(&r[6].as_str()) || (reference && r[6] == "RefCall");
+            if !readable {
                 problems.push(format!(
                     "a call at {}:{pos} that failed the caller's filter ({})",
                     r[0], r[6]
                 ));
+                continue;
+            }
+            let gq = field("GQ");
+            if let Some(q) = weak_gq(&gq) {
+                problems.push(format!(
+                    "a call at {}:{pos} with genotype quality {q}, below 20",
+                    r[0]
+                ));
+                continue;
+            }
+            if reference {
+                covered.push((pos, end));
+                gqs.push(gq);
                 continue;
             }
             let mut n = 0;
@@ -324,7 +347,7 @@ pub mod apol1 {
             }
             copies += n;
             covered.push((pos, end));
-            gqs.push(field("GQ"));
+            gqs.push(gq);
         }
         let gq = if gqs.is_empty() {
             ".".to_owned()
@@ -740,6 +763,46 @@ pub mod apol1 {
             }
         }
 
+        /// Decision D10: a call below GQ 20, or a reference call the caller
+        /// filtered, is not read, so it gives no G2 count; GQ 20 and a
+        /// missing GQ are read.
+        #[test]
+        fn low_quality_calls_over_the_span_are_not_read() {
+            let gq = |mut r: Vec<String>, q: &str| {
+                let gt = r[9].split(':').next().unwrap_or(".").to_owned();
+                r[9] = format!("{gt}:{q}");
+                r
+            };
+            for q in ["0", "5", "19", "19.5"] {
+                let g = read_g2(&[gq(rec(POS, REF, ALT, "1/1", "."), q)], false);
+                assert_eq!((g.status, g.copies), ("not_read", None), "G2 1/1 at GQ {q}");
+                assert!(g.text.contains("below 20"), "{g:?}");
+                let g = read_g2(&[gq(block(36_266_100), q)], true);
+                assert_eq!((g.status, g.copies), ("not_read", None), "block at GQ {q}");
+            }
+            let mut lowqual = block(36_266_100);
+            lowqual[6] = "LowQual".into();
+            let g = read_g2(&[lowqual], true);
+            assert_eq!((g.status, g.copies), ("not_read", None), "{g:?}");
+            // Controls: GQ 20, a missing GQ and a RefCall block stay readable.
+            for q in ["20", "."] {
+                let g = read_g2(&[gq(rec(POS, REF, ALT, "1/1", "."), q)], false);
+                assert_eq!(
+                    (g.status, g.copies),
+                    ("called", Some(2)),
+                    "G2 1/1 at GQ {q}"
+                );
+                let g = read_g2(&[gq(block(36_266_100), q)], true);
+                assert_eq!((g.status, g.copies), ("called", Some(0)), "block at GQ {q}");
+            }
+            let mut refcall = block(36_266_100);
+            refcall[6] = "RefCall".into();
+            assert_eq!(read_g2(&[refcall], true).copies, Some(0));
+            // Two G2 copies at GQ 5 no longer read G2/G2 when G1 is not read.
+            let weak = read_g2(&[gq(rec(POS, REF, ALT, "1/1", "."), "5")], false);
+            assert_eq!(combine(".", "low_gq", &weak).0, ".");
+        }
+
         #[test]
         fn records_outside_the_span_are_skipped() {
             let mut chr21 = rec(POS, REF, ALT, "1/1", ".");
@@ -817,6 +880,59 @@ pub mod apol1 {
             let (label, reading) = combine("G0/G0", "called", &none);
             assert_eq!(label, "G0/G0 (no G2 call)");
             assert!(reading.contains("no reference blocks"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::collect::{Group, Input, collect};
+    use crate::testutil::Dir;
+    use pycompat::json::Value;
+
+    /// A low_gq row (decision D10: a call below GQ 20, or one the caller
+    /// filtered) has its own count, so it does not drop out of the totals.
+    #[test]
+    fn low_gq_rows_are_counted() {
+        let d = Dir::new("c-traits-low-gq");
+        d.put(
+            "S/traits/S_traits.tsv",
+            "rsid\tgene\ttrait\tgenotype\tstatus\treading\tancestry\tnote\tpmids\n\
+rs1\tX\tx\tA/A\tcalled\tr\ta\tn\tp\n\
+rs2\tX\tx\tA/G\tlow_gq\tnot read\ta\tn\tp\n\
+rs3\tX\tx\tC/C\tlow_gq\tnot read\ta\tn\tp\n\
+rs4\tX\tx\t.\tnot_covered\tnot read\ta\tn\tp\n\
+rs429358\tAPOE\tx\tC/C\tlow_gq\tnot read\ta\tn\tp\n",
+        );
+        let input = Input {
+            sample: "S".into(),
+            sample_dir: d.path("S"),
+            declared_sex: None,
+            assets: d.path("assets"),
+            group: Group::C,
+            tables: concat!(env!("CARGO_MANIFEST_DIR"), "/../../../bin").into(),
+        };
+        let v = collect(&input).unwrap().to_json();
+        let Value::Object(top) = &v else {
+            panic!("{v:?}")
+        };
+        let Some(Value::Object(sections)) = top.get("sections") else {
+            panic!("{v:?}")
+        };
+        let Some(Value::Object(traits)) = sections.get("traits") else {
+            panic!("{v:?}")
+        };
+        let Some(Value::Object(data)) = traits.get("data") else {
+            panic!("{traits:?}")
+        };
+        // The APOE rows are left out of the counts, as for the other statuses.
+        for (k, n) in [
+            ("called", 1),
+            ("not_covered", 1),
+            ("other_allele", 0),
+            ("low_gq", 2),
+        ] {
+            assert_eq!(data.get(k), Some(&Value::Int(n.into())), "{k}: {data:?}");
         }
     }
 }

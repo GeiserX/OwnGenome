@@ -52,30 +52,10 @@ XR=chrX:73700001-74000000
 bcf query -r "$XR" -f '%POS\t%INFO/END\t[%GT]\n' "${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" > "${CASE_TMP}/x_blocks.tsv"
 bcf query -r "$XR" -i 'GT="alt"' -f '%POS\n' "${SAMPLE}/vcf/${SAMPLE}.vcf.gz" > "${CASE_TMP}/x_vars.tsv"
 X_SITES="${CASE_TMP}/x_sites.tsv"
-python3 - "${CASE_TMP}/x_blocks.tsv" "${CASE_TMP}/x_vars.tsv" "$REF" > "$X_SITES" <<'PY'
-import sys
-blocks, variants, fasta = sys.argv[1:4]
-var = [int(l) for l in open(variants) if l.strip()]
-fai = {l.split()[0]: [int(x) for x in l.split()[1:5]] for l in open(fasta + ".fai")}
-length, offset, bases, width = fai["chrX"]
-fh = open(fasta, "rb")
-def base(pos):
-    i = pos - 1
-    fh.seek(offset + (i // bases) * width + i % bases)
-    return fh.read(1).decode().upper()
-comp = {"A": "T", "T": "A", "C": "G", "G": "C"}
-rows = [l.rstrip("\n").split("\t") for l in open(blocks) if l.strip()]
-refs = [(int(r[0]), int(r[1])) for r in rows if len(r) == 3 and r[1] not in ("", ".") and r[2] in ("0/0", "0|0")]
-out, last = [], 0
-for start, end in refs:
-    p = (start + end) // 2
-    if end - start >= 50 and p - last > 2000 and all(abs(v - p) > 100 for v in var) and base(p) in comp:
-        out.append((p, base(p)))
-        last = p
-for p, b in out[:3]:
-    other = next(x for x in "ACGT" if x not in (b, comp[b]))
-    print(f"X\t{p}\t{b}\t{other}\t0.1")
-PY
+"${REPO}/bin/og" dev fixture x-ref-sites "${CASE_TMP}/x_blocks.tsv" "${CASE_TMP}/x_vars.tsv" "$REF" chrX 3 \
+  | awk -F'\t' -v OFS='\t' 'BEGIN {c["A"] = "T"; c["T"] = "A"; c["C"] = "G"; c["G"] = "C"}
+      {for (i = 1; i <= 4; i++) {o = substr("ACGT", i, 1); if (o != $2 && o != c[$2]) break}
+       print "X", $1, $2, o, "0.1"}' > "$X_SITES"
 check_eq "chrX hom-ref rows" "$(wc -l < "$X_SITES" | tr -d ' ')" 3
 SCORES="${GENOME_DIR}/prs_scores"
 rm -rf "$SCORES" "${D}/prs" "${D}/ancestry"
@@ -93,16 +73,8 @@ SUMMARY="${D}/prs/${SAMPLE}_prs_summary.tsv"
 cat "$SUMMARY" 2>/dev/null
 col() { awk -F'\t' -v id="$2" -v k="$3" 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} $c["PGS_ID"] == id {print $c[k]}' "$1" 2>/dev/null; }
 MATCH_LOG=$(find "${D}/prs/pgsc_calc/results" -name '*_log.csv.gz' 2>/dev/null | head -n 1)
-X_MATCHED=$(python3 - "${MATCH_LOG:-/dev/null}" <<'PY2'
-import csv, gzip, sys
-try:
-    rows = list(csv.DictReader(gzip.open(sys.argv[1], "rt")))
-except (OSError, EOFError):
-    print("no match log"); sys.exit()
-print(sum(1 for r in rows if r.get("accession") == "PGS000662" and r.get("chr_name") in ("X", "23")
-          and r.get("match_status") == "matched"))
-PY2
-)
+X_MATCHED=$("${REPO}/bin/og" dev fixture csv-count "${MATCH_LOG:-/dev/null}" accession=PGS000662 chr_name=X,23 match_status=matched \
+  2>/dev/null || echo "no match log")
 CHRX=$(col "$SUMMARY" PGS000662 ChrX)
 MATCHED=$(col "$SUMMARY" PGS000662 Variants_Matched)
 echo "PGS000662: ChrX '${CHRX}', ${MATCHED} of $(col "$SUMMARY" PGS000662 Variants_Total) matched, ${X_MATCHED} chrX rows matched in the log"
@@ -117,16 +89,8 @@ case "$X_MATCHED" in
 esac
 # What docs/25-prs.md says of this panel: none of the chrX rows is scored.
 check_eq "${PANEL_NAME}: no chrX row of PGS000662 is matched (as docs/25-prs.md says)" "$X_MATCHED" 0
-AUTO_MATCHED=$(python3 - "${MATCH_LOG:-/dev/null}" <<'PY3'
-import csv, gzip, sys
-try:
-    rows = list(csv.DictReader(gzip.open(sys.argv[1], "rt")))
-except (OSError, EOFError):
-    print(-1); sys.exit()
-print(sum(1 for r in rows if r.get("accession") == "PGS000662" and r.get("chr_name") not in ("X", "23")
-          and r.get("match_status") == "matched"))
-PY3
-)
+AUTO_MATCHED=$("${REPO}/bin/og" dev fixture csv-count "${MATCH_LOG:-/dev/null}" accession=PGS000662 chr_name!=X,23 match_status=matched \
+  2>/dev/null || echo "-1")
 check_eq "Variants_Matched is the log's matched rows, chrX included only when matched" "$MATCHED" "$((AUTO_MATCHED + X_MATCHED))"
 PCT=$(col "$SUMMARY" PGS000018 Percentile)
 check "male with the panel: PGS000018 has a percentile (${PCT:-none})" awk -v p="${PCT:-x}" 'BEGIN {exit !(p ~ /^[0-9.]+$/)}'

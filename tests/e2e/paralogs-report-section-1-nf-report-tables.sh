@@ -80,13 +80,10 @@ check_ge "the cDNA read check column of the ClinVar hits" "$(html_count with "$C
 check_ge "the flagged count of the cDNA read check, 1 for the planted hit" \
   "$(html_count with "$C" 'Flagged by the cDNA read check</span><span class="value"><span class="badge badge-red">1<')" 1
 check_ge "the compound-het pairs by phase from step 31's table" "$(html_count with CHPH 'Pairs in trans / cis / unknown')" 1
-check "the summary of CHPH counts the pairs table's rows" python3 - "${CASE_TMP}/with/results/CHPH/summary.json" "$SL_PAIRS" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))["sections"]["slivar"]["data"]
-rows = sum(1 for _ in open(sys.argv[2])) - 1
-print(d.get("compound_het_pairs"), rows)
-sys.exit(d.get("compound_het_pairs") != rows)
-PY
+# shellcheck disable=SC2016  # jq program
+check "the summary of CHPH counts the pairs table's rows" \
+  jq -e --argjson rows "$(($(wc -l < "$SL_PAIRS") - 1))" '.sections.slivar.data.compound_het_pairs == $rows' \
+  "${CASE_TMP}/with/results/CHPH/summary.json"
 
 report_run without 0
 check_eq "control: without the depth check there is no depth-check line" \

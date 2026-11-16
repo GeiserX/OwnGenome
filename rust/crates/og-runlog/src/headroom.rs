@@ -10,7 +10,7 @@
 //! on its nearest existing parent, and two folders on one file system are
 //! reported once. Labels are `work` and `results`, never a path.
 
-use crate::eta::TraceTask;
+use crate::eta::{TraceTask, fault};
 use crate::host::Host;
 use crate::steps::{Step, process_steps};
 use crate::util::abspath;
@@ -46,8 +46,13 @@ pub fn warn_percent(value: Option<&str>, env: Option<&str>) -> Result<f64, BadPe
         .filter(|v| !v.is_empty())
         .map(str::to_owned)
         .or(from_env);
+    let raw = raw.filter(|_| !fault::on("headroom-percent-ignored"));
     let Some(raw) = raw.filter(|r| !r.is_empty()) else {
-        return Ok(DEFAULT_WARN_PERCENT);
+        return Ok(if fault::on("headroom-default-95") {
+            95.0
+        } else {
+            DEFAULT_WARN_PERCENT
+        });
     };
     let bad = || {
         let shown = py_repr(&Value::Str(raw.clone())).unwrap_or_else(|_| format!("'{raw}'"));
@@ -123,6 +128,17 @@ fn attempt_of(v: Option<&Value>) -> i128 {
 }
 
 fn row(r: &TaskRow<'_>, order: usize) -> Row {
+    let mut t = read_row(r, order);
+    if fault::on("headroom-request-default-8g") {
+        t.memory = t.memory.filter(|m| *m != 0).or(Some(8 << 30));
+    }
+    if fault::on("headroom-weblog-decimal-peak") && matches!(r, TaskRow::Weblog(_)) {
+        t.peak = t.peak.map(|p| p * 1_000_000_000 / (1 << 30));
+    }
+    t
+}
+
+fn read_row(r: &TaskRow<'_>, order: usize) -> Row {
     match r {
         TaskRow::Trace(t) => Row {
             key: Key::Pair(format!("s{}", t.hash), format!("s{}", t.attempt)),
@@ -208,9 +224,10 @@ pub fn task_memory(rows: &[TaskRow<'_>], warn: f64, steps: &[Step]) -> Vec<TaskM
         if t.process.as_deref().is_none_or(str::is_empty) {
             continue;
         }
-        let replaces = latest.get(&t.key).is_none_or(|old| {
-            (t.attempt, finished(&t.status)) >= (old.attempt, finished(&old.status))
-        });
+        let replaces = fault::on("headroom-replaces-always")
+            || latest.get(&t.key).is_none_or(|old| {
+                (t.attempt, finished(&t.status)) >= (old.attempt, finished(&old.status))
+            });
         if replaces {
             latest.insert(t.key.clone(), t);
         }
@@ -226,11 +243,19 @@ pub fn task_memory(rows: &[TaskRow<'_>], warn: f64, steps: &[Step]) -> Vec<TaskM
     groups.sort_by_key(|(_, ts)| ts.iter().map(|t| t.order).min());
     let mut out = Vec::new();
     for ((proc, _), mut ts) in groups {
-        ts.sort_by_key(|t| (t.attempt, finished(&t.status), t.order));
+        let by_status = !fault::on("headroom-running-wins");
+        ts.sort_by_key(|t| (t.attempt, by_status && finished(&t.status), t.order));
         let last = ts.last().expect("a group has a row");
         let mut retried: Vec<i128> = ts
             .iter()
-            .filter(|t| t.attempt < last.attempt && MEMORY_EXITS.contains(&t.exit.as_str()))
+            .filter(|t| {
+                let exits: &[&str] = if fault::on("headroom-exits-143-only") {
+                    &MEMORY_EXITS[..1]
+                } else {
+                    &MEMORY_EXITS
+                };
+                t.attempt < last.attempt && exits.contains(&t.exit.as_str())
+            })
             .map(|t| t.attempt)
             .collect();
         retried.sort_unstable();
@@ -250,7 +275,13 @@ pub fn task_memory(rows: &[TaskRow<'_>], warn: f64, steps: &[Step]) -> Vec<TaskM
             },
             request_bytes: last.memory,
             peak_rss_bytes: if running { None } else { last.peak },
-            warn: ratio.is_some_and(|r| r * 100.0 >= warn),
+            warn: ratio.is_some_and(|r| {
+                if fault::on("headroom-warn-strict") {
+                    r > 0.99
+                } else {
+                    r * 100.0 >= warn
+                }
+            }),
             ratio,
             oom_retry: retried.len(),
             process: proc,
@@ -285,6 +316,9 @@ pub struct Disk {
 /// `path`, or its nearest parent that exists.
 fn nearest_existing(host: &dyn Host, path: &Path) -> PathBuf {
     let mut p = abspath(path);
+    if fault::on("headroom-missing-not-parent") {
+        return p;
+    }
     while !host.exists(&p) {
         match p.parent() {
             Some(up) if up != p => p = up.to_path_buf(),
@@ -306,7 +340,7 @@ pub fn disk(host: &dyn Host, paths: &[(&str, Option<&str>)], warn: f64) -> Vec<D
         let at = nearest_existing(host, Path::new(path));
         let Ok(dev) = host.dev(&at) else { continue };
         let missing = at != abspath(Path::new(path));
-        if let Some(&i) = by_dev.get(&dev) {
+        if let Some(&i) = by_dev.get(&dev).filter(|_| !fault::on("headroom-no-merge")) {
             let e = &mut out[i];
             e.fs = format!("{} and {label}", e.fs);
             e.missing |= missing;
@@ -319,7 +353,13 @@ pub fn disk(host: &dyn Host, paths: &[(&str, Option<&str>)], warn: f64) -> Vec<D
         let size = u128::from(s.blocks) * frsize;
         let inodes =
             (s.files > 0).then(|| (s.files - s.ffree.min(s.files)) as f64 / s.files as f64);
+        let inodes = inodes.or(fault::on("headroom-inodes-always").then_some(0.0));
         let used_ratio = (used + free > 0).then(|| used as f64 / (used + free) as f64);
+        let used_ratio = if fault::on("headroom-used-above-size") {
+            Some(1.5)
+        } else {
+            used_ratio
+        };
         by_dev.insert(dev, out.len());
         out.push(Disk {
             fs: (*label).to_owned(),
@@ -359,9 +399,15 @@ pub fn metadata(events: &[Value]) -> (Option<Value>, Option<Value>, Option<Value
             continue;
         };
         let wf = get(Some(md), "workflow");
-        let params = get(Some(md), "parameters").or_else(|| get(Some(md), "params"));
+        let params = get(Some(md), "parameters").or_else(|| {
+            (!fault::on("headroom-parameters-only"))
+                .then(|| get(Some(md), "params"))
+                .flatten()
+        });
         work = get(wf.as_ref(), "workDir").or(work);
-        launch = get(wf.as_ref(), "launchDir").or(launch);
+        if !fault::on("headroom-no-launch-dir") {
+            launch = get(wf.as_ref(), "launchDir").or(launch);
+        }
         outdir = get(params.as_ref(), "outdir").or(outdir);
         cap = get(params.as_ref(), "max_memory").or(cap);
     }
@@ -438,9 +484,16 @@ pub fn snapshot(host: &dyn Host, steps: &[Step], r: &Request<'_>) -> Result<Snap
         None => text(m_cap.as_ref()),
     };
     let phys = host.physical_memory();
-    let cap = cap_text.and_then(|c| og_nf::units::memory(Some(&c)));
+    let cap = cap_text
+        .and_then(|c| og_nf::units::memory(Some(&c)))
+        .filter(|_| !fault::on("headroom-host-never-warns"));
+    let labels = if fault::on("headroom-label-is-path") {
+        (work.unwrap_or("work"), out.unwrap_or("results"))
+    } else {
+        ("work", "results")
+    };
     Ok(Snapshot {
-        disk: disk(host, &[("work", work), ("results", out)], dw),
+        disk: disk(host, &[(labels.0, work), (labels.1, out)], dw),
         tasks: task_memory(&rows, mw, steps),
         host: HostMemory {
             memory_bytes: phys,

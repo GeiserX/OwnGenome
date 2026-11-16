@@ -19,14 +19,22 @@ IBDmix needs no unadmixed reference population. It scores each site from the mod
 
 ### One genome and the stand-ins
 
-IBDmix takes the modern allele frequency of each site from the modern genomes in its input. With one genome the frequency is that person's own genotype, and IBDmix drops every site below its minimum allele count, so nothing scores. The step therefore adds 100 stand-in people whose genotypes carry the 1000 Genomes phase 3 allele count of the chosen population at each site (`ARCHAIC_POP`, default `ALL`; `AFR`, `AMR`, `EAS`, `EUR` or `SAS`). IBDmix scores each modern column from the site's frequency and that column's genotype only, so your column gets the score it would get inside a population sample with that frequency. The stand-ins' own rows are dropped.
+IBDmix takes the modern allele frequency of each site from every modern column in its input, and your column is one of them. With one genome the frequency is that person's own genotype, and IBDmix drops every site at its minimum allele count (`-m 1` needs 2 ALT and 2 REF alleles, and one person has 2 alleles), so nothing scores. The step therefore adds 100 stand-in people. Together they carry round(AF × 200) ALT alleles at each site, where AF is the 1000 Genomes phase 3 frequency of the chosen population (`ARCHAIC_POP`, default `ALL`; `AFR`, `AMR`, `EAS`, `EUR` or `SAS`). The stand-ins' own segments are dropped.
+
+So the frequency IBDmix uses at a site is (the stand-ins' ALT count + yours) / 202, or / 200 where your genotype is unknown. That is you inside a sample of about 100 people, about the size of one 1000 Genomes group (they hold 61 to 113 people). Chen et al. ran IBDmix the same way: once per 1000 Genomes group, with the scored person counted in the group's frequency. What follows from it:
+
+- With `-m 1`, IBDmix keeps a site only when the modern columns hold at least 2 ALT and at least 2 REF alleles. Your own alleles count, so your genotype can add a site or remove one.
+- An AF at or under 0.0025 gives the stand-ins 0 ALT alleles (the rounding is half to even, so 0.0025 gives 0). A heterozygous call scores nothing there, and a homozygous ALT call is kept only by your own two copies.
+- An AF from just over 0.0025 to just under 0.0075 gives the stand-ins 1 ALT allele, so the site is kept whenever you carry the ALT. Each step of one allele covers an AF band about 0.005 wide: 0.0026 and 0.0074 score the same.
+- An AF at or over 0.9975 gives the stand-ins 200 ALT alleles. A homozygous ALT call then removes the site, and a 0/0 call keeps it.
+- Chen et al.'s group count is a random sample, and the stand-ins carry the rounded expected count. Near an AF of 0.002 a real group would keep the site some of the time, and step 43 never does. This is a small difference in one direction, and the stand-ins carry a frequency of the whole population or continent, not of one group (see the same-person comparison under Runtime).
 
 ### The calls
 
 - IBDmix with the options of Chen et al.: LOD 4 (`-d 4`), minor allele count 1 (`-m 1`), archaic error 0.01 (`-a`), modern error 0.002 (`-e`), `-c 2`
 - Segments with LOD 4 or more and 50 kb or longer, the cutoffs of the paper
 - **Neanderthal**: the union of the segments against Altai and against Vindija. **Denisovan**: the segments against the Denisovan that overlap no Neanderthal segment, because the Neanderthal and Denisovan genomes share much of their sequence.
-- The share is the segment length over the analysed span: from the first to the last site of the table on each autosome the VCF has calls on.
+- The share is the segment length over the analysed span: from the first to the last site read on each autosome the VCF has calls on. A site is read when the VCF has a usable call there, or when a confident reference block of the gVCF covers it (see Input).
 
 ## Docker Image
 
@@ -47,6 +55,8 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 | 1000 Genomes phase 3 | `ALL.wgs.phase3_shapeit2_mvncall_integrated_v5c.20130502.sites.vcf.gz` (1.5 GB) | md5 from the release's `current.tree` |
 | 1000 Genomes | the GRCh38 strict mask, `20160622.allChr.mask.bed` (128 MB) | sha256 |
 | UCSC | `hg19ToHg38.over.chain.gz` | sha256 |
+
+> **Terms:** MPI-EVA makes the snpAD genotypes and the FilterBed masks freely available under the terms in https://cdna.eva.mpg.de/neandertal/Vindija/README: users are asked to observe the Fort Lauderdale principles, and the data can be used freely for studies of individual genes or other features of the genome. All three genomes' files come from that folder. Cite the genome papers in References. MPI-EVA gives no standard licence such as an SPDX one. The pipeline does not redistribute these files: `setup.sh --archaic` downloads them from MPI-EVA onto your disk, and deletes each chromosome's files once its table rows are built.
 
 MPI-EVA publishes md5 lists, not sha256 sums, for 66 genotype files of about 2.5 GB each. Pinning the sha256 of the three lists pins every file's md5 without downloading 150 GB to hash it. The FilterBed files have no checksum file beside them and are about 1.5 MB each, so each one's sha256 is pinned directly.
 
@@ -69,14 +79,17 @@ The table is built on GRCh37 and lifted once to GRCh38 with Picard `LiftoverVcf`
 
 ## Input
 
-- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample. A site with no record is read as the reference allele, a record whose FILTER is not PASS as unknown, and a site where you carry another ALT than the table's is left out.
+- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample. A record whose FILTER is not PASS is read as unknown, and a site where you carry another ALT than the table's is left out. A reference call with ALT `.`, as an all-sites VCF writes it, is the reference when its GT is all 0, and unknown otherwise.
+- `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz`: the gVCF of step 3, one sample. A variant-only VCF cannot tell a site that matches the reference from a site without reads, so a table site with no record in the VCF is read as the reference only where a confident reference block of the gVCF covers it. A block is confident when its FILTER is PASS or `.`, every allele of its GT is 0, and its GQ and its depth (MIN_DP, else DP) are 1 or more where it gives them. Any other site with no record goes to IBDmix as unknown (9), which IBDmix skips. Without the gVCF the bash step stops and says why, and the Nextflow pipeline skips the sample with a warning (add the `gvcf` and `gvcf_index` columns to its samplesheet row, or start from the BAM or the reads, as for steps 42 and 44). The gVCF must list the chromosomes in the VCF's order, with records on every table chromosome the VCF lists.
 - The GENCODE gene lines `setup.sh` installs, for the genes of each segment (without them the segments are listed without genes)
 
-`og archaic genotypes` reads the VCF and table together, keeping one
-duplicate-position window. Positions within each chromosome must be in
-ascending order in both inputs. A position that goes backwards stops the
-command with exit 2. Mask runs are written as they close. Duplicate calls,
-clashes, masked sites and the output columns keep their previous meaning.
+`og archaic genotypes` reads the VCF, the gVCF (`--gvcf`) and the table
+together, keeping one duplicate-position window of the VCF and one record of
+the gVCF. Positions within each chromosome must be in ascending order in all
+three inputs. A position that goes backwards (the gVCF is read to its end
+for this), a gVCF in another chromosome order, or a gVCF with no records on
+a table chromosome of the VCF, stops the command with exit 2. Mask runs are written as
+they close. It prints how many table sites it read and how many it did not.
 
 ## Command
 
@@ -85,7 +98,7 @@ clashes, masked sites and the output columns keep their previous meaning.
 ./scripts/43-archaic.sh your_name
 ```
 
-With `run-all.sh`: step 43 runs once the table is installed (`ARCHAIC_DIR=none` skips it, `ARCHAIC_POP` picks the frequencies). In the Nextflow pipeline: `archaic` in `--tools` with `--archaic_data <the table folder>` and `--archaic_pop`; `--hla_genes` gives the genes (processes `ARCHAIC_GENOTYPES`, `ARCHAIC_IBDMIX`, `ARCHAIC_REPORT`).
+With `run-all.sh`: step 43 runs once the table is installed (`ARCHAIC_DIR=none` skips it, `ARCHAIC_POP` picks the frequencies). It needs the gVCF: a sample that starts from a VCF is listed as `skipped (no gVCF: ...)`, as for step 42, unless it has a BAM too and a gVCF with its index beside the VCF (the gVCF `run-all.sh` passes on). In the Nextflow pipeline: `archaic` in `--tools` with `--archaic_data <the table folder>` and `--archaic_pop`; `--hla_genes` gives the genes (processes `ARCHAIC_GENOTYPES`, `ARCHAIC_IBDMIX`, `ARCHAIC_REPORT`).
 
 ## Output
 
@@ -104,6 +117,8 @@ Measured on public HG002 by the `archaic-hg002` jobs of `public-evidence.yml`, o
 
 - Install: the archaic files were 150.5 GB in all, from 1.8 GB (chromosome 22) to 13.8 GB (chromosome 2). Downloading them took 2 h 32 min summed over the 22 chromosomes, from 3 to 32 minutes each, at the speed MPI-EVA served that day. Building the table took 3 h 15 min summed, from 2 to 20 minutes per chromosome. The finished table is 0.44 GB with 51,812,908 sites.
 - Step 43, one population: 19 to 88 seconds per chromosome, 18 minutes summed over the 22. IBDmix runs once per chromosome and archaic genome, `THREADS` chromosomes at a time.
+
+Every figure in this section was measured before step 43 read the gVCF, when each site GIAB's variant-only VCF had no call for was read as the reference, inside GIAB's confident regions or not. The e2e case now gives GIAB's confident regions as the reference blocks and prints its chr22 figure on every run. The `archaic-hg002` jobs of `public-evidence.yml` give the same blocks, one per GIAB benchmark interval, so the next release run measures the whole-genome figure on this rule. The `archaic-same-person` job has no callable mask for the 1000 Genomes panel data, so it gives one reference block over each whole chromosome: a site where the panel has no record for the person reads as the reference, as it did when the table below was measured, and a site where the panel has no call for the person stays unknown.
 
 That run was made before the masks, from a table that held every lifted site. It gave HG002 115.2 Mb of Neanderthal sequence over the 22 autosomes, about twice what Chen et al. report for Europeans (a median of 51.6 Mb per person, and 42.0 to 62.0 Mb across the released per-person calls of their 503 Europeans; see the same-person comparison below for what their method is). The cause was the missing masks: the table carried the positions each archaic genome's own filters exclude, and IBDmix scored them. On chr22, 43% of that run's Neanderthal sequence lay outside the 1000 Genomes GRCh38 strict mask alone.
 
@@ -132,10 +147,10 @@ What this means for the figure step 43 reports. It is the union of the Altai and
 - Part of what IBDmix finds in anyone is old ancestry shared with the archaic genomes, not gene flow from them. Chen et al. find Neanderthal sequence in every population they studied, Africans included.
 - A segment counts when either of your two copies carries it. The share is of the analysed span, not of the whole genome.
 - The table has autosomes only: chrX and chrY are not assessed.
-- Sites the VCF has no record for are read as the reference allele. A VCF that holds only variants (no reference calls) cannot tell a reference call from a gap in coverage.
-- The share is of the analysed span, and the span still runs from the first to the last table site of each chromosome whatever the masks remove. A segment runs from its first site to the site after its last, so it can cross masked sequence and count those bases (a homozygous mismatch at a masked site still ends it, as in the published workflow); a wrong genotype at a site that was kept can raise the share as well. The number is an estimate in both directions, not a floor. Compare it with the published per-person figures, which come from masked data too.
+- A site the VCF has no record for is read as the reference allele only inside a confident reference block of the gVCF. Elsewhere it is unknown, so a gap in coverage cannot make a segment, and a missed homozygous ALT call cannot end one as a false mismatch. Before 1.0.0 every such site was read as the reference: one call anywhere on a chromosome was enough to analyse all of it, and a stretch with no reads where the archaic genomes carry the common reference allele could score as a long segment.
+- The share is of the analysed span, and the span runs from the first to the last site read on each chromosome whatever the masks remove. A segment runs from its first site to the site after its last, so it can cross masked sequence and count those bases (a homozygous mismatch at a masked site still ends it, as in the published workflow); a wrong genotype at a site that was kept can raise the share as well. The number is an estimate in both directions, not a floor. Compare it with the published per-person figures, which come from masked data too.
 - The CpG sites Chen et al. exclude are kept here. A C to T change at a CpG site is the commonest ancient-DNA error, so a few of the archaic genotypes at those sites are wrong in both directions, and the sites are over-represented among the matches a method like this finds. Their own filter needs data this pipeline does not install, so the share carries that error; it is one of the reasons a number from this step is an estimate.
-- On the e2e fixture the case builds the table for GRCh37 chr22 and checks HG002's GIAB v4.2.1 genotypes against the published chr22 spread, a copy of HG002 with one chromosome over chr22:28-29 Mb taken from Vindija (a Neanderthal segment must cover it), a person built from the table who carries only the majority allele (a quarter of HG002's Neanderthal sequence at most), that every table row outside the strict mask carries only masked calls, and that the FilterBeds and the exclusions marked calls masked.
+- What the tests check. The unit tests check the table build, the masks, the stand-in counts, the gVCF rule and the report's merging on synthetic data. With the pinned IBDmix image they also check a planted Neanderthal and Denisovan stretch, a masked mismatch that must end a segment, and a stretch with no call that must give no segment. They do not check that the share is calibrated against published per-person totals (by design it is not; see Runtime), and the stand-in rounding is pinned, not compared with a sampled population. On the e2e fixture the case builds the table for GRCh37 chr22 and checks HG002's GIAB v4.2.1 genotypes, with GIAB's confident regions as the gVCF's reference blocks, against the published chr22 spread, a copy of HG002 with one chromosome over chr22:28-29 Mb taken from Vindija (a Neanderthal segment must cover it), a person built from the table who carries only the majority allele (a quarter of HG002's Neanderthal sequence at most), that every table row outside the strict mask carries only masked calls, and that the FilterBeds and the exclusions marked calls masked.
 
 ## References
 
