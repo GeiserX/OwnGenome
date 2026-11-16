@@ -9,6 +9,9 @@
 //!   `report.json` cut down to the fields `og pgx` reads. It replaces
 //!   `tests/fixtures/pharmcat/trim_report.py` and writes the same bytes.
 //!
+//! - `og dev fixture <kind>` for the kinds of [`e2e`]: the inputs the
+//!   genotype, repeat and copy-number e2e cases make for themselves.
+//!
 //! Exit 0 when written, 1 when an input cannot be read or has the wrong
 //! shape, 2 on a usage error.
 
@@ -20,12 +23,14 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+pub mod e2e;
+
 const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og dev fixture trim-pharmcat REPORT.json OUT.json [MAX_ANNOTATIONS]\n";
 
 /// Runs `og dev fixture ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let usage = |err: &mut dyn Write, msg: &str| {
-        let _ = writeln!(err, "{USAGE}og dev fixture: error: {msg}");
+        let _ = writeln!(err, "{USAGE}{}og dev fixture: error: {msg}", e2e::USAGE);
         2
     };
     let result = match args.first().map(String::as_str) {
@@ -58,9 +63,13 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         }
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(e2e::USAGE.as_bytes());
             return 0;
         }
-        Some(other) => return usage(err, &format!("unknown fixture '{other}'")),
+        Some(other) => {
+            return e2e::cli(other, &args[1..], out, err)
+                .unwrap_or_else(|| usage(err, &format!("unknown fixture '{other}'")));
+        }
         None => return usage(err, "the following arguments are required: fixture"),
     };
     match result {
@@ -633,6 +642,31 @@ mod tests {
             crate::stream_tests::assert_status_errors(cli, &args, false);
         }
         fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn an_unknown_kind_lists_every_kind_in_its_usage() {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&["bogus".into()], &mut out, &mut err), 2);
+        let err = String::from_utf8(err).unwrap();
+        assert!(err.contains("unknown fixture 'bogus'"), "{err}");
+        for kind in [
+            "comphet",
+            "trim-pharmcat",
+            "append-n",
+            "rfc1",
+            "str-extra",
+            "tas2r38",
+            "mito-sam",
+            "hba-tiles",
+            "cut-haplotype",
+            "contains",
+        ] {
+            assert!(
+                err.contains(&format!("og dev fixture {kind} ")),
+                "{kind}: {err}"
+            );
+        }
     }
 
     #[test]

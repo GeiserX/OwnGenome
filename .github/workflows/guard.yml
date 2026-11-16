@@ -348,6 +348,26 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "ERROR: the planted unreadable-report success passed"; exit 1; }
           grep -E 'unreadable_pharmcat_is_unassessed.*FAILED' "$log"
           echo "Control: the unreadable-report success was reported as a failed test."
+      # The live ops card (og-live/tests/ops*.rs): each planted_* test turns
+      # on one planted mistake of the fault-inject feature, so every one of
+      # them must fail, and none may pass.
+      - name: Control (every planted mistake of the live ops card must fail its check)
+        run: |
+          set -o pipefail
+          tests=(--test ops --test ops_eta --test ops_headroom)
+          log="${RUNNER_TEMP}/ops-planted.log"
+          want=$(cargo test --locked -p og-live --features fault-inject "${tests[@]}" planted_ -- --list 2>/dev/null \
+            | grep -cE '^planted::planted_[a-z0-9_]+: test$' || true)
+          [ "$want" -gt 0 ] || { echo "ERROR: no planted test was found"; exit 1; }
+          rc=0
+          cargo test --locked --no-fail-fast -p og-live --features fault-inject "${tests[@]}" planted_ > "$log" 2>&1 || rc=$?
+          grep -E '^test planted::planted_' "$log" || true
+          [ "$rc" -ne 0 ] || { cat "$log"; echo "ERROR: every planted mistake passed"; exit 1; }
+          passed=$(grep -E '^test planted::planted_[a-z0-9_]+ \.\.\. ok$' "$log" || true)
+          [ -z "$passed" ] || { echo "ERROR: a check passed with its planted mistake on:"; echo "$passed"; exit 1; }
+          failed=$(grep -cE '^test planted::planted_[a-z0-9_]+ \.\.\. FAILED$' "$log" || true)
+          [ "$failed" -eq "$want" ] || { cat "$log"; echo "ERROR: ${want} planted tests, ${failed} failed"; exit 1; }
+          echo "Control: all ${failed} planted mistakes of the live ops card failed their checks."
       - name: Traits controls (diplotype order, REF check and missing phase rows)
         env:
           CARGO_BUILD_JOBS: 3
@@ -369,6 +389,37 @@ jobs:
             grep -E "traits::tests::${test} .*FAILED" "$log" || { echo "ERROR: $test did not catch its fault"; exit 1; }
           done
           cp -f "$saved" "$src"
+          trap - EXIT
+
+      - name: Control (ROH scope and neutral hints reject planted faults)
+        run: |
+          reader=crates/og-summary/src/collect/group_c/roh.rs
+          table=../assets/imprinted_regions.tsv
+          cp "$reader" "$RUNNER_TEMP/roh-reader.rs"
+          cp "$table" "$RUNNER_TEMP/imprinted-regions.tsv"
+          restore_roh() {
+            cp "$RUNNER_TEMP/roh-reader.rs" "$reader"
+            cp "$RUNNER_TEMP/imprinted-regions.tsv" "$table"
+          }
+          trap restore_roh EXIT
+          sed -i 's/let denominator = covered_unmasked_bp(&covered);/let denominator = autosome_unmasked_bp();/' "$reader"
+          sed -i 's/s("-")/s("Example syndrome")/g' "$reader"
+          sed -i 's/26248010;29959430/not-pmid/' "$table"
+          log="$RUNNER_TEMP/roh-scope-planted.log"
+          rc=0
+          cargo test --locked -p og-summary --no-fail-fast > "$log" 2>&1 || rc=$?
+          cat "$log"
+          test "$rc" -ne 0
+          for name in \
+            roh_scope_chr20_uses_its_own_unmasked_denominator \
+            roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty \
+            roh_scope_a_segment_only_file_never_establishes_scope \
+            roh_scope_upd_is_a_region_hint_without_syndrome_names \
+            imprinted_asset_is_the_only_table; do
+            grep -E "test .*${name} .* FAILED" "$log"
+          done
+          grep -E 'test result: FAILED\. [0-9]+ passed; 5 failed;' "$log"
+          restore_roh
           trap - EXIT
 
       - name: cargo test

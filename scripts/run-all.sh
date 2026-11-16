@@ -3,6 +3,8 @@
 # Usage: GENOME_DIR=/data ./scripts/run-all.sh <sample> <male|female> [nextflow options]
 #   Options after the sex go to `nextflow run` as given (--sex_check warn), except -bg. --max_cpus (THREADS) and --max_memory
 #   cap each task (default: the host's); they do not limit how much runs at once: Nextflow fills the machine's CPUs and RAM.
+#   When the container engine has less (Docker Desktop and colima run the containers in a VM), the defaults are the
+#   engine's, and <sample>/nextflow/executor.config makes Nextflow fill only that.
 #   A full run on 8 CPUs can take more than a day: start it inside tmux or screen, or with nohup. A closed terminal stops
 #   it, and -resume then restarts the task that was running (DeepVariant is one task).
 # Needs Docker, bash 4.4+, Java 17+ and Nextflow (NEXTFLOW_VERSION in versions.env). Results: GENOME_DIR/<sample>/.
@@ -37,7 +39,7 @@
 #   failed (logs/run_status.tsv). Results are published by hard link when work/ and GENOME_DIR share a filesystem,
 #   you passed no -w, -c or --publish_dir_mode, and you run as root or Linux's fs.protected_hardlinks is 0 (then a user
 #   may link the tasks' root-owned files).
-# logs/run_status.tsv keeps this command with its switches: bin/owngenome_recheck.py --rerun replays it when a newer
+# logs/run_status.tsv keeps this command with its switches: bin/og recheck --rerun replays it when a newer
 #   ClinVar or catalog changes a result (docs/recheck.md).
 set -euo pipefail
 case "${1:-}" in -h|--help) sed -n '2,/^set -euo/p' "$0" | sed -e '$d' -e 's/^# \{0,1\}//'; exit 0 ;; esac
@@ -46,9 +48,10 @@ SAMPLE=${1:-} SEX=${2:-}
   [ -z "$SEX" ] || echo "ERROR: sex must be 'male' or 'female', got '${SEX}'."; } >&2; exit 2; }
 ((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404)) || { echo "ERROR: run-all.sh needs bash 4.4 or later (this is ${BASH_VERSION}); on macOS: brew install bash" >&2; exit 2; }
 shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
-# This command as given, for bin/owngenome_recheck.py --rerun (logs/run_status.tsv, 'meta command'): the switches
+# This command as given, for bin/og recheck --rerun (logs/run_status.tsv, 'meta command'): the switches
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
-# 'meta switches' names them all, so a replay drops one set now that the run did not have.
+# 'meta switches' names them all, so a replay drops one set now that the run did not have. The replay reads this
+# shape back word by word and starts run-all.sh with those arguments, never through a shell; it refuses any other.
 SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
@@ -63,7 +66,7 @@ export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 validate_sample "$SAMPLE"
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
-# The ClinVar files are shared by every sample of GENOME_DIR. bin/owngenome_recheck.py --refresh-clinvar holds this
+# The ClinVar files are shared by every sample of GENOME_DIR. bin/og recheck --refresh-clinvar holds this
 # lock while it replaces them; the run holds it shared on fd 7 until it ends, so a run waits for a refresh going on
 # and a refresh refuses while a run goes on. Without flock (macOS: brew install flock) nothing waits here.
 CVLOCK="${G}/clinvar/.refresh.lock"
@@ -238,8 +241,11 @@ else KNOWN+=" chip"; fi
 # Step 42 reads the gVCF only: DeepVariant writes one for a FASTQ or BAM row, a BAM+VCF row has one when it lies beside the VCF.
 plan "42 Traits panel" traits "$([ -z "$fv" ] || [ -n "$GROW" ] || echo "no gVCF: ${GV#"$G"/}")" || true
 # Step 43 against the table setup.sh --archaic builds (DONE is written last); the genes of its segments come from GENCODE.
+# It reads the gVCF too (a site with no call is the reference only inside a reference block): with the table installed,
+# a row that starts from a VCF without one beside it is skipped, as for step 42.
 AR=${ARCHAIC_DIR:-${G}/reference/archaic/${ARCHAIC_DATA_VERSION}}
-plan "43 Archaic ancestry (IBDmix)" archaic "$(if [ "$AR" = none ]; then echo 'ARCHAIC_DIR=none'; else need "${AR}/DONE"; fi)" \
+plan "43 Archaic ancestry (IBDmix)" archaic "$(if [ "$AR" = none ]; then echo 'ARCHAIC_DIR=none'
+  elif [ -e "${AR}/DONE" ] && [ -n "$fv" ] && [ -z "$GROW" ]; then echo "no gVCF: ${GV#"$G"/}"; else need "${AR}/DONE"; fi)" \
   && NF+=(--archaic_data "$AR" --archaic_pop "${ARCHAIC_POP:-ALL}") && { [[ " ${NF[*]} " == *" --hla_genes "* ]] || [ ! -s "$GT" ] || NF+=(--hla_genes "$GT"); }
 # Step 44 (ancient populations) is opt-in and listed only when TOOLS names it; it reads the gVCF and the panel
 # setup.sh --ancient-panel builds (DONE is written last). ANCIENT_PANEL_DIR picks another panel.
@@ -283,9 +289,33 @@ for t in ${T//,/ }; do [[ "${KNOWN} " == *" ${t} "* ]] || { echo "ERROR: unknown
 arg --cytoband "$(data_file cytoband || true)"; ! GEX=$(data_file gencode_exons) || NF+=(--gencode_exons "$GEX"); arg --delly_exclude "$(data_file delly_exclude || true)"; arg --manta_call_regions "${MANTA_CALL_REGIONS:-}"
 # Step 20's annotation of the chrM calls (MITO_VARIANTS_ANNOTATE): ClinVar with its index, and gnomAD's chrM sites.
 MC="${G}/clinvar/clinvar_chr.vcf.gz"; if [ -s "$MC" ] && [ -s "${MC}.tbi" ]; then NF+=(--mito_clinvar "$MC"); fi; arg --gnomad_mito "${G}/gnomad_mito/${GNOMAD_MITO_URL##*/}"
-[ -z "${INTERVALS:-}" ] || NF+=(--intervals "$INTERVALS"); [[ " $* " == *" --max_cpus"* ]] || NF+=(--max_cpus "${USER_THREADS:-$(getconf _NPROCESSORS_ONLN)}")
+[ -z "${INTERVALS:-}" ] || NF+=(--intervals "$INTERVALS")
+# The CPUs and RAM the tasks get: the host's, or the container engine's when docker info reports less. Docker Desktop
+# and colima run the containers in a VM, often smaller than the host; Nextflow books the host's RAM by default, and
+# a task the VM cannot hold is killed (exit 137). Then the default caps are the engine's, and executor.config sets the
+# pool Nextflow fills to it, so a task waits for room instead. Each executor setting in a later -c of the user's wins.
+NC=$(getconf _NPROCESSORS_ONLN) EM="" EC="" EXC="${S}/nextflow/executor.config" EX=""
 M=$(awk '/^MemTotal:/ {print int($2 / 1048576)}' /proc/meminfo 2>/dev/null || echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )))
+read -r EM EC _ < <(docker info --format '{{.MemTotal}} {{.NCPU}}' 2>/dev/null) || true
+if [[ "$EM" =~ ^[0-9]+$ ]] && [ $((EM / 1073741824)) -ge 1 ] && { [ "${M:-0}" -lt 1 ] || [ $((EM / 1073741824)) -lt "$M" ]; }; then M=$((EM / 1073741824)) EX=1; fi
+if [[ "$EC" =~ ^[0-9]+$ ]] && [ "$EC" -ge 1 ] && [ "$EC" -lt "$NC" ]; then NC=$EC EX=1; fi
+[[ " $* " == *" --max_cpus"* ]] || NF+=(--max_cpus "${USER_THREADS:-$NC}")
 [[ " $* " == *" --max_memory"* ]] || [ "${M:-0}" -lt 1 ] || NF+=(--max_memory "${M}.GB")
+if [ -n "$EX" ]; then
+  # The pool never goes below a cap the user set (THREADS, --max_cpus, --max_memory): Nextflow refuses a task that asks
+  # for more than the pool. A cap it cannot read (not whole CPUs, not whole GB) leaves that line out, as on the host.
+  XC=$NC XM=$M UC=${USER_THREADS:-} UM="" prev="" GB_RE='^([0-9]+)[[:space:]]*\.?[[:space:]]*[Gg][Bb]?$'
+  for a in "$@"; do
+    case "$prev" in --max_cpus) UC=$a ;; --max_memory) UM=$a ;; esac
+    case "$a" in --max_cpus=*) UC=${a#*=} ;; --max_memory=*) UM=${a#*=} ;; esac; prev=$a
+  done
+  if [ -n "$UC" ]; then if [[ "$UC" =~ ^[0-9]+$ ]]; then [ "$UC" -le "$XC" ] || XC=$UC; else XC=""; fi; fi
+  if [ -n "$UM" ]; then if [[ "$UM" =~ $GB_RE ]]; then [ "${BASH_REMATCH[1]}" -le "${XM:-0}" ] || XM=${BASH_REMATCH[1]}; else XM=""; fi; fi
+  { printf 'executor {\n'; [ -z "$XC" ] || printf '    cpus   = %s\n' "$XC"; [ "${XM:-0}" -lt 1 ] || printf "    memory = '%s GB'\n" "$XM"; printf '}\n'; } > "$EXC"
+  XCS="${XC} CPUs" XMS="${XM} GB"; [ -n "$XC" ] || XCS="the host's CPUs"; [ "${XM:-0}" -ge 1 ] || XMS="the host's RAM"
+  NF+=(-c "$EXC"); echo "[Resources] the container engine has less than this host: Nextflow books at most ${XCS} and ${XMS} (${EXC})"
+  [ "$XC" = "$NC" ] && [ "$XM" = "$M" ] || echo "[Resources] the pool follows a task cap you set above the engine's ${NC} CPUs and ${M} GB, or one not in whole CPUs or GB: a task can then be killed inside the engine (exit 137)"
+else rm -f "$EXC"; fi
 # Publish by hard link when it is sure to work: the BAM and every other output are then stored once, not twice.
 # Nextflow does not fall back to a copy when a link fails; the run stops. The tasks run as root (the docker profile)
 # and their files can stay root's, and Linux lets another user link a file it does not own only when

@@ -119,6 +119,8 @@ NuMTs are copies of mitochondrial DNA in the nuclear genome. Their reads can map
 | 0.03-0.10 | Low-level heteroplasmy — may be age-related somatic |
 | <0.03 | Near detection limit |
 
+Step 07 reads these calls for the aminoglycoside risk gene MT-RNR1: a PASS allele PharmCAT names (m.1555A>G, m.1494C>T and others) at AF 0.05 or more is passed to PharmCAT, heteroplasmic or not, because CPIC sets no heteroplasmy level at which aminoglycosides are safe ([Pharmacogenomics](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses)).
+
 Count only PASS calls: a call marked `possible_numt` or with another filter is not evidence of heteroplasmy. Calls near the two ends of the control region (about chrM:1-500 and 16,000-16,569) are less reliable: the reference is circular, so reads that span its end align poorly at both edges.
 
 Length variants in the D-loop poly-C tracts (m.303-315 and m.16184-16193), one C more or less, are found in most people and often read as a mix of lengths. The reports list them as "length heteroplasmy in the D-loop poly-C tracts" and leave them out of the heteroplasmic count. A call counts as in a tract when the bases it changes (an indel: the bases after its anchor base) overlap one.

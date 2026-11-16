@@ -51,8 +51,10 @@ Missense variants and in-frame insertions/deletions, on the ranked transcript.
 The same impacts with no frequency value. Their own tier, not rare (see above).
 
 ### ClinVar pathogenic/likely pathogenic, at any frequency
-- Preferred source: the step 6 hits file, built from the ClinVar file in `clinvar/` that `setup.sh` refreshes. The tier holds the records at those positions.
-- Step 6 matches on a split, left-aligned copy of the sample, and this tier selects the VEP records at the same CHROM and POS. An SNV always matches. An indel matches only when the caller already wrote it left-aligned, as DeepVariant does; an indel whose position moves on left-alignment is missing from this tier, though it stays in the step 6 hits and in both reports' ClinVar section.
+- Preferred source: the step 6 hits file, built from the ClinVar file in `clinvar/` that `setup.sh` refreshes. The tier holds the VEP records whose allele is a hit: the same CHROM, POS, REF and ALT.
+- Another allele at a hit's position is not in the tier. A call of T>A,C splits into two records at one position; when ClinVar classified only T>A, the T>C record stays out.
+- Step 6 and step 13 both split and left-align the sample against the same reference, so one allele is written the same way in the hits and in the VEP output, one ALT per record. A VEP record with several ALTs (an input step 13 did not split) is kept when any of its ALTs is a hit.
+- A combined hit of step 6 (two neighbouring records that make one allele, `PGP_JOINED_FROM` in the hits) puts both of its parts in the tier. VEP annotated the parts, not the joined allele. The tier's count then counts each part as one record.
 - Next, when step 6 has not run: `ClinVar_CLNSIG`, the same ClinVar file step 13 annotated with `--custom` (pathogenic or likely pathogenic, not conflicting). It follows a ClinVar refresh once step 13 runs again.
 - Last: VEP's `CLIN_SIG`, from the VEP cache release, so a ClinVar refresh never reaches it. The step says which source it used.
 - A common pathogenic allele (for example HFE p.C282Y) stays: this tier has no frequency filter.
