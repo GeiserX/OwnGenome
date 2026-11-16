@@ -41,7 +41,7 @@
 60-nextflow	-
 90-report-assets	-
 acmg-sf-rules-1-reports	assets/acmg_sf.tsv assets/callability_genes.tsv assets/carrier_genes.tsv assets/construct_variants.tsv assets/deep_intronic_sites.tsv assets/mito_confirmed.tsv assets/stub/sample.bam assets/stub/sample.bam.bai assets/stub/sample.vcf.gz bin/collect_summary.py bin/og bin/render_report.py bin/results_index.py modules/local/clinvar_screen/* modules/local/html_report/* modules/local/vcf_precheck/* scripts/06-clinvar-screen.sh scripts/24-html-report.sh scripts/ci/fake-docker/lib.sh scripts/generate-report.sh scripts/validate-setup.sh
-align-read-count-gate-1	assets/callability_genes.tsv assets/par_grch38.bed bin/collect_summary.py bin/render_report.py modules/local/align_minimap2/* modules/local/deepvariant/* modules/local/fastp/* modules/local/mosdepth/* modules/local/vcf_precheck/* scripts/01b-fastp-qc.sh scripts/16b-mosdepth.sh scripts/ci/check-images.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
+align-read-count-gate-1	assets/callability_genes.tsv assets/par_grch38.bed bin/collect_summary.py bin/og bin/render_report.py modules/local/align_minimap2/* modules/local/deepvariant/* modules/local/fastp/* modules/local/mosdepth/* modules/local/vcf_precheck/* scripts/01b-fastp-qc.sh scripts/16b-mosdepth.sh scripts/ci/check-images.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 alignment-markdup-gvcf-sex-1-align	scripts/ci/fake-docker/lib.sh
 alignment-markdup-gvcf-sex-2-ploidy	scripts/ci/fake-docker/lib.sh
 alignment-markdup-gvcf-sex-3-homref	assets/pgs_scores.tsv bin/collect_summary.py scripts/14-imputation-prep.sh scripts/25-prs.sh scripts/ci/fake-docker/lib.sh
@@ -73,6 +73,7 @@ clinical-filter-mane-and-quality-3-modules	assets/construct_variants.tsv assets/
 clinvar-clip-check-1	assets/construct_variants.tsv assets/deep_intronic_sites.tsv bin/og bin/render_report.py scripts/06-clinvar-screen.sh scripts/ci/fake-docker/lib.sh
 clinvar-combined-allele-1	assets/construct_variants.tsv assets/deep_intronic_sites.tsv assets/stub/sample.bam assets/stub/sample.bam.bai bin/og modules/local/clinvar_screen/* modules/local/vcf_precheck/* scripts/06-clinvar-screen.sh scripts/24-html-report.sh scripts/ci/fake-docker/lib.sh scripts/generate-report.sh scripts/validate-setup.sh tests/fixtures/vcf/combined_allele_clinvar.vcf tests/fixtures/vcf/combined_allele_sample.vcf
 clinvar-cpsr-quality-1	assets/construct_variants.tsv assets/deep_intronic_sites.tsv bin/og bin/render_report.py scripts/06-clinvar-screen.sh scripts/ci/fake-docker/lib.sh
+clinvar-tier-allele-match	bin/og scripts/23-clinical-filter.sh scripts/ci/fake-docker/lib.sh
 cn-engine-1-parity	assets/bloodtype_markers.tsv bin/cn_loci.tsv bin/og scripts/41-bloodtype.sh scripts/46-lpa.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 cn-guard-1-mapq0	bin/cn_loci.tsv bin/og modules/local/parascopy/* scripts/35-paralogs.sh
 cn-intervals-1-catalog	assets/parascopy_models_v1.7.txt bin/cn_loci.tsv bin/og scripts/ci/build-cn-intervals.sh scripts/ci/fake-docker/lib.sh scripts/ci/lib/fetch-pinned.sh

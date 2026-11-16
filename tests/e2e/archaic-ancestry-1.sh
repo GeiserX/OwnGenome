@@ -8,8 +8,14 @@
 #     1000 Genomes GRCh38 strict mask, in a segmental duplication or within
 #     5 bp of a 1000 Genomes indel is marked masked (code 10 to 12), which
 #     step 43 hands IBDmix as its mask;
+#   - every sample gets a gVCF of reference blocks beside its VCF, since
+#     step 43 reads a site with no call as the reference only inside one:
+#     HG002 and PLANT get GIAB's v4.2.1 confident regions on chr22 (outside
+#     them GIAB makes no claim, so a site there is unknown, not a match),
+#     COMMON one block over the chromosome;
 #   - HG002 (GIAB's v4.2.1 genotypes on chr22): the step runs, the shares are
-#     numbers, the analysed span is most of the chromosome, and the
+#     numbers, the table sites outside the confident regions are not read,
+#     the analysed span is most of the chromosome, and the
 #     Neanderthal total lies between the lowest value (51 kb) of the range
 #     Chen et al.'s own released calls give Europeans on chr22 and a 1,200 kb
 #     regression guard (the guard that catches the unmasked table calling
@@ -30,6 +36,7 @@
 G="$GENOME_DIR" T="$CASE_TMP"
 DATA="${G}/reference/archaic/${ARCHAIC_DATA_VERSION}"
 TRUTH="${FIXTURE_DIR}/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
+CONFIDENT="${FIXTURE_DIR}/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
 W_FROM=28000000 W_TO=29000000
 dk() { local img=$1; shift; docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -w "$T" "$img" "$@"; }
 # kv SAMPLE KEY: one value of the sample's summary
@@ -40,7 +47,25 @@ covered() {
       s = ($2 > f ? $2 : f); e = ($3 < t ? $3 : t); if (e > s) n += e - s } END {print n + 0}' \
     "${G}/$1/archaic/$1_archaic_segments.tsv" 2>/dev/null
 }
-sample() { rm -rf "${G:?}/$1"; mkdir -p "${G}/$1/vcf"; cp "$2" "${G}/$1/vcf/$1.vcf.gz"; dk "$BCFTOOLS_IMAGE" bcftools index -t -f "${G}/$1/vcf/$1.vcf.gz"; }
+# gvcf BED OUT: a one-sample gVCF with a confident reference block over each
+# chr22 interval of the BED (0-based, half-open).
+gvcf() {
+  { printf '##fileformat=VCFv4.2\n##contig=<ID=chr22,length=50818468>\n##ALT=<ID=*,Description="Any other allele">\n'
+    printf '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
+    printf '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    printf '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Lowest depth in the block">\n'
+    printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n'
+    awk -F'\t' 'BEGIN {OFS = "\t"} $1 == "chr22" {print "chr22", $2 + 1, ".", "N", "<*>", 0, ".", "END=" $3, "GT:GQ:MIN_DP", "0/0:50:30"}' "$1" | sort -k2,2n
+  } > "${2%.gz}"
+  dk "$BCFTOOLS_IMAGE" bcftools view -Oz -o "$2" "${2%.gz}"
+}
+# sample NAME VCF GVCF: the sample's VCF and gVCF, indexed, where step 43 reads them.
+sample() {
+  rm -rf "${G:?}/$1"; mkdir -p "${G}/$1/vcf"
+  cp "$2" "${G}/$1/vcf/$1.vcf.gz"; cp "$3" "${G}/$1/vcf/$1.g.vcf.gz"
+  dk "$BCFTOOLS_IMAGE" bcftools index -t -f "${G}/$1/vcf/$1.vcf.gz"
+  dk "$BCFTOOLS_IMAGE" bcftools index -t -f "${G}/$1/vcf/$1.g.vcf.gz"
+}
 step() { run_step 43-archaic.sh "$1"; check_step_exit "43-archaic.sh ($1)"; }
 
 GENES=$(bash -c '. "$1/scripts/lib/common.sh" && install_data_file gencode_genes >/dev/null && data_file gencode_genes' _ "$REPO")
@@ -112,9 +137,17 @@ printf '#### Step 43 archaic table (GRCh37 chr22)\n\n%s s to install, %s on disk
 
 # --- HG002 ------------------------------------------------------------------------------
 dk "$BCFTOOLS_IMAGE" bcftools view -r chr22 -Oz -o "${T}/hg002.vcf.gz" "$TRUTH"
+gvcf "$CONFIDENT" "${T}/hg002.g.vcf.gz"
 H="${SAMPLE}ar"
-sample "$H" "${T}/hg002.vcf.gz"
+sample "$H" "${T}/hg002.vcf.gz" "${T}/hg002.g.vcf.gz"
 step "$H"
+# og archaic genotypes counts the table sites it read and those it did not.
+# GIAB's confident regions leave part of chr22 out, so some are not read; a
+# run that read every site with no call as the reference has none.
+read -r READ_SITES UNREAD_SITES < <(sed -n 's/^.* chromosomes\{0,1\}, \([0-9]*\) sites read, \([0-9]*\) not read.*$/\1 \2/p' "$STEP_LOG" | tail -1)
+check_ge "HG002: table sites read on chr22" "${READ_SITES:-0}" 100000
+check_ge "HG002: table sites outside the confident regions are not read" "${UNREAD_SITES:-0}" 1000
+echo "  chr22 table sites read: ${READ_SITES}, not read: ${UNREAD_SITES}"
 cat "${G}/${H}/archaic/${H}_archaic.txt" 2>/dev/null
 check "Neanderthal share is a number" has '^[0-9]+\.[0-9]+$' "$(kv "$H" neanderthal_percent)"
 check "Denisovan share is a number" has '^[0-9]+\.[0-9]+$' "$(kv "$H" denisovan_percent)"
@@ -146,7 +179,7 @@ check "the segments file has its header" has '^chrom	start	end	length_bp	ancestr
 } > "${T}/plant.vcf"
 dk "$BCFTOOLS_IMAGE" bcftools sort -Oz -o "${T}/plant.vcf.gz" "${T}/plant.vcf"
 P="${SAMPLE}arp"
-sample "$P" "${T}/plant.vcf.gz"
+sample "$P" "${T}/plant.vcf.gz" "${T}/hg002.g.vcf.gz"
 step "$P"
 cat "${G}/${P}/archaic/${P}_archaic_segments.tsv" 2>/dev/null | head -20
 check_ge "a Neanderthal segment covers 70% of the planted window (bp)" "$(covered "$P" Neanderthal "$W_FROM" "$W_TO")" 700000
@@ -171,8 +204,11 @@ check "with the Neanderthal line of the summary" has "Neanderthal: $(kv "$P" nea
   gzip -dc "$TABLE" | awk -F'\t' 'BEGIN {OFS = "\t"} NR > 1 && $8 >= 0.5 {print "chr22", $2, ".", $3, $4, 50, "PASS", ".", "GT", "1/1"}'
 } > "${T}/common.vcf"
 dk "$BCFTOOLS_IMAGE" bcftools sort -Oz -o "${T}/common.vcf.gz" "${T}/common.vcf"
+# COMMON is the reference wherever it carries no ALT: one block over chr22.
+printf 'chr22\t0\t50818468\n' > "${T}/chr22.bed"
+gvcf "${T}/chr22.bed" "${T}/common.g.vcf.gz"
 C="${SAMPLE}arc"
-sample "$C" "${T}/common.vcf.gz"
+sample "$C" "${T}/common.vcf.gz" "${T}/common.g.vcf.gz"
 step "$C"
 # COMMON carries no allele rarer than half the population, so almost nothing
 # should look archaic in it. Not nothing at all: the masks leave fewer sites
@@ -187,7 +223,8 @@ check "and no more Denisovan bp than HG002" test "$(kv "$C" denisovan_bp)" -le "
 # --- Nextflow against the bash step ----------------------------------------------------------
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
 SHEET="${T}/samplesheet.csv" NF_OUT="${G}/nf-archaic"
-printf 'sample,vcf,vcf_index,sex\n%s,%s,%s,male\n' "$P" "${G}/${P}/vcf/${P}.vcf.gz" "${G}/${P}/vcf/${P}.vcf.gz.tbi" > "$SHEET"
+printf 'sample,vcf,vcf_index,gvcf,gvcf_index,sex\n%s,%s,%s,%s,%s,male\n' "$P" "${G}/${P}/vcf/${P}.vcf.gz" "${G}/${P}/vcf/${P}.vcf.gz.tbi" \
+  "${G}/${P}/vcf/${P}.g.vcf.gz" "${G}/${P}/vcf/${P}.g.vcf.gz.tbi" > "$SHEET"
 echo "+ nextflow run main.nf -profile docker --tools archaic"
 ( cd "$T" && nextflow run "${REPO}/main.nf" -profile docker -ansi-log false -work-dir "${E2E_WORK}/nf-work-archaic" \
     --input "$SHEET" --reference "${G}/reference/GRCh38_no_alt_analysis_set.fasta" --tools archaic \

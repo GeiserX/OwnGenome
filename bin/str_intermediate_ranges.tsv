@@ -5,7 +5,7 @@
 # next_min: the first count of the next class, named in next_class; the range ends right below it.
 # label: what the report prints beside a count in the range. citation: the GeneReviews chapter that defines the range.
 # Only loci whose GeneReviews chapter defines such a range are listed. tests/test_str_ranges.py checks the rows
-# and that docs/interpreting-results.md prints the same ranges.
+# and that docs/results/structural-and-repeats.md prints the same ranges.
 locus	intermediate_min	intermediate_max	next_min	next_class	label	citation
 HTT	27	35	36	reduced penetrance	intermediate (not disease-causing; may expand in offspring)	GeneReviews: Huntington Disease, https://www.ncbi.nlm.nih.gov/books/NBK1305/
 FMR1	45	54	55	premutation	intermediate (gray zone; not disease-causing; may expand in offspring)	GeneReviews: FMR1 Disorders, https://www.ncbi.nlm.nih.gov/books/NBK1384/
