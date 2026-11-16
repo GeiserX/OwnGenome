@@ -644,7 +644,7 @@ fn call_row(acc: &str, e: &Evidence) -> (ViralCall, String) {
     if reads == 0 {
         let note = if e.aligned > 0 {
             format!(
-                "{} aligned records, none counted: duplicates, mapping quality under {MIN_MAPQ}, low complexity or supplementary.",
+                "{} aligned records, none counted: mapping quality under {MIN_MAPQ}, low complexity or supplementary.",
                 e.aligned
             )
         } else {
