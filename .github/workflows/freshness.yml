@@ -23,6 +23,13 @@ name: Freshness
 # whole-tree link check runs monthly, so a link that dies upstream shows in the
 # issue instead of failing an unrelated pull request.
 #
+# A manual run with pr_base runs the pull-request job too, as a pull request
+# from those base commits would: the files changed and the URLs added are taken
+# against each base, and the job checks the union. The landing train uses it to
+# get this check on a branch's own tree before the pull request can run (a
+# stacked branch conflicts with main until the branch before it lands). Each
+# base must be a full sha and an ancestor of the ref.
+#
 # 60-day rule: GitHub disables scheduled workflows in a public repository after
 # 60 days without repository activity. Monthly Dependabot and weekly Renovate merges
 # normally count as activity. As a fallback the keepalive job re-enables this
@@ -40,6 +47,11 @@ on:
     # The 2nd at 05:17 UTC: after the monthly image test on the 1st.
     - cron: '17 5 2 * *'
   workflow_dispatch:
+    inputs:
+      pr_base:
+        description: 'Also run the pull-request job against these base commits (full shas separated by spaces, each an ancestor of the ref). Empty: a plain manual run.'
+        type: string
+        default: ''
   pull_request:
     branches: [main]
 
@@ -142,7 +154,7 @@ jobs:
         run: scripts/ci/check-pgs-labels.sh --self-test
 
   pull-request:
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.self-tests.result == 'success' }}
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || inputs.pr_base != '') && needs.self-tests.result == 'success' }}
     needs: self-tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -154,9 +166,16 @@ jobs:
       - name: Files this pull request changes
         id: changed
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          EVENT: ${{ github.event_name }}
+          BASES: ${{ github.event.pull_request.base.sha || inputs.pr_base }}
         run: |
-          git diff --name-only "$BASE" HEAD > "${RUNNER_TEMP}/changed.txt"
+          if [ "$EVENT" != pull_request ]; then
+            for b in $BASES; do
+              [[ "$b" =~ ^[0-9a-f]{40}$ ]] || { echo "ERROR: pr_base takes full commit shas (the value is not echoed)"; exit 1; }
+              git merge-base --is-ancestor "$b" HEAD || { echo "ERROR: ${b} is not an ancestor of ${GITHUB_SHA}"; exit 1; }
+            done
+          fi
+          for b in $BASES; do git diff --name-only "$b" HEAD; done | awk '!seen[$0]++' > "${RUNNER_TEMP}/changed.txt"
           cat "${RUNNER_TEMP}/changed.txt"
           has() { grep -qxE "$1" "${RUNNER_TEMP}/changed.txt" && echo true || echo false; }
           {
@@ -186,9 +205,12 @@ jobs:
 
       - name: Every download URL this pull request adds answers
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASES: ${{ github.event.pull_request.base.sha || inputs.pr_base }}
           OG: ${{ github.workspace }}/rust/target/release/og
-        run: scripts/ci/check-links.sh --since "$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
+        # The exit is inside the braces: a variable set left of a pipe is lost, so
+        # the failure has to leave as the left side's status (pipefail).
+        run: |
+          { rc=0; for b in $BASES; do scripts/ci/check-links.sh --since "$b" || rc=1; done; exit "$rc"; } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Every PGS ID's label matches the PGS Catalog
         if: steps.changed.outputs.prs == 'true'
@@ -294,7 +316,7 @@ jobs:
   # Fallback for the 60-day rule described at the top of this file. No `needs`:
   # it runs even when an upstream outage fails the checks.
   keepalive:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && inputs.pr_base == ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

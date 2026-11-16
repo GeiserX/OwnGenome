@@ -352,11 +352,11 @@ fn truthy(v: &Option<String>) -> Option<&str> {
 }
 
 /// The class of a looked-up item; may set its error or the release that
-/// pins a newer one.
+/// pins a newer one. What is installed here is compared with what the run
+/// used before the lookup's answer is read: that needs no network, so a
+/// failed lookup leaves a newer file or pin here `rerun-ready`, with its
+/// error kept.
 pub fn classify(item: &mut Item, release: &Result<Release, String>, clinvar: bool) -> Class {
-    if item.error.is_some() {
-        return Class::Error;
-    }
     let (ran, inst) = (truthy(&item.ran_with), truthy(&item.installed));
     if let (Some(i), Some(r)) = (inst, ran) {
         if ver(i) > ver(r) {
@@ -372,6 +372,9 @@ pub fn classify(item: &mut Item, release: &Result<Release, String>, clinvar: boo
         {
             return Class::RerunReady;
         }
+    }
+    if item.error.is_some() {
+        return Class::Error;
     }
     // ClinVar's date is in the manifest whenever step 06 had a file, so a run
     // without one cannot be compared with the file here. A pin with no run
@@ -572,10 +575,12 @@ impl Check {
         Value::Object(m)
     }
 
+    /// The items whose lookup failed or that could not be compared: the
+    /// `error` items, and a `rerun-ready` item whose lookup failed.
     pub fn errors(&self) -> usize {
         self.items
             .iter()
-            .filter(|i| i.class == Class::Error)
+            .filter(|i| i.class == Class::Error || i.error.is_some())
             .count()
     }
 }
@@ -747,7 +752,12 @@ pub fn print_check(c: &Check, out: &mut dyn std::io::Write) -> std::io::Result<(
     let or_unknown = |v: &Option<String>| truthy(v).unwrap_or("unknown").to_owned();
     for i in &c.items {
         let mut detail = match &i.error {
-            Some(e) if !e.is_empty() => e.clone(),
+            Some(e) if !e.is_empty() && i.class == Class::Error => e.clone(),
+            Some(e) if !e.is_empty() => format!(
+                "run used {}, here {}; the lookup failed: {e}",
+                or_unknown(&i.ran_with),
+                or_unknown(&i.installed),
+            ),
             _ => format!(
                 "run used {}, here {}, upstream {}",
                 or_unknown(&i.ran_with),
@@ -774,15 +784,40 @@ pub fn print_check(c: &Check, out: &mut dyn std::io::Write) -> std::io::Result<(
             )?;
         }
     }
-    if c.affected_steps.is_empty() {
-        writeln!(out, "Nothing here is newer than what the run used.")
-    } else {
+    if !c.affected_steps.is_empty() {
         writeln!(
             out,
             "A rerun would redo steps {} and the text report.",
             c.affected_steps.join(", ")
-        )
+        )?;
     }
+    // A failed lookup is never read as "nothing newer". An item that was
+    // looked up has an answer or an error; the others were never asked. An
+    // error is a failed lookup or a run value missing from the manifest, so
+    // the count is of items, and each item's line says which.
+    let asked = c
+        .items
+        .iter()
+        .filter(|i| i.upstream.is_some() || i.error.is_some())
+        .count();
+    let failed = c.errors();
+    if failed == 0 {
+        if c.affected_steps.is_empty() {
+            writeln!(out, "Nothing here is newer than what the run used.")?;
+        }
+    } else if failed >= asked {
+        writeln!(
+            out,
+            "Could not check: all {asked} looked-up items failed (each line above says why)."
+        )?;
+    } else {
+        writeln!(
+            out,
+            "{failed} of {asked} looked-up items failed (each line above says why): this check is \
+             incomplete, so it cannot say nothing else is newer."
+        )?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

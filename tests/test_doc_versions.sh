@@ -51,7 +51,7 @@ check_docs() {
     n=0
     # A tool name, optional Markdown emphasis or code marks, an optional "v"
     # or "version ", then a dotted version. One grep over every page.
-    hits=$(grep -noE "\b${tool}[*\`]*[[:space:]]+(v|version[[:space:]]+)?[0-9]+\.[0-9]+(\.[0-9]+)?" "$dir"/*.md || true)
+    hits=$(grep -noE "\b${tool}[*\`]*[[:space:]]+(v|version[[:space:]]+)?[0-9]+\.[0-9]+(\.[0-9]+)?" "$dir"/*.md "$dir"/results/*.md || true)
     if [ -n "$hits" ]; then
       while IFS= read -r h; do
         n=$((n + 1))
