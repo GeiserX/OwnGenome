@@ -838,6 +838,12 @@ dependencies = [
 [[package]]
 name = "og-render"
 version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-io",
+ "og-summary",
+ "pycompat",
+]
 
 [[package]]
 name = "og-reports"
