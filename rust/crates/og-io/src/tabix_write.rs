@@ -27,7 +27,7 @@
 //! one line and the index itself.
 
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, BufReader, Read, Write};
 use std::mem;
 use std::num::NonZero;
@@ -94,9 +94,6 @@ impl<R: Read> Blocks<R> {
             let at = self.pos;
             let mut head = [0u8; 12];
             let n = read_full_or_end(&mut self.inner, &mut head)?;
-            if n == 0 {
-                return Ok(None);
-            }
             let not_bgzf = || {
                 invalid(if at == 0 {
                     "not BGZF-compressed (compress it with bgzip)".to_owned()
@@ -104,6 +101,11 @@ impl<R: Read> Blocks<R> {
                     format!("no BGZF block at byte {at}")
                 })
             };
+            if n == 0 && at > 0 {
+                return Ok(None);
+            }
+            // An empty file is not BGZF either: even an empty VCF.gz holds
+            // the empty end-of-file block.
             if n < head.len() || head[..4] != [0x1f, 0x8b, 8, 4] {
                 return Err(not_bgzf());
             }
@@ -836,11 +838,31 @@ impl Index {
         out
     }
 
-    /// Writes the `.tbi` to `path` as BGZF, atomically.
-    pub fn write_tbi(self, path: &Path) -> io::Result<()> {
-        let mut w = bgzf::Writer::new(AtomicFile::create(path)?, NonZero::<usize>::MIN)?;
-        self.write_to(&mut w)?;
-        w.finish()?.commit()
+    /// Writes the `.tbi` to `path` as BGZF, atomically: a reader sees the
+    /// whole index or none. With `force` it replaces an index there; without
+    /// it, an index that appears while this one is built stays, and the
+    /// error is `AlreadyExists`.
+    pub fn write_tbi(self, path: &Path, force: bool) -> io::Result<()> {
+        if force {
+            let mut w = bgzf::Writer::new(AtomicFile::create(path)?, NonZero::<usize>::MIN)?;
+            self.write_to(&mut w)?;
+            return w.finish()?.commit();
+        }
+        // A hard link never replaces its target, so it publishes the
+        // finished temporary file without the race of a check and a rename.
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(format!(".tmp-{}", std::process::id()));
+        let tmp = PathBuf::from(tmp);
+        let done = File::create(&tmp)
+            .and_then(|f| {
+                let mut w = bgzf::Writer::new(io::BufWriter::new(f), NonZero::<usize>::MIN)?;
+                self.write_to(&mut w)?;
+                // finish flushes the BufWriter, so a write error shows here.
+                w.finish().map(drop)
+            })
+            .and_then(|()| fs::hard_link(&tmp, path));
+        let _ = fs::remove_file(&tmp);
+        done
     }
 }
 
@@ -928,7 +950,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             index.clamped
         );
     }
-    if let Err(e) = index.write_tbi(&tbi) {
+    if let Err(e) = index.write_tbi(&tbi, force) {
         let _ = writeln!(err, "og vcf index: {}: {e}", tbi.display());
         return 1;
     }
@@ -1460,6 +1482,32 @@ mod tests {
         assert_eq!(code, 1);
         assert!(err.contains("not BGZF"), "{err}");
         assert!(!temp("broken.vcf.gz.tbi").exists());
+        // An empty file is not BGZF; an empty BGZF stream is a VCF with no
+        // lines.
+        let empty = temp("empty.vcf.gz");
+        std::fs::write(&empty, b"").unwrap();
+        let (code, _, err) = run(&[empty.to_str().unwrap()]);
+        assert_eq!(code, 1);
+        assert!(err.contains("not BGZF"), "{err}");
+        assert!(!temp("empty.vcf.gz.tbi").exists());
+        let eof = temp("eof.vcf.gz");
+        std::fs::write(&eof, bgzf::EOF_BLOCK).unwrap();
+        assert_eq!(run(&[eof.to_str().unwrap()]).0, 0);
+        assert!(temp("eof.vcf.gz.tbi").exists());
+    }
+
+    #[test]
+    fn without_force_an_index_that_appeared_meanwhile_stays() {
+        let src = repo().join("tests/parity/inputs/bloodtype/abo.vcf.gz");
+        let index = build(BufReader::new(File::open(&src).unwrap())).unwrap();
+        let tbi = temp("raced.vcf.gz.tbi");
+        std::fs::write(&tbi, b"another writer").unwrap();
+        let e = index.write_tbi(&tbi, false).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&tbi).unwrap(), b"another writer");
+        let index = build(BufReader::new(File::open(&src).unwrap())).unwrap();
+        index.write_tbi(&tbi, true).unwrap();
+        assert_ne!(std::fs::read(&tbi).unwrap(), b"another writer");
     }
 
     /// The image the pipeline runs bcftools and tabix from.

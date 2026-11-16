@@ -128,9 +128,9 @@ REF="$REF_FASTA"
 # realpath is in GNU coreutils and in macOS 13 and later; readlink -f is the
 # fallback for an older macOS (12.3 and later), and the path as given the last.
 _resolve() {
-  realpath "$1" 2>/dev/null \
-    || readlink -f "$1" 2>/dev/null \
-    || echo "$1"
+  realpath -- "$1" 2>/dev/null \
+    || readlink -f -- "$1" 2>/dev/null \
+    || printf '%s\n' "$1"
 }
 GENOME_DIR_REAL=$(_resolve "$GENOME_DIR")
 [ -d "$GENOME_DIR_REAL" ] || { echo "ERROR: GENOME_DIR does not exist: ${GENOME_DIR}" >&2; exit 1; }
