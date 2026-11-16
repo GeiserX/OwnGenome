@@ -88,7 +88,7 @@ These tools are specifically designed for short-read data and will produce incor
 | 4a | TIDDIT | Short-read coverage/discordance model | Sniffles2 |
 | 4b | GRIDSS | Assembly-based, short-read specific | Sniffles2 |
 | 9 | ExpansionHunter | Illumina short-read graph model; expects paired-end data | TRGT (PacBio) or Straglr (ONT), outside this pipeline (vendor workflows) |
-| 15 | duphold | Re-genotypes SVs using short-read depth models | Not needed — Sniffles2 QUAL scores are reliable |
+| 15 | duphold | Adds depth fold-change tags (DHFFC, DHBFC) to Manta's calls and filters on them; reads Manta's VCF and the short-read BAM only | Not needed: Sniffles2 writes its own QUAL and GQ |
 | 18 | CNVpytor | Read-depth model calibrated for short reads | Sniffles2 detects CNVs natively |
 | 19 | Delly | Paired-end and split-read model | Sniffles2 |
 | 21 | Cyrius (CYP2D6) | Short-read depth-based star allele caller | Paraphase (long-read CYP2D6 resolver), outside this pipeline (vendor workflows) |
@@ -217,11 +217,18 @@ ALIGN_DIR=aligned_longread ./scripts/04c-sniffles2.sh your_sample
 
 Output: `${GENOME_DIR}/your_sample/sv_sniffles/your_sample_sv.vcf.gz`
 
-Sniffles2 excels at detecting all SV types from long reads. Typical output for a 30X long-read genome:
-- 15,000-25,000 SVs (vs 7,000-9,000 from short-read Manta)
-- Much better at insertions (short reads systematically miss these)
-- Better breakpoint resolution (often single-nucleotide)
-- Reliable in repetitive regions where short reads struggle
+Before Sniffles2 runs, the step reads the first 10,000 primary reads of the BAM with the pinned samtools image. When their mean length is below 1,000 bp, it stops with exit 1 and names the long-read BAM to use. Sniffles2 finds no SV in short reads and still exits 0, so without this check a short-read BAM gave an empty VCF that looked like a finished run. Short-read SVs come from steps 04 (Manta), 04a, 04b and 19.
+
+`setup.sh` installs a tandem-repeat map for Sniffles2: every GRCh38 tandem repeat in GIAB's genome stratifications v3.6 (`reference/GRCh38_AllTandemRepeats.bed`, pinned by sha256 in `TANDEM_REPEATS_URL` and `TANDEM_REPEATS_SHA256`; NIST data, free to reuse). When the map is there, the step passes it as `--tandem-repeats`, which gives SVs inside repeats better breakpoints and merging. When it is not, the step prints a note and runs without it. We do not use the GRCh38 file that ships with Sniffles: it comes from PacBio's pbsv under a licence that allows PacBio data only.
+
+What we measured: the step on GIAB's public HG002 PacBio HiFi BAM (Sequel II, 15-20 kb, 10x), chr20:10-20 Mb, scored with truvari against GIAB's v5.0q SV benchmark inside its benchmark regions (chr20:10.1-19.9 Mb, PASS calls, 1 kb matching distance):
+
+| | Calls on chr20 | Recall | Precision |
+|---|---|---|---|
+| Without the tandem-repeat map | 62 | 0.77 (49 of 64) | 0.96 |
+| With the map | 63 | 0.78 (50 of 64) | 0.96 |
+
+That is one 10 Mb window at low depth, not a genome-wide benchmark. For Sniffles2's own accuracy figures, see Smolka et al., Nature Biotechnology 2024 (https://doi.org/10.1038/s41587-023-02024-y). No CI case runs this step on real long reads; [Testing](testing.md) lists what checks it.
 
 ### Step 5: Continue with Standard Pipeline Steps
 
@@ -346,10 +353,10 @@ The Docker image `CLAIR3_IMAGE` bundles models at `/opt/models/`. If you get a m
 2. Check available models: `docker run --rm "${CLAIR3_IMAGE}" ls /opt/models/` (after `source versions.env` in the repository root)
 3. If your ONT chemistry is different (e.g., R9.4.1), look for a matching model in the container
 
-### "Sniffles2 produces 0 SVs"
+### "Sniffles2 needs long reads" or "Sniffles2 produces 0 SVs"
 
-- Verify the BAM is from long-read alignment (not short-read): `samtools stats your.bam | grep "average length"`
-- Average read length should be >1000bp for ONT or >5000bp for HiFi
+- Step 04c stops when the first 10,000 primary reads of the BAM average below 1,000 bp. Point `ALIGN_DIR` at the long-read BAM (step 02b writes `aligned_longread/<sample>_sorted.bam`).
+- A mean above that but still low (below about 5,000 bp for HiFi) usually means a filtered or fragmented run: check `samtools stats your.bam | grep "average length"`
 - Check that the BAM is sorted and indexed
 
 ### "DeepVariant long-read model fails"

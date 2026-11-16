@@ -6,7 +6,9 @@
 #     exists". An empty VCF left by an older version is redone too.
 #   Sniffles2 (04c): the tool writes part of its VCF and exits 1; the rerun
 #     must replace it (Sniffles2 refuses an existing output without
-#     --allow-overwrite).
+#     --allow-overwrite). Its closing hints do not send long-read SVs to
+#     duphold for a GQ: Sniffles2 writes its own, and step 15 reads Manta's
+#     calls only.
 #   Clair3 (03e): the tool exits 0 without merge_output.vcf.gz while an older
 #     sample1.vcf.gz is present. The step fails instead of printing "complete".
 #   FreeBayes (03b): bcftools sort writes part of its VCF and fails. The step
@@ -51,6 +53,9 @@ word_after() {
   return 1
 }
 case "$args" in
+  *"samtools view -F 0x900 "*)
+    # Step 04c's read-length check: 10,000 reads of 15 kb, a long-read BAM.
+    printf '10000 15000\n' ;;
   *" stranger "*)
     if [ "${FAKE_MODE:-ok}" = fail ]; then printf '##fileformat=VCFv4.2\n'; exit 1; fi
     printf "${header}${record}" ;;
@@ -114,6 +119,7 @@ SV="${GENOME_DIR}/sample1/sv_sniffles/sample1_sv.vcf.gz"
 FAKE_MODE=fail run_rc sniffles-fail "${SCRIPTS}/04c-sniffles2.sh" sample1
 [ "$RC" -ne 0 ] || fail "step 04c exited 0 although Sniffles2 failed"
 run_expect 0 sniffles-rerun "${SCRIPTS}/04c-sniffles2.sh" sample1
+output_lacks sniffles-rerun 'GQ scores'
 have_bgzf_eof() { [ "$(tail -c 28 "$1" | od -An -v -tx1 | tr -d ' \n')" = 1f8b08040000000000ff0600424302001b0003000000000000000000 ]; }
 have_bgzf_eof "$SV" || fail "the rerun of step 04c did not replace the half-written ${SV}"
 

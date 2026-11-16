@@ -1,6 +1,5 @@
 //! The PharmCAT reports of `tests/fixtures/pharmcat`, read by the library:
-//! the checks of `tests/test_cpic_parser.py` that need more than the
-//! command's output.
+//! the checks that need more than the command's output.
 
 use og_pgx::guidance::drug_guidance;
 use og_pgx::report::parse_genes;

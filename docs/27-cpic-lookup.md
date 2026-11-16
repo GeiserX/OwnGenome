@@ -10,7 +10,7 @@ PharmCAT produces detailed JSON and HTML reports, but finding the actionable par
 
 ## Tool
 
-- `og pgx cpic-report`, the one PharmCAT reader of the pipeline, in OwnGenome's Rust binary `og` (`rust/crates/og-pgx`, [Rust code](rust.md)). The Nextflow `CPIC_LOOKUP` module and the unit test `tests/test_cpic_parser.py` run the same command. `scripts/setup.sh --og` builds `og`.
+- `og pgx cpic-report`, the one PharmCAT reader of the pipeline, in OwnGenome's Rust binary `og` (`rust/crates/og-pgx`, [Rust code](rust.md)). The Nextflow `CPIC_LOOKUP` module runs the same command, and `cargo test -p og-pgx` checks it beside its code. `scripts/setup.sh --og` builds `og`.
 
 ## Docker Image
 

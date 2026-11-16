@@ -2,11 +2,11 @@
 
 ## What This Does
 
-Takes the reads that did not map to the human genome, realigns them to 24 viral genomes, and reports per virus how many reads it got, how much of its genome they cover and how deep, against the human depth of the same sample. Opt-in.
+Takes the reads that did not map to the human genome, realigns them to 24 viral genomes, and reports per virus how many unique, mappable reads it got, how much of its genome they cover and how deep, against the human depth of the same sample. Opt-in.
 
 Its main finding is **inherited chromosomally integrated HHV-6** (iciHHV-6). In under 1% of people in the USA and the UK, and about 1% in other studies, a whole HHV-6A or HHV-6B genome sits in a telomere of one chromosome and is inherited like any other part of the genome ([Pellett et al. 2012](https://doi.org/10.1002/rmv.715); [Liu et al. 2020](https://doi.org/10.1371/journal.pgen.1008915)). Every cell then carries one viral copy, so the reads cover the whole viral genome at about half the depth of a human chromosome, which has two copies. Knowing it matters because a blood PCR test for HHV-6 then reads high, which can be taken for an active infection ([Pellett et al. 2012](https://doi.org/10.1002/rmv.715)).
 
-The other viruses are reported as found or not found. **This is not a test for an infection.** Most adults carry herpesviruses that stay in their cells for life, and laboratory reagents carry viral DNA of their own: in 8,240 blood genomes, [Moustafa et al. 2017](https://doi.org/10.1371/journal.ppat.1006292) found sequences of 19 human viruses in 42% of the people, and judged most of the other 75 viruses they saw to be contamination of reagents and the environment.
+The other viruses are reported as found, as below the threshold, or as not found. **This is not a test for an infection.** Most adults carry herpesviruses that stay in their cells for life, and laboratory reagents carry viral DNA of their own: in 8,240 blood genomes, [Moustafa et al. 2017](https://doi.org/10.1371/journal.ppat.1006292) found sequences of 19 human viruses in 42% of the people, and judged most of the other 75 viruses they saw to be contamination of reagents and the environment.
 
 ## Why
 
@@ -57,29 +57,43 @@ With `run-all.sh`: `TOOLS=...,viral`; a run lists step 47 only when `TOOLS` name
 
 1. The reads with the unmapped flag (`samtools view -f 4`), which includes a read unmapped beside a mapped mate, and the reads mapped to chrEBV, the EBV genome the GRCh38 analysis set carries. `samtools fastq` leaves out secondary and supplementary records, so each read is realigned once.
 2. minimap2 aligns them to the viral genomes as single reads (`--frag=no`, so two mates that sit next to each other in the FASTQ are not paired), with no secondary alignments.
-3. `samtools coverage` gives the reads per viral genome, and `samtools depth -aa` the depth at every base, zero included.
+3. `samtools coverage` gives each viral genome's length and its aligned records, `samtools depth -aa` the depth at every base, zero included, and `samtools view -F 4` the alignments themselves.
 4. `samtools coverage` over the sample's BAM gives the human depth: chr1 to chr22, over the bases with at least one read. Both coverages count duplicates and leave out unmapped, secondary and QC-failed reads, so the two depths are measured the same way.
+5. `samtools idxstats` of the sample's BAM gives its unplaced unmapped reads, the pairs where neither read mapped. A whole-genome BAM always has many. None means the BAM was cut to regions or filtered (`samtools view -F 4`), so the step had nothing to look in.
+
+`og viral report` counts a read as evidence for a virus only when all of these hold:
+
+- it is the read's primary alignment, not a supplementary, secondary or QC-failed one;
+- its mapping quality is 20 or more, so it does not sit equally well on two genomes, such as the segments HHV-6A and HHV-6B share, or on a repeat;
+- it is not low complexity: its DUST score is 7 or less. The score is PRINSEQ's ([Schmieder and Edwards 2011](https://doi.org/10.1093/bioinformatics/btr026)): the DUST score of [Morgulis et al. 2006](https://doi.org/10.1089/cmb.2006.13.1028) over 64-base windows every 32 bases, scaled from 0 to 100. A random sequence scores about 1.5, a dinucleotide repeat about 49 and a run of one base 100; 7 is the cut-off PRINSEQ's authors suggest. Poly-A tails, telomere repeats (TTAGGG) and other simple repeats do not count;
+- it is not a duplicate: no counted read on the same genome and strand starts at the same unclipped 5' position. Copies of one DNA molecule made by PCR count once.
+
+A supplementary record of counted quality adds to the breadth, not to the reads, so a read across the joining point of a circular genome counts once and still covers both ends. The integration call does not use this selection: it reads the depth of every primary alignment, as the human depth does.
 
 Per genome, `og viral report` writes:
 
 | Column | Meaning |
 |---|---|
-| `reads` | reads aligned to the genome |
-| `breadth` | the fraction of the genome with at least one read |
-| `mean_depth`, `mode_depth` | the mean depth, and the most common depth over the genome's bases |
+| `reads` | counted reads, as above; every aligned record is in `_viral_coverage.tsv` |
+| `breadth` | the fraction of the genome covered by a counted read |
+| `mean_depth`, `mode_depth` | the mean depth, and the most common depth over the genome's bases, from every primary alignment |
 | `relative_depth` | `mode_depth` / human depth |
-| `copies_per_cell` | 2 x `mean_depth` / human depth (a cell holds two copies of each autosome) |
+| `copies_per_cell` | for an integration, 2 x `mode_depth` / human depth (a cell holds two copies of each autosome); for viral DNA found and phiX, 2 x `mean_depth` / human depth; `.` for the other calls, where the depth is a pile on a few bases and no count per cell |
 | `call` | see below |
 
 The calls:
 
-- **inherited integrated HHV-6 likely**: HHV-6A or HHV-6B with `relative_depth` of 0.30 or more. This is the rule of [Liu et al. 2020](https://doi.org/10.1371/journal.pgen.1008915): the mode of the per-base depth over the viral genome against the genome's sequencing depth, with integration at 0.30 or more. One integrated copy gives about 0.5; viraemia gives 10 to 1000 times less, by the studies they cite. The mode is used, not the mean, so a pile of reads on a short repeat (HHV-6's ends carry the same TTAGGG repeat as human telomeres) cannot lift a genome that has no reads elsewhere. When both species pass, the deeper one is called and the other row is read as reads the two genomes share.
-- **lab control (phiX)**: any phiX read. It was added in the lab and says nothing about the sample.
-- **viral DNA found**: at least 10 reads, over at least 10% of the genome.
-- **a few reads**: at least 10 reads, over less than 10% of the genome.
-- **not found**: fewer than 10 reads.
+- **not assessed**: every genome, when the BAM has no unplaced unmapped read. Nothing could be found, so nothing is ruled out.
+- **inherited integrated HHV-6 likely**: HHV-6A or HHV-6B with `relative_depth` of 0.30 or more. This is the rule of [Liu et al. 2020](https://doi.org/10.1371/journal.pgen.1008915): the mode of the per-base depth over the viral genome against the genome's sequencing depth, here the mean depth over chr1 to chr22, with integration at 0.30 or more. One integrated copy gives about 0.5; viraemia gives 10 to 1000 times less, by the studies they cite. The mode is used, not the mean, so a pile of reads on a short repeat (HHV-6's ends carry the same TTAGGG repeat as human telomeres) cannot lift a genome that has no reads elsewhere. When both species pass, both are called: one integrated genome does not bring the other species near this depth, as the reads they share are a small part of each genome. A laboratory test tells them apart.
+- **lab control (phiX)**: any counted phiX read. It was added in the lab and says nothing about the sample.
+- **viral DNA found**: at least 10 counted reads, over at least 10% of the genome.
+- **a few reads**: at least 10 counted reads, over less than 10% of the genome.
+- **below threshold**: 1 to 9 counted reads. The note gives the count. Too few to tell the virus from contamination at this depth.
+- **not found**: no counted read. When the genome has aligned records that did not count, the note says how many.
 
-The 10 reads and 10% are this pipeline's choices, not published values.
+The 10 reads and 10% are this pipeline's choices, not published values. The 10% is a share of each genome's own length, so the reads it takes grow with the genome. With 150-base reads that do not overlap, 10 reads cover 10% of a genome up to 15 kb: HPV, HBV, HIV-1, the polyomaviruses, parvovirus B19 and TTV need only the 10 reads. Adenovirus 5 (36 kb) needs about 24, and the herpesviruses (125 to 236 kb) about 84 (VZV) to 158 (CMV). On a herpesvirus, "a few reads" can therefore stand for over a hundred reads; its `reads` and `breadth` columns say how many.
+
+The step prints one line per sample: each genome with a call other than not found, with its count when it is below the threshold, or "no reads above the threshold at this depth".
 
 ## Output
 
@@ -102,5 +116,7 @@ Not measured on a whole genome. samtools reads the BAM twice from end to end, on
 - What integrated HHV-6 means for health is not settled. [Pellett et al. 2012](https://doi.org/10.1002/rmv.715) list what is known: it can make blood tests read as an active infection, transplant recipients with it may be at higher risk, and its role in disease needs more research. Each child of a carrier has about a one-in-two chance of inheriting it, as for any variant on one chromosome.
 - A finding is confirmed by a test in a clinical laboratory; Liu et al. 2020 used droplet digital PCR.
 - [Liu et al. 2020](https://doi.org/10.1371/journal.pgen.1008915) also describe people who carry only one direct repeat (DR) of HHV-6B, a "solo-DR": reads on the genome's ends only. Such a pattern gives a low mode depth here and is not called integrated; look at the BAM when HHV-6 has reads but no call.
-- The human depth is measured where reads are, so a BAM cut to a few regions still gives the depth of those regions.
-- On the e2e fixture the case plants synthetic reads drawn from the HHV-6B genome at half the human depth as unmapped reads, and the call is integration; at a tenth of the human depth over the same genome it is not. It plants CMV at a low level and phiX too. Nothing in the case is a finding about the fixture's own sample.
+- A negative is narrower than "no virus". "Not found" and "below threshold" mean no counted read, or too few, at this sequencing depth, among the 24 genomes, at the strains of their RefSeq records. A strain far from its record can be missed.
+- Only the reads the human alignment left unmapped are realigned, and the reads on chrEBV. Viral sequence that maps to the human genome stays there: the human end of an integration junction, and HHV-6's TTAGGG ends, which map to the telomeres.
+- A BAM cut to a few regions, or filtered to its mapped reads, has no unplaced unmapped read, and the step says "not assessed" for every genome.
+- On the e2e fixture the case plants synthetic reads drawn from the HHV-6B genome at half the human depth as unmapped reads, and the call is integration; at a tenth of the human depth over the same genome it is not. It plants CMV at a low level and phiX too, and three decoys that must not count: three HBV molecules read four times each, which give 3 counted reads and "below threshold"; simple repeats (poly-A, TTAGGG and AT); and the HHV-6A reads an HHV-6B genome brings with it, which read "not found". A copy of the BAM without its unmapped reads reads "not assessed". Nothing in the case is a finding about the fixture's own sample.

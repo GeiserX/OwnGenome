@@ -44,25 +44,7 @@ dk "$SAMTOOLS_IMAGE" samtools faidx -r "${T}/regions.txt" "$REF" > "${T}/regions
 # (at least 75% of the bases equal to the base one motif further on; a span
 # marker's region carries the few bases between its parts, 78% at DYS510).
 periodic() {
-  python3 -I - "$1" "$2" <<'PY'
-import sys
-bed = [l.split("\t") for l in open(sys.argv[1])]
-seqs, name = {}, None
-for line in open(sys.argv[2]):
-    line = line.strip()
-    if line.startswith(">"):
-        name = line[1:]
-        seqs[name] = ""
-    elif name:
-        seqs[name] += line.upper()
-ok = 0
-for c in bed:
-    s, p = seqs.get(f"{c[0]}:{c[1]}-{c[2]}", ""), int(c[3])
-    if len(s) == int(c[2]) - int(c[1]) + 1 and len(s) > p:
-        same = sum(1 for i in range(len(s) - p) if s[i] == s[i + p])
-        ok += same >= 0.75 * (len(s) - p)
-print(ok)
-PY
+  "${REPO}/bin/og" dev fixture ystr-periodic "$1" "$2"
 }
 check_eq "every region is a repeat of its motif length in the reference" "$(periodic "${T}/regions.bed" "${T}/regions.fa")" 86
 awk -F'\t' 'BEGIN {OFS = "\t"} {print $1, $2, $3, 1}' "${T}/regions.bed" > "${T}/shifted.bed"
@@ -151,49 +133,7 @@ check_eq "DYS393 is called high" "$(col "$H" DYS393 confidence)" high
 # length gives the count with the same rounding as the step (reference copies
 # rounded half up, plus the length change in whole and partial repeats).
 dk "$SAMTOOLS_IMAGE" samtools view -q 20 -F 0xF04 "${T}/win.bam" > "${T}/win.sam"
-python3 -I - "$PANEL" "$OUT" "${T}/win.sam" > "${T}/readcount.tsv" <<'PY'
-import collections, re, sys
-regions = {}
-for line in open(sys.argv[1]):
-    c = line.rstrip("\n").split("\t")
-    if line.startswith("#") or c[0] == "order" or c[3] not in ("single", "span"):
-        continue
-    # A span marker: one region from its first part's start to its last part's end,
-    # its parts' copies each rounded half up.
-    parts = [x.split("/", 3) for x in c[4].split(";")]
-    s = int(parts[0][0].split(":")[1].split("-")[0])
-    e = int(parts[-1][0].split(":")[1].split("-")[1])
-    regions[c[2]] = (s, e, int(parts[0][1]), sum(int(float(x[2]) + 0.5) for x in parts), c[3])
-lens = collections.defaultdict(collections.Counter)
-for line in open(sys.argv[3]):
-    f = line.split("\t")
-    if f[2] != "chrY" or f[5] == "*":
-        continue
-    pos = int(f[3])
-    ops = [(int(n), op) for n, op in re.findall(r"(\d+)([MIDNSHP=X])", f[5])]
-    end = pos + sum(n for n, op in ops if op in "MDN=X") - 1
-    for m, (s, e, p, rc, _k) in regions.items():
-        if pos > s - 10 or end < e + 10:
-            continue
-        ref, diff = pos, 0
-        for n, op in ops:
-            if op in "M=X":
-                ref += n
-            elif op in "DN":
-                if s - 10 <= ref <= e + 10:
-                    diff -= n
-                ref += n
-            elif op == "I" and s - 10 <= ref <= e + 10:
-                diff += n
-        lens[m][diff] += 1
-for line in open(sys.argv[2]):
-    c = line.rstrip("\n").split("\t")
-    if c[2] in regions and c[4] == "high" and lens[c[2]]:
-        s, e, p, rc, kind = regions[c[2]]
-        diff, n = lens[c[2]].most_common(1)[0]
-        whole, rest = divmod(diff, p)
-        print(f"{c[2]}\t{c[3]}\t{rc + whole}{'.' + str(rest) if rest else ''}\t{n}\t{kind}")
-PY
+"${REPO}/bin/og" dev fixture ystr-readcount "$PANEL" "$OUT" "${T}/win.sam" > "${T}/readcount.tsv"
 N_CMP=$(grep -c . "${T}/readcount.tsv" || true)
 N_SAME=$(awk -F'\t' '$2 == $3' "${T}/readcount.tsv" | wc -l | tr -d ' ')
 awk -F'\t' '$2 != $3 {print "  differs: " $0}' "${T}/readcount.tsv"
@@ -208,37 +148,7 @@ read -r DS DE < <(awk -F'\t' '$6 == "DYS393" {print $2, $3}' "${T}/regions.bed")
 dk "$SAMTOOLS_IMAGE" samtools view -h "${T}/win.bam" > "${T}/all.sam"
 # Reads that span DYS393 with a plain match get bases DS..DS+3 removed (CIGAR xM4DyM);
 # other reads over the region are dropped, so only the planted allele is left there.
-python3 -I - "$DS" "$DE" "${T}/all.sam" > "${T}/planted.sam" <<'PY'
-import re, sys
-s, e = int(sys.argv[1]), int(sys.argv[2])
-cut = 0
-for line in open(sys.argv[3]):
-    if line.startswith("@"):
-        sys.stdout.write(line)
-        continue
-    f = line.rstrip("\n").split("\t")
-    if f[2] != "chrY" or f[5] == "*":
-        sys.stdout.write(line)
-        continue
-    pos = int(f[3])
-    ops = re.findall(r"(\d+)([MIDNSHP=X])", f[5])
-    end = pos + sum(int(n) for n, op in ops if op in "MDN=X") - 1
-    if end < s or pos > e:
-        sys.stdout.write(line)
-        continue
-    m = re.fullmatch(r"(\d+)M", f[5])
-    if not m or pos > s - 10 or end < e + 10:
-        continue
-    off = s - pos
-    n = int(m.group(1))
-    f[9] = f[9][:off] + f[9][off + 4:]
-    f[10] = f[10][:off] + f[10][off + 4:] if f[10] != "*" else "*"
-    f[5] = f"{off}M4D{n - off - 4}M"
-    f = [x for x in f if not x.startswith(("MD:Z:", "NM:i:"))]
-    sys.stdout.write("\t".join(f) + "\n")
-    cut += 1
-print(f"planted the cut in {cut} reads", file=sys.stderr)
-PY
+"${REPO}/bin/og" dev fixture ystr-cut "$DS" "$DE" "${T}/all.sam" > "${T}/planted.sam"
 dk "$SAMTOOLS_IMAGE" samtools sort -o "${T}/planted.bam" "${T}/planted.sam"
 dk "$SAMTOOLS_IMAGE" samtools index "${T}/planted.bam"
 sample "$P" "${T}/planted.bam" 1

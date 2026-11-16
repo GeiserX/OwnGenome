@@ -22,7 +22,7 @@ Most people who look at their ancestry want to know where they fall among ancien
 
 ## Input
 
-- `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz` with its `.tbi`: the gVCF of [step 3](03-variant-calling.md). A site where you match the reference reads as a real genotype and a site without reads stays missing; a variant-only VCF cannot tell those apart. The gVCF must hold one sample.
+- `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz` with its `.tbi`: the gVCF of [step 3](03-variant-calling.md). A reference match counts only with `FILTER=PASS` or `.` and genotype quality `GQ >= 20`. LowQual, RefCall, no-calls, low GQ and missing GQ stay missing. Reference blocks must meet the same rule. A variant-only VCF cannot distinguish a reference match from a missing site. The gVCF must hold one sample and define FORMAT/GQ.
 - The panel `setup.sh --ancient-panel` builds in `reference/ancient/aadr_<release>/` (`ANCIENT_PANEL_DIR` picks another folder inside `GENOME_DIR`, `ANCIENT_PANEL_DIR=none` skips the step). Without it the step prints one line saying so and exits 0.
 
 In the Nextflow pipeline (`ancient` in `--tools`, with `--ancient_panel <folder>`) the processes `ANCIENT_SITES`, `ANCIENT_GENO`, `ANCIENT_PCA` and `ANCIENT_REPORT` run the same commands for every sample with a gVCF; a sample without one is skipped with a warning. `run-all.sh` lists the step only when `TOOLS` names `ancient`, and passes the panel when its `DONE` file exists.
@@ -40,7 +40,7 @@ In the Nextflow pipeline (`ancient` in `--tools`, with `--ancient_panel <folder>
 
 ## How Step 44 Works
 
-1. bcftools reads your genotype at each panel site from the gVCF.
+1. bcftools reads your genotype at each panel site from the gVCF. It keeps only `FILTER=PASS` or `.` with `GQ >= 20`, including expanded reference blocks. Other calls stay missing. The filter matches the archaic ancestry step's treatment of RefCall and LowQual. Fewer sites can count toward `sites_used`, which can change the PCA position and nearest groups. Output names and formats stay the same.
 2. Your genotypes become one more column of the present-day panel's genotypes, counted as copies of the AADR's first allele; a site with no genotype, or with an allele the AADR does not list, is missing.
 3. smartpca builds the axes from the same present-day people and projects you onto them (`lsqproject`). Each axis is then turned to the sign of the panel's run, through the present-day people both runs share, so your position and the ancient people's positions are on the same axes. The step stops if an axis disagrees (correlation below 0.999): the panel and the run do not match.
 4. Each ancient group (the AADR's Group ID) gets the mean position of its people. The distance from you to that mean uses the first four PCs, each weighted by the square root of its eigenvalue, so an axis that explains more variation counts more.

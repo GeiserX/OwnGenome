@@ -113,51 +113,9 @@ mkdir -p "${G}/HG002T/vcf"
 docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/genome:ro" -v "${FIXTURE_DIR}:/fx:ro" "$BCFTOOLS_IMAGE" \
   bcftools view -R "/genome/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/positions.tsv" -Ov \
   /fx/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz > "${CASE_TMP}/truth_at_sites.vcf"
-python3 -I - "${PANEL}/panel/sites.tsv" "${CASE_TMP}/truth_at_sites.vcf" \
-    "${FIXTURE_DIR}/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed" "${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai" \
-    > "${G}/HG002T/vcf/HG002T.vcf" <<'PY'
-import bisect, sys
-sites, truth, bed, fai = sys.argv[1:]
-iv = {}
-for line in open(bed):
-    c = line.split()
-    if len(c) >= 3:
-        iv.setdefault(c[0], []).append((int(c[1]), int(c[2])))
-starts = {k: [s for s, _ in sorted(v)] for k, v in iv.items()}
-ends = {k: [e for _, e in sorted(v)] for k, v in iv.items()}
-def confident(c, p):
-    i = bisect.bisect_right(starts.get(c, []), p - 1) - 1
-    return i >= 0 and ends[c][i] >= p
-gt = {}
-for line in open(truth):
-    if line.startswith("#"):
-        continue
-    f = line.rstrip("\n").split("\t")
-    g = f[9].split(":")[f[8].split(":").index("GT")].replace("|", "/")
-    gt[(f[0], int(f[1]))] = (f[3], f[4], {"1/0": "0/1"}.get(g, g))
-chroms = sorted({l.split("\t")[0] for l in open(sites)})
-print("##fileformat=VCFv4.2")
-print('##FILTER=<ID=PASS,Description="All filters passed">')
-for l in open(fai):
-    c = l.split("\t")
-    if c[0] in chroms:
-        print(f"##contig=<ID={c[0]},length={c[1]}>")
-print('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
-print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002T")
-for l in open(sites):
-    c, p, r, a = l.rstrip("\n").split("\t")
-    p = int(p)
-    if not confident(c, p):
-        continue
-    t = gt.get((c, p))
-    if t is None:
-        g = "0/0"
-    elif t[0] == r and t[1] == a and t[2] in ("0/1", "1/1", "0/0"):
-        g = t[2]
-    else:
-        continue
-    print(f"{c}\t{p}\t.\t{r}\t{a}\t.\tPASS\t.\tGT\t{g}")
-PY
+"${REPO}/bin/og" dev fixture truth-genotypes "${PANEL}/panel/sites.tsv" "${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai" \
+  "HG002T=${CASE_TMP}/truth_at_sites.vcf,${FIXTURE_DIR}/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed" \
+  > "${G}/HG002T/vcf/HG002T.vcf"
 in_genome "$BCFTOOLS_IMAGE" bash -c 'bcftools view -Oz -o HG002T/vcf/HG002T.vcf.gz HG002T/vcf/HG002T.vcf && bcftools index -t HG002T/vcf/HG002T.vcf.gz'
 check_ge "HG002T: GIAB genotypes at panel SNVs" "$(vcf_count HG002T/vcf/HG002T.vcf.gz)" 3000
 T0=$(date +%s)
@@ -308,22 +266,21 @@ check_eq "nextflow run with --tools ancestry_fine,html_report exits 0" "${PIPEST
 echo "Nextflow ancestry_fine on HG002T: $(( $(date +%s) - T0 )) s" >> "$E2E_NOTES"
 NF_TSV="${NF_OUT}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
 check "the module published the fractions table" test -s "$NF_TSV"
-check "its fractions are the bash step's (within 0.01 each)" python3 -I - "$NF_TSV" "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv" <<'PY'
-import sys
 # Keyed by level, code and group: a left_out row (fraction ".") has the same
 # code at both levels and differs by its group text.
-rows = [{(c[0], c[1], c[2]): c[3] for c in (l.rstrip("\n").split("\t") for l in open(p)) if c[0] != "level"} for p in sys.argv[1:]]
-def same(a, b):
-    if a is None or b is None or (a == ".") != (b == "."):
-        return False
-    return a == b if a == "." else abs(float(a) - float(b)) <= 0.01
-diff = {k: (rows[0].get(k), rows[1].get(k)) for k in set(rows[0]) | set(rows[1]) if not same(rows[0].get(k), rows[1].get(k))}
-print("differences:", diff or "none")
-sys.exit(1 if diff else 0)
-PY
+check "its fractions are the bash step's (within 0.01 each)" awk -F'\t' '
+  function same(x, y) { if ((x == ".") != (y == ".")) return 0; if (x == ".") return 1; return x - y <= 0.01 && y - x <= 0.01 }
+  $1 == "level" {next}
+  {k = $1 "|" $2 "|" $3}
+  FNR == NR {a[k] = $4; next}
+  {b[k] = $4}
+  END {
+    for (k in a) if (!(k in b) || !same(a[k], b[k])) {print "differs: " k " " a[k] " " b[k]; n++}
+    for (k in b) if (!(k in a)) {print "differs: " k " (only in the bash table)"; n++}
+    print "differences: " n + 0; exit (n > 0)
+  }' "$NF_TSV" "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
 check "the HTML report has the fine-grained ancestry card with its painting" \
-  python3 -I -c 'import sys; t = open(sys.argv[1]).read(); sys.exit(0 if "Fine-Grained Ancestry" in t and "data:image/png;base64," in t else 1)' \
-  "${NF_OUT}/HG002T/HG002T_report.html"
+  bash -c 'grep -qF "Fine-Grained Ancestry" "$1" && grep -qF "data:image/png;base64," "$1"' _ "${NF_OUT}/HG002T/HG002T_report.html"
 
 # The module on TWO's two-sample gVCF: ANCESTRY_FINE_GENOTYPE stops, the
 # pipeline ignores the failure of a report-only step and names it in
