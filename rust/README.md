@@ -37,7 +37,7 @@ cargo clippy --all-targets -- -D warnings
 cargo build --release && ../tests/rust/pycompat-diff.sh target/release/og   # pycompat against CPython
 ```
 
-A binary from a plain `cargo build` is stamped `unknown`, and `rust/og.sh check` refuses it: only `scripts/setup.sh --og` stamps the tree hash the pipeline checks.
+A binary from a plain `cargo build` is stamped `unknown`, and `rust/og.sh check` refuses it: only `scripts/setup.sh --og` stamps the source hash of `rust/` and its embedded imprinting table that the pipeline checks.
 
 CI readers also run through `og dev pharmcat diplotypes`, `og dev nf-trace requests|attempts` and `og dev smoke`. See [the Rust command notes](../docs/rust.md#ci-readers).
 `og traits table`, `og traits phase-sites` and `og traits check` read step 42's

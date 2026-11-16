@@ -841,6 +841,7 @@ def main():
         code, _, _ = request(port, "GET", "/nothing/here", headers=auth)
         bad = [p for p, hdr in RESPONSES if "default-src 'none'" not in hdr.get("content-security-policy", "")
                or "frame-ancestors 'none'" not in hdr.get("content-security-policy", "")
+               or hdr.get("x-frame-options") != "DENY"
                or hdr.get("x-content-type-options") != "nosniff" or hdr.get("cache-control") != "no-store"]
         check(f"every browser response ({len(RESPONSES)}) carries the policy, nosniff and no-store", not bad, bad)
         texts = {f: open(os.path.join(ASSETS, f)).read() for f in os.listdir(ASSETS)
