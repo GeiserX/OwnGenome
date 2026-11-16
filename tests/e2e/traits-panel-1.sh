@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Step 42, the traits panel, on the HG002 gVCF case 21 wrote, and its
 # Nextflow mirror:
-#   - assets/traits.tsv: every reference base is the fixture reference's base
+#   - assets/traits.tsv: og traits check passes, every reference base is the fixture reference's base
 #     (on the contigs it has), every PubMed id resolves and every rsID's GRCh38
 #     position and alleles are dbSNP's (og dev traits-sources --fasta
 #     --online); control: a copy with one wrong reference base and one PubMed
@@ -29,6 +29,7 @@ check "case 21 wrote a gVCF" vcf_ok "$GVCF"
 
 # --- the table: reference bases, PubMed ids, dbSNP --------------------------------
 OG_BIN="${OG:-${REPO}/bin/og}"
+check_eq "og traits check passes on the table" "$("$OG_BIN" traits check --table "$TABLE" >/dev/null 2>&1; echo $?)" 0
 "$OG_BIN" dev traits-sources --table "$TABLE" --fasta "$REF" --min-fasta-rows 20 --online > "${CASE_TMP}/table.log" 2>&1
 TRC=$?
 cat "${CASE_TMP}/table.log"
