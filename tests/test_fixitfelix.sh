@@ -6,16 +6,16 @@
 #      the same check on a copy of versions.env with one changed digit fails.
 #      GRC_MASKED_REF_SHA256 is a sha256.
 #   2. setup.sh masks with og (og setup mask-fasta, run from the reference's
-#      directory with relative paths, og built first), and the Python it
-#      replaced is gone from it. With OG set to an og binary (the parity job
-#      of guard.yml sets it), og runs on a small FASTA: every base of a row
-#      is N, every other byte is the same (line breaks, lower case, the
-#      header and a sequence with no row), and it names the row on a
-#      sequence the FASTA lacks; the same run with the BED shifted by one
-#      base gives another file, so the comparison can fail. The parity cases
-#      (tests/parity/cases.tsv) compare og with that Python on these inputs
-#      and more. The e2e case fixitfelix-chr21-1 runs the whole option on
-#      chr21.
+#      directory with relative paths, og built first), and the masking
+#      program it replaced (MASK_FASTA_PY) is gone from it. With OG set to an
+#      og binary (the parity job of guard.yml sets it), og runs on a small
+#      FASTA and its output is compared with the FASTA written below by hand:
+#      every base of a row is N, every other byte is the same (line breaks,
+#      lower case, the header and a sequence with no row), and it names the
+#      row on a sequence the FASTA lacks; the same run with the BED shifted
+#      by one base gives another file, so the comparison can fail. The parity
+#      cases (tests/parity/cases.tsv) and their goldens cover more inputs. The
+#      e2e case fixitfelix-chr21-1 runs the whole option on chr21.
 set -uo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -52,14 +52,16 @@ else fail "GRC_EXCLUSIONS_URL is not GIAB's T2Tv2 list"; fi
 # --- 2. the masking program ----------------------------------------------------------
 SETUP="${REPO}/scripts/setup.sh"
 # mask_checks FILE: the function body of install_masked_reference in FILE,
-# checked three ways; prints one word per check that holds: og, built, nopy.
+# checked three ways; prints one word per check that holds: og, built, and
+# nopy (no MASK_FASTA_PY, the masking program before og, in the function or
+# the file).
 mask_checks() {
   local body
   body=$(awk '/^install_masked_reference\(\) \{$/ {on = 1} on {print} on && /^}$/ {exit}' "$1")
   if grep -q '/pgp-bin/og setup mask-fasta "$(basename "$src")" "$(basename "$bed")" "$(basename "$dest").part"' <<< "$body" \
      && grep -q -- '-w "$(cpath "$dir")"' <<< "$body"; then echo og; fi
   if grep -q 'rust/og.sh" check --required' <<< "$body" && grep -q 'rust/og.sh" install' <<< "$body"; then echo built; fi
-  if ! grep -Eq 'MASK_FASTA_PY|python3 -c' <<< "$body" && ! grep -q '^MASK_FASTA_PY=' "$1"; then echo nopy; fi
+  if ! grep -q 'MASK_FASTA_PY' <<< "$body" && ! grep -q '^MASK_FASTA_PY=' "$1"; then echo nopy; fi
 }
 GOT=$(mask_checks "$SETUP")
 if grep -qx og <<< "$GOT"; then
@@ -68,28 +70,27 @@ else fail "setup.sh does not call og setup mask-fasta from the reference's direc
 if grep -qx built <<< "$GOT"; then
   pass "setup.sh builds og before it masks, when og is missing or stale"
 else fail "setup.sh masks without making sure og is built"; fi
-if grep -qx nopy <<< "$GOT"; then pass "the Python masking program is gone from setup.sh"
-else fail "the Python masking program is still in setup.sh"; fi
+if grep -qx nopy <<< "$GOT"; then pass "the masking program before og (MASK_FASTA_PY) is gone from setup.sh"
+else fail "the masking program before og (MASK_FASTA_PY) is still in setup.sh"; fi
 # control: the same checks on setup.sh as it was before og (the commit
-# tests/parity/oracle.ref names), cut to the lines that matter
+# tests/parity/oracle.ref names), cut to the lines that matter, with the
+# program's interpreter and text left out
 cat > "${WORK}/old-setup.sh" <<'OLD'
 install_masked_reference() {
   local src=$REF_FASTA dest bed want got dir log
     rm -f "${dest}.part"
-    if ! log=$(run_in --rw "$dir" "$PYTHON_IMAGE" python3 -c "$MASK_FASTA_PY" \
+    if ! log=$(run_in --rw "$dir" "$PYTHON_IMAGE" "$MASK_FASTA_PY" \
           "$(cpath "$src")" "$(cpath "$bed")" "$(cpath "${dest}.part")"); then
       rm -f "${dest}.part"
       return 1
     fi
     mv -f "${dest}.part" "$dest"
 }
-MASK_FASTA_PY=$(cat <<'PY'
-PY
-)
+MASK_FASTA_PY=
 OLD
 OLD_GOT=$(mask_checks "${WORK}/old-setup.sh")
 if ! grep -qx og <<< "$OLD_GOT" && ! grep -qx nopy <<< "$OLD_GOT"; then
-  pass "control: on setup.sh before og, 'masks with og' fails and the Python program is found"
+  pass "control: on setup.sh before og, 'masks with og' fails and MASK_FASTA_PY is found"
 else fail "control: the checks passed setup.sh before og (${OLD_GOT//$'\n'/ })"; fi
 
 if [ -n "${OG:-}" ]; then
