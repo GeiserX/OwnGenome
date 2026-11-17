@@ -92,10 +92,13 @@ echo "[2/3] The VCF's records around the marker sites, left-aligned (bcftools no
 # for a window's contig first gets one, because bcftools writes no record on an
 # undeclared contig: the new header, then the records as text, so a VCF in plain
 # gzip (not bgzip) works too. Through an index, htslib takes the names from the
-# index. The BLOODTYPE process runs the same commands before og.
+# index. bcftools writes no BCF record that uses a FILTER, INFO or FORMAT tag
+# the header does not declare (a hand-made VCF may lack even the GT line), so
+# the picked records go out as text and get a line for each such tag first.
+# The BLOODTYPE process runs the same commands before og.
 # shellcheck disable=SC2016  # the program's $ belong to the inner bash and awk
 NORM_PROG='
-  MARKERS=$1 VCF=$2 REF=$3 W=$4 OUT=$5
+  MARKERS=$1 VCF=$2 REF=$3 W=$4 OUT=$5 DECLARE=$9
   grep -v "^#" "$MARKERS" | tail -n +2 \
     | awk -F "\t" -v OFS="\t" "$6" | sort -k1,1 -k2,2n | awk -F "\t" -v OFS="\t" "$7" > "$W/bt_windows.bed"
   cut -f1 "$REF.fai" > "$W/bt_ref_contigs.txt"
@@ -119,9 +122,9 @@ NORM_PROG='
     fi
   fi
   pick() {
-    if [ ! -s "$1" ]; then bcftools view -h -Ou "$HDR"
-    elif [ "$HDR" != "$VCF" ]; then { cat "$HDR"; gzip -cdf "$VCF" | awk "!/^#/"; } | bcftools view -T "$1" --targets-overlap record -Ou -
-    else bcftools view "$SEL" "$1" "$OVERLAP" record -Ou "$VCF"; fi
+    if [ ! -s "$1" ]; then bcftools view -h -Ov "$HDR"
+    elif [ "$HDR" != "$VCF" ]; then { cat "$HDR"; gzip -cdf "$VCF" | awk "!/^#/"; } | bcftools view -T "$1" --targets-overlap record -Ov -
+    else bcftools view "$SEL" "$1" "$OVERLAP" record -Ov "$VCF"; fi | awk -F "\t" "$DECLARE"
   }
   pick "$W/bt_on_ref.bed" | bcftools norm -c w -f "$REF" -Ob -o "$W/bt_on_ref.bcf"
   pick "$W/bt_off_ref.bed" | bcftools view -Ob -o "$W/bt_off_ref.bcf"
@@ -139,9 +142,22 @@ MERGE_AWK='$1 == c && $2 <= e {if ($3 > e) e = $3; next} {if (c != "") print c, 
 # ##contig line for, as ##contig lines.
 # shellcheck disable=SC2016
 CONTIG_AWK='NR == FNR {if (sub(/^##contig=<ID=/, "")) {sub(/[,>].*/, ""); d[$0] = 1}; next} !($1 in d) && !s[$1]++ {print "##contig=<ID=" $1 ">"}'
+# The picked VCF text, with a header line for each FILTER, INFO and FORMAT tag
+# its records use and its header lacks, before #CHROM. Text the header already
+# covers comes out unchanged.
+# shellcheck disable=SC2016
+DECLARE_AWK='function need(k, t) {if (!(k in d)) {d[k] = 1; a[++na] = "##" k t ",Description=" q "Not declared in the input VCF" q ">"}}
+  BEGIN {q = sprintf("%c", 34)}
+  /^##/ {h[++nh] = $0; if (match($0, /^##(FILTER|INFO|FORMAT)=<ID=[^,>]*/)) d[substr($0, 3, RLENGTH - 2)] = 1; next}
+  /^#/ {c = $0; next}
+  {r[++nr] = $0
+   n = split($7, f, ";"); for (i = 1; i <= n; i++) if (f[i] != "." && f[i] != "PASS") need("FILTER=<ID=" f[i], "")
+   n = split($8, f, ";"); for (i = 1; i <= n; i++) if (f[i] != ".") {k = f[i]; v = sub(/=.*/, "", k); need("INFO=<ID=" k, v ? ",Number=.,Type=String" : ",Number=0,Type=Flag")}
+   n = split($9, f, ":"); for (i = 1; i <= n; i++) need("FORMAT=<ID=" f[i], f[i] == "GT" ? ",Number=1,Type=String" : ",Number=.,Type=String")}
+  END {for (i = 1; i <= nh; i++) print h[i]; for (i = 1; i <= na; i++) print a[i]; if (c != "") print c; for (i = 1; i <= nr; i++) print r[i]}'
 run_in -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c "$NORM_PROG" \
   _ /pgp-assets/bloodtype_markers.tsv "$(cpath "$VCF")" "$REF_FASTA_C" "$O" "$(cpath "$NORM")" "$WINDOWS_AWK" "$MERGE_AWK" \
-  "$CONTIG_AWK"
+  "$CONTIG_AWK" "$DECLARE_AWK"
 [ -s "$NORM" ] || { echo "ERROR: no left-aligned VCF written (${NORM})" >&2; exit 1; }
 echo "[3/3] Blood group rules (og bloodtype report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
