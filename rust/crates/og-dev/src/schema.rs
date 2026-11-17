@@ -126,9 +126,9 @@ struct Node {
     pattern: Option<(String, regex::Regex)>,
     min_length: Option<usize>,
     max_length: Option<usize>,
-    minimum: Option<f64>,
+    minimum: Option<Value>,
     minimum_text: String,
-    maximum: Option<(f64, String)>,
+    maximum: Option<(Value, String)>,
     required: Vec<String>,
     properties: IndexMap<String, Node>,
     additional: Additional,
@@ -278,11 +278,13 @@ fn compile(v: &Value, at: &str, wanted: &mut Vec<(String, String)>) -> Result<No
         Some(Value::Array(a)) => Some(a.clone()),
         Some(_) => return Err(format!("{at}: enum must be a list")),
     };
-    let bound = |k: &str| -> Result<Option<(f64, String)>, String> {
+    let bound = |k: &str| -> Result<Option<(Value, String)>, String> {
         match o.get(k) {
             None => Ok(None),
-            Some(Value::Int(n)) => Ok(Some((*n as f64, n.to_string()))),
-            Some(Value::Float(x)) if !x.is_nan() => Ok(Some((*x, pycompat::fmt::repr(*x)))),
+            Some(Value::Int(n)) => Ok(Some((Value::Int(*n), n.to_string()))),
+            Some(Value::Float(x)) if !x.is_nan() => {
+                Ok(Some((Value::Float(*x), pycompat::fmt::repr(*x))))
+            }
             Some(_) => Err(format!("{at}: {k} must be a number")),
         }
     };
@@ -393,9 +395,41 @@ fn repr60(v: &Value) -> String {
 
 /// Equal by JSON type: a bool never equals a number, an int equals a float
 /// of the same value, objects compare as sets of keys.
+/// Python's order of two numbers: an int and a float compare exactly, never
+/// through f64 (2**53 + 1 != 2.0**53); None for NaN or a non-number.
+fn num_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
+    // An int against a float, exactly.
+    fn int_float(i: i128, f: f64) -> Option<std::cmp::Ordering> {
+        if f.is_nan() {
+            return None;
+        }
+        let fl = f.floor();
+        if fl >= 2f64.powi(127) {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if fl < -(2f64.powi(127)) {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        // fl is an integer that fits i128, so the cast is exact.
+        Some(i.cmp(&(fl as i128)).then(if f > fl {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Equal
+        }))
+    }
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
+        (Value::Int(x), Value::Float(y)) => int_float(*x, *y),
+        (Value::Float(x), Value::Int(y)) => int_float(*y, *x).map(std::cmp::Ordering::reverse),
+        _ => None,
+    }
+}
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
-        (Value::Int(x), Value::Float(y)) | (Value::Float(y), Value::Int(x)) => *x as f64 == *y,
+        (Value::Int(_), Value::Float(_)) | (Value::Float(_), Value::Int(_)) => {
+            num_cmp(a, b) == Some(std::cmp::Ordering::Equal)
+        }
         (Value::Array(x), Value::Array(y)) => {
             x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q))
         }
@@ -480,7 +514,7 @@ impl Schema {
             }
         }
         if let (Some((max, text)), Some(x)) = (&node.maximum, as_number(v))
-            && (x > *max || x.is_nan())
+            && num_cmp(v, max).is_none_or(|o| o == std::cmp::Ordering::Greater)
         {
             let shown = match v {
                 Value::Int(n) => n.to_string(),
@@ -488,13 +522,13 @@ impl Schema {
             };
             errors.push(format!("{path}: {shown} > maximum {text}"));
         }
-        if let (Some(min), Some(x)) = (node.minimum, as_number(v)) {
+        if let (Some(min), Some(x)) = (&node.minimum, as_number(v)) {
             if x.is_nan() {
                 errors.push(format!(
                     "{path}: nan is not a number >= minimum {}",
                     node.minimum_text
                 ));
-            } else if x < min {
+            } else if num_cmp(v, min) == Some(std::cmp::Ordering::Less) {
                 let shown = match v {
                     Value::Int(n) => n.to_string(),
                     _ => pycompat::fmt::repr(x),
@@ -717,6 +751,33 @@ mod tests {
         // A pattern searches; lengths count characters, not bytes.
         assert!(run(r#"{"pattern":"b"}"#, r#""abc""#).unwrap().is_empty());
         assert!(run(r#"{"maxLength":2}"#, r#""éé""#).unwrap().is_empty());
+    }
+
+    /// Integers past 2^53 compare exactly with each other and with floats,
+    /// as in Python: no rounding through f64.
+    #[test]
+    fn big_integers_compare_exactly() {
+        let e = run(r#"{"const":9007199254740993}"#, "9007199254740992.0").unwrap();
+        assert_eq!(e.len(), 1, "{e:?}");
+        assert!(
+            run(r#"{"const":9007199254740992}"#, "9007199254740992.0")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(run(r#"{"enum":[2]}"#, "2.0").unwrap().is_empty());
+        let e = run(r#"{"maximum":9007199254740992}"#, "9007199254740993").unwrap();
+        assert_eq!(e, ["$: 9007199254740993 > maximum 9007199254740992"]);
+        let e = run(r#"{"minimum":9007199254740993}"#, "9007199254740992").unwrap();
+        assert_eq!(e, ["$: 9007199254740992 < minimum 9007199254740993"]);
+        assert!(run(r#"{"maximum":1}"#, "1.0").unwrap().is_empty());
+        assert_eq!(
+            run(r#"{"maximum":1}"#, "1.5").unwrap(),
+            ["$: 1.5 > maximum 1"]
+        );
+        assert_eq!(
+            run(r#"{"minimum":2}"#, "1.5").unwrap(),
+            ["$: 1.5 < minimum 2"]
+        );
     }
 
     #[test]
