@@ -1,1 +1,1 @@
-SCHEMA ERROR: $.never: unsupported keyword(s) ['format']
+SCHEMA ERROR: $.never: unsupported keyword(s) ['uniqueItems']

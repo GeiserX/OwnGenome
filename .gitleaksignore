@@ -9,3 +9,6 @@
 # file's own first comment about it, which quoted the expression.
 0bc60efda244e5361c54fe411f46db9514e5e8c3:rust/crates/og-cn/src/cli.rs:generic-api-key:590
 63b5a9273c444970e469d04c8da52aa8890726b5:.gitleaksignore:generic-api-key:7
+# GRCh38 chr19's public refget accession in a VRS digest test of og-facts (from
+# vrs-python's docstring), not a key; the test now holds it in a constant.
+2707c7a94d6c0d4674f35e5169fa1d643e548adf:rust/crates/og-facts/src/vrs.rs:generic-api-key:261
