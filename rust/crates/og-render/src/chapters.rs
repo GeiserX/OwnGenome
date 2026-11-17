@@ -177,13 +177,13 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "mei" => None,
 
-        "expansions" => None,
+        "expansions" => Some((sections::str::text, sections::str::html)),
 
         "vntyper" => None,
 
         "mito" => None,
 
-        "lpa" => None,
+        "lpa" => Some((sections::lpa::text, sections::lpa::html)),
 
         "chip" => None,
 
@@ -195,7 +195,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "couple" => None,
 
-        "paralogs" => None,
+        "paralogs" => Some((sections::paralogs::text, sections::paralogs::html)),
 
         "pharmcat" => None,
 
@@ -219,11 +219,11 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "roh" => None,
 
-        "traits-panel" => None,
+        "traits-panel" => Some((sections::traits::text, sections::traits::html)),
 
         "prs" => None,
 
-        "bloodtype" => None,
+        "bloodtype" => Some((sections::bloodtype::text, sections::bloodtype::html)),
 
         "telomere" => None,
 

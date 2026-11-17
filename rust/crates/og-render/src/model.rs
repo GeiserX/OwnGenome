@@ -325,6 +325,10 @@ pub enum Line {
     Para(String),
     /// A plain bulleted list.
     List(Vec<String>),
+    /// Markup a section built itself (a table, a heading or a folded part
+    /// inside the card), written as it is: every text in it is already
+    /// escaped with [`crate::escape::e`].
+    Markup(String),
 }
 
 /// One card: a title, the caveats shown under it, the notes saying its
