@@ -114,6 +114,95 @@ mut sex-agree '.run.declared_sex = "male" | .sections.sex_check.state = "ok" | .
 mut counts '.sections.variants.state = "ok" | .sections.variants.data = {"total": 4.5, "pass": true, "snps": "12", "indels": null}
   | .sections.coverage.state = "ok" | .sections.coverage.data.mean_depth = 31'
 mut counts-float '.sections.coverage.state = "ok" | .sections.coverage.data.mean_depth = 30.05'
+# The opt-in step sections (port-report-optin): every one ran, with data
+# down each branch of its lines, then the same in each other state, then
+# the branches of empty and partial results.
+optin='.sections.chip += {state: "ok", source: "chip/S1_chip.tsv", file_date: "2026-11-01 10:00:00", data: {
+    calls: [{gene: "DNMT3A", protein_change: "R882H", vaf: "0.130", alt_reads: "6", depth: "46", note: "hotspot R882 <b>",
+             status: "chip"}], other: 2, median_depth: 30.5, median_limit: 0.137, not_covered: ["JAK2", "TP53"]}}
+  | .sections.viral += {state: "ok", source: "viral/S1_viral.tsv", data: {hhv6: "inherited integrated HHV-6B likely",
+    human_depth: "30.00", genomes: 24, found: [
+      {virus: "HHV-6B", accession: "NC_000898.1", reads: "400", breadth: "1.0000", relative_depth: "0.500",
+       copies_per_cell: "1.0000", call: "inherited integrated HHV-6 likely", human_depth: "30.00", note: "."},
+      {virus: "Human gammaherpesvirus 4", accession: "NC_007605.1", reads: "30", breadth: "0.9950",
+       relative_depth: "0.010", copies_per_cell: ".", call: "viral DNA found", human_depth: "30.00", note: "x & y"}]}}
+  | .sections.mei += {state: "ok", source: "mei/S1_mei_sites.tsv", data: {calls: 2, by_element: {Alu: 1, SVA: 1}, sites: [
+      {gene: "FKTN", element: "SVA", condition: "Fukuyama congenital muscular dystrophy", inheritance: "autosomal recessive",
+       status: "seen", mean_depth: "30.0", call: "chr9:105639660 SVA_F 1 copy PASS"},
+      {gene: "TAF1", element: "SVA", condition: "X-linked dystonia-parkinsonism", inheritance: "X-linked",
+       status: "not callable", mean_depth: ".", call: "."}]}}
+  | .sections.mosaic += {state: "ok", source: "mosaic/S1_mocha_summary.tsv", data: {status: "assessed", message: ".",
+    depth: "30.0", het_sites: "2090000", het_per_10mb: "3000", chromosomes: "chr1-chr22", floor_read: "0.020",
+    floor_min: "0.05", floor: "0.050", calls_mocha: "3", calls_reported: "1", phasing: "input", not_reported: 2, calls: [
+      {chrom: "chr20", start: "60000", end: "20000000", length_mb: "19.94", arms: "20p, to the p telomere",
+       type: "CN-LOH", cell_fraction: "0.150", n_hets: "6600", lod_baf_phase: "900", reported: "yes", reason: "."},
+      {chrom: "chr1", start: "500", end: "500", length_mb: "0.00", arms: "1p", type: "loss", cell_fraction: "0.2",
+       n_hets: "1", lod_baf_phase: "9", reported: "yes", reason: "."}]}}
+  | .sections.vntyper += {state: "ok", source: "vntyper/S1_vntyper.tsv", data: {status: "positive",
+    confidence: "High_Precision*", variant: "59dupC", flag: "Not flagged", alt_depth: "416", region_depth: "7110",
+    depth_score: "0.0585", vntr_mean_depth: "1075.32", vntr_uncovered_pct: "0.00", coverage_qc: "PASS",
+    sensitivity: "At 1075x the 100x-or-more band: 160 of 161 runs (99%).", message: "A frameshift <dupC>.",
+    advice: "Confirm with SNaPshot."}}
+  | .sections.locityper += {state: "ok", source: "locityper/S1_locityper.tsv", data: {called: 2, passed: 1, loci: [
+      {locus: "HLA-DQB1", region: "chr6:32652604-32669077", status: "called", genotype: "HG00733.1,NA19240.2",
+       haplotype_1: "HG00733.1", haplotype_2: "NA19240.2", quality: "27.8", total_reads: "900",
+       unexplained_reads: "12", weighted_distance: "0.200", warnings: ".", filter: "pass", reason: ".",
+       primary: "T1K (step 08): DQB1*06:02 + DQB1*03:01"},
+      {locus: "CYP2D6", region: "chr22:42122285-42152960", status: "called", genotype: "a,b", haplotype_1: "a",
+       haplotype_2: "b", quality: "9", total_reads: "3000", unexplained_reads: "1200", weighted_distance: "50.00",
+       warnings: ".", filter: "fail", reason: "weighted distance 50.00", primary: "pypgx (step 32): *1/*2"},
+      {locus: "FCGR", region: "chr1:161506762-161681047", status: "not called", genotype: ".", haplotype_1: ".",
+       haplotype_2: ".", quality: ".", total_reads: ".", unexplained_reads: ".", weighted_distance: ".", warnings: ".",
+       filter: ".", reason: "Locityper wrote no result", primary: "no other step calls FCGR"},
+      {locus: "KIR", region: "chr19:1-2", status: "called", genotype: "k,k", haplotype_1: "k", haplotype_2: "k",
+       quality: "5", total_reads: "10", unexplained_reads: "1", weighted_distance: "1", warnings: ".", filter: "fail",
+       reason: "."}]}}
+  | .sections.exomiser += {state: "ok", source: "exomiser/S1_exomiser_top.tsv", data: {
+    terms: [{id: "HP:0001156", label: "Brachydactyly"}, {id: "HP:0000001", label: null}], genes: [
+      {rank: "1", gene: "GENEA", moi: "AD", exomiser_score: "0.998", phenotype_score: "0.800", variants: [
+        {variant: "chr10:123256215 T>G", genotype: "0/1", consequence: "missense_variant",
+         hgvs: "GENEA:ENST1:c.1688A>C:p.(Glu563Ala)", acmg: "LIKELY_PATHOGENIC", disease: "Synthetic syndrome one"}]},
+      {rank: "2", gene: "GENEB", moi: "AR", exomiser_score: "0.9", phenotype_score: "0.8", variants: [
+        {variant: "chr6:1000 G>A", genotype: "0/1", consequence: "splice_donor_variant", hgvs: "c.10+1G>A",
+         acmg: "UNCERTAIN_SIGNIFICANCE", disease: "."},
+        {variant: "chr6:2000 C>T + chr6:900 A>C", genotype: "1|0", consequence: "stop_gained", hgvs: "p.(Gln100*)",
+         acmg: "PATHOGENIC", disease: "."}]},
+      {rank: "3", gene: "GENEC", moi: "XR", exomiser_score: "0.5", phenotype_score: "0.4", variants: [
+        {variant: "no locus", genotype: "1", consequence: "missense_variant", hgvs: "p.?", acmg: "VUS",
+         disease: "D"}]}]}}
+  | .sections.telomere += {state: "ok", source: "telomere/S1_summary.tsv",
+    data: {tel_content: "1.5", intratelomeric_reads: 1234567, depth: 30.0, read_floor: 2000, low_reads: true}}
+  | .sections.roh += {state: "ok", source: "vcf/S1_roh.txt", data: {segments: 3, total_mb: 37.5, largest_mb: 27,
+    autosomal_over_5mb: [{region: "chr2:10000001-17000000", mb: 7.0},
+                         {region: "chr15:23000001-50000000", mb: 27.0, masked_mb: 1.5}],
+    masked_mb: 46.5, sex_chromosome_segments: 1, long_mb: 34.0, f_roh: 0.0128, relationship: "first cousins",
+    upd_flag: {chrom: "chr15", mb: 27.0, share: 0.79, imprinted: [{region: "15q11-q13 (SNRPN, UBE3A)",
+      maternal_upd: "Prader-Willi", paternal_upd: "Angelman", pmid: "22237428"}]}}}'
+OPTIN_KEYS='"chip", "viral", "mei", "mosaic", "vntyper", "locityper", "exomiser", "telomere", "roh"'
+mut optin-ok "$optin"
+for st in stale failed unreadable odd; do
+  mut "optin-$st" "$optin | reduce ($OPTIN_KEYS) as \$k (.; .sections[\$k].state = \"$st\" | .sections[\$k].note = \"why <\(\$k)>\")"
+done
+mut optin-since "$optin"' | .new_since = {"previous_utc": "2026-01-01T00:00:00Z", "sections": ["roh", "chip", "mosaic"]}'
+mut optin-empty "$optin"' | .sections.chip.data = {calls: [], other: 0, median_depth: null, median_limit: null, not_covered: []}
+  | .sections.viral.data = {hhv6: "no integrated HHV-6", human_depth: "30.00", found: [], genomes: 24}
+  | .sections.mei.data = {calls: 0, by_element: {}, sites: []}
+  | .sections.mosaic.data = {status: "not assessed", message: "phased BAF autocorrelation 0.05 over 0.03",
+    calls: [], not_reported: 0}
+  | .sections.vntyper.data = {status: "negative", variant: ".", coverage_qc: "PASS", sensitivity: "s", message: "m",
+    advice: "a"}
+  | .sections.locityper.data = {called: 0, passed: 0, loci: []}
+  | .sections.exomiser.data = {terms: [], genes: []}
+  | .sections.telomere.data = {tel_content: "334", read_check: "depth unknown: not checked"}
+  | .sections.roh.data = {segments: 0, total_mb: 0.0, largest_mb: 0.0, autosomal_over_5mb: [], masked_mb: 0.0,
+    sex_chromosome_segments: 0, long_mb: 0.0, f_roh: null, relationship: null, upd_flag: null}'
+mut optin-partial "$optin"' | .sections.mosaic.data.calls = [] | .sections.mosaic.data.status = "assessed"
+  | .sections.viral.data.hhv6 = "not assessed (no human depth)"
+  | .sections.vntyper.data = {status: "possible", variant: "59dupC", confidence: "Low_Precision"}
+  | .sections.telomere.data = {tel_content: 2, intratelomeric_reads: 40}
+  | .sections.roh.data.upd_flag.imprinted = [] | .sections.roh.data.relationship = null | .sections.roh.data.f_roh = 1
+  | .sections.chip.data.median_limit = 0.02 | .sections.chip.data.calls += [{gene: "TET2", protein_change: "Q1200fs",
+    vaf: "0.2", alt_reads: "9", depth: "45", note: "truncating"}]'
 rm -f "$base"
 
 # --- the oracle -----------------------------------------------------------------------
@@ -132,6 +221,8 @@ PYTHONPATH=$d python3 "$d/render_report.py" "$@"
 rm -rf "$d"
 # The sections og report render writes; the others are left out.
 PORTED=" qc variants not-run not-assessed "
+# port-report-optin
+PORTED="${PORTED}exomiser mei vntyper chip mosaic-mca locityper roh telomere viral "
 while [ $# -gt 0 ]; do
   case "$1" in
     -o)
@@ -163,6 +254,8 @@ END {
   m = 0
   for (i = 1; i <= n; i++) {
     l = lines[i]
+    # The charts are not ported yet (port-report-charts): drop their figures.
+    if (l ~ /^    <figure class="chart">/) continue
     if (l ~ /^        <li><a href="#/ && !wanted(l)) continue
     if (l ~ /^  <section class="sec[^"]*" id="/ && !wanted(l)) {
       while (lines[i] != "  </section>") i++
@@ -194,6 +287,12 @@ cat > text.awk << 'AWK'
 BEGIN {
   rule = sprintf("%80s", ""); gsub(/ /, "#", rule)
   title["## Quality control"] = "qc"; title["## Variant Calling (DeepVariant)"] = "variants"
+  # port-report-optin
+  title["## Symptom-Driven Ranking (Exomiser, step 48)"] = "exomiser"; title["## Mobile Element Insertions (step 50)"] = "mei"
+  title["## MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)"] = "vntyper"; title["## Clonal Haematopoiesis (CHIP, step 49)"] = "chip"
+  title["## Mosaic Chromosomal Alterations (MoChA, step 51)"] = "mosaic-mca"; title["## Runs of Homozygosity"] = "roh"
+  title["## Locityper Second Opinion at Hard Loci (step 53)"] = "locityper"
+  title["## Telomere content (relative, TelomereHunter)"] = "telomere"; title["## Viral DNA in the Unmapped Reads (step 47)"] = "viral"
 }
 { lines[++n] = $0 }
 END {
