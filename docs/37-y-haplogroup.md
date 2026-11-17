@@ -10,7 +10,7 @@ The mitochondrial haplogroup (step 12) traces the maternal line only. The Y chro
 
 ## Tool
 
-- **Yleaf** 4.1.6 (Ralf et al., Mol Biol Evol 2018; GPL-3.0), Erasmus MC. It reads the BAM's pileup at its Y markers and predicts the haplogroup they support on its default tree, YFull v14.01 (about 183,000 marker positions on GRCh38).
+- **Yleaf** 4.1.7 (Ralf et al., Mol Biol Evol 2018; GPL-3.0), Erasmus MC. It reads the BAM's pileup at its Y markers and predicts the haplogroup they support on its default tree, YFull v14.01 (about 183,000 marker positions on GRCh38).
 
 - **The current YFull YTree** (release 14.06.0 of 22 September 2026, CC BY 4.0, [github.com/YFullTeam/YTree](https://github.com/YFullTeam/YTree)), walked by `og y tree-place` (`rust/crates/og-reports/src/ytree.rs`). It is newer than Yleaf's v14.01, and the second position table below places SNPs Yleaf's own table does not have, so the branch it reports can sit below the one Yleaf reports. It also writes the path from the root with the calls of every level. The SNPs on YFull's tree have names only; their GRCh38 positions and bases come from two tables of Yleaf 4.1.6 (GPL-3.0): `ftdna_positions_hg38.txt` (made for FamilyTreeDNA's tree, the widest of its tables) first, then `new_positions.txt` (the one Yleaf 4 uses for its YFull v14 tree). SNP names are shared between the trees, so a name is looked up as it stands. Together they place 85% of the tree's 459,468 SNPs (76% from the first table alone), counted on 2026-10-25.
 
@@ -20,7 +20,7 @@ The step reports both results, each with the tree it comes from. Both reports (s
 
 - `YLEAF_IMAGE`, and `SAMTOOLS_IMAGE` for the pileup
 
-The step runs in three parts (`bin/yleaf_run.py` says why): Yleaf's marker positions, written by `og y yleaf-positions` in its image, `samtools idxstats` and `samtools mpileup -l <positions> -ABQ20q1` (Yleaf 4's own flags at its default quality 20) in `SAMTOOLS_IMAGE`, in the same run as the chrY BAM (step 37 makes the current tree's pileup in a second run; Nextflow's `Y_PILEUP` task makes all three in one task), then Yleaf on that pileup. If a later Yleaf asks samtools for other flags, the launcher stops instead of handing it a pileup made another way.
+The step runs in three parts: Yleaf's marker positions, written by `og y yleaf-positions` in its image, `samtools idxstats` and `samtools mpileup -l <positions> -ABQ20q1` (Yleaf 4's own flags at its default quality 20) in `SAMTOOLS_IMAGE`, in the same run as the chrY BAM (step 37 makes the current tree's pileup in a second run; Nextflow's `Y_PILEUP` task makes all three in one task), then Yleaf's own command line on that pileup. The step puts the pileup where Yleaf keeps its own, `<out>/<bam name>/temp_haplogroup_pileup.pu`, and runs `Yleaf -bam <bam> -rg hg38 --ref-fasta <reference> -tree yfull -q 20 -t 1 -rp -force --no-update-check`; `-rp` makes Yleaf read that file instead of running samtools. The image test (the `YLEAF_IMAGE` row of `tests/smoke/commands.tsv`) checks that the image still has these options, that pileup file name and those samtools flags, and that its marker table and tree are the ones in the archive `setup.sh --yleaf-data` installs. Yleaf stops on an empty pileup (no read at any marker) and writes no row; the step then writes the row Yleaf gives for too few markers (`Hg` NA) with `og y yleaf-no-reads`.
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
@@ -43,7 +43,7 @@ In the Nextflow pipeline (`y_haplogroup` in `--tools`) the process runs for the 
 
 With `run-all.sh`: `TOOLS=...,y_haplogroup` (it is opt-in, so a default run lists it as skipped; without the data it is skipped with the reason).
 
-Yleaf downloads the whole hg38 FASTA on its first run unless its config file names one, and the image's config is read-only. The launcher points Yleaf at the pipeline's reference before it starts (a BAM never needs the sequence itself) and turns off its check for a newer release, so nothing is downloaded and every container runs without a network.
+Yleaf downloads the whole hg38 FASTA on its first run unless it is given one. The step passes the pipeline's reference with `--ref-fasta` (Yleaf checks its chrY length against hg38 in the `.fai`; a BAM never needs the sequence itself) and `--no-update-check` turns off its check for a newer release, so nothing is downloaded and every container runs without a network. `--ref-fasta` takes a file ending in `.fa`, `.fasta` or `.fna`, as `setup.sh` installs it.
 
 ## Output
 
