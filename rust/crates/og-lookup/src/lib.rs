@@ -25,6 +25,12 @@ mod resolve;
 mod summary;
 mod vcf;
 
+/// The summary names rule the search index shares (`og report index`).
+pub mod names {
+    pub use crate::summary::{flat, is_rsid, names_of};
+}
+pub use query::{Query, parse as parse_query};
+
 use std::io::{self, Write};
 use vcf::{Region, Span};
 
