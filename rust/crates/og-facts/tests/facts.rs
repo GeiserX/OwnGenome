@@ -130,6 +130,8 @@ fn full_sections() -> String {
             {{"gene":"CACNA1S","diplotype":"Reference/Reference","phenotype":"Uncertain Susceptibility","status":"normal"}},
             {{"gene":"MT-RNR1","diplotype":"Reference","phenotype":"normal risk of aminoglycoside-induced hearing loss","status":"normal"}},
             {{"gene":"CYP2D6","diplotype":"Unknown/Unknown","phenotype":"No Result","status":"not called"}},
+            {{"gene":"IFNL3","diplotype":"rs12979860 reference (C)/rs12979860 reference (C)","phenotype":"n/a","status":"normal"}},
+            {{"gene":"CYP3A4","diplotype":"*1/*1","phenotype":"Normal Metabolizer","status":"normal"}},
             {{"gene":"HLA-B","diplotype":"*57:01/*58:01","phenotype":"HLA-B*58:01 positive","status":"non-normal"}}]}}}},
         "hla":{{"state":"ok","source":"hla_t1k/{SAMPLE}_hla_genotype.tsv","data":{{"loci":[
             {{"gene":"HLA-A","alleles":["HLA-A*02:01:01","HLA-A*24:02:01"],"low_confidence":false}},
@@ -280,8 +282,8 @@ fn every_variant_has_a_vrs_id_and_a_call_state() {
     }
     assert_eq!(
         n,
-        3 + 2 + 2 + 2,
-        "three ClinVar hits, APOE's two sites, LPA's two, the sites of ABCG2 and VKORC1"
+        3 + 2 + 2 + 3,
+        "three ClinVar hits, APOE's two sites, LPA's two, the sites of ABCG2, VKORC1 and IFNL3"
     );
     let apoe = fact(&b, "risk_marker", "APOE");
     let states: Vec<&str> = arr(apoe[0], "variants")
@@ -515,6 +517,20 @@ fn coverage_names_every_panel_gene_once_with_its_state() {
         ("callability", "not_assessed")
     );
     assert_eq!(st(one("GSTT1"), &["reason"]), "other");
+    // Every gene with a PGx or HLA call has a row, never "not assessed"
+    // beside its call: CYP3A4 is on no panel.
+    for f in facts(&b) {
+        if matches!(st(f, &["category"]), "pgx" | "hla") {
+            let g = st(f, &["gene"]);
+            assert_eq!(coverage(&b, g).len(), 1, "{g}");
+            assert_ne!(st(one(g), &["state"]), "not_assessed", "{g}");
+        }
+    }
+    let cyp3a4 = one("CYP3A4");
+    assert_eq!(
+        (st(cyp3a4, &["panel"]), st(cyp3a4, &["state"])),
+        ("other", "assessed")
+    );
 }
 
 #[test]
@@ -626,6 +642,16 @@ fn pgx_and_hla_facts_carry_their_call_state() {
     );
     assert!(st(&vk[0], &["vrs_id"]).starts_with("ga4gh:VA."));
     assert!(arr(fact(&b, "pgx", "CYP2C19")[0], "variants").is_empty());
+    // PharmCAT's placeholder phenotype is no phenotype: OwnHealth then reads
+    // the call_state, and the summary does not show the word.
+    let ifnl3 = fact(&b, "pgx", "IFNL3")[0];
+    assert_eq!(state("IFNL3"), "ref");
+    assert!(get(ifnl3, &["value", "phenotype"]).is_none());
+    assert!(
+        !st(ifnl3, &["summary"]).contains("n/a"),
+        "{}",
+        st(ifnl3, &["summary"])
+    );
     let hla: Vec<(&str, &str)> = fact(&b, "hla", "HLA-B")
         .iter()
         .map(|f| (st(f, &["value", "marker"]), st(f, &["value", "call_state"])))

@@ -595,6 +595,11 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
                 "{gene}: diplotype {shown:?} left out, not a term OwnHealth reads"
             ));
         }
+        // PharmCAT's placeholders say it named no phenotype; OwnHealth then
+        // reads the call_state instead of counting the word as a finding.
+        if PHENOTYPE_PLACEHOLDERS.contains(&phenotype.trim().to_lowercase().as_str()) {
+            phenotype.clear();
+        }
         let pheno_ok = term_ok(&phenotype, Some(gene));
         if pheno_ok {
             put(&mut value, "phenotype", s(&phenotype));
@@ -684,6 +689,15 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
         ctx.push(fact);
     }
 }
+
+/// The phenotypes PharmCAT writes when it names none.
+const PHENOTYPE_PLACEHOLDERS: &[&str] = &[
+    "n/a",
+    "no result",
+    "indeterminate",
+    "unclassified",
+    "no phenotype assigned",
+];
 
 /// The call_state of a star-allele call: `ref` when every allele is the
 /// gene's reference allele as PharmCAT names it (`*1`, `Reference`, `B
@@ -1409,6 +1423,27 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
     for (gene, e) in &unread {
         if seen.insert(gene.clone()) {
             rows.push(callability_row(gene, "callability", e));
+        }
+    }
+    // A gene with a PGx or HLA call that no panel names (CYP3A4 has DPWG
+    // guidance only) gets a row, so it never reads "not assessed" beside
+    // its call; a low-confidence call is partial.
+    for f in &ctx.facts {
+        let (Some(gene), Some("pgx" | "hla")) = (text(f, &["gene"]), text(f, &["category"])) else {
+            continue;
+        };
+        if seen.insert(gene.to_owned()) {
+            rows.push(match text(f, &["confidence", "level"]) {
+                Some("low") => cov(
+                    gene,
+                    "other",
+                    "partial",
+                    Some("other"),
+                    None,
+                    text(f, &["confidence", "basis"]).map(str::to_owned),
+                ),
+                _ => cov(gene, "other", "assessed", None, None, None),
+            });
         }
     }
     // A call the file leaves out makes its gene partial, never "assessed,
