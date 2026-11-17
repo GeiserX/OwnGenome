@@ -154,6 +154,8 @@ tests/test_collect_summary.py                 strec("DMPK", "5/40"
 tests/test_collect_summary.py                 strec("RFC1", "100/150"
 tests/smoke/commands.tsv                      HTT at 19/45 repeats
 tests/smoke/commands.tsv                      ATXN3 at 22/24 repeats
+rust/crates/og-facts/tests/facts.rs           "rs2231142 G/G"
+rust/crates/og-facts/tests/facts.rs           "rs9923231 C/C"
 '
 
 # Whole files that are not scanned (glob), with the reason. Keep this list

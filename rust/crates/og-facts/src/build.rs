@@ -618,9 +618,8 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
     }
 }
 
-/// PharmCAT's diplotype of a one-site gene, `rs2231142 reference
-/// (G)/rs2231142 variant (T)`, as `rs2231142 G/T`, a term OwnHealth reads;
-/// any other diplotype unchanged.
+/// PharmCAT's diplotype of a one-site gene, `rsN reference (X)/rsN variant
+/// (Y)`, as `rsN X/Y`, a term OwnHealth reads; any other diplotype unchanged.
 fn single_site(diplotype: &str) -> String {
     let half = |h: &str| -> Option<(String, String)> {
         let (rs, rest) = h.trim().split_once(' ')?;
