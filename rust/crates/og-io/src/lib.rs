@@ -6,7 +6,8 @@
 //! - [`Lines`]: Python's text mode with `newline=None`: `\n`, `\r\n` and a
 //!   lone `\r` each end a line and read as `\n`; UTF-8 strict or `replace`.
 //! - [`AtomicFile`]: written beside the target and renamed over it on
-//!   [`AtomicFile::commit`], so a reader never sees half a file.
+//!   [`AtomicFile::commit`], so a reader never sees half a file. What it
+//!   writes is owner-only (0600) whatever the umask.
 //! - [`bgzf`]: the same reading with BGZF inflated on many cores, and a
 //!   BGZF writer that compresses on many cores.
 //! - [`tabix`]: the lines of a region of a bgzipped file, through its
@@ -22,6 +23,7 @@ use flate2::bufread::GzDecoder;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
 
@@ -198,11 +200,23 @@ impl<R: BufRead> Iterator for Lines<R> {
 /// A file written under a temporary name and renamed into place by
 /// [`commit`](AtomicFile::commit). Dropped without a commit, the temporary
 /// file is removed and the target is untouched.
+///
+/// The temporary file is always a new file: a file or link already at its
+/// name is left alone and the next name is tried. On Unix it is created
+/// mode 0600, or with the mode of the target it replaces when that is
+/// stricter, so the umask never makes an output readable by others.
 pub struct AtomicFile {
     tmp: PathBuf,
     target: PathBuf,
     out: Option<BufWriter<File>>,
 }
+
+/// The number in the next temporary name, so two files open in one process
+/// never share one.
+static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
+
+/// How many temporary names are tried before giving up.
+const TMP_TRIES: usize = 64;
 
 impl AtomicFile {
     pub fn create(target: impl AsRef<Path>) -> io::Result<Self> {
@@ -210,16 +224,28 @@ impl AtomicFile {
         let name = target
             .file_name()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file name"))?;
-        let mut tmp_name = std::ffi::OsString::from(".");
-        tmp_name.push(name);
-        tmp_name.push(format!(".tmp-{}", std::process::id()));
-        let tmp = target.with_file_name(tmp_name);
-        let out = BufWriter::new(File::create(&tmp)?);
-        Ok(AtomicFile {
-            tmp,
-            target,
-            out: Some(out),
-        })
+        let mode = temp_mode(&target);
+        let pid = std::process::id();
+        let mut taken = None;
+        for _ in 0..TMP_TRIES {
+            let n = NEXT_TMP.fetch_add(1, Ordering::Relaxed);
+            let mut tmp_name = std::ffi::OsString::from(".");
+            tmp_name.push(name);
+            tmp_name.push(format!(".tmp-{pid}-{n}"));
+            let tmp = target.with_file_name(tmp_name);
+            match new_file(&tmp, mode) {
+                Ok(f) => {
+                    return Ok(AtomicFile {
+                        tmp,
+                        target,
+                        out: Some(BufWriter::new(f)),
+                    });
+                }
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => taken = Some(e),
+                Err(e) => return Err(e),
+            }
+        }
+        Err(taken.expect("at least one name was tried"))
     }
 
     /// Flushes and renames over the target. On an error the temporary file
@@ -238,6 +264,34 @@ impl AtomicFile {
         }
         done
     }
+}
+
+/// The mode of a new temporary file: 0600, less any owner bit the target
+/// it replaces lacks (a 0400 target stays 0400).
+#[cfg(unix)]
+fn temp_mode(target: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    match fs::metadata(target) {
+        Ok(m) if m.is_file() => 0o600 & m.permissions().mode(),
+        _ => 0o600,
+    }
+}
+
+#[cfg(not(unix))]
+fn temp_mode(_target: &Path) -> u32 {
+    0
+}
+
+/// Creates `path`, failing with `AlreadyExists` when anything is there,
+/// a link included (`O_CREAT | O_EXCL`).
+fn new_file(path: &Path, mode: u32) -> io::Result<File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
+    #[cfg(not(unix))]
+    let _ = mode;
+    options.open(path)
 }
 
 impl Write for AtomicFile {
