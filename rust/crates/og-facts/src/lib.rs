@@ -38,18 +38,27 @@ impl build::Genome for Fasta {
     }
 }
 
-/// The reference's chromosomes that GRCh38 also has must have GRCh38's
-/// lengths, or every VRS identifier would name the wrong sequence.
+/// The reference must name GRCh38's chromosomes (`chr1` to `chrM`), and each
+/// it has must have GRCh38's length, or every VRS identifier would name the
+/// wrong sequence.
 pub fn check_build(fasta: &Indexed, p: &panels::Panels) -> Result<(), String> {
+    let mut found = 0;
     for (chrom, (_, len)) in &p.refget {
-        if let Some(e) = fasta.entry(chrom)
-            && e.len != *len
-        {
-            return Err(format!(
-                "the reference's {chrom} has {} bases, GRCh38's has {len}: not a GRCh38 reference",
-                e.len
-            ));
+        if let Some(e) = fasta.entry(chrom) {
+            if e.len != *len {
+                return Err(format!(
+                    "the reference's {chrom} has {} bases, GRCh38's has {len}: not a GRCh38 reference",
+                    e.len
+                ));
+            }
+            found += 1;
         }
+    }
+    if found == 0 {
+        return Err(
+            "the reference names none of GRCh38's chromosomes (chr1 to chr22, chrX, chrY, chrM): not a GRCh38 reference"
+                .to_owned(),
+        );
     }
     Ok(())
 }
@@ -141,16 +150,25 @@ fn run(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<PathBuf, St
     Ok(target)
 }
 
-/// Writes `path` through a temporary file beside it, so a reader never sees
-/// half a file.
+/// Writes `path` through a temporary file of this process beside it, so a
+/// reader never sees half a file and two writers never share one.
 fn write_atomic(path: &Path, body: &[u8]) -> Result<(), String> {
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".part");
-    std::fs::write(&tmp, body).map_err(|e| format!("{}: {e}", path.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
+    tmp.push(format!(".{}.part", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    let written = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .and_then(|mut f| f.write_all(body))
+        .and_then(|()| std::fs::rename(&tmp, path));
+    written.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("{}: {e}", path.display())
+    })
 }
 
 /// Runs `og facts ARGS`; returns the exit code.

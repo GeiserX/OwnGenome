@@ -156,6 +156,9 @@ struct Ctx<'a> {
     warnings: Vec<String>,
     /// vcf_only: the run started from a VCF, so no read-level checks.
     vcf_only: bool,
+    /// What a finding the build left out does to the coverage map: the
+    /// gene (or `chrom:pos` locus) and a note naming the call.
+    left_out: Vec<(String, String)>,
 }
 
 impl Ctx<'_> {
@@ -168,6 +171,17 @@ impl Ctx<'_> {
 
     fn warn(&mut self, w: String) {
         self.warnings.push(w);
+    }
+
+    /// A finding the file cannot hold: a warning, and its gene (or locus)
+    /// is `partial` in the coverage map, so "no finding" never stands for
+    /// a call that was made and left out.
+    fn leave_out(&mut self, id: &str, call: &str, why: &str) {
+        self.warn(format!("{call}: left out, {why}"));
+        self.left_out.push((
+            id.to_owned(),
+            format!("{call} was left out of this file: {why}"),
+        ));
     }
 
     /// The VRS identifier of `chrom:pos ref>alt` on GRCh38.
@@ -253,14 +267,23 @@ fn clinvar_facts(ctx: &mut Ctx<'_>, sample: &str, dir: &Path, summary: &Value, f
             .unwrap_or_default()
             .to_owned();
         if !gene_ok(&gene) {
-            ctx.warn(format!("{at}: left out, no HGNC gene symbol ({gene:?})"));
+            let locus = format!("{chrom}:{pos}");
+            ctx.leave_out(
+                &locus,
+                &format!("{sig} {at}"),
+                &format!("no HGNC gene symbol ({gene:?})"),
+            );
             continue;
         }
         let zygosity = text(h, &["genotype"]).unwrap_or("unknown");
         let vrs_id = match ctx.vrs_id(chrom, pos, r, a) {
             Ok(id) => id,
             Err(e) => {
-                ctx.warn(format!("{gene} {at}: left out, no VRS identifier ({e})"));
+                ctx.leave_out(
+                    &gene,
+                    &format!("{sig} {gene} {at}"),
+                    &format!("no VRS identifier ({e})"),
+                );
                 continue;
             }
         };
@@ -277,9 +300,11 @@ fn clinvar_facts(ctx: &mut Ctx<'_>, sample: &str, dir: &Path, summary: &Value, f
         };
         let group = ctx.panels.sensitive_group(&gene).map(str::to_owned);
         if group.is_some() && !ctx.panels.in_sensitive_span(chrom, pos) {
-            ctx.warn(format!(
-                "{gene} {at}: left out, outside OwnHealth's span of {gene}, which gates its lookups"
-            ));
+            ctx.leave_out(
+                &gene,
+                &format!("{sig} {gene} {at}"),
+                &format!("outside OwnHealth's span of {gene}, which gates its lookups"),
+            );
             continue;
         }
         let stars = int(get(h, &["stars"])).unwrap_or(0).clamp(0, 4);
@@ -475,13 +500,20 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
             continue; // HLA comes from T1K (hla_facts)
         }
         let status = text(row, &["status"]).unwrap_or_default();
-        let mut diplotype = single_site(text(row, &["diplotype"]).unwrap_or_default());
+        let mut diplotype = text(row, &["diplotype"]).unwrap_or_default().to_owned();
         let mut phenotype = text(row, &["phenotype"]).unwrap_or_default().to_owned();
         let mut tools = vec![s("PharmCAT")];
-        let (mut conf, mut basis) = if ctx.vcf_only && gene == "CYP2D6" {
+        let (mut conf, mut basis) = if gene == "CYP2D6" {
+            // High only when two callers agree (below).
             (
-                "low",
-                "CYP2D6 from a VCF: copy number and hybrids are not seen".to_owned(),
+                if ctx.vcf_only { "low" } else { "medium" },
+                if ctx.vcf_only {
+                    "CYP2D6 from a VCF: copy number and hybrids are not seen".to_owned()
+                } else {
+                    format!(
+                        "PharmCAT {pharmcat}; not confirmed by two read-level callers that agree"
+                    )
+                },
             )
         } else {
             ("high", format!("PharmCAT {pharmcat} on the genome's calls"))
@@ -489,11 +521,14 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
         if gene == "CYP2D6" {
             let cyp = get(summary, &["cyp2d6"]);
             let consensus = cyp.and_then(|c| text(c, &["consensus", "result"]));
+            let passed = cyp.and_then(|c| get(c, &["consensus", "passed_to_pharmcat"]))
+                == Some(&Value::Bool(true));
             let probable = cyp
                 .and_then(|c| get(c, &["probable"]))
                 .filter(|p| matches!(p, Value::Object(_)));
             if let Some(c) = consensus
                 && cyp.and_then(|c| get(c, &["agree"])) == Some(&Value::Bool(true))
+                && (passed || status != "not called")
             {
                 let reason = cyp
                     .and_then(|c| text(c, &["consensus", "reason"]))
@@ -530,20 +565,43 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
                 format!("a defining site has a low genotype quality: {weakest}"),
             );
         }
+        // genomics.md 2.2 rule 1: a call without variants[] carries its own
+        // call_state; a one-site gene also cites its site.
+        let call_state = pgx_call_state(gene, &diplotype);
+        let site = ctx.panels.pgx_site(gene).cloned();
+        let shown = single_site(&diplotype);
+        let mut variants = Vec::new();
+        if let Some(site) = &site
+            && let Some(bases) = shown.strip_prefix(&format!("{} ", site.rsid))
+            && bases
+                .split('/')
+                .all(|b| !b.is_empty() && b.bytes().all(|x| b"ACGT".contains(&x)))
+        {
+            match site_variant(ctx, site, "called", bases) {
+                Ok(v) => variants.push(v),
+                Err(e) => ctx.warn(format!(
+                    "{gene}: {} not cited, no VRS identifier ({e})",
+                    site.rsid
+                )),
+            }
+        }
         let mut value = obj([]);
-        if term_ok(&diplotype, Some(gene)) {
-            put(&mut value, "diplotype", s(&diplotype));
+        if term_ok(&shown, Some(gene)) {
+            put(&mut value, "diplotype", s(&shown));
+        } else if !shown.is_empty() {
+            ctx.warn(format!(
+                "{gene}: diplotype {shown:?} left out, not a term OwnHealth reads"
+            ));
         }
         let pheno_ok = term_ok(&phenotype, Some(gene));
         if pheno_ok {
             put(&mut value, "phenotype", s(&phenotype));
-        }
-        if value == obj([]) {
+        } else if !phenotype.is_empty() {
             ctx.warn(format!(
-                "{gene}: left out, neither {diplotype:?} nor {phenotype:?} is a term OwnHealth reads"
+                "{gene}: phenotype {phenotype:?} left out, not a term OwnHealth reads"
             ));
-            continue;
         }
+        put(&mut value, "call_state", s(call_state));
         // PharmCAT's guidance for the diplotype it called (none for a
         // CYP2D6 call PharmCAT did not make).
         let mut dg = Vec::new();
@@ -582,7 +640,7 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
         } else {
             ("E2", "PharmCAT call; no CPIC guideline for this gene")
         };
-        let what = [diplotype.as_str(), phenotype.as_str()]
+        let what = [shown.as_str(), phenotype.as_str()]
             .iter()
             .filter(|x| !x.is_empty())
             .copied()
@@ -592,9 +650,16 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
             ("id", s(&fact_id("pgx", gene, gene))),
             ("category", s("pgx")),
             ("gene", s(gene)),
-            ("value", value),
-            ("summary", s(&clean_text(&format!("{gene} {what}.")))),
         ]);
+        if !variants.is_empty() {
+            put(&mut fact, "variants", Value::Array(variants));
+        }
+        put(&mut fact, "value", value);
+        put(
+            &mut fact,
+            "summary",
+            s(&clean_text(&format!("{gene} {what}."))),
+        );
         if !dg.is_empty() {
             put(&mut fact, "drug_guidance", Value::Array(dg));
         }
@@ -615,6 +680,30 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
         put(&mut fact, "sensitivity", obj([("level", s("normal"))]));
         put(&mut fact, "origin", origin(summary, "cpic", "27"));
         ctx.push(fact);
+    }
+}
+
+/// The call_state of a star-allele call: `ref` when every allele is the
+/// gene's reference allele as PharmCAT names it (`*1`, `Reference`, `B
+/// (reference)`, `rsN reference (X)`, CYP2C19 `*38`, NAT2 `*4`), `no_call`
+/// when an allele is unknown, else `alt`.
+pub fn pgx_call_state(gene: &str, diplotype: &str) -> &'static str {
+    let alleles: Vec<&str> = diplotype.split('/').map(str::trim).collect();
+    let unknown = |a: &str| {
+        a.is_empty() || a == "?" || matches!(a.to_lowercase().as_str(), "unknown" | "indeterminate")
+    };
+    let reference = |a: &str| {
+        a.to_lowercase().contains("reference")
+            || matches!(a, "*1" | "*1A" | "*1.001")
+            || (gene == "CYP2C19" && a == "*38")
+            || (gene == "NAT2" && a == "*4")
+    };
+    if alleles.iter().any(|a| unknown(a)) {
+        "no_call"
+    } else if alleles.iter().all(|a| reference(a)) {
+        "ref"
+    } else {
+        "alt"
     }
 }
 
@@ -649,15 +738,22 @@ fn hla_facts(ctx: &mut Ctx<'_>, summary: &Value) {
         let (Some(allele), Some(state)) = (text(a, &["allele"]), text(a, &["state"])) else {
             continue;
         };
-        let present = match state {
-            "present" => true,
-            "absent" => false,
-            _ => continue, // not determined: the coverage map says why
-        };
         let gene = format!("HLA-{}", allele.split('*').next().unwrap_or_default());
         if !gene_ok(&gene) {
             continue;
         }
+        let present = match state {
+            "present" => true,
+            "absent" => false,
+            _ => {
+                ctx.leave_out(
+                    &gene,
+                    &format!("HLA-{allele}"),
+                    "T1K's typing could not say whether it is present",
+                );
+                continue;
+            }
+        };
         let marker = format!("HLA-{allele}");
         let locus = list(hla, &["loci"])
             .iter()
@@ -689,6 +785,7 @@ fn hla_facts(ctx: &mut Ctx<'_>, summary: &Value) {
                     ("alleles", Value::Array(alleles)),
                     ("marker", s(&marker)),
                     ("present", Value::Bool(present)),
+                    ("call_state", s(if present { "alt" } else { "ref" })),
                 ]),
             ),
             (
@@ -951,20 +1048,28 @@ fn apoe_fact(ctx: &mut Ctx<'_>, summary: &Value) -> bool {
     true
 }
 
-/// Lp(a) from step 46 (the KIV-2 count) and step 42's two LPA sites.
-fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> bool {
+/// Lp(a) from step 46 (the KIV-2 count) and step 42's two LPA sites. Only
+/// what was read goes in: a site with no step 42 row is not cited, the risk
+/// allele count needs a called site, and with neither a KIV-2 count nor a
+/// called site there is no fact. `None` when written, else why not.
+fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> Option<&'static str> {
     let Some(lpa) = section(summary, "lpa") else {
-        return false;
+        return Some("the Lp(a) step (46) did not run");
     };
     let mut variants = Vec::new();
+    let mut called = Vec::new();
     for site in ctx.panels.lpa.clone() {
-        let row = list(lpa, &["variants"])
+        let Some(row) = list(lpa, &["variants"])
             .iter()
-            .find(|r| text(r, &["rsid"]) == Some(site.rsid.as_str()));
-        let status = row
-            .and_then(|r| text(r, &["status"]))
-            .unwrap_or("not_covered");
-        let genotype = row.and_then(|r| text(r, &["genotype"])).unwrap_or_default();
+            .find(|r| text(r, &["rsid"]) == Some(site.rsid.as_str()))
+        else {
+            continue;
+        };
+        let status = text(row, &["status"]).unwrap_or_default();
+        let genotype = text(row, &["genotype"]).unwrap_or_default();
+        if status == "called" {
+            called.push(site.rsid.clone());
+        }
         match site_variant(ctx, &site, status, genotype) {
             Ok(v) => variants.push(v),
             Err(e) => ctx.warn(format!(
@@ -973,21 +1078,44 @@ fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> bool {
             )),
         }
     }
+    let copies = (text(lpa, &["status"]) == Some("estimated"))
+        .then(|| number(get(lpa, &["kiv2_copies"])))
+        .flatten();
+    if copies.is_none() && called.is_empty() {
+        return Some(
+            "neither the KIV-2 count (step 46) nor the two LPA sites (step 42) could be read",
+        );
+    }
     let mut value = obj([]);
-    if let Some(n) = int(get(lpa, &["risk_alleles"])) {
+    let mut parts = Vec::new();
+    if !called.is_empty() {
+        let n = int(get(lpa, &["risk_alleles"])).unwrap_or(0);
         put(&mut value, "risk_alleles", Value::Int(n));
+        parts.push(format!(
+            "{n} risk allele{} at {}",
+            if n == 1 { "" } else { "s" },
+            called.join(" and ")
+        ));
     }
-    for (k, key) in [
-        ("kiv2_copies", "kiv2_copies"),
-        ("kiv2_ci95_low", "ci95_low"),
-        ("kiv2_ci95_high", "ci95_high"),
-    ] {
-        if let Some(x) = number(get(lpa, &[key])) {
-            put(&mut value, k, Value::Float(x));
+    if let Some(c) = copies {
+        put(&mut value, "kiv2_copies", Value::Float(c));
+        let (lo, hi) = (
+            number(get(lpa, &["ci95_low"])),
+            number(get(lpa, &["ci95_high"])),
+        );
+        let mut kiv2 = format!("KIV-2 about {c} copies");
+        if let (Some(lo), Some(hi)) = (lo, hi) {
+            put(&mut value, "kiv2_ci95_low", Value::Float(lo));
+            put(&mut value, "kiv2_ci95_high", Value::Float(hi));
+            kiv2.push_str(&format!(" (95% interval {lo} to {hi})"));
         }
+        if text(lpa, &["class"]) == Some("low") {
+            kiv2.push_str(", a low count; low counts go with a high Lp(a)");
+        }
+        parts.push(kiv2);
+    } else {
+        parts.push("KIV-2 count not estimated".to_owned());
     }
-    let flag = text(lpa, &["flag_text"]).unwrap_or_default();
-    let count = text(lpa, &["message"]).unwrap_or_default();
     let mut fact = obj([
         ("id", s(&fact_id("risk_marker", "LPA", "LPA"))),
         ("category", s("risk_marker")),
@@ -1000,7 +1128,7 @@ fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> bool {
     put(
         &mut fact,
         "summary",
-        s(&clean_text(&format!("Lp(a): {flag} KIV-2: {count}."))),
+        s(&clean_text(&format!("LPA: {}.", parts.join("; ")))),
     );
     put(
         &mut fact,
@@ -1011,16 +1139,15 @@ fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> bool {
             ("pmids", Value::Array(vec![Value::Int(20032323)])),
         ]),
     );
+    let basis = if copies.is_some() {
+        "KIV-2 count is a read-depth estimate with an interval"
+    } else {
+        "the two LPA sites only; the KIV-2 count was not estimated"
+    };
     put(
         &mut fact,
         "confidence",
-        obj([
-            ("level", s("medium")),
-            (
-                "basis",
-                s("KIV-2 count is a read-depth estimate with an interval"),
-            ),
-        ]),
+        obj([("level", s("medium")), ("basis", s(basis))]),
     );
     put(
         &mut fact,
@@ -1032,7 +1159,7 @@ fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> bool {
     put(&mut fact, "sensitivity", obj([("level", s("normal"))]));
     put(&mut fact, "origin", origin(summary, "lpa", "46"));
     ctx.push(fact);
-    true
+    None
 }
 
 /// One coverage row.
@@ -1131,6 +1258,25 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
     let hla = section(summary, "hla");
     let cyp2d6_probable =
         get(summary, &["cyp2d6", "probable"]).is_some_and(|p| matches!(p, Value::Object(_)));
+    // A gene counts as assessed by the ClinVar screen only with evidence
+    // that its reads were there: the callability catalogue ran, and the
+    // genome's mean depth reached its depth floor.
+    let min_depth = call
+        .and_then(|c| number(get(c, &["min_depth"])))
+        .unwrap_or(10.0);
+    let depth = section(summary, "coverage").and_then(|c| number(get(c, &["mean_depth"])));
+    let unproven: Option<(&str, String)> = match (call, depth) {
+        (None, _) => Some((
+            "not_run",
+            "gene callability (step 16b) did not run, so whether this gene was read is not known"
+                .to_owned(),
+        )),
+        (_, Some(d)) if d < min_depth => Some((
+            "low_depth",
+            format!("the genome's mean depth is {d}, below the {min_depth} reads a gene needs"),
+        )),
+        _ => None,
+    };
     let mut rows = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     let screen = |gene: &str, panel: &str| -> Value {
@@ -1144,9 +1290,17 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
                 Some("the ClinVar screen (step 06) did not run".to_owned()),
             );
         }
-        match unread.get(gene) {
-            Some(e) => callability_row(gene, panel, e),
-            None => cov(gene, panel, "assessed", None, None, None),
+        match (unread.get(gene), &unproven) {
+            (Some(e), _) => callability_row(gene, panel, e),
+            (None, Some((reason, note))) => cov(
+                gene,
+                panel,
+                "not_assessed",
+                Some(reason),
+                None,
+                Some(note.clone()),
+            ),
+            (None, None) => cov(gene, panel, "assessed", None, None, None),
         }
     };
     for (gene, _) in &ctx.panels.acmg {
@@ -1239,17 +1393,56 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
             rows.push(callability_row(gene, "callability", e));
         }
     }
+    // A call the file leaves out makes its gene partial, never "assessed,
+    // no finding"; a gene or locus no panel names gets a row of its own.
+    for (id, note) in &ctx.left_out {
+        let row = rows
+            .iter_mut()
+            .find(|r| text(r, &["id"]) == Some(id.as_str()));
+        match row {
+            Some(r) => {
+                if text(r, &["state"]) == Some("assessed") {
+                    put(r, "state", s("partial"));
+                    put(r, "reason", s("other"));
+                }
+                let n = match text(r, &["note"]) {
+                    Some(old) => format!("{old}; {note}"),
+                    None => note.clone(),
+                };
+                put(r, "note", s(&clean_text(&n)));
+            }
+            None => {
+                let mut r = cov(
+                    id,
+                    "other",
+                    "partial",
+                    Some("other"),
+                    None,
+                    Some(note.clone()),
+                );
+                if id.contains(':') {
+                    put(&mut r, "scope", s("locus"));
+                }
+                rows.push(r);
+            }
+        }
+    }
     rows
 }
 
 /// A locus the run did not assess, as a coverage row.
 fn locus(id: &str, why: &str) -> Value {
+    let reason = if why.contains("did not run") {
+        "not_run"
+    } else {
+        "other"
+    };
     obj([
         ("scope", s("locus")),
         ("id", s(id)),
         ("panel", s("other")),
         ("state", s("not_assessed")),
-        ("reason", s("not_run")),
+        ("reason", s(reason)),
         ("note", s(why)),
     ])
 }
@@ -1332,7 +1525,12 @@ pub fn build(
         Some("male") => "male",
         _ => "unknown",
     };
-    let reads = section(&summary, "read_count").is_some();
+    // Reads were there when a section that needs the BAM is: the read
+    // count (alignment), the depth (mosdepth) or the callability catalogue.
+    // A run that starts from a BAM has no read count but has the other two.
+    let reads = ["read_count", "coverage", "callability"]
+        .iter()
+        .any(|k| section(&summary, k).is_some());
     let mut ctx = Ctx {
         panels,
         genome,
@@ -1340,6 +1538,7 @@ pub fn build(
         ids: HashSet::new(),
         warnings: Vec::new(),
         vcf_only: !reads,
+        left_out: Vec::new(),
     };
     clinvar_facts(&mut ctx, sample, dir, &summary, declared == "female");
     pgx_facts(&mut ctx, dir, &summary);
@@ -1354,8 +1553,8 @@ pub fn build(
             "the traits panel (step 42) did not read both APOE sites",
         ));
     }
-    if !lpa {
-        cover.push(locus("LPA", "the Lp(a) step (46) did not run"));
+    if let Some(why) = lpa {
+        cover.push(locus("LPA", why));
     }
     if section(&summary, "prs").is_none() {
         cover.push(obj([

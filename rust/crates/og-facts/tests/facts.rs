@@ -61,8 +61,16 @@ fn hit(
     )
 }
 
+/// step 36's CYP2D6 block: PharmCAT made no call, pypgx a probable one.
+const CYP2D6_PROBABLE: &str = r#"{"calls":{"PharmCAT":"not called","pypgx":"*4/*5"},"agree":null,"consensus":null,
+    "probable":{"diplotype":"*4/*5","phenotype":"Poor Metabolizer","label":"probable (one caller: pypgx)"}}"#;
+
 /// Writes the invented sample folder and returns it.
 fn folder(name: &str, sections: &str) -> PathBuf {
+    folder_with(name, sections, CYP2D6_PROBABLE)
+}
+
+fn folder_with(name: &str, sections: &str, cyp2d6: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("og-facts-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     for d in ["vcf", "pharmcat", "clinvar"] {
@@ -87,8 +95,7 @@ fn folder(name: &str, sections: &str) -> PathBuf {
         "run":{{"declared_sex":"female"}},
         "manifest":[["run","pipeline_version","1.4.2"],["run","git_commit","abc1234"],
                     ["data","clinvar_file_date","2026-09-28 (clinvar/clinvar.vcf.gz)"],["image","x","y"]],
-        "cyp2d6":{{"calls":{{"PharmCAT":"not called","pypgx":"*4/*5"}},"agree":null,"consensus":null,
-                   "probable":{{"diplotype":"*4/*5","phenotype":"Poor Metabolizer","label":"probable (one caller: pypgx)"}}}},
+        "cyp2d6":{cyp2d6},
         "sections":{{{sections}}}}}"#
     );
     std::fs::write(dir.join("summary.json"), summary).unwrap();
@@ -112,7 +119,7 @@ fn full_sections() -> String {
         "read_count":{{"state":"ok","data":{{}}}},
         "coverage":{{"state":"ok","data":{{"mean_depth":31.5}}}},
         "clinvar":{{"state":"ok","source":"clinvar/{SAMPLE}_clinvar_hits.vcf","data":{{"call_floor":{{"GQ":30,"DP":10}},"hits":[
-            {},{},{},{},{}]}}}},
+            {},{},{},{},{},{},{}]}}}},
         "clinical":{{"state":"ok","data":{{"acmg_sf":{{"clinvar_hits":[{{"gene":"BRCA2","variant":"chr13:32320000 {}>{}"}}]}}}}}},
         "pharmcat":{{"state":"ok","source":"pharmcat/{SAMPLE}.report.json","data":{{"version":"3.4.0"}}}},
         "cpic":{{"state":"ok","source":"cpic/{SAMPLE}_phenotypes.tsv","data":{{"genes":[
@@ -120,6 +127,8 @@ fn full_sections() -> String {
             {{"gene":"ABCG2","diplotype":"rs2231142 reference (G)/rs2231142 reference (G)","phenotype":"Normal Function","status":"normal"}},
             {{"gene":"VKORC1","diplotype":"rs9923231 reference (C)/rs9923231 reference (C)","phenotype":"-1639 GG","status":"normal"}},
             {{"gene":"DPYD","diplotype":"Unknown/Unknown","phenotype":"No Result","status":"not called"}},
+            {{"gene":"CACNA1S","diplotype":"Reference/Reference","phenotype":"Uncertain Susceptibility","status":"normal"}},
+            {{"gene":"MT-RNR1","diplotype":"Reference","phenotype":"normal risk of aminoglycoside-induced hearing loss","status":"normal"}},
             {{"gene":"CYP2D6","diplotype":"Unknown/Unknown","phenotype":"No Result","status":"not called"}},
             {{"gene":"HLA-B","diplotype":"*57:01/*58:01","phenotype":"HLA-B*58:01 positive","status":"non-normal"}}]}}}},
         "hla":{{"state":"ok","source":"hla_t1k/{SAMPLE}_hla_genotype.tsv","data":{{"loci":[
@@ -138,7 +147,7 @@ fn full_sections() -> String {
             {{"rsid":"rs429358","genotype":"T/C","status":"called"}},
             {{"rsid":"rs7412","genotype":"C/C","status":"called"}},
             {{"rsid":"rs429358+rs7412","genotype":"e3/e4","status":"called","reading":"One e4."}}]}}}},
-        "lpa":{{"state":"ok","source":"lpa/{SAMPLE}_lpa_kiv2.tsv","data":{{"kiv2_copies":"37.0","ci95_low":"36.3","ci95_high":"37.8",
+        "lpa":{{"state":"ok","source":"lpa/{SAMPLE}_lpa_kiv2.tsv","data":{{"status":"estimated","kiv2_copies":"37.0","ci95_low":"36.3","ci95_high":"37.8",
             "risk_alleles":0,"message":"about 37 KIV-2 repeats","flag_text":"No genetic sign of a high Lp(a).","variants":[{}]}}}},
         "callability":{{"state":"ok","data":{{"not_read":[
             {{"gene":"PMS2","reasons":["segdup"],"share":0.81,"status":"not read"}},
@@ -174,6 +183,8 @@ fn full_sections() -> String {
             1,
             None
         ),
+        hit("chr13", 1_000_000, "BRCA2", "het", "Pathogenic", 2, None),
+        hit("chr2", 1_000, "", "het", "Pathogenic", 2, None),
         snv(32_320_000).0,
         snv(32_320_000).1,
         lpa.join(","),
@@ -183,7 +194,12 @@ fn full_sections() -> String {
 fn genome() -> Synth {
     let p = panels();
     let mut m = HashMap::new();
-    for s in p.apoe.iter().chain(&p.lpa) {
+    for s in p
+        .apoe
+        .iter()
+        .chain(&p.lpa)
+        .chain(p.pgx_sites.iter().map(|(_, s)| s))
+    {
         m.insert((s.chrom.clone(), s.pos - 1), s.ref_.as_bytes()[0]);
     }
     Synth(m)
@@ -264,8 +280,8 @@ fn every_variant_has_a_vrs_id_and_a_call_state() {
     }
     assert_eq!(
         n,
-        3 + 2 + 2,
-        "three ClinVar hits, APOE's two sites, LPA's two"
+        3 + 2 + 2 + 2,
+        "three ClinVar hits, APOE's two sites, LPA's two, the sites of ABCG2 and VKORC1"
     );
     let apoe = fact(&b, "risk_marker", "APOE");
     let states: Vec<&str> = arr(apoe[0], "variants")
@@ -476,8 +492,24 @@ fn coverage_names_every_panel_gene_once_with_its_state() {
         "not_run",
         "PharmCAT does not call COMT"
     );
-    assert_eq!(st(one("HLA-A"), &["state"]), "assessed");
+    // A call the file leaves out makes its gene partial, never "assessed".
+    let hla_a = one("HLA-A");
+    assert_eq!(
+        (st(hla_a, &["state"]), st(hla_a, &["reason"])),
+        ("partial", "other")
+    );
+    assert!(st(hla_a, &["note"]).contains("HLA-A*31:01"), "{hla_a:?}");
+    let brca2 = one("BRCA2");
+    assert_eq!(st(brca2, &["state"]), "partial");
+    assert!(st(brca2, &["note"]).contains("chr13:1000000"), "{brca2:?}");
+    assert!(st(one("CFTR"), &["note"]).contains("117300008"));
+    let nameless = one("chr2:1000");
+    assert_eq!(
+        (st(nameless, &["scope"]), st(nameless, &["state"])),
+        ("locus", "partial")
+    );
     assert_eq!(st(one("BRCA1"), &["state"]), "assessed");
+    assert_eq!(st(one("MT-RNR1"), &["state"]), "assessed");
     assert_eq!(
         (st(one("OR4F5"), &["panel"]), st(one("OR4F5"), &["state"])),
         ("callability", "not_assessed")
@@ -559,4 +591,220 @@ fn the_vendored_files_are_ownhealths_byte_for_byte() {
         n += 1;
     }
     assert_eq!(n, 2);
+}
+
+#[test]
+fn pgx_and_hla_facts_carry_their_call_state() {
+    let (b, _) = run("call-state", &full_sections());
+    let state = |gene: &str| -> String {
+        let f = fact(&b, "pgx", gene);
+        assert_eq!(f.len(), 1, "{gene}");
+        st(f[0], &["value", "call_state"]).to_owned()
+    };
+    // PharmCAT's reference alleles: Reference, *38 for CYP2C19, rsN reference (X).
+    assert_eq!(state("CACNA1S"), "ref");
+    assert_eq!(state("CYP2C19"), "ref");
+    assert_eq!(state("ABCG2"), "ref");
+    assert_eq!(state("VKORC1"), "ref");
+    assert_eq!(state("CYP2D6"), "alt", "*4/*5");
+    // A call whose words OwnHealth does not read is kept with its call_state.
+    assert_eq!(state("MT-RNR1"), "ref");
+    let mt = fact(&b, "pgx", "MT-RNR1")[0];
+    assert!(
+        get(mt, &["value", "diplotype"]).is_none() && get(mt, &["value", "phenotype"]).is_none()
+    );
+    // A one-site gene cites its site, which OwnHealth reads the call from.
+    let vk = arr(fact(&b, "pgx", "VKORC1")[0], "variants");
+    assert_eq!(vk.len(), 1);
+    assert_eq!(
+        (
+            st(&vk[0], &["rsid"]),
+            st(&vk[0], &["genotype", "call_state"]),
+            st(&vk[0], &["genotype", "gt"])
+        ),
+        ("rs9923231", "ref", "0/0")
+    );
+    assert!(st(&vk[0], &["vrs_id"]).starts_with("ga4gh:VA."));
+    assert!(arr(fact(&b, "pgx", "CYP2C19")[0], "variants").is_empty());
+    let hla: Vec<(&str, &str)> = fact(&b, "hla", "HLA-B")
+        .iter()
+        .map(|f| (st(f, &["value", "marker"]), st(f, &["value", "call_state"])))
+        .collect();
+    assert_eq!(hla, [("HLA-B*57:01", "ref"), ("HLA-B*58:01", "alt")]);
+    assert_eq!(og_facts::build::pgx_call_state("NAT2", "*4/*4"), "ref");
+    assert_eq!(og_facts::build::pgx_call_state("TPMT", "*1/*3A"), "alt");
+    assert_eq!(
+        og_facts::build::pgx_call_state("TPMT", "*1/Unknown"),
+        "no_call"
+    );
+}
+
+/// The sections of `full_sections` with `name`'s replaced by `with`, or
+/// dropped when `with` is empty.
+fn swap(name: &str, with: &str) -> String {
+    let all = full_sections();
+    let key = format!("\"{name}\":{{\"state\"");
+    let at = all.find(&key).unwrap_or_else(|| panic!("{name}"));
+    // The section runs to the comma before the next top-level key, or the end.
+    let rest = &all[at..];
+    let mut depth = 0i32;
+    let mut end = rest.len();
+    for (i, c) in rest.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = i + 1;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let tail = rest[end..]
+        .trim_start()
+        .strip_prefix(',')
+        .unwrap_or(&rest[end..]);
+    let head = all[..at].trim_end();
+    match (with.is_empty(), tail.trim().is_empty()) {
+        (true, true) => head.trim_end_matches(',').to_owned(),
+        (true, false) => format!("{head}{tail}"),
+        (false, true) => format!("{head}{with}"),
+        (false, false) => format!("{head}{with},{tail}"),
+    }
+}
+
+#[test]
+fn a_gene_is_assessed_only_with_evidence_that_it_was_read() {
+    let low = swap(
+        "coverage",
+        r#""coverage":{"state":"ok","data":{"mean_depth":0.11}}"#,
+    );
+    let (b, _) = run("low-depth", &low);
+    let brca1 = coverage(&b, "BRCA1")[0];
+    assert_eq!(
+        (st(brca1, &["state"]), st(brca1, &["reason"])),
+        ("not_assessed", "low_depth")
+    );
+    assert!(st(brca1, &["note"]).contains("0.11"), "{brca1:?}");
+    let (b, _) = run("no-callability", &swap("callability", ""));
+    let brca1 = coverage(&b, "BRCA1")[0];
+    assert_eq!(
+        (st(brca1, &["state"]), st(brca1, &["reason"])),
+        ("not_assessed", "not_run")
+    );
+    let (b, _) = run("read", &full_sections());
+    assert_eq!(st(coverage(&b, "BRCA1")[0], &["state"]), "assessed");
+}
+
+#[test]
+fn a_run_from_a_bam_has_reads_and_a_vcf_only_run_is_capped() {
+    // No read count (alignment was skipped), but mosdepth and callability ran.
+    let (b, _) = run("from-bam", &swap("read_count", ""));
+    assert_eq!(st(&b.doc, &["assay", "type"]), "wgs");
+    assert_eq!(
+        st(fact(&b, "carrier", "CFTR")[0], &["confidence", "level"]),
+        "high"
+    );
+    let vcf_only = swap("callability", "");
+    let vcf_only = vcf_only
+        .replace(r#""read_count":{"state":"ok","data":{}},"#, "")
+        .replace(
+            r#""coverage":{"state":"ok","data":{"mean_depth":31.5}},"#,
+            "",
+        );
+    let (b, _) = run("vcf-only", &vcf_only);
+    assert_eq!(st(&b.doc, &["assay", "type"]), "vcf_only");
+    let cftr = fact(&b, "carrier", "CFTR")[0];
+    assert_eq!(st(cftr, &["confidence", "level"]), "medium");
+    assert!(st(cftr, &["confidence", "basis"]).contains("VCF given as input"));
+    assert_eq!(
+        st(fact(&b, "pgx", "CYP2D6")[0], &["confidence", "level"]),
+        "low"
+    );
+    assert_eq!(st(coverage(&b, "BRCA1")[0], &["state"]), "not_assessed");
+}
+
+#[test]
+fn lpa_states_only_what_was_read() {
+    let (b, _) = run("lpa", &full_sections());
+    let lpa = fact(&b, "risk_marker", "LPA")[0];
+    assert_eq!(get(lpa, &["value", "risk_alleles"]), Some(&Value::Int(0)));
+    assert!(!st(lpa, &["summary"]).contains("Measure"), "{lpa:?}");
+    assert!(
+        st(lpa, &["summary"]).contains("KIV-2 about 37 copies (95% interval 36.3 to 37.8)"),
+        "{lpa:?}"
+    );
+    // Step 46 ran but read neither the KIV-2 count nor the sites (no traits table).
+    let unread = swap(
+        "lpa",
+        r#""lpa":{"state":"ok","source":"lpa/x.tsv","data":{"status":"not assessed","kiv2_copies":".","risk_alleles":0,"variants":[]}}"#,
+    );
+    let (b, _) = run("lpa-unread", &unread);
+    assert!(fact(&b, "risk_marker", "LPA").is_empty());
+    let row = coverage(&b, "LPA")[0];
+    assert_eq!(
+        (st(row, &["state"]), st(row, &["reason"])),
+        ("not_assessed", "other")
+    );
+    // The KIV-2 count without the traits table: no sites, no risk allele count.
+    let kiv2 = swap(
+        "lpa",
+        r#""lpa":{"state":"ok","source":"lpa/x.tsv","data":{"status":"estimated","kiv2_copies":"37.0","risk_alleles":0,"variants":[]}}"#,
+    );
+    let (b, _) = run("lpa-kiv2", &kiv2);
+    let lpa = fact(&b, "risk_marker", "LPA")[0];
+    assert!(get(lpa, &["value", "risk_alleles"]).is_none(), "{lpa:?}");
+    assert!(get(lpa, &["variants"]).is_none(), "{lpa:?}");
+}
+
+#[test]
+fn cyp2d6_is_high_only_when_two_callers_agree() {
+    let called = full_sections().replace(
+        r#"{"gene":"CYP2D6","diplotype":"Unknown/Unknown","phenotype":"No Result","status":"not called"}"#,
+        r#"{"gene":"CYP2D6","diplotype":"*1/*4","phenotype":"Intermediate Metabolizer","status":"non-normal"}"#,
+    );
+    let disagree = r#"{"calls":{"PharmCAT":"*1/*4","pypgx":"*1/*4","Cyrius":"*1/*1"},"agree":false,
+        "consensus":{"result":"*1/*4","passed_to_pharmcat":true,"reason":"x","source":null},"probable":null}"#;
+    let dir = folder_with("d6-disagree", &called, disagree);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    assert_eq!(
+        st(fact(&b, "pgx", "CYP2D6")[0], &["confidence", "level"]),
+        "medium"
+    );
+    // Two callers agree, but step 36 withheld the call (its depth check failed): no fact.
+    let withheld = r#"{"calls":{"PharmCAT":"not called","pypgx":"*1/*1","Cyrius":"*1/*1"},"agree":true,
+        "consensus":{"result":"indeterminate","passed_to_pharmcat":false,"reason":"the depth check failed","source":null},"probable":null}"#;
+    let dir = folder_with("d6-withheld", &full_sections(), withheld);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    assert!(fact(&b, "pgx", "CYP2D6").is_empty());
+    let agree = r#"{"calls":{"PharmCAT":"*1/*4","pypgx":"*1/*4","Cyrius":"*1/*4"},"agree":true,
+        "consensus":{"result":"*1/*4","passed_to_pharmcat":true,"reason":"pypgx and Cyrius agree","source":null},"probable":null}"#;
+    let dir = folder_with("d6-agree", &called, agree);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    assert_eq!(
+        st(fact(&b, "pgx", "CYP2D6")[0], &["confidence", "level"]),
+        "high"
+    );
+}
+
+#[test]
+fn a_reference_without_grch38_names_is_refused() {
+    let dir = std::env::temp_dir().join(format!("og-facts-{}-b37", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let fa = dir.join("ref.fa");
+    std::fs::write(&fa, b">1\nACGT\n").unwrap();
+    std::fs::write(dir.join("ref.fa.fai"), b"1\t4\t3\t4\t5\n").unwrap();
+    let idx = og_intervals::fasta::Indexed::open(&fa).unwrap();
+    let e = og_facts::check_build(&idx, &panels()).unwrap_err();
+    assert!(e.contains("none of GRCh38's chromosomes"), "{e}");
+    std::fs::write(&fa, b">chrM\nACGT\n").unwrap();
+    std::fs::write(dir.join("ref.fa.fai"), b"chrM\t4\t6\t4\t5\n").unwrap();
+    let idx = og_intervals::fasta::Indexed::open(&fa).unwrap();
+    assert!(
+        og_facts::check_build(&idx, &panels())
+            .unwrap_err()
+            .contains("16569")
+    );
 }

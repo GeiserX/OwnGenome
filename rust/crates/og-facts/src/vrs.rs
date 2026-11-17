@@ -78,6 +78,18 @@ fn trim_right(a: &[u8], b: &[u8]) -> usize {
         .count()
 }
 
+/// An `N` where an indel rolls: the no-ALT analysis set masks stretches
+/// that GRCh38 itself holds, so the roll would stop where GRCh38's would
+/// not, and the location would differ from the one the identifier names.
+fn masked(base: &[u8], pos: u64) -> Result<(), String> {
+    if base.first() == Some(&b'N') {
+        return Err(format!(
+            "the reference has N at {pos}, where the indel rolls: masked or a gap, so GRCh38's bases are not known"
+        ));
+    }
+    Ok(())
+}
+
 /// How far `allele` rolls left from `ref_pos` (the base before it), at
 /// most to 0; `ref_pos` is `start - 1`, so `None` when the allele starts
 /// the chromosome.
@@ -86,6 +98,7 @@ fn roll_left(seq: &mut dyn Bases, allele: &[u8], start: u64) -> Result<u64, Stri
     let mut d = 0u64;
     while d < start {
         let base = seq.get(start - 1 - d, start - d)?;
+        masked(&base, start - d)?;
         // Python's a[-(d + 1) % n]
         let i = (n - 1 - d % n) as usize;
         if base.first() != Some(&allele[i]) {
@@ -103,6 +116,7 @@ fn roll_right(seq: &mut dyn Bases, allele: &[u8], end: u64) -> Result<u64, Strin
     let mut d = 0u64;
     while end + d < len {
         let base = seq.get(end + d, end + d + 1)?;
+        masked(&base, end + d + 1)?;
         if base.first() != Some(&allele[(d % n) as usize]) {
             break;
         }
@@ -255,10 +269,15 @@ mod tests {
         }
     }
 
+    /// GRCh38 chr19's refget identifier, public (vrs-python's docstring).
+    const CHR19: &str = "SQ.F-LrLMe1SRpfUZHkQmvkVKFEGaoDeHul";
+
     #[test]
     fn digest_matches_the_vrs_example() {
         // The location of ga4gh.core's ga4gh_digest docstring (vrs-python 2.3.3).
-        let loc = r#"{"end":44908822,"sequenceReference":{"refgetAccession":"SQ.F-LrLMe1SRpfUZHkQmvkVKFEGaoDeHul","type":"SequenceReference"},"start":44908821,"type":"SequenceLocation"}"#;
+        let loc = format!(
+            r#"{{"end":44908822,"sequenceReference":{{"refgetAccession":"{CHR19}","type":"SequenceReference"}},"start":44908821,"type":"SequenceLocation"}}"#
+        );
         assert_eq!(
             sha512t24u(loc.as_bytes()),
             "4t6JnYWqHwYw9WzBT_lmWBb3tLQNalkT"
@@ -518,6 +537,16 @@ mod tests {
         assert!(normalize(&mut Mem(SEQ.to_vec()), 2, "A", "A").is_err());
         assert!(normalize(&mut Mem(SEQ.to_vec()), 2, "A", "<DEL>").is_err());
         assert!(normalize(&mut Mem(SEQ.to_vec()), 31, "CC", "C").is_err());
+    }
+
+    #[test]
+    fn refuses_to_roll_an_indel_into_a_masked_base() {
+        // The A run of a one-base deletion reaches an N: GRCh38's own
+        // bases there are not known, so no location is stated.
+        let e = normalize(&mut Mem(b"GAAAANAAAG".to_vec()), 1, "GA", "G").unwrap_err();
+        assert!(e.contains("N at 6"), "{e}");
+        let ok = normalize(&mut Mem(b"GAAAACAAAG".to_vec()), 1, "GA", "G").unwrap();
+        assert_eq!((ok.start, ok.end), (1, 5));
     }
 
     #[test]

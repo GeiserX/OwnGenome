@@ -1,7 +1,7 @@
 //! The fixed lists `og facts` reads from `assets/`: the panels the coverage
 //! map names (ACMG SF v3.3, the CPIC genes, the carrier genes), OwnHealth's
-//! sensitive gene spans, the GRCh38 refget identifiers, the APOE sites and
-//! the two LPA sites of the traits panel.
+//! sensitive gene spans, the GRCh38 refget identifiers, the APOE sites, the
+//! two LPA sites of the traits panel and the site of each one-site PGx gene.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -61,7 +61,17 @@ pub struct Panels {
     pub apoe: Vec<Site>,
     /// The LPA sites of the traits panel (rs10455872, rs3798220).
     pub lpa: Vec<Site>,
+    /// The site of each one-site PGx gene, which a PGx fact cites.
+    pub pgx_sites: Vec<(String, Site)>,
 }
+
+/// The PGx genes PharmCAT calls from one site, GRCh38 (PharmCAT's allele
+/// definitions): gene, rsid, chromosome, position, reference, alternate.
+const PGX_SITES: [(&str, &str, &str, u64, &str, &str); 3] = [
+    ("ABCG2", "rs2231142", "chr4", 88_131_171, "G", "T"),
+    ("IFNL3", "rs12979860", "chr19", 39_248_147, "C", "T"),
+    ("VKORC1", "rs9923231", "chr16", 31_096_368, "C", "T"),
+];
 
 /// The rows of a TSV as maps from header names, `#` lines skipped.
 fn rows(path: &Path) -> Result<Vec<HashMap<String, String>>, String> {
@@ -177,7 +187,30 @@ impl Panels {
                 });
             }
         }
+        p.pgx_sites = PGX_SITES
+            .iter()
+            .map(|(gene, rsid, chrom, pos, r, a)| {
+                (
+                    (*gene).to_owned(),
+                    Site {
+                        rsid: (*rsid).to_owned(),
+                        chrom: (*chrom).to_owned(),
+                        pos: *pos,
+                        ref_: (*r).to_owned(),
+                        alt: (*a).to_owned(),
+                    },
+                )
+            })
+            .collect();
         Ok(p)
+    }
+
+    /// The site of a one-site PGx gene.
+    pub fn pgx_site(&self, gene: &str) -> Option<&Site> {
+        self.pgx_sites
+            .iter()
+            .find(|(g, _)| g == gene)
+            .map(|(_, s)| s)
     }
 
     /// The sensitive group of `gene`, when OwnHealth lists it.
