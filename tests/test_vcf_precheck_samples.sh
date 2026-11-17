@@ -39,44 +39,53 @@ if sed -n '/^    script:/,/^    stub:/p' "${REPO}/modules/local/vcf_precheck/mai
 fi
 pass "VCF_PRECHECK escapes literal dollar signs for Groovy"
 
-python3 - "${REPO}/modules/local/vcf_precheck/main.nf" "${WORK}/precheck.sh" <<'PY'
-import re, sys, textwrap
-src, out = sys.argv[1], sys.argv[2]
-text = open(src).read()
-m = re.search(r'\n    script:\n(.*?)\n    """\n(.*?)\n    """\n\n    stub:', text, re.S)
-if not m:
-    sys.exit("could not find the script: block of VCF_PRECHECK")
-body = m.group(2)
 # The Groovy values the block interpolates. A new one fails here, so this
-# test is updated instead of running a script with a hole in it.
-values = {
-    'vcf': 'input.vcf.gz',
-    'vcf.name': 'input.vcf.gz',
-    'meta.id': 'S1',
-    'allow_unfiltered': 'false',
-    'task.process': 'VCF_PRECHECK',
-    'reference': 'ref.fa',
-    'reference_fai': 'ref.fa.fai',
-}
-def interp(mo):
-    expr = mo.group(1)
-    if expr.startswith('task.container'):
-        return 'test'
-    if expr not in values:
-        sys.exit("unknown Groovy value in the script: block: ${%s}" % expr)
-    return values[expr]
-# Groovy escapes in a triple-quoted GString, then ${...} that is not escaped.
-escapes = {'\\': '\\', '$': '\0DOLLAR\0', 'n': '\n', 't': '\t', '"': '"', "'": "'"}
-def unescape(mo):
-    c = mo.group(1)
-    if c not in escapes:
-        sys.exit("unexpected Groovy escape \\%s in the script: block" % c)
-    return escapes[c]
-body = re.sub(r'\\(.)', unescape, body)
-body = re.sub(r'\$\{([^}]*)\}', interp, body)
-body = body.replace('\0DOLLAR\0', '$')
-open(out, 'w').write(textwrap.dedent(body) + '\n')
-PY
+# test is updated instead of running a script with a hole in it. Groovy's
+# escapes in a triple-quoted GString go first (an unknown one is refused),
+# then each ${...} that is not escaped; then the common indent comes off.
+# shellcheck disable=SC2016  # the dollar signs are awk's and Groovy's
+awk '
+  function die(m) { print m > "/dev/stderr"; bad = 1; exit 1 }
+  { text = text "\n" $0 }
+  END {
+    if (bad) exit 1
+    text = text "\n"
+    q = "\n    \"\"\"\n"
+    a = index(text, "\n    script:\n")
+    if (a) { rest = substr(text, a + 13); o = index(rest, q) }
+    if (a && o) { rest = substr(rest, o + length(q) - 1); c = index(rest, q "\n    stub:") }
+    if (!a || !o || !c) die("could not find the script: block of VCF_PRECHECK")
+    body = substr(rest, 2, c - 2)
+    v["vcf"] = "input.vcf.gz"; v["vcf.name"] = "input.vcf.gz"; v["meta.id"] = "S1"
+    v["allow_unfiltered"] = "false"; v["task.process"] = "VCF_PRECHECK"
+    v["reference"] = "ref.fa"; v["reference_fai"] = "ref.fa.fai"
+    esc["\\"] = "\\"; esc["$"] = "$"; esc["n"] = "\n"; esc["t"] = "\t"; esc["\""] = "\""; esc["\047"] = "\047"
+    out = ""; n = length(body)
+    for (i = 1; i <= n; i++) {
+      ch = substr(body, i, 1)
+      if (ch == "\\" && i < n && substr(body, i + 1, 1) != "\n") {
+        nx = substr(body, i + 1, 1)
+        if (!(nx in esc)) die("unexpected Groovy escape \\" nx " in the script: block")
+        out = out esc[nx]; i++
+      } else if (substr(body, i, 2) == "${" && (j = index(substr(body, i + 2), "}"))) {
+        e = substr(body, i + 2, j - 1)
+        if (e ~ /^task\.container/) out = out "test"
+        else if (e in v) out = out v[e]
+        else die("unknown Groovy value in the script: block: ${" e "}")
+        i += j + 1
+      } else out = out ch
+    }
+    # textwrap.dedent: the common leading whitespace of the lines that are
+    # not blank comes off every line; blank lines become empty.
+    k = split(out, L, "\n"); margin = ""; first = 1
+    for (i = 1; i <= k; i++) {
+      if (L[i] !~ /[^ \t]/) continue
+      match(L[i], /^[ \t]*/); w = substr(L[i], 1, RLENGTH)
+      if (first) { margin = w; first = 0 }
+      else while (substr(w, 1, length(margin)) != margin) margin = substr(margin, 1, length(margin) - 1)
+    }
+    for (i = 1; i <= k; i++) print (L[i] ~ /[^ \t]/ ? substr(L[i], length(margin) + 1) : "")
+  }' "${REPO}/modules/local/vcf_precheck/main.nf" > "${WORK}/precheck.sh"
 
 # --- a fake bcftools, from the plain-text VCF beside the input -----------------
 mkdir -p "${WORK}/bin"
@@ -125,18 +134,24 @@ chmod +x "${WORK}/bin/bcftools"
 # --- a small reference -------------------------------------------------------
 # chr1 and chrM, every base G except the REF bases of the fixture's three
 # records: chr1:10000100 A, chr1:10000200 C, chrM:100 T.
-python3 - "${WORK}/ref.fa" <<'PY2'
-import sys
-seqs = {'chr1': (10001500, {10000100: 'A', 10000200: 'C'}), 'chrM': (16569, {100: 'T'})}
-with open(sys.argv[1], 'w') as fa, open(sys.argv[1] + '.fai', 'w') as fai:
-    for name, (n, bases) in seqs.items():
-        s = bytearray(b'G' * n)
-        for pos, b in bases.items():
-            s[pos - 1] = ord(b)
-        fa.write('>%s\n' % name)
-        fai.write('%s\t%d\t%d\t%d\t%d\n' % (name, n, fa.tell(), n, n + 1))
-        fa.write(s.decode() + '\n')
-PY2
+awk -v fa="${WORK}/ref.fa" -v fai="${WORK}/ref.fa.fai" '
+  # seq NAME LENGTH: NAME of LENGTH bases, all G but those in base[]
+  function seq(name, len,   s, p) {
+    s = "G"
+    while (length(s) < len) s = s s
+    s = substr(s, 1, len)
+    for (p in base) if (p + 0 <= len) s = substr(s, 1, p - 1) base[p] substr(s, p + 1)
+    printf ">%s\n", name > fa
+    off += length(name) + 2
+    printf "%s\t%d\t%d\t%d\t%d\n", name, len, off, len, len + 1 > fai
+    printf "%s\n", s > fa
+    off += len + 1
+    split("", base)
+  }
+  BEGIN {
+    base[10000100] = "A"; base[10000200] = "C"; seq("chr1", 10001500)
+    base[100] = "T"; seq("chrM", 16569)
+  }'
 
 # run_precheck VCF_TEXT_FILE: run the block in a fresh task directory; sets OUT, RC
 run_precheck() {
