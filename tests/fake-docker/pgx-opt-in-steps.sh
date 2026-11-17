@@ -26,6 +26,7 @@
 # ok by default) and interrupt (the caller writes its result, then fails).
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
+"${REPO_ROOT}/bin/og" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
 
 export GENOME_DIR="${CASE_WORK}/genome"
 G=$GENOME_DIR

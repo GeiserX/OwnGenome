@@ -26,11 +26,11 @@ eval "$SRC"
 command -v curl >/dev/null || fail "curl is needed"
 
 # free_port: a port on 127.0.0.1 that nothing answers on (bash's /dev/tcp
-# connect is refused), picked at random from 20000 to 59999.
+# connect is refused), picked at random from 20000 to 52767.
 free_port() {
   local p
   for _ in $(seq 100); do
-    p=$((20000 + RANDOM % 40000))
+    p=$((20000 + RANDOM % 32768))
     if ! (exec 3<> "/dev/tcp/127.0.0.1/${p}") 2> /dev/null; then echo "$p"; return; fi
   done
   fail "no free port on 127.0.0.1"

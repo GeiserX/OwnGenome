@@ -61,7 +61,7 @@ mask_checks() {
   if grep -q '/pgp-bin/og setup mask-fasta "$(basename "$src")" "$(basename "$bed")" "$(basename "$dest").part"' <<< "$body" \
      && grep -q -- '-w "$(cpath "$dir")"' <<< "$body"; then echo og; fi
   if grep -q 'rust/og.sh" check --required' <<< "$body" && grep -q 'rust/og.sh" install' <<< "$body"; then echo built; fi
-  if ! grep -q 'MASK_FASTA_PY' <<< "$body" && ! grep -q '^MASK_FASTA_PY=' "$1"; then echo nopy; fi
+  if ! grep -Eq 'MASK_FASTA_PY|pyth[o]n3 -c' <<< "$body" && ! grep -q '^MASK_FASTA_PY=' "$1"; then echo nopy; fi
 }
 GOT=$(mask_checks "$SETUP")
 if grep -qx og <<< "$GOT"; then
