@@ -24,7 +24,9 @@ set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 WORK=$(mktemp -d)
 SRV=""
-trap '[ -z "$SRV" ] || { kill "$SRV"; wait "$SRV"; } 2>/dev/null; rm -rf "$WORK"' EXIT
+# The killed server's wait returns 143; under set -e that would become the
+# test's exit status, so the stop never fails the trap.
+trap '[ -z "$SRV" ] || { kill "$SRV"; wait "$SRV"; } 2>/dev/null || true; rm -rf "$WORK"' EXIT
 export FETCH_WAIT=0
 
 # The served file, a real gzip so the gzip -t check has something to pass.
