@@ -483,11 +483,19 @@ impl Pass<'_> {
                 ch.de_novo.push(row);
             }
         }
-        // compound heterozygote candidates
-        if het && let Some(table) = self.cands.get(&ch.name) {
-            let ai = if cg[0] == 0 { cg[1] } else { cg[0] };
-            let alt = allele(cols, ai, path, line)?;
-            if let Some(genes) = table.get(&(chrom.to_vec(), pos, cols[3].to_vec(), alt.to_vec())) {
+        // compound heterozygote candidates: each ALT of a call with two
+        // different alleles, 0/1 or 1/2 (GLnexus leaves multiallelic records
+        // unsplit, the candidate VCF has one record per ALT)
+        if cg.len() == 2
+            && cset.len() == 2
+            && let Some(table) = self.cands.get(&ch.name)
+        {
+            for &ai in cset.iter().filter(|&&a| a != 0) {
+                let alt = allele(cols, ai, path, line)?;
+                let Some(genes) = table.get(&(chrom.to_vec(), pos, cols[3].to_vec(), alt.to_vec()))
+                else {
+                    continue;
+                };
                 let first = if cols[3] == alt {
                     0
                 } else {
