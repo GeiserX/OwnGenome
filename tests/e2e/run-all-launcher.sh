@@ -93,12 +93,14 @@ rm -rf "$ENG" "$G3"; mkdir -p "${ENG}/bin" "${G3}/reference" "${G3}/${E}/vcf"
 : > "${G3}/${E}/vcf/${E}.vcf.gz"; : > "${G3}/${E}/vcf/${E}.vcf.gz.tbi"
 cat > "${ENG}/bin/docker" <<'SH'
 #!/usr/bin/env bash
-# docker info prints ENGINE_INFO; anything else goes to the next docker on PATH.
+# docker info prints ENGINE_INFO; anything else goes to the docker on PATH without this folder. The
+# folder leaves PATH too: the e2e job's own shim (tests/e2e/bin/docker) skips only its own folder, so
+# it would find this one again, and the two would exec each other forever.
 if [ "${1:-}" = info ]; then echo "$ENGINE_INFO"; exit 0; fi
-self=$(cd "$(dirname "$0")" && pwd)
+self=$(cd "$(dirname "$0")" && pwd) rest=""
 IFS=: read -r -a dirs <<< "$PATH"
-for d in "${dirs[@]}"; do if [ "$d" != "$self" ] && [ -x "${d}/docker" ]; then exec "${d}/docker" "$@"; fi; done
-echo "docker shim: no real docker on PATH" >&2; exit 127
+for d in "${dirs[@]}"; do [ "$d" = "$self" ] || rest+="${rest:+:}${d}"; done
+PATH=$rest exec docker "$@"
 SH
 cat > "${ENG}/bin/nextflow" <<'SH'
 #!/usr/bin/env bash
