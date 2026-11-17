@@ -944,8 +944,9 @@ fn a_reference_without_grch38_names_is_refused() {
 }
 
 #[test]
-fn a_hit_naming_several_genes_is_filed_under_the_gene_its_rule_names() {
-    // ClinVar names two genes; step 23 reports the hit under BRCA1, its ACMG SF gene.
+fn a_hit_naming_several_genes_is_filed_under_the_gene_step_23_names() {
+    // ClinVar names two genes, both on the carrier list (an invented pair);
+    // step 23 reports the hit under the second, BRCA1, its ACMG SF gene.
     let (r, a) = snv(43_050_000);
     let sections = full_sections()
         .replace(
@@ -963,7 +964,7 @@ fn a_hit_naming_several_genes_is_filed_under_the_gene_its_rule_names() {
                 hit(
                     "chr17",
                     43_050_000,
-                    "NBR2,BRCA1",
+                    "G6PC1,BRCA1",
                     "het",
                     "Pathogenic",
                     2,
@@ -972,11 +973,35 @@ fn a_hit_naming_several_genes_is_filed_under_the_gene_its_rule_names() {
             ),
             1,
         );
-    let (b, _) = run("several-genes", &sections);
+    let (b, _) = run("several-genes-sf", &sections);
     assert_eq!(fact(&b, "acmg_sf", "BRCA1").len(), 1, "{:?}", facts(&b));
-    assert!(facts(&b).iter().all(|f| st(f, &["gene"]) != "NBR2"));
+    assert!(facts(&b).iter().all(|f| st(f, &["gene"]) != "G6PC1"));
     // The variant alone is not enough: BRCA2's hit, off step 23's list here, is not ACMG SF.
     assert_eq!(fact(&b, "acmg_sf", "BRCA2").len(), 0);
+}
+
+#[test]
+fn a_hit_naming_several_genes_is_filed_under_the_one_on_the_carrier_list() {
+    // ClinVar names NBR2, on no list, before CFTR, on the carrier list.
+    let pos = 117_300_100;
+    let sections = full_sections().replacen(
+        "\"hits\":[",
+        &format!(
+            "\"hits\":[{},",
+            hit("chr7", pos, "NBR2,CFTR", "het", "Pathogenic", 2, None)
+        ),
+        1,
+    );
+    let (b, _) = run("several-genes-carrier", &sections);
+    let at = format!("rs999{pos}");
+    assert!(
+        fact(&b, "carrier", "CFTR")
+            .iter()
+            .any(|f| format!("{f:?}").contains(&at)),
+        "{:?}",
+        facts(&b)
+    );
+    assert!(facts(&b).iter().all(|f| st(f, &["gene"]) != "NBR2"));
 }
 
 #[test]
