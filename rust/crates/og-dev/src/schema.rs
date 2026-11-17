@@ -393,8 +393,6 @@ fn repr60(v: &Value) -> String {
     repr(v).chars().take(60).collect()
 }
 
-/// Equal by JSON type: a bool never equals a number, an int equals a float
-/// of the same value, objects compare as sets of keys.
 /// Python's order of two numbers: an int and a float compare exactly, never
 /// through f64 (2**53 + 1 != 2.0**53); None for NaN or a non-number.
 fn num_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
@@ -425,6 +423,9 @@ fn num_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
         _ => None,
     }
 }
+
+/// Equal by JSON type: a bool never equals a number, an int equals a float
+/// of the same value, objects compare as sets of keys.
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Int(_), Value::Float(_)) | (Value::Float(_), Value::Int(_)) => {
