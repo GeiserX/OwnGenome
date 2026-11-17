@@ -963,3 +963,44 @@ fn the_eklipse_image_is_pinned_by_digest_and_names_its_upstream_commit() {
         "{line}"
     );
 }
+
+/// og summary collect and og-render each hold the candidate cap
+/// (`MAX_CANDIDATES`). The collect one is private, so this checks the rule
+/// they share instead of the two numbers: at quality 0, the report says "no
+/// confident call" exactly when collect cut the candidates down. A change to
+/// one cap and not the other makes one count of candidates disagree.
+#[test]
+fn the_report_withholds_an_allele_exactly_when_collect_cut_its_candidates() {
+    let work = scratch("hla-cap");
+    let mut seen = (false, false);
+    for n in 1..=6 {
+        let cands: Vec<String> = (1..=n).map(|i| format!("A*01:{i:02}")).collect();
+        let cands = cands.join(",");
+        let json = hla_summary(&work, &format!("n{n}"), &[("HLA-A", &cands, 0, None)]);
+        let v = loads(&json).expect("json");
+        let Value::Array(loci) = at(&v, &["sections", "hla", "data", "loci"]) else {
+            panic!("no loci");
+        };
+        let a = loci
+            .iter()
+            .find(|l| s(at(l, &["gene"])) == "HLA-A")
+            .expect("HLA-A");
+        let Value::Array(kept) = at(a, &["alleles"]) else {
+            panic!("no alleles");
+        };
+        let cut = s(&kept[0]) != cands;
+        let withheld = hla::hla_text(a)
+            .expect("the HLA line")
+            .contains("no confident call");
+        assert_eq!(
+            cut, withheld,
+            "{n} candidates: collect cut them {cut}, the report withholds {withheld}"
+        );
+        if cut {
+            seen.0 = true;
+        } else {
+            seen.1 = true;
+        }
+    }
+    assert_eq!(seen, (true, true), "1 to 6 candidates must cross the cap");
+}

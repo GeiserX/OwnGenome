@@ -12,7 +12,8 @@ use crate::sections::pgx::{items, left, or_text, text_of};
 use crate::text;
 
 /// A quality-0 allele with more candidates than this reads "no confident
-/// call" (og summary collect keeps this many of them).
+/// call" (og summary collect keeps this many of them; its own copy is
+/// private, so tests/port_report_pgx.rs checks the two caps agree).
 pub const MAX_CANDIDATES: f64 = 3.0;
 
 /// T1K's quality as a number; one that is not a number counts as -1, as in
