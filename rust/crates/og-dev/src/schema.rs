@@ -6,7 +6,11 @@
 //! `additionalProperties` (a schema, `true` or `false`), `items`,
 //! `minItems`, `maxItems`, `minimum`, `allOf` and local `$ref`
 //! (`#/definitions/…`); `$schema`, `title`, `description` and
-//! `definitions` are allowed. The whole schema is compiled before the
+//! `definitions` are allowed. OwnHealth's genome-facts schema
+//! (`assets/ownhealth/genome-facts.v1.json`) adds `const`, `pattern` (a
+//! search, as JSON Schema has it), `minLength`, `maxLength` (characters),
+//! `maximum` and `$defs`; `$id` and `format` are allowed, and `format` is
+//! not checked, as OwnHealth's importer does not check it. The whole schema is compiled before the
 //! document is read, so a rule the validator does not understand anywhere
 //! in it (an unknown keyword or type name, a `$ref` that leads nowhere or
 //! back to itself) is exit 2, never a pass.
@@ -36,11 +40,19 @@ use std::io::Write;
 
 const USAGE: &str = "usage: og dev schema SCHEMA.json DOC.json\n";
 
-const KNOWN: [&str; 15] = [
+const KNOWN: [&str; 23] = [
     "$schema",
+    "$id",
     "title",
     "description",
     "definitions",
+    "$defs",
+    "const",
+    "pattern",
+    "minLength",
+    "maxLength",
+    "maximum",
+    "format",
     "type",
     "enum",
     "required",
@@ -110,8 +122,13 @@ struct Node {
     /// The type names as written, for the message, and parsed.
     types: Option<(Vec<String>, Vec<Type>)>,
     enumeration: Option<Vec<Value>>,
+    constant: Option<Value>,
+    pattern: Option<(String, regex::Regex)>,
+    min_length: Option<usize>,
+    max_length: Option<usize>,
     minimum: Option<f64>,
     minimum_text: String,
+    maximum: Option<(f64, String)>,
     required: Vec<String>,
     properties: IndexMap<String, Node>,
     additional: Additional,
@@ -261,11 +278,25 @@ fn compile(v: &Value, at: &str, wanted: &mut Vec<(String, String)>) -> Result<No
         Some(Value::Array(a)) => Some(a.clone()),
         Some(_) => return Err(format!("{at}: enum must be a list")),
     };
-    let (minimum, minimum_text) = match o.get("minimum") {
+    let bound = |k: &str| -> Result<Option<(f64, String)>, String> {
+        match o.get(k) {
+            None => Ok(None),
+            Some(Value::Int(n)) => Ok(Some((*n as f64, n.to_string()))),
+            Some(Value::Float(x)) if !x.is_nan() => Ok(Some((*x, pycompat::fmt::repr(*x)))),
+            Some(_) => Err(format!("{at}: {k} must be a number")),
+        }
+    };
+    let (minimum, minimum_text) = match bound("minimum")? {
         None => (None, String::new()),
-        Some(Value::Int(n)) => (Some(*n as f64), n.to_string()),
-        Some(Value::Float(x)) if !x.is_nan() => (Some(*x), pycompat::fmt::repr(*x)),
-        Some(_) => return Err(format!("{at}: minimum must be a number")),
+        Some((x, text)) => (Some(x), text),
+    };
+    let pattern = match o.get("pattern") {
+        None => None,
+        Some(Value::Str(p)) => Some((
+            p.clone(),
+            regex::Regex::new(p).map_err(|e| format!("{at}: pattern {p}: {e}"))?,
+        )),
+        Some(_) => return Err(format!("{at}: pattern must be a string")),
     };
     let required = match o.get("required") {
         None => Vec::new(),
@@ -297,20 +328,27 @@ fn compile(v: &Value, at: &str, wanted: &mut Vec<(String, String)>) -> Result<No
         None => None,
         Some(s) => Some(Box::new(compile(s, &format!("{at}[]"), wanted)?)),
     };
-    if let Some(Value::Object(defs)) = o.get("definitions") {
-        for (k, s) in defs {
-            compile(s, &format!("#/definitions/{k}"), wanted)?;
+    for key in ["definitions", "$defs"] {
+        if let Some(Value::Object(defs)) = o.get(key) {
+            for (k, s) in defs {
+                compile(s, &format!("#/{key}/{k}"), wanted)?;
+            }
+        } else if o.contains_key(key) {
+            return Err(format!("{at}: {key} must be an object"));
         }
-    } else if o.contains_key("definitions") {
-        return Err(format!("{at}: definitions must be an object"));
     }
     Ok(Node {
         reference,
         all_of,
         types,
         enumeration,
+        constant: o.get("const").cloned(),
+        pattern,
+        min_length: count("minLength")?,
+        max_length: count("maxLength")?,
         minimum,
         minimum_text,
+        maximum: bound("maximum")?,
         required,
         properties,
         additional,
@@ -403,6 +441,52 @@ impl Schema {
                 repr60(v),
                 repr(&Value::Array(e.clone()))
             ));
+        }
+        if let Some(c) = &node.constant
+            && !same(c, v)
+        {
+            errors.push(format!(
+                "{path}: {} is not {} (const)",
+                repr60(v),
+                repr60(c)
+            ));
+        }
+        if let Value::Str(text) = v {
+            if let Some((p, re)) = &node.pattern
+                && !re.is_match(text)
+            {
+                errors.push(format!(
+                    "{path}: {} does not match pattern {}",
+                    repr60(v),
+                    repr(&Value::Str(p.clone()))
+                ));
+            }
+            let n = text.chars().count();
+            if let Some(min) = node.min_length
+                && n < min
+            {
+                errors.push(format!(
+                    "{path}: {} is shorter than minLength {min}",
+                    repr60(v)
+                ));
+            }
+            if let Some(max) = node.max_length
+                && n > max
+            {
+                errors.push(format!(
+                    "{path}: {} is longer than maxLength {max}",
+                    repr60(v)
+                ));
+            }
+        }
+        if let (Some((max, text)), Some(x)) = (&node.maximum, as_number(v))
+            && (x > *max || x.is_nan())
+        {
+            let shown = match v {
+                Value::Int(n) => n.to_string(),
+                _ => pycompat::fmt::repr(x),
+            };
+            errors.push(format!("{path}: {shown} > maximum {text}"));
         }
         if let (Some(min), Some(x)) = (node.minimum, as_number(v)) {
             if x.is_nan() {
@@ -582,9 +666,11 @@ mod tests {
         assert!(bad(r##"{"$ref":"#/definitions/nope"}"##).contains("points at nothing"));
         assert!(bad(r#"{"type":"integr"}"#).contains("unknown type integr"));
         assert!(
-            bad(r#"{"properties":{"never":{"format":"date"}}}"#).contains("unsupported keyword")
+            bad(r#"{"properties":{"never":{"uniqueItems":true}}}"#).contains("unsupported keyword")
         );
-        assert!(bad(r#"{"definitions":{"x":{"pattern":"a"}}}"#).contains("unsupported keyword"));
+        assert!(bad(r#"{"$defs":{"x":{"minProperties":1}}}"#).contains("unsupported keyword"));
+        assert!(bad(r#"{"pattern":"("}"#).contains("pattern"));
+        assert!(bad(r#"{"maxLength":-1}"#).contains("maxLength"));
         assert!(bad(r#"{"$ref":"other.json#/x"}"#).contains("only local"));
     }
 
@@ -601,6 +687,36 @@ mod tests {
             "kids":{"type":"array","items":{"$ref":"#/definitions/t"}}}}},"$ref":"#/definitions/t"}"##;
         let e = run(tree, r#"{"kids":[{"kids":[{"kids":1}]}]}"#).unwrap();
         assert_eq!(e, ["$.kids[0].kids[0].kids: expected array, got int 1"]);
+    }
+
+    /// The keywords OwnHealth's genome-facts schema uses beyond
+    /// summary.schema.json's (assets/ownhealth/genome-facts.v1.json).
+    #[test]
+    fn const_pattern_lengths_maximum_and_defs() {
+        let s = r##"{"$id":"urn:x","$defs":{"id":{"type":"string","pattern":"^f_[0-9a-f]{2}$"}},
+            "properties":{"schema":{"const":"v1"},"id":{"$ref":"#/$defs/id"},
+            "name":{"type":"string","minLength":1,"maxLength":3,"format":"uri"},
+            "stars":{"type":"integer","minimum":0,"maximum":4}}}"##;
+        assert!(
+            run(s, r#"{"schema":"v1","id":"f_0a","name":"abc","stars":4}"#)
+                .unwrap()
+                .is_empty()
+        );
+        let e = run(s, r#"{"schema":"v2","id":"f_0g","name":"","stars":5}"#).unwrap();
+        assert_eq!(
+            e,
+            [
+                "$.schema: 'v2' is not 'v1' (const)",
+                "$.id: 'f_0g' does not match pattern '^f_[0-9a-f]{2}$'",
+                "$.name: '' is shorter than minLength 1",
+                "$.stars: 5 > maximum 4",
+            ]
+        );
+        let e = run(s, r#"{"name":"abcd"}"#).unwrap();
+        assert_eq!(e, ["$.name: 'abcd' is longer than maxLength 3"]);
+        // A pattern searches; lengths count characters, not bytes.
+        assert!(run(r#"{"pattern":"b"}"#, r#""abc""#).unwrap().is_empty());
+        assert!(run(r#"{"maxLength":2}"#, r#""éé""#).unwrap().is_empty());
     }
 
     #[test]
