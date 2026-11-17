@@ -20,17 +20,24 @@
 
 /* Dark scheme: the page body uses the header colour too, so the header and
    the page read as one surface. #2563eb on #1c1917 is 3.9:1, too faint for
-   body text; #60a5fa is the same hue at 7.4:1. */
+   body text; #60a5fa is the same hue at 7.4:1.
+   The current page in the side menu is painted in the accent, on the
+   transparent accent laid over the page (#1d202c). #2563eb there is 3.1:1,
+   so the accent takes the link colour too: #60a5fa is 6.3:1. */
 [data-md-color-scheme="slate"] {
   --md-default-bg-color: #1c1917;
   --md-code-bg-color: #292524;
   --md-typeset-a-color: #60a5fa;
+  --md-accent-fg-color: #60a5fa;
 }
 
 /* Light scheme: #2563eb on white is 4.5:1, on the edge. #1d4ed8 is the same
-   hue at 6.3:1. */
+   hue at 6.3:1. On the current menu item's tint (#e9effd) #2563eb is 4.49:1,
+   under 4.5:1, so the accent takes #1d4ed8 as well: 5.8:1.
+   rust/crates/og-dev/tests/docs_theme.rs checks both schemes. */
 [data-md-color-scheme="default"] {
   --md-typeset-a-color: #1d4ed8;
+  --md-accent-fg-color: #1d4ed8;
 }
 
 /* Fixed logo size so it does not crowd the site name. */
