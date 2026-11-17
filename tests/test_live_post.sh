@@ -25,7 +25,16 @@ SRC=$(sed -n '/^live_post() {/,/^}/p' "$FROM")
 eval "$SRC"
 command -v curl >/dev/null || fail "curl is needed"
 
-free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
+# free_port: a port on 127.0.0.1 that nothing answers on (bash's /dev/tcp
+# connect is refused), picked at random from 20000 to 59999.
+free_port() {
+  local p
+  for _ in $(seq 100); do
+    p=$((20000 + RANDOM % 40000))
+    if ! (exec 3<> "/dev/tcp/127.0.0.1/${p}") 2> /dev/null; then echo "$p"; return; fi
+  done
+  fail "no free port on 127.0.0.1"
+}
 WEB=$(free_port) ING=$(free_port)
 mkdir -p "${WORK}/genome"
 python3 "${REPO}/bin/owngenome_live.py" --root "${WORK}/genome" --state-dir "${WORK}/state" --port "$WEB" \
@@ -88,14 +97,19 @@ else
   mkdir -p "${WORK}/tree/scripts"
   for f in "${REPO}"/* "${REPO}"/.[!.]*; do [ "$(basename "$f")" = scripts ] || ln -s "$f" "${WORK}/tree/"; done
   ln -s "${REPO}/scripts/lib" "${WORK}/tree/scripts/lib"
-  python3 - "${REPO}/scripts/owngenome-live.sh" "${WORK}/tree/scripts/owngenome-live.sh" <<'PY'
-import sys
-s = open(sys.argv[1]).read()
-fixed = ("  (umask 077; printf '%s\\n' \"$h\" > \"${PWF}.tmp\")\n  chmod 600 \"${PWF}.tmp\"\n"
-         "  mv \"${PWF}.tmp\" \"$PWF\"\n")
-old = "  (umask 077 && printf '%s\\n' \"$h\" > \"${PWF}.tmp\") && chmod 600 \"${PWF}.tmp\" && mv \"${PWF}.tmp\" \"$PWF\"\n"
-open(sys.argv[2], "w").write(s.replace(fixed, old) if fixed in s else s)
-PY
+  # The three lines of the fixed write, put back as the one-line chain.
+  # shellcheck disable=SC2016  # the dollar signs are the script's
+  awk '
+    { line[++n] = $0 }
+    END {
+      for (i = 1; i <= n; i++) {
+        if (i + 2 <= n && line[i] == "  (umask 077; printf '\''%s\\n'\'' \"$h\" > \"${PWF}.tmp\")" \
+            && line[i + 1] == "  chmod 600 \"${PWF}.tmp\"" && line[i + 2] == "  mv \"${PWF}.tmp\" \"$PWF\"") {
+          print "  (umask 077 && printf '\''%s\\n'\'' \"$h\" > \"${PWF}.tmp\") && chmod 600 \"${PWF}.tmp\" && mv \"${PWF}.tmp\" \"$PWF\""
+          i += 2
+        } else print line[i]
+      }
+    }' "${REPO}/scripts/owngenome-live.sh" > "${WORK}/tree/scripts/owngenome-live.sh"
   chmod +x "${WORK}/tree/scripts/owngenome-live.sh"
   grep -q 'umask 077 && printf' "${WORK}/tree/scripts/owngenome-live.sh" || fail "control: the planted copy was not made"
   rc=$(hash_into "${WORK}/tree/scripts/owngenome-live.sh" "${WORK}/ro")
