@@ -505,7 +505,7 @@ jobs:
           cat "$log"
           grep -F "[FAIL] no Chrome or Chromium to load the test page" "$log"
           echo "Control: without Chrome the browser checks fail in CI."
-          CHROME=/nonexistent CI= cargo test --locked -p og-browser --test cdp -- --nocapture > "$log" 2>&1 || { cat "$log"; exit 1; }
+          CHROME=/nonexistent CI='' cargo test --locked -p og-browser --test cdp -- --nocapture > "$log" 2>&1 || { cat "$log"; exit 1; }
           cat "$log"
           test "$(grep -c -F '[SKIP] no Chrome or Chromium to load the test page' "$log")" -eq 2
           echo "Outside CI, without Chrome the browser checks skip."
