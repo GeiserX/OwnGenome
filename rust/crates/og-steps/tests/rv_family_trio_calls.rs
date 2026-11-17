@@ -370,3 +370,199 @@ fn ref_alt_calls_pair_as_before() {
         "0/1 children pair as before"
     );
 }
+
+// ---- 2. a son's X and Y outside the PARs -----------------------------------
+
+#[test]
+fn a_sons_y_de_novo_needs_only_the_father() {
+    let d = scratch("son-y");
+    let m = members(&d, "male");
+    let vcf = joint_vcf(
+        &d,
+        &[
+            // the mother has no call on Y, as always
+            (
+                "chrY",
+                15_000_000,
+                "A",
+                "T",
+                ["1:0,30:30:99", "0:30,0:30:99", "./.:.:.:."],
+            ),
+            // the father has no call either: nothing tells
+            (
+                "chrY",
+                15_000_100,
+                "C",
+                "G",
+                ["1:0,30:30:99", "./.:.:.:.", "./.:.:.:."],
+            ),
+            // the father's allele: inherited, no row
+            (
+                "chrY",
+                15_000_200,
+                "G",
+                "T",
+                ["1:0,30:30:99", "1:0,30:30:99", "./.:.:.:."],
+            ),
+        ],
+    );
+    let out = report(&d, &m, &vcf, None);
+    assert_eq!(
+        de_novo_at(&out, "chrY", 15_000_000),
+        vec![("1".to_owned(), "pass".to_owned())],
+        "a son's Y allele his father does not have, the mother with no call: one pass row"
+    );
+    assert!(
+        de_novo_at(&out, "chrY", 15_000_100).is_empty(),
+        "no father call on Y: no row"
+    );
+    assert!(
+        de_novo_at(&out, "chrY", 15_000_200).is_empty(),
+        "the father's allele on Y: no row"
+    );
+}
+
+#[test]
+fn a_sons_x_de_novo_needs_only_the_mother() {
+    let d = scratch("son-x");
+    let m = members(&d, "male");
+    let vcf = joint_vcf(
+        &d,
+        &[
+            // the father has no call on X
+            (
+                "chrX",
+                20_000_000,
+                "A",
+                "T",
+                ["1:0,30:30:99", "./.:.:.:.", GOOD_REF],
+            ),
+            // the father's call is weak: it does not count on a son's X
+            (
+                "chrX",
+                20_000_100,
+                "C",
+                "G",
+                ["1:0,30:30:99", "0:3,0:3:5", GOOD_REF],
+            ),
+            // the mother's call is weak: low
+            (
+                "chrX",
+                20_000_200,
+                "G",
+                "T",
+                ["1:0,30:30:99", "0:30,0:30:99", "0/0:5,0:5:10"],
+            ),
+            // the father carries the allele, the mother does not: still new on a son's X
+            (
+                "chrX",
+                20_000_300,
+                "T",
+                "C",
+                ["1:0,30:30:99", "1:0,30:30:99", GOOD_REF],
+            ),
+        ],
+    );
+    let out = report(&d, &m, &vcf, None);
+    assert_eq!(
+        de_novo_at(&out, "chrX", 20_000_000),
+        vec![("1".to_owned(), "pass".to_owned())],
+        "a son's X allele his mother does not have, the father with no call: one pass row"
+    );
+    assert_eq!(
+        de_novo_at(&out, "chrX", 20_000_100),
+        vec![("1".to_owned(), "pass".to_owned())],
+        "the father's depth and quality do not count on a son's X"
+    );
+    assert_eq!(
+        de_novo_at(&out, "chrX", 20_000_200),
+        vec![("1".to_owned(), "low".to_owned())],
+        "the mother's depth and quality still count"
+    );
+    assert_eq!(
+        de_novo_at(&out, "chrX", 20_000_300),
+        vec![("1".to_owned(), "pass".to_owned())],
+        "a father's X allele is not a son's"
+    );
+}
+
+// ---- 3. parental reads on the new allele -----------------------------------
+
+#[test]
+fn a_parents_reads_on_the_new_allele_keep_it_out_of_pass() {
+    let d = scratch("parent-reads");
+    let m = members(&d, "female");
+    let kid = "0/1:15,15:30:99";
+    let vcf = joint_vcf(
+        &d,
+        &[
+            // a mosaic father: 3 of 30 reads on the new allele
+            (
+                "chr2",
+                5_000_000,
+                "A",
+                "G",
+                [kid, "0/0:27,3:30:40", GOOD_REF],
+            ),
+            // the same trio, no reads on it
+            (
+                "chr2",
+                5_000_100,
+                "A",
+                "G",
+                [kid, "0/0:30,0:30:40", GOOD_REF],
+            ),
+            // one read of 15 (7%) in the mother
+            (
+                "chr2",
+                5_000_200,
+                "C",
+                "T",
+                [kid, GOOD_REF, "0/0:14,1:15:40"],
+            ),
+            // one read of 30 (3%) in the mother
+            (
+                "chr2",
+                5_000_300,
+                "C",
+                "T",
+                [kid, GOOD_REF, "0/0:29,1:30:40"],
+            ),
+            // two reads on a new allele of a 1/2 child, in the mother
+            (
+                "chr2",
+                5_000_400,
+                "C",
+                "A,T",
+                ["1/2:0,15,15:30:99", "0/1:15,15,0:30:99", "0/0:58,0,2:60:40"],
+            ),
+        ],
+    );
+    let out = report(&d, &m, &vcf, None);
+    let at = |p| de_novo_at(&out, "chr2", p);
+    assert_eq!(
+        at(5_000_000),
+        vec![("0/1".to_owned(), "low".to_owned())],
+        "a father 0/0 with AD=27,3: not pass"
+    );
+    assert_eq!(
+        at(5_000_100),
+        vec![("0/1".to_owned(), "pass".to_owned())],
+        "a father 0/0 with AD=30,0: pass"
+    );
+    assert_eq!(
+        at(5_000_200),
+        vec![("0/1".to_owned(), "low".to_owned())],
+        "one read of 15 in the mother (5% or more): not pass"
+    );
+    assert_eq!(
+        at(5_000_300),
+        vec![("0/1".to_owned(), "pass".to_owned())],
+        "one read of 30 in the mother (under 5%): pass"
+    );
+    assert_eq!(
+        at(5_000_400),
+        vec![("1/2".to_owned(), "low".to_owned())],
+        "two reads on the new ALT of a 1/2 in the mother: not pass"
+    );
+}
