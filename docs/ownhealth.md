@@ -8,7 +8,7 @@
 ${GENOME_DIR}/${SAMPLE}/facts/${SAMPLE}_genome_facts.json
 ```
 
-`run-all.sh` writes it at the end of every run, after the reports. A plain `nextflow run main.nf` does not write it yet: run the `bin/og facts` command under [Write the file by hand](#write-the-file-by-hand) on the folder the run published. The format is `ownhealth.genome-facts/v1`. OwnHealth owns that format and checks every file against it when you import. A file it refuses is not stored at all.
+`run-all.sh` writes it at the end of every run, after the reports. If step 24 (the HTML report) fails, it skips the file, because `summary.json` may then be an earlier run's. If `bin/og facts` fails, there is no file. In both cases `run-all.sh` removes an earlier run's file, so you cannot import a stale one by mistake. The run's output says why the file was not written. A plain `nextflow run main.nf` does not write it yet: run the `bin/og facts` command under [Write the file by hand](#write-the-file-by-hand) on the folder the run published. The format is `ownhealth.genome-facts/v1`. OwnHealth owns that format and checks every file against it when you import. A file it refuses is not stored at all.
 
 ## Bring the file into OwnHealth
 

@@ -18,8 +18,10 @@ validate_sample "$SAMPLE"
 # og is the static binary, so the python image runs it. Without summary.json
 # (step 24 or generate-report.sh writes it) or the reference and its .fai, og
 # facts says which file is missing and exits 1. There is no host-side check:
-# the fake-docker cases run run-all.sh with no reference on disk.
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
+# the fake-docker cases run run-all.sh with no reference on disk. An earlier
+# run's file is removed first, so a failed run leaves no file to import.
+rm -f "${GENOME_DIR}/${SAMPLE}/facts/${SAMPLE}_genome_facts.json"
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
   /pgp-bin/og facts \
     --sample "$SAMPLE" \
     --sample-dir "/genome/${SAMPLE}" \

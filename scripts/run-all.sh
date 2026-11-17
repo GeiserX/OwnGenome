@@ -413,7 +413,7 @@ family_steps() {
 # The OwnHealth file reads summary.json, so it is written only after step 24 wrote a fresh one.
 report=failed facts=skipped
 for sc in "${OPTIN[@]}" 24-html-report.sh generate-report.sh ownhealth-facts.sh; do
-  [ "$sc" != ownhealth-facts.sh ] || [ "$report" = ok ] || { echo "[ownhealth-facts] skipped: 24-html-report.sh failed, so summary.json may be an earlier run's"; continue; }
+  [ "$sc" != ownhealth-facts.sh ] || [ "$report" = ok ] || { rm -f "${S}/facts/${SAMPLE}_genome_facts.json"; echo "[ownhealth-facts] skipped: 24-html-report.sh failed, so summary.json may be an earlier run's; an earlier run's OwnHealth file was removed"; continue; }
   [ "$sc" != 24-html-report.sh ] || family_steps
   [ "$sc" != 24-html-report.sh ] || GENOME_DIR="$G" HLA_DAT="${H:-}" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || true
   if [[ "$sc" == [0-9]*-*.sh && "$sc" != 24-* ]]; then live_step "${sc%%-*}" started; fi
