@@ -1283,8 +1283,6 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
     let clinvar = section(summary, "clinvar").is_some();
     let cpic = section(summary, "cpic");
     let hla = section(summary, "hla");
-    let cyp2d6_probable =
-        get(summary, &["cyp2d6", "probable"]).is_some_and(|p| matches!(p, Value::Object(_)));
     // A gene counts as assessed by the ClinVar screen only with evidence
     // that its reads were there: the callability catalogue ran, and the
     // genome's mean depth reached its depth floor.
@@ -1366,6 +1364,16 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
             let r = list(c, &["genes"])
                 .iter()
                 .find(|r| text(r, &["gene"]) == Some(gene.as_str()));
+            // A call PharmCAT's table does not hold (CYP2D6 from step 36):
+            // the agreed call of two read-level callers, or a probable one.
+            let own = ctx.facts.iter().find(|f| {
+                text(f, &["category"]) == Some("pgx") && text(f, &["gene"]) == Some(gene.as_str())
+            });
+            let agreed = own.is_some_and(|f| {
+                list(f, &["evidence", "tools"])
+                    .iter()
+                    .any(|t| matches!(t, Value::Str(x) if x == "Cyrius"))
+            });
             match r.and_then(|r| text(r, &["status"])) {
                 None => cov(
                     gene,
@@ -1375,7 +1383,8 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
                     None,
                     Some("PharmCAT does not call this gene".to_owned()),
                 ),
-                Some("not called") if gene == "CYP2D6" && cyp2d6_probable => cov(
+                Some("not called") if agreed => cov(gene, "cpic", "assessed", None, None, None),
+                Some("not called") if own.is_some() => cov(
                     gene,
                     "cpic",
                     "partial",

@@ -853,6 +853,21 @@ fn cyp2d6_is_high_only_when_two_callers_agree() {
         st(fact(&b, "pgx", "CYP2D6")[0], &["confidence", "level"]),
         "high"
     );
+    // PharmCAT's table says "not called", but step 36 handed it the agreed
+    // call: the fact is the agreed call, and its gene is assessed, never
+    // "not assessed" beside the call.
+    let handed = r#"{"calls":{"PharmCAT":"not called","pypgx":"*1/*4","Cyrius":"*1/*4"},"agree":true,
+        "consensus":{"result":"*1/*4","passed_to_pharmcat":true,"reason":"pypgx and Cyrius agree","source":null},"probable":null}"#;
+    let dir = folder_with("d6-handed", &full_sections(), handed);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    assert_eq!(
+        st(fact(&b, "pgx", "CYP2D6")[0], &["value", "diplotype"]),
+        "*1/*4"
+    );
+    assert_eq!(st(coverage(&b, "CYP2D6")[0], &["state"]), "assessed");
+    // A probable call from one caller stays partial.
+    let (b, _) = run("d6-probable", &full_sections());
+    assert_eq!(st(coverage(&b, "CYP2D6")[0], &["state"]), "partial");
 }
 
 #[test]
