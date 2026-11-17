@@ -12,8 +12,8 @@
 #
 # Stalls: _get, which fetch calls for each try, gives up on a transfer that
 # stops sending data, so fetch can try again and resume the .part. A local
-# HTTP server sends the start of a file and then nothing, holding the
-# connection open. With FETCH_STALL=2, fetch with curl and fetch with wget
+# HTTP server (og dev stub-http) sends the start of a file and then nothing,
+# holding the connection open. With FETCH_STALL=2, fetch with curl and fetch with wget
 # (curl hidden from PATH) each fail within seconds, keep the .part, and try
 # FETCH_TRIES times; the same server's whole file downloads under the same
 # bounds (at most 20 s). Two planted mutants, curl and wget without the
@@ -24,7 +24,7 @@ set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 WORK=$(mktemp -d)
 SRV=""
-trap '[ -z "$SRV" ] || kill "$SRV" 2>/dev/null; rm -rf "$WORK"' EXIT
+trap '[ -z "$SRV" ] || { kill "$SRV"; wait "$SRV"; } 2>/dev/null; rm -rf "$WORK"' EXIT
 export FETCH_WAIT=0
 
 # The served file, a real gzip so the gzip -t check has something to pass.
@@ -140,25 +140,12 @@ pass() { echo "ok:   $*"; }
 command -v curl >/dev/null || { echo "FAIL: curl is needed to run this test"; exit 1; }
 command -v wget >/dev/null || { echo "FAIL: wget is needed to run this test"; exit 1; }
 
-# The server: /stall.bin sends a 100000-byte Content-Length, 1000 bytes, then
-# holds the connection for 60 s; /whole.bin sends the whole file.
-cat > "${WORK}/server.py" <<'PY'
-import http.server, sys, time
-class H(http.server.BaseHTTPRequestHandler):
-    def log_message(self, *a): pass
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Length", "100000")
-        self.end_headers()
-        if self.path == "/stall.bin":
-            self.wfile.write(b"x" * 1000); self.wfile.flush(); time.sleep(60)
-        else:
-            self.wfile.write(b"x" * 100000)
-s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
-open(sys.argv[1], "w").write(str(s.server_address[1]))
-s.serve_forever()
-PY
-python3 "${WORK}/server.py" "${WORK}/port" & SRV=$!
+# The server, og dev stub-http: /stall.bin sends a 100000-byte
+# Content-Length, 1000 bytes, then nothing for 60 s, holding the connection;
+# /whole.bin sends the whole file. Guard's unit tests set OG.
+OG=${OG:-${REPO}/bin/og}
+"$OG" version > /dev/null 2>&1 || { echo "FAIL: og is needed to run this test (OG, or bin/og: scripts/setup.sh --og)"; exit 1; }
+"$OG" dev stub-http /stall.bin=drip:100000:1000:60000 /whole.bin=drip:100000:100000:0 > "${WORK}/port" & SRV=$!
 for _ in $(seq 1 50); do [ -s "${WORK}/port" ] && break; sleep 0.1; done
 [ -s "${WORK}/port" ] || { echo "FAIL: the test server did not start"; exit 1; }
 URL="http://127.0.0.1:$(cat "${WORK}/port")"
