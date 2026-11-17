@@ -9,3 +9,7 @@
 # file's own first comment about it, which quoted the expression.
 0bc60efda244e5361c54fe411f46db9514e5e8c3:rust/crates/og-cn/src/cli.rs:generic-api-key:590
 63b5a9273c444970e469d04c8da52aa8890726b5:.gitleaksignore:generic-api-key:7
+# A GA4GH refget sequence accession (SQ. plus 32 base64url characters) in the
+# og facts VRS code, a public identifier of a reference sequence, not a key.
+# gitleaks scans every branch, so this branch's commit reaches every PR's Lint.
+2707c7a94d6c0d4674f35e5169fa1d643e548adf:rust/crates/og-facts/src/vrs.rs:generic-api-key:261
