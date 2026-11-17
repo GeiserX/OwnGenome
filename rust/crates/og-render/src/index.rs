@@ -528,18 +528,19 @@ pub fn build(
     }
     let mut out = IndexMap::new();
     for (term, items) in terms {
-        let shown: Vec<String> = std::iter::once(term.clone())
-            .chain(
-                items
-                    .iter()
-                    .flat_map(|it| it.mentions.iter())
-                    .map(|(t, l)| format!("{t} {}", l.as_deref().unwrap_or(""))),
-            )
-            .collect();
-        let veil = veil_of(spans, &shown.join(" "));
         let list = items
             .into_iter()
             .map(|it| {
+                // The veil of each item, from the term and that item's own
+                // mentions: a locus another section names does not veil it.
+                let shown: Vec<String> = std::iter::once(term.clone())
+                    .chain(
+                        it.mentions
+                            .iter()
+                            .map(|(t, l)| format!("{t} {}", l.as_deref().unwrap_or(""))),
+                    )
+                    .collect();
+                let veil = veil_of(spans, &shown.join(" "));
                 let mut o = IndexMap::new();
                 o.insert("section".to_owned(), Value::Str(it.section));
                 o.insert("anchor".to_owned(), it.anchor);
@@ -559,8 +560,8 @@ pub fn build(
                     })
                     .collect();
                 o.insert("mentions".to_owned(), Value::Array(mentions));
-                if let Some(id) = &veil {
-                    o.insert("veil".to_owned(), Value::Str(id.clone()));
+                if let Some(id) = veil {
+                    o.insert("veil".to_owned(), Value::Str(id));
                 }
                 Value::Object(o)
             })

@@ -654,11 +654,20 @@ fn the_veil_tags_the_items_that_name_a_closed_result() {
             .collect()
     };
     assert_eq!(veil("BRCA2"), ["sf-BRCA2"; 4]);
-    // CFTR's ClinVar hit is chr7:1000 itself.
-    assert!(
-        veil("CFTR").iter().all(|v| v == "clinvar-chr7-1000"),
-        "{:?}",
-        veil("CFTR")
+    // Each item by its own mentions: CFTR's ClinVar hit and its carrier row
+    // name chr7:1000 itself, while its slivar row at chr7:3000 names no
+    // closed result, so the locus the other sections name does not veil it.
+    let cftr: Vec<(String, String)> = items(&idx, "CFTR")
+        .iter()
+        .map(|it| (s(get(it, &["section"])), s(get(it, &["veil"]))))
+        .collect();
+    assert_eq!(
+        cftr,
+        [
+            ("clinvar".to_owned(), "clinvar-chr7-1000".to_owned()),
+            ("carrier".to_owned(), "clinvar-chr7-1000".to_owned()),
+            ("slivar".to_owned(), "null".to_owned()),
+        ]
     );
     assert_eq!(veil("CYP2D6"), ["null"]);
     // No closed result, no field.
