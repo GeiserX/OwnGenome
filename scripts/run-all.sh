@@ -410,7 +410,7 @@ family_steps() {
     *) printf 'step\t39\tskipped (%s)\n' "${d39#*$'\t'}" >> "$STATUS"; echo "  39 Couple carrier screen: skipped: ${d39#*$'\t'}" ;;
   esac
 }
-for sc in "${OPTIN[@]}" 24-html-report.sh generate-report.sh; do
+for sc in "${OPTIN[@]}" 24-html-report.sh generate-report.sh ownhealth-facts.sh; do
   [ "$sc" != 24-html-report.sh ] || family_steps
   [ "$sc" != 24-html-report.sh ] || GENOME_DIR="$G" HLA_DAT="${H:-}" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || true
   if [[ "$sc" == [0-9]*-*.sh && "$sc" != 24-* ]]; then live_step "${sc%%-*}" started; fi
@@ -418,5 +418,5 @@ for sc in "${OPTIN[@]}" 24-html-report.sh generate-report.sh; do
   if [[ "$sc" == [0-9]*-*.sh && "$sc" != 24-* ]]; then printf 'step\t%s\t%s\n' "${sc%%-*}" "$r" >> "$STATUS"; live_step "${sc%%-*}" "$r"; fi
 done
 [ "$rc" -eq 0 ] || exit "$rc"
-echo "Done: results in ${S}/, the HTML report ${S}/${SAMPLE}_report.html, the text report ${S}/${SAMPLE}_report.txt"
+echo "Done: results in ${S}/, the HTML report ${S}/${SAMPLE}_report.html, the text report ${S}/${SAMPLE}_report.txt, the OwnHealth file ${S}/facts/${SAMPLE}_genome_facts.json"
 exit "$failed"
