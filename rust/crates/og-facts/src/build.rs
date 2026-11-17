@@ -595,8 +595,8 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
                 "{gene}: diplotype {shown:?} left out, not a term OwnHealth reads"
             ));
         }
-        // PharmCAT's placeholders say it named no phenotype; OwnHealth then
-        // reads the call_state instead of counting the word as a finding.
+        // PharmCAT's placeholders say it named no phenotype, so the word is
+        // left out, never counted as a finding; value.call_state stays.
         if PHENOTYPE_PLACEHOLDERS.contains(&phenotype.trim().to_lowercase().as_str()) {
             phenotype.clear();
         }
@@ -1435,10 +1435,14 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
         }
     }
     // A gene with a PGx or HLA call that no panel names (CYP3A4 has DPWG
-    // guidance only) gets a row, so it never reads "not assessed" beside
-    // its call; a low-confidence call is partial.
+    // guidance only) gets a row; a low-confidence call is partial. A gene
+    // with a call never reads "not assessed" beside it (the ClinVar screen
+    // could not show CACNA1S was read, but PharmCAT called its sites), nor
+    // "assessed" when PharmCAT could not call one allele.
     for f in &ctx.facts {
-        let (Some(gene), Some("pgx" | "hla")) = (text(f, &["gene"]), text(f, &["category"])) else {
+        let (Some(gene), Some(cat @ ("pgx" | "hla"))) =
+            (text(f, &["gene"]), text(f, &["category"]))
+        else {
             continue;
         };
         if seen.insert(gene.to_owned()) {
@@ -1454,6 +1458,30 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
                 _ => cov(gene, "other", "assessed", None, None, None),
             });
         }
+        let Some(r) = rows.iter_mut().find(|r| text(r, &["id"]) == Some(gene)) else {
+            continue;
+        };
+        let old = text(r, &["note"]).map(str::to_owned);
+        let note = match text(r, &["state"]) {
+            Some("not_assessed") => {
+                let what = if cat == "pgx" {
+                    "PGx call"
+                } else {
+                    "HLA typing"
+                };
+                format!(
+                    "the {what} stands on the sites that define it; for the rest of the gene, {}",
+                    old.as_deref().unwrap_or("not assessed")
+                )
+            }
+            Some("assessed") if text(f, &["value", "call_state"]) == Some("no_call") => {
+                "PharmCAT could not call one allele".to_owned()
+            }
+            _ => continue,
+        };
+        put(r, "state", s("partial"));
+        put(r, "reason", s("other"));
+        put(r, "note", s(&clean_text(&note)));
     }
     // A call the file leaves out makes its gene partial, never "assessed,
     // no finding"; a gene or locus no panel names gets a row of its own.

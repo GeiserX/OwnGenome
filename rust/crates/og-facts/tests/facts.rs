@@ -642,8 +642,8 @@ fn pgx_and_hla_facts_carry_their_call_state() {
     );
     assert!(st(&vk[0], &["vrs_id"]).starts_with("ga4gh:VA."));
     assert!(arr(fact(&b, "pgx", "CYP2C19")[0], "variants").is_empty());
-    // PharmCAT's placeholder phenotype is no phenotype: OwnHealth then reads
-    // the call_state, and the summary does not show the word.
+    // PharmCAT's placeholder phenotype is no phenotype: the call keeps its
+    // call_state, and the summary does not show the word.
     let ifnl3 = fact(&b, "pgx", "IFNL3")[0];
     assert_eq!(state("IFNL3"), "ref");
     assert!(get(ifnl3, &["value", "phenotype"]).is_none());
@@ -733,6 +733,59 @@ fn a_gene_is_assessed_only_with_evidence_that_it_was_read() {
     assert!(st(brca1, &["note"]).contains("mean depth"), "{brca1:?}");
     let (b, _) = run("read", &full_sections());
     assert_eq!(st(coverage(&b, "BRCA1")[0], &["state"]), "assessed");
+}
+
+#[test]
+fn a_call_never_sits_beside_not_assessed_nor_assessed_with_an_allele_missing() {
+    // Without step 16b, CACNA1S and RYR1 (on both the ACMG SF and CPIC
+    // lists) take the screen's "not proven read" row; their PGx call makes
+    // them partial, and the note keeps both parts.
+    let (b, _) = run("call-no-callability", &swap("callability", ""));
+    for f in facts(&b) {
+        if matches!(st(f, &["category"]), "pgx" | "hla") {
+            let g = st(f, &["gene"]);
+            let row = coverage(&b, g)[0];
+            assert!(
+                matches!(st(row, &["state"]), "assessed" | "partial"),
+                "{g}: {row:?}"
+            );
+        }
+    }
+    let cacna1s = coverage(&b, "CACNA1S")[0];
+    assert_eq!(
+        (st(cacna1s, &["state"]), st(cacna1s, &["reason"])),
+        ("partial", "other")
+    );
+    let note = st(cacna1s, &["note"]);
+    assert!(
+        note.contains("PGx call") && note.contains("step 16b"),
+        "{note}"
+    );
+    // PharmCAT could not call one allele: partial, on a panel gene and on a
+    // gene no panel names.
+    let one_unknown = full_sections()
+        .replace(
+            r#""gene":"CYP2C19","diplotype":"*38/*38""#,
+            r#""gene":"CYP2C19","diplotype":"*38/Unknown""#,
+        )
+        .replace(
+            r#""gene":"CYP3A4","diplotype":"*1/*1""#,
+            r#""gene":"CYP3A4","diplotype":"*1/Unknown""#,
+        );
+    let (b, _) = run("call-one-unknown", &one_unknown);
+    for g in ["CYP2C19", "CYP3A4"] {
+        assert_eq!(
+            st(fact(&b, "pgx", g)[0], &["value", "call_state"]),
+            "no_call"
+        );
+        let row = coverage(&b, g)[0];
+        assert_eq!(
+            (st(row, &["state"]), st(row, &["reason"])),
+            ("partial", "other"),
+            "{g}"
+        );
+        assert!(st(row, &["note"]).contains("one allele"), "{row:?}");
+    }
 }
 
 #[test]
