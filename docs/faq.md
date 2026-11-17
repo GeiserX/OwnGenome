@@ -8,10 +8,16 @@
 | "Permission denied" writing output | Container runs as non-root | Add `--user root` to `docker run` (already done in all scripts) |
 | VEP cache download fails/times out | 26 GB download over unreliable connection | Use `wget -c` (supports resume). See [docs/13-vep-annotation.md](13-vep-annotation.md) |
 | DeepVariant crashes on Mac | amd64 emulation + memory pressure | `THREADS=2 DV_MEM=12g ./scripts/03-deepvariant.sh <sample> <sex>`, the sex being `male` or `female`. Will be slow. See [troubleshooting](troubleshooting.md#step-3-deepvariant-crashes-on-mac-amd64-emulation). |
-| Wrong number of variants (too few) | Genome build mismatch | Ensure your BAM is aligned to GRCh38 (hg38), not hg19/GRCh37. Check with `samtools view -H your.bam \| grep SN:chr1` |
+| Wrong number of variants (too few) | Genome build mismatch | Ensure your BAM is aligned to GRCh38 (hg38), not hg19/GRCh37. Check the BAM header with the command under this table |
 | 0-byte output files | Missing input or wrong path | Check that all input files exist. Run the script with `bash -x` for debug output. |
 | "No such image" on `docker pull` | Image name/tag changed | Check the exact image name in the step's documentation. Biocontainer tags change frequently. |
 | Very slow on macOS | Rosetta 2 emulation overhead | Expected. Consider running on a Linux machine or cloud instance for heavy steps. |
+
+To check the genome build of a BAM, print the chr1 line of its header. GRCh38 has `LN:248956422`, hg19 has `LN:249250621`, and GRCh37 names the contig `1`, so the command prints nothing:
+
+```bash
+samtools view -H your.bam | grep -w SN:chr1
+```
 
 For detailed solutions, see:
 - [docs/chip-data-guide.md](chip-data-guide.md) — using 23andMe/MyHeritage/AncestryDNA data with this pipeline
