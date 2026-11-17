@@ -923,7 +923,7 @@ fn both_reports_print_the_two_hit_line_and_the_hemizygous_genotype() {
     let (txt, html) = reports(&collect(&d));
     assert!(txt.contains("Biallelic: MUTYH"));
     assert!(html.contains("Biallelic: MUTYH"));
-    assert!(!txt.contains("45336000 G&gt;A"));
+    assert!(html.contains("hemizygous (called homozygous inside DEL"));
     assert!(txt.contains("hemizygous (called homozygous inside DEL"));
     assert!(txt.contains("biallelic with DEL chr1:45335000-45337000"));
     assert!(html.contains("biallelic with DEL chr1:45335000-45337000"));

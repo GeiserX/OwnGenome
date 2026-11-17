@@ -3,8 +3,9 @@
 //! `==`), and the document the section modules build from it, which the
 //! text and HTML writers lay out.
 //!
-//! A section module never writes markup. It returns cards of typed lines;
-//! every text in them is escaped once, by the HTML writer.
+//! A section module returns cards of typed lines; every text in them is
+//! escaped once, by the HTML writer. The one exception is `Line::Html`: a
+//! table the section lays out itself, escaping each text it puts in.
 
 use std::fmt;
 
