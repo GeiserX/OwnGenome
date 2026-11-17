@@ -20,5 +20,8 @@ og-io.workspace = true
 og-summary.workspace = true
 indexmap.workspace = true
 
+[dev-dependencies]
+og-dev.workspace = true
+
 [lints]
 workspace = true
