@@ -1441,6 +1441,36 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
                 Some("the PGx steps (07, 27) did not run".to_owned()),
             )
         };
+        // A call stands on the sites that define it. The rest of a carrier
+        // gene is the ClinVar screen's, and a gene step 16b could not read
+        // keeps that verdict: neither reads "assessed" on the call alone.
+        let rest = if gene.starts_with("HLA-") {
+            None
+        } else if ctx.panels.carrier_gene(gene).is_some() {
+            Some(screen(gene, "carrier"))
+        } else {
+            unread.get(gene).map(|e| callability_row(gene, "cpic", e))
+        };
+        let rest = rest
+            .filter(|r| text(r, &["state"]) != Some("assessed"))
+            .and_then(|r| text(&r, &["note"]).map(str::to_owned));
+        let mut row = row;
+        if let Some(rest) = rest {
+            let note = match (text(&row, &["state"]), text(&row, &["note"])) {
+                (Some("assessed"), _) => Some(format!(
+                    "the PGx call stands on the sites that define it; for the rest of the gene, {rest}"
+                )),
+                (Some("partial"), Some(old)) => {
+                    Some(format!("{old}; for the rest of the gene, {rest}"))
+                }
+                _ => None,
+            };
+            if let Some(note) = note {
+                put(&mut row, "state", s("partial"));
+                put(&mut row, "reason", s("other"));
+                put(&mut row, "note", s(&clean_text(&note)));
+            }
+        }
         rows.push(row);
     }
     for c in &ctx.panels.carrier {

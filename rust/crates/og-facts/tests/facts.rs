@@ -1065,3 +1065,55 @@ fn a_one_site_gene_whose_site_cannot_be_cited_is_partly_assessed() {
     assert_eq!(arr(fact(&b, "pgx", "ABCG2")[0], "variants").len(), 1);
     assert_eq!(st(coverage(&b, "ABCG2")[0], &["state"]), "assessed");
 }
+
+#[test]
+fn a_carrier_or_unread_gene_with_a_pgx_call_is_partly_assessed() {
+    // CFTR and VKORC1 are on the CPIC and carrier lists. At mean depth 4.2
+    // the carrier screen cannot show their reads were there, so the PGx call
+    // makes them partial, never assessed; CYP2C19, on no carrier list, stays
+    // assessed on its call.
+    let cftr = r#"{"gene":"CFTR","diplotype":"No CPIC variants found/No CPIC variants found","phenotype":"n/a","status":"normal"},"#;
+    let low = swap(
+        "coverage",
+        r#""coverage":{"state":"ok","data":{"mean_depth":4.2}}"#,
+    )
+    .replacen("\"genes\":[", &format!("\"genes\":[{cftr}"), 1);
+    let (b, _) = run("carrier-pgx-low-depth", &low);
+    for g in ["VKORC1", "CFTR"] {
+        let row = coverage(&b, g)[0];
+        assert_eq!(
+            (st(row, &["state"]), st(row, &["reason"])),
+            ("partial", "other"),
+            "{g}: {row:?}"
+        );
+        let note = st(row, &["note"]);
+        assert!(note.contains("PGx call") && note.contains("4.2"), "{note}");
+    }
+    assert_eq!(st(coverage(&b, "CYP2C19")[0], &["state"]), "assessed");
+    // Step 16b could not read CYP2B6: its PGx call does not make it assessed.
+    let cyp2b6 = r#"{"gene":"CYP2B6","diplotype":"*1/*1","phenotype":"Normal Metabolizer","status":"normal"},"#;
+    let unread = full_sections()
+        .replacen("\"genes\":[", &format!("\"genes\":[{cyp2b6}"), 1)
+        .replacen(
+            "\"not_read\":[",
+            r#""not_read":[{"gene":"CYP2B6","reasons":["segdup"],"share":0.41,"status":"not read"},"#,
+            1,
+        );
+    let (b, _) = run("unread-pgx", &unread);
+    let row = coverage(&b, "CYP2B6")[0];
+    assert_eq!(
+        (st(row, &["state"]), st(row, &["reason"])),
+        ("partial", "other"),
+        "{row:?}"
+    );
+    let note = st(row, &["note"]);
+    assert!(note.contains("PGx call") && note.contains("41%"), "{note}");
+    // Read at full depth, VKORC1 is assessed, and CFTR's row names only the
+    // hit the file left out.
+    let (b, _) = run(
+        "carrier-pgx-read",
+        &full_sections().replacen("\"genes\":[", &format!("\"genes\":[{cftr}"), 1),
+    );
+    assert_eq!(st(coverage(&b, "VKORC1")[0], &["state"]), "assessed");
+    assert!(!st(coverage(&b, "CFTR")[0], &["note"]).contains("PGx call"));
+}
