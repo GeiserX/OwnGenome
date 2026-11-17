@@ -457,11 +457,22 @@
       layout: raw.layout ? { width: raw.layout.width, height: raw.layout.height, size: raw.layout.size, lines: copy(raw.layout.lines),
         people: (raw.layout.people || []).map(function (m) { return { sample: m.sample, sex: m.sex, sequenced: m.sequenced, x: m.x, y: m.y }; }) } : null,
       couple_note: raw.couple_note, chrom_lengths: copy(raw.chrom_lengths), gated: closed, runs: {} };
+    // A child's trio tables (the de novo candidates and the compound-het pairs) are read against the child and its
+    // parents: a row names the child, and the parent each call or variant comes from. Both tables of a child stay
+    // out while any of the three is gated, whole, so nothing the page says of them depends on which rows there are.
+    // The one rule for these rows: the family view and the genome map's family mode get them only through here.
+    function parentsOf(s) { return (raw.state.members || []).filter(function (m) { return m.sample === s; }).map(function (m) { return [m.father, m.mother]; })[0] || []; }
+    function trioShut(s) { return gated(s) || parentsOf(s).some(function (p) { return p && gated(p); }); }
     // Each person keeps the role this family gives them: its children are the ones it lists with a father or a
     // mother. A gated person it lists as a parent or partner (a child in another family) is in gated alone, and the
-    // view gives them their buttons beside the children.
+    // view gives them their buttons beside the children. An open child with a gated parent keeps its entry and
+    // names that parent in trio_closed: the page says its tables stay closed, the same line whatever rows there are.
     f.state.children = (raw.state.members || []).filter(function (m) { return m.father || m.mother; }).map(function (m) {
-      return gated(m.sample) ? { child: m.sample, gated: true } : copy((raw.state.children || []).filter(function (c) { return c.child === m.sample; })[0]);
+      if (gated(m.sample)) { return { child: m.sample, gated: true }; }
+      var c = copy((raw.state.children || []).filter(function (x) { return x.child === m.sample; })[0]);
+      var by = [m.father, m.mother].filter(function (p) { return p && gated(p); });
+      if (c && by.length) { c.trio_closed = by; }
+      return c;
     }).filter(Boolean);
     // A row belongs to a gated child when it names that child as one of its members, by exact name.
     function names(v) { return String(v || '').split(/[\s,;]+/); }
@@ -483,9 +494,9 @@
     ['segments', 'trio_status', 'trio_files', 'trio_file_state'].forEach(function (key) {
       if (!raw[key] || typeof raw[key] !== 'object') { return; }
       f[key] = {};
-      Object.keys(raw[key]).forEach(function (k) { if (!gated(k)) { f[key][k] = copy(raw[key][k]); } });
+      Object.keys(raw[key]).forEach(function (k) { if (!(key === 'trio_status' ? trioShut(k) : gated(k))) { f[key][k] = copy(raw[key][k]); } });
     });
-    ['de_novo', 'compound_het'].forEach(function (key) { f[key] = copy((raw[key] || []).filter(function (r) { return !gated(r.child); })); });
+    ['de_novo', 'compound_het'].forEach(function (key) { f[key] = copy((raw[key] || []).filter(function (r) { return !trioShut(r.child); })); });
     Object.keys(raw.runs || {}).forEach(function (k) {
       f.runs[k] = gated(k) ? Object.assign(progressOf(raw.runs[k]), { url: raw.runs[k].url, gated: true }) : copy(raw.runs[k]);
     });
