@@ -181,3 +181,21 @@ done
 [ -z "$(find "$C" -name '*.part*')" ] || fail "two screens at once left part files: $(find "$C" -name '*.part*')"
 [ ! -e "${C}/.norm.lock" ] || fail "two screens at once left clinvar/.norm.lock behind"
 echo "two screens at once build the normalised ClinVar once, VCF and .tbi of one write: PASS"
+
+# --- A stale normalised ClinVar in a folder the user cannot write ----------------------
+# The lock is a folder made in clinvar/, so the step must stop with an error
+# there, not wait for a lock it can never take. root writes anywhere, so
+# this part needs an ordinary user, as on the CI runner.
+if [ "$(id -u)" -eq 0 ]; then
+  echo "read-only clinvar/: not checked as root, which can write any folder"
+else
+  touch -t 202001010000 "$NORM" "${NORM}.tbi"
+  rm -rf "${GENOME_DIR}/sample1/clinvar"
+  chmod a-w "$C"
+  run_rc readonly-clinvar timeout 60 "${SCRIPTS}/06-clinvar-screen.sh" sample1
+  chmod u+w "$C"
+  [ "$RC" -ne 124 ] || fail "step 06 was still waiting after 60 s for a lock in a clinvar/ folder it cannot write"
+  [ "$RC" -ne 0 ] || fail "step 06 exited 0 with a stale normalised ClinVar it cannot rebuild"
+  output_has readonly-clinvar 'clinvar is not writable'
+  echo "a stale normalised ClinVar in a read-only folder stops the step with an error: PASS"
+fi

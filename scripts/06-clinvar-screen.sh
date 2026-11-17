@@ -138,6 +138,12 @@ SAMPLE_DROPPED=$(comm -23 <(printf '%s\n' "$SAMPLE_CONTIGS") <(printf '%s\n' "$S
 norm_stale() { [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; }
 if norm_stale; then
   NORM_LOCK="${GENOME_DIR}/clinvar/.norm.lock"
+  # lock_acquire waits for as long as mkdir fails, so a folder it cannot write
+  # would make it wait forever.
+  if [ ! -w "${GENOME_DIR}/clinvar" ]; then
+    echo "ERROR: ${CLINVAR_NORM} must be rebuilt, but ${GENOME_DIR}/clinvar is not writable by you." >&2
+    exit 1
+  fi
   lock_acquire "$NORM_LOCK"
   trap 'lock_release "$NORM_LOCK"' EXIT
   if norm_stale; then
