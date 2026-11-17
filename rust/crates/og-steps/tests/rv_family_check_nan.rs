@@ -203,14 +203,21 @@ fn finite_relatedness_keeps_its_verdict() {
     assert_eq!(get(&row, "verdict"), "ok", "{row:?}");
     assert_eq!(get(&row, "reason"), "unrelated, as declared", "{row:?}");
     assert!(!err.contains("WARNING"), "stderr: {err}");
-    // Too few sites keeps its own reason.
-    let (code, _, row) = check("few-partners", PARTNERS, "a\tb\t0.01\t6\t10\t50");
-    assert_eq!(code, 0);
-    assert_eq!(get(&row, "verdict"), "not_checked", "{row:?}");
-    assert!(
-        get(&row, "reason").starts_with("somalier compared the two at 50 sites"),
-        "{row:?}"
-    );
+    // Too few sites keeps its own reason, also beside a nan relatedness or
+    // more opposite homozygotes than sites (the parity case family/check-few).
+    for (name, pair) in [
+        ("few-partners", "a\tb\t0.01\t6\t10\t50"),
+        ("few-nan-partners", "a\tb\tnan\t6\t10\t50"),
+        ("few-ibs0-over-n-partners", "a\tb\t0.01\t600\t10\t50"),
+    ] {
+        let (code, _, row) = check(name, PARTNERS, pair);
+        assert_eq!(code, 0, "{name}");
+        assert_eq!(get(&row, "verdict"), "not_checked", "{name}: {row:?}");
+        assert!(
+            get(&row, "reason").starts_with("somalier compared the two at 50 sites"),
+            "{name}: {row:?}"
+        );
+    }
     // A measured first degree for declared partners still stops the step.
     let (code, _, row) = check("close-partners", PARTNERS, "a\tb\t0.5\t1\t900\t5000");
     assert_eq!(code, 1);

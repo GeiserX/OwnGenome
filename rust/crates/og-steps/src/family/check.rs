@@ -86,12 +86,23 @@ fn verdict(
 /// comparison with NaN is false, so [`verdict`] would bin it as unrelated
 /// and call a pair declared unrelated or distant ok. A negative count, or
 /// more opposite homozygotes than sites, is no count somalier can make.
+/// Under [`MIN_SITES`] sites [`verdict`] already says too few to tell, the
+/// more useful reason, so only a negative count comes before it.
 fn unmeasured(rel_text: &str, rel: f64, ibs0: i128, ibs2: i128, n: i128) -> Option<String> {
-    if ibs0 < 0 || ibs2 < 0 || n < 0 || ibs0 > n {
-        return Some(format!(
+    let counts = || {
+        format!(
             "somalier gave ibs0 {ibs0}, ibs2 {ibs2} and {n} sites for this pair: not counts \
              of sites, not measured"
-        ));
+        )
+    };
+    if ibs0 < 0 || ibs2 < 0 || n < 0 {
+        return Some(counts());
+    }
+    if n < MIN_SITES {
+        return None;
+    }
+    if ibs0 > n {
+        return Some(counts());
     }
     if !rel.is_finite() {
         return Some(format!(
