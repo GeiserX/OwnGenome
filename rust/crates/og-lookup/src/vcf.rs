@@ -287,20 +287,23 @@ pub struct Span<'a> {
 
 /// The records of `path` that overlap `span` (a reference block by its
 /// END, a deletion by its REF), in file order: through the `.tbi` or `.csi`
-/// beside the file when there is one, else by streaming the whole file,
-/// which `note` is told.
+/// beside the file when there is one and it is not older than the file,
+/// else by streaming the whole file, which `note` is told.
 pub fn read(path: &str, span: Span, note: &mut dyn Write) -> Result<Region, Error> {
     {
-        let has_index = [".tbi", ".csi"]
+        let index = [".tbi", ".csi"]
             .iter()
-            .any(|x| Path::new(&format!("{path}{x}")).is_file());
-        if !has_index {
+            .map(|x| format!("{path}{x}"))
+            .find(|p| Path::new(p).is_file());
+        if let Some(index) = index.as_deref().filter(|i| older(i, path)) {
+            // A contig the file gained after its index was built is not in
+            // the index, so an indexed read would answer no call there.
             let _ = writeln!(
                 note,
-                "NOTE: {path} has no .tbi index; reading the whole file (bcftools index -t makes this fast)."
+                "NOTE: the index {index} is older than {path}; reading the whole file (bcftools index -f -t rebuilds it)."
             );
-        } else {
-            match read_indexed(path, span) {
+        } else if let Some(index) = index.as_deref() {
+            match read_indexed(path, index, span) {
                 Ok(r) => return Ok(r),
                 Err(e) => {
                     let _ = writeln!(
@@ -313,9 +316,21 @@ pub fn read(path: &str, span: Span, note: &mut dyn Write) -> Result<Region, Erro
                     );
                 }
             }
+        } else {
+            let _ = writeln!(
+                note,
+                "NOTE: {path} has no .tbi index; reading the whole file (bcftools index -t makes this fast)."
+            );
         }
     }
     read_stream(path, span)
+}
+
+/// Whether `index` was last written before `path`, the way og-bloodtype
+/// judges an index. A time that cannot be read counts as not older.
+fn older(index: &str, path: &str) -> bool {
+    let mtime = |p: &str| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    matches!((mtime(index), mtime(path)), (Some(i), Some(v)) if i < v)
 }
 
 /// Keeps `r` when it overlaps `span`.
@@ -325,7 +340,7 @@ fn overlaps(r: &Rec, span: Span) -> bool {
 
 /// The header through the top of the file, then each index sequence that
 /// names the region's chromosome, through the index.
-fn read_indexed(path: &str, span: Span) -> Result<Region, Error> {
+fn read_indexed(path: &str, index: &str, span: Span) -> Result<Region, Error> {
     let file = og_io::open(path).map_err(|e| Error::io(&e, path))?;
     let mut header = Vec::new();
     for line in Lines::new(file, Utf8::Replace) {
@@ -338,7 +353,7 @@ fn read_indexed(path: &str, span: Span) -> Result<Region, Error> {
         }
     }
     let csq = Csq::from_header(header.iter().map(String::as_str));
-    let mut reader = tabix::Reader::open(path).map_err(|e| Error::io(&e, path))?;
+    let mut reader = tabix::Reader::with_index(path, index).map_err(|e| Error::io(&e, path))?;
     let names: Vec<String> = reader
         .index()
         .names()
