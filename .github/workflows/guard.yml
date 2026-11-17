@@ -75,6 +75,65 @@ jobs:
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
         run: scripts/ci/check-coupled-versions.sh
 
+  # MITO_HAPLOGROUP runs haplogrep3 in its Nextflow task directory: the
+  # pinned build finds its config and trees beside its jar, and the report
+  # must land where Nextflow collects it. A `cd` or a `readlink -f` in that
+  # process would bring back the run in the binary's directory, which can be
+  # read-only. Only that process is checked: the readlink -f of the
+  # reference in MITO_EXTRACT_CHRM, in the same file, is right.
+  mito-workdir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The self-test plants its faults first: a cd or readlink -f in
+      # MITO_HAPLOGROUP, or a renamed process, must be caught; a cd in
+      # MITO_EXTRACT_CHRM must not. Then the module itself.
+      - name: MITO_HAPLOGROUP has no cd and no readlink -f (self-test first)
+        run: |
+          set -euo pipefail
+          # check FILE: exit 1 and name each line when the MITO_HAPLOGROUP
+          # block (from its process line to the closing brace at column 1)
+          # has a cd or a readlink -f outside a comment, or when the file has
+          # no such block.
+          check() {
+            awk '
+              /^process MITO_HAPLOGROUP[[:space:]]*\{/ { p = 1; seen = 1; next }
+              p && /^\}/ { p = 0 }
+              p && !/^[[:space:]]*#/ && (/(^|[^[:alnum:]_.-])cd([[:space:]]|$)/ || /readlink[[:space:]]+-f/) {
+                print FILENAME ":" FNR ": " $0; bad = 1
+              }
+              END {
+                if (!seen) { print FILENAME ": no process MITO_HAPLOGROUP"; exit 1 }
+                exit bad
+              }' "$1"
+          }
+          M=modules/local/mito_haplogroup/main.nf
+          T=$(mktemp -d)
+          # plant NAME SED: a copy of the module with one edit; the edit must
+          # change the file, or the control would test the module itself.
+          plant() {
+            sed "$2" "$M" > "${T}/$1.nf"
+            if cmp -s "$M" "${T}/$1.nf"; then echo "FAIL: the plant $1 changed nothing"; exit 1; fi
+          }
+          # shellcheck disable=SC2016  # the planted lines are text, never expanded here
+          plant cd '/^process MITO_HAPLOGROUP/,/^}/ s|^    haplogrep3 classify|    cd "$(dirname "$(command -v haplogrep3)")"\n    haplogrep3 classify|'
+          # shellcheck disable=SC2016  # as above
+          plant readlink '/^process MITO_HAPLOGROUP/,/^}/ s|^    haplogrep3 classify|    BIN=$(readlink -f "$(command -v haplogrep3)")\n    haplogrep3 classify|'
+          plant renamed 's/^process MITO_HAPLOGROUP /process MITO_HAPLOGROUP_X /'
+          plant chrm-cd '/^process MITO_EXTRACT_CHRM/,/^}/ s|^    { echo ">chrM"|    cd .\n    { echo ">chrM"|'
+          for c in cd readlink renamed; do
+            if out=$(check "${T}/${c}.nf"); then
+              echo "FAIL: the planted ${c} was not caught"; exit 1
+            fi
+            echo "caught ${c}: ${out}"
+          done
+          out=$(check "${T}/chrm-cd.nf") || { echo "FAIL: a cd in MITO_EXTRACT_CHRM was taken for MITO_HAPLOGROUP, or the module already fails:"; echo "$out"; exit 1; }
+          echo "OK: every plant in MITO_HAPLOGROUP is caught, and MITO_EXTRACT_CHRM is left alone"
+          check "$M"
+          echo "OK: MITO_HAPLOGROUP runs haplogrep3 in its task directory"
+
   fake-docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -887,7 +946,7 @@ jobs:
   # job above failed or was skipped, and fails unless every one succeeded.
   ci-ok:
     if: always()
-    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, og, unit-tests, rust, parity]
+    needs: [image-vars, images, coupled-versions, mito-workdir, fake-docker, helper-binaries, og, unit-tests, rust, parity]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
