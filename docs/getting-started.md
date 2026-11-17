@@ -57,6 +57,16 @@ Use `./scripts/setup.sh --no-clinical-data "$GENOME_DIR"` to opt out.
 Use `./scripts/setup.sh --clinical-data "$GENOME_DIR"` to add or retry only these data later.
 `run-all.sh` skips steps whose data are still missing; inspect its plan and setup warnings.
 
+Setup ends in one of three ways:
+
+| Exit status | Last banner | What it means |
+| --- | --- | --- |
+| 0 | `Setup complete!` | Everything is installed. `--no-clinical-data` skips the clinical data on purpose, so that run can still end here. |
+| 3 | `Setup finished: core ready, N items missing` | The reference, ClinVar and the images are in place, but at least one download, check or build failed or was skipped. Under `Missing` the summary lists each item and the command that retries it, such as `./scripts/setup.sh --annotsv-data "$GENOME_DIR"`. The steps that need an item say so when they run. |
+| 1 | an error message, no banner | A core part failed (the reference, ClinVar or an image pull), or the arguments were wrong. Fix the error and run setup again. |
+
+The PGS Catalog scores, pgsc_calc and its Nextflow plugin are not on the list: step 25 fetches what is missing when it runs.
+
 ## Platform Notes
 
 ### Linux (Recommended)
