@@ -1255,3 +1255,14 @@ report-render	m-variants-missing	gen:report-corpus.sh	--summary m-variants-missi
 report-render	m-variants-ok	gen:report-corpus.sh	--summary m-variants-ok.json -o m-variants-ok.txt -o m-variants-ok.html	m-variants-ok.txt,m-variants-ok.html	bytes	PYTHON_IMAGE
 report-render	m-variants-stale	gen:report-corpus.sh	--summary m-variants-stale.json -o m-variants-stale.txt -o m-variants-stale.html	m-variants-stale.txt,m-variants-stale.html	bytes	PYTHON_IMAGE
 report-render	m-variants-unreadable	gen:report-corpus.sh	--summary m-variants-unreadable.json -o m-variants-unreadable.txt -o m-variants-unreadable.html	m-variants-unreadable.txt,m-variants-unreadable.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-ok	gen:report-corpus.sh	--summary m-pgx-ok.json -o m-pgx-ok.txt -o m-pgx-ok.html	m-pgx-ok.txt,m-pgx-ok.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-stale	gen:report-corpus.sh	--summary m-pgx-stale.json -o m-pgx-stale.txt -o m-pgx-stale.html	m-pgx-stale.txt,m-pgx-stale.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-states	gen:report-corpus.sh	--summary m-pgx-states.json -o m-pgx-states.txt -o m-pgx-states.html	m-pgx-states.txt,m-pgx-states.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-calls	gen:report-corpus.sh	--summary m-pgx-calls.json -o m-pgx-calls.txt -o m-pgx-calls.html	m-pgx-calls.txt,m-pgx-calls.html	bytes	PYTHON_IMAGE
+report-render	m-hla-ok	gen:report-corpus.sh	--summary m-hla-ok.json -o m-hla-ok.txt -o m-hla-ok.html	m-hla-ok.txt,m-hla-ok.html	bytes	PYTHON_IMAGE
+report-render	m-hla-none	gen:report-corpus.sh	--summary m-hla-none.json -o m-hla-none.txt -o m-hla-none.html	m-hla-none.txt,m-hla-none.html	bytes	PYTHON_IMAGE
+report-render	m-hla-failed	gen:report-corpus.sh	--summary m-hla-failed.json -o m-hla-failed.txt -o m-hla-failed.html	m-hla-failed.txt,m-hla-failed.html	bytes	PYTHON_IMAGE
+report-render	m-mito-ok	gen:report-corpus.sh	--summary m-mito-ok.json -o m-mito-ok.txt -o m-mito-ok.html	m-mito-ok.txt,m-mito-ok.html	bytes	PYTHON_IMAGE
+report-render	m-mito-notes	gen:report-corpus.sh	--summary m-mito-notes.json -o m-mito-notes.txt -o m-mito-notes.html	m-mito-notes.txt,m-mito-notes.html	bytes	PYTHON_IMAGE
+report-render	m-mito-copies	gen:report-corpus.sh	--summary m-mito-copies.json -o m-mito-copies.txt -o m-mito-copies.html	m-mito-copies.txt,m-mito-copies.html	bytes	PYTHON_IMAGE
+report-render	m-mito-failed	gen:report-corpus.sh	--summary m-mito-failed.json -o m-mito-failed.txt -o m-mito-failed.html	m-mito-failed.txt,m-mito-failed.html	bytes	PYTHON_IMAGE

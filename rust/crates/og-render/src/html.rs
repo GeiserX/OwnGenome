@@ -9,7 +9,9 @@
 use crate::chapters::{CHAPTERS, FrameState, LIMITS, Sec, step_of, writer};
 use crate::css::CSS;
 use crate::escape::e;
-use crate::model::{Card, Colour, HtmlPart, Inline, Line, Malformed, Section, State, Summary, py};
+use crate::model::{
+    Card, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table, py,
+};
 use crate::notes::stale_note;
 use crate::sections::run;
 
@@ -69,6 +71,57 @@ fn line(out: &mut Vec<String>, l: &Line) {
             out.push("    <ul class=\"plain\">".to_owned());
             out.extend(items.iter().map(|t| format!("      <li>{}</li>", e(t))));
             out.push("    </ul>".to_owned());
+        }
+        Line::Table(t) => table(out, t),
+        Line::Warn(t) => out.push(format!("    <div class=\"stale\">{}</div>", e(t))),
+        Line::ViewerNote => out.push(crate::notes::VIEWER_NOTE.to_owned()),
+    }
+}
+
+/// The genome viewer's address on this computer (scripts/owngenome-view.sh);
+/// the part after `#` is the locus it opens at.
+pub const VIEWER_URL: &str = "http://127.0.0.1:8765/";
+
+/// A table's rows, each cell escaped, with the Viewer cell last when the
+/// table has that column.
+fn table(out: &mut Vec<String>, t: &Table) {
+    let mut head: String = t
+        .head
+        .iter()
+        .map(|c| format!("<th>{}</th>", e(c)))
+        .collect();
+    if t.viewer.is_some() {
+        head.push_str("<th>Viewer</th>");
+    }
+    let rows: Vec<String> = t
+        .rows
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let mut row: String = r.iter().map(|c| format!("<td>{}</td>", e(c))).collect();
+            if let Some(v) = &t.viewer {
+                row.push_str(&match v.get(i).cloned().flatten() {
+                    Some(at) => format!(
+                        "<td><a class=\"locus\" href=\"{VIEWER_URL}#{0}\" target=\"_blank\" \
+                         rel=\"noopener noreferrer\">{0}</a></td>",
+                        e(&at)
+                    ),
+                    None => "<td></td>".to_owned(),
+                });
+            }
+            format!("<tr>{row}</tr>")
+        })
+        .collect();
+    match t.layout {
+        Layout::OneLine => out.push(format!(
+            "    <table><tr>{head}</tr>{}</table>",
+            rows.concat()
+        )),
+        Layout::RowLines => {
+            out.push("    <table>".to_owned());
+            out.push(format!("      <tr>{head}</tr>"));
+            out.push(rows.join("\n"));
+            out.push("    </table>".to_owned());
         }
     }
 }

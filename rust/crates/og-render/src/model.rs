@@ -325,6 +325,34 @@ pub enum Line {
     Para(String),
     /// A plain bulleted list.
     List(Vec<String>),
+    /// A table of plain cells.
+    Table(Table),
+    /// A warning in the stale box's style, among the card's lines.
+    Warn(String),
+    /// The sentence that says how the Viewer column opens the reads.
+    ViewerNote,
+}
+
+/// A table: its column titles and rows of cells, each cell escaped once.
+/// With `viewer`, a last column opens each row's locus in the genome viewer
+/// (`chrom:start` or `chrom:start-end`); a row with `None` gets an empty
+/// cell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Table {
+    pub head: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub viewer: Option<Vec<Option<String>>>,
+    pub layout: Layout,
+}
+
+/// How a table is laid out in the page's source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layout {
+    /// The whole table on one line.
+    OneLine,
+    /// The table tags and the head row on lines of their own, the rows on
+    /// one line each with no indent.
+    RowLines,
 }
 
 /// One card: a title, the caveats shown under it, the notes saying its

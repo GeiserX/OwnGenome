@@ -181,7 +181,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "vntyper" => None,
 
-        "mito" => None,
+        "mito" => Some((sections::mito::text, sections::mito::html)),
 
         "lpa" => None,
 
@@ -197,13 +197,13 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "paralogs" => None,
 
-        "pharmcat" => None,
+        "pharmcat" => Some((sections::pgx::pharmcat_text, sections::pgx::pharmcat_html)),
 
-        "cpic" => None,
+        "cpic" => Some((sections::pgx::cpic_text, sections::pgx::cpic_html)),
 
-        "cyp2d6" => None,
+        "cyp2d6" => Some((sections::pgx::cyp2d6_text, sections::pgx::cyp2d6_html)),
 
-        "hla" => None,
+        "hla" => Some((sections::hla::text, sections::hla::html)),
 
         "locityper" => None,
 

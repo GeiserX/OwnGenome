@@ -114,6 +114,89 @@ mut sex-agree '.run.declared_sex = "male" | .sections.sex_check.state = "ok" | .
 mut counts '.sections.variants.state = "ok" | .sections.variants.data = {"total": 4.5, "pass": true, "snps": "12", "indels": null}
   | .sections.coverage.state = "ok" | .sections.coverage.data.mean_depth = 31'
 mut counts-float '.sections.coverage.state = "ok" | .sections.coverage.data.mean_depth = 30.05'
+# PGx, HLA and mitochondrial variants (port-report-pgx): each section in each
+# state, the rows each writer prints, and texts HTML escapes.
+pgx='.sections.pharmcat = {"title": "PharmCAT", "state": "ok", "source": "pharmcat/S.report.json", "file_date": null,
+  "note": null, "data": {"version": "3.4.0", "html_report": true}}
+  | .sections.cpic = {"title": "CPIC <recs>", "state": "ok", "source": "cpic/S_phenotypes.tsv", "file_date": null,
+  "note": null, "data": {"genes": [{"gene": "CYP2D6", "diplotype": "*1/*4", "phenotype": "Intermediate <Metabolizer>",
+  "status": "non-normal"}, {"gene": "CYP2C19", "diplotype": "*1/*17 & *2", "phenotype": "Rapid", "status": "ambiguous"},
+  {"gene": "DPYD", "diplotype": null, "phenotype": null, "status": null}], "non_normal": 1, "ambiguous": 1,
+  "not_called": 2, "unclassified": 1, "parse_failed": false, "warnings": ["two <results> & more"]}}
+  | .sections.pypgx = {"title": "pypgx", "state": "ok", "source": "pypgx/S.tsv", "file_date": null, "note": null,
+  "data": {"genes_total": 6, "genes_called": 3, "cyp2d6": "*1/*2", "cnv_call": {"CYP2D6": "2", "UGT2B17": "0 <del>"},
+  "not_callable": ["GSTT1", "CYP2E1"], "low_gq": [{"gene": "UGT1A1", "diplotype": "*1/*28", "weakest": ""}],
+  "depth_check": {"status": null, "gene_mapq1_share": "0.99", "body_mapq20_share": null},
+  "comparison": {"conflicts": 2, "one_tool_only": 0}}}
+  | .sections.cyrius = {"title": "Cyrius", "state": "ok", "source": "cyrius/S.tsv", "file_date": null, "note": null,
+  "data": {"genotype": "*1/*2"}}
+  | .cyp2d6 = {"calls": {"PharmCAT": "*1/*4", "pypgx": "*1/*2", "Cyrius": null}, "agree": false,
+  "consensus": {"result": null, "passed_to_pharmcat": false, "reason": null}, "probable": {"diplotype": "*1/*2",
+  "phenotype": "Normal Metabolizer", "label": "probable CYP2D6 call (ONE caller)"}}'
+mut pgx-ok "$pgx"
+mut pgx-stale "$pgx"' | .sections.cpic.state = "stale" | .sections.cpic.note = "from <2020>"
+  | .sections.pypgx.state = "failed" | .sections.pypgx.note = "exit 1" | .sections.pypgx.data = {}
+  | .sections.cyrius.state = "stale" | .sections.cyrius.note = "old" | .sections.pharmcat.data = {}
+  | .cyp2d6.agree = null | .cyp2d6.consensus = {"result": "*1/*1", "passed_to_pharmcat": true, "reason": "agree"}
+  | .cyp2d6.probable = null | .new_since = {"previous_utc": "2026-01-01", "sections": ["cyrius", "cpic"]}'
+mut pgx-states "$pgx"' | .sections.pharmcat.state = "unreadable" | .sections.pharmcat.note = "bad json"
+  | .sections.cpic.data.parse_failed = true | .sections.cpic.data.non_normal = 0 | .sections.cpic.data.ambiguous = 0
+  | .sections.cpic.source = "S_phenotypes.tsv" | .sections.pypgx.state = "missing" | .sections.pypgx.data = {}
+  | .cyp2d6.calls = {"PharmCAT": null, "pypgx": null, "Cyrius": null} | .cyp2d6.consensus = null | .cyp2d6.probable = null'
+mut pgx-calls "$pgx"' | .sections.pharmcat.state = "failed" | .sections.pharmcat.note = "exit 2"
+  | .sections.cpic.state = "missing" | .sections.pypgx.data.comparison.one_tool_only = 3
+  | .sections.pypgx.data.depth_check = {"status": "low", "gene_mapq1_share": "0.5", "gene_mapq20_share": "0.4",
+  "body_mapq1_share": "0.9", "body_mapq20_share": "0.8"} | .cyp2d6.agree = true
+  | .cyp2d6.calls = {"PharmCAT": null, "pypgx": "*1/*2", "Cyrius": "*1/*2"}
+  | .cyp2d6.consensus = {"result": "*1/*2", "passed_to_pharmcat": true, "reason": "pypgx & Cyrius agree"}'
+hla='.databases.hla_database = "IPD-IMGT/HLA 3.60" | .sections.hla = {"title": "HLA", "state": "ok",
+  "source": "hla_t1k/S_hla_genotype.tsv", "file_date": null, "note": null, "data": {"loci": [
+  {"gene": "HLA-A", "alleles": ["A*02:01", "A*31:01"], "quality": ["40", "12"]},
+  {"gene": "HLA-DRB5", "alleles": ["DRB5*01:01,DRB5*01:02,DRB5*01:03"], "quality": ["0"], "candidates": [12],
+  "low_confidence": true, "withheld_from_pharmcat": true},
+  {"gene": "HLA-B", "alleles": ["B*57:01", "B*08:01"], "quality": [0, "x"], "low_confidence": true},
+  {"gene": "HLA-HFE", "alleles": ["HFE*001:01", "HFE*002:01"], "quality": ["40"], "label": "a <label>"},
+  {"gene": "HLA-C", "alleles": []}],
+  "derived": {"coeliac": {"status": "derived", "dq2_5": "present", "dq2_5_phase": "likely cis (DRB1*03)",
+  "dq2_2": "absent", "dq8": "absent", "dqb1_02_dose": 1}, "alleles": [
+  {"allele": "C*06:02", "state": "not_determined", "reason": "HLA-C not typed", "association": "psoriasis",
+  "citation": "Nair 2006"}, {"allele": "B*57:01", "state": "present", "association": "abacavir & <x>",
+  "citation": "Mallal 2008"}, {"allele": "B*27", "state": "uncertain", "association": "AS", "citation": "C"},
+  {"allele": "A*31:01", "state": "absent", "association": "carbamazepine", "citation": "M"}]},
+  "optitype": {"genes": [{"gene": "HLA-A", "agree": "yes", "t1k": "A*02:01", "optitype": "A*02:01", "note": "-"},
+  {"gene": "HLA-B", "agree": "no", "t1k": "B*57:01", "optitype": "B*58:01", "note": "check <reads>"},
+  {"gene": "HLA-C", "agree": "", "t1k": ".", "optitype": "C*07:01", "note": ""}], "reason": ""},
+  "kir": {"reason": "", "typed": [{"gene": "KIR2DL1", "alleles": ["KIR2DL1*001", "KIR2DL1*002"], "quality": ["30", ""]}],
+  "not_called": ["KIR2DS1", "KIR3DS1"]}}}'
+mut hla-ok "$hla"
+mut hla-none "$hla"' | .databases.hla_database = null | .sections.hla.state = "stale" | .sections.hla.note = "old"
+  | .sections.hla.data.derived = {"coeliac": {"status": "not_determined", "reason": null, "dqb1_02_dose": null},
+  "alleles": []} | .sections.hla.data.optitype = {"genes": [], "reason": "OptiType <failed>"}
+  | .sections.hla.data.kir = {"reason": "KIR=false", "typed": [], "not_called": []}'
+mut hla-failed "$hla"' | .sections.hla.state = "failed" | .sections.hla.note = "T1K <died>" | .sections.hla.data = {}'
+mito='.sections.mito = {"title": "Mito", "state": "ok", "source": "mito/S.vcf.gz", "file_date": null, "note": null,
+  "data": {"pass": 7, "heteroplasmic": 1, "polyc_heteroplasmic": [{"variant": "chrM:302 A>AC", "af": 0.3}],
+  "polyc_tracts": ["m.303-315"], "annotation": {"source": "mito/S_annotated.tsv", "clinvar": "2026-10-01",
+  "gnomad": null, "clinvar_plp": 1, "variants": [{"pos": "3243", "ref": "A", "alt": "G", "af": "0.40",
+  "clinvar_significance": "Pathogenic", "clinvar_review": "criteria <x>", "clinvar_condition": "MELAS & co",
+  "gnomad_af_hom": "0", "gnomad_af_het": "0", "polyc": false}, {"pos": "0", "ref": "A", "alt": "AC", "af": null,
+  "clinvar_significance": ".", "gnomad_af_hom": ".", "polyc": true}, {"pos": 0, "ref": "C", "alt": "T",
+  "clinvar_significance": "", "gnomad_af_hom": null}]},
+  "confirmed": [{"hgvs": "m.3243A>G", "gene": "MT-TL1", "disease": "MELAS", "clinvar_id": "9589",
+  "pmids": "2102678;123", "note": "Heteroplasmic.", "af": "0.40", "filter": null}],
+  "deletions": {"total": 3, "list_floor_pct": 1.0, "listed": [{"bkp5": 8469, "bkp3": 13447, "length": 4977,
+  "level_pct": 10.2, "known": {"disease": "The common deletion", "clinvar_id": "430680", "hgvs": "m.8483_13459del",
+  "pmids": "2711184;2541333"}}, {"bkp5": 16000, "bkp3": 500, "length": 1068, "level_pct": 2.0},
+  {"bkp5": 100.0, "bkp3": 200, "length": 99, "level_pct": 1.5}]},
+  "copies": {"status": "called", "mtdna_copies": 200.0, "depth_ratio": 100.0}}}'
+mut mito-ok "$mito"
+mut mito-notes "$mito"' | .sections.mito.data = {"pass": 3, "heteroplasmic": 0, "annotation": {"note": "no <ClinVar>"},
+  "confirmed_note": "assets/mito_confirmed.tsv is not in assets", "deletions_note": "EKLIPSE=false",
+  "copies_note": "no idxstats"}'
+mut mito-copies "$mito"' | .sections.mito.data.copies = {"status": "not assessed", "reason": "no_chrM_reads"}
+  | .sections.mito.data.annotation.variants = [] | .sections.mito.data.confirmed = [] | .sections.mito.data.deletions = null
+  | .sections.mito.state = "stale" | .sections.mito.note = "from <2020>"'
+mut mito-failed "$mito"' | .sections.mito.state = "failed" | .sections.mito.note = "Mutect2 died" | .sections.mito.data = {}'
 rm -f "$base"
 
 # --- the oracle -----------------------------------------------------------------------
@@ -132,6 +215,7 @@ PYTHONPATH=$d python3 "$d/render_report.py" "$@"
 rm -rf "$d"
 # The sections og report render writes; the others are left out.
 PORTED=" qc variants not-run not-assessed "
+PORTED="$PORTED pharmcat cpic cyp2d6 hla mito "
 while [ $# -gt 0 ]; do
   case "$1" in
     -o)
@@ -148,8 +232,8 @@ done
 ORACLE
 
 # html.awk: drops each section not in keep (its line in the contents and its
-# frame), then each chapter with no section left (its contents entry and its
-# body), and the gene and rsID appendix.
+# frame) and every chart, then each chapter with no section left (its
+# contents entry and its body), and the gene and rsID appendix.
 cat > html.awk << 'AWK'
 function wanted(line,   id) {
   if (!match(line, /id="[^"]*"/) && !match(line, /href="#[^"]*"/)) return 1
@@ -164,6 +248,8 @@ END {
   for (i = 1; i <= n; i++) {
     l = lines[i]
     if (l ~ /^        <li><a href="#/ && !wanted(l)) continue
+    # The charts are og report charts' part, not ported yet.
+    if (l ~ /^    <figure class="chart">/) continue
     if (l ~ /^  <section class="sec[^"]*" id="/ && !wanted(l)) {
       while (lines[i] != "  </section>") i++
       continue
@@ -194,6 +280,10 @@ cat > text.awk << 'AWK'
 BEGIN {
   rule = sprintf("%80s", ""); gsub(/ /, "#", rule)
   title["## Quality control"] = "qc"; title["## Variant Calling (DeepVariant)"] = "variants"
+  title["## Pharmacogenomics (PharmCAT)"] = "pharmcat"; title["## CPIC Drug-Gene Recommendations"] = "cpic"
+  title["## pypgx Pharmacogenomics"] = "cyp2d6"; title["## PGx copy number"] = "cyp2d6"
+  title["## CYP2D6 across callers"] = "cyp2d6"; title["## HLA Typing (T1K)"] = "hla"
+  title["## Mitochondrial Variants (Mutect2)"] = "mito"
 }
 { lines[++n] = $0 }
 END {

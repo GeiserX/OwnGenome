@@ -254,9 +254,14 @@ fn both_reports_follow_the_chapter_order() {
         .flat_map(|c| c.sections.iter().map(|s| s.id))
         .collect();
     let shown = shown_sections(&page);
-    assert_eq!(shown, ["qc", "variants", "not-run", "not-assessed"]);
+    // The sections ported so far, in chapter order, then the limits chapter.
+    let n = shown.len();
+    assert!(
+        n >= 4 && shown[..2] == ["qc", "variants"] && shown[n - 2..] == ["not-run", "not-assessed"],
+        "{shown:?}"
+    );
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
-    assert_eq!(&shown[..2], in_order.as_slice());
+    assert_eq!(&shown[..n - 2], in_order.as_slice());
     assert_eq!(text_chapters(&txt), ["QUALITY"]);
     let q = txt.split("#  1. QUALITY").nth(1).unwrap_or("");
     assert!(q.find("## Quality control") < q.find("## Variant Calling (DeepVariant)"));
@@ -266,7 +271,7 @@ fn both_reports_follow_the_chapter_order() {
         .replace("id=\"qc\"", "id=\"tmp\"")
         .replace("id=\"variants\"", "id=\"qc\"")
         .replace("id=\"tmp\"", "id=\"variants\"");
-    assert_ne!(shown_sections(&swapped)[..2], in_order[..]);
+    assert_ne!(shown_sections(&swapped)[..n - 2], in_order[..]);
 }
 
 #[test]
