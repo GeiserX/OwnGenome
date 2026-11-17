@@ -238,6 +238,9 @@ if [ -n "$PCGR_SHA_OVERRIDE" ]; then PCGR_DATA_SHA256=$PCGR_SHA_OVERRIDE; fi
 # The summary lists them, and a run with any left exits SETUP_PARTIAL_EXIT.
 MISSING=()
 SETUP_PARTIAL_EXIT=3
+# The retry commands quote the script path, so a checkout path with a space
+# still copies and pastes as one word.
+SETUP_CMD=$(printf '%q' "$0")
 note_missing() { MISSING+=("$1|$2"); }
 
 # NCBI's GRCh38 analysis set without ALT contigs: chr1-22, X, Y, M, the
@@ -2145,7 +2148,7 @@ install_clinical_data() {
         missing=1
       fi
       [ -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] \
-        || note_missing "PCGR/CPSR bundle ${PCGR_DATA_BUNDLE} (step 17)" "$0 --clinical-data \"${GENOME_DIR}\""
+        || note_missing "PCGR/CPSR bundle ${PCGR_DATA_BUNDLE} (step 17)" "${SETUP_CMD} --clinical-data \"${GENOME_DIR}\""
     else
       [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
       peak=56
@@ -2163,9 +2166,9 @@ install_clinical_data() {
       fi
       if [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ]; then
         if [ "$rel" = "$VEP_CACHE_RELEASE" ]; then
-          note_missing "VEP ${rel} cache (steps 13, 30, 23 and 31)" "$0 --vep-cache \"${GENOME_DIR}\""
+          note_missing "VEP ${rel} cache (steps 13, 30, 23 and 31)" "${SETUP_CMD} --vep-cache \"${GENOME_DIR}\""
         else
-          note_missing "VEP ${rel} cache (step 17, CPSR)" "$0 --clinical-data \"${GENOME_DIR}\""
+          note_missing "VEP ${rel} cache (step 17, CPSR)" "${SETUP_CMD} --clinical-data \"${GENOME_DIR}\""
         fi
       fi
     fi
@@ -2481,7 +2484,7 @@ elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
   echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
-  note_missing "og, OwnGenome's own binary (steps 04, 05, 07, 25 and 33)" "$0 --og"
+  note_missing "og, OwnGenome's own binary (steps 04, 05, 07, 25 and 33)" "${SETUP_CMD} --og"
 fi
 
 ###############################################################################
@@ -2506,7 +2509,7 @@ else
   else
     rm -f "$DICT_PART"
     echo "[WARN] Could not create ${REF_DICT}. Steps 03a, 20, 29 and chip-to-vcf need it; re-run setup.sh."
-    note_missing "the sequence dictionary ${REF_DICT##*/} (steps 03a, 20, 29 and chip-to-vcf)" "$0 \"${GENOME_DIR}\""
+    note_missing "the sequence dictionary ${REF_DICT##*/} (steps 03a, 20, 29 and chip-to-vcf)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
 
@@ -2528,7 +2531,7 @@ for name in $DATA_FILES; do
     echo "[OK] ${what}: ${dest}"
   else
     echo "[WARN] Could not install the ${what}. Re-run setup.sh to try again."
-    note_missing "the ${what}" "$0 \"${GENOME_DIR}\""
+    note_missing "the ${what}" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 done
 # gnomAD v3.1's chrM sites (step 20 annotates the calls with them), checked
@@ -2544,17 +2547,17 @@ else
     echo "[OK] gnomAD v3.1 mitochondrial sites (step 20): ${GNOMAD_MITO}"
   else
     echo "[WARN] Could not install gnomAD's mitochondrial sites. Step 20 runs without its gnomAD columns; re-run setup.sh to try again."
-    note_missing "gnomAD v3.1 mitochondrial sites (step 20)" "$0 \"${GENOME_DIR}\""
+    note_missing "gnomAD v3.1 mitochondrial sites (step 20)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
 # A failed download does not stop setup here either: it goes on the list of
 # what is missing, which the summary prints with the command that retries it.
 install_sample_qc_data \
-  || note_missing "somalier's sites and VerifyBamID2's panel (step 33)" "$0 --sample-qc-data \"${GENOME_DIR}\""
+  || note_missing "somalier's sites and VerifyBamID2's panel (step 33)" "${SETUP_CMD} --sample-qc-data \"${GENOME_DIR}\""
 install_strchive_data \
-  || note_missing "STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b)" "$0 --strchive-data \"${GENOME_DIR}\""
+  || note_missing "STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b)" "${SETUP_CMD} --strchive-data \"${GENOME_DIR}\""
 install_tandem_repeats \
-  || note_missing "GIAB tandem-repeat map (step 04c)" "$0 \"${GENOME_DIR}\""
+  || note_missing "GIAB tandem-repeat map (step 04c)" "${SETUP_CMD} \"${GENOME_DIR}\""
 # Step 25: its scores, pgsc_calc and its plugin (warnings only).
 install_prs
 
@@ -2568,7 +2571,7 @@ echo ""
 echo "=== Phase 5: AnnotSV annotation data (~5.3 GB + ~1.7 GB download, ~20 GB unpacked) ==="
 
 install_annotsv_data \
-  || note_missing "AnnotSV data: the bundle, gnomAD-SV ${GNOMAD_SV_VERSION} and MANE ${MANE_RELEASE} (step 05)" "$0 --annotsv-data \"${GENOME_DIR}\""
+  || note_missing "AnnotSV data: the bundle, gnomAD-SV ${GNOMAD_SV_VERSION} and MANE ${MANE_RELEASE} (step 05)" "${SETUP_CMD} --annotsv-data \"${GENOME_DIR}\""
 
 ###############################################################################
 # Phase 6: Clinical reference data (default)

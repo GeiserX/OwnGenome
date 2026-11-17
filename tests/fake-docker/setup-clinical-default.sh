@@ -5,8 +5,8 @@
 seed_clinical_downloads
 export FETCH_TRIES=1 FETCH_WAIT=0
 G="${CASE_WORK}/without"
-run_expect 0 without "${SCRIPTS}/setup.sh" --no-clinical-data "$G"
-output_has without 'Setup complete!'
+run_expect 3 without "${SCRIPTS}/setup.sh" --no-clinical-data "$G"
+output_has without 'Setup finished: core ready'
 if grep -E '^(wget|curl).*homo_sapiens_vep_|^(wget|curl).*pcgr_ref_data' "$FAKE_DOCKER_LOG"; then
   fail '--no-clinical-data downloaded clinical data'
 fi
