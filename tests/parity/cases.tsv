@@ -1255,3 +1255,11 @@ report-render	m-variants-missing	gen:report-corpus.sh	--summary m-variants-missi
 report-render	m-variants-ok	gen:report-corpus.sh	--summary m-variants-ok.json -o m-variants-ok.txt -o m-variants-ok.html	m-variants-ok.txt,m-variants-ok.html	bytes	PYTHON_IMAGE
 report-render	m-variants-stale	gen:report-corpus.sh	--summary m-variants-stale.json -o m-variants-stale.txt -o m-variants-stale.html	m-variants-stale.txt,m-variants-stale.html	bytes	PYTHON_IMAGE
 report-render	m-variants-unreadable	gen:report-corpus.sh	--summary m-variants-unreadable.json -o m-variants-unreadable.txt -o m-variants-unreadable.html	m-variants-unreadable.txt,m-variants-unreadable.html	bytes	PYTHON_IMAGE
+# report-render, the traits, copy-number and repeat sections: every branch of each in each state (m-genome-*).
+report-render	m-genome-ok	gen:report-corpus.sh	--summary m-genome-ok.json -o m-genome-ok.txt -o m-genome-ok.html	m-genome-ok.txt,m-genome-ok.html	bytes	PYTHON_IMAGE
+report-render	m-genome-stale	gen:report-corpus.sh	--summary m-genome-stale.json -o m-genome-stale.txt -o m-genome-stale.html	m-genome-stale.txt,m-genome-stale.html	bytes	PYTHON_IMAGE
+report-render	m-genome-failed	gen:report-corpus.sh	--summary m-genome-failed.json -o m-genome-failed.txt -o m-genome-failed.html	m-genome-failed.txt,m-genome-failed.html	bytes	PYTHON_IMAGE
+report-render	m-genome-other	gen:report-corpus.sh	--summary m-genome-other.json -o m-genome-other.txt -o m-genome-other.html	m-genome-other.txt,m-genome-other.html	bytes	PYTHON_IMAGE
+report-render	m-genome-stranger	gen:report-corpus.sh	--summary m-genome-stranger.json -o m-genome-stranger.txt -o m-genome-stranger.html	m-genome-stranger.txt,m-genome-stranger.html	bytes	PYTHON_IMAGE
+report-render	m-genome-outdated	gen:report-corpus.sh	--summary m-genome-outdated.json -o m-genome-outdated.txt -o m-genome-outdated.html	m-genome-outdated.txt,m-genome-outdated.html	bytes	PYTHON_IMAGE
+report-render	m-genome-no-stranger	gen:report-corpus.sh	--summary m-genome-no-stranger.json -o m-genome-no-stranger.txt -o m-genome-no-stranger.html	m-genome-no-stranger.txt,m-genome-no-stranger.html	bytes	PYTHON_IMAGE
