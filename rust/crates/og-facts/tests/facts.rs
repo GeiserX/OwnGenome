@@ -694,6 +694,17 @@ fn a_gene_is_assessed_only_with_evidence_that_it_was_read() {
         (st(brca1, &["state"]), st(brca1, &["reason"])),
         ("not_assessed", "not_run")
     );
+    // Callability ran but the coverage step gave no mean depth: not proven either.
+    let (b, _) = run(
+        "no-depth",
+        &swap("coverage", r#""coverage":{"state":"ok","data":{}}"#),
+    );
+    let brca1 = coverage(&b, "BRCA1")[0];
+    assert_eq!(
+        (st(brca1, &["state"]), st(brca1, &["reason"])),
+        ("not_assessed", "not_run")
+    );
+    assert!(st(brca1, &["note"]).contains("mean depth"), "{brca1:?}");
     let (b, _) = run("read", &full_sections());
     assert_eq!(st(coverage(&b, "BRCA1")[0], &["state"]), "assessed");
 }
@@ -757,6 +768,17 @@ fn lpa_states_only_what_was_read() {
     let lpa = fact(&b, "risk_marker", "LPA")[0];
     assert!(get(lpa, &["value", "risk_alleles"]).is_none(), "{lpa:?}");
     assert!(get(lpa, &["variants"]).is_none(), "{lpa:?}");
+    // A site with no VRS identifier is not cited, and the coverage map says so.
+    let mut p = panels();
+    let rsid = p.lpa[0].rsid.clone();
+    p.lpa[0].chrom = "chrUn".to_owned();
+    let dir = folder("lpa-no-vrs", &full_sections());
+    let b = build(SAMPLE, &dir, &p, &mut genome()).unwrap();
+    let lpa = fact(&b, "risk_marker", "LPA")[0];
+    assert!(!format!("{:?}", get(lpa, &["variants"])).contains(&rsid));
+    let row = coverage(&b, "LPA")[0];
+    assert_eq!(st(row, &["state"]), "partial", "{row:?}");
+    assert!(st(row, &["note"]).contains(&rsid), "{row:?}");
 }
 
 #[test]
@@ -779,6 +801,24 @@ fn cyp2d6_is_high_only_when_two_callers_agree() {
     let dir = folder_with("d6-withheld", &full_sections(), withheld);
     let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
     assert!(fact(&b, "pgx", "CYP2D6").is_empty());
+    // The two read-level callers agree on another call than PharmCAT's, and
+    // step 36 did not hand theirs to PharmCAT: the fact shows PharmCAT's call, unconfirmed.
+    let other = r#"{"calls":{"PharmCAT":"*1/*4","pypgx":"*1/*1","Cyrius":"*1/*1"},"agree":true,
+        "consensus":{"result":"*1/*1","passed_to_pharmcat":false,"reason":"x","source":null},"probable":null}"#;
+    let dir = folder_with("d6-other", &called, other);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    let d6 = fact(&b, "pgx", "CYP2D6")[0];
+    assert_eq!(st(d6, &["confidence", "level"]), "medium");
+    assert_eq!(st(d6, &["value", "diplotype"]), "*1/*4");
+    // Not handed over, but PharmCAT called the same pair (in the other order): confirmed.
+    let same = r#"{"calls":{"PharmCAT":"*1/*4","pypgx":"*4/*1","Cyrius":"*4/*1"},"agree":true,
+        "consensus":{"result":"*4/*1","passed_to_pharmcat":false,"reason":"pypgx and Cyrius agree","source":null},"probable":null}"#;
+    let dir = folder_with("d6-same", &called, same);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    assert_eq!(
+        st(fact(&b, "pgx", "CYP2D6")[0], &["confidence", "level"]),
+        "high"
+    );
     let agree = r#"{"calls":{"PharmCAT":"*1/*4","pypgx":"*1/*4","Cyrius":"*1/*4"},"agree":true,
         "consensus":{"result":"*1/*4","passed_to_pharmcat":true,"reason":"pypgx and Cyrius agree","source":null},"probable":null}"#;
     let dir = folder_with("d6-agree", &called, agree);

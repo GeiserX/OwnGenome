@@ -526,9 +526,11 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
             let probable = cyp
                 .and_then(|c| get(c, &["probable"]))
                 .filter(|p| matches!(p, Value::Object(_)));
+            // Step 36 handed the agreed call to PharmCAT, or PharmCAT's own
+            // call is the one the two read-level callers agree on.
             if let Some(c) = consensus
                 && cyp.and_then(|c| get(c, &["agree"])) == Some(&Value::Bool(true))
-                && (passed || status != "not called")
+                && (passed || (status != "not called" && same_diplotype(&diplotype, c)))
             {
                 let reason = cyp
                     .and_then(|c| text(c, &["consensus", "reason"]))
@@ -946,6 +948,16 @@ fn site_genotype(site: &Site, status: &str, genotype: &str) -> Value {
     g
 }
 
+/// Two diplotypes name the same pair of alleles, in either order.
+fn same_diplotype(a: &str, b: &str) -> bool {
+    fn pair(d: &str) -> Vec<&str> {
+        let mut v: Vec<&str> = d.split('/').map(str::trim).collect();
+        v.sort_unstable();
+        v
+    }
+    pair(a) == pair(b)
+}
+
 fn site_variant(
     ctx: &mut Ctx<'_>,
     site: &Site,
@@ -1072,10 +1084,11 @@ fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> Option<&'static str> {
         }
         match site_variant(ctx, &site, status, genotype) {
             Ok(v) => variants.push(v),
-            Err(e) => ctx.warn(format!(
-                "LPA: {} left out, no VRS identifier ({e})",
-                site.rsid
-            )),
+            Err(e) => ctx.leave_out(
+                "LPA",
+                &format!("LPA {}", site.rsid),
+                &format!("no VRS identifier ({e})"),
+            ),
         }
     }
     let copies = (text(lpa, &["status"]) == Some("estimated"))
@@ -1269,6 +1282,11 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
         (None, _) => Some((
             "not_run",
             "gene callability (step 16b) did not run, so whether this gene was read is not known"
+                .to_owned(),
+        )),
+        (_, None) => Some((
+            "not_run",
+            "the coverage step (16) did not report a mean depth, so whether this gene was read is not known"
                 .to_owned(),
         )),
         (_, Some(d)) if d < min_depth => Some((
