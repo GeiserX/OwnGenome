@@ -165,6 +165,11 @@ RG\tS\tchr1\t120000001\t145000000\t25000000\t500\t50
 RG\tS\tchr2\t10000001\t17000000\t7000000\t900\t50
 RG\tS\tchr15\t23000001\t50000000\t27000000\t900\t50
 RG\tS\tchr3\t1\t2\tx\t1\t1\n"
+# Sparse whole-genome scope, with chromosomes that have no RG rows too.
+for chrom in {1..22}; do
+  printf 'ST\tS\tchr%s\t40000000\t0\t60\n' "$chrom" >> "$f/vcf/S_roh.txt"
+done
+at "$NEW" "$f/vcf/S_roh.txt"
 put $f/mito/S_haplogroup.txt "\"SampleID\"\t\"Haplogroup\"\t\"Rank\"\n\"S\"\t\"H5a1\"\t\"0.9\"\n"
 put $f/mito/S_haplocheck.txt "\"Sample\"\t\"Contamination Status\"\t\"Contamination Level\"\n\"S\"\t\"NO\"\t\"\"\n"
 put $f/y_haplogroup/S_y_haplogroup.txt "Sample_name\tHg\tHg_marker\tTotal_reads\tValid_markers\tQC-score\nS\tR1b1a1b1a1a2*(xR-L21)\tR-M269\t100\t40\t0.98\n"
@@ -181,7 +186,8 @@ rs3798220\tLPA\tchr6\t2\tLp(a)\tT|C\tcalled\tone copy\tall\t.\t1
 rs78655421\tCFTR\tchr7\t3\tR117H\tG/A\tcalled\tone copy\tall\t.\t1
 rs429358\tAPOE\tchr19\t4\tAPOE\tT/C\tcalled\te3/e4\tall\t.\t1
 rs1\tX\tchr1\t5\tx\t.\tnot_covered\tno reads\tall\t.\t1
-rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1\n"
+rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1
+rs3\tX\tchr1\t7\tx\tC/T\tlow_gq\tA low-quality call at this position (genotype quality 5, below 20): not read; check the reads.\tall\t.\t1\n"
 put $f/traits/S_genotype_rules.tsv "rule\tgene\ttrait\trsids\tchrom\tpos\tgenotypes\tgq\tphase\tresult\tstatus\treading\tancestry\tnote\tpmids
 APOE\tAPOE\tAPOE\trs429358,rs7412\tchr19\t1,2\tT/C,C/C\t40\t.\te3/e4\tcalled\tr\tall\t.\t1
 TAS2R38\tTAS2R38\tbitter\trs1\tchr7\t1\tC/G\t40\tunphased\tPAV/AVI\tcalled\ttaster\tall\t.\t1
@@ -229,7 +235,12 @@ put $f/exomiser/S_exomiser_terms.tsv "hpo_id\tlabel\nHP:0001250\tSeizure\nHP:000
 put $f/chip/S_chip.tsv "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\tchrom
 DNMT3A\tR882H\t0.05\t3\t60\tchip\t\tchr2
 TET2\tQ1\t0.5\t30\t60\tgermline\tlikely inherited\tchr4\n"
-put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\nDNMT3A\t30.5\t0.1\tcovered\nTET2\t40\t0.08\tcovered\nASXL1\t2\t.\tlow depth\nJAK2\t35\t0.1\tcovered\nTP53\t25\t0.1\tcovered\n"
+# The two share columns og chip report adds since the per-base limit, and a
+# partly_covered gene: the stated limit is the median of the covered genes'
+# own limits (0.1), not the limit at their median depth (issue #411).
+put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\tcallable_fraction\tassessable_fraction
+DNMT3A\t30.5\t0.1\tcovered\t0.990\t0.600\nTET2\t40\t0.08\tcovered\t1.000\t0.900\nASXL1\t2\t.\tlow depth\t0.000\t0.000
+JAK2\t35\t0.1\tcovered\t0.980\t0.550\nTP53\t25\t0.1\tcovered\t0.950\t0.400\nSRSF2\t28\t\tpartly_covered\t0.700\t0.650\n"
 put $f/mei/S_mei_sites.tsv "gene\telement\tcondition\tinheritance\tstatus\tmean_depth\tcall
 FKTN\tSVA\tFukuyama\tAR\tcallable\t30\tnot seen
 TAF1\tSVA\tXDP\tXL\tnot callable\t2\t\n"
@@ -248,7 +259,7 @@ put $f/kir/S_kir_genotype.tsv "# too few KIR reads\n"
 put $f/cnvpytor/S_cnvs.txt "deletion\tchrY:2800001-2900000\t100000\t0.0\t1e-15\t1\t1\t1\t0.05\t0\t9\ndeletion\tchr2:10000001-10100000\t100000\t0.4\t1e-9\n"
 at "$OLD" $f/cnvpytor/S_cnvs.txt
 put $f/telomere/x/deep/T_summary.tsv "PID\tsample\tintratelomeric_reads\ttel_content\nS\ttumor\t61873\t334\n"
-put $f/roh/S_roh.txt "RG\tS\tchr2\t10000001\t17000000\t7000000\t900\t50\n"
+put $f/roh/S_roh.txt "ST\tS\tchr2\t40000000\t0\t60\nRG\tS\tchr2\t10000001\t17000000\t7000000\t900\t50\n"
 at "$OLD" $f/roh/S_roh.txt
 put $f/mito/S_haplogroup.txt "SampleID\tRank\nS\tU5a\n"
 at "$OLD" $f/mito/S_haplogroup.txt
@@ -357,7 +368,7 @@ put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t39348425\t.\tA\t<STR
 # Non-finite cells follow each Python reader's rules, not a global filter.
 for special in nan inf -inf; do
   f="float-${special}"
-  cp -R full "$f"
+  cp -Rp full "$f"   # -p: the copies keep the times put set, so the cases do not depend on the clock
   put "$f/chip/S_chip_depth.tsv" "gene\tmean_depth\tdetection_limit_vaf\tstatus\nA\t30\t.\tcovered\nB\t${special}\t.\tcovered\nC\t40\t.\tcovered\n"
   for spec in \
     'paralogs/S_smn_copy_number.tsv:agCN_qual,psCN_qual' \
@@ -376,6 +387,7 @@ for special in nan inf -inf; do
       { print }
     ' "$f/$file" > "$f/cells.tmp"
     mv -f "$f/cells.tmp" "$f/$file"
+    at "$NEW" "$f/$file"
   done
   put "$f/hla_t1k/S_hla_genotype.tsv" "HLA-A\t2\tA*02:01\t1\t${special}\tA*01:01\t1\t${special}\n"
   # Python raises an uncaught OverflowError if an infinite read length

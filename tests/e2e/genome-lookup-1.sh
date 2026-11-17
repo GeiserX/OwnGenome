@@ -31,26 +31,20 @@ lookup() {
 
 # --- an rsID of the annotated VCF ----------------------------------------------------
 # The first record whose CSQ has a gene symbol and an rsID in Existing_variation.
-PICK=$(gzip -dc "$ANN" | python3 -c '
-import re, sys
-fields = []
-for line in sys.stdin:
-    if line.startswith("##INFO=<ID=CSQ,"):
-        fields = re.search(r"Format: ([^\"]+)\"", line).group(1).split("|")
-        continue
-    if line.startswith("#"):
-        continue
-    c = line.rstrip("\n").split("\t")
-    m = re.search(r"(?:^|;)CSQ=([^;]+)", c[7])
-    if not m or not fields:
-        continue
-    for e in m.group(1).split(","):
-        d = dict(zip(fields, e.split("|")))
-        rs = [x for x in d.get("Existing_variation", "").split("&") if re.fullmatch(r"rs\d+", x)]
-        if d.get("SYMBOL") and rs and len(c[3]) == 1 and len(c[4]) == 1:
-            print(c[0], c[1], rs[0], d["SYMBOL"], sep="\t")
-            sys.exit(0)
-')
+PICK=$(gzip -dc "$ANN" | awk -F'\t' -v OFS='\t' '
+  /^##INFO=<ID=CSQ,/ {if (match($0, /Format: [^"]+"/)) {n = split(substr($0, RSTART + 8, RLENGTH - 9), f, "|"); for (i = 1; i <= n; i++) col[f[i]] = i}; next}
+  /^#/ {next}
+  n && match(";" $8, /;CSQ=[^;]+/) {
+    m = split(substr(";" $8, RSTART + 5, RLENGTH - 5), es, ",")
+    for (j = 1; j <= m; j++) {
+      split(es[j], v, "|")
+      sym = ("SYMBOL" in col) ? v[col["SYMBOL"]] : ""
+      ev = ("Existing_variation" in col) ? v[col["Existing_variation"]] : ""
+      k = split(ev, ids, "&"); rs = ""
+      for (x = 1; x <= k; x++) if (ids[x] ~ /^rs[0-9]+$/) {rs = ids[x]; break}
+      if (sym != "" && rs != "" && length($4) == 1 && length($5) == 1) {print $1, $2, rs, sym; exit}
+    }
+  }')
 IFS=$'\t' read -r V_CHR V_POS V_RS V_SYM <<< "$PICK"
 check "the annotated VCF has an SNV with a gene and an rsID (${PICK:-none})" test -n "${V_RS:-}"
 

@@ -85,10 +85,11 @@
     return li;
   }
 
-  // A hit from a section the page keeps closed (a result to act on about a child, person.js's
-  // PGP.searchHidden) is left out, and so is a suggested term that only such sections name: the search
-  // must not name what the page veils. The page says so whether or not anything was left out.
-  // A hit tagged with a result to act on (it.veil) is left out while that result is closed, whatever its section.
+  // A hit the page keeps closed (person.js's PGP.searchHidden: on a child's page, every hit until the results
+  // have answered, and a hit tagged (it.veil) with a result to act on that is not open) is left out, and so is a
+  // suggested term that only such hits name. A child's report with a result to act on still closed never reaches
+  // the page (the report gate in core.js). A page that keeps results closed says so whether or not anything was
+  // left out.
   function hidden(it) { return !!(root.PGP.searchHidden && root.PGP.searchHidden(it.section, it.anchor, it.veil || null)); }
   function closedNote() {
     return root.PGP.searchHidden && root.PGP.searchHidden(null, null)

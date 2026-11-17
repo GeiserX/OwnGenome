@@ -80,25 +80,28 @@ Checks:
  12. the raw-data export (step 40): both reports show how many chip sites
      got a genotype, the '--' reasons, the two files and the privacy note;
      without the step's table there is no card and no text section.
- 13. the couple card (step 39), from a table bin/couple_report.py wrote:
+ 13. the couple card (step 39), from a table og couple screen wrote:
      both reports name the partner, the shared gene with its chance for a
      child and both partners' findings, and point to a genetic counsellor;
      without the table there is no card and no text section.
 
  14. the chapters (bin/render_report.py CHAPTERS), on DEMO-001, the invented
-     sample of tests/demo/make_demo_sample.py: every key of
-     collect_summary.SECTIONS is in exactly one chapter section; the HTML has
-     a Content-Security-Policy, no <script and no http(s) src or href other
+     sample of tests/demo/make_demo_sample.py: no http(s) src or href other
      than the loopback viewer and the links marked as opening a website;
-     every id is unique and every contents link reaches one; the ClinVar
-     section shows no green badge; the text report has the chapters in the
-     same order; the card titles are the golden list of the report before
-     the chapters; each caveat sits once, under its card title. Every
-     detector is run on a planted bad input as well, which it must catch.
-     With a previous run on record (summary new_since), a "New since <date>"
-     badge sits on the sections whose results changed and nowhere else (a
-     badge on every section is caught), the card titles stay the golden list,
-     and the last database re-check is one line of run facts with no caveat.
+     the ClinVar section shows no green badge; each text chapter holds its
+     sections; the card titles are the golden list of the report before the
+     chapters; each caveat sits once, under its card title. Every detector
+     is run on a planted bad input as well, which it must catch. With a
+     previous run on record (summary new_since), a "New since <date>" badge
+     sits on the sections whose results changed and nowhere else (a badge on
+     every section is caught), and the card titles stay the golden list.
+     The frame's own rules (every SECTIONS key in one section, the
+     Content-Security-Policy and no script, unique ids and resolving
+     contents links, the chapter order, the badge of the quality block and
+     of a frame, the re-check line, the print rules and the header) moved to
+     og report render's cargo tests (rust/crates/og-render/tests/
+     port_report_core.rs), with planted faults in place of the source
+     mutations.
 
 Run: python3 tests/test_render_report.py
 """
@@ -268,14 +271,6 @@ GOLDEN_TITLES = sorted([
     "Not Assessed by This Pipeline"])
 
 
-def chapter_key_problems(chapters):
-    """The SECTIONS keys missing from CHAPTERS, in two sections, or unknown."""
-    seen = [k for _, _, _, secs in chapters for _, _, keys in secs for k in keys]
-    want = [k for k, *_ in collect_summary.SECTIONS]
-    return ([f"missing {k}" for k in want if k not in seen] + [f"twice {k}" for k in set(seen) if seen.count(k) > 1]
-            + [f"unknown {k}" for k in seen if k not in want])
-
-
 def external_problems(html):
     """Every http(s) src or href that is not the loopback viewer and not
     inside a link marked as opening a website."""
@@ -283,14 +278,6 @@ def external_problems(html):
                     "", html)
     return [m for m in re.findall(r'(?:src|href)\s*=\s*["\']?(https?:[^"\' >]*)', marked, re.I)
             if not m.startswith(render_report.VIEWER_URL)]
-
-
-def anchor_problems(html):
-    ids = re.findall(r'\sid="([^"]+)"', html)
-    links = re.findall(r'href="#([^"]+)"', html.split("</nav>", 1)[0])
-    return ([f"id twice: {i}" for i in sorted(set(ids)) if ids.count(i) > 1]
-            + [f"contents link to nothing: {x}" for x in links if x not in ids]
-            + ([] if links else ["no contents links"]))
 
 
 def frame_of(html, sid):
@@ -315,15 +302,6 @@ def chapter_checks(work):
     summ = collect_summary.collect("DEMO-001", f"{g}/DEMO-001")
     txt, html = render_report.text_report(summ), render_report.html_report(summ)
 
-    check("chapters: every SECTIONS key in exactly one section", chapter_key_problems(render_report.CHAPTERS) == [],
-          chapter_key_problems(render_report.CHAPTERS))
-    cut = tuple((c, t, q, tuple((sid, st, tuple(k for k in keys if k != "telomere")) for sid, st, keys in secs))
-                for c, t, q, secs in render_report.CHAPTERS)
-    check("chapters: red control: a key taken out is caught", chapter_key_problems(cut) == ["missing telomere"],
-          chapter_key_problems(cut))
-    twice = render_report.CHAPTERS + (("x", "X", "?", (("x", "X", ("clinvar",)),)),)
-    check("chapters: red control: a key in two sections is caught", chapter_key_problems(twice) == ["twice clinvar"],
-          chapter_key_problems(twice))
     real_section_of = render_report.SECTION_OF
     render_report.SECTION_OF = {k: v for k, v in real_section_of.items() if k != "telomere"}
     try:
@@ -337,14 +315,6 @@ def chapter_checks(work):
     finally:
         render_report.SECTION_OF = real_section_of
 
-    fs = render_report.frame_state
-    check("chapters: a section with a step run and a step not run is part not run, not complete",
-          [fs([{"state": a}, {"state": b}]) for a, b in (("ok", "missing"), ("stale", "missing"), ("ok", "ok"),
-                                                        ("missing", "missing"), ("ok", "failed"))]
-          == ["incomplete", "stale", "ok", "missing", "part"],
-          [fs([{"state": a}, {"state": b}]) for a, b in (("ok", "missing"), ("stale", "missing"), ("ok", "ok"),
-                                                        ("missing", "missing"), ("ok", "failed"))])
-
     for kind, hg in (("y", "R-M269*(xR-L23)"), ("mt", "H1a+16189")):
         rows = render_report.explore_html({"haplogroup": hg, "explore": haplogroup_explore(kind, hg)})
         marks = re.findall(r'<span class="offsite-note">\(([^)]*)\)</span>', "".join(rows))
@@ -352,10 +322,6 @@ def chapter_checks(work):
         check(f"chapters: {hg}: the FamilyTreeDNA and YFull links say the address carries the haplogroup, the docs link does not",
               len(marks) >= 3 and marks == want, marks)
 
-    check("chapters: the Content-Security-Policy forbids every fetch",
-          '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; '
-          'style-src \'unsafe-inline\'">' in html, html[:600])
-    check("chapters: no script", "<script" not in html.lower())
     check("chapters: no off-machine address but the marked links", external_problems(html) == [], external_problems(html))
     check("chapters: the marked links are there (FamilyTreeDNA, YFull, GitHub)",
           all(f'<span class="offsite"><a href="{u}' in html for u in
@@ -364,13 +330,7 @@ def chapter_checks(work):
                 '<a class="offsite" href="https://example.org/y">y</a>'):
         check(f"chapters: red control: {bad} is caught", external_problems(html + bad) != [])
 
-    check("chapters: ids unique, every contents link reaches one", anchor_problems(html) == [], anchor_problems(html))
-    check("chapters: red control: a second id and a dead contents link are caught",
-          len(anchor_problems(html.replace('id="variants"', 'id="qc"').replace('href="#hla"', 'href="#gone"'))) == 3,
-          anchor_problems(html.replace('id="variants"', 'id="qc"').replace('href="#hla"', 'href="#gone"')))
     sids = [sid for _, _, _, secs in render_report.CHAPTERS for sid, _, _ in secs]
-    shown = [x for x in re.findall(r'<section class="sec[^"]*" id="([^"]+)"', html) if x in sids]
-    check("chapters: the HTML sections are in CHAPTERS order", shown == [x for x in sids if x in shown], shown)
 
     cv = frame_of(html, "clinvar")
     check("chapters: the ClinVar section has its two cards and no green badge",
@@ -382,16 +342,6 @@ def chapter_checks(work):
     check("chapters: no ClinVar hit, still no green", "badge-green" not in frame_of(render_report.html_report(nohit), "clinvar"))
     check("chapters: the CPIC table sits in the CPIC section", "CPIC Drug Recommendations" in frame_of(html, "cpic"))
 
-    titles = [c[1] for c in render_report.CHAPTERS]
-    check("chapters: the text report has the chapters in CHAPTERS order", text_chapter_order(txt) == [t.upper() for t in titles],
-          text_chapter_order(txt))
-    saved = render_report.CHAPTERS
-    try:
-        render_report.CHAPTERS = tuple(reversed(saved))
-        flipped = text_chapter_order(render_report.text_report(summ))
-    finally:
-        render_report.CHAPTERS = saved
-    check("chapters: red control: another order is caught", flipped != [t.upper() for t in titles], flipped)
     heads = {"QUALITY": "## Quality control", "CLINICAL": "## ClinVar Pathogenic Screen",
              "CARRIER": "## Carrier List (this sample)", "MEDICINES": "## Pharmacogenomics (PharmCAT)",
              "ANCESTRY": "## Mitochondrial Haplogroup", "TRAITS AND SCORES": "## Polygenic Risk Scores",
@@ -436,8 +386,6 @@ def chapter_checks(work):
         i = txt.find(title)
         return txt[i:i + 120] if i >= 0 else ""
     marks = {
-        "new since: the text Quality control block carries the badge when coverage changed":
-            (["coverage"], None, lambda h, t: f"[{badge}]" in under(t, "## Quality control") and t.count(badge) == 1),
         "new since: the text CYP2D6 block carries the badge when pypgx changed":
             (["pypgx"], None, lambda h, t: f"[{badge}]" in under(t, "## CYP2D6 across callers")),
         "new since: a section gone missing keeps its badge on its HTML card, the text leaves the section out":
@@ -448,12 +396,8 @@ def chapter_checks(work):
         check(name, fn(*text_with(secs, miss)), under(text_with(secs, miss)[1], "## "))
     rsrc = open(os.path.join(REPO, "bin", "render_report.py")).read()
     planted = {
-        "new since: the text Quality control block carries the badge when coverage changed":
-            'for k in ("coverage", "sex_check", "sample_qc", "read_count")):',
         "new since: the text CYP2D6 block carries the badge when pypgx changed":
             'for k in ("pypgx", "cyrius")):',
-        "new since: a section gone missing keeps its badge on its HTML card, the text leaves the section out":
-            '(f" &middot; {badge(f\'New since {since}\', \'yellow\')}" if since else "")',
     }
     for name, needle in planted.items():
         check(f"planted mistake is in the copy: {name}", needle in rsrc, needle)
@@ -467,10 +411,6 @@ def chapter_checks(work):
         check(f"fails on a planted mistake: {name}", not fn(*text_with(secs, miss, mod=mm)), "passed on the mutant")
     check("new since: the card titles stay the golden list", sorted(re.findall(r"<h2>([^<]*)</h2>", h2)) == GOLDEN_TITLES,
           sorted(set(re.findall(r"<h2>([^<]*)</h2>", h2)) ^ set(GOLDEN_TITLES)))
-    rc_line = "Database re-check: 2026-02-02T00:00:00Z: ClinVar refresh-available"
-    check("new since: the re-check is one line of run facts in both reports, and no caveat",
-          rc_line in h2.split("</header>", 1)[0] and rc_line in t2.split("#" * 80, 1)[0]
-          and h2.count('<p class="caveat">') == html.count('<p class="caveat">'), t2[:800])
     hist = f"{g}/DEMO-001/history/2026-01-01T000000Z"
     os.makedirs(hist)
     old = json.loads(json.dumps(summ))
@@ -502,11 +442,6 @@ def chapter_checks(work):
     check("chapters: the caveat comes right after the title and the step line",
           re.match(r'\s*<p class="sec-meta">Step 33 .*?</p>\s*<p class="caveat">' + re.escape(render_report.E(render_report.MOSAIC_NOTE)),
                    mo) is not None, mo[:400])
-    check("chapters: print rules: light colours, one section or chapter by :target, the limits kept",
-          "@media print" in html and ".sec:not(:target):not(.always)" in html and 'class="sec always" id="not-assessed"' in html)
-    check("chapters: the header carries the provenance a printout needs",
-          all(x in html.split("</header>", 1)[0] for x in ("Sample: <strong>DEMO-001</strong>", "Pipeline commit:",
-                                                            "ClinVar file:", "HLA database:")))
 
 
 def main():
@@ -997,10 +932,9 @@ def main():
               collect_summary.collect("S", d)["sections"]["traits"]["state"] == "ok")
 
         # 13. couple card (step 39)
-        import couple_report
-        genes = couple_report.read_genes(os.path.join(REPO, "assets", "carrier_genes.tsv"))
-        g = genes["NAGA"]
-        pos = (g["start"] + g["end"]) // 2
+        with open(os.path.join(REPO, "assets", "carrier_genes.tsv")) as f:
+            g = next(x.split("\t") for x in f if x.startswith("NAGA\t"))
+        pos = (int(g[2]) + int(g[3])) // 2
         cv = ("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
               "chr22\t%d\t1\tA\tG\t.\tPASS\tGENEINFO=NAGA:4668;CLNSIG=Pathogenic;"
               "CLNREVSTAT=reviewed_by_expert_panel\tGT\t0/1\n")
@@ -1008,8 +942,9 @@ def main():
         put(f"{c}/ped.tsv", "sample\tsex\tfather\tmother\tpartner\nP1\tfemale\t.\t.\tP2\nP2\tmale\t.\t.\tP1\n")
         put(f"{c}/P1.vcf", cv % pos)
         put(f"{c}/P2.vcf", cv % (pos + 5))
-        couple_report.main(["screen", "--pedigree", f"{c}/ped.tsv", "--genes", os.path.join(REPO, "assets", "carrier_genes.tsv"),
-                            "--clinvar", f"P1={c}/P1.vcf", "--clinvar", f"P2={c}/P2.vcf", "--out-dir", f"{c}/out"])
+        subprocess.run([og_binary(), "couple", "screen", "--pedigree", f"{c}/ped.tsv", "--genes",
+                        os.path.join(REPO, "assets", "carrier_genes.tsv"), "--clinvar", f"P1={c}/P1.vcf",
+                        "--clinvar", f"P2={c}/P2.vcf", "--out-dir", f"{c}/out"], check=True, stdout=subprocess.DEVNULL)
         d = f"{c}/P2"
         put(f"{d}/couple/P2_couple_carrier.tsv", open(f"{c}/out/P2_couple_carrier.tsv").read())
         summ = collect_summary.collect("P2", d)

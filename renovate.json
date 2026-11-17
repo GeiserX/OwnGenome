@@ -171,6 +171,12 @@
 
   "packageRules": [
     {
+      "description": "Hold: ExpansionHunter 5.0.0 is the last Apache-2.0 release. Upstream's default branch uses PolyForm Strict 1.0.0. All updates, including Bioconda rebuilds, need a licence review by hand before this hold is changed (docs/updating.md).",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["quay.io/biocontainers/expansionhunter"],
+      "enabled": false
+    },
+    {
       "description": [
         "Biocontainer tags are <version>--<conda build hash>_<build number>. Docker versioning reads the part after '--' as a suffix that must stay the same, and the hash changes between versions, so most of these pins would never see a newer tag.",
         "This versioning ignores the hash and orders by version, then build number. A tag in any other shape (an unsuffixed tag, a four-part version) is not a version here and is never proposed.",
@@ -187,7 +193,7 @@
       "versioning": "regex:^release_(?<major>\\d+)\\.(?<minor>\\d+)$"
     },
     {
-      "description": "PCGR/CPSR: every update waits for approval on the dependency dashboard, because each release reads its own reference bundle and VEP cache (PCGR_DATA_BUNDLE and PCGR_VEP_CACHE_RELEASE in versions.env). The image comes from ghcr.io/sigven/pcgr (Docker Hub's sigven/pcgr stops at 2.2.5); the image matcher reads ghcr.io like any other registry. allowedVersions keeps the release tags (x.y.z): ghcr also carries development builds (2.3.2.9006) and .singularity tags.",
+      "description": "PCGR/CPSR: every update waits for approval on the dependency dashboard, because each release reads its own reference bundle and VEP cache (PCGR_DATA_BUNDLE and PCGR_VEP_CACHE_RELEASE in versions.env). Renovate never moves the bundle: no manager matches PCGR_DATA_BUNDLE, PCGR_DATA_BYTES or PCGR_DATA_SHA256, because the server publishes no checksum and the digest has to be measured from a full download. So an approved image PR fails scripts/ci/check-coupled-versions.sh until a person moves the bundle date, the VEP cache release, the size, the digest and PCGR_DATA_MEASURED_FOR in the same PR. The image comes from ghcr.io/sigven/pcgr (Docker Hub's sigven/pcgr stops at 2.2.5); the image matcher reads ghcr.io like any other registry. allowedVersions keeps the release tags (x.y.z): ghcr also carries development builds (2.3.2.9006) and .singularity tags.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["ghcr.io/sigven/pcgr"],
       "allowedVersions": "/^\\d+\\.\\d+\\.\\d+$/",

@@ -27,7 +27,7 @@ expect() {  # expect NAME RC WANT_RC OUTPUT PATTERN
 
 C="${T}/repo"
 mkdir -p "$C"
-cp -R "${REPO}/scripts" "${REPO}/bin" "${REPO}/rust" "${REPO}/versions.env" "${REPO}/nextflow.config" "${REPO}/.gitignore" "$C/"
+cp -R "${REPO}/scripts" "${REPO}/bin" "${REPO}/rust" "${REPO}/assets" "${REPO}/versions.env" "${REPO}/nextflow.config" "${REPO}/.gitignore" "$C/"
 rm -rf "${C}/bin/.og" "${C}/rust/target"
 g() { git -C "$C" -c user.name=t -c user.email=t@example.invalid "$@"; }
 g init -q && g add -A && g commit -qm base
@@ -50,8 +50,11 @@ plant_mac() {  # plant_mac HASH: the macOS pair, stamped with HASH
   done
 }
 
+committed_hash() {
+  printf '%s\n%s\n' "$(g rev-parse HEAD:rust)" "$(g rev-parse HEAD:assets/imprinted_regions.tsv)" | g hash-object --stdin
+}
 h0=$(bash "$OG" tree-hash)
-[ "$h0" = "$(g rev-parse HEAD:rust)" ] && ok "tree-hash of a clean rust/ is HEAD:rust" || bad "tree-hash ${h0} != HEAD:rust"
+[ "$h0" = "$(committed_hash)" ] && ok "source hash covers rust/ and the embedded table" || bad "source hash omits an input"
 
 out=$(bash "$OG" check); rc=$?
 expect "no binary: a note, exit 0" "$rc" 0 "$out" "NOTE: og is not built for x86_64 aarch64*setup.sh --og*"
@@ -60,6 +63,14 @@ expect "no binary with --required: refused" "$rc" 1 "$out" "ERROR: og is not bui
 out=$(bash "$OG" built); [ "$out" = "not built" ] && ok "built without binaries: not built" || bad "built printed '${out}'"
 
 plant "$h0"
+cp "${C}/assets/imprinted_regions.tsv" "${T}/imprinted.saved"
+printf '\n# edited source\n' >> "${C}/assets/imprinted_regions.tsv"
+ha=$(bash "$OG" tree-hash)
+[ "$ha" != "$h0" ] && ok "an embedded table edit changes the source hash" || bad "embedded table edit did not change the hash"
+out=$(bash "$OG" check); rc=$?
+expect "an embedded table edit makes the binary stale" "$rc" 1 "$out" "ERROR: og is stale:*"
+cp "${T}/imprinted.saved" "${C}/assets/imprinted_regions.tsv"
+[ "$(bash "$OG" tree-hash)" = "$h0" ] && ok "restoring the table restores the hash" || bad "restored table has a different hash"
 out=$(bash "$OG" check); rc=$?
 expect "binaries of this rust/: OK" "$rc" 0 "$out" "OK: og is built for x86_64, aarch64*${h0}*"
 out=$(bash "$OG" built); [ "$out" = "$h0" ] && ok "built prints the one hash" || bad "built printed '${out}'"
@@ -91,7 +102,7 @@ h1=$(bash "$OG" tree-hash)
 out=$(bash "$OG" check); rc=$?
 expect "uncommitted edit to rust/: stale, refused" "$rc" 1 "$out" "ERROR: og is stale:*${h0}*${h1}*run scripts/setup.sh --og"
 g add rust/og/src/main.rs && g commit -qm edit
-[ "$(bash "$OG" tree-hash)" = "$h1" ] && [ "$h1" = "$(g rev-parse HEAD:rust)" ] \
+[ "$(bash "$OG" tree-hash)" = "$h1" ] && [ "$h1" = "$(committed_hash)" ] \
   && ok "committing the edit keeps the hash the build would stamp" || bad "hash after commit differs"
 out=$(bash "$OG" check); rc=$?
 expect "committed edit to rust/: stale, refused" "$rc" 1 "$out" "ERROR: og is stale:*"
@@ -212,6 +223,13 @@ exit 0
 else
   echo "SKIP release download cases: no python3 or curl"
 fi
+
+# The builder must mount the compile-time table beside /src. The fake
+# engine refuses its absence and stops before any cargo invocation.
+printf '#!/usr/bin/env bash\nfor arg in "$@"; do\n  case $arg in *"/assets/imprinted_regions.tsv:/assets/imprinted_regions.tsv:ro") echo EMBEDDED_TABLE_MOUNT_OK; exit 99 ;; esac\ndone\necho EMBEDDED_TABLE_MOUNT_MISSING\nexit 98\n' > "${T}/fake/embed-engine"
+chmod 755 "${T}/fake/embed-engine"
+out=$(PATH="${T}/fake:${PATH}" CONTAINER_ENGINE=embed-engine bash "$OG" build 2>&1); rc=$?
+expect "the builder mounts its embedded table" "$rc" 99 "$out" "*EMBEDDED_TABLE_MOUNT_OK*"
 
 # Outside git the hash cannot be checked: a note, never a silent OK.
 N="${T}/nogit"

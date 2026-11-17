@@ -36,7 +36,7 @@ import run_state  # noqa: E402
 
 DEFAULT_WARN_PERCENT = 90
 # The exits conf/base.config's errorStrategy retries: usually killed for memory or time.
-# tests/test_run_headroom.py checks the two lists agree.
+# og-runlog's MEMORY_EXITS is the same list; rust/crates/og-live/tests/ops_headroom.rs checks it against base.config.
 MEMORY_EXITS = {"143", "137", "104", "134", "139", "247"}
 DONE = {"COMPLETED", "FAILED", "ABORTED", "CACHED"}
 

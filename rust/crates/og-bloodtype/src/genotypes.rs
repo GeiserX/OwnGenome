@@ -6,14 +6,32 @@
 //! index: a few hundred BGZF blocks instead of the whole file. Without a
 //! usable index (a plain or gzip file, no index, an index older than the
 //! VCF, or one that cannot be read) the file is read once, line by line,
-//! and a line is split only when its CHROM and POS are a marker's. Both
+//! and a line is split only when its REF covers a marker's position. Both
 //! ways apply the same records in the same order, so they give the same
 //! sites.
+//!
+//! Several records can cover one site: an all-sites VCF writes a reference
+//! record and then the indel at one position, a split multi-allelic record
+//! is two lines, and a deletion that starts upstream spans the site. Every
+//! one of them is read, and the answer does not depend on their order:
+//!
+//! - a record with a non-reference allele that changes the site's base
+//!   from upstream makes the site a no call, whatever the site's own
+//!   records say;
+//! - else, of the records at the site's position, a call of the marker's
+//!   ALT wins, then a no call of a record that names the marker's ALT,
+//!   then a reference call, then any other no call; the first of equals
+//!   counts, and another allele a losing call names stays in the note;
+//! - called copies of distinct ALTs listed by one marker add up; repeated
+//!   calls of the same ALT count once, and incompatible dosages are no call;
+//! - a reference-only record whose REF is shorter than the marker's (an
+//!   all-sites record or a gVCF block starting at a deletion marker) says
+//!   nothing past its own bases, so the site reads as if it had no record.
 
 use crate::Error;
 use crate::markers::{Marker, Sites};
 use indexmap::IndexMap;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 /// Reads (MAPQ >= 20) before a site missing from the VCF counts as reference.
@@ -97,11 +115,11 @@ pub fn norm_chrom(c: &str) -> String {
 }
 
 /// The sites at each (chrom, pos), in table order.
-struct ByPos(HashMap<String, HashMap<i64, Vec<usize>>>);
+struct ByPos(HashMap<String, BTreeMap<i64, Vec<usize>>>);
 
 impl ByPos {
     fn new(sites: &Genotyped) -> ByPos {
-        let mut m: HashMap<String, HashMap<i64, Vec<usize>>> = HashMap::new();
+        let mut m: HashMap<String, BTreeMap<i64, Vec<usize>>> = HashMap::new();
         for (i, s) in sites.values().enumerate() {
             m.entry(s.row.chrom.clone())
                 .or_default()
@@ -136,10 +154,135 @@ fn check_header(line: &str, path: &str) -> Result<(), Error> {
     Ok(())
 }
 
-/// Applies one record line (no line ending) to the sites at its position.
-fn apply_record(line: &str, by_pos: &ByPos, sites: &mut Genotyped) {
-    let mut c = line.splitn(3, '\t');
-    let (Some(chrom), Some(pos), Some(_)) = (c.next(), c.next(), c.next()) else {
+/// How much a record at a site's own position says about the marker's
+/// ALT; the strongest one read counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Weight {
+    /// A no call of a record that does not name the marker's ALT.
+    Other,
+    /// A call with no copy of the marker's ALT.
+    Reference,
+    /// A no call of a record that names the marker's ALT (`./.`, a
+    /// failed FILTER): the ALT may be there.
+    Doubt,
+    /// A call with the marker's ALT.
+    Alt,
+}
+
+/// What one record at a site's position says: status, alt copies, note.
+#[derive(Debug, Clone, PartialEq)]
+struct Reading {
+    weight: Weight,
+    status: Status,
+    n: Option<i64>,
+    note: String,
+    /// Called marker ALTs and their dosages, independent of VCF allele indices.
+    alts: BTreeMap<String, i64>,
+}
+
+impl Reading {
+    fn no_call(weight: Weight, note: String) -> Reading {
+        Reading {
+            weight,
+            status: Status::NoCall,
+            n: None,
+            note,
+            alts: BTreeMap::new(),
+        }
+    }
+}
+
+/// Everything the records said about one site so far.
+#[derive(Debug, Default)]
+struct Evidence {
+    /// The strongest reading at the site's position.
+    best: Option<Reading>,
+    /// The notes of losing calls (another allele at the position).
+    others: Vec<String>,
+    /// The first upstream record that changes the site's base.
+    span: Option<String>,
+    /// One dosage per called marker ALT, bounded by the marker's ALT list.
+    alts: BTreeMap<String, i64>,
+    /// Different calls of one ALT disagree about its dosage.
+    incompatible: bool,
+}
+
+impl Evidence {
+    fn add(&mut self, r: Reading) {
+        for (alt, &copies) in &r.alts {
+            match self.alts.get(alt) {
+                Some(&previous) if previous != copies => self.incompatible = true,
+                Some(_) => {}
+                None => {
+                    self.alts.insert(alt.clone(), copies);
+                }
+            }
+        }
+        let loser = match &mut self.best {
+            Some(b) if r.weight > b.weight => Some(std::mem::replace(b, r)),
+            Some(_) => Some(r),
+            None => {
+                self.best = Some(r);
+                None
+            }
+        };
+        if let Some(l) = loser
+            && l.status == Status::Called
+            && !l.note.is_empty()
+            && !self.others.contains(&l.note)
+        {
+            self.others.push(l.note);
+        }
+    }
+
+    /// The site as the records leave it; `Absent` when none said anything.
+    fn settle(self, site: &mut Site) {
+        if let Some(note) = self.span {
+            site.status = Status::NoCall;
+            site.n = None;
+            site.note = note;
+        } else if let Some(b) = self.best {
+            let copies: i64 = self.alts.values().sum();
+            if self.incompatible || copies > 2 {
+                site.status = Status::NoCall;
+                site.n = None;
+                site.note = "incompatible ALT dosages at this position".to_owned();
+                return;
+            }
+            site.status = b.status;
+            site.n = if b.weight == Weight::Alt {
+                Some(copies)
+            } else {
+                b.n
+            };
+            site.note = if b.status == Status::Called {
+                let others = self.others.into_iter().filter(|o| *o != b.note);
+                std::iter::once(b.note.clone())
+                    .chain(others)
+                    .filter(|p| !p.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            } else {
+                b.note
+            };
+        }
+    }
+}
+
+/// Applies one record line (no line ending) to the sites it covers: those
+/// at its position and those its REF spans. `only` keeps the sites at one
+/// position (the index path reads each position's records on their own).
+fn apply_record(
+    line: &str,
+    by_pos: &ByPos,
+    sites: &Genotyped,
+    ev: &mut [Evidence],
+    only: Option<i64>,
+) {
+    let mut c = line.splitn(5, '\t');
+    let (Some(chrom), Some(pos), Some(_), Some(rf), Some(_)) =
+        (c.next(), c.next(), c.next(), c.next(), c.next())
+    else {
         return;
     };
     let chrom = if chrom.starts_with("chr") {
@@ -150,14 +293,22 @@ fn apply_record(line: &str, by_pos: &ByPos, sites: &mut Genotyped) {
     let Some(here) = by_pos.0.get(chrom.as_ref()) else {
         return;
     };
-    let Some(names) = py_pos(pos).and_then(|p| here.get(&p)) else {
+    let Some(p) = py_pos(pos) else {
         return;
     };
+    let span = i64::try_from(rf.len().max(1)).unwrap_or(1);
+    let mut hits = here
+        .range(p..p.saturating_add(span))
+        .filter(|(at, _)| only.is_none_or(|o| o == **at))
+        .peekable();
+    if hits.peek().is_none() {
+        return;
+    }
     let f: Vec<&str> = line.split('\t').collect();
     if f.len() < 10 {
         return;
     }
-    let (rf, alts, filt) = (f[3], f[4].split(',').collect::<Vec<_>>(), f[6]);
+    let (alts, filt) = (f[4].split(',').collect::<Vec<_>>(), f[6]);
     let fmt: Vec<&str> = f[8].split(':').collect();
     let smp: Vec<&str> = f[9].split(':').collect();
     let gt = fmt
@@ -167,18 +318,57 @@ fn apply_record(line: &str, by_pos: &ByPos, sites: &mut Genotyped) {
         .copied()
         .unwrap_or(".");
     let alleles: Vec<&str> = gt.split(['/', '|']).collect();
-    for &i in names {
-        let site = &mut sites[i];
-        if site.status == Status::Called {
-            continue; // a second record at the position: the first one counts
+    for (&at, names) in hits {
+        if at == p {
+            for &i in names {
+                if let Some(r) = read_record(&sites[i].row, rf, &alts, filt, &alleles) {
+                    ev[i].add(r);
+                }
+            }
+            continue;
         }
-        genotype_site(site, rf, &alts, filt, &alleles);
+        let offset = usize::try_from(at - p).unwrap_or(0);
+        if changes_base(rf, &alts, &alleles, offset) {
+            for &i in names {
+                ev[i].span.get_or_insert_with(|| {
+                    format!(
+                        "a record at {}:{} ({rf}>{}, genotype {}) spans this site",
+                        f[0],
+                        f[1],
+                        f[4],
+                        alleles.join("/")
+                    )
+                });
+            }
+        }
     }
 }
 
-/// The site's status, alt copies and note from one record.
-pub fn genotype_site(site: &mut Site, rf: &str, alts: &[&str], filt: &str, alleles: &[&str]) {
-    let r = &site.row;
+/// Whether a record that starts `offset` bases before a site and spans it
+/// calls an allele that changes the site's base: one of another length
+/// (an indel, a symbolic or `*` allele) or with another base there. A
+/// reference or missing genotype changes nothing.
+fn changes_base(rf: &str, alts: &[&str], alleles: &[&str], offset: usize) -> bool {
+    alleles.iter().any(|a| {
+        let Some(k) = a.parse::<usize>().ok().filter(|&k| k > 0) else {
+            return false;
+        };
+        alts.get(k - 1).is_none_or(|alt| {
+            alt.len() != rf.len() || alt.as_bytes().get(offset) != rf.as_bytes().get(offset)
+        })
+    })
+}
+
+/// What one record at the site's position says about it; `None` when it
+/// says nothing: a reference-only record whose REF is shorter than the
+/// marker's, which reads no base past its own.
+fn read_record(
+    r: &Marker,
+    rf: &str,
+    alts: &[&str],
+    filt: &str,
+    alleles: &[&str],
+) -> Option<Reading> {
     // A null row may list several ALTs (null alleles at one position): any of them counts.
     let wants: Vec<&str> = if r.ref_ == rf {
         r.alt.split(',').collect()
@@ -191,42 +381,69 @@ pub fn genotype_site(site: &mut Site, rf: &str, alts: &[&str], filt: &str, allel
         .filter(|(_, a)| wants.contains(a))
         .map(|(i, _)| (i + 1).to_string())
         .collect();
+    let doubt = if idx.is_empty() {
+        Weight::Other
+    } else {
+        Weight::Doubt
+    };
     let joined = alleles.join("/");
     if alleles.contains(&".") || alleles.len() != 2 {
-        site.status = Status::NoCall;
-        site.note = format!("genotype {joined}");
-        return;
+        return Some(Reading::no_call(doubt, format!("genotype {joined}")));
     }
-    // A record whose REF is not the marker's REF says nothing about the
-    // marker's ALT, unless it is a reference call over a span that starts
-    // with the marker's REF.
-    if rf != r.ref_ && !(rf.starts_with(r.ref_.as_str()) && alleles.iter().all(|a| *a == "0")) {
-        site.note = format!("REF {rf} at this position, the marker's REF is {}", r.ref_);
-        site.status = Status::NoCall;
-        return;
+    let all_ref = alleles.iter().all(|a| *a == "0");
+    if rf != r.ref_ {
+        if all_ref && rf.len() < r.ref_.len() && r.ref_.starts_with(rf) {
+            return None;
+        }
+        // A record whose REF is not the marker's REF says nothing about
+        // the marker's ALT, unless it is a reference call over a span that
+        // starts with the marker's REF.
+        if !(all_ref && rf.starts_with(r.ref_.as_str())) {
+            return Some(Reading::no_call(
+                Weight::Other,
+                format!("REF {rf} at this position, the marker's REF is {}", r.ref_),
+            ));
+        }
     }
-    if filt != "PASS" && filt != "." && alleles.iter().any(|a| *a != "0") {
-        site.status = Status::NoCall;
-        site.note = format!("FILTER {filt}");
-        return;
+    if filt != "PASS" && filt != "." && !all_ref {
+        return Some(Reading::no_call(doubt, format!("FILTER {filt}")));
     }
-    site.status = Status::Called;
-    site.n = Some(
-        alleles
-            .iter()
-            .filter(|a| idx.iter().any(|i| i == *a))
-            .count() as i64,
-    );
-    site.note.clear();
-    if alleles
+    let n = alleles
+        .iter()
+        .filter(|a| idx.iter().any(|i| i == *a))
+        .count() as i64;
+    let mut called_alts = BTreeMap::new();
+    for (i, alt) in alts.iter().enumerate() {
+        if wants.contains(alt) {
+            let index = (i + 1).to_string();
+            let copies = alleles.iter().filter(|a| **a == index).count() as i64;
+            if copies > 0 {
+                *called_alts.entry((*alt).to_owned()).or_default() += copies;
+            }
+        }
+    }
+    let note = if alleles
         .iter()
         .any(|a| *a != "0" && !idx.iter().any(|i| i == a))
     {
-        site.note = format!(
+        format!(
             "another allele at this position ({rf}>{}, genotype {joined})",
             alts.join(",")
-        );
-    }
+        )
+    } else {
+        String::new()
+    };
+    Some(Reading {
+        weight: if n > 0 {
+            Weight::Alt
+        } else {
+            Weight::Reference
+        },
+        status: Status::Called,
+        n: Some(n),
+        note,
+        alts: called_alts,
+    })
 }
 
 /// Genotypes the sites from the sample's VCF (its one sample column).
@@ -236,10 +453,12 @@ pub fn read_vcf(path: &str, markers: Sites) -> Result<(Genotyped, Access), Error
         .map(|(k, m)| (k, Site::new(m)))
         .collect();
     let by_pos = ByPos::new(&sites);
+    let mut ev: Vec<Evidence> = sites.values().map(|_| Evidence::default()).collect();
     if let Some(records) = indexed_records(path, &sites)? {
-        for line in &records {
-            apply_record(line, &by_pos, &mut sites);
+        for (pos, line) in &records {
+            apply_record(line, &by_pos, &sites, &mut ev, Some(*pos));
         }
+        settle(&mut sites, ev);
         return Ok((sites, Access::Index));
     }
     let mut lines = og_io::Lines::new(
@@ -261,8 +480,9 @@ pub fn read_vcf(path: &str, markers: Sites) -> Result<(Genotyped, Access), Error
             header = true;
             continue;
         }
-        apply_record(l, &by_pos, &mut sites);
+        apply_record(l, &by_pos, &sites, &mut ev, None);
     }
+    settle(&mut sites, ev);
     if !header {
         return Err(Error(format!(
             "{path} has no #CHROM header line: not a VCF"
@@ -271,10 +491,18 @@ pub fn read_vcf(path: &str, markers: Sites) -> Result<(Genotyped, Access), Error
     Ok((sites, Access::Stream))
 }
 
-/// The record lines at the marker positions, read through the VCF's
-/// index, those of each position in file order; `None` when the file is to
+/// Each site takes what its records said.
+fn settle(sites: &mut Genotyped, ev: Vec<Evidence>) {
+    for (s, e) in sites.values_mut().zip(ev) {
+        e.settle(s);
+    }
+}
+
+/// The record lines that cover each marker position (start there or span
+/// it), read through the VCF's index, with the position they were read
+/// for, those of each position in file order; `None` when the file is to
 /// be read whole. The `#CHROM` line is checked as a full pass checks it.
-fn indexed_records(path: &str, sites: &Genotyped) -> Result<Option<Vec<String>>, Error> {
+fn indexed_records(path: &str, sites: &Genotyped) -> Result<Option<Vec<(i64, String)>>, Error> {
     let Some(mut reader) = usable_index(path) else {
         return Ok(None);
     };
@@ -319,15 +547,14 @@ fn indexed_records(path: &str, sites: &Genotyped) -> Result<Option<Vec<String>>,
                 let Ok(raw) = got else {
                     return Ok(None);
                 };
-                let l = String::from_utf8_lossy(&raw).into_owned();
-                if l.split('\t').nth(1).and_then(py_pos) == Some(*pos) {
-                    out.push(l);
-                }
+                // The index also returns a record whose INFO/END reaches
+                // the position; apply_record keeps those whose REF does.
+                out.push((*pos, String::from_utf8_lossy(&raw).into_owned()));
             }
         }
     }
-    // A site reads only the records at its own position, and those come in
-    // file order, so the order between positions does not matter.
+    // A site reads only the records that cover its own position, and those
+    // come in file order, so the order between positions does not matter.
     Ok(Some(out))
 }
 
@@ -421,6 +648,23 @@ mod tests {
         })
     }
 
+    /// The site as these records, in this order, leave it.
+    fn genotype(s: &mut Site, rf: &str, alts: &[&str], filt: &str, alleles: &[&str]) {
+        records(s, &[(rf, alts, filt, alleles)]);
+    }
+
+    type Rec<'a> = (&'a str, &'a [&'a str], &'a str, &'a [&'a str]);
+
+    fn records(s: &mut Site, recs: &[Rec]) {
+        let mut e = Evidence::default();
+        for (rf, alts, filt, alleles) in recs {
+            if let Some(r) = read_record(&s.row, rf, alts, filt, alleles) {
+                e.add(r);
+            }
+        }
+        e.settle(s);
+    }
+
     #[test]
     fn chroms_normalise() {
         assert_eq!(norm_chrom("chr7"), "chr7");
@@ -432,7 +676,7 @@ mod tests {
     #[test]
     fn a_het_call_counts_one_alt_copy() {
         let mut s = site("G", "A");
-        genotype_site(&mut s, "G", &["A"], "PASS", &["0", "1"]);
+        genotype(&mut s, "G", &["A"], "PASS", &["0", "1"]);
         assert_eq!(
             (s.status, s.n, s.note.as_str()),
             (Status::Called, Some(1), "")
@@ -442,7 +686,7 @@ mod tests {
     #[test]
     fn the_second_alt_of_a_multiallelic_record() {
         let mut s = site("G", "A");
-        genotype_site(&mut s, "G", &["C", "A"], "PASS", &["1", "2"]);
+        genotype(&mut s, "G", &["C", "A"], "PASS", &["1", "2"]);
         assert_eq!((s.status, s.n), (Status::Called, Some(1)));
         assert_eq!(
             s.note,
@@ -453,24 +697,24 @@ mod tests {
     #[test]
     fn a_filtered_alt_call_is_no_call_but_a_refcall_is_reference() {
         let mut s = site("G", "A");
-        genotype_site(&mut s, "G", &["A"], "LowQual", &["1", "1"]);
+        genotype(&mut s, "G", &["A"], "LowQual", &["1", "1"]);
         assert_eq!(
             (s.status, s.note.as_str()),
             (Status::NoCall, "FILTER LowQual")
         );
         let mut s = site("G", "A");
-        genotype_site(&mut s, "G", &["A"], "RefCall", &["0", "0"]);
+        genotype(&mut s, "G", &["A"], "RefCall", &["0", "0"]);
         assert_eq!((s.status, s.n), (Status::Called, Some(0)));
     }
 
     #[test]
     fn another_ref_is_no_call_unless_a_reference_span() {
         let mut s = site("G", "A");
-        genotype_site(&mut s, "C", &["T"], "PASS", &["1", "1"]);
+        genotype(&mut s, "C", &["T"], "PASS", &["1", "1"]);
         assert_eq!(s.status, Status::NoCall);
         assert_eq!(s.note, "REF C at this position, the marker's REF is G");
         let mut s = site("G", "A");
-        genotype_site(&mut s, "GT", &["G"], "PASS", &["0", "0"]);
+        genotype(&mut s, "GT", &["G"], "PASS", &["0", "0"]);
         assert_eq!((s.status, s.n), (Status::Called, Some(0)));
     }
 
@@ -478,9 +722,75 @@ mod tests {
     fn a_haploid_or_missing_genotype_is_no_call() {
         for gt in [&["1"][..], &[".", "."], &["0", "1", "1"]] {
             let mut s = site("G", "A");
-            genotype_site(&mut s, "G", &["A"], "PASS", gt);
+            genotype(&mut s, "G", &["A"], "PASS", gt);
             assert_eq!(s.status, Status::NoCall, "{gt:?}");
         }
+    }
+
+    #[test]
+    fn the_strongest_record_at_a_position_counts_in_any_order() {
+        let r: Rec = ("T", &["."], ".", &["0", "0"]);
+        let ins: Rec = ("T", &["TC"], "PASS", &["0", "1"]);
+        let snv: Rec = ("T", &["G"], "PASS", &["1", "0"]);
+        let ins_nocall: Rec = ("T", &["TC"], "PASS", &[".", "."]);
+        let other_ref: Rec = ("TA", &["T"], "PASS", &["0", "1"]);
+        for (recs, want) in [
+            (vec![r, ins], (Status::Called, Some(1), "")),
+            (vec![ins, r], (Status::Called, Some(1), "")),
+            (
+                vec![snv, ins],
+                (
+                    Status::Called,
+                    Some(1),
+                    "another allele at this position (T>G, genotype 1/0)",
+                ),
+            ),
+            (vec![r, ins_nocall], (Status::NoCall, None, "genotype ./.")),
+            (vec![ins_nocall, r], (Status::NoCall, None, "genotype ./.")),
+            (vec![other_ref, r], (Status::Called, Some(0), "")),
+            (
+                vec![other_ref],
+                (
+                    Status::NoCall,
+                    None,
+                    "REF TA at this position, the marker's REF is T",
+                ),
+            ),
+            (vec![ins, ins], (Status::Called, Some(1), "")),
+        ] {
+            let mut s = site("T", "TC");
+            records(&mut s, &recs);
+            assert_eq!((s.status, s.n, s.note.as_str()), want, "{recs:?}");
+        }
+    }
+
+    #[test]
+    fn a_shorter_reference_record_says_nothing() {
+        let mut s = site("CG", "C");
+        genotype(&mut s, "C", &["."], ".", &["0", "0"]);
+        assert_eq!((s.status, s.n), (Status::Absent, None));
+        let mut s = site("CG", "C");
+        genotype(&mut s, "C", &["<*>"], ".", &["0", "0"]);
+        assert_eq!(s.status, Status::Absent);
+        let mut s = site("CG", "C");
+        genotype(&mut s, "C", &["T"], "PASS", &["0", "1"]);
+        assert_eq!(s.status, Status::NoCall);
+    }
+
+    #[test]
+    fn a_spanning_allele_changes_the_base_when_its_length_or_base_differs() {
+        // CG at the record, the site at offset 1 (the G).
+        assert!(changes_base("CG", &["CA"], &["1", "1"], 1));
+        assert!(changes_base("CG", &["C"], &["0", "1"], 1));
+        assert!(changes_base("CG", &["C", "CA"], &["1", "2"], 1));
+        assert!(changes_base("CG", &["*"], &["0", "1"], 1));
+        assert!(
+            changes_base("CG", &["A"], &["0", "2"], 1),
+            "an ALT index the record lacks"
+        );
+        assert!(!changes_base("CG", &["TG"], &["1", "1"], 1));
+        assert!(!changes_base("CG", &["C"], &["0", "0"], 1));
+        assert!(!changes_base("CG", &["C"], &[".", "."], 1));
     }
 
     #[test]

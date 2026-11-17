@@ -289,8 +289,8 @@ PHASED=()
 if [ -s "${OUT}/trios.ped" ]; then
   run_in --rw "$OUT" --cpus 4 --memory 8g "$WHATSHAP_IMAGE" \
     whatshap phase --ped "${OUT_C}/trios.ped" --use-ped-samples -o "${OUT_C}/family.phased.vcf.gz" "${OUT_C}/family.vcf.gz"
-  run_in --rw "$OUT" --cpus 1 --memory 2g "$WHATSHAP_IMAGE" \
-    python -c "import pysam; pysam.tabix_index('${OUT_C}/family.phased.vcf.gz', preset='vcf', force=True)"
+  run_in --rw "$OUT" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    /pgp-bin/og vcf index -f "${OUT_C}/family.phased.vcf.gz"
   PHASED=(--phased "${OUT_C}/family.phased.vcf.gz")
 else
   echo "No child has both parents sequenced: nothing to phase by inheritance."

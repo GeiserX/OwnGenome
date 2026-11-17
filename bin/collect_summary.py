@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# remnant: kept for the reports, the couple screen, the search index and the live site; deleted in lane R6b
+# remnant: kept for the reports, the search index and the live site; deleted in lane R6b
 """collect_summary.py: what other Python still reads of the summary collector.
 
 The collector itself is `og summary collect` (rust/crates/og-summary): it
@@ -8,8 +8,8 @@ reports, the live site and the run delta read. collect() below runs it, for
 bin/render_report.py (steps 24, HTML_REPORT and generate-report.sh) and for
 the live site's fallback while a run has no summary.json yet. The rest are
 the names other Python imports until its own port: the section keys, titles
-and steps (render_report.py), ClinVar hit rows and the gene tables' allele
-cells (couple_report.py), the CSQ rule and the table readers
+and steps (render_report.py), the ClinVar review stars and the gene tables'
+allele cells (the tests), the CSQ rule and the table readers
 (results_index.py), and the HLA quality floor (render_report.py). `og dev
 remnants` (tests/parity/remnants.tsv) checks that nothing else comes back.
 Standard library only.
@@ -18,11 +18,9 @@ import csv
 import gzip
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
-import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The repository's assets/ folder beside bin/: og summary collect reads the
@@ -134,13 +132,6 @@ STARS = {
 }
 
 
-# The call floor of step 6 (scripts/06-clinvar-screen.sh writes a floor other
-# than this default into the hits VCF as ##PGP_CALL_FLOOR=GQ=..,DP=..): a P/LP
-# hit below either is a low-confidence call, listed but counted apart. A hits
-# file without the line used this default, or was written before the floor.
-CALL_FLOOR = {"GQ": 30, "DP": 10}
-
-
 # gnomAD allele frequency above which a P/LP hit is marked common.
 COMMON_AF = 0.01
 
@@ -159,26 +150,10 @@ RUN_ALL_STEPS = {"03a", "03b", "03c", "03d", "04", "04b", "05", "06", "07", "08"
 SEVERITY_KINDS = ("hypomorph", "pseudodeficiency")
 
 
-class Unreadable(Exception):
-    pass
-
-
 def open_text(path):
     if path.endswith((".gz", ".bgz")):
         return gzip.open(path, "rt", errors="replace")
     return open(path, errors="replace")
-
-
-def vcf_records(path):
-    """Yield the split data lines of a VCF (plain or gzip)."""
-    try:
-        with open_text(path) as f:
-            for line in f:
-                if line.startswith("#"):
-                    continue
-                yield line.rstrip("\n").split("\t")
-    except (OSError, EOFError, gzip.BadGzipFile, zlib.error) as e:
-        raise Unreadable(f"{os.path.basename(path)}: {e}") from e
 
 
 def info_map(field):
@@ -192,75 +167,6 @@ def info_map(field):
 def read_tsv(path):
     with open_text(path) as f:
         return list(csv.DictReader(f, delimiter="\t"))
-
-
-def clinvar_variants(v, sep):
-    """'chr1:10:C:T|chr1:15:G:A' -> 'chr1:10 C>T<sep>chr1:15 G>A'."""
-    out = []
-    for x in v.split("|"):
-        f = (x.split(":") + ["", "", "", ""])[:4]
-        out.append(f"{f[0]}:{f[1]} {f[2]}>{f[3]}")
-    return sep.join(out)
-
-
-def clinvar_combined_note(info, gt=""):
-    """Step 6's note on a hit that is a combined allele of two neighbouring
-    records, or part of one, from the tags og clinvar join-adjacent
-    writes; og clinvar hits words it the same way. "." when none.
-    On an unphased het call (0/1) the genotype cannot say the two parts share
-    a haplotype, so the note says they may not."""
-    a = gt.split("/")
-    phase = ("; unphased, so the parts may sit on different haplotypes"
-             if len(a) == 2 and all(x.isdigit() for x in a) and a[0] != a[1] else "")
-    if info.get("PGP_JOINED_FROM"):
-        return "combined allele of " + clinvar_variants(info["PGP_JOINED_FROM"], " + ") + phase
-    if info.get("PGP_PART_OF"):
-        return "part of a combined allele: " + clinvar_variants(info["PGP_PART_OF"], ", ") + phase
-    if info.get("PGP_ONE_ALLELE"):
-        return ("possibly one allele with " + clinvar_variants(info["PGP_ONE_ALLELE"], ", ")
-                + ": check ClinVar for a combined record")
-    return "."
-
-
-def low_confidence(dp, gq, floor):
-    """True when the call's GQ or DP is known and below the floor."""
-    return (gq is not None and gq < floor["GQ"]) or (dp is not None and dp < floor["DP"])
-
-
-def half_call(gt):
-    """True for a GT of one alt allele and one missing one: 1/., ./1, 1|."""
-    return bool(re.fullmatch(r"[1-9][/|]\.|\.[/|][1-9]", gt or ""))
-
-
-def clinvar_zygosity(gt):
-    """A ClinVar hit's genotype as og clinvar hits words it. One alt
-    allele and one missing one (1/., ./1) is the half of a multiallelic call
-    step 06 split with the other alt written as missing (a 1/2 at a poly-T
-    tract), or a half call: never het, which would say the other copy is ref."""
-    if half_call(gt):
-        return f"one copy, other copy not called ref ({gt})"
-    return {"0/1": "het", "1/0": "het", "0|1": "het", "1|0": "het", "1/1": "hom", "1|1": "hom"}.get(gt, gt)
-
-
-def clinvar_row(r, floor=None):
-    info = info_map(r[7]) if len(r) > 7 else {}
-    rev = info.get("CLNREVSTAT", "")
-    genes = [g.split(":")[0] for g in info.get("GENEINFO", "").split("|") if g]
-    gt = r[9].split(":")[0] if len(r) > 9 else ""
-    zyg = clinvar_zygosity(gt)
-    fmt = dict(zip(r[8].split(":"), r[9].split(":"))) if len(r) > 9 else {}
-    dp, gq = (int(fmt[k]) if fmt.get(k, "").isdigit() else None for k in ("DP", "GQ"))
-    return {
-        "stars": STARS.get(rev, 0),
-        "chrom": r[0], "pos": int(r[1]), "ref": r[3], "alt": r[4],
-        "genotype": zyg,
-        "gene": ",".join(genes) or ".",
-        "significance": info.get("CLNSIG", "").replace("_", " ") or ".",
-        "review_status": rev.replace("_", " ") or ".",
-        "combined_allele": clinvar_combined_note(info, gt),
-        "dp": dp, "gq": gq,
-        "low_confidence": low_confidence(dp, gq, floor or CALL_FLOOR),
-    }
 
 
 def hla_quality(q):

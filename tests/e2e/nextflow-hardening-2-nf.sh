@@ -184,11 +184,11 @@ for a in clinvar/${SAMPLE}_clinvar_hits.vcf pharmcat/${SAMPLE}.report.json pharm
 done
 JSON="${R}/summary.json"
 # section KEY: the state of a summary.json section (ok, missing, unreadable, ...)
-section() { python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['sections'][sys.argv[2]]['state'])" "$JSON" "$1" 2>/dev/null; }
+section() { jq -r --arg k "$1" '.sections[$k].state // empty' "$JSON" 2>/dev/null; }
 for k in clinvar pharmcat coverage telomere haplogroup y_haplogroup manta delly sv_consensus pypgx; do
   check_eq "summary.json section ${k} is filled" "$(section "$k")" ok
 done
-CONS_RESULT=$(python3 -c "import json, sys; c = json.load(open(sys.argv[1]))['cyp2d6']['consensus']; print(c['result'] if c else '')" "$JSON" 2>/dev/null)
+CONS_RESULT=$(jq -r '(.cyp2d6.consensus // {}) | .result // empty' "$JSON" 2>/dev/null)
 check "the CYP2D6 card reads step 36's table (result: ${CONS_RESULT:-none})" test -n "${CONS_RESULT:-}"
 check "the Structural Variants card counts the consensus SVs" \
   has 'Consensus SVs \(2\+ callers\)</span><span class="value">(<[^>]*>)?[1-9][0-9]*<' "$(cat "${R}/${SAMPLE}_report.html" 2>/dev/null)"

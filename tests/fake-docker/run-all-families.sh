@@ -15,7 +15,7 @@
 #      nextflow starts;
 #   4. the real 39-couple.sh given the families file writes family_b's own
 #      rows to GENOME_DIR/family_b/pedigree.tsv and hands that file, not the
-#      two-family one, to bin/couple_report.py.
+#      two-family one, to og couple screen.
 # run-all.sh runs from a copy of the repository whose 38-family.sh and
 # 39-couple.sh only log their arguments; og family runs for real (bin/og, the
 # host build), through a hook on the fake docker.
@@ -131,11 +131,11 @@ run_expect 0 couple "${REPO_ROOT}/scripts/39-couple.sh" family_b "$FAMS"
 [ "$(cut -f1 "${G}/family_b/pedigree.tsv" 2>/dev/null | tr '\n' ' ')" = "sample partner_x partner_y " ] \
   || fail "family_b/pedigree.tsv is not family_b's rows: $(cat "${G}/family_b/pedigree.tsv" 2>/dev/null)"
 cmp -s "$FAMS" "${G}/family_b/families.tsv" || fail "the families file was not kept beside it as families.tsv"
-docker_log_has '/pgp-bin/couple_report\.py screen --pedigree /genome/family_b/pedigree\.tsv ' \
-  "couple_report.py was not given family_b's own pedigree"
+docker_log_has '/pgp-bin/og couple screen --pedigree /genome/family_b/pedigree\.tsv ' \
+  "og couple screen was not given family_b's own pedigree"
 docker_log_has '--clinvar partner_y=/genome/partner_y/clinvar/partner_y_clinvar_hits\.vcf' \
   "step 39 did not hand partner_y's ClinVar hits over"
-if grep 'couple_report' "$FAKE_DOCKER_LOG" | grep -q child_a; then fail "step 39 handed family_a's child_a over"; fi
+if grep 'og couple screen' "$FAKE_DOCKER_LOG" | grep -q child_a; then fail "step 39 handed family_a's child_a over"; fi
 run_expect 2 nofam "${REPO_ROOT}/scripts/39-couple.sh" family_c "$FAMS"
 output_has nofam "has no family 'family_c'; its families are: family_a, family_b"
 echo "FAMILIES: the family steps waited for the second member, then ran on family_b's own rows."

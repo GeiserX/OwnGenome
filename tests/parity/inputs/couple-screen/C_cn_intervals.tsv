@@ -1,0 +1,3 @@
+locus	name	chrom	start	end	status	copies	expected	change	estimate	reason
+CFTR_dele2_3	CFTR_dele2_3 name	chr7	117498312	117519392	called	1	2	deletion	.	.
+HBB_exon3_del	HBB_exon3_del name	chr11	5225254	5225875	called	1	2	deletion	.	.

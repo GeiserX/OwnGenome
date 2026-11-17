@@ -15,6 +15,7 @@ Most blood group antigens differ by one known variant, so the genome predicts th
 ## Tool
 
 - `og bloodtype report` (OwnGenome's Rust binary, `rust/crates/og-bloodtype`), applying the marker table `assets/bloodtype_markers.tsv`. It reads the marker sites through the VCF's `.tbi` or `.csi`; without a usable index (none, or one older than the VCF) it reads the VCF once, line by line, with the same result. `og bloodtype check-markers` checks that the table and the rules agree
+- bcftools `norm` to left-align the VCF's records near the marker sites against the reference first (see [Indels written another way](#indels-written-another-way))
 - samtools `bedcov` for the read depth over the marker sites and RHD; the RHD regions are the RHD row of `bin/cn_loci.tsv`, and og cn's engine turns their depth into the copy number (see [Copy number from depth](cn-loci.md))
 
 The variants and the antigens they define are the ISBT allele definitions, as RBCeq2 2.4.4 packages them (database v2.5.1, MIT licence, Australian Red Cross Lifeblood). The table's header names the release and the checksum of the file they were read from. Each position and REF base was checked against Ensembl GRCh38 and its dbSNP id. The HPA positions come from dbSNP through Ensembl, because that RBCeq2 database lists them at their GRCh37 positions.
@@ -27,13 +28,14 @@ Why not run RBCeq2 or bloodTyper itself: RBCeq2 is on PyPI only, with no Biocond
 
 ## Docker Image
 
-- `PYTHON_IMAGE` for the rules, `SAMTOOLS_IMAGE` for the depth
+- `PYTHON_IMAGE` for the rules, `SAMTOOLS_IMAGE` for the depth, `BCFTOOLS_IMAGE` for the left-alignment. In the Nextflow pipeline the `BLOODTYPE` process runs both the left-alignment and the rules in `BCFTOOLS_IMAGE` (`og` is a static binary)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
 ## Input
 
-- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample, left-aligned records (DeepVariant writes them so; split multi-allelic records are read as they are)
+- `${SAMPLE}/vcf/${SAMPLE}.vcf.gz`: one sample, from any caller. Its records near the marker sites are left-aligned first, so an indel need not be written the way the table writes it. Split and whole multi-allelic records, all-sites VCFs (a reference record and then the variant at one position) and gVCF reference blocks are read too: every record that covers a site counts, whatever their order (see below)
+- the reference (`REF_FASTA`, `reference/GRCh38_no_alt_analysis_set.fasta` by default) with its `.fai`, for the left-alignment; `--reference` in the Nextflow pipeline
 - `${SAMPLE}/aligned/${SAMPLE}_sorted.bam` with its `.bai` (`ALIGN_DIR` as for the other BAM steps). Optional: without it RhD is not determined, and a site the VCF has no record for is read as the reference allele at confidence medium.
 
 ## Command
@@ -62,7 +64,28 @@ With `run-all.sh`: `TOOLS=...,bloodtype`. It is opt-in and needs no data, so a r
 | HPA-7 to -14, -16 to -35 | one variant each in ITGB3, ITGA2B, ITGA2, GP1BB or GP9 | one allele per copy; the a antigen is on the reference allele, the low-prevalence b antigen on the other |
 | HNA-3, -4, -5 | SLC44A2 c.461G>A, ITGAM c.230G>A, ITGAL c.2372G>C | one allele per copy; GRCh38 carries HNA-3b |
 
-A site the VCF has no record for is the reference allele when the BAM has at least 8 reads there at MAPQ 20, and not determined below that. Without the BAM it is read as reference, and the confidence says so. The step leaves out of `samtools bedcov` the rows on a contig the BAM has no `@SQ` line for (a BAM cut to a few chromosomes), because `bedcov` would stop on them. Those sites then have no depth row: the ones with no VCF record are not determined, and RhD is not determined without chr1. A record at a site whose REF is not the table's REF is a no call, because it says nothing about the table's ALT; the one exception is a 0/0 call over a longer REF that starts with the table's REF, which is the reference allele.
+A site the VCF has no record for is the reference allele when the BAM has at least 8 reads there at MAPQ 20, and not determined below that. Without the BAM it is read as reference, and the confidence says so. The step leaves out of `samtools bedcov` the rows on a contig the BAM has no `@SQ` line for (a BAM cut to a few chromosomes), because `bedcov` would stop on them. Those sites then have no depth row: the ones with no VCF record are not determined, and RhD is not determined without chr1. A record at a site whose REF is not the table's REF is a no call, because it says nothing about the table's ALT. There are two exceptions. A 0/0 call over a longer REF that starts with the table's REF is the reference allele. A 0/0 record over a shorter REF (an all-sites VCF's `C . 0/0`, or a gVCF block that starts at a deletion marker such as ABO c.1061delC) says nothing past its own base, so the site reads as one with no record: the reads decide.
+
+### Indels written another way
+
+The table writes each indel left-aligned, the way `bcftools norm` writes it: ABO c.1061delC is `CG C` at chr9:133255669, at the start of a run of G. A caller can write the same deletion further right in the run, as `GG G` at chr9:133255671 (DeepVariant does so in rare cases without `--normalize_reads`, which the pipeline does not pass, and a VCF from another caller may do so too). Matched by position as written, that record would miss the marker, and with reads there the site would read as the reference allele at confidence high. So the step first takes the VCF's records within 100 bp of each marker site and left-aligns them against the reference (`bcftools norm -c w -f`). 100 bp is more than the 38 bp the longest marker indel can shift along its repeat on GRCh38. The rules then read that file.
+
+- A multi-allelic record stays one record (no `-m -any`). A `C A,G 1/2` at ABO c.803 keeps its one B copy, and a null row's `1/2` of two of its ALTs keeps both copies.
+- A multi-allelic indel is left-aligned as a whole, so its REF can stay longer than the marker's (`TCC TC,T` against `TC T`). Its REF then differs from the table's, and the site is a no call, as the paragraph above says.
+- A record whose REF differs from the reference is kept as it is (`-c w`), with a warning in the log.
+- A record on a contig the reference lacks (a VCF named `1`, `2`, ... against the chr-named reference) cannot be aligned. It goes through unchanged.
+- bcftools reads the VCF through its index when the index htslib loads (the `.csi` if there is one, else the `.tbi`) is not older than the VCF. Otherwise it reads the VCF once from the start. Read that way, a VCF whose header has no `##contig` line for a marker's contig first gets one, because bcftools writes no record on an undeclared contig. That path also reads a VCF in plain gzip, not bgzip.
+- The left-aligned file is a work file: the bash step deletes it after the rules run, and the pipeline does not publish it.
+
+### Several records at one site
+
+When several records cover one site, each one is read and their order does not matter:
+
+- A call of the table's ALT wins over the other records at the site's position. An all-sites VCF writes `T . 0/0` and then `T TC 0/1` at ABO c.261, so the insertion counts. Another allele that a second record calls there (a split `T G 1/0`) is named in the note.
+- When one null marker lists several ALTs, calls of distinct listed ALTs add their copies. Splitting the record keeps the same evidence and phenotype. Repeated calls of the same ALT count once, even if its allele index changes. Different dosages for the same ALT, or a total above two copies, make the site a no call with an incompatible-dosage note.
+- A no call of a record that names the table's ALT (`./.`, or a failed FILTER) comes next: the ALT may be there, so a reference record beside it does not make the site reference.
+- Then a reference call, then any other no call.
+- A record that starts upstream and spans the site with an allele that changes the site's base (a deletion over it, or a padded record such as `CG CA`) makes the site a no call, whatever the site's own records say. A reference call or a no call upstream changes nothing, and neither does an allele that keeps the site's base.
 
 ## Output
 
@@ -94,7 +117,7 @@ Lacking an antigen is common (most people lack HPA-1b, for example). It means a 
 
 ## Runtime
 
-Not measured on a whole genome. The step reads the VCF once, line by line, and samtools reads the BAM at 284 small regions.
+Not measured on a whole genome. bcftools reads the VCF's records near the marker sites through its index (the VCF once from the start without one) and left-aligns them; og reads the marker positions of that small file; samtools reads the BAM at 284 small regions.
 
 ## Notes
 

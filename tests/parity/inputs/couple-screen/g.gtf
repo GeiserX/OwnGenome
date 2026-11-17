@@ -1,0 +1,10 @@
+##description: evidence-based annotation of the human genome (GRCh38), version 99
+chr22	HAVANA	gene	100	900	.	+	.	gene_id "X"; gene_name "NAGA";
+chr3	HAVANA	gene	10	20	.	+	.	gene_id "X"; gene_name "AAA1";
+chrX	HAVANA	gene	5000000	5000100	.	+	.	gene_id "X"; gene_name "XXL1";
+chrX	HAVANA	gene	20000	30000	.	+	.	gene_id "X"; gene_name "PARG1";
+chrY	HAVANA	gene	20000	30000	.	+	.	gene_id "X"; gene_name "PARG1";
+chrY	HAVANA	gene	9000000	9000100	.	+	.	gene_id "X"; gene_name "YYY1";
+chr9	HAVANA	gene	1	2	.	+	.	gene_id "X"; gene_name "C9orf72";
+chr2	HAVANA	gene	50	60	.	+	.	gene_id "X"; gene_name "TWO1";
+chr1	HAVANA	gene	70	80	.	+	.	gene_id "X"; gene_name "TWO1";

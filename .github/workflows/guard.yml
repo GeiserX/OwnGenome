@@ -348,6 +348,41 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "ERROR: the planted unreadable-report success passed"; exit 1; }
           grep -E 'unreadable_pharmcat_is_unassessed.*FAILED' "$log"
           echo "Control: the unreadable-report success was reported as a failed test."
+      # The live ops card (og-live/tests/ops*.rs): each planted_* test turns
+      # on one planted mistake of the fault-inject feature, so every one of
+      # them must fail, and none may pass.
+      - name: Control (every planted mistake of the live ops card must fail its check)
+        run: |
+          set -o pipefail
+          tests=(--test ops --test ops_eta --test ops_headroom)
+          log="${RUNNER_TEMP}/ops-planted.log"
+          want=$(cargo test --locked -p og-live --features fault-inject "${tests[@]}" planted_ -- --list 2>/dev/null \
+            | grep -cE '^planted::planted_[a-z0-9_]+: test$' || true)
+          [ "$want" -gt 0 ] || { echo "ERROR: no planted test was found"; exit 1; }
+          rc=0
+          cargo test --locked --no-fail-fast -p og-live --features fault-inject "${tests[@]}" planted_ > "$log" 2>&1 || rc=$?
+          grep -E '^test planted::planted_' "$log" || true
+          [ "$rc" -ne 0 ] || { cat "$log"; echo "ERROR: every planted mistake passed"; exit 1; }
+          passed=$(grep -E '^test planted::planted_[a-z0-9_]+ \.\.\. ok$' "$log" || true)
+          [ -z "$passed" ] || { echo "ERROR: a check passed with its planted mistake on:"; echo "$passed"; exit 1; }
+          failed=$(grep -cE '^test planted::planted_[a-z0-9_]+ \.\.\. FAILED$' "$log" || true)
+          [ "$failed" -eq "$want" ] || { cat "$log"; echo "ERROR: ${want} planted tests, ${failed} failed"; exit 1; }
+          echo "Control: all ${failed} planted mistakes of the live ops card failed their checks."
+      - name: Report frame controls (each planted fault of og-render must fail its test)
+        run: |
+          for pair in fault-new-since-text-qc:the_text_quality_block_carries_the_badge_when_coverage_changed \
+                      fault-new-since-html-badge:the_badge_sits_only_on_the_section_whose_result_changed \
+                      fault-escape-apos-39:summary_text_is_escaped_in_the_page; do
+            fault=${pair%%:*}; test=${pair#*:}
+            log="${RUNNER_TEMP}/${fault}.log"
+            if cargo test --locked --no-fail-fast -p og-render --features "$fault" --test port_report_core > "$log" 2>&1; then
+              cat "$log"
+              echo "ERROR: og-render built with ${fault} passed its tests"
+              exit 1
+            fi
+            grep -E "^test ${test} .*FAILED" "$log" || { cat "$log"; echo "ERROR: ${fault} did not fail ${test}"; exit 1; }
+            echo "Control: ${fault} failed ${test}, as it must."
+          done
       - name: Traits controls (diplotype order, REF check and missing phase rows)
         env:
           CARGO_BUILD_JOBS: 3
@@ -369,6 +404,77 @@ jobs:
             grep -E "traits::tests::${test} .*FAILED" "$log" || { echo "ERROR: $test did not catch its fault"; exit 1; }
           done
           cp -f "$saved" "$src"
+          trap - EXIT
+
+      # The PGx tests moved from Python into cargo test: each planted fault must
+      # fail the moved test that guards that rule (one per new test target).
+      - name: PGx test controls (a planted fault fails its moved test in each crate)
+        run: |
+          files="crates/og-steps/src/pgx_rules.rs crates/og-pgx/src/sections.rs crates/og-filters/src/mito.rs crates/og-filters/src/refblock.rs crates/og-bam/tests/data/parity/want/check-multimapped_with_alt/files/check.tsv"
+          saved="${RUNNER_TEMP}/pgx-controls"
+          mkdir -p "$saved"
+          for f in $files; do cp -f "$f" "$saved/$(basename "$f")"; done
+          trap 'for f in $files; do cp -f "$saved/$(basename "$f")" "$f"; done' EXIT
+          # plant FILE EXPR: apply one fault and fail if it changed nothing.
+          plant() {
+            cp -f "$1" "${RUNNER_TEMP}/pgx-before"
+            perl -pi -e "$2" "$1"
+            cmp -s "$1" "${RUNNER_TEMP}/pgx-before" && { echo "ERROR: no fault was planted in $1: $2"; exit 1; }
+            return 0
+          }
+          plant crates/og-steps/src/pgx_rules.rs 's/\} else if !same_pair\(&names, calls\) \{/} else if false \&\& !same_pair(\&names, calls) {/'
+          plant crates/og-steps/src/pgx_rules.rs 's/if !same_diplotype\(&pg, &cy\.0\) \{/if same_diplotype(\&pg, \&cy.0) {/'
+          plant crates/og-pgx/src/sections.rs 's/cyp2d6_band\(all\[0\] \* factor\)/cyp2d6_band(all[0])/'
+          plant crates/og-pgx/src/sections.rs 's/STEP36_GENES\.contains\(&c\.gene\.as_str\(\)\) && !confirmed \{/STEP36_GENES.contains(\&c.gene.as_str()) \&\& false \&\& !confirmed {/'
+          plant crates/og-filters/src/mito.rs 's/^pub const MIN_AF: f64 = 0\.05;/pub const MIN_AF: f64 = 0.06;/'
+          plant crates/og-filters/src/refblock.rs 's/^pub const MIN_GQ: i128 = 20;/pub const MIN_GQ: i128 = 19;/'
+          plant crates/og-bam/tests/data/parity/want/check-multimapped_with_alt/files/check.tsv 's/^status\tunreliable$/status\tok/'
+          log="${RUNNER_TEMP}/pgx-controls.log"
+          if cargo test --locked --no-fail-fast -p og-steps -p og-pgx -p og-filters -p og-bam \
+              --test pgx_hla_second_caller --test port_tests_pgx_cpic --test port_tests_pgx_mito \
+              --test port_tests_pgx_refblock --test cyp2d6_depth --test pgx_outside_calls \
+              --test port_tests_pgx_outside > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the moved PGx tests passed with the planted faults"
+            exit 1
+          fi
+          cat "$log"
+          for test in case2_optitype_disagrees_at_hla_b a_moderate_inhibitor_halves_the_activity_score \
+              case2_the_af_bound the_gq_threshold each_depth_table_gives_its_verdict_and_the_shares \
+              case3_both_agree_and_the_depth_check_passed case10_a_stale_report; do
+            grep -E "^test ${test} .*FAILED" "$log" || { echo "ERROR: $test did not catch its fault"; exit 1; }
+          done
+          echo "Control: each planted PGx fault failed the moved test that guards it."
+
+      - name: Control (ROH scope and neutral hints reject planted faults)
+        run: |
+          reader=crates/og-summary/src/collect/group_c/roh.rs
+          table=../assets/imprinted_regions.tsv
+          cp "$reader" "$RUNNER_TEMP/roh-reader.rs"
+          cp "$table" "$RUNNER_TEMP/imprinted-regions.tsv"
+          restore_roh() {
+            cp "$RUNNER_TEMP/roh-reader.rs" "$reader"
+            cp "$RUNNER_TEMP/imprinted-regions.tsv" "$table"
+          }
+          trap restore_roh EXIT
+          sed -i 's/let denominator = covered_unmasked_bp(&covered);/let denominator = autosome_unmasked_bp();/' "$reader"
+          sed -i 's/s("-")/s("Example syndrome")/g' "$reader"
+          sed -i 's/26248010;29959430/not-pmid/' "$table"
+          log="$RUNNER_TEMP/roh-scope-planted.log"
+          rc=0
+          cargo test --locked -p og-summary --no-fail-fast > "$log" 2>&1 || rc=$?
+          cat "$log"
+          test "$rc" -ne 0
+          for name in \
+            roh_scope_chr20_uses_its_own_unmasked_denominator \
+            roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty \
+            roh_scope_a_segment_only_file_never_establishes_scope \
+            roh_scope_upd_is_a_region_hint_without_syndrome_names \
+            imprinted_asset_is_the_only_table; do
+            grep -E "test .*${name} .* FAILED" "$log"
+          done
+          grep -E 'test result: FAILED\. [0-9]+ passed; 5 failed;' "$log"
+          restore_roh
           trap - EXIT
 
       - name: cargo test

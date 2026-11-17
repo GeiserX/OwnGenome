@@ -63,9 +63,9 @@ INPUT_FILE="${INPUT:-${INPUT_FILE}}"
 # Resolve GENOME_DIR once (Docker resolves symlinks for bind mounts, so the
 # container-relative path must be computed from the real filesystem path).
 _resolve() {
-  python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1" 2>/dev/null \
-    || readlink -f "$1" 2>/dev/null \
-    || echo "$1"
+  realpath -- "$1" 2>/dev/null \
+    || readlink -f -- "$1" 2>/dev/null \
+    || printf '%s\n' "$1"
 }
 REAL_GENOME=$(_resolve "$GENOME_DIR")
 
