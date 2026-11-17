@@ -4,7 +4,8 @@
 //! (44) ancestry, and runs of homozygosity (11).
 
 use super::{
-    Ctx, Rng, Scratch, arg, autosomes, cell, copy, put, put_gz, read, table, versions_env,
+    Ctx, Rng, Scratch, arg, autosomes, cell, chrom_index, copy, put, put_gz, read, table,
+    versions_env,
 };
 use std::collections::HashMap;
 
@@ -190,12 +191,29 @@ pub fn prs(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
     ])
 }
 
-/// Step 11: about 44 Mb of runs of homozygosity, bcftools roh's RG rows.
+/// Three fixed runs on chr11, the chromosome the live demo's map checks
+/// open: with its ClinVar finding they make the four features in view there,
+/// and one of them is the run whose row flies the map.
+const ROH_CHR11: [(i64, i64); 3] = [
+    (60_960_259, 64_330_971),
+    (70_291_155, 71_284_241),
+    (74_599_677, 76_877_148),
+];
+
+/// Step 11: about 44 Mb of runs of homozygosity, bcftools roh's RG rows:
+/// the fixed chr11 runs, then random runs on the other autosomes.
 pub fn roh(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
-    let mut segs: Vec<(usize, &str, i64, i64, i64)> = Vec::new();
-    let mut total = 0i64;
+    let chr11 = chrom_index("chr11");
+    let mut segs: Vec<(usize, &str, i64, i64, i64)> = ROH_CHR11
+        .iter()
+        .map(|&(s, e)| (chr11, "chr11", s, e, e - s))
+        .collect();
+    let mut total: i64 = segs.iter().map(|x| x.4).sum();
     while total < 44_000_000 {
         let i = rng.index(22);
+        if i == chr11 {
+            continue;
+        }
         let (c, length) = autosomes()[i];
         let size = rng.uniform(0.5e6, 3.9e6) as i64;
         let start = rng.int(1_000_000, length - size - 1_000_000);

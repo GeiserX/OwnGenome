@@ -10,7 +10,7 @@
 //!      hit, the class 5 deletion over it, the gene in the symptom ranking)
 //!      and DEMO-001 none of them; DEMO-002 is female, with no chrY and no Y
 //!      files, and carries the FMR1 premutation, the CHIP call and the
-//!      MoChA loss;
+//!      MoChA loss; DEMO-001 has its three runs of homozygosity on chr11;
 //!   4. the command line: a name not of the form DEMO-001, an unknown
 //!      option and a folder that exists are refused.
 
@@ -203,6 +203,15 @@ fn the_planted_findings_land_on_their_people() {
             .lines()
             .any(|l| l.starts_with("3\tKCNH2\t") && l.contains("7:150960000 C>T")),
         "{ranked}"
+    );
+    // The live demo's map opens chr11 and wants runs of homozygosity there.
+    let roh = read("DEMO-001/vcf/DEMO-001_roh.txt");
+    assert_eq!(
+        roh.lines()
+            .filter(|l| l.starts_with("RG\tDEMO-001\tchr11\t"))
+            .count(),
+        3,
+        "{roh}"
     );
     for rel in [
         "DEMO-001/clinvar/DEMO-001_clinvar_hits.vcf",
