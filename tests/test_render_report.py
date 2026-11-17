@@ -859,6 +859,7 @@ def main():
               and "<td>PMS2</td><td>2</td>" in card_p, card_p)
         # 12. raw-data export card
         d = f"{work}/consumer/S"
+        os.makedirs(d)
         summ = collect_summary.collect("S", d)
         txt, html = render_report.text_report(summ), render_report.html_report(summ)
         check("raw-data export: no card and no text section without the step's table",

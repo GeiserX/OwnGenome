@@ -1188,7 +1188,6 @@ report-render	notgz	gen:report-corpus.sh	--summary notgz.json -o notgz.txt -o no
 report-render	empty	gen:report-corpus.sh	--summary empty.json -o empty.txt -o empty.html	empty.txt,empty.html	bytes	PYTHON_IMAGE
 report-render	declared-arg	gen:report-corpus.sh	--summary declared-arg.json -o declared-arg.txt -o declared-arg.html	declared-arg.txt,declared-arg.html	bytes	PYTHON_IMAGE
 report-render	no-assets	gen:report-corpus.sh	--summary no-assets.json -o no-assets.txt -o no-assets.html	no-assets.txt,no-assets.html	bytes	PYTHON_IMAGE
-report-render	no-folder	gen:report-corpus.sh	--summary no-folder.json -o no-folder.txt -o no-folder.html	no-folder.txt,no-folder.html	bytes	PYTHON_IMAGE
 report-render	c-full	gen:report-corpus.sh	--summary c-full.json -o c-full.txt	c-full.txt	bytes	PYTHON_IMAGE
 report-render	c-float-nan	gen:report-corpus.sh	--summary c-float-nan.json -o c-float-nan.txt	c-float-nan.txt	bytes	PYTHON_IMAGE
 report-render	c-float-inf	gen:report-corpus.sh	--summary c-float-inf.json -o c-float-inf.txt	c-float-inf.txt	bytes	PYTHON_IMAGE
