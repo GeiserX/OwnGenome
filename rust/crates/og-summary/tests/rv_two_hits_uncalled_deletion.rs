@@ -94,7 +94,8 @@ fn a_called_deletion_still_makes_a_homozygous_variant_hemizygous() {
         assert_eq!(e.verdict, Verdict::Biallelic, "GT {gt}");
         assert_eq!(e.genotype, "hemizygous", "GT {gt}");
         assert!(
-            e.why.starts_with("the variant is called homozygous inside the deletion"),
+            e.why
+                .starts_with("the variant is called homozygous inside the deletion"),
             "GT {gt}: {}",
             e.why
         );
