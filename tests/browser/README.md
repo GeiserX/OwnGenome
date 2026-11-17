@@ -12,7 +12,7 @@ CHROME=/path/to/chrome cargo test -p og-browser   # a Chrome that is not on PATH
 
 Which Chrome runs: `CHROME` when it is set, else the first of `google-chrome`, `google-chrome-stable`, `chromium` and `chromium-browser` on `PATH`, else `/Applications/Google Chrome.app`. A `CHROME` that names no executable means no Chrome: the driver does not fall back to another one.
 
-Without a Chrome a check prints `[SKIP] no Chrome or Chromium to ...` and passes. In CI (`CI=true`) it fails instead, so a runner without Chrome cannot pass by skipping. The checks run in the Guard job `rust`, inside `cargo test --workspace`, on the runner's Chrome. Two red controls follow there: a page error planted in the clean test page (`--features planted-page-error`) must fail its test, and `CHROME=/nonexistent` must fail in CI and skip with `CI=` unset.
+Without a Chrome a check prints `[SKIP] no Chrome or Chromium to ...` and passes. The test harness hides the output of a passing test, so the line shows only with `cargo test -p og-browser -- --nocapture`; without it a skipped check reads as a plain `ok`. In CI (`CI=true`) it fails instead, so a runner without Chrome cannot pass by skipping. The checks run in the Guard job `rust`, inside `cargo test --workspace`, on the runner's Chrome. Two red controls follow there: a page error planted in the clean test page (`--features planted-page-error`) must fail its test, and `CHROME=/nonexistent` must fail in CI and skip with `CI=` unset.
 
 ## What is checked so far
 
