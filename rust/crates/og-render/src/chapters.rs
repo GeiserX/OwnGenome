@@ -207,21 +207,24 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "locityper" => None,
 
-        "ancestry-fine" => None,
+        "ancestry-fine" => Some((sections::ancestry_fine::text, sections::ancestry_fine::html)),
 
-        "mt-haplogroup" => None,
+        "mt-haplogroup" => Some((sections::haplogroups::text, sections::haplogroups::html)),
 
-        "y-chromosome" => None,
+        "y-chromosome" => Some((
+            sections::haplogroups::y_chromosome_text,
+            sections::haplogroups::y_chromosome_html,
+        )),
 
-        "archaic" => None,
+        "archaic" => Some((sections::archaic::text, sections::archaic::html)),
 
-        "ancient" => None,
+        "ancient" => Some((sections::ancient::text, sections::ancient::html)),
 
         "roh" => None,
 
         "traits-panel" => None,
 
-        "prs" => None,
+        "prs" => Some((sections::prs::text, sections::prs::html)),
 
         "bloodtype" => None,
 

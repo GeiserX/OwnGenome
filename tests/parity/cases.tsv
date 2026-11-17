@@ -1255,3 +1255,19 @@ report-render	m-variants-missing	gen:report-corpus.sh	--summary m-variants-missi
 report-render	m-variants-ok	gen:report-corpus.sh	--summary m-variants-ok.json -o m-variants-ok.txt -o m-variants-ok.html	m-variants-ok.txt,m-variants-ok.html	bytes	PYTHON_IMAGE
 report-render	m-variants-stale	gen:report-corpus.sh	--summary m-variants-stale.json -o m-variants-stale.txt -o m-variants-stale.html	m-variants-stale.txt,m-variants-stale.html	bytes	PYTHON_IMAGE
 report-render	m-variants-unreadable	gen:report-corpus.sh	--summary m-variants-unreadable.json -o m-variants-unreadable.txt -o m-variants-unreadable.html	m-variants-unreadable.txt,m-variants-unreadable.html	bytes	PYTHON_IMAGE
+# report-render, the ancestry chapter and the PRS card: the a-* summaries of gen/report-corpus.sh. a-numbers is text-only:
+# the Python's HTML report cannot render a number where the summary writes text.
+report-render	a-full	gen:report-corpus.sh	--summary a-full.json -o a-full.txt -o a-full.html	a-full.txt,a-full.html	bytes	PYTHON_IMAGE
+report-render	a-stale	gen:report-corpus.sh	--summary a-stale.json -o a-stale.txt -o a-stale.html	a-stale.txt,a-stale.html	bytes	PYTHON_IMAGE
+report-render	a-failed	gen:report-corpus.sh	--summary a-failed.json -o a-failed.txt -o a-failed.html	a-failed.txt,a-failed.html	bytes	PYTHON_IMAGE
+report-render	a-unreadable	gen:report-corpus.sh	--summary a-unreadable.json -o a-unreadable.txt -o a-unreadable.html	a-unreadable.txt,a-unreadable.html	bytes	PYTHON_IMAGE
+report-render	a-missing	gen:report-corpus.sh	--summary a-missing.json -o a-missing.txt -o a-missing.html	a-missing.txt,a-missing.html	bytes	PYTHON_IMAGE
+report-render	a-partial	gen:report-corpus.sh	--summary a-partial.json -o a-partial.txt -o a-partial.html	a-partial.txt,a-partial.html	bytes	PYTHON_IMAGE
+report-render	a-escape	gen:report-corpus.sh	--summary a-escape.json -o a-escape.txt -o a-escape.html	a-escape.txt,a-escape.html	bytes	PYTHON_IMAGE
+report-render	a-painting	gen:report-corpus.sh	--summary a-painting.json -o a-painting.txt -o a-painting.html	a-painting.txt,a-painting.html	bytes	PYTHON_IMAGE
+report-render	a-no-painting	gen:report-corpus.sh	--summary a-no-painting.json -o a-no-painting.txt -o a-no-painting.html	a-no-painting.txt,a-no-painting.html	bytes	PYTHON_IMAGE
+report-render	a-prs-raw	gen:report-corpus.sh	--summary a-prs-raw.json -o a-prs-raw.txt -o a-prs-raw.html	a-prs-raw.txt,a-prs-raw.html	bytes	PYTHON_IMAGE
+report-render	a-prs-sex	gen:report-corpus.sh	--summary a-prs-sex.json -o a-prs-sex.txt -o a-prs-sex.html	a-prs-sex.txt,a-prs-sex.html	bytes	PYTHON_IMAGE
+report-render	a-y-calls	gen:report-corpus.sh	--summary a-y-calls.json -o a-y-calls.txt -o a-y-calls.html	a-y-calls.txt,a-y-calls.html	bytes	PYTHON_IMAGE
+report-render	a-since	gen:report-corpus.sh	--summary a-since.json -o a-since.txt -o a-since.html	a-since.txt,a-since.html	bytes	PYTHON_IMAGE
+report-render	a-numbers	gen:report-corpus.sh	--summary a-numbers.json -o a-numbers.txt	a-numbers.txt	bytes	PYTHON_IMAGE
