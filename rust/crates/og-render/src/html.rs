@@ -9,8 +9,10 @@
 use crate::chapters::{CHAPTERS, FrameState, LIMITS, Sec, step_of, writer};
 use crate::css::CSS;
 use crate::escape::e;
-use crate::model::{Card, Colour, HtmlPart, Inline, Line, Malformed, Section, State, Summary, py};
-use crate::notes::stale_note;
+use crate::model::{
+    Card, Cell, Colour, HtmlPart, Inline, Line, Malformed, Section, State, Summary, Table, py,
+};
+use crate::notes::{VIEWER_NOTE, stale_note};
 use crate::sections::run;
 
 /// The Content-Security-Policy: nothing is fetched, images only inline,
@@ -48,6 +50,7 @@ pub fn offsite_link(url: &str, text: &str, why: &str) -> String {
 fn inline(v: &Inline) -> String {
     match v {
         Inline::Text(t) => e(t).into_owned(),
+        Inline::Fixed(t) => (*t).to_owned(),
         Inline::Badge(t, c) => badge(t, *c),
         Inline::Quiet(t) => format!(
             "<span style=\"font-weight:normal;font-size:13px\">{}</span>",
@@ -70,6 +73,56 @@ fn line(out: &mut Vec<String>, l: &Line) {
             out.extend(items.iter().map(|t| format!("      <li>{}</li>", e(t))));
             out.push("    </ul>".to_owned());
         }
+        Line::Table(t) => table(out, t),
+    }
+}
+
+/// The genome viewer on this computer, which a Viewer cell opens.
+pub const VIEWER_URL: &str = "http://127.0.0.1:8765/";
+
+fn cell(c: &Cell) -> String {
+    match c {
+        Cell::Text(t) => format!("<td>{}</td>", e(t)),
+        Cell::Badge(t, colour) => format!("<td>{}</td>", badge(t, *colour)),
+        Cell::Sub(t, sub) => format!(
+            "<td>{}<br><span style=\"font-size:12px;color:#666\">{}</span></td>",
+            e(t),
+            e(sub)
+        ),
+        Cell::Viewer(None) => "<td></td>".to_owned(),
+        Cell::Viewer(Some(at)) => format!(
+            "<td><a class=\"locus\" href=\"{VIEWER_URL}#{0}\" target=\"_blank\" rel=\"noopener noreferrer\">{0}</a></td>",
+            e(at)
+        ),
+    }
+}
+
+fn table(out: &mut Vec<String>, t: &Table) {
+    let mut head: String = t
+        .head
+        .iter()
+        .map(|h| format!("<th>{}</th>", e(h)))
+        .collect();
+    if t.viewer {
+        head.push_str("<th>Viewer</th>");
+    }
+    let rows = t
+        .rows
+        .iter()
+        .map(|r| format!("<tr>{}</tr>", r.iter().map(cell).collect::<String>()));
+    if t.one_line {
+        out.push(format!(
+            "    <table><tr>{head}</tr>{}</table>",
+            rows.collect::<String>()
+        ));
+    } else {
+        out.push("    <table>".to_owned());
+        out.push(format!("      <tr>{head}</tr>"));
+        out.extend(rows.map(|r| format!("      {r}")));
+        out.push("    </table>".to_owned());
+    }
+    if t.viewer {
+        out.push(VIEWER_NOTE.to_owned());
     }
 }
 
