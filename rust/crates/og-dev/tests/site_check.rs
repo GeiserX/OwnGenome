@@ -216,6 +216,31 @@ fn missing_fragment() {
 }
 
 #[test]
+fn fragment_with_a_character_above_latin_1() {
+    // Python's repr keeps a printable character as written and escapes a
+    // non-printable one, whatever its code point.
+    let cases = [
+        ("a\u{2013}b", "no id 'a\u{2013}b' on guide/index.html"),
+        ("\u{1f600}", "no id '\u{1f600}' on guide/index.html"),
+        ("&#128;", "no id '\u{20ac}' on guide/index.html"),
+        ("a\u{200b}b", "no id 'a\\u200bb' on guide/index.html"),
+        ("a\u{3000}b", "no id 'a\\u3000b' on guide/index.html"),
+        ("a\u{e0001}b", "no id 'a\\U000e0001b' on guide/index.html"),
+        ("a\u{a0}b", "no id 'a\\xa0b' on guide/index.html"),
+        ("it's", "no id \"it's\" on guide/index.html"),
+    ];
+    for (frag, line) in cases {
+        let site = Site::new();
+        site.edit(
+            "site/index.html",
+            "href=\"#intro\">self",
+            &format!("href=\"guide/#{frag}\">self"),
+        );
+        red(&site, line);
+    }
+}
+
+#[test]
 fn markdown_source_link_in_the_body() {
     let site = Site::new();
     site.write("site/notes.md", "x");
@@ -444,6 +469,31 @@ fn config_names_zensical_ignores() {
         site.edit("zensical.toml", from, to);
         red(&site, line);
     }
+    let site = Site::new();
+    site.edit(
+        "zensical.toml",
+        "features = [\"navigation.tabs\", \"content.action.copy\"]",
+        "features = [\"navigation.tabs\", 1, \"\u{2013}\"]",
+    );
+    red(
+        &site,
+        "theme.features must be a list of strings, got ['navigation.tabs', 1, '\u{2013}']",
+    );
+    let site = Site::new();
+    site.edit(
+        "zensical.toml",
+        "site_name = \"Demo\"",
+        "site_name = \"Demo\"\nplugins = \"search\"",
+    );
+    site.edit(
+        "zensical.toml",
+        "[project.plugins.search]\n\n[project.plugins.llmstxt.sections]\nDocs = [\"*.md\"]\n\n[project.plugins.redirects.redirect_maps]\n\"old.md\" = \"guide.md\"",
+        "",
+    );
+    red(
+        &site,
+        "zensical.toml: plugins is a str, not a table or a list",
+    );
     let site = Site::new();
     site.edit("site/index.html", "stylesheets/modern/", "stylesheets/");
     red(

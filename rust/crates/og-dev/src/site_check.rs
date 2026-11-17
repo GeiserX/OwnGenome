@@ -67,10 +67,12 @@
 use indexmap::IndexMap;
 use pycompat::json::Value;
 use pycompat::text::{lower, split, strip};
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 const USAGE: &str = "usage: og dev site-check SITE_DIR [ZENSICAL_TOML]";
 
@@ -849,9 +851,88 @@ fn type_name(v: &Value) -> &'static str {
     }
 }
 
-/// `repr(v)`.
+/// `repr(v)`, recursing into lists and tables so every string inside goes
+/// through [`write_str_repr`]. Scalars other than strings never fail in
+/// `py_repr`.
 fn repr(v: &Value) -> String {
-    pycompat::value::py_repr(v).unwrap_or_else(|_| format!("{v:?}"))
+    let mut out = String::new();
+    write_repr(&mut out, v);
+    out
+}
+
+fn write_repr(out: &mut String, v: &Value) {
+    match v {
+        Value::Str(s) => write_str_repr(out, s),
+        Value::Array(a) => {
+            out.push('[');
+            for (i, x) in a.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_repr(out, x);
+            }
+            out.push(']');
+        }
+        Value::Object(o) => {
+            out.push('{');
+            for (i, (k, x)) in o.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_str_repr(out, k);
+                out.push_str(": ");
+                write_repr(out, x);
+            }
+            out.push('}');
+        }
+        scalar => out.push_str(&pycompat::value::py_repr(scalar).unwrap_or_default()),
+    }
+}
+
+/// The characters Python's `str.isprintable()` rejects above U+00FF: the
+/// general categories Cc, Cf, Co, Cn, Zl, Zp and Zs (Cs cannot occur in a
+/// Rust `char`).
+static UNPRINTABLE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Zs}]$").expect("static regex")
+});
+
+/// Python's `repr(s)` of a string: single quotes unless the text has a `'`
+/// and no `"`; `\\`, the quote, `\t`, `\n`, `\r` escaped; other
+/// unprintable characters as `\xNN` below U+0100, `\uNNNN` below U+10000
+/// and `\UNNNNNNNN` above; printable characters as written.
+fn write_str_repr(out: &mut String, s: &str) {
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    out.push(quote);
+    let mut buf = [0u8; 4];
+    for c in s.chars() {
+        let code = u32::from(c);
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            '\0'..='\x1f' | '\x7f'..='\u{a0}' | '\u{ad}' => {
+                out.push_str(&format!("\\x{code:02x}"));
+            }
+            '\u{100}'.. if UNPRINTABLE.is_match(c.encode_utf8(&mut buf)) => {
+                if code < 0x1_0000 {
+                    out.push_str(&format!("\\u{code:04x}"));
+                } else {
+                    out.push_str(&format!("\\U{code:08x}"));
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
 }
 
 /// `repr(s)` of a string.
