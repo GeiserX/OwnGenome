@@ -35,8 +35,36 @@ fn put(path: &Path, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
+/// A scratch folder that is removed when the test ends, also when it fails.
+struct Tmp(PathBuf);
+
+impl std::ops::Deref for Tmp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for Tmp {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for Tmp {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.0.as_os_str()
+    }
+}
+
+impl Drop for Tmp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// A sample folder with haplogrep3's call and, for a male, Yleaf's table.
-fn sample(name: &str, y_hg: Option<&str>, mt_hg: &str) -> PathBuf {
+fn sample(name: &str, y_hg: Option<&str>, mt_hg: &str) -> Tmp {
     let d = std::env::temp_dir().join(format!("og-ancestry-hg-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     put(
@@ -49,7 +77,7 @@ fn sample(name: &str, y_hg: Option<&str>, mt_hg: &str) -> PathBuf {
             &format!("{Y_HEAD}S_sorted\t{hg}\tM269\t100\t42\t0.97\t1\t1\t0.97\n"),
         );
     }
-    d
+    Tmp(d)
 }
 
 /// The summary og summary collect writes for S, as text.

@@ -50,11 +50,39 @@ fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
-fn tmp(tag: &str) -> PathBuf {
+/// A scratch folder that is removed when the test ends, also when it fails.
+struct Tmp(PathBuf);
+
+impl std::ops::Deref for Tmp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for Tmp {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for Tmp {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.0.as_os_str()
+    }
+}
+
+impl Drop for Tmp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn tmp(tag: &str) -> Tmp {
     let d = std::env::temp_dir().join(format!("og-ancestry-archaic-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Tmp(d)
 }
 
 fn p(d: &Path, name: &str) -> String {
@@ -1029,7 +1057,7 @@ mod ibdmix {
         String::from_utf8(o.stdout).unwrap().trim().to_owned()
     }
 
-    fn open_dir(name: &str) -> PathBuf {
+    fn open_dir(name: &str) -> Tmp {
         let d = tmp(name);
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o777)).unwrap();

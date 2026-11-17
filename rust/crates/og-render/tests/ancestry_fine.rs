@@ -28,7 +28,35 @@ left_out\tOCE\tOceania (regional group)\t.\t.\t.\t.
 not_painted\tchr19\tRFMix failed\t.\t.\t.\t.
 ";
 
-fn sample(tag: &str, painting: bool) -> PathBuf {
+/// A scratch folder that is removed when the test ends, also when it fails.
+struct Tmp(PathBuf);
+
+impl std::ops::Deref for Tmp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for Tmp {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for Tmp {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.0.as_os_str()
+    }
+}
+
+impl Drop for Tmp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn sample(tag: &str, painting: bool) -> Tmp {
     let d = std::env::temp_dir().join(format!("og-ancestry-fine-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(d.join("ancestry_fine")).unwrap();
@@ -40,7 +68,7 @@ fn sample(tag: &str, painting: bool) -> PathBuf {
         )
         .unwrap();
     }
-    d
+    Tmp(d)
 }
 
 fn reports(d: &Path) -> (String, String) {

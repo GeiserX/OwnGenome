@@ -46,12 +46,40 @@ fn panel_path() -> String {
     repo().join("assets/ystr_panel.tsv").display().to_string()
 }
 
+/// A scratch folder that is removed when the test ends, also when it fails.
+struct Tmp(PathBuf);
+
+impl std::ops::Deref for Tmp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for Tmp {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for Tmp {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.0.as_os_str()
+    }
+}
+
+impl Drop for Tmp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// A fresh folder for one test.
-fn tmp(tag: &str) -> PathBuf {
+fn tmp(tag: &str) -> Tmp {
     let d = std::env::temp_dir().join(format!("og-ancestry-ystr-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Tmp(d)
 }
 
 /// One region of a panel row: chrom, start, end, period, copies, name.
