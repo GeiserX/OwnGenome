@@ -128,12 +128,14 @@ SAMPLE_DROPPED=$(comm -23 <(printf '%s\n' "$SAMPLE_CONTIGS") <(printf '%s\n' "$S
 # Step 1: normalise ClinVar once (split multiallelics, left-align), rebuilt when the
 # source is newer. isec matches on identical REF/ALT, so both sides must be split
 # and left-aligned the same way.
+# Each pipeline below runs in bash with pipefail: under sh a failed first
+# bcftools would go unnoticed when the second one exits 0.
 if [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; then
   echo "Normalising ClinVar into ${CLINVAR_NORM} ..."
   rm -f "${CLINVAR_NORM}.part.vcf.gz" "${CLINVAR_NORM}.part.vcf.gz.tbi"
   # The normalised copy is shared by every sample, so clinvar/ is writable here.
   run_in --rw "$(dirname "$CLINVAR_NORM")" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
-    sh -c "set -e; bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CLINVAR")' \
+    bash -o pipefail -c "set -e; bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CLINVAR")' \
       | bcftools norm -m -any -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "${CLINVAR_NORM}.part.vcf.gz")' -"
   bcftools_run --rw "$(dirname "$CLINVAR_NORM")" bcftools index -t "$(cpath "${CLINVAR_NORM}.part.vcf.gz")"
   mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
@@ -170,7 +172,7 @@ fi
 PASS_VCF="${OUTPUT_DIR}/${SAMPLE}_pass.vcf.gz"
 NORM_LOG="${OUTPUT_DIR}/${SAMPLE}_norm.log"
 if ! run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
-  sh -c "set -e; bcftools view -f '${FILTER}' -T '$(cpath "$SAMPLE_TARGETS")' -Ou '$(cpath "$VCF")' \
+  bash -o pipefail -c "set -e; bcftools view -f '${FILTER}' -T '$(cpath "$SAMPLE_TARGETS")' -Ou '$(cpath "$VCF")' \
     | bcftools norm -m -any --multi-overlaps . -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "$PASS_VCF")' -
     bcftools index -f -t '$(cpath "$PASS_VCF")'" 2> "$NORM_LOG"; then
   cat "$NORM_LOG" >&2
@@ -234,7 +236,7 @@ case "$CLINVAR_COLS" in
 esac
 SHARED="${OUTPUT_DIR}/${SAMPLE}_shared.vcf.gz"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
-  sh -c "set -e
+  bash -o pipefail -c "set -e
     bcftools isec --no-version -n=2 -w1 -Oz -o '$(cpath "$SHARED")' '$(cpath "$CANDIDATES")' '$(cpath "$CLINVAR_NORM")'
     bcftools index -f -t '$(cpath "$SHARED")'
     bcftools annotate --no-version -a '$(cpath "$CLINVAR_NORM")' --pair-logic exact \
