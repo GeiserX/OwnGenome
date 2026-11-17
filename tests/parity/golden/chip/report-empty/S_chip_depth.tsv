@@ -1,0 +1,7 @@
+gene	transcript	chrom	coding_bases	mean_depth	detection_limit_vaf	status	callable_fraction	assessable_fraction
+DNMT3A	T2	chr2	392	0.0		too_shallow	0.000	
+JAK2	T3	chr9	621	0.0		too_shallow	0.000	
+TET2	T4	chr4	1542	0.0		too_shallow	0.000	
+PPM1D	T5	chr17	1242	0.0		too_shallow	0.000	
+TP53	T6	chr17	321	0.0		too_shallow	0.000	
+SF3B1	T7	chrKI270728.1	0			not_on_reference		

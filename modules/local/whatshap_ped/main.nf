@@ -44,7 +44,7 @@ process WHATSHAP_PED {
     """
     if [ -s ${trios} ]; then
         whatshap phase --ped ${trios} --use-ped-samples -o family.phased.vcf.gz ${vcf}
-        python -c "import pysam; pysam.tabix_index('family.phased.vcf.gz', preset='vcf', force=True)"
+        og vcf index -f family.phased.vcf.gz
     else
         echo "No child has both parents sequenced: nothing to phase by inheritance."
     fi

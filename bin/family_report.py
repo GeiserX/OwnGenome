@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-# remnant: kept for couple_report, pedigree_svg; deleted in lane R4
+# remnant: kept for pedigree_svg; deleted in lane R4
 """family_report.py: what is left of the family analysis of step 38 once it
-moved to `og family` (rust/crates/og-steps/src/family). Only the pedigree,
-relatedness and PAR rules that other Python tools still import are kept
-here; `og dev remnants` (tests/parity/remnants.tsv) checks that nothing
-else comes back. Standard library only.
+moved to `og family` (rust/crates/og-steps/src/family). Only the pedigree
+and relatedness rules that other Python tools still import are kept here;
+`og dev remnants` (tests/parity/remnants.tsv) checks that nothing else comes
+back. Standard library only.
 """
 import re
-import sys
 
 COLUMNS = ("family", "sample", "sex", "father", "mother", "partner")
 MISSING = {"", ".", "0", "-9"}
@@ -20,12 +19,6 @@ NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 # geometric middle between two degrees.
 BINS = ((0.707, "same person"), (0.354, "first degree"),
         (0.177, "second degree"), (0.0884, "third degree"))
-
-
-def die(lines, code=2):
-    for line in lines:
-        print("ERROR: " + line, file=sys.stderr)
-    sys.exit(code)
 
 
 def missing(v):
@@ -212,19 +205,3 @@ def degree(r):
         if r >= lo:
             return name
     return "unrelated"
-
-
-def read_par(path):
-    par = {}
-    if path:
-        with open(path) as f:
-            for line in f:
-                c = line.split("\t")
-                if len(c) >= 3:
-                    par.setdefault(c[0], []).append((int(c[1]), int(c[2])))
-    return par
-
-
-def in_par(par, chrom, pos):
-    # BED: 0-based start, end exclusive; pos is 1-based
-    return any(s < pos <= e for s, e in par.get(chrom, ()))

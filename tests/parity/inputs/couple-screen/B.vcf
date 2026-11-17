@@ -1,0 +1,6 @@
+##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+chr22	42051903	90007	A	G	.	PASS	GENEINFO=NAGA:1;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts	GT	0/1
+chr2	233766787	90000	A	G	.	PASS	GENEINFO=UGT1A1:1;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts	GT	0/1
+chr6	32040309	90000	A	G	.	PASS	GENEINFO=CYP21A2:1;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts	GT	0/1
+chr6	32098243	900018	A	G	.	PASS	GENEINFO=TNXB:1;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts	GT	0/1

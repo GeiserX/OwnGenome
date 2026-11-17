@@ -3,7 +3,7 @@
 //! ```text
 //! og clinvar join-adjacent --mode prepare|finish|tag|build [--fasta REF] [--window N] [VCF]
 //! og clinvar hits [HITS_VCF]
-//! og clinvar deep-intronic [--no-gvcf] [--min-gq N] SITES VCF_CALLS GVCF_CALLS
+//! og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS
 //! ```
 //!
 //! A missing file, or `-`, is standard input; plain, gzip and BGZF input are
@@ -20,7 +20,7 @@ use crate::{hits, sites};
 
 const USAGE: &str = "usage: og clinvar join-adjacent --mode prepare|finish|tag|build [--fasta REF] [--window N] [VCF]
        og clinvar hits [HITS_VCF]
-       og clinvar deep-intronic [--no-gvcf] [--min-gq N] SITES VCF_CALLS GVCF_CALLS";
+       og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS";
 
 fn refuse(msg: &str) -> u8 {
     eprintln!("{USAGE}");
@@ -182,11 +182,15 @@ fn join_adjacent(args: &[String], out: &mut impl Write) -> u8 {
 }
 
 fn deep_intronic(args: &[String], out: &mut impl Write) -> u8 {
-    let l = match Line::parse(args, &["--min-gq"], &["--no-gvcf"]) {
+    let l = match Line::parse(args, &["--min-gq", "--min-dp"], &["--no-gvcf"]) {
         Ok(l) => l,
         Err(e) => return refuse(&e),
     };
     let min_gq = match l.number("--min-gq", 30) {
+        Ok(v) => v,
+        Err(e) => return refuse(&e),
+    };
+    let min_dp = match l.number("--min-dp", 10) {
         Ok(v) => v,
         Err(e) => return refuse(&e),
     };
@@ -204,6 +208,8 @@ fn deep_intronic(args: &[String], out: &mut impl Write) -> u8 {
     let o = sites::Options {
         min_gq: l.get("--min-gq").unwrap_or("30").to_owned(),
         min_gq_value: min_gq,
+        min_dp: l.get("--min-dp").unwrap_or("10").to_owned(),
+        min_dp_value: min_dp,
         gvcf: !l.flags.contains(&"--no-gvcf"),
     };
     sites::deep_intronic(&texts[0], &texts[1], &texts[2], &o, out)

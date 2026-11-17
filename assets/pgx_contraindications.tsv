@@ -25,7 +25,7 @@
 # biallelic: the disorder is recessive, so the WARNING needs both copies
 # changed (a homozygous or hemizygous genotype) or two variants in the gene;
 # one heterozygous variant makes a carrier and gives a NOTE instead.
-# tests/test_cpic_parser.py checks the shape of every row.
+# cargo test -p og-pgx (tests/port_tests_pgx_cpic.rs) checks the shape of every row.
 Gene	Drug	Names	CPIC_level	Note	Pair_source	Label_source	Report_if
 POLG	valproic acid	valproic,valproate,divalproex	A/B	The valproate label contraindicates it in people with mitochondrial disorders caused by POLG mutations, and in children under two suspected of a POLG-related disorder: valproate can cause acute liver failure in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.POLG	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	any
 ASL	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.ASL	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	biallelic

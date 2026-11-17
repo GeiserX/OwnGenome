@@ -26,10 +26,10 @@ Borrowed, not rewritten:
     the pipeline's Linux containers);
   - step 33's mosaic rows come from og qc sex-loss, step 26b's table
     and painting from og ancestry-fine report, step 35b's table from
-    og paraphase table, step 39's from bin/couple_report.py and step 42's
+    og paraphase table, step 39's from og couple screen and step 42's
     from og traits table, each fed made-up inputs; step 46's table and
     step 35's HBA1/HBA2 table are what og cn call writes for made-up depths
-    (HBA_TABLE and LPA_TABLE; tests/test_hba_copy_number.py and
+    (HBA_TABLE and LPA_TABLE; og-cn's cargo test port_tests_cn_traits and
     tests/test_lpa_kiv2.py check that og still writes them), step 49's depth
     rows with og chip's detection limit, at made-up depths; the
     tables of steps 02, 40, 41, 45, 47, 48, 50, 51, 52 and 53 are written
@@ -961,23 +961,37 @@ def paralogs(d):
 def couple(d, rng):
     """Step 39 with an invented partner, DEMO-002: each carries one change in a
     different recessive gene of the carrier list, so no gene is shared and the
-    card names none. Rows by bin/couple_report.py's own screen_couple. Only
-    DEMO-001 carries the table: the family page reads one copy of it."""
+    card names none. Rows by og couple screen, fed a made-up ClinVar screen of
+    each partner. Only DEMO-001 carries the table: the family page reads one
+    copy of it."""
     if SAMPLE != "DEMO-001":
         return
-    import couple_report
-    genes = couple_report.read_genes(os.path.join(REPO, "assets", "carrier_genes.tsv"))
+    genes_tsv = os.path.join(REPO, "assets", "carrier_genes.tsv")
+    with open(genes_tsv) as f:
+        lines = [x.rstrip("\n").split("\t") for x in f if x.strip() and not x.startswith("#")]
+    genes = {c[0]: dict(zip(lines[0], c)) for c in lines[1:]}
     ar = sorted(g for g, v in genes.items() if v["inheritance"] == "AR" and "ACMG" in v["lists"])
-    found = {}
-    for who, gene in zip((SAMPLE, "DEMO-002"), rng.sample(ar, 2)):
-        g = genes[gene]
-        pos = rng.randint(int(g["start"]), int(g["end"]))
-        ref, alt = rng.sample("ACGT", 2)
-        text = f"{g['chrom']}:{pos} {ref}>{alt} het, Pathogenic, 2 stars"
-        found[who] = [couple_report.finding(gene, text, 1)]
-    rows = couple_report.screen_couple(SAMPLE, "DEMO-002", {SAMPLE: SEX, "DEMO-002": "female"}, found, genes)
-    os.makedirs(os.path.join(d, "couple"), exist_ok=True)
-    couple_report.write_table(os.path.join(d, "couple", f"{SAMPLE}_couple_carrier.tsv"), rows)
+    with tempfile.TemporaryDirectory() as work:
+        args = []
+        for who, gene in zip((SAMPLE, "DEMO-002"), rng.sample(ar, 2)):
+            g = genes[gene]
+            pos = rng.randint(int(g["start"]), int(g["end"]))
+            ref, alt = rng.sample("ACGT", 2)
+            put(os.path.join(work, f"{who}.vcf"),
+                "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+                f"{g['chrom']}\t{pos}\t.\t{ref}\t{alt}\t.\tPASS\tGENEINFO={gene}:1;CLNSIG=Pathogenic;"
+                "CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts\tGT\t0/1\n")
+            args += ["--clinvar", f"{who}={os.path.join(work, who + '.vcf')}"]
+        put(os.path.join(work, "pedigree.tsv"), "sample\tsex\tfather\tmother\tpartner\n"
+            f"{SAMPLE}\t{SEX}\t.\t.\tDEMO-002\nDEMO-002\tfemale\t.\t.\t{SAMPLE}\n")
+        r = subprocess.run([og_binary(), "couple", "screen", "--pedigree", os.path.join(work, "pedigree.tsv"),
+                            "--genes", genes_tsv, "--par-bed", os.path.join(REPO, "assets", "par_grch38.bed"),
+                            *args, "--out-dir", work], stdout=subprocess.DEVNULL)
+        if r.returncode != 0:
+            raise SystemExit(f"og couple screen failed (exit {r.returncode})")
+        os.makedirs(os.path.join(d, "couple"), exist_ok=True)
+        shutil.copyfile(os.path.join(work, f"{SAMPLE}_couple_carrier.tsv"),
+                        os.path.join(d, "couple", f"{SAMPLE}_couple_carrier.tsv"))
 
 
 def consumer_export(d):
@@ -1120,10 +1134,11 @@ def viral(d):
     control, at a human depth of 31."""
     head = ("virus\taccession\tlength\treads\tbreadth\tmean_depth\tmode_depth\thuman_depth\trelative_depth"
             "\tcopies_per_cell\tcall\tnote\n")
-    rows = [("HHV-6A", "NC_001664.4", "159378", "0", "0.0000", "0.000", "0", "0.000", "0.0000", "not found", ""),
-            ("HHV-6B", "NC_000898.1", "162114", "0", "0.0000", "0.000", "0", "0.000", "0.0000", "not found", ""),
-            ("Human gammaherpesvirus 4", "NC_007605.1", "171823", "7", "0.0041", "0.006", "0", "0.000", "0.0004",
-             "not found", ""),
+    rows = [("HHV-6A", "NC_001664.4", "159378", "0", "0.0000", "0.000", "0", "0.000", ".", "not found", ""),
+            ("HHV-6B", "NC_000898.1", "162114", "0", "0.0000", "0.000", "0", "0.000", ".", "not found", ""),
+            ("Human gammaherpesvirus 4", "NC_007605.1", "171823", "7", "0.0041", "0.006", "0", "0.000", ".",
+             "below threshold", "7 counted reads, under the 10 a call needs: too few to tell the virus from "
+             "contamination at this depth."),
             ("Escherichia phage phiX174", "NC_001422.1", "5386", "1412", "1.0000", "38.200", "37", "1.194", "2.4645",
              "lab control (phiX)", "Illumina adds phiX to the run as a control: these reads were added in the lab.")]
     put(os.path.join(d, "viral", f"{SAMPLE}_viral.tsv"),

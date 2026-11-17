@@ -50,7 +50,7 @@ sys.path.insert(0, HERE)
 import run_state  # noqa: E402
 
 # Nextflow's default trace columns, in its order, then the ones the estimate needs.
-# nextflow.config's trace.fields is the two lists joined; tests/test_run_eta.py checks it.
+# nextflow.config's trace.fields is the two lists joined; rust/crates/og-live/tests/ops_eta.rs checks it.
 DEFAULT_FIELDS = ["task_id", "hash", "native_id", "name", "status", "exit", "submit", "duration",
                   "realtime", "%cpu", "peak_rss", "peak_vmem", "rchar", "wchar"]
 ADDED_FIELDS = ["process", "tag", "attempt", "cpus", "memory", "start", "complete"]

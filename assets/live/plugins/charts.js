@@ -4,10 +4,11 @@
 // a mark opens a panel with the mark's detail, the chart's caveat, a link to the reads in the
 // genome viewer (viewer/#<locus>) and a link to the section of the report. On a person's page each
 // chart goes into its card (a [data-chart-slot=<chart id>] person.js draws), else into this plugin's
-// panel. A mark the page keeps closed (a result to act on about a child, person.js's PGP.markClosed) is
-// left out of the drawing, its title and its detail with it, wherever the figure sits; the figure is drawn
-// again with it once the result is opened. No inline script, no style attribute, no eval: the SVG is
-// parsed as XML and holds no script.
+// panel. A mark the page keeps closed (person.js's PGP.markClosed: on a child's page, every mark until the
+// results have answered; a child's report with a result to act on still closed never reaches the page, see
+// the report gate in core.js) is left out of the drawing, its title and its detail with it, wherever the
+// figure sits; the figure is drawn again with it once the page can show it. No inline script, no style
+// attribute, no eval: the SVG is parsed as XML and holds no script.
 (function () {
   'use strict';
   if (!window.PGP) { return; }

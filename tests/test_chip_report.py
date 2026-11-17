@@ -8,7 +8,8 @@ Without og (OG unset) only part A runs:
      reads, 8 in 10): about 14% at 30x, lower at 60x, none under 3x; the
      summary (og summary collect, which needs OG; without it part A stops
      there) and the report lines show the call and the limit
-     (bin/render_report.py chip_lines), the median limit included.
+     (bin/render_report.py chip_lines), the median of the genes' limits
+     included.
 With OG naming the og binary, also:
   1. og chip check-table passes assets/chip_genes.tsv; a malformed class
      token, a gene listed twice, a gene that counts no class and a bad
@@ -23,9 +24,10 @@ With OG naming the og binary, also:
   4. what is left out: a synonymous or intronic change, a consequence bcftools
      marks downstream of a stop, and a change on another transcript;
   5. the depth table reads a base with no pileup line as depth 0, and a gene
-     off the reference as not_on_reference; the summary sentence says the
-     limit, that CHIP starts at 2%, that a negative result does not rule a
-     clone out, and that it is not a diagnosis; og's limit is the binomial's;
+     off the reference as not_on_reference; a gene with half its bases unread
+     has no limit (partly_covered), and with no covered gene the summary
+     sentence says there is no result either way (the limit's arithmetic is
+     tested in rust/crates/og-chip/tests/i411_chip_read_support_limit.rs);
   6. prepare picks the MANE Select transcript of a synthetic Ensembl GFF3 (not
      the other one), renames the contigs (2 -> chr2), pads the coding exons by
      10 bases, leaves out a contig the reference lacks, and stops on a gene
@@ -49,7 +51,8 @@ TABLE = os.path.join(REPO, "assets", "chip_genes.tsv")
 # The two tables og chip report writes, in column order.
 OUT_COLUMNS = ["gene", "chrom", "pos", "ref", "alt", "consequence", "protein_change", "exon", "vaf",
                "alt_reads", "depth", "filter", "status", "class", "note"]
-DEPTH_COLUMNS = ["gene", "transcript", "chrom", "coding_bases", "mean_depth", "detection_limit_vaf", "status"]
+DEPTH_COLUMNS = ["gene", "transcript", "chrom", "coding_bases", "mean_depth", "detection_limit_vaf", "status",
+                 "callable_fraction", "assessable_fraction"]
 OG = os.environ.get("OG", "")
 FAILS = 0
 
@@ -137,12 +140,14 @@ with tempfile.TemporaryDirectory() as d:
     check("the report lines show the call, the limit and the uncovered gene",
           "DNMT3A R882H: VAF 0.130 (6 of 46 reads)" in text and "about 14% or more" in text and "JAK2" in text, text)
     # With an even count of covered genes the median depth is the mean of the two
-    # middle depths, and the reported limit must be the one at that depth.
+    # middle depths, and the stated limit is the median of the genes' own limits
+    # (each from its bases' depths), not the limit at the median depth (#411).
     e = chip_tables(d, "E", [], [[f"G{x}", "T", "chr1", "10", f"{x}.0", f"{detection_limit(x):.4f}", "covered"]
                                  for x in (20, 30, 60, 80)])
     sec4 = chip_section(e, "E")
-    check("with 4 covered genes (20, 30, 60, 80x) the limit is the one at the median 45x",
-          sec4.get("median_depth") == 45 and abs(sec4["median_limit"] - detection_limit(45)) < 1e-9, sec4)
+    mid = (float(f"{detection_limit(30):.4f}") + float(f"{detection_limit(60):.4f}")) / 2
+    check("with 4 covered genes (20, 30, 60, 80x) the limit is the median of their 4 limits",
+          sec4.get("median_depth") == 45 and abs(sec4["median_limit"] - mid) < 1e-9, sec4)
     check("no call reads 'No CHIP call.'", "No CHIP call." in rr.chip_lines({"calls": [], "median_limit": None}, "S"))
     check("assets/chip_genes.tsv holds DNMT3A", "DNMT3A" in table_genes(TABLE))
 
@@ -263,11 +268,13 @@ with tempfile.TemporaryDirectory() as d:
     check("a gene off the reference is not_on_reference", rows.get("JAK2", {}).get("status") == "not_on_reference",
           rows.get("JAK2"))
     check("every table gene has a depth row", sorted(rows) == sorted(table_genes(TABLE)))
-    check("og's 15x limit is the binomial's", rows.get("DNMT3A", {}).get("detection_limit_vaf") == f"{detection_limit(15):.3f}",
-          rows.get("DNMT3A"))
+    # The limit comes from each base's depth: with half the bases unread no VAF
+    # shows 3 reads 8 times in 10, whatever the mean (#411).
+    check("half the bases unread: partly_covered, no limit, half the bases callable",
+          [rows.get("DNMT3A", {}).get(k) for k in ("status", "detection_limit_vaf", "callable_fraction")]
+          == ["partly_covered", "", "0.500"], rows.get("DNMT3A"))
     s = p.stdout.splitlines()[-1] if p.stdout else ""
-    for want in ("about 26%", "15x", "2%", "does not rule", "Not a diagnosis"):
-        check(f"the summary says '{want}'", want in s, s)
+    check("with no covered gene the summary says no result either way", "no result either way" in s, s)
     p = og("report", "--genes", TABLE, "--gff", GFF_PATH, "--bed", bed, "--calls", EMPTY, "--depth", EMPTY,
            "--sample", "S", "--out", out, "--depth-out", dout)
     check("the summary of no covered gene says no result either way", "no result either way" in p.stdout, p.stdout)
@@ -319,7 +326,7 @@ with tempfile.TemporaryDirectory() as d:
           lines[:1] == ["\t".join(OUT_COLUMNS)] and len(lines) == 2 and "\tchip\t" in lines[1], lines)
     dl = open(dout).read().splitlines() if p3.returncode == 0 else []
     check("the depth table has DNMT3A at 30x and JAK2 not on the reference",
-          len(dl) == 3 and "\t30.0\t" in dl[1] and dl[2].endswith("not_on_reference"), dl)
+          len(dl) == 3 and "\t30.0\t" in dl[1] and "not_on_reference" in dl[2].split("\t"), dl)
     sec = chip_section(os.path.join(d, "S"), "S")
     check("the reports read og's tables", [c["protein_change"] for c in sec.get("calls", [])] == ["R882H"]
           and sec["not_covered"] == ["JAK2"], sec)

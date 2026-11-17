@@ -165,6 +165,7 @@ tests/fixtures/*                public or invented test data; each fixture direc
 tests/smoke/*.vcf.in            invented tool inputs for the image smoke tests
 tests/parity/inputs/pgx-refblock-fill/*  built from the public PharmCAT data of tests/fixtures/pharmcat
 tests/parity/golden/pgx-refblock-fill/*  the output og writes on those inputs
+tests/parity/inputs/couple-screen/*_eh*.vcf  invented ExpansionHunter calls for the couple screen parity cases
 '
 
 # scan [FILE...]: og dev scan personal-data (rust/crates/og-dev) with the

@@ -5,12 +5,15 @@
 //!   transcript from Ensembl's GFF3, as the GFF3 `bcftools csq` reads, and
 //!   its coding exons, 10 bases wider on each side, as a BED.
 //! - [`report`] (`og chip report`): each protein change of a table gene with
-//!   its class and status, and per gene the depth and the detection limit.
+//!   its class and status, and per gene the depth and the read-support limit
+//!   from each coding base's depth.
 //! - [`table`] (`og chip check-table`): the schema of `assets/chip_genes.tsv`.
 //!
 //! Each command writes what the Python wrote, byte for byte (`tests/parity`).
 //! What changes on purpose: every input problem is an `ERROR:` line and exit
-//! 1, never a traceback, and an output is written whole or not at all.
+//! 1, never a traceback, an output is written whole or not at all, and the
+//! depth table and the summary line of `report` read each base's depth
+//! instead of a gene's mean depth (issue #411).
 
 pub mod binom;
 pub mod prepare;
@@ -22,10 +25,14 @@ use std::fmt;
 use std::io::{self, Write};
 
 /// Reads a CHIP gene needs with the change, for a call and for the
-/// detection limit.
+/// read-support limit.
 pub const MIN_ALT_READS: u32 = 3;
-/// The detection limit is the VAF found this often at the mean depth.
+/// The read-support limit is the VAF that shows [`MIN_ALT_READS`] reads this
+/// often, averaged over a gene's coding bases.
 pub const DETECT_POWER: f64 = 0.8;
+/// A coding base with this many reads or more counts as callable in the
+/// depth table's `callable_fraction`.
+pub const CALLABLE_DEPTH: u64 = 10;
 
 /// A problem with an input or an output: printed as `ERROR: <text>`, exit 1.
 #[derive(Debug, PartialEq, Eq)]

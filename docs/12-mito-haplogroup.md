@@ -23,8 +23,10 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
 The step reads, first match:
 
-1. `${SAMPLE}/mito/${SAMPLE}_chrM_filtered.vcf.gz`, step 20's Mutect2 calls in mitochondrial mode. Mutect2 is the caller made for chrM: it reports each allele's fraction, so haplogrep3 sees heteroplasmies and haplocheck can run. The step keeps the PASS records (possible NuMTs are filtered by step 20) and splits multi-allelic records.
-2. Otherwise the chrM records of `${SAMPLE}/vcf/${SAMPLE}.vcf.gz` (step 03). DeepVariant calls chrM as a diploid nuclear contig, so this is the fallback, and haplocheck does not run on it.
+1. `${SAMPLE}/mito/${SAMPLE}_chrM_filtered.vcf.gz`, step 20's Mutect2 calls in mitochondrial mode. Mutect2 reports each allele's fraction. haplocheck reads these fractions to check for contamination. The step keeps the PASS records (possible NuMTs are filtered by step 20) and splits multi-allelic records.
+2. Otherwise the chrM records of `${SAMPLE}/vcf/${SAMPLE}.vcf.gz` (step 03). DeepVariant calls chrM as a diploid nuclear contig, so this is the fallback, and haplocheck does not run on it. Its heterozygous calls carry FORMAT/VAF, which haplogrep3 does not read. Only its homozygous ALT calls contribute variants to the profile.
+
+haplogrep3 classifies with `--hetLevel 0.9` in both the script and Nextflow. For heterozygous calls with FORMAT/AF, it keeps ALT alleles at a fraction of 0.9 or more. Lower fractions do not enter its haplogroup profile. Homozygous ALT calls are kept regardless of AF. The threshold does not change haplocheck's contamination check or step 20's heteroplasmy report.
 
 Run step 20 before step 12 for the Mutect2 input. The Nextflow pipeline does the same: with `mito_variants` in `--tools` (it is in the default set), `mito_haplogroup` reads `MITO_VARIANTS`' calls and runs `HAPLOCHECK`.
 
@@ -46,7 +48,7 @@ docker run --rm --network none -v "${GENOME_DIR}:/genome" "${BCFTOOLS_IMAGE}" ba
   "bcftools view -f PASS ${M}/${SAMPLE}_chrM_filtered.vcf.gz | bcftools norm -m-any -Oz -o ${M}/${SAMPLE}_chrM_for_haplogroup.vcf.gz"
 
 docker run --rm --network none -v "${GENOME_DIR}:/genome" "${HAPLOGREP3_IMAGE}" \
-  haplogrep3 classify --tree phylotree-fu-rcrs@1.2 \
+  haplogrep3 classify --tree phylotree-fu-rcrs@1.2 --hetLevel 0.9 \
     --input ${M}/${SAMPLE}_chrM_for_haplogroup.vcf.gz \
     --output ${M}/${SAMPLE}_haplogroup.txt --extend-report
 
@@ -65,7 +67,7 @@ docker run --rm --network none -v "${GENOME_DIR}:/genome" "${HAPLOCHECK_IMAGE}" 
 
 Both reports (step 24 and the text report) show the haplogroup and the contamination status, or "not checked" when the input was the step 03 VCF, and the links of the next section built from the haplogroup.
 
-The FASTA is the reference chrM (the rCRS, in GRCh38) with the sample's majority alleles applied: the Mutect2 calls with an allele fraction of 0.5 or more, or the haploid and homozygous ALT calls of the step 03 VCF. A position without a call reads as the reference, so the FASTA is only as complete as the chrM calls. A heteroplasmy below 0.5 is not in it.
+The FASTA is the reference chrM (the rCRS, in GRCh38) with the sample's majority alleles applied: the Mutect2 calls with an allele fraction of 0.5 or more, or the haploid and homozygous ALT calls of the step 03 VCF. A position without a call reads as the reference, so the FASTA is only as complete as the chrM calls. A heteroplasmy below 0.5 is not in it. Mutect2 alleles at AF 0.5 to below 0.9 can therefore appear in the FASTA while absent from the haplogroup profile.
 
 ## Explore your branch further
 
@@ -88,5 +90,5 @@ Names differ between trees. haplogrep3 uses PhyloTree 17 names (`phylotree-fu-rc
 ## Interpretation
 - Common European haplogroups: H, U, J, T, K, V, W, X
 - Output includes quality score (0-1): >0.9 = high confidence
-- Discordant variants may indicate heteroplasmy (mixture of mtDNA types)
+- Discordant variants alone do not establish heteroplasmy. Read step 20's allele fractions and haplocheck's contamination report alongside the haplogroup.
 - Contamination `YES` with a level of a few percent: compare with step 33's VerifyBamID2 estimate, which reads the nuclear genome. The two can differ when the mtDNA copy number differs between the two people's cells.

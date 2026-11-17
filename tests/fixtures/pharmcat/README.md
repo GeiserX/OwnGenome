@@ -1,6 +1,6 @@
 # PharmCAT report fixtures
 
-Real PharmCAT output for `tests/test_cpic_parser.py` (one `report-<version>.json` per release in its `REAL_REPORTS`), trimmed with
+Real PharmCAT output for `rust/crates/og-pgx/tests/port_tests_pgx_cpic.rs` (one `report-<version>.json` per release in its `REAL_REPORTS`), trimmed with
 `og dev fixture trim-pharmcat` (formerly `trim_report.py`, which wrote the files below) to the fields `og pgx` reads (every gene with all
 its listed diplotypes and `relatedDrugs`; up to 4 matched annotations per drug
 guideline).
@@ -13,7 +13,7 @@ guideline).
 
 To refresh one or add a release: take the new `report.json`, then run this
 with `VERSION` replaced by the PharmCAT release (for example `3.4.0`), and add
-the release to `REAL_REPORTS` in `tests/test_cpic_parser.py`:
+the release to `REAL_REPORTS` in `rust/crates/og-pgx/tests/port_tests_pgx_cpic.rs`:
 
 ```bash
 bin/og dev fixture trim-pharmcat report.json tests/fixtures/pharmcat/report-VERSION.json
@@ -21,7 +21,7 @@ bin/og dev fixture trim-pharmcat report.json tests/fixtures/pharmcat/report-VERS
 
 ## Reference blocks over PharmCAT's positions longer than one base
 
-For `tests/test_pgx_refblock_fill.py` and the e2e case `tests/e2e/pharmcat-indel-refblocks-1.sh`.
+For `rust/crates/og-filters/tests/port_tests_pgx_refblock.rs` and the e2e case `tests/e2e/pharmcat-indel-refblocks-1.sh`.
 
 | File | Source |
 |---|---|

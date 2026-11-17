@@ -1,0 +1,2 @@
+locus	chrom	start	end	repeat_reads	dominant_motif	dominant_class	dominant_share	motif_shares	verdict	note
+RFC1	chr4	101	155	20	AAAAG	benign	0.85	AAAAG=0.85,AAGGG=0.15	uncertain_motif	AAGGG in 3 of 20 repeat reads (15%): a pathogenic expansion remains possible; CANVAS needs a pathogenic expansion on both copies; these reads do not resolve either copy; confirm with repeat-primed PCR if symptoms fit

@@ -107,24 +107,7 @@ curl -fsSL --retry 5 -o "${F}/hg001/hg001.vcf.gz.tbi" "${HG001_VCF}.tbi"
 bcf view -H -v snps -m2 -M2 -r "$AUTO" hg001/hg001.vcf.gz > "${CASE_TMP}/hg001.vcf" 2> "${CASE_TMP}/hg001.log"
 check_eq "HG001's benchmark SNVs read from GIAB's file" "$?" 0
 cut -f1,2,4,5 "${CASE_TMP}/hg001.vcf" > "${CASE_TMP}/snvs.tsv"
-python3 - "${F}/reference/${REF_NAME}.fasta.fai" "${CASE_TMP}/snvs.tsv" "$SITES" <<'PY'
-import sys
-fai, snvs, out = sys.argv[1:]
-order, lens = {}, {}
-for i, l in enumerate(open(fai)):
-    c = l.split("\t")
-    order[c[0]], lens[c[0]] = i, c[1]
-keep = {tuple(l.rstrip("\n").split("\t")) for l in open(snvs) if l.strip()}
-keep = sorted((k for k in keep if k[0] in order), key=lambda k: (order[k[0]], int(k[1])))
-with open(out, "w") as f:
-    f.write("##fileformat=VCFv4.2\n")
-    for c in sorted(order, key=order.get):
-        f.write("##contig=<ID=%s,length=%s>\n" % (c, lens[c]))
-    f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
-    for c, p, r, a in keep:
-        f.write("\t".join([c, p, ".", r, a, ".", "PASS", "AF=0.5"]) + "\n")
-print(len(keep), "sites")
-PY
+"${REPO}/bin/og" dev fixture sites-vcf "${F}/reference/${REF_NAME}.fasta.fai" "${CASE_TMP}/snvs.tsv" "$SITES"
 check_ge "somalier sites: HG001's SNVs in the autosomal slices" "$(grep -vc '^#' "$SITES")" 1500
 
 printf 'sample\tsex\tfather\tmother\tpartner\nHG002\tmale\tHG003\tHG004\t.\nHG003\tmale\t.\t.\tHG004\nHG004\tfemale\t.\t.\tHG003\n' \
@@ -186,27 +169,7 @@ SEG="${FAM}/HG002_segments.tsv"
 CSV="${FAM}/HG002_dnapainter.csv"
 head -n 4 "$SEG" 2>/dev/null
 # seg_parse TSV CSV: segments per side, after checking both files' shape
-seg_parse() {
-  python3 - "$1" "$2" <<'PY'
-import csv, sys
-tsv, dp = sys.argv[1:]
-with open(tsv) as f:
-    head = f.readline().rstrip("\n").split("\t")
-    rows = [dict(zip(head, l.rstrip("\n").split("\t"))) for l in f]
-assert head[:6] == ["child", "side", "parent", "chrom", "start", "end"], head
-for r in rows:
-    assert r["side"] in ("paternal", "maternal") and r["chrom"].startswith("chr"), r
-    assert 0 < int(r["start"]) <= int(r["end"]) and int(r["sites"]) >= 20, r
-with open(dp, newline="") as f:
-    c = list(csv.reader(f))
-assert c[0] == ["Chr", "Start", "End", "cM", "SNPs", "Match", "Confidence", "Group", "Side", "Notes", "Colour",
-                "Ancestor"], c[0]
-assert len(c) - 1 == len(rows), (len(c) - 1, len(rows))
-for x, r in zip(c[1:], rows):
-    assert [x[0], x[1], x[2], x[8]] == [r["chrom"][3:], r["start"], r["end"], r["side"]], (x, r)
-print(sum(r["side"] == "paternal" for r in rows), sum(r["side"] == "maternal" for r in rows))
-PY
-}
+seg_parse() { "${REPO}/bin/og" dev fixture segments-check "$1" "$2"; }
 SEGN=$(seg_parse "$SEG" "$CSV" 2>"${CASE_TMP}/seg.log")
 check_eq "HG002's segments table and DNA Painter CSV parse and agree" "$?" 0
 cat "${CASE_TMP}/seg.log"

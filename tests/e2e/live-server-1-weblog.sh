@@ -14,7 +14,7 @@ check "versions.env pins nf-weblog with a version" has '^nf-weblog@[0-9]+\.[0-9]
 G="$GENOME_DIR"
 ROOT="${CASE_TMP}/root" STATE="${CASE_TMP}/state"
 mkdir -p "${ROOT}/${SAMPLE}/nextflow"   # a run folder the site lists (it has nextflow/)
-port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
+port() { "${REPO}/bin/og" dev fixture free-port; }
 WEB=$(port) ING=$(port)
 python3 "${REPO}/bin/owngenome_live.py" --root "$ROOT" --state-dir "$STATE" --port "$WEB" --ingest-port "$ING" --quiet \
   2> "${CASE_TMP}/site.err" &
@@ -22,7 +22,7 @@ SITE=$!
 trap 'kill "$SITE" 2>/dev/null' EXIT
 for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:${WEB}/" && break; sleep 0.2; done
 state11() { curl -s "http://127.0.0.1:${WEB}/runs/${SAMPLE}/state.json" \
-  | python3 -c 'import json, sys; print(next(s["state"] for s in json.load(sys.stdin)["steps"] if s["step"] == "11"))' 2>/dev/null \
+  | jq -er 'first(.steps[] | select(.step == "11") | .state // empty)' 2>/dev/null \
   || echo "no state.json"; }
 check_eq "control: before the run, step 11 is not planned" "$(state11)" "not planned"
 
@@ -41,12 +41,15 @@ check_eq "nextflow run exits 0" "${PIPESTATUS[0]}" 0
 check "the run loaded the plugin" grep -q "nf-weblog" "${CASE_TMP}/.nextflow.log"
 
 EV="${STATE}/runs/${SAMPLE}/events.jsonl"
-count() { python3 -c 'import json, sys
-n = 0
-for l in open(sys.argv[1]):
-    e = json.loads(l); t = e.get("trace") or {}
-    n += e.get("event") == sys.argv[2] and (sys.argv[3] == "" or (t.get("process") or "").endswith(sys.argv[3]))
-print(n)' "$EV" "$@" 2>/dev/null || echo 0; }
+# count EVENT PROCESS_SUFFIX: the stored messages of that event (and process, unless "").
+# jq prints 0 before it fails on a missing file, so its output is kept only when it exits 0.
+count() {
+  local n
+  n=$(jq -n --arg e "$1" --arg p "$2" \
+    '[inputs | select(.event == $e and ($p == "" or (((.trace // {}).process // "") | endswith($p))))] | length' "$EV" 2>/dev/null) \
+    || n=0
+  echo "$n"
+}
 check_ge "the site stored the run's 'started' message" "$(count started '')" 1
 check_ge "the site stored ROH's process_completed" "$(count process_completed ROH)" 1
 check_ge "the site stored the run's 'completed' message" "$(count completed '')" 1

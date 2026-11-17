@@ -151,7 +151,7 @@ while IFS= read -r spec; do
   if ! [[ "$spec" =~ ^[A-Za-z0-9._-]+\.gz\|chr([1-9]|1[0-9]|2[0-2]|X|Y):[1-9][0-9]*-[1-9][0-9]*\|[A-Za-z0-9][A-Za-z0-9_-]*$ ]] \
      || [ "${span%-*}" -lt 1 ] || [ "${span%-*}" -gt "${span#*-}" ] \
      || [ -n "${SEEN[${spec##*|}]:-}" ]; then
-    echo "ERROR: ${LOCI}: a row reads '${spec}' (model|region|table: a region chr1-22, X or Y with 1 <= start <= end, a table name used once and not hba or paraphase); see tests/test_paralog_loci.py." >&2
+    echo "ERROR: ${LOCI}: a row reads '${spec}' (model|region|table: a region chr1-22, X or Y with 1 <= start <= end, a table name used once and not hba or paraphase); see rust/crates/og-steps/tests/paralog_loci.rs." >&2
     exit 1
   fi
   SEEN[${spec##*|}]=1

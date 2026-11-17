@@ -45,8 +45,8 @@ process ANCESTRY_FINE_GENOTYPE {
     script:
     def id = meta.id
     def extract = kind == 'gvcf'
-        ? "bcftools convert --gvcf2vcf -f ${reference} -R ${panel}/panel/positions.tsv -Ou ${vcf} | bcftools view -T ${panel}/panel/positions.tsv --trim-alt-alleles -i 'GT!=\"mis\"' -Ov"
-        : "bcftools view -T ${panel}/panel/positions.tsv -Ov ${vcf}"
+        ? "bcftools convert --gvcf2vcf -f ${reference} -R ${panel}/panel/positions.tsv -Ou ${vcf} | bcftools view -f PASS,. -T ${panel}/panel/positions.tsv --trim-alt-alleles -i 'GT!=\"mis\"' -Ov"
+        : "bcftools view -f PASS,. -T ${panel}/panel/positions.tsv -Ov ${vcf}"
     """
     set -euo pipefail
     # As scripts/26b-ancestry-fine.sh: the awk reads the first sample column

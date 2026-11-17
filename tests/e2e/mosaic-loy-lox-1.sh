@@ -43,23 +43,8 @@ check_eq "setup.sh --sample-qc-data exits 0" "$?" 0
 SITES="${G}/reference/mosaic_fixture/sites_fixture.vcf"
 PANEL="${G}/reference/mosaic_fixture/1000g.phase3.100k.b38.vcf.gz.dat"
 mkdir -p "$(dirname "$SITES")"
-python3 - "${REF}.fai" "${SETUP}/reference/somalier/sites.hg38.vcf.gz" "$SITES" \
-  "${SETUP}/reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat" "$PANEL" <<'PY'
-import gzip, sys
-fai, sites, fix_sites, panel, fix_panel = sys.argv[1:]
-contigs = {l.split("\t")[0] for l in open(fai)}
-with gzip.open(sites, "rt") as f, open(fix_sites, "w") as out:
-    for l in f:
-        if l.startswith("#") or l.split("\t", 1)[0] in contigs:
-            out.write(l)
-bed = open(panel + ".bed").read().splitlines()
-keep = [i for i, l in enumerate(bed) if l.split("\t", 1)[0] in contigs]
-for ext in ("bed", "mu", "UD"):
-    lines = open(panel + "." + ext).read().splitlines()
-    assert len(lines) == len(bed), ext
-    with open(fix_panel + "." + ext, "w") as out:
-        out.writelines(lines[i] + "\n" for i in keep)
-PY
+"${REPO}/bin/og" dev fixture contig-cut "${REF}.fai" "${SETUP}/reference/somalier/sites.hg38.vcf.gz" "$SITES" \
+  "${SETUP}/reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat" "$PANEL"
 check_ge "somalier sites on the fixture's contigs" "$(grep -vc '^#' "$SITES" 2>/dev/null || true)" 9000
 rm -rf "$SETUP"
 export SOMALIER_SITES="$SITES" VERIFYBAMID2_PANEL="$PANEL"
@@ -130,33 +115,7 @@ W="${SAMPLE}fem"
 mkdir -p "${G}/${W}/mosdepth" "${G}/${W}/vcf" "${G}/${W}/qc"
 # woman LOSS: windows and VCF of a woman who lost one X in LOSS of her cells.
 woman() {
-  python3 - "$WIN" "${G}/${W}" "$W" "$1" <<'PY'
-import gzip, random, sys
-win, out, name, loss = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4])
-d = loss / (2 * (2 - loss))
-rnd = random.Random(11)
-with gzip.open(win, "rt") as f, gzip.open(f"{out}/mosdepth/{name}.regions.bed.gz", "wt") as o:
-    for line in f:
-        c, s, e, dp = line.rstrip("\n").split("\t")
-        if c == "chrY":
-            continue
-        if c == "chrX":   # HG002's one X, as two, of which a share of the cells lost one
-            dp = f"{float(dp) * 2 * (1 - loss / 2):.2f}"
-        o.write(f"{c}\t{s}\t{e}\t{dp}\n")
-lines = ["##fileformat=VCFv4.2\n", "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSYNTH\n"]
-def site(chrom, pos, p):
-    n = rnd.randint(20, 40)
-    a = sum(rnd.random() < p for _ in range(n))
-    lines.append(f"{chrom}\t{pos}\t.\tA\tG\t40\tPASS\t.\tGT:AD\t0/1:{n - a},{a}\n")
-for i in range(2000):
-    site("chr20", 10_000_000 + 250 * i, 0.5)
-for i in range(300):
-    site("chrX", 73_700_000 + 1000 * i, 0.5 + (d if rnd.random() < 0.5 else -d))
-with gzip.open(f"{out}/vcf/{name}.vcf.gz", "wt") as o:
-    o.writelines(lines)
-with open(f"{out}/qc/{name}_sample_qc.tsv", "w") as o:
-    o.write(f"key\tvalue\nsample\t{name}\ninferred_sex\tunknown\ndeclared_sex\tfemale\n")
-PY
+  "${REPO}/bin/og" dev fixture sex-loss-woman "$WIN" "${G}/${W}" "$W" "$1"
   docker run --rm -u "$(id -u):$(id -g)" -v "${REPO}/bin:/pgp-bin:ro" -v "${G}:/genome" "$PYTHON_IMAGE" \
     /pgp-bin/og qc sex-loss --table "/genome/${W}/qc/${W}_sample_qc.tsv" \
       --regions "/genome/${W}/mosdepth/${W}.regions.bed.gz" --vcf "/genome/${W}/vcf/${W}.vcf.gz"

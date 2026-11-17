@@ -42,13 +42,10 @@ sam faidx "reference/${REF##*/}" chrM 2>/dev/null > "${CASE_TMP}/ref_chrM.fa"
 echo "kept SNVs before the first kept indel: $(grep -c . "${CASE_TMP}/snvs.tsv" || true)"
 check_ge "kept SNVs to check" "$(grep -c . "${CASE_TMP}/snvs.tsv" || true)" 1
 alt_at() {  # alt_at FASTA [SNVS]: OK when every listed SNV's ALT is the base at its position
-  python3 - "$1" "${2:-${CASE_TMP}/snvs.tsv}" <<'PY'
-import sys
-seq = "".join(l.strip() for l in open(sys.argv[1]) if not l.startswith(">"))
-bad = [l for l in open(sys.argv[2]) if l.strip() and seq[int(l.split("\t")[0]) - 1] != l.split("\t")[2].strip()]
-print(f"{len(bad)} SNVs whose ALT is not in {sys.argv[1].rsplit('/', 1)[-1]}")
-sys.exit(1 if bad or not seq else 0)
-PY
+  awk -F'\t' -v name="${1##*/}" '
+    FILENAME == ARGV[1] {if (!/^>/) {gsub(/[[:space:]]/, ""); seq = seq $0}; next}
+    /[^[:space:]]/ {alt = $3; gsub(/[[:space:]]/, "", alt); if (substr(seq, $1, 1) != alt) bad++}
+    END {print bad + 0 " SNVs whose ALT is not in " name; exit (bad > 0 || seq == "")}' "$1" "${2:-${CASE_TMP}/snvs.tsv}"
 }
 check "the FASTA carries the ALT of each kept SNV" alt_at "$FA"
 check "control: the reference chrM does not" eval '! alt_at "${CASE_TMP}/ref_chrM.fa"'
@@ -90,7 +87,7 @@ check "a female copy gets no chrY BAM" test ! -e "${G}/${XF}/y_haplogroup/${XF}_
 
 # --- 3. the links in the reports -------------------------------------------------------------
 HG=$(awk -F'\t' 'NR == 2 {gsub(/"/, "", $2); print $2}' "${M}/${SAMPLE}_haplogroup.txt" 2>/dev/null)
-HG_Q=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${HG:-none}")
+HG_Q=$(jq -rn --arg s "${HG:-none}" '$s | @uri')
 run_step generate-report.sh "$SAMPLE"
 check_step_exit generate-report.sh
 TXT=$(cat "${G}/${SAMPLE}/${SAMPLE}_report.txt" 2>/dev/null)
@@ -108,7 +105,7 @@ TXT=$(cat "${G}/${XM}/${XM}_report.txt" 2>/dev/null)
 if [ -n "$YHG" ] && [ "$YHG" != NA ]; then
   B=${YHG%%\**}
   check "the male copy's report links its Y branch (${B})" \
-    has "^  YFull YTree: https://www\.yfull\.com/tree/$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$B")/\$" "$TXT"
+    has "^  YFull YTree: https://www\.yfull\.com/tree/$(jq -rn --arg s "$B" '$s | @uri')/\$" "$TXT"
 else
   check "the male copy has no Y call (${YHG:-none}), so no Y link" lacks 'yfull\.com/tree/|y-dna/' "$TXT"
   check "and its report still says insufficient markers" has 'Haplogroup: insufficient markers' "$TXT"

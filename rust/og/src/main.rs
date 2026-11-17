@@ -130,6 +130,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og dev docs-check [args]
        og dev stub-http [args]
        og dev steps-check [args]
+       og dev traits-sources [args]
        og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
        og version
        og --tree-hash

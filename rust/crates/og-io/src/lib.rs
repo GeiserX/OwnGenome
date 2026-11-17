@@ -11,8 +11,8 @@
 //!   BGZF writer that compresses on many cores.
 //! - [`tabix`]: the lines of a region of a bgzipped file, through its
 //!   `.tbi` or `.csi` index, as `tabix FILE seq:beg-end` prints them.
-//! - [`tabix_write`]: `og vcf index`, a `.tbi` for a BGZF VCF (not ported
-//!   yet).
+//! - [`tabix_write`]: `og vcf index`, the `.tbi` htslib 1.24 writes for a
+//!   BGZF VCF.
 
 pub mod bgzf;
 pub mod tabix;

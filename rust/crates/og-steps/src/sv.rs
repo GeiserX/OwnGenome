@@ -9,7 +9,7 @@
 //!   exon-edge, population and depth checks, and the region rules.
 //!
 //! This module holds the rules both share, and that step 39's couple
-//! screen (`bin/couple_report.py`) applies too: the read-depth rule for a
+//! screen (`og couple screen`) applies too: the read-depth rule for a
 //! long Delly call ([`depth_contradicts`]), whether a record is a call the
 //! sample carries ([`call_holds`]) and the reciprocal-overlap index
 //! ([`OverlapIndex`]).
