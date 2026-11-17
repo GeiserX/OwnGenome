@@ -76,34 +76,8 @@ echo "private chrY SNVs listed: ${ROWS}"
 # does not have: IN where the mask passes the base, OUT where it does not.
 # Depth is the sample's own median (at least 10), so the depth gates keep both.
 SEED="${CASE_TMP}/seeded.vcf"
-python3 - "${GENOME_DIR}/${M}/vcf/${M}.vcf.gz" "$MASK" "$PRIV" "$SEED" \
-  "${YT}/positions_ftdna_hg38.txt" "${YT}/positions_yfull_hg38.txt" > "${CASE_TMP}/seed.txt" <<'PY'
-import gzip, re, sys
-vcf, mask_path, priv, out, *tables = sys.argv[1:]
-mask = "".join(l.strip() for l in gzip.open(mask_path, "rt") if not l.startswith(">"))
-taken = set()
-for t in tables:
-    for line in open(t):
-        c = line.split("\t")
-        if len(c) >= 4 and c[3].isdigit():
-            taken.add(int(c[3]))
-head, body = [], []
-for line in gzip.open(vcf, "rt"):
-    (head if line.startswith("#") else body).append(line)
-    c = line.split("\t")
-    if not line.startswith("#") and c[0] in ("chrY", "Y") and c[1].isdigit():
-        taken.add(int(c[1]))
-med = re.search(r"median_chrY_depth=([0-9.]+)", open(priv).read())
-depth = max(10, int(float(med.group(1)))) if med else 20
-# The fixture's TBL1Y stretch (scripts/ci/build-fixture.sh).
-free = [p for p in range(6800000, 7000000) if p not in taken]
-pin = next(p for p in free if mask[p - 1] == "P")
-pout = next(p for p in free if mask[p - 1] != "P")
-for p in (pin, pout):
-    body.append(f"chrY\t{p}\t.\tC\tT\t50\tPASS\t.\tGT:AD:DP:GQ\t1:0,{depth}:{depth}:60\n")
-open(out, "w").writelines(head + body)
-print(pin, pout)
-PY
+"${REPO}/bin/og" dev fixture y-seed "${GENOME_DIR}/${M}/vcf/${M}.vcf.gz" "$MASK" "$PRIV" "$SEED" \
+  "${YT}/positions_ftdna_hg38.txt" "${YT}/positions_yfull_hg38.txt" > "${CASE_TMP}/seed.txt"
 read -r P_IN P_OUT < "${CASE_TMP}/seed.txt"
 echo "seeded: ${P_IN:-none} (callable), ${P_OUT:-none} (outside the mask)"
 "${REPO}/bin/og" y private-snps --vcf "$SEED" --tree-dir "$YT" --sample "$M" \
@@ -156,8 +130,7 @@ check "and the card names the branch step 37 placed" has "${TREE_HG}" "$HTML"
 check "Yleaf's own card is still there, so the two results stand side by side" \
   has 'Y-Chromosome Haplogroup' "$HTML"
 # section DIR KEY: the state of a summary.json section
-section() { python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['sections'].get(sys.argv[2], {}).get('state', 'absent'))" \
-  "$1/summary.json" "$2" 2>/dev/null; }
+section() { jq -r --arg k "$2" '(.sections[$k] // {}) | .state // "absent"' "$1/summary.json" 2>/dev/null; }
 check_eq "the bash summary.json section y_tree is filled" "$(section "${GENOME_DIR}/${M}" y_tree)" ok
 run_step generate-report.sh "$M"
 check_step_exit generate-report.sh

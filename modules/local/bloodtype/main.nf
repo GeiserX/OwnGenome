@@ -9,8 +9,12 @@
                        assets/bloodtype_markers.tsv and those regions, for each
                        sample with a BAM: the read depth at every marker site
                        and over RHD and its flanks
-      BLOODTYPE        og bloodtype report on the VCF and that depth, reading
-                       the marker sites through the VCF's index; without a BAM
+      BLOODTYPE        the VCF's records within 100 bp of a marker site,
+                       left-aligned against the reference (bcftools norm -c w,
+                       multi-allelic records kept whole), so an indel a caller
+                       wrote further right in a repeat meets its marker; then
+                       og bloodtype report on that file and the depth, reading
+                       the marker sites through its index; without a BAM
                        ([] in its place) RhD is not determined and sites with
                        no VCF record are read as reference (confidence medium)
 
@@ -103,6 +107,8 @@ process BLOODTYPE {
     input:
     tuple val(meta), path(vcf), path(vcf_index), path(depth)   // vcf_index: its .tbi or .csi, or []; depth: BLOODTYPE_DEPTH's, or [] without a BAM
     path(markers)
+    path(reference)
+    path(reference_fai)
 
     output:
     tuple val(meta), path("${meta.id}_bloodtype.tsv"),          emit: table
@@ -114,13 +120,73 @@ process BLOODTYPE {
 
     script:
     def depth_arg = depth ? "--depth ${depth}" : ''
+    // og bloodtype report matches a marker by position, REF and ALT, so an
+    // indel must sit where the table writes it: left-aligned. The records
+    // within 100 bp of a marker site (more than the 38 bp the longest marker
+    // indel can shift along its repeat) are left-aligned first. A
+    // multi-allelic record stays whole; -c w keeps a record whose REF differs
+    // from the reference as it is. Records on a contig the reference lacks go
+    // through unchanged. The VCF is read through its index when the one
+    // htslib loads (.csi before .tbi) is current, else once from the start;
+    // read that way, it first gets a ##contig line for each window contig its
+    // header lacks, because bcftools writes no record on an undeclared contig
+    // (the new header, then the records as text, so plain gzip works too).
+    // bcftools writes no BCF record that uses a FILTER, INFO or FORMAT tag the
+    // header does not declare (a hand-made VCF may lack even the GT line), so
+    // the picked records go out as text and get a line for each such tag first.
+    // The same commands as scripts/41-bloodtype.sh; og runs from bin/, on the
+    // task's PATH.
     """
-    og bloodtype report --sample ${meta.id} --vcf ${vcf} --markers ${markers} ${depth_arg} \\
+    grep -v '^#' ${markers} | tail -n +2 \\
+        | awk -F '\\t' -v OFS='\\t' '{s = \$2 - 100; if (s < 0) s = 0; print \$1, s, \$3 + 100; c = \$1; if (sub(/^chr/, "", c)) print c, s, \$3 + 100}' \\
+        | sort -k1,1 -k2,2n \\
+        | awk -F '\\t' -v OFS='\\t' '\$1 == c && \$2 <= e {if (\$3 > e) e = \$3; next} {if (c != "") print c, s, e; c = \$1; s = \$2; e = \$3} END {if (c != "") print c, s, e}' > bt_windows.bed
+    cut -f1 ${reference_fai} > bt_ref_contigs.txt
+    awk -F '\\t' 'NR == FNR {c[\$1] = 1; next} \$1 in c' bt_ref_contigs.txt bt_windows.bed > bt_on_ref.bed
+    awk -F '\\t' 'NR == FNR {c[\$1] = 1; next} !(\$1 in c)' bt_ref_contigs.txt bt_windows.bed > bt_off_ref.bed
+    SEL=-T OVERLAP=--targets-overlap HDR=${vcf}
+    for x in csi tbi; do
+        if [ -f "${vcf}.\$x" ]; then
+            if [ ! "${vcf}" -nt "${vcf}.\$x" ]; then SEL=-R OVERLAP=--regions-overlap; fi
+            break
+        fi
+    done
+    if [ "\$SEL" = -R ]; then echo "The VCF is read through its index."
+    else echo "The VCF is read once from the start (no index, or one older than the VCF)."; fi
+    if [ "\$SEL" = -T ]; then
+        bcftools head ${vcf} > bt_header.vcf
+        cut -f1 bt_windows.bed \\
+            | awk 'NR == FNR {if (sub(/^##contig=<ID=/, "")) {sub(/[,>].*/, ""); d[\$0] = 1}; next} !(\$1 in d) && !s[\$1]++ {print "##contig=<ID=" \$1 ">"}' bt_header.vcf - > bt_contigs.txt
+        if [ -s bt_contigs.txt ]; then
+            { grep -v '^#CHROM' bt_header.vcf; cat bt_contigs.txt; grep '^#CHROM' bt_header.vcf; } > bt_header2.vcf
+            HDR=bt_header2.vcf
+        fi
+    fi
+    DECLARE='function need(k, t) {if (!(k in d)) {d[k] = 1; a[++na] = "##" k t ",Description=" q "Not declared in the input VCF" q ">"}}
+        BEGIN {q = sprintf("%c", 34)}
+        /^##/ {h[++nh] = \$0; if (match(\$0, /^##(FILTER|INFO|FORMAT)=<ID=[^,>]*/)) d[substr(\$0, 3, RLENGTH - 2)] = 1; next}
+        /^#/ {c = \$0; next}
+        {r[++nr] = \$0
+         n = split(\$7, f, ";"); for (i = 1; i <= n; i++) if (f[i] != "." && f[i] != "PASS") need("FILTER=<ID=" f[i], "")
+         n = split(\$8, f, ";"); for (i = 1; i <= n; i++) if (f[i] != ".") {k = f[i]; v = sub(/=.*/, "", k); need("INFO=<ID=" k, v ? ",Number=.,Type=String" : ",Number=0,Type=Flag")}
+         n = split(\$9, f, ":"); for (i = 1; i <= n; i++) need("FORMAT=<ID=" f[i], f[i] == "GT" ? ",Number=1,Type=String" : ",Number=.,Type=String")}
+        END {for (i = 1; i <= nh; i++) print h[i]; for (i = 1; i <= na; i++) print a[i]; if (c != "") print c; for (i = 1; i <= nr; i++) print r[i]}'
+    pick() {
+        if [ ! -s "\$1" ]; then bcftools view -h -Ov "\$HDR"
+        elif [ "\$HDR" != "${vcf}" ]; then { cat "\$HDR"; gzip -cdf ${vcf} | awk '!/^#/'; } | bcftools view -T "\$1" --targets-overlap record -Ov -
+        else bcftools view "\$SEL" "\$1" "\$OVERLAP" record -Ov ${vcf}; fi | awk -F '\\t' "\$DECLARE"
+    }
+    pick bt_on_ref.bed | bcftools norm -c w -f ${reference} -Ob -o bt_on_ref.bcf
+    pick bt_off_ref.bed | bcftools view -Ob -o bt_off_ref.bcf
+    bcftools concat -Ou bt_on_ref.bcf bt_off_ref.bcf | bcftools sort -T ./bt_sort -Oz -o bt_norm.vcf.gz
+    bcftools index -f -t bt_norm.vcf.gz
+
+    og bloodtype report --sample ${meta.id} --vcf bt_norm.vcf.gz --markers ${markers} ${depth_arg} \\
         --out ${meta.id}_bloodtype.tsv --evidence ${meta.id}_bloodtype_evidence.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        bcftools: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
     END_VERSIONS
     """
 
@@ -131,7 +197,7 @@ process BLOODTYPE {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        bcftools: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
     END_VERSIONS
     """
 }

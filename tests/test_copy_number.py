@@ -1020,7 +1020,6 @@ cpath() { printf '%s' "$1"; }
 
 
 def psv(cat, read):
-    import couple_report
     r = cat["CYP21A2"]
     names = [n for n, *_ in r["_psv"]]
     check("CYP21A2: six PSV sites, In2G and I172N among them, a call psv row with a reading per finding",
@@ -1197,45 +1196,60 @@ def psv(cat, read):
         check("step 35 CYP21A2 block with a failed mpileup: the rows of a called table but the sites'",
               list(rd("fail")) == [k for k in nl if not k.startswith("psv_")], (list(rd("fail")), list(nl)))
 
-        # the couple screen
-        genes = {"CYP21A2": {"gene": "CYP21A2"}}
-        got = {c: couple_report.cyp21a2_finding(p, genes) for c, p in tabs.items() if os.path.exists(p)}
-        f = got.get("deletion", ([], ""))[0]
-        check("couple screen: the deletion table is a CYP21A2 finding on one copy (the chimeric deletion)",
-              len(f) == 1 and f[0]["gene"] == "CYP21A2" and f[0]["copies"] == 1 and "chimeric deletion" in f[0]["text"], f)
-        f = got.get("conversion", ([], ""))[0]
-        check("couple screen: the conversion table is a possible conversion at In2G",
-              len(f) == 1 and "possible CYP21A2 conversion at In2G" in f[0]["text"], f)
-        check("couple screen: the unmodified table is no finding, 2 copies read",
-              got.get("normal", (["x"], ""))[0] == [] and "CYP21A2 2 copies" in got.get("normal", ([], ""))[1],
-              got.get("normal"))
-        check("couple screen: the table without MAPQ 0 reads is no finding and says not assessed (low_mapq0_share)",
-              got.get("no_mapq0", (["x"], ""))[0] == [] and got.get("no_mapq0", ([], ""))[1]
-              == "CYP21A2 not assessed (low_mapq0_share)", got.get("no_mapq0"))
-        check("couple screen: the failed table is no finding and says not assessed",
-              got.get("fail", (["x"], ""))[0] == [] and got.get("fail", ([], ""))[1].startswith("CYP21A2 not assessed"),
-              got.get("fail"))
-        if os.path.exists(tabs["normal"]):
-            bad = os.path.join(t, "bad.tsv")
-            open(bad, "w").write(open(tabs["normal"]).read().replace("finding\tnone", "finding\tlost"))
-            try:
-                couple_report.cyp21a2_finding(bad, genes)
-                got = "read"
-            except SystemExit as e:
-                got = f"exit {e.code}"
-            check("couple screen: a called table with an unknown finding stops the screen (exit 2)", got == "exit 2", got)
-        check("couple screen: a CYP21A2 finding needs CYP21A2 in the carrier list",
-              couple_report.cyp21a2_finding(tabs["deletion"], {})[0] == [] if os.path.exists(tabs["deletion"]) else False)
-        # A partner without a CYP21A2 table gets a gap line, also when no partner has one (step 39).
+        # the couple screen (og couple screen) reads each table
         ped = os.path.join(t, "ped.tsv")
         open(ped, "w").write("sample\tsex\tfather\tmother\tpartner\nA\tfemale\t.\t.\tB\nB\tmale\t.\t.\tA\n")
         vcf = os.path.join(t, "none.vcf")
         open(vcf, "w").write("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n")
+        carrier = os.path.join(REPO, "assets", "carrier_genes.tsv")
+
+        def couple(name, extra, genes=carrier):
+            """og couple screen of two partners with no ClinVar hit: (exit, CYP21A2 row or None, md or stderr)."""
+            od = os.path.join(t, "couple-" + name)
+            out = subprocess.run([OG or "og", "couple", "screen", "--pedigree", ped, "--genes", genes,
+                                  "--clinvar", f"A={vcf}", "--clinvar", f"B={vcf}", "--out-dir", od] + extra,
+                                 capture_output=True, text=True)
+            if out.returncode != 0:
+                return out.returncode, None, out.stderr
+            with open(os.path.join(od, "couple_A_B.tsv")) as f:
+                head = f.readline().rstrip("\n").split("\t")
+                row = next((dict(zip(head, x.rstrip("\n").split("\t"))) for x in f if x.startswith("CYP21A2\t")), None)
+            return 0, row, open(os.path.join(od, "couple_A_B.md")).read()
+        have = lambda c: os.path.exists(tabs[c])  # noqa: E731
+        rc, row, md = couple("deletion", ["--cyp21a2", f"A={tabs['deletion']}", "--cyp21a2", f"B={tabs['deletion']}"]) \
+            if have("deletion") else (1, None, "")
+        check("couple screen: the deletion table is a CYP21A2 finding on one copy (the chimeric deletion; both: 1 in 4)",
+              rc == 0 and row is not None and row["result"] == "shared" and row["offspring_risk"] == "1 in 4 per pregnancy"
+              and "chimeric deletion" in row["findings_a"], (rc, row, md[-600:]))
+        rc, row, md = couple("conversion", ["--cyp21a2", f"A={tabs['conversion']}"]) if have("conversion") else (1, None, "")
+        check("couple screen: the conversion table is a possible conversion at In2G",
+              rc == 0 and row is not None and "possible CYP21A2 conversion at In2G" in row["findings_a"], (rc, row))
+        gap = "CYP21A2 deletion and conversions of A: "
+        rc, row, md = couple("normal", ["--cyp21a2", f"A={tabs['normal']}"]) if have("normal") else (1, None, "")
+        check("couple screen: the unmodified table is no finding and no gap line",
+              rc == 0 and row is None and gap not in md, (rc, row, md[-600:]))
+        rc, row, md = couple("no_mapq0", ["--cyp21a2", f"A={tabs['no_mapq0']}"]) if have("no_mapq0") else (1, None, "")
+        check("couple screen: the table without MAPQ 0 reads is no finding and says not assessed (its message)",
+              rc == 0 and row is None and gap + "CYP21A2 not assessed: the BAM has few or no multi-mapping reads" in md,
+              (rc, row, md[-600:]))
+        rc, row, md = couple("fail", ["--cyp21a2", f"A={tabs['fail']}"]) if have("fail") else (1, None, "")
+        check("couple screen: the failed table is no finding and says not assessed",
+              rc == 0 and row is None and gap + "CYP21A2 not assessed" in md, (rc, row, md[-600:]))
+        if have("normal"):
+            bad = os.path.join(t, "bad.tsv")
+            open(bad, "w").write(open(tabs["normal"]).read().replace("finding\tnone", "finding\tlost"))
+            rc, row, md = couple("bad", ["--cyp21a2", f"A={bad}"])
+            check("couple screen: a called table with an unknown finding stops the screen (exit 2)", rc == 2, (rc, md))
+        no_cyp = os.path.join(t, "no_cyp21a2.tsv")
+        open(no_cyp, "w").write("".join(x for x in open(carrier) if not x.startswith("CYP21A2\t")))
+        rc, row, md = couple("no-list", ["--cyp21a2", f"A={tabs['deletion']}"], no_cyp) if have("deletion") else (1, 0, "")
+        check("couple screen: a CYP21A2 finding needs CYP21A2 in the carrier list", rc == 0 and row is None, (rc, row))
+        # A partner without a CYP21A2 table gets a gap line, also when no partner has one (step 39).
         for desc, extra, want in (("no partner has one", [], {"A", "B"}),
                                   ("one partner has one", ["--cyp21a2", f"A={tabs['normal']}"], {"B"})):
             od = os.path.join(t, "couple-" + str(len(extra)))
-            out = subprocess.run([sys.executable, os.path.join(REPO, "bin", "couple_report.py"), "screen",
-                                  "--pedigree", ped, "--genes", os.path.join(REPO, "assets", "carrier_genes.tsv"),
+            out = subprocess.run([OG or "og", "couple", "screen",
+                                  "--pedigree", ped, "--genes", carrier,
                                   "--clinvar", f"A={vcf}", "--clinvar", f"B={vcf}", "--out-dir", od] + extra,
                                  capture_output=True, text=True)
             md = open(os.path.join(od, "couple_A_B.md")).read() if out.returncode == 0 else out.stderr

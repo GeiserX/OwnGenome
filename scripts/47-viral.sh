@@ -8,7 +8,10 @@
 # installs (HHV-6A and -6B, the other herpesviruses, HPV, HBV, HCV, HIV-1,
 # HTLV-1, polyomaviruses, adenovirus 5, an anellovirus, parvovirus B19 and
 # Illumina's phiX control), and reports per genome the reads, the breadth and
-# the depth against the human autosomal depth. Inherited chromosomally
+# the depth against the human autosomal depth. Only unique, mappable reads
+# count as evidence (MAPQ 20, not low complexity, not a duplicate); 1 to 9 read
+# "below threshold", and a BAM with no unplaced unmapped read "not assessed".
+# Inherited chromosomally
 # integrated HHV-6 (in about 1 in 100 people) shows as the whole HHV-6 genome at
 # about half the human depth. og viral report applies the rules; it is the
 # same code as the VIRAL_REPORT Nextflow process. Not a test for an infection.
@@ -46,7 +49,7 @@ echo "BAM: ${BAM}"
 echo "Viral genomes: ${VREF}"
 mkdir -p "$OUTDIR"
 rm -f "$TABLE" "${P}_viral_reads.bam" "${P}_viral_reads.bam.bai" "${P}_viral_coverage.tsv" "${P}_human_coverage.tsv" \
-  "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv"
+  "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv" "${P}_viral_hits.tsv" "${P}_bam_idxstats.tsv"
 B=$(cpath "$BAM") O=$(cpath "$P") V=$(cpath "$VREF")
 
 # The same commands as the VIRAL_READS process. samtools fastq leaves out
@@ -54,7 +57,9 @@ B=$(cpath "$BAM") O=$(cpath "$P") V=$(cpath "$VREF")
 # unmapped next to a mapped mate is taken too (an integration junction). The
 # reads mapped to chrEBV are taken mapped (-F 4): the unmapped ones are in the
 # first set already. Both coverages count duplicates (--ff without DUP), so the
-# viral and the human depth are measured alike.
+# viral and the human depth are measured alike. samtools idxstats counts the
+# unplaced unmapped reads: none means the BAM was cut to regions or filtered,
+# and og viral report then says "not assessed" instead of "not found".
 echo "[1/4] Unmapped reads and chrEBV reads (samtools), and the human depth (samtools coverage)..."
 # shellcheck disable=SC2016  # $1 to $3 belong to the inner bash
 run_in --cpus "$THREADS" --memory 4g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
@@ -62,27 +67,31 @@ run_in --cpus "$THREADS" --memory 4g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
     if samtools view -H "$1" | awk -F "\t" "\$1 == \"@SQ\" && \$2 == \"SN:chrEBV\" {f = 1} END {exit !f}"; then
       samtools view -@ "$3" -u -F 4 "$1" chrEBV | samtools fastq - >> "$2_unmapped.fq"
     fi
-    samtools coverage --ff UNMAP,SECONDARY,QCFAIL "$1" > "$2_human_coverage.tsv"' _ "$B" "$O" "$THREADS"
+    samtools coverage --ff UNMAP,SECONDARY,QCFAIL "$1" > "$2_human_coverage.tsv"
+    samtools idxstats "$1" > "$2_bam_idxstats.tsv"' _ "$B" "$O" "$THREADS"
 echo "  reads to realign: $(( $(wc -l < "${P}_unmapped.fq") / 4 ))"
+echo "  unplaced unmapped reads in the BAM: $(awk -F'\t' '$1 == "*" {print $4}' "${P}_bam_idxstats.tsv")"
 
 echo "[2/4] minimap2 against the viral genomes..."
 run_in --cpus "$THREADS" --memory 4g "$MINIMAP2_IMAGE" \
   minimap2 -ax sr --frag=no --secondary=no -t "$THREADS" -o "${O}_viral.sam" "$V" "${O}_unmapped.fq"
 
-echo "[3/4] Sort, coverage and depth over each viral genome (samtools)..."
+echo "[3/4] Sort, coverage, depth and the alignments over each viral genome (samtools)..."
 # shellcheck disable=SC2016
 run_in --cpus 2 --memory 4g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
     samtools sort -o "$1_viral_reads.bam" "$1_viral.sam"
     samtools index "$1_viral_reads.bam"
     samtools coverage --ff UNMAP,SECONDARY,QCFAIL "$1_viral_reads.bam" > "$1_viral_coverage.tsv"
-    samtools depth -aa -G UNMAP,SECONDARY,QCFAIL "$1_viral_reads.bam" > "$1_viral_depth.tsv"' _ "$O"
+    samtools depth -aa -G UNMAP,SECONDARY,QCFAIL "$1_viral_reads.bam" > "$1_viral_depth.tsv"
+    samtools view -F 4 "$1_viral_reads.bam" > "$1_viral_hits.tsv"' _ "$O"
 
 echo "[4/4] Calls (og viral report)..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
   /pgp-bin/og viral report --sample "$SAMPLE" --viral-fasta "$V" \
     --viral-coverage "${O}_viral_coverage.tsv" --viral-depth "${O}_viral_depth.tsv" \
-    --human-coverage "${O}_human_coverage.tsv" --out "$(cpath "$TABLE")"
-rm -f "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv"
+    --human-coverage "${O}_human_coverage.tsv" --viral-hits "${O}_viral_hits.tsv" \
+    --idxstats "${O}_bam_idxstats.tsv" --out "$(cpath "$TABLE")"
+rm -f "${P}_unmapped.fq" "${P}_viral.sam" "${P}_viral_depth.tsv" "${P}_viral_hits.tsv" "${P}_bam_idxstats.tsv"
 
 [ -s "$TABLE" ] || { echo "ERROR: no table written (${TABLE})" >&2; exit 1; }
 echo ""

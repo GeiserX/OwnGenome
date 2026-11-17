@@ -19,18 +19,20 @@ For background on caller performance differences, see:
 
 ## Available Alternative Caller Scripts
 
-The pipeline ships with four variant callers. Each writes output to a separate directory so they can run in parallel without conflicts.
+The pipeline calls with DeepVariant by default and ships five alternative caller scripts: four for short reads and Clair3 for long reads. Each writes output to a separate directory so they can run in parallel without conflicts.
 
 The image each script runs is on [Image versions](versions.md).
 
 | Script | Caller | Output Directory | Description |
 |---|---|---|---|
 | `scripts/03-deepvariant.sh` | DeepVariant (`DEEPVARIANT_IMAGE`) | `vcf/` | Default caller. Deep learning model, highest precision and F1. |
-| `scripts/03a-gatk-haplotypecaller.sh` | GATK HaplotypeCaller (`GATK_IMAGE`) | `vcf_gatk/` | Gold standard in clinical labs. Good precision/recall balance, GVCF support. |
+| `scripts/03a-gatk-haplotypecaller.sh` | GATK HaplotypeCaller (`GATK_IMAGE`) | `vcf_gatk/` | Widely used in clinical labs, but this script is not their full GATK Best Practices workflow: it calls the duplicate-marked step-02 BAM without base quality score recalibration (BQSR) and writes a plain VCF (`-ERC NONE`), not a GVCF. Good precision/recall balance. |
 | `scripts/03b-freebayes.sh` | FreeBayes (image set in the script) | `vcf_freebayes/` | Bayesian caller. Highest sensitivity, most false positives, single-threaded. |
 | `scripts/03c-strelka2-germline.sh` | Strelka2 (image set in the script) | `vcf_strelka2/` | Fast heuristic caller (SNVs + indels). Best with BWA-MEM2 alignments. |
+| `scripts/03d-octopus.sh` | Octopus (`OCTOPUS_IMAGE`) | `vcf_octopus/` | Haplotype-based caller. |
+| `scripts/03e-clair3.sh` | Clair3 (`CLAIR3_IMAGE`) | `vcf_clair3/` | Long-read caller (ONT, PacBio HiFi) for a BAM from `scripts/02b-alignment-longread.sh`. |
 
-All four scripts accept the same arguments:
+DeepVariant, GATK, FreeBayes and Strelka2 take the same arguments:
 
 ```bash
 export GENOME_DIR=/path/to/your/data
@@ -58,6 +60,19 @@ There are two ways to evaluate caller performance:
 ### Mode 1: Pairwise Concordance (No Truth Set Required)
 
 Compare two or more caller VCFs against each other to measure agreement. This tells you how much the callers agree, but not which one is "right."
+
+`./scripts/benchmark-variants.sh <sample>` does this for every caller VCF it finds: `vcf/` (DeepVariant), `vcf_strelka2/results/variants/variants.vcf.gz`, and `<sample>.vcf.gz` in every `vcf_*/` directory (`vcf_gatk/`, `vcf_freebayes/`, `vcf_octopus/`, `vcf_clair3/`, or a directory of your own, named in the results by what follows `vcf_`). That is the same set that makes `run-all.sh` with `BENCHMARK=true` queue the step. It normalises each VCF once (`bcftools norm -m-both`), runs `bcftools isec` on PASS and unfiltered records for each pair, and writes `benchmark/comparison.tsv`:
+
+| Column | Meaning |
+|---|---|
+| `Shared`, `A_Unique`, `B_Unique` | sites both callers have, and sites only one has. A site is shared when both have the same allele at the same position, whatever the genotype |
+| `Jaccard` | `Shared / (Shared + A_Unique + B_Unique)`: agreement on which alleles are present |
+| `GT_Concordant` | shared sites where the two genotypes are also the same |
+| `GT_Concordance` | `GT_Concordant / Shared`; `N/A` when nothing is shared |
+
+A site one caller calls 0/1 and the other 1/1 counts in `Shared` and in the Jaccard index, but not in `GT_Concordant`. Genotypes are compared without phase and with their alleles sorted (`1|0` equals `0/1`), and a homozygous call equals its haploid form (`1/1` equals `1`), so a caller that writes male chrX haploid still agrees with one that writes it diploid. A site with no genotype on either side (`./.`, `.`, or a record with no `GT` field) does not count as concordant.
+
+The commands below do the allele part by hand:
 
 Use `bcftools isec` to compute the intersection and unique calls:
 
@@ -252,7 +267,8 @@ Each hap.py run produces several output files:
 | **Precision** | How many called variants are real (low = too many false positives) | TP / (TP + FP) |
 | **Recall** | How many real variants were found (low = missing real variants) | TP / (TP + FN) |
 | **F1** | Harmonic mean of precision and recall (balanced accuracy) | 2 * (Precision * Recall) / (Precision + Recall) |
-| **Jaccard** | Overlap between two call sets (pairwise mode) | Shared / (Shared + Unique_A + Unique_B) |
+| **Jaccard** | Overlap between two call sets (pairwise mode): the same allele at the same position, whatever the genotype | Shared / (Shared + Unique_A + Unique_B) |
+| **GT concordance** | Shared sites where the two callers also give the same genotype (pairwise mode) | GT_Concordant / Shared |
 
 Where:
 - **TP** (True Positive) = variant called correctly
@@ -267,6 +283,7 @@ Where:
 - **Jaccard > 0.95**: Two callers agree on the vast majority of calls.
 - **Jaccard 0.85-0.95**: Moderate agreement. Differences are mostly in low-confidence regions or indels.
 - **Jaccard < 0.85**: Significant disagreement. Worth investigating the unique calls from each caller.
+- **GT concordance well below 1 with a high Jaccard**: the callers find the same variants but disagree on zygosity. Look at the depth and allele balance at those sites.
 
 ### Typical Results (30X WGS, GRCh38)
 

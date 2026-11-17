@@ -628,12 +628,19 @@ dependencies = [
 [[package]]
 name = "og-admix"
 version = "0.1.0"
+dependencies = [
+ "memchr",
+ "og-io",
+ "og-vcf",
+ "pycompat",
+]
 
 [[package]]
 name = "og-ancestry"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "og-admix",
  "og-intervals",
  "og-io",
  "og-tsv",
@@ -697,6 +704,15 @@ dependencies = [
 [[package]]
 name = "og-couple"
 version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-cn",
+ "og-io",
+ "og-pedigree",
+ "og-steps",
+ "og-summary",
+ "pycompat",
+]
 
 [[package]]
 name = "og-dev"
@@ -752,6 +768,13 @@ dependencies = [
 [[package]]
 name = "og-live"
 version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "jiff",
+ "og-nf",
+ "og-runlog",
+ "pycompat",
+]
 
 [[package]]
 name = "og-lookup"

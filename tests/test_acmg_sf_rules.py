@@ -45,6 +45,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import collect_summary  # noqa: E402
 import render_report  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, "tests"))
+from og_binary import og_binary  # noqa: E402
 
 FAILS = []
 
@@ -240,29 +242,25 @@ def main():
               ("HEXA", "chr15:72350584 G>A") not in lines
               and [x["kind"] for x in car.get("set_aside", [])] == ["pseudodeficiency"], car)
         check("carrier list: the other HEXA hit does", ("HEXA", "chr15:72346579 G>GGATA") in lines, car)
-        import couple_report
-        genes = couple_report.read_genes(os.path.join(REPO, "assets", "carrier_genes.tsv"))
-        aside = []
-        try:
-            f, _ = couple_report.clinvar_findings(f"{d}/clinvar/S_clinvar_hits.vcf", genes, "female", {}, aside)
-        except TypeError as e:  # the pre-fix signature: no set-aside list
-            f = [{"gene": str(e)}]
-        check("couple screen: the same pseudodeficiency allele is no carrier finding",
-              sorted(x["gene"] for x in f) == ["CFTR", "HEXA"] and len(aside) == 1 and "pseudodeficiency" in aside[0],
-              (f, aside))
-        # The whole couple screen, with that set-aside allele in one partner.
+        # The whole couple screen (og couple screen), the sample in both partners.
         ped = put(f"{work}/couple/pedigree.tsv", "sample\tsex\tfather\tmother\tpartner\nA\tfemale\t.\t.\tB\n"
                   "B\tmale\t.\t.\tA\n")
-        r = subprocess.run([sys.executable, os.path.join(REPO, "bin", "couple_report.py"), "screen",
+        r = subprocess.run([og_binary(), "couple", "screen",
                             "--pedigree", ped, "--genes", os.path.join(REPO, "assets", "carrier_genes.tsv"),
                             "--clinvar", f"A={d}/clinvar/S_clinvar_hits.vcf",
                             "--clinvar", f"B={d}/clinvar/S_clinvar_hits.vcf", "--out-dir", f"{work}/couple/out"],
                            capture_output=True, text=True)
         md = f"{work}/couple/out/couple_A_B.md"
         md_text = open(md).read() if os.path.isfile(md) else ""
+        tab = f"{work}/couple/out/couple_A_B.tsv"
+        with open(tab) if os.path.isfile(tab) else open(os.devnull) as f:
+            found = sorted(line.split("\t")[0] for line in list(f)[1:])
+        aside = [x for x in md_text.splitlines() if "Set aside for A" in x]
+        check("couple screen: the same pseudodeficiency allele is no carrier finding",
+              found == ["CFTR", "HEXA"] and len(aside) == 1 and "pseudodeficiency" in aside[0], (found, aside))
         check("couple screen run: a set-aside allele is a gap line, the screen still writes its table",
               r.returncode == 0 and "Set aside for A, not a carrier finding on its own" in md_text
-              and os.path.isfile(f"{work}/couple/out/couple_A_B.tsv"), (r.returncode, r.stderr[-800:]))
+              and os.path.isfile(tab), (r.returncode, r.stderr[-800:]))
         try:
             collect_summary.parse_alleles("hypomorph", kinds=True)
             err = None

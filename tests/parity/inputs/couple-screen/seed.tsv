@@ -1,0 +1,5 @@
+# a seed
+gene	chrom	start	end	inheritance	lists	condition	severity
+NAGA	.	0	0	AR	ACMG	Schindler disease	hypomorph chr22:500:A:G p.X
+OLD1	chr1	1	2	AR	Orphanet	dropped	.
+AAA1	chr3	1	2	AR	Orphanet	x	pseudodeficiency chr3:15:C:T p.Y

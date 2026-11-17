@@ -1,0 +1,3 @@
+##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+chr13	20190221	90000	A	G	.	PASS	GENEINFO=GJB2:1;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts	GT	0/1

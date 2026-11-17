@@ -1,0 +1,9 @@
+locus	name	chrom	start	end	status	copies	expected	change	estimate	reason
+GJB6_D13S1830	GJB6_D13S1830 name	chr13	20223037	20531806	called	2	2	no change	.	.
+CFTR_dele2_3	CFTR_dele2_3 name	chr7	117498312	117519392	called	2	2	no change	.	.
+HBB_exon3_del	HBB_exon3_del name	chr11	5225254	5225875	called	1	2	deletion	.	.
+HBB_619bp_del	HBB_619bp_del name	chr11	5225388	5226007	called	1	2	deletion	.	.
+HBD_HBB_Sicilian_del	HBD_HBB_Sicilian_del name	chr11	5219877	5233280	called	1	2	deletion	.	.
+AZFa	AZFa name	chrY	12537649	12920478	called	1	1	no change	.	.
+AZFb	AZFb name	chrY	19702297	20593154	called	1	1	no change	.	.
+AZFc_DAZ	AZFc_DAZ name	chrY	23129354	24907040	called	2	4	deletion	.	.

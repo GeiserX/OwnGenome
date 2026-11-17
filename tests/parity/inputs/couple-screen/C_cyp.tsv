@@ -1,0 +1,8 @@
+metric	value
+status	called
+cyp21a2_copies	0
+module_total	4
+expected_total	4
+finding	conversion
+conversion_sites	PSV_P30L,PSV_I172N
+reason	.

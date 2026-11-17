@@ -171,6 +171,12 @@
 
   "packageRules": [
     {
+      "description": "Hold: ExpansionHunter 5.0.0 is the last Apache-2.0 release. Upstream's default branch uses PolyForm Strict 1.0.0. All updates, including Bioconda rebuilds, need a licence review by hand before this hold is changed (docs/updating.md).",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["quay.io/biocontainers/expansionhunter"],
+      "enabled": false
+    },
+    {
       "description": [
         "Biocontainer tags are <version>--<conda build hash>_<build number>. Docker versioning reads the part after '--' as a suffix that must stay the same, and the hash changes between versions, so most of these pins would never see a newer tag.",
         "This versioning ignores the hash and orders by version, then build number. A tag in any other shape (an unsuffixed tag, a four-part version) is not a version here and is never proposed.",

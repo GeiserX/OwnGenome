@@ -1,0 +1,2 @@
+locus	name	chrom	start	end	status	copies	expected	change	estimate	reason
+GJB6_D13S1830	GJB6_D13S1830 name	chr13	20223037	20531806	called	1	2	deletion	.	.

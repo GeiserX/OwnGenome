@@ -1188,15 +1188,21 @@ pub fn viral(c: &Ctx<'_>) -> Out {
         Some(Value::Str(x)) => x.clone(),
         _ => String::new(),
     };
-    let ici = keep
+    // Every species called: og viral report calls both when both pass.
+    let ici: Vec<String> = keep
         .iter()
-        .find(|r| get(r, "call") == "inherited integrated HHV-6 likely")
-        .map(|r| get(r, "virus"));
+        .filter(|r| get(r, "call") == "inherited integrated HHV-6 likely")
+        .map(|r| get(r, "virus"))
+        .collect();
     let human = get(&keep[0], "human_depth");
-    let hhv6 = match ici {
-        Some(v) => format!("inherited integrated {v} likely"),
-        None if human == "." => "not assessed (no human depth)".to_owned(),
-        None => "no integrated HHV-6".to_owned(),
+    let hhv6 = if !ici.is_empty() {
+        format!("inherited integrated {} likely", ici.join(" and "))
+    } else if keep.iter().any(|r| get(r, "call") == "not assessed") {
+        "not assessed (the BAM has no unplaced unmapped reads)".to_owned()
+    } else if human == "." {
+        "not assessed (no human depth)".to_owned()
+    } else {
+        "no integrated HHV-6".to_owned()
     };
     let found: Vec<Value> = keep
         .iter()
@@ -1258,8 +1264,19 @@ pub fn chip(c: &Ctx<'_>) -> Out {
         .map(|r| dots(r, &need))
         .collect();
     let mut covered = Vec::new();
+    let mut limits = Vec::new();
     for r in &depth.rows {
         if r.get("status").flatten() == Some("covered") {
+            // A covered gene's own limit, from each coding base's depth
+            // (og chip report); a cell that is not a finite number adds none.
+            if let Some(l) = r
+                .get("detection_limit_vaf")
+                .flatten()
+                .and_then(|x| pycompat::num::parse_float(x).ok())
+                .filter(|l| l.is_finite())
+            {
+                limits.push(l);
+            }
             let x = r.get("mean_depth").flatten().ok_or_else(|| {
                 py_error(
                     "TypeError",
@@ -1279,18 +1296,31 @@ pub fn chip(c: &Ctx<'_>) -> Out {
                 .map_err(|e| py_error(e.exception(), "cannot convert float NaN to integer"))?,
         )
     };
-    let limit = match med {
-        None => Value::Null,
-        Some(m) => og_chip::binom::detection_limit(m)
-            .map_err(|e| py_error("ValueError", &e.to_string()))?
-            .map_or(Value::Null, Value::Float),
-    };
+    // The stated limit is the median of the covered genes' own limits, as
+    // og chip report states it, not the limit at the median depth: a gene
+    // with an unread exon has a higher limit, or none, at the same mean.
+    // A median depth that is not finite stays an unreadable table.
+    if let Some(m) = med {
+        og_chip::binom::finite_mean(m).map_err(|e| py_error("ValueError", &e.to_string()))?;
+    }
+    let limit = og_chip::report::stated_limit(limits).map_or(Value::Null, Value::Float);
+    // The two share columns came after the first seven: a table without
+    // them still reads, and the genes then lack them.
+    let gene_keys: Vec<&str> = dneed
+        .iter()
+        .copied()
+        .chain(
+            ["callable_fraction", "assessable_fraction"]
+                .into_iter()
+                .filter(|k| depth.has(k)),
+        )
+        .collect();
     let v = Obj::new()
         .set("calls", Value::Array(chip.clone()))
         .set("other", count(calls.rows.len() - chip.len()))
         .set(
             "genes",
-            Value::Array(depth.rows.iter().map(|r| dots(r, &dneed)).collect()),
+            Value::Array(depth.rows.iter().map(|r| dots(r, &gene_keys)).collect()),
         )
         .set("median_depth", med.map_or(Value::Null, Value::Float))
         .set("median_limit", limit)
@@ -1549,6 +1579,58 @@ mod tests {
         assert_eq!(b64(b"fo"), "Zm8=");
         assert_eq!(b64(b"foo"), "Zm9v");
         assert_eq!(b64(b"foob"), "Zm9vYg==");
+    }
+
+    /// The HHV-6 line of the summary from `og viral report`'s table.
+    fn hhv6_line(rows: &str) -> Value {
+        let d = crate::testutil::Dir::new("viral-hhv6");
+        d.put(
+            "S/viral/S_viral.tsv",
+            format!(
+                "virus\taccession\tlength\treads\tbreadth\tmean_depth\tmode_depth\thuman_depth\trelative_depth\tcopies_per_cell\tcall\tnote\n{rows}"
+            ),
+        );
+        std::fs::create_dir_all(d.0.join("assets")).unwrap();
+        let input = crate::collect::Input {
+            sample: "S".into(),
+            sample_dir: d.0.join("S").to_string_lossy().into_owned(),
+            declared_sex: None,
+            assets: d.0.join("assets").to_string_lossy().into_owned(),
+            group: crate::collect::Group::C,
+            tables: String::new(),
+        };
+        let v = crate::collect::collect(&input).unwrap().to_json();
+        let at = |v: &Value, k: &str| match v {
+            Value::Object(m) => m[k].clone(),
+            _ => panic!("{k}"),
+        };
+        at(&at(&at(&at(&v, "sections"), "viral"), "data"), "hhv6")
+    }
+
+    /// Red first (#411 trait-56, trait-53): both species called are both
+    /// named, and a table og could not assess says so.
+    #[test]
+    fn the_hhv6_line_names_both_species_and_not_assessed() {
+        let row = |v: &str, call: &str| {
+            format!("{v}\tNC\t2000\t400\t1.0000\t15.000\t15\t30.00\t0.500\t1.0000\t{call}\t\n")
+        };
+        let ici = "inherited integrated HHV-6 likely";
+        assert_eq!(
+            hhv6_line(&(row("HHV-6A", ici) + &row("HHV-6B", ici))),
+            Value::Str("inherited integrated HHV-6A and HHV-6B likely".into())
+        );
+        assert_eq!(
+            hhv6_line(&row("HHV-6B", ici)),
+            Value::Str("inherited integrated HHV-6B likely".into())
+        );
+        assert_eq!(
+            hhv6_line(&row("HHV-6B", "not assessed")),
+            Value::Str("not assessed (the BAM has no unplaced unmapped reads)".into())
+        );
+        assert_eq!(
+            hhv6_line(&row("HHV-6B", "not found")),
+            Value::Str("no integrated HHV-6".into())
+        );
     }
 
     #[test]

@@ -100,7 +100,7 @@ Checks:
      probable CYP2D6 call of pypgx alone in both reports, and none after a
      failed depth check, beside a usable Cyrius call, or from a summary
      written before the evidence columns.
- 20. step 39's couple table (bin/couple_report.py's columns): the partner,
+ 20. step 39's couple table (og couple screen's columns): the partner,
      the shared and X-linked genes with each side's findings from this
      sample's point of view, the one-partner count; a table naming another
      couple, or without a column, is unreadable; a table without rows names
@@ -639,7 +639,7 @@ def construct_scan_section(work, schema):
     check("sites mode: the calls", calls == {
         "G1": ("ref", "GQ 50 (gVCF block)"), "G2": ("hom", "GQ 60, DP 30"), "G3": ("ref", "GQ 35"),
         "G4": ("other allele", "G>C het"),
-        "G5": ("no call", "the gVCF record over the site is not a PASS reference call (GT ./.)")}, calls)
+        "G5": ("no call", "the gVCF record over the site has no genotype (GT ./.)")}, calls)
     # The call floor: a reference call below min_gq (step 6's CLINVAR_MIN_GQ) is no confident ref.
     out = og_clinvar("deep-intronic", "--min-gq", "40", sites, vcf_calls, gvcf_calls).splitlines()
     low = {r.split("\t")[4]: tuple(r.split("\t")[7:9]) for r in out[1:]}
@@ -2935,15 +2935,17 @@ def main():
               validate.validate(schema, json.loads(json.dumps(summ_e))))
 
         # 20. step 39, the couple table
-        import couple_report
+        # the columns og couple screen writes (og-couple prose::TABLE_COLUMNS)
+        couple_columns = ("gene", "inheritance", "lists", "condition", "result", "offspring_risk",
+                          "partner_a", "findings_a", "partner_b", "findings_b", "explanation")
         c_ = os.path.join(work, "couple", "B")
-        head = "\t".join(couple_report.TABLE_COLUMNS) + "\n"
+        head = "\t".join(couple_columns) + "\n"
 
         def crow(gene, result, risk, fa, fb):
             r = {"gene": gene, "inheritance": "AR", "lists": "ACMG", "condition": f"{gene} disease", "result": result,
                  "offspring_risk": risk, "partner_a": "A", "findings_a": fa, "partner_b": "B", "findings_b": fb,
                  "explanation": "x"}
-            return "\t".join(r[k] for k in couple_report.TABLE_COLUMNS) + "\n"
+            return "\t".join(r[k] for k in couple_columns) + "\n"
         put(f"{c_}/couple/B_couple_carrier.tsv", head + crow("NAGA", "shared", "1 in 4 per pregnancy", "a-snv", "b-snv")
             + crow("FMR1", "x_linked", "A: sons 1 in 2", "a-repeat", ".") + crow("UGT1A1", "one_partner", "none shared", ".", "b-only"))
         summ_c = collect_summary.collect("B", c_)

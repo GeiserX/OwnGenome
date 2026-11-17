@@ -74,14 +74,8 @@ LINE='HBA1 and HBA2 together (alpha-globin genes, from depth)'
 html_count() { grep -Fc "$2" "${CASE_TMP}/$1/results/${SAMPLE}/${SAMPLE}_report.html" 2>/dev/null || true; }
 # hba_not_assessed NAME: 1 when summary.json lists HBA1/HBA2 as not assessed, else 0
 hba_not_assessed() {
-  python3 - "${CASE_TMP}/$1/results/${SAMPLE}/summary.json" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except (OSError, ValueError):
-    print("no summary"); sys.exit(0)
-print(int(any(x.startswith("HBA1/HBA2 copy number") for x in d.get("not_assessed", []))))
-PY
+  jq 'if any((.not_assessed // [])[]; startswith("HBA1/HBA2 copy number")) then 1 else 0 end' \
+    "${CASE_TMP}/$1/results/${SAMPLE}/summary.json" 2>/dev/null || echo "no summary"
 }
 
 report_run with 1
