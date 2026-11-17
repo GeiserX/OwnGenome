@@ -189,12 +189,14 @@ async function noActChecks(core) {
   for (const c of await openedChecks(CORE)) { check(c[0], c[1], c[2]); }
   for (const c of await noActChecks(CORE)) { check(c[0], c[1], c[2]); }
   // Controls: the trio rule cut out of core.js (rows kept whoever is gated) must fail the closed checks.
-  const RULE = 'function trioShut(s) { return gated(s) || parentsOf(s).some(function (p) { return p && gated(p); }); }';
-  check('control: core.js holds the trio rule the control cuts out', CORE.indexOf(RULE) >= 0);
-  if (CORE.indexOf(RULE) >= 0) {
-    for (const [name, cut] of [['rows of a gated parent kept', 'function trioShut(s) { return gated(s); }'],
-      ['rows of any child kept', 'function trioShut(s) { return false; }']]) {
-      const res = await closedChecks(CORE.replace(RULE, cut), 'control');
+  const PARENT = 'function parentGated(s) { return parentsOf(s).some(function (p) { return p && gated(p); }); }';
+  const CHILD = 'copy((raw[key] || []).filter(function (r) { return !gated(r.child); }))';
+  const held = CORE.split(PARENT).length === 2 && CORE.split(CHILD).length === 2;
+  check('control: core.js holds the trio rule the controls cut out, once each', held);
+  if (held) {
+    const noParent = CORE.replace(PARENT, 'function parentGated(s) { return false; }');
+    for (const [name, cut] of [['rows of a gated parent kept', noParent], ['rows of any child kept', noParent.replace(CHILD, 'copy(raw[key] || [])')]]) {
+      const res = await closedChecks(cut, 'control');
       check('control: ' + name + ' fails the closed checks', res.some((c) => !c[1]));
     }
   }

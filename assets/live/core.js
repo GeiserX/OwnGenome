@@ -462,7 +462,7 @@
     // out while any of the three is gated, whole, so nothing the page says of them depends on which rows there are.
     // The one rule for these rows: the family view and the genome map's family mode get them only through here.
     function parentsOf(s) { return (raw.state.members || []).filter(function (m) { return m.sample === s; }).map(function (m) { return [m.father, m.mother]; })[0] || []; }
-    function trioShut(s) { return gated(s) || parentsOf(s).some(function (p) { return p && gated(p); }); }
+    function parentGated(s) { return parentsOf(s).some(function (p) { return p && gated(p); }); }
     // Each person keeps the role this family gives them: its children are the ones it lists with a father or a
     // mother. A gated person it lists as a parent or partner (a child in another family) is in gated alone, and the
     // view gives them their buttons beside the children. An open child with a gated parent keeps its entry and
@@ -494,9 +494,9 @@
     ['segments', 'trio_status', 'trio_files', 'trio_file_state'].forEach(function (key) {
       if (!raw[key] || typeof raw[key] !== 'object') { return; }
       f[key] = {};
-      Object.keys(raw[key]).forEach(function (k) { if (!(key === 'trio_status' ? trioShut(k) : gated(k))) { f[key][k] = copy(raw[key][k]); } });
+      Object.keys(raw[key]).forEach(function (k) { if (!(key === 'trio_status' ? gated(k) || parentGated(k) : gated(k))) { f[key][k] = copy(raw[key][k]); } });
     });
-    ['de_novo', 'compound_het'].forEach(function (key) { f[key] = copy((raw[key] || []).filter(function (r) { return !trioShut(r.child); })); });
+    ['de_novo', 'compound_het'].forEach(function (key) { f[key] = copy((raw[key] || []).filter(function (r) { return !gated(r.child); })).filter(function (r) { return !parentGated(r.child); }); });
     Object.keys(raw.runs || {}).forEach(function (k) {
       f.runs[k] = gated(k) ? Object.assign(progressOf(raw.runs[k]), { url: raw.runs[k].url, gated: true }) : copy(raw.runs[k]);
     });
