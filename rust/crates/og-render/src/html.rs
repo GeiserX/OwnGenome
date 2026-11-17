@@ -70,6 +70,7 @@ fn line(out: &mut Vec<String>, l: &Line) {
             out.extend(items.iter().map(|t| format!("      <li>{}</li>", e(t))));
             out.push("    </ul>".to_owned());
         }
+        Line::Html(t) => out.push(t.clone()),
     }
 }
 

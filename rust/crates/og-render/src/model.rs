@@ -325,6 +325,9 @@ pub enum Line {
     Para(String),
     /// A plain bulleted list.
     List(Vec<String>),
+    /// A line of markup the section built itself, every text in it already
+    /// escaped: a findings table, its Viewer links. Written as it is.
+    Html(String),
 }
 
 /// One card: a title, the caveats shown under it, the notes saying its
