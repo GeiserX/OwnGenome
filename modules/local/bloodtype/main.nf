@@ -131,6 +131,9 @@ process BLOODTYPE {
     // read that way, it first gets a ##contig line for each window contig its
     // header lacks, because bcftools writes no record on an undeclared contig
     // (the new header, then the records as text, so plain gzip works too).
+    // bcftools writes no BCF record that uses a FILTER, INFO or FORMAT tag the
+    // header does not declare (a hand-made VCF may lack even the GT line), so
+    // the picked records go out as text and get a line for each such tag first.
     // The same commands as scripts/41-bloodtype.sh; og runs from bin/, on the
     // task's PATH.
     """
@@ -159,10 +162,19 @@ process BLOODTYPE {
             HDR=bt_header2.vcf
         fi
     fi
+    DECLARE='function need(k, t) {if (!(k in d)) {d[k] = 1; a[++na] = "##" k t ",Description=" q "Not declared in the input VCF" q ">"}}
+        BEGIN {q = sprintf("%c", 34)}
+        /^##/ {h[++nh] = \$0; if (match(\$0, /^##(FILTER|INFO|FORMAT)=<ID=[^,>]*/)) d[substr(\$0, 3, RLENGTH - 2)] = 1; next}
+        /^#/ {c = \$0; next}
+        {r[++nr] = \$0
+         n = split(\$7, f, ";"); for (i = 1; i <= n; i++) if (f[i] != "." && f[i] != "PASS") need("FILTER=<ID=" f[i], "")
+         n = split(\$8, f, ";"); for (i = 1; i <= n; i++) if (f[i] != ".") {k = f[i]; v = sub(/=.*/, "", k); need("INFO=<ID=" k, v ? ",Number=.,Type=String" : ",Number=0,Type=Flag")}
+         n = split(\$9, f, ":"); for (i = 1; i <= n; i++) need("FORMAT=<ID=" f[i], f[i] == "GT" ? ",Number=1,Type=String" : ",Number=.,Type=String")}
+        END {for (i = 1; i <= nh; i++) print h[i]; for (i = 1; i <= na; i++) print a[i]; if (c != "") print c; for (i = 1; i <= nr; i++) print r[i]}'
     pick() {
-        if [ ! -s "\$1" ]; then bcftools view -h -Ou "\$HDR"
-        elif [ "\$HDR" != "${vcf}" ]; then { cat "\$HDR"; gzip -cdf ${vcf} | awk '!/^#/'; } | bcftools view -T "\$1" --targets-overlap record -Ou -
-        else bcftools view "\$SEL" "\$1" "\$OVERLAP" record -Ou ${vcf}; fi
+        if [ ! -s "\$1" ]; then bcftools view -h -Ov "\$HDR"
+        elif [ "\$HDR" != "${vcf}" ]; then { cat "\$HDR"; gzip -cdf ${vcf} | awk '!/^#/'; } | bcftools view -T "\$1" --targets-overlap record -Ov -
+        else bcftools view "\$SEL" "\$1" "\$OVERLAP" record -Ov ${vcf}; fi | awk -F '\\t' "\$DECLARE"
     }
     pick bt_on_ref.bed | bcftools norm -c w -f ${reference} -Ob -o bt_on_ref.bcf
     pick bt_off_ref.bed | bcftools view -Ob -o bt_off_ref.bcf
