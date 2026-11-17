@@ -79,7 +79,9 @@ else
 fi
 
 # Double backticks open a span too.
-printf '| a | ``x \\| y`` |\n' > "${WORK}/double.md"
+cat > "${WORK}/double.md" <<'MD'
+| a | ``x \| y`` |
+MD
 if scan "${WORK}/double.md" >/dev/null; then
   fail "an escaped pipe in a double-backtick span passed"
 else
