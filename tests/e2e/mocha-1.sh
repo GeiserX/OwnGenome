@@ -11,7 +11,10 @@
 #     (the panel's common CNVs) written, in MoChA's --cnp format when not empty;
 #   - HG002 (case 21's VCF) phased by Beagle on that slice: phased hets, MoChA
 #     makes no call and none is reported, and MoChA's log names cnps.bed as
-#     its --cnp list;
+#     its --cnp list. The fixture's other autosomes, which the cut panel has
+#     no file for, still reach the sites table, unphased, so the sample is not
+#     assessed and the message names each of them (red control: the same check
+#     fails on the sites table cut to chr20, all the step kept before);
 #   - MOSAIC, a synthetic phased VCF on chr16, chr19, chr20 and chr22 at 30x
 #     (REF bases from the fixture reference) with a 20 Mb CN-LOH on 20p from
 #     the telomere in 15% of the cells (the haplotype balance 0.575 instead of
@@ -42,6 +45,18 @@ not() { ! "$@"; }
 cnp_logged() { grep -Eq '^Regions to genotype: .*cnps\.bed$' "$1" 2>/dev/null; }
 cnp_format() { awk -F'\t' 'NF != 4 || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $3 <= $2 || $4 !~ /^(CNV|DEL|DUP)$/ {exit 1}' "$1"; }
 status_ok() { [ "$1" = assessed ] || { [ "$1" = "not assessed" ] && [ -n "$2" ]; }; }
+# unpanelled SITES MESSAGE: the sites table has an autosome other than chr20,
+# the cut panel's one chromosome, with heterozygous sites; each such autosome
+# has none phased, and the message names it as "chrN (0 of H)".
+unpanelled() {
+  local c h p n=0
+  while IFS=$'\t' read -r c _ _ _ h p; do
+    [ "$c" != chr20 ] && [ "${h:-0}" != 0 ] || continue
+    [ "$p" = 0 ] && [[ "$2" == *"${c} (0 of ${h})"* ]] || return 1
+    n=$((n + 1))
+  done < "$1"
+  [ "$n" -gt 0 ]
+}
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && sleep $((i * 15)); done; return 1; }
 show() { echo "--- $1"; cat "${G}/$1/mosaic/$1_mocha_summary.tsv" "${G}/$1/mosaic/$1_mocha.tsv" \
   "${G}/$1/mosaic/$1_mocha_calls_raw.tsv" "${G}/$1/mosaic/$1_mocha_stats.tsv" "${G}/$1/mosaic/$1_mocha_sites.tsv" 2>/dev/null; }
@@ -90,11 +105,18 @@ run_step 51-mocha.sh "$SAMPLE"
 check_step_exit 51-mocha.sh
 show "$SAMPLE"
 check_eq "HG002: phased by Beagle" "$(summ "$SAMPLE" phasing)" beagle
-check_eq "HG002: MoChA read chr20, the panel's one chromosome" "$(summ "$SAMPLE" chromosomes)" chr20
+check "HG002: MoChA read chr20, the panel's one chromosome, and more ($(summ "$SAMPLE" chromosomes))" \
+  has '^(chr[0-9]+,)+chr20(,chr[0-9]+)*$|^chr20(,chr[0-9]+)+$' "$(summ "$SAMPLE" chromosomes)"
+SITES="${G}/${SAMPLE}/mosaic/${SAMPLE}_mocha_sites.tsv"
+check_eq "HG002: the autosomes the panel has no file for make the sample not assessed" "$(summ "$SAMPLE" status)" "not assessed"
+check "HG002: the message names each of them with 0 phased sites ($(summ "$SAMPLE" message))" \
+  unpanelled "$SITES" "$(summ "$SAMPLE" message)"
+awk -F'\t' '$1 == "chr20"' "$SITES" > "${T}/sites_chr20.tsv"
+check "red control: that check fails on the sites table cut to chr20 (all the step kept before)" \
+  not unpanelled "${T}/sites_chr20.tsv" "$(summ "$SAMPLE" message)"
 check_ge "HG002: phased heterozygous sites" "$(summ "$SAMPLE" phased_het_sites)" 100
-# 500 kb hold about 500 hets, too few for the genome-wide BAF autocorrelation
-# MoChA's sample filter reads, so the status may be either state (with a
-# reason); MoChA's own call count is what must be zero.
+# The status is not assessed (the autosomes above), with its reason; MoChA's
+# own call count is what must be zero.
 check "HG002: a status with its reason ($(summ "$SAMPLE" status), baf_auto $(summ "$SAMPLE" baf_auto))" \
   status_ok "$(summ "$SAMPLE" status)" "$(summ "$SAMPLE" message)"
 check_eq "HG002 chr20: MoChA made no call" "$(summ "$SAMPLE" calls_mocha)" 0
@@ -155,7 +177,7 @@ A="${G}/${SAMPLE}/mosaic/${SAMPLE}_mocha.tsv" B="${NF_OUT}/${SAMPLE}/mosaic/${SA
 check "Nextflow wrote ${SAMPLE}_mocha.tsv" test -s "$B"
 check "Nextflow's ${SAMPLE}_mocha.tsv is the bash step's" cmp -s "$A" "$B"
 cmp -s "$A" "$B" || diff "$A" "$B" | head -20
-for k in status chromosomes het_sites depth het_per_10mb calls_mocha calls_reported floor_min phasing; do
+for k in status message chromosomes het_sites depth het_per_10mb calls_mocha calls_reported floor_min phasing; do
   check_eq "Nextflow's summary: ${k} as the bash step's" \
     "$(awk -F'\t' -v k="$k" '$1 == k {print $2}' "${NF_OUT}/${SAMPLE}/mosaic/${SAMPLE}_mocha_summary.tsv" 2>/dev/null)" "$(summ "$SAMPLE" "$k")"
 done
