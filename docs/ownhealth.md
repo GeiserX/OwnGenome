@@ -8,15 +8,17 @@
 ${GENOME_DIR}/${SAMPLE}/facts/${SAMPLE}_genome_facts.json
 ```
 
-`run-all.sh` writes it at the end of every run, after the reports. The format is `ownhealth.genome-facts/v1`. OwnHealth owns that format and checks every file against it when you import. A file it refuses is not stored at all.
+`run-all.sh` writes it at the end of every run, after the reports. A plain `nextflow run main.nf` does not write it yet: run the `bin/og facts` command under [Write the file by hand](#write-the-file-by-hand) on the folder the run published. The format is `ownhealth.genome-facts/v1`. OwnHealth owns that format and checks every file against it when you import. A file it refuses is not stored at all.
 
 ## Bring the file into OwnHealth
 
 1. In OwnHealth, open **Import & review** and pick the person in the household list.
-2. Click **Choose files** and select these files from the sample folder:
+2. Click **Upload**, then **Choose files**, and select these files from the sample folder:
    - `facts/${SAMPLE}_genome_facts.json`
    - `vcf/${SAMPLE}.vcf.gz` and `vcf/${SAMPLE}.vcf.gz.tbi`
    - optional: `vcf/${SAMPLE}.g.vcf.gz` and `vcf/${SAMPLE}.g.vcf.gz.tbi`
+
+   **Choose an OwnGenome folder** does the same in one step: pick a folder that holds only these files, and OwnHealth sends every `.json`, `.vcf.gz` and `.tbi` in it.
 3. Wait until the facts file shows **Imported** and the VCF files show **Attached**.
 4. Open **Genome**.
 
@@ -37,16 +39,20 @@ When you run the pipeline again on the same sample, import the new file. It repl
 Every finding carries where it came from (the tool and the database version), an evidence level and a confidence level:
 
 - **Evidence:** E1 is a CPIC guideline gene or a ClinVar hit with 2 or more review stars. E2 is a ClinVar hit with 1 star or a replicated association. E3 is a single study or a polygenic score.
-- **Confidence:** high when the call passed its quality checks, medium or low when it did not, with the reason. A PGx call drops to medium when a site that defines it has a low genotype quality. CYP2D6 is high only when two callers agree.
+- **Confidence:** high when the call passed its quality checks, medium or low when it did not, with the reason. A PGx call drops to medium when a site that defines it has a low genotype quality. CYP2D6 is high only when two callers agree. A run that started from a VCF, with no reads, caps a ClinVar hit at medium and CYP2D6 at low.
+- **Call state:** every finding says whether it rests on the reference (`ref`) or on a variant (`alt`). A PGx call is `ref` when both alleles are the gene's reference allele as PharmCAT names it (`*1`, `Reference`, CYP2C19 `*38`). ABCG2, IFNL3 and VKORC1 also cite their one site with its genotype.
 
 The file also holds a coverage map. It lists every gene of the ACMG SF list, the CPIC genes and the carrier panel. Each gene is marked as assessed, partly assessed or not assessed. A gene that is not fully assessed has a reason, for example low depth or a near copy of the region elsewhere in the genome. OwnHealth shows the map under the findings, so the reader can tell "no finding" from "not looked at".
+
+A gene counts as assessed only when the run shows its reads were there: gene callability ([step 16b](16b-mosdepth.md)) ran and the genome's mean depth reached its floor of 10 reads. Without that, for example on a run from a VCF, the genes are not assessed. A call that the file leaves out (see below) marks its gene as partly assessed, with a note that names the call.
 
 ## What OwnHealth does not show
 
 - **The rest of the reports.** Structural variants, repeat expansions, copy numbers, mitochondria, runs of homozygosity, ancestry, haplogroups and the plain traits stay in the [HTML report](24-html-report.md). OwnHealth's format has no place for them yet.
 - **Sensitive results, by default.** APOE, the ACMG SF cancer and cardiac genes and predictive neurological repeats are tagged as sensitive or adult onset. OwnHealth shows them as a locked row until the person chooses to reveal each one. A separate setting decides whether an agent may see them.
 - **Adult-onset results for children.** For a person under 18, OwnHealth stores some results but does not show them. These are adult-onset and sensitive results, carrier status, and scores for adult-onset conditions. At 18 the person decides.
-- **Findings that do not fit OwnHealth's terms.** `og facts` leaves out a finding that it cannot describe with the words OwnHealth accepts, for example a PGx phenotype outside OwnHealth's list. It also leaves out a variant whose reference base does not match the reference FASTA. The log of the step, `logs/ownhealth-facts.log`, names each one.
+- **Words outside OwnHealth's terms.** A PGx phenotype or diplotype that OwnHealth's word list does not hold (for example "Uncertain Susceptibility") is left out of the finding; the call and its call state stay.
+- **Findings the file cannot place.** `og facts` leaves out a variant whose reference base does not match the reference FASTA, an indel next to a masked stretch of the reference, and an HLA allele T1K could not type. The coverage map marks the gene as partly assessed, and the log of the step, `logs/ownhealth-facts.log`, names each one.
 
 The findings are information for a personal record, not a diagnosis. A ClinVar hit is a lead to confirm with a clinical test, never a result to act on alone.
 
@@ -58,7 +64,9 @@ The findings are information for a personal record, not a diagnosis. A ClinVar h
 ./scripts/ownhealth-facts.sh ${SAMPLE}
 ```
 
-It needs `summary.json` (step 24 or `generate-report.sh` writes it), `og` (`./scripts/setup.sh --og` builds it, see [The Rust core](rust.md)) and the reference FASTA the run used. The variant identifiers in the file are [GA4GH VRS](https://vrs.ga4gh.org/) 2.0 identifiers worked out on that reference, so a reference that is not GRCh38 is refused.
+It needs `summary.json` (step 24 or `generate-report.sh` writes it), `og` (`./scripts/setup.sh --og` builds it, see [The Rust core](rust.md)) and the GRCh38 reference FASTA the run used, with its `.fai`. The script runs `og` in Docker, in the image `PYTHON_IMAGE` of `versions.env`. It takes a few seconds for a whole genome: it reads `summary.json`, the PharmCAT report and the ClinVar hits, a few reference bases per variant, and hashes the VCF and gVCF.
+
+The variant identifiers in the file are [GA4GH VRS](https://vrs.ga4gh.org/) 2.0 identifiers worked out on that reference. `og facts` refuses a reference that names none of GRCh38's chromosomes (`chr1` to `chrM`) or has one of a length other than GRCh38's. It cannot check every base, so give it the reference the run used.
 
 The same command without the script, on the host:
 
