@@ -166,7 +166,7 @@ process Y_HAPLOGROUP {
         mkdir -p yleaf
         og y yleaf-no-reads --bam ${bam} --idxstats ${idxstats} yleaf/hg_prediction.hg
     fi
-    if [ "\$(grep -c . yleaf/hg_prediction.hg 2>/dev/null || true)" -lt 2 ]; then
+    if [ ! -s yleaf/hg_prediction.hg ] || [ "\$(grep -c . yleaf/hg_prediction.hg)" -lt 2 ]; then
         # Yleaf logs a failed sample as "Skipping" and goes on: its log says why.
         echo "ERROR: Yleaf wrote no prediction (yleaf/hg_prediction.hg); its log is yleaf/run.log" >&2
         exit 1

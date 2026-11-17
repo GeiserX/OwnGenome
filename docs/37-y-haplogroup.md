@@ -43,7 +43,7 @@ In the Nextflow pipeline (`y_haplogroup` in `--tools`) the process runs for the 
 
 With `run-all.sh`: `TOOLS=...,y_haplogroup` (it is opt-in, so a default run lists it as skipped; without the data it is skipped with the reason).
 
-Yleaf downloads the whole hg38 FASTA on its first run unless it is given one. The step passes the pipeline's reference with `--ref-fasta` (Yleaf checks its chrY length against hg38 in the `.fai`; a BAM never needs the sequence itself) and `--no-update-check` turns off its check for a newer release, so nothing is downloaded and every container runs without a network. `--ref-fasta` takes a file ending in `.fa`, `.fasta` or `.fna`, as `setup.sh` installs it.
+Yleaf downloads the whole hg38 FASTA on its first run unless it is given one. The step passes the pipeline's reference with `--ref-fasta` (Yleaf checks its chrY length against hg38 in the `.fai`; a BAM never needs the sequence itself) and `--no-update-check` turns off its check for a newer release, so nothing is downloaded and every container runs without a network. `--ref-fasta` takes only a file ending in `.fa`, `.fasta` or `.fna`, as `setup.sh` installs it, so step 37 stops with a message on any other `REF_FASTA` (a compressed FASTA, say).
 
 ## Output
 

@@ -65,6 +65,12 @@ if [ "$SEX" != male ]; then
   exit 0
 fi
 
+# Yleaf's --ref-fasta takes only these names (a compressed FASTA stops it
+# with a traceback), as the Nextflow pipeline's --reference does.
+case "$REF_FASTA" in
+  *.fa | *.fasta | *.fna) ;;
+  *) echo "ERROR: Yleaf needs a plain reference FASTA ending in .fa, .fasta or .fna (REF_FASTA is ${REF_FASTA})" >&2; exit 1 ;;
+esac
 mkdir -p "$OUTDIR"
 rm -rf "${OUTDIR}/yleaf" "$OUT" "${OUTDIR}/${SAMPLE}_y_tree.txt" "${OUTDIR}/${SAMPLE}_y_tree_path.tsv" \
   "${OUTDIR}/${SAMPLE}_y_private_snps.tsv" "$CHRY" "${CHRY}.bai"
