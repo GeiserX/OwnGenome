@@ -14,14 +14,9 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
 
-if [ ! -f "${SAMPLE_DIR}/summary.json" ]; then
-  echo "ERROR: no ${SAMPLE_DIR}/summary.json; run step 24 or generate-report.sh first" >&2
-  exit 1
-fi
-
-# og is the static binary, so the python image runs it.
+# og is the static binary, so the python image runs it. Without summary.json
+# (step 24 or generate-report.sh writes it) og facts says so and exits 1.
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
   /pgp-bin/og facts \
     --sample "$SAMPLE" \
