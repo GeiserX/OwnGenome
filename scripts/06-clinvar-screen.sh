@@ -128,18 +128,31 @@ SAMPLE_DROPPED=$(comm -23 <(printf '%s\n' "$SAMPLE_CONTIGS") <(printf '%s\n' "$S
 # Step 1: normalise ClinVar once (split multiallelics, left-align), rebuilt when the
 # source is newer. isec matches on identical REF/ALT, so both sides must be split
 # and left-aligned the same way.
+# Every sample shares the normalised copy, so one run builds it while the others
+# wait on clinvar/.norm.lock (lock_acquire, also without flock), then test it
+# again and find it built. The build goes to a .part file only the lock holder
+# writes; the index goes in place before the VCF, so a VCF that is newer than
+# the source always has the index of the same write beside it.
 # Each pipeline below runs in bash with pipefail: under sh a failed first
 # bcftools would go unnoticed when the second one exits 0.
-if [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; then
-  echo "Normalising ClinVar into ${CLINVAR_NORM} ..."
-  rm -f "${CLINVAR_NORM}.part.vcf.gz" "${CLINVAR_NORM}.part.vcf.gz.tbi"
-  # The normalised copy is shared by every sample, so clinvar/ is writable here.
-  run_in --rw "$(dirname "$CLINVAR_NORM")" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
-    bash -o pipefail -c "set -e; bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CLINVAR")' \
-      | bcftools norm -m -any -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "${CLINVAR_NORM}.part.vcf.gz")' -"
-  bcftools_run --rw "$(dirname "$CLINVAR_NORM")" bcftools index -t "$(cpath "${CLINVAR_NORM}.part.vcf.gz")"
-  mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
-  mv "${CLINVAR_NORM}.part.vcf.gz.tbi" "${CLINVAR_NORM}.tbi"
+norm_stale() { [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; }
+if norm_stale; then
+  NORM_LOCK="${GENOME_DIR}/clinvar/.norm.lock"
+  lock_acquire "$NORM_LOCK"
+  trap 'lock_release "$NORM_LOCK"' EXIT
+  if norm_stale; then
+    echo "Normalising ClinVar into ${CLINVAR_NORM} ..."
+    rm -f "${CLINVAR_NORM}.part.vcf.gz" "${CLINVAR_NORM}.part.vcf.gz.tbi"
+    # The normalised copy is shared by every sample, so clinvar/ is writable here.
+    run_in --rw "$(dirname "$CLINVAR_NORM")" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
+      bash -o pipefail -c "set -e; bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CLINVAR")' \
+        | bcftools norm -m -any -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "${CLINVAR_NORM}.part.vcf.gz")' -"
+    bcftools_run --rw "$(dirname "$CLINVAR_NORM")" bcftools index -t "$(cpath "${CLINVAR_NORM}.part.vcf.gz")"
+    mv "${CLINVAR_NORM}.part.vcf.gz.tbi" "${CLINVAR_NORM}.tbi"
+    mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
+  fi
+  lock_release "$NORM_LOCK"
+  trap - EXIT
 fi
 
 # Step 2: filter the sample. Callers that never write PASS (FILTER '.') would lose
