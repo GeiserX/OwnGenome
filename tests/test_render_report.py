@@ -86,7 +86,7 @@ Checks:
      without the table there is no card and no text section.
 
  14. the chapters (bin/render_report.py CHAPTERS), on DEMO-001, the invented
-     sample of tests/demo/make_demo_sample.py: no http(s) src or href other
+     sample og dev demo-sample writes: no http(s) src or href other
      than the loopback viewer and the links marked as opening a website;
      the ClinVar section shows no green badge; each text chapter holds its
      sections; the card titles are the golden list of the report before the
@@ -105,11 +105,9 @@ Checks:
 
 Run: python3 tests/test_render_report.py
 """
-import contextlib
 import glob
 import gzip
 import importlib.util
-import io
 import json
 import os
 import re
@@ -254,7 +252,7 @@ def pgsc_results(d, adjusted):
 
 # The card titles of DEMO-001's HTML report before the chapters (check 14):
 # the chapters move cards, they never add, drop or rename one. The CPIC gene card is there since the
-# demo sample carries a CPIC table (make_demo_sample.py, for the live demo's medicines widget).
+# demo sample carries a CPIC table (og dev demo-sample, for the live demo's medicines widget).
 GOLDEN_TITLES = sorted([
     "Quality Control", "Mosaic Loss of Chromosome Y or X", "Variant Calling", "ClinVar Screening",
     "Carrier List (this sample)", "Couple Carrier Screen", "Pharmacogenomics", "pypgx Pharmacogenomics",
@@ -290,15 +288,11 @@ def text_chapter_order(txt):
 
 def chapter_checks(work):
     """Check 14 (the docstring)."""
-    sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
-    import make_demo_sample
+    from og_binary import og_binary
     g = f"{work}/demo"
     os.makedirs(g)
-    # Step 42's writer is left out: these checks are about the layout, and the
-    # Traits card has its title whether step 42 ran or not.
-    make_demo_sample.traits = lambda d: None
-    with contextlib.redirect_stdout(io.StringIO()):
-        make_demo_sample.main(["--genome-dir", g, "--records", "20000"])
+    subprocess.run([og_binary(), "dev", "demo-sample", "--genome-dir", g, "--records", "20000", "--repo", REPO],
+                   check=True, stdout=subprocess.DEVNULL)
     summ = collect_summary.collect("DEMO-001", f"{g}/DEMO-001")
     txt, html = render_report.text_report(summ), render_report.html_report(summ)
 

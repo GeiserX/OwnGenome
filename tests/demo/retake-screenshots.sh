@@ -2,11 +2,12 @@
 # retake-screenshots.sh — rebuild DEMO-001 and retake the three docs pictures
 # Usage: tests/demo/retake-screenshots.sh <work_dir> [<pictures_dir>]
 #
-#   1. tests/demo/make_demo_sample.py writes the invented sample DEMO-001 in
-#      <work_dir>/genome (fixed seed; no real sample is read);
+#   1. `og dev demo-sample` (bin/og, which scripts/setup.sh --og builds)
+#      writes the invented sample DEMO-001 in <work_dir>/genome (fixed seed;
+#      no real sample is read);
 #   2. steps 36, 27, 24 and 28 run on it unchanged, with the images of
 #      versions.env;
-#   3. `make_demo_sample.py check` stops here if a report section is not ok,
+#   3. `og dev demo-sample check` stops here if a report section is not ok,
 #      so no picture shows a card that says "Not run";
 #   4. tests/demo/render_pictures.py draws demo-html-report.png,
 #      demo-cpic-report.png and demo-multiqc-report.png into <pictures_dir>
@@ -17,6 +18,7 @@
 #      private term.
 #
 # Env: DEMO_RECORDS     variant records of the VCF (default 4700000)
+#      OG               the og that writes DEMO-001 (default bin/og)
 #      DEMO_TERMS_FILE  your private terms for the OCR check, one regular
 #                       expression per line; keep it outside the repository
 #      VENV             the venv to use (created when missing)
@@ -70,14 +72,15 @@ done
 
 echo "=== Docker sees ${GENOME_DIR} and ${REPO}/bin?"
 if ! "$ENGINE" run --rm --network none -v "${GENOME_DIR}:/probe:ro" -v "${REPO}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-    test -f /probe/.demo-genome -a -f /pgp-bin/collect_summary.py; then
+    test -f /probe/.demo-genome -a -f /pgp-bin/og; then
   echo "ERROR: inside a container ${GENOME_DIR} or ${REPO}/bin is empty: Docker does not mount that folder." >&2
   echo "  Put the checkout and <work_dir> under a folder it mounts (Colima: the home folder or /private/tmp)." >&2
   exit 1
 fi
 
 echo "=== 1. DEMO-001"
-python3 "${DEMO}/make_demo_sample.py" --genome-dir "$GENOME_DIR" --records "${DEMO_RECORDS:-4700000}"
+OG=${OG:-${REPO}/bin/og}
+"$OG" dev demo-sample --genome-dir "$GENOME_DIR" --records "${DEMO_RECORDS:-4700000}" --repo "$REPO"
 
 echo "=== 2. Steps 36, 27, 24 and 28"
 bash "${REPO}/scripts/36-pgx-consensus.sh" "$SAMPLE"
@@ -86,7 +89,7 @@ bash "${REPO}/scripts/24-html-report.sh" "$SAMPLE"
 bash "${REPO}/scripts/28-multiqc.sh" "$SAMPLE"
 
 echo "=== 3. Every section of the summary is ok?"
-python3 "${DEMO}/make_demo_sample.py" check --genome-dir "$GENOME_DIR"
+"$OG" dev demo-sample check --genome-dir "$GENOME_DIR"
 
 echo "=== 4. Pictures"
 VENV=${VENV:-${WORK}/venv}
