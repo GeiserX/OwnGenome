@@ -205,9 +205,10 @@ mut optin-partial "$optin"' | .sections.mosaic.data.calls = [] | .sections.mosai
     vaf: "0.2", alt_reads: "9", depth: "45", note: "truncating"}]'
 # Follow-up 454: no unplaced unmapped reads, so no viral genome was looked at.
 # og says so; render_report.py said no read was found (a golden, so the
-# summary's clock is fixed).
-mut optin-viral-na "$optin"' | .generated_utc = "2026-01-02 03:04 UTC"
-  | .sections.viral.data = {hhv6: "not assessed (the BAM has no unplaced unmapped reads)", found: [], genomes: 24}'
+# summary's clock is fixed and only the viral section changes).
+mut optin-viral-na '.generated_utc = "2026-01-02 03:04 UTC" | .sections.viral += {state: "ok",
+  source: "viral/S1_viral.tsv", data: {hhv6: "not assessed (the BAM has no unplaced unmapped reads)", found: [],
+  genomes: 24}}'
 rm -f "$base"
 
 # --- the oracle -----------------------------------------------------------------------

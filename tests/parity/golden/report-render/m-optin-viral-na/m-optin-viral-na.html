@@ -113,28 +113,14 @@
         <li><a href="#variants"><span class="dot dot-ok" title="Complete"></span>Variant calling</a></li>
       </ol>
     </li>
-    <li><a href="#ch-clinical">Clinical</a>
-      <ol>
-        <li><a href="#exomiser"><span class="dot dot-ok" title="Complete"></span>Symptom-driven ranking</a></li>
-        <li><a href="#mei"><span class="dot dot-ok" title="Complete"></span>Mobile element insertions</a></li>
-        <li><a href="#vntyper"><span class="dot dot-ok" title="Complete"></span>MUC1 repeat (ADTKD)</a></li>
-        <li><a href="#chip"><span class="dot dot-ok" title="Complete"></span>Clonal haematopoiesis</a></li>
-        <li><a href="#mosaic-mca"><span class="dot dot-ok" title="Complete"></span>Mosaic chromosomal alterations</a></li>
-      </ol>
-    </li>
-    <li><a href="#ch-medicines">Medicines</a>
-      <ol>
-        <li><a href="#locityper"><span class="dot dot-ok" title="Complete"></span>Locityper second opinion</a></li>
-      </ol>
-    </li>
     <li><a href="#ch-ancestry">Ancestry</a>
       <ol>
-        <li><a href="#roh"><span class="dot dot-ok" title="Complete"></span>Runs of homozygosity</a></li>
+        <li><a href="#roh"><span class="dot dot-missing" title="Not run"></span>Runs of homozygosity</a></li>
       </ol>
     </li>
     <li><a href="#ch-traits">Traits and scores</a>
       <ol>
-        <li><a href="#telomere"><span class="dot dot-ok" title="Complete"></span>Telomere content</a></li>
+        <li><a href="#telomere"><span class="dot dot-missing" title="Not run"></span>Telomere content</a></li>
       </ol>
     </li>
     <li><a href="#ch-other">Other and exports</a>
@@ -191,92 +177,6 @@
   </section>
   </div>
 </section>
-<section class="chapter" id="ch-clinical">
-  <h2 class="chapter-title">Clinical</h2>
-  <p class="question">Is there anything to take to a doctor?</p>
-  <div class="grid">
-  <section class="sec full-width" id="exomiser">
-  <div class="card full-width">
-    <h2>Symptom-Driven Ranking (Exomiser)</h2>
-    <p class="sec-meta">Step 48 &middot; <span class="badge badge-state">Complete</span> &middot; <a class="anchor" href="#exomiser">link to this section</a></p>
-    <p class="caveat">A ranking to bring to a clinical geneticist, not a diagnosis: a high score means a rare, likely damaging variant in a gene linked to symptoms like these, not that it causes them, and an empty or low list does not rule a genetic cause out. Coding and splice variants only (docs/48-exomiser.md).</p>
-    <div class="stat"><span class="label">Symptoms searched</span><span class="value">Brachydactyly (HP:0001156), HP:0000001</span></div>
-    <table>
-      <tr><th>Rank</th><th>Gene</th><th>Inheritance</th><th>Score</th><th>Symptom match</th><th>Variant</th><th>ACMG (Exomiser)</th><th>Linked disease</th><th>Viewer</th></tr>
-      <tr><td>1</td><td>GENEA</td><td>AD</td><td>0.998</td><td>0.800</td><td>chr10:123256215 T&gt;G 0/1<br><span style="font-size:12px;color:#666">missense_variant GENEA:ENST1:c.1688A&gt;C:p.(Glu563Ala)</span></td><td>LIKELY_PATHOGENIC</td><td>Synthetic syndrome one</td><td><a class="locus" href="http://127.0.0.1:8765/#chr10:123256215" target="_blank" rel="noopener noreferrer">chr10:123256215</a></td></tr>
-      <tr><td>2</td><td>GENEB</td><td>AR</td><td>0.9</td><td>0.8</td><td>chr6:1000 G&gt;A 0/1<br><span style="font-size:12px;color:#666">splice_donor_variant c.10+1G&gt;A</span></td><td>UNCERTAIN_SIGNIFICANCE</td><td>.</td><td><a class="locus" href="http://127.0.0.1:8765/#chr6:1000" target="_blank" rel="noopener noreferrer">chr6:1000</a></td></tr>
-      <tr><td></td><td></td><td></td><td></td><td></td><td>chr6:2000 C&gt;T + chr6:900 A&gt;C 1|0<br><span style="font-size:12px;color:#666">stop_gained p.(Gln100*)</span></td><td>PATHOGENIC</td><td>.</td><td><a class="locus" href="http://127.0.0.1:8765/#chr6:900-2000" target="_blank" rel="noopener noreferrer">chr6:900-2000</a></td></tr>
-      <tr><td>3</td><td>GENEC</td><td>XR</td><td>0.5</td><td>0.4</td><td>no locus 1<br><span style="font-size:12px;color:#666">missense_variant p.?</span></td><td>VUS</td><td>D</td><td></td></tr>
-    </table>
-    <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
-    <p class="note">Exomiser&#x27;s own report: exomiser/S_exomiser.html</p>
-  </div>
-    <p class="files">Files of this step, beside this report: <a href="exomiser/S1_exomiser_top.tsv">Exomiser ranking table</a></p>
-  </section>
-  <section class="sec full-width" id="mei">
-  <div class="card full-width">
-    <h2>Mobile Element Insertions</h2>
-    <p class="sec-meta">Step 50 &middot; <span class="badge badge-state">Complete</span> &middot; <a class="anchor" href="#mei">link to this section</a></p>
-    <p class="caveat">Alu, L1 and SVA copies the genome carries and the reference does not, found and genotyped by MEGAnE (Kojima et al. 2023) from short read pairs. Most are common and harmless; the catalog rows are insertions known to cause disease. Not callable: too few reads in that window to tell. Not seen is not proof of absence: short reads find an SVA&#x27;s edges, not its body. Every call: mei/&lt;sample&gt;_mei.tsv.</p>
-    <div class="stat"><span class="label">Insertions called</span><span class="value">2 (Alu 1, SVA 1)</span></div>
-    <table><tr><th>Gene</th><th>Element</th><th>Condition</th><th>Inheritance</th><th>Status</th><th>Depth</th><th>Call</th></tr><tr><td>FKTN</td><td>SVA</td><td>Fukuyama congenital muscular dystrophy</td><td>autosomal recessive</td><td>seen</td><td>30.0</td><td>chr9:105639660 SVA_F 1 copy PASS</td></tr><tr><td>TAF1</td><td>SVA</td><td>X-linked dystonia-parkinsonism</td><td>X-linked</td><td>not callable</td><td>.</td><td>.</td></tr></table>
-  </div>
-  </section>
-  <section class="sec" id="vntyper">
-  <div class="card">
-    <h2>MUC1 VNTR Frameshifts (VNtyper)</h2>
-    <p class="sec-meta">Step 52 &middot; <span class="badge badge-state">Complete</span> &middot; <a class="anchor" href="#vntyper">link to this section</a></p>
-    <p class="caveat">The MUC1 repeat is long and GC-rich, and short reads cover it unevenly. VNtyper looks only for known frameshifts in it: a negative result lowers the chance of those and does not rule out ADTKD-MUC1, and a positive one needs a clinical test (SNaPshot for dupC) to confirm it.</p>
-    <div class="stat"><span class="label">Result</span><span class="value"><span class="badge badge-red">positive</span></span></div>
-    <p>Result: positive</p>
-    <p>A frameshift &lt;dupC&gt;.</p>
-    <p>Variant: 59dupC (Kestrel confidence High_Precision*, 416 k-mer paths for the variant)</p>
-    <p>VNtyper&#x27;s coverage check: PASS</p>
-    <p>At 1075x the 100x-or-more band: 160 of 161 runs (99%).</p>
-    <p>Confirm with SNaPshot.</p>
-  </div>
-  </section>
-  <section class="sec full-width" id="chip">
-  <div class="card full-width">
-    <h2>Clonal Haematopoiesis (CHIP)</h2>
-    <p class="sec-meta">Step 49 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2026-11-01 10:00:00 &middot; <a class="anchor" href="#chip">link to this section</a></p>
-    <p class="caveat">Clonal haematopoiesis is common with age and most people with it never get a blood cancer: a call here is not a diagnosis. A call is a change in a CHIP gene&#x27;s published classes, found by Mutect2 without a matched normal; one at a VAF of 35% or more is left out as possibly inherited. docs/49-chip.md says how to read it.</p>
-    <div class="stat"><span class="label">CHIP calls</span><span class="value">1</span></div>
-    <p>DNMT3A R882H: VAF 0.130 (6 of 46 reads), hotspot R882 &lt;b&gt;</p>
-    <p>Detection limit: a clone of VAF about 14% or more is found 8 times in 10 at this depth (median 30x over the genes&#x27; coding exons). CHIP starts at a VAF of 2%: smaller clones are likely missed, so no call does not rule one out.</p>
-    <p>Too shallow or not on the reference: JAK2, TP53.</p>
-    <p>2 other protein changes listed, not counted: chip/S_chip.tsv.</p>
-  </div>
-  </section>
-  <section class="sec full-width" id="mosaic-mca">
-  <div class="card full-width">
-    <h2>Mosaic Chromosomal Alterations (MoChA)</h2>
-    <p class="sec-meta">Step 51 &middot; <span class="badge badge-state">Complete</span> &middot; <a class="anchor" href="#mosaic-mca">link to this section</a></p>
-    <p class="caveat">Large gains, losses and copy-neutral losses of heterozygosity (CN-LOH) carried by a share of the blood cells, from MoChA on the phased heterozygous sites of chr1 to chr22. In a UK Biobank study they became more common with age and went with a higher risk of a later blood cancer (Loh et al. 2018). That is a population-level association, not a diagnosis; an event is confirmed on a new blood sample. Below the floor nothing is reported, and an event above it can still be missed. Every MoChA call, with the reason it was or was not reported: mosaic/&lt;sample&gt;_mocha.tsv.</p>
-    <div class="stat"><span class="label">Calls reported</span><span class="value">1</span></div>
-    <div class="stat"><span class="label">Cell-fraction floor</span><span class="value">0.050</span></div>
-    <table><tr><th>Type</th><th>Arm</th><th>Region</th><th>Mb</th><th>Cell fraction</th><th>Viewer</th></tr><tr><td>CN-LOH</td><td>20p, to the p telomere</td><td>chr20:60000-20000000</td><td>19.94</td><td>0.150</td><td><a class="locus" href="http://127.0.0.1:8765/#chr20:60000-20000000" target="_blank" rel="noopener noreferrer">chr20:60000-20000000</a></td></tr><tr><td>loss</td><td>1p</td><td>chr1:500-500</td><td>0.00</td><td>0.2</td><td><a class="locus" href="http://127.0.0.1:8765/#chr1:500" target="_blank" rel="noopener noreferrer">chr1:500</a></td></tr></table>
-    <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
-    <p class="note">Reported at a cell fraction of 0.050 or more at 30.0x (read-sampling floor 0.020, minimum 0.05; 2090000 heterozygous sites on chr1-chr22)</p>
-  </div>
-  </section>
-  </div>
-</section>
-<section class="chapter" id="ch-medicines">
-  <h2 class="chapter-title">Medicines</h2>
-  <p class="question">How might I respond to medicines?</p>
-  <div class="grid">
-  <section class="sec full-width" id="locityper">
-  <div class="card full-width">
-    <h2>Locityper Second Opinion at Hard Loci</h2>
-    <p class="sec-meta">Step 53 &middot; <span class="badge badge-state">Complete</span> &middot; <a class="anchor" href="#locityper">link to this section</a></p>
-    <p class="caveat">A second opinion beside the primary caller, never the call itself. Locityper (Prodanov et al. 2025, Nat Genet, PMID 41107551) picks the two haplotypes of the HPRC pangenome panel that best explain the reads at each locus; it names haplotypes of panel people (&lt;sample&gt;.1 or .2), not alleles, so the two callers are shown side by side and not compared. Filter: the authors&#x27; HLA and KIR benchmark filter (no warning, weighted distance of 30 or less, fewer than 1000 or 20% unexplained reads). Every column: locityper/&lt;sample&gt;_locityper.tsv.</p>
-    <div class="stat"><span class="label">Loci called</span><span class="value">2 of 4 (1 pass the filter)</span></div>
-    <table><tr><th>Locus</th><th>Locityper</th><th>Filter</th><th>Primary caller</th></tr><tr><td>HLA-DQB1</td><td>HG00733.1 + NA19240.2 (quality 27.8, 12 of 900 reads unexplained, weighted distance 0.200; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08): DQB1*06:02 + DQB1*03:01</td></tr><tr><td>CYP2D6</td><td>a + b (quality 9, 1200 of 3000 reads unexplained, weighted distance 50.00; filter fail: weighted distance 50.00)</td><td><span class="badge badge-yellow">fail</span></td><td>pypgx (step 32): *1/*2</td></tr><tr><td>FCGR</td><td>not called: Locityper wrote no result</td><td><span class="badge badge-gray">.</span></td><td>no other step calls FCGR</td></tr><tr><td>KIR</td><td>k + k (quality 5, 1 of 10 reads unexplained, weighted distance 1; filter fail)</td><td><span class="badge badge-yellow">fail</span></td><td>.</td></tr></table>
-  </div>
-  </section>
-  </div>
-</section>
 <section class="chapter" id="ch-ancestry">
   <h2 class="chapter-title">Ancestry</h2>
   <p class="question">Where do my ancestors come from?</p>
@@ -284,23 +184,8 @@
   <section class="sec" id="roh">
   <div class="card">
     <h2>Runs of Homozygosity</h2>
-    <p class="sec-meta">Step 11 &middot; <span class="badge badge-state">Complete</span> &middot; <a class="anchor" href="#roh">link to this section</a></p>
-    <p class="caveat">Long runs concentrated on one chromosome, with few elsewhere, are the sign of isodisomy: both copies of that chromosome from one parent. They can also be chance in a child of related parents. Which parent gave both copies cannot be told without the parents&#x27; samples, and a heterodisomy (two different copies from one parent) leaves no runs at all. The parents&#x27; genotypes confirm a UPD. Where an imprinted region is listed, a methylation test of that region tests for its imprinting disorder; on its own it does not prove a UPD (docs/11-roh-analysis.md).</p>
-    <p class="caveat">F_ROH is the share of the autosomes (outside the bands) in runs of 5 MB or more.</p>
-    <p class="caveat">The band is the row of docs/11-roh-analysis.md&#x27;s table it is nearest to: an average, and neighbouring rows overlap, so it is consistent with that relationship, not a proof of it.</p>
-    <p class="caveat">Autosomes only: chrX and chrY are left out, and so is the part of a segment in a centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few markers map. No population allele frequencies were used (bcftools roh --AF-dflt 0.4): read the total and the short segments as rough; the long segments are the signal.</p>
-    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
-    <div class="stat"><span class="label">ROH total</span><span class="value">37.5 MB</span></div>
-    <div class="stat"><span class="label">ROH largest segment</span><span class="value">27.0 MB</span></div>
-    <div class="stat"><span class="label">Segments</span><span class="value">3</span></div>
-    <div class="stat"><span class="label">Autosomal ROH &gt; 5 MB</span><span class="value">2</span></div>
-    <p class="note">chr2:10000001-17000000  7.0MB</p>
-    <p class="note">chr15:23000001-50000000  27.0MB (1.5 MB in a band left out)</p>
-    <p class="note">F_ROH: 0.0128 (34.0 MB in runs of 5 MB or more); nearest: first cousins</p>
-    <p class="note">** chr15 carries 27.0 MB, more than 50% of the length in runs of 5 MB or more: both copies may come from one parent (uniparental isodisomy) **</p>
-    <p class="note">Imprinted 15q11-q13 (SNRPN, UBE3A): from the mother: Prader-Willi; from the father: Angelman (PMID 22237428)</p>
-    <p class="note">Left out in centromere and heterochromatin bands: 46.5 MB</p>
-    <p class="note">Segments on chrX/chrY, not counted: 1</p>
+    <p class="sec-meta">Step 11 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#roh">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
   </div>
   </section>
   </div>
@@ -312,11 +197,8 @@
   <section class="sec" id="telomere">
   <div class="card">
     <h2>Telomere content (relative)</h2>
-    <p class="sec-meta">Step 10 &middot; <span class="badge badge-state">Complete</span> &middot; <a class="anchor" href="#telomere">link to this section</a></p>
-    <p class="caveat">Relative telomere content (intratelomeric reads per million reads with 48-52% GC), not a telomere length: compare it only with samples of a similar age sequenced on the same platform (docs/10-telomere-analysis.md).</p>
-    <div class="stat"><span class="label">Telomere content</span><span class="value">1.5</span></div>
-    <p class="note">Intratelomeric reads: 1,234,567 (floor 2,000 at 30.0x)</p>
-    <div class="stat"><span class="label">Warning</span><span class="value"><span class="badge badge-yellow">too few telomeric reads for a stable estimate; do not compare this value.</span></span></div>
+    <p class="sec-meta">Step 10 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#telomere">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
   </div>
   </section>
   </div>
