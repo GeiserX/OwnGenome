@@ -8,7 +8,11 @@
 #     pipefail;
 #   - two samples screened at the same time against a normalised ClinVar
 #     older than its source build it once, and the published VCF and its
-#     .tbi come from that one write.
+#     .tbi come from that one write (with flock, which every Linux runner
+#     has; a mkdir lock is not exclusive with the uutils mkdir of Ubuntu
+#     26.04);
+#   - without flock the step takes lock_acquire's folder and removes it;
+#   - a stale copy in a clinvar/ folder the user cannot write stops the step.
 # The docker run hook runs each container command for real, with /genome
 # mapped to GENOME_DIR and a fake bcftools and og first on PATH. The fake
 # tools write plain text and stamp every write with an id, which an index
@@ -130,7 +134,7 @@ run_rc clean "${SCRIPTS}/06-clinvar-screen.sh" sample1
 expect_rc clean 0
 [ -f "${GENOME_DIR}/sample1/clinvar/sample1_clinvar_hits.vcf" ] || fail "a clean screen wrote no hits file"
 [ "$(write_id "$NORM")" = "$(write_id "${NORM}.tbi")" ] || fail "a clean screen published a .tbi of another write than the normalised ClinVar"
-[ ! -e "${C}/.norm.lock" ] || fail "a clean screen left clinvar/.norm.lock behind"
+[ ! -e "${C}/.norm.lock.d" ] || fail "a clean screen left the lock folder clinvar/.norm.lock.d behind"
 
 # --- A failed first stage of each nested pipeline fails the step ---------------------
 # name|regex of the first stage's arguments
@@ -147,7 +151,7 @@ for stage in \
   for f in sample1_clinvar_hits.vcf sample1_clinvar_hits.tsv; do
     [ ! -e "${GENOME_DIR}/sample1/clinvar/${f}" ] || fail "${name}: step 06 left ${f} after a failed bcftools"
   done
-  [ ! -e "${C}/.norm.lock" ] || fail "${name}: a failed screen left clinvar/.norm.lock behind"
+  [ ! -e "${C}/.norm.lock.d" ] || fail "${name}: a failed screen left the lock folder clinvar/.norm.lock.d behind"
   echo "${name}: a failed first bcftools fails the step and leaves no hits: PASS"
 done
 
@@ -179,12 +183,29 @@ for s in sample1 sample2; do
   [ -f "${GENOME_DIR}/${s}/clinvar/${s}_clinvar_hits.vcf" ] || fail "${s}: no hits file after two screens at once"
 done
 [ -z "$(find "$C" -name '*.part*')" ] || fail "two screens at once left part files: $(find "$C" -name '*.part*')"
-[ ! -e "${C}/.norm.lock" ] || fail "two screens at once left clinvar/.norm.lock behind"
+[ ! -e "${C}/.norm.lock.d" ] || fail "two screens at once left the lock folder clinvar/.norm.lock.d behind"
 echo "two screens at once build the normalised ClinVar once, VCF and .tbi of one write: PASS"
 
+# --- Without flock: lock_acquire's folder, taken and removed ---------------------------
+# One run only: the folder lock is exclusive with a POSIX mkdir (macOS, GNU),
+# but not with the uutils mkdir of Ubuntu 26.04, so two runs here would test
+# the runner's mkdir, not the step.
+touch -t 202001010000 "$NORM" "${NORM}.tbi"
+rm -rf "${GENOME_DIR}/sample1/clinvar"
+: > "$FAKE_TOOL_LOG"
+(
+  hide_commands flock
+  run_rc no-flock "${SCRIPTS}/06-clinvar-screen.sh" sample1
+  expect_rc no-flock 0
+)
+grep -q '^bcftools norm .*clinvar_pathogenic_chr\.norm' "$FAKE_TOOL_LOG" || fail "without flock the stale normalised ClinVar was not rebuilt"
+[ "$(write_id "$NORM")" = "$(write_id "${NORM}.tbi")" ] || fail "without flock the published .tbi is from another write than the VCF"
+[ ! -e "${C}/.norm.lock.d" ] || fail "without flock the lock folder clinvar/.norm.lock.d was left behind"
+echo "without flock the step builds under lock_acquire's folder and removes it: PASS"
+
 # --- A stale normalised ClinVar in a folder the user cannot write ----------------------
-# The lock is a folder made in clinvar/, so the step must stop with an error
-# there, not wait for a lock it can never take. root writes anywhere, so
+# Without flock the lock is a folder made in clinvar/, so the step must stop
+# with an error there, not wait for a lock it can never take. root writes anywhere, so
 # this part needs an ordinary user, as on the CI runner.
 if [ "$(id -u)" -eq 0 ]; then
   echo "read-only clinvar/: not checked as root, which can write any folder"
@@ -192,10 +213,15 @@ else
   touch -t 202001010000 "$NORM" "${NORM}.tbi"
   rm -rf "${GENOME_DIR}/sample1/clinvar"
   chmod a-w "$C"
-  run_rc readonly-clinvar timeout 60 "${SCRIPTS}/06-clinvar-screen.sh" sample1
+  rc=0
+  (
+    hide_commands flock
+    run_rc readonly-clinvar timeout 60 "${SCRIPTS}/06-clinvar-screen.sh" sample1
+    exit "$RC"
+  ) || rc=$?
   chmod u+w "$C"
-  [ "$RC" -ne 124 ] || fail "step 06 was still waiting after 60 s for a lock in a clinvar/ folder it cannot write"
-  [ "$RC" -ne 0 ] || fail "step 06 exited 0 with a stale normalised ClinVar it cannot rebuild"
+  [ "$rc" -ne 124 ] || fail "step 06 was still waiting after 60 s for a lock in a clinvar/ folder it cannot write"
+  [ "$rc" -ne 0 ] || fail "step 06 exited 0 with a stale normalised ClinVar it cannot rebuild"
   output_has readonly-clinvar 'clinvar is not writable'
   echo "a stale normalised ClinVar in a read-only folder stops the step with an error: PASS"
 fi

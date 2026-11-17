@@ -129,23 +129,31 @@ SAMPLE_DROPPED=$(comm -23 <(printf '%s\n' "$SAMPLE_CONTIGS") <(printf '%s\n' "$S
 # source is newer. isec matches on identical REF/ALT, so both sides must be split
 # and left-aligned the same way.
 # Every sample shares the normalised copy, so one run builds it while the others
-# wait on clinvar/.norm.lock (lock_acquire, also without flock), then test it
-# again and find it built. The build goes to a .part file only the lock holder
+# wait on clinvar/.norm.lock, then test it again and find it built. The lock is
+# flock's when flock is installed: the kernel drops it when the run ends, and a
+# mkdir lock is not exclusive with the uutils mkdir of Ubuntu 26.04 (two runs
+# that make the folder at once can both succeed). Without flock (macOS) it is
+# lock_acquire's folder. The build goes to a .part file only the lock holder
 # writes; the index goes in place before the VCF, so a VCF that is newer than
 # the source always has the index of the same write beside it.
 # Each pipeline below runs in bash with pipefail: under sh a failed first
 # bcftools would go unnoticed when the second one exits 0.
 norm_stale() { [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; }
 if norm_stale; then
-  NORM_LOCK="${GENOME_DIR}/clinvar/.norm.lock"
-  # lock_acquire waits for as long as mkdir fails, so a folder it cannot write
-  # would make it wait forever.
   if [ ! -w "${GENOME_DIR}/clinvar" ]; then
     echo "ERROR: ${CLINVAR_NORM} must be rebuilt, but ${GENOME_DIR}/clinvar is not writable by you." >&2
     exit 1
   fi
-  lock_acquire "$NORM_LOCK"
-  trap 'lock_release "$NORM_LOCK"' EXIT
+  NORM_LOCK="${GENOME_DIR}/clinvar/.norm.lock"
+  if command -v flock >/dev/null 2>&1; then
+    NORM_FLOCK=true
+    exec 8>>"$NORM_LOCK"
+    flock -n 8 || { echo "Waiting for the run that builds ${CLINVAR_NORM} ..."; flock 8; }
+  else
+    NORM_FLOCK=false
+    lock_acquire "${NORM_LOCK}.d"
+    trap 'lock_release "${NORM_LOCK}.d"' EXIT
+  fi
   if norm_stale; then
     echo "Normalising ClinVar into ${CLINVAR_NORM} ..."
     rm -f "${CLINVAR_NORM}.part.vcf.gz" "${CLINVAR_NORM}.part.vcf.gz.tbi"
@@ -157,8 +165,12 @@ if norm_stale; then
     mv "${CLINVAR_NORM}.part.vcf.gz.tbi" "${CLINVAR_NORM}.tbi"
     mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
   fi
-  lock_release "$NORM_LOCK"
-  trap - EXIT
+  if $NORM_FLOCK; then
+    exec 8>&-
+  else
+    lock_release "${NORM_LOCK}.d"
+    trap - EXIT
+  fi
 fi
 
 # Step 2: filter the sample. Callers that never write PASS (FILTER '.') would lose
