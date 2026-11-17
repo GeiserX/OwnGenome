@@ -254,9 +254,13 @@ fn both_reports_follow_the_chapter_order() {
         .flat_map(|c| c.sections.iter().map(|s| s.id))
         .collect();
     let shown = shown_sections(&page);
-    assert_eq!(shown, ["qc", "variants", "not-run", "not-assessed"]);
+    // The frame's sections, and between them the ported sections that
+    // show a card on every run.
+    let n = shown.len();
+    assert_eq!(shown[..2], ["qc", "variants"]);
+    assert_eq!(shown[n - 2..], ["not-run", "not-assessed"]);
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
-    assert_eq!(&shown[..2], in_order.as_slice());
+    assert_eq!(&shown[..n - 2], in_order.as_slice());
     assert_eq!(text_chapters(&txt), ["QUALITY"]);
     let q = txt.split("#  1. QUALITY").nth(1).unwrap_or("");
     assert!(q.find("## Quality control") < q.find("## Variant Calling (DeepVariant)"));
@@ -266,7 +270,7 @@ fn both_reports_follow_the_chapter_order() {
         .replace("id=\"qc\"", "id=\"tmp\"")
         .replace("id=\"variants\"", "id=\"qc\"")
         .replace("id=\"tmp\"", "id=\"variants\"");
-    assert_ne!(shown_sections(&swapped)[..2], in_order[..]);
+    assert_ne!(shown_sections(&swapped)[..n - 2], in_order[..]);
 }
 
 #[test]
