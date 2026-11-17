@@ -317,21 +317,6 @@ pub enum Inline {
     Fixed(&'static str),
 }
 
-/// One line of a card's body.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Line {
-    /// A label and its value.
-    Stat(String, Inline),
-    /// A sentence under the numbers that is not a caveat.
-    Note(String),
-    /// A paragraph.
-    Para(String),
-    /// A plain bulleted list.
-    List(Vec<String>),
-    /// A table of rows.
-    Table(Table),
-}
-
 /// One cell of a table row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Cell {
@@ -374,6 +359,21 @@ pub struct Table {
     pub rows: Vec<Vec<Cell>>,
     pub viewer: bool,
     pub one_line: bool,
+}
+
+/// One line of a card's body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Line {
+    /// A label and its value.
+    Stat(String, Inline),
+    /// A table of rows.
+    Table(Table),
+    /// A sentence under the numbers that is not a caveat.
+    Note(String),
+    /// A paragraph.
+    Para(String),
+    /// A plain bulleted list.
+    List(Vec<String>),
 }
 
 /// One card: a title, the caveats shown under it, the notes saying its

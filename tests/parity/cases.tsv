@@ -1264,3 +1264,4 @@ report-render	m-optin-odd	gen:report-corpus.sh	--summary m-optin-odd.json -o m-o
 report-render	m-optin-since	gen:report-corpus.sh	--summary m-optin-since.json -o m-optin-since.txt -o m-optin-since.html	m-optin-since.txt,m-optin-since.html	bytes	PYTHON_IMAGE
 report-render	m-optin-empty	gen:report-corpus.sh	--summary m-optin-empty.json -o m-optin-empty.txt -o m-optin-empty.html	m-optin-empty.txt,m-optin-empty.html	bytes	PYTHON_IMAGE
 report-render	m-optin-partial	gen:report-corpus.sh	--summary m-optin-partial.json -o m-optin-partial.txt -o m-optin-partial.html	m-optin-partial.txt,m-optin-partial.html	bytes	PYTHON_IMAGE
+report-render	m-optin-viral-na	gen:report-corpus.sh	--summary m-optin-viral-na.json -o m-optin-viral-na.txt -o m-optin-viral-na.html	m-optin-viral-na.txt,m-optin-viral-na.html	bytes	PYTHON_IMAGE

@@ -1,0 +1,193 @@
+================================================================================
+  GENOMICS ANALYSIS REPORT
+  Sample: S
+  Generated: 2026-01-02 03:04 UTC
+  Latest run-all.sh run: 2020-01-01 00:00 UTC
+================================================================================
+
+################################################################################
+#  1. QUALITY: Can I trust this data?
+################################################################################
+
+## Quality control
+---
+  Mean depth: 31.2x
+  Alignment: 1000 reads in, 1000 primary records in the BAM
+  Inferred sex: male
+  Declared sex: male
+  Sex from the reads (somalier): male (declared and measured sex agree)
+  Contamination (VerifyBamID2 FREEMIX): 0.0010 (warning above )
+  Mean depth is an average over the genome: some genes get far fewer reads, and the gene callability card lists those. The sex, identity and contamination checks catch a swapped or mixed sample, not every lab error.
+
+## Variant Calling (DeepVariant)
+---
+  Total variants: 20000
+  PASS variants:  14545
+  SNPs: 11111  Indels: 6667
+  Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 million, most of them common. PASS calls passed the caller's filter; a count says nothing about health on its own.
+
+################################################################################
+#  2. CLINICAL: Is there anything to take to a doctor?
+################################################################################
+
+## Symptom-Driven Ranking (Exomiser, step 48)
+---
+  Symptoms searched: Brachydactyly (HP:0001156), HP:0000001
+  1. GENEA (AD) score 0.998 (symptom match 0.800)
+       chr10:123256215 T>G 0/1 missense_variant GENEA:ENST1:c.1688A>C:p.(Glu563Ala) ACMG LIKELY_PATHOGENIC; Synthetic syndrome one
+  2. GENEB (AR) score 0.9 (symptom match 0.8)
+       chr6:1000 G>A 0/1 splice_donor_variant c.10+1G>A ACMG UNCERTAIN_SIGNIFICANCE
+       chr6:2000 C>T + chr6:900 A>C 1|0 stop_gained p.(Gln100*) ACMG PATHOGENIC
+  3. GENEC (XR) score 0.5 (symptom match 0.4)
+       no locus 1 missense_variant p.? ACMG VUS; D
+  A ranking to bring to a clinical geneticist, not a diagnosis: a high score means a rare, likely damaging variant in a gene linked to symptoms like these, not that it causes them, and an empty or low list does not rule a genetic cause out. Coding and splice variants only (docs/48-exomiser.md). In words: exomiser/S_exomiser.txt
+
+## Mobile Element Insertions (step 50)
+---
+  Insertions called: 2 (Alu 1, SVA 1)
+  FKTN SVA (Fukuyama congenital muscular dystrophy; autosomal recessive): seen (depth 30.0, chr9:105639660 SVA_F 1 copy PASS)
+  TAF1 SVA (X-linked dystonia-parkinsonism; X-linked): not callable (depth .)
+  Alu, L1 and SVA copies the genome carries and the reference does not, found and genotyped by MEGAnE (Kojima et al. 2023) from short read pairs. Most are common and harmless; the catalog rows are insertions known to cause disease. Not callable: too few reads in that window to tell. Not seen is not proof of absence: short reads find an SVA's edges, not its body. Every call: mei/<sample>_mei.tsv.
+
+## MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)
+---
+  Result: positive
+  A frameshift <dupC>.
+  Variant: 59dupC (Kestrel confidence High_Precision*, 416 k-mer paths for the variant)
+  VNtyper's coverage check: PASS
+  At 1075x the 100x-or-more band: 160 of 161 runs (99%).
+  Confirm with SNaPshot.
+  The MUC1 repeat is long and GC-rich, and short reads cover it unevenly. VNtyper looks only for known frameshifts in it: a negative result lowers the chance of those and does not rule out ADTKD-MUC1, and a positive one needs a clinical test (SNaPshot for dupC) to confirm it.
+
+## Clonal Haematopoiesis (CHIP, step 49)
+---
+  DNMT3A R882H: VAF 0.130 (6 of 46 reads), hotspot R882 <b>
+  Detection limit: a clone of VAF about 14% or more is found 8 times in 10 at this depth (median 30x over the genes' coding exons). CHIP starts at a VAF of 2%: smaller clones are likely missed, so no call does not rule one out.
+  Too shallow or not on the reference: JAK2, TP53.
+  2 other protein changes listed, not counted: chip/S_chip.tsv.
+  Clonal haematopoiesis is common with age and most people with it never get a blood cancer: a call here is not a diagnosis. A call is a change in a CHIP gene's published classes, found by Mutect2 without a matched normal; one at a VAF of 35% or more is left out as possibly inherited. docs/49-chip.md says how to read it.
+
+## Mosaic Chromosomal Alterations (MoChA, step 51)
+---
+  Reported at a cell fraction of 0.050 or more at 30.0x (read-sampling floor 0.020, minimum 0.05; 2090000 heterozygous sites on chr1-chr22)
+  CN-LOH on 20p, to the p telomere, chr20:60000-20000000 (19.94 Mb): about 0.150 of the cells
+  loss on 1p, chr1:500-500 (0.00 Mb): about 0.2 of the cells
+  Large gains, losses and copy-neutral losses of heterozygosity (CN-LOH) carried by a share of the blood cells, from MoChA on the phased heterozygous sites of chr1 to chr22. In a UK Biobank study they became more common with age and went with a higher risk of a later blood cancer (Loh et al. 2018). That is a population-level association, not a diagnosis; an event is confirmed on a new blood sample. Below the floor nothing is reported, and an event above it can still be missed. Every MoChA call, with the reason it was or was not reported: mosaic/<sample>_mocha.tsv.
+
+################################################################################
+#  4. MEDICINES: How might I respond to medicines?
+################################################################################
+
+## Locityper Second Opinion at Hard Loci (step 53)
+---
+  Loci called: 2 of 4; passing the authors' filter: 1
+  HLA-DQB1  Locityper: HG00733.1 + NA19240.2 (quality 27.8, 12 of 900 reads unexplained, weighted distance 0.200; filter pass)
+            primary:   T1K (step 08): DQB1*06:02 + DQB1*03:01
+  CYP2D6    Locityper: a + b (quality 9, 1200 of 3000 reads unexplained, weighted distance 50.00; filter fail: weighted distance 50.00)
+            primary:   pypgx (step 32): *1/*2
+  FCGR      Locityper: not called: Locityper wrote no result
+            primary:   no other step calls FCGR
+  KIR       Locityper: k + k (quality 5, 1 of 10 reads unexplained, weighted distance 1; filter fail)
+            primary:   .
+  A second opinion beside the primary caller, never the call itself. Locityper (Prodanov et al. 2025, Nat Genet, PMID 41107551) picks the two haplotypes of the HPRC pangenome panel that best explain the reads at each locus; it names haplotypes of panel people (<sample>.1 or .2), not alleles, so the two callers are shown side by side and not compared. Filter: the authors' HLA and KIR benchmark filter (no warning, weighted distance of 30 or less, fewer than 1000 or 20% unexplained reads). Every column: locityper/<sample>_locityper.tsv.
+
+################################################################################
+#  5. ANCESTRY: Where do my ancestors come from?
+################################################################################
+
+## Runs of Homozygosity
+---
+  Segments: 3  Total: 37.5 MB  Largest: 27 MB
+  Autosomal ROH > 5MB: 2
+    chr2:10000001-17000000  7.0MB
+    chr15:23000001-50000000  27.0MB (1.5 MB in a band left out)
+  F_ROH: 0.0128 (34.0 MB in runs of 5 MB or more); nearest: first cousins
+  ** chr15 carries 27.0 MB, more than 50% of the length in runs of 5 MB or more: both copies may come from one parent (uniparental isodisomy) **
+  Imprinted 15q11-q13 (SNRPN, UBE3A): from the mother: Prader-Willi; from the father: Angelman (PMID 22237428)
+  Long runs concentrated on one chromosome, with few elsewhere, are the sign of isodisomy: both copies of that chromosome from one parent. They can also be chance in a child of related parents. Which parent gave both copies cannot be told without the parents' samples, and a heterodisomy (two different copies from one parent) leaves no runs at all. The parents' genotypes confirm a UPD. Where an imprinted region is listed, a methylation test of that region tests for its imprinting disorder; on its own it does not prove a UPD (docs/11-roh-analysis.md).
+  F_ROH is the share of the autosomes (outside the bands) in runs of 5 MB or more. The band is the row of docs/11-roh-analysis.md's table it is nearest to: an average, and neighbouring rows overlap, so it is consistent with that relationship, not a proof of it.
+  Left out in centromere and heterochromatin bands: 46.5 MB
+  Segments on chrX/chrY, not counted: 1
+  Autosomes only: chrX and chrY are left out, and so is the part of a segment in a centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few markers map. No population allele frequencies were used (bcftools roh --AF-dflt 0.4): read the total and the short segments as rough; the long segments are the signal.
+
+################################################################################
+#  6. TRAITS AND SCORES: What do studies say about my traits and risk scores?
+################################################################################
+
+## Telomere content (relative, TelomereHunter)
+---
+  Telomere content: 1.5 intratelomeric reads per million reads with 48-52% GC
+  Intratelomeric reads: 1,234,567 (floor 2,000 at 30.0x)
+  WARNING: too few telomeric reads for a stable estimate; do not compare this value.
+  Relative telomere content (intratelomeric reads per million reads with 48-52% GC), not a telomere length: compare it only with samples of a similar age sequenced on the same platform (docs/10-telomere-analysis.md).
+
+################################################################################
+#  7. OTHER AND EXPORTS: What else did the run find or write?
+################################################################################
+
+## Viral DNA in the Unmapped Reads (step 47)
+---
+  HHV-6: not assessed (the BAM has no unplaced unmapped reads)
+  Not assessed on any of the 24 viral genomes: the BAM has no unplaced unmapped reads to look in.
+  From the reads that do not map to the human genome, realigned to a fixed set of human viral genomes. Not a test for an infection: most adults carry herpesviruses that stay in their cells, and reagents carry viral DNA too. HHV-6 integration follows Liu et al. 2020 (depth over the viral genome at 0.30 of the human depth or more). Every genome: viral/<sample>_viral.tsv.
+
+## Steps Not Run
+---
+  - ClinVar screen
+  - PharmCAT
+  - CPIC drug-gene recommendations
+  - pypgx
+  - Cyrius (CYP2D6)
+  - SMN1/SMN2 copy number (Parascopy, short reads)
+  - Paralog genes (Paraphase, PacBio HiFi)
+  - HLA typing (T1K)
+  - Polygenic risk scores
+  - Fine-grained ancestry (ADMIXTURE, RFMix)
+  - Structural variants (Manta)
+  - Structural variants (Delly)
+  - Copy number (CNVpytor)
+  - SV consensus merge
+  - Structural variants, class 4 and 5 (AnnotSV)
+  - Repeat expansions (ExpansionHunter)
+  - Telomere content (TelomereHunter)
+  - Runs of homozygosity
+  - Mitochondrial haplogroup
+  - Y-chromosome haplogroup (Yleaf)
+  - Y placement on the current public tree
+  - Y-STR markers (HipSTR)
+  - Raw-data export (23andMe v5 layout)
+  - Blood groups (predicted)
+  - Lp(a): LPA KIV-2 repeat count
+  - MUC1 VNTR frameshifts (VNtyper)
+  - Locityper second opinion at hard loci
+  - Mitochondrial variants
+  - Traits panel
+  - Archaic ancestry (IBDmix)
+  - Ancient populations (AADR PCA)
+  - Viral DNA in the unmapped reads
+  - Symptom-driven ranking (Exomiser)
+  - Clonal haematopoiesis (CHIP)
+  - Mobile element insertions (MEGAnE)
+  - Mosaic chromosomal alterations (MoChA)
+  - Cancer predisposition (CPSR)
+  - Clinical variant filter
+  - Variant prioritization (slivar)
+
+## Not Assessed by This Pipeline
+---
+  - Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)
+  - Methylation and imprinting
+  - Repeat expansions outside the ExpansionHunter catalog
+  - Phase: two variants in one gene are compound-het candidates, not confirmed
+  - Variants of uncertain significance (not interpreted)
+  - Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums
+  - HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call
+  - Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)
+  - MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them
+  - Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample
+
+Run manifest: run_manifest.tsv (pipeline commit unknown, 0 images)
+================================================================================
+  DISCLAIMER: This is NOT a clinical report. Discuss findings with a
+  qualified healthcare professional before making medical decisions.
+================================================================================

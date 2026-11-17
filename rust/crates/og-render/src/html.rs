@@ -66,6 +66,7 @@ fn line(out: &mut Vec<String>, l: &Line) {
             e(label),
             inline(value)
         )),
+        Line::Table(t) => table(out, t),
         Line::Note(t) => out.push(format!("    <p class=\"note\">{}</p>", e(t))),
         Line::Para(t) => out.push(format!("    <p>{}</p>", e(t))),
         Line::List(items) => {
@@ -73,7 +74,6 @@ fn line(out: &mut Vec<String>, l: &Line) {
             out.extend(items.iter().map(|t| format!("      <li>{}</li>", e(t))));
             out.push("    </ul>".to_owned());
         }
-        Line::Table(t) => table(out, t),
     }
 }
 
