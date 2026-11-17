@@ -32,7 +32,7 @@ When you run the pipeline again on the same sample, import the new file. It repl
 |---|---|---|
 | PGx | PharmCAT ([step 7](07-pharmacogenomics.md)) and the CPIC lookup ([step 27](27-cpic-lookup.md)), CYP2D6 from the consensus of [step 36](36-pgx-consensus.md) | diplotype, phenotype, the drugs with a CPIC or DPWG guideline |
 | HLA | the drug-related alleles of [step 8](08-hla-typing.md) | present or absent |
-| Monogenic, ACMG SF, carrier | the Pathogenic and Likely pathogenic hits of the ClinVar screen ([step 6](06-clinvar-screen.md)) | the variant, its ClinVar review stars, and "a clinical test confirms this before any decision" |
+| Monogenic, ACMG SF, carrier | the Pathogenic and Likely pathogenic hits of the ClinVar screen ([step 6](06-clinvar-screen.md)); a hit is filed under the gene the ACMG SF list reports it for. A hypomorph or pseudodeficiency allele of the carrier list is not a carrier finding on its own, so it is left out and its gene is partly assessed | the variant, its ClinVar review stars, and "a clinical test confirms this before any decision" |
 | PRS | the polygenic scores of [step 25](25-prs.md) | the percentile, the PGS Catalog id, the share of the score's variants found |
 | Risk markers | APOE from the traits panel ([step 42](42-traits.md)), Lp(a) from [step 46](46-lpa.md) | the genotype or the estimate |
 

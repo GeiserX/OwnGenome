@@ -34,6 +34,10 @@ pub struct Carrier {
     pub span: Span,
     pub inheritance: String,
     pub condition: String,
+    /// The alleles the severity column sets aside (hypomorph or
+    /// pseudodeficiency), as `chrom:pos:ref:alt` with their kind: such an
+    /// allele never makes a carrier finding on its own.
+    pub set_aside: Vec<(String, String)>,
 }
 
 /// One site of the APOE rule.
@@ -133,10 +137,20 @@ impl Panels {
         }
         let f = assets.join("carrier_genes.tsv");
         for r in rows(&f)? {
+            // severity: "kind chrom:pos:ref:alt name" entries split by ";", or ".".
+            let set_aside = col(&r, "severity", &f)?
+                .split(';')
+                .filter_map(|e| {
+                    let mut w = e.split_whitespace();
+                    Some((w.next()?, w.next()?))
+                })
+                .map(|(kind, key)| (key.to_owned(), kind.to_owned()))
+                .collect();
             p.carrier.push(Carrier {
                 span: span(&r, &f)?,
                 inheritance: col(&r, "inheritance", &f)?.to_owned(),
                 condition: col(&r, "condition", &f)?.to_owned(),
+                set_aside,
             });
         }
         let f = oh.join("sensitive_genes.tsv");

@@ -942,3 +942,80 @@ fn a_reference_without_grch38_names_is_refused() {
             .contains("16569")
     );
 }
+
+#[test]
+fn a_hit_naming_several_genes_is_filed_under_the_gene_its_rule_names() {
+    // ClinVar names two genes; step 23 reports the hit under BRCA1, its ACMG SF gene.
+    let (r, a) = snv(43_050_000);
+    let sections = full_sections()
+        .replace(
+            &format!(
+                r#"{{"gene":"BRCA2","variant":"chr13:32320000 {}>{}"}}"#,
+                snv(32_320_000).0,
+                snv(32_320_000).1
+            ),
+            &format!(r#"{{"gene":"BRCA1","variant":"chr17:43050000 {r}>{a}"}}"#),
+        )
+        .replacen(
+            "\"hits\":[",
+            &format!(
+                "\"hits\":[{},",
+                hit(
+                    "chr17",
+                    43_050_000,
+                    "NBR2,BRCA1",
+                    "het",
+                    "Pathogenic",
+                    2,
+                    None
+                )
+            ),
+            1,
+        );
+    let (b, _) = run("several-genes", &sections);
+    assert_eq!(fact(&b, "acmg_sf", "BRCA1").len(), 1, "{:?}", facts(&b));
+    assert!(facts(&b).iter().all(|f| st(f, &["gene"]) != "NBR2"));
+    // The variant alone is not enough: BRCA2's hit, off step 23's list here, is not ACMG SF.
+    assert_eq!(fact(&b, "acmg_sf", "BRCA2").len(), 0);
+}
+
+#[test]
+fn a_hypomorph_on_the_carrier_list_is_never_a_carrier_finding_on_its_own() {
+    // carrier_genes.tsv: RBM8A chr1:145927447:C:T is a hypomorph (TAR syndrome).
+    let hypomorph = r#"{"stars":2,"chrom":"chr1","pos":145927447,"ref":"C","alt":"T","genotype":"het","gene":"RBM8A",
+        "significance":"Pathogenic","dp":35,"gq":60,"low_confidence":false,"rsids":["rs139428292"]}"#;
+    let sections = full_sections().replacen(
+        "\"hits\":[",
+        &format!(
+            "\"hits\":[{hypomorph},{},",
+            hit("chr1", 145_927_000, "RBM8A", "het", "Pathogenic", 2, None)
+        ),
+        1,
+    );
+    let dir = folder("hypomorph", &sections);
+    let mut g = genome();
+    g.0.insert(("chr1".to_owned(), 145_927_446), b'C');
+    let b = build(SAMPLE, &dir, &panels(), &mut g).expect("builds");
+    let carrier = fact(&b, "carrier", "RBM8A");
+    assert_eq!(carrier.len(), 1, "the other allele is a carrier finding");
+    assert!(
+        facts(&b)
+            .iter()
+            .filter(|f| st(f, &["gene"]) == "RBM8A")
+            .all(|f| !format!("{f:?}").contains("145927447")),
+        "{:?}",
+        fact(&b, "carrier", "RBM8A")
+    );
+    let row = coverage(&b, "RBM8A")[0];
+    assert_eq!(st(row, &["state"]), "partial", "{row:?}");
+    assert!(st(row, &["note"]).contains("hypomorph"), "{row:?}");
+}
+
+#[test]
+fn a_sample_name_other_than_the_folders_is_refused() {
+    let dir = folder("other-sample", &full_sections());
+    let e = build("SYN-02", &dir, &panels(), &mut genome())
+        .err()
+        .expect("refused");
+    assert!(e.contains("SYN-01") && e.contains("SYN-02"), "{e}");
+}

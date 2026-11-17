@@ -38,9 +38,11 @@ impl build::Genome for Fasta {
     }
 }
 
-/// The reference must name GRCh38's chromosomes (`chr1` to `chrM`), and each
-/// it has must have GRCh38's length, or every VRS identifier would name the
-/// wrong sequence.
+/// The reference must name at least one of GRCh38's chromosomes (`chr1` to
+/// `chrM`), and each it has must have GRCh38's length, or every VRS
+/// identifier would name the wrong sequence. A slice of GRCh38 (the CI
+/// fixture's) passes: a finding on a chromosome it lacks is left out, and
+/// its gene is marked partial with that reason.
 pub fn check_build(fasta: &Indexed, p: &panels::Panels) -> Result<(), String> {
     let mut found = 0;
     for (chrom, (_, len)) in &p.refget {

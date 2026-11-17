@@ -235,13 +235,14 @@ fn clinvar_facts(ctx: &mut Ctx<'_>, sample: &str, dir: &Path, summary: &Value, f
             }
         }
     }
-    // The hits step 23 reports under ACMG SF v3.3 (its report_if rules met).
-    let sf: HashSet<&str> = list(
+    // The hits step 23 reports under ACMG SF v3.3 (its report_if rules met),
+    // each with the gene it reports it under.
+    let sf: HashSet<(&str, &str)> = list(
         summary,
         &["sections", "clinical", "data", "acmg_sf", "clinvar_hits"],
     )
     .iter()
-    .filter_map(|h| text(h, &["variant"]))
+    .filter_map(|h| Some((text(h, &["variant"])?, text(h, &["gene"])?)))
     .collect();
     let floor_gq = int(get(data, &["call_floor", "GQ"])).unwrap_or(30);
     let floor_dp = int(get(data, &["call_floor", "DP"])).unwrap_or(10);
@@ -260,10 +261,20 @@ fn clinvar_facts(ctx: &mut Ctx<'_>, sample: &str, dir: &Path, summary: &Value, f
         if !lower.contains("pathogenic") || lower.contains("conflicting") {
             continue;
         }
-        let gene = text(h, &["gene"])
+        // ClinVar can name several genes: take the one step 23 reports the
+        // hit under, else one on the carrier list, else the first.
+        let genes: Vec<&str> = text(h, &["gene"])
             .unwrap_or_default()
             .split(['|', ',', '&', ';'])
-            .next()
+            .map(str::trim)
+            .collect();
+        let is_sf = |g: &str| sf.contains(&(at.as_str(), g));
+        let gene = genes
+            .iter()
+            .find(|g| is_sf(g))
+            .or_else(|| genes.iter().find(|g| ctx.panels.carrier_gene(g).is_some()))
+            .or(genes.first())
+            .copied()
             .unwrap_or_default()
             .to_owned();
         if !gene_ok(&gene) {
@@ -291,9 +302,25 @@ fn clinvar_facts(ctx: &mut Ctx<'_>, sample: &str, dir: &Path, summary: &Value, f
         let recessive = carrier.as_ref().is_some_and(|c| {
             c.inheritance == "AR" || (female && inheritance(&c.inheritance) == Some("XL"))
         });
-        let category = if sf.contains(at.as_str()) {
+        let carrier_het = recessive && zygosity == "het" && ctx.panels.in_carrier_span(chrom, pos);
+        let key = format!("{chrom}:{pos}:{r}:{a}");
+        if let Some((_, kind)) = carrier
+            .as_ref()
+            .and_then(|c| c.set_aside.iter().find(|(k, _)| *k == key))
+            .filter(|_| carrier_het && !is_sf(&gene))
+        {
+            ctx.leave_out(
+                &gene,
+                &format!("{sig} {gene} {at}"),
+                &format!(
+                    "a {kind} allele, which the carrier list sets aside: never a carrier finding on its own"
+                ),
+            );
+            continue;
+        }
+        let category = if is_sf(&gene) {
             "acmg_sf"
-        } else if recessive && zygosity == "het" && ctx.panels.in_carrier_span(chrom, pos) {
+        } else if carrier_het {
             "carrier"
         } else {
             "monogenic_pathogenic"
@@ -1610,6 +1637,14 @@ pub fn build(
     let raw = std::fs::read_to_string(&path)
         .map_err(|e| format!("{}: {e} (step 24 writes it)", path.display()))?;
     let summary = json::loads(&raw).map_err(|e| format!("{}: not JSON ({e:?})", path.display()))?;
+    // The folder's own sample, or the file would carry one person's
+    // findings under another's name.
+    if let Some(named) = text(&summary, &["sample"]).filter(|n| *n != sample) {
+        return Err(format!(
+            "{}: the summary of sample {named}, not {sample}",
+            path.display()
+        ));
+    }
     let declared = match text(&summary, &["run", "declared_sex"]) {
         Some("female") => "female",
         Some("male") => "male",
