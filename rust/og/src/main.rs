@@ -23,117 +23,235 @@ fn tree_hash() -> &'static str {
     &TREE_MARK["og-tree-hash:".len()..TREE_MARK.len() - 1]
 }
 
-const USAGE: &str = "usage: og <tool> [args]
-       og map <verb> [args]
-       og map svg [args]
-       og run state|tasks|eta|headroom|delta [args]
-       og recheck --sample S [--genome-dir DIR] [--offline FILE] [--rerun [--refresh-clinvar]] | --affected KEYS | --launch-dir DIR
-       og setup mask-fasta SRC BED DEST
-       og setup unzip ZIP DEST
-       og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...
-       og setup chrm-shift [args]
-       og setup revel [args]
-       og setup roh-af [args]
-       og vcf csq-rank [options]
-       og vcf index [args]
-       og vcf shift-back [args]
-       og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
-       og sv svlen-fix|inv-filter [args]
-       og sv add-callers [args]
-       og sv postfilter [args]
-       og sv survivor-prep [args]
-       og sv consensus-check [args]
-       og pgx cpic-report|step36-outside [args]
-       og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
-       og pgx outside-calls|hla-concordance|pypgx-summary [args]
-       og paraphase check-bam|table [args]
-       og clinvar join-adjacent|hits|deep-intronic [args]
-       og str motif|catalog [args]
-       og cdna check [args]
-       og cdna scan [args]
-       og comphet phase [args]
-       og bam contigs BAM
-       og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
-       og qc sample [args]
-       og prs format [args]
-       og prs table [args]
-       og mito annotate|deletions|copies [args]
-       og summary collect [--only {a,b,c}] [args]
-       og report render [args]
-       og report index [args]
-       og report charts [args]
-       og live serve [args]
-       og live results [args]
-       og live family [args]
-       og live demo [args]
-       og view serve [args]
-       og couple screen [args]
-       og couple genes [args]
-       og roh summary --sample SAMPLE --roh ROH [--out OUT]
-       og chip prepare|report|check-table [args]
-       og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
-       og traits table [args]
-       og traits phase-sites [args]
-       og traits check [args]
-       og bloodtype report|check-markers|systems [args]
-       og family plan|prepare|check|report|segments [args]
-       og family ibd [args]
-       og consumer build-sites|export|check [args]
-       og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
-       og ancestry-fine freqs [args]
-       og ancestry-fine project [args]
-       og ancestry-fine paint [args]
-       og ancestry-fine simulate [args]
-       og archaic table|strict|genotypes|report [args]
-       og archaic compare [args]
-       og archaic genomes [args]
-       og ancient select|lift|person-geno|align|report [args]
-       og vntyper report [args]
-       og locityper report [args]
-       og mocha report [args]
-       og mei report [args]
-       og mei annotsv-input [args]
-       og viral report [args]
-       og y str-bed [args]
-       og y str-report [args]
-       og y tree-positions --tree-dir DIR OUT
-       og y tree-place [args]
-       og y private-snps [args]
-       og y yleaf-positions --data DATA OUT
-       og exomiser prepare [args]
-       og exomiser report [args]
-       og longread clair3-model [args]
-       og lookup query|resolve|report [args]
-       og dev parity-compare|contract|schema|report-only|remnants [args]
-       og dev scan personal-data|images [args]
-       og dev versions check-run|expand|coupled [args]
-       og dev pgs trait|label-match|metric-match [args]
-       og dev fixture comphet OUT [--swap]
-       og dev fixture trim-pharmcat REPORT OUT [MAX]
-       og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv
-       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf
-       og dev renovate-check LOG
-       og dev pharmcat diplotypes REPORT [--called|--called-lines]
-       og dev nf-trace requests|attempts TRACE [options]
-       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]
-       og dev helpers [args]
-       og dev build cn-intervals|callability|sv-rule-regions [args]
-       og dev build roh-af [args]
-       og dev build acmg-lof [args]
-       og dev demo-sample [args]
-       og dev demo-events [args]
-       og dev params-doc [args]
-       og dev python-gate [args]
-       og dev everything-check [args]
-       og dev licences [args]
-       og dev docs-check [args]
-       og dev stub-http [args]
-       og dev steps-check [args]
-       og dev traits-sources [args]
-       og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
-       og version
-       og --tree-hash
+const USAGE: &str = "usage: og <tool> [verb] [args]
+       og <tool> [verb] --help      one command's usage, on stdout
+
+Run a genome (docs/getting-started.md):
+  GENOME_DIR=/data ./scripts/run-all.sh SAMPLE male|female [nextflow options]
+                       start a run; run it again to resume, it reuses every finished step
+  ./scripts/validate-setup.sh [SAMPLE]
+                       check the setup before a run
+  og run state|tasks|eta|headroom|delta [args]
+                       inspect a run's progress and time left; og run never starts a run
+  og recheck --sample S [--genome-dir DIR] [--offline FILE] [--rerun [--refresh-clinvar]] | --affected KEYS | --launch-dir DIR
+                       say which results of a finished run a newer ClinVar or catalog would change
+  og lookup query|resolve|report [args]
+                       your genotype at an rsID, a position or in a gene, from a finished run
+  og report render [args]
+                       the text and HTML report from a run's summary.json
+  og live serve [args]
+                       the live site of a run
+  og view serve [args]
+                       igv.js over one sample's reads and calls
+
+Pipeline helpers (the steps run these):
+  og map build --root DIR --run RUN --assets DIR --cache-dir DIR [--predicate-table]
+  og map genes --root DIR --cache-dir DIR (--chrom CHROM | --names)
+  og map svg [args]
+  og setup mask-fasta SRC BED DEST
+  og setup unzip ZIP DEST
+  og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...
+  og setup chrm-shift [args]
+  og setup revel [args]
+  og setup roh-af [args]
+  og vcf csq-rank [options]
+  og vcf index [args]
+  og vcf shift-back [args]
+  og table constraint-join --gene-col NAME [--constrained] CONSTRAINT TABLE
+  og sv svlen-fix|inv-filter [args]
+  og sv add-callers [args]
+  og sv postfilter [args]
+  og sv survivor-prep [args]
+  og sv consensus-check [args]
+  og pgx cpic-report|step36-outside [args]
+  og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
+  og pgx outside-calls|hla-concordance|pypgx-summary [args]
+  og paraphase check-bam|table [args]
+  og clinvar join-adjacent|hits|deep-intronic [args]
+  og str motif|catalog [args]
+  og cdna check [args]
+  og cdna scan [args]
+  og comphet phase [args]
+  og bam contigs BAM
+  og qc sex-loss --table TABLE [--regions REGIONS] [--vcf VCF]
+  og qc sample [args]
+  og prs format [args]
+  og prs table [args]
+  og mito annotate|deletions|copies [args]
+  og summary collect [--only {a,b,c}] [args]
+  og report index [args]
+  og report charts [args]
+  og live results [args]
+  og live family [args]
+  og live demo [args]
+  og couple screen [args]
+  og couple genes [args]
+  og roh summary --sample SAMPLE --roh ROH [--out OUT]
+  og chip prepare|report|check-table [args]
+  og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
+  og traits table [args]
+  og traits phase-sites [args]
+  og traits check [args]
+  og bloodtype report|check-markers|systems [args]
+  og family plan|prepare|check|report|segments [args]
+  og family ibd [args]
+  og consumer build-sites|export|check [args]
+  og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
+  og ancestry-fine freqs [args]
+  og ancestry-fine project [args]
+  og ancestry-fine paint [args]
+  og ancestry-fine simulate [args]
+  og archaic table|strict|genotypes|report [args]
+  og archaic compare [args]
+  og archaic genomes [args]
+  og ancient select|lift|person-geno|align|report [args]
+  og vntyper report [args]
+  og locityper report [args]
+  og mocha report [args]
+  og mei report [args]
+  og mei annotsv-input [args]
+  og viral report [args]
+  og y str-bed [args]
+  og y str-report [args]
+  og y tree-positions --tree-dir DIR OUT
+  og y tree-place [args]
+  og y private-snps [args]
+  og y yleaf-positions --data DATA OUT
+  og exomiser prepare [args]
+  og exomiser report [args]
+  og longread clair3-model [args]
+
+This og:
+  og version
+  og --tree-hash
+
+Developer and CI tools (og dev --help lists them alone):
+  og dev parity-compare|contract|schema|report-only|remnants [args]
+  og dev scan personal-data|images [args]
+  og dev versions check-run|expand|coupled [args]
+  og dev pgs trait|label-match|metric-match [args]
+  og dev fixture comphet OUT [--swap]
+  og dev fixture trim-pharmcat REPORT OUT [MAX]
+  og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv
+  og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf
+  og dev renovate-check LOG
+  og dev pharmcat diplotypes REPORT [--called|--called-lines]
+  og dev nf-trace requests|attempts TRACE [options]
+  og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]
+  og dev helpers [args]
+  og dev build cn-intervals|callability|sv-rule-regions [args]
+  og dev build roh-af [args]
+  og dev build acmg-lof [args]
+  og dev demo-sample [args]
+  og dev demo-events [args]
+  og dev params-doc [args]
+  og dev python-gate [args]
+  og dev everything-check [args]
+  og dev licences [args]
+  og dev docs-check [args]
+  og dev stub-http [args]
+  og dev steps-check [args]
+  og dev traits-sources [args]
+  og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
 ";
+
+/// Commands whose own parser answers `-h`/`--help` with a fuller usage than
+/// their line above: `tool` for every verb of it, `tool a|b` for those verbs.
+/// Any other command's help request is answered from its lines above by
+/// [`help`], so a new verb answers `--help` with no change here.
+const OWN_HELP: &[&str] = &[
+    "run",
+    "recheck",
+    "clinvar",
+    "lookup",
+    "family",
+    "chip",
+    "traits",
+    "bloodtype",
+    "cn",
+    "paraphase",
+    "ancient",
+    "pgx cpic-report|step36-outside|refblock-fill|mito-merge|outside-calls|hla-concordance|pypgx-summary",
+    "vcf csq-rank|index",
+    "table constraint-join",
+    "sv svlen-fix|inv-filter|add-callers|postfilter",
+    "str catalog",
+    "qc sex-loss",
+    "report render",
+    "couple screen|genes",
+    "ancestry-fine panel-map|check-map|order|sample-bed|chroms|report|simulate",
+    "archaic table|strict|genotypes|report",
+    "vntyper report",
+    "locityper report",
+    "mocha report",
+    "mei report|annotsv-input",
+    "viral report",
+    "y str-bed|str-report|tree-positions|tree-place|private-snps|yleaf-positions",
+    "exomiser prepare|report",
+    "dev freshness|contract|report-only|remnants|renovate-check|helpers|params-doc|traits-sources",
+];
+
+/// `og WORDS... -h|--help [...]`: the usage lines of the command named by
+/// the words before the first option, on stdout, exit 0; the lines of its
+/// verb when one matches, else every line of the tool. `None` leaves the
+/// request to the command: it is in [`OWN_HELP`] (its `-h` then reaches it
+/// as `--help`, which every one of them reads), names no tool with a line
+/// (an unknown tool keeps its refusal), or holds no help word before `--`.
+fn help(raw: &mut [String]) -> Option<ExitCode> {
+    let end = raw.iter().position(|a| a == "--").unwrap_or(raw.len());
+    let args: Vec<&str> = raw[..end].iter().map(String::as_str).collect();
+    if !args.iter().any(|a| *a == "-h" || *a == "--help") {
+        return None;
+    }
+    let words: Vec<&str> = args
+        .iter()
+        .copied()
+        .take_while(|a| !a.starts_with('-'))
+        .collect();
+    let (tool, verb) = (*words.first()?, words.get(1).copied());
+    let own = OWN_HELP.iter().any(|e| match e.split_once(' ') {
+        None => *e == tool,
+        Some((t, vs)) => t == tool && verb.is_some_and(|v| vs.split('|').any(|x| x == v)),
+    });
+    if own {
+        for a in &mut raw[..end] {
+            if a == "-h" {
+                *a = "--help".to_owned();
+            }
+        }
+        return None;
+    }
+    let lines: Vec<(&str, Vec<&str>)> = USAGE
+        .lines()
+        .map(|l| l.trim_start_matches("usage:").trim())
+        .filter_map(|l| {
+            let mut w = l.split(' ');
+            (w.next() == Some("og") && w.next() == Some(tool)).then(|| {
+                (
+                    l,
+                    w.next().map_or_else(Vec::new, |v| v.split('|').collect()),
+                )
+            })
+        })
+        .collect();
+    let of_verb: Vec<&str> = lines
+        .iter()
+        .filter(|(_, vs)| verb.is_some_and(|v| vs.contains(&v)))
+        .map(|(l, _)| *l)
+        .collect();
+    let show = if of_verb.is_empty() {
+        lines.iter().map(|(l, _)| *l).collect()
+    } else {
+        of_verb
+    };
+    if show.is_empty() {
+        return None;
+    }
+    for (i, l) in show.iter().enumerate() {
+        println!("{}{l}", if i == 0 { "usage: " } else { "       " });
+    }
+    Some(ExitCode::SUCCESS)
+}
 
 /// argparse's way to refuse a command line: usage and the error on stderr, exit 2.
 fn usage_error(msg: &str) -> ExitCode {
@@ -175,7 +293,10 @@ fn main() -> ExitCode {
         eprintln!("ERROR: path is not valid UTF-8");
         return ExitCode::from(2);
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = help(&mut args) {
+        return code;
+    }
     let Some(tool) = args.first() else {
         return usage_error("the following arguments are required: tool");
     };
