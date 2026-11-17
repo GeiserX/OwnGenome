@@ -61,8 +61,7 @@ The findings are information for a personal record, not a diagnosis. A ClinVar h
 `run-all.sh` runs this for you. To write the file again after a single step, first run step 24 again, because `og facts` reads the results from `summary.json` and only step 24 (or `generate-report.sh`) writes it fresh:
 
 ```bash
-./scripts/24-html-report.sh ${SAMPLE}
-./scripts/ownhealth-facts.sh ${SAMPLE}
+./scripts/24-html-report.sh ${SAMPLE} && ./scripts/ownhealth-facts.sh ${SAMPLE}
 ```
 
 It needs `summary.json` (step 24 or `generate-report.sh` writes it), `og` (`./scripts/setup.sh --og` builds it, see [The Rust core](rust.md)) and the GRCh38 reference FASTA the run used, with its `.fai`. The script runs `og` in Docker, in the image `PYTHON_IMAGE` of `versions.env`. It takes a few seconds for a whole genome: it reads `summary.json`, the PharmCAT report and the ClinVar hits, a few reference bases per variant, and hashes the VCF and gVCF.
