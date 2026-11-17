@@ -36,7 +36,7 @@ const VERBS: &str = "
                   comparison; --medications, --consensus and --contraindications add sections
   step36-outside  prints the step 36 genes (CYP2D6, HLA-A, HLA-B) the report calls from an
                   outside call, one per line
-  An option given as an empty string counts as not given.
+  An optional option given as an empty string counts as not given.
 ";
 
 /// The options of `cpic-report`. An option given as an empty string counts
