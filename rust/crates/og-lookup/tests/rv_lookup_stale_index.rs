@@ -1,7 +1,9 @@
-//! An index older than its VCF is not trusted: a contig the VCF gained after
-//! the index was built is not in the index, so an indexed read would answer
-//! "no call" for a variant the file holds. The lookup reads the whole file
-//! instead and says so; a fresh index is still used.
+//! An index older than its VCF is not trusted for a contig it does not list:
+//! the VCF may have gained that contig after the index was built, so an
+//! indexed read would answer "no call" for a variant the file holds. The
+//! lookup reads the whole file instead and says so. A fresh index, or an
+//! older one that lists the contig (a Nextflow outdir copies the small index
+//! before the large VCF), is still used.
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -100,7 +102,7 @@ fn an_index_older_than_its_vcf_is_not_trusted() {
     assert_eq!(out, want, "the stale index hid the chrM call");
     assert!(
         err.contains(&format!(
-            "NOTE: the index {} is older than {gz_s}; reading the whole file",
+            "NOTE: the index {} is older than {gz_s} and does not list chrM; reading the whole file",
             tbi.display()
         )),
         "{err}"
@@ -120,6 +122,17 @@ fn an_index_older_than_its_vcf_is_not_trusted() {
     let (out, err) = chrm_73(&gz_s);
     assert_eq!(out, want);
     assert!(err.is_empty(), "{err}");
+
+    // The same full index dated before the file, as Nextflow leaves it when
+    // it copies the small index before the large VCF, is still read: it
+    // lists chrM, so the indexed path answers and nothing is streamed.
+    touch(&tbi, &gz, false);
+    let (out, err) = chrm_73(&gz_s);
+    assert_eq!(out, want);
+    assert!(
+        err.is_empty(),
+        "an older index that lists the contig is used: {err}"
+    );
 
     fs::remove_dir_all(&dir).unwrap();
 }
