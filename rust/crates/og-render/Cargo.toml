@@ -17,6 +17,7 @@ fault-escape-apos-39 = []
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
+og-lookup.workspace = true
 og-summary.workspace = true
 indexmap.workspace = true
 
