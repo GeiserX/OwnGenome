@@ -81,6 +81,27 @@ fn verdict(
     ("ok", format!("{got}, as declared"))
 }
 
+/// Why somalier's numbers for one pair are no measurement, or None.
+/// somalier writes `nan` (or `inf`) when it had nothing to divide by; every
+/// comparison with NaN is false, so [`verdict`] would bin it as unrelated
+/// and call a pair declared unrelated or distant ok. A negative count, or
+/// more opposite homozygotes than sites, is no count somalier can make.
+fn unmeasured(rel_text: &str, rel: f64, ibs0: i128, ibs2: i128, n: i128) -> Option<String> {
+    if ibs0 < 0 || ibs2 < 0 || n < 0 || ibs0 > n {
+        return Some(format!(
+            "somalier gave ibs0 {ibs0}, ibs2 {ibs2} and {n} sites for this pair: not counts \
+             of sites, not measured"
+        ));
+    }
+    if !rel.is_finite() {
+        return Some(format!(
+            "somalier gave relatedness '{}' for this pair: not measured",
+            rel_text.trim()
+        ));
+    }
+    None
+}
+
 pub fn run(a: &Args) -> Result<()> {
     let members_path = a.one("--members").unwrap_or_default();
     let pairs_path = a.one("--pairs").unwrap_or_default();
@@ -130,7 +151,11 @@ pub fn run(a: &Args) -> Result<()> {
             let (rel, ibs0, ibs2, n) =
                 (float("relatedness")?, int("ibs0")?, int("ibs2")?, int("n")?);
             let rate = if n != 0 { ibs0 as f64 / n as f64 } else { 0.0 };
-            let (v, why) = verdict(&d, e, rel, rate, n);
+            let rel_text = cell(r, "relatedness", pairs_path)?;
+            let (v, why) = match unmeasured(rel_text, rel, ibs0, ibs2, n) {
+                Some(why) => ("not_checked", why),
+                None => verdict(&d, e, rel, rate, n),
+            };
             if v == "mismatch" {
                 bad.push(format!("{x} and {y}: {why}"));
             } else if v != "ok" {
