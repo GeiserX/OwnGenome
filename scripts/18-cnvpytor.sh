@@ -56,12 +56,12 @@ mkdir -p "$OUTPUT_DIR"
 
 # The package sits under the lib directory of the prefix the cnvpytor command
 # is installed in. The container prints the directory only when exactly one
-# matches.
+# matches, and exits 1 otherwise; the check below then stops the step.
 # shellcheck disable=SC2016  # the dollar signs are for the container's sh
 CNVPYTOR_IMG_DATA=$(run_in "${CNVPYTOR_IMAGE}" \
   sh -c 'bin=$(command -v cnvpytor) &&
     d=$(find "${bin%/bin/*}/lib" -type d -path "*/site-packages/cnvpytor/data") &&
-    [ -d "$d" ] && echo "$d"')
+    [ -d "$d" ] && echo "$d"') || CNVPYTOR_IMG_DATA=
 case "$CNVPYTOR_IMG_DATA" in
   /*/cnvpytor/data) ;;
   *)
