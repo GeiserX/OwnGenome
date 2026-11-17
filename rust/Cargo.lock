@@ -672,6 +672,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-browser"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "pycompat",
+ "regex",
+]
+
+[[package]]
 name = "og-chip"
 version = "0.1.0"
 dependencies = [

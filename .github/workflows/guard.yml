@@ -480,6 +480,36 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 
+      # The browser checks of og-browser (tests/browser/README.md) ran in
+      # cargo test above, in the runner's Chrome. Two controls: a page error
+      # planted in the clean page must fail its test, and with no Chrome the
+      # tests must fail in CI and only skip outside it.
+      - name: The browser checks fail on a planted page error, and without Chrome in CI
+        if: ${{ !cancelled() }}
+        run: |
+          log="${RUNNER_TEMP}/og-browser-red.log"
+          if cargo test --locked --no-fail-fast -p og-browser --features planted-page-error --test cdp > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the clean page's test passed with a planted page error"
+            exit 1
+          fi
+          cat "$log"
+          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
+          grep -F "Cannot read properties of null (reading 'planted')" "$log"
+          echo "Control: a planted page error failed the clean page's test."
+          if CHROME=/nonexistent cargo test --locked --no-fail-fast -p og-browser --test cdp > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the browser checks passed in CI without Chrome"
+            exit 1
+          fi
+          cat "$log"
+          grep -F "[FAIL] no Chrome or Chromium to load the test page" "$log"
+          echo "Control: without Chrome the browser checks fail in CI."
+          CHROME=/nonexistent CI= cargo test --locked -p og-browser --test cdp -- --nocapture > "$log" 2>&1 || { cat "$log"; exit 1; }
+          cat "$log"
+          test "$(grep -c -F '[SKIP] no Chrome or Chromium to load the test page' "$log")" -eq 2
+          echo "Outside CI, without Chrome the browser checks skip."
+
       # The planned-verb test (og/tests/port_scaffold.rs) must fail when a
       # later merge drops a verb's arm.
       - name: The planned-verb test fails when a verb is dropped
