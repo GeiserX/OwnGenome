@@ -17,6 +17,9 @@ validate_sample "$SAMPLE"
 
 # og is the static binary, so the python image runs it. Without summary.json
 # (step 24 or generate-report.sh writes it) og facts says so and exits 1.
+for f in "$REF_FASTA" "${REF_FASTA}.fai"; do
+  [ -f "$f" ] || { echo "ERROR: ${f} not found: the reference the run used, with its index" >&2; exit 1; }
+done
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
   /pgp-bin/og facts \
     --sample "$SAMPLE" \
