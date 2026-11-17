@@ -178,7 +178,7 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 Inside the container both listeners bind every address, and `-p 127.0.0.1:...` keeps them on the host's loopback. Write the hash first: `mkdir -p -m 700 ~/.owngenome-live`, then `(umask 077; python3 bin/owngenome_live.py hash-password > ~/.owngenome-live/password)`, so the file is mode 600 from the moment it exists.
 
-**Behind a reverse proxy.** Point the proxy at `127.0.0.1:8787`, pass the Host header, and turn off response buffering for `/runs/<run>/events` (the server sends `X-Accel-Buffering: no`, which nginx honours). Then:
+**Behind a reverse proxy.** Give the site a host name of its own, such as `live.example.org`, and serve it at the root of that name. A path prefix such as `example.org/genome/` does not work: the pages ask for their files and data at root paths (`/login`, `/runs.json`, `/assets/live.css`), and the server has no flag for a prefix. Point the proxy at `127.0.0.1:8787`, pass the Host header, and turn off response buffering for `/runs/<run>/events` (the server sends `X-Accel-Buffering: no`, which nginx honours). Then:
 
 ```bash
 ./scripts/owngenome-live.sh --allowed-host live.example.org --trust-proxy 127.0.0.1 --cookie-secure
