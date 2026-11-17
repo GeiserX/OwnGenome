@@ -6,14 +6,18 @@
 # high-coverage archaic genomes, the Altai and Vindija 33.19 Neanderthals and
 # the Altai Denisovan, and calls the stretches you share with one of them.
 # It needs the archaic data setup.sh --archaic builds (reference/archaic/):
-#   1. bin/archaic_report.py genotypes writes IBDmix's genotype file of each
+#   1. og archaic genotypes writes IBDmix's genotype file of each
 #      chromosome: the archaic genotypes, yours from the VCF, and 100
-#      stand-ins carrying the 1000 Genomes allele count of ARCHAIC_POP at each
-#      site (IBDmix takes the modern frequency from the modern columns, and
-#      one genome alone gives it none; docs/43-archaic.md says why this is
-#      the same score);
+#      stand-ins carrying round(AF x 200) ALT alleles of ARCHAIC_POP at each
+#      site (IBDmix takes the modern frequency from the modern columns, yours
+#      included, and one genome alone gives it none; docs/43-archaic.md says
+#      what that does to the score). A site the VCF has no record for is the
+#      reference only inside a reference block of the gVCF of step 3
+#      (vcf/<sample>.g.vcf.gz), and unknown to IBDmix otherwise: a
+#      variant-only VCF cannot tell a reference match from a site without
+#      reads;
 #   2. IBDmix scores your column against each archaic genome (LOD 4);
-#   3. bin/archaic_report.py report keeps the segments of 50 kb or more,
+#   3. og archaic report keeps the segments of 50 kb or more,
 #      merges the two Neanderthals, and writes the share, the segments and
 #      the ten longest with their protein-coding genes.
 #
@@ -35,6 +39,7 @@ DATA=${ARCHAIC_DIR:-${GENOME_DIR}/reference/archaic/${ARCHAIC_DATA_VERSION}}
 POP=${ARCHAIC_POP:-ALL}
 S="${GENOME_DIR}/${SAMPLE}"
 VCF="${S}/vcf/${SAMPLE}.vcf.gz"
+GVCF="${S}/vcf/${SAMPLE}.g.vcf.gz"
 OUT="${S}/archaic"
 WORK="${OUT}/work"
 
@@ -44,6 +49,7 @@ if [ "${ARCHAIC_DIR:-}" = none ] || [ ! -s "${DATA}/DONE" ]; then
 fi
 case "$POP" in ALL|AFR|AMR|EAS|EUR|SAS) ;; *) echo "ERROR: ARCHAIC_POP must be ALL, AFR, AMR, EAS, EUR or SAS, got '${POP}'" >&2; exit 2 ;; esac
 [ -f "$VCF" ] || { echo "ERROR: File not found: ${VCF}" >&2; exit 1; }
+[ -f "$GVCF" ] || { echo "ERROR: File not found: ${GVCF}. Step 43 reads the gVCF of step 3 beside the VCF (a variant-only VCF cannot tell a reference match from a site without reads)." >&2; exit 1; }
 D=$(cpath "$DATA")
 
 echo "============================================"
@@ -51,6 +57,7 @@ echo "  Step 43: Archaic ancestry (IBDmix)"
 echo "  Archaic genomes: Altai and Vindija 33.19 Neanderthals, Altai Denisovan"
 echo "  Modern frequencies: 1000 Genomes ${POP}"
 echo "  Sample: ${SAMPLE}"
+echo "  Input:  ${VCF} and ${GVCF}"
 echo "  Output: ${OUT}"
 echo "============================================"
 echo ""
@@ -59,10 +66,10 @@ rm -rf "$WORK" "${OUT}/${SAMPLE}_archaic".* "${OUT}/${SAMPLE}_archaic_segments.t
 mkdir -p "${WORK}/ibdmix"
 W=$(cpath "$WORK")
 
-echo "[1/3] Writing IBDmix's genotype files (your VCF, the archaic genomes, the stand-ins)..."
+echo "[1/3] Writing IBDmix's genotype files (your VCF and gVCF, the archaic genomes, the stand-ins)..."
 run_in --cpus 1 --memory 4g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/archaic_report.py genotypes --table-dir "$D" --vcf "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" \
-    --pop "$POP" --out-dir "${W}/gt"
+  /pgp-bin/og archaic genotypes --table-dir "$D" --vcf "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" \
+    --gvcf "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" --pop "$POP" --out-dir "${W}/gt"
 
 # One IBDmix run per chromosome and archaic genome, THREADS at a time, with the
 # options of Chen et al. 2020 (their j.cell.2020.01.012-workflow/config.yaml),
@@ -101,7 +108,7 @@ else
   echo "  No GENCODE gene file (${GENES}): the segments are listed without their genes (setup.sh installs it)."
 fi
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/archaic_report.py report --sample "$SAMPLE" --ibdmix-dir "${W}/ibdmix" \
+  /pgp-bin/og archaic report --sample "$SAMPLE" --ibdmix-dir "${W}/ibdmix" \
     --spans "${W}/gt/spans.tsv" --pop "$POP" ${GARG[@]+"${GARG[@]}"} --out-dir "$(cpath "$OUT")"
 for f in "${OUT}/${SAMPLE}_archaic.tsv" "${OUT}/${SAMPLE}_archaic_segments.tsv"; do
   [ -s "$f" ] || { echo "ERROR: step 43 wrote no ${f}" >&2; exit 1; }

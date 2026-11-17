@@ -74,7 +74,7 @@ else echo "FAIL: the pgs key"; failed=1; fi
 if "$RUN" --data-key catalogs | grep -qE '^e2e-data-catalogs-[0-9a-f]{16}$'; then echo "PASS: the catalogs key is a hash"
 else echo "FAIL: the catalogs key"; failed=1; fi
 # Every row must be "NAME URL SHA256": a malformed row would reach the fill.
-list=$( { bash "${REPO}/scripts/ci/build-callability.sh" --list; python3 "${REPO}/scripts/ci/build-cn-intervals.py" --list; bash "${REPO}/scripts/ci/build-sv-rule-regions.sh" --list; } )
+list=$( { bash "${REPO}/scripts/ci/build-callability.sh" --list; bash "${REPO}/scripts/ci/build-cn-intervals.sh" --list; bash "${REPO}/scripts/ci/build-sv-rule-regions.sh" --list; } )
 n=$(awk 'NF == 3 && $2 ~ /^https:/ && $3 ~ /^[0-9a-f]{64}$/' <<< "$list" | wc -l | tr -d ' ')
 all=$(wc -l <<< "$list" | tr -d ' ')
 if [ "$n" = 15 ] && [ "$all" = 15 ]; then echo "PASS: the three builders list 15 pinned downloads (7, 4 and 4), every row well formed"

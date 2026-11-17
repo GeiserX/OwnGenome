@@ -17,12 +17,18 @@
 //!   check and its two tables.
 //! - [`sv`]: `og sv add-callers|postfilter`, step 05's SV calls into
 //!   AnnotSV and the checks of its class 4 and 5 calls.
+//! - [`longread`]: `og longread clair3-model`, the Clair3 model for the
+//!   basecaller (not ported yet).
 
 pub mod constraint;
 pub mod consumer;
 pub mod family;
+pub mod longread;
 pub mod paraphase;
 pub mod pgx_rules;
 pub mod prs;
 pub mod pypgx_summary;
 pub mod sv;
+
+/// Step 42 traits and genotype rules.
+pub mod traits;

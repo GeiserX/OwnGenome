@@ -24,14 +24,14 @@ Borrowed, not rewritten:
     somalier, VerifyBamID2 and pgsc_calc files and the score folder
     `og prs format` writes (written here in its layout: og runs only inside
     the pipeline's Linux containers);
-  - step 33's mosaic rows come from og qc sex-loss, step 26b's painting
-    from bin/ancestry_fine_report.py, step 35b's table from
+  - step 33's mosaic rows come from og qc sex-loss, step 26b's table
+    and painting from og ancestry-fine report, step 35b's table from
     og paraphase table, step 39's from bin/couple_report.py and step 42's
-    from bin/traits_report.py, each fed made-up inputs; step 46's table and
+    from og traits table, each fed made-up inputs; step 46's table and
     step 35's HBA1/HBA2 table are what og cn call writes for made-up depths
     (HBA_TABLE and LPA_TABLE; tests/test_hba_copy_number.py and
     tests/test_lpa_kiv2.py check that og still writes them), step 49's depth
-    rows from bin/chip_report.py's detection_limit, with made-up counts; the
+    rows with og chip's detection limit, at made-up depths; the
     tables of steps 02, 40, 41, 45, 47, 48, 50, 51, 52 and 53 are written
     here, in the columns their writers use (og for 45 to 53), with the values
     those writers give for the made-up inputs named in each function.
@@ -624,10 +624,11 @@ def structural(d, rng):
                      f"{min(1, p * 9):.4e}\t{rng.uniform(0, 0.5):.4f}\t{rng.uniform(0, 0.1):.4f}\t{rng.randint(0, 9)}")
     put(os.path.join(d, "cnvpytor", f"{SAMPLE}_cnvs.txt"), "\n".join(lines) + "\n")
 
-    # Step 05's class 4 and 5 SVs, checked (bin/annotsv_postfilter.py's
-    # columns): none, as in most genomes.
-    import annotsv_postfilter
-    cols = annotsv_postfilter.KEEP + annotsv_postfilter.ADDED
+    # Step 05's class 4 and 5 SVs, checked (the columns og sv postfilter
+    # writes): none, as in most genomes.
+    cols = ["AnnotSV_ID", "ID", "SV_chrom", "SV_start", "SV_end", "SV_length", "SV_type", "Gene_name", "ACMG_class",
+            "AnnotSV_ranking_score", "Caller", "Exon_edge", "Exon_edge_detail", "Population_AF",
+            "Population_source", "Common", "AnnotSV_class", "Depth_support", "Rule", "Rule_detail"]
     rows = []
     if has("annotsv"):
         # One class 4 deletion over an invented gene, from Manta, kept by step 05's rules.
@@ -802,7 +803,10 @@ def callability(d, rng):
     written from the repository's catalog, so it always matches it. The ALT-only
     genes get no row, as in the real step."""
     rows = ["#chrom\tstart\tend\tregion\t10X"]
-    for r in collect_summary.asset_rows("callability_genes.tsv"):
+    with open(os.path.join(REPO, "assets", "callability_genes.tsv"), encoding="utf-8") as f:
+        catalog = list(csv.DictReader((x for x in f if not x.startswith("#")), delimiter="\t",
+                                      quoting=csv.QUOTE_NONE))
+    for r in catalog:
         if r["start"] == ".":
             continue
         start, end = int(r["start"]), int(r["end"])
@@ -852,41 +856,56 @@ def mosaic(d, rng):
 
 def ancestry_fine(d, rng):
     """Step 26b's table (ADMIXTURE fractions with their bootstrap range, then
-    the painted shares) and its painting, drawn by bin/ancestry_fine_report.py.
-    Mostly West Eurasian, as step 25's EUR placement above."""
-    import ancestry_fine_report as afr
+    the painted shares) and its painting, written by og ancestry-fine report
+    from made-up ADMIXTURE and RFMix output. Mostly West Eurasian, as step
+    25's EUR placement above."""
     continent = {"WEA": 0.942, "CSA": 0.031, "AFR": 0.012, "EAS": 0.008, "AMR": 0.005, "OCE": 0.002}
     region = {"NWE": 0.463, "IBE": 0.274, "ITA": 0.118, "NEE": 0.052, "SAR": 0.009, "CAU": 0.011, "LEV": 0.008,
               "BDN": 0.002, "NAF": 0.005, "CSA": 0.031, "WAF": 0.007, "EAF": 0.003, "CAF": 0.001, "SAF": 0.001,
               "EAS": 0.006, "SIB": 0.002, "AMR": 0.005, "OCE": 0.002}
-    table = []
-    for level, fr in (("continent", continent), ("region", region)):
-        for code, f in sorted(fr.items(), key=lambda kv: -kv[1]):
-            se = max(0.002, math.sqrt(f * (1 - f)) * rng.uniform(0.04, 0.08))
-            table.append([level, code, afr.label(level, code), f"{f:.4f}", f"{se:.4f}",
-                          f"{max(0.0, f - 1.96 * se):.4f}", f"{min(1.0, f + 1.96 * se):.4f}"])
-    # The painting: each haplotype of chr1-22 in segments of 8 to 60 Mb, West
-    # Eurasian but for a few short ones.
-    rows = []
-    for i, n in enumerate(afr.CHROM_LEN):
-        for hap in (1, 2):
-            pos = rng.randint(200_000, 1_500_000)
-            while pos < n - 2_000_000:
-                end = min(n - rng.randint(200_000, 1_500_000), pos + rng.randint(8_000_000, 60_000_000))
-                code = "WEA" if rng.random() < 0.8 else rng.choice(["CSA", "CSA", "AFR"])
-                if code != "WEA":
-                    end = min(end, pos + rng.randint(3_000_000, 12_000_000))
-                rows.append([f"chr{i + 1}", pos, end, hap, code])
+    # GRCh38 lengths of chr1 to chr22.
+    chrom_len = [248956422, 242193529, 198295559, 190214555, 181538259, 170805979, 159345973, 145138636,
+                 138394717, 133797422, 135086622, 133275309, 114364328, 107043718, 101991189, 90338345,
+                 83257441, 80373285, 58617616, 64444167, 46709983, 50818468]
+    with tempfile.TemporaryDirectory() as work:
+        model, adm, paint, out = (os.path.join(work, x) for x in ("model", "admixture", "paint", "out"))
+        for x in (model, adm, paint):
+            os.makedirs(x)
+        levels = []
+        for level, fr in (("continent", continent), ("region", region)):
+            codes = list(fr)
+            levels.append(f"{level}\t{len(codes)}\t{','.join(codes)}\n")
+            put(os.path.join(adm, f"{SAMPLE}_{level}.{len(codes)}.Q"), " ".join(f"{fr[c]:.6f}" for c in codes) + "\n")
+            # 20 bootstrap replicates, each fraction moved by a few percent of its spread.
+            boot = []
+            for _ in range(20):
+                row = [max(0.0, fr[c] + rng.gauss(0, max(0.002, math.sqrt(fr[c] * (1 - fr[c])) * 0.06))) for c in codes]
+                boot.append(" ".join(f"{v / sum(row):.6f}" for v in row) + "\n")
+            put(os.path.join(adm, f"{SAMPLE}_{level}.boot.Q"), "".join(boot))
+        put(os.path.join(model, "levels.tsv"), "".join(levels))
+        # The painting: each chromosome in windows of 3 to 15 Mb, each haplotype
+        # West Eurasian but for a few windows.
+        groups = ["AFR", "CSA", "WEA"]
+        for i, n in enumerate(chrom_len):
+            c = f"chr{i + 1}"
+            rows = ["#Subpopulation order/codes: " + "\t".join(f"{g}={k}" for k, g in enumerate(groups)),
+                    "#chm\tspos\tepos\tsgpos\tegpos\tn snps\t" + f"{SAMPLE}.0\t{SAMPLE}.1"]
+            pos, end_of = rng.randint(200_000, 1_500_000), n - rng.randint(200_000, 1_500_000)
+            while pos < end_of - 2_000_000:
+                end = min(end_of, pos + rng.randint(3_000_000, 15_000_000))
+                haps = [2 if rng.random() < 0.85 else rng.choice([1, 1, 0]) for _ in (0, 1)]
+                rows.append(f"{c}\t{pos}\t{end}\t{pos / 1e6:.3f}\t{end / 1e6:.3f}\t100\t{haps[0]}\t{haps[1]}")
                 pos = end
-    _, shares = afr.painting_shares(rows)
-    table += [["painting", code, afr.label("continent", code), f"{sh:.4f}", ".", ".", "."]
-              for code, sh in sorted(shares.items(), key=lambda kv: -kv[1])]
-    out = os.path.join(d, "ancestry_fine")
-    os.makedirs(out, exist_ok=True)
-    afr.write_rows(os.path.join(out, f"{SAMPLE}_ancestry_fine.tsv"),
-                   ["level", "code", "group", "fraction", "se", "low", "high"], table)
-    with open(os.path.join(out, f"{SAMPLE}_painting.png"), "wb") as f:
-        f.write(afr.painting_png(rows))
+            put(os.path.join(paint, f"{c}.msp.tsv"), "\n".join(rows) + "\n")
+        r = subprocess.run([og_binary(), "ancestry-fine", "report", "--sample", SAMPLE, "--model", model,
+                            "--admixture", adm, "--paint", paint, "--panel", "demo", "--out", out],
+                           stdout=subprocess.DEVNULL)
+        if r.returncode:
+            raise SystemExit(f"og ancestry-fine report failed (exit {r.returncode})")
+        dest = os.path.join(d, "ancestry_fine")
+        os.makedirs(dest, exist_ok=True)
+        for name in (f"{SAMPLE}_ancestry_fine.tsv", f"{SAMPLE}_painting.png"):
+            shutil.copy(os.path.join(out, name), os.path.join(dest, name))
 
 
 def paralogs(d):
@@ -1145,29 +1164,48 @@ def lpa(d, rng):
     put(os.path.join(d, "lpa", f"{SAMPLE}_lpa_kiv2.tsv"), LPA_TABLE)
 
 
+CHIP_COLUMNS = ["gene", "chrom", "pos", "ref", "alt", "consequence", "protein_change", "exon", "vaf",
+                "alt_reads", "depth", "filter", "status", "class", "note"]
+CHIP_DEPTH_COLUMNS = ["gene", "transcript", "chrom", "coding_bases", "mean_depth", "detection_limit_vaf", "status"]
+
+
+def chip_limit(depth, k=3, power=0.8):
+    """og chip's detection limit: the smallest VAF that gives K or more reads
+    with the change with probability POWER at DEPTH (binomial, by bisection)."""
+    n = int(depth)
+
+    def p_at_least(f):
+        return 1.0 - sum(math.comb(n, i) * f ** i * (1 - f) ** (n - i) for i in range(k))
+    lo, hi = 0.0, 1.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        lo, hi = (lo, mid) if p_at_least(mid) >= power else (mid, hi)
+    return hi
+
+
 def chip(d, rng):
     """Step 49: no CHIP call, and one depth row per gene of assets/chip_genes.tsv
-    at a made-up mean depth near 31, with bin/chip_report.py's own detection limit."""
-    import chip_report
-    table = chip_report.read_table(os.path.join(REPO, "assets", "chip_genes.tsv"))
+    at a made-up mean depth near 31, with og chip's detection limit."""
+    with open(os.path.join(REPO, "assets", "chip_genes.tsv"), encoding="utf-8") as f:
+        lines = [x for x in f if not x.startswith("#") and x.strip()]
     rows = []
-    for r in table:
+    for gene in (x.split("\t")[0] for x in lines[1:]):
         mean = rng.uniform(29.0, 33.0)
-        rows.append({"gene": r["gene"], "transcript": "", "chrom": "", "coding_bases": str(rng.randint(1500, 7000)),
-                     "mean_depth": f"{mean:.1f}", "detection_limit_vaf": f"{chip_report.detection_limit(mean):.3f}",
+        rows.append({"gene": gene, "transcript": "", "chrom": "", "coding_bases": str(rng.randint(1500, 7000)),
+                     "mean_depth": f"{mean:.1f}", "detection_limit_vaf": f"{chip_limit(mean):.3f}",
                      "status": "covered"})
     calls = []
     if has("chip"):
-        # One small DNMT3A clone, above the detection limit at this depth (bin/chip_report.py's columns).
+        # One small DNMT3A clone, above the detection limit at this depth (og chip's columns).
         calls.append({"gene": "DNMT3A", "chrom": "chr2", "pos": "25234373", "ref": "C", "alt": "T",
                       "consequence": "missense_variant", "protein_change": "p.R882H", "exon": "23", "vaf": "0.161",
                       "alt_reads": "8", "depth": "50", "filter": "PASS", "status": "chip", "class": "hotspot",
                       "note": "a published CHIP hotspot"})
-    put(os.path.join(d, "chip", f"{SAMPLE}_chip.tsv"), "\t".join(chip_report.OUT_COLUMNS) + "\n"
-        + "".join("\t".join(c[k] for k in chip_report.OUT_COLUMNS) + "\n" for c in calls))
+    put(os.path.join(d, "chip", f"{SAMPLE}_chip.tsv"), "\t".join(CHIP_COLUMNS) + "\n"
+        + "".join("\t".join(c[k] for k in CHIP_COLUMNS) + "\n" for c in calls))
     put(os.path.join(d, "chip", f"{SAMPLE}_chip_depth.tsv"),
-        "\t".join(chip_report.DEPTH_COLUMNS) + "\n"
-        + "".join("\t".join(x[c] for c in chip_report.DEPTH_COLUMNS) + "\n" for x in rows))
+        "\t".join(CHIP_DEPTH_COLUMNS) + "\n"
+        + "".join("\t".join(x[c] for c in CHIP_DEPTH_COLUMNS) + "\n" for x in rows))
 
 
 def archaic(d, rng):
@@ -1198,42 +1236,53 @@ def archaic(d, rng):
 
 
 def ancient(d, rng):
-    """Step 44: bin/ancient_report.py's nearest-group table, info table and
-    PC plot (its own svg_plot), made-up distances and PCs over a few
-    AADR-style group labels."""
-    import ancient_report
-    groups = [("England_BellBeaker", "2450-2000 BCE", "United Kingdom", "Amesbury Down"),
-              ("Germany_CordedWare", "2900-2350 BCE", "Germany", "Esperstedt"),
-              ("Spain_BellBeaker", "2500-2000 BCE", "Spain", "Camino de las Yeseras"),
-              ("Czechia_EBA_Unetice", "2200-1700 BCE", "Czech Republic", "Moravia"),
-              ("Hungary_LBA", "1500-1100 BCE", "Hungary", "Tiszafüred"),
-              ("Italy_Imperial_Rome", "1-300 CE", "Italy", "Rome"),
-              ("Sweden_Viking", "800-1050 CE", "Sweden", "Sigtuna"),
-              ("France_Neolithic", "4500-3000 BCE", "France", "Gurgy"),
-              ("Turkey_Neolithic", "6500-6000 BCE", "Turkey", "Barcın"),
-              ("Russia_Yamnaya_Samara", "3300-2700 BCE", "Russia", "Samara")]
+    """Step 44: what og ancient report writes (the nearest-group table, the
+    info table, the text and the PC plot) for a made-up panel: present-day
+    people around the origin, ancient people of a few AADR-style group labels
+    each around its own point, and the person among them."""
+    groups = [("England_BellBeaker", 4200, "United Kingdom", "Amesbury Down"),
+              ("Germany_CordedWare", 4600, "Germany", "Esperstedt"),
+              ("Spain_BellBeaker", 4200, "Spain", "Camino de las Yeseras"),
+              ("Czechia_EBA_Unetice", 3900, "Czech Republic", "Moravia"),
+              ("Hungary_LBA", 3250, "Hungary", "Tiszafüred"),
+              ("Italy_Imperial_Rome", 1800, "Italy", "Rome"),
+              ("Sweden_Viking", 1030, "Sweden", "Sigtuna"),
+              ("France_Neolithic", 5700, "France", "Gurgy"),
+              ("Turkey_Neolithic", 8200, "Turkey", "Barcın"),
+              ("Russia_Yamnaya_Samara", 4950, "Russia", "Samara")]
     person = (0.01234, -0.00456)
-    dist, nearest = 0.0, []
-    lines = ["rank\tgroup\tn\tdistance\tpc1\tpc2\tdate_bp\tdates\tcountry\tlocality\n"]
-    for i, (g, dates, country, loc) in enumerate(groups, 1):
-        dist += rng.uniform(0.002, 0.012)
-        pc1, pc2 = person[0] + rng.uniform(-dist, dist), person[1] + rng.uniform(-dist, dist)
-        nearest.append({"group": g, "pc1": pc1, "pc2": pc2})
-        lines.append(f"{i}\t{g}\t{rng.randint(3, 40)}\t{dist:.5f}\t{pc1:.5f}\t"
-                     f"{pc2:.5f}\t{rng.randint(1000, 8500)}\t{dates}\t{country}\t{loc}\n")
-    put(os.path.join(d, "ancient", f"{SAMPLE}_ancient.tsv"), "".join(lines))
-    panel = {f"m{i}": ("present", (rng.gauss(0.0, 0.03), rng.gauss(0.0, 0.025))) for i in range(300)}
-    ancients = {}
-    for i in range(200):
-        panel[f"a{i}"] = (ancient_report.ANCIENT_LABEL, (rng.gauss(0.005, 0.035), rng.gauss(0.0, 0.03)))
-        ancients[f"a{i}"] = {"date_bp": str(rng.randint(500, 9000))}
-    put(os.path.join(d, "ancient", f"{SAMPLE}_ancient_pca.svg"),
-        ancient_report.svg_plot(person, panel, ancients, SAMPLE, nearest))
-    info = [("release", "v62.0"), ("sites_used", rng.randint(520_000, 560_000)), ("panel_sites", 597_573),
-            ("present_day_people", 819), ("ancient_people", 4_210), ("ancient_groups", 612),
-            ("pcs_in_distance", 4), ("pc1", f"{person[0]:.5f}"), ("pc2", f"{person[1]:.5f}")]
-    put(os.path.join(d, "ancient", f"{SAMPLE}_ancient_info.tsv"),
-        "key\tvalue\n" + "".join(f"{k}\t{v}\n" for k, v in info))
+    evals = "#eigvals: 9.000 4.000 2.000 1.000\n"
+    moderns = [f"m{i} " + " ".join(f"{rng.gauss(0.0, sd):.6f}" for sd in (0.03, 0.025, 0.02, 0.015))
+               + f" {('French', 'Sardinian', 'Basque')[i % 3]}\n" for i in range(300)]
+    ancients, anc_rows = [], ["id\tgroup\tdate_bp\tdate_sd\tfull_date\tlocality\tcountry\tlat\tlon\tsnps\n"]
+    for i, (g, bp, country, loc) in enumerate(groups):
+        spread = 0.004 + 0.006 * i
+        cx, cy = person[0] + rng.uniform(-spread, spread), person[1] + rng.uniform(-spread, spread)
+        for j in range(rng.randint(3, 12)):
+            aid = f"a{i}_{j}"
+            ancients.append(f"{aid} {cx + rng.gauss(0, 0.004):.6f} {cy + rng.gauss(0, 0.004):.6f} 0.000000 0.000000 Ancient\n")
+            date = bp + rng.randint(-150, 150)
+            anc_rows.append(f"{aid}\t{g}\t{date}\t50\t.\t{loc}\t{country}\t50\t10\t500000\n")
+    with tempfile.TemporaryDirectory() as work:
+        paths = {n: os.path.join(work, n) for n in ("panel.evec", "run.evec", "ancients.tsv", "stats.tsv")}
+        put(paths["panel.evec"], evals + "".join(moderns + ancients))
+        put(paths["run.evec"], evals + "".join(moderns)
+            + f"{SAMPLE} {person[0]:.6f} {person[1]:.6f} 0.000000 0.000000 Person\n")
+        put(paths["ancients.tsv"], "".join(anc_rows))
+        put(paths["stats.tsv"], f"panel_sites\t597573\nsites_genotyped\t560000\nother_allele\t120\n"
+            f"sites_used\t{rng.randint(520_000, 560_000)}\n")
+        out = os.path.join(d, "ancient")
+        os.makedirs(out, exist_ok=True)
+        r = subprocess.run([og_binary(), "ancient", "report", "--panel-evec", paths["panel.evec"],
+                            "--run-evec", paths["run.evec"], "--ancients", paths["ancients.tsv"],
+                            "--sample", SAMPLE, "--release", "v62.0", "--stats", paths["stats.tsv"],
+                            "--out-tsv", os.path.join(out, f"{SAMPLE}_ancient.tsv"),
+                            "--out-info", os.path.join(out, f"{SAMPLE}_ancient_info.tsv"),
+                            "--out-txt", os.path.join(out, f"{SAMPLE}_ancient.txt"),
+                            "--out-svg", os.path.join(out, f"{SAMPLE}_ancient_pca.svg")],
+                           stdout=subprocess.DEVNULL)
+        if r.returncode:
+            sys.exit("ERROR: og ancient report failed on the made-up panel")
 
 
 def exomiser(d):
@@ -1276,19 +1325,28 @@ def exomiser(d):
 
 
 def traits(d):
-    """Step 42: TRAIT_ALT_COPIES at the panel's positions, read by bin/traits_report.py."""
-    import traits_report
-    rows = traits_report.read_table(os.path.join(REPO, "assets", "traits.tsv"))
+    """Step 42: TRAIT_ALT_COPIES at the panel's positions, read by og traits table."""
+    with open(os.path.join(REPO, "assets", "traits.tsv"), encoding="utf-8") as f:
+        rows = list(csv.DictReader((x for x in f if x.strip() and not x.startswith("#")), delimiter="\t",
+                                   quoting=csv.QUOTE_NONE))
     unknown = sorted(r["rsid"] for r in rows if r["rsid"] not in TRAIT_ALT_COPIES | {"rs4410790": 0, "rs4481887": 0})
     if unknown:
         raise SystemExit(f"assets/traits.tsv has rows TRAIT_ALT_COPIES does not give: {', '.join(unknown)}")
-    recs = {}
-    for r in rows:
-        if r["rsid"] in TRAIT_ALT_COPIES:
-            n = TRAIT_ALT_COPIES[r["rsid"]]
-            recs[(r["chrom"], r["pos"])] = [(r["ref"], [r["ref"]] * (2 - n) + [r["alt"]] * n, "60")]
     os.makedirs(os.path.join(d, "traits"), exist_ok=True)
-    traits_report.write_tsv(os.path.join(d, "traits", f"{SAMPLE}_traits.tsv"), traits_report.report(rows, recs))
+    with tempfile.TemporaryDirectory() as work:
+        genotypes = os.path.join(work, "g.tsv")
+        with open(genotypes, "w") as f:
+            for r in rows:
+                if r["rsid"] in TRAIT_ALT_COPIES:
+                    n = TRAIT_ALT_COPIES[r["rsid"]]
+                    gt = "/".join([r["ref"]] * (2 - n) + [r["alt"]] * n)
+                    f.write(f"{r['chrom']}\t{r['pos']}\t{r['ref']}\t{r['alt']}\t{gt}\t60\n")
+        subprocess.run([os.environ.get("OG", os.path.join(REPO, "bin", "og")), "traits", "table",
+                        "--table", os.path.join(REPO, "assets", "traits.tsv"),
+                        "--rules", os.path.join(REPO, "assets", "genotype_rules.tsv"),
+                        "--genotypes", genotypes, "--sample", SAMPLE,
+                        "--out", os.path.join(d, "traits", f"{SAMPLE}_traits.tsv"),
+                        "--rules-out", os.path.join(work, "rules.tsv")], check=True)
 
 
 def mocha(d):

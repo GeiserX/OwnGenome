@@ -121,12 +121,270 @@ pub enum Rerun {
     Refused(u8, String),
 }
 
+/// The switches `scripts/run-all.sh` records (its `SWITCHES` array; a unit
+/// test keeps the two equal). A replay sets or drops only these, whatever
+/// `meta switches` says, so an edited row can never hand `BASH_ENV`, `PATH`,
+/// `LD_PRELOAD` or `DYLD_*` to the `bash` it starts.
+pub const SWITCHES: &[&str] = &[
+    "GENOME_DIR",
+    "SKIP_VALIDATION",
+    "THREADS",
+    "SKIP_TRIM",
+    "INTERVALS",
+    "DEEPVARIANT_DISABLE_SMALL_MODEL",
+    "ALIGN_DIR",
+    "TOOLS",
+    "KIR",
+    "HLA_QC",
+    "HPO",
+    "REF_FASTA",
+    "EH_CATALOG",
+    "MANTA_CALL_REGIONS",
+    "PARASCOPY_POPULATION",
+    "PARAPHASE_REGIONS",
+    "ANCESTRY_PANEL",
+    "ANCESTRY_FINE_DIR",
+    "ARCHAIC_DIR",
+    "ARCHAIC_POP",
+    "PGSC_CALC_DIR",
+    "ANCIENT_PANEL_DIR",
+    "VIRAL_REF",
+    "MEGANE_KMERS",
+    "MOCHA_DATA",
+    "GRIDSS",
+    "IMPUTATION",
+    "SOMATIC",
+    "EXTRA_CALLERS",
+    "BENCHMARK",
+    "FAMILIES",
+    "OWNGENOME_LIVE_URL",
+    "LOCITYPER_DATA",
+    "LOCITYPER_BG_REGION",
+    "NXF_VER",
+    "NXF_WORK",
+    "NXF_HOME",
+    "NXF_OFFLINE",
+];
+
+/// The names of `meta switches` that are also in [`SWITCHES`].
+fn known(switches: &str) -> Vec<&str> {
+    switches
+        .split_whitespace()
+        .filter(|n| SWITCHES.contains(n))
+        .collect()
+}
+
+/// One shell word of a recorded command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Token {
+    /// A word: its text, and how many of its first bytes stood unquoted.
+    Word(String, usize),
+    /// The `&&` between the `cd` and the call.
+    And,
+}
+
+/// Bytes `printf %q` leaves unquoted anywhere in a word, and that mean
+/// nothing to the shell there. `#` and `~` do too, except first in a word
+/// (and `~` after an unquoted `=` or `:`, see [`words`]).
+fn plain(b: u8, first: bool) -> bool {
+    b.is_ascii_alphanumeric()
+        || b"%+-./:=@_,".contains(&b)
+        || (!first && (b == b'#' || b == b'~'))
+        || b >= 0x80
+}
+
+/// The text of a `$'...'` quote from just after its `$'`; `None` for an
+/// escape `printf %q` never writes. Moves `i` past the closing quote.
+fn ansi_c(s: &[u8], i: &mut usize, out: &mut Vec<u8>) -> Option<()> {
+    loop {
+        let b = *s.get(*i)?;
+        *i += 1;
+        match b {
+            b'\'' => return Some(()),
+            b'\\' => {
+                let e = *s.get(*i)?;
+                *i += 1;
+                out.push(match e {
+                    b'a' => 7,
+                    b'b' => 8,
+                    b'e' | b'E' => 27,
+                    b'f' => 12,
+                    b'n' => b'\n',
+                    b'r' => b'\r',
+                    b't' => b'\t',
+                    b'v' => 11,
+                    b'\\' | b'\'' | b'"' | b'?' => e,
+                    b'0'..=b'7' => {
+                        let mut v = u32::from(e - b'0');
+                        for _ in 0..2 {
+                            match s.get(*i) {
+                                Some(d @ b'0'..=b'7') => {
+                                    v = v * 8 + u32::from(d - b'0');
+                                    *i += 1;
+                                }
+                                _ => break,
+                            }
+                        }
+                        u8::try_from(v).ok()?
+                    }
+                    b'x' => {
+                        let mut v = 0u32;
+                        let mut n = 0;
+                        while n < 2
+                            && let Some(d) = s.get(*i).and_then(|d| char::from(*d).to_digit(16))
+                        {
+                            v = v * 16 + d;
+                            *i += 1;
+                            n += 1;
+                        }
+                        if n == 0 {
+                            return None;
+                        }
+                        u8::try_from(v).ok()?
+                    }
+                    _ => return None,
+                });
+            }
+            _ => out.push(b),
+        }
+    }
+}
+
+/// The words of a command as `run-all.sh` writes it with `printf %q`:
+/// plain bytes, `\x`, `'...'` and `$'...'`, words split on spaces and tabs,
+/// and the `&&` operator. `None` for anything else a shell would act on (a
+/// `;`, a pipe, a redirect, an expansion, a glob, a double quote, a line
+/// break, a `~` first in a word or after an unquoted `=` or `:`, where bash
+/// expands it) and for text that is not UTF-8.
+fn words(cmd: &str) -> Option<Vec<Token>> {
+    let s = cmd.as_bytes();
+    let (mut out, mut i) = (Vec::new(), 0);
+    while i < s.len() {
+        if matches!(s[i], b' ' | b'\t') {
+            i += 1;
+            continue;
+        }
+        if s[i..].starts_with(b"&&") && s.get(i + 2).is_none_or(|b| matches!(*b, b' ' | b'\t')) {
+            out.push(Token::And);
+            i += 2;
+            continue;
+        }
+        let (mut w, mut lead, mut quoted) = (Vec::new(), 0, false);
+        // The byte before, when it stood unquoted.
+        let mut prev: Option<u8> = None;
+        while i < s.len() && !matches!(s[i], b' ' | b'\t') {
+            let b = s[i];
+            if b == b'\\' {
+                let ch = cmd.get(i + 1..)?.chars().next()?;
+                if ch == '\n' {
+                    return None;
+                }
+                let mut buf = [0u8; 4];
+                w.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+                i += 1 + ch.len_utf8();
+                quoted = true;
+                prev = None;
+            } else if b == b'\'' {
+                let end = s[i + 1..].iter().position(|&c| c == b'\'')? + i + 1;
+                w.extend_from_slice(&s[i + 1..end]);
+                i = end + 1;
+                quoted = true;
+                prev = None;
+            } else if b == b'$' && s.get(i + 1) == Some(&b'\'') {
+                i += 2;
+                ansi_c(s, &mut i, &mut w)?;
+                quoted = true;
+                prev = None;
+            } else if plain(b, w.is_empty() && !quoted)
+                && !(b == b'~' && matches!(prev, Some(b'=' | b':')))
+            {
+                w.push(b);
+                prev = Some(b);
+                i += 1;
+                if !quoted {
+                    lead = w.len();
+                }
+            } else {
+                return None;
+            }
+        }
+        out.push(Token::Word(String::from_utf8(w).ok()?, lead));
+    }
+    Some(out)
+}
+
+/// A recorded `run-all.sh` call as typed parts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Call {
+    /// The directory it was run from.
+    pub dir: String,
+    /// The switches it set, as `NAME`, value.
+    pub env: Vec<(String, String)>,
+    /// The `run-all.sh` it ran.
+    pub script: String,
+    /// Its arguments.
+    pub args: Vec<String>,
+}
+
+/// `meta command` as a typed call, or `None` when it is not the shape
+/// `run-all.sh` writes: `cd DIR && [NAME=VALUE ...] .../scripts/run-all.sh
+/// ARG ...`, every `NAME` one of `switches` and of [`SWITCHES`]. Nothing of
+/// it reaches a shell.
+pub fn parse_call(cmd: &str, switches: &str) -> Option<Call> {
+    let names = known(switches);
+    let mut t = words(cmd)?.into_iter();
+    let mut word = || match t.next() {
+        Some(Token::Word(w, lead)) => Some((w, lead)),
+        _ => None,
+    };
+    let (cd, lead) = word()?;
+    if cd != "cd" || lead != 2 {
+        return None;
+    }
+    let (dir, _) = word()?;
+    if !matches!(t.next(), Some(Token::And)) {
+        return None;
+    }
+    let mut env = Vec::new();
+    let script = loop {
+        let (w, lead) = match t.next() {
+            Some(Token::Word(w, lead)) => (w, lead),
+            _ => return None,
+        };
+        match w.find('=') {
+            Some(eq) if eq < lead && names.contains(&&w[..eq]) => {
+                env.push((w[..eq].to_owned(), w[eq + 1..].to_owned()));
+            }
+            _ => break w,
+        }
+    };
+    if !script.ends_with("/scripts/run-all.sh") {
+        return None;
+    }
+    let args = t
+        .map(|x| match x {
+            Token::Word(w, _) => Some(w),
+            Token::And => None,
+        })
+        .collect::<Option<Vec<String>>>()?;
+    Some(Call {
+        dir,
+        env,
+        script,
+        args,
+    })
+}
+
 /// Replays the last `run-all.sh` command of the sample (`meta command` of
 /// `logs/run_status.tsv`) with the same switches: the switch variables the
-/// run read (`meta switches`) are dropped from the environment, so the
-/// command's own assignments decide. One `--rerun` per sample at a time:
-/// `recheck/rerun.lock` is held from the running check through the end of
-/// the replay. Records the rerun in `state` and the log.
+/// run read (`meta switches`, only names in [`SWITCHES`]) are dropped from
+/// the environment, so the
+/// command's own assignments decide. The command is read as a typed call
+/// ([`parse_call`]) and `run-all.sh` is started by `bash` with its
+/// arguments one by one; a command of any other shape is refused and
+/// nothing runs. One `--rerun` per sample at a time: `recheck/rerun.lock`
+/// is held from the running check through the end of the replay. Records
+/// the rerun in `state` and the log.
 pub fn rerun(
     sample: &str,
     sample_dir: &Path,
@@ -161,6 +419,24 @@ pub fn rerun(
         ));
     };
     let switches = meta.get("switches").cloned().unwrap_or_default();
+    let Some(call) = parse_call(&cmd, &switches) else {
+        return Ok(Rerun::Refused(
+            2,
+            "the command in logs/run_status.tsv is not a run-all.sh call as run-all.sh records it \
+             (cd DIR && [SWITCH=VALUE ...] .../scripts/run-all.sh ARGS): not running it. Check it, \
+             then run it by hand."
+                .into(),
+        ));
+    };
+    if !Path::new(&call.dir).is_dir() {
+        return Ok(Rerun::Refused(
+            2,
+            format!(
+                "the run's directory {} is gone: run the command by hand from where it should run.",
+                call.dir
+            ),
+        ));
+    }
     let started = now_utc();
     // After --refresh-clinvar the new file is installed, so it is rerun-ready.
     let predicted = state_.rerun_ready_steps.clone();
@@ -168,10 +444,14 @@ pub fn rerun(
     let _ = std::io::stdout().flush();
     append_log(log, &[[&started, "rerun-start", "", "", &cmd]])?;
     let mut c = Command::new("bash");
-    c.arg("-c").arg(&cmd);
-    for name in switches.split_whitespace() {
+    c.arg(&call.script).args(&call.args).current_dir(&call.dir);
+    for name in known(&switches) {
         c.env_remove(name);
     }
+    for (name, value) in &call.env {
+        c.env(name, value);
+    }
+    c.env("PWD", &call.dir);
     let rc = c.status().map(|s| s.code().unwrap_or(1)).unwrap_or(127);
     let after = files(sample_dir)?;
     let cmp = compare(

@@ -10,6 +10,10 @@
 //! - [`chroms`]: the chromosomes long enough for RFMix to paint.
 //! - [`report`]: the fractions table, the painting (BED and PNG) and the
 //!   plain-text summary.
+//! - [`freqs`], [`project`], [`paint`], [`simulate`]: `og ancestry-fine
+//!   freqs|project|paint|simulate`, the engines that replace ADMIXTURE and
+//!   RFMix, and [`compare`]: `og archaic compare|genomes`. Not ported yet:
+//!   each says so and exits 2.
 //!
 //! Each command writes what `bin/ancestry_fine_report.py` wrote (checked by
 //! `tests/parity`), with three deliberate changes: every output is written
@@ -22,11 +26,18 @@
 //! A group name is ours: a set of reference populations we put together
 //! and named, not a nationality.
 
+pub mod ancient;
+pub mod archaic;
 pub mod chroms;
+pub mod compare;
+pub mod freqs;
 pub mod order;
+pub mod paint;
 pub mod panel;
+pub mod project;
 pub mod report;
 pub mod sample_bed;
+pub mod simulate;
 
 use std::fmt;
 use std::io;
@@ -540,8 +551,7 @@ fn is_negative_number(s: &str) -> bool {
 /// A verb's body: the parsed options and stdout.
 type Run = fn(&Args, &mut dyn io::Write) -> Result<()>;
 
-const USAGE: &str =
-    "usage: og ancestry-fine {panel-map,check-map,order,sample-bed,chroms,report} ...\n";
+const USAGE: &str = "usage: og ancestry-fine {panel-map,check-map,order,sample-bed,chroms,report,freqs,project,paint,simulate} ...\n";
 
 /// `og ancestry-fine <verb> [args]`: the exit code. Output goes to `out`,
 /// messages to `err`.
@@ -555,6 +565,14 @@ pub fn cli(args: &[String], out: &mut dyn io::Write, err: &mut dyn io::Write) ->
         return 2;
     };
     let rest = &args[1..];
+    // The engines read their own command lines, outside the Spec table.
+    match verb.as_str() {
+        "freqs" => return freqs::cli(rest, out, err),
+        "project" => return project::cli(rest, out, err),
+        "paint" => return paint::cli(rest, out, err),
+        "simulate" => return simulate::cli(rest, out, err),
+        _ => {}
+    }
     let (spec, run): (&Spec, Run) = match verb.as_str() {
         "panel-map" => (&panel::PANEL_MAP, panel::panel_map_main),
         "check-map" => (&panel::CHECK_MAP, panel::check_map_main),
@@ -711,9 +729,9 @@ mod tests {
 
     #[test]
     fn unknown_verbs_and_missing_options_are_usage_errors() {
-        let (rc, _, err) = testutil::run(&["paint"]);
+        let (rc, _, err) = testutil::run(&["no-such-verb"]);
         assert_eq!(rc, 2);
-        assert!(err.contains("invalid choice: 'paint'"), "{err}");
+        assert!(err.contains("invalid choice: 'no-such-verb'"), "{err}");
         let (rc, _, err) = testutil::run(&["order", "--pop", "x"]);
         assert_eq!(rc, 2);
         assert!(
@@ -730,5 +748,25 @@ mod tests {
         let (rc, out, _) = testutil::run(&["report", "--help"]);
         assert_eq!(rc, 0);
         assert!(out.starts_with("usage: og ancestry-fine report"));
+    }
+
+    #[test]
+    fn help_names_every_verb() {
+        let (rc, out, _) = testutil::run(&["--help"]);
+        assert_eq!(rc, 0);
+        for verb in [
+            "panel-map",
+            "check-map",
+            "order",
+            "sample-bed",
+            "chroms",
+            "report",
+            "freqs",
+            "project",
+            "paint",
+            "simulate",
+        ] {
+            assert!(out.contains(verb), "{verb} missing from {out}");
+        }
     }
 }

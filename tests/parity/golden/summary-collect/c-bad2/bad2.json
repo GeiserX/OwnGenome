@@ -1,0 +1,416 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-13 11:50 UTC",
+ "run": {
+  "status_file": false,
+  "started_utc": null,
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "couple": {
+   "title": "Couple carrier screen",
+   "step": "39",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_couple_carrier.tsv lacks a column of gene, condition, result, offspring_risk, partner_a, findings_a, partner_b, findings_b, explanation",
+   "data": {}
+  },
+  "parascopy": {
+   "title": "SMN1/SMN2 copy number (Parascopy, short reads)",
+   "step": "35",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_cn_intervals.tsv line 2 lacks a field",
+   "data": {}
+  },
+  "paralogs": {
+   "title": "Paralog genes (Paraphase, PacBio HiFi)",
+   "step": "35b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "hla": {
+   "title": "HLA typing (T1K)",
+   "step": "08",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "prs": {
+   "title": "Polygenic risk scores",
+   "step": "25",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "ancestry_fine": {
+   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "step": "26b",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "manta": {
+   "title": "Structural variants (Manta)",
+   "step": "04",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "delly": {
+   "title": "Structural variants (Delly)",
+   "step": "19",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_sv.vcf.gz: Compressed file ended before the end-of-stream marker was reached",
+   "data": {}
+  },
+  "cnvpytor": {
+   "title": "Copy number (CNVpytor)",
+   "step": "18",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sv_consensus": {
+   "title": "SV consensus merge",
+   "step": "22",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "annotsv": {
+   "title": "Structural variants, class 4 and 5 (AnnotSV)",
+   "step": "05",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "expansions": {
+   "title": "Repeat expansions (ExpansionHunter)",
+   "step": "09",
+   "state": "ok",
+   "source": "expansion_hunter/S_eh_stranger.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "records": 1,
+    "key_loci": [
+     {
+      "locus": "HTT",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "FMR1",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "C9ORF72",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "ATXN1",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "DMPK",
+      "repeat_count": "not in output"
+     }
+    ],
+    "loci": [
+     {
+      "locus": "RFC1",
+      "repeat_count": "500/600",
+      "status": "full_mutation",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "INREPEAT/INREPEAT",
+      "adsp": "0/0",
+      "ci": "400-700/500-800",
+      "sizing": "in_repeat",
+      "allele_sizing": "in_repeat/in_repeat",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": "",
+      "rfc1_motif": {
+       "verdict": "not_checked",
+       "note": "no motif count beside Stranger's output (step 9b runs it with the sample's BAM): confirm the flag with repeat-primed PCR"
+      }
+     }
+    ],
+    "stranger": true,
+    "stranger_outdated": false,
+    "unsized": [
+     "RFC1"
+    ],
+    "intermediate": [],
+    "readings": [
+     {
+      "locus": "CFTR",
+      "repeat": "intron 9 (legacy IVS8) TG and poly-T tract",
+      "source": "Deignan et al. 2020, PMID 32404922",
+      "status": "not_sized",
+      "genotype": ".",
+      "phase": ".",
+      "reading": "not in step 09's output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir> adds the tract to the catalog (docs/09-str-expansions.md)."
+     },
+     {
+      "locus": "UGT1A1",
+      "repeat": "promoter TA repeat",
+      "source": "Gammal et al. 2016, PMID 26417955",
+      "status": "not_sized",
+      "genotype": ".",
+      "pharmcat": ".",
+      "agreement": "not_compared",
+      "reading": "not in step 09's output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir> adds the repeat to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28."
+     },
+     {
+      "locus": "SLC6A4",
+      "repeat": "5-HTTLPR promoter length polymorphism",
+      "status": "not_tested",
+      "genotype": ".",
+      "reading": "not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation.",
+      "source": "Bousman et al. 2023, PMID 37032427"
+     }
+    ],
+    "flagged": [
+     {
+      "locus": "RFC1",
+      "repeat_count": "500/600",
+      "status": "full_mutation",
+      "sizing": "in_repeat",
+      "rfc1_motif": {
+       "verdict": "not_checked",
+       "note": "no motif count beside Stranger's output (step 9b runs it with the sample's BAM): confirm the flag with repeat-primed PCR"
+      }
+     }
+    ],
+    "no_status": 0,
+    "not_graded": {}
+   }
+  },
+  "telomere": {
+   "title": "Telomere content (TelomereHunter)",
+   "step": "10",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "roh": {
+   "title": "Runs of homozygosity",
+   "step": "11",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "haplogroup": {
+   "title": "Mitochondrial haplogroup",
+   "step": "12",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_haplogroup": {
+   "title": "Y-chromosome haplogroup (Yleaf)",
+   "step": "37",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "y_tree": {
+   "title": "Y placement on the current public tree",
+   "step": "37",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_y_tree_path.tsv has no Branch column",
+   "data": {}
+  },
+  "y_str": {
+   "title": "Y-STR markers (HipSTR)",
+   "step": "45",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "consumer_export": {
+   "title": "Raw-data export (23andMe v5 layout)",
+   "step": "40",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_consumer_export.tsv has a 'no_call: other' row without a whole-number count",
+   "data": {}
+  },
+  "bloodtype": {
+   "title": "Blood groups (predicted)",
+   "step": "41",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "lpa": {
+   "title": "Lp(a): LPA KIV-2 repeat count",
+   "step": "46",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "vntyper": {
+   "title": "MUC1 VNTR frameshifts (VNtyper)",
+   "step": "52",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "locityper": {
+   "title": "Locityper second opinion at hard loci",
+   "step": "53",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mito": {
+   "title": "Mitochondrial variants",
+   "step": "20",
+   "state": "ok",
+   "source": "mito/S_chrM_filtered.vcf.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "confirmed": [],
+    "deletions_note": "no deletion table (mito/<id>_chrM_deletions.tsv): step 20 ran before it looked for large deletions, eKLIPse wrote no table (see the step's log), or the Nextflow MITO_DELETIONS task failed (see the Nextflow log)",
+    "copies_note": "no copy-number table (mito/<id>_mtdna_copies.tsv): step 20 ran before it counted mtDNA copies, or the Nextflow MITO_DELETIONS task failed (see the Nextflow log)",
+    "pass": 0,
+    "heteroplasmic": 0,
+    "heteroplasmic_sites": [],
+    "heteroplasmy_floor": 0.05,
+    "polyc_heteroplasmic": [],
+    "polyc_tracts": [
+     "m.303-315",
+     "m.16184-16193"
+    ],
+    "annotation": {
+     "note": "no annotation table (mito/<id>_chrM_annotated.tsv): step 20 ran before it annotated, or the Nextflow MITO_VARIANTS_ANNOTATE task failed (see the Nextflow log)"
+    }
+   }
+  },
+  "traits": {
+   "title": "Traits panel",
+   "step": "42",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_genotype_rules.tsv lacks a column of rule, gene, trait, rsids, chrom, pos, genotypes, gq, phase, result, status, reading, ancestry, note, pmids",
+   "data": {}
+  },
+  "archaic": {
+   "title": "Archaic ancestry (IBDmix)",
+   "step": "43",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_archaic.tsv has no whole number for neanderthal_segments",
+   "data": {}
+  },
+  "ancient": {
+   "title": "Ancient populations (AADR PCA)",
+   "step": "44",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "viral": {
+   "title": "Viral DNA in the unmapped reads",
+   "step": "47",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "KeyError: 'human_depth'",
+   "data": {}
+  },
+  "exomiser": {
+   "title": "Symptom-driven ranking (Exomiser)",
+   "step": "48",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_exomiser_top.tsv has a line that does not have one field per column",
+   "data": {}
+  },
+  "chip": {
+   "title": "Clonal haematopoiesis (CHIP)",
+   "step": "49",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "mei": {
+   "title": "Mobile element insertions (MEGAnE)",
+   "step": "50",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_mei.tsv lacks a column of chrom, pos, element, copies",
+   "data": {}
+  },
+  "mosaic": {
+   "title": "Mosaic chromosomal alterations (MoChA)",
+   "step": "51",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_mocha_summary.tsv has no S_mocha.tsv beside it",
+   "data": {}
+  }
+ }
+}

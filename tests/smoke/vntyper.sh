@@ -1,12 +1,18 @@
 # shellcheck shell=sh
 # VNTYPER_IMAGE row: what step 52 runs, on VNtyper's own public test data
-# (tests/smoke/vntyper_testdata.py fetches two BAMs out of its Zenodo archive):
+# (tests/smoke/vntyper_testdata.sh fetches two BAMs out of its Zenodo archive):
 # a sample with a MUC1 VNTR frameshift and one without. The image's samtools
 # indexes them, then VNtyper runs with the step's flags (and no IGV view in its HTML)
 # from /opt/vntyper,
 # the folder its config.json paths are relative to.
 set -e
-python3 /smoke/vntyper_testdata.py /out/data positive.bam negative.bam
+sh /smoke/vntyper_testdata.sh /out/data positive.bam negative.bam
+# Hashing stdin must also work when the destination contains a newline.
+newline_out='/out/new
+line'
+sh /smoke/vntyper_testdata.sh "$newline_out" negative.bam
+cmp /out/data/negative.bam "$newline_out/negative.bam"
+rm -rf "$newline_out"
 for s in positive negative; do
   samtools index "/out/data/${s}.bam"
   (cd /opt/vntyper && vntyper pipeline --bam "/out/data/${s}.bam" -o "/out/${s}" --sample-name "$s" \

@@ -2,7 +2,7 @@
 
 This page is for contributors. OwnGenome's own tools are moving from Python to Rust, one tool per pull request, into a single binary, `og`. This page says how the Rust code is laid out, how the binary reaches the pipeline, how it stays byte-for-byte compatible with the Python it replaces, and what CI checks.
 
-Steps 04, 05, 07 and 25 call `og` (the filters of `og sv` and `og pgx`, and `og prs format`), step 06 and its Nextflow module `CLINVAR_SCREEN` call `og clinvar`, step 33 calls it (`og qc sex-loss`, the mosaic loss of Y or X), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), step 27 and `CPIC_LOOKUP` call it (`og pgx cpic-report`), and so do steps 09b, 21 and 32: the CYP2D6 depth check (`og pgx cyp2d6-bed`, `cyp2d6-measure`, `cyp2d6-check`) and the RFC1 motif count (`og str motif`) replaced their Python. Steps 06, 17 and 31 and their Nextflow modules run the reads at the variant in `og`: the cDNA read check and scan (`og cdna check`, `og cdna scan`) and the phase of the compound-het pairs (`og comphet phase`); step 32 and its module read the BAM's contig names with `og bam contigs`. `scripts/setup.sh` calls it for the STRchive catalog, Exomiser's zips, the genetic map and the masked reference. Step 26b calls `og ancestry-fine`. Step 40 calls `og consumer`. Step 38 and the Nextflow family workflow call `og family`. So a run that reaches those steps needs the binary: run `./scripts/setup.sh --og` once after setup and after each pull. The pieces below are the base every port builds on.
+Steps 04, 05, 07 and 25 call `og` (the filters of `og sv` and `og pgx`, and `og prs format`), step 06 and its Nextflow module `CLINVAR_SCREEN` call `og clinvar`, step 33 calls it (`og qc sex-loss`, the mosaic loss of Y or X), steps 23 and 31 and their Nextflow modules call it (`og vcf csq-rank` and `og table constraint-join`), step 27 and `CPIC_LOOKUP` call it (`og pgx cpic-report`), and so do steps 09b, 21 and 32: the CYP2D6 depth check (`og pgx cyp2d6-bed`, `cyp2d6-measure`, `cyp2d6-check`) and the RFC1 motif count (`og str motif`) replaced their Python. Steps 06, 17 and 31 and their Nextflow modules run the reads at the variant in `og`: the cDNA read check and scan (`og cdna check`, `og cdna scan`) and the phase of the compound-het pairs (`og comphet phase`); step 32 and its module read the BAM's contig names with `og bam contigs`. `scripts/setup.sh` calls it for the STRchive catalog, Exomiser's zips, the genetic map and the masked reference. Step 26b calls `og ancestry-fine`, step 43 and `setup.sh --archaic` call `og archaic`, and step 44 and `setup.sh --ancient-panel` call `og ancient`. Step 40 calls `og consumer`. Step 38 and the Nextflow family workflow call `og family`. So a run that reaches those steps needs the binary: run `./scripts/setup.sh --og` once after setup and after each pull. The pieces below are the base every port builds on.
 
 ## Layout
 
@@ -21,23 +21,28 @@ rust/
   crates/og-qc/         og qc sex-loss: mosaic loss of Y or X for step 33
   crates/og-setup/      what setup.sh runs once: the STRchive catalog, zips, the genetic map
   crates/og-steps/      the step helpers: constraint-join, prs format, step 40's consumer export; og family (step 38); og pgx outside-calls|hla-concordance|pypgx-summary (steps 08, 32, 36); og paraphase (step 35b)
-  crates/og-summary/    the step tables of steps 20, 25 and 33: og mito, og prs table, og qc sample;
-                        og summary collect --only a, the first seven summary sections (no caller yet)
+  crates/og-summary/    the step tables of steps 20, 25 and 33: og mito, og prs table, og qc sample; og summary collect, the whole summary.json with its post pass (render_report.py runs it for steps 24 and HTML_REPORT and generate-report.sh), or one group with --only a|b|c; og roh summary (step 11)
   crates/og-pedigree/   the pedigree rules: families files, members, kinship, PARs
   crates/og-chip/       step 49, clonal haematopoiesis: og chip prepare, report, check-table
   crates/og-cn/         copy number from depth (steps 32, 35, 41, 46): og cn bed, call, intervals, check-bam, marker-regions, marker-read
   crates/og-bloodtype/  step 41, blood groups: og bloodtype report, check-markers, systems
-  crates/og-ancestry/   step 26b, fine-grained ancestry: og ancestry-fine
+  crates/og-ancestry/   steps 26b, 43 and 44: og ancestry-fine, og archaic, og ancient
   crates/og-reports/    the opt-in step reports of steps 45, 47, 48 and 50 to 53, and step 37's Y tree tools
   crates/og-lookup/     the genotype lookup of scripts/owngenome-lookup.sh: og lookup query, resolve, report
   crates/og-fresh/      og dev freshness: the monthly freshness issue's upstream lookups, typed answers
   crates/og-recheck/    og recheck: newer databases since a run, the rerun and the ClinVar lock
+  crates/og-render/     og report render|index|charts: the reports from summary.json (render: the frame, QC and variants so far; no caller yet)
+  crates/og-live/       og live serve|results|family|demo, og view serve: the live site (not ported yet)
+  crates/og-couple/     og couple screen|genes: step 39's couple screen (not ported yet)
+  crates/og-admix/      what the fine-ancestry engines share: painting and projection (not ported yet)
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch> (og-darwin-<arch> on a Mac)
 tests/rust/             the differential test against CPython, the image test
 ```
 
-Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og qc sex-loss` (step 33), `og version`, `og --tree-hash`, `og map`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og dev parity-compare`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif|catalog`, `og cdna check|scan` (were `clip_check.py` and `cdna_scan.py`; `clip_check.py` keeps only the names `collect_summary.py` imports), `og comphet phase` (was `comphet_phase.py`), `og bam contigs`, `og setup unzip|genetic-map` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 05 builds AnnotSV's input with `og sv add-callers` and checks its class 4 and 5 calls with `og sv postfilter` (were `cnvpytor_to_vcf.py` and `annotsv_postfilter.py`); both apply one read-depth rule for long Delly calls (`og-steps::sv`). `cnvpytor_to_vcf.py` keeps only the Python copy of that rule, which step 39's couple screen still imports, and `annotsv_postfilter.py` only the column names and the consensus join the reports import. `og str catalog` (was `strchive_convert.py`) builds the STRchive catalog of steps 09 and 9b; `og setup unzip` and `og setup genetic-map` replace two small Python programs inside `setup.sh`. Step 25 has `og prs format` (a port of `collect_summary.py prs-format`, named by what it works on) and `og prs table` (was `prs-table`). Step 33 has `og qc sample` (was `sample-qc`), and step 20 has `og mito annotate|deletions|copies` (were `mito-annotate`, `mito-deletions` and `mito-copies`). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 27 uses `og pgx cpic-report` and `og pgx step36-outside` (were the two commands of `pgx_parse.py`). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (the commands of `chip_report.py`, which keeps only the detection limit and the column names the reports import). Steps 32, 35, 41 and 46 run `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions` and `og cn marker-read` ([Copy number from depth](cn-loci.md)); they replace `hba_copy_number.py`, `lpa_kiv2.py`, the commands of `copy_number.py` (which keeps the catalog reader the catalog tests import) and the marker reader of `traits_report.py` (which keeps `MARKERS` for the summary). Step 41 runs `og bloodtype report` (was `bloodtype_report.py`), which reads the marker sites through the VCF's index. Step 26b's six commands are `og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report`; `bin/ancestry_fine_report.py` keeps only the names `collect_summary.py` and the docs demo import. Step 40 runs `og consumer build-sites`, `og consumer export` and `og consumer check` (were the three commands of `export_consumer.py`). Step 38 and the Nextflow family workflow run `og family plan`, `prepare`, `check`, `report`, `segments` and `ibd` (were `family_report.py`, `family_segments.py` and `ibd_report.py`). `og family report` reads the joint VCF once, compresses each child's inheritance table on its own thread, and stops with exit 2 on a joint VCF that is not sorted. The opt-in steps read their tool's output with `og y str-bed|str-report` (45), `og viral report` (47), `og exomiser prepare|report` (48), `og mei report|annotsv-input` (50), `og mocha report` (51), `og vntyper report` (52) and `og locityper report` (53); they replaced `ystr_report.py`, `viral_report.py`, `exomiser_report.py`, `mei_report.py`, `mocha_report.py`, `vntyper_report.py` and `locityper_report.py`. Step 37 places the sample on the current YFull YTree with `og y tree-positions` and `og y tree-place` (were the two commands of `y_tree_place.py`), lists its private SNPs with `og y private-snps` (was `y_private_snps.py`) and writes Yleaf's marker positions with `og y yleaf-positions` (was `yleaf_run.py positions`; `yleaf_run.py predict` stays Python, as glue inside Yleaf's own code). Steps 08, 32 and 36 run `og pgx hla-concordance`, `og pgx pypgx-summary` and `og pgx outside-calls` (were the three commands of `pgx_outside_calls.py`, which keeps the CYP2D6 and HLA rules the reports import), and step 35b runs `og paraphase check-bam|table` (were `paraphase_report.py`, which keeps the SMN1 rule beside Parascopy). Both write their two output files together or not at all. `scripts/owngenome-lookup.sh` runs `og lookup query` ([genotype lookup](lookup.md)), which answers every query of the command line in one process; `og lookup resolve` and `og lookup report` are its two halves, with the command lines of `genome_lookup.py`, which keeps only the query reading and the names rule that `results_index.py` imports. `og recheck` replaced `owngenome_recheck.py` ([Newer databases since a run](recheck.md)); the file stays one release as a shim that runs it, for crontabs. `og dev freshness` replaced `scripts/ci/freshness.py`, the monthly freshness issue of `freshness.yml`. Both ask the network through the host's `curl` (the config on stdin, so no token reaches the process list), which keeps a TLS stack out of the static binary and its cross-builds.
+Each ported tool becomes a subcommand named after its file in `bin/` without `.py`, in kebab-case. Today `og` has `og qc sex-loss` (step 33), `og version`, `og --tree-hash`, `og map`, `og setup mask-fasta`, `og run state|tasks|eta|headroom|delta`, `og dev parity-compare`, `og pgx cyp2d6-bed|cyp2d6-measure|cyp2d6-check`, `og str motif|catalog`, `og cdna check|scan` (were `clip_check.py` and `cdna_scan.py`), `og comphet phase` (was `comphet_phase.py`), `og bam contigs`, `og setup unzip|genetic-map` and two hidden ones the tests drive: `og pycompat-probe` and `og bam-fetch-probe`. The filters of steps 04, 05 and 07 are grouped by step: `og sv svlen-fix` and `og sv inv-filter` (were `sv_svlen_fix.py` and `manta_inv_filter.py`), `og pgx refblock-fill` and `og pgx mito-merge` (were `pgx_refblock_fill.py` and `pgx_mito_merge.py`). Step 05 builds AnnotSV's input with `og sv add-callers` and checks its class 4 and 5 calls with `og sv postfilter` (were `cnvpytor_to_vcf.py` and `annotsv_postfilter.py`); both apply one read-depth rule for long Delly calls (`og-steps::sv`). `cnvpytor_to_vcf.py` keeps only the Python copy of that rule, which step 39's couple screen still imports. `og str catalog` (was `strchive_convert.py`) builds the STRchive catalog of steps 09 and 9b; `og setup unzip` and `og setup genetic-map` replace two small Python programs inside `setup.sh`. Step 25 has `og prs format` (a port of `collect_summary.py prs-format`, named by what it works on) and `og prs table` (was `prs-table`). Step 33 has `og qc sample` (was `sample-qc`), and step 20 has `og mito annotate|deletions|copies` (were `mito-annotate`, `mito-deletions` and `mito-copies`). Steps 23 and 31 use `og vcf csq-rank` and `og table constraint-join` (ports of the awk programs `bin/csq_rank.awk` and `bin/constraint_join.awk`, named by what they work on). Step 27 uses `og pgx cpic-report` and `og pgx step36-outside` (were the two commands of `pgx_parse.py`). Step 49 runs `og chip prepare`, `og chip report` and `og chip check-table` (were the commands of `chip_report.py`). Steps 32, 35, 41 and 46 run `og cn bed`, `og cn call`, `og cn intervals`, `og cn check-bam`, `og cn marker-regions` and `og cn marker-read` ([Copy number from depth](cn-loci.md)); they replace `hba_copy_number.py`, `lpa_kiv2.py`, `copy_number.py` (the catalog tests materialise its pinned historical version as a differential oracle) and the marker reader of `traits_report.py`. Step 41 runs `og bloodtype report` (was `bloodtype_report.py`), which reads the marker sites through the VCF's index. Step 26b's six commands are `og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report`. Step 43 runs `og archaic table|strict|genotypes|report` (were the four commands of `archaic_report.py`) and step 44 runs `og ancient select|lift|person-geno|align|report` (were the five commands of `ancient_report.py`); `og ancient lift` reads UCSC's chain file with `og-intervals::chain`. Step 40 runs `og consumer build-sites`, `og consumer export` and `og consumer check` (were the three commands of `export_consumer.py`). Step 38 and the Nextflow family workflow run `og family plan`, `prepare`, `check`, `report`, `segments` and `ibd` (were `family_report.py`, `family_segments.py` and `ibd_report.py`). `og family report` reads the joint VCF once, compresses each child's inheritance table on its own thread, and stops with exit 2 on a joint VCF that is not sorted. The opt-in steps read their tool's output with `og y str-bed|str-report` (45), `og viral report` (47), `og exomiser prepare|report` (48), `og mei report|annotsv-input` (50), `og mocha report` (51), `og vntyper report` (52) and `og locityper report` (53); they replaced `ystr_report.py`, `viral_report.py`, `exomiser_report.py`, `mei_report.py`, `mocha_report.py`, `vntyper_report.py` and `locityper_report.py`. Step 37 places the sample on the current YFull YTree with `og y tree-positions` and `og y tree-place` (were the two commands of `y_tree_place.py`), lists its private SNPs with `og y private-snps` (was `y_private_snps.py`) and writes Yleaf's marker positions with `og y yleaf-positions` (was `yleaf_run.py positions`; `yleaf_run.py predict` stays Python, as glue inside Yleaf's own code). Steps 08, 32 and 36 run `og pgx hla-concordance`, `og pgx pypgx-summary` and `og pgx outside-calls` (were the three commands of `pgx_outside_calls.py`), and step 35b runs `og paraphase check-bam|table` (were `paraphase_report.py`, which keeps the SMN1 rule beside Parascopy). Both write their two output files together or not at all. `scripts/owngenome-lookup.sh` runs `og lookup query` ([genotype lookup](lookup.md)), which answers every query of the command line in one process; `og lookup resolve` and `og lookup report` are its two halves, with the command lines of `genome_lookup.py`, which keeps only the query reading and the names rule that `results_index.py` imports. `og recheck` replaced `owngenome_recheck.py` ([Newer databases since a run](recheck.md)); the file stays one release as a shim that runs it, for crontabs. `og dev freshness` replaced `scripts/ci/freshness.py`, the monthly freshness issue of `freshness.yml`. `og dev build cn-intervals|callability|sv-rule-regions` rebuild the committed tables `bin/cn_loci.tsv` (its interval rows), `assets/callability_genes.tsv` and `assets/sv_rule_regions.tsv`; they replaced `scripts/ci/build-cn-intervals.py` and the Python inside `build-callability.sh` and `build-sv-rule-regions.sh`. Those scripts keep the downloads (`curl` through `scripts/ci/lib/fetch-pinned.sh`, each file checked against its sha256) and hand `og` the folder, so `og dev build` reads local files only. Both ask the network through the host's `curl` (the config on stdin, so no token reaches the process list), which keeps a TLS stack out of the static binary and its cross-builds.
+
+Every verb the 1.0.0 release still has to port is already registered, each in its own module, as a stub that prints `og <verb>: not ported yet` on stderr and exits 2: `og report index|charts`, `og live serve|results|family|demo`, `og view serve`, `og couple screen|genes`, `og vcf index|shift-back`, `og setup chrm-shift|revel|roh-af`, `og sv survivor-prep|consensus-check`, `og archaic compare|genomes`, `og ancestry-fine freqs|project|paint|simulate`, `og longread clair3-model`, `og map svg`, `og dev demo-sample|demo-events|params-doc|python-gate|everything-check|licences|docs-check|stub-http|steps-check` and `og dev build roh-af|acmg-lof`. A port fills its module's body and does not edit `og/src/main.rs`, the workspace member list or a crate's module list. `rust/og/tests/port_scaffold.rs` lists these verbs and fails when one has no line in `og --help` or reaches a router's "unknown" error. `og report render` is part way: it writes the frame of both reports and the quality-control and variant sections, leaves the other sections out, and no step calls it yet; `bin/render_report.py` still writes the reports.
 
 A Python file whose tool moved to `og` but whose names other Python still imports stays as a *remnant*: a `# remnant:` header names its importers and the lane that deletes it, and `tests/parity/remnants.tsv` lists the names it may hold and the files that import it. `og dev remnants` (Guard, job `rust`) fails when the file defines a name the list does not allow, when an allowed name has no user left, when a listed importer no longer imports it, or when an unlisted file starts to. So a remnant only shrinks. `bin/family_report.py` is the first one: the pedigree, kinship and PAR rules that `couple_report.py` and `pedigree_svg.py` import. `bin/genome_lookup.py` keeps the query reading and the summary names rule that `results_index.py` imports.
 
@@ -71,7 +76,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 
 `bin/.og` is not in git, so after a pull or an edit it can hold a binary built from other code. Results would then come from code the checkout does not show. To stop that:
 
-- The build stamps the binary with the git tree hash of `rust/`: `git rev-parse HEAD:rust` on a clean checkout, or for an edited `rust/` the tree those edits would commit. Any edit, committed or not, changes the hash.
+- The build stamps the binary with a source hash of two git object IDs: the tree of `rust/` as it is on disk and the blob of `assets/imprinted_regions.tsv`. The table is embedded at compile time. Any edit to either input, committed or not, changes the hash. The `tree-hash` verb and stamp format retain their names.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's. The macOS pair is optional, because no pipeline step runs it, but a stale one is refused like a Linux one.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
 - A missing binary is still a note, which names steps 04, 05, 07, 09b, 21, 25, 32 and 33. Those steps, step 06 with `CLINVAR_SCREEN` and `CLINVAR_CDNA_CHECK`, step 17, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). Step 32 does not read that as an unmeasured share: it stops. `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
@@ -105,9 +110,147 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 ## CI
 
-- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; the four builds through `scripts/setup.sh --og` (both musl ones and the macOS pair); and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task. Then the fake-docker case `reports-stale-step` runs with `bin/og` and must check its `summary.json` with `og dev schema`, and the tests of the `og sv` and `og pgx` filters, the step 05 tests and `tests/test_ancestry_fine_report.py` run with `bin/og` and `OG_REQUIRED=1`; in `unit-tests`, which has no `og`, they skip with a note. `cargo test` includes `og dev contract --static` and `og dev report-only` on the checkout (`rust/crates/og-dev/tests/repo.rs`).
+- **Guard, job `rust`** (every pull request, required through `ci-ok`): `cargo fmt --check`; `cargo clippy -D warnings`; a planted failing test (`--features planted-failure`) that must fail; `cargo test`; the differential test at 100,000 cases per operation; the four builds through `scripts/setup.sh --og` (both musl ones and the macOS pair); and the stale check on the real binaries, which must refuse them after an edit to `rust/`, in `rust/og.sh check` and in `nextflow run main.nf -stub`, before any task. Then the fake-docker case `reports-stale-step` runs with `bin/og` and must check its `summary.json` with `og dev schema`, and every test that carries the line `# og-leg: OG_REQUIRED` (the tests that run `og`, such as the `og sv` and `og pgx` filter tests, the step 05 tests and `tests/test_ancestry_fine_report.py`) runs with `bin/og` and `OG_REQUIRED=1`; in `unit-tests`, which has no `og`, they skip with a note. A new test that needs `og` adds that line; the job has no list to edit. Before the real run the step plants a marked test with a failing assert, which must be picked and fail. The planned-verb test must fail once one verb's arm is dropped from `og/src/main.rs`. `cargo test` includes `og dev contract --static` and `og dev report-only` on the checkout (`rust/crates/og-dev/tests/repo.rs`). It also runs `og dev helpers --static` and `--list` on the checkout (`rust/crates/og-dev/tests/helpers_repo.rs`); the `helper-binaries` job runs the same verb through `scripts/ci/check-container-helpers.sh`, with the og the `og` job builds.
 - **Guard, job `unit-tests`**: `tests/test_og_check.sh` runs the check on planted trees (no binary, a stale one, an edit that is uncommitted, untracked or committed, a file git ignores, a binary stamped `unknown`, a fresh and a stale macOS pair, a tree hash that cannot be computed, a release download with a bad checksum or attestation, without the macOS pair, with `gh` not logged in, with a network error, without binaries, or whose copy into `bin/.og` fails), and checks that `run-all.sh`, `validate-setup.sh` and `write_manifest.sh` act on it.
 - **Rust** (`rust.yml`, on a pull request that touches the Rust code, the shim or `versions.env`): times a cold and a cached build, runs `og` by bare name in the four images on amd64 and arm64 (QEMU), runs that check once more with a wrong-arch binary planted, which must fail, runs the fetch smoke with both binaries (arm64 under QEMU) and with pysam in `PYPGX_IMAGE`, which must all match `fetch.pysam.tsv`, and keeps the binaries as the artifact `og-binaries`. Every night it runs the differential test at 10,000,000 cases per operation with a new seed.
 - **Release** (`release.yml`): a tag builds the four binaries, writes `SHA256SUMS`, attests them and attaches all five files to the release. A pull request that changes `rust/` or the workflow builds them as a dry run.
 
 [Testing](testing.md) has the rest of CI.
+
+## CI evidence and fixture verbs
+
+`og dev evidence clashes` reads two gzip VCFs and gzip archaic tables.
+`og dev evidence hg002-gvcf` reads a gzip truth VCF, plain BED, plain FASTA
+and FAI, and a plain sites table. `og dev renovate-check` reads a plain log
+and plain repository sources. Text uses strict UTF-8 and universal newlines
+(LF, CRLF and CR). Compression is explicit, even when a filename is misleading.
+
+Evidence, `og dev fixture comphet`, `og dev fixture trim-pharmcat` and the
+Renovate summary stage output beside its resolved destination. A file symlink
+stays a symlink, existing permission bits are preserved, and read-only files
+and directory destinations fail. New files use the caller's umask.
+The VNtyper downloader follows the same destination policy, uses a private
+`mktemp -d` directory, and removes it on handled failures and signals. It needs
+GNU `mv -T` (`gmv` on macOS) so a directory can never receive a temporary BAM.
+
+Comphet stages all three files and checks all three destinations before the
+first rename. A bad later destination leaves previous outputs intact.
+Three renames are still not one transaction. A crash or a filesystem failure
+between renames can publish only part of the new set. Unhandled SIGKILL can
+leave temporary files. Single-file outputs are replaced by one rename. Publication replaces the file
+and does not update other hard links. Those links still refer to the old inode.
+
+The shared runner fails the command if stdout or stderr cannot be written or
+flushed. This includes the evidence status and Renovate table. A configured
+Renovate summary must also be written and flushed successfully.
+Guard runs the FASTA offset regression in debug and release profiles.
+
+### Input and destination refusal rule
+
+These evidence, fixture and Renovate verbs may refuse any input that is
+malformed, outside the numeric ranges or size limits below, or not representable
+by the JSON reader. They may also refuse any destination beside which they
+cannot stage a sibling temporary file. A refusal always exits nonzero with a
+specific message. It leaves every existing output byte-identical, with its mode
+and link target unchanged. The crash and multi-file publication limits above
+still apply.
+
+- Evidence numeric fields use ASCII unsigned integers from 0 through
+  18446744073709551615. A reference lookup needs a position of at least 1.
+  Spans must fit that range. Calculated FASTA offsets must fit 0 through
+  9223372036854775807 and address a byte inside the file.
+- Every FAI row needs at least five columns and nonzero bases per line.
+- `MAX_ANNOTATIONS` is an ASCII signed integer from -9223372036854775808
+  through 9223372036854775807.
+- Evidence and Renovate text records have a 16 MiB (16777216-byte) limit.
+  The PharmCAT reader has no separate file-size limit and materializes JSON.
+- The JSON reader accepts signed 128-bit integers (-2^127 through 2^127-1),
+  Unicode scalar strings and at most 1000 nested arrays or objects.
+  It cannot represent lone surrogates, including in unused fields.
+- Destinations need a writable parent and a regular writable target when one
+  exists. Resolution follows at most 40 final symlinks. Temporary sibling names
+  must fit the filesystem's name limit. A 255-byte basename is refused cleanly
+  before any output write because its temporary sibling name is longer.
+
+Inputs produced by the real tools are never refused: bcftools/DeepVariant VCF,
+samtools faidx, header-free BED intervals, PharmCAT report JSON and Renovate
+debug log. A BED file with a UCSC column header, a `track` line or a `browser`
+line is refused, as the Python refused it: remove those lines first.
+
+Valid JSON nested up to the reader's 1000 levels is accepted. The Python stopped
+with a RecursionError at a few hundred levels when it copied or wrote such a
+value. That was a limit of the interpreter, not a check on the input, so the
+Rust commands do not copy it.
+
+`refusals_preserve_bytes_modes_and_link_targets` pins the rule through each CLI.
+Each table row runs with a regular output and with a symlink. It checks nonzero
+exit, the specific diagnostic, unchanged bytes, mode and link target, and no
+leftover temporary file. Adding a refusal case needs one row.
+
+Examples of refusals follow. This is not an exhaustive input grammar.
+The final-LF normalization has a positive byte test.
+
+- BED fields use spaces and tabs as separators. Other Python whitespace
+  (Unicode White_Space and U+001C through U+001F) fails with `unsupported whitespace`.
+- Renovate present fields of the wrong type fail with `not a map of package file lists`.
+  This includes map-valued updates and numeric dependency names, current values,
+  or update values. Falsy warnings and packages with no dependencies remain valid.
+- PharmCAT truthy strings or objects where lists belong fail with `is not a list`.
+- PharmCAT truthy non-object alleles fail with `is not an object`.
+- Evidence positions with underscores, non-ASCII digits, negative values or
+  values outside u64 fail with `not a number`.
+- Four-field truth VCF rows and blank FAI rows fail with `fewer than 5 columns`.
+- Text records over 16 MiB, including ignored headers or log lines, fail with
+  `record exceeds 16777216 bytes`.
+- Clash VCF rows need a tab after ALT. A newline in the ALT field of a short
+  row fails with `missing trailing VCF columns`.
+- A truth VCF record without its final LF gets one in the output. Valid VCF ends with LF.
+
+- Zero-byte gzip VCFs or selected gzip tables fail with `wrong compression (expected gzip)`.
+- Every FAI row needs nonzero bases per line, including unused rows.
+  A zero width fails with `a row has 0 bases per line`.
+- `MAX_ANNOTATIONS` must parse as a signed 64-bit ASCII integer.
+  Underscores, non-ASCII digits and out-of-range values fail with
+  `MAX_ANNOTATIONS ... is not a whole number` (exit 2).
+- Staging needs a writable parent directory, even for an existing writable file.
+  A parent with no write bits fails with `parent directory is not writable`.
+  Other access failures report the operating system error.
+- The FASTA reader accepts plain files only. A gzip magic prefix fails with
+  `wrong compression (expected plain)`, including gzip with a long FNAME.
+- A VCF header after the first truth record fails with
+  `VCF header after first data record`. The previous destination stays intact.
+- FASTA offsets use checked subtraction, division, multiplication, addition
+  and remainder. Overflow, a position beyond the file, or an offset outside
+  the signed file-offset range fails with `invalid FASTA offset`.
+
+- A nonblank unused FAI row with fewer than five columns fails with
+  `a row has fewer than 5 columns`.
+- A truth position that fits u64 but whose REF span does not fails with
+  `position span overflows`.
+- A destination whose temporary sibling name is too long fails with the
+  filesystem diagnostic `File name too long`.
+- JSON integers outside signed 128-bit range and escaped lone surrogates fail
+  with `Integer beyond 128 bits` and `Lone surrogate`, even in unused fields.
+  Excess nesting fails with `nested deeper than 1000 levels`.
+
+Renovate skips genuine JSON syntax errors only. Reader limitations fail the
+command before an earlier matching config or the summary can be used.
+`TooDeep` has its own error variant. The reader currently puts integer and
+surrogate limitations in `JsonError::Decode`, so the loader distinguishes those
+static reasons inside that variant. Other decode errors remain skippable.
+
+## CI readers
+
+`og dev pharmcat diplotypes REPORT` prints sorted, unique `GENE\tA1/A2` rows from flat or source-nested reports. `--called` prints the called count and names on stderr. `--called-lines` prints one called gene per line for e2e checks. An unreadable report exits 2 without a count. A valid empty report succeeds with a zero count.
+
+`og dev nf-trace requests TRACE --want FILE --executor-cpus N --executor-mem-gb N` checks initial requests, doubled retry memory and the executor budget. The expectation table is [nf-trace-requests.tsv](https://github.com/GeiserX/OwnGenome/blob/main/scripts/ci/nf-trace-requests.tsv). `og dev nf-trace attempts TRACE --name-glob PATTERN --want '1:137:32,2:0:64' --nextflow-exit RC` checks a retry sequence. Both accept one explicit path, refuse globs, parse quoted TSV records and reject conflicting duplicates. Identical duplicate task IDs count once. Exit 1 means the check found a mismatch. Exit 2 means input or arguments could not be assessed.
+
+`og dev smoke` supplies `mini-ref SRC ORIG MINI POS LEN`, `long-reads HAP1 HAP2 OUT.gz`, `eh-catalog REF OUT END`, `csv-cell FILE KEY=VALUE[,KEY=VALUE] COLUMN` and `check KIND FILE`. Check kinds are `hap-ibd`, `ibdmix`, `rfmix`, `eigen` and `parascopy`. Mini-reference bases use a fixed Rust seed. Long-read gzip headers are deterministic. These synthetic fixtures do not change pipeline output files. Smoke references are limited to 1,003,000 bases. CSV lookups and table checks read one record at a time.
+
+CI integer cells accept surrounding whitespace, signs and digit separators. Trace cells deliberately refuse Unicode digits and negative resource values. Smoke coordinates accept Unicode decimal digits and use signed 128-bit integers. Integers beyond the target range fail. Decimal and nonfinite coordinates fail. Duplicate trace rows retain the first concrete exit status and reject later conflicts.
+
+The shared `og-io` reader consumes LF, CRLF and lone CR records with storage bounded by the longest line. Smoke JSON checks require one document and typed fields. Catalogs must be arrays and genotypes must be nonempty strings. This deliberately rejects malformed values that Python truthiness or `len()` accepted. Numeric depth strings remain supported; booleans are refused. Smoke fixtures and assertions build `og` on first use if the default binary is missing. An explicit `OG` is used as supplied.
+
+Step 42 uses `og traits table`, `og traits phase-sites` and `og traits check`.
+The readers retain only catalog sites. The trait and genotype-rule output
+columns and readings stay the same.

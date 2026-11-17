@@ -28,6 +28,9 @@ set -euo pipefail
 export LC_ALL=C
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# og runs the scan and rule 4 (rust/crates/og-dev; bin/og picks the build
+# for this machine); OG names another og binary.
+OG=${OG:-${ROOT}/bin/og}
 MODE=check
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -55,7 +58,8 @@ tests/fixtures/                       provenance notes name the image that wrote
 
 # Single literals that stay on purpose: file, image, reason. Each line allows
 # one occurrence: a change to the image or one more copy of it in the same
-# file is reported again.
+# file is reported again, and a line whose file no longer names the image
+# fails until it is dropped.
 EXEMPT_PAIRS='
 docs/08-hla-typing.md             jiachenzdocker/hla-la@sha256:ecca23de6635aa85e60b4ee39dd4e15341b5febb514e5478f2b2a086f05a447c   HLA-LA is not a pipeline step
 docs/stylesheets/theme.css        quay.io/biocontainers/expansionhunter:5.0.0   example in a CSS comment
@@ -74,90 +78,12 @@ scan() {
     list=$(cd "$ROOT" && find $SCAN -type f 2>/dev/null || true)
   fi
   [ -n "$list" ] || { echo "FAIL: found no file to scan under ${ROOT}"; return 1; }
-  # The file list goes in as an argument: stdin carries the program.
-  python3 - "$ROOT" "$EXEMPT_FILES" "$EXEMPT_PAIRS" "$list" <<'PY'
-import collections, os, re, sys
-root, exempt_files, exempt_pairs = sys.argv[1], sys.argv[2], sys.argv[3]
-files = [f for f in sys.argv[4].split("\n") if f]
-if not files:
-    print("FAIL: no file to scan")
-    sys.exit(1)
-skip = [l.split()[0] for l in exempt_files.splitlines() if l.strip()]
-# Each line allows one occurrence; list a pair twice to allow two.
-pairs = collections.Counter(tuple(l.split()[:2]) for l in exempt_pairs.splitlines() if l.strip())
-
-# Docker Hub official images have no slash: those versions.env uses, plus
-# the usual base images.
-env = open(os.path.join(root, "versions.env")).read()
-bare = set(re.findall(r'^[A-Z0-9_]+_IMAGE="([^"/:@]+)[:@]', env, re.M))
-bare |= {"ubuntu", "debian", "alpine", "busybox", "centos", "rockylinux", "fedora",
-         "python", "node", "perl", "r-base", "openjdk", "eclipse-temurin", "golang", "rust"}
-
-# Any tag: a version, or a word such as latest or stable.
-TAG = r'(?::[A-Za-z0-9_][A-Za-z0-9._-]*|@sha256:[0-9a-f]{64})'
-LEAD = r'(?<![A-Za-z0-9_./:@$-])'
-SHAPE = re.compile(LEAD + r'([a-z][a-z0-9._-]*/[a-z][a-z0-9._/-]*' + TAG + r')(?![A-Za-z0-9_/-])')
-BARE = re.compile(LEAD + r'((?:' + "|".join(map(re.escape, sorted(bare))) + r')' + TAG + r')(?![A-Za-z0-9_/-])')
-URL = re.compile(r'[a-z][a-z0-9+.-]*://\S+')
-# A path to a file, such as modules/local/vep/main.nf:23, is not an image.
-FILE = re.compile(r'\.(nf|sh|md|py|config|ya?ml|json|txt|tsv|csv|vcf|gz|html|css|js|R|r):[0-9]+(-[0-9]+)?$')
-
-bad = 0
-for f in files:
-    if any(f == s or (s.endswith("/") and f.startswith(s)) for s in skip):
-        continue
-    try:
-        text = open(os.path.join(root, f), encoding="utf-8").read()
-    except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
-        continue
-    left = collections.Counter({k: v for k, v in pairs.items() if k[0] == f})
-    for n, line in enumerate(text.split("\n"), 1):
-        # docker://image:tag (a step image in a workflow) is an image, not a URL.
-        line = URL.sub(" ", line.replace("docker://", " "))
-        for rx in (SHAPE, BARE):
-            for m in rx.finditer(line):
-                image = m.group(1).rstrip(".")  # a full stop ends the sentence, not the tag
-                if FILE.search(image) or image.startswith("example/"):
-                    continue  # example/ is the placeholder namespace of the self-tests
-                if left[(f, image)] > 0:
-                    left[(f, image)] -= 1
-                    continue
-                print("FAIL: %s:%d names the image %s; use its *_IMAGE variable from versions.env" % (f, n, image))
-                bad = 1
-print("scanned %d files" % len(files))
-sys.exit(bad)
-PY
+  "$OG" dev scan images --root "$ROOT" --exempt-files "$EXEMPT_FILES" --exempt-pairs "$EXEMPT_PAIRS" <<<"$list"
 }
 
 # coupled: rule 4. Prints one line per tool, exit 1 if one disagrees.
 coupled() {
-  python3 - "${ROOT}/versions.env" <<'PY'
-import re, sys
-env = open(sys.argv[1]).read()
-def line(var):
-    m = re.search(r'^%s="([^"]*)"(.*)$' % var, env, re.M)
-    return (m.group(1), m.group(2)) if m else (None, "")
-def release(var):
-    value = line(var)[0] or ""
-    tag = value.rsplit("/", 1)[-1]
-    return tag.split(":", 1)[1].split("--")[0] if ":" in tag else None
-image, comment = line("MINIMAP2_SAMTOOLS_IMAGE")
-if image is None:
-    print("FAIL: MINIMAP2_SAMTOOLS_IMAGE is not set in versions.env")
-    sys.exit(1)
-held = {k: v.rstrip(".") for k, v in re.findall(r"\b(minimap2|samtools)=([0-9][0-9A-Za-z.]*)", comment)}
-bad = 0
-for tool, var in (("minimap2", "MINIMAP2_IMAGE"), ("samtools", "SAMTOOLS_IMAGE")):
-    want, got = release(var), held.get(tool)
-    if want and got == want:
-        print("OK: MINIMAP2_SAMTOOLS_IMAGE holds %s %s, the release of %s" % (tool, got, var))
-    else:
-        print("FAIL: MINIMAP2_SAMTOOLS_IMAGE says %s=%s in its versions.env comment, but %s is %s: pin a"
-              " BioContainers mulled image with %s %s and name it in that comment (docs/updating.md, Held pins)"
-              % (tool, got or "(nothing)", var, want or "(unset)", tool, want or "?"))
-        bad = 1
-sys.exit(bad)
-PY
+  "$OG" dev versions coupled --env "${ROOT}/versions.env"
 }
 
 check() {
@@ -190,6 +116,9 @@ self_test() {
       echo "self-test: '$1' caught: $(grep -E -- "$2" <<<"$out" | head -1)"
     fi
   }
+
+  # The copies have no bin/.og: they run this tree's og.
+  export OG
 
   copy clean
   rc=0; out=$("${tmp}/clean/scripts/ci/check-images.sh" 2>&1) || rc=$?
@@ -229,6 +158,14 @@ self_test() {
   copy exempt-twice
   echo '/* Then quay.io/biocontainers/expansionhunter:5.0.0 again. */' >> "${tmp}/exempt-twice/docs/stylesheets/theme.css"
   expect exempt-twice '^FAIL: docs/stylesheets/theme\.css:[0-9]+ names the image quay\.io/biocontainers/expansionhunter:5\.0\.0;'
+
+  # An exempt literal that left its file: the exemption is stale.
+  copy exempt-stale
+  sed -i.bak 's|quay.io/biocontainers/expansionhunter:5.0.0|an example image|' "${tmp}/exempt-stale/docs/stylesheets/theme.css"
+  # sed's backup still names the image and is no exempt file: drop it, so
+  # only the stale exemption can fail this copy.
+  rm "${tmp}/exempt-stale/docs/stylesheets/theme.css.bak"
+  expect exempt-stale '^FAIL: docs/stylesheets/theme\.css no longer names quay\.io/biocontainers/expansionhunter:5\.0\.0; drop its line'
 
   # The bwa-mem2 tag scripts/ci/settle-doubts.sh once repeated: it reads
   # BWAMEM2_IMAGE from versions.env now, so that literal must fail again.

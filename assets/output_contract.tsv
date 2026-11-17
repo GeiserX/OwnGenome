@@ -57,6 +57,8 @@ file	{sample}/aligned/{sample}_sorted.bam.bai	02	ALIGN_MINIMAP2	both	index	stabl
 file	{sample}/aligned/{sample}_sorted.cram	34	CRAM_ARCHIVE	both	cram	experimental	-	-
 file	{sample}/aligned/{sample}_sorted.cram.crai	34	CRAM_ARCHIVE	both	index	experimental	-	-
 file	{sample}/aligned/{sample}_sorted.cram.flagstat	34	CRAM_ARCHIVE	both	bin	experimental	-	-
+file	{sample}/aligned/{sample}_sorted.cram.checksum	34	CRAM_ARCHIVE	both	text	experimental	-	-
+file	{sample}/aligned/{sample}_sorted.bam.checksum	34	-	bash	text	experimental	-	-
 file	{sample}/ancestry/{sample}_ancestry.tsv	25	PRS_SUMMARY	both	tsv	stable	-	-
 file	{sample}/ancestry_fine/{sample}_ancestry_fine.tsv	26b	ANCESTRY_FINE_REPORT	both	tsv	experimental	-	-
 file	{sample}/ancestry_fine/{sample}_ancestry_fine.txt	26b	ANCESTRY_FINE_REPORT	nextflow	text	experimental	-	-

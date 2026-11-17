@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og cn call --locus HBA: step 35's HBA1/HBA2 count from short-read depth.
 It needs og: OG names the binary (OG=rust/target/release/og, or bin/og);
 without it the test is skipped, and with OG_REQUIRED set too it fails.
@@ -35,7 +36,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
 OG = os.environ.get("OG", "")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import copy_number as cn  # noqa: E402
+from test_copy_number import cn  # noqa: E402  pinned differential oracle
 
 REGIONS = cn.regions(cn.load_catalog(CATALOG)["HBA"])
 # Step 35's HBA table, in its order (what bin/hba_copy_number.py wrote).

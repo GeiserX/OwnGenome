@@ -49,6 +49,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit-set"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
+dependencies = [
+ "bit-vec",
+]
+
+[[package]]
+name = "bit-vec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
+
+[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -175,6 +190,17 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "fancy-regex"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "998b056554fbe42e03ae0e152895cd1a7e1002aec800fdc6635d20270260c46f"
+dependencies = [
+ "bit-set",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -577,16 +603,19 @@ dependencies = [
  "og-chip",
  "og-clinvar",
  "og-cn",
+ "og-couple",
  "og-dev",
  "og-filters",
  "og-fresh",
  "og-intervals",
  "og-io",
+ "og-live",
  "og-lookup",
  "og-map",
  "og-pgx",
  "og-qc",
  "og-recheck",
+ "og-render",
  "og-reports",
  "og-runlog",
  "og-setup",
@@ -597,10 +626,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-admix"
+version = "0.1.0"
+
+[[package]]
 name = "og-ancestry"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "og-intervals",
  "og-io",
  "og-tsv",
  "pycompat",
@@ -661,16 +695,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-couple"
+version = "0.1.0"
+
+[[package]]
 name = "og-dev"
 version = "0.1.0"
 dependencies = [
+ "fancy-regex",
  "flate2",
  "indexmap",
+ "og-intervals",
  "og-io",
  "og-nf",
  "png",
  "pycompat",
  "regex",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -707,6 +748,10 @@ dependencies = [
  "flate2",
  "zlib-rs",
 ]
+
+[[package]]
+name = "og-live"
+version = "0.1.0"
 
 [[package]]
 name = "og-lookup"
@@ -777,6 +822,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-render"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "og-io",
+ "og-summary",
+ "pycompat",
+]
+
+[[package]]
 name = "og-reports"
 version = "0.1.0"
 dependencies = [
@@ -839,7 +894,13 @@ dependencies = [
  "flate2",
  "indexmap",
  "memchr",
+ "og-ancestry",
+ "og-bam",
+ "og-chip",
+ "og-clinvar",
+ "og-cn",
  "og-io",
+ "og-runlog",
  "og-steps",
  "pycompat",
 ]

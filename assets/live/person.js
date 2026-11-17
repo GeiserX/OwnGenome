@@ -41,6 +41,12 @@
   function gate(c) {
     var by = stepsBy(), steps = c.steps || [];
     var known = steps.filter(function (s) { return by[s]; });
+    // Finished runs may have valid results from later standalone analyses.
+    // Keep the original run timeline, but do not hide available results.
+    if (!replay && state && state.run && state.run.state === 'finished' &&
+        ['ran', 'incomplete', 'stale'].includes(c.state)) {
+      return 'show';
+    }
     if (known.some(function (s) { return by[s].state === 'done'; })) { return c.state === 'missing' ? 'empty' : 'show'; }
     if (known.some(function (s) { return by[s].state === 'running'; })) { return 'running'; }
     if (known.some(function (s) { return by[s].state === 'waiting'; })) { return 'waiting'; }

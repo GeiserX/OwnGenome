@@ -1,0 +1,180 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-13 11:46 UTC",
+ "run": {
+  "status_file": false,
+  "started_utc": null,
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "clinvar": {
+   "title": "ClinVar screen",
+   "step": "06",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "carrier": {
+   "title": "Carrier list",
+   "step": "06",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "pharmcat": {
+   "title": "PharmCAT",
+   "step": "07",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cpic": {
+   "title": "CPIC drug-gene recommendations",
+   "step": "27",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "pypgx": {
+   "title": "pypgx",
+   "step": "32",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cyrius": {
+   "title": "Cyrius (CYP2D6)",
+   "step": "21",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cpsr": {
+   "title": "Cancer predisposition (CPSR)",
+   "step": "17",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "clinical": {
+   "title": "Clinical variant filter",
+   "step": "23",
+   "state": "ok",
+   "source": "clinical/S_clinical.vcf.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "variants": 6,
+    "acmg_sf": {
+     "version": "ACMG SF v3.3",
+     "genes_on_list": 84,
+     "rules": "assets/acmg_sf.tsv",
+     "clinvar_hits": [],
+     "clinvar_checked": false,
+     "high_impact": [
+      {
+       "gene": "MYBPC3",
+       "variant": "chr11:47332000 G>A",
+       "genotype": "het",
+       "consequence": "splice_donor_variant,intron_variant",
+       "transcript": "ANY",
+       "frequency": "rare",
+       "frequency_unknown": false,
+       "weak_call": false,
+       "call_note": null,
+       "gq": null,
+       "dp": null,
+       "ad": null,
+       "rule": "All P and LP",
+       "rule_note": null,
+       "severity": null
+      },
+      {
+       "gene": "MSH2",
+       "variant": "chr2:47414000 A>AT",
+       "genotype": "het",
+       "consequence": "frameshift_variant",
+       "transcript": "CANONICAL",
+       "frequency": "rare",
+       "frequency_unknown": false,
+       "weak_call": true,
+       "call_note": "alt reads 0.07 of the depth on a heterozygote",
+       "gq": 50,
+       "dp": 30,
+       "ad": "28,2",
+       "rule": "All P and LP",
+       "rule_note": "A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.",
+       "severity": null
+      }
+     ],
+     "high_impact_checked": true,
+     "high_impact_rare": 1,
+     "high_impact_weak": 1,
+     "high_impact_frequency_unknown": 0,
+     "structural": [],
+     "structural_checked": false,
+     "structural_note": null,
+     "not_reported": [
+      {
+       "gene": "MUTYH",
+       "variant": "chr1:45332000 G>A",
+       "genotype": "het",
+       "source": "HIGH impact",
+       "reason": "one heterozygous variant; MUTYH is reported with P and LP (2 variants)"
+      },
+      {
+       "gene": "HFE",
+       "variant": "chr6:26093000 C>T",
+       "genotype": "hom",
+       "source": "HIGH impact",
+       "reason": "HFE is reported only for: HFE p.C282Y homozygotes only"
+      }
+     ],
+     "two_hit_note": null
+    }
+   }
+  },
+  "slivar": {
+   "title": "Variant prioritization (slivar)",
+   "step": "31",
+   "state": "ok",
+   "source": "slivar/S_prioritized.vcf.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "prioritized": 1
+   }
+  }
+ },
+ "cyp2d6": {
+  "calls": {
+   "PharmCAT": null,
+   "pypgx": null,
+   "Cyrius": null
+  },
+  "agree": null,
+  "consensus": null,
+  "probable": null
+ }
+}

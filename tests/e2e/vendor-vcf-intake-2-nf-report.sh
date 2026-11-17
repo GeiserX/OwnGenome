@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A VCF-first Nextflow run (no BAM) with the tools a vendor-VCF user picks:
 #   - the HTML report shows ROH, the mito haplogroup and CPIC, with the same
-#     ROH numbers and haplogroup bin/collect_summary.py (the bash report) reads
+#     ROH numbers and haplogroup og summary collect (the bash report) reads
 #     from the same files, and it starts after the steps it shows;
 #   - multiqc is selected but has nothing to read: the log says so in one line;
 #   - the completion message prints, with no onComplete handler error;
@@ -35,18 +35,18 @@ check "the report exists" test -s "$HTML"
 for h in 'Runs of Homozygosity' 'Mitochondrial Haplogroup' 'CPIC Drug Recommendations'; do
   check_eq "report card '${h}' is filled" "$(html_stat "$HTML" "$h" Status)" Complete
 done
-python3 "${REPO}/bin/collect_summary.py" --sample "$SAMPLE" --sample-dir "$R" --out "${CASE_TMP}/summary.json" \
-  > "${CASE_TMP}/summary.log" 2>&1 || cat "${CASE_TMP}/summary.log"
+"${REPO}/bin/og" summary collect --sample "$SAMPLE" --sample-dir "$R" --assets "${REPO}/assets" \
+  --out "${CASE_TMP}/summary.json" > "${CASE_TMP}/summary.log" 2>&1 || cat "${CASE_TMP}/summary.log"
 want() { python3 -c "import json, sys; d = json.load(open('${CASE_TMP}/summary.json'))['sections']$1; print($2)" 2>/dev/null; }
 ROH_TOTAL=$(want "['roh']['data']['total_mb']" "'%.1f MB' % d")
 ROH_LARGEST=$(want "['roh']['data']['largest_mb']" "'%.1f MB' % d")
 HG=$(want "['haplogroup']['data']['haplogroup']" "d")
-echo "collect_summary.py: ROH total ${ROH_TOTAL:-?}, largest ${ROH_LARGEST:-?}, haplogroup ${HG:-?}"
-check "collect_summary.py read the ROH file" test -n "$ROH_TOTAL"
+echo "og summary collect: ROH total ${ROH_TOTAL:-?}, largest ${ROH_LARGEST:-?}, haplogroup ${HG:-?}"
+check "og summary collect read the ROH file" test -n "$ROH_TOTAL"
 check_eq "ROH total matches the bash report's" "$(html_stat "$HTML" 'Runs of Homozygosity' 'ROH total')" "$ROH_TOTAL"
 check_eq "ROH largest segment matches the bash report's" \
   "$(html_stat "$HTML" 'Runs of Homozygosity' 'ROH largest segment')" "$ROH_LARGEST"
-check "collect_summary.py read the haplogroup" test -n "$HG"
+check "og summary collect read the haplogroup" test -n "$HG"
 check_eq "haplogroup matches the bash report's" "$(html_stat "$HTML" 'Mitochondrial Haplogroup' Haplogroup)" "$HG"
 
 # The report waits for the steps it shows.

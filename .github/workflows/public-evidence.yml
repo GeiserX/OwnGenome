@@ -8,7 +8,10 @@ name: Public evidence
 #                      downloaded once (its md5 checked) and indexed, for
 #                      every chromosome job.
 #   archaic-hg002      setup.sh --archaic and step 43 on HG002's GIAB v4.2.1
-#                      genotypes, one job per autosome of the chromosomes
+#                      genotypes (with a gVCF of one reference block per
+#                      GIAB benchmark interval, since step 43 reads a site
+#                      with no record as the reference only inside one),
+#                      one job per autosome of the chromosomes
 #                      input (all 22 by default: about 150 GB of archaic
 #                      downloads in all; each job fetches its three files
 #                      side by side first, and setup.sh resumes them and
@@ -22,7 +25,9 @@ name: Public evidence
 #                      list must make it fail.
 #   archaic-same-person  the method check: one 1000 Genomes person with
 #                      Chen et al.'s released calls, step 43 on her high- and
-#                      low-coverage genotypes, beside the released figure.
+#                      low-coverage genotypes (each with a gVCF of one
+#                      reference block per chromosome), beside the released
+#                      figure.
 #   ancient-footprint  setup.sh --ancient-panel on the full AADR 1240K files,
 #                      then step 44 on HG002, each with the peak memory of
 #                      its containers (the cgroup's memory.peak), the peak
@@ -166,6 +171,11 @@ jobs:
           name: archaic-1kg-sites
           path: sites
 
+      - name: Build og as scripts/setup.sh --og does (og dev evidence)
+        run: |
+          scripts/setup.sh --og
+          rust/og.sh check --required
+
       - name: setup.sh --archaic and step 43 on HG002 (chromosome ${{ matrix.part }})
         id: run
         continue-on-error: ${{ matrix.part == 'empty' }}
@@ -211,6 +221,28 @@ jobs:
           mkdir -p "${G}/HG002/vcf"
           curl -fsSL --retry 5 -o "${G}/HG002/vcf/HG002.vcf.gz" "${GIAB_HG002}.vcf.gz"
           curl -fsSL --retry 5 -o "${G}/HG002/vcf/HG002.vcf.gz.tbi" "${GIAB_HG002}.vcf.gz.tbi"
+          # Step 43 reads a site with no record as the reference only inside a
+          # reference block of the gVCF beside the VCF. GIAB states HG002
+          # matches the reference inside its benchmark regions and makes no
+          # claim outside them, so the gVCF is one block per benchmark
+          # interval of the part's chromosomes (the VCF gives the variants).
+          curl -fsSL --retry 5 -o "${EV}/truth.bed" "${GIAB_HG002}_noinconsistent.bed"
+          FAI="${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai"
+          {
+            printf '##fileformat=VCFv4.2\n'
+            for c in $CHROMS; do awk -F'\t' -v c="chr${c}" '$1 == c {printf "##contig=<ID=%s,length=%s>\n", $1, $2}' "$FAI"; done
+            printf '##ALT=<ID=*,Description="Any other allele">\n'
+            printf '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
+            printf '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\n'
+            for c in $CHROMS; do
+              awk -F'\t' -v c="chr${c}" 'BEGIN {OFS = "\t"} $1 == c {print c, $2 + 1, ".", "N", "<*>", ".", ".", "END=" $3, "GT", "0/0"}' \
+                "${EV}/truth.bed" | sort -k2,2n
+            done
+          } > "${EV}/HG002.g.vcf"
+          docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
+            bcftools view -Oz -o /g/HG002/vcf/HG002.g.vcf.gz /e/HG002.g.vcf
+          echo "gVCF: $(grep -vc '^#' "${EV}/HG002.g.vcf") reference blocks"
           for pop in ALL EUR; do
             if ! ARCHAIC_POP=$pop GENOME_DIR="$G" scripts/43-archaic.sh HG002 2>&1 | tee "${OUT}/step43-${pop}.log"; then
               echo "step 43 (${pop}) failed"; exit 1
@@ -227,50 +259,10 @@ jobs:
           # The positions of this part where HG002 has two records or more, one
           # of them an SNV, as GIAB writes the VCF and split with bcftools
           # norm -m-, and how many of them are rows of the table (the rows the
-          # same-position rule of archaic_report.py decides).
+          # same-position rule of og archaic genotypes decides).
           docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
             bcftools norm -m- -Oz -o /g/HG002/split.vcf.gz /g/HG002/vcf/HG002.vcf.gz
-          python3 -I - "${G}/HG002/vcf/HG002.vcf.gz" "${G}/HG002/split.vcf.gz" "$DATA" "$OUT/affected.tsv" <<'PY'
-          import glob, gzip, os, sys
-          raw, split, data, out = sys.argv[1:]
-          tables = sorted(glob.glob(os.path.join(data, "chr*.tsv.gz")))
-          chroms = {os.path.basename(t)[:-7] for t in tables}  # this part's chromosomes only
-          def clashes(path):
-              """Positions of this part with two records or more, one an SNV (the VCF is sorted)."""
-              hit, key, n, snvs = set(), None, 0, 0
-              for line in gzip.open(path, "rt"):
-                  if line.startswith("#"):
-                      continue
-                  c = line.split("\t", 6)
-                  if c[0] not in chroms:
-                      continue
-                  k = (c[0], int(c[1]))
-                  if k != key:
-                      key, n, snvs = k, 0, 0
-                  n += 1
-                  snvs += len(c[3]) == 1 and len(c[4]) == 1
-                  if n >= 2 and snvs >= 1:
-                      hit.add(key)
-              return hit
-          sets = {"raw": clashes(raw), "split": clashes(split)}
-          on_table = {k: 0 for k in sets}
-          for t in tables:
-              chrom = os.path.basename(t)[:-7]
-              want = {k: {p for c, p in v if c == chrom} for k, v in sets.items()}
-              if not any(want.values()):
-                  continue
-              for line in gzip.open(t, "rt"):
-                  c = line.split("\t", 2)
-                  if c[0] != chrom:
-                      continue
-                  p = int(c[1])
-                  for k in want:
-                      if p in want[k]:
-                          on_table[k] += 1
-          with open(out, "w") as f:
-              for k in sets:
-                  f.write(f"{k}_positions\t{len(sets[k])}\n{k}_on_table\t{on_table[k]}\n")
-          PY
+          bin/og dev evidence clashes "${G}/HG002/vcf/HG002.vcf.gz" "${G}/HG002/split.vcf.gz" "$DATA" "$OUT/affected.tsv"
           cat "$OUT/affected.tsv"
 
       - name: The red control failed, as it must
@@ -394,9 +386,12 @@ jobs:
           set -euo pipefail
           . ./versions.env
           G="${EV}/genome" OUT="${EV}/out"
+          DATA="${G}/reference/archaic/${ARCHAIC_DATA_VERSION}"
           mkdir -p "$OUT"
-          # sub LABEL URL-PREFIX NAME-OF-FILE-PATTERN: the person's non-reference
-          # SNVs on the chromosomes, one VCF.
+          # pull LABEL URL-PREFIX NAME-OF-FILE-PATTERN: the person's SNV records
+          # on the chromosomes that are not homozygous reference, one VCF: the
+          # ALT calls, and the sites with no call, which step 43 reads as
+          # unknown (a VCF record wins over the gVCF's reference block).
           pull() {
             local label=$1 url=$2 pat=$3 c parts=""
             mkdir -p "${G}/${SAMPLE}${label}/vcf"
@@ -405,8 +400,8 @@ jobs:
               # The container has no CA bundle, so curl fetches the file here.
               curl -fsSL --retry 5 -o "${EV}/in.vcf.gz" "${url}/${f}"
               curl -fsSL --retry 5 -o "${EV}/in.vcf.gz.tbi" "${url}/${f}.tbi"
-              docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" "$BCFTOOLS_IMAGE" \
-                bcftools view -s "$SAMPLE" -v snps --min-ac 1 -Oz -o "/e/${label}.raw.vcf.gz" /e/in.vcf.gz
+              docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
+                bcftools view -s "$1" -v snps -Ou /e/in.vcf.gz | bcftools view -e "GT=\"ref\"" -Oz -o "/e/$2.raw.vcf.gz"' _ "$SAMPLE" "$label"
               # The 2019 recall names the contigs 22, not chr22: rename them
               # (a name already chrN stays as it is).
               printf '%s\tchr%s\n' "$c" "$c" > "${EV}/rename.txt"
@@ -422,8 +417,35 @@ jobs:
             docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
               bcftools index -t -f "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz"
             rm -f "${EV}/${label}".chr*.vcf.gz
-            echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records"
+            # How many records, how many of them with no call, and how many of
+            # those at a table site (the sites step 43 reads as unknown).
+            docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools query -i 'GT="mis"' -f '%CHROM\t%POS\n' \
+              "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" > "${EV}/${label}.nocall.tsv"
+            echo "${label}: $(docker run --rm -v "${G}:/g" "$BCFTOOLS_IMAGE" bcftools view -H "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.vcf.gz" | wc -l) SNV records," \
+              "$(wc -l < "${EV}/${label}.nocall.tsv") of them with no call," \
+              "$(for t in "${DATA}"/chr*.tsv.gz; do gzip -dc "$t"; done \
+                | awk -F'\t' 'FILENAME == ARGV[1] {m[$1 FS $2] = 1; next} ($1 FS $2) in m {n++} END {print n + 0}' "${EV}/${label}.nocall.tsv" -) of those at a table site"
+            # Step 43 reads a site with no record as the reference only inside
+            # a reference block of the gVCF. A panel VCF holds no callable mask,
+            # so the gVCF is one block over each whole chromosome: a site with
+            # no record (the person is 0/0 there, or the panel has no variant
+            # there) reads as the reference, as this check measured before step
+            # 43 needed a gVCF, and a site with no call stays unknown.
+            {
+              printf '##fileformat=VCFv4.2\n'
+              for c in $LIST; do awk -F'\t' -v c="chr${c}" '$1 == c {printf "##contig=<ID=%s,length=%s>\n", $1, $2}' "$FAI"; done
+              printf '##ALT=<ID=*,Description="Any other allele">\n'
+              printf '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
+              printf '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+              printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n' "${SAMPLE}${label}"
+              for c in $LIST; do
+                awk -F'\t' -v c="chr${c}" 'BEGIN {OFS = "\t"} $1 == c {print c, 1, ".", "N", "<*>", ".", ".", "END=" $2, "GT", "0/0"}' "$FAI"
+              done
+            } > "${EV}/${label}.g.vcf"
+            docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/e" -v "${G}:/g" "$BCFTOOLS_IMAGE" \
+              bcftools view -Oz -o "/g/${SAMPLE}${label}/vcf/${SAMPLE}${label}.g.vcf.gz" "/e/${label}.g.vcf"
           }
+          FAI="${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai"
           pull hc "$HC_URL" '1kGP_high_coverage_Illumina.chr@.filtered.SNV_INDEL_SV_phased_panel.vcf.gz'
           pull lc "$LC_URL" 'ALL.chr@.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz'
           args=()
@@ -470,7 +492,7 @@ jobs:
   archaic-share:
     needs: [archaic-sites, archaic-hg002]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -492,6 +514,12 @@ jobs:
             mv parts "lone-${c}" && mkdir parts && mv "lone-${c}" "parts/archaic-part-${c}"
           fi
           ls parts
+      - name: Build og (og archaic report)
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
       - name: One report per population, over the autosomes that ran
         env:
           WANT: ${{ needs.archaic-sites.outputs.count }}
@@ -517,7 +545,7 @@ jobs:
             mkdir -p "${d}/ibdmix"
             cp parts/archaic-part-*/"${pop}"/chr*.txt "${d}/ibdmix/"
             { printf 'chrom\tfirst\tlast\tsites\n'; for s in parts/archaic-part-*/"${pop}"/spans.tsv; do tail -n +2 "$s" | cut -f1-4; done; } > "${d}/spans.tsv"
-            python3 bin/archaic_report.py report --sample HG002 --ibdmix-dir "${d}/ibdmix" --spans "${d}/spans.tsv" \
+            rust/target/release/og archaic report --sample HG002 --ibdmix-dir "${d}/ibdmix" --spans "${d}/spans.tsv" \
               --pop "$pop" --out-dir "${d}/out"
             kv() { awk -F'\t' -v k="$1" '$1 == k {print $2}' "${d}/out/HG002_archaic.tsv"; }
             [ "$(kv analysed_chromosomes)" -eq "$WANT" ] || { echo "${pop}: $(kv analysed_chromosomes) chromosomes, want ${WANT}"; exit 1; }
@@ -597,6 +625,11 @@ jobs:
           gzip -dc "${R}/${f}.gz" > "${R}/GRCh38_no_alt_analysis_set.fasta"
           rm -f "${R}/${f}.gz"
 
+      - name: Build og as scripts/setup.sh --og does (og dev evidence)
+        run: |
+          scripts/setup.sh --og
+          rust/og.sh check --required
+
       - name: setup.sh --ancient-panel and step 44 on HG002, measured
         env:
           THREADS: '4'
@@ -672,57 +705,9 @@ jobs:
           mkdir -p "${G}/HG002/vcf"
           curl -fsSL --retry 5 -o "${EV}/truth.vcf.gz" "${GIAB_HG002}.vcf.gz"
           curl -fsSL --retry 5 -o "${EV}/truth.bed" "${GIAB_HG002}_noinconsistent.bed"
-          python3 -I - "${EV}/truth.vcf.gz" "${EV}/truth.bed" "${G}/reference/GRCh38_no_alt_analysis_set.fasta" \
-              "${PANEL}/sites_grch38.tsv" "${EV}/hg002.unsorted.vcf" <<'PY'
-          import bisect, gzip, sys
-          truth, bed, ref, sites, out = sys.argv[1:]
-          fai = {l.split("\t")[0]: [int(x) for x in l.split("\t")[1:5]] for l in open(ref + ".fai")}
-          fa = open(ref, "rb")
-          def base(c, p):
-              n, off, lb, lw = fai[c]
-              fa.seek(off + ((p - 1) // lb) * lw + (p - 1) % lb)
-              return fa.read(1).decode().upper()
-          conf = {}
-          for l in open(bed):
-              c, s, e = l.split()[:3]
-              conf.setdefault(c, []).append((int(s), int(e)))
-          starts = {c: [s for s, _ in sorted(v)] for c, v in conf.items()}
-          ends = {c: [e for _, e in sorted(v)] for c, v in conf.items()}
-          def confident(c, p):
-              i = bisect.bisect_right(starts.get(c, []), p - 1) - 1
-              return i >= 0 and ends[c][i] >= p
-          covered, head, body = {}, [], []
-          for l in gzip.open(truth, "rt"):
-              if l.startswith("##"):
-                  head.append(l)
-                  continue
-              if l.startswith("#"):
-                  head.append('##INFO=<ID=END,Number=1,Type=Integer,Description="End of the reference block">\n')
-                  head.append('##ALT=<ID=*,Description="Any other allele">\n')
-                  head.append(l)
-                  continue
-              f = l.split("\t", 5)
-              p = int(f[1])
-              covered.setdefault(f[0], set()).update(range(p, p + len(f[3])))
-              body.append(l)
-          blocks = 0
-          with open(sites) as s:
-              next(s)
-              for l in s:
-                  _, c, p = l.split("\t")[:3]
-                  p = int(p)
-                  if c not in fai or p in covered.get(c, ()) or not confident(c, p):
-                      continue
-                  b = base(c, p)
-                  if b not in "ACGT":
-                      continue
-                  body.append(f"{c}\t{p}\t.\t{b}\t<*>\t.\t.\tEND={p}\tGT\t0/0\n")
-                  blocks += 1
-          with open(out, "w") as o:
-              o.writelines(head)
-              o.writelines(body)
-          print(f"gVCF: {len(body) - blocks} GIAB records, {blocks} reference blocks at panel sites")
-          PY
+          /usr/bin/time -v -o "${M}/gvcf.time" bin/og dev evidence hg002-gvcf "${EV}/truth.vcf.gz" "${EV}/truth.bed" \
+            "${G}/reference/GRCh38_no_alt_analysis_set.fasta" "${PANEL}/sites_grch38.tsv" "${EV}/hg002.unsorted.vcf"
+          grep -E 'Maximum resident|Elapsed' "${M}/gvcf.time"
           docker run --rm -u "$(id -u):$(id -g)" -v "${EV}:/ev" -v "${G}:/g" "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
             bcftools sort -m 2G -T /ev/sort -Oz -o /g/HG002/vcf/HG002.g.vcf.gz /ev/hg002.unsorted.vcf
             bcftools index -t /g/HG002/vcf/HG002.g.vcf.gz'

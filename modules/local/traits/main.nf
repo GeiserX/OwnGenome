@@ -13,7 +13,7 @@
                   an empty file when no rule has two such sites
     TRAITS        <id>_traits.tsv: the reading of each genotype from the
                   table, and the APOE line; <id>_genotype_rules.tsv: one
-                  line per rule (bin/traits_report.py)
+                  line per rule (og traits table)
 
     Runs for the samples with a gVCF only (DEEPVARIANT's, or one the
     samplesheet gives); main.nf logs the samples it skips. A sample without
@@ -89,7 +89,7 @@ process TRAITS_PHASE {
     script:
     // The same commands as scripts/42-traits.sh
     """
-    traits_report.py --rules ${rules} --genotypes ${genotypes} --sample ${meta.id} --phase-sites phase_sites.vcf
+    og traits phase-sites --rules ${rules} --genotypes ${genotypes} --sample ${meta.id} --out phase_sites.vcf
     if grep -qv '^#' phase_sites.vcf; then
         whatshap phase --reference ${reference} --ignore-read-groups -o ${meta.id}_traits_phased.vcf phase_sites.vcf ${bam}
     else
@@ -129,7 +129,7 @@ process TRAITS {
     script:
     def phased_arg = phased ? "--phased ${phased}" : ''
     """
-    traits_report.py --table ${table} --rules ${rules} --genotypes ${genotypes} ${phased_arg} --sample ${meta.id} \\
+    og traits table --table ${table} --rules ${rules} --genotypes ${genotypes} ${phased_arg} --sample ${meta.id} \\
         --out ${meta.id}_traits.tsv --rules-out ${meta.id}_genotype_rules.tsv
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

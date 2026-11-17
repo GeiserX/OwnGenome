@@ -7,14 +7,20 @@
 //! runs-of-homozygosity layer. The gene files (`genes`) are built once per
 //! GENCODE release, apart from any run.
 
+pub mod crossovers;
 pub mod doc;
 pub mod facts;
+pub mod family;
 pub mod findings;
 pub mod genes;
 pub mod layers;
+pub mod live;
+pub mod predicate;
 pub mod reference;
 pub mod stamp;
+pub mod svg;
 pub mod text;
+pub mod threads;
 pub mod veil;
 
 use facts::{Facts, Sex};

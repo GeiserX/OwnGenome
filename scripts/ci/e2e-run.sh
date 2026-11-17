@@ -196,7 +196,7 @@ PGS000066 b34f31b8b3a7dbbbb58882a70e14649d"}
 # EBI's FTP server, which refused every connection on 2026-11-06 (run
 # 42259432681).
 CATALOGS="callability bash ${REPO}/scripts/ci/build-callability.sh
-cn-intervals python3 ${REPO}/scripts/ci/build-cn-intervals.py
+cn-intervals bash ${REPO}/scripts/ci/build-cn-intervals.sh
 sv-rule-regions bash ${REPO}/scripts/ci/build-sv-rule-regions.sh"
 # catalog_files: "FOLDER NAME URL SHA256" of every download of CATALOGS.
 catalog_files() {

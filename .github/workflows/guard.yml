@@ -33,12 +33,25 @@ jobs:
   # two files generated from it (conf/containers.config, docs/versions.md)
   # are up to date. Each script's self-test plants its faults first.
   images:
+    needs: og
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Self-test (a literal image in a script, module, workflow or doc, a process with no selector and a stale generated file must be caught)
+      # The scans and the run-versions check are og dev verbs
+      # (rust/crates/og-dev): the og the og job built.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-unit-tests
+          path: ${{ runner.temp }}/og
+
+      - name: og for the checks (OG)
+        run: |
+          chmod 755 "$RUNNER_TEMP/og/og"
+          echo "OG=${RUNNER_TEMP}/og/og" >> "$GITHUB_ENV"
+
+      - name: Self-test (a literal image in a script, module, workflow or doc, a stale exemption, a process with no selector and a stale generated file must be caught)
         run: scripts/ci/check-images.sh --self-test
 
       - name: Self-test of the containers.config generator (a stale tag, a missing or stray selector, a module's own container and a wrong version must be caught)
@@ -99,11 +112,24 @@ jobs:
       - name: setup.sh, validate-setup.sh and run-all.sh against a fake docker
         run: scripts/ci/run-fake-docker-suite.sh
 
+  # The helper table is og dev helpers (scripts/ci/check-container-helpers.sh
+  # runs it), so this job takes the og the og job builds.
   helper-binaries:
+    needs: og
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-unit-tests
+          path: ${{ runner.temp }}/og
+
+      - name: og for the helper table (OG)
+        run: |
+          chmod 755 "$RUNNER_TEMP/og/og"
+          echo "OG=${RUNNER_TEMP}/og/og" >> "$GITHUB_ENV"
 
       - name: Self-test (planted bgzip/tabix calls behind if !, time and VAR=, and an orad option orad does not list, must be caught)
         run: scripts/ci/check-container-helpers.sh --self-test
@@ -125,7 +151,8 @@ jobs:
 
   # og for the unit tests (tests/og_binary.py): the tests of a ported tool
   # and the demo sample builder run og as a subprocess. Built once here, so
-  # the three shards do not each spend minutes of their 10 on it.
+  # the three shards do not each spend minutes of their 10 on it. The images
+  # job runs its og dev scans with it too.
   og:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -156,12 +183,14 @@ jobs:
 
   # Three shards: one job ran every test file in about 9.5 of its 10 minutes,
   # so each new browser test pushed it over. File i runs in shard i % 3, so
-  # every file runs in exactly one shard. The limit is 15 minutes: the shard
-  # that holds the browser tests of the live page already takes about 9.
+  # every file runs in exactly one shard. The limit is 25 minutes: the shard
+  # that holds the browser tests of the live page takes about 13, and
+  # test_live_demo.py alone takes about 12 of those, so no split of files
+  # between shards brings it under 15.
   unit-tests:
     needs: og
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -228,15 +257,40 @@ jobs:
   # unit-tests is close to its 10 minutes. Format, lint, unit tests with a
   # planted failure that must go red, pycompat against CPython, then the two
   # musl builds as scripts/setup.sh --og makes them and the stale-binary
-  # guard on the real binaries.
+  # guard on the real binaries. It takes 15 to 18 minutes on a free runner,
+  # and a busy runner pushed it past 20, so the limit is 30.
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: rust
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Keep Python 3.9's regex cases and the newer Unicode tables available. The
+      # scanner fails closed on version-dependent scalars; span iteration
+      # intentionally uses Python 3.14+ semantics for empty-text \B.
+      # Standalone builds also provide Python 3.9 on newer ubuntu-latest
+      # images where actions/setup-python has no matching distribution.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.12.18'
+          enable-cache: false
+
+      - name: Install all three Unicode oracle interpreters
+        run: |
+          uv python install --no-bin 3.9 3.12 3.15
+          interpreters=""
+          for version in 3.9 3.12 3.15; do
+            python=$(uv python find --managed-python "$version")
+            "$python" -I -c 'import sys,unicodedata; print(sys.version.split()[0],unicodedata.unidata_version)'
+            interpreters="${interpreters:+$interpreters:}$python"
+          done
+          echo "PERSONAL_DATA_PYTHONS=$interpreters" >> "$GITHUB_ENV"
+          echo "PERSONAL_DATA_REQUIRE_PYTHONS=3.9:3.12:3.15" >> "$GITHUB_ENV"
+          # Span iteration intentionally follows the newest interpreter.
+          dirname "$python" >> "$GITHUB_PATH"
 
       - name: Install the toolchain rust/rust-toolchain.toml pins, with rustfmt and clippy
         run: |
@@ -266,8 +320,307 @@ jobs:
           grep -E 'planted_failure.*FAILED' "$log" || { cat "$log"; echo "ERROR: the run failed, but not on the planted test"; exit 1; }
           echo "Control: the planted test failed, as it must."
 
+      - name: Control (archaic duplicate window must fail when equal positions are split)
+        run: |
+          source=crates/og-ancestry/src/archaic.rs
+          saved=$(mktemp "${RUNNER_TEMP}/archaic-window.XXXXXX")
+          cp "$source" "$saved"
+          trap 'cp -f "$saved" "$source"; rm -f "$saved"' EXIT
+          sed 's/r.pos == kept.pos/r.pos < kept.pos/' "$saved" > "$source"
+          grep -q 'r.pos < kept.pos' "$source"
+          log="${RUNNER_TEMP}/archaic-window-red.log"
+          if cargo test --locked --no-fail-fast -p og-ancestry duplicate_window_keeps_only_one_record_of_lookahead > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: splitting a duplicate-position window passed"
+            exit 1
+          fi
+          cat "$log"
+          grep -E 'duplicate_window_keeps_only_one_record_of_lookahead.*FAILED' "$log"
+          echo "Control: splitting the window failed its regression test."
+
+      - name: Control (an unreadable PharmCAT report reported as success must fail)
+        run: |
+          log="${RUNNER_TEMP}/ci-reader-control.log"
+          rc=0
+          cargo test --locked --no-fail-fast -p og-dev --features planted-ci-reader --test ci_readers \
+            unreadable_pharmcat_is_unassessed > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ] || { echo "ERROR: the planted unreadable-report success passed"; exit 1; }
+          grep -E 'unreadable_pharmcat_is_unassessed.*FAILED' "$log"
+          echo "Control: the unreadable-report success was reported as a failed test."
+      - name: Report frame controls (each planted fault of og-render must fail its test)
+        run: |
+          for pair in fault-new-since-text-qc:the_text_quality_block_carries_the_badge_when_coverage_changed \
+                      fault-new-since-html-badge:the_badge_sits_only_on_the_section_whose_result_changed \
+                      fault-escape-apos-39:summary_text_is_escaped_in_the_page; do
+            fault=${pair%%:*}; test=${pair#*:}
+            log="${RUNNER_TEMP}/${fault}.log"
+            if cargo test --locked --no-fail-fast -p og-render --features "$fault" --test port_report_core > "$log" 2>&1; then
+              cat "$log"
+              echo "ERROR: og-render built with ${fault} passed its tests"
+              exit 1
+            fi
+            grep -E "^test ${test} .*FAILED" "$log" || { cat "$log"; echo "ERROR: ${fault} did not fail ${test}"; exit 1; }
+            echo "Control: ${fault} failed ${test}, as it must."
+          done
+      - name: Traits controls (diplotype order, REF check and missing phase rows)
+        env:
+          CARGO_BUILD_JOBS: 3
+        run: |
+          src=crates/og-steps/src/traits.rs
+          saved="${RUNNER_TEMP}/traits.rs"
+          log="${RUNNER_TEMP}/traits-controls.log"
+          cp -f "$src" "$saved"
+          trap 'cp -f "$saved" "$src"' EXIT
+          perl -0pi -e 's/(fn allowed\b.*?)(\n    out\n)/$1\n    out.reverse();$2/s; s/if c\[2\]\.chars\(\)\.next\(\) != s\.row\["ref"\]\.chars\(\)\.next\(\)/if c[2].is_empty()/; s/(fn phase_vcf\b.*?)(    let mut out = AtomicFile::create\(path\))/$1    sites.clear();\n$2/s' "$src"
+          cmp -s "$saved" "$src" && { echo "ERROR: no traits control was planted"; exit 1; }
+          if cargo test --locked -p og-steps traits::tests --no-fail-fast > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: traits accepted the planted faults"
+            exit 1
+          fi
+          cat "$log"
+          for test in apoe_grid_keeps_haplotype_order_and_missing_calls stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory phase_requires_one_block_and_only_multiple_hets_are_exported; do
+            grep -E "traits::tests::${test} .*FAILED" "$log" || { echo "ERROR: $test did not catch its fault"; exit 1; }
+          done
+          cp -f "$saved" "$src"
+          trap - EXIT
+
+      - name: Control (ROH scope and neutral hints reject planted faults)
+        run: |
+          reader=crates/og-summary/src/collect/group_c/roh.rs
+          table=../assets/imprinted_regions.tsv
+          cp "$reader" "$RUNNER_TEMP/roh-reader.rs"
+          cp "$table" "$RUNNER_TEMP/imprinted-regions.tsv"
+          restore_roh() {
+            cp "$RUNNER_TEMP/roh-reader.rs" "$reader"
+            cp "$RUNNER_TEMP/imprinted-regions.tsv" "$table"
+          }
+          trap restore_roh EXIT
+          sed -i 's/let denominator = covered_unmasked_bp(&covered);/let denominator = autosome_unmasked_bp();/' "$reader"
+          sed -i 's/s("-")/s("Example syndrome")/g' "$reader"
+          sed -i 's/26248010;29959430/not-pmid/' "$table"
+          log="$RUNNER_TEMP/roh-scope-planted.log"
+          rc=0
+          cargo test --locked -p og-summary --no-fail-fast > "$log" 2>&1 || rc=$?
+          cat "$log"
+          test "$rc" -ne 0
+          for name in \
+            roh_scope_chr20_uses_its_own_unmasked_denominator \
+            roh_scope_counts_sites_without_runs_and_keeps_partial_labels_empty \
+            roh_scope_a_segment_only_file_never_establishes_scope \
+            roh_scope_upd_is_a_region_hint_without_syndrome_names \
+            imprinted_asset_is_the_only_table; do
+            grep -E "test .*${name} .* FAILED" "$log"
+          done
+          grep -E 'test result: FAILED\. [0-9]+ passed; 5 failed;' "$log"
+          restore_roh
+          trap - EXIT
+
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
+
+      # The planned-verb test (og/tests/port_scaffold.rs) must fail when a
+      # later merge drops a verb's arm.
+      - name: The planned-verb test fails when a verb is dropped
+        run: |
+          cp og/src/main.rs "${RUNNER_TEMP}/main.rs"
+          trap 'cp "${RUNNER_TEMP}/main.rs" og/src/main.rs' EXIT
+          sed -i '/Some("survivor-prep") =>/d' og/src/main.rs
+          if grep -q 'survivor-prep") =>' og/src/main.rs; then echo "ERROR: the arm was not dropped"; exit 1; fi
+          log="${RUNNER_TEMP}/planned-verbs-red.log"
+          if cargo test --locked --no-fail-fast -p og --test port_scaffold > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the test passed with og sv survivor-prep dropped"
+            exit 1
+          fi
+          cat "$log"
+          grep -F "og sv survivor-prep: not routed" "$log"
+          echo "Control: dropping og sv survivor-prep failed the planned-verb test."
+
+      # Each pinned test-only commit still contains the scanner it attacks.
+      - name: Scanner controls (both rounds must fail against their pre-fix code)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/personal-data-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/personal-data-fixed.rs" "$source"; cp "${RUNNER_TEMP}/matcher-fixed.rs" "$matcher"' EXIT
+          for round in 1 2; do
+            if [ "$round" = 1 ]; then
+              before=80a675eadf73640c2a0f2d63fcfe30e6fdd0deef
+              filter=privacy_
+              tests="report_never_contains_values_or_patterns python_boundaries_differential python_casefold_differential staged_newline_differential fixed_seed_differential_fuzz"
+            else
+              before=fcb7ac4ec4dc547074f5b4e12699ae9ecb1c24ef
+              filter=round2_
+              tests="boundary_backtracking custom_unicode cr_patterns empty_alternative exception_lines"
+            fi
+            git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+            git show "$before:rust/$source" > "$source"
+            git show "$before:rust/$matcher" > "$matcher"
+            log="${RUNNER_TEMP}/scanner-red-controls-${round}.log"
+            rc=0
+            cargo test -p og-dev --locked --no-fail-fast "$filter" > "$log" 2>&1 || rc=$?
+            cat "$log"
+            [ "$rc" -ne 0 ] || { echo "ERROR: the pre-fix scanner passed"; exit 1; }
+            for test in $tests; do
+              grep -E "${filter}${test} .*FAILED" "$log" || { echo "ERROR: missing red control $test"; exit 1; }
+            done
+            echo "Control: all five scanner regressions in round ${round} failed, as they must."
+          done
+
+      - name: Scanner round-three controls (nullable operands and raw-byte paths must fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round3-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round3-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round3-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round3-matcher-fixed.rs" "$matcher"' EXIT
+          before=3c2c2f288c5ac516c22ed85b6aa8b04e43e734c6
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round3-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round3_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in nullable_atoms_are_refused nullable_repetitions_fail_closed raw_byte_paths_fail_closed; do
+            grep -E "round3_${test} .*FAILED" "$log" || { echo "ERROR: missing round-three red control"; exit 1; }
+          done
+          echo "Control: nullable operands and raw-byte paths failed before the fix."
+
+      - name: Unicode guard regenerates from pinned official data
+        run: bash ../tests/parity/gen/personal-unicode-generate.sh "$RUNNER_TEMP/personal-unicode"
+
+      - name: Scanner round-four controls (Unicode versions and symlink targets fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round4-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round4-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round4-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round4-matcher-fixed.rs" "$matcher"' EXIT
+          before=ac030e631afa5550f2c128a0998d2cb95dee14db
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round4-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round4_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in unicode_versions_fail_closed symlink_targets_fail_closed; do
+            grep -E "round4_${test} .*FAILED" "$log" || { echo "ERROR: missing round-four red control"; exit 1; }
+          done
+          echo "Control: all 24 Unicode and four symlink scenarios failed before the fix."
+
+      - name: Scanner round-five controls (all five findings must fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round5-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round5-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round5-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round5-matcher-fixed.rs" "$matcher"' EXIT
+          before=f155efd343e82ebf8b53a563ee4b2c5b6f4dbf85
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round5-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round5_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in regex_case_relations stable_case_scalars_pass gitlinks_fail_closed guard_filenames every_symlink_hop; do
+            grep -E "round5_${test} .*FAILED" "$log" || { echo "ERROR: missing round-five red control"; exit 1; }
+          done
+          echo "Control: all five round-five regressions failed before the fix."
+
+      - name: Scanner round-six controls (astral cases, range interiors and symlink names fail before the fix)
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round6-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round6-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round6-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round6-matcher-fixed.rs" "$matcher"' EXIT
+          before=152bf7860e95951dc585259dcf9f4c66869e36db
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch --quiet --depth=1 origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round6-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round6_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in astral_composite_cases guarded_range_interiors symlink_unicode_names; do
+            grep -E "round6_${test} .*FAILED" "$log" || { echo "ERROR: missing round-six red control"; exit 1; }
+          done
+          grep -E 'round6_stable_ranges_and_uncased_astral .*ok' "$log"
+          echo "Control: all three regressions failed; stable ranges and uncased astral text passed."
+
+      - name: Scanner round-seven controls against the pre-fix scanner
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          matcher=crates/og-dev/src/lookaround.rs
+          cp "$source" "${RUNNER_TEMP}/round7-personal-fixed.rs"
+          cp "$matcher" "${RUNNER_TEMP}/round7-matcher-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/round7-personal-fixed.rs" "$source"; cp "${RUNNER_TEMP}/round7-matcher-fixed.rs" "$matcher"' EXIT
+          before=0c881620fe1bee894d6a868ab5d7f06f055bbad3
+          git cat-file -e "$before^{commit}" 2>/dev/null || git fetch origin "$before"
+          git show "$before:rust/$source" > "$source"
+          git show "$before:rust/$matcher" > "$matcher"
+          log="${RUNNER_TEMP}/scanner-round7-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round7_ > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          for test in ordinary_cyrillic pattern_case_scope cached_target_before_skip required_interpreters_fail_closed; do
+            grep -E "round7_${test} .*FAILED" "$log" || { echo "ERROR: missing round-seven red control"; exit 1; }
+          done
+          echo "Control: Cyrillic text, pattern scope, indexed targets and required oracles all failed before the fix."
+
+      - name: Regex relation verifier rejects a missing table
+        run: |
+          source=crates/og-dev/src/personal_data.rs
+          cp "$source" "${RUNNER_TEMP}/regex-case-fixed.rs"
+          trap 'cp "${RUNNER_TEMP}/regex-case-fixed.rs" "$source"' EXIT
+          awk '/^const REGEX_CASE_RELATIONS:/ { print "const REGEX_CASE_RELATIONS: &[(u32, u32)] = &[];"; drop=1 }
+               drop && /^];/ { drop=0; next }
+               !drop { print }' "${RUNNER_TEMP}/regex-case-fixed.rs" > "$source"
+          log="${RUNNER_TEMP}/regex-table-red.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round5_regex_case_table_matches_interpreters > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep 'checked-in regex table misses a differing pair' "$log"
+          echo "Control: real regex engines rejected the incomplete table."
+
+      - name: Scanner matcher controls (word classes and swallowed errors must be caught)
+        run: |
+          source=crates/og-dev/src/lookaround.rs
+          saved="${RUNNER_TEMP}/matcher-controls-fixed.rs"
+          cp "$source" "$saved"
+          trap 'cp "$saved" "$source"' EXIT
+          sed 's/^const WORD: .*$/const WORD: \&str = r"[\\w]";/' "$saved" > "$source"
+          log="${RUNNER_TEMP}/matcher-word-control.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast --lib > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep -E 'round2_generated_patterns_and_tables .*FAILED' "$log"
+          grep -E 'finditer_spans_match_real_python .*FAILED' "$log"
+          grep -E 'exhaustive_small_model_spans .*FAILED' "$log"
+          sed 's/Some(Err(()))/None/' "$saved" > "$source"
+          log="${RUNNER_TEMP}/matcher-error-control.log"
+          rc=0
+          cargo test -p og-dev --locked --no-fail-fast round2_unsupported > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ]
+          grep -E 'round2_unsupported_and_exhausted_patterns_fail_closed .*FAILED' "$log"
+          echo "Control: incorrect word classes and a swallowed matcher error both failed."
+
+      - name: Evidence offset regression in release mode
+        run: cargo test --release --locked -p og-dev --no-fail-fast fai_offsets_reject_overflow_and_out_of_file_before_publication
 
       - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
@@ -281,19 +634,6 @@ jobs:
           ./og.sh check --required
           file ../bin/.og/og-linux-*
           ../bin/og version
-
-      # Step 06 runs og clinvar in BCFTOOLS_IMAGE, so the tests that run the
-      # real step, or compare og clinvar with the summary, need bin/.og: they
-      # run here, and unit-tests skips them (no OG there).
-      - name: Step 06 with og (the tests that run og clinvar)
-        working-directory: .
-        env:
-          OG: ${{ github.workspace }}/bin/og
-          OG_REQUIRED: 1
-        run: |
-          python3 tests/test_clinvar_join_adjacent.py
-          python3 tests/test_collect_summary.py
-          bash tests/test_isec_columns.sh
 
       - name: The stale-binary guard refuses the real binaries once rust/ changes
         run: |
@@ -313,42 +653,84 @@ jobs:
           grep -q 'summary.json validates (og dev schema)' <<< "$out" \
             || { echo "ERROR: reports-stale-step did not run og dev schema"; exit 1; }
 
-      # The tests of the og filters steps 04, 05 and 07 run, og chip's (step 49), og cn's (steps 35, 41 and 46), og family's (step 38), og run delta's, step 26b's og ancestry-fine,
-      # the opt-in step reports' (45, 47, 48, 50 to 53), step 37's Y tree tools, the
-      # og tools setup.sh runs (og str catalog, og setup unzip and genetic-map), and the step 25
-      # tests that compare og prs format with the folders they write by hand:
-      # unit-tests has no og, so there they skip; here OG_REQUIRED turns a
-      # skip into a failure. The step 05 tests run the real step with bin/og.
-      - name: The og filter and setup tests, and step 05, with og
+      # Every test that carries the line `# og-leg: OG_REQUIRED` runs here,
+      # with bin/og and OG_REQUIRED=1 (the tests that run og clinvar, the
+      # og filters, setup and step report tools, and the step 05 tests, which
+      # run the real step with bin/og). unit-tests has no og, so there they
+      # skip with a note; here OG_REQUIRED turns a skip into a failure. A new
+      # test that needs og adds the marker line; there is no list to edit.
+      - name: The og-leg tests (every tests/test_* with the og-leg marker), with og
         working-directory: .
         env:
           OG: ${{ github.workspace }}/bin/og
           OG_REQUIRED: 1
         run: |
-          fail=0
-          for t in tests/test_annotsv_sv_inputs.py tests/test_pgx_refblock_fill.py tests/test_pgx_mito_merge.py tests/test_run_delta.py \
-                   tests/test_ancestry_fine_report.py \
-                   tests/test_annotsv_sv_inputs.sh tests/test_annotsv_postfilter.sh tests/test_annotsv_benign_mane.sh \
-                   tests/test_str_catalog.py tests/test_str_ranges.py tests/test_og_setup_zip.py tests/test_setup_fine_maps.sh \
-                   tests/test_render_report.py tests/test_collect_summary.py tests/test_chip_report.py \
-                   tests/test_family_report.py tests/test_family_segments.py tests/test_ibd_report.py \
-                   tests/test_vntyper_report.py tests/test_locityper_report.py tests/test_mocha_report.py \
-                   tests/test_mei_report.py tests/test_viral_report.py tests/test_ystr_report.py \
-                   tests/test_exomiser_report.py tests/test_y_tree_place.py tests/test_y_private_snps.py \
-                   tests/test_results_index.py \
-                   tests/test_pgx_outside_calls.py tests/test_hla_second_caller.py tests/test_paraphase_report.py \
-                   tests/test_copy_number.py tests/test_hba_copy_number.py \
-                   tests/test_lpa_kiv2.py tests/test_traits_report.py tests/test_callability.py; do
-            rc=0
-            echo "::group::${t}"
-            case "$t" in
-              *.py) python3 "$t" || rc=$? ;;
-              *.sh) bash "$t" || rc=$? ;;
-            esac
-            echo "::endgroup::"
-            if [ "$rc" -eq 0 ]; then echo "PASS ${t}"; else echo "FAIL ${t} (exit ${rc})"; fail=1; fi
-          done
-          exit "$fail"
+          marker='# og-leg: OG_REQUIRED'
+          og_leg() {
+            local fail=0 t rc
+            for t in "$@"; do
+              rc=0
+              echo "::group::${t}"
+              case "$t" in
+                *.py) python3 "$t" || rc=$? ;;
+                *.sh) bash "$t" || rc=$? ;;
+              esac
+              echo "::endgroup::"
+              if [ "$rc" -eq 0 ]; then echo "PASS ${t}"; else echo "FAIL ${t} (exit ${rc})"; fail=1; fi
+            done
+            return "$fail"
+          }
+          # Control: a planted test with the marker and a failing assert is
+          # picked by the glob and turns the leg red.
+          probe=tests/test_og_leg_probe.py
+          trap 'rm -f "$probe"' EXIT
+          printf '%s\nassert False, "planted"\n' "$marker" > "$probe"
+          picked=$(grep -lxF "$marker" tests/test_*.py tests/test_*.sh)
+          grep -qxF "$probe" <<< "$picked" || { echo "ERROR: the marker glob missed the planted test"; exit 1; }
+          if og_leg "$probe"; then echo "ERROR: the planted failing test passed"; exit 1; fi
+          rm -f "$probe"
+          echo "Control: the planted marked test was picked and failed."
+          mapfile -t tests < <(grep -lxF "$marker" tests/test_*.py tests/test_*.sh | sort)
+          [ "${#tests[@]}" -gt 0 ] || { echo "ERROR: no test carries the og-leg marker"; exit 1; }
+          echo "${#tests[@]} tests carry the og-leg marker"
+          og_leg "${tests[@]}"
+
+      - name: Traits independent expectations reject changed reference labels and marker metadata
+        working-directory: .
+        env:
+          OG: ${{ github.workspace }}/bin/og
+          OG_REQUIRED: 1
+        run: |
+          python3 - <<'PY'
+          import contextlib, io, pathlib, runpy, tempfile
+          test = runpy.run_path("tests/test_traits_report.py")["main"].__globals__
+          original = pathlib.Path(test["RULES"]).read_text()
+          with tempfile.TemporaryDirectory() as work:
+              for rid, key, label in [("APOL1", "G0/G0", "G0/G0"), ("CAD9p21", "nonrisk/nonrisk", "no risk copy")]:
+                  path = pathlib.Path(work) / "rules.tsv"
+                  old = f"combination\t{rid}\t{key}\t{label}\t"
+                  assert old in original
+                  path.write_text(original.replace(old, f"combination\t{rid}\t{key}\tWRONG_REFERENCE\t"))
+                  test["RULES"], test["FAILS"] = str(path), 0
+                  log = io.StringIO()
+                  with contextlib.redirect_stdout(log):
+                      rc = test["main"]()
+                  print(log.getvalue())
+                  assert rc == 1 and test["FAILS"] == 1
+                  assert f"[FAIL] {rid}, reference blocks only: {label}" in log.getvalue()
+                  print(f"Control: {rid} WRONG_REFERENCE failed its independent expectation")
+          marker = test["MARKERS"]["SMN1_27134"]
+          rs, chrom, pos, ref, alt = marker["dbsnp"]
+          marker["dbsnp"] = rs, chrom, pos + 1, ref, alt
+          test["FAILS"] = 0
+          log = io.StringIO()
+          with contextlib.redirect_stdout(log):
+              test["marker_checks"]()
+          print(log.getvalue())
+          assert test["FAILS"] == 1
+          assert "[FAIL] marker SMN1_27134: the pinned dbSNP record agrees" in log.getvalue()
+          print("Control: retained SMN1 off-copy metadata failed its independent expectation")
+          PY
 
       # The fake-docker job builds no og, so its cn-engine-calls case says it
       # is skipped there; here bin/og is built and the case must run.

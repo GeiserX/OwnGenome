@@ -129,10 +129,16 @@ jobs:
       - name: og dev freshness self-test (a bogus image, a missing tag and a bogus URL must exit non-zero)
         run: rust/target/release/og dev freshness --self-test
 
-      - name: check-links.sh self-test (a 404, no answer and an empty tree must fail; a github.com 5xx is asked again, and one that lasts fails naming the outage)
+      # check-links.sh and check-pgs-labels.sh read with og dev versions
+      # expand and og dev pgs (rust/crates/og-dev), the og built above.
+      - name: check-links.sh self-test (a 404, no answer, an unreadable versions.env line and an empty tree must fail; a github.com 5xx is asked again, and one that lasts fails naming the outage)
+        env:
+          OG: ${{ github.workspace }}/rust/target/release/og
         run: scripts/ci/check-links.sh --self-test
 
-      - name: check-pgs-labels.sh self-test (a wrong label, an empty answer and no answer must fail)
+      - name: check-pgs-labels.sh self-test (a wrong label, an empty answer, no answer and an effect of true must fail)
+        env:
+          OG: ${{ github.workspace }}/rust/target/release/og
         run: scripts/ci/check-pgs-labels.sh --self-test
 
   pull-request:
@@ -158,20 +164,11 @@ jobs:
             echo "report=$(has 'rust/crates/og-fresh/.*|versions\.env|\.github/workflows/freshness\.yml')"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Every download URL this pull request adds answers
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: scripts/ci/check-links.sh --since "$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Every PGS ID's label matches the PGS Catalog
-        if: steps.changed.outputs.prs == 'true'
-        run: scripts/ci/check-pgs-labels.sh | tee -a "$GITHUB_STEP_SUMMARY"
-
-      # og dev freshness (rust/crates/og-fresh) writes the report: the
-      # toolchain rust/rust-toolchain.toml pins, og built without the BAM
-      # reader, which the report never needs.
+      # og dev freshness (rust/crates/og-fresh) writes the report, and the
+      # link and label checks read with og dev versions expand and og dev
+      # pgs: the toolchain rust/rust-toolchain.toml pins, og built without
+      # the BAM reader, which none of them needs.
       - name: Install the toolchain rust/rust-toolchain.toml pins
-        if: steps.changed.outputs.report == 'true'
         working-directory: rust
         run: |
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
@@ -179,15 +176,25 @@ jobs:
           rustc --version
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.changed.outputs.report == 'true'
         with:
           workspaces: rust
           key: freshness
 
       - name: Build og
-        if: steps.changed.outputs.report == 'true'
         working-directory: rust
         run: cargo build --release --locked -p og --no-default-features
+
+      - name: Every download URL this pull request adds answers
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          OG: ${{ github.workspace }}/rust/target/release/og
+        run: scripts/ci/check-links.sh --since "$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Every PGS ID's label matches the PGS Catalog
+        if: steps.changed.outputs.prs == 'true'
+        env:
+          OG: ${{ github.workspace }}/rust/target/release/og
+        run: scripts/ci/check-pgs-labels.sh | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Report dry run (no issue is written)
         if: steps.changed.outputs.report == 'true'
@@ -236,6 +243,7 @@ jobs:
         id: checks
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          OG: ${{ github.workspace }}/rust/target/release/og
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           out="${RUNNER_TEMP}"

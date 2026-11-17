@@ -13,9 +13,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// How deep the walk goes below the sample folder. The deepest file a
-/// section reads today is three folders down; Nextflow's work folders are
-/// not inside a sample folder.
+/// section reads today is three folders down.
 pub const MAX_DEPTH: usize = 6;
+
+/// The top-level folder the walk leaves out: `run-all.sh` launches
+/// Nextflow in `<sample>/nextflow`, whose `work/` holds every task's
+/// files and staged links (a whole VEP cache among them). No section
+/// reads a file there, and the Python collector, which globbed each
+/// section's own folder, never listed it.
+pub const SKIP_TOP: &str = "nextflow";
 
 /// Every regular file of a sample folder, by its path relative to the
 /// folder (`/` between parts). Symlinks are followed, so the links the
@@ -54,7 +60,8 @@ impl FolderIndex {
                 };
                 if meta.is_file() {
                     files.insert(rel);
-                } else if meta.is_dir() && depth + 1 < MAX_DEPTH {
+                } else if meta.is_dir() && depth + 1 < MAX_DEPTH && !(depth == 0 && rel == SKIP_TOP)
+                {
                     stack.push((path, rel, depth + 1));
                 }
             }
@@ -86,6 +93,27 @@ impl FolderIndex {
             }
         }
         None
+    }
+
+    /// Every file of one pattern, sorted (`sorted(glob(pattern))`, files
+    /// only).
+    pub fn all(&self, pattern: &str) -> Vec<&str> {
+        if !has_magic(pattern) {
+            return self
+                .files
+                .get(pattern)
+                .map(|f| vec![f.as_str()])
+                .unwrap_or_default();
+        }
+        let pat: Vec<&str> = pattern.split('/').collect();
+        self.sorted
+            .iter()
+            .filter(|f| {
+                let parts: Vec<&str> = f.split('/').collect();
+                matches(&parts, &pat)
+            })
+            .map(String::as_str)
+            .collect()
     }
 }
 
@@ -187,6 +215,22 @@ mod tests {
         );
         assert_eq!(ix.first(&pats(&["vcf/S.vcf.gz"])), Some("vcf/S.vcf.gz"));
         assert_eq!(ix.first(&pats(&["vcf/T.vcf.gz"])), None);
+    }
+
+    #[test]
+    fn the_nextflow_launch_folder_is_left_out() {
+        let d = Dir::new("scan-nextflow");
+        d.put("nextflow/work/ab/cd/vcf/S.vcf.gz", "x");
+        d.put("nextflow/S_sample_qc.tsv", "x");
+        d.put("qc/nextflow/S_sample_qc.tsv", "x");
+        let ix = FolderIndex::walk(&d.0);
+        assert_eq!(ix.first(&pats(&["nextflow/work/ab/cd/vcf/S.vcf.gz"])), None);
+        assert_eq!(ix.first(&pats(&["nextflow/*"])), None);
+        // Only the top-level folder: a deeper one of that name is read.
+        assert_eq!(
+            ix.first(&pats(&["qc/nextflow/S_sample_qc.tsv"])),
+            Some("qc/nextflow/S_sample_qc.tsv")
+        );
     }
 
     #[test]

@@ -26,7 +26,7 @@ compares the two names lists for the five populations).
      genes it does not list are the 17 of NOT_IN_CALLABILITY;
   4. the report readers: the not-assessed row step 35 writes (its own lines,
      cut from scripts/35-paralogs.sh and run) gives a reading that names the
-     reason in bin/collect_summary.py, and in bin/paraphase_report.py and
+     reason in the summary (og summary collect), and in bin/paraphase_report.py and
      bin/couple_report.py (the Paraphase side-by-side and the couple screen),
      and a called table still reads as before. Control: the old row with "."
      for its place is not found over SMN1 exon 7 there. A catalog table
@@ -262,6 +262,15 @@ def main():
     # 4. the report reader on step 35's tables
     sys.path.insert(0, os.path.join(REPO, "bin"))
     import collect_summary  # noqa: E402
+
+    def parascopy(d):
+        """Step 35's section of the summary og summary collect writes for folder D."""
+        return collect_summary.collect("S", d)["sections"]["parascopy"]["data"]
+
+    def gba1(d):
+        """The gba1 catalog row of that section."""
+        return next(x for x in parascopy(d)["loci"] if x["table"] == "gba1")
+
     head11 = ("chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\t"
               "homologous_regions\n")
     with tempfile.TemporaryDirectory() as d:
@@ -279,7 +288,7 @@ def main():
             os.environ, region="chr5:70951946-70951946", model="SMN1.gz", reason=reason, out=t))
         import paraphase_report  # noqa: E402
         import couple_report  # noqa: E402
-        _, data = collect_summary.sec_parascopy(d, "S")
+        data = parascopy(d)
         check("report: a not-assessed SMN table reads as not assessed, with the reason",
               data["reading"] == f"SMN1 and SMN2 not assessed: {reason}: no carrier reading"
               and data["smn1"]["cn"] is None, data.get("reading"))
@@ -296,7 +305,7 @@ def main():
         with open(t, "w") as f:
             f.write(head11 + "chr5\t70925000\t70953000\tSMN1\tPASS\t4\t40\tPASS\t1,3\t35,30\t"
                     "chr5:70049000-70077000:-\n")
-        _, data = collect_summary.sec_parascopy(d, "S")
+        data = parascopy(d)
         check("report: a called SMN table still reads one SMN1 copy as a carrier",
               data["smn1"]["cn"] == 1 and "carrier" in data["reading"] and "not assessed" not in data["reading"],
               data.get("reading"))
@@ -310,12 +319,12 @@ def main():
                     "homologous_regions": "*"}
             with open(g, "w") as f:
                 f.write("\t".join(cols) + "\n" + "\t".join(vals[c] for c in cols) + "\n")
-            loc = collect_summary.parascopy_locus("gba1", g, None)
+            loc = gba1(d)
             check(f"report: a catalog table without {drop} is unreadable, not 'not resolved'",
                   loc["status"] == "unreadable" and loc["cn"] is None, loc)
         with open(g, "w") as f:
             f.write(head11 + "chr1\t155231478\t155244699\tGBA\tPASS\t4\t40\tPASS\t2,2\t30,30\t*\n")
-        loc = collect_summary.parascopy_locus("gba1", g, None)
+        loc = gba1(d)
         check("control: the same table with every column is called", loc["status"] == "called" and loc["cn"] == 4, loc)
 
     if FAILS:

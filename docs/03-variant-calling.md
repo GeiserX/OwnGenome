@@ -146,7 +146,7 @@ Keep value representations consistent on repeated resumes: Nextflow 26.10.5 can 
 
 ## Sex chromosomes
 
-A male sample has one X and one Y. Outside the pseudoautosomal regions (PARs, the ends of X and Y that pair with each other), a heterozygous call on chrX or chrY cannot be real. With `male`, DeepVariant calls chrX and chrY haploid outside the PARs listed in `assets/par_grch38.bed` (the GRCh38 PAR1 and PAR2 of chrX and chrY), so those calls are homozygous. `female` and no sex call every contig diploid; no sex prints a note saying so. `run-all.sh` passes the sex it was given.
+A male sample has one X and one Y. Outside the pseudoautosomal regions (PARs, the ends of X and Y that pair with each other), a heterozygous call on chrX or chrY cannot be real. With `male`, DeepVariant calls chrX and chrY haploid outside the PARs listed in `assets/par_grch38.bed` (the GRCh38 PAR1 and PAR2 of chrX and chrY), so those calls are homozygous. The PAR coordinates come from the [Genome Reference Consortium's GRCh38 page](https://www.ncbi.nlm.nih.gov/grc/human): PAR1 is chrX and chrY 10,001-2,781,479; PAR2 is chrX 155,701,383-156,030,895 and chrY 56,887,903-57,217,415 (1-based). The BED holds the same intervals with 0-based starts. It has no header line, because some of its readers take every line as an interval. `female` and no sex call every contig diploid; no sex prints a note saying so. `run-all.sh` passes the sex it was given.
 
 The alternative callers (03a GATK, 03b FreeBayes, 03d Octopus) call every contig diploid, chrX and chrY of a male sample too. Clair3 (03e, long reads) takes the same `male` or `female` argument (`--gender`).
 

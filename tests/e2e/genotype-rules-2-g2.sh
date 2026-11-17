@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# APOL1 G2 (rs71785313) beside step 42's APOL1 rule (bin/genotype_rules_indels.py),
+# APOL1 G2 (rs71785313) beside step 42's APOL1 rule (og summary collect's G2
+# reader, the apol1 module of rust/crates/og-summary/src/collect/group_c/traits.rs),
 # with the real bcftools images:
-#   - dbSNP orientation, online: the record pinned in the module (DBSNP) is what
-#     dbSNP's GRCh38 VCF of the build versions.env pins holds for rs71785313 (same
-#     position and REF, the module's ALT among dbSNP's); control: the same compare on
-#     a copy with REF and ALT swapped fails;
+#   - dbSNP orientation, online: the record pinned in that module (POS, REF, ALT) is
+#     what dbSNP's GRCh38 VCF of the build versions.env pins holds for rs71785313
+#     (same position and REF, the module's ALT among dbSNP's); control: the same
+#     compare on a copy with REF and ALT swapped fails;
 #   - the report's reader through a real .tbi: a bgzipped, indexed gVCF (bcftools
-#     view -Oz, bcftools index -t) with a G2 deletion, read by collect_summary's
-#     genotype_rules, gives G1/G2 beside a G0/G1 rule line; control: the same
-#     folder with a reference block over G2 gives G0/G1.
+#     view -Oz, bcftools index -t) with a G2 deletion, read by og summary collect,
+#     gives G1/G2 beside a G0/G1 rule line; control: the same folder with a
+#     reference block over G2 gives G0/G1.
 # Writes one folder under GENOME_DIR, removed at the end; no other case reads it.
 . "$(dirname "$0")/lib.sh"
 
 URL="https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD:?}/VCF/GCF_000001405.40.gz"
-PINNED=$(python3 -c "import sys; sys.path.insert(0, '${REPO}/bin'); import genotype_rules_indels as m; \
-print(m.DBSNP[0], m.DBSNP[2], m.DBSNP[3], m.DBSNP[4], sep='\t')")
+# The pinned record: the POS, REF and ALT constants of og-summary's apol1 module.
+PINNED=$(awk '/^pub mod apol1/ { on = 1 } on && /^    const (POS|REF|ALT):/ { v = $NF; gsub(/[";_]/, "", v); x[$2] = v }
+              END { printf "rs71785313\t%s\t%s\t%s\n", x["POS:"], x["REF:"], x["ALT:"] }' \
+  "${REPO}/rust/crates/og-summary/src/collect/group_c/traits.rs")
 echo "pinned: ${PINNED}"
 
 # same_record PINNED LIVE: the pinned rsid, POS and REF equal dbSNP's, and the pinned ALT is one of dbSNP's.
@@ -40,16 +43,18 @@ mkdir -p "$D"
 for s in G2HET G2REF; do
   mkdir -p "${D}/${s}/vcf" "${D}/${s}/traits"
   python3 - "$REPO" "${D}/${s}" "$s" <<'PY'
-import os, sys
+import os, subprocess, sys
 repo, d, s = sys.argv[1:]
 sys.path.insert(0, os.path.join(repo, "bin"))
-import traits_report as tr
-rules = tr.read_rules(os.path.join(repo, "assets", "genotype_rules.tsv"))
 g = os.path.join(d, "g.tsv")
 with open(g, "w") as f:   # G0/G1 at the two G1 sites
     f.write("chr22\t36265860\tA\tG\tA/G\t40\nchr22\t36265988\tT\tG\tT/G\t40\n")
-tr.write_tsv(os.path.join(d, "traits", f"{s}_genotype_rules.tsv"), tr.rule_lines(rules, tr.read_genotypes(g)),
-             tr.RULE_OUT_COLUMNS)
+subprocess.run([os.environ.get("OG", os.path.join(repo, "bin", "og")), "traits", "table",
+                "--table", os.path.join(repo, "assets", "traits.tsv"),
+                "--rules", os.path.join(repo, "assets", "genotype_rules.tsv"),
+                "--genotypes", g, "--sample", s,
+                "--out", os.path.join(d, "traits", f"{s}_traits.tsv"),
+                "--rules-out", os.path.join(d, "traits", f"{s}_genotype_rules.tsv")], check=True)
 os.remove(g)
 body = ["chr22\t36200000\t.\tA\t<*>\t0\t.\tEND=36265994\tGT:GQ\t0/0:50"]
 if s == "G2HET":
@@ -71,12 +76,12 @@ PY
 done
 
 read_result() {
-  python3 - "$REPO" "${D}/$1" "$1" <<'PY'
-import os, sys
-repo, d, s = sys.argv[1:]
-sys.path.insert(0, os.path.join(repo, "bin"))
-import collect_summary as cs
-r = next(x for x in cs.genotype_rules(d, s) if x["rule"] == "APOL1")
+  "${REPO}/bin/og" summary collect --sample "$1" --sample-dir "${D}/$1" --assets "${REPO}/assets" \
+    --out "${CASE_TMP}/$1.summary.json" > /dev/null
+  python3 - "${CASE_TMP}/$1.summary.json" <<'PY'
+import json, sys
+rules = json.load(open(sys.argv[1]))["sections"]["traits"]["data"]["rules"]
+r = next(x for x in rules if x["rule"] == "APOL1")
 print(r["result"], r["g2"]["result"], r["g2"]["source"], r["g2"]["status"], sep="\t")
 PY
 }

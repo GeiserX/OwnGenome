@@ -1,0 +1,99 @@
+Local execution of the Guard step "Traits controls", Rust 1.93.0.
+Command: cargo test --locked -p og-steps traits::tests --no-fail-fast
+Faults: reverse the diplotype key list; remove the genotype REF guard;
+clear the phase-site list before writing the VCF.
+The step requires each of the three named regression tests to fail, then
+restores the source. A compiler failure alone does not satisfy the control.
+
+running 8 tests
+test traits::tests::csv_header_unicode_rules_and_atomic_write_errors ... ok
+test traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls ... FAILED
+test traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory ... FAILED
+test traits::tests::shared_position_keeps_each_rules_allele_vocabulary ... ok
+test traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported ... FAILED
+test traits::tests::unwritable_rules_output_keeps_existing_traits_table ... FAILED
+test traits::tests::committed_catalogs_and_every_rule_genotype ... FAILED
+test traits::tests::schema_faults_are_refused_before_enumeration ... ok
+
+failures:
+
+---- traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls stdout ----
+
+thread 'traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls' (4288523) panicked at traits.rs (line 1242, column 17):
+assertion `left == right` failed
+  left: "other_haplotype"
+ right: "called"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory stdout ----
+
+thread 'traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory' (4288529) panicked at traits.rs (line 1336, column 45):
+called `Result::unwrap_err()` on an `Ok` value: {("chr2", "135851076"): SiteGt { alleles: ["G", "A"], status: Called, gq: "42", snv: true }}
+
+---- traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported stdout ----
+
+thread 'traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported' (4288526) panicked at traits.rs (line 1390, column 9):
+assertion `left == right` failed
+  left: 0
+ right: 3
+
+---- traits::tests::unwritable_rules_output_keeps_existing_traits_table stdout ----
+ERROR: /Volumes/Data/repos/personal/.worktrees/pgp-rust-c2b/rust/crates/og-steps/../../../assets/genotype_rules.tsv: rule APOE (line 19): no combination line for e2/e4|e1/e3
+ERROR: /Volumes/Data/repos/personal/.worktrees/pgp-rust-c2b/rust/crates/og-steps/../../../assets/genotype_rules.tsv: rule APOE (line 19): the combination line e1/e3|e2/e4 can never be read (a rule that needs phase reads one diplotype)
+
+thread 'traits::tests::unwritable_rules_output_keeps_existing_traits_table' (4288530) panicked at traits.rs (line 1433, column 37):
+called `Result::unwrap_err()` on an `Ok` value: 1
+
+---- traits::tests::committed_catalogs_and_every_rule_genotype stdout ----
+
+thread 'traits::tests::committed_catalogs_and_every_rule_genotype' (4288524) panicked at traits.rs (line 1216, column 9):
+assertion `left == right` failed
+  left: ["rule APOE (line 19): no combination line for e2/e4|e1/e3", "rule APOE (line 19): the combination line e1/e3|e2/e4 can never be read (a rule that needs phase reads one diplotype)"]
+ right: []
+
+
+failures:
+    traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls
+    traits::tests::committed_catalogs_and_every_rule_genotype
+    traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported
+    traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory
+    traits::tests::unwritable_rules_output_keeps_existing_traits_table
+
+test result: FAILED. 3 passed; 5 failed; 0 ignored; 0 measured; 91 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p og-steps --lib`
+error: 1 target failed:
+    `-p og-steps --lib`
+test traits::tests::apoe_grid_keeps_haplotype_order_and_missing_calls ... FAILED
+test traits::tests::stream_prefers_first_snv_but_checks_every_ref_and_bounds_memory ... FAILED
+test traits::tests::phase_requires_one_block_and_only_multiple_hets_are_exported ... FAILED
+
+Fix round 1: local red-first controls, Rust 1.93.0, synthetic inputs only.
+The tests-only commit b7be2494 leaves production code unchanged.
+Command: cargo test --locked -p og-steps traits::tests --no-fail-fast
+test traits::tests::catalog_quotes_are_literal_and_embedded_tabs_are_columns ... FAILED
+test traits::tests::plain_header_unicode_rules_and_atomic_write_errors ... FAILED
+test traits::tests::directory_destinations_keep_both_previous_tables ... FAILED
+
+Command: OG_REQUIRED=1 python3 tests/test_traits_report.py (unfixed binary)
+[FAIL] plain TSV control: quoted header is refused --
+[FAIL] plain TSV control: quoted catalog field is refused --
+[FAIL] plain TSV control: quoted rule text is refused --
+[FAIL] plain TSV control: embedded tab is refused --
+[FAIL] plain TSV control: embedded tab preserves both outputs --
+[FAIL] plain TSV control: embedded tab leaves collector-readable output --
+
+Independent reference controls: a scratch copy of genotype_rules.tsv changes
+only the reference label to WRONG_REFERENCE. The actual og tables must still
+match the six fixed labels in tests/test_traits_report.py.
+APOL1 G0/G0 changed: the APOL1 reference assertion fails.
+CAD9p21 no risk copy changed: the CAD9p21 reference assertion fails.
+SMN1 retained metadata: dbSNP position moved one base off its copies.
+The pinned dbSNP agreement assertion fails.
+Guard now repeats these three controls, requires the exact failed assertion
+and exactly one failure per mutation, and keeps the catalogs unchanged.
+
+After fixes: all 10 traits Rust tests pass. The CLI controls refuse quoted
+headers, quoted fields, quoted rule text and embedded tabs. The previous
+outputs survive; collect_summary reads the unchanged table with QUOTE_NONE.
+Both directory-destination controls preserve the other previous output.

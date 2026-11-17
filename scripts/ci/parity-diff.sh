@@ -37,7 +37,7 @@
 #       to compare equal, then plants one difference per item and requires
 #       each to be reported (and a known one to pass, a stale one to fail,
 #       a missing file to fail), on the items PARITY_ITEMS picks.
-# Needs docker (bcftools and samtools from versions.env) and python3. Writes
+# Needs docker (bcftools and samtools from versions.env) and og (plus jq for --self-test). Writes
 # a markdown table to stdout and to $GITHUB_STEP_SUMMARY when it is set.
 set -euo pipefail
 export LC_ALL=C
@@ -112,25 +112,7 @@ canon() {
         echo "summary:"
         cat "${dir}/$(path "$side" roh "$s" | awk '{print $2}')"; } ;;
     pharmcat)
-      python3 - "$f" <<'PY'
-import json, sys
-data = json.load(open(sys.argv[1]))
-rows = set()
-def dips(gene, g):
-    for d in (g.get("sourceDiplotypes") or g.get("recommendationDiplotypes") or []):
-        names = [(d.get(a) or {}).get("name", "") or "" for a in ("allele1", "allele2")]
-        rows.add(f"{gene}\t{'/'.join(names)}")
-for key, val in (data.get("genes") or {}).items():
-    if not isinstance(val, dict):
-        continue
-    if "sourceDiplotypes" in val or "recommendationDiplotypes" in val:
-        dips(key, val)
-    else:
-        for name, g in val.items():
-            if isinstance(g, dict):
-                dips(name, g)
-print("\n".join(sorted(rows)))
-PY
+      "${OG:-${ROOT}/bin/og}" dev pharmcat diplotypes "$f"
       ;;
     prs)
       awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next}
@@ -296,13 +278,9 @@ self_test() {
       clinvar) printf 'chr1\t1\tA\tT\t0/1\t1\tGENE:1\tPathogenic\tplanted\n' >> "${t}/nf/$(path nf clinvar "$s")" ;;
       roh) printf 'RG\t%s\tchr1\t1\t6000000\t6000000\t1\t99.0\n' "$s" >> "${t}/nf/$(path nf roh "$s" | awk '{print $1}')" ;;
       pharmcat)
-        python3 - "${t}/nf/$(path nf pharmcat "$s")" <<'PY'
-import json, sys
-p = sys.argv[1]
-d = json.load(open(p))
-d["genes"] = {}
-json.dump(d, open(p, "w"))
-PY
+        local report
+        report="${t}/nf/$(path nf pharmcat "$s")"
+        jq '.genes = {}' "$report" > "${report}.tmp" && mv "${report}.tmp" "$report"
         ;;
       prs)
         awk -F'\t' -v OFS='\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; print; next}

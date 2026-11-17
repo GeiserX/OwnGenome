@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og family ibd: the DNA segments two sequenced relatives share (step 38).
 
 Each case writes synthetic Beagle VCFs, hap-ibd segment files, PLINK maps and

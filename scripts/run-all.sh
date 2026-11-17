@@ -39,7 +39,7 @@
 #   failed (logs/run_status.tsv). Results are published by hard link when work/ and GENOME_DIR share a filesystem,
 #   you passed no -w, -c or --publish_dir_mode, and you run as root or Linux's fs.protected_hardlinks is 0 (then a user
 #   may link the tasks' root-owned files).
-# logs/run_status.tsv keeps this command with its switches: bin/owngenome_recheck.py --rerun replays it when a newer
+# logs/run_status.tsv keeps this command with its switches: bin/og recheck --rerun replays it when a newer
 #   ClinVar or catalog changes a result (docs/recheck.md).
 set -euo pipefail
 case "${1:-}" in -h|--help) sed -n '2,/^set -euo/p' "$0" | sed -e '$d' -e 's/^# \{0,1\}//'; exit 0 ;; esac
@@ -48,9 +48,10 @@ SAMPLE=${1:-} SEX=${2:-}
   [ -z "$SEX" ] || echo "ERROR: sex must be 'male' or 'female', got '${SEX}'."; } >&2; exit 2; }
 ((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404)) || { echo "ERROR: run-all.sh needs bash 4.4 or later (this is ${BASH_VERSION}); on macOS: brew install bash" >&2; exit 2; }
 shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
-# This command as given, for bin/owngenome_recheck.py --rerun (logs/run_status.tsv, 'meta command'): the switches
+# This command as given, for bin/og recheck --rerun (logs/run_status.tsv, 'meta command'): the switches
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
-# 'meta switches' names them all, so a replay drops one set now that the run did not have.
+# 'meta switches' names them all, so a replay drops one set now that the run did not have. The replay reads this
+# shape back word by word and starts run-all.sh with those arguments, never through a shell; it refuses any other.
 SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS DEEPVARIANT_DISABLE_SMALL_MODEL ALIGN_DIR TOOLS KIR HLA_QC HPO REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
@@ -70,7 +71,7 @@ case "${DEEPVARIANT_DISABLE_SMALL_MODEL:-false}" in
 esac
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
-# The ClinVar files are shared by every sample of GENOME_DIR. bin/owngenome_recheck.py --refresh-clinvar holds this
+# The ClinVar files are shared by every sample of GENOME_DIR. bin/og recheck --refresh-clinvar holds this
 # lock while it replaces them; the run holds it shared on fd 7 until it ends, so a run waits for a refresh going on
 # and a refresh refuses while a run goes on. Without flock (macOS: brew install flock) nothing waits here.
 CVLOCK="${G}/clinvar/.refresh.lock"
@@ -245,8 +246,11 @@ else KNOWN+=" chip"; fi
 # Step 42 reads the gVCF only: DeepVariant writes one for a FASTQ or BAM row, a BAM+VCF row has one when it lies beside the VCF.
 plan "42 Traits panel" traits "$([ -z "$fv" ] || [ -n "$GROW" ] || echo "no gVCF: ${GV#"$G"/}")" || true
 # Step 43 against the table setup.sh --archaic builds (DONE is written last); the genes of its segments come from GENCODE.
+# It reads the gVCF too (a site with no call is the reference only inside a reference block): with the table installed,
+# a row that starts from a VCF without one beside it is skipped, as for step 42.
 AR=${ARCHAIC_DIR:-${G}/reference/archaic/${ARCHAIC_DATA_VERSION}}
-plan "43 Archaic ancestry (IBDmix)" archaic "$(if [ "$AR" = none ]; then echo 'ARCHAIC_DIR=none'; else need "${AR}/DONE"; fi)" \
+plan "43 Archaic ancestry (IBDmix)" archaic "$(if [ "$AR" = none ]; then echo 'ARCHAIC_DIR=none'
+  elif [ -e "${AR}/DONE" ] && [ -n "$fv" ] && [ -z "$GROW" ]; then echo "no gVCF: ${GV#"$G"/}"; else need "${AR}/DONE"; fi)" \
   && NF+=(--archaic_data "$AR" --archaic_pop "${ARCHAIC_POP:-ALL}") && { [[ " ${NF[*]} " == *" --hla_genes "* ]] || [ ! -s "$GT" ] || NF+=(--hla_genes "$GT"); }
 # Step 44 (ancient populations) is opt-in and listed only when TOOLS names it; it reads the gVCF and the panel
 # setup.sh --ancient-panel builds (DONE is written last). ANCIENT_PANEL_DIR picks another panel.

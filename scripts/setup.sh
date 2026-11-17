@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # setup.sh — One-stop setup: download references, pull Docker images, validate
 # Usage: ./scripts/setup.sh <genome_dir>
+#        ./scripts/setup.sh --no-clinical-data <genome_dir>
+#        ./scripts/setup.sh --clinical-data <genome_dir>
 #        ./scripts/setup.sh --pull-only      pull the Docker images and exit
 #        ./scripts/setup.sh --og             put OwnGenome's og binaries in bin/.og
 #                                            (Linux, and macOS for a live-site host):
@@ -82,8 +84,8 @@
 #      checkout of pgsc_calc and the Nextflow plugin it needs, so step 25 and
 #      the PRS process run without the network
 #
-# The VEP cache (~26 GB, --vep-cache) and PCGR ref data (~7 GB) are
-# downloaded separately because they take a long time.
+#   7. VEP 116, PCGR/CPSR data and VEP 115 (~57 GB download, ~65 GB unpacked).
+#      --no-clinical-data skips them; --clinical-data installs only these three.
 #
 # Every download goes through fetch (scripts/lib/common.sh): it is written to
 # <file>.part, checked, and only then renamed, so a file that exists is whole.
@@ -99,6 +101,9 @@
 # existing samples.
 set -euo pipefail
 
+# Keep an explicit checksum override for fixture tests and verified mirrors.
+PCGR_SHA_OVERRIDE=${PCGR_DATA_SHA256:-}
+
 # The usage text below names data releases, so read them before it prints.
 # shellcheck source=../versions.env
 . "$(dirname "$0")/../versions.env"
@@ -107,11 +112,18 @@ PULL_ONLY=false
 REFRESH=""
 SAMPLE_QC_ONLY=false
 OPT_IN=""
+CLINICAL_DATA=true
 case "${1:-}" in
   --og)
     exec "$(dirname "$0")/../rust/og.sh" install ;;
   --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--archaic)
     OPT_IN=${1#--}
+    shift ;;
+  --clinical-data)
+    OPT_IN=clinical-data
+    shift ;;
+  --no-clinical-data)
+    CLINICAL_DATA=false
     shift ;;
   --pull-only)
     PULL_ONLY=true
@@ -132,6 +144,8 @@ esac
 GENOME_DIR=${1:-${GENOME_DIR:-""}}
 if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "Usage: $0 <genome_dir>"
+  echo "       $0 --no-clinical-data <genome_dir>"
+  echo "       $0 --clinical-data <genome_dir>"
   echo "       $0 --pull-only"
   echo "       $0 --og"
   echo "       $0 --refresh clinvar <genome_dir>"
@@ -140,6 +154,8 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo ""
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
+  echo "  --no-clinical-data  Skip both VEP caches and the PCGR/CPSR bundle."
+  echo "  --clinical-data     Install only those three downloads for an existing setup."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
   echo "  --og          Put OwnGenome's og binaries in bin/.og, for Linux and for a macOS live-site host"
   echo "                (built from rust/, or a release's) and exit."
@@ -210,6 +226,7 @@ export GENOME_DIR
 # Image tags, data versions and the helpers (run_in, fetch, pipeline_images)
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
+if [ -n "$PCGR_SHA_OVERRIDE" ]; then PCGR_DATA_SHA256=$PCGR_SHA_OVERRIDE; fi
 
 # NCBI's GRCh38 analysis set without ALT contigs: chr1-22, X, Y, M, the
 # unplaced and unlocalized scaffolds and chrEBV, 195 sequences. NCBI lists the
@@ -801,7 +818,7 @@ consumer_sites_pin_check() {
 # id, each checked against the md5 Dataverse publishes) become the panel of
 # step 44 in reference/ancient/aadr_<release>:
 #   panel.ind, poplist.txt, ancients.tsv  who builds the axes (the present-day
-#        West Eurasians of bin/ancient_report.py's MODERN_GROUPS) and who is
+#        West Eurasians of og ancient's MODERN_GROUPS) and who is
 #        projected (dated West Eurasians with 100,000 sites or more);
 #   sites_grch38.tsv  the autosomal sites on GRCh38 (UCSC's hg19ToHg38 chain,
 #        each kept only when one of its alleles is the GRCh38 base);
@@ -830,6 +847,7 @@ install_ancient_panel() {
   done
   echo "Installing the ancient populations panel, AADR ${AADR_VERSION} 1240K (step 44) in ${dir}"
   ensure_image EIGENSOFT_IMAGE 44 || return 1
+  need_og "chooses the ancient panel's people and places its sites" || return 1
   mkdir -p "$raw"
   for e in anno ind snp geno; do
     f="${raw}/aadr.${e}"
@@ -868,9 +886,9 @@ install_ancient_panel() {
   # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
   if ! run_in --rw "$part" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$PYTHON_IMAGE" \
          bash -euo pipefail -c '
-           python3 /pgp-bin/ancient_report.py select --anno "$1/aadr.anno" --ind "$1/aadr.ind" \
+           /pgp-bin/og ancient select --anno "$1/aadr.anno" --ind "$1/aadr.ind" \
              --out-ind "$2/panel.ind" --poplist "$2/poplist.txt" --ancients "$2/ancients.tsv"
-           python3 /pgp-bin/ancient_report.py lift --snp "$1/aadr.snp" --chain "$3" --fasta "$4" --out "$2/sites_grch38.tsv"' \
+           /pgp-bin/og ancient lift --snp "$1/aadr.snp" --chain "$3" --fasta "$4" --out "$2/sites_grch38.tsv"' \
          _ "$R" "$P" "$C" "$REF_FASTA_C"; then
     echo "[WARN] Could not choose the panel's people or place its sites (the lines above say why)."
     return 1
@@ -894,7 +912,7 @@ install_ancient_panel() {
     return 1
   fi
   if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
-         python3 /pgp-bin/ancient_report.py align --panel-evec "${P}/panel.evec" --run-evec "${P}/check.evec"; then
+         /pgp-bin/og ancient align --panel-evec "${P}/panel.evec" --run-evec "${P}/check.evec"; then
     echo "[WARN] The two smartpca runs on the same present-day people gave different axes (logs in ${part})."
     return 1
   fi
@@ -1836,6 +1854,13 @@ archaic_filterbed_sha() {
   return 1
 }
 
+# The version of the table og archaic table and strict write: a change to
+# their bytes changes it, and every install rebuilds its table.
+ARCHAIC_TABLE_FORMAT=archaic-table-v1
+# What code= held when bin/archaic_report.py built the table: the sha256 of
+# its part above "# --- genotypes (step 43)", at its last version.
+ARCHAIC_TABLE_PYTHON_SHA256=6bdc4c99a8d80d96179551e37022a3cd5324f650577b9fd64e27d84383e0f1d7
+
 # install_archaic: the table of step 43 in reference/archaic/ARCHAIC_DATA_VERSION
 # (ARCHAIC_DIR: another folder inside GENOME_DIR), one chrN.tsv.gz per
 # autosome, GRCh38: position, REF, ALT, the ALT count of the Altai, Vindija
@@ -1858,6 +1883,7 @@ install_archaic() {
   cpath "$dir" >/dev/null || return 1
   echo "Installing the archaic data ${ARCHAIC_DATA_VERSION} (step 43) in ${dir}"
   for v in BCFTOOLS_IMAGE PICARD_IMAGE PYTHON_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
+  need_og "builds the archaic table" || return 1
   [ -s "$REF_DICT" ] || { echo "[WARN] ${REF_DICT} is missing: run $0 ${GENOME_DIR} first (it writes the sequence dictionary)"; return 1; }
   mkdir -p "${dir}/md5" "${dir}/download" "${dir}/work" "${dir}/mask" "${dir}/exclude"
   for v in "Altai|${ARCHAIC_ALTAI_MD5SUMS_SHA256}" "Vindija33.19|${ARCHAIC_VINDIJA_MD5SUMS_SHA256}" "Denisova|${ARCHAIC_DENISOVA_MD5SUMS_SHA256}"; do
@@ -1893,9 +1919,18 @@ install_archaic() {
     chroms=$(seq 1 22 | tr '\n' ' ')
   fi
   [ -n "${chroms// /}" ] || { echo "[WARN] ARCHAIC_REGIONS=${regions} names no autosome (1 to 22)"; return 1; }
-  stamp="data=${ARCHAIC_DATA_VERSION} regions=${rstamp} bcftools=${BCFTOOLS_IMAGE} picard=${PICARD_IMAGE} masks=$(_digest sha256 <(printf '%s\n%s\n%s\n%s\n%s\n' "$ARCHAIC_STRICT_MASK_SHA256" "$ARCHAIC_SEGDUPS_SHA256" "$ARCHAIC_FILTERBED_SHA256_ALTAI" "$ARCHAIC_FILTERBED_SHA256_VINDIJA" "$ARCHAIC_FILTERBED_SHA256_DENISOVA")) code=$(_digest sha256 <(sed '/^# --- genotypes (step 43)/,$d' "${PGP_ROOT}/bin/archaic_report.py"))"
+  stamp="data=${ARCHAIC_DATA_VERSION} regions=${rstamp} bcftools=${BCFTOOLS_IMAGE} picard=${PICARD_IMAGE} masks=$(_digest sha256 <(printf '%s\n%s\n%s\n%s\n%s\n' "$ARCHAIC_STRICT_MASK_SHA256" "$ARCHAIC_SEGDUPS_SHA256" "$ARCHAIC_FILTERBED_SHA256_ALTAI" "$ARCHAIC_FILTERBED_SHA256_VINDIJA" "$ARCHAIC_FILTERBED_SHA256_DENISOVA")) code=${ARCHAIC_TABLE_FORMAT}"
+  # Until og archaic replaced bin/archaic_report.py, code= held the sha256 of
+  # that file's table half. The last Python wrote the same table bytes as
+  # og archaic table and strict (tests/parity), so a table it built counts as
+  # built here: its stamp is accepted once and rewritten. Remove this one
+  # release after 1.0.0.
+  local legacy="${stamp% code=*} code=${ARCHAIC_TABLE_PYTHON_SHA256}"
   local have=1
   for c in $chroms; do [ -s "${dir}/chr${c}.tsv.gz" ] || have=0; done
+  for v in "${dir}/DONE" "${dir}"/chr*.stamp; do
+    [ "$(cat "$v" 2>/dev/null)" = "$legacy" ] && echo "$stamp" > "$v"
+  done
   if [ "$have" = 1 ] && [ "$(cat "${dir}/DONE" 2>/dev/null)" = "$stamp" ]; then
     echo "[OK] archaic data ${ARCHAIC_DATA_VERSION} (step 43): ${dir}"
     return 0
@@ -1975,7 +2010,7 @@ install_archaic() {
       echo "[WARN] Could not read the archaic genotypes of chr${c}"; return 1
     fi
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-          python3 /pgp-bin/archaic_report.py table --chrom "$c" --modern "$(cpath "${wk}/modern.tsv")" \
+          /pgp-bin/og archaic table --chrom "$c" --modern "$(cpath "${wk}/modern.tsv")" \
             --archaic "Altai=$(cpath "${wk}/Altai.tsv")" --archaic "Vindija=$(cpath "${wk}/Vindija33.19.tsv")" \
             --archaic "Denisova=$(cpath "${wk}/Denisova.tsv")" \
             --mask "Altai=$(cpath "${dir}/mask/Altai.chr${c}.bed.gz")" \
@@ -2009,7 +2044,7 @@ install_archaic() {
       echo "[WARN] the GRCh38 strict mask has no interval on chr${c}: ${dir}/strict_GRCh38.bed"; return 1
     fi
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
-          python3 /pgp-bin/archaic_report.py strict --chrom "$c" --strict "$(cpath "${wk}/strict.bed")" \
+          /pgp-bin/og archaic strict --chrom "$c" --strict "$(cpath "${wk}/strict.bed")" \
             --rows "$(cpath "${wk}/lifted.tsv")" --out "$(cpath "${wk}/marked.tsv")"; then
       echo "[WARN] Could not mark the strict mask on chr${c}"; return 1
     fi
@@ -2047,12 +2082,47 @@ install_vep_cache_opt_in() {
     echo "[OK] VEP ${VEP_CACHE_RELEASE} cache already present: ${dir}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
     return 0
   fi
+  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" "${dir}/$(basename "$(vep_cache_url "$VEP_CACHE_RELEASE")")" || return 1
   echo "Installing the VEP ${VEP_CACHE_RELEASE} cache: ~26 GB download, ~30 GB unpacked, both on disk until it ends."
   if ! install_vep_cache "$dir" "$VEP_CACHE_RELEASE"; then
     echo "[WARN] Could not install the VEP ${VEP_CACHE_RELEASE} cache. Run this command again: the download resumes."
     return 1
   fi
   echo "[OK] VEP ${VEP_CACHE_RELEASE} cache: ${dir}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
+}
+
+# Each missing item gets its own disk check. A skipped or failed item must
+# not prevent the smaller bundle or the other cache from installing; it makes
+# the return status 1.
+install_clinical_data() {
+  local dir="${GENOME_DIR}/vep_cache" rel peak missing=0
+  echo "Clinical data: about 57 GB to download, 65 GB unpacked; allow 1 to 3 hours."
+  for rel in "$VEP_CACHE_RELEASE" bundle "$PCGR_VEP_CACHE_RELEASE"; do
+    if [ "$rel" = bundle ]; then
+      [ ! -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] || { echo "[OK] PCGR/CPSR bundle already present."; continue; }
+      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "${GENOME_DIR}/pcgr_data/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"; then
+        install_pcgr_bundle "${GENOME_DIR}/pcgr_data" || { missing=1; echo "[WARN] Could not install PCGR/CPSR. Step 17 needs it; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; }
+      else
+        missing=1
+      fi
+    else
+      [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
+      peak=56
+      [ "$rel" != "$PCGR_VEP_CACHE_RELEASE" ] || peak=52
+      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache" "${dir}/$(basename "$(vep_cache_url "$rel")")"; then
+        if ! install_vep_cache "$dir" "$rel"; then
+          missing=1
+          echo "[WARN] Could not install VEP ${rel}. Run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\" (interrupted downloads resume)."
+          if [ "$rel" = "$VEP_CACHE_RELEASE" ]; then
+            echo "  To retry only this cache: ./scripts/setup.sh --vep-cache \"${GENOME_DIR}\""
+          fi
+        fi
+      else
+        missing=1
+      fi
+    fi
+  done
+  return "$missing"
 }
 
 case "$OPT_IN" in
@@ -2072,6 +2142,7 @@ case "$OPT_IN" in
   megane-kmers) ensure_image MEGANE_IMAGE 50 && install_megane_kmers; exit $? ;;
   mocha-data) install_mocha_data; exit $? ;;
   locityper-data) install_locityper_data; exit $? ;;
+  clinical-data) install_clinical_data; exit $? ;;
   vep-cache) install_vep_cache_opt_in; exit $? ;;
   annotsv-data) install_annotsv_data; exit $? ;;
   archaic) install_archaic; exit $? ;;
@@ -2441,47 +2512,15 @@ echo "=== Phase 5: AnnotSV annotation data (~5.3 GB + ~1.7 GB download, ~20 GB u
 install_annotsv_data || true
 
 ###############################################################################
-# Phase 6: Optional Downloads (instructions only)
+# Phase 6: Clinical reference data (default)
 ###############################################################################
 echo ""
-echo "=== Phase 6: Optional Downloads (manual) ==="
-echo ""
-echo "The following are only needed for specific steps and are large downloads:"
-echo ""
-
-VEPDIR="${GENOME_DIR}/vep_cache"
-if [ -f "${VEPDIR}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38/info.txt" ]; then
-  echo "[OK] VEP ${VEP_CACHE_RELEASE} cache already present."
+echo "=== Phase 6: Clinical reference data ==="
+if $CLINICAL_DATA; then
+  install_clinical_data || true
 else
-  echo "[SKIP] VEP ${VEP_CACHE_RELEASE} cache (~26 GB) — without it a run skips VEP, vcfanno, the clinical filter and slivar"
-  echo "  Install it before the first run (downloads, checks and unpacks it; ~30 GB unpacked):"
-  echo "    ./scripts/setup.sh --vep-cache ${GENOME_DIR}"
-fi
-echo ""
-
-PCGRDIR="${GENOME_DIR}/pcgr_data"
-if [ -d "${PCGRDIR}/${PCGR_DATA_BUNDLE}/data" ]; then
-  echo "[OK] PCGR/CPSR ref data bundle already present."
-else
-  echo "[SKIP] PCGR/CPSR ref data (~7 GB download) — needed for step 17 (cancer predisposition)"
-  echo "  Download:"
-  echo "    mkdir -p ${PCGRDIR} && cd ${PCGRDIR}"
-  echo "    curl -fL -C - -O https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
-  echo "    tar xzf pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
-  echo "    mkdir -p ${PCGR_DATA_BUNDLE} && mv data/ ${PCGR_DATA_BUNDLE}/"
-fi
-echo ""
-
-# CPSR runs the VEP release inside the PCGR image, not the one step 13 uses.
-if [ -f "${VEPDIR}/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/info.txt" ]; then
-  echo "[OK] VEP ${PCGR_VEP_CACHE_RELEASE} cache (for CPSR) already present."
-else
-  echo "[SKIP] VEP ${PCGR_VEP_CACHE_RELEASE} cache (~24 GB) — needed for step 17 (CPSR runs VEP ${PCGR_VEP_CACHE_RELEASE} inside the PCGR image)"
-  echo "  This is separate from the release-${VEP_CACHE_RELEASE} cache used by step 13. Both coexist in vep_cache/."
-  echo "  Download:"
-  echo "    mkdir -p ${VEPDIR}"
-  echo "    curl -fL -C - -o ${VEPDIR}/$(basename "$(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")") $(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")"
-  echo "    tar xzf ${VEPDIR}/$(basename "$(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")") -C ${VEPDIR}"
+  echo "[SKIP] Clinical data (--no-clinical-data): steps 13, 30, 23, 31 and 17 need the caches or bundle."
+  echo "  Install later: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
 fi
 
 ###############################################################################
@@ -2502,4 +2541,4 @@ echo "  2. Run: export GENOME_DIR=${GENOME_DIR}"
 echo "  3. Run: ./scripts/validate-setup.sh <sample_name>"
 echo "  4. Run: ./scripts/run-all.sh <sample_name> <male|female>"
 echo ""
-echo "For optional VEP and CPSR setup, see the instructions above."
+echo "Review any warnings above; use --clinical-data to retry missing clinical downloads."

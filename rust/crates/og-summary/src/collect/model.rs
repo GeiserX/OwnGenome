@@ -178,6 +178,20 @@ impl Section {
         s
     }
 
+    /// Marks a section whose reading failed after its file was read (a
+    /// part of the post pass): `unreadable`, as a reader's error leaves it,
+    /// with a note that names the file the section came from.
+    pub fn make_unreadable(&mut self, why: &str) {
+        self.note = Some(match self.source.as_deref() {
+            Some(src) => format!("{}: {why}", crate::basename(src)),
+            None => why.to_owned(),
+        });
+        self.state = State::Unreadable;
+        self.source = None;
+        self.file_date = None;
+        self.data = None;
+    }
+
     pub fn to_json(&self) -> Value {
         let mut m = IndexMap::new();
         m.insert("title".into(), Value::Str(self.spec.title.into()));
@@ -295,6 +309,8 @@ pub struct Summary {
     pub manifest: Option<Manifest>,
     pub declared_sex: Option<String>,
     pub sections: Vec<Section>,
+    /// The CYP2D6 callers side by side (group b).
+    pub cyp2d6: Option<super::pgx::Cyp2d6>,
 }
 
 impl Summary {
@@ -334,6 +350,9 @@ impl Summary {
                     .collect(),
             ),
         );
+        if let Some(c) = &self.cyp2d6 {
+            m.insert("cyp2d6".into(), c.to_json());
+        }
         Value::Object(m)
     }
 }

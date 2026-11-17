@@ -42,7 +42,7 @@ For chip data (no `FORMAT/PL`), the script adds `-G30`.
 
 ### Centromere and heterochromatin bands
 
-Few markers map in GRCh38's centromeres (cytoband stain `acen`), its large heterochromatin blocks (`gvar`, such as 1q12, 9q12 and 16q11.2) and the acrocentric stalks (`stalk`), so `bcftools roh` reads long homozygous runs there that are artefacts. The script, the Nextflow module and the reports take the part of each segment that lies in one of these bands out of its length; a segment wholly inside one counts as nothing. The bands are the `acen`, `gvar` and `stalk` rows of UCSC's `cytoBand.hg38.txt` (the file `setup.sh` installs for step 10), neighbouring rows merged into one span around each centromere (two on chrY), written into `scripts/11-roh-analysis.sh`, `modules/local/roh/main.nf` and `bin/collect_summary.py` as the same line (a unit test checks they agree). On chr1 the span is 121.7-143.2 Mb, on chr9 42.2-61.5 Mb, on chr18 15.4-21.5 Mb.
+Few markers map in GRCh38's centromeres (cytoband stain `acen`), its large heterochromatin blocks (`gvar`, such as 1q12, 9q12 and 16q11.2) and the acrocentric stalks (`stalk`), so `bcftools roh` reads long homozygous runs there that are artefacts. The script, the Nextflow module and the reports take the part of each segment that lies in one of these bands out of its length; a segment wholly inside one counts as nothing. The bands are the `acen`, `gvar` and `stalk` rows of UCSC's `cytoBand.hg38.txt` (the file `setup.sh` installs for step 10). Neighbouring rows are merged around each centromere, with two spans on chrY. `MASKED_BANDS` in `rust/crates/og-summary/src/collect/group_c/roh.rs` is their only copy. The step and the Nextflow module call `og roh summary`, which reads that same constant. On chr1 the span is 121.7-143.2 Mb, on chr9 42.2-61.5 Mb, on chr18 15.4-21.5 Mb.
 
 The reports count autosomes only: Segments, Total and Largest keep chr1 to chr22, so they leave out chrX and chrY (a man's single X reads as one long run) and any other contig (chrM, chrEBV, chrUn_*), and the part of each segment in a band. They say how many chrX and chrY segments and how many megabases in bands were left out.
 
@@ -63,8 +63,15 @@ When parents are related, a child is autozygous (both copies from the same ances
 
 These are averages. Inheritance is random, so one person's total can be well above or below the value for their parents' relationship, and the ranges of neighbouring rows overlap. A total near one row is consistent with it; it does not prove it.
 
-Both reports print this as **F_ROH**, the measure of McQuillan et al. 2008 (PMID 18760389): the length of the autosomal segments of 5 Mb or more, without their band parts, divided by the length of chr1 to chr22 without the bands (2,875,001,522 bp less 217,000,000 bp, so 2,658,001,522 bp). Beside it they name the row of the table above whose F is nearest to F_ROH on a log scale: the boundaries are the geometric means of neighbouring rows (for example 1/16 and 1/8 meet at about 0.088), and an F_ROH under 1/128 (about 21 Mb) reads "no sign of related parents". When one chromosome carries most of the runs (next section), there is no band: that chromosome fills F_ROH by itself.
+`og summary collect` writes **F_ROH**, the measure of McQuillan et al. 2008 ([PMID 18760389](https://pubmed.ncbi.nlm.nih.gov/18760389/)). Its numerator is the length of autosomal runs of 5 Mb or more outside the bands. Its denominator is the GRCh38 length of the chromosomes this run assessed, with their bands removed. With all 22 autosomes, that is 2,875,001,522 bp less 217,000,000 bp, or 2,658,001,522 bp. With chr20 alone it is 64,444,167 bp less 4,700,000 bp, or 59,744,167 bp. A 21 Mb run then gives F_ROH 0.3515, rather than 0.0079.
 
+The collector streams the per-site `ST` rows to identify assessed autosomes. A chromosome with sites counts even when it has no ROH. No marker-count floor is imposed, so sparse exome and chip input remain supported. This is a chromosome-length denominator, **not a count of callable bases**. One site does not establish coverage across a chromosome. A capture panel or a small interval on every autosome can still look complete at this resolution.
+
+The new `roh.data.scope` object records `autosomes` in numeric order, `unmasked_bp`, `source`, `partial` and a note. Older segment-only files have `source: segments_only`; their observed chromosomes give only a lower bound on scope. An empty file has no denominator and `f_roh: null`. The segment list and length totals remain available.
+
+A relationship label or a one-chromosome UPD flag needs sites on all 22 autosomes and the full 2,658,001,522 bp denominator. Below that floor, or without per-site evidence, `relationship` and `upd_flag` are null. A subset F_ROH is a descriptive fraction of the listed chromosomes and must not be mapped to the parental relationship table. The report and live-view wording for this scope is handled separately.
+
+For complete chromosome scope, the relationship is the row whose F is nearest on a log scale. Boundaries are the geometric means of neighbouring rows; for example 1/16 and 1/8 meet at about 0.088. An F_ROH under 1/128 reads "no sign of related parents". A one-chromosome flag suppresses that relationship label.
 To compute the total the table means from the summary file, which takes the band parts out before it keeps the segments of 5 Mb or more, as the reports do:
 
 ```bash
@@ -78,24 +85,19 @@ In uniparental disomy (UPD) both copies of a chromosome come from one parent. Wh
 
 The reports flag a chromosome when its segments of 5 Mb or more (band parts left out) add up to at least 20 Mb **and** to more than half of the length of all such autosomal segments. Both numbers are our thresholds, not a published cut-off: 20 Mb on one chromosome is the long-standing sign of isodisomy (see the uniparental disomy note under [Important Notes](#important-notes)), and the share rule keeps out a child of related parents, whose runs spread over many chromosomes. The flag says "may": a run that long can also be chance in a child of related parents.
 
-A flagged chromosome is looked up in `assets/imprinted_regions.tsv`, the chromosomes where UPD from one parent causes an imprinting disorder (overview: Eggermann et al. 2023, Nat Rev Dis Primers, PMID 37386011). A row with a region applies only when a run on that chromosome overlaps it; the others apply to the whole chromosome.
+A flagged chromosome is looked up in [assets/imprinted_regions.tsv](https://github.com/GeiserX/OwnGenome/blob/main/assets/imprinted_regions.tsv). That file is the only imprinting table and is embedded into `og` at build time. Its header credits [Eggermann et al. 2023](https://doi.org/10.1038/s41572-023-00443-4), with per-row PMIDs for the reference facts.
 
-| Chromosome or region | UPD from the mother | UPD from the father | Source (PMID) |
-|---|---|---|---|
-| chr6 (6q24, PLAGL1, HYMAI) | none known | Transient neonatal diabetes mellitus | 20301706 |
-| chr7 (GRB10 at 7p12, MEST at 7q32) | Silver-Russell syndrome | none known | 27585961 |
-| 11p15, chr11:0-22,000,000 (H19/IGF2, KCNQ1OT1) | Silver-Russell syndrome | Beckwith-Wiedemann syndrome | 29377879, 27585961 |
-| chr14 (14q32.2, DLK1-MEG3) | Temple syndrome | Kagami-Ogata syndrome | 24891339, 26377239 |
-| 15q11-q13, chr15:20,500,000-33,400,000 (SNRPN, UBE3A) | Prader-Willi syndrome | Angelman syndrome | 22237428, 27615419 |
-| chr20 (20q13.32, GNAS) | Mulchandani-Bhoj-Conlin syndrome (growth failure) | Pseudohypoparathyroidism type 1B | 26248010, 29959430 |
+The flag lists the chromosome, run length, share, region names and citations. It names no syndrome. The existing `maternal_upd` and `paternal_upd` JSON keys stay as `"-"` for reader compatibility. The asset retains their reference facts. Those facts cannot be inferred from a region match in one genome.
 
-`bin/collect_summary.py` holds the same rows (a unit test checks that the two agree), because the Nextflow report task reads `bin/` but not `assets/`. A flagged chromosome with no row still matters: a recessive variant inside the run, if there is one, would be homozygous.
+All six chromosomes use the same chromosome-wide lookup, including chr11 and chr15. Mixed iso/heterodisomy can leave an imprinted locus outside the observed homozygous runs ([Robinson 2000](https://pubmed.ncbi.nlm.nih.gov/10797485/)). A region hint therefore does not claim that a run overlaps the imprinted locus. Region names are broad cytoband labels, not diagnostic locus intervals or a specialist-reviewed assay. No interval was narrowed on the basis of a ROH alone.
 
-What this cannot tell, and the reports say so:
+The flag's `note` describes long chromosome-focused ROH and suggests investigating possible isodisomy. Its limits are:
 
-- **Which parent.** A single genome has no parent of origin; both columns are listed. The parents' genotypes (step 38, the family workflow) confirm a UPD and tell which. Where a row applies, a methylation test of its imprinted region tests for that imprinting disorder; on its own it does not prove a UPD, since an imprinting defect gives the same result.
-- **Heterodisomy.** Two different copies from one parent leave no run at all, so it is not detected here. It needs the parents' genotypes.
-- **Mosaic or segmental UPD** that covers only a short stretch, or a share of the cells (common in Beckwith-Wiedemann syndrome), may stay under the thresholds.
+- A large deletion of one copy or acquired loss of heterozygosity can give the same pattern. Check the copy-number results and the MoChA results. The collector does not establish copy neutrality or perform that cross-check.
+- Shared ancestry, including related parents, can also produce long runs. A flag is a screening hint, not a UPD diagnosis.
+- A single genome cannot determine parental origin. The parents' genotypes can establish it. Methylation testing assesses an imprinting defect and alone does not establish UPD.
+- Heterodisomy can leave no ROH. Mosaic or short segmental UPD can fall below the thresholds.
+- Sites on all autosomes establish chromosome presence only. They do not prove assay completeness within any chromosome.
 
 ### Single segments
 
@@ -112,5 +114,5 @@ What this cannot tell, and the reports say so:
 - bcftools roh reads a site's frequency from INFO/AC and INFO/AN when the record has them, and uses 0.4 only where it does not. DeepVariant writes neither, so on its calls every site uses 0.4. A VCF from another caller may carry them: in a single-sample file they are the sample's own allele counts, not a population's.
 - No population allele frequencies are used, and the reports say so: read the total and the short segments as rough, the long segments are the signal. A population allele-frequency file (`--AF-file`, for example from gnomAD) would replace the one default value with real frequencies per site and give better segment edges; neither the script nor the module uses one today, and its effect on the total has not been measured.
 - The centromere and heterochromatin bands (above) are taken out of every count; the step and the reports do it, so there is nothing to subtract by hand
-- Long runs concentrated on one chromosome may indicate uniparental disomy; the reports flag a chromosome whose segments of 5 Mb or more add up to at least 20 Mb and to more than half of the length of all such autosomal segments (above). Confirm with the parents' genotypes; a methylation test of a listed imprinted region tests for its imprinting disorder
+- Long runs concentrated on one chromosome may indicate uniparental disomy; the reports flag a chromosome whose segments of 5 Mb or more add up to at least 20 Mb and to more than half of the length of all such autosomal segments (above). The flag requires sites on all 22 autosomes. Check copy number and acquired LOH, and confirm with the parents' genotypes. A methylation test assesses an imprinting defect
 - ROH within known disease gene regions warrants checking for homozygous pathogenic variants

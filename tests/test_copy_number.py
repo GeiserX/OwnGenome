@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+# og-leg: OG_REQUIRED
 """og cn and bin/cn_loci.tsv: one depth-ratio engine for every copy-number
-locus, and what bin/copy_number.py keeps (the catalog reader and assess(),
-which step 41's report imports).
+locus, compared with the pinned historical catalog reader and assess() oracle.
 
 Without og (OG unset) the checks of the catalog and of assess() run, and the
 wiring; with OG naming the og binary (OG=rust/target/release/og, or bin/og)
@@ -36,7 +36,7 @@ step 35 cut out and run. With OG_REQUIRED set, a run without og fails.
      each, and a row shifted by 1 kb no longer matches its fixture; the
      PARASCOPY module runs the same list; the CCL3L1 reading names no
      disease (a planted 'HIV' is caught);
-  9. the interval rows (scripts/ci/build-cn-intervals.py): a small ClinGen
+  9. the interval rows (og dev build cn-intervals, with og): a small ClinGen
      BED with a 'chrx' row converts to rows on chrX that load, the same rows
      left as 'chrx' are refused, and an unknown contig stops the build; the
      committed rows are the ClinGen regions plus the named hand rows, with
@@ -86,7 +86,30 @@ if OG and not os.path.realpath(OG).startswith(os.path.realpath(REPO) + os.sep):
 CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
 MODELS = os.path.join(REPO, "assets", "parascopy_models_v1.7.txt")
 sys.path.insert(0, os.path.join(REPO, "bin"))
-import copy_number as cn  # noqa: E402
+# The old engine is a test oracle pinned to the traits port's parent. It is
+# materialised only for these historical differential assertions. No pipeline
+# step imports or ships a second engine.
+import importlib.util  # noqa: E402
+
+
+def catalog_oracle():
+    ref = "669a8196cf4c377200f9b4af9c235ef85fb774a1"
+    if subprocess.run(["git", "-C", REPO, "cat-file", "-e", ref + "^{commit}"],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        subprocess.run(["git", "-C", REPO, "fetch", "--depth=1", "origin", ref], check=True)
+    source = subprocess.check_output(["git", "-C", REPO, "show", ref + ":bin/copy_number.py"])
+    with tempfile.TemporaryDirectory(prefix="cn-oracle-") as work:
+        path = os.path.join(work, "copy_number.py")
+        with open(path, "wb") as f:
+            f.write(source)
+        spec = importlib.util.spec_from_file_location("cn_catalog_oracle", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    module.CATALOG = os.path.join(REPO, "bin", "cn_loci.tsv")
+    return module
+
+
+cn = catalog_oracle()
 
 FAILS = 0
 # Frozen from bin/hba_copy_number.py and bin/lpa_kiv2.py as they were before the
@@ -684,7 +707,6 @@ def dosage(cat, read):
 
 
 # Section 9: the interval rows.
-BUILD = os.path.join(REPO, "scripts", "ci", "build-cn-intervals.py")
 SMALL_BED = """track name="test"
 #chrom\tstart\tend\tname\tscore\tstrand\tthickStart\tthickEnd\titemRgb
 chr22\t18159724\t18924717\tBP-A\t0\t.\t18159724\t18924717\t0,0,0
@@ -724,39 +746,49 @@ def depths(r, target=30.0, control=30.0):
     return {n: target if n in tg else control for *_, n in cn.regions(r)}
 
 
-def intervals(cat, read):
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("build_cn_intervals", BUILD)
-    bld = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(bld)
-    rows = bld.build(SMALL_BED.splitlines(True), [], [], [], [])
-    check("converter: the two region rows of the small BED, its chrx row on chrX",
-          [(r["locus"], r["chrom"]) for r in rows[:2]] == [("22q11.2_DGS_proximal_A-D", "chr22"), ("Xp22.31", "chrX")],
-          [(r["locus"], r["chrom"]) for r in rows])
+def build_rows(bed):
+    """og dev build cn-intervals --stdout on a ClinGen BED and no masks: (exit code, rows as dicts, stderr)."""
     with tempfile.TemporaryDirectory() as t:
-        p = os.path.join(t, "c.tsv")
-        write_catalog(p, rows)
-        try:
-            got = len(cn.load_catalog(p))
-        except cn.CatalogError as e:
-            got = str(e)
-        check("converter: its rows load", got == len(rows), got)
-        write_catalog(p, [dict(r, chrom="chrx") if r["chrom"] == "chrX" else r for r in rows])
-        try:
-            cn.load_catalog(p)
-            got = "loaded"
-        except cn.CatalogError as e:
-            got = str(e)
-        check("converter: the same rows left as 'chrx' are refused", "chrom 'chrx'" in got, got)
-    try:
-        bld.build(SMALL_BED.replace("chrx", "chrQ").splitlines(True), [], [], [], [])
-        got = "built"
-    except bld.BuildError as e:
-        got = str(e)
-    check("converter: an unknown contig stops the build", "'chrQ' is not a GRCh38 chromosome" in got, got)
-    check("converter: no target piece overlaps a breakpoint row",
-          all(not (s < 18924717 and 18159724 < e) and not (s < 21562827 and 21111384 < e) for r in rows[:1]
-              for _, s, e, _ in cn.parse_row(r)["_targets"]))
+        p = os.path.join(t, "clingen.bed")
+        with open(p, "w") as f:
+            f.write(bed)
+        out = subprocess.run([OG, "dev", "build", "cn-intervals", "--clingen", p, "--segdups", os.devnull,
+                              "--gaps", os.devnull, "--satellites", os.devnull, "--parascopy", os.devnull,
+                              "--stdout"], capture_output=True, text=True)
+    rows = [dict(zip(cn.COLUMNS, line.split("\t"))) for line in out.stdout.splitlines() if not line.startswith("#")]
+    return out.returncode, rows, out.stderr
+
+
+def intervals(cat, read):
+    if not OG:
+        print("skip: OG is not set: the converter checks of og dev build cn-intervals did not run")
+    else:
+        code, rows, err = build_rows(SMALL_BED)
+        check("converter: the two region rows of the small BED, its chrx row on chrX",
+              code == 0 and [(r["locus"], r["chrom"]) for r in rows[:2]]
+              == [("22q11.2_DGS_proximal_A-D", "chr22"), ("Xp22.31", "chrX")],
+              (code, err, [(r["locus"], r["chrom"]) for r in rows]))
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "c.tsv")
+            write_catalog(p, rows)
+            try:
+                got = len(cn.load_catalog(p))
+            except cn.CatalogError as e:
+                got = str(e)
+            check("converter: its rows load", got == len(rows), got)
+            write_catalog(p, [dict(r, chrom="chrx") if r["chrom"] == "chrX" else r for r in rows])
+            try:
+                cn.load_catalog(p)
+                got = "loaded"
+            except cn.CatalogError as e:
+                got = str(e)
+            check("converter: the same rows left as 'chrx' are refused", "chrom 'chrx'" in got, got)
+        code, _, err = build_rows(SMALL_BED.replace("chrx", "chrQ"))
+        check("converter: an unknown contig stops the build",
+              code == 2 and "'chrQ' is not a GRCh38 chromosome" in err, (code, err))
+        check("converter: no target piece overlaps a breakpoint row",
+              all(not (s < 18924717 and 18159724 < e) and not (s < 21562827 and 21111384 < e) for r in rows[:1]
+                  for _, s, e, _ in cn.parse_row(r)["_targets"]))
 
     iv = [r for r in cat.values() if r["kind"] == "interval" and r["_passes"] == ["."]]
     names = [r["locus"] for r in iv]
@@ -874,7 +906,7 @@ def intervals(cat, read):
         check("step 35 interval block with a failed bedcov: exit 0, every row check_failed",
               out.returncode == 0 and len(lines) == len(iv) and all(x.split("\t")[10] == "check_failed" for x in lines),
               (out.returncode, out.stderr[-400:]))
-        # collect_summary: step 35's section carries the interval rows with a change
+        # og summary collect: step 35's section carries the interval rows with a change
         import collect_summary as cs
         sd = os.path.join(t, "sample")
         os.makedirs(os.path.join(sd, "paralogs"))
@@ -883,14 +915,14 @@ def intervals(cat, read):
                     "homologous_regions\n")
         if os.path.exists(good):
             os.replace(good, os.path.join(sd, "paralogs", "S_cn_intervals.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         ci = data.get("cn_intervals") or {}
-        check("collect_summary: step 35's section lists the interval rows with a change (AZFc) and counts the rest",
+        check("summary: step 35's section lists the interval rows with a change (AZFc) and counts the rest",
               [c["locus"] for c in ci.get("changes", [])] == ["AZFc_DAZ"] and ci.get("rows") == len(iv), ci)
         os.remove(os.path.join(sd, "paralogs", "S_smn_copy_number.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         ci = (data or {}).get("cn_intervals") or {}
-        check("collect_summary: the interval rows stay when step 35 wrote no other table",
+        check("summary: the interval rows stay when step 35 wrote no other table",
               [c["locus"] for c in ci.get("changes", [])] == ["AZFc_DAZ"] and ci.get("rows") == len(iv), ci)
 
 
@@ -1211,7 +1243,7 @@ def psv(cat, read):
                                          "to the couple screen (--cyp21a2).") in md}
             check(f"couple screen, {desc}: a gap line for each partner without a CYP21A2 table", got == want, (got, md[-600:]))
 
-        # collect_summary: step 35's section carries the CYP21A2 table
+        # og summary collect: step 35's section carries the CYP21A2 table
         import collect_summary as cs
         sd = os.path.join(t, "sample")
         os.makedirs(os.path.join(sd, "paralogs"))
@@ -1220,15 +1252,15 @@ def psv(cat, read):
                     "homologous_regions\n")
         if os.path.exists(tabs["deletion"]):
             os.replace(tabs["deletion"], os.path.join(sd, "paralogs", "S_cyp21a2_psv.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         c = data.get("cyp21a2") or {}
-        check("collect_summary: step 35's section carries the CYP21A2 table (deletion, 1 copy)",
+        check("summary: step 35's section carries the CYP21A2 table (deletion, 1 copy)",
               (c.get("finding"), c.get("cyp21a2_copies")) == ("deletion", "1"), c)
         # and the reports print why a table without MAPQ 0 reads is not assessed
         import render_report
         if os.path.exists(tabs["no_mapq0"]):
             os.replace(tabs["no_mapq0"], os.path.join(sd, "paralogs", "S_cyp21a2_psv.tsv"))
-        _, data = cs.sec_parascopy(sd, "S")
+        data = cs.collect("S", sd)["sections"]["parascopy"]["data"]
         got = render_report.cyp21a2_line(data.get("cyp21a2"))
         check("report: the CYP21A2 line without MAPQ 0 reads is not assessed and says the BAM has few or no multi-mapping reads",
               ": not assessed (the BAM has few or no multi-mapping reads here" in got and "deletion," not in got, got)
