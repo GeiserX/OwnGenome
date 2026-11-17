@@ -4,7 +4,9 @@
 #   - step 24 fails: the file is skipped (summary.json may be an earlier
 #     run's) and the earlier file is removed;
 #   - step 24 works but og facts writes nothing (the fake og here): the
-#     earlier file is removed before og facts runs, so none is left.
+#     earlier file is removed before og facts runs, so none is left;
+#   - the earlier file is gone before the pipeline starts, so a run cut
+#     short before og facts leaves none beside the new results.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -21,7 +23,9 @@ cat > "${CASE_WORK}/tools-hook" <<'HOOK'
 #!/usr/bin/env bash
 case "${*:2}" in
   "cat /usr/local/share/ExpansionHunter/variant_catalog/grch38/variant_catalog.json") echo '[{"LocusId": "HTT"}]' ;;
-  *render_report.py*) [ ! -e "${CASE_WORK}/fail-24" ] || exit 1 ;;
+  *render_report.py*)
+    [ ! -e "${GENOME_DIR}/sample1/facts/sample1_genome_facts.json" ] || touch "${CASE_WORK}/facts-seen-at-24"
+    [ ! -e "${CASE_WORK}/fail-24" ] || exit 1 ;;
 esac
 exec "${CASE_WORK}/hook-outputs" "$@"
 HOOK
@@ -35,6 +39,7 @@ stale; touch "${CASE_WORK}/fail-24"
 run_expect 1 report-failed "${SCRIPTS}/run-all.sh" sample1 male
 output_has report-failed '^\[ownhealth-facts\] skipped: 24-html-report.sh failed'
 [ ! -e "$FACTS" ] || fail "step 24 failed and the earlier run's OwnHealth file is still there"
+[ ! -e "${CASE_WORK}/facts-seen-at-24" ] || fail "the earlier run's OwnHealth file was still there when step 24 ran"
 ! grep -q '/pgp-bin/og facts' "$FAKE_DOCKER_LOG" || fail "og facts ran although step 24 failed"
 
 stale; rm -f "${CASE_WORK}/fail-24"
@@ -42,4 +47,4 @@ run_expect 0 report-ok "${SCRIPTS}/run-all.sh" sample1 male
 grep -q '/pgp-bin/og facts --sample sample1 ' "$FAKE_DOCKER_LOG" || fail "og facts did not run after step 24 worked"
 [ ! -e "$FACTS" ] || fail "og facts wrote nothing and the earlier run's OwnHealth file is still there"
 output_has report-ok 'the OwnHealth file '
-echo "run-all.sh removes an earlier run's OwnHealth file when step 24 fails and before og facts runs."
+echo "run-all.sh removes an earlier run's OwnHealth file before the pipeline starts, and writes none when step 24 fails."

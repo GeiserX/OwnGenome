@@ -333,6 +333,8 @@ echo "[Nextflow ${NXF_VER}] launch directory ${S}/nextflow: .nextflow.log, and e
 FT="${S}/nextflow/failed_tasks.tsv" PT="${S}/nextflow/process_status.tsv"; rm -f "$FT" "$PT"  # main.nf writes both as the run ends
 # Every step that will run, before it starts: 'planned' until its result row (bin/run_state.py shows the run as it goes).
 for n in "${RUNS[@]}" "${OPTIN[@]}"; do n=${n%%-*}; [[ "$n" != [0-9]* ]] || printf 'step\t%s\tplanned\n' "$n" >> "$STATUS"; done
+# An earlier run's OwnHealth file goes before any result changes, so a run cut short never leaves it beside new results.
+rm -f "${S}/facts/${SAMPLE}_genome_facts.json"
 rc=0; (cd "${S}/nextflow" && nextflow run "${PGP_ROOT}/main.nf" -profile docker -resume --input "$SHEET" --reference "$REF_FASTA" \
   --outdir "$G" --tools "$(IFS=,; echo "${SEL[*]}")" "${NF[@]}" "$@") || rc=$?
 # A step's result is what Nextflow says of its tool's processes in this run. 'failed': a task failed (a report-only
@@ -413,7 +415,7 @@ family_steps() {
 # The OwnHealth file reads summary.json, so it is written only after step 24 wrote a fresh one.
 report=failed facts=skipped
 for sc in "${OPTIN[@]}" 24-html-report.sh generate-report.sh ownhealth-facts.sh; do
-  [ "$sc" != ownhealth-facts.sh ] || [ "$report" = ok ] || { rm -f "${S}/facts/${SAMPLE}_genome_facts.json"; echo "[ownhealth-facts] skipped: 24-html-report.sh failed, so summary.json may be an earlier run's; an earlier run's OwnHealth file was removed"; continue; }
+  [ "$sc" != ownhealth-facts.sh ] || [ "$report" = ok ] || { echo "[ownhealth-facts] skipped: 24-html-report.sh failed, so summary.json may be an earlier run's; an earlier run's OwnHealth file was removed"; continue; }
   [ "$sc" != 24-html-report.sh ] || family_steps
   [ "$sc" != 24-html-report.sh ] || GENOME_DIR="$G" HLA_DAT="${H:-}" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || true
   if [[ "$sc" == [0-9]*-*.sh && "$sc" != 24-* ]]; then live_step "${sc%%-*}" started; fi
