@@ -1,0 +1,37 @@
+# assets/ownhealth/cpic_genes.tsv: the CPIC genes og facts names in the coverage map of the facts file
+# (OwnHealth genomics.md 2.1: coverage lists every gene of the fixed panels). The genes of every CPIC
+# guideline, from the CPIC API (https://api.cpicpgx.org/v1/guideline?select=name,genes), queried
+# 2026-11-17: 29 guidelines, 31 genes. PharmCAT (step 07) calls most of them; the others are listed as
+# not assessed, never as normal.
+gene
+ABCG2
+ADRA2C
+ADRB1
+ADRB2
+CACNA1S
+CFTR
+COMT
+CYP2B6
+CYP2C19
+CYP2C9
+CYP2D6
+CYP3A5
+CYP4F2
+DPYD
+G6PD
+GRK4
+GRK5
+HLA-A
+HLA-B
+HTR2A
+IFNL3
+MT-RNR1
+NAT2
+NUDT15
+OPRM1
+RYR1
+SLC6A4
+SLCO1B1
+TPMT
+UGT1A1
+VKORC1
