@@ -50,6 +50,19 @@ A Python file whose tool moved to `og` but whose names other Python still import
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec`, `rustc-hash` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`). The musl builds also link `mimalloc` as their allocator: musl's own lets a long multi-threaded read hold several times its live memory.
 
+## Command lines
+
+Every `og` command keeps the help rules, and a new verb keeps all of them. `rust/og/tests/rv_og_cli_conventions.rs` checks the help rules.
+
+- **Help.** `og <tool> [verb] --help` and `-h` print the command's usage on stdout and exit 0, without reading an input or writing a file. A command whose own parser has a fuller usage is listed in `OWN_HELP` in `og/src/main.rs`; `og` answers any other command from its line of `og --help`. So a new verb answers `--help` as soon as it has its line there.
+- **`og --help`** starts with how to run a genome (`./scripts/run-all.sh`, `./scripts/validate-setup.sh`, `og run`, `og recheck`, `og lookup`, the reports), then lists the pipeline helpers the steps run, then the developer and CI tools. `og dev --help` prints that last block alone. `og run` inspects a run; it never starts one.
+- **Output.** A result goes to stdout, or to the file `--out FILE` names. Messages, warnings and errors go to stderr only. A verb that writes a fixed set of files, such as a step helper, takes their names as options.
+- **Exit codes.** 0: done. 1: a file could not be read or written. 2: a refused command line, with the usage and the error on stderr. 3: a partial result or nothing found, such as `og lookup` for a query it cannot find or `og map` for a run with no map.
+
+Some older verbs keep an older form for now. For example, `og run state` writes `<sample>/run_state.json` when no `--out` is given ([Where a run stands](run-state.md)) and prints `Run state written: FILE` on stdout, as the Python it replaced did; `og report render` prints its count of sections by state on stdout; `og dev freshness --out FILE` writes the report to the file and also prints it.
+
+`og summary collect` exits 0 whenever it writes `summary.json`, whatever its sections say: a caller reads each section's `state` in `summary.json`, never the exit code.
+
 ## Building
 
 ```bash
