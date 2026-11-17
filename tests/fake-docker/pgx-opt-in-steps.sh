@@ -69,22 +69,9 @@ case "$args" in
     fi
     put "${@: -1}${@: -2:1}.tsv" 'Sample\tGenotype\tFilter\nsample1\tNone\tNot_assigned_to_haplotypes\n' ;;
   *"og pgx step36-outside"*)
-    # The lister on the report: the real one when OG names an og binary, else
-    # its rule cut to the reports below (an outside call of CYP2D6, HLA-A or
-    # HLA-B with a diplotype). The parity cases step36-outside* hold og to
-    # the whole rule.
-    if [ -n "${OG:-}" ]; then
-      "$OG" pgx step36-outside --report "$(host_path "$(opt --report)")"
-      exit $?
-    fi
-    python3 - "$(host_path "$(opt --report)")" <<'PY'
-import json, sys
-genes = json.load(open(sys.argv[1])).get("genes", {})
-for gene, g in genes.items():
-    if gene in ("CYP2D6", "HLA-A", "HLA-B") and g.get("callSource") == "OUTSIDE" and g.get("sourceDiplotypes"):
-        print(gene)
-PY
-    exit $? ;;
+    # The lister on the report: the real one, OG or the host's bin/og (the
+    # Guard fake-docker job builds it into bin/.og).
+    exec "${OG:-${REPO_ROOT}/bin/og}" pgx step36-outside --report "$(host_path "$(opt --report)")" ;;
   *"/pgp-bin/og pgx pypgx-summary "*)
     # Step 32's summary, at the path it names with --out.
     put "$(opt --out)" \
