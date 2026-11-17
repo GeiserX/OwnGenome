@@ -606,12 +606,14 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
                 .split('/')
                 .all(|b| !b.is_empty() && b.bytes().all(|x| b"ACGT".contains(&x)))
         {
+            // An uncited site leaves the call standing and its gene partial.
             match site_variant(ctx, site, "called", bases) {
                 Ok(v) => variants.push(v),
-                Err(e) => ctx.warn(format!(
-                    "{gene}: {} not cited, no VRS identifier ({e})",
-                    site.rsid
-                )),
+                Err(e) => ctx.leave_out(
+                    gene,
+                    &format!("{gene} site {}", site.rsid),
+                    &format!("no VRS identifier ({e})"),
+                ),
             }
         }
         let mut value = obj([]);

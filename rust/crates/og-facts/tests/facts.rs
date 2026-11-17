@@ -1019,3 +1019,24 @@ fn a_sample_name_other_than_the_folders_is_refused() {
         .expect("refused");
     assert!(e.contains("SYN-01") && e.contains("SYN-02"), "{e}");
 }
+
+#[test]
+fn a_one_site_gene_whose_site_cannot_be_cited_is_partly_assessed() {
+    // The reference disagrees with ABCG2's site (rs2231142, chr4:88131171 G),
+    // so the site has no VRS identifier: the call stays, its gene is partial.
+    let dir = folder("uncited-site", &full_sections());
+    let mut g = genome();
+    g.0.insert(("chr4".to_owned(), 88_131_170), b'A');
+    let b = build(SAMPLE, &dir, &panels(), &mut g).expect("builds");
+    let f = fact(&b, "pgx", "ABCG2");
+    assert_eq!(f.len(), 1);
+    assert!(arr(f[0], "variants").is_empty(), "{:?}", f[0]);
+    assert_eq!(st(f[0], &["value", "call_state"]), "ref");
+    let row = coverage(&b, "ABCG2")[0];
+    assert_eq!(st(row, &["state"]), "partial", "{row:?}");
+    assert!(st(row, &["note"]).contains("rs2231142"), "{row:?}");
+    // With the right base the site is cited and the gene assessed.
+    let (b, _) = run("cited-site", &full_sections());
+    assert_eq!(arr(fact(&b, "pgx", "ABCG2")[0], "variants").len(), 1);
+    assert_eq!(st(coverage(&b, "ABCG2")[0], &["state"]), "assessed");
+}
