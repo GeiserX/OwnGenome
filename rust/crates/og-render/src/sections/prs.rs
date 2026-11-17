@@ -27,6 +27,18 @@ pub const EFFECT_TEXT: &str = "Effect: the odds ratio (OR) or hazard ratio (HR) 
     evaluation's unit (its PGS Catalog PPM page says which). It describes the score in that \
     group, not your own risk, and is shown only for a group the score was evaluated in.";
 
+/// What a score, matched or total cell says when the summary has none: og
+/// summary collect writes null for a short row of pgsc_calc's table.
+pub const NOT_AVAILABLE: &str = "not available";
+
+/// `str(r[key])`, or [`NOT_AVAILABLE`] for null.
+fn count(r: &Value, key: &str) -> Result<String, Malformed> {
+    match need(r, key, ROW)? {
+        Value::Null => Ok(NOT_AVAILABLE.to_owned()),
+        v => py(v),
+    }
+}
+
 fn field<'a>(r: &'a Value, key: &str) -> Result<Option<&'a Value>, Malformed> {
     get(r, key, ROW)
 }
@@ -225,13 +237,13 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
     let d = s.section("prs").data;
     for r in scores(d)? {
         let condition = need_align(&r, "condition", 35, Align::Left, ROW)?;
-        let n = |k: &str| need_text(&r, k, ROW);
+        let n = |k: &str| count(&r, k);
         let line = format!(
             "  {condition} {} ({}/{} variants matched) {}",
             n("score")?,
             n("matched")?,
             n("total")?,
-            n("pgs_id")?
+            need_text(&r, "pgs_id", ROW)?
         );
         let pct = percentile(&r)?;
         let pct = if other_sex(&r)? {
@@ -270,14 +282,15 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     let mut rows = String::new();
     for x in &rs {
         let n = |k: &str| need_text(x, k, ROW).map(|t| e(&t).into_owned());
+        let c = |k: &str| count(x, k).map(|t| e(&t).into_owned());
         let pct = percentile(x)?;
         rows += &format!(
             "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}/{}</td><td>{}</td>",
             n("condition")?,
             n("pgs_id")?,
-            n("score")?,
-            n("matched")?,
-            n("total")?,
+            c("score")?,
+            c("matched")?,
+            c("total")?,
             e(if pct.is_empty() {
                 "raw score only"
             } else {

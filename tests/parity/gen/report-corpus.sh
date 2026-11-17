@@ -261,7 +261,10 @@ AWK
 
 # text.awk: drops each section block not in keep, then each chapter left
 # with no block. A block starts at its "## " title; the titles of the kept
-# sections are listed here, as render_report.py writes them.
+# sections are listed here, as render_report.py writes them. A PRS row
+# whose counts the summary has as null reads "not available", as og writes
+# it; render_report.py writes "None" there (and stops its HTML report on
+# that row).
 cat > text.awk << 'AWK'
 BEGIN {
   rule = sprintf("%80s", ""); gsub(/ /, "#", rule)
@@ -271,7 +274,7 @@ BEGIN {
   title["## Y-STR Markers (HipSTR)"] = "y-chromosome"; title["## Archaic Ancestry (IBDmix, step 43)"] = "archaic"
   title["## Ancient Populations (AADR PCA, step 44)"] = "ancient"; title["## Polygenic Risk Scores"] = "prs"
 }
-{ lines[++n] = $0 }
+{ sub(/ None \(None\/None variants matched\) /, " not available (not available/not available variants matched) "); lines[++n] = $0 }
 END {
   # The end part (steps not run onward) and the head (before the first
   # banner) stay; chapters are banner, title, banner, blank, then blocks.
