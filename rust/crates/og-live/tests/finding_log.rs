@@ -41,12 +41,15 @@ fn tmp() -> PathBuf {
     d
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+/// Two free local ports for the site and its ingest listener. Both
+/// listeners stay open until both ports are read, so the two differ.
+fn free_ports() -> (u16, u16) {
+    let bind = || std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let (a, b) = (bind(), bind());
+    (
+        a.local_addr().unwrap().port(),
+        b.local_addr().unwrap().port(),
+    )
 }
 
 /// One GET on the local site: status and body; `None` while it does not
@@ -120,7 +123,7 @@ fn open_finding(plugin_dir: Option<&Path>) -> Result<(String, String), String> {
     let root = base.join("root");
     let state_dir = base.join("state");
     make_run(&root);
-    let (port, iport) = (free_port(), free_port());
+    let (port, iport) = free_ports();
     let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
     let err_log = base.join("site.stderr");
     let mut cmd = Command::new(&exe);
