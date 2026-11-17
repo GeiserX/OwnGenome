@@ -272,7 +272,9 @@ struct Child {
     mcol: usize,
     n: Counts,
     de_novo: Vec<Vec<String>>,
-    cands: Vec<(Genes, String, Option<&'static str>)>,
+    /// compound heterozygote candidates: genes, variant, origin, and the
+    /// VCF line it came from (the two ALTs of one 1/2 call share it)
+    cands: Vec<(Genes, String, Option<&'static str>, u64)>,
     /// WhatsHap: per (chrom, PS) block, sites where the first haplotype
     /// holds the father's allele, and sites where it holds the mother's.
     blocks: HashMap<(Vec<u8>, Vec<u8>), [u64; 2]>,
@@ -545,6 +547,7 @@ impl Pass<'_> {
                     genes.clone(),
                     format!("{}:{pos}:{}>{}", text(chrom), text(cols[3]), text(alt)),
                     origin,
+                    line,
                 ));
             }
         }
@@ -830,17 +833,22 @@ pub fn run(a: &Args) -> Result<()> {
     write_file(&out_dir.join("de_novo.tsv"), dn.as_bytes())?;
     let mut comp: Vec<[String; 7]> = Vec::new();
     for ch in &children {
-        let mut by_gene: IndexMap<&str, Vec<(&str, Option<&str>)>> = IndexMap::new();
-        for (genes, var, origin) in &ch.cands {
+        // variant, origin, VCF line
+        type Cand<'a> = (&'a str, Option<&'a str>, u64);
+        let mut by_gene: IndexMap<&str, Vec<Cand<'_>>> = IndexMap::new();
+        for (genes, var, origin, site) in &ch.cands {
             for g in genes.iter() {
-                by_gene.entry(g).or_default().push((var, *origin));
+                by_gene.entry(g).or_default().push((var, *origin, *site));
             }
         }
         by_gene.sort_keys();
         for (g, list) in &by_gene {
-            for (i, (v1, o1)) in list.iter().enumerate() {
-                for (v2, o2) in &list[i + 1..] {
+            for (i, (v1, o1, s1)) in list.iter().enumerate() {
+                for (v2, o2, s2) in &list[i + 1..] {
                     let phase = match (o1, o2) {
+                        // the two ALTs of one diploid 1/2 call sit on the
+                        // two copies, whoever passed them on
+                        _ if s1 == s2 => "in trans",
                         (Some(a), Some(b)) if a == b => "in cis",
                         (Some(_), Some(_)) => "in trans",
                         _ => "unknown",

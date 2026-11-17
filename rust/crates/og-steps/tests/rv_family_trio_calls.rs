@@ -4,8 +4,9 @@
 //! 1. Compound heterozygotes: a child call with two different ALTs (1/2,
 //!    as GLnexus writes an unsplit multiallelic record) is heterozygous, and
 //!    each ALT that is a candidate is paired with its origin, so a 1/2 from a
-//!    0/1 father and a 0/2 mother is one pair in trans. A 0/1 child gives the
-//!    same pairs as before.
+//!    0/1 father and a 0/2 mother is one pair in trans. The two ALTs of one
+//!    1/2 call are in trans even when the parents do not show where each
+//!    came from. A 0/1 child gives the same pairs as before.
 //! 2. A son's sex chromosomes outside the PARs: his Y comes from his father
 //!    and his X from his mother, so a de novo call there needs only that
 //!    parent's call, and the depth and quality floors apply only to him and
@@ -210,6 +211,49 @@ fn a_two_alt_call_from_both_parents_is_one_pair_in_trans() {
             "in one gene: 1; in trans (one from each parent, both copies of the gene hit) 1"
         ),
         "the report counts the pair: {md}"
+    );
+}
+
+#[test]
+fn a_two_alt_call_is_in_trans_even_when_the_parents_do_not_tell() {
+    // both parents 1/2: the origin of each ALT is unknown, but the two ALTs
+    // of one diploid call are on different copies by definition
+    let d = scratch("two-alt-unknown-origin");
+    let m = members(&d, "female");
+    let vcf = joint_vcf(
+        &d,
+        &[(
+            "chr1",
+            1_000_000,
+            "C",
+            "A,G",
+            [
+                "1/2:0,15,15:30:99",
+                "1/2:0,15,15:30:99",
+                "1/2:0,15,15:30:99",
+            ],
+        )],
+    );
+    let c = candidates(
+        &d,
+        &[
+            ("chr1", 1_000_000, "C", "A", "G1"),
+            ("chr1", 1_000_000, "C", "G", "G1"),
+        ],
+    );
+    let out = report(&d, &m, &vcf, Some(&c));
+    assert_eq!(
+        pairs(&out),
+        vec![vec![
+            "kid".to_owned(),
+            "G1".into(),
+            "chr1:1000000:C>A".into(),
+            "chr1:1000000:C>G".into(),
+            ".".into(),
+            ".".into(),
+            "in trans".into(),
+        ]],
+        "a 1/2 child of two 1/2 parents: one pair in trans, origins unknown"
     );
 }
 
