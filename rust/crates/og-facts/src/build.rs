@@ -299,8 +299,10 @@ fn clinvar_facts(ctx: &mut Ctx<'_>, sample: &str, dir: &Path, summary: &Value, f
             }
         };
         let carrier = ctx.panels.carrier_gene(&gene).cloned();
+        // An X-linked dominant gene (XLD) is never recessive: a woman with
+        // one change can be affected, so she is not "a carrier".
         let recessive = carrier.as_ref().is_some_and(|c| {
-            c.inheritance == "AR" || (female && inheritance(&c.inheritance) == Some("XL"))
+            c.inheritance == "AR" || (female && matches!(c.inheritance.as_str(), "XL" | "XLR"))
         });
         let carrier_het = recessive && zygosity == "het" && ctx.panels.in_carrier_span(chrom, pos);
         let key = format!("{chrom}:{pos}:{r}:{a}");
@@ -530,6 +532,8 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
         let mut diplotype = text(row, &["diplotype"]).unwrap_or_default().to_owned();
         let mut phenotype = text(row, &["phenotype"]).unwrap_or_default().to_owned();
         let mut tools = vec![s("PharmCAT")];
+        // Step 36's agreed or probable call stands in for PharmCAT's.
+        let mut step36 = false;
         let (mut conf, mut basis) = if gene == "CYP2D6" {
             // High only when two callers agree (below).
             (
@@ -566,8 +570,10 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
                     (conf, basis) = ("high", reason.to_owned());
                 }
                 tools.extend([s("pypgx"), s("Cyrius")]);
-                if status == "not called" {
+                step36 = true;
+                if status == "not called" || status == "ambiguous" {
                     diplotype = c.to_owned();
+                    phenotype.clear();
                 }
             } else if status == "not called"
                 && let Some(p) = probable
@@ -580,10 +586,22 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
                     label.to_owned(),
                 );
                 tools = vec![s("pypgx")];
+                step36 = true;
             } else if status == "not called" {
                 continue;
             }
         } else if status == "not called" {
+            continue;
+        }
+        // Step 27 marks a gene ambiguous when its possible diplotypes have
+        // different phenotypes: no single result, so no call goes in, and
+        // the gene is partial.
+        if status == "ambiguous" && !step36 {
+            ctx.leave_out(
+                gene,
+                &format!("{gene} {diplotype}"),
+                "PharmCAT could not tell its possible diplotypes apart, and their phenotypes differ",
+            );
             continue;
         }
         if let Some((_, weakest)) = low_gq.iter().find(|(g, _)| g == gene)
@@ -638,12 +656,19 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
             ));
         }
         put(&mut value, "call_state", s(call_state));
-        // PharmCAT's guidance for the diplotype it called (none for a
-        // CYP2D6 call PharmCAT did not make).
+        // PharmCAT's guidance for the diplotype it called, only when that
+        // is the call this fact holds: none for a CYP2D6 call PharmCAT did
+        // not make, and none from an outside call step 27 did not confirm.
         let mut dg = Vec::new();
         let mut seen = HashSet::new();
-        if let Some(call) = calls.iter().find(|c| c.gene == gene && c.called)
-            && let Some(entries) = guidance.get(gene)
+        let held = diplotype.split(" (1 of ").next().unwrap_or_default();
+        if let Some(call) = calls.iter().find(|c| {
+            c.gene == gene
+                && c.called
+                && !c.ambiguous()
+                && !(c.outside && status == "not called")
+                && same_diplotype(&c.labels[0], held)
+        }) && let Some(entries) = guidance.get(gene)
         {
             for g in og_pgx::guidance::matching(call, entries) {
                 let src = match g.source {
@@ -730,7 +755,9 @@ const PHENOTYPE_PLACEHOLDERS: &[&str] = &[
 
 /// The call_state of a star-allele call: `ref` when every allele is the
 /// gene's reference allele as PharmCAT names it (`*1`, `Reference`, `B
-/// (reference)`, `rsN reference (X)`, CYP2C19 `*38`, NAT2 `*4`), `no_call`
+/// (reference)`, `rsN reference (X)`, CYP2C19 `*38`, NAT2 `*4`, and CFTR's
+/// `No CPIC variants found`: PharmCAT read its sites and found none of the
+/// variants CPIC names), `no_call`
 /// when an allele is unknown, else `alt`.
 pub fn pgx_call_state(gene: &str, diplotype: &str) -> &'static str {
     let alleles: Vec<&str> = diplotype.split('/').map(str::trim).collect();
@@ -742,6 +769,7 @@ pub fn pgx_call_state(gene: &str, diplotype: &str) -> &'static str {
             || matches!(a, "*1" | "*1A" | "*1.001")
             || (gene == "CYP2C19" && a == "*38")
             || (gene == "NAT2" && a == "*4")
+            || a.eq_ignore_ascii_case("No CPIC variants found")
     };
     if alleles.iter().any(|a| unknown(a)) {
         "no_call"
@@ -1172,8 +1200,14 @@ fn lpa_fact(ctx: &mut Ctx<'_>, summary: &Value) -> Option<&'static str> {
     } else {
         parts.push("KIV-2 count not estimated".to_owned());
     }
+    // genomics.md 2.1: a finding that cites one site is keyed by its VRS
+    // identifier, so when one LPA site is left out the other one keys it.
+    let key = match variants.as_slice() {
+        [one] => text(one, &["vrs_id"]).unwrap_or("LPA").to_owned(),
+        _ => "LPA".to_owned(),
+    };
     let mut fact = obj([
-        ("id", s(&fact_id("risk_marker", "LPA", "LPA"))),
+        ("id", s(&fact_id("risk_marker", "LPA", &key))),
         ("category", s("risk_marker")),
         ("gene", s("LPA")),
     ]);
@@ -1451,23 +1485,37 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
         } else {
             unread.get(gene).map(|e| callability_row(gene, "cpic", e))
         };
-        let rest = rest
-            .filter(|r| text(r, &["state"]) != Some("assessed"))
-            .and_then(|r| text(&r, &["note"]).map(str::to_owned));
+        let rest = rest.filter(|r| text(r, &["state"]) != Some("assessed"));
         let mut row = row;
-        if let Some(rest) = rest {
-            let note = match (text(&row, &["state"]), text(&row, &["note"])) {
-                (Some("assessed"), _) => Some(format!(
-                    "the PGx call stands on the sites that define it; for the rest of the gene, {rest}"
-                )),
-                (Some("partial"), Some(old)) => {
-                    Some(format!("{old}; for the rest of the gene, {rest}"))
-                }
-                _ => None,
+        if let Some(rest) = rest
+            && let Some(why) = text(&rest, &["note"])
+        {
+            // An assessed call takes the rest's reason and callable share
+            // (step 16b's paralog and 41%, say); a row already partial for
+            // its own reason keeps "other", as it has two.
+            let (note, from) = match (text(&row, &["state"]), text(&row, &["note"])) {
+                (Some("assessed"), _) => (
+                    Some(format!(
+                        "the PGx call stands on the sites that define it; for the rest of the gene, {why}"
+                    )),
+                    Some(&rest),
+                ),
+                (Some("partial"), Some(old)) => (
+                    Some(format!("{old}; for the rest of the gene, {why}")),
+                    None,
+                ),
+                _ => (None, None),
             };
             if let Some(note) = note {
                 put(&mut row, "state", s("partial"));
-                put(&mut row, "reason", s("other"));
+                put(
+                    &mut row,
+                    "reason",
+                    s(from.and_then(|r| text(r, &["reason"])).unwrap_or("other")),
+                );
+                if let Some(f) = from.and_then(|r| get(r, &["fraction_callable"])) {
+                    put(&mut row, "fraction_callable", f.clone());
+                }
                 put(&mut row, "note", s(&clean_text(&note)));
             }
         }
@@ -1550,7 +1598,9 @@ fn coverage(ctx: &Ctx<'_>, summary: &Value) -> Vec<Value> {
             .find(|r| text(r, &["id"]) == Some(id.as_str()));
         match row {
             Some(r) => {
-                if text(r, &["state"]) == Some("assessed") {
+                // A gene with a call the file left out is partial, never
+                // "assessed" nor "not assessed": the call was made.
+                if text(r, &["state"]) != Some("partial") {
                     put(r, "state", s("partial"));
                     put(r, "reason", s("other"));
                 }
@@ -1675,6 +1725,14 @@ pub fn build(
         return Err(format!(
             "{}: the summary of sample {named}, not {sample}",
             path.display()
+        ));
+    }
+    // OwnHealth's schema holds a sample id of at most 64 characters, and
+    // the file must carry the folder's own name, never a shortened one.
+    if sample.chars().count() > 64 {
+        return Err(format!(
+            "the sample name {sample} has {} characters; the OwnHealth file holds at most 64",
+            sample.chars().count()
         ));
     }
     let declared = match text(&summary, &["run", "declared_sex"]) {

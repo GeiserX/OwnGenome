@@ -180,6 +180,13 @@ pub fn normalize(seq: &mut dyn Bases, pos: u64, ref_: &str, alt: &str) -> Result
             "{pos} {ref_}>{alt}: the alternate is the reference"
         ));
     }
+    // A masked base inside REF: GRCh38's base there is not known, so the
+    // trimmed and rolled location could differ from GRCh38's.
+    if r.contains(&b'N') {
+        return Err(format!(
+            "{pos} {ref_}>{alt}: the reference has N within REF, masked or a gap, so GRCh38's bases are not known"
+        ));
+    }
     let left = trim_left(&r, &a);
     let (r1, a1) = (&r[left..], &a[left..]);
     let right = trim_right(r1, a1);
@@ -547,6 +554,16 @@ mod tests {
         assert!(e.contains("N at 6"), "{e}");
         let ok = normalize(&mut Mem(b"GAAAACAAAG".to_vec()), 1, "GA", "G").unwrap();
         assert_eq!((ok.start, ok.end), (1, 5));
+    }
+
+    #[test]
+    fn refuses_a_masked_base_inside_ref() {
+        // GAN>G deletes the N itself: the roll checks only the flanks, so
+        // without this the identifier would name [1,3), and GRCh38's base
+        // there could roll it elsewhere.
+        let e = normalize(&mut Mem(b"GANC".to_vec()), 1, "GAN", "G").unwrap_err();
+        assert!(e.contains("N within REF"), "{e}");
+        assert!(normalize(&mut Mem(b"GACC".to_vec()), 1, "GAC", "G").is_ok());
     }
 
     #[test]

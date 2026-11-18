@@ -855,6 +855,13 @@ fn lpa_states_only_what_was_read() {
     let b = build(SAMPLE, &dir, &p, &mut genome()).unwrap();
     let lpa = fact(&b, "risk_marker", "LPA")[0];
     assert!(!format!("{:?}", get(lpa, &["variants"])).contains(&rsid));
+    // The one site left keys the fact, as OwnHealth's importer recomputes it.
+    let cited = arr(lpa, "variants");
+    assert_eq!(cited.len(), 1, "{lpa:?}");
+    assert_eq!(
+        st(lpa, &["id"]),
+        fact_id("risk_marker", "LPA", st(&cited[0], &["vrs_id"]))
+    );
     let row = coverage(&b, "LPA")[0];
     assert_eq!(st(row, &["state"]), "partial", "{row:?}");
     assert!(st(row, &["note"]).contains(&rsid), "{row:?}");
@@ -1083,7 +1090,7 @@ fn a_carrier_or_unread_gene_with_a_pgx_call_is_partly_assessed() {
         let row = coverage(&b, g)[0];
         assert_eq!(
             (st(row, &["state"]), st(row, &["reason"])),
-            ("partial", "other"),
+            ("partial", "low_depth"),
             "{g}: {row:?}"
         );
         let note = st(row, &["note"]);
@@ -1101,11 +1108,13 @@ fn a_carrier_or_unread_gene_with_a_pgx_call_is_partly_assessed() {
         );
     let (b, _) = run("unread-pgx", &unread);
     let row = coverage(&b, "CYP2B6")[0];
+    // Step 16b's own reason and callable share stay on the row.
     assert_eq!(
         (st(row, &["state"]), st(row, &["reason"])),
-        ("partial", "other"),
+        ("partial", "paralog"),
         "{row:?}"
     );
+    assert_eq!(get(row, &["fraction_callable"]), Some(&Value::Float(0.41)));
     let note = st(row, &["note"]);
     assert!(note.contains("PGx call") && note.contains("41%"), "{note}");
     // Read at full depth, VKORC1 is assessed, and CFTR's row names only the
@@ -1116,4 +1125,101 @@ fn a_carrier_or_unread_gene_with_a_pgx_call_is_partly_assessed() {
     );
     assert_eq!(st(coverage(&b, "VKORC1")[0], &["state"]), "assessed");
     assert!(!st(coverage(&b, "CFTR")[0], &["note"]).contains("PGx call"));
+}
+
+#[test]
+fn an_x_linked_dominant_gene_is_never_a_carrier_finding() {
+    // MECP2 is XLD in carrier_genes.tsv: a woman with one pathogenic change
+    // can be affected, so the finding is monogenic, never "carrier".
+    let pos = 154_030_000;
+    let sections = full_sections().replacen(
+        "\"hits\":[",
+        &format!(
+            "\"hits\":[{},",
+            hit("chrX", pos, "MECP2", "het", "Pathogenic", 2, None)
+        ),
+        1,
+    );
+    let (b, _) = run("xld", &sections);
+    assert!(fact(&b, "carrier", "MECP2").is_empty(), "{:?}", facts(&b));
+    assert_eq!(fact(&b, "monogenic_pathogenic", "MECP2").len(), 1);
+}
+
+#[test]
+fn an_ambiguous_pgx_call_is_left_out_and_its_gene_partial() {
+    let ambiguous = r#"{"gene":"CYP2C9","diplotype":"*1/*2 (1 of 2 possible)","phenotype":"ambiguous: one of Normal Metabolizer, Intermediate Metabolizer","status":"ambiguous"},"#;
+    let (b, _) = run(
+        "pgx-ambiguous",
+        &full_sections().replacen("\"genes\":[", &format!("\"genes\":[{ambiguous}"), 1),
+    );
+    assert!(fact(&b, "pgx", "CYP2C9").is_empty(), "{:?}", facts(&b));
+    let row = coverage(&b, "CYP2C9")[0];
+    assert_eq!(st(row, &["state"]), "partial", "{row:?}");
+    assert!(
+        st(row, &["note"]).contains("possible diplotypes"),
+        "{row:?}"
+    );
+}
+
+#[test]
+fn guidance_belongs_to_the_call_the_fact_holds() {
+    // PharmCAT's report holds an outside CYP2D6 call (*1/*3) that step 27
+    // did not confirm; the fact holds pypgx's probable *4/*5, so none of
+    // the *1/*3 guidance goes with it.
+    let (b, _) = run("guidance-stale-outside", &full_sections());
+    let d6 = fact(&b, "pgx", "CYP2D6")[0];
+    assert_eq!(st(d6, &["value", "diplotype"]), "*4/*5");
+    assert!(get(d6, &["drug_guidance"]).is_none(), "{d6:?}");
+    // PharmCAT's own call keeps its guidance.
+    assert!(!arr(fact(&b, "pgx", "CYP2C19")[0], "drug_guidance").is_empty());
+}
+
+#[test]
+fn cftrs_no_cpic_variants_label_is_a_reference_call() {
+    assert_eq!(
+        og_facts::build::pgx_call_state("CFTR", "No CPIC variants found/No CPIC variants found"),
+        "ref"
+    );
+    assert_eq!(
+        og_facts::build::pgx_call_state("CFTR", "No CPIC variants found/G551D"),
+        "alt"
+    );
+}
+
+#[test]
+fn a_left_out_hit_makes_a_not_assessed_gene_partial() {
+    // At mean depth 4.2 GJB2 is not assessed; a GJB2 hit whose REF is not
+    // the reference's is left out, so a call was made: the gene is partial.
+    let pos = 20_190_000;
+    let low = swap(
+        "coverage",
+        r#""coverage":{"state":"ok","data":{"mean_depth":4.2}}"#,
+    )
+    .replacen(
+        "\"hits\":[",
+        &format!(
+            "\"hits\":[{},",
+            hit("chr13", pos, "GJB2", "het", "Pathogenic", 2, Some("N"))
+        ),
+        1,
+    );
+    let (b, _) = run("left-out-not-assessed", &low);
+    let row = coverage(&b, "GJB2")[0];
+    assert_eq!(st(row, &["state"]), "partial", "{row:?}");
+    let note = st(row, &["note"]);
+    assert!(note.contains("4.2") && note.contains("left out"), "{note}");
+}
+
+#[test]
+fn a_sample_name_longer_than_ownhealth_holds_is_refused() {
+    let long = "S".repeat(65);
+    let dir = folder("long-sample", &full_sections().replace(SAMPLE, &long));
+    let summary = std::fs::read_to_string(dir.join("summary.json"))
+        .unwrap()
+        .replace(SAMPLE, &long);
+    std::fs::write(dir.join("summary.json"), summary).unwrap();
+    let e = build(&long, &dir, &panels(), &mut genome())
+        .err()
+        .expect("refused");
+    assert!(e.contains("65 characters"), "{e}");
 }

@@ -25,7 +25,7 @@ case "${*:2}" in
   "cat /usr/local/share/ExpansionHunter/variant_catalog/grch38/variant_catalog.json") echo '[{"LocusId": "HTT"}]' ;;
   *render_report.py*)
     [ ! -e "${GENOME_DIR}/sample1/facts/sample1_genome_facts.json" ] || touch "${CASE_WORK}/facts-seen-at-24"
-    [ ! -e "${CASE_WORK}/fail-24" ] || exit 1 ;;
+    [ ! -e "${CASE_WORK}/fail-24" ] || { touch "${CASE_WORK}/render-failed"; exit 1; } ;;
 esac
 exec "${CASE_WORK}/hook-outputs" "$@"
 HOOK
@@ -37,6 +37,7 @@ stale() { mkdir -p "${G}/sample1/facts"; echo '{"format":"an earlier run"}' > "$
 
 stale; touch "${CASE_WORK}/fail-24"
 run_expect 1 report-failed "${SCRIPTS}/run-all.sh" sample1 male
+[ -e "${CASE_WORK}/render-failed" ] || fail "step 24 failed before its render, not at the planted failure"
 output_has report-failed '^\[ownhealth-facts\] skipped: 24-html-report.sh failed'
 [ ! -e "$FACTS" ] || fail "step 24 failed and the earlier run's OwnHealth file is still there"
 [ ! -e "${CASE_WORK}/facts-seen-at-24" ] || fail "the earlier run's OwnHealth file was still there when step 24 ran"
@@ -46,5 +47,5 @@ stale; rm -f "${CASE_WORK}/fail-24"
 run_expect 0 report-ok "${SCRIPTS}/run-all.sh" sample1 male
 grep -q '/pgp-bin/og facts --sample sample1 ' "$FAKE_DOCKER_LOG" || fail "og facts did not run after step 24 worked"
 [ ! -e "$FACTS" ] || fail "og facts wrote nothing and the earlier run's OwnHealth file is still there"
-output_has report-ok 'the OwnHealth file '
+output_has report-ok 'the OwnHealth file [^ ]*/sample1/facts/sample1_genome_facts\.json'
 echo "run-all.sh removes an earlier run's OwnHealth file before the pipeline starts, and writes none when step 24 fails."

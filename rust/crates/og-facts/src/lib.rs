@@ -152,21 +152,28 @@ fn run(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<PathBuf, St
     Ok(target)
 }
 
-/// Writes `path` through a temporary file of this process beside it, so a
-/// reader never sees half a file and two writers never share one.
+/// Writes `path` through a temporary file of this call beside it, so a
+/// reader never sees half a file and two writers never share one. The file
+/// is the owner's only (mode 600 on Unix) from the moment it exists: it
+/// holds a person's genome findings.
 fn write_atomic(path: &Path, body: &[u8]) -> Result<(), String> {
+    static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
+    let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(format!(".{}.part", std::process::id()));
+    tmp.push(format!(".{}.{n}.part", std::process::id()));
     let tmp = PathBuf::from(tmp);
-    let written = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
+    let mut open = std::fs::OpenOptions::new();
+    open.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut open, 0o600);
+    // Only a file this call created is removed on failure.
+    let mut f = open
         .open(&tmp)
-        .and_then(|mut f| f.write_all(body))
-        .and_then(|()| std::fs::rename(&tmp, path));
+        .map_err(|e| format!("{}: {e}", tmp.display()))?;
+    let written = f.write_all(body).and_then(|()| std::fs::rename(&tmp, path));
     written.map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("{}: {e}", path.display())
@@ -189,5 +196,33 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             let _ = writeln!(err, "og facts: ERROR: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn the_file_is_the_owners_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("og-facts-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("facts").join("S_genome_facts.json");
+        write_atomic(&path, b"{}\n").unwrap();
+        // A second write of the same path in this process uses its own
+        // temporary file and replaces the first.
+        write_atomic(&path, b"{\"a\":1}\n").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        let left: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        let body = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(mode & 0o777, 0o600, "{mode:o}");
+        assert_eq!(body, "{\"a\":1}\n");
+        assert_eq!(left.len(), 1, "{left:?}");
     }
 }
