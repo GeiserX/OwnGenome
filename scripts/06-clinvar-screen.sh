@@ -129,13 +129,15 @@ SAMPLE_DROPPED=$(comm -23 <(printf '%s\n' "$SAMPLE_CONTIGS") <(printf '%s\n' "$S
 # source is newer. isec matches on identical REF/ALT, so both sides must be split
 # and left-aligned the same way.
 # Every sample shares the normalised copy, so one run builds it while the others
-# wait on clinvar/.norm.lock, then test it again and find it built. The lock is
-# flock's when flock is installed: the kernel drops it when the run ends, and a
-# mkdir lock is not exclusive with the uutils mkdir of Ubuntu 26.04 (two runs
-# that make the folder at once can both succeed). Without flock (macOS) it is
-# lock_acquire's folder. The build goes to a .part file only the lock holder
-# writes; the index goes in place before the VCF, so a VCF that is newer than
-# the source always has the index of the same write beside it.
+# wait, then test it again and find it built. Every run that builds takes the same
+# lock, lock_acquire's folder clinvar/.norm.lock.d, whether flock is on its PATH or
+# not. Where flock is installed, a run first takes flock on clinvar/.norm.lock, so
+# only one run at a time tries to make the folder: a mkdir lock is not exclusive
+# with the uutils mkdir of Ubuntu 26.04 (two runs that make the folder at once can
+# both succeed). The build goes to a .part file only the lock holder writes. The
+# old VCF is removed first and the new index goes in place before the new VCF, so
+# a VCF that is newer than the source always has the index of the same write
+# beside it, even when a run stops halfway.
 # Each pipeline below runs in bash with pipefail: under sh a failed first
 # bcftools would go unnoticed when the second one exits 0.
 norm_stale() { [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; }
@@ -146,17 +148,20 @@ if norm_stale; then
   fi
   NORM_LOCK="${GENOME_DIR}/clinvar/.norm.lock"
   if command -v flock >/dev/null 2>&1; then
-    NORM_FLOCK=true
-    # Opened read-only, as the refresh lock above: flock locks a read-only fd, and a
-    # .norm.lock another user made (mode 0644) must not stop a rebuild.
-    [ -e "$NORM_LOCK" ] || : >> "$NORM_LOCK"
+    # Made readable by everyone (the library's umask is 077) and opened read-only, as
+    # the refresh lock above: flock locks a read-only fd, so a .norm.lock another
+    # user made does not stop a rebuild.
+    [ -e "$NORM_LOCK" ] || (umask 022; : >> "$NORM_LOCK")
+    if [ ! -r "$NORM_LOCK" ]; then
+      echo "ERROR: ${CLINVAR_NORM} must be rebuilt, but you cannot read its lock ${NORM_LOCK}." >&2
+      echo "  Its owner can let every user take it: chmod a+r ${NORM_LOCK}" >&2
+      exit 1
+    fi
     exec 8<"$NORM_LOCK"
     flock -n 8 || { echo "Waiting for the run that builds ${CLINVAR_NORM} ..."; flock 8; }
-  else
-    NORM_FLOCK=false
-    lock_acquire "${NORM_LOCK}.d"
-    trap 'lock_release "${NORM_LOCK}.d"' EXIT
   fi
+  lock_acquire "${NORM_LOCK}.d"
+  trap 'lock_release "${NORM_LOCK}.d"' EXIT
   if norm_stale; then
     echo "Normalising ClinVar into ${CLINVAR_NORM} ..."
     rm -f "${CLINVAR_NORM}.part.vcf.gz" "${CLINVAR_NORM}.part.vcf.gz.tbi"
@@ -165,15 +170,13 @@ if norm_stale; then
       bash -o pipefail -c "set -e; bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CLINVAR")' \
         | bcftools norm -m -any -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "${CLINVAR_NORM}.part.vcf.gz")' -"
     bcftools_run --rw "$(dirname "$CLINVAR_NORM")" bcftools index -t "$(cpath "${CLINVAR_NORM}.part.vcf.gz")"
+    rm -f "$CLINVAR_NORM"
     mv "${CLINVAR_NORM}.part.vcf.gz.tbi" "${CLINVAR_NORM}.tbi"
     mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
   fi
-  if $NORM_FLOCK; then
-    exec 8<&-
-  else
-    lock_release "${NORM_LOCK}.d"
-    trap - EXIT
-  fi
+  lock_release "${NORM_LOCK}.d"
+  trap - EXIT
+  exec 8<&-
 fi
 
 # Step 2: filter the sample. Callers that never write PASS (FILTER '.') would lose
