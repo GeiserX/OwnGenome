@@ -1,20 +1,28 @@
-//! `og y yleaf-positions` (step 37): Yleaf's own GRCh38 marker positions,
-//! for the pileup step 37 makes beside Yleaf.
+//! Step 37's two steps around Yleaf's own command line.
 //!
 //! ```text
 //! og y yleaf-positions --data DATA OUT
+//! og y yleaf-no-reads --bam BAM --idxstats IDXSTATS OUT
 //! ```
 //!
-//! Writes `chrY<TAB>pos` for each distinct position in column 4 of
-//! `DATA/hg38/new_positions.txt`, in file order, for `samtools mpileup -l`,
-//! and checks that `DATA/hg_prediction_tables/tree.json` is there: the two
-//! files Yleaf 4.1's `yleaf_constants` names (`HG38`, `NEW_POSITION_FILE`,
-//! `TREE_FILE`). Running Yleaf on that pileup stays in `bin/yleaf_run.py
-//! predict`, which is glue inside Yleaf's own Python.
+//! `yleaf-positions` writes `chrY<TAB>pos` for each distinct position in
+//! column 4 of `DATA/hg38/new_positions.txt`, in file order, for
+//! `samtools mpileup -l`, and checks that
+//! `DATA/hg_prediction_tables/tree.json` is there: the two files Yleaf 4.1's
+//! `yleaf_constants` names (`HG38`, `NEW_POSITION_FILE`, `TREE_FILE`).
+//! Step 37 then hands that pileup to Yleaf (`Yleaf -rp`).
 //!
-//! What changes on purpose: the output is written whole or not at all, and
-//! a position is ASCII digits only (the Python's `isdigit` also took other
-//! Unicode digits).
+//! `yleaf-no-reads` writes Yleaf's prediction table for a pileup with no
+//! line: Yleaf stops on an empty pileup ("No columns to parse") and writes
+//! a header with no row, so the step writes the row Yleaf gives when too
+//! few markers had reads: `Hg` NA, `Valid_markers` 0, and `Total_reads`,
+//! the mapped reads in `samtools idxstats` (column 3, summed). The sample
+//! name is the BAM's file name without its last extension, as Yleaf names
+//! it.
+//!
+//! What changes on purpose from the Python these replace: the output is
+//! written whole or not at all, and a position or a read count is ASCII
+//! digits only (the Python's `isdigit` also took other Unicode digits).
 
 use crate::y::{is_file, path_join};
 use crate::{Error, Outcome};
@@ -90,6 +98,57 @@ pub(crate) fn cli(rest: &[String], out: &mut dyn Write, err: &mut dyn Write) -> 
     })
 }
 
+/// The header of Yleaf 4's `hg_prediction.hg`.
+pub const HG_HEADER: &str =
+    "Sample_name\tHg\tHg_marker\tTotal_reads\tValid_markers\tQC-score\tQC-1\tQC-2\tQC-3\n";
+
+/// `Path(bam).name.rsplit('.', 1)[0]`: Yleaf's name for the sample.
+fn sample_name(bam: &str) -> &str {
+    let name = bam.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+    name.rsplit_once('.').map_or(name, |(stem, _)| stem)
+}
+
+fn no_reads(bam: &str, idxstats: &str, out: &str) -> Outcome {
+    let fail = |e| (e, 1);
+    let mut reads: u128 = 0;
+    for line in crate::lines(idxstats, Utf8::Strict).map_err(fail)? {
+        let line = line.map_err(fail)?;
+        if let Some(c) = line.split('\t').nth(2) {
+            let c = crate::strip(c);
+            if crate::digits(c) {
+                let n = crate::int(c).and_then(|n| u128::try_from(n).ok());
+                reads = n.and_then(|n| reads.checked_add(n)).ok_or_else(|| {
+                    fail(Error(format!("read count {c} too large in {idxstats}")))
+                })?;
+            }
+        }
+    }
+    let body = format!(
+        "{HG_HEADER}{}\tNA\t\t{reads}\t0\tNA\tNA\tNA\tNA\n",
+        sample_name(bam)
+    );
+    crate::write_atomic(out, body.as_bytes()).map_err(fail)?;
+    Ok("No read at any Y marker: Hg NA (insufficient markers)\n".to_owned())
+}
+
+const NO_READS_SPEC: Spec = Spec {
+    prog: "og y yleaf-no-reads",
+    usage: "usage: og y yleaf-no-reads [-h] --bam BAM --idxstats IDXSTATS out\n",
+    options: &["--bam", "--idxstats"],
+    positionals: &["out"],
+    required: &["--bam", "--idxstats"],
+};
+
+pub(crate) fn no_reads_cli(rest: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    crate::run(&NO_READS_SPEC, rest, out, err, |a| {
+        Ok(no_reads(
+            crate::opt(a, "--bam"),
+            crate::opt(a, "--idxstats"),
+            &a.pos[0],
+        ))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +177,50 @@ mod tests {
             format!(
                 "{data}/{TREE} not found: install Yleaf's data with scripts/setup.sh --yleaf-data <genome_dir>"
             )
+        );
+    }
+
+    #[test]
+    fn no_reads_writes_the_na_row_with_the_mapped_reads() {
+        let d = Dir::new("yleaf-noreads");
+        // idxstats: name, length, mapped, unmapped; the last line is `*`.
+        let idx = d.put(
+            "idx.txt",
+            "chr1\t248956422\t35933\t331\nchrY\t57227415\t1200\t7\nshort\t1\n*\t0\t0\t2048\n",
+        );
+        let out = d.path("hg_prediction.hg");
+        let line = no_reads("/x/aligned/S1_sorted.bam", &idx, &out).unwrap();
+        assert_eq!(
+            line,
+            "No read at any Y marker: Hg NA (insufficient markers)\n"
+        );
+        assert_eq!(
+            d.read("hg_prediction.hg"),
+            format!("{HG_HEADER}S1_sorted\tNA\t\t37133\t0\tNA\tNA\tNA\tNA\n")
+        );
+        assert_eq!(sample_name("a.b.bam"), "a.b");
+        assert_eq!(sample_name("noext"), "noext");
+        assert_eq!(sample_name("dir/x.bam"), "x");
+        let e = no_reads("x.bam", &d.path("missing.txt"), &d.path("o")).unwrap_err();
+        assert_eq!(e.1, 1);
+        assert!(std::fs::metadata(d.path("o")).is_err());
+    }
+
+    #[test]
+    fn no_reads_cli_routes_through_og_y() {
+        let d = Dir::new("yleaf-noreads-cli");
+        let idx = d.put("idx.txt", "chrY\t57227415\t5\t0\n");
+        let out = d.path("t.hg");
+        let args: Vec<String> = ["yleaf-no-reads", "--bam", "s.bam", "--idxstats", &idx, &out]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let (mut o, mut e) = (Vec::new(), Vec::new());
+        let code = crate::y::cli(Some("yleaf-no-reads"), &args[1..], &mut o, &mut e);
+        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&e));
+        assert_eq!(
+            d.read("t.hg"),
+            format!("{HG_HEADER}s\tNA\t\t5\t0\tNA\tNA\tNA\tNA\n")
         );
     }
 }
