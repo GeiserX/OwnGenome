@@ -46,9 +46,9 @@ A report that loads a file from the internet tells that server your IP address a
 - **indexcov report (step 16):** loads Chart.js from `cdnjs.cloudflare.com` and jQuery from `code.jquery.com`. Offline, the page opens without its plots.
 - **Nextflow report and timeline:** load nothing.
 
-The test cannot produce the CPSR and MultiQC reports. On 2026-11-17 we opened one of each in a browser that blocked and logged every request to the internet:
+The test's address listing does not see a CPSR or MultiQC report: the test never builds a real CPSR report, and its MultiQC report is written in another job. On 2026-11-17 we opened one of each in a browser that blocked and logged every request to the internet:
 
-- **CPSR report (step 17):** loads nothing. Its stylesheets, scripts and images are inside the HTML file. Its external addresses are plain links to the sources it cites (ClinVar, PanelApp, PubMed and others), which open only when you click them. We checked the CPSR project's own example reports of versions 2.2.5 and 2.4.0; the pinned PCGR 2.3.2 image builds its report from a template that embeds every resource in the same way.
+- **CPSR report (step 17):** loads nothing. Its stylesheets, scripts and images are inside the HTML file. Its external addresses are plain links to the sources it cites (ClinVar, PanelApp, PubMed and others), which open only when you click them. We checked the CPSR project's own example reports of versions 2.3.0 and 2.4.0. Version 2.3.0 is the CPSR inside the pinned PCGR 2.3.2 image, and its report template embeds every resource.
 - **MultiQC report (step 28):** loads nothing. Its external addresses are plain links to MultiQC, Seqera and the papers of the tools it reports. We checked a report from the pinned MultiQC 1.35 image, run with the step's options.
 
 **Recommendations for securing your data:**
