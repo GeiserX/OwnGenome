@@ -312,6 +312,53 @@ pub enum Inline {
     Badge(String, Colour),
     /// Text in normal weight and a smaller size, for a reason or a remark.
     Quiet(String),
+    /// A fixed text written as it is, unescaped, as render_report.py's
+    /// stat() writes its value (an apostrophe stays an apostrophe).
+    Fixed(&'static str),
+}
+
+/// One cell of a table row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cell {
+    /// Plain text.
+    Text(String),
+    /// A coloured badge.
+    Badge(String, Colour),
+    /// Text with a second, smaller grey line under it.
+    Sub(String, String),
+    /// The Viewer cell: a link that opens the locus (`chrom:start` or
+    /// `chrom:start-end`) in the genome viewer; empty without a locus.
+    Viewer(Option<String>),
+}
+
+impl Cell {
+    /// The Viewer cell of `chrom`, `start` and `end`: empty when the chrom
+    /// or the start is empty, the end left out when it is the start.
+    pub fn viewer(chrom: &Value, start: &Value, end: Option<&Value>) -> Result<Cell, Malformed> {
+        if !truthy(chrom) || !truthy(start) {
+            return Ok(Cell::Viewer(None));
+        }
+        let start = py(start)?;
+        let mut at = format!("{}:{start}", py(chrom)?);
+        if let Some(end) = end.filter(|v| truthy(v)) {
+            let end = py(end)?;
+            if end != start {
+                at = format!("{at}-{end}");
+            }
+        }
+        Ok(Cell::Viewer(Some(at)))
+    }
+}
+
+/// A table: its column titles and rows. A table with a Viewer column (the
+/// rows end in a [`Cell::Viewer`]) is followed by the line saying how the
+/// viewer opens. `one_line` writes the whole table on one line of the page.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Table {
+    pub head: Vec<String>,
+    pub rows: Vec<Vec<Cell>>,
+    pub viewer: bool,
+    pub one_line: bool,
 }
 
 /// One line of a card's body.
@@ -319,6 +366,8 @@ pub enum Inline {
 pub enum Line {
     /// A label and its value.
     Stat(String, Inline),
+    /// A table of rows.
+    Table(Table),
     /// A sentence under the numbers that is not a caveat.
     Note(String),
     /// A paragraph.
