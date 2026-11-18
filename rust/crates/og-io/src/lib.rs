@@ -205,6 +205,12 @@ impl<R: BufRead> Iterator for Lines<R> {
 /// name is left alone and the next name is tried. On Unix it is created
 /// mode 0600, or with the mode of the target it replaces when that is
 /// stricter, so the umask never makes an output readable by others.
+///
+/// When og runs as root, the temporary file is handed to the owner and
+/// group of the nearest folder above it that root does not own. That is a
+/// container run as root over a work folder bind-mounted from the host, as
+/// the pipeline's docker profile does: without it the host user could not
+/// read an owner-only output og wrote there.
 pub struct AtomicFile {
     tmp: PathBuf,
     target: PathBuf,
@@ -235,6 +241,7 @@ impl AtomicFile {
             let tmp = target.with_file_name(tmp_name);
             match new_file(&tmp, mode) {
                 Ok(f) => {
+                    give_to_folder_owner(&f, &tmp);
                     return Ok(AtomicFile {
                         tmp,
                         target,
@@ -280,6 +287,54 @@ fn temp_mode(target: &Path) -> u32 {
 #[cfg(not(unix))]
 fn temp_mode(_target: &Path) -> u32 {
     0
+}
+
+/// Hands a file og created as root to the owner and group of the nearest
+/// folder above it that root does not own: the work folder a container run
+/// as root got from the host, even through a subfolder made as root inside
+/// it. Nothing changes when og is not root or every folder up to `/` is
+/// root's. Best effort: where root may not change owners, the file stays
+/// root's.
+#[cfg(unix)]
+fn give_to_folder_owner(file: &File, path: &Path) {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(f) = file.metadata() else {
+        return;
+    };
+    if f.uid() != 0 {
+        return;
+    }
+    let dir = match path.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d,
+        _ => Path::new("."),
+    };
+    let Ok(dir) = fs::canonicalize(dir) else {
+        return;
+    };
+    let owners = dir
+        .ancestors()
+        .map_while(|d| fs::metadata(d).ok())
+        .map(|m| (m.uid(), m.gid()));
+    if let Some((uid, gid)) = hand_over_to(f.uid(), owners) {
+        let _ = std::os::unix::fs::fchown(file, Some(uid), Some(gid));
+    }
+}
+
+#[cfg(not(unix))]
+fn give_to_folder_owner(_file: &File, _path: &Path) {}
+
+/// The owner and group a new file goes to, given the owners of its folders
+/// from the nearest up: the first folder not owned by root, when the file
+/// is root's (og runs as root); otherwise none.
+#[cfg(unix)]
+fn hand_over_to(
+    file_uid: u32,
+    mut folders: impl Iterator<Item = (u32, u32)>,
+) -> Option<(u32, u32)> {
+    if file_uid != 0 {
+        return None;
+    }
+    folders.find(|&(uid, _)| uid != 0)
 }
 
 /// Creates `path`, failing with `AlreadyExists` when anything is there,
@@ -415,6 +470,33 @@ mod tests {
         assert!(f.commit().is_err());
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
         fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod owner_tests {
+    use super::hand_over_to;
+
+    #[test]
+    fn root_in_a_user_folder_hands_the_file_over() {
+        assert_eq!(
+            hand_over_to(0, [(1001, 118), (0, 0)].into_iter()),
+            Some((1001, 118))
+        );
+        // Through a subfolder made as root inside the user's folder.
+        assert_eq!(
+            hand_over_to(0, [(0, 0), (1001, 118), (0, 0)].into_iter()),
+            Some((1001, 118))
+        );
+    }
+
+    #[test]
+    fn otherwise_the_owner_stays() {
+        // og as root where every folder is root's, and og as a user.
+        assert_eq!(hand_over_to(0, [(0, 0), (0, 0)].into_iter()), None);
+        assert_eq!(hand_over_to(0, std::iter::empty()), None);
+        assert_eq!(hand_over_to(1001, [(1001, 118)].into_iter()), None);
+        assert_eq!(hand_over_to(1001, [(0, 0), (4321, 1)].into_iter()), None);
     }
 }
 
