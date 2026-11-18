@@ -10,9 +10,9 @@
 //! [`css`] the page's style.
 //!
 //! Ported so far: the frame (chapters, contents, section frames, the run
-//! facts, what the report leaves out) and the quality-control and variant
-//! sections, and the search index. A section not ported yet is left out of
-//! both reports; the charts verb says it is not ported and exits 2.
+//! facts, what the report leaves out), the sections [`chapters::writer`]
+//! names, and the search index. A section not ported yet is left out of both
+//! reports; the charts verb says it is not ported and exits 2.
 
 pub mod chapters;
 pub mod charts;

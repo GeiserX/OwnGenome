@@ -9,7 +9,9 @@
 
 use pycompat::json::Value;
 
-use crate::model::{Cell, Colour, Inline, Line, Malformed, Section, Table, need, py, truthy};
+use crate::model::{
+    Cell, Colour, Inline, Layout, Line, Malformed, Section, Table, need, py, truthy,
+};
 use crate::notes::CDNA_SCAN_NOTE;
 
 const PATH: &str = "sections.clinvar.data.cdna_scan";
@@ -139,7 +141,8 @@ pub fn html_lines(d: &Section<'_>) -> Result<(Vec<Line>, Option<&'static str>), 
         head: ["Locus", "Junctions", "Reads"].map(str::to_owned).to_vec(),
         rows,
         viewer: true,
-        one_line: false,
+        layout: Layout::Indented,
     }));
+    out.push(Line::ViewerNote);
     Ok((out, Some(CDNA_SCAN_NOTE)))
 }

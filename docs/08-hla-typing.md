@@ -120,7 +120,7 @@ docker run --rm \
 
 ## What the Report Derives
 
-The report (step 24 and the text report) lists each T1K row and then derives three things from it. The code is the HLA section of `og summary collect` (`rust/crates/og-summary/src/collect/group_c/hla.rs`); `tests/test_hla_report.py` checks every rule on synthetic T1K rows. The genotypes are unphased: T1K gives two alleles per gene, not which chromosome each sits on.
+The report (step 24 and the text report) lists each T1K row and then derives three things from it. The code is the HLA section of `og summary collect` (`rust/crates/og-summary/src/collect/group_c/hla.rs`); `rust/crates/og-render/tests/port_report_pgx.rs` checks every rule on synthetic T1K rows. The genotypes are unphased: T1K gives two alleles per gene, not which chromosome each sits on.
 
 **Coeliac DQ.** From the DQA1 and DQB1 rows:
 

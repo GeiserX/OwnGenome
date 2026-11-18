@@ -5,8 +5,8 @@
 use pycompat::json::Value;
 
 use crate::model::{
-    Card, Cell, Colour, HtmlPart, Inline, Line, Malformed, Section, State, Summary, Table, get,
-    is_str, need, py,
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table,
+    get, is_str, need, py,
 };
 use crate::notes::LOCITYPER_NOTE;
 use crate::{html, text};
@@ -146,7 +146,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                     .to_vec(),
                 rows,
                 viewer: false,
-                one_line: true,
+                layout: Layout::OneLine,
             }),
         ];
     }
