@@ -150,8 +150,8 @@ if norm_stale; then
   if command -v flock >/dev/null 2>&1; then
     # Made readable by everyone (the library's umask is 077) and opened read-only, as
     # the refresh lock above: flock locks a read-only fd, so a .norm.lock another
-    # user made does not stop a rebuild.
-    [ -e "$NORM_LOCK" ] || (umask 022; : >> "$NORM_LOCK")
+    # user made does not stop a rebuild, even one made between the test and the append.
+    [ -e "$NORM_LOCK" ] || (umask 022; : >> "$NORM_LOCK") 2>/dev/null || true
     if [ ! -r "$NORM_LOCK" ]; then
       echo "ERROR: ${CLINVAR_NORM} must be rebuilt, but you cannot read its lock ${NORM_LOCK}." >&2
       echo "  Its owner can let every user take it: chmod a+r ${NORM_LOCK}" >&2
