@@ -5,7 +5,11 @@
 //!    on a background of `--md-accent-fg-color--transparent` laid over the
 //!    page. For each colour scheme, the accent that scheme ends up with (its
 //!    own block in `docs/stylesheets/theme.css`, else `:root`) must reach
-//!    WCAG AA for normal text, 4.5:1, against that background.
+//!    WCAG AA for normal text, 4.5:1, against that background. The reverse
+//!    holds too: where Zensical fills a control with the accent (the "Back to
+//!    top" button and the side menu button on hover or focus, a linked tag,
+//!    the "Copied" note), the text on it, `--md-accent-bg-color` or the page
+//!    colour, must reach 4.5:1 on the accent.
 //! 2. `zensical.toml` must not turn on `pymdownx.highlight`'s
 //!    `anchor_linenums`. The site shows no line numbers, so each code line
 //!    would get an empty link with no name that still takes a Tab stop.
@@ -137,6 +141,46 @@ fn the_active_menu_item_reads_in_both_schemes() {
     assert!(
         low.is_empty(),
         "the active menu item is below WCAG AA (4.5:1): {}",
+        low.join("; ")
+    );
+}
+
+/// The colour a scheme ends up with for `name`: its own block, then `:root`,
+/// then `fallback` (Zensical's own value when the theme sets none).
+fn effective(css: &str, scheme: &str, name: &str, fallback: Option<&str>) -> String {
+    let root = block(css, ":root").expect("theme.css has a :root block");
+    let sel = format!("[data-md-color-scheme=\"{scheme}\"]");
+    let own = block(css, &sel).unwrap_or_else(|| panic!("theme.css has no {sel} block"));
+    prop(own, name)
+        .or_else(|| prop(root, name))
+        .or_else(|| fallback.map(str::to_owned))
+        .unwrap_or_else(|| panic!("{sel} sets no {name}"))
+}
+
+#[test]
+fn text_on_the_accent_reads_in_both_schemes() {
+    let css = strip_comments(&read("docs/stylesheets/theme.css"));
+    let mut low = Vec::new();
+    for (scheme, page) in [("slate", None), ("default", Some("#ffffff"))] {
+        let accent = effective(&css, scheme, "--md-accent-fg-color", None);
+        // Zensical sets --md-accent-bg-color to #fff for a custom accent.
+        // The "Back to top" button, the side menu button and linked tags
+        // paint it on the accent on hover and focus.
+        let on_accent = effective(&css, scheme, "--md-accent-bg-color", Some("#ffffff"));
+        // The "Copied" note writes the page colour on the accent.
+        let page = effective(&css, scheme, "--md-default-bg-color", page);
+        for (what, text) in [("--md-accent-bg-color", on_accent), ("page colour", page)] {
+            let ratio = contrast(hex(&text), hex(&accent));
+            if ratio < 4.5 {
+                low.push(format!(
+                    "{scheme}: {what} {text} on {accent} is {ratio:.2}:1"
+                ));
+            }
+        }
+    }
+    assert!(
+        low.is_empty(),
+        "text on the accent is below WCAG AA (4.5:1): {}",
         low.join("; ")
     );
 }
