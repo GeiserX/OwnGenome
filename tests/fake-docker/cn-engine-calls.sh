@@ -33,26 +33,23 @@ printf 'placeholder\n' > "${P}/homology_table/GRCh38.bed.gz"
 printf 'placeholder\n' > "${P}/models_GRCh38_1KGP/EUR/SMN1.gz"
 use_output_hook   # writes host-path.sh, which the hook below reads
 
-# fakecov.py BED [q1]: samtools bedcov over BED (any number of columns; the
+# fakecov.sh BED [q1]: samtools bedcov over BED (any number of columns; the
 # name is column 6 of a marker row, else column 4), one summed depth appended.
-cat > "${CASE_WORK}/fakecov.py" <<'PY'
-import os, sys
-q1 = len(sys.argv) > 2
-kiv = 30.0 * (float(os.environ.get("FAKE_KIV2", "20")) + 2) / 14
-for line in open(sys.argv[1]):
-    c = line.rstrip("\n").split("\t")
-    if not line.strip() or line.startswith("#") or c[0] == "chrom":
-        continue
-    name = c[5] if len(c) >= 6 else c[3]
-    mean = kiv if name.startswith("kiv2_") else 30.0
-    if q1 and name.startswith("kiv2_"):
-        mean *= 0.1
-    elif q1 and name in ("HBA1", "HBA2"):
-        mean *= 0.75
-    if name == os.environ.get("FAKE_ZERO"):
-        mean = 0.0
-    print("\t".join(c + [str(int(mean * (int(c[2]) - int(c[1]))))]))
-PY
+cat > "${CASE_WORK}/fakecov.sh" <<'SH'
+#!/usr/bin/env bash
+awk -F'\t' -v OFS='\t' -v q1="${2:+1}" -v kiv2="${FAKE_KIV2:-20}" -v zero="${FAKE_ZERO:-}" '
+  BEGIN { kiv = 30.0 * (kiv2 + 2) / 14 }
+  $0 !~ /[^ \t\r\n\f\v]/ || /^#/ || $1 == "chrom" { next }
+  {
+    name = NF >= 6 ? $6 : $4
+    mean = name ~ /^kiv2_/ ? kiv : 30.0
+    if (q1 && name ~ /^kiv2_/) mean *= 0.1
+    else if (q1 && (name == "HBA1" || name == "HBA2")) mean *= 0.75
+    if (zero != "" && name == zero) mean = 0.0
+    printf "%s\t%.0f\n", $0, int(mean * ($3 - $2))
+  }' "$1"
+SH
+chmod +x "${CASE_WORK}/fakecov.sh"
 
 cat > "${CASE_WORK}/hook" <<'HOOK'
 #!/usr/bin/env bash
@@ -71,13 +68,13 @@ map() {  # a container path on the host; anything else as it is
     *) printf '%s' "$1" ;;
   esac
 }
-cov() { python3 "${CASE_WORK}/fakecov.py" "$@"; }
+cov() { "${CASE_WORK}/fakecov.sh" "$@"; }
 case "$*" in
   "parascopy depth"*) : > "$(host_path "$(arg -o "$@")")" ;;
   "parascopy cn-using"*)
     o=$(host_path "$(arg -o "$@")"); mkdir -p "$o"
     printf 'chr5\t70925087\t70953015\tSMN1\t.\tPASS\t4\t40\tPASS\t2,2\t30\t.\tchr5:70049669-70077595\n' | gzip -c > "${o}/res.samples.bed.gz" ;;
-  "python3 /pgp-bin/"* | "/pgp-bin/og "*)
+  "/pgp-bin/og "*)
     args=(); for a in "$@"; do args+=("$(map "$a")"); done
     exec "${args[@]}" ;;
   "sh -c "*)

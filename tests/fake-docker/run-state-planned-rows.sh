@@ -38,9 +38,8 @@ chmod +x "${CASE_WORK}/nfbin/nextflow"
 NFPATH="${CASE_WORK}/nfbin:${PATH}"
 DURING="${CASE_WORK}/during.tsv"
 rows() { grep -c $'^step\t'"$1"$'\t' "$2" || true; }
-# jq-free reads of run_state.json
-rs() { python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); s = {x["step"]: x for x in d["steps"]}
-print(d["run"]["state"] if sys.argv[2] == "run" else s[sys.argv[2]]["state"])' "$@"; }
+# rs FILE run|STEP: the state of the run, or of STEP (its last row), in run_state.json
+rs() { jq -r --arg k "$2" 'if $k == "run" then .run.state else ([.steps[] | select(.step == $k)] | last | .state) end' "$1"; }
 
 # --- 1 and 2: a clean run with a script step ----------------------------------------------
 # GRIDSS fails on the fake docker, so run-all.sh exits 1; the case reads the rows, not the exit code.

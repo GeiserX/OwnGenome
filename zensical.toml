@@ -149,6 +149,7 @@ nav = [
       { "What 1.0 Keeps Stable" = "output-contract.md" },
       { "Copy Number from Depth (the locus catalog)" = "cn-loci.md" },
       { Testing = "testing.md" },
+      { "User journeys" = "user-journeys.md" },
       { "The Rust Core" = "rust.md" },
       { "Keeping versions up to date" = "updating.md" },
       { Glossary = "glossary.md" },

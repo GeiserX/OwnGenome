@@ -21,11 +21,12 @@ bash_expr() {
   # shellcheck disable=SC2016 # the $(( )) is matched, not expanded
   grep -o -- '--mem-gbytes "\$((.*))"' "$1" | sed -e 's/^--mem-gbytes "\$((//' -e 's/))"$//' || true
 }
-# nf_expr MODULE: the right-hand side of "def mem = ...", as Python over L
+# nf_expr MODULE: the right-hand side of "def mem = ...", as awk over L (max()
+# is defined below; L.intdiv(N) becomes int(L / N), the same for L >= 0)
 nf_expr() {
   grep -E '^[[:space:]]*def mem = ' "$1" | sed -e 's/^[[:space:]]*def mem = //' \
     -e 's/Math\.max(/max(/g' -e 's/(task\.memory\.toGiga() as int)/L/g' \
-    -e 's/\.intdiv(\([0-9]*\))/ \/\/ \1/g' || true
+    -e 's/L\.intdiv(\([0-9]*\))/int(L \/ \1)/g' || true
 }
 
 # check SCRIPT MODULE: 0 when both budgets are at most half the limit (at
@@ -35,13 +36,13 @@ check() {
   be=$(bash_expr "$1"); ne=$(nf_expr "$2")
   [ -n "$be" ] || { echo "no --mem-gbytes \"\$((...))\" in $1"; return 1; }
   [ -n "$ne" ] || { echo "no 'def mem = ...' in $2"; return 1; }
-  # Only max, L, integers and arithmetic may be left of the Groovy expression.
-  if [ -n "$(printf '%s' "$ne" | sed 's/max//g' | tr -cd 'A-Za-z_' | tr -d 'L')" ]; then
+  # Only max, int, L, integers and arithmetic may be left of the Groovy expression.
+  if [ -n "$(printf '%s' "$ne" | sed -e 's/max//g' -e 's/int//g' | tr -cd 'A-Za-z_' | tr -d 'L')" ]; then
     echo "cannot read the Groovy budget '$ne' in $2"; return 1
   fi
   for l in $(seq 1 64); do
     b=$(GLNEXUS_MEM=$l bash -c "echo \$(( $be ))")
-    n=$(python3 -c "L=$l; print($ne)")
+    n=$(awk -v L="$l" "function max(a, b) { return a > b ? a : b } BEGIN { print ${ne} }")
     if [ "$b" -lt 1 ] || [ "$n" -lt 1 ]; then
       echo "limit ${l} GB: budget below 1 GB (script ${b}, module ${n})"; bad=1
     elif [ "$l" -ge 2 ] && { [ $((b * 2)) -gt "$l" ] || [ $((n * 2)) -gt "$l" ]; }; then
