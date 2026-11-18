@@ -6,8 +6,9 @@
 //! og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS
 //! ```
 //!
-//! A missing file, or `-`, is standard input; plain, gzip and BGZF input are
-//! read alike. `-h` or `--help` anywhere prints the usage and the defaults on
+//! `join-adjacent` and `hits` read standard input when the VCF is missing, and
+//! any VCF given as `-` is standard input; plain, gzip and BGZF input are read
+//! alike. `-h` or `--help` before any `--` prints the usage and the defaults on
 //! stdout, exit 0. A refused command line is exit 2, a file that cannot be
 //! read or written exit 1.
 
@@ -34,7 +35,7 @@ fn help() -> String {
   --min-gq N    deep-intronic: the call floor, the lowest GQ of a plain reference call, never below 20 (default 30)
   --min-dp N    deep-intronic: the depth floor, the lowest DP of a plain reference call (default 10)
   --no-gvcf     deep-intronic: there is no gVCF, so a site with no record is a no call
-  A missing VCF, or -, is standard input.
+  join-adjacent and hits read standard input when the VCF is missing; any VCF given as - is standard input.
 "
     )
 }
