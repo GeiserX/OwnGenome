@@ -13,7 +13,7 @@ use std::time::Duration;
 
 /// The open connections of a server: a clone of each socket, to close it,
 /// and the thread that answers it.
-type Open = Arc<Mutex<Vec<(Option<TcpStream>, JoinHandle<()>)>>>;
+type Open = Arc<Mutex<Vec<(TcpStream, JoinHandle<()>)>>>;
 
 /// A static file server on a free port of 127.0.0.1. It stops when dropped.
 pub struct StaticServer {
@@ -48,9 +48,12 @@ impl StaticServer {
                 if flag.load(Ordering::SeqCst) {
                     break;
                 }
-                if let Ok(c) = conn {
+                // A connection the server could not keep a handle to (to
+                // close it on drop) is closed at once, never answered.
+                if let Ok(c) = conn
+                    && let Ok(peer) = c.try_clone()
+                {
                     let (root, extra) = (Arc::clone(&root), Arc::clone(&extra));
-                    let peer = c.try_clone().ok();
                     let h = thread::spawn(move || answer(c, &root, &extra));
                     let mut open = open.lock().unwrap_or_else(|e| e.into_inner());
                     open.retain(|(_, h)| !h.is_finished());
@@ -92,9 +95,7 @@ impl Drop for StaticServer {
         }
         let open = std::mem::take(&mut *self.conns.lock().unwrap_or_else(|e| e.into_inner()));
         for (c, h) in open {
-            if let Some(c) = c {
-                let _ = c.shutdown(Shutdown::Both);
-            }
+            let _ = c.shutdown(Shutdown::Both);
             let _ = h.join();
         }
     }
@@ -287,7 +288,19 @@ mod tests {
         // A client that sends half a request and waits: its thread blocks on read.
         let mut c = TcpStream::connect(("127.0.0.1", srv.port())).unwrap();
         write!(c, "GET /x HTTP/1.1\r\n").unwrap();
-        std::thread::sleep(Duration::from_millis(200));
+        // Wait until the server holds the connection and its thread runs.
+        let held = |s: &StaticServer| {
+            s.conns
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(_, h)| !h.is_finished())
+        };
+        let t = std::time::Instant::now();
+        while !held(&srv) {
+            assert!(t.elapsed() < Duration::from_secs(5), "no connection held");
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let t = std::time::Instant::now();
         drop(srv);
         // Without the shutdown the drop would wait out the 10 s read timeout.

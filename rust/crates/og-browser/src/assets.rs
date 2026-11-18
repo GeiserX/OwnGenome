@@ -9,8 +9,12 @@ use std::sync::LazyLock;
 static URL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?i)(?:https?:)?//[a-z0-9.-]+\.[a-z]{2,}[^\s'"]*"#).unwrap());
 static SCRIPT_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<script\b[^>]*>").unwrap());
-/// A `src` attribute of a tag (not `data-src`).
-static SRC_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\ssrc\s*=").unwrap());
+/// One attribute of a tag: its name, then an optional value, quoted or not.
+/// Walking a tag with it reads ` src=` inside another attribute's quoted
+/// value as part of that value, not as an attribute.
+static ATTR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\s+([^\s=>/"']+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?"#).unwrap()
+});
 static ON_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\son[a-z]+\s*=").unwrap());
 static EVAL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\beval\s*\(|new\s+Function\s*\(").unwrap());
@@ -35,7 +39,7 @@ pub fn asset_problems(texts: &BTreeMap<String, String>) -> Vec<(String, String)>
         }
         if name.ends_with(".html") {
             for tag in SCRIPT_TAG.find_iter(t).map(|m| m.as_str()) {
-                if !SRC_ATTR.is_match(tag) {
+                if !has_src(tag) {
                     add(tag);
                 }
             }
@@ -48,6 +52,17 @@ pub fn asset_problems(texts: &BTreeMap<String, String>) -> Vec<(String, String)>
         }
     }
     out
+}
+
+/// Whether the opening tag `tag` (`<script ...>`) has a `src` attribute, in
+/// any case; `data-src` and a ` src=` inside a quoted value do not count.
+fn has_src(tag: &str) -> bool {
+    let attrs = tag
+        .get("<script".len()..)
+        .unwrap_or("")
+        .trim_end_matches('>');
+    ATTR.captures_iter(attrs)
+        .any(|c| c[1].eq_ignore_ascii_case("src"))
 }
 
 /// The text of every file in `dir` and its subfolders, by its path relative
@@ -162,6 +177,16 @@ mod tests {
             [("a.html".into(), "<script data-src=\"x.js\">".into())]
         );
         assert!(one("a.html", "<script SRC = \"x.js\"></script>").is_empty());
+        assert!(one("a.html", "<script defer src='x.js'></script>").is_empty());
+        assert!(one("a.html", "<script type=module src=x.js></script>").is_empty());
+        // " src=" inside another attribute's value is not a src attribute.
+        assert_eq!(
+            one(
+                "a.html",
+                "<script data-note=\" src=x.js\">alert(1)</script>"
+            ),
+            [("a.html".into(), "<script data-note=\" src=x.js\">".into())]
+        );
     }
 
     #[test]
