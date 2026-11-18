@@ -6,17 +6,25 @@
 # digest of the reference on disk is not GRCh38's for those four; the RefSeq sequences are.
 #
 # Usage: scripts/ci/build-refget-table.sh [OUT]   (default assets/ownhealth/grch38_refget.tsv)
-# CHROMS="21 MT" limits it to those chromosomes, to check a few rows against the table.
+# CHROMS="21 MT" limits it to those chromosomes, to check a few rows against the table; it then
+# needs an OUT other than the checked-in table, which it would otherwise cut to those rows.
 # Downloads NCBI's GRCh38 (GCF_000001405.26) chromosome FASTA, about 950 MB, one at a time.
 # Needs curl, gzip, openssl, base64 and md5sum or md5.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-OUT=${1:-${REPO}/assets/ownhealth/grch38_refget.tsv}
+TABLE=${REPO}/assets/ownhealth/grch38_refget.tsv
+OUT=${1:-$TABLE}
+if [ -n "${CHROMS:-}" ] && { [ $# -eq 0 ] || [ "$(cd "$(dirname "$OUT")" 2>/dev/null && pwd)/$(basename "$OUT")" = "$TABLE" ]; }; then
+  echo "ERROR: CHROMS writes only some chromosomes: give an OUT other than ${TABLE}" >&2
+  exit 2
+fi
 BASE=https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.26_GRCh38
 STRUCT=${BASE}/GCF_000001405.26_GRCh38_assembly_structure
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+# This run's own staging file beside OUT, so two runs never write one file.
+PART=$(mktemp "${OUT}.XXXXXX")
+trap 'rm -rf "$WORK" "$PART"' EXIT
 
 md5_of() { if command -v md5sum >/dev/null; then md5sum | cut -d' ' -f1; else md5 -q; fi; }
 
@@ -37,8 +45,11 @@ curl -sfL --retry 3 "${BASE}/GCF_000001405.26_GRCh38_assembly_report.txt" -o "${
     [ "$len" = "$(wc -c < "${WORK}/seq" | tr -d ' ')" ] || { echo "ERROR: ${name}: length differs from the assembly report" >&2; exit 1; }
     openssl dgst -sha512 -binary < "${WORK}/seq" > "${WORK}/sha512"
     refget=$(head -c 24 "${WORK}/sha512" | base64 | tr '+/' '-_')
-    printf '%s\t%s\t%s\tSQ.%s\t%s\n' "$name" "$acc" "$len" "$refget" "$(md5_of < "${WORK}/seq")"
+    md5=$(md5_of < "${WORK}/seq")
+    [ "${#md5}" -eq 32 ] || { echo "ERROR: ${name}: no MD5" >&2; exit 1; }
+    printf '%s\t%s\t%s\tSQ.%s\t%s\n' "$name" "$acc" "$len" "$refget" "$md5"
   done
-} > "${OUT}.part"
-mv "${OUT}.part" "$OUT"
+} > "$PART"
+chmod 644 "$PART"
+mv "$PART" "$OUT"
 echo "wrote ${OUT}"
