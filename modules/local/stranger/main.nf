@@ -43,7 +43,10 @@ process STRANGER {
     # the bundled GRCh38 catalog.
     CATALOG="${cat}"
     if [ -z "\$CATALOG" ] || ! grep -q '"NormalMax"' "\$CATALOG"; then
-        CATALOG=\$(python -c 'import os, stranger; print(os.path.join(os.path.dirname(stranger.__file__), "resources", "variant_catalog_grch38.json"))')
+        # The package sits under the lib directory of the prefix the stranger
+        # command is installed in. Exactly one match, or the -f test stops.
+        STRANGER_BIN=\$(command -v stranger)
+        CATALOG=\$(find "\${STRANGER_BIN%/bin/*}/lib" -path '*/site-packages/stranger/resources/variant_catalog_grch38.json')
     fi
     echo "Repeat catalog: \$CATALOG"
     if [ ! -f "\$CATALOG" ]; then
