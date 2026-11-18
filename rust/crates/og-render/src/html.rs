@@ -211,8 +211,23 @@ fn meta(
     Ok(out)
 }
 
+/// A card that shows a Viewer column with rows also says how the viewer
+/// opens: each section places [`Line::ViewerNote`] itself, so this catches
+/// one that forgot.
+fn viewer_note_placed(c: &Card) -> bool {
+    let shows_viewer = c.body.iter().any(|l| match l {
+        Line::Table(t) | Line::Folded(_, t) => t.viewer && !t.rows.is_empty(),
+        _ => false,
+    });
+    !shows_viewer || c.body.contains(&Line::ViewerNote)
+}
+
 /// One section's frame.
-fn frame(sid: &str, part: &HtmlPart, meta: Option<String>, always: bool) -> Vec<String> {
+pub(crate) fn frame(sid: &str, part: &HtmlPart, meta: Option<String>, always: bool) -> Vec<String> {
+    debug_assert!(
+        part.cards.iter().all(viewer_note_placed),
+        "{sid}: a card shows a Viewer column without the line saying how it opens"
+    );
     let wide = part.cards.len() > 1 || part.cards.iter().any(|c| c.full);
     let mut out = vec![format!(
         "  <section class=\"sec{}{}\" id=\"{sid}\">",

@@ -286,3 +286,99 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         files: Vec::new(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::html;
+    use crate::escape::e;
+    use crate::model::Summary;
+    use crate::notes::{ANNOTSV_NOTE, VIEWER_NOTE};
+
+    /// The structural-variants writer is not wired yet, so no report case
+    /// reaches this card: this renders it through the section frame.
+    fn page(data: &str) -> String {
+        let s = Summary::parse(&format!(
+            r#"{{"sections": {{"annotsv": {{"state": "ok", "data": {data}}}}}}}"#
+        ))
+        .unwrap();
+        let part = html(&s).unwrap();
+        crate::html::frame("structural-variants", &part, None, false).join("\n")
+    }
+
+    const ROWS: &str = r#""rows": [
+        {"type": "DEL", "sv": "chr1:1000-5000", "acmg_class": "5", "genes": ["A<B", "C&D", "G1", "G2"],
+         "support": 2, "support_callers": ["manta", "delly"], "exon_edge": "yes",
+         "exon_edge_detail": "exon 2", "population_af": 0.001, "population_source": "gnomAD",
+         "common": false, "rule": "R1", "rule_detail": "loss <of> function & more"},
+        {"type": "INS", "sv": "chr3:7", "acmg_class": "4", "genes": [], "support": null,
+         "exon_edge": "no", "population_af": null}]"#;
+
+    const DOWN: &str = r#""downgraded": [
+        {"type": "DUP", "sv": "chr2:10-90", "annotsv_class": "4", "acmg_class": "3", "genes": [],
+         "rule": "", "rule_detail": ""},
+        {"type": "DEL", "sv": "chr2:500-900", "annotsv_class": "5", "acmg_class": "3", "genes": ["X&Y"],
+         "rule": "B2", "rule_detail": "common <AF> & benign"}]"#;
+
+    const HEAD: &str = r#""count": 2, "consensus": true, "single_caller": 0, "exon_edge_checked": true,
+        "exon_edge": 1, "common": 0"#;
+
+    fn viewer(at: &str) -> String {
+        format!(
+            "<td><a class=\"locus\" href=\"http://127.0.0.1:8765/#{at}\" target=\"_blank\" \
+             rel=\"noopener noreferrer\">{at}</a></td>"
+        )
+    }
+
+    #[test]
+    fn both_tables_escape_their_cells_and_the_viewer_line_follows_them_once() {
+        let p = page(&format!("{{{HEAD}, {ROWS}, {DOWN}}}"));
+        let rows = format!(
+            "    <table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th>\
+             <th>Viewer</th></tr>\
+             <tr><td>DEL chr1:1000-5000</td><td>5</td><td>A&lt;B, C&amp;D, G1 and 1 more</td>\
+             <td>2 callers (manta, delly)</td><td>on exon edges: exon 2; benign-set AF 0.001 (gnomAD); \
+             rule R1: loss &lt;of&gt; function &amp; more</td>{}</tr>\
+             <tr><td>INS chr3:7</td><td>4</td><td>no gene</td><td>not known (no step 22 consensus)</td>\
+             <td>none</td>{}</tr></table>",
+            viewer("chr1:1000-5000"),
+            viewer("chr3:7")
+        );
+        let down = format!(
+            "    <table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th>\
+             <th>Why</th><th>Viewer</th></tr>\
+             <tr><td>DUP chr2:10-90</td><td>4</td><td>3</td><td>no gene</td><td>not named</td>\
+             <td>no detail</td>{}</tr>\
+             <tr><td>DEL chr2:500-900</td><td>5</td><td>3</td><td>X&amp;Y</td><td>B2</td>\
+             <td>common &lt;AF&gt; &amp; benign</td>{}</tr></table>",
+            viewer("chr2:10-90"),
+            viewer("chr2:500-900")
+        );
+        let lines: Vec<&str> = p.lines().collect();
+        let at = |l: &str| lines.iter().position(|x| *x == l);
+        let (r, h, d, v) = (
+            at(&rows).expect(&p),
+            at("    <h3>Moved to class 3 by step 05's rules</h3>").expect(&p),
+            at(&down).expect(&p),
+            at(VIEWER_NOTE).expect(&p),
+        );
+        assert!(r < h && h + 1 == d && d + 1 == v, "{p}");
+        assert_eq!(p.matches("<p class=\"viewer\">").count(), 1, "{p}");
+        assert!(
+            p.contains(&format!("    <p class=\"caveat\">{}</p>", e(ANNOTSV_NOTE))),
+            "{p}"
+        );
+        // Red control: an unescaped gene would not match the row.
+        assert!(!p.contains("A<B"));
+    }
+
+    #[test]
+    fn one_table_alone_still_gets_the_viewer_line_and_none_gets_neither() {
+        let p = page(&format!("{{{HEAD}, {DOWN}}}"));
+        assert!(!p.contains("<th>Checks</th>"), "{p}");
+        assert_eq!(p.matches("<p class=\"viewer\">").count(), 1, "{p}");
+        let p = page(r#"{"count": 0}"#);
+        assert!(!p.contains("<table"), "{p}");
+        assert!(!p.contains("<p class=\"viewer\">"), "{p}");
+        assert!(!p.contains("class=\"caveat\""), "{p}");
+    }
+}

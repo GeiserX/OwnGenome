@@ -361,7 +361,8 @@ impl Cell {
 /// A table: its column titles and rows. A table with a Viewer column (the
 /// rows end in a [`Cell::Viewer`]) has `viewer`; the card places the line
 /// saying how the viewer opens, [`Line::ViewerNote`], where the report has
-/// it. `layout` says how its tags and rows sit on the page's lines.
+/// it; a card with such a table and no such line fails a debug check in the
+/// HTML writer. `layout` says how its tags and rows sit on the page's lines.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Table {
     pub head: Vec<String>,
