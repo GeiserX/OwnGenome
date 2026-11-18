@@ -6,7 +6,8 @@
 //! unrelated or distant came out `ok`. Such a pair, and one with counts
 //! that cannot be counts (negative, or more opposite homozygotes or more
 //! identical genotypes than sites), is `not_checked` with the reason and a
-//! `WARNING:` line, and the step still exits 0. A finite relatedness keeps
+//! `WARNING:` line, and the step exits 0, also for a pair declared first or
+//! second degree, where a `nan` used to be a mismatch. A finite relatedness keeps
 //! its verdict.
 //!
 //! The case that reads stderr runs `og family` in a child process: this
@@ -23,6 +24,9 @@ const PAIRS_HEAD: &str = "#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\n";
 
 /// Two sequenced partners: declared unrelated, expected relatedness 0.
 const PARTNERS: &str = "a\tmale\t\t\tb\tyes\tyes\nb\tfemale\t\t\ta\tyes\tyes\n";
+
+/// A sequenced father and son: declared parent-child, expected 0.5.
+const PARENT_CHILD: &str = "f\tmale\t\t\t\tyes\tyes\nk\tmale\tf\t\t\tyes\tyes\n";
 
 /// Two sequenced first cousins (expected 0.125, third degree): the
 /// grandparents, their two children and the children's partners are in
@@ -166,6 +170,23 @@ fn nan_relatedness_of_declared_third_degree_pair_is_not_checked() {
         COUSINS,
         "c1\tc2\tNaN\t5\t500\t5000",
         "somalier gave relatedness 'NaN' for this pair: not measured",
+    );
+}
+
+/// A declared first-degree pair with `nan` used to bin as unrelated, a
+/// mismatch that stopped the step with exit 1; it is not a measurement
+/// either, so it is not_checked and the step goes on.
+#[test]
+fn nan_relatedness_of_declared_parent_child_is_not_checked() {
+    let (code, _, row) = check("parent-child-ok", PARENT_CHILD, "f\tk\t0.49\t2\t3000\t5000");
+    assert_eq!(code, 0);
+    assert_eq!(get(&row, "expected_relatedness"), "0.500", "{row:?}");
+    assert_eq!(get(&row, "verdict"), "ok", "{row:?}");
+    assert_not_checked(
+        "nan-parent-child",
+        PARENT_CHILD,
+        "f\tk\tnan\t2\t3000\t5000",
+        "somalier gave relatedness 'nan' for this pair: not measured",
     );
 }
 
