@@ -147,7 +147,10 @@ if norm_stale; then
   NORM_LOCK="${GENOME_DIR}/clinvar/.norm.lock"
   if command -v flock >/dev/null 2>&1; then
     NORM_FLOCK=true
-    exec 8>>"$NORM_LOCK"
+    # Opened read-only, as the refresh lock above: flock locks a read-only fd, and a
+    # .norm.lock another user made (mode 0644) must not stop a rebuild.
+    [ -e "$NORM_LOCK" ] || : >> "$NORM_LOCK"
+    exec 8<"$NORM_LOCK"
     flock -n 8 || { echo "Waiting for the run that builds ${CLINVAR_NORM} ..."; flock 8; }
   else
     NORM_FLOCK=false
@@ -166,7 +169,7 @@ if norm_stale; then
     mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
   fi
   if $NORM_FLOCK; then
-    exec 8>&-
+    exec 8<&-
   else
     lock_release "${NORM_LOCK}.d"
     trap - EXIT

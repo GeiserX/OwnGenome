@@ -203,6 +203,28 @@ grep -q '^bcftools norm .*clinvar_pathogenic_chr\.norm' "$FAKE_TOOL_LOG" || fail
 [ ! -e "${C}/.norm.lock.d" ] || fail "without flock the lock folder clinvar/.norm.lock.d was left behind"
 echo "without flock the step builds under lock_acquire's folder and removes it: PASS"
 
+# --- A lock file the user cannot write, in a clinvar/ folder they can -----------------
+# Another user of a shared genome folder made clinvar/.norm.lock with mode
+# 0644. flock locks a read-only fd, so the step must still rebuild a stale
+# copy, as it could before the lock existed. A file of the user's own with
+# no write bit stands in for it; root opens any file, so this needs an
+# ordinary user and flock, as on the CI runner.
+if [ "$(id -u)" -eq 0 ] || ! command -v flock >/dev/null 2>&1; then
+  echo "read-only .norm.lock: not checked as root or without flock"
+else
+  touch -t 202001010000 "$NORM" "${NORM}.tbi"
+  rm -rf "${GENOME_DIR}/sample1/clinvar"
+  : > "$FAKE_TOOL_LOG"
+  : >> "${C}/.norm.lock"
+  chmod a-w "${C}/.norm.lock"
+  run_rc readonly-lock timeout 60 "${SCRIPTS}/06-clinvar-screen.sh" sample1
+  chmod u+w "${C}/.norm.lock"
+  expect_rc readonly-lock 0
+  grep -q '^bcftools norm .*clinvar_pathogenic_chr\.norm' "$FAKE_TOOL_LOG" || fail "with a read-only .norm.lock the stale normalised ClinVar was not rebuilt"
+  [ "$(write_id "$NORM")" = "$(write_id "${NORM}.tbi")" ] || fail "with a read-only .norm.lock the published .tbi is from another write than the VCF"
+  echo "a read-only .norm.lock in a writable clinvar/ still lets the step rebuild: PASS"
+fi
+
 # --- A stale normalised ClinVar in a folder the user cannot write ----------------------
 # Without flock the lock is a folder made in clinvar/, so the step must stop
 # with an error there, not wait for a lock it can never take. root writes anywhere, so
