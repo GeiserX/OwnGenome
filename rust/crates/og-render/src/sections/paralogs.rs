@@ -5,11 +5,10 @@
 
 use pycompat::json::Value;
 
-use crate::escape::e;
 use crate::html;
 use crate::model::{
-    Card, Colour, HtmlPart, Inline, Line, Malformed, Section, State, Summary, get, is_str, need,
-    py, truthy,
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table,
+    get, is_str, need, py, truthy,
 };
 use crate::notes::{PARALOG_NOTE, PARASCOPY_NOTE};
 use crate::sections::{parascopy, smn1::smn1_text};
@@ -216,21 +215,25 @@ fn paraphase_card(d: &Section<'_>) -> Result<Card, Malformed> {
     let mut caveats = Vec::new();
     if shows_body(d) {
         let path = format!("{PATH}.genes[]");
-        let mut rows = String::new();
+        let mut rows = Vec::new();
         for g in genes(d)? {
-            let f = |k: &str| need(g, k, &path).and_then(py);
-            rows += &format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                e(&f("gene")?),
-                e(&f("copy_number")?),
-                e(&f("status")?),
-                e(&f("detail")?)
-            );
+            let f = |k: &str| need(g, k, &path).and_then(py).map(Cell::Text);
+            rows.push(vec![
+                f("gene")?,
+                f("copy_number")?,
+                f("status")?,
+                f("detail")?,
+            ]);
         }
         if !rows.is_empty() {
-            body.push(Line::Raw(format!(
-                "    <table><tr><th>Gene</th><th>Copy number</th><th>Call</th><th>Detail</th></tr>{rows}</table>"
-            )));
+            body.push(Line::Table(Table {
+                head: ["Gene", "Copy number", "Call", "Detail"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                rows,
+                layout: Layout::OneLine,
+                ..Table::default()
+            }));
         }
         if let Some(smn) = smn1(d)? {
             body.push(Line::Stat(

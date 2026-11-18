@@ -5,7 +5,7 @@
 
 use pycompat::json::Value;
 
-use crate::model::{Malformed, need, py};
+use crate::model::{Cell, Layout, Line, Malformed, Table, need, py};
 
 /// The warning before the APOE lines.
 pub const APOE_WARNING: &str = "APOE and Alzheimer's disease: a risk factor, not a diagnosis. Many \
@@ -30,27 +30,24 @@ pub fn text_lines(rows: &[Value]) -> Result<Vec<String>, Malformed> {
     Ok(out)
 }
 
-/// The HTML report's folded APOE table: `head` is the traits table's
-/// header row, `row` writes one row as the traits table does.
-pub fn html_lines(
+/// The HTML report's APOE table, folded away behind the warning: `head` is
+/// the traits table's column titles, `row` builds one row as the traits
+/// table does. None without APOE rows.
+pub fn html_line(
     rows: &[Value],
-    head: &str,
-    row: impl Fn(&Value) -> Result<String, Malformed>,
-) -> Result<Vec<String>, Malformed> {
+    head: Vec<String>,
+    row: impl Fn(&Value) -> Result<Vec<Cell>, Malformed>,
+) -> Result<Option<Line>, Malformed> {
     if rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok(None);
     }
-    let mut out = vec![
-        format!(
-            "    <details><summary>{} Open to show it.</summary>",
-            crate::escape::e(APOE_WARNING)
-        ),
-        "    <table>".to_owned(),
-        head.to_owned(),
-    ];
-    for r in rows {
-        out.push(format!("      {}", row(r)?));
-    }
-    out.push("    </table></details>".to_owned());
-    Ok(out)
+    Ok(Some(Line::Folded(
+        format!("{APOE_WARNING} Open to show it."),
+        Table {
+            head,
+            rows: rows.iter().map(row).collect::<Result<_, _>>()?,
+            layout: Layout::Indented,
+            ..Table::default()
+        },
+    )))
 }

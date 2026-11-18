@@ -2,8 +2,7 @@
 //! public tree release newer than Yleaf's, the SNP counts on the path to
 //! it, and one row per level of the walk.
 
-use crate::escape::e;
-use crate::model::{Card, Inline, Line, Malformed, State, Summary};
+use crate::model::{Card, Cell, Inline, Layout, Line, Malformed, State, Summary, Table};
 use crate::notes::{EXPLORE_NOTE, Y_TREE_NOTE};
 use crate::sections::ancestry::{
     Align, explore_html, get_text, list, need_align, need_text, py_or, shown,
@@ -108,26 +107,38 @@ pub fn card(s: &Summary) -> Result<Option<Card>, Malformed> {
                     .push(Line::Para(format!("{label}: {}", py_or(Some(v), "")?)));
             }
         }
-        let mut rows = String::new();
+        let mut rows = Vec::new();
         for x in list(d, "path", PATH)? {
-            rows += "<tr>";
-            for k in [
-                "Level",
-                "Branch",
-                "Derived",
-                "Ancestral",
-                "No_call",
-                "Ancestral_SNPs",
-            ] {
-                rows += &format!("<td>{}</td>", e(&need_text(&x, k, ROW)?));
-            }
-            rows += "</tr>";
+            rows.push(
+                [
+                    "Level",
+                    "Branch",
+                    "Derived",
+                    "Ancestral",
+                    "No_call",
+                    "Ancestral_SNPs",
+                ]
+                .iter()
+                .map(|k| need_text(&x, k, ROW).map(Cell::Text))
+                .collect::<Result<Vec<_>, Malformed>>()?,
+            );
         }
         if !rows.is_empty() {
-            c.body.push(Line::Raw(format!(
-                "    <table><tr><th>Level</th><th>Branch</th><th>Derived</th><th>Ancestral</th>\
-                 <th>No call</th><th>Ancestral SNPs</th></tr>{rows}</table>"
-            )));
+            c.body.push(Line::Table(Table {
+                head: [
+                    "Level",
+                    "Branch",
+                    "Derived",
+                    "Ancestral",
+                    "No call",
+                    "Ancestral SNPs",
+                ]
+                .map(str::to_owned)
+                .to_vec(),
+                rows,
+                layout: Layout::OneLine,
+                ..Table::default()
+            }));
         }
         let (links, note) = explore_html(d, PATH)?;
         c.body.extend(links);

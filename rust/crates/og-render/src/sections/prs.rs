@@ -9,8 +9,9 @@
 
 use pycompat::json::Value;
 
-use crate::escape::e;
-use crate::model::{Card, HtmlPart, Line, Malformed, Summary, get, is_str, need, py, truthy};
+use crate::model::{
+    Card, Cell, HtmlPart, Layout, Line, Malformed, Summary, Table, get, is_str, need, py, truthy,
+};
 use crate::notes::PRS_ANCESTRY_NOTE;
 use crate::sections::ancestry::{Align, items, need_align, need_text, py_or};
 use crate::{html, text};
@@ -279,36 +280,39 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     let rs = scores(d)?;
     let adjusted = get(d, "adjusted", PATH)?.is_some_and(truthy);
     let show_effect = adjusted && names_evaluations(&rs)?;
-    let mut rows = String::new();
+    let mut rows = Vec::new();
     for x in &rs {
-        let n = |k: &str| need_text(x, k, ROW).map(|t| e(&t).into_owned());
-        let c = |k: &str| count(x, k).map(|t| e(&t).into_owned());
         let pct = percentile(x)?;
-        rows += &format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}/{}</td><td>{}</td>",
-            n("condition")?,
-            n("pgs_id")?,
-            c("score")?,
-            c("matched")?,
-            c("total")?,
-            e(if !pct.is_empty() {
-                &pct
+        let mut row = vec![
+            Cell::Text(need_text(x, "condition", ROW)?),
+            Cell::Text(need_text(x, "pgs_id", ROW)?),
+            Cell::Text(count(x, "score")?),
+            Cell::Text(format!("{}/{}", count(x, "matched")?, count(x, "total")?)),
+            Cell::Text(if !pct.is_empty() {
+                pct
             } else if matches!(need(x, "score", ROW)?, Value::Null) {
-                NOT_AVAILABLE
+                NOT_AVAILABLE.to_owned()
             } else {
-                "raw score only"
-            })
-        );
+                "raw score only".to_owned()
+            }),
+        ];
         if show_effect {
-            rows += &format!("<td>{}</td>", e(&effect(x)?.0));
+            row.push(Cell::Text(effect(x)?.0));
         }
-        rows += "</tr>\n";
+        rows.push(row);
     }
-    let effect_th = if show_effect {
-        "<th>Effect in your group</th>"
-    } else {
-        ""
-    };
+    let mut head = [
+        "Condition",
+        "PGS",
+        "Score",
+        "Variants matched",
+        "Percentile",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    if show_effect {
+        head.push("Effect in your group".to_owned());
+    }
     let card = Card {
         title: format!(
             "Polygenic Risk Scores{}",
@@ -320,13 +324,12 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         ),
         full: true,
         body: vec![
-            Line::Raw("    <table>".to_owned()),
-            Line::Raw(format!(
-                "      <tr><th>Condition</th><th>PGS</th><th>Score</th><th>Variants matched</th>\
-                 <th>Percentile</th>{effect_th}</tr>"
-            )),
-            Line::Raw(rows.trim_end_matches('\n').to_owned()),
-            Line::Raw("    </table>".to_owned()),
+            Line::Table(Table {
+                head,
+                rows,
+                layout: Layout::RowLines,
+                ..Table::default()
+            }),
             Line::Para(note(d)?),
         ],
         ..Card::default()

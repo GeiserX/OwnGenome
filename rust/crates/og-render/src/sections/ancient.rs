@@ -5,7 +5,9 @@
 use pycompat::json::Value;
 
 use crate::escape::e;
-use crate::model::{Card, HtmlPart, Line, Malformed, State, Summary, get, py, truthy};
+use crate::model::{
+    Card, Cell, HtmlPart, Layout, Line, Malformed, State, Summary, Table, get, py, truthy,
+};
 use crate::notes::ANCIENT_NOTE;
 use crate::sections::ancestry::{Align, get_text, need_align, need_text};
 use crate::{html, text};
@@ -94,24 +96,25 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     if crate::sections::haplogroups::shows_body(&sec) {
         let d = sec.data;
         let first = lines(d)?.swap_remove(0);
-        let mut rows = String::new();
+        let mut rows = Vec::new();
         for r in nearest(d)? {
-            rows += "<tr>";
-            for k in ["rank", "group", "dates", "country", "locality", "n"] {
-                rows += &format!("<td>{}</td>", e(&need_text(r, k, ROW)?));
-            }
-            rows += "</tr>\n";
+            rows.push(
+                ["rank", "group", "dates", "country", "locality", "n"]
+                    .iter()
+                    .map(|k| need_text(r, k, ROW).map(Cell::Text))
+                    .collect::<Result<Vec<_>, Malformed>>()?,
+            );
         }
         c.body = vec![
             Line::Para(first),
-            Line::Raw("    <table>".to_owned()),
-            Line::Raw(
-                "      <tr><th>#</th><th>Ancient group</th><th>Dates</th><th>Country</th>\
-                 <th>Place</th><th>People</th></tr>"
-                    .to_owned(),
-            ),
-            Line::Raw(rows.trim_end_matches('\n').to_owned()),
-            Line::Raw("    </table>".to_owned()),
+            Line::Table(Table {
+                head: ["#", "Ancient group", "Dates", "Country", "Place", "People"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                rows,
+                layout: Layout::RowLines,
+                ..Table::default()
+            }),
         ];
         if let Some(svg) = get(d, "plot_svg", PATH)?.filter(|v| truthy(v)) {
             c.body.push(Line::Raw(format!(

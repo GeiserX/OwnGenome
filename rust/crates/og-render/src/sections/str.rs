@@ -6,10 +6,10 @@
 use pycompat::fmt::ljust;
 use pycompat::json::Value;
 
-use crate::escape::e;
 use crate::html;
 use crate::model::{
-    Card, Colour, HtmlPart, Inline, Line, Malformed, Summary, get, is_str, need, py, truthy,
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table, get, is_str,
+    need, py, truthy,
 };
 use crate::notes::{EH_NOTE, NOT_GRADED_NOTE, RFC1_NOTE};
 use crate::sections::paralogs::{done_badge, shows_body};
@@ -445,18 +445,17 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         }
         let rows = rows(d)?;
         if !rows.is_empty() {
-            let mut t = "    <table><tr><th>Locus</th><th>Repeat Count</th><th>Stranger</th>\
-                         <th>Notes</th></tr>"
-                .to_owned();
-            for r in &rows {
-                t += "<tr>";
-                for x in r {
-                    t += &format!("<td>{}</td>", e(x));
-                }
-                t += "</tr>";
-            }
-            t += "</table>";
-            body.push(Line::Raw(t));
+            body.push(Line::Table(Table {
+                head: ["Locus", "Repeat Count", "Stranger", "Notes"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                rows: rows
+                    .into_iter()
+                    .map(|r| r.map(Cell::Text).to_vec())
+                    .collect(),
+                layout: Layout::OneLine,
+                ..Table::default()
+            }));
         }
         caveats.push(EH_NOTE);
     }

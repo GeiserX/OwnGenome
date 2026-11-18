@@ -4,8 +4,7 @@
 
 use pycompat::json::Value;
 
-use crate::escape::e;
-use crate::model::{Card, Line, Malformed, State, Summary, need, truthy};
+use crate::model::{Card, Cell, Layout, Line, Malformed, State, Summary, Table, need, truthy};
 use crate::notes::YSTR_NOTE;
 use crate::sections::ancestry::{Align, items, need_align, need_text, py_len};
 use crate::{html, text};
@@ -78,22 +77,27 @@ pub fn card(s: &Summary) -> Result<Option<Card>, Malformed> {
     if sec.state.ran() {
         let d = sec.data;
         let markers = crate::model::get(d, "markers", PATH)?;
-        let mut rows = String::new();
+        let mut rows = Vec::new();
         if let Some(m) = markers {
             for x in called(m)? {
-                rows += "<tr>";
-                for k in ["panel", "marker", "count", "confidence"] {
-                    rows += &format!("<td>{}</td>", e(&need_text(&x, k, ROW)?));
-                }
-                rows += "</tr>";
+                rows.push(
+                    ["panel", "marker", "count", "confidence"]
+                        .iter()
+                        .map(|k| need_text(&x, k, ROW).map(Cell::Text))
+                        .collect::<Result<Vec<_>, Malformed>>()?,
+                );
             }
         }
         c.body = vec![
             Line::Para(counts(d)?),
-            Line::Raw(format!(
-                "    <table><tr><th>Panel</th><th>Marker</th><th>Repeats</th><th>Confidence</th></tr>\
-                 {rows}</table>"
-            )),
+            Line::Table(Table {
+                head: ["Panel", "Marker", "Repeats", "Confidence"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                rows,
+                layout: Layout::OneLine,
+                ..Table::default()
+            }),
         ];
         c.caveats.push(YSTR_NOTE);
     }

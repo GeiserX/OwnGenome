@@ -5,8 +5,7 @@
 
 use pycompat::json::Value;
 
-use crate::escape::e;
-use crate::model::{Malformed, get, is_str, need, py, truthy};
+use crate::model::{Inline, Malformed, get, is_str, need, py, truthy};
 
 const PATH: &str = "sections.traits.data.rules[]";
 
@@ -66,24 +65,25 @@ pub fn g2_text(r: &Value) -> Result<Option<String>, Malformed> {
     )))
 }
 
-/// The G2 result under the rule's result in the HTML table.
-pub fn g2_result_html(r: &Value) -> Result<String, Malformed> {
+/// The G2 result under the rule's result in the HTML table: nothing
+/// without one.
+pub fn g2_result_html(r: &Value) -> Result<Vec<Inline>, Malformed> {
     Ok(match g2_result(r)?.filter(|x| !x.is_empty()) {
-        Some(res) => format!("<br>With G2: {}", e(&res)),
-        None => String::new(),
+        Some(res) => vec![Inline::Break, Inline::Text(format!("With G2: {res}"))],
+        None => Vec::new(),
     })
 }
 
 /// The G2 reading and its explanation under the rule's reading in the HTML
-/// table.
-pub fn g2_reading_html(r: &Value) -> Result<String, Malformed> {
+/// table: nothing without G2.
+pub fn g2_reading_html(r: &Value) -> Result<Vec<Inline>, Malformed> {
     let Some(g) = g2(r)? else {
-        return Ok(String::new());
+        return Ok(Vec::new());
     };
     let f = |k: &str| need(g, k, "the rule's g2").and_then(py);
-    Ok(format!(
-        "<br>With G2: {}<br><span style=\"font-size:12px;color:#666\">{}</span>",
-        e(&f("reading")?),
-        e(&f("text")?)
-    ))
+    Ok(vec![
+        Inline::Break,
+        Inline::Text(format!("With G2: {}", f("reading")?)),
+        Inline::Small(f("text")?),
+    ])
 }

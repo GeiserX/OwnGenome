@@ -7,7 +7,8 @@ use pycompat::json::Value;
 
 use crate::escape::e;
 use crate::model::{
-    Card, HtmlPart, Inline, Line, Malformed, State, Summary, get, need, py, truthy,
+    Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, State, Summary, Table, get, need, py,
+    truthy,
 };
 use crate::notes::ANCESTRY_FINE_NOTE;
 use crate::sections::ancestry::{get_text, has, list, need_text, number, share};
@@ -220,27 +221,27 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         let d = sec.data;
         for (level, title) in LEVELS {
             let at = format!("{PATH}.{level}[]");
-            let mut rows_html = String::new();
+            let mut cells = Vec::new();
             for r in rows(d, level)? {
                 let range = spread(&r, &at)?;
                 let range = range.trim_matches([' ', '(', ')']);
-                rows_html += &format!(
-                    "<tr><td>{}</td><td>{}</td><td>{}</td></tr>\n",
-                    e(&need_text(&r, "group", &at)?),
-                    e(&share(Some(need(&r, "fraction", &at)?), &at)?),
-                    e(if range.is_empty() { "." } else { range })
-                );
+                cells.push(vec![
+                    Cell::Text(need_text(&r, "group", &at)?),
+                    Cell::Text(share(Some(need(&r, "fraction", &at)?), &at)?),
+                    Cell::Text(if range.is_empty() { "." } else { range }.to_owned()),
+                ]);
             }
-            if !rows_html.is_empty() {
+            if !cells.is_empty() {
                 c.body.extend([
                     Line::Raw(format!("    <h3>{}</h3>", e(title))),
-                    Line::Raw("    <table>".to_owned()),
-                    Line::Raw(
-                        "      <tr><th>Group</th><th>Fraction</th><th>Bootstrap range</th></tr>"
-                            .to_owned(),
-                    ),
-                    Line::Raw(rows_html.trim_end_matches('\n').to_owned()),
-                    Line::Raw("    </table>".to_owned()),
+                    Line::Table(Table {
+                        head: ["Group", "Fraction", "Bootstrap range"]
+                            .map(str::to_owned)
+                            .to_vec(),
+                        rows: cells,
+                        layout: Layout::RowLines,
+                        ..Table::default()
+                    }),
                 ]);
             }
         }

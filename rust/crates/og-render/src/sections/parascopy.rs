@@ -4,8 +4,7 @@
 
 use pycompat::json::Value;
 
-use crate::escape::e;
-use crate::model::{Line, Malformed, Section, get, is_str, need, py, truthy};
+use crate::model::{Cell, Layout, Line, Malformed, Section, Table, get, is_str, need, py, truthy};
 use crate::notes::PARASCOPY_LOCI_NOTE;
 use crate::sections::smn1::{SMN1_MARKER_CAVEAT, marker_state};
 use crate::sections::{cn_intervals, cyp21a2::cyp21a2_line, dosage::dosage_lines, hba::hba_line};
@@ -121,24 +120,27 @@ pub fn html_lines(d: &Section<'_>) -> Result<(Vec<Line>, Vec<&'static str>), Mal
     let loci = loci(d)?;
     if !loci.is_empty() {
         let path = format!("{PATH}.loci[]");
-        let mut t =
-            "    <table><tr><th>Genes</th><th>Copies together (agCN)</th><th>Reading</th></tr>"
-                .to_owned();
+        let mut rows = Vec::new();
         for x in loci {
             let reading = if is_str(get(x, "status", &path)?, "called") {
                 py(need(x, "reading", &path)?)?
             } else {
                 ".".to_owned()
             };
-            t += &format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
-                e(&genes(x)?),
-                e(&py(need(x, "text", &path)?)?),
-                e(&reading)
-            );
+            rows.push(vec![
+                Cell::Text(genes(x)?),
+                Cell::Text(py(need(x, "text", &path)?)?),
+                Cell::Text(reading),
+            ]);
         }
-        t += "</table>";
-        body.push(Line::Raw(t));
+        body.push(Line::Table(Table {
+            head: ["Genes", "Copies together (agCN)", "Reading"]
+                .map(str::to_owned)
+                .to_vec(),
+            rows,
+            layout: Layout::OneLine,
+            ..Table::default()
+        }));
         caveats.push(PARASCOPY_LOCI_NOTE);
     }
     body.extend(cn_intervals::html(d.get("cn_intervals")?)?);

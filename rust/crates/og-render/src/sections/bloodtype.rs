@@ -6,9 +6,10 @@
 use pycompat::fmt::ljust;
 use pycompat::json::Value;
 
-use crate::escape::e;
 use crate::html;
-use crate::model::{Card, HtmlPart, Inline, Line, Malformed, Summary, need, py};
+use crate::model::{
+    Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table, need, py,
+};
 use crate::notes::BLOODTYPE_NOTE;
 use crate::sections::paralogs::shows_body;
 use crate::text;
@@ -66,21 +67,24 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         let dot = |k: &str| d.get(k).and_then(|v| v.map_or(Ok(".".to_owned()), py));
         body.push(Line::Stat("ABO".to_owned(), Inline::Text(dot("abo")?)));
         body.push(Line::Stat("RhD".to_owned(), Inline::Text(dot("rhd")?)));
-        let mut t = "    <table><tr><th>System</th><th>Predicted phenotype</th><th>Genotype</th>\
-                     <th>Confidence</th></tr>"
-            .to_owned();
+        let mut rows = Vec::new();
         for x in d.get("systems")?.map_or(Ok(&[][..]), systems)? {
-            let f = |k: &str| need(x, k, PATH).and_then(py);
-            t += &format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                e(&f("system")?),
-                e(&f("phenotype")?),
-                e(&f("genotype")?),
-                e(&f("confidence")?)
-            );
+            let f = |k: &str| need(x, k, PATH).and_then(py).map(Cell::Text);
+            rows.push(vec![
+                f("system")?,
+                f("phenotype")?,
+                f("genotype")?,
+                f("confidence")?,
+            ]);
         }
-        t += "</table>";
-        body.push(Line::Raw(t));
+        body.push(Line::Table(Table {
+            head: ["System", "Predicted phenotype", "Genotype", "Confidence"]
+                .map(str::to_owned)
+                .to_vec(),
+            rows,
+            layout: Layout::OneLine,
+            ..Table::default()
+        }));
         caveats.push(BLOODTYPE_NOTE);
     }
     let card = html::card(

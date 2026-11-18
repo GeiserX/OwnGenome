@@ -4,8 +4,7 @@
 
 use pycompat::json::Value;
 
-use crate::escape::e;
-use crate::model::{Inline, Line, Malformed, get, need, py, truthy};
+use crate::model::{Cell, Inline, Layout, Line, Malformed, Table, get, need, py, truthy};
 
 /// The label of the summary line.
 pub const LABEL: &str =
@@ -128,23 +127,25 @@ pub fn html(iv: Option<&Value>) -> Result<Vec<Line>, Malformed> {
     let mut out = vec![Line::Stat(label.to_owned(), Inline::Text(value.to_owned()))];
     let rows = changes(iv)?;
     if !rows.is_empty() {
-        let mut t = "    <table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th>\
-                     <th>Change</th></tr>"
-            .to_owned();
+        let mut cells = Vec::new();
         for r in rows {
             let f = |k: &str| need(r, k, "an interval row").and_then(py);
-            t += &format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{} of {}</td><td>{}</td></tr>",
-                e(&f("name")?),
-                e(&f("locus")?),
-                e(&place(r)?),
-                e(&f("copies")?),
-                e(&f("expected")?),
-                e(&f("change")?)
-            );
+            cells.push(vec![
+                Cell::Text(f("name")?),
+                Cell::Text(f("locus")?),
+                Cell::Text(place(r)?),
+                Cell::Text(format!("{} of {}", f("copies")?, f("expected")?)),
+                Cell::Text(f("change")?),
+            ]);
         }
-        t += "</table>";
-        out.push(Line::Raw(t));
+        out.push(Line::Table(Table {
+            head: ["Region", "Row", "Place", "Copies", "Change"]
+                .map(str::to_owned)
+                .to_vec(),
+            rows: cells,
+            layout: Layout::OneLine,
+            ..Table::default()
+        }));
     }
     Ok(out)
 }

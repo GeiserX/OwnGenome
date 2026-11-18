@@ -5,10 +5,10 @@
 
 use pycompat::json::Value;
 
-use crate::escape::e;
 use crate::html;
 use crate::model::{
-    Card, Colour, HtmlPart, Inline, Line, Malformed, Section, Summary, is_str, need, py, truthy,
+    Card, Cell, Colour, HtmlPart, Inline, Line, Malformed, Section, Summary, Table, is_str, need,
+    py, truthy,
 };
 use crate::notes::TRAITS_NOTE;
 use crate::sections::{apoe, g2};
@@ -16,13 +16,6 @@ use crate::text;
 
 const ROWS: &str = "sections.traits.data.rows[]";
 const RULES: &str = "sections.traits.data.rules[]";
-
-/// The small grey line under a cell's main text.
-const SMALL: &str = "<br><span style=\"font-size:12px;color:#666\">";
-
-/// The header row of the traits table and of the folded APOE table.
-const HEAD: &str =
-    "      <tr><th>Trait</th><th>Gene</th><th>Genotype</th><th>Reading</th><th>Source</th></tr>";
 
 /// A list in the section's data, `[]` when it is absent or empty.
 fn list<'a>(d: &Section<'a>, key: &str, need_it: bool) -> Result<&'a [Value], Malformed> {
@@ -126,29 +119,38 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
 }
 
 /// The ancestry badge after a genotype or a result, when the row has one.
-fn ancestry_badge(r: &Value, path: &str) -> Result<String, Malformed> {
+fn ancestry_badge(r: &Value, path: &str) -> Result<Vec<Inline>, Malformed> {
     Ok(if ancestry(r, path)? {
-        format!(" {}", html::badge("ancestry", Colour::Yellow))
+        vec![
+            Inline::Text(" ".to_owned()),
+            Inline::Badge("ancestry".to_owned(), Colour::Yellow),
+        ]
     } else {
-        String::new()
+        Vec::new()
     })
 }
 
+/// The column titles of the traits table and of the folded APOE table.
+fn head() -> Vec<String> {
+    ["Trait", "Gene", "Genotype", "Reading", "Source"]
+        .map(str::to_owned)
+        .to_vec()
+}
+
 /// One row of the traits table (and of the folded APOE table).
-fn row(r: &Value) -> Result<String, Malformed> {
+fn row(r: &Value) -> Result<Vec<Cell>, Malformed> {
     let f = |k: &str| need(r, k, ROWS).and_then(py);
-    Ok(format!(
-        "<tr><td>{}</td><td>{}{SMALL}{}</span></td><td>{}{}</td><td>{}{SMALL}{}</span></td>\
-         <td>PMID {}</td></tr>",
-        e(&f("trait")?),
-        e(&f("gene")?),
-        e(&f("rsid")?),
-        e(&f("genotype")?),
-        ancestry_badge(r, ROWS)?,
-        e(&f("reading")?),
-        e(&f("note")?),
-        e(&f("pmids")?)
-    ))
+    let trait_ = f("trait")?;
+    let gene = Cell::Sub(f("gene")?, f("rsid")?);
+    let mut genotype = vec![Inline::Text(f("genotype")?)];
+    genotype.extend(ancestry_badge(r, ROWS)?);
+    Ok(vec![
+        Cell::Text(trait_),
+        gene,
+        Cell::Parts(genotype),
+        Cell::Sub(f("reading")?, f("note")?),
+        Cell::Text(format!("PMID {}", f("pmids")?)),
+    ])
 }
 
 /// The genotype rules table, none without rules.
@@ -157,38 +159,47 @@ fn rules_html(d: &Section<'_>, sample: &str) -> Result<Vec<Line>, Malformed> {
     if rules.is_empty() {
         return Ok(Vec::new());
     }
-    let mut out = vec![
-        Line::Raw("    <h3>Genotype rules (several sites read together)</h3>".to_owned()),
-        Line::Raw("    <table>".to_owned()),
-        Line::Raw(
-            "      <tr><th>Trait</th><th>Gene and sites</th><th>Genotypes</th><th>Result</th>\
-             <th>Reading</th><th>Source</th></tr>"
-                .to_owned(),
-        ),
-    ];
+    let mut rows = Vec::new();
     for r in rules {
         let f = |k: &str| need(r, k, RULES).and_then(py);
-        out.push(Line::Raw(format!(
-            "      <tr><td>{}</td><td>{}{SMALL}{}</span></td><td>{}</td><td>{}{}{}</td>\
-             <td>{}{}{SMALL}{}</span></td><td>PMID {}</td></tr>",
-            e(&f("trait")?),
-            e(&f("gene")?),
-            e(&f("rsids")?.replace(',', ", ")),
-            e(&f("genotypes")?.replace(',', ", ")),
-            e(&g2::rule_result(r)?),
-            ancestry_badge(r, RULES)?,
-            g2::g2_result_html(r)?,
-            e(&f("reading")?),
-            g2::g2_reading_html(r)?,
-            e(&f("note")?),
-            e(&f("pmids")?)
-        )));
+        let trait_ = f("trait")?;
+        let gene = Cell::Sub(f("gene")?, f("rsids")?.replace(',', ", "));
+        let genotypes = f("genotypes")?.replace(',', ", ");
+        let mut result = vec![Inline::Text(g2::rule_result(r)?)];
+        result.extend(ancestry_badge(r, RULES)?);
+        result.extend(g2::g2_result_html(r)?);
+        let mut reading = vec![Inline::Text(f("reading")?)];
+        reading.extend(g2::g2_reading_html(r)?);
+        reading.push(Inline::Small(f("note")?));
+        rows.push(vec![
+            Cell::Text(trait_),
+            gene,
+            Cell::Text(genotypes),
+            Cell::Parts(result),
+            Cell::Parts(reading),
+            Cell::Text(format!("PMID {}", f("pmids")?)),
+        ]);
     }
-    out.push(Line::Raw("    </table>".to_owned()));
-    out.push(Line::Note(format!(
-        "Every rule line: traits/{sample}_genotype_rules.tsv"
-    )));
-    Ok(out)
+    Ok(vec![
+        Line::Raw("    <h3>Genotype rules (several sites read together)</h3>".to_owned()),
+        Line::Table(Table {
+            head: [
+                "Trait",
+                "Gene and sites",
+                "Genotypes",
+                "Result",
+                "Reading",
+                "Source",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            rows,
+            ..Table::default()
+        }),
+        Line::Note(format!(
+            "Every rule line: traits/{sample}_genotype_rules.tsv"
+        )),
+    ])
 }
 
 /// The traits card's lines: the counts, one table row per site read or not
@@ -205,19 +216,17 @@ pub fn html_lines(d: &Section<'_>, sample: &str) -> Result<Vec<Line>, Malformed>
                 n("other_allele")?
             )),
         ),
-        Line::Raw("    <table>".to_owned()),
-        Line::Raw(HEAD.to_owned()),
+        Line::Table(Table {
+            head: head(),
+            rows: list(d, "rows", true)?
+                .iter()
+                .map(row)
+                .collect::<Result<_, _>>()?,
+            ..Table::default()
+        }),
     ];
-    for r in list(d, "rows", true)? {
-        out.push(Line::Raw(format!("      {}", row(r)?)));
-    }
-    out.push(Line::Raw("    </table>".to_owned()));
     out.extend(rules_html(d, sample)?);
-    out.extend(
-        apoe::html_lines(list(d, "apoe", false)?, HEAD, row)?
-            .into_iter()
-            .map(Line::Raw),
-    );
+    out.extend(apoe::html_line(list(d, "apoe", false)?, head(), row)?);
     out.push(Line::Note(format!(
         "Every row with its note: traits/{sample}_traits.tsv"
     )));
