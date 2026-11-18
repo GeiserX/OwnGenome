@@ -4,9 +4,10 @@
 //! had nothing to divide by. Every comparison with NaN is false, so the
 //! degree bins read it as unrelated, and a pair the pedigree declares
 //! unrelated or distant came out `ok`. Such a pair, and one with counts
-//! that cannot be counts (negative, or more opposite homozygotes than
-//! sites), is `not_checked` with the reason and a `WARNING:` line, and the
-//! step still exits 0. A finite relatedness keeps its verdict.
+//! that cannot be counts (negative, or more opposite homozygotes or more
+//! identical genotypes than sites), is `not_checked` with the reason and a
+//! `WARNING:` line, and the step still exits 0. A finite relatedness keeps
+//! its verdict.
 //!
 //! The case that reads stderr runs `og family` in a child process: this
 //! test binary itself, with [`CHILD`] set (see [`child_entry`]).
@@ -181,6 +182,12 @@ fn counts_that_cannot_be_counts_are_not_checked() {
         PARTNERS,
         "a\tb\t0.01\t2000\t500\t1000",
         &reason(2000, 500, 1000),
+    );
+    assert_not_checked(
+        "ibs2-over-n",
+        PARTNERS,
+        "a\tb\t0.01\t10\t2000\t1000",
+        &reason(10, 2000, 1000),
     );
     assert_not_checked(
         "negative-ibs2",
