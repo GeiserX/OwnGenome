@@ -64,6 +64,23 @@ impl AsRef<std::ffi::OsStr> for Tmp {
     }
 }
 
+impl Tmp {
+    /// A new folder that only this test owns. `create_dir` fails when the
+    /// path exists, so a run never shares or deletes another run's folder.
+    fn new(kind: &str, tag: &str) -> Tmp {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let d = std::env::temp_dir().join(format!(
+            "og-ancestry-{kind}-{}-{tag}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&d).unwrap();
+        Tmp(d)
+    }
+}
+
 impl Drop for Tmp {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
@@ -71,10 +88,7 @@ impl Drop for Tmp {
 }
 
 fn tmp(tag: &str) -> Tmp {
-    let d = std::env::temp_dir().join(format!("og-ancestry-ancient-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    Tmp(d)
+    Tmp::new("ancient", tag)
 }
 
 fn write(d: &Path, name: &str, text: &str) -> String {

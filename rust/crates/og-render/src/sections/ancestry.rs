@@ -17,6 +17,12 @@ use crate::notes::EXPLORE_NOTE;
 /// Every explore address but the docs one carries the haplogroup in it.
 pub const EXPLORE_DOCS: &str = "https://github.com/GeiserX/OwnGenome/blob/main/docs/";
 
+/// The pages under [`EXPLORE_DOCS`] the collector links, one per haplogroup.
+const EXPLORE_DOC_PAGES: [&str; 2] = [
+    "37-y-haplogroup.md#explore-your-branch-further",
+    "12-mito-haplogroup.md#explore-your-branch-further",
+];
+
 /// The mark of an address that leaves this computer with the haplogroup in it.
 pub const OFFSITE_HAPLOGROUP: &str = "opens a website; the address carries the haplogroup";
 
@@ -152,16 +158,27 @@ pub fn explore_html(d: &Value, path: &str) -> Result<(Vec<Line>, bool), Malforme
         let Value::Str(url) = url else {
             return Err(Malformed(format!("{path}.explore[].url is not a text")));
         };
-        let why = if url.starts_with(EXPLORE_DOCS) {
+        // Only the two fixed pages the collector links get the plain
+        // warning: any other address, even under the docs folder, may carry
+        // the haplogroup in its query.
+        let why = if url
+            .strip_prefix(EXPLORE_DOCS)
+            .is_some_and(|page| EXPLORE_DOC_PAGES.contains(&page))
+        {
             crate::html::OFFSITE
         } else {
             OFFSITE_HAPLOGROUP
         };
-        // Only a web address becomes a link: a `javascript:` or `data:`
-        // address in a summary would run when clicked, so it shows as text.
+        // Only a web address with a host becomes a link: a `javascript:` or
+        // `data:` address in a summary would run when clicked, and a bare
+        // `https://` leads nowhere, so both show as text.
         let web = ["http://", "https://"].iter().any(|s| {
             url.get(..s.len())
                 .is_some_and(|head| head.eq_ignore_ascii_case(s))
+                && url[s.len()..]
+                    .split(['/', '?', '#'])
+                    .next()
+                    .is_some_and(|host| !host.is_empty())
         });
         let value = if web {
             offsite_link(&url, &url, why)

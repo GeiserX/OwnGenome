@@ -291,10 +291,12 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
             c("score")?,
             c("matched")?,
             c("total")?,
-            e(if pct.is_empty() {
-                "raw score only"
-            } else {
+            e(if !pct.is_empty() {
                 &pct
+            } else if matches!(need(x, "score", ROW)?, Value::Null) {
+                NOT_AVAILABLE
+            } else {
+                "raw score only"
             })
         );
         if show_effect {

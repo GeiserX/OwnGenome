@@ -50,6 +50,23 @@ impl AsRef<std::ffi::OsStr> for Tmp {
     }
 }
 
+impl Tmp {
+    /// A new folder that only this test owns. `create_dir` fails when the
+    /// path exists, so a run never shares or deletes another run's folder.
+    fn new(kind: &str, tag: &str) -> Tmp {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let d = std::env::temp_dir().join(format!(
+            "og-ancestry-{kind}-{}-{tag}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&d).unwrap();
+        Tmp(d)
+    }
+}
+
 impl Drop for Tmp {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
@@ -57,9 +74,8 @@ impl Drop for Tmp {
 }
 
 fn sample(tag: &str, painting: bool) -> Tmp {
-    let d = std::env::temp_dir().join(format!("og-ancestry-fine-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(d.join("ancestry_fine")).unwrap();
+    let d = Tmp::new("fine", tag);
+    std::fs::create_dir(d.join("ancestry_fine")).unwrap();
     std::fs::write(d.join("ancestry_fine/S_ancestry_fine.tsv"), TABLE).unwrap();
     if painting {
         std::fs::write(
@@ -68,10 +84,15 @@ fn sample(tag: &str, painting: bool) -> Tmp {
         )
         .unwrap();
     }
-    Tmp(d)
+    d
 }
 
 fn reports(d: &Path) -> (String, String) {
+    reports_with(d, |s| s)
+}
+
+/// Both reports of the summary og summary collect writes, after `edit`.
+fn reports_with(d: &Path, edit: impl Fn(String) -> String) -> (String, String) {
     let input = og_summary::collect::Input {
         sample: "S".to_owned(),
         sample_dir: d.display().to_string(),
@@ -85,7 +106,7 @@ fn reports(d: &Path) -> (String, String) {
         &Dump::default(),
     )
     .unwrap();
-    let s = Summary::parse(&summary).unwrap();
+    let s = Summary::parse(&edit(summary)).unwrap();
     (text::report(&s).unwrap(), html::report(&s).unwrap())
 }
 
@@ -130,6 +151,34 @@ fn both_reports_name_the_group_left_out_and_the_chromosome_not_painted() {
     assert!(
         page.contains("&#9632;</span> not painted</p>"),
         "its legend"
+    );
+    let [r, g, b] = og_ancestry::COLOURS
+        .iter()
+        .find(|(code, _)| *code == "WEA")
+        .unwrap()
+        .1;
+    let entry = format!(
+        "<span style=\"color:#{r:02x}{g:02x}{b:02x}\">&#9632;</span> West Eurasia (Europe, \
+         Middle East, North Africa)"
+    );
+    assert!(
+        page.contains(&entry),
+        "a group of the legend, in its colour"
+    );
+}
+
+#[test]
+fn a_legend_colour_that_is_not_a_hex_colour_is_shown_grey() {
+    let d = sample("colour", true);
+    let (_, page) = reports_with(&d, |s| {
+        let at = s.find("\"colour\": \"#").expect("a legend colour");
+        let start = at + "\"colour\": \"".len();
+        format!("{}red;display:none{}", &s[..start], &s[start + 7..])
+    });
+    assert!(!page.contains("display:none"), "a planted CSS declaration");
+    assert!(
+        page.contains("<span style=\"color:#808080\">&#9632;</span>"),
+        "the fixed grey"
     );
 }
 

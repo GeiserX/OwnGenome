@@ -265,7 +265,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                 .map(|x| {
                     Ok(format!(
                         "<span style=\"color:{}\">&#9632;</span> {}",
-                        e(&need_text(x, "colour", &at)?),
+                        css_colour(&need_text(x, "colour", &at)?),
                         e(&need_text(x, "group", &at)?)
                     ))
                 })
@@ -281,4 +281,12 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         cards: vec![html::card(&sec, c)?],
         files: Vec::new(),
     })
+}
+
+/// A legend colour as CSS: the `#rrggbb` the collector writes, else a fixed
+/// grey. Escaping keeps it inside the attribute but would still let a `;`
+/// add a declaration, such as one that hides the swatch.
+fn css_colour(c: &str) -> &str {
+    let hex = c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit());
+    if hex { c } else { "#808080" }
 }

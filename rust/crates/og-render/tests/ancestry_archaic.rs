@@ -72,6 +72,23 @@ impl AsRef<std::ffi::OsStr> for Tmp {
     }
 }
 
+impl Tmp {
+    /// A new folder that only this test owns. `create_dir` fails when the
+    /// path exists, so a run never shares or deletes another run's folder.
+    fn new(kind: &str, tag: &str) -> Tmp {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let d = std::env::temp_dir().join(format!(
+            "og-ancestry-{kind}-{}-{tag}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&d).unwrap();
+        Tmp(d)
+    }
+}
+
 impl Drop for Tmp {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
@@ -79,10 +96,7 @@ impl Drop for Tmp {
 }
 
 fn tmp(tag: &str) -> Tmp {
-    let d = std::env::temp_dir().join(format!("og-ancestry-archaic-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    Tmp(d)
+    Tmp::new("archaic", tag)
 }
 
 fn p(d: &Path, name: &str) -> String {
@@ -387,14 +401,16 @@ fn strict_marks_rows_outside_the_mask_and_keeps_each_position_once() {
 
 /// A genotype file by position.
 fn gt_rows(path: &str) -> BTreeMap<u32, Vec<String>> {
-    gunzip(path)
-        .lines()
-        .skip(1)
-        .map(|l| {
-            let c: Vec<String> = l.split('\t').map(str::to_owned).collect();
-            (c[1].parse().unwrap(), c)
-        })
-        .collect()
+    let mut rows = BTreeMap::new();
+    for l in gunzip(path).lines().skip(1) {
+        let c: Vec<String> = l.split('\t').map(str::to_owned).collect();
+        let pos: u32 = c[1].parse().unwrap();
+        assert!(
+            rows.insert(pos, c).is_none(),
+            "two genotype rows for position {pos} in {path}"
+        );
+    }
+    rows
 }
 
 const ROWS: [&str; 5] = [
@@ -731,12 +747,13 @@ fn unsorted_input_stops_and_keeps_the_previous_outputs() {
         &out,
     ]);
     assert!(code == 2 && err.contains("not sorted"), "{code} {err}");
-    let left: Vec<String> = std::fs::read_dir(&out)
-        .map(|r| {
-            r.map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default();
+    let left: Vec<String> = match std::fs::read_dir(&out) {
+        Ok(r) => r
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => panic!("cannot read {out}: {e}"),
+    };
     assert!(
         !left
             .iter()
@@ -758,6 +775,27 @@ fn archaic_section(dir: &Path) -> Value {
     let v = og_summary::collect::post::collect(&input).unwrap();
     let get = |v: &Value, k: &str| pycompat::value::get(v, k).unwrap().unwrap().clone();
     get(&get(&v, "sections"), "archaic")
+}
+
+/// Both reports of the summary og summary collect writes for S1.
+fn reports(dir: &Path) -> (String, String) {
+    let input = og_summary::collect::Input {
+        sample: "S1".to_owned(),
+        sample_dir: dir.display().to_string(),
+        declared_sex: None,
+        assets: repo().join("assets").display().to_string(),
+        group: og_summary::collect::Group::All,
+        tables: repo().join("bin").display().to_string(),
+    };
+    let v = og_summary::collect::post::collect(&input).unwrap();
+    let s = og_render::model::Summary::parse(
+        &pycompat::json::dumps(&v, &pycompat::json::Dump::default()).unwrap(),
+    )
+    .unwrap();
+    (
+        og_render::text::report(&s).unwrap(),
+        og_render::html::report(&s).unwrap(),
+    )
 }
 
 fn field<'a>(v: &'a Value, k: &str) -> &'a Value {
@@ -904,6 +942,14 @@ fn the_report_merges_segments_and_both_reports_read_it() {
         "{lines:?}"
     );
     assert!(lines[1].starts_with("Denisovan: 2.00%"), "{lines:?}");
+    let (txt, page) = reports(&sd);
+    let shares = "Neanderthal: 5.00% (0.5 Mb in 1 segments)";
+    assert!(txt.contains(shares), "the text report: {txt}");
+    assert!(
+        page.contains("<h2>Archaic Ancestry (Neanderthal, Denisovan)</h2>")
+            && page.contains(shares),
+        "the HTML report"
+    );
     for damaged in [
         "key\tvalue\nneanderthal_percent\tlots\n",
         "key\tvalue\nneanderthal_segments\n",

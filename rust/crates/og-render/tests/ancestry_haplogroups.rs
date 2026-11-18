@@ -57,6 +57,23 @@ impl AsRef<std::ffi::OsStr> for Tmp {
     }
 }
 
+impl Tmp {
+    /// A new folder that only this test owns. `create_dir` fails when the
+    /// path exists, so a run never shares or deletes another run's folder.
+    fn new(kind: &str, tag: &str) -> Tmp {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let d = std::env::temp_dir().join(format!(
+            "og-ancestry-{kind}-{}-{tag}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&d).unwrap();
+        Tmp(d)
+    }
+}
+
 impl Drop for Tmp {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
@@ -65,8 +82,7 @@ impl Drop for Tmp {
 
 /// A sample folder with haplogrep3's call and, for a male, Yleaf's table.
 fn sample(name: &str, y_hg: Option<&str>, mt_hg: &str) -> Tmp {
-    let d = std::env::temp_dir().join(format!("og-ancestry-hg-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
+    let d = Tmp::new("hg", name);
     put(
         &d.join("mito/S_haplogroup.txt"),
         &format!("\"SampleID\"\t\"Haplogroup\"\t\"Rank\"\n\"S\"\t\"{mt_hg}\"\t\"0.98\"\n"),
@@ -77,7 +93,7 @@ fn sample(name: &str, y_hg: Option<&str>, mt_hg: &str) -> Tmp {
             &format!("{Y_HEAD}S_sorted\t{hg}\tM269\t100\t42\t0.97\t1\t1\t0.97\n"),
         );
     }
-    Tmp(d)
+    d
 }
 
 /// The summary og summary collect writes for S, as text.
@@ -216,4 +232,40 @@ fn an_address_that_is_not_a_web_address_is_shown_as_text() {
         "a web address stays a link"
     );
     assert!(txt.contains("javascript:alert(1)"), "{txt}");
+}
+
+#[test]
+fn an_address_with_no_host_is_text_and_only_the_fixed_docs_get_the_plain_warning() {
+    let summary = collect(&sample("host", Some("R-M269"), "H5a7"));
+    let mt = "https://www.yfull.com/mtree/H5a7/";
+    let docs = "https://github.com/GeiserX/OwnGenome/blob/main/docs/37-y-haplogroup.md\
+                #explore-your-branch-further";
+    assert!(summary.contains(mt) && summary.contains(docs), "{summary}");
+    let query = "https://github.com/GeiserX/OwnGenome/blob/main/docs/x?hg=R-M269";
+    let s = summary.replace(mt, "https://").replace(docs, query);
+    let (_, page) = render(&s);
+    assert!(
+        !page.contains("href=\"https://\""),
+        "an address with no host became a link"
+    );
+    assert!(
+        page.contains("<span class=\"value\">https://</span>"),
+        "it is shown as text"
+    );
+    assert!(
+        page.contains(&format!(
+            "<a href=\"{}\">{}</a> <span class=\"offsite-note\">(opens a website; the address \
+             carries the haplogroup)</span>",
+            query.replace('&', "&amp;"),
+            query.replace('&', "&amp;")
+        )),
+        "a docs address with a query gets the haplogroup warning"
+    );
+    let (_, plain) = render(&summary);
+    assert!(
+        plain.contains(&format!(
+            "<a href=\"{docs}\">{docs}</a> <span class=\"offsite-note\">(opens a website)</span>"
+        )),
+        "the fixed docs page keeps the plain warning"
+    );
 }

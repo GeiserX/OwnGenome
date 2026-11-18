@@ -127,7 +127,9 @@ rm -f "$base"
 # writes text (a text-only case: the Python's HTML report cannot render it).
 # A planted address that is not a web address (javascript:) is no case: og
 # shows it as text where the Python made it a link; the cargo test
-# ancestry_haplogroups.rs covers it.
+# ancestry_haplogroups.rs covers it. Nor is a legend colour that is not
+# #rrggbb: og shows it grey where the Python put it in the CSS; the cargo
+# test ancestry_fine.rs covers it, and a-escape plants a mixed-case one.
 [ -s c-full.json ] || { echo "report-corpus.sh: og summary collect wrote no c-full.json" >&2; exit 1; }
 abase=abase.tmp
 jq -c '.sections.prs.data.scores |= map(select(.score != null))' c-full.json > "$abase"
@@ -146,7 +148,7 @@ amut escape '.sections.haplogroup.data.haplogroup = "H<b>&\"x'"'"'"
   | .sections.y_str.data.markers[0].marker = "DYS<393>"
   | .sections.ancient.data.nearest[0].group = "Spain_<BA>" | .sections.ancient.data.nearest[0].locality = "A & B"
   | .sections.ancestry_fine.data.continent[0].group = "West <Eurasia>"
-  | .sections.ancestry_fine.data.legend[0].colour = "red\"><x>" | .sections.ancestry_fine.data.legend[1].group = "<b>W</b>"
+  | .sections.ancestry_fine.data.legend[0].colour = "#AbCdEf" | .sections.ancestry_fine.data.legend[1].group = "<b>W</b>"
   | .sections.archaic.data.longest = ["chr1:1-2 <GENE>"]
   | .sections.prs.data.scores[0].condition = "C<A>D & \"x\"" | .sections.prs.data.scores[0].effect = "HR <1.5>"'
 amut painting '.sections.ancestry_fine.data.painting = [{"code": "AFR", "group": "Africa", "fraction": 0.3},

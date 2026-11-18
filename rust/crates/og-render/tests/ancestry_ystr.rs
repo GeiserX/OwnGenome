@@ -68,6 +68,23 @@ impl AsRef<std::ffi::OsStr> for Tmp {
     }
 }
 
+impl Tmp {
+    /// A new folder that only this test owns. `create_dir` fails when the
+    /// path exists, so a run never shares or deletes another run's folder.
+    fn new(kind: &str, tag: &str) -> Tmp {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let d = std::env::temp_dir().join(format!(
+            "og-ancestry-{kind}-{}-{tag}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&d).unwrap();
+        Tmp(d)
+    }
+}
+
 impl Drop for Tmp {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
@@ -76,10 +93,7 @@ impl Drop for Tmp {
 
 /// A fresh folder for one test.
 fn tmp(tag: &str) -> Tmp {
-    let d = std::env::temp_dir().join(format!("og-ancestry-ystr-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    Tmp(d)
+    Tmp::new("ystr", tag)
 }
 
 /// One region of a panel row: chrom, start, end, period, copies, name.
@@ -179,7 +193,8 @@ fn vcf(d: &Path, records: &[(&str, Call)], samples: &[&str]) -> PathBuf {
             .iter()
             .flat_map(|r| r.regions.iter())
             .find(|x| x.5 == *name)
-            .map_or(("chrY".to_owned(), 1), |x| (x.0.clone(), x.1));
+            .map(|x| (x.0.clone(), x.1))
+            .unwrap_or_else(|| panic!("no panel region is named {name}"));
         let cell = format!("{gt}:{gb}:{q}:{q}:{dp}:0:0|0:{dp}|0:.:{st}:{fl}");
         let mut row = vec![
             c,
@@ -384,16 +399,31 @@ fn the_panel_is_familytreedna_s_111_in_order_and_the_bed_holds_each_region_once(
     assert_eq!(code, 0, "{err}");
     let text = std::fs::read_to_string(&bed).unwrap();
     let bl: Vec<Vec<&str>> = text.lines().map(|l| l.split('\t').collect()).collect();
-    let mut got: Vec<&str> = bl.iter().map(|x| x[5]).collect();
-    got.sort_unstable();
-    let mut regions: Vec<&str> = panel
+    // Each row's name and coordinates, with repeats kept, against the
+    // panel's regions, each once.
+    let mut got: Vec<(String, i64, i64, String)> = bl
         .iter()
-        .flat_map(|r| r.regions.iter().map(|x| x.5.as_str()))
+        .map(|x| {
+            (
+                x[0].to_owned(),
+                x[1].parse().unwrap(),
+                x[2].parse().unwrap(),
+                x[5].to_owned(),
+            )
+        })
+        .collect();
+    got.sort_unstable();
+    let regions: Vec<(String, i64, i64, String)> = panel
+        .iter()
+        .flat_map(|r| {
+            r.regions
+                .iter()
+                .map(|x| (x.0.clone(), x.1, x.2, x.5.clone()))
+        })
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    regions.sort_unstable();
-    assert_eq!(got, regions, "the BED has every region once");
+    assert_eq!(got, regions, "the BED has every region once, at its place");
     assert!(bl.iter().all(|x| x.len() == 6
         && 0 < x[1].parse::<i64>().unwrap()
         && x[1].parse::<i64>().unwrap() < x[2].parse::<i64>().unwrap()));
