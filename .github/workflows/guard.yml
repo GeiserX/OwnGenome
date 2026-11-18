@@ -499,6 +499,8 @@ jobs:
           grep -q 'NXF_OWNER_PLANTED' "$src" || { echo "ERROR: the break was not planted"; exit 1; }
           bin=$(root_test)
           log="${RUNNER_TEMP}/og-io-root-red.log"
+          # The log is meant to be the runner's file, not root's.
+          # shellcheck disable=SC2024
           if sudo env OG_IO_ROOT_TEST=1 "$bin" --test-threads=1 > "$log" 2>&1; then
             cat "$log"
             echo "ERROR: the root test passed with a writer that ignores NXF_OWNER"
