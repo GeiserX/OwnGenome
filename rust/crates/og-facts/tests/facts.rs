@@ -1175,6 +1175,56 @@ fn guidance_belongs_to_the_call_the_fact_holds() {
 }
 
 #[test]
+fn an_outside_call_step_27_did_not_confirm_brings_no_guidance_even_on_the_same_pair() {
+    // The report's outside CYP2D6 call is *1/*3, step 27 did not confirm it,
+    // and pypgx's probable call is the same *1/*3: the diplotypes match, so
+    // only the outside rule keeps PharmCAT's guidance off the fact.
+    let same = r#"{"calls":{"PharmCAT":"not called","pypgx":"*3/*1"},"agree":null,"consensus":null,
+        "probable":{"diplotype":"*3/*1","phenotype":"Intermediate Metabolizer","label":"probable (one caller: pypgx)"}}"#;
+    let dir = folder_with("guidance-outside-same", &full_sections(), same);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    let d6 = fact(&b, "pgx", "CYP2D6")[0];
+    assert_eq!(st(d6, &["value", "diplotype"]), "*3/*1");
+    assert!(get(d6, &["drug_guidance"]).is_none(), "{d6:?}");
+}
+
+#[test]
+fn a_called_row_holding_another_pair_than_the_report_brings_no_guidance() {
+    // The report's CYP2C19 call (PharmCAT's own matcher, one diplotype) is
+    // *38/*38, while the row of step 27 holds *1/*2: only the diplotype
+    // check keeps the *38/*38 guidance off the *1/*2 fact.
+    let other = full_sections().replace(
+        r#"{"gene":"CYP2C19","diplotype":"*38/*38","phenotype":"Normal Metabolizer","status":"normal"}"#,
+        r#"{"gene":"CYP2C19","diplotype":"*1/*2","phenotype":"Intermediate Metabolizer","status":"non-normal"}"#,
+    );
+    let (b, _) = run("guidance-other-pair", &other);
+    let c19 = fact(&b, "pgx", "CYP2C19")[0];
+    assert_eq!(st(c19, &["value", "diplotype"]), "*1/*2");
+    assert!(get(c19, &["drug_guidance"]).is_none(), "{c19:?}");
+}
+
+#[test]
+fn a_consensus_handed_over_replaces_an_ambiguous_cyp2d6_row() {
+    // Step 27 marks CYP2D6 ambiguous, but the two read-level callers agree
+    // on *4/*5 and step 36 handed it to PharmCAT: the fact is *4/*5 at high
+    // confidence, without the ambiguous row's diplotype or phenotype.
+    let ambiguous = full_sections().replace(
+        r#"{"gene":"CYP2D6","diplotype":"Unknown/Unknown","phenotype":"No Result","status":"not called"}"#,
+        r#"{"gene":"CYP2D6","diplotype":"*1/*4 (1 of 2 possible)","phenotype":"ambiguous: one of Normal Metabolizer, Intermediate Metabolizer","status":"ambiguous"}"#,
+    );
+    let agreed = r#"{"calls":{"PharmCAT":"*1/*4","pypgx":"*4/*5","Cyrius":"*4/*5"},"agree":true,
+        "consensus":{"result":"*4/*5","passed_to_pharmcat":true,"reason":"pypgx and Cyrius agree","source":null},"probable":null}"#;
+    let dir = folder_with("d6-ambiguous-handed", &ambiguous, agreed);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    let d6 = fact(&b, "pgx", "CYP2D6")[0];
+    assert_eq!(st(d6, &["value", "diplotype"]), "*4/*5", "{d6:?}");
+    assert!(get(d6, &["value", "phenotype"]).is_none(), "{d6:?}");
+    assert_eq!(st(d6, &["confidence", "level"]), "high", "{d6:?}");
+    assert!(format!("{:?}", get(d6, &["evidence", "tools"])).contains("Cyrius"));
+    assert_eq!(st(coverage(&b, "CYP2D6")[0], &["state"]), "assessed");
+}
+
+#[test]
 fn cftrs_no_cpic_variants_label_is_a_reference_call() {
     assert_eq!(
         og_facts::build::pgx_call_state("CFTR", "No CPIC variants found/No CPIC variants found"),
