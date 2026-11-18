@@ -26,9 +26,10 @@ This page is for maintainers. It says how a pinned version gets bumped, what che
 | Cyrius lock (step 21) | `CYRIUS_VERSION` in `versions.env` and every wheel in `scripts/cyrius-constraints.txt` | nobody: resolved again by hand in `PYTHON_IMAGE`, as the lock's header says. The freshness report says when PyPI has a newer Cyrius |
 | The site table of step 40: the 23andMe v5 site list commit, the dbSNP build and the table's hash | `CONSUMER_SITES_COMMIT`, `CONSUMER_DBSNP_BUILD`, their checksums and `CONSUMER_SITES_TABLE_SHA256` in `versions.env` | nobody: dbSNP releases a build every year or two, and the site list has not changed since 2019. A new build, a new commit or a change to `og consumer build-sites` needs one full build (`setup.sh --consumer-sites`, about 30 GB), then record the sha256 of the unpacked table in `CONSUMER_SITES_TABLE_SHA256` (the command is under this table). CI never builds the full table. The monthly freshness report says when NCBI publishes a newer build |
 
-The hash of the site table of step 40 is the sha256 of its unpacked content, because the gzip wrapper holds the time it was written. Run this from the repository root after the build:
+The hash of the site table of step 40 is the sha256 of its unpacked content, because the gzip wrapper holds the time it was written. Run this from the repository root after the build, with `GENOME_DIR` set to the folder you gave `setup.sh`:
 
 ```bash
+export GENOME_DIR=/path/to/your/data
 . ./versions.env
 gzip -dc "${GENOME_DIR}/reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz" | sha256sum
 ```
