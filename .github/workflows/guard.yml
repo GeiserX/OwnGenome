@@ -495,7 +495,7 @@ jobs:
           fi
           cat "$log"
           grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
-          grep -F "Cannot read properties of null (reading 'planted')" "$log"
+          grep -E "TypeError: .*\bplanted\b" "$log"
           echo "Control: a planted page error failed the clean page's test."
           if CHROME=/nonexistent cargo test --locked --no-fail-fast -p og-browser --test cdp > "$log" 2>&1; then
             cat "$log"
@@ -504,6 +504,8 @@ jobs:
           fi
           cat "$log"
           grep -F "[FAIL] no Chrome or Chromium to load the test page" "$log"
+          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
+          grep -E 'test a_planted_exception_and_console_error_are_reported \.\.\. FAILED' "$log"
           echo "Control: without Chrome the browser checks fail in CI."
           CHROME=/nonexistent CI='' cargo test --locked -p og-browser --test cdp -- --nocapture > "$log" 2>&1 || { cat "$log"; exit 1; }
           cat "$log"

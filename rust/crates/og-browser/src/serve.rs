@@ -1,31 +1,40 @@
 //! A directory served on 127.0.0.1 for a page under test: GET only, one
 //! request per connection, the headers the test asks for on every answer.
+//! Only files inside the directory are served, after links are followed.
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+
+/// The open connections of a server: a clone of each socket, to close it,
+/// and the thread that answers it.
+type Open = Arc<Mutex<Vec<(Option<TcpStream>, JoinHandle<()>)>>>;
 
 /// A static file server on a free port of 127.0.0.1. It stops when dropped.
 pub struct StaticServer {
     port: u16,
     stop: Arc<AtomicBool>,
     accept: Option<JoinHandle<()>>,
+    /// Each open connection (a clone of its socket) and its thread.
+    conns: Open,
 }
 
 impl StaticServer {
     /// Serve the files under `dir`, with `headers` (name, value) added to
     /// every answer. A path ending in `/` serves its `index.html`.
     pub fn start(dir: &Path, headers: &[(&str, &str)]) -> std::io::Result<StaticServer> {
+        let root = dir.canonicalize()?;
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let port = listener.local_addr()?.port();
         let stop = Arc::new(AtomicBool::new(false));
+        let conns: Open = Arc::new(Mutex::new(Vec::new()));
         let (root, extra) = (
-            Arc::new(dir.to_path_buf()),
+            Arc::new(root),
             Arc::new(
                 headers
                     .iter()
@@ -33,7 +42,7 @@ impl StaticServer {
                     .collect::<String>(),
             ),
         );
-        let flag = Arc::clone(&stop);
+        let (flag, open) = (Arc::clone(&stop), Arc::clone(&conns));
         let accept = thread::spawn(move || {
             for conn in listener.incoming() {
                 if flag.load(Ordering::SeqCst) {
@@ -41,7 +50,11 @@ impl StaticServer {
                 }
                 if let Ok(c) = conn {
                     let (root, extra) = (Arc::clone(&root), Arc::clone(&extra));
-                    thread::spawn(move || answer(c, &root, &extra));
+                    let peer = c.try_clone().ok();
+                    let h = thread::spawn(move || answer(c, &root, &extra));
+                    let mut open = open.lock().unwrap_or_else(|e| e.into_inner());
+                    open.retain(|(_, h)| !h.is_finished());
+                    open.push((peer, h));
                 }
             }
         });
@@ -49,6 +62,7 @@ impl StaticServer {
             port,
             stop,
             accept: Some(accept),
+            conns,
         })
     }
 
@@ -67,11 +81,20 @@ impl StaticServer {
 }
 
 impl Drop for StaticServer {
+    /// Stop accepting, close every open connection and wait for its thread,
+    /// so nothing is served once the server is gone.
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
         // Wake the accept loop so it sees the flag.
         let _ = TcpStream::connect(("127.0.0.1", self.port));
         if let Some(h) = self.accept.take() {
+            let _ = h.join();
+        }
+        let open = std::mem::take(&mut *self.conns.lock().unwrap_or_else(|e| e.into_inner()));
+        for (c, h) in open {
+            if let Some(c) = c {
+                let _ = c.shutdown(Shutdown::Both);
+            }
             let _ = h.join();
         }
     }
@@ -98,7 +121,10 @@ fn answer(mut c: TcpStream, root: &Path, extra: &str) {
             b"method not allowed\n".to_vec(),
         )
     } else {
-        match file_of(root, target).and_then(|p| fs::read(&p).ok().map(|b| (p, b))) {
+        match file_of(root, target)
+            .filter(|p| inside(root, p))
+            .and_then(|p| fs::read(&p).ok().map(|b| (p, b)))
+        {
             Some((p, b)) => ("200 OK", content_type(&p), b),
             None => ("404 Not Found", "text/plain", b"not found\n".to_vec()),
         }
@@ -126,6 +152,12 @@ fn file_of(root: &Path, target: &str) -> Option<PathBuf> {
         return None;
     }
     Some(root.join(rel))
+}
+
+/// Whether `p`, its links followed, is still under `root` (already
+/// canonical). A missing file is not.
+fn inside(root: &Path, p: &Path) -> bool {
+    p.canonicalize().is_ok_and(|f| f.starts_with(root))
 }
 
 fn percent_decode(s: &str) -> Option<String> {
@@ -221,5 +253,44 @@ mod tests {
         );
         drop(srv);
         fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn a_link_out_of_the_root_is_not_served() {
+        let d = crate::Scratch::new(&std::env::temp_dir(), "serve-link");
+        let (root, outside) = (d.path().join("site"), d.path().join("secret.txt"));
+        fs::create_dir(&root).unwrap();
+        fs::write(&outside, "secret").unwrap();
+        fs::write(root.join("in.txt"), "fine").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("out.txt")).unwrap();
+        std::os::unix::fs::symlink(root.join("in.txt"), root.join("alias.txt")).unwrap();
+        let root = root.canonicalize().unwrap();
+        assert!(!inside(&root, &root.join("out.txt")));
+        assert!(inside(&root, &root.join("alias.txt")));
+        assert!(!inside(&root, &root.join("missing.txt")));
+        let srv = StaticServer::start(&root, &[]).unwrap();
+        let get = |path: &str| {
+            let mut c = TcpStream::connect(("127.0.0.1", srv.port())).unwrap();
+            write!(c, "GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+            let mut s = String::new();
+            std::io::Read::read_to_string(&mut c, &mut s).unwrap();
+            s
+        };
+        assert!(get("/out.txt").starts_with("HTTP/1.1 404 "));
+        assert!(get("/alias.txt").ends_with("\r\n\r\nfine"));
+    }
+
+    #[test]
+    fn dropping_the_server_closes_an_open_connection() {
+        let d = crate::Scratch::new(&std::env::temp_dir(), "serve-drop");
+        let srv = StaticServer::start(d.path(), &[]).unwrap();
+        // A client that sends half a request and waits: its thread blocks on read.
+        let mut c = TcpStream::connect(("127.0.0.1", srv.port())).unwrap();
+        write!(c, "GET /x HTTP/1.1\r\n").unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        let t = std::time::Instant::now();
+        drop(srv);
+        // Without the shutdown the drop would wait out the 10 s read timeout.
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
     }
 }

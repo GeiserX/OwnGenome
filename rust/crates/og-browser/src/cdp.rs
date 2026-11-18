@@ -9,18 +9,24 @@ use indexmap::IndexMap;
 use pycompat::json::{self, Dump, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
 /// How long one call may take before it is an error.
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// The least time [`Browser::wait`] gives its last evaluation.
+const MIN_EVAL: Duration = Duration::from_millis(100);
+/// The method name a message from Chrome that could not be read gets.
+const UNREADABLE: &str = "og-browser.unreadable";
 
 /// A headless Chrome with one page attached. Dropping it closes Chrome.
 pub struct Browser {
     child: Child,
-    to_chrome: ChildStdin,
+    /// Frames for the writer thread, which owns Chrome's stdin: a pipe
+    /// write that stalls never blocks a call past its timeout.
+    to_chrome: Sender<Vec<u8>>,
     from_chrome: Receiver<Value>,
     next_id: i128,
     session: String,
@@ -79,8 +85,16 @@ impl Browser {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("cannot start {}: {e}", chrome.display()))?;
-        let to_chrome = child.stdin.take().expect("stdin is piped");
+        let mut stdin = child.stdin.take().expect("stdin is piped");
         let out = child.stdout.take().expect("stdout is piped");
+        let (to_chrome, frames) = mpsc::channel::<Vec<u8>>();
+        thread::spawn(move || {
+            for f in frames {
+                if stdin.write_all(&f).and_then(|()| stdin.flush()).is_err() {
+                    break;
+                }
+            }
+        });
         let (tx, from_chrome) = mpsc::channel();
         thread::spawn(move || {
             let mut r = BufReader::new(out);
@@ -94,9 +108,25 @@ impl Browser {
                 if buf.last() == Some(&0) {
                     buf.pop();
                 }
-                if let Ok(v) = json::loads(&String::from_utf8_lossy(&buf))
-                    && tx.send(v).is_err()
-                {
+                let text = String::from_utf8_lossy(&buf);
+                // A message this JSON port cannot read (a lone surrogate in a
+                // string) is kept as a page error, never dropped.
+                let v = json::loads(&text).unwrap_or_else(|e| {
+                    obj([
+                        ("method", s(UNREADABLE)),
+                        (
+                            "params",
+                            obj([(
+                                "text",
+                                s(&format!(
+                                    "{e:?}: {}",
+                                    text.chars().take(200).collect::<String>()
+                                )),
+                            )]),
+                        ),
+                    ])
+                });
+                if tx.send(v).is_err() {
                     break;
                 }
             }
@@ -162,14 +192,13 @@ impl Browser {
         if let Some(sid) = session {
             msg.insert("sessionId".to_string(), s(sid));
         }
+        let end = Instant::now() + timeout;
         let mut line = json::dumps(&Value::Object(msg), &Dump::default())
             .map_err(|e| format!("{method}: {e:?}"))?;
         line.push('\0');
         self.to_chrome
-            .write_all(line.as_bytes())
-            .and_then(|()| self.to_chrome.flush())
-            .map_err(|e| format!("{method}: Chrome closed the pipe ({e})"))?;
-        let end = Instant::now() + timeout;
+            .send(line.into_bytes())
+            .map_err(|_| format!("{method}: Chrome closed the pipe"))?;
         loop {
             let left = end.saturating_duration_since(Instant::now());
             let m = match self.from_chrome.recv_timeout(left) {
@@ -195,11 +224,15 @@ impl Browser {
         }
     }
 
-    /// Keep an event that reports a page error: an uncaught exception or a
-    /// `console.error` call.
+    /// Keep an event that reports a page error: an uncaught exception, a
+    /// `console.error` call, or a message from Chrome that could not be read.
     fn note(&mut self, m: &Value) {
         let p = field(m, "params");
         match field(m, "method").as_text().as_str() {
+            UNREADABLE => self.errors.push(format!(
+                "unreadable DevTools message: {}",
+                field(&p, "text").as_text()
+            )),
             "Runtime.exceptionThrown" => {
                 let d = field(&p, "exceptionDetails");
                 let desc = field(&field(&d, "exception"), "description").as_text();
@@ -229,20 +262,35 @@ impl Browser {
     }
 
     /// Open `url` in the page. It returns once Chrome has started the
-    /// navigation; [`Browser::wait`] for what the page must show.
+    /// navigation; [`Browser::wait`] for what the page must show. A
+    /// navigation that fails at once (no server: `net::ERR_CONNECTION_REFUSED`)
+    /// is an error; an HTTP error page is not.
     pub fn go(&mut self, url: &str) -> Result<(), String> {
-        self.call("Page.navigate", obj([("url", s(url))])).map(drop)
+        let r = self.call("Page.navigate", obj([("url", s(url))]))?;
+        match field(&r, "errorText") {
+            Value::Str(e) if !e.is_empty() => Err(format!("Page.navigate {url}: {e}")),
+            _ => Ok(()),
+        }
     }
 
     /// The value of the JavaScript expression `expr` in the page (`Null`
-    /// for `undefined`), or the exception it threw.
+    /// for `undefined`; `Float` for `Infinity`, `-Infinity`, `NaN` and
+    /// `-0`), or the exception it threw. A value JSON cannot hold (a
+    /// `BigInt`) is an error.
     pub fn eval(&mut self, expr: &str) -> Result<Value, String> {
-        let r = self.call(
+        self.eval_within(expr, CALL_TIMEOUT)
+    }
+
+    fn eval_within(&mut self, expr: &str, timeout: Duration) -> Result<Value, String> {
+        let session = self.session.clone();
+        let r = self.send(
             "Runtime.evaluate",
             obj([
                 ("expression", s(expr)),
                 ("returnByValue", Value::Bool(true)),
             ]),
+            Some(&session),
+            timeout,
         )?;
         if let Value::Object(d) = field(&r, "exceptionDetails") {
             let d = Value::Object(d);
@@ -253,24 +301,39 @@ impl Browser {
                 desc
             });
         }
-        Ok(field(&field(&r, "result"), "value"))
+        let res = field(&r, "result");
+        if let Value::Str(u) = field(&res, "unserializableValue") {
+            return match u.as_str() {
+                "Infinity" => Ok(Value::Float(f64::INFINITY)),
+                "-Infinity" => Ok(Value::Float(f64::NEG_INFINITY)),
+                "NaN" => Ok(Value::Float(f64::NAN)),
+                "-0" => Ok(Value::Float(-0.0)),
+                other => Err(format!("{expr}: the value {other} has no JSON form")),
+            };
+        }
+        Ok(field(&res, "value"))
     }
 
-    /// Evaluate `expr` every 0.2 s until its value is truthy (as in
-    /// JavaScript and Python), and return that value; `None` after
-    /// `timeout`. An expression that throws counts as not yet.
+    /// Evaluate `expr` every 0.2 s until its value is truthy, and return
+    /// that value; `None` after `timeout`. Truthy is Python's rule, as in
+    /// the Python driver the checks come from: `null`, `false`, `0`, `""`,
+    /// `[]` and `{}` all mean not yet (JavaScript would take `[]` and `{}`
+    /// as true). An expression that throws counts as not yet. No
+    /// evaluation or pause runs past `timeout`.
     pub fn wait(&mut self, expr: &str, timeout: Duration) -> Option<Value> {
         let end = Instant::now() + timeout;
         loop {
-            if let Ok(v) = self.eval(expr)
+            let left = end.saturating_duration_since(Instant::now());
+            if let Ok(v) = self.eval_within(expr, left.clamp(MIN_EVAL, CALL_TIMEOUT))
                 && pycompat::value::truthy(&v)
             {
                 return Some(v);
             }
-            if Instant::now() >= end {
+            let left = end.saturating_duration_since(Instant::now());
+            if left.is_zero() {
                 return None;
             }
-            thread::sleep(Duration::from_millis(200));
+            thread::sleep(left.min(Duration::from_millis(200)));
         }
     }
 

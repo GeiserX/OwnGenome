@@ -10,6 +10,7 @@
 //!   asks for (a Content-Security-Policy).
 //! - [`asset_problems`]: outside URLs, inline scripts, `on*` attributes and
 //!   `eval` in a site's files.
+//! - [`Scratch`]: a test's own folder, removed when the test ends or panics.
 //!
 //! How the checks run: `tests/browser/README.md`.
 
@@ -35,9 +36,10 @@ const NAMES: [&str; 4] = [
 ];
 const MAC_APP: &str = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-/// The Chrome to run: `CHROME` when it is set, else the first of
-/// `google-chrome`, `google-chrome-stable`, `chromium`, `chromium-browser`
-/// on `PATH`, else Google Chrome's macOS app. `None` when there is none.
+/// The Chrome to run: `CHROME` when it is set and not empty, else the
+/// first of `google-chrome`, `google-chrome-stable`, `chromium`,
+/// `chromium-browser` on `PATH`, else Google Chrome's macOS app. `None`
+/// when there is none. An empty `CHROME` counts as unset.
 pub fn find_chrome() -> Option<PathBuf> {
     find_chrome_in(
         std::env::var_os("CHROME").as_deref(),
@@ -45,9 +47,10 @@ pub fn find_chrome() -> Option<PathBuf> {
     )
 }
 
-/// [`find_chrome`] with `CHROME` and `PATH` given. A `CHROME` that is set
-/// but names no executable gives `None`: a wrong path fails loudly instead
-/// of falling back to another Chrome.
+/// [`find_chrome`] with `CHROME` and `PATH` given. A `CHROME` that is not
+/// empty but names no executable gives `None`: a wrong path fails loudly
+/// instead of falling back to another Chrome. An empty one searches as if
+/// it were unset.
 pub fn find_chrome_in(chrome: Option<&OsStr>, path: Option<&OsStr>) -> Option<PathBuf> {
     if let Some(c) = chrome.filter(|c| !c.is_empty()) {
         return resolve(Path::new(c), path);
@@ -96,6 +99,32 @@ fn without_chrome(found: Option<PathBuf>, ci: bool, what: &str) -> Result<Option
             println!("[SKIP] no Chrome or Chromium to {what}");
             Ok(None)
         }
+    }
+}
+
+/// A fresh, empty folder for one test, removed when it is dropped, also
+/// when the test panics. Declare it before the [`Browser`] and
+/// [`StaticServer`] that use it, so it is dropped after them.
+pub struct Scratch(PathBuf);
+
+impl Scratch {
+    /// `<parent>/og-browser-<name>-<pid>`, emptied first. `parent` is
+    /// usually `env!("CARGO_TARGET_TMPDIR")`.
+    pub fn new(parent: &Path, name: &str) -> Scratch {
+        let d = parent.join(format!("og-browser-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap_or_else(|e| panic!("cannot make {}: {e}", d.display()));
+        Scratch(d)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
@@ -178,6 +207,23 @@ mod tests {
         assert!(e.contains("no Chrome or Chromium to load the page"), "{e}");
         let c = PathBuf::from("/x/chrome");
         assert_eq!(without_chrome(Some(c.clone()), true, "x"), Ok(Some(c)));
+    }
+
+    #[test]
+    fn a_scratch_folder_goes_when_dropped_even_on_panic() {
+        let parent = std::env::temp_dir();
+        let kept = Scratch::new(&parent, "scratch");
+        fs::write(kept.path().join("x"), "1").unwrap();
+        let p = kept.path().to_path_buf();
+        drop(kept);
+        assert!(!p.exists());
+        let r = std::panic::catch_unwind(|| {
+            let s = Scratch::new(&std::env::temp_dir(), "scratch-panic");
+            fs::write(s.path().join("x"), "1").unwrap();
+            panic!("{}", s.path().display());
+        });
+        let msg = *r.unwrap_err().downcast::<String>().unwrap();
+        assert!(!Path::new(&msg).exists(), "{msg}");
     }
 
     #[test]

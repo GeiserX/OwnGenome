@@ -3,17 +3,19 @@
 //! from static files served with the live site's Content-Security-Policy.
 //! Moved here from tests/test_owngenome_live.py, check for check.
 //!
-//! Red control: the same page without frames.json must fail the first
-//! check. Without Chrome the test says SKIP, and fails in CI.
+//! Red control: the same page without frames.json asks for it, gets a
+//! 404 and must fail the first check. Without Chrome the test says SKIP,
+//! and fails in CI.
 
-use og_browser::{Browser, StaticServer, Value, chrome_or_skip, repo_root};
+use og_browser::{Browser, Scratch, StaticServer, Value, chrome_or_skip, repo_root};
 use pycompat::json::{self, Dump};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 const RUN: &str = "DEMO-001";
-/// The policy the live site sends (`CSP` of bin/owngenome_live.py).
+/// The policy the live site sends (`CSP` of bin/owngenome_live.py; the
+/// test `the_policy_is_the_live_sites` keeps the two equal).
 const CSP: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; \
      img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'";
 
@@ -54,9 +56,9 @@ fn replay_plays_frames_json() {
     let Some(chrome) = chrome_or_skip("load the replay page") else {
         return;
     };
-    let work = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("og-browser-replay-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&work);
+    // Declared before the server and the browser: dropped after them, also on a panic.
+    let scratch = Scratch::new(Path::new(env!("CARGO_TARGET_TMPDIR")), "replay");
+    let work = scratch.path();
     let frames = fs::read_to_string(repo_root().join("tests/fixtures/live/frames.json")).unwrap();
     let rd = work.join("replay");
     replay_site(&rd, Some(&frames));
@@ -179,16 +181,37 @@ fn replay_plays_frames_json() {
         text(at.clone()),
     );
 
-    // The red control: without frames.json the first check must fail.
+    // The red control: without frames.json the first check must fail. First
+    // the proof the page ran and asked: its request for frames.json got a 404.
     b.go(&srv.url("/no-frames/index.html")).unwrap();
+    let asked = b.wait(
+        "(performance.getEntriesByType('resource').filter(function (e) { \
+         return /\\/no-frames\\/frames\\.json$/.test(e.name); })[0] || {}).responseStatus",
+        secs(20),
+    );
     let none = b.wait(OPENED, secs(5));
+    let frame = b.eval("document.documentElement.dataset.pgpFrame || ''");
     check(
-        "control: without frames.json the replay never opens at a frame",
-        none.is_none(),
-        text(none.clone()),
+        "control: without frames.json the page gets a 404 for it and never opens at a frame",
+        asked == Some(Value::Int(404)) && none.is_none() && frame == Ok(Value::Str(String::new())),
+        format!("{asked:?} {none:?} {frame:?}"),
     );
 
     drop((b, srv));
-    let _ = fs::remove_dir_all(&work);
     assert!(fails.is_empty(), "failed: {fails:?}");
+}
+
+/// The replay is served with the live site's own policy: the `CSP = (...)`
+/// string pieces of bin/owngenome_live.py, joined, must equal [`CSP`]. When
+/// the live site moves to Rust, this test reads the policy from there.
+#[test]
+fn the_policy_is_the_live_sites() {
+    let src = fs::read_to_string(repo_root().join("bin/owngenome_live.py")).unwrap();
+    let start = src
+        .find("\nCSP = (")
+        .expect("bin/owngenome_live.py defines CSP = (...)")
+        + 1;
+    let end = start + src[start..].find(")\n").expect("CSP = ( ... ) ends");
+    let policy: String = src[start..end].split('"').skip(1).step_by(2).collect();
+    assert_eq!(policy, CSP);
 }
