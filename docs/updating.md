@@ -24,14 +24,15 @@ This page is for maintainers. It says how a pinned version gets bumped, what che
 | IPD-KIR release (step 8 with `KIR=true`) | `KIR_DB_RELEASE` in `versions.env` | nobody: the monthly freshness report says when a newer release exists |
 | Parascopy data (step 35) | `PARASCOPY_DATA_VERSION` in `versions.env`, with the Zenodo record and the md5s in `scripts/setup.sh` | nobody: the monthly freshness report says when the record has a newer version |
 | Cyrius lock (step 21) | `CYRIUS_VERSION` in `versions.env` and every wheel in `scripts/cyrius-constraints.txt` | nobody: resolved again by hand in `PYTHON_IMAGE`, as the lock's header says. The freshness report says when PyPI has a newer Cyrius |
-| The site table of step 40: the 23andMe v5 site list commit, the dbSNP build and the table's hash | `CONSUMER_SITES_COMMIT`, `CONSUMER_DBSNP_BUILD`, their checksums and `CONSUMER_SITES_TABLE_SHA256` in `versions.env` | nobody: dbSNP releases a build every year or two, and the site list has not changed since 2019. A new build, a new commit or a change to `og consumer build-sites` needs one full build (`setup.sh --consumer-sites`, about 30 GB), then record the sha256 of the unpacked table in `CONSUMER_SITES_TABLE_SHA256` (the command is under this table). CI never builds the full table. The monthly freshness report says when NCBI publishes a newer build |
+| The site table of step 40: the 23andMe v5 site list commit, the dbSNP build and the table's hash | `CONSUMER_SITES_COMMIT`, `CONSUMER_DBSNP_BUILD`, their checksums and `CONSUMER_SITES_TABLE_SHA256` in `versions.env` | nobody: dbSNP releases a build every year or two, and the site list has not changed since 2019. A new build, a new commit or a change to `og consumer build-sites` needs one full build: remove the old table from `reference/consumer/` (`setup.sh` keeps a table it finds), run `setup.sh --consumer-sites` (about 30 GB), then record the sha256 of the unpacked table in `CONSUMER_SITES_TABLE_SHA256` (the command is under this table). CI never builds the full table. The monthly freshness report says when NCBI publishes a newer build |
 
-The hash of the site table of step 40 is the sha256 of its unpacked content, because the gzip wrapper holds the time it was written. Run this from the repository root after the build, with `GENOME_DIR` set to the folder you gave `setup.sh`:
+The hash of the site table of step 40 is the sha256 of its unpacked content, because the gzip wrapper holds the time it was written. Run this from the repository root after the build, with `GENOME_DIR` set to the folder you gave `setup.sh`. `gzip -t` stops it when the table is missing or broken, so it never prints the hash of an empty input:
 
 ```bash
 export GENOME_DIR=/path/to/your/data
 . ./versions.env
-gzip -dc "${GENOME_DIR}/reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz" | sha256sum
+table="${GENOME_DIR}/reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
+gzip -t "$table" && gzip -dc "$table" | sha256sum
 ```
 
 Three pins are floors, not versions that drift: Node 24 in `renovate-dry-run.yml`, Java 17 in the workflows that run Nextflow, and `manifest.nextflowVersion` in `nextflow.config`. Nothing proposes a bump for them, on purpose.
