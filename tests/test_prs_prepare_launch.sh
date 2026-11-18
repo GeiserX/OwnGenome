@@ -66,49 +66,46 @@ if [ "$rc" -ne 0 ] || [ ! -s "${WORK}/trace.txt" ]; then
   echo "FAIL: the stub run exited ${rc}"; exit 1
 fi
 
-python3 - "${WORK}/trace.txt" <<'PY'
-import csv, sys
 # The trace can list a finished task twice (docs/lessons-learned.md, "The
 # trace file can list a finished task twice"): one entry per task_id, with the
 # earliest submit and the latest complete time its rows give.
-rows = {}
-for r in csv.DictReader(open(sys.argv[1]), delimiter="\t"):
-    seen = rows.setdefault(r["task_id"], dict(r))
-    for field, pick in (("submit", min), ("complete", max)):
-        times = [int(v) for v in (seen[field], r[field]) if v and v != "-"]
-        seen[field] = str(pick(times)) if times else "-"
-rows = list(rows.values())
-
-def tasks(proc):
-    return [r for r in rows if r["name"].split(" (")[0].split(":")[-1] == proc]
-
-def ms(r, field):
-    v = r[field]
-    if not v or v == "-":
-        sys.exit(f"FAIL: {r['name']} has no {field} time in the trace")
-    return int(v)
-
-prepare, dv, summary = tasks("PRS_PREPARE"), tasks("DEEPVARIANT"), tasks("PRS_SUMMARY")
-print(f"tasks: {len(rows)}, PRS_PREPARE {len(prepare)}, DEEPVARIANT {len(dv)}, PRS_SUMMARY {len(summary)}")
-bad = []
-sets = sorted(r["name"].split("(")[-1].rstrip(")") for r in prepare)
-if sets != ["autosomes", "with_x"]:
-    bad.append(f"PRS_PREPARE ran for {sets}, expected autosomes and with_x once each")
-if len(dv) != 2:
-    bad.append(f"{len(dv)} DEEPVARIANT tasks, expected 2 (the FASTQ and the BAM row)")
-if len(summary) != 4:
-    bad.append(f"{len(summary)} PRS_SUMMARY tasks, expected one per sample (4)")
-if dv and prepare:
-    first_dv = min(ms(r, "complete") for r in dv)
-    for r in prepare:
-        lag = (ms(r, "submit") - first_dv) / 1000
-        word = "after" if lag >= 0 else "before"
-        print(f"{r['name']}: submitted {abs(lag):.1f} s {word} the first DEEPVARIANT task completed")
-        if lag >= 0:
-            bad.append(f"{r['name']} waited for DeepVariant")
-for b in bad:
-    print("FAIL:", b)
-if bad:
-    sys.exit(1)
-print("OK: PRS_PREPARE started at launch, once per set, and every sample got its PRS summary")
-PY
+awk -F'\t' '
+  NR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
+  {
+    id = $col["task_id"]
+    if (!(id in name)) { name[id] = $col["name"]; order[++n] = id; sub_[id] = "-"; done_[id] = "-" }
+    t = $col["submit"]; if (t != "" && t != "-" && (sub_[id] == "-" || t + 0 < sub_[id] + 0)) sub_[id] = t
+    t = $col["complete"]; if (t != "" && t != "-" && (done_[id] == "-" || t + 0 > done_[id] + 0)) done_[id] = t
+  }
+  # proc NAME: the process of a task name, "PRS:PRS_PREPARE (with_x)" -> PRS_PREPARE
+  function proc(s) { sub(/ \(.*/, "", s); sub(/.*:/, "", s); return s }
+  function ms(id, t, field) { if (t == "-") { print "FAIL: " name[id] " has no " field " time in the trace"; exit 1 } return t + 0 }
+  END {
+    for (k = 1; k <= n; k++) {
+      id = order[k]; p = proc(name[id])
+      if (p == "PRS_PREPARE") prep[++np] = id
+      else if (p == "DEEPVARIANT") dv[++nd] = id
+      else if (p == "PRS_SUMMARY") ns++
+    }
+    printf "tasks: %d, PRS_PREPARE %d, DEEPVARIANT %d, PRS_SUMMARY %d\n", n, np, nd, ns
+    sets = ""; na = nx = 0
+    for (k = 1; k <= np; k++) {
+      s = name[prep[k]]; sub(/.*\(/, "", s); sub(/\)+$/, "", s)
+      sets = sets (k > 1 ? ", " : "") s; na += (s == "autosomes"); nx += (s == "with_x")
+    }
+    if (np != 2 || na != 1 || nx != 1) bad[++nb] = "PRS_PREPARE ran for [" sets "], expected autosomes and with_x once each"
+    if (nd != 2) bad[++nb] = (nd + 0) " DEEPVARIANT tasks, expected 2 (the FASTQ and the BAM row)"
+    if (ns != 4) bad[++nb] = (ns + 0) " PRS_SUMMARY tasks, expected one per sample (4)"
+    if (nd && np) {
+      first = ""
+      for (k = 1; k <= nd; k++) { t = ms(dv[k], done_[dv[k]], "complete"); if (first == "" || t < first) first = t }
+      for (k = 1; k <= np; k++) {
+        lag = (ms(prep[k], sub_[prep[k]], "submit") - first) / 1000
+        printf "%s: submitted %.1f s %s the first DEEPVARIANT task completed\n", name[prep[k]], (lag < 0 ? -lag : lag), (lag >= 0 ? "after" : "before")
+        if (lag >= 0) bad[++nb] = name[prep[k]] " waited for DeepVariant"
+      }
+    }
+    for (k = 1; k <= nb; k++) print "FAIL:", bad[k]
+    if (nb) exit 1
+    print "OK: PRS_PREPARE started at launch, once per set, and every sample got its PRS summary"
+  }' "${WORK}/trace.txt"

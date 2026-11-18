@@ -9,7 +9,8 @@ set -e
 : "${CYRIUS_VERSION:?versions.env sets it}"
 pip install --no-cache-dir --disable-pip-version-check -q --require-hashes --no-deps \
   --only-binary :all: --target /out/cyrius -r /in/cyrius-constraints.txt
-PYTHONPATH=/out/cyrius python3 -c 'import importlib.metadata as m; print("cyrius", m.version("cyrius"))' > installed.txt
+# The version pip installed, from the wheel's own metadata.
+printf 'cyrius %s\n' "$(sed -n 's/^Version: //p' /out/cyrius/cyrius-*.dist-info/METADATA)" > installed.txt
 cat installed.txt
 echo /in/HG002_cyrius.bam > manifest.txt
 PYTHONPATH=/out/cyrius python3 -m cyrius --manifest manifest.txt --genome 38 --prefix HG002_cyp2d6 --outDir /out --threads 4
