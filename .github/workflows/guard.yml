@@ -257,11 +257,12 @@ jobs:
   # unit-tests is close to its 10 minutes. Format, lint, unit tests with a
   # planted failure that must go red, pycompat against CPython, then the two
   # musl builds as scripts/setup.sh --og makes them and the stale-binary
-  # guard on the real binaries. It takes 15 to 18 minutes on a free runner,
-  # and a busy runner pushed it past 20, so the limit is 30.
+  # guard on the real binaries. It took 15 to 18 minutes on a free runner and
+  # 23 on main on 2026-11-18, and the same tree on the geiresx fork ran past
+  # 30 twice, so the limit is 45: it stops a hung job, not a slow one.
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: rust
@@ -848,10 +849,11 @@ jobs:
   # planted kind of difference must be reported, by oracle-diff.sh, by
   # og dev parity-compare and by bin/og's shadow mode), then every case of
   # tests/parity/cases.tsv with the oracle in its production image, then
-  # tests/test_fixitfelix.sh with og.
+  # tests/test_fixitfelix.sh with og. It took 19 minutes on main on
+  # 2026-11-18 and ran past 20 twice on the geiresx fork, so the limit is 35.
   parity:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

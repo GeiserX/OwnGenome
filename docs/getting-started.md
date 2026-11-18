@@ -30,7 +30,7 @@
 | Docker | 20.10+ | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
 | bash | 4.4+ | Pre-installed on Linux; macOS ships 3.2, install a newer one with `brew install bash` |
 | Java *(for a full run)* | 17+ | Any OpenJDK build, e.g. `apt install openjdk-17-jre-headless` or [Adoptium Temurin](https://adoptium.net/) |
-| Nextflow *(for a full run)* | `NEXTFLOW_VERSION` in `versions.env` | `curl -s https://get.nextflow.io \| NXF_VER=26.10.5 bash`, see [Full run](#full-run) |
+| Nextflow *(for a full run)* | `NEXTFLOW_VERSION` in `versions.env` | The pinned install command in [Full run](#full-run) |
 | wget or curl | Any | For downloading references |
 | python3 *(optional)* | 3.6+ | Used by long-read alignment (02b) for symlink resolution. Falls back to `readlink -f` on GNU/Linux if absent |
 
