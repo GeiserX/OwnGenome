@@ -37,9 +37,10 @@
 //!   ([`demo`]), `og dev demo-events` ([`demo_events`]), `og dev params-doc`
 //!   ([`params_doc`]), `og dev python-gate` ([`python_gate`]),
 //!   `og dev everything-check` ([`everything`]), `og dev licences`
-//!   ([`licences`]), `og dev docs-check` ([`docs_checks`]),
-//!   `og dev stub-http` ([`stub_http`]) and `og dev steps-check`
-//!   ([`steps_check`]).
+//!   ([`licences`]), `og dev docs-check` ([`docs_checks`]) and
+//!   `og dev steps-check` ([`steps_check`]).
+//! - `og dev stub-http` ([`stub_http`]): a local HTTP server with scripted
+//!   answers for the shell download tests.
 //! - `og dev traits-sources` ([`traits_sources`]): the traits panel's
 //!   reference bases against a FASTA, and its PubMed ids and rsIDs against
 //!   PubMed and dbSNP.
