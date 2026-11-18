@@ -195,3 +195,25 @@ fn a_planted_address_cannot_open_a_tag_in_the_html_report() {
         "the text report shows it as written"
     );
 }
+
+#[test]
+fn an_address_that_is_not_a_web_address_is_shown_as_text() {
+    let summary = collect(&sample("scheme", Some("R-M269"), "H5a7"));
+    let url = "https://www.yfull.com/mtree/H5a7/";
+    assert!(summary.contains(url), "the summary links {url}");
+    let s = summary.replace(url, "javascript:alert(1)");
+    let (txt, page) = render(&s);
+    assert!(
+        !page.contains("href=\"javascript:"),
+        "a javascript: address became a link in the HTML report"
+    );
+    assert!(
+        page.contains("<span class=\"value\">javascript:alert(1)</span>"),
+        "it is shown as text"
+    );
+    assert!(
+        page.contains("<a href=\"https://www.yfull.com/tree/R-M269/\">"),
+        "a web address stays a link"
+    );
+    assert!(txt.contains("javascript:alert(1)"), "{txt}");
+}

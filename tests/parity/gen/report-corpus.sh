@@ -125,6 +125,9 @@ rm -f "$base"
 # legend and the groups left out, the raw and the sex-specific scores, the Y
 # placement's ancestral calls, new_since, and numbers where the summary
 # writes text (a text-only case: the Python's HTML report cannot render it).
+# A planted address that is not a web address (javascript:) is no case: og
+# shows it as text where the Python made it a link; the cargo test
+# ancestry_haplogroups.rs covers it.
 [ -s c-full.json ] || { echo "report-corpus.sh: og summary collect wrote no c-full.json" >&2; exit 1; }
 abase=abase.tmp
 jq -c '.sections.prs.data.scores |= map(select(.score != null))' c-full.json > "$abase"
@@ -138,7 +141,7 @@ amut escape '.sections.haplogroup.data.haplogroup = "H<b>&\"x'"'"'"
   | .sections.haplogroup.data.explore[0].url = "https://discover.familytreedna.com/mtdna/\"><script>alert(1)</script>"
   | .sections.haplogroup.data.explore[1].name = "<i>YFull</i> & co"
   | .sections.haplogroup.data.contamination_status = "YES" | .sections.haplogroup.data.contamination_level = "0.4<"
-  | .sections.y_haplogroup.data.explore[1].url = "javascript:alert(\"x\")"
+  | .sections.y_haplogroup.data.explore[1].url = "https://www.yfull.com/tree/\"x\"&y/"
   | .sections.y_tree.data.path[0].Branch = "<R>" | .sections.y_tree.data.path[0].Ancestral_SNPs = "M1&M2"
   | .sections.y_str.data.markers[0].marker = "DYS<393>"
   | .sections.ancient.data.nearest[0].group = "Spain_<BA>" | .sections.ancient.data.nearest[0].locality = "A & B"

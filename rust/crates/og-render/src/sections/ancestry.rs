@@ -157,7 +157,18 @@ pub fn explore_html(d: &Value, path: &str) -> Result<(Vec<Line>, bool), Malforme
         } else {
             OFFSITE_HAPLOGROUP
         };
-        out.push(stat_raw(&name, &offsite_link(&url, &url, why)));
+        // Only a web address becomes a link: a `javascript:` or `data:`
+        // address in a summary would run when clicked, so it shows as text.
+        let web = ["http://", "https://"].iter().any(|s| {
+            url.get(..s.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(s))
+        });
+        let value = if web {
+            offsite_link(&url, &url, why)
+        } else {
+            e(&url).into_owned()
+        };
+        out.push(stat_raw(&name, &value));
     }
     let note = !out.is_empty();
     Ok((out, note))
