@@ -1,0 +1,5 @@
+chr start end LOD maxLOD size pop anc ID
+22	0	50	9	9	50	CEU	EUR	A
+22	0	101	9	9	101	GBR	EUR	B
+21	0	50	9	9	50	CEU	EUR	A
+21	0	75	9	9	75	GBR	EUR	B

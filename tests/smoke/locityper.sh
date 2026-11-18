@@ -53,42 +53,60 @@ locityper preproc -a hg.bam -r mini.fa -j mini.jf -o bg -b chr20:10000001-105000
 locityper genotype -a hg.bam -d db -p bg -o gt -@ "$T" > genotype.log 2>&1 || { tail -n 30 genotype.log; exit 1; }
 locityper --version > version.txt 2>&1 || true
 
-# qv.py GT_DIR OUT: per locus the call and the QV of each called haplotype to
+# The tags of a PAF line, by name: tag["NM"], tag["qv"] (the value after TYPE:).
+PAF_TAGS='function tags(  i, j, t) {
+  split("", tag)
+  for (i = 13; i <= NF; i++) { j = index($i, ":"); t = substr($i, j + 1); tag[substr($i, 1, j - 1)] = substr(t, index(t, ":") + 1) }
+}'
+# qv GT_DIR OUT: per locus the call and the QV of each called haplotype to
 # the truth haplotype it pairs with (the better of the two pairings); 99 for an
-# identical sequence. The sequences come from the full panel (db).
-cat > qv.py <<'PY'
-import gzip, json, os, subprocess, sys
-gt_dir, out = sys.argv[1], sys.argv[2]
-rows = []
-for locus in ("HLA-DRB1", "HLA-DQB1", "CYP2D6"):
-    res = json.load(gzip.open(f"{gt_dir}/loci/{locus}/res.json.gz", "rt"))
-    a, b = res["genotype"].split(",")
-    fa = f"db/loci/{locus}/haplotypes.fa.gz"
-    pairs = sorted({(x, y) for x in (a, b) for y in ("HG002.1", "HG002.2") if x != y})
-    q = {(x, y): 99.0 for x in (a, b) for y in ("HG002.1", "HG002.2") if x == y}
-    if pairs:
-        paf = f"{gt_dir}.{locus}.paf"
-        subprocess.run(["locityper", "align", "-i", fa, "-o", paf, "-@", "2", "-p"] + [f"{x},{y}" for x, y in pairs],
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for line in open(paf):
-            if line.startswith("#"):
-                continue
-            c = line.rstrip("\n").split("\t")
-            tags = dict(t.split(":", 2)[::2] for t in c[12:])
-            v = 99.0 if tags.get("NM") == "0" else min(99.0, float(tags["qv"]))
-            q[(c[0], c[5])] = q[(c[5], c[0])] = v
-    p1 = (q.get((a, "HG002.1"), 0.0), q.get((b, "HG002.2"), 0.0))
-    p2 = (q.get((a, "HG002.2"), 0.0), q.get((b, "HG002.1"), 0.0))
-    best = max(p1, p2, key=min)
-    rows.append([locus, res["genotype"], f"{best[0]:.1f}", f"{best[1]:.1f}", f"{min(best):.1f}",
-                 f"{res['quality']:.1f}", str(res.get("weight_dist", "nan"))])
-with open(out, "w") as f:
-    for r in rows:
-        f.write("\t".join(r) + "\n")
-        print("\t".join(r))
-PY
+# identical sequence. The sequences come from the full panel (db). Locityper
+# writes res.json.gz pretty-printed four spaces a level, so its top-level keys
+# are the lines indented by exactly four.
+qv() {
+  : > "$2"
+  for locus in HLA-DRB1 HLA-DQB1 CYP2D6; do
+    gzip -dc "$1/loci/${locus}/res.json.gz" | awk '/^    "[a-z_]+": / {
+        k = $1; gsub(/[":]/, "", k); v = substr($0, index($0, ": ") + 2); sub(/,$/, "", v); gsub(/"/, "", v); r[k] = v }
+      END { print r["genotype"] "\t" r["quality"] "\t" (r["weight_dist"] == "" || r["weight_dist"] == "null" ? "nan" : r["weight_dist"]) }' > "$1.${locus}.res"
+    gt=$(cut -f1 "$1.${locus}.res")
+    case "$gt" in
+      *,*,*) echo "${locus}: no diploid genotype in $1 (${gt})"; return 1 ;;
+      ?*,?*) ;;
+      *) echo "${locus}: no diploid genotype in $1 (${gt})"; return 1 ;;
+    esac
+    a=${gt%,*} b=${gt#*,}
+    # shellcheck disable=SC2046  # the pairs are haplotype names, with no blank
+    locityper align -i "db/loci/${locus}/haplotypes.fa.gz" -o "$1.${locus}.paf" -@ 2 -p \
+      $(for x in "$a" "$b"; do for y in HG002.1 HG002.2; do [ "$x" = "$y" ] || echo "$x,$y"; done; done | sort -u) > /dev/null 2>&1
+    awk -F'\t' -v locus="$locus" -v a="$a" -v b="$b" -v quality="$(cut -f2 "$1.${locus}.res")" \
+        -v wd="$(cut -f3 "$1.${locus}.res")" "$PAF_TAGS"'
+      function at(x, y) { return ((x, y) in q) ? q[x, y] : 0 }
+      function min(u, w) { return u < w ? u : w }
+      BEGIN {
+        if (quality !~ /^-?[0-9]/) { print locus ": no quality in res.json.gz" > "/dev/stderr"; bad = 1; exit 1 }
+        h[1] = "HG002.1"; h[2] = "HG002.2"; x[1] = a; x[2] = b
+        for (i = 1; i <= 2; i++) for (j = 1; j <= 2; j++) if (x[i] == h[j]) q[x[i], h[j]] = 99
+      }
+      /^#/ { next }
+      {
+        tags()
+        if (tag["NM"] == "0") v = 99
+        else if ("qv" in tag) v = min(99, tag["qv"] + 0)
+        else { print locus ": no qv tag in " FILENAME > "/dev/stderr"; bad = 1; exit 1 }
+        q[$1, $6] = v; q[$6, $1] = v
+      }
+      END {
+        if (bad) exit 1
+        p1 = at(a, h[1]); p2 = at(b, h[2])
+        if (min(at(a, h[2]), at(b, h[1])) > min(p1, p2)) { p1 = at(a, h[2]); p2 = at(b, h[1]) }
+        printf "%s\t%s,%s\t%.1f\t%.1f\t%.1f\t%.1f\t%s\n", locus, a, b, p1, p2, min(p1, p2), quality, wd
+      }' "$1.${locus}.paf" >> "$2"
+    tail -n 1 "$2"
+  done
+}
 echo "== 4. the calls against HG002's haplotypes (locus, genotype, QV 1, QV 2, lower, quality, weighted distance)"
-python3 qv.py gt qv.tsv
+qv gt qv.tsv
 
 echo "== 5. red control: the panel without HG002 and every haplotype within QV 20 of it"
 : > red.bed
@@ -99,35 +117,26 @@ for l in HLA-DRB1 HLA-DQB1 CYP2D6; do
   gzip -dc "db/loci/${l}/haplotypes.fa.gz" | awk '/^>/ {n = substr($1, 2); if (n !~ /^HG002\./) print n "\tHG002.1\n" n "\tHG002.2"}' > "pairs.${l}.txt"
   locityper align -i "db/loci/${l}/haplotypes.fa.gz" -o "near.${l}.paf" -P "pairs.${l}.txt" -@ "$T" > "near.${l}.log" 2>&1 \
     || { tail -n 20 "near.${l}.log"; exit 1; }
-  python3 - "$l" <<'PY'
-import gzip, sys
-l = sys.argv[1]
-near = {"HG002.1", "HG002.2"}
-for line in open(f"near.{l}.paf"):
-    if line.startswith("#"):
-        continue
-    c = line.rstrip("\n").split("\t")
-    tags = dict(t.split(":", 2)[::2] for t in c[12:])
-    if tags.get("NM") == "0" or float(tags.get("qv", "0")) >= 20:
-        near.update((c[0], c[5]))
-keep, name, n = [], None, 0
-for line in gzip.open(f"db/loci/{l}/haplotypes.fa.gz", "rt"):
-    if line.startswith(">"):
-        name = line[1:].split()[0]
-        n += 1
-    if name not in near:
-        keep.append(line)
-open(f"red.{l}.fa", "w").write("".join(keep))
-kept = sum(x.startswith(">") for x in keep)
-open("red_removed.tsv", "a").write(f"{l}\t{n}\t{n - kept}\n")
-print(l, n, "haplotypes,", n - kept, "within QV 20 of HG002 removed")
-PY
+  # HG002's two, and every haplotype identical to either or within QV 20 of
+  # it, are left out of red.<locus>.fa.
+  { printf 'HG002.1\nHG002.2\n'
+    awk -F'\t' "$PAF_TAGS"'/^#/ { next } { tags(); if (tag["NM"] == "0" || tag["qv"] + 0 >= 20) print $1 "\n" $6 }' "near.${l}.paf"
+  } > "near.${l}.txt"
+  : > "red.${l}.fa"
+  gzip -dc "db/loci/${l}/haplotypes.fa.gz" | awk -v l="$l" -v out="red.${l}.fa" '
+    FNR == NR { near[$0] = 1; next }
+    /^>/ { name = substr($1, 2); n++; if (!(name in near)) kept++ }
+    !(name in near) { print >> out }
+    END {
+      printf "%s\t%d\t%d\n", l, n, n - kept >> "red_removed.tsv"
+      print l, n + 0, "haplotypes,", n - kept, "within QV 20 of HG002 removed"
+    }' "near.${l}.txt" -
   awk -v l="$l" -v f="/out/red.${l}.fa" -F'\t' '$4 == l {print $1 "\t" $2 "\t" $3 "\t" $4 "\t" f}' loci.bed >> red.bed
 done
 grep -h '^>' red.*.fa | grep -c '^>HG002\.' > red_hg002.txt || true
 locityper target -d dbred -r mini.fa -j mini.jf -L red.bed -@ "$T" > target_red.log 2>&1 || { tail -n 30 target_red.log; exit 1; }
 locityper genotype -a hg.bam -d dbred -p bg -o gtred -@ "$T" > genotype_red.log 2>&1 || { tail -n 30 genotype_red.log; exit 1; }
-python3 qv.py gtred red_qv.tsv
+qv gtred red_qv.tsv
 
 echo "== 6. Locityper's own output for og locityper report (run by the row's checks)"
 cp -R gt gt_cut && rm gt_cut/loci/CYP2D6/success

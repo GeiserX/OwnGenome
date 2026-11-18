@@ -11,11 +11,11 @@ pypgx prepare-depth-of-coverage depth.zip "$BAM" --assembly GRCh38 --genes CYP2D
 pypgx compute-control-statistics VDR control.zip "$BAM" --assembly GRCh38
 pypgx run-ngs-pipeline CYP2D6 CYP2D6 --variants input.vcf.gz --depth-of-coverage depth.zip \
   --control-statistics control.zip --assembly GRCh38
-python3 - <<'PY' > CYP2D6.genotype.txt
-import csv, io, zipfile
-z = zipfile.ZipFile("CYP2D6/results.zip")
-name = next(n for n in z.namelist() if n.endswith("data.tsv"))
-rows = list(csv.DictReader(io.TextIOWrapper(z.open(name)), delimiter="\t"))
-print(rows[0]["Genotype"])
-PY
+# The Genotype of the first row of results.zip's data.tsv.
+DATA=$(unzip -l CYP2D6/results.zip | awk '$NF ~ /data\.tsv$/ {print $NF; exit}')
+[ -n "$DATA" ] || { echo "CYP2D6/results.zip holds no data.tsv"; exit 1; }
+unzip -p CYP2D6/results.zip "$DATA" | awk -F'\t' '
+  NR == 1 { for (i = 1; i <= NF; i++) if ($i == "Genotype") c = i; next }
+  c { print $c; found = 1; exit }
+  END { if (!found) { print "no Genotype row in data.tsv" > "/dev/stderr"; exit 1 } }' > CYP2D6.genotype.txt
 cat CYP2D6.genotype.txt
