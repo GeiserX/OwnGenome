@@ -1,0 +1,3 @@
+chrom	start	end	length_bp	ancestry	matched	lod	genes
+chr22	100	400	300	Neanderthal	Altai	5	
+chr22	5000	6000	1000	Denisovan	Denisova	5	
