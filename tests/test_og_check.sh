@@ -16,6 +16,8 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# An og binary for the release server (og dev stub-http); OG below is og.sh.
+OG_BIN=${OG:-${REPO}/bin/og}
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 fails=0
@@ -148,7 +150,7 @@ row=$(awk -F'\t' '$1 == "run" && $2 == "og_tree_hash" {print $3}' "${T}/genome/s
 # A release tag: the binaries come from the release, checked against
 # SHA256SUMS and the attestation (a fake gh here), and are refused when
 # either does not match; a gh that is not logged in skips the attestation. OG_RELEASE_BASE points at a local server.
-if command -v python3 > /dev/null 2>&1 && command -v curl > /dev/null 2>&1; then
+if "$OG_BIN" version > /dev/null 2>&1 && command -v curl > /dev/null 2>&1; then
   rm -rf "${C}/bin/.og"
   g tag v9.9.9
   S="${T}/srv/v9.9.9"
@@ -156,10 +158,10 @@ if command -v python3 > /dev/null 2>&1 && command -v curl > /dev/null 2>&1; then
   OGS="og-linux-x86_64 og-linux-aarch64 og-darwin-arm64 og-darwin-x86_64"
   for f in $OGS; do printf 'og-tree-hash:%s;' "$h1" > "${S}/${f}"; done
   (cd "$S" && { sha256sum og-* 2> /dev/null || shasum -a 256 og-*; } > SHA256SUMS)
-  port=$((20000 + RANDOM % 20000))
-  (cd "${T}/srv" && exec python3 -m http.server "$port" --bind 127.0.0.1 > /dev/null 2>&1) &
+  "$OG_BIN" dev stub-http "*=dir:${T}/srv" > "${T}/port" 2> /dev/null &
   srv=$!
-  for _ in $(seq 50); do curl -fs "http://127.0.0.1:${port}/v9.9.9/SHA256SUMS" > /dev/null 2>&1 && break; sleep 0.1; done
+  for _ in $(seq 50); do [ -s "${T}/port" ] && break; sleep 0.1; done
+  port=$(cat "${T}/port")
   printf '#!/bin/sh
 exit 0
 ' > "${T}/fake/gh"; chmod 755 "${T}/fake/gh"
@@ -221,7 +223,7 @@ exit 0
   kill "$srv" 2> /dev/null; wait "$srv" 2> /dev/null
   g tag -d v9.9.9 > /dev/null
 else
-  echo "SKIP release download cases: no python3 or curl"
+  echo "SKIP release download cases: no og (OG or bin/og) or no curl"
 fi
 
 # The builder must mount the compile-time table beside /src. The fake
