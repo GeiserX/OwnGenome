@@ -212,7 +212,9 @@ admonition = {}
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
 ]
 "pymdownx.tabbed".alternate_style = true
-"pymdownx.highlight".anchor_linenums = true
+# No highlight anchor_linenums: the site shows no line numbers, and it would
+# give every code line an empty, unnamed link that takes a Tab stop
+# (rust/crates/og-dev/tests/docs_theme.rs).
 "pymdownx.inlinehilite" = {}
 "pymdownx.snippets".base_path = [".", "docs"]
 "pymdownx.snippets".check_paths = true

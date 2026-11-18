@@ -45,7 +45,7 @@ Then the row's `call` column decides:
 | `mapq0_min`, `mapq0_max` | the MAPQ 0 share guards, or `.` |
 | `min_control_depth`, `max_control_ratio` | the control guards, or `.` |
 | `call`, `interval` | as above |
-| `readings` | `KEY=text`, separated by `\|`: the text for a count, a class, or `more` for any count above the keys |
+| `readings` | `KEY=text`, separated by a vertical bar: the text for a count, a class, or `more` for any count above the keys |
 | `input` | `bedcov` (this engine) or `cnvpytor-level` (the row records thresholds on CNVpytor's depth level, where 1.0 is two copies) |
 | `owner` | the engine that calls the locus (`cn-depth`, this one) |
 | `cross_check` | another engine that also reports the locus (`parascopy:RHCE`, `paraphase:hba`, `cnvpytor:cnvs` for step 18's CNVpytor calls) or `none` |
