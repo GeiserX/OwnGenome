@@ -1,7 +1,8 @@
 //! Every verb the 1.0.0 plan adds is registered in `og`: listed on its own
-//! line of `og --help` and routed to its module, never to the "unknown"
-//! error of a router. A port replaces a stub's body, so this test keeps
-//! holding after it; a verb that a later merge drops turns it red.
+//! line of `og --help` (of `og dev --help` for an `og dev` verb) and routed
+//! to its module, never to the "unknown" error of a router. A port replaces
+//! a stub's body, so this test keeps holding after it; a verb that a later
+//! merge drops turns it red.
 //!
 //! While a verb is still a stub it must say exactly `og <verb>: not ported
 //! yet` on stderr and exit 2, so no caller mistakes it for a result.
@@ -87,12 +88,17 @@ fn og(args: &[&str]) -> (Option<i32>, String) {
 
 #[test]
 fn every_planned_verb_has_its_own_usage_line() {
-    let out = Command::new(env!("CARGO_BIN_EXE_og"))
-        .arg("--help")
-        .output()
-        .expect("og --help runs");
-    assert!(out.status.success());
-    let usage = String::from_utf8(out.stdout).expect("utf-8 usage");
+    // `og --help` lists the user verbs and the pipeline helpers, `og dev
+    // --help` the developer and CI tools.
+    let mut usage = String::new();
+    for args in [&["--help"][..], &["dev", "--help"]] {
+        let out = Command::new(env!("CARGO_BIN_EXE_og"))
+            .args(args)
+            .output()
+            .expect("og --help runs");
+        assert!(out.status.success(), "og {}", args.join(" "));
+        usage.push_str(&String::from_utf8(out.stdout).expect("utf-8 usage"));
+    }
     let lines: Vec<&str> = usage
         .lines()
         .map(|l| l.trim_start_matches("usage:").trim())
