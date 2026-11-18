@@ -1,7 +1,7 @@
-//! What the reports (`summary.json`) say about a gene or an rsID: the same
-//! names rule `bin/results_index.py` builds the search index with
-//! (`names_of` in `bin/genome_lookup.py`), so a lookup and the search find
-//! the same mentions.
+//! What the reports (`summary.json`) say about a gene or an rsID. The
+//! search index (`og report index`, `og_render::index`) is built with this
+//! same names rule ([`names_of`], [`flat`], [`is_rsid`]), so a lookup and
+//! the search find the same mentions.
 
 use crate::Error;
 use pycompat::json::{JsonError, Value};
@@ -42,7 +42,7 @@ fn decode_error(doc: &str, msg: &str, byte: usize) -> String {
 }
 
 /// `^rs\d+$` in any case, `$` also before a final `\n` (Python's `re`).
-fn is_rsid(s: &str) -> bool {
+pub fn is_rsid(s: &str) -> bool {
     let s = s.strip_suffix('\n').unwrap_or(s);
     let mut cs = s.chars();
     matches!((cs.next(), cs.next()), (Some('r' | 'R'), Some('s' | 'S')))
@@ -54,7 +54,7 @@ fn is_rsid(s: &str) -> bool {
 /// gene key's string is split on `, ; & / ( )` and spaces and keeps the
 /// words with an upper-case letter ("VDBP (GC)" gives VDBP and GC, "SMN
 /// exon 7-8 deletion" gives SMN); a list gives its strings, a dict its keys.
-fn names_of(obj: &Value) -> (BTreeSet<String>, BTreeSet<String>) {
+pub fn names_of(obj: &Value) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut genes = BTreeSet::new();
     let mut rsids = BTreeSet::new();
     let Value::Object(o) = obj else {
@@ -142,7 +142,7 @@ fn s(v: &Value) -> String {
 }
 
 /// One entry as `key=value` pairs, cut at `limit` characters.
-fn flat(d: &Value, limit: usize) -> String {
+pub fn flat(d: &Value, limit: usize) -> String {
     let Value::Object(o) = d else {
         return String::new();
     };

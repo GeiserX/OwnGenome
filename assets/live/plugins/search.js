@@ -4,10 +4,11 @@
 // filters that index here in the browser: no request per keystroke, so the query is in no
 // request and no server log. A hit lists each section that names the term, with a link to it in
 // the report and, for a mention with a locus, to the reads in the genome viewer. The query rule
-// is bin/results_index.py's query(): an rsID, a gene symbol (a prefix also lists the terms that
-// start with it), or a position, which the index cannot answer (scripts/owngenome-lookup.sh can).
+// is og report index's query() (rust/crates/og-render/src/index.rs) and bin/results_index.py's:
+// an rsID, a gene symbol (a prefix also lists the terms that start with it, in sorted order), or
+// a position, which the index cannot answer (scripts/owngenome-lookup.sh can).
 // The box sits in the page header; on a person's page a hit opens its card (#s/<section>).
-// tests/test_results_index.py runs match() under node against the Python rule.
+// rust/crates/og-render/tests/index_search.rs runs match() under node against the Rust rule.
 (function (root) {
   'use strict';
   var SUGGESTIONS = 20;
