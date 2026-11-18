@@ -561,7 +561,8 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
             // call is the one the two read-level callers agree on.
             if let Some(c) = consensus
                 && cyp.and_then(|c| get(c, &["agree"])) == Some(&Value::Bool(true))
-                && (passed || (status != "not called" && same_diplotype(&diplotype, c)))
+                && ((passed && matches!(status, "not called" | "ambiguous"))
+                    || (status != "not called" && same_diplotype(&diplotype, c)))
             {
                 let reason = cyp
                     .and_then(|c| text(c, &["consensus", "reason"]))

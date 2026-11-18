@@ -161,9 +161,15 @@ fn write_atomic(path: &Path, body: &[u8]) -> Result<(), String> {
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
+    // The time keeps the name fresh where a process id comes back: a
+    // container restarted after a kill is pid 1 again, and a stale .part of
+    // the same name would block create_new on every retry.
     let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(format!(".{}.{n}.part", std::process::id()));
+    tmp.push(format!(".{}.{nanos}.{n}.part", std::process::id()));
     let tmp = PathBuf::from(tmp);
     let mut open = std::fs::OpenOptions::new();
     open.write(true).create_new(true);
@@ -210,6 +216,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("og-facts-mode-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("facts").join("S_genome_facts.json");
+        // A .part a killed run left under this process id (a restarted
+        // container is pid 1 again) blocks no write and is not removed.
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut stale = path.as_os_str().to_owned();
+        stale.push(format!(".{}.0.part", std::process::id()));
+        std::fs::write(&stale, b"half").unwrap();
         write_atomic(&path, b"{}\n").unwrap();
         // A second write of the same path in this process uses its own
         // temporary file and replaces the first.
@@ -223,6 +235,6 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(mode & 0o777, 0o600, "{mode:o}");
         assert_eq!(body, "{\"a\":1}\n");
-        assert_eq!(left.len(), 1, "{left:?}");
+        assert_eq!(left.len(), 2, "the file and the stale .part: {left:?}");
     }
 }

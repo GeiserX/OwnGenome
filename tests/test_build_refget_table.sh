@@ -3,17 +3,24 @@
 # never publishes a row without its MD5. A fake curl on PATH serves a
 # made-up chr21 (ACGTACGTNN) and an assembly report, so nothing is
 # downloaded:
-#   - CHROMS without an OUT, or with OUT the checked-in table, exits 2
-#     before any download, and the table is unchanged;
+#   - CHROMS without an OUT, with OUT the checked-in table, or with OUT the
+#     table through a symlinked folder, exits 2 before any download, and the
+#     table is unchanged; so does an OUT that is a folder;
 #   - an md5 tool that fails stops the run, and OUT is not written;
 #   - with a working md5 tool, OUT holds chr21's row and no staging file is left.
+# The script runs from a copy of its checkout layout, so a regression can only
+# cut the copy's table.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-SCRIPT=${REPO}/scripts/ci/build-refget-table.sh
-TABLE=${REPO}/assets/ownhealth/grch38_refget.tsv
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
+mkdir -p "${WORK}/repo/scripts/ci" "${WORK}/repo/assets/ownhealth"
+cp "${REPO}/scripts/ci/build-refget-table.sh" "${WORK}/repo/scripts/ci/"
+cp "${REPO}/assets/ownhealth/grch38_refget.tsv" "${WORK}/repo/assets/ownhealth/"
+SCRIPT=${WORK}/repo/scripts/ci/build-refget-table.sh
+TABLE=${WORK}/repo/assets/ownhealth/grch38_refget.tsv
+ln -s "${WORK}/repo/assets/ownhealth" "${WORK}/alias"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 mkdir -p "${WORK}/bin" "${WORK}/badmd5"
@@ -40,6 +47,10 @@ rc=0; CHROMS=21 PATH="${WORK}/bin:$PATH" bash "$SCRIPT" 2>"${WORK}/err" || rc=$?
 grep -q 'give an OUT other than' "${WORK}/err" || fail "no message: $(cat "${WORK}/err")"
 rc=0; CHROMS=21 PATH="${WORK}/bin:$PATH" bash "$SCRIPT" "$TABLE" 2>/dev/null || rc=$?
 [ "$rc" -eq 2 ] || fail "CHROMS with OUT the checked-in table exited ${rc}, not 2"
+rc=0; CHROMS=21 PATH="${WORK}/bin:$PATH" bash "$SCRIPT" "${WORK}/alias/grch38_refget.tsv" 2>/dev/null || rc=$?
+[ "$rc" -eq 2 ] || fail "CHROMS with OUT the table through a symlinked folder exited ${rc}, not 2"
+rc=0; CHROMS=21 PATH="${WORK}/bin:$PATH" bash "$SCRIPT" "${WORK}/bin" 2>/dev/null || rc=$?
+[ "$rc" -eq 2 ] || fail "an OUT that is a folder exited ${rc}, not 2"
 [ ! -s "$CURL_LOG" ] || fail "it downloaded before refusing: $(cat "$CURL_LOG")"
 [ "$(cksum < "$TABLE")" = "$before" ] || fail "the checked-in table changed"
 

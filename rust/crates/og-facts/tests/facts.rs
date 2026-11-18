@@ -1223,3 +1223,22 @@ fn a_sample_name_longer_than_ownhealth_holds_is_refused() {
         .expect("refused");
     assert!(e.contains("65 characters"), "{e}");
 }
+
+#[test]
+fn the_consensus_confirms_only_the_cyp2d6_call_it_agrees_with() {
+    // PharmCAT's table holds *1/*4, while the two read-level callers agreed
+    // on *4/*5 and step 36 handed theirs over: the fact keeps *1/*4, and
+    // the consensus's high confidence and callers do not go with it.
+    let called = full_sections().replace(
+        r#"{"gene":"CYP2D6","diplotype":"Unknown/Unknown","phenotype":"No Result","status":"not called"}"#,
+        r#"{"gene":"CYP2D6","diplotype":"*1/*4","phenotype":"Intermediate Metabolizer","status":"non-normal"}"#,
+    );
+    let other = r#"{"calls":{"PharmCAT":"*1/*4","pypgx":"*4/*5","Cyrius":"*4/*5"},"agree":true,
+        "consensus":{"result":"*4/*5","passed_to_pharmcat":true,"reason":"pypgx and Cyrius agree","source":null},"probable":null}"#;
+    let dir = folder_with("d6-passed-other", &called, other);
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).unwrap();
+    let d6 = fact(&b, "pgx", "CYP2D6")[0];
+    assert_eq!(st(d6, &["value", "diplotype"]), "*1/*4");
+    assert_eq!(st(d6, &["confidence", "level"]), "medium", "{d6:?}");
+    assert!(!format!("{:?}", get(d6, &["evidence", "tools"])).contains("Cyrius"));
+}

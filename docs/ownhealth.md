@@ -40,11 +40,11 @@ Every finding carries where it came from (the tool and the database version), an
 
 - **Evidence:** E1 is a CPIC guideline gene or a ClinVar hit with 2 or more review stars. E2 is a ClinVar hit with 1 star or a replicated association. E3 is a single study or a polygenic score.
 - **Confidence:** high when the call passed its quality checks, medium or low when it did not, with the reason. A PGx call drops to medium when a site that defines it has a low genotype quality. CYP2D6 is high only when two callers agree. A run that started from a VCF, with no reads, caps a ClinVar hit at medium and CYP2D6 at low.
-- **Call state:** every finding says whether it rests on the reference (`ref`) or on a variant (`alt`). A PGx call is `ref` when both alleles are the gene's reference allele as PharmCAT names it (`*1`, `Reference`, CYP2C19 `*38`, CFTR `No CPIC variants found`). ABCG2, IFNL3 and VKORC1 also cite their one site with its genotype.
+- **Call state:** a variant finding, a PGx call and an HLA result say whether they rest on the reference (`ref`) or on a variant (`alt`). A PGx call with an allele PharmCAT could not call, such as `*1/Unknown`, is `no_call`. A polygenic score has no call state. A PGx call is `ref` when both alleles are the gene's reference allele as PharmCAT names it (`*1`, `Reference`, CYP2C19 `*38`, CFTR `No CPIC variants found`). ABCG2, IFNL3 and VKORC1 also cite their one site with its genotype.
 
 The file also holds a coverage map. It lists every gene of the ACMG SF list, the CPIC genes and the carrier panel, and any other gene with a PGx or HLA call (CYP3A4, for example). Each gene is marked as assessed, partly assessed or not assessed. A gene that is not fully assessed has a reason, for example low depth or a near copy of the region elsewhere in the genome. OwnHealth shows the map under the findings, so the reader can tell "no finding" from "not looked at".
 
-A gene counts as assessed only when the run shows its reads were there: gene callability ([step 16b](16b-mosdepth.md)) ran and the genome's mean depth reached its floor of 10 reads. Without that, for example on a run from a VCF, the genes are not assessed. A call that the file leaves out (see below) marks its gene as partly assessed, with a note that names the call. A gene with a PGx or HLA call is never marked not assessed: without that evidence it is partly assessed, because the call stands on the sites that define it. A PGx call where PharmCAT could not call one allele also marks its gene as partly assessed. So does a PGx call that step 27 marks ambiguous (possible diplotypes with different phenotypes): it is left out, because it is no single result. A PGx call can stand on its sites while step 16b or the carrier screen cannot show the rest of the gene was read. The gene is then partly assessed, and its row keeps their reason and callable share, for example "paralog" and 41%.
+The ClinVar screen counts a gene as assessed only when the run shows its reads were there: gene callability ([step 16b](16b-mosdepth.md)) ran and the genome's mean depth reached its floor of 10 reads. Without that, for example on a run from a VCF, its genes are not assessed. An HLA gene is assessed when T1K typed it, and not assessed when T1K did not; step 16b and the mean depth do not apply to it. A call that the file leaves out (see below) marks its gene as partly assessed, with a note that names the call. A gene with a PGx or HLA call is never marked not assessed: when the ClinVar screen cannot show the gene was read, the gene is partly assessed, because the call stands on the sites that define it. A PGx call where PharmCAT could not call one allele also marks its gene as partly assessed. So does a PGx call that step 27 marks ambiguous (possible diplotypes with different phenotypes): it is left out, because it is no single result. A PGx call can stand on its sites while step 16b or the carrier screen cannot show the rest of the gene was read. The gene is then partly assessed, and its row keeps their reason and callable share, for example "paralog" and 41%.
 
 ## What OwnHealth does not show
 
@@ -69,11 +69,11 @@ It needs `summary.json` (step 24 or `generate-report.sh` writes it), `og` (`./sc
 
 The variant identifiers in the file are [GA4GH VRS](https://vrs.ga4gh.org/) 2.0 identifiers worked out on that reference. `og facts` refuses a reference that names none of GRCh38's chromosomes (`chr1` to `chrM`) or has one of a length other than GRCh38's. It cannot check every base, so give it the reference the run used.
 
-The same command without the script, on the host:
+The same command without the script, on the host. Give `--reference` the FASTA the run used: the default below, or the file `REF_FASTA` named for the run:
 
 ```bash
 bin/og facts --sample "${SAMPLE}" --sample-dir "${GENOME_DIR}/${SAMPLE}" \
-  --reference "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta"
+  --reference "${REF_FASTA:-${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta}"
 ```
 
 Exit code 0 means the file was written, 1 a missing or unreadable input, 2 a wrong argument. The file is readable by its owner only.

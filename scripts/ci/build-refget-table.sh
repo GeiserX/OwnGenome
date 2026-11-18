@@ -12,19 +12,22 @@
 # Needs curl, gzip, openssl, base64 and md5sum or md5.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="$(cd "$(dirname "$0")/../.." && pwd -P)"
 TABLE=${REPO}/assets/ownhealth/grch38_refget.tsv
 OUT=${1:-$TABLE}
-if [ -n "${CHROMS:-}" ] && { [ $# -eq 0 ] || [ "$(cd "$(dirname "$OUT")" 2>/dev/null && pwd)/$(basename "$OUT")" = "$TABLE" ]; }; then
+# The physical path (pwd -P), so a symlinked folder cannot hide the table.
+if [ -n "${CHROMS:-}" ] && { [ $# -eq 0 ] || [ "$(cd "$(dirname "$OUT")" 2>/dev/null && pwd -P)/$(basename "$OUT")" = "$TABLE" ]; }; then
   echo "ERROR: CHROMS writes only some chromosomes: give an OUT other than ${TABLE}" >&2
   exit 2
 fi
+[ ! -d "$OUT" ] || { echo "ERROR: ${OUT} is a folder; give the table's file name" >&2; exit 2; }
 BASE=https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.26_GRCh38
 STRUCT=${BASE}/GCF_000001405.26_GRCh38_assembly_structure
 WORK=$(mktemp -d)
+PART=""
+trap 'rm -rf "$WORK"; [ -z "$PART" ] || rm -f "$PART"' EXIT
 # This run's own staging file beside OUT, so two runs never write one file.
 PART=$(mktemp "${OUT}.XXXXXX")
-trap 'rm -rf "$WORK" "$PART"' EXIT
 
 md5_of() { if command -v md5sum >/dev/null; then md5sum | cut -d' ' -f1; else md5 -q; fi; }
 
