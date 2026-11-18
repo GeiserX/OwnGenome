@@ -203,10 +203,13 @@ fn help(raw: &mut [String]) -> Option<ExitCode> {
     if !args.iter().any(|a| *a == "-h" || *a == "--help") {
         return None;
     }
+    // A root option with its own usage line (`og --tree-hash`) is a tool here.
     let words: Vec<&str> = args
         .iter()
         .copied()
-        .take_while(|a| !a.starts_with('-'))
+        .enumerate()
+        .take_while(|(i, a)| !a.starts_with('-') || (*i == 0 && *a == "--tree-hash"))
+        .map(|(_, a)| a)
         .collect();
     let (tool, verb) = (*words.first()?, words.get(1).copied());
     let own = OWN_HELP.iter().any(|e| match e.split_once(' ') {

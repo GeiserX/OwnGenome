@@ -87,7 +87,11 @@ fn is_verb(w: &str) -> bool {
 /// of the verbs of its second word.
 fn commands(line: &str) -> Vec<Vec<String>> {
     let w: Vec<&str> = line.split_whitespace().collect();
-    let Some(tool) = w.get(1).filter(|t| is_verb(t)) else {
+    // A root option with its own line (`og --tree-hash`) is a command too.
+    let Some(tool) = w
+        .get(1)
+        .filter(|t| is_verb(t) || t.strip_prefix("--").is_some_and(is_verb))
+    else {
         return vec![];
     };
     let mut out = vec![vec![(*tool).to_owned()]];
