@@ -480,6 +480,34 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 
+      # og-io's root test (tests/atomic_root_owner.rs) skips unless it runs as
+      # root: run it with sudo, then plant a writer that never reads NXF_OWNER
+      # and check that the same test fails on it.
+      - name: og-io as root hands its files to NXF_OWNER, and the test fails without the hand-over
+        run: |
+          root_test() {
+            cargo test --locked -p og-io --test atomic_root_owner --no-run --message-format=json \
+              | jq -r 'select(.executable != null) | .executable'
+          }
+          bin=$(root_test)
+          test -x "$bin"
+          sudo env OG_IO_ROOT_TEST=1 "$bin" --test-threads=1
+          src=crates/og-io/src/lib.rs
+          cp "$src" "${RUNNER_TEMP}/og-io-lib.rs"
+          trap 'cp "${RUNNER_TEMP}/og-io-lib.rs" "$src"' EXIT
+          sed -i 's/std::env::var("NXF_OWNER")/std::env::var("NXF_OWNER_PLANTED")/' "$src"
+          grep -q 'NXF_OWNER_PLANTED' "$src" || { echo "ERROR: the break was not planted"; exit 1; }
+          bin=$(root_test)
+          log="${RUNNER_TEMP}/og-io-root-red.log"
+          if sudo env OG_IO_ROOT_TEST=1 "$bin" --test-threads=1 > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the root test passed with a writer that ignores NXF_OWNER"
+            exit 1
+          fi
+          cat "$log"
+          grep -F 'the file NXF_OWNER names an owner for' "$log"
+          echo "Control: a writer that ignores NXF_OWNER failed the root test."
+
       # The planned-verb test (og/tests/port_scaffold.rs) must fail when a
       # later merge drops a verb's arm.
       - name: The planned-verb test fails when a verb is dropped
