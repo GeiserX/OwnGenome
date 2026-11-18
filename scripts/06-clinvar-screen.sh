@@ -128,16 +128,55 @@ SAMPLE_DROPPED=$(comm -23 <(printf '%s\n' "$SAMPLE_CONTIGS") <(printf '%s\n' "$S
 # Step 1: normalise ClinVar once (split multiallelics, left-align), rebuilt when the
 # source is newer. isec matches on identical REF/ALT, so both sides must be split
 # and left-aligned the same way.
-if [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; then
-  echo "Normalising ClinVar into ${CLINVAR_NORM} ..."
-  rm -f "${CLINVAR_NORM}.part.vcf.gz" "${CLINVAR_NORM}.part.vcf.gz.tbi"
-  # The normalised copy is shared by every sample, so clinvar/ is writable here.
-  run_in --rw "$(dirname "$CLINVAR_NORM")" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
-    sh -c "set -e; bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CLINVAR")' \
-      | bcftools norm -m -any -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "${CLINVAR_NORM}.part.vcf.gz")' -"
-  bcftools_run --rw "$(dirname "$CLINVAR_NORM")" bcftools index -t "$(cpath "${CLINVAR_NORM}.part.vcf.gz")"
-  mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
-  mv "${CLINVAR_NORM}.part.vcf.gz.tbi" "${CLINVAR_NORM}.tbi"
+# Every sample shares the normalised copy, so one run builds it while the others
+# wait, then test it again and find it built. Every run that builds takes the same
+# lock, lock_acquire's folder clinvar/.norm.lock.d, whether flock is on its PATH or
+# not. Where flock is installed, a run first takes flock on clinvar/.norm.lock, so
+# only one run at a time tries to make the folder: a mkdir lock is not exclusive
+# with the uutils mkdir of Ubuntu 26.04 (two runs that make the folder at once can
+# both succeed). The build goes to a .part file only the lock holder writes. The
+# old VCF is removed first and the new index goes in place before the new VCF, so
+# a VCF that is newer than the source always has the index of the same write
+# beside it, even when a run stops halfway.
+# Each pipeline below runs in bash with pipefail: under sh a failed first
+# bcftools would go unnoticed when the second one exits 0.
+norm_stale() { [ ! -f "$CLINVAR_NORM" ] || [ ! -f "${CLINVAR_NORM}.tbi" ] || [ "$CLINVAR" -nt "$CLINVAR_NORM" ]; }
+if norm_stale; then
+  if [ ! -w "${GENOME_DIR}/clinvar" ]; then
+    echo "ERROR: ${CLINVAR_NORM} must be rebuilt, but ${GENOME_DIR}/clinvar is not writable by you." >&2
+    exit 1
+  fi
+  NORM_LOCK="${GENOME_DIR}/clinvar/.norm.lock"
+  if command -v flock >/dev/null 2>&1; then
+    # Made readable by everyone (the library's umask is 077) and opened read-only, as
+    # the refresh lock above: flock locks a read-only fd, so a .norm.lock another
+    # user made does not stop a rebuild, even one made between the test and the append.
+    [ -e "$NORM_LOCK" ] || (umask 022; : >> "$NORM_LOCK") 2>/dev/null || true
+    if [ ! -r "$NORM_LOCK" ]; then
+      echo "ERROR: ${CLINVAR_NORM} must be rebuilt, but you cannot read its lock ${NORM_LOCK}." >&2
+      echo "  Its owner can let every user take it: chmod a+r ${NORM_LOCK}" >&2
+      exit 1
+    fi
+    exec 8<"$NORM_LOCK"
+    flock -n 8 || { echo "Waiting for the run that builds ${CLINVAR_NORM} ..."; flock 8; }
+  fi
+  lock_acquire "${NORM_LOCK}.d"
+  trap 'lock_release "${NORM_LOCK}.d"' EXIT
+  if norm_stale; then
+    echo "Normalising ClinVar into ${CLINVAR_NORM} ..."
+    rm -f "${CLINVAR_NORM}.part.vcf.gz" "${CLINVAR_NORM}.part.vcf.gz.tbi"
+    # The normalised copy is shared by every sample, so clinvar/ is writable here.
+    run_in --rw "$(dirname "$CLINVAR_NORM")" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
+      bash -o pipefail -c "set -e; bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CLINVAR")' \
+        | bcftools norm -m -any -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "${CLINVAR_NORM}.part.vcf.gz")' -"
+    bcftools_run --rw "$(dirname "$CLINVAR_NORM")" bcftools index -t "$(cpath "${CLINVAR_NORM}.part.vcf.gz")"
+    rm -f "$CLINVAR_NORM"
+    mv "${CLINVAR_NORM}.part.vcf.gz.tbi" "${CLINVAR_NORM}.tbi"
+    mv "${CLINVAR_NORM}.part.vcf.gz" "$CLINVAR_NORM"
+  fi
+  lock_release "${NORM_LOCK}.d"
+  trap - EXIT
+  exec 8<&-
 fi
 
 # Step 2: filter the sample. Callers that never write PASS (FILTER '.') would lose
@@ -170,7 +209,7 @@ fi
 PASS_VCF="${OUTPUT_DIR}/${SAMPLE}_pass.vcf.gz"
 NORM_LOG="${OUTPUT_DIR}/${SAMPLE}_norm.log"
 if ! run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
-  sh -c "set -e; bcftools view -f '${FILTER}' -T '$(cpath "$SAMPLE_TARGETS")' -Ou '$(cpath "$VCF")' \
+  bash -o pipefail -c "set -e; bcftools view -f '${FILTER}' -T '$(cpath "$SAMPLE_TARGETS")' -Ou '$(cpath "$VCF")' \
     | bcftools norm -m -any --multi-overlaps . -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "$PASS_VCF")' -
     bcftools index -f -t '$(cpath "$PASS_VCF")'" 2> "$NORM_LOG"; then
   cat "$NORM_LOG" >&2
@@ -234,7 +273,7 @@ case "$CLINVAR_COLS" in
 esac
 SHARED="${OUTPUT_DIR}/${SAMPLE}_shared.vcf.gz"
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
-  sh -c "set -e
+  bash -o pipefail -c "set -e
     bcftools isec --no-version -n=2 -w1 -Oz -o '$(cpath "$SHARED")' '$(cpath "$CANDIDATES")' '$(cpath "$CLINVAR_NORM")'
     bcftools index -f -t '$(cpath "$SHARED")'
     bcftools annotate --no-version -a '$(cpath "$CLINVAR_NORM")' --pair-logic exact \
