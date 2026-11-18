@@ -125,7 +125,12 @@ fn input(path: Option<&str>) -> io::Result<Box<dyn BufRead>> {
 
 /// Runs `og clinvar <verb> ...` and returns the exit code.
 pub fn main(args: &[String]) -> u8 {
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    // A help word after `--` is an argument, as in og's own help rule.
+    if args
+        .iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "-h" || a == "--help")
+    {
         print!("{}", help());
         return 0;
     }

@@ -89,7 +89,12 @@ pub fn main(args: &[String]) -> u8 {
 }
 
 pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    // A help word after `--` is an argument, as in og's own help rule.
+    if args
+        .iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "-h" || a == "--help")
+    {
         let _ = write!(out, "{USAGE}");
         return 0;
     }

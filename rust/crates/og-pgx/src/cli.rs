@@ -92,7 +92,12 @@ fn options(args: &[String], names: &[&str]) -> Result<Vec<Option<String>>, Strin
 
 /// `og pgx <verb> [args]`: the exit code.
 pub fn main(args: &[String]) -> u8 {
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    // A help word after `--` is an argument, as in og's own help rule.
+    if args
+        .iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "-h" || a == "--help")
+    {
         print!("{USAGE}{VERBS}");
         return 0;
     }

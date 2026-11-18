@@ -148,6 +148,10 @@ fn every_command_answers_help_on_stdout_and_writes_nothing() {
         "only {} commands read from the usage",
         seen.len()
     );
+    assert!(
+        seen.contains(&vec!["--tree-hash".to_owned()]),
+        "og --tree-hash is not checked"
+    );
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     let _ = std::fs::remove_dir_all(&here);
 }
@@ -162,6 +166,15 @@ fn the_help_fallback_names_the_verb_and_an_unknown_tool_is_still_refused() {
     // A help word after `--` is an argument, not a request.
     let o = og_in(&here, &["sv", "consensus-check", "--", "--help"]);
     assert_ne!(o.code, Some(0));
+    // The same holds for a command that reads its own help word.
+    for args in [
+        &["clinvar", "hits", "--", "--help"][..],
+        &["pgx", "cpic-report", "--", "--help"],
+        &["dev", "freshness", "--", "-h"],
+    ] {
+        let o = og_in(&here, args);
+        assert_ne!(o.code, Some(0), "og {}: {}", args.join(" "), o.stdout);
+    }
     // The control: no line, no help.
     let o = og_in(&here, &["no-such-tool", "--help"]);
     assert_eq!(o.code, Some(2));
