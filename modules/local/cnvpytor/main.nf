@@ -47,7 +47,14 @@ process CNVPYTOR {
     # the image's site-packages, so this step needs a writable container FS —
     # run with the docker profile (the shell script bind-mounts instead, and
     # Singularity's read-only image is not supported for this step).
-    DATADIR=\$(python -c 'import cnvpytor, os; print(os.path.dirname(cnvpytor.__file__) + "/data")')
+    # The package sits under the lib directory of the prefix the cnvpytor
+    # command is installed in; exactly one data directory, or the step stops.
+    CNVPYTOR_BIN=\$(command -v cnvpytor)
+    DATADIR=\$(find "\${CNVPYTOR_BIN%/bin/*}/lib" -type d -path '*/site-packages/cnvpytor/data')
+    if [ ! -d "\$DATADIR" ]; then
+        echo "ERROR: no single cnvpytor data directory in the image (\${DATADIR:-not found})" >&2
+        exit 1
+    fi
     cp -f ${cnvpytor_resources}/*.pytor "\$DATADIR"/
 
     cnvpytor -root ${meta.id}.pytor -rd ${bam} -chrom ${canonical_chroms} -j ${task.cpus}

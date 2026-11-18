@@ -21,7 +21,6 @@ on:
       - 'docs/**'
       - 'zensical.toml'
       - '.github/workflows/docs.yml'
-      - '.github/scripts/site-check.py'
       # Add every file a page includes with pymdownx.snippets (for example
       # docker-compose.yml, .env.example): a change to it must rebuild the
       # site, and a rename must fail the build.
@@ -86,12 +85,6 @@ jobs:
       - name: Build
         run: python -m zensical build --clean --strict
 
-      # What the strict build does not check: a page in no nav entry, a nav
-      # entry for a missing file, a missing image, a /rooted link, a raw <title>
-      # in a page. Each one was proven to turn this step red (validate-zensical.sh).
-      - name: Check the built site
-        run: python -I .github/scripts/site-check.py site
-
       # og (rust/, docs/rust.md): the demo sample builder runs step 27's
       # parser, og pgx cpic-report (tests/og_binary.py reads OG), writes the
       # genome map's documents, og map build, and runs step 33's og qc sex-loss
@@ -112,6 +105,14 @@ jobs:
         run: |
           OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
           echo "OG=${PWD}/target/release/og" >> "$GITHUB_ENV"
+
+      # What the strict build does not check: a page in no nav entry, a nav
+      # entry for a missing file, a missing image, a /rooted link, a raw <title>
+      # in a page (og dev site-check, rust/crates/og-dev/src/site_check.rs; its
+      # tests plant each fault in rust/crates/og-dev/tests/site_check.rs).
+      - name: Check the built site
+        run: |
+          "$OG" dev site-check site
 
       # /demo/: the live site replaying an invented run of DEMO-001, the invented
       # sample of the docs pictures, through the real page and plugin code

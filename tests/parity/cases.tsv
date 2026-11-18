@@ -1277,3 +1277,13 @@ report-render	m-variants-missing	gen:report-corpus.sh	--summary m-variants-missi
 report-render	m-variants-ok	gen:report-corpus.sh	--summary m-variants-ok.json -o m-variants-ok.txt -o m-variants-ok.html	m-variants-ok.txt,m-variants-ok.html	bytes	PYTHON_IMAGE
 report-render	m-variants-stale	gen:report-corpus.sh	--summary m-variants-stale.json -o m-variants-stale.txt -o m-variants-stale.html	m-variants-stale.txt,m-variants-stale.html	bytes	PYTHON_IMAGE
 report-render	m-variants-unreadable	gen:report-corpus.sh	--summary m-variants-unreadable.json -o m-variants-unreadable.txt -o m-variants-unreadable.html	m-variants-unreadable.txt,m-variants-unreadable.html	bytes	PYTHON_IMAGE
+# report-render, port-report-optin: the opt-in step sections in each state and down each branch of their lines.
+report-render	m-optin-ok	gen:report-corpus.sh	--summary m-optin-ok.json -o m-optin-ok.txt -o m-optin-ok.html	m-optin-ok.txt,m-optin-ok.html	bytes	PYTHON_IMAGE
+report-render	m-optin-stale	gen:report-corpus.sh	--summary m-optin-stale.json -o m-optin-stale.txt -o m-optin-stale.html	m-optin-stale.txt,m-optin-stale.html	bytes	PYTHON_IMAGE
+report-render	m-optin-failed	gen:report-corpus.sh	--summary m-optin-failed.json -o m-optin-failed.txt -o m-optin-failed.html	m-optin-failed.txt,m-optin-failed.html	bytes	PYTHON_IMAGE
+report-render	m-optin-unreadable	gen:report-corpus.sh	--summary m-optin-unreadable.json -o m-optin-unreadable.txt -o m-optin-unreadable.html	m-optin-unreadable.txt,m-optin-unreadable.html	bytes	PYTHON_IMAGE
+report-render	m-optin-odd	gen:report-corpus.sh	--summary m-optin-odd.json -o m-optin-odd.txt -o m-optin-odd.html	m-optin-odd.txt,m-optin-odd.html	bytes	PYTHON_IMAGE
+report-render	m-optin-since	gen:report-corpus.sh	--summary m-optin-since.json -o m-optin-since.txt -o m-optin-since.html	m-optin-since.txt,m-optin-since.html	bytes	PYTHON_IMAGE
+report-render	m-optin-empty	gen:report-corpus.sh	--summary m-optin-empty.json -o m-optin-empty.txt -o m-optin-empty.html	m-optin-empty.txt,m-optin-empty.html	bytes	PYTHON_IMAGE
+report-render	m-optin-partial	gen:report-corpus.sh	--summary m-optin-partial.json -o m-optin-partial.txt -o m-optin-partial.html	m-optin-partial.txt,m-optin-partial.html	bytes	PYTHON_IMAGE
+report-render	m-optin-viral-na	gen:report-corpus.sh	--summary m-optin-viral-na.json -o m-optin-viral-na.txt -o m-optin-viral-na.html	m-optin-viral-na.txt,m-optin-viral-na.html	bytes	PYTHON_IMAGE
