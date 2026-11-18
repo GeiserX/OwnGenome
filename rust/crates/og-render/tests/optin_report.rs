@@ -9,7 +9,7 @@
 //! The section data is what `og summary collect` writes for the tool tables
 //! of each step (og-summary's `tests/optin_summary.rs`).
 
-use og_render::model::Summary;
+use og_render::model::{Line, Summary};
 use og_render::notes::{CHIP_NOTE, MCA_NOTE, MEI_NOTE, VIRAL_NOTE};
 use og_render::sections::{cdna_scan, chip, exomiser, mei, mocha, sv_callers, viral};
 use og_render::{html, text};
@@ -511,7 +511,9 @@ fn the_cdna_scan_blocks() {
     );
     assert!(cdna_scan::stat(&d).unwrap().is_some());
     let (lines, caveat) = cdna_scan::html_lines(&d).unwrap();
-    assert_eq!(lines.len(), 2);
+    assert_eq!(lines.len(), 3, "the count, the table, the Viewer sentence");
+    assert!(matches!(lines[1], Line::Table(_)));
+    assert_eq!(lines[2], Line::ViewerNote);
     assert!(caveat.is_some());
     let not_run = r#"{"cdna_scan": {"note": "not run (no BAM)", "loci": []}}"#;
     let s = parse(&summary(&[("clinvar", "ClinVar", "06", "ok", not_run)], ""));

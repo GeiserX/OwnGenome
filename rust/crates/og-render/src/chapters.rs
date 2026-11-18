@@ -159,17 +159,17 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
     match sid {
         "qc" => Some((sections::qc::text, sections::qc::html)),
 
-        "callability" => None,
+        "callability" => Some((sections::callability::text, sections::callability::html)),
 
         "variants" => Some((sections::variants::text, sections::variants::html)),
 
-        "clinvar" => None,
+        "clinvar" => Some((sections::clinvar::text, sections::clinvar::html)),
 
-        "clinical-filter" => None,
+        "clinical-filter" => Some((sections::acmg_sf::text, sections::acmg_sf::html)),
 
-        "cpsr" => None,
+        "cpsr" => Some((sections::cpsr::text, sections::cpsr::html)),
 
-        "slivar" => None,
+        "slivar" => Some((sections::comphet::text, sections::comphet::html)),
 
         "exomiser" => Some((sections::exomiser::text, sections::exomiser::html)),
 
@@ -177,13 +177,13 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "mei" => Some((sections::mei::text, sections::mei::html)),
 
-        "expansions" => None,
+        "expansions" => Some((sections::str::text, sections::str::html)),
 
         "vntyper" => Some((sections::vntyper::text, sections::vntyper::html)),
 
-        "mito" => None,
+        "mito" => Some((sections::mito::text, sections::mito::html)),
 
-        "lpa" => None,
+        "lpa" => Some((sections::lpa::text, sections::lpa::html)),
 
         "chip" => Some((sections::chip::text, sections::chip::html)),
 
@@ -191,39 +191,42 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "mosaic-mca" => Some((sections::mocha::text, sections::mocha::html)),
 
-        "carrier-list" => None,
+        "carrier-list" => Some((sections::carrier::text, sections::carrier::html)),
 
-        "couple" => None,
+        "couple" => Some((sections::couple::text, sections::couple::html)),
 
-        "paralogs" => None,
+        "paralogs" => Some((sections::paralogs::text, sections::paralogs::html)),
 
-        "pharmcat" => None,
+        "pharmcat" => Some((sections::pgx::pharmcat_text, sections::pgx::pharmcat_html)),
 
-        "cpic" => None,
+        "cpic" => Some((sections::pgx::cpic_text, sections::pgx::cpic_html)),
 
-        "cyp2d6" => None,
+        "cyp2d6" => Some((sections::pgx::cyp2d6_text, sections::pgx::cyp2d6_html)),
 
-        "hla" => None,
+        "hla" => Some((sections::hla::text, sections::hla::html)),
 
         "locityper" => Some((sections::locityper::text, sections::locityper::html)),
 
-        "ancestry-fine" => None,
+        "ancestry-fine" => Some((sections::ancestry_fine::text, sections::ancestry_fine::html)),
 
-        "mt-haplogroup" => None,
+        "mt-haplogroup" => Some((sections::haplogroups::text, sections::haplogroups::html)),
 
-        "y-chromosome" => None,
+        "y-chromosome" => Some((
+            sections::haplogroups::y_chromosome_text,
+            sections::haplogroups::y_chromosome_html,
+        )),
 
-        "archaic" => None,
+        "archaic" => Some((sections::archaic::text, sections::archaic::html)),
 
-        "ancient" => None,
+        "ancient" => Some((sections::ancient::text, sections::ancient::html)),
 
         "roh" => Some((sections::roh::text, sections::roh::html)),
 
-        "traits-panel" => None,
+        "traits-panel" => Some((sections::traits::text, sections::traits::html)),
 
-        "prs" => None,
+        "prs" => Some((sections::prs::text, sections::prs::html)),
 
-        "bloodtype" => None,
+        "bloodtype" => Some((sections::bloodtype::text, sections::bloodtype::html)),
 
         "telomere" => Some((sections::telomere::text, sections::telomere::html)),
 

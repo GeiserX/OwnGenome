@@ -44,10 +44,25 @@ pub const SPEC: Spec = Spec {
     required: &["--members", "--relationships", "--vcf", "--out-dir"],
 };
 
-/// De novo candidates: every one of the three must have these.
+/// De novo candidates: the child and each parent who passes the site on
+/// must have these.
 const MIN_GQ: i128 = 20;
 const MIN_DP: i128 = 10;
 const HET_AB: (f64, f64) = (0.25, 0.75);
+/// De novo candidates: a parent who passes the site on with this many reads,
+/// or this share of its reads, on the new allele keeps the row from `pass`.
+const PARENT_ALT_READS: i128 = 2;
+const PARENT_ALT_FRACTION: f64 = 0.05;
+
+/// The parents who pass a site on to the child: both on the autosomes and
+/// on a daughter's X, the mother on a son's X and the father on his Y
+/// (outside the pseudoautosomal regions).
+#[derive(Clone, Copy)]
+struct Need {
+    father: bool,
+    mother: bool,
+}
+
 /// Bytes of inheritance rows handed to a child's compressing thread at a time.
 const CHUNK: usize = 1 << 18;
 /// The level of the inheritance files (the content is what is compared).
@@ -257,7 +272,9 @@ struct Child {
     mcol: usize,
     n: Counts,
     de_novo: Vec<Vec<String>>,
-    cands: Vec<(Genes, String, Option<&'static str>)>,
+    /// compound heterozygote candidates: genes, variant, origin, and the
+    /// VCF line it came from (the two ALTs of one 1/2 call share it)
+    cands: Vec<(Genes, String, Option<&'static str>, u64)>,
     /// WhatsHap: per (chrom, PS) block, sites where the first haplotype
     /// holds the father's allele, and sites where it holds the mother's.
     blocks: HashMap<(Vec<u8>, Vec<u8>), [u64; 2]>,
@@ -454,40 +471,63 @@ impl Pass<'_> {
                 b[usize::from(cg[0] != f)] += 1;
             }
         }
-        // de novo: an allele the child carries that neither parent has
-        if how == How::Inconsistent && f_known && m_known {
-            let (f, m) = (
-                fset.as_deref().unwrap_or(&[]),
-                mset.as_deref().unwrap_or(&[]),
-            );
-            // on a male's single X only the mother's alleles count, on his Y the father's;
-            // a female's two X come one from each parent, so both parents' alleles count
-            let seen: Vec<u32> = if sexchr && is_x {
-                if ch.sex.as_deref() == Some("male") {
-                    m.to_vec()
-                } else {
-                    [f, m].concat()
-                }
-            } else if sexchr {
-                f.to_vec()
-            } else {
-                [f, m].concat()
-            };
+        // de novo: an allele the child carries that no parent who passes
+        // this site on has. A male's single X comes from his mother and his
+        // Y from his father (a female never reaches here on Y); a female's
+        // two X and the autosomes come one from each parent. Only those
+        // parents need a call here: the other one usually has none.
+        let need = if sexchr && !is_x {
+            Need {
+                father: true,
+                mother: false,
+            }
+        } else if sexchr && ch.sex.as_deref() == Some("male") {
+            Need {
+                father: false,
+                mother: true,
+            }
+        } else {
+            Need {
+                father: true,
+                mother: true,
+            }
+        };
+        if how == How::Inconsistent
+            && ch.f_seq
+            && ch.m_seq
+            && (!need.father || f_known)
+            && (!need.mother || m_known)
+        {
+            let mut seen: Vec<u32> = Vec::new();
+            if need.father {
+                seen.extend(fset.as_deref().unwrap_or(&[]));
+            }
+            if need.mother {
+                seen.extend(mset.as_deref().unwrap_or(&[]));
+            }
             let novel: Vec<u32> = cset
                 .iter()
                 .copied()
                 .filter(|a| *a != 0 && !seen.contains(a))
                 .collect();
             if !novel.is_empty() {
-                let row = de_novo_row(ch, cols, format, gi, &novel, &cset, calls, path)?;
+                let row = de_novo_row(ch, cols, format, gi, &novel, &cset, need, calls, path)?;
                 ch.de_novo.push(row);
             }
         }
-        // compound heterozygote candidates
-        if het && let Some(table) = self.cands.get(&ch.name) {
-            let ai = if cg[0] == 0 { cg[1] } else { cg[0] };
-            let alt = allele(cols, ai, path, line)?;
-            if let Some(genes) = table.get(&(chrom.to_vec(), pos, cols[3].to_vec(), alt.to_vec())) {
+        // compound heterozygote candidates: each ALT of a call with two
+        // different alleles, 0/1 or 1/2 (GLnexus leaves multiallelic records
+        // unsplit, the candidate VCF has one record per ALT)
+        if cg.len() == 2
+            && cset.len() == 2
+            && let Some(table) = self.cands.get(&ch.name)
+        {
+            for &ai in cset.iter().filter(|&&a| a != 0) {
+                let alt = allele(cols, ai, path, line)?;
+                let Some(genes) = table.get(&(chrom.to_vec(), pos, cols[3].to_vec(), alt.to_vec()))
+                else {
+                    continue;
+                };
                 let first = if cols[3] == alt {
                     0
                 } else {
@@ -507,6 +547,7 @@ impl Pass<'_> {
                     genes.clone(),
                     format!("{}:{pos}:{}>{}", text(chrom), text(cols[3]), text(alt)),
                     origin,
+                    line,
                 ));
             }
         }
@@ -522,6 +563,7 @@ fn de_novo_row(
     gi: usize,
     novel: &[u32],
     cset: &[u32],
+    need: Need,
     calls: &mut Calls<'_>,
     path: &str,
 ) -> std::result::Result<Vec<String>, Die> {
@@ -537,7 +579,21 @@ fn de_novo_row(
             None => Ok(None),
         }
     }
+    /// The AD counts of a sample, `None` when it has none.
+    fn reads(
+        calls: &mut Calls<'_>,
+        format: &[u8],
+        col: usize,
+    ) -> std::result::Result<Option<Vec<i128>>, Die> {
+        Ok(field(calls, format, col, b"AD")?.map(|ad| {
+            ad.split(|&c| c == b',')
+                .map(|x| to_int(Some(x)).unwrap_or(0))
+                .collect()
+        }))
+    }
     let three = [ch.col, ch.fcol, ch.mcol];
+    // the child and the parents who pass this site on
+    let counts = [true, need.father, need.mother];
     let mut dp = [None; 3];
     let mut gq = [None; 3];
     for (k, &c) in three.iter().enumerate() {
@@ -545,21 +601,34 @@ fn de_novo_row(
         gq[k] = to_int(field(calls, format, c, b"GQ")?);
     }
     let mut ab = None;
-    if let Some(ad) = field(calls, format, ch.col, b"AD")? {
-        let n: Vec<i128> = ad
-            .split(|&c| c == b',')
-            .map(|x| to_int(Some(x)).unwrap_or(0))
-            .collect();
+    if let Some(n) = reads(calls, format, ch.col)? {
         let tot: i128 = n.iter().sum();
         if tot != 0 {
             ab = n.get(novel[0] as usize).map(|&v| v as f64 / tot as f64);
         }
     }
     let het = cset.len() == 2;
-    let mut good = gq.iter().all(|x| x.is_some_and(|v| v >= MIN_GQ))
-        && dp.iter().all(|x| x.is_some_and(|v| v >= MIN_DP));
+    let mut good = (0..3)
+        .filter(|&k| counts[k])
+        .all(|k| gq[k].is_some_and(|v| v >= MIN_GQ) && dp[k].is_some_and(|v| v >= MIN_DP));
     if het && ab.is_none_or(|ab| !(HET_AB.0 <= ab && ab <= HET_AB.1)) {
         good = false;
+    }
+    // a parent called without the new allele whose reads still show it
+    // (a mosaic parent, or a missed call): not a clean de novo
+    for k in (1..3).filter(|&k| counts[k]) {
+        if let Some(n) = reads(calls, format, three[k])? {
+            let alt: i128 = novel
+                .iter()
+                .map(|&a| n.get(a as usize).copied().unwrap_or(0))
+                .sum();
+            let tot: i128 = n.iter().sum();
+            if alt >= PARENT_ALT_READS
+                || (tot > 0 && alt as f64 / tot as f64 >= PARENT_ALT_FRACTION)
+            {
+                good = false;
+            }
+        }
     }
     let mut alts = Vec::new();
     for &i in novel {
@@ -764,17 +833,22 @@ pub fn run(a: &Args) -> Result<()> {
     write_file(&out_dir.join("de_novo.tsv"), dn.as_bytes())?;
     let mut comp: Vec<[String; 7]> = Vec::new();
     for ch in &children {
-        let mut by_gene: IndexMap<&str, Vec<(&str, Option<&str>)>> = IndexMap::new();
-        for (genes, var, origin) in &ch.cands {
+        // variant, origin, VCF line
+        type Cand<'a> = (&'a str, Option<&'a str>, u64);
+        let mut by_gene: IndexMap<&str, Vec<Cand<'_>>> = IndexMap::new();
+        for (genes, var, origin, site) in &ch.cands {
             for g in genes.iter() {
-                by_gene.entry(g).or_default().push((var, *origin));
+                by_gene.entry(g).or_default().push((var, *origin, *site));
             }
         }
         by_gene.sort_keys();
         for (g, list) in &by_gene {
-            for (i, (v1, o1)) in list.iter().enumerate() {
-                for (v2, o2) in &list[i + 1..] {
+            for (i, (v1, o1, s1)) in list.iter().enumerate() {
+                for (v2, o2, s2) in &list[i + 1..] {
                     let phase = match (o1, o2) {
+                        // the two ALTs of one diploid 1/2 call sit on the
+                        // two copies, whoever passed them on
+                        _ if s1 == s2 => "in trans",
                         (Some(a), Some(b)) if a == b => "in cis",
                         (Some(_), Some(_)) => "in trans",
                         _ => "unknown",
@@ -964,10 +1038,14 @@ fn markdown(
                 String::new(),
                 format!(
                     "De novo candidates (an allele neither parent has): {}, {good} of them with GQ >= {MIN_GQ} and \
-                     depth >= {MIN_DP} in all three and, for a heterozygous call, an allele balance of {} to {} \
-                     (`de_novo.tsv`). Most candidates of a genome are genotype errors; a candidate that \
-                     matters needs confirming by another method.",
+                     depth >= {MIN_DP} in the child and in each parent who passes the site on (on a son's X \
+                     outside the pseudoautosomal regions the mother, on his Y the father), fewer than \
+                     {PARENT_ALT_READS} reads and under {}% of the reads on the new allele in each such \
+                     parent and, for a heterozygous call, an allele balance of {} to {} (`de_novo.tsv`). \
+                     Most candidates of a genome are genotype errors; a candidate that matters needs \
+                     confirming by another method.",
                     ch.de_novo.len(),
+                    fixed(100.0 * PARENT_ALT_FRACTION, 0),
                     fixed(HET_AB.0, 2),
                     fixed(HET_AB.1, 2)
                 ),

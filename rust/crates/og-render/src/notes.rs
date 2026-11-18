@@ -17,7 +17,7 @@ pub const CALLABILITY_NOTE: &str = "A gene listed as not read could not be read 
 pub const HLA_NOTE: &str = "HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a \
     T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).";
 pub const EH_NOTE: &str = "Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion \
-    cannot be sized. Disease thresholds: docs/interpreting-results.md.";
+    cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.";
 pub const TELOMERE_NOTE: &str = "Relative telomere content (intratelomeric reads per million reads with 48-52% GC), not \
     a telomere length: compare it only with samples of a similar age sequenced on the same \
     platform (docs/10-telomere-analysis.md).";

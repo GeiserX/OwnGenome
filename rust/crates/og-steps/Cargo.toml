@@ -6,6 +6,12 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# A planted fault: the rules table the tests of tests/genome_traits.rs read
+# carries WRONG_REFERENCE as two reference-block labels, and those two tests
+# must fail (the control in .github/workflows/guard.yml).
+fault-wrong-reference = []
+
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
