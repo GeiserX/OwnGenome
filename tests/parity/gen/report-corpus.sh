@@ -12,6 +12,8 @@
 #                 re-check, the manifest with and without a release, a
 #                 sample name with characters HTML escapes and characters
 #                 outside ASCII, counts missing or of another type.
+#   a-<what>.json case c-full's summary changed one way each, for the
+#                 ancestry chapter and the PRS card (see that block below).
 # py/ holds the modules render_report.py imports, as they were at the
 # oracle's commit (tests/parity/oracle.ref, report-render).
 #
@@ -334,6 +336,77 @@ cmut sf-notes '.sections.clinical.data.acmg_sf.two_hit_note = "carrier list <unr
 cmut clinical-escape '.sections.clinvar.data.hits[0].gene = "A<&>'"'"'\"" | .sections.carrier.data.carriers[0].condition = "x <y> & z"
   | .sections.clinical.data.acmg_sf.clinvar_hits[0].gene = "<b>"'
 cmut since-clinical '.new_since = {"previous_utc": "2026-01-01T00:00:00Z", "sections": ["clinvar", "carrier", "slivar"]}'
+# --- the ancestry chapter and the PRS card, from case c-full -----------------------
+# a-<what>.json: c-full without its one PRS row that has no numbers (the
+# Python's HTML report cannot render it), changed one way each: every state,
+# a planted escape in the haplogroup links and names, a painting with its
+# legend and the groups left out, the raw and the sex-specific scores, the Y
+# placement's ancestral calls, new_since, and numbers where the summary
+# writes text (a text-only case: the Python's HTML report cannot render it).
+# A planted address that is not a web address (javascript:) is no case: og
+# shows it as text where the Python made it a link; the cargo test
+# ancestry_haplogroups.rs covers it. Nor is a legend colour that is not
+# #rrggbb: og shows it grey where the Python put it in the CSS; the cargo
+# test ancestry_fine.rs covers it, and a-escape plants a mixed-case one.
+[ -s c-full.json ] || { echo "report-corpus.sh: og summary collect wrote no c-full.json" >&2; exit 1; }
+abase=abase.tmp
+jq -c '.sections.prs.data.scores |= map(select(.score != null))' c-full.json > "$abase"
+amut() { jq -c "$2" "$abase" > "a-$1.json"; }
+akeys='("ancestry_fine", "haplogroup", "y_haplogroup", "y_tree", "y_str", "archaic", "ancient", "prs")'
+amut full '.'
+for st in stale failed unreadable missing partial; do
+  amut "$st" "reduce $akeys as \$k (.; .sections[\$k].state = \"$st\" | .sections[\$k].note = \"why: <b>&'\\\"\")"
+done
+amut escape '.sections.haplogroup.data.haplogroup = "H<b>&\"x'"'"'"
+  | .sections.haplogroup.data.explore[0].url = "https://discover.familytreedna.com/mtdna/\"><script>alert(1)</script>"
+  | .sections.haplogroup.data.explore[1].name = "<i>YFull</i> & co"
+  | .sections.haplogroup.data.contamination_status = "YES" | .sections.haplogroup.data.contamination_level = "0.4<"
+  | .sections.y_haplogroup.data.explore[1].url = "https://www.yfull.com/tree/\"x\"&y/"
+  | .sections.y_tree.data.path[0].Branch = "<R>" | .sections.y_tree.data.path[0].Ancestral_SNPs = "M1&M2"
+  | .sections.y_str.data.markers[0].marker = "DYS<393>"
+  | .sections.ancient.data.nearest[0].group = "Spain_<BA>" | .sections.ancient.data.nearest[0].locality = "A & B"
+  | .sections.ancestry_fine.data.continent[0].group = "West <Eurasia>"
+  | .sections.ancestry_fine.data.legend[0].colour = "#AbCdEf" | .sections.ancestry_fine.data.legend[1].group = "<b>W</b>"
+  | .sections.archaic.data.longest = ["chr1:1-2 <GENE>"]
+  | .sections.prs.data.scores[0].condition = "C<A>D & \"x\"" | .sections.prs.data.scores[0].effect = "HR <1.5>"'
+amut painting '.sections.ancestry_fine.data.painting = [{"code": "AFR", "group": "Africa", "fraction": 0.3},
+    {"code": "WEA", "group": "West Eurasia", "fraction": 0.7}]
+  | .sections.ancestry_fine.data.not_painted = []
+  | .sections.ancestry_fine.data.left_out = [{"group": "Oceania (continental group)"}, {"group": "Oceania (regional group)"},
+    {"group": "Papua (regional group)"}, {"group": "Odd (name) (x group)"}, {"group": "Plain"}]
+  | .sections.ancestry_fine.data.min_references = 12
+  | .sections.ancestry_fine.data.continent += [{"group": "Small", "fraction": 0.009, "low": 0.001, "high": 0.02}]
+  | .sections.ancestry_fine.data.region += [{"group": "Wide", "fraction": 0.005, "low": 0.0, "high": 0.06},
+    {"group": "Narrow", "fraction": 0.005, "low": 0.0, "high": 0.02}, {"group": "Unfit", "fraction": null, "low": null, "high": null}]'
+amut no-painting '.sections.ancestry_fine.data.painting = [] | .sections.ancestry_fine.data.not_painted = []
+  | .sections.ancestry_fine.data.left_out = [] | .sections.ancestry_fine.data.painting_png = ""'
+amut prs-raw '.sections.prs.data.adjusted = false | del(.sections.prs.data.ancestry)
+  | .sections.prs.data.scores |= map(.percentile = "" | .evaluated_in = null)'
+amut prs-sex '.sections.prs.data.ancestry = {"population": "", "panel": "", "low_confidence": "True"}
+  | .sections.prs.data.scores = [
+    {"condition": "Prostate", "pgs_id": "PGS2", "score": "1", "matched": "5", "total": "6", "chrx": "0",
+     "applies_to": "male", "sex_check": "not applicable to the declared sex", "percentile": "", "group": "",
+     "evaluated_in": ["EUR"], "effect": ""},
+    {"condition": "Breast", "pgs_id": "PGS3", "score": "2", "matched": "7", "total": "9", "chrx": "3 left out",
+     "applies_to": "female", "sex_check": "no sex declared", "percentile": "40", "group": "AFR",
+     "evaluated_in": [], "effect": ""},
+    {"condition": "Height", "pgs_id": "PGS4", "score": "3", "matched": "1", "total": "2", "chrx": "",
+     "applies_to": "", "sex_check": "", "percentile": "60", "group": "AFR", "evaluated_in": ["EUR", "AFR"],
+     "effect": ""}]'
+amut y-calls '.sections.y_tree.data.ancestral_in_terminal = "M1,M2" | .sections.y_tree.data.outvoted_ancestral = null
+  | .sections.y_tree.data.path = [] | .sections.y_str.data.markers |= map(.count = "")
+  | .sections.ancient.data.nearest = [] | .sections.ancient.data.plot_svg = ""
+  | .sections.archaic.data.longest = []
+  | .sections.haplogroup.data.explore = [] | del(.sections.haplogroup.data.contamination_status)
+  | .sections.y_haplogroup.data.explore = []'
+amut since '.new_since = {"previous_utc": "2026-01-01T00:00:00Z", "sections": ["y_str", "prs", "haplogroup"]}'
+amut numbers '.sections.y_str.data.markers[0].count = 13 | .sections.y_str.data.markers[1].panel = true
+  | .sections.ancient.data.nearest[0].rank = 1 | .sections.ancient.data.nearest[1].n = 5.5
+  | .sections.y_tree.data.path[0].Level = 1 | .sections.y_tree.data.path[1].Derived = 2.0
+  | .sections.archaic.data.neanderthal_bp = 51234567.0 | .sections.archaic.data.denisovan_bp = true
+  | .sections.prs.data.scores[0].condition = 7 | .sections.prs.data.scores[1].score = 0.25
+  | .sections.ancestry_fine.data.continent[1].fraction = 1'
+rm -f "$abase"
 
 # --- the oracle -----------------------------------------------------------------------
 cat > oracle.sh << 'ORACLE'
@@ -355,6 +428,7 @@ PORTED="$PORTED pharmcat cpic cyp2d6 hla mito "
 # port-report-optin
 PORTED="${PORTED}exomiser mei vntyper chip mosaic-mca locityper roh telomere viral "
 PORTED="${PORTED}callability clinvar clinical-filter cpsr slivar carrier-list couple "
+PORTED="${PORTED}ancestry-fine mt-haplogroup y-chromosome archaic ancient prs "
 while [ $# -gt 0 ]; do
   case "$1" in
     -o)
@@ -371,8 +445,9 @@ done
 ORACLE
 
 # html.awk: drops each section not in keep (its line in the contents and its
-# frame) and every chart, then each chapter with no section left (its
-# contents entry and its body), and the gene and rsID appendix.
+# frame) and every chart (og report charts will write them), then each
+# chapter with no section left (its contents entry and its body), and the
+# gene and rsID appendix.
 cat > html.awk << 'AWK'
 function wanted(line,   id) {
   if (!match(line, /id="[^"]*"/) && !match(line, /href="#[^"]*"/)) return 1
@@ -389,6 +464,7 @@ END {
     # The charts are not ported yet (port-report-charts): drop their figures.
     if (l ~ /^    <figure class="chart">/) continue
     if (l ~ /^        <li><a href="#/ && !wanted(l)) continue
+    if (l ~ /^    <figure class="chart">/) continue
     if (l ~ /^  <section class="sec[^"]*" id="/ && !wanted(l)) {
       while (lines[i] != "  </section>") i++
       continue
@@ -414,7 +490,10 @@ AWK
 
 # text.awk: drops each section block not in keep, then each chapter left
 # with no block. A block starts at its "## " title; the titles of the kept
-# sections are listed here, as render_report.py writes them.
+# sections are listed here, as render_report.py writes them. A PRS row
+# whose counts the summary has as null reads "not available", as og writes
+# it; render_report.py writes "None" there (and stops its HTML report on
+# that row).
 cat > text.awk << 'AWK'
 BEGIN {
   rule = sprintf("%80s", ""); gsub(/ /, "#", rule)
@@ -433,8 +512,12 @@ BEGIN {
   title["## ClinVar Pathogenic Screen"] = "clinvar"; title["## Clinical Variant Filter"] = "clinical-filter"
   title["## Cancer Predisposition Screening (CPSR)"] = "cpsr"; title["## Variant Prioritization (slivar)"] = "slivar"
   title["## Carrier List (this sample)"] = "carrier-list"; title["## Couple Carrier Screen (step 39)"] = "couple"
+  title["## Fine-Grained Ancestry (ADMIXTURE, RFMix)"] = "ancestry-fine"; title["## Mitochondrial Haplogroup"] = "mt-haplogroup"
+  title["## Y-Chromosome Haplogroup (Yleaf)"] = "y-chromosome"; title["## Y Placement on the Current Public Tree"] = "y-chromosome"
+  title["## Y-STR Markers (HipSTR)"] = "y-chromosome"; title["## Archaic Ancestry (IBDmix, step 43)"] = "archaic"
+  title["## Ancient Populations (AADR PCA, step 44)"] = "ancient"; title["## Polygenic Risk Scores"] = "prs"
 }
-{ lines[++n] = $0 }
+{ sub(/ None \(None\/None variants matched\) /, " not available (not available/not available variants matched) "); lines[++n] = $0 }
 END {
   # The end part (steps not run onward) and the head (before the first
   # banner) stay; chapters are banner, title, banner, blank, then blocks.

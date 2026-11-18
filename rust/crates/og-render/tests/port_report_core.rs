@@ -260,9 +260,12 @@ fn both_reports_follow_the_chapter_order() {
         n >= 4 && shown[..2] == ["qc", "variants"] && shown[n - 2..] == ["not-run", "not-assessed"],
         "{shown:?}"
     );
-    // ROH and telomere content show a card whether or not their step ran.
+    // ROH, telomere content and the mitochondrial haplogroup show a card
+    // whether or not their step ran.
     assert!(
-        shown.contains(&"roh") && shown.contains(&"telomere"),
+        ["roh", "telomere", "mt-haplogroup"]
+            .iter()
+            .all(|s| shown.contains(s)),
         "{shown:?}"
     );
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
