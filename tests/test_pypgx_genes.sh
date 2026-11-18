@@ -52,18 +52,34 @@ curl -sS --fail --retry 4 --retry-delay 5 --max-time 60 -o "$GT" \
 # check_table TABLE: 0 when the bam rows are exactly pypgx's SV=TRUE genes and
 # every row is a pypgx target gene
 check_table() {
-  python3 - "$GT" "$1" <<'PY'
-import csv, sys
-gt = {r["Gene"]: r for r in csv.DictReader(open(sys.argv[1]))}
-rows = [l.rstrip("\n").split("\t") for l in open(sys.argv[2]) if l.strip() and not l.startswith("#")][1:]
-sv = {g for g, r in gt.items() if r["SV"] == "TRUE"}
-bam = {r[0] for r in rows if r[1] == "bam"}
-errs = [f"{g} is not a pypgx target gene" for g in (r[0] for r in rows) if gt.get(g, {}).get("Target") != "TRUE"]
-errs += [f"{g} is a bam row but pypgx has no copy-number model for it (SV=FALSE)" for g in sorted(bam - sv)]
-errs += [f"{g} has a copy-number model (SV=TRUE) but is not a bam row" for g in sorted(sv - bam)]
-print("\n".join(errs) if errs else f"{len(bam)} bam rows = pypgx's {len(sv)} SV genes")
-sys.exit(1 if errs else 0)
-PY
+  # pypgx's gene table is CSV; the columns read here (Gene, Target, SV) come
+  # before its first quoted field, so a comma split reads them.
+  awk -F'\t' '
+    NR == FNR {
+      n = split($0, f, ",")
+      if (FNR == 1) { for (i = 1; i <= n; i++) col[f[i]] = i; if (!col["Gene"] || !col["Target"] || !col["SV"]) { print "gene-table.csv has no Gene, Target or SV column"; bad = 2; exit 2 }; next }
+      g = f[col["Gene"]]; target[g] = f[col["Target"]]
+      if (f[col["SV"]] == "TRUE") sv[g] = 1; else delete sv[g]
+      next
+    }
+    !/[^ \t\r]/ || /^#/ { next }
+    !header++ { next }
+    { rows[++nr] = $1; if ($2 == "bam") bam[$1] = 1 }
+    END {
+      if (bad) exit bad
+      for (g in sv) nsv++
+      for (g in bam) nbam++
+      for (i = 1; i <= nr; i++) if (target[rows[i]] != "TRUE") errs[++ne] = rows[i] " is not a pypgx target gene"
+      m = 0; for (g in bam) if (!(g in sv)) x[++m] = g
+      sort(x, m); for (i = 1; i <= m; i++) errs[++ne] = x[i] " is a bam row but pypgx has no copy-number model for it (SV=FALSE)"
+      m = 0; for (g in sv) if (!(g in bam)) x[++m] = g
+      sort(x, m); for (i = 1; i <= m; i++) errs[++ne] = x[i] " has a copy-number model (SV=TRUE) but is not a bam row"
+      if (!ne) { print (nbam + 0) " bam rows = pypgx'\''s " (nsv + 0) " SV genes"; exit 0 }
+      for (i = 1; i <= ne; i++) print errs[i]
+      exit 1
+    }
+    function sort(a, n,   i, j, t) { for (i = 2; i <= n; i++) { t = a[i]; for (j = i - 1; j >= 1 && a[j] > t; j--) a[j + 1] = a[j]; a[j + 1] = t } }
+  ' "$GT" "$1"
 }
 if out=$(check_table "$CAT"); then ok "$out"; else bad "the shipped table: $out"; fi
 { cat "$CAT"; printf 'SLC28A3\tbam\tyes\t.\tnone\tno\n'; } > "${WORK}/planted-slc28a3.tsv"

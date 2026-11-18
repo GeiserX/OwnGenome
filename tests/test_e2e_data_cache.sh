@@ -98,41 +98,21 @@ expect "catalogs: a file that does not match its pin fails" 1 catalogs
 # mirror is the control: it fails at once, with no budget message.
 SL="${T}/slow"
 mkdir -p "$SL"
-cat > "${SL}/server.py" <<'EOF'
-import http.server, os, sys, time
-MODE = sys.argv[1]
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        if MODE == "404":
-            self.send_error(404); return
-        if MODE != "slow":
-            f = os.path.join(MODE, os.path.basename(self.path))
-            if not os.path.isfile(f):
-                self.send_error(404); return
-            data = open(f, "rb").read()
-            self.send_response(200)
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data); return
-        self.send_response(200)
-        self.send_header("Content-Length", str(10 ** 8))
-        self.end_headers()
-        try:
-            while True:
-                self.wfile.write(b"x" * 512); self.wfile.flush(); time.sleep(0.25)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-    def log_message(self, *a):
-        pass
-s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
-print(s.server_address[1], flush=True)
-s.serve_forever()
-EOF
+# The mirror is og dev stub-http, one rule per mode. Guard's unit tests set OG.
+OG=${OG:-${REPO}/bin/og}
+"$OG" version > /dev/null 2>&1 || { echo "FAIL: og is needed to run this test (OG, or bin/og: scripts/setup.sh --og)"; exit 1; }
+mirror() {
+  case "$1" in
+    404) echo '*=404' ;;
+    slow) echo '*=drip:100000000:512:250' ;;
+    *) echo "*=flat:$1" ;;
+  esac
+}
 # fill TAG MODE DATA_BUDGET MIRROR_BUDGET: "EXIT SECONDS" of --data-fill pgs
 # against the mirror; its log in ${SL}/TAG.log, the entry in ${SL}/TAG.cache.
 fill() {
   local port pid rc=0 t0
-  python3 "${SL}/server.py" "$2" > "${SL}/port.$1" & pid=$!
+  "$OG" dev stub-http "$(mirror "$2")" > "${SL}/port.$1" & pid=$!
   for _ in $(seq 50); do [ -s "${SL}/port.$1" ] && break; sleep 0.1; done
   port=$(head -n 1 "${SL}/port.$1")
   t0=$(date +%s)

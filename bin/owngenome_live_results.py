@@ -92,7 +92,7 @@ def register(app):
             page = f.read()
         page = (page.replace("{{assets}}", "/assets").replace("{{run}}", html.escape(run["name"]))
                 .replace("{{finding}}", html.escape(fid)).replace("{{mode}}", "live"))
-        app.log("finding", run["name"], fid, 200)
+        app.log("finding", run["name"], "-", 200)
         return req.send_body(200, "text/html; charset=utf-8", page)
 
     # auth=False: finding() asks for the login itself, so a bookmarked finding leads to the login form.
