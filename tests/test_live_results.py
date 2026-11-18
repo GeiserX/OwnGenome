@@ -5,7 +5,7 @@
 Checks:
   1. render_report.SECTION_NOTES names a caveat for every section id of CHAPTERS,
      and each name is a text constant of bin/render_report.py;
-  2. results.json of DEMO-001 (tests/demo/make_demo_sample.py, collect_summary):
+  2. results.json of DEMO-001 (og dev demo-sample, collect_summary):
      the seven chapters with every section id once, and each card's caveat is
      its SECTION_NOTES constants, word for word, never empty;
   3. the wording gate: no string of results.json, of family.json
@@ -31,7 +31,7 @@ Checks:
      secondary-findings list, a carrier list not made and an unparsed PharmCAT
      report as sentences (never zero counts), an unsized "normal" locus as not
      sized, AnnotSV's exon-edge check, a genotype rule and a deep intronic call;
-  8. the veil's tags on DEMO-003 (make_demo_sample.py --sample DEMO-003, with its
+  8. the veil's tags on DEMO-003 (og dev demo-sample --sample DEMO-003, with its
      planted secondary finding and class 5 deletion): the ClinVar row and viewer
      link of the planted hit, its genome-chart tick and its review-star bar carry
      the secondary finding's id, the deletion's span carries its own, the search
@@ -349,12 +349,23 @@ def server_problems(port, state):
     return out
 
 
+# DEMO-003's planted results to act on, as og dev demo-sample writes them (PLANTED in
+# rust/crates/og-dev/src/demo/clinical_clinvar.rs): the gene, the ClinVar hit and the class 5 deletion.
+PLANTED_GENE = "KCNH2"
+PLANTED_HIT = ("chr7", 150960000)
+PLANTED_SV = ("chr7", 150955000, 150965000)
+
+
+def demo_sample(root, *args):
+    """og dev demo-sample --genome-dir ROOT ARGS, with the og the tests use."""
+    from og_binary import og_binary
+    subprocess.run([og_binary(), "dev", "demo-sample", "--genome-dir", root, "--repo", REPO, *args], check=True,
+                   stdout=subprocess.DEVNULL)
+
+
 def veil_problems(res, idx):
     """What is wrong with the veil's tags of DEMO-003's results.json and search index."""
-    import make_demo_sample
-    gene = make_demo_sample.PLANTED["gene"]
-    c, p, _, _ = make_demo_sample.PLANTED["hit"]
-    sv_c, a, b = make_demo_sample.PLANTED["sv"]
+    gene, (c, p), (sv_c, a, b) = PLANTED_GENE, PLANTED_HIT, PLANTED_SV
     act = [f["id"] for f in res["findings"] if f["level"] == "act"]
     sf = next((i for i in act if i.startswith("sf-")), None)
     sv = next((i for i in act if i.startswith("sv-")), None)
@@ -500,8 +511,7 @@ def main():
         # 2.
         root = os.path.join(work, "root")
         os.makedirs(root)
-        subprocess.run([sys.executable, os.path.join(REPO, "tests", "demo", "make_demo_sample.py"), "--genome-dir", root,
-                        "--records", "2000"], check=True, stdout=subprocess.DEVNULL)
+        demo_sample(root, "--records", "2000")
         d = os.path.join(root, SAMPLE)
         summary = collect_summary.collect(SAMPLE, d)
         with open(os.path.join(d, "summary.json"), "w") as f:
@@ -562,11 +572,8 @@ def main():
 
         # 8.
         import results_index
-        sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
         check("8. DEMO-001, with no result to act on, has no veil tag", res.get("veil") == {}, res.get("veil"))
-        subprocess.run([sys.executable, os.path.join(REPO, "tests", "demo", "make_demo_sample.py"), "--genome-dir", root,
-                        "--records", "2000", "--sample", "DEMO-003", "--sex", "male", "--seed", "3"], check=True,
-                       stdout=subprocess.DEVNULL)
+        demo_sample(root, "--records", "2000", "--sample", "DEMO-003", "--sex", "male", "--seed", "3")
         d3 = os.path.join(root, "DEMO-003")
 
         def tagged(sample_dir):

@@ -20,8 +20,9 @@
 //!      `og cn call --table` writes the metric table and exits 0; a table
 //!      with other regions, or a short row, in either input exits 2, and so
 //!      does a missing `--bedcov-mapq1`;
-//!   8. the demo sample's HBA table (`tests/demo/make_demo_sample.py`) is the
-//!      one `og cn call` writes for the demo's depths.
+//!   8. the demo sample's HBA table (`og dev demo-sample`, the literals of
+//!      `rust/crates/og-dev/src/demo/sv.rs`) is the one `og cn call` writes
+//!      for the demo's depths.
 //!
 //! This was `tests/test_hba_copy_number.py`.
 
@@ -400,16 +401,22 @@ fn call_refuses_other_regions_or_a_short_row_in_either_table() {
     }
 }
 
-/// The `{"name": number, ...}` literal assigned to `var` in `src`.
-fn py_dict(src: &str, var: &str) -> Depth {
-    let line = src
-        .lines()
-        .find(|l| l.starts_with(&format!("{var} = {{")))
-        .unwrap_or_else(|| panic!("the demo builder has no {var} line"));
-    let body = line.split_once('{').unwrap().1.rsplit_once('}').unwrap().0;
-    body.split(',')
+/// The demo builder's source: `og dev demo-sample` writes step 35's HBA
+/// table from these literals.
+const DEMO_HBA: &str = "rust/crates/og-dev/src/demo/sv.rs";
+
+/// The `[("name", number), ...]` array assigned to `pub const VAR` in `src`.
+fn rust_pairs(src: &str, var: &str) -> Depth {
+    let start = src
+        .find(&format!("pub const {var}: "))
+        .unwrap_or_else(|| panic!("the demo builder has no {var} array"));
+    let rest = &src[start..];
+    let body = &rest[rest.find("= [").unwrap() + 3..rest.find("];").unwrap()];
+    body.split('(')
+        .skip(1)
         .map(|kv| {
-            let (k, v) = kv.split_once(':').unwrap();
+            let kv = kv.split(')').next().unwrap();
+            let (k, v) = kv.split_once(',').unwrap();
             let k = k.trim().trim_matches('"');
             let name = ["flank_left", "HBA2", "HBA1", "flank_right"]
                 .into_iter()
@@ -420,13 +427,14 @@ fn py_dict(src: &str, var: &str) -> Depth {
         .collect()
 }
 
-/// The string the parenthesised literals assigned to `var` in `src` join to.
-fn py_str(src: &str, var: &str) -> String {
+/// The string the `concat!` of literals assigned to `pub const VAR` in
+/// `src` joins to.
+fn rust_concat(src: &str, var: &str) -> String {
     let start = src
-        .find(&format!("\n{var} = ("))
+        .find(&format!("pub const {var}: &str = concat!("))
         .unwrap_or_else(|| panic!("the demo builder has no {var} literal"));
     let rest = &src[start..];
-    let body = &rest[rest.find('(').unwrap() + 1..rest.find(")\n").unwrap()];
+    let body = &rest[rest.find("concat!(").unwrap() + 8..rest.find(");").unwrap()];
     let mut out = String::new();
     for piece in body.split('"').skip(1).step_by(2) {
         out.push_str(&piece.replace("\\t", "\t").replace("\\n", "\n"));
@@ -436,10 +444,12 @@ fn py_str(src: &str, var: &str) -> String {
 
 #[test]
 fn the_demo_hba_table_is_what_og_cn_call_writes_for_its_depths() {
-    let src = std::fs::read_to_string(format!("{REPO}/tests/demo/make_demo_sample.py")).unwrap();
-    let depth = py_dict(&src, "HBA_DEPTH");
-    let q1 = py_dict(&src, "HBA_Q1");
-    let want = py_str(&src, "HBA_TABLE");
+    let src = std::fs::read_to_string(format!("{REPO}/{DEMO_HBA}")).unwrap();
+    let depth = rust_pairs(&src, "HBA_DEPTH");
+    let q1 = rust_pairs(&src, "HBA_Q1");
+    assert_eq!(depth.len(), 4, "{depth:?}");
+    assert_eq!(q1.len(), 4, "{q1:?}");
+    let want = rust_concat(&src, "HBA_TABLE");
     assert!(want.starts_with("metric\tvalue\nstatus\t"), "{want:?}");
     let d = dir("demo");
     bedcov(&d.join("cov.tsv"), &depth);
