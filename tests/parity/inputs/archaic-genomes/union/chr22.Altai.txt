@@ -1,0 +1,2 @@
+ID	chrom	start	end	slod
+SAMPLE	22	100000	300000	5
