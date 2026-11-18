@@ -82,11 +82,15 @@ stranger_run() {
         "/genome/${SAMPLE}/expansion_hunter/${SAMPLE}_eh.vcf"
   else
     echo "Repeat catalog: bundled GRCh38 clinical catalog (variant_catalog_grch38.json)"
+    # The catalog sits in the stranger package, under the lib directory of
+    # the prefix the stranger command is installed in. Exactly one match, or
+    # the step stops.
     # shellcheck disable=SC2016  # the dollar signs are for the container's sh
     atomic_out "$OUT_VCF" run_in \
       --cpus 1 --memory 1g \
       "${STRANGER_IMAGE}" \
-      sh -c 'catalog=$(python -c "import os, stranger; print(os.path.join(os.path.dirname(stranger.__file__), \"resources\", \"variant_catalog_grch38.json\"))") &&
+      sh -c 'bin=$(command -v stranger) &&
+        catalog=$(find "${bin%/bin/*}/lib" -path "*/site-packages/stranger/resources/variant_catalog_grch38.json") &&
         [ -f "$catalog" ] || { echo "ERROR: no GRCh38 catalog in the Stranger image (${catalog:-not found})" >&2; exit 1; }
         exec stranger --repeats-file "$catalog" "$1"' \
       stranger "/genome/${SAMPLE}/expansion_hunter/${SAMPLE}_eh.vcf"
