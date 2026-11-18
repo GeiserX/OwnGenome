@@ -201,10 +201,12 @@ parascopy_b='{"smn1": {"text": "1"}, "cyp21a2": {"status": "not assessed", "reas
 parascopy_c='{"cyp21a2": {"status": "not assessed", "message": "", "reason": ""}, "cn_intervals": {"rows": 3,
   "by_status": {"not assessed": 3}}, "hba": {"status": "called", "alpha_globin_genes": "4"}}'
 mut genome-ok "$(sec expansions ok null "$eh") | $(sec lpa ok null "$lpa") | $(sec bloodtype ok null "$blood")
-  | $(sec traits ok null "$traits") | $(sec paralogs ok null "$paraphase") | $(sec parascopy ok null "$parascopy")"
+  | $(sec traits ok null "$traits") | $(sec paralogs ok null "$paraphase") | $(sec parascopy ok null "$parascopy")
+  | .sections.paralogs.data.smn1.paraphase = \"2\" | .sections.paralogs.data.smn1.agree = \"agree\""
 mut genome-stale "$(sec expansions stale '"from 2020"' "$eh") | $(sec lpa stale '"from <2020>"' "$lpa_null")
   | $(sec bloodtype stale '"old"' "$blood") | $(sec traits stale '"old"' "$traits")
   | $(sec paralogs stale '"old"' "$paraphase") | $(sec parascopy stale '"old"' "$parascopy_b")
+  | .sections.paralogs.data.smn1.agree = \"disagree\"
   | .sample = \"A&B <x>\" | .new_since = {\"previous_utc\": \"2026-01-01T00:00:00Z\",
     \"sections\": [\"traits\", \"parascopy\", \"expansions\", \"lpa\", \"bloodtype\"]}"
 mut genome-failed "$(sec expansions failed '"exit 1"' '{}') | $(sec lpa failed '"exit 2"' '{}')
@@ -215,10 +217,14 @@ mut genome-other "$(sec expansions weird null '{}') | $(sec traits weird null '{
 mut genome-stranger "$(sec expansions ok null '{"records": 0, "stranger": true, "flagged": [], "loci": []}')
   | $(sec parascopy failed '"exit 1"' '{}')"
 mut genome-outdated "$(sec expansions ok null '{"records": 1, "stranger": true, "stranger_outdated": true,
-  "loci": [{"locus": "AR", "repeat_count": "22"}]}') | $(sec parascopy ok null "$parascopy_c")"
+  "loci": [{"locus": "AR", "repeat_count": "22"}]}') | $(sec parascopy ok null "$parascopy_c")
+  | .sections.parascopy.data.cn_intervals.changes = [{\"name\": \"22q11.2 A-D\", \"locus\": \"x\",
+    \"chrom\": \"chr22\", \"start\": \"18912230\", \"end\": \"21465659\", \"copies\": \"1\", \"expected\": \"2\",
+    \"change\": \"deletion\"}, {\"name\": \"AZFc <b&r>\", \"locus\": \"y\", \"copies\": \"2\", \"expected\": \"1\",
+    \"change\": \"DUPLICATION\"}]"
 mut genome-no-stranger "$(sec expansions ok null '{"records": 2, "stranger": false, "no_status": 2,
   "not_graded": {}, "unsized": [], "intermediate": []}') | $(sec traits ok null '{"called": 0, "not_covered": 0,
-  "other_allele": 0, "rows": [], "rules": [], "apoe": []}')"
+  "other_allele": 0, "rows": [], "rules": [], "apoe": []}') | $(sec paralogs ok null "$paraphase")"
 rm -f "$base"
 
 # --- the oracle -----------------------------------------------------------------------
