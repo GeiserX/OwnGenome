@@ -747,9 +747,12 @@ pub fn gene_deletions(
                 if x.sv_type.as_deref() != Some("DEL") || x.common || !(isdigit(a) && isdigit(b)) {
                     continue;
                 }
-                // A call genotyped 0/0 is no deletion in this sample.
-                if let Some(gt) = x.gt.as_deref()
-                    && gt.replace('|', "/").split('/').all(|a| a == "0")
+                // Only a called ALT is a deletion in this sample: a GT of
+                // 0/0, ./., 0/. or none is no copy loss, so it pairs with
+                // nothing.
+                if x.gt
+                    .as_deref()
+                    .is_none_or(|gt| super::clinvar::allele_copies(gt).0 == 0)
                 {
                     continue;
                 }
