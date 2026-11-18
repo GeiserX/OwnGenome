@@ -312,6 +312,67 @@ pub enum Inline {
     Badge(String, Colour),
     /// Text in normal weight and a smaller size, for a reason or a remark.
     Quiet(String),
+    /// A fixed text written as it is, unescaped, as render_report.py's
+    /// stat() writes its value (an apostrophe stays an apostrophe).
+    Fixed(&'static str),
+}
+
+/// One cell of a table row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cell {
+    /// Plain text.
+    Text(String),
+    /// A coloured badge.
+    Badge(String, Colour),
+    /// Text with a second, smaller grey line under it.
+    Sub(String, String),
+    /// The Viewer cell: a link that opens the locus (`chrom:start` or
+    /// `chrom:start-end`) in the genome viewer; empty without a locus.
+    Viewer(Option<String>),
+}
+
+impl Cell {
+    /// The Viewer cell of `chrom`, `start` and `end`: empty when the chrom
+    /// or the start is empty, the end left out when it is the start.
+    pub fn viewer(chrom: &Value, start: &Value, end: Option<&Value>) -> Result<Cell, Malformed> {
+        if !truthy(chrom) || !truthy(start) {
+            return Ok(Cell::Viewer(None));
+        }
+        let start = py(start)?;
+        let mut at = format!("{}:{start}", py(chrom)?);
+        if let Some(end) = end.filter(|v| truthy(v)) {
+            let end = py(end)?;
+            if end != start {
+                at = format!("{at}-{end}");
+            }
+        }
+        Ok(Cell::Viewer(Some(at)))
+    }
+}
+
+/// A table: its column titles and rows. A table with a Viewer column (the
+/// rows end in a [`Cell::Viewer`]) is followed by the line saying how the
+/// viewer opens. `layout` says how its tags and rows sit on the page's lines.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Table {
+    pub head: Vec<String>,
+    pub rows: Vec<Vec<Cell>>,
+    pub viewer: bool,
+    pub layout: Layout,
+}
+
+/// How a table is laid out in the page's source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Layout {
+    /// The table tags and the head row on lines of their own, each row on a
+    /// line of its own, indented under the head.
+    #[default]
+    Indented,
+    /// The whole table on one line.
+    OneLine,
+    /// The table tags and the head row on lines of their own, the rows on
+    /// one line each with no indent.
+    RowLines,
 }
 
 /// One line of a card's body.
@@ -319,40 +380,16 @@ pub enum Inline {
 pub enum Line {
     /// A label and its value.
     Stat(String, Inline),
+    /// A table of rows.
+    Table(Table),
     /// A sentence under the numbers that is not a caveat.
     Note(String),
     /// A paragraph.
     Para(String),
     /// A plain bulleted list.
     List(Vec<String>),
-    /// A table of plain cells.
-    Table(Table),
     /// A warning in the stale box's style, among the card's lines.
     Warn(String),
-    /// The sentence that says how the Viewer column opens the reads.
-    ViewerNote,
-}
-
-/// A table: its column titles and rows of cells, each cell escaped once.
-/// With `viewer`, a last column opens each row's locus in the genome viewer
-/// (`chrom:start` or `chrom:start-end`); a row with `None` gets an empty
-/// cell.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Table {
-    pub head: Vec<String>,
-    pub rows: Vec<Vec<String>>,
-    pub viewer: Option<Vec<Option<String>>>,
-    pub layout: Layout,
-}
-
-/// How a table is laid out in the page's source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Layout {
-    /// The whole table on one line.
-    OneLine,
-    /// The table tags and the head row on lines of their own, the rows on
-    /// one line each with no indent.
-    RowLines,
 }
 
 /// One card: a title, the caveats shown under it, the notes saying its

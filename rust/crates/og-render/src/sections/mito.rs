@@ -7,8 +7,8 @@ use pycompat::json::Value;
 
 use crate::html;
 use crate::model::{
-    Card, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, Summary, Table, get, is_str,
-    need, num, py, truthy,
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, Summary, Table, get,
+    is_str, need, num, py, truthy,
 };
 use crate::notes::{MITO_COPIES_NOTE, MITO_DELETION_NOTE, MITO_NOTE, MITO_POLYC_NOTE};
 use crate::sections::pgx::{items, or_none, or_text, text_of};
@@ -351,34 +351,35 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         if let Some(vs) = variants {
             let vp = "sections.mito.data.annotation.variants[]";
             let mut rows = Vec::new();
-            let mut at = Vec::new();
             for v in items(Some(vs), ap)? {
-                let g = |k: &str| -> Result<String, Malformed> { or_none(get(v, k, vp)?) };
+                let g = |k: &str| -> Result<Cell, Malformed> {
+                    Ok(Cell::Text(or_none(get(v, k, vp)?)?))
+                };
                 let pos = need(v, "pos", vp)?;
                 rows.push(vec![
-                    format!(
+                    Cell::Text(format!(
                         "chrM:{} {}>{}",
                         py(pos)?,
                         py(need(v, "ref", vp)?)?,
                         py(need(v, "alt", vp)?)?
-                    ),
+                    )),
                     g("af")?,
                     g("clinvar_significance")?,
                     g("clinvar_review")?,
                     g("clinvar_condition")?,
                     g("gnomad_af_hom")?,
                     g("gnomad_af_het")?,
-                    if get(v, "polyc", vp)?.is_some_and(truthy) {
+                    Cell::Text(if get(v, "polyc", vp)?.is_some_and(truthy) {
                         "yes".into()
                     } else {
                         String::new()
-                    },
+                    }),
+                    Cell::Viewer(if truthy(pos) {
+                        Some(format!("chrM:{}", py(pos)?))
+                    } else {
+                        None
+                    }),
                 ]);
-                at.push(if truthy(pos) {
-                    Some(format!("chrM:{}", py(pos)?))
-                } else {
-                    None
-                });
             }
             body.push(Line::Table(Table {
                 head: [
@@ -394,10 +395,9 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                 .map(str::to_owned)
                 .to_vec(),
                 rows,
-                viewer: Some(at),
+                viewer: true,
                 layout: Layout::OneLine,
             }));
-            body.push(Line::ViewerNote);
         }
         body.push(Line::Note(format!(
             "ClinVar {}; gnomAD {}",

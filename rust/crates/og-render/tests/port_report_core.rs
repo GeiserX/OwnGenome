@@ -260,6 +260,11 @@ fn both_reports_follow_the_chapter_order() {
         n >= 4 && shown[..2] == ["qc", "variants"] && shown[n - 2..] == ["not-run", "not-assessed"],
         "{shown:?}"
     );
+    // ROH and telomere content show a card whether or not their step ran.
+    assert!(
+        shown.contains(&"roh") && shown.contains(&"telomere"),
+        "{shown:?}"
+    );
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
     assert_eq!(&shown[..n - 2], in_order.as_slice());
     assert_eq!(text_chapters(&txt), ["QUALITY"]);

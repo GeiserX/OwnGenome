@@ -36,8 +36,10 @@ case "$args" in
     mkdir -p "$d" && printf '#!/usr/bin/env python\n' > "${d}/runWorkflow.py" ;;
   *" bcftools stats "*)
     printf 'SN\t0\tnumber of samples:\t1\nSN\t0\tnumber of records:\t4242\n' ;;
-  *" import cnvpytor, os"*)
-    [ -n "${FAKE_CNVPYTOR_NO_DATA:-}" ] || echo /usr/local/lib/python3.12/site-packages/cnvpytor/data ;;
+  *"site-packages/cnvpytor/data"*)
+    # Like the real lookup, no data directory prints nothing and exits 1.
+    [ -z "${FAKE_CNVPYTOR_NO_DATA:-}" ] || exit 1
+    echo /usr/local/lib/python3.12/site-packages/cnvpytor/data ;;
   *" -view 1000 "*)
     cat > "${CASE_WORK}/view-stdin.txt" ;;
 esac

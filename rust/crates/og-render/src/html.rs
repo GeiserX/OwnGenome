@@ -10,9 +10,10 @@ use crate::chapters::{CHAPTERS, FrameState, LIMITS, Sec, step_of, writer};
 use crate::css::CSS;
 use crate::escape::e;
 use crate::model::{
-    Card, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table, py,
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table,
+    py,
 };
-use crate::notes::stale_note;
+use crate::notes::{VIEWER_NOTE, stale_note};
 use crate::sections::run;
 
 /// The Content-Security-Policy: nothing is fetched, images only inline,
@@ -50,6 +51,7 @@ pub fn offsite_link(url: &str, text: &str, why: &str) -> String {
 fn inline(v: &Inline) -> String {
     match v {
         Inline::Text(t) => e(t).into_owned(),
+        Inline::Fixed(t) => (*t).to_owned(),
         Inline::Badge(t, c) => badge(t, *c),
         Inline::Quiet(t) => format!(
             "<span style=\"font-weight:normal;font-size:13px\">{}</span>",
@@ -65,6 +67,7 @@ fn line(out: &mut Vec<String>, l: &Line) {
             e(label),
             inline(value)
         )),
+        Line::Table(t) => table(out, t),
         Line::Note(t) => out.push(format!("    <p class=\"note\">{}</p>", e(t))),
         Line::Para(t) => out.push(format!("    <p>{}</p>", e(t))),
         Line::List(items) => {
@@ -72,57 +75,63 @@ fn line(out: &mut Vec<String>, l: &Line) {
             out.extend(items.iter().map(|t| format!("      <li>{}</li>", e(t))));
             out.push("    </ul>".to_owned());
         }
-        Line::Table(t) => table(out, t),
         Line::Warn(t) => out.push(format!("    <div class=\"stale\">{}</div>", e(t))),
-        Line::ViewerNote => out.push(crate::notes::VIEWER_NOTE.to_owned()),
     }
 }
 
-/// The genome viewer's address on this computer (scripts/owngenome-view.sh);
-/// the part after `#` is the locus it opens at.
+/// The genome viewer on this computer, which a Viewer cell opens.
 pub const VIEWER_URL: &str = "http://127.0.0.1:8765/";
 
-/// A table's rows, each cell escaped, with the Viewer cell last when the
-/// table has that column.
+fn cell(c: &Cell) -> String {
+    match c {
+        Cell::Text(t) => format!("<td>{}</td>", e(t)),
+        Cell::Badge(t, colour) => format!("<td>{}</td>", badge(t, *colour)),
+        Cell::Sub(t, sub) => format!(
+            "<td>{}<br><span style=\"font-size:12px;color:#666\">{}</span></td>",
+            e(t),
+            e(sub)
+        ),
+        Cell::Viewer(None) => "<td></td>".to_owned(),
+        Cell::Viewer(Some(at)) => format!(
+            "<td><a class=\"locus\" href=\"{VIEWER_URL}#{0}\" target=\"_blank\" rel=\"noopener noreferrer\">{0}</a></td>",
+            e(at)
+        ),
+    }
+}
+
 fn table(out: &mut Vec<String>, t: &Table) {
     let mut head: String = t
         .head
         .iter()
-        .map(|c| format!("<th>{}</th>", e(c)))
+        .map(|h| format!("<th>{}</th>", e(h)))
         .collect();
-    if t.viewer.is_some() {
+    if t.viewer {
         head.push_str("<th>Viewer</th>");
     }
-    let rows: Vec<String> = t
+    let rows = t
         .rows
         .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            let mut row: String = r.iter().map(|c| format!("<td>{}</td>", e(c))).collect();
-            if let Some(v) = &t.viewer {
-                row.push_str(&match v.get(i).cloned().flatten() {
-                    Some(at) => format!(
-                        "<td><a class=\"locus\" href=\"{VIEWER_URL}#{0}\" target=\"_blank\" \
-                         rel=\"noopener noreferrer\">{0}</a></td>",
-                        e(&at)
-                    ),
-                    None => "<td></td>".to_owned(),
-                });
-            }
-            format!("<tr>{row}</tr>")
-        })
-        .collect();
+        .map(|r| format!("<tr>{}</tr>", r.iter().map(cell).collect::<String>()));
     match t.layout {
         Layout::OneLine => out.push(format!(
             "    <table><tr>{head}</tr>{}</table>",
-            rows.concat()
+            rows.collect::<String>()
         )),
+        Layout::Indented => {
+            out.push("    <table>".to_owned());
+            out.push(format!("      <tr>{head}</tr>"));
+            out.extend(rows.map(|r| format!("      {r}")));
+            out.push("    </table>".to_owned());
+        }
         Layout::RowLines => {
             out.push("    <table>".to_owned());
             out.push(format!("      <tr>{head}</tr>"));
-            out.push(rows.join("\n"));
+            out.push(rows.collect::<Vec<_>>().join("\n"));
             out.push("    </table>".to_owned());
         }
+    }
+    if t.viewer {
+        out.push(VIEWER_NOTE.to_owned());
     }
 }
 

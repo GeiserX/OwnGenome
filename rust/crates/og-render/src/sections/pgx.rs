@@ -6,7 +6,7 @@ use pycompat::json::Value;
 use pycompat::text::{lower, slice, upper};
 
 use crate::model::{
-    Card, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table,
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table,
     contains, get, is_str, need, py, truthy,
 };
 use crate::notes::{CPIC_NOTE, PGX_CALLERS_NOTE, PHARMCAT_NOTE, stale_note};
@@ -296,15 +296,15 @@ pub fn cpic_html(s: &Summary) -> Result<HtmlPart, Malformed> {
         let mut rows = Vec::new();
         for [g, d, p] in unusual(&sec)? {
             rows.push(vec![
-                text_of(g, "a CPIC gene")?,
-                text_of(d, "a CPIC diplotype")?,
-                text_of(p, "a CPIC phenotype")?,
+                Cell::Text(text_of(g, "a CPIC gene")?),
+                Cell::Text(text_of(d, "a CPIC diplotype")?),
+                Cell::Text(text_of(p, "a CPIC phenotype")?),
             ]);
         }
         let mut body = vec![Line::Table(Table {
             head: vec!["Gene".into(), "Diplotype".into(), "Phenotype".into()],
             rows,
-            viewer: None,
+            viewer: false,
             layout: Layout::RowLines,
         })];
         for x in items(Some(sec.need("warnings")?), "sections.cpic.data.warnings")? {

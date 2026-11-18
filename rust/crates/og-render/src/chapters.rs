@@ -171,25 +171,25 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "slivar" => None,
 
-        "exomiser" => None,
+        "exomiser" => Some((sections::exomiser::text, sections::exomiser::html)),
 
         "structural-variants" => None,
 
-        "mei" => None,
+        "mei" => Some((sections::mei::text, sections::mei::html)),
 
         "expansions" => None,
 
-        "vntyper" => None,
+        "vntyper" => Some((sections::vntyper::text, sections::vntyper::html)),
 
         "mito" => Some((sections::mito::text, sections::mito::html)),
 
         "lpa" => None,
 
-        "chip" => None,
+        "chip" => Some((sections::chip::text, sections::chip::html)),
 
         "mosaic" => None,
 
-        "mosaic-mca" => None,
+        "mosaic-mca" => Some((sections::mocha::text, sections::mocha::html)),
 
         "carrier-list" => None,
 
@@ -205,7 +205,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "hla" => Some((sections::hla::text, sections::hla::html)),
 
-        "locityper" => None,
+        "locityper" => Some((sections::locityper::text, sections::locityper::html)),
 
         "ancestry-fine" => None,
 
@@ -217,7 +217,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "ancient" => None,
 
-        "roh" => None,
+        "roh" => Some((sections::roh::text, sections::roh::html)),
 
         "traits-panel" => None,
 
@@ -225,9 +225,9 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "bloodtype" => None,
 
-        "telomere" => None,
+        "telomere" => Some((sections::telomere::text, sections::telomere::html)),
 
-        "viral" => None,
+        "viral" => Some((sections::viral::text, sections::viral::html)),
 
         "consumer-export" => None,
 
