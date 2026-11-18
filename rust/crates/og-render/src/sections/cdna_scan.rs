@@ -143,5 +143,6 @@ pub fn html_lines(d: &Section<'_>) -> Result<(Vec<Line>, Option<&'static str>), 
         viewer: true,
         layout: Layout::Indented,
     }));
+    out.push(Line::ViewerNote);
     Ok((out, Some(CDNA_SCAN_NOTE)))
 }

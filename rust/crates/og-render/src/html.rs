@@ -57,6 +57,11 @@ fn inline(v: &Inline) -> String {
             "<span style=\"font-weight:normal;font-size:13px\">{}</span>",
             e(t)
         ),
+        Inline::Break => "<br>".to_owned(),
+        Inline::Small(t) => format!(
+            "<br><span style=\"font-size:12px;color:#666\">{}</span>",
+            e(t)
+        ),
     }
 }
 
@@ -76,6 +81,14 @@ fn line(out: &mut Vec<String>, l: &Line) {
             out.push("    </ul>".to_owned());
         }
         Line::Warn(t) => out.push(format!("    <div class=\"stale\">{}</div>", e(t))),
+        Line::ViewerNote => out.push(VIEWER_NOTE.to_owned()),
+        Line::Folded(summary, t) => {
+            out.push(format!("    <details><summary>{}</summary>", e(summary)));
+            table(out, t);
+            if let Some(last) = out.last_mut() {
+                last.push_str("</details>");
+            }
+        }
         Line::Raw(t) => out.push(t.clone()),
     }
 }
@@ -87,11 +100,8 @@ fn cell(c: &Cell) -> String {
     match c {
         Cell::Text(t) => format!("<td>{}</td>", e(t)),
         Cell::Badge(t, colour) => format!("<td>{}</td>", badge(t, *colour)),
-        Cell::Sub(t, sub) => format!(
-            "<td>{}<br><span style=\"font-size:12px;color:#666\">{}</span></td>",
-            e(t),
-            e(sub)
-        ),
+        Cell::Sub(t, sub) => format!("<td>{}{}</td>", e(t), inline(&Inline::Small(sub.clone()))),
+        Cell::Parts(parts) => format!("<td>{}</td>", parts.iter().map(inline).collect::<String>()),
         Cell::Viewer(None) => "<td></td>".to_owned(),
         Cell::Viewer(Some(at)) => format!(
             "<td><a class=\"locus\" href=\"{VIEWER_URL}#{0}\" target=\"_blank\" rel=\"noopener noreferrer\">{0}</a></td>",
@@ -130,9 +140,6 @@ fn table(out: &mut Vec<String>, t: &Table) {
             out.push(rows.collect::<Vec<_>>().join("\n"));
             out.push("    </table>".to_owned());
         }
-    }
-    if t.viewer {
-        out.push(VIEWER_NOTE.to_owned());
     }
 }
 

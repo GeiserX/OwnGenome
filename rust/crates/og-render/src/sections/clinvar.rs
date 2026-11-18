@@ -11,24 +11,18 @@
 use pycompat::fmt::{general, ljust, percent};
 use pycompat::json::Value;
 
-use crate::escape::e;
 use crate::model::{
-    Card, Colour, HtmlPart, Inline, Line, Malformed, Section, Summary, contains, num, py, py_eq,
-    truthy,
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, Summary, Table,
+    contains, num, py, py_eq, truthy,
 };
-use crate::notes::{CDNA_SCAN_NOTE, CLINVAR_FREQ_NOTE, DEEP_INTRONIC_NOTE, VIEWER_NOTE};
-use crate::sections::{cdna, deep_intronic};
+use crate::notes::{CLINVAR_FREQ_NOTE, DEEP_INTRONIC_NOTE};
+use crate::sections::{cdna, cdna_scan, deep_intronic};
 use crate::{html, text};
 
 /// The hits the report lists, and the anchor of their table (the charts
 /// link a listed hit there).
 pub const HITS_SHOWN: usize = 50;
 pub const HITS_ANCHOR: &str = "clinvar-hits";
-
-/// The genome viewer every Viewer cell opens (`scripts/owngenome-view.sh`).
-pub const VIEWER_URL: &str = "http://127.0.0.1:8765/";
-/// The Viewer column's header cell.
-pub const VIEWER_TH: &str = "<th>Viewer</th>";
 
 // --- a dict of summary.json, read with Python's rules ---------------------------------
 
@@ -189,32 +183,7 @@ pub fn lj(v: &D<'_>, width: usize) -> Result<String, Malformed> {
     Ok(ljust(&t, width))
 }
 
-/// `html.escape(v)` of a value that must be a string.
-pub fn ev(v: &D<'_>) -> Result<String, Malformed> {
-    Ok(e(v.string()?).into_owned())
-}
-
 // --- the Viewer column ----------------------------------------------------------------
-
-/// The Viewer cell of a row: a link that opens `chrom:start`, or
-/// `chrom:start-end`, in the genome viewer; an empty cell without a
-/// position.
-pub fn viewer_td(chrom: &Value, start: &Value, end: Option<&Value>) -> Result<String, Malformed> {
-    if !truthy(chrom) || !truthy(start) {
-        return Ok("<td></td>".to_owned());
-    }
-    let mut at = format!("{}:{}", py(chrom)?, py(start)?);
-    if let Some(end) = end.filter(|v| truthy(v)) {
-        let end = py(end)?;
-        if end != py(start)? {
-            at += &format!("-{end}");
-        }
-    }
-    let at = e(&at);
-    Ok(format!(
-        "<td><a class=\"locus\" href=\"{VIEWER_URL}#{at}\" target=\"_blank\" rel=\"noopener noreferrer\">{at}</a></td>"
-    ))
-}
 
 fn name_char(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_' || c == b'.'
@@ -263,10 +232,10 @@ pub fn loci_in(text: &str) -> Vec<(&str, &str, Option<&str>)> {
 
 /// The Viewer cell of a row whose locus is written in its text: the span of
 /// every position on the first locus's chromosome.
-pub fn viewer_td_of(text: &str) -> Result<String, Malformed> {
+pub fn viewer_of(text: &str) -> Result<Cell, Malformed> {
     let found = loci_in(text);
     let Some((chrom, _, _)) = found.first().copied() else {
-        return Ok("<td></td>".to_owned());
+        return Ok(Cell::Viewer(None));
     };
     let pos: Vec<i128> = found
         .iter()
@@ -277,14 +246,14 @@ pub fn viewer_td_of(text: &str) -> Result<String, Malformed> {
         .collect();
     let lo = pos.iter().min().copied().unwrap_or_default();
     let hi = pos.iter().max().copied().unwrap_or_default();
-    viewer_td(
+    Cell::viewer(
         &Value::Str(chrom.to_owned()),
         &Value::Int(lo),
         Some(&Value::Int(hi)),
     )
 }
 
-/// `str(text or "")` for [`viewer_td_of`].
+/// `str(text or "")` for [`viewer_of`].
 pub fn locus_text(v: &D<'_>) -> Result<String, Malformed> {
     if v.truthy() {
         v.text()
@@ -467,14 +436,7 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
             }
         }
     }
-    for line in cdna::scan_lines(&d)? {
-        w.push(format!("  {line}"));
-    }
-    if let Some(scan) = d.opt("cdna_scan")?
-        && scan.at("loci")?.truthy()
-    {
-        w.push(format!("  {CDNA_SCAN_NOTE}"));
-    }
+    w.extend(cdna_scan::text_lines(&s.section("clinvar"))?);
     if d.has("deep_intronic") {
         w.push("  Known deep intronic sites (always reported): gene, variant, call".to_owned());
         for x in d.at("deep_intronic")?.items()? {
@@ -563,20 +525,8 @@ fn screen_card(s: &Summary, d: &D<'_>) -> Result<Card, Malformed> {
             ),
         );
     }
-    if let Some(scan) = d.opt("cdna_scan")?
-        && !scan.at("note")?.string()?.starts_with("not run")
-    {
-        let nl = scan.at("loci")?.len()?;
-        body.insert(
-            2,
-            Line::Stat(
-                "Loci with spliced reads (cDNA scan)".to_owned(),
-                Inline::Badge(
-                    nl.to_string(),
-                    if nl > 0 { Colour::Red } else { Colour::Gray },
-                ),
-            ),
-        );
+    if let Some(stat) = cdna_scan::stat(&s.section("clinvar"))? {
+        body.insert(2, stat);
     }
     if d.has("low_confidence") {
         let (gq, dp) = floor(d)?;
@@ -606,54 +556,66 @@ fn hits_card(d: &D<'_>) -> Result<Card, Malformed> {
     let call = d.has("low_confidence");
     let hits = d.at("hits")?.items()?;
     let nh = hits.len();
-    let mut head = "      <tr><th>Chr</th><th>Position</th><th>Ref</th><th>Alt</th><th>Genotype</th><th>Gene</th>\
-                    <th>Significance</th><th>Review status</th><th>Stars</th><th>Combined allele</th>"
-        .to_owned();
+    let mut head: Vec<String> = [
+        "Chr",
+        "Position",
+        "Ref",
+        "Alt",
+        "Genotype",
+        "Gene",
+        "Significance",
+        "Review status",
+        "Stars",
+        "Combined allele",
+    ]
+    .map(str::to_owned)
+    .to_vec();
     if freq {
-        head += "<th>gnomAD frequency</th>";
+        head.push("gnomAD frequency".to_owned());
     }
     if call {
-        head += "<th>Call quality</th>";
+        head.push("Call quality".to_owned());
     }
     if reads {
-        head += "<th>cDNA read check</th>";
+        head.push("cDNA read check".to_owned());
     }
-    head += VIEWER_TH;
-    head += "</tr>";
-    let mut body = vec![
-        Line::Raw(format!("    <a id=\"{HITS_ANCHOR}\"></a>")),
-        Line::Raw("    <table>".to_owned()),
-        Line::Raw(head),
-    ];
+    let mut rows = Vec::new();
     for h in hits.iter().take(HITS_SHOWN) {
-        let mut row = format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>\
-             <td>{}</td><td>{}</td>",
-            ev(&h.at("chrom")?)?,
-            e(&h.s("pos")?),
-            ev(&h.at("ref")?)?,
-            ev(&h.at("alt")?)?,
-            ev(&h.at("genotype")?)?,
-            ev(&h.at("gene")?)?,
-            ev(&h.at("significance")?)?,
-            ev(&h.at("review_status")?)?,
-            e(&h.s("stars")?),
-            e(&combined_cell(h)?)
-        );
+        let st =
+            |k: &str| -> Result<Cell, Malformed> { Ok(Cell::Text(h.at(k)?.string()?.to_owned())) };
+        let mut row = vec![
+            st("chrom")?,
+            Cell::Text(h.s("pos")?),
+            st("ref")?,
+            st("alt")?,
+            st("genotype")?,
+            st("gene")?,
+            st("significance")?,
+            st("review_status")?,
+            Cell::Text(h.s("stars")?),
+            Cell::Text(combined_cell(h)?),
+        ];
         if freq {
-            row += &format!("<td>{}</td>", e(&af_text(h)?));
+            row.push(Cell::Text(af_text(h)?));
         }
         if call {
-            row += &format!("<td>{}</td>", e(&call_text(h)?));
+            row.push(Cell::Text(call_text(h)?));
         }
         if reads {
-            row += &format!("<td>{}</td>", e(&cdna::cdna_text(h)?));
+            row.push(Cell::Text(cdna::cdna_text(h)?));
         }
-        row += &viewer_td(h.at("chrom")?.v, h.at("pos")?.v, None)?;
-        row += "</tr>";
-        body.push(Line::Raw(format!("      {row}")));
+        row.push(Cell::viewer(h.at("chrom")?.v, h.at("pos")?.v, None)?);
+        rows.push(row);
     }
-    body.push(Line::Raw("    </table>".to_owned()));
+    let mut body = vec![
+        Line::Raw(format!("    <a id=\"{HITS_ANCHOR}\"></a>")),
+        Line::Table(Table {
+            head,
+            rows,
+            viewer: true,
+            layout: Layout::Indented,
+        }),
+    ];
     for h in cdna::construct_past_cap(&hits, HITS_SHOWN)? {
         body.push(Line::Note(format!(
             "Hit at a known lab-construct site past the first 50: {}",
@@ -661,7 +623,7 @@ fn hits_card(d: &D<'_>) -> Result<Card, Malformed> {
         )));
     }
     if nh > 0 {
-        body.push(Line::Raw(VIEWER_NOTE.to_owned()));
+        body.push(Line::ViewerNote);
     }
     Ok(Card {
         title: format!(
@@ -675,21 +637,16 @@ fn hits_card(d: &D<'_>) -> Result<Card, Malformed> {
 }
 
 /// The known deep intronic sites and the cDNA scan's loci.
-fn sites_card(d: &D<'_>) -> Result<Card, Malformed> {
+fn sites_card(sec: &Section<'_>, d: &D<'_>) -> Result<Card, Malformed> {
     let mut body = Vec::new();
     let mut caveats = Vec::new();
     if d.has("deep_intronic") {
         body.extend(deep_intronic::table(&d.at("deep_intronic")?)?);
         caveats.push(DEEP_INTRONIC_NOTE);
     }
-    let scan = cdna::scan_lines(d)?;
-    if let Some(first) = scan.first() {
-        body.push(Line::Para(first.clone()));
-        if scan.len() > 1 {
-            body.extend(cdna::scan_table(&d.at("cdna_scan")?)?);
-            caveats.push(CDNA_SCAN_NOTE);
-        }
-    }
+    let (scan, caveat) = cdna_scan::html_lines(sec)?;
+    body.extend(scan);
+    caveats.extend(caveat);
     Ok(Card {
         title: "Known Deep Intronic Sites and the cDNA Scan".to_owned(),
         full: true,
@@ -710,7 +667,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         cards.push(html::card(&sec, hits_card(&d)?)?);
     }
     if sec.state.ran() && (d.has("deep_intronic") || d.opt("cdna_scan")?.is_some()) {
-        cards.push(html::card(&sec, sites_card(&d)?)?);
+        cards.push(html::card(&sec, sites_card(&sec, &d)?)?);
     }
     Ok(HtmlPart {
         cards,

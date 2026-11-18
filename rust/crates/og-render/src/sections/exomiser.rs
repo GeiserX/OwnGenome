@@ -229,6 +229,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                 viewer: true,
                 layout: Layout::Indented,
             }));
+            card.body.push(Line::ViewerNote);
         }
         card.caveats.push(EXOMISER_NOTE);
         card.body.push(Line::Note(format!(

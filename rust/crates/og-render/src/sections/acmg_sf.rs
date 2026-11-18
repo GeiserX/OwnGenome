@@ -7,10 +7,9 @@
 
 use pycompat::fmt::ljust;
 
-use crate::escape::e;
-use crate::model::{Card, HtmlPart, Inline, Line, Malformed, Summary};
-use crate::notes::{ACMG_NOTE, VIEWER_NOTE};
-use crate::sections::clinvar::{D, VIEWER_TH, viewer_td_of};
+use crate::model::{Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table};
+use crate::notes::ACMG_NOTE;
+use crate::sections::clinvar::{D, viewer_of};
 use crate::{html, text};
 
 /// One row of the SF table: gene, variant, genotype, evidence.
@@ -280,28 +279,29 @@ fn sf_card(sf: &D<'_>) -> Result<Option<Card>, Malformed> {
     if !shown {
         return Ok(None);
     }
-    let mut rows_html = Vec::new();
+    let mut cells = Vec::new();
     for (g, v, z, ev) in rows(sf)? {
-        rows_html.push(format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td>{}</tr>",
-            e(&g),
-            e(&v),
-            e(&z),
-            e(&ev),
-            viewer_td_of(&v)?
-        ));
+        let at = viewer_of(&v)?;
+        cells.push(vec![
+            Cell::Text(g),
+            Cell::Text(v),
+            Cell::Text(z),
+            Cell::Text(ev),
+            at,
+        ]);
     }
-    let mut body = vec![
-        Line::Raw("    <table>".to_owned()),
-        Line::Raw(format!(
-            "      <tr><th>Gene</th><th>Variant</th><th>Genotype</th><th>Evidence</th>{VIEWER_TH}</tr>"
-        )),
-        Line::Raw(rows_html.join("\n")),
-        Line::Raw("    </table>".to_owned()),
-    ];
+    let listed = !cells.is_empty();
+    let mut body = vec![Line::Table(Table {
+        head: ["Gene", "Variant", "Genotype", "Evidence"]
+            .map(str::to_owned)
+            .to_vec(),
+        rows: cells,
+        viewer: true,
+        layout: Layout::RowLines,
+    })];
     body.extend(apart_lines(sf)?.into_iter().map(Line::Para));
-    if !rows_html.is_empty() {
-        body.push(Line::Raw(VIEWER_NOTE.to_owned()));
+    if listed {
+        body.push(Line::ViewerNote);
     }
     Ok(Some(Card {
         title: format!("Secondary-Findings Genes ({})", sf.s("version")?),

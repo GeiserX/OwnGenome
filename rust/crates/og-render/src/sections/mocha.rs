@@ -141,20 +141,22 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                     "Cell-fraction floor".to_owned(),
                     Inline::Text(or(&d, "floor", ".")?),
                 ),
-                if rows.is_empty() {
-                    Line::Note("No mosaic alteration reported.".to_owned())
-                } else {
-                    Line::Table(Table {
-                        head: ["Type", "Arm", "Region", "Mb", "Cell fraction"]
-                            .map(str::to_owned)
-                            .to_vec(),
-                        rows,
-                        viewer: true,
-                        layout: Layout::OneLine,
-                    })
-                },
-                Line::Note(lines(&d)?.swap_remove(0)),
             ];
+            if rows.is_empty() {
+                card.body
+                    .push(Line::Note("No mosaic alteration reported.".to_owned()));
+            } else {
+                card.body.push(Line::Table(Table {
+                    head: ["Type", "Arm", "Region", "Mb", "Cell fraction"]
+                        .map(str::to_owned)
+                        .to_vec(),
+                    rows,
+                    viewer: true,
+                    layout: Layout::OneLine,
+                }));
+                card.body.push(Line::ViewerNote);
+            }
+            card.body.push(Line::Note(lines(&d)?.swap_remove(0)));
         }
     }
     Ok(HtmlPart {

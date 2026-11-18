@@ -1,10 +1,8 @@
 //! Step 06's known deep intronic sites, reported on every run: they lie far
 //! from any exon, so most filters miss them.
 
-use crate::escape::e;
-use crate::model::{Line, Malformed};
-use crate::notes::VIEWER_NOTE;
-use crate::sections::clinvar::{D, VIEWER_TH, ev, viewer_td};
+use crate::model::{Cell, Layout, Line, Malformed, Table};
+use crate::sections::clinvar::D;
 
 /// One site's call: `het, GQ 40, DP 30`, `ref, GQ 50 (gVCF block)`,
 /// `no call: why`.
@@ -25,29 +23,36 @@ pub fn call(x: &D<'_>) -> Result<String, Malformed> {
     Ok(out)
 }
 
-/// The HTML table of the sites, with the Viewer note.
+/// The table of the sites, with their Viewer links, and the Viewer note.
 pub fn table(sites: &D<'_>) -> Result<Vec<Line>, Malformed> {
-    let mut out = vec![
-        Line::Raw("    <table>".to_owned()),
-        Line::Raw(format!(
-            "      <tr><th>Gene</th><th>Variant</th><th>Position</th><th>Call</th>{VIEWER_TH}</tr>"
-        )),
-    ];
+    let st =
+        |x: &D<'_>, k: &str| -> Result<String, Malformed> { Ok(x.at(k)?.string()?.to_owned()) };
+    let mut rows = Vec::new();
     for x in sites.items()? {
         let (chrom, pos) = (x.at("chrom")?, x.at("pos")?);
-        out.push(Line::Raw(format!(
-            "      <tr><td>{}</td><td>{}</td><td>{}:{} {}&gt;{}</td><td>{}</td>{}</tr>",
-            ev(&x.at("gene")?)?,
-            ev(&x.at("hgvs")?)?,
-            ev(&chrom)?,
-            e(&pos.text()?),
-            ev(&x.at("ref")?)?,
-            ev(&x.at("alt")?)?,
-            e(&call(&x)?),
-            viewer_td(chrom.v, pos.v, None)?
-        )));
+        rows.push(vec![
+            Cell::Text(st(&x, "gene")?),
+            Cell::Text(st(&x, "hgvs")?),
+            Cell::Text(format!(
+                "{}:{} {}>{}",
+                chrom.string()?,
+                pos.text()?,
+                st(&x, "ref")?,
+                st(&x, "alt")?
+            )),
+            Cell::Text(call(&x)?),
+            Cell::viewer(chrom.v, pos.v, None)?,
+        ]);
     }
-    out.push(Line::Raw("    </table>".to_owned()));
-    out.push(Line::Raw(VIEWER_NOTE.to_owned()));
-    Ok(out)
+    Ok(vec![
+        Line::Table(Table {
+            head: ["Gene", "Variant", "Position", "Call"]
+                .map(str::to_owned)
+                .to_vec(),
+            rows,
+            viewer: true,
+            layout: Layout::Indented,
+        }),
+        Line::ViewerNote,
+    ])
 }

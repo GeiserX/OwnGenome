@@ -1,11 +1,10 @@
 //! Step 06's cDNA marks, shown in the ClinVar block of both reports: the
-//! read check of each hit (alt reads clipped at an exon edge), the hits at a
-//! known lab-construct site, and the scan of every exon for reads that jump
-//! from one exon to the next.
+//! read check of each hit (alt reads clipped at an exon edge) and the hits at a
+//! known lab-construct site. The scan of every exon for reads that jump from
+//! one exon to the next is `sections::cdna_scan`.
 
-use crate::escape::e;
-use crate::model::{Line, Malformed};
-use crate::sections::clinvar::{D, VIEWER_TH, viewer_td};
+use crate::model::Malformed;
+use crate::sections::clinvar::D;
 
 /// Step 06's read check of one ClinVar (or CPSR) hit. A hit at a known
 /// construct site always shows its read counts when they were measured.
@@ -73,64 +72,4 @@ pub fn construct_past_cap_text(h: &D<'_>) -> Result<String, Malformed> {
         h.s("genotype")?,
         cdna_text(h)?
     ))
-}
-
-/// The scan's lines, the same in both reports; none when it did not run.
-pub fn scan_lines(d: &D<'_>) -> Result<Vec<String>, Malformed> {
-    let Some(scan) = d.get("cdna_scan")?.filter(|x| !x.is_none()) else {
-        return Ok(Vec::new());
-    };
-    let loci = scan.at("loci")?;
-    let note = scan.at("note")?;
-    let note_text = note.string()?;
-    if note_text.starts_with("not run") {
-        return Ok(vec![format!("cDNA scan of every exon: {note_text}")]);
-    }
-    // The note says what was read (exon regions, contigs): a BAM short of
-    // contigs is no whole-exome negative.
-    let loci = loci.items()?;
-    let mut first = format!(
-        "cDNA scan of every exon: {} loci with reads across two or more exon junctions",
-        loci.len()
-    );
-    if note.truthy() {
-        first += &format!(" ({note_text})");
-    }
-    let mut out = vec![first];
-    for x in loci.iter().take(20) {
-        out.push(format!(
-            "  {}:{}-{}: {} junctions, {} reads",
-            x.s("chrom")?,
-            x.s("start")?,
-            x.s("end")?,
-            x.s("junctions")?,
-            x.s("reads")?
-        ));
-    }
-    Ok(out)
-}
-
-/// The HTML table of the scan's first 20 loci, with the Viewer note.
-pub fn scan_table(scan: &D<'_>) -> Result<Vec<Line>, Malformed> {
-    let mut out = vec![
-        Line::Raw("    <table>".to_owned()),
-        Line::Raw(format!(
-            "      <tr><th>Locus</th><th>Junctions</th><th>Reads</th>{VIEWER_TH}</tr>"
-        )),
-    ];
-    for x in scan.at("loci")?.items()?.iter().take(20) {
-        let (chrom, start, end) = (x.at("chrom")?, x.at("start")?, x.at("end")?);
-        out.push(Line::Raw(format!(
-            "      <tr><td>{}:{}-{}</td><td>{}</td><td>{}</td>{}</tr>",
-            e(chrom.string()?),
-            e(&start.text()?),
-            e(&end.text()?),
-            e(&x.s("junctions")?),
-            e(&x.s("reads")?),
-            viewer_td(chrom.v, start.v, Some(end.v))?
-        )));
-    }
-    out.push(Line::Raw("    </table>".to_owned()));
-    out.push(Line::Raw(crate::notes::VIEWER_NOTE.to_owned()));
-    Ok(out)
 }

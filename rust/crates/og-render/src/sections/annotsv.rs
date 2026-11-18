@@ -8,10 +8,11 @@
 
 use pycompat::fmt::{general, ljust};
 
-use crate::escape::e;
-use crate::model::{Card, Colour, HtmlPart, Inline, Line, Malformed, State, Summary};
-use crate::notes::{ANNOTSV_NOTE, VIEWER_NOTE};
-use crate::sections::clinvar::{D, VIEWER_TH, locus_text, viewer_td_of};
+use crate::model::{
+    Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, State, Summary, Table,
+};
+use crate::notes::ANNOTSV_NOTE;
+use crate::sections::clinvar::{D, locus_text, viewer_of};
 use crate::{html, text};
 
 const TITLE: &str = "Structural Variants, Class 4 and 5 (AnnotSV)";
@@ -214,51 +215,60 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     }
     let rows = d.opt("rows")?;
     if let Some(rows) = &rows {
-        let mut t = format!(
-            "    <table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th>{VIEWER_TH}</tr>"
-        );
+        let mut cells = Vec::new();
         for x in rows.items()? {
             let checks = flags(&x)?.join("; ");
-            t += &format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>{}</tr>",
-                e(&sv_cell(&x)?),
-                e(&x.s("acmg_class")?),
-                e(&genes_text(&x)?),
-                e(&support_text(&x)?),
-                e(if checks.is_empty() { "none" } else { &checks }),
-                viewer_td_of(&locus_text(&x.at("sv")?)?)?
-            );
+            cells.push(vec![
+                Cell::Text(sv_cell(&x)?),
+                Cell::Text(x.s("acmg_class")?),
+                Cell::Text(genes_text(&x)?),
+                Cell::Text(support_text(&x)?),
+                Cell::Text(if checks.is_empty() {
+                    "none".to_owned()
+                } else {
+                    checks
+                }),
+                viewer_of(&locus_text(&x.at("sv")?)?)?,
+            ]);
         }
-        t += "</table>";
-        body.push(Line::Raw(t));
+        body.push(Line::Table(Table {
+            head: ["SV", "Class", "Genes", "Callers", "Checks"]
+                .map(str::to_owned)
+                .to_vec(),
+            rows: cells,
+            viewer: true,
+            layout: Layout::OneLine,
+        }));
     }
     let down = d.opt("downgraded")?;
     if let Some(down) = &down {
         body.push(Line::Raw(
             "    <h3>Moved to class 3 by step 05's rules</h3>".to_owned(),
         ));
-        let mut t = format!(
-            "    <table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th>\
-             <th>Why</th>{VIEWER_TH}</tr>"
-        );
+        let mut cells = Vec::new();
         for x in down.items()? {
-            t += &format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>{}</tr>",
-                e(&sv_cell(&x)?),
-                e(&x.s("annotsv_class")?),
-                e(&x.s("acmg_class")?),
-                e(&genes_text(&x)?),
-                e(&or_text(&x, "rule", "not named")?),
-                e(&or_text(&x, "rule_detail", "no detail")?),
-                viewer_td_of(&locus_text(&x.at("sv")?)?)?
-            );
+            cells.push(vec![
+                Cell::Text(sv_cell(&x)?),
+                Cell::Text(x.s("annotsv_class")?),
+                Cell::Text(x.s("acmg_class")?),
+                Cell::Text(genes_text(&x)?),
+                Cell::Text(or_text(&x, "rule", "not named")?),
+                Cell::Text(or_text(&x, "rule_detail", "no detail")?),
+                viewer_of(&locus_text(&x.at("sv")?)?)?,
+            ]);
         }
-        t += "</table>";
-        body.push(Line::Raw(t));
+        body.push(Line::Table(Table {
+            head: ["SV", "AnnotSV class", "Class", "Genes", "Rule", "Why"]
+                .map(str::to_owned)
+                .to_vec(),
+            rows: cells,
+            viewer: true,
+            layout: Layout::OneLine,
+        }));
     }
     let mut caveats = Vec::new();
     if rows.is_some() || down.is_some() {
-        body.push(Line::Raw(VIEWER_NOTE.to_owned()));
+        body.push(Line::ViewerNote);
         caveats.push(ANNOTSV_NOTE);
     }
     let card = html::card(

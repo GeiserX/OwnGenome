@@ -5,10 +5,9 @@
 use pycompat::fmt::ljust;
 use pycompat::json::Value;
 
-use crate::escape::e;
-use crate::model::{Card, HtmlPart, Inline, Line, Malformed, Summary};
-use crate::notes::{COMPHET_NOTE, VIEWER_NOTE};
-use crate::sections::clinvar::{D, VIEWER_TH, list_or_empty, locus_text, viewer_td_of};
+use crate::model::{Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table};
+use crate::notes::COMPHET_NOTE;
+use crate::sections::clinvar::{D, list_or_empty, locus_text, viewer_of};
 use crate::{html, text};
 
 const TITLE: &str = "Variant Prioritization (slivar)";
@@ -112,22 +111,25 @@ fn phase_html(d: &D<'_>) -> Result<Vec<Line>, Malformed> {
     )];
     let trans = list_or_empty(d, "compound_het_trans")?;
     if !trans.is_empty() {
-        out.push(Line::Raw("    <table>".to_owned()));
-        out.push(Line::Raw(format!(
-            "      <tr><th>Gene</th><th>Pair in trans</th><th>Reads</th>{VIEWER_TH}</tr>"
-        )));
+        let mut rows = Vec::new();
         for x in &trans {
             let variants = x.at("variants")?;
-            out.push(Line::Raw(format!(
-                "      <tr><td>{}</td><td>{}</td><td>{}</td>{}</tr>",
-                e(&x.s("gene")?),
-                e(&variants.text()?),
-                e(&x.s("reads")?),
-                viewer_td_of(&locus_text(&variants)?)?
-            )));
+            rows.push(vec![
+                Cell::Text(x.s("gene")?),
+                Cell::Text(variants.text()?),
+                Cell::Text(x.s("reads")?),
+                viewer_of(&locus_text(&variants)?)?,
+            ]);
         }
-        out.push(Line::Raw("    </table>".to_owned()));
-        out.push(Line::Raw(VIEWER_NOTE.to_owned()));
+        out.push(Line::Table(Table {
+            head: ["Gene", "Pair in trans", "Reads"]
+                .map(str::to_owned)
+                .to_vec(),
+            rows,
+            viewer: true,
+            layout: Layout::Indented,
+        }));
+        out.push(Line::ViewerNote);
     }
     Ok(out)
 }

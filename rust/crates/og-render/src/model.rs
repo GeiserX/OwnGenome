@@ -316,6 +316,11 @@ pub enum Inline {
     /// A fixed text written as it is, unescaped, as render_report.py's
     /// stat() writes its value (an apostrophe stays an apostrophe).
     Fixed(&'static str),
+    /// A line break.
+    Break,
+    /// A line break, then smaller grey text: the second line under a
+    /// table cell's main text.
+    Small(String),
 }
 
 /// One cell of a table row.
@@ -327,6 +332,8 @@ pub enum Cell {
     Badge(String, Colour),
     /// Text with a second, smaller grey line under it.
     Sub(String, String),
+    /// Texts, badges and smaller lines one after another in one cell.
+    Parts(Vec<Inline>),
     /// The Viewer cell: a link that opens the locus (`chrom:start` or
     /// `chrom:start-end`) in the genome viewer; empty without a locus.
     Viewer(Option<String>),
@@ -352,8 +359,9 @@ impl Cell {
 }
 
 /// A table: its column titles and rows. A table with a Viewer column (the
-/// rows end in a [`Cell::Viewer`]) is followed by the line saying how the
-/// viewer opens. `layout` says how its tags and rows sit on the page's lines.
+/// rows end in a [`Cell::Viewer`]) has `viewer`; the card places the line
+/// saying how the viewer opens, [`Line::ViewerNote`], where the report has
+/// it. `layout` says how its tags and rows sit on the page's lines.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Table {
     pub head: Vec<String>,
@@ -391,9 +399,14 @@ pub enum Line {
     List(Vec<String>),
     /// A warning in the stale box's style, among the card's lines.
     Warn(String),
+    /// The sentence that says how a table's Viewer column opens the reads.
+    ViewerNote,
+    /// A table folded away behind a one-line summary, which the reader opens.
+    Folded(String, Table),
     /// Markup a section built itself, each text in it escaped with
-    /// [`crate::escape::e`]: a heading, a link or an anchor whose layout the
-    /// report fixes byte for byte. Written as it is.
+    /// [`crate::escape::e`]: a heading, a picture, a link or an anchor whose
+    /// layout the report fixes byte for byte. Written as it is. A table is a
+    /// [`Line::Table`], never markup.
     Raw(String),
 }
 

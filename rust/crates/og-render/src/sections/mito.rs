@@ -398,6 +398,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                 viewer: true,
                 layout: Layout::OneLine,
             }));
+            body.push(Line::ViewerNote);
         }
         body.push(Line::Note(format!(
             "ClinVar {}; gnomAD {}",
