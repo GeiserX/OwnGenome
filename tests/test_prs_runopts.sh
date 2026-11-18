@@ -27,27 +27,30 @@ FAILS=0
 
 # The block between the markers, as bash sees it: Groovy turns \\ into \ and
 # \$ into $; any other escape in the block is refused, so it cannot be misread.
-if ! python3 - "$MODULE" > "${WORK}/block.sh" <<'PY'
-import sys
-text = open(sys.argv[1]).read()
-begin, end = "# >>> outer docker flags", "# <<< outer docker flags"
-if begin not in text or end not in text:
-    sys.exit(f"no '{begin}' ... '{end}' block in {sys.argv[1]}")
-block = text.split(begin, 1)[1].split(end, 1)[0].split("\n", 1)[1]
-out, i = [], 0
-while i < len(block):
-    c = block[i]
-    if c == "\\":
-        nxt = block[i + 1] if i + 1 < len(block) else ""
-        if nxt not in ("\\", "$"):
-            sys.exit(f"unexpected Groovy escape \\{nxt} in the block")
-        out.append(nxt)
-        i += 2
-    else:
-        out.append(c)
-        i += 1
-print("".join(out))
-PY
+# shellcheck disable=SC2016  # the dollar signs are awk's and the block's
+if ! awk '
+  { text = text $0 "\n" }
+  END {
+    begin = "# >>> outer docker flags"; end = "# <<< outer docker flags"
+    b = index(text, begin)
+    if (!b) { print "no '\''" begin "'\'' ... '\''" end "'\'' block in " FILENAME > "/dev/stderr"; exit 1 }
+    rest = substr(text, b + length(begin))
+    e = index(rest, end)
+    if (!e) { print "no '\''" begin "'\'' ... '\''" end "'\'' block in " FILENAME > "/dev/stderr"; exit 1 }
+    block = substr(rest, 1, e - 1)
+    nl = index(block, "\n")
+    block = nl ? substr(block, nl + 1) : ""
+    out = ""
+    for (i = 1; i <= length(block); i++) {
+      c = substr(block, i, 1)
+      if (c == "\\") {
+        nxt = substr(block, i + 1, 1)
+        if (nxt != "\\" && nxt != "$") { print "unexpected Groovy escape \\" nxt " in the block" > "/dev/stderr"; exit 1 }
+        out = out nxt; i++
+      } else out = out c
+    }
+    print out
+  }' "$MODULE" > "${WORK}/block.sh"
 then
   echo "FAIL: the outer docker flags block of ${MODULE} could not be read"
   exit 1
