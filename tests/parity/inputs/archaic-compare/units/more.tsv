@@ -1,0 +1,4 @@
+chrom	start	end	length_bp	ancestry
+chr22	350	500	150	Neanderthal
+chr21	0	30	30	Neanderthal
+chr22	0	10	10	Denisovan

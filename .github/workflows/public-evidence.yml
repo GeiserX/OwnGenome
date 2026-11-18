@@ -460,13 +460,13 @@ jobs:
             done
           done
           grp=$(awk -v s="$SAMPLE" '$9 == s {print $8; exit}' "${EV}/chen/chen.txt")
-          python3 -I bin/archaic_compare.py compare --chen-file "${EV}/chen/chen.txt" --sample "$SAMPLE" --group "$grp" \
+          bin/og archaic compare --chen-file "${EV}/chen/chen.txt" --sample "$SAMPLE" --group "$grp" \
             --chroms "$LIST" "${args[@]}" | tee "${OUT}/comparison.md"
           for label in hc lc; do
             {
               echo "IBDmix output of ${label} (ALL frequencies), per archaic genome:"
               echo ""
-              python3 -I bin/archaic_compare.py genomes --chen-file "${EV}/chen/chen.txt" --sample "$SAMPLE" \
+              bin/og archaic genomes --chen-file "${EV}/chen/chen.txt" --sample "$SAMPLE" \
                 --ibdmix-dir "${OUT}/ibdmix-${label}-ALL" --spans "${OUT}/ibdmix-${label}-ALL/spans.tsv"
               echo ""
             } | tee -a "${OUT}/genomes.md"
