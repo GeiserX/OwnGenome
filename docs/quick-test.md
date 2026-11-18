@@ -36,7 +36,7 @@ mkdir -p ${GENOME_DIR}/${SAMPLE}/vcf ${GENOME_DIR}/reference
 # Download the GRCh38 reference (required, ~3.1 GB — skip if you already have it)
 # See docs/00-reference-setup.md for full instructions
 
-# Download a pre-called chr22 VCF from Genome in a Bottle
+# Download the GIAB NA12878 benchmark VCF (chr1 to chr22) from Genome in a Bottle
 wget -O ${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz \
   "https://giab.s3.amazonaws.com/release/NA12878_HG001/NISTv4.2.1/GRCh38/HG001_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
 
@@ -44,7 +44,7 @@ wget -O ${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz.tbi \
   "https://giab.s3.amazonaws.com/release/NA12878_HG001/NISTv4.2.1/GRCh38/HG001_GRCh38_1_22_v4.2.1_benchmark.vcf.gz.tbi"
 ```
 
-**Note:** This is the full-genome GIAB VCF (~250 MB). For a chr22-only test, extract just chr22:
+**Note:** This VCF covers chr1 to chr22 and is about 120 MB. For a chr22-only test, extract just chr22:
 
 ```bash
 source versions.env   # from the repository root
