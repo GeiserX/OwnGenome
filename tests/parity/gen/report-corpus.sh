@@ -69,7 +69,8 @@ done < folders/cases.tsv
 rm -rf folders
 
 # --- the summary of case "full", changed one way each ---------------------------------
-# Its callability section (130 kB of genes, not ported yet) is set to not run.
+# Its callability section (130 kB of genes) is set to not run, so each change stays small;
+# the collected summaries render it.
 [ -s full.json ] || { echo "report-corpus.sh: og summary collect wrote no full.json" >&2; exit 1; }
 base=base.tmp
 jq -c '.sections.callability.state = "missing" | .sections.callability.data = {}' full.json > "$base"
@@ -294,6 +295,46 @@ mut optin-viral-na '.generated_utc = "2026-01-02 03:04 UTC" | .sections.viral +=
   genomes: 24}}'
 rm -f "$base"
 
+# The clinical sections: case cb-full, which holds every one of them but the couple
+# screen and callability, changed one way each. (all and all-history, the only
+# collected summaries with a couple screen, run as text-only cases.)
+[ -s cb-full.json ] || { echo "report-corpus.sh: og summary collect wrote no cb-full.json" >&2; exit 1; }
+cmut() { jq -c "$2" cb-full.json > "m-$1.json"; }
+couple='{"title": "Couple carrier screen", "step": "39", "state": "ok", "note": null, "file_date": "2021-03-04 05:06 UTC",
+  "data": {"partner": "P<2>", "shared": [{"gene": "CFTR", "condition": "Cystic fibrosis", "risk": "1 in 4",
+  "own": "c.1521_1523del (P)", "partner_findings": "c.350G>A (LP)"}], "x_linked": [{"gene": "DMD",
+  "condition": "Duchenne", "risk": "1 in 4 sons", "own": "c.10G>T (P)", "partner_findings": "."}], "one_partner": 2}}'
+cmut couple ".sections.couple = $couple"
+cmut couple-empty '.sections.couple = {"title": "Couple carrier screen", "state": "ok", "note": null, "data": {}}'
+for st in stale failed unreadable; do
+  keys='"clinvar", "clinical", "cpsr", "slivar", "carrier", "couple"'
+  [ "$st" = stale ] || keys="$keys, \"callability\""
+  cmut "clinical-$st" ".sections.couple = $couple | reduce ($keys) as \$k (.;
+    .sections[\$k].state = \"$st\" | .sections[\$k].note = \"note of \(\$k) <&>\")"
+done
+cmut clinvar-many '.sections.clinvar.data.hits as $h | .sections.clinvar.data.hits = ($h + $h + $h + $h + $h + $h)
+  | .sections.clinvar.data.hits[55].cdna = {"check": "flagged", "note": "clipped <x>", "alt_reads": 4, "alt_clipped": 3,
+    "ref_reads": 10, "ref_clipped": 0, "construct": "pcDNA3"}
+  | .sections.clinvar.data.hits[57].cdna = {"check": "clear", "note": "", "alt_reads": 4, "alt_clipped": 0,
+    "ref_reads": 10, "ref_clipped": 0, "construct": "EGFP"}
+  | .sections.clinvar.data.hits[58].cdna = {"check": "not_checked", "note": "", "alt_reads": null, "alt_clipped": null,
+    "ref_reads": null, "ref_clipped": null, "construct": "lentiviral"}'
+cmut clinvar-none '.sections.clinvar.data.hits = [] | .sections.clinvar.data.count = 0 | del(.sections.clinvar.data.deep_intronic)
+  | .sections.clinvar.data.cdna_scan = {"note": "not run: no BAM", "loci": []} | del(.sections.clinvar.data.frequency)
+  | del(.sections.clinvar.data.low_confidence) | del(.sections.clinvar.data.cdna_flagged)'
+cmut clinvar-freq-note '.sections.clinvar.data.frequency = {"note": "no VEP output"} | .sections.clinvar.data.call_floor = null'
+cmut cpsr-noown '.sections.cpsr.data.own_class_column = false | .sections.cpsr.data.classification = {}
+  | .sections.cpsr.source = "cpsr/S.cpsr.grch38.html" | del(.sections.cpsr.data.cdna_flagged)'
+cmut cpsr-none '.sections.cpsr.data = {"html_report": false}'
+cmut slivar-phase '.sections.slivar.data.compound_het_phase.trans = 2.5 | .sections.slivar.data.compound_het_trans = []'
+cmut slivar-unphased 'del(.sections.slivar.data.compound_het_phase)'
+cmut sf-notes '.sections.clinical.data.acmg_sf.two_hit_note = "carrier list <unreadable>"
+  | .sections.clinical.data.acmg_sf.structural_checked = true | .sections.clinical.data.acmg_sf.high_impact_weak = 2
+  | .sections.clinical.data.acmg_sf.high_impact_frequency_unknown = 1 | del(.sections.clinical.data.acmg_sf.genes_on_list)'
+cmut clinical-escape '.sections.clinvar.data.hits[0].gene = "A<&>'"'"'\"" | .sections.carrier.data.carriers[0].condition = "x <y> & z"
+  | .sections.clinical.data.acmg_sf.clinvar_hits[0].gene = "<b>"'
+cmut since-clinical '.new_since = {"previous_utc": "2026-01-01T00:00:00Z", "sections": ["clinvar", "carrier", "slivar"]}'
+
 # --- the oracle -----------------------------------------------------------------------
 cat > oracle.sh << 'ORACLE'
 #!/bin/sh
@@ -313,6 +354,7 @@ PORTED=" qc variants not-run not-assessed "
 PORTED="$PORTED pharmcat cpic cyp2d6 hla mito "
 # port-report-optin
 PORTED="${PORTED}exomiser mei vntyper chip mosaic-mca locityper roh telomere viral "
+PORTED="${PORTED}callability clinvar clinical-filter cpsr slivar carrier-list couple "
 while [ $# -gt 0 ]; do
   case "$1" in
     -o)
@@ -387,6 +429,10 @@ BEGIN {
   title["## Mosaic Chromosomal Alterations (MoChA, step 51)"] = "mosaic-mca"; title["## Runs of Homozygosity"] = "roh"
   title["## Locityper Second Opinion at Hard Loci (step 53)"] = "locityper"
   title["## Telomere content (relative, TelomereHunter)"] = "telomere"; title["## Viral DNA in the Unmapped Reads (step 47)"] = "viral"
+  title["## Genes This Genome Could Not Read Reliably"] = "callability"
+  title["## ClinVar Pathogenic Screen"] = "clinvar"; title["## Clinical Variant Filter"] = "clinical-filter"
+  title["## Cancer Predisposition Screening (CPSR)"] = "cpsr"; title["## Variant Prioritization (slivar)"] = "slivar"
+  title["## Carrier List (this sample)"] = "carrier-list"; title["## Couple Carrier Screen (step 39)"] = "couple"
 }
 { lines[++n] = $0 }
 END {

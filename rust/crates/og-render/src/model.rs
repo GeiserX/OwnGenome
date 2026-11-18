@@ -3,8 +3,9 @@
 //! `==`), and the document the section modules build from it, which the
 //! text and HTML writers lay out.
 //!
-//! A section module never writes markup. It returns cards of typed lines;
-//! every text in them is escaped once, by the HTML writer.
+//! A section module returns cards of typed lines; every text in them is
+//! escaped once, by the HTML writer. The one exception is [`Line::Raw`]:
+//! markup the section lays out itself, escaping each text it puts in.
 
 use std::fmt;
 
@@ -390,6 +391,10 @@ pub enum Line {
     List(Vec<String>),
     /// A warning in the stale box's style, among the card's lines.
     Warn(String),
+    /// Markup a section built itself, each text in it escaped with
+    /// [`crate::escape::e`]: a heading, a link or an anchor whose layout the
+    /// report fixes byte for byte. Written as it is.
+    Raw(String),
 }
 
 /// One card: a title, the caveats shown under it, the notes saying its

@@ -159,17 +159,17 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
     match sid {
         "qc" => Some((sections::qc::text, sections::qc::html)),
 
-        "callability" => None,
+        "callability" => Some((sections::callability::text, sections::callability::html)),
 
         "variants" => Some((sections::variants::text, sections::variants::html)),
 
-        "clinvar" => None,
+        "clinvar" => Some((sections::clinvar::text, sections::clinvar::html)),
 
-        "clinical-filter" => None,
+        "clinical-filter" => Some((sections::acmg_sf::text, sections::acmg_sf::html)),
 
-        "cpsr" => None,
+        "cpsr" => Some((sections::cpsr::text, sections::cpsr::html)),
 
-        "slivar" => None,
+        "slivar" => Some((sections::comphet::text, sections::comphet::html)),
 
         "exomiser" => Some((sections::exomiser::text, sections::exomiser::html)),
 
@@ -191,9 +191,9 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "mosaic-mca" => Some((sections::mocha::text, sections::mocha::html)),
 
-        "carrier-list" => None,
+        "carrier-list" => Some((sections::carrier::text, sections::carrier::html)),
 
-        "couple" => None,
+        "couple" => Some((sections::couple::text, sections::couple::html)),
 
         "paralogs" => None,
 

@@ -76,6 +76,7 @@ fn line(out: &mut Vec<String>, l: &Line) {
             out.push("    </ul>".to_owned());
         }
         Line::Warn(t) => out.push(format!("    <div class=\"stale\">{}</div>", e(t))),
+        Line::Raw(t) => out.push(t.clone()),
     }
 }
 
