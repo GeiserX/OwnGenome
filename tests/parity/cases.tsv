@@ -1328,3 +1328,11 @@ report-render	a-prs-sex	gen:report-corpus.sh	--summary a-prs-sex.json -o a-prs-s
 report-render	a-y-calls	gen:report-corpus.sh	--summary a-y-calls.json -o a-y-calls.txt -o a-y-calls.html	a-y-calls.txt,a-y-calls.html	bytes	PYTHON_IMAGE
 report-render	a-since	gen:report-corpus.sh	--summary a-since.json -o a-since.txt -o a-since.html	a-since.txt,a-since.html	bytes	PYTHON_IMAGE
 report-render	a-numbers	gen:report-corpus.sh	--summary a-numbers.json -o a-numbers.txt	a-numbers.txt	bytes	PYTHON_IMAGE
+# report-render, the traits, copy-number and repeat sections: every branch of each in each state (m-genome-*).
+report-render	m-genome-ok	gen:report-corpus.sh	--summary m-genome-ok.json -o m-genome-ok.txt -o m-genome-ok.html	m-genome-ok.txt,m-genome-ok.html	bytes	PYTHON_IMAGE
+report-render	m-genome-stale	gen:report-corpus.sh	--summary m-genome-stale.json -o m-genome-stale.txt -o m-genome-stale.html	m-genome-stale.txt,m-genome-stale.html	bytes	PYTHON_IMAGE
+report-render	m-genome-failed	gen:report-corpus.sh	--summary m-genome-failed.json -o m-genome-failed.txt -o m-genome-failed.html	m-genome-failed.txt,m-genome-failed.html	bytes	PYTHON_IMAGE
+report-render	m-genome-other	gen:report-corpus.sh	--summary m-genome-other.json -o m-genome-other.txt -o m-genome-other.html	m-genome-other.txt,m-genome-other.html	bytes	PYTHON_IMAGE
+report-render	m-genome-stranger	gen:report-corpus.sh	--summary m-genome-stranger.json -o m-genome-stranger.txt -o m-genome-stranger.html	m-genome-stranger.txt,m-genome-stranger.html	bytes	PYTHON_IMAGE
+report-render	m-genome-outdated	gen:report-corpus.sh	--summary m-genome-outdated.json -o m-genome-outdated.txt -o m-genome-outdated.html	m-genome-outdated.txt,m-genome-outdated.html	bytes	PYTHON_IMAGE
+report-render	m-genome-no-stranger	gen:report-corpus.sh	--summary m-genome-no-stranger.json -o m-genome-no-stranger.txt -o m-genome-no-stranger.html	m-genome-no-stranger.txt,m-genome-no-stranger.html	bytes	PYTHON_IMAGE

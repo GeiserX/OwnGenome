@@ -177,13 +177,13 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "mei" => Some((sections::mei::text, sections::mei::html)),
 
-        "expansions" => None,
+        "expansions" => Some((sections::str::text, sections::str::html)),
 
         "vntyper" => Some((sections::vntyper::text, sections::vntyper::html)),
 
         "mito" => Some((sections::mito::text, sections::mito::html)),
 
-        "lpa" => None,
+        "lpa" => Some((sections::lpa::text, sections::lpa::html)),
 
         "chip" => Some((sections::chip::text, sections::chip::html)),
 
@@ -195,7 +195,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "couple" => Some((sections::couple::text, sections::couple::html)),
 
-        "paralogs" => None,
+        "paralogs" => Some((sections::paralogs::text, sections::paralogs::html)),
 
         "pharmcat" => Some((sections::pgx::pharmcat_text, sections::pgx::pharmcat_html)),
 
@@ -222,11 +222,11 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "roh" => Some((sections::roh::text, sections::roh::html)),
 
-        "traits-panel" => None,
+        "traits-panel" => Some((sections::traits::text, sections::traits::html)),
 
         "prs" => Some((sections::prs::text, sections::prs::html)),
 
-        "bloodtype" => None,
+        "bloodtype" => Some((sections::bloodtype::text, sections::bloodtype::html)),
 
         "telomere" => Some((sections::telomere::text, sections::telomere::html)),
 

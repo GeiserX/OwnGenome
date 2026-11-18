@@ -27,7 +27,7 @@ set -euo pipefail
 export LC_ALL=C TZ=UTC
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "${here}/../../.." && pwd)
-ORACLE_SHA=1ec630690e63796b4410d23ec65768200adb8dc0
+ORACLE_SHA=65095e975bea01c74ed92a4f1b8c1bd00d05caaa
 og=${OG:-${root}/rust/target/release/og}
 
 # --- the oracle's modules ------------------------------------------------------------
@@ -295,6 +295,117 @@ mut optin-partial "$optin"' | .sections.mosaic.data.calls = [] | .sections.mosai
 mut optin-viral-na '.generated_utc = "2026-01-02 03:04 UTC" | .sections.viral += {state: "ok",
   source: "viral/S1_viral.tsv", data: {hhv6: "not assessed (the BAM has no unplaced unmapped reads)", found: [],
   genomes: 24}}'
+# The sections of the traits, copy-number and repeat unit: every branch of
+# each, in each state (the summary-collect folders never hold an
+# ExpansionHunter result, and their blood groups render in text only).
+sec() { printf '.sections.%s = {"title": "%s", "state": "%s", "note": %s, "file_date": "2021-03-04 05:06 UTC", "source": null, "data": %s}' "$1" "$1" "$2" "$3" "$4"; }
+eh='{"records": 6, "stranger": true, "no_status": 2, "unsized": ["DMPK", "RFC1"], "intermediate": ["HTT"],
+  "not_graded": {"MUC1": "reference >300 bp", "CEL": "<none>"},
+  "flagged": [{"locus": "RFC1", "status": "pathogenic", "rfc1_motif": {"verdict": "expanded", "note": "AAGGG & <AAAGG>"}},
+    {"locus": "HTT", "status": "premutation", "motif": {"verdict": "pure", "note": "CAG"}},
+    {"locus": "ATXN1", "status": "full_mutation", "repeat_count": "60"},
+    {"locus": "FXN", "status": "pathogenic", "repeat_count": "900/12", "allele_sizing": "in_repeat/spanning", "ci": "700-1000", "rfc1_motif": {"verdict": "x"}}],
+  "loci": [{"repeat_count": "17/40", "locus": "HTT", "allele_sizing": "spanning/in_repeat", "ci": "17-17/38-45",
+      "status": "premutation", "sizing": "in_repeat", "normal_max": 26, "zone": "reduced penetrance",
+      "zone_label": "36 to 39 repeats", "zone_citation": "PMID 1", "motif": {"verdict": "pure", "note": "CAG"}},
+    {"repeat_count": "11/11", "locus": "RFC1", "allele_sizing": "in_repeat/in_repeat", "ci": "x-1", "status": "normal",
+      "sizing": "flanking_only", "normal_max": null},
+    {"repeat_count": "5/7", "locus": "DMPK", "allele_sizing": "in_repeat", "ci": "12-20", "status": "normal",
+      "sizing": "low_confidence"},
+    {"locus": "MUC1", "repeat_count": ".", "status": "", "not_graded": "reference >300 bp", "sizing": "no_call", "ci": "."},
+    {"locus": "AR", "repeat_count": "22", "status": "normal", "sizing": "sized", "ci": ""},
+    {"repeat_count": "18/41", "locus": "HTT", "status": "normal", "sizing": "unknown"}],
+  "key_loci": [{"locus": "C9ORF72"}, {"locus": "HTT"}, {"locus": "FMR1"}],
+  "readings": [{"locus": "CFTR", "repeat": "TG", "genotype": "11/12", "status": "read", "reading": "a <b> reading",
+      "source": "PMID 2", "five_t": true},
+    {"locus": "UGT1A1", "repeat": "TA", "genotype": ".", "status": "not_read", "reading": "r2", "source": "s2",
+      "agreement": "differs"},
+    {"locus": "SLC6A4", "repeat": "5-HTTLPR", "genotype": "L/S", "status": "read", "reading": "r3", "source": "s3"}]}'
+lpa='{"status": "too little depth", "message": "8.0x over the exons", "advice": "Measure Lp(a) once.",
+  "flag": "none", "flag_text": "No genetic sign.",
+  "variants": [{"rsid": "rs10455872", "genotype": "./.", "status": "no_call", "risk_alleles": null},
+    {"rsid": "rs3798220", "genotype": "C/C", "status": "called", "risk_alleles": 2},
+    {"rsid": "rs0", "genotype": "T/C", "status": "called", "risk_alleles": 1.0}]}'
+lpa_null='{"status": "estimated", "kiv2_copies": "19.8", "ci95_low": "17.9", "ci95_high": "22.0", "class": "low",
+  "message": "about 20", "advice": ".", "flag": "high", "flag_text": "Genetic signs.", "variants": [],
+  "null_allele": {"rsid": "", "status": "uncertain", "alt_reads": "2", "depth": "150", "copies": "0.4", "message": "m"}}'
+blood='{"abo": "AB & \"O\"", "rhd": "RhD négatif",
+  "systems": [{"system": "ABO", "phenotype": "AB", "genotype": "A1/B", "confidence": "high"},
+    {"system": "Kell<K>", "phenotype": "K-k+ é", "genotype": "KEL*02/KEL*02", "confidence": "medium"},
+    {"system": "a-very-long-system", "phenotype": "a phenotype longer than thirty-four characters", "genotype": "KEL*01.07",
+      "confidence": "low"}]}'
+traits='{"called": 3, "not_covered": 2, "other_allele": 1,
+  "rows": [{"rsid": "rs4988235", "gene": "MCM6", "trait": "Lactase <persistence>", "genotype": "A/G", "status": "called",
+      "reading": "Likely persistent", "ancestry": "yes", "note": "European & others", "pmids": "1,2"},
+    {"rsid": "rs1", "gene": "G1", "trait": "t1", "genotype": ".", "status": "not_covered", "reading": ".",
+      "ancestry": "no", "note": ".", "pmids": "3"},
+    {"rsid": "rs2", "gene": "G2", "trait": "t2", "genotype": "./.", "status": "not_covered", "reading": ".",
+      "ancestry": "no", "note": ".", "pmids": "4"},
+    {"rsid": "rs3", "gene": "G3", "trait": "t3", "genotype": "C/T", "status": "other_allele", "reading": "other",
+      "ancestry": "no", "note": "n", "pmids": "5"}],
+  "rules": [{"rule": "APOL1", "gene": "APOL1", "trait": "Kidney disease", "rsids": "rs73885319,rs60910145",
+      "genotypes": "A/G,T/G", "phase": "read_backed", "result": "G0/G1", "status": "called", "reading": "one G1",
+      "ancestry": "yes", "note": "African", "pmids": "6",
+      "g2": {"result": "G1/G2", "text": "G2 read from the VCF.", "reading": "two risk variants <high>"}},
+    {"rule": "HFE", "gene": "HFE", "trait": "Iron", "rsids": "rs1800562,rs1799945", "genotypes": "G/G,C/C",
+      "phase": "not_needed", "result": "wt/wt", "status": "called", "reading": "no variant", "ancestry": "no",
+      "note": ".", "pmids": "7"},
+    {"rule": "GC", "gene": "GC", "trait": "Vitamin D", "rsids": "rs7041", "genotypes": ".", "phase": "unphased",
+      "result": ".", "status": "not_covered", "reading": ".", "ancestry": "no", "note": ".", "pmids": "8",
+      "g2": {"result": ".", "text": "not read", "reading": "r"}},
+    {"rule": "MAPT", "gene": "MAPT", "trait": "t", "rsids": "rs1", "genotypes": "A/G", "phase": "other",
+      "result": "H1/H2", "status": "called", "reading": "r", "ancestry": "no", "note": "n", "pmids": "9"}],
+  "apoe": [{"rsid": "rs429358+rs7412", "gene": "APOE", "trait": "APOE e4", "genotype": "e3/e4", "status": "called",
+      "reading": "one e4", "ancestry": "yes", "note": "risk factor", "pmids": "10"}]}'
+paraphase='{"genes": [{"gene": "SMN1", "copy_number": "2", "status": "called", "detail": "."},
+    {"gene": "PMS2", "copy_number": "no call", "status": "no_call", "detail": "one haplotype <x>"},
+    {"gene": "HBA1", "copy_number": "1", "status": "called", "detail": ""}],
+  "other_regions": 0, "other_regions_called": 0, "variants": {"smn1": 1.5, "hba": 2},
+  "smn1": {"paraphase": null, "parascopy": {"text": "2 (quality 30)"}, "agree": null}}'
+parascopy='{"smn1": {"text": "2 (quality 30, filter PASS)"}, "smn2": {}, "agcn": "4", "agcn_qual": "40",
+  "agcn_filter": "PASS", "reading": "two SMN1 copies",
+  "smn1_marker": {"rsid": null, "status": "present", "alt_reads": "10", "depth": "40", "copies": "1.0",
+    "message": "a higher chance of 2+0"},
+  "hba": {"status": "not assessed", "message": "not assessed: flank depth under 8x"},
+  "cyp21a2": {"status": "called", "cyp21a2_copies": "2", "module_total": "4", "expected_total": "4",
+    "finding": "conversion", "conversion_sites": "In2G", "reading": "a possible conversion"},
+  "dosage": [{"locus": "HP", "status": "called", "copies": "3", "estimate": "3.02", "reading": "."},
+    {"locus": "CCL3L1", "status": "called", "copies": "5", "estimate": "4.9", "reading": "more copies"},
+    {"locus": "LCE3BC", "status": "not assessed", "copies": ".", "estimate": ".", "reason": "low_control_depth",
+      "reading": "."}],
+  "cn_intervals": {"rows": 4, "by_status": {"not assessed": 1, "called": 3}, "changes": []},
+  "loci": [{"genes": "AMY1A,AMY1B,AMY1C", "text": "6 (quality 25)", "status": "called", "reading": "six copies"},
+    {"genes": "C4A,C4B", "text": "not assessed (no read)", "status": "not assessed", "reading": "r"},
+    {"genes": "CFH", "text": "4", "status": "called", "reading": "."}]}'
+parascopy_b='{"smn1": {"text": "1"}, "cyp21a2": {"status": "not assessed", "reason": "psv_low_depth"},
+  "dosage": [], "cn_intervals": {"rows": 2, "by_status": {}, "changes": null}}'
+parascopy_c='{"cyp21a2": {"status": "not assessed", "message": "", "reason": ""}, "cn_intervals": {"rows": 3,
+  "by_status": {"not assessed": 3}}, "hba": {"status": "called", "alpha_globin_genes": "4"}}'
+mut genome-ok "$(sec expansions ok null "$eh") | $(sec lpa ok null "$lpa") | $(sec bloodtype ok null "$blood")
+  | $(sec traits ok null "$traits") | $(sec paralogs ok null "$paraphase") | $(sec parascopy ok null "$parascopy")
+  | .sections.paralogs.data.smn1.paraphase = \"2\" | .sections.paralogs.data.smn1.agree = \"agree\""
+mut genome-stale "$(sec expansions stale '"from 2020"' "$eh") | $(sec lpa stale '"from <2020>"' "$lpa_null")
+  | $(sec bloodtype stale '"old"' "$blood") | $(sec traits stale '"old"' "$traits")
+  | $(sec paralogs stale '"old"' "$paraphase") | $(sec parascopy stale '"old"' "$parascopy_b")
+  | .sections.paralogs.data.smn1.agree = \"disagree\"
+  | .sample = \"A&B <x>\" | .new_since = {\"previous_utc\": \"2026-01-01T00:00:00Z\",
+    \"sections\": [\"traits\", \"parascopy\", \"expansions\", \"lpa\", \"bloodtype\"]}"
+mut genome-failed "$(sec expansions failed '"exit 1"' '{}') | $(sec lpa failed '"exit 2"' '{}')
+  | $(sec bloodtype unreadable '"bad table"' '{}') | $(sec traits failed '"exit 3"' '{}')
+  | $(sec paralogs failed '"exit 4"' '{}') | $(sec parascopy unreadable '"bad"' '{}')"
+mut genome-other "$(sec expansions weird null '{}') | $(sec traits weird null '{}') | $(sec parascopy weird null "$parascopy_c")
+  | $(sec paralogs missing null '{}')"
+mut genome-stranger "$(sec expansions ok null '{"records": 0, "stranger": true, "flagged": [], "loci": []}')
+  | $(sec parascopy failed '"exit 1"' '{}')"
+mut genome-outdated "$(sec expansions ok null '{"records": 1, "stranger": true, "stranger_outdated": true,
+  "loci": [{"locus": "AR", "repeat_count": "22"}]}') | $(sec parascopy ok null "$parascopy_c")
+  | .sections.parascopy.data.cn_intervals.changes = [{\"name\": \"22q11.2 A-D\", \"locus\": \"x\",
+    \"chrom\": \"chr22\", \"start\": \"18912230\", \"end\": \"21465659\", \"copies\": \"1\", \"expected\": \"2\",
+    \"change\": \"deletion\"}, {\"name\": \"AZFc <b&r>\", \"locus\": \"y\", \"copies\": \"2\", \"expected\": \"1\",
+    \"change\": \"DUPLICATION\"}]"
+mut genome-no-stranger "$(sec expansions ok null '{"records": 2, "stranger": false, "no_status": 2,
+  "not_graded": {}, "unsized": [], "intermediate": []}') | $(sec traits ok null '{"called": 0, "not_covered": 0,
+  "other_allele": 0, "rows": [], "rules": [], "apoe": []}') | $(sec paralogs ok null "$paraphase")"
 rm -f "$base"
 
 # The clinical sections: case cb-full, which holds every one of them but the couple
@@ -429,6 +540,7 @@ PORTED="$PORTED pharmcat cpic cyp2d6 hla mito "
 PORTED="${PORTED}exomiser mei vntyper chip mosaic-mca locityper roh telomere viral "
 PORTED="${PORTED}callability clinvar clinical-filter cpsr slivar carrier-list couple "
 PORTED="${PORTED}ancestry-fine mt-haplogroup y-chromosome archaic ancient prs "
+PORTED="${PORTED}expansions lpa paralogs traits-panel bloodtype "
 while [ $# -gt 0 ]; do
   case "$1" in
     -o)
@@ -464,7 +576,6 @@ END {
     # The charts are not ported yet (port-report-charts): drop their figures.
     if (l ~ /^    <figure class="chart">/) continue
     if (l ~ /^        <li><a href="#/ && !wanted(l)) continue
-    if (l ~ /^    <figure class="chart">/) continue
     if (l ~ /^  <section class="sec[^"]*" id="/ && !wanted(l)) {
       while (lines[i] != "  </section>") i++
       continue
@@ -516,6 +627,13 @@ BEGIN {
   title["## Y-Chromosome Haplogroup (Yleaf)"] = "y-chromosome"; title["## Y Placement on the Current Public Tree"] = "y-chromosome"
   title["## Y-STR Markers (HipSTR)"] = "y-chromosome"; title["## Archaic Ancestry (IBDmix, step 43)"] = "archaic"
   title["## Ancient Populations (AADR PCA, step 44)"] = "ancient"; title["## Polygenic Risk Scores"] = "prs"
+  title["## Repeat Expansions (ExpansionHunter)"] = "expansions"
+  title["## Lp(a): LPA KIV-2 Repeat Count and Risk Variants"] = "lpa"
+  title["## Paralog Genes (Paraphase, PacBio HiFi)"] = "paralogs"
+  title["## SMN1/SMN2 Copy Number (Parascopy, short reads)"] = "paralogs"
+  title["## Paralog Copy Number"] = "paralogs"
+  title["## Traits Panel (step 42)"] = "traits-panel"
+  title["## Blood Groups (predicted from the genome)"] = "bloodtype"
 }
 { sub(/ None \(None\/None variants matched\) /, " not available (not available/not available variants matched) "); lines[++n] = $0 }
 END {
