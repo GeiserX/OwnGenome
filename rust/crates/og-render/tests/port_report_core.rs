@@ -259,10 +259,20 @@ fn both_reports_follow_the_chapter_order() {
     assert_eq!(&shown[results..], ["not-run", "not-assessed"]);
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
     assert_eq!(&shown[..results], in_order.as_slice());
+    // The HTML report shows a card for a section that did not run; the text
+    // report leaves it out, except the paralogs' "not checked" line, which
+    // prints when neither step 35 nor step 35b ran. So of the chapters with a
+    // card, the text keeps Quality and Carrier, in that order.
+    let with_card: Vec<String> = CHAPTERS
+        .iter()
+        .filter(|c| c.sections.iter().any(|s| shown[..results].contains(&s.id)))
+        .map(|c| c.title.to_uppercase())
+        .collect();
     assert_eq!(
-        text_chapters(&txt).first().map(String::as_str),
-        Some("QUALITY")
+        with_card,
+        ["QUALITY", "CLINICAL", "CARRIER", "TRAITS AND SCORES"]
     );
+    assert_eq!(text_chapters(&txt), ["QUALITY", "CARRIER"]);
     let q = txt.split("#  1. QUALITY").nth(1).unwrap_or("");
     assert!(q.find("## Quality control") < q.find("## Variant Calling (DeepVariant)"));
     assert!(q.contains("## Variant Calling (DeepVariant)"));
