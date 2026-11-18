@@ -125,8 +125,12 @@ This og:
   og version
   og --tree-hash
 
-Developer and CI tools (og dev --help lists them alone):
-  og dev parity-compare|contract|schema|report-only|remnants [args]
+Developer and CI tools: og dev --help lists them.
+";
+
+/// The developer and CI tools, which `og dev --help` prints. They stay out of
+/// [`USAGE`], so `og --help` lists only what a user or a step runs.
+const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|remnants [args]
   og dev scan personal-data|images [args]
   og dev versions check-run|expand|coupled [args]
   og dev pgs trait|label-match|metric-match [args]
@@ -156,9 +160,10 @@ Developer and CI tools (og dev --help lists them alone):
 ";
 
 /// Commands whose own parser answers `-h`/`--help` with a fuller usage than
-/// their line above: `tool` for every verb of it, `tool a|b` for those verbs.
-/// Any other command's help request is answered from its lines above by
-/// [`help`], so a new verb answers `--help` with no change here.
+/// their line in [`USAGE`] or [`DEV_USAGE`]: `tool` for every verb of it,
+/// `tool a|b` for those verbs. Any other command's help request is answered
+/// from its lines there by [`help`], so a new verb answers `--help` with no
+/// change here.
 const OWN_HELP: &[&str] = &[
     "run",
     "recheck",
@@ -226,6 +231,7 @@ fn help(raw: &mut [String]) -> Option<ExitCode> {
     }
     let lines: Vec<(&str, Vec<&str>)> = USAGE
         .lines()
+        .chain(DEV_USAGE.lines())
         .map(|l| l.trim_start_matches("usage:").trim())
         .filter_map(|l| {
             let mut w = l.split(' ');

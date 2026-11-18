@@ -4,9 +4,8 @@
 //! - every command on a line of `og --help` or `og dev --help` answers
 //!   `--help` and `-h` with its usage on stdout and exit 0, and writes no
 //!   file while doing so;
-//! - `og --help` starts with how to run a genome, and the `og dev` lines
-//!   come only in their own block at the end, which `og dev --help` prints
-//!   alone;
+//! - `og --help` starts with how to run a genome and lists no `og dev`
+//!   line; `og dev --help` lists those, and nothing else;
 //! - `og clinvar --help` names the defaults of its options.
 
 use std::io::Read;
@@ -210,31 +209,22 @@ fn og_help_starts_with_how_to_run_a_genome() {
         what.contains("progress") && what.contains("never starts a run"),
         "og run is not described as inspecting a run: {what:?}"
     );
-    // Every og dev line is in the last block, and og dev --help prints that
-    // block alone.
-    let block = root
-        .lines()
-        .position(|l| l.starts_with("Developer and CI tools"))
-        .expect("a developer block");
-    let before: Vec<&str> = root
-        .lines()
-        .take(block)
-        .filter(|l| l.trim().starts_with("og dev "))
-        .collect();
-    assert!(
-        before.is_empty(),
-        "og dev lines before their block: {before:?}"
-    );
+    // No og dev line in og --help: it points to og dev --help, which lists
+    // them all and nothing else.
     let in_root: Vec<String> = og_lines(&root)
         .into_iter()
         .filter(|l| l.starts_with("og dev "))
         .collect();
+    assert!(in_root.is_empty(), "og dev lines in og --help: {in_root:?}");
+    assert!(
+        root.lines()
+            .any(|l| l.starts_with("Developer and CI tools") && l.contains("og dev --help")),
+        "og --help does not point to og dev --help"
+    );
     let dev = og_in(&here, &["dev", "--help"]);
     assert_eq!(dev.code, Some(0));
     let in_dev = og_lines(&dev.stdout);
-    assert!(in_root.len() > 20, "{in_root:?}");
-    let missing: Vec<&String> = in_root.iter().filter(|l| !in_dev.contains(l)).collect();
-    assert!(missing.is_empty(), "not in og dev --help: {missing:?}");
+    assert!(in_dev.len() > 20, "{in_dev:?}");
     let other: Vec<&String> = in_dev
         .iter()
         .filter(|l| !l.starts_with("og dev "))
@@ -276,5 +266,40 @@ fn og_clinvar_help_names_its_defaults() {
             assert!(line.ends_with(&format!("(default {default})")), "{line}");
         }
     }
+    let _ = std::fs::remove_dir_all(&here);
+}
+
+#[test]
+fn og_run_state_with_out_prints_nothing_on_stdout() {
+    // Output convention (docs/rust.md, "Command lines"): the result goes to
+    // --out FILE, and the sentence that says so goes to stderr.
+    let here = scratch("run-state");
+    let sample = here.join("S1");
+    std::fs::create_dir_all(&sample).expect("sample dir");
+    let steps = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/steps.tsv");
+    let out = here.join("state.json");
+    let o = og_in(
+        &here,
+        &[
+            "run",
+            "state",
+            "--sample",
+            "S1",
+            "--sample-dir",
+            sample.to_str().expect("utf-8 path"),
+            "--steps",
+            steps.to_str().expect("utf-8 path"),
+            "--out",
+            out.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert_eq!(o.stdout, "", "og run state --out printed on stdout");
+    assert_eq!(
+        o.stderr,
+        format!("Run state written: {}\n", out.display()),
+        "the sentence is not on stderr"
+    );
+    assert!(out.is_file(), "no {}", out.display());
     let _ = std::fs::remove_dir_all(&here);
 }
