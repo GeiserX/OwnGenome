@@ -269,13 +269,16 @@ pub fn read(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Copies `from` to `to`, making the folder of `to`.
+/// Copies the bytes of `from` to `to`, making the folder of `to`. It writes a
+/// new file rather than calling `fs::copy`: on macOS that clones the file and
+/// keeps the source's modification time, and the demo's files must carry the
+/// time they were written, after [`RUN_STARTED`].
 pub fn copy(from: &Path, to: &Path) -> Result<(), String> {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    fs::copy(from, to)
-        .map(|_| ())
+    fs::read(from)
+        .and_then(|b| fs::write(to, b))
         .map_err(|e| format!("{} -> {}: {e}", from.display(), to.display()))
 }
 
@@ -779,4 +782,27 @@ fn check(genome_dir: &Path, sample: &str, out: &mut dyn Write, err: &mut dyn Wri
     }
     let _ = writeln!(out, "Every section of {} is ok.", path.display());
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn a_copied_file_carries_the_time_it_was_written() {
+        let s = Scratch::new("copy").unwrap();
+        let (from, to) = (s.join("from.tsv"), s.join("sub/to.tsv"));
+        fs::write(&from, "a\tb\n").unwrap();
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+        fs::File::options()
+            .write(true)
+            .open(&from)
+            .and_then(|f| f.set_modified(old))
+            .unwrap();
+        copy(&from, &to).unwrap();
+        assert_eq!(fs::read(&to).unwrap(), b"a\tb\n");
+        let when = fs::metadata(&to).and_then(|m| m.modified()).unwrap();
+        assert!(when > old + Duration::from_secs(86_400), "{when:?}");
+    }
 }
