@@ -28,6 +28,8 @@ OWNGENOME_LIVE_URL=http://127.0.0.1:8788 ./scripts/run-all.sh your_name male   #
 
 `./scripts/owngenome-live.sh your_name` does the same and prints the address of that run's page. `hash-password` writes `GENOME_DIR/.owngenome-live/password` with mode 600. The file holds a PBKDF2-SHA256 hash, never the password. Open http://127.0.0.1:8787, log in, and pick the run.
 
+The site runs in the foreground of its terminal. Press Ctrl+C there to stop it. A run that posts to it goes on without it. Under the systemd unit of [Deploy it on a server](#deploy-it-on-a-server), `systemctl stop owngenome-live` stops it.
+
 With `OWNGENOME_LIVE_URL` set, `run-all.sh` writes `<sample>/nextflow/live.config` and passes it to Nextflow with `-c`. That config loads the nf-weblog plugin (pinned as `NF_WEBLOG_PLUGIN` in `versions.env`; Nextflow downloads it on the first live run) and points it at `OWNGENOME_LIVE_URL/ingest/<sample>`, so every task's progress is posted. The numbered script steps that run after the pipeline (GRIDSS, imputation prep, the somatic caller, the extra callers) post when they start and how they end (the benchmark, `benchmark-variants.sh`, has no step number and posts nothing), and `run-all.sh` posts once more as it ends, with its exit code. A site that is down or slow costs one warning; the run never waits for it and never fails for it. `OWNGENOME_LIVE_URL` must be a plain `http://host:port` URL. Set `OWNGENOME_LIVE_PAGE_URL` to the address you open the site at (`http://127.0.0.1:8787`, or the name behind your proxy) and `run-all.sh` also prints the run's page, `OWNGENOME_LIVE_PAGE_URL/runs/<sample>/`, as it starts; it prints it only together with `OWNGENOME_LIVE_URL`.
 
 A bare `nextflow run main.nf` can report too. Write a config like this one, with the sample id at the end of the URL (the page counts only the tasks tagged with it), and pass it with `-c`:
@@ -178,7 +180,7 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 Inside the container both listeners bind every address, and `-p 127.0.0.1:...` keeps them on the host's loopback. Write the hash first: `mkdir -p -m 700 ~/.owngenome-live`, then `(umask 077; python3 bin/owngenome_live.py hash-password > ~/.owngenome-live/password)`, so the file is mode 600 from the moment it exists.
 
-**Behind a reverse proxy.** Point the proxy at `127.0.0.1:8787`, pass the Host header, and turn off response buffering for `/runs/<run>/events` (the server sends `X-Accel-Buffering: no`, which nginx honours). Then:
+**Behind a reverse proxy.** Give the site a host name of its own, such as `live.example.org`, and serve it at the root of that name. A path prefix such as `example.org/genome/` does not work: the pages ask for their files and data at root paths (`/login`, `/runs.json`, `/assets/live.css`), and the server has no flag for a prefix. Point the proxy at `127.0.0.1:8787`, pass the Host header, and turn off response buffering for `/runs/<run>/events` (the server sends `X-Accel-Buffering: no`, which nginx honours). Then:
 
 ```bash
 ./scripts/owngenome-live.sh --allowed-host live.example.org --trust-proxy 127.0.0.1 --cookie-secure
@@ -200,6 +202,8 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 ```
+
+Save it as `/etc/systemd/system/owngenome-live.service`. `systemctl enable --now owngenome-live` starts it now and at every boot, and `systemctl stop owngenome-live` stops it.
 
 ## Plugins
 
