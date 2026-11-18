@@ -10,10 +10,13 @@
 //! - [`chroms`]: the chromosomes long enough for RFMix to paint.
 //! - [`report`]: the fractions table, the painting (BED and PNG) and the
 //!   plain-text summary.
-//! - [`freqs`], [`project`], [`paint`], [`simulate`]: `og ancestry-fine
-//!   freqs|project|paint|simulate`, the engines that replace ADMIXTURE and
-//!   RFMix, and [`compare`]: `og archaic compare|genomes`. Not ported yet:
-//!   each says so and exits 2.
+//! - [`freqs`], [`project`], [`paint`]: `og ancestry-fine
+//!   freqs|project|paint`, the engines that replace ADMIXTURE and RFMix.
+//!   Not ported yet: each says so and exits 2.
+//! - [`simulate`]: `og ancestry-fine simulate`, an admixed genome with known
+//!   truth that those engines test against.
+//! - [`compare`]: `og archaic compare|genomes`, Chen et al.'s Neanderthal
+//!   totals beside step 43 (the archaic jobs of `public-evidence.yml`).
 //!
 //! Each command writes what `bin/ancestry_fine_report.py` wrote (checked by
 //! `tests/parity`), with three deliberate changes: every output is written
