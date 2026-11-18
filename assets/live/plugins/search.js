@@ -8,8 +8,7 @@
 // an rsID, a gene symbol (a prefix also lists the terms that start with it, in sorted order), or
 // a position, which the index cannot answer (scripts/owngenome-lookup.sh can).
 // The box sits in the page header; on a person's page a hit opens its card (#s/<section>).
-// rust/crates/og-render/tests/index_search.rs runs match() under node against the Rust rule, and
-// tests/test_results_index.py against the Python one.
+// rust/crates/og-render/tests/index_search.rs runs match() under node against the Rust rule.
 (function (root) {
   'use strict';
   var SUGGESTIONS = 20;
