@@ -28,7 +28,7 @@ if ! "$OG" version > /dev/null 2>&1; then
   echo "skip: og is not built for this machine (scripts/setup.sh --og)"
   exit 0
 fi
-PY=$(command -v python3)
+command -v zip > /dev/null || { echo "FAIL: zip is needed to run this test"; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 FAILS=0
@@ -58,13 +58,18 @@ run_in() {
 # A zip with two chromosomes, laid out as Beagle's plink.GRCh38.map.zip
 # (its members are named plink.chrchrN).
 mkzip() {
-  "$PY" - "$1" <<'PY'
-import sys, zipfile
-with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
-    for c, n in (("chr21", 300), ("chr22", 400)):
-        rows = "".join(f"{c}\t.\t{i * 0.0123:.6f}\t{10000000 + i * 997}\n" for i in range(n))
-        z.writestr(f"chr_in_chrom_field/plink.chr{c}.GRCh38.map", rows)
-PY
+  local d
+  d=$(mktemp -d "${WORK}/zip.XXXXXX")
+  mkdir -p "${d}/chr_in_chrom_field"
+  awk -v d="${d}/chr_in_chrom_field" 'BEGIN {
+    split("chr21 chr22", c, " "); split("300 400", n, " ")
+    for (k = 1; k <= 2; k++) {
+      f = d "/plink.chr" c[k] ".GRCh38.map"
+      for (i = 0; i < n[k]; i++) printf "%s\t.\t%.6f\t%d\n", c[k], i * 0.0123, 10000000 + i * 997 > f
+      close(f)
+    }
+  }'
+  (cd "$d" && zip -q -D -r out.zip chr_in_chrom_field) && mv "${d}/out.zip" "$1"
 }
 
 # The fresh install every other folder is checked against.

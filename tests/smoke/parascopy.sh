@@ -18,22 +18,17 @@ Z=https://zenodo.org/records/15019940/files
 for f in "GRCh38_v${PARASCOPY_DATA_VERSION}.tar.gz a95bf674f43317d3a4c1b8ddbb140945" \
          "models_GRCh38_1KGP_v${PARASCOPY_DATA_VERSION}.tar.gz 244110d8fa883cf11334527ec2383498"; do
   set -- $f
-  python3 -c 'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' "${Z}/$1" "$1"
+  wget -q -O "$1" "${Z}/$1"
   echo "$2  $1" | md5sum -c -
   tar -xzf "$1"
 done
-python3 - <<'PY'
-import shutil, pysam
-with open("ref.fa", "wb") as out, open("/in/ref.fa", "rb") as src:
-    shutil.copyfileobj(src, out)
-    out.write(b">chr11\n")
-    left = 135086622            # GRCh38 chr11, as the homology table lists it
-    while left:
-        n = min(left, 60)
-        out.write(b"N" * n + b"\n")
-        left -= n
-pysam.faidx("ref.fa")
-PY
+# The fixture reference, then chr11 of GRCh38's length (as the homology
+# table lists it) in N, 60 bases a line.
+{ cat /in/ref.fa; printf '>chr11\n'; awk 'BEGIN {
+    l = "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"
+    for (left = 135086622; left >= 60; left -= 60) print l
+    if (left) print substr(l, 1, left) }'; } > ref.fa
+samtools faidx ref.fa
 awk 'BEGIN { for (s = 10050000; s < 10450000; s += 100) printf "chr20\t%d\t%d\n", s, s + 100 }' > windows.bed
 parascopy depth -i /in/HG002_slice.bam::HG002 -f ref.fa -b windows.bed --no-gc -o depth -@ 4
 parascopy cn-using models_GRCh38_1KGP/EUR/SMN1.gz -i /in/HG002_slice.bam::HG002 -f ref.fa \

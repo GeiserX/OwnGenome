@@ -29,9 +29,11 @@ BAD=0
 ok()  { echo "ok   $*"; }
 bad() { echo "FAIL $*"; BAD=$((BAD + 1)); }
 
-# gz TEXT_FILE OUT MTIME: OUT holds TEXT_FILE gzipped, with MTIME in its header
+# gz TEXT_FILE OUT MTIME: OUT holds TEXT_FILE gzipped, with MTIME (0 to 255)
+# in its header: gzip -n writes no time, then the header's four time bytes
+# (little endian, after the 4-byte magic, method and flags) are set.
 gz() {
-  python3 -c 'import gzip, sys; gzip.GzipFile(sys.argv[2], "wb", mtime=int(sys.argv[3])).write(open(sys.argv[1], "rb").read())' "$1" "$2" "$3"
+  { printf '\037\213\010\000'; printf "\\$(printf %03o "$3")\\000\\000\\000"; gzip -cn < "$1" | tail -c +9; } > "$2"
 }
 sha() { _digest sha256 "$1"; }
 
