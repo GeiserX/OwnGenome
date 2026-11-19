@@ -128,7 +128,7 @@ Which docker flags pgsc_calc's own containers get: they run as you (`-u` with yo
 
 | File | Contents |
 |---|---|
-| `${SAMPLE}_prs_summary.tsv` | `Condition`, `PGS_ID`, `Score_SUM`, `Variants_Matched`, `Variants_Total`, `Matched_Pct`, `Percentile`, `Ancestry_Group`, `ChrX`, `Ambiguous`, `Applies_To`, `Sex_Check`, `Evaluated_In`, `Effect`, `Input`. `Evaluated_In` and `Effect` are written when the score list names evaluations, as the shipped one does |
+| `${SAMPLE}_prs_summary.tsv` | `Condition`, `PGS_ID`, `Score_SUM`, `Variants_Matched`, `Variants_Total`, `Matched_Pct`, `Percentile`, `Ancestry_Group`, `ChrX`, `Ambiguous`, `Applies_To`, `Sex_Check`, `Evaluated_In`, `Effect`, `Percentile_Note`, `Input`. `Evaluated_In` and `Effect` are written when the score list names evaluations, as the shipped one does. Step 25 and `PRS_SUMMARY` always write `Percentile_Note` |
 | `${SAMPLE}_prs_summary.<YYYYMMDD-HHMM>.tsv` | The same table under the time it was written, one per run, so a rerun keeps the earlier ones |
 | `pgsc_calc.<YYYYMMDD-HHMM>/` | Step 25 only: the previous run's `pgsc_calc/` folder, moved aside by the rerun |
 | `pgsc_calc/target.vcf.gz` | The genotypes pgsc_calc scored: the score (and panel) positions, from the gVCF or the VCF |
@@ -187,7 +187,7 @@ That run scored PGS000018 alone and fits a 16 GB machine; the default scores nee
 - **Variants_Matched**: score variants pgsc_calc matched in your genotypes. `NA` when every score fell under pgsc_calc's 75% match rate: pgsc_calc then stops and publishes no match counts, and `Matched_Pct` is the rate its log gave.
 - **Variants_Total**: variants of the scoring file with a GRCh38 position on the autosomes, plus chrX when the sex was given. Strand-ambiguous rows count unless a failed strand check left them out.
 - **Matched_Pct**: `Variants_Matched / Variants_Total` as a percentage; the step warns below 50%, and pgsc_calc gives no sum below 75%.
-- **Percentile**: with the panel, where your score falls among the reference samples of `Ancestry_Group` (pgsc_calc's empirical percentile, `percentile_MostSimilarPop`). `NA` without the panel, and `NA` for a score that does not apply to the declared sex.
+- **Percentile**: with the panel, where your score falls among the reference samples of `Ancestry_Group` (pgsc_calc's empirical percentile, `percentile_MostSimilarPop`). `NA` without the panel, `NA` for a score that does not apply to the declared sex, and `NA` when the input lists variants only (see `Percentile_Note`).
 - **Ancestry_Group**: the panel population whose genetic ancestry is most similar to yours (for the 1000 Genomes panel: AFR, AMR, EAS, EUR or SAS). `NA` without the panel.
 - **ChrX**: the score's rows on chrX: `8 scored` with the sex, `8 left out` without it, `0` when it has none. With the panel, `8 left out (not matched in the panel run)` when pgsc_calc matched none of them and `5 scored, 3 left out (not matched in the panel run)` when it matched some, see [chrX and the sex](#chrx-and-the-sex).
 - **Ambiguous**: the score's strand-ambiguous rows (A/T and C/G) and what happened to them: `11 dropped` by default, `11 kept` with `PRS_KEEP_AMBIGUOUS=true`, `11 dropped, strand check failed` when the score's other rows did not agree with the reference. `0` when it has none.
@@ -195,7 +195,8 @@ That run scored PGS000018 alone and fits a 16 GB machine; the default scores nee
 - **Sex_Check**: for those scores, `applies`, `not applicable to the declared sex` or `no sex declared`; empty for the rest.
 - **Evaluated_In**: the groups the score has an evaluation for in the score list (`EUR;AFR;AMR`), empty when it has none.
 - **Effect**: the OR or HR of the evaluation in `Ancestry_Group`, with the group and the PPM id (`HR 1.53 (EUR, PPM000591)`). Empty without the panel, when the score has no percentile or was not evaluated in your group, and for a score that does not apply to the declared sex.
-- **Input**: `gvcf` when the positions were genotyped from the gVCF, `vcf` when only the variant-only VCF was there.
+- **Percentile_Note**: `percentile withheld: the input lists variants only` when the panel gave a percentile and the genotypes pgsc_calc scored hold no reference calls (see [Hom-ref sites come from the gVCF](#hom-ref-sites-come-from-the-gvcf)); empty otherwise.
+- **Input**: `gvcf` when the positions were genotyped from the gVCF, `vcf` when only the VCF was there. The percentile does not depend on it: a chip VCF is `vcf` and keeps its percentile.
 
 Both reports show the percentile with its group, or one line saying "Raw score only" when no panel was used. With the panel they also show the effect in your group, or say that the score has none for it and name the groups it was evaluated in. When a score's chrX rows were left out because no sex was given, the same line names the score and how many rows; rows left out in a panel run show only in the summary's ChrX column. A score that does not apply to the declared sex shows "not applicable to the declared sex" in place of its percentile, and when no sex was declared the reports say which scores are for one sex only.
 
@@ -224,11 +225,13 @@ The check says the score was reported on the forward strand; it does not prove e
 
 The VCF from step 3 lists only sites where you differ from the reference. A scoring variant whose effect allele is the reference allele is missing from that VCF when you carry two copies of it, and adds nothing to your sum. Step 3 also writes a gVCF, which records where you match the reference, and step 25 reads those sites from it as 0/0. With the gVCF, a site is missing when it was not covered or its record is filtered (FILTER other than `PASS` or `.`, such as LowQual or RefCall).
 
-Without a gVCF (`Input` is `vcf`, a sample called by an older version), the sum misses the weight of every reference-allele effect allele you carry on two copies, and few scores reach pgsc_calc's 75% match rate. The step then prints:
+Without a gVCF (`Input` is `vcf`, a sample called by an older version), the sum misses the weight of every reference-allele effect allele you carry on two copies, and few scores reach pgsc_calc's 75% match rate. pgsc_calc reads each missing site as the reference, so a sum from a variant-only VCF is not comparable with the panel's sums, which come from complete genotypes. Each score then keeps its raw sum and loses its percentile and its effect: `Percentile` is `NA`, `Percentile_Note` says `percentile withheld: the input lists variants only`, and the step prints:
 
 ```
-NOTE: hom-ref sites are absent from this VCF, so the score is biased; not comparable to published distributions
+NOTE: hom-ref sites are absent from this input (0 of N genotyped positions are reference calls), so a missing site reads as the reference and the sums are biased; not comparable to published distributions, and no percentile is given
 ```
+
+The decision reads the genotypes pgsc_calc scored (`pgsc_calc/target.vcf.gz`; in Nextflow the output of `PRS_SCORE_SITES`), not the kind of input: the input lists reference calls when at least one in five of its genotyped positions is 0/0, the rule step 26b applies to the panel's sites. Genotypes from a gVCF pass it. So does a chip VCF from `scripts/chip-to-vcf.sh`, which lists every probe it read, reference calls included, so chip data keeps its percentiles. A variant-only VCF lists no 0/0 and fails it, and so does a gVCF without reference blocks at the positions.
 
 Call the sample again with step 3 to get the gVCF. Imputation (step 14) is not needed for a score from a gVCF: it adds phasing, which the scores do not use, and a percentile needs the ancestry panel, not imputed sites.
 
