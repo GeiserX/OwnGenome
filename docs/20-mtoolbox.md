@@ -126,9 +126,9 @@ Count only PASS calls: a call marked `possible_numt` or with another filter is n
 PASS alone does not make a call reliable, so `summary.json` flags two kinds of heteroplasmic call and keeps both in the count:
 
 - `origin_edge`: the bases the call changes touch m.1-500 or m.16000-16569, the edges above.
-- `low_af`: the AF is under 0.10, the low-level range below. NuMT reads that the filter missed look like calls in this range.
+- `low_af`: the AF is under 0.10, the low-level range above. NuMT reads that the filter missed look like calls in this range.
 
-Each entry of `heteroplasmic_sites` carries both flags, and `heteroplasmic_origin_edge` and `heteroplasmic_low_af` count the flagged ones beside the `heteroplasmic` total. The rows of the annotation list carry the same two flags, so a ClinVar class on a flagged call reads as a class on a less reliable call. A flag never removes a call: the ClinVar pathogenic count and the confirmed variants still name it. A PASS m.3243A>G at AF 0.07 carries `low_af` and stays in both.
+Each entry of `heteroplasmic_sites` carries both flags, and `heteroplasmic_origin_edge` and `heteroplasmic_low_af` count the flagged ones beside the `heteroplasmic` total. The rows of the annotation list carry the same two flags, so a ClinVar class on a flagged call reads as a class on a less reliable call. On those rows `origin_edge` is set for any listed call, homoplasmic or not, and `low_af` only for a heteroplasmic one. A flag never removes a call: the ClinVar pathogenic count and the confirmed variants still name it. A PASS m.3243A>G at AF 0.07 carries `low_af` and stays in both.
 
 Length variants in the D-loop poly-C tracts (m.303-315 and m.16184-16193), one C more or less, are found in most people and often read as a mix of lengths. The reports list them as "length heteroplasmy in the D-loop poly-C tracts" and leave them out of the heteroplasmic count. A call counts as in a tract when the bases it changes (an indel: the bases after its anchor base) overlap one.
 
