@@ -9,6 +9,12 @@
 #   PLATFORM=ont   -> Oxford Nanopore (minimap2 preset: map-ont)
 #   PLATFORM=hifi  -> PacBio HiFi/CCS (minimap2 preset: map-hifi)
 #
+# ONT: the basecaller model goes into the BAM's @RG DS field
+# (DS:basecall_model=...), where step 03e reads it to pick the Clair3 model.
+# It comes from BASECALL_MODEL (e.g. dna_r10.4.1_e8.2_400bps_sup@v5.0.0;
+# needed for FASTQ input), else from the unaligned BAM's own @RG DS, which
+# Dorado writes.
+#
 # Runtime: ~1-3 hours for 30X long-read WGS depending on read length and throughput.
 #
 # The BAM is written under a temporary name, indexed and checked with samtools
@@ -98,12 +104,34 @@ if [ -z "$INPUT_FILE" ] || [ ! -f "$INPUT_FILE" ]; then
   exit 1
 fi
 
+# The basecaller model, for step 03e. Read only for ONT: HiFi has one Clair3
+# model and no basecaller choice that changes it.
+BASECALLER=""
+[ "$PLATFORM" != ont ] || BASECALLER="${BASECALL_MODEL:-}"
+case "$BASECALLER" in
+  *[!A-Za-z0-9._@+-]*)
+    echo "ERROR: BASECALL_MODEL holds characters a basecaller model name never has: '${BASECALLER}'" >&2
+    exit 2 ;;
+esac
+if [ "$PLATFORM" = ont ] && [ -z "$BASECALLER" ] && [[ "$INPUT_FILE" == *.bam ]]; then
+  BASECALLER=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$SAMTOOLS_IMAGE" \
+    /pgp-bin/og longread clair3-model --basecaller-only --bam "/genome/${REAL_INPUT#"${REAL_GENOME}/"}") \
+    || { echo "NOTE: the basecaller model of the unaligned BAM could not be read (see above)." >&2; BASECALLER=""; }
+fi
+RG_DS=""
+if [ -n "$BASECALLER" ]; then
+  RG_DS="\tDS:basecall_model=${BASECALLER}"
+elif [ "$PLATFORM" = ont ]; then
+  echo "NOTE: no basecaller model known (set BASECALL_MODEL); step 03e will then need BASECALL_MODEL or CLAIR3_MODEL."
+fi
+
 echo "=== Long-read Alignment: ${SAMPLE} ==="
 echo "Platform: ${PLATFORM} (minimap2 preset: ${MM2_PRESET})"
 echo "Input: ${INPUT_FILE}"
 echo "Reference: ${REF}"
 echo "Output: ${OUTPUT_DIR}/"
 echo "Threads: ${THREADS}"
+[ -z "$BASECALLER" ] || echo "Basecaller model: ${BASECALLER}"
 
 # Validate reference exists
 if [ ! -f "$REF" ]; then
@@ -146,7 +174,7 @@ _align_and_sort() {
     "$MINIMAP2_IMAGE" \
     minimap2 -t "${THREADS}" -a -x "${MM2_PRESET}" \
       --MD -Y \
-      -R "@RG\tID:${SAMPLE}\tSM:${SAMPLE}\tPL:${RG_PLATFORM}\tLB:${SAMPLE}" \
+      -R "@RG\tID:${SAMPLE}\tSM:${SAMPLE}\tPL:${RG_PLATFORM}\tLB:${SAMPLE}${RG_DS}" \
       "$@" \
       "${REF_FASTA_C}" \
       "$reads" \
