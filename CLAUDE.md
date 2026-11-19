@@ -21,8 +21,9 @@ GENOME_DIR=/path/to/data ./scripts/run-all.sh sample_name male
 # Run individual step
 GENOME_DIR=/path/to/data ./scripts/03-deepvariant.sh sample_name
 
-# Lint
-shellcheck scripts/*.sh
+# Lint: CI checks every tracked shell script; a finding not in
+# tests/shellcheck-baseline.txt fails
+git ls-files -z '*.sh' | xargs -0 shellcheck
 ```
 
 Requirements: 16+ cores recommended, 500 GB disk per sample, Docker, bash 4.4+; Java 17+ and Nextflow for `run-all.sh`. Runs on Linux, macOS, WSL2.
@@ -33,7 +34,7 @@ After modifying any script, verify:
 1. No personal paths or identifiers remain — grep `scripts/` and `docs/` for your own home paths, server hostnames, and names (e.g. `grep -ri '/mnt/user\|/Users/\|/home/' scripts/ docs/`)
 2. All scripts use `GENOME_DIR` not `GENOMA_DIR`
 3. Docker mount is `:/genome` not `:/genoma`
-4. `shellcheck` passes on all scripts
+4. `shellcheck` reports nothing new on the shell scripts you added or changed (the old findings are listed in `tests/shellcheck-baseline.txt`; never add to it)
 
 ## Architecture
 
