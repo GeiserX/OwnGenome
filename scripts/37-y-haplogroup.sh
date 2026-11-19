@@ -83,6 +83,9 @@ TREE=false
 # downloads none (it never reads a BAM's sequence), --no-update-check skips
 # GitHub. It stops on an empty pileup, so with no read at any marker
 # og y yleaf-no-reads writes the table Yleaf gives for too few markers.
+# The current tree's pileup is ours, with its flags written out
+# (-A -Q20 -q20): fused as -AQ20q1, samtools reads "20q1" as the -Q value
+# and keeps reads of mapping quality 0.
 O=$(cpath "$OUTDIR")
 echo "[1/3] Yleaf's Y marker positions..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$YLEAF_IMAGE" \
@@ -98,7 +101,7 @@ run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c \
   _ "$(cpath "$BAM")" "$O" "$(cpath "$CHRY")"
 if $TREE; then
   run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c \
-    'samtools mpileup -l "$2/tree_positions.txt" -AQ20q1 "$1" > "$2/tree_pileup.txt"' _ "$(cpath "$BAM")" "$O"
+    'samtools mpileup -l "$2/tree_positions.txt" -A -Q20 -q20 "$1" > "$2/tree_pileup.txt"' _ "$(cpath "$BAM")" "$O"
 fi
 echo "[3/3] Yleaf..."
 echo "Reference: ${REF_FASTA}"
