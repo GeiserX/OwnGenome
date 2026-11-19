@@ -3,8 +3,8 @@
 ## What This Does
 Checks two things about a sample before you read any result from it, and estimates a third:
 
-- **Is it the person you think?** somalier reads the BAM at 17,766 known polymorphic sites and infers the sex from the reads: a male has no heterozygous sites on chrX outside the pseudoautosomal regions. A sex that differs from the one you declare stops the step. In a Nextflow run with several samples, somalier also compares every pair, so two rows that are the same person show up.
-- **Is another person's DNA mixed in?** VerifyBamID2 estimates FREEMIX, the share of reads that come from someone else, from the allele balance at 100,000 markers of the 1000 Genomes panel. Above 0.03 the step warns.
+- **Is it the person you think?** somalier reads the BAM at 17,766 known polymorphic sites and infers the sex from the reads: a male has no heterozygous sites on chrX outside the pseudoautosomal regions. A sex that differs from the one you declare stops the step. In a Nextflow run with several samples, somalier also compares every pair, so two rows that are the same person show up. With one sample there is nothing to compare, and the table says identity was `not_checked`; below 1,000 informative sites it says `uncertain`.
+- **Is another person's DNA mixed in?** VerifyBamID2 estimates FREEMIX, the share of reads that come from someone else, from the allele balance at 100,000 markers of the 1000 Genomes panel. Above 0.03 the step warns. An estimate from fewer than 5,000 markers, or with VerifyBamID2's marker check skipped, is marked `uncertain`.
 - **Did some cells lose the Y, or one X?** From the depth step 16b measured and, for a woman, the VCF's chrX allele fractions, the step estimates the share of cells that lost the Y chromosome (men) or one X (women), with its 95% range. See [Mosaic loss of chrY or chrX](#mosaic-loss-of-chry-or-chrx).
 
 ## Why
@@ -19,7 +19,7 @@ Contamination only warns. A contaminated sample is still your sample; its calls 
 ## Docker Image
 - `SOMALIER_IMAGE`
 - `VERIFYBAMID2_IMAGE`
-- `PYTHON_IMAGE` (the verdict, from `og summary collect`, and the mosaic estimate, from `og qc sex-loss`, the Rust binary `scripts/setup.sh --og` builds)
+- `PYTHON_IMAGE` (the verdict, from `og qc sample`, and the mosaic estimate, from `og qc sex-loss`, the Rust binary `scripts/setup.sh --og` builds)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
@@ -63,6 +63,10 @@ The bash step lets somalier name the sample after the BAM's `@RG SM` tag; every 
 
 VerifyBamID2 refuses to estimate when fewer than 1,000 panel markers have reads ("Insufficient Available markers"), as on a targeted (WES) or sliced BAM. The step then runs it again with `--DisableSanityCheck` and records `verifybamid2_marker_check skipped`, so the report says FREEMIX rests on fewer than 1,000 markers. On the CI fixture, with about 320 markers that have reads, FREEMIX still read 0.0004 for the clean HG002 and 0.093 for HG002 with 9.3% of its reads from HG001.
 
+VerifyBamID2's marker check logs how many markers it kept: those with reads and a depth within three standard deviations of the mean (`NOTICE - N SNP markers remained after sanity check.`). The run without the check does not log it, so the step reads the count from the first run's log and records it as `verifybamid2_markers`. FREEMIX is `contamination_confidence uncertain` when the check was skipped or when it kept fewer than 5,000 markers. That floor is five times the 1,000 markers the check asks for, and half of the 10% of the panel it also asks for. A whole genome at 30x keeps far more. `contamination` (`ok` or `warn`) still compares FREEMIX with `FREEMIX_WARN` as before; the confidence row only says how far to trust that number.
+
+Identity rests on somalier's informative sites: the sites it genotyped for the sample (`sites_genotyped`) and, for each pair, the sites both samples have a genotype at (its `n` column). Below 1,000, about one in 18 of somalier's 17,766 sites, `identity` is `uncertain`. With one sample, as in every bash run, there is no other sample to compare with: `identity` is `not_checked`, and the sex check is the only identity check. It is `checked` when somalier compared the sample with another sample of the run on 1,000 or more shared sites.
+
 In Nextflow, add `sample_qc` to `--tools` with `--somalier_sites` and `--verifybamid2_panel` (the folder that holds the `.UD`, `.mu` and `.bed` files); `--freemix_warn` and `--sex_check` work as above. `SOMALIER_RELATE` runs once over every sample of the run, with a pedigree of every sample's samplesheet sex. A sex mismatch stops the run, after `INDEXCOV` made the same check from the index. `SAMPLE_QC` gets `MOSDEPTH`'s windows when `mosdepth` is in `--tools` (it is in the default list), and the row's VCF. It waits for that VCF, so on a FASTQ row somalier's sex check reports after `DEEPVARIANT`; `INDEXCOV`'s check still stops the run before it.
 
 ## Mosaic loss of chrY or chrX
@@ -80,7 +84,7 @@ The step needs step 16b's windows for the depth estimate and, for a woman, the V
 ## Output Files
 | File | Description |
 |---|---|
-| `qc/${SAMPLE}_sample_qc.tsv` | The verdict, one `key` and `value` per line: `inferred_sex`, `sex_check` (`ok`, `mismatch` or `not_checked` with `sex_check_reason`), the chrX and chrY numbers it rests on, `freemix`, `contamination` (`ok` or `warn`), `panel_markers`, `verifybamid2_marker_check` (`passed`, or `skipped` when fewer than 1,000 markers had reads), `same_person_as`; then the mosaic rows below |
+| `qc/${SAMPLE}_sample_qc.tsv` | The verdict, one `key` and `value` per line: `inferred_sex`, `sex_check` (`ok`, `mismatch` or `not_checked` with `sex_check_reason`), the chrX and chrY numbers it rests on, `freemix`, `contamination` (`ok` or `warn`), `panel_markers`, `verifybamid2_marker_check` (`passed`, or `skipped` when fewer than 1,000 markers had reads), `same_person_as`, `verifybamid2_markers` (the markers VerifyBamID2 kept, empty when its log does not say), `contamination_confidence` (`ok`, `uncertain`, or empty when VerifyBamID2 did not run) with `contamination_confidence_reason`, `identity` (`checked`, `uncertain` or `not_checked`) with `identity_reason`; then the mosaic rows below |
 | `qc/somalier/${SAMPLE}.samples.tsv` | somalier's per-sample table: depth, genotype counts, chrX and chrY counts, `original_pedigree_sex` (the declared sex: `male`, `female`, or `unknown` when none was declared), `sex` (the pedigree's code, changed when the reads tell: 1 male, 2 female, -9 unknown, -2 when it is female but chrY has reads) |
 | `qc/somalier/${SAMPLE}.declared.ped` | The pedigree somalier got: the declared sex |
 | `qc/somalier/${SAMPLE}.pairs.tsv`, `.html` | Relatedness of every pair (one sample here; every sample of the run in Nextflow, under `somalier/`) |
@@ -112,7 +116,10 @@ The HTML report (step 24) shows the inferred sex, FREEMIX and any duplicate in i
 | FREEMIX below 0.01 | Clean | Nothing |
 | FREEMIX 0.01 to 0.03 | Trace contamination, usual for a library | Nothing |
 | FREEMIX above 0.03 | About that share of the reads are someone else's | Treat heterozygous calls with care; ask the lab whether it can resequence |
+| `contamination_confidence uncertain` | FREEMIX rests on fewer than 5,000 markers, or VerifyBamID2 skipped its marker check | Read FREEMIX as a rough estimate. Normal on a targeted or sliced BAM; on a whole genome, check the depth |
 | `same_person_as` set | Two samples of the run share their genome (relatedness 0.9 or more) | A duplicate row, a resequenced sample, an identical twin, or a swap |
+| `identity not_checked` | No other sample in the somalier run to compare with | Nothing. To compare with an earlier sample, relate the two `.somalier` files (Notes below) |
+| `identity uncertain` | Fewer than 1,000 informative somalier sites for the sample, or shared with every other sample | A relatedness or a `same_person_as` from so few sites can be wrong. Normal on a targeted or sliced BAM |
 | `mosaic_call not_detected` | The 95% range does not put a loss of the Y (or of one X) above 10% of the cells; the estimate itself can be higher when the range is wide | Nothing; a smaller loss cannot be told from noise at 30x |
 | `mosaic_call detected` | The low end of the 95% range is above 10%: a share of the blood cells lost the Y, or one X | Nothing follows from it alone. It is a population-level marker, not a diagnosis; a doctor would test blood cells directly if it ever mattered |
 | `mosaic_call gain` | More depth than one Y or two X | An extra copy (47,XYY, 47,XXX) or a gain; it is not a loss |
