@@ -10,7 +10,10 @@
 # tell is not checked either;
 # FREEMIX above 0.03 warns and exits 0; "Insufficient Available markers"
 # reruns VerifyBamID2 with --DisableSanityCheck and records it; any other
-# VerifyBamID2 failure, or missing data, stops the step.
+# VerifyBamID2 failure, or missing data, stops the step. The markers its
+# check kept come from the first run's log: a skipped check, or fewer than
+# 5,000 markers, reads uncertain; fewer than 1,000 somalier sites make
+# identity uncertain, and one sample alone leaves it not checked.
 # Step 34: a CRAM whose flagstat differs from the BAM's, or that fails
 # quickcheck or its content checksum fails, is removed and the BAM kept; the BAM is
 # deleted only after the check passed; --restore refuses to write over a BAM
@@ -53,14 +56,20 @@ case "$*" in
       ped_code=$(awk -F'\t' '{print $5; exit}' "$(host_path "$ped")")
       case "$ped_code" in 1) ped_sex=male ;; 2) ped_sex=female ;; *) ped_sex=unknown ;; esac
     fi
-    printf '#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\toriginal_pedigree_sex\tgt_depth_mean\tn_hom_ref\tn_het\tn_hom_alt\tX_depth_mean\tX_n\tX_hom_ref\tX_het\tX_hom_alt\tY_depth_mean\tY_n\n%s\t%s\t-9\t-9\t%s\t-9\t%s\t30.0\t5000\t6000\t4000\t15.0\t%s\t40\t%s\t260\t14.0\t17\n' \
+    printf '#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\toriginal_pedigree_sex\tgt_depth_mean\tn_hom_ref\tn_het\tn_hom_alt\tX_depth_mean\tX_n\tX_hom_ref\tX_het\tX_hom_alt\tY_depth_mean\tY_n\n%s\t%s\t-9\t-9\t%s\t-9\t%s\t30.0\t%s\t%s\t%s\t15.0\t%s\t40\t%s\t260\t14.0\t17\n' \
       "${FAKE_SM:-sample1}" "${FAKE_SM:-sample1}" "${FAKE_SOMALIER_SEX:-$ped_code}" "$ped_sex" \
+      "${FAKE_HOM_REF:-5000}" "${FAKE_HET:-6000}" "${FAKE_HOM_ALT:-4000}" \
       "${FAKE_X_N:-300}" "${FAKE_X_HET:-0}" > "${o}.samples.tsv"
     printf '#sample_a\tsample_b\trelatedness\n' > "${o}.pairs.tsv" ;;
   "verifybamid2 "*)
     FLAG=--Output; o=$(host_path "$(arg "$@")")
     case " $* " in *" --DisableSanityCheck "*) few=false ;; *) few=${FAKE_VB2_FEW:-false} ;; esac
     if [ -n "${FAKE_VB2_FAIL:-}" ]; then echo "Segmentation fault"; exit 139; fi
+    # As VerifyBamID2: only a run with its marker check logs the markers kept.
+    case " $* " in
+      *" --DisableSanityCheck "*) ;;
+      *) echo "NOTICE - $($few && echo 320 || echo "${FAKE_VB2_MARKERS:-42000}") SNP markers remained after sanity check." ;;
+    esac
     if $few; then echo "WARNING - Insufficient Available markers, check input bam depth"; exit 1; fi
     printf '#SEQ_ID\tRG\tCHIP_ID\t#SNPS\t#READS\tAVG_DP\tFREEMIX\n%s\tNA\tNA\t%s\t1\t30\t%s\n' \
       "${FAKE_SM:-sample1}" "$([ "${FAKE_VB2_FEW:-false}" = true ] && echo 320 || echo 99000)" "${FAKE_FREEMIX:-0.004}" > "${o}.selfSM" ;;
@@ -123,6 +132,20 @@ docker_log_has 'somalier relate --infer --ped /genome/sample1/qc/somalier/sample
   || fail "the pedigree does not hold the declared male: $(cat "${GENOME_DIR}/sample1/qc/somalier/sample1.declared.ped")"
 [ "$(tval contamination)" = ok ] || fail "FREEMIX 0.004 was not reported ok"
 [ "$(tval verifybamid2_marker_check)" = passed ] || fail "the marker check was not recorded as passed"
+[ "$(tval verifybamid2_markers)" = 42000 ] || fail "the markers VerifyBamID2 kept were not read from its log: $(tval verifybamid2_markers)"
+[ "$(tval contamination_confidence)" = ok ] || fail "FREEMIX on 42,000 markers was not ok: $(tval contamination_confidence)"
+[ "$(tval identity)" = not_checked ] || fail "one sample alone was not left unchecked: $(tval identity)"
+output_has qc-match 'Identity: not_checked \(no other sample in the somalier run'
+
+# A passed marker check that kept only 3,000 markers: FREEMIX is uncertain.
+FAKE_VB2_MARKERS=3000 run_expect 0 qc-thin-markers "${SCRIPTS}/33-sample-qc.sh" sample1
+[ "$(tval contamination_confidence)" = uncertain ] || fail "FREEMIX on 3,000 markers was not uncertain"
+output_has qc-thin-markers 'The estimate is uncertain: FREEMIX rests on 3000 markers; a firm estimate needs 5,000'
+
+# 300 informative somalier sites: identity is uncertain.
+FAKE_HOM_REF=100 FAKE_HET=120 FAKE_HOM_ALT=80 run_expect 0 qc-thin-sites "${SCRIPTS}/33-sample-qc.sh" sample1
+[ "$(tval identity)" = uncertain ] || fail "identity from 300 sites was not uncertain: $(tval identity)"
+output_has qc-thin-sites 'Identity: uncertain \(somalier genotyped 300 sites'
 
 FAKE_SOMALIER_SEX=-9 run_expect 0 qc-unknown "${SCRIPTS}/33-sample-qc.sh" sample1 female
 output_has qc-unknown 'Sex check: not done \(somalier could not tell the sex'
@@ -159,6 +182,9 @@ output_has qc-few-markers 'Fewer than 1,000 panel markers have reads'
 docker_log_has 'verifybamid2 .*--DisableSanityCheck' "the second VerifyBamID2 call lacks --DisableSanityCheck"
 [ "$(tval verifybamid2_marker_check)" = skipped ] || fail "the skipped marker check was not recorded"
 [ "$(tval panel_markers)" = 320 ] || fail "the panel size was not recorded"
+[ "$(tval verifybamid2_markers)" = 320 ] || fail "the markers of the first run's log were lost by the rerun: $(tval verifybamid2_markers)"
+[ "$(tval contamination_confidence)" = uncertain ] || fail "FREEMIX with the marker check skipped was not uncertain"
+output_has qc-few-markers 'The estimate is uncertain: VerifyBamID2 skipped its marker check'
 
 FAKE_VB2_FAIL=1 run_expect 1 qc-vb2-crash "${SCRIPTS}/33-sample-qc.sh" sample1
 output_has qc-vb2-crash 'ERROR: VerifyBamID2 failed'
