@@ -43,8 +43,21 @@ MISSING_IMAGES=()
 # results on a BAM from another reference long before any of them fails, so
 # this stops the run here. A header with no @SQ line at all is left to
 # check_bam_quickcheck, which fails a BAM without one.
+#
+# Names and lengths cannot tell two FASTAs with other bases apart, such as the
+# default reference and its masked copy. An @SQ line can also carry M5, the
+# MD5 of the sequence's bases: Picard, GATK and many vendors write it, the
+# minimap2 and bwa-mem2 of steps 02 and 02a do not. When the names match and
+# REF_DICT is there, each M5 of the BAM is compared with REF_DICT's, and a
+# difference fails: the BAM was aligned to other bases. BAM_M5 tells
+# check_bam_masked_reference what was found: "match" when every @SQ line has
+# an M5 and each is REF_DICT's, "differ" on a difference, empty otherwise.
+# The M5 awk reads the whole header even after the first difference: leaving
+# early would end printf with SIGPIPE on a large header, and under pipefail
+# and set -e that would stop this script before the [FAIL] line.
 check_bam_reference() {
-  local header=$1 fai="${REF_FASTA}.fai" diff so bam
+  local header=$1 fai="${REF_FASTA}.fai" diff so bam m5
+  BAM_M5=""
   if [ -f "$fai" ] && grep -q '^@SQ' <<< "$header"; then
     diff=$(printf '%s\n' "$header" | awk -F'\t' '
       FNR == 1 { file++ }
@@ -69,6 +82,37 @@ check_bam_reference() {
       }' - "$fai")
     if [ -z "$diff" ]; then
       pass "BAM header matches the reference: the same $(grep -c . "$fai") sequences in the same order"
+      if [ -s "${REF_DICT:-}" ]; then
+        m5=$(printf '%s\n' "$header" | awk -F'\t' '
+          function tag(t,   i) {
+            for (i = 2; i <= NF; i++) if (index($i, t ":") == 1) return substr($i, length(t) + 2)
+            return ""
+          }
+          FNR == 1 { file++ }
+          found { next }
+          file == 1 && /^@SQ/ { s = tag("SN"); r = tolower(tag("M5")); if (s != "" && r != "") ref[s] = r; next }
+          file == 2 && /^@SQ/ {
+            n++; s = tag("SN"); b = tolower(tag("M5"))
+            if (b == "" || !(s in ref)) { partial = 1; next }
+            if (b != ref[s]) {
+              printf "differ:sequence %d (%s) has MD5 %s in the BAM and %s in the reference dictionary", n, s, b, ref[s]
+              found = 1
+              next
+            }
+            hit++
+          }
+          END { if (!found && hit > 0 && !partial) print "match" }' "$REF_DICT" -)
+        case "$m5" in
+          match)
+            BAM_M5=match
+            pass "BAM's @SQ MD5s (M5) match the reference dictionary: it was aligned to these bases" ;;
+          differ*)
+            BAM_M5=differ
+            fail "this BAM was aligned to a FASTA with other bases than REF_FASTA, though with the same names and lengths (the masked reference, or another copy of GRCh38): realign (docs/realignment.md)"
+            echo "       First difference: ${m5#differ:}."
+            echo "       Reference: ${REF_FASTA}" ;;
+        esac
+      fi
     else
       fail "this BAM was aligned to a different reference: realign (docs/realignment.md)"
       echo "       First difference: ${diff}."
@@ -127,7 +171,14 @@ check_stale_indexes() {
 # whose aligner lines name both (reads merged from the two) fails. A BAM with
 # no aligner line, or only lines without a CL (a vendor's, or a header
 # rewritten without them), cannot be told apart: a warning on the masked
-# reference, nothing on the default one.
+# reference, nothing on the default one. The bases decide before the file
+# names: when check_bam_reference found every @SQ M5 equal to REF_DICT's
+# (BAM_M5=match), the BAM was aligned to REF_FASTA's bases whatever its @PG
+# lines name, and this check has nothing to add. Two cases keep the @PG rule
+# even then. Aligner lines that name both references still fail: samtools
+# merge keeps the first input's @SQ lines, so a merge of the two can carry
+# only matching M5s. And a REF_DICT older than REF_FASTA may hold the MD5s of
+# an earlier FASTA, so its M5s do not speak for REF_FASTA.
 check_bam_masked_reference() {
   local header=$1 kinds want=false
   case "$(basename "$REF_FASTA")" in *_maskedGRC.*) want=true ;; esac
@@ -157,6 +208,9 @@ check_bam_masked_reference() {
     *default*) kinds=default ;;
     *) kinds=none ;;
   esac
+  if [ "$kinds" != both ] && [ "${BAM_M5:-}" = match ] && [ ! "${REF_DICT:-}" -ot "$REF_FASTA" ]; then
+    return 0
+  fi
   case "${want}:${kinds}" in
     *:both)
       fail "this BAM's aligner @PG lines name both the masked and the default reference (reads merged from the two): realign it to one (docs/realignment.md#the-masked-reference)" ;;
@@ -169,6 +223,75 @@ check_bam_masked_reference() {
       fail "this BAM was aligned to the masked reference (its aligner @PG line names a _maskedGRC file), but REF_FASTA is ${REF_FASTA}: set REF_FASTA to the masked reference (docs/realignment.md#the-masked-reference)" ;;
     true:masked)
       pass "BAM was aligned to the masked reference (its aligner @PG line names a _maskedGRC file)" ;;
+  esac
+}
+
+# check_reference_content: REF_FASTA holds the bases of NCBI's GRCh38 no-ALT
+# analysis set, or of its masked copy when its name says so. The size and the
+# .fai only show names and lengths; the bases come from REF_DICT, where
+# setup.sh (GATK CreateSequenceDictionary, samtools dict for the masked copy)
+# wrote the MD5 of each sequence (M5) when it made it from the FASTA. Pinned
+# here: the sha256 of the lines "name<TAB>length" (SHAPE) and of the lines
+# "name<TAB>length<TAB>M5" (M5 in lower case), one per sequence in order, of
+# the dictionary of NCBI's GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
+# (md5 a08035b6a6e31780e96a34008ff21bd6 in NCBI's md5checksums.txt) and of the
+# masked FASTA setup.sh builds from it (sha256 GRC_MASKED_REF_SHA256). The
+# masked copy has the same names and lengths and other M5s on chr9, chr13,
+# chr16, chr21, chrX and two unlocalized scaffolds. A reference with other
+# names or lengths (the decoy set, a test slice) has nothing pinned and gets
+# an INFO line. A dictionary that lists other names or lengths than the .fai
+# belongs to another FASTA, and fails.
+check_reference_content() {
+  local dict=$REF_DICT fai="${REF_FASTA}.fai" lines masked=false bases
+  local shape=8502b755744bd2d708d866bf3e68a58c7bd9369c737e922ba32d7fea4aedaf51
+  local stock=f6d0a052602c69fe61c3efe9aab12112f1cafc2b4a5140d4fd240d27e6ba8743
+  local stock_masked=73724d8ce85ff35460f369c9d0cd899a285258e1e66dcbaeedf22ab90518712c
+  { [ -s "$dict" ] && [ -f "$fai" ]; } || return 0
+  case "$(basename "$REF_FASTA")" in *_maskedGRC.*) masked=true ;; esac
+  lines=$(awk -F'\t' '/^@SQ/ {
+      sn = ""; ln = ""; m5 = ""
+      for (i = 2; i <= NF; i++) {
+        if ($i ~ /^SN:/) sn = substr($i, 4)
+        else if ($i ~ /^LN:/) ln = substr($i, 4)
+        else if ($i ~ /^M5:/) m5 = tolower(substr($i, 4))
+      }
+      print sn "\t" ln "\t" m5
+    }' "$dict")
+  if [ "$(cut -f1,2 <<< "$lines")" != "$(cut -f1,2 "$fai")" ]; then
+    fail "The sequence dictionary ${dict} does not list the names and lengths of ${fai}: it was made from another FASTA"
+    echo "       Delete it and run ./scripts/setup.sh ${GENOME_DIR}, which makes it again from REF_FASTA."
+    return 0
+  fi
+  if [ "$dict" -ot "$REF_FASTA" ]; then
+    warn "The sequence dictionary ${dict} is older than REF_FASTA, so the MD5s it holds may be of an earlier FASTA"
+    echo "       If the FASTA changed, delete the .dict and run ./scripts/setup.sh ${GENOME_DIR}; if it was only copied, touch the .dict."
+  fi
+  if [ "$(_digest sha256 <(cut -f1,2 <<< "$lines"))" != "$shape" ]; then
+    info "Reference is not NCBI's GRCh38 no-ALT analysis set (other sequence names or lengths): no pinned MD5s to check its bases against"
+    return 0
+  fi
+  if grep -q $'\t$' <<< "$lines"; then
+    warn "The sequence dictionary ${dict} has no MD5 (M5) for some sequences, so the reference's bases are not checked"
+    echo "       Delete it and run ./scripts/setup.sh ${GENOME_DIR}, which makes it again with them."
+    return 0
+  fi
+  bases=$(_digest sha256 <(printf '%s\n' "$lines"))
+  case "${bases}:${masked}" in
+    "${stock}:false")
+      pass "Reference bases: NCBI's GRCh38 no-ALT analysis set (the MD5 of each of its $(grep -c . "$fai") sequences in the .dict is the pinned one)" ;;
+    "${stock_masked}:true")
+      pass "Reference bases: the masked copy of NCBI's GRCh38 no-ALT analysis set (the MD5 of each of its $(grep -c . "$fai") sequences in the .dict is the pinned one)" ;;
+    "${stock}:true")
+      fail "REF_FASTA is named as the masked reference (_maskedGRC) but holds the bases of the default one: build it again (./scripts/setup.sh --masked-reference ${GENOME_DIR} after deleting it, its .fai and its .dict)" ;;
+    "${stock_masked}:false")
+      fail "REF_FASTA holds the bases of the masked reference but its name has no _maskedGRC, which the BAM check goes by: use the file setup.sh --masked-reference writes (docs/realignment.md#the-masked-reference)" ;;
+    *)
+      fail "REF_FASTA has the names and lengths of NCBI's GRCh38 no-ALT analysis set but other bases: the MD5s in ${dict} match neither that set nor its masked copy"
+      if $masked; then
+        echo "       Build it again: delete ${REF_FASTA}, its .fai and its .dict, and run ./scripts/setup.sh --masked-reference ${GENOME_DIR}."
+      else
+        echo "       Download it again: delete ${REF_FASTA}, its .fai and its .dict, and run ./scripts/setup.sh ${GENOME_DIR}."
+      fi ;;
   esac
 }
 
@@ -773,6 +896,9 @@ else
     echo "       docker run --rm -v \"${GENOME_DIR}:/genome\" ${GATK_IMAGE} \\"
     echo "         gatk CreateSequenceDictionary -R ${REF_FASTA_C}"
   fi
+
+  # --- The reference's bases (the MD5 of each sequence in the .dict) ---
+  check_reference_content
 fi
 
 ###############################################################################
