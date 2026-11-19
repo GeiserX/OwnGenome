@@ -9,8 +9,10 @@
 # step 29 are used when they are in GENOME_DIR/somatic/. bcftools csq names
 # each change on that transcript, and og chip (bin/og) keeps the changes in
 # the table's CHIP classes, leaves out the ones whose VAF looks inherited (35%
-# and up) and states the detection limit at the sample's depth over the same
-# exons. The same commands run in the Nextflow CHIP_* processes.
+# and up) or is under the 2% that defines CHIP, notes the kept ones whose
+# reads also fit an inherited variant, and states the detection limit at the
+# sample's depth over the same exons. The same commands run in the Nextflow
+# CHIP_* processes.
 #
 # Not a diagnosis: CHIP is common with age and most people with it never get
 # a blood cancer. A negative result does not rule out a clone smaller than the
@@ -106,7 +108,7 @@ echo "[4/4] CHIP classes, germline exclusion and detection limit..."
 rm -f "${P}_pileup.tsv" "${P}_f1r2.tar.gz" "${P}_orientation.tar.gz"
 
 echo ""
-echo "CHIP calls (${P}.tsv):"
+echo "Possible CHIP calls, not a diagnosis (${P}.tsv):"
 awk -F'\t' 'NR > 1 && $13 == "chip" { printf "  %-8s %-10s VAF %-6s %s/%s reads  %s\n", $1, $7, $9, $10, $11, $15; n++ }
   END { if (!n) print "  none" }' "${P}.tsv"
 echo "Not a diagnosis. docs/49-chip.md says what a call means and what to ask a haematologist."
