@@ -316,6 +316,117 @@ pub fn data_rows(
     )
 }
 
+/// The curated PGx table rows (contraindications, inhibitors, pypgx genes)
+/// on planted tables and stubbed answers: (state, upstream) of each, and
+/// the number of errors.
+pub fn pgx_rows(answers: Vec<(&'static str, Option<Body>)>) -> (Vec<(String, String)>, usize) {
+    let stub = Stub::new(answers);
+    let scratch = Scratch::new().expect("a private scratch folder");
+    let d = scratch.path();
+    let versions = d.join("versions.env");
+    let _ = std::fs::write(&versions, "PYPGX_BUNDLE_VERSION=\"0.26.0\"\n");
+    let _ = std::fs::create_dir(d.join("assets"));
+    let _ = std::fs::write(
+        d.join("assets/pgx_contraindications.tsv"),
+        "# a comment\nGene\tDrug\tNames\tCPIC_level\tNote\tPair_source\tLabel_source\tReport_if\n\
+         POLG\tvalproic acid\tvalproic\tA\tn\thttps://api.cpicpgx.org/v1/pair_view?genesymbol=eq.POLG\t\
+         https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f\tany\n",
+    );
+    let _ = std::fs::write(
+        d.join("assets/pgx_inhibitors.tsv"),
+        "Drug\tGene\tStrength\tActivity_score_factor\tClass_source\tRule_source\n\
+         bupropion\tCYP2D6\tstrong\t0\tx\tx\n\
+         lopinavir\tCYP3A4\tstrong\t-\tx\t-\n",
+    );
+    let _ = std::fs::write(
+        d.join("assets/pgx_genes.tsv"),
+        "gene\tmode\tcallable_without_alt\talt_contig\tsecond_caller\tpharmcat_outside_call\n\
+         CYP2D6\tbam\tyes\t.\tcyrius\tyes\nCYP2C9\tvcf\tyes\t.\tpharmcat\tno\n",
+    );
+    let pins = Pins::parse("PYPGX_BUNDLE_VERSION=\"0.26.0\"\n");
+    let reg = FakeRegistry {
+        tags: |_| vec![],
+        digests: |_| String::new(),
+        asked: Mutex::new(vec![]),
+    };
+    let ctx = Ctx {
+        fetch: &stub,
+        registry: &reg,
+        pins: &pins,
+        versions: &versions,
+        setup: Path::new("/nonexistent"),
+        common: Path::new("/nonexistent"),
+        now: jiff::Timestamp::now(),
+    };
+    let mut r = Report::default();
+    for (what, f) in [
+        (
+            "PGx contraindications table",
+            lookups::pgx_contraindications as lookups::LookupFn,
+        ),
+        ("PGx inhibitors table", lookups::pgx_inhibitors),
+        ("PGx genes table", lookups::pgx_genes),
+    ] {
+        match f(&ctx) {
+            Ok(found) => r.db_rows.push(found.row),
+            Err(e) => r.db_error(what, &e),
+        }
+    }
+    drop(scratch);
+    (
+        r.db_rows
+            .into_iter()
+            .map(|x| (x.state, x.upstream))
+            .collect(),
+        r.errors.len(),
+    )
+}
+
+/// The CPIC API's answer for the planted POLG row.
+fn cpic(level: &str, provisional: bool) -> Option<Body> {
+    Some(Body::Json(Value::Array(vec![
+        obj(vec![
+            ("drugname", s("divalproex sodium")),
+            ("cpiclevel", s("A")),
+            ("provisional", Value::Bool(true)),
+        ]),
+        obj(vec![
+            ("drugname", s("valproic acid")),
+            ("cpiclevel", s(level)),
+            ("provisional", Value::Bool(provisional)),
+        ]),
+    ])))
+}
+
+/// DailyMed's version history of a label, empty when it is withdrawn.
+fn dailymed(live: bool) -> Option<Body> {
+    let history = if live {
+        vec![obj(vec![("spl_version", Value::Int(3))])]
+    } else {
+        vec![]
+    };
+    Some(Body::Json(obj(vec![(
+        "data",
+        obj(vec![("history", Value::Array(history))]),
+    )])))
+}
+
+/// The FDA page with its Table 1: one row per (substance, strong cell,
+/// moderate cell).
+fn fda(rows: &[(&str, &str, &str)]) -> Option<Body> {
+    let mut html = String::from(
+        "<h2>Content current as of:</h2><p><time datetime=\"2026-05-29T14:00:00Z\">05/29/2026</time></p>\
+         <table summary=\"Table 1.\"><thead><tr><th>Drug</th><th>Strg</th><th>Mod</th><th>WK</th></thead><tbody>",
+    );
+    for (name, strong, moderate) in rows {
+        html += &format!(
+            "<tr><td>{name}<sup>1</sup></td><td>{strong}</td><td>{moderate}</td><td>1A2&nbsp; weak&nbsp; inhibitor</td>"
+        );
+    }
+    html += "</tbody></table>";
+    text(&html)
+}
+
 fn text(t: &str) -> Option<Body> {
     Some(Body::Text(t.into()))
 }
@@ -577,6 +688,114 @@ pub fn run(out: &mut dyn Write) -> u8 {
     check(
         st == ["ERROR"; 5] && e == 5,
         &format!("an answer without the release is an error row for each of the five ({st:?})"),
+    );
+
+    // The curated PGx tables against their sources, on planted tables: the
+    // same answer is current, a changed one is drift naming the row, and an
+    // empty or unreadable answer is an error row.
+    let agree = || {
+        vec![
+            ("api.cpicpgx.org", cpic("A", true)),
+            ("dailymed.nlm.nih.gov", dailymed(true)),
+            (
+                "fda.gov",
+                fda(&[
+                    ("bupropion", "2D6&nbsp; strong&nbsp; inhibitor", "&nbsp;"),
+                    ("lopinavir", "&nbsp;", "&nbsp;"),
+                    ("lopinavir and ritonavir", "3A strong inhibitor", "&nbsp;"),
+                    ("aprepitant", "&nbsp;", "3A&nbsp; moderate&nbsp; inhibitor"),
+                ]),
+            ),
+            (
+                "api.github.invalid",
+                Some(Body::Json(obj(vec![("tag_name", s("0.27.0"))]))),
+            ),
+            (
+                "gene-table.csv",
+                text("Gene,Target,Exons,SV\nCYP2D6,TRUE,\"1,2\",TRUE\nCYP2C9,TRUE,\"3,4\",FALSE\n"),
+            ),
+        ]
+    };
+    let (rows, e) = pgx_rows(agree());
+    check(
+        rows.iter().all(|(st, _)| st == "current") && rows.len() == 3 && e == 0,
+        &format!(
+            "PGx tables: rows that agree with CPIC, DailyMed, the FDA and pypgx are current ({rows:?})"
+        ),
+    );
+    let mut drifted = agree();
+    drifted[0].1 = cpic("B", true);
+    drifted[2].1 = fda(&[
+        ("bupropion", "&nbsp;", "2D6 moderate inhibitor"),
+        ("lopinavir and ritonavir", "3A strong inhibitor", "&nbsp;"),
+        ("newdrug", "2C19 strong inhibitor", "&nbsp;"),
+    ]);
+    drifted[4].1 =
+        text("Gene,Target,Exons,SV\nCYP2D6,TRUE,\"1,2\",TRUE\nCYP2C9,TRUE,\"3,4\",TRUE\n");
+    let (rows, e) = pgx_rows(drifted);
+    let said = |rows: &[(String, String)], i: usize, what: &str| {
+        rows.get(i)
+            .is_some_and(|(st, up)| st == "drift" && up.contains(what))
+    };
+    check(
+        said(
+            &rows,
+            0,
+            "POLG valproic acid: CPIC level B, the table says A",
+        ) && e == 0,
+        &format!(
+            "PGx tables: a planted row whose CPIC level moved from A to B is drift ({:?})",
+            rows.first()
+        ),
+    );
+    check(
+        said(
+            &rows,
+            1,
+            "bupropion CYP2D6: the FDA says moderate, the table says strong",
+        ) && said(
+            &rows,
+            1,
+            "newdrug: the FDA lists a strong CYP2C19 inhibitor",
+        ),
+        &format!(
+            "PGx tables: a reclassified inhibitor and a new one are drift ({:?})",
+            rows.get(1)
+        ),
+    );
+    check(
+        said(
+            &rows,
+            2,
+            "CYP2C9: pypgx 0.27.0 has a copy-number model, but it is not a bam row",
+        ),
+        &format!(
+            "PGx tables: a new pypgx copy-number model is drift ({:?})",
+            rows.get(2)
+        ),
+    );
+    let mut gone = agree();
+    gone[0].1 = cpic("A", false);
+    gone[1].1 = dailymed(false);
+    let (rows, _) = pgx_rows(gone);
+    check(
+        said(&rows, 0, "no longer provisional")
+            && said(&rows, 0, "DailyMed no longer publishes label"),
+        &format!(
+            "PGx tables: a pair with a guideline and a withdrawn label are drift ({:?})",
+            rows.first()
+        ),
+    );
+    let mut broken = agree();
+    broken[0].1 = Some(Body::Json(Value::Array(vec![])));
+    broken[2].1 = text("<html>no table</html>");
+    broken[4].1 = None;
+    let (rows, e) = pgx_rows(broken);
+    check(
+        rows.iter().all(|(st, _)| st == "ERROR") && e == 3,
+        &format!(
+            "PGx tables: an empty CPIC answer, an FDA page without its table and a missing gene table are errors ({rows:?})"
+        ),
     );
 
     // 2. A fake server: an empty or truncated 200 must fail, and the issue
