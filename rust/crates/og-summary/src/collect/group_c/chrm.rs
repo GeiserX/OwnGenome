@@ -479,4 +479,116 @@ mod tests {
         assert!(py_max(&[f64::NAN, 0.5]).is_some_and(f64::is_nan));
         assert_eq!(py_max(&[0.5, f64::NAN]), Some(0.5));
     }
+
+    const HEAD: &str =
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n";
+    const ANNOT_HEAD: &str = "# clinvar\t2026-10-01\t-\n# gnomad\tv3.1\t-\n\
+        chrom\tpos\tref\talt\tfilter\taf\tclinvar_id\tclinvar_significance\tclinvar_review\t\
+        clinvar_condition\tgnomad_af_hom\tgnomad_af_het\tgnomad_max_hl\n";
+
+    /// Step 20's section of a sample folder holding these chrM calls and
+    /// annotation rows, read with the repository's `assets/`.
+    fn section(vcf_body: &str, annot_body: &str) -> Value {
+        let d = crate::testutil::Dir::new("chrm-flags");
+        d.put_gz("mito/S_chrM_filtered.vcf.gz", &format!("{HEAD}{vcf_body}"));
+        d.put(
+            "mito/S_chrM_annotated.tsv",
+            format!("{ANNOT_HEAD}{annot_body}"),
+        );
+        let index = crate::collect::scan::FolderIndex::walk(&d.0);
+        let dir = d.0.display().to_string();
+        let assets = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
+        let c = Ctx {
+            sample: "S",
+            dir: &dir,
+            assets,
+            tables: "",
+            index: &index,
+        };
+        mito(&c).unwrap().expect("a mito section").1
+    }
+
+    fn at<'v>(v: &'v Value, path: &[&str]) -> &'v Value {
+        path.iter().fold(v, |v, k| match v {
+            Value::Object(m) => m.get(*k).unwrap_or_else(|| panic!("no key {k} in {v:?}")),
+            _ => panic!("{k}: not an object: {v:?}"),
+        })
+    }
+
+    fn items(v: &Value) -> &[Value] {
+        match v {
+            Value::Array(a) => a,
+            _ => panic!("not an array: {v:?}"),
+        }
+    }
+
+    #[test]
+    fn origin_edge_call_is_flagged_and_stays_counted() {
+        let d = section(
+            "chrM\t16\t.\tA\tT\t50\tPASS\t.\tGT:AF\t0/1:0.12\n\
+             chrM\t16050\t.\tC\tT\t50\tPASS\t.\tGT:AF\t0/1:0.30\n\
+             chrM\t8000\t.\tC\tT\t50\tPASS\t.\tGT:AF\t0/1:0.40\n",
+            "chrM\t16\tA\tT\tPASS\t0.12\t5\tPathogenic\t.\t.\t.\t.\t.\n",
+        );
+        assert_eq!(at(&d, &["heteroplasmic"]), &Value::Int(3));
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(2));
+        assert_eq!(at(&d, &["heteroplasmic_low_af"]), &Value::Int(0));
+        let sites = items(at(&d, &["heteroplasmic_sites"]));
+        let flags: Vec<(&Value, &Value, &Value)> = sites
+            .iter()
+            .map(|x| (at(x, &["pos"]), at(x, &["origin_edge"]), at(x, &["low_af"])))
+            .collect();
+        let (t, f) = (Value::Bool(true), Value::Bool(false));
+        assert_eq!(
+            flags,
+            [
+                (&Value::Int(16), &t, &f),
+                (&Value::Int(16050), &t, &f),
+                (&Value::Int(8000), &f, &f)
+            ]
+        );
+        // The ClinVar class still counts; the listed call carries the flag.
+        assert_eq!(at(&d, &["annotation", "clinvar_plp"]), &Value::Int(1));
+        let v = &items(at(&d, &["annotation", "variants"]))[0];
+        assert_eq!(at(v, &["origin_edge"]), &t);
+        assert_eq!(at(v, &["low_af"]), &f);
+        assert_eq!(
+            at(&d, &["origin_edge_regions"]),
+            &strs(["m.1-500", "m.16000-16569"])
+        );
+        assert_eq!(at(&d, &["low_af_ceiling"]), &Value::Float(0.10));
+    }
+
+    #[test]
+    fn low_level_m3243_is_flagged_and_keeps_attention() {
+        let d = section(
+            "chrM\t3243\t.\tA\tG\t50\tPASS\t.\tGT:AF\t0/1:0.07\n\
+             chrM\t9000\t.\tC\tT\t50\tPASS\t.\tGT:AF\t1:0.99\n",
+            "chrM\t3243\tA\tG\tPASS\t0.07\t9589\tPathogenic\tcriteria\tMELAS\t0\t0\t0\n\
+             chrM\t9000\tC\tT\tPASS\t0.99\t7\tUncertain_significance\t.\t.\t.\t.\t.\n",
+        );
+        let (t, f) = (Value::Bool(true), Value::Bool(false));
+        assert_eq!(at(&d, &["heteroplasmic"]), &Value::Int(1));
+        assert_eq!(at(&d, &["heteroplasmic_low_af"]), &Value::Int(1));
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(0));
+        let site = &items(at(&d, &["heteroplasmic_sites"]))[0];
+        assert_eq!(
+            (at(site, &["low_af"]), at(site, &["origin_edge"])),
+            (&t, &f)
+        );
+        // What draws attention stays: the ClinVar P/LP count and the
+        // confirmed variant, with its PASS filter and AF.
+        assert_eq!(at(&d, &["annotation", "clinvar_plp"]), &Value::Int(1));
+        let conf = items(at(&d, &["confirmed"]));
+        assert_eq!(conf.len(), 1);
+        assert_eq!(at(&conf[0], &["hgvs"]), &s("m.3243A>G"));
+        assert_eq!(at(&conf[0], &["filter"]), &s("PASS"));
+        assert_eq!(at(&conf[0], &["af"]), &s("0.07"));
+        let listed = items(at(&d, &["annotation", "variants"]));
+        assert_eq!(listed.len(), 2);
+        assert_eq!(at(&listed[0], &["low_af"]), &t);
+        // A homoplasmic call is never low level.
+        assert_eq!(at(&listed[1], &["low_af"]), &f);
+        assert_eq!(at(&listed[1], &["origin_edge"]), &f);
+    }
 }
