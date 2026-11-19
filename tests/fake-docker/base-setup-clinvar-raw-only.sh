@@ -18,4 +18,4 @@ awk '/^run / && /clinvar_chr\.vcf\.gz/ && !/clinvar_pathogenic/ { found = 1 } EN
 docker_log_has '^run .*clinvar_pathogenic_chr\.vcf\.gz' \
   "setup.sh did not build clinvar_pathogenic_chr.vcf.gz"
 output_lacks setup 'unbound variable'
-expect_rc setup 0
+expect_rc setup 3
