@@ -33,6 +33,7 @@ og-recheck.workspace = true
 og-render.workspace = true
 og-live.workspace = true
 og-couple.workspace = true
+og-facts.workspace = true
 
 [features]
 # BAM reading (og-bam, on a statically linked htslib written in C) is on by

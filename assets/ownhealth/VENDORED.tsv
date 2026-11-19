@@ -1,0 +1,7 @@
+# assets/ownhealth/VENDORED.tsv: the files of this folder copied byte for byte from OwnHealth
+# (https://github.com/GeiserX/OwnHealth), which owns the ownhealth.genome-facts/v1 format. Never edit
+# them here: a change goes to OwnHealth first, then is copied again with this table updated.
+# og-facts' tests fail when a file's sha256 is not the one below.
+file	ownhealth_path	ownhealth_commit	sha256
+genome-facts.v1.json	data/genome-facts/genome-facts.v1.json	117071ef325cd4e3c0bc3f6ade0aeef580a3b3aa	68d3ea93a139aa79e24e784021f7dc4caab4edd097c2751674c79a6871542078
+sensitive_genes.tsv	data/genome/sensitive_genes.tsv	117071ef325cd4e3c0bc3f6ade0aeef580a3b3aa	3e226339be1feabdddc02780b386df1f12eeaaeccc9db03284c19d00bb29a83e

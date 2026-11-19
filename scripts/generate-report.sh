@@ -57,7 +57,7 @@ summary_current() {
     case $src in *\\*) return 1 ;; esac
     [ -e "${SAMPLE_DIR}/${src}" ] || return 1
   done < <(sed -n 's/^   "source": "\([^"]*\)",\{0,1\}$/\1/p' "$s")
-  newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./summary.json \) -prune \
+  newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./facts -o -path ./summary.json \) -prune \
     -o -type d ! -path . ! -path ./logs -newer summary.json -print -quit \
     -o ! -type d -newer summary.json \
     ! \( -path './logs/*' ! -path ./logs/run_status.tsv \) \

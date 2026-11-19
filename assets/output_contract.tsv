@@ -123,6 +123,7 @@ file	{sample}/expansion_hunter/{sample}_eh_stranger.vcf	09b	STRANGER	both	vcf	st
 file	{sample}/expansion_hunter/{sample}_realigned.bam	09	EXPANSION_HUNTER	nextflow	bam	stable	-	-
 file	{sample}/expansion_hunter/{sample}_rfc1_motif.tsv	09b	STRANGER_RFC1	both	tsv	stable	-	-
 file	{sample}/expansion_hunter/{sample}_str_motifs.tsv	09b	STRANGER_RFC1	both	tsv	stable	-	-
+file	{sample}/facts/{sample}_genome_facts.json	-	-	bash	json	stable	-	schema,subject,assay,provenance,files,coverage,facts
 file	{sample}/fastq_trimmed/{sample}_R1.fastq.gz	01b	FASTP	nextflow	bin	internal	-	-
 file	{sample}/fastq_trimmed/{sample}_R2.fastq.gz	01b	FASTP	nextflow	bin	internal	-	-
 file	{sample}/fastq_trimmed/{sample}_fastp.html	01b	FASTP	both	html	stable	-	-
