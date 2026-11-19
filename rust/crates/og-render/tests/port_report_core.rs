@@ -254,21 +254,45 @@ fn both_reports_follow_the_chapter_order() {
         .flat_map(|c| c.sections.iter().map(|s| s.id))
         .collect();
     let shown = shown_sections(&page);
-    // ROH and telomere content show a card whether or not their step ran.
-    assert_eq!(
-        shown,
-        [
-            "qc",
-            "variants",
-            "roh",
-            "telomere",
-            "not-run",
-            "not-assessed"
-        ]
+    // The sections ported so far, in chapter order, then the limits chapter.
+    let n = shown.len();
+    assert!(
+        n >= 4 && shown[..2] == ["qc", "variants"] && shown[n - 2..] == ["not-run", "not-assessed"],
+        "{shown:?}"
+    );
+    // ROH, telomere content and the mitochondrial haplogroup show a card
+    // whether or not their step ran.
+    assert!(
+        ["roh", "telomere", "mt-haplogroup"]
+            .iter()
+            .all(|s| shown.contains(s)),
+        "{shown:?}"
     );
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
-    assert_eq!(&shown[..4], in_order.as_slice());
-    assert_eq!(text_chapters(&txt), ["QUALITY"]);
+    assert_eq!(&shown[..n - 2], in_order.as_slice());
+    // The HTML report shows a card for a section that did not run; the text
+    // report leaves it out, except the paralogs' "not checked" line, which
+    // prints when neither step 35 nor step 35b ran. So of the chapters with a
+    // card, the text keeps Quality and Carrier, in that order.
+    // Viral DNA, the one ported section of Other and exports, shows a card
+    // only when step 47 ran.
+    let with_card: Vec<String> = CHAPTERS
+        .iter()
+        .filter(|c| c.sections.iter().any(|s| shown[..n - 2].contains(&s.id)))
+        .map(|c| c.title.to_uppercase())
+        .collect();
+    assert_eq!(
+        with_card,
+        [
+            "QUALITY",
+            "CLINICAL",
+            "CARRIER",
+            "MEDICINES",
+            "ANCESTRY",
+            "TRAITS AND SCORES"
+        ]
+    );
+    assert_eq!(text_chapters(&txt), ["QUALITY", "CARRIER"]);
     let q = txt.split("#  1. QUALITY").nth(1).unwrap_or("");
     assert!(q.find("## Quality control") < q.find("## Variant Calling (DeepVariant)"));
     assert!(q.contains("## Variant Calling (DeepVariant)"));
@@ -277,7 +301,7 @@ fn both_reports_follow_the_chapter_order() {
         .replace("id=\"qc\"", "id=\"tmp\"")
         .replace("id=\"variants\"", "id=\"qc\"")
         .replace("id=\"tmp\"", "id=\"variants\"");
-    assert_ne!(shown_sections(&swapped)[..4], in_order[..]);
+    assert_ne!(shown_sections(&swapped)[..n - 2], in_order[..]);
 }
 
 #[test]

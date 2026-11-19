@@ -57,7 +57,9 @@ The second form reads DIR/DEMO-001/summary.json (step 24 writes it) and fails
 when a section is not "ok", so a new report card that this script does not
 feed yet is caught before a picture shows "Not run".
 
-Standard library only. tests/demo/retake-screenshots.sh runs both forms.
+Standard library only. Replaced by `og dev demo-sample` (rust/crates/og-dev/src/demo),
+which the picture retake and the live-site demo run; this file stays only for the older
+tests that still import or run it, until they move.
 """
 import argparse
 import calendar

@@ -5,12 +5,14 @@
 //!   placement on the current YFull YTree.
 //! - `private-snps` ([`crate::yprivate`], step 37): the chrY SNVs no public
 //!   SNP table names.
-//! - `yleaf-positions` ([`crate::yleaf`], step 37): Yleaf's own marker
-//!   positions, for the pileup made beside it.
+//! - `yleaf-positions`, `yleaf-no-reads` ([`crate::yleaf`], step 37):
+//!   Yleaf's own marker positions, for the pileup made beside it, and its
+//!   prediction table when that pileup is empty.
 
 use std::io::Write;
 
-const VERBS: &str = "str-bed|str-report|tree-positions|tree-place|private-snps|yleaf-positions";
+const VERBS: &str =
+    "str-bed|str-report|tree-positions|tree-place|private-snps|yleaf-positions|yleaf-no-reads";
 
 /// Routes `og y VERB ARGS`; the exit code.
 pub fn cli(verb: Option<&str>, rest: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -20,6 +22,7 @@ pub fn cli(verb: Option<&str>, rest: &[String], out: &mut dyn Write, err: &mut d
         Some("tree-place") => crate::ytree::place_cli(rest, out, err),
         Some("private-snps") => crate::yprivate::cli(rest, out, err),
         Some("yleaf-positions") => crate::yleaf::cli(rest, out, err),
+        Some("yleaf-no-reads") => crate::yleaf::no_reads_cli(rest, out, err),
         other => crate::unknown_verb("y", VERBS, other, err),
     }
 }

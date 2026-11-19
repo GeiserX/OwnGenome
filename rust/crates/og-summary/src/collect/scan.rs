@@ -36,8 +36,10 @@ pub struct FolderIndex {
 
 impl FolderIndex {
     /// Walks `root`. A folder that cannot be read counts as empty, as it
-    /// does for `glob`; a missing root gives an empty index. A name that is
-    /// not UTF-8 is left out: no pattern of a section can name it.
+    /// does for `glob`; a missing root gives an empty index, so
+    /// `og summary collect` refuses a root it cannot list before it walks.
+    /// A name that is not UTF-8 is left out: no pattern of a section can
+    /// name it.
     pub fn walk(root: &Path) -> FolderIndex {
         let mut files = HashSet::new();
         let mut stack: Vec<(PathBuf, String, usize)> = vec![(root.to_path_buf(), String::new(), 0)];

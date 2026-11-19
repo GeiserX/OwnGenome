@@ -471,7 +471,7 @@ fn the_command_line() {
             "--sample",
             "S",
             "--sample-dir",
-            "x",
+            &d.path("S"),
             "--out",
             &d.path("no/such/dir/x.json"),
             "--only",

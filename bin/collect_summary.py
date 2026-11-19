@@ -147,9 +147,6 @@ RUN_ALL_STEPS = {"03a", "03b", "03c", "03d", "04", "04b", "05", "06", "07", "08"
                  "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53"}
 
 
-SEVERITY_KINDS = ("hypomorph", "pseudodeficiency")
-
-
 def open_text(path):
     if path.endswith((".gz", ".bgz")):
         return gzip.open(path, "rt", errors="replace")
@@ -214,28 +211,3 @@ def csq_rank(fmt, csq):
     freq = "none" if not fields else "unknown" if not afs else "rare" if max(afs) < COMMON_AF else "common"
     return cls, [{"impact": get(v, "IMPACT"), "gene": get(v, "SYMBOL"),
                   "consequence": get(v, "Consequence").replace("&", ",")} for v in chosen], freq
-
-
-def allele_key(locus):
-    """'chr6:26092913:G:A' -> ('chr6', 26092913, 'G', 'A')."""
-    c, pos, ref, alt = locus.split(":")
-    return (c, int(pos), ref, alt)
-
-
-def parse_alleles(text, kinds=False):
-    """The variants or severity cell of assets/acmg_sf.tsv and
-    assets/carrier_genes.tsv: '.' or entries separated by ';', each
-    '[kind ]chrom:pos:ref:alt name'. {key: {'kind', 'name'}}."""
-    out = {}
-    for e in (text or ".").split(";"):
-        e = e.strip()
-        if e in ("", "."):
-            continue
-        parts = e.split(" ", 2 if kinds else 1)
-        if kinds and len(parts) < 2:
-            raise ValueError(f"severity entry needs a kind and a chrom:pos:ref:alt: {e}")
-        kind = parts.pop(0) if kinds else None
-        if kinds and kind not in SEVERITY_KINDS:
-            raise ValueError(f"severity '{kind}' is not one of {', '.join(SEVERITY_KINDS)}: {e}")
-        out[allele_key(parts[0])] = {"kind": kind, "name": parts[1] if len(parts) > 1 else parts[0]}
-    return out

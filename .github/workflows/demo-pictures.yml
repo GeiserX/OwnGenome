@@ -2,9 +2,9 @@ name: Demo pictures
 
 # Retakes the three docs pictures of DEMO-001, the invented sample
 # (docs/testing.md, "Retaking the report pictures"), with
-# tests/demo/retake-screenshots.sh: it writes the sample from a fixed seed,
-# runs steps 36, 27, 24 and 28 on it with the pinned images, draws the
-# pictures and checks them. The pictures come back as the artifact
+# tests/demo/retake-screenshots.sh: it writes the sample from a fixed seed
+# (og dev demo-sample), runs steps 36, 27, 24 and 28 on it with the pinned
+# images, draws the pictures and checks them. The pictures come back as the artifact
 # `demo-pictures`; look at them and commit them into docs/images/ by hand.
 # Nothing here writes to the repository.
 #
@@ -30,6 +30,8 @@ on:
     paths:
       - 'tests/demo/**'
       - 'tests/og_binary.py'
+      # og dev demo-sample, which writes the sample the pictures show
+      - 'rust/crates/og-dev/src/demo/**'
       - 'tests/fixtures/live/demo-001.weblog.jsonl'
       - 'tests/fixtures/live/demo/**'
       - '.github/workflows/demo-pictures.yml'
@@ -58,9 +60,8 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-dejavu-core
 
-      # Step 27 runs og in its container (bin/og), and the demo sample
-      # builder runs it too, for step 27's parser and step 33's mosaic rows
-      # (tests/og_binary.py finds bin/.og on Linux).
+      # Step 27 runs og in its container (bin/og), and the script writes the
+      # demo sample with the same bin/og (og dev demo-sample).
       - name: Build og as scripts/setup.sh --og does
         run: |
           scripts/setup.sh --og
@@ -95,9 +96,10 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-dejavu-core
 
-      # og (rust/, docs/rust.md): the demo sample builder runs step 27's
-      # parser, og pgx cpic-report, and step 33's og qc sex-loss for the
-      # mosaic rows (tests/og_binary.py reads OG).
+      # og (rust/, docs/rust.md): the live-site demo writes its sample with
+      # og dev demo-sample, which runs step 27's og pgx cpic-report, step 33's
+      # og qc sex-loss and the other verbs of the steps it stands in for
+      # (OG names the og).
       - name: Install the toolchain rust/rust-toolchain.toml pins
         working-directory: rust
         run: |
