@@ -27,9 +27,24 @@ read_count_mode > /dev/null || exit 1
 SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
 
 # Allow explicit override (e.g., FASTQ_SUBDIR=fastq to use raw reads even when trimmed exist)
+# The trimmed pair is used only when step 01b trimmed it from the raw reads in
+# fastq/ now (trimmed_reads_current, scripts/lib/common.sh): after a raw FASTQ
+# was replaced, the old trimmed pair would give a BAM of the old reads.
 if [ -n "${FASTQ_SUBDIR:-}" ]; then
   echo "Using explicit FASTQ_SUBDIR=${FASTQ_SUBDIR}."
 elif [ -f "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_R1.fastq.gz" ] && [ -f "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_R2.fastq.gz" ]; then
+  if [ -f "${SAMPLE_DIR}/fastq/${SAMPLE}_R1.fastq.gz" ] && [ -f "${SAMPLE_DIR}/fastq/${SAMPLE}_R2.fastq.gz" ] \
+     && ! trimmed_reads_current "$SAMPLE_DIR" "$SAMPLE"; then
+    echo "ERROR: ${SAMPLE_DIR}/fastq_trimmed/ was not trimmed from the raw reads in fastq/ now:" >&2
+    if [ -s "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_fastp_inputs.tsv" ]; then
+      echo "  fastq/${SAMPLE}_R1.fastq.gz or _R2 changed since step 01b trimmed them." >&2
+    else
+      echo "  it has no ${SAMPLE}_fastp_inputs.tsv, the record of the reads step 01b trimmed." >&2
+    fi
+    echo "  Run scripts/01b-fastp-qc.sh ${SAMPLE} first (it trims the reads again), or set" >&2
+    echo "  FASTQ_SUBDIR=fastq to align the raw reads." >&2
+    exit 1
+  fi
   FASTQ_SUBDIR="fastq_trimmed"
   echo "Using trimmed FASTQs from fastp."
 else
@@ -77,13 +92,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Step 1: Build the minimap2 index (one-time, ~30 min), under a temporary
+# Step 1: Build the minimap2 index (one-time, 1-3 min measured), under a temporary
 # name first: an interrupted build leaves no file at the name step 2 trusts.
 if [ ! -s "$MMI" ]; then
   if [ -f "${GENOME_DIR}/reference/GRCh38.mmi" ]; then
     echo "NOTE: reference/GRCh38.mmi was built without the sr preset and is no longer used; you can delete it."
   fi
-  echo "Building minimap2 index (one-time, ~30 min)..."
+  echo "Building minimap2 index (one-time, a few minutes)..."
   # The index is shared by every sample, so its directory is writable here.
   run_in --rw "$(dirname "$MMI")" \
     --cpus "${THREADS}" --memory 32g \
@@ -93,7 +108,8 @@ if [ ! -s "$MMI" ]; then
   mv -f "$MMI_TMP" "$MMI"
 fi
 
-# Step 2: Align, mark duplicates and sort (1-2 hours for 30X WGS)
+# Step 2: Align, mark duplicates and sort (3 h 51 min - 5 h 21 min measured on
+# 30-40X WGS, docs/hardware-requirements.md#runtime-per-step)
 # minimap2 runs in its own container and pipes SAM to samtools; the -i flag on
 # the samtools container keeps stdin open for the pipe. minimap2 writes the
 # two reads of a pair next to each other, which fixmate needs; markdup needs
@@ -110,7 +126,7 @@ fi
 # one: on the test reference (1.8 Gb, 57% of GRCh38) minimap2 peaked at 10 GB
 # with it against 5.5 GB before, so the aligner's cap is 32 GB, not 16.
 SORT_MEM_GB=$((THREADS + 4))
-echo "Aligning reads and marking duplicates (this takes 1-2 hours for 30X WGS)..."
+echo "Aligning reads and marking duplicates (about 4-5.5 hours for 30-40X WGS)..."
 mkdir -p "$SORT_TMP"
 # The reads that go in, counted on the host while minimap2 reads the same
 # files: one gzip per FASTQ, so the count adds no time to the step.

@@ -25,7 +25,7 @@
 # lock_acquire / lock_release, pipeline_images, pinned_tag / tag_pinned_image /
 # pinned_tag_present, image_is_dangling,
 # scatter_beds and run_parallel, FASTQ_RECORDS_AWK / fastp_total_reads /
-# read_count_mode / read_count_check,
+# read_count_mode / read_count_check, input_stamp / trimmed_reads_current,
 # described where they are
 # defined. Keep it bash 3.2 compatible: macOS runs setup.sh with /bin/bash.
 
@@ -184,6 +184,35 @@ fastp_total_reads() {
       if (i) { v = substr($0, i + length(k)); sub(/[^0-9].*/, "", v); if (v != "") { print v; found = 1 } }
       exit }
     END { exit !found }'
+}
+
+# input_stamp FILE...: one tab-separated line per FILE: its name (no
+# directory), its size in bytes, its modification time in seconds, and the
+# sha256 of its first and of its last MiB. A step stores the stamp of its
+# inputs beside its output and redoes the work when the stamp differs, so a
+# replaced input is never answered with the output of the one before. Reading
+# 2 MiB keeps it quick on a 60 GB FASTQ; a copy that kept the old file's time
+# still differs in size or in its first or last MiB.
+input_stamp() {
+  local f sm
+  for f in "$@"; do
+    [ -f "$f" ] || { echo "ERROR: input_stamp: no file ${f}" >&2; return 1; }
+    sm=$(stat -c '%s %Y' "$f" 2>/dev/null || stat -f '%z %m' "$f") || return 1
+    printf '%s\t%s\t%s\t%s\t%s\n' "${f##*/}" "${sm% *}" "${sm#* }" \
+      "$(_digest sha256 <(head -c 1048576 "$f"))" "$(_digest sha256 <(tail -c 1048576 "$f"))"
+  done
+}
+
+# trimmed_reads_current SAMPLE_DIR SAMPLE: true when fastq_trimmed/ holds the
+# trimmed pair of the raw reads now in fastq/: its <sample>_fastp_inputs.tsv
+# (written by step 01b) equals input_stamp of fastq/<sample>_R1.fastq.gz and
+# _R2. False when the record is missing (a pair trimmed before the record
+# existed) or differs (a raw file was replaced since).
+trimmed_reads_current() {
+  local d=$1 s=$2 now
+  [ -s "${d}/fastq_trimmed/${s}_fastp_inputs.tsv" ] || return 1
+  now=$(input_stamp "${d}/fastq/${s}_R1.fastq.gz" "${d}/fastq/${s}_R2.fastq.gz") || return 1
+  [ "$now" = "$(cat "${d}/fastq_trimmed/${s}_fastp_inputs.tsv")" ]
 }
 
 # read_count_mode: prints READ_COUNT_CHECK (fail, the default, or warn), or
