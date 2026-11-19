@@ -2,9 +2,14 @@
 # Chip-to-VCF Converter — converts consumer genotyping array data to GRCh38 VCF
 # Supports 23andMe, AncestryDNA, and MyHeritage raw data formats
 #
-# This script uses bcftools convert --tsv2vcf (NOT plink) because plink's binary
-# format cannot represent both alleles for monomorphic single-sample sites,
-# silently corrupting all homozygous ALT genotypes.
+# This script uses bcftools convert --tsv2vcf (NOT plink): plink's single-sample
+# import sees one allele at a homozygous site and leaves the second allele
+# missing, and --ref-from-fa does not fill it in, so every homozygous ALT
+# genotype silently becomes homozygous REF. tsv2vcf reads REF from the FASTA.
+#
+# The positions must be on GRCh37. The script does not take that from the
+# vendor: it stops when the header names another build, and when the
+# heterozygous calls do not carry the GRCh37 base at their positions.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name> [format]}
@@ -63,6 +68,50 @@ if [ "$FORMAT" = "auto" ]; then
     exit 1
   fi
   echo "Auto-detected format: ${FORMAT}"
+fi
+
+# --- Genome build named in the header ---
+# The vendors name the build of their positions in the comment header:
+# 23andMe "reference human assembly build 37", AncestryDNA "human reference
+# build 37.1 coordinates", MyHeritage "human reference build 37". A header that
+# names another build (build 36 or 38, NCBI36, GRCh38, hg18, hg38) stops the
+# conversion here: GRCh37 is the only build this script reads. A header that
+# names no build goes on to the check on the data after stage 1.
+case "$FORMAT" in
+  myheritage) BUILD_FILE="${RAW_DIR}/MyHeritage_raw_dna_data.csv" ;;
+  *) BUILD_FILE="$RAW_TSV" ;;
+esac
+if [ -f "$BUILD_FILE" ]; then
+  HEADER_BUILD=$(tr -d '\r' < "$BUILD_FILE" | LC_ALL=C sed $'1s/^\xEF\xBB\xBF//' | LC_ALL=C awk '
+    NR > 200 || (!/^#/ && NF > 0) { exit }
+    # num(l, re): the two-digit number after the first match of re in l that
+    # is not followed by a third digit (a dbSNP "build 151" is not a genome
+    # build), or 0.
+    function num(l, re,   n, c) {
+      while (match(l, re)) {
+        n = substr(l, RSTART + RLENGTH - 2, 2)
+        c = substr(l, RSTART + RLENGTH, 1)
+        if (c !~ /[0-9]/) return n + 0
+        l = substr(l, RSTART + RLENGTH)
+      }
+      return 0
+    }
+    {
+      l = tolower($0)
+      n = split(num(l, "build[ \t:=]*[0-9][0-9]") " " num(l, "grch[ \t]*[0-9][0-9]") " " \
+        num(l, "ncbi[ \t]*[0-9][0-9]") " " (l ~ /hg18/ ? 36 : 0) " " (l ~ /hg38/ ? 38 : 0), b, " ")
+      for (i = 1; i <= n; i++)
+        if (b[i] + 0 && b[i] + 0 != 37) { printf "%d\t%d\t%s\n", NR, b[i], $0; exit }
+    }')
+  if [ -n "$HEADER_BUILD" ]; then
+    IFS=$'\t' read -r hb_line hb_build hb_text <<< "$HEADER_BUILD"
+    echo "ERROR: ${BUILD_FILE} line ${hb_line} names genome build ${hb_build}: ${hb_text}" >&2
+    echo "  chip-to-vcf.sh reads GRCh37 (build 37) positions only, so it would put every" >&2
+    echo "  genotype at the wrong place. Download the file again from the vendor (current" >&2
+    echo "  23andMe, AncestryDNA and MyHeritage downloads are on build 37) or lift it to" >&2
+    echo "  GRCh37 first. Nothing was converted." >&2
+    exit 1
+  fi
 fi
 
 case "$FORMAT" in
@@ -181,13 +230,52 @@ echo "  Homozygous ALT genotypes will be correctly encoded as GT 1/1."
 
 # bcftools writes the hg19 FASTA's .fai next to it when it is missing, so that
 # directory is writable here.
+# Its counts (Hom RR, Het RA, Hom AA, Het AA) go to stderr; they are kept for
+# the build check below and printed as before.
+CONVERT_LOG="${RAW_DIR}/${SAMPLE}_tsv2vcf.log"
+convert_rc=0
 run_in --rw "$(dirname "$REF_HG19")" --cpus 2 --memory 4g \
   "${BCFTOOLS_IMAGE}" \
   bcftools convert --tsv2vcf "/genome/${SAMPLE}/raw/${SAMPLE}_tsv2vcf.tsv" \
     -f /genome/reference_hg19/human_g1k_v37.fasta \
     -s "${SAMPLE}" \
     -c ID,CHROM,POS,AA \
-    -Oz -o "/genome/${SAMPLE}/raw/${SAMPLE}_hg19.vcf.gz"
+    -Oz -o "/genome/${SAMPLE}/raw/${SAMPLE}_hg19.vcf.gz" 2> "$CONVERT_LOG" || convert_rc=$?
+cat "$CONVERT_LOG" >&2
+[ "$convert_rc" -eq 0 ] || exit "$convert_rc"
+
+# --- Build check on the data ---
+# On GRCh37 a heterozygous call nearly always carries the reference base at
+# its position: bcftools counts it as "Het RA". A call where neither allele is
+# the reference base ("Het AA") is rare, a site with three alleles. Positions
+# from another build (GRCh38, build 36) land on unrelated bases, so about half
+# of their heterozygous calls miss the base. More than 10% of at least 200
+# heterozygous calls missing it stops the conversion, whatever the header
+# says. Fewer than 200 heterozygous calls are too few to tell.
+BUILD_COUNTS=$(awk -F'\t' '
+  /^Het RA:/ { ra = $2 + 0; r = 1 }
+  /^Het AA:/ { aa = $2 + 0; a = 1 }
+  END { if (r && a) print ra, aa }' "$CONVERT_LOG")
+if [ -z "$BUILD_COUNTS" ]; then
+  echo "ERROR: bcftools convert printed no Het RA and Het AA counts, so the genome build" >&2
+  echo "  of the positions cannot be checked. Nothing was written." >&2
+  rm -f "${RAW_DIR}/${SAMPLE}_hg19.vcf.gz"
+  exit 1
+fi
+read -r HET_RA HET_AA <<< "$BUILD_COUNTS"
+HET_ALL=$((HET_RA + HET_AA))
+if [ "$HET_ALL" -lt 200 ]; then
+  echo "  Build check: ${HET_ALL} heterozygous call(s), fewer than 200: too few to check the build from the data."
+elif [ $((HET_AA * 10)) -gt "$HET_ALL" ]; then
+  echo "ERROR: ${HET_AA} of ${HET_ALL} heterozygous calls have neither allele equal to the GRCh37" >&2
+  echo "  base at their position ($((HET_AA * 100 / HET_ALL))%; on GRCh37 almost none do). The positions are" >&2
+  echo "  not on GRCh37 (GRCh38 or build 36?), whatever the file says. Lift the file to" >&2
+  echo "  GRCh37 or download it again from the vendor. Nothing was written." >&2
+  rm -f "${RAW_DIR}/${SAMPLE}_hg19.vcf.gz"
+  exit 1
+else
+  echo "  Build check: ${HET_RA} of ${HET_ALL} heterozygous calls carry the GRCh37 base: the positions fit GRCh37."
+fi
 
 # --- Step 2: Add chr prefix for liftover chain compatibility ---
 echo ""
