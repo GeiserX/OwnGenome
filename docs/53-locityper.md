@@ -2,7 +2,7 @@
 
 ## What This Does
 
-Genotypes five of the hardest polymorphic regions of the genome with Locityper: HLA-DRB1, HLA-DQB1, the KIR cluster, CYP2D6 and FCGR. For each one it names the two haplotypes of a pangenome panel that best explain the sample's reads there, with a quality and a pass or fail filter. Opt-in.
+Genotypes five of the hardest polymorphic regions of the genome with Locityper: HLA-DRB1, HLA-DQB1, the KIR cluster, CYP2D6 and FCGR. For each one it names the two haplotypes of a pangenome panel that best explain the sample's reads there, with a quality. At HLA-DRB1, HLA-DQB1 and KIR the call also gets the pass or fail filter of the authors' HLA and KIR benchmark; at CYP2D6 and FCGR that filter reads "uncalibrated". Opt-in.
 
 It is a second opinion. The report shows it beside the call of the step that owns the gene, never in its place.
 
@@ -69,6 +69,10 @@ With `run-all.sh`: `TOOLS=...,locityper`. It is opt-in, so a run lists step 53 o
 
 The filter is the one the authors used for their HLA and KIR benchmark (Zenodo 15879519, README): a call passes with no Locityper warning, a weighted distance of 30 or less, and fewer than 1000 or fewer than 20% unexplained reads. A call whose result gives no read counts fails it, and its `total_reads` and `unexplained_reads` read `.`. The weighted distance is the edit distance from the call to the other likely genotypes, weighted by their probability: a high value means the reads fit very different genotypes about as well.
 
+The authors set that filter on HLA and KIR genes only, so the `filter` column reads pass or fail only at a locus whose name starts with `HLA-` or `KIR` (HLA-DRB1, HLA-DQB1 and KIR here). At any other locus, CYP2D6 and FCGR here, it reads `uncalibrated`: nobody has measured what a pass means there, so the table never shows one. The `reason` column then says what the rule alone gives, for example `the authors calibrated this filter on HLA and KIR loci only; by its rule alone it passes`, or `... it fails:` with the reasons. A locus of your own list (`LOCITYPER_LOCI`) follows the same rule by its name. The reports count only `pass` rows as passing.
+
+At HLA and KIR the cut of 30 is also older than the distance it is applied to. The authors' results came from Locityper 0.17.3, where the weighted distance was a Jaccard distance between sets of minimizers (the Zenodo README). Locityper 1.7.0 changed the estimate, and the 1.7.14 this step runs gives it as an edit distance (`dist_type` `edit` in `res.json.gz`), from the alignments `locityper augment` writes. So a pass there is the authors' rule applied to a newer measure, not a result they benchmarked.
+
 Locityper names haplotypes of panel people, such as `HG00733.1`, not alleles. The two callers are shown side by side and not compared: an allele name from T1K and a panel haplotype are not the same kind of answer.
 
 ## Output
@@ -82,7 +86,7 @@ ${SAMPLE}/locityper/
     └── gt/loci/<locus>/res.json.gz
 ```
 
-Columns: `locus`, `region`, `status`, `genotype`, `haplotype_1`, `haplotype_2`, `quality` (Phred), `total_reads`, `unexplained_reads`, `weighted_distance`, `warnings`, `filter`, `reason`.
+Columns: `locus`, `region`, `status`, `genotype`, `haplotype_1`, `haplotype_2`, `quality` (Phred), `total_reads`, `unexplained_reads`, `weighted_distance`, `warnings`, `filter` (`pass`, `fail`, `uncalibrated` outside HLA and KIR, or `.` when not called), `reason`.
 
 Both reports carry a section "Locityper Second Opinion at Hard Loci" in the medicines chapter: per locus Locityper's call with its filter, and the primary caller's call.
 
