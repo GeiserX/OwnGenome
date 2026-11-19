@@ -1,11 +1,17 @@
 //! The rules: from the sites to one row per blood group system.
 //!
-//! Phase is not read: two variants of one system are placed on the
-//! chromosomes the common alleles carry them on, and the note says so.
+//! Phase is read for Duffy only: a GATA box phased with c.125G>A in one
+//! phase set goes on the chromosome the VCF puts it on. Elsewhere two
+//! variants of one system are placed on the chromosomes the common alleles
+//! carry them on, and the note says so.
 //! Confidence: high (every site called or covered by reads), medium (a site
 //! read as reference with no depth to confirm it, or a null row of the
 //! system not determined), low (a site in a region where short reads are
-//! unreliable, named in the note, or markers that disagree), not determined.
+//! unreliable, named in the note, markers that disagree, a weak call (GQ
+//! under 20 or DP under 8), or an ABO A allele, which is read from the
+//! absence of the O and B variants), not determined. Without a BAM, a
+//! system with no VCF record at any of its sites is not assessed: a VCF
+//! that does not cover the gene would otherwise read as the reference.
 
 use crate::Error;
 use crate::genotypes::{Genotyped, Site, Status};
@@ -19,6 +25,10 @@ use std::sync::LazyLock;
 /// The exons an RHD-CE(3-7)-D hybrid takes from RHCE.
 pub const RHD_HYBRID_EXONS: [i64; 5] = [3, 4, 5, 6, 7];
 pub const NOT_DETERMINED: &str = "not determined";
+pub const NOT_ASSESSED: &str = "not assessed";
+
+/// The note of a system read from null rows, while the antigen reads present.
+const NULL_LIMIT: &str = "a null allele the table does not hold (one of two or more variants, or a large deletion) goes unseen";
 
 /// A two-allele site: its label and its phenotype template, where
 /// `{antigen}` is replaced by `+` or `-`. The antigen names are the marker
@@ -297,6 +307,10 @@ impl Row {
         Row::new(system, NOT_DETERMINED, ".", NOT_DETERMINED, note)
     }
 
+    fn not_assessed(system: &str, note: impl Into<String>) -> Row {
+        Row::new(system, NOT_ASSESSED, ".", NOT_ASSESSED, note)
+    }
+
     fn add_note(&mut self, part: &str) {
         self.note = join_parts([self.note.as_str(), part]);
     }
@@ -333,14 +347,14 @@ fn is_stray(s: &Site) -> bool {
     s.note.starts_with("another allele")
 }
 
-/// Confidence from the sites a call used: low for a caveat or a stray
-/// allele, medium for a site read as reference without depth, else high.
-/// Another ALT at a null row's position is not that null allele and leaves
-/// the antigens read, so it is only named in the note.
+/// Confidence from the sites a call used: low for a caveat, a stray
+/// allele or a weak call, medium for a site read as reference without
+/// depth, else high. Another ALT at a null row's position is not that null
+/// allele and leaves the antigens read, so it is only named in the note.
 fn level_of(used: &[&Site]) -> &'static str {
     let mut lv = "high";
     for s in used {
-        if !s.row.caveat.is_empty() || (is_stray(s) && !s.row.is_null()) {
+        if !s.row.caveat.is_empty() || (is_stray(s) && !s.row.is_null()) || !s.weak.is_empty() {
             return "low";
         }
         if s.status == Status::Assumed {
@@ -358,6 +372,9 @@ fn notes_of(used: &[&Site], extra: Vec<String>) -> String {
         }
         if is_stray(s) {
             out.push(format!("{}: {}", s.row.hgvs, s.note));
+        }
+        if !s.weak.is_empty() {
+            out.push(format!("{}: weak call ({})", s.row.hgvs, s.weak));
         }
     }
     if used.iter().any(|s| s.status == Status::Assumed) {
@@ -686,6 +703,9 @@ fn system_pairs(system: &str, names: &[&str], sites: &Genotyped) -> Row {
     } else {
         genos.join(" ")
     };
+    if !nulls.is_empty() && nc.n < 2 {
+        extra.push(NULL_LIMIT.to_owned());
+    }
     extra.extend(meaning(system, &lacks, &used));
     let row = Row::new(
         system,
@@ -716,13 +736,17 @@ fn system_null(ns: &NullSystem, sites: &Genotyped) -> Row {
     } else {
         Vec::new()
     };
+    let mut extra = nc.extra.clone();
+    if nc.n < 2 {
+        extra.push(NULL_LIMIT.to_owned());
+    }
     let geno: Vec<&str> = rep(ns.ok, 2 - nc.n).chain(rep(ns.null, nc.n)).collect();
     let row = Row::new(
         ns.system,
         if nc.n >= 2 { ns.minus } else { ns.plus },
         geno.join("/"),
         conf,
-        notes_of(&used, nc.extra.clone()),
+        notes_of(&used, extra),
     );
     with_lacks(row, &lacks, &used)
 }
@@ -882,6 +906,19 @@ fn system_abo(sites: &Genotyped) -> Row {
     if pheno.is_empty() {
         pheno = "O".to_owned();
     }
+    if n_a != 0 {
+        // A is what is left of a functional allele with neither c.802G>A
+        // nor c.803G>C: no variant shows it.
+        low = true;
+        extra.push(
+            "an A allele is read from a c.261 insertion with neither c.802G>A nor c.803G>C, so an O allele that keeps c.261 (a non-deletional O) or a weak A subgroup also reads A"
+                .to_owned(),
+        );
+    }
+    extra.push(
+        "ABO alleles outside these five variants (weak A and B subgroups, cis-AB, O alleles other than O.01 and O.02) are not assessed"
+            .to_owned(),
+    );
     let conf = if low { "low" } else { level_of(&used) };
     if n_b != 0 && n_a != 0 {
         extra.push("A and B on different chromosomes assumed (no phase)".to_owned());
@@ -906,7 +943,19 @@ fn system_duffy(sites: &Genotyped) -> Row {
         return unknown("Duffy", &missing, "");
     }
     let (nb, ng) = (s125.n.unwrap_or(0), sg.n.unwrap_or(0));
-    let sil_b = ng.min(nb);
+    // One GATA box and one Fyb: the VCF's phase says which chromosome it
+    // is on, when both calls are phased in one phase set.
+    let phased_on_a = match (&s125.phase, &sg.phase) {
+        (Some(p), Some(q)) if nb == 1 && ng == 1 && p.block == q.block => {
+            Some(p.alt_on != q.alt_on)
+        }
+        _ => None,
+    };
+    let sil_b = if phased_on_a == Some(true) {
+        0
+    } else {
+        ng.min(nb)
+    };
     let sil_a = ng - sil_b;
     let (a_expr, b_expr) = ((2 - nb) - sil_a, nb - sil_b);
     let (mut used, mut extra) = (vec![s125, sg], Vec::new());
@@ -928,11 +977,16 @@ fn system_duffy(sites: &Genotyped) -> Row {
         .chain(rep("FY*X", weak))
         .chain(rep("FY*B GATA", sil_b))
         .collect();
-    if ng != 0 {
-        extra.push(
+    match phased_on_a {
+        Some(on_a) => extra.push(format!(
+            "c.-67T>C (GATA box) stops Duffy expression on red cells only; the VCF's phase puts it on the {} chromosome",
+            if on_a { "Fya" } else { "Fyb" }
+        )),
+        None if ng != 0 => extra.push(
             "c.-67T>C (GATA box) stops Duffy expression on red cells only; with no phase it is placed on the Fyb chromosome first, where it usually lies (FY*02N.01)"
                 .to_owned(),
-        );
+        ),
+        None => {}
     }
     Row::new(
         "Duffy",
@@ -1134,6 +1188,12 @@ fn system_rhd(sites: &Genotyped, rhd: &RhdDepth, row: &Locus) -> Result<Row, Err
         extra.push(format!("read depth gives {c2} RHD copies, more than two"));
     }
     extra.push("weak and partial D (RHD missense alleles) are not assessed".to_owned());
+    if call - n_psi > 0 {
+        extra.push(
+            "an RHD gene that is there reads D+: RHD null alleles other than RHD*08N.01, RHD-CE-D hybrids that keep exons 3 to 7, and DEL alleles are not assessed"
+                .to_owned(),
+        );
+    }
     Ok(Row::new(
         "RhD",
         if call - n_psi > 0 { "D+" } else { "D-" },
@@ -1183,6 +1243,55 @@ fn missing_sites(sites: &Genotyped) -> Vec<&'static str> {
     out
 }
 
+/// Every site a system's row reads (none for RhD, read from depth).
+fn system_sites<'a>(system: &str, names: Option<&[&str]>, sites: &'a Genotyped) -> Vec<&'a Site> {
+    let named: &[&str] = match system {
+        "ABO" => &["ABO_261", "ABO_802", "ABO_803", "ABO_796", "ABO_1061"],
+        "Duffy" => &["FY_125", "FY_GATA", "FY_265"],
+        "HNA-1" => &[
+            "FCGR3B_108",
+            "FCGR3B_114",
+            "FCGR3B_244",
+            "FCGR3B_316",
+            "FCGR3B_194",
+            "FCGR3B_233",
+        ],
+        "RhD" => return Vec::new(),
+        _ => names.unwrap_or_default(),
+    };
+    let mut out: Vec<&Site> = named.iter().map(|n| site(sites, n)).collect();
+    if names.is_some() || null_system(system).is_some() {
+        out.extend(null_rows(system, sites));
+    }
+    out
+}
+
+/// Without a BAM, a system none of whose sites has a VCF record is not
+/// assessed: the VCF may not cover the gene at all (a file cut to some
+/// chromosomes, a panel, a dropped contig), which reads the same as the
+/// reference everywhere.
+fn no_record(system: &str, names: Option<&[&str]>, sites: &Genotyped) -> Option<Row> {
+    let used = system_sites(system, names, sites);
+    if used.is_empty() || used.iter().any(|s| s.status != Status::Assumed) {
+        return None;
+    }
+    let mut chroms: Vec<&str> = Vec::new();
+    for s in &used {
+        if !chroms.contains(&s.row.chrom.as_str()) {
+            chroms.push(&s.row.chrom);
+        }
+    }
+    Some(Row::not_assessed(
+        system,
+        format!(
+            "no VCF record at any of its {} site{} and no BAM: a VCF that does not cover {} would read as the reference",
+            used.len(),
+            if used.len() > 1 { "s" } else { "" },
+            chroms.join(", ")
+        ),
+    ))
+}
+
 /// One row per system: the systems that lack a high-prevalence antigen
 /// first, each list in the base order of [`SYSTEMS`].
 pub fn predict(sites: &Genotyped, rhd: &RhdDepth, rhd_row: &Locus) -> Result<Vec<Row>, Error> {
@@ -1195,6 +1304,10 @@ pub fn predict(sites: &Genotyped, rhd: &RhdDepth, rhd_row: &Locus) -> Result<Vec
     }
     let mut rows = Vec::with_capacity(SYSTEMS.len());
     for (system, names) in SYSTEMS.iter() {
+        if let Some(row) = no_record(system, names.as_deref(), sites) {
+            rows.push(row);
+            continue;
+        }
         rows.push(match (system.as_str(), names) {
             ("ABO", _) => system_abo(sites),
             ("RhD", _) => system_rhd(sites, rhd, rhd_row)?,
@@ -1206,6 +1319,7 @@ pub fn predict(sites: &Genotyped, rhd: &RhdDepth, rhd_row: &Locus) -> Result<Vec
     }
     if let Some(se) = rows.iter_mut().find(|r| r.system == "Secretor")
         && se.phenotype != NOT_DETERMINED
+        && se.phenotype != NOT_ASSESSED
     {
         se.add_note(
             "weak secretor alleles (such as FUT2 c.418A>T, also written c.385A>T) and a deletion of the whole FUT2 gene are not assessed",
@@ -1242,7 +1356,7 @@ pub fn evidence_rows(
             s.status.as_str().to_owned(),
             dot(s.n.map(|n| n.to_string())),
             dot(s.depth.map(|d| fixed(d, 1))),
-            s.note.clone(),
+            join_parts([s.note.as_str(), s.weak.as_str()]),
         ]);
     }
     let flank = rhd.flank().filter(|f| *f != 0.0);
