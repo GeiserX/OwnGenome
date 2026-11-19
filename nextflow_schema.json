@@ -314,6 +314,12 @@
                     "description": "With hla_typing: also type HLA-A, HLA-B and HLA-C with OptiType (OPTITYPE_IMAGE), a second caller, and write its two-field concordance with T1K. HLA-A and HLA-B then reach PharmCAT only when the two callers agree.",
                     "fa_icon": "fas fa-dna"
                 },
+                "cpsr_secondary_findings": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "cpsr: also report pathogenic and likely pathogenic variants in the genes of the ACMG SF list of secondary findings (CPSR --secondary_findings), beside the cancer genes. false: CPSR reports the cancer genes only. run-all.sh passes false with CPSR_SECONDARY_FINDINGS=false, as scripts/17-cpsr.sh reads it. The ACMG card of step 23 is not CPSR's and does not follow this switch.",
+                    "fa_icon": "fas fa-eye-slash"
+                },
                 "cyrius_install": {
                     "type": "string",
                     "format": "directory-path",

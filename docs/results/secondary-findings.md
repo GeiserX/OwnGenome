@@ -39,6 +39,8 @@ The TTN rule (truncating variants only) and the LMNA rule (missense only with ca
 
 **What it tells you:** Cancer predisposition screening using CPSR's curated cancer gene panels (panel 0 covers 500+ genes). Step 17 also turns on CPSR's secondary findings: the ACMG SF list, which includes cardiac and metabolic genes outside cancer (see [Before you look](../interpreting-results.md#before-you-look-what-the-pipeline-can-tell-you)).
 
+**Turning CPSR's secondary findings off.** Set `CPSR_SECONDARY_FINDINGS=false` before the run: `CPSR_SECONDARY_FINDINGS=false ./scripts/run-all.sh <sample> <male|female>`, or the same before `./scripts/17-cpsr.sh <sample>`. A direct `nextflow run` takes `--cpsr_secondary_findings false`. CPSR then reports the cancer genes only, with no secondary-findings section. `run-all.sh` keeps the switch in `logs/run_status.tsv`, so `og recheck --rerun` keeps it off. The switch does not touch the secondary-findings card of the report (step 23, above): OwnGenome computes that card from the step 6 ClinVar hits on every run, plus step 23's rare HIGH-impact records and step 5's class 4 and 5 SVs when those steps ran, so it can still list a variant in an ACMG SF gene. Do not open that card if you do not want to see such findings.
+
 **Where to look:** `${SAMPLE}/cpsr/` — open the HTML report in a browser.
 
 **How to read it:**

@@ -17,9 +17,25 @@
     source 'cpsr', workflows/clinical.nf), which gets the BAM and the exons
     and writes cpsr/<id>_cpsr_cdna_check.tsv.
 
+    --cpsr_secondary_findings (default true) passes --secondary_findings:
+    CPSR then also reports the P/LP variants in the ACMG SF genes. With false
+    it reports the cancer genes only, as scripts/17-cpsr.sh does with
+    CPSR_SECONDARY_FINDINGS=false (run-all.sh passes that switch on).
+
     Equivalent to: scripts/17-cpsr.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
+
+// CPSR's options after --panel_id 0 for --cpsr_secondary_findings, which
+// must be true or false (a params file can give either as a string). The
+// stub prints them too, so a stub run shows what the real task would pass.
+def cpsrSecondaryArgs(value) {
+    def v = value.toString()
+    if (!(v in ['true', 'false'])) {
+        error "--cpsr_secondary_findings must be true or false, got '${v}'"
+    }
+    return v == 'true' ? '--secondary_findings' : ''
+}
 
 process CPSR {
     tag "$meta.id"
@@ -41,6 +57,7 @@ process CPSR {
     task.ext.when == null || task.ext.when
 
     script:
+    def sf_args = cpsrSecondaryArgs(params.cpsr_secondary_findings)
     """
     cpsr_id=\$(cpsr_sample_id '${meta.id}')
     cpsr \\
@@ -51,7 +68,7 @@ process CPSR {
         --genome_assembly grch38 \\
         --sample_id "\$cpsr_id" \\
         --panel_id 0 \\
-        --secondary_findings \\
+        ${sf_args} \\
         --force_overwrite
     cpsr_sample_id --rename . '${meta.id}'
 
@@ -62,7 +79,9 @@ process CPSR {
     """
 
     stub:
+    def sf_args = cpsrSecondaryArgs(params.cpsr_secondary_findings)
     """
+    echo "cpsr options: --panel_id 0 ${sf_args} --force_overwrite"
     cpsr_id=\$(cpsr_sample_id '${meta.id}')
     touch "\$cpsr_id".cpsr.grch38.html "\$cpsr_id".cpsr.grch38.classification.tsv.gz
     cpsr_sample_id --rename . '${meta.id}'
