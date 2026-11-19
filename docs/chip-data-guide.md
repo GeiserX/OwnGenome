@@ -39,7 +39,7 @@ If you have raw data from a consumer genotyping service instead of whole genome 
 >
 > `chip-to-vcf.sh` does not take the build from the vendor's name. It checks it twice and stops, with nothing written, when a file is not on GRCh37:
 >
-> - **The header.** A comment line that names another build (`build 36`, `build 38`, `NCBI36`, `GRCh38`, `hg18`, `hg38`) stops the conversion before it starts. An old 23andMe download says `build 36`.
+> - **The header.** A comment line that names another build (`build 36`, `build 38`, `NCBI36`, `GRCh38`, `hg18`, `hg38`) stops the conversion before it starts. An old 23andMe download says `build 36`. A line that also names build 37, such as `lifted from GRCh38 to GRCh37`, does not stop it; the data check below still runs.
 > - **The data.** On GRCh37 almost every heterozygous call carries the reference base at its position. Positions from another build land on unrelated bases, so about half of their heterozygous calls carry neither allele of the reference. When more than 10% of at least 200 heterozygous calls miss the reference base, the conversion stops, whatever the header says. A file with fewer than 200 heterozygous calls is too small to check, and the script says so.
 >
 > A file on another build has to be lifted to GRCh37 first, or downloaded again.

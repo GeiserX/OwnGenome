@@ -27,8 +27,10 @@
 #   - the MyHeritage fixture under a header that says GRCh38;
 #   - 250 heterozygous rows under a build 37 header where neither allele is
 #     the reference base, as positions from another build give.
-#   Control: the same 250 rows with one allele the reference base, in a
-#   6,000-row file, convert, and the log says the positions fit GRCh37.
+#   Controls: the 23andMe fixture under a line that names GRCh38 and GRCh37
+#   (a file already lifted) converts; the same 250 rows with one allele the
+#   reference base, in a 6,000-row file, convert, and the log says the
+#   positions fit GRCh37.
 # Needs docker.
 set -euo pipefail
 
@@ -225,6 +227,14 @@ refused ancestrydna-build38 "GRCh37 positions under a header naming build 38" 'l
 
 convert myheritage-grch38 MyHeritage_raw_dna_data.csv auto < <(labelled '# Positions are on GRCh38.' myheritage.csv)
 refused myheritage-grch38 "a header naming GRCh38" 'line 2 names genome build 38: # Positions are on GRCh38'
+
+# A file already lifted to GRCh37, as the error tells the user to do, may name
+# its old build and GRCh37 on one line: it converts.
+convert 23andme-lifted S1_raw.txt auto \
+  < <(labelled '# Genotypes lifted from GRCh38 to GRCh37 by a liftover tool.' 23andme.txt)
+if [ "$rc" -eq 0 ] && [ -s "${WORK}/23andme-lifted/S1/vcf/S1.vcf.gz" ]; then
+  pass "23andme-lifted: a header naming GRCh38 and GRCh37 on one line converts"
+else fail "23andme-lifted: chip-to-vcf.sh exited ${rc} on a header naming GRCh38 and GRCh37 on one line"; fi
 
 # het_rows MODE: a 23andMe file whose header names build 37, with 250
 # heterozygous rows on chr 1 (positions 1001-1250) of the made-up reference.

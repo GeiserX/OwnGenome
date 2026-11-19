@@ -73,10 +73,11 @@ fi
 # --- Genome build named in the header ---
 # The vendors name the build of their positions in the comment header:
 # 23andMe "reference human assembly build 37", AncestryDNA "human reference
-# build 37.1 coordinates", MyHeritage "human reference build 37". A header that
-# names another build (build 36 or 38, NCBI36, GRCh38, hg18, hg38) stops the
-# conversion here: GRCh37 is the only build this script reads. A header that
-# names no build goes on to the check on the data after stage 1.
+# build 37.1 coordinates", MyHeritage "human reference build 37". A header line
+# that names another build (build 36 or 38, NCBI36, GRCh38, hg18, hg38) and not
+# build 37 too stops the conversion here: GRCh37 is the only build this
+# script reads. A header that names no build goes on to the check on the data
+# after stage 1.
 case "$FORMAT" in
   myheritage) BUILD_FILE="${RAW_DIR}/MyHeritage_raw_dna_data.csv" ;;
   *) BUILD_FILE="$RAW_TSV" ;;
@@ -89,24 +90,32 @@ if [ -f "$BUILD_FILE" ]; then
     NR == 1 && index($0, bom) == 1 { $0 = substr($0, 4) }
     { sub(/\r$/, "") }
     NR > 200 || (!/^#/ && NF > 0) { exit }
-    # num(l, re): the two-digit number after the first match of re in l that
-    # is not followed by a third digit (a dbSNP "build 151" is not a genome
-    # build), or 0.
-    function num(l, re,   n, c) {
+    # nums(l, re): every two-digit number after a match of re in l that is
+    # not followed by a third digit (a dbSNP "build 151" is not a genome
+    # build), each with a space in front.
+    function nums(l, re,   r, c) {
+      r = ""
       while (match(l, re)) {
-        n = substr(l, RSTART + RLENGTH - 2, 2)
         c = substr(l, RSTART + RLENGTH, 1)
-        if (c !~ /[0-9]/) return n + 0
+        if (c !~ /[0-9]/) r = r " " substr(l, RSTART + RLENGTH - 2, 2)
         l = substr(l, RSTART + RLENGTH)
       }
-      return 0
+      return r
     }
     {
       l = tolower($0)
-      n = split(num(l, "build[ \t:=]*[0-9][0-9]") " " num(l, "grch[ \t]*[0-9][0-9]") " " \
-        num(l, "ncbi[ \t]*[0-9][0-9]") " " (l ~ /hg18/ ? 36 : 0) " " (l ~ /hg38/ ? 38 : 0), b, " ")
-      for (i = 1; i <= n; i++)
-        if (b[i] + 0 && b[i] + 0 != 37) { printf "%d\t%d\t%s\n", NR, b[i], $0; exit }
+      n = split(nums(l, "build[ \t:=]*[0-9][0-9]") nums(l, "grch[ \t]*[0-9][0-9]") \
+        nums(l, "ncbi[ \t]*[0-9][0-9]") (l ~ /hg18/ ? " 36" : "") (l ~ /hg19/ ? " 37" : "") \
+        (l ~ /hg38/ ? " 38" : ""), b, " ")
+      # A line that also names build 37 ("lifted from GRCh38 to GRCh37") does
+      # not stop the conversion: the data check after stage 1 still catches a
+      # file whose positions are not on GRCh37.
+      has37 = 0; other = 0
+      for (i = 1; i <= n; i++) {
+        if (b[i] + 0 == 37) has37 = 1
+        else if (b[i] + 0 && !other) other = b[i] + 0
+      }
+      if (other && !has37) { printf "%d\t%d\t%s\n", NR, other, $0; exit }
     }' "$BUILD_FILE")
   if [ -n "$HEADER_BUILD" ]; then
     IFS=$'\t' read -r hb_line hb_build hb_text <<< "$HEADER_BUILD"
