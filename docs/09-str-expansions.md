@@ -61,7 +61,7 @@ SLC6A4 5-HTTLPR, the serotonin transporter promoter length polymorphism, is not 
 
 ## Key Disease Thresholds
 
-The thresholds step 9b grades with on the STRchive v2.28.0 catalog, in repeat units: Stranger calls a count up to the normal maximum `normal`, one in the pre-mutation band `pre_mutation`, and one from the full-mutation minimum `full_mutation`. `tests/test_str_ranges.py` checks every row against the catalog. With `EH_CATALOG=bundled`, step 9b uses Stranger's bundled catalog, whose thresholds differ at some loci.
+The thresholds step 9b grades with on the STRchive v2.28.0 catalog, in repeat units: Stranger calls a count up to the normal maximum `normal`, one in the pre-mutation band `pre_mutation`, and one from the full-mutation minimum `full_mutation`. `rust/crates/og-setup/tests/genome_str_ranges.rs` checks every row against the catalog. With `EH_CATALOG=bundled`, step 9b uses Stranger's bundled catalog, whose thresholds differ at some loci.
 
 | Disease | Gene | Repeat Unit | Normal | Pre-mutation | Full mutation |
 |---|---|---|---|---|---|
@@ -73,7 +73,7 @@ The thresholds step 9b grades with on the STRchive v2.28.0 catalog, in repeat un
 | SCA1 | ATXN1 | CAG | ≤35 | 36-38 | ≥39 |
 | SCA2 | ATXN2 | CAG | ≤28 | 29-34 | ≥35 |
 
-Stranger's pre-mutation band is everything between the two thresholds; it is wider than a clinical intermediate range at some loci. At FMR1 it covers both the gray zone and the premutation below. `setup.sh` also writes `reference/strchive-<version>/str_ranges.tsv`, one row per locus with these two thresholds and STRchive's own intermediate range.
+Stranger's pre-mutation band is everything between the two thresholds; it is wider than a clinical intermediate range at some loci. At FMR1 it covers both the gray zone and the premutation below. At HTT, Stranger's full mutation starts at 36, but 36 to 39 is the reduced-penetrance range of GeneReviews: such a count can cause Huntington disease, but not in everyone who carries it. `og summary collect` marks a sized HTT count of 36 to 39 as reduced penetrance in `summary.json`, from `assets/str_penetrance_ranges.tsv` ([how to read it](results/structural-and-repeats.md#how-to-read-expansionhunter-output)). `setup.sh` also writes `reference/strchive-<version>/str_ranges.tsv`, one row per locus with these two thresholds and STRchive's own intermediate range.
 
 ## FMR1 Clinical Zones
 
@@ -101,4 +101,4 @@ The second argument (`male`/`female`) is **required** — it affects X-linked lo
 - **Why STRchive, not a larger catalog.** STRchive lists the loci with a published disease link, each with the sources of its thresholds. Larger catalogs (tens of thousands of loci) are for research, have no thresholds, and would make step 9b's grades meaningless. Illumina has published no newer catalog than the bundled one (2021).
 - **What the STRchive catalog cannot do.** It does not make long repeats readable: the seven loci above stay ungraded, and an expansion longer than a read is still sized only roughly. The motif count of step 9b reads the motif, never the size.
 - Short-read WGS can reliably detect expansions up to ~150 repeats; very large expansions (>1000) are less accurate
-- **How well each allele was sized.** The VCF's `SO` field says which reads support each allele: `SPANNING` (reads cross the whole repeat, so it is sized), `FLANKING` (reads reach into the repeat from one side only, so the size is not determined) or `INREPEAT` (reads made only of repeat, so the allele is longer than a read). `ADSP` counts the spanning reads and `REPCI` gives the interval. The report uses them: a `FLANKING` or `INREPEAT` allele, one with fewer than 2 spanning reads, or one whose interval reaches the pathogenic minimum is listed as not sized and never as normal ([how the report reads them](interpreting-results.md#str-expansions-step-9))
+- **How well each allele was sized.** The VCF's `SO` field says which reads support each allele: `SPANNING` (reads cross the whole repeat, so it is sized), `FLANKING` (reads reach into the repeat from one side only, so the size is not determined) or `INREPEAT` (reads made only of repeat, so the allele is longer than a read). `ADSP`, `ADFL` and `ADIR` count the spanning, flanking and in-repeat reads, and `REPCI` gives the interval. An allele with no spanning and no flanking read but at least one in-repeat read rests on in-repeat reads only, so it is longer than a read and is read as `INREPEAT`, whatever its `SO` says. The report uses them: a `FLANKING` or `INREPEAT` allele, one with fewer than 2 spanning reads, or one whose interval reaches the pathogenic minimum is listed as not sized and never as normal ([how the report reads them](interpreting-results.md#str-expansions-step-9))
