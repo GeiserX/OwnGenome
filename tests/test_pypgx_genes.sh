@@ -18,7 +18,16 @@
 #     planted summaries must be reported);
 #  6. one owner per gene: no row of the depth engine's catalog
 #     (bin/cn_loci.tsv) is a gene pypgx calls from the BAM (a planted UGT2B17
-#     row must be reported).
+#     row must be reported);
+#  7. no old call survives a rerun: a results.zip left by an earlier run is
+#     gone when depth preparation fails, a gene whose pypgx run fails after
+#     writing part of its result leaves no results.zip, and a gene that
+#     succeeds has its result under <gene>/;
+#  8. an ALT contig check that cannot run (the BAM header cannot be read, or
+#     og cn check-bam fails) stops the step with exit 2 before pypgx runs;
+#  9. docs/32-pypgx.md names exactly the genes pypgx has no phenotype rule
+#     for (PhenotypeMethod N/A in its gene table) and, of those, the weakly
+#     supported ones no other tool here calls (second_caller none).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -100,23 +109,41 @@ ln -s "${REPO}/scripts/ci/fake-docker/docker" "${WORK}/bin/docker"
 # The bash running this test runs the step too (it needs bash 4.4 or later).
 BASH_DIR=$(dirname "$BASH")
 
-# A fake pypgx: logs each call.
+# A fake pypgx: logs each call, and run-ngs-pipeline writes a results.zip
+# in its output directory. FAKE_PYPGX_FAIL=prep fails depth preparation;
+# FAKE_PYPGX_FAIL=GENE fails that gene after writing part of its result.
 cat > "${WORK}/pypgx-bin/pypgx" <<'SH'
 #!/usr/bin/env bash
 echo "$*" >> "$PYPGX_LOG"
+case "$1" in
+  prepare-depth-of-coverage) [ "${FAKE_PYPGX_FAIL:-}" != prep ] || exit 1 ;;
+  run-ngs-pipeline)
+    mkdir -p "$3"
+    if [ "${FAKE_PYPGX_FAIL:-}" = "$2" ]; then echo partial > "$3/results.zip"; exit 1; fi
+    echo new > "$3/results.zip" ;;
+esac
+exit 0
 SH
 chmod +x "${WORK}/pypgx-bin/pypgx"
 # The docker run hook: og bam contigs reads the @SQ lines of the BAM
-# placeholder (the header fixture); the pypgx container's bash -c runs with
-# the fake pypgx; the summary call logs its arguments and writes a header.
+# placeholder (the header fixture); samtools view -H prints it, or fails
+# with FAKE_HEADER_FAIL; og cn check-bam passes, or fails (exit 3) with
+# FAKE_CHECK_FAIL; the pypgx container's bash -c runs with the fake pypgx,
+# its /genome paths on the host; the summary call logs its arguments and
+# writes a header.
 cat > "${WORK}/hook" <<'SH'
 #!/usr/bin/env bash
 img=$1; shift
 host() { printf '%s' "${GENOME_DIR}${1#/genome}"; }
 if [ "$1" = /pgp-bin/og ] && [ "$2" = bam ] && [ "$3" = contigs ]; then
   awk -F'\t' '$1 == "@SQ" {sub(/^SN:/, "", $2); print $2}' "$(host "$4")"
+elif [ "$1" = samtools ] && [ "$2" = view ] && [ "$3" = -H ]; then
+  [ -z "${FAKE_HEADER_FAIL:-}" ] || exit 1
+  cat "$(host "$4")"
+elif [ "$1" = /pgp-bin/og ] && [ "$2" = cn ] && [ "$3" = check-bam ]; then
+  [ -z "${FAKE_CHECK_FAIL:-}" ] || exit 3
 elif [ "$1" = bash ] && [ "$2" = -c ]; then
-  PATH="${PYPGX_BIN}:$PATH" bash -c "$3"
+  PATH="${PYPGX_BIN}:$PATH" bash -c "${3//\/genome\//${GENOME_DIR}/}"
 elif [ "$1" = /pgp-bin/og ] && [ "$2" = pgx ] && [ "$3" = pypgx-summary ]; then
   printf '%s\n' "$*" >> "$SUMMARY_LOG"
   while [ $# -gt 0 ]; do [ "$1" = --out ] && printf 'Gene\n' > "$(host "$2")"; shift; done
@@ -135,7 +162,8 @@ run32() {
   local rc=0
   env -i HOME="$WORK" PATH="${WORK}/bin:${BASH_DIR}:/usr/bin:/bin" GENOME_DIR="$G" PGX_GENES="$1" \
     FAKE_DOCKER_LOG="${WORK}/docker.log" FAKE_DOCKER_RUN_HOOK="${WORK}/hook" PYPGX_BIN="${WORK}/pypgx-bin" \
-    PYPGX_LOG="${WORK}/$3.pypgx" SUMMARY_LOG="${WORK}/$3.summary" \
+    PYPGX_LOG="${WORK}/$3.pypgx" SUMMARY_LOG="${WORK}/$3.summary" FAKE_PYPGX_FAIL="${FAKE_PYPGX_FAIL:-}" \
+    FAKE_HEADER_FAIL="${FAKE_HEADER_FAIL:-}" FAKE_CHECK_FAIL="${FAKE_CHECK_FAIL:-}" \
     "$BASH" "${REPO}/scripts/32-pypgx.sh" "$S" > "${WORK}/$3.out" 2>&1 || rc=$?
   RC=$rc
 }
@@ -314,6 +342,86 @@ else
   if [ "$clash" = "UGT2B17" ]; then ok "control, a planted UGT2B17 catalog row reported"
   else bad "control, a planted UGT2B17 catalog row passed (got '${clash}')"; fi
 fi
+
+# --- 7. no old call survives a rerun --------------------------------------------
+# Before, step 32 removed only the summary: a gene this run did not call kept
+# the last run's <gene>/results.zip, and the summary read it as this run's
+# call; a gene pypgx failed on after writing part of its result kept that.
+P="${G}/${S}/pypgx"
+plant() { mkdir -p "${P}/$1"; echo old > "${P}/$1/results.zip"; }
+plant CYP2D6; plant CYP2A6; plant CYP2C9
+for z in depth_of_coverage.zip control_statistics.zip; do echo old > "${P}/${z}"; done
+FAKE_PYPGX_FAIL=prep run32 "$CAT" alt stale-prep
+expect "depth preparation failed: exit 0 (the VCF genes ran)" "$RC" 0
+expect "depth preparation failed: no BAM-mode call" "$(bam_calls stale-prep)" ""
+for g in CYP2D6 CYP2A6; do
+  if [ -e "${P}/${g}/results.zip" ]; then bad "depth preparation failed: the earlier run's ${g}/results.zip is still there"
+  else ok "depth preparation failed: no ${g}/results.zip from the earlier run"; fi
+done
+expect "depth preparation failed: CYP2C9 has this run's result" "$(cat "${P}/CYP2C9/results.zip" 2>/dev/null)" new
+for z in depth_of_coverage.zip control_statistics.zip; do
+  if [ -e "${P}/${z}" ]; then bad "depth preparation failed: the earlier run's ${z} is still there"
+  else ok "depth preparation failed: no ${z} from the earlier run"; fi
+done
+
+plant CYP2C9
+FAKE_PYPGX_FAIL=CYP2C9 run32 "$CAT" alt half-written
+expect "a gene that fails: exit 0 (the other genes ran)" "$RC" 0
+if [ -e "${P}/CYP2C9/results.zip" ]; then bad "a gene that failed after writing part of its result has a results.zip: $(cat "${P}/CYP2C9/results.zip")"
+else ok "a gene that failed after writing part of its result has no results.zip"; fi
+if [ -e "${P}/CYP2C9.part" ]; then bad "a gene that failed leaves CYP2C9.part"; fi
+expect "a gene that succeeds: its result is under CYP2D6/" "$(cat "${P}/CYP2D6/results.zip" 2>/dev/null)" new
+expect "a gene that succeeds: no CYP2D6.part left" "$(compgen -G "${P}/*.part" || true)" ""
+
+# --- 8. an ALT contig check that cannot run stops the step ------------------------
+# Before, the step warned and went on, so a BAM that might have ALT contigs
+# reached pypgx's copy-number calls.
+FAKE_HEADER_FAIL=1 run32 "$CAT" alt header-fail
+expect "the BAM header cannot be read: exit 2" "$RC" 2
+expect "the BAM header cannot be read: pypgx never runs" "$(wc -l < "${WORK}/header-fail.pypgx" | tr -d ' ')" 0
+if grep -q '^ERROR: could not read the header of .*ALT contig check could not run' "${WORK}/header-fail.out"; then
+  ok "the BAM header cannot be read: the ERROR line"
+else bad "the BAM header cannot be read: no ERROR line: $(cat "${WORK}/header-fail.out")"; fi
+FAKE_CHECK_FAIL=1 run32 "$CAT" alt check-fail
+expect "og cn check-bam fails: exit 2" "$RC" 2
+expect "og cn check-bam fails: pypgx never runs" "$(wc -l < "${WORK}/check-fail.pypgx" | tr -d ' ')" 0
+
+# --- 9. the weakly supported genes in the doc --------------------------------------
+# From pypgx's gene table and assets/pgx_genes.tsv: the genes of the table
+# pypgx has no phenotype rule for (PhenotypeMethod N/A), and of those the ones
+# no other tool here calls (second_caller none). docs/32-pypgx.md lists each
+# set on its own line; a gene that changes either way fails until the doc
+# follows.
+DOC="${REPO}/docs/32-pypgx.md"
+# no_rule [none]: the table's genes with PhenotypeMethod N/A (and second_caller none)
+no_rule() {
+  awk -v only="${1:-}" '
+    NR == FNR {
+      n = split($0, f, ",")
+      if (FNR == 1) { for (i = 1; i <= n; i++) col[f[i]] = i; next }
+      pm[f[col["Gene"]]] = f[col["PhenotypeMethod"]]; next
+    }
+    { split($0, t, "\t") }
+    /^#/ || t[1] == "gene" || !NF { next }
+    pm[t[1]] == "N/A" && (only == "" || t[5] == only) { print t[1] }
+  ' "$GT" "$CAT" | sort | paste -sd ' ' -
+}
+# doc_list LEAD: the genes on the doc line that starts with **LEAD (N):**, sorted;
+# doc_count LEAD: its N
+doc_list() { sed -n "s/^\*\*$1 ([0-9]*):\*\* //p" "$DOC" | head -n 1 | tr -d '.' | tr ',' '\n' | tr -d ' ' | grep . | sort | paste -sd ' ' -; }
+doc_count() { sed -n "s/^\*\*$1 (\([0-9]*\)):\*\*.*/\1/p" "$DOC" | head -n 1; }
+for spec in "No pypgx phenotype rule|" "Weakly supported, pypgx alone|none"; do
+  lead=${spec%|*} only=${spec#*|}
+  want=$(no_rule "$only")
+  [ -n "$want" ] || bad "no gene of the table lacks a pypgx phenotype rule: did gene-table.csv change shape?"
+  expect "docs/32-pypgx.md: ${lead}" "$(doc_list "$lead")" "$want"
+  expect "docs/32-pypgx.md: ${lead}, the count" "$(doc_count "$lead")" "$(wc -w <<<"$want" | tr -d ' ')"
+done
+# A control: a gene table where CYP2C9 has no phenotype rule must change the
+# weakly supported set (CYP2C9's second caller is PharmCAT, so only the first).
+sed 's/^CYP2C9,\([^,]*,[^,]*,[^,]*,[^,]*,[^,]*\),Score,/CYP2C9,\1,N\/A,/' "$GT" > "${WORK}/gt-cyp2c9.csv"
+if [ "$(GT="${WORK}/gt-cyp2c9.csv" no_rule)" != "$(no_rule)" ]; then ok "control, CYP2C9 without a phenotype rule changes the no-rule set"
+else bad "control, CYP2C9 without a phenotype rule left the no-rule set as it was"; fi
 
 if [ "$FAILS" -gt 0 ]; then
   echo "${FAILS} check(s) failed"

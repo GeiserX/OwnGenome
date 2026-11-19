@@ -16,7 +16,8 @@
 # 'low-confidence: check the reads' when one of them has a GQ below
 # PYPGX_GQ_FLOOR (default 20). GSTT1, which GRCh38 has only on an ALT contig,
 # is 'not callable on this reference' on a BAM without that contig. A BAM
-# with ALT or HLA contigs stops the step with a REFUSED line. The gene list
+# with ALT or HLA contigs stops the step with a REFUSED line, and one whose
+# header cannot be checked stops it with exit 2. The gene list
 # and the mode of each gene are assets/pgx_genes.tsv.
 set -euo pipefail
 
@@ -84,23 +85,26 @@ fi
 
 # A BAM aligned to a reference with ALT or HLA contigs is refused: pypgx
 # reads copy number from depth, and that depth splits between a gene and its
-# ALT copy, which reads as a deletion (og cn check-bam, exit 4).
-# A header that cannot be read leaves the check undone, with a warning. It runs
+# ALT copy, which reads as a deletion (og cn check-bam, exit 4; the step
+# exits 1). A check that cannot run (the header cannot be read, or og fails)
+# stops the step with exit 2: an unchecked BAM never reaches pypgx. It runs
 # after the bundle check, which starts no container.
 HDR="${OUTPUT_DIR}/bam_header.part"
+rc=0
 if run_in --cpus 1 --memory 1g "${SAMTOOLS_IMAGE}" samtools view -H "$(cpath "$BAM")" > "$HDR"; then
-  rc=0
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
     /pgp-bin/og cn check-bam --header "$(cpath "$HDR")" || rc=$?
   rm -f "$HDR"
   if [ "$rc" -eq 4 ]; then
     exit 1
   elif [ "$rc" -ne 0 ]; then
-    echo "WARNING: the ALT contig check of the BAM header failed (exit ${rc}); it was not done." >&2
+    echo "ERROR: the ALT contig check of the BAM header failed (exit ${rc}), so ${BAM} was not checked; the step stops." >&2
+    exit 2
   fi
 else
   rm -f "$HDR"
-  echo "WARNING: could not read the BAM header; the ALT contig check was not done." >&2
+  echo "ERROR: could not read the header of ${BAM}, so its ALT contig check could not run; the step stops." >&2
+  exit 2
 fi
 
 # The genes and how each is called come from assets/pgx_genes.tsv (one row per
@@ -129,6 +133,14 @@ if [ -z "${BAM_GENES}${VCF_GENES}" ]; then
   echo "ERROR: ${PGX_GENES} lists no gene" >&2
   exit 1
 fi
+
+# The per-gene results of an earlier run go before pypgx runs: the summary
+# reads <gene>/results.zip for every gene of the table, so a gene this run
+# does not call (depth preparation failed, pypgx failed) must not keep the
+# last run's call. Each gene is written to <gene>.part and renamed only when
+# pypgx succeeds on it, so a half-written result never counts either.
+for g in $BAM_GENES $VCF_GENES; do rm -rf "${OUTPUT_DIR:?}/${g}" "${OUTPUT_DIR}/${g}.part"; done
+rm -f "${OUTPUT_DIR}/depth_of_coverage.zip" "${OUTPUT_DIR}/control_statistics.zip"
 
 GQ_FLOOR=${PYPGX_GQ_FLOOR:-20}
 [[ "$GQ_FLOOR" =~ ^[0-9]+$ ]] || { echo "ERROR: PYPGX_GQ_FLOOR must be a whole number, got '${GQ_FLOOR}'" >&2; exit 1; }
@@ -219,7 +231,8 @@ echo ""
 #   - SV genes: --depth-of-coverage + --control-statistics (no --variants to avoid
 #     pseudogene-confounded VCF calls in CYP2D6/CYP2D7 region)
 #   - VCF genes: --variants only
-# Individual gene failures are logged but do not stop the loop.
+# Individual gene failures are logged but do not stop the loop. Each gene is
+# called into <gene>.part, renamed to <gene> only when pypgx exits 0.
 run_in --cpus 4 --memory 8g \
   -v "${PYPGX_BUNDLE}:/tmp/pypgx-bundle:ro" -e PYPGX_BUNDLE=/tmp/pypgx-bundle \
   "${PYPGX_IMAGE}" \
@@ -264,26 +277,32 @@ run_in --cpus 4 --memory 8g \
         echo "--- Calling ${GENE} (BAM + VCF) ---"
         EXTRA=""
         [ -f "$CTRL" ] && EXTRA="--control-statistics $CTRL"
-        pypgx run-ngs-pipeline "$GENE" "${OUTBASE}/${GENE}" \
+        if pypgx run-ngs-pipeline "$GENE" "${OUTBASE}/${GENE}.part" \
           --variants "$VCF" \
           --depth-of-coverage "$DOC" \
           --assembly GRCh38 \
           --force \
           $EXTRA 2>&1 \
-          && SUCCEEDED=$((SUCCEEDED + 1)) \
-          || { echo "WARNING: ${GENE} failed"; FAILED="${FAILED} ${GENE}"; }
+          && mv "${OUTBASE}/${GENE}.part" "${OUTBASE}/${GENE}"; then
+          SUCCEEDED=$((SUCCEEDED + 1))
+        else
+          echo "WARNING: ${GENE} failed"; FAILED="${FAILED} ${GENE}"; rm -rf "${OUTBASE}/${GENE}.part"
+        fi
       done
     fi
 
     # Phase 3b: VCF-based genes — star alleles from variant calls only
     for GENE in $VCF_GENES; do
       echo "--- Calling ${GENE} (VCF-based) ---"
-      pypgx run-ngs-pipeline "$GENE" "${OUTBASE}/${GENE}" \
+      if pypgx run-ngs-pipeline "$GENE" "${OUTBASE}/${GENE}.part" \
         --variants "$VCF" \
         --assembly GRCh38 \
         --force 2>&1 \
-        && SUCCEEDED=$((SUCCEEDED + 1)) \
-        || { echo "WARNING: ${GENE} failed"; FAILED="${FAILED} ${GENE}"; }
+        && mv "${OUTBASE}/${GENE}.part" "${OUTBASE}/${GENE}"; then
+        SUCCEEDED=$((SUCCEEDED + 1))
+      else
+        echo "WARNING: ${GENE} failed"; FAILED="${FAILED} ${GENE}"; rm -rf "${OUTBASE}/${GENE}.part"
+      fi
     done
 
     echo ""
