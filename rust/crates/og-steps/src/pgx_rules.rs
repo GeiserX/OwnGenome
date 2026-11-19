@@ -452,6 +452,30 @@ fn stand_in(pair: &[Vec<String>]) -> (Vec<String>, String) {
     (names, notes)
 }
 
+/// T1K's pair with every candidate's expression suffix cut: the names
+/// PharmCAT reads (`*02:53N` is `*02:53`).
+fn expressed_pair(pair: &[Vec<String>]) -> Vec<Vec<String>> {
+    pair.iter()
+        .map(|l| l.iter().map(|c| expressed(c).to_owned()).collect())
+        .collect()
+}
+
+/// A note for each of T1K's candidates whose expression suffix was cut to
+/// give one of the `passed` names, as [`stand_in`] writes it.
+fn suffix_notes(pair: &[Vec<String>], passed: &[String]) -> String {
+    let mut notes: Vec<String> = Vec::new();
+    for c in pair.iter().flatten() {
+        let name = expressed(c);
+        if name != c.as_str() && passed.iter().any(|p| p == name) {
+            let note = format!("; T1K's {c} passed as {name}: PharmCAT acts on neither");
+            if !notes.contains(&note) {
+                notes.push(note);
+            }
+        }
+    }
+    notes.concat()
+}
+
 /// What step 36 decided for one gene.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -547,10 +571,14 @@ pub fn hla_row(
         None if need_optitype => Row::withheld(gene, "indeterminate", NO_OPTITYPE, &evidence),
         Some(ot) => {
             let calls = optitype_of(ot, gene);
+            // OptiType never calls a null, so it is compared with the names
+            // PharmCAT reads: a suffix that could touch a drug allele has
+            // returned above, so what is left names none (*02:53N is *02:53).
+            let read = expressed_pair(&pair);
             // T1K's pair as OptiType reads it: OptiType's own pair when it
             // is one of T1K's choices, else T1K's first candidates.
-            let names = match_pair(&pair, calls)
-                .unwrap_or_else(|| pair.iter().map(|l| l[0].clone()).collect());
+            let names = match_pair(&read, calls)
+                .unwrap_or_else(|| read.iter().map(|l| l[0].clone()).collect());
             if calls.is_empty() {
                 let why = "OptiType, the second caller, made no call";
                 Row::withheld(gene, "indeterminate", why, &evidence)
@@ -564,6 +592,7 @@ pub fn hla_row(
                         "; T1K ties candidates on one allele, and OptiType's call is one of them",
                     );
                 }
+                reason.push_str(&suffix_notes(&pair, &names));
                 Row {
                     gene,
                     decision: Decision::Passed(names.join("/")),
@@ -587,7 +616,8 @@ pub fn hla_row(
 /// Step 08's concordance table: per class I gene the two-field calls of
 /// both callers and whether they agree (`yes`, `no` or `not compared`).
 /// T1K's tied candidates are comma-separated, and an expression suffix
-/// stays (`*02:53N` does not agree with OptiType's `*02:53`).
+/// stays (`*02:53N` does not agree with OptiType's `*02:53`, though step 36
+/// passes that pair: OptiType never calls a null).
 pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
     let mut rows = Vec::new();
     for gene in OPTITYPE_GENES {
@@ -605,6 +635,7 @@ pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
             ot.join("/")
         };
         let names: Vec<&str> = alleles.iter().map(|a| a.name.as_str()).collect();
+        let mut suffix_only = false;
         let (agree, mut note) = if alleles.is_empty() || ot.is_empty() {
             ("not compared", "a caller made no call".to_owned())
         } else if alleles.iter().any(Allele::unusable) {
@@ -623,11 +654,23 @@ pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
             } else {
                 ("yes", "-".to_owned())
             }
+        } else if match_pair(&expressed_pair(&pair), ot).is_some() {
+            // OptiType calls no null; step 36 compares it with the names
+            // PharmCAT reads, so this pair still reaches PharmCAT.
+            suffix_only = true;
+            (
+                "no",
+                "T1K's call has an expression suffix, which OptiType never calls".to_owned(),
+            )
         } else {
             ("no", "the callers disagree at two fields".to_owned())
         };
         if HLA_GENES.contains(&gene) && agree != "yes" {
-            note.push_str("; step 36 does not pass it to PharmCAT");
+            note.push_str(if suffix_only {
+                "; step 36 passes it to PharmCAT without the suffix"
+            } else {
+                "; step 36 does not pass it to PharmCAT"
+            });
         }
         rows.push([gene.to_owned(), t_txt, o_txt, agree.to_owned(), note]);
     }

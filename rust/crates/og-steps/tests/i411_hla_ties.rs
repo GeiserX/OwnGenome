@@ -13,9 +13,10 @@
 //! 3. a tie that names no allele PharmCAT acts on still passes the gene
 //!    (a sure B*57:01 on the other copy is not lost), order-independently;
 //! 4. a null allele keeps its suffix (`*02:53N`), does not agree with
-//!    OptiType's `*02:53`, and reaches PharmCAT without it on the T1K-only
-//!    path; a null of a drug allele is ambiguous, a null on the other copy
-//!    of a sure B*57:01 withholds nothing;
+//!    OptiType's `*02:53` in step 08's table, and reaches PharmCAT without
+//!    it, with or without OptiType (OptiType never calls a null); a null of
+//!    a drug allele is ambiguous, a null on the other copy of a sure
+//!    B*57:01 withholds nothing, with or without OptiType;
 //! 5. T1K's single allele keeps the caveat "one allele, read as homozygous",
 //!    and two alleles that OptiType agrees with keep their reason;
 //! 6. CYP2D6: when pypgx and Cyrius agree and the depth check passed, the
@@ -274,9 +275,35 @@ fn a_null_allele_keeps_its_suffix() {
     let conc = concordance_rows(&t1k, &ot);
     assert_eq!(conc[0][1], "*02:53N/*31:01");
     assert_eq!(conc[0][3], "no");
-    let row = hla_row("HLA-A", Some(&t1k), Some(&ot), false);
+    assert_eq!(
+        conc[0][4],
+        "T1K's call has an expression suffix, which OptiType never calls; \
+         step 36 passes it to PharmCAT without the suffix"
+    );
+    // Step 36 compares OptiType with the names PharmCAT reads: the sure
+    // *31:01 on the other copy reaches PharmCAT.
+    for need in [false, true] {
+        let row = hla_row("HLA-A", Some(&t1k), Some(&ot), need);
+        assert_eq!(row.decision, Decision::Passed("*02:53/*31:01".to_owned()));
+        assert_eq!(
+            row.reason,
+            "T1K and OptiType (step 08), which agree at two fields; \
+             T1K's *02:53N passed as *02:53: PharmCAT acts on neither"
+        );
+    }
+    // An OptiType that disagrees on the other copy still holds it back.
+    let other = read_optitype(&d.put(
+        "o.tsv",
+        &optitype(("A*02:53", "A*01:01"), ("B*07:02", "B*08:01")),
+    ))
+    .unwrap();
+    let row = hla_row("HLA-A", Some(&t1k), Some(&other), true);
     assert_eq!(row.decision, Decision::Withheld("indeterminate"));
     assert_eq!(row.reason, "T1K and OptiType disagree at two fields");
+    assert_eq!(
+        concordance_rows(&t1k, &other)[0][4],
+        "the callers disagree at two fields; step 36 does not pass it to PharmCAT"
+    );
     // T1K alone: PharmCAT reads no suffix, and *02:53 is no allele it acts
     // on; the sure *31:01 on the other copy reaches it.
     let row = hla_row("HLA-A", Some(&t1k), None, false);
@@ -310,6 +337,20 @@ fn a_null_of_a_drug_allele_is_ambiguous_but_a_null_beside_one_is_not() {
     let t1k = read_t1k(&hla, &HLA_GENES).unwrap();
     let row = hla_row("HLA-B", Some(&t1k), None, false);
     assert_eq!(row.decision, Decision::Passed("*08:67/*57:01".to_owned()));
+    // OptiType, the opt-in second caller, never calls the null: its
+    // *08:67 is the name PharmCAT reads, so B*57:01 still goes.
+    let ot = read_optitype(&d.put(
+        "o.tsv",
+        &optitype(("A*01:01", "A*01:01"), ("B*57:01", "B*08:67")),
+    ))
+    .unwrap();
+    let row = hla_row("HLA-B", Some(&t1k), Some(&ot), true);
+    assert_eq!(row.decision, Decision::Passed("*08:67/*57:01".to_owned()));
+    assert_eq!(
+        row.reason,
+        "T1K and OptiType (step 08), which agree at two fields; \
+         T1K's *08:67N passed as *08:67: PharmCAT acts on neither"
+    );
 }
 
 #[test]
