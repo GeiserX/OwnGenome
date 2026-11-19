@@ -9,9 +9,11 @@ name: Freshness
 # curated PGx tables with their sources: each row of
 # assets/pgx_contraindications.tsv with its CPIC pair (level, provisional) and
 # its DailyMed label, assets/pgx_inhibitors.tsv with the FDA table of CYP
-# inhibitors, and assets/pgx_genes.tsv with the gene table of the newest
-# pypgx. A row that no longer agrees shows as `drift` in the issue: a warning
-# to fix the table, not a failed run.
+# inhibitors (fda.gov refuses GitHub's runners, so the newest Wayback
+# Machine capture of it, at most 92 days old, stands in), and
+# assets/pgx_genes.tsv with the gene table of the newest pypgx. A row that no
+# longer agrees shows as `drift` in the issue: a warning to fix the table, not
+# a failed run.
 #
 # The issue is found by a marker in its body, not by the label alone, so an
 # issue another workflow files under the same label is never overwritten. A

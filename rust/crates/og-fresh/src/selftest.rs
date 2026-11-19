@@ -697,6 +697,10 @@ pub fn run(out: &mut dyn Write) -> u8 {
         vec![
             ("api.cpicpgx.org", cpic("A", true)),
             ("dailymed.nlm.nih.gov", dailymed(true)),
+            // Asked only when fda.gov refuses; before it, as their URLs
+            // name fda.gov too.
+            ("archive.org/wayback/available", None),
+            ("web.archive.org/web/", None),
             (
                 "fda.gov",
                 fda(&[
@@ -725,12 +729,12 @@ pub fn run(out: &mut dyn Write) -> u8 {
     );
     let mut drifted = agree();
     drifted[0].1 = cpic("B", true);
-    drifted[2].1 = fda(&[
+    drifted[4].1 = fda(&[
         ("bupropion", "&nbsp;", "2D6 moderate inhibitor"),
         ("lopinavir and ritonavir", "3A strong inhibitor", "&nbsp;"),
         ("newdrug", "2C19 strong inhibitor", "&nbsp;"),
     ]);
-    drifted[4].1 =
+    drifted[6].1 =
         text("Gene,Target,Exons,SV\nCYP2D6,TRUE,\"1,2\",TRUE\nCYP2C9,TRUE,\"3,4\",TRUE\n");
     let (rows, e) = pgx_rows(drifted);
     let said = |rows: &[(String, String)], i: usize, what: &str| {
@@ -788,13 +792,56 @@ pub fn run(out: &mut dyn Write) -> u8 {
     );
     let mut broken = agree();
     broken[0].1 = Some(Body::Json(Value::Array(vec![])));
-    broken[2].1 = text("<html>no table</html>");
-    broken[4].1 = None;
+    broken[4].1 = text("<html>no table</html>");
+    broken[6].1 = None;
     let (rows, e) = pgx_rows(broken);
     check(
         rows.iter().all(|(st, _)| st == "ERROR") && e == 3,
         &format!(
             "PGx tables: an empty CPIC answer, an FDA page without its table and a missing gene table are errors ({rows:?})"
+        ),
+    );
+    // fda.gov refuses GitHub's runners: the newest Wayback Machine capture
+    // stands in, named in the row, unless it is too old.
+    let capture = |days_ago: i64| {
+        let when = jiff::Timestamp::now()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .date()
+            .checked_sub(jiff::Span::new().days(days_ago))
+            .expect("a date");
+        let closest = obj(vec![
+            ("available", Value::Bool(true)),
+            ("status", s("200")),
+            (
+                "timestamp",
+                s(&format!("{}120000", when.strftime("%Y%m%d"))),
+            ),
+        ]);
+        let mut a = agree();
+        a[2].1 = Some(Body::Json(obj(vec![(
+            "archived_snapshots",
+            obj(vec![("closest", closest)]),
+        )])));
+        a[3].1 = a[4].1.take();
+        a
+    };
+    let (rows, e) = pgx_rows(capture(3));
+    check(
+        rows.get(1).is_some_and(|(st, up)| {
+            st == "current" && up.contains("read from the Wayback Machine capture of")
+        }) && e == 0,
+        &format!(
+            "PGx tables: when fda.gov refuses, a recent Wayback Machine capture is read and named ({:?})",
+            rows.get(1)
+        ),
+    );
+    let (rows, e) = pgx_rows(capture(lookups::FDA_CAPTURE_MAX_AGE_DAYS + 1));
+    check(
+        rows.get(1).is_some_and(|(st, _)| st == "ERROR") && e == 1,
+        &format!(
+            "PGx tables: a Wayback Machine capture older than {} days is an error ({:?})",
+            lookups::FDA_CAPTURE_MAX_AGE_DAYS,
+            rows.get(1)
         ),
     );
 

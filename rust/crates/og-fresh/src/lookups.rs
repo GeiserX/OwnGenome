@@ -970,19 +970,72 @@ fn fda_parts(name: &str) -> Vec<&str> {
         .collect()
 }
 
+/// The newest Wayback Machine capture the FDA table may be read from when
+/// fda.gov refuses the host, in days. An older copy is an error: a check on
+/// a stale copy is not a check.
+pub const FDA_CAPTURE_MAX_AGE_DAYS: i64 = 92;
+
+/// The FDA table's page, and where it came from (empty: fda.gov itself).
+/// fda.gov answers HTTP 404 to GitHub's runners, so when it refuses, the
+/// newest Wayback Machine capture of the page is read instead, and the row
+/// says so with the capture's date.
+pub fn fda_page(c: &Ctx<'_>) -> Lookup<(String, String)> {
+    let direct = Request::get(FDA_CYP_TABLE, Want::Text)
+        .header("Accept", "text/html,application/xhtml+xml")
+        .header("Accept-Language", "en-US,en;q=0.9");
+    let refused = match c.fetch.request(&direct) {
+        Ok((Body::Text(t), _)) => return Ok((t, String::new())),
+        Ok(_) => return Err(LookupError::Shape(format!("{FDA_CYP_TABLE}: no text body"))),
+        Err(e) => e,
+    };
+    let fallback = || -> Lookup<(String, String)> {
+        let body = c.fetch.json(&format!(
+            "https://archive.org/wayback/available?url={FDA_CYP_TABLE}"
+        ))?;
+        let closest = match opt_field(&body, "archived_snapshots")? {
+            Some(s) => opt_field(s, "closest")?,
+            None => None,
+        };
+        let Some(closest) = closest else {
+            return failed("no Wayback Machine capture of the FDA table");
+        };
+        if !matches!(opt_field(closest, "available")?, Some(Value::Bool(true)))
+            || need_str(closest, "status", "the capture's status")? != "200"
+        {
+            return failed("the newest Wayback Machine capture of the FDA table is not a page");
+        }
+        let ts = need_str(closest, "timestamp", "the capture's timestamp")?;
+        let when: jiff::civil::Date = ts
+            .get(..8)
+            .and_then(|d| jiff::civil::Date::strptime("%Y%m%d", d).ok())
+            .ok_or_else(|| LookupError::Shape(format!("capture timestamp {ts:?}")))?;
+        let today = c.now.to_zoned(jiff::tz::TimeZone::UTC).date();
+        let age = i64::from((today - when).get_days());
+        if age > FDA_CAPTURE_MAX_AGE_DAYS {
+            return failed(format!(
+                "the newest Wayback Machine capture of the FDA table is {age} days old"
+            ));
+        }
+        let html = c
+            .fetch
+            .text(&format!("https://web.archive.org/web/{ts}/{FDA_CYP_TABLE}"))?;
+        Ok((
+            html,
+            format!(
+                ", read from the Wayback Machine capture of {} (fda.gov refused this host)",
+                when.strftime("%Y-%m-%d")
+            ),
+        ))
+    };
+    fallback().map_err(|e| LookupError::Failed(format!("{refused}; and {e}")))
+}
+
 /// `assets/pgx_inhibitors.tsv` against the FDA's table of CYP inhibitors:
 /// every row's class, and every strong or moderate inhibitor of a gene the
 /// table covers (strong only for CYP3A) that has no row.
 pub fn pgx_inhibitors(c: &Ctx<'_>) -> Lookup<Found> {
     let rows = curated(c, "pgx_inhibitors.tsv", &["Drug", "Gene", "Strength"])?;
-    // fda.gov answers 404 to a request that does not ask for a web page.
-    let req = Request::get(FDA_CYP_TABLE, Want::Text)
-        .header("Accept", "text/html,application/xhtml+xml")
-        .header("Accept-Language", "en-US,en;q=0.9");
-    let html = match c.fetch.request(&req)?.0 {
-        Body::Text(t) => t,
-        _ => return Err(LookupError::Shape(format!("{FDA_CYP_TABLE}: no text body"))),
-    };
+    let (html, via) = fda_page(c)?;
     let (date, fda) = fda_inhibitors(&html)?;
     let strength_of = |names: &[&FdaRow], g: &str| {
         let s: Vec<&str> = names
@@ -1043,7 +1096,7 @@ pub fn pgx_inhibitors(c: &Ctx<'_>) -> Lookup<Found> {
         "Drug interactions (assets/pgx_inhibitors.tsv, step 27)",
         format!("{} rows, FDA classes read 2026-11-03", rows.len()),
         format!(
-            "the FDA table{} classes every row the same and has no inhibitor the table lacks",
+            "the FDA table{}{via} classes every row the same and has no inhibitor the table lacks",
             date.map(|d| format!(" (current as of {d})"))
                 .unwrap_or_default()
         ),
