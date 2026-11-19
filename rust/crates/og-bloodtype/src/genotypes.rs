@@ -26,7 +26,10 @@
 //!   calls of the same ALT count once, and incompatible dosages are no call;
 //! - a reference-only record whose REF is shorter than the marker's (an
 //!   all-sites record or a gVCF block starting at a deletion marker) says
-//!   nothing past its own bases, so the site reads as if it had no record.
+//!   nothing past its own bases, so the site reads as if it had no record;
+//! - a gVCF reference block (ALT `.`, `<*>` or `<NON_REF>`) whose `INFO/END`
+//!   reaches the marker's last REF base is a reference call there, wherever
+//!   the block starts, with the block's quality.
 //!
 //! A call keeps its genotype whatever its quality, but one with a genotype
 //! quality under [`MIN_GQ`] or a read depth under [`MIN_DEPTH`] (FORMAT `GQ`,
@@ -373,9 +376,47 @@ impl Evidence {
     }
 }
 
+/// Whether every ALT of a record is a reference-only symbol: a gVCF
+/// reference block (`.`, `<*>`, `<NON_REF>`).
+fn is_block(alts: &str) -> bool {
+    alts.split(',')
+        .all(|a| matches!(a, "." | "<*>" | "<NON_REF>"))
+}
+
+/// `INFO/END` as htslib reads it (`og_io::tabix`): the key at the start or
+/// after a `;`, its leading digits.
+fn info_end(info: &str) -> Option<i64> {
+    let at = if info.starts_with("END=") {
+        4
+    } else {
+        info.find(";END=")? + 5
+    };
+    let digits = info[at..].bytes().take_while(u8::is_ascii_digit).count();
+    info[at..at + digits].parse().ok()
+}
+
+/// What a reference block that covers a whole marker says about it: a
+/// reference call, with the block's quality, unless its genotype is not
+/// `0/0`.
+fn read_block(alleles: &[&str], quality: &Quality) -> Reading {
+    if alleles.len() != 2 || !alleles.iter().all(|a| *a == "0") {
+        return Reading::no_call(Weight::Other, format!("genotype {}", alleles.join("/")));
+    }
+    Reading {
+        weight: Weight::Reference,
+        status: Status::Called,
+        n: Some(0),
+        note: String::new(),
+        alts: BTreeMap::new(),
+        weak: quality.weak(),
+        phase: None,
+    }
+}
+
 /// Applies one record line (no line ending) to the sites it covers: those
-/// at its position and those its REF spans. `only` keeps the sites at one
-/// position (the index path reads each position's records on their own).
+/// at its position, those its REF spans, and those a reference block covers
+/// to its `INFO/END`. `only` keeps the sites at one position (the index
+/// path reads each position's records on their own).
 fn apply_record(
     line: &str,
     by_pos: &ByPos,
@@ -384,7 +425,7 @@ fn apply_record(
     only: Option<i64>,
 ) {
     let mut c = line.splitn(5, '\t');
-    let (Some(chrom), Some(pos), Some(_), Some(rf), Some(_)) =
+    let (Some(chrom), Some(pos), Some(_), Some(rf), Some(rest)) =
         (c.next(), c.next(), c.next(), c.next(), c.next())
     else {
         return;
@@ -401,6 +442,15 @@ fn apply_record(
         return;
     };
     let span = i64::try_from(rf.len().max(1)).unwrap_or(1);
+    // A reference block reaches its INFO/END (the index finds it there too).
+    let block_end = {
+        let mut r = rest.split('\t');
+        match (r.next(), r.nth(2)) {
+            (Some(alt), Some(info)) if is_block(alt) => info_end(info).filter(|e| *e >= p),
+            _ => None,
+        }
+    };
+    let span = block_end.map_or(span, |e| span.max(e - p + 1));
     let mut hits = here
         .range(p..p.saturating_add(span))
         .filter(|(at, _)| only.is_none_or(|o| o == **at))
@@ -423,7 +473,25 @@ fn apply_record(
         .unwrap_or(".");
     let alleles: Vec<&str> = gt.split(['/', '|']).collect();
     let quality = Quality::of(&fmt, &smp, gt);
+    // A block covers a marker when it reaches the marker's last REF base.
+    let covers = |i: usize, at: i64| {
+        block_end.is_some_and(|e| {
+            at + i64::try_from(sites[i].row.ref_.len().max(1)).unwrap_or(1) - 1 <= e
+        })
+    };
     for (&at, names) in hits {
+        if names.iter().any(|&i| covers(i, at)) {
+            for &i in names {
+                if covers(i, at) {
+                    ev[i].add(read_block(&alleles, &quality));
+                } else if at == p
+                    && let Some(r) = read_record(&sites[i].row, rf, &alts, filt, &alleles, &quality)
+                {
+                    ev[i].add(r);
+                }
+            }
+            continue;
+        }
         if at == p {
             for &i in names {
                 if let Some(r) = read_record(&sites[i].row, rf, &alts, filt, &alleles, &quality) {
@@ -969,6 +1037,23 @@ mod tests {
         );
         let s = with_format("G", "A", &["0", "1"], &["GT"], &["0/1"]);
         assert_eq!(s.phase, None);
+    }
+
+    #[test]
+    fn a_reference_block_reads_to_its_end() {
+        assert_eq!(info_end("END=120"), Some(120));
+        assert_eq!(info_end("MIN_DP=3;END=99;X=1"), Some(99));
+        assert_eq!(info_end("SVEND=99;CIEND=5"), None);
+        assert_eq!(info_end("END=."), None);
+        assert!(is_block("<*>") && is_block(".") && is_block("<NON_REF>"));
+        assert!(!is_block("A,<*>") && !is_block("<DEL>"));
+        let q = Quality::of(&["GT", "GQ", "MIN_DP"], &["0/0", "3", "20"], "0/0");
+        let r = read_block(&["0", "0"], &q);
+        assert_eq!(
+            (r.status, r.n, r.weak.as_str()),
+            (Status::Called, Some(0), "GQ 3 under 20")
+        );
+        assert_eq!(read_block(&[".", "."], &q).status, Status::NoCall);
     }
 
     #[test]

@@ -679,3 +679,38 @@ fn rows_state_what_dna_cannot_check() {
     let t = run(&d, &[], Some(depth(&d, 0.0, &HashMap::new())));
     assert!(!t["RhD"][3].contains("RHD-CE-D hybrids"));
 }
+
+#[test]
+fn a_gvcf_block_that_reaches_a_marker_through_end_is_a_reference_call() {
+    let d = dir("block-end");
+    let m = read_markers(&markers()).unwrap()["JK_838"].clone();
+    let block = |gq: i64, end: i64| {
+        format!(
+            "{}\t{}\t.\tA\t<*>\t0\t.\tEND={end}\tGT:GQ:MIN_DP\t0/0:{gq}:20\n",
+            m.chrom,
+            m.pos - 10
+        )
+    };
+    // A block from ten bases before the marker to past it, GQ 3: a weak
+    // reference call, the same through the index and a full pass.
+    let recs = [block(3, m.pos + 5)];
+    assert_eq!(
+        site_both_ways(&d, &recs, "JK_838"),
+        ("called".to_owned(), Some(0), String::new())
+    );
+    // Without a BAM, Kidd is read from it (not "not assessed"), at low.
+    let t = run(&d, &recs, None);
+    assert_eq!(t["Kidd"][..3], ["Jk(a+b-)", "Jka/Jka", "low"]);
+    assert!(
+        t["Kidd"][3].contains("weak call (GQ 3 under 20)"),
+        "{}",
+        t["Kidd"][3]
+    );
+    // GQ 50: the block's call, and the null rows read as reference: medium.
+    let t = run(&d, &[block(50, m.pos + 5)], None);
+    assert_eq!(t["Kidd"][..3], ["Jk(a+b-)", "Jka/Jka", "medium"]);
+    // A block that ends before the marker says nothing about it.
+    let recs = [block(50, m.pos - 1)];
+    assert_eq!(site_both_ways(&d, &recs, "JK_838").0, "absent");
+    assert_eq!(run(&d, &recs, None)["Kidd"][0], "not assessed");
+}

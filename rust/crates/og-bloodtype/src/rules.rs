@@ -893,6 +893,9 @@ fn system_abo(sites: &Genotyped) -> Row {
             .chain(rep("O.02", n_o2)),
     );
     let s796 = site(sites, "ABO_796");
+    if s796.n.is_some() {
+        used.push(s796);
+    }
     let mut low = false;
     if let Some(n796) = s796.n
         && n796 != n_b
