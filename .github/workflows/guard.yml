@@ -75,6 +75,65 @@ jobs:
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
         run: scripts/ci/check-coupled-versions.sh
 
+  # MITO_HAPLOGROUP runs haplogrep3 in its Nextflow task directory: the
+  # pinned build finds its config and trees beside its jar, and the report
+  # must land where Nextflow collects it. A `cd` or a `readlink -f` in that
+  # process would bring back the run in the binary's directory, which can be
+  # read-only. Only that process is checked: the readlink -f of the
+  # reference in MITO_EXTRACT_CHRM, in the same file, is right.
+  mito-workdir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The self-test plants its faults first: a cd or readlink -f in
+      # MITO_HAPLOGROUP, or a renamed process, must be caught; a cd in
+      # MITO_EXTRACT_CHRM must not. Then the module itself.
+      - name: MITO_HAPLOGROUP has no cd and no readlink -f (self-test first)
+        run: |
+          set -euo pipefail
+          # check FILE: exit 1 and name each line when the MITO_HAPLOGROUP
+          # block (from its process line to the closing brace at column 1)
+          # has a cd or a readlink -f outside a comment, or when the file has
+          # no such block.
+          check() {
+            awk '
+              /^process MITO_HAPLOGROUP[[:space:]]*\{/ { p = 1; seen = 1; next }
+              p && /^\}/ { p = 0 }
+              p && !/^[[:space:]]*#/ && (/(^|[^[:alnum:]_.-])cd([[:space:]]|$)/ || /readlink[[:space:]]+-f/) {
+                print FILENAME ":" FNR ": " $0; bad = 1
+              }
+              END {
+                if (!seen) { print FILENAME ": no process MITO_HAPLOGROUP"; exit 1 }
+                exit bad
+              }' "$1"
+          }
+          M=modules/local/mito_haplogroup/main.nf
+          T=$(mktemp -d)
+          # plant NAME SED: a copy of the module with one edit; the edit must
+          # change the file, or the control would test the module itself.
+          plant() {
+            sed "$2" "$M" > "${T}/$1.nf"
+            if cmp -s "$M" "${T}/$1.nf"; then echo "FAIL: the plant $1 changed nothing"; exit 1; fi
+          }
+          # shellcheck disable=SC2016  # the planted lines are text, never expanded here
+          plant cd '/^process MITO_HAPLOGROUP/,/^}/ s|^    haplogrep3 classify|    cd "$(dirname "$(command -v haplogrep3)")"\n    haplogrep3 classify|'
+          # shellcheck disable=SC2016  # as above
+          plant readlink '/^process MITO_HAPLOGROUP/,/^}/ s|^    haplogrep3 classify|    BIN=$(readlink -f "$(command -v haplogrep3)")\n    haplogrep3 classify|'
+          plant renamed 's/^process MITO_HAPLOGROUP /process MITO_HAPLOGROUP_X /'
+          plant chrm-cd '/^process MITO_EXTRACT_CHRM/,/^}/ s|^    { echo ">chrM"|    cd .\n    { echo ">chrM"|'
+          for c in cd readlink renamed; do
+            if out=$(check "${T}/${c}.nf"); then
+              echo "FAIL: the planted ${c} was not caught"; exit 1
+            fi
+            echo "caught ${c}: ${out}"
+          done
+          out=$(check "${T}/chrm-cd.nf") || { echo "FAIL: a cd in MITO_EXTRACT_CHRM was taken for MITO_HAPLOGROUP, or the module already fails:"; echo "$out"; exit 1; }
+          echo "OK: every plant in MITO_HAPLOGROUP is caught, and MITO_EXTRACT_CHRM is left alone"
+          check "$M"
+          echo "OK: MITO_HAPLOGROUP runs haplogrep3 in its task directory"
+
   fake-docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -384,6 +443,24 @@ jobs:
             grep -E "^test ${test} .*FAILED" "$log" || { cat "$log"; echo "ERROR: ${fault} did not fail ${test}"; exit 1; }
             echo "Control: ${fault} failed ${test}, as it must."
           done
+      # The reference-block labels of the multi-SNP rules are written in the
+      # test, not read from the rules table: with WRONG_REFERENCE planted as
+      # the label of APOL1 G0/G0 and CAD9p21 nonrisk/nonrisk, exactly those
+      # two tests must fail.
+      - name: Control (a changed reference-block label fails its independent expectation)
+        run: |
+          log="${RUNNER_TEMP}/wrong-reference.log"
+          rc=0
+          cargo test --locked --no-fail-fast -p og-steps --features fault-wrong-reference --test genome_traits \
+            > "$log" 2>&1 || rc=$?
+          cat "$log"
+          [ "$rc" -ne 0 ] || { echo "ERROR: the planted WRONG_REFERENCE labels passed"; exit 1; }
+          for test in reference_blocks_apol1 reference_blocks_cad9p21; do
+            grep -E "^test ${test} \.\.\. FAILED$" "$log" || { echo "ERROR: ${test} did not catch WRONG_REFERENCE"; exit 1; }
+          done
+          grep -E 'test result: FAILED\. [0-9]+ passed; 2 failed;' "$log" \
+            || { echo "ERROR: a test other than the two planted ones failed"; exit 1; }
+          echo "Control: WRONG_REFERENCE failed reference_blocks_apol1 and reference_blocks_cad9p21."
       - name: Traits controls (diplotype order, REF check and missing phase rows)
         env:
           CARGO_BUILD_JOBS: 3
@@ -480,6 +557,38 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
+
+      # The browser checks of og-browser (tests/browser/README.md) ran in
+      # cargo test above, in the runner's Chrome. Two controls: a page error
+      # planted in the clean page must fail its test, and with no Chrome the
+      # tests must fail in CI and only skip outside it.
+      - name: The browser checks fail on a planted page error, and without Chrome in CI
+        if: ${{ !cancelled() }}
+        run: |
+          log="${RUNNER_TEMP}/og-browser-red.log"
+          if cargo test --locked --no-fail-fast -p og-browser --features planted-page-error --test cdp > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the clean page's test passed with a planted page error"
+            exit 1
+          fi
+          cat "$log"
+          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
+          grep -E "TypeError: .*\bplanted\b" "$log"
+          echo "Control: a planted page error failed the clean page's test."
+          if CHROME=/nonexistent cargo test --locked --no-fail-fast -p og-browser --test cdp > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the browser checks passed in CI without Chrome"
+            exit 1
+          fi
+          cat "$log"
+          grep -F "[FAIL] no Chrome or Chromium to load the test page" "$log"
+          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
+          grep -E 'test a_planted_exception_and_console_error_are_reported \.\.\. FAILED' "$log"
+          echo "Control: without Chrome the browser checks fail in CI."
+          CHROME=/nonexistent CI='' cargo test --locked -p og-browser --test cdp -- --nocapture > "$log" 2>&1 || { cat "$log"; exit 1; }
+          cat "$log"
+          test "$(grep -c -F '[SKIP] no Chrome or Chromium to load the test page' "$log")" -eq 2
+          echo "Outside CI, without Chrome the browser checks skip."
 
       # The planned-verb test (og/tests/port_scaffold.rs) must fail when a
       # later merge drops a verb's arm.
@@ -756,43 +865,6 @@ jobs:
           echo "${#tests[@]} tests carry the og-leg marker"
           og_leg "${tests[@]}"
 
-      - name: Traits independent expectations reject changed reference labels and marker metadata
-        working-directory: .
-        env:
-          OG: ${{ github.workspace }}/bin/og
-          OG_REQUIRED: 1
-        run: |
-          python3 - <<'PY'
-          import contextlib, io, pathlib, runpy, tempfile
-          test = runpy.run_path("tests/test_traits_report.py")["main"].__globals__
-          original = pathlib.Path(test["RULES"]).read_text()
-          with tempfile.TemporaryDirectory() as work:
-              for rid, key, label in [("APOL1", "G0/G0", "G0/G0"), ("CAD9p21", "nonrisk/nonrisk", "no risk copy")]:
-                  path = pathlib.Path(work) / "rules.tsv"
-                  old = f"combination\t{rid}\t{key}\t{label}\t"
-                  assert old in original
-                  path.write_text(original.replace(old, f"combination\t{rid}\t{key}\tWRONG_REFERENCE\t"))
-                  test["RULES"], test["FAILS"] = str(path), 0
-                  log = io.StringIO()
-                  with contextlib.redirect_stdout(log):
-                      rc = test["main"]()
-                  print(log.getvalue())
-                  assert rc == 1 and test["FAILS"] == 1
-                  assert f"[FAIL] {rid}, reference blocks only: {label}" in log.getvalue()
-                  print(f"Control: {rid} WRONG_REFERENCE failed its independent expectation")
-          marker = test["MARKERS"]["SMN1_27134"]
-          rs, chrom, pos, ref, alt = marker["dbsnp"]
-          marker["dbsnp"] = rs, chrom, pos + 1, ref, alt
-          test["FAILS"] = 0
-          log = io.StringIO()
-          with contextlib.redirect_stdout(log):
-              test["marker_checks"]()
-          print(log.getvalue())
-          assert test["FAILS"] == 1
-          assert "[FAIL] marker SMN1_27134: the pinned dbSNP record agrees" in log.getvalue()
-          print("Control: retained SMN1 off-copy metadata failed its independent expectation")
-          PY
-
       # The fake-docker job builds no og, so its cn-engine-calls case says it
       # is skipped there; here bin/og is built and the case must run.
       - name: The fake-docker case cn-engine-calls (steps 35, 41 and 46 through og cn) with og
@@ -889,7 +961,7 @@ jobs:
   # job above failed or was skipped, and fails unless every one succeeded.
   ci-ok:
     if: always()
-    needs: [image-vars, images, coupled-versions, fake-docker, helper-binaries, og, unit-tests, rust, parity]
+    needs: [image-vars, images, coupled-versions, mito-workdir, fake-docker, helper-binaries, og, unit-tests, rust, parity]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

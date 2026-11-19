@@ -24,8 +24,8 @@ writes DIR, which the docs workflow publishes at /demo/ of the docs site:
                                 search index, the re-check), the report as
                                 report.html and the files it links to
   runs/DEMO-002/, runs/DEMO-003/  the person pages of DEMO-001's invented partner and their son,
-                                each a finished run of one frame (tests/demo/make_demo_sample.py
-                                --sample, with the findings that show the rest of the widgets)
+                                each a finished run of one frame (og dev demo-sample --sample,
+                                with the findings that show the rest of the widgets)
   runs/DEMO-FAMILY/             the family page (assets/live/family.html) of the trio, with
                                 family.json as the family plugin serves it: the invented
                                 relationship, shared-stretch, de novo and compound-het files of
@@ -38,11 +38,11 @@ hook called, while the messages of tests/fixtures/live/demo-001.weblog.jsonl
 (tests/demo/make_demo_events.py) are stored one by one, as the ingest port
 stores them. The run folder is DEMO-001, the invented sample of the docs
 pictures: GDIR/DEMO-001 when given (after tests/demo/retake-screenshots.sh ran
-its steps), else written now by tests/demo/make_demo_sample.py with N records
+its steps), else written now by `og dev demo-sample` (OG) with N records
 (default 20000) and its report written by bin/render_report.py with step 24's
 arguments. Steps 28 and 36 run in containers and are not run here, so
 without GDIR their sections stay missing in the report and on the page;
-step 27's CPIC table is written by make_demo_sample.py with step 27's parser.
+step 27's CPIC table is written by og dev demo-sample with step 27's parser.
 
 What the replay changes, and why:
   - step 24's files (the report, the charts, the search index, summary.json)
@@ -139,19 +139,26 @@ def report(d, sample=SAMPLE):
                    check=True, stdout=subprocess.DEVNULL)
 
 
-def other_person(root, name, sex, seed, records):
-    """root/<name>: an invented member written by make_demo_sample.py --sample, with its report, as a
-    finished run (run-all.sh's finished_utc line, 30 hours after the invented start)."""
-    subprocess.run([sys.executable, os.path.join(HERE, "make_demo_sample.py"), "--genome-dir", root, "--records",
-                    str(records), "--sample", name, "--sex", sex, "--seed", str(seed)], check=True, stdout=subprocess.DEVNULL)
+def demo_sample(og, root, *args):
+    """`og dev demo-sample` writes an invented person into root."""
+    subprocess.run([og, "dev", "demo-sample", "--genome-dir", root, "--repo", REPO, *args], check=True,
+                   stdout=subprocess.DEVNULL)
+
+
+def other_person(root, name, sex, seed, records, og=OG):
+    """root/<name>: an invented member written by og dev demo-sample --sample, with its report, as a
+    finished run (run-all.sh's finished_utc line, 30 hours after the invented start its run_status.tsv names)."""
+    demo_sample(og, root, "--records", str(records), "--sample", name, "--sex", sex, "--seed", str(seed))
     d = os.path.join(root, name)
-    import make_demo_sample
-    with open(os.path.join(d, "logs", "run_status.tsv"), "a") as f:
-        f.write(f"meta\tfinished_utc\t{time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(make_demo_sample.RUN_STARTED + 30 * 3600))}\n")
+    status = os.path.join(d, "logs", "run_status.tsv")
+    with open(status) as f:
+        started = next(int(x.split("\t")[2]) for x in f if x.startswith("meta\tstarted_epoch\t"))
+    with open(status, "a") as f:
+        f.write(f"meta\tfinished_utc\t{time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(started + 30 * 3600))}\n")
     report(d, name)
 
 
-def prepare(root, genome_dir=None, records=20000):
+def prepare(root, genome_dir=None, records=20000, og=OG):
     """root/DEMO-001 with its report, the family folder and the held-back files; returns the held folder."""
     d = os.path.join(root, SAMPLE)
     if genome_dir:
@@ -160,8 +167,7 @@ def prepare(root, genome_dir=None, records=20000):
             raise SystemExit(f"ERROR: {src} not found: run tests/demo/retake-screenshots.sh, or leave out --genome-dir")
         shutil.copytree(src, d, symlinks=False)
     else:
-        subprocess.run([sys.executable, os.path.join(HERE, "make_demo_sample.py"), "--genome-dir", root,
-                        "--records", str(records)], check=True, stdout=subprocess.DEVNULL)
+        demo_sample(og, root, "--records", str(records))
     if not os.path.isfile(os.path.join(d, f"{SAMPLE}_report.html")):
         report(d)
     for rel in OTHER_RUN:
@@ -177,7 +183,7 @@ def prepare(root, genome_dir=None, records=20000):
         if genome_dir and os.path.isdir(os.path.join(genome_dir, name)):
             shutil.copytree(os.path.join(genome_dir, name), os.path.join(root, name), symlinks=False)
         else:
-            other_person(root, name, sex, seed, max(2000, records // 4))
+            other_person(root, name, sex, seed, max(2000, records // 4), og)
     fam = os.path.join(root, FAMILY)
     shutil.copytree(os.path.join(EXTRA, FAMILY), fam)
     # The genes the map places a gene-level finding on (and draws later): setup's GENCODE files, here the slice.
@@ -505,7 +511,7 @@ def build(out, genome_dir=None, records=20000, work=None, drop_hook=None, og=OG)
         tmp = tempfile.mkdtemp(prefix="owngenome-live-demo.")
         root = tmp
     try:
-        held = prepare(root, genome_dir, records)
+        held = prepare(root, genome_dir, records, og)
         frames, fam, app = replay(root, held, drop_hook, og)
         drawn = write_site(out, root, frames, fam, og)
         return {"frames": frames, "family": fam, "hooks": [n for n, _ in app.state_hooks], "map": drawn}
@@ -520,7 +526,7 @@ def main(argv=None):
     ap.add_argument("--genome-dir", help="a folder holding DEMO-001 (default: write one now)")
     ap.add_argument("--records", type=int, default=20000, help="variant records of a DEMO-001 written now")
     ap.add_argument("--work", help="an empty folder for the run folder, kept afterwards (default: a temporary one)")
-    ap.add_argument("--og", default=OG, help="the og that builds the map documents and names the re-check steps (default: $OG, else bin/og)")
+    ap.add_argument("--og", default=OG, help="the og that writes the demo sample, builds the map documents and names the re-check steps (default: $OG, else bin/og)")
     a = ap.parse_args(argv)
     r = build(a.out, a.genome_dir, a.records, a.work, og=a.og)
     size = sum(os.path.getsize(os.path.join(p, f)) for p, _, fs in os.walk(a.out) for f in fs)

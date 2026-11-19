@@ -1,0 +1,6 @@
+child	chrom	pos	ref	alt	child_gt	father_gt	mother_gt	child_dp	child_gq	child_ab	father_dp	father_gq	mother_dp	mother_gq	quality
+kid	chr1	300	G	A	0/1	0/0	0/0	30	50	0.53	30	50	30	50	pass
+kid	chr1	600	A	T	1/2	0/1	0/1	30	50	0.33	30	50	30	50	pass
+kid	chr3	300	C	T	0/1	0/0	0/0	3	7	.	30	50	30	50	low
+kid	chrX	74000300	G	A	1	0	0/0	30	50	0.50	30	50	30	50	low
+kid	chrY	5000100	C	T	1	0	./.	30	50	0.50	30	50	30	50	low
