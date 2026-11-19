@@ -158,7 +158,7 @@ A new check has to be seen failing once before it is trusted: run it against the
 
 ### What no e2e case runs
 
-This is every step script that no e2e case runs, plus the full-size index build of step 02a. The first eight rows need data, hardware or a binary an e2e job does not have. The three long-read rows need long reads, and the e2e fixture has short reads only. The others could run, but no case runs them yet. The last column says what checks each one instead. An image's smoke test is a row of `tests/smoke/commands.tsv` that `container-test.yml` runs on the fixture when the image changes and once a month; it runs the tool, not the step's script.
+This is every step script that no e2e case runs, plus the full-size index build of step 02a. The first eight rows need data, hardware or a binary an e2e job does not have. The three long-read rows need long reads, and the e2e fixture has short reads only. The others could run, but no case runs them yet. The last column says what checks each one instead. An image's smoke test is a row of `tests/smoke/commands.tsv` that `container-test.yml` runs on the fixture when the image changes and once a month; it runs the tool, not the step's script. Its required check `container-ok` is green on a pull request that changes no image: then no smoke row ran, so that green says only that no image changed. The row that runs AnnotSV with its 5.3 GB of full data runs monthly and on dispatch, never on a pull request, so no image pull request waits on that download.
 
 | Step | Why no e2e case runs it | What checks it instead |
 |---|---|---|
