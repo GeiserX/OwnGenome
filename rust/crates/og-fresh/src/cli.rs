@@ -13,10 +13,16 @@ pub const USAGE: &str =
                         [--unreachable-warns]
        og dev freshness --update-issue BODY_FILE [--repo OWNER/NAME]
        og dev freshness --self-test
-  sections: databases, clinvar (the ClinVar row alone), images, digests
-  --unreachable-warns: an upstream that does not answer (no connection, a
-    timeout, HTTP 5xx or 429 after the retries) is a warning, not a failure;
-    every other failed lookup still exits 1
+  sections: databases, clinvar (the ClinVar row alone), images, digests (default: all)
+  --out FILE        also write the report to FILE; it is always printed on stdout
+  --versions F      the pins to check (default: versions.env of the checkout above og)
+  --setup F         the setup script with the download URLs (default: scripts/setup.sh)
+  --update-issue B  put the report file B in the freshness issue of --repo
+                    (default: $GITHUB_REPOSITORY)
+  --unreachable-warns
+                    an upstream that does not answer (no connection, a timeout,
+                    HTTP 5xx or 429 after the retries) is a warning, not a
+                    failure; every other failed lookup still exits 1
 ";
 
 fn usage_error(err: &mut dyn Write, msg: &str) -> u8 {
@@ -88,6 +94,15 @@ pub fn main(args: &[String]) -> u8 {
 }
 
 pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    // A help word after `--` is an argument, as in og's own help rule.
+    if args
+        .iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "-h" || a == "--help")
+    {
+        let _ = write!(out, "{USAGE}");
+        return 0;
+    }
     let p = match parse(
         args,
         &[
@@ -98,15 +113,11 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             "update-issue",
             "repo",
         ],
-        &["self-test", "help", "unreachable-warns"],
+        &["self-test", "unreachable-warns"],
     ) {
         Ok(p) => p,
         Err(e) => return usage_error(err, &e),
     };
-    if flag(&p, "help") {
-        let _ = write!(out, "{USAGE}");
-        return 0;
-    }
     if flag(&p, "self-test") {
         return crate::selftest::run(out);
     }

@@ -35,7 +35,14 @@ If you have raw data from a consumer genotyping service instead of whole genome 
 2. Click **Download DNA Data**
 3. You get a `.txt` file (tab-separated, ~15 MB zipped). Its layout differs from 23andMe's: a column header row, **five** columns (`rsid chromosome position allele1 allele2`) and chromosome **numbers** for the sex chromosomes and the mitochondrion (23 = X, 24 = Y, 25 = the X pseudoautosomal regions, 26 = MT). A no-call is `0`.
 
-> **Important:** All three services use **GRCh37 (hg19)** coordinates. This pipeline requires **GRCh38**. The conversion steps below handle this.
+> **Important:** Current downloads from all three services use **GRCh37 (hg19)** coordinates. This pipeline requires **GRCh38**. The conversion steps below handle this.
+>
+> `chip-to-vcf.sh` does not take the build from the vendor's name. It checks it twice and stops, with nothing written, when a file is not on GRCh37:
+>
+> - **The header.** A comment line that names another build (`build 36`, `build 38`, `NCBI36`, `GRCh38`, `hg18`, `hg38`) stops the conversion before it starts. An old 23andMe download says `build 36`. A line that also names build 37, such as `lifted from GRCh38 to GRCh37`, does not stop it; the data check below still runs.
+> - **The data.** On GRCh37 almost every heterozygous call carries the reference base at its position. Positions from another build land on unrelated bases, so about half of their heterozygous calls carry neither allele of the reference. When more than 10% of at least 200 heterozygous calls miss the reference base, the conversion stops, whatever the header says. A file with fewer than 200 heterozygous calls is too small to check, and the script says so.
+>
+> A file on another build has to be lifted to GRCh37 first, or downloaded again.
 
 ---
 
@@ -49,7 +56,7 @@ The conversion requires two stages:
 1. **Import + fix ref/alt** in a single step using `bcftools convert --tsv2vcf` with a GRCh37 reference FASTA
 2. **Liftover** coordinates from GRCh37 to GRCh38
 
-> **Why not plink?** An earlier version of this guide used plink 1.9 (`--23file`) + plink2 (`--ref-from-fa`). That pipeline silently corrupts homozygous ALT genotypes in single-sample data because plink's binary format cannot represent both alleles for monomorphic sites. `bcftools convert --tsv2vcf` reads the reference FASTA directly and handles all genotype classes correctly.
+> **Why not plink?** An earlier version of this guide used plink 1.9 (`--23file`) + plink2 (`--ref-from-fa`). That pipeline silently corrupts homozygous ALT genotypes in single-sample data. The cause is the import, not the format: `--23file` sees only one allele at a homozygous site, so it writes the second allele as missing, and `--ref-from-fa` does not fill in a missing allele. A homozygous ALT call `AA` where the reference base is T came out as `REF=A ALT=. GT=0/0`. A PLINK set that declares both alleles is fixed correctly by `--ref-from-fa`. `bcftools convert --tsv2vcf` reads the reference FASTA itself, needs no second allele and handles all genotype classes correctly.
 
 ### Prerequisites
 

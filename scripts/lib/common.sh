@@ -25,7 +25,8 @@
 # lock_acquire / lock_release, pipeline_images, pinned_tag / tag_pinned_image /
 # pinned_tag_present, image_is_dangling,
 # scatter_beds and run_parallel, FASTQ_RECORDS_AWK / fastp_total_reads /
-# read_count_mode / read_count_check,
+# read_count_mode / read_count_check, input_stamp / trimmed_reads_current /
+# trimmed_reads_usable,
 # described where they are
 # defined. Keep it bash 3.2 compatible: macOS runs setup.sh with /bin/bash.
 
@@ -184,6 +185,60 @@ fastp_total_reads() {
       if (i) { v = substr($0, i + length(k)); sub(/[^0-9].*/, "", v); if (v != "") { print v; found = 1 } }
       exit }
     END { exit !found }'
+}
+
+# input_stamp FILE...: one tab-separated line per FILE: its name (no
+# directory), its size in bytes, its modification time in seconds, and the
+# sha256 of its first and of its last MiB. A step stores the stamp of its
+# inputs beside its output and redoes the work when the stamp differs, so a
+# replaced input is never answered with the output of the one before. Reading
+# 2 MiB keeps it quick on a 60 GB FASTQ; a copy that kept the old file's time
+# still differs in size or in its first or last MiB. A symlink is followed
+# (stat -L): its size and time are those of the file it points to, so a
+# replaced target changes the stamp. A file that cannot be read fails the
+# stamp (the pipes run under pipefail) instead of hashing an empty stream.
+input_stamp() {
+  local f sm head tail
+  for f in "$@"; do
+    [ -f "$f" ] || { echo "ERROR: input_stamp: no file ${f}" >&2; return 1; }
+    sm=$(stat -L -c '%s %Y' "$f" 2>/dev/null || stat -L -f '%z %m' "$f") || return 1
+    head=$(set -o pipefail; head -c 1048576 "$f" | _digest sha256 -) && [ -n "$head" ] \
+      && tail=$(set -o pipefail; tail -c 1048576 "$f" | _digest sha256 -) && [ -n "$tail" ] \
+      || { echo "ERROR: input_stamp: could not checksum ${f}" >&2; return 1; }
+    printf '%s\t%s\t%s\t%s\t%s\n' "${f##*/}" "${sm% *}" "${sm#* }" "$head" "$tail"
+  done
+}
+
+# trimmed_reads_current SAMPLE_DIR SAMPLE: true when fastq_trimmed/ holds the
+# trimmed pair of the raw reads now in fastq/: its <sample>_fastp_inputs.tsv
+# (written by step 01b) equals input_stamp of fastq/<sample>_R1.fastq.gz and
+# _R2. False when the record is missing (a pair trimmed before the record
+# existed) or differs (a raw file was replaced since).
+trimmed_reads_current() {
+  local d=$1 s=$2 now
+  [ -s "${d}/fastq_trimmed/${s}_fastp_inputs.tsv" ] || return 1
+  now=$(input_stamp "${d}/fastq/${s}_R1.fastq.gz" "${d}/fastq/${s}_R2.fastq.gz") || return 1
+  [ "$now" = "$(cat "${d}/fastq_trimmed/${s}_fastp_inputs.tsv")" ]
+}
+
+# trimmed_reads_usable SAMPLE_DIR SAMPLE: the check steps 02 and 02a make
+# before they align fastq_trimmed/. True when the raw pair is not in fastq/
+# (nothing to compare with) or trimmed_reads_current holds. Otherwise it says
+# why on stderr, and what to run, and returns 1: the old trimmed pair would
+# give a BAM of the old reads.
+trimmed_reads_usable() {
+  local d=$1 s=$2
+  [ -f "${d}/fastq/${s}_R1.fastq.gz" ] && [ -f "${d}/fastq/${s}_R2.fastq.gz" ] || return 0
+  trimmed_reads_current "$d" "$s" && return 0
+  echo "ERROR: ${d}/fastq_trimmed/ was not trimmed from the raw reads in fastq/ now:" >&2
+  if [ -s "${d}/fastq_trimmed/${s}_fastp_inputs.tsv" ]; then
+    echo "  fastq/${s}_R1.fastq.gz or _R2 changed since step 01b trimmed them." >&2
+  else
+    echo "  it has no ${s}_fastp_inputs.tsv, the record of the reads step 01b trimmed." >&2
+  fi
+  echo "  Run scripts/01b-fastp-qc.sh ${s} first (it trims the reads again), or set" >&2
+  echo "  FASTQ_SUBDIR=fastq to align the raw reads." >&2
+  return 1
 }
 
 # read_count_mode: prints READ_COUNT_CHECK (fail, the default, or warn), or

@@ -1,0 +1,74 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##contig=<ID=c01,length=450>
+##contig=<ID=c02,length=450>
+##contig=<ID=c03,length=450>
+##contig=<ID=c04,length=450>
+##contig=<ID=c05,length=450>
+##contig=<ID=c06,length=450>
+##contig=<ID=c07,length=450>
+##contig=<ID=c08,length=450>
+##contig=<ID=c09,length=450>
+##contig=<ID=c10,length=450>
+##contig=<ID=c11,length=450>
+##contig=<ID=c12,length=450>
+##contig=<ID=c13,length=450>
+##contig=<ID=c14,length=450>
+##contig=<ID=c15,length=450>
+##contig=<ID=c16,length=450>
+##contig=<ID=c17,length=450>
+##contig=<ID=c18,length=450>
+##contig=<ID=c19,length=450>
+##contig=<ID=c20,length=450>
+##contig=<ID=c21,length=450>
+##contig=<ID=c22,length=450>
+##contig=<ID=c23,length=450>
+##contig=<ID=c24,length=450>
+##contig=<ID=c25,length=450>
+##contig=<ID=c26,length=450>
+##contig=<ID=c27,length=450>
+##contig=<ID=c28,length=450>
+##contig=<ID=c29,length=450>
+##contig=<ID=c30,length=450>
+##contig=<ID=c31,length=450>
+##contig=<ID=c32,length=450>
+##contig=<ID=lc,length=450>
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">
+##INFO=<ID=PGP_JOINED_FROM,Number=1,Type=String,Description="Step 06: the combined allele of these two neighbouring sample records, CHROM:POS:REF:ALT joined by |">
+##INFO=<ID=PGP_PART_OF,Number=1,Type=String,Description="Step 06: this hit is part of a combined allele that also matched ClinVar, CHROM:POS:REF:ALT (several joined by |)">
+##INFO=<ID=PGP_ONE_ALLELE,Number=1,Type=String,Description="Step 06: this hit and the one named, CHROM:POS:REF:ALT, are in one gene and can be one allele, but no combined ClinVar record matched: check ClinVar for one">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+c01	137	.	AGCCAT	ACATGGG	.	PASS	PGP_JOINED_FROM=c01:137:AGC:A|c01:142:T:TGGG	GT:GQ:DP	0/1:0:0
+c02	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c02:303:T:A|c02:308:T:C	GT:GQ:DP	0/1:0:0
+c03	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c03:303:T:A|c03:308:T:C	GT:PS:GQ:DP	0|1:100:0:0
+c09	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c09:303:T:A|c09:308:T:C	GT:PS:GQ:DP	1|.:100:0:0
+c10	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c10:303:T:A|c10:308:T:C	GT:PS:GQ:DP	1|.:100:0:0
+c11	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c11:303:T:A|c11:308:T:C	GT:PS:GQ:DP	.|1:100:0:0
+c14	303	.	TGTAATCCCAG	AGTAATCCCAT	.	PASS	PGP_JOINED_FROM=c14:303:T:A|c14:313:G:T	GT:GQ:DP	0/1:0:0
+c18	301	.	CCTGTAATCCCAGC	CGA	.	PASS	PGP_JOINED_FROM=c18:301:CCTGTAATCCCA:C|c18:314:C:A	GT:GQ:DP	0/1:0:0
+c18	305	.	TAAT	GAAC	.	PASS	PGP_JOINED_FROM=c18:305:T:G|c18:308:T:C	GT:GQ:DP	0/1:0:0
+c18	305	.	TAATCCCAGC	GAATCCCAGA	.	PASS	PGP_JOINED_FROM=c18:305:T:G|c18:314:C:A	GT:GQ:DP	0/1:0:0
+c18	308	.	TCCCAGC	CCCCAGA	.	PASS	PGP_JOINED_FROM=c18:308:T:C|c18:314:C:A	GT:GQ:DP	0/1:0:0
+c19	303	.	TGTA	AGTG	.	PASS	PGP_JOINED_FROM=c19:303:T:A|c19:306:A:G	GT:GQ:DP	0/1:0:0
+c19	303	.	TGTAATC	AGTAATT	.	PASS	PGP_JOINED_FROM=c19:303:T:A|c19:309:C:T	GT:GQ:DP	0/1:0:0
+c19	306	.	AATC	GATT	.	PASS	PGP_JOINED_FROM=c19:306:A:G|c19:309:C:T	GT:GQ:DP	0/1:0:0
+c20	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c20:303:t:a|c20:308:t:c	GT:GQ:DP	0/1:0:0
+c23	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c23:303:T:A|c23:308:T:C	GT:GQ:DP	1/1:0:0
+c24	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c24:303:T:A|c24:308:T:C	GT:GQ:DP	1:0:0
+c25	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c25:303:T:A|c25:308:T:C	GT:GQ:DP	0/10:0:0
+c26	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c26:303:T:A|c26:308:T:C	GT:GQ:DP	0/1:0:30
+c27	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c27:303:T:A|c27:308:T:C	GT:PS:GQ:DP	1|0:7:0:0
+c28	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c28:303:T:A|c28:308:T:C	GT:GQ:DP	0|1:0:0
+c29	303	.	TGT	AGC	.	PASS	PGP_JOINED_FROM=c29:303:T:A|c29:305:T:C	GT:GQ:DP	0/1:0:0
+c29	303	.	TGT	GGC	.	PASS	PGP_JOINED_FROM=c29:303:T:G|c29:305:T:C	GT:GQ:DP	0/1:0:0
+c29	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c29:303:T:A|c29:308:T:C	GT:GQ:DP	0/1:0:0
+c29	303	.	TGTAAT	GGTAAC	.	PASS	PGP_JOINED_FROM=c29:303:T:G|c29:308:T:C	GT:GQ:DP	0/1:0:0
+c29	305	.	TAAT	CAAC	.	PASS	PGP_JOINED_FROM=c29:305:T:C|c29:308:T:C	GT:GQ:DP	0/1:0:0
+c30	137	.	AGCCAT	ACATGGG	.	PASS	PGP_JOINED_FROM=c30:137:AGC:A|c30:142:T:TGGG	GT:GQ:DP	0/1:0:0
+c32	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=c32:303:T:A|c32:308:T:C	GT:GQ:DP	0|1:0:0
+lc	137	.	AGCCAT	ACATGGG	.	PASS	PGP_JOINED_FROM=lc:137:AGC:A|lc:142:T:TGGG	GT:GQ:DP	0/1:0:0
+lc	303	.	TGTAAT	AGTAAC	.	PASS	PGP_JOINED_FROM=lc:303:t:a|lc:308:t:c	GT:GQ:DP	0/1:0:0

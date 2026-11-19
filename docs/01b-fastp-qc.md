@@ -88,6 +88,7 @@ fastp's known adapters include the MGI/BGI forward (`AAGTCGGAGGCCAAGCGGTCTTAGGAA
 | Trimmed R2 | `fastq_trimmed/<sample>_R2.fastq.gz` | Quality-filtered, adapter-trimmed read 2 |
 | JSON report | `fastq_trimmed/<sample>_fastp.json` | Machine-readable QC (consumed by MultiQC) |
 | HTML report | `fastq_trimmed/<sample>_fastp.html` | Visual QC report (open in browser) |
+| Inputs | `fastq_trimmed/<sample>_fastp_inputs.tsv` | The raw R1 and R2 the pair was trimmed from: one line each with the file name, size in bytes, modification time and the sha256 of its first and last MiB |
 
 ## Runtime
 
@@ -125,5 +126,7 @@ fastp's JSON report is automatically detected by MultiQC. The `-R` flag sets the
 
 - fastp outputs gzip-compressed FASTQs when the output filename ends in `.gz`
 - The `--detect_adapter_for_pe` flag is disabled by default in fastp for PE data — this script enables it explicitly for thorough adapter removal
-- If you need to re-run fastp, delete the `fastq_trimmed/` directory first
+- The script skips fastp when `fastq_trimmed/` already holds the trimmed pair of the raw reads now in `fastq/`: `<sample>_fastp_inputs.tsv` must match the raw R1 and R2 (size, modification time and the checksums of the first and last MiB). When you replace a raw FASTQ, the next run trims again. A raw FASTQ that is a symlink is recorded by the file it points to, so replacing that file counts too. A `fastq_trimmed/` with no `<sample>_fastp_inputs.tsv`, trimmed by an earlier version, is trimmed again once.
+- Step 2 and step 2a (bwa-mem2) align `fastq_trimmed/` only while it matches the raw reads in the same way. When it does not, they stop before they align and say to run this step again, or to set `FASTQ_SUBDIR=fastq` to align the raw reads. Without the raw pair in `fastq/`, they align the trimmed pair as before.
+- To re-run fastp on the same reads, delete the `fastq_trimmed/` directory first
 - fastp is designed for short reads (Illumina, BGI/MGI). For long reads (ONT/PacBio), use platform-specific QC tools instead

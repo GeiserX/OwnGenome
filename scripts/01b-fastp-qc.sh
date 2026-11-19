@@ -40,19 +40,33 @@ for f in "$R1" "$R2"; do
   fi
 done
 
-# Skip if trimmed output already exists. fastp writes into fastq_trimmed.part/,
-# renamed to fastq_trimmed/ only when it finished, so a run that was killed
-# leaves no half-written FASTQ for step 02 to align.
+# Skip if the trimmed pair already exists and was trimmed from the raw reads
+# that are in fastq/ now: <sample>_fastp_inputs.tsv holds the input_stamp of
+# R1 and R2 as fastp read them (scripts/lib/common.sh). A replaced raw FASTQ,
+# or a pair trimmed before that record existed, is trimmed again. fastp writes
+# into fastq_trimmed.part/, renamed to fastq_trimmed/ only when it finished,
+# so a run that was killed leaves no half-written FASTQ for step 02 to align.
+STAMP="${OUTPUT_DIR}/${SAMPLE}_fastp_inputs.tsv"
 if [ -s "${OUTPUT_DIR}/${SAMPLE}_R1.fastq.gz" ] && [ -s "${OUTPUT_DIR}/${SAMPLE}_R2.fastq.gz" ] \
    && [ -s "${OUTPUT_DIR}/${SAMPLE}_fastp.json" ]; then
-  echo "Trimmed FASTQs already exist in ${OUTPUT_DIR}/, skipping."
-  echo "Delete them to re-run: rm -rf ${OUTPUT_DIR}"
-  exit 0
+  if trimmed_reads_current "$SAMPLE_DIR" "$SAMPLE"; then
+    echo "Trimmed FASTQs of these raw reads already exist in ${OUTPUT_DIR}/, skipping."
+    echo "Delete them to re-run: rm -rf ${OUTPUT_DIR}"
+    exit 0
+  fi
+  if [ -s "$STAMP" ]; then
+    echo "The raw reads changed since ${OUTPUT_DIR}/ was trimmed from them: trimming again."
+  else
+    echo "${OUTPUT_DIR}/ has no record of the raw reads it was trimmed from (${STAMP##*/}): trimming again."
+  fi
 fi
 
 PART_DIR="${OUTPUT_DIR}.part"
 rm -rf "$PART_DIR"
 mkdir -p "$PART_DIR"
+# The stamp is taken before fastp reads the files: a file replaced while fastp
+# runs then differs from it, and the next run trims again.
+input_stamp "$R1" "$R2" > "${PART_DIR}/${STAMP##*/}"
 
 # fastp: adapter trimming + QC
 # Flags:
@@ -92,4 +106,5 @@ echo "Trimmed R1:   ${OUTPUT_DIR}/${SAMPLE}_R1.fastq.gz"
 echo "Trimmed R2:   ${OUTPUT_DIR}/${SAMPLE}_R2.fastq.gz"
 echo "JSON report:  ${OUTPUT_DIR}/${SAMPLE}_fastp.json"
 echo "HTML report:  ${OUTPUT_DIR}/${SAMPLE}_fastp.html"
+echo "Inputs:       ${STAMP}"
 ls -lh "${OUTPUT_DIR}/${SAMPLE}_R1.fastq.gz" 2>/dev/null || true

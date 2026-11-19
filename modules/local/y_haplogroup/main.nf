@@ -101,13 +101,15 @@ process Y_PILEUP {
     script:
     // -ABQ20q1: the flags Yleaf 4 gives samtools mpileup at its default quality 20
     // (the YLEAF_IMAGE row of tests/smoke/commands.tsv checks they are still
-    // Yleaf's). The current tree's pileup keeps -AQ20q1, the flags og y
-    // tree-place was checked with.
+    // Yleaf's; samtools reads "20q1" as the -Q value, so that pileup keeps
+    // MQ0 reads, as Yleaf's own does). The current tree's pileup is ours:
+    // -A -Q20 -q20, written out so the mapping-quality filter holds (the
+    // og-reports test i411_ytree_ranking checks the three copies of it).
     """
     samtools idxstats ${bam} > ${meta.id}_idxstats.txt
     samtools mpileup -l ${positions} -ABQ20q1 ${bam} > ${meta.id}_y_pileup.txt
     if [ -s ${tree_positions} ]; then
-        samtools mpileup -l ${tree_positions} -AQ20q1 ${bam} > ${meta.id}_y_tree_pileup.txt
+        samtools mpileup -l ${tree_positions} -A -Q20 -q20 ${bam} > ${meta.id}_y_tree_pileup.txt
     else
         touch ${meta.id}_y_tree_pileup.txt
     fi

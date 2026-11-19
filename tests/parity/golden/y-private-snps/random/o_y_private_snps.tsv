@@ -1,0 +1,36 @@
+# sample	S
+# gates	min_depth=10 min_gq=20 min_fraction=0.9 max_depth_factor=2.0 median_chrY_depth=54.0 callable_mask=callable_mask_chrY.fasta.gz
+# dropped	PAR=336 outside_callable=31 not_PASS=118 genotype=701 depth=291 quality=154 alt_fraction=34 excess_depth=18 on_public_lists=0
+Pos	Ref	Alt	Depth	Alt_fraction	GQ	Genotype
+2796109	T	C	14	1.000	64	1/1
+2811296	G	G	29	1.000	27	1
+2821678	C	C	58	1.000	65	1/1
+2828110	T	G	48	1.000	25	1|1
+2831357	T	G	53	nan	69	1
+2836973	A	T	26	1.000	85	1/1
+2846389	T	T	49	1.000	96	1|1
+2885772	T	T	20	1.000	36	1/1
+2886534	A	T	52	nan	41	1|1
+2891212	G	A	49	nan	70	1/1
+2900957	C	A	108	nan	84	1/1
+2904522	T	T	51	1.000	81	1/1
+2924185	A	T	12	nan	97	1/1
+2931496	T	C	106	1.000	90	1/1
+2937137	T	A	30	1.000	79	1/1
+2949748	C	T	31	1.000	77	1
+2951121	T	T	25	0.920	23	1/1
+2954997	C	G	55	nan	68	1/1
+2963020	G	T	17	nan	34	1/1
+2964078	G	A	71	1.000	47	1
+2968829	T	A	48	1.000	34	1
+2969962	C	T	35	1.000	35	1/1
+2991973	T	T	46	0.935	61	1|1
+3004003	G	A	25	1.000	35	1|1
+3006871	G	G	39	nan	56	1|1
+3020297	A	G	100	nan	49	1
+3023545	T	C	47	0.936	41	1/1
+3030334	T	C	50	0.940	88	1|1
+3041814	A	T	28	nan	98	1|1
+3072184	G	A	55	1.000	73	1|1
+3095861	G	A	16	1.000	53	1|1
+3100200	T	G	17	1.000	54	1|1

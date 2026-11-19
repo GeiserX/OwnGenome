@@ -4,8 +4,8 @@
 
 | Problem | Cause | Fix |
 |---|---|---|
-| Container exits silently | Out of memory (OOM killed) | Increase Docker memory or reduce `--memory` flag. Check `docker logs <container>`. |
-| "Permission denied" writing output | Container runs as non-root | Add `--user root` to `docker run` (already done in all scripts) |
+| Container exits silently with code 137 | SIGKILL, usually a kill for memory | Give Docker more memory, or run fewer or smaller tasks. 137 alone does not prove a kill for memory: [troubleshooting](troubleshooting.md#container-exits-immediately-with-no-output) says how to confirm it. |
+| "Permission denied" writing output | The container's user cannot write to the mounted folder | The step scripts run each container as you, except the few whose image cannot run unprivileged (Strelka2, Manta, CPSR and `benchmark-variants.sh` pass `--root`). A sample folder written by an older version holds root-owned files: take it back with `sudo chown -R "$(id -u):$(id -g)" "${GENOME_DIR:?Set GENOME_DIR to your data directory}/<sample>"`. See [troubleshooting](troubleshooting.md#permission-denied-writing-to-mounted-volumes). |
 | VEP cache download fails/times out | 26 GB download over unreliable connection | Use `wget -c` (supports resume). See [docs/13-vep-annotation.md](13-vep-annotation.md) |
 | DeepVariant crashes on Mac | amd64 emulation + memory pressure | `THREADS=2 DV_MEM=12g ./scripts/03-deepvariant.sh <sample> <sex>`, the sex being `male` or `female`. Will be slow. See [troubleshooting](troubleshooting.md#step-3-deepvariant-crashes-on-mac-amd64-emulation). |
 | Wrong number of variants (too few) | Genome build mismatch | Ensure your BAM is aligned to GRCh38 (hg38), not hg19/GRCh37. Check the BAM header with the command under this table |

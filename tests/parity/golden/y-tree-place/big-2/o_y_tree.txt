@@ -1,0 +1,2 @@
+Sample_name	Hg	Level	Path_derived	Path_ancestral	Path_no_call	Ancestral_in_terminal	SNPs_called	Min_depth	Tree	Positions	Outvoted_ancestral	Informative_callable	Path_breadth	Conflict	Conflict_support	Terminal_support
+S	N833-2312	27	51	0	12	.	6159	10	synthetic tree	synthetic tables	.	6400	0.857	N177-1035	1	16
