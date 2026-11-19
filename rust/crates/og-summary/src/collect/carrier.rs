@@ -3,7 +3,9 @@
 //! list marks hypomorph or pseudodeficiency is set aside, never a carrier
 //! finding on its own. The genes of autosomal recessive conditions that a
 //! called deletion and a hit both reach are listed as two hits, and a hit
-//! called homozygous inside a deletion is shown as hemizygous.
+//! called homozygous inside a deletion is shown as hemizygous. A hit that
+//! is part of step 06's combined allele, or the combined allele itself,
+//! carries the note the ClinVar table prints for it.
 
 use super::assets::carrier_genes;
 use super::clinvar::{Floor, Hit, HitRecords, allele_copies, carrier_genotype, obj};
@@ -52,6 +54,12 @@ impl Carrier {
                 item.insert("stars".into(), Value::Int(row.stars.into()));
                 item.insert("inheritance".into(), Value::Str(x.inheritance.clone()));
                 item.insert("condition".into(), Value::Str(x.condition.clone()));
+                if row.combined_allele != "." {
+                    item.insert(
+                        "combined_allele".into(),
+                        Value::Str(row.combined_allele.clone()),
+                    );
+                }
                 let sev = x.severity.get(&key);
                 if let Some(s) = sev {
                     item.insert(
@@ -66,7 +74,8 @@ impl Carrier {
                 };
                 items.push(item);
                 aside.push(sev.is_some());
-                if sev.is_none_or(|s| s.kind.as_deref() == Some("hypomorph")) {
+                // A record with no alt copy called is no hit to pair.
+                if copies > 0 && sev.is_none_or(|s| s.kind.as_deref() == Some("hypomorph")) {
                     variants.push((
                         Variant {
                             gene: g.to_owned(),
