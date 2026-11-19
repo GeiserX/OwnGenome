@@ -11,7 +11,8 @@
 #     After the raw VCF it writes sv_gridss/<sample>_gridss.high.vcf.gz with
 #     bcftools and GRIDSS's high-confidence rule (QUAL>=1000 && INFO/AS>0 &&
 #     INFO/RAS>0), and its index, and says its calls are left out of the SV
-#     consensus (step 22 does not convert them).
+#     consensus (step 22 does not convert them). A second run finds the raw
+#     VCF, skips GRIDSS and writes the high-confidence file again from it.
 #   Delly (19): gets -x with the exclude map setup.sh installs; without it,
 #     runs as before and warns.
 #   Sniffles2 (04c): stops with exit 1, before Sniffles2, when the first
@@ -119,6 +120,21 @@ H="${GENOME_DIR}/sample1/sv_gridss/sample1_gridss"
 [ -f "${H}.vcf.gz" ] && [ -f "${H}.high.vcf.gz" ] && [ -f "${H}.high.vcf.gz.tbi" ] \
   || fail "step 04b did not leave the raw VCF, the high-confidence VCF and its index"
 output_has gridss 'High confidence: .*sample1_gridss\.high\.vcf\.gz'
+# A second run finds the raw VCF: it skips GRIDSS and writes the high-confidence
+# file again from that VCF. The raw VCF is a finished one, ending with the BGZF
+# end-of-file block as htslib writes it, so the step takes it as done.
+{ printf '##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n' | gzip -c
+  printf '\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00\x1b\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00'; } > "${H}.vcf.gz"
+: > "$FAKE_DOCKER_LOG"
+rm -f "${H}.high.vcf.gz" "${H}.high.vcf.gz.tbi"
+GRIDSS_MIN_MEM_GB=8 run_expect 0 gridss-skip "${SCRIPTS}/04b-gridss.sh" sample1
+output_has gridss-skip 'skipping GRIDSS'
+if awk '/^run image=[^ ]*gridss/ { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG"; then
+  fail "step 04b ran GRIDSS again although its VCF exists"
+fi
+[ -f "${H}.high.vcf.gz" ] && [ -f "${H}.high.vcf.gz.tbi" ] \
+  || fail "step 04b did not write the high-confidence VCF and its index from the existing raw VCF"
+output_has gridss-skip 'High confidence: .*sample1_gridss\.high\.vcf\.gz'
 
 # --- Delly ----------------------------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"

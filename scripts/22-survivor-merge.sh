@@ -40,8 +40,6 @@ echo "  Step 22: SV consensus (SURVIVOR merge)"
 echo "  Sample: ${SAMPLE}"
 echo "  Output: ${OUT}"
 echo "============================================"
-echo "SUPP is caller agreement, not validation: Manta and Delly read the same split and"
-echo "  paired reads. Annotate the callers' own calls (step 05), not this file."
 echo ""
 
 # CNVpytor's own table, when step 18 left no VCF: one DEL or DUP record per
