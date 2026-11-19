@@ -114,7 +114,7 @@ These are called from the VCF only. Star alleles are determined from variant cal
 
 ### Weakly supported genes
 
-pypgx has a phenotype rule for only some of the genes it calls: its own gene table gives the others no `PhenotypeMethod`. For those, pypgx writes `Indeterminate` as the phenotype, and the summary says `no pypgx phenotype rule`. Four of them (CYP3A4, CYP4F2, VKORC1 and NAT2) also get a call and a phenotype from PharmCAT. The other 13 rest on pypgx alone: no phenotype, and no other tool in this pipeline calls the gene (`second_caller` is `none` in `assets/pgx_genes.tsv`). Read their star alleles and copy numbers as research calls, not as results on a par with the CPIC genes.
+pypgx has a phenotype rule for only some of the genes it calls: its own gene table gives the others no `PhenotypeMethod`. For those, pypgx writes `Indeterminate` as the phenotype, and the summary says `no pypgx phenotype rule`. Four of them (CYP3A4, CYP4F2, VKORC1 and NAT2) also get a call from PharmCAT, and CYP3A4 and NAT2 also get a phenotype there. The other 13 rest on pypgx alone: no phenotype, and no other tool in this pipeline calls the gene (`second_caller` is `none` in `assets/pgx_genes.tsv`). Read their star alleles and copy numbers as research calls, not as results on a par with the CPIC genes.
 
 **No pypgx phenotype rule (17):** CYP2A6, GSTM1, GSTT1, CYP2E1, CYP4F2, SLC22A2, SULT1A1, UGT1A4, UGT2B15, UGT2B17, CYP1A2, CYP3A4, VKORC1, NAT2, COMT, MTHFR, ABCB1.
 

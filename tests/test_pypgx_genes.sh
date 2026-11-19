@@ -350,6 +350,7 @@ fi
 P="${G}/${S}/pypgx"
 plant() { mkdir -p "${P}/$1"; echo old > "${P}/$1/results.zip"; }
 plant CYP2D6; plant CYP2A6; plant CYP2C9
+for z in depth_of_coverage.zip control_statistics.zip; do echo old > "${P}/${z}"; done
 FAKE_PYPGX_FAIL=prep run32 "$CAT" alt stale-prep
 expect "depth preparation failed: exit 0 (the VCF genes ran)" "$RC" 0
 expect "depth preparation failed: no BAM-mode call" "$(bam_calls stale-prep)" ""
@@ -358,7 +359,10 @@ for g in CYP2D6 CYP2A6; do
   else ok "depth preparation failed: no ${g}/results.zip from the earlier run"; fi
 done
 expect "depth preparation failed: CYP2C9 has this run's result" "$(cat "${P}/CYP2C9/results.zip" 2>/dev/null)" new
-if [ -e "${P}/depth_of_coverage.zip" ]; then bad "depth preparation failed: a depth_of_coverage.zip is left"; fi
+for z in depth_of_coverage.zip control_statistics.zip; do
+  if [ -e "${P}/${z}" ]; then bad "depth preparation failed: the earlier run's ${z} is still there"
+  else ok "depth preparation failed: no ${z} from the earlier run"; fi
+done
 
 plant CYP2C9
 FAKE_PYPGX_FAIL=CYP2C9 run32 "$CAT" alt half-written
