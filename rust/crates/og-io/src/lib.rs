@@ -6,7 +6,8 @@
 //! - [`Lines`]: Python's text mode with `newline=None`: `\n`, `\r\n` and a
 //!   lone `\r` each end a line and read as `\n`; UTF-8 strict or `replace`.
 //! - [`AtomicFile`]: written beside the target and renamed over it on
-//!   [`AtomicFile::commit`], so a reader never sees half a file.
+//!   [`AtomicFile::commit`], so a reader never sees half a file. What it
+//!   writes is owner-only (0600) whatever the umask.
 //! - [`bgzf`]: the same reading with BGZF inflated on many cores, and a
 //!   BGZF writer that compresses on many cores.
 //! - [`tabix`]: the lines of a region of a bgzipped file, through its
@@ -22,6 +23,7 @@ use flate2::bufread::GzDecoder;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
 
@@ -198,11 +200,30 @@ impl<R: BufRead> Iterator for Lines<R> {
 /// A file written under a temporary name and renamed into place by
 /// [`commit`](AtomicFile::commit). Dropped without a commit, the temporary
 /// file is removed and the target is untouched.
+///
+/// The temporary file is always a new file: a file or link already at its
+/// name is left alone and the next name is tried. On Unix it is created
+/// mode 0600, or with the mode of the target it replaces when that is
+/// stricter, so the umask never makes an output readable by others.
+///
+/// When og runs as root and `NXF_OWNER` names an owner as `uid:gid`, the
+/// temporary file is handed to that owner. Nextflow sets `NXF_OWNER` to the
+/// user who started the run in each docker task when `docker.fixOwnership`
+/// is on, as the pipeline's docker profile does: without the hand-over that
+/// user could not read an owner-only output og wrote as root. Without
+/// `NXF_OWNER`, a file og writes as root stays root's.
 pub struct AtomicFile {
     tmp: PathBuf,
     target: PathBuf,
     out: Option<BufWriter<File>>,
 }
+
+/// The number in the next temporary name, so two files open in one process
+/// never share one.
+static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
+
+/// How many temporary names are tried before giving up.
+const TMP_TRIES: usize = 64;
 
 impl AtomicFile {
     pub fn create(target: impl AsRef<Path>) -> io::Result<Self> {
@@ -210,16 +231,29 @@ impl AtomicFile {
         let name = target
             .file_name()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file name"))?;
-        let mut tmp_name = std::ffi::OsString::from(".");
-        tmp_name.push(name);
-        tmp_name.push(format!(".tmp-{}", std::process::id()));
-        let tmp = target.with_file_name(tmp_name);
-        let out = BufWriter::new(File::create(&tmp)?);
-        Ok(AtomicFile {
-            tmp,
-            target,
-            out: Some(out),
-        })
+        let mode = temp_mode(&target);
+        let pid = std::process::id();
+        let mut taken = None;
+        for _ in 0..TMP_TRIES {
+            let n = NEXT_TMP.fetch_add(1, Ordering::Relaxed);
+            let mut tmp_name = std::ffi::OsString::from(".");
+            tmp_name.push(name);
+            tmp_name.push(format!(".tmp-{pid}-{n}"));
+            let tmp = target.with_file_name(tmp_name);
+            match new_file(&tmp, mode) {
+                Ok(f) => {
+                    give_to_nxf_owner(&f);
+                    return Ok(AtomicFile {
+                        tmp,
+                        target,
+                        out: Some(BufWriter::new(f)),
+                    });
+                }
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => taken = Some(e),
+                Err(e) => return Err(e),
+            }
+        }
+        Err(taken.expect("at least one name was tried"))
     }
 
     /// Flushes and renames over the target. On an error the temporary file
@@ -238,6 +272,76 @@ impl AtomicFile {
         }
         done
     }
+}
+
+/// The mode of a new temporary file: 0600, less any owner bit the target
+/// it replaces lacks (a 0400 target stays 0400).
+#[cfg(unix)]
+fn temp_mode(target: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    match fs::metadata(target) {
+        Ok(m) if m.is_file() => 0o600 & m.permissions().mode(),
+        _ => 0o600,
+    }
+}
+
+#[cfg(not(unix))]
+fn temp_mode(_target: &Path) -> u32 {
+    0
+}
+
+/// Hands a file og created as root to the owner `NXF_OWNER` names
+/// (`uid:gid`, both numbers), the user who started the Nextflow run. Nothing
+/// changes when og is not root or `NXF_OWNER` is unset or not `uid:gid`.
+/// Best effort: when the change fails, the file stays root's and og prints
+/// one warning.
+#[cfg(unix)]
+fn give_to_nxf_owner(file: &File) {
+    use std::os::unix::fs::MetadataExt;
+    if !file.metadata().is_ok_and(|m| m.uid() == 0) {
+        return;
+    }
+    let Some((uid, gid)) = std::env::var("NXF_OWNER")
+        .ok()
+        .and_then(|v| parse_owner(&v))
+    else {
+        return;
+    };
+    if let Err(e) = std::os::unix::fs::fchown(file, Some(uid), Some(gid)) {
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| {
+            eprintln!("WARNING: could not give og's output to NXF_OWNER {uid}:{gid}: {e}");
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn give_to_nxf_owner(_file: &File) {}
+
+/// `uid:gid` as two numbers, the form Nextflow writes `NXF_OWNER` in
+/// (`$(id -u):$(id -g)`); anything else is none.
+#[cfg(unix)]
+fn parse_owner(value: &str) -> Option<(u32, u32)> {
+    let (uid, gid) = value.split_once(':')?;
+    let number = |s: &str| {
+        if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        s.parse::<u32>().ok()
+    };
+    Some((number(uid)?, number(gid)?))
+}
+
+/// Creates `path`, failing with `AlreadyExists` when anything is there,
+/// a link included (`O_CREAT | O_EXCL`).
+fn new_file(path: &Path, mode: u32) -> io::Result<File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
+    #[cfg(not(unix))]
+    let _ = mode;
+    options.open(path)
 }
 
 impl Write for AtomicFile {
@@ -361,6 +465,39 @@ mod tests {
         assert!(f.commit().is_err());
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
         fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod owner_tests {
+    use super::parse_owner;
+
+    #[test]
+    fn nxf_owner_is_two_numbers() {
+        assert_eq!(parse_owner("1001:118"), Some((1001, 118)));
+        assert_eq!(parse_owner("0:0"), Some((0, 0)));
+        assert_eq!(parse_owner("4294967295:1"), Some((u32::MAX, 1)));
+    }
+
+    #[test]
+    fn anything_else_names_no_owner() {
+        for value in [
+            "",
+            ":",
+            "1001",
+            "1001:",
+            ":118",
+            "1001:118:1",
+            "alice:users",
+            " 1001:118",
+            "1001:118 ",
+            "+1001:118",
+            "-1:118",
+            "4294967296:1",
+            "1001;118",
+        ] {
+            assert_eq!(parse_owner(value), None, "{value:?}");
+        }
     }
 }
 

@@ -254,7 +254,7 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 
 ### plink silently corrupts single-sample homozygous ALT genotypes
 - **What failed:** `plink --23file` (1.9) to import + `plink2 --ref-from-fa force` to fix REF/ALT
-- **Why:** For single-sample data, ALL homozygous positions are monomorphic. plink's `.bim` stores only one allele for these. `--ref-from-fa` cannot create a proper ALT because there's no second allele slot. Homozygous ALT genotypes silently become homozygous REF.
+- **Why:** For single-sample data, ALL homozygous positions are monomorphic. The single-sample import sees only one allele there and leaves the second allele missing in the `.bim` (the format has two allele columns; the import does not fill the second). `--ref-from-fa` does not fill in a missing allele, so it cannot create a proper ALT. Homozygous ALT genotypes silently become homozygous REF. A `.bim` that declares both alleles is fixed correctly by `--ref-from-fa`.
 - **Verified:** on one homozygous-alternate chip position (chip genotype AA where the reference base is T): plink wrote `REF=A, ALT=., GT=0/0` (WRONG); bcftools wrote `REF=T, ALT=A, GT=1/1` (CORRECT). ~66K positions (11%) corrupted.
 - **Fix:** Use `bcftools convert --tsv2vcf -f <reference.fa>`. Single command, no intermediate binary format.
 

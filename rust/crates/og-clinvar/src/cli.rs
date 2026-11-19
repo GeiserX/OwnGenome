@@ -6,9 +6,11 @@
 //! og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS
 //! ```
 //!
-//! A missing file, or `-`, is standard input; plain, gzip and BGZF input are
-//! read alike. A refused command line is exit 2, a file that cannot be read
-//! or written exit 1.
+//! `join-adjacent` and `hits` read standard input when the VCF is missing, and
+//! any VCF given as `-` is standard input; plain, gzip and BGZF input are read
+//! alike. `-h` or `--help` before any `--` prints the usage and the defaults on
+//! stdout, exit 0. A refused command line is exit 2, a file that cannot be
+//! read or written exit 1.
 
 use std::fmt::Display;
 use std::io::{self, BufRead, BufWriter, Write};
@@ -21,6 +23,22 @@ use crate::{hits, sites};
 const USAGE: &str = "usage: og clinvar join-adjacent --mode prepare|finish|tag|build [--fasta REF] [--window N] [VCF]
        og clinvar hits [HITS_VCF]
        og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS";
+
+/// The usage, then each option's meaning and default: what `--help` prints.
+fn help() -> String {
+    format!(
+        "{USAGE}
+
+  --mode M      join-adjacent: prepare, finish, tag or build
+  --fasta REF   join-adjacent --mode build: the reference FASTA (indexed)
+  --window N    join-adjacent: join two records when the second starts at most N bases after the first ends (default {WINDOW})
+  --min-gq N    deep-intronic: the call floor, the lowest GQ of a plain reference call, never below 20 (default 30)
+  --min-dp N    deep-intronic: the depth floor, the lowest DP of a plain reference call (default 10)
+  --no-gvcf     deep-intronic: there is no gVCF, so a site with no record is a no call
+  join-adjacent and hits read standard input when the VCF is missing; any VCF given as - is standard input.
+"
+    )
+}
 
 fn refuse(msg: &str) -> u8 {
     eprintln!("{USAGE}");
@@ -108,6 +126,15 @@ fn input(path: Option<&str>) -> io::Result<Box<dyn BufRead>> {
 
 /// Runs `og clinvar <verb> ...` and returns the exit code.
 pub fn main(args: &[String]) -> u8 {
+    // A help word after `--` is an argument, as in og's own help rule.
+    if args
+        .iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "-h" || a == "--help")
+    {
+        print!("{}", help());
+        return 0;
+    }
     let Some(verb) = args.first() else {
         return refuse("the following arguments are required: verb");
     };

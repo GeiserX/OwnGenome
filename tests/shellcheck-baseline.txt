@@ -1,0 +1,273 @@
+# ShellCheck findings that predate the check of every tracked shell script.
+# Lint's shellcheck job fails on any finding that is not listed here, so a
+# new script, or a new line in an old one, must pass ShellCheck clean.
+# Never add a line: fix the finding, or disable it in the script with a
+# reason. Delete a line when its finding is gone; lint names those lines.
+# One line per finding: path, code, then the text of the line with its
+# blanks squeezed, separated by tabs. The text stands in for the line
+# number, so a line keeps matching when lines above it move.
+rust/crates/og-ancestry/src/run_admixture.sh.in	SC2170	while [ "$r" -le @B@ ]; do
+scripts/12-mito-haplogroup.sh	SC2016	'bcftools view -f PASS "$1" | bcftools norm -m-any -Oz -o "$2" && bcftools index -f -t "$2"' \
+scripts/12-mito-haplogroup.sh	SC2016	'bcftools view -r chrM "$1" -Oz -o "$2" && bcftools index -f -t "$2"' \
+scripts/12-mito-haplogroup.sh	SC2016	'{ echo ">chrM"; dd if="$1" bs=1 skip="$2" count="$3" status=none; } > "$4.ref.fa"
+scripts/12-mito-haplogroup.sh	SC2017	_ "$REF_FASTA_C" "$MOFF" "$((MLEN + (MLEN + MLB - 1) / MLB * (MLW - MLB)))" "$(cpath "$FASTA")" "$KEEP" \
+scripts/14-imputation-prep.sh	SC2016	bash -euo pipefail -c '
+scripts/15-duphold.sh	SC2001	-v "/genome/${SAMPLE}/$(echo "$MANTA_VCF" | sed "s|${SAMPLE_DIR}/||")" \
+scripts/18-cnvpytor.sh	SC2028	echo " awk -F'\t' '\$5 < 0.05 && \$3 > 1000' ${OUTPUT_DIR}/${SAMPLE}_cnvs.txt"
+scripts/19-delly.sh	SC2028	echo " bcftools query -f '%INFO/SVTYPE\n' ${OUTPUT_DIR}/${SAMPLE}_sv.vcf.gz | sort | uniq -c"
+scripts/20-mtoolbox.sh	SC2028	echo " bcftools query -f '%POS\t%REF\t%ALT\t[%AF]\n' -i 'FILTER=\"PASS\"' ${OUTPUT_DIR}/${SAMPLE}_chrM_filtered.vcf.gz | awk '\$4 < 0.95'"
+scripts/22-survivor-merge.sh	SC2005	echo "$(cpath "${IN_DIR}/${name}.vcf")" >> "${IN_DIR}/sv_files.txt"
+scripts/22-survivor-merge.sh	SC2016	'bcftools sort "$1" -Oz -o "$2.tmp" && mv "$2.tmp" "$2" && bcftools index -f -t "$2"' \
+scripts/22-survivor-merge.sh	SC2016	'bcftools sort "$1" -Oz -o "$2.tmp" && mv "$2.tmp" "$2" && bcftools index -f -t "$2"' \
+scripts/22-survivor-merge.sh	SC2016	bcftools view -f PASS,. "$1" | awk -v s="$3" '\''BEGIN { FS = OFS = "\t" }
+scripts/22-survivor-merge.sh	SC2016	run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
+scripts/22-survivor-merge.sh	SC2016	{ if (sites) print $1, $2, $3, $4, $5, $6, $7, $8, "GT", "./."; else print $1, $2, $3, $4, $5, $6, $7, $8, $9, $10 }'\'' > "$2"' \
+scripts/29-mutect2-somatic.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%AF]\n' -i 'FILTER=\"PASS\"' \\"
+scripts/30-vcfanno.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/AM_pathogenicity\t%INFO/AM_class\n' -i 'INFO/AM_class=\"likely_pathogenic\"' ${OUTPUT_FILE} | head"
+scripts/30-vcfanno.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/SpliceAI\n' -i 'INFO/SpliceAI!=\".\"' ${OUTPUT_FILE} | head"
+scripts/32-pypgx.sh	SC2016	VCF_GENES="'"${VCF_GENES}"'"
+scripts/37-y-haplogroup.sh	SC2016	'samtools idxstats "$1" > "$2/idxstats.txt" && samtools mpileup -l "$2/positions.txt" -ABQ20q1 "$1" > "$2/pileup.txt"
+scripts/37-y-haplogroup.sh	SC2016	'samtools mpileup -l "$2/tree_positions.txt" -AQ20q1 "$1" > "$2/tree_pileup.txt"' _ "$(cpath "$BAM")" "$O"
+scripts/benchmark-variants.sh	SC2016	'bcftools norm -m-both -f "$3" "$1" -Oz -o "$2" && bcftools index -f -t "$2"' \
+scripts/ci/e2e-run.sh	SC2001	sed "s|^|${dir} |" <<< "$out"
+scripts/ci/e2e-run.sh	SC2013	for id in $(sed -n 's/^NEW_IDS="\(.*\)"$/\1/p' "$PGS_CASE"); do
+scripts/ci/e2e-run.sh	SC2013	for id in $(sed -n 's/^NEW_IDS="\(.*\)"$/\1/p' "$PGS_CASE"); do
+scripts/ci/e2e-run.sh	SC2015	&& { ln -f "${DATA_CACHE}/${n}/${f#./}" "$t" 2> /dev/null || cp -f "${DATA_CACHE}/${n}/${f#./}" "$t"; } \
+scripts/ci/e2e-run.sh	SC2016	pin=$(sed -n 's/^HLA_DB_RELEASE=\${HLA_DB_RELEASE:-\(.*\)}$/\1/p' "${REPO}/scripts/lib/common.sh")
+scripts/ci/e2e-run.sh	SC2031	"${GENOME_DIR}/${SAMPLE}/fastq" "${GENOME_DIR}/${SAMPLE}/vep"
+scripts/ci/e2e-run.sh	SC2031	"${GENOME_DIR}/${SAMPLE}/fastq" "${GENOME_DIR}/${SAMPLE}/vep"
+scripts/ci/e2e-run.sh	SC2031	-o -path "${GENOME_DIR}/tools/cyrius-*" -o -path "${GENOME_DIR}/reference/pypgx-bundle" \) -prune \
+scripts/ci/e2e-run.sh	SC2031	-o -path "${GENOME_DIR}/tools/cyrius-*" -o -path "${GENOME_DIR}/reference/pypgx-bundle" \) -prune \
+scripts/ci/e2e-run.sh	SC2031	REF="${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set"
+scripts/ci/e2e-run.sh	SC2031	archaic-ancestry-1.sh) echo "archaic ${GENOME_DIR}/reference/archaic/$(. "${REPO}/versions.env" && echo "$ARCHAIC_DATA_VERSION")/download" ;;
+scripts/ci/e2e-run.sh	SC2031	bash-step-08-hla.sh) echo "hla ${GENOME_DIR} offline" ;;
+scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/${SAMPLE}_R1.fastq.gz" "${FIXTURE_DIR}/${SAMPLE}_R2.fastq.gz" "${GENOME_DIR}/${SAMPLE}/fastq/"
+scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/${SAMPLE}_vep.vcf" "${GENOME_DIR}/${SAMPLE}/vep/"
+scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/${f}" "${FIXTURE_DIR}/${f}.tbi" "${GENOME_DIR}/clinvar/"
+scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/revel_synthetic.tsv.gz" "${GENOME_DIR}/annotations/revel_grch38.tsv.gz"
+scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/revel_synthetic.tsv.gz.tbi" "${GENOME_DIR}/annotations/revel_grch38.tsv.gz.tbi"
+scripts/ci/e2e-run.sh	SC2031	echo "=== Layout ${GENOME_DIR} ==="
+scripts/ci/e2e-run.sh	SC2031	mkdir -p "${GENOME_DIR}/reference" "${GENOME_DIR}/clinvar" "${GENOME_DIR}/annotations" \
+scripts/ci/e2e-run.sh	SC2031	mkdir -p "${GENOME_DIR}/reference" "${GENOME_DIR}/clinvar" "${GENOME_DIR}/annotations" \
+scripts/ci/e2e-run.sh	SC2031	mkdir -p "${GENOME_DIR}/reference" "${GENOME_DIR}/clinvar" "${GENOME_DIR}/annotations" \
+scripts/ci/e2e-run.sh	SC2031	mocha-1.sh) echo "mocha ${GENOME_DIR}/reference/mocha-$(. "${REPO}/versions.env" && echo "$MOCHA_PANEL_VERSION")" ;;
+scripts/ci/oracle-diff.sh	SC2001	else echo "WRONG ${label} (exit ${rc}, wanted ${want})"; sed 's/^/ /' <<< "$out"; bad=$((bad + 1)); fi
+scripts/ci/oracle-diff.sh	SC2016	printf '#!/bin/sh\ncp "$1" "$2"\necho copied\n' > "${st}/oracle/fake/run"
+scripts/ci/oracle-diff.sh	SC2016	printf '#!/bin/sh\nexec %s "$(dirname "$0")/prog" "$@"\n' "$interp" > "${dir}/${tool}/run"
+scripts/ci/settle-doubts.sh	SC2012	IDX_FILES=$(cd "${G}/reference" && ls GRCh38_no_alt_analysis_set.fasta.* | tr '\n' ' ')
+scripts/lib/common.sh	SC1091	. "${PGP_ROOT}/versions.env"
+scripts/lib/common.sh	SC2016	'use IO::Uncompress::Unzip qw(unzip $UnzipError); unzip($ARGV[0] => $ARGV[1]) or die "unzip failed: $UnzipError\n";' \
+scripts/lib/common.sh	SC2016	_gz_to "$gz" "$genes" awk -F'\t' '$3 == "gene"' || rc=1
+scripts/run-all.sh	SC2329	finish_status() {
+scripts/validate-setup.sh	SC2001	sed 's/^ */ /' <<< "$msg"
+tests/e2e/alignment-markdup-gvcf-sex-1-align.sh	SC2016	A_MAPPED='grep -q "worker_pipeline.*mapped" "${CASE_TMP}/kill-HG002A.log" 2>/dev/null && sleep 3'
+tests/e2e/alignment-markdup-gvcf-sex-1-align.sh	SC2016	W_FILE='[ -n "$(find "${GENOME_DIR}/HG002W/aligned" -maxdepth 1 -name "HG002W_sorted*.bam" -size +0 2>/dev/null)" ]'
+tests/e2e/ancestry-fine-grained-1.sh	SC2016	awk -F'\t' '$1 == "continent" && ($6 == "." || $7 == "." || $6 > $4 + 1e-9 || $7 < $4 - 1e-9) {bad = 1} END {exit bad}' \
+tests/e2e/ancestry-fine-grained-1.sh	SC2016	awk -F'\t' '$1 == "left_out" && $2 == "OCE" {n++} END {exit n != 2}' "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
+tests/e2e/ancestry-fine-grained-1.sh	SC2016	awk -F'\t' '$3 == "OCE" && ($5 == 1 || $6 == 1) {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
+tests/e2e/ancestry-fine-grained-1.sh	SC2016	awk -F'\t' -v a="$A" -v b="$B" '$1 == a || $1 == b {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
+tests/e2e/ancestry-fine-grained-1.sh	SC2016	bash -c 'grep -qF "Fine-Grained Ancestry" "$1" && grep -qF "data:image/png;base64," "$1"' _ "${NF_OUT}/HG002T/HG002T_report.html"
+tests/e2e/ancestry-fine-grained-1.sh	SC2016	check "its fractions are the bash step's (within 0.01 each)" awk -F'\t' '
+tests/e2e/ancestry-fine-grained-1.sh	SC2329	between() { awk -v x="${1:-}" -v lo="$2" -v hi="$3" 'BEGIN {exit !(x ~ /^[0-9.]+$/ && x + 0 >= lo && x + 0 <= hi)}'; }
+tests/e2e/archaic-ancestry-1.sh	SC2016	awk -F'\t' -v f="$W_FROM" -v t="$W_TO" 'NR > 1 && $5 == "Neanderthal" && $2 < t && $3 > f && $6 ~ /Vindija/ {ok = 1} END {exit !ok}' \
+tests/e2e/archaic-ancestry-1.sh	SC2016	awk -F'\t' -v f="$W_FROM" -v t="$W_TO" 'NR > 1 && $5 == "Neanderthal" && $2 < t && $3 > f && $8 ~ /[A-Z]/ {ok = 1} END {exit !ok}' \
+tests/e2e/archaic-ancestry-1.sh	SC2016	bash -c 'gzip -dc "$1" | awk -F"\t" "NR > 1 && \$1 != \"chr22\" {bad = 1} END {exit bad}"' _ "$TABLE"
+tests/e2e/archaic-ancestry-1.sh	SC2016	bash -c 'gzip -dc "$1" | awk -F"\t" "NR > 1 { for (i = 5; i <= 7; i++) if (\$i !~ /^(0|1|2|9|10|11|12)\$/) bad = 1 } END {exit bad}"' _ "$TABLE"
+tests/e2e/archaic-ancestry-1.sh	SC2016	check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/archaic-ancestry-1.sh	SC2016	check "only chr22 was built" bash -c '[ "$(cd "$1" && ls chr*.tsv.gz)" = chr22.tsv.gz ]' _ "$DATA"
+tests/e2e/bash-step-08-hla.sh	SC2030	( HLA_DB_RELEASE=$1
+tests/e2e/bash-step-08-hla.sh	SC2031	"$(find "${GENOME_DIR}/t1k_idx" -maxdepth 1 -type d -name "t1k-*_imgt-${OTHER}_gencode-*" | wc -l | tr -d ' ')" 1
+tests/e2e/bash-step-08-hla.sh	SC2031	"$(find "${GENOME_DIR}/t1k_idx" -maxdepth 1 -type d -name "t1k-*_imgt-${PIN}_gencode-*" | wc -l | tr -d ' ')" 1
+tests/e2e/bash-step-08-hla.sh	SC2031	GT="${GENOME_DIR}/${SAMPLE}/hla_t1k/${SAMPLE}_hla_genotype.tsv"
+tests/e2e/bash-step-08-hla.sh	SC2031	REL="${GENOME_DIR}/${SAMPLE}/hla_t1k/database_release.txt"
+tests/e2e/bash-step-08-hla.sh	SC2329	install() {
+tests/e2e/bash-step-10-telomere.sh	SC2016	check "the GRCh38 bands install" bash -c '. "$1/scripts/lib/common.sh" && install_data_file cytoband' _ "$REPO"
+tests/e2e/bash-step-19-delly.sh	SC2016	check "Delly's exclude map installs" bash -c '. "$1/scripts/lib/common.sh" && install_data_file delly_exclude' _ "$REPO"
+tests/e2e/bloodtype-1.sh	SC2016	check "control: that VCF is plain gzip (no BGZF BC field)" bash -c '[ "$(head -c 14 "$1" | tail -c 2)" != BC ]' _ \
+tests/e2e/bloodtype-1.sh	SC2016	check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/bloodtype-1.sh	SC2329	fetch_abo() {
+tests/e2e/bloodtype-1.sh	SC2329	fetch_reads() {
+tests/e2e/bloodtype-1.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/chip-clonal-1.sh	SC2016	check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/chip-clonal-1.sh	SC2329	fetch_reads() {
+tests/e2e/chip-clonal-1.sh	SC2329	plant() {
+tests/e2e/chip-clonal-1.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/chip-clonal-1.sh	SC2329	sample() {
+tests/e2e/cn-engine-1-parity.sh	SC2016	check "control: the comparison sees a difference (full against thin)" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/cn-engine-1-parity.sh	SC2329	fetch_reads() {
+tests/e2e/cn-engine-1-parity.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/cn-guard-1-mapq0.sh	SC2016	sed -n '/^CYP21_OUT=/,/^rm -rf "\$CYP21_WORK"$/p' "${REPO}/scripts/35-paralogs.sh" > "${CASE_TMP}/step_body.sh"
+tests/e2e/cn-guard-1-mapq0.sh	SC2329	fetch_reads() {
+tests/e2e/cn-guard-1-mapq0.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/cn-intervals-2-hg002.sh	SC2016	check "control: the male and the female tables differ" bash -c '! cmp -s "$1" "$2"' _ "$T" "${CASE_TMP}/male.tsv"
+tests/e2e/cn-intervals-2-hg002.sh	SC2016	sed -n '/^INTERVAL_OUT=/,/^rm -rf "\$INTERVAL_WORK"$/p' "${REPO}/scripts/35-paralogs.sh" > "${CASE_TMP}/step_body.sh"
+tests/e2e/cn-intervals-2-hg002.sh	SC2329	fetch_reads() {
+tests/e2e/cn-intervals-2-hg002.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/cyp21a2-short-reads-1-hg002.sh	SC2016	check "control: the unmodified and the conversion tables differ" bash -c '! cmp -s "$1" "$2"' _ "$U" "$C"
+tests/e2e/cyp21a2-short-reads-1-hg002.sh	SC2016	sed -n '/^CYP21_OUT=/,/^rm -rf "\$CYP21_WORK"$/p' "${REPO}/scripts/35-paralogs.sh" > "${CASE_TMP}/step_body.sh"
+tests/e2e/cyp21a2-short-reads-1-hg002.sh	SC2329	fetch_reads() {
+tests/e2e/cyp21a2-short-reads-1-hg002.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/family-joint-1.sh	SC2016	bash -c '! diff -q "$1" <(awk "NR == FNR {keep[\$1]; next} \$1 in keep" "$1" "$2") > /dev/null' \
+tests/e2e/family-joint-1.sh	SC2016	check_eq "chrX outside the PARs: none from the father (HG002 is a son)" "$(icount '$1 == "chrX" && $8 != "."')" 0
+tests/e2e/family-joint-1.sh	SC2016	check_ge "HG002 sites with the father's allele known" "$(icount '$8 != "."')" 500
+tests/e2e/family-joint-1.sh	SC2016	check_ge "HG002 sites with the mother's allele known" "$(icount '$9 != "."')" 500
+tests/e2e/family-joint-1.sh	SC2016	check_ge "chrX outside the PARs: alleles from the mother" "$(icount '$1 == "chrX" && $10 == "genotype" && $9 != "."')" 20
+tests/e2e/family-joint-1.sh	SC2329	between() { [ -n "$1" ] && awk -v x="$1" -v lo="$2" -v hi="$3" 'BEGIN { exit !(x + 0 >= lo && x + 0 <= hi) }'; }
+tests/e2e/genotype-rules-2-lpa-null.sh	SC2016	bash -c 'grep -qF "A null allele lowers the Lp(a) made from the copies it sits on" "$1" && grep -qF "A null allele lowers the Lp(a) made from the copies it sits on" "$2"' _ \
+tests/e2e/genotype-rules-2-lpa-null.sh	SC2016	bash -c 'grep -qF "KIV-2 4925G&gt;A null allele (rs1484919544): not seen, 0 of" "$1" && grep -qF "KIV-2 4925G>A null allele (rs1484919544): not seen, 0 of" "$2"' _ \
+tests/e2e/genotype-rules-2-lpa-null.sh	SC2016	bash -c 'sed -n "/KIV-2 repeats (both chromosomes)/,/rs10455872/p" "$1" | grep -qF "KIV-2 4925G>A null allele (rs1484919544): present"' _ "${G}/${P}/${P}_report.txt"
+tests/e2e/genotype-rules-2-lpa-null.sh	SC2016	check "control: the planted and the reference tables differ" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/genotype-rules-2-lpa-null.sh	SC2016	check "unmodified: the count's message is the count's alone" bash -c '! grep -q 4925G "$1"' _ "${G}/${U}/lpa/${U}_lpa_kiv2.tsv"
+tests/e2e/genotype-rules-2-lpa-null.sh	SC2329	fetch_reads() {
+tests/e2e/genotype-rules-2-lpa-null.sh	SC2329	rep_has() { grep -qF -- "$2" "${G}/$1/$1_report.$3"; }
+tests/e2e/genotype-rules-2-smn1-marker.sh	SC2016	bash -c 'grep -A1 "SMN1 copies: " "$1" | grep -qF "SMN1 g.27134T>G silent-carrier marker (rs143838139): present"' _ "${CASE_TMP}/planted.txt"
+tests/e2e/genotype-rules-2-smn1-marker.sh	SC2016	bash -c 'grep -qF "SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)</span><span class=\"value\">not seen, 0 of" "$1" && grep -qF "SMN1 g.27134T>G silent-carrier marker (rs143838139): not seen, 0 of" "$2"' _ \
+tests/e2e/genotype-rules-2-smn1-marker.sh	SC2016	bash -c 'grep -qF "it does not prove 2+0, and a carrier test in a clinical laboratory confirms it" "$1" && grep -qF "it does not prove 2+0, and a carrier test in a clinical laboratory confirms it" "$2"' _ \
+tests/e2e/genotype-rules-2-smn1-marker.sh	SC2016	check "control: the planted and the reference tables differ" bash -c '! cmp -s "$1" "$2"' _ "$L" "$R"
+tests/e2e/genotype-rules-2-smn1-marker.sh	SC2016	sed -n '/^SMN1M_OUT=/,/^rm -rf "\$SMN1M_WORK"$/p' "${REPO}/scripts/35-paralogs.sh" > "${CASE_TMP}/step_body.sh"
+tests/e2e/genotype-rules-2-smn1-marker.sh	SC2329	fetch_reads() {
+tests/e2e/haplogroup-explore-1-files.sh	SC2016	check "control: the reference chrM does not" eval '! alt_at "${CASE_TMP}/ref_chrM.fa" "${CASE_TMP}/snvs_vcf.tsv"'
+tests/e2e/haplogroup-explore-1-files.sh	SC2016	check "control: the reference chrM does not" eval '! alt_at "${CASE_TMP}/ref_chrM.fa"'
+tests/e2e/haplogroup-explore-1-files.sh	SC2329	alt_at() { # alt_at FASTA [SNVS]: OK when every listed SNV's ALT is the base at its position
+tests/e2e/hla-second-caller-1-bash.sh	SC2329	held_back() {
+tests/e2e/hla-second-caller-1-bash.sh	SC2329	html_esc() { python3 -I -c 'import html, sys; print(html.escape(sys.argv[1]))' "$1"; }
+tests/e2e/hla-second-caller-1-bash.sh	SC2329	not_held_back() { ! held_back "$@"; }
+tests/e2e/hla-second-caller-1-bash.sh	SC2329	not_report_has() { ! report_has "$@"; }
+tests/e2e/hla-second-caller-1-bash.sh	SC2329	report_has() {
+tests/e2e/hla-second-caller-2-nextflow.sh	SC2329	html_esc() { python3 -I -c 'import html, sys; print(html.escape(sys.argv[1]))' "$1"; }
+tests/e2e/hla-second-caller-2-nextflow.sh	SC2329	nf_report_has() {
+tests/e2e/hla-second-caller-2-nextflow.sh	SC2329	not_nf_report_has() { ! nf_report_has "$@"; }
+tests/e2e/ibd-segments-1.sh	SC2016	check "segments rows add up to each pair's count, total and longest" awk -F'\t' '
+tests/e2e/ibd-segments-1.sh	SC2016	sh -c '[ "$1" -eq 1 ] && grep -q "FAMILY_IBD_ONLY=true reads .*family.vcf.gz" "$2"' _ "$STEP_RC" "$STEP_LOG"
+tests/e2e/ibd-segments-1.sh	SC2016	sh -c '[ "$1" -eq 1 ] && grep -q "setup.sh --ancestry-fine-panel" "$2"' _ "$STEP_RC" "$STEP_LOG"
+tests/e2e/ibd-segments-1.sh	SC2329	ge() { awk -v x="${1:-}" -v y="$2" 'BEGIN {exit !(x ~ /^[0-9.]+$/ && x + 0 >= y)}'; }
+tests/e2e/ibd-segments-1.sh	SC2329	lt() { awk -v x="${1:-}" -v y="$2" 'BEGIN {exit !(x ~ /^[0-9.]+$/ && x + 0 < y)}'; }
+tests/e2e/ibd-segments-1.sh	SC2329	not() { ! "$@"; }
+tests/e2e/ibd-segments-1.sh	SC2329	parent_child() { ge "$(pval "$1" "$2" "$3" shared_fraction)" 0.95; }
+tests/e2e/lpa-1.sh	SC2016	check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/lpa-1.sh	SC2329	fetch_reads() {
+tests/e2e/lpa-1.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/mito-extended-1-deletions.sh	SC2329	fetch_clinvar() {
+tests/e2e/mito-extended-1-deletions.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/mocha-1.sh	SC2329	between() { awk -v x="${1:-}" -v lo="$2" -v hi="$3" 'BEGIN {exit !(x ~ /^[0-9.]+$/ && x + 0 >= lo && x + 0 <= hi)}'; }
+tests/e2e/mocha-1.sh	SC2329	cnp_format() { awk -F'\t' 'NF != 4 || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $3 <= $2 || $4 !~ /^(CNV|DEL|DUP)$/ {exit 1}' "$1"; }
+tests/e2e/mocha-1.sh	SC2329	cnp_logged() { grep -Eq '^Regions to genotype: .*cnps\.bed$' "$1" 2>/dev/null; }
+tests/e2e/mocha-1.sh	SC2329	define_at() { curl -fsSL "https://raw.githubusercontent.com/freeseek/mocha/$1/mocha.c" | sed -n 's/^#define MOCHA_VERSION "\(.*\)"$/\1/p'; }
+tests/e2e/mocha-1.sh	SC2329	differs() { [ -n "$1" ] && [ "$1" != "$2" ]; }
+tests/e2e/mocha-1.sh	SC2329	not() { ! "$@"; }
+tests/e2e/mocha-1.sh	SC2329	not_same() { ! cmp -s "$1" "$2"; }
+tests/e2e/mocha-1.sh	SC2329	status_ok() { [ "$1" = assessed ] || { [ "$1" = "not assessed" ] && [ -n "$2" ]; }; }
+tests/e2e/mosaic-loy-lox-1.sh	SC2329	within() { [ -n "$1" ] && awk -v v="$1" -v a="$2" -v b="$3" 'BEGIN { exit !(v + 0 >= a + 0 && v + 0 <= b + 0) }'; }
+tests/e2e/nextflow-from-fastq-1-bash.sh	SC2013	for id in $(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${REPO}/assets/pgs_scores.tsv"); do
+tests/e2e/nf-wiring-1-report-tables.sh	SC2016	-e 's/|\${id}\.cpsr\.grch38\.classification\.tsv\.gz|\${id}_cpsr_cdna_check\.tsv//' \
+tests/e2e/nf-wiring-1-report-tables.sh	SC2016	-e 's/|\${id}_read_count\.tsv//' "${REPO}/modules/local/html_report/main.nf" > "$OLD"
+tests/e2e/nf-wiring-1-report-tables.sh	SC2016	sed -e '/_vep\.vcf\.gz|/d' -e 's/|\${id}_clinical_summary\.tsv//' -e 's/|\${id}_slivar_summary\.tsv//' \
+tests/e2e/nf-wiring-1-report-tables.sh	SC2016	sed -e '/_vep\.vcf\.gz|/d' -e 's/|\${id}_clinical_summary\.tsv//' -e 's/|\${id}_slivar_summary\.tsv//' \
+tests/e2e/nf-wiring-1-report-tables.sh	SC2329	same_sections() {
+tests/e2e/nf-wiring-2-sv-str-tools.sh	SC2016	"$(grep -c -- '--readz \${bam}' "${BROKEN}/modules/local/expansion_hunter/main.nf")" 1
+tests/e2e/nf-wiring-2-sv-str-tools.sh	SC2016	sed -i 's/--reads \${bam}/--readz ${bam}/' "${BROKEN}/modules/local/expansion_hunter/main.nf"
+tests/e2e/paralog-catalog-1-gba.sh	SC2329	gba_called() {
+tests/e2e/paralog-catalog-1-gba.sh	SC2329	not_called() { ! gba_called "$1"; }
+tests/e2e/paralog-catalog-1-gba.sh	SC2329	sam_https() { # the image's libcurl has no CA bundle, so lend it the host's
+tests/e2e/paralog-checks-and-doc-fixes-1-hba.sh	SC2329	sam_https() { # the image's libcurl has no CA bundle, so lend it the host's
+tests/e2e/paralog-rows-1.sh	SC2329	sam_https() { # the image's libcurl has no CA bundle, so lend it the host's
+tests/e2e/paralogs-paraphase-1.sh	SC2016	awk -F'\t' '$1 == "chr7" && $2 == 159345973 {a = 1} $1 == "chr15" && $2 == 101991189 {b = 1} END {exit !(a && b)}' "${REF}.fai"
+tests/e2e/paralogs-paraphase-1.sh	SC2329	sam_https() {
+tests/e2e/pgx-5-kir.sh	SC2329	kir_shown() {
+tests/e2e/pgx-5-kir.sh	SC2329	not_kir_shown() { ! kir_shown "$@"; }
+tests/e2e/prs-1-agreement.sh	SC2013	for id in $(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${REPO}/assets/pgs_scores.tsv"); do
+tests/e2e/prs-1-agreement.sh	SC2016	bash -c '! awk -v a="$1" "BEGIN { exit !(a + 0 == 0) }"' _ "${X_PART:-0}"
+tests/e2e/prs-1-agreement.sh	SC2016	bash -c '! awk -v a="$1" -v b="$2" "BEGIN { d = a - b; exit !(d < 1e-6 && d > -1e-6) }"' _ "${CHANGED_SUM:-0}" "${PGSC_SUM:-0}"
+tests/e2e/prs-1-agreement.sh	SC2329	close() { awk -v a="$1" -v b="$2" 'BEGIN { if (a == "" || b == "" || a !~ /^-?[0-9.e+-]+$/ || b !~ /^-?[0-9.e+-]+$/) exit 1; d = a - b; exit !(d < 1e-6 && d > -1e-6) }'; }
+tests/e2e/prs-2-ancestry.sh	SC2013	for id in $(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${REPO}/assets/pgs_scores.tsv"); do
+tests/e2e/prs-2-ancestry.sh	SC2016	awk -F'\t' 'NR > 1000 {exit} !($1 ~ /^chr([1-9]|1[0-9]|2[0-2])$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[ACGT]$/ && $4 ~ /^[ACGT]$/) {bad = 1} END {exit bad}' "$SITES"
+tests/e2e/prs-2-ancestry.sh	SC2016	bash -c '[ "$1" -ne 0 ] && grep -q "Could not download the ancestry panel" "$2"' _ "$BRC" "${CASE_TMP}/blocked.log"
+tests/e2e/prs-2-ancestry.sh	SC2016	check "neither report has the raw-score line" bash -c '! grep -q "Raw score only" "$1" "$2"' _ "${CASE_TMP}/report.txt" "${CASE_TMP}/report.html"
+tests/e2e/prs-runopts-and-trace-1.sh	SC2329	info_ok() {
+tests/e2e/prs-runopts-and-trace-1.sh	SC2329	refused() { ! "$@"; }
+tests/e2e/prs-runopts-and-trace-1.sh	SC2329	runopts_ok() {
+tests/e2e/prs-runopts-and-trace-1.sh	SC2329	trace_ok() {
+tests/e2e/prs-scores-and-run-options-1-strand-sex.sh	SC2013	for id in $(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${REPO}/assets/pgs_scores.tsv"); do
+tests/e2e/prs-scores-and-run-options-1-strand-sex.sh	SC2016	check "control: the default run's pgsc_calc had no --keep_ambiguous" bash -c '! grep -q -- --keep_ambiguous "$1"' _ "${D}/prs/pgsc_calc.${STAMP1}/nextflow.log"
+tests/e2e/prs-scores-and-run-options-2-panel-chrx.sh	SC2013	for id in $(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${REPO}/assets/pgs_scores.tsv"); do
+tests/e2e/qc-1-sample-qc.sh	SC2329	above() { [ -n "$1" ] && awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 > b + 0) }'; }
+tests/e2e/qc-1-sample-qc.sh	SC2329	below() { [ -n "$1" ] && awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 < b + 0) }'; }
+tests/e2e/reports-and-pgx-correctness-reports.sh	SC2329	cleanup() { rm -f "$PRS" "$STATUS"; rmdir "${D}/prs" 2>/dev/null || true; }
+tests/e2e/reports-and-pgx-correctness-revel.sh	SC2329	restore() {
+tests/e2e/run-all-launcher.sh	SC2329	all_cached() { [ "$(status_count "$1" CACHED)" -ge 10 ] && [ "$(status_count "$1" COMPLETED)" -eq 0 ] && [ "$(status_count "$1" FAILED)" -eq 0 ]; }
+tests/e2e/run-all-launcher.sh	SC2329	not_all_cached() { ! all_cached "$1"; }
+tests/e2e/short-sample-id-stub.sh	SC2329	tasks_file_has() { awk -F'\t' -v p="$1" -v s="$2" '$1 ~ ("(^|:)" p "$") && $2 == s {f = 1} END {exit !f}' "${DIR}/failed_tasks.tsv" 2>/dev/null; }
+tests/e2e/vcf-precheck-ref-spotcheck-1.sh	SC2329	only_precheck() {
+tests/e2e/vendor-vcf-intake-3-nf-stops.sh	SC2329	only_precheck() {
+tests/e2e/viral-reads-1.sh	SC2016	check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/viral-reads-1.sh	SC2329	between() { awk -v x="$1" -v lo="$2" -v hi="$3" 'BEGIN {exit !(x != "" && x + 0 >= lo && x + 0 <= hi)}'; }
+tests/e2e/vntyper-1.sh	SC2016	check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/vntyper-1.sh	SC2329	retry() { local i; for i in 1 2 3; do "$@" && return 0; [ "$i" -lt 3 ] && { echo " try ${i} of 3 failed; again in $((i * 30)) s"; sleep $((i * 30)); }; done; return 1; }
+tests/e2e/y-str-1.sh	SC2016	check "control: the comparison sees a difference" bash -c '! cmp -s "$1" "$2"' _ \
+tests/e2e/y-str-1.sh	SC2329	fetch_reads() {
+tests/e2e/y-str-1.sh	SC2329	retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo " try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
+tests/e2e/y-tree-current-1-placement.sh	SC2086	return $ok
+tests/e2e/y-tree-current-1-placement.sh	SC2329	judge() {
+tests/e2e/y-tree-current-1-placement.sh	SC2329	not() { ! "$@"; }
+tests/fake-docker/bash-step-clinvar-refresh.sh	SC2015	[ -f "${C}/${f}.tbi" ] && ! grep -q placeholder "${C}/${f}.tbi" || fail "${f}.tbi was not rebuilt"
+tests/fake-docker/followups-nf-manifest-release.sh	SC2115	rm -rf "${CASE_WORK}/$1"
+tests/fake-docker/prs-scores-and-run-options-rerun.sh	SC2013	for id in $(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${REPO_ROOT}/assets/pgs_scores.tsv"); do
+tests/fake-docker/prs-scores-and-run-options-rerun.sh	SC2016	if grep -q '>>> previous run' "${B}/scripts/25-prs.sh" || ! grep -q '^rm -rf "\$WORK"; mkdir' "${B}/scripts/25-prs.sh"; then
+tests/fake-docker/prs-scores-and-run-options-rerun.sh	SC2016	| sed 's|^mkdir -p "\${WORK}/scores"$|rm -rf "$WORK"; mkdir -p "${WORK}/scores"|' > "${B}/scripts/25-prs.sh"
+tests/fake-docker/run-all-ancestry-y.sh	SC2154	PANEL="${G}/reference/pgsc_calc/${PGSC_PANEL}.tar.zst"
+tests/fake-docker/run-all-ancestry-y.sh	SC2154	PC="${G}/tools/pgsc_calc-${PGSC_CALC_VERSION}"
+tests/fake-docker/run-all-ancestry-y.sh	SC2154	YD="${G}/reference/yleaf-${YLEAF_DATA_VERSION}/data"
+tests/fake-docker/run-all-families.sh	SC2016	printf '#!/usr/bin/env bash\necho "%s $*" >> "${CASE_WORK}/family-steps.log"\n' "${n%%-*}" > "${R}/scripts/${n}.sh"
+tests/fake-docker/run-all-switches.sh	SC2016	printf '#!/bin/sh\n[ "$1" != -u ] || { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > "${CASE_WORK}/root/id"
+tests/fake-docker/run-state-planned-rows.sh	SC1003	tools=$(grep '^nextflow :: ' "$FAKE_DOCKER_LOG" | tail -1 | sed -n 's/.* --tools \([^ ]*\) .*/\1/p' | tr -d '\\')
+tests/fake-docker/run-state-planned-rows.sh	SC1010	[ "$(rs "${CASE_WORK}/after.json" 07)" = done ] || fail "og run state: step 07 is not done after the run"
+tests/fake-docker/single-source-downloads.sh	SC2012	mode() { ls -ld "$1" | cut -c1-10; }
+tests/fake-docker/single-source-sample-name.sh	SC2016	for bad in '../x' '..' '.' 'a b' 'x;id' 'x$(id)' '-x' ''; do
+tests/fake-docker/str-catalog-setup-and-steps.sh	SC2015	[ "$(wc -c < "${BAD}/${EH_FILE}")" = "$(wc -c < "${SERVED}/${EH_FILE}")" ] && ! cmp -s "${SERVED}/${EH_FILE}" "${BAD}/${EH_FILE}" \
+tests/fake-docker/str-catalog-setup-and-steps.sh	SC2059	{ head -c "$h" "$1"; printf "\\$(printf %03o $((b ^ 1)))"; tail -c $((n - h - 1)) "$1"; } > "$2"
+tests/parity/inputs/ci-readers/oracle.sh	SC2329	at_least() { :; }
+tests/parity/inputs/ci-readers/oracle.sh	SC2329	py() { python3 -I -c "$2" > /dev/null; }
+tests/parity/inputs/ci-readers/oracle.sh	SC2329	same() { :; }
+tests/parity/inputs/clinvar-join-adjacent/oracle.sh	SC1007	mode= window= fasta= file=
+tests/parity/inputs/clinvar-join-adjacent/oracle.sh	SC1007	mode= window= fasta= file=
+tests/parity/inputs/clinvar-join-adjacent/oracle.sh	SC1007	mode= window= fasta= file=
+tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= allow= skip= patterns= cached=
+tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= allow= skip= patterns= cached=
+tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= allow= skip= patterns= cached=
+tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= allow= skip= patterns= cached=
+tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= exempt= pairs=
+tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= exempt= pairs=
+tests/parity/shadow-self-test.sh	SC2001	sed 's/^/ /' <<< "$out"
+tests/smoke/locityper.sh	SC2016	PAF_TAGS='function tags( i, j, t) {
+tests/smoke/parascopy.sh	SC2086	set -- $f
+tests/smoke/t1k.sh	SC2012	SEQ=$(ls hlaidx/*_dna_seq.fa 2>/dev/null | head -n 1)
+tests/smoke/t1k.sh	SC2012	SEQ=$(ls hlaidx_seq/*_dna_seq.fa | head -n 1)
+tests/test_consumer_sites_pin.sh	SC2059	{ printf '\037\213\010\000'; printf "\\$(printf %03o "$3")\\000\\000\\000"; gzip -cn < "$1" | tail -c +9; } > "$2"
+tests/test_e2e_data_cache.sh	SC2016	pin=$(sed -n 's/^HLA_DB_RELEASE=\${HLA_DB_RELEASE:-\(.*\)}$/\1/p' "${REPO}/scripts/lib/common.sh")
+tests/test_e2e_data_cache.sh	SC2094	(cd "${T}/hla" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+tests/test_e2e_data_cache.sh	SC2094	(cd "${T}/hla" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+tests/test_fixitfelix.sh	SC2016	&& grep -q -- '-w "$(cpath "$dir")"' <<< "$body"; then echo og; fi
+tests/test_fixitfelix.sh	SC2016	if grep -q '/pgp-bin/og setup mask-fasta "$(basename "$src")" "$(basename "$bed")" "$(basename "$dest").part"' <<< "$body" \
+tests/test_og_check.sh	SC2010	[[ "$out" != *"Installed og"* ]] && [ "$(bash "$OG" built)" = "$h0" ] && [ -z "$(ls -A "${C}/bin/.og" | grep tmp)" ] \
+tests/test_og_check.sh	SC2015	&& ok "a failed copy keeps the old pair and leaves no temporary file" || bad "after a failed copy: $(ls -A "${C}/bin/.og"), built $(bash "$OG" built)"
+tests/test_og_check.sh	SC2015	&& ok "a release installs the macOS pair too" || bad "after install: $(ls -A "${C}/bin/.og")"
+tests/test_og_check.sh	SC2015	&& ok "committing the edit keeps the hash the build would stamp" || bad "hash after commit differs"
+tests/test_og_check.sh	SC2015	[ ! -e "${C}/bin/.og/og-linux-x86_64" ] && ok "a refused release installs nothing" || bad "a refused release left a binary"
+tests/test_og_check.sh	SC2015	[ ! -e "${C}/bin/.og/og-linux-x86_64" ] && ok "a release without the macOS pair installs nothing" || bad "it left $(ls -A "${C}/bin/.og")"
+tests/test_og_check.sh	SC2015	[ "$(bash "$OG" built)" = "$h1" ] && ok "the installed binaries carry the tree" || bad "built after install: $(bash "$OG" built)"
+tests/test_og_check.sh	SC2015	[ "$(bash "$OG" tree-hash)" = "$h0" ] && ok "restoring the table restores the hash" || bad "restored table has a different hash"
+tests/test_og_check.sh	SC2015	[ "$h0" = "$(committed_hash)" ] && ok "source hash covers rust/ and the embedded table" || bad "source hash omits an input"
+tests/test_og_check.sh	SC2015	[ "$h1" != "$h0" ] && ok "an uncommitted edit changes the tree hash" || bad "tree hash did not change after an edit"
+tests/test_og_check.sh	SC2015	[ "$ha" != "$h0" ] && ok "an embedded table edit changes the source hash" || bad "embedded table edit did not change the hash"
+tests/test_og_check.sh	SC2015	[ "$row" = "$h1" ] && ok "run_manifest.tsv records og_tree_hash" || bad "run_manifest.tsv og_tree_hash row: '${row}'"
+tests/test_og_check.sh	SC2015	[[ "$out" != *"must not be reached"* ]] && ok "no build after a failed download" || bad "a failed download started a build"
+tests/test_og_check.sh	SC2015	[[ "$out" != *"must not be reached"* ]] && ok "run-all.sh stopped before nextflow" || bad "run-all.sh reached nextflow"
+tests/test_og_check.sh	SC2015	[[ "$out" == *"[OK]"*"og is built for x86_64, aarch64"* ]] && ok "validate-setup.sh passes a fresh og" || bad "validate-setup.sh: $(grep -i ' og ' <<< "$out")"
+tests/test_og_check.sh	SC2015	out=$(bash "$OG" built); [ "$out" = "$h0" ] && ok "built prints the one hash" || bad "built printed '${out}'"
+tests/test_og_check.sh	SC2015	out=$(bash "$OG" built); [ "$out" = "$h0" ] && ok "built still prints the Linux hash" || bad "built printed '${out}'"
+tests/test_og_check.sh	SC2015	out=$(bash "$OG" built); [ "$out" = "not built" ] && ok "built without binaries: not built" || bad "built printed '${out}'"
+tests/test_og_check.sh	SC2015	out=$(bash "$OG" built); [[ "$out" == "x86_64=unknown aarch64=${h1}" ]] && ok "built lists both hashes when they differ" || bad "built printed '${out}'"
+tests/test_og_check.sh	SC2016	printf '#!/bin/sh
+tests/test_og_check.sh	SC2016	printf '#!/usr/bin/env bash\nfor arg in "$@"; do\n case $arg in *"/assets/imprinted_regions.tsv:/assets/imprinted_regions.tsv:ro") echo EMBEDDED_TABLE_MOUNT_OK; exit 99 ;; esac\ndone\necho EMBEDDED_TABLE_MOUNT_MISSING\nexit 98\n' > "${T}/fake/embed-engine"
+tests/test_og_check.sh	SC2053	if [ "$2" -eq "$3" ] && [[ "$4" == $5 ]]; then ok "$1"; else bad "$1: exit $2 (want $3), output: $4"; fi
+tests/test_og_check.sh	SC2143	[[ "$out" != *"Installed og"* ]] && [ "$(bash "$OG" built)" = "$h0" ] && [ -z "$(ls -A "${C}/bin/.og" | grep tmp)" ] \
