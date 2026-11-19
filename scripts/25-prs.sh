@@ -17,7 +17,7 @@
 # 0/0 instead of a missing site. Without it, only your variant sites are
 # scored and the summary's Input column says vcf.
 #
-# pgsc_calc reads a site the genotypes leave out as the reference. When under
+# A site the genotypes leave out adds nothing to a score's sum. When under
 # one in five of the genotyped positions is a reference call (0/0), the input
 # lists variants only: each score keeps its raw sum, its percentile is
 # withheld (Percentile_Note), and the step prints a NOTE. A chip VCF from
@@ -439,9 +439,14 @@ echo "============================================"
 echo ""
 echo "IMPORTANT: a polygenic score is NOT diagnostic. It estimates relative genetic"
 echo "predisposition; lifestyle, environment and other genes are not captured."
-if $USE_PANEL; then
+if $USE_PANEL && awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next}
+    c["Percentile"] && $c["Percentile"] != "NA" {found = 1} END {exit !found}' "$RESULTS_FILE"; then
   echo "The percentile compares your score with the reference samples whose genetic"
   echo "ancestry is most similar to yours. See docs/25-prs.md."
+elif $USE_PANEL; then
+  echo "No percentile: the ancestry reference panel gave none for these scores (the"
+  echo "input lists variants only, or no score matched enough variants), so a raw sum"
+  echo "cannot be compared with anyone. See docs/25-prs.md."
 else
   echo "Raw score only: without the ancestry reference panel there is no percentile,"
   echo "and a raw sum cannot be compared with anyone (scripts/setup.sh --ancestry-panel)."

@@ -505,7 +505,7 @@ fn a_variant_only_input_keeps_its_sum_and_loses_its_percentile() {
     assert!(
         stdout.ends_with(
             "NOTE: hom-ref sites are absent from this input (0 of 4 genotyped positions are \
-             reference calls), so a missing site reads as the reference and the sums are \
+             reference calls), so a missing site adds nothing to the sum and the sums are \
              biased; not comparable to published distributions, and no percentile is given\n"
         ),
         "{stdout}"

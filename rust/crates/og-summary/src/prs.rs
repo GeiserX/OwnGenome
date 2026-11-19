@@ -18,7 +18,7 @@
 //!   errors.
 //! - A score matched against genotypes that list variants only loses its
 //!   percentile (see [`Genotypes`]): every site such an input leaves out
-//!   reads as the reference, so the sum leans away from the panel's sums.
+//!   adds nothing to the sum, so the sum leans away from the panel's sums.
 //!
 //! The table's columns are [`COLUMNS`], with [`EFFECT_COLUMNS`] before
 //! `Input` when any score has evaluations, and [`NOTE_COLUMN`] before
@@ -121,14 +121,17 @@ pub type TableRow = [String; 16];
 /// The called genotypes of the file pgsc_calc scored (the score positions,
 /// and with a panel the panel's), and how many of them are reference calls.
 ///
-/// pgsc_calc reads a position the file leaves out as the reference allele
-/// on both copies. That is true only when the file lists reference calls:
-/// genotypes from a gVCF, or a chip VCF (scripts/chip-to-vcf.sh writes every
-/// probe). A variant-only VCF lists none, so each of its missing sites may
-/// be a variant it never called, and its percentile would sit among the
-/// panel's complete genotypes as if it were one of them. The evidence is in
-/// the genotypes themselves, never in the input's name: a gVCF with no
-/// reference blocks over the sites is as blind as a variant-only VCF.
+/// pgsc_calc drops a position the file leaves out from the score, so it adds
+/// nothing to the sum, as if no effect allele were there. When the file
+/// lists reference calls (genotypes from a gVCF, or a chip VCF:
+/// scripts/chip-to-vcf.sh writes every probe), a missing position is one
+/// that was not read, and the sum stays comparable. A variant-only VCF lists
+/// none, so every site where the sample matches the reference is missing,
+/// and a reference effect allele carried there adds nothing: its percentile
+/// would sit among the panel's complete genotypes as if it were one of them.
+/// The evidence is in the genotypes themselves, never in the input's name: a
+/// gVCF with no reference blocks over the sites is as blind as a variant-only
+/// VCF.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Genotypes {
     /// Records with a genotype whose every allele is called.
@@ -768,7 +771,7 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
             writeln!(
                 out,
                 "NOTE: hom-ref sites are absent from this input ({} of {} genotyped positions are \
-                 reference calls), so a missing site reads as the reference and the sums are \
+                 reference calls), so a missing site adds nothing to the sum and the sums are \
                  biased; not comparable to published distributions, and no percentile is given",
                 g.hom_ref, g.called
             )
