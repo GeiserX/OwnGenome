@@ -250,22 +250,34 @@ https://raw.githubusercontent.com/Griffan/VerifyBamID/v2.0.3/resource/1000g.phas
 https://raw.githubusercontent.com/Griffan/VerifyBamID/v2.0.3/resource/1000g.phase3.100k.b38.vcf.gz.dat.bed 0025d782137e5906bbc7afc553c49d2c82c5b8f0bfa0649bc415887442f42869"
 
 # install_sample_qc_data: install both under GENOME_DIR/reference unless they
-# are there. Returns 1 when a download fails its check.
+# are there with their pinned sha256. A file already there is checked again on
+# every run: one with another sha256 (copied by hand, damaged, or from an older
+# pin) is downloaded again. Returns 1 when a download fails its check.
 install_sample_qc_data() {
-  local dest="${GENOME_DIR}/reference" url sha rc=0
-  if [ -s "${dest}/somalier/sites.hg38.vcf.gz" ]; then
-    echo "[OK] somalier sites (step 33) already present."
-  elif fetch "$SOMALIER_SITES_URL" "${dest}/somalier/sites.hg38.vcf.gz" sha256 "$SOMALIER_SITES_SHA256"; then
-    echo "[OK] somalier sites (step 33): ${dest}/somalier/sites.hg38.vcf.gz"
+  local dest="${GENOME_DIR}/reference" url sha rc=0 f
+  f="${dest}/somalier/sites.hg38.vcf.gz"
+  if [ -s "$f" ] && [ "$(_digest sha256 "$f")" = "$SOMALIER_SITES_SHA256" ]; then
+    echo "[OK] somalier sites (step 33) already present (sha256 matches)."
   else
-    echo "[WARN] Could not install somalier's sites. Step 33 needs them; re-run setup.sh."
-    rc=1
+    if [ -s "$f" ]; then
+      echo "[WARN] ${f} is not the pinned file (sha256 differs): downloading it again."
+    fi
+    if fetch "$SOMALIER_SITES_URL" "$f" sha256 "$SOMALIER_SITES_SHA256"; then
+      echo "[OK] somalier sites (step 33): ${f}"
+    else
+      echo "[WARN] Could not install somalier's sites. Step 33 needs them; re-run setup.sh."
+      rc=1
+    fi
   fi
   while read -r url sha; do
-    if [ -s "${dest}/verifybamid2/$(basename "$url")" ]; then
+    f="${dest}/verifybamid2/$(basename "$url")"
+    if [ -s "$f" ] && [ "$(_digest sha256 "$f")" = "$sha" ]; then
       continue
     fi
-    if ! fetch "$url" "${dest}/verifybamid2/$(basename "$url")" sha256 "$sha"; then
+    if [ -s "$f" ]; then
+      echo "[WARN] ${f} is not the pinned file (sha256 differs): downloading it again."
+    fi
+    if ! fetch "$url" "$f" sha256 "$sha"; then
       echo "[WARN] Could not install $(basename "$url") of VerifyBamID2's panel. Step 33 needs it; re-run setup.sh."
       rc=1
     fi
