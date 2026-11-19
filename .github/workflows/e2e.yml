@@ -112,7 +112,7 @@ env:
   # ports a tool adds it here for its pull request.
   # str-motif left on purpose: og keeps pathogenic and unknown minority
   # motif reads as uncertain_motif, which the Python did not (claim sv-28).
-  OG_SHADOW: setup-mask-fasta dev-schema dev-contract pgx-cyp2d6-bed pgx-cyp2d6-measure pgx-cyp2d6-check str-catalog cdna-check comphet-phase
+  OG_SHADOW: setup-mask-fasta dev-contract pgx-cyp2d6-bed pgx-cyp2d6-measure pgx-cyp2d6-check str-catalog cdna-check comphet-phase
   # The shard legs besides the base leg. A full run uses all of them; a run
   # of picked cases runs fewer when they fit (scripts/ci/e2e-shards.sh count). The cases took 230
   # minutes in one job on 2026-11-02 (run 41390434697).

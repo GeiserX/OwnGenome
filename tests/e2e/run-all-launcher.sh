@@ -11,7 +11,7 @@
 #      not from the FASTQ its samplesheet named: no FASTP, minimap2 or
 #      DeepVariant task runs. A third run finds every task in Nextflow's cache
 #      (-resume): no task runs again, and it ends in minutes.
-#   3. The reports and logs/run_status.tsv are written.
+#   3. The reports, logs/run_status.tsv and OwnHealth's facts file are written.
 #   4. It runs as the guide documents it, without THREADS or --max_memory:
 #      the launcher passes the runner's CPU count and RAM, and Nextflow starts
 #      the 8-CPU and 32 GB tasks capped to them instead of refusing them.
@@ -76,12 +76,13 @@ upstream_tasks() {
     $c["status"] != "CACHED" && $c["name"] ~ /(^|:)(FASTP|MINIMAP2_INDEX|ALIGN_MINIMAP2|DEEPVARIANT)( |$)/ {k++} END {print k + 0}' "$1" 2>/dev/null || echo 0
 }
 # published DIR: the files under DIR, relative, without the launcher's own (inputs, launch directory,
-# logs, manifest, bash reports, the run-to-run delta and its history copies) and the two outputs
+# logs, manifest, bash reports, the run-to-run delta and its history copies, OwnHealth's facts
+# file) and the two outputs
 # the direct case makes and run-all.sh does not. The PRS summary's dated copy is named by the
 # time of its run, so its stamp is masked.
 published() {
   (cd "$1" && find . -type f | sed -E 's|^\./||; s/_prs_summary\.[0-9]{8}-[0-9]{4}(-[0-9]+)?\.tsv$/_prs_summary.TIME.tsv/' | LC_ALL=C sort) \
-    | grep -vE "^(fastq|nextflow|logs|vep)/|^run_manifest\.tsv$|^summary\.json$|^${P}_report\.(html|txt)$|^${P}_delta\.(html|txt|json)$|^history/"
+    | grep -vE "^(fastq|nextflow|logs|vep)/|^run_manifest\.tsv$|^summary\.json$|^${P}_report\.(html|txt)$|^${P}_delta\.(html|txt|json)$|^history/|^facts/${P}_genome_facts\.json$"
 }
 
 # --- 6. a container engine smaller than the host --------------------------------------------
@@ -229,6 +230,8 @@ check_eq "parity of the launcher's outputs with the bash steps (exit)" "$?" 0
 check "the HTML report (step 24) is written" test -s "${G2}/${P}/${P}_report.html"
 check "the text report is written" test -s "${G2}/${P}/${P}_report.txt"
 check "summary.json validates" "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "${G2}/${P}/summary.json"
+check "OwnHealth's facts file validates against its schema" "${REPO}/bin/og" dev schema \
+  "${REPO}/assets/ownhealth/genome-facts.v1.json" "${G2}/${P}/facts/${P}_genome_facts.json"
 STATUS=$(cat "${G2}/${P}/logs/run_status.tsv" 2>/dev/null)
 check "run_status.tsv records step 07 ok" has $'^step\t07\tok$' "$STATUS"
 check "run_status.tsv records step 13 skipped" has $'^step\t13\tskipped ' "$STATUS"
