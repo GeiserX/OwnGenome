@@ -170,8 +170,9 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - **Labels**: `assets/pgs_scores.tsv` holds each PGS ID with the catalog's trait; `scripts/ci/check-pgs-labels.sh` checks them against the PGS Catalog.
 
 ### Chip Data Conversion
-- **NEVER use plink 1.9 for single-sample chip-to-VCF.** plink's `.bim` format encodes monomorphic sites with one allele. For single-sample data, ALL homozygous positions are monomorphic. `--ref-from-fa` cannot fix these. Result: all hom-ALT genotypes silently become hom-REF.
+- **NEVER use plink 1.9 for single-sample chip-to-VCF.** A single-sample import writes monomorphic sites with the second allele missing. For single-sample data, ALL homozygous positions are monomorphic. `--ref-from-fa` does not fill in a missing allele. Result: all hom-ALT genotypes silently become hom-REF.
 - **Use `bcftools convert --tsv2vcf -f <reference.fa>`** instead.
+- **chip-to-vcf.sh checks the genome build, never trusts the vendor.** It stops when a header line names a build other than 37 and not 37 too, or when more than 10% of at least 200 heterozygous calls miss the GRCh37 reference base (positions from another build).
 - **MyHeritage CSV needs pre-conversion** to TSV format.
 - **hg19 VCF needs chr prefix** before liftover — use `bcftools annotate --rename-chrs`.
 - **PharmCAT on chip data**: Misses CYP2C19 (25 positions), VKORC1 (1 position), miscalls CYP3A5.
