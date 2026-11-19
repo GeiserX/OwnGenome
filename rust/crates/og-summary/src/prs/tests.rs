@@ -420,3 +420,227 @@ fn usage_errors_exit_2() {
         "{err}"
     );
 }
+
+/// A one-sample VCF with these GT cells, one record each; gzipped as
+/// step 25 and PRS_SCORE_SITES write it.
+fn target(d: &Dir, name: &str, gts: &[&str]) -> String {
+    let mut body = String::from(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n",
+    );
+    for (k, gt) in gts.iter().enumerate() {
+        body.push_str(&format!(
+            "1\t{}\t.\tA\tG\t.\tPASS\t.\tGT:GQ\t{gt}:30\n",
+            k + 1
+        ));
+    }
+    d.put_gz(name, &body)
+}
+
+/// og prs table on the panel results of [`results`] and the scores of
+/// [`two_scores`], for this input kind and genotypes.
+fn with_target(d: &Dir, kind: &str, gts: Option<&[&str]>) -> (u8, String, Vec<Vec<String>>) {
+    let pgs = two_scores(d);
+    results(d, "adj", true);
+    let (res, out) = (d.path("adj"), d.path("out.tsv"));
+    let t = gts.map(|g| target(d, "target.vcf.gz", g));
+    let mut a = vec![
+        "--sample",
+        "S",
+        "--sampleset",
+        "sample",
+        "--input-kind",
+        kind,
+        "--results",
+        &res,
+        "--scores",
+        &pgs,
+        "--panel",
+        "p",
+        "--out",
+        &out,
+    ];
+    if let Some(t) = &t {
+        a.extend(["--target", t.as_str()]);
+    }
+    let (code, stdout, stderr) = run(cli, &a);
+    assert_eq!(stderr, "");
+    let rows = std::fs::read_to_string(&out)
+        .unwrap()
+        .lines()
+        .map(|l| l.split('\t').map(str::to_owned).collect())
+        .collect();
+    (code, stdout, rows)
+}
+
+/// The cell of `col` in row `k` (0 is the header).
+fn cell<'a>(rows: &'a [Vec<String>], k: usize, col: &str) -> &'a str {
+    let i = rows[0].iter().position(|c| c == col).unwrap();
+    &rows[k][i]
+}
+
+#[test]
+fn a_variant_only_input_keeps_its_sum_and_loses_its_percentile() {
+    // What a variant-only VCF gives pgsc_calc: het and hom-alt calls only.
+    let d = Dir::new("prs-variants-only");
+    let (code, stdout, rows) = with_target(&d, "vcf", Some(&["0/1", "1/1", "0|1", "1/1"]));
+    assert_eq!(code, 0);
+    let mut cols: Vec<&str> = COLUMNS[..12].to_vec();
+    cols.extend(EFFECT_COLUMNS);
+    cols.extend([NOTE_COLUMN, "Input"]);
+    assert_eq!(rows[0], cols);
+    assert_eq!(cell(&rows, 1, "Score_SUM"), "1.25");
+    assert_eq!(cell(&rows, 1, "Percentile"), "NA");
+    assert_eq!(cell(&rows, 1, "Effect"), "");
+    assert_eq!(cell(&rows, 1, NOTE_COLUMN), WITHHELD);
+    assert_eq!(cell(&rows, 1, "Input"), "vcf");
+    // PGS000002 had no percentile to withhold.
+    assert_eq!(cell(&rows, 2, NOTE_COLUMN), "");
+    assert!(
+        stdout.contains(
+            "sum 1.25, 2 of 3 variants matched (66.7%), percentile withheld: the input lists variants only\n"
+        ),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("percentile 94.4"), "{stdout}");
+    assert!(
+        stdout.ends_with(
+            "NOTE: hom-ref sites are absent from this input (0 of 4 genotyped positions are \
+             reference calls), so a missing site reads as the reference and the sums are \
+             biased; not comparable to published distributions, and no percentile is given\n"
+        ),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn a_chip_shaped_input_keeps_its_percentile() {
+    // scripts/chip-to-vcf.sh writes every probe: most are 0/0.
+    let d = Dir::new("prs-chip");
+    let gts = ["0/0", "0/0", "0/1", "0/0", "1/1", "0/0", "./.", "0/0"];
+    let (code, stdout, rows) = with_target(&d, "vcf", Some(&gts));
+    assert_eq!(code, 0);
+    assert_eq!(cell(&rows, 1, "Percentile"), "94.4");
+    assert_eq!(cell(&rows, 1, "Effect"), "HR 1.53 (EUR, PPM000591)");
+    assert_eq!(cell(&rows, 1, NOTE_COLUMN), "");
+    assert_eq!(cell(&rows, 1, "Input"), "vcf");
+    assert!(stdout.contains("percentile 94.4 among EUR"), "{stdout}");
+    assert!(
+        !stdout.contains("NOTE:") && !stdout.contains("withheld"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn the_genotypes_decide_never_the_input_kind() {
+    // A gVCF whose reference blocks miss every site is as blind as a
+    // variant-only VCF.
+    let d = Dir::new("prs-kind");
+    let (_, _, rows) = with_target(&d, "gvcf", Some(&["0/1", "1/1"]));
+    assert_eq!(cell(&rows, 1, "Percentile"), "NA");
+    assert_eq!(cell(&rows, 1, NOTE_COLUMN), WITHHELD);
+    let (_, _, rows) = with_target(&d, "gvcf", Some(&["0/0", "0/1"]));
+    assert_eq!(cell(&rows, 1, "Percentile"), "94.4");
+    assert_eq!(cell(&rows, 1, NOTE_COLUMN), "");
+    // Without --target there is no evidence and no note column: the table
+    // of older callers.
+    let (_, stdout, rows) = with_target(&d, "vcf", None);
+    assert_eq!(rows[0].len(), 15);
+    assert!(!rows[0].iter().any(|c| c == NOTE_COLUMN));
+    assert_eq!(cell(&rows, 1, "Percentile"), "94.4");
+    assert!(!stdout.contains("NOTE:"), "{stdout}");
+}
+
+#[test]
+fn a_withheld_percentile_leaves_other_rows_alone() {
+    // No panel: nothing to withhold, but the note on the input stays.
+    let d = Dir::new("prs-raw-target");
+    let pgs = two_scores(&d);
+    results(&d, "raw", false);
+    let res = d.path("raw");
+    let t = target(&d, "target.vcf.gz", &["0/1"]);
+    let (code, stdout, _, rows) = go(&d, &["--results", &res, "--scores", &pgs, "--target", &t]);
+    assert_eq!(code, 0);
+    assert_eq!(cell(&rows, 1, "Percentile"), "NA");
+    assert_eq!(cell(&rows, 1, NOTE_COLUMN), "");
+    assert!(
+        stdout.contains("NOTE: hom-ref sites are absent"),
+        "{stdout}"
+    );
+    // A score of the other sex says that, not the input's note.
+    let d = Dir::new("prs-sex-target");
+    formatted(
+        &d,
+        "pgs",
+        "PGS000001",
+        "Prostate cancer",
+        3,
+        "0\tleft out",
+        "male",
+        "",
+    );
+    results(&d, "adj", true);
+    let (res, pgs) = (d.path("adj"), d.path("pgs"));
+    let t = target(&d, "target.vcf.gz", &["1/1"]);
+    let (_, _, _, rows) = go(
+        &d,
+        &[
+            "--results",
+            &res,
+            "--scores",
+            &pgs,
+            "--panel",
+            "p",
+            "--sex",
+            "female",
+            "--target",
+            &t,
+        ],
+    );
+    assert_eq!(cell(&rows, 1, "Sex_Check"), SEX_NOT_APPLICABLE);
+    assert_eq!(cell(&rows, 1, NOTE_COLUMN), "");
+    // An unreadable target is an error, and no table.
+    std::fs::remove_file(d.path("out.tsv")).unwrap();
+    let (code, _, err, rows) = go(
+        &d,
+        &[
+            "--results",
+            &res,
+            "--scores",
+            &pgs,
+            "--target",
+            &d.path("none.vcf.gz"),
+        ],
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains("No such file or directory"), "{err}");
+    assert!(rows.is_empty());
+}
+
+#[test]
+fn genotypes_count_called_and_reference_calls() {
+    let d = Dir::new("prs-genotypes");
+    let p = d.put(
+        "t.vcf",
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n\
+         1\t1\t.\tA\tG\t.\tPASS\t.\tGT\t0/0\n\
+         1\t2\t.\tA\tG\t.\tPASS\t.\tGQ:GT\t30:0|0\n\
+         X\t3\t.\tA\tG\t.\tPASS\t.\tGT\t0\n\
+         1\t4\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n\
+         1\t5\t.\tA\tG\t.\tPASS\t.\tGT\t./.\n\
+         1\t6\t.\tA\tG\t.\tPASS\t.\tGT\t0/.\n\
+         1\t7\t.\tA\tG\t.\tPASS\t.\tGQ\t30\n\
+         1\t8\t.\tA\tG\t.\tPASS\t.\n\
+         1\t9\t.\tA\tG\t.\tPASS\t.\tGT\t1/2\r\n",
+    );
+    assert_eq!(
+        Genotypes::read(&p).unwrap(),
+        Genotypes {
+            called: 5,
+            hom_ref: 3
+        }
+    );
+    // One called site in five as 0/0 is enough; fewer, or none called, is not.
+    let g = |called, hom_ref| Genotypes { called, hom_ref }.lists_reference();
+    assert!(g(5, 1) && g(1, 1) && g(430_000, 300_000));
+    assert!(!g(6, 1) && !g(4, 0) && !g(0, 0));
+}
