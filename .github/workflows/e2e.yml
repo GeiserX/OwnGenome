@@ -1136,12 +1136,15 @@ jobs:
   # green only when the plan and every leg succeeded, every picked case
   # reported exactly one pass (one table of every case goes to the summary)
   # and each parity check whose cases ran passed once. Red when e2e-scope
-  # did not succeed. A leg that was skipped, cancelled or
-  # cut by its time limit leaves cases without a result, which is red too.
+  # did not succeed. A leg that was skipped, failed or cut by its time limit
+  # leaves cases without a result, which is red too. When the run itself is
+  # cancelled (a newer push to the pull request, or by hand), this job is
+  # cancelled with it and reads cancelled, not failed: nothing ran to fail.
+  # A cancelled check blocks a merge as a red one does.
   e2e:
     needs: [e2e-scope, e2e-plan, e2e-base, e2e-shards]
     if: >-
-      ${{ always() && (
+      ${{ !cancelled() && (
         github.event_name == 'pull_request' ||
         github.event_name == 'push' ||
         github.event_name == 'schedule' ||
@@ -1191,7 +1194,9 @@ jobs:
             export E2E_SELECT="${RUNNER_TEMP}/select.txt"
           fi
           if [ "$PLAN" != success ] || [ "$BASE" != success ] || [ "$LEGS" != success ]; then
-            echo "::error::The plan job ended ${PLAN:-unknown}, the base leg ${BASE:-unknown} and the shard legs ${LEGS:-unknown}; e2e needs all three to succeed."
+            # The run was not cancelled (then this job would not run), so a
+            # job that ended cancelled was cut by its time limit.
+            echo "::error::The plan job ended ${PLAN:-unknown}, the base leg ${BASE:-unknown} and the shard legs ${LEGS:-unknown}; e2e needs all three to succeed. A job that ended cancelled in a run that was not cancelled hit its time limit."
             rc=1
           fi
           dir="${RUNNER_TEMP}/reports"
