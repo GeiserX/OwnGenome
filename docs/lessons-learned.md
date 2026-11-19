@@ -33,7 +33,7 @@ Every failure encountered during pipeline development (Mar 2026), documented so 
 
 ### TelomereHunter: Permission denied
 - **Failed:** `OSError: [Errno 13] Permission denied: '/output/<sample>'` when writing output (the sample name in the error path will vary)
-- **Fix (then):** Added `--user root` to `docker run`. Step 10 now runs as the caller through `run_in`, which mounts the sample folder writable, so it needs no root.
+- **Fix (then):** Added `--user root` to `docker run`. Step 10 now runs as the caller through `run_in`, which mounts the sample folder writable, so it needs no root. Output that an earlier root run left in the sample folder is root-owned, and a run as the caller cannot overwrite it: take the folder back first ([Permission denied](troubleshooting.md#permission-denied-writing-to-mounted-volumes)).
 
 ### TelomereHunter: pip install on host fails
 - **Failed:** `pip install telomerehunter` on the host gives `UnicodeDecodeError` — Python environment issues
@@ -113,7 +113,7 @@ macOS is arm64; most Linux servers are amd64. Images built on Mac without `--pla
 Always use `--rm` for analysis containers to avoid accumulating stopped containers. Use `-d` (detached) for long-running jobs.
 
 ### Run containers as the caller, not as root
-Most bioinformatics containers name a non-root user of their own, which may not be able to write to a bind-mounted host folder. The early scripts ran every container with `--user root`, which left root-owned files in the sample folder. The step scripts now start each container through `run_in` (`scripts/lib/common.sh`) as the caller (`--user` with the caller's UID and GID, `HOME=/tmp`), with only the sample folder writable. A step whose image cannot run unprivileged passes `--root` at its call, with the reason in a comment. The Nextflow `docker` profile runs tasks as root with `docker.fixOwnership`, which gives the files back to the caller.
+Most bioinformatics containers name a non-root user of their own, which may not be able to write to a bind-mounted host folder. The early scripts ran every container with `--user root`, which left root-owned files in the sample folder. The step scripts now start each container through `run_in` (`scripts/lib/common.sh`) as the caller (`--user` with the caller's UID and GID, `HOME=/tmp`), with only the sample folder writable, plus any folder the call names with `--rw` (a shared index, for example). A step whose image cannot run unprivileged passes `--root` at its call, with the reason in a comment. The Nextflow `docker` profile runs tasks as root with `docker.fixOwnership`, which gives the files back to the caller.
 
 ## CI / Workflow Issues
 
