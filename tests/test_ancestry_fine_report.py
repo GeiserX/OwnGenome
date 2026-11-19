@@ -15,11 +15,12 @@
   chroms       a chromosome is painted only with 100 SNVs spanning 5 cM
   report       fractions with the bootstrap range, merged painting rows, the
                painted shares, a PNG of the right size, the left-out group
-               and the chromosome RFMix failed on, in the table, the text and
-               both pipeline reports (og summary collect, render_report.py)
+               and the chromosome RFMix failed on, in the table and the text
 
 The Rust unit tests (rust/crates/og-ancestry) and tests/parity check each
 command in detail; this test runs them as the pipeline does, through bin/og.
+Both pipeline reports of the table are checked by
+rust/crates/og-render/tests/ancestry_fine.rs.
 
 Run: OG=bin/og python3 tests/test_ancestry_fine_report.py
 """
@@ -31,7 +32,6 @@ import tempfile
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
 
 OG = os.environ.get("OG", "")
 FAILS = []
@@ -198,20 +198,6 @@ def run_all(tmp):
     expect("report: the text says chr19 was not painted, and chr20 still was",
            ("Not painted: RFMix failed on chr19" in text, "of chr20:" in text), (True, True))
 
-    # Both pipeline reports (og summary collect, then render_report.py) carry them.
-    import collect_summary  # noqa: E402
-    import render_report  # noqa: E402
-    sd = os.path.join(tmp, "S")
-    os.makedirs(os.path.join(sd, "ancestry_fine"))
-    for name in ("S_ancestry_fine.tsv", "S_painting.png"):
-        with open(os.path.join(rep, name), "rb") as src, open(os.path.join(sd, "ancestry_fine", name), "wb") as dst:
-            dst.write(src.read())
-    summ = collect_summary.collect("S", sd)
-    txt, html = render_report.text_report(summ), render_report.html_report(summ)
-    for kind, doc in (("text", txt), ("HTML", html)):
-        expect(f"report: the {kind} report names the group left out",
-               "Left out of the model: Oceania (continental and regional group). The panel has fewer than 10" in doc, True)
-        expect(f"report: the {kind} report names the chromosome not painted", "not painted: RFMix failed on chr19" in doc, True)
     os.remove(os.path.join(paint, "failed.txt"))
     os.remove(os.path.join(paint, "chr20.msp.tsv"))
     r = og("report", "--sample", "S", "--model", model, "--admixture", radm, "--paint", paint, "--panel", "test",
