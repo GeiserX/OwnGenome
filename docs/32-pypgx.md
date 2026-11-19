@@ -14,9 +14,9 @@ pypgx also calls genes absent from PharmCAT entirely, among them COMT, MTHFR, AB
 
 ## Tool
 
-- **pypgx** v0.26.0 (Sboner Lab, Weill Cornell Medicine)
-- License: Apache-2.0 (GPL-3.0 compatible)
-- Publication: [Lee et al., 2019](https://doi.org/10.1002/cpt.1552)
+- **pypgx** v0.26.0, by Seung-been (Steven) Lee
+- License: MIT (GPL-3.0 compatible), the `LICENSE` file of the pinned tag
+- Publication: [Lee et al., 2022](https://doi.org/10.1371/journal.pone.0272129), "ClinPharmSeq: A targeted sequencing panel for clinical pharmacogenetics implementation", PLOS ONE: the article pypgx asks users to cite. pypgx grew out of Stargazer, by the same author, and asks for its two articles too: [Lee et al., 2019](https://doi.org/10.1002/cpt.1552) and [Lee et al., 2018](https://doi.org/10.1038/s41436-018-0054-0). Those two describe Stargazer, not pypgx.
 
 ## Docker Image
 
@@ -37,10 +37,14 @@ git clone --branch 0.26.0 --depth 1 https://github.com/sbslee/pypgx-bundle.git
 
 The bundle version must match the pypgx version (`0.26.0`). The script validates the bundle exists at `${GENOME_DIR}/reference/pypgx-bundle/` and exits with download instructions if missing.
 
+The pypgx-bundle repository has no licence file at tag `0.26.0`, and its README grants no terms, so who may copy or share it is not known. pypgx's MIT licence covers the tool's code, not the 1000 Genomes panels and copy-number models in the bundle. OwnGenome never ships, mirrors or uploads a copy: each user clones it from upstream onto their own machine, as above.
+
 ### Input files
 
 - BAM from alignment (step 2): `${GENOME_DIR}/${SAMPLE}/aligned/${SAMPLE}_sorted.bam` (+ `.bai` index)
 - VCF from variant calling (step 3): `${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz` (+ `.tbi` index)
+
+The BAM must be aligned to a reference without ALT or HLA contigs. The step reads its header first (`og cn check-bam`): a BAM with such contigs stops it with a `REFUSED` line and exit 1. When that check cannot run (the header cannot be read, or the check itself fails), the step stops with an `ERROR` line and exit 2, so an unchecked BAM never reaches pypgx.
 
 ## Command
 
@@ -108,6 +112,16 @@ These are called from the VCF only. Star alleles are determined from variant cal
 | ABCB1 | Drug efflux (broad substrate range) | -- | Not in PharmCAT |
 | IFNL3 | Peginterferon (historical, DAAs replaced) | A | |
 
+### Weakly supported genes
+
+pypgx has a phenotype rule for only some of the genes it calls: its own gene table gives the others no `PhenotypeMethod`. For those, pypgx writes `Indeterminate` as the phenotype, and the summary says `no pypgx phenotype rule`. Four of them (CYP3A4, CYP4F2, VKORC1 and NAT2) also get a call and a phenotype from PharmCAT. The other 13 rest on pypgx alone: no phenotype, and no other tool in this pipeline calls the gene (`second_caller` is `none` in `assets/pgx_genes.tsv`). Read their star alleles and copy numbers as research calls, not as results on a par with the CPIC genes.
+
+**No pypgx phenotype rule (17):** CYP2A6, GSTM1, GSTT1, CYP2E1, CYP4F2, SLC22A2, SULT1A1, UGT1A4, UGT2B15, UGT2B17, CYP1A2, CYP3A4, VKORC1, NAT2, COMT, MTHFR, ABCB1.
+
+**Weakly supported, pypgx alone (13):** CYP2A6, GSTM1, GSTT1, CYP2E1, SLC22A2, SULT1A1, UGT1A4, UGT2B15, UGT2B17, CYP1A2, COMT, MTHFR, ABCB1.
+
+These two lists are for pypgx 0.26.0. `tests/test_pypgx_genes.sh` derives both from pypgx's gene table and `assets/pgx_genes.tsv` and fails when either line here differs.
+
 ## CYP2D6 Structural Variation Detection
 
 CYP2D6 is the most complex pharmacogene. It has a tandemly duplicated pseudogene (CYP2D7) with >90% sequence identity, and common structural variants in the general population:
@@ -139,7 +153,7 @@ All output is written to `${GENOME_DIR}/${SAMPLE}/pypgx/`.
 
 | File | Contents |
 |---|---|
-| `<gene>/results.zip` | Per-gene pypgx archive with genotype data |
+| `<gene>/results.zip` | Per-gene pypgx archive with genotype data. It is there only when pypgx succeeded on the gene in this run: the step removes each gene's results of an earlier run before pypgx starts, and writes each gene to `<gene>.part`, renamed to `<gene>` only when pypgx exits 0 |
 | `${SAMPLE}_pypgx_summary.tsv` | Consolidated: gene, diplotype, phenotype, pypgx's copy-number call, source |
 | `${SAMPLE}_cyp2d6_depth_check.tsv` | The CYP2D6 depth check: status (`ok` or `unreliable`), its message, the four depths and the MAPQ shares (see the depth check above) |
 | `cyp2d6_depth/` | mosdepth's region files the check read, and `mapq_shares.tsv`, the depths `measure` counted |
@@ -151,7 +165,7 @@ All output is written to `${GENOME_DIR}/${SAMPLE}/pypgx/`.
 |---|---|
 | Gene | Gene symbol |
 | Diplotype | Star allele call (e.g., \*1/\*4); `Indeterminate` for CYP2D6 when the depth check found multi-mapped reads; `FAILED` for a gene pypgx wrote no result for; `N/A` for a gene not callable on this reference (see Status) |
-| Phenotype | Metabolizer status (e.g., Intermediate Metabolizer). `no pypgx phenotype rule` for a gene pypgx has no phenotype rule for (no `PhenotypeMethod` in its own gene table; in 0.26.0 among the genes run here: CYP1A2, CYP2A6, CYP3A4, CYP4F2, VKORC1, NAT2, COMT, MTHFR, ABCB1, GSTM1, GSTT1), where pypgx itself writes `Indeterminate` |
+| Phenotype | Metabolizer status (e.g., Intermediate Metabolizer). `no pypgx phenotype rule` for a gene pypgx has no phenotype rule for (no `PhenotypeMethod` in its own gene table; in 0.26.0 the 17 genes listed under [Weakly supported genes](#weakly-supported-genes)), where pypgx itself writes `Indeterminate` |
 | CNV_call | The copy-number call pypgx itself made from read depth (its `CNV` field, for example `Normal` or `WholeDel1`). BAM-based genes only; `N/A` for VCF-based genes, and `N/A (CYP2D6 depth check)` for CYP2D6 when the depth check failed. Earlier versions guessed a Yes/No flag from the allele names, which flagged any name containing `*5` and missed the GSTM1/GSTT1/CYP2A6 whole-gene deletions |
 | Source | BAM (SV genes) or VCF (variant-based genes) |
 | Status | `called`, `no call` (pypgx ran and gave no diplotype), `no call (CYP2D6 depth check)`, `failed`, or `not callable on this reference` (GSTT1 on a reference without ALT contigs, see Limitations) |
@@ -211,7 +225,7 @@ The two tools are complementary. PharmCAT provides drug recommendations for the 
 
 ## Note on Aldy
 
-[Aldy](https://github.com/0xTCG/aldy) is widely considered the best CYP2D6 caller, with superior handling of complex structural rearrangements and hybrid alleles. However, Aldy is released under a custom academic-only license that is incompatible with GPL-3.0 redistribution. pypgx (Apache-2.0) is the GPL-compatible alternative used in this pipeline. If you are using this pipeline for personal/academic analysis and Aldy's license terms are acceptable, it can be run separately.
+[Aldy](https://github.com/0xTCG/aldy) is widely considered the best CYP2D6 caller, with superior handling of complex structural rearrangements and hybrid alleles. However, Aldy is released under a custom academic-only license that is incompatible with GPL-3.0 redistribution. pypgx (MIT) is the GPL-compatible alternative used in this pipeline. If you are using this pipeline for personal/academic analysis and Aldy's license terms are acceptable, it can be run separately.
 
 ## Limitations
 
@@ -222,7 +236,7 @@ The two tools are complementary. PharmCAT provides drug recommendations for the 
 - **The image and the bundle must be the same release.** The pinned pair is image `pypgx:0.26.0--pyh7e72e81_0` with the `0.26.0` branch of pypgx-bundle; with that pair all 23 genes of the earlier list, including its four BAM-based ones, were called on a real 30x genome (see [lessons learned](lessons-learned.md)). The 0.27.0 image against the 0.26.0 bundle failed every gene. Bump both together and rerun a known sample before trusting the new calls.
 - **GSTT1 needs an ALT contig, which the default reference does not have.** In GRCh38, GSTT1 lies on `chr22_KI270879v1_alt`. The pipeline's reference, the no-ALT analysis set, has no such contig (it leaves ALT contigs out so CYP2D6 and the other BAM genes keep their depth, see [realignment](realignment.md)). The step then prints a notice, leaves GSTT1 out of depth preparation (otherwise it fails for every BAM-based gene) and writes GSTT1 with Status `not callable on this reference`, not `FAILED`: nothing went wrong, the reference cannot hold the gene. Both reports list it as not assessable on this reference. The other 28 genes are called. The rule comes from the table: a row with `callable_without_alt` `no` and its `alt_contig`.
 - **A copy-number call is only as good as the depth it reads.** On a reference with ALT contigs and an aligner that is not run ALT-aware, reads at CYP2D6 split between the primary and ALT copies, depth on the primary drops, and pypgx can report a deletion that is not there. The [CYP2D6 depth check](#cyp2d6-depth-check) marks such a call `Indeterminate`, and step 36 reports CYP2D6 to PharmCAT only when two callers agree.
-- Individual gene failures do not stop the pipeline. However, if **all** genes fail, the script exits with status 1 before generating the summary TSV — this signals a systemic problem (e.g., wrong BAM path, corrupted index, missing pypgx-bundle). Rerun with verbose output to identify the root cause. For partial failures, check the summary TSV for "FAILED" entries.
+- Individual gene failures do not stop the pipeline. However, if **all** genes fail, the script exits with status 1 before generating the summary TSV — this signals a systemic problem (e.g., wrong BAM path, corrupted index, missing pypgx-bundle). Rerun with verbose output to identify the root cause. For partial failures, check the summary TSV for "FAILED" entries. A gene that failed in this run reads `FAILED` even when an earlier run called it: the earlier run's result is removed before pypgx starts.
 
 ## Maintenance
 
