@@ -51,15 +51,48 @@ pub fn metric<'a>(fmt: &[u8], smp: &'a [u8], key: &[u8]) -> Option<&'a [u8]> {
     format_value(fmt, smp, key, false).filter(|v| is_digits(v))
 }
 
+/// How the VCF header defines one metric (GQ or DP).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Declared {
+    /// A `##FORMAT` line defines it as a whole number (`Type=Integer`).
+    Integer,
+    /// A `##FORMAT` line defines it with another type, such as the
+    /// `Type=Float` GQ FreeBayes writes: `og clinvar hits` reads no value
+    /// that is not a whole number, so such a call is not judged on it.
+    Other,
+    /// No `##FORMAT` line defines it.
+    Absent,
+}
+
+impl Declared {
+    /// The definition a `##` header line gives `key`, if it is the
+    /// `##FORMAT` line of that key.
+    pub fn of_line(line: &[u8], key: &[u8]) -> Option<Declared> {
+        let head = [&b"##FORMAT=<ID="[..], key, b","].concat();
+        if !line.starts_with(&head) {
+            return None;
+        }
+        if line.windows(12).any(|w| w == b"Type=Integer") {
+            Some(Declared::Integer)
+        } else {
+            Some(Declared::Other)
+        }
+    }
+}
+
 /// The value of one metric (GQ or DP) on the combined record of parts with
-/// values `a` and `b`: the lower of the two; `0` when a part has none while
-/// the metric is `measured` (the VCF header defines it) or the other part
-/// has it, since nothing measured supports that part; none when the metric
-/// is not measured at all, as on every single call of that VCF.
-pub fn weakest(a: Option<&[u8]>, b: Option<&[u8]>, measured: bool) -> Option<Vec<u8>> {
-    match (a, b) {
-        (Some(x), Some(y)) => Some(if cmp_digits(x, y).is_le() { x } else { y }.to_vec()),
-        (None, None) if !measured => None,
+/// values `a` and `b`: the lower of the two. A part with no whole-number
+/// value counts as `0` when the header defines the metric as a whole number
+/// (`Type=Integer`), or defines no type for it while the other part has it:
+/// nothing measured supports that part. When the header defines the metric
+/// with another type, a part without a whole number gives the combined
+/// record no value, as `og clinvar hits` judges no such single call on it.
+/// A metric neither part has, and no `Type=Integer` line defines, stays off.
+pub fn weakest(a: Option<&[u8]>, b: Option<&[u8]>, declared: Declared) -> Option<Vec<u8>> {
+    match (a, b, declared) {
+        (Some(x), Some(y), _) => Some(if cmp_digits(x, y).is_le() { x } else { y }.to_vec()),
+        (None, None, Declared::Integer) => Some(b"0".to_vec()),
+        (None, None, _) | (_, _, Declared::Other) => None,
         _ => Some(b"0".to_vec()),
     }
 }
@@ -205,14 +238,31 @@ mod tests {
 
     #[test]
     fn a_combined_record_takes_the_weaker_part() {
-        let w = |a: Option<&[u8]>, b: Option<&[u8]>, m| weakest(a, b, m);
-        assert_eq!(w(Some(b"40"), Some(b"9"), true), Some(b"9".to_vec()));
-        assert_eq!(w(Some(b"9"), Some(b"40"), false), Some(b"9".to_vec()));
-        assert_eq!(w(Some(b"010"), Some(b"9"), true), Some(b"9".to_vec()));
-        assert_eq!(w(Some(b"40"), None, false), Some(b"0".to_vec()));
-        assert_eq!(w(None, Some(b"40"), false), Some(b"0".to_vec()));
-        assert_eq!(w(None, None, true), Some(b"0".to_vec()));
-        assert_eq!(w(None, None, false), None);
+        use Declared::{Absent, Integer, Other};
+        let w = |a: Option<&[u8]>, b: Option<&[u8]>, d| weakest(a, b, d);
+        assert_eq!(w(Some(b"40"), Some(b"9"), Integer), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"9"), Some(b"40"), Absent), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"9"), Some(b"40"), Other), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"010"), Some(b"9"), Integer), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"40"), None, Integer), Some(b"0".to_vec()));
+        assert_eq!(w(Some(b"40"), None, Absent), Some(b"0".to_vec()));
+        assert_eq!(w(None, Some(b"40"), Absent), Some(b"0".to_vec()));
+        assert_eq!(w(Some(b"40"), None, Other), None);
+        assert_eq!(w(None, None, Integer), Some(b"0".to_vec()));
+        assert_eq!(w(None, None, Absent), None);
+        assert_eq!(w(None, None, Other), None);
+    }
+
+    #[test]
+    fn a_metric_is_whole_numbers_only_when_typed_integer() {
+        let d = |l: &str, k: &str| Declared::of_line(l.as_bytes(), k.as_bytes());
+        let int = "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"q\">";
+        let float = "##FORMAT=<ID=GQ,Number=1,Type=Float,Description=\"q\">";
+        assert_eq!(d(int, "GQ"), Some(Declared::Integer));
+        assert_eq!(d(float, "GQ"), Some(Declared::Other));
+        assert_eq!(d(int, "DP"), None);
+        assert_eq!(d("##INFO=<ID=GQ,Number=1,Type=Integer>", "GQ"), None);
+        assert_eq!(d("##FORMAT=<ID=GQX,Number=1,Type=Integer>", "GQ"), None);
     }
 
     #[test]

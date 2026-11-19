@@ -15,8 +15,11 @@
 //!
 //! The combined record carries the GT (and PS) of the pair and, for each of
 //! GQ and DP, the weaker part's value ([`crate::hap::weakest`]): `0` when a
-//! part lacks a value the VCF measures (a `##FORMAT` line defines it, or the
-//! other part has it). So a combined allele of weak or unmeasured parts is a
+//! part lacks a value the VCF measures (a `##FORMAT` line defines it as a
+//! whole number, `Type=Integer`, or the other part has it while no line
+//! defines it). A metric defined with another type, such as FreeBayes's
+//! `Type=Float` GQ, is never read as 0: a part without a whole number there
+//! leaves it off the combined record. So a combined allele of weak or unmeasured parts is a
 //! low-confidence call to `og clinvar hits` and the reports, and leaves the
 //! headline count as any low-confidence call does.
 //!
@@ -34,7 +37,7 @@ use std::io::{self, BufRead, Write};
 
 use og_intervals::fasta::{FastaError, Indexed};
 
-use crate::hap::{Hap, gt_of, metric, weakest};
+use crate::hap::{Declared, Hap, gt_of, metric, weakest};
 use crate::text::{info_add, info_get, nth, same, set_column, split, upper, whole};
 
 /// The default distance: the second part starts at most this many bases
@@ -305,13 +308,13 @@ pub fn join(
     let mut parts: Vec<Part> = Vec::new();
     let mut pending: BTreeMap<(i64, u64), Pair> = BTreeMap::new();
     let mut found = 0u64;
-    // Whether the header defines FORMAT/GQ and FORMAT/DP.
-    let (mut has_gq, mut has_dp) = (false, false);
+    // How the header defines FORMAT/GQ and FORMAT/DP.
+    let (mut has_gq, mut has_dp) = (Declared::Absent, Declared::Absent);
     let mut line = Vec::new();
     while read_line(&mut input, &mut line)? {
         if line.starts_with(b"##") {
-            has_gq |= line.starts_with(b"##FORMAT=<ID=GQ,");
-            has_dp |= line.starts_with(b"##FORMAT=<ID=DP,");
+            has_gq = Declared::of_line(&line, b"GQ").unwrap_or(has_gq);
+            has_dp = Declared::of_line(&line, b"DP").unwrap_or(has_dp);
             if !is_pgp_info(&line) {
                 if in_header {
                     header.push(line.clone())

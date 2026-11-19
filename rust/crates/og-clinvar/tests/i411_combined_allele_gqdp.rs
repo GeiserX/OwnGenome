@@ -6,9 +6,11 @@
 //! DP on it and never marked it low confidence, even when both parts were
 //! GQ 3, DP 2 calls, and it counted in the headline. Now it carries, for
 //! each of GQ and DP, the lower of its parts' values, and `0` when a part
-//! lacks a value the VCF measures (a `##FORMAT` line, or the other part has
-//! it). A metric the VCF does not measure at all stays off the record, as it
-//! is off every single call of that VCF.
+//! lacks a value the VCF measures (a `##FORMAT` line with `Type=Integer`, or
+//! the other part has it while no line defines it). A metric the VCF does
+//! not measure at all stays off the record, as it is off every single call
+//! of that VCF, and so does one the header defines with another type (the
+//! `Type=Float` GQ FreeBayes writes) when a part has no whole number for it.
 //!
 //! Each check builds the combined record of two neighbouring calls on a
 //! small reference, puts ClinVar's columns on it as step 06 does, and reads
@@ -27,6 +29,12 @@ const MEASURED: &str = "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genot
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype quality\">\n\
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n\
 ##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase set\">\n";
+
+/// The FORMAT lines FreeBayes writes: GQ is a Float, and with no `-=` no
+/// record carries it.
+const FREEBAYES: &str = "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n\
+##FORMAT=<ID=GQ,Number=1,Type=Float,Description=\"Genotype Quality\">\n\
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n";
 
 const GT_ONLY: &str = "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n";
 
@@ -230,4 +238,27 @@ fn a_vcf_that_measures_neither_writes_neither() {
     let rec = combined("gt-only", &vcf(GT_ONLY, ("GT", "0/1"), ("GT", "1/0")));
     assert_eq!((rec[8].as_str(), rec[9].as_str()), ("GT", "0/1"));
     assert_eq!(judged(&rec, ""), s([".", ".", "no"]));
+}
+
+#[test]
+fn a_float_gq_is_never_read_as_zero() {
+    // FreeBayes defines GQ as a Float and, run without `-=`, writes it on no
+    // record. Two strong parts stay confident; DP still takes the weaker.
+    let rec = combined(
+        "freebayes",
+        &vcf(FREEBAYES, ("GT:DP", "0/1:60"), ("GT:DP", "0/1:58")),
+    );
+    assert_eq!((rec[8].as_str(), rec[9].as_str()), ("GT:DP", "0/1:58"));
+    assert_eq!(judged(&rec, ""), s(["58", ".", "no"]));
+    // With `-=` the values are not whole numbers, which hits never reads.
+    let rec = combined(
+        "freebayes-gq",
+        &vcf(
+            FREEBAYES,
+            ("GT:GQ:DP", "0/1:160.046:60"),
+            ("GT:GQ:DP", "0/1:2.5:8"),
+        ),
+    );
+    assert_eq!((rec[8].as_str(), rec[9].as_str()), ("GT:DP", "0/1:8"));
+    assert_eq!(judged(&rec, ""), s(["8", ".", "yes"]));
 }
