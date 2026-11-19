@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # bin/write_manifest.sh with two or more writers of one sample at once (a run
-# and a report script can both write run_manifest.tsv). A slow fake container
-# engine (each image lookup sleeps) keeps the writers overlapping for seconds.
+# and a report script can both write run_manifest.tsv). A fake container
+# engine holds each writer at its first image lookup, after it has started
+# its manifest, until every writer is there; then each lookup sleeps a little.
+# So the writers always overlap, however the runner schedules them.
 # Checked: every writer exits 0; the manifest is whole (three tab-separated
 # fields per line, each section/key once, the same keys as a lone writer
 # writes); no temporary file is left beside it. Red control: a copy of the
@@ -17,10 +19,25 @@ fails=0
 ok()  { echo "PASS $*"; }
 bad() { echo "FAIL $*"; fails=$((fails + 1)); }
 
-# A container engine that knows no image, slowly: write_manifest.sh asks it
-# twice per *_IMAGE line of versions.env.
+# A container engine that knows no image: write_manifest.sh asks it twice per
+# *_IMAGE line of versions.env. The barrier: the first call of writer
+# WRITER_ID marks BARRIER/WRITER_ID and waits (30 s at most) until WRITERS
+# writers have marked it. A writer's first call comes after it has written
+# its run and version rows into its temporary file.
 mkdir -p "${T}/fake"
-printf '#!/bin/sh\nsleep 0.01\nexit 0\n' > "${T}/fake/engine"
+cat > "${T}/fake/engine" <<'ENGINE'
+#!/bin/sh
+if [ ! -e "${BARRIER}/${WRITER_ID}" ]; then
+  : > "${BARRIER}/${WRITER_ID}"
+  i=0
+  while [ "$(find "$BARRIER" -type f | wc -l)" -lt "$WRITERS" ] && [ "$i" -lt 600 ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+fi
+sleep 0.01
+exit 0
+ENGINE
 chmod 755 "${T}/fake/engine"
 
 # whole MANIFEST REF: MANIFEST has three fields per line, no section/key
@@ -37,15 +54,15 @@ whole() {
   [ -z "$diff" ] || { echo "rows differ from a lone writer's: ${diff//$'\t'/ }"; return 1; }
 }
 
-# writers SCRIPT GENOME_DIR N: N writers of sample s1, 0.3 s apart, all at
-# once; prints their exit codes.
+# writers SCRIPT GENOME_DIR N: N writers of sample s1 at once, held together
+# at the barrier; prints their exit codes.
 writers() {
   local script=$1 gd=$2 n=$3 i pids=() rc codes=""
-  mkdir -p "${gd}/s1"
+  mkdir -p "${gd}/s1" "${gd}/barrier"
   for ((i = 1; i <= n; i++)); do
-    CONTAINER_ENGINE="${T}/fake/engine" GENOME_DIR="$gd" bash "$script" s1 "writer${i}" > /dev/null 2> "${gd}/err${i}" &
+    CONTAINER_ENGINE="${T}/fake/engine" BARRIER="${gd}/barrier" WRITER_ID="$i" WRITERS="$n" \
+      GENOME_DIR="$gd" bash "$script" s1 "writer${i}" > /dev/null 2> "${gd}/err${i}" &
     pids+=("$!")
-    sleep 0.3
   done
   for i in "${pids[@]}"; do
     rc=0
