@@ -151,8 +151,7 @@ fn a_pass_call_in_the_window_is_seen() {
 /// with no call, never "not seen".
 #[test]
 fn zero_depth_is_not_callable() {
-    let zero =
-        "chr9\t105639155\t105640156\tFKTN\t0\t0\nchrX\t71439992\t71440993\tTAF1\t0\t0\n";
+    let zero = "chr9\t105639155\t105640156\tFKTN\t0\t0\nchrX\t71439992\t71440993\tTAF1\t0\t0\n";
     let rows = sites("zero", &[], zero);
     for gene in ["FKTN", "TAF1"] {
         assert_eq!(

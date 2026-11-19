@@ -18,8 +18,12 @@
 //! (AnnotSV's table of the `annotsv-input` VCF) its genes, location, benign
 //! allele frequency and ACMG class. `--out-sites`: every row of the catalog
 //! with its status: `seen` (an insertion of the same element inside the
-//! window), `not seen` (none, with a mean depth of at least 10 over the
-//! window), or `not callable`.
+//! window that passed MEGAnE's filters, FILTER `PASS`), `call filtered out
+//! (FLAGS)` (only calls MEGAnE flagged, such as `LC`: the first one is
+//! named, with its FILTER), `not seen` (none, with a mean depth of at least
+//! 10 over the window), or `not callable` (no bedcov line for the window,
+//! or no call there and a mean under 10, zero included: too few reads to
+//! tell).
 //!
 //! `annotsv-input` writes the calls the table lists as the VCF AnnotSV
 //! reads (`<INS:ME>`, `SVTYPE=INS`, `END=POS`, and the ID the table is
@@ -400,20 +404,24 @@ fn site_status(
     let shown = crate::fixed(mean, 1);
     let calls = by_chrom.get(chrom.as_str()).map_or(&[][..], Vec::as_slice);
     let first = calls.partition_point(|c| c.pos < lo);
-    let hit = calls[first..]
+    let here: Vec<&Call> = calls[first..]
         .iter()
         .take_while(|c| c.pos <= hi)
-        .find(|c| c.element.name() == site[5]);
-    if let Some(c) = hit {
+        .filter(|c| c.element.name() == site[5])
+        .copied()
+        .collect();
+    let named = |c: &Call| {
         let cop = if c.copies == "1" { "y" } else { "ies" };
-        return Ok([
-            "seen".into(),
-            shown,
-            format!(
-                "{}:{} {} {} cop{cop} {}",
-                c.chrom, c.pos, c.subfamily, c.copies, c.filter
-            ),
-        ]);
+        format!(
+            "{}:{} {} {} cop{cop} {}",
+            c.chrom, c.pos, c.subfamily, c.copies, c.filter
+        )
+    };
+    if let Some(c) = here.iter().find(|c| c.filter == "PASS") {
+        return Ok(["seen".into(), shown, named(c)]);
+    }
+    if let Some(c) = here.first() {
+        return Ok([format!("call filtered out ({})", c.filter), shown, named(c)]);
     }
     if mean < MIN_DEPTH {
         return Ok(["not callable".into(), shown, ".".into()]);
