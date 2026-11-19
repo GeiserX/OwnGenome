@@ -19,8 +19,7 @@ Every failure encountered during pipeline development (Mar 2026), documented so 
 
 ### ExpansionHunter: Different image formats
 - **Failed:** `quay.io/biocontainers/expansionhunter:5.0.0--hd03093a_1` — manifest not found. Also `mgibio/expansionhunter:latest` — not found
-- **Fix:** Use `weisburd/expansionhunter:latest` — binary at `/ExpansionHunter/bin/ExpansionHunter`, variant catalogs at `/pathogenic_repeats/GRCh38/`
-- **Note:** This is ExpansionHunter v2.5.5 which uses `--repeat-specs` (directory), not `--variant-catalog` (single JSON)
+- **Fix (then):** Used `weisburd/expansionhunter:latest`, binary at `/ExpansionHunter/bin/ExpansionHunter`, variant catalogs at `/pathogenic_repeats/GRCh38/`. That was ExpansionHunter v2.5.5, which uses `--repeat-specs` (a directory), not `--variant-catalog` (one JSON). The pipeline now pins the Bioconda build of v5.0.0 (`EXPANSIONHUNTER_IMAGE` in `versions.env`), and step 09 passes `--variant-catalog`.
 
 ### ExpansionHunter: Missing required --log parameter
 - **Failed:** Container exits immediately with "the option '--log' is required but missing"
@@ -34,18 +33,18 @@ Every failure encountered during pipeline development (Mar 2026), documented so 
 
 ### TelomereHunter: Permission denied
 - **Failed:** `OSError: [Errno 13] Permission denied: '/output/<sample>'` when writing output (the sample name in the error path will vary)
-- **Fix:** Add `--user root` flag to `docker run`
+- **Fix (then):** Added `--user root` to `docker run`. Step 10 now runs as the caller through `run_in`, which mounts the sample folder writable, so it needs no root.
 
 ### TelomereHunter: pip install on host fails
 - **Failed:** `pip install telomerehunter` on the host gives `UnicodeDecodeError` — Python environment issues
-- **Fix:** Use the Docker image (`lgalarno/telomerehunter`, digest-pinned in `versions.env`) instead of native install
+- **Fix:** Use a Docker image instead of a native install. The pipeline pins the Bioconda build (`TELOMEREHUNTER_IMAGE` in `versions.env`); the first image used here, `lgalarno/telomerehunter`, is retired.
 
 ### HLA-LA: Graph not serialized (3 failures)
 - **Failed attempt 1:** `zlskidmore/hla-la:latest` — graph at `src/additionalReferences/PRG_MHC_GRCh38_withIMGT/` exists but is NOT serialized. HLA-LA exits silently.
 - **Failed attempt 2:** Copied graph files to `graphs/PRG_MHC_GRCh38_withIMGT/` — "graph not complete"
 - **Failed attempt 3:** Ran `--action prepareGraph` in detached container — container exited during prep, graph still not serialized
 - **Root cause:** HLA-LA requires a pre-serialized graph (~40GB RAM to prepare, takes hours). No standard Docker image includes it.
-- **Fix:** Use `jiachenzdocker/hla-la:latest` (27.5GB image with pre-built graph) OR switch to T1K
+- **Fix (then):** Tried `jiachenzdocker/hla-la:latest` (27.5GB image with pre-built graph), which crashed (next entry), and switched to T1K. Step 08 runs T1K (`T1K_IMAGE` in `versions.env`); HLA-LA is no pipeline step, and [step 8](08-hla-typing.md#alternative-hla-la) pins that image by digest only for a run by hand.
 
 ### HLA-LA: Binary crash with pre-built graph image
 - **Failed:** `jiachenzdocker/hla-la:latest` — read extraction succeeds but `HLA-LA` C++ binary crashes during graph alignment even with 32GB RAM and 8 threads. Error: "HLA-LA execution not successful."
@@ -89,7 +88,7 @@ Every failure encountered during pipeline development (Mar 2026), documented so 
 
 ### VEP INSTALL.pl: Permission denied on temp directory
 - **Failed:** `Cannot open Local file /opt/vep/.vep/tmp/homo_sapiens_vep_112_GRCh38.tar.gz`
-- **Fix:** Run with `--user root` and pre-create the temp dir: `mkdir -p /opt/vep/.vep/tmp && chmod 777 /opt/vep/.vep/tmp`
+- **Fix (then):** Ran with `--user root` and pre-created the temp dir with `chmod 777`. Step 13 no longer uses `INSTALL.pl`: it downloads the cache itself, checks it against Ensembl's `CHECKSUMS` and unpacks it, as the caller, with no world-writable folder.
 
 ### VEP INSTALL.pl: Silent download failure
 - **Failed:** Container exits after "downloading..." with no cache files extracted
@@ -113,8 +112,8 @@ macOS is arm64; most Linux servers are amd64. Images built on Mac without `--pla
 ### Use --rm for one-shot containers
 Always use `--rm` for analysis containers to avoid accumulating stopped containers. Use `-d` (detached) for long-running jobs.
 
-### Always use --user root for write access
-Most bioinformatics containers run as non-root users. If writing to bind-mounted volumes, add `--user root` to avoid permission issues.
+### Run containers as the caller, not as root
+Most bioinformatics containers name a non-root user of their own, which may not be able to write to a bind-mounted host folder. The early scripts ran every container with `--user root`, which left root-owned files in the sample folder. The step scripts now start each container through `run_in` (`scripts/lib/common.sh`) as the caller (`--user` with the caller's UID and GID, `HOME=/tmp`), with only the sample folder writable. A step whose image cannot run unprivileged passes `--root` at its call, with the reason in a comment. The Nextflow `docker` profile runs tasks as root with `docker.fixOwnership`, which gives the files back to the caller.
 
 ## CI / Workflow Issues
 

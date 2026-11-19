@@ -119,9 +119,15 @@ docker run --rm -it \
 
 **Symptom:** `OSError: [Errno 13] Permission denied: '/genome/sample/output'` or similar.
 
-**Cause:** Most bioinformatics Docker images run as a non-root user (e.g., UID 1000). When writing to bind-mounted host directories, the container user may not have write access.
+**Cause:** the container's user cannot write to the bind-mounted host folder. The step scripts run each container as you (`--user` with your UID and GID, `HOME=/tmp`), with only the sample folder writable. Older versions ran every container as root, so a sample folder they wrote holds root-owned files that a step running as you cannot overwrite. A few steps whose image cannot run unprivileged pass `--root` at their call. Most bioinformatics images name a non-root user of their own (e.g., UID 1000), so a container you start by hand without `--user` may not be able to write either.
 
-**Fix:** Add `--user root` to the `docker run` command. All pipeline scripts already include this flag, but if you are running commands manually:
+**Fix for a step script:** when the sample folder holds a path you do not own, the step prints the command that takes it back. Run it, then run the step again:
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" "${GENOME_DIR}/${SAMPLE}"
+```
+
+**Fix for a command you run by hand:** run it as yourself with `--user "$(id -u):$(id -g)"`. Use `--user root` only for an image that cannot run unprivileged:
 
 ```bash
 docker run --rm --user root \
