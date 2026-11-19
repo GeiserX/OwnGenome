@@ -13,7 +13,11 @@
 //! its outside-call file (`gene<TAB>diplotype`, PharmCAT's `-po`) holds:
 //!
 //! - HLA-A and HLA-B: T1K's two alleles at two fields (`*57:01`) when every
-//!   allele has a quality above 0; one allele reads as homozygous. With
+//!   allele has a quality above 0; one allele reads as homozygous. A gene
+//!   whose tied candidates, or an allele with an expression suffix, leave
+//!   an allele PharmCAT acts on (A*31:01, B*15:02, B*57:01, B*58:01)
+//!   uncertain is not passed: its reason reads `ambiguous: B*57:01
+//!   possible (...)`, whatever order T1K printed the tie in. With
 //!   `--optitype`, only when OptiType gives the same pair; with
 //!   `--require-optitype` and no OptiType result, neither gene.
 //! - CYP2D6: only when pypgx (step 32) and Cyrius (step 21) give the same
@@ -27,7 +31,9 @@
 //! so an outside call never stands without the consensus row behind it.
 //!
 //! This is `bin/pgx_outside_calls.py`'s outside calls and concordance table
-//! rewritten; `tests/parity` holds it to the Python's bytes.
+//! rewritten; `tests/parity` holds it to the Python's bytes. The Python
+//! kept the first of T1K's tied candidates and cut expression suffixes;
+//! for those inputs og differs on purpose (`tests/i411_hla_ties.rs`).
 
 use std::fmt::Write as _;
 use std::fs::File;
@@ -148,7 +154,27 @@ fn no_call(d: &str) -> bool {
 
 // --- HLA --------------------------------------------------------------------
 
-/// `'HLA-B*57:01:01:02'` cut to `'*57:01'`.
+/// The HLA alleles PharmCAT acts on, at two fields: its HLA-A and HLA-B
+/// phenotypes say whether each of these is present (`*57:01 positive`).
+pub const PHARMCAT_HLA: [(&str, &str); 4] = [
+    ("HLA-A", "*31:01"),
+    ("HLA-B", "*15:02"),
+    ("HLA-B", "*57:01"),
+    ("HLA-B", "*58:01"),
+];
+
+/// The IPD-IMGT/HLA expression suffix of an allele name (`N` null, `L`
+/// low, `S` secreted, `C` cytoplasm, `A` aberrant, `Q` questionable): a
+/// letter right after the last digit.
+fn suffix(name: &str) -> Option<char> {
+    let mut rev = name.chars().rev();
+    let last = rev.next()?;
+    let before = rev.next()?;
+    ("NLSCAQ".contains(last) && before.is_ascii_digit()).then_some(last)
+}
+
+/// `'HLA-B*57:01:01:02'` cut to `'*57:01'`. An expression suffix stays:
+/// `'HLA-A*02:53:01N'` is `'*02:53N'`, the null allele's two-field name.
 pub fn two_fields(allele: &str, gene: &str) -> String {
     let name = allele.strip_prefix(gene).unwrap_or(allele);
     let name = if name.starts_with('*') {
@@ -156,7 +182,93 @@ pub fn two_fields(allele: &str, gene: &str) -> String {
     } else {
         format!("*{name}")
     };
-    name.split(':').take(2).collect::<Vec<_>>().join(":")
+    let mut cut = name.split(':').take(2).collect::<Vec<_>>().join(":");
+    if let Some(s) = suffix(&name)
+        && suffix(&cut).is_none()
+    {
+        cut.push(s);
+    }
+    cut
+}
+
+/// A two-field name without its expression suffix: the name PharmCAT
+/// reads (`*02:53N` is `*02:53`).
+fn expressed(name: &str) -> &str {
+    if suffix(name).is_some() {
+        &name[..name.len() - 1]
+    } else {
+        name
+    }
+}
+
+/// The two-field names of one T1K allele: T1K writes equally likely
+/// candidates comma-separated (`HLA-B*57:01:01,HLA-B*58:01:01`). Sorted,
+/// without repeats, so a tie reads the same in either print order; one
+/// name unless the candidates differ at two fields.
+fn candidates(gene: &str, allele: &str) -> Vec<String> {
+    let mut names: Vec<String> = allele
+        .split(',')
+        .map(strip)
+        .filter(|c| !c.is_empty())
+        .map(|c| two_fields(c, gene))
+        .collect();
+    if names.is_empty() {
+        names.push(two_fields(allele, gene));
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// `a and b`, `a, b and c`.
+fn and_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// Why T1K's call of `gene` cannot go to PharmCAT, or `None` when it can.
+/// `alleles` are T1K's allele fields (one or two, each possibly a tie).
+///
+/// PharmCAT reads HLA-A and HLA-B as present or absent per allele of
+/// [`PHARMCAT_HLA`]. Such an allele is certain when one of T1K's alleles
+/// is it and nothing else, and absent when no candidate names it. In
+/// between, a tie that holds it beside another candidate, or a form with
+/// an expression suffix (`*57:01:01N`), PharmCAT's answer would depend on
+/// which candidate we picked: the call is ambiguous and is not passed.
+/// A tie or a null that names no such allele changes no PharmCAT answer.
+pub fn pharmcat_ambiguity(gene: &str, alleles: &[&str]) -> Option<String> {
+    let lists: Vec<Vec<String>> = alleles.iter().map(|a| candidates(gene, a)).collect();
+    let mut possible = Vec::new();
+    let mut causes: Vec<String> = Vec::new();
+    for (g, risk) in PHARMCAT_HLA {
+        if g != gene {
+            continue;
+        }
+        let certain = lists.iter().any(|l| l.len() == 1 && l[0] == risk);
+        let named: Vec<&Vec<String>> = lists
+            .iter()
+            .filter(|l| l.iter().any(|c| expressed(c) == risk))
+            .collect();
+        if certain || named.is_empty() {
+            continue;
+        }
+        possible.push(format!("{}{risk} possible", &gene["HLA-".len()..]));
+        for l in named {
+            let cause = if l.len() > 1 {
+                format!("T1K ties {} on one allele", and_list(l))
+            } else {
+                format!("T1K calls {}, with an expression suffix", l[0])
+            };
+            if !causes.contains(&cause) {
+                causes.push(cause);
+            }
+        }
+    }
+    (!possible.is_empty())
+        .then(|| format!("ambiguous: {} ({})", possible.join(", "), causes.join("; ")))
 }
 
 /// One T1K allele: its name and quality (-1 when the quality is not a number).
@@ -271,23 +383,65 @@ fn optitype_of<'a>(ot: &'a OptiType, gene: &str) -> &'a [String] {
         .map_or(&[], |(_, c)| c.as_slice())
 }
 
-/// T1K's alleles of one gene at two fields, two of them: one allele reads
-/// as homozygous.
-fn t1k_pair(gene: &str, alleles: &[Allele]) -> Vec<String> {
-    let names: Vec<String> = alleles.iter().map(|a| two_fields(&a.name, gene)).collect();
-    if names.len() == 1 {
-        vec![names[0].clone(), names[0].clone()]
+/// T1K's alleles of one gene at two fields, two of them, each the list of
+/// its tied candidates ([`candidates`]): one allele reads as homozygous.
+fn t1k_pair(gene: &str, alleles: &[Allele]) -> Vec<Vec<String>> {
+    let lists: Vec<Vec<String>> = alleles.iter().map(|a| candidates(gene, &a.name)).collect();
+    if lists.len() == 1 {
+        vec![lists[0].clone(), lists[0].clone()]
     } else {
-        names
+        lists
     }
 }
 
-/// Two allele pairs are the same pair, in either order.
-fn same_pair(a: &[String], b: &[String]) -> bool {
-    let (mut a, mut b) = (a.to_vec(), b.to_vec());
-    a.sort();
-    b.sort();
-    a.len() == 2 && a == b
+/// T1K's pair as text: `*01:01/*26:01`, tied candidates comma-separated.
+fn pair_text(pair: &[Vec<String>]) -> String {
+    pair.iter()
+        .map(|l| l.join(","))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// OptiType's pair against T1K's: OptiType's two alleles in T1K's order
+/// when each is one of the candidates of a different T1K allele, else
+/// `None`. Without ties this is "the same pair, in either order".
+fn match_pair(t1k: &[Vec<String>], ot: &[String]) -> Option<Vec<String>> {
+    let [t1, t2] = t1k else { return None };
+    let [o1, o2] = ot else { return None };
+    if t1.contains(o1) && t2.contains(o2) {
+        Some(vec![o1.clone(), o2.clone()])
+    } else if t1.contains(o2) && t2.contains(o1) {
+        Some(vec![o2.clone(), o1.clone()])
+    } else {
+        None
+    }
+}
+
+/// What the T1K-only path passes for a pair with a tie or a suffix that
+/// changes no PharmCAT answer: per allele its first candidate, without the
+/// suffix, and a note for each allele that was flattened so.
+fn stand_in(pair: &[Vec<String>]) -> (Vec<String>, String) {
+    let mut names = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    for l in pair {
+        let name = expressed(&l[0]).to_owned();
+        let note = if l.len() > 1 {
+            format!(
+                "T1K ties {} on one allele, passed as {name}: PharmCAT acts on none of them",
+                and_list(l)
+            )
+        } else if l[0] != name {
+            format!("T1K's {} passed as {name}: PharmCAT acts on neither", l[0])
+        } else {
+            String::new()
+        };
+        if !note.is_empty() && !notes.contains(&note) {
+            notes.push(note);
+        }
+        names.push(name);
+    }
+    let notes = notes.iter().map(|n| format!("; {n}")).collect();
+    (names, notes)
 }
 
 /// What step 36 decided for one gene.
@@ -368,8 +522,19 @@ pub fn hla_row(
         let why = "T1K gives an allele quality 0 or below (T1K says to ignore it)";
         return Row::withheld(gene, "indeterminate", why, &evidence);
     }
-    let names = t1k_pair(gene, alleles);
-    let dip = names.join("/");
+    // Before OptiType: its agreement with one tied candidate must not
+    // decide what PharmCAT reads.
+    let names: Vec<&str> = alleles.iter().map(|a| a.name.as_str()).collect();
+    if let Some(why) = pharmcat_ambiguity(gene, &names) {
+        return Row::withheld(gene, "indeterminate", &why, &evidence);
+    }
+    let pair = t1k_pair(gene, alleles);
+    let tied = pair.iter().any(|l| l.len() > 1);
+    let one = if alleles.len() == 1 {
+        ": one allele, read as homozygous"
+    } else {
+        ""
+    };
     match optitype {
         None if need_optitype => Row::withheld(gene, "indeterminate", NO_OPTITYPE, &evidence),
         Some(ot) => {
@@ -377,27 +542,30 @@ pub fn hla_row(
             if calls.is_empty() {
                 let why = "OptiType, the second caller, made no call";
                 Row::withheld(gene, "indeterminate", why, &evidence)
-            } else if !same_pair(&names, calls) {
-                let why = "T1K and OptiType disagree at two fields";
-                Row::withheld(gene, "indeterminate", why, &evidence)
-            } else {
+            } else if let Some(agreed) = match_pair(&pair, calls) {
+                let mut reason = "T1K and OptiType (step 08), which agree at two fields".to_owned();
+                if tied {
+                    reason.push_str(
+                        "; T1K ties candidates on one allele, and OptiType's call is one of them",
+                    );
+                }
                 Row {
                     gene,
-                    decision: Decision::Passed(dip),
-                    reason: "T1K and OptiType (step 08), which agree at two fields".to_owned(),
+                    decision: Decision::Passed(agreed.join("/")),
+                    reason,
                     evidence,
                 }
+            } else {
+                let why = "T1K and OptiType disagree at two fields";
+                Row::withheld(gene, "indeterminate", why, &evidence)
             }
         }
         None => {
-            let mut reason = "T1K (step 08)".to_owned();
-            if alleles.len() == 1 {
-                reason.push_str(": one allele, read as homozygous");
-            }
+            let (names, notes) = stand_in(&pair);
             Row {
                 gene,
-                decision: Decision::Passed(dip),
-                reason,
+                decision: Decision::Passed(names.join("/")),
+                reason: format!("T1K (step 08){one}{notes}"),
                 evidence,
             }
         }
@@ -406,21 +574,25 @@ pub fn hla_row(
 
 /// Step 08's concordance table: per class I gene the two-field calls of
 /// both callers and whether they agree (`yes`, `no` or `not compared`).
+/// T1K's tied candidates are comma-separated, and an expression suffix
+/// stays (`*02:53N` does not agree with OptiType's `*02:53`).
 pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
     let mut rows = Vec::new();
     for gene in OPTITYPE_GENES {
         let alleles = alleles_of(t1k, gene);
         let ot = optitype_of(optitype, gene);
+        let pair = t1k_pair(gene, alleles);
         let t_txt = if alleles.is_empty() {
             "no call".to_owned()
         } else {
-            t1k_pair(gene, alleles).join("/")
+            pair_text(&pair)
         };
         let o_txt = if ot.is_empty() {
             "no call".to_owned()
         } else {
             ot.join("/")
         };
+        let names: Vec<&str> = alleles.iter().map(|a| a.name.as_str()).collect();
         let (agree, mut note) = if alleles.is_empty() || ot.is_empty() {
             ("not compared", "a caller made no call".to_owned())
         } else if alleles.iter().any(Allele::unusable) {
@@ -428,8 +600,17 @@ pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
                 "not compared",
                 "T1K gives an allele quality 0 or below".to_owned(),
             )
-        } else if same_pair(&t1k_pair(gene, alleles), ot) {
-            ("yes", "-".to_owned())
+        } else if let Some(why) = pharmcat_ambiguity(gene, &names) {
+            ("not compared", why)
+        } else if match_pair(&pair, ot).is_some() {
+            if pair.iter().any(|l| l.len() > 1) {
+                (
+                    "yes",
+                    "T1K ties candidates on one allele; OptiType's call is one of them".to_owned(),
+                )
+            } else {
+                ("yes", "-".to_owned())
+            }
         } else {
             ("no", "the callers disagree at two fields".to_owned())
         };
