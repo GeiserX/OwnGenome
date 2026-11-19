@@ -198,6 +198,12 @@ mkbam "${GENOME_DIR}/sample1/fastq/sample1.bam" $'@HD\tVN:1.6\n@RG\tID:run1\tPL:
 run_expect 0 longread-ubam env PLATFORM=ont INPUT="${GENOME_DIR}/sample1/fastq/sample1.bam" "${SCRIPTS}/02b-alignment-longread.sh" sample1
 docker_log_has 'minimap2 .*LB:sample1[^ ]*tDS:basecall_model=dna_r10\.4\.1_e8\.2_400bps_sup@v5\.2\.0 ' \
   "step 02b did not carry the unaligned BAM's basecaller model into the read group"
+# An INPUT with no .bam in its name that links to the unaligned BAM.
+ln -s sample1.bam "${GENOME_DIR}/sample1/fastq/reads-link"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 longread-ubam-link env PLATFORM=ont INPUT="${GENOME_DIR}/sample1/fastq/reads-link" "${SCRIPTS}/02b-alignment-longread.sh" sample1
+docker_log_has 'minimap2 .*LB:sample1[^ ]*tDS:basecall_model=dna_r10\.4\.1_e8\.2_400bps_sup@v5\.2\.0 ' \
+  "step 02b did not read the basecaller model of an unaligned BAM reached through a link"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 longread-hifi env PLATFORM=hifi INPUT="${GENOME_DIR}/sample1/fastq/sample1.bam" BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_sup@v5.0.0 "${SCRIPTS}/02b-alignment-longread.sh" sample1
 if grep -q 'DS:basecall_model' "$FAKE_DOCKER_LOG"; then fail "step 02b wrote a basecaller model for HiFi reads"; fi

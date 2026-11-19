@@ -113,7 +113,7 @@ case "$BASECALLER" in
     echo "ERROR: BASECALL_MODEL holds characters a basecaller model name never has: '${BASECALLER}'" >&2
     exit 2 ;;
 esac
-if [ "$PLATFORM" = ont ] && [ -z "$BASECALLER" ] && [[ "$INPUT_FILE" == *.bam ]]; then
+if [ "$PLATFORM" = ont ] && [ -z "$BASECALLER" ] && [[ "$REAL_INPUT" == *.bam ]]; then
   BASECALLER=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$SAMTOOLS_IMAGE" \
     /pgp-bin/og longread clair3-model --basecaller-only --bam "/genome/${REAL_INPUT#"${REAL_GENOME}/"}") \
     || { echo "NOTE: the basecaller model of the unaligned BAM could not be read (see above)." >&2; BASECALLER=""; }

@@ -88,10 +88,12 @@ fn version_digits(version: &str) -> Option<String> {
 }
 
 /// The distinct `basecall_model=` values of the header's `@RG` `DS`
-/// fields, sorted.
-pub fn basecallers(header: &str) -> Vec<String> {
+/// fields, sorted, and how many read groups name none.
+pub fn basecallers(header: &str) -> (Vec<String>, usize) {
     let mut found = BTreeSet::new();
+    let mut unnamed = 0;
     for line in header.split('\n').filter(|l| l.starts_with("@RG\t")) {
+        let mut named = false;
         for tag in line.trim_end_matches('\r').split('\t').skip(1) {
             let Some(ds) = tag.strip_prefix("DS:") else {
                 continue;
@@ -101,11 +103,34 @@ pub fn basecallers(header: &str) -> Vec<String> {
                     && !v.is_empty()
                 {
                     found.insert(v.to_owned());
+                    named = true;
                 }
             }
         }
+        if !named {
+            unnamed += 1;
+        }
     }
-    found.into_iter().collect()
+    (found.into_iter().collect(), unnamed)
+}
+
+/// The one basecaller model of every read group of the header; `None`
+/// when no read group names one. Read groups that name different models,
+/// or some that name one and some none, are an error: one Clair3 model
+/// cannot be chosen for the whole BAM from them.
+pub fn bam_basecaller(header: &str) -> Result<Option<String>, String> {
+    let (found, unnamed) = basecallers(header);
+    match found.as_slice() {
+        [] => Ok(None),
+        [one] if unnamed == 0 => Ok(Some(one.clone())),
+        [one] => Err(format!(
+            "{unnamed} read group(s) name no basecaller model while others name {one}, so the model of every read is not known"
+        )),
+        many => Err(format!(
+            "the read groups name more than one basecaller model ({}), and one Clair3 model cannot fit them all",
+            many.join(", ")
+        )),
+    }
 }
 
 /// The directories under `dir`, sorted; empty when it cannot be read.
@@ -191,25 +216,19 @@ pub fn clair3_model_cli(args: &[String], out: &mut dyn Write, err: &mut dyn Writ
 }
 
 fn run(o: &Opts) -> Result<Option<String>, String> {
-    let from_bam = || -> Result<Vec<String>, String> {
+    let bam = o.bam.as_deref().unwrap_or("the BAM");
+    let from_bam = || -> Result<Option<String>, String> {
         match &o.bam {
-            Some(bam) => bam_header(bam).map(|h| basecallers(&h)).map_err(|e| e.0),
-            None => Ok(Vec::new()),
+            Some(path) => bam_basecaller(&bam_header(path).map_err(|e| e.0)?)
+                .map_err(|e| format!("{bam}: {e}")),
+            None => Ok(None),
         }
     };
     if o.basecaller_only {
         if o.bam.is_none() {
             return Err("--basecaller-only needs --bam".to_owned());
         }
-        let found = from_bam()?;
-        return match found.as_slice() {
-            [] => Ok(None),
-            [one] => Ok(Some(one.clone())),
-            many => Err(format!(
-                "the read groups name more than one basecaller model: {}",
-                many.join(", ")
-            )),
-        };
+        return from_bam();
     }
     let models_dir = o.models_dir.as_deref().unwrap_or("/opt/models");
     let available = || {
@@ -228,20 +247,17 @@ fn run(o: &Opts) -> Result<Option<String>, String> {
         {
             (b.to_owned(), "BASECALL_MODEL")
         } else {
-            let found = from_bam()?;
-            let bam = o.bam.as_deref().unwrap_or("the BAM");
-            match found.as_slice() {
-                [one] => (one.clone(), "the BAM's read group"),
-                [] => {
+            match from_bam() {
+                Ok(Some(one)) => (one, "the BAM's read group"),
+                Ok(None) => {
                     return Err(format!(
                         "{bam} names no basecaller model (no basecall_model= in an @RG DS field), so the Clair3 model cannot be chosen. Set BASECALL_MODEL to the Dorado model the reads were basecalled with (for example dna_r10.4.1_e8.2_400bps_sup@v5.0.0), or CLAIR3_MODEL to a model directory; {}.",
                         available()
                     ));
                 }
-                many => {
+                Err(e) => {
                     return Err(format!(
-                        "{bam} holds reads from more than one basecaller model ({}); one Clair3 model cannot fit them all. Set CLAIR3_MODEL to the model directory to use; {}.",
-                        many.join(", "),
+                        "{e}. Set CLAIR3_MODEL to the model directory to use, or BASECALL_MODEL; {}.",
                         available()
                     ));
                 }
@@ -366,11 +382,27 @@ mod tests {
             @CO\tbasecall_model=comment\n";
         assert_eq!(
             basecallers(header),
-            vec!["dna_r10.4.1_e8.2_400bps_sup@v5.0.0".to_owned()]
+            (vec!["dna_r10.4.1_e8.2_400bps_sup@v5.0.0".to_owned()], 0)
+        );
+        assert_eq!(
+            bam_basecaller(header),
+            Ok(Some("dna_r10.4.1_e8.2_400bps_sup@v5.0.0".to_owned()))
         );
         let two = "@RG\tID:a\tDS:basecall_model=x@v1.0.0\n@RG\tID:b\tDS:basecall_model=y@v1.0.0\n";
-        assert_eq!(basecallers(two).len(), 2);
-        assert!(basecallers("@RG\tID:a\tPL:ONT\n").is_empty());
+        assert_eq!(basecallers(two).0.len(), 2);
+        assert!(bam_basecaller(two).is_err());
+        assert_eq!(basecallers("@RG\tID:a\tPL:ONT\n"), (Vec::new(), 1));
+        assert_eq!(bam_basecaller("@RG\tID:a\tPL:ONT\n"), Ok(None));
+        assert_eq!(bam_basecaller("@HD\tVN:1.6\n"), Ok(None));
+        // One read group named, one not: the other's reads may be from any
+        // basecaller, so no model is inferred.
+        let partial = "@RG\tID:a\tDS:basecall_model=x@v1.0.0\n@RG\tID:b\tDS:runid=r2\n";
+        assert_eq!(basecallers(partial), (vec!["x@v1.0.0".to_owned()], 1));
+        let e = bam_basecaller(partial).unwrap_err();
+        assert!(
+            e.contains("1 read group(s) name no basecaller model"),
+            "{e}"
+        );
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
@@ -481,6 +513,34 @@ mod tests {
         );
         let (code, out, _) = cli(&["--bam", &without, "--basecaller-only"]);
         assert_eq!((code, out.as_str()), (0, ""));
+
+        // A BAM with one read group named and one not: no model is inferred,
+        // in either mode, but BASECALL_MODEL still decides.
+        let partial = bam(
+            &d,
+            "partial.bam",
+            "@RG\tID:a\tDS:basecall_model=dna_r10.4.1_e8.2_400bps_sup@v5.0.0\n@RG\tID:b\tPL:ONT\n",
+        );
+        let (code, out, err) = cli(&["--bam", &partial, "--models-dir", &models]);
+        assert_eq!((code, out.as_str()), (1, ""));
+        assert!(
+            err.contains("name no basecaller model while others name"),
+            "{err}"
+        );
+        let (code, out, _) = cli(&["--bam", &partial, "--basecaller-only"]);
+        assert_eq!((code, out.as_str()), (1, ""));
+        let (code, out, _) = cli(&[
+            "--bam",
+            &partial,
+            "--basecaller",
+            "dna_r10.4.1_e8.2_400bps_sup@v5.0.0",
+            "--models-dir",
+            &models,
+        ]);
+        assert_eq!(
+            (code, out),
+            (0, format!("{models}/r1041_e82_400bps_sup_v500\n"))
+        );
 
         // A usage error is exit 2.
         let (code, _, err) = cli(&["--og-scaffold-probe"]);
