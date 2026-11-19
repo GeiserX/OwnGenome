@@ -109,8 +109,12 @@ jobs:
             echo "$(wc -l < "$2/cur") findings, $(wc -l < "$2/base") baseline lines, $(wc -l < "$2/new") new"
             [ -s "$2/new" ] || return 0
             echo "New ShellCheck findings. Fix them; never add them to tests/shellcheck-baseline.txt:"
-            awk -F'\t' 'NR == FNR { want[$0]++; next }
-              { k = $1 FS $2 FS $3; if (want[k]-- > 0) print $4 }' "$2/new" "$2/found"
+            # A key can be both in the baseline and new (a second line with
+            # the same text): skip as many matches as the baseline holds.
+            awk -F'\t' 'FILENAME == ARGV[1] { base[$0]++; next }
+              FILENAME == ARGV[2] { want[$0]++; next }
+              { k = $1 FS $2 FS $3; if (base[k]-- > 0) next; if (want[k]-- > 0) print $4 }' \
+              "$2/base" "$2/new" "$2/found"
             return 1
           }
 
@@ -124,24 +128,43 @@ jobs:
             cat "$all/gone"
           fi
 
-          # Control 1: a new script with an unquoted variable (SC2086).
+          # The discovery must reach a file found only by its shebang. The
+          # list goes to a file first: grep -q closing a pipe early would
+          # fail the pipeline under pipefail.
+          tr '\0' '\n' < "$all/files" > "$all/lines"
+          if ! grep -qFx 'bin/og' "$all/lines"; then
+            echo "ERROR: bin/og (a bash script without .sh) is not in the list of shell scripts"; exit 1
+          fi
+
+          # Control 1: a new tests/ script with an unquoted variable
+          # (SC2086), found the way a real new file is found: added to git,
+          # then listed by shell_files.
           ctl=$(mktemp -d)
           planted=tests/shellcheck-control.sh
           # shellcheck disable=SC2016 # the planted line keeps its $1
           printf '#!/usr/bin/env bash\necho $1\n' > "$planted"
+          git add --intent-to-add -- "$planted"
+          shell_files > "$ctl/all"
+          tr '\0' '\n' < "$ctl/all" > "$ctl/lines"
+          listed=0
+          if grep -qFx "$planted" "$ctl/lines"; then listed=1; fi
           printf '%s\0' "$planted" > "$ctl/files"
           check "$ctl/files" "$ctl" && rc=0 || rc=$?
+          git rm --cached -q -- "$planted"
           rm -f "$planted"
+          if [ "$listed" -ne 1 ]; then
+            echo "ERROR: control 1, shell_files did not list the new script ${planted}"; exit 1
+          fi
           if [ "$rc" -ne 1 ] || ! grep -q "^${planted}"$'\tSC2086\t' "$ctl/new"; then
             echo "ERROR: control 1, a new script with SC2086 passed (check returned $rc)"; exit 1
           fi
-          echo "Control 1: the new script's SC2086 was caught."
+          echo "Control 1: the new script was listed and its SC2086 was caught."
 
           # Control 2: the same finding on a new line of a script the
           # baseline lists, one that already has an SC2086 line if any.
           target=$(awk -F'\t' '!/^#/ && $2 == "SC2086" { print $1; exit }' tests/shellcheck-baseline.txt)
           [ -n "$target" ] || target=$(awk -F'\t' '!/^#/ && NF { print $1; exit }' tests/shellcheck-baseline.txt)
-          [ -n "$target" ] || target=$(tr '\0' '\n' < "$all/files" | head -n1)
+          [ -n "$target" ] || target=$(sed -n 1p "$all/lines")
           ctl=$(mktemp -d)
           # shellcheck disable=SC2016 # the planted line keeps its $1
           printf '\necho $1 # lint control\n' >> "$target"

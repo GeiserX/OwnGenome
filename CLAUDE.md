@@ -21,8 +21,10 @@ GENOME_DIR=/path/to/data ./scripts/run-all.sh sample_name male
 # Run individual step
 GENOME_DIR=/path/to/data ./scripts/03-deepvariant.sh sample_name
 
-# Lint: CI checks every tracked shell script; a finding not in
-# tests/shellcheck-baseline.txt fails
+# Lint: CI checks every tracked *.sh and every tracked file with a sh or
+# bash shebang (bin/og, scripts/ci/fake-docker/*, tests/e2e/bin/docker...);
+# a finding not in tests/shellcheck-baseline.txt fails. This command covers
+# the *.sh files only and also prints the findings the baseline lists.
 git ls-files -z '*.sh' | xargs -0 shellcheck
 ```
 
