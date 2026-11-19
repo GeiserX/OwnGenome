@@ -3,8 +3,10 @@
 # never reused. Step 01b writes fastq_trimmed/<sample>_fastp_inputs.tsv, the
 # input_stamp of the raw R1 and R2 it trimmed (name, size, mtime, sha256 of
 # the first and last MiB), and skips only while that stamp still matches.
-# Step 02 aligns fastq_trimmed/ only while it matches too, and otherwise stops
-# before it aligns, saying to run 01b again or to set FASTQ_SUBDIR=fastq.
+# Steps 02 and 02a (bwa-mem2) align fastq_trimmed/ only while it matches too,
+# and otherwise stop before they align, saying to run 01b again or to set
+# FASTQ_SUBDIR=fastq. A raw FASTQ that is a symlink is stamped by the file it
+# points to, and an unreadable one fails the stamp instead of hashing nothing.
 # Before this, 01b skipped on the trimmed files alone and 02 aligned them: a
 # BAM of the old reads.
 # The fake fastp copies its input to its output, so the trimmed pair holds the
@@ -95,6 +97,11 @@ output_has align-stale 'changed since step 01b trimmed them'
 output_has align-stale 'Run scripts/01b-fastp-qc.sh s1 first'
 if aligned; then fail "step 02 aligned the trimmed pair of the old raw reads"; fi
 [ "$(cat "$BAM")" = "$bam_before" ] || fail "step 02 replaced the BAM from the old trimmed pair"
+: > "$FAKE_DOCKER_LOG"
+run_expect 1 align-stale-bwamem2 env FAKE_PRIMARY=6 "${SCRIPTS}/02a-alignment-bwamem2.sh" s1
+output_has align-stale-bwamem2 'fastq_trimmed/ was not trimmed from the raw reads in fastq/ now'
+output_has align-stale-bwamem2 'Run scripts/01b-fastp-qc.sh s1 first'
+if grep -q 'bwa-mem2' "$FAKE_DOCKER_LOG"; then fail "step 02a ran bwa-mem2 on the trimmed pair of the old raw reads"; fi
 
 # --- 01b trims again, then 02 aligns the new reads ------------------------------------
 : > "$FAKE_DOCKER_LOG"
@@ -132,3 +139,43 @@ run_expect 0 trim-unstamped "${SCRIPTS}/01b-fastp-qc.sh" s1
 output_has trim-unstamped 'has no record of the raw reads it was trimmed from'
 fastp_ran || fail "step 01b trusted a trimmed pair with no record of its inputs"
 [ -s "$STAMP" ] || fail "step 01b wrote no record after trimming again"
+
+# --- a raw FASTQ that is a symlink: its target is what gets stamped ------------------
+# The target keeps its first and last MiB and grows in the middle, so only the
+# target's size and time tell the two apart; the link's own never change.
+# rand_fastq N SEED: N records of 1000 pseudo-random bases, gzipped (about 1.4 MB
+# for 1500, so the first and last MiB never reach the middle member).
+rand_fastq() {
+  awk -v n="$1" -v seed="$2" 'BEGIN { srand(seed); b = "ACGT"
+    for (i = 0; i < n; i++) { s = ""; q = ""
+      for (j = 0; j < 1000; j++) { s = s substr(b, int(rand() * 4) + 1, 1); q = q sprintf("%c", 33 + int(rand() * 40)) }
+      printf "@x%d\n%s\n+\n%s\n", i, s, q } }' | gzip -c
+}
+SRC="${CASE_WORK}/src"
+mkdir -p "$SRC"
+rand_fastq 1500 1 > "${SRC}/head.gz"
+rand_fastq 1500 2 > "${SRC}/tail.gz"
+fastq 3 ACGT | gzip -c > "${SRC}/mid-3.gz"
+fastq 9 ACGT | gzip -c > "${SRC}/mid-9.gz"
+cat "${SRC}/head.gz" "${SRC}/mid-3.gz" "${SRC}/tail.gz" > "${SRC}/s1_R1.fastq.gz"
+rm -f "${RAW}/s1_R1.fastq.gz"
+ln -s "${SRC}/s1_R1.fastq.gz" "${RAW}/s1_R1.fastq.gz"
+run_expect 0 trim-link "${SCRIPTS}/01b-fastp-qc.sh" s1
+run_expect 0 trim-link-same "${SCRIPTS}/01b-fastp-qc.sh" s1
+output_has trim-link-same 'Trimmed FASTQs of these raw reads already exist'
+cat "${SRC}/head.gz" "${SRC}/mid-9.gz" "${SRC}/tail.gz" > "${SRC}/s1_R1.fastq.gz"
+: > "$FAKE_DOCKER_LOG"
+run_expect 1 align-link-target "${SCRIPTS}/02-alignment.sh" s1
+output_has align-link-target 'changed since step 01b trimmed them'
+if aligned; then fail "step 02 aligned the old trimmed pair after the symlinked raw R1 was replaced"; fi
+
+# --- an unreadable raw FASTQ fails the stamp ------------------------------------------
+run_expect 0 trim-link-new "${SCRIPTS}/01b-fastp-qc.sh" s1
+chmod 000 "${RAW}/s1_R2.fastq.gz"
+if [ -r "${RAW}/s1_R2.fastq.gz" ]; then
+  echo "skip: running as root, chmod 000 leaves the file readable"
+else
+  run_expect 1 align-unreadable "${SCRIPTS}/02-alignment.sh" s1
+  output_has align-unreadable 'input_stamp: could not checksum .*s1_R2.fastq.gz'
+fi
+chmod 644 "${RAW}/s1_R2.fastq.gz"

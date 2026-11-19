@@ -28,23 +28,12 @@ SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
 
 # Allow explicit override (e.g., FASTQ_SUBDIR=fastq to use raw reads even when trimmed exist)
 # The trimmed pair is used only when step 01b trimmed it from the raw reads in
-# fastq/ now (trimmed_reads_current, scripts/lib/common.sh): after a raw FASTQ
+# fastq/ now (trimmed_reads_usable, scripts/lib/common.sh): after a raw FASTQ
 # was replaced, the old trimmed pair would give a BAM of the old reads.
 if [ -n "${FASTQ_SUBDIR:-}" ]; then
   echo "Using explicit FASTQ_SUBDIR=${FASTQ_SUBDIR}."
 elif [ -f "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_R1.fastq.gz" ] && [ -f "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_R2.fastq.gz" ]; then
-  if [ -f "${SAMPLE_DIR}/fastq/${SAMPLE}_R1.fastq.gz" ] && [ -f "${SAMPLE_DIR}/fastq/${SAMPLE}_R2.fastq.gz" ] \
-     && ! trimmed_reads_current "$SAMPLE_DIR" "$SAMPLE"; then
-    echo "ERROR: ${SAMPLE_DIR}/fastq_trimmed/ was not trimmed from the raw reads in fastq/ now:" >&2
-    if [ -s "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_fastp_inputs.tsv" ]; then
-      echo "  fastq/${SAMPLE}_R1.fastq.gz or _R2 changed since step 01b trimmed them." >&2
-    else
-      echo "  it has no ${SAMPLE}_fastp_inputs.tsv, the record of the reads step 01b trimmed." >&2
-    fi
-    echo "  Run scripts/01b-fastp-qc.sh ${SAMPLE} first (it trims the reads again), or set" >&2
-    echo "  FASTQ_SUBDIR=fastq to align the raw reads." >&2
-    exit 1
-  fi
+  trimmed_reads_usable "$SAMPLE_DIR" "$SAMPLE" || exit 1
   FASTQ_SUBDIR="fastq_trimmed"
   echo "Using trimmed FASTQs from fastp."
 else
