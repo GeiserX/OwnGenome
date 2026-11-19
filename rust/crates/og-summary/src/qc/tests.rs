@@ -392,12 +392,25 @@ fn identity_needs_another_sample_on_enough_shared_sites() {
     let pairs = format!("{PAIRS}U\tS\t0.97\t0\t300\t300\nS\tV\t0.1\t0\t300\t999\n");
     let t = evidence(&many, Some(&pairs), false, "", None);
     assert_eq!(t["identity"], "uncertain");
-    assert!(t["identity_reason"].contains("fewer than 1,000"), "{t:?}");
+    assert_eq!(
+        t["identity_reason"],
+        "no other sample of the run is known to share 1,000 or more genotyped sites with this one"
+    );
     // The same-person flag still shows; the identity row says it is thin.
     assert_eq!(t["same_person_as"], "U (0.97)");
-    // An older pairs table without n, and a pair whose relatedness is nan.
-    let pairs = "#sample_a\tsample_b\trelatedness\nS\tT\t0.1\nS\tU\t0.2\nW\tS\tnan\nS\tS\t1.0\n";
+    // A pair that shares no site: somalier writes nan and n 0.
+    let pairs = format!("{PAIRS}S\tT\tnan\t0\t0\t0\n");
+    let t = evidence(&many, Some(&pairs), false, "", None);
+    assert_eq!(t["identity"], "uncertain");
+    // An older pairs table without n: the shared sites are not known.
+    let pairs = "#sample_a\tsample_b\trelatedness\nS\tT\t0.1\nS\tU\t0.2\nS\tS\t1.0\n";
     let t = evidence(&many, Some(pairs), false, "", None);
+    assert_eq!(t["identity"], "uncertain");
+    // Two pairs on enough shared sites, and a self pair that does not count.
+    let pairs = format!(
+        "{PAIRS}S\tT\t0.1\t9\t300\t15000\nU\tS\t0.2\t9\t300\t1000\nS\tS\t1.0\t0\t300\t15000\n"
+    );
+    let t = evidence(&many, Some(&pairs), false, "", None);
     assert_eq!(
         (t["identity"].as_str(), t["identity_reason"].as_str()),
         (

@@ -329,17 +329,15 @@ pub fn table(i: &Inputs) -> Result<Vec<(&'static str, String)>, String> {
         for r in read_rows(pairs)? {
             let (a, b) = (cell(&r, "sample_a"), cell(&r, "sample_b"));
             let rel = num(cell(&r, "relatedness"));
-            if (a == Some(sid) || b == Some(sid))
-                && a != b
-                && let Some(rel) = rel
-            {
-                // `n`: the sites both samples have a genotype at (an older
-                // somalier without it: the sample's own sites decide).
-                match num(cell(&r, "n")) {
-                    Some(n) if n < MIN_IDENTITY_SITES as f64 => thin += 1,
-                    _ => compared += 1,
+            if (a == Some(sid) || b == Some(sid)) && a != b {
+                // `n`: the sites both samples have a genotype at. A pair
+                // with fewer, with no `n` column, or with no relatedness
+                // (nan: they share no site) is no comparison.
+                match (rel, num(cell(&r, "n"))) {
+                    (Some(_), Some(n)) if n >= MIN_IDENTITY_SITES as f64 => compared += 1,
+                    _ => thin += 1,
                 }
-                if rel >= SAME_PERSON {
+                if let Some(rel) = rel.filter(|&x| x >= SAME_PERSON) {
                     let other = if a == Some(sid) { b } else { a };
                     same.push(format!("{} ({})", other.unwrap_or("None"), fixed(rel, 2)));
                 }
@@ -403,9 +401,9 @@ fn contamination_confidence(
 
 /// Whether the reads were checked against another sample: `checked`,
 /// `uncertain` (too few informative sites) or `not_checked` (nothing to
-/// compare with); and why. `compared` and `thin` count the other samples
-/// of the run with at least, and with fewer than, [`MIN_IDENTITY_SITES`]
-/// shared sites.
+/// compare with); and why. `compared` counts the other samples of the
+/// run with at least [`MIN_IDENTITY_SITES`] shared sites, `thin` the
+/// others (fewer, unknown, or no relatedness).
 fn identity(sites: i128, compared: usize, thin: usize) -> (&'static str, String) {
     let floor = thousands(MIN_IDENTITY_SITES as u64);
     if sites < MIN_IDENTITY_SITES {
@@ -428,7 +426,9 @@ fn identity(sites: i128, compared: usize, thin: usize) -> (&'static str, String)
     if thin > 0 {
         return (
             "uncertain",
-            format!("the other samples of the run share fewer than {floor} sites with this one"),
+            format!(
+                "no other sample of the run is known to share {floor} or more genotyped sites with this one"
+            ),
         );
     }
     (
