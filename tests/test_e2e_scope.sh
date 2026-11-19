@@ -153,7 +153,7 @@ printf '%s\n' rust/og/src/main.rs > "${WORK}/changed.txt"
 if [ -s "${WORK}/rust.txt" ] && cmp -s "${WORK}/og.txt" "${WORK}/rust.txt"; then
   ok "the real table: a Rust change runs the $(wc -l < "${WORK}/rust.txt" | tr -d ' ') cases a bin/og change runs"
 else bad "the real table: a Rust change picks $(wc -l < "${WORK}/rust.txt" | tr -d ' ') cases, a bin/og change $(wc -l < "${WORK}/og.txt" | tr -d ' '): $(diff "${WORK}/og.txt" "${WORK}/rust.txt" | grep '^[<>]' | paste -sd' ' -)"; fi
-for c in output-contract-1-hg002 traits-panel-1 prs-2-ancestry bash-step-11-roh; do
+for c in output-contract-1-hg002 traits-panel-1 prs-2-ancestry bash-step-11-roh vendor-vcf-intake-5-docs; do
   if grep -qx "$c" "${WORK}/rust.txt"; then ok "the real table runs ${c}, which runs og, on a Rust change"
   else bad "the real table does not run ${c} on a Rust change, though it runs og"; fi
 done
