@@ -28,6 +28,14 @@ pub const EFFECT_TEXT: &str = "Effect: the odds ratio (OR) or hazard ratio (HR) 
     evaluation's unit (its PGS Catalog PPM page says which). It describes the score in that \
     group, not your own risk, and is shown only for a group the score was evaluated in.";
 
+/// The start of the line under the scores when every percentile was
+/// withheld for an input that lists variants only (og summary collect's
+/// `percentile_note`): the panel ran, so the no-panel line would be false.
+pub const WITHHELD_TEXT: &str = "Percentile withheld: the input lists variants only, so each \
+    scoring site it leaves out adds nothing to the sum, and the raw sum cannot be compared with \
+    the reference panel's samples, whose genotypes are complete. A gVCF from step 3, or a chip \
+    VCF, lists the reference calls and keeps the percentile.";
+
 /// What a score, matched or total cell says when the summary has none: og
 /// summary collect writes null for a short row of pgsc_calc's table.
 pub const NOT_AVAILABLE: &str = "not available";
@@ -162,6 +170,16 @@ fn sex_note(rs: &[Value]) -> Result<String, Malformed> {
     ))
 }
 
+/// Whether a score's percentile was withheld (its `percentile_note`).
+fn withheld(rs: &[Value]) -> Result<bool, Malformed> {
+    for r in rs {
+        if on(r, "percentile_note")?.is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Whether the summary's table names evaluations (its Evaluated_In column).
 fn names_evaluations(rs: &[Value]) -> Result<bool, Malformed> {
     for r in rs {
@@ -178,6 +196,11 @@ pub fn note(d: &Value) -> Result<String, Malformed> {
     let rs = scores(d)?;
     let tail = chrx_note(&rs)? + &sex_note(&rs)?;
     if !get(d, "adjusted", PATH)?.is_some_and(truthy) {
+        if withheld(&rs)? {
+            return Ok(format!(
+                "{WITHHELD_TEXT} {PRS_ANCESTRY_NOTE} See docs/25-prs.md.{tail}"
+            ));
+        }
         return Ok(format!(
             "Raw score only: no ancestry reference panel was installed, so there is no percentile \
              and the sum cannot be compared with anyone (scripts/setup.sh --ancestry-panel adds \

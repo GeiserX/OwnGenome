@@ -101,6 +101,11 @@ const NOT_ASSESSED: [&str; 5] = [
 const PRS_NOT_ADJUSTED: &str =
     "Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums";
 
+/// Added in its place when the panel ran but every percentile was withheld,
+/// because the input lists variants only (a score's `percentile_note`).
+const PRS_WITHHELD: &str = "Polygenic score percentiles: the input lists variants only, so the \
+percentiles were withheld and the scores are raw sums";
+
 /// Added unless step 35's depth count (short reads) or step 35b
 /// (Paraphase, PacBio HiFi, both genes) made a call.
 const HBA_NOT_ASSESSED: &str = "HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count \
@@ -262,7 +267,17 @@ fn not_assessed(sections: &[Section]) -> Vec<&'static str> {
     };
     let mut out = NOT_ASSESSED.to_vec();
     if !field("prs", "adjusted").is_some_and(truthy) {
-        out.push(PRS_NOT_ADJUSTED);
+        let withheld = match field("prs", "scores") {
+            Some(Value::Array(rows)) => rows
+                .iter()
+                .any(|r| at(Some(r), "percentile_note").is_some_and(truthy)),
+            _ => false,
+        };
+        out.push(if withheld {
+            PRS_WITHHELD
+        } else {
+            PRS_NOT_ADJUSTED
+        });
     }
     // Step 35b on a region subset (--paraphase_regions) may leave hba out.
     let hba_genes: Vec<&str> = match field("paralogs", "genes") {
