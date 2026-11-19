@@ -19,6 +19,8 @@
 #   to be PacBio HiFi, PL:PACBIO, or its step fails and the rest goes on; cyrius runs when setup.sh --cyrius installed it, whose
 #   licence is non-commercial: TOOLS without cyrius leaves it out); KIR=true (KIR genes with HLA);
 #   HLA_QC=true (OptiType beside T1K: HLA-A and HLA-B reach PharmCAT only when both agree);
+#   CPSR_SECONDARY_FINDINGS=false (--cpsr_secondary_findings false: step 17's CPSR reports the cancer genes only, not
+#   the ACMG SF genes; the report's own secondary-findings card from step 23 stays);
 #   HPO=HP:0001250,HP:0001263 (the symptoms as HPO ids: step 48 ranks the variants that could explain them with Exomiser,
 #   after setup.sh --exomiser-data);
 #   REF_FASTA, EH_CATALOG (a file, or bundled), MANTA_CALL_REGIONS, PARASCOPY_POPULATION, PARAPHASE_REGIONS, ANCESTRY_PANEL (--ancestry_ref; none: raw
@@ -52,7 +54,7 @@ shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
 # 'meta switches' names them all, so a replay drops one set now that the run did not have. The replay reads this
 # shape back word by word and starts run-all.sh with those arguments, never through a shell; it refuses any other.
-SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO REF_FASTA EH_CATALOG
+SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO CPSR_SECONDARY_FINDINGS REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
   FAMILIES OWNGENOME_LIVE_URL LOCITYPER_DATA LOCITYPER_BG_REGION NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
@@ -66,6 +68,8 @@ export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 validate_sample "$SAMPLE"
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
+SF=${CPSR_SECONDARY_FINDINGS:-true}  # as scripts/17-cpsr.sh reads it: true or false, nothing else
+[[ "$SF" =~ ^(true|false)$ ]] || { echo "ERROR: CPSR_SECONDARY_FINDINGS must be true or false, got '${SF}'" >&2; exit 2; }
 # The ClinVar files are shared by every sample of GENOME_DIR. bin/og recheck --refresh-clinvar holds this
 # lock while it replaces them; the run holds it shared on fd 7 until it ends, so a run waits for a refresh going on
 # and a refresh refuses while a run goes on. Without flock (macOS: brew install flock) nothing waits here.
@@ -194,6 +198,8 @@ plan "23 Clinical filter" clinical_filter "${VEPW:+needs VEP, ${VEPW}}" || true
 plan "31 slivar" slivar "${VEPW:+needs VEP, ${VEPW}}" || true
 plan "17 CPSR" cpsr "$(need "${G}/vep_cache/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/info.txt" "${G}/pcgr_data/${PCGR_DATA_BUNDLE}/data")" \
   && NF+=(--pcgr_data "${G}/pcgr_data/${PCGR_DATA_BUNDLE}" --vep_cache_cpsr "${G}/vep_cache")
+[[ " ${SEL[*]} " != *" cpsr "* ]] || [ "$SF" = true ] \
+  || { NF+=(--cpsr_secondary_findings false); echo "    (CPSR_SECONDARY_FINDINGS=false: CPSR reports the cancer genes only)"; }
 plan "18 CNVpytor" cnvpytor "$(need "${G}/reference/cnvpytor/gc_hg38.pytor")" && NF+=(--cnvpytor_resources "${G}/reference/cnvpytor")
 plan "05 AnnotSV" annotsv "$(need "${G}/annotsv_annotations/Annotations_Human/Genes/GRCh38")" && NF+=(--annotsv_annotations "${G}/annotsv_annotations")
 plan "32 pypgx" pypgx "$(need "${G}/reference/pypgx-bundle")" && NF+=(--pypgx_bundle "${G}/reference/pypgx-bundle")
