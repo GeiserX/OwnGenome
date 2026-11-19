@@ -1111,7 +1111,7 @@ pub fn pgx_inhibitors(c: &Ctx<'_>) -> Lookup<Found> {
     }
     Ok(table_row(
         "Drug interactions (assets/pgx_inhibitors.tsv, step 27)",
-        format!("{} rows, FDA classes read 2026-11-03", rows.len()),
+        format!("{} rows, FDA classes", rows.len()),
         &format!(
             "the FDA table{}{via}",
             date.map(|d| format!(" (current as of {d})"))
