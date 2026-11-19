@@ -204,23 +204,26 @@ pub fn prs(c: &Ctx<'_>) -> Out {
             Some(Some(x)) => strs(x.split(';').filter(|x| !x.is_empty())),
             _ => Value::Null,
         };
-        rows.push(
-            Obj::new()
-                .set("condition", get_default(r, "Condition", ""))
-                .set("pgs_id", get_default(r, "PGS_ID", ""))
-                .set("score", get_default(r, "Score_SUM", ""))
-                .set("matched", get_default(r, "Variants_Matched", ""))
-                .set("total", get_default(r, "Variants_Total", ""))
-                .set("chrx", get_default(r, "ChrX", ""))
-                .set("ambiguous", get_default(r, "Ambiguous", ""))
-                .set("applies_to", get_default(r, "Applies_To", ""))
-                .set("sex_check", get_default(r, "Sex_Check", ""))
-                .set("percentile", s(&pct))
-                .set("group", group)
-                .set("evaluated_in", evaluated)
-                .set("effect", s(&or(r, "Effect", "")))
-                .val(),
-        );
+        let mut row = Obj::new()
+            .set("condition", get_default(r, "Condition", ""))
+            .set("pgs_id", get_default(r, "PGS_ID", ""))
+            .set("score", get_default(r, "Score_SUM", ""))
+            .set("matched", get_default(r, "Variants_Matched", ""))
+            .set("total", get_default(r, "Variants_Total", ""))
+            .set("chrx", get_default(r, "ChrX", ""))
+            .set("ambiguous", get_default(r, "Ambiguous", ""))
+            .set("applies_to", get_default(r, "Applies_To", ""))
+            .set("sex_check", get_default(r, "Sex_Check", ""))
+            .set("percentile", s(&pct))
+            .set("group", group)
+            .set("evaluated_in", evaluated)
+            .set("effect", s(&or(r, "Effect", "")));
+        // Why a panel run gave no percentile (og prs table --target writes
+        // the column): the input listed variants only. Older tables have none.
+        if r.get("Percentile_Note").is_some() {
+            row.put("percentile_note", s(&or(r, "Percentile_Note", "")));
+        }
+        rows.push(row.val());
     }
     let mut out = Obj::new()
         .set("scores", Value::Array(rows))

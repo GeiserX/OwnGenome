@@ -13432,7 +13432,8 @@
        "EUR",
        "AFR"
       ],
-      "effect": "HR 1.5 (EUR)"
+      "effect": "HR 1.5 (EUR)",
+      "percentile_note": ""
      },
      {
       "condition": "T2D",
@@ -13447,7 +13448,8 @@
       "percentile": "",
       "group": "",
       "evaluated_in": [],
-      "effect": ""
+      "effect": "",
+      "percentile_note": "percentile withheld: the input lists variants only"
      },
      {
       "condition": "Short",
@@ -13462,7 +13464,8 @@
       "percentile": "",
       "group": null,
       "evaluated_in": null,
-      "effect": ""
+      "effect": "",
+      "percentile_note": ""
      }
     ],
     "adjusted": true,

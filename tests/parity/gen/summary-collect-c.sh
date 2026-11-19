@@ -96,9 +96,9 @@ HFE\t1\tHFE*001\t3\t20\t.\t0\t-1
 short\t1\n"
 put $f/hla_optitype/S_hla_concordance.tsv "Gene\tT1K\tOptiType\tAgree\tNote\nHLA-A\t A*02:01 \tA*02:01\tyes\t\n\t\t\t\t\nHLA-B\tB*57:01\tB*57:01\tyes\tok\n"
 put $f/kir_t1k/S_kir_genotype.tsv "KIR2DL1\t2\tKIR2DL1*001\t5\t30\tKIR2DL1*002\t4\t20\nKIR3DL3\t0\t.\t0\t-1\t.\t0\t-1\n"
-put $f/prs/S_prs_summary.tsv "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tChrX\tAmbiguous\tApplies_To\tSex_Check\tPercentile\tAncestry_Group\tEvaluated_In\tEffect
-CAD\tPGS000018\t0.5\t100\t120\t0\t12 dropped\tall\tok\t75\tEUR\tEUR;;AFR\tHR 1.5 (EUR)
-T2D\tPGS000014\t0.1\t10\t20\t0\t0\tall\tok\tNA\tNA\t\t
+put $f/prs/S_prs_summary.tsv "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tChrX\tAmbiguous\tApplies_To\tSex_Check\tPercentile\tAncestry_Group\tEvaluated_In\tEffect\tPercentile_Note
+CAD\tPGS000018\t0.5\t100\t120\t0\t12 dropped\tall\tok\t75\tEUR\tEUR;;AFR\tHR 1.5 (EUR)\t
+T2D\tPGS000014\t0.1\t10\t20\t0\t0\tall\tok\tNA\tNA\t\t\tpercentile withheld: the input lists variants only
 Short\tPGS1\n"
 put $f/ancestry/S_ancestry.tsv "key\tvalue\npopulation\tEUR\nreference_panel\tHGDP+1kGP\n\tskipped\npopulation_low_confidence\n"
 put $f/ancestry_fine/S_ancestry_fine.tsv "level\tcode\tgroup\tfraction\tse\tlow\thigh
