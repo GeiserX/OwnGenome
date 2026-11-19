@@ -75,7 +75,12 @@ fn delta(root: &Path, prev: &Path, cur: &Path) -> (Value, String, String) {
     .to_vec();
     let (mut o, mut e) = (Vec::new(), Vec::new());
     let code = run(&args, &Env::system(), &mut o, &mut e);
-    assert_eq!(code, 0, "og run delta exits 0: {}", String::from_utf8_lossy(&e));
+    assert_eq!(
+        code,
+        0,
+        "og run delta exits 0: {}",
+        String::from_utf8_lossy(&e)
+    );
     let read = |ext: &str| fs::read_to_string(out.with_extension(ext)).unwrap();
     (loads(&read("json")).unwrap(), read("txt"), read("html"))
 }
@@ -156,10 +161,7 @@ fn every_reason_that_names_inputs_starts_with_likely() {
             "the HTML prints the reason as written: {why:?}"
         );
     }
-    let cpsr = res
-        .iter()
-        .find(|c| text(get(c, "area")) == "CPSR")
-        .unwrap();
+    let cpsr = res.iter().find(|c| text(get(c, "area")) == "CPSR").unwrap();
     let why = text(get(cpsr, "why"));
     assert!(
         why.contains("VEP_CACHE_RELEASE 115 -> 116"),
