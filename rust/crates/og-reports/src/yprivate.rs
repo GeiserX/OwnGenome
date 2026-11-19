@@ -158,7 +158,9 @@ fn read_mask(path: &str) -> Result<Mask, Error> {
 
 /// A public SNP: its position and its two bases (ancestral and derived,
 /// upper case), or `None` when the table row gives no usable pair, so any
-/// allele at that position counts as named.
+/// allele at that position counts as named. A usable pair is two different
+/// single bases, each A, C, G or T: a row with the same base twice names no
+/// change, so it cannot say which one is known and counts as unusable.
 type Public = (u64, Option<[u8; 2]>);
 
 /// One base of a table or VCF column, upper case, when it is A, C, G or T.

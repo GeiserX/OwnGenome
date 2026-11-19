@@ -7,7 +7,8 @@
 #      real call is dropped, so the subtraction is doing work on real data),
 #      and no listed call may be a change either table names: a row at its
 #      position with the same two bases (either order), or with bases that
-#      are not one A, C, G or T each. Another base at a known position is a
+#      are not two different single bases, each A, C, G or T (the tool's
+#      rule for an unusable row). Another base at a known position is a
 #      new mutation and stays listed.
 #      Only calls inside the chrY callable mask are listed.
 #      Red controls, on a copy of the VCF seeded with two synthetic chrY
