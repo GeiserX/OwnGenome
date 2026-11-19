@@ -441,14 +441,25 @@ fn contamination_on_fewer_than_5000_markers_is_uncertain() {
         ("ok", "FREEMIX rests on 5000 markers")
     );
     // Relaxed mode: uncertain whatever the count.
-    for markers in [Some(320), Some(60000), None] {
+    for markers in [Some(320), Some(8000), None] {
         let t = evidence(&many, None, true, "skipped", markers);
         assert_eq!(t["contamination_confidence"], "uncertain", "{markers:?}");
+        let why = &t["contamination_confidence_reason"];
         assert!(
-            t["contamination_confidence_reason"].contains("skipped its marker check"),
+            why.starts_with("VerifyBamID2 skipped its marker check"),
             "{t:?}"
         );
+        // The check needs more than 1,000 markers and a tenth of the
+        // panel, so it can skip above the 5,000 floor: the reason must
+        // not set the count against that floor.
+        assert!(!why.contains("5,000"), "{t:?}");
+        assert!(why.contains("more than a tenth of the panel"), "{t:?}");
     }
+    let t = evidence(&many, None, true, "skipped", Some(8000));
+    assert_eq!(
+        t["contamination_confidence_reason"],
+        "VerifyBamID2 skipped its marker check: its first run kept 8000 markers, too few for that check (more than 1,000 and more than a tenth of the panel), so FREEMIX is a rough estimate"
+    );
     // A passed check with no count: VerifyBamID2's own floor held.
     let t = evidence(&many, None, true, "passed", None);
     assert_eq!(t["contamination_confidence"], "ok");

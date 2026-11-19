@@ -372,16 +372,19 @@ fn contamination_confidence(
         return ("", String::new());
     }
     match (marker_check, markers) {
+        // VerifyBamID2 keeps its check only for more than 1,000 markers
+        // that are also more than a tenth of the panel, so on the
+        // 100,000-marker panel a skipped check can follow a count above
+        // the floor: the reason names the check's rule, not the floor.
         ("skipped", Some(m)) => (
             "uncertain",
             format!(
-                "VerifyBamID2 skipped its marker check and estimated FREEMIX from {m} markers; a firm estimate needs {}",
-                thousands(floor)
+                "VerifyBamID2 skipped its marker check: its first run kept {m} markers, too few for that check (more than 1,000 and more than a tenth of the panel), so FREEMIX is a rough estimate"
             ),
         ),
         ("skipped", None) => (
             "uncertain",
-            "VerifyBamID2 skipped its marker check: fewer than 1,000 markers had reads".to_owned(),
+            "VerifyBamID2 skipped its marker check: too few markers had reads (it needs more than 1,000 and more than a tenth of the panel)".to_owned(),
         ),
         (_, Some(m)) if m < floor => (
             "uncertain",
