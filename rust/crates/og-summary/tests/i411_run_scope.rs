@@ -252,3 +252,56 @@ fn without_a_readable_sample_vcf_no_scope_is_written_and_nothing_is_marked() {
     let v = collect(&d);
     assert!(get(&v, "scope").is_none());
 }
+
+/// Marks the ROH result (step 11) as from an earlier run: the run started
+/// after every file was written, and step 11 failed in it.
+fn roh_from_an_earlier_run(d: &Dir) {
+    let started = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 86_400;
+    let mut status = format!("meta\tstarted_epoch\t{started}\n");
+    for step in og_summary::collect::model::RUN_ALL_STEPS {
+        let result = if *step == "11" {
+            "failed (exit 1)"
+        } else {
+            "ok"
+        };
+        status.push_str(&format!("step\t{step}\t{result}\n"));
+    }
+    d.put("logs/run_status.tsv", status.as_bytes());
+}
+
+#[test]
+fn a_stale_genome_wide_result_never_reads_as_complete() {
+    // A whole-genome run whose ROH step failed shows the ROH result of an
+    // earlier run. That run's scope was not recorded: it may have been a
+    // chr22-only run, so the mark says the scope is not known.
+    let names = autosomes();
+    let contigs: Vec<&str> = names.iter().map(String::as_str).collect();
+    for (tag, contigs, mark) in [
+        ("stale-whole", contigs.clone(), None),
+        (
+            "stale-two",
+            vec!["chr20", "chr22"],
+            Some("partial: covers 2 of 22 autosomes"),
+        ),
+    ] {
+        let d = folder(tag, &contigs);
+        roh_from_an_earlier_run(&d);
+        let v = collect(&d);
+        let roh = at(&v, &["sections", "roh"]);
+        assert_eq!(st(at(roh, &["state"])), "stale", "{tag}: {roh:?}");
+        assert_eq!(
+            st(at(roh, &["partial"])),
+            "partial: not known, from an earlier run",
+            "{tag}"
+        );
+        for key in GENOME_WIDE.iter().filter(|k| **k != "roh") {
+            let sec = at(&v, &["sections", key]);
+            assert_eq!(st(at(sec, &["state"])), "ok", "{tag} {key}: {sec:?}");
+            assert_eq!(get(sec, "partial").map(st), mark, "{tag} {key}");
+        }
+    }
+}

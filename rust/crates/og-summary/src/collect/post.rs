@@ -11,7 +11,8 @@
 //! - `not_assessed`: what no step looked at, with the lines that depend on
 //!   the polygenic scores, HBA1/HBA2, mobile elements, VNtyper and MoChA;
 //! - `scope`: what part of the genome the run called, and the `partial`
-//!   mark on each genome-wide section of a run that called less;
+//!   mark on each genome-wide section of a run that called less, and on
+//!   each stale one, whose earlier run's scope is not known;
 //! - `recheck`: the last database re-check of the sample;
 //! - `new_since`: what changed since the previous run kept in `history/`.
 //!
@@ -276,20 +277,35 @@ fn scope(contigs: Option<&[String]>, intervals: Option<&str>) -> Option<Value> {
     Some(Value::Object(out))
 }
 
-/// Adds the scope's mark as `partial` to each genome-wide section that has
-/// a result (ok or stale) when the run was partial.
+/// The mark of a stale genome-wide section: its result is from an earlier
+/// run, and that run's scope was not recorded.
+const STALE_MARK: &str = "partial: not known, from an earlier run";
+
+/// Adds a `partial` mark to the genome-wide sections. A result of this run
+/// (ok) takes the scope's mark when the run was partial. A stale result is
+/// from an earlier run, whose scope this run's VCF does not tell: it takes
+/// `STALE_MARK` whatever this run covered, so it never reads as complete.
 fn mark_partial(summary: &mut indexmap::IndexMap<String, Value>, scope: &Value) {
-    let Some(Value::Str(mark)) = at(Some(scope), "mark") else {
-        return;
+    let mark = match at(Some(scope), "mark") {
+        Some(Value::Str(m)) => Some(m.clone()),
+        _ => None,
     };
     let Some(Value::Object(sections)) = summary.get_mut("sections") else {
         return;
     };
     for key in GENOME_WIDE {
-        if let Some(Value::Object(sec)) = sections.get_mut(key)
-            && (is(sec.get("state"), "ok") || is(sec.get("state"), "stale"))
-        {
-            sec.insert("partial".into(), Value::Str(mark.clone()));
+        let Some(Value::Object(sec)) = sections.get_mut(key) else {
+            continue;
+        };
+        let text = if is(sec.get("state"), "stale") {
+            Some(STALE_MARK.to_owned())
+        } else if is(sec.get("state"), "ok") {
+            mark.clone()
+        } else {
+            None
+        };
+        if let Some(text) = text {
+            sec.insert("partial".into(), Value::Str(text));
         }
     }
 }
