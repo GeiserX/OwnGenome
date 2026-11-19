@@ -14,12 +14,12 @@ Locityper (Prodanov et al., Nat Genet 2025, PMID 41107551, doi 10.1038/s41588-02
 
 ## Tool
 
-- Locityper, the release `LOCITYPER_IMAGE` pins (1.7.14 today; MIT licence, https://github.com/tprodanov/locityper): `locityper preproc` and `locityper genotype` on the BAM
+- Locityper, the release `LOCITYPER_IMAGE` pins (1.7.15 today; MIT licence, https://github.com/tprodanov/locityper): `locityper preproc` and `locityper genotype` on the BAM
 - `og locityper report` (OwnGenome's Rust binary, [og](rust.md), static, so it runs inside the Locityper image) for the table
 
 ## Docker Image
 
-- `LOCITYPER_IMAGE`: the Bioconda build, `quay.io/biocontainers/locityper`. It carries Locityper, jellyfish, samtools, minimap2, strobealign, tabix and Python. 1.7.15 exists; its only change is in `locityper align`, which this step does not run, so the pin stays at 1.7.14.
+- `LOCITYPER_IMAGE`: the Bioconda build, `quay.io/biocontainers/locityper`. It carries Locityper, jellyfish, samtools, minimap2, strobealign, tabix and Python.
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. The line is marked optional, so `setup.sh` pulls it only with `--locityper-data`.
 
@@ -36,7 +36,7 @@ Then it follows Locityper's documentation (https://locityper.vercel.app, "Prepar
 
 ## The loci
 
-`assets/locityper_loci.bed` lists them. The regions are those of the Locityper authors' own GRCh38 database of 326 loci (Zenodo record 15879519, https://zenodo.org/records/15879519), except FCGR, where their FCGR3A and FCGR2B loci overlap and are joined.
+`assets/locityper_loci.bed` lists them. The regions are those of the Locityper authors' own GRCh38 database of 326 loci (Zenodo record 15879519, https://zenodo.org/records/15879519), except FCGR, where their FCGR3A and FCGR2B loci overlap and are joined. That database is Timofey Prodanov's, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); the file's header names it and what changed. The HPRC panel the database is built from is public domain (https://humanpangenome.org/data-use/). `setup.sh` builds the database on your machine, and the repository ships none of the panel.
 
 | Locus | GRCh38 region | Primary caller here |
 |---|---|---|
@@ -110,5 +110,5 @@ The fixture's three loci took about 5 minutes to build and 8 minutes to augment 
 
 - Prodanov T, et al. Nat Genet 2025. PMID 41107551, doi 10.1038/s41588-025-02362-4 (read 2026-11-03)
 - Locityper documentation, https://locityper.vercel.app (read 2026-11-03)
-- Locityper authors' databases and benchmark filter, Zenodo record 15879519, https://zenodo.org/records/15879519 (read 2026-11-03)
-- HPRC release 2 Minigraph-Cactus GRCh38 VCF, https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/minigraph-cactus/v2.1/hprc-v2.1-mc-grch38/ (read 2026-11-03)
+- Locityper authors' databases and benchmark filter, Zenodo record 15879519, https://zenodo.org/records/15879519, CC BY 4.0 (read 2026-11-03)
+- HPRC release 2 Minigraph-Cactus GRCh38 VCF, https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/minigraph-cactus/v2.1/hprc-v2.1-mc-grch38/, public domain (read 2026-11-03)

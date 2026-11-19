@@ -4,6 +4,10 @@
 # their FCGR3A and FCGR2B loci joined because they overlap. setup.sh --locityper-data builds the
 # database of these rows from the HPRC v2.1 pangenome VCF (LOCITYPER_PANEL_URL) and reads that VCF
 # 250 kb either side of each row, the room Locityper's locus extension needs (up to 200 kb).
+# Source: Timofey Prodanov, Locityper loci database, https://doi.org/10.5281/zenodo.15879519,
+# licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Changed: five of its 326 loci
+# kept, FCGR3A and FCGR2B joined as FCGR. The HPRC panel is public domain
+# (https://humanpangenome.org/data-use/); no part of it is in this file.
 chr1	161506761	161681047	FCGR
 chr6	32484347	32593538	HLA-DRB1
 chr6	32652603	32669077	HLA-DQB1
