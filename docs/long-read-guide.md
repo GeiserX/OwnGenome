@@ -149,6 +149,12 @@ The script auto-detects input files in this order:
 
 Override with: `INPUT=${GENOME_DIR}/your_sample/fastq/custom_reads.fastq.gz PLATFORM=ont ./scripts/02b-alignment-longread.sh your_sample`
 
+For ONT reads the script also records the basecaller model in the aligned BAM's read group (`DS:basecall_model=...`), where step 3e reads it to pick the Clair3 model. It takes `BASECALL_MODEL` when set, else the `basecall_model=` that Dorado writes into an unaligned BAM's read group. A FASTQ does not carry it, so set it for FASTQ input:
+
+```bash
+BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_sup@v5.0.0 PLATFORM=ont ./scripts/02b-alignment-longread.sh your_sample
+```
+
 > **Note:** The INPUT path must be **physically** inside `GENOME_DIR` because Docker only mounts that directory. Symlinks that point outside `GENOME_DIR` will not work — Docker cannot follow them. Copy or move the file instead.
 
 ### Step 3: Variant Calling (SNPs + Indels)
@@ -167,7 +173,21 @@ PLATFORM=hifi ./scripts/03e-clair3.sh your_sample
 
 Output: `${GENOME_DIR}/your_sample/vcf_clair3/your_sample.vcf.gz`
 
-Clair3 uses deep-learning models trained specifically on long-read error profiles. It auto-selects the correct model based on your PLATFORM setting.
+Clair3 uses deep-learning models trained on long-read error profiles, one per platform and, for ONT, one per basecaller model. HiFi uses `hifi_revio`. For ONT the step picks the model that matches the reads' basecaller (`og longread clair3-model`):
+
+1. `CLAIR3_MODEL`, a model directory, when you set it.
+2. Else `BASECALL_MODEL`, a Dorado model name such as `dna_r10.4.1_e8.2_400bps_sup@v5.0.0`.
+3. Else the `basecall_model=` in the BAM's read group (step 2b writes it; a BAM aligned by Dorado has it too).
+
+| Basecaller model | Clair3 model |
+|---|---|
+| `dna_r10.4.1_e8.2_400bps_sup@vX.Y.Z` | `r1041_e82_400bps_sup_vXYZ` (for example v5.0.0 gives `r1041_e82_400bps_sup_v500`) |
+| `dna_r10.4.1_e8.2_400bps_hac@vX.Y.Z` | `r1041_e82_400bps_hac_vXYZ` |
+| R9.4.1 SUP (Dorado `dna_r9.4.1_e8_sup@v3.3`, Guppy `dna_r9.4.1_450bps_sup`) | `r941_prom_sup_g5014` |
+| R9.4.1 HAC | `r941_prom_hac_g360+g422` |
+| fast models, other pores or speeds, RNA | none |
+
+The pinned image holds the R10.4.1 SUP models v4.1.0, v5.0.0 and v5.2.0 and the HAC models v4.1.0, v5.0.0, v5.2.0 and v6.0.0. Before Clair3 runs, the step checks that the chosen directory exists in the image, `CLAIR3_MODEL` included. With no basecaller model known, one with no Clair3 model (fast basecalls), or a model the image lacks (for example SUP v4.3.0), the step stops with exit 1 and lists the image's models. It never falls back to another model: a model trained on other basecalls still writes a VCF, but every call is less accurate and nothing in the output says so. Set `CLAIR3_MODEL` to use a model by hand.
 
 #### Option B: DeepVariant (long-read mode)
 
@@ -293,7 +313,7 @@ dorado basecaller sup pod5_dir/ > reads.bam
 dorado demux reads.bam  # if barcoded
 ```
 
-The Clair3 model (`r1041_e82_400bps_sup_v500`) assumes R10.4.1 chemistry with SUP basecalling. Using a different chemistry or basecaller may reduce accuracy.
+Step 3e picks the Clair3 model from the basecaller model (see Step 3 above), so keep the `basecall_model=` that Dorado writes into the BAM, or set `BASECALL_MODEL`. Clair3 has no model for fast basecalls.
 
 ### Read Length Distribution
 
@@ -345,13 +365,12 @@ Long-read alignment uses more memory than short-read because the index is loaded
 # In the script, change --memory 16g to --memory 24g or higher
 ```
 
-### "Clair3 model not found"
+### "names no basecaller model", "has no model" or "is not in the image"
 
-The Docker image `CLAIR3_IMAGE` bundles models at `/opt/models/`. If you get a model-not-found error:
+Step 3e stopped before Clair3 ran, because it could not match a model to the reads' basecaller. The message lists the models in `CLAIR3_IMAGE` (`/opt/models/`).
 
-1. Verify the image is pulled: `docker images | grep clair3`
-2. Check available models: `docker run --rm "${CLAIR3_IMAGE}" ls /opt/models/` (after `source versions.env` in the repository root)
-3. If your ONT chemistry is different (e.g., R9.4.1), look for a matching model in the container
+1. No basecaller model: set `BASECALL_MODEL` to the Dorado model the reads were basecalled with. Dorado's BAM names it in its `@RG` line (`samtools view -H reads.bam | grep '^@RG'`), and its FASTQ headers carry `basecall_model_version_id=`.
+2. No Clair3 model or not in the image: set `CLAIR3_MODEL` to the listed model closest to your basecaller, for example `CLAIR3_MODEL=/opt/models/r1041_e82_400bps_sup_v520`, or use a newer `CLAIR3_IMAGE` that ships the matching model.
 
 ### "Sniffles2 needs long reads" or "Sniffles2 produces 0 SVs"
 
