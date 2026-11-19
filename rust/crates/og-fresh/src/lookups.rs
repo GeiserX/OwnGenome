@@ -2,7 +2,7 @@
 //! image and digest sections. Each lookup returns its report row and a
 //! typed answer ([`Found`]); a lookup that cannot answer is an error.
 
-use crate::http::Fetch;
+use crate::http::{Body, Fetch, Request, Want};
 use crate::pins::{Pins, hla_db_release, setting, vep_cache_template};
 use crate::registry::{Registry, split_image};
 use crate::version::{change_kind, max_by, newer_tags, ver};
@@ -975,7 +975,14 @@ fn fda_parts(name: &str) -> Vec<&str> {
 /// table covers (strong only for CYP3A) that has no row.
 pub fn pgx_inhibitors(c: &Ctx<'_>) -> Lookup<Found> {
     let rows = curated(c, "pgx_inhibitors.tsv", &["Drug", "Gene", "Strength"])?;
-    let html = c.fetch.text(FDA_CYP_TABLE)?;
+    // fda.gov answers 404 to a request that does not ask for a web page.
+    let req = Request::get(FDA_CYP_TABLE, Want::Text)
+        .header("Accept", "text/html,application/xhtml+xml")
+        .header("Accept-Language", "en-US,en;q=0.9");
+    let html = match c.fetch.request(&req)?.0 {
+        Body::Text(t) => t,
+        _ => return Err(LookupError::Shape(format!("{FDA_CYP_TABLE}: no text body"))),
+    };
     let (date, fda) = fda_inhibitors(&html)?;
     let strength_of = |names: &[&FdaRow], g: &str| {
         let s: Vec<&str> = names
