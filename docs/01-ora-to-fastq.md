@@ -16,7 +16,7 @@ Raw sequencing data from Illumina DRAGEN comes in ORA format. All downstream too
 
 ## Command
 
-The script takes three arguments and decompresses one ORA file per call. Set `ORAD` if `orad` is not at `/opt/orad/bin/orad`. It runs `orad --ora-reference <ora_reference_dir> --path <output_dir> <ora_file>`; CI runs `orad --help` from the 2.7.0 release and fails if an option the script passes is not listed.
+The script takes three arguments and decompresses one ORA file per call. Set `ORAD` if `orad` is not at `/opt/orad/bin/orad`. It runs `orad --ora-reference <ora_reference_dir> --path <temporary folder> <ora_file>`; CI runs `orad --help` from the 2.7.0 release and fails if an option the script passes is not listed.
 
 ```bash
 export GENOME_DIR=/path/to/your/data
@@ -26,6 +26,8 @@ export SAMPLE=your_name
 ./scripts/01-ora-to-fastq.sh $SAMPLE /path/to/oradata /path/to/${SAMPLE}_S1_L001_R1_001.fastq.ora
 ./scripts/01-ora-to-fastq.sh $SAMPLE /path/to/oradata /path/to/${SAMPLE}_S1_L001_R2_001.fastq.ora
 ```
+
+orad writes into a temporary folder inside the output folder. The step fails when orad exits 0 but wrote no `.fastq.gz`, or wrote one that does not start with a FASTQ record. Then nothing reaches the output folder. A file left there by an earlier call, such as R1 when you decompress R2, does not count. When orad fails, its partial file is removed too.
 
 The output lands in `${GENOME_DIR}/${SAMPLE}/fastq/` and keeps the ORA file's name (`..._R1_001.fastq.gz`). Step 1b and step 2 read `${SAMPLE}_R1.fastq.gz` and `${SAMPLE}_R2.fastq.gz`, so rename the two files:
 

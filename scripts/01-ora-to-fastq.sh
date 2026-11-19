@@ -39,11 +39,41 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
+# orad writes into a directory of its own, so this call's output can be told
+# from files an earlier call left (step 01 runs once for R1 and once for R2).
+# The step fails unless orad wrote at least one .fastq.gz and each one it wrote
+# starts with a FASTQ record; only then are they moved into fastq/. An orad that exits 0 having
+# written nothing, or a run that was killed, leaves nothing behind.
+PART_DIR=$(mktemp -d "${OUTPUT_DIR}/.orad.XXXXXX")
+trap 'rm -rf "$PART_DIR"' EXIT
+
 "$ORAD" \
   --ora-reference "$ORA_REF" \
-  --path "$OUTPUT_DIR" \
+  --path "$PART_DIR" \
   "$ORA_FILE"
+
+WROTE=()
+for f in "$PART_DIR"/*.fastq.gz; do
+  [ -e "$f" ] || continue
+  first=$(gzip -cd "$f" 2>/dev/null | head -c 1) || true
+  if [ "$first" != "@" ]; then
+    echo "ERROR: orad exited 0 but its ${f##*/} holds no FASTQ record (empty or not gzip)." >&2
+    echo "  Nothing was written to ${OUTPUT_DIR}/." >&2
+    exit 1
+  fi
+  WROTE+=("$f")
+done
+if [ "${#WROTE[@]}" -eq 0 ]; then
+  echo "ERROR: orad exited 0 but wrote no .fastq.gz for ${ORA_FILE}." >&2
+  echo "  Check the ORA file, and that the ORA reference (${ORA_REF}) is the one for its run." >&2
+  exit 1
+fi
+for f in "${WROTE[@]}"; do
+  mv -f "$f" "${OUTPUT_DIR}/"
+done
 
 echo "=== ORA to FASTQ complete ==="
 echo "FASTQ files: ${OUTPUT_DIR}/"
-ls -lh "$OUTPUT_DIR"/*.fastq.gz 2>/dev/null || echo "WARNING: No .fastq.gz files found in output"
+for f in "${WROTE[@]}"; do
+  ls -lh "${OUTPUT_DIR}/${f##*/}"
+done
