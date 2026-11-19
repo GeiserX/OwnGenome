@@ -7,7 +7,10 @@
 //!   haplotypes within 1e-9, and the checkpointed pass equals the one that
 //!   keeps every site within 1e-12;
 //! - the peak memory of a 22-chromosome painting stays under 1 GB, and the
-//!   checkpoints keep a long chromosome far below what full storage takes;
+//!   checkpoints keep a long chromosome far below what full storage takes.
+//!   The 1 GB check is a smoke check: this genome peaks far under it, so it
+//!   cannot go red at this size. The memory evidence is the long-chromosome
+//!   test, whose planted-red run (full storage) does go red;
 //! - two runs, on 1 and on 4 threads, give the same bytes.
 //!
 //! Memory is the resident memory Linux reports (/proc/self/status); on
@@ -540,6 +543,8 @@ fn bytes(chroms: &[ChromInput], threads: usize) -> Vec<u8> {
     out
 }
 
+/// The 1 GB bound is a smoke check (this genome peaks at a few MB); the
+/// memory evidence is [`checkpoints_keep_a_long_chromosome_small`].
 #[test]
 fn a_22_chromosome_painting_stays_under_1_gb_and_repeats_byte_for_byte() {
     let _g = lock();
@@ -624,6 +629,13 @@ fn bad_inputs_stop_with_a_reason() {
         run(&c, ok.clone(), 1)
             .unwrap_err()
             .contains("target haplotype 1")
+    );
+    let mut c = t.chrom.clone();
+    c.targets.clear();
+    assert!(
+        run(&c, ok.clone(), 1)
+            .unwrap_err()
+            .contains("no target haplotype")
     );
     assert!(run(&t.chrom, ok, 0).unwrap_err().contains("thread"));
     assert!(

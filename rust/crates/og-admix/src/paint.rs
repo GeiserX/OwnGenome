@@ -147,9 +147,14 @@ impl Params {
         }
     }
 
-    /// The largest share by which any parameter differs from `other`.
+    /// The largest share by which any parameter differs from `other`;
+    /// infinite when a share is not a number, so a NaN never reads as
+    /// converged.
     fn moved(&self, other: &Params) -> f64 {
-        let rel = |a: f64, b: f64| (a - b).abs() / b.abs().max(f64::MIN_POSITIVE);
+        let rel = |a: f64, b: f64| {
+            let r = (a - b).abs() / b.abs().max(f64::MIN_POSITIVE);
+            if r.is_nan() { f64::INFINITY } else { r }
+        };
         let mut m = rel(self.generations, other.generations).max(rel(self.epsilon, other.epsilon));
         for (a, b) in self
             .mu
@@ -228,6 +233,9 @@ fn check_input(chroms: &[ChromInput], start: &Params, opts: &Options) -> Result<
         return Err(Error("no chromosome to paint".into()));
     };
     start.check(first.panel.groups())?;
+    if chroms.iter().all(|c| c.targets.is_empty()) {
+        return Err(Error("no target haplotype to paint".into()));
+    }
     for c in chroms {
         let name = repr(&c.name);
         if c.panel.sizes() != first.panel.sizes() {
@@ -328,6 +336,7 @@ pub fn paint(chroms: &[ChromInput], start: Params, opts: &Options) -> Result<Pai
             break (fbs, total);
         }
         let next = params.update(&total);
+        next.check(groups)?;
         if next.moved(&params) <= TOLERANCE {
             break (fbs, total);
         }
