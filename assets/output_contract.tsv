@@ -83,7 +83,7 @@ file	{sample}/chip/{sample}_chip.tsv	49	CHIP_REPORT	both	tsv	experimental	-	-
 file	{sample}/chip/{sample}_chip_depth.tsv	49	CHIP_REPORT	both	tsv	experimental	-	-
 file	{sample}/chip/{sample}_chip_filtered.vcf.gz	49	CHIP_MUTECT2	both	vcf	experimental	-	-
 file	{sample}/clinical/{sample}_clinical.vcf.gz	23	CLINICAL_FILTER	both	vcf	stable	bash	-
-file	{sample}/clinical/{sample}_clinical.vcf.gz.tbi	23	CLINICAL_FILTER	nextflow	index	stable	-	-
+file	{sample}/clinical/{sample}_clinical.vcf.gz.tbi	23	CLINICAL_FILTER	both	index	stable	bash	-
 file	{sample}/clinical/{sample}_clinical_summary.tsv	23	CLINICAL_FILTER	both	tsv	stable	bash	-
 file	{sample}/clinvar/{sample}_clinvar_cdna_check.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	both	-
 file	{sample}/clinvar/{sample}_clinvar_cdna_scan.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	both	-
@@ -120,7 +120,7 @@ file	{sample}/exomiser/{sample}_exomiser_terms.tsv	48	EXOMISER_REPORT	both	tsv	e
 file	{sample}/exomiser/{sample}_exomiser_top.tsv	48	EXOMISER_REPORT	both	tsv	experimental	-	-
 file	{sample}/expansion_hunter/{sample}.json	09	EXPANSION_HUNTER	nextflow	json	stable	-	-
 file	{sample}/expansion_hunter/{sample}.vcf	09	EXPANSION_HUNTER	nextflow	vcf	stable	-	-
-file	{sample}/expansion_hunter/{sample}_eh_stranger.vcf	09b	STRANGER	both	vcf	stable	-	-
+file	{sample}/expansion_hunter/{sample}_eh_stranger.vcf	09b	STRANGER	both	vcf	stable	bash	-
 file	{sample}/expansion_hunter/{sample}_realigned.bam	09	EXPANSION_HUNTER	nextflow	bam	stable	-	-
 file	{sample}/expansion_hunter/{sample}_rfc1_motif.tsv	09b	STRANGER_RFC1	both	tsv	stable	-	-
 file	{sample}/expansion_hunter/{sample}_str_motifs.tsv	09b	STRANGER_RFC1	both	tsv	stable	-	-
@@ -161,8 +161,8 @@ file	{sample}/mito/{sample}_chrM.vcf.gz.tbi	12	MITO_EXTRACT_CHRM	nextflow	index	
 file	{sample}/mito/{sample}_chrM_annotated.tsv	20	MITO_VARIANTS_ANNOTATE	both	tsv	stable	bash	-
 file	{sample}/mito/{sample}_chrM_deletions.tsv	20	MITO_DELETIONS	both	tsv	stable	bash	-
 file	{sample}/mito/{sample}_chrM_filtered.vcf.gz	20	MITO_VARIANTS	both	vcf	stable	bash	-
-file	{sample}/mito/{sample}_chrM_filtered.vcf.gz.tbi	20	MITO_VARIANTS	nextflow	index	stable	-	-
-file	{sample}/mito/{sample}_chrM_mutect2.vcf.gz.stats	20	MITO_VARIANTS	nextflow	bin	stable	-	-
+file	{sample}/mito/{sample}_chrM_filtered.vcf.gz.tbi	20	MITO_VARIANTS	both	index	stable	bash	-
+file	{sample}/mito/{sample}_chrM_mutect2.vcf.gz.stats	20	MITO_VARIANTS	both	bin	stable	bash	-
 file	{sample}/mito/{sample}_haplocheck.txt	12	HAPLOCHECK	both	text	stable	-	-
 file	{sample}/mito/{sample}_haplogroup.txt	12	MITO_HAPLOGROUP	both	text	stable	bash	-
 file	{sample}/mito/{sample}_mtdna_copies.tsv	20	MITO_DELETIONS	both	tsv	stable	bash	-
@@ -215,7 +215,7 @@ file	{sample}/slivar/{sample}.ped	31	SLIVAR_PRIORITIZE	nextflow	tsv	internal	-	-
 file	{sample}/slivar/{sample}_compound_het_pairs.tsv	31	COMPHET_PHASE	both	tsv	stable	bash	-
 file	{sample}/slivar/{sample}_compound_hets.vcf.gz	31	SLIVAR	both	vcf	stable	bash	-
 file	{sample}/slivar/{sample}_prioritized.vcf.gz	31	SLIVAR_PRIORITIZE	both	vcf	stable	bash	-
-file	{sample}/slivar/{sample}_prioritized.vcf.gz.tbi	31	SLIVAR_PRIORITIZE	nextflow	index	stable	-	-
+file	{sample}/slivar/{sample}_prioritized.vcf.gz.tbi	31	SLIVAR_PRIORITIZE	both	index	stable	bash	-
 file	{sample}/slivar/{sample}_slivar_summary.tsv	31	SLIVAR_PRIORITIZE	both	tsv	stable	bash	-
 file	{sample}/summary.json	24	HTML_REPORT	both	json	stable	bash	schema_version,sample,generated_utc,run,databases,manifest,sections,cyp2d6,not_run,not_assessed
 file	{sample}/sv_duphold/{sample}_sv_duphold.vcf	15	DUPHOLD	nextflow	vcf	stable	-	-
