@@ -171,7 +171,7 @@ When the run starts from an existing VCF, the pipeline does not read a gVCF besi
 | `EXTRA_CALLERS=gatk,freebayes,strelka2,octopus` | run the alternative callers 3a to 3d after the pipeline | |
 | `BENCHMARK=true` | runs `benchmark-variants.sh` after them; it needs `EXTRA_CALLERS` or a second caller's VCF from an earlier 3a-3d run, and is skipped without one | |
 
-GRIDSS is not part of the SV consensus (step 22): it reports every event as a pair of breakends, which never match the DEL, DUP and INV records of Manta, Delly and CNVpytor.
+GRIDSS is left out of the SV consensus (step 22): it reports every event as a pair of breakends, and nothing in the pipeline turns a pair into one DEL, DUP or INV. Step 4b writes GRIDSS's high-confidence calls to `sv_gridss/<sample>_gridss.high.vcf.gz` beside its raw VCF.
 
 Without `THREADS` or `--max_cpus`, `run-all.sh` passes the machine's CPU count as `--max_cpus`, and without `--max_memory` it passes the machine's RAM in whole GB (31.GB on a 32 GB Linux machine). Nextflow refuses a task that asks for more than the machine has, and the larger steps ask for 8 CPUs and 32 GB; with the caps they run with less. Options after the sex go to `nextflow run` unchanged, for example `./scripts/run-all.sh your_name male --max_memory 24.GB` to cap each task at 24 GB, or `--sex_check warn` to go on when the sex inferred from the BAM differs from the one given. [Nextflow Parameters](parameters.md) lists every parameter. `MAX_JOBS` is no longer read: Nextflow starts a task when its CPUs and memory fit in what is left of the machine's, and `--max_cpus` and `--max_memory` cap each task, not the total; [a shared host](hardware-requirements.md#a-shared-host) shows how to bound the total.
 
