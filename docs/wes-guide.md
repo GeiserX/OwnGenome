@@ -197,15 +197,15 @@ Do **not** run: TelomereHunter (10), indexcov (16), CNVpytor (18), Delly (19), G
 
 ## Drug-Gene Answers on an Exome
 
-PharmCAT (step 7) calls a gene from a fixed list of positions. Some of the variants that define a star allele sit in a promoter, an intron or a UTR, and a typical exome capture (the coding exons plus about 50 bases on each side) does not read them. PharmCAT drops a position it has no call for. It cannot call an allele whose defining variant sits there, and it calls the gene from the positions it did read. When those match the reference, the gene can come out as \*1/\*1 with normal function, and step 27 gives the normal-function recommendation, even if you carry the allele. A few stray reads outside the capture can also give such a position a weak reference call, which PharmCAT reads like any other.
+PharmCAT (step 7) calls a gene from a fixed list of positions. Some of the variants that define a star allele sit in a promoter, an intron or a UTR, and a typical exome capture (the coding exons plus about 50 bases on each side) does not read them. PharmCAT drops a position it has no call for. It cannot call an allele whose defining variant sits there, and it calls the gene from the positions it did read. When those match the reference, the gene can come out as \*1/\*1 with normal function, even if you carry the allele. A few stray reads outside the capture can also give such a position a weak reference call, which PharmCAT reads like any other.
 
 These are the PharmCAT 3.4.0 positions that a capture of the coding exons with 50 bases of padding does not read (exons of the RefSeq Select transcript, GRCh38):
 
 | Gene | Position | Where | Alleles it defines | What a missed allele looks like |
 |---|---|---|---|---|
-| CYP2C19 | rs12248560 (c.-806C>T) | promoter | \*17 | a rapid or ultrarapid metabolizer reads as normal |
+| CYP2C19 | rs12248560 (c.-806C>T) | promoter | \*17 (and \*4, still called from its start-codon variant) | a rapid or ultrarapid metabolizer reads as normal |
 | CYP3A5 | rs776746 (\*3, 6986A>G) | intron 3 | \*3 | the most common allele in Europeans, a non-expresser, reads as \*1 (expresser): this changes the tacrolimus dose |
-| CYP3A4 | rs35599367 | intron 6 | \*22 | decreased function reads as normal |
+| CYP3A4 | rs35599367 | intron 6 | \*22 and \*37 (a \*37 then matches \*3) | decreased function reads as normal |
 | UGT1A1 | rs887829 (c.-364C>T) | promoter | \*80 and its combinations with \*28 and \*37 | decreased function reads as normal |
 | UGT1A1 | rs3064744, the TA repeat | promoter, about 55 bases before the start codon | \*28, \*36, \*37 | decreased function reads as normal, unless the kit pads more than 55 bases and the repeat has depth at the capture edge |
 | DPYD | rs75017182 (c.1129-5923C>G) | deep intron | HapB3 | HapB3 is called from c.1236G>A alone, the coding variant that travels with it; c.1129-5923C>G on its own is not seen |
@@ -217,7 +217,7 @@ These are the PharmCAT 3.4.0 positions that a capture of the coding exons with 5
 
 Every position of ABCG2, CACNA1S, CYP2C9, CYP4F2, F5, G6PD, NAT2, NUDT15, RYR1, SLCO1B1 and TPMT lies within 50 bases of a coding exon, so a capture reads them where it has depth. CYP2D6, HLA-A, HLA-B and MT-RNR1 do not come from these positions: see [step 7's limitations](07-pharmacogenomics.md#limitations).
 
-Your kit's BED file decides the exact list. PharmCAT writes the positions it had no call for to `${SAMPLE}.missing_pgx_var.vcf`. Check that file before you act on a call in one of the genes above, and treat a normal-function call there as unconfirmed. [Step 7's limitations](07-pharmacogenomics.md#limitations) say what the reports show for these genes.
+Your kit's BED file and the reads at its edges decide the exact list. PharmCAT writes the positions it had no call for to `${SAMPLE}.missing_pgx_var.vcf`. Check that file before you act on a call in one of the genes above, and treat a normal-function call there as unconfirmed. [Step 7's limitations](07-pharmacogenomics.md#limitations) say what the reports show for these genes.
 
 ---
 
