@@ -576,8 +576,9 @@ def prs_sex_note(d):
 # panel ran, so the no-panel line would be false.
 PRS_WITHHELD_TEXT = ("Percentile withheld: the input lists variants only, so each scoring site it leaves out adds "
                      "nothing to the sum, and the raw sum cannot be compared with the reference panel's samples, "
-                     "whose genotypes are complete. A gVCF from step 3, or a chip VCF, lists the reference calls "
-                     "and keeps the percentile.")
+                     "whose genotypes are complete. Genotypes with a reference call (0/0) at one genotyped "
+                     "position in five or more keep the percentile; a gVCF from step 3 or a chip VCF usually has "
+                     "them.")
 
 
 def prs_note(d):
