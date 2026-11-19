@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ownhealth:schema:genome-facts:v1",
+  "title": "ownhealth.genome-facts/v1",
+  "description": "Genome findings written by OwnGenome (https://github.com/GeiserX/OwnGenome) or any pipeline that follows docs/design/genomics.md section 2. Within v1 producers may add optional fields and new db_versions keys.",
+  "type": "object",
+  "required": ["schema", "subject", "assay", "provenance", "files", "coverage", "facts"],
+  "properties": {
+    "schema": { "const": "ownhealth.genome-facts/v1" },
+    "subject": {
+      "type": "object",
+      "required": ["sample_id", "declared_sex"],
+      "properties": {
+        "sample_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "declared_sex": { "enum": ["female", "male", "unknown"] },
+        "inferred_karyotype": { "enum": ["XX", "XY", "X0", "XXY", "XYY", "unknown"] },
+        "fingerprint": {
+          "type": "object",
+          "required": ["panel", "genotypes"],
+          "properties": {
+            "panel": { "type": "string" },
+            "genotypes": { "type": "string", "pattern": "^[012.]+$" }
+          }
+        }
+      }
+    },
+    "assay": {
+      "type": "object",
+      "required": ["type", "build"],
+      "properties": {
+        "type": { "enum": ["wgs", "wes", "long_read", "vcf_only", "chip", "chip_imputed"] },
+        "platform": { "type": "string" },
+        "build": { "const": "GRCh38" },
+        "source_build": { "enum": ["GRCh37", "GRCh38"] },
+        "mean_depth": { "type": "number" },
+        "callable_fraction": { "type": "number" },
+        "imputation": {
+          "type": "object",
+          "properties": {
+            "engine": { "enum": ["beagle_local", "michigan", "topmed"] },
+            "panel": { "type": "string" },
+            "r2_min": { "type": "number" }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["pipeline", "version", "generated_utc", "db_versions"],
+      "properties": {
+        "pipeline": { "type": "string" },
+        "version": { "type": "string" },
+        "commit": { "type": "string" },
+        "generated_utc": { "type": "string", "format": "date-time" },
+        "db_versions": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "files": { "type": "array", "items": { "$ref": "#/$defs/file" } },
+    "coverage": { "type": "array", "items": { "$ref": "#/$defs/coverage" } },
+    "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } },
+    "qc": {
+      "type": "object",
+      "properties": {
+        "sex_check": { "enum": ["pass", "mismatch", "not_run"] },
+        "contamination": { "type": "number" },
+        "identity": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "required": ["role", "path", "sha256"],
+      "properties": {
+        "role": { "enum": ["calls_vcf", "gvcf", "annotated_vcf", "chip_sites", "original"] },
+        "path": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "index_path": { "type": "string" },
+        "index_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer" }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["scope", "id", "state"],
+      "properties": {
+        "scope": { "enum": ["gene", "locus", "panel"] },
+        "id": { "type": "string" },
+        "panel": { "enum": ["acmg_sf_v3.3", "cpic", "carrier", "callability", "other"] },
+        "state": { "enum": ["assessed", "partial", "not_assessed"] },
+        "reason": {
+          "enum": ["not_on_array", "low_depth", "paralog", "sv_not_callable", "no_bam",
+                   "required_positions_missing", "not_run", "assay_cannot_detect", "other"]
+        },
+        "fraction_callable": { "type": "number" },
+        "note": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "required": ["chrom", "pos", "ref", "alt"],
+      "properties": {
+        "chrom": { "type": "string" },
+        "pos": { "type": "integer" },
+        "ref": { "type": "string" },
+        "alt": { "type": "string" },
+        "rsid": { "type": "string", "pattern": "^rs[0-9]+$" },
+        "hgvs_c": { "type": "string" },
+        "hgvs_p": { "type": "string" },
+        "vrs_id": { "type": "string", "pattern": "^ga4gh:VA\\." },
+        "clinvar_variation_id": { "type": "integer" }
+      }
+    },
+    "genotype": {
+      "type": "object",
+      "required": ["call_state"],
+      "properties": {
+        "call_state": { "enum": ["ref", "alt", "no_call", "not_on_array", "not_covered"] },
+        "gt": { "type": "string" },
+        "zygosity": { "enum": ["het", "hom", "hemi", "ref", "unknown"] },
+        "dp": { "type": "integer" },
+        "gq": { "type": "integer" },
+        "imputed": { "type": "boolean" },
+        "r2": { "type": "number" },
+        "dosage": { "type": "number" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["level", "native"],
+      "properties": {
+        "level": { "enum": ["E1", "E2", "E3", "E4"] },
+        "native": { "type": "string" },
+        "clinvar_stars": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "pmids": { "type": "array", "items": { "type": "integer" } },
+        "tools": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "required": ["level", "basis"],
+      "properties": {
+        "level": { "enum": ["high", "medium", "low", "unconfirmed"] },
+        "basis": { "type": "string" }
+      }
+    },
+    "drug_guidance": {
+      "type": "object",
+      "required": ["drug", "source", "level"],
+      "properties": {
+        "drug": { "type": "string" },
+        "rxnorm": { "type": "string" },
+        "source": { "enum": ["CPIC", "DPWG", "FDA"] },
+        "level": { "type": "string" },
+        "phenotype": { "type": "string" },
+        "recommendation": { "type": "string", "maxLength": 2000 },
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "required": ["id", "category", "summary", "evidence", "confidence", "sensitivity"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^f_[0-9a-f]{16}$" },
+        "category": {
+          "enum": ["pgx", "monogenic_pathogenic", "acmg_sf", "carrier", "hla", "trait",
+                   "risk_marker", "prs", "ancestry"]
+        },
+        "gene": { "type": "string" },
+        "hgnc_id": { "type": "string" },
+        "variants": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/variant" },
+              { "properties": { "genotype": { "$ref": "#/$defs/genotype" } } }
+            ]
+          }
+        },
+        "value": { "type": "object" },
+        "summary": { "type": "string", "maxLength": 2000 },
+        "condition": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "mondo": { "type": "string" },
+            "inheritance": { "enum": ["AD", "AR", "XL", "MT", "complex"] }
+          }
+        },
+        "drug_guidance": { "type": "array", "items": { "$ref": "#/$defs/drug_guidance" } },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "limitations": { "type": "array", "items": { "type": "string", "maxLength": 2000 } },
+        "sensitivity": {
+          "type": "object",
+          "required": ["level"],
+          "properties": {
+            "level": { "enum": ["normal", "sensitive", "adult_onset"] },
+            "reason": { "type": "string" }
+          }
+        },
+        "hidden_by_default": { "type": "boolean" },
+        "confirm_clinically": { "type": "boolean" },
+        "related_loinc": { "type": "array", "items": { "type": "string" } },
+        "origin": {
+          "type": "object",
+          "properties": { "step": { "type": "string" }, "file": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

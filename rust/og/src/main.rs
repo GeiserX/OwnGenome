@@ -69,6 +69,7 @@ const USAGE: &str = "usage: og <tool> [args]
        og view serve [args]
        og couple screen [args]
        og couple genes [args]
+       og facts --sample S --sample-dir DIR --reference FASTA [--assets DIR] [--out FILE]
        og roh summary --sample SAMPLE --roh ROH [--out OUT]
        og chip prepare|report|check-table [args]
        og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
@@ -425,6 +426,7 @@ fn main() -> ExitCode {
             Some(other) => usage_error(&format!("unknown view tool '{other}'")),
             None => usage_error("the following arguments are required: view tool"),
         },
+        "facts" => io(og_facts::cli, rest),
         "couple" => match rest.first().map(String::as_str) {
             Some("screen") => io(og_couple::screen::cli, &rest[1..]),
             Some("genes") => io(og_couple::genes::cli, &rest[1..]),
