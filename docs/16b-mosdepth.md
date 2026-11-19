@@ -100,7 +100,7 @@ The CMRG gene list and the stratification BEDs are only inputs of the build scri
 
 | Dataset | Threads | Time | Memory |
 |---|---|---|---|
-| 30-40x WGS, measured in three runs ([runtime](hardware-requirements.md#runtime-per-step)) | 4 | 2-3 min | 1.9 GB |
+| The genome-wide pass, 30-40x WGS, measured in three runs ([runtime](hardware-requirements.md#runtime-per-step)) | 4 | 2-3 min | 1.9 GB |
 | The gene callability pass, public HG002 30x, measured in two runs (below) | 4 | 3 min 26 s - 3 min 50 s | 2.0 GB |
 | chr22 BAM (estimate) | 2 | < 30 sec | < 1 GB |
 

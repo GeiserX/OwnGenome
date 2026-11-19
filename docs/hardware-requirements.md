@@ -211,7 +211,7 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 | 14 Imputation prep (opt-in) | not measured (estimate ~10 min) | | | |
 | 15 duphold | 3-4 min | 1.0 GB | 3.2-4.1 | plus about a second for its filter |
 | 16 indexcov | 1-3 s | | | |
-| 16b mosdepth | 2-3 min | 1.9 GB | 2.7-3.5 | the gene callability pass now runs without `--fast-mode`, which costs it about 37% more CPU time; on public HG002 30x that pass alone took 3.5-4 min ([step 16b](16b-mosdepth.md#runtime)) |
+| 16b mosdepth | 2-3 min | 1.9 GB | 2.7-3.5 | the time is the genome-wide pass only; the gene callability pass adds 3.5-4 min (measured on public HG002 30x, without `--fast-mode`, which costs it about 37% more CPU time), so the step takes about 6-7 min on 30x ([step 16b](16b-mosdepth.md#runtime)) |
 | 17 CPSR | 17-36 min | 12.3-15.6 GB (`peak_rss`, see above) | 1.8-2.3 | |
 | 18 CNVpytor | 14-20 min | 1.4-2.7 GB | 2.3-3.7 | |
 | 19 Delly | 21 min - 3 h 19 min | 1.2-3.1 GB | 1.0-1.1 | five runs: 21 and 25 min on two samples, 1 h 35 min to 3 h 19 min in three runs on the third |
