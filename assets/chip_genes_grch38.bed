@@ -1,3 +1,9 @@
+# assets/chip_genes_grch38.bed: the clonal hematopoiesis (CHIP) driver genes step 29
+# (scripts/29-mutect2-somatic.sh) calls with Mutect2 by default (INTERVALS=chip), GRCh38, BED
+# (0-based start). Columns: chrom, start, end, gene. Each row is the gene's record in GENCODE 50's
+# basic annotation, 100 bp either side.
+# Source: GENCODE release 50 (https://www.gencodegenes.org/human/release_50.html), open access data
+# with no restriction on use (EMBL-EBI terms of use, https://www.ebi.ac.uk/about/terms-of-use/).
 chr1	1785184	1892392	GNB1
 chr1	43337707	43354566	MPL
 chr1	114704367	114716875	NRAS
