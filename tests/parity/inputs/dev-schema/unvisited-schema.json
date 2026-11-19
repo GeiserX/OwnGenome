@@ -1,1 +1,1 @@
-{"properties": {"never": {"format": "date"}}}
+{"properties": {"never": {"uniqueItems": true}}}
