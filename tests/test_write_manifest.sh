@@ -40,15 +40,13 @@ exit 0
 ENGINE
 chmod 755 "${T}/fake/engine"
 
-# whole MANIFEST REF: MANIFEST has three fields per line, no section/key
-# twice, and the same section/key set as REF. Prints what is wrong.
+# whole MANIFEST REF: MANIFEST has three fields per line and the same
+# section/key rows as REF, each as often (a row a writer repeated or lost
+# shows in the diff). Prints what is wrong.
 whole() {
   local m=$1 ref=$2
   [ -s "$m" ] || { echo "missing or empty"; return 1; }
   awk -F'\t' 'NF != 3 {print "line " NR " has " NF " fields"; e = 1} END {exit e}' "$m" || return 1
-  local dup
-  dup=$(cut -f1,2 "$m" | sort | uniq -d | head -3)
-  [ -z "$dup" ] || { echo "repeated rows: ${dup//$'\t'/ }"; return 1; }
   local diff
   diff=$(diff <(cut -f1,2 "$ref" | sort) <(cut -f1,2 "$m" | sort) | grep '^[<>]' | head -3)
   [ -z "$diff" ] || { echo "rows differ from a lone writer's: ${diff//$'\t'/ }"; return 1; }
