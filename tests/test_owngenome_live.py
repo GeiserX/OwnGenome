@@ -20,21 +20,21 @@ Checks:
   6. state.json's step states are run_state's for the same files; a run is
      finished only while pgp_run_finished is its newest message; ClinVar's
      headline is never 'ok' and carries the report's caveat;
-  7. every browser response carries the Content-Security-Policy, and
-     assets/live/ holds no outside URL, no inline script and no on* attribute;
+  7. every browser response carries the Content-Security-Policy (the scan of
+     assets/live/ for outside URLs, inline scripts, on* attributes and eval
+     is cargo test -p og-browser, tests/live_assets.rs);
   8. a plugin (tests/fixtures/live/plugins) adds a flag, a route, a run file
      and a state hook, all behind the session; the page gets one script tag
      per file in assets/live/plugins;
   9. run files: a file the report links to is served, an unlinked one and a
      symlink out of the root are 404;
  10. in a headless Chrome (skipped without Chrome, except in CI): the login
-     form, the step map, a box that repaints after a posted message, the
-     replay mode playing tests/fixtures/live/frames.json (opened at its last,
-     finished frame, its time short with the full time in the title), and no
-     policy violation;
+     form, the step map, a box that repaints after a posted message, and no
+     policy violation (the replay mode is cargo test -p og-browser,
+     tests/live_replay.rs);
  11. with --tls-cert, a client that connects and sends nothing does not hold
      up another client's HTTPS request.
-Checks 2, 4, 5, 6, 7, 8 and 11 are also run against a planted mistake and must fail
+Checks 2, 4, 5, 6, 8 and 11 are also run against a planted mistake and must fail
 there: a check that cannot fail is no check.
 
 Run: python3 tests/test_owngenome_live.py
@@ -54,7 +54,6 @@ import tempfile
 import threading
 import time
 import urllib.parse
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
@@ -383,15 +382,6 @@ class Chrome:
             self.p.kill()
 
 
-class ReplayHandler(SimpleHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header("Content-Security-Policy", owngenome_live.CSP)
-        super().end_headers()
-
-    def log_message(self, *a):
-        pass
-
-
 def browser_checks(port, work, live):
     chrome = find_chrome()
     if not chrome:
@@ -401,7 +391,6 @@ def browser_checks(port, work, live):
             FAILS.append("no Chrome in CI")
         return
     b = Chrome(chrome, os.path.join(work, "chrome"))
-    replay_srv = None
     try:
         base = f"http://127.0.0.1:{port}"
         b.go(f"{base}/runs/{RUN}/")
@@ -460,70 +449,8 @@ def browser_checks(port, work, live):
               links and "report.html#clinvar" in links and "report.html#carrier-list" in links, links)
         blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
         check("browser: the policy blocked nothing on the live page", not blocked, blocked)
-
-        # replay: the same page and script on frames.json, served as static files
-        rd = os.path.join(work, "replay")
-        os.makedirs(rd)
-        for f in ("live.js", "live.css"):
-            shutil.copy(os.path.join(ASSETS, f), rd)
-        shutil.copy(os.path.join(FIX, "frames.json"), rd)
-        with open(os.path.join(ASSETS, "index.html")) as f:
-            page = f.read().replace("{{assets}}", ".").replace("{{run}}", RUN).replace("{{mode}}", "replay") \
-                .replace("{{plugins}}", "")
-        with open(os.path.join(rd, "index.html"), "w") as f:
-            f.write(page)
-        handler = type("H", (ReplayHandler,), {"__init__": lambda self, *a, **k: SimpleHTTPRequestHandler.__init__(
-            self, *a, directory=rd, **k)})
-        replay_srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        threading.Thread(target=replay_srv.serve_forever, daemon=True).start()
-        b.go(f"http://127.0.0.1:{replay_srv.server_address[1]}/index.html")
-        # A finished run opens at its last frame, its moment short with the full time in the title.
-        opened = b.wait("document.documentElement.dataset.pgpFrame && JSON.stringify([document.documentElement.dataset.pgpFrame, "
-                        "document.querySelector('g.box[data-step=\"11\"]').dataset.state, "
-                        "document.getElementById('replay-time').textContent, document.getElementById('replay-time').title])")
-        check("browser: replay of a finished run opens at its end, its time short ('2 Jan 10:05') with the full time "
-              "in the title", json.loads(opened or "null") == ["2", "done", "2 Jan 10:05", "2026-01-02T10:05:40Z"], opened)
-        # Play from the end starts again at the first frame: every frame shown is recorded with step 11's state.
-        b.eval("window.seen = []; new MutationObserver(function () { var r = document.documentElement; "
-               "window.seen.push(r.dataset.pgpFrame + ':' + document.querySelector('g.box[data-step=\"11\"]').dataset.state); })"
-               ".observe(document.documentElement, {attributes: true, attributeFilter: ['data-pgp-frame']}); "
-               "document.getElementById('replay-play').click(); true")
-        seen = b.wait("window.seen.length > 1 && window.seen[window.seen.length - 1].indexOf('2:') === 0 && "
-                      "JSON.stringify(window.seen)", 10)
-        found = b.eval("document.getElementById('found').textContent")
-        check("browser: Play at the end replays frames.json from the first frame (11 waiting at frame 0, done at the "
-              "last, its headline listed)", json.loads(seen or "[]")[:1] == ["0:waiting"]
-              and json.loads(seen or "[]")[-1:] == ["2:done"] and "Runs of homozygosity" in (found or ""), (seen, found))
-        aria = b.eval("var m = document.querySelector('#map svg'), g = document.querySelector('g.box[data-step=\"11\"]'); "
-                      "[m.getAttribute('role'), g.getAttribute('aria-label') || ''].join('|')")
-        check("browser: the map is a group (not an image that hides its buttons) and a box names its step and state",
-              aria and aria.startswith("group|11 ") and aria.endswith(": done"), aria)
-        b.eval("document.getElementById('detail').textContent = ''; var li = document.querySelector('#found li[role=button]'); "
-               "li.focus(); li.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); true")
-        keyed = b.wait("document.activeElement && document.activeElement.matches('#found li') && "
-                       "document.getElementById('detail').textContent.indexOf('Step 11') >= 0 && 'opened'", 5)
-        check("browser: a headline takes focus and Enter on it opens its step", keyed == "opened",
-              b.eval("document.activeElement && document.activeElement.outerHTML.slice(0, 200)"))
-        blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
-        check("browser: the policy blocked nothing in replay", not blocked, blocked)
-        # A replay whose last frame is still running opens at its first frame (its own folder: no cached frames.json).
-        rr = os.path.join(rd, "running")
-        os.makedirs(rr)
-        for f in ("index.html", "live.js", "live.css"):
-            shutil.copy(os.path.join(rd, f), rr)
-        with open(os.path.join(FIX, "frames.json")) as f:
-            fr = json.load(f)
-        with open(os.path.join(rr, "frames.json"), "w") as f:
-            json.dump(dict(fr, frames=fr["frames"][:-1]), f)
-        b.go(f"http://127.0.0.1:{replay_srv.server_address[1]}/running/index.html")
-        at = b.wait("document.documentElement.dataset.pgpFrame && document.getElementById('replay-slider').max === '1' "
-                    "&& document.documentElement.dataset.pgpFrame")
-        check("browser: a replay whose last frame is still running opens at its first frame", at == "0", at)
     finally:
         b.close()
-        if replay_srv:
-            replay_srv.shutdown()
-            replay_srv.server_close()
 
 
 INGEST_PORT = None
@@ -844,15 +771,6 @@ def main():
                or hdr.get("x-frame-options") != "DENY"
                or hdr.get("x-content-type-options") != "nosniff" or hdr.get("cache-control") != "no-store"]
         check(f"every browser response ({len(RESPONSES)}) carries the policy, nosniff and no-store", not bad, bad)
-        texts = {f: open(os.path.join(ASSETS, f)).read() for f in os.listdir(ASSETS)
-                 if os.path.isfile(os.path.join(ASSETS, f)) and not f.startswith(".")}
-        check("assets/live holds no outside URL, inline script, on* attribute or eval", not asset_problems(texts),
-              asset_problems(texts))
-        planted = dict(texts)
-        planted["index.html"] = texts["index.html"].replace("</body>", "<script>alert(1)</script></body>")
-        control("an inline script in index.html", not asset_problems(planted))
-        planted = dict(texts, **{"live.js": texts["live.js"] + "\nfetch('https://cdn.example.com/x.js');\n"})
-        control("an outside URL in live.js", not asset_problems(planted))
 
         # 8. plugins
         code, _, body = request(port, "GET", f"/fixture/{RUN}", headers=auth)
