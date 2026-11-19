@@ -101,8 +101,12 @@ The CMRG gene list and the stratification BEDs are only inputs of the build scri
 | Dataset | Threads | Time | Memory |
 |---|---|---|---|
 | 30-40x WGS, measured in three runs ([runtime](hardware-requirements.md#runtime-per-step)) | 4 | 2-3 min | 1.9 GB |
-| The gene callability pass on the same BAM (estimate: a second read of the BAM) | 4 | about as long again | < 2 GB |
+| The gene callability pass, public HG002 30x, measured in two runs (below) | 4 | 3 min 26 s - 3 min 50 s | 2.0 GB |
 | chr22 BAM (estimate) | 2 | < 30 sec | < 1 GB |
+
+The gene pass was measured on Google's public HG002 NovaSeq PCR-free 30x BAM on GRCh38 (`HG002.novaseq.pcr-free.30x.dedup.grch38.bam`, 43.7 GB, from `storage.googleapis.com/brain-genomics-public`), with mosdepth 0.3.14 and 4 threads, on a 10-core Mac mini that was running other jobs. Without `--fast-mode` it took 3 min 26 s and 3 min 50 s; with it, as before, 1 min 46 s and 2 min 29 s. The CPU time is the steadier figure: about 7 min without `--fast-mode` against 5 min with it, 37% more. The genome-wide pass took 3 min 15 s on the same machine. Peak memory was 2.0 GB in every run.
+
+On that genome 934 of the 1,553 catalog genes with a position are read, against 938 with `--fast-mode`. The share of bases at 10x fell by 0.2 points on average and by 7 points at most. Four genes moved from read to not read: DHX40, SPATA31C2 and GOLGA6L10 were at 90.1-90.2% and are now at 89.6-89.9%, and UGT2B17 (step 32 calls it) went from 91.7% to 89.9%. No gene moved the other way.
 
 ## MultiQC Integration
 
