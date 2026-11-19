@@ -417,6 +417,14 @@ fn match_pair(t1k: &[Vec<String>], ot: &[String]) -> Option<Vec<String>> {
     }
 }
 
+/// Two allele pairs are the same pair, in either order.
+fn same_pair(a: &[String], b: &[String]) -> bool {
+    let (mut a, mut b) = (a.to_vec(), b.to_vec());
+    a.sort();
+    b.sort();
+    a.len() == 2 && a == b
+}
+
 /// What the T1K-only path passes for a pair with a tie or a suffix that
 /// changes no PharmCAT answer: per allele its first candidate, without the
 /// suffix, and a note for each allele that was flattened so.
@@ -539,10 +547,17 @@ pub fn hla_row(
         None if need_optitype => Row::withheld(gene, "indeterminate", NO_OPTITYPE, &evidence),
         Some(ot) => {
             let calls = optitype_of(ot, gene);
+            // T1K's pair as OptiType reads it: OptiType's own pair when it
+            // is one of T1K's choices, else T1K's first candidates.
+            let names = match_pair(&pair, calls)
+                .unwrap_or_else(|| pair.iter().map(|l| l[0].clone()).collect());
             if calls.is_empty() {
                 let why = "OptiType, the second caller, made no call";
                 Row::withheld(gene, "indeterminate", why, &evidence)
-            } else if let Some(agreed) = match_pair(&pair, calls) {
+            } else if !same_pair(&names, calls) {
+                let why = "T1K and OptiType disagree at two fields";
+                Row::withheld(gene, "indeterminate", why, &evidence)
+            } else {
                 let mut reason = "T1K and OptiType (step 08), which agree at two fields".to_owned();
                 if tied {
                     reason.push_str(
@@ -551,13 +566,10 @@ pub fn hla_row(
                 }
                 Row {
                     gene,
-                    decision: Decision::Passed(agreed.join("/")),
+                    decision: Decision::Passed(names.join("/")),
                     reason,
                     evidence,
                 }
-            } else {
-                let why = "T1K and OptiType disagree at two fields";
-                Row::withheld(gene, "indeterminate", why, &evidence)
             }
         }
         None => {
