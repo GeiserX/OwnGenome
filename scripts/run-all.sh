@@ -68,7 +68,7 @@ export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 validate_sample "$SAMPLE"
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
-SF=${CPSR_SECONDARY_FINDINGS:-true}  # as scripts/17-cpsr.sh reads it: true or false, nothing else
+SF=${CPSR_SECONDARY_FINDINGS:-true}  # as scripts/17-cpsr.sh reads it: unset or empty is true, else true or false only
 [[ "$SF" =~ ^(true|false)$ ]] || { echo "ERROR: CPSR_SECONDARY_FINDINGS must be true or false, got '${SF}'" >&2; exit 2; }
 # The ClinVar files are shared by every sample of GENOME_DIR. bin/og recheck --refresh-clinvar holds this
 # lock while it replaces them; the run holds it shared on fd 7 until it ends, so a run waits for a refresh going on
