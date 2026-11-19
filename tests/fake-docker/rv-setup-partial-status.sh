@@ -9,7 +9,7 @@
 # the complete case, setup.sh runs from a copy of the checkout (not a git
 # checkout, so og.sh has no tree to compare) with two placeholder og binaries,
 # and GENOME_DIR holds what the pinned downloads would have installed. A fake
-# sha256sum gives the two files setup.sh checks by digest their pinned values.
+# sha256sum gives the files setup.sh checks by digest their pinned values.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 # shellcheck source=../../versions.env
@@ -30,17 +30,25 @@ for a in x86_64 aarch64; do
 done
 SETUP="${COPY}/scripts/setup.sh"
 
-# A fake sha256sum: the pinned digest for the tandem-repeat map and gnomAD's
-# chrM sites, the real one for every other file.
+# A fake sha256sum: the pinned digest for the tandem-repeat map, gnomAD's chrM
+# sites and step 33's files (somalier's sites and VerifyBamID2's panel, which
+# setup.sh pins itself and checks again when they are already there), the
+# real one for every other file.
 real_sha=$(command -v sha256sum || true)
 mkdir -p "${CASE_WORK}/sha-bin"
+{
+  printf '%s %s\n' "${TANDEM_REPEATS_URL##*/}" "$TANDEM_REPEATS_SHA256" "${GNOMAD_MITO_URL##*/}" "$GNOMAD_MITO_SHA256"
+  # shellcheck disable=SC2016  # expanded by the inner bash
+  bash -c 'eval "$(sed -n "/^SOMALIER_SITES_SHA256=/p; /^VB2_PANEL_FILES=\"/,/\"\$/p" "$1")"
+    printf "sites.hg38.vcf.gz %s\n" "$SOMALIER_SITES_SHA256"
+    while read -r u s; do printf "%s %s\n" "${u##*/}" "$s"; done <<<"$VB2_PANEL_FILES"' _ "${REPO_ROOT}/scripts/setup.sh"
+} > "${CASE_WORK}/sha-bin/pins"
+[ "$(wc -l < "${CASE_WORK}/sha-bin/pins")" -eq 6 ] || { echo "FAIL: expected 6 pinned digests, got:"; cat "${CASE_WORK}/sha-bin/pins"; exit 1; }
 cat > "${CASE_WORK}/sha-bin/sha256sum" <<SHA
 #!/usr/bin/env bash
-case "\${1##*/}" in
-  ${TANDEM_REPEATS_URL##*/}) echo "${TANDEM_REPEATS_SHA256}  \$1" ;;
-  ${GNOMAD_MITO_URL##*/}) echo "${GNOMAD_MITO_SHA256}  \$1" ;;
-  *) if [ -n "${real_sha}" ]; then exec "${real_sha}" "\$@"; else exec shasum -a 256 "\$@"; fi ;;
-esac
+pin=\$(awk -v n="\${1##*/}" '\$1 == n {print \$2}' "${CASE_WORK}/sha-bin/pins")
+if [ -n "\$pin" ]; then echo "\$pin  \$1"; exit 0; fi
+if [ -n "${real_sha}" ]; then exec "${real_sha}" "\$@"; else exec shasum -a 256 "\$@"; fi
 SHA
 chmod +x "${CASE_WORK}/sha-bin/sha256sum"
 export PATH="${CASE_WORK}/sha-bin:${PATH}"

@@ -58,6 +58,7 @@ status_ok() { [ "$1" = assessed ] || { [ "$1" = "not assessed" ] && [ -n "$2" ];
 # unpanelled SITES MESSAGE: the sites table has an autosome other than chr20,
 # the cut panel's one chromosome, with heterozygous sites; each such autosome
 # has none phased, and the message names it as "chrN (0 of H)".
+# shellcheck disable=SC2329  # called through check, below
 unpanelled() {
   local c h p n=0
   while IFS=$'\t' read -r c _ _ _ h p; do

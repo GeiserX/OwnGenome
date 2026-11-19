@@ -100,6 +100,7 @@ run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c \
    samtools view -b -o "$3" "$1" chrY && samtools index "$3"' \
   _ "$(cpath "$BAM")" "$O" "$(cpath "$CHRY")"
 if $TREE; then
+  # shellcheck disable=SC2016  # expanded by the inner bash
   run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c \
     'samtools mpileup -l "$2/tree_positions.txt" -A -Q20 -q20 "$1" > "$2/tree_pileup.txt"' _ "$(cpath "$BAM")" "$O"
 fi

@@ -27,7 +27,6 @@ scripts/30-vcfanno.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\
 scripts/30-vcfanno.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/SpliceAI\n' -i 'INFO/SpliceAI!=\".\"' ${OUTPUT_FILE} | head"
 scripts/32-pypgx.sh	SC2016	VCF_GENES="'"${VCF_GENES}"'"
 scripts/37-y-haplogroup.sh	SC2016	'samtools idxstats "$1" > "$2/idxstats.txt" && samtools mpileup -l "$2/positions.txt" -ABQ20q1 "$1" > "$2/pileup.txt"
-scripts/37-y-haplogroup.sh	SC2016	'samtools mpileup -l "$2/tree_positions.txt" -AQ20q1 "$1" > "$2/tree_pileup.txt"' _ "$(cpath "$BAM")" "$O"
 scripts/benchmark-variants.sh	SC2016	'bcftools norm -m-both -f "$3" "$1" -Oz -o "$2" && bcftools index -f -t "$2"' \
 scripts/ci/e2e-run.sh	SC2001	sed "s|^|${dir} |" <<< "$out"
 scripts/ci/e2e-run.sh	SC2013	for id in $(sed -n 's/^NEW_IDS="\(.*\)"$/\1/p' "$PGS_CASE"); do
