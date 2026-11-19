@@ -117,6 +117,13 @@ if [ "$PLATFORM" = ont ] && [ -z "$BASECALLER" ] && [[ "$REAL_INPUT" == *.bam ]]
   BASECALLER=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$SAMTOOLS_IMAGE" \
     /pgp-bin/og longread clair3-model --basecaller-only --bam "/genome/${REAL_INPUT#"${REAL_GENOME}/"}") \
     || { echo "NOTE: the basecaller model of the unaligned BAM could not be read (see above)." >&2; BASECALLER=""; }
+  # The header value goes into the minimap2 -R string too: same character rule,
+  # but a bad header is not the user's input, so warn and drop it.
+  case "$BASECALLER" in
+    *[!A-Za-z0-9._@+-]*)
+      echo "WARNING: ignoring a basecall_model in the BAM header with characters a model name never has: '${BASECALLER}'" >&2
+      BASECALLER="" ;;
+  esac
 fi
 RG_DS=""
 if [ -n "$BASECALLER" ]; then

@@ -208,3 +208,10 @@ docker_log_has 'minimap2 .*LB:sample1[^ ]*tDS:basecall_model=dna_r10\.4\.1_e8\.2
 run_expect 0 longread-hifi env PLATFORM=hifi INPUT="${GENOME_DIR}/sample1/fastq/sample1.bam" BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_sup@v5.0.0 "${SCRIPTS}/02b-alignment-longread.sh" sample1
 if grep -q 'DS:basecall_model' "$FAKE_DOCKER_LOG"; then fail "step 02b wrote a basecaller model for HiFi reads"; fi
 run_expect 2 longread-bad-basecaller env PLATFORM=ont BASECALL_MODEL=$'sup\tx' "${SCRIPTS}/02b-alignment-longread.sh" sample1
+# A basecall_model in the uBAM header that holds a backslash: minimap2 would
+# expand it inside -R, so step 02b warns and leaves DS out instead.
+mkbam "${GENOME_DIR}/sample1/fastq/sample1.bam" $'@HD\tVN:1.6\n@RG\tID:run1\tPL:ONT\tDS:basecall_model=sup\\tx@v5.0.0\n'
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 longread-ubam-bad-basecaller env PLATFORM=ont INPUT="${GENOME_DIR}/sample1/fastq/sample1.bam" "${SCRIPTS}/02b-alignment-longread.sh" sample1
+output_has longread-ubam-bad-basecaller 'ignoring a basecall_model in the BAM header'
+if grep -q 'DS:basecall_model' "$FAKE_DOCKER_LOG"; then fail "step 02b put a basecall_model with a backslash into the read group"; fi
