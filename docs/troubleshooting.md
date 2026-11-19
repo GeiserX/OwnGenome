@@ -21,25 +21,32 @@ Definitive reference for diagnosing and fixing problems with OwnGenome. Organize
 
 ### Container exits immediately with no output
 
-**Symptom:** `docker run` returns instantly. No error message. Exit code 137.
+**Symptom:** a step stops with no error message. `docker run` exits with code 137.
 
-**Cause:** The container was OOM-killed (Out Of Memory). Docker silently kills containers that exceed their `--memory` limit. Exit code 137 = SIGKILL from the kernel OOM killer.
+**Cause:** Exit code 137 is 128 + 9: the process got SIGKILL. The usual cause is a kill for memory: the kernel kills the container's process when it passes its `--memory` limit, or when the Docker Desktop VM runs out of memory. A `docker kill`, a `docker stop` past its grace period or another supervisor gives the same code. So 137 alone does not prove a kill for memory.
 
-**How to confirm:**
+**How to confirm:** the step scripts run each container with `--rm`, so after the failure `docker ps -a` no longer shows it (`docker ps -a --latest` shows an older, unrelated container). Check while the step runs again:
 ```bash
-# Check the last container's exit status
-docker ps -a --latest --format "{{.Status}}"
-# Output like "Exited (137)" confirms OOM
+# In a second terminal, before you run the step again:
+docker events --filter event=oom
+# Or replay the last 30 minutes: docker events --since 30m --until "$(date +%s)" --filter event=oom
+# An "oom" line for the step's container confirms a kill at its memory limit.
+# A kill because the whole host (or VM) ran out can leave no "oom" line: read the kernel log.
 
-# Check system logs for OOM events
-dmesg | grep -i "oom\|killed" | tail -10
+# On a Linux host, the kernel log names the kill:
+dmesg | grep -i "out of memory\|oom-kill" | tail -10   # or: journalctl -k | grep -i oom
 
-# On Docker Desktop (Mac/Windows)
-# Check Docker Desktop > Troubleshoot > Logs
+# For a container you ran yourself without --rm:
+docker inspect -f '{{.State.OOMKilled}}' <container>   # true: killed for memory
+
+# On Docker Desktop (Mac/Windows) the kernel log belongs to the VM:
+# check Docker Desktop > Troubleshoot > Logs
 ```
 
+Under `run-all.sh` and Nextflow, a task that exits 137 is retried once with twice the memory, whatever sent the kill. Its trace row and `.exitcode` file show 137.
+
 **Fix:**
-1. Increase the `--memory` flag in the script that failed (for step 3, `DV_MEM`). With `run-all.sh` you do not edit a script: the pipeline gives each task a memory request and doubles it on the one retry after an out-of-memory exit, up to `--max_memory`
+1. Increase the `--memory` flag in the script that failed (for step 3, `DV_MEM`). With `run-all.sh` you do not edit a script: the pipeline gives each task a memory request and doubles it on the one retry after an exit that usually means a kill for memory (137 among them), up to `--max_memory`
 2. Bound what runs at once. With `run-all.sh`, `--max_memory` (e.g. `./scripts/run-all.sh <sample> <sex> --max_memory 24.GB`; without it, the machine's RAM) and `THREADS=N` (`--max_cpus`, by default the machine's CPU count) cap each task, not the total: Nextflow starts tasks until their requests fill the machine's CPUs and RAM. On Docker Desktop and colima that is the VM's: `run-all.sh` reads its size from `docker info` and books no more (`<sample>/nextflow/executor.config`). To bound the total lower, pass a config with an `executor` block ([a shared host](hardware-requirements.md#a-shared-host)); a rerun reuses the steps that finished
 3. Increase Docker Desktop memory allocation (see [Docker Desktop not enough memory](#docker-desktop-not-enough-memory-macwindows))
 4. For DeepVariant run as a script, lower `THREADS` (its shard count) and `DV_MEM` together, e.g. `THREADS=4 DV_MEM=16g ./scripts/03-deepvariant.sh <sample> <sex>`
