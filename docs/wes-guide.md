@@ -207,7 +207,7 @@ These are the PharmCAT 3.4.0 positions that a capture of the coding exons with 5
 | CYP3A5 | rs776746 (\*3, 6986A>G) | intron 3 | \*3 | the most common allele in Europeans, a non-expresser, reads as \*1 (expresser): this changes the tacrolimus dose |
 | CYP3A4 | rs35599367 | intron 6 | \*22 | decreased function reads as normal |
 | UGT1A1 | rs887829 (c.-364C>T) | promoter | \*80 and its combinations with \*28 and \*37 | decreased function reads as normal |
-| UGT1A1 | rs3064744 (TA repeat) | promoter, about 55 bases before the start codon | \*28, \*36, \*37 | decreased function reads as normal, unless the kit pads more than 55 bases and the repeat has depth at the capture edge |
+| UGT1A1 | rs3064744, the TA repeat | promoter, about 55 bases before the start codon | \*28, \*36, \*37 | decreased function reads as normal, unless the kit pads more than 55 bases and the repeat has depth at the capture edge |
 | DPYD | rs75017182 (c.1129-5923C>G) | deep intron | HapB3 | HapB3 is called from c.1236G>A alone, the coding variant that travels with it; c.1129-5923C>G on its own is not seen |
 | CYP2B6 | rs34223104 (c.-82T>C) | promoter, 82 bases before the start codon | \*22 and four rarer alleles | increased function reads as normal, unless the kit pads more than 82 bases |
 | VKORC1 | rs9923231 (c.-1639G>A) | promoter | the warfarin-sensitive allele (T) | the gene has no call, and step 27's single-position fallback reports the position as not callable |
