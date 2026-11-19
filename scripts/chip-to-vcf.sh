@@ -82,7 +82,12 @@ case "$FORMAT" in
   *) BUILD_FILE="$RAW_TSV" ;;
 esac
 if [ -f "$BUILD_FILE" ]; then
-  HEADER_BUILD=$(tr -d '\r' < "$BUILD_FILE" | LC_ALL=C sed $'1s/^\xEF\xBB\xBF//' | LC_ALL=C awk '
+  # awk reads the file itself: it stops at the first data row, and a writer
+  # in front of it (tr, sed) would then die of SIGPIPE on a full-size file
+  # and stop the script under pipefail.
+  HEADER_BUILD=$(LC_ALL=C awk -v bom=$'\xEF\xBB\xBF' '
+    NR == 1 && index($0, bom) == 1 { $0 = substr($0, 4) }
+    { sub(/\r$/, "") }
     NR > 200 || (!/^#/ && NF > 0) { exit }
     # num(l, re): the two-digit number after the first match of re in l that
     # is not followed by a third digit (a dbSNP "build 151" is not a genome
@@ -102,7 +107,7 @@ if [ -f "$BUILD_FILE" ]; then
         num(l, "ncbi[ \t]*[0-9][0-9]") " " (l ~ /hg18/ ? 36 : 0) " " (l ~ /hg38/ ? 38 : 0), b, " ")
       for (i = 1; i <= n; i++)
         if (b[i] + 0 && b[i] + 0 != 37) { printf "%d\t%d\t%s\n", NR, b[i], $0; exit }
-    }')
+    }' "$BUILD_FILE")
   if [ -n "$HEADER_BUILD" ]; then
     IFS=$'\t' read -r hb_line hb_build hb_text <<< "$HEADER_BUILD"
     echo "ERROR: ${BUILD_FILE} line ${hb_line} names genome build ${hb_build}: ${hb_text}" >&2
