@@ -1,0 +1,22 @@
+[package]
+name = "og-facts"
+description = "og facts: the ownhealth.genome-facts/v1 file of a finished run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pycompat.workspace = true
+og-intervals.workspace = true
+og-pgx.workspace = true
+# SHA-256 for the fact ids and the file hashes OwnHealth checks, SHA-512 for
+# the GA4GH VRS identifiers; RustCrypto's crate, pure Rust.
+sha2 = "0.11"
+
+[dev-dependencies]
+# og dev schema checks the file against OwnHealth's JSON Schema.
+og-dev.workspace = true
+
+[lints]
+workspace = true

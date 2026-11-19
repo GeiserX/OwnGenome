@@ -1,0 +1,85 @@
+# Genes OwnHealth treats as sensitive (docs/design/genomics.md section 7), applied on top of the
+# producer's sensitivity tag. GRCh38 spans (1-based, closed) of the HGNC gene, from the UCSC hg38
+# search API, fetched 2026-11-07 (PLN 2026-11-11). acmg_sf_*: the cancer and cardiovascular genes of
+# ACMG SF v3.3 (PMID 40568962): v3.2 (PMID 37347242) plus PLN. v3.3's two other additions, ABCD1 and
+# CYP27A1, are metabolic genes, outside the cancer and cardiovascular groups this list holds. The
+# ClinVar alert class "a change in an ACMG SF gene" is the acmg_sf_* rows of this file.
+# Lookups pad each span by SPAN_PAD_BP so promoter-adjacent sites stay gated.
+gene	chrom	start	end	group
+APC	chr5	112707518	112846239	acmg_sf_cancer
+BMPR1A	chr10	86755786	86932825	acmg_sf_cancer
+BRCA1	chr17	43044295	43170245	acmg_sf_cancer
+BRCA2	chr13	32315086	32400268	acmg_sf_cancer
+MAX	chr14	65006174	65102695	acmg_sf_cancer
+MEN1	chr11	64803510	64811294	acmg_sf_cancer
+MLH1	chr3	36993226	37050896	acmg_sf_cancer
+MSH2	chr2	47403067	47663146	acmg_sf_cancer
+MSH6	chr2	47695530	47810063	acmg_sf_cancer
+MUTYH	chr1	45329163	45340893	acmg_sf_cancer
+NF2	chr22	29603553	29698598	acmg_sf_cancer
+PALB2	chr16	23603160	23641321	acmg_sf_cancer
+PMS2	chr7	5970925	6009130	acmg_sf_cancer
+PTEN	chr10	87862638	87971930	acmg_sf_cancer
+RB1	chr13	48303744	48599436	acmg_sf_cancer
+RET	chr10	43077064	43130351	acmg_sf_cancer
+SDHAF2	chr11	61430042	61446839	acmg_sf_cancer
+SDHB	chr1	17018664	17054151	acmg_sf_cancer
+SDHC	chr1	161314381	161363206	acmg_sf_cancer
+SDHD	chr11	112086824	112120016	acmg_sf_cancer
+SMAD4	chr18	51028528	51085045	acmg_sf_cancer
+STK11	chr19	1177558	1228431	acmg_sf_cancer
+TMEM127	chr2	96248500	96266047	acmg_sf_cancer
+TP53	chr17	7661779	7687546	acmg_sf_cancer
+TSC1	chr9	132891348	132946874	acmg_sf_cancer
+TSC2	chr16	2047967	2089491	acmg_sf_cancer
+VHL	chr3	10141778	10153676	acmg_sf_cancer
+WT1	chr11	32387775	32435564	acmg_sf_cancer
+ACTA2	chr10	88934822	88991339	acmg_sf_cardiovascular
+ACTC1	chr15	34790107	34795589	acmg_sf_cardiovascular
+APOB	chr2	21001429	21044073	acmg_sf_cardiovascular
+BAG3	chr10	119651380	119677819	acmg_sf_cardiovascular
+CALM1	chr14	90396502	90408268	acmg_sf_cardiovascular
+CALM2	chr2	47160084	47176921	acmg_sf_cardiovascular
+CALM3	chr19	46601074	46610782	acmg_sf_cardiovascular
+CASQ2	chr1	115698038	115837921	acmg_sf_cardiovascular
+COL3A1	chr2	188974373	189012746	acmg_sf_cardiovascular
+DES	chr2	219418377	219426735	acmg_sf_cardiovascular
+DSC2	chr18	31058545	31102600	acmg_sf_cardiovascular
+DSG2	chr18	31497624	31551351	acmg_sf_cardiovascular
+DSP	chr6	7541326	7586717	acmg_sf_cardiovascular
+FBN1	chr15	48408313	48645721	acmg_sf_cardiovascular
+FLNC	chr7	128830406	128859274	acmg_sf_cardiovascular
+KCNH2	chr7	150944961	150978321	acmg_sf_cardiovascular
+KCNQ1	chr11	2444654	2849105	acmg_sf_cardiovascular
+LDLR	chr19	11089418	11133820	acmg_sf_cardiovascular
+LMNA	chr1	156082572	156140081	acmg_sf_cardiovascular
+MYBPC3	chr11	47331406	47352702	acmg_sf_cardiovascular
+MYH11	chr16	15703135	15858438	acmg_sf_cardiovascular
+MYH7	chr14	23412740	23435660	acmg_sf_cardiovascular
+MYL2	chr12	110909996	111052434	acmg_sf_cardiovascular
+MYL3	chr3	46835110	46882178	acmg_sf_cardiovascular
+PCSK9	chr1	55039445	55064852	acmg_sf_cardiovascular
+PKP2	chr12	32790745	32896798	acmg_sf_cardiovascular
+PLN	chr6	118548296	118561716	acmg_sf_cardiovascular
+PRKAG2	chr7	151556124	151877214	acmg_sf_cardiovascular
+RBM20	chr10	110644336	110839471	acmg_sf_cardiovascular
+RYR2	chr1	237042184	237833988	acmg_sf_cardiovascular
+SCN5A	chr3	38548057	38649743	acmg_sf_cardiovascular
+SMAD3	chr15	67063763	67195173	acmg_sf_cardiovascular
+TGFBR1	chr9	99104038	99154192	acmg_sf_cardiovascular
+TGFBR2	chr3	30606478	30694249	acmg_sf_cardiovascular
+TMEM43	chr3	14125015	14143680	acmg_sf_cardiovascular
+TNNC1	chr3	52451100	52454041	acmg_sf_cardiovascular
+TNNI3	chr19	55151767	55157773	acmg_sf_cardiovascular
+TNNT2	chr1	201359008	201377764	acmg_sf_cardiovascular
+TPM1	chr15	63042620	63071915	acmg_sf_cardiovascular
+TRDN	chr6	123216339	123637189	acmg_sf_cardiovascular
+TTN	chr2	178525989	178830802	acmg_sf_cardiovascular
+APOE	chr19	44905791	44909393	apoe
+HTT	chr4	3041363	3243957	repeat
+C9orf72	chr9	27535640	27573866	repeat
+ATXN1	chr6	16299112	16761491	repeat
+ATXN2	chr12	111443485	111599676	repeat
+ATXN3	chr14	92044496	92106621	repeat
+ATXN7	chr3	63863155	64003462	repeat
+PRNP	chr20	4686350	4701590	prion
