@@ -194,12 +194,14 @@ fastp_total_reads() {
 # 2 MiB keeps it quick on a 60 GB FASTQ; a copy that kept the old file's time
 # still differs in size or in its first or last MiB.
 input_stamp() {
-  local f sm
+  local f sm head tail
   for f in "$@"; do
     [ -f "$f" ] || { echo "ERROR: input_stamp: no file ${f}" >&2; return 1; }
     sm=$(stat -c '%s %Y' "$f" 2>/dev/null || stat -f '%z %m' "$f") || return 1
-    printf '%s\t%s\t%s\t%s\t%s\n' "${f##*/}" "${sm% *}" "${sm#* }" \
-      "$(_digest sha256 <(head -c 1048576 "$f"))" "$(_digest sha256 <(tail -c 1048576 "$f"))"
+    head=$(_digest sha256 <(head -c 1048576 "$f")) && [ -n "$head" ] \
+      && tail=$(_digest sha256 <(tail -c 1048576 "$f")) && [ -n "$tail" ] \
+      || { echo "ERROR: input_stamp: could not checksum ${f}" >&2; return 1; }
+    printf '%s\t%s\t%s\t%s\t%s\n' "${f##*/}" "${sm% *}" "${sm#* }" "$head" "$tail"
   done
 }
 

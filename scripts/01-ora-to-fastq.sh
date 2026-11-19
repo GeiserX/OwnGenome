@@ -42,7 +42,7 @@ mkdir -p "$OUTPUT_DIR"
 # orad writes into a directory of its own, so this call's output can be told
 # from files an earlier call left (step 01 runs once for R1 and once for R2).
 # The step fails unless orad wrote at least one .fastq.gz and each one it wrote
-# starts with a FASTQ record; only then are they moved into fastq/. An orad that exits 0 having
+# starts with a whole FASTQ record; only then are they moved into fastq/. An orad that exits 0 having
 # written nothing, or a run that was killed, leaves nothing behind.
 PART_DIR=$(mktemp -d "${OUTPUT_DIR}/.orad.XXXXXX")
 trap 'rm -rf "$PART_DIR"' EXIT
@@ -55,9 +55,12 @@ trap 'rm -rf "$PART_DIR"' EXIT
 WROTE=()
 for f in "$PART_DIR"/*.fastq.gz; do
   [ -e "$f" ] || continue
-  first=$(gzip -cd "$f" 2>/dev/null | head -c 1) || true
-  if [ "$first" != "@" ]; then
-    echo "ERROR: orad exited 0 but its ${f##*/} holds no FASTQ record (empty or not gzip)." >&2
+  # The first record must be whole: an @ header, the bases, a + line and as
+  # many qualities as bases.
+  first=$(gzip -cd "$f" 2>/dev/null | head -n 4) || true
+  if ! awk 'NR == 1 { h = /^@/ } NR == 2 { n = length($0) } NR == 3 { p = /^\+/ } NR == 4 { q = length($0) }
+            END { exit !(NR == 4 && h && p && n > 0 && n == q) }' <<<"$first"; then
+    echo "ERROR: orad exited 0 but its ${f##*/} does not start with a whole FASTQ record (empty, cut short or not gzip)." >&2
     echo "  Nothing was written to ${OUTPUT_DIR}/." >&2
     exit 1
   fi

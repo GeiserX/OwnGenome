@@ -3,7 +3,8 @@
 # FASTQ, and keeps nothing it wrote then. A fake orad on ORAD stands in for
 # Illumina's: FAKE_ORAD=good writes <name>.fastq.gz with one record (orad keeps
 # the ORA file's name), none writes nothing, empty writes a gzip with no
-# record, zero writes a 0-byte file, crash exits 3 after a partial write.
+# record, zero writes a 0-byte file, at writes a gzip of a lone '@', short a
+# record with fewer qualities than bases, crash exits 3 after a partial write.
 #
 # The case that matters: step 01 runs once for R1 and once for R2 into the
 # same fastq/ folder, so the R1 file from the first call must not make an R2
@@ -38,6 +39,8 @@ case "${FAKE_ORAD:-good}" in
   none) : ;;
   empty) gzip -c < /dev/null > "${out}/${name}" ;;
   zero) : > "${out}/${name}" ;;
+  at) printf '@' | gzip -c > "${out}/${name}" ;;
+  short) printf '@r1\nACGT\n+\nII\n' | gzip -c > "${out}/${name}" ;;
   crash) printf '@r1\nAC' | gzip -c > "${out}/${name}"; exit 3 ;;
 esac
 FAKE
@@ -68,12 +71,13 @@ if step 1 none R2 && grep -q 'orad exited 0 but wrote no .fastq.gz' "${WORK}/out
   pass "an orad that writes nothing fails the step, even with R1 already in fastq/"
 else fail "an orad that wrote nothing for R2 did not fail the step"; fi
 
-# A gzip with no record, and a 0-byte file: fail, and neither reaches fastq/.
-for m in empty zero; do
-  if step 1 "$m" R2 && grep -q 'holds no FASTQ record' "${WORK}/out" \
+# A gzip with no record, a 0-byte file, a lone '@' and a record cut short:
+# each fails, and none reaches fastq/.
+for m in empty zero at short; do
+  if step 1 "$m" R2 && grep -q 'does not start with a whole FASTQ record' "${WORK}/out" \
      && [ ! -e "${FQ}/s1_S1_L001_R2_001.fastq.gz" ] && [ -z "$(leftovers)" ]; then
-    pass "FAKE_ORAD=${m}: a .fastq.gz with no record fails the step and is not kept"
-  else fail "FAKE_ORAD=${m}: a .fastq.gz with no record did not fail the step, or was kept"; fi
+    pass "FAKE_ORAD=${m}: a .fastq.gz with no whole first record fails the step and is not kept"
+  else fail "FAKE_ORAD=${m}: a .fastq.gz with no whole first record did not fail the step, or was kept"; fi
 done
 
 # orad fails after a partial write: the step fails and the partial file goes.
