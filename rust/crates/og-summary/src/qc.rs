@@ -15,8 +15,12 @@
 //!   declared sex.
 //! - FREEMIX above `--freemix-warn` (default 0.03) warns.
 //! - A relatedness of 0.9 or more is the same person (a duplicate or a swap).
+//! - FREEMIX is `uncertain` when VerifyBamID2 skipped its marker check or
+//!   kept fewer than [`MIN_CONTAMINATION_MARKERS`] markers.
+//! - Identity is `uncertain` below [`MIN_IDENTITY_SITES`] informative sites,
+//!   and `not_checked` when no other sample was there to compare with.
 //!
-//! The table is `key\tvalue` with 20 rows in a fixed order; `og qc
+//! The table is `key\tvalue` with 25 rows in a fixed order; `og qc
 //! sex-loss` appends its `mosaic_*` rows afterwards. Each row is echoed on
 //! stdout as `  key: value`.
 
@@ -31,11 +35,21 @@ use std::io::Write;
 pub const FREEMIX_WARN: f64 = 0.03;
 /// somalier relatedness at or above this: the same person.
 pub const SAME_PERSON: f64 = 0.9;
+/// Informative sites (genotyped by somalier, or shared by a pair) below
+/// which identity is `uncertain`: about one in 18 of somalier's 17,766
+/// sites. A whole genome at 30x genotypes most of them; a sliced, targeted
+/// or very shallow BAM falls below the floor.
+pub const MIN_IDENTITY_SITES: i128 = 1000;
+/// Markers VerifyBamID2 kept below which FREEMIX is `uncertain`: five times
+/// the 1,000 its own marker check asks for, and half of the 10% of the
+/// 100,000-marker panel that check also asks for.
+pub const MIN_CONTAMINATION_MARKERS: u64 = 5000;
 
 const USAGE: &str =
     "usage: og qc sample --sample S --somalier-samples F [--somalier-pairs F] [--somalier-id ID]
                     [--selfsm F] [--declared-sex {male,female,}] [--freemix-warn X]
-                    [--marker-check {passed,skipped,}] --out F
+                    [--marker-check {passed,skipped,}] [--verifybamid2-markers N]
+                    --out F
 ";
 
 const OPTS: &[Opt] = &[
@@ -55,6 +69,7 @@ const OPTS: &[Opt] = &[
         Kind::Choice(&["passed", "skipped", ""]),
         false,
     ),
+    Opt("--verifybamid2-markers", Kind::Value, false),
     Opt("--out", Kind::Value, true),
 ];
 
@@ -168,6 +183,9 @@ pub struct Inputs<'a> {
     pub freemix_warn: f64,
     pub somalier_id: Option<&'a str>,
     pub marker_check: &'a str,
+    /// The markers VerifyBamID2 kept (its log's "N SNP markers remained
+    /// after sanity check"), when known.
+    pub markers: Option<u64>,
 }
 
 /// The sex check: its word in the table and the reason.
@@ -305,21 +323,131 @@ pub fn table(i: &Inputs) -> Result<Vec<(&'static str, String)>, String> {
         ("verifybamid2_marker_check", i.marker_check.to_owned()),
     ]);
     let mut same = Vec::new();
+    // Other samples compared on enough shared sites, and on too few.
+    let (mut compared, mut thin) = (0usize, 0usize);
     if let Some(pairs) = i.pairs_tsv.filter(|s| !s.is_empty()) {
         for r in read_rows(pairs)? {
             let (a, b) = (cell(&r, "sample_a"), cell(&r, "sample_b"));
             let rel = num(cell(&r, "relatedness"));
             if (a == Some(sid) || b == Some(sid))
                 && a != b
-                && let Some(rel) = rel.filter(|&x| x >= SAME_PERSON)
+                && let Some(rel) = rel
             {
-                let other = if a == Some(sid) { b } else { a };
-                same.push(format!("{} ({})", other.unwrap_or("None"), fixed(rel, 2)));
+                // `n`: the sites both samples have a genotype at (an older
+                // somalier without it: the sample's own sites decide).
+                match num(cell(&r, "n")) {
+                    Some(n) if n < MIN_IDENTITY_SITES as f64 => thin += 1,
+                    _ => compared += 1,
+                }
+                if rel >= SAME_PERSON {
+                    let other = if a == Some(sid) { b } else { a };
+                    same.push(format!("{} ({})", other.unwrap_or("None"), fixed(rel, 2)));
+                }
             }
         }
     }
     out.push(("same_person_as", same.join(", ")));
+    let (confidence, confidence_why) = contamination_confidence(freemix, i.marker_check, i.markers);
+    let (identity, identity_why) = identity(sites, compared, thin);
+    out.extend([
+        (
+            "verifybamid2_markers",
+            i.markers.map_or_else(String::new, |m| m.to_string()),
+        ),
+        ("contamination_confidence", confidence.to_owned()),
+        ("contamination_confidence_reason", confidence_why),
+        ("identity", identity.to_owned()),
+        ("identity_reason", identity_why),
+    ]);
     Ok(out)
+}
+
+/// How far FREEMIX can be trusted: `ok`, `uncertain`, or nothing when
+/// VerifyBamID2 did not run; and why.
+fn contamination_confidence(
+    freemix: Option<f64>,
+    marker_check: &str,
+    markers: Option<u64>,
+) -> (&'static str, String) {
+    let floor = MIN_CONTAMINATION_MARKERS;
+    if freemix.is_none() {
+        return ("", String::new());
+    }
+    match (marker_check, markers) {
+        ("skipped", Some(m)) => (
+            "uncertain",
+            format!(
+                "VerifyBamID2 skipped its marker check and estimated FREEMIX from {m} markers; a firm estimate needs {}",
+                thousands(floor)
+            ),
+        ),
+        ("skipped", None) => (
+            "uncertain",
+            "VerifyBamID2 skipped its marker check: fewer than 1,000 markers had reads".to_owned(),
+        ),
+        (_, Some(m)) if m < floor => (
+            "uncertain",
+            format!(
+                "FREEMIX rests on {m} markers; a firm estimate needs {}",
+                thousands(floor)
+            ),
+        ),
+        (_, Some(m)) => ("ok", format!("FREEMIX rests on {m} markers")),
+        ("passed", None) => ("ok", "VerifyBamID2's marker check passed".to_owned()),
+        (_, None) => (
+            "uncertain",
+            "the number of markers FREEMIX rests on is not known".to_owned(),
+        ),
+    }
+}
+
+/// Whether the reads were checked against another sample: `checked`,
+/// `uncertain` (too few informative sites) or `not_checked` (nothing to
+/// compare with); and why. `compared` and `thin` count the other samples
+/// of the run with at least, and with fewer than, [`MIN_IDENTITY_SITES`]
+/// shared sites.
+fn identity(sites: i128, compared: usize, thin: usize) -> (&'static str, String) {
+    let floor = thousands(MIN_IDENTITY_SITES as u64);
+    if sites < MIN_IDENTITY_SITES {
+        return (
+            "uncertain",
+            format!(
+                "somalier genotyped {sites} sites; telling one person from another needs {floor}"
+            ),
+        );
+    }
+    if compared > 0 {
+        let s = if compared == 1 { "" } else { "s" };
+        return (
+            "checked",
+            format!(
+                "compared with {compared} other sample{s} of the run on {floor} or more shared sites"
+            ),
+        );
+    }
+    if thin > 0 {
+        return (
+            "uncertain",
+            format!("the other samples of the run share fewer than {floor} sites with this one"),
+        );
+    }
+    (
+        "not_checked",
+        "no other sample in the somalier run to compare with: the sex check is the only identity check".to_owned(),
+    )
+}
+
+/// `n` with a comma between thousands: 5000 is `5,000`.
+fn thousands(n: u64) -> String {
+    let d = n.to_string();
+    let mut out = String::new();
+    for (k, c) in d.chars().enumerate() {
+        if k > 0 && (d.len() - k).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// `og qc sample ARGS`: the exit code.
@@ -347,6 +475,21 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
             }
         },
     };
+    let markers = match a.get("--verifybamid2-markers").filter(|s| !s.is_empty()) {
+        None => None,
+        Some(s) => match s.parse::<u64>() {
+            Ok(v) => Some(v),
+            Err(_) => {
+                let _ = write!(err, "{USAGE}");
+                let _ = writeln!(
+                    err,
+                    "og qc sample: error: argument --verifybamid2-markers: invalid int value: {}",
+                    crate::repr(s)
+                );
+                return 2;
+            }
+        },
+    };
     let inputs = Inputs {
         sample: a.text("--sample"),
         samples_tsv: a.text("--somalier-samples"),
@@ -356,6 +499,7 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         freemix_warn,
         somalier_id: a.get("--somalier-id"),
         marker_check: a.text("--marker-check"),
+        markers,
     };
     let mut run = || -> Result<(), String> {
         let rows = table(&inputs)?;

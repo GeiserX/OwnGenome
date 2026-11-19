@@ -1,0 +1,26 @@
+key	value
+sample	S
+somalier_id	S
+declared_sex	female
+inferred_sex	unknown
+sex_check	not_checked
+sex_check_reason	somalier could not tell the sex from 4 chrX sites (it needs more than 10 with reads, and allele balances that look like one person)
+sites_genotyped	120
+depth_at_sites	30.0
+x_sites	4
+x_het	0
+x_hom_alt	4
+x_depth_ratio	0.50
+y_sites	5
+y_depth_ratio	0.47
+freemix	
+freemix_warn_above	0.03
+contamination	not_run
+panel_markers	
+verifybamid2_marker_check	
+same_person_as	
+verifybamid2_markers	
+contamination_confidence	
+contamination_confidence_reason	
+identity	uncertain
+identity_reason	somalier genotyped 120 sites; telling one person from another needs 1,000

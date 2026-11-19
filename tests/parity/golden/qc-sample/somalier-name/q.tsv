@@ -1,0 +1,26 @@
+key	value
+sample	X
+somalier_id	T
+declared_sex	
+inferred_sex	female
+sex_check	not_checked
+sex_check_reason	no declared sex
+sites_genotyped	120
+depth_at_sites	30.0
+x_sites	40
+x_het	20
+x_hom_alt	20
+x_depth_ratio	0.50
+y_sites	5
+y_depth_ratio	0.47
+freemix	
+freemix_warn_above	0.03
+contamination	not_run
+panel_markers	
+verifybamid2_marker_check	
+same_person_as	S (0.95), U (0.99)
+verifybamid2_markers	
+contamination_confidence	
+contamination_confidence_reason	
+identity	uncertain
+identity_reason	somalier genotyped 120 sites; telling one person from another needs 1,000
