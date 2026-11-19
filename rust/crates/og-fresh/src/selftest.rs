@@ -722,7 +722,12 @@ pub fn run(out: &mut dyn Write) -> u8 {
     };
     let (rows, e) = pgx_rows(agree());
     check(
-        rows.iter().all(|(st, _)| st == "current") && rows.len() == 3 && e == 0,
+        rows.iter().all(|(st, _)| st == "current")
+            && rows.len() == 3
+            && e == 0
+            && rows[1]
+                .1
+                .starts_with("the FDA table (current as of 2026-05-29): "),
         &format!(
             "PGx tables: rows that agree with CPIC, DailyMed, the FDA and pypgx are current ({rows:?})"
         ),
@@ -756,7 +761,7 @@ pub fn run(out: &mut dyn Write) -> u8 {
         said(
             &rows,
             1,
-            "bupropion CYP2D6: the FDA says moderate, the table says strong",
+            "the FDA table (current as of 2026-05-29): 2 difference(s): bupropion CYP2D6: the FDA says moderate, the table says strong",
         ) && said(
             &rows,
             1,
@@ -799,6 +804,18 @@ pub fn run(out: &mut dyn Write) -> u8 {
         rows.iter().all(|(st, _)| st == "ERROR") && e == 3,
         &format!(
             "PGx tables: an empty CPIC answer, an FDA page without its table and a missing gene table are errors ({rows:?})"
+        ),
+    );
+    let mut odd = agree();
+    odd[1].1 = Some(Body::Json(obj(vec![("data", obj(vec![]))])));
+    odd[6].1 = text("Gene,Target,Exons,SV\nCYP2D6,TRUE,\"1,2\",TRUE\nCYP2C9,TRUE,\"3,4\",\n");
+    let (rows, e) = pgx_rows(odd);
+    check(
+        rows.first().is_some_and(|(st, _)| st == "ERROR")
+            && rows.get(2).is_some_and(|(st, _)| st == "ERROR")
+            && e == 2,
+        &format!(
+            "PGx tables: a DailyMed answer without a history and an empty SV value are errors, not drift or current ({rows:?})"
         ),
     );
     // fda.gov refuses GitHub's runners: the newest Wayback Machine capture

@@ -788,13 +788,25 @@ fn col<'a>(row: &'a IndexMap<String, String>, name: &str) -> &'a str {
     row.get(name).map_or("", String::as_str)
 }
 
-/// The report row of a table check: `current` when nothing drifted, else
-/// `drift` with each drifted row named.
-fn table_row(item: &str, pinned: String, agree: String, drift: &[String], todo: &str) -> Found {
+/// The report row of a table check: `current` with `agree` when nothing
+/// drifted, else `drift` with each difference. Both name the `source`
+/// compared with.
+fn table_row(
+    item: &str,
+    pinned: String,
+    source: &str,
+    agree: &str,
+    drift: &[String],
+    todo: &str,
+) -> Found {
     let upstream = if drift.is_empty() {
-        agree
+        format!("{source}: {agree}")
     } else {
-        format!("{} difference(s): {}", drift.len(), drift.join("; "))
+        format!(
+            "{source}: {} difference(s): {}",
+            drift.len(),
+            drift.join("; ")
+        )
     };
     Found {
         row: DbRow {
@@ -872,7 +884,14 @@ pub fn pgx_contraindications(c: &Ctx<'_>) -> Lookup<Found> {
                     Some(d) => opt_field(d, "history")?,
                     None => return failed(format!("DailyMed label {setid}: empty")),
                 };
-                let live = matches!(history, Some(Value::Array(h)) if !h.is_empty());
+                // An empty history is a withdrawn label; no history, or one
+                // that is not a list, is an answer this does not know.
+                let Some(Value::Array(h)) = history else {
+                    return Err(LookupError::Shape(format!(
+                        "DailyMed label {setid}: history is not a list"
+                    )));
+                };
+                let live = !h.is_empty();
                 labels.insert(setid.clone(), live);
                 live
             }
@@ -886,10 +905,8 @@ pub fn pgx_contraindications(c: &Ctx<'_>) -> Lookup<Found> {
     Ok(table_row(
         "Drug warnings for disease genes (assets/pgx_contraindications.tsv, step 27)",
         format!("{} rows, CPIC levels and FDA labels", rows.len()),
-        format!(
-            "CPIC lists every pair at the same level, provisional; {} label(s) published",
-            labels.len()
-        ),
+        &format!("the CPIC API and DailyMed ({} label(s))", labels.len()),
+        "every pair at the same level and provisional, every label published",
         &drift,
         "Read the CPIC pair and the label again, then fix, move or drop the row in \
          assets/pgx_contraindications.tsv (its date and Note too) and rerun step 27.",
@@ -1095,11 +1112,12 @@ pub fn pgx_inhibitors(c: &Ctx<'_>) -> Lookup<Found> {
     Ok(table_row(
         "Drug interactions (assets/pgx_inhibitors.tsv, step 27)",
         format!("{} rows, FDA classes read 2026-11-03", rows.len()),
-        format!(
-            "the FDA table{}{via} classes every row the same and has no inhibitor the table lacks",
+        &format!(
+            "the FDA table{}{via}",
             date.map(|d| format!(" (current as of {d})"))
                 .unwrap_or_default()
         ),
+        "every row classed the same, no inhibitor the table lacks",
         &drift,
         "Read the FDA table again, then fix, add or drop the rows in assets/pgx_inhibitors.tsv \
          (and the date in its header) and rerun step 27 with a medication list.",
@@ -1147,9 +1165,21 @@ pub fn pgx_genes(c: &Ctx<'_>) -> Lookup<Found> {
     let mut sv: indexmap::IndexMap<String, bool> = indexmap::IndexMap::new();
     for l in lines {
         let f = csv_fields(l);
-        if let (Some(g), Some(s)) = (f.get(gi), f.get(si)) {
-            sv.insert(g.clone(), s == "TRUE");
-        }
+        let (Some(g), Some(s)) = (f.get(gi), f.get(si)) else {
+            return Err(LookupError::Shape(format!(
+                "pypgx {latest} gene-table.csv: a row without Gene or SV"
+            )));
+        };
+        let model = match s.as_str() {
+            "TRUE" => true,
+            "FALSE" => false,
+            other => {
+                return Err(LookupError::Shape(format!(
+                    "pypgx {latest} gene-table.csv: {g} has SV {other:?}, not TRUE or FALSE"
+                )));
+            }
+        };
+        sv.insert(g.clone(), model);
     }
     if sv.is_empty() {
         return failed(format!("pypgx {latest} gene-table.csv: empty"));
@@ -1184,7 +1214,8 @@ pub fn pgx_genes(c: &Ctx<'_>) -> Lookup<Found> {
             rows.len(),
             c.pins.get("PYPGX_BUNDLE_VERSION").unwrap_or("?")
         ),
-        format!("pypgx {latest}'s gene table agrees"),
+        &format!("pypgx {latest}'s gene table"),
+        "every row a pypgx gene, the bam rows exactly its copy-number models",
         &drift,
         "When PYPGX_IMAGE moves to this pypgx, change the rows of assets/pgx_genes.tsv \
          with it (tests/test_pypgx_genes.sh checks them at the pin) and rerun step 32.",
