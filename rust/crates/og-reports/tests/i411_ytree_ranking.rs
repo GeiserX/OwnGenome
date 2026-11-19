@@ -15,7 +15,9 @@
 //! 2. the skeptic's three cases: s1, a clean B (3) against the outvoted Z
 //!    (1): B; s2, the outvoted lineage with more support (W, 2) against a
 //!    single derived P (1): W stays; s3, equal support on two lineages: the
-//!    deeper one wins.
+//!    deeper one wins. On a second tree, the conflict named is the one with
+//!    the most support from its common branch with the terminal, not from
+//!    the root.
 //! 3. on one lineage the outvote still takes the walk to the deepest branch.
 //! 4. `Informative_callable` and `Path_breadth` count the readable sites.
 //! 5. the current tree's pileup flags are written out (`-A -Q20 -q20`), in
@@ -65,12 +67,18 @@ fn scratch(name: &str) -> PathBuf {
     d
 }
 
+type Snp = (&'static str, u32, char, char);
+
 fn write_tree(d: &Path) {
-    let rows: String = SNPS
+    write_tree_of(d, TREE, &SNPS);
+}
+
+fn write_tree_of(d: &Path, tree: &str, snps: &[Snp]) {
+    let rows: String = snps
         .iter()
         .map(|(n, p, a, de)| format!("chry\t{n}\tR-{n}\t{p}\t{a}->{de}\t{a}\t{de}\n"))
         .collect();
-    fs::write(d.join("current_tree.json"), TREE).unwrap();
+    fs::write(d.join("current_tree.json"), tree).unwrap();
     fs::write(d.join("positions_ftdna_hg38.txt"), rows).unwrap();
     fs::write(d.join("positions_yfull_hg38.txt"), "").unwrap();
     fs::write(d.join("version.txt"), "tree\tt\npositions\tp\n").unwrap();
@@ -93,9 +101,18 @@ fn strs(a: &[&str]) -> Vec<String> {
 /// The result row by column name, and the step line, for these SNPs read
 /// derived ('D') or ancestral ('A') at 12 reads each.
 fn place(d: &Path, tag: &str, states: &[(&str, char)]) -> (HashMap<String, String>, String) {
+    place_of(d, &SNPS, tag, states)
+}
+
+fn place_of(
+    d: &Path,
+    snps: &[Snp],
+    tag: &str,
+    states: &[(&str, char)],
+) -> (HashMap<String, String>, String) {
     let mut text = String::new();
     for &(name, st) in states {
-        let &(_, pos, anc, der) = SNPS.iter().find(|r| r.0 == name).unwrap();
+        let &(_, pos, anc, der) = snps.iter().find(|r| r.0 == name).unwrap();
         let base = if st == 'D' { der } else { anc };
         text += &format!(
             "chrY\t{pos}\tN\t12\t{}\t{}\n",
@@ -222,6 +239,89 @@ fn the_skeptic_cases() {
     );
     assert_eq!(cols(&r, &CONFLICT), ["B", ".", ".", "."], "lone {r:?}");
     assert!(!line.contains("another lineage"), "{line}");
+    fs::remove_dir_all(d).unwrap();
+}
+
+/// A second tree, where a lineage splits off below the terminal one's
+/// shared branch P and another splits off above it, at A:
+///
+/// ```text
+/// (root) -> A (a1) -> C (c1, c2, c3)
+///                  -> P (p1, p2) -> B (b1, b2, b3)
+///                                -> S (s1) -> E (e1, e2, e3)
+/// ```
+const SPLIT_TREE: &str = r#"{"id": "", "snps": "", "children": [
+ {"id": "A", "snps": "a1", "children": [
+  {"id": "C", "snps": "c1, c2, c3", "children": []},
+  {"id": "P", "snps": "p1, p2", "children": [
+   {"id": "B", "snps": "b1, b2, b3", "children": []},
+   {"id": "S", "snps": "s1", "children": [
+    {"id": "E", "snps": "e1, e2, e3", "children": []}]}]}]}]}"#;
+
+const SPLIT_SNPS: [Snp; 13] = [
+    ("a1", 4000100, 'C', 'T'),
+    ("c1", 4000200, 'G', 'A'),
+    ("c2", 4000300, 'A', 'G'),
+    ("c3", 4000350, 'G', 'C'),
+    ("p1", 4000400, 'T', 'C'),
+    ("p2", 4000500, 'C', 'G'),
+    ("b1", 4000600, 'G', 'T'),
+    ("b2", 4000700, 'A', 'T'),
+    ("b3", 4000800, 'A', 'C'),
+    ("s1", 4000900, 'T', 'A'),
+    ("e1", 4001000, 'G', 'C'),
+    ("e2", 4001100, 'C', 'A'),
+    ("e3", 4001200, 'T', 'G'),
+];
+
+/// Red first: the conflict was chosen by its support from the root, so E
+/// (3 from the root, but 0 from P, where it leaves B's path) hid C (1 from
+/// A). Then the support was found to be 0 and no conflict was named.
+#[test]
+fn red_first_a_conflict_counts_its_support_from_the_common_branch() {
+    let d = scratch("split");
+    write_tree_of(&d, SPLIT_TREE, &SPLIT_SNPS);
+    let (r, line) = place_of(
+        &d,
+        &SPLIT_SNPS,
+        "hidden",
+        &[
+            ("a1", 'D'),
+            ("c1", 'D'),
+            ("p1", 'D'),
+            ("p2", 'D'),
+            ("b1", 'D'),
+            ("s1", 'A'),
+            ("e1", 'D'),
+            ("e2", 'D'),
+            ("e3", 'A'),
+        ],
+    );
+    assert_eq!(cols(&r, &CONFLICT), ["B", "C", "1", "3"], "hidden {r:?}");
+    assert!(line.contains("C (1 against 3"), "{line}");
+    // The most support from the common branch wins, not the most from the
+    // root: E has 5 from the root but 2 from P, C has 4 and 3 from A.
+    let (r, _) = place_of(
+        &d,
+        &SPLIT_SNPS,
+        "strongest",
+        &[
+            ("a1", 'D'),
+            ("c1", 'D'),
+            ("c2", 'D'),
+            ("c3", 'D'),
+            ("p1", 'D'),
+            ("p2", 'D'),
+            ("b1", 'D'),
+            ("b2", 'D'),
+            ("b3", 'D'),
+            ("s1", 'A'),
+            ("e1", 'D'),
+            ("e2", 'D'),
+            ("e3", 'D'),
+        ],
+    );
+    assert_eq!(cols(&r, &CONFLICT), ["B", "C", "3", "5"], "strongest {r:?}");
     fs::remove_dir_all(d).unwrap();
 }
 

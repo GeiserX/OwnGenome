@@ -5,7 +5,10 @@
 #      sample's own VCF that no public SNP table names. The list must drop
 #      calls the tables do name (the header counts them, and at least one
 #      real call is dropped, so the subtraction is doing work on real data),
-#      and no listed position may be in either table.
+#      and no listed call may be a change either table names: a row at its
+#      position with the same two bases (either order), or with bases that
+#      are not one A, C, G or T each. Another base at a known position is a
+#      new mutation and stays listed.
 #      Only calls inside the chrY callable mask are listed.
 #      Red controls, on a copy of the VCF seeded with two synthetic chrY
 #      calls at positions no table names (so they do not depend on what the
@@ -61,13 +64,20 @@ check "its header has the columns of a row" has "^Pos${T}Ref${T}Alt${T}Depth${T}
 dropped() { sed -n 's/^# dropped\t//p' "$PRIV" | tr ' ' '\n' | sed -n "s/^${1}=//p"; }
 check_ge "the subtraction dropped real calls the public tables name" "$(dropped on_public_lists)" 1
 
-# Every listed position must be absent from both tables: the subtraction, on
-# the real tables, checked from the file itself rather than from its counter.
-awk -F'\t' 'FNR == NR { if ($0 !~ /^(#|Pos\t)/) want[$1] = 1; next }
-  $4 in want { print $4; found = 1 } END { exit found }' \
+# No listed call may be a change the tables name: the subtraction, on the
+# real tables, checked from the file itself rather than from its counter.
+# want[POS] holds " REFALT" for each listed call there; a table row at POS
+# leaks when its two bases are that pair in either order, or are not usable.
+awk -F'\t' 'FNR == NR { if ($0 !~ /^(#|Pos\t)/) want[$1] = want[$1] " " toupper($2 $3); next }
+  $4 in want {
+    a = toupper($6); d = toupper($7); gsub(/[ \r]/, "", a); gsub(/[ \r]/, "", d)
+    if (a !~ /^[ACGT]$/ || d !~ /^[ACGT]$/ || a == d || index(want[$4], " " a d) || index(want[$4], " " d a)) {
+      print $4; found = 1
+    }
+  } END { exit found }' \
   "$PRIV" "${YT}/positions_ftdna_hg38.txt" "${YT}/positions_yfull_hg38.txt" > "${CASE_TMP}/leaked.txt"
 LEAKED=$(grep -c . "${CASE_TMP}/leaked.txt" 2>/dev/null || true)
-check_eq "no listed position is on either public table" "${LEAKED:-unknown}" 0
+check_eq "no listed call is a change either public table names" "${LEAKED:-unknown}" 0
 ROWS=$(awk -F'\t' '$0 !~ /^(#|Pos\t)/' "$PRIV" 2>/dev/null | grep -c . || true)
 echo "private chrY SNVs listed: ${ROWS}"
 

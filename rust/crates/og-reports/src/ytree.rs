@@ -45,9 +45,9 @@
 //! the ranking set aside: `Informative_callable` (tree SNPs on the tables
 //! whose site has `--min-depth` reads, called or not), `Path_breadth` (that
 //! share of the path's SNPs on the tables), and `Conflict` with
-//! `Conflict_support` and `Terminal_support` (the strongest other-lineage
-//! candidate with support of its own from the common branch, and both
-//! supports from there; `.` when there is none).
+//! `Conflict_support` and `Terminal_support` (the other-lineage candidate
+//! with the most support of its own from the common branch, above 0, and
+//! both supports from there; `.` when there is none).
 //!
 //! How it is built: the tree is read as a stream of JSON events straight
 //! into an arena of branches in the order the Python walked them (parents
@@ -754,8 +754,12 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
             .then_with(|| id_or_empty(&nodes[b]).cmp(id_or_empty(&nodes[a])))
     };
     let best = candidates.iter().copied().max_by(|&a, &b| rank(a, b));
-    // The strongest candidate on another lineage, when it has support of its
-    // own from the common ancestor: the conflict the ranking set aside.
+    // The strongest candidate on another lineage: the one with the most
+    // support of its own from the branch it shares with the best one (above
+    // 0), the conflict the ranking set aside. Its support is counted from
+    // that common branch down, never from the root: a candidate that splits
+    // off low inherits the shared part, which says nothing for it. Ties go
+    // to the ranking above.
     let conflict = best.and_then(|b| {
         let mut on_path = vec![false; n];
         let mut at = b as u32;
@@ -763,17 +767,21 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
             on_path[at as usize] = true;
             at = nodes[at as usize].parent;
         }
-        let c = candidates
+        let base = |c: usize| {
+            let mut k = c;
+            while !on_path[k] {
+                k = nodes[k].parent as usize;
+            }
+            score[k]
+        };
+        let (c, k) = candidates
             .iter()
             .copied()
             .filter(|&c| !on_path[c] && nodes[c].id.is_some())
-            .max_by(|&a, &b| rank(a, b))?;
-        let mut common = c as u32;
-        while !on_path[common as usize] {
-            common = nodes[common as usize].parent;
-        }
-        let base = score[common as usize];
-        (score[c] > base).then_some((c, score[c] - base, score[b] - base))
+            .map(|c| (c, base(c)))
+            .filter(|&(c, k)| score[c] > k)
+            .max_by(|&(a, ka), &(b, kb)| (score[a] - ka).cmp(&(score[b] - kb)).then(rank(a, b)))?;
+        Some((c, score[c] - k, score[b] - k))
     });
     // The path from the root to the best branch, branches without an id left out.
     let mut path = Vec::new();
