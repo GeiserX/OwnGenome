@@ -12721,7 +12721,8 @@
       "significance": "Likely pathogenic",
       "stars": 1,
       "inheritance": "AR",
-      "condition": "Nonsyndromic hearing loss, recessive (DFNB1A)"
+      "condition": "Nonsyndromic hearing loss, recessive (DFNB1A)",
+      "combined_allele": "combined allele of chr13:20189473 C>T + chr13:20189475 G>A"
      },
      {
       "gene": "BRCA1",
@@ -12730,7 +12731,8 @@
       "significance": "Pathogenic",
       "stars": 3,
       "inheritance": "AR",
-      "condition": "Fanconi anemia"
+      "condition": "Fanconi anemia",
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes"
      },
      {
       "gene": "GLA",
@@ -12739,7 +12741,8 @@
       "significance": "Pathogenic",
       "stars": 0,
       "inheritance": "XL",
-      "condition": "Fabry disease"
+      "condition": "Fabry disease",
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record"
      },
      {
       "gene": "HBA1",
@@ -12779,7 +12782,7 @@
       {
        "gene": "SMN1",
        "verdict": "biallelic",
-       "why": "the variant is called homozygous inside the deletion: it is hemizygous, on the one copy the deletion leaves",
+       "why": "the variant is called homozygous inside the deletion: hemizygous on the copy the deletion leaves if the deletion is real, homozygous if not; both copies carry it either way",
        "deletion": "one SMN1 copy (Parascopy, step 35)",
        "variant": "chr5:70951946 C>T",
        "genotype": "hemizygous",
@@ -15262,7 +15265,9 @@
        "low_confidence": false,
        "rule": "P and LP (2 variants)",
        "rule_note": null,
-       "severity": null
+       "severity": null,
+       "pair": "biallelic",
+       "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
       },
       {
        "gene": "BRCA1",
@@ -15271,6 +15276,7 @@
        "significance": "Pathogenic",
        "stars": 3,
        "low_confidence": false,
+       "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes",
        "rule": "All P and LP",
        "rule_note": null,
        "severity": null
@@ -15282,6 +15288,7 @@
        "significance": "Pathogenic",
        "stars": 0,
        "low_confidence": false,
+       "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record",
        "rule": "All hemi, het, homozygous P and LP",
        "rule_note": null,
        "severity": null
@@ -15304,7 +15311,9 @@
        "ad": "15,15",
        "rule": "P and LP (2 variants)",
        "rule_note": null,
-       "severity": null
+       "severity": null,
+       "pair": "biallelic",
+       "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
       },
       {
        "gene": "MYBPC3",
