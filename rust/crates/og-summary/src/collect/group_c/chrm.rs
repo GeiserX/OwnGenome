@@ -1,7 +1,9 @@
 //! Step 20's chrM section: the PASS calls and the heteroplasmic ones, the
 //! poly-C tracts counted apart, the annotation table with its ClinVar
 //! classes, the confirmed variants of `assets/mito_confirmed.tsv`, the large
-//! deletions and the mtDNA copy number.
+//! deletions and the mtDNA copy number. A heteroplasmic call near the
+//! origin of the circular reference, or under 10% AF, stays counted and
+//! carries a flag that says why it is less reliable.
 
 use super::util::{Obj, asset_rows, cells, lines, opt_s, pairs, round, s, strs, vcf_lines};
 use super::{Ctx, Found, Out};
@@ -12,6 +14,10 @@ use pycompat::json::Value;
 
 /// The D-loop poly-C tracts, rCRS m.303-315 and m.16184-16193.
 const POLYC_TRACTS: [(i128, i128); 2] = [(303, 315), (16184, 16193)];
+/// The two ends of the control region, next to the origin of the circular
+/// reference: reads that span the origin align poorly at both edges, and
+/// this step has no shifted-reference pass to call them again.
+const ORIGIN_EDGE: [(i128, i128); 2] = [(1, 500), (16000, 16569)];
 const MITO_ANNOT_COLS: [&str; 13] = [
     "chrom",
     "pos",
@@ -52,6 +58,9 @@ const MITO_CN_COLS: [&str; 8] = [
 ];
 const HET_LOW: f64 = 0.05;
 const HET_HIGH: f64 = 0.95;
+/// Under this AF a heteroplasmic call is low level: often somatic or
+/// technical, and the range where NuMT reads pass as heteroplasmy.
+const LOW_AF: f64 = 0.10;
 
 fn n_chars(x: &str) -> i128 {
     x.chars().count() as i128
@@ -66,9 +75,23 @@ fn mito_span(pos: i128, r: &str, a: &str) -> (i128, i128) {
     }
 }
 
-pub fn in_polyc(pos: i128, r: &str, a: &str) -> bool {
+fn overlaps(regions: &[(i128, i128)], pos: i128, r: &str, a: &str) -> bool {
     let (lo, hi) = mito_span(pos, r, a);
-    POLYC_TRACTS.iter().any(|(a, b)| lo <= *b && hi >= *a)
+    regions.iter().any(|(a, b)| lo <= *b && hi >= *a)
+}
+
+pub fn in_polyc(pos: i128, r: &str, a: &str) -> bool {
+    overlaps(&POLYC_TRACTS, pos, r, a)
+}
+
+/// Whether the bases an allele changes touch either end of the control
+/// region (`ORIGIN_EDGE`).
+pub fn at_origin_edge(pos: i128, r: &str, a: &str) -> bool {
+    overlaps(&ORIGIN_EDGE, pos, r, a)
+}
+
+fn low_af(af: f64) -> bool {
+    af < LOW_AF
 }
 
 /// `(pos, ref, alt)` without the bases both share at the end, then at the
@@ -354,7 +377,7 @@ pub fn mito(c: &Ctx<'_>) -> Out {
     };
     let mut records = Vec::new();
     vcf_lines(&p.path, |l| records.push(cells(l)))?;
-    let (mut passed, mut het) = (0usize, 0usize);
+    let (mut passed, mut het, mut het_edge, mut het_low) = (0usize, 0usize, 0usize, 0usize);
     let (mut polyc, mut sites) = (Vec::new(), Vec::new());
     for r in &records {
         if r.len() < 10 || r[6] != "PASS" {
@@ -393,13 +416,21 @@ pub fn mito(c: &Ctx<'_>) -> Out {
                     .val(),
             );
         } else {
+            // Flagged calls stay counted: the flags say why one is less
+            // reliable, they never hide it.
+            let edge = r[4].split(',').any(|a| at_origin_edge(pos, &r[3], a));
+            let low = low_af(af);
             het += 1;
+            het_edge += usize::from(edge);
+            het_low += usize::from(low);
             sites.push(
                 Obj::new()
                     .set("pos", Value::Int(pos))
                     .set("ref", s(&r[3]))
                     .set("alt", s(&r[4]))
                     .set("af", round(af, 3))
+                    .set("origin_edge", Value::Bool(edge))
+                    .set("low_af", Value::Bool(low))
                     .val(),
             );
         }
@@ -411,11 +442,11 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         let terms = clinvar_terms(r.get("clinvar_significance").flatten());
         let is_plp = terms.iter().any(|t| CLINVAR_PLP.contains(t));
         plp += i128::from(is_plp);
-        let het_row = r
+        let af = r
             .get("af")
             .flatten()
-            .and_then(|x| pycompat::num::parse_float(x).ok())
-            .is_some_and(|af| (HET_LOW..HET_HIGH).contains(&af));
+            .and_then(|x| pycompat::num::parse_float(x).ok());
+        let het_row = af.is_some_and(|af| (HET_LOW..HET_HIGH).contains(&af));
         if is_plp
             || het_row
             || (!terms.is_empty() && !terms.iter().all(|t| CLINVAR_BENIGN.contains(t)))
@@ -430,6 +461,10 @@ pub fn mito(c: &Ctx<'_>) -> Out {
             let rf = col(r, "ref")?.unwrap_or("");
             let al = col(r, "alt")?.unwrap_or("");
             o.put("polyc", Value::Bool(in_polyc(pos, rf, al)));
+            o.put("origin_edge", Value::Bool(at_origin_edge(pos, rf, al)));
+            // Low level only when heteroplasmic: a homoplasmic or absent AF
+            // is not a low-level call.
+            o.put("low_af", Value::Bool(het_row && af.is_some_and(low_af)));
             listed.push(o.val());
         }
     }
@@ -448,6 +483,13 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         strs(POLYC_TRACTS.iter().map(|(a, b)| format!("m.{a}-{b}"))),
     );
     out.put("annotation", ann.val());
+    out.put("heteroplasmic_origin_edge", super::util::count(het_edge));
+    out.put("heteroplasmic_low_af", super::util::count(het_low));
+    out.put(
+        "origin_edge_regions",
+        strs(ORIGIN_EDGE.iter().map(|(a, b)| format!("m.{a}-{b}"))),
+    );
+    out.put("low_af_ceiling", Value::Float(LOW_AF));
     Ok(Some((p, out.val())))
 }
 
@@ -557,6 +599,16 @@ mod tests {
             &strs(["m.1-500", "m.16000-16569"])
         );
         assert_eq!(at(&d, &["low_af_ceiling"]), &Value::Float(0.10));
+    }
+
+    #[test]
+    fn edge_bounds_are_inclusive() {
+        assert!(at_origin_edge(500, "C", "T"));
+        assert!(!at_origin_edge(501, "C", "T"));
+        assert!(!at_origin_edge(15999, "C", "T"));
+        assert!(at_origin_edge(16000, "C", "T"));
+        // A deletion anchored before the edge reaches into it.
+        assert!(at_origin_edge(15998, "CAT", "C"));
     }
 
     #[test]

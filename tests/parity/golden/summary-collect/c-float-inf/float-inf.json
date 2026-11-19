@@ -1547,7 +1547,9 @@
        "gnomad_af_hom": "0",
        "gnomad_af_het": "0",
        "gnomad_max_hl": "0",
-       "polyc": false
+       "polyc": false,
+       "origin_edge": false,
+       "low_af": false
       },
       {
        "pos": "302",
@@ -1561,7 +1563,9 @@
        "gnomad_af_hom": ".",
        "gnomad_af_het": ".",
        "gnomad_max_hl": ".",
-       "polyc": true
+       "polyc": true,
+       "origin_edge": true,
+       "low_af": false
       },
       {
        "pos": "500",
@@ -1575,11 +1579,20 @@
        "gnomad_af_hom": ".",
        "gnomad_af_het": ".",
        "gnomad_max_hl": ".",
-       "polyc": false
+       "polyc": false,
+       "origin_edge": true,
+       "low_af": false
       }
      ],
      "clinvar_plp": 1
-    }
+    },
+    "heteroplasmic_origin_edge": 0,
+    "heteroplasmic_low_af": 0,
+    "origin_edge_regions": [
+     "m.1-500",
+     "m.16000-16569"
+    ],
+    "low_af_ceiling": 0.1
    }
   },
   "traits": {
