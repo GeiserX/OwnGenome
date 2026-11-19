@@ -17,13 +17,15 @@ HipSTR --bams /in/HG002_slice.bam --fasta /in/ref.fa --regions regions.bed --str
   --max-str-len 150 --output-filters --log hipstr.log
 python3 --version > python_version.txt 2>&1
 # called.tsv: id, GT, GB, DP and Q of every call with a genotype and those
-# four fields and DSTUTTER.
+# four fields, DSTUTTER and MALLREADS (each read's most likely length, which
+# og y str-report needs for a high call).
 gzip -dc calls.vcf.gz | awk -F'\t' -v OFS='\t' '
   /^#/ { next }
   {
     split("", f); k = split($9, key, ":"); m = split($10, val, ":")
     for (i = 1; i <= k && i <= m; i++) f[key[i]] = val[i]
-    if (("GT" in f) && f["GT"] != "." && ("GB" in f) && ("DP" in f) && ("Q" in f) && ("DSTUTTER" in f))
+    if (("GT" in f) && f["GT"] != "." && ("GB" in f) && ("DP" in f) && ("Q" in f) && ("DSTUTTER" in f) \
+        && ("MALLREADS" in f) && f["MALLREADS"] ~ /^-?[0-9]+\|[0-9]+/)
       print $3, f["GT"], f["GB"], f["DP"], f["Q"]
   }' > called.tsv
 cat called.tsv

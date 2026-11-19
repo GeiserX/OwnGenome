@@ -158,7 +158,7 @@ fn read_panel(path: &str) -> Vec<Row> {
         .collect()
 }
 
-const FORMAT: &str = "GT:GB:Q:PQ:DP:DSNP:PSNP:PDP:GLDIFF:DSTUTTER:DFLANKINDEL";
+const FORMAT: &str = "GT:GB:Q:PQ:DP:DSNP:PSNP:PDP:GLDIFF:DSTUTTER:DFLANKINDEL:MALLREADS";
 
 /// One HipSTR call: GT, GB, Q, DP, DSTUTTER, DFLANKINDEL.
 type Call = [&'static str; 6];
@@ -177,7 +177,7 @@ fn good(gb: &'static str) -> Call {
 }
 
 /// A HipSTR VCF with these records (by HipSTR region name), each written at
-/// its region's start.
+/// its region's start; every read shows the called length (MALLREADS).
 fn vcf(d: &Path, records: &[(&str, Call)], samples: &[&str]) -> PathBuf {
     let panel = read_panel(&panel_path());
     let mut lines = vec![
@@ -195,7 +195,12 @@ fn vcf(d: &Path, records: &[(&str, Call)], samples: &[&str]) -> PathBuf {
             .find(|x| x.5 == *name)
             .map(|x| (x.0.clone(), x.1))
             .unwrap_or_else(|| panic!("no panel region is named {name}"));
-        let cell = format!("{gt}:{gb}:{q}:{q}:{dp}:0:0|0:{dp}|0:.:{st}:{fl}");
+        let all = if *gb == "." {
+            ".".to_owned()
+        } else {
+            format!("{gb}|{dp}")
+        };
+        let cell = format!("{gt}:{gb}:{q}:{q}:{dp}:0:0|0:{dp}|0:.:{st}:{fl}:{all}");
         let mut row = vec![
             c,
             (s - 1).to_string(),
@@ -492,7 +497,11 @@ fn counts_are_reference_copies_plus_the_length_difference() {
             ("DYS19/DYS394", GOOD),
         ],
     );
-    assert_eq!(cell(&o, "DYS19", "count"), "16", "a reference call");
+    assert_eq!(
+        cell(&o, "DYS19", "count"),
+        "15",
+        "a reference call, on FamilyTreeDNA's scale (16 copies, offset -1)"
+    );
     assert_eq!(cell(&o, "DYS393", "count"), "13", "GB +4 at a 4-base motif");
     assert_eq!(cell(&o, "DYS390", "count"), "22", "GB -8");
     assert_eq!(cell(&o, "DYS391", "count"), "11.2", "a partial repeat");
@@ -501,7 +510,11 @@ fn counts_are_reference_copies_plus_the_length_difference() {
         "12.2",
         "GB -1 at a 3-base motif"
     );
-    assert_eq!(cell(&o, "DYS449", "count"), "36", "the sum of its parts");
+    assert_eq!(
+        cell(&o, "DYS449", "count"),
+        "29",
+        "the sum of its parts (15 + 21 copies) plus its offset -7"
+    );
     assert_eq!(
         cell(&o, "DYS510", "count"),
         "26",
@@ -513,7 +526,7 @@ fn counts_are_reference_copies_plus_the_length_difference() {
             cell(&o, "DYS510", "reads"),
             cell(&o, "DYS510", "note")
         ],
-        ["high", "20", "."]
+        ["high", "20", og_reports::ystr::REFERENCE_SCALE]
     );
     for (m, bp) in [("DYS389II", 164), ("DYS448", 156)] {
         assert_eq!(cell(&o, m, "confidence"), "not callable", "{m}");
