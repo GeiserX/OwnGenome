@@ -170,7 +170,8 @@ struct Penetrance {
 
 /// `assets/str_penetrance_ranges.tsv`. An assets folder without it (a
 /// staged copy of some tables) labels nothing; a table that is there but
-/// cannot be read makes the section unreadable.
+/// cannot be read, has no row, or has a range whose min is above its max
+/// makes the section unreadable.
 fn penetrance(c: &Ctx<'_>) -> Result<Vec<Penetrance>, String> {
     const NAME: &str = "str_penetrance_ranges.tsv";
     let rows = match asset_rows(c.assets, NAME) {
@@ -187,15 +188,30 @@ fn penetrance(c: &Ctx<'_>) -> Result<Vec<Penetrance>, String> {
     let num = |r: &pycompat::csv::DictRow, k: &str| -> Result<i128, String> {
         crate::int(&cell(r, k)?).map_err(|e| super::super::sections::py_error("ValueError", &e))
     };
+    // A table with no row (a header alone, whatever its columns) labels
+    // nothing, so it is as broken as one with a bad row.
+    if rows.is_empty() {
+        return Err(super::super::sections::py_error(
+            "ValueError",
+            &format!("{NAME} has no range"),
+        ));
+    }
     rows.iter()
         .map(|r| {
-            Ok(Penetrance {
+            let p = Penetrance {
                 locus: cell(r, "locus")?,
                 min: num(r, "min")?,
                 max: num(r, "max")?,
                 label: cell(r, "label")?,
                 citation: cell(r, "citation")?,
-            })
+            };
+            if p.min > p.max {
+                return Err(super::super::sections::py_error(
+                    "ValueError",
+                    &format!("{NAME}: {} has min {} above max {}", p.locus, p.min, p.max),
+                ));
+            }
+            Ok(p)
         })
         .collect()
 }

@@ -61,25 +61,37 @@ fn rec(locus: &str, so: &str, cn: &str, ci: &str, ad: [&str; 3], st: &str) -> St
     )
 }
 
-/// The expansions section's loci by name, for one ExpansionHunter VCF that
-/// Stranger graded.
-fn loci(tag: &str, records: &str) -> Vec<(String, Value)> {
+const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
+
+/// The expansions section for one ExpansionHunter VCF that Stranger graded,
+/// with the assets folder `assets` (`None`: one written in the scratch
+/// folder, holding `table` as the penetrance table when given).
+fn section(tag: &str, records: &str, assets: Option<&str>, table: Option<&str>) -> Value {
     let d = Dir::new(tag);
     let vcf = format!("{HEAD}{records}");
     d.put("S/expansion_hunter/S_eh.vcf", &vcf);
     d.put("S/expansion_hunter/S_eh_stranger.vcf", &vcf);
+    d.put("assets/README", "a staged assets folder\n");
+    if let Some(t) = table {
+        d.put("assets/str_penetrance_ranges.tsv", t);
+    }
     let input = Input {
         sample: "S".into(),
         sample_dir: d.path("S"),
         declared_sex: None,
-        assets: concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets").into(),
+        assets: assets.map_or_else(|| d.path("assets"), str::to_owned),
         group: Group::C,
         tables: concat!(env!("CARGO_MANIFEST_DIR"), "/../../../bin").into(),
     };
     let v = collect(&input).unwrap().to_json();
-    let sec = at(&v, &["sections", "expansions"]);
-    assert_eq!(at(sec, &["state"]), &Value::Str("ok".into()), "{sec:?}");
-    match at(sec, &["data", "loci"]) {
+    at(&v, &["sections", "expansions"]).clone()
+}
+
+/// The expansions section's loci by name, with the repository's assets.
+fn loci(tag: &str, records: &str) -> Vec<(String, Value)> {
+    let sec = section(tag, records, Some(ASSETS), None);
+    assert_eq!(at(&sec, &["state"]), &Value::Str("ok".into()), "{sec:?}");
+    match at(&sec, &["data", "loci"]) {
         Value::Array(xs) => xs
             .iter()
             .map(|x| (text(at(x, &["locus"])).to_owned(), x.clone()))
@@ -166,7 +178,7 @@ fn the_flagged_list_carries_the_penetrance_range() {
         sample: "S".into(),
         sample_dir: d.path("S"),
         declared_sex: None,
-        assets: concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets").into(),
+        assets: ASSETS.into(),
         group: Group::C,
         tables: concat!(env!("CARGO_MANIFEST_DIR"), "/../../../bin").into(),
     };
@@ -304,4 +316,49 @@ fn spanning_or_flanking_reads_keep_the_allele_as_it_was() {
         text(at(locus(&ls, "DMPK"), &["allele_sizing"])),
         "sized/sized"
     );
+}
+
+#[test]
+fn a_broken_table_is_refused_and_a_missing_one_labels_nothing() {
+    let htt37 = rec(
+        "HTT",
+        SPAN2,
+        "17/37",
+        "17-17/37-37",
+        ["12/9", "0/0", "0/0"],
+        "normal,full_mutation",
+    );
+    let head = "locus\tmin\tmax\tlabel\tcitation\n";
+    let state = |tag: &str, table: Option<&str>| {
+        let sec = section(tag, &htt37, None, table);
+        (text(at(&sec, &["state"])).to_owned(), sec)
+    };
+    // A good table in a staged folder: the control for the three below.
+    let good = format!("# a comment\n{head}HTT\t36\t39\treduced\tGeneReviews\n");
+    let (st, sec) = state("good", Some(&good));
+    assert_eq!(st, "ok", "{sec:?}");
+    let loci = match at(&sec, &["data", "loci"]) {
+        Value::Array(xs) => xs.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(text(at(&loci[0], &["penetrance"])), "36-39");
+    // Inverted bounds, a header alone, and a header without the columns.
+    for (tag, table) in [
+        (
+            "inverted",
+            format!("{head}HTT\t39\t36\treduced\tGeneReviews\n"),
+        ),
+        ("header", head.to_owned()),
+        ("columns", "locus\tmin\n".to_owned()),
+    ] {
+        let (st, sec) = state(tag, Some(&table));
+        assert_eq!(st, "unreadable", "{tag}: {sec:?}");
+    }
+    // No table in the staged folder: the section reads, with no label.
+    let (st, sec) = state("missing", None);
+    assert_eq!(st, "ok", "{sec:?}");
+    match at(&sec, &["data", "loci"]) {
+        Value::Array(xs) => assert!(get(&xs[0], "penetrance").is_none(), "{sec:?}"),
+        other => panic!("{other:?}"),
+    }
 }
