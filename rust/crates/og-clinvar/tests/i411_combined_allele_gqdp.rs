@@ -261,4 +261,11 @@ fn a_float_gq_is_never_read_as_zero() {
     );
     assert_eq!((rec[8].as_str(), rec[9].as_str()), ("GT:DP", "0/1:8"));
     assert_eq!(judged(&rec, ""), s(["8", ".", "yes"]));
+    // A Description that mentions Type=Integer does not make GQ whole.
+    let said = FREEBAYES.replace("\"Genotype Quality\"", "\"Previously Type=Integer\"");
+    let rec = combined(
+        "freebayes-said",
+        &vcf(&said, ("GT:DP", "0/1:60"), ("GT:DP", "0/1:58")),
+    );
+    assert_eq!((rec[8].as_str(), rec[9].as_str()), ("GT:DP", "0/1:58"));
 }

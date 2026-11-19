@@ -66,17 +66,25 @@ pub enum Declared {
 
 impl Declared {
     /// The definition a `##` header line gives `key`, if it is the
-    /// `##FORMAT` line of that key.
+    /// `##FORMAT` line of that key: its `Type` field, read outside quotes,
+    /// so a `Description` that mentions `Type=Integer` is not taken for it.
     pub fn of_line(line: &[u8], key: &[u8]) -> Option<Declared> {
         let head = [&b"##FORMAT=<ID="[..], key, b","].concat();
-        if !line.starts_with(&head) {
-            return None;
+        let rest = line.strip_prefix(&head[..])?;
+        let (mut quoted, mut start) = (false, 0);
+        for (i, &c) in rest.iter().enumerate() {
+            match c {
+                b'"' => quoted = !quoted,
+                b',' | b'>' if !quoted => {
+                    if &rest[start..i] == b"Type=Integer" {
+                        return Some(Declared::Integer);
+                    }
+                    start = i + 1;
+                }
+                _ => {}
+            }
         }
-        if line.windows(12).any(|w| w == b"Type=Integer") {
-            Some(Declared::Integer)
-        } else {
-            Some(Declared::Other)
-        }
+        Some(Declared::Other)
     }
 }
 
@@ -263,6 +271,14 @@ mod tests {
         assert_eq!(d(int, "DP"), None);
         assert_eq!(d("##INFO=<ID=GQ,Number=1,Type=Integer>", "GQ"), None);
         assert_eq!(d("##FORMAT=<ID=GQX,Number=1,Type=Integer>", "GQ"), None);
+        let said = "##FORMAT=<ID=GQ,Number=1,Type=Float,Description=\"was Type=Integer,\">";
+        assert_eq!(d(said, "GQ"), Some(Declared::Other));
+        let last = "##FORMAT=<ID=DP,Description=\"Depth\",Type=Integer>";
+        assert_eq!(d(last, "DP"), Some(Declared::Integer));
+        assert_eq!(
+            d("##FORMAT=<ID=DP,Type=IntegerX>", "DP"),
+            Some(Declared::Other)
+        );
     }
 
     #[test]
