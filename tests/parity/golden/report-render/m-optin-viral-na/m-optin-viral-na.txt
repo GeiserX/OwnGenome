@@ -27,6 +27,14 @@
   Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 million, most of them common. PASS calls passed the caller's filter; a count says nothing about health on its own.
 
 ################################################################################
+#  3. CARRIER: What could I pass on to a child?
+################################################################################
+
+## Paralog Copy Number
+---
+  Paralog copy number: not checked (neither step 35 nor step 35b ran)
+
+################################################################################
 #  7. OTHER AND EXPORTS: What else did the run find or write?
 ################################################################################
 
