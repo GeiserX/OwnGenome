@@ -1,8 +1,12 @@
 # assets/str_penetrance_ranges.tsv: the repeat ranges of reduced penetrance that og summary collect names (step 09).
 # A count in such a range can cause the disease, but not in everyone who carries it. Stranger grades a count only
 # against the catalog's normal maximum and pathogenic minimum, so it reads such a count as plain full_mutation or
-# pre_mutation. og-summary embeds this file at build time and marks a sized allele in a range with the keys
-# penetrance (min-max), penetrance_label and penetrance_citation of its locus in summary.json.
+# pre_mutation. og summary collect reads this file from its --assets folder at run time and marks a sized allele in
+# a range with the keys penetrance (min-max), penetrance_label and penetrance_citation of its locus in summary.json.
+# It is not embedded in the binary: an assets folder without this file labels nothing and says no error, and a
+# broken table (a bad row, no row, or a min above its max) makes the expansions section unreadable.
+# Step 24 mounts the whole assets/ folder. The Nextflow HTML_REPORT stages only the tables main.nf lists, and this
+# file is not one of them yet, so a Nextflow run labels nothing.
 # The intermediate ranges (between normal and disease-causing) are a separate table, bin/str_intermediate_ranges.tsv.
 # locus: the ExpansionHunter locus id (REPID). min, max: the range, in repeat units, both ends included.
 # label: what the summary says beside a count in the range. citation: the GeneReviews chapter that defines the range.
