@@ -6,6 +6,10 @@
 //! both), or unphased with the same GT, `0/1` and `1/0` being one het call.
 //! A phased missing allele counts as "no ALT here" (`1|.` matches `1|0`);
 //! an unphased one gives no signature, and nor does a GT with no ALT.
+//!
+//! A combined record is only as sure as its weakest part: [`weakest`] gives
+//! the GQ and the DP it carries, so `og clinvar hits` and the reports judge
+//! it against the call floor as they judge a single call.
 
 use crate::text::{cmp_digits, is_digits, nth, split};
 
@@ -39,6 +43,66 @@ fn format_value<'a>(fmt: &[u8], smp: &'a [u8], key: &[u8], first: bool) -> Optio
 /// The GT of a record (the first GT key), or empty.
 pub fn gt_of<'a>(fmt: &[u8], smp: &'a [u8]) -> &'a [u8] {
     format_value(fmt, smp, b"GT", true).unwrap_or(b"")
+}
+
+/// A call's FORMAT value `key` (GQ or DP) as `og clinvar hits` reads it:
+/// the last such key's value when it is a whole number, else none.
+pub fn metric<'a>(fmt: &[u8], smp: &'a [u8], key: &[u8]) -> Option<&'a [u8]> {
+    format_value(fmt, smp, key, false).filter(|v| is_digits(v))
+}
+
+/// How the VCF header defines one metric (GQ or DP).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Declared {
+    /// A `##FORMAT` line defines it as a whole number (`Type=Integer`).
+    Integer,
+    /// A `##FORMAT` line defines it with another type, such as the
+    /// `Type=Float` GQ FreeBayes writes: `og clinvar hits` reads no value
+    /// that is not a whole number, so such a call is not judged on it.
+    Other,
+    /// No `##FORMAT` line defines it.
+    Absent,
+}
+
+impl Declared {
+    /// The definition a `##` header line gives `key`, if it is the
+    /// `##FORMAT` line of that key: its `Type` field, read outside quotes,
+    /// so a `Description` that mentions `Type=Integer` is not taken for it.
+    pub fn of_line(line: &[u8], key: &[u8]) -> Option<Declared> {
+        let head = [&b"##FORMAT=<ID="[..], key, b","].concat();
+        let rest = line.strip_prefix(&head[..])?;
+        let (mut quoted, mut start) = (false, 0);
+        for (i, &c) in rest.iter().enumerate() {
+            match c {
+                b'"' => quoted = !quoted,
+                b',' | b'>' if !quoted => {
+                    if &rest[start..i] == b"Type=Integer" {
+                        return Some(Declared::Integer);
+                    }
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        Some(Declared::Other)
+    }
+}
+
+/// The value of one metric (GQ or DP) on the combined record of parts with
+/// values `a` and `b`: the lower of the two. A part with no whole-number
+/// value counts as `0` when the header defines the metric as a whole number
+/// (`Type=Integer`), or defines no type for it while the other part has it:
+/// nothing measured supports that part. When the header defines the metric
+/// with another type, a part without a whole number gives the combined
+/// record no value, as `og clinvar hits` judges no such single call on it.
+/// A metric neither part has, and no `Type=Integer` line defines, stays off.
+pub fn weakest(a: Option<&[u8]>, b: Option<&[u8]>, declared: Declared) -> Option<Vec<u8>> {
+    match (a, b, declared) {
+        (Some(x), Some(y), _) => Some(if cmp_digits(x, y).is_le() { x } else { y }.to_vec()),
+        (None, None, Declared::Integer) => Some(b"0".to_vec()),
+        (None, None, _) | (_, _, Declared::Other) => None,
+        _ => Some(b"0".to_vec()),
+    }
 }
 
 impl Hap {
@@ -100,12 +164,26 @@ impl Hap {
     }
 
     /// The FORMAT and sample columns of a joined record with GT `gt`:
-    /// `GT`, or `GT:PS` for a phased pair in a named phase set.
-    pub fn format_columns(&self, gt: &[u8]) -> (&'static [u8], Vec<u8>) {
-        match self {
-            Hap::Phased { ps, .. } if ps.as_slice() != b"." => (b"GT:PS", [gt, b":", ps].concat()),
-            _ => (b"GT", gt.to_vec()),
+    /// `GT`, then `PS` for a phased pair in a named phase set, then `GQ`
+    /// and `DP` when the record has them (from [`weakest`]).
+    pub fn format_columns(
+        &self,
+        gt: &[u8],
+        gq: Option<&[u8]>,
+        dp: Option<&[u8]>,
+    ) -> (Vec<u8>, Vec<u8>) {
+        let (mut fmt, mut smp) = (b"GT".to_vec(), gt.to_vec());
+        let ps = match self {
+            Hap::Phased { ps, .. } if ps.as_slice() != b"." => Some(ps.as_slice()),
+            _ => None,
+        };
+        for (key, value) in [(&b"PS"[..], ps), (b"GQ", gq), (b"DP", dp)] {
+            if let Some(v) = value {
+                fmt.extend([&b":"[..], key].concat());
+                smp.extend([&b":"[..], v].concat());
+            }
         }
+        (fmt, smp)
     }
 }
 
@@ -147,8 +225,72 @@ mod tests {
         let h = sig("GT:PS", "1|.:7").unwrap();
         assert_eq!(h.joined_gt(b"1|.", b"1|0"), b"1|.");
         assert_eq!(h.joined_gt(b"1|0", b"1|0"), b"1|0");
-        assert_eq!(h.format_columns(b"1|."), (&b"GT:PS"[..], b"1|.:7".to_vec()));
+        assert_eq!(
+            h.format_columns(b"1|.", None, None),
+            (b"GT:PS".to_vec(), b"1|.:7".to_vec())
+        );
         let p = sig("GT", "0|1").unwrap();
-        assert_eq!(p.format_columns(b"0|1"), (&b"GT"[..], b"0|1".to_vec()));
+        assert_eq!(
+            p.format_columns(b"0|1", None, None),
+            (b"GT".to_vec(), b"0|1".to_vec())
+        );
+        assert_eq!(
+            h.format_columns(b"1|0", Some(b"3"), Some(b"2")),
+            (b"GT:PS:GQ:DP".to_vec(), b"1|0:7:3:2".to_vec())
+        );
+        assert_eq!(
+            p.format_columns(b"0|1", None, Some(b"0")),
+            (b"GT:DP".to_vec(), b"0|1:0".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_combined_record_takes_the_weaker_part() {
+        use Declared::{Absent, Integer, Other};
+        let w = |a: Option<&[u8]>, b: Option<&[u8]>, d| weakest(a, b, d);
+        assert_eq!(w(Some(b"40"), Some(b"9"), Integer), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"9"), Some(b"40"), Absent), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"9"), Some(b"40"), Other), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"010"), Some(b"9"), Integer), Some(b"9".to_vec()));
+        assert_eq!(w(Some(b"40"), None, Integer), Some(b"0".to_vec()));
+        assert_eq!(w(Some(b"40"), None, Absent), Some(b"0".to_vec()));
+        assert_eq!(w(None, Some(b"40"), Absent), Some(b"0".to_vec()));
+        assert_eq!(w(Some(b"40"), None, Other), None);
+        assert_eq!(w(None, None, Integer), Some(b"0".to_vec()));
+        assert_eq!(w(None, None, Absent), None);
+        assert_eq!(w(None, None, Other), None);
+    }
+
+    #[test]
+    fn a_metric_is_whole_numbers_only_when_typed_integer() {
+        let d = |l: &str, k: &str| Declared::of_line(l.as_bytes(), k.as_bytes());
+        let int = "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"q\">";
+        let float = "##FORMAT=<ID=GQ,Number=1,Type=Float,Description=\"q\">";
+        assert_eq!(d(int, "GQ"), Some(Declared::Integer));
+        assert_eq!(d(float, "GQ"), Some(Declared::Other));
+        assert_eq!(d(int, "DP"), None);
+        assert_eq!(d("##INFO=<ID=GQ,Number=1,Type=Integer>", "GQ"), None);
+        assert_eq!(d("##FORMAT=<ID=GQX,Number=1,Type=Integer>", "GQ"), None);
+        let said = "##FORMAT=<ID=GQ,Number=1,Type=Float,Description=\"was Type=Integer,\">";
+        assert_eq!(d(said, "GQ"), Some(Declared::Other));
+        let last = "##FORMAT=<ID=DP,Description=\"Depth\",Type=Integer>";
+        assert_eq!(d(last, "DP"), Some(Declared::Integer));
+        assert_eq!(
+            d("##FORMAT=<ID=DP,Type=IntegerX>", "DP"),
+            Some(Declared::Other)
+        );
+    }
+
+    #[test]
+    fn metrics_are_whole_numbers_or_nothing() {
+        let m = |f: &str, s: &str, k: &str| {
+            metric(f.as_bytes(), s.as_bytes(), k.as_bytes()).map(<[u8]>::to_vec)
+        };
+        assert_eq!(m("GT:GQ:DP", "0/1:3:2", "GQ"), Some(b"3".to_vec()));
+        assert_eq!(m("GT:GQ:DP", "0/1:3:2", "DP"), Some(b"2".to_vec()));
+        assert_eq!(m("GT:GQ", "0/1:.", "GQ"), None);
+        assert_eq!(m("GT:GQ", "0/1:4.5", "GQ"), None);
+        assert_eq!(m("GT:GQ", "0/1", "GQ"), None);
+        assert_eq!(m("GT", "0/1", "DP"), None);
     }
 }
