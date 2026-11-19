@@ -174,10 +174,13 @@ check_stale_indexes() {
 # reference, nothing on the default one. The bases decide before the file
 # names: when check_bam_reference found every @SQ M5 equal to REF_DICT's
 # (BAM_M5=match), the BAM was aligned to REF_FASTA's bases whatever its @PG
-# lines name, and this check has nothing to add.
+# lines name, and this check has nothing to add. Two cases keep the @PG rule
+# even then. Aligner lines that name both references still fail: samtools
+# merge keeps the first input's @SQ lines, so a merge of the two can carry
+# only matching M5s. And a REF_DICT older than REF_FASTA may hold the MD5s of
+# an earlier FASTA, so its M5s do not speak for REF_FASTA.
 check_bam_masked_reference() {
   local header=$1 kinds want=false
-  [ "${BAM_M5:-}" != match ] || return 0
   case "$(basename "$REF_FASTA")" in *_maskedGRC.*) want=true ;; esac
   kinds=$(awk -F'\t' -v sq="'" '/^@PG/ {
       id = ""; pn = ""; cl = ""
@@ -205,6 +208,9 @@ check_bam_masked_reference() {
     *default*) kinds=default ;;
     *) kinds=none ;;
   esac
+  if [ "$kinds" != both ] && [ "${BAM_M5:-}" = match ] && [ ! "${REF_DICT:-}" -ot "$REF_FASTA" ]; then
+    return 0
+  fi
   case "${want}:${kinds}" in
     *:both)
       fail "this BAM's aligner @PG lines name both the masked and the default reference (reads merged from the two): realign it to one (docs/realignment.md#the-masked-reference)" ;;

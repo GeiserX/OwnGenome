@@ -374,13 +374,15 @@ expect_content "another reference (a three-sequence slice): nothing pinned" INFO
 # reference and of the masked one; @PG lines as the aligners write them.
 PAIR=$(awk -F'\t' '$1 == "chr20" || $1 == "chr21"' <<< "$STOCK_DICT")
 MPAIR=$(with_m5 "$PAIR" "$MASKED_M5")
-bam_header() {  # bam_header TABLE PG_REF [no-m5]: SO:coordinate, @SQ lines, a minimap2 @PG line
+bam_header() {  # bam_header TABLE PG_REF [no-m5] [PG_REF2]: SO:coordinate, @SQ lines, a minimap2 @PG line (a second, minimap2.1, for PG_REF2)
   printf '@HD\tVN:1.6\tSO:coordinate\n'
   awk -F'\t' -v m="${3:-}" '{ printf "@SQ\tSN:%s\tLN:%s%s\n", $1, $2, (m == "no-m5" ? "" : "\tM5:" $3) }' <<< "$1"
   printf '@PG\tID:minimap2\tPN:minimap2\tVN:2.31\tCL:minimap2 -a -x sr %s.sr.mmi R1.fq.gz R2.fq.gz\n' "$2"
+  [ -z "${4:-}" ] || printf '@PG\tID:minimap2.1\tPN:minimap2\tVN:2.31\tCL:minimap2 -a -x sr %s.sr.mmi R1.fq.gz R2.fq.gz\n' "$4"
 }
 # bam NAME TABLE HEADER: verdicts of check_bam_reference then
-# check_bam_masked_reference, REF_FASTA NAME.fasta with TABLE as .fai and .dict.
+# check_bam_masked_reference, REF_FASTA NAME.fasta with TABLE as .fai and .dict
+# (a .dict as old as the FASTA, or older with OLD_DICT set).
 # They run under validate-setup.sh's own set -e and pipefail, so a pipe that
 # dies there ends the subshell here too, before its verdicts.
 bam() {
@@ -389,6 +391,9 @@ bam() {
   ref="${d}/$1.fasta"
   awk -F'\t' '{ printf "%s\t%s\t0\t60\t61\n", $1, $2 }' <<< "$2" > "${ref}.fai"
   dict "$2" > "${d}/$1.dict"
+  : > "$ref"
+  touch -r "$ref" "${d}/$1.dict"
+  [ -z "${OLD_DICT:-}" ] || touch -t 202001010000 "${d}/$1.dict"
   (
     # shellcheck disable=SC2329
     pass() { echo "OK $1"; }
@@ -420,6 +425,10 @@ expect_bam "masked REF_FASTA, a BAM on the masked bases whose @PG names a FASTA 
   "$MSK" "$MPAIR" "$(bam_header "$MPAIR" /data/renamed)"
 expect_bam "masked REF_FASTA, a BAM without M5 on the default index: the @PG rule as before (refused)" OK,OK,FAIL \
   "$MSK" "$MPAIR" "$(bam_header "$MPAIR" "$STOCK" no-m5)" "REF_FASTA is the masked reference, but this BAM was aligned to the default one"
+expect_bam "masked REF_FASTA, a merge whose M5s are the masked ones but whose aligner lines name both references (refused)" OK,OK,OK,FAIL \
+  "$MSK" "$MPAIR" "$(bam_header "$MPAIR" "${MASKED}" "" "$STOCK")" "aligner @PG lines name both the masked and the default reference"
+OLD_DICT=1 expect_bam "masked REF_FASTA with a .dict older than it, matching M5s, @PG naming the default index: the @PG rule (refused)" OK,OK,OK,FAIL \
+  "$MSK" "$MPAIR" "$(bam_header "$MPAIR" "$STOCK")" "REF_FASTA is the masked reference, but this BAM was aligned to the default one"
 # A header far larger than a pipe buffer (30,000 sequences, about 1.5 MB) whose
 # first M5 differs. The M5 awk must read it to the end: one that stopped at the
 # difference ended printf with SIGPIPE, and set -e then stopped the check after
