@@ -314,9 +314,10 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 - **Observed:** fastp's `--detect_adapter_for_pe` works for Illumina, BGI, and MGI adapters without specifying adapter sequences. BGI/MGI adapters are compiled into fastp's `knownadapters.h`.
 - **No action needed:** The `--detect_adapter_for_pe` flag handles all common sequencing platforms.
 
-### mosdepth: --fast-mode skips per-base output
-- **Observed:** `--fast-mode` uses a simpler, faster counting method and does NOT write the per-base `.per-base.bed.gz` file. This saves ~2 GB of output and cuts runtime by ~40%.
-- **Fix:** Always use `--fast-mode` unless per-base resolution is specifically needed.
+### mosdepth: --fast-mode counts overlapping mates twice
+- **Observed:** `--fast-mode` counts every base from a read's start to its end. It does not correct for the two mates of a pair that overlap, and it does not read the CIGAR, so the bases of a deletion count as read. A short-insert pair lifts the depth of its overlap to 2 where one fragment was read. The per-base `.per-base.bed.gz` is left out by `--no-per-base`, not by `--fast-mode`; this entry said otherwise before.
+- **Why it mattered:** step 16b's gene callability pass ran with `--fast-mode`, so a gene with fewer than 10 fragments over its bases could still reach 10x and read as read.
+- **Fix:** the gene callability pass runs without `--fast-mode`. The genome-wide 500 bp pass keeps it, because it only describes depth. Use `--fast-mode` only where a base's depth decides nothing.
 
 ### MultiQC: Auto-discovers fastp JSON by content, not filename
 - **Observed:** MultiQC identifies fastp output by looking for `"before_filtering": {` in JSON files, not by filename pattern. Files must end in `.json`.

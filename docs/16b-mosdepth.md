@@ -11,7 +11,7 @@ Reads the BAM file and computes:
 2. **Coverage distribution** — cumulative fraction of bases at each depth level
 3. **Region coverage** — mean depth in 500bp windows across the genome
 4. **Threshold report** — fraction of bases at 1x, 5x, 10x, 15x, 20x, 30x, 50x depth
-5. **Gene callability** — for each gene of `assets/callability_genes.tsv` on chr1-22, X and Y, the bases with 10 or more reads of mapping quality 20 or more (a second mosdepth pass)
+5. **Gene callability** — for each gene of `assets/callability_genes.tsv` on chr1-22, X and Y, the bases with 10 or more reads of mapping quality 20 or more (a second mosdepth pass, which counts the two mates of a pair once where they overlap)
 
 ## Why
 
@@ -90,7 +90,7 @@ Shows what fraction of each region is covered at key depths:
 
 A gene can have several reasons. Gene positions are GENCODE 50 gene spans. The `owner` column names the step that calls the gene with a method of its own: `parascopy` (step 35, the genes of `assets/paralog_loci.tsv`), `pypgx` (step 32, the bam genes of `assets/pgx_genes.tsv` it can call on the no-ALT reference, so not GSTT1) or `cn_loci:<locus>` (the depth engine, `bin/cn_loci.tsv`: the genes a row names, HBA1, HBA2, LPA and RHD, not a gene that only holds one of its targets); `.` for none.
 
-A gene counts as **read** when 90% or more of its bases have 10 or more reads of MAPQ 20 or more. Both reports have a section "Genes this genome could not read reliably" in the Quality chapter. It lists every gene with no owner that was not read, with the share of its bases that reached that depth, and every ALT-only gene with no owner as "not on this reference". Genes with an owner that were not read are listed apart: their own step's section says what it called. On a partial BAM (the CI fixture, an exome) most genes are not read, because they have no reads at all.
+A gene counts as **read** when 90% or more of its bases have 10 or more reads of MAPQ 20 or more. The gene pass runs mosdepth without `--fast-mode`, so a base where the two mates of one pair overlap counts one read, not two, and a base inside a deletion of a read's CIGAR counts no read. With `--fast-mode` mosdepth counts every base from a read's start to its end once per read: short-insert pairs, whose mates overlap, and small deletions lift a base to 10x when fewer than 10 fragments read it, and the gene reads as read. The genome-wide pass (the 500 bp windows and their thresholds) keeps `--fast-mode`: it describes the run's depth, and nothing is decided per gene from it. Both reports have a section "Genes this genome could not read reliably" in the Quality chapter. It lists every gene with no owner that was not read, with the share of its bases that reached that depth, and every ALT-only gene with no owner as "not on this reference". Genes with an owner that were not read are listed apart: their own step's section says what it called. On a partial BAM (the CI fixture, an exome) most genes are not read, because they have no reads at all.
 
 `CALLABILITY_GENES` names another table with the same columns (the CI case uses a two-gene one). A table from an older catalog, one that lacks a gene of the current catalog, makes the section unreadable: run step 16b again. When only `<sample>_callability.bed.gz` is missing, step 16b runs the gene pass alone.
 
@@ -110,7 +110,7 @@ mosdepth output is automatically detected by MultiQC. The `mosdepth.global.dist.
 
 ## Notes
 
-- `--fast-mode` skips per-base output (saves ~10 GB of disk for 30X WGS) while keeping all distributions and thresholds
+- The genome-wide pass runs with `--fast-mode`: mosdepth reads only each read's start and end, so it neither corrects for overlapping mates nor reads the CIGAR. That is faster and close enough for the depth summaries. `--no-per-base`, not `--fast-mode`, is what leaves out the large per-base BED. The gene callability pass runs without `--fast-mode` (see [Gene callability](#gene-callability))
 - Supports `ALIGN_DIR` variable to use alternative alignments: `ALIGN_DIR=aligned_bwamem2 ./scripts/16b-mosdepth.sh sample`
 - Supports `CAPTURE_BED` for WES on-target coverage: `CAPTURE_BED=${GENOME_DIR}/captures/my_panel.bed ./scripts/16b-mosdepth.sh sample`. **The BED file must be inside `GENOME_DIR`** — the Docker container only mounts `GENOME_DIR` as `/genome/`, so paths outside it are invisible to the container
 - mosdepth uses 1 main thread + N decompression threads, so `--threads 4` actually uses 5 threads total
