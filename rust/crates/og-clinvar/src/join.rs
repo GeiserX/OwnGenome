@@ -13,6 +13,13 @@
 //! bases after the first ends (a record that overlaps the other is never
 //! joined) and their [`Hap`] signatures are equal.
 //!
+//! The combined record carries the GT (and PS) of the pair and, for each of
+//! GQ and DP, the weaker part's value ([`crate::hap::weakest`]): `0` when a
+//! part lacks a value the VCF measures (a `##FORMAT` line defines it, or the
+//! other part has it). So a combined allele of weak or unmeasured parts is a
+//! low-confidence call to `og clinvar hits` and the reports, and leaves the
+//! headline count as any low-confidence call does.
+//!
 //! - [`Mode::Build`] reads the sample's split, left-aligned calls and writes
 //!   the combined records, reading the reference bases from the FASTA.
 //! - [`Mode::Prepare`] and [`finish`] are the two halves of the same
@@ -27,7 +34,7 @@ use std::io::{self, BufRead, Write};
 
 use og_intervals::fasta::{FastaError, Indexed};
 
-use crate::hap::{Hap, gt_of};
+use crate::hap::{Hap, gt_of, metric, weakest};
 use crate::text::{info_add, info_get, nth, same, set_column, split, upper, whole};
 
 /// The default distance: the second part starts at most this many bases
@@ -100,6 +107,8 @@ struct Part {
     alt: Vec<u8>,
     hap: Hap,
     gt: Vec<u8>,
+    gq: Option<Vec<u8>>,
+    dp: Option<Vec<u8>>,
 }
 
 /// A pair found and waiting for its turn in POS order.
@@ -109,7 +118,7 @@ struct Pair {
     second: (i64, Vec<u8>, Vec<u8>),
     /// Bases from the first part's end to the second's start.
     d: i64,
-    fmt: &'static [u8],
+    fmt: Vec<u8>,
     smp: Vec<u8>,
 }
 
@@ -151,7 +160,7 @@ impl Pair {
             b"\t.\tPASS\t",
             info,
             b"\t",
-            self.fmt,
+            &self.fmt,
             b"\t",
             &self.smp,
         ]
@@ -296,9 +305,13 @@ pub fn join(
     let mut parts: Vec<Part> = Vec::new();
     let mut pending: BTreeMap<(i64, u64), Pair> = BTreeMap::new();
     let mut found = 0u64;
+    // Whether the header defines FORMAT/GQ and FORMAT/DP.
+    let (mut has_gq, mut has_dp) = (false, false);
     let mut line = Vec::new();
     while read_line(&mut input, &mut line)? {
         if line.starts_with(b"##") {
+            has_gq |= line.starts_with(b"##FORMAT=<ID=GQ,");
+            has_dp |= line.starts_with(b"##FORMAT=<ID=DP,");
             if !is_pgp_info(&line) {
                 if in_header {
                     header.push(line.clone())
@@ -351,6 +364,8 @@ pub fn join(
             continue;
         };
         let gt = gt_of(f[8], f[9]).to_vec();
+        let gq = metric(f[8], f[9], b"GQ");
+        let dp = metric(f[8], f[9], b"DP");
         let end = pos + ref_.len() as i64 - 1;
         let chrom_now = chrom.clone().unwrap_or_default();
         for b in &parts {
@@ -358,7 +373,11 @@ pub fn join(
             if d < 1 || d > window || b.hap != hap {
                 continue;
             }
-            let (fmt, smp) = hap.format_columns(&hap.joined_gt(&b.gt, &gt));
+            let (fmt, smp) = hap.format_columns(
+                &hap.joined_gt(&b.gt, &gt),
+                weakest(b.gq.as_deref(), gq, has_gq).as_deref(),
+                weakest(b.dp.as_deref(), dp, has_dp).as_deref(),
+            );
             pending.insert(
                 (b.pos, found),
                 Pair {
@@ -382,6 +401,8 @@ pub fn join(
             alt: alt.to_vec(),
             hap,
             gt,
+            gq: gq.map(<[u8]>::to_vec),
+            dp: dp.map(<[u8]>::to_vec),
         });
         flush(&mut pending, Some(parts[0].pos), &mut mode, samples, out)?;
     }
