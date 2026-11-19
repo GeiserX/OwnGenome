@@ -542,7 +542,8 @@ fn counts_are_reference_copies_plus_the_length_difference() {
         o.stdout
     );
     let o = run_at(&d, &[("DYS389II", good("4"))], Some(250));
-    assert_eq!(cell(&o, "DYS389II", "count"), "30");
+    // 17 + 12 part copies, one repeat (GB 4), offset +1.
+    assert_eq!(cell(&o, "DYS389II", "count"), "31");
     assert!(cell(&o, "DYS389II", "note").contains("covers DYS389I"));
 
     let off = d.join("offset_panel.tsv");

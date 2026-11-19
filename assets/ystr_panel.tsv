@@ -49,7 +49,7 @@ order	panel	marker	kind	regions	motif	offset	note
 9	Y-12	DYS439	absent	.	[GATA]n	.	.
 10	Y-12	DYS389I	single	chrY:12500448-12500495/4/12/DYS389I	.	0	.
 11	Y-12	DYS392	single	chrY:20471987-20472025/3/13/DYS392	[ATA]n	0	.
-12	Y-12	DYS389II	span	chrY:12500448-12500516/4/17.25/DYS389II.1;chrY:12500564-12500611/4/12/DYS389II.2	[TAGA]n [CAGA]n N48 [TAGA]n [CAGA]n	0	FamilyTreeDNA reports DYS389II as the sum total of DYS389I and DYS389II; the span starts where DYS389I starts, so this count covers DYS389I too
+12	Y-12	DYS389II	span	chrY:12500448-12500516/4/17.25/DYS389II.1;chrY:12500564-12500611/4/12/DYS389II.2	[TAGA]n [CAGA]n N48 [TAGA]n [CAGA]n	1	FamilyTreeDNA reports DYS389II as the sum total of DYS389I and DYS389II; the span starts where DYS389I starts, so this count covers DYS389I too
 13	Y-25	DYS458	single	chrY:7999839-7999902/4/16/DYS458	[GAAA]n	0	.
 14	Y-25	DYS459a	multicopy	.	.	.	.
 15	Y-25	DYS459b	multicopy	.	.	.	.

@@ -11,6 +11,8 @@
 //! For example DYS19 is `[TCTA]12 CCTA [TCTA]3` there: FamilyTreeDNA counts
 //! the TCTA blocks, 15, while HipSTR's region holds 16 repeat units. DYS449
 //! is `[TTTC]15 N50 [TTTC]14`, 29, while HipSTR's two parts hold 36 units.
+//! DYS389II is `[TAGA]9 [CAGA]3 N48 [TAGA]13 [CAGA]5`, 30, while its span's
+//! two parts round to 17 + 12 copies.
 //!
 //! The reads are 250 bp long here, so DYS389II and DYS448 (over 150 bp) are
 //! counted too.
@@ -27,7 +29,7 @@ const REFERENCE: [(&str, &str); 24] = [
     ("DYS391", "11"),
     ("DYS389I", "12"),
     ("DYS392", "13"),
-    ("DYS389II", "29"),
+    ("DYS389II", "30"),
     ("DYS458", "16"),
     ("DYS448", "19"),
     ("DYS449", "29"),
