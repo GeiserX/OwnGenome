@@ -15,7 +15,8 @@ use pycompat::json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const HEAD: &str = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n";
+const HEAD: &str =
+    "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n";
 const FMT: &str = "GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC";
 
 struct Dir(PathBuf);
@@ -121,7 +122,14 @@ const SPAN2: &str = "SPANNING/SPANNING";
 fn htt_37_reads_reduced_penetrance() {
     let ls = loci(
         "htt37",
-        &rec("HTT", SPAN2, "17/37", "17-17/37-37", ["12/9", "0/0", "0/0"], "normal,full_mutation"),
+        &rec(
+            "HTT",
+            SPAN2,
+            "17/37",
+            "17-17/37-37",
+            ["12/9", "0/0", "0/0"],
+            "normal,full_mutation",
+        ),
     );
     let htt = locus(&ls, "HTT");
     assert_eq!(text(at(htt, &["sizing"])), "sized", "{htt:?}");
@@ -143,7 +151,14 @@ fn the_flagged_list_carries_the_penetrance_range() {
     let d = Dir::new("flagged");
     let vcf = format!(
         "{HEAD}{}",
-        rec("HTT", SPAN2, "20/38", "20-20/38-38", ["10/8", "0/0", "0/0"], "normal,full_mutation")
+        rec(
+            "HTT",
+            SPAN2,
+            "20/38",
+            "20-20/38-38",
+            ["10/8", "0/0", "0/0"],
+            "normal,full_mutation"
+        )
     );
     d.put("S/expansion_hunter/S_eh.vcf", &vcf);
     d.put("S/expansion_hunter/S_eh_stranger.vcf", &vcf);
@@ -175,7 +190,14 @@ fn the_ends_of_the_range_and_their_neighbours() {
         let (a, b) = cn.split_once('/').unwrap();
         let ls = loci(
             &format!("ends-{b}"),
-            &rec("HTT", SPAN2, cn, &format!("{a}-{a}/{b}-{b}"), ["10/8", "0/0", "0/0"], "normal"),
+            &rec(
+                "HTT",
+                SPAN2,
+                cn,
+                &format!("{a}-{a}/{b}-{b}"),
+                ["10/8", "0/0", "0/0"],
+                "normal",
+            ),
         );
         let htt = locus(&ls, "HTT");
         assert_eq!(get(htt, "penetrance").map(text), want, "{cn}: {htt:?}");
@@ -190,8 +212,21 @@ fn only_a_sized_allele_earns_the_label_and_only_at_its_locus() {
     // A low-confidence 37 (one spanning read), and 37 at another locus.
     let ls = loci(
         "unsized37",
-        &(rec("HTT", SPAN2, "17/37", "17-17/37-37", ["10/1", "0/0", "0/0"], "normal,full_mutation")
-            + &rec("ATXN1", SPAN2, "17/37", "17-17/37-37", ["10/8", "0/0", "0/0"], "normal")),
+        &(rec(
+            "HTT",
+            SPAN2,
+            "17/37",
+            "17-17/37-37",
+            ["10/1", "0/0", "0/0"],
+            "normal,full_mutation",
+        ) + &rec(
+            "ATXN1",
+            SPAN2,
+            "17/37",
+            "17-17/37-37",
+            ["10/8", "0/0", "0/0"],
+            "normal",
+        )),
     );
     let htt = locus(&ls, "HTT");
     assert_eq!(text(at(htt, &["sizing"])), "low_confidence");
@@ -211,14 +246,17 @@ fn an_allele_of_in_repeat_reads_only_is_not_sized() {
     ] {
         let ls = loci(
             &format!("irr-{}", so.replace(['/', '.'], "_")),
-            &rec("HTT", so, "17/37", "17-17/37-60", ["12/0", "0/0", "0/14"], "normal,full_mutation"),
+            &rec(
+                "HTT",
+                so,
+                "17/37",
+                "17-17/37-60",
+                ["12/0", "0/0", "0/14"],
+                "normal,full_mutation",
+            ),
         );
         let htt = locus(&ls, "HTT");
-        assert_eq!(
-            text(at(htt, &["allele_sizing"])),
-            want,
-            "{so}: {htt:?}"
-        );
+        assert_eq!(text(at(htt, &["allele_sizing"])), want, "{so}: {htt:?}");
         assert_eq!(text(at(htt, &["sizing"])), "in_repeat", "{so}");
         // The point estimate 37 of an unsized allele earns no label.
         assert!(get(htt, "penetrance").is_none(), "{so}: {htt:?}");
@@ -231,9 +269,28 @@ fn spanning_or_flanking_reads_keep_the_allele_as_it_was() {
     // Reads beside the in-repeat ones: the IRR rule does not fire.
     let ls = loci(
         "not-irr",
-        &(rec("HTT", ".", "17/37", "17-17/37-37", ["12/3", "0/0", "0/14"], "normal,full_mutation")
-            + &rec("ATXN1", "SPANNING/FLANKING", "17/50", "17-17/40-60", ["12/0", "0/4", "0/14"], "normal")
-            + &rec("DMPK", SPAN2, "5/12", "5-5/12-12", ["12/9", "0/0", "0/0"], "normal")),
+        &(rec(
+            "HTT",
+            ".",
+            "17/37",
+            "17-17/37-37",
+            ["12/3", "0/0", "0/14"],
+            "normal,full_mutation",
+        ) + &rec(
+            "ATXN1",
+            "SPANNING/FLANKING",
+            "17/50",
+            "17-17/40-60",
+            ["12/0", "0/4", "0/14"],
+            "normal",
+        ) + &rec(
+            "DMPK",
+            SPAN2,
+            "5/12",
+            "5-5/12-12",
+            ["12/9", "0/0", "0/0"],
+            "normal",
+        )),
     );
     assert_eq!(
         text(at(locus(&ls, "HTT"), &["allele_sizing"])),
