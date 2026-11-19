@@ -1,0 +1,20 @@
+[package]
+name = "og-browser"
+description = "Test support: headless Chrome over the DevTools protocol, a static file server and the asset scan, for the browser checks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# A planted page error: the clean page of tests/cdp.rs throws, and that test
+# must fail (the red control in .github/workflows/guard.yml).
+planted-page-error = []
+
+[dependencies]
+pycompat.workspace = true
+indexmap.workspace = true
+regex.workspace = true
+
+[lints]
+workspace = true

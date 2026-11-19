@@ -4,8 +4,8 @@
 use pycompat::json::Value;
 
 use crate::model::{
-    Card, Cell, HtmlPart, Inline, Line, Malformed, Section, State, Summary, Table, get, is_str,
-    need, py, truthy,
+    Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table, get,
+    is_str, need, py, truthy,
 };
 use crate::notes::EXOMISER_NOTE;
 use crate::{html, text};
@@ -227,8 +227,9 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                 .to_vec(),
                 rows,
                 viewer: true,
-                one_line: false,
+                layout: Layout::Indented,
             }));
+            card.body.push(Line::ViewerNote);
         }
         card.caveats.push(EXOMISER_NOTE);
         card.body.push(Line::Note(format!(

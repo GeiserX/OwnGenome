@@ -389,6 +389,15 @@
       } else {
         add(d, el('p', { 'class': 'dim' }, 'No chromosome map yet: step 38 draws one for a child with a sequenced parent.'));
       }
+      // A parent whose report is closed (a child in another family) closes this child's trio tables too: they are
+      // read against that parent's genome. One fixed line, whatever rows there are; the tables come once it opens.
+      if (c.trio_closed) {
+        add(d, el('p', { 'class': 'dim', 'data-trio': 'closed' }, 'The de novo candidates and compound-het pairs stay closed while ' +
+          c.trio_closed.join(' and ') + (c.trio_closed.length > 1 ? '’s reports are closed: they are read against those genomes.'
+            : '’s report is closed: they are read against that genome.')));
+        add(s, d);
+        return;
+      }
       var dn = (f.de_novo || []).filter(function (r) { return r.child === c.child; });
       add(d, el('h3', {}, 'De novo candidates'));
       if (dn.length) {

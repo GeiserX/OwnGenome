@@ -17,8 +17,18 @@ fault-escape-apos-39 = []
 [dependencies]
 pycompat.workspace = true
 og-io.workspace = true
+og-lookup.workspace = true
 og-summary.workspace = true
 indexmap.workspace = true
+
+[dev-dependencies]
+# The PGx tests validate their summaries with og dev schema's rule.
+og-dev.workspace = true
+# The ancestry chapter's tests (tests/ancestry_*.rs) run each step's own
+# verb, then collect and render its result, as the run does.
+og-ancestry.workspace = true
+og-reports.workspace = true
+flate2.workspace = true
 
 [lints]
 workspace = true
