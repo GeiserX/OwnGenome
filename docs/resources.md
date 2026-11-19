@@ -52,6 +52,17 @@ Free resources for understanding your genomic data, organized from most accessib
 - **[1000 Genomes Project](https://www.internationalgenome.org/)** — Catalog of human genetic variation from 2,504 individuals across 26 populations.
 - **[gnomAD paper (2020)](https://www.nature.com/articles/s41586-020-2308-7)** — Understanding allele frequencies and how gnomAD's constraint metrics (pLI, LOEUF) predict gene essentiality.
 
+### Cohort data terms
+
+`setup.sh` downloads or builds each population panel on your own machine, from its source. The repository ships none of them. These are the terms of each source:
+
+- **1000 Genomes** (the phase 3 sites of step 43, the high-coverage panel of step 51 (MoChA), and pgsc_calc's panel of steps 25 and 26): available without embargo. Cite the project (The 1000 Genomes Project Consortium, Nature 2015, doi:10.1038/nature15393; https://www.internationalgenome.org/IGSR_disclaimer). For the high-coverage data, cite Byrska-Bishop et al., Cell 2022 (doi:10.1016/j.cell.2022.08.004) and add: "These data were generated at the New York Genome Center with funds provided by NHGRI Grant 3UM1HG008901-03S1." Its cell lines come from the NIGMS Human Genetic Cell Repository at the Coriell Institute for Medical Research.
+- **gnomAD HGDP + 1000 Genomes** (step 26b): released under gnomAD's terms, CC0 1.0 (https://gnomad.broadinstitute.org/terms).
+- **HPRC release 2** (step 53, Locityper): public domain (https://humanpangenome.org/data-use/).
+- **HAPNEST** (the PGS Catalog's small synthetic panel the tests use; `ANCESTRY_PANEL_NAME` can pick it for steps 25 and 26): synthetic genotypes made from 1000 Genomes and HGDP, published by EMBL-EBI (BioStudies S-BSST936, https://www.ebi.ac.uk/biostudies/studies/S-BSST936) under EMBL-EBI's terms of use (https://www.ebi.ac.uk/about/terms-of-use/).
+
+The test-data prerelease `e2e-data-1` (https://github.com/GeiserX/OwnGenome/releases/tag/e2e-data-1) mirrors some of these files and the table builders' downloads unchanged, for CI only. Its release notes name each file's source and terms.
+
 ### Online Courses (Free)
 
 - **[Coursera: Genomic Data Science](https://www.coursera.org/specializations/genomic-data-science)** — Johns Hopkins. 8-course specialization covering the full analysis pipeline from FASTQ to interpretation.
