@@ -14,7 +14,14 @@
 //!    a renamed file and an unreadable gzip are each refused and named; an
 //!    experimental row is never enforced; an empty folder fails.
 //! 3. A contract with a row listed twice or a bad stability is refused.
-//! 4. The report-only check passes on this checkout and names both cDNA
+//! 4. Against a release's contract (`--baseline`, this checkout's standing
+//!    in for it): a stable output renamed in the code and in its row passes
+//!    the static check and fails here; a removed stable param or tool, a
+//!    stable row made experimental or internal, another format, a dropped
+//!    required column and a dropped leg each fail; a new row, a new leg, a
+//!    new required column, an `e2e` or `process` change and any change to
+//!    an experimental row pass; a baseline with no stable row fails.
+//! 5. The report-only check passes on this checkout and names both cDNA
 //!    checks; dropping a process from the report-only list fails naming
 //!    it; a second consumer makes a process a feeder; a stale KEEP_STOP
 //!    name fails; a `//` inside a string and a nested brace in the strategy
@@ -308,6 +315,210 @@ fn contract_controls_are_refused() {
         let (rc, out) = contract(&["--static", "--repo", &s(&repo()), "--contract", &s(&c)]);
         assert!(rc == 1 && has(&out, want), "{desc}: rc={rc}: {out}");
     }
+}
+
+// ---------------------------------------------------------------- the release baseline
+
+/// The contract with `change` applied to its lines, the cells of each split
+/// on tabs; `tag` names the copy.
+fn contract_edit(tmp: &Tmp, tag: &str, change: impl Fn(&mut Vec<Vec<String>>)) -> PathBuf {
+    let path = tmp.0.join(format!("{tag}.tsv"));
+    let mut lines: Vec<Vec<String>> = fs::read_to_string(contract_path())
+        .unwrap()
+        .lines()
+        .map(|l| l.split('\t').map(str::to_owned).collect())
+        .collect();
+    let before = lines.clone();
+    change(&mut lines);
+    assert!(lines != before, "{tag}: the change changed nothing");
+    let text: Vec<String> = lines.iter().map(|c| c.join("\t")).collect();
+    fs::write(&path, text.join("\n") + "\n").unwrap();
+    path
+}
+
+/// The line of `kind` row `name`.
+fn row_mut<'a>(lines: &'a mut [Vec<String>], kind: &str, name: &str) -> &'a mut Vec<String> {
+    lines
+        .iter_mut()
+        .find(|c| c.len() > 1 && c[0] == kind && c[1] == name)
+        .unwrap_or_else(|| panic!("no {kind} row {name}"))
+}
+
+fn drop_row(lines: &mut Vec<Vec<String>>, kind: &str, name: &str) {
+    let n = lines.len();
+    lines.retain(|c| !(c.len() > 1 && c[0] == kind && c[1] == name));
+    assert_eq!(lines.len(), n - 1, "no {kind} row {name}");
+}
+
+const ROH: &str = "{sample}/roh/{sample}_roh_summary.txt";
+const HITS: &str = "{sample}/clinvar/{sample}_clinvar_hits.tsv";
+
+#[test]
+fn the_contract_keeps_its_own_baseline() {
+    let (rc, out) = contract(&["--repo", &s(&repo()), "--baseline", &s(&contract_path())]);
+    assert!(
+        rc == 0
+            && has(
+                &out,
+                r"baseline: \d{2,} stable rows of .* checked, 0 problems"
+            ),
+        "{out}"
+    );
+}
+
+/// The red-first control: a stable output renamed in the code and in its row
+/// in one change passes the static check, which reads only this checkout,
+/// and fails against the release's contract.
+#[test]
+fn a_stable_output_renamed_with_its_row_fails_against_the_baseline() {
+    let tmp = Tmp::new("baseline-roh");
+    let d = code_copy(&tmp);
+    edit(
+        &d.join("modules/local/roh/main.nf"),
+        "path(\"*_roh_summary.txt\")",
+        "path(\"*_roh_segments.txt\")",
+    );
+    let c = contract_edit(&tmp, "renamed", |l| {
+        row_mut(l, "file", ROH)[1] = "{sample}/roh/{sample}_roh_segments.txt".to_owned();
+    });
+    let (rc, out) = contract(&["--static", "--repo", &s(&d), "--contract", &s(&c)]);
+    assert!(rc == 0 && out.contains(" 0 problems"), "{out}");
+    let base = s(&contract_path());
+    let (rc, out) = contract(&[
+        "--static",
+        "--repo",
+        &s(&d),
+        "--contract",
+        &s(&c),
+        "--baseline",
+        &base,
+    ]);
+    assert!(
+        rc == 1
+            && has(
+                &out,
+                r"FAIL BREAKING: the stable file \{sample\}/roh/\{sample\}_roh_summary\.txt \(baseline line \d+\) has no row in the contract"
+            )
+            && out.matches("FAIL ").count() == 1,
+        "{out}"
+    );
+}
+
+#[test]
+fn baseline_controls_are_refused() {
+    type Change = fn(&mut Vec<Vec<String>>);
+    let cases: [(&str, Change, &str); 7] = [
+        (
+            "a stable param removed with its row",
+            |l| drop_row(l, "param", "intervals"),
+            r"BREAKING: the stable param intervals \(baseline line \d+\) has no row in the contract",
+        ),
+        (
+            "a stable file made experimental",
+            |l| row_mut(l, "file", ROH)[6] = "experimental".to_owned(),
+            r"BREAKING: the stable file \{sample\}/roh/\{sample\}_roh_summary\.txt \(baseline line \d+\) is experimental now \(contract line \d+\)",
+        ),
+        (
+            "a stable switch made internal",
+            |l| row_mut(l, "switch", "SKIP_TRIM")[6] = "internal".to_owned(),
+            r"BREAKING: the stable switch SKIP_TRIM \(baseline line \d+\) is internal now",
+        ),
+        (
+            "a stable file of another format",
+            |l| row_mut(l, "file", ROH)[5] = "csv".to_owned(),
+            r"BREAKING: the stable file \{sample\}/roh/\{sample\}_roh_summary\.txt \(contract line \d+\) is csv, it was tsv at the release",
+        ),
+        (
+            "a required column dropped",
+            |l| {
+                let r = row_mut(l, "file", HITS);
+                r[8] = r[8].replace(",clnsig,", ",");
+            },
+            r"BREAKING: the stable file \{sample\}/clinvar/\{sample\}_clinvar_hits\.tsv \(contract line \d+\) no longer requires clnsig",
+        ),
+        (
+            "a leg dropped (both to nextflow)",
+            |l| row_mut(l, "file", HITS)[4] = "nextflow".to_owned(),
+            r"BREAKING: the stable file \{sample\}/clinvar/\{sample\}_clinvar_hits\.tsv \(baseline line \d+, legs both\) is no longer written by the bash leg",
+        ),
+        (
+            "a stable tool removed with its row",
+            |l| drop_row(l, "tool", "pharmcat"),
+            r"BREAKING: the stable tool pharmcat \(baseline line \d+\) has no row in the contract",
+        ),
+    ];
+    let base = s(&contract_path());
+    for (desc, change, want) in cases {
+        let tmp = Tmp::new("baseline");
+        let c = contract_edit(&tmp, "changed", change);
+        let (rc, out) = contract(&["--contract", &s(&c), "--baseline", &base]);
+        assert!(
+            rc == 1 && has(&out, want) && out.matches("FAIL ").count() == 1,
+            "{desc}: rc={rc}: {out}"
+        );
+    }
+}
+
+#[test]
+fn what_the_baseline_allows() {
+    type Change = fn(&mut Vec<Vec<String>>);
+    let cases: [(&str, Change); 6] = [
+        ("a new stable row", |l| {
+            l.push(
+                "file\t{sample}/new/{sample}_new.tsv\t-\t-\tbash\ttsv\tstable\t-\t-"
+                    .split('\t')
+                    .map(str::to_owned)
+                    .collect(),
+            )
+        }),
+        ("a leg added (nextflow to both)", |l| {
+            row_mut(l, "file", ROH)[4] = "both".to_owned()
+        }),
+        ("a new required column", |l| {
+            row_mut(l, "file", HITS)[8].push_str(",new_column")
+        }),
+        ("an e2e cell and a process changed", |l| {
+            let r = row_mut(l, "file", HITS);
+            r[7] = "-".to_owned();
+            r[3] = "OTHER".to_owned();
+        }),
+        ("an experimental row removed", |l| {
+            drop_row(l, "file", "{sample}/bloodtype/{sample}_bloodtype.tsv")
+        }),
+        ("an experimental row made stable", |l| {
+            row_mut(l, "file", "{sample}/bloodtype/{sample}_bloodtype.tsv")[6] = "stable".to_owned()
+        }),
+    ];
+    let base = s(&contract_path());
+    for (desc, change) in cases {
+        let tmp = Tmp::new("baseline-ok");
+        let c = contract_edit(&tmp, "changed", change);
+        let (rc, out) = contract(&["--contract", &s(&c), "--baseline", &base]);
+        assert!(
+            rc == 0 && out.contains(" 0 problems"),
+            "{desc}: rc={rc}: {out}"
+        );
+    }
+}
+
+#[test]
+fn a_baseline_that_checks_nothing_or_does_not_parse_fails() {
+    let tmp = Tmp::new("baseline-bad");
+    let empty = tmp.0.join("empty.tsv");
+    fs::write(
+        &empty,
+        "kind\tname\tstep\tprocess\tlegs\tformat\tstability\te2e\trequired\n",
+    )
+    .unwrap();
+    let (rc, out) = contract(&["--repo", &s(&repo()), "--baseline", &s(&empty)]);
+    assert!(
+        rc == 1 && out.contains("has no stable row: the check checked nothing"),
+        "{out}"
+    );
+    let bad = tmp.0.join("bad.tsv");
+    fs::write(&bad, "not a contract\n").unwrap();
+    let (rc, out) = contract(&["--repo", &s(&repo()), "--baseline", &s(&bad)]);
+    assert!(rc == 1 && out.contains("ERROR: baseline: "), "{out}");
 }
 
 #[test]
