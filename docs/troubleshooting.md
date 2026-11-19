@@ -136,10 +136,7 @@ docker run --rm --user root \
   your-command
 ```
 
-**Note:** Files created with `--user root` will be owned by root on the host. To fix ownership afterward:
-```bash
-sudo chown -R $(whoami) ${GENOME_DIR}/${SAMPLE}/
-```
+Files written with `--user root` are owned by root on the host. Take them back with the `sudo chown` command above.
 
 ---
 
