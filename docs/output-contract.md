@@ -11,6 +11,7 @@ The full list is one file, [`assets/output_contract.tsv`](https://github.com/Gei
 - **`run-all.sh`:** its two arguments (`<sample> <male|female>`) and every switch in its `SWITCHES` list (`TOOLS`, `THREADS`, `SKIP_TRIM`, `INTERVALS`, `REF_FASTA`, ...).
 - **Result files:** every file the Nextflow pipeline publishes, which is also what `run-all.sh` writes, at its path under `GENOME_DIR/<sample>/` (or `--outdir`). For each one the contract gives its step, its format and the fields a reader can count on: the columns of a table, the INFO and FORMAT fields of a VCF header, the top-level keys of a JSON file (`summary.json`'s keys are the ones its schema, `tests/schema/summary.schema.json`, requires).
 - **Single-step scripts:** the files listed with leg `bash` or `both`. A row is `both` when the step's script (`scripts/<step>-*.sh`) writes the same path under `GENOME_DIR`. Some single steps write to other folders than the pipeline does (step 7 writes PharmCAT's reports to `vcf/`, the pipeline to `pharmcat/`; step 16b writes to `mosdepth/`, the pipeline to `coverage/`). Both names are kept. A single-step output that is not in the file is not part of the promise yet.
+- **The OwnHealth file:** `run-all.sh` also writes `facts/<sample>_genome_facts.json`, the file [OwnHealth](ownhealth.md) imports. Its path and top-level keys are covered here. Its format is OwnHealth's schema `ownhealth.genome-facts/v1`, which OwnHealth owns.
 
 ## What counts as a break
 
