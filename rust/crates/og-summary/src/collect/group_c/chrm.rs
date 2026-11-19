@@ -85,9 +85,11 @@ pub fn in_polyc(pos: i128, r: &str, a: &str) -> bool {
 }
 
 /// Whether the bases an allele changes touch either end of the control
-/// region (`ORIGIN_EDGE`).
+/// region (`ORIGIN_EDGE`). The allele is trimmed first (`min_allele`), so a
+/// padded multi-allelic record reads the same as its minimal form.
 pub fn at_origin_edge(pos: i128, r: &str, a: &str) -> bool {
-    overlaps(&ORIGIN_EDGE, pos, r, a)
+    let (pos, r, a) = min_allele(pos, r, a);
+    overlaps(&ORIGIN_EDGE, pos, &r, &a)
 }
 
 fn low_af(af: f64) -> bool {
@@ -609,6 +611,10 @@ mod tests {
         assert!(at_origin_edge(16000, "C", "T"));
         // A deletion anchored before the edge reaches into it.
         assert!(at_origin_edge(15998, "CAT", "C"));
+        // A padded insertion reads as its minimal form: AC>ACT at m.499 is
+        // C>CT at m.500, an insertion after the edge.
+        assert!(!at_origin_edge(500, "C", "CT"));
+        assert!(!at_origin_edge(499, "AC", "ACT"));
     }
 
     #[test]
