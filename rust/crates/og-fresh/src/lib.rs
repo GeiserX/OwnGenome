@@ -29,12 +29,24 @@ pub enum LookupError {
     /// The answer came in a shape the lookup does not know (a list where an
     /// object was expected, a missing key).
     Shape(String),
+    /// The upstream did not answer: no connection, a name that does not
+    /// resolve, a timeout, or HTTP 5xx or 429 still after the retries. Only
+    /// `http::Client` sets it. It is as much an error as the others;
+    /// `og dev freshness --unreachable-warns` alone lists it as a warning.
+    Unreachable(String),
+}
+
+impl LookupError {
+    /// True when the upstream did not answer (see [`LookupError::Unreachable`]).
+    pub fn is_unreachable(&self) -> bool {
+        matches!(self, LookupError::Unreachable(_))
+    }
 }
 
 impl std::fmt::Display for LookupError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LookupError::Failed(m) => f.write_str(m),
+            LookupError::Failed(m) | LookupError::Unreachable(m) => f.write_str(m),
             LookupError::Shape(m) => write!(f, "unexpected answer ({m})"),
         }
     }

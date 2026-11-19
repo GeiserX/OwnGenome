@@ -23,14 +23,30 @@ pub struct Report {
     pub line_rows: Vec<(String, String, String)>,
     /// (variable, pinned, what the tag points at now, state)
     pub digest_rows: Vec<(String, String, String, String)>,
-    /// (lookup, message)
-    pub errors: Vec<(String, String)>,
+    /// (lookup, message, the upstream did not answer): every failed
+    /// lookup, in report order.
+    pub errors: Vec<(String, String, bool)>,
 }
 
 impl Report {
+    /// A failed lookup.
+    pub fn error(&mut self, what: &str, e: &LookupError) {
+        self.errors
+            .push((what.into(), e.to_string(), e.is_unreachable()));
+    }
+
+    /// The failed lookups that count against the run: all of them, or with
+    /// `unreachable_warns` those whose upstream did answer.
+    pub fn hard_errors(&self, unreachable_warns: bool) -> usize {
+        self.errors
+            .iter()
+            .filter(|e| !(unreachable_warns && e.2))
+            .count()
+    }
+
     /// A failed database lookup: an error, and an ERROR row in its place.
     pub fn db_error(&mut self, what: &str, e: &LookupError) {
-        self.errors.push((what.into(), e.to_string()));
+        self.error(what, e);
         self.db_rows.push(DbRow {
             item: what.into(),
             pinned: String::new(),
@@ -48,7 +64,7 @@ impl Report {
         answer: Result<(String, ImageState), LookupError>,
     ) {
         match answer {
-            Err(e) => self.errors.push((var.into(), e.to_string())),
+            Err(e) => self.error(var, &e),
             Ok((_, ImageState::Current)) => self.current.push(var.into()),
             Ok((_, ImageState::Rebuild)) => self.rebuilds.push(var.into()),
             Ok((tag, ImageState::Line(n))) => self.line_rows.push((var.into(), tag, n)),
@@ -139,7 +155,7 @@ pub fn build(c: &Ctx<'_>, sections: &[&str]) -> Report {
             }
             (Job::Digest(var, _), Done::Digest(Some(a))) => match a {
                 Ok((p, d, s)) => r.digest_rows.push(((*var).into(), p, d, s)),
-                Err(e) => r.errors.push(((*var).into(), e.to_string())),
+                Err(e) => r.error(var, &e),
             },
             _ => {}
         }
@@ -152,9 +168,21 @@ pub fn esc(text: &str) -> String {
     text.replace('|', "\\|").replace('\n', " ")
 }
 
-/// The Markdown report of `sections`.
+/// The Markdown report of `sections`: every failed lookup under Errors.
 pub fn render(r: &Report, sections: &[&str]) -> String {
+    render_with(r, sections, false)
+}
+
+/// What a database row says when its upstream did not answer and that is
+/// a warning.
+const NO_ANSWER_STATE: &str = "NO ANSWER";
+
+/// The Markdown report of `sections`. With `unreachable_warns`, a lookup
+/// whose upstream did not answer is listed under its own heading as a
+/// warning, and only the others are under Errors.
+pub fn render_with(r: &Report, sections: &[&str], unreachable_warns: bool) -> String {
     let has = |s: &str| sections.contains(&s);
+    let warned = |what: &str| unreachable_warns && r.errors.iter().any(|e| e.2 && e.0 == what);
     let mut out: Vec<String> = vec![];
     if has("databases") || has("clinvar") {
         out.extend(
@@ -167,6 +195,11 @@ pub fn render(r: &Report, sections: &[&str]) -> String {
             .map(String::from),
         );
         for d in &r.db_rows {
+            let mut d = d.clone();
+            if d.state == "ERROR" && warned(&d.item) {
+                d.state = NO_ANSWER_STATE.into();
+                d.todo = "upstream did not answer, see Upstreams that did not answer".into();
+            }
             let cells = [&d.item, &d.pinned, &d.upstream, &d.state, &d.todo].map(|c| esc(c));
             out.push(format!("| {} |", cells.join(" | ")));
         }
@@ -259,7 +292,8 @@ pub fn render(r: &Report, sections: &[&str]) -> String {
         }
         out.push(String::new());
     }
-    if !r.errors.is_empty() {
+    let (soft, hard): (Vec<_>, Vec<_>) = r.errors.iter().partition(|e| unreachable_warns && e.2);
+    if !hard.is_empty() {
         out.extend(
             [
                 "### Errors",
@@ -271,7 +305,26 @@ pub fn render(r: &Report, sections: &[&str]) -> String {
             ]
             .map(String::from),
         );
-        for (w, m) in &r.errors {
+        for (w, m, _) in hard {
+            out.push(format!("| {} | {} |", esc(w), esc(m)));
+        }
+        out.push(String::new());
+    }
+    if !soft.is_empty() {
+        out.extend(
+            [
+                "### Upstreams that did not answer",
+                "",
+                "Warnings: these lookups got no connection, a timeout, or a server error after \
+                 the retries, so nothing was compared. They do not fail this run \
+                 (`--unreachable-warns`); the monthly report counts them as errors.",
+                "",
+                "| Lookup | Error |",
+                "|---|---|",
+            ]
+            .map(String::from),
+        );
+        for (w, m, _) in soft {
             out.push(format!("| {} | {} |", esc(w), esc(m)));
         }
         out.push(String::new());
