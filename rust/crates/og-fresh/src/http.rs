@@ -8,10 +8,13 @@
 //! to end, so parallel lookups never hit one upstream twice at once.
 //!
 //! When the last try got no answer at all (no connection, a name that does
-//! not resolve, a timeout, a TLS handshake that broke) or a 5xx or 429, the
-//! error is [`LookupError::Unreachable`]: the upstream did not answer. Every
-//! answer that came back wrong (another 4xx, an empty body, a body that is
-//! not JSON) stays [`LookupError::Failed`].
+//! not resolve, a timeout, a TLS handshake that broke), a 5xx or 429, or a
+//! 403, the error is [`LookupError::Unreachable`]: the upstream did not
+//! answer this machine. A 403 counts because an upstream that refuses a
+//! whole network answers it to every request from there: from 2026-11-19
+//! rest.ensembl.org answered 403 to GitHub's runners and 200 elsewhere. It
+//! is not asked again. Every answer that came back wrong (another 4xx, an
+//! empty body, a body that is not JSON) stays [`LookupError::Failed`].
 //!
 //! `curl` does the transfer (it is on every machine OwnGenome runs on, and
 //! `scripts/lib/common.sh` downloads with it too), so `og` carries no TLS
@@ -254,7 +257,7 @@ const NO_ANSWER: &[i32] = &[5, 6, 7, 16, 28, 35, 52, 55, 56, 92];
 /// A status that means the upstream did not answer the question: a server
 /// error or "too many requests".
 fn unanswered(code: u16) -> bool {
-    code >= 500 || code == 429
+    code >= 500 || code == 429 || code == 403
 }
 
 impl Client {
@@ -585,7 +588,7 @@ mod tests {
 
     #[test]
     fn no_answer_is_unreachable() {
-        for code in [500, 502, 503, 429] {
+        for code in [500, 502, 503, 429, 403] {
             let e = ask(&serve(vec![(code, ""), (code, "")]), 1).unwrap_err();
             assert!(
                 matches!(&e, LookupError::Unreachable(m) if m.contains(&format!("HTTP {code}"))),
@@ -613,7 +616,7 @@ mod tests {
     fn a_wrong_answer_is_not_unreachable() {
         for (answers, why) in [
             (vec![(404, "")], "HTTP 404"),
-            (vec![(403, "")], "HTTP 403"),
+            (vec![(401, "")], "HTTP 401"),
             (vec![(200, ""), (200, "")], "empty answer"),
             (vec![(200, "<html>"), (200, "<html>")], "answer is not JSON"),
             // The last try decides: an outage that ends in a 404 is a 404.

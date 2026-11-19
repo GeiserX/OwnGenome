@@ -30,7 +30,8 @@ pub enum LookupError {
     /// object was expected, a missing key).
     Shape(String),
     /// The upstream did not answer: no connection, a name that does not
-    /// resolve, a timeout, or HTTP 5xx or 429 still after the retries. Only
+    /// resolve, a timeout, HTTP 5xx or 429 still after the retries, or a
+    /// 403, which an upstream that refuses a whole network answers. Only
     /// `http::Client` sets it. It is as much an error as the others;
     /// `og dev freshness --unreachable-warns` alone lists it as a warning.
     Unreachable(String),

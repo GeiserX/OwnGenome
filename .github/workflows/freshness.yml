@@ -23,8 +23,8 @@ name: Freshness
 # whole-tree link check runs monthly, so a link that dies upstream shows in the
 # issue instead of failing an unrelated pull request. For the same reason the
 # pull-request dry run passes --unreachable-warns: an upstream that does not
-# answer at all (no connection, a timeout, HTTP 5xx or 429 after the retries)
-# is listed as a warning there and does not fail the pull request. Every answer
+# answer at all (no connection, a timeout, HTTP 5xx or 429 after the retries,
+# or a 403 that refuses the runner's network) is listed as a warning there and does not fail the pull request. Every answer
 # that did come back still has to be right (a 404, an empty or odd answer
 # fails), and the monthly report on main stays strict: there an outage is an
 # error and goes into the issue.

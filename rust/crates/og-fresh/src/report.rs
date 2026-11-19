@@ -316,7 +316,8 @@ pub fn render_with(r: &Report, sections: &[&str], unreachable_warns: bool) -> St
                 "### Upstreams that did not answer",
                 "",
                 "Warnings: these lookups got no connection, a timeout, HTTP \
-                 5xx or 429 after the retries, so nothing was compared. They do not fail this \
+                 5xx or 429 after the retries, or HTTP 403, so nothing was compared. They do \
+                 not fail this \
                  run (`--unreachable-warns`); the monthly report counts them as errors.",
                 "",
                 "| Lookup | Error |",

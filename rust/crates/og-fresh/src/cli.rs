@@ -21,8 +21,9 @@ pub const USAGE: &str =
                     (default: $GITHUB_REPOSITORY)
   --unreachable-warns
                     an upstream that does not answer (no connection, a timeout,
-                    HTTP 5xx or 429 after the retries) is a warning, not a
-                    failure; every other failed lookup still exits 1
+                    HTTP 5xx or 429 after the retries, or HTTP 403) is a
+                    warning, not a failure; every other failed lookup still
+                    exits 1
 ";
 
 fn usage_error(err: &mut dyn Write, msg: &str) -> u8 {
