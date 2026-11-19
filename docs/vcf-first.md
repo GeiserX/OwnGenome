@@ -7,7 +7,7 @@ Many providers send a VCF, the file that lists where your DNA differs from the r
 
 ## What runs on a VCF alone
 
-With only `sample`, `vcf` and `vcf_index` in the [samplesheet](nextflow.md#samplesheet-format), these tools run: `pharmcat`, `cpic`, `clinvar`, `vep`, `vcfanno`, `slivar`, `clinical_filter`, `cpsr`, `roh`, `prs`, `ancestry`, `mito_haplogroup` and `html_report`.
+With only `sample`, `vcf` and `vcf_index` in the [samplesheet](nextflow.md#samplesheet-format), these tools run: `pharmcat`, `cpic`, `clinvar`, `vep`, `vcfanno`, `slivar`, `clinical_filter`, `cpsr`, `roh`, `prs`, `ancestry`, `mito_haplogroup` and `html_report`. The blood groups (`bloodtype`) run too, with RhD not determined. Without reads, a site the VCF does not list may be the reference allele or a site the file does not cover, so a blood group system with no record at any of its sites reads "not assessed" ([Step 41](41-bloodtype.md#without-the-bam)).
 
 Everything that reads the aligned reads has nothing to work on, so it does not run: coverage (`mosdepth`, and `multiqc`, which reads it), structural variants and copy-number changes (`manta`, `delly`, `cnvpytor`, `duphold`, `annotsv`, `survivor_merge`), HLA typing, repeat expansions, telomere length, mitochondrial heteroplasmy and the read-depth CYP2D6 calls (`cyrius`, `pypgx`). If your provider can send the BAM or FASTQ, get it. The [Vendor Compatibility Guide](vendor-guide.md) says what each provider delivers.
 
