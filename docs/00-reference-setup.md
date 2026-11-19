@@ -50,6 +50,8 @@ mv GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.fai GRCh38_no_alt_analysis_se
 wc -l GRCh38_no_alt_analysis_set.fasta.fai   # 195
 ```
 
+The md5 checks the download, and `validate-setup.sh` checks the unpacked FASTA on every run. It reads the MD5 of each sequence's bases (`M5`) from the sequence dictionary `setup.sh` makes from the FASTA (`GRCh38_no_alt_analysis_set.dict`, below), and compares the 195 names, lengths and MD5s with the values pinned in the script for NCBI's file and for [the masked copy](#the-masked-reference-optional). A FASTA with the same names and lengths but one other base fails with `REF_FASTA has the names and lengths of NCBI's GRCh38 no-ALT analysis set but other bases`. A masked FASTA without `_maskedGRC` in its name fails too, as does a `.dict` whose names or lengths are not the `.fai`'s, and a `.dict` older than the FASTA gets a warning. A reference with other names or lengths, such as the decoy set below, has nothing pinned: an `[INFO]` line says so.
+
 ### Why the no-ALT analysis set
 
 GRCh38 also has ALT contigs: second copies of regions that vary a lot between people, such as the MHC (the HLA genes), KIR and the CYP2D6 locus. A reference with them (the Broad `hg38` FASTA, 3,366 sequences with ALT, HLA and decoy contigs) only helps an aligner that is run ALT-aware, and none of the aligners here is. With them, a read that matches the primary copy and an ALT copy equally well gets mapping quality 0, and callers ignore it: depth thins at exactly those loci, and depth-based callers can report a deletion that is not there. The [measured loss](realignment.md#how-much-depth-alt-contigs-cost) is in the realignment page.
@@ -141,10 +143,10 @@ It downloads the new file under `clinvar/.refresh/`, checks the md5, builds both
 | `reference/gencode.v50.basic.genes.gtf` | the gene lines of GENCODE 50's basic annotation (md5 checked) | step 8 (gene positions for T1K) | step 8 is skipped |
 | `reference/gencode.v50.basic.exons.bed` | the exon intervals of the same GENCODE 50 basic annotation, written from the same download as the gene lines (md5 checked) | steps 6 and 17 and Nextflow `--gencode_exons` with `clinvar` (cDNA read check); step 39 and `--gencode_exons` with `--pedigree` (deletions over an exon) | steps 6 and 17 and `CLINVAR_CDNA_CHECK` write every hit as `not_checked`; step 39 does not use deletions |
 | `gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz` | gnomAD v3.1's mitochondrial sites, about 5 MB (`GNOMAD_MITO_URL`, sha256 `GNOMAD_MITO_SHA256` in `versions.env`, checked by `setup.sh` and `validate-setup.sh`) | step 20 (gnomAD AF_hom, AF_het and max_hl beside each chrM call) | step 20 writes its annotation table with the gnomAD columns empty, and `validate-setup.sh` warns (it fails on a file whose sha256 is not the pinned one) |
-| `reference/somalier/sites.hg38.vcf.gz` | somalier's GRCh38 sites, 17,766 SNPs (sha256 checked) | step 33 (`somalier extract`), Nextflow `--somalier_sites` | step 33 stops and says to install it |
-| `reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.{UD,mu,bed}` | VerifyBamID2's 1000 Genomes panel of 100,000 markers, from the VerifyBamID v2.0.3 release (sha256 checked) | step 33 (`verifybamid2`), Nextflow `--verifybamid2_panel` | step 33 stops and says to install it |
+| `reference/somalier/sites.hg38.vcf.gz` | somalier's GRCh38 sites, 17,766 SNPs (sha256 checked, also when the file is already there: one with another sha256 gets a warning and is downloaded again) | step 33 (`somalier extract`), Nextflow `--somalier_sites` | step 33 stops and says to install it |
+| `reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.{UD,mu,bed}` | VerifyBamID2's 1000 Genomes panel of 100,000 markers, from the VerifyBamID v2.0.3 release (sha256 checked, also when a file is already there, as for the sites) | step 33 (`verifybamid2`), Nextflow `--verifybamid2_panel` | step 33 stops and says to install it |
 
-`setup.sh` also writes the reference's sequence dictionary (`GRCh38_no_alt_analysis_set.dict`), which GATK, Picard and `chip-to-vcf.sh` need.
+`setup.sh` also writes the reference's sequence dictionary (`GRCh38_no_alt_analysis_set.dict`), which GATK, Picard and `chip-to-vcf.sh` need. It holds the MD5 of each sequence, which `validate-setup.sh` compares with the pinned values ([above](#grch38-reference-genome)).
 
 ## AnnotSV Annotations (~5 GB)
 
