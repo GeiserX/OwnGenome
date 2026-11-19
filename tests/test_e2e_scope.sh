@@ -6,7 +6,9 @@
 # no file, a glob that matches a file outside the e2e scope. Then the
 # picks: nothing for a path outside the scope, every case for shared wiring, the smoke cases plus the matching ones for a helper,
 # the case whose file or row changed, the cases those need, never a base
-# case. Last, the real table must pass the check.
+# case, and for a change under rust/ (the og binary's sources) every case
+# whose row has a glob that matches bin/og. Last, the real table must pass
+# the check, and on it a Rust change must pick what a bin/og change picks.
 set -euo pipefail
 export LC_ALL=C
 
@@ -96,6 +98,12 @@ expect "a base step runs the smoke cases only (the base leg runs every base case
 printf '%s\n' traits-2 > "${WORK}/rows.txt"
 ROWS="${WORK}/rows.txt" expect "a changed table row runs its case and what it needs" "${SMOKE} traits-1 traits-2" docs/x.md
 expect "a deleted case file runs the smoke cases" "${SMOKE}" tests/e2e/gone-1.sh
+expect "a Rust change runs the cases that run og and what they need" "${SMOKE} traits-1 traits-2" rust/crates/og-vcf/src/lib.rs
+if grep -q 'traits-2: runs og, built from rust/crates/og-vcf/src/lib.rs' "${WORK}/why.txt"; then ok "select says a Rust change picked a case because it runs og"
+else bad "select gave no og reason for a Rust change: $(paste -sd' ' "${WORK}/why.txt")"; fi
+expect "the og build script runs the cases that run og" "${SMOKE} traits-1 traits-2" rust/og.sh
+{ paths | grep -v "^lpa-1${TAB}"; printf '%s\n' "lpa-1${TAB}modules/local/lpa/* bin/*"; } > "${WORK}/wide.tsv"
+E2E_PATHS="${WORK}/wide.tsv" expect "a row whose glob covers bin/og runs on a Rust change" "lpa-1 ${SMOKE} traits-1 traits-2" rust/og/src/main.rs
 if grep -q 'traits-1: needed by traits-2' "${WORK}/why.txt" 2> /dev/null || { pick bin/og > /dev/null; grep -q 'traits-2: runs bin/og' "${WORK}/why.txt"; }; then
   ok "select says why it picked each case"
 else bad "select gave no reasons: $(cat "${WORK}/why.txt")"; fi
@@ -136,6 +144,23 @@ printf '%s\n' bin/og > "${WORK}/changed.txt"
 if [ -s "${WORK}/real.txt" ] && E2E_SELECT="${WORK}/real.txt" "${REPO}/scripts/ci/e2e-shards.sh" plan 2 > /dev/null; then
   ok "a real pick splits: $(paste -sd' ' "${WORK}/real.txt")"
 else bad "a real pick did not split: $(paste -sd' ' "${WORK}/real.txt")"; fi
+
+# A Rust change picks what a change to bin/og picks: every case that runs og
+# (its row has a glob that matches bin/og), the smoke cases and their needs.
+"$S" select "${WORK}/changed.txt" > "${WORK}/og.txt" 2> /dev/null
+printf '%s\n' rust/og/src/main.rs > "${WORK}/changed.txt"
+"$S" select "${WORK}/changed.txt" > "${WORK}/rust.txt" 2> /dev/null || true
+if [ -s "${WORK}/rust.txt" ] && cmp -s "${WORK}/og.txt" "${WORK}/rust.txt"; then
+  ok "the real table: a Rust change runs the $(wc -l < "${WORK}/rust.txt" | tr -d ' ') cases a bin/og change runs"
+else bad "the real table: a Rust change picks $(wc -l < "${WORK}/rust.txt" | tr -d ' ') cases, a bin/og change $(wc -l < "${WORK}/og.txt" | tr -d ' '): $(diff "${WORK}/og.txt" "${WORK}/rust.txt" | grep '^[<>]' | paste -sd' ' -)"; fi
+for c in output-contract-1-hg002 traits-panel-1 prs-2-ancestry bash-step-11-roh; do
+  if grep -qx "$c" "${WORK}/rust.txt"; then ok "the real table runs ${c}, which runs og, on a Rust change"
+  else bad "the real table does not run ${c} on a Rust change, though it runs og"; fi
+done
+for c in alignment-markdup-gvcf-sex-4-bwamem2 sv-mito-telomere-steps-1-sv-merge; do
+  if grep -qx "$c" "${WORK}/rust.txt"; then bad "the real table runs ${c} on a Rust change, though it runs no og"
+  else ok "the real table leaves out ${c}, which runs no og, on a Rust change"; fi
+done
 
 printf '%s\n' tests/fixtures/consumer_export/sites.tsv.gz > "${WORK}/changed.txt"
 if "$S" select "${WORK}/changed.txt" 2> /dev/null | grep -qx consumer-export-1; then ok "the real table runs consumer-export-1 when its fixture changes"
