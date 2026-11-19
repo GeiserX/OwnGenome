@@ -219,8 +219,11 @@ fn lpa(row: &Locus, b: &Block) -> Table {
                     lo = fixed(l, 1);
                     hi = fixed(h, 1);
                     class = b.class.map_or(".", |c| c.as_str()).to_owned();
+                    // The interval comes from the spread of the per-exon
+                    // depths alone (exons read as independent), so it says
+                    // read sampling; the count sums both copies of chr6.
                     format!(
-                        "about {} KIV-2 repeats in total (95% interval {lo} to {hi}): {}",
+                        "about {} KIV-2 repeats in total over both copies (95% interval for read sampling, {lo} to {hi}; aligner or library bias not included): {}",
                         fixed(est, 0),
                         b.reading
                     )

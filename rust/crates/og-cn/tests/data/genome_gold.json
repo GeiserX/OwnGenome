@@ -259,7 +259,7 @@
         "kiv2_depth": "30.00",
         "flank_depth": "30.00",
         "mapq0_share": "0.900",
-        "message": "about 12 KIV-2 repeats in total (95% interval 12.0 to 12.0): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
+        "message": "about 12 KIV-2 repeats in total over both copies (95% interval for read sampling, 12.0 to 12.0; aligner or library bias not included): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
       }
     ],
     [
@@ -279,7 +279,7 @@
         "kiv2_depth": "47.45",
         "flank_depth": "30.43",
         "mapq0_share": "0.900",
-        "message": "about 20 KIV-2 repeats in total (95% interval 17.9 to 22.0): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
+        "message": "about 20 KIV-2 repeats in total over both copies (95% interval for read sampling, 17.9 to 22.0; aligner or library bias not included): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
       }
     ],
     [
@@ -299,7 +299,7 @@
         "kiv2_depth": "66.56",
         "flank_depth": "30.09",
         "mapq0_share": "0.900",
-        "message": "about 29 KIV-2 repeats in total (95% interval 28.3 to 29.7): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
+        "message": "about 29 KIV-2 repeats in total over both copies (95% interval for read sampling, 28.3 to 29.7; aligner or library bias not included): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
       }
     ],
     [
@@ -319,7 +319,7 @@
         "kiv2_depth": "67.50",
         "flank_depth": "30.72",
         "mapq0_share": "0.900",
-        "message": "about 29 KIV-2 repeats in total (95% interval 23.5 to 35.1): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
+        "message": "about 29 KIV-2 repeats in total over both copies (95% interval for read sampling, 23.5 to 35.1; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
       }
     ],
     [
@@ -339,7 +339,7 @@
         "kiv2_depth": "106.69",
         "flank_depth": "30.72",
         "mapq0_share": "0.900",
-        "message": "about 47 KIV-2 repeats in total (95% interval 38.3 to 56.6): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
+        "message": "about 47 KIV-2 repeats in total over both copies (95% interval for read sampling, 38.3 to 56.6; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
       }
     ],
     [
@@ -359,7 +359,7 @@
         "kiv2_depth": "133.11",
         "flank_depth": "30.09",
         "mapq0_share": "0.900",
-        "message": "about 60 KIV-2 repeats in total (95% interval 58.6 to 61.4): more KIV-2 repeats than most people (the whole 95% interval is over 45): a high count goes with large apo(a) isoforms and, on average, a lower Lp(a) level"
+        "message": "about 60 KIV-2 repeats in total over both copies (95% interval for read sampling, 58.6 to 61.4; aligner or library bias not included): more KIV-2 repeats than most people (the whole 95% interval is over 45): a high count goes with large apo(a) isoforms and, on average, a lower Lp(a) level"
       }
     ],
     [
@@ -439,7 +439,7 @@
         "kiv2_depth": "34.95",
         "flank_depth": "12.23",
         "mapq0_share": "0.500",
-        "message": "about 38 KIV-2 repeats in total (95% interval 31.0 to 46.5): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
+        "message": "about 38 KIV-2 repeats in total over both copies (95% interval for read sampling, 31.0 to 46.5; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
       }
     ],
     [
