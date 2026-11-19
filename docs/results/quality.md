@@ -19,7 +19,7 @@ So `summary.json` records the run's scope under `scope`. It comes from the chrom
 
 - `autosomes_covered`: how many of chr1 to chr22 have calls, and `autosomes`: which ones.
 - `chrx`: whether chrX has calls. chrX alone does not make a run partial, because these results read the autosomes.
-- `intervals`: the intervals the run was limited to, from a `run intervals` row of `run_manifest.tsv`, else `null`.
+- `intervals`: the intervals the run was limited to, from a `run intervals` row of `run_manifest.tsv`, else `null`. No step writes this row yet, so today it is `null`: a run limited with `--intervals` is caught only by the chromosomes its calls are on.
 - `partial` and `mark`: the run is partial when it covers fewer than 22 autosomes (`partial: covers 2 of 22 autosomes`) or was limited to intervals (`partial: limited to the run's intervals (...)`).
 
 When the run is partial, each of those six sections that has a result gets the same text in its `partial` field. Without a sample VCF that can be read to its end, the scope is not known: `summary.json` has no `scope`, and no section is marked. The scope says which chromosomes have calls. It does not say how much of each chromosome was read well; callability does that.
