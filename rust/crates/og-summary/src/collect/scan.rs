@@ -119,6 +119,51 @@ impl FolderIndex {
     }
 }
 
+/// The contigs of the sample VCF's records, each once, in the order first
+/// seen: the part of the genome the run called. A record is what the
+/// variant count reads as one, a line not starting with `#` with seven
+/// cells or more; `\r\n` and a lone `\r` end a line too. An error is a file
+/// that cannot be read to its end, whose contigs are then not known.
+pub fn vcf_contigs(path: &str) -> Result<Vec<String>, String> {
+    use std::io::BufRead;
+    let fail = |e: std::io::Error| {
+        format!(
+            "{}: {}",
+            crate::basename(path),
+            super::sections::gzip_message(&e)
+        )
+    };
+    let mut r = og_io::bgzf::open(path, og_io::bgzf::workers()).map_err(fail)?;
+    let mut seen: Vec<Vec<u8>> = Vec::new();
+    let mut buf = Vec::with_capacity(1 << 16);
+    let mut record = |line: &[u8]| {
+        if line.first() == Some(&b'#') {
+            return;
+        }
+        let chrom = line.split(|&c| c == b'\t').next().unwrap_or(line);
+        // A sorted VCF repeats its last contig line after line.
+        if seen.last().is_some_and(|c| c == chrom) || seen.iter().any(|c| c == chrom) {
+            return;
+        }
+        if memchr::memchr_iter(b'\t', line).take(6).count() == 6 {
+            seen.push(chrom.to_vec());
+        }
+    };
+    loop {
+        buf.clear();
+        if r.read_until(b'\n', &mut buf).map_err(fail)? == 0 {
+            break;
+        }
+        let line = buf.strip_suffix(b"\n").unwrap_or(&buf);
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        line.split(|&c| c == b'\r').for_each(&mut record);
+    }
+    Ok(seen
+        .into_iter()
+        .map(|c| String::from_utf8_lossy(&c).into_owned())
+        .collect())
+}
+
 fn has_magic(s: &str) -> bool {
     s.contains(['*', '?', '['])
 }
@@ -233,6 +278,25 @@ mod tests {
             ix.first(&pats(&["qc/nextflow/S_sample_qc.tsv"])),
             Some("qc/nextflow/S_sample_qc.tsv")
         );
+    }
+
+    #[test]
+    fn vcf_contigs_are_the_records_contigs_once_in_order() {
+        let d = Dir::new("scan-contigs");
+        let p = d.put_gz(
+            "S.vcf.gz",
+            "##contig=<ID=chr1>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\n\
+             chr22\t1\t.\tA\tG\t1\tPASS\nchr22\t2\t.\tA\tG\t1\tPASS\n\
+             chr3\t1\t.\tA\tG\t1\r\nchr7\t1\t.\tA\tG\t1\tPASS\rchrX\t1\t.\tA\tG\t1\t.\n\
+             chr9\t1\t.\tA\tG\t1\nchr22\t3\t.\tA\tG\t1\tPASS\n",
+        );
+        // chr1 is only a header line; chr3 and chr9 have six cells.
+        assert_eq!(vcf_contigs(&p).unwrap(), ["chr22", "chr7", "chrX"]);
+        let empty = d.put_gz("E.vcf.gz", "#CHROM\n");
+        assert!(vcf_contigs(&empty).unwrap().is_empty());
+        let cut = d.put("C.vcf.gz", b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03");
+        assert!(vcf_contigs(&cut).is_err());
+        assert!(vcf_contigs(&d.path("none.vcf.gz")).is_err());
     }
 
     #[test]

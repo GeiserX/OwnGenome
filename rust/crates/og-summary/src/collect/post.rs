@@ -10,6 +10,8 @@
 //! - `not_run`: the steps whose section has no file;
 //! - `not_assessed`: what no step looked at, with the lines that depend on
 //!   the polygenic scores, HBA1/HBA2, mobile elements, VNtyper and MoChA;
+//! - `scope`: what part of the genome the run called, and the `partial`
+//!   mark on each genome-wide section of a run that called less;
 //! - `recheck`: the last database re-check of the sample;
 //! - `new_since`: what changed since the previous run kept in `history/`.
 //!
@@ -25,7 +27,7 @@
 use super::group_c::Others;
 use super::model::{Section, State, Summary};
 use super::sections::Data;
-use super::{Folder, Input, declared, group_b, post_c, qc_declared, read_a, read_c, time};
+use super::{Folder, Input, declared, group_b, post_c, qc_declared, read_a, read_c, scan, time};
 use og_runlog::{delta, files};
 use pycompat::json::Value;
 use pycompat::value::truthy;
@@ -125,10 +127,19 @@ of the blood cells): step 51 (MoChA) did not assess this sample";
 /// be read.
 pub fn collect(input: &Input) -> Result<Value, String> {
     let folder = Folder::open(input)?;
+    let vcf = folder
+        .index
+        .first(&[format!(
+            "vcf/{}.vcf.gz",
+            pycompat::mtime::escape(&input.sample)
+        )])
+        .map(|rel| crate::join(&input.sample_dir, rel));
     // Group a reads the sample VCF, the input that takes time, on its own
-    // thread; groups b and c read their sections meanwhile, one at a time,
-    // so the peak memory stays near the biggest section's.
-    let (a, b, mut c) = std::thread::scope(|scope| {
+    // thread, and so does the read of its contigs; groups b and c read
+    // their sections meanwhile, one at a time, so the peak memory stays
+    // near the biggest section's.
+    let (a, b, mut c, contigs) = std::thread::scope(|scope| {
+        let contigs = scope.spawn(|| vcf.as_deref().and_then(|p| scan::vcf_contigs(p).ok()));
         let a = scope.spawn(|| read_a(input, &folder));
         let b = group_b::read(input, &folder);
         let c = read_c(input, &folder);
@@ -145,8 +156,15 @@ pub fn collect(input: &Input) -> Result<Value, String> {
                 .collect()
         };
         let a = a.join().unwrap_or_else(|_| stopped(&super::model::GROUP_A));
-        (a, b, c)
+        (a, b, c, contigs.join().ok().flatten())
     });
+    let intervals = folder
+        .manifest
+        .as_ref()
+        .and_then(|m| m.value("run", "intervals"))
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned);
     let declared_sex = declared(input, &folder, qc_declared(&a));
     post_c(
         input,
@@ -189,6 +207,10 @@ pub fn collect(input: &Input) -> Result<Value, String> {
                 .collect(),
         ),
     );
+    if let Some(scope) = scope(contigs.as_deref(), intervals.as_deref()) {
+        mark_partial(m, &scope);
+        m.insert("scope".into(), scope);
+    }
     let dir = Path::new(&input.sample_dir);
     if let Some(r) = delta::read_recheck(&dir.join("recheck").join("state.json")) {
         m.insert("recheck".into(), Value::Object(r));
@@ -199,6 +221,77 @@ pub fn collect(input: &Input) -> Result<Value, String> {
         m.insert("new_since".into(), n);
     }
     Ok(v)
+}
+
+/// The sections whose result is a share, a sum or a placement over the
+/// whole genome: a run over a part of it gives a different result that
+/// reads the same.
+pub const GENOME_WIDE: [&str; 6] = [
+    "callability",
+    "prs",
+    "ancestry_fine",
+    "telomere",
+    "roh",
+    "archaic",
+];
+
+/// `scope`: what part of the genome the run called, from the contigs of
+/// the sample VCF's records (`chr20` and `20` alike) and the intervals the
+/// run manifest records (`run intervals`). `None` (no `scope` key) without a
+/// sample VCF read to its end: the scope is then not known, and nothing
+/// is marked.
+///
+/// The run is partial when the calls cover fewer than the 22 autosomes, or
+/// when the run was limited to intervals. chrX is recorded but makes no run
+/// partial: the genome-wide sections read the autosomes.
+fn scope(contigs: Option<&[String]>, intervals: Option<&str>) -> Option<Value> {
+    let names: Vec<&str> = contigs?
+        .iter()
+        .map(|c| c.strip_prefix("chr").unwrap_or(c))
+        .collect();
+    let autosomes: Vec<String> = (1..=22)
+        .map(|i| i.to_string())
+        .filter(|n| names.contains(&n.as_str()))
+        .map(|n| format!("chr{n}"))
+        .collect();
+    let n = autosomes.len();
+    let mark = if n < 22 {
+        Some(format!("partial: covers {n} of 22 autosomes"))
+    } else {
+        intervals.map(|i| format!("partial: limited to the run's intervals ({i})"))
+    };
+    let mut out = indexmap::IndexMap::new();
+    out.insert("autosomes_covered".to_owned(), Value::Int(n as i128));
+    out.insert(
+        "autosomes".to_owned(),
+        Value::Array(autosomes.into_iter().map(Value::Str).collect()),
+    );
+    out.insert("chrx".to_owned(), Value::Bool(names.contains(&"X")));
+    out.insert(
+        "intervals".to_owned(),
+        intervals.map_or(Value::Null, |i| Value::Str(i.to_owned())),
+    );
+    out.insert("partial".to_owned(), Value::Bool(mark.is_some()));
+    out.insert("mark".to_owned(), mark.map_or(Value::Null, Value::Str));
+    Some(Value::Object(out))
+}
+
+/// Adds the scope's mark as `partial` to each genome-wide section that has
+/// a result (ok or stale) when the run was partial.
+fn mark_partial(summary: &mut indexmap::IndexMap<String, Value>, scope: &Value) {
+    let Some(Value::Str(mark)) = at(Some(scope), "mark") else {
+        return;
+    };
+    let Some(Value::Object(sections)) = summary.get_mut("sections") else {
+        return;
+    };
+    for key in GENOME_WIDE {
+        if let Some(Value::Object(sec)) = sections.get_mut(key)
+            && (is(sec.get("state"), "ok") || is(sec.get("state"), "stale"))
+        {
+            sec.insert("partial".into(), Value::Str(mark.clone()));
+        }
+    }
 }
 
 /// What the post pass of group c needs from group b: the CPIC state,

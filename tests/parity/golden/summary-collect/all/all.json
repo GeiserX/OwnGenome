@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-16 16:16 UTC",
+ "generated_utc": "2026-11-19 11:33 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -12202,7 +12202,8 @@
      "OR9G9",
      "TAS2R45"
     ]
-   }
+   },
+   "partial": "partial: covers 1 of 22 autosomes"
   },
   "sex_check": {
    "title": "Sex check (indexcov)",
@@ -13476,7 +13477,8 @@
      "panel": "HGDP+1kGP",
      "low_confidence": null
     }
-   }
+   },
+   "partial": "partial: covers 1 of 22 autosomes"
   },
   "ancestry_fine": {
    "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
@@ -13564,7 +13566,8 @@
       "colour": "#56b4e9"
      }
     ]
-   }
+   },
+   "partial": "partial: covers 1 of 22 autosomes"
   },
   "manta": {
    "title": "Structural variants (Manta)",
@@ -14038,7 +14041,8 @@
     "depth": 30.0,
     "read_floor": 2000,
     "low_reads": true
-   }
+   },
+   "partial": "partial: covers 1 of 22 autosomes"
   },
   "roh": {
    "title": "Runs of homozygosity",
@@ -14110,7 +14114,8 @@
      "partial": false,
      "note": "Sites on all 22 autosomes; marker presence does not establish callable breadth or copy neutrality."
     }
-   }
+   },
+   "partial": "partial: covers 1 of 22 autosomes"
   },
   "haplogroup": {
    "title": "Mitochondrial haplogroup",
@@ -14798,7 +14803,8 @@
     "analysed_bp": 2500000000,
     "neanderthal_percent": "2.00",
     "denisovan_percent": "0.01"
-   }
+   },
+   "partial": "partial: covers 1 of 22 autosomes"
   },
   "ancient": {
    "title": "Ancient populations (AADR PCA)",
@@ -15522,5 +15528,15 @@
   "Repeat expansions outside the ExpansionHunter catalog",
   "Phase: two variants in one gene are compound-het candidates, not confirmed",
   "Variants of uncertain significance (not interpreted)"
- ]
+ ],
+ "scope": {
+  "autosomes_covered": 1,
+  "autosomes": [
+   "chr22"
+  ],
+  "chrx": false,
+  "intervals": null,
+  "partial": true,
+  "mark": "partial: covers 1 of 22 autosomes"
+ }
 }
