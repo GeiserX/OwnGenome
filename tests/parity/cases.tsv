@@ -1209,7 +1209,6 @@ report-render	notgz	gen:report-corpus.sh	--summary notgz.json -o notgz.txt -o no
 report-render	empty	gen:report-corpus.sh	--summary empty.json -o empty.txt -o empty.html	empty.txt,empty.html	bytes	PYTHON_IMAGE
 report-render	declared-arg	gen:report-corpus.sh	--summary declared-arg.json -o declared-arg.txt -o declared-arg.html	declared-arg.txt,declared-arg.html	bytes	PYTHON_IMAGE
 report-render	no-assets	gen:report-corpus.sh	--summary no-assets.json -o no-assets.txt -o no-assets.html	no-assets.txt,no-assets.html	bytes	PYTHON_IMAGE
-report-render	no-folder	gen:report-corpus.sh	--summary no-folder.json -o no-folder.txt -o no-folder.html	no-folder.txt,no-folder.html	bytes	PYTHON_IMAGE
 report-render	c-full	gen:report-corpus.sh	--summary c-full.json -o c-full.txt	c-full.txt	bytes	PYTHON_IMAGE
 report-render	c-float-nan	gen:report-corpus.sh	--summary c-float-nan.json -o c-float-nan.txt	c-float-nan.txt	bytes	PYTHON_IMAGE
 report-render	c-float-inf	gen:report-corpus.sh	--summary c-float-inf.json -o c-float-inf.txt	c-float-inf.txt	bytes	PYTHON_IMAGE
@@ -1276,6 +1275,17 @@ report-render	m-variants-missing	gen:report-corpus.sh	--summary m-variants-missi
 report-render	m-variants-ok	gen:report-corpus.sh	--summary m-variants-ok.json -o m-variants-ok.txt -o m-variants-ok.html	m-variants-ok.txt,m-variants-ok.html	bytes	PYTHON_IMAGE
 report-render	m-variants-stale	gen:report-corpus.sh	--summary m-variants-stale.json -o m-variants-stale.txt -o m-variants-stale.html	m-variants-stale.txt,m-variants-stale.html	bytes	PYTHON_IMAGE
 report-render	m-variants-unreadable	gen:report-corpus.sh	--summary m-variants-unreadable.json -o m-variants-unreadable.txt -o m-variants-unreadable.html	m-variants-unreadable.txt,m-variants-unreadable.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-ok	gen:report-corpus.sh	--summary m-pgx-ok.json -o m-pgx-ok.txt -o m-pgx-ok.html	m-pgx-ok.txt,m-pgx-ok.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-stale	gen:report-corpus.sh	--summary m-pgx-stale.json -o m-pgx-stale.txt -o m-pgx-stale.html	m-pgx-stale.txt,m-pgx-stale.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-states	gen:report-corpus.sh	--summary m-pgx-states.json -o m-pgx-states.txt -o m-pgx-states.html	m-pgx-states.txt,m-pgx-states.html	bytes	PYTHON_IMAGE
+report-render	m-pgx-calls	gen:report-corpus.sh	--summary m-pgx-calls.json -o m-pgx-calls.txt -o m-pgx-calls.html	m-pgx-calls.txt,m-pgx-calls.html	bytes	PYTHON_IMAGE
+report-render	m-hla-ok	gen:report-corpus.sh	--summary m-hla-ok.json -o m-hla-ok.txt -o m-hla-ok.html	m-hla-ok.txt,m-hla-ok.html	bytes	PYTHON_IMAGE
+report-render	m-hla-none	gen:report-corpus.sh	--summary m-hla-none.json -o m-hla-none.txt -o m-hla-none.html	m-hla-none.txt,m-hla-none.html	bytes	PYTHON_IMAGE
+report-render	m-hla-failed	gen:report-corpus.sh	--summary m-hla-failed.json -o m-hla-failed.txt -o m-hla-failed.html	m-hla-failed.txt,m-hla-failed.html	bytes	PYTHON_IMAGE
+report-render	m-mito-ok	gen:report-corpus.sh	--summary m-mito-ok.json -o m-mito-ok.txt -o m-mito-ok.html	m-mito-ok.txt,m-mito-ok.html	bytes	PYTHON_IMAGE
+report-render	m-mito-notes	gen:report-corpus.sh	--summary m-mito-notes.json -o m-mito-notes.txt -o m-mito-notes.html	m-mito-notes.txt,m-mito-notes.html	bytes	PYTHON_IMAGE
+report-render	m-mito-copies	gen:report-corpus.sh	--summary m-mito-copies.json -o m-mito-copies.txt -o m-mito-copies.html	m-mito-copies.txt,m-mito-copies.html	bytes	PYTHON_IMAGE
+report-render	m-mito-failed	gen:report-corpus.sh	--summary m-mito-failed.json -o m-mito-failed.txt -o m-mito-failed.html	m-mito-failed.txt,m-mito-failed.html	bytes	PYTHON_IMAGE
 # report-render, port-report-optin: the opt-in step sections in each state and down each branch of their lines.
 report-render	m-optin-ok	gen:report-corpus.sh	--summary m-optin-ok.json -o m-optin-ok.txt -o m-optin-ok.html	m-optin-ok.txt,m-optin-ok.html	bytes	PYTHON_IMAGE
 report-render	m-optin-stale	gen:report-corpus.sh	--summary m-optin-stale.json -o m-optin-stale.txt -o m-optin-stale.html	m-optin-stale.txt,m-optin-stale.html	bytes	PYTHON_IMAGE
@@ -1286,3 +1296,42 @@ report-render	m-optin-since	gen:report-corpus.sh	--summary m-optin-since.json -o
 report-render	m-optin-empty	gen:report-corpus.sh	--summary m-optin-empty.json -o m-optin-empty.txt -o m-optin-empty.html	m-optin-empty.txt,m-optin-empty.html	bytes	PYTHON_IMAGE
 report-render	m-optin-partial	gen:report-corpus.sh	--summary m-optin-partial.json -o m-optin-partial.txt -o m-optin-partial.html	m-optin-partial.txt,m-optin-partial.html	bytes	PYTHON_IMAGE
 report-render	m-optin-viral-na	gen:report-corpus.sh	--summary m-optin-viral-na.json -o m-optin-viral-na.txt -o m-optin-viral-na.html	m-optin-viral-na.txt,m-optin-viral-na.html	bytes	PYTHON_IMAGE
+report-render	m-couple	gen:report-corpus.sh	--summary m-couple.json -o m-couple.txt -o m-couple.html	m-couple.txt,m-couple.html	bytes	PYTHON_IMAGE
+report-render	m-couple-empty	gen:report-corpus.sh	--summary m-couple-empty.json -o m-couple-empty.txt -o m-couple-empty.html	m-couple-empty.txt,m-couple-empty.html	bytes	PYTHON_IMAGE
+report-render	m-clinical-stale	gen:report-corpus.sh	--summary m-clinical-stale.json -o m-clinical-stale.txt -o m-clinical-stale.html	m-clinical-stale.txt,m-clinical-stale.html	bytes	PYTHON_IMAGE
+report-render	m-clinical-failed	gen:report-corpus.sh	--summary m-clinical-failed.json -o m-clinical-failed.txt -o m-clinical-failed.html	m-clinical-failed.txt,m-clinical-failed.html	bytes	PYTHON_IMAGE
+report-render	m-clinical-unreadable	gen:report-corpus.sh	--summary m-clinical-unreadable.json -o m-clinical-unreadable.txt -o m-clinical-unreadable.html	m-clinical-unreadable.txt,m-clinical-unreadable.html	bytes	PYTHON_IMAGE
+report-render	m-clinvar-many	gen:report-corpus.sh	--summary m-clinvar-many.json -o m-clinvar-many.txt -o m-clinvar-many.html	m-clinvar-many.txt,m-clinvar-many.html	bytes	PYTHON_IMAGE
+report-render	m-clinvar-none	gen:report-corpus.sh	--summary m-clinvar-none.json -o m-clinvar-none.txt -o m-clinvar-none.html	m-clinvar-none.txt,m-clinvar-none.html	bytes	PYTHON_IMAGE
+report-render	m-clinvar-freq-note	gen:report-corpus.sh	--summary m-clinvar-freq-note.json -o m-clinvar-freq-note.txt -o m-clinvar-freq-note.html	m-clinvar-freq-note.txt,m-clinvar-freq-note.html	bytes	PYTHON_IMAGE
+report-render	m-cpsr-noown	gen:report-corpus.sh	--summary m-cpsr-noown.json -o m-cpsr-noown.txt -o m-cpsr-noown.html	m-cpsr-noown.txt,m-cpsr-noown.html	bytes	PYTHON_IMAGE
+report-render	m-cpsr-none	gen:report-corpus.sh	--summary m-cpsr-none.json -o m-cpsr-none.txt -o m-cpsr-none.html	m-cpsr-none.txt,m-cpsr-none.html	bytes	PYTHON_IMAGE
+report-render	m-slivar-phase	gen:report-corpus.sh	--summary m-slivar-phase.json -o m-slivar-phase.txt -o m-slivar-phase.html	m-slivar-phase.txt,m-slivar-phase.html	bytes	PYTHON_IMAGE
+report-render	m-slivar-unphased	gen:report-corpus.sh	--summary m-slivar-unphased.json -o m-slivar-unphased.txt -o m-slivar-unphased.html	m-slivar-unphased.txt,m-slivar-unphased.html	bytes	PYTHON_IMAGE
+report-render	m-sf-notes	gen:report-corpus.sh	--summary m-sf-notes.json -o m-sf-notes.txt -o m-sf-notes.html	m-sf-notes.txt,m-sf-notes.html	bytes	PYTHON_IMAGE
+report-render	m-clinical-escape	gen:report-corpus.sh	--summary m-clinical-escape.json -o m-clinical-escape.txt -o m-clinical-escape.html	m-clinical-escape.txt,m-clinical-escape.html	bytes	PYTHON_IMAGE
+report-render	m-since-clinical	gen:report-corpus.sh	--summary m-since-clinical.json -o m-since-clinical.txt -o m-since-clinical.html	m-since-clinical.txt,m-since-clinical.html	bytes	PYTHON_IMAGE
+# report-render, the ancestry chapter and the PRS card: the a-* summaries of gen/report-corpus.sh. a-numbers is text-only:
+# the Python's HTML report cannot render a number where the summary writes text.
+report-render	a-full	gen:report-corpus.sh	--summary a-full.json -o a-full.txt -o a-full.html	a-full.txt,a-full.html	bytes	PYTHON_IMAGE
+report-render	a-stale	gen:report-corpus.sh	--summary a-stale.json -o a-stale.txt -o a-stale.html	a-stale.txt,a-stale.html	bytes	PYTHON_IMAGE
+report-render	a-failed	gen:report-corpus.sh	--summary a-failed.json -o a-failed.txt -o a-failed.html	a-failed.txt,a-failed.html	bytes	PYTHON_IMAGE
+report-render	a-unreadable	gen:report-corpus.sh	--summary a-unreadable.json -o a-unreadable.txt -o a-unreadable.html	a-unreadable.txt,a-unreadable.html	bytes	PYTHON_IMAGE
+report-render	a-missing	gen:report-corpus.sh	--summary a-missing.json -o a-missing.txt -o a-missing.html	a-missing.txt,a-missing.html	bytes	PYTHON_IMAGE
+report-render	a-partial	gen:report-corpus.sh	--summary a-partial.json -o a-partial.txt -o a-partial.html	a-partial.txt,a-partial.html	bytes	PYTHON_IMAGE
+report-render	a-escape	gen:report-corpus.sh	--summary a-escape.json -o a-escape.txt -o a-escape.html	a-escape.txt,a-escape.html	bytes	PYTHON_IMAGE
+report-render	a-painting	gen:report-corpus.sh	--summary a-painting.json -o a-painting.txt -o a-painting.html	a-painting.txt,a-painting.html	bytes	PYTHON_IMAGE
+report-render	a-no-painting	gen:report-corpus.sh	--summary a-no-painting.json -o a-no-painting.txt -o a-no-painting.html	a-no-painting.txt,a-no-painting.html	bytes	PYTHON_IMAGE
+report-render	a-prs-raw	gen:report-corpus.sh	--summary a-prs-raw.json -o a-prs-raw.txt -o a-prs-raw.html	a-prs-raw.txt,a-prs-raw.html	bytes	PYTHON_IMAGE
+report-render	a-prs-sex	gen:report-corpus.sh	--summary a-prs-sex.json -o a-prs-sex.txt -o a-prs-sex.html	a-prs-sex.txt,a-prs-sex.html	bytes	PYTHON_IMAGE
+report-render	a-y-calls	gen:report-corpus.sh	--summary a-y-calls.json -o a-y-calls.txt -o a-y-calls.html	a-y-calls.txt,a-y-calls.html	bytes	PYTHON_IMAGE
+report-render	a-since	gen:report-corpus.sh	--summary a-since.json -o a-since.txt -o a-since.html	a-since.txt,a-since.html	bytes	PYTHON_IMAGE
+report-render	a-numbers	gen:report-corpus.sh	--summary a-numbers.json -o a-numbers.txt	a-numbers.txt	bytes	PYTHON_IMAGE
+# report-render, the traits, copy-number and repeat sections: every branch of each in each state (m-genome-*).
+report-render	m-genome-ok	gen:report-corpus.sh	--summary m-genome-ok.json -o m-genome-ok.txt -o m-genome-ok.html	m-genome-ok.txt,m-genome-ok.html	bytes	PYTHON_IMAGE
+report-render	m-genome-stale	gen:report-corpus.sh	--summary m-genome-stale.json -o m-genome-stale.txt -o m-genome-stale.html	m-genome-stale.txt,m-genome-stale.html	bytes	PYTHON_IMAGE
+report-render	m-genome-failed	gen:report-corpus.sh	--summary m-genome-failed.json -o m-genome-failed.txt -o m-genome-failed.html	m-genome-failed.txt,m-genome-failed.html	bytes	PYTHON_IMAGE
+report-render	m-genome-other	gen:report-corpus.sh	--summary m-genome-other.json -o m-genome-other.txt -o m-genome-other.html	m-genome-other.txt,m-genome-other.html	bytes	PYTHON_IMAGE
+report-render	m-genome-stranger	gen:report-corpus.sh	--summary m-genome-stranger.json -o m-genome-stranger.txt -o m-genome-stranger.html	m-genome-stranger.txt,m-genome-stranger.html	bytes	PYTHON_IMAGE
+report-render	m-genome-outdated	gen:report-corpus.sh	--summary m-genome-outdated.json -o m-genome-outdated.txt -o m-genome-outdated.html	m-genome-outdated.txt,m-genome-outdated.html	bytes	PYTHON_IMAGE
+report-render	m-genome-no-stranger	gen:report-corpus.sh	--summary m-genome-no-stranger.json -o m-genome-no-stranger.txt -o m-genome-no-stranger.html	m-genome-no-stranger.txt,m-genome-no-stranger.html	bytes	PYTHON_IMAGE

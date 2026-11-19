@@ -73,10 +73,7 @@ Checks:
      the card is absent when step 41 did not run; and neither the reports nor
      og bloodtype say anything about transfusion or donation (the
      table is information).
-  11. the traits card (step 42): both reports carry the not-a-diagnosis
-      note; a traits table older than the latest run-all.sh run, whose step
-      42 was skipped in it, is shown as stale in both reports, and one newer
-      than the run is not.
+  11. the traits card (step 42): rust/og/tests/genome_traits_report.rs.
  12. the raw-data export (step 40): both reports show how many chip sites
      got a genotype, the '--' reasons, the two files and the privacy note;
      without the step's table there is no card and no text section.
@@ -86,7 +83,7 @@ Checks:
      without the table there is no card and no text section.
 
  14. the chapters (bin/render_report.py CHAPTERS), on DEMO-001, the invented
-     sample of tests/demo/make_demo_sample.py: no http(s) src or href other
+     sample og dev demo-sample writes: no http(s) src or href other
      than the loopback viewer and the links marked as opening a website;
      the ClinVar section shows no green badge; each text chapter holds its
      sections; the card titles are the golden list of the report before the
@@ -105,11 +102,9 @@ Checks:
 
 Run: python3 tests/test_render_report.py
 """
-import contextlib
 import glob
 import gzip
 import importlib.util
-import io
 import json
 import os
 import re
@@ -254,7 +249,7 @@ def pgsc_results(d, adjusted):
 
 # The card titles of DEMO-001's HTML report before the chapters (check 14):
 # the chapters move cards, they never add, drop or rename one. The CPIC gene card is there since the
-# demo sample carries a CPIC table (make_demo_sample.py, for the live demo's medicines widget).
+# demo sample carries a CPIC table (og dev demo-sample, for the live demo's medicines widget).
 GOLDEN_TITLES = sorted([
     "Quality Control", "Mosaic Loss of Chromosome Y or X", "Variant Calling", "ClinVar Screening",
     "Carrier List (this sample)", "Couple Carrier Screen", "Pharmacogenomics", "pypgx Pharmacogenomics",
@@ -290,15 +285,11 @@ def text_chapter_order(txt):
 
 def chapter_checks(work):
     """Check 14 (the docstring)."""
-    sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
-    import make_demo_sample
+    from og_binary import og_binary
     g = f"{work}/demo"
     os.makedirs(g)
-    # Step 42's writer is left out: these checks are about the layout, and the
-    # Traits card has its title whether step 42 ran or not.
-    make_demo_sample.traits = lambda d: None
-    with contextlib.redirect_stdout(io.StringIO()):
-        make_demo_sample.main(["--genome-dir", g, "--records", "20000"])
+    subprocess.run([og_binary(), "dev", "demo-sample", "--genome-dir", g, "--records", "20000", "--repo", REPO],
+                   check=True, stdout=subprocess.DEVNULL)
     summ = collect_summary.collect("DEMO-001", f"{g}/DEMO-001")
     txt, html = render_report.text_report(summ), render_report.html_report(summ)
 
@@ -859,6 +850,7 @@ def main():
               and "<td>PMS2</td><td>2</td>" in card_p, card_p)
         # 12. raw-data export card
         d = f"{work}/consumer/S"
+        os.makedirs(d)
         summ = collect_summary.collect("S", d)
         txt, html = render_report.text_report(summ), render_report.html_report(summ)
         check("raw-data export: no card and no text section without the step's table",
@@ -903,33 +895,7 @@ def main():
         check("blood groups: nothing about transfusion or donation", not said, said)
         check("control: the wording check finds the word", bool(words.search("for a transfusion")))
 
-        # 11. traits card
-        import time
-        d = f"{work}/traits/S"
-        put(f"{d}/traits/S_traits.tsv", "")
-        from test_traits_report import traits_tables
-        g = os.path.join(work, "traits_empty.tsv")
-        put(g, "")
-        traits_tables(g, f"{d}/traits/S_traits.tsv", os.path.join(work, "traits_rules.tsv"))
-        summ = collect_summary.collect("S", d)
-        txt, html = render_report.text_report(summ), render_report.html_report(summ)
-        check("traits: both reports say a reading is not a diagnosis",
-              render_report.TRAITS_NOTE in txt and render_report.TRAITS_NOTE in html, txt)
-        check("traits: with no reads anywhere every row is not read, and the APOE line too",
-              summ["sections"]["traits"]["data"]["called"] == 0
-              and summ["sections"]["traits"]["data"]["apoe"][-1]["status"] == "not_covered")
-        old = time.time() - 86400
-        os.utime(f"{d}/traits/S_traits.tsv", (old, old))
-        put(f"{d}/logs/run_status.tsv", f"meta\tstarted_epoch\t{time.time() - 3600}\nstep\t42\tskipped (no gVCF: S/vcf/S.g.vcf.gz)\n")
-        summ = collect_summary.collect("S", d)
-        txt, html = render_report.text_report(summ), render_report.html_report(summ)
-        card_tr = html.split("<h2>Traits</h2>", 1)[-1].split("<h2>", 1)[0]
-        check("traits: older than a run that skipped step 42 -> stale in both reports",
-              summ["sections"]["traits"]["state"] == "stale" and "[STALE: from an earlier run" in txt
-              and 'class="stale">STALE: from an earlier run' in card_tr, card_tr)
-        os.utime(f"{d}/traits/S_traits.tsv", None)
-        check("traits: newer than the run -> not stale",
-              collect_summary.collect("S", d)["sections"]["traits"]["state"] == "ok")
+        # 11. traits card: rust/og/tests/genome_traits_report.rs
 
         # 13. couple card (step 39)
         with open(os.path.join(REPO, "assets", "carrier_genes.tsv")) as f:

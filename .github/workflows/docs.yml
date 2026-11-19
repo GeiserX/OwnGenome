@@ -30,8 +30,9 @@ on:
       - 'bin/**'
       - 'tests/demo/**'
       - 'tests/fixtures/live/**'
-      # og builds the demo's Figure 1, the genome map (og map build), its CPIC
-      # table (og pgx cpic-report) and its mosaic rows (og qc sex-loss).
+      # og writes the demo sample itself (og dev demo-sample), with its CPIC
+      # table (og pgx cpic-report) and its mosaic rows (og qc sex-loss), and
+      # builds the demo's Figure 1, the genome map (og map build).
       - 'rust/**'
       - 'tests/fixtures/map/**'
       - 'tests/og_binary.py'
@@ -85,10 +86,10 @@ jobs:
       - name: Build
         run: python -m zensical build --clean --strict
 
-      # og (rust/, docs/rust.md): the demo sample builder runs step 27's
-      # parser, og pgx cpic-report (tests/og_binary.py reads OG), writes the
-      # genome map's documents, og map build, and runs step 33's og qc sex-loss
-      # for the mosaic rows.
+      # og (rust/, docs/rust.md): og dev demo-sample writes the demo sample,
+      # running the og verbs of the steps it stands in for (step 27's
+      # og pgx cpic-report, step 33's og qc sex-loss and the rest), and
+      # og map build writes the genome map's documents.
       - name: Install the toolchain rust/rust-toolchain.toml pins
         working-directory: rust
         run: |
