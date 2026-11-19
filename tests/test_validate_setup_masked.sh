@@ -381,6 +381,8 @@ bam_header() {  # bam_header TABLE PG_REF [no-m5]: SO:coordinate, @SQ lines, a m
 }
 # bam NAME TABLE HEADER: verdicts of check_bam_reference then
 # check_bam_masked_reference, REF_FASTA NAME.fasta with TABLE as .fai and .dict.
+# They run under validate-setup.sh's own set -e and pipefail, so a pipe that
+# dies there ends the subshell here too, before its verdicts.
 bam() {
   local d="${WORK}/bam" ref
   rm -rf "$d"; mkdir -p "$d"
@@ -394,6 +396,7 @@ bam() {
     warn() { echo "WARN $1"; }
     # shellcheck disable=SC2329
     fail() { echo "FAIL $1"; }
+    set -eo pipefail
     # shellcheck disable=SC1091
     . "${WORK}/bases.sh"
     export REF_FASTA=$ref REF_DICT="${d}/$1.dict"
@@ -417,6 +420,15 @@ expect_bam "masked REF_FASTA, a BAM on the masked bases whose @PG names a FASTA 
   "$MSK" "$MPAIR" "$(bam_header "$MPAIR" /data/renamed)"
 expect_bam "masked REF_FASTA, a BAM without M5 on the default index: the @PG rule as before (refused)" OK,OK,FAIL \
   "$MSK" "$MPAIR" "$(bam_header "$MPAIR" "$STOCK" no-m5)" "REF_FASTA is the masked reference, but this BAM was aligned to the default one"
+# A header far larger than a pipe buffer (30,000 sequences, about 1.5 MB) whose
+# first M5 differs. The M5 awk must read it to the end: one that stopped at the
+# difference ended printf with SIGPIPE, and set -e then stopped the check after
+# its [OK] line, with no [FAIL].
+BIG=$(awk 'BEGIN { for (i = 1; i <= 30000; i++) printf "big%d\t1000\t%032x\n", i, i }')
+BIGBAM=$(awk -F'\t' -v OFS='\t' 'NR == 1 { $3 = "ffffffffffffffffffffffffffffffff" } { print }' <<< "$BIG")
+expect_bam "a 1.5 MB header whose first M5 differs: the check reads it all and fails" OK,FAIL,OK \
+  big "$BIG" "$(bam_header "$BIGBAM" "$STOCK")" \
+  "First difference: sequence 1 \(big1\) has MD5 f{32} in the BAM"
 
 # validate-setup.sh runs the check on the sample BAM's header, right after the @SQ check.
 # shellcheck disable=SC2016  # the $ is the script's text, not this shell's

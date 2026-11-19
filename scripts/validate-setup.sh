@@ -52,6 +52,9 @@ MISSING_IMAGES=()
 # difference fails: the BAM was aligned to other bases. BAM_M5 tells
 # check_bam_masked_reference what was found: "match" when every @SQ line has
 # an M5 and each is REF_DICT's, "differ" on a difference, empty otherwise.
+# The M5 awk reads the whole header even after the first difference: leaving
+# early would end printf with SIGPIPE on a large header, and under pipefail
+# and set -e that would stop this script before the [FAIL] line.
 check_bam_reference() {
   local header=$1 fai="${REF_FASTA}.fai" diff so bam m5
   BAM_M5=""
@@ -86,6 +89,7 @@ check_bam_reference() {
             return ""
           }
           FNR == 1 { file++ }
+          found { next }
           file == 1 && /^@SQ/ { s = tag("SN"); r = tolower(tag("M5")); if (s != "" && r != "") ref[s] = r; next }
           file == 2 && /^@SQ/ {
             n++; s = tag("SN"); b = tolower(tag("M5"))
@@ -93,7 +97,7 @@ check_bam_reference() {
             if (b != ref[s]) {
               printf "differ:sequence %d (%s) has MD5 %s in the BAM and %s in the reference dictionary", n, s, b, ref[s]
               found = 1
-              exit
+              next
             }
             hit++
           }
