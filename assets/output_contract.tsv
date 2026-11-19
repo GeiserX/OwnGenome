@@ -1,7 +1,8 @@
 # assets/output_contract.tsv: what OwnGenome 1.0 keeps stable (docs/output-contract.md).
 # og dev contract reads it (rust/crates/og-dev/src/contract.rs): --static in Guard's rust job (rust/crates/og-dev/tests/repo.rs)
-# checks every row against the code, and the e2e case output-contract-1-hg002 checks the files the
-# HG002 run wrote. Columns, tab-separated:
+# checks every row against the code, --baseline in the same job checks that every stable row of the
+# newest 1.x release is still here and still stable, and the e2e case output-contract-1-hg002 checks
+# the files the HG002 run wrote. Columns, tab-separated:
 #   kind       file, param (a nextflow_schema.json param), tool (a --tools name in main.nf) or
 #              switch (a run-all.sh switch, its SWITCHES list)
 #   name       file: its path under the results folder (GENOME_DIR for the bash steps and run-all.sh,
