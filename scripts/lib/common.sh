@@ -24,7 +24,7 @@
 # wrote_vcf, atomic_out, fetch, data_file / install_data_file, install_vep_cache,
 # lock_acquire / lock_release, pipeline_images, pinned_tag / tag_pinned_image /
 # pinned_tag_present, image_is_dangling,
-# scatter_beds and run_parallel, FASTQ_RECORDS_AWK / fastp_total_reads /
+# scatter_beds, scatter_jobs and run_parallel, FASTQ_RECORDS_AWK / fastp_total_reads /
 # read_count_mode / read_count_check, input_stamp / trimmed_reads_current /
 # trimmed_reads_usable,
 # described where they are
@@ -899,7 +899,11 @@ image_is_dangling() {
 # REF_FASTA's .fai one unit each, and every other contig in one last unit.
 # With INTERVALS (space-separated contigs or contig:start-end regions, 1-based
 # inclusive): one unit per region. SCATTER=false puts every region in one unit,
-# so the caller runs once over all of them.
+# so the caller runs once over all of them. A region must lie on its contig
+# (start 1 or more, end at most the contig's length in the .fai, start not
+# after end), and no two regions may overlap: a base in two units would be
+# called twice and its record joined twice. Any of these stops the step
+# before a caller starts.
 scatter_beds() {
   local dir=$1 intervals=${2:-} fai="${REF_FASTA}.fai" r
   rm -rf "$dir"
@@ -916,7 +920,10 @@ scatter_beds() {
       if (match(r, /:[0-9]+-[0-9]+$/)) { c = substr(r, 1, RSTART - 1); split(substr(r, RSTART + 1), p, "-"); s = p[1] - 1; e = p[2] }
       if (!(c in len)) { print "ERROR: contig " c " (INTERVALS) is not in the reference" > "/dev/stderr"; bad = 1; exit 1 }
       if (e == "") e = len[c]
-      k++; rk[k] = rank[c]; st[k] = s + 0; reg[k] = c "\t" s "\t" e }
+      if (s < 0 || e + 0 <= s || e + 0 > len[c]) {
+        print "ERROR: region " $2 " (INTERVALS) is not on " c " (1-" len[c] "): a start of 1 or more, an end no larger than the contig, and the start not after the end" > "/dev/stderr"
+        bad = 1; exit 1 }
+      k++; rk[k] = rank[c]; st[k] = s + 0; en[k] = e + 0; txt[k] = $2; reg[k] = c "\t" s "\t" e }
     END {
       if (bad) exit 1
       if (given) {
@@ -927,7 +934,13 @@ scatter_beds() {
             t = rk[j]; rk[j] = rk[j - 1]; rk[j - 1] = t
             t = st[j]; st[j] = st[j - 1]; st[j - 1] = t
             t = reg[j]; reg[j] = reg[j - 1]; reg[j - 1] = t
+            t = en[j]; en[j] = en[j - 1]; en[j - 1] = t
+            t = txt[j]; txt[j] = txt[j - 1]; txt[j - 1] = t
           }
+        for (i = 2; i <= k; i++)
+          if (rk[i] == rk[i - 1] && st[i] < en[i - 1]) {
+            print "ERROR: regions " txt[i - 1] " and " txt[i] " (INTERVALS) overlap: the bases they share would be called twice" > "/dev/stderr"
+            exit 1 }
         for (i = 1; i <= k; i++) { f = unit(); print reg[i] >> f; close(f) }
         exit 0
       }
@@ -936,6 +949,29 @@ scatter_beds() {
       for (i = 1; i <= n; i++) if (order[i] !~ /^chr([0-9]+|X|Y|M)$/) print order[i] "\t0\t" len[order[i]] >> rest
     }' "$fai" - || return 1
   ls "$dir"/*.bed
+}
+
+# scatter_jobs GB: how many units of a scattered caller run at once, when
+# each unit's container may use GB gigabytes. SCATTER_JOBS when it is set.
+# Else THREADS/2 (at least 1), lowered to the number of units whose GB fit
+# in the memory the container engine has (`info`'s MemTotal, to the nearest
+# GB; at least 1), with a NOTE on stderr that says so. Four 8 GB units do
+# not fit a 16 GB engine, and the kernel kills a container that runs out.
+# When the engine does not say, THREADS alone counts.
+scatter_jobs() {
+  local gb=$1 jobs mem have fit
+  if [ -n "${SCATTER_JOBS:-}" ]; then echo "$SCATTER_JOBS"; return 0; fi
+  jobs=$(( THREADS / 2 > 1 ? THREADS / 2 : 1 ))
+  mem=$("$CONTAINER_ENGINE" info --format '{{.MemTotal}}' 2>/dev/null || true)
+  if [[ "$mem" =~ ^[0-9]+$ ]] && [ "$mem" -gt 0 ]; then
+    have=$(( (mem + 536870912) / 1073741824 ))
+    fit=$(( have / gb > 1 ? have / gb : 1 ))
+    if [ "$fit" -lt "$jobs" ]; then
+      echo "NOTE: ${fit} unit(s) at a time, not ${jobs}: ${CONTAINER_ENGINE} has ${have} GB and each unit may use ${gb} GB. SCATTER_JOBS sets the number." >&2
+      jobs=$fit
+    fi
+  fi
+  echo "$jobs"
 }
 
 # run_parallel MAX FUNC ARG...: run `FUNC ARG` for every ARG in the
