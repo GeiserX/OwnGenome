@@ -153,14 +153,13 @@ printf '%s\n' rust/og/src/main.rs > "${WORK}/changed.txt"
 if [ -s "${WORK}/rust.txt" ] && cmp -s "${WORK}/og.txt" "${WORK}/rust.txt"; then
   ok "the real table: a Rust change runs the $(wc -l < "${WORK}/rust.txt" | tr -d ' ') cases a bin/og change runs"
 else bad "the real table: a Rust change picks $(wc -l < "${WORK}/rust.txt" | tr -d ' ') cases, a bin/og change $(wc -l < "${WORK}/og.txt" | tr -d ' '): $(diff "${WORK}/og.txt" "${WORK}/rust.txt" | grep '^[<>]' | paste -sd' ' -)"; fi
-for c in output-contract-1-hg002 traits-panel-1 prs-2-ancestry bash-step-11-roh vendor-vcf-intake-5-docs; do
+for c in output-contract-1-hg002 traits-panel-1 prs-2-ancestry bash-step-11-roh vendor-vcf-intake-5-docs sv-mito-telomere-steps-1-sv-merge; do
   if grep -qx "$c" "${WORK}/rust.txt"; then ok "the real table runs ${c}, which runs og, on a Rust change"
   else bad "the real table does not run ${c} on a Rust change, though it runs og"; fi
 done
-for c in alignment-markdup-gvcf-sex-4-bwamem2 sv-mito-telomere-steps-1-sv-merge; do
-  if grep -qx "$c" "${WORK}/rust.txt"; then bad "the real table runs ${c} on a Rust change, though it runs no og"
-  else ok "the real table leaves out ${c}, which runs no og, on a Rust change"; fi
-done
+c=alignment-markdup-gvcf-sex-4-bwamem2
+if grep -qx "$c" "${WORK}/rust.txt"; then bad "the real table runs ${c} on a Rust change, though it runs no og"
+else ok "the real table leaves out ${c}, which runs no og, on a Rust change"; fi
 
 printf '%s\n' tests/fixtures/consumer_export/sites.tsv.gz > "${WORK}/changed.txt"
 if "$S" select "${WORK}/changed.txt" 2> /dev/null | grep -qx consumer-export-1; then ok "the real table runs consumer-export-1 when its fixture changes"

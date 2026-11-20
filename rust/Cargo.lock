@@ -846,10 +846,15 @@ dependencies = [
  "flate2",
  "indexmap",
  "jiff",
+ "og-bloodtype",
  "og-browser",
+ "og-io",
  "og-nf",
+ "og-pedigree",
+ "og-render",
  "og-runlog",
  "pycompat",
+ "regex",
 ]
 
 [[package]]

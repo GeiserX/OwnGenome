@@ -23,7 +23,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-fresh` | `og dev freshness`: the upstream lookups of the monthly freshness issue, each answer typed, HTTP through the host's `curl` |
 | `crates/og-recheck` | `og recheck`: which of a finished sample's results a newer ClinVar or catalog would change, `--rerun`, `--affected`, `--launch-dir` |
 | `crates/og-render` | `og report render`, `og report index`, `og report charts`: the reports from summary.json (render: the frame, QC and variants so far, no caller yet; charts: ported, no caller yet; index not ported yet) |
-| `crates/og-live` | `og live serve`, `og live results`, `og live family`, `og live demo`, `og view serve`: the live site (not ported yet) |
+| `crates/og-live` | `og live serve`, `og live results`, `og live family`, `og live demo`, `og view serve`: the live site (`og live family` and `og view serve` ported; serve, results and demo not ported yet) |
 | `crates/og-couple` | `og couple screen`, `og couple genes`: step 39's couple screen and its carrier list |
 | `crates/og-admix` | what the fine-ancestry engines share: the panel's haplotypes, the genetic map, `model/ref.geno`, a seeded RNG and the admixed-genome simulator of `og ancestry-fine simulate`; our own painting and projection (not ported yet) |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |
