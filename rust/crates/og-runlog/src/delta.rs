@@ -12,9 +12,12 @@
 //!   the CYP2D6 consensus; PRS scores added or dropped, and a percentile
 //!   that moved by 5 points or more, or appeared or went away.
 //!
-//! Each result change names the changed inputs that feed its section, or
-//! says that the inputs it tracks are the same. The last database re-check
-//! (`recheck/state.json`) is added when there is one.
+//! Each result change names the changed inputs that feed its section as a
+//! guess ("likely from changed inputs: ..."), or says that the inputs it
+//! tracks are the same. The delta knows which inputs changed and which
+//! inputs feed a section, not that one of them caused the change, so a
+//! reason that names inputs always starts with "likely". The last database
+//! re-check (`recheck/state.json`) is added when there is one.
 
 use crate::files::read_manifest;
 use crate::util::{Obj, abspath, basename, normpath, py_eq, s};
@@ -205,7 +208,7 @@ fn why_for(area: &str, inputs: &[Obj]) -> String {
             )
         })
         .collect();
-    format!("changed inputs: {}", parts.join("; "))
+    format!("likely from changed inputs: {}", parts.join("; "))
 }
 
 /// An empty object, for a missing section.

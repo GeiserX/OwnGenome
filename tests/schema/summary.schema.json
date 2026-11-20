@@ -614,7 +614,50 @@
            "type": "integer",
            "minimum": 0
           },
+          "heteroplasmic_sites": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "pos",
+             "ref",
+             "alt",
+             "af"
+            ],
+            "properties": {
+             "pos": {
+              "type": "integer"
+             },
+             "ref": {
+              "type": "string"
+             },
+             "alt": {
+              "type": "string"
+             },
+             "af": {
+              "type": "number"
+             },
+             "origin_edge": {
+              "type": "boolean"
+             },
+             "low_af": {
+              "type": "boolean"
+             }
+            }
+           }
+          },
+          "heteroplasmic_origin_edge": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "heteroplasmic_low_af": {
+           "type": "integer",
+           "minimum": 0
+          },
           "heteroplasmy_floor": {
+           "type": "number"
+          },
+          "low_af_ceiling": {
            "type": "number"
           },
           "polyc_heteroplasmic": {
@@ -636,6 +679,12 @@
            }
           },
           "polyc_tracts": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "origin_edge_regions": {
            "type": "array",
            "items": {
             "type": "string"
@@ -744,6 +793,12 @@
                 ]
                },
                "polyc": {
+                "type": "boolean"
+               },
+               "origin_edge": {
+                "type": "boolean"
+               },
+               "low_af": {
                 "type": "boolean"
                }
               }

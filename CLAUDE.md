@@ -21,8 +21,11 @@ GENOME_DIR=/path/to/data ./scripts/run-all.sh sample_name male
 # Run individual step
 GENOME_DIR=/path/to/data ./scripts/03-deepvariant.sh sample_name
 
-# Lint
-shellcheck scripts/*.sh
+# Lint: CI checks every tracked *.sh and every tracked file with a sh or
+# bash shebang (bin/og, scripts/ci/fake-docker/*, tests/e2e/bin/docker...);
+# a finding not in tests/shellcheck-baseline.txt fails. This command covers
+# the *.sh files only and also prints the findings the baseline lists.
+git ls-files -z '*.sh' | xargs -0 shellcheck
 ```
 
 Requirements: 16+ cores recommended, 500 GB disk per sample, Docker, bash 4.4+; Java 17+ and Nextflow for `run-all.sh`. Runs on Linux, macOS, WSL2.
@@ -33,7 +36,7 @@ After modifying any script, verify:
 1. No personal paths or identifiers remain — grep `scripts/` and `docs/` for your own home paths, server hostnames, and names (e.g. `grep -ri '/mnt/user\|/Users/\|/home/' scripts/ docs/`)
 2. All scripts use `GENOME_DIR` not `GENOMA_DIR`
 3. Docker mount is `:/genome` not `:/genoma`
-4. `shellcheck` passes on all scripts
+4. `shellcheck` reports nothing new on the shell scripts you added or changed (the old findings are listed in `tests/shellcheck-baseline.txt`; never add to it)
 
 ## Architecture
 
@@ -167,8 +170,9 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - **Labels**: `assets/pgs_scores.tsv` holds each PGS ID with the catalog's trait; `scripts/ci/check-pgs-labels.sh` checks them against the PGS Catalog.
 
 ### Chip Data Conversion
-- **NEVER use plink 1.9 for single-sample chip-to-VCF.** plink's `.bim` format encodes monomorphic sites with one allele. For single-sample data, ALL homozygous positions are monomorphic. `--ref-from-fa` cannot fix these. Result: all hom-ALT genotypes silently become hom-REF.
+- **NEVER use plink 1.9 for single-sample chip-to-VCF.** A single-sample import writes monomorphic sites with the second allele missing. For single-sample data, ALL homozygous positions are monomorphic. `--ref-from-fa` does not fill in a missing allele. Result: all hom-ALT genotypes silently become hom-REF.
 - **Use `bcftools convert --tsv2vcf -f <reference.fa>`** instead.
+- **chip-to-vcf.sh checks the genome build, never trusts the vendor.** It stops when a header line names a build other than 37 and not 37 too, or when more than 10% of at least 200 heterozygous calls miss the GRCh37 reference base (positions from another build).
 - **MyHeritage CSV needs pre-conversion** to TSV format.
 - **hg19 VCF needs chr prefix** before liftover — use `bcftools annotate --rename-chrs`.
 - **PharmCAT on chip data**: Misses CYP2C19 (25 positions), VKORC1 (1 position), miscalls CYP3A5.

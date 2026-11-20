@@ -29,6 +29,16 @@ const USAGE: &str = "usage: og pgx cpic-report --sample S --report R.json --outd
        og pgx step36-outside --report R.json
 ";
 
+/// What `--help` adds to the usage: each verb in one line.
+const VERBS: &str = "
+  cpic-report     writes DIR/S_phenotypes.tsv and DIR/S_cpic_recommendations.txt from
+                  PharmCAT's report, and with --pypgx and --comparison the PharmCAT/pypgx
+                  comparison; --medications, --consensus and --contraindications add sections
+  step36-outside  prints the step 36 genes (CYP2D6, HLA-A, HLA-B) the report calls from an
+                  outside call, one per line
+  An optional option given as an empty string counts as not given.
+";
+
 /// The options of `cpic-report`. An option given as an empty string counts
 /// as not given, as the Python's truth tests read it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -82,6 +92,15 @@ fn options(args: &[String], names: &[&str]) -> Result<Vec<Option<String>>, Strin
 
 /// `og pgx <verb> [args]`: the exit code.
 pub fn main(args: &[String]) -> u8 {
+    // A help word after `--` is an argument, as in og's own help rule.
+    if args
+        .iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "-h" || a == "--help")
+    {
+        print!("{USAGE}{VERBS}");
+        return 0;
+    }
     match args.first().map(String::as_str) {
         Some("cpic-report") => {
             const NAMES: [&str; 11] = [

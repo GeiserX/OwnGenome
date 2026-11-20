@@ -288,20 +288,25 @@ pub struct Span<'a> {
 /// The records of `path` that overlap `span` (a reference block by its
 /// END, a deletion by its REF), in file order: through the `.tbi` or `.csi`
 /// beside the file when there is one, else by streaming the whole file,
-/// which `note` is told.
+/// which `note` is told. An index older than the file that does not list
+/// the region's chromosome is not trusted either: the file may have gained
+/// that chromosome after the index was built.
 pub fn read(path: &str, span: Span, note: &mut dyn Write) -> Result<Region, Error> {
     {
-        let has_index = [".tbi", ".csi"]
+        let index = [".tbi", ".csi"]
             .iter()
-            .any(|x| Path::new(&format!("{path}{x}")).is_file());
-        if !has_index {
-            let _ = writeln!(
-                note,
-                "NOTE: {path} has no .tbi index; reading the whole file (bcftools index -t makes this fast)."
-            );
-        } else {
-            match read_indexed(path, span) {
-                Ok(r) => return Ok(r),
+            .map(|x| format!("{path}{x}"))
+            .find(|p| Path::new(p).is_file());
+        if let Some(index) = index.as_deref() {
+            match read_indexed(path, index, span, older(index, path)) {
+                Ok(Some(r)) => return Ok(r),
+                Ok(None) => {
+                    let _ = writeln!(
+                        note,
+                        "NOTE: the index {index} is older than {path} and does not list {}; reading the whole file (bcftools index -f -t rebuilds it).",
+                        crate::query::contig_name(span.chrom)
+                    );
+                }
                 Err(e) => {
                     let _ = writeln!(
                         note,
@@ -313,9 +318,21 @@ pub fn read(path: &str, span: Span, note: &mut dyn Write) -> Result<Region, Erro
                     );
                 }
             }
+        } else {
+            let _ = writeln!(
+                note,
+                "NOTE: {path} has no .tbi index; reading the whole file (bcftools index -t makes this fast)."
+            );
         }
     }
     read_stream(path, span)
+}
+
+/// Whether `index` was last written before `path`, the way og-bloodtype
+/// judges an index. A time that cannot be read counts as not older.
+fn older(index: &str, path: &str) -> bool {
+    let mtime = |p: &str| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    matches!((mtime(index), mtime(path)), (Some(i), Some(v)) if i < v)
 }
 
 /// Keeps `r` when it overlaps `span`.
@@ -324,8 +341,13 @@ fn overlaps(r: &Rec, span: Span) -> bool {
 }
 
 /// The header through the top of the file, then each index sequence that
-/// names the region's chromosome, through the index.
-fn read_indexed(path: &str, span: Span) -> Result<Region, Error> {
+/// names the region's chromosome, through the index. `None` when the index
+/// is `stale` (older than the file) and names no such sequence.
+///
+/// Age alone does not condemn an index: Nextflow publishes a VCF and its
+/// index as separate copies, and the small index finishes first, so a fresh
+/// index often has the earlier time.
+fn read_indexed(path: &str, index: &str, span: Span, stale: bool) -> Result<Option<Region>, Error> {
     let file = og_io::open(path).map_err(|e| Error::io(&e, path))?;
     let mut header = Vec::new();
     for line in Lines::new(file, Utf8::Replace) {
@@ -338,7 +360,7 @@ fn read_indexed(path: &str, span: Span) -> Result<Region, Error> {
         }
     }
     let csq = Csq::from_header(header.iter().map(String::as_str));
-    let mut reader = tabix::Reader::open(path).map_err(|e| Error::io(&e, path))?;
+    let mut reader = tabix::Reader::with_index(path, index).map_err(|e| Error::io(&e, path))?;
     let names: Vec<String> = reader
         .index()
         .names()
@@ -346,6 +368,9 @@ fn read_indexed(path: &str, span: Span) -> Result<Region, Error> {
         .filter(|n| norm_chrom(n) == span.chrom)
         .cloned()
         .collect();
+    if stale && names.is_empty() {
+        return Ok(None);
+    }
     let mut records = Vec::new();
     for name in names {
         for line in reader.query(&name, span.start.saturating_sub(1), span.end) {
@@ -359,7 +384,7 @@ fn read_indexed(path: &str, span: Span) -> Result<Region, Error> {
             }
         }
     }
-    Ok(Region { csq, records })
+    Ok(Some(Region { csq, records }))
 }
 
 /// A data line of the region, or `None` for one outside it (or too short

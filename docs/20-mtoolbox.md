@@ -121,7 +121,14 @@ NuMTs are copies of mitochondrial DNA in the nuclear genome. Their reads can map
 
 Step 07 reads these calls for the aminoglycoside risk gene MT-RNR1: a PASS allele PharmCAT names (m.1555A>G, m.1494C>T and others) at AF 0.05 or more is passed to PharmCAT, heteroplasmic or not, because CPIC sets no heteroplasmy level at which aminoglycosides are safe ([Pharmacogenomics](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses)).
 
-Count only PASS calls: a call marked `possible_numt` or with another filter is not evidence of heteroplasmy. Calls near the two ends of the control region (about chrM:1-500 and 16,000-16,569) are less reliable: the reference is circular, so reads that span its end align poorly at both edges.
+Count only PASS calls: a call marked `possible_numt` or with another filter is not evidence of heteroplasmy. Calls near the two ends of the control region (m.1-500 and m.16000-16569) are less reliable: the reference is circular, so reads that span its end align poorly at both edges.
+
+PASS alone does not make a call reliable, so `summary.json` flags two kinds of heteroplasmic call and keeps both in the count:
+
+- `origin_edge`: the bases the call changes touch m.1-500 or m.16000-16569, the edges above.
+- `low_af`: the AF is under 0.10, the low-level range above. NuMT reads that the filter missed look like calls in this range.
+
+Each entry of `heteroplasmic_sites` carries both flags, and `heteroplasmic_origin_edge` and `heteroplasmic_low_af` count the flagged ones beside the `heteroplasmic` total. The rows of the annotation list carry the same two flags, so a ClinVar class on a flagged call reads as a class on a less reliable call. On those rows `origin_edge` is set for any listed call, homoplasmic or not, and `low_af` only for a heteroplasmic one. A flag never removes a call: the ClinVar pathogenic count and the confirmed variants still name it. A PASS m.3243A>G at AF 0.07 carries `low_af` and stays in both.
 
 Length variants in the D-loop poly-C tracts (m.303-315 and m.16184-16193), one C more or less, are found in most people and often read as a mix of lengths. The reports list them as "length heteroplasmy in the D-loop poly-C tracts" and leave them out of the heteroplasmic count. A call counts as in a tract when the bases it changes (an indel: the bases after its anchor base) overlap one.
 
@@ -139,6 +146,6 @@ In the Nextflow pipeline `MITO_DELETIONS` runs stages 7 and 8 on the same BAM, b
 
 ## What is not done, and why
 
-- **The shifted-reference pass for the control region.** Broad's mitochondria pipeline calls the region around the chrM start a second time on a reference rotated by 8 kb, so reads that span the circle's end align well. Here those calls stay less reliable (see above).
+- **The shifted-reference pass for the control region.** Broad's mitochondria pipeline calls the region around the chrM start a second time on a reference rotated by 8 kb, so reads that span the circle's end align well. Here those calls stay less reliable, and carry the `origin_edge` flag (see above).
 - **mtDNA-Server 2 (or mutserve) in place of this step.** Both were last released in December 2024 (mtDNA-Server 2.1.16, mutserve 2.0.3). The cheaper fix for the main source of false heteroplasmy, NuMT reads, is in place (NuMTFilterTool above), and haplocheck, the contamination check of the mtDNA-Server tools, runs in step 12 on these calls.
 

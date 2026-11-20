@@ -26,7 +26,7 @@ Then the row's `call` column decides:
 - `round:D`: a whole number, when the estimate lies within D of one (HBA, D = 0.3);
 - `cut:A,B`: the number of cut points the estimate reaches (RHD: 0 under 0.5, 1 under 1.5, else 2);
 - `psv:D`: the module total of a gene and its pseudogene as `round:D` does, then the reads at the row's PSV sites ([the CYP21A2 row](#the-cyp21a2-row));
-- `class:LOW,HIGH`: low, typical or high from the 95% interval (LPA KIV-2, 30 and 45). With `interval` `cv`, that interval comes from the spread of the per-segment depths: relative standard error sqrt(cv_target^2 / n_target + cv_control^2 / n_control), applied on the log scale. It covers sampling noise only.
+- `class:LOW,HIGH`: low, typical or high from the 95% interval (LPA KIV-2, 30 and 45). With `interval` `cv`, that interval comes from the spread of the per-segment depths: relative standard error sqrt(cv_target^2 / n_target + cv_control^2 / n_control), applied on the log scale. It covers read sampling only: it treats the segments as independent and leaves out any bias of an aligner or a library.
 
 `og cn call --table OUT` writes the result as the step's table (status, the estimate, the copies or class, the depths and the reading), and prints one summary line.
 

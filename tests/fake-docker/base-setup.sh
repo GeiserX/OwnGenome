@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # setup.sh on an empty GENOME_DIR: the reference and ClinVar downloads go
 # through the fake wget, the image checks through the fake docker. It must
-# finish with exit 0.
+# finish with exit 3, a partial setup: the fake downloads fail their pinned checksums.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 seed_clinical_downloads
@@ -9,9 +9,9 @@ seed_clinical_downloads
 G="${CASE_WORK}/genome"
 mkdir -p "$G"
 
-run_expect 0 setup "${SCRIPTS}/setup.sh" "$G"
+run_expect 3 setup "${SCRIPTS}/setup.sh" "$G"
 output_lacks setup 'unbound variable'
-output_has setup 'Setup complete!'
+output_has setup '^  Setup finished: core ready, [0-9]+ items missing$'
 
 for f in reference/GRCh38_no_alt_analysis_set.fasta reference/GRCh38_no_alt_analysis_set.fasta.fai \
          clinvar/clinvar.vcf.gz clinvar/clinvar.vcf.gz.tbi \

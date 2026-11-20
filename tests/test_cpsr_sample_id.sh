@@ -82,11 +82,15 @@ check_files() {
 
 # --- the Nextflow process: its script and stub blocks, rendered -------------------
 MOD="${REPO}/modules/local/cpsr/main.nf"
-# render BLOCK ID: the block's Groovy string as Nextflow would run it for meta.id ID
+# render BLOCK ID: the block's Groovy string as Nextflow would run it for meta.id ID.
+# The one line of code it knows before the string is the secondary-findings
+# option, rendered as its default (--cpsr_secondary_findings true);
+# tests/e2e/screen-cpsr-sf-switch-1-stub.sh checks it switched off.
 render() {
   awk -v block="$1" -v mid="$2" '
     function die(m) { print m > "/dev/stderr"; bad = 1; exit 1 }
     state == 0 && $0 ~ ("^[ \t]*" block ":[ \t]*$") { state = 1; next }
+    state == 1 && /^[ \t]*def sf_args = cpsrSecondaryArgs\(params\.cpsr_secondary_findings\)[ \t]*$/ { next }
     state == 1 && /^[ \t]*"""[ \t]*$/ { state = 2; next }
     state == 1 { pre = pre $0 "\n"; next }
     state == 2 && /^[ \t]*"""[ \t]*$/ { state = 3; exit }
@@ -96,6 +100,7 @@ render() {
       if (state != 3) die("no " block ": block with a triple-quoted string in " FILENAME)
       t = pre; gsub(/^[ \t\n]+|[ \t\n]+$/, "", t)
       if (t != "") die(block ": code before the string is not rendered here: " t)
+      v["sf_args"] = "--secondary_findings"
       v["meta.id"] = mid; v["vcf"] = "sample.vcf.gz"; v["vep_cache_cpsr"] = "vep_cache"; v["pcgr_data"] = "pcgr_data"
       v["task.process"] = "CPSR"; v["task.container.replaceFirst(/^[^:@]+[:@]/, '\'''\'')"] = "2.3.2"
       out = ""

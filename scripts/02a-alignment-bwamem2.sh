@@ -26,11 +26,14 @@ validate_sample "$SAMPLE"
 read_count_mode > /dev/null || exit 1
 SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
 
-# Detect trimmed FASTQs (same logic as 02-alignment.sh)
+# Detect trimmed FASTQs (same logic as 02-alignment.sh): the trimmed pair is
+# used only when step 01b trimmed it from the raw reads in fastq/ now
+# (trimmed_reads_usable, scripts/lib/common.sh).
 if [ -n "${FASTQ_SUBDIR:-}" ]; then
   echo "Using explicit FASTQ_SUBDIR=${FASTQ_SUBDIR}."
 elif [ -f "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_R1.fastq.gz" ] && \
      [ -f "${SAMPLE_DIR}/fastq_trimmed/${SAMPLE}_R2.fastq.gz" ]; then
+  trimmed_reads_usable "$SAMPLE_DIR" "$SAMPLE" || exit 1
   FASTQ_SUBDIR="fastq_trimmed"
 else
   FASTQ_SUBDIR="fastq"

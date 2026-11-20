@@ -298,7 +298,9 @@ fn tree_place_and_tree_positions() {
     );
     let r = run(
         &d,
-        &with(&ab, &[("x1", St::A), ("y1", St::D), ("z1", St::D)]),
+        // B has no read here: a clean B on another lineage would have more
+        // support than Z, and win (i411_ytree_ranking.rs).
+        &with(&ALL_A, &[("x1", St::A), ("y1", St::D), ("z1", St::D)]),
         "outvoted",
         &[],
     );
@@ -317,7 +319,7 @@ fn tree_place_and_tree_positions() {
     );
     let r = run(
         &d,
-        &with(&ab, &[("y1", St::D), ("z1", St::D)]),
+        &with(&ALL_A, &[("y1", St::D), ("z1", St::D)]),
         "unblocked",
         &[],
     );

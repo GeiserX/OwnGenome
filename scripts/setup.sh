@@ -88,6 +88,11 @@
 #   7. VEP 116, PCGR/CPSR data and VEP 115 (~57 GB download, ~65 GB unpacked).
 #      --no-clinical-data skips them; --clinical-data installs only these three.
 #
+# Exit status of a full setup: 0 when everything is installed ("Setup
+# complete!"); 3 when the core is ready but an item of 4 to 7 failed or was
+# skipped ("Setup finished: core ready, N items missing", each listed with the
+# command that retries it); 1 when the reference, ClinVar or an image failed.
+#
 # Every download goes through fetch (scripts/lib/common.sh): it is written to
 # <file>.part, checked, and only then renamed, so a file that exists is whole.
 # A failed image pull is tried FETCH_TRIES times too, FETCH_WAIT apart, and
@@ -229,6 +234,15 @@ export GENOME_DIR
 . "$(dirname "$0")/lib/common.sh"
 if [ -n "$PCGR_SHA_OVERRIDE" ]; then PCGR_DATA_SHA256=$PCGR_SHA_OVERRIDE; fi
 
+# What a full setup could not install, one "what|retry command" entry each.
+# The summary lists them, and a run with any left exits SETUP_PARTIAL_EXIT.
+MISSING=()
+SETUP_PARTIAL_EXIT=3
+# The retry commands quote the script path, so a checkout path with a space
+# still copies and pastes as one word.
+SETUP_CMD=$(printf '%q' "$0")
+note_missing() { MISSING+=("$1|$2"); }
+
 # NCBI's GRCh38 analysis set without ALT contigs: chr1-22, X, Y, M, the
 # unplaced and unlocalized scaffolds and chrEBV, 195 sequences. NCBI lists the
 # md5 of every file of the directory in md5checksums.txt, which is read at
@@ -250,22 +264,34 @@ https://raw.githubusercontent.com/Griffan/VerifyBamID/v2.0.3/resource/1000g.phas
 https://raw.githubusercontent.com/Griffan/VerifyBamID/v2.0.3/resource/1000g.phase3.100k.b38.vcf.gz.dat.bed 0025d782137e5906bbc7afc553c49d2c82c5b8f0bfa0649bc415887442f42869"
 
 # install_sample_qc_data: install both under GENOME_DIR/reference unless they
-# are there. Returns 1 when a download fails its check.
+# are there with their pinned sha256. A file already there is checked again on
+# every run: one with another sha256 (copied by hand, damaged, or from an older
+# pin) is downloaded again. Returns 1 when a download fails its check.
 install_sample_qc_data() {
-  local dest="${GENOME_DIR}/reference" url sha rc=0
-  if [ -s "${dest}/somalier/sites.hg38.vcf.gz" ]; then
-    echo "[OK] somalier sites (step 33) already present."
-  elif fetch "$SOMALIER_SITES_URL" "${dest}/somalier/sites.hg38.vcf.gz" sha256 "$SOMALIER_SITES_SHA256"; then
-    echo "[OK] somalier sites (step 33): ${dest}/somalier/sites.hg38.vcf.gz"
+  local dest="${GENOME_DIR}/reference" url sha rc=0 f
+  f="${dest}/somalier/sites.hg38.vcf.gz"
+  if [ -s "$f" ] && [ "$(_digest sha256 "$f")" = "$SOMALIER_SITES_SHA256" ]; then
+    echo "[OK] somalier sites (step 33) already present (sha256 matches)."
   else
-    echo "[WARN] Could not install somalier's sites. Step 33 needs them; re-run setup.sh."
-    rc=1
+    if [ -s "$f" ]; then
+      echo "[WARN] ${f} is not the pinned file (sha256 differs): downloading it again."
+    fi
+    if fetch "$SOMALIER_SITES_URL" "$f" sha256 "$SOMALIER_SITES_SHA256"; then
+      echo "[OK] somalier sites (step 33): ${f}"
+    else
+      echo "[WARN] Could not install somalier's sites. Step 33 needs them; re-run setup.sh."
+      rc=1
+    fi
   fi
   while read -r url sha; do
-    if [ -s "${dest}/verifybamid2/$(basename "$url")" ]; then
+    f="${dest}/verifybamid2/$(basename "$url")"
+    if [ -s "$f" ] && [ "$(_digest sha256 "$f")" = "$sha" ]; then
       continue
     fi
-    if ! fetch "$url" "${dest}/verifybamid2/$(basename "$url")" sha256 "$sha"; then
+    if [ -s "$f" ]; then
+      echo "[WARN] ${f} is not the pinned file (sha256 differs): downloading it again."
+    fi
+    if ! fetch "$url" "$f" sha256 "$sha"; then
       echo "[WARN] Could not install $(basename "$url") of VerifyBamID2's panel. Step 33 needs it; re-run setup.sh."
       rc=1
     fi
@@ -2133,6 +2159,8 @@ install_clinical_data() {
       else
         missing=1
       fi
+      [ -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] \
+        || note_missing "PCGR/CPSR bundle ${PCGR_DATA_BUNDLE} (step 17)" "${SETUP_CMD} --clinical-data \"${GENOME_DIR}\""
     else
       [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
       peak=56
@@ -2147,6 +2175,13 @@ install_clinical_data() {
         fi
       else
         missing=1
+      fi
+      if [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ]; then
+        if [ "$rel" = "$VEP_CACHE_RELEASE" ]; then
+          note_missing "VEP ${rel} cache (steps 13, 30, 23 and 31)" "${SETUP_CMD} --vep-cache \"${GENOME_DIR}\""
+        else
+          note_missing "VEP ${rel} cache (step 17, CPSR)" "${SETUP_CMD} --clinical-data \"${GENOME_DIR}\""
+        fi
       fi
     fi
   done
@@ -2461,6 +2496,7 @@ elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
   echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
+  note_missing "og, OwnGenome's own binary (steps 04, 05, 07, 25 and 33)" "${SETUP_CMD} --og"
 fi
 
 ###############################################################################
@@ -2485,6 +2521,7 @@ else
   else
     rm -f "$DICT_PART"
     echo "[WARN] Could not create ${REF_DICT}. Steps 03a, 20, 29 and chip-to-vcf need it; re-run setup.sh."
+    note_missing "the sequence dictionary ${REF_DICT##*/} (steps 03a, 20, 29 and chip-to-vcf)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
 
@@ -2506,6 +2543,7 @@ for name in $DATA_FILES; do
     echo "[OK] ${what}: ${dest}"
   else
     echo "[WARN] Could not install the ${what}. Re-run setup.sh to try again."
+    note_missing "the ${what}" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 done
 # gnomAD v3.1's chrM sites (step 20 annotates the calls with them), checked
@@ -2521,12 +2559,17 @@ else
     echo "[OK] gnomAD v3.1 mitochondrial sites (step 20): ${GNOMAD_MITO}"
   else
     echo "[WARN] Could not install gnomAD's mitochondrial sites. Step 20 runs without its gnomAD columns; re-run setup.sh to try again."
+    note_missing "gnomAD v3.1 mitochondrial sites (step 20)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
-# A failed download does not stop setup here either.
-install_sample_qc_data || true
-install_strchive_data || true
-install_tandem_repeats || true
+# A failed download does not stop setup here either: it goes on the list of
+# what is missing, which the summary prints with the command that retries it.
+install_sample_qc_data \
+  || note_missing "somalier's sites and VerifyBamID2's panel (step 33)" "${SETUP_CMD} --sample-qc-data \"${GENOME_DIR}\""
+install_strchive_data \
+  || note_missing "STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b)" "${SETUP_CMD} --strchive-data \"${GENOME_DIR}\""
+install_tandem_repeats \
+  || note_missing "GIAB tandem-repeat map (step 04c)" "${SETUP_CMD} \"${GENOME_DIR}\""
 # Step 25: its scores, pgsc_calc and its plugin (warnings only).
 install_prs
 
@@ -2534,11 +2577,13 @@ install_prs
 # Phase 5: AnnotSV annotation data (step 5, a default step)
 ###############################################################################
 # The bundle, gnomAD-SV's common SVs and the MANE Select transcripts
-# (install_annotsv_data above). A failure is a warning: the rest of setup goes on.
+# (install_annotsv_data above). A failure goes on the list of what is missing:
+# the rest of setup goes on.
 echo ""
 echo "=== Phase 5: AnnotSV annotation data (~5.3 GB + ~1.7 GB download, ~20 GB unpacked) ==="
 
-install_annotsv_data || true
+install_annotsv_data \
+  || note_missing "AnnotSV data: the bundle, gnomAD-SV ${GNOMAD_SV_VERSION} and MANE ${MANE_RELEASE} (step 05)" "${SETUP_CMD} --annotsv-data \"${GENOME_DIR}\""
 
 ###############################################################################
 # Phase 6: Clinical reference data (default)
@@ -2546,6 +2591,7 @@ install_annotsv_data || true
 echo ""
 echo "=== Phase 6: Clinical reference data ==="
 if $CLINICAL_DATA; then
+  # Each item it could not install is on the list already (note_missing).
   install_clinical_data || true
 else
   echo "[SKIP] Clinical data (--no-clinical-data): steps 13, 30, 23, 31 and 17 need the caches or bundle."
@@ -2555,19 +2601,38 @@ fi
 ###############################################################################
 # Summary
 ###############################################################################
+# "Setup complete!" only when nothing is missing. Otherwise each missing item
+# with the command that retries it, and the exit status SETUP_PARTIAL_EXIT (3),
+# so a caller can tell a partial setup from a full one.
 echo ""
 echo "============================================"
-echo "  Setup complete!"
+if [ "${#MISSING[@]}" -eq 0 ]; then
+  echo "  Setup complete!"
+else
+  n=${#MISSING[@]}
+  echo "  Setup finished: core ready, ${n} item$([ "$n" -eq 1 ] || echo s) missing"
+fi
 echo ""
 echo "  Reference genome:  ${REFDIR}/"
 echo "  ClinVar database:  ${CLINVARDIR}/"
 echo "  Docker images:     ${PULLED} pulled, ${SKIPPED} cached"
 echo "============================================"
+if [ "${#MISSING[@]}" -gt 0 ]; then
+  echo ""
+  echo "Missing (the steps named run without it or say it is missing; the warnings above say why):"
+  for item in "${MISSING[@]}"; do
+    echo "  - ${item%%|*}"
+    echo "      retry: ${item#*|}"
+  done
+fi
 echo ""
 echo "Next steps:"
 echo "  1. Place your FASTQ/BAM/VCF in: ${GENOME_DIR}/<sample_name>/"
 echo "  2. Run: export GENOME_DIR=${GENOME_DIR}"
 echo "  3. Run: ./scripts/validate-setup.sh <sample_name>"
 echo "  4. Run: ./scripts/run-all.sh <sample_name> <male|female>"
-echo ""
-echo "Review any warnings above; use --clinical-data to retry missing clinical downloads."
+if [ "${#MISSING[@]}" -gt 0 ]; then
+  echo ""
+  echo "Setup exits with status ${SETUP_PARTIAL_EXIT}: a partial setup. Run the retry commands above, or this setup again."
+  exit "$SETUP_PARTIAL_EXIT"
+fi
