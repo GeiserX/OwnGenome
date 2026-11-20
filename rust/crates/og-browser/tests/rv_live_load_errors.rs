@@ -333,14 +333,10 @@ fn a_page_that_cannot_load_its_data_says_so() {
     stub.set("/runs/DEMO-001/results.json", Answer::Status(500));
     b.go(&stub.url("/runs/DEMO-001/")).unwrap();
     let said = text(b.wait(&failed_box("results-failed"), secs(20)));
-    let status = text(
-        b.eval("document.documentElement.dataset.pgpStatus || ''")
-            .ok(),
-    );
     check(
-        "person: results.json at 500 says 'The results could not be loaded.' with Try again, and the page is offline",
-        said == "The results could not be loaded. Try again" && status == "offline",
-        format!("{said:?} {status:?}"),
+        "person: results.json at 500 says 'The results could not be loaded.' with Try again",
+        said == "The results could not be loaded. Try again",
+        said.clone(),
     );
     stub.set("/runs/DEMO-001/results.json", Answer::File);
     b.eval("var t = document.getElementById('results-retry'); if (t) { t.click(); } !!t")

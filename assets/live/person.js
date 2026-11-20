@@ -1079,14 +1079,14 @@
   }
   // A failed read (an error answer, no answer, or one that is not results) is asked again on the next state.
   // While nothing is drawn the report says it could not load them: a finished run never reads as a report with
-  // no results. Results already drawn stay as they are.
+  // no results. Results already drawn stay as they are. data-pgp-status stays live.js's: it tells whether the
+  // run's state arrived, which it did.
   function notLoaded(key) {
     if (key !== fetchedFor) { return; }
     fetchedFor = null;
     if (results) { return; }
     unloaded = true;
     drawSections();
-    root.setAttribute('data-pgp-status', 'offline');
   }
   function retry() {
     unloaded = false;
