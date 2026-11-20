@@ -26,7 +26,16 @@
 //!   calls of the same ALT count once, and incompatible dosages are no call;
 //! - a reference-only record whose REF is shorter than the marker's (an
 //!   all-sites record or a gVCF block starting at a deletion marker) says
-//!   nothing past its own bases, so the site reads as if it had no record.
+//!   nothing past its own bases, so the site reads as if it had no record;
+//! - a gVCF reference block (ALT `.`, `<*>` or `<NON_REF>`) whose `INFO/END`
+//!   reaches the marker's last REF base is a reference call there, wherever
+//!   the block starts, with the block's quality.
+//!
+//! A call keeps its genotype whatever its quality, but one with a genotype
+//! quality under [`MIN_GQ`] or a read depth under [`MIN_DEPTH`] (FORMAT `GQ`,
+//! and `DP`, else a gVCF block's `MIN_DP`) is marked weak: the rules then give
+//! the systems that use it confidence low. A phased call (`0|1`) keeps the
+//! haplotype that carries the marker's ALT, and its phase set (`PS`).
 
 use crate::Error;
 use crate::markers::{Marker, Sites};
@@ -34,8 +43,12 @@ use indexmap::IndexMap;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-/// Reads (MAPQ >= 20) before a site missing from the VCF counts as reference.
+/// Reads (MAPQ >= 20) before a site missing from the VCF counts as reference,
+/// and the read depth (FORMAT `DP`) under which a call is weak.
 pub const MIN_DEPTH: f64 = 8.0;
+
+/// The genotype quality (FORMAT `GQ`) under which a call is weak.
+pub const MIN_GQ: f64 = 20.0;
 
 /// What is known at one site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,6 +81,15 @@ impl Status {
     }
 }
 
+/// The phase of a call: which of its two haplotypes carries the marker's
+/// ALT (`0|1` is `[false, true]`), and its phase set (`PS`), `None` when the
+/// record gives none (then the call is phased with the whole chromosome).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Phase {
+    pub alt_on: [bool; 2],
+    pub block: Option<String>,
+}
+
 /// What the VCF and the reads say at one site: status, alt copies (`None`
 /// when not known), read depth, note.
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +99,10 @@ pub struct Site {
     pub n: Option<i64>,
     pub depth: Option<f64>,
     pub note: String,
+    /// Why the call is weak (`GQ 5 under 20`), empty when it is not.
+    pub weak: String,
+    /// The phase of the call, when the VCF gives one.
+    pub phase: Option<Phase>,
 }
 
 impl Site {
@@ -87,6 +113,8 @@ impl Site {
             n: None,
             depth: None,
             note: String::new(),
+            weak: String::new(),
+            phase: None,
         }
     }
 }
@@ -178,6 +206,9 @@ struct Reading {
     note: String,
     /// Called marker ALTs and their dosages, independent of VCF allele indices.
     alts: BTreeMap<String, i64>,
+    /// Why the call is weak, empty when it is not.
+    weak: String,
+    phase: Option<Phase>,
 }
 
 impl Reading {
@@ -188,7 +219,65 @@ impl Reading {
             n: None,
             note,
             alts: BTreeMap::new(),
+            weak: String::new(),
+            phase: None,
         }
+    }
+}
+
+/// The sample's FORMAT values a call's quality and phase come from.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Quality {
+    /// `GQ`, as written and as read.
+    gq: Option<(String, f64)>,
+    /// `DP`, else `MIN_DP`, as written and as read.
+    dp: Option<(String, f64)>,
+    /// The genotype is written with `|`.
+    phased: bool,
+    /// `PS`, when given and not `.`.
+    ps: Option<String>,
+}
+
+impl Quality {
+    /// The quality of the sample column `smp` under the keys `fmt`.
+    fn of(fmt: &[&str], smp: &[&str], gt: &str) -> Quality {
+        let get = |key: &str| {
+            fmt.iter()
+                .position(|k| *k == key)
+                .and_then(|i| smp.get(i))
+                .copied()
+                .filter(|v| !v.is_empty() && *v != ".")
+        };
+        let num = |key: &str| {
+            get(key).and_then(|v| {
+                pycompat::num::parse_float(v)
+                    .ok()
+                    .filter(|x| x.is_finite())
+                    .map(|x| (v.to_owned(), x))
+            })
+        };
+        Quality {
+            gq: num("GQ"),
+            dp: num("DP").or_else(|| num("MIN_DP")),
+            phased: gt.contains('|') && !gt.contains('/'),
+            ps: get("PS").map(str::to_owned),
+        }
+    }
+
+    /// Why a call with this quality is weak, empty when it is not.
+    fn weak(&self) -> String {
+        let mut why = Vec::new();
+        if let Some((raw, gq)) = &self.gq
+            && *gq < MIN_GQ
+        {
+            why.push(format!("GQ {raw} under {}", MIN_GQ as i64));
+        }
+        if let Some((raw, dp)) = &self.dp
+            && *dp < MIN_DEPTH
+        {
+            why.push(format!("DP {raw} under {}", MIN_DEPTH as i64));
+        }
+        why.join(", ")
     }
 }
 
@@ -205,10 +294,15 @@ struct Evidence {
     alts: BTreeMap<String, i64>,
     /// Different calls of one ALT disagree about its dosage.
     incompatible: bool,
+    /// Why the first weak call of a marker ALT is weak.
+    alt_weak: Option<String>,
 }
 
 impl Evidence {
     fn add(&mut self, r: Reading) {
+        if !r.alts.is_empty() && !r.weak.is_empty() && self.alt_weak.is_none() {
+            self.alt_weak = Some(r.weak.clone());
+        }
         for (alt, &copies) in &r.alts {
             match self.alts.get(alt) {
                 Some(&previous) if previous != copies => self.incompatible = true,
@@ -255,6 +349,19 @@ impl Evidence {
             } else {
                 b.n
             };
+            // The copies of an ALT may come from several records: the call
+            // is weak when any of them is, and its phase is the record's only
+            // when one ALT was called.
+            site.weak = if b.weight == Weight::Alt && b.weak.is_empty() {
+                self.alt_weak.clone().unwrap_or_default()
+            } else {
+                b.weak.clone()
+            };
+            site.phase = if b.weight == Weight::Alt && self.alts.len() == 1 {
+                b.phase.clone()
+            } else {
+                None
+            };
             site.note = if b.status == Status::Called {
                 let others = self.others.into_iter().filter(|o| *o != b.note);
                 std::iter::once(b.note.clone())
@@ -269,9 +376,47 @@ impl Evidence {
     }
 }
 
+/// Whether every ALT of a record is a reference-only symbol: a gVCF
+/// reference block (`.`, `<*>`, `<NON_REF>`).
+fn is_block(alts: &str) -> bool {
+    alts.split(',')
+        .all(|a| matches!(a, "." | "<*>" | "<NON_REF>"))
+}
+
+/// `INFO/END` as htslib reads it (`og_io::tabix`): the key at the start or
+/// after a `;`, its leading digits.
+fn info_end(info: &str) -> Option<i64> {
+    let at = if info.starts_with("END=") {
+        4
+    } else {
+        info.find(";END=")? + 5
+    };
+    let digits = info[at..].bytes().take_while(u8::is_ascii_digit).count();
+    info[at..at + digits].parse().ok()
+}
+
+/// What a reference block that covers a whole marker says about it: a
+/// reference call, with the block's quality, unless its genotype is not
+/// `0/0`.
+fn read_block(alleles: &[&str], quality: &Quality) -> Reading {
+    if alleles.len() != 2 || !alleles.iter().all(|a| *a == "0") {
+        return Reading::no_call(Weight::Other, format!("genotype {}", alleles.join("/")));
+    }
+    Reading {
+        weight: Weight::Reference,
+        status: Status::Called,
+        n: Some(0),
+        note: String::new(),
+        alts: BTreeMap::new(),
+        weak: quality.weak(),
+        phase: None,
+    }
+}
+
 /// Applies one record line (no line ending) to the sites it covers: those
-/// at its position and those its REF spans. `only` keeps the sites at one
-/// position (the index path reads each position's records on their own).
+/// at its position, those its REF spans, and those a reference block covers
+/// to its `INFO/END`. `only` keeps the sites at one position (the index
+/// path reads each position's records on their own).
 fn apply_record(
     line: &str,
     by_pos: &ByPos,
@@ -280,7 +425,7 @@ fn apply_record(
     only: Option<i64>,
 ) {
     let mut c = line.splitn(5, '\t');
-    let (Some(chrom), Some(pos), Some(_), Some(rf), Some(_)) =
+    let (Some(chrom), Some(pos), Some(_), Some(rf), Some(rest)) =
         (c.next(), c.next(), c.next(), c.next(), c.next())
     else {
         return;
@@ -297,6 +442,15 @@ fn apply_record(
         return;
     };
     let span = i64::try_from(rf.len().max(1)).unwrap_or(1);
+    // A reference block reaches its INFO/END (the index finds it there too).
+    let block_end = {
+        let mut r = rest.split('\t');
+        match (r.next(), r.nth(2)) {
+            (Some(alt), Some(info)) if is_block(alt) => info_end(info).filter(|e| *e >= p),
+            _ => None,
+        }
+    };
+    let span = block_end.map_or(span, |e| span.max(e - p + 1));
     let mut hits = here
         .range(p..p.saturating_add(span))
         .filter(|(at, _)| only.is_none_or(|o| o == **at))
@@ -318,10 +472,29 @@ fn apply_record(
         .copied()
         .unwrap_or(".");
     let alleles: Vec<&str> = gt.split(['/', '|']).collect();
+    let quality = Quality::of(&fmt, &smp, gt);
+    // A block covers a marker when it reaches the marker's last REF base.
+    let covers = |i: usize, at: i64| {
+        block_end.is_some_and(|e| {
+            at + i64::try_from(sites[i].row.ref_.len().max(1)).unwrap_or(1) - 1 <= e
+        })
+    };
     for (&at, names) in hits {
+        if names.iter().any(|&i| covers(i, at)) {
+            for &i in names {
+                if covers(i, at) {
+                    ev[i].add(read_block(&alleles, &quality));
+                } else if at == p
+                    && let Some(r) = read_record(&sites[i].row, rf, &alts, filt, &alleles, &quality)
+                {
+                    ev[i].add(r);
+                }
+            }
+            continue;
+        }
         if at == p {
             for &i in names {
-                if let Some(r) = read_record(&sites[i].row, rf, &alts, filt, &alleles) {
+                if let Some(r) = read_record(&sites[i].row, rf, &alts, filt, &alleles, &quality) {
                     ev[i].add(r);
                 }
             }
@@ -368,6 +541,7 @@ fn read_record(
     alts: &[&str],
     filt: &str,
     alleles: &[&str],
+    quality: &Quality,
 ) -> Option<Reading> {
     // A null row may list several ALTs (null alleles at one position): any of them counts.
     let wants: Vec<&str> = if r.ref_ == rf {
@@ -433,6 +607,10 @@ fn read_record(
     } else {
         String::new()
     };
+    let phase = quality.phased.then(|| Phase {
+        alt_on: [0, 1].map(|h| idx.iter().any(|i| i == alleles[h])),
+        block: quality.ps.clone(),
+    });
     Some(Reading {
         weight: if n > 0 {
             Weight::Alt
@@ -443,6 +621,8 @@ fn read_record(
         n: Some(n),
         note,
         alts: called_alts,
+        weak: quality.weak(),
+        phase,
     })
 }
 
@@ -658,7 +838,7 @@ mod tests {
     fn records(s: &mut Site, recs: &[Rec]) {
         let mut e = Evidence::default();
         for (rf, alts, filt, alleles) in recs {
-            if let Some(r) = read_record(&s.row, rf, alts, filt, alleles) {
+            if let Some(r) = read_record(&s.row, rf, alts, filt, alleles, &Quality::default()) {
                 e.add(r);
             }
         }
@@ -791,6 +971,89 @@ mod tests {
         assert!(!changes_base("CG", &["TG"], &["1", "1"], 1));
         assert!(!changes_base("CG", &["C"], &["0", "0"], 1));
         assert!(!changes_base("CG", &["C"], &[".", "."], 1));
+    }
+
+    /// The site as one record with these FORMAT keys and values leaves it.
+    fn with_format(r: &str, alt: &str, alleles: &[&str], fmt: &[&str], smp: &[&str]) -> Site {
+        let mut s = site(r, alt);
+        let mut e = Evidence::default();
+        let q = Quality::of(fmt, smp, smp[0]);
+        if let Some(rd) = read_record(&s.row, r, &[alt], "PASS", alleles, &q) {
+            e.add(rd);
+        }
+        e.settle(&mut s);
+        s
+    }
+
+    #[test]
+    fn a_call_under_the_gq_or_dp_floor_is_weak_and_keeps_its_genotype() {
+        let gt = |g: &str| g.split(['/', '|']).map(str::to_owned).collect::<Vec<_>>();
+        for (fmt, smp, want) in [
+            (
+                &["GT", "GQ", "DP"][..],
+                &["0/1", "0", "1"][..],
+                "GQ 0 under 20, DP 1 under 8",
+            ),
+            (&["GT", "GQ", "DP"], &["0/1", "19", "30"], "GQ 19 under 20"),
+            (&["GT", "GQ", "DP"], &["0/1", "20", "8"], ""),
+            (&["GT", "GQ", "MIN_DP"], &["0/1", "50", "3"], "DP 3 under 8"),
+            (&["GT", "DP", "MIN_DP"], &["0/1", "30", "3"], ""),
+            (&["GT", "GQ", "DP"], &["0/1", ".", "."], ""),
+            (&["GT"], &["0/1"], ""),
+        ] {
+            let a = gt(smp[0]);
+            let alleles: Vec<&str> = a.iter().map(String::as_str).collect();
+            let s = with_format("G", "A", &alleles, fmt, smp);
+            assert_eq!(
+                (s.status, s.n, s.weak.as_str()),
+                (Status::Called, Some(1), want),
+                "{smp:?}"
+            );
+        }
+        // A weak reference call is weak too; a no call is not marked.
+        let s = with_format("G", "A", &["0", "0"], &["GT", "GQ"], &["0/0", "3"]);
+        assert_eq!((s.n, s.weak.as_str()), (Some(0), "GQ 3 under 20"));
+        let s = with_format("G", "A", &[".", "."], &["GT", "GQ"], &["./.", "3"]);
+        assert_eq!((s.status, s.weak.as_str()), (Status::NoCall, ""));
+    }
+
+    #[test]
+    fn a_phased_call_keeps_the_haplotype_of_the_alt() {
+        let s = with_format("G", "A", &["0", "1"], &["GT", "PS"], &["0|1", "100"]);
+        assert_eq!(
+            s.phase,
+            Some(Phase {
+                alt_on: [false, true],
+                block: Some("100".to_owned())
+            })
+        );
+        let s = with_format("G", "A", &["1", "0"], &["GT", "PS"], &["1|0", "."]);
+        assert_eq!(
+            s.phase,
+            Some(Phase {
+                alt_on: [true, false],
+                block: None
+            })
+        );
+        let s = with_format("G", "A", &["0", "1"], &["GT"], &["0/1"]);
+        assert_eq!(s.phase, None);
+    }
+
+    #[test]
+    fn a_reference_block_reads_to_its_end() {
+        assert_eq!(info_end("END=120"), Some(120));
+        assert_eq!(info_end("MIN_DP=3;END=99;X=1"), Some(99));
+        assert_eq!(info_end("SVEND=99;CIEND=5"), None);
+        assert_eq!(info_end("END=."), None);
+        assert!(is_block("<*>") && is_block(".") && is_block("<NON_REF>"));
+        assert!(!is_block("A,<*>") && !is_block("<DEL>"));
+        let q = Quality::of(&["GT", "GQ", "MIN_DP"], &["0/0", "3", "20"], "0/0");
+        let r = read_block(&["0", "0"], &q);
+        assert_eq!(
+            (r.status, r.n, r.weak.as_str()),
+            (Status::Called, Some(0), "GQ 3 under 20")
+        );
+        assert_eq!(read_block(&[".", "."], &q).status, Status::NoCall);
     }
 
     #[test]

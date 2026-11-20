@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-13 23:22 UTC",
+ "generated_utc": "2026-11-19 23:58 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -130,6 +130,15 @@
   },
   "carrier": {
    "title": "Carrier list",
+   "step": "06",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "acmg_sf": {
+   "title": "ACMG secondary findings",
    "step": "06",
    "state": "missing",
    "source": null,

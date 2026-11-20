@@ -2,13 +2,14 @@
 # Step 41's platelet (HPA) and neutrophil (HNA) antigens, through the real
 # step and its pinned images. The fixture's slices hold none of these genes,
 # so the case writes a synthetic VCF with planted genotypes at the sites of
-# assets/bloodtype_markers.tsv (no BAM: every site with no record is read as
-# the reference allele, confidence medium) and checks the rows:
+# assets/bloodtype_markers.tsv (no BAM: a site with no record is read as the
+# reference allele, confidence medium, when its system has a record at one
+# of its sites; a system with none is not assessed) and checks the rows:
 #   - HPA-1 1/1 is HPA-1(a-b+), and the note says the person lacks HPA-1a,
 #     with FNAIT and anti-HPA-1a;
 #   - HPA-6 0/1, HNA-3 0/1 and HNA-4 1/1 flip those systems;
 #   - four FCGR3B markers 0/1 (with c.194 0/1) give HNA-1a/1b at confidence low;
-#   - control: the same step on a VCF with none of these records gives the
+#   - control: the same step on a VCF with 0/0 at those sites gives the
 #     reference phenotypes, so the checks above see the planted genotypes.
 . "$(dirname "$0")/lib.sh"
 
@@ -60,12 +61,12 @@ check_eq "HNA-1 from FCGR3B: a+b+, FCGR3B*01/FCGR3B*02, low" \
 check "the evidence file has the HNA-1 sites as called" \
   test "$(awk -F'\t' '$2 ~ /^FCGR3B_/ && $9 == "called"' "${G}/${P}/bloodtype/${P}_bloodtype_evidence.tsv" | wc -l)" -eq 5
 
-# --- control: none of these records ------------------------------------------------
-vcf "${T}/none.vcf.gz" KEL_578:0/1
+# --- control: the reference allele at these sites --------------------------------------
+vcf "${T}/none.vcf.gz" KEL_578:0/1 HPA1_176:0/0 HNA4_230:0/0 HNA3_461:0/0
 R="${SAMPLE}plr"
 sample "$R" "${T}/none.vcf.gz"
 run_step 41-bloodtype.sh "$R"; check_step_exit 41-bloodtype.sh
-check_eq "control: HPA-1 is HPA-1(a+b-) without the planted record" "$(cell "$R" HPA-1 phenotype)" "HPA-1(a+b-)"
+check_eq "control: HPA-1 is HPA-1(a+b-) with 0/0 there" "$(cell "$R" HPA-1 phenotype)" "HPA-1(a+b-)"
 check_eq "control: HNA-4 is HNA-4(a+b-)" "$(cell "$R" HNA-4 phenotype)" "HNA-4(a+b-)"
 check_eq "control: HNA-3 is GRCh38's HNA-3(a-b+)" "$(cell "$R" HNA-3 phenotype)" "HNA-3(a-b+)"
 
