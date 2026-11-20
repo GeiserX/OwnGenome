@@ -27,7 +27,7 @@ set -euo pipefail
 export LC_ALL=C TZ=UTC
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "${here}/../../.." && pwd)
-ORACLE_SHA=65095e975bea01c74ed92a4f1b8c1bd00d05caaa
+ORACLE_SHA=dd9290f8fe342fcd010457258adb70082cecbd67
 og=${OG:-${root}/rust/target/release/og}
 
 # --- the oracle's modules ------------------------------------------------------------
