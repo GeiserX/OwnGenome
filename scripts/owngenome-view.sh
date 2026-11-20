@@ -7,10 +7,11 @@
 # the reference (REF_FASTA), the sample's BAM or CRAM, its small-variant VCF
 # and its SV VCF, and prints the address to open. The report's positions link
 # to the same address, so with the viewer running a click on a ClinVar hit
-# opens the reads at it. The server (assets/viewer/serve.py) listens on
-# 127.0.0.1 only and its pages may not call any other server, so the data never
-# leaves this machine; docs/viewer.md says how to reach it from a remote box
-# over ssh. Needs python3 on the host. The first run downloads the pinned
+# opens the reads at it. The server (og view serve, through bin/og; OG names
+# another og binary) listens on 127.0.0.1 only and its pages may not call any
+# other server, so the data never leaves this machine; docs/viewer.md says how
+# to reach it from a remote box over ssh. It needs og built for this machine
+# (scripts/setup.sh --og), not python3. The first run downloads the pinned
 # igv.js release (IGV_JS_VERSION in versions.env) into GENOME_DIR/tools/ and checks its
 # sha256; later runs need no network.
 #
@@ -18,8 +19,8 @@
 #   READS   aligned/<sample>_sorted.bam, else aligned/<sample>_sorted.cram
 #           (ALIGN_DIR as in the steps); "none" leaves the reads out
 #   VCF     vcf/<sample>.vcf.gz (VCF_DIR as in the steps)
-#   SV_VCF  sv_merged/<sample>_sv_consensus.vcf.gz (step 22), else Manta's
-#           manta/results/variants/diploidSV.vcf.gz (step 4)
+#   SV_VCF  Manta's manta/results/variants/diploidSV.vcf.gz (step 4), else
+#           sv_merged/<sample>_sv_consensus.vcf.gz (step 22)
 # A file that is not there is left out with a note; the reference is required.
 set -euo pipefail
 
@@ -42,10 +43,6 @@ if [ ! -d "$S" ]; then
   echo "ERROR: Sample directory not found: ${S}" >&2
   exit 1
 fi
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "ERROR: python3 is needed on this computer to serve the viewer." >&2
-  exit 1
-fi
 case "$PORT" in
   ''|*[!0-9]*) echo "ERROR: OWNGENOME_VIEW_PORT must be a port number, got '${PORT}'" >&2; exit 2 ;;
 esac
@@ -60,11 +57,12 @@ first_file() {
 
 READS=${READS:-$(first_file "${ALN}/${SAMPLE}_sorted.bam" "${ALN}/${SAMPLE}_sorted.cram" || true)}
 VCF=${VCF:-$(first_file "${S}/${VCF_DIR:-vcf}/${SAMPLE}.vcf.gz" || true)}
-SV_VCF=${SV_VCF:-$(first_file "${S}/sv_merged/${SAMPLE}_sv_consensus.vcf.gz" \
-  "${S}/manta/results/variants/diploidSV.vcf.gz" || true)}
+SV_VCF=${SV_VCF:-$(first_file "${S}/manta/results/variants/diploidSV.vcf.gz" \
+  "${S}/sv_merged/${SAMPLE}_sv_consensus.vcf.gz" || true)}
 [ "$READS" != none ] || READS=""
 
-ARGS=(--sample "$SAMPLE" --fasta "$REF_FASTA" --port "$PORT")
+OG=${OG:-${PGP_ROOT}/bin/og}
+ARGS=(--sample "$SAMPLE" --fasta "$REF_FASTA" --port "$PORT" --assets "${PGP_ROOT}/assets/viewer")
 [ -n "$LOCUS" ] && ARGS+=(--locus "$LOCUS")
 for pair in "reads:${READS}" "vcf:${VCF}" "sv-vcf:${SV_VCF}"; do
   name=${pair%%:*} f=${pair#*:}
@@ -91,4 +89,4 @@ echo "  Reads:     ${READS:-none}"
 echo "  VCF:       ${VCF:-none}"
 echo "  SV VCF:    ${SV_VCF:-none}"
 echo "============================================"
-exec python3 "${PGP_ROOT}/assets/viewer/serve.py" "${ARGS[@]}" --igv-js "$IGV_JS"
+exec "$OG" view serve "${ARGS[@]}" --igv-js "$IGV_JS"

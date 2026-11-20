@@ -38,7 +38,7 @@ Paths to reference files required by the pipeline.
 
 ## Tool selection
 
-Control which analysis tools to run.
+Control which analysis tools to run. `-profile everything` (`conf/everything.config`) sets `--tools` to every tool of [`assets/everything.tsv`](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv), and `--kir`, `--hla_qc` and `--cpsr_secondary_findings` to `true`: every optional step, as `EVERYTHING=true` does on `run-all.sh` ([Every optional step](getting-started.md#every-optional-step)). It leaves out `exomiser`, which runs when `--hpo` is set, and `cram_archive`.
 
 | Parameter | Default | What it does |
 |---|---|---|
