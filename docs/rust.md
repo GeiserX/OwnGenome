@@ -21,7 +21,7 @@ rust/
   crates/og-qc/         og qc sex-loss: mosaic loss of Y or X for step 33
   crates/og-setup/      what setup.sh runs once: the STRchive catalog, zips, the genetic map
   crates/og-steps/      the step helpers: constraint-join, prs format, step 40's consumer export; og family (step 38); og pgx outside-calls|hla-concordance|pypgx-summary (steps 08, 32, 36); og paraphase (step 35b)
-  crates/og-summary/    the step tables of steps 20, 25 and 33: og mito, og prs table, og qc sample; og summary collect, the whole summary.json with its post pass (render_report.py runs it for steps 24 and HTML_REPORT and generate-report.sh), or one group with --only a|b|c; og roh summary (step 11)
+  crates/og-summary/    the step tables of steps 20, 25 and 33: og mito, og prs table, og qc sample; og summary collect, the whole summary.json with its post pass (og report render runs it for steps 24 and HTML_REPORT and generate-report.sh; the Python live site runs it through bin/collect_summary.py), or one group with --only a|b|c; og roh summary (step 11)
   crates/og-pedigree/   the pedigree rules: families files, members, kinship, PARs
   crates/og-chip/       step 49, clonal haematopoiesis: og chip prepare, report, check-table
   crates/og-cn/         copy number from depth (steps 32, 35, 41, 46): og cn bed, call, intervals, check-bam, marker-regions, marker-read
@@ -31,7 +31,7 @@ rust/
   crates/og-lookup/     the genotype lookup of scripts/owngenome-lookup.sh: og lookup query, resolve, report
   crates/og-fresh/      og dev freshness: the monthly freshness issue's upstream lookups, typed answers
   crates/og-recheck/    og recheck: newer databases since a run, the rerun and the ClinVar lock
-  crates/og-render/     og report render|index|charts: the reports from summary.json (render: the frame, QC and variants so far; index: ported; neither has a caller yet)
+  crates/og-render/     og report render|index|charts: the reports from summary.json (render: both reports, every section, called by steps 24, HTML_REPORT and generate-report.sh; a section that cannot be written says so in place and the rest is written)
   crates/og-live/       og live serve|results|family|demo, og view serve: the live site (family and view serve ported; serve, results and demo not ported yet)
   crates/og-couple/     og couple screen|genes: step 39's couple screen (not ported yet)
   crates/og-admix/      what the fine-ancestry engines share: panel, map, ref.geno, RNG, simulator; painting and projection (not ported yet)
@@ -46,7 +46,7 @@ Every verb the 1.0.0 release still has to port is already registered, each in it
 
 `og ancestry-fine simulate` builds an admixed genome with known truth from held-out people of the fine-ancestry panel: an unphased VCF and a BED of each copy's ancestry. The engines that replace ADMIXTURE and RFMix test against it. It and the parts those engines share (the panel reader, the genetic map, `model/ref.geno` and a seeded xoshiro256** generator) live in `og-admix`.
 
-A Python file whose tool moved to `og` but whose names other Python still imports stays as a *remnant*: a `# remnant:` header names its importers and the lane that deletes it, and `tests/parity/remnants.tsv` lists the names it may hold and the files that import it. `og dev remnants` (Guard, job `rust`) fails when the file defines a name the list does not allow, when an allowed name has no user left, when a listed importer no longer imports it, or when an unlisted file starts to. So a remnant only shrinks. `bin/genome_lookup.py` is one: it keeps the query reading and the summary names rule that `results_index.py` imports.
+A Python file whose tool moved to `og` but whose names other Python still imports stays as a *remnant*: a `# remnant:` header names its importers and the lane that deletes it, and `tests/parity/remnants.tsv` lists the names it may hold and the files that import it. `og dev remnants` (Guard, job `rust`) fails when the file defines a name the list does not allow, when an allowed name has no user left, when a listed importer no longer imports it, or when an unlisted file starts to. So a remnant only shrinks. `bin/genome_lookup.py` is one: it keeps the query reading and the summary names rule that `results_index.py` imports. `bin/render_report.py`, `bin/report_charts.py` and `bin/results_index.py` are no remnants but whole programs: no step calls them since `og report render` took over steps 24, HTML_REPORT and generate-report.sh, and they stay only for the Python live site (`bin/live_results.py` imports `render_report`) until its port deletes them with `genome_lookup.py` and `collect_summary.py`.
 
 The rules: no `unsafe` (the workspace forbids it), `cargo clippy -D warnings`, `cargo fmt`, and few, well-known crates (`indexmap`, `flate2`, `zlib-rs`, `memchr`, `smallvec`, `rustc-hash` and `rust-htslib` so far, declared in `rust/Cargo.toml` and locked in `Cargo.lock`). The musl builds also link `mimalloc` as their allocator: musl's own lets a long multi-threaded read hold several times its live memory.
 

@@ -10,7 +10,7 @@ The pipeline produces output across many directories in different formats (VCF, 
 
 ## Tool
 
-`og summary collect` (`rust/crates/og-summary`, run by `bin/render_report.py`) reads every step's output once into `${SAMPLE}/summary.json`, and `bin/render_report.py` renders the report from it. `scripts/generate-report.sh` renders the text report from the same summary, so the two reports cannot disagree about a count. Both are Python standard library only.
+`og report render` (`rust/crates/og-render`) runs `og summary collect` (`rust/crates/og-summary`), which reads every step's output once into `${SAMPLE}/summary.json`, and renders the report from it. `scripts/generate-report.sh` renders the text report from the same summary, so the two reports cannot disagree about a count. No Python runs for either report. A section that cannot be written (its data cannot be read, or its writer stops on an internal error) says so in its own place, `[could not be read: ...]` in the text report and an Unreadable card in the HTML report, and the rest of the report is still written; `og report render` then prints one `WARNING` line on stderr that counts and names those parts, and still exits 0.
 
 ## Docker Image
 
@@ -43,7 +43,7 @@ Two more files, when present:
 
 ## How the report is laid out
 
-The report is one HTML file in seven chapters, in this order, each opening with the question it answers. The text report (`scripts/generate-report.sh`) has the same chapters in the same order. `CHAPTERS` in `bin/render_report.py` is the one table both read.
+The report is one HTML file in seven chapters, in this order, each opening with the question it answers. The text report (`scripts/generate-report.sh`) has the same chapters in the same order. `CHAPTERS` in `rust/crates/og-render/src/chapters.rs` is the one table both read.
 
 | Chapter | Question | Sections |
 |---|---|---|
@@ -58,7 +58,7 @@ The report is one HTML file in seven chapters, in this order, each opening with 
 After them, "What this report leaves out" lists the steps not run and what no step assesses. The report closes with "Genes and rsIDs in these results": one line per gene symbol or rsID the results name, with a link to each section that names it and how many variants there (below).
 
 - **Contents.** A list on the left (on top on a narrow screen) names every chapter and section shown, each section with a dot for its state: blue complete, yellow stale or part not run (a section of several steps where one did not run), red failed, gray not run. A section with no card (a step such as step 39 that shows nothing when it did not run) is left out of both.
-- **Each section** has an anchor (`#clinvar`, `#cpic`, ...). Under its first card title a line gives the step, the state, the newest file date and a link to the section itself. The state badge is never green: a step that ran is not a finding. The caveat each card already printed (a `*_NOTE` sentence of `bin/render_report.py`) now sits right under that card's title, before the numbers. The PRS caption keeps its ancestry caveat inside its own sentence.
+- **Each section** has an anchor (`#clinvar`, `#cpic`, ...). Under its first card title a line gives the step, the state, the newest file date and a link to the section itself. The state badge is never green: a step that ran is not a finding. The caveat each card already printed (a `*_NOTE` sentence of `rust/crates/og-render/src/notes.rs`) now sits right under that card's title, before the numbers. The PRS caption keeps its ancestry caveat inside its own sentence.
 - **Five charts** show how sure each finding is, each in its section and right below that section's caveat (the PRS chart below the caption whose sentence holds the caveat). They are inline SVG drawn by `bin/report_charts.py` from the same summary, with no script: hover a mark for its value, click it to jump to the table or section it comes from.
   - **ClinVar** (`#clinvar`): one bar per review star, 4 to 0, and a grey bar for the low-confidence calls (GQ or DP below the call floor), which the star counts leave out. Yellow and grey only, never green. With no hit, a grey frame says that no hit is not an all-clear.
   - **Chromosomes** (`#roh`): chromosomes 1 to 22, X and Y of GRCh38 with the runs of homozygosity of 5 MB or more and a tick per ClinVar hit, grey for a low-confidence call. A hit on chrM or on another contig is not drawn; the line under the chart counts it. A tick for one of the first 50 hits links to the hits table, a later one to the ClinVar section. It also draws an outlined span for each AnnotSV class 4 or 5 SV and a bar under the chromosome for each mosaic chromosomal alteration MoChA reports, each linking to its section; an SV or a MoChA call on chrM, on another contig or with no position is counted in the same line under the chart. Every mark stays inside its chromosome: a span that runs past the chromosome's end is cut there, and a mark that starts past it (a file from another assembly) is not drawn and is counted in that line.
@@ -178,4 +178,4 @@ start ${GENOME_DIR}/${SAMPLE}/${SAMPLE}_report.html
 - Steps that were not run show "Not run" and are listed under Steps Not Run — this is expected. A step recorded as failed shows "Failed" instead
 - The report contains health findings: the ClinVar table lists your pathogenic and likely pathogenic variants, and other sections summarise pharmacogenomics, CPSR and the other steps. It holds no raw reads or full VCF, but share it only as you would share a medical record
 - Re-run this script anytime to update the report after running additional steps
-- The Nextflow `HTML_REPORT` module runs the same `bin/render_report.py` on the outputs of its run's QC, ClinVar, PharmCAT, CPIC, CPSR, clinical filter, slivar, ROH and mitochondrial haplogroup steps, so both reports print the same numbers for the same file. Its slivar card has no compound-het variant and gene counts: the Nextflow slivar module writes no `<sample>_compound_hets.tsv`. For every section on a Nextflow run, run this script with `GENOME_DIR` set to the `--outdir`
+- The Nextflow `HTML_REPORT` module runs the same `og report render` on the outputs of its run's QC, ClinVar, PharmCAT, CPIC, CPSR, clinical filter, slivar, ROH and mitochondrial haplogroup steps, so both reports print the same numbers for the same file. Its slivar card has no compound-het variant and gene counts: the Nextflow slivar module writes no `<sample>_compound_hets.tsv`. For every section on a Nextflow run, run this script with `GENOME_DIR` set to the `--outdir`
