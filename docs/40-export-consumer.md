@@ -36,6 +36,7 @@ With the pinned list and dbSNP b157 the table keeps 614,138 sites and drops 24,3
 ## Input
 
 - `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz` from step 03. A sample with a VCF alone has no gVCF: run step 03 again from the BAM, or give the gVCF of the same calls.
+- A gVCF of one sample is read whatever its sample is called. A gVCF of several samples is read only for the column that `--sample` (the sample name) names; when no column has that name, or two do, the step stops and writes nothing. Before, it read the first column, which could be another person's.
 
 ## Command
 
@@ -50,11 +51,14 @@ With `run-all.sh`: `TOOLS=...,consumer_export` (it is opt-in, so a default run l
 
 | The gVCF at the site | Written |
 |---|---|
-| a reference block (`GT 0/0`) | the reference base twice, for example `AA` |
+| a confident reference call (`GT 0/0`, a block or a record at the site): `GQ` 20 or more, or no `GQ`, and `FILTER` `PASS`, `.` or `RefCall` | the reference base twice, for example `AA` |
+| a weak reference call: `GQ` under 20, or another `FILTER` such as `LowQual` | `--` |
 | a variant record at the site, `PASS` | its two bases in alphabetical order, for example `AG` |
 | a variant record that did not pass its filter, with a non-reference allele | `--` |
 | a no-call (`./.`), no record, or a record that starts before the site and is not a block | `--` |
 | inside the bases of a called deletion or a longer allele | `--` |
+
+The quality floor holds for reference answers only, as everywhere in OwnGenome: `GQ` 20 reads, `GQ` 19 does not, and a call without `GQ` is read as it is. A reference block with `GQ` 3 has almost no reads behind it, so its `0/0` is not a genotype a chip would report. DeepVariant writes `RefCall` on a candidate it called reference, so that filter keeps its `0/0`. A variant call keeps its bases at any `GQ`. The summary counts the weak calls as `no_call: weak reference call (GQ below 20, or filtered)`.
 
 Then the chip's ploidy rules. With `male`, a chrX or chrY site outside the pseudoautosomal regions (`assets/par_grch38.bed`) gets one letter, and a heterozygous call there is `--`. With `female`, chrY sites are `--`. Without a sex each site keeps the ploidy of its call. A chrM site always gets one letter, and a heteroplasmic call (two bases) is `--`. A site whose strand is `-` in the table gets the complementary bases. A call of three or more alleles at a site stops the step, unless the site is on a female's chrY: a chip file holds one or two letters.
 
