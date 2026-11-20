@@ -3,7 +3,7 @@
 # The class 4 and 5 checks with the real tools: step 05 (AnnotSV, then
 # og sv postfilter in ANNOTSV_IMAGE) and step 22 (SURVIVOR_IMAGE,
 # BCFTOOLS_IMAGE) on the made-up data of tests/fixtures/annotsv/class45.sh,
-# then both reports from bin/render_report.py.
+# then both reports from og report render.
 #
 # Checks:
 #   1. step 05 writes <sample>_sv_class4_5_checked.tsv from what AnnotSV
@@ -89,7 +89,7 @@ expect "the consensus: DEL2 only, two callers" \
 
 # --- 3. the reports -----------------------------------------------------------------------
 report() {
-  python3 "${REPO}/bin/render_report.py" --sample s1 --sample-dir "$S" --json "${WORK}/summary.json" \
+  "${REPO}/bin/og" report render --sample s1 --sample-dir "$S" --json "${WORK}/summary.json" \
     -o "${WORK}/report.txt" -o "${WORK}/report.html" > /dev/null
 }
 report

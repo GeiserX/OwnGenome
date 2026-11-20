@@ -4,8 +4,9 @@
 # old slivar result stale, with its date, instead of showing it as current.
 #
 # The tools are faked as in base-run-all-default.sh, except the report
-# renderer: the hook runs bin/render_report.py with the host's python3 on the
-# host side of the call's mounts, so the reports are the real ones.
+# renderer: the hook runs og report render with the host's bin/og (the Guard
+# fake-docker job builds it into bin/.og) on the host side of the call's
+# mounts, so the reports are the real ones.
 # Also checks the run manifest and the step status file run-all.sh writes.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
@@ -48,7 +49,7 @@ put() {
   printf '%b' "$2" > "$h"
 }
 case "$args" in
-  "python3 /pgp-bin/render_report.py"*)
+  "/pgp-bin/og report render"*)
     # The real renderer, on the host paths of every /... argument.
     shift
     mapped=()

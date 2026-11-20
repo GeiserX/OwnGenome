@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # Step 32 (pypgx) takes its genes from assets/pgx_genes.tsv. This test checks:
 #  1. the table against pypgx's own gene table at the pinned tag: every bam
 #     row is a gene pypgx marks SV=TRUE, and every SV=TRUE gene is a bam row
@@ -12,10 +13,11 @@
 #     a BAM whose header lacks the gene's ALT contig and not for one that has
 #     it, and not printed when the column says yes;
 #  4. the PYPGX module reads the same table and spells no gene list;
-#  5. the reports: every bam gene has exactly one row in the PGx copy number
-#     block (its call, or why there is none), pypgx's, even beside a CNVpytor
-#     section, and a not-callable gene gets its not-assessable line (two
-#     planted summaries must be reported);
+#  5. the reports (og summary collect, then og report render): every bam
+#     gene has exactly one row in the PGx copy number block (its call, or why
+#     there is none), pypgx's, even beside a CNVpytor section, and a
+#     not-callable gene gets its not-assessable line
+#     (two planted summaries must be reported);
 #  6. one owner per gene: no row of the depth engine's catalog
 #     (bin/cn_loci.tsv) is a gene pypgx calls from the BAM (a planted UGT2B17
 #     row must be reported);
@@ -245,82 +247,76 @@ if grep -qE '"(CYP[0-9A-Z]+ ){2,}' "$NF"; then bad "the PYPGX module spells a ge
 # --- 5. the reports ------------------------------------------------------------
 # A summary with every gene of the table: GSTT1 not callable, CYP2E1 failed in
 # pypgx, CYP2D6 withheld by the depth check, every other bam gene with a
-# copy-number call. Every bam gene must have a row in the PGx copy number block
-# (its call, "not called: pypgx failed" or "not called: the CYP2D6 depth check
-# failed"),
-# and GSTT1 its not-assessable line. Two planted summaries must be reported: one
-# where GSTT1 reads as called (no not-assessable line), and one where a bam
-# gene's row says VCF (it drops out of the block).
-python3 - "$REPO" "$CAT" <<'PY' || FAILS=$((FAILS + 1))
-import os, sys, tempfile
-repo, cat = sys.argv[1], sys.argv[2]
-sys.path.insert(0, os.path.join(repo, "bin"))
-import collect_summary, render_report
-rows = [l.rstrip("\n").split("\t") for l in open(cat) if l.strip() and not l.startswith("#")][1:]
-bam = [g for g, mode, *_ in rows if mode == "bam"]
-hdr = ["Gene", "Diplotype", "Phenotype", "CNV_call", "Source", "Status", "Defining_variants", "Min_GQ",
-       "Weakest_variant", "Defining_filter", "Quality"]
-
-
-def summary(gstt1_status="not callable on this reference", vcf_source_for=None):
-    lines = []
-    for g, mode, *_ in rows:
-        src = "VCF" if g == vcf_source_for else mode.upper()
-        if g == "GSTT1":
-            lines.append([g, "N/A", "N/A", "N/A", src, gstt1_status] + ["N/A"] * 5)
-        elif g == "CYP2E1":
-            lines.append([g, "FAILED", "N/A", "N/A", src, "failed"] + ["N/A"] * 5)
-        elif g == "CYP2D6":
-            # what step 32 writes when the depth check rejects CYP2D6
-            lines.append([g, "Indeterminate", "Indeterminate (CYP2D6 depth check)", "N/A (CYP2D6 depth check)",
-                          src, "no call (CYP2D6 depth check)"] + ["N/A"] * 5)
-        else:
-            lines.append([g, "*1/*1", "Normal Metabolizer", f"CNV-{g}" if mode == "bam" else "N/A", src, "called"]
-                         + ["none", "N/A", "N/A", "N/A", "N/A"])
-    return lines
-
-
-def problems(lines):
-    with tempfile.TemporaryDirectory() as d:
-        os.makedirs(os.path.join(d, "pypgx"))
-        with open(os.path.join(d, "pypgx", "s1_pypgx_summary.tsv"), "w") as f:
-            f.write("\n".join("\t".join(r) for r in [hdr] + lines) + "\n")
-        data = collect_summary.collect("s1", d)["sections"]["pypgx"]["data"]
-    # The rows of the block (gene, text), with CNVpytor's section beside pypgx's:
-    # pypgx owns every bam gene, so each has one row, and it is pypgx's.
-    block = render_report.pgx_copy_number({"pypgx": {"state": "ok", "data": data},
-                                           "cnvpytor": {"state": "ok", "data": {}}})
-    cn = dict(block)
-    text = "\n".join(render_report.pypgx_lines(data))
-    bad = [f"{g}: {n} rows in the copy-number block" for g in sorted({g for g, _ in block})
-           if (n := sum(x == g for x, _ in block)) > 1]
-    for g in bam:
-        want = {"CYP2E1": "not called: pypgx failed",
-                "CYP2D6": "not called: the CYP2D6 depth check failed"}.get(g, f"CNV-{g}") + " (pypgx, read depth)"
-        if g == "GSTT1":
-            if "Not assessable on this reference: GSTT1" not in text:
-                bad.append("GSTT1 has no not-assessable line")
-        elif cn.get(g) != want:
-            bad.append(f"{g}: copy-number block says {cn.get(g)!r}, not {want!r}")
-    return bad
-
-
-bad = problems(summary())
-for b in bad:
-    print("FAIL:", b)
-if not bad:
-    print(f"ok: the reports show the copy-number call of {len(bam) - 3} bam genes, CYP2E1's failed call, "
-          "CYP2D6's depth-check no call and GSTT1's not-assessable line")
-for name, planted in (("GSTT1 read as called", summary(gstt1_status="no call")),
-                      ("SLC22A2's row says VCF", summary(vcf_source_for="SLC22A2"))):
-    got = problems(planted)
-    if got:
-        print(f"ok: control, {name} reported: {'; '.join(got)}")
-    else:
-        print(f"FAIL: control, {name} passed")
-        bad.append(name)
-sys.exit(1 if bad else 0)
-PY
+# copy-number call. og summary collect reads it and og report render writes
+# the text report, with a CNVpytor section beside pypgx's: every bam gene
+# must have exactly one row in its PGx copy number block (its call, "not
+# called: pypgx failed" or "not called: the CYP2D6 depth check failed"), and
+# GSTT1 its not-assessable line. Two planted
+# summaries must be reported: one where GSTT1 reads as called (no
+# not-assessable line), and one where a bam gene's row says VCF (it drops out
+# of the block).
+OG_BIN=${OG:-${REPO}/bin/og}
+# pypgx_table GSTT1_STATUS VCF_SOURCE_FOR: step 32's summary table for every gene.
+pypgx_table() {
+  printf 'Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\tDefining_variants\tMin_GQ\tWeakest_variant\tDefining_filter\tQuality\n'
+  rows "$CAT" | awk -F'\t' -v OFS='\t' -v gs="$1" -v vf="$2" '{
+    g = $1; src = (g == vf) ? "VCF" : toupper($2); na5 = "N/A\tN/A\tN/A\tN/A\tN/A"
+    if (g == "GSTT1") print g, "N/A", "N/A", "N/A", src, gs, na5
+    else if (g == "CYP2E1") print g, "FAILED", "N/A", "N/A", src, "failed", na5
+    else if (g == "CYP2D6") print g, "Indeterminate", "Indeterminate (CYP2D6 depth check)", "N/A (CYP2D6 depth check)", src, "no call (CYP2D6 depth check)", na5
+    else print g, "*1/*1", "Normal Metabolizer", ($2 == "bam" ? "CNV-" g : "N/A"), src, "called", "none", "N/A", "N/A", "N/A", "N/A"
+  }'
+}
+# report_problems NAME GSTT1_STATUS VCF_SOURCE_FOR: what is wrong with the reports of that summary, one per line.
+report_problems() {
+  local d="${WORK}/report-$1" g want got n
+  mkdir -p "${d}/s1/pypgx"
+  pypgx_table "$2" "$3" > "${d}/s1/pypgx/s1_pypgx_summary.tsv"
+  "$OG_BIN" summary collect --sample s1 --sample-dir "${d}/s1" --out "${d}/collected.json" > /dev/null 2>&1 \
+    || { echo "og summary collect failed"; return; }
+  # CNVpytor's section beside pypgx's: pypgx owns every bam gene, so each
+  # has one row, and it is pypgx's.
+  jq '.sections.cnvpytor = {"title": "Copy number (CNVpytor)", "step": "18", "state": "ok", "source": null,
+      "file_date": null, "note": null,
+      "data": {"total": 0, "deletions": 0, "duplications": 0, "significant": 0}}' "${d}/collected.json" > "${d}/summary.json"
+  "$OG_BIN" report render --summary "${d}/summary.json" -o "${d}/report.txt" > /dev/null 2>&1 \
+    || { echo "og report render failed"; return; }
+  # The block's rows as GENE<TAB>TEXT.
+  sed -n '/^## PGx copy number$/,/^$/p' "${d}/report.txt" | sed -n 's/^  \([^ ]*\)  *\(.*\)$/\1\t\2/p' > "${d}/block.tsv"
+  ! grep -F 'could not be read' "${d}/report.txt"
+  cut -f1 "${d}/block.tsv" | sort | uniq -c | awk '$1 > 1 { print $2 ": " $1 " rows in the copy-number block" }'
+  while IFS= read -r g; do
+    if [ "$g" = GSTT1 ]; then
+      grep -qF 'Not assessable on this reference: GSTT1' "${d}/report.txt" || echo "GSTT1 has no not-assessable line"
+      continue
+    fi
+    case $g in
+      CYP2E1) want="not called: pypgx failed" ;;
+      CYP2D6) want="not called: the CYP2D6 depth check failed" ;;
+      *) want="CNV-${g}" ;;
+    esac
+    want="${want} (pypgx, read depth)"
+    got=$(awk -F'\t' -v g="$g" '$1 == g { print $2; exit }' "${d}/block.tsv")
+    [ "$got" = "$want" ] || echo "${g}: copy-number block says '${got}', not '${want}'"
+  done < <(rows "$CAT" | awk -F'\t' '$2 == "bam" { print $1 }')
+}
+if ! "$OG_BIN" version > /dev/null 2>&1; then
+  if [ -n "${OG_REQUIRED:-}" ]; then bad "the reports: og is not built (set OG or run scripts/setup.sh --og)"; else
+    echo "skip: the reports need og (set OG or run scripts/setup.sh --og)"
+  fi
+else
+  got=$(report_problems shipped "not callable on this reference" "")
+  if [ -z "$got" ]; then
+    n=$(rows "$CAT" | awk -F'\t' '$2 == "bam"' | wc -l)
+    ok "the reports show the copy-number call of $((n - 3)) bam genes, CYP2E1's failed call, CYP2D6's depth-check no call and GSTT1's not-assessable line"
+  else
+    while IFS= read -r l; do bad "$l"; done <<< "$got"
+  fi
+  got=$(report_problems gstt1-called "no call" "")
+  if [ -n "$got" ]; then ok "control, GSTT1 read as called reported: $(tr '\n' ';' <<< "$got")"; else bad "control, GSTT1 read as called passed"; fi
+  got=$(report_problems slc22a2-vcf "not callable on this reference" SLC22A2)
+  if [ -n "$got" ]; then ok "control, SLC22A2's row says VCF reported: $(tr '\n' ';' <<< "$got")"; else bad "control, SLC22A2's row says VCF passed"; fi
+fi
 
 # --- 6. one owner per gene ------------------------------------------------------
 # A gene pypgx calls from the BAM (a bam row) is pypgx's: the depth engine's
