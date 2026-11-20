@@ -58,7 +58,7 @@
     shownKey = key;
     list.textContent = '';
     if (!key) {
-      banner.textContent = 'No re-check yet: bin/owngenome_recheck.py writes one (docs/recheck.md).';
+      banner.textContent = 'No re-check yet: bin/og recheck writes one (docs/recheck.md).';
       document.documentElement.removeAttribute('data-owngenome-recheck');
       return;
     }
