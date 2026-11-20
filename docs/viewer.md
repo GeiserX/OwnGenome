@@ -7,7 +7,9 @@
 - the reference genome (`REF_FASTA`),
 - the sample's reads (the BAM, or the CRAM from step 34),
 - its small variants (the VCF from step 3),
-- its structural variants (step 22's consensus, else Manta's VCF from step 4).
+- its structural variants (Manta's diploid SVs from step 4, else step 22's consensus).
+
+Manta comes first: step 22's consensus keeps only the calls two callers agree on, and the reads are where you check a call that only one caller made.
 
 It opens at the locus you give. Every findings table of the HTML report (step 24) ends with a Viewer column: the ClinVar hits, the secondary-findings genes, the mitochondrial variants, the deep intronic sites, the cDNA scan, the AnnotSV class 4 and 5 SVs, slivar's pairs in trans, the mosaic alterations and Exomiser's ranked variants. With the viewer running, a click on a row's link opens the reads at that row.
 
@@ -20,11 +22,11 @@ A variant call is a summary of the reads. Before you act on a finding, look at t
 ## Tool
 
 - **igv.js** 3.8.10 (`IGV_JS_VERSION` and `IGV_JS_SHA256` in `versions.env`, shared with the live site) draws the reads and variants in the browser.
-- **`assets/viewer/serve.py`** (Python standard library) serves the page and the sample's files on `127.0.0.1`.
+- **`og view serve`** (OwnGenome's Rust binary, through `bin/og`) serves the page and the sample's files on `127.0.0.1`.
 
 ## Docker Image
 
-None. The viewer runs on the host's `python3`, so it needs no image and no port publishing.
+None. The viewer runs on the host as `og`, so it needs no image and no port publishing.
 
 ## Command
 
@@ -32,7 +34,7 @@ None. The viewer runs on the host's `python3`, so it needs no image and no port 
 GENOME_DIR=/path/to/data ./scripts/owngenome-view.sh <sample> [locus]
 ```
 
-`locus` is `chr17`, `chr17:43045000` or `chr17:43044000-43046000`. Without one the viewer opens the first chromosome of the reference. Zoom in to a few kilobases or less to see the reads. The script prints the address to open:
+`locus` is `chr17`, `chr17:43045000` or `chr17:43044000-43046000`. Without one the viewer opens the first chromosome of the reference. A locus on a contig the reference does not have, past the contig's end, or with its end before its start (`chr17:43046000-43044000`) stops the script with exit 2 and the reason. Zoom in to a few kilobases or less to see the reads. The script prints the address to open:
 
 ```
 Viewer for your_name: http://127.0.0.1:8765/#chr17:43045000
@@ -46,21 +48,24 @@ Open it in a browser. To jump somewhere else, type a locus in igv.js's search bo
 | `OWNGENOME_VIEW_PORT` | `8765` | The port. The report's links use 8765, so keep it unless the port is taken. |
 | `READS` | `<sample>/aligned/<sample>_sorted.bam`, else `..._sorted.cram` | The reads; `none` leaves them out. `ALIGN_DIR` picks another folder, as in the steps. |
 | `VCF` | `<sample>/vcf/<sample>.vcf.gz` | The small-variant VCF (`VCF_DIR` as in the steps). |
-| `SV_VCF` | `<sample>/sv_merged/<sample>_sv_consensus.vcf.gz`, else `<sample>/manta/results/variants/diploidSV.vcf.gz` | The structural-variant VCF. |
+| `SV_VCF` | `<sample>/manta/results/variants/diploidSV.vcf.gz`, else `<sample>/sv_merged/<sample>_sv_consensus.vcf.gz` | The structural-variant VCF. |
 | `REF_FASTA` | as in every step | The reference. Its `.fai` must sit beside it. |
+| `OG` | `bin/og` | The `og` binary to run. |
 
 The script leaves out a file it does not find, and says so. A BAM or CRAM needs its index (`.bai`, `.crai`) beside it. A VCF with a `.tbi` is read in pieces. One without a `.tbi` is read whole, which is fine for an SV VCF.
 
-The command needs `python3` on the host, but no Docker. The first run downloads igv.js (version 3.8.10, the `IGV_JS_VERSION` line in `versions.env`) into `GENOME_DIR/tools/igv.js-3.8.10/` and checks its sha256. After that it needs no network.
+The command needs `og` built for this machine (`scripts/setup.sh --og`; on macOS that is the native build `bin/og` picks), but no `python3` and no Docker. The first run downloads igv.js (version 3.8.10, the `IGV_JS_VERSION` line in `versions.env`) into `GENOME_DIR/tools/igv.js-3.8.10/` and checks its sha256. After that it needs no network.
 
 ## Privacy
 
 Nothing is uploaded:
 
-- The server (`assets/viewer/serve.py`) listens on `127.0.0.1` only. Other machines on your network cannot reach it.
+- The server (`og view serve`) listens on `127.0.0.1` only. Other machines on your network cannot reach it.
+- It has no login and no token. Every account on this computer can reach `127.0.0.1`, so while the viewer runs, anyone logged in to the same machine can read the sample through it. On a shared machine, stop it when you are done.
 - It serves only the page, igv.js and the files listed above. It sends nothing else from `GENOME_DIR`.
 - Every response carries a Content-Security-Policy that lets the page talk to this server and nowhere else. igv.js has features that call outside services: the genome list and gene-name search on igv.org, and BLAT. The browser blocks those calls. The viewer turns off the genome list, which igv.js would otherwise fetch at start.
 - It refuses a request whose `Host` header is not `127.0.0.1` or `localhost`. That stops a web page from reaching the server through a domain name that points at your own machine.
+- It refuses a request a proxy forwarded (one with a `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto` or `X-Real-IP` header) with 403. Without a password, a reverse proxy in front of the viewer would hand the sample to anyone who reaches the proxy. An ssh port forward adds no such header, so it keeps working.
 
 The only download is igv.js itself, once, from jsDelivr's copy of the npm release. It is checked against the pinned sha256 before use.
 
@@ -76,11 +81,11 @@ ssh -N -L 8765:127.0.0.1:8765 user@remote-machine
 GENOME_DIR=/path/to/data ./scripts/owngenome-view.sh your_name chr17:43045000
 ```
 
-Then open `http://127.0.0.1:8765/` on your computer. The report's links work the same way. The reads travel inside the ssh connection, and only the ranges igv.js asks for. Do not expose the port any other way: the server has no login, so anyone who can reach it can read the sample.
+Then open `http://127.0.0.1:8765/` on your computer. The report's links work the same way. The reads travel inside the ssh connection, and only the ranges igv.js asks for. Do not expose the port any other way: the server has no login, so anyone who can reach it can read the sample. It refuses requests that come through a reverse proxy for that reason.
 
 ## From the live site
 
-`scripts/owngenome-live.sh` starts the [live site](live-site.md) with the viewer: each run has it at `/runs/<run>/viewer/`, behind the site's password, and the report the site serves points its Viewer links there. `bin/owngenome_live_viewer.py` uses the same page and files as `owngenome-view.sh` picks by default (the run folder's BAM or CRAM, its VCF and its SV VCF, each with its index, and `REF_FASTA`). The `READS`, `VCF`, `SV_VCF`, `ALIGN_DIR` and `VCF_DIR` overrides do not apply there, and a track whose file or index is a symlink out of `GENOME_DIR` is left out. The first start downloads igv.js the same way. `OWNGENOME_LIVE_VIEWER=off` starts the site without it.
+`scripts/owngenome-live.sh` starts the [live site](live-site.md) with the viewer: each run has it at `/runs/<run>/viewer/`, behind the site's password, and the report the site serves points its Viewer links there. `bin/owngenome_live_viewer.py` uses the same page and the files `owngenome-view.sh` picks by default (the run folder's BAM or CRAM, its VCF and its SV VCF, each with its index, and `REF_FASTA`), with one difference: for the SV track it still takes step 22's consensus first, else Manta's VCF, until the live site's server moves to `og`. The `READS`, `VCF`, `SV_VCF`, `ALIGN_DIR` and `VCF_DIR` overrides do not apply there, and a track whose file or index is a symlink out of `GENOME_DIR` is left out. The first start downloads igv.js the same way. `OWNGENOME_LIVE_VIEWER=off` starts the site without it.
 
 On the genome map, zoom below 50 kb and press **R** or select **See the reads**. The **Reads** gauge opens a 2 kb view. A finding's map card also offers **See the reads**, centred on its position with 50 bases on each side. The panel otherwise starts at the nearest open finding in view, or at the view itself. Moving the map updates the viewer's locus. Alignments are visible up to 50 kb.
 
@@ -102,14 +107,17 @@ The server starts at once. How fast a view loads depends on the disk and the rea
 
 ## Tested by
 
-`tests/test_viewer.py`, in CI's unit tests, on a synthetic sample it writes itself (a random 3 kb reference, 30 reads, one variant, one deletion). It checks that:
+`rust/crates/og-live/tests/port_viewer.rs`, in the Guard job `rust`, on a synthetic sample it writes itself (a random 3 kb reference, 30 reads, one variant, one deletion). It checks that:
 
-- the page's config names the sample's files and the locus;
+- the page's config names the sample's files and the locus, and a locus that is not on the reference, or ends before it starts, is refused;
+- Manta's diploid SVs come before step 22's consensus;
 - the server listens on 127.0.0.1 and not on the machine's other address;
-- it answers byte ranges of the BAM exactly, and refuses unknown paths and a foreign `Host`;
-- in headless Chrome, igv.js starts on the config, the policy blocks nothing it needs, and it reads the BAM, its index, the reference and the VCF;
-- every findings table of the report ends with a Viewer cell that links each row to its position, with the note under it; a control with the links taken out must fail that check for every table;
-- igv.js is the release `versions.env` pins, with its sha256, and the script sets no pin of its own.
+- it answers byte ranges of the BAM exactly, and refuses unknown paths, a foreign `Host` and a forwarded request;
+- in headless Chrome, igv.js starts on the config, the policy blocks nothing it needs, and it reads the BAM, its index, the reference and the VCF. A control with an empty igv.js must not reach that state.
+
+`tests/test_owngenome_view.sh` checks the script with `og`: igv.js is the release `versions.env` pins, with its sha256, and the script sets no pin of its own; it prints the address, picks Manta's SV VCF, refuses a foreign `Host`, a forwarded request and a reversed locus, and never calls `python3`.
+
+`tests/test_viewer.py` checks that every findings table of the report ends with a Viewer cell that links each row to its position, with the note under it; a control with the links taken out must fail that check for every table.
 
 `tests/test_live_viewer.py` checks the live site's viewer on the same sample: the login, the policy, the byte ranges, the files it refuses, the report's links pointed at the site, the access log, a BAM symlinked out of `GENOME_DIR`, a site started without the viewer, and the page in headless Chrome.
 
