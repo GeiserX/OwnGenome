@@ -58,7 +58,7 @@ pub const CHAPTERS: [Chapter; 7] = [
             sec(
                 "clinical-filter",
                 "Clinical filter and secondary findings",
-                &["clinical"],
+                &["clinical", "acmg_sf"],
             ),
             sec("cpsr", "Cancer predisposition", &["cpsr"]),
             sec("slivar", "Variant prioritization", &["slivar"]),
