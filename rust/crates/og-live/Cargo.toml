@@ -12,12 +12,15 @@ fault-inject = ["og-runlog/fault-inject"]
 
 [dependencies]
 pycompat.workspace = true
+indexmap.workspace = true
 og-nf.workspace = true
 og-runlog.workspace = true
 jiff.workspace = true
 
 [dev-dependencies]
-indexmap.workspace = true
+# tests/port_viewer.rs: the synthetic BAM and VCFs (BGZF), and the page in Chrome.
+flate2.workspace = true
+og-browser = { path = "../og-browser" }
 
 [lints]
 workspace = true
