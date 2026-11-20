@@ -26,7 +26,7 @@
 
 use std::io::Write;
 
-use pycompat::json::{Dump, Value, dumps, loads};
+use pycompat::json::{Dump, Value, dumps};
 
 use crate::chapters::{Failed, WriterFn, guarded, writer};
 use crate::model::{Summary, py};
@@ -219,8 +219,7 @@ pub fn cli_using(
     let need_index = a.search_index.is_some() || a.out.iter().any(|o| o.ends_with(".html"));
     let idx = if need_index {
         let built = guarded(|| {
-            let root = loads(&body).map_err(|e| crate::model::Malformed(e.to_string()))?;
-            index::build(&root, a.sample_dir.as_deref(), &[], &mut &mut *err)
+            index::build(s.root(), a.sample_dir.as_deref(), &[], &mut &mut *err)
                 .map_err(crate::model::Malformed)
         });
         match built {
@@ -267,7 +266,20 @@ pub fn cli_using(
         }
     }
     if let Some(dest) = &a.charts_json {
-        let made = guarded(|| charts::json(&s))
+        // Charts that cannot be made leave the sidecar with an empty list,
+        // as they leave the HTML report without figures, and are named in
+        // `failed`; a sidecar that cannot be written still stops the verb.
+        let specs = guarded(|| charts::build(&s)).unwrap_or_else(|why| {
+            let x = Failed {
+                part: "charts".to_owned(),
+                why: why.to_string(),
+            };
+            if !failed.contains(&x) {
+                failed.push(x);
+            }
+            Vec::new()
+        });
+        let made = charts::json_of(&s, &specs)
             .map_err(|e| format!("{path}: {e}"))
             .and_then(|v| json_text(&v))
             .and_then(|b| write(dest, &b).map_err(|e| format!("{dest}: {e}")));

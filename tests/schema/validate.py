@@ -2,8 +2,8 @@
 
 The check CI and the e2e cases run is `og dev schema SCHEMA DOC`
 (rust/crates/og-dev/src/schema.rs). This module stays only because
-tests/test_collect_summary.py calls validate(schema, doc) in-process, in
-the unit-tests job, which has no og. It goes when that test moves to Rust.
+tests/test_collect_summary.py calls validate(schema, doc) in-process, from
+Python. It goes when that test moves to Rust.
 
 It follows og dev schema's rules: the keywords tests/schema/summary.schema.json
 uses (type, enum, required, properties, additionalProperties as a schema, true

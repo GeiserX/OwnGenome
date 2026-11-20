@@ -45,6 +45,32 @@ fn frame_of<'a>(page: &'a str, sid: &str) -> &'a str {
         .map_or("", |x| x.1.split("</section>").next().unwrap_or(""))
 }
 
+/// A fresh folder for one test, removed when the test ends, even on a
+/// failed assertion.
+struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Scratch {
+        let d = std::env::temp_dir().join(format!("og-render-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).expect("a temp folder");
+        Scratch(d)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn args_of(parts: &[&std::path::Path]) -> Vec<String> {
+    parts
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
 fn want_failed() -> Vec<Failed> {
     vec![Failed {
         part: "variants".to_owned(),
@@ -102,9 +128,8 @@ fn a_section_that_panics_writes_its_error_line_and_the_rest_of_the_html_report()
 
 #[test]
 fn the_verb_counts_the_failed_parts_on_stderr_and_still_writes_both_reports() {
-    let d = std::env::temp_dir().join(format!("og-render-section-failure-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("a temp folder");
+    let scratch = Scratch::new("section-failure");
+    let d = &scratch.0;
     let sum = d.join("summary.json");
     std::fs::write(&sum, SUMMARY).expect("written");
     let (txt, page) = (d.join("r.txt"), d.join("r.html"));
@@ -134,5 +159,45 @@ fn the_verb_counts_the_failed_parts_on_stderr_and_still_writes_both_reports() {
     let h = std::fs::read_to_string(&page).expect("the HTML report");
     assert!(t.contains(&format!("[could not be read: {WHY}]")) && t.contains("## Quality control"));
     assert!(frame_of(&h, "variants").contains(WHY) && frame_of(&h, "qc").contains("Mean depth"));
-    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn charts_that_cannot_be_made_leave_an_empty_charts_file_and_the_rest_of_the_run() {
+    // A ClinVar section whose hits are not a table: its chart cannot be made.
+    let body = SUMMARY.replacen(
+        "\"sections\": {",
+        "\"sections\": {\n  \"clinvar\": {\"title\": \"ClinVar\", \"state\": \"ok\", \"step\": \"07\", \"source\": \"x\", \
+         \"file_date\": null, \"note\": null, \"data\": []},",
+        1,
+    );
+    let scratch = Scratch::new("charts-failure");
+    let d = &scratch.0;
+    let sum = d.join("summary.json");
+    std::fs::write(&sum, &body).expect("written");
+    let (page, charts) = (d.join("r.html"), d.join("charts.json"));
+    let mut args = args_of(&[
+        std::path::Path::new("--summary"),
+        &sum,
+        std::path::Path::new("-o"),
+        &page,
+    ]);
+    args.extend(args_of(&[std::path::Path::new("--charts-json"), &charts]));
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = render::cli_using(&args, &mut out, &mut err, chapters::writer);
+    let err = String::from_utf8(err).expect("utf-8");
+    assert_eq!(code, 0, "{err}");
+    assert!(
+        err.contains("og report render: WARNING: ") && err.contains("charts ("),
+        "{err}"
+    );
+    let c = std::fs::read_to_string(&charts).expect("the charts file is written");
+    assert!(
+        c.contains("\"charts\": []") && c.contains("\"sample\": \"S1\""),
+        "{c}"
+    );
+    let h = std::fs::read_to_string(&page).expect("the HTML report");
+    assert!(
+        frame_of(&h, "qc").contains("Mean depth"),
+        "the other sections are written"
+    );
 }

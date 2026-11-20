@@ -986,7 +986,7 @@ fn prs_table_reads_pgsc_calc_and_the_reports_show_sex_specific_scores() {
         "row_nr,accession,chr_name,chr_position,effect_allele,other_allele,match_status,dataset\n";
     let chrx_of = || {
         let (res, sc, o) = (wp("xpanel"), wp("pgsx_panel"), wp("xp.tsv"));
-        prs_table(&[
+        let code = prs_table(&[
             "--sample",
             "S",
             "--results",
@@ -1002,6 +1002,7 @@ fn prs_table_reads_pgsc_calc_and_the_reports_show_sex_specific_scores() {
             "--out",
             &o,
         ]);
+        assert_eq!(code, 0, "og prs table on the chrX panel");
         g(&first_row(&o), "ChrX")
     };
     put_gz(
@@ -1697,12 +1698,15 @@ const GOLDEN_TITLES: [&str; 47] = [
     "Not Assessed by This Pipeline",
 ];
 
-/// Every card title of an HTML page, sorted.
+/// Every card title of an HTML page, sorted: each `<h2>`, whatever its
+/// attributes, except the chapter and contents headings.
 fn titles(html: &str) -> Vec<String> {
     let mut t: Vec<String> = html
-        .split("<h2>")
+        .split("<h2")
         .skip(1)
-        .filter_map(|x| x.split_once("</h2>").map(|y| y.0))
+        .filter_map(|x| x.split_once('>'))
+        .filter(|(attrs, _)| !attrs.contains("chapter-title") && !attrs.contains("toc-title"))
+        .filter_map(|(_, x)| x.split_once("</h2>").map(|y| y.0))
         .filter(|x| !x.contains('<'))
         .map(str::to_owned)
         .collect();
@@ -1738,7 +1742,8 @@ fn external_problems(html: &str) -> Vec<String> {
         }
     }
     kept.push_str(rest);
-    let low = kept.to_lowercase();
+    // ASCII only, so a byte offset in `low` is the same offset in `kept`.
+    let low = kept.to_ascii_lowercase();
     let mut found = Vec::new();
     for attr in ["src", "href"] {
         let mut from = 0;
@@ -1920,9 +1925,13 @@ fn the_chapters_on_the_demo_sample() {
         &["sections", "clinvar", "data", "hits"],
         j("[]"),
     );
+    let nohit_html = reports(&nohit).1;
+    let nv = frame_of(&nohit_html, "clinvar");
     assert!(
-        !frame_of(&reports(&nohit).1, "clinvar").contains("badge-green"),
-        "no ClinVar hit, still no green"
+        nv.contains("<h2>ClinVar Screening</h2>")
+            && nv.contains("<span class=\"badge badge-gray\">0</span>")
+            && !nv.contains("badge-green"),
+        "no ClinVar hit: the screen card with a gray 0, still no green:\n{nv}"
     );
     assert!(
         frame_of(&html, "cpic").contains("CPIC Drug Recommendations"),
@@ -1960,6 +1969,14 @@ fn the_chapters_on_the_demo_sample() {
         golden(),
         "red control: a dropped card is caught"
     );
+    assert_ne!(
+        titles(&html.replace(
+            "<h2>Traits</h2>",
+            "<h2>Traits</h2><h2 class=\"card-title\">Extra</h2>"
+        )),
+        golden(),
+        "red control: an extra card with attributes on its heading is caught"
+    );
 
     // "New since" and the database re-check
     let badge = "New since 2026-01-01T00:00:00Z";
@@ -1985,12 +2002,18 @@ fn the_chapters_on_the_demo_sample() {
             .copied()
             .filter(|sid| frame_of(page, sid).contains(badge))
             .collect();
-        if got == want && page.matches(badge).count() == want.len() {
+        let n = page.matches(badge).count();
+        if got == want && n == want.len() {
             Vec::new()
         } else {
-            got.iter().map(|x| (*x).to_owned()).collect()
+            vec![format!("the badge in {got:?}, {n} on the page")]
         }
     };
+    assert_ne!(
+        badge_problems(&h2.replace(badge, ""), &["clinvar"]),
+        Vec::<String>::new(),
+        "red control: a missing badge is caught"
+    );
     assert_eq!(
         badge_problems(&h2, &["clinvar"]),
         Vec::<String>::new(),
@@ -2101,30 +2124,42 @@ fn the_chapters_on_the_demo_sample() {
         .map(|x| x.1)
         .filter(|n| html.contains(&*e(n)))
         .collect();
-    let loose: Vec<&str> = shown
-        .iter()
-        .copied()
-        .filter(|n| {
-            *n != PRS_ANCESTRY_NOTE
-                && html.matches(&*e(n)).count()
-                    != html
-                        .matches(&format!("<p class=\"caveat\">{}</p>", e(n)))
-                        .count()
-        })
-        .map(|n| &n[..40])
-        .collect();
+    // Every caveat shown is its own caveat paragraph, at most once a card
+    // (one note may sit on several cards: notes.rs lists where).
+    let loose_of = |page: &str| -> Vec<String> {
+        shown
+            .iter()
+            .copied()
+            .filter(|n| {
+                let wrapped = format!("<p class=\"caveat\">{}</p>", e(n));
+                *n != PRS_ANCESTRY_NOTE
+                    && (page.matches(&*e(n)).count() != page.matches(&wrapped).count()
+                        || page
+                            .split("<h2")
+                            .any(|card| card.matches(&wrapped).count() > 1))
+            })
+            .map(|n| n[..40].to_owned())
+            .collect()
+    };
+    let loose = loose_of(&html);
     assert!(
         shown.len() > 20 && loose.is_empty(),
-        "every caveat shown is under a card title: {loose:?} {}",
+        "every caveat shown is under a card title, once a card: {loose:?} {}",
         shown.len()
     );
     let eh = format!("<p class=\"caveat\">{}", e(EH_NOTE));
+    assert!(html.contains(&eh), "the ExpansionHunter caveat is shown");
+    let moved = html.replace(&eh, &format!("<p>{}", e(EH_NOTE)));
     assert_eq!(
-        html.replace(&eh, &format!("<p>{}", e(EH_NOTE)))
-            .matches(&eh)
-            .count(),
-        0,
+        loose_of(&moved),
+        vec![EH_NOTE[..40].to_owned()],
         "red control: a caveat left in a body is caught"
+    );
+    let twice = html.replacen(&eh, &format!("{eh}</p>\n{eh}"), 1);
+    assert_eq!(
+        loose_of(&twice),
+        vec![EH_NOTE[..40].to_owned()],
+        "red control: a caveat shown twice is caught"
     );
     let mo = html
         .split_once("<h2>Mosaic Loss of Chromosome Y or X</h2>")

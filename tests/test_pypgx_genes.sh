@@ -284,6 +284,9 @@ report_problems() {
   # The block's rows as GENE<TAB>TEXT.
   sed -n '/^## PGx copy number$/,/^$/p' "${d}/report.txt" | sed -n 's/^  \([^ ]*\)  *\(.*\)$/\1\t\2/p' > "${d}/block.tsv"
   grep -qF 'could not be read' "${d}/report.txt" && echo "a report section could not be read"
+  # CNVpytor's section is written beside the PGx block, with its counts.
+  grep -qxF '  Total CNVs: 0 (0 deletions, 0 duplications)' "${d}/report.txt" \
+    || echo "CNVpytor's section is not written"
   cut -f1 "${d}/block.tsv" | sort | uniq -c | awk '$1 > 1 { print $2 ": " $1 " rows in the copy-number block" }'
   while IFS= read -r g; do
     if [ "$g" = GSTT1 ]; then
@@ -312,10 +315,12 @@ else
   else
     while IFS= read -r l; do bad "$l"; done <<< "$got"
   fi
+  # Each control must be caught by its own diagnostic, on a report og wrote.
+  caught() { ! grep -qE '^og (summary collect|report render) failed$' <<< "$1" && grep -qF "$2" <<< "$1"; }
   got=$(report_problems gstt1-called "no call" "")
-  if [ -n "$got" ]; then ok "control, GSTT1 read as called reported: $(tr '\n' ';' <<< "$got")"; else bad "control, GSTT1 read as called passed"; fi
+  if caught "$got" "GSTT1 has no not-assessable line"; then ok "control, GSTT1 read as called reported: $(tr '\n' ';' <<< "$got")"; else bad "control, GSTT1 read as called passed"; fi
   got=$(report_problems slc22a2-vcf "not callable on this reference" SLC22A2)
-  if [ -n "$got" ]; then ok "control, SLC22A2's row says VCF reported: $(tr '\n' ';' <<< "$got")"; else bad "control, SLC22A2's row says VCF passed"; fi
+  if caught "$got" "SLC22A2: copy-number block says"; then ok "control, SLC22A2's row says VCF reported: $(tr '\n' ';' <<< "$got")"; else bad "control, SLC22A2's row says VCF passed"; fi
 fi
 
 # --- 6. one owner per gene ------------------------------------------------------
