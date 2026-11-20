@@ -450,6 +450,13 @@ pub fn build(
         if !matches!(s.get("state"), Some(Value::Str(st)) if st == "ok" || st == "stale") {
             continue;
         }
+        // The ACMG card of its own section is the card the clinical section
+        // also holds (`clinical.data.acmg_sf`), which the index already reads.
+        // Skip it so a gene is not listed twice, until the report readers
+        // move from the nested card to this section (i411-display-sf).
+        if key == "acmg_sf" {
+            continue;
+        }
         let field = |k: &str| s.get(k).cloned().unwrap_or(Value::Null);
         let mut add = |term: &str, txt: &str, locus: Option<&str>| {
             let items = terms.entry(term.to_owned()).or_default();

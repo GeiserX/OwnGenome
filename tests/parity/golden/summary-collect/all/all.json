@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-19 11:33 UTC",
+ "generated_utc": "2026-11-20 10:24 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -12830,7 +12830,8 @@
       "significance": "Likely pathogenic",
       "stars": 1,
       "inheritance": "AR",
-      "condition": "Nonsyndromic hearing loss, recessive (DFNB1A)"
+      "condition": "Nonsyndromic hearing loss, recessive (DFNB1A)",
+      "combined_allele": "combined allele of chr13:20189473 C>T + chr13:20189475 G>A"
      },
      {
       "gene": "BRCA1",
@@ -12839,7 +12840,8 @@
       "significance": "Pathogenic",
       "stars": 3,
       "inheritance": "AR",
-      "condition": "Fanconi anemia"
+      "condition": "Fanconi anemia",
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes"
      },
      {
       "gene": "GLA",
@@ -12848,7 +12850,8 @@
       "significance": "Pathogenic",
       "stars": 0,
       "inheritance": "XL",
-      "condition": "Fabry disease"
+      "condition": "Fabry disease",
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record"
      },
      {
       "gene": "HBA1",
@@ -12888,7 +12891,7 @@
       {
        "gene": "SMN1",
        "verdict": "biallelic",
-       "why": "the variant is called homozygous inside the deletion: it is hemizygous, on the one copy the deletion leaves",
+       "why": "the variant is called homozygous inside the deletion: hemizygous on the copy the deletion leaves if the deletion is real, homozygous if not; both copies carry it either way",
        "deletion": "one SMN1 copy (Parascopy, step 35)",
        "variant": "chr5:70951946 C>T",
        "genotype": "hemizygous",
@@ -12906,6 +12909,145 @@
       "step 35's HBA1/HBA2 count: not called"
      ]
     }
+   }
+  },
+  "acmg_sf": {
+   "title": "ACMG secondary findings",
+   "step": "06",
+   "state": "ok",
+   "source": "clinvar/S_clinvar_hits.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "version": "ACMG SF v3.3",
+    "genes_on_list": 84,
+    "rules": "assets/acmg_sf.tsv",
+    "clinvar_hits": [
+     {
+      "gene": "MUTYH",
+      "variant": "chr1:45331556 C>T",
+      "genotype": "het",
+      "significance": "Pathogenic",
+      "stars": 2,
+      "low_confidence": false,
+      "rule": "P and LP (2 variants)",
+      "rule_note": null,
+      "severity": null,
+      "pair": "biallelic",
+      "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
+     },
+     {
+      "gene": "BRCA1",
+      "variant": "chr17:43057100 C>T",
+      "genotype": "het",
+      "significance": "Pathogenic",
+      "stars": 3,
+      "low_confidence": false,
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes",
+      "rule": "All P and LP",
+      "rule_note": null,
+      "severity": null
+     },
+     {
+      "gene": "GLA",
+      "variant": "chrX:101398000 C>T",
+      "genotype": "1",
+      "significance": "Pathogenic",
+      "stars": 0,
+      "low_confidence": false,
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record",
+      "rule": "All hemi, het, homozygous P and LP",
+      "rule_note": null,
+      "severity": null
+     }
+    ],
+    "clinvar_checked": true,
+    "high_impact": [
+     {
+      "gene": "MUTYH",
+      "variant": "chr1:45332000 G>A",
+      "genotype": "het",
+      "consequence": "stop_gained",
+      "transcript": "MANE",
+      "frequency": "rare",
+      "frequency_unknown": false,
+      "weak_call": false,
+      "call_note": null,
+      "gq": 40,
+      "dp": 30,
+      "ad": "15,15",
+      "rule": "P and LP (2 variants)",
+      "rule_note": null,
+      "severity": null,
+      "pair": "biallelic",
+      "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
+     },
+     {
+      "gene": "MYBPC3",
+      "variant": "chr11:47332000 G>A",
+      "genotype": "het",
+      "consequence": "splice_donor_variant,intron_variant",
+      "transcript": "ANY",
+      "frequency": "rare",
+      "frequency_unknown": false,
+      "weak_call": false,
+      "call_note": null,
+      "gq": null,
+      "dp": null,
+      "ad": null,
+      "rule": "All P and LP",
+      "rule_note": null,
+      "severity": null
+     },
+     {
+      "gene": "MSH2",
+      "variant": "chr2:47414000 A>AT",
+      "genotype": "het",
+      "consequence": "frameshift_variant",
+      "transcript": "CANONICAL",
+      "frequency": "rare",
+      "frequency_unknown": false,
+      "weak_call": true,
+      "call_note": "alt reads 0.07 of the depth on a heterozygote",
+      "gq": 50,
+      "dp": 30,
+      "ad": "28,2",
+      "rule": "All P and LP",
+      "rule_note": "A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.",
+      "severity": null
+     }
+    ],
+    "high_impact_checked": true,
+    "high_impact_rare": 2,
+    "high_impact_weak": 1,
+    "high_impact_frequency_unknown": 0,
+    "structural": [],
+    "structural_checked": true,
+    "structural_note": null,
+    "not_reported": [
+     {
+      "gene": "HFE",
+      "variant": "chr6:26092913 G>A",
+      "genotype": "het",
+      "source": "ClinVar",
+      "reason": "HFE is reported only for: HFE p.C282Y homozygotes only"
+     },
+     {
+      "gene": "BTD",
+      "variant": "chr3:15645186 G>C",
+      "genotype": "het",
+      "source": "ClinVar",
+      "reason": "one heterozygous variant; BTD is reported with P and LP (2 variants)"
+     },
+     {
+      "gene": "HFE",
+      "variant": "chr6:26093000 C>T",
+      "genotype": "hom",
+      "source": "HIGH impact",
+      "reason": "HFE is reported only for: HFE p.C282Y homozygotes only"
+     }
+    ],
+    "two_hit_note": null
    }
   },
   "pharmcat": {
@@ -15394,7 +15536,9 @@
        "low_confidence": false,
        "rule": "P and LP (2 variants)",
        "rule_note": null,
-       "severity": null
+       "severity": null,
+       "pair": "biallelic",
+       "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
       },
       {
        "gene": "BRCA1",
@@ -15403,6 +15547,7 @@
        "significance": "Pathogenic",
        "stars": 3,
        "low_confidence": false,
+       "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes",
        "rule": "All P and LP",
        "rule_note": null,
        "severity": null
@@ -15414,6 +15559,7 @@
        "significance": "Pathogenic",
        "stars": 0,
        "low_confidence": false,
+       "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record",
        "rule": "All hemi, het, homozygous P and LP",
        "rule_note": null,
        "severity": null
@@ -15436,7 +15582,9 @@
        "ad": "15,15",
        "rule": "P and LP (2 variants)",
        "rule_note": null,
-       "severity": null
+       "severity": null,
+       "pair": "biallelic",
+       "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
       },
       {
        "gene": "MYBPC3",

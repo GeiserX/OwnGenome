@@ -1,15 +1,18 @@
 //! Group b of `og summary collect`: the clinical sections. ClinVar, the
 //! carrier list, PharmCAT, CPIC, pypgx, Cyrius, CPSR, the clinical filter
-//! with its ACMG secondary-findings tier, slivar, and the `cyp2d6` block.
+//! with its ACMG secondary-findings tier, the ACMG card of its own
+//! (`acmg_sf`, step 06), slivar, and the `cyp2d6` block.
 //!
 //! Each input is read once: the ClinVar hits VCF feeds the ClinVar
-//! section, the ACMG tier, the carrier list and CPSR's call floor; the
-//! clinical VCF feeds the record count and the ACMG tier; AnnotSV's table
+//! section, the ACMG card, the ACMG tier, the carrier list and CPSR's call
+//! floor; the clinical VCF feeds the record count, the ACMG card and the
+//! ACMG tier; AnnotSV's table
 //! and step 35's copy-number tables feed both two-hit readings. The
 //! sections are read one at a time, so the peak memory is the biggest
 //! section's, not the sum.
 
 use super::acmg::{self, ClinicalVcf};
+use super::acmg_card::{self, AcmgCard};
 use super::carrier::Carrier;
 use super::clinical::{Clinical, Slivar};
 use super::clinvar::{ClinVar, Floor, HitsVcf};
@@ -22,7 +25,7 @@ use super::two_hits::{self, DeletionInputs};
 use super::{Folder, Input, Read, read_at, with_mtime};
 
 /// The sections `og summary collect --only b` reads, in summary.json's order.
-pub const GROUP_B: [Spec; 9] = [
+pub const GROUP_B: [Spec; 10] = [
     Spec {
         key: "clinvar",
         title: "ClinVar screen",
@@ -31,6 +34,11 @@ pub const GROUP_B: [Spec; 9] = [
     Spec {
         key: "carrier",
         title: "Carrier list",
+        step: "06",
+    },
+    Spec {
+        key: "acmg_sf",
+        title: "ACMG secondary findings",
         step: "06",
     },
     Spec {
@@ -134,10 +142,39 @@ pub fn read(input: &Input, folder: &Folder) -> Vec<Section> {
         Some(h) => ClinVar::read(h, d, &side, &s)
             .and_then(|data| with_mtime(&h.path, h.rel.clone(), Data::ClinVar(data))),
     };
+    let clinical_vcf = clinical_vcf_at.as_ref().map(|(v, _)| ClinicalVcf::read(v));
+    // The card follows step 06: it needs the hits, not step 23.
+    let step23 = folder
+        .run
+        .as_ref()
+        .and_then(|r| r.steps.get("23"))
+        .map(String::as_str);
+    // A clinical VCF older than this run, with step 23 not ok in it, is an
+    // earlier run's: the card says so, as the clinical section goes stale.
+    let earlier_vcf = match (&folder.run, &clinical_vcf_at) {
+        (Some(run), Some((p, _))) if step23 != Some("ok") => run
+            .started_epoch
+            .zip(pycompat::mtime::mtime(p).ok())
+            .filter(|&(started, m)| super::model::is_stale(m, started))
+            .and_then(|(_, m)| super::time::utc_minute(m)),
+        _ => None,
+    };
+    let acmg_sf: Read = match &hits {
+        None => Ok(None),
+        Some(h) => AcmgCard::read(&acmg_card::Inputs {
+            assets: &input.assets,
+            hits: h,
+            clinical: clinical_vcf.as_ref(),
+            deletions: &deletions,
+            step23,
+            earlier_vcf,
+        })
+        .and_then(|c| with_mtime(&h.path, h.rel.clone(), Data::AcmgSf(c))),
+    };
     let clinical: Read = match clinical_table.clone().or_else(|| clinical_vcf_at.clone()) {
         None => Ok(None),
         Some((p, rel)) => {
-            let vcf = clinical_vcf_at.as_ref().map(|(v, _)| ClinicalVcf::read(v));
+            let vcf = clinical_vcf;
             let tier = acmg::Inputs {
                 assets: &input.assets,
                 hits: hits.as_ref().map(|h| &h.read),
@@ -155,7 +192,7 @@ pub fn read(input: &Input, folder: &Folder) -> Vec<Section> {
     let rest = read_rest(input, &s, index, &find, &hits, &deletions);
     let [carrier, pharmcat, cpic, pypgx, cyrius, cpsr, slivar] = rest;
     let reads = [
-        clinvar, carrier, pharmcat, cpic, pypgx, cyrius, cpsr, clinical, slivar,
+        clinvar, carrier, acmg_sf, pharmcat, cpic, pypgx, cyrius, cpsr, clinical, slivar,
     ];
     GROUP_B
         .iter()

@@ -49,7 +49,7 @@ ROW_TIMEOUT=${ROW_TIMEOUT:-3600}
 GH_REPO=${GITHUB_REPOSITORY:-GeiserX/OwnGenome}
 TAG=$(tr -d '[:space:]' < "${REPO}/tests/fixtures/VERSION")
 SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/null}
-NEEDS_KNOWN="ref reads bam longreads longbam truth fullref slice vcf vcf50 pgxvcf revel sv dels bundle cyrius mito hlareads qc ehcatalog chain annotsv chrx"
+NEEDS_KNOWN="ref reads bam longreads longbam truth fullref slice telobam vcf vcf50 pgxvcf revel sv dels bundle cyrius mito hlareads qc ehcatalog chain annotsv chrx"
 OPTS_KNOWN="root net full also= rw="
 
 # The mini reference: chr20:10,000,001-10,500,000 of the fixture reference as
@@ -486,6 +486,30 @@ need_slice() {
   fx_get HG002_slice.bam HG002_slice.bam.bai || return 1
   hsam addreplacerg -r '@RG\tID:HG002\tSM:HG002\tPL:ILLUMINA' -o /in/HG002_slice.bam /fx/HG002_slice.bam &&
     hsam index /in/HG002_slice.bam
+}
+# The slice has no telomeric read, so its tel_content is 0 whatever
+# TelomereHunter does. telo.bam is the slice plus 1,100 unmapped telomeric
+# reads of 150 bp (600 TTAGGG, 400 CCCTAA, 100 TTAGGG with one TCAGGG in the
+# middle), built with the samtools image: the TelomereHunter2 image has no
+# samtools. PLANTED=0 plants none, the control that shows the tel_content
+# check fails without them. cytoBand.hg38.txt is the repository's GRCh38
+# band file, which step 10 passes as -b.
+need_telobam() {
+  need slice || return 1
+  awk -v n="${PLANTED:-1}" 'BEGIN {
+    q = ""; for (i = 0; i < 150; i++) q = q "I"
+    if (!n) exit
+    for (i = 1; i <= 1100; i++) {
+      if (i <= 600) { s = ""; for (k = 0; k < 25; k++) s = s "TTAGGG" }
+      else if (i <= 1000) { s = ""; for (k = 0; k < 25; k++) s = s "CCCTAA" }
+      else { s = ""; for (k = 0; k < 12; k++) s = s "TTAGGG"; s = s "TCAGGG"; for (k = 0; k < 12; k++) s = s "TTAGGG" }
+      printf "telo%d\t4\t*\t0\t0\t*\t*\t0\t0\t%s\t%s\tRG:Z:HG002\n", i, s, q
+    }
+  }' > "${IN}/planted.sam" || return 1
+  hrun "$SAMTOOLS_IMAGE" sh -c 'samtools view -h /in/HG002_slice.bam | cat - /in/planted.sam | samtools view -b -o /in/telo.bam -' &&
+    hsam index /in/telo.bam || return 1
+  rm -f "${IN}/planted.sam"
+  cp "${REPO}/assets/reference/cytoBand.hg38.txt" "${IN}/cytoBand.hg38.txt"
 }
 need_vcf() {
   fx_get HG002_vep.vcf || return 1

@@ -499,7 +499,7 @@
                 "cytoband": {
                     "type": "string",
                     "format": "file-path",
-                    "description": "Optional UCSC GRCh38 chromosome bands (cytoBand.hg38.txt, chr1-22, X and Y; scripts/setup.sh installs it), passed as `telomerehunter -b`. Without it TelomereHunter uses its own hg19 bands.",
+                    "description": "UCSC GRCh38 chromosome bands (cytoBand.hg38.txt, chr1-22, X and Y), passed as `telomerehunter2 -b`. Without it the run passes the copy the repository ships, assets/reference/cytoBand.hg38.txt (the file scripts/setup.sh installs).",
                     "fa_icon": "fas fa-file"
                 },
                 "somalier_sites": {

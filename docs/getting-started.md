@@ -199,7 +199,7 @@ Without `THREADS` or `--max_cpus`, `run-all.sh` passes the machine's CPU count a
 | 5 AnnotSV | `annotsv_annotations/Annotations_Human/` | `--annotsv_annotations` |
 | 32 pypgx | `reference/pypgx-bundle/` | `--pypgx_bundle` |
 | 25 PRS | `prs_scores/*.txt.gz` (`setup.sh` installs the scoring files) | `--pgs_scoring` |
-| 10 TelomereHunter, 19 Delly | `reference/cytoBand.hg38.txt`, `reference/delly_human.hg38.excl.tsv` (optional) | `--cytoband`, `--delly_exclude` |
+| 10 TelomereHunter, 19 Delly | `reference/cytoBand.hg38.txt` (optional: the repository's copy is used without it), `reference/delly_human.hg38.excl.tsv` (optional) | `--cytoband`, `--delly_exclude` |
 
 **Where things land.** Results go to `${GENOME_DIR}/<sample>/`, in the folders of the pipeline's [output structure](nextflow.md#output-structure). Most match the single scripts' folders; the pipeline writes PharmCAT to `pharmcat/`, ROH to `roh/`, depth to `coverage/` and HLA types to `hla/`, where the scripts use `vcf/`, `vcf/`, `mosdepth/` and `hla_t1k/`. The reports read both. At the end `run-all.sh` renders the full HTML report (`<sample>_report.html`, step 24), the text report (`<sample>_report.txt`) and the `summary.json` both are made from.
 
