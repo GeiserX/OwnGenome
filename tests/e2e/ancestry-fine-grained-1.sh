@@ -29,7 +29,7 @@
 #     write no fractions, instead of reporting MIX's ancestry under TWO's name;
 #   - red control: the same panel with every reference person's labels moved
 #     to the next group (Africa's people called West Eurasia, and so on) and
-#     the ADMIXTURE frequencies fitted again: on it the HG002T fraction checks
+#     the group frequencies counted again: on it the HG002T fraction checks
 #     fail (sample HG002R, the same genotypes; the red copy loses the genetic
 #     map of chr22, so that run only estimates fractions);
 #   - the Nextflow module on HG002T (with html_report) writes the fractions of

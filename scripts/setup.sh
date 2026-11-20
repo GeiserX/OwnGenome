@@ -1347,8 +1347,9 @@ install_ancestry_fine_panel() {
 
   install_fine_maps "$dir" "$chroms" || return 1
 
-  # model/: redone when samples.tsv or the panel changes.
-  mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") freqs=og"
+  # model/: redone when samples.tsv or the panel changes. Bump freqs=og-N
+  # when the output of og ancestry-fine freqs or og_admix::geno (ref.geno) changes.
+  mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") freqs=og-1"
   if [ "$(cat "${dir}/model/DONE" 2>/dev/null)" != "$mstamp" ]; then
     tmp="${dir}/model/tmp"
     rm -rf "$tmp" "${dir}/model/DONE"
