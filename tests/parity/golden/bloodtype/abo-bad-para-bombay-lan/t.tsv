@@ -1,7 +1,7 @@
 system	phenotype	genotype	confidence	note
 Langereis	Lan-	null/null	low	null alleles: ABCB6 c.717G>A x1, ABCB6 c.574C>T x1; two different null alleles, assumed to sit on different chromosomes (phase is not read); lacks Lan, carried by most people (high prevalence)
 H	H- (para-Bombay)	h/h	high	null allele: FUT1 c.695G>A x2; lacks H, carried by most people (high prevalence); para-Bombay: a working FUT2 makes H in secretions, and red cells carry little or none
-ABO	not determined	.	not determined	the markers do not add up to two ABO alleles (c.261 insertion x1, c.802G>A x1, c.803G>C x2); no FUT1 (H-): the red cells carry no H (or very little, para-Bombay), so these ABO alleles make little or no A or B on them and the cells usually group as O
+ABO	not determined	.	not determined	the markers do not add up to two ABO alleles (c.261 insertion x1, c.802G>A x1, c.803G>C x2)
 RhD	D+	RHD/RHD (RHD copies by read depth 2.00)	high	weak and partial D (RHD missense alleles) are not assessed; an RHD gene that is there reads D+: RHD null alleles other than RHD*08N.01, RHD-CE-D hybrids that keep exons 3 to 7, and DEL alleles are not assessed
 RhCE	C-c+ E-e+	c/c e/e	low	RHCE exon 2 of a C allele is RHD-like: short reads can place it on RHD
 Kell	K-k+ Kp(a-b+) Js(a-b+)	k/k Kpb/Kpb Jsb/Jsb	high	a null allele the table does not hold (one of two or more variants, or a large deletion) goes unseen

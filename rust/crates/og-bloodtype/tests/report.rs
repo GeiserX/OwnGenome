@@ -714,3 +714,30 @@ fn a_gvcf_block_that_reaches_a_marker_through_end_is_a_reference_call() {
     assert_eq!(site_both_ways(&d, &recs, "JK_838").0, "absent");
     assert_eq!(run(&d, &recs, None)["Kidd"][0], "not assessed");
 }
+
+#[test]
+fn a_weak_abo_1061_call_is_named_and_h_minus_leaves_an_unread_abo_alone() {
+    let d = dir("abo-1061-bombay");
+    let reads = || Some(depth(&d, 2.0, &HashMap::new()));
+    // A weak c.1061delC call under an A allele is named in the note, once.
+    let t = run(
+        &d,
+        &[
+            rec("ABO_261", "0/1"),
+            recf("ABO_1061", "GT:GQ:DP", "0/0:3:30"),
+        ],
+        reads(),
+    );
+    assert_eq!(t["ABO"][2], "low");
+    assert!(
+        t["ABO"][3].contains("ABO c.1061delC: weak call (GQ 3 under 20)"),
+        "{}",
+        t["ABO"][3]
+    );
+    // Two FUT1 null copies on chr19 and no chr9 record, no BAM: H-, and
+    // ABO, not assessed, gets no note about its alleles.
+    let t = run(&d, &[rec("FUT1_01N36", "1/1")], None);
+    assert!(t["H"][0].starts_with("H-"), "{}", t["H"][0]);
+    assert_eq!(t["ABO"][0], "not assessed");
+    assert!(!t["ABO"][3].contains("no FUT1 (H-)"), "{}", t["ABO"][3]);
+}

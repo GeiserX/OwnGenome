@@ -880,6 +880,10 @@ fn system_abo(sites: &Genotyped) -> Row {
                 }
                 if s1061.status == Status::Assumed {
                     used.push(s1061);
+                } else if !s1061.weak.is_empty() {
+                    // Named here, not through `used`, so the caveat is not
+                    // repeated; any A allele already reads low.
+                    extra.push(format!("{}: weak call ({})", s1061.row.hgvs, s1061.weak));
                 }
                 let n_a2 = n1061.min(n_a);
                 alleles.extend(rep("A1", n_a - n_a2).chain(rep("A2", n_a2)));
@@ -1229,6 +1233,10 @@ fn bombay(rows: &mut [Row]) {
         rows[h].add_note(
             "para-Bombay: a working FUT2 makes H in secretions, and red cells carry little or none",
         );
+    }
+    // No ABO alleles were read: there is nothing for the note to qualify.
+    if rows[abo].phenotype == NOT_ASSESSED || rows[abo].phenotype == NOT_DETERMINED {
+        return;
     }
     rows[abo].add_note(
         "no FUT1 (H-): the red cells carry no H (or very little, para-Bombay), so these ABO alleles make little or no A or B on them and the cells usually group as O",

@@ -66,7 +66,7 @@ vcf "${T}/none.vcf.gz" KEL_578:0/1 HPA1_176:0/0 HNA4_230:0/0 HNA3_461:0/0
 R="${SAMPLE}plr"
 sample "$R" "${T}/none.vcf.gz"
 run_step 41-bloodtype.sh "$R"; check_step_exit 41-bloodtype.sh
-check_eq "control: HPA-1 is HPA-1(a+b-) without the planted record" "$(cell "$R" HPA-1 phenotype)" "HPA-1(a+b-)"
+check_eq "control: HPA-1 is HPA-1(a+b-) with 0/0 there" "$(cell "$R" HPA-1 phenotype)" "HPA-1(a+b-)"
 check_eq "control: HNA-4 is HNA-4(a+b-)" "$(cell "$R" HNA-4 phenotype)" "HNA-4(a+b-)"
 check_eq "control: HNA-3 is GRCh38's HNA-3(a-b+)" "$(cell "$R" HNA-3 phenotype)" "HNA-3(a-b+)"
 
