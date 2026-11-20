@@ -1044,7 +1044,15 @@ pub fn fda_page(c: &Ctx<'_>) -> Lookup<(String, String)> {
             ),
         ))
     };
-    fallback().map_err(|e| LookupError::Failed(format!("{refused}; and {e}")))
+    // Keep "did not answer" as it is: the pull-request dry run warns on it.
+    fallback().map_err(|e| {
+        let both = format!("{refused}; and {e}");
+        if e.is_unreachable() {
+            LookupError::Unreachable(both)
+        } else {
+            LookupError::Failed(both)
+        }
+    })
 }
 
 /// `assets/pgx_inhibitors.tsv` against the FDA's table of CYP inhibitors:
@@ -1364,5 +1372,47 @@ mod tests {
         assert_eq!(t.as_second(), 1_791_288_000);
         assert!(http_date("not a date").is_none());
         assert_eq!(line_of("25.10.4"), "25.10");
+    }
+
+    /// fda.gov refuses GitHub's runners, so the pull-request dry run always
+    /// reads the Wayback Machine. When that does not answer either, the error
+    /// must stay "did not answer", or `--unreachable-warns` cannot warn.
+    #[test]
+    fn an_fda_table_nobody_answers_for_is_unreachable() {
+        struct Down(crate::http::GitHub);
+        impl Fetch for Down {
+            fn github_api(&self) -> &crate::http::GitHub {
+                &self.0
+            }
+            fn request(&self, req: &Request<'_>) -> Lookup<(Body, crate::http::Headers)> {
+                Err(LookupError::Unreachable(format!("{}: no answer", req.url)))
+            }
+        }
+        struct NoRegistry;
+        impl Registry for NoRegistry {
+            fn list_tags(&self, _: &str, _: &str) -> Lookup<Vec<String>> {
+                Ok(vec![])
+            }
+            fn manifest_digest(&self, _: &str, _: &str, _: &str) -> Lookup<String> {
+                Ok(String::new())
+            }
+        }
+        let down = Down(crate::http::GitHub {
+            api: "https://api.github.invalid".into(),
+            token: None,
+        });
+        let pins = Pins::parse("");
+        let c = Ctx {
+            fetch: &down,
+            registry: &NoRegistry,
+            pins: &pins,
+            versions: Path::new("/nonexistent"),
+            setup: Path::new("/nonexistent"),
+            common: Path::new("/nonexistent"),
+            now: jiff::Timestamp::now(),
+        };
+        let e = fda_page(&c).unwrap_err();
+        assert!(e.is_unreachable(), "{e}");
+        assert!(e.to_string().contains("archive.org"), "{e}");
     }
 }
