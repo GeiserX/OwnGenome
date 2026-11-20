@@ -19,12 +19,16 @@
 //! - A score matched against genotypes that list variants only loses its
 //!   percentile (see [`Genotypes`]): every site such an input leaves out
 //!   adds nothing to the sum, so the sum leans away from the panel's sums.
+//! - A sample whose two most probable panel groups each have a random-forest
+//!   probability of at least [`MIXED_MIN`] sits between them (see [`mixed`]):
+//!   stdout names both groups, because each percentile ranks the sample
+//!   among one group only.
 //!
 //! The table's columns are [`COLUMNS`], with [`EFFECT_COLUMNS`] before
 //! `Input` when any score has evaluations, and [`NOTE_COLUMN`] before
 //! `Input` when the genotypes were given (`--target`). Stdout has one line
 //! per score, which the e2e cases read, then the note on a variant-only
-//! input.
+//! input and the note on an ancestry between two groups.
 
 use crate::args::{self, Kind, Opt};
 use crate::{basename, finish, float, is_file, join, text_lines, trunc, write_file};
@@ -60,6 +64,12 @@ pub const EFFECT_COLUMNS: [&str; 2] = ["Evaluated_In", "Effect"];
 pub const NOTE_COLUMN: &str = "Percentile_Note";
 /// The note of a percentile withheld for an input that lists variants only.
 pub const WITHHELD: &str = "percentile withheld: the input lists variants only";
+
+/// The random-forest probability each of the two most probable panel groups
+/// reaches when the sample sits between them (see [`mixed`]). pgsc_calc
+/// flags a placement as low-confidence only when the top probability is under
+/// 0.5, so a sample at 0.55 and 0.45 was placed among one group with no word.
+pub const MIXED_MIN: f64 = 0.2;
 
 /// Sex_Check of a sex-specific score.
 pub const SEX_APPLIES: &str = "applies";
@@ -382,6 +392,32 @@ fn chrx_matched(results: &str, sampleset: &str) -> Result<Option<HashMap<String,
     Ok(Some(out))
 }
 
+/// The `probability_<group>` rows of step 26's ancestry table that hold a
+/// number, as (group, value).
+pub fn probabilities<'a>(rows: impl IntoIterator<Item = (&'a str, &'a str)>) -> Vec<(String, f64)> {
+    rows.into_iter()
+        .filter_map(|(k, v)| Some((k.strip_prefix("probability_")?.to_owned(), float(v).ok()?)))
+        .collect()
+}
+
+/// Whether the sample sits between two groups: the two most probable groups
+/// of the random forest (group, value) each reach [`MIXED_MIN`]; and the most
+/// probable group other than `population` (pgsc_calc's placement). None for
+/// fewer than two groups with a number. og prs table's note and og summary
+/// collect's PRS ancestry both read it from step 26's probabilities.
+pub fn mixed(probs: &[(String, f64)], population: &str) -> Option<(bool, String)> {
+    let mut by: Vec<&(String, f64)> = probs.iter().filter(|(_, p)| p.is_finite()).collect();
+    if by.len() < 2 {
+        return None;
+    }
+    by.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let second = by
+        .iter()
+        .find(|(g, _)| g != population)
+        .map_or_else(String::new, |(g, _)| g.clone());
+    Some((by[1].1 >= MIXED_MIN, second))
+}
+
 /// The table rows and the ancestry rows (key, value).
 pub fn table(i: &Inputs) -> Result<(Vec<TableRow>, Ancestry), String> {
     let totals = totals(i.scores)?;
@@ -686,6 +722,32 @@ fn line(r: &TableRow) -> String {
     }
 }
 
+/// The stdout note of a sample between two groups whose scores have a
+/// percentile: the percentile ranks it among one of them only.
+fn mixed_note(rows: &[TableRow], ancestry: &Ancestry) -> Option<String> {
+    let kv = |k: &str| {
+        ancestry
+            .iter()
+            .find(|(key, _)| key == k)
+            .map_or("", |(_, v)| v.as_str())
+    };
+    if rows.iter().all(|r| r[6] == "NA") {
+        return None;
+    }
+    let pop = kv("population");
+    let probs = probabilities(ancestry.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    let Some((true, second)) = mixed(&probs, pop) else {
+        return None;
+    };
+    Some(format!(
+        "NOTE: the genetic ancestry sits between {pop} (probability {}) and {second} (probability \
+         {}), each at {MIXED_MIN} or more, and each percentile ranks the sample among {pop} \
+         samples only, so it may not fit",
+        kv(&format!("probability_{pop}")),
+        kv(&format!("probability_{second}"))
+    ))
+}
+
 /// `og prs table ARGS`: the exit code.
 pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
     let a = match args::parse(argv, OPTS) {
@@ -776,6 +838,9 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
                 g.hom_ref, g.called
             )
             .map_err(|e| e.to_string())?;
+        }
+        if let Some(n) = mixed_note(&rows, &ancestry) {
+            writeln!(out, "{n}").map_err(|e| e.to_string())?;
         }
         Ok(())
     };

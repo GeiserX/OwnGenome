@@ -644,3 +644,131 @@ fn genotypes_count_called_and_reference_calls() {
     assert!(g(5, 1) && g(1, 1) && g(430_000, 300_000));
     assert!(!g(6, 1) && !g(4, 0) && !g(0, 0));
 }
+
+/// The panel run of [`results`], with the target's random-forest
+/// probabilities and pgsc_calc's placement.
+fn placed(d: &Dir, dir: &str, afr: &str, eur: &str, top: &str) {
+    results(d, dir, true);
+    d.put_gz(
+        &format!("{dir}/sample/score/sample_popsimilarity.txt.gz"),
+        &format!(
+            "sampleset\tFID\tIID\tPC1\tRF_P_AFR\tRF_P_EUR\tMostSimilarPop\tMostSimilarPop_LowConfidence\tREFERENCE\n\
+             reference\tR1\tR1\t-1\t0.9\t0.1\tAFR\tFalse\tTrue\n\
+             sample\tHG\tHG\t0.012\t{afr}\t{eur}\t{top}\tFalse\tFalse\n"
+        ),
+    );
+}
+
+#[test]
+fn a_sample_between_two_groups_is_told_the_percentile_ranks_it_among_one() {
+    // pgsc_calc calls none of these low-confidence: its top probability is
+    // 0.5 or more. Two groups at 0.2 or more each read as mixed.
+    for (afr, eur, want) in [
+        ("0.5", "0.5", true),
+        ("0.45", "0.55", true),
+        ("0.2", "0.8", true),
+        ("0.19", "0.81", false),
+        ("0.05", "0.95", false),
+    ] {
+        let d = Dir::new("prs-mixed");
+        let pgs = two_scores(&d);
+        placed(&d, "adj", afr, eur, "EUR");
+        let (res, anc) = (d.path("adj"), d.path("anc.tsv"));
+        let (code, stdout, _, rows) = go(
+            &d,
+            &[
+                "--results",
+                &res,
+                "--scores",
+                &pgs,
+                "--panel",
+                "p",
+                "--ancestry-out",
+                &anc,
+            ],
+        );
+        assert_eq!(code, 0);
+        // The ancestry table keeps pgsc_calc's own flag and probabilities.
+        assert!(
+            d.read("anc.tsv").contains(&format!(
+                "population_low_confidence\tFalse\nprobability_AFR\t{afr}\nprobability_EUR\t{eur}\n"
+            )),
+            "{afr}/{eur}: {}",
+            d.read("anc.tsv")
+        );
+        // The percentile itself stays: the note says what it is among.
+        assert_eq!(rows[1][6..8], ["94.4", "EUR"]);
+        let note = format!(
+            "NOTE: the genetic ancestry sits between EUR (probability {eur}) and AFR (probability \
+             {afr}), each at 0.2 or more, and each percentile ranks the sample among EUR samples \
+             only, so it may not fit\n"
+        );
+        assert_eq!(stdout.contains(&note), want, "{afr}/{eur}: {stdout}");
+        assert_eq!(stdout.contains("NOTE: the genetic ancestry"), want);
+    }
+}
+
+#[test]
+fn no_percentile_no_ancestry_note() {
+    // A score for the other sex has no percentile, so nothing is ranked.
+    let d = Dir::new("prs-mixed-none");
+    formatted(
+        &d,
+        "pgs",
+        "PGS000001",
+        "Prostate cancer",
+        3,
+        "0\tleft out",
+        "male",
+        "",
+    );
+    placed(&d, "adj", "0.5", "0.5", "EUR");
+    let (res, pgs, anc) = (d.path("adj"), d.path("pgs"), d.path("anc.tsv"));
+    let (code, stdout, _, rows) = go(
+        &d,
+        &[
+            "--results",
+            &res,
+            "--scores",
+            &pgs,
+            "--panel",
+            "p",
+            "--sex",
+            "female",
+            "--ancestry-out",
+            &anc,
+        ],
+    );
+    assert_eq!((code, rows[1][6].as_str()), (0, "NA"));
+    assert!(!stdout.contains("NOTE"), "{stdout}");
+}
+
+#[test]
+fn mixed_reads_the_two_most_probable_groups() {
+    let p = |v: &[(&str, f64)]| -> Vec<(String, f64)> {
+        v.iter().map(|(g, x)| ((*g).to_owned(), *x)).collect()
+    };
+    let three = p(&[("AFR", 0.25), ("EUR", 0.5), ("SAS", 0.25)]);
+    // Ties go by name; the second group is never the placement.
+    assert_eq!(mixed(&three, "EUR"), Some((true, "AFR".to_owned())));
+    assert_eq!(mixed(&three, "AFR"), Some((true, "EUR".to_owned())));
+    assert_eq!(
+        mixed(&p(&[("AFR", 0.1), ("EUR", 0.8), ("SAS", 0.1)]), "EUR"),
+        Some((false, "AFR".to_owned()))
+    );
+    // A cell that is not a number is not a group.
+    assert_eq!(mixed(&p(&[("AFR", f64::NAN), ("EUR", 1.0)]), "EUR"), None);
+    assert_eq!(mixed(&p(&[("EUR", 1.0)]), "EUR"), None);
+    // The ancestry table's rows: only probability_ rows with a number count.
+    assert_eq!(
+        probabilities([
+            ("population", "EUR"),
+            ("probability_AFR", "0.45"),
+            ("probability_EUR", "0.55"),
+            ("probability_SAS", "NA"),
+            ("PC1", "0.1"),
+        ]),
+        p(&[("AFR", 0.45), ("EUR", 0.55)])
+    );
+}
+
