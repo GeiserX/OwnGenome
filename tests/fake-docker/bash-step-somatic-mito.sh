@@ -175,6 +175,11 @@ grep -qF 'og mito annotate --vcf ${vcf} ${cv} ${gn} ${numt} --out' "$MOD" \
 # the module refuses to go on without them when mosdepth ran.
 grep -qF 'ch_bam.join(ch_mosdepth_depth, failOnMismatch: true)' "${REPO_ROOT}/workflows/bam_analysis.nf" \
   || fail "workflows/bam_analysis.nf does not join MOSDEPTH's output into MITO_VARIANTS with failOnMismatch"
+# A task's stderr stays in its work directory when the task succeeds, so the
+# workflow itself says on the console that the NuMT filter has no depth.
+grep -q 'log.warn "mito_variants: mosdepth is not in --tools, so the NuMT filter runs at the default depth 0' \
+  "${REPO_ROOT}/workflows/bam_analysis.nf" \
+  || fail "workflows/bam_analysis.nf does not warn on the console when mito_variants runs without mosdepth"
 [ "$(grep -c "contains('mosdepth') && !mosdepth_summary" "$MOD")" -eq 2 ] \
   || fail "MITO_VARIANTS' script and stub do not both stop when mosdepth ran and its output is missing"
 echo "MITO_VARIANTS marks possible NuMTs at the depth step 20 uses."
