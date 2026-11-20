@@ -160,8 +160,9 @@
   var originalFetch = window.fetch.bind(window);
   var records = {}, current = null, ownsPage = false, eventSources = [], shared = {}, cleaned = false;
   var CLOSED_TEXT = "This child's report stays closed until every result to act on in adult life is opened on purpose.";
-  // A page whose run state could not be read stays closed too (it fails closed), and says only that it read nothing.
-  var UNREAD_TEXT = "This page could not read this run's data, so it shows nothing yet.";
+  // A page whose run state could not be read stays closed too (it fails closed), and names no role. Its results
+  // may still be readable and counted below, so the text speaks of the state only.
+  var UNREAD_TEXT = "This page could not read this run's state, so it keeps its results closed.";
   var TRANSFER = 'og-report-opening', NONCE = 'og-report-opening:';
   var findingPath = /\/finding\//.test(location.pathname) ? location.pathname : null;
   // The opening ticket of the navigation that replaced the last document (transfer below): read and removed at
@@ -404,8 +405,9 @@
       var state = replaying ? raw && raw.frames && raw.frames.slice(-1)[0] : raw;
       state = replaying ? state && state.state : state;
       var fam = state && state.plugins ? state.plugins.family : undefined;
-      // A state that cannot be read keeps the gate closed (a possible child) and marks the record unread.
-      unread = !state;
+      // A state that cannot be read, or has no plugins, keeps the gate closed (a possible child) and marks the
+      // record unread: the same condition that makes it a possible child for want of data.
+      unread = !state || !state.plugins;
       var child = !state || !state.plugins || !!(fam && (fam.unknown || (fam.kind === 'member' && fam.child !== false)));
       var entry = fam && fam.kind === 'member' && (fam.families || [])[0];
       if (child && entry) {

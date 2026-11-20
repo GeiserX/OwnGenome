@@ -10,7 +10,10 @@
 //!   with Try again, and keeps the server's list of runs; Try again draws the page.
 //! - the family page whose family.json answers `{}` says the family could not be loaded; Try again draws it.
 //! - DEMO-001 with frames.json and results.json at 500: the closed page says "Results not loaded" and never
-//!   says child. The control: DEMO-003, a real child with good files, still reads "Results about a child".
+//!   says child. So does DEMO-001 whose frames.json holds a state with no plugins. The control: DEMO-003, a
+//!   real child with good files, still reads "Results about a child".
+//! - Each Try again check needs the click to find the button and the page to draw within 5 s, so main's own
+//!   30 s retry cannot pass it.
 //! - frames.json held 15 s: the wire, run health and re-check panels say they wait for the run's data,
 //!   never that there is nothing; once the frames arrive the replay shows its steps and the dated re-check.
 //!   DEMO-002, whose state has no re-check and no numbers, then reads "No re-check yet" and "No numbers yet.".
@@ -34,7 +37,7 @@ use std::time::{Duration, Instant};
 /// The live site's policy (`CSP` of bin/owngenome_live.py; live_replay.rs keeps its copy equal to it).
 const CSP: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; \
      img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'";
-const UNREAD: &str = "This page could not read this run's data, so it shows nothing yet.";
+const UNREAD: &str = "This page could not read this run's state, so it keeps its results closed.";
 const WAITING: &str = "Waiting for the run's data.";
 const NO_RECHECK: &str = "No re-check yet: bin/owngenome_recheck.py writes one (docs/recheck.md).";
 const BANNER: &str = "Database re-check of 2026-01-02T11:05:40Z: ClinVar 2026-01 is newer than the one this run used.";
@@ -324,6 +327,11 @@ fn text(v: Option<Value>) -> String {
     }
 }
 
+/// Run a script that clicks a Try again button and returns whether it found one (`!!t`).
+fn click(b: &mut Browser, script: &str) -> bool {
+    matches!(b.eval(script), Ok(Value::Bool(true)))
+}
+
 #[test]
 fn a_page_that_cannot_load_its_data_says_so() {
     let Some(chrome) = chrome_or_skip("load the live demo pages") else {
@@ -367,17 +375,19 @@ fn a_page_that_cannot_load_its_data_says_so() {
         said.clone(),
     );
     stub.set("/runs/DEMO-001/results.json", Answer::File);
-    b.eval("var t = document.getElementById('results-retry'); if (t) { t.click(); } !!t")
-        .ok();
+    let clicked = click(
+        &mut b,
+        "var t = document.getElementById('results-retry'); if (t) { t.click(); } !!t",
+    );
     let drawn = text(b.wait(
         "!document.getElementById('results-failed') && document.querySelector('#results section.sec h2') && \
          document.querySelector('#results section.sec h2').textContent",
-        secs(10),
+        secs(5),
     ));
     check(
-        "person: once results.json answers, Try again draws the results",
-        drawn == "Assessed, no finding",
-        drawn,
+        "person: once results.json answers, Try again draws the results within 5 s",
+        clicked && drawn == "Assessed, no finding",
+        format!("clicked={clicked} {drawn}"),
     );
     // An OK answer from the start draws as before.
     visit(&mut b, &stub.url("/runs/DEMO-001/?ok"));
@@ -413,17 +423,19 @@ fn a_page_that_cannot_load_its_data_says_so() {
         );
     }
     stub.set("/runs.json", Answer::File);
-    b.eval("document.querySelector('#home-failed button').click(); true")
-        .ok();
+    let clicked = click(
+        &mut b,
+        "var t = document.querySelector('#home-failed button'); if (t) { t.click(); } !!t",
+    );
     let people = text(b.wait(
         "!document.getElementById('home-failed') && document.documentElement.dataset.pgpStatus === 'ready' && \
          document.documentElement.dataset.pgpPeople",
-        secs(10),
+        secs(5),
     ));
     check(
-        "home: once runs.json answers, Try again draws the people",
-        people == "1",
-        people,
+        "home: once runs.json answers, Try again draws the people within 5 s",
+        clicked && people == "1",
+        format!("clicked={clicked} {people}"),
     );
 
     // The family page: family.json answers 200 {}, then the family through Try again.
@@ -440,16 +452,18 @@ fn a_page_that_cannot_load_its_data_says_so() {
         said,
     );
     stub.set("/runs/DEMO-FAMILY/family.json", Answer::File);
-    b.eval("var t = document.querySelector('#family button'); if (t) { t.click(); } !!t")
-        .ok();
+    let clicked = click(
+        &mut b,
+        "var t = document.querySelector('#family button'); if (t) { t.click(); } !!t",
+    );
     let h1 = text(b.wait(
         "document.querySelector('#family h1') && document.querySelector('#family h1').textContent",
-        secs(10),
+        secs(5),
     ));
     check(
-        "family: once family.json answers, Try again draws the family",
-        h1 == "Family DEMO-FAMILY",
-        h1,
+        "family: once family.json answers, Try again draws the family within 5 s",
+        clicked && h1 == "Family DEMO-FAMILY",
+        format!("clicked={clicked} {h1}"),
     );
 
     // A run whose state and results cannot be read: the gate stays closed and names no role.
@@ -465,6 +479,23 @@ fn a_page_that_cannot_load_its_data_says_so() {
     let want = format!("[\"Results not loaded\",{},false,0]", js_str(UNREAD));
     check(
         "gate: DEMO-001 with frames.json and results.json at 500 reads 'Results not loaded', says no 'child' and draws no result",
+        page == want,
+        page,
+    );
+    // A state that parses but has no plugins is read no better: the same closed page, with no role named.
+    stub.set(
+        "/runs/DEMO-001/frames.json",
+        Answer::Json(r#"{"frames": [{"state": {}}]}"#),
+    );
+    visit(&mut b, &stub.url("/runs/DEMO-001/?noplugins"));
+    let page = text(b.wait(
+        "document.getElementById('report-gate') && JSON.stringify([document.querySelector('#report-gate h1').textContent, \
+         document.querySelector('#report-gate .lede').textContent, /child/i.test(document.body.innerText), \
+         document.querySelectorAll('[data-finding], article.result, #results').length])",
+        secs(20),
+    ));
+    check(
+        "gate: DEMO-001 whose state has no plugins, with results.json at 500, reads 'Results not loaded' and says no 'child'",
         page == want,
         page,
     );
