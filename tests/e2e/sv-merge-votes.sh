@@ -7,7 +7,8 @@
 # consensus, while a CNVpytor call that passes the quality rule and has
 # genotype ./. still pairs with Manta's call (support 2, SUPP_VEC 101). Then the
 # same calls come from CNVpytor's table instead of its VCF: the e-value and q0
-# of the table decide the same way.
+# of the table decide the same way, also when an earlier version of the step
+# left the table's VCF without them.
 #
 # Red before the fix: main's step 22 kept every PASS record, so the three
 # Manta-only deletions read SUPP=2 and the consensus held 5 records, not 2.
@@ -73,5 +74,18 @@ check "the table's e-value reaches INFO" has 'pytorP1=0.5;pytorQ0=0;pytorPN=0' \
   "$(bcf view -H "${T}/cnvpytor/${T}_cnvs.vcf.gz" 2>/dev/null)"
 votes "CNVpytor table"
 check_eq "CNVpytor table: the CNVpytor calls that vote" "$(grep -v '^#' "${IN}/cnvpytor.vcf" 2>/dev/null | cut -f2 | tr '\n' ' ')" "10300000 10700201 "
+
+# An earlier version of step 22 left the table's VCF without the e-value tags.
+# Kept as it is, none of its calls would vote; the step makes it again.
+# shellcheck disable=SC2016  # $1 expands inside the container
+docker run --rm --network none --user "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
+  f="/genome/$1/cnvpytor/$1_cnvs.vcf.gz"
+  bcftools view "$f" | sed -e "/^##INFO=<ID=pytor/d" -e "s/;pytorP1=[^\t]*//" | bcftools view -Oz -o "$f.old" -
+  mv "$f.old" "$f" && bcftools index -f -t "$f"' _ "$T"
+check "the old table VCF has no e-value" lacks 'pytorP1' "$(bcf view "${T}/cnvpytor/${T}_cnvs.vcf.gz" 2>/dev/null)"
+run_step 22-survivor-merge.sh "$T"
+check_step_exit 22-survivor-merge.sh
+check "the log says the old table VCF is made again" has 'has no e-value \(pytorP1\); making it again' "$(cat "$STEP_LOG")"
+votes "old table VCF"
 
 finish

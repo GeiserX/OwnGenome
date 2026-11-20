@@ -56,7 +56,7 @@ The Nextflow pipeline (`survivor_merge` in `--tools`, with at least two of `mant
 
 ## What the Script Does Internally
 
-1. Turns CNVpytor's table into a VCF when step 18 left no VCF. Each record carries the table's e-value, `q0` and `pN` under the INFO names CNVpytor's own VCF uses (`pytorP1`, `pytorQ0`, `pytorPN`)
+1. Turns CNVpytor's table into a VCF when step 18 left no VCF, or when the VCF there has no `pytorP1` (an earlier version of this step made it from the table without the e-value). Each record carries the table's e-value, `q0` and `pN` under the INFO names CNVpytor's own VCF uses (`pytorP1`, `pytorQ0`, `pytorPN`)
 2. Writes the records each caller votes with (below) as plain VCF under `sv_merged/inputs/`, with one sample column named after the caller (`og sv survivor-prep --caller NAME IN OUT`, which prints how many records it left out and why). SURVIVOR names its output columns after the input samples, so three inputs that all name the sample would give one name three times
 3. Runs `SURVIVOR merge inputs/sv_files.txt 1000 2 1 1 0 50`: maximum breakpoint distance 1,000 bp, support from 2 callers, same type, same strands, no size-scaled distance, minimum size 50 bp
 4. Checks that SURVIVOR wrote a VCF (it exits 0 when it cannot open an input), then sorts, compresses and indexes it

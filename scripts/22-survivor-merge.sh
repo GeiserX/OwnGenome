@@ -53,7 +53,24 @@ echo ""
 # VCF uses, so its quality rule reads both inputs the same.
 CNV_TXT="${S}/cnvpytor/${SAMPLE}_cnvs.txt"
 CNV_VCF="${S}/cnvpytor/${SAMPLE}_cnvs.vcf.gz"
-if [ ! -f "$CNV_VCF" ] && [ -f "$CNV_TXT" ]; then
+CNV_MAKE=false
+if [ -f "$CNV_TXT" ]; then
+  if [ ! -f "$CNV_VCF" ]; then
+    CNV_MAKE=true
+  else
+    # A VCF an earlier version of this step made from the table has no
+    # e-value: none of its calls would vote, so it is made again. Step 18's
+    # own VCF declares pytorP1 and is kept.
+    CNV_HEAD=$(run_in "$BCFTOOLS_IMAGE" bcftools view -h "$(cpath "$CNV_VCF")") || CNV_HEAD=
+    case "$CNV_HEAD" in
+      *'##INFO=<ID=pytorP1,'*) ;;
+      *)
+        echo "CNVpytor: ${CNV_VCF#"$S"/} has no e-value (pytorP1); making it again from the table."
+        CNV_MAKE=true ;;
+    esac
+  fi
+fi
+if [ "$CNV_MAKE" = true ]; then
   echo "CNVpytor: converting ${CNV_TXT} to a VCF..."
   {
     echo "##fileformat=VCFv4.2"
