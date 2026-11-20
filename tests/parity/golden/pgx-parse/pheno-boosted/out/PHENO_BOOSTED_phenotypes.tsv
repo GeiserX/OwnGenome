@@ -1,0 +1,5 @@
+Gene	Diplotype	Phenotype	Status	Phenoconverted_phenotype
+CYP2D6	*1/*2	Normal Metabolizer	normal	-
+CYP2C19	*1/*1	Normal Metabolizer	normal	-
+CYP2C9	*1/*1	Normal Metabolizer	normal	-
+CYP3A5	*3/*3	Poor Metabolizer	non-normal	not computed: lopinavir, ritonavir inhibits CYP3A5; CPIC gives no rule that converts the CYP3A5 phenotype
