@@ -210,8 +210,10 @@ pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
         if f.len() < 10 {
             return Err(at(format!("{} columns, at least 10 needed", f.len())));
         }
-        let (chrom, pos, ref_, alt) = (f[0], f[1], f[3], f[4]);
-        if !base(ref_) || !base(alt) || ref_ == alt {
+        // VCF bases are case-insensitive: compare and write them in upper case.
+        let (chrom, pos) = (f[0], f[1]);
+        let (ref_, alt) = (f[3].to_ascii_uppercase(), f[4].to_ascii_uppercase());
+        if !base(&ref_) || !base(&alt) || ref_ == alt {
             return Err(at(format!("{ref_}>{alt} is not a biallelic SNV")));
         }
         let Some(gt_at) = f[8].split(':').position(|k| k == "GT") else {
@@ -448,6 +450,29 @@ mod tests {
             err.contains("does not start with the header of samples.tsv"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn lowercase_bases_give_the_same_model() {
+        // VCF REF and ALT bases are case-insensitive.
+        let upper = Dir::new("freqs-upper");
+        assert_eq!(fit(&upper, &[]).0, 0);
+        let d = Dir::new("freqs-lower");
+        let (vcf, samples, out) = (
+            d.put("adm.vcf", &VCF.replace("\tA\tG\t", "\ta\tg\t")),
+            d.put("samples.tsv", SAMPLES),
+            d.path("model"),
+        );
+        let (rc, _, err) = run(&["freqs", "--vcf", &vcf, "--samples", &samples, "--out", &out]);
+        assert_eq!((rc, err.as_str()), (0, ""));
+        for f in [
+            "model/ref.bim",
+            "model/continent.P",
+            "model/region.P",
+            "model/levels.tsv",
+        ] {
+            assert_eq!(d.read(f), upper.read(f), "{f}");
+        }
     }
 
     #[test]
