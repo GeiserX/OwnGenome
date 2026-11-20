@@ -17,12 +17,8 @@
 # py/ holds the modules render_report.py imports, as they were at the
 # oracle's commit (tests/parity/oracle.ref, report-render).
 #
-# oracle.sh renders with render_report.py, then keeps of its two reports
-# the parts og report render writes so far: the frame and the sections of
-# PORTED (each section's block in the text report, its frame and its line
-# in the contents in the HTML report). A chapter left with no section goes,
-# and so does the closing gene and rsID appendix, which og report index will
-# write. Everything kept is compared byte for byte.
+# oracle.sh renders with render_report.py; both reports are compared byte
+# for byte, whole.
 set -euo pipefail
 export LC_ALL=C TZ=UTC
 here=$(cd "$(dirname "$0")" && pwd)
@@ -37,6 +33,13 @@ mkdir -p py
 for m in collect_summary results_index genome_lookup report_charts live_results; do
   git -C "$root" show "${ORACLE_SHA}:bin/${m}.py" > "py/${m}.py"
 done
+# og's index leaves out the acmg_sf section, whose card the clinical section
+# already holds (rust/crates/og-render/src/index.rs), so a gene is not listed
+# twice in the closing appendix; the oracle's index does the same.
+sed 's/^        if sec.get("state") not in ("ok", "stale"):$/        if key == "acmg_sf" or sec.get("state") not in ("ok", "stale"):/' \
+  py/results_index.py > py/results_index.py.new
+mv py/results_index.py.new py/results_index.py
+grep -q 'key == "acmg_sf"' py/results_index.py || { echo "report-corpus.sh: the acmg_sf skip did not apply" >&2; exit 1; }
 
 # --- one summary per summary-collect case ---------------------------------------------
 # Each generator writes its folders under folders/<generator>/, with the
@@ -521,13 +524,40 @@ amut numbers '.sections.y_str.data.markers[0].count = 13 | .sections.y_str.data.
   | .sections.archaic.data.neanderthal_bp = 51234567.0 | .sections.archaic.data.denisovan_bp = true
   | .sections.prs.data.scores[0].condition = 7 | .sections.prs.data.scores[1].score = 0.25
   | .sections.ancestry_fine.data.continent[1].fraction = 1'
+# The structural-variant, mosaic sex-loss and raw-data export sections:
+# each call of step 33's sex-loss check, chrX with an allele fraction, the
+# no-call reasons with tied counts, and the SV sections stale.
+smut() { jq -c "$2" "$abase" > "s-$1.json"; }
+sl='.sections.mosaic_sex_loss = {"title": "Mosaic loss of chromosome Y or X", "step": "33", "state": "ok",
+  "source": "qc/S_sample_qc.tsv", "file_date": "2021-03-04 05:06 UTC", "note": null, "data": {'
+smut sexloss-detected "$sl"'"chrom": "chrY", "call": "detected", "reason": "depth below the floor",
+  "depth_ratio": 0.7123, "loss_depth": 0.2877, "loss_depth_low": 0.25, "loss_depth_high": 0.33, "loss_af": null}}'
+smut sexloss-chrx "$sl"'"chrom": "chrX", "call": "detected", "reason": "allele fraction <off> & depth",
+  "depth_ratio": null, "loss_depth": null, "loss_af": 0.125, "loss_af_low": 0.1, "loss_af_high": null, "x_het_sites": 40}}'
+smut sexloss-odd "$sl"'"chrom": "", "call": "maybe <b>", "reason": null, "loss_depth": 0.05}}'
+smut sexloss-not-estimated "$sl"'"chrom": "chrY", "call": "not_estimated", "reason": "too few reads on chrY"}}'
+smut sexloss-gain-stale "$sl"'"chrom": "chrY", "call": "gain", "reason": "depth above 1"}} | .sections.mosaic_sex_loss.state = "stale"
+  | .sections.mosaic_sex_loss.note = "from an older run <b>"'
+smut sexloss-failed "$sl"'}} | .sections.mosaic_sex_loss.state = "failed" | .sections.mosaic_sex_loss.note = "step 33 failed"'
+smut consumer-reasons '.sections.consumer_export.data.no_call_reasons = {"zeta": 5, "alpha": 5, "low <depth>": 9, "one": 1}
+  | .sections.consumer_export.data.from_reference_blocks = 1234 | .sections.consumer_export.data.file_ancestrydna = "S_ancestry.txt"'
+smut consumer-stale '.sections.consumer_export.state = "stale" | .sections.consumer_export.note = "older export"
+  | .sections.consumer_export.data.no_call_reasons = {} | .sections.consumer_export.data.sites = 0'
+smut sv-stale 'reduce ("manta", "delly", "sv_consensus", "annotsv") as $k (.; .sections[$k].state = "stale"
+  | .sections[$k].note = "why: <b>&'"'"'\"")'
+smut sv-mixed '.sections.manta.state = "failed" | .sections.manta.note = "manta failed" | .sections.delly.state = "missing"
+  | .sections.annotsv.state = "unreadable" | .sections.annotsv.note = "bad tsv"'
 rm -f "$abase"
 
 # --- the oracle -----------------------------------------------------------------------
 cat > oracle.sh << 'ORACLE'
 #!/bin/sh
 # The oracle of og report render (tests/parity/oracle.ref): render_report.py
-# with the modules of py/, then the parts of its reports og writes so far.
+# with the modules of py/. Both reports are compared whole: every section,
+# the charts in the HTML report and the closing gene and rsID appendix.
+# A PRS row whose counts the summary has as null reads "not available", as
+# og writes it; render_report.py writes "None" there (and stops its HTML
+# report on that row), so the text report's "None" is read as og's words.
 #   sh ./oracle.sh PROG --summary F -o R.txt -o R.html
 set -e
 prog=$1
@@ -537,127 +567,16 @@ cp py/*.py "$d"/
 cp "$prog" "$d/render_report.py"
 PYTHONPATH=$d python3 "$d/render_report.py" "$@"
 rm -rf "$d"
-# The sections og report render writes; the others are left out.
-PORTED=" qc variants not-run not-assessed "
-PORTED="$PORTED pharmcat cpic cyp2d6 hla mito "
-# port-report-optin
-PORTED="${PORTED}exomiser mei vntyper chip mosaic-mca locityper roh telomere viral "
-PORTED="${PORTED}callability clinvar clinical-filter cpsr slivar carrier-list couple "
-PORTED="${PORTED}ancestry-fine mt-haplogroup y-chromosome archaic ancient prs "
-PORTED="${PORTED}expansions lpa paralogs traits-panel bloodtype "
 while [ $# -gt 0 ]; do
   case "$1" in
     -o)
-      out=$2
-      shift
-      case "$out" in
-        *.html) awk -v keep="$PORTED" -f html.awk "$out" > "$out.kept" ;;
-        *.txt) awk -v keep="$PORTED" -f text.awk "$out" > "$out.kept" ;;
+      case "$2" in
+        *.txt)
+          sed 's| None (None/None variants matched) | not available (not available/not available variants matched) |' "$2" > "$2.kept"
+          mv "$2.kept" "$2" ;;
       esac
-      mv "$out.kept" "$out" ;;
+      shift ;;
   esac
   shift
 done
 ORACLE
-
-# html.awk: drops each section not in keep (its line in the contents and its
-# frame) and every chart (og report charts will write them), then each
-# chapter with no section left (its contents entry and its body), and the
-# gene and rsID appendix.
-cat > html.awk << 'AWK'
-function wanted(line,   id) {
-  if (!match(line, /id="[^"]*"/) && !match(line, /href="#[^"]*"/)) return 1
-  id = substr(line, RSTART, RLENGTH)
-  sub(/^(id="|href="#)/, "", id); sub(/"$/, "", id)
-  return index(keep, " " id " ") > 0
-}
-{ lines[++n] = $0 }
-END {
-  # Pass 1: drop the sections not kept.
-  m = 0
-  for (i = 1; i <= n; i++) {
-    l = lines[i]
-    # The charts are not ported yet (port-report-charts): drop their figures.
-    if (l ~ /^    <figure class="chart">/) continue
-    if (l ~ /^        <li><a href="#/ && !wanted(l)) continue
-    if (l ~ /^  <section class="sec[^"]*" id="/ && !wanted(l)) {
-      while (lines[i] != "  </section>") i++
-      continue
-    }
-    out[++m] = l
-  }
-  # Pass 2: drop the chapters with no section left, and the appendix.
-  for (i = 1; i <= m; i++) {
-    l = out[i]
-    if (l ~ /^    <li><a href="#ch-terms">/) continue
-    if (l ~ /^    <li><a href="#ch-/ && out[i + 1] == "      <ol>" && out[i + 2] == "      </ol>") { i += 3; continue }
-    if (l ~ /^<section class="chapter" id="ch-/) {
-      j = i + 4
-      if (l ~ /id="ch-terms"/ || out[j] == "  </div>") {
-        while (out[i] != "</section>") i++
-        continue
-      }
-    }
-    print l
-  }
-}
-AWK
-
-# text.awk: drops each section block not in keep, then each chapter left
-# with no block. A block starts at its "## " title; the titles of the kept
-# sections are listed here, as render_report.py writes them. A PRS row
-# whose counts the summary has as null reads "not available", as og writes
-# it; render_report.py writes "None" there (and stops its HTML report on
-# that row).
-cat > text.awk << 'AWK'
-BEGIN {
-  rule = sprintf("%80s", ""); gsub(/ /, "#", rule)
-  title["## Quality control"] = "qc"; title["## Variant Calling (DeepVariant)"] = "variants"
-  title["## Pharmacogenomics (PharmCAT)"] = "pharmcat"; title["## CPIC Drug-Gene Recommendations"] = "cpic"
-  title["## pypgx Pharmacogenomics"] = "cyp2d6"; title["## PGx copy number"] = "cyp2d6"
-  title["## CYP2D6 across callers"] = "cyp2d6"; title["## HLA Typing (T1K)"] = "hla"
-  title["## Mitochondrial Variants (Mutect2)"] = "mito"
-  # port-report-optin
-  title["## Symptom-Driven Ranking (Exomiser, step 48)"] = "exomiser"; title["## Mobile Element Insertions (step 50)"] = "mei"
-  title["## MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)"] = "vntyper"; title["## Clonal Haematopoiesis (CHIP, step 49)"] = "chip"
-  title["## Mosaic Chromosomal Alterations (MoChA, step 51)"] = "mosaic-mca"; title["## Runs of Homozygosity"] = "roh"
-  title["## Locityper Second Opinion at Hard Loci (step 53)"] = "locityper"
-  title["## Telomere content (relative, TelomereHunter)"] = "telomere"; title["## Viral DNA in the Unmapped Reads (step 47)"] = "viral"
-  title["## Genes This Genome Could Not Read Reliably"] = "callability"
-  title["## ClinVar Pathogenic Screen"] = "clinvar"; title["## Clinical Variant Filter"] = "clinical-filter"
-  title["## Cancer Predisposition Screening (CPSR)"] = "cpsr"; title["## Variant Prioritization (slivar)"] = "slivar"
-  title["## Carrier List (this sample)"] = "carrier-list"; title["## Couple Carrier Screen (step 39)"] = "couple"
-  title["## Fine-Grained Ancestry (ADMIXTURE, RFMix)"] = "ancestry-fine"; title["## Mitochondrial Haplogroup"] = "mt-haplogroup"
-  title["## Y-Chromosome Haplogroup (Yleaf)"] = "y-chromosome"; title["## Y Placement on the Current Public Tree"] = "y-chromosome"
-  title["## Y-STR Markers (HipSTR)"] = "y-chromosome"; title["## Archaic Ancestry (IBDmix, step 43)"] = "archaic"
-  title["## Ancient Populations (AADR PCA, step 44)"] = "ancient"; title["## Polygenic Risk Scores"] = "prs"
-  title["## Repeat Expansions (ExpansionHunter)"] = "expansions"
-  title["## Lp(a): LPA KIV-2 Repeat Count and Risk Variants"] = "lpa"
-  title["## Paralog Genes (Paraphase, PacBio HiFi)"] = "paralogs"
-  title["## SMN1/SMN2 Copy Number (Parascopy, short reads)"] = "paralogs"
-  title["## Paralog Copy Number"] = "paralogs"
-  title["## Traits Panel (step 42)"] = "traits-panel"
-  title["## Blood Groups (predicted from the genome)"] = "bloodtype"
-}
-{ sub(/ None \(None\/None variants matched\) /, " not available (not available/not available variants matched) "); lines[++n] = $0 }
-END {
-  # The end part (steps not run onward) and the head (before the first
-  # banner) stay; chapters are banner, title, banner, blank, then blocks.
-  for (i = 1; i <= n; i++) if (lines[i] == "## Steps Not Run") { stop = i; break }
-  for (i = 1; i < stop; i++) {
-    if (lines[i] == rule && lines[i + 1] ~ /^#  [0-9]+\. /) {
-      head = lines[i] "\n" lines[i + 1] "\n" lines[i + 2] "\n" lines[i + 3]
-      i += 3; body = ""; on = 0
-      while (i + 1 < stop && !(lines[i + 1] == rule && lines[i + 2] ~ /^#  [0-9]+\. /)) {
-        i++
-        if (lines[i] ~ /^## /) on = (lines[i] in title) && index(keep, " " title[lines[i]] " ") > 0
-        if (on) body = body lines[i] "\n"
-      }
-      if (body != "") printf "%s\n%s", head, body
-      continue
-    }
-    print lines[i]
-  }
-  for (i = stop; i <= n; i++) print lines[i]
-}
-AWK
