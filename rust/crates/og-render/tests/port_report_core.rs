@@ -202,6 +202,25 @@ fn every_summary_key_is_in_exactly_one_section() {
     let mut missing = key_problems(&short, &keys);
     missing.sort();
     assert_eq!(missing, ["missing consumer_export", "missing viral"]);
+    // acmg_sf is shown with clinical, not as a frame key of its own: listing
+    // it in a section as well is a key shown twice, and the search index
+    // anchors it to the clinical-filter section.
+    let mut also = CHAPTERS.to_vec();
+    also.push(Chapter {
+        id: "x",
+        title: "X",
+        question: "?",
+        sections: &[Sec {
+            id: "x",
+            title: "X",
+            keys: &["acmg_sf"],
+        }],
+    });
+    assert_eq!(key_problems(&also, &keys), ["twice acmg_sf".to_owned()]);
+    assert_eq!(
+        og_render::chapters::section_of("acmg_sf").map(|s| s.id),
+        Some("clinical-filter")
+    );
 }
 
 #[test]
