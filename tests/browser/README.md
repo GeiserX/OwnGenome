@@ -21,8 +21,9 @@ Without a Chrome a check prints `[SKIP] no Chrome or Chromium to ...` and passes
 | `tests/cdp.rs` | the driver: a clean page loads with no page error and answers `eval`; a planted exception and a `console.error` are both reported |
 | `tests/live_replay.rs` | the live page in replay mode on `tests/fixtures/live/frames.json`: it opens at the last frame, Play replays from the first, the map's roles and labels, a headline opens its step with Enter, the policy blocked nothing, a running replay opens at its first frame. Red control: without `frames.json` the page gets a 404 for it and the first check fails. The policy it is served with must equal the live site's `CSP` |
 | `tests/live_assets.rs` | `assets/live`, plugins included, has no outside URL, inline script, `on*` attribute or `eval`, with two planted mistakes the scan must catch |
+| `rust/crates/og-live/tests/port_viewer.rs` (`cargo test -p og-live`) | the local genome viewer, served by `og view serve` itself on a synthetic sample: igv.js starts on the config (status ready), the policy blocks nothing, and igv.js reads the reference, the BAM, its index and the VCF. Red control: with an empty igv.min.js the page reports an error |
 
-The other browser checks still run in the Python tests that start the live site's Python server (`tests/test_owngenome_live.py`, `test_live_demo.py`, `test_live_viewer.py`, `test_owngenome_live_family.py`, `test_report_charts.py`, `test_viewer.py`). Each moves here when its server is ported to Rust.
+The other browser checks still run in the Python tests that start the live site's Python server (`tests/test_owngenome_live.py`, `test_live_demo.py`, `test_live_viewer.py`, `test_owngenome_live_family.py`, `test_report_charts.py`). Each moves here when its server is ported to Rust.
 
 ## The API
 

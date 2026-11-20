@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""The local genome viewer: scripts/owngenome-view.sh and assets/viewer/serve.py,
-and the report's links to it (bin/render_report.py), on a synthetic sample.
+"""What is left of the local genome viewer's Python checks once the viewer
+moved to og view serve: the Python helpers bin/owngenome_live_viewer.py
+still uses (assets/viewer/serve.py), and the report's links to the viewer
+(bin/render_report.py), on a synthetic sample. The server, the launcher and
+the page in Chrome are checked by rust/crates/og-live/tests/port_viewer.rs
+and tests/test_owngenome_view.sh. tests/test_live_viewer.py imports the
+sample and the Chrome helpers from here.
 
 The sample is made here: a random 3 kb chr1 and 1 kb chr2 reference with its
 .fai, 30 reads on chr1 as a coordinate-sorted BAM with its .bai, a bgzipped
@@ -10,46 +15,23 @@ byte by byte (no samtools or htslib needed).
 Checks:
   1. build_config names the sample's files and the locus, and refuses a locus
      that is not chr[:pos[-end]] of the reference, and a BAM with no index;
-  2. owngenome-view.sh downloads the igv.js pinned in versions.env and checks its sha256, finds the
-     BAM, VCF and SV VCF in the sample folder, and starts the server, which
-     listens on 127.0.0.1 and not on the machine's other address;
-  3. the server sends the page with a Content-Security-Policy that keeps it
-     on this server, the config with the files and the locus, a byte range of
-     the BAM as 206 with exactly those bytes, 416 for a range past the end,
-     404 for a path it does not serve, 403 for a foreign Host header;
-  4. in a headless Chrome the page starts igv.js on that config (status
-     "ready", nothing blocked by the policy) and igv.js reads the BAM and its
-     index by range; skipped without Chrome, except in CI;
   5. every findings table of the HTML report (ClinVar hits, secondary
      findings, mitochondrial variants, deep intronic sites, the cDNA scan,
      AnnotSV class 4-5 and the calls moved to class 3, slivar's pairs in
      trans, mosaic alterations, Exomiser's ranked variants) ends each row
      with a Viewer cell linking to the row's position, with the note under
      it; a control with the links removed must fail that check for every
-     table. A file name with a space,
-     '#' or '?' is served from its percent-encoded URL.
-
-The igv.js pin is read from versions.env (IGV_JS_VERSION, IGV_JS_SHA256):
-the downloaded file must have that sha256, and owngenome-view.sh must set no
-pin of its own.
+     table.
 """
 
-import gzip
-import hashlib
-import json
 import os
 import random
 import re
 import shutil
 import socket
 import struct
-import subprocess
 import sys
 import tempfile
-import threading
-import time
-import urllib.error
-import urllib.request
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -188,26 +170,6 @@ def free_port():
         return so.getsockname()[1]
 
 
-def get(url, headers=None):
-    req = urllib.request.Request(url, headers=headers or {})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            return r.status, dict(r.headers), r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read()
-
-
-def other_address():
-    """An address of this machine that is not loopback, or None."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as so:
-            so.connect(("192.0.2.1", 9))
-            ip = so.getsockname()[0]
-        return None if ip.startswith("127.") else ip
-    except OSError:
-        return None
-
-
 def find_chrome():
     for c in (os.environ.get("CHROME"), "google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
@@ -306,7 +268,6 @@ def tables_without_links(html):
 
 def main():
     work = tempfile.mkdtemp(prefix="pgp-view-")
-    proc = None
     try:
         gd = f"{work}/genome"
         fa, contigs = make_sample(gd)
@@ -315,7 +276,6 @@ def main():
         # 1. build_config
         cfg, files = serve.build_config("S", fa, f"{s}/aligned/S_sorted.bam", f"{s}/vcf/S.vcf.gz",
                                         f"{s}/sv_merged/S_sv_consensus.vcf.gz", "chr1:451")
-        check("config: the bind address is 127.0.0.1", serve.BIND == "127.0.0.1")
         check("config: the locus, the reference and its .fai",
               cfg["locus"] == "chr1:451" and files[0] == fa and files[1] == fa + ".fai"
               and cfg["reference"]["fastaURL"] == "data/0/synthetic.fasta", cfg)
@@ -341,113 +301,6 @@ def main():
             check("config: a BAM without an index is refused", "samtools index" in str(e), e)
         os.rename(f"{work}/bai", f"{s}/aligned/S_sorted.bam.bai")
 
-        # 2. owngenome-view.sh
-        port = free_port()
-        env = dict(os.environ, GENOME_DIR=gd, REF_FASTA="reference/synthetic.fasta", OWNGENOME_VIEW_PORT=str(port))
-        log = open(f"{work}/server.log", "w")
-        proc = subprocess.Popen(["bash", f"{REPO}/scripts/owngenome-view.sh", "S", "chr1:451"], env=env,
-                                stdout=log, stderr=subprocess.STDOUT)
-        base = f"http://127.0.0.1:{port}"
-        up = False
-        for _ in range(240):
-            if proc.poll() is not None:
-                break
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=1):
-                    up = True
-                    break
-            except OSError:
-                time.sleep(0.5)
-        out = open(f"{work}/server.log").read()
-        check("owngenome-view.sh: the server starts and prints its address", up and f"{base}/#chr1:451" in out, out)
-        if not up:
-            raise SystemExit(1)
-        pin = igv_pin()
-        igv = f"{gd}/tools/igv.js-{pin['IGV_JS_VERSION']}/igv.min.js"
-        check("owngenome-view.sh: the igv.js pinned in versions.env is downloaded into GENOME_DIR/tools, with its sha256",
-              os.path.isfile(igv) and os.path.getsize(igv) > 100000
-              and hashlib.sha256(open(igv, "rb").read()).hexdigest() == pin["IGV_JS_SHA256"], (igv, pin))
-        check("owngenome-view.sh: it sets no igv.js pin of its own (versions.env is the one place)",
-              not re.search(r"^\s*IGV_JS_(VERSION|SHA256)=", open(f"{REPO}/scripts/owngenome-view.sh").read(), re.M))
-        ip = other_address()
-        if ip:
-            try:
-                socket.create_connection((ip, port), timeout=2).close()
-                check(f"server: not reachable on {ip}, only on 127.0.0.1", False)
-            except OSError:
-                check("server: not reachable on the machine's other address, only on 127.0.0.1", True)
-        else:
-            print("[SKIP] no non-loopback address to test the bind against")
-
-        # 3. what it serves
-        code, h, body = get(f"{base}/")
-        csp = h.get("Content-Security-Policy", "")
-        check("server: the page, with a policy that keeps every request on this server",
-              code == 200 and b"igv.min.js" in body and "connect-src 'self'" in csp and "default-src 'none'" in csp, (code, csp))
-        code, _, body = get(f"{base}/config.json")
-        sc = json.loads(body) if code == 200 else {}
-        check("server: the config names the sample's files and the locus",
-              sc.get("locus") == "chr1:451" and [t["url"].rsplit("/", 1)[1] for t in sc.get("tracks", [])]
-              == ["S_sorted.bam", "S.vcf.gz", "S_sv_consensus.vcf.gz"], sc)
-        bam_url = f"{base}/{sc['tracks'][0]['url']}"
-        raw = open(f"{s}/aligned/S_sorted.bam", "rb").read()
-        code, h, body = get(bam_url, {"Range": "bytes=10-109"})
-        check("server: a BAM range comes back as 206 with exactly those bytes",
-              code == 206 and body == raw[10:110] and h.get("Content-Range") == f"bytes 10-109/{len(raw)}", (code, h))
-        code, h, body = get(bam_url, {"Range": "bytes=-28"})
-        check("server: a suffix range (the BGZF EOF block)", code == 206 and body == BGZF_EOF, code)
-        code, h, _ = get(bam_url, {"Range": f"bytes={len(raw) + 5}-"})
-        check("server: a range past the end is 416", code == 416 and h.get("Content-Range") == f"bytes */{len(raw)}", code)
-        code, _, _ = get(f"{base}/data/0/../../reference/synthetic.fasta.fai")
-        code2, _, _ = get(f"{base}/serve.py")
-        check("server: a path it does not serve is 404", code == 404 and code2 == 404, (code, code2))
-        code, _, _ = get(f"{base}/config.json", {"Host": "attacker.example:8765"})
-        check("server: a foreign Host header is 403", code == 403, code)
-        # a file name with a space, '#' and '?' (a REF_FASTA the user named so)
-        odd = f"{work}/odd"
-        os.makedirs(odd)
-        shutil.copy(fa, f"{odd}/my ref#1?.fasta")
-        shutil.copy(fa + ".fai", f"{odd}/my ref#1?.fasta.fai")
-        ocfg, ofiles = serve.build_config("S", f"{odd}/my ref#1?.fasta")
-        osrv = serve.make_server(ocfg, ofiles, igv, 0, quiet=True)
-        threading.Thread(target=osrv.serve_forever, daemon=True).start()
-        try:
-            obase = f"http://127.0.0.1:{osrv.server_address[1]}"
-            code, _, body = get(f"{obase}/{ocfg['reference']['fastaURL']}", {"Range": "bytes=0-4"})
-            check("server: a file name with a space, '#' or '?' is served from its encoded URL",
-                  ocfg["reference"]["fastaURL"] == "data/0/my%20ref%231%3F.fasta" and code == 206 and body == b">chr1",
-                  (ocfg["reference"]["fastaURL"], code, body))
-        finally:
-            osrv.shutdown()
-            osrv.server_close()
-
-        # 4. the page in a headless browser
-        chrome = find_chrome()
-        if not chrome:
-            ci = os.environ.get("CI") == "true"
-            print(("[FAIL] " if ci else "[SKIP] ") + "no Chrome or Chromium to load the page in")
-            if ci:
-                FAILED.append("no Chrome in CI")
-        else:
-            before = len(open(f"{work}/server.log").read())
-            r = subprocess.run([chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run",
-                                "--no-default-browser-check", f"--user-data-dir={work}/chrome",
-                                "--virtual-time-budget=20000", "--dump-dom", f"{base}/#chr1:451"],
-                               capture_output=True, text=True, timeout=180)
-            dom = r.stdout
-            status = re.search(r'data-pgp-status="([^"]*)"', dom)
-            blocked = re.search(r'data-pgp-blocked="([^"]*)"', dom)
-            check("browser: igv.js starts on the config (status ready)", status and status.group(1) == "ready",
-                  (status and status.group(1), r.stderr[-800:], dom[:800]))
-            check("browser: the policy blocked nothing the page needed", not blocked, blocked and blocked.group(1))
-            served = open(f"{work}/server.log").read()[before:]
-            check("browser: igv.js read the BAM's index and a range of the BAM",
-                  "S_sorted.bam.bai" in served and re.search(r'"GET /data/\d+/S_sorted\.bam HTTP', served), served[-1500:])
-            check("browser: every request of the page was served (no 4xx)",
-                  not re.search(r'HTTP/1\.[01]" 4\d\d', served), served[-1500:])
-            check("browser: igv.js read the reference and the VCF",
-                  "synthetic.fasta" in served and "S.vcf.gz" in served, served[-1500:])
-
         # 5. the report's links: a Viewer cell at the end of every row of every findings table
         import render_report
         html, _ = findings_report(work)
@@ -472,12 +325,6 @@ def main():
               and "#chrM:3243\"" in cell("chrM:3243 A>G") and cell("no locus <x>") == "<td></td>",
               [cell("chr1:50 A>G + chr1:90 C>T"), cell("chrM:3243 A>G"), cell("no locus <x>")])
     finally:
-        if proc and proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
         shutil.rmtree(work, ignore_errors=True)
 
     print()

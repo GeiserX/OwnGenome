@@ -2987,6 +2987,17 @@ def bare_core(source):
 SEARCH_CLOSED = 'Results this page keeps closed are left out of the search until they are opened.'
 
 
+# The gate transparency check compares two renders' DOM as text. A browser keeps an element's attributes in the order
+# they were set, and the page's scripts set the <html> data-pgp-* attributes as their files arrive, in any order. So
+# each element of the clone gets its attributes back sorted by name before it is serialized: the order no longer
+# counts, while a changed value, an added or a missing attribute still makes the two texts differ.
+SORT_ATTRS = """[clone].concat(Array.from(clone.querySelectorAll('*'))).forEach(function (n) {
+            var as=Array.from(n.attributes).sort(function (a, z) { return a.name < z.name ? -1 : a.name > z.name ? 1 : 0; });
+            as.forEach(function (a) { n.removeAttributeNode(a); });
+            as.forEach(function (a) { n.setAttributeNodeNS(a); });
+          });"""
+
+
 def type_search(b, term):
     """Type TERM in the header search once its index has loaded; the text of what it shows."""
     assert b.wait("document.querySelector('input[type=search]') && !document.querySelector('input[type=search]').disabled"), 'search never loaded'
@@ -3029,6 +3040,7 @@ def gate_transparency(b, base, out):
           clone.querySelectorAll('[data-pgp-map-paint-ms],[data-pgp-map-parse-ms]').forEach(function (n) {
             n.removeAttribute('data-pgp-map-paint-ms'); n.removeAttribute('data-pgp-map-parse-ms');
           });
+          """ + SORT_ATTRS + """
           return [clone.outerHTML, location.hash, Array.from(document.querySelectorAll('canvas')).map(function(c){return c.toDataURL();}),
             performance.getEntriesByType('resource').map(function (r) { return new URL(r.name).pathname; }), window.ogRequests || []];
         }())""")

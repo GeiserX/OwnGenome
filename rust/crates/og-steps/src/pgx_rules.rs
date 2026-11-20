@@ -21,8 +21,12 @@
 //!   `--optitype`, only when OptiType gives the same pair; with
 //!   `--require-optitype` and no OptiType result, neither gene.
 //! - CYP2D6: only when pypgx (step 32) and Cyrius (step 21) give the same
-//!   diplotype and the depth check passed. One depth-based call alone can be
-//!   a false whole-gene deletion that changes a prescription.
+//!   diplotype and the depth check passed (which needs 10x in the flanks).
+//!   One depth-based call alone can be a false whole-gene deletion that
+//!   changes a prescription. A pypgx call whose defining variants are not
+//!   all `PASS` or not of good quality (step 32's `Defining_filter` and
+//!   `Quality`) reads `weak evidence (...)` in the Evidence column; Cyrius's
+//!   agreement still passes it.
 //!
 //! The consensus table (`Gene Result Outside_call Reason Evidence`) says
 //! for each of the three genes what each caller said and what was passed.
@@ -716,10 +720,26 @@ fn cell(row: &pycompat::csv::DictRow, key: &str) -> String {
     strip(row.get(key).flatten().unwrap_or("")).to_owned()
 }
 
-/// pypgx's CYP2D6 diplotype (`""` when its summary has no CYP2D6 row).
-fn read_pypgx(path: &str) -> Result<String, Error> {
+/// pypgx's CYP2D6 diplotype (`""` when its summary has no CYP2D6 row) and
+/// what is weak in the evidence for it: step 32's `Defining_filter` when it
+/// is not `PASS` and its `Quality` when it is not `ok`, `"; "`-joined
+/// (`""` when neither is, or the summary is older than those columns).
+fn read_pypgx(path: &str) -> Result<(String, String), Error> {
     let got = dict_rows(path, |row| {
-        (cell(row, "Gene") == "CYP2D6").then(|| cell(row, "Diplotype"))
+        (cell(row, "Gene") == "CYP2D6").then(|| {
+            let filter = cell(row, "Defining_filter");
+            let quality = cell(row, "Quality");
+            let fine: [(String, &[&str]); 2] = [
+                (filter, &["", "PASS", "none", "N/A"]),
+                (quality, &["", "ok", "N/A"]),
+            ];
+            let weak: Vec<String> = fine
+                .into_iter()
+                .filter(|(v, ok)| !ok.contains(&v.as_str()))
+                .map(|(v, _)| v)
+                .collect();
+            (cell(row, "Diplotype"), weak.join("; "))
+        })
     })?;
     Ok(got.unwrap_or_default())
 }
@@ -758,13 +778,18 @@ pub fn cyp2d6_row(
     let cy = cyrius.map(read_cyrius).transpose()?;
     let dc = depth.map(read_depth_check).transpose()?;
 
-    let pg_ok = pg.as_deref().is_some_and(is_call);
+    let pg_ok = pg.as_ref().is_some_and(|(d, _)| is_call(d));
     let cy_ok = cy.as_ref().is_some_and(|(g, f)| is_call(g) && f == "PASS");
+    // A call on weak evidence is flagged, not withheld: Cyrius reads the
+    // BAM on its own, so its agreement is the second line of evidence.
     let pg_txt = match &pg {
         None => "not run".to_owned(),
-        Some(p) if pg_ok => p.clone(),
-        Some(p) if p.is_empty() => "no call (no CYP2D6 row)".to_owned(),
-        Some(p) => format!("no call ({p})"),
+        Some((p, weak)) if pg_ok && !weak.is_empty() => {
+            format!("{p}, weak evidence ({weak})")
+        }
+        Some((p, _)) if pg_ok => p.clone(),
+        Some((p, _)) if p.is_empty() => "no call (no CYP2D6 row)".to_owned(),
+        Some((p, _)) => format!("no call ({p})"),
     };
     let cy_txt = match &cy {
         None => "not run".to_owned(),
@@ -804,7 +829,7 @@ pub fn cyp2d6_row(
     if !(pg_ok && cy_ok) {
         return withheld(ONE_CALLER);
     }
-    let (pg, cy) = (pg.unwrap_or_default(), cy.unwrap_or_default());
+    let (pg, cy) = (pg.unwrap_or_default().0, cy.unwrap_or_default());
     if !same_diplotype(&pg, &cy.0) {
         return withheld("pypgx and Cyrius disagree");
     }
@@ -1230,6 +1255,93 @@ mod tests {
         let row = cyp2d6_row(Some(&pg), Some(&cy), Some(&bad)).unwrap();
         assert_eq!(row.decision, Decision::Withheld("indeterminate"));
         assert_eq!(row.reason, "multi-mapped");
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn shallow_flanks_do_not_count_an_agreement() {
+        // What `og pgx cyp2d6-check` writes for flanks under 10x (og-bam's
+        // tests/i411_cyp2d6_gate.rs pins that side).
+        let d = tmp("shallow");
+        let pg = put(&d, "p.tsv", "Gene\tDiplotype\nCYP2D6\t*1/*2\n");
+        let head = "Sample\tGenotype\tFilter\n";
+        let cy = put(&d, "c.tsv", &format!("{head}S\t*2/*1\tPASS\n"));
+        let shallow = put(
+            &d,
+            "shallow.tsv",
+            "metric\tvalue\nstatus\tunreliable\nmessage\tCYP2D6 copy number unreliable, \
+             agreement not counted (depth): the flanks of CYP2D6 (chr22:42.05-42.25 Mb) \
+             have under 10x at MAPQ >= 1, too few reads for a copy-number call\n\
+             flank_depth_mapq1\t6.00\n",
+        );
+        let row = cyp2d6_row(Some(&pg), Some(&cy), Some(&shallow)).unwrap();
+        assert_eq!(row.decision, Decision::Withheld("indeterminate"));
+        assert!(
+            row.reason.contains("agreement not counted (depth)"),
+            "{}",
+            row.reason
+        );
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn weak_pypgx_evidence_is_flagged_not_withheld() {
+        let d = tmp("weak");
+        let header = "Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\tDefining_variants\t\
+                      Min_GQ\tWeakest_variant\tDefining_filter\tQuality\n";
+        let weak = put(
+            &d,
+            "weak.tsv",
+            &format!(
+                "{header}CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\t\
+                 1/2 in the VCF\t8\tchr22:42128945 C>T GQ 8 AD 3,2\t\
+                 not PASS: chr22:42128945 C>T RefCall\tlow-confidence: check the reads\n"
+            ),
+        );
+        let no_gq = put(
+            &d,
+            "nogq.tsv",
+            &format!(
+                "{header}CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\t\
+                 2/2 in the VCF\tN/A\tN/A\tPASS\tGQ not in the VCF: check the reads\n"
+            ),
+        );
+        let clean = put(
+            &d,
+            "clean.tsv",
+            &format!(
+                "{header}CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\t\
+                 2/2 in the VCF\t40\tchr22:42128945 C>T GQ 40 AD 15,14\tPASS\tok\n"
+            ),
+        );
+        let head = "Sample\tGenotype\tFilter\n";
+        let cy = put(&d, "c.tsv", &format!("{head}S\t*4/*1\tPASS\n"));
+        let ok = put(&d, "ok.tsv", "status\tok\nmessage\t\n");
+
+        let row = cyp2d6_row(Some(&weak), Some(&cy), Some(&ok)).unwrap();
+        assert_eq!(row.decision, Decision::Passed("*1/*4".to_owned()));
+        assert_eq!(row.reason, "pypgx and Cyrius agree; the depth check passed");
+        assert_eq!(
+            row.evidence,
+            "pypgx: *1/*4, weak evidence (not PASS: chr22:42128945 C>T RefCall; \
+             low-confidence: check the reads); Cyrius: *4/*1; depth check: ok"
+        );
+
+        let row = cyp2d6_row(Some(&no_gq), Some(&cy), Some(&ok)).unwrap();
+        assert_eq!(row.decision, Decision::Passed("*1/*4".to_owned()));
+        assert_eq!(
+            row.evidence,
+            "pypgx: *1/*4, weak evidence (GQ not in the VCF: check the reads); \
+             Cyrius: *4/*1; depth check: ok"
+        );
+
+        // One caller only: still withheld, still flagged.
+        let row = cyp2d6_row(Some(&weak), None, Some(&ok)).unwrap();
+        assert_eq!(row.decision, Decision::Withheld("indeterminate"));
+        assert!(row.evidence.contains("weak evidence"), "{}", row.evidence);
+
+        let row = cyp2d6_row(Some(&clean), Some(&cy), Some(&ok)).unwrap();
+        assert_eq!(row.evidence, "pypgx: *1/*4; Cyrius: *4/*1; depth check: ok");
         let _ = std::fs::remove_dir_all(d);
     }
 
