@@ -1,7 +1,8 @@
 # assets/output_contract.tsv: what OwnGenome 1.0 keeps stable (docs/output-contract.md).
 # og dev contract reads it (rust/crates/og-dev/src/contract.rs): --static in Guard's rust job (rust/crates/og-dev/tests/repo.rs)
-# checks every row against the code, and the e2e case output-contract-1-hg002 checks the files the
-# HG002 run wrote. Columns, tab-separated:
+# checks every row against the code, --baseline in the same job checks that every stable row of the
+# newest 1.x release is still here and still stable, and the e2e case output-contract-1-hg002 checks
+# the files the HG002 run wrote. Columns, tab-separated:
 #   kind       file, param (a nextflow_schema.json param), tool (a --tools name in main.nf) or
 #              switch (a run-all.sh switch, its SWITCHES list)
 #   name       file: its path under the results folder (GENOME_DIR for the bash steps and run-all.sh,
@@ -82,11 +83,11 @@ file	{sample}/chip/{sample}_chip.tsv	49	CHIP_REPORT	both	tsv	experimental	-	-
 file	{sample}/chip/{sample}_chip_depth.tsv	49	CHIP_REPORT	both	tsv	experimental	-	-
 file	{sample}/chip/{sample}_chip_filtered.vcf.gz	49	CHIP_MUTECT2	both	vcf	experimental	-	-
 file	{sample}/clinical/{sample}_clinical.vcf.gz	23	CLINICAL_FILTER	both	vcf	stable	bash	-
-file	{sample}/clinical/{sample}_clinical.vcf.gz.tbi	23	CLINICAL_FILTER	nextflow	index	stable	-	-
-file	{sample}/clinical/{sample}_clinical_summary.tsv	23	CLINICAL_FILTER	both	tsv	stable	-	-
-file	{sample}/clinvar/{sample}_clinvar_cdna_check.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	-	-
-file	{sample}/clinvar/{sample}_clinvar_cdna_scan.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	-	-
-file	{sample}/clinvar/{sample}_clinvar_deep_intronic.tsv	06	CLINVAR_SCREEN	both	tsv	stable	-	-
+file	{sample}/clinical/{sample}_clinical.vcf.gz.tbi	23	CLINICAL_FILTER	both	index	stable	bash	-
+file	{sample}/clinical/{sample}_clinical_summary.tsv	23	CLINICAL_FILTER	both	tsv	stable	bash	-
+file	{sample}/clinvar/{sample}_clinvar_cdna_check.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	both	-
+file	{sample}/clinvar/{sample}_clinvar_cdna_scan.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	both	-
+file	{sample}/clinvar/{sample}_clinvar_deep_intronic.tsv	06	CLINVAR_SCREEN	both	tsv	stable	both	-
 file	{sample}/clinvar/{sample}_clinvar_hits.tsv	06	CLINVAR_SCREEN	both	tsv	stable	both	chrom,pos,ref,alt,genotype,clinvar_id,geneinfo,clnsig,clnrevstat
 file	{sample}/clinvar/{sample}_clinvar_hits.vcf	06	CLINVAR_SCREEN	both	vcf	stable	both	INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT
 file	{sample}/clinvar/{sample}_pass.vcf.gz	06	CLINVAR_SCREEN	both	vcf	stable	both	FORMAT/GT
@@ -99,11 +100,11 @@ file	{sample}/consumer_export/{sample}_23andme_v5.zip	40	CONSUMER_EXPORT	both	zi
 file	{sample}/consumer_export/{sample}_ancestrydna_layout.zip	40	CONSUMER_EXPORT	both	zip	experimental	-	-
 file	{sample}/consumer_export/{sample}_consumer_export.tsv	40	CONSUMER_EXPORT	both	tsv	experimental	-	-
 file	{sample}/couple/{sample}_couple_carrier.tsv	39	COUPLE_CARRIER	both	tsv	experimental	-	-
-file	{sample}/coverage/{sample}.mosdepth.global.dist.txt	16b	MOSDEPTH	nextflow	text	stable	-	-
+file	{sample}/coverage/{sample}.mosdepth.global.dist.txt	16b	MOSDEPTH	nextflow	text	stable	nextflow	-
 file	{sample}/coverage/{sample}.mosdepth.summary.txt	16b	MOSDEPTH	nextflow	tsv	stable	nextflow	chrom,length,bases,mean,min,max
-file	{sample}/coverage/{sample}.regions.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	-	-
-file	{sample}/coverage/{sample}.thresholds.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	-	-
-file	{sample}/coverage/{sample}_callability.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	-	-
+file	{sample}/coverage/{sample}.regions.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	nextflow	-
+file	{sample}/coverage/{sample}.thresholds.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	nextflow	-
+file	{sample}/coverage/{sample}_callability.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	nextflow	-
 file	{sample}/cpic/{sample}_cpic_recommendations.txt	27	CPIC_LOOKUP	both	text	stable	both	-
 file	{sample}/cpic/{sample}_phenotypes.tsv	27	CPIC_LOOKUP	both	tsv	stable	both	-
 file	{sample}/cpsr/{sample}.cpsr.grch38.classification.tsv.gz	17	CPSR	both	tsv	stable	-	-
@@ -119,7 +120,7 @@ file	{sample}/exomiser/{sample}_exomiser_terms.tsv	48	EXOMISER_REPORT	both	tsv	e
 file	{sample}/exomiser/{sample}_exomiser_top.tsv	48	EXOMISER_REPORT	both	tsv	experimental	-	-
 file	{sample}/expansion_hunter/{sample}.json	09	EXPANSION_HUNTER	nextflow	json	stable	-	-
 file	{sample}/expansion_hunter/{sample}.vcf	09	EXPANSION_HUNTER	nextflow	vcf	stable	-	-
-file	{sample}/expansion_hunter/{sample}_eh_stranger.vcf	09b	STRANGER	both	vcf	stable	-	-
+file	{sample}/expansion_hunter/{sample}_eh_stranger.vcf	09b	STRANGER	both	vcf	stable	bash	-
 file	{sample}/expansion_hunter/{sample}_realigned.bam	09	EXPANSION_HUNTER	nextflow	bam	stable	-	-
 file	{sample}/expansion_hunter/{sample}_rfc1_motif.tsv	09b	STRANGER_RFC1	both	tsv	stable	-	-
 file	{sample}/expansion_hunter/{sample}_str_motifs.tsv	09b	STRANGER_RFC1	both	tsv	stable	-	-
@@ -132,7 +133,7 @@ file	{sample}/hla/{sample}_hla_genotype.tsv	08	HLA_TYPING	nextflow	tsv	stable	-	
 file	{sample}/hla_optitype/{sample}_hla_concordance.tsv	08	HLA_QC	both	tsv	experimental	-	-
 file	{sample}/hla_optitype/{sample}_optitype_result.tsv	08	HLA_QC	both	tsv	experimental	-	-
 file	{sample}/hla_t1k/{sample}_hla_genotype.tsv	08	-	bash	tsv	stable	bash	-
-file	{sample}/indexcov	16	INDEXCOV	both	dir	stable	-	-
+file	{sample}/indexcov	16	INDEXCOV	both	dir	stable	both	-
 file	{sample}/indexcov/indexcov-indexcov.ped	16	-	bash	tsv	stable	bash	-
 file	{sample}/kir/database_release.txt	08	KIR_TYPING	nextflow	text	experimental	-	-
 file	{sample}/kir/{sample}_kir_genotype.tsv	08	KIR_TYPING	both	tsv	experimental	-	-
@@ -154,17 +155,17 @@ file	{sample}/mei/{sample}_mei_annotsv.tsv	50	MEI_REPORT	both	tsv	experimental	-
 file	{sample}/mei/{sample}_mei_depth.tsv	50	MEI_DEPTH	both	tsv	experimental	-	-
 file	{sample}/mei/{sample}_mei_mainchr.txt	50	MEI_DEPTH	nextflow	text	internal	-	-
 file	{sample}/mei/{sample}_mei_sites.tsv	50	MEI_REPORT	both	tsv	experimental	-	-
-file	{sample}/mito/{sample}_chrM.fasta	12	MITO_EXTRACT_CHRM	both	fasta	stable	-	-
+file	{sample}/mito/{sample}_chrM.fasta	12	MITO_EXTRACT_CHRM	both	fasta	stable	bash	-
 file	{sample}/mito/{sample}_chrM.vcf.gz	12	MITO_EXTRACT_CHRM	nextflow	vcf	internal	-	-
 file	{sample}/mito/{sample}_chrM.vcf.gz.tbi	12	MITO_EXTRACT_CHRM	nextflow	index	internal	-	-
-file	{sample}/mito/{sample}_chrM_annotated.tsv	20	MITO_VARIANTS_ANNOTATE	both	tsv	stable	-	-
-file	{sample}/mito/{sample}_chrM_deletions.tsv	20	MITO_DELETIONS	both	tsv	stable	-	-
+file	{sample}/mito/{sample}_chrM_annotated.tsv	20	MITO_VARIANTS_ANNOTATE	both	tsv	stable	bash	-
+file	{sample}/mito/{sample}_chrM_deletions.tsv	20	MITO_DELETIONS	both	tsv	stable	bash	-
 file	{sample}/mito/{sample}_chrM_filtered.vcf.gz	20	MITO_VARIANTS	both	vcf	stable	bash	-
-file	{sample}/mito/{sample}_chrM_filtered.vcf.gz.tbi	20	MITO_VARIANTS	nextflow	index	stable	-	-
-file	{sample}/mito/{sample}_chrM_mutect2.vcf.gz.stats	20	MITO_VARIANTS	nextflow	bin	stable	-	-
+file	{sample}/mito/{sample}_chrM_filtered.vcf.gz.tbi	20	MITO_VARIANTS	both	index	stable	bash	-
+file	{sample}/mito/{sample}_chrM_mutect2.vcf.gz.stats	20	MITO_VARIANTS	both	bin	stable	bash	-
 file	{sample}/mito/{sample}_haplocheck.txt	12	HAPLOCHECK	both	text	stable	-	-
 file	{sample}/mito/{sample}_haplogroup.txt	12	MITO_HAPLOGROUP	both	text	stable	bash	-
-file	{sample}/mito/{sample}_mtdna_copies.tsv	20	MITO_DELETIONS	both	tsv	stable	-	-
+file	{sample}/mito/{sample}_mtdna_copies.tsv	20	MITO_DELETIONS	both	tsv	stable	bash	-
 file	{sample}/mosaic/{sample}_mocha.log	51	MOCHA_CALL	both	text	experimental	-	-
 file	{sample}/mosaic/{sample}_mocha.tsv	51	MOCHA_REPORT	both	tsv	experimental	-	-
 file	{sample}/mosaic/{sample}_mocha_calls_raw.tsv	51	MOCHA_CALL	both	tsv	experimental	-	-
@@ -188,15 +189,15 @@ file	{sample}/paralogs/{sample}_smn1_marker.tsv	35	PARASCOPY	both	tsv	experiment
 file	{sample}/paralogs/{sample}_smn_copy_number.tsv	35	PARASCOPY	both	tsv	experimental	-	-
 file	{sample}/pgx_consensus/{sample}_outside_calls.tsv	36	PGX_CONSENSUS	both	tsv	stable	-	-
 file	{sample}/pgx_consensus/{sample}_pgx_consensus.tsv	36	PGX_CONSENSUS	both	tsv	stable	-	-
-file	{sample}/pharmcat/{sample}.match.json	07	PHARMCAT	nextflow	json	stable	-	-
-file	{sample}/pharmcat/{sample}.phenotype.json	07	PHARMCAT	nextflow	json	stable	-	-
-file	{sample}/pharmcat/{sample}.report.html	07	PHARMCAT	nextflow	html	stable	-	-
+file	{sample}/pharmcat/{sample}.match.json	07	PHARMCAT	nextflow	json	stable	nextflow	-
+file	{sample}/pharmcat/{sample}.phenotype.json	07	PHARMCAT	nextflow	json	stable	nextflow	-
+file	{sample}/pharmcat/{sample}.report.html	07	PHARMCAT	nextflow	html	stable	nextflow	-
 file	{sample}/pharmcat/{sample}.report.json	07	PHARMCAT	nextflow	json	stable	nextflow	-
 file	{sample}/prs/pgsc_calc	25	PRS	both	dir	stable	-	-
 file	{sample}/prs/{sample}_prs_summary.*.tsv	25	PRS_SUMMARY	nextflow	tsv	stable	-	-
 file	{sample}/prs/{sample}_prs_summary.tsv	25	PRS_SUMMARY	both	tsv	stable	-	-
-file	{sample}/pypgx/{sample}_cyp2d6_depth_check.tsv	32	PYPGX	both	tsv	stable	-	-
-file	{sample}/pypgx/{sample}_pharmcat_comparison.tsv	27	CPIC_LOOKUP	both	tsv	stable	-	-
+file	{sample}/pypgx/{sample}_cyp2d6_depth_check.tsv	32	PYPGX	both	tsv	stable	bash	-
+file	{sample}/pypgx/{sample}_pharmcat_comparison.tsv	27	CPIC_LOOKUP	both	tsv	stable	bash	-
 file	{sample}/pypgx/{sample}_pypgx_results	32	PYPGX	nextflow	dir	stable	-	-
 file	{sample}/pypgx/{sample}_pypgx_summary.tsv	32	PYPGX	both	tsv	stable	bash	-
 file	{sample}/qc/somalier/{sample}.somalier	33	SOMALIER	nextflow	bin	experimental	-	-
@@ -205,17 +206,17 @@ file	{sample}/qc/verifybamid2/{sample}.Ancestry	33	VERIFYBAMID2	nextflow	bin	exp
 file	{sample}/qc/verifybamid2/{sample}.log	33	VERIFYBAMID2	both	text	experimental	-	-
 file	{sample}/qc/verifybamid2/{sample}.marker_check	33	VERIFYBAMID2	nextflow	bin	internal	-	-
 file	{sample}/qc/verifybamid2/{sample}.selfSM	33	VERIFYBAMID2	both	bin	experimental	-	-
-file	{sample}/qc/{sample}_read_count.tsv	02	ALIGN_MINIMAP2	both	tsv	stable	-	-
+file	{sample}/qc/{sample}_read_count.tsv	02	ALIGN_MINIMAP2	both	tsv	stable	bash	-
 file	{sample}/qc/{sample}_sample_qc.tsv	33	SAMPLE_QC	both	tsv	experimental	-	-
 file	{sample}/roh/{sample}_roh.txt	11	ROH	nextflow	text	stable	nextflow	-
 file	{sample}/roh/{sample}_roh_summary.txt	11	ROH	nextflow	tsv	stable	nextflow	chrom,start,end,length_bp,length_mb
-file	{sample}/run_manifest.tsv	-	-	nextflow	tsv	stable	-	-
+file	{sample}/run_manifest.tsv	-	-	both	tsv	stable	bash	-
 file	{sample}/slivar/{sample}.ped	31	SLIVAR_PRIORITIZE	nextflow	tsv	internal	-	-
-file	{sample}/slivar/{sample}_compound_het_pairs.tsv	31	COMPHET_PHASE	both	tsv	stable	-	-
+file	{sample}/slivar/{sample}_compound_het_pairs.tsv	31	COMPHET_PHASE	both	tsv	stable	bash	-
 file	{sample}/slivar/{sample}_compound_hets.vcf.gz	31	SLIVAR	both	vcf	stable	bash	-
 file	{sample}/slivar/{sample}_prioritized.vcf.gz	31	SLIVAR_PRIORITIZE	both	vcf	stable	bash	-
-file	{sample}/slivar/{sample}_prioritized.vcf.gz.tbi	31	SLIVAR_PRIORITIZE	nextflow	index	stable	-	-
-file	{sample}/slivar/{sample}_slivar_summary.tsv	31	SLIVAR_PRIORITIZE	both	tsv	stable	-	-
+file	{sample}/slivar/{sample}_prioritized.vcf.gz.tbi	31	SLIVAR_PRIORITIZE	both	index	stable	bash	-
+file	{sample}/slivar/{sample}_slivar_summary.tsv	31	SLIVAR_PRIORITIZE	both	tsv	stable	bash	-
 file	{sample}/summary.json	24	HTML_REPORT	both	json	stable	bash	schema_version,sample,generated_utc,run,databases,manifest,sections,cyp2d6,not_run,not_assessed
 file	{sample}/sv_duphold/{sample}_sv_duphold.vcf	15	DUPHOLD	nextflow	vcf	stable	-	-
 file	{sample}/sv_filtered/{sample}_sv_filtered.log	15	DUPHOLD_FILTER	nextflow	text	stable	-	-
@@ -227,8 +228,8 @@ file	{sample}/telomere/{sample}	10	TELOMERE_HUNTER	both	dir	stable	-	-
 file	{sample}/traits/{sample}_genotype_rules.tsv	42	TRAITS	both	tsv	stable	-	-
 file	{sample}/traits/{sample}_traits.tsv	42	TRAITS	both	tsv	stable	-	-
 file	{sample}/traits/{sample}_traits_genotypes.tsv	42	TRAITS_SITES	both	tsv	stable	-	-
-file	{sample}/vcf/{sample}.g.vcf.gz	03	DEEPVARIANT	both	vcf	stable	-	-
-file	{sample}/vcf/{sample}.g.vcf.gz.tbi	03	DEEPVARIANT	both	index	stable	-	-
+file	{sample}/vcf/{sample}.g.vcf.gz	03	DEEPVARIANT	both	vcf	stable	bash	-
+file	{sample}/vcf/{sample}.g.vcf.gz.tbi	03	DEEPVARIANT	both	index	stable	bash	-
 file	{sample}/vcf/{sample}.report.html	07	-	bash	html	stable	bash	-
 file	{sample}/vcf/{sample}.report.json	07	-	bash	json	stable	bash	-
 file	{sample}/vcf/{sample}.vcf.gz	03	DEEPVARIANT	both	vcf	stable	bash	FORMAT/GT,FORMAT/GQ,FORMAT/DP
@@ -237,7 +238,7 @@ file	{sample}/vcf/{sample}_roh.txt	11	-	bash	text	stable	bash	-
 file	{sample}/vcf/{sample}_roh_summary.txt	11	-	bash	tsv	stable	bash	chrom,start,end,length_bp,length_mb
 file	{sample}/vcf_gatk/{sample}.vcf.gz	03a	-	bash	vcf	stable	bash	FORMAT/GT
 file	{sample}/vep/{sample}_annotated.vcf.gz	30	VCFANNO_INDEX	both	vcf	stable	both	INFO/REVEL
-file	{sample}/vep/{sample}_annotated.vcf.gz.tbi	30	VCFANNO_INDEX	both	index	stable	nextflow	-
+file	{sample}/vep/{sample}_annotated.vcf.gz.tbi	30	VCFANNO_INDEX	both	index	stable	both	-
 file	{sample}/vep/{sample}_vep.vcf.gz	13	VEP	both	vcf	stable	-	-
 file	{sample}/vep/{sample}_vep.vcf.gz.tbi	13	VEP	both	index	stable	-	-
 file	{sample}/vep/{sample}_vep.vcf_summary.html	13	VEP	nextflow	html	stable	-	-
@@ -265,11 +266,11 @@ file	{sample}/y_str/{sample}_y_str.csv	45	Y_STR	both	csv	experimental	-	-
 file	{sample}/y_str/{sample}_y_str.log	45	Y_STR	both	text	experimental	-	-
 file	{sample}/y_str/{sample}_y_str.tsv	45	Y_STR	both	tsv	experimental	-	-
 file	{sample}/y_str/{sample}_y_str.vcf.gz	45	Y_STR	both	vcf	experimental	-	-
-file	{sample}/{sample}_charts.json	24	HTML_REPORT	both	json	stable	-	-
+file	{sample}/{sample}_charts.json	24	HTML_REPORT	both	json	stable	bash	-
 file	{sample}/{sample}_report.html	24	HTML_REPORT	both	html	stable	bash	-
 file	{sample}/{sample}_report.txt	24	-	both	text	stable	bash	-
-file	{sample}/{sample}_search_index.json	24	HTML_REPORT	both	json	stable	-	-
-file	{sample}/{sample}_sex_check.tsv	16	INDEXCOV	nextflow	tsv	stable	-	-
+file	{sample}/{sample}_search_index.json	24	HTML_REPORT	both	json	stable	bash	-
+file	{sample}/{sample}_sex_check.tsv	16	INDEXCOV	nextflow	tsv	stable	nextflow	-
 param	input	-	-	-	-	stable	-	-
 param	outdir	-	-	-	-	stable	-	-
 param	allow_unfiltered	-	-	-	-	stable	-	-
