@@ -15,9 +15,16 @@ pycompat.workspace = true
 og-nf.workspace = true
 og-runlog.workspace = true
 jiff.workspace = true
-
-[dev-dependencies]
 indexmap.workspace = true
+og-io.workspace = true
+# The family page: the pedigree and its drawing, the couple screen's caveat
+# and step 41's order of the blood group systems, each from its one source.
+og-pedigree.workspace = true
+og-render.workspace = true
+og-bloodtype.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+regex.workspace = true

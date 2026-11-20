@@ -845,9 +845,14 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "jiff",
+ "og-bloodtype",
+ "og-io",
  "og-nf",
+ "og-pedigree",
+ "og-render",
  "og-runlog",
  "pycompat",
+ "regex",
 ]
 
 [[package]]
