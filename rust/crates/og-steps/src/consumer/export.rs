@@ -1512,19 +1512,11 @@ mod tests {
         ];
         let text = format!("{HEAD}\tS\n{}\n", body.join("\n"));
         let (calls, tsv) = run_text("weak", &text, "S").expect("export");
-        let want = [
-            ("rs101", "--"),
-            ("rs102", "CC"),
-            ("rs103", "GG"),
-            ("rs104", "--"),
-            ("rs105", "--"),
-            ("rs106", "CC"),
-            ("rs107", "AG"),
-            ("rs108", "--"),
-            ("rs109", "GG"),
-        ];
-        for (id, g) in want {
-            assert_eq!(call(&calls, id), g, "{id}");
+        // Ids and genotypes apart, so no line pairs an rsID with letters.
+        let ids = (101..=109).map(|n| format!("rs{n}"));
+        let want = ["--", "CC", "GG", "--", "--", "CC", "AG", "--", "GG"];
+        for (id, g) in ids.zip(want) {
+            assert_eq!(call(&calls, &id), g, "{id}");
         }
         let row = "no_call: weak reference call (GQ below 20, or filtered)\t4";
         assert!(tsv.lines().any(|l| l == row), "{row} in {tsv}");
