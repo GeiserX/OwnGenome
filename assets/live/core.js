@@ -160,6 +160,8 @@
   var originalFetch = window.fetch.bind(window);
   var records = {}, current = null, ownsPage = false, eventSources = [], shared = {}, cleaned = false;
   var CLOSED_TEXT = "This child's report stays closed until every result to act on in adult life is opened on purpose.";
+  // A page whose run state could not be read stays closed too (it fails closed), and says only that it read nothing.
+  var UNREAD_TEXT = "This page could not read this run's data, so it shows nothing yet.";
   var TRANSFER = 'og-report-opening', NONCE = 'og-report-opening:';
   var findingPath = /\/finding\//.test(location.pathname) ? location.pathname : null;
   // The opening ticket of the navigation that replaced the last document (transfer below): read and removed at
@@ -297,7 +299,7 @@
   // opened act's own record, in the order it was opened. PREFIX keeps element ids apart on a page with two children.
   function controls(rec, changed, prefix) {
     var p = projection(rec), box = el('section', { 'class': 'report-gate' }), n = (rec.acts || []).length;
-    add(box, el('p', { 'class': 'lede' }, CLOSED_TEXT));
+    add(box, el('p', { 'class': 'lede' }, rec.unread ? UNREAD_TEXT : CLOSED_TEXT));
     add(box, el('p', {}, rec.acts ? n + (n === 1 ? ' result' : ' results') + ' to act on' : 'The results cannot be read yet. Reload to try again.'));
     function row(a, open) {
       var art = el('article', { id: prefix + 'f-' + a.handle, 'data-finding': a.handle, 'class': 'finding' });
@@ -339,7 +341,7 @@
     if (findingPath) { history.replaceState(null, '', runPath() + location.hash); }
     normalizeHash(current);
     var wrap = el('main', { 'class': 'wrap', id: 'report-gate' });
-    add(wrap, el('h1', {}, 'Results about a child'));
+    add(wrap, el('h1', {}, current.unread ? 'Results not loaded' : 'Results about a child'));
     add(wrap, controls(current, function () { if (shut(current)) { renderGate(); } else { transfer(); } }, ''));
     add(document.body, wrap);
     root.setAttribute('data-pgp-status', 'ready');
@@ -396,12 +398,14 @@
     var replaying = root.getAttribute('data-mode') === 'replay';
     // live.js reads a replay's frames.json with no options; finding.js reads it, and state.json, as JSON (NO_STORE).
     var stateRead = sharedJSON(url + (replaying ? 'frames.json' : 'state.json'), replaying && !findingPath ? undefined : NO_STORE);
-    var results = findingPath ? record(url, undefined, true) : null, pre = null;
+    var results = findingPath ? record(url, undefined, true) : null, pre = null, unread = false;
     return Promise.all([stateRead, parsed]).then(function (x) {
       var raw = x[0];
       var state = replaying ? raw && raw.frames && raw.frames.slice(-1)[0] : raw;
       state = replaying ? state && state.state : state;
       var fam = state && state.plugins ? state.plugins.family : undefined;
+      // A state that cannot be read keeps the gate closed (a possible child) and marks the record unread.
+      unread = !state;
       var child = !state || !state.plugins || !!(fam && (fam.unknown || (fam.kind === 'member' && fam.child !== false)));
       var entry = fam && fam.kind === 'member' && (fam.families || [])[0];
       if (child && entry) {
@@ -411,7 +415,7 @@
       return child;
     }).then(function (child) {
       if (!child && !results) { return { url: url, child: false, acts: [], opened: {}, order: [], perm: [] }; }
-      return (results || record(url, child, true, pre)).then(function (rec) { rec.child = child; return rec; });
+      return (results || record(url, child, true, pre)).then(function (rec) { rec.child = child; rec.unread = unread; return rec; });
     }).then(function (rec) {
       current = records[url] = rec;
       return consume(current);
@@ -419,7 +423,7 @@
       ownsPage = shut(current);
       if (ownsPage) { renderGate(); }
     }).catch(function () {
-      current = { child: true, acts: null, opened: {}, order: [], perm: [] }; ownsPage = true; renderGate();
+      current = { child: true, unread: true, acts: null, opened: {}, order: [], perm: [] }; ownsPage = true; renderGate();
     });
   }
   // A family's children with a run here, by the one rule (childIn, bin/owngenome_live.py child_of): family.json
