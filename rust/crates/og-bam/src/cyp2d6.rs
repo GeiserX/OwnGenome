@@ -15,10 +15,13 @@
 //!   verdict, `ok` or `unreliable`; the shares never change it. Exit 0
 //!   whatever the verdict, 2 on unreadable input.
 //!
-//! One deliberate change from the Python: a region listed twice in a
+//! Two deliberate changes from the Python. A region listed twice in a
 //! mosdepth file counts once, and listed twice with two different depths it
 //! is refused (exit 2). The Python added every copy to the totals, so two
-//! depths for one region were silently averaged.
+//! depths for one region were silently averaged. And flanks under 10x at
+//! MAPQ >= 1 make the verdict `unreliable` (`agreement not counted
+//! (depth)`): the Python looked only at the MAPQ 0 share, so a shallow
+//! region passed and two callers could agree on too few reads.
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -68,6 +71,9 @@ const UNRELIABLE: &str = "CYP2D6 copy number unreliable: reads are multi-mapped 
                           (was this BAM aligned to a reference with ALT contigs?)";
 const NO_DEPTH: &str = "CYP2D6 copy number unreliable: no reads in the flanks of CYP2D6 \
                         (chr22:42.05-42.25 Mb), so its depth cannot be compared";
+const SHALLOW: &str = "CYP2D6 copy number unreliable, agreement not counted (depth): \
+                       the flanks of CYP2D6 (chr22:42.05-42.25 Mb) have under 10x at MAPQ >= 1, \
+                       too few reads for a copy-number call";
 
 /// A depth fit for a copy-number call has at least this share of its reads
 /// at MAPQ >= 1, at CYP2D6 and in the flanks.
@@ -75,6 +81,10 @@ const MIN_MAPQ1_SHARE: f64 = 0.6;
 /// Below this ratio of CYP2D6 to flank depth (all reads) the gene has too
 /// few reads for its MAPQ share to mean anything: both copies deleted.
 const MIN_GENE_RATIO: f64 = 0.15;
+/// A depth fit for a copy-number call has at least this mean depth in the
+/// flanks at MAPQ >= 1, the reads the callers use. Below it two callers can
+/// agree on noise, so their agreement does not count.
+pub const MIN_FLANK_DEPTH: f64 = 10.0;
 
 /// The verdict on the four mean depths.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +94,8 @@ pub enum Verdict {
     MultiMapped,
     /// No reads in the flanks, so nothing to compare CYP2D6 with.
     NoFlankDepth,
+    /// Flanks under 10x at MAPQ >= 1: too few reads for a copy-number call.
+    ShallowFlanks,
 }
 
 impl Verdict {
@@ -99,6 +111,7 @@ impl Verdict {
             Verdict::Ok => OK,
             Verdict::MultiMapped => UNRELIABLE,
             Verdict::NoFlankDepth => NO_DEPTH,
+            Verdict::ShallowFlanks => SHALLOW,
         }
     }
 }
@@ -116,7 +129,8 @@ pub struct Depths {
 /// MAPQ 0: the aligner placed them on more than one sequence. A deletion
 /// leaves few reads at CYP2D6, but those map uniquely and the flanks are
 /// untouched, so it passes; below a gene/flank ratio of 0.15 the gene share
-/// is not read at all.
+/// is not read at all. Reads that map well are not enough: flanks under 10x
+/// at MAPQ >= 1 are unreliable too (multi-mapped reads are named first).
 pub fn assess(all: Depths, q1: Depths) -> Verdict {
     if all.flank <= 0.0 {
         return Verdict::NoFlankDepth;
@@ -132,6 +146,8 @@ pub fn assess(all: Depths, q1: Depths) -> Verdict {
         || (ratio_all >= MIN_GENE_RATIO && share_gene < MIN_MAPQ1_SHARE)
     {
         Verdict::MultiMapped
+    } else if q1.flank < MIN_FLANK_DEPTH {
+        Verdict::ShallowFlanks
     } else {
         Verdict::Ok
     }
@@ -460,6 +476,11 @@ mod tests {
         assert_eq!(assess(d(6.0, 30.0), d(0.0, 29.0)), Verdict::MultiMapped);
         // No gene depth at all: the gene share is taken as 1.
         assert_eq!(assess(d(0.0, 30.0), d(0.0, 29.0)), Verdict::Ok);
+        // Flanks under 10x at MAPQ >= 1: shallow, whatever the share.
+        assert_eq!(assess(d(6.0, 6.0), d(6.0, 6.0)), Verdict::ShallowFlanks);
+        assert_eq!(assess(d(12.0, 12.0), d(12.0, 10.0)), Verdict::Ok);
+        // Multi-mapped reads are named before the depth.
+        assert_eq!(assess(d(6.0, 6.0), d(6.0, 2.0)), Verdict::MultiMapped);
     }
 
     #[test]

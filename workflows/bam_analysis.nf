@@ -212,7 +212,14 @@ workflow BAM_ANALYSIS {
     // dropping the sample from MITO_VARIANTS.
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('mito_variants')) {
-        ch_mito_in = params.tools.split(',').collect{it.trim()}.contains('mosdepth')
+        def mito_has_depth = params.tools.split(',').collect{it.trim()}.contains('mosdepth')
+        if (!mito_has_depth) {
+            // The task's own WARNING goes only to its .command.err, which
+            // Nextflow does not show for a task that succeeds.
+            log.warn "mito_variants: mosdepth is not in --tools, so the NuMT filter runs at the default depth 0 " +
+                "and marks nothing; <id>_chrM_annotated.tsv gets the '# numt' line that says so."
+        }
+        ch_mito_in = mito_has_depth
             ? ch_bam.join(ch_mosdepth_depth, failOnMismatch: true)
             : ch_bam.map { meta, bam, bai -> [meta, bam, bai, [], []] }
         MITO_VARIANTS(
