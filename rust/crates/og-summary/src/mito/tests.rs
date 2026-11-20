@@ -15,6 +15,26 @@ fn min_allele_trims_the_shared_bases() {
     assert_eq!(k(10, "AA", "AA"), (10, "A".into(), "A".into()));
 }
 
+#[test]
+fn left_allele_moves_an_indel_to_the_left_end_of_its_repeat() {
+    let k = |p, r: &str, a: &str| left_allele(p, r, a);
+    let al = |p, r: &str, a: &str| (p, r.to_owned(), a.to_owned());
+    // One more C in m.311-315, spelt three ways.
+    assert_eq!(k(315, "C", "CC"), al(310, "T", "TC"));
+    assert_eq!(k(312, "CC", "CCC"), al(310, "T", "TC"));
+    assert_eq!(k(310, "T", "TC"), al(310, "T", "TC"));
+    // One C fewer in m.303-309, and one more in m.16190-16193.
+    assert_eq!(k(308, "CC", "C"), al(302, "AC", "A"));
+    assert_eq!(k(16193, "C", "CC"), al(16189, "T", "TC"));
+    // One CA fewer in the m.514-523 CA repeat.
+    assert_eq!(k(521, "ACA", "A"), al(513, "GCA", "G"));
+    // An SNV, a REF that is not the rCRS, and nothing before m.1 stay.
+    assert_eq!(k(3243, "A", "G"), al(3243, "A", "G"));
+    assert_eq!(k(315, "G", "GG"), al(315, "G", "GG"));
+    assert_eq!(k(1, "G", "GG"), al(1, "G", "GG"));
+    assert_eq!(k(16570, "A", "AA"), al(16570, "A", "AA"));
+}
+
 fn idxstats(chrm: u64, per_chrom: u64, m: &str) -> String {
     let mut s: String = (1..=22)
         .map(|i| format!("chr{i}\t50000000\t{per_chrom}\t0\n"))
@@ -181,7 +201,7 @@ fn annotate_without_clinvar() {
     let d = Dir::new("mito-annot");
     let vcf = d.put_gz("S_chrM_filtered.vcf.gz", MITO_VCF);
     let gn = d.put("gnomad.vcf", GNOMAD);
-    let (head, rows) = annotate(&vcf, Some(&d.path("cv.vcf.gz")), Some(&gn)).unwrap();
+    let (head, rows) = annotate(&vcf, Some(&d.path("cv.vcf.gz")), Some(&gn), false).unwrap();
     assert_eq!(
         head,
         [
