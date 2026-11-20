@@ -266,8 +266,21 @@ pub fn step_of(key: &str) -> &'static str {
         .map_or("?", |s| s.step)
 }
 
+/// Summary keys no frame section lists, because the section of another key
+/// already shows what they hold: `(key, the key whose section shows it)`.
+/// `acmg_sf` is the secondary-findings card the clinical section also holds
+/// as `clinical.data.acmg_sf`, and the reports read it there. Listing it in
+/// the clinical-filter frame would change that section's step, state and
+/// file date before any reader shows it. It moves into the frame when the
+/// readers switch to `sections.acmg_sf` (i411-display-sf).
+pub const SHOWN_WITH: &[(&str, &str)] = &[("acmg_sf", "clinical")];
+
 /// The section that shows summary key `key`.
 pub fn section_of(key: &str) -> Option<&'static Sec> {
+    let key = SHOWN_WITH
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map_or(key, |(_, with)| *with);
     CHAPTERS
         .iter()
         .flat_map(|c| c.sections.iter())
@@ -283,12 +296,19 @@ pub fn section(sid: &str) -> Option<&'static Sec> {
 }
 
 /// What is wrong with a chapter table against the summary keys: a key no
-/// section shows, a key two sections show, a key no collector writes.
+/// section shows, a key two sections show, a key no collector writes. A key
+/// of `SHOWN_WITH` counts as shown where its partner key is.
 pub fn key_problems(chapters: &[Chapter], keys: &[&str]) -> Vec<String> {
-    let seen: Vec<&str> = chapters
+    let mut seen: Vec<&str> = chapters
         .iter()
         .flat_map(|c| c.sections.iter().flat_map(|s| s.keys.iter().copied()))
         .collect();
+    let carried: Vec<&str> = SHOWN_WITH
+        .iter()
+        .filter(|(_, with)| seen.contains(with))
+        .map(|(k, _)| *k)
+        .collect();
+    seen.extend(carried);
     let mut out: Vec<String> = keys
         .iter()
         .filter(|k| !seen.contains(k))

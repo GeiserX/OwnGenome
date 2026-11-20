@@ -35,7 +35,7 @@ use pycompat::value::truthy;
 use std::path::Path;
 
 /// summary.json's sections, in its order.
-pub const ORDER: [&str; 48] = [
+pub const ORDER: [&str; 49] = [
     "coverage",
     "callability",
     "sex_check",
@@ -46,6 +46,7 @@ pub const ORDER: [&str; 48] = [
     "clinvar",
     "couple",
     "carrier",
+    "acmg_sf",
     "pharmcat",
     "cpic",
     "pypgx",
@@ -88,8 +89,9 @@ pub const ORDER: [&str; 48] = [
 
 /// Sections that are no step of their own, so never in `not_run`: the read
 /// count is written by alignment, which a run from a BAM or a VCF never
-/// does; the couple screen and the carrier list come with other steps.
-const NOT_A_STEP: [&str; 3] = ["read_count", "couple", "carrier"];
+/// does; the couple screen, the carrier list and the ACMG secondary-findings
+/// card come with other steps (39 and 06), whose own sections say not run.
+const NOT_A_STEP: [&str; 4] = ["read_count", "couple", "carrier", "acmg_sf"];
 
 /// What no step assesses.
 const NOT_ASSESSED: [&str; 5] = [
