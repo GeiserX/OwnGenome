@@ -945,6 +945,14 @@ jobs:
         working-directory: .
         run: bin/og dev remnants
 
+      # EVERYTHING=true and -profile everything run every optional step from
+      # assets/everything.tsv: a new tool, switch, setup flag, false-by-default
+      # or opt-in parameter, or optional image with no row there fails here.
+      # Its planted cases are og-dev's everything::tests, in cargo test.
+      - name: og dev everything-check
+        working-directory: .
+        run: bin/og dev everything-check
+
       # main.nf runs the same check before any task: a stale og stops
       # `nextflow run` with the setup command. Without the check, this stub
       # run completes and the step fails.
