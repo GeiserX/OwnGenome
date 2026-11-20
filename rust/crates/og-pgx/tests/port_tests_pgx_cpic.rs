@@ -2015,9 +2015,10 @@ fn cyp2c9_and_cyp3a5_inhibitors_give_a_note() {
         &meds("lopinavir/ritonavir 400/100 mg\n"),
     );
     assert!(
-        cell(&r.rows, "CYP3A5", 4).starts_with("not computed: lopinavir inhibits CYP3A5")
+        cell(&r.rows, "CYP3A5", 4)
+            .starts_with("not computed: lopinavir, ritonavir inhibits CYP3A5")
             && !section(&r.rec).contains("Not in the inhibitor table"),
-        "a boosted combination written 'lopinavir/ritonavir' is matched as lopinavir"
+        "a boosted combination written 'lopinavir/ritonavir' is matched as both drugs"
     );
     let r = run_report(&work, "PHENO2C9NONE", &rep, &meds("paroxetine\n"));
     assert!(

@@ -203,20 +203,37 @@ pub fn read_inhibitors(path: &str) -> Result<Inhibitors, PyErr> {
     Ok(out)
 }
 
-/// One line of a medication list: as written, and the drug it names.
+/// One line of a medication list: as written, and every drug name in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Medication {
     pub text: String,
-    pub name: String,
+    /// The words of the line that can name a drug, lower case, in order,
+    /// each once. Never empty.
+    pub names: Vec<String>,
 }
 
-const DRUG_SEPARATORS: &str = " \t,;/+";
+/// Words of a medication line that name no drug: units, dose forms and how
+/// often it is taken.
+const DOSE_WORDS: &[&str] = &[
+    "mg", "mcg", "µg", "ug", "g", "kg", "ml", "l", "iu", "unit", "units", "%", "tablet", "tablets",
+    "tab", "tabs", "capsule", "capsules", "cap", "caps", "er", "xr", "sr", "xl", "daily", "once",
+    "twice", "a", "day", "per", "weekly", "morning", "evening", "night",
+];
 
-/// The lines of a medication list, one drug per line; `#` starts a comment
-/// and blank lines are skipped. The name is the first word, lower case, so
-/// a dose after it (`20 mg`) does not hide the drug. A slash or a plus also
-/// ends a word, so `lopinavir/ritonavir` names lopinavir: the first drug of
-/// a combination is the one checked.
+/// A word that is a dose, a unit or a frequency, not a drug: it starts with
+/// a digit or a point (`20`, `400mg`, `.5`), or it is one of the dose words.
+fn dose_word(w: &str) -> bool {
+    w.starts_with(|c: char| c.is_ascii_digit() || c == '.') || DOSE_WORDS.contains(&w)
+}
+
+/// The lines of a medication list, one product per line; `#` starts a
+/// comment and blank lines are skipped. Every word of a line can name a
+/// drug, so each drug of a combination product is checked: whitespace,
+/// commas, semicolons, `/` and `+` split the line, and the word `and` is
+/// dropped (`olanzapine/fluoxetine`, `naltrexone/bupropion 8/90 mg` and
+/// `lopinavir and ritonavir` each name two drugs). Doses, units and
+/// frequencies (`20`, `mg`, `daily`) are dropped too. A line of nothing
+/// but those keeps its first word, so it is still listed as not checked.
 pub fn read_medications(path: &str) -> Result<Vec<Medication>, PyErr> {
     let text = read_text(path)?;
     let mut out = Vec::new();
@@ -225,15 +242,26 @@ pub fn read_medications(path: &str) -> Result<Vec<Medication>, PyErr> {
         if t.is_empty() {
             continue;
         }
-        let first = strip(t, Some(DRUG_SEPARATORS))
+        let words: Vec<String> = t
             .split(|c: char| pycompat::text::is_space(c) || ",;/+".contains(c))
-            .next()
-            .unwrap_or("");
-        let name = norm_drug(first);
-        if !name.is_empty() {
+            .filter(|w| !w.is_empty())
+            .map(lower)
+            .collect();
+        let mut names: Vec<String> = Vec::new();
+        for w in &words {
+            if w != "and" && !dose_word(w) && !names.contains(w) {
+                names.push(w.clone());
+            }
+        }
+        if names.is_empty()
+            && let Some(first) = words.first()
+        {
+            names.push(first.clone());
+        }
+        if !names.is_empty() {
             out.push(Medication {
                 text: t.to_owned(),
-                name,
+                names,
             });
         }
     }
@@ -393,23 +421,37 @@ mod tests {
     }
 
     #[test]
-    fn medication_lines_name_their_first_drug() {
+    fn medication_lines_name_every_drug() {
         let p = tmp(
             "meds.txt",
-            "Paroxetine 20 mg daily\n, paroxetine\n;\n# a comment\n\nlopinavir/ritonavir 400/100 mg\r\nValproate  # evening\n",
+            "Paroxetine 20 mg daily\n, paroxetine\n;\n# a comment\n\nlopinavir/ritonavir 400/100 mg\r\nValproate  # evening\nnaltrexone/bupropion 8/90 mg\nOlanzapine + fluoxetine; olanzapine\nlopinavir and ritonavir\n20 mg\n",
         );
-        let got: Vec<(String, String)> = read_medications(&p)
+        let got: Vec<(String, Vec<String>)> = read_medications(&p)
             .unwrap()
             .into_iter()
-            .map(|m| (m.text, m.name))
+            .map(|m| (m.text, m.names))
             .collect();
-        let want = [
-            ("Paroxetine 20 mg daily", "paroxetine"),
-            (", paroxetine", "paroxetine"),
-            ("lopinavir/ritonavir 400/100 mg", "lopinavir"),
-            ("Valproate", "valproate"),
+        let want: [(&str, &[&str]); 8] = [
+            ("Paroxetine 20 mg daily", &["paroxetine"]),
+            (", paroxetine", &["paroxetine"]),
+            (
+                "lopinavir/ritonavir 400/100 mg",
+                &["lopinavir", "ritonavir"],
+            ),
+            ("Valproate", &["valproate"]),
+            ("naltrexone/bupropion 8/90 mg", &["naltrexone", "bupropion"]),
+            (
+                "Olanzapine + fluoxetine; olanzapine",
+                &["olanzapine", "fluoxetine"],
+            ),
+            ("lopinavir and ritonavir", &["lopinavir", "ritonavir"]),
+            ("20 mg", &["20"]),
         ];
-        assert_eq!(got, want.map(|(a, b)| (a.to_owned(), b.to_owned())));
+        let want: Vec<(String, Vec<String>)> = want
+            .iter()
+            .map(|(t, n)| ((*t).to_owned(), n.iter().map(|s| (*s).to_owned()).collect()))
+            .collect();
+        assert_eq!(got, want);
     }
 
     #[test]
