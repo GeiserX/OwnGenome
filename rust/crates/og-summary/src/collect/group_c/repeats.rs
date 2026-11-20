@@ -1,10 +1,13 @@
 //! Step 09 (ExpansionHunter) and 9b (Stranger, the RFC1 and other motif
 //! counts): every locus with its counts, how well each allele was sized,
-//! Stranger's grade, the intermediate zone, and what the counts of CFTR's
-//! TG and poly-T tracts and UGT1A1's TA repeat mean.
+//! Stranger's grade, the intermediate zone, the reduced-penetrance range,
+//! and what the counts of CFTR's TG and poly-T tracts and UGT1A1's TA
+//! repeat mean.
 
 use super::super::model::State;
-use super::util::{Obj, bin_rows, cells, count, get_default, s, strs, table, vcf_lines};
+use super::util::{
+    Obj, asset_rows, bin_rows, cells, count, get_default, s, strs, table, vcf_lines,
+};
 use super::{Ctx, Out};
 use indexmap::IndexMap;
 use pycompat::json::Value;
@@ -76,11 +79,37 @@ fn str_int(x: &str) -> Option<i128> {
     crate::int(x).ok()
 }
 
-/// One allele's sizing from ExpansionHunter's SO, ADSP and REPCI fields.
-fn allele_sizing(so: &str, adsp: &str, ci: &str, cn: &str, path_min: Option<i128>) -> Sizing {
+/// The reads behind one allele: ExpansionHunter's ADSP, ADFL and ADIR.
+struct Reads<'a> {
+    spanning: &'a str,
+    flanking: &'a str,
+    in_repeat: &'a str,
+}
+
+impl Reads<'_> {
+    /// No spanning and no flanking read, and at least one in-repeat read:
+    /// the estimate rests on reads made only of repeat, so the allele is
+    /// longer than a read, whatever SO says.
+    fn in_repeat_only(&self) -> bool {
+        let zero = |x: &str| str_int(x) == Some(0);
+        zero(self.spanning) && zero(self.flanking) && str_int(self.in_repeat).is_some_and(|n| n > 0)
+    }
+}
+
+/// One allele's sizing from ExpansionHunter's SO, read counts and REPCI.
+fn allele_sizing(
+    so: &str,
+    reads: &Reads<'_>,
+    ci: &str,
+    cn: &str,
+    path_min: Option<i128>,
+) -> Sizing {
     let Some(n) = str_int(cn) else {
         return Sizing::NoCall;
     };
+    if reads.in_repeat_only() {
+        return Sizing::InRepeat;
+    }
     match so {
         "" | "." => return Sizing::Unknown,
         "FLANKING" => return Sizing::FlankingOnly,
@@ -92,7 +121,7 @@ fn allele_sizing(so: &str, adsp: &str, ci: &str, cn: &str, path_min: Option<i128
     } else {
         str_int(ci.rsplit('-').next().unwrap_or(ci))
     };
-    let few = str_int(adsp).is_some_and(|a| a < MIN_SPANNING);
+    let few = str_int(reads.spanning).is_some_and(|a| a < MIN_SPANNING);
     let reaches = matches!((path_min, hi), (Some(m), Some(h)) if n < m && m <= h);
     if few || reaches {
         Sizing::LowConfidence
@@ -128,6 +157,63 @@ fn ranges(c: &Ctx<'_>) -> Result<IndexMap<String, IndexMap<String, String>>, Str
         out.insert(k, r);
     }
     Ok(out)
+}
+
+/// A range of reduced penetrance of `assets/str_penetrance_ranges.tsv`.
+struct Penetrance {
+    locus: String,
+    min: i128,
+    max: i128,
+    label: String,
+    citation: String,
+}
+
+/// `assets/str_penetrance_ranges.tsv`. An assets folder without it (a
+/// staged copy of some tables) labels nothing; a table that is there but
+/// cannot be read, has no row, or has a range whose min is above its max
+/// makes the section unreadable.
+fn penetrance(c: &Ctx<'_>) -> Result<Vec<Penetrance>, String> {
+    const NAME: &str = "str_penetrance_ranges.tsv";
+    let rows = match asset_rows(c.assets, NAME) {
+        Ok(r) => r,
+        Err(e) if e.starts_with(&format!("{NAME} is not in ")) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let cell = |r: &pycompat::csv::DictRow, k: &str| -> Result<String, String> {
+        r.get(k)
+            .flatten()
+            .map(str::to_owned)
+            .ok_or_else(|| super::util::key_error(k))
+    };
+    let num = |r: &pycompat::csv::DictRow, k: &str| -> Result<i128, String> {
+        crate::int(&cell(r, k)?).map_err(|e| super::super::sections::py_error("ValueError", &e))
+    };
+    // A table with no row (a header alone, whatever its columns) labels
+    // nothing, so it is as broken as one with a bad row.
+    if rows.is_empty() {
+        return Err(super::super::sections::py_error(
+            "ValueError",
+            &format!("{NAME} has no range"),
+        ));
+    }
+    rows.iter()
+        .map(|r| {
+            let p = Penetrance {
+                locus: cell(r, "locus")?,
+                min: num(r, "min")?,
+                max: num(r, "max")?,
+                label: cell(r, "label")?,
+                citation: cell(r, "citation")?,
+            };
+            if p.min > p.max {
+                return Err(super::super::sections::py_error(
+                    "ValueError",
+                    &format!("{NAME}: {} has min {} above max {}", p.locus, p.min, p.max),
+                ));
+            }
+            Ok(p)
+        })
+        .collect()
 }
 
 fn mtime(p: &str) -> Result<f64, String> {
@@ -210,6 +296,7 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
         return Ok(None);
     };
     let ranges = ranges(c)?;
+    let penetrance = penetrance(c)?;
     let stp = st.as_ref().map(|f| f.path.as_str());
     let rfc1 = match stp {
         Some(after) => {
@@ -273,12 +360,24 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
         } else {
             counts.clone()
         };
+        let (sp, fl, ir) = (
+            split_n(field("ADSP"), n),
+            split_n(field("ADFL"), n),
+            split_n(field("ADIR"), n),
+        );
         let sizing: Vec<Sizing> = split_n(field("SO"), n)
             .iter()
-            .zip(split_n(field("ADSP"), n))
             .zip(split_n(field("REPCI"), n))
             .zip(cn_list)
-            .map(|(((so, ad), ci), cn)| allele_sizing(so, &ad, &ci, cn, path_min))
+            .enumerate()
+            .map(|(i, ((so, ci), cn))| {
+                let reads = Reads {
+                    spanning: &sp[i],
+                    flanking: &fl[i],
+                    in_repeat: &ir[i],
+                };
+                allele_sizing(so, &reads, &ci, cn, path_min)
+            })
             .collect();
         let status: Vec<&str> = if st.is_some() {
             info.get("STR_STATUS")
@@ -351,6 +450,16 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
                 }
             }
         }
+        // Stranger grades a count against two thresholds only, so a count of
+        // reduced penetrance reads as plain full_mutation or pre_mutation.
+        if let Some(p) = penetrance
+            .iter()
+            .find(|p| p.locus == rep && sized.iter().any(|c| p.min <= *c && *c <= p.max))
+        {
+            item.put("penetrance", s(&format!("{}-{}", p.min, p.max)));
+            item.put("penetrance_label", s(&p.label));
+            item.put("penetrance_citation", s(&p.citation));
+        }
         let abnormal = status.iter().any(|x| *x != "normal");
         if rep == "RFC1" && st.is_some() && abnormal {
             item.put(
@@ -387,7 +496,13 @@ pub fn expansions(c: &Ctx<'_>) -> Out {
                 for k in ["locus", "repeat_count", "status", "sizing"] {
                     f.put(k, item.0[k].clone());
                 }
-                for k in ["rfc1_motif", "motif"] {
+                for k in [
+                    "penetrance",
+                    "penetrance_label",
+                    "penetrance_citation",
+                    "rfc1_motif",
+                    "motif",
+                ] {
                     if let Some(v) = item.0.get(k) {
                         f.put(k, v.clone());
                     }

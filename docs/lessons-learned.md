@@ -313,9 +313,10 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 - **Observed:** fastp's `--detect_adapter_for_pe` works for Illumina, BGI, and MGI adapters without specifying adapter sequences. BGI/MGI adapters are compiled into fastp's `knownadapters.h`.
 - **No action needed:** The `--detect_adapter_for_pe` flag handles all common sequencing platforms.
 
-### mosdepth: --fast-mode skips per-base output
-- **Observed:** `--fast-mode` uses a simpler, faster counting method and does NOT write the per-base `.per-base.bed.gz` file. This saves ~2 GB of output and cuts runtime by ~40%.
-- **Fix:** Always use `--fast-mode` unless per-base resolution is specifically needed.
+### mosdepth: --fast-mode counts overlapping mates twice
+- **Observed:** `--fast-mode` counts every base from a read's start to its end. It does not correct for the two mates of a pair that overlap, and it does not read the CIGAR, so the bases of a deletion count as read. A short-insert pair lifts the depth of its overlap to 2 where one fragment was read. The per-base `.per-base.bed.gz` is left out by `--no-per-base`, not by `--fast-mode`; this entry said otherwise before.
+- **Why it mattered:** step 16b's gene callability pass ran with `--fast-mode`, so a gene with fewer than 10 fragments over its bases could still reach 10x and read as read.
+- **Fix:** the gene callability pass runs without `--fast-mode`. The genome-wide 500 bp pass keeps it, because it only describes depth. Use `--fast-mode` only where a base's depth decides nothing.
 
 ### MultiQC: Auto-discovers fastp JSON by content, not filename
 - **Observed:** MultiQC identifies fastp output by looking for `"before_filtering": {` in JSON files, not by filename pattern. Files must end in `.json`.
@@ -529,6 +530,11 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 - **Failed:** after step 7 expanded the gVCF's reference blocks into one record per base, the alleles PharmCAT defines by an indel (DPYD, UGT1A1 \*28, TPMT, CYP3A4 and others) stayed uncallable, even where the gVCF showed the reference over the whole span.
 - **Why:** PharmCAT 3.4.0's preprocessor does not read a one-base 0/0 record as a call at a position whose REF or ALT is longer than one base. It sets the record aside with FILTER `PCATxINDEL` (or `PCATxREF` for a two-base substitution) and lists the position as missing; where PharmCAT's REF is longer than one base, the matcher then discards it.
 - **Fix:** `og pgx refblock-fill` (was `bin/pgx_refblock_fill.py`) writes PharmCAT's own record (its ID, REF and ALT) as 0/0 at each such position when every base of the span lies in reference blocks with GQ 20 or more and nothing else overlaps it. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
+
+### A low-quality reference call reached PharmCAT as a confident 0/0
+- **Failed:** a one-base reference block with GQ 5 at CYP2C19 rs4244285 (the \*2 position) reached PharmCAT as 0/0, so the sample read as "not \*2" when the data could not tell. A DeepVariant `RefCall` record with a low GQ did the same.
+- **Why:** `bcftools convert --gvcf2vcf` writes a 0/0 record for every base of a block, whatever its GQ, and the GQ 20 floor of `og pgx refblock-fill` held only for the 0/0 records it writes itself at positions longer than one base. Every other reference call passed through unchecked.
+- **Fix:** `og pgx refblock-fill` leaves out every reference call (GT all 0) below GQ 20, or without a GQ, so PharmCAT reads the position as missing. A variant call passes whatever its GQ. The step log counts them and names those at PharmCAT positions. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
 
 ### PharmCAT reads MT-RNR1 only as an outside call
 - **Failed:** MT-RNR1 (aminoglycoside-induced hearing loss) was No Result on every sample, although step 20 calls chrM with Mutect2 at high depth.

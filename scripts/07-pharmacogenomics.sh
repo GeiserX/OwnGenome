@@ -40,7 +40,10 @@ done
 # count at a PharmCAT position whose REF or ALT is longer than one base (an
 # indel such as UGT1A1 *28); og pgx refblock-fill writes a 0/0 record
 # with PharmCAT's own alleles there when reference blocks with GQ >= 20 cover
-# the whole REF span and no other record overlaps it. PharmCAT refuses a gVCF,
+# the whole REF span and no other record overlaps it. The same GQ 20 floor
+# holds for every reference call it passes on: a 0/0 record (a block or a
+# DeepVariant RefCall) below GQ 20, or without a GQ, is left out, so PharmCAT
+# reads that position as missing, not as a confident 0/0. PharmCAT refuses a gVCF,
 # by content and by a name with .g.vcf in it, so the expanded file has
 # neither. The PHARMCAT_PREPROCESS module does the same.
 GVCF="${OUTPUT_DIR}/${SAMPLE}.g.vcf.gz"

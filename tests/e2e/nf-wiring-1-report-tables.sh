@@ -11,8 +11,9 @@
 #      hits, a VEP file with a gnomAD AF on each hit (3% on the planted one),
 #      CPSR's table and its cDNA read check, step 02's read count and the
 #      clinical filter's and slivar's summary tables. The read_count, clinvar,
-#      cpsr, clinical and slivar sections of the two summary.json files must
-#      be equal, with the AF, the CPSR classes and the flagged row in them.
+#      cpsr, clinical, slivar and acmg_sf sections of the two summary.json
+#      files must be equal, with the AF, the CPSR classes and the flagged row
+#      in them.
 #      Control: the module as it was (no place for these tables) stops.
 #   3. main.nf passes them on: a stub run of every tool (-profile test_all)
 #      stages each table in each HTML_REPORT task whose sample has the step's
@@ -203,6 +204,11 @@ sys.exit(bad)
 PY
 }
 check "the five sections of the Nextflow summary equal the bash ones" same_sections "${SD}/summary.json" "$NF_SUM"
+# The ACMG card (step 06's section) reads the same hits, clinical VCF and deletions in both.
+# shellcheck disable=SC2016  # a jq program: $b, $n and $x are jq variables
+check "the ACMG card of the Nextflow summary equals the bash one" \
+  jq -en --slurpfile b "${SD}/summary.json" --slurpfile n "$NF_SUM" \
+  '($b[0].sections.acmg_sf | del(.file_date)) as $x | $x.state == "ok" and $x == ($n[0].sections.acmg_sf | del(.file_date))'
 nf_py() { python3 -c "import json, sys; d = json.load(open(sys.argv[1]))['sections']; print($1)" "$NF_SUM" 2>/dev/null; }
 check_eq "the ClinVar hits' frequencies come from the VEP file" \
   "$(nf_py "d['clinvar']['data']['frequency']['source']")" "vep/${S}_vep.vcf.gz"

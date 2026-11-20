@@ -6,8 +6,12 @@
 # From models_GRCh38_1KGP_v1.7.tar.gz of Zenodo record 15019940 (md5 244110d8fa883cf11334527ec2383498,
 # the archive setup.sh --parascopy-data installs), folder EUR; AFR, AMR, EAS and SAS hold the same
 # 167 models with the same regions (checked 2026-10-27).
-# tests/test_copy_number.py reads it: a row of bin/cn_loci.tsv whose targets or controls overlap one
-# of these regions fails, unless the test's short list of exemptions names that row and model.
+# Source: Timofey Prodanov, Parascopy precomputed data, https://doi.org/10.5281/zenodo.15019940,
+# licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Changed: only the model
+# regions are kept, reformatted one per line, and overlapping copy regions are merged.
+# rust/crates/og-cn/tests/genome_cn.rs reads it: a row of bin/cn_loci.tsv whose targets or controls
+# overlap one of these regions fails, unless the test's short list of exemptions names that row and
+# model. rust/crates/og-steps/tests/paralog_loci.rs reads the model list.
 ABCC6	chr16:16198410-16228707	main
 ABCC6	chr16:14816373-14829810	copy
 ABCC6	chr16:14829826-14836719	copy

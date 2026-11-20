@@ -47,7 +47,7 @@ workflow BAM_ANALYSIS {
     ch_expansion_catalog // channel: val(path) — ExpansionHunter variant catalog JSON
     ch_hla_dat           // channel: val(path) — Pre-downloaded IPD-IMGT/HLA hla.dat
     ch_hla_genes         // channel: val(path) — gene annotation (GTF) T1K takes coordinates from
-    ch_cytoband          // channel: val(path) — UCSC GRCh38 chromosome bands or []
+    ch_cytoband          // channel: val(path) — UCSC GRCh38 chromosome bands or [] (then the copy in assets/reference)
     ch_somalier_sites    // channel: val(path) — somalier sites VCF or []
     ch_verifybamid2_panel // channel: val(path) — folder of VerifyBamID2's .UD/.mu/.bed panel or []
     ch_kir_dat           // channel: val(path) — IPD-KIR kir.dat (--kir) or []
@@ -180,12 +180,10 @@ workflow BAM_ANALYSIS {
     // Gates on: params.tools contains 'telomere_hunter'
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('telomere_hunter')) {
-        if (!params.cytoband) {
-            log.warn "telomere_hunter: --cytoband is not set, so TelomereHunter classifies reads by its own hg19 " +
-                     "chromosome bands on GRCh38 positions. Pass UCSC's GRCh38 bands (scripts/setup.sh installs " +
-                     "reference/cytoBand.hg38.txt)."
-        }
-        TELOMERE_HUNTER(ch_bam, ch_cytoband)
+        // The BAM is GRCh38: without --cytoband the module gets the GRCh38
+        // bands the repository ships, never TelomereHunter's own fallback.
+        ch_bands = ch_cytoband.map { f -> f instanceof List ? file("${projectDir}/assets/reference/cytoBand.hg38.txt", checkIfExists: true) : f }
+        TELOMERE_HUNTER(ch_bam, ch_bands)
         ch_telomere_results = TELOMERE_HUNTER.out.telomere_results
         ch_versions         = ch_versions.mix(TELOMERE_HUNTER.out.versions)
     }

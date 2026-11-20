@@ -5,19 +5,22 @@ OG=${OG:-${REPO}/bin/og}
 TABLE="${REPO}/assets/traits.tsv"
 RULES="${REPO}/assets/genotype_rules.tsv"
 G="${CASE_TMP}/g.tsv"
-printf 'chr19\t44908684\tT\tC\tT/C\t40\nchr19\t44908822\tC\tT\tC/T\t40\nchr7\t141973545\tC\tG\tC/G\t30\nchr7\t141972905\tG\tA\tG/A\t31\nchr7\t141972804\tT\tC\tT/C\t32\n' > "$G"
+printf 'chr6\t26090951\tC\tG\tC/G\t40\nchr6\t26092913\tG\tA\tG/A\t40\nchr19\t44908684\tT\tC\tT/C\t40\nchr19\t44908822\tC\tT\tC/T\t40\nchr7\t141973545\tC\tG\tC/G\t30\nchr7\t141972905\tG\tA\tG/A\t31\nchr7\t141972804\tT\tC\tT/C\t32\n' > "$G"
 "$OG" traits table --table "$TABLE" --rules "$RULES" --genotypes "$G" --sample S \
   --out "${CASE_TMP}/traits.tsv" --rules-out "${CASE_TMP}/rules.tsv"
 check_eq 'traits table exits 0' "$?" 0
 check_eq 'APOE double heterozygote is e2/e4' "$(awk -F'\t' '$1 == "APOE" {print $10}' "${CASE_TMP}/rules.tsv")" e2/e4
+check_eq 'HFE double heterozygote is C282Y/H63D' "$(awk -F'\t' '$1 == "HFE" {print $10}' "${CASE_TMP}/rules.tsv")" C282Y/H63D
+check 'HFE reading says it assumes different copies' has 'Phase unknown: this reading assumes rs1800562 A and rs1799945 G sit on different copies' "$(awk -F'\t' '$1 == "HFE" {print $12}' "${CASE_TMP}/rules.tsv")"
+check 'APOE reading adds no phase caveat' lacks 'Phase unknown' "$(awk -F'\t' '$1 == "APOE" {print $12}' "${CASE_TMP}/rules.tsv")"
 check_eq 'the taster rule needs phase' "$(awk -F'\t' '$1 == "TAS2R38" {print $11}' "${CASE_TMP}/rules.tsv")" unphased
 check_eq 'APOE line occurs exactly once' "$(grep -c '^rs429358+rs7412' "${CASE_TMP}/traits.tsv")" 1
 # shellcheck disable=SC2016  # awk field references
 check 'absent LCT has no inferred genotype' awk -F'\t' '$1 == "rs4988235" {ok = ($6 == "." && $7 == "not_covered")} END {exit !ok}' "${CASE_TMP}/traits.tsv"
 "$OG" traits phase-sites --rules "$RULES" --genotypes "$G" --sample S --out "${CASE_TMP}/phase.vcf"
 check_eq 'phase-sites exits 0' "$?" 0
-check_eq 'only the three taster sites need phase' "$(grep -cv '^#' "${CASE_TMP}/phase.vcf")" 3
-check_eq 'phase sites are in genome order' "$(grep -v '^#' "${CASE_TMP}/phase.vcf" | cut -f2 | paste -sd, -)" 141972804,141972905,141973545
+check_eq 'the two HFE and three taster sites need phase, APOE none' "$(grep -cv '^#' "${CASE_TMP}/phase.vcf")" 5
+check_eq 'phase sites are in genome order' "$(grep -v '^#' "${CASE_TMP}/phase.vcf" | cut -f2 | paste -sd, -)" 26090951,26092913,141972804,141972905,141973545
 sed 's/44908684\tT\t/44908684\tG\t/' "$G" > "${CASE_TMP}/bad.tsv"
 "$OG" traits table --table "$TABLE" --rules "$RULES" --genotypes "${CASE_TMP}/bad.tsv" --sample S \
   --out "${CASE_TMP}/bad-out.tsv" --rules-out "${CASE_TMP}/bad-rules.tsv" > "${CASE_TMP}/bad.log" 2>&1

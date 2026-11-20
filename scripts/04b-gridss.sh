@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # GRIDSS — Assembly-based structural variant caller
 # Input: sorted BAM + GRCh38 reference (with BWA index)
-# Output: VCF with BND-notation breakpoints in $GENOME_DIR/<sample>/sv_gridss/
+# Output, in $GENOME_DIR/<sample>/sv_gridss/:
+#   <sample>_gridss.vcf.gz       every GRIDSS call, as breakends (SVTYPE=BND)
+#   <sample>_gridss.high.vcf.gz  the calls GRIDSS rates high confidence:
+#                                QUAL >= 1000 with assembly support on both
+#                                sides (INFO/AS > 0 and INFO/RAS > 0), and its .tbi
 #
-# GRIDSS excels at complex rearrangements that Manta/Delly miss.
-# Output is BND notation — use the SV consensus merge (step 22) for integration.
+# GRIDSS excels at complex rearrangements that Manta/Delly miss. Its calls are
+# left out of the SV consensus (step 22): nothing here turns its breakend pairs
+# into DEL, DUP or INV events, so SURVIVOR cannot count them as one caller.
 #
 # HEAVY: Requires 31 GB JVM heap, 8 threads, and ~50 GB intermediate disk space.
 # Expected runtime: 4-8 hours for 30X WGS.
@@ -20,6 +25,38 @@ SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
 BAM="${SAMPLE_DIR}/${ALIGN_DIR}/${SAMPLE}_sorted.bam"
 REF="$REF_FASTA"
 OUTPUT_DIR="${SAMPLE_DIR}/sv_gridss"
+RAW="${OUTPUT_DIR}/${SAMPLE}_gridss.vcf.gz"
+HIGH="${OUTPUT_DIR}/${SAMPLE}_gridss.high.vcf.gz"
+# GRIDSS's own high-confidence rule: QUAL >= 1000 with assembly support on both
+# sides of the breakpoint. Both breakends of a pair carry one QUAL, and each
+# one's AS is the other's RAS, so the filter keeps or drops a pair together.
+HIGH_EXPR='QUAL>=1000 && INFO/AS>0 && INFO/RAS>0'
+require_image GRIDSS_IMAGE BCFTOOLS_IMAGE
+
+# write_high: write HIGH from RAW with HIGH_EXPR, and its index. RAW stays as
+# GRIDSS wrote it. Cheap (seconds), so it runs again on every call.
+write_high() {
+  rm -f "$HIGH" "${HIGH}.tbi"
+  run_in --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" \
+    bcftools view -i "$HIGH_EXPR" -Oz -o "$(cpath "$HIGH")" "$(cpath "$RAW")"
+  run_in --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" bcftools index -f -t "$(cpath "$HIGH")"
+  if ! wrote_vcf "$HIGH"; then
+    echo "ERROR: bcftools wrote no ${HIGH}." >&2
+    exit 1
+  fi
+  local n_in n_out
+  n_in=$(run_in "$BCFTOOLS_IMAGE" bcftools view -H "$(cpath "$RAW")" | wc -l | tr -d ' ')
+  n_out=$(run_in "$BCFTOOLS_IMAGE" bcftools view -H "$(cpath "$HIGH")" | wc -l | tr -d ' ')
+  echo "High confidence: ${HIGH} (kept ${n_out} of ${n_in} breakend records: ${HIGH_EXPR})"
+}
+
+# say_consensus: what step 22 does with these calls.
+say_consensus() {
+  echo ""
+  echo "NOTE: GRIDSS calls are left out of the SV consensus (step 22). GRIDSS writes"
+  echo "  each event as a pair of breakends (SVTYPE=BND), and nothing here turns a pair"
+  echo "  into a DEL, DUP or INV. Read both files here directly."
+}
 
 echo "=== GRIDSS: ${SAMPLE} ==="
 echo "BAM: ${BAM}"
@@ -53,9 +90,11 @@ fi
 
 # Skip only a finished VCF (complete BGZF file with a VCF header); a file cut
 # short by a killed run is called again.
-if have_output "${OUTPUT_DIR}/${SAMPLE}_gridss.vcf.gz"; then
-  echo "GRIDSS output already exists, skipping."
+if have_output "$RAW"; then
+  echo "GRIDSS output already exists, skipping GRIDSS."
   echo "Delete to re-run: rm -rf ${OUTPUT_DIR}"
+  write_high
+  say_consensus
   exit 0
 fi
 
@@ -118,19 +157,15 @@ run_in --rw "$(dirname "$REF_FASTA")" -w "/genome/${SAMPLE}/sv_gridss" \
   "${GRIDSS_IMAGE}" \
   "${GRIDSS_ARGS[@]}"
 
-if ! wrote_vcf "${OUTPUT_DIR}/${SAMPLE}_gridss.vcf.gz"; then
-  echo "ERROR: GRIDSS exited without a ${OUTPUT_DIR}/${SAMPLE}_gridss.vcf.gz." >&2
+if ! wrote_vcf "$RAW"; then
+  echo "ERROR: GRIDSS exited without a ${RAW}." >&2
   echo "  Its intermediate files are kept in ${OUTPUT_DIR}/work/ for a look." >&2
   exit 1
 fi
 rm -rf "${OUTPUT_DIR}/work"
+write_high
 
 echo "=== GRIDSS complete ==="
-echo "VCF: ${OUTPUT_DIR}/${SAMPLE}_gridss.vcf.gz"
-echo ""
-echo "NOTE: GRIDSS outputs BND-notation breakpoints. For standard SV types"
-echo "  (DEL/DUP/INV/INS), use the SV consensus merge step (22-survivor-merge.sh)"
-echo "  which converts and integrates calls from all SV callers."
-echo ""
-echo "Quality filtering: QUAL >= 1000 with assembly support (AS > 0 & RAS > 0)"
-echo "  is a good threshold for high-confidence calls."
+echo "VCF: ${RAW}"
+echo "High-confidence VCF: ${HIGH}"
+say_consensus

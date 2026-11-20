@@ -158,12 +158,14 @@ fn table(text: &str) -> Vec<Row> {
         .collect()
 }
 
-/// The verb on CYP2D6 alone: its row.
+/// The verb on HLA-DQB1 alone, a locus the authors calibrated their
+/// filter on: its row. (CYP2D6 and FCGR read "uncalibrated", tested in
+/// `i411_locityper_uncalibrated.rs`.)
 fn og_row(d: &Dir, n: usize, body: Body, success: bool, exit_code: i64) -> Row {
     let root = d.p(&format!("c{n}"));
-    gt_dir(&root, "CYP2D6", body, success);
+    gt_dir(&root, "HLA-DQB1", body, success);
     let bed = d.p(&format!("c{n}.bed"));
-    fs::write(&bed, "chr22\t42122284\t42152960\tCYP2D6\n").unwrap();
+    fs::write(&bed, "chr6\t32652603\t32669077\tHLA-DQB1\n").unwrap();
     let out = d.p(&format!("c{n}.tsv"));
     let (code, _, err) = og(&[
         "--gt-dir",
@@ -383,16 +385,16 @@ fn the_cli_writes_a_row_per_bed_locus_in_order() {
     let bed = d.p("loci.bed");
     fs::write(&bed, BED).unwrap();
     let root = d.p("gt");
-    gt_dir(&root, "CYP2D6", Body::Res(res()), true);
     gt_dir(
         &root,
-        "HLA-DQB1",
+        "CYP2D6",
         Body::Res(Res {
             wd: Some("50"),
             ..res()
         }),
         true,
     );
+    gt_dir(&root, "HLA-DQB1", Body::Res(res()), true);
     let out = d.p("cli.tsv");
     let (code, stdout, err) = og(&[
         "--gt-dir",
@@ -414,7 +416,10 @@ fn the_cli_writes_a_row_per_bed_locus_in_order() {
     assert_eq!(lines[1][1], "chr6:32652604-32669077");
     let st: Vec<&str> = lines[1..].iter().map(|r| r[2]).collect();
     assert_eq!(st, ["called", "called", "not called"]);
-    assert!(stdout.contains("2 of 3 loci called, 1 pass"), "{stdout}");
+    assert!(
+        stdout.contains("2 of 3 loci called, 1 pass the authors' filter, 1 uncalibrated"),
+        "{stdout}"
+    );
     let bad = d.p("bad.bed");
     fs::write(&bad, "chr6\tx\t10\tA\n").unwrap();
     let (code, _, err) = og(&["--gt-dir", &root, "--loci", &bad, "--out", &d.p("bad.tsv")]);

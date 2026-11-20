@@ -84,8 +84,8 @@ nextflow run main.nf \
 #                                                only when it agrees with T1K (docs/08-hla-typing.md)
 #    With pharmcat, PGX_CONSENSUS gives PharmCAT the HLA types of hla_typing and a CYP2D6 call only when
 #    pypgx and cyrius agree (docs/36-pgx-consensus.md); PharmCAT then waits for those BAM steps.
-#    telomere_hunter (a default tool) takes --cytoband <cytoBand.hg38.txt> for GRCh38 bands; without it,
-#    TelomereHunter uses its own hg19 bands and the run logs a warning
+#    telomere_hunter (a default tool) gets GRCh38 bands: --cytoband <cytoBand.hg38.txt>, or without it
+#    the copy the repository ships (assets/reference/cytoBand.hg38.txt)
 #    An unknown name in --tools stops the run.
 #    --pedigree pedigree.tsv                   + --somalier_sites: the family workflow over the samplesheet rows
 #                                                it names (two or more, each with a gVCF; docs/multi-sample.md)
@@ -406,7 +406,7 @@ Tools that require external databases (VEP, slivar, clinvar, CPSR, ExpansionHunt
 
 ### SV consensus merge
 
-`survivor_merge` runs `SURVIVOR merge` (step 22's parameters: breakpoints within 1 kb, same type and strands, at least 50 bp, two or more callers) over the callers this run selected among `manta`, `delly` and `cnvpytor`, each cut to its PASS records first (`SURVIVOR_PREP`, `SURVIVOR_MERGE`, `SURVIVOR_SORT`). CNVpytor's depth-only calls count as one caller like the others; their coarse breakpoints often lie more than 1 kb from the paired-end callers'. TIDDIT and Sniffles2 have no module, so the consensus of the script (step 22) can hold those two callers as well. GRIDSS is in neither: its breakend (BND) records never match the DEL, DUP and INV records of the other callers. See [step 22](22-survivor-merge.md).
+`survivor_merge` runs `SURVIVOR merge` (step 22's parameters: breakpoints within 1 kb, same type and strands, at least 50 bp, two or more callers) over the callers this run selected among `manta`, `delly` and `cnvpytor`, each cut to its PASS records first (`SURVIVOR_PREP`, `SURVIVOR_MERGE`, `SURVIVOR_SORT`). CNVpytor's depth-only calls count as one caller like the others; their coarse breakpoints often lie more than 1 kb from the paired-end callers'. TIDDIT and Sniffles2 have no module, so the consensus of the script (step 22) can hold those two callers as well. GRIDSS is in neither: it reports every event as a pair of breakends (BND), and nothing turns a pair into one DEL, DUP or INV. See [step 22](22-survivor-merge.md).
 
 ### FILTER=PASS required
 

@@ -144,7 +144,7 @@ Manta is the primary SV caller because:
 
 - **Best for inversions and balanced translocations.** Delly combines all three signal types (paired-end, split-read, read-depth) and is the most accurate caller for inversions (INV) and breakend events (BND).
 - **Higher sensitivity overall.** Delly calls more SVs than Manta (5,000-15,000 vs 3,000-5,000), catching events that Manta's more conservative filters miss.
-- **Higher false positive rate.** The extra sensitivity comes with more false calls. This is why the pipeline uses multi-caller consensus (step 22) rather than trusting any single caller.
+- **Higher false positive rate.** The extra sensitivity comes with more false calls. Step 22 marks the calls that two or more callers agree on, and the reports show that support. Agreement with Manta is not independent proof: both callers read split and paired reads.
 
 ### CNVpytor: strengths and role
 
@@ -170,7 +170,7 @@ Manta is the primary SV caller because:
 | Large CNV focus | CNVpytor alone or CNVpytor + Manta |
 | Inversions / translocations | Delly (strongest for these SV types) |
 
-The consensus merge (step 22) keeps only SVs called by two or more callers, reducing false positives at the cost of losing some real single-caller-only events. For more thorough SV analysis, consider also running AnnotSV (step 5) on the consensus set.
+The consensus merge (step 22) keeps only SVs called by two or more callers, which removes many single-caller artefacts at the cost of losing some real single-caller-only events. It reports caller agreement, not validation. AnnotSV (step 5) annotates the callers' own calls, and the reports join the consensus support onto them; never run AnnotSV on the consensus VCF, whose sample columns are the callers.
 
 ---
 

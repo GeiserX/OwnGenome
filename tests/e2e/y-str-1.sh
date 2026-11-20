@@ -14,9 +14,11 @@
 #   - an independent count from the reads: for every high call, the length of
 #     the repeat in the reads that span it with 10 bases on each side
 #     (reference length plus the CIGAR's insertions minus its deletions there
-#     or in those 10 bases, where an aligner can left-align a repeat's indel)
-#     gives the same count in at least 90% of the markers, and in every span
-#     marker (one region over close-set parts) called high;
+#     or in those 10 bases, where an aligner can left-align a repeat's indel),
+#     plus the panel's offset to FamilyTreeDNA's scale, gives the same count
+#     in at least 90% of the markers, and in every span marker (one region
+#     over close-set parts) called high; without the offsets the counts
+#     differ at the markers that have one (HG002: DYS438, DYS461, Y-GATA-H4);
 #   - a planted change: the same reads with four bases (one AGAT repeat) cut
 #     out of DYS393 in every read that spans it give DYS393 one repeat fewer,
 #     and leave the other called markers as they were;
@@ -133,7 +135,15 @@ check_eq "DYS393 is called high" "$(col "$H" DYS393 confidence)" high
 # length gives the count with the same rounding as the step (reference copies
 # rounded half up, plus the length change in whole and partial repeats).
 dk "$SAMTOOLS_IMAGE" samtools view -q 20 -F 0xF04 "${T}/win.bam" > "${T}/win.sam"
-"${REPO}/bin/og" dev fixture ystr-readcount "$PANEL" "$OUT" "${T}/win.sam" > "${T}/readcount.tsv"
+"${REPO}/bin/og" dev fixture ystr-readcount "$PANEL" "$OUT" "${T}/win.sam" > "${T}/readcount.raw.tsv"
+# The reads' count is on the reference's scale; the panel's offset puts it on
+# FamilyTreeDNA's, as the step does ('.' is no offset).
+awk -F'\t' -v OFS='\t' '
+  NR == FNR { if ($0 !~ /^#/ && $1 != "order") off[$3] = ($7 == "." ? 0 : $7); next }
+  { n = split($3, p, "."); $3 = (p[1] + off[$1]) (n > 1 ? "." p[2] : ""); print }' \
+  "$PANEL" "${T}/readcount.raw.tsv" > "${T}/readcount.tsv"
+check_ge "control: without the panel's offsets the reads' count differs where one applies" \
+  "$(awk -F'\t' '$2 != $3' "${T}/readcount.raw.tsv" | wc -l | tr -d ' ')" 1
 N_CMP=$(grep -c . "${T}/readcount.tsv" || true)
 N_SAME=$(awk -F'\t' '$2 == $3' "${T}/readcount.tsv" | wc -l | tr -d ' ')
 awk -F'\t' '$2 != $3 {print "  differs: " $0}' "${T}/readcount.tsv"

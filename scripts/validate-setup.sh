@@ -672,7 +672,7 @@ else
   for name in $DATA_FILES; do
     case "$name" in
       delly_exclude) what="Delly exclude map (step 19 runs without it, slower and with more artefacts)" ;;
-      cytoband) what="GRCh38 chromosome bands (step 10 falls back to hg19 bands)" ;;
+      cytoband) what="GRCh38 chromosome bands (step 10 installs them from assets/reference when missing)" ;;
       hla_dat) what="IPD-IMGT/HLA ${HLA_DB_RELEASE} (step 08 is skipped without it)" ;;
       gencode_genes) what="GENCODE ${GENCODE_RELEASE} gene coordinates (step 08 is skipped without them)" ;;
       gencode_exons) what="GENCODE ${GENCODE_RELEASE} exons (steps 06 and 17 skip their cDNA read check without them)" ;;

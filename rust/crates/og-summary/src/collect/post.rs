@@ -10,6 +10,9 @@
 //! - `not_run`: the steps whose section has no file;
 //! - `not_assessed`: what no step looked at, with the lines that depend on
 //!   the polygenic scores, HBA1/HBA2, mobile elements, VNtyper and MoChA;
+//! - `scope`: what part of the genome the run called, and the `partial`
+//!   mark on each genome-wide section of a run that called less, and on
+//!   each stale one, whose earlier run's scope is not known;
 //! - `recheck`: the last database re-check of the sample;
 //! - `new_since`: what changed since the previous run kept in `history/`.
 //!
@@ -25,14 +28,14 @@
 use super::group_c::Others;
 use super::model::{Section, State, Summary};
 use super::sections::Data;
-use super::{Folder, Input, declared, group_b, post_c, qc_declared, read_a, read_c, time};
+use super::{Folder, Input, declared, group_b, post_c, qc_declared, read_a, read_c, scan, time};
 use og_runlog::{delta, files};
 use pycompat::json::Value;
 use pycompat::value::truthy;
 use std::path::Path;
 
 /// summary.json's sections, in its order.
-pub const ORDER: [&str; 48] = [
+pub const ORDER: [&str; 49] = [
     "coverage",
     "callability",
     "sex_check",
@@ -43,6 +46,7 @@ pub const ORDER: [&str; 48] = [
     "clinvar",
     "couple",
     "carrier",
+    "acmg_sf",
     "pharmcat",
     "cpic",
     "pypgx",
@@ -85,8 +89,9 @@ pub const ORDER: [&str; 48] = [
 
 /// Sections that are no step of their own, so never in `not_run`: the read
 /// count is written by alignment, which a run from a BAM or a VCF never
-/// does; the couple screen and the carrier list come with other steps.
-const NOT_A_STEP: [&str; 3] = ["read_count", "couple", "carrier"];
+/// does; the couple screen, the carrier list and the ACMG secondary-findings
+/// card come with other steps (39 and 06), whose own sections say not run.
+const NOT_A_STEP: [&str; 4] = ["read_count", "couple", "carrier", "acmg_sf"];
 
 /// What no step assesses.
 const NOT_ASSESSED: [&str; 5] = [
@@ -100,6 +105,11 @@ const NOT_ASSESSED: [&str; 5] = [
 /// Added unless step 25 ran with an ancestry reference panel.
 const PRS_NOT_ADJUSTED: &str =
     "Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums";
+
+/// Added in its place when the panel ran but every percentile was withheld,
+/// because the input lists variants only (a score's `percentile_note`).
+const PRS_WITHHELD: &str = "Polygenic score percentiles: the input lists variants only, so the \
+percentiles were withheld and the scores are raw sums";
 
 /// Added unless step 35's depth count (short reads) or step 35b
 /// (Paraphase, PacBio HiFi, both genes) made a call.
@@ -125,10 +135,19 @@ of the blood cells): step 51 (MoChA) did not assess this sample";
 /// be read.
 pub fn collect(input: &Input) -> Result<Value, String> {
     let folder = Folder::open(input)?;
+    let vcf = folder
+        .index
+        .first(&[format!(
+            "vcf/{}.vcf.gz",
+            pycompat::mtime::escape(&input.sample)
+        )])
+        .map(|rel| crate::join(&input.sample_dir, rel));
     // Group a reads the sample VCF, the input that takes time, on its own
-    // thread; groups b and c read their sections meanwhile, one at a time,
-    // so the peak memory stays near the biggest section's.
-    let (a, b, mut c) = std::thread::scope(|scope| {
+    // thread, and so does the read of its contigs; groups b and c read
+    // their sections meanwhile, one at a time, so the peak memory stays
+    // near the biggest section's.
+    let (a, b, mut c, contigs) = std::thread::scope(|scope| {
+        let contigs = scope.spawn(|| vcf.as_deref().and_then(|p| scan::vcf_contigs(p).ok()));
         let a = scope.spawn(|| read_a(input, &folder));
         let b = group_b::read(input, &folder);
         let c = read_c(input, &folder);
@@ -145,8 +164,15 @@ pub fn collect(input: &Input) -> Result<Value, String> {
                 .collect()
         };
         let a = a.join().unwrap_or_else(|_| stopped(&super::model::GROUP_A));
-        (a, b, c)
+        (a, b, c, contigs.join().ok().flatten())
     });
+    let intervals = folder
+        .manifest
+        .as_ref()
+        .and_then(|m| m.value("run", "intervals"))
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned);
     let declared_sex = declared(input, &folder, qc_declared(&a));
     post_c(
         input,
@@ -189,6 +215,10 @@ pub fn collect(input: &Input) -> Result<Value, String> {
                 .collect(),
         ),
     );
+    if let Some(scope) = scope(contigs.as_deref(), intervals.as_deref()) {
+        mark_partial(m, &scope);
+        m.insert("scope".into(), scope);
+    }
     let dir = Path::new(&input.sample_dir);
     if let Some(r) = delta::read_recheck(&dir.join("recheck").join("state.json")) {
         m.insert("recheck".into(), Value::Object(r));
@@ -199,6 +229,92 @@ pub fn collect(input: &Input) -> Result<Value, String> {
         m.insert("new_since".into(), n);
     }
     Ok(v)
+}
+
+/// The sections whose result is a share, a sum or a placement over the
+/// whole genome: a run over a part of it gives a different result that
+/// reads the same.
+pub const GENOME_WIDE: [&str; 6] = [
+    "callability",
+    "prs",
+    "ancestry_fine",
+    "telomere",
+    "roh",
+    "archaic",
+];
+
+/// `scope`: what part of the genome the run called, from the contigs of
+/// the sample VCF's records (`chr20` and `20` alike) and the intervals the
+/// run manifest records (`run intervals`). `None` (no `scope` key) without a
+/// sample VCF read to its end: the scope is then not known, and nothing
+/// is marked.
+///
+/// The run is partial when the calls cover fewer than the 22 autosomes, or
+/// when the run was limited to intervals. chrX is recorded but makes no run
+/// partial: the genome-wide sections read the autosomes.
+fn scope(contigs: Option<&[String]>, intervals: Option<&str>) -> Option<Value> {
+    let names: Vec<&str> = contigs?
+        .iter()
+        .map(|c| c.strip_prefix("chr").unwrap_or(c))
+        .collect();
+    let autosomes: Vec<String> = (1..=22)
+        .map(|i| i.to_string())
+        .filter(|n| names.contains(&n.as_str()))
+        .map(|n| format!("chr{n}"))
+        .collect();
+    let n = autosomes.len();
+    let mark = if n < 22 {
+        Some(format!("partial: covers {n} of 22 autosomes"))
+    } else {
+        intervals.map(|i| format!("partial: limited to the run's intervals ({i})"))
+    };
+    let mut out = indexmap::IndexMap::new();
+    out.insert("autosomes_covered".to_owned(), Value::Int(n as i128));
+    out.insert(
+        "autosomes".to_owned(),
+        Value::Array(autosomes.into_iter().map(Value::Str).collect()),
+    );
+    out.insert("chrx".to_owned(), Value::Bool(names.contains(&"X")));
+    out.insert(
+        "intervals".to_owned(),
+        intervals.map_or(Value::Null, |i| Value::Str(i.to_owned())),
+    );
+    out.insert("partial".to_owned(), Value::Bool(mark.is_some()));
+    out.insert("mark".to_owned(), mark.map_or(Value::Null, Value::Str));
+    Some(Value::Object(out))
+}
+
+/// The mark of a stale genome-wide section: its result is from an earlier
+/// run, and that run's scope was not recorded.
+const STALE_MARK: &str = "partial: not known, from an earlier run";
+
+/// Adds a `partial` mark to the genome-wide sections. A result of this run
+/// (ok) takes the scope's mark when the run was partial. A stale result is
+/// from an earlier run, whose scope this run's VCF does not tell: it takes
+/// `STALE_MARK` whatever this run covered, so it never reads as complete.
+fn mark_partial(summary: &mut indexmap::IndexMap<String, Value>, scope: &Value) {
+    let mark = match at(Some(scope), "mark") {
+        Some(Value::Str(m)) => Some(m.clone()),
+        _ => None,
+    };
+    let Some(Value::Object(sections)) = summary.get_mut("sections") else {
+        return;
+    };
+    for key in GENOME_WIDE {
+        let Some(Value::Object(sec)) = sections.get_mut(key) else {
+            continue;
+        };
+        let text = if is(sec.get("state"), "stale") {
+            Some(STALE_MARK.to_owned())
+        } else if is(sec.get("state"), "ok") {
+            mark.clone()
+        } else {
+            None
+        };
+        if let Some(text) = text {
+            sec.insert("partial".into(), Value::Str(text));
+        }
+    }
 }
 
 /// What the post pass of group c needs from group b: the CPIC state,
@@ -262,7 +378,17 @@ fn not_assessed(sections: &[Section]) -> Vec<&'static str> {
     };
     let mut out = NOT_ASSESSED.to_vec();
     if !field("prs", "adjusted").is_some_and(truthy) {
-        out.push(PRS_NOT_ADJUSTED);
+        let withheld = match field("prs", "scores") {
+            Some(Value::Array(rows)) => rows
+                .iter()
+                .any(|r| at(Some(r), "percentile_note").is_some_and(truthy)),
+            _ => false,
+        };
+        out.push(if withheld {
+            PRS_WITHHELD
+        } else {
+            PRS_NOT_ADJUSTED
+        });
     }
     // Step 35b on a region subset (--paraphase_regions) may leave hba out.
     let hba_genes: Vec<&str> = match field("paralogs", "genes") {

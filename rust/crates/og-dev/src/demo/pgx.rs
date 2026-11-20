@@ -3,7 +3,7 @@
 //! step 36 passed their consensus on, step 27's CPIC tables, and the
 //! Locityper second opinion (step 53).
 
-use super::{Ctx, Rng, Scratch, arg, copy, put, read, versions_env};
+use super::{Ctx, Rng, Scratch, arg, copy, put, put_gz, read, versions_env};
 use pycompat::json::{self, Dump, Value};
 use std::collections::HashMap;
 
@@ -372,11 +372,11 @@ fn stale(ann: &Value, changed: &HashMap<String, String>) -> bool {
         })
 }
 
-/// Step 53: what `og locityper report` writes for a made-up Locityper run
-/// that called every locus of `assets/locityper_loci.bed` with two HPRC
-/// panel haplotypes, made-up qualities and read counts, and passed the
-/// authors' filter (no warning, a weighted distance under 30, few
-/// unexplained reads).
+/// Step 53: `og locityper report` over a made-up Locityper run that called
+/// every locus of `assets/locityper_loci.bed` with two HPRC panel
+/// haplotypes, made-up qualities and read counts, no warning and a small
+/// weighted distance. So the HLA and KIR loci pass the authors' filter, and
+/// the others (CYP2D6, FCGR) read "uncalibrated", as a real run says.
 pub fn locityper(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
     let panel = [
         "HG00438.1",
@@ -386,34 +386,40 @@ pub fn locityper(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
         "NA18906.1",
         "NA19240.2",
     ];
-    let mut out = String::from(
-        "locus\tregion\tstatus\tgenotype\thaplotype_1\thaplotype_2\tquality\ttotal_reads\tunexplained_reads\tweighted_distance\twarnings\tfilter\treason\n",
-    );
-    let bed = read(&ctx.asset("assets/locityper_loci.bed"))?;
-    for line in bed.lines() {
+    let bed = ctx.asset("assets/locityper_loci.bed");
+    let tmp = Scratch::new("locityper")?;
+    for line in read(&bed)?.lines() {
         if line.trim().is_empty() || line.starts_with('#') {
             continue;
         }
-        let c: Vec<&str> = line.split('\t').collect();
-        let [chrom, start, end, name, ..] = c[..] else {
+        let Some(name) = line.split('\t').nth(3) else {
             return Err(format!("assets/locityper_loci.bed: short row {line:?}"));
         };
-        let start: i64 = start
-            .parse()
-            .map_err(|_| format!("assets/locityper_loci.bed: start {start:?}"))?;
         let haps = rng.sample_idx(panel.len(), 2);
         let (h1, h2) = (panel[haps[0]], panel[haps[1]]);
         let quality = rng.uniform(25.0, 60.0);
         let total = rng.int(800, 4000);
         let unexplained = rng.int(0, 30);
         let dist = rng.uniform(0.1, 3.0);
-        out.push_str(&format!(
-            "{name}\t{chrom}:{}-{end}\tcalled\t{h1},{h2}\t{h1}\t{h2}\t{quality:.1}\t{total}\t{unexplained}\t{dist:.3}\t.\tpass\t.\n",
-            start + 1
-        ));
+        let locus = tmp.join(&format!("loci/{name}"));
+        put_gz(
+            &locus.join("res.json.gz"),
+            &format!(
+                "{{\"genotype\": \"{h1},{h2}\", \"quality\": {quality:.1}, \"total_reads\": {total}, \"unexpl_reads\": {unexplained}, \"weight_dist\": {dist:.3}, \"warnings\": []}}"
+            ),
+        )?;
+        put(&locus.join("success"), "")?;
     }
-    put(
-        &ctx.path(&format!("locityper/{}_locityper.tsv", ctx.sample)),
-        &out,
-    )
+    let out = ctx.path(&format!("locityper/{}_locityper.tsv", ctx.sample));
+    std::fs::create_dir_all(ctx.path("locityper")).map_err(|e| e.to_string())?;
+    ctx.og(&[
+        "locityper",
+        "report",
+        "--gt-dir",
+        arg(&tmp.0),
+        "--loci",
+        arg(&bed),
+        "--out",
+        arg(&out),
+    ])
 }

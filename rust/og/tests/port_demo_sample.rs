@@ -146,6 +146,34 @@ fn demo_001_feeds_every_section_and_the_check_catches_a_missing_one() {
 }
 
 #[test]
+fn the_demo_step_53_table_reads_uncalibrated_outside_hla_and_kir() {
+    use og_reports::locityper::{UNCALIBRATED, calibrated};
+    let root = dir("locityper");
+    demo(&root, &[]);
+    let table = text(&root.join("DEMO-001/locityper/DEMO-001_locityper.tsv"));
+    let mut lines = table.lines();
+    let head: Vec<&str> = lines.next().unwrap().split('\t').collect();
+    let col = |name: &str| head.iter().position(|c| *c == name).unwrap();
+    let (locus, filter, reason) = (col("locus"), col("filter"), col("reason"));
+    let mut seen = (0, 0);
+    for line in lines {
+        let c: Vec<&str> = line.split('\t').collect();
+        if calibrated(c[locus]) {
+            seen.0 += 1;
+            assert_eq!((c[filter], c[reason]), ("pass", "."), "{line}");
+        } else {
+            seen.1 += 1;
+            assert_eq!(c[filter], "uncalibrated", "{line}");
+            assert!(c[reason].starts_with(UNCALIBRATED), "{line}");
+        }
+    }
+    // assets/locityper_loci.bed holds HLA and KIR loci and two others
+    // (CYP2D6, FCGR), so both branches ran.
+    assert!(seen.0 > 0 && seen.1 > 0, "{seen:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn the_same_seed_writes_the_same_bytes() {
     let (a, b, c) = (dir("seed-a"), dir("seed-b"), dir("seed-c"));
     demo(&a, &[]);

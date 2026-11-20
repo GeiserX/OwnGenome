@@ -1,0 +1,25 @@
+  sample: S
+  somalier_id: S
+  declared_sex: 
+  inferred_sex: male
+  sex_check: not_checked
+  sex_check_reason: no declared sex
+  sites_genotyped: 120
+  depth_at_sites: 30.0
+  x_sites: 39
+  x_het: 0
+  x_hom_alt: 39
+  x_depth_ratio: 0.50
+  y_sites: 5
+  y_depth_ratio: 0.47
+  freemix: 0.0412
+  freemix_warn_above: 0.05
+  contamination: ok
+  panel_markers: 10000
+  verifybamid2_marker_check: 
+  same_person_as: 
+  verifybamid2_markers: 
+  contamination_confidence: uncertain
+  contamination_confidence_reason: the number of markers FREEMIX rests on is not known
+  identity: uncertain
+  identity_reason: somalier genotyped 120 sites; telling one person from another needs 1,000

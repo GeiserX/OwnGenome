@@ -16,7 +16,10 @@
 #     Kell (c.578C>T: K+k+);
 #   - the same reads without any RHD read (both copies deleted) give D-, and
 #     with half of them (one copy) D+ with one copy;
-#   - the VCF without a BAM gives RhD not determined and ABO O at medium;
+#   - the VCF without a BAM gives RhD not determined, and ABO, with no
+#     record at any of its sites (HG002 matches GRCh38 there), not assessed:
+#     without reads nothing tells that from a VCF that does not cover ABO;
+#     Kidd, with GIAB's record at c.838, is still read;
 #   - ABO c.1061delC written two bases right (GG>G) gives A2/A2 as the table's
 #     CG>C does, because step 41 left-aligns first (og on the VCF as written
 #     reads A1/A1, the control), and a C>A,G 1/2 at c.803 keeps its one B copy;
@@ -148,7 +151,10 @@ sample "$V" "${T}/truth.vcf.gz"
 step "$V"
 check_eq "without a BAM RhD is not determined" "$(cell "$V" RhD phenotype)" "not determined"
 check "and the step says why" has 'No BAM .*RhD needs read depth' "$(cat "$STEP_LOG")"
-check_eq "without a BAM ABO is O at medium" "$(cell "$V" ABO phenotype)/$(cell "$V" ABO confidence)" "O/medium"
+check_eq "without a BAM and with no ABO record, ABO is not assessed" \
+  "$(cell "$V" ABO phenotype)/$(cell "$V" ABO confidence)" "not assessed/not assessed"
+check "and the note says why" has 'no VCF record at any of its 5 sites and no BAM' "$(cell "$V" ABO note)"
+check_eq "control: Kidd, with GIAB's record at c.838, is read without a BAM" "$(cell "$V" Kidd phenotype)" "Jk(a-b+)"
 
 # --- an indel written further right, and a multi-allelic record ------------------------
 # og matches a marker by position, REF and ALT. A caller can write ABO c.1061delC

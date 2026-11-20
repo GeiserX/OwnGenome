@@ -18,7 +18,7 @@ Telomeres are protective caps at the ends of chromosomes that shorten with cell 
 ### Limitations
 
 - **Not a clinical telomere length measurement.** TelomereHunter was developed for cancer genome analysis, not as a validated healthy-population aging assay
-- **Not a "biological age" readout.** While telomere length correlates with aging at a population level, it is a rough estimate of aging rate and is not established as a clinically important standalone risk marker for individuals (see Vaiserman & Krasnienkov, "Telomere Length as a Marker of Biological Age," 2021)
+- **Not an age.** Telomere length follows age only across a population. For one person it is a rough estimate, and it is not an established standalone risk marker (Vaiserman and Krasnienkov 2021, Frontiers in Genetics 11:630186, https://doi.org/10.3389/fgene.2020.630186)
 - Short-read WGS systematically underestimates telomere length compared to dedicated assays (TRF, FlowFISH)
 - Useful only for **relative comparisons** between samples run on the same platform — not absolute measurements and not individual health predictions
 

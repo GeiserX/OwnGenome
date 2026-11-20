@@ -11,17 +11,30 @@
 //! deletion counts as the second hit of a gene whose rule needs two
 //! ([`two_hits`](super::two_hits)), unless read-backed phase puts both on
 //! one copy.
+//!
+//! A gene whose rule needs two hits counts the copies of the gene hit, not
+//! the alt copies of its records. A homozygote hits both copies. Phased
+//! heterozygotes (a `|` GT with a phase set, PS) count the copies their
+//! phase set covers: two in cis count once, two in trans twice. The two alt
+//! alleles of one split call (`1/.` and `./1` at one position) sit on
+//! different copies. Any other heterozygote counts once with its phase
+//! unknown, so a pair of them is reported as possibly biallelic. A record
+//! with no alt copy called counts nothing, and a combined allele of step 06
+//! counts once with its parts, unless it is unphased and two of its parts
+//! are candidates on their own (they may sit on different copies).
 
 use super::assets::{ACMG_SF_VERSION, Key, Rule, acmg_sf_rules, carrier_genes};
 use super::clinvar::{
     COMMON_AF, Floor, Hit, HitRecords, allele_copies, floor_values, obj, opt_int, opt_s,
 };
 use super::text::{self, digits, format_map, gt_field, info_map};
-use super::two_hits::{DeletionInputs, Spans, Variant, gene_deletions, two_hits};
+use super::two_hits::{
+    DeletionInputs, Entry, Spans, Variant, Verdict, gene_deletions, phase_haps, two_hits,
+};
 use indexmap::IndexMap;
 use pycompat::json::Value;
 use pycompat::text::isdigit;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// The genotype check's floors: step 06's GQ and DP, the alt read share a
 /// heterozygote must lie within and a homozygous alt call must reach.
@@ -421,22 +434,134 @@ struct Cand {
     ploidy: usize,
     gt: String,
     ps: Option<String>,
+    /// The parts of a combined allele (step 06's `PGP_JOINED_FROM`).
+    joined: Vec<Key>,
+}
+
+/// One distinct variant of a gene as the verdict counts it: its alt
+/// copies, ploidy, GT and phase set, and whether it stands for a combined
+/// allele and its parts.
+#[derive(Debug, Clone, PartialEq)]
+struct Allele {
+    copies: usize,
+    ploidy: usize,
+    gt: String,
+    ps: Option<String>,
+    combined: bool,
+}
+
+impl Allele {
+    fn of(copies: usize, ploidy: usize) -> Allele {
+        Allele {
+            copies,
+            ploidy,
+            gt: String::new(),
+            ps: None,
+            combined: false,
+        }
+    }
+
+    /// The copies read-backed phase puts the alt allele on, with its phase
+    /// set: only a `|` GT with every copy called and a non-empty PS.
+    fn phased(&self) -> Option<(&str, BTreeSet<usize>)> {
+        let ps = self.ps.as_deref().filter(|p| !p.is_empty())?;
+        let h = phase_haps(Some(&self.gt)).filter(|h| !h.is_empty())?;
+        Some((ps, h))
+    }
+
+    /// The copy a half call (`1/.`, `./1`) puts its alt allele on.
+    fn half(&self) -> Option<usize> {
+        let a: Vec<&str> = self.gt.split(['/', '|']).collect();
+        match a.as_slice() {
+            [x, "."] if !matches!(*x, "0" | ".") => Some(0),
+            [".", y] if !matches!(*y, "0" | ".") => Some(1),
+            _ => None,
+        }
+    }
+}
+
+/// How a gene whose rule needs two hits met it: `biallelic` when a call
+/// proves both copies hit, `possibly biallelic` when the count needs a
+/// heterozygote of unknown phase; and why.
+type Pair = (&'static str, String);
+
+/// The copies of a gene hit, over its counted variants: the count, the
+/// proof of two copies if a call gives one, and the phase sets in which
+/// two or more variants sit on one copy (cis).
+fn copies_hit(kept: &IndexMap<AKey, Allele>) -> (usize, Option<String>, Vec<String>) {
+    let mut n = 0;
+    let mut proof: Option<String> = None;
+    let mut sets: IndexMap<&str, (BTreeSet<usize>, usize)> = IndexMap::new();
+    let mut halves: IndexMap<(&str, i128), (BTreeSet<usize>, usize)> = IndexMap::new();
+    for (k, a) in kept {
+        let AKey::Small(key) = k else {
+            n += 1;
+            continue;
+        };
+        if a.ploidy == 1 {
+            n += a.copies;
+        } else if a.copies >= 2 {
+            n += 2;
+            proof.get_or_insert_with(|| {
+                format!(
+                    "homozygous: one call puts {}:{} {}>{} on both copies",
+                    key.0, key.1, key.2, key.3
+                )
+            });
+        } else if let Some((ps, h)) = a.phased() {
+            let s = sets.entry(ps).or_default();
+            s.0.extend(h);
+            s.1 += 1;
+        } else if let Some(i) = a.half() {
+            let s = halves.entry((key.0.as_str(), key.1)).or_default();
+            s.0.insert(i);
+            s.1 += 1;
+        } else {
+            n += 1;
+        }
+    }
+    let mut cis = Vec::new();
+    for (ps, (h, count)) in &sets {
+        n += h.len();
+        if h.len() >= 2 {
+            proof.get_or_insert_with(|| {
+                format!(
+                    "in trans: read-backed phase puts them on different copies (phase set {ps})"
+                )
+            });
+        } else if *count >= 2 {
+            cis.push((*ps).to_owned());
+        }
+    }
+    for ((chrom, pos), (h, count)) in &halves {
+        if h.len() >= 2 {
+            n += 2 + count - h.len();
+            proof.get_or_insert_with(|| {
+                format!("in trans: the two alt alleles of one call at {chrom}:{pos}")
+            });
+        } else {
+            n += count;
+        }
+    }
+    (n, proof, cis)
 }
 
 /// `sf_verdicts`: for each distinct variant of a gene, `None` (reported) or
-/// the reason it is not, and the partial-deficiency note of a reported gene
-/// with a hypomorph allele.
+/// the reason it is not, the partial-deficiency note of a reported gene
+/// with a hypomorph allele, and how a gene whose rule needs two hits met
+/// it. `deletion` is the gene's pair with a called deletion, if any.
 fn sf_verdicts(
     gene: &str,
     rule: &Rule,
-    alleles: &IndexMap<AKey, (usize, usize)>,
-) -> (HashMap<AKey, Option<String>>, Option<String>) {
+    alleles: &IndexMap<AKey, Allele>,
+    deletion: Option<&Entry>,
+) -> (HashMap<AKey, Option<String>>, Option<String>, Option<Pair>) {
     let sev = |k: &AKey| match k {
         AKey::Small(k) => rule.severity.get(k),
         _ => None,
     };
     let mut out: IndexMap<AKey, Option<String>> = IndexMap::new();
-    let mut kept: IndexMap<AKey, (usize, usize)> = IndexMap::new();
+    let mut kept: IndexMap<AKey, Allele> = IndexMap::new();
     for (k, cp) in alleles {
         match sev(k) {
             Some(a) if a.kind.as_deref() == Some("pseudodeficiency") => {
@@ -449,37 +574,60 @@ fn sf_verdicts(
                 );
             }
             _ => {
-                kept.insert(k.clone(), *cp);
+                kept.insert(k.clone(), cp.clone());
             }
         }
     }
-    let n: usize = kept.values().map(|(c, _)| c).sum();
+    let (n, proof, cis) = copies_hit(&kept);
     let ri = rule.report_if.as_str();
-    let hemi = kept.values().any(|(_, p)| *p == 1);
-    for (k, (c, p)) in &kept {
+    let hemi = kept.values().any(|a| a.ploidy == 1);
+    let counted = ri == "biallelic" || (ri == "hemizygous" && !hemi);
+    let combined = kept.values().any(|a| a.combined);
+    let one = if let Some(ps) = cis.first() {
+        format!(
+            "two heterozygous variants in cis: read-backed phase puts them on the same copy \
+             (phase set {ps})"
+        )
+    } else if combined {
+        "one heterozygous allele: a combined allele and its parts count once".to_owned()
+    } else {
+        "one heterozygous variant".to_owned()
+    };
+    for (k, a) in &kept {
         let good = match ri {
             "any" | "het_female_too" => true,
             "biallelic" => n >= 2,
             "hemizygous" => hemi || n >= 2,
-            _ => matches!(k, AKey::Small(s) if rule.variants.contains_key(s)) && *c >= 2 && *p == 2,
+            _ => {
+                matches!(k, AKey::Small(s) if rule.variants.contains_key(s))
+                    && a.copies >= 2
+                    && a.ploidy == 2
+            }
         };
         let why = if good {
             None
         } else if ri == "hom_variant" {
             Some(format!("{gene} is reported only for: {}", rule.table_text))
         } else if ri == "hemizygous" {
-            Some(format!(
-                "one heterozygous variant; {gene} is reported for {}",
-                rule.table_text
-            ))
+            Some(format!("{one}; {gene} is reported for {}", rule.table_text))
         } else {
             Some(format!(
-                "one heterozygous variant; {gene} is reported with {}",
+                "{one}; {gene} is reported with {}",
                 rule.table_text
             ))
         };
         out.insert(k.clone(), why);
     }
+    let pair = (counted && n >= 2).then(|| match (proof, deletion) {
+        (Some(p), _) => ("biallelic", p),
+        (None, Some(e)) => (e.verdict.word(), format!("with {}: {}", e.deletion, e.why)),
+        (None, None) => (
+            Verdict::PossiblyBiallelic.word(),
+            "phase unknown: no read-backed phase links the variants, so they may sit on the \
+             same copy (cis)"
+                .to_owned(),
+        ),
+    });
     let hypo: Vec<&str> = out
         .iter()
         .filter(|(_, why)| why.is_none())
@@ -492,7 +640,60 @@ fn sf_verdicts(
             hypo.join("; ")
         )
     });
-    (out.into_iter().collect(), partial)
+    (out.into_iter().collect(), partial, pair)
+}
+
+/// `CHROM:POS:REF:ALT` joined by `|`, as step 06 writes `PGP_JOINED_FROM`.
+fn joined_keys(v: &str) -> Vec<Key> {
+    v.split('|')
+        .filter_map(|p| {
+            let mut it = p.rsplitn(4, ':');
+            let (alt, r, pos, chrom) = (it.next()?, it.next()?, it.next()?, it.next()?);
+            let pos = crate::int(pos).ok()?;
+            Some((chrom.to_owned(), pos, r.to_owned(), alt.to_owned()))
+        })
+        .collect()
+}
+
+/// The key each small candidate of a gene is counted under. A combined
+/// allele and the parts of it that are candidates count once, under the
+/// combined allele's key, when the combined call is phased or at most one
+/// part is a candidate. An unphased combined allele with two or more parts
+/// that are candidates counts through its parts, which may sit on
+/// different copies.
+fn counting_keys(cands: &[&Cand]) -> HashMap<(String, AKey), AKey> {
+    let mut map = HashMap::new();
+    let present: HashSet<(&str, &Key)> = cands
+        .iter()
+        .filter_map(|x| match &x.key {
+            AKey::Small(k) => Some((x.gene.as_str(), k)),
+            _ => None,
+        })
+        .collect();
+    for x in cands.iter().filter(|x| !x.joined.is_empty()) {
+        let parts: Vec<&Key> = x
+            .joined
+            .iter()
+            .filter(|k| present.contains(&(x.gene.as_str(), *k)))
+            .collect();
+        let phased = Allele {
+            gt: x.gt.clone(),
+            ps: x.ps.clone(),
+            ..Allele::of(x.copies, x.ploidy)
+        }
+        .phased()
+        .is_some();
+        if phased || parts.len() <= 1 {
+            for p in parts {
+                map.entry((x.gene.clone(), AKey::Small(p.clone())))
+                    .or_insert_with(|| x.key.clone());
+            }
+        } else {
+            map.entry((x.gene.clone(), x.key.clone()))
+                .or_insert_with(|| AKey::Small(parts[0].clone()));
+        }
+    }
+    map
 }
 
 /// `sf_structural`: step 05's class 4 and 5 SVs in genes whose rule allows
@@ -574,6 +775,7 @@ fn sf_structural(
                 ploidy: 2,
                 gt: String::new(),
                 ps: None,
+                joined: Vec::new(),
             });
         }
     }
@@ -633,6 +835,12 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             let row = Hit::parse(r, *floor)?;
             let gt = text::gt_of(r).to_owned();
             let (copies, ploidy) = allele_copies(&gt);
+            let joined = joined_keys(
+                info_map(&r[7])
+                    .get("PGP_JOINED_FROM")
+                    .copied()
+                    .unwrap_or(""),
+            );
             for g in row.gene.split(',') {
                 if !rules.contains_key(g) {
                     continue;
@@ -644,6 +852,12 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 f.insert("significance".into(), Value::Str(row.significance.clone()));
                 f.insert("stars".into(), Value::Int(row.stars.into()));
                 f.insert("low_confidence".into(), Value::Bool(row.low_confidence));
+                if row.combined_allele != "." {
+                    f.insert(
+                        "combined_allele".into(),
+                        Value::Str(row.combined_allele.clone()),
+                    );
+                }
                 clinvar.push(Cand {
                     kind: Kind::ClinVar,
                     gene: g.to_owned(),
@@ -653,6 +867,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                     ploidy,
                     gt: gt.clone(),
                     ps: gt_field(r, "PS"),
+                    joined: joined.clone(),
                 });
             }
         }
@@ -709,28 +924,64 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                     ploidy,
                     gt: x.genotype.clone(),
                     ps: x.ps.clone(),
+                    joined: Vec::new(),
                 });
             }
         }
     }
     let (svs, sv_checked, sv_note) = sf_structural(i.deletions, &rules);
 
-    // One verdict per gene, over its distinct variants.
-    let mut alleles: IndexMap<String, IndexMap<AKey, (usize, usize)>> = IndexMap::new();
-    for x in clinvar.iter().chain(&high) {
+    // One verdict per gene, over its distinct variants. A record with no
+    // alt copy called is no evidence of a hit and is not counted.
+    let small: Vec<&Cand> = clinvar
+        .iter()
+        .chain(&high)
+        .filter(|x| x.copies > 0)
+        .collect();
+    let units = counting_keys(&small);
+    let unit = |x: &Cand| {
+        units
+            .get(&(x.gene.clone(), x.key.clone()))
+            .cloned()
+            .unwrap_or_else(|| x.key.clone())
+    };
+    let mut alleles: IndexMap<String, IndexMap<AKey, Allele>> = IndexMap::new();
+    // The candidates counted under their own key first, so a combined
+    // allele's own call stands for its parts.
+    let (own, folded): (Vec<&Cand>, Vec<&Cand>) =
+        small.iter().copied().partition(|x| unit(x) == x.key);
+    for x in &own {
         let p = if x.ploidy == 0 { 2 } else { x.ploidy };
         alleles
             .entry(x.gene.clone())
             .or_default()
             .entry(x.key.clone())
-            .or_insert((x.copies.max(1), p));
+            .or_insert(Allele {
+                gt: x.gt.clone(),
+                ps: x.ps.clone(),
+                ..Allele::of(x.copies, p)
+            });
+    }
+    for x in &folded {
+        let p = if x.ploidy == 0 { 2 } else { x.ploidy };
+        let a = alleles
+            .entry(x.gene.clone())
+            .or_default()
+            .entry(unit(x))
+            .or_insert(Allele {
+                gt: x.gt.clone(),
+                ps: x.ps.clone(),
+                ..Allele::of(x.copies, p)
+            });
+        a.copies = a.copies.max(x.copies);
+        a.combined = true;
     }
     for x in &svs {
         alleles
             .entry(x.gene.clone())
             .or_default()
             .entry(x.key.clone())
-            .or_insert((1, 2));
+            .or_insert(Allele::of(1, 2));
     }
     let (spans, two_hit_note): (Spans, Option<String>) = match carrier_genes(i.assets) {
         Ok(g) => (g.into_iter().map(|(k, v)| (k, v.span)).collect(), None),
@@ -745,7 +996,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
     let (dels, _, _) = gene_deletions(i.deletions, &spans);
     let mut seen = HashSet::new();
     let mut variants = Vec::new();
-    for x in clinvar.iter().chain(&high) {
+    for x in &own {
         let AKey::Small(k) = &x.key else { continue };
         let pseudo = rules[&x.gene].severity_kind(k) == Some("pseudodeficiency");
         if !pseudo && seen.insert((x.gene.clone(), k.clone())) {
@@ -775,7 +1026,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
     for g in found.entries.keys() {
         if matches!(rules[g].report_if.as_str(), "biallelic" | "hemizygous") {
             if let Some(a) = alleles.get_mut(g) {
-                a.insert(AKey::Deletion(g.clone()), (1, 2));
+                a.insert(AKey::Deletion(g.clone()), Allele::of(1, 2));
             }
             two.extend(
                 found
@@ -788,16 +1039,39 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
     }
     let verdict: HashMap<&String, _> = alleles
         .iter()
-        .map(|(g, a)| (g, sf_verdicts(g, &rules[g], a)))
+        .map(|(g, a)| {
+            let del = found
+                .entries
+                .get(g)
+                .filter(|_| a.contains_key(&AKey::Deletion(g.clone())));
+            (g, sf_verdicts(g, &rules[g], a, del))
+        })
         .collect();
     let mut reported: [Vec<Value>; 3] = Default::default();
     let mut not_reported = Vec::new();
     for x in clinvar.into_iter().chain(high).chain(svs) {
-        let (whys, partial) = &verdict[&x.gene];
-        let why = whys.get(&x.key).cloned().flatten();
+        if x.copies == 0 {
+            not_reported.push(obj([
+                ("gene", Value::Str(x.gene.clone())),
+                ("variant", x.fields["variant"].clone()),
+                (
+                    "genotype",
+                    x.fields.get("genotype").cloned().unwrap_or(Value::Null),
+                ),
+                ("source", Value::Str(x.kind.source().into())),
+                (
+                    "reason",
+                    Value::Str(format!("no alt copy called (GT {}): not counted", x.gt)),
+                ),
+            ]));
+            continue;
+        }
+        let key = unit(&x);
+        let (whys, partial, pair) = &verdict[&x.gene];
+        let why = whys.get(&key).cloned().flatten();
         let rule = &rules[&x.gene];
         let mut f = x.fields;
-        if let AKey::Small(k) = &x.key
+        if let AKey::Small(k) = &key
             && found.hemi.contains_key(&(x.gene.clone(), k.clone()))
         {
             f.insert("genotype".into(), Value::Str("hemizygous".into()));
@@ -813,10 +1087,14 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 f.insert("rule_note".into(), opt_s(rule.note.as_deref()));
                 f.insert("severity".into(), opt_s(partial.as_deref()));
                 if x.kind != Kind::Sv
-                    && let AKey::Small(k) = &x.key
+                    && let AKey::Small(k) = &key
                     && let Some(t) = two.get(&(x.gene.clone(), k.clone()))
                 {
                     f.insert("two_hit".into(), Value::Str(t.clone()));
+                }
+                if let Some((word, phase)) = pair {
+                    f.insert("pair".into(), Value::Str((*word).into()));
+                    f.insert("phase".into(), Value::Str(phase.clone()));
                 }
                 reported[slot].push(Value::Object(f));
             }

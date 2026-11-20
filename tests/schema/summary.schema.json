@@ -50,6 +50,9 @@
     },
     "data": {
      "type": "object"
+    },
+    "partial": {
+     "type": "string"
     }
    }
   }
@@ -1345,6 +1348,66 @@
       }
      ]
     },
+    "acmg_sf": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/section"
+      },
+      {
+       "properties": {
+        "data": {
+         "type": "object",
+         "properties": {
+          "version": {
+           "type": "string"
+          },
+          "unavailable": {
+           "type": "string"
+          },
+          "clinvar_hits": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "variant",
+             "genotype"
+            ]
+           }
+          },
+          "clinvar_checked": {
+           "type": "boolean"
+          },
+          "high_impact": {
+           "type": "array"
+          },
+          "high_impact_checked": {
+           "type": "boolean"
+          },
+          "high_impact_note": {
+           "type": "string"
+          },
+          "structural": {
+           "type": "array"
+          },
+          "not_reported": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "variant",
+             "source",
+             "reason"
+            ]
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
+    },
     "cpsr": {
      "allOf": [
       {
@@ -1824,6 +1887,71 @@
     "type": "string"
    },
    "minItems": 1
+  },
+  "scope": {
+   "type": "object",
+   "required": [
+    "autosomes_covered",
+    "autosomes",
+    "chrx",
+    "intervals",
+    "partial",
+    "mark"
+   ],
+   "properties": {
+    "autosomes_covered": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "autosomes": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "chr1",
+       "chr2",
+       "chr3",
+       "chr4",
+       "chr5",
+       "chr6",
+       "chr7",
+       "chr8",
+       "chr9",
+       "chr10",
+       "chr11",
+       "chr12",
+       "chr13",
+       "chr14",
+       "chr15",
+       "chr16",
+       "chr17",
+       "chr18",
+       "chr19",
+       "chr20",
+       "chr21",
+       "chr22"
+      ]
+     },
+     "maxItems": 22
+    },
+    "chrx": {
+     "type": "boolean"
+    },
+    "intervals": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "partial": {
+     "type": "boolean"
+    },
+    "mark": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   }
   }
  }
 }

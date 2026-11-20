@@ -5,7 +5,15 @@ name: Freshness
 # behind upstream or stopped answering. Renovate bumps image tags; this covers
 # what it cannot see (the Ensembl cache release, the PCGR bundle date, the
 # pypgx-bundle tag, the Nextflow line, the ClinVar file date) and lists the
-# major updates Renovate does not open on its own.
+# major updates Renovate does not open on its own. It also compares the
+# curated PGx tables with their sources: each row of
+# assets/pgx_contraindications.tsv with its CPIC pair (level, provisional) and
+# its DailyMed label, assets/pgx_inhibitors.tsv with the FDA table of CYP
+# inhibitors (fda.gov refuses GitHub's runners, so the newest Wayback
+# Machine capture of it, at most 92 days old, stands in), and
+# assets/pgx_genes.tsv with the gene table of the newest pypgx. A row that no
+# longer agrees shows as `drift` in the issue: a warning to fix the table, not
+# a failed run.
 #
 # The issue is found by a marker in its body, not by the label alone, so an
 # issue another workflow files under the same label is never overwritten. A
@@ -79,7 +87,8 @@ concurrency:
 jobs:
   # Every pull request starts this workflow, so main can require its checks.
   # This job says whether a pull request touches scripts/, docs/,
-  # versions.env, assets/pgs_scores.tsv, rust/crates/og-fresh/ or this file;
+  # versions.env, assets/pgs_scores.tsv, the curated PGx tables,
+  # rust/crates/og-fresh/ or this file;
   # when it does not, self-tests and pull-request are skipped, which GitHub
   # counts as passed.
   # Outside a pull request the answer is always run=true. A failed or missing
@@ -109,7 +118,7 @@ jobs:
           if [ "$EVENT" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only "${BASE}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed.txt"
           cat "${RUNNER_TEMP}/changed.txt"
-          if grep -qE '^(scripts|docs|rust/crates/og-fresh)/|^(versions\.env|assets/pgs_scores\.tsv|\.github/workflows/freshness\.yml)$' "${RUNNER_TEMP}/changed.txt"; then
+          if grep -qE '^(scripts|docs|rust/crates/og-fresh)/|^(versions\.env|assets/pgs_scores\.tsv|assets/pgx_(contraindications|inhibitors|genes)\.tsv|\.github/workflows/freshness\.yml)$' "${RUNNER_TEMP}/changed.txt"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "Nothing the freshness checks read changed: they are skipped."
@@ -144,7 +153,7 @@ jobs:
         working-directory: rust
         run: cargo build --release --locked -p og --no-default-features
 
-      - name: og dev freshness self-test (a bogus image, a missing tag and a bogus URL must exit non-zero)
+      - name: og dev freshness self-test (a bogus image, a missing tag and a bogus URL must exit non-zero; a planted PGx table row whose CPIC level moved must show as drift)
         run: rust/target/release/og dev freshness --self-test
 
       # check-links.sh and check-pgs-labels.sh read with og dev versions
@@ -186,7 +195,7 @@ jobs:
           has() { grep -qxE "$1" "${RUNNER_TEMP}/changed.txt" && echo true || echo false; }
           {
             echo "prs=$(has 'scripts/25-prs\.sh|assets/pgs_scores\.tsv|scripts/ci/check-pgs-labels\.sh|\.github/workflows/freshness\.yml')"
-            echo "report=$(has 'rust/crates/og-fresh/.*|versions\.env|\.github/workflows/freshness\.yml')"
+            echo "report=$(has 'rust/crates/og-fresh/.*|versions\.env|assets/pgx_(contraindications|inhibitors|genes)\.tsv|\.github/workflows/freshness\.yml')"
           } >> "$GITHUB_OUTPUT"
 
       # og dev freshness (rust/crates/og-fresh) writes the report, and the

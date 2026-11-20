@@ -11,8 +11,10 @@
 #     and a read-support limit from each base's depth under 10% at about 60x,
 #     with nearly every coding base of DNMT3A at 10 reads or more;
 #   - the same reads with DNMT3A R882H (chr2:25234373 C>T) planted in every
-#     fifth read over it: a chip row R882H at a VAF near 20%. The reads as they
-#     are are the negative control of that check;
+#     fifth read over it: a chip row R882H at a VAF near 20%, whose note says it
+#     is a possible finding, not a diagnosis, and whose reads (a fifth of about
+#     60) do not fit an inherited variant. The reads as they are are the
+#     negative control of that check;
 #   - planted in every second read: likely_germline, not chip;
 #   - both reports show the section and the planted call;
 #   - the Nextflow CHIP_* processes on the planted reads merged into step 02's BAM
@@ -63,6 +65,8 @@ sample() {
 }
 # row NAME POS: the chip table's row at POS, as status,protein_change,vaf
 row() { awk -F'\t' -v p="$2" '$3 == p {print $13 "," $7 "," $9}' "${G}/$1/chip/$1_chip.tsv" 2>/dev/null; }
+# note NAME POS: the note of that row
+note() { awk -F'\t' -v p="$2" '$3 == p {print $15}' "${G}/$1/chip/$1_chip.tsv" 2>/dev/null; }
 # depth NAME GENE COLUMN
 depth() {
   awk -F'\t' -v g="$2" -v k="$3" 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} $1 == g {print $c[k]}' \
@@ -98,10 +102,15 @@ check "DNMT3A has a share of bases at the stated limit ($(depth "$U" DNMT3A asse
   awk -v d="$(depth "$U" DNMT3A assessable_fraction)" 'BEGIN {exit !(d ~ /^[01]\.[0-9][0-9][0-9]$/ && d > 0)}'
 check "the step prints the read-support limit and that it is not a diagnosis" \
   has 'Read-support limit \(median [0-9]+x.*does not rule one out\. Not a diagnosis\.' "$(cat "$STEP_LOG")"
+check "the step's count says possible clonal haematopoiesis, not a diagnosis" \
+  has ': [0-9]+ CHIP calls? in [0-9]+ genes \(possible clonal haematopoiesis, not a diagnosis; ' "$(cat "$STEP_LOG")"
 IFS=, read -r st pc vaf <<< "$(row "$P" "$R882")"
 check_eq "planted at a fifth: a chip row" "${st:-none}" chip
 check_eq "named R882H on DNMT3A's MANE transcript" "${pc:-none}" R882H
 check "its VAF is near 20% (${vaf:-none})" awk -v v="${vaf:-0}" 'BEGIN {exit !(v >= 0.10 && v <= 0.30)}'
+check "its note says a possible finding, not a diagnosis ($(note "$P" "$R882"))" \
+  has '^possible clonal haematopoiesis \(not a diagnosis\): hotspot R882' "$(note "$P" "$R882")"
+check "a fifth of about 60 reads does not fit an inherited variant" lacks 'fit an inherited' "$(note "$P" "$R882")"
 check_eq "planted at a half: likely_germline, not chip" "$(row "$H" "$R882" | cut -d, -f1)" likely_germline
 check_eq "and the germline-looking call is not counted" \
   "$(awk -F'\t' '$13 == "chip" && $3 == p' p="$R882" "${G}/${H}/chip/${H}_chip.tsv" 2>/dev/null | wc -l | tr -d ' ')" 0
