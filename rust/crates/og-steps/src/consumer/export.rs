@@ -1337,6 +1337,114 @@ mod tests {
         let _ = std::fs::remove_dir_all(&out);
     }
 
+    /// Runs the export of the gVCF `text` (plain, written to a scratch
+    /// file) on the unit site table as `sample`; the 23andMe calls and the
+    /// summary table.
+    fn run_text(
+        name: &str,
+        text: &str,
+        sample: &str,
+    ) -> Result<(Vec<(String, String)>, String), Fail> {
+        let dir =
+            std::env::temp_dir().join(format!("og-consumer-{name}-{sample}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch directory");
+        let gvcf = dir.join("in.g.vcf");
+        std::fs::write(&gvcf, text).expect("the gVCF");
+        let out = dir.join("out");
+        let (gvcf, out_dir) = (gvcf.to_string_lossy(), out.to_string_lossy());
+        let (sites, par) = (input("unit-sites.tsv.gz"), input("par_grch38.bed"));
+        let a = ExportArgs {
+            gvcf: &gvcf,
+            sites: &sites,
+            sample,
+            sex: "male",
+            par: Some(&par),
+            out_dir: &out_dir,
+            date: DosDate::parse("2026-01-02").expect("a date"),
+        };
+        let got = export(&a, NonZero::new(2).expect("2 > 0")).map(|_| {
+            let z = std::fs::read(out.join(format!("{sample}_23andme_v5.zip"))).expect("the zip");
+            let members = zip::read_all(&z).expect("a zip");
+            let text = String::from_utf8(members[0].1.clone()).expect("ASCII");
+            let calls = text
+                .lines()
+                .filter(|l| !l.starts_with('#'))
+                .map(|l| {
+                    let c: Vec<&str> = l.split('\t').collect();
+                    (c[0].to_owned(), c[3].to_owned())
+                })
+                .collect();
+            let tsv = std::fs::read_to_string(out.join(format!("{sample}_consumer_export.tsv")))
+                .expect("tsv");
+            (calls, tsv)
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        got
+    }
+
+    const HEAD: &str = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT";
+
+    #[test]
+    fn a_weak_reference_call_is_no_genotype() {
+        // D10: a reference answer needs GQ 20 or more (a missing GQ stays
+        // readable) and FILTER PASS, `.` or RefCall. A variant call keeps
+        // its bases whatever its GQ.
+        let body = [
+            "chr20\t90\t.\tA\t<*>\t0\t.\tEND=120\tGT:GQ\t0/0:3",
+            "chr20\t150\t.\tC\t<*>\t0\t.\tEND=155\tGT:GQ\t0/0:20",
+            "chr20\t160\t.\tG\t<*>\t0\t.\tEND=165\tGT\t0/0",
+            "chr20\t170\t.\tT\t<*>\t0\tLowQual\tEND=175\tGT:GQ\t0/0:30",
+            "chr20\t180\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:5",
+            "chr20\t200\t.\tC\tT,<*>\t30\tRefCall\t.\tGT:GQ\t0/0:30",
+            "chr20\t212\t.\tG\tA,<*>\t30\tPASS\t.\tGT:GQ\t0/1:3",
+            "chr20\t215\t.\tT\t<*>\t0\t.\tEND=225\tGT:GQ\t0/0:19",
+            "chr20\t230\t.\tG\t<*>\t0\t.\tEND=235\tGT:GQ\t0/0:.",
+        ];
+        let text = format!("{HEAD}\tS\n{}\n", body.join("\n"));
+        let (calls, tsv) = run_text("weak", &text, "S").expect("export");
+        let want = [
+            ("rs101", "--"),
+            ("rs102", "CC"),
+            ("rs103", "GG"),
+            ("rs104", "--"),
+            ("rs105", "--"),
+            ("rs106", "CC"),
+            ("rs107", "AG"),
+            ("rs108", "--"),
+            ("rs109", "GG"),
+        ];
+        for (id, g) in want {
+            assert_eq!(call(&calls, id), g, "{id}");
+        }
+        let row = "no_call: weak reference call (GQ below 20, or filtered)\t4";
+        assert!(tsv.lines().any(|l| l == row), "{row} in {tsv}");
+    }
+
+    #[test]
+    fn a_multi_sample_gvcf_is_read_only_for_the_sample_it_names() {
+        let text = format!(
+            "{HEAD}\tFATHER\tCHILD\nchr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:30\t1/1:30\n"
+        );
+        let e = run_text("two", &text, "S").unwrap_err();
+        assert!(
+            e.code == 1 && e.msg.contains("2 samples") && e.msg.contains("FATHER, CHILD"),
+            "{e:?}"
+        );
+        let (child, _) = run_text("two", &text, "CHILD").expect("export");
+        assert_eq!(call(&child, "rs101"), "TT");
+        let (father, _) = run_text("two", &text, "FATHER").expect("export");
+        assert_eq!(call(&father, "rs101"), "AA");
+        // One sample column is read whatever its name.
+        let one = format!("{HEAD}\tNA\nchr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/1:30\n");
+        let (calls, _) = run_text("one", &one, "S").expect("export");
+        assert_eq!(call(&calls, "rs101"), "AT");
+        // Without a #CHROM line two sample columns cannot be told apart.
+        let bare = "chr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:30\t1/1:30\n";
+        let e = run_text("bare", bare, "S").unwrap_err();
+        assert!(e.code == 1 && e.msg.contains("#CHROM"), "{e:?}");
+    }
+
     #[test]
     fn rsids_keep_their_spelling() {
         let mut names = Vec::new();
