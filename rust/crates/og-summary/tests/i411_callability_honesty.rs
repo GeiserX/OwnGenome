@@ -1,9 +1,11 @@
 //! A gene a step of its own calls (Parascopy, pypgx, the copy-number
 //! engine) and that step 16b did not read is listed under `not_read_owned`
 //! with its owner. Its entry also says which step that is and whether it ran
-//! for this sample (`owner_step`, `owner_status`), so a gene whose own step
-//! never ran no longer reads as handed to a step that answered for it. The
-//! share keeps its four decimals: 0.8988 stays 0.8988.
+//! for this sample (`owner_step`, `owner_status`: ran, not run, or from an
+//! earlier run, the collector's stale rule), so a gene whose own step never
+//! ran no longer reads as handed to a step that answered for it. A Parascopy
+//! gene is judged by its own table. The share keeps its four decimals:
+//! 0.8988 stays 0.8988.
 
 use og_summary::collect::{Group, Input, post};
 use pycompat::json::Value;
@@ -150,12 +152,24 @@ fn an_owned_gene_whose_step_never_ran_says_not_run() {
     assert_eq!(step("RHD").as_deref(), Some("41"));
 }
 
+/// The `table` column of step 35's Parascopy catalog: one table per row.
+fn parascopy_tables() -> Vec<String> {
+    let text = fs::read_to_string(format!("{REPO}/assets/paralog_loci.tsv")).unwrap();
+    let mut rows = text.lines().filter(|l| !l.starts_with('#'));
+    let head: Vec<&str> = rows.next().unwrap().split('\t').collect();
+    let col = head.iter().position(|h| *h == "table").unwrap();
+    rows.map(|l| l.split('\t').nth(col).unwrap().to_owned())
+        .collect()
+}
+
 #[test]
 fn an_owned_gene_whose_step_ran_says_ran() {
     // the Nextflow layout: the table under coverage/
     let d = folder("ran", "coverage", |_, _| 0);
+    for t in parascopy_tables() {
+        d.put(&format!("paralogs/S_{t}_copy_number.tsv"), b"x\n");
+    }
     for f in [
-        "paralogs/S_smn_copy_number.tsv",
         "paralogs/S_hba_copy_number.tsv",
         "paralogs/S_cyp21a2_psv.tsv",
         "paralogs/S_cn_dosage.tsv",
@@ -192,6 +206,46 @@ fn each_owner_is_judged_by_its_own_file() {
             assert_eq!(status, "not run", "{gene} ({owner})");
         }
     }
+}
+
+#[test]
+fn a_parascopy_gene_is_judged_by_its_own_table() {
+    // GBA1's table is there, SMN1's is not: step 35 answered GBA1 only.
+    let d = folder("own-table", "mosdepth", |_, _| 0);
+    d.put("paralogs/S_gba1_copy_number.tsv", b"x\n");
+    let got = owned(&collect(&d));
+    let status = |g: &str| got.iter().find(|r| r.0 == g).map(|r| r.3.clone()).unwrap();
+    assert_eq!(status("GBA1"), "ran");
+    assert_eq!(status("SMN1"), "not run");
+    assert_eq!(status("SMN2"), "not run");
+}
+
+#[test]
+fn a_table_from_an_earlier_run_of_a_failed_step_says_so() {
+    // step 35 failed in this run; SMN1's table is left from an earlier run,
+    // GBA1's was written in this run before the step failed. The collector
+    // calls such a section stale; the owned gene says the same.
+    let d = folder("earlier", "mosdepth", |_, _| 0);
+    let now = std::time::SystemTime::now();
+    let started = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 60;
+    d.put(
+        "logs/run_status.tsv",
+        format!("meta\tstarted_epoch\t{started}\nstep\t35\tfailed (exit 1)\n").as_bytes(),
+    );
+    d.put("paralogs/S_smn_copy_number.tsv", b"x\n");
+    d.put("paralogs/S_gba1_copy_number.tsv", b"x\n");
+    fs::File::options()
+        .write(true)
+        .open(d.0.join("paralogs/S_smn_copy_number.tsv"))
+        .unwrap()
+        .set_modified(now - std::time::Duration::from_secs(3600))
+        .unwrap();
+    let got = owned(&collect(&d));
+    let status = |g: &str| got.iter().find(|r| r.0 == g).map(|r| r.3.clone()).unwrap();
+    assert_eq!(status("SMN1"), "from an earlier run");
+    assert_eq!(status("SMN2"), "from an earlier run");
+    assert_eq!(status("GBA1"), "ran");
+    assert_eq!(status("CYP2D6"), "not run");
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //! counts. Each returns the file it read and its typed data, `None` when
 //! the step wrote nothing, or the note of an unreadable section.
 
-use super::model::opt_str;
+use super::model::{RUN_ALL_STEPS, RunStatus, is_stale, opt_str};
 use crate::{basename, float, int, text_lines};
 use indexmap::IndexMap;
 use pycompat::csv::{DictReader, DictRow, Quoting};
@@ -205,27 +205,42 @@ pub struct Gene {
     pub reading: Reading,
 }
 
-/// The step that calls an owned gene, and whether it ran for this sample.
+/// The step that calls an owned gene, and what it left for this sample.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OwnerRun {
     pub step: &'static str,
-    pub ran: bool,
+    pub status: OwnerStatus,
 }
 
-impl OwnerRun {
-    fn status(&self) -> &'static str {
-        if self.ran { "ran" } else { "not run" }
+/// What the owner's step left in the sample folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnerStatus {
+    /// Its file is there, from this run.
+    Ran,
+    /// Its file is not there.
+    NotRun,
+    /// Its file is older than the last run and the step was not ok in that
+    /// run: the rule that makes a section stale.
+    Earlier,
+}
+
+impl OwnerStatus {
+    fn word(self) -> &'static str {
+        match self {
+            OwnerStatus::Ran => "ran",
+            OwnerStatus::NotRun => "not run",
+            OwnerStatus::Earlier => "from an earlier run",
+        }
     }
 }
 
 /// The step behind an owner of `assets/callability_genes.tsv` and the file
-/// that step writes in the sample folder (`{s}` the sample) when it ran.
-/// Parascopy's answer is its catalog tables, `paralogs/{s}_<table>_copy_number.tsv`
-/// other than step 35's HBA table and step 35b's Paraphase table, which share
-/// the folder. `None` for an owner this list does not know.
+/// that step writes in the sample folder (`{s}` the sample, `{t}` the
+/// gene's table in `assets/paralog_loci.tsv`) when it ran. `None` for an
+/// owner this list does not know.
 fn owner_step(owner: &str) -> Option<(&'static str, &'static str)> {
     Some(match owner {
-        "parascopy" => ("35", "paralogs/{s}_<table>_copy_number.tsv"),
+        "parascopy" => ("35", "paralogs/{s}_{t}_copy_number.tsv"),
         "pypgx" => ("32", "pypgx/{s}_pypgx_summary.tsv"),
         "cn_loci:HBA" => ("35", "paralogs/{s}_hba_copy_number.tsv"),
         "cn_loci:CYP21A2" => ("35", "paralogs/{s}_cyp21a2_psv.tsv"),
@@ -236,26 +251,46 @@ fn owner_step(owner: &str) -> Option<(&'static str, &'static str)> {
     })
 }
 
-/// Whether the owner's step wrote its file in `dir`, the sample folder.
-fn owner_ran(owner: &str, dir: &std::path::Path, s: &str) -> Option<OwnerRun> {
-    let (step, file) = owner_step(owner)?;
-    let ran = if owner == "parascopy" {
-        let (head, tail) = (format!("{s}_"), "_copy_number.tsv");
-        std::fs::read_dir(dir.join("paralogs")).is_ok_and(|entries| {
-            entries.flatten().any(|e| {
-                let n = e.file_name();
-                let n = n.to_string_lossy();
-                n.len() > head.len() + tail.len()
-                    && n.starts_with(&head)
-                    && n.ends_with(tail)
-                    && !["hba", "paraphase"].contains(&&n[head.len()..n.len() - tail.len()])
-                    && e.path().is_file()
-            })
-        })
+/// The file the owner's step writes for this gene in `dir`, the sample
+/// folder, and its step. A Parascopy gene without a table has no file:
+/// step 35 never answers for it.
+fn owner_file(
+    r: &CatalogRow,
+    dir: &std::path::Path,
+    s: &str,
+) -> Option<(&'static str, Option<std::path::PathBuf>)> {
+    let (step, file) = owner_step(&r.owner)?;
+    let file = if r.owner == "parascopy" {
+        r.table.as_deref().map(|t| file.replace("{t}", t))
     } else {
-        dir.join(file.replace("{s}", s)).is_file()
+        Some(file.to_owned())
     };
-    Some(OwnerRun { step, ran })
+    Some((step, file.map(|f| dir.join(f.replace("{s}", s)))))
+}
+
+/// What the owner's step left at `file`, judged as a section is
+/// ([`super::model::Section::new`]): a file older than the run's start, from
+/// a step that was not ok in that run, is from an earlier run.
+fn owner_status(
+    step: &str,
+    file: Option<&std::path::Path>,
+    run: Option<&RunStatus>,
+) -> OwnerStatus {
+    let Some(mtime) = file
+        .filter(|f| f.is_file())
+        .and_then(|f| pycompat::mtime::mtime(f).ok())
+    else {
+        return OwnerStatus::NotRun;
+    };
+    if let Some(run) = run
+        && let Some(started) = run.started_epoch
+        && RUN_ALL_STEPS.contains(&step)
+        && run.steps.get(step).map(String::as_str) != Some("ok")
+        && is_stale(mtime, started)
+    {
+        return OwnerStatus::Earlier;
+    }
+    OwnerStatus::Ran
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -272,6 +307,8 @@ pub struct CatalogRow {
     pub start: String,
     pub reasons: String,
     pub owner: String,
+    /// A Parascopy gene's table in `assets/paralog_loci.tsv`.
+    pub table: Option<String>,
 }
 
 /// Reads the catalog: its comment lines left out, cells as written.
@@ -306,7 +343,24 @@ pub fn read_catalog(assets: &str) -> Result<Vec<CatalogRow>, String> {
             start: cell("start")?,
             reasons: cell("reasons")?,
             owner: cell("owner")?,
+            table: None,
         });
+    }
+    // Step 35 writes one Parascopy table per row of paralog_loci.tsv, for
+    // the genes the row names.
+    if out.iter().any(|r| r.owner == "parascopy")
+        && crate::is_file(crate::join(assets, "paralog_loci.tsv"))
+    {
+        let mut tables = std::collections::HashMap::new();
+        for r in super::assets::asset_rows(assets, "paralog_loci.tsv")? {
+            let cell = |k: &str| r.get(k).flatten().unwrap_or_default().to_owned();
+            for g in cell("genes").split(',') {
+                tables.entry(g.to_owned()).or_insert_with(|| cell("table"));
+            }
+        }
+        for r in out.iter_mut().filter(|r| r.owner == "parascopy") {
+            r.table = tables.get(&r.gene).cloned();
+        }
     }
     Ok(out)
 }
@@ -368,8 +422,12 @@ impl Callability {
             .parent()
             .and_then(|p| p.parent());
         let sample = name.strip_suffix("_callability.bed.gz");
-        let mut runs: std::collections::HashMap<&str, Option<OwnerRun>> =
-            std::collections::HashMap::new();
+        // run-all.sh's run status, which tells a file of this run from one an
+        // earlier run left (Folder::open has read it already; a run status it
+        // could not read stopped the summary before this reader).
+        let run = folder
+            .and_then(|d| std::fs::read_to_string(d.join("logs").join("run_status.tsv")).ok())
+            .map(|t| RunStatus::parse(&t));
         let mut genes = Vec::with_capacity(catalog.len());
         for r in catalog {
             let reading = if r.start == "." || !contigs.contains(r.chrom.as_str()) {
@@ -394,11 +452,11 @@ impl Callability {
                 }
             };
             let owner = (r.owner != ".").then(|| r.owner.clone());
-            let owner_run = match (&owner, folder, sample) {
-                (Some(o), Some(dir), Some(s)) => runs
-                    .entry(r.owner.as_str())
-                    .or_insert_with(|| owner_ran(o, dir, s))
-                    .clone(),
+            let owner_run = match (folder, sample) {
+                (Some(dir), Some(s)) => owner_file(r, dir, s).map(|(step, file)| OwnerRun {
+                    step,
+                    status: owner_status(step, file.as_deref(), run.as_ref()),
+                }),
                 _ => None,
             };
             genes.push(Gene {
@@ -431,7 +489,7 @@ impl Callability {
                         if owned {
                             let run = g.owner_run.as_ref();
                             m.push(("owner_step", opt_str(run.map(|r| r.step))));
-                            m.push(("owner_status", opt_str(run.map(OwnerRun::status))));
+                            m.push(("owner_status", opt_str(run.map(|r| r.status.word()))));
                         }
                         if !owned {
                             m.push((
