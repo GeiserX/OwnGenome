@@ -22,6 +22,9 @@ og-io.workspace = true
 og-pedigree.workspace = true
 og-render.workspace = true
 og-bloodtype.workspace = true
+# og live serve: the summary the step headlines read while summary.json is
+# older than the steps that are done (og summary collect, in-process).
+og-summary.workspace = true
 
 [dev-dependencies]
 regex.workspace = true
