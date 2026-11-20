@@ -449,22 +449,22 @@ mod tests {
         d
     }
 
-    /// A FASTA whose chr2, 60 bases a line, holds the lactase row's base at
-    /// its position and A everywhere else.
+    /// A FASTA whose chr2 (60 bases a line, as its .fai says) holds the
+    /// lactase row's base at its position. Only that byte is written: the
+    /// check seeks to it through the .fai, and the rest of the 135 Mb contig
+    /// is a hole in a sparse file, so no test builds or writes a chromosome.
     fn lactase_fasta(d: &Path) -> (PathBuf, Row) {
         let lct = shipped()
             .into_iter()
             .find(|r| r.rsid == "rs4988235")
             .unwrap();
-        let n = usize::try_from(lct.pos).unwrap();
-        let mut seq = vec![b'A'; n];
-        seq[n - 1] = lct.ref_.as_bytes()[0];
-        let body: Vec<u8> = seq
-            .chunks(60)
-            .flat_map(|c| c.iter().copied().chain([b'\n']))
-            .collect();
+        let (n, i) = (lct.pos, lct.pos - 1);
         let fa = d.join("ref.fasta");
-        std::fs::write(&fa, [b">chr2\n".as_slice(), &body].concat()).unwrap();
+        let mut f = std::fs::File::create(&fa).unwrap();
+        f.write_all(b">chr2\n").unwrap();
+        f.seek(SeekFrom::Start(6 + i / 60 * 61 + i % 60)).unwrap();
+        f.write_all(lct.ref_.as_bytes()).unwrap();
+        f.set_len(6 + n.div_ceil(60) * 61).unwrap();
         std::fs::write(d.join("ref.fasta.fai"), format!("chr2\t{n}\t6\t60\t61\n")).unwrap();
         (fa, lct)
     }
