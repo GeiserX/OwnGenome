@@ -31,6 +31,9 @@ fn left_allele_moves_an_indel_to_the_left_end_of_its_repeat() {
     // An SNV, a REF that is not the rCRS, and nothing before m.1 stay.
     assert_eq!(k(3243, "A", "G"), al(3243, "A", "G"));
     assert_eq!(k(315, "G", "GG"), al(315, "G", "GG"));
+    // The whole REF is checked before trimming: m.314-315 is CC on the
+    // rCRS, so CG>CCG is off it even though its trimmed C>CC is not.
+    assert_eq!(k(314, "CG", "CCG"), al(314, "C", "CC"));
     assert_eq!(k(1, "G", "GG"), al(1, "G", "GG"));
     assert_eq!(k(16570, "A", "AA"), al(16570, "A", "AA"));
 }

@@ -321,13 +321,15 @@ pub fn min_allele(mut pos: i128, r: &str, a: &str) -> Allele {
 /// or whose REF is not the rCRS there (another chrM), stays as
 /// [`min_allele`] gives it.
 pub fn left_allele(pos: i128, r: &str, a: &str) -> Allele {
-    let (pos, r, a) = min_allele(pos, r, a);
+    // The whole REF as written, before trimming: m.314 CG>CCG trims to a
+    // C>CC that is on the rCRS, but its G at m.315 is not.
     let on_rcrs = r.chars().enumerate().all(|(k, c)| {
         i128::try_from(k)
             .ok()
             .and_then(|k| rcrs_base(pos + k))
             .is_some_and(|b| b.eq_ignore_ascii_case(&c))
     });
+    let (pos, r, a) = min_allele(pos, r, a);
     if r.chars().count() == a.chars().count() || !on_rcrs {
         return (pos, r, a);
     }
