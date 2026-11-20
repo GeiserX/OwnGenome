@@ -1544,6 +1544,15 @@ mod tests {
         let bare = "chr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:30\t1/1:30\n";
         let e = run_text("bare", bare, "S").unwrap_err();
         assert!(e.code == 1 && e.msg.contains("#CHROM"), "{e:?}");
+        // Every record is checked while no #CHROM was seen, not only the
+        // first one.
+        let late = "chr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/1:30\n\
+                    chr20\t150\t.\tC\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:30\t1/1:30\n";
+        let e = run_text("late", late, "S").unwrap_err();
+        assert!(
+            e.code == 1 && e.msg.contains("line 2") && e.msg.contains("#CHROM"),
+            "{e:?}"
+        );
     }
 
     #[test]
