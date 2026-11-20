@@ -2,7 +2,7 @@
 
 ## What This Does
 
-Reads your genotype at a small set of well-replicated variants and prints what each genotype means in plain words: lactase persistence (digesting milk as an adult), caffeine metabolism and coffee intake, alcohol flush, bitter taste, earwax type, the photic sneeze reflex, smelling asparagus in urine, muscle fibre type, eye, hair and skin pigmentation, red hair, hair thickness, an enzyme note on MTHFR C677T (not health advice), secretor status, vitamin D level, bilirubin (the Gilbert syndrome genotype), nicotine breakdown, two variants linked to a high Lp(a) level, CFTR R117H (read with the CFTR poly-T tract of [step 9](09-str-expansions.md)), and the APOE ε2/ε3/ε4 alleles. A rule table reads several sites together: the APOE pair, the TAS2R38 bitter-taste haplotypes (PAV, AVI), phased from the reads when that is needed, the APOL1 G1 kidney risk variant, the alpha-1 antitrypsin Pi type (SERPINA1 M, S, Z), the HFE haemochromatosis genotype (C282Y, H63D), the vitamin D-binding protein type (GC), the chromosome 9p21 heart disease haplotype and the 17q21.31 H1/H2 lineage. Each row names the primary paper it comes from. On by default.
+Reads your genotype at a small set of well-replicated variants and prints what each genotype means in plain words: lactase persistence (digesting milk as an adult), caffeine metabolism and coffee intake, alcohol flush, bitter taste, earwax type, the photic sneeze reflex, smelling asparagus in urine, muscle fibre type, eye, hair and skin pigmentation, red hair, hair thickness, an enzyme note on MTHFR C677T (not health advice), secretor status, vitamin D level, bilirubin (a Gilbert syndrome marker), nicotine breakdown, two variants linked to a high Lp(a) level, CFTR R117H (read with the CFTR poly-T tract of [step 9](09-str-expansions.md)), and the APOE ε2/ε3/ε4 alleles. A rule table reads several sites together: the APOE pair, the TAS2R38 bitter-taste haplotypes (PAV, AVI), phased from the reads when that is needed, the APOL1 G1 kidney risk variant, the alpha-1 antitrypsin Pi type (SERPINA1 M, S, Z), the HFE haemochromatosis genotype (C282Y, H63D), the vitamin D-binding protein type (GC), the chromosome 9p21 heart disease haplotype and the 17q21.31 H1/H2 lineage. Each row names the primary paper it comes from. On by default.
 
 ## Why
 
@@ -50,7 +50,7 @@ Both reports have a Traits section: every row with its genotype, reading, note a
 
 | Trait | Variants | Papers (PubMed) |
 |---|---|---|
-| Lactase persistence | rs4988235 (-13910), rs182549 (-22018), rs145946881 (-14010), rs41380347 (-13915), rs41525747 (-13907) | 11788828, 17159977 |
+| Lactase persistence | rs4988235 (-13910), rs182549 (-22018), rs145946881 (-14010), rs41380347 (-13915), rs41525747 (-13907), rs869051967 (-14009) | 11788828, 17159977, 23993196 |
 | Alcohol flush, alcohol metabolism | rs671 (ALDH2*2), rs1229984 (ADH1B*2) | 2562960, 2014795 |
 | Caffeine and coffee | rs762551 (CYP1A2), rs2472297 (CYP1A1-CYP1A2), rs4410790 (AHR) | 10233211, 21357676, 21490707 |
 | Bitter taste (PTC, PROP) | rs713598, rs1726866, rs10246939 (TAS2R38) | 12595690, 15723792 |
@@ -63,7 +63,7 @@ Both reports have a Traits section: every row with its genotype, reading, note a
 | MTHFR enzyme note, not health advice ([why](not-reported.md#not-reported-on-purpose)) | rs1801133 (MTHFR C677T) | 7647779, 23288205 |
 | Secretor status | rs601338 (FUT2) | 7876235, 12692541 |
 | Vitamin D level | rs2282679 in GC, the vitamin D binding protein gene | 20541252 |
-| Bilirubin, Gilbert syndrome genotype | rs887829 (UGT1A1) | 19414484, 37456363 |
+| Bilirubin, a Gilbert syndrome marker | rs887829 (UGT1A1) | 19414484, 37456363 |
 | Nicotine breakdown | rs1801272 (CYP2A6*2) | 2322567, 9827545 |
 | Lp(a) level | rs10455872, rs3798220 (LPA); [step 46](46-lpa.md) adds the KIV-2 repeat count, and the report's Lp(a) section reads the three together | 20032323, 36036785, 29973585 |
 | CFTR R117H, read with the poly-T tract of [step 9](09-str-expansions.md) | rs78655421 (CFTR) | 32404922 |
@@ -108,10 +108,10 @@ The rules today:
 
 The six rules after TAS2R38 are read without phase. A double heterozygote of each rests on an assumption, and the reading says it (see `needs_phase no` above). SERPINA1 PiSZ, HFE C282Y/H63D and GC Gc1S/Gc2 assume the two changes sit on different copies. APOL1 G0/G1, CAD9p21 "one risk copy" and MAPT H1/H2 assume both sites sit on one copy: the two APOL1 G1 changes were in perfect linkage disequilibrium in Genovese et al. (2010), and the 9p21 and 17q21.31 tags each mark one haplotype. A copy the rule does not describe, such as a 9p21 copy with only one of the two risk alleles, is `other_haplotype`, not read. What each rule leaves out, said in its note:
 
-- APOL1 G2 (rs71785313) is a 6-base deletion. The rule table reads single-base sites only, so the rule itself reads G1, and a G2 copy reads as G0 there. The HTML and text reports read G2 beside the rule (`og summary collect`, the `apol1` module of `rust/crates/og-summary/src/collect/group_c/traits.rs`) from the sample's gVCF, or its VCF when there is no gVCF, and show the G1 plus G2 result under "With G2": G1/G2, G2/G2 and G1/G1 are the high-risk genotype. Two G2 copies read G2/G2 even when the G1 sites were not read. A VCF without reference blocks cannot tell a reference base from a position with no reads, so there a result with no G2 copy is marked `(no G2 call)`. The G2 reading uses the same floor as the trait sites: a call over the deletion span with a GQ below 20, a G2 call whose FILTER is not `PASS` or `.`, or a reference call whose FILTER is not `PASS`, `.` or `RefCall`, leaves G2 not read, so two G2 copies at GQ 5 never read G2/G2. The Nextflow report gets the sample's gVCF too (DeepVariant's, or the samplesheet's `gvcf` column), so both runs read the gVCF when there is one.
+- APOL1 G2 (rs71785313) is a 6-base deletion. The rule table reads single-base sites only, so the rule itself reads G1, and a G2 copy reads as G0 there. The HTML and text reports read G2 beside the rule (`og summary collect`, the `apol1` module of `rust/crates/og-summary/src/collect/group_c/traits.rs`) from the sample's gVCF, or its VCF when there is no gVCF, and show the G1 plus G2 result under "With G2": G1/G2, G2/G2 and G1/G1 are the high-risk genotype. Two G2 copies read G2/G2 even when the G1 sites were not read. A VCF without reference blocks cannot tell a reference base from a position with no reads, so there a result with no G2 copy is marked `(no G2 call)`. The G2 reading uses the same floor as the trait sites: a call over the deletion span with a GQ below 20, a G2 call whose FILTER is not `PASS` or `.`, or a reference call whose FILTER is not `PASS`, `.` or `RefCall`, leaves G2 not read, so two G2 copies at GQ 5 never read G2/G2. The Nextflow report gets the sample's gVCF too (DeepVariant's, or the samplesheet's `gvcf` column), so both runs read the gVCF when there is one. The `result` column of `traits/${SAMPLE}_genotype_rules.tsv` is the rule's own result and never shows G2, so a script that needs the APOL1 result with G2 reads `summary.json`: in `sections.traits.data.rules`, the line whose `rule` is `APOL1` has the field `g2`, whose `result` and `reading` are the G1 plus G2 answer the reports show.
 - SERPINA1: M is any copy with neither S nor Z; rarer deficiency and null alleles are not read. A serum level confirms a deficiency.
 - HFE: the C282Y homozygote is also a secondary finding (`assets/acmg_sf.tsv`, [step 23](23-clinical-filter.md)); the rule gives the reading of every genotype.
-- GC: the protein levels are those of Powe et al. (2013), whose monoclonal assay was questioned in later letters. A protein type, not a vitamin D deficiency.
+- GC: the protein levels are those of Powe et al. (2013), whose monoclonal assay was questioned in later letters. Each reading quotes them as that study's group mean, not as an estimate of your own level. A protein type, not a vitamin D deficiency.
 
 Two more markers of the planned list are not rules here, because each sits in sequence the genome holds more than once and a gVCF genotype at one position cannot read it. They are read from the BAM by the step that counts the copies, as a fraction of copies rather than a genotype (`MARKERS` in `rust/crates/og-cn/src/markers.rs`, which pins each one's dbSNP b157 record and the GRCh38 sequence around every copy):
 
@@ -139,12 +139,12 @@ The APOE line is the APOE rule of `assets/genotype_rules.tsv`, written into the 
 
 ## Runtime
 
-Seconds: bcftools reads the gVCF at the table's positions through its index (36 rows and 17 rule sites), and WhatsHap, when a rule has two or more heterozygous sites to phase, reads the BAM over them (each rule's sites lie within about 7 kb).
+Seconds: bcftools reads the gVCF at the table's positions through its index (37 rows and 17 rule sites), and WhatsHap, when a rule has two or more heterozygous sites to phase, reads the BAM over them (each rule's sites lie within about 7 kb).
 
 ## Notes
 
 - A reading is what the cited studies found on average in the people they studied. It is not a diagnosis, and for most traits it says little about one person.
-- Rows marked `ancestry` read differently in other populations; their note says how. Lactase persistence is the clearest case: -13910T explains it in Europeans, and the three African alleles have their own rows.
+- Rows marked `ancestry` read differently in other populations; their note says how. Lactase persistence is the clearest case: -13910T explains it in Europeans, and the three African alleles and the Ethiopian -14009G have their own rows. These are the main known persistence alleles, not every one, so a genotype with none of them does not prove lactose intolerance; the -22018 marker travels with -13910T and is not counted as a persistence allele.
 - Each traits table row is read alone. The genotype rules read several sites together: APOE, the TAS2R38 taster haplotype with read-backed phase, and the six rules of the table above, which use read-backed phase when it covers their heterozygous sites. Two different MC1R red-hair variants on the same or on different copies are still read one by one; their note says so.
 - SNVs only; the table has no indel and no chrX, chrY or chrM row.
 - Positions with no genotype (no reads, or a no-call) are listed as not read. On the e2e fixture, a small slice of the HG002 genome, only the table positions inside its slices are read, and the e2e case checks their genotypes against the GIAB truth.
