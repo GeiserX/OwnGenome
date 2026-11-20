@@ -1069,7 +1069,9 @@
     fetchedFor = key;
     U.getJSON('results.json').then(function (r) {
       if (key !== fetchedFor) { return; }
-      if (!(r && (r.chapters || r.note))) { notLoaded(key); return; }
+      // Results carry their chapters as a list, or only a note; chapters of any other shape would throw while
+      // drawing, after results was set, and leave a broken report.
+      if (!(r && (Array.isArray(r.chapters) || (!r.chapters && r.note)))) { notLoaded(key); return; }
       unloaded = false;
       results = r;
       resultsKey = key;

@@ -5,7 +5,8 @@
 //! the live site's Content-Security-Policy.
 //!
 //! - the person page whose results.json answers 500 says the results could not be loaded, with Try again;
-//!   once the stub recovers, Try again draws them. An OK answer draws as before.
+//!   once the stub recovers, Try again draws them. An OK answer draws as before. An answer whose chapters
+//!   are not a list says it could not load them too.
 //! - the home page whose runs.json answers 500, or no answer, says the list of people could not be loaded,
 //!   with Try again, and keeps the server's list of runs; Try again draws the page.
 //! - the family page whose family.json answers `{}` says the family could not be loaded; Try again draws it.
@@ -401,6 +402,19 @@ fn a_page_that_cannot_load_its_data_says_so() {
         ok == "Assessed, no finding|false",
         ok,
     );
+    // An answer whose chapters are not a list is not results: the page says so instead of a broken report.
+    stub.set(
+        "/runs/DEMO-001/results.json",
+        Answer::Json(r#"{"chapters": {}}"#),
+    );
+    visit(&mut b, &stub.url("/runs/DEMO-001/?shape"));
+    let said = text(b.wait(&failed_box("results-failed"), secs(20)));
+    check(
+        "person: results.json whose chapters are not a list says 'The results could not be loaded.' with Try again",
+        said == "The results could not be loaded. Try again",
+        said,
+    );
+    stub.set("/runs/DEMO-001/results.json", Answer::File);
 
     // The home page: runs.json at 500, then no answer at all (offline), then Try again once it answers.
     for (how, a) in [
