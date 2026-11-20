@@ -21,6 +21,8 @@
   // 'none': in no family; 'pending' or 'failed': in one whose roles are not known (yet); 'known'.
   var familyStatus = 'none';
   var openingSeeded = false;
+  // The last read of results.json failed while no results are drawn: the report says so, with a retry.
+  var unloaded = false;
   var shown = {};  // act openings transferred from the gate, plus the independent APOE switch
   var genomeMap = null, resultsKey = null;  // Figure 1 (map.js), and the results it was built for
   var panel = document.getElementById('results');
@@ -727,6 +729,12 @@
   }
   function drawSections() {
     panel.textContent = '';
+    if (!results && unloaded) {
+      var b = el('button', { type: 'button', 'class': 'more', id: 'results-retry' }, 'Try again');
+      b.addEventListener('click', retry);
+      add(panel, add(el('div', { 'class': 'load-failed', id: 'results-failed' }), el('p', {}, 'The results could not be loaded.'), b));
+      return;
+    }
     if (results && results.note && !(results.chapters || []).length) {
       add(panel, el('p', { 'class': 'empty' }, results.note));
       return;
@@ -1061,12 +1069,31 @@
     fetchedFor = key;
     U.getJSON('results.json').then(function (r) {
       if (key !== fetchedFor) { return; }
-      if (!(r && (r.chapters || r.note))) { fetchedFor = null; return; }
+      if (!(r && (r.chapters || r.note))) { notLoaded(key); return; }
+      unloaded = false;
       results = r;
       resultsKey = key;
       redraw(true);
       route();
-    }).catch(function () { if (key === fetchedFor) { fetchedFor = null; } });
+    }).catch(function () { notLoaded(key); });
+  }
+  // A failed read (an error answer, no answer, or one that is not results) is asked again on the next state.
+  // While nothing is drawn the report says it could not load them: a finished run never reads as a report with
+  // no results. Results already drawn stay as they are.
+  function notLoaded(key) {
+    if (key !== fetchedFor) { return; }
+    fetchedFor = null;
+    if (results) { return; }
+    unloaded = true;
+    drawSections();
+    root.setAttribute('data-pgp-status', 'offline');
+  }
+  function retry() {
+    unloaded = false;
+    fetchedFor = null;
+    panel.textContent = '';
+    add(panel, el('p', { 'class': 'dim' }, 'Loading the results.'));
+    load();
   }
   // Every fold of the report as the reader left it, open or closed, by a key that names the same fold in
   // the next drawing: its data-card (a finding's caveat "More" carries its finding's id), else the element
