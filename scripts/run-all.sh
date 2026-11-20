@@ -289,10 +289,10 @@ if [[ ",${T// /}," == *",bloodtype,"* ]]; then plan "41 Blood groups" bloodtype 
 if [[ ",${T// /}," == *",lpa,"* ]]; then plan "46 Lp(a) KIV-2 count" lpa "$([ -n "$NOBAM" ] || echo 'no BAM')" || true; else KNOWN+=" lpa"; fi
 # Step 52 (MUC1 VNTR frameshifts, VNtyper) is opt-in and listed only when TOOLS names it; it reads the BAM.
 if [[ ",${T// /}," == *",vntyper,"* ]]; then plan "52 MUC1 VNTR (VNtyper)" vntyper "$([ -n "$NOBAM" ] || echo 'no BAM')" || true; else KNOWN+=" vntyper"; fi
-# Step 49 (CHIP) is opt-in and listed only when TOOLS names it: Mutect2 on the BAM, with step 29's gnomAD and panel of normals when installed.
+# Step 49 (CHIP) is opt-in and listed only when TOOLS names it: Mutect2 on the BAM, with step 29's gnomAD, panel of normals and common sites when installed.
 CG="${G}/reference/ensembl/Homo_sapiens.GRCh38.${ENSEMBL_GFF_RELEASE}.chr.gff3.gz"
 if [[ ",${T// /}," == *",chip,"* ]]; then plan "49 CHIP (clonal blood cells)" chip "$(need "$CG")" && NF+=(--chip_gff "$CG") \
-  && for r in chip_germline_resource:af-only-gnomad chip_pon:1000g_pon; do f="${G}/somatic/${r#*:}.hg38.vcf.gz"; [ ! -e "${f}.tbi" ] || arg "--${r%%:*}" "$f"; done
+  && for r in chip_germline_resource:af-only-gnomad chip_pon:1000g_pon chip_common_sites:small_exac_common_3; do f="${G}/somatic/${r#*:}.hg38.vcf.gz"; [ ! -e "${f}.tbi" ] || arg "--${r%%:*}" "$f"; done
 else KNOWN+=" chip"; fi
 # Step 42 reads the gVCF only: DeepVariant writes one for a FASTQ or BAM row, a BAM+VCF row has one when it lies beside the VCF.
 plan "42 Traits panel" traits "$([ -z "$fv" ] || [ -n "$GROW" ] || echo "no gVCF: ${GV#"$G"/}")" || true

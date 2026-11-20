@@ -7,7 +7,9 @@
                    side) on the reference's contigs as a BED (once per run)
     CHIP_MUTECT2   Mutect2 tumour-only on that BED, the read orientation
                    model and FilterMutectCalls; gnomAD's germline resource
-                   and a panel of normals when given
+                   and a panel of normals when given, and with the common
+                   sites the contamination estimate (GetPileupSummaries,
+                   CalculateContamination) FilterMutectCalls reads
     CHIP_ANNOTATE  bcftools csq names each change on its transcript, and
                    bcftools mpileup counts the depth over the BED
     CHIP_REPORT    <id>_chip.tsv (each protein change with its status) and
@@ -72,6 +74,8 @@ process CHIP_MUTECT2 {
     path(germline_index)
     path(pon)             // [] without --chip_pon
     path(pon_index)
+    path(common)          // [] without --chip_common_sites
+    path(common_index)
 
     output:
     tuple val(meta), path("${meta.id}_chip_filtered.vcf.gz"), emit: vcf
@@ -83,11 +87,25 @@ process CHIP_MUTECT2 {
     script:
     // The same commands as scripts/49-chip.sh
     def resources = (germline ? "--germline-resource ${germline} " : '') + (pon ? "-pon ${pon}" : '')
+    def common_sites = common ? "${common}" : ''
     """
     gatk Mutect2 -R ${reference} -I ${bam} -L ${bed} -O unfiltered.vcf.gz --f1r2-tar-gz f1r2.tar.gz \\
         --native-pair-hmm-threads ${task.cpus} --max-mnp-distance 0 ${resources}
     gatk LearnReadOrientationModel -I f1r2.tar.gz -O orientation.tar.gz
-    gatk FilterMutectCalls -R ${reference} -V unfiltered.vcf.gz --ob-priors orientation.tar.gz \\
+    # Another person's DNA in the sample adds alleles at the VAF of a small
+    # clone: the estimate from the common sites inside the BED lets
+    # FilterMutectCalls mark those calls.
+    common_sites='${common_sites}'
+    contamination=''
+    if [ -n "\$common_sites" ]; then
+        gatk GetPileupSummaries -I ${bam} -V "\$common_sites" -L "\$common_sites" -L ${bed} \\
+            --interval-set-rule INTERSECTION -O pileups.table
+        gatk CalculateContamination -I pileups.table --tumor-segmentation segments.table -O contamination.table
+        contamination='--contamination-table contamination.table --tumor-segmentation segments.table'
+    else
+        echo "chip: no --chip_common_sites, so FilterMutectCalls runs without a contamination estimate." >&2
+    fi
+    gatk FilterMutectCalls -R ${reference} -V unfiltered.vcf.gz --ob-priors orientation.tar.gz \$contamination \\
         -O ${meta.id}_chip_filtered.vcf.gz
 
     printf '"%s":\\n    gatk: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

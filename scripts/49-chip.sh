@@ -6,7 +6,10 @@
 # exons (10 bases wider on each side) of the genes in assets/chip_genes.tsv,
 # each on its MANE Select transcript from Ensembl's gene annotation (setup.sh
 # --chip-data). gnomAD's AF-only germline resource and the panel of normals of
-# step 29 are used when they are in GENOME_DIR/somatic/. bcftools csq names
+# step 29 are used when they are in GENOME_DIR/somatic/, and so is step 29's
+# common-sites VCF: GetPileupSummaries and CalculateContamination estimate how
+# much of the sample is another person's DNA, and FilterMutectCalls gets that
+# estimate, so a contaminant's alleles are not read as a clone. bcftools csq names
 # each change on that transcript, and og chip (bin/og) keeps the changes in
 # the table's CHIP classes, leaves out the ones whose VAF looks inherited (35%
 # and up) or is under the 2% that defines CHIP, notes the kept ones whose
@@ -22,7 +25,8 @@
 #         reference/ensembl/Homo_sapiens.GRCh38.<ENSEMBL_GFF_RELEASE>.chr.gff3.gz
 # Output: chip/<sample>_chip.tsv (one row per protein change, with its status),
 #         chip/<sample>_chip_depth.tsv (depth and detection limit per gene),
-#         chip/<sample>_chip_filtered.vcf.gz (Mutect2's calls)
+#         chip/<sample>_chip_filtered.vcf.gz (Mutect2's calls),
+#         chip/<sample>_chip_contamination.table (the estimate, with the common-sites VCF)
 # CHIP_GENES=FILE uses another gene table with the columns of assets/chip_genes.tsv.
 set -euo pipefail
 
@@ -43,6 +47,7 @@ OUTDIR="${S}/chip"
 P="${OUTDIR}/${SAMPLE}_chip"
 GNOMAD_VCF="${GENOME_DIR}/somatic/af-only-gnomad.hg38.vcf.gz"
 PON_VCF="${GENOME_DIR}/somatic/1000g_pon.hg38.vcf.gz"
+COMMON_VCF="${GENOME_DIR}/somatic/small_exac_common_3.hg38.vcf.gz"
 
 echo "============================================"
 echo "  Step 49: Clonal haematopoiesis (CHIP)"
@@ -83,8 +88,23 @@ fi
 run_in --cpus "$THREADS" --memory 8g "$GATK_IMAGE" "${M2[@]}"
 run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk LearnReadOrientationModel -I "$(cpath "${P}_f1r2.tar.gz")" \
   -O "$(cpath "${P}_orientation.tar.gz")"
-run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk FilterMutectCalls -R "${REF_FASTA_C}" -V "$(cpath "${P}_unfiltered.vcf.gz")" \
-  --ob-priors "$(cpath "${P}_orientation.tar.gz")" -O "$(cpath "${P}_filtered.vcf.gz")"
+FILTER=(gatk FilterMutectCalls -R "${REF_FASTA_C}" -V "$(cpath "${P}_unfiltered.vcf.gz")"
+  --ob-priors "$(cpath "${P}_orientation.tar.gz")" -O "$(cpath "${P}_filtered.vcf.gz")")
+# Another person's DNA in the sample adds alleles at a low VAF, the VAF of a
+# small clone. The contamination estimate comes from the common sites inside
+# the same exons, as in step 29, and lets FilterMutectCalls mark those calls.
+rm -f "${P}_contamination.table" "${P}_segments.table"
+if [ -f "$COMMON_VCF" ] && [ -f "${COMMON_VCF}.tbi" ]; then
+  echo "  contamination estimate: common sites ${COMMON_VCF}"
+  run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk GetPileupSummaries -I "$(cpath "$BAM")" -V "$(cpath "$COMMON_VCF")" \
+    -L "$(cpath "$COMMON_VCF")" -L "$(cpath "${P}.bed")" --interval-set-rule INTERSECTION -O "$(cpath "${P}_pileups.table")"
+  run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk CalculateContamination -I "$(cpath "${P}_pileups.table")" \
+    --tumor-segmentation "$(cpath "${P}_segments.table")" -O "$(cpath "${P}_contamination.table")"
+  FILTER+=(--contamination-table "$(cpath "${P}_contamination.table")" --tumor-segmentation "$(cpath "${P}_segments.table")")
+else
+  echo "  no common-sites VCF (${COMMON_VCF}): no contamination estimate, so another person's DNA in the sample can pass as a small clone (docs/49-chip.md says how to install it)."
+fi
+run_in --cpus 2 --memory 4g "$GATK_IMAGE" "${FILTER[@]}"
 
 echo "[3/4] Naming each change on its transcript (bcftools csq) and counting the depth (bcftools mpileup)..."
 # norm splits multi-allelic records, so AD and AF hold one ALT each; csq
@@ -105,7 +125,7 @@ echo "[4/4] CHIP classes, germline exclusion and detection limit..."
 "${OG[@]}" report --genes "$(cpath "${OUTDIR}/chip_genes.tsv")" --gff "$(cpath "${P}.gff3")" --bed "$(cpath "${P}.bed")" \
   --calls "$(cpath "${P}_calls.tsv")" --depth "$(cpath "${P}_pileup.tsv")" --sample "$SAMPLE" \
   --out "$(cpath "${P}.tsv")" --depth-out "$(cpath "${P}_depth.tsv")"
-rm -f "${P}_pileup.tsv" "${P}_f1r2.tar.gz" "${P}_orientation.tar.gz"
+rm -f "${P}_pileup.tsv" "${P}_f1r2.tar.gz" "${P}_orientation.tar.gz" "${P}_pileups.table" "${P}_segments.table"
 
 echo ""
 echo "Possible CHIP calls, not a diagnosis (${P}.tsv):"

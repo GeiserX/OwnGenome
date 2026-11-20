@@ -14,7 +14,7 @@ The germline caller of step 3 is built for 50% and 100% alleles and does not rep
 
 ## Tool
 
-- GATK Mutect2, tumour-only, then LearnReadOrientationModel and FilterMutectCalls
+- GATK Mutect2, tumour-only, then LearnReadOrientationModel and FilterMutectCalls; GetPileupSummaries and CalculateContamination for the contamination estimate
 - bcftools csq, which names each change on the gene's MANE Select transcript, and bcftools mpileup for the depth
 - `og chip prepare` and `og chip report` (the Rust binary `og`, `rust/crates/og-chip`), applying the gene table `assets/chip_genes.tsv`; `og chip check-table` checks that table
 
@@ -30,6 +30,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 - the reference with its `.fai` and `.dict`
 - Ensembl's GRCh38 gene annotation, `reference/ensembl/Homo_sapiens.GRCh38.<release>.chr.gff3.gz` (`ENSEMBL_GFF_RELEASE` in `versions.env`, about 110 MB). Install it once with `./scripts/setup.sh --chip-data "${GENOME_DIR}"`; it is checked against `ENSEMBL_GFF_SHA256`.
 - Optional, and the same files as [step 29](29-mutect2-somatic.md): gnomAD's AF-only germline resource `somatic/af-only-gnomad.hg38.vcf.gz` and a panel of normals `somatic/1000g_pon.hg38.vcf.gz`, each with its `.tbi`. Without gnomAD, inherited variants are left out by their VAF only.
+- Optional, and recommended: step 29's common-sites VCF `somatic/small_exac_common_3.hg38.vcf.gz` with its `.tbi` ([step 29](29-mutect2-somatic.md) says how to download it). With it the step estimates how much of the sample is another person's DNA and FilterMutectCalls reads that estimate. Without it the log says there is no contamination estimate, and a contaminant's alleles can pass as a small clone.
 
 ## Command
 
@@ -38,12 +39,12 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 ./scripts/49-chip.sh your_name
 ```
 
-With `run-all.sh`: `TOOLS=...,chip`. It is opt-in, so a run lists step 49 only when `TOOLS` names it, and it is skipped without a BAM or without the annotation. In the Nextflow pipeline: `chip` in `--tools` with `--chip_gff` (and optionally `--chip_germline_resource` and `--chip_pon`), processes `CHIP_PREPARE`, `CHIP_MUTECT2`, `CHIP_ANNOTATE` and `CHIP_REPORT`. `CHIP_GENES=FILE` runs the script with another table in the same layout.
+With `run-all.sh`: `TOOLS=...,chip`. It is opt-in, so a run lists step 49 only when `TOOLS` names it, and it is skipped without a BAM or without the annotation. In the Nextflow pipeline: `chip` in `--tools` with `--chip_gff` (and optionally `--chip_germline_resource`, `--chip_pon` and `--chip_common_sites`; `run-all.sh` passes each one installed under `somatic/`), processes `CHIP_PREPARE`, `CHIP_MUTECT2`, `CHIP_ANNOTATE` and `CHIP_REPORT`. `CHIP_GENES=FILE` runs the script with another table in the same layout.
 
 ## How it decides
 
 1. For each gene of `assets/chip_genes.tsv` the step takes the transcript Ensembl tags `MANE_Select`, and calls inside its coding exons, 10 bases wider on each side so the splice donor and acceptor sites are in. That is 162 exons and about 35 kb with Ensembl 116.
-2. Mutect2 calls in tumour-only mode, with the read orientation model, and with gnomAD and the panel of normals when they are installed.
+2. Mutect2 calls in tumour-only mode, with the read orientation model, and with gnomAD and the panel of normals when they are installed. With the common-sites VCF, GetPileupSummaries counts the reads at its common sites inside the same exons, CalculateContamination estimates from them how much of the sample is another person's DNA, and FilterMutectCalls gets that estimate (`--contamination-table`). Another person's DNA adds its own alleles at a low VAF, the VAF of a small clone; with the estimate, FilterMutectCalls marks a call that contamination explains `contamination`, and the call reads `filtered`. The exons hold few common sites, so the estimate is rough; a whole-genome estimate is VerifyBamID2's FREEMIX in step 33.
 3. Each call that changes the protein is put in the gene's class from the table:
 
 | Gene | Counted | Source (PMID) |
@@ -117,6 +118,7 @@ So at the depth of a usual 30x genome, a clone has to hold about 14% of the alle
 | `chip/${SAMPLE}_chip_depth.tsv` | one row per gene: `transcript`, `chrom`, `coding_bases`, `mean_depth`, `detection_limit_vaf` (the read-support limit), `status` (covered, partly_covered, too_shallow, not_on_reference), `callable_fraction`, `assessable_fraction` |
 | `chip/${SAMPLE}_chip_filtered.vcf.gz` | Mutect2's calls after FilterMutectCalls |
 | `chip/${SAMPLE}_chip.gff3`, `chip/${SAMPLE}_chip.bed` | the transcripts and exons it called on (the bash step) |
+| `chip/${SAMPLE}_chip_contamination.table` | CalculateContamination's estimate, with the common-sites VCF (the bash step) |
 
 Both reports show a "Clonal Haematopoiesis (CHIP)" section: the calls, the stated read-support limit, the genes that are not covered, and how many other changes were listed.
 

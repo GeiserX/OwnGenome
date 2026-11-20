@@ -339,6 +339,7 @@ param	viral_ref	-	-	-	-	experimental	-	-
 param	chip_gff	-	-	-	-	experimental	-	-
 param	chip_germline_resource	-	-	-	-	experimental	-	-
 param	chip_pon	-	-	-	-	experimental	-	-
+param	chip_common_sites	-	-	-	-	experimental	-	-
 param	parascopy_population	-	-	-	-	experimental	-	-
 param	parascopy_depth_bed	-	-	-	-	experimental	-	-
 param	paraphase_regions	-	-	-	-	experimental	-	-
